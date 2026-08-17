@@ -41,6 +41,11 @@ END CLASS
 Leia [CONTRIBUTING.md](CONTRIBUTING.md). Discussões de evolução começam como
 propostas em `docs/proposals/`; mudanças na especificação exigem exemplos.
 
+## Apoie o projeto
+
+Consulte [SPONSORSHIP.md](SPONSORSHIP.md) para apoiar a manutenção do Basic
+Next sem interferir em sua governança técnica.
+
 ## Licença
 
 [MIT](LICENSE).
