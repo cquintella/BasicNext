@@ -1,8 +1,8 @@
-' Lexical 0.1: identifiers are case-insensitive.
+REM Lexical 0.1: identifiers are case-insensitive.
 IMPORT HOST.main AS main
 
 SUB Start()
-    LET Message AS STRING = "Basic Next"
+    LET Message AS STRING = "Basic Next" // This is also a comment.
     LET counter AS INTEGER = 1
 
     PRINT message, COUNTER

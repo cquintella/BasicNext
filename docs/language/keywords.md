@@ -60,9 +60,8 @@ without a deliberate decision.
 | Form | Meaning | Status |
 | --- | --- | --- |
 | `PRINT` | Writes a value to the current output provided by the host. | Reserved |
-| `'` | Current line-comment marker in the 0.1 draft. | Reserved draft |
-| `REM` | Candidate readable line-comment form. | Decision needed |
-| `//` | Candidate familiar line-comment marker. It is punctuation, not a keyword. | Decision needed |
+| `REM` | Starts a line comment that continues to the line ending. | Reserved |
+| `//` | Starts a line comment that continues to the line ending. It is punctuation, not a keyword. | Accepted syntax |
 
 ## Future pattern and error handling forms
 
@@ -75,6 +74,6 @@ without a deliberate decision.
 ## Decision rule
 
 Basic Next follows KISS: where forms compete, the project selects one canonical
-form instead of keeping aliases indefinitely. In particular, the project must
-choose between `IMPORT` and `USE`, and between `'`, `REM`, and `//` for line
-comments.
+form instead of keeping aliases indefinitely. The deliberate exception is line
+comments: `REM` and `//` are equivalent, accepted forms. The project must still
+choose between `IMPORT` and `USE`.
