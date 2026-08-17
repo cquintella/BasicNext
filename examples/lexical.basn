@@ -1,0 +1,9 @@
+' Léxico 0.1: identificadores não distinguem maiúsculas de minúsculas.
+IMPORT HOST.main AS main
+
+SUB Start()
+    LET Mensagem AS STRING = "Basic Next"
+    LET contador AS INTEGER = 1
+
+    PRINT mensagem, CONTADOR
+END SUB
