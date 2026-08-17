@@ -47,8 +47,8 @@ this delivery.
 - **3.2 Front end:** lexer, parser, and AST for the complete 0.1 grammar.
 - **3.3 Semantic analysis:** scope, name resolution, types, and diagnostics.
 - **3.4 Execution:** execute 0.1 programs on the engine approved in 3.1.
-- **3.5 Command-line tool:** minimum commands to check and execute Basic Next
-  files.
+- **3.5 BN command-line tool:** minimum `BN` commands to check and execute
+  Basic Next files.
 
 ### 4. Quality and publication
 

@@ -6,6 +6,9 @@ only after its syntax and semantics are accepted into a language specification.
 part of 0.1; `Decision needed` identifies competing forms that must not coexist
 without a deliberate decision.
 
+Keywords are case-sensitive and reserved only in the uppercase forms shown
+below. For example, `PRINT` is a keyword and `Print` is an identifier.
+
 ## Declarations and program structure
 
 | Form | Meaning | Status |
@@ -17,9 +20,15 @@ without a deliberate decision.
 | `FUNCTION` | Declares a procedure with a return value. | Reserved |
 | `RETURN` | Returns from the current procedure. | Reserved |
 | `CLASS` | Declares an object-oriented type. | Reserved |
+| `PUBLIC`, `PRIVATE` | Set the visibility of a class member. | Reserved |
+| `CONSTRUCTOR` | Initializes a new class instance. | Reserved |
+| `DESTRUCTOR` | Runs once when `DELETE` releases a class instance. | Reserved |
+| `SELF` | Names the current class instance. | Reserved |
+| `INTERFACE` | Declares a public contract of method signatures. | Reserved |
+| `IMPLEMENTS` | Declares the interfaces implemented by a class. | Reserved |
+| `EXPORT` | Makes a module-level declaration available to importing modules. | Reserved |
 | `END` | Closes a compound declaration or statement, such as `END SUB` or `END IF`. | Reserved |
-| `IMPORT` | Imports a module or host capability. Current spelling used by the draft. | Decision needed |
-| `USE` | Candidate replacement for `IMPORT`. It is not reserved. | Decision needed |
+| `IMPORT` | Imports a module or host capability under an explicit local alias. | Reserved |
 | `HOST` | Names the environment that provides capabilities. | Reserved |
 | `SYSTEM` | Names the host-provided system object type. | Reserved |
 
@@ -27,11 +36,21 @@ without a deliberate decision.
 
 | Form | Meaning | Status |
 | --- | --- | --- |
-| `INTEGER` | Integer numeric type. | Reserved |
-| `FLOAT` | Floating-point numeric type. | Reserved |
+| `BYTE` | Unsigned 8-bit integer. | Reserved |
+| `INT16` | Signed 16-bit integer. | Reserved |
+| `INT32` | Signed 32-bit integer. | Reserved |
+| `UINT32` | Unsigned 32-bit integer. | Reserved |
+| `FLOAT32` | IEEE 754 binary32 floating-point value. | Reserved |
+| `FLOAT64` | IEEE 754 binary64 floating-point value. | Reserved |
+| `INTEGER` | Alias for `INT32`; the default integer spelling. | Reserved |
+| `FLOAT` | Alias for `FLOAT64`; the default floating-point spelling. | Reserved |
 | `STRING` | Text value type. | Reserved |
 | `BOOLEAN` | Logical value type. | Reserved |
 | `VOID` | Absence of a return value. | Reserved |
+| `TYPE[length]` | Fixed-size mutable vector. `length` is a non-negative integer literal; indices begin at `0`. | Accepted syntax |
+| `POINTER TO TYPE` | Typed pointer to an allocated value. `[length]` defines a fixed region; `[]` accepts a runtime-sized region. | Reserved syntax |
+| `NEW TYPE` | Allocates a value, region, or class instance. | Reserved syntax |
+| `DELETE value` | Releases an allocation created by `NEW`. | Reserved syntax |
 | `TRUE`, `FALSE` | Boolean literals. | Reserved |
 | `NA` | Candidate literal for a missing value. | Proposed |
 | `IS` | Candidate type or absence test, for example `value IS NA`. | Proposed |
@@ -40,8 +59,11 @@ without a deliberate decision.
 
 | Form | Meaning | Status |
 | --- | --- | --- |
-| `AND`, `OR`, `NOT` | Logical operators. `OR` is also proposed as a union separator in a type context. | Reserved / proposed extension |
-| `MOD` | Integer remainder operator. | Reserved |
+| `AND`, `OR`, `NOT` | Logical operators. After `AS`, `OR` is proposed as a separator between allowed types. | Reserved / proposed extension |
+| `+`, `-`, `*`, `/` | Basic numeric arithmetic. `/` always performs floating-point division. | Accepted syntax |
+| `**` | Exponentiation. It is right-associative and binds more tightly than unary `-`. | Accepted syntax |
+| `%` | Integer modulo; its result is non-negative and smaller than the absolute divisor. | Accepted syntax |
+| `+=`, `-=`, `*=`, `/=`, `%=`, `**=` | Assignment forms corresponding to the arithmetic operators. | Accepted syntax |
 
 ## Control flow
 
@@ -68,14 +90,12 @@ without a deliberate decision.
 
 | Form | Meaning | Status |
 | --- | --- | --- |
-| `MATCH` | Candidate pattern matching over unions and values. | Proposed |
+| `MATCH` | Candidate pattern matching over values. | Proposed |
 | `OK`, `ERR` | Candidate constructors for error values. | Proposed |
-| `UNION` | Candidate declaration of a named discriminated union. | Proposed |
 
 ## Decision rule
 
 Basic Next follows KISS: where forms compete, the project selects one canonical
 form instead of keeping aliases indefinitely. The deliberate exception is line
 comments: `REM` and `//` are equivalent, accepted forms, and `/* ... */` is
-the accepted nested block form. The project must still choose between `IMPORT`
-and `USE`.
+the accepted nested block form.

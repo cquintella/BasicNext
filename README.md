@@ -25,6 +25,12 @@ of design principles.
 **Pre-implementation.** Language version 0.1 is under discussion; there is no
 compiler, runtime, or stable API yet.
 
+## Tool
+
+`BN` is the official Basic Next tool. It is the single entry point for checking,
+interpreting, and, where supported, compiling `.bn` source files. Its command
+syntax and execution architecture remain to be defined.
+
 ## Repository layout
 
 - `docs/language/0.1.md` — minimum language specification.
