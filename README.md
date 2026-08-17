@@ -31,7 +31,7 @@ CLASS Main
         WHILE contador < 10
             PRINT "Basic Next", contador
             contador += 1
-        WEND
+        END WHILE
     END SUB
 END CLASS
 ```
