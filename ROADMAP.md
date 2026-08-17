@@ -2,6 +2,8 @@
 
 O roadmap descreve entregas pequenas e verificáveis; não é promessa de data.
 
+O detalhamento da entrega 0.1 está em [docs/project/WBS-0.1.md](docs/project/WBS-0.1.md).
+
 1. **Linguagem 0.1:** revisar e congelar a especificação mínima e os exemplos.
 2. **Front-end:** lexer, parser, AST e diagnósticos de sintaxe.
 3. **Semântica:** resolução de nomes e verificação de tipos.
