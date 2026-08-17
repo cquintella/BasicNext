@@ -1,16 +1,16 @@
-# Governança
+# Governance
 
-O Basic Next é um projeto liderado por seu criador, Carlos Quintella
-([@cquintella](https://github.com/cquintella)). Ele é o mantenedor e possui a
-decisão final sobre a especificação, o repositório oficial, releases e a
-aceitação de contribuições.
+Basic Next is led by its creator, Carlos Quintella
+([@cquintella](https://github.com/cquintella)). He is the maintainer and has
+final authority over the specification, official repository, releases, and
+acceptance of contributions.
 
-Contribuições e discussões são bem-vindas em issues e pull requests. Elas não
-criam compromisso de aceitação nem direito de governança. O mantenedor pode
-aceitar, solicitar alterações, adiar ou rejeitar qualquer proposta, com ou sem
-delegação de revisão.
+Contributions and discussion are welcome in issues and pull requests. They do
+not create an obligation of acceptance or a governance right. The maintainer
+may accept, request changes to, defer, or reject any proposal, with or without
+delegating review.
 
-Forks são permitidos pela licença MIT. Eles são projetos independentes e não
-representam decisões, releases ou compatibilidade oficiais do Basic Next.
+Forks are permitted by the MIT license. They are independent projects and do
+not represent official Basic Next decisions, releases, or compatibility.
 
-Esta política pode ser alterada pelo mantenedor.
+The maintainer may amend this policy.

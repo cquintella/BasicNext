@@ -1,14 +1,14 @@
-# Como contribuir
+# Contributing
 
-Antes de implementar uma mudança de linguagem, abra uma proposta em
-`docs/proposals/` com motivação, exemplos e impacto na gramática ou semântica.
+Before implementing a language change, open a proposal in `docs/proposals/`
+that states the motivation, examples, and grammar or semantic impact.
 
-Para alterações na 0.1:
+For changes to 0.1:
 
-1. mantenha o escopo pequeno;
-2. atualize a especificação e um exemplo afetado;
-3. não introduza dependências sem justificativa;
-4. não altere arquivos não relacionados.
+1. Keep the scope small.
+2. Update the specification and an affected example.
+3. Do not introduce dependencies without justification.
+4. Do not change unrelated files.
 
-Ainda não há política de governança nem `CODE_OF_CONDUCT.md`; essas decisões
-devem ser tomadas antes de abrir contribuições públicas em escala.
+The project's governance is defined in [GOVERNANCE.md](GOVERNANCE.md). A code
+of conduct will be added before public contributions are opened at scale.

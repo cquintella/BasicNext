@@ -1,61 +1,62 @@
 # WBS — Basic Next 0.1
 
-Esta WBS aplica uma versão enxuta do PMI: organiza o escopo por entregáveis,
-não por pessoas ou datas. Cada item de nível 2 é um card do GitHub Project.
+This WBS applies a lightweight PMI approach: it organizes scope by deliverable,
+not by people or dates. Each level-2 item is a GitHub Project card.
 
-## Objetivo da entrega
+## Delivery objective
 
-Publicar o Basic Next 0.1 com especificação revisada, exemplos executáveis e
-uma implementação de referência capaz de validar e executar os programas do
-escopo 0.1. Compilação nativa, GUI, concorrência e integrações de IA estão fora
-desta entrega.
+Publish Basic Next 0.1 with a reviewed specification, executable examples, and
+a reference implementation able to validate and execute programs in the 0.1
+scope. Native compilation, GUI, concurrency, and AI integrations are outside
+this delivery.
 
-## Critérios de aceite
+## Acceptance criteria
 
-- A especificação 0.1 define sintaxe e semântica sem depender de uma VM.
-- Os exemplos oficiais executam na implementação de referência.
-- Erros léxicos, sintáticos e de tipo produzem diagnósticos compreensíveis.
-- O repositório contém instruções para executar exemplos e reproduzir a suíte
-  de conformidade.
-- Uma release `v0.1.0` é publicada com notas de versão.
+- The 0.1 specification defines syntax and semantics without depending on a
+  virtual machine.
+- Official examples execute in the reference implementation.
+- Lexical, syntax, and type errors produce understandable diagnostics.
+- The repository explains how to run examples and reproduce the conformance
+  suite.
+- A `v0.1.0` release is published with release notes.
 
-## Estrutura analítica do trabalho
+## Work breakdown structure
 
-### 1. Gestão da entrega
+### 1. Delivery management
 
-- **1.1 Escopo e critérios de aceite:** congelar o conteúdo da 0.1 e registrar
-  explicitamente o que fica fora.
-- **1.2 Controle de entrega:** manter Kanban, decisões e notas de release.
+- **1.1 Scope and acceptance criteria:** freeze 0.1 content and record what
+  remains outside it.
+- **1.2 Delivery control:** maintain the Kanban board, decisions, and release
+  notes.
 
-### 2. Especificação da linguagem
+### 2. Language specification
 
-- **2.1 Léxico e gramática:** palavras reservadas, tokens, comentários, strings
-  e gramática EBNF.
-- **2.2 Tipos e expressões:** tipos primitivos, operadores, precedência,
-  atribuição e conversões permitidas.
-- **2.3 Declarações e controle de fluxo:** variáveis, `SUB`, `FUNCTION`,
-  `CLASS`, `IF`, `WHILE`, `REPEAT`, `FOR` e `RETURN`.
-- **2.4 Módulos e ambiente:** `IMPORT`, módulo executável, `SUB Start()` e
-  contrato de `HOST.main`.
-- **2.5 Diagnósticos e conformidade:** erros definidos e exemplos normativos.
+- **2.1 Lexical grammar:** reserved words, tokens, comments, strings, and EBNF.
+- **2.2 Types and expressions:** primitive types, operators, precedence,
+  assignment, and allowed conversions.
+- **2.3 Declarations and control flow:** variables, `SUB`, `FUNCTION`, `CLASS`,
+  `IF`, `WHILE`, `REPEAT`, `FOR`, and `RETURN`.
+- **2.4 Modules and environment:** `IMPORT`, executable module, `SUB Start()`,
+  and the `HOST.main` contract.
+- **2.5 Diagnostics and conformance:** defined errors and normative examples.
 
-### 3. Implementação de referência
+### 3. Reference implementation
 
-- **3.1 Gate de arquitetura:** escolher o motor de execução sem alterar a
-  semântica da linguagem (interpretador de AST, VM própria ou Wasm/WAMR).
-- **3.2 Front-end:** lexer, parser e AST para toda a gramática 0.1.
-- **3.3 Análise semântica:** escopo, resolução de nomes, tipos e diagnósticos.
-- **3.4 Execução:** executar os programas 0.1 no motor aprovado no item 3.1.
-- **3.5 Ferramenta de linha de comando:** comandos mínimos para verificar e
-  executar arquivos Basic Next.
+- **3.1 Architecture gate:** choose an execution engine without changing the
+  language semantics (AST interpreter, own VM, or Wasm/WAMR).
+- **3.2 Front end:** lexer, parser, and AST for the complete 0.1 grammar.
+- **3.3 Semantic analysis:** scope, name resolution, types, and diagnostics.
+- **3.4 Execution:** execute 0.1 programs on the engine approved in 3.1.
+- **3.5 Command-line tool:** minimum commands to check and execute Basic Next
+  files.
 
-### 4. Qualidade e publicação
+### 4. Quality and publication
 
-- **4.1 Conformidade:** suíte de exemplos e casos de erro.
-- **4.2 Documentação de uso:** instalação, primeiro programa e contribuição.
-- **4.3 Release 0.1.0:** versionamento, notas e publicação do artefato.
+- **4.1 Conformance:** suite of examples and error cases.
+- **4.2 Usage documentation:** installation, first program, and contribution.
+- **4.3 Release 0.1.0:** versioning, notes, and artifact publication.
 
-## Dependências principais
+## Main dependencies
 
 ```text
 2.1–2.5 ──→ 3.2 ──→ 3.3 ──→ 3.4 ──→ 4.1 ──→ 4.3
@@ -63,5 +64,5 @@ desta entrega.
                 3.1
 ```
 
-O item 3.1 é um gate: ele bloqueia a implementação de execução, mas não o
-avanço da especificação.
+Item 3.1 is a gate: it blocks execution implementation, not specification
+progress.

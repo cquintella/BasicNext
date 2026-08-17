@@ -1,26 +1,26 @@
-# Apoie o Basic Next
+# Support Basic Next
 
-O Basic Next é mantido por Carlos Quintella. Patrocínios financiam tempo de
-manutenção, materiais didáticos, infraestrutura e evolução do compilador.
+Basic Next is maintained by Carlos Quintella. Sponsorship funds maintenance
+time, teaching material, infrastructure, and compiler evolution.
 
-Quando o perfil estiver ativo, use o botão **Sponsor** no GitHub ou acesse:
+When the profile is active, use the **Sponsor** button on GitHub or visit:
 
 https://github.com/sponsors/cquintella
 
-## O que patrocinadores recebem
+## What sponsors receive
 
-- agradecimento público, se desejado;
-- atualizações periódicas sobre entregas e uso dos recursos;
-- possibilidade de apoiar metas públicas específicas quando elas existirem.
+- public acknowledgement, if desired;
+- periodic updates on deliveries and use of funds;
+- an opportunity to support specific public goals when they exist.
 
-Patrocínio não concede controle sobre a linguagem, prioridade de aceitação de
-pull requests, nem direito de usar o nome Basic Next como projeto oficial.
-As decisões técnicas seguem [GOVERNANCE.md](GOVERNANCE.md) e o uso do nome
-segue [TRADEMARK.md](TRADEMARK.md).
+Sponsorship does not grant control over the language, pull-request priority, or
+the right to use the Basic Next name as the official project. Technical
+decisions follow [GOVERNANCE.md](GOVERNANCE.md); name use follows
+[TRADEMARK.md](TRADEMARK.md).
 
-## Transparência
+## Transparency
 
-Enquanto os recursos forem recebidos diretamente pelo mantenedor, eles serão
-tratados como apoio à manutenção. Caso o projeto passe a manter orçamento
-coletivo ou reembolsar despesas, será adotado um mecanismo público de prestação
-de contas antes de aceitar esse tipo de recurso.
+While funds are received directly by the maintainer, they are treated as
+support for maintenance. If the project starts to manage a collective budget or
+reimburse expenses, it will adopt a public accounting mechanism before
+accepting those kinds of funds.

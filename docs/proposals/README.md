@@ -1,4 +1,5 @@
-# Propostas
+# Proposals
 
-Uma proposta descreve motivação, exemplos e impacto na gramática ou semântica.
-Nada nesta pasta faz parte da linguagem até ser incorporado à especificação.
+A proposal states motivation, examples, and grammar or semantic impact. Nothing
+in this directory is part of the language until it is incorporated into the
+specification.

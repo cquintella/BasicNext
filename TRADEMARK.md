@@ -1,14 +1,13 @@
-# Política de nome e marca
+# Name and Trademark Policy
 
-“Basic Next” e seus logotipos, quando existirem, identificam o projeto oficial
-mantido por Carlos Quintella. A licença MIT cobre o código e a documentação;
-ela não concede autorização para apresentar um fork como o projeto oficial ou
-de modo que sugira endosso do mantenedor.
+“Basic Next” and its logos, when available, identify the official project
+maintained by Carlos Quintella. The MIT license covers code and documentation;
+it does not authorize presenting a fork as the official project or suggesting
+maintainer endorsement.
 
-Você pode mencionar Basic Next de forma factual, por exemplo para dizer que
-seu software é compatível com a linguagem ou derivado do projeto. Para usar o
-nome ou logotipo como nome principal de uma distribuição, serviço ou produto,
-ou para anunciar compatibilidade oficial, peça autorização prévia ao
-mantenedor.
+You may use the name factually, for example to say that software is compatible
+with the language or derived from the project. Ask the maintainer before using
+the name or logo as the primary name of a distribution, service, or product, or
+before claiming official compatibility.
 
-Esta é uma política de uso do projeto, não uma afirmação de marca registrada.
+This is a project-use policy, not a claim of registered trademark rights.

@@ -1,51 +1,52 @@
 # Basic Next
 
-Uma linguagem de programação moderna com sintaxe inspirada em BASIC, projetada
-como projeto open source e laboratório didático para disciplinas de Compiladores.
+A modern programming language with BASIC-inspired syntax, designed as an open
+source project and a teaching laboratory for Compilers courses.
 
-O repositório começa pela especificação: uma implementação só entra quando a
-semântica correspondente estiver definida e revisada.
+This repository starts with the specification: an implementation is introduced
+only after the corresponding semantics have been defined and reviewed.
 
-## Estado
+## Status
 
-**Pré-implementação.** A versão de linguagem em discussão é a 0.1; ainda não
-há compilador, runtime ou API estável.
+**Pre-implementation.** Language version 0.1 is under discussion; there is no
+compiler, runtime, or stable API yet.
 
-## Estrutura
+## Repository layout
 
-- `docs/language/0.1.md` — especificação mínima da linguagem.
-- `docs/proposals/` — propostas que ainda não fazem parte da linguagem.
-- `examples/` — programas que guiam a especificação.
-- `PHILOSOPHY.md` — princípios de projeto.
-- `ROADMAP.md` — entregas incrementais para o compilador didático.
-- `GOVERNANCE.md` — como decisões são tomadas.
-- `TRADEMARK.md` — uso do nome do projeto.
+- `docs/language/0.1.md` — minimum language specification.
+- `docs/proposals/` — ideas that are not part of the language yet.
+- `docs/project/` — delivery planning documents.
+- `examples/` — programs that guide the specification.
+- `PHILOSOPHY.md` — design principles.
+- `ROADMAP.md` — incremental delivery roadmap.
+- `GOVERNANCE.md` — how decisions are made.
+- `TRADEMARK.md` — use of the project name.
 
-## Exemplo
+## Example
 
 ```basic
 IMPORT HOST.main AS main
 
 SUB Start()
-    LET contador AS INTEGER = 0
+    LET counter AS INTEGER = 0
 
-    WHILE contador < 10
-        PRINT "Basic Next", contador
-        contador += 1
+    WHILE counter < 10
+        PRINT "Basic Next", counter
+        counter += 1
     END WHILE
 END SUB
 ```
 
-## Participação
+## Contributing
 
-Leia [CONTRIBUTING.md](CONTRIBUTING.md). Discussões de evolução começam como
-propostas em `docs/proposals/`; mudanças na especificação exigem exemplos.
+Read [CONTRIBUTING.md](CONTRIBUTING.md). Language evolution begins as proposals
+in `docs/proposals/`; specification changes require examples.
 
-## Apoie o projeto
+## Support
 
-Consulte [SPONSORSHIP.md](SPONSORSHIP.md) para apoiar a manutenção do Basic
-Next sem interferir em sua governança técnica.
+See [SPONSORSHIP.md](SPONSORSHIP.md) to support Basic Next maintenance without
+interfering with its technical governance.
 
-## Licença
+## License
 
 [MIT](LICENSE).
