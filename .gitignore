@@ -3,3 +3,4 @@
 *.obj
 *.exe
 .DS_Store
+/research/
