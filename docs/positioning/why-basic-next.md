@@ -1,56 +1,45 @@
-# Why Basic Next?
+# The Computer Should Feel Closer
 
-## Programming asks people to hold too much in their head
+Most people have more ideas than they have tools to express them. Programming
+can close that gap - but only when the language does not demand that people
+translate their thinking into ceremony before they can act.
 
-Modern software often makes simple ideas harder than they need to be. A
-developer can face terse syntax, invisible conversions, framework conventions,
-configuration layers, and platform-specific APIs before expressing the actual
-problem.
+Basic Next is designed around a simple belief: **a programming language should
+create momentum, not consume it.**
 
-Basic Next starts from a different question: how can a language preserve
-expressive power while asking its reader to remember less?
+## Flow is a product requirement
 
-## The BN response
+When a programmer is in flow, the next step is understandable, the feedback is
+nearby, and attention stays with the problem. BN is designed to protect that
+state.
 
-BN favors words that reveal intent, types that state a contract, and an
-object-oriented structure that gives behavior a home. This does not mean hiding
-important details. It means making important details legible.
+- Every block closes in plain sight: `END IF`, `END WHILE`, `END FUNCTION`.
+- Every variable introduces its type locally: `LET total AS FLOAT = 0.0`.
+- One concept has one normal spelling.
+- The source reflects meaningful execution steps instead of hiding them behind
+  magic.
+- The official tool has one simple path: check, run, build - with the same
+  diagnostic language at every stage.
 
-```basic
-CLASS Customer
-    PRIVATE id AS INTEGER
+## Clarity is not a compromise
 
-    PUBLIC CONSTRUCTOR(id AS INTEGER)
-        SELF.id = id
-    END CONSTRUCTOR
-END CLASS
-```
+Clear code can still have types, contracts, objects, modules, memory boundaries,
+and host capabilities. The point is not to hide complexity that matters. The
+point is to make complexity arrive only when it is needed.
 
-The class boundary, visibility, constructor, and type are visible without a
-large amount of surrounding ceremony.
+## A learning curve, not a cliff
 
-## Principles in practice
+BN uses a visible complexity ladder. A learner can start with typed values,
+conditions, loops, functions, and console input. Classes, interfaces, modules,
+host capabilities, typed memory, data facilities, and parallel devices come
+later - as tools for real needs, not obstacles at the door.
 
-- **KISS:** complexity must solve a concrete problem, not prepare for an
-  imaginary future.
-- **Clean Code and Clean Architecture:** natural outcomes of clear names,
-  explicit dependencies, and cohesive objects - never a mandated framework.
-- **Capability orientation:** cross-platform programs ask the host for a
-  capability instead of tying their source directly to an operating system or
-  vendor.
-- **Deliberate evolution:** the specification comes before implementation; a
-  proposed feature must earn its place with examples and a clear semantic rule.
+That makes BN relevant in the classroom and beyond it. The same language that
+helps someone understand a loop can help them write a practical utility,
+express a domain model, or build a system that talks to its environment.
 
-## What BN does not promise
+## The standard
 
-BN does not claim to replace established ecosystems, win performance
-benchmarks, or already be ready for production. Its immediate contribution is
-a carefully designed language foundation. Its long-term value depends on an
-implementation, a stable standard library, tools, and a community that keeps
-the core coherent.
-
-## The outcome we seek
-
-Software should let people focus on the model they are building. BN aims for
-source that is easy to read months later, easy to explain in a review, and
-clear enough to move from idea to working code without unnecessary friction.
+BN should feel calm, capable, and direct. It should make a reader think about
+the problem, not decode the language. That is the standard against which every
+feature should be judged.

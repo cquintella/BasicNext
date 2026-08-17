@@ -1,52 +1,51 @@
-# Recommended Use Cases for Basic Next
+# Where Basic Next Can Matter First
 
-## General-purpose, with an intentional starting point
+Basic Next is intended to be general-purpose. Its opportunity is not to imitate
+every established ecosystem on day one; it is to make useful programming feel
+far more approachable without treating the programmer as less capable.
 
-Basic Next is intended to be a general-purpose language. Its first useful
-territory is software where readability, explicit structure, and portability
-matter more than platform-specific tricks or a mature ecosystem on day one.
+## Teach how computers work - through programs that read like programs
 
-## Strong fits
+BN can be a serious teaching language because its code exposes structure:
+types, loops, objects, memory, modules, and host boundaries are visible. A
+student can learn what the computer is doing without first learning to work
+around an opaque toolchain or a framework's private conventions.
 
-### Command-line tools and automation
+This makes it useful for introductory programming, data structures, algorithms,
+computer architecture, and compiler courses.
 
-BN's explicit entry method, `PRINT`, `INPUT()`, types, and small language core
-fit utilities that read input, transform it, and produce dependable output.
+## Automate the work that should not be manual
 
-### Business and domain applications
+Small scripts are where people first experience programming as leverage. BN is
+designed for the path from "I do this every week" to "the computer does this
+for me": file transformations, reports, data cleanup, command-line tools,
+teaching utilities, and workflow automation.
 
-Classes, interfaces, visibility, and modules support software organized around
-real domain concepts: customers, invoices, schedules, inventories, policies,
-and workflows.
+```text
+bn run report.bn
+```
 
-### Data-oriented utilities
+No project manifest. No framework bootstrap. No ceremony before a useful run.
 
-Explicit numeric types, fixed-size vectors, typed memory, and a future data
-library direction make BN a credible home for parsers, import/export tools,
-calculators, and structured data processing.
+## Build readable domain software
 
-### Teaching and learning
+Business applications are made of concepts people must discuss: customer,
+order, schedule, payment, inventory, policy, alert. BN's classes, interfaces,
+visibility, and explicit types are designed to keep those concepts present in
+the code instead of dissolving them into incidental infrastructure.
 
-BN can help students see program structure without first navigating an
-ecosystem full of build systems, framework conventions, or hidden runtime
-behavior. This is a useful use case, but not the language's sole purpose.
+## Talk to the environment without losing the language
 
-### Cross-platform host integrations
+BN's `HOST` model is a path to capabilities such as console, memory, files,
+devices, web interfaces, and parallel hardware. The aim is one understandable
+import model, not a different mental model for every platform.
 
-The `HOST` capability model is intended to make a program's environmental
-dependencies visible and portable. It is a direction for the runtime, not a
-claim that every capability already exists.
+## Where BN should not pretend to be ready
 
-## Not the first target
+BN 0.1 is pre-implementation. It is not yet the right choice for a production
+system dependent on a mature runtime, package ecosystem, GPU stack, kernel
+interface, or hard real-time profile. Those are future engineering targets,
+not present promises.
 
-BN should not initially be chosen for kernel work, bare-metal firmware,
-ultra-low-latency systems, performance-critical GPU kernels, or a project that
-depends on the mature package ecosystem of another language. Those are future
-evaluation areas, not current promises.
-
-## A practical selection rule
-
-Choose BN when the primary value is code that is explicit, approachable, and
-structured around clear objects and contracts. Choose a mature alternative
-when its existing runtime, libraries, tooling, or proven operational profile is
-the decisive requirement.
+The first win is simpler and more important: make programming itself feel more
+available, more readable, and more useful to more people.

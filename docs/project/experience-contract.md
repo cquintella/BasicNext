@@ -20,6 +20,8 @@ steps elsewhere.
 
 Every compound form closes with `END` and the opening keyword. This makes a
 program's coarse structure visible before a reader understands its details.
+Indentation is not syntactic, but code inside a block should be indented
+consistently; the official examples use four spaces per nesting level.
 
 ```basic
 WHILE active

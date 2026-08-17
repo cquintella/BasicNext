@@ -2,10 +2,11 @@
 
 ## Intent
 
-Basic Next material should feel calm, precise, and welcoming: Zen restraint,
-clean technical communication, a light retro-computing reference, and a
-controlled rainbow accent. The visual identity supports the language promise:
-reduce cognitive load without reducing expressive power.
+Basic Next material should feel like an editorial product, not internal
+documentation: calm, precise, ambitious, and welcoming. It combines Zen
+restraint, a classic "Think"-era editorial confidence, a light retro-computing
+reference, and a controlled rainbow accent. The visual identity supports the
+language promise: reduce cognitive load without reducing expressive power.
 
 ## Visual system
 
@@ -20,10 +21,11 @@ reduce cognitive load without reducing expressive power.
 
 ## Typography and layout
 
-- Use a clean sans-serif for titles and body text; use a monospaced face only
-  for code, commands, and short technical labels.
-- Prefer short paragraphs, generous margins, strong headings, and one main
-  idea per page region.
+- Use a high-contrast classic serif for titles and pull quotes; use a clean
+  sans-serif for body text. Use a monospaced face only for code, commands, and
+  short technical labels.
+- Prefer short paragraphs, generous margins, distinct editorial section breaks,
+  and one main idea per page region.
 - Use A4 portrait for papers. Keep title pages spacious; use compact, readable
   comparison tables rather than dense prose.
 - Code uses a pale blue-gray panel and dark monospaced text. It must never be

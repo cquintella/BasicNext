@@ -1,46 +1,42 @@
-# How Basic Next Differs
+# Not Another Language. A Different Promise.
 
-## A different center of gravity
+Zig, Rust, Go, Java, C++, and Python are important languages with real,
+established strengths. Basic Next does not need to defeat them to deserve to
+exist. It needs to make a different promise and keep it.
 
-Basic Next is not trying to be a smaller Rust, a friendlier C++, or a typed
-Python clone. Its center of gravity is low cognitive load: readable
-object-oriented code, explicit types and contracts, and cross-platform host
-capabilities.
+That promise is this: **a general-purpose language can be explicit and capable
+without making ordinary programming feel hostile.**
 
-| Language | Primary emphasis | BN's distinct choice |
+## The distinction
+
+| Language | Its center of gravity | BN's deliberate choice |
 | --- | --- | --- |
-| Zig | Explicit systems programming and control | Readability and OO structure over systems-level minimalism. |
-| Rust | Memory safety and zero-cost abstraction | A gentler, BASIC-inspired surface with explicit but simpler object and memory concepts. |
-| Go | Operational simplicity and concurrency | Object-oriented modeling, explicit visibility, and a richer type vocabulary. |
-| Java | Mature VM ecosystem and enterprise tooling | Less ceremony and a smaller language core, without requiring a framework. |
-| C++ | Performance, hardware access, and broad abstraction mechanisms | A deliberately smaller, more readable language surface. |
-| Python | Dynamic productivity and ecosystem breadth | Explicit static types and stronger structural contracts. |
+| Zig | Systems control and explicitness | Give ordinary application code a more readable, object-oriented surface. |
+| Rust | Memory safety and zero-cost abstraction | Reduce language friction while keeping contracts and memory boundaries visible. |
+| Go | Operational simplicity and concurrency | Make domain modeling, explicit types, and structural readability central. |
+| Java | Mature virtual-machine and enterprise ecosystem | Start smaller, with less ceremony and no framework as the price of entry. |
+| C++ | Performance, hardware access, and maximal flexibility | Prefer a smaller surface and a lower cognitive burden for common code. |
+| Python | Fast expression and ecosystem breadth | Preserve directness while making type and contract information explicit. |
 
-## Important limits to the comparison
+## What the comparison does not say
 
-These languages are mature and have large ecosystems. BN is pre-implementation
-and should not be judged as a replacement for their tooling, libraries,
-performance, or production track record. The comparison explains design
-intent, not feature parity.
+BN is pre-implementation. It does not claim feature parity, benchmark wins,
+or ecosystem maturity. Those languages have earned their positions through
+years of work and real use.
 
-## Where BN can be distinctive
+The relevant question is not "which language wins?" It is "what kind of
+experience should programming offer to the next generation of creators?"
 
-- **Readable by construction:** `END IF`, `END WHILE`, typed declarations, and
-  named object boundaries favor scanning and review.
-- **Explicit without excessive ceremony:** types, imports, visibility, and
-  host dependencies are visible; a program still begins with a simple
-  `FUNCTION Start() AS VOID`.
-- **BASIC heritage, modern boundaries:** familiar directness without line
-  numbers, global loose code, or implicit architectural conventions.
-- **Capabilities over vendor APIs:** `HOST` is intended to expose portable
-  environmental services without making platform names part of normal program
-  structure.
-- **Deliberate scope:** BN will only add concepts that earn their cognitive
-  cost through a clear need.
+## BN's answer
 
-## The honest position
+BN is designed to make code easier to enter, easier to read, easier to teach,
+and easier to connect to a real computer. It makes the program's shape visible:
+explicit types, explicit endings, explicit imports, explicit objects, explicit
+host boundaries.
 
-Use Zig, Rust, Go, Java, C++, or Python when their mature strengths are the
-reason for the project. Follow BN when you value a language experiment focused
-on making general-purpose, object-oriented code easier to read, discuss, and
-evolve.
+It is a language for the person learning to program, the teacher explaining a
+machine, the professional automating work, and the builder who wants an idea to
+reach the computer without losing its shape along the way.
+
+That is not a smaller ambition. It is a larger audience for the power of
+programming.
