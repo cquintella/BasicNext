@@ -1,4 +1,7 @@
 REM Lexical 0.1: identifiers are case-insensitive.
+/* Block comments may nest.
+   /* Nested comment. */
+*/
 IMPORT HOST.main AS main
 
 SUB Start()

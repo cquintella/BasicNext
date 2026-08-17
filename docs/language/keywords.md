@@ -62,6 +62,7 @@ without a deliberate decision.
 | `PRINT` | Writes a value to the current output provided by the host. | Reserved |
 | `REM` | Starts a line comment that continues to the line ending. | Reserved |
 | `//` | Starts a line comment that continues to the line ending. It is punctuation, not a keyword. | Accepted syntax |
+| `/* ... */` | Starts and ends a nested block comment. It is punctuation, not a keyword. | Accepted syntax |
 
 ## Future pattern and error handling forms
 
@@ -75,5 +76,6 @@ without a deliberate decision.
 
 Basic Next follows KISS: where forms compete, the project selects one canonical
 form instead of keeping aliases indefinitely. The deliberate exception is line
-comments: `REM` and `//` are equivalent, accepted forms. The project must still
-choose between `IMPORT` and `USE`.
+comments: `REM` and `//` are equivalent, accepted forms, and `/* ... */` is
+the accepted nested block form. The project must still choose between `IMPORT`
+and `USE`.
