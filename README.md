@@ -18,6 +18,8 @@ há compilador, runtime ou API estável.
 - `examples/` — programas que guiam a especificação.
 - `PHILOSOPHY.md` — princípios de projeto.
 - `ROADMAP.md` — entregas incrementais para o compilador didático.
+- `GOVERNANCE.md` — como decisões são tomadas.
+- `TRADEMARK.md` — uso do nome do projeto.
 
 ## Exemplo
 
