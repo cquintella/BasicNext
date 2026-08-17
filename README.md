@@ -1,10 +1,24 @@
 # Basic Next
 
-A modern programming language with BASIC-inspired syntax, designed as an open
-source project and a teaching laboratory for Compilers courses.
+An object-oriented programming language designed to reduce cognitive load and
+turn ideas into clear, cross-platform software.
+
+Basic Next combines BASIC-inspired readability, explicit types, and host
+capabilities without prescribing a framework or architecture.
 
 This repository starts with the specification: an implementation is introduced
 only after the corresponding semantics have been defined and reviewed.
+
+## Design goals
+
+- Readability before abbreviation.
+- Low cognitive load and explicit contracts.
+- KISS: complexity must solve a concrete problem.
+- Clean Code and Clean Architecture should be natural, never mandatory.
+- Cross-platform software through `HOST` capabilities rather than vendor APIs.
+
+Read [PHILOSOPHY.md](PHILOSOPHY.md) for the mission, vision, and complete set
+of design principles.
 
 ## Status
 
