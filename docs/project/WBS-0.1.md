@@ -34,9 +34,10 @@ this delivery.
 - **2.1 Lexical grammar:** reserved words, tokens, comments, strings, and EBNF.
 - **2.2 Types and expressions:** primitive types, operators, precedence,
   assignment, and allowed conversions.
-- **2.3 Declarations and control flow:** variables, `SUB`, `FUNCTION`, `CLASS`,
+- **2.3 Declarations and control flow:** variables, `FUNCTION`, `CLASS`,
   `IF`, `WHILE`, `REPEAT`, `FOR`, and `RETURN`.
-- **2.4 Modules and environment:** `IMPORT`, executable module, `SUB Start()`,
+- **2.4 Modules and environment:** `IMPORT`, executable module,
+  `FUNCTION Start() AS VOID`,
   and the `HOST.main` contract.
 - **2.5 Diagnostics and conformance:** defined errors and normative examples.
 

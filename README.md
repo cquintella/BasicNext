@@ -1,10 +1,13 @@
 # Basic Next
 
-An object-oriented programming language designed to reduce cognitive load and
-turn ideas into clear, cross-platform software.
+An object-oriented, general-purpose programming language designed to reduce
+cognitive load and turn ideas into clear, cross-platform software.
 
 Basic Next combines BASIC-inspired readability, explicit types, and host
-capabilities without prescribing a framework or architecture.
+capabilities without prescribing a framework or architecture. It is designed
+to make programming pleasurable: clear, predictable code should help
+programmers sustain attention and enter a state of flow while reading and
+writing software.
 
 This repository starts with the specification: an implementation is introduced
 only after the corresponding semantics have been defined and reviewed.
@@ -12,8 +15,9 @@ only after the corresponding semantics have been defined and reviewed.
 ## Design goals
 
 - Readability before abbreviation.
-- Low cognitive load and explicit contracts.
+- Low cognitive load, flow by clarity, and explicit contracts.
 - KISS: complexity must solve a concrete problem.
+- Every `LET` and `CONST` declaration states its type explicitly.
 - Clean Code and Clean Architecture should be natural, never mandatory.
 - Cross-platform software through `HOST` capabilities rather than vendor APIs.
 
@@ -27,15 +31,21 @@ compiler, runtime, or stable API yet.
 
 ## Tool
 
-`BN` is the official Basic Next tool. It is the single entry point for checking,
-interpreting, and, where supported, compiling `.bn` source files. Its command
-syntax and execution architecture remain to be defined.
+`BN` is the official Basic Next tool, invoked as `bn`. It is the single entry
+point for checking, running, and, where supported, building `.bn` source files:
+`bn check file.bn`, `bn run file.bn`, and `bn build file.bn`. These commands
+share one diagnostic format, source locations, and exit-code model.
+
+The trivial case is zero-config: `bn run hello.bn` must not require a project
+file or manifest. This command contract is specified; the tool itself is not
+implemented yet.
 
 ## Repository layout
 
 - `docs/language/0.1.md` — minimum language specification.
 - `docs/proposals/` — ideas that are not part of the language yet.
 - `docs/project/` — delivery planning documents.
+- `docs/project/experience-contract.md` — flow and developer-experience rules.
 - `examples/` — programs that guide the specification.
 - `PHILOSOPHY.md` — design principles.
 - `ROADMAP.md` — incremental delivery roadmap.
@@ -47,14 +57,14 @@ syntax and execution architecture remain to be defined.
 ```basic
 IMPORT HOST.main AS main
 
-SUB Start()
+FUNCTION Start() AS VOID
     LET counter AS INTEGER = 0
 
     WHILE counter < 10
         PRINT "Basic Next", counter
         counter += 1
     END WHILE
-END SUB
+END FUNCTION
 ```
 
 ## Contributing

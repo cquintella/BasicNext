@@ -16,7 +16,8 @@ interpreter implementation.
   range failures.
 - [x] Define `EOF`, `OR` in a type declaration, and `IS` for alternative-value
   tests.
-- [ ] Define runtime errors, diagnostic format, and `BN` exit codes.
+- [ ] Define teacher-style runtime errors, one diagnostic format for `bn check`,
+  `bn run`, and `bn build`, and `BN` exit codes.
 - [ ] Define the default `Console` contract: `WriteLine`, `Error.WriteLine`,
   `ReadLine`, `PRINT`, and `INPUT()`.
 
@@ -32,6 +33,7 @@ complete grammar and runtime meaning.
   keywords, and source locations.
 - [ ] Implement parser and AST for the Sprint 0 grammar.
 - [ ] Produce clear syntax diagnostics with file, line, column, and source span.
+- [ ] Implement the zero-config path: `bn run hello.bn` without a manifest.
 - [ ] Add lexer and parser conformance cases based on the language specification.
 
 **Done when:** `BN check examples/rpn-calculator.bn` succeeds and malformed

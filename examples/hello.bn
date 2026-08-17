@@ -1,10 +1,10 @@
 IMPORT HOST.main AS main
 
-SUB Start()
+FUNCTION Start() AS VOID
     LET counter AS INTEGER = 0
 
     WHILE counter < 10
         PRINT "Basic Next", counter
         counter += 1
     END WHILE
-END SUB
+END FUNCTION

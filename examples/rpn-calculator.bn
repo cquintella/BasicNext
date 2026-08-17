@@ -1,5 +1,5 @@
-REM Reverse Polish notation calculator.
-REM Enter one token per line: digits 0 to 9, +, -, *, /, =, or Q.
+// Reverse Polish notation calculator.
+// Enter one token per line: digits 0 to 9, +, -, *, /, =, or Q.
 
 CLASS RpnCalculator
 
@@ -9,7 +9,7 @@ CLASS RpnCalculator
     PUBLIC CONSTRUCTOR()
     END CONSTRUCTOR
 
-    PUBLIC SUB Process(token AS STRING)
+    PUBLIC FUNCTION Process(token AS STRING) AS VOID
         IF token = "=" THEN
             ShowResult()
         ELSE IF token = "+" OR token = "-" OR token = "*" OR token = "/" THEN
@@ -17,9 +17,9 @@ CLASS RpnCalculator
         ELSE
             PushDigit(token)
         END IF
-    END SUB
+    END FUNCTION
 
-    PRIVATE SUB PushDigit(token AS STRING)
+    PRIVATE FUNCTION PushDigit(token AS STRING) AS VOID
         IF token = "0" THEN
             Push(0.0)
         ELSE IF token = "1" THEN
@@ -43,59 +43,56 @@ CLASS RpnCalculator
         ELSE
             PRINT "Expected a digit, operator, =, or Q"
         END IF
-    END SUB
+    END FUNCTION
 
-    PRIVATE SUB Push(value AS FLOAT)
+    PRIVATE FUNCTION Push(value AS FLOAT) AS VOID
         IF top = 256 THEN
             PRINT "Stack overflow"
-            RETURN
+        ELSE
+            stack[top] = value
+            top += 1
         END IF
-
-        stack[top] = value
-        top += 1
-    END SUB
+    END FUNCTION
 
     PRIVATE FUNCTION Pop() AS FLOAT
         top -= 1
         RETURN stack[top]
     END FUNCTION
 
-    PRIVATE SUB Apply(symbol AS STRING)
+    PRIVATE FUNCTION Apply(symbol AS STRING) AS VOID
         IF top < 2 THEN
             PRINT "Two values are required"
-            RETURN
-        END IF
-
-        LET right AS FLOAT = Pop()
-        LET left AS FLOAT = Pop()
-
-        IF symbol = "+" THEN
-            Push(left + right)
-        ELSE IF symbol = "-" THEN
-            Push(left - right)
-        ELSE IF symbol = "*" THEN
-            Push(left * right)
-        ELSE IF right = 0.0 THEN
-            PRINT "Division by zero"
-            Push(left)
-            Push(right)
         ELSE
-            Push(left / right)
-        END IF
-    END SUB
+            LET right AS FLOAT = Pop()
+            LET left AS FLOAT = Pop()
 
-    PRIVATE SUB ShowResult()
+            IF symbol = "+" THEN
+                Push(left + right)
+            ELSE IF symbol = "-" THEN
+                Push(left - right)
+            ELSE IF symbol = "*" THEN
+                Push(left * right)
+            ELSE IF right = 0.0 THEN
+                PRINT "Division by zero"
+                Push(left)
+                Push(right)
+            ELSE
+                Push(left / right)
+            END IF
+        END IF
+    END FUNCTION
+
+    PRIVATE FUNCTION ShowResult() AS VOID
         IF top <> 1 THEN
             PRINT "The expression is incomplete"
-            RETURN
+        ELSE
+            PRINT stack[0]
         END IF
-
-        PRINT stack[0]
-    END SUB
+    END FUNCTION
 
 END CLASS
 
-SUB Start()
+FUNCTION Start() AS VOID
     LET calculator AS RpnCalculator = NEW RpnCalculator()
     LET running AS BOOLEAN = TRUE
 
@@ -114,4 +111,4 @@ SUB Start()
     END WHILE
 
     DELETE calculator
-END SUB
+END FUNCTION
