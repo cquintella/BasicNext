@@ -24,16 +24,16 @@ há compilador, runtime ou API estável.
 ## Exemplo
 
 ```basic
-CLASS Main
-    SUB Start(system AS SYSTEM)
-        LET contador AS INTEGER = 0
+IMPORT HOST.main AS main
 
-        WHILE contador < 10
-            PRINT "Basic Next", contador
-            contador += 1
-        END WHILE
-    END SUB
-END CLASS
+SUB Start()
+    LET contador AS INTEGER = 0
+
+    WHILE contador < 10
+        PRINT "Basic Next", contador
+        contador += 1
+    END WHILE
+END SUB
 ```
 
 ## Participação
