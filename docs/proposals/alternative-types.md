@@ -2,7 +2,8 @@
 
 ## Status
 
-Exploratory. This proposal is not part of Basic Next 0.1.
+Partially accepted. `OR` type alternatives, `IS`, and `EOF` input handling are
+part of Basic Next 0.1. A general error-value protocol remains exploratory.
 
 ## Direction
 
@@ -11,7 +12,7 @@ Exploratory. This proposal is not part of Basic Next 0.1.
 
 ```basic
 LET result AS DATAFRAME OR DATA_ERROR = data.ReadCsv("sales.csv")
-LET age AS INTEGER OR NA = customer.Age()
+LET line AS STRING OR EOF = INPUT()
 ```
 
 `OR` remains the logical operator in expressions. An explicit membership test
@@ -34,12 +35,13 @@ it is `DATAFRAME`.
 
 - `LET` declarations retain explicit types through `AS`.
 - Every allowed type is named explicitly; there is no implicit `ANY` type.
-- `NA` is a candidate value/type for missing data, not an exception.
+- `EOF` is the accepted end-of-input value; `NA` remains a candidate value/type
+  for missing data, not an exception.
 - APIs return a value or a typed error; `UNWRAP`-style termination, if adopted,
   must be explicit and exceptional.
 - Generic classes and methods are outside this proposal.
 
 ## Open questions
 
-1. Is `IS` limited to `NA` and allowed-type membership, or can it test arbitrary types?
+1. Can `IS` test arbitrary types beyond declared alternative membership?
 2. Must every alternative be handled by a later `MATCH` form?

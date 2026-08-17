@@ -1,0 +1,117 @@
+REM Reverse Polish notation calculator.
+REM Enter one token per line: digits 0 to 9, +, -, *, /, =, or Q.
+
+CLASS RpnCalculator
+
+    PRIVATE stack AS FLOAT[256]
+    PRIVATE top AS INTEGER = 0
+
+    PUBLIC CONSTRUCTOR()
+    END CONSTRUCTOR
+
+    PUBLIC SUB Process(token AS STRING)
+        IF token = "=" THEN
+            ShowResult()
+        ELSE IF token = "+" OR token = "-" OR token = "*" OR token = "/" THEN
+            Apply(token)
+        ELSE
+            PushDigit(token)
+        END IF
+    END SUB
+
+    PRIVATE SUB PushDigit(token AS STRING)
+        IF token = "0" THEN
+            Push(0.0)
+        ELSE IF token = "1" THEN
+            Push(1.0)
+        ELSE IF token = "2" THEN
+            Push(2.0)
+        ELSE IF token = "3" THEN
+            Push(3.0)
+        ELSE IF token = "4" THEN
+            Push(4.0)
+        ELSE IF token = "5" THEN
+            Push(5.0)
+        ELSE IF token = "6" THEN
+            Push(6.0)
+        ELSE IF token = "7" THEN
+            Push(7.0)
+        ELSE IF token = "8" THEN
+            Push(8.0)
+        ELSE IF token = "9" THEN
+            Push(9.0)
+        ELSE
+            PRINT "Expected a digit, operator, =, or Q"
+        END IF
+    END SUB
+
+    PRIVATE SUB Push(value AS FLOAT)
+        IF top = 256 THEN
+            PRINT "Stack overflow"
+            RETURN
+        END IF
+
+        stack[top] = value
+        top += 1
+    END SUB
+
+    PRIVATE FUNCTION Pop() AS FLOAT
+        top -= 1
+        RETURN stack[top]
+    END FUNCTION
+
+    PRIVATE SUB Apply(symbol AS STRING)
+        IF top < 2 THEN
+            PRINT "Two values are required"
+            RETURN
+        END IF
+
+        LET right AS FLOAT = Pop()
+        LET left AS FLOAT = Pop()
+
+        IF symbol = "+" THEN
+            Push(left + right)
+        ELSE IF symbol = "-" THEN
+            Push(left - right)
+        ELSE IF symbol = "*" THEN
+            Push(left * right)
+        ELSE IF right = 0.0 THEN
+            PRINT "Division by zero"
+            Push(left)
+            Push(right)
+        ELSE
+            Push(left / right)
+        END IF
+    END SUB
+
+    PRIVATE SUB ShowResult()
+        IF top <> 1 THEN
+            PRINT "The expression is incomplete"
+            RETURN
+        END IF
+
+        PRINT stack[0]
+    END SUB
+
+END CLASS
+
+SUB Start()
+    LET calculator AS RpnCalculator = NEW RpnCalculator()
+    LET running AS BOOLEAN = TRUE
+
+    PRINT "RPN calculator: 3, 4, +, 2, *, =. Enter Q to quit."
+
+    WHILE running
+        LET token AS STRING OR EOF = INPUT()
+
+        IF token IS EOF THEN
+            running = FALSE
+        ELSE IF token = "Q" THEN
+            running = FALSE
+        ELSE
+            calculator.Process(token)
+        END IF
+    END WHILE
+
+    DELETE calculator
+END SUB

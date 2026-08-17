@@ -52,14 +52,18 @@ below. For example, `PRINT` is a keyword and `Print` is an identifier.
 | `NEW TYPE` | Allocates a value, region, or class instance. | Reserved syntax |
 | `DELETE value` | Releases an allocation created by `NEW`. | Reserved syntax |
 | `TRUE`, `FALSE` | Boolean literals. | Reserved |
+| `EOF` | Singleton end-of-input value returned by `INPUT()`. | Reserved |
+| `IS` | Tests an allowed alternative and narrows the binding in the matching branch. | Reserved |
 | `NA` | Candidate literal for a missing value. | Proposed |
-| `IS` | Candidate type or absence test, for example `value IS NA`. | Proposed |
 
 ## Expressions
 
 | Form | Meaning | Status |
 | --- | --- | --- |
-| `AND`, `OR`, `NOT` | Logical operators. After `AS`, `OR` is proposed as a separator between allowed types. | Reserved / proposed extension |
+| `AND`, `OR`, `NOT` | Logical operators for `BOOLEAN`; bitwise operators for integral values. After `AS`, `OR` separates explicitly allowed types. | Reserved |
+| `XOR` | Exclusive OR for `BOOLEAN` and bitwise exclusive OR for integral values. | Reserved |
+| `SHL`, `SHR` | Left and logical-right shifts for integral values. | Reserved |
+| `0b...`, `0x...` | Binary and hexadecimal integer literals. | Accepted syntax |
 | `+`, `-`, `*`, `/` | Basic numeric arithmetic. `/` always performs floating-point division. | Accepted syntax |
 | `**` | Exponentiation. It is right-associative and binds more tightly than unary `-`. | Accepted syntax |
 | `%` | Integer modulo; its result is non-negative and smaller than the absolute divisor. | Accepted syntax |
@@ -81,7 +85,8 @@ below. For example, `PRINT` is a keyword and `Print` is an identifier.
 
 | Form | Meaning | Status |
 | --- | --- | --- |
-| `PRINT` | Writes a value to the current output provided by the host. | Reserved |
+| `PRINT` | Macro for `Console.WriteLine(...)`; writes to standard output. | Reserved |
+| `INPUT()` | Macro for `Console.ReadLine()`; reads one line as a `STRING`, or returns `EOF` at end of input. | Reserved syntax |
 | `REM` | Starts a line comment that continues to the line ending. | Reserved |
 | `//` | Starts a line comment that continues to the line ending. It is punctuation, not a keyword. | Accepted syntax |
 | `/* ... */` | Starts and ends a nested block comment. It is punctuation, not a keyword. | Accepted syntax |
