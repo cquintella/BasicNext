@@ -1,0 +1,15 @@
+FUNCTION Factorial(value AS INTEGER) AS INTEGER
+    IF value = 0 THEN
+        RETURN 1
+    ELSE
+        RETURN value * Factorial(value - 1)
+    END IF
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    LET value AS INTEGER = 5
+    LET result AS INTEGER = Factorial(value)
+
+    PRINT "Factorial of", value, "is", result
+    RETURN 0
+END FUNCTION

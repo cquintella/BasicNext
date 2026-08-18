@@ -23,8 +23,9 @@ The implementation pipeline is:
 **Goal:** publish one complete grammar that accepts every intended 0.1 program
 and rejects every invalid construct used in conformance cases.
 
-**Status:** complete. The conformance fixtures are ready for the Sprint 2/3
-implementation; they become executable checks when `bn check` exists.
+**Status:** in review. The documented grammar corrections and fixtures are
+ready for a final consistency pass; they become executable checks when `bn
+check` exists.
 
 ### 0.1 Grammar authority and scope
 
@@ -39,6 +40,9 @@ implementation; they become executable checks when `bn check` exists.
   including `CLASS`, `STRUCT`, `INTERFACE`, and function bodies.
 - [x] Define every `END <KEYWORD>` pair, including `STRUCT`, `CONSTRUCTOR`,
   and `DESTRUCTOR`, and add mismatched-terminator examples.
+- [x] Define the EBNF dialect, reserved-word tokenization, and the lexer
+  precedence between reserved words, `NaN`, and identifiers.
+- [x] Accept `SELF.member` and `SELF.member[index]` as assignment targets.
 - [x] Decide whether reserved-but-unimplemented `EXTENDS` remains lexical-only
   or is removed from the 0.1 reserved set.
 
@@ -50,6 +54,8 @@ implementation; they become executable checks when `bn check` exists.
   make its lexical status consistent in all documents.
 - [x] Define decimal, binary, and hexadecimal literal syntax, invalid digits,
   leading zeros, overflow during lexing, and allowed floating-point forms.
+- [x] Define the exact rejection rule for malformed numeric candidates such as
+  `0b102`, `0xG`, `123name`, `.5`, and `1.`.
 - [x] Define invalid UTF-8 behavior, string control characters, invalid escapes,
   unterminated strings, and unterminated block comments.
 - [x] Define whether newlines inside a block comment act as whitespace only or
@@ -64,6 +70,8 @@ implementation; they become executable checks when `bn check` exists.
   `parameter-type`; allow `VOID` only as a return type.
 - [x] Make `NULL`, `NA`, and `EOF` valid alternative-type members in grammar.
 - [x] Define named, vector, pointer, and alternative types without ambiguity.
+- [x] Define multidimensional fixed-size vectors as `TYPE[length][...]`, with
+  chained indexing and shape-checked nested literals.
 - [x] Define whether vectors of object and interface references are allowed,
   and their initialization requirements.
 - [x] Define pointer element types explicitly, including the intended support
@@ -72,10 +80,12 @@ implementation; they become executable checks when `bn check` exists.
 ### 0.4 Statements and expressions
 
 - [x] Define complete productions for `LET`, `CONST`, assignment, call,
-  `PRINT`, `INPUT`, `NEW`, `DELETE`, `RETURN`, and `EXIT`.
+  `PRINT`, `INPUT`, `NEW`, `DELETE`, `RETURN`, `EXIT`, and `STOP`.
 - [x] Define `IF`, `ELSE IF`, `ELSE`, `WHILE`, `REPEAT`, counted `FOR`, and
   `FOR EACH` as complete block productions.
 - [x] Define assignment targets: identifier, member access, and indexing.
+- [x] Define `STOP expression` as whole-program termination with a portable
+  operating-system exit code.
 - [x] Define expression grammar for literals, names, vectors, parentheses,
   calls, member access, indexing, `NEW`, postfix `AS` casts, unary operators,
   and binary operators.
@@ -85,13 +95,15 @@ implementation; they become executable checks when `bn check` exists.
   assignment `=` at statement level.
 - [x] Define expression-list syntax for `PRINT` and argument-list syntax for
   calls and constructors.
+- [x] Permit every declared `data-type` in an `IS` type test; semantic analysis
+  must still require it to be an alternative of the tested binding.
 
 ### 0.5 Grammar verification
 
-- [x] Add valid and invalid grammar fixtures covering every normative production
-  family.
-- [x] Verify every official example parses under the new grammar without an
-  exception or undocumented syntax.
+- [x] Add valid and invalid grammar fixtures for `SELF` assignment, primitive
+  `IS` tests, malformed numeric candidates, and `STOP`.
+- [ ] Verify every official example parses under the grammar with an executable
+  checker; this remains blocked until `bn check` exists.
 - [x] Add explicit fixtures for blank lines, final newline, comments, cast
   precedence, `ELSE IF`, nested blocks, mismatched `END`, and invalid lvalues.
 - [x] Review the grammar against `docs/language/keywords.md` so every reserved
@@ -322,6 +334,8 @@ These items remain outside the 0.1 interpreter milestone:
 - `MATCH`, `ENUM`, inheritance, generic classes, and variable-size collections.
 - Async/await, concurrency, JIT, Wasm, and native compilation targets.
 - File, network, GPU, DOM, and optional host capabilities.
+- C FFI capability, logical-library resolution, and a fixed-signature C ABI
+  profile; see `docs/proposals/c-ffi.md`.
 - Package manifest, dependency resolution, and package registry.
 - DataFrame and broader missing-data facilities beyond the core `NA` value.
 - Formatter, LSP, and editor integration; revisit after grammar stabilization.

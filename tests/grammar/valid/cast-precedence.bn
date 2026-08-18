@@ -5,5 +5,12 @@ END FUNCTION
 FUNCTION Start() AS VOID
     LET values AS FLOAT[1] = [2.0]
     LET result AS FLOAT = -Twice(values[0] AS FLOAT) ** 2.0
+    LET empty AS BOOLEAN = "" AS BOOLEAN
+    LET hasText AS BOOLEAN = "A" AS BOOLEAN
+    LET zero AS BOOLEAN = 0 AS BOOLEAN
+    LET nonzero AS BOOLEAN = 1 AS BOOLEAN
+    LET isNull AS BOOLEAN = NULL AS BOOLEAN
+    LET isMissing AS BOOLEAN = NA AS BOOLEAN
+    LET isEndOfInput AS BOOLEAN = EOF AS BOOLEAN
     PRINT result
 END FUNCTION

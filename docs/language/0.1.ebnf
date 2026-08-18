@@ -1,9 +1,14 @@
 (*
   Basic Next Language Grammar 0.1
 
-  Normative syntax for source files after lexical analysis.  The companion
+  Normative syntax for source files after lexical analysis. The companion
   0.1.md defines static semantics, runtime behaviour, and diagnostics.
-  Terminals are quoted. NEWLINE and EOF are lexer tokens, not source text.
+
+  Dialect: ISO 14977-style EBNF. Quoted text is a terminal; {} repeats zero
+  or more times; [] is optional; () groups alternatives; and ?...? is a lexer
+  predicate. The character range A…Z is inclusive. NEWLINE and EOF are lexer
+  tokens, not source text. The lexer recognizes reserved-word and nan-literal
+  before identifier when their spelling is followed by a token boundary.
 *)
 
 (* Source unit *)
@@ -67,7 +72,8 @@ numeric-type         = "BYTE" | "INT16" | "INT32" | "UINT32" | "FLOAT32"
 integer-type         = "BYTE" | "INT16" | "INT32" | "UINT32" | "INTEGER" ;
 named-type           = identifier { "." identifier } ;
 system-type          = "SYSTEM" ;
-vector-type          = vector-element-type "[" integer-literal "]" ;
+vector-type          = vector-element-type "[" integer-literal "]"
+                       { "[" integer-literal "]" } ;
 vector-element-type  = scalar-type | named-type ;
 pointer-type         = "POINTER" "TO" pointer-element-type
                        [ "[" [ integer-literal ] "]" ] ;
@@ -78,17 +84,20 @@ pointer-element-type = numeric-type | named-type ;
 statement            = let-declaration | const-declaration | assignment-statement
                        | call-statement | print-statement | if-statement
                        | while-statement | repeat-statement | for-statement
-                       | delete-statement | return-statement | exit-statement ;
+                       | delete-statement | return-statement | exit-statement
+                       | stop-statement ;
 let-declaration      = "LET" identifier "AS" variable-type [ "=" expression ] NEWLINE ;
 const-declaration    = "CONST" identifier "AS" variable-type "=" expression NEWLINE ;
 assignment-statement = assignment-target assignment-operator expression NEWLINE ;
-assignment-target    = identifier { member-suffix | index-suffix } ;
+assignment-target    = identifier { member-suffix | index-suffix }
+                       | "SELF" member-suffix { member-suffix | index-suffix } ;
 assignment-operator  = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "**=" ;
 call-statement       = call-expression NEWLINE ;
 print-statement      = "PRINT" [ expression-list ] NEWLINE ;
 delete-statement     = "DELETE" expression NEWLINE ;
 return-statement     = "RETURN" expression NEWLINE ;
 exit-statement       = "EXIT" ( "FOR" | "WHILE" | "REPEAT" ) NEWLINE ;
+stop-statement       = "STOP" expression NEWLINE ;
 
 if-statement         = "IF" expression "THEN" NEWLINE statement-block
                        { "ELSE" "IF" expression "THEN" NEWLINE statement-block }
@@ -110,7 +119,7 @@ or-expression        = xor-expression { "OR" xor-expression } ;
 xor-expression       = and-expression { "XOR" and-expression } ;
 and-expression       = is-expression { "AND" is-expression } ;
 is-expression        = equality-expression [ "IS" type-test ] ;
-type-test            = named-type | system-type | "NULL" | "NA" | "EOF" ;
+type-test            = data-type | "NULL" | "NA" | "EOF" ;
 equality-expression  = comparison-expression { ( "=" | "<>" ) comparison-expression } ;
 comparison-expression = shift-expression { ( "<" | "<=" | ">" | ">=" ) shift-expression } ;
 shift-expression     = additive-expression { ( "SHL" | "SHR" ) additive-expression } ;
@@ -125,7 +134,7 @@ call-expression      = primary { member-suffix | index-suffix | cast-suffix }
 call-suffix          = "(" [ expression-list ] ")" ;
 member-suffix        = "." identifier ;
 index-suffix         = "[" expression "]" ;
-cast-suffix          = "AS" numeric-type ;
+cast-suffix          = "AS" ( numeric-type | "BOOLEAN" ) ;
 primary              = literal | identifier | "SELF" | input-expression | new-expression
                        | vector-literal | "(" expression ")" ;
 input-expression     = "INPUT" "(" ")" ;
@@ -138,6 +147,16 @@ literal              = integer-literal | floating-literal | string-literal
 
 (* Lexical grammar *)
 
+reserved-word        = "AND" | "AS" | "BOOLEAN" | "BYTE" | "CLASS" | "CONST"
+                       | "CONSTRUCTOR" | "DELETE" | "DESTRUCTOR" | "EACH" | "ELSE"
+                       | "END" | "EOF" | "EXIT" | "EXPORT" | "EXTENDS" | "FALSE"
+                       | "FLOAT" | "FLOAT32" | "FLOAT64" | "FOR" | "FUNCTION" | "HOST"
+                       | "IMPLEMENTS" | "IMPORT" | "IN" | "INPUT" | "INT16" | "INT32"
+                       | "INTEGER" | "INTERFACE" | "IS" | "LET" | "NA" | "NEW" | "NOT"
+                       | "NULL" | "OR" | "PARALLEL" | "POINTER" | "PRIVATE" | "PRINT"
+                       | "PUBLIC" | "REPEAT" | "RETURN" | "SELF" | "SHL" | "SHR" | "STATIC"
+                       | "STOP" | "STRING" | "STRUCT" | "SYSTEM" | "THEN" | "TO" | "TRUE"
+                       | "UINT32" | "UNTIL" | "VOID" | "WHILE" | "XOR" ;
 identifier           = identifier-start { identifier-continue } ;
 identifier-start     = ASCII-letter | "_" ;
 identifier-continue  = identifier-start | ASCII-digit ;
@@ -173,7 +192,10 @@ CRLF                 = ? U+000D U+000A ? ;
      immediately before EOF. Thus a final newline is optional in source text.
    - Numeric overflow is diagnosed after tokenization. Decimal leading zeros are
      allowed; no exponent, separator, suffix, .5, or 1. floating syntax exists.
-     A numeric-looking sequence outside these forms is a lexical error.
+     A candidate beginning with an ASCII digit and extending over ASCII letters,
+     digits, underscores, or dots must match exactly `integer-literal` or
+     `floating-literal`; otherwise it is a lexical error. A dot immediately
+     followed by an ASCII digit is also a lexical error.
    - The lexer uses maximal munch. Its overlapping symbols, in priority order,
      include **= before ** before *=, <= >= <> before < > =, and += -= *= /= %=.
      // and /* start comments before / is emitted. Braces are not tokens in 0.1.

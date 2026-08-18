@@ -1,10 +1,10 @@
 # Basic Next Keyword Registry
 
-This registry is the source of truth for keyword intent. A keyword is reserved
-only after its syntax and semantics are accepted into a language specification.
-`Reserved` means present in the 0.1 draft; `Proposed` means documented but not
-part of 0.1; `Decision needed` identifies competing forms that must not coexist
-without a deliberate decision.
+This registry is the source of truth for keyword intent. `Reserved` means the
+word cannot be an identifier: it may have 0.1 syntax or be deliberately held
+for a documented future feature. `Proposed` means documented but not part of
+0.1; `Decision needed` identifies competing forms that must not coexist without
+a deliberate decision.
 
 Keywords are case-sensitive and reserved only in the uppercase forms shown
 below. For example, `PRINT` is a keyword and `Print` is an identifier.
@@ -15,7 +15,7 @@ below. For example, `PRINT` is a keyword and `Print` is an identifier.
 | --- | --- | --- |
 | `LET` | Declares a mutable binding. `AS TYPE` is mandatory. | Reserved |
 | `CONST` | Declares an immutable binding. `AS TYPE` and an initializer are mandatory. | Reserved |
-| `AS` | Introduces an explicit type or import alias. | Reserved |
+| `AS` | Introduces an explicit type, postfix conversion, or import alias. | Reserved |
 | `FUNCTION` | Declares a callable routine. `AS VOID` declares an action; another type declares a value-producing function. | Reserved |
 | `RETURN` | Returns a value from a non-`VOID` `FUNCTION`; it is not permitted in `FUNCTION ... AS VOID`. | Reserved |
 | `EXIT` | Leaves the named nearest loop early. | Reserved |
@@ -51,7 +51,7 @@ below. For example, `PRINT` is a keyword and `Print` is an identifier.
 | `STRING` | Text value type. | Reserved |
 | `BOOLEAN` | Logical value type. | Reserved |
 | `VOID` | Absence of a return value. | Reserved |
-| `TYPE[length]` | Fixed-size mutable vector. `length` is a non-negative integer literal; indices begin at `0`. | Accepted syntax |
+| `TYPE[length][...]` | Fixed-size mutable vector with one or more non-negative literal dimensions; indices begin at `0`. | Accepted syntax |
 | `POINTER TO TYPE` | Typed pointer to an allocated value. `[length]` defines a fixed region; `[]` accepts a runtime-sized region. | Reserved syntax |
 | `NEW TYPE` | Allocates a value, region, or class instance. | Reserved syntax |
 | `DELETE value` | Releases an allocation created by `NEW`. | Reserved syntax |
@@ -75,6 +75,7 @@ below. For example, `PRINT` is a keyword and `Print` is an identifier.
 | `**` | Exponentiation. It is right-associative and binds more tightly than unary `-`. | Accepted syntax |
 | `%` | Integer modulo; its result is non-negative and smaller than the absolute divisor. | Accepted syntax |
 | `+=`, `-=`, `*=`, `/=`, `%=`, `**=` | Assignment forms corresponding to the arithmetic operators. | Accepted syntax |
+| `ABS`, `MIN`, `MAX`, `FLOOR`, `ROUND`, `SQRT` | Prelude mathematics intrinsics; called directly and available without an import. | Standard prelude |
 
 ## Control flow
 
@@ -88,7 +89,7 @@ below. For example, `PRINT` is a keyword and `Print` is an identifier.
 | `EXIT FOR`, `EXIT WHILE`, `EXIT REPEAT` | Leave the nearest matching loop. `EXIT FOR` also exits `FOR EACH`. | Reserved form |
 | `WHILE ... END WHILE` | Loop that tests its condition before each iteration. | Reserved |
 | `REPEAT ... UNTIL ... END REPEAT` | Loop that tests its condition after each iteration and closes explicitly. | Reserved |
-| `STOP` | Candidate explicit termination of the current program. | Proposed |
+| `STOP value` | Immediately terminates the BN program and reports an `INTEGER` exit code from `0` through `255` to the operating system. | Reserved |
 
 ## I/O and comments
 

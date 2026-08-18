@@ -46,6 +46,7 @@ FUNCTION Start() AS VOID
     LET missingValue AS FLOAT OR NA = NA
     LET system AS SYSTEM = main
     LET pointer AS POINTER TO INTEGER[2] = NEW INTEGER[2]
+    LET dynamicPointer AS POINTER TO FLOAT[] = NEW FLOAT[limit]
     LET box AS Box = NEW Box(1)
     LET origin AS Point
     LET points AS Point[1] = [origin]
@@ -84,5 +85,6 @@ FUNCTION Start() AS VOID
     END FOR
 
     DELETE pointer
+    DELETE dynamicPointer
     DELETE box
 END FUNCTION

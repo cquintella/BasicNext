@@ -1,0 +1,9 @@
+FUNCTION Start() AS VOID
+    LET value AS FLOAT OR STRING = 1.0
+
+    IF value IS FLOAT THEN
+        STOP 0
+    ELSE
+        STOP 1
+    END IF
+END FUNCTION

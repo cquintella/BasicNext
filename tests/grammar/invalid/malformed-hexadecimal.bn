@@ -1,0 +1,3 @@
+FUNCTION Start() AS VOID
+    LET value AS INTEGER = 0xG
+END FUNCTION
