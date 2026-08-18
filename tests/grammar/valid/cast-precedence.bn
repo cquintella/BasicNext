@@ -1,0 +1,9 @@
+FUNCTION Twice(value AS FLOAT) AS FLOAT
+    RETURN value * 2.0
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET values AS FLOAT[1] = [2.0]
+    LET result AS FLOAT = -Twice(values[0] AS FLOAT) ** 2.0
+    PRINT result
+END FUNCTION

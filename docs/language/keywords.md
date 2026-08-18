@@ -18,13 +18,18 @@ below. For example, `PRINT` is a keyword and `Print` is an identifier.
 | `AS` | Introduces an explicit type or import alias. | Reserved |
 | `FUNCTION` | Declares a callable routine. `AS VOID` declares an action; another type declares a value-producing function. | Reserved |
 | `RETURN` | Returns a value from a non-`VOID` `FUNCTION`; it is not permitted in `FUNCTION ... AS VOID`. | Reserved |
+| `EXIT` | Leaves the named nearest loop early. | Reserved |
 | `CLASS` | Declares an object-oriented type. | Reserved |
+| `STRUCT` | Declares a copied value type with named public fields. | Reserved |
 | `PUBLIC`, `PRIVATE` | Set the visibility of a class member. | Reserved |
 | `CONSTRUCTOR` | Initializes a new class instance. | Reserved |
 | `DESTRUCTOR` | Runs once when `DELETE` releases a class instance. | Reserved |
 | `SELF` | Names the current class instance. | Reserved |
 | `INTERFACE` | Declares a public contract of method signatures. | Reserved |
 | `IMPLEMENTS` | Declares the interfaces implemented by a class. | Reserved |
+| `EXTENDS` | Reserved for a future inheritance declaration; no 0.1 semantics yet. | Reserved for future use |
+| `PARALLEL` | Reserved for structured data-parallel blocks; no 0.1 semantics yet. Candidate forms are `PARALLEL ... END PARALLEL`, `PARALLEL FOR ... END PARALLEL FOR`, and `PARALLEL FOR EACH ... END PARALLEL FOR`. | Reserved for future use |
+| `STATIC` | Declares a class-level field or function; it is accessed through the class name. | Reserved |
 | `EXPORT` | Makes a module-level declaration available to importing modules. | Reserved |
 | `END` | Closes a compound declaration or statement, such as `END FUNCTION` or `END IF`. | Reserved |
 | `IMPORT` | Imports a module or host capability under an explicit local alias. | Reserved |
@@ -52,8 +57,11 @@ below. For example, `PRINT` is a keyword and `Print` is an identifier.
 | `DELETE value` | Releases an allocation created by `NEW`. | Reserved syntax |
 | `TRUE`, `FALSE` | Boolean literals. | Reserved |
 | `EOF` | Singleton end-of-input value returned by `INPUT()`. | Reserved |
+| `NULL` | Absence of an object, reference, or pointer; requires an explicit alternative type. | Reserved |
+| `NA` | Missing observation or datum; requires an explicit alternative type. | Reserved |
+| `NaN` | IEEE 754 not-a-number `FLOAT` value; it is distinct from `NA`. Its exact spelling is a special literal and cannot be an identifier. | Special literal |
 | `IS` | Tests an allowed alternative and narrows the binding in the matching branch. | Reserved |
-| `NA` | Candidate literal for a missing value. | Proposed |
+| `Error` | Standard-library error object with `Code` and `Message`; it is not a keyword. | Standard-library type |
 
 ## Expressions
 
@@ -75,7 +83,9 @@ below. For example, `PRINT` is a keyword and `Print` is an identifier.
 | `IF ... THEN ... ELSE ... END IF` | Conditional execution. | Reserved |
 | `ELSE IF` | Compound conditional branch; it is the sequence `ELSE` followed by `IF`, not a new token. | Reserved form |
 | `FOR ... TO ... END FOR` | Inclusive counted loop. | Reserved |
-| `FOR EACH` | Candidate loop over elements of a collection. | Proposed |
+| `FOR EACH item AS TYPE IN values ... END FOR` | Iterates in index order over a fixed-size vector; the explicitly typed item binding is read-only. | Reserved |
+| `EACH`, `IN` | Form the `FOR EACH` loop syntax. | Reserved |
+| `EXIT FOR`, `EXIT WHILE`, `EXIT REPEAT` | Leave the nearest matching loop. `EXIT FOR` also exits `FOR EACH`. | Reserved form |
 | `WHILE ... END WHILE` | Loop that tests its condition before each iteration. | Reserved |
 | `REPEAT ... UNTIL ... END REPEAT` | Loop that tests its condition after each iteration and closes explicitly. | Reserved |
 | `STOP` | Candidate explicit termination of the current program. | Proposed |

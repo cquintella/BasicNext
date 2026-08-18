@@ -1,0 +1,9 @@
+// A comment-only line becomes NEWLINE.
+
+/* A block comment
+   contains a physical newline. */
+FUNCTION Start() AS VOID
+
+    PRINT "ok" // A trailing comment leaves the line ending.
+
+END FUNCTION

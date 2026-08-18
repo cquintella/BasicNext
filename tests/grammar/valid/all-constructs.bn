@@ -1,0 +1,88 @@
+IMPORT HOST.memory AS Memory
+IMPORT HOST.main AS main
+
+EXPORT STRUCT Point
+    X AS FLOAT = 0.0
+    Y AS FLOAT = 0.0
+END STRUCT
+
+INTERFACE Named
+    FUNCTION Name() AS STRING
+END INTERFACE
+
+EXPORT CLASS Box IMPLEMENTS Named
+    PRIVATE value AS INTEGER = 0
+    PUBLIC STATIC count AS INTEGER = 0
+
+    PUBLIC CONSTRUCTOR(value AS INTEGER)
+        SELF.value = value
+    END CONSTRUCTOR
+
+    PUBLIC DESTRUCTOR()
+        PRINT "destroyed"
+    END DESTRUCTOR
+
+    PUBLIC FUNCTION Name() AS STRING
+        RETURN "box"
+    END FUNCTION
+
+    PUBLIC STATIC FUNCTION Count() AS INTEGER
+        RETURN Box.count
+    END FUNCTION
+END CLASS
+
+FUNCTION Add(left AS INTEGER, right AS INTEGER) AS INTEGER
+    RETURN left + right
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET counter AS INTEGER = 0
+    CONST limit AS INTEGER = 3
+    LET flags AS BYTE = 0b00000001
+    LET hexadecimal AS BYTE = 0x0F
+    LET ready AS BOOLEAN = FALSE
+    LET notANumber AS FLOAT = NaN
+    LET maybeBox AS Box OR NULL = NULL
+    LET missingValue AS FLOAT OR NA = NA
+    LET system AS SYSTEM = main
+    LET pointer AS POINTER TO INTEGER[2] = NEW INTEGER[2]
+    LET box AS Box = NEW Box(1)
+    LET origin AS Point
+    LET points AS Point[1] = [origin]
+    LET boxes AS Box[1] = [box]
+
+    pointer[0] = Add(counter, limit) AS INTEGER
+    origin.X += 1.0
+    PRINT pointer[0], Box.Count(), flags SHL 1
+
+    IF counter = 0 THEN
+        counter += 1
+    ELSE IF counter < limit THEN
+        counter *= 2
+    ELSE
+        counter -= 1
+    END IF
+
+    WHILE counter < limit
+        counter += 1
+        EXIT WHILE
+    END WHILE
+
+    REPEAT
+        counter -= 1
+        EXIT REPEAT
+    UNTIL counter = 0
+    END REPEAT
+
+    FOR i AS INTEGER = 0 TO limit
+        PRINT i
+        EXIT FOR
+    END FOR
+
+    FOR EACH point AS Point IN points
+        PRINT point.X
+    END FOR
+
+    DELETE pointer
+    DELETE box
+END FUNCTION

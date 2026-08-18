@@ -1,0 +1,3 @@
+FUNCTION Start() AS VOID
+    LET message AS STRING = "bad\n"
+END FUNCTION

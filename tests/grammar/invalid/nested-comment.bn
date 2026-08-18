@@ -1,0 +1,3 @@
+/* outer /* inner */ still text */
+FUNCTION Start() AS VOID
+END FUNCTION

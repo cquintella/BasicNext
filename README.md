@@ -27,7 +27,8 @@ of design principles.
 ## Status
 
 **Pre-implementation.** Language version 0.1 is under discussion; there is no
-compiler, runtime, or stable API yet.
+runtime or stable API yet. The reference implementation will be a Rust
+tree-walk interpreter: lexer, parser, AST, semantic analysis, and execution.
 
 ## Tool
 
@@ -61,7 +62,7 @@ FUNCTION Start() AS VOID
     LET counter AS INTEGER = 0
 
     WHILE counter < 10
-        PRINT "Basic Next", counter
+        PRINT "Basic Next ", counter
         counter += 1
     END WHILE
 END FUNCTION

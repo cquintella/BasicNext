@@ -15,33 +15,17 @@ CLASS RpnCalculator
         ELSE IF token = "+" OR token = "-" OR token = "*" OR token = "/" THEN
             Apply(token)
         ELSE
-            PushDigit(token)
+            PushNumber(token)
         END IF
     END FUNCTION
 
-    PRIVATE FUNCTION PushDigit(token AS STRING) AS VOID
-        IF token = "0" THEN
-            Push(0.0)
-        ELSE IF token = "1" THEN
-            Push(1.0)
-        ELSE IF token = "2" THEN
-            Push(2.0)
-        ELSE IF token = "3" THEN
-            Push(3.0)
-        ELSE IF token = "4" THEN
-            Push(4.0)
-        ELSE IF token = "5" THEN
-            Push(5.0)
-        ELSE IF token = "6" THEN
-            Push(6.0)
-        ELSE IF token = "7" THEN
-            Push(7.0)
-        ELSE IF token = "8" THEN
-            Push(8.0)
-        ELSE IF token = "9" THEN
-            Push(9.0)
+    PRIVATE FUNCTION PushNumber(token AS STRING) AS VOID
+        LET value AS FLOAT OR Error = Float.TryParse(token)
+
+        IF value IS Error THEN
+            PRINT value.Message
         ELSE
-            PRINT "Expected a digit, operator, =, or Q"
+            Push(value)
         END IF
     END FUNCTION
 

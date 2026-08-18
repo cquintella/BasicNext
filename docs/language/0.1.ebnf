@@ -1,0 +1,183 @@
+(*
+  Basic Next Language Grammar 0.1
+
+  Normative syntax for source files after lexical analysis.  The companion
+  0.1.md defines static semantics, runtime behaviour, and diagnostics.
+  Terminals are quoted. NEWLINE and EOF are lexer tokens, not source text.
+*)
+
+(* Source unit *)
+
+source-file          = program EOF ;
+program              = { NEWLINE } { import-declaration { NEWLINE } }
+                       { declaration { NEWLINE } } ;
+import-declaration   = "IMPORT" import-path "AS" identifier NEWLINE ;
+import-path          = ( "HOST" | identifier ) "." identifier
+                       { "." identifier } ;
+declaration          = [ "EXPORT" ] ( function-declaration | class-declaration
+                       | struct-declaration | interface-declaration ) ;
+
+(* A block admits blank and comment-only lines because the lexer emits NEWLINE. *)
+
+statement-block      = { NEWLINE | statement } ;
+member-block         = { NEWLINE | class-member } ;
+struct-member-block  = { NEWLINE | struct-field-declaration } ;
+interface-member-block = { NEWLINE | interface-function-declaration } ;
+
+(* Module declarations *)
+
+function-declaration = "FUNCTION" identifier "(" [ parameters ] ")" "AS"
+                       return-type NEWLINE statement-block "END" "FUNCTION" NEWLINE ;
+class-declaration    = "CLASS" identifier [ "IMPLEMENTS" interface-list ] NEWLINE
+                       member-block "END" "CLASS" NEWLINE ;
+struct-declaration   = "STRUCT" identifier NEWLINE struct-member-block
+                       "END" "STRUCT" NEWLINE ;
+interface-declaration = "INTERFACE" identifier NEWLINE interface-member-block
+                       "END" "INTERFACE" NEWLINE ;
+interface-list       = identifier { "," identifier } ;
+
+class-member         = [ visibility ] ( static-member | field-declaration
+                       | function-declaration | constructor-declaration
+                       | destructor-declaration ) ;
+visibility           = "PUBLIC" | "PRIVATE" ;
+static-member        = "STATIC" ( static-field-declaration | function-declaration ) ;
+field-declaration    = identifier "AS" variable-type [ "=" expression ] NEWLINE ;
+static-field-declaration = identifier "AS" variable-type "=" expression NEWLINE ;
+constructor-declaration = "CONSTRUCTOR" "(" [ parameters ] ")" NEWLINE
+                       statement-block "END" "CONSTRUCTOR" NEWLINE ;
+destructor-declaration = "DESTRUCTOR" "(" ")" NEWLINE statement-block
+                       "END" "DESTRUCTOR" NEWLINE ;
+struct-field-declaration = identifier "AS" field-type [ "=" expression ] NEWLINE ;
+interface-function-declaration = "FUNCTION" identifier "(" [ parameters ] ")"
+                       "AS" return-type NEWLINE ;
+
+(* Types. VOID is permitted only after FUNCTION ... AS. *)
+
+parameters           = parameter { "," parameter } ;
+parameter            = identifier "AS" parameter-type ;
+return-type          = "VOID" | value-type ;
+variable-type        = value-type ;
+field-type           = value-type ;
+parameter-type       = value-type ;
+value-type           = data-type { "OR" ( data-type | "NULL" | "NA" | "EOF" ) } ;
+data-type            = scalar-type | vector-type | pointer-type | named-type | system-type ;
+scalar-type          = "BOOLEAN" | numeric-type | "STRING" ;
+numeric-type         = "BYTE" | "INT16" | "INT32" | "UINT32" | "FLOAT32"
+                       | "FLOAT64" | "INTEGER" | "FLOAT" ;
+integer-type         = "BYTE" | "INT16" | "INT32" | "UINT32" | "INTEGER" ;
+named-type           = identifier { "." identifier } ;
+system-type          = "SYSTEM" ;
+vector-type          = vector-element-type "[" integer-literal "]" ;
+vector-element-type  = scalar-type | named-type ;
+pointer-type         = "POINTER" "TO" pointer-element-type
+                       [ "[" [ integer-literal ] "]" ] ;
+pointer-element-type = numeric-type | named-type ;
+
+(* Statements *)
+
+statement            = let-declaration | const-declaration | assignment-statement
+                       | call-statement | print-statement | if-statement
+                       | while-statement | repeat-statement | for-statement
+                       | delete-statement | return-statement | exit-statement ;
+let-declaration      = "LET" identifier "AS" variable-type [ "=" expression ] NEWLINE ;
+const-declaration    = "CONST" identifier "AS" variable-type "=" expression NEWLINE ;
+assignment-statement = assignment-target assignment-operator expression NEWLINE ;
+assignment-target    = identifier { member-suffix | index-suffix } ;
+assignment-operator  = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "**=" ;
+call-statement       = call-expression NEWLINE ;
+print-statement      = "PRINT" [ expression-list ] NEWLINE ;
+delete-statement     = "DELETE" expression NEWLINE ;
+return-statement     = "RETURN" expression NEWLINE ;
+exit-statement       = "EXIT" ( "FOR" | "WHILE" | "REPEAT" ) NEWLINE ;
+
+if-statement         = "IF" expression "THEN" NEWLINE statement-block
+                       { "ELSE" "IF" expression "THEN" NEWLINE statement-block }
+                       [ "ELSE" NEWLINE statement-block ] "END" "IF" NEWLINE ;
+while-statement      = "WHILE" expression NEWLINE statement-block
+                       "END" "WHILE" NEWLINE ;
+repeat-statement     = "REPEAT" NEWLINE statement-block "UNTIL" expression NEWLINE
+                       "END" "REPEAT" NEWLINE ;
+for-statement        = counted-for-statement | for-each-statement ;
+counted-for-statement = "FOR" identifier "AS" integer-type "=" expression "TO"
+                       expression NEWLINE statement-block "END" "FOR" NEWLINE ;
+for-each-statement   = "FOR" "EACH" identifier "AS" variable-type "IN" expression
+                       NEWLINE statement-block "END" "FOR" NEWLINE ;
+
+(* Expressions. Suffixes bind more tightly than unary operators. ** is right associative. *)
+
+expression           = or-expression ;
+or-expression        = xor-expression { "OR" xor-expression } ;
+xor-expression       = and-expression { "XOR" and-expression } ;
+and-expression       = is-expression { "AND" is-expression } ;
+is-expression        = equality-expression [ "IS" type-test ] ;
+type-test            = named-type | system-type | "NULL" | "NA" | "EOF" ;
+equality-expression  = comparison-expression { ( "=" | "<>" ) comparison-expression } ;
+comparison-expression = shift-expression { ( "<" | "<=" | ">" | ">=" ) shift-expression } ;
+shift-expression     = additive-expression { ( "SHL" | "SHR" ) additive-expression } ;
+additive-expression  = multiplicative-expression { ( "+" | "-" ) multiplicative-expression } ;
+multiplicative-expression = unary-expression { ( "*" | "/" | "%" ) unary-expression } ;
+unary-expression     = ( "NOT" | "-" ) unary-expression | power-expression ;
+power-expression     = postfix-expression [ "**" unary-expression ] ;
+postfix-expression   = primary { postfix-suffix } ;
+postfix-suffix       = call-suffix | member-suffix | index-suffix | cast-suffix ;
+call-expression      = primary { member-suffix | index-suffix | cast-suffix }
+                       call-suffix { postfix-suffix } ;
+call-suffix          = "(" [ expression-list ] ")" ;
+member-suffix        = "." identifier ;
+index-suffix         = "[" expression "]" ;
+cast-suffix          = "AS" numeric-type ;
+primary              = literal | identifier | "SELF" | input-expression | new-expression
+                       | vector-literal | "(" expression ")" ;
+input-expression     = "INPUT" "(" ")" ;
+new-expression       = "NEW" numeric-type [ "[" expression "]" ]
+                       | "NEW" named-type "(" [ expression-list ] ")" ;
+vector-literal       = "[" [ expression-list ] "]" ;
+expression-list      = expression { "," expression } ;
+literal              = integer-literal | floating-literal | string-literal
+                       | "TRUE" | "FALSE" | "NULL" | "NA" | "EOF" | nan-literal ;
+
+(* Lexical grammar *)
+
+identifier           = identifier-start { identifier-continue } ;
+identifier-start     = ASCII-letter | "_" ;
+identifier-continue  = identifier-start | ASCII-digit ;
+ASCII-letter         = "A"…"Z" | "a"…"z" ;
+ASCII-digit          = "0"…"9" ;
+integer-literal      = decimal-integer | binary-integer | hexadecimal-integer ;
+decimal-integer      = ASCII-digit { ASCII-digit } ;
+binary-integer       = "0b" binary-digit { binary-digit } ;
+hexadecimal-integer  = "0x" hexadecimal-digit { hexadecimal-digit } ;
+binary-digit         = "0" | "1" ;
+hexadecimal-digit    = ASCII-digit | "A"…"F" | "a"…"f" ;
+floating-literal     = ASCII-digit { ASCII-digit } "." ASCII-digit { ASCII-digit } ;
+nan-literal          = "NaN" ;
+string-literal       = '"' { string-character | escape-sequence } '"' ;
+escape-sequence      = '\\' ( '"' | '\\' ) ;
+string-character     = ? Unicode scalar value except U+0000…U+001F, U+007F,
+                       line ending, '"', and '\\' ? ;
+
+line-comment         = "//" { source-character-except-line-ending } ;
+block-comment        = "/*" { block-comment-character } "*/" ;
+source-character-except-line-ending = ? Unicode scalar value except CR and LF ? ;
+block-comment-character = ? source character sequence that does not begin */ ? ;
+newline              = LF | CRLF ;
+LF                   = ? U+000A ? ;
+CRLF                 = ? U+000D U+000A ? ;
+
+(* Lexing rules:
+   - Source is valid UTF-8. Invalid UTF-8, an unterminated string/comment,
+     a control character in a string, or an escape other than \" and \\ is a lexical error.
+   - Spaces, tabs, and comments are whitespace. Each physical newline inside a
+     block comment emits NEWLINE; a line comment leaves its trailing NEWLINE intact.
+   - If the last meaningful token is not NEWLINE, the lexer inserts one NEWLINE
+     immediately before EOF. Thus a final newline is optional in source text.
+   - Numeric overflow is diagnosed after tokenization. Decimal leading zeros are
+     allowed; no exponent, separator, suffix, .5, or 1. floating syntax exists.
+     A numeric-looking sequence outside these forms is a lexical error.
+   - The lexer uses maximal munch. Its overlapping symbols, in priority order,
+     include **= before ** before *=, <= >= <> before < > =, and += -= *= /= %=.
+     // and /* start comments before / is emitted. Braces are not tokens in 0.1.
+   - Exact-uppercase reserved words and the exact NaN literal are never identifiers.
+     EXTENDS and PARALLEL are reserved lexical-only: neither has a grammar
+     production in 0.1.
+*)

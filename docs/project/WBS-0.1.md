@@ -35,7 +35,8 @@ this delivery.
 - **2.2 Types and expressions:** primitive types, operators, precedence,
   assignment, and allowed conversions.
 - **2.3 Declarations and control flow:** variables, `FUNCTION`, `CLASS`,
-  `IF`, `WHILE`, `REPEAT`, `FOR`, and `RETURN`.
+  `STRUCT`, `STATIC`, `IF`, `WHILE`, `REPEAT`, `FOR`, `FOR EACH`, `EXIT`, and
+  `RETURN`.
 - **2.4 Modules and environment:** `IMPORT`, executable module,
   `FUNCTION Start() AS VOID`,
   and the `HOST.main` contract.
@@ -43,11 +44,13 @@ this delivery.
 
 ### 3. Reference implementation
 
-- **3.1 Architecture gate:** choose an execution engine without changing the
-  language semantics (AST interpreter, own VM, or Wasm/WAMR).
-- **3.2 Front end:** lexer, parser, and AST for the complete 0.1 grammar.
+- **3.1 Rust interpreter:** implement the reference tool in Rust as a
+  tree-walk AST interpreter. A VM, Wasm target, JIT, and native compiler are
+  outside 0.1.
+- **3.2 Front end:** UTF-8 lexer, parser, source spans, and AST for the
+  complete 0.1 grammar.
 - **3.3 Semantic analysis:** scope, name resolution, types, and diagnostics.
-- **3.4 Execution:** execute 0.1 programs on the engine approved in 3.1.
+- **3.4 Execution:** execute 0.1 programs on the Rust tree-walk interpreter.
 - **3.5 BN command-line tool:** minimum `BN` commands to check and execute
   Basic Next files.
 
@@ -60,10 +63,8 @@ this delivery.
 ## Main dependencies
 
 ```text
-2.1–2.5 ──→ 3.2 ──→ 3.3 ──→ 3.4 ──→ 4.1 ──→ 4.3
-                 ↑
-                3.1
+2.1–2.5 ──→ 3.1 ──→ 3.2 ──→ 3.3 ──→ 3.4 ──→ 4.1 ──→ 4.3
 ```
 
-Item 3.1 is a gate: it blocks execution implementation, not specification
-progress.
+The Rust tree-walk interpreter is the 0.1 execution baseline. Later engines
+must preserve the language semantics and conformance suite.
