@@ -15,10 +15,6 @@ software. The project is specification-first and currently pre-implementation.
 - Carlos Quintella (`@cquintella`) is the creator, maintainer, and BDFL. He has
   final authority over the language, official specification, repository,
   releases, and acceptance of contributions. Follow `GOVERNANCE.md`.
-- Discussion and alternatives are welcome. Do not present a proposal as an
-  accepted decision until the maintainer explicitly accepts it.
-- Do not commit, push, publish, create a release, or change external project
-  state unless the user explicitly requests that action.
 
 ## Language and communication
 
