@@ -1,0 +1,4 @@
+FUNCTION Start() AS VOID
+    LET large AS INT32 = 42
+    LET small AS INT16 = large AS INT16
+END FUNCTION

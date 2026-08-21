@@ -1,0 +1,19 @@
+FUNCTION Double(value AS INTEGER) AS INTEGER
+    RETURN value * 2
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET transform AS FUNCTION(INTEGER) AS INTEGER = Double
+    LET result AS INTEGER = transform(21)
+
+    FOR i AS INTEGER = 4 TO 0 STEP -2
+        IF i = 2 THEN
+            CONTINUE FOR
+        END IF
+        PRINT i
+    END FOR
+
+    IF result = 42 THEN
+        RETURN
+    END IF
+END FUNCTION

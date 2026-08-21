@@ -4,6 +4,66 @@ This bucket turns the implementation-readiness analysis in [analise.md](analise.
 into executable work. It complements the GitHub Project: each numbered item is
 a candidate card, while this file records dependencies and acceptance criteria.
 
+## Pending design decisions
+
+These decisions block specification completion or later runtime work. A
+proposal is not an accepted language rule until the maintainer records that
+acceptance in the normative specification.
+
+### Basic Next 0.1
+
+- [ ] **Numeric semantics.** Accept, revise, or reject
+  [Checked Numeric Semantics](docs/proposals/numeric-semantics.md), then move
+  the chosen policy into `docs/language/0.1.md` and add conformance fixtures.
+  This covers promotion, checked overflow, exponentiation, shifts, conversion
+  from `NAN` and infinity, and allocation-size overflow.
+- [ ] **Pointers, ownership, and memory management.** Define ownership of a
+  `NEW` allocation, aliasing, scope-exit destruction, `DELETE`, destructors,
+  use-after-delete, and the memory-management strategy (including ARC or
+  reference-counting cycle behavior).
+- [ ] **Default runtime safety.** Define null-pointer behavior and the stable
+  diagnostics for bounds, stale handles, double deletion, and allocation
+  failures. Vector bounds are already runtime errors.
+- [ ] **Program style guide.** Define canonical conventions for types,
+  functions, methods, variables, constants, and identifier examples. The
+  current grammar permits ASCII letters, digits after the first character, and
+  `_`; it rejects `$`, `-`, `+`, and `!` in identifiers.
+- [ ] **Paradigm boundary.** State the intended relationship among imperative,
+  object-oriented, and functional programming. The current 0.1 draft is
+  object-oriented and imperative, with function values but no lambdas or
+  closures.
+
+### Post-0.1 capability decisions
+
+- [ ] **Standard packages.** Define packages and contracts for files, web
+  server, and utilities.
+- [ ] **`HOST.network`.** Propose a portable capability contract for sockets,
+  address values, name resolution, connection lifetime, and diagnostics before
+  adding network syntax or APIs.
+- [ ] **Function pointers and FFI.** Re-evaluate pointer-to-function support
+  only with a concrete interoperability requirement; ordinary BN callbacks use
+  `FUNCTION(...) AS ...` values.
+- [ ] **`HOST` concurrency and devices.** Define threads and GPU devices
+  through a stable capability contract; network, file, GPU, DOM, and optional
+  `HOST` capabilities remain outside the 0.1 interpreter milestone.
+
+### Accepted compiler direction
+
+BN will generate both native code and WebAssembly after 0.1. The compiler must
+reuse the validated front end and preserve interpreter/compiler conformance.
+Target-specific artifact formats, supported host capabilities, and portability
+guarantees remain compiler-workstream decisions.
+
+### Future exploration — do not schedule for 0.1
+
+- [ ] WebAssembly libraries.
+- [ ] Embedding BN in other languages.
+- [ ] Parser-generator evaluation (ANTLR4, Flex/Bison, Peggy, Chevrotain,
+  Parsimmon, Nearley, and Truffle/GraalVM). The current implementation plan
+  remains a handwritten lexer and recursive-descent parser.
+- [ ] Confirm and document the block-structured-language model when the scope
+  and name-resolution rules are specified.
+
 ## Delivery rule
 
 **The complete, testable EBNF is the first deliverable.** No Rust lexer, parser,
@@ -11,11 +71,45 @@ AST, or interpreter work starts before Sprint 0 is accepted. The reference
 implementation must follow the specification; it must not decide missing
 language behavior.
 
+## Scope and acceptance baseline
+
+The 0.1 scope and release gates are accepted in
+[`docs/project/WBS-0.1.md`](docs/project/WBS-0.1.md).
+
+- [x] Freeze the 0.1 in-scope deliverables and explicit exclusions.
+- [x] Define objective acceptance gates for the EBNF, lexical analyzer,
+  grammar analyzer, AST, semantic analyzer, interpreter, diagnostics, and
+  conformance suite.
+- [ ] Produce implementation evidence for those gates in the corresponding
+  sprints.
+
+### Stage deliverables and preliminary effort
+
+Effort is estimated in person-days for one experienced contributor. Ranges are
+planning aids, not commitments; implementation evidence changes the estimate.
+
+| Stage | Deliverable | Definition of done | Effort |
+| --- | --- | --- | ---: |
+| Scope baseline | Approved 0.1 scope and gates | In/out scope and release criteria approved | 1–2d |
+| EBNF | Normative grammar and fixtures | No undefined or conflicting production remains | 3–5d |
+| Lexer | Rust lexical analyzer | Lexical fixtures produce expected tokens/errors | 3–5d |
+| Grammar analyzer | Parser and syntax AST | Valid/invalid grammar fixtures behave correctly | 5–8d |
+| Semantic analyzer | Symbols, types, flow, validated AST | Semantic fixtures resolve or diagnose correctly | 8–12d |
+| Interpreter | Tree-walk Rust runtime | Approved 0.1 examples execute reproducibly | 8–15d |
+| Runtime extensions | Objects, memory, modules, HOST | Lifecycle and capability checks pass | 10–20d |
+| Release | Conformance suite and `v0.1.0` | Clean clone reproduces documented results | 5–8d |
+| Compiler (post-0.1) | IR, backend, `bn build` | Compiled/interpreted parity is demonstrated | TBD |
+
 The implementation pipeline is:
 
 ```text
-.bn source → lexer → tokens and spans → parser → AST → semantic analysis
-→ validated AST, symbols, and types → interpreter
+.bn source → lexical analyzer → tokens and spans → grammar analyzer/parser
+→ syntax AST → semantic analysis → validated AST, symbols, and types
+→ interpreter
+
+The compiler is a separate post-0.1 consumer of the same validated front end:
+
+validated AST, symbols, and types → compiler IR → native-code or WebAssembly backend
 ```
 
 ## Sprint 0 — Authoritative EBNF and lexical contract
@@ -38,10 +132,11 @@ check` exists.
   whether the final source line receives an implicit `NEWLINE` before EOF.
 - [x] Define the legal locations of blank lines and comments inside every block,
   including `CLASS`, `STRUCT`, `INTERFACE`, and function bodies.
-- [x] Define every `END <KEYWORD>` pair, including `STRUCT`, `CONSTRUCTOR`,
-  and `DESTRUCTOR`, and add mismatched-terminator examples.
+- [x] Define every `END <KEYWORD>` pair, including `STRUCT` and the
+  `FUNCTION` terminator used by constructors and destructors, and add
+  mismatched-terminator examples.
 - [x] Define the EBNF dialect, reserved-word tokenization, and the lexer
-  precedence between reserved words, `NaN`, and identifiers.
+  precedence between reserved words, `NAN`, and identifiers.
 - [x] Accept `SELF.member` and `SELF.member[index]` as assignment targets.
 - [x] Decide whether reserved-but-unimplemented `EXTENDS` remains lexical-only
   or is removed from the 0.1 reserved set.
@@ -49,8 +144,8 @@ check` exists.
 ### 0.2 Lexical grammar
 
 - [x] Define token classes for identifiers, keywords, integer literals,
-  floating-point literals, `NaN`, strings, symbols, `NEWLINE`, and EOF.
-- [x] Decide whether `NaN` is a dedicated literal token or a valid identifier;
+  floating-point literals, `NAN`, strings, symbols, `NEWLINE`, and EOF.
+- [x] Decide whether `NAN` is a dedicated literal token or a valid identifier;
   make its lexical status consistent in all documents.
 - [x] Define decimal, binary, and hexadecimal literal syntax, invalid digits,
   leading zeros, overflow during lexing, and allowed floating-point forms.
@@ -70,19 +165,20 @@ check` exists.
   `parameter-type`; allow `VOID` only as a return type.
 - [x] Make `NULL`, `NA`, and `EOF` valid alternative-type members in grammar.
 - [x] Define named, vector, pointer, and alternative types without ambiguity.
+- [x] Define callable `FUNCTION(...) AS ...` values and their 0.1 boundary.
 - [x] Define multidimensional fixed-size vectors as `TYPE[length][...]`, with
   chained indexing and shape-checked nested literals.
 - [x] Define whether vectors of object and interface references are allowed,
   and their initialization requirements.
-- [x] Define pointer element types explicitly, including the intended support
-  or exclusion of `BOOLEAN` and `STRING`.
+- [x] Define pointer element types explicitly: 0.1 supports numeric elements
+  only and rejects named types, `BOOLEAN`, and `STRING`.
 
 ### 0.4 Statements and expressions
 
 - [x] Define complete productions for `LET`, `CONST`, assignment, call,
-  `PRINT`, `INPUT`, `NEW`, `DELETE`, `RETURN`, `EXIT`, and `STOP`.
-- [x] Define `IF`, `ELSE IF`, `ELSE`, `WHILE`, `REPEAT`, counted `FOR`, and
-  `FOR EACH` as complete block productions.
+  `PRINT`, `INPUT`, `NEW`, `DELETE`, `RETURN`, `EXIT`, `CONTINUE`, and `STOP`.
+- [x] Define `IF`, `ELSE IF`, `ELSE`, `WHILE`, `REPEAT`, counted `FOR` with
+  optional `STEP`, and `FOR EACH` as complete block productions.
 - [x] Define assignment targets: identifier, member access, and indexing.
 - [x] Define `STOP expression` as whole-program termination with a portable
   operating-system exit code.
@@ -132,7 +228,7 @@ implementing the frontend.
 - [ ] Define compatibility, assignment, equality, and comparison rules for all
   primitive, vector, struct, class, interface, pointer, and alternative types.
 - [ ] Define numeric promotion, widening, narrowing, overflow, division result
-  type, exponentiation types, and conversion of `NaN` or infinity to integers.
+  type, exponentiation types, and conversion of `NAN` or infinity to integers.
 - [ ] Define left-to-right evaluation order for operands and arguments.
 - [ ] Define boolean short-circuit behavior for `AND` and `OR`, and evaluation
   rules for `XOR` and all bitwise operators.
@@ -153,12 +249,14 @@ implementing the frontend.
 
 ### 1.4 Diagnostics and standard surface
 
-- [ ] Create `docs/language/diagnostics.md` with diagnostic structure, source
+- [x] Create `docs/language/diagnostics.md` with diagnostic structure, source
   spans, severity, stable identifiers, and teacher-style wording rules.
 - [ ] Define errors for invalid syntax, names, types, missing returns, invalid
   `EXIT`, conversions, overflow, and invalid alternative-value use.
-- [ ] Move `Console`, `Math`, and `Error` contracts into separate standard
-  library documentation; keep language syntax in `0.1.md`.
+- [x] Define the `Math` contract in `docs/library/math.md`; keep language syntax
+  in `0.1.md`.
+- [ ] Move `Console` and `Error` contracts into separate standard-library
+  documentation; keep language syntax in `0.1.md`.
 - [ ] Define `PRINT`, `INPUT`, `EOF`, `Error`, `TryParse`, and `Parse` as
   normative standard-library/runtime contracts.
 - [ ] Define shared diagnostic format and exit codes for `bn check`, `bn run`,
@@ -185,9 +283,10 @@ meaning, and every invalid core AST has a defined diagnostic.
 **Done when:** every Sprint 0 lexical fixture produces the expected token stream
 or the expected diagnostic with a source span.
 
-## Sprint 3 — Parser and syntax AST
+## Sprint 3 — Grammar analyzer (parser) and syntax AST
 
-**Goal:** parse every valid 0.1 source program into a source-spanned AST.
+**Goal:** implement the grammar analyzer that parses every valid 0.1 source
+program into a source-spanned syntax AST and rejects invalid structure.
 
 - [ ] Implement recursive descent for modules, declarations, blocks, statements,
   type references, and assignment targets.
@@ -217,7 +316,7 @@ without interpreting invalid source.
   constructors, and interface conformance.
 - [ ] Implement alternative-type narrowing and invalidation rules.
 - [ ] Implement structural return-path and unreachable-code analysis.
-- [ ] Validate `EXIT` against the enclosing loop stack.
+- [ ] Validate `EXIT` and `CONTINUE` against the enclosing loop stack.
 - [ ] Produce all Sprint 1 semantic diagnostics before execution.
 
 **Done when:** every semantic fixture yields either a validated program with
@@ -233,9 +332,9 @@ tree-walk interpreter.
 - [ ] Implement primitive values, conversions, checked integer arithmetic,
   IEEE floats, Euclidean modulo, logical/bitwise operations, and shifts.
 - [ ] Implement `LET`, `CONST`, assignments, expressions, `IF`, `WHILE`,
-  `REPEAT`, `FOR`, `FOR EACH`, `RETURN`, and `EXIT`.
-- [ ] Model internal control flow as normal continuation, return value, and
-  loop exit; do not use Rust panics for BN program control flow.
+  `REPEAT`, `FOR`, `FOR EACH`, `RETURN`, `EXIT`, and `CONTINUE`.
+- [ ] Model internal control flow as normal continuation, return value, loop
+  exit, and loop continuation; do not use Rust panics for BN program control flow.
 - [ ] Implement vectors, `PRINT`, `INPUT`, `EOF`, `Error`, and the minimal
   Console/Math contracts.
 - [ ] Implement zero-config `bn check file.bn` and `bn run file.bn`.
@@ -306,6 +405,26 @@ reproducible reference interpreter.
 **Done when:** Basic Next 0.1 has a tagged, documented, reproducible Rust
 interpreter release and a conformance suite that another implementation can run.
 
+## Post-0.1 — Compiler track
+
+**Goal:** add compilation without creating a second language implementation.
+The compiler must reuse the lexer, grammar analyzer, AST, semantic analyzer,
+diagnostics, and conformance suite used by the interpreter.
+
+- [ ] Define native-code and WebAssembly artifact contracts, supported host
+  capabilities, and portability requirements.
+- [ ] Define a minimal compiler IR from the validated AST; do not lower directly
+  from tokens or source text.
+- [ ] Reuse the same name resolution, type checking, overflow rules, and
+  capability checks as the interpreter.
+- [ ] Implement a compiler driver and an explicit `bn build` artifact contract.
+- [ ] Add native-code generation and WebAssembly generation.
+- [ ] Verify interpreter/compiler behavioral parity with the conformance suite.
+- [ ] Document unsupported host capabilities and diagnostics at compile time.
+
+**Done when:** a compiled BN program and an interpreted BN program produce the
+same documented results for the shared conformance suite.
+
 ## Post-0.1 — Parallel and heterogeneous computing
 
 `PARALLEL` is reserved but deliberately excluded from the 0.1 grammar. The
@@ -321,18 +440,21 @@ failure, and host/device-memory rules are specified.
 | Incomplete EBNF, open statement, expressions, blocks, lexical ambiguity | Sprint 0 |
 | Scope, types, alternatives, numeric rules, evaluation, diagnostics | Sprint 1 |
 | Tokenization and source positions | Sprint 2 |
-| Recursive-descent parser, Pratt expressions, AST and block diagnostics | Sprint 3 |
+| Grammar analyzer/parser, Pratt expressions, AST and block diagnostics | Sprint 3 |
 | Name resolution, type checking, narrowing, return analysis | Sprint 4 |
 | Core execution and console | Sprint 5 |
 | Classes, interfaces, pointers, deletion, static initialization, `HOST` | Sprint 6 |
 | OO, heap, modules, host, conformance, release | Sprint 7 |
+| Compiler IR, backend, `bn build`, and interpreter/compiler parity | Post-0.1 compiler track |
 
 ## Deferred backlog
 
 These items remain outside the 0.1 interpreter milestone:
 
 - `MATCH`, `ENUM`, inheritance, generic classes, and variable-size collections.
-- Async/await, concurrency, JIT, Wasm, and native compilation targets.
+- Async/await, concurrency, and JIT.
+- Native-code and WebAssembly compilation remain post-0.1; see the compiler
+  track above.
 - File, network, GPU, DOM, and optional host capabilities.
 - C FFI capability, logical-library resolution, and a fixed-signature C ABI
   profile; see `docs/proposals/c-ffi.md`.

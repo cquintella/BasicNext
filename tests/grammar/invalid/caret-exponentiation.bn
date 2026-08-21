@@ -1,0 +1,3 @@
+FUNCTION Start() AS VOID
+    LET value AS FLOAT = 2.0 ^ 3.0
+END FUNCTION

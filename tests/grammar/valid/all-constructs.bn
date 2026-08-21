@@ -14,13 +14,13 @@ EXPORT CLASS Box IMPLEMENTS Named
     PRIVATE value AS INTEGER = 0
     PUBLIC STATIC count AS INTEGER = 0
 
-    PUBLIC CONSTRUCTOR(value AS INTEGER)
+    PUBLIC FUNCTION CONSTRUCTOR(value AS INTEGER)
         SELF.value = value
-    END CONSTRUCTOR
+    END FUNCTION
 
-    PUBLIC DESTRUCTOR()
+    PUBLIC FUNCTION DESTRUCTOR()
         PRINT "destroyed"
-    END DESTRUCTOR
+    END FUNCTION
 
     PUBLIC FUNCTION Name() AS STRING
         RETURN "box"
@@ -38,10 +38,24 @@ END FUNCTION
 FUNCTION Start() AS VOID
     LET counter AS INTEGER = 0
     CONST limit AS INTEGER = 3
+    LET page AS INTEGER = limit DIV 2
+    LET square AS INTEGER = limit ** 2
+    LET reciprocal AS FLOAT = 2.0 ** -1.0
+    LET decay AS FLOAT = Math.EXP(-1.0)
+    LET angle AS FLOAT = Math.ATAN2(1.0, 1.0)
+    LET norm AS FLOAT = Math.HYPOT(3.0, 4.0)
+    LET fused AS FLOAT = Math.FMA(2.0, 3.0, 4.0)
     LET flags AS BYTE = 0b00000001
     LET hexadecimal AS BYTE = 0x0F
+    LET signedByte AS INT8 = -1
+    LET shortUnsigned AS UINT16 = 65535
+    LET sampleCount AS INT64 = 4294967296
+    LET address AS UINT64 = 0xFFFFFFFFFFFFFFFF
+    LET capturedAt AS TIMESTAMP = 0
     LET ready AS BOOLEAN = FALSE
-    LET notANumber AS FLOAT = NaN
+    LET notANumber AS FLOAT = NAN
+    LET positiveInfinity AS FLOAT = INF
+    LET negativeInfinity AS FLOAT = -INF
     LET maybeBox AS Box OR NULL = NULL
     LET missingValue AS FLOAT OR NA = NA
     LET system AS SYSTEM = main
@@ -58,6 +72,10 @@ FUNCTION Start() AS VOID
 
     IF counter = 0 THEN
         counter += 1
+    ELSE IF notANumber IS NAN THEN
+        counter = 0
+    ELSE IF positiveInfinity IS INF AND negativeInfinity IS -INF THEN
+        counter = 0
     ELSE IF counter < limit THEN
         counter *= 2
     ELSE

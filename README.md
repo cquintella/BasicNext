@@ -26,9 +26,10 @@ of design principles.
 
 ## Status
 
-**Pre-implementation.** Language version 0.1 is under discussion; there is no
-runtime or stable API yet. The reference implementation will be a Rust
-tree-walk interpreter: lexer, parser, AST, semantic analysis, and execution.
+**Pre-implementation.** The Basic Next 0.1 scope and release criteria are now
+baselined; there is no runtime or stable API yet. The reference implementation
+will be a Rust pipeline: lexical analyzer, grammar analyzer, AST, semantic
+analysis, and tree-walk interpreter.
 
 ## Tool
 

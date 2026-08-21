@@ -7,7 +7,7 @@
   Dialect: ISO 14977-style EBNF. Quoted text is a terminal; {} repeats zero
   or more times; [] is optional; () groups alternatives; and ?...? is a lexer
   predicate. The character range A…Z is inclusive. NEWLINE and EOF are lexer
-  tokens, not source text. The lexer recognizes reserved-word and nan-literal
+  tokens, not source text. The lexer recognizes reserved-word and special-float-literal
   before identifier when their spelling is followed by a token boundary.
 *)
 
@@ -48,10 +48,10 @@ visibility           = "PUBLIC" | "PRIVATE" ;
 static-member        = "STATIC" ( static-field-declaration | function-declaration ) ;
 field-declaration    = identifier "AS" variable-type [ "=" expression ] NEWLINE ;
 static-field-declaration = identifier "AS" variable-type "=" expression NEWLINE ;
-constructor-declaration = "CONSTRUCTOR" "(" [ parameters ] ")" NEWLINE
-                       statement-block "END" "CONSTRUCTOR" NEWLINE ;
-destructor-declaration = "DESTRUCTOR" "(" ")" NEWLINE statement-block
-                       "END" "DESTRUCTOR" NEWLINE ;
+constructor-declaration = "FUNCTION" "CONSTRUCTOR" "(" [ parameters ] ")" NEWLINE
+                       statement-block "END" "FUNCTION" NEWLINE ;
+destructor-declaration = "FUNCTION" "DESTRUCTOR" "(" ")" NEWLINE statement-block
+                       "END" "FUNCTION" NEWLINE ;
 struct-field-declaration = identifier "AS" field-type [ "=" expression ] NEWLINE ;
 interface-function-declaration = "FUNCTION" identifier "(" [ parameters ] ")"
                        "AS" return-type NEWLINE ;
@@ -65,11 +65,14 @@ variable-type        = value-type ;
 field-type           = value-type ;
 parameter-type       = value-type ;
 value-type           = data-type { "OR" ( data-type | "NULL" | "NA" | "EOF" ) } ;
-data-type            = scalar-type | vector-type | pointer-type | named-type | system-type ;
+data-type            = scalar-type | vector-type | pointer-type | function-type
+                       | named-type | system-type ;
 scalar-type          = "BOOLEAN" | numeric-type | "STRING" ;
-numeric-type         = "BYTE" | "INT16" | "INT32" | "UINT32" | "FLOAT32"
-                       | "FLOAT64" | "INTEGER" | "FLOAT" ;
-integer-type         = "BYTE" | "INT16" | "INT32" | "UINT32" | "INTEGER" ;
+numeric-type         = "BYTE" | "INT8" | "INT16" | "INT32" | "INT64"
+                       | "UINT16" | "UINT32" | "UINT64" | "FLOAT32"
+                       | "FLOAT64" | "INTEGER" | "FLOAT" | "TIMESTAMP" ;
+integer-type         = "BYTE" | "INT8" | "INT16" | "INT32" | "INT64"
+                       | "UINT16" | "UINT32" | "UINT64" | "INTEGER" | "TIMESTAMP" ;
 named-type           = identifier { "." identifier } ;
 system-type          = "SYSTEM" ;
 vector-type          = vector-element-type "[" integer-literal "]"
@@ -77,14 +80,16 @@ vector-type          = vector-element-type "[" integer-literal "]"
 vector-element-type  = scalar-type | named-type ;
 pointer-type         = "POINTER" "TO" pointer-element-type
                        [ "[" [ integer-literal ] "]" ] ;
-pointer-element-type = numeric-type | named-type ;
+pointer-element-type = numeric-type ;
+function-type        = "FUNCTION" "(" [ parameter-type-list ] ")" "AS" return-type ;
+parameter-type-list  = parameter-type { "," parameter-type } ;
 
 (* Statements *)
 
 statement            = let-declaration | const-declaration | assignment-statement
                        | call-statement | print-statement | if-statement
                        | while-statement | repeat-statement | for-statement
-                       | delete-statement | return-statement | exit-statement
+                       | delete-statement | return-statement | exit-statement | continue-statement
                        | stop-statement ;
 let-declaration      = "LET" identifier "AS" variable-type [ "=" expression ] NEWLINE ;
 const-declaration    = "CONST" identifier "AS" variable-type "=" expression NEWLINE ;
@@ -95,8 +100,9 @@ assignment-operator  = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "**=" ;
 call-statement       = call-expression NEWLINE ;
 print-statement      = "PRINT" [ expression-list ] NEWLINE ;
 delete-statement     = "DELETE" expression NEWLINE ;
-return-statement     = "RETURN" expression NEWLINE ;
+return-statement     = "RETURN" [ expression ] NEWLINE ;
 exit-statement       = "EXIT" ( "FOR" | "WHILE" | "REPEAT" ) NEWLINE ;
+continue-statement   = "CONTINUE" ( "FOR" | "WHILE" | "REPEAT" ) NEWLINE ;
 stop-statement       = "STOP" expression NEWLINE ;
 
 if-statement         = "IF" expression "THEN" NEWLINE statement-block
@@ -108,7 +114,8 @@ repeat-statement     = "REPEAT" NEWLINE statement-block "UNTIL" expression NEWLI
                        "END" "REPEAT" NEWLINE ;
 for-statement        = counted-for-statement | for-each-statement ;
 counted-for-statement = "FOR" identifier "AS" integer-type "=" expression "TO"
-                       expression NEWLINE statement-block "END" "FOR" NEWLINE ;
+                       expression [ "STEP" expression ] NEWLINE statement-block
+                       "END" "FOR" NEWLINE ;
 for-each-statement   = "FOR" "EACH" identifier "AS" variable-type "IN" expression
                        NEWLINE statement-block "END" "FOR" NEWLINE ;
 
@@ -118,13 +125,14 @@ expression           = or-expression ;
 or-expression        = xor-expression { "OR" xor-expression } ;
 xor-expression       = and-expression { "XOR" and-expression } ;
 and-expression       = is-expression { "AND" is-expression } ;
-is-expression        = equality-expression [ "IS" type-test ] ;
-type-test            = data-type | "NULL" | "NA" | "EOF" ;
+is-expression        = equality-expression [ "IS" is-test ] ;
+is-test              = data-type | "NULL" | "NA" | "EOF" | "NAN" | "INF"
+                       | "-" "INF" ;
 equality-expression  = comparison-expression { ( "=" | "<>" ) comparison-expression } ;
 comparison-expression = shift-expression { ( "<" | "<=" | ">" | ">=" ) shift-expression } ;
 shift-expression     = additive-expression { ( "SHL" | "SHR" ) additive-expression } ;
 additive-expression  = multiplicative-expression { ( "+" | "-" ) multiplicative-expression } ;
-multiplicative-expression = unary-expression { ( "*" | "/" | "%" ) unary-expression } ;
+multiplicative-expression = unary-expression { ( "*" | "/" | "DIV" | "%" ) unary-expression } ;
 unary-expression     = ( "NOT" | "-" ) unary-expression | power-expression ;
 power-expression     = postfix-expression [ "**" unary-expression ] ;
 postfix-expression   = primary { postfix-suffix } ;
@@ -143,20 +151,21 @@ new-expression       = "NEW" numeric-type [ "[" expression "]" ]
 vector-literal       = "[" [ expression-list ] "]" ;
 expression-list      = expression { "," expression } ;
 literal              = integer-literal | floating-literal | string-literal
-                       | "TRUE" | "FALSE" | "NULL" | "NA" | "EOF" | nan-literal ;
+                       | "TRUE" | "FALSE" | "NULL" | "NA" | "EOF"
+                       | special-float-literal ;
 
 (* Lexical grammar *)
 
 reserved-word        = "AND" | "AS" | "BOOLEAN" | "BYTE" | "CLASS" | "CONST"
-                       | "CONSTRUCTOR" | "DELETE" | "DESTRUCTOR" | "EACH" | "ELSE"
-                       | "END" | "EOF" | "EXIT" | "EXPORT" | "EXTENDS" | "FALSE"
+                       | "CONSTRUCTOR" | "CONTINUE" | "DELETE" | "DESTRUCTOR" | "EACH" | "ELSE"
+                       | "DIV" | "END" | "EOF" | "EXIT" | "EXPORT" | "EXTENDS" | "FALSE"
                        | "FLOAT" | "FLOAT32" | "FLOAT64" | "FOR" | "FUNCTION" | "HOST"
-                       | "IMPLEMENTS" | "IMPORT" | "IN" | "INPUT" | "INT16" | "INT32"
-                       | "INTEGER" | "INTERFACE" | "IS" | "LET" | "NA" | "NEW" | "NOT"
+                       | "IMPLEMENTS" | "IMPORT" | "IN" | "INPUT" | "INT8" | "INT16" | "INT32"
+                       | "INT64" | "INTEGER" | "INTERFACE" | "IS" | "LET" | "NA" | "NEW" | "NOT"
                        | "NULL" | "OR" | "PARALLEL" | "POINTER" | "PRIVATE" | "PRINT"
                        | "PUBLIC" | "REPEAT" | "RETURN" | "SELF" | "SHL" | "SHR" | "STATIC"
-                       | "STOP" | "STRING" | "STRUCT" | "SYSTEM" | "THEN" | "TO" | "TRUE"
-                       | "UINT32" | "UNTIL" | "VOID" | "WHILE" | "XOR" ;
+                       | "STEP" | "STOP" | "STRING" | "STRUCT" | "SYSTEM" | "THEN" | "TO" | "TRUE"
+                       | "TIMESTAMP" | "UINT16" | "UINT32" | "UINT64" | "UNTIL" | "VOID" | "WHILE" | "XOR" ;
 identifier           = identifier-start { identifier-continue } ;
 identifier-start     = ASCII-letter | "_" ;
 identifier-continue  = identifier-start | ASCII-digit ;
@@ -169,7 +178,7 @@ hexadecimal-integer  = "0x" hexadecimal-digit { hexadecimal-digit } ;
 binary-digit         = "0" | "1" ;
 hexadecimal-digit    = ASCII-digit | "A"…"F" | "a"…"f" ;
 floating-literal     = ASCII-digit { ASCII-digit } "." ASCII-digit { ASCII-digit } ;
-nan-literal          = "NaN" ;
+special-float-literal = "NAN" | "INF" ;
 string-literal       = '"' { string-character | escape-sequence } '"' ;
 escape-sequence      = '\\' ( '"' | '\\' ) ;
 string-character     = ? Unicode scalar value except U+0000…U+001F, U+007F,
@@ -199,7 +208,9 @@ CRLF                 = ? U+000D U+000A ? ;
    - The lexer uses maximal munch. Its overlapping symbols, in priority order,
      include **= before ** before *=, <= >= <> before < > =, and += -= *= /= %=.
      // and /* start comments before / is emitted. Braces are not tokens in 0.1.
-   - Exact-uppercase reserved words and the exact NaN literal are never identifiers.
+   - Exact-uppercase reserved words and the exact NAN and INF literals are never
+     identifiers. `-INF` is the unary `-` operator applied to the `INF` literal;
+     it is not a separate lexer token.
      EXTENDS and PARALLEL are reserved lexical-only: neither has a grammar
      production in 0.1.
 *)

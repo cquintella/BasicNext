@@ -132,8 +132,8 @@ inventing a BN exception mechanism.
 
 ## Open questions
 
-1. Should BN add `INT64` and `UINT64` before Profile 1, or should a future C
-   profile introduce explicit `C.SIZE` and `C.SSIZE` types for `size_t` and
+1. `INT64` and `UINT64` are Basic Next 0.1 primitive types. Should a future C
+   profile also introduce explicit `C.SIZE` and `C.SSIZE` types for `size_t` and
    `ptrdiff_t`?
 2. What manifest format maps a logical library name to package, static, or
    dynamic linkage on each host?
