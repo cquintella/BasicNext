@@ -1,4 +1,4 @@
 FUNCTION Start() AS VOID
 END FUNCTION
 
-IMPORT HOST.memory AS Memory
+IMPORT HOST.clock AS Clock

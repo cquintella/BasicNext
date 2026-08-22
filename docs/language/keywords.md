@@ -34,7 +34,7 @@ below. For example, `PRINT` is a keyword and `Print` is an identifier.
 | `END` | Closes a compound declaration or statement, such as `END FUNCTION` or `END IF`. | Reserved |
 | `IMPORT` | Imports a module or host capability under an explicit local alias. | Reserved |
 | `HOST` | Names the environment that provides capabilities. | Reserved |
-| `SYSTEM` | Names the host-provided system object type. | Reserved |
+| `SYSTEM` | Type of `HOST.main`, providing immutable command-line argument access. | Reserved |
 
 ## Types and values
 
@@ -52,7 +52,10 @@ below. For example, `PRINT` is a keyword and `Print` is an identifier.
 | `FLOAT64` | IEEE 754 binary64 floating-point value. | Reserved |
 | `INTEGER` | Alias for `INT32`; the default integer spelling. | Reserved |
 | `FLOAT` | Alias for `FLOAT64`; the default floating-point spelling. | Reserved |
-| `TIMESTAMP` | Alias for `INT64`, representing a UTC Unix-epoch instant in nanoseconds. | Reserved |
+| `TIMESTAMP` | Alias for `INT64`, representing a UTC Unix-epoch instant in milliseconds. | Reserved |
+| `DATE` | Immutable Gregorian calendar date with a four-digit year. | Reserved |
+| `TIME` | Immutable civil time of day with millisecond precision. | Reserved |
+| `TIMEZONE` | Immutable named IANA time-zone rule set. | Reserved |
 | `STRING` | Text value type. | Reserved |
 | `BOOLEAN` | Logical value type. | Reserved |
 | `VOID` | Absence of a return value. | Reserved |
@@ -86,6 +89,8 @@ below. For example, `PRINT` is a keyword and `Print` is an identifier.
 | `Math.EXP`, `Math.LOG`, `Math.LOG10`, `Math.LOG2`, `Math.POW` | Exponential, logarithmic, and real-power functions in `Math`. | Standard library |
 | `Math.SIN`, `Math.COS`, `Math.TAN`, `Math.ASIN`, `Math.ACOS`, `Math.ATAN`, `Math.ATAN2` | Radian trigonometric functions in `Math`. | Standard library |
 | `Math.SQRT`, `Math.HYPOT`, `Math.FMA` | Stable floating numerical functions in `Math`. | Standard library |
+| `Math.TOHOUR`, `Math.TOWEEKDAY` | Pure UTC conversions from `TIMESTAMP`; weekday uses ISO 8601 numbering. | Standard library |
+| `Math.TODATE`, `Math.TOTIME`, `Math.TOTIMESTAMP` | Explicit UTC conversion among temporal value types. | Standard library |
 
 ## Control flow
 

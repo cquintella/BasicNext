@@ -1,4 +1,4 @@
-IMPORT HOST.memory AS Memory
+IMPORT HOST.clock AS Clock
 IMPORT HOST.main AS main
 
 EXPORT STRUCT Point
@@ -51,7 +51,10 @@ FUNCTION Start() AS VOID
     LET shortUnsigned AS UINT16 = 65535
     LET sampleCount AS INT64 = 4294967296
     LET address AS UINT64 = 0xFFFFFFFFFFFFFFFF
-    LET capturedAt AS TIMESTAMP = 0
+    LET capturedAt AS TIMESTAMP = Clock.Timestamp()
+    LET monotonic AS INT64 = Clock.Monotonic()
+    LET argumentCount AS INTEGER = main.ArgumentCount()
+    LET executable AS STRING = main.Argument(0)
     LET ready AS BOOLEAN = FALSE
     LET notANumber AS FLOAT = NAN
     LET positiveInfinity AS FLOAT = INF

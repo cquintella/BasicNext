@@ -1,0 +1,4 @@
+IMPORT Basic.Entry AS Entry
+
+FUNCTION Start() AS VOID
+END FUNCTION

@@ -1,0 +1,4 @@
+IMPORT Does.NotExist AS Missing
+
+FUNCTION Start() AS VOID
+END FUNCTION

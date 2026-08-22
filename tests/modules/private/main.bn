@@ -1,0 +1,5 @@
+IMPORT Basic.Private AS Private
+
+FUNCTION Start() AS VOID
+    LET value AS INTEGER = Private.Hidden()
+END FUNCTION

@@ -17,6 +17,8 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `valid/function-values-and-control-flow.bn` | Accept | Function value type, call through a binding, signed `STEP`, `CONTINUE FOR`, and bare `RETURN` from `VOID`. |
 | `valid/integer-widening-conversion.bn` | Accept | `INT16 AS INT32` is a permitted integral widening conversion. |
 | `valid/integer-narrowing-conversion.bn` | Accept | An explicit `INT32 AS INT16` conversion is valid; its range is checked at runtime. |
+| `valid/host-capabilities.bn` | Accept | `HOST.main` command-line arguments, `HOST.clock`, and pure UTC timestamp conversions. |
+| `valid/temporal-types.bn` | Accept | Built-in temporal value type declarations. |
 | `invalid/import-after-declaration.bn` | Reject (syntax) | Import ordering. |
 | `invalid/mismatched-end.bn` | Reject (syntax) | Exact `END <KEYWORD>` matching. |
 | `invalid/untyped-let.bn` | Reject (syntax) | Mandatory `AS` on a binding. |
@@ -33,6 +35,7 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `invalid/uninitialized-pointer.bn` | Reject (semantic) | A non-defaultable `LET` type requires an initializer. |
 | `invalid/void-vector.bn` | Reject (syntax) | `VOID` cannot be a vector element. |
 | `invalid/ragged-vector-literal.bn` | Reject (semantic) | A nested vector literal must match every declared dimension. |
+| `invalid/removed-host-memory.bn` | Reject (semantic) | `HOST.memory` is deferred and is not a 0.1 capability. |
 | `invalid/bad-input-call.bn` | Reject (syntax) | `INPUT` accepts no arguments. |
 | `invalid/malformed-number.bn` | Reject (lexical) | Unsupported float form. |
 | `invalid/caret-exponentiation.bn` | Reject (lexical) | `^` is not an exponentiation operator in 0.1. |

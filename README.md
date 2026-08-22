@@ -26,21 +26,48 @@ of design principles.
 
 ## Status
 
-**Pre-implementation.** The Basic Next 0.1 scope and release criteria are now
-baselined; there is no runtime or stable API yet. The reference implementation
-will be a Rust pipeline: lexical analyzer, grammar analyzer, AST, semantic
-analysis, and tree-walk interpreter.
+**Reference implementation in progress.** The lexer, parser, core semantic
+analyzer, typed BN IR, and core IR interpreter are executable. The extended
+0.1 runtime for modules, objects, pointers, and `HOST` capabilities is not yet
+complete, and there is no stable API or release yet.
+
+## Active implementation objective
+
+Build the Basic Next 0.1 reference implementation in Rust: a source-spanned
+lexer, handwritten recursive-descent/Pratt parser, syntax AST, semantic
+analyzer, typed BN IR, and deterministic IR interpreter. It provides:
+
+- `bn check file.bn`, accepting every valid conformance fixture and reporting a
+  documented source-spanned diagnostic for every invalid fixture;
+- `bn run file.bn`, executing the accepted 0.1 language semantics and official
+  examples without unchecked runtime failures; and
+- one shared conformance suite for the interpreter and any later compiler.
+
+Native-code/WebAssembly compilation, `bn build`, optional `HOST` capabilities,
+and proposed scientific-library surfaces are not part of this implementation
+objective. See the [0.1 WBS](docs/project/WBS-0.1.md) for acceptance criteria
+and delivery order.
+
+`bn check -v file.bn` reports completed stages and `bn check -vv file.bn` also
+prints lexer tokens. Frontend artifacts are available through `--emit tokens`,
+`--emit ast`, `--emit typed-ast`, and `--emit ir`; `-o file` writes an emitted
+artifact to a file.
 
 ## Tool
 
-`BN` is the official Basic Next tool, invoked as `bn`. It is the single entry
-point for checking, running, and, where supported, building `.bn` source files:
-`bn check file.bn`, `bn run file.bn`, and `bn build file.bn`. These commands
-share one diagnostic format, source locations, and exit-code model.
+`BN` is the official Basic Next tool, invoked as `bn`. The 0.1 reference
+implementation provides `bn check file.bn` and `bn run file.bn`; a post-0.1
+compiler may later add `bn build file.bn`. The commands share one diagnostic
+format, source locations, and exit-code model.
 
-The trivial case is zero-config: `bn run hello.bn` must not require a project
-file or manifest. This command contract is specified; the tool itself is not
-implemented yet.
+The trivial case is zero-config: `bn run hello.bn` does not require a project
+file or manifest. While developing from this repository, use:
+
+```shell
+cargo run -- run examples/hello.bn
+cargo run -- check --emit ir examples/factorial.bn
+cargo run -- --help
+```
 
 ## Repository layout
 

@@ -1,0 +1,6 @@
+FUNCTION Start() AS VOID
+    LET date AS DATE
+    LET time AS TIME
+    LET zone AS TIMEZONE
+    LET timestamp AS TIMESTAMP = 0
+END FUNCTION

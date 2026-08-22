@@ -105,6 +105,23 @@ floating value. `ATAN2` uses the signs of zero to select the correct quadrant.
 spurious intermediate overflow or underflow; its result is non-negative.
 `Math.FMA` is the only fused multiply-add operation in 0.1.
 
+## UTC timestamp conversions
+
+`TIMESTAMP` is a signed count of milliseconds from the Unix epoch. These pure
+functions do not read a clock:
+
+| Function | Signature and result |
+| --- | --- |
+| `Math.TOHOUR(timestamp)` | `TIMESTAMP` to `INTEGER` from `0` through `23`, in UTC. |
+| `Math.TOWEEKDAY(timestamp)` | `TIMESTAMP` to ISO 8601 `INTEGER`; Monday is `1` and Sunday is `7`, in UTC. |
+| `Math.TODATE(timestamp)` | `TIMESTAMP` to UTC `DATE`. |
+| `Math.TOTIME(timestamp)` | `TIMESTAMP` to UTC `TIME`. |
+| `Math.TOTIMESTAMP(date, time)` | UTC `DATE` and `TIME` to `TIMESTAMP`. |
+
+Negative timestamps use Euclidean day division, so instants before the Unix
+epoch produce the corresponding UTC hour and weekday. The full parse, format,
+and temporal-type contract is in [Temporal standard library 0.1](temporal.md).
+
 ## Reproducibility requirement
 
 The reference interpreter and a future compiler must produce the same result

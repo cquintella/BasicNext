@@ -4,6 +4,14 @@ This indexes maintainer decisions made while closing the 0.1 specification. It
 is not normative: `docs/language/0.1.ebnf`, `docs/language/0.1.md`, and
 `docs/language/keywords.md` take precedence.
 
+## Reference implementation architecture
+
+- The validated typed AST lowers to a typed BN control-flow IR before
+  execution.
+- The 0.1 reference interpreter executes BN IR. A later compiler lowers the
+  same BN IR to LLVM IR so execution and compilation share one operational
+  representation.
+
 ## Numeric values and expressions
 
 - Assignments never convert declared numeric values implicitly. Numeric binary
@@ -13,8 +21,16 @@ is not normative: `docs/language/0.1.ebnf`, `docs/language/0.1.md`, and
   never mix implicitly with signed integers.
 - Integer literals are contextual and default to `INTEGER` (`INT32`) without a
   context. Floating literals default to `FLOAT` (`FLOAT64`).
-- `TIMESTAMP` is an `INT64` alias for a UTC Unix-epoch instant in nanoseconds;
+- `TIMESTAMP` is an `INT64` alias for a UTC Unix-epoch instant in milliseconds;
   it is fully compatible with `INT64`.
+- `DATE` and `TIME` are fixed-size immutable value types: an `INT32` day count
+  and `UINT32` milliseconds since midnight. `TIMEZONE` is an immutable,
+  variable-size IANA TZDB identifier value. Civil values use years `0001` to
+  `9999`.
+- RFC 3339 is the mandatory `TIMESTAMP` interchange profile: canonical output
+  is `YYYY-MM-DDTHH:MM:SS.mmmZ`; parsing accepts `Z` or numeric ISO 8601
+  offsets and normalizes to UTC. `DATE` and `TIME` use their ISO 8601 forms;
+  `TIMEZONE` uses IANA names, not numeric offsets.
 - Integral overflow raises `NUMERIC_OVERFLOW`; integers never wrap or saturate.
 - `/` returns `FLOAT`; `DIV` and `%` use Euclidean integer division/modulo.
 - `**` is the only exponentiation operator: it is checked integral power with a
@@ -32,9 +48,10 @@ is not normative: `docs/language/0.1.ebnf`, `docs/language/0.1.md`, and
   `value IS -INF` test the corresponding signed infinities.
 - `Math` is the canonical import-free standard-library namespace for numeric
   functions, including elementary, trigonometric, rounding, `HYPOT`, and `FMA`.
-- `Math` will contain pure `TIMESTAMP` conversions; clock acquisition remains
-  `HOST.clock`. `Hash`, `Random`, and `Statistics` are distinct future standard
-  library surfaces.
+- Pure `TIMESTAMP` calendar conversions use UTC; clock acquisition remains an
+  explicit `HOST.clock` operation. `Math.ToDate` still needs an accepted return
+  type. `Hash`, `Random`, and `Statistics` are distinct future standard-library
+  surfaces.
 - Invalid literal shift counts are static errors; computed invalid counts raise
   `INVALID_SHIFT_COUNT`. `SHR` is logical. Unary `-` does not widen `BYTE`,
   `UINT16`, `UINT32`, or `UINT64`; unary `+` is absent.
@@ -87,9 +104,13 @@ is not normative: `docs/language/0.1.ebnf`, `docs/language/0.1.md`, and
   host capacity failure is `ALLOCATION_TOO_LARGE`.
 - Failed construction exposes no object and runs no destructor. Program-end
   recovery does not run destructors.
-- 0.1 includes required `HOST.main` and `HOST.memory` only. Missing capabilities
-  fail before `Start` with `HOST_CAPABILITY_UNAVAILABLE`; host memory belongs to
-  the host for the full execution.
+- 0.1 includes `HOST.main` and `HOST.clock`. `main.ArgumentCount()` includes the
+  executable and `main.Argument(0)` returns its host-supplied name or path.
+  `Clock.Timestamp()` returns Unix-epoch milliseconds; `Clock.Monotonic()`
+  returns nanoseconds from an unspecified origin. Missing imported capabilities
+  fail before `Start` with `HOST_CAPABILITY_UNAVAILABLE`.
+- `HOST.memory` is deferred. BN-owned typed regions use `NEW`; shared, mapped,
+  device, and FFI memory require a later capability contract.
 - Static initialization is lazy and source-ordered; reentry is
   `STATIC_INITIALIZATION_CYCLE`.
 

@@ -1,0 +1,12 @@
+IMPORT HOST.main AS main
+IMPORT HOST.clock AS Clock
+
+FUNCTION Start() AS VOID
+    LET count AS INTEGER = main.ArgumentCount()
+    LET executable AS STRING = main.Argument(0)
+    LET timestamp AS TIMESTAMP = Clock.Timestamp()
+    LET started AS INT64 = Clock.Monotonic()
+    LET hour AS INTEGER = Math.TOHOUR(timestamp)
+    LET weekday AS INTEGER = Math.TOWEEKDAY(timestamp)
+    PRINT count, executable, timestamp, started, hour, weekday
+END FUNCTION

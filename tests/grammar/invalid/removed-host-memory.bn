@@ -1,0 +1,4 @@
+IMPORT HOST.memory AS Memory
+
+FUNCTION Start() AS VOID
+END FUNCTION

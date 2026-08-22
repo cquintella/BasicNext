@@ -1,0 +1,7 @@
+IMPORT Lib.Boxes AS Boxes
+
+FUNCTION Start() AS VOID
+    LET box AS Boxes.Box = NEW Boxes.Box(7)
+    LET value AS INTEGER = box.Value()
+    LET count AS INTEGER = Boxes.Box.Count()
+END FUNCTION

@@ -11,11 +11,11 @@ CLASS RpnCalculator
 
     PUBLIC FUNCTION Process(token AS STRING) AS VOID
         IF token = "=" THEN
-            ShowResult()
+            SELF.ShowResult()
         ELSE IF token = "+" OR token = "-" OR token = "*" OR token = "/" THEN
-            Apply(token)
+            SELF.Apply(token)
         ELSE
-            PushNumber(token)
+            SELF.PushNumber(token)
         END IF
     END FUNCTION
 
@@ -25,52 +25,52 @@ CLASS RpnCalculator
         IF value IS Error THEN
             PRINT value.Message
         ELSE
-            Push(value)
+            SELF.Push(value)
         END IF
     END FUNCTION
 
     PRIVATE FUNCTION Push(value AS FLOAT) AS VOID
-        IF top = 256 THEN
+        IF SELF.top = 256 THEN
             PRINT "Stack overflow"
         ELSE
-            stack[top] = value
-            top += 1
+            SELF.stack[SELF.top] = value
+            SELF.top += 1
         END IF
     END FUNCTION
 
     PRIVATE FUNCTION Pop() AS FLOAT
-        top -= 1
-        RETURN stack[top]
+        SELF.top -= 1
+        RETURN SELF.stack[SELF.top]
     END FUNCTION
 
     PRIVATE FUNCTION Apply(symbol AS STRING) AS VOID
-        IF top < 2 THEN
+        IF SELF.top < 2 THEN
             PRINT "Two values are required"
         ELSE
-            LET right AS FLOAT = Pop()
-            LET left AS FLOAT = Pop()
+            LET right AS FLOAT = SELF.Pop()
+            LET left AS FLOAT = SELF.Pop()
 
             IF symbol = "+" THEN
-                Push(left + right)
+                SELF.Push(left + right)
             ELSE IF symbol = "-" THEN
-                Push(left - right)
+                SELF.Push(left - right)
             ELSE IF symbol = "*" THEN
-                Push(left * right)
+                SELF.Push(left * right)
             ELSE IF right = 0.0 THEN
                 PRINT "Division by zero"
-                Push(left)
-                Push(right)
+                SELF.Push(left)
+                SELF.Push(right)
             ELSE
-                Push(left / right)
+                SELF.Push(left / right)
             END IF
         END IF
     END FUNCTION
 
     PRIVATE FUNCTION ShowResult() AS VOID
-        IF top <> 1 THEN
+        IF SELF.top <> 1 THEN
             PRINT "The expression is incomplete"
         ELSE
-            PRINT stack[0]
+            PRINT SELF.stack[0]
         END IF
     END FUNCTION
 

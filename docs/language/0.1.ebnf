@@ -67,7 +67,8 @@ parameter-type       = value-type ;
 value-type           = data-type { "OR" ( data-type | "NULL" | "NA" | "EOF" ) } ;
 data-type            = scalar-type | vector-type | pointer-type | function-type
                        | named-type | system-type ;
-scalar-type          = "BOOLEAN" | numeric-type | "STRING" ;
+scalar-type          = "BOOLEAN" | numeric-type | "STRING" | "DATE" | "TIME"
+                       | "TIMEZONE" ;
 numeric-type         = "BYTE" | "INT8" | "INT16" | "INT32" | "INT64"
                        | "UINT16" | "UINT32" | "UINT64" | "FLOAT32"
                        | "FLOAT64" | "INTEGER" | "FLOAT" | "TIMESTAMP" ;
@@ -165,7 +166,8 @@ reserved-word        = "AND" | "AS" | "BOOLEAN" | "BYTE" | "CLASS" | "CONST"
                        | "NULL" | "OR" | "PARALLEL" | "POINTER" | "PRIVATE" | "PRINT"
                        | "PUBLIC" | "REPEAT" | "RETURN" | "SELF" | "SHL" | "SHR" | "STATIC"
                        | "STEP" | "STOP" | "STRING" | "STRUCT" | "SYSTEM" | "THEN" | "TO" | "TRUE"
-                       | "TIMESTAMP" | "UINT16" | "UINT32" | "UINT64" | "UNTIL" | "VOID" | "WHILE" | "XOR" ;
+                       | "TIMESTAMP" | "TIME" | "TIMEZONE" | "UINT16" | "UINT32" | "UINT64"
+                       | "UNTIL" | "VOID" | "WHILE" | "XOR" ;
 identifier           = identifier-start { identifier-continue } ;
 identifier-start     = ASCII-letter | "_" ;
 identifier-continue  = identifier-start | ASCII-digit ;

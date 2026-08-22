@@ -20,7 +20,7 @@ authoritative.
 - Static semantics: names, scopes, explicit types, conversions, alternatives,
   control-flow validity, diagnostics, and return-path analysis.
 - A Rust reference pipeline consisting of lexical analyzer, grammar analyzer,
-  syntax AST, semantic analyzer, and tree-walk interpreter.
+  syntax AST, semantic analyzer, typed BN IR, and IR interpreter.
 - The minimum useful program subset with `bn check` and `bn run` as the
   zero-configuration command contract.
 - Classes, structs, interfaces, statics, modules, checked pointers, `NEW`,
@@ -42,9 +42,13 @@ authoritative.
 ## Delivery objective
 
 Publish Basic Next 0.1 with a reviewed specification, executable examples, and
-a reference implementation able to validate and execute programs in the 0.1
-scope. Compilation, GUI, concurrency, and AI integrations are outside this
-delivery; compilation is tracked explicitly as a post-0.1 workstream.
+a Rust reference implementation able to validate and execute programs in the
+0.1 scope. The implementation objective is a source-spanned lexer,
+recursive-descent/Pratt parser, syntax AST, semantic analyzer, typed BN IR,
+deterministic IR interpreter, `bn check`, `bn run`, and one conformance suite shared
+with later backends. Compilation, GUI, concurrency, and AI integrations are
+outside this delivery; compilation is tracked explicitly as a post-0.1
+workstream.
 
 ## Release acceptance criteria
 
@@ -90,8 +94,8 @@ delivery; compilation is tracked explicitly as a post-0.1 workstream.
   `STRUCT`, `STATIC`, `IF`, `WHILE`, `REPEAT`, `FOR`, `FOR EACH`, `EXIT`, and
   `RETURN`.
 - **2.5 Modules and environment:** `IMPORT`, executable module,
-  `FUNCTION Start() AS VOID`,
-  and the `HOST.main` contract.
+  `FUNCTION Start() AS VOID`, command-line arguments through `HOST.main`, and
+  wall/monotonic clocks through `HOST.clock`.
 - **2.6 Diagnostics and conformance:** defined errors and normative examples.
 
 ### 3. Reference implementation
@@ -104,8 +108,8 @@ delivery; compilation is tracked explicitly as a post-0.1 workstream.
   and type references with source spans.
 - **3.4 Semantic analyzer:** resolve scopes and names, validate types and flow,
   and produce the validated AST used by execution.
-- **3.5 Rust interpreter:** execute the validated AST with the tree-walk
-  reference runtime. A VM and JIT are outside 0.1.
+- **3.5 Typed IR and Rust interpreter:** lower the validated AST to typed BN IR
+  and execute that IR in the reference runtime. A JIT is outside 0.1.
 - **3.6 BN command-line tool:** minimum `BN` commands to check and execute
   Basic Next files.
 
@@ -119,11 +123,11 @@ delivery; compilation is tracked explicitly as a post-0.1 workstream.
 
 ```text
 2.1–2.6 → 3.1 lexical analyzer → 3.2 grammar analyzer → 3.3 AST
-→ 3.4 semantic analyzer → 3.5 interpreter → 4.1 conformance → 4.3 release
+→ 3.4 semantic analyzer → 3.5 typed IR/interpreter → 4.1 conformance → 4.3 release
 ```
 
-The Rust tree-walk interpreter is the 0.1 execution baseline. Later compiler
-backends must preserve the language semantics and conformance suite.
+The Rust IR interpreter is the 0.1 execution baseline. Later compiler backends
+consume the same typed BN IR and must preserve the conformance suite.
 
 ## Effort and deliverable baseline
 
@@ -139,7 +143,7 @@ recorded when each work package is completed.
 | Lexical analyzer | Rust scanner, tokens, spans, lexical diagnostics | All lexical fixtures produce expected tokens/errors | EBNF | 3–5 |
 | Grammar analyzer and AST | Parser plus source-spanned syntax AST | Valid fixtures parse; invalid fixtures are rejected | EBNF, lexer | 5–8 |
 | Semantic analyzer | Symbols, types, flow checks, validated AST | Semantic fixtures resolve or emit documented diagnostics | AST | 8–12 |
-| Interpreter | Rust tree-walk runtime for 0.1 | Approved examples execute with documented results | Semantic analyzer | 8–15 |
+| IR and interpreter | Typed BN IR and Rust executor for 0.1 | Approved examples execute with documented results | Semantic analyzer | 8–15 |
 | Objects, memory, modules, HOST | Safe lifecycle and capability runtime | Lifecycle, pointer, module, and host tests pass | Interpreter | 10–20 |
 | Conformance and release | Reproducible suite, docs, `v0.1.0` | Clean clone reproduces checks and examples | All 0.1 work | 5–8 |
 | Compiler (post-0.1) | IR, native and WebAssembly backends, `bn build`, parity suite | Compiled and interpreted results agree | Validated front end | TBD |
@@ -148,9 +152,8 @@ recorded when each work package is completed.
 
 - **5.1 Compiler contract:** define native-code and WebAssembly `bn build`
   artifacts, inputs, outputs, diagnostics, and portability guarantees.
-- **5.2 Compiler IR:** lower the validated AST into a small target-independent
-  intermediate representation.
-- **5.3 Backends:** generate native code and WebAssembly, and link the required
-  runtime capabilities.
+- **5.2 LLVM lowering:** lower typed BN IR to LLVM IR.
+- **5.3 Backends:** use LLVM to generate native code and WebAssembly, and link
+  the required runtime capabilities.
 - **5.4 Parity:** run the same conformance suite against interpreted and
   compiled programs and document intentional target limitations.

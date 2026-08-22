@@ -2,8 +2,8 @@
 
 ## Status
 
-Proposed. This records the intended library model for research work. It does
-not alter Basic Next 0.1 grammar or claim an implementation.
+Partially accepted. `HOST.clock` and the temporal conversion surface are now
+part of 0.1. Hashing, random generation, and statistics remain proposals.
 
 ## Rationale
 
@@ -24,26 +24,26 @@ host capability, imported as `HOST.clock`.
 ```basic
 IMPORT HOST.clock AS Clock
 
-LET data_hora AS TIMESTAMP = Clock.GetTime()
-LET startedAt AS UINT64 = Clock.MonotonicNanoseconds()
-LET elapsed AS UINT64 = Clock.MonotonicNanoseconds() - startedAt
-LET hour AS INTEGER = Math.ToHour(data_hora)
-LET date AS Date = Math.ToDate(data_hora)
-LET weekday AS INTEGER = Math.ToWeekday(data_hora)
+LET data_hora AS TIMESTAMP = Clock.Timestamp()
+LET startedAt AS INT64 = Clock.Monotonic()
+LET elapsed AS INT64 = Clock.Monotonic() - startedAt
+LET hour AS INTEGER = Math.TOHOUR(data_hora)
+LET weekday AS INTEGER = Math.TOWEEKDAY(data_hora)
 ```
 
-`Clock.GetTime()` returns a `TIMESTAMP`: a signed `INT64` count of nanoseconds
-from the UTC Unix epoch. `Clock.MonotonicNanoseconds()` is for measuring
-duration. The future `Clock` contract must define clock resolution and its
-availability.
+`Clock.Timestamp()` returns a `TIMESTAMP`: a signed `INT64` count of
+milliseconds from the UTC Unix epoch. `Clock.Monotonic()` returns nanoseconds
+from an unspecified origin and is only for measuring duration. The normative
+contract is in [`HOST capabilities 0.1`](../library/host.md).
 
 The proposed `Math` conversions are:
 
 | Function | Result |
 | --- | --- |
-| `Math.ToHour(timestamp)` | `INTEGER` from `0` through `23`, in UTC. |
-| `Math.ToDate(timestamp)` | A `Date` value in UTC. `Date` is a future standard-library value with `Year`, `Month`, and `Day` fields; it is not locale-formatted text. |
-| `Math.ToWeekday(timestamp)` | `INTEGER` using ISO 8601 numbering: Monday is `1`, Sunday is `7`, in UTC. |
+| `Math.TOHOUR(timestamp)` | Accepted: `INTEGER` from `0` through `23`, in UTC. |
+| `Math.TODATE(timestamp)` | Accepted: UTC `DATE`; see the temporal standard-library contract. |
+| `Math.TOTIME(timestamp)` | Accepted: UTC `TIME`; see the temporal standard-library contract. |
+| `Math.TOWEEKDAY(timestamp)` | Accepted: `INTEGER` using ISO 8601 numbering: Monday is `1`, Sunday is `7`, in UTC. |
 
 Future unit conversions such as nanoseconds-to-seconds belong to `Math` too;
 their integer rounding and overflow behavior must be defined when introduced.

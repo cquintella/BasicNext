@@ -51,7 +51,7 @@ must not introduce alternative spellings for the same concept.
 Host capabilities use the same import form as modules:
 
 ```basic
-IMPORT HOST.memory AS Memory
+IMPORT HOST.clock AS Clock
 ```
 
 Plugins, extensions, and host APIs must not introduce a parallel import or

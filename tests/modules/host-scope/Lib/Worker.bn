@@ -1,0 +1,5 @@
+IMPORT HOST.main AS main
+
+EXPORT FUNCTION ArgumentCount() AS INTEGER
+    RETURN main.ArgumentCount()
+END FUNCTION

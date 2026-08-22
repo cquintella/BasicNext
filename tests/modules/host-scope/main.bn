@@ -1,0 +1,4 @@
+IMPORT Lib.Worker AS Worker
+
+FUNCTION Start() AS VOID
+END FUNCTION

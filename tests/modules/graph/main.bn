@@ -1,0 +1,5 @@
+IMPORT Basic.Math AS BasicMath
+
+FUNCTION Start() AS VOID
+    LET doubled AS INTEGER = BasicMath.Double(2)
+END FUNCTION
