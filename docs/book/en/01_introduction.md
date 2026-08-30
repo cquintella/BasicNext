@@ -21,6 +21,22 @@ Basic Next is an explicitly typed, object-oriented language designed for clarity
 
 The current reference implementation uses a straightforward pipeline comprising a lexer, a parser (producing an Abstract Syntax Tree), a semantic analyzer, and a reference interpreter. 
 
+## Target Audience
+
+Basic Next is built for developers who value explicit contracts, low cognitive load, and clean architecture without the burden of excessive boilerplates or imposing frameworks. It is suitable for both beginners learning fundamental computing concepts—thanks to its straightforward syntax and readable design—and experienced engineers looking for a predictable, transparent language to craft cross-platform tools, systems, and applications.
+
+## Philosophy
+
+The language's design is heavily informed by Zen principles: clarity, restraint, and deliberate choices over novelty. The core mission is to make modern programming more readable, predictable, pleasurable, and accessible. 
+
+Basic Next follows several key design principles:
+- **Low cognitive load**: Common code should be easy to understand and intent should be local.
+- **Readability first**: Source code is communication, not merely an instruction to a machine.
+- **Explicit contracts**: Types, boundaries, and effects should not be surprising. Every declaration states its type.
+- **Keep it simple (KISS)**: Complexity must earn its place through a concrete problem, not anticipation.
+- **Object-oriented by default**: Behavior belongs to cohesive objects, with explicit dependencies.
+- **Small core, broad reach**: Richness belongs in external modules and host capabilities, keeping reserved words and built-in features to a minimum.
+
 ## Installation and the `bn` CLI
 
 Basic Next source files use the `.bn` extension and are UTF-8 encoded. The
