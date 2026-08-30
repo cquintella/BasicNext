@@ -14,8 +14,8 @@ Authority, in order: [`0.2.ebnf`](../docs/language/0.2/0.2.ebnf),
 - [x] Restore repository-internal links required by the quality gate.
 - [x] Make tagged release publication safe to rerun.
 - [x] Pass the complete local quality gate.
-- [ ] Publish the repaired `v0.2.0` tag and binary assets.
-- [ ] Verify release checksums and GitHub Actions results.
+- [x] Publish the repaired `v0.2.0` tag and binary assets.
+- [x] Verify release checksums and GitHub Actions results.
 
 ## Preserved project records
 
