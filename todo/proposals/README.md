@@ -19,4 +19,4 @@ specification.
   proposed. Temporal values live in `docs/library/temporal.md`.
 - [Host capabilities](host-capabilities.md) — exploratory; not accepted.
 - [Parallel computing](parallel-computing.md) — future `PARALLEL` syntax.
-- [Native LSP](native-lsp.md) — proposed IDE tooling (Language Server Protocol) for version 0.3.
+- [Native LSP & DAP](ide-tooling.md) — proposed IDE tooling (Language Server Protocol) for version 0.3.
