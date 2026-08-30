@@ -95,3 +95,21 @@ Basic Next provides tools for modern development workflows:
 
 - **Jupyter Kernel (`bn-kernel`)**: A Python-based Jupyter kernel that evaluates Basic Next cells. Each cell is treated as a complete program with a `Start` function. To use it, install the `bn-kernel` Python package.
 - **VS Code Extension**: Located in the `plugins/vscode/` directory, this extension provides syntax highlighting and on-save linting diagnostics powered by the `bn check` compiler.
+
+### Installing the VS Code Extension
+
+To get the best development experience with syntax highlighting and automatic error checking on save, you can install the official Basic Next VS Code extension directly from the repository.
+
+1. Open your terminal and navigate to the VS Code plugin directory:
+   ```sh
+   cd plugins/vscode
+   ```
+2. Package the extension into a `.vsix` file using `vsce` (requires Node.js):
+   ```sh
+   npx --yes @vscode/vsce package --allow-missing-repository
+   ```
+3. Install the generated package into Visual Studio Code:
+   ```sh
+   code --install-extension basicnext-0.2.0.vsix
+   ```
+4. **Restart VS Code** completely after the installation to ensure the language server and debugger features load correctly.
