@@ -3,6 +3,8 @@
 **Date:** August 29, 2026  
 **License:** Mozilla Public License 2.0 (MPL-2.0)
 
+![Basic Next Book Cover](../cover.jpg)
+
 This document is the introductory tutorial for the Basic Next (BN) programming language.
 
 > **Note:** This book is the **Version 0.2** tutorial. It is not the normative
