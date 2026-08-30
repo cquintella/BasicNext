@@ -1,0 +1,27 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT BNData AS Data
+
+FUNCTION Start() AS VOID
+    LET empty AS Data.DataFrame = NEW Data.DataFrame()
+    LET xs AS FLOAT[0] = []
+    empty.AddFloatColumn("x", xs)
+    PRINT empty.Mean("x")
+    LET z AS Data.DataFrame OR Error = empty.ZScore("x")
+    IF z IS Error THEN
+        PRINT "z-error"
+    ELSE
+        PRINT z.RowCount()
+        DELETE z
+    END IF
+    DELETE empty
+    LET blank AS Data.DataFrame = NEW Data.DataFrame()
+    LET sliced AS Data.DataFrame OR Error = blank.Slice(0, 1, 0, 0)
+    IF sliced IS Error THEN
+        PRINT sliced.Code
+    END IF
+    DELETE blank
+END FUNCTION

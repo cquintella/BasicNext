@@ -1,0 +1,5 @@
+# Basic Next local tool configuration.
+# Language semantics and standard-module layout remain defined by the 0.2 contract.
+
+[toolchain]
+clang = "clang"

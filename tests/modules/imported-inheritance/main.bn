@@ -1,0 +1,21 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT Pets AS Pets
+
+CLASS Dog EXTENDS Pets.Animal
+    PUBLIC FUNCTION CONSTRUCTOR()
+        SUPER()
+    END FUNCTION
+
+    PUBLIC FUNCTION Speak() AS STRING
+        RETURN SUPER.Speak() + " dog"
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET pet AS Pets.Animal = NEW Dog()
+    PRINT pet.name, pet.Speak()
+END FUNCTION

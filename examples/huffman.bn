@@ -1,0 +1,130 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Huffman coding for a short text.
+// Each tree node is stored in parallel numeric regions; leaf symbols point
+// back to their first Unicode scalar in the source STRING.
+
+FUNCTION Huffman(text AS STRING) AS VOID
+    LET length AS INTEGER = LEN(text)
+    IF length = 0 THEN
+        PRINT "Huffman coding needs a non-empty text."
+        RETURN
+    END IF
+
+    LET capacity AS INTEGER = length * 2 - 1
+    LET weight AS POINTER TO INTEGER[] = NEW INTEGER[capacity]
+    LET left AS POINTER TO INTEGER[] = NEW INTEGER[capacity]
+    LET right AS POINTER TO INTEGER[] = NEW INTEGER[capacity]
+    LET parent AS POINTER TO INTEGER[] = NEW INTEGER[capacity]
+    LET bit AS POINTER TO INTEGER[] = NEW INTEGER[capacity]
+    LET origin AS POINTER TO INTEGER[] = NEW INTEGER[capacity]
+    LET active AS POINTER TO INTEGER[] = NEW INTEGER[capacity]
+    LET leafCount AS INTEGER = 0
+    LET nodeCount AS INTEGER = 0
+    LET index AS INTEGER = 0
+
+    WHILE index < capacity
+        left[index] = -1
+        right[index] = -1
+        parent[index] = -1
+        active[index] = 0
+        index += 1
+    END WHILE
+
+    index = 0
+    WHILE index < length
+        LET leaf AS INTEGER = 0
+        WHILE leaf < leafCount
+            IF text[index] = text[origin[leaf]] THEN
+                EXIT WHILE
+            END IF
+            leaf += 1
+        END WHILE
+
+        IF leaf = leafCount THEN
+            origin[leaf] = index
+            weight[leaf] = 0
+            active[leaf] = 1
+            leafCount += 1
+            nodeCount += 1
+        END IF
+        weight[leaf] += 1
+        index += 1
+    END WHILE
+
+    LET queueSize AS INTEGER = leafCount
+    WHILE queueSize > 1
+        LET first AS INTEGER = -1
+        LET second AS INTEGER = -1
+        index = 0
+        WHILE index < nodeCount
+            IF active[index] = 1 THEN
+                IF first = -1 THEN
+                    first = index
+                ELSE IF weight[index] < weight[first] THEN
+                    first = index
+                END IF
+            END IF
+            index += 1
+        END WHILE
+
+        index = 0
+        WHILE index < nodeCount
+            IF active[index] = 1 AND index <> first THEN
+                IF second = -1 THEN
+                    second = index
+                ELSE IF weight[index] < weight[second] THEN
+                    second = index
+                END IF
+            END IF
+            index += 1
+        END WHILE
+
+        left[nodeCount] = first
+        right[nodeCount] = second
+        weight[nodeCount] = weight[first] + weight[second]
+        active[first] = 0
+        active[second] = 0
+        parent[first] = nodeCount
+        parent[second] = nodeCount
+        bit[first] = 0
+        bit[second] = 1
+        active[nodeCount] = 1
+        nodeCount += 1
+        queueSize -= 1
+    END WHILE
+
+    PRINT "Huffman codes for ", text
+    FOR outputLeaf AS INTEGER = 0 TO leafCount - 1
+        LET code AS STRING = ""
+        LET node AS INTEGER = outputLeaf
+        WHILE parent[node] <> -1
+            IF bit[node] = 0 THEN
+                code = "0" + code
+            ELSE
+                code = "1" + code
+            END IF
+            node = parent[node]
+        END WHILE
+        IF code = "" THEN
+            code = "0"
+        END IF
+        PRINT text[origin[outputLeaf]], ": ", code, " (frequency ", weight[outputLeaf], ")"
+    END FOR
+
+    DELETE active
+    DELETE origin
+    DELETE bit
+    DELETE parent
+    DELETE right
+    DELETE left
+    DELETE weight
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    Huffman("BANANA")
+    RETURN 0
+END FUNCTION

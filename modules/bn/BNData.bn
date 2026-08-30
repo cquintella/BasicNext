@@ -1,0 +1,152 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNData is a standard-library module. Data operations are supplied by the
+// reference runtime/compiler intrinsic implementation behind this API.
+IMPORT HOST.FileSystem AS FS
+EXPORT CLASS DataFrame
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION RowCount() AS INTEGER
+        RETURN 0
+    END FUNCTION
+
+    PUBLIC FUNCTION ColumnCount() AS INTEGER
+        RETURN 0
+    END FUNCTION
+
+    PUBLIC FUNCTION AddStringColumn(name AS STRING, values AS STRING[]) AS VOID OR Error
+        RETURN
+    END FUNCTION
+
+    PUBLIC FUNCTION AddIntegerColumn(name AS STRING, values AS INTEGER[]) AS VOID OR Error
+        RETURN
+    END FUNCTION
+
+    PUBLIC FUNCTION AddFloatColumn(name AS STRING, values AS FLOAT[]) AS VOID OR Error
+        RETURN
+    END FUNCTION
+
+    PUBLIC FUNCTION AddBooleanColumn(name AS STRING, values AS BOOLEAN[]) AS VOID OR Error
+        RETURN
+    END FUNCTION
+
+    PUBLIC FUNCTION ColumnName(index AS INTEGER) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+
+    PUBLIC FUNCTION SetLabel(oldLabel AS STRING, newLabel AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+
+    PUBLIC FUNCTION Transpose() AS DataFrame OR Error
+        RETURN NEW DataFrame()
+    END FUNCTION
+
+    PUBLIC FUNCTION AppendRows(other AS DataFrame) AS DataFrame OR Error
+        RETURN NEW DataFrame()
+    END FUNCTION
+
+    PUBLIC FUNCTION AppendColumns(other AS DataFrame) AS DataFrame OR Error
+        RETURN NEW DataFrame()
+    END FUNCTION
+
+    PUBLIC FUNCTION Join(other AS DataFrame, leftKey AS STRING, rightKey AS STRING) AS DataFrame OR Error
+        RETURN NEW DataFrame()
+    END FUNCTION
+
+    PUBLIC FUNCTION LeftJoin(other AS DataFrame, leftKey AS STRING, rightKey AS STRING) AS DataFrame OR Error
+        RETURN NEW DataFrame()
+    END FUNCTION
+
+    PUBLIC FUNCTION RightJoin(other AS DataFrame, leftKey AS STRING, rightKey AS STRING) AS DataFrame OR Error
+        RETURN NEW DataFrame()
+    END FUNCTION
+
+    PUBLIC FUNCTION FullJoin(other AS DataFrame, leftKey AS STRING, rightKey AS STRING) AS DataFrame OR Error
+        RETURN NEW DataFrame()
+    END FUNCTION
+
+    PUBLIC FUNCTION GetString(row AS INTEGER, name AS STRING) AS STRING OR NA OR Error
+        RETURN ""
+    END FUNCTION
+
+    PUBLIC FUNCTION GetInteger(row AS INTEGER, name AS STRING) AS INTEGER OR NA OR Error
+        RETURN 0
+    END FUNCTION
+
+    PUBLIC FUNCTION GetFloat(row AS INTEGER, name AS STRING) AS FLOAT OR NA OR Error
+        RETURN 0.0
+    END FUNCTION
+
+    PUBLIC FUNCTION GetBoolean(row AS INTEGER, name AS STRING) AS BOOLEAN OR NA OR Error
+        RETURN FALSE
+    END FUNCTION
+
+    PUBLIC FUNCTION ConvertToInteger(name AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+
+    PUBLIC FUNCTION ConvertToFloat(name AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+
+    PUBLIC FUNCTION Mean(name AS STRING) AS FLOAT OR Error
+        RETURN 0.0
+    END FUNCTION
+
+    PUBLIC FUNCTION Median(name AS STRING) AS FLOAT OR Error
+        RETURN 0.0
+    END FUNCTION
+    PUBLIC FUNCTION Quartile1(name AS STRING) AS FLOAT OR Error
+        RETURN 0.0
+    END FUNCTION
+    PUBLIC FUNCTION Quartile3(name AS STRING) AS FLOAT OR Error
+        RETURN 0.0
+    END FUNCTION
+    PUBLIC FUNCTION Mode(name AS STRING) AS FLOAT OR NA OR Error
+        RETURN 0.0
+    END FUNCTION
+    PUBLIC FUNCTION Stdev(name AS STRING) AS FLOAT OR Error
+        RETURN 0.0
+    END FUNCTION
+    PUBLIC FUNCTION Variance(name AS STRING) AS FLOAT OR Error
+        RETURN 0.0
+    END FUNCTION
+    PUBLIC FUNCTION Range(name AS STRING) AS FLOAT OR Error
+        RETURN 0.0
+    END FUNCTION
+    PUBLIC FUNCTION Min(name AS STRING) AS FLOAT OR Error
+        RETURN 0.0
+    END FUNCTION
+    PUBLIC FUNCTION Max(name AS STRING) AS FLOAT OR Error
+        RETURN 0.0
+    END FUNCTION
+    PUBLIC FUNCTION ZScore(name AS STRING) AS DataFrame OR Error
+        RETURN NEW DataFrame()
+    END FUNCTION
+
+    PUBLIC FUNCTION CopyIntegerColumn(name AS STRING, dest AS POINTER TO INTEGER[]) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION CopyFloatColumn(name AS STRING, dest AS POINTER TO FLOAT[]) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Select(rows AS INTEGER[], columns AS INTEGER[]) AS DataFrame OR Error
+        RETURN NEW DataFrame()
+    END FUNCTION
+    PUBLIC FUNCTION Slice(startRow AS INTEGER, rowCount AS INTEGER, startCol AS INTEGER, colCount AS INTEGER) AS DataFrame OR Error
+        RETURN NEW DataFrame()
+    END FUNCTION
+END CLASS
+
+EXPORT FUNCTION ReadCSV(file AS FS.File, hasHeader AS BOOLEAN, separator AS STRING) AS DataFrame OR Error
+    RETURN NEW DataFrame()
+END FUNCTION
+
+EXPORT FUNCTION WriteCSV(file AS FS.File, table AS DataFrame, writeHeader AS BOOLEAN, separator AS STRING) AS VOID OR Error
+    RETURN
+END FUNCTION

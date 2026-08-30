@@ -1,0 +1,21 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+CLASS Animal
+    PUBLIC species AS STRING = "animal"
+END CLASS
+
+CLASS Mammal EXTENDS Animal
+END CLASS
+
+CLASS Dog EXTENDS Mammal
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET animal AS Animal = NEW Dog()
+    PRINT animal.species
+END FUNCTION

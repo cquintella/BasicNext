@@ -1,0 +1,110 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "Basic Next",
+    "scopeName": "source.bn",
+    "patterns": [
+        {
+            "include": "#comments"
+        },
+        {
+            "include": "#strings"
+        },
+        {
+            "include": "#keywords"
+        },
+        {
+            "include": "#types"
+        },
+        {
+            "include": "#constants"
+        },
+        {
+            "include": "#operators"
+        },
+        {
+            "include": "#builtins"
+        }
+    ],
+    "repository": {
+        "comments": {
+            "patterns": [
+                {
+                    "name": "comment.line.double-slash.bn",
+                    "match": "//.*$"
+                },
+                {
+                    "name": "comment.block.bn",
+                    "begin": "/\\*",
+                    "end": "\\*/"
+                }
+            ]
+        },
+        "strings": {
+            "name": "string.quoted.double.bn",
+            "begin": "\"",
+            "end": "\"",
+            "patterns": [
+                {
+                    "name": "constant.character.escape.bn",
+                    "match": "\\\\[\"\\\\]"
+                }
+            ]
+        },
+        "keywords": {
+            "patterns": [
+                {
+                    "name": "keyword.control.bn",
+                    "match": "\\b(IF|THEN|ELSE|END|WHILE|FOR|REPEAT|UNTIL|EXIT|CONTINUE|RETURN|STOP|STEP|EACH|IN|IS)\\b"
+                },
+                {
+                    "name": "keyword.declaration.bn",
+                    "match": "\\b(LET|CONST|AS|FUNCTION|CLASS|STRUCT|INTERFACE|IMPLEMENTS|EXTENDS|IMPORT|EXPORT|PUBLIC|PRIVATE|STATIC|CONSTRUCTOR|DESTRUCTOR)\\b"
+                },
+                {
+                    "name": "keyword.operator.new.bn",
+                    "match": "\\b(NEW|DELETE)\\b"
+                },
+                {
+                    "name": "variable.language.this.bn",
+                    "match": "\\b(SELF|SUPER)\\b"
+                },
+                {
+                    "name": "keyword.other.reserved.bn",
+                    "match": "\\b(PARALLEL|SYSTEM)\\b"
+                }
+            ]
+        },
+        "types": {
+            "name": "storage.type.bn",
+            "match": "\\b(BYTE|INT8|INT16|INT32|INT64|UINT16|UINT32|UINT64|FLOAT32|FLOAT64|INTEGER|FLOAT|TIMESTAMP|DATE|TIME|TIMEZONE|STRING|BOOLEAN|VOID|POINTER|TO)\\b"
+        },
+        "constants": {
+            "patterns": [
+                {
+                    "name": "constant.language.bn",
+                    "match": "\\b(TRUE|FALSE|NULL|NA|NAN|INF|EOF)\\b"
+                },
+                {
+                    "name": "constant.numeric.hex.bn",
+                    "match": "\\b0x[0-9a-fA-F]+\\b"
+                },
+                {
+                    "name": "constant.numeric.binary.bn",
+                    "match": "\\b0b[01]+\\b"
+                },
+                {
+                    "name": "constant.numeric.decimal.bn",
+                    "match": "\\b\\d+(\\.\\d+)?\\b"
+                }
+            ]
+        },
+        "operators": {
+            "name": "keyword.operator.logical.bn",
+            "match": "\\b(AND|OR|NOT|XOR|SHL|SHR|DIV)\\b"
+        },
+        "builtins": {
+            "name": "support.function.bn",
+            "match": "\\b(PRINT|INPUT|LEN|SIZEOF|HOST)\\b"
+        }
+    }
+}

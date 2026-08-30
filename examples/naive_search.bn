@@ -1,0 +1,52 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+FUNCTION Start() AS INTEGER
+    // "texto com padrao escondido"
+    LET corpus AS INTEGER[26] = [116, 101, 120, 116, 111, 32, 99, 111, 109, 32, 112, 97, 100, 114, 97, 111, 32, 101, 115, 99, 111, 110, 100, 105, 100, 111]
+    
+    // "padrao"
+    LET pattern AS INTEGER[6] = [112, 97, 100, 114, 97, 111]
+    
+    LET n AS INTEGER = LEN(corpus)
+    LET m AS INTEGER = LEN(pattern)
+    LET found AS BOOLEAN = FALSE
+    LET position AS INTEGER = -1
+    
+    IF m = 0 THEN
+        PRINT "Padrao invalido"
+        RETURN 1
+    END IF
+    
+    IF m > n THEN
+        PRINT "Nao encontrado"
+        RETURN 0
+    END IF
+    
+    FOR i AS INTEGER = 0 TO n - m
+        LET match AS BOOLEAN = TRUE
+        
+        FOR j AS INTEGER = 0 TO m - 1
+            IF corpus[i + j] <> pattern[j] THEN
+                match = FALSE
+                EXIT FOR
+            END IF
+        END FOR
+        
+        IF match THEN
+            found = TRUE
+            position = i
+            EXIT FOR
+        END IF
+    END FOR
+    
+    IF found THEN
+        PRINT "Padrao encontrado no indice:", position
+    ELSE
+        PRINT "Padrao nao encontrado"
+    END IF
+    
+    RETURN 0
+END FUNCTION

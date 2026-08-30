@@ -1,0 +1,15 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+FUNCTION Start() AS VOID
+    LET typed AS POINTER TO INTEGER = NEW INTEGER
+    typed[0] = 42
+    LET opaque AS POINTER TO VOID = typed
+    IF opaque IS POINTER TO VOID THEN
+        LET restored AS POINTER TO INTEGER = opaque
+        PRINT restored[0]
+    END IF
+    DELETE opaque
+END FUNCTION

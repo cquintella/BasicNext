@@ -1,0 +1,20 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+EXPORT CLASS Box
+    PRIVATE value AS INTEGER = 0
+
+    PUBLIC FUNCTION CONSTRUCTOR(value AS INTEGER)
+        SELF.value = value
+    END FUNCTION
+
+    PUBLIC FUNCTION Value() AS INTEGER
+        RETURN SELF.value
+    END FUNCTION
+
+    PUBLIC STATIC FUNCTION Count() AS INTEGER
+        RETURN 1
+    END FUNCTION
+END CLASS

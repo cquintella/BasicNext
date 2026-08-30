@@ -1,0 +1,16 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT HOST.Random AS R
+
+FUNCTION Start() AS VOID
+    R.Seed(1)
+    LET value AS FLOAT = R.Random()
+    IF value < 0.5 THEN
+        PRINT "low"
+    ELSE
+        PRINT "high"
+    END IF
+END FUNCTION

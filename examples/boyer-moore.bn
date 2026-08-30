@@ -1,0 +1,90 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Boyer-Moore string matching algorithm (Bad Character Heuristic)
+// Demonstrates arrays, loops, and string indexing.
+
+FUNCTION CharCodeBM(c AS STRING) AS INTEGER
+    LET alphabet AS STRING = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 "
+    LET len AS INTEGER = LEN(alphabet)
+    LET i AS INTEGER = 0
+    WHILE i < len
+        IF alphabet[i] = c THEN
+            RETURN i
+        END IF
+        i += 1
+    END WHILE
+    RETURN 63 // Fallback se nao encontrar no alfabeto reduzido
+END FUNCTION
+
+FUNCTION Max(a AS INTEGER, b AS INTEGER) AS INTEGER
+    IF a > b THEN
+        RETURN a
+    END IF
+    RETURN b
+END FUNCTION
+
+FUNCTION BoyerMoore(pattern AS STRING, text AS STRING) AS VOID
+    LET M AS INTEGER = LEN(pattern)
+    LET N AS INTEGER = LEN(text)
+    
+    IF M = 0 OR N = 0 OR M > N THEN
+        RETURN
+    END IF
+
+    // Inicializa a tabela de bad characters
+    LET NO_OF_CHARS AS INTEGER = 64
+    LET badchar AS POINTER TO INTEGER[] = NEW INTEGER[NO_OF_CHARS]
+    LET i AS INTEGER = 0
+    WHILE i < NO_OF_CHARS
+        badchar[i] = -1
+        i += 1
+    END WHILE
+
+    // Preenche a tabela com as ocorrencias do padrao
+    i = 0
+    WHILE i < M
+        badchar[CharCodeBM(pattern[i])] = i
+        i += 1
+    END WHILE
+
+    LET s AS INTEGER = 0 // shift do padrao em relacao ao texto
+    WHILE s <= (N - M)
+        LET j AS INTEGER = M - 1
+
+        // Reduz j enquanto houver match do padrao e texto
+        WHILE j >= 0
+            IF pattern[j] <> text[s + j] THEN
+                EXIT WHILE
+            END IF
+            j -= 1
+        END WHILE
+
+        // Se o padrao foi encontrado
+        IF j < 0 THEN
+            PRINT "Encontrado padrao no indice ", s
+            IF s + M < N THEN
+                s += M - badchar[CharCodeBM(text[s + M])]
+            ELSE
+                s += 1
+            END IF
+        ELSE
+            s += Max(1, j - badchar[CharCodeBM(text[s + j])])
+        END IF
+    END WHILE
+    
+    DELETE badchar
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    LET text AS STRING = "ABABDABACDABABCABAB"
+    LET pattern AS STRING = "ABABCABAB"
+    
+    PRINT "Texto: ", text
+    PRINT "Padrao a buscar: ", pattern
+    BoyerMoore(pattern, text)
+    
+    RETURN 0
+END FUNCTION

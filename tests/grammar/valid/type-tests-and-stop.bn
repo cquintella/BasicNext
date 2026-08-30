@@ -1,0 +1,14 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+FUNCTION Start() AS VOID
+    LET value AS FLOAT OR STRING = 1.0
+
+    IF value IS FLOAT THEN
+        STOP 0
+    ELSE
+        STOP 1
+    END IF
+END FUNCTION

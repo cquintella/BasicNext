@@ -1,0 +1,46 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT BNData AS Data
+IMPORT HOST.FileSystem AS FS
+IMPORT BNMath AS Math
+
+FUNCTION Start() AS VOID
+    LET file AS FS.File OR Error = FS.Open("tests/fixtures/bndata-sprint6.csv", FS.READ)
+    IF file IS Error THEN
+        PRINT file.Code
+    ELSE
+        LET table AS Data.DataFrame OR Error = Data.ReadCSV(file, TRUE, ",")
+        IF table IS Error THEN
+            PRINT table.Code
+        ELSE
+            PRINT table.RowCount(), table.ColumnCount(), table.ColumnName(1)
+            PRINT table.GetString(0, "name")
+            table.ConvertToInteger("age")
+            PRINT table.GetInteger(1, "age"), table.Mean("age")
+            LET copied AS POINTER TO INTEGER[] = NEW INTEGER[2]
+            table.CopyIntegerColumn("age", copied)
+            PRINT Math.MEAN(copied)
+            DELETE copied
+            PRINT table.Median("age"), table.Min("age"), table.Max("age")
+            LET selected AS Data.DataFrame OR Error = table.Select([0, 1], [1, 0])
+            IF selected IS Error THEN
+                PRINT selected.Code
+            ELSE
+                PRINT selected.RowCount(), selected.ColumnCount()
+                DELETE selected
+            END IF
+            LET sliced AS Data.DataFrame OR Error = table.Slice(0, 1, 0, 1)
+            IF sliced IS Error THEN
+                PRINT sliced.Code
+            ELSE
+                PRINT sliced.RowCount(), sliced.ColumnCount()
+                DELETE sliced
+            END IF
+            DELETE table
+        END IF
+        DELETE file
+    END IF
+END FUNCTION

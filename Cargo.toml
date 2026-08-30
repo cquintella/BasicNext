@@ -1,0 +1,21 @@
+[package]
+name = "bn"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.97"
+description = "Basic Next reference implementation"
+license = "MIT"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "bn"
+path = "src/main.rs"
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"

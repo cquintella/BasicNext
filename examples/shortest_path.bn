@@ -1,0 +1,15 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+FUNCTION Start() AS VOID
+    LET graph AS INTEGER[3][3] = [[0, 4, 9], [4, 0, 2], [9, 2, 0]]
+    LET via AS INTEGER = graph[0][1] + graph[1][2]
+    LET direct AS INTEGER = graph[0][2]
+    IF via < direct THEN
+        PRINT via
+    ELSE
+        PRINT direct
+    END IF
+END FUNCTION
