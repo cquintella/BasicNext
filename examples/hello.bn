@@ -1,0 +1,14 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+FUNCTION Start() AS VOID
+    PRINT "Bem Vindo ao Basic Next"
+    LET counter AS INTEGER = 0
+
+    WHILE counter < 10
+        PRINT "Basic Next", counter
+        counter += 1
+    END WHILE
+END FUNCTION

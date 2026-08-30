@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+"""Small JSON-lines launcher for the zero-dependency Basic Next kernel host."""
+
+from bn_kernel.launcher import main
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,214 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Broad Basic Next 0.2 coverage. `bn check` and `bn run` both accept this
+// program. `INPUT()` reads one line; empty stdin yields EOF.
+
+IMPORT HOST.Clock AS Clock
+IMPORT HOST.Console AS CON
+IMPORT HOST.Random AS Random
+IMPORT BNData AS Data
+IMPORT BNMath AS Math
+
+EXPORT STRUCT Point
+    X AS FLOAT = 0.0
+    Y AS FLOAT = 0.0
+END STRUCT
+
+INTERFACE Valued
+    FUNCTION Value() AS INTEGER
+END INTERFACE
+
+EXPORT CLASS Counter IMPLEMENTS Valued
+    PRIVATE value AS INTEGER = 0
+    PUBLIC STATIC instances AS INTEGER = 0
+
+    PUBLIC FUNCTION CONSTRUCTOR(initial AS INTEGER)
+        SELF.value = initial
+    END FUNCTION
+
+    PUBLIC FUNCTION DESTRUCTOR()
+        PRINT "counter deleted"
+    END FUNCTION
+
+    PUBLIC FUNCTION Value() AS INTEGER
+        RETURN SELF.value
+    END FUNCTION
+
+    PUBLIC FUNCTION Increment(amount AS INTEGER) AS VOID
+        SELF.value += amount
+    END FUNCTION
+
+    PUBLIC STATIC FUNCTION Count() AS INTEGER
+        RETURN Counter.instances
+    END FUNCTION
+END CLASS
+
+CLASS DoubledCounter EXTENDS Counter
+    PUBLIC FUNCTION CONSTRUCTOR(initial AS INTEGER)
+        SUPER(initial)
+    END FUNCTION
+
+    PUBLIC FUNCTION Value() AS INTEGER
+        RETURN SUPER.Value() * 2
+    END FUNCTION
+END CLASS
+
+FUNCTION Double(value AS INTEGER) AS INTEGER
+    RETURN value * 2
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    CON.Cls()
+    CON.Beep()
+    CONST limit AS INTEGER = 4
+    LET signedByte AS INT8 = -8
+    LET unsignedByte AS BYTE = 0b00001111
+    LET shortValue AS INT16 = 1024
+    LET unsignedShort AS UINT16 = 65535
+    LET count AS INT32 = 0
+    LET largeCount AS INT64 = 4294967296
+    LET unsignedCount AS UINT32 = 4294967295
+    LET address AS UINT64 = 0xFFFFFFFFFFFFFFFF
+    LET capturedAt AS TIMESTAMP = Clock.Timestamp()
+    LET monotonic AS INT64 = Clock.Monotonic()
+    LET today AS DATE = Math.TODATE(capturedAt)
+    LET now AS TIME = Math.TOTIME(capturedAt)
+    LET tz AS TIMEZONE = TimeZone.Parse("UTC")
+    LET argumentCount AS INTEGER = LEN(HOST.Args)
+    LET executable AS STRING = HOST.Args[0]
+    LET single AS FLOAT32 = 0.5
+    LET real AS FLOAT = 2.0
+    LET truth AS BOOLEAN = TRUE
+    LET text AS STRING = "Basic Next"
+    LET firstCharacter AS STRING = text[0]
+    LET firstCode AS INTEGER OR Error = ASC(firstCharacter)
+    LET reconstructed AS STRING OR Error = CHAR(66)
+    LET notANumber AS FLOAT = NAN
+    LET positiveInfinity AS FLOAT = INF
+    LET negativeInfinity AS FLOAT = -INF
+    LET optionalText AS STRING OR NULL = NULL
+    LET observation AS FLOAT OR NA = NA
+    LET line AS STRING OR EOF = INPUT()
+
+    LET transform AS FUNCTION(INTEGER) AS INTEGER = Double
+    LET doubled AS INTEGER = transform(limit)
+    LET integerQuotient AS INTEGER = doubled DIV 3
+    LET remainder AS INTEGER = doubled % 3
+    LET power AS INTEGER = 2
+    power **= 3
+    LET bitwise AS INTEGER = (limit XOR 2) SHR 1
+    LET quotient AS FLOAT = doubled / 3
+    LET rounded AS FLOAT = Math.ROUND(quotient, 2)
+    LET root AS FLOAT = Math.SQRT(9.0)
+    LET exponential AS FLOAT = Math.EXP(1.0)
+    LET logarithm AS FLOAT = Math.LOG2(8.0)
+    LET angle AS FLOAT = Math.ATAN2(1.0, 1.0)
+    LET distance AS FLOAT = Math.HYPOT(3.0, 4.0)
+    LET fused AS FLOAT = Math.FMA(2.0, 3.0, 4.0)
+    LET parsed AS FLOAT = Math.VAL(" 3,14")
+    LET samples AS INTEGER[4] = [1, 2, 2, 5]
+    LET sampleMean AS FLOAT = Math.MEAN(samples)
+    LET sampleMedian AS FLOAT = Math.MEDIAN(samples)
+    LET sampleMode AS FLOAT OR NA = Math.MODE(samples)
+    LET sampleRange AS FLOAT = Math.RANGE(samples)
+
+    LET origin AS Point
+    LET points AS Point[2] = [origin, origin]
+    LET counter AS Counter = NEW Counter(1)
+    LET inheritedCounter AS Counter = NEW DoubledCounter(3)
+    LET maybeCounter AS Counter OR NULL = counter
+    LET counters AS Counter[1] = [counter]
+    LET fixedMemory AS POINTER TO INTEGER[2] = NEW INTEGER[2]
+    LET dynamicMemory AS POINTER TO FLOAT[] = NEW FLOAT[limit]
+    LET buffer AS POINTER TO BYTE[] = NEW BYTE[8]
+    LET typedCell AS POINTER TO INTEGER = NEW INTEGER
+    LET opaqueCell AS POINTER TO VOID = typedCell
+    LET restoredCell AS POINTER TO INTEGER = opaqueCell
+    LET matrix AS INTEGER[2][2] = [[1, 2], [3, 4]]
+    LET frame AS Data.DataFrame = NEW Data.DataFrame()
+    LET textLength AS INTEGER = LEN(text)
+    LET textSize AS INTEGER = SIZEOF(text)
+    LET countSize AS INTEGER = SIZEOF(count)
+    LET matrixLength AS INTEGER = LEN(matrix)
+    LET matrixSize AS INTEGER = SIZEOF(matrix)
+    LET fixedLength AS INTEGER = LEN(fixedMemory)
+    LET dynamicLength AS INTEGER = LEN(dynamicMemory)
+
+    origin.X = root
+    fixedMemory[0] = doubled
+    fixedMemory[1] = power
+    restoredCell[0] = 42
+    counter.Increment(1)
+    frame.AddIntegerColumn("Sample", samples)
+
+    Random.Seed(1)
+    LET randomValue AS FLOAT = Random.Random()
+
+    // Positioned console operations require a TTY, so they are demonstrated
+    // without making the tour depend on one.
+    IF FALSE THEN
+        CON.PrintAt(1, 1, "Basic Next")
+        PRINT CON.NumCols(), CON.NumRows()
+    END IF
+
+    IF optionalText IS NULL THEN
+        PRINT text, counter.Value(), integerQuotient, remainder, quotient
+    ELSE IF notANumber IS NAN THEN
+        PRINT "NAN"
+    ELSE IF positiveInfinity IS INF AND negativeInfinity IS -INF THEN
+        PRINT "infinity"
+    ELSE
+        PRINT optionalText
+    END IF
+
+    WHILE count < limit
+        count += 1
+        IF count = 2 THEN
+            CONTINUE WHILE
+        END IF
+        EXIT WHILE
+    END WHILE
+
+    REPEAT
+        count -= 1
+        EXIT REPEAT
+    UNTIL count = 0
+    END REPEAT
+
+    FOR index AS INTEGER = 0 TO limit STEP 2
+        PRINT index
+        CONTINUE FOR
+    END FOR
+
+    FOR EACH point AS Point IN points
+        PRINT point.X
+        EXIT FOR
+    END FOR
+
+    truth = (unsignedByte SHL 1) <> 0 AND signedByte < shortValue
+    observation = real
+    maybeCounter = NULL
+    PRINT single, largeCount, unsignedShort, unsignedCount, address, capturedAt, monotonic
+    PRINT argumentCount, executable, line
+    PRINT Math.TOHOUR(capturedAt), Math.TOWEEKDAY(capturedAt)
+    PRINT exponential, logarithm, angle, distance, fused, counters[0].Value()
+    PRINT firstCharacter, firstCode, reconstructed
+    PRINT parsed, sampleMean, sampleMedian, sampleMode, sampleRange, Math.MAX_INTEGER
+    PRINT inheritedCounter.Value(), restoredCell[0], fixedLength, dynamicLength
+    PRINT randomValue, frame.RowCount(), frame.ColumnCount(), frame.ColumnName(0)
+
+    DELETE fixedMemory
+    DELETE dynamicMemory
+    DELETE buffer
+    DELETE opaqueCell
+    DELETE frame
+    DELETE inheritedCounter
+    DELETE counter
+    IF count < 0 THEN
+        STOP 1
+    END IF
+    RETURN 0
+END FUNCTION

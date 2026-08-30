@@ -1,0 +1,122 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT HOST.Clock AS Clock
+IMPORT BNMath AS Math
+
+EXPORT STRUCT Point
+    X AS FLOAT = 0.0
+    Y AS FLOAT = 0.0
+END STRUCT
+
+INTERFACE Named
+    FUNCTION Name() AS STRING
+END INTERFACE
+
+EXPORT CLASS Box IMPLEMENTS Named
+    PRIVATE value AS INTEGER = 0
+    PUBLIC STATIC count AS INTEGER = 0
+
+    PUBLIC FUNCTION CONSTRUCTOR(value AS INTEGER)
+        SELF.value = value
+    END FUNCTION
+
+    PUBLIC FUNCTION DESTRUCTOR()
+        PRINT "destroyed"
+    END FUNCTION
+
+    PUBLIC FUNCTION Name() AS STRING
+        RETURN "box"
+    END FUNCTION
+
+    PUBLIC STATIC FUNCTION Count() AS INTEGER
+        RETURN Box.count
+    END FUNCTION
+END CLASS
+
+FUNCTION Add(left AS INTEGER, right AS INTEGER) AS INTEGER
+    RETURN left + right
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    HOST.Console.Cls()
+    HOST.Console.Beep()
+    LET counter AS INTEGER = 0
+    CONST limit AS INTEGER = 3
+    LET page AS INTEGER = limit DIV 2
+    LET square AS INTEGER = limit ** 2
+    LET reciprocal AS FLOAT = 2.0 ** -1.0
+    LET decay AS FLOAT = Math.EXP(-1.0)
+    LET angle AS FLOAT = Math.ATAN2(1.0, 1.0)
+    LET norm AS FLOAT = Math.HYPOT(3.0, 4.0)
+    LET fused AS FLOAT = Math.FMA(2.0, 3.0, 4.0)
+    LET flags AS BYTE = 0b00000001
+    LET hexadecimal AS BYTE = 0x0F
+    LET signedByte AS INT8 = -1
+    LET shortUnsigned AS UINT16 = 65535
+    LET sampleCount AS INT64 = 4294967296
+    LET address AS UINT64 = 0xFFFFFFFFFFFFFFFF
+    LET capturedAt AS TIMESTAMP = Clock.Timestamp()
+    LET monotonic AS INT64 = Clock.Monotonic()
+    LET argumentCount AS INTEGER = LEN(HOST.Args)
+    LET executable AS STRING = HOST.Args[0]
+    LET ready AS BOOLEAN = FALSE
+    LET notANumber AS FLOAT = NAN
+    LET positiveInfinity AS FLOAT = INF
+    LET negativeInfinity AS FLOAT = -INF
+    LET maybeBox AS Box OR NULL = NULL
+    LET missingValue AS FLOAT OR NA = NA
+    LET pointer AS POINTER TO INTEGER[2] = NEW INTEGER[2]
+    LET dynamicPointer AS POINTER TO FLOAT[] = NEW FLOAT[limit]
+    LET box AS Box = NEW Box(1)
+    LET origin AS Point
+    LET points AS Point[1] = [origin]
+    LET boxes AS Box[1] = [box]
+    LET counterLength AS INTEGER = LEN(counter)
+    LET counterSize AS INTEGER = SIZEOF(counter)
+    LET executableLength AS INTEGER = LEN(executable)
+    LET executableSize AS INTEGER = SIZEOF(executable)
+    LET originSize AS INTEGER = SIZEOF(origin)
+
+    pointer[0] = Add(counter, limit) AS INTEGER
+    origin.X += 1.0
+    PRINT pointer[0], Box.Count(), flags SHL 1
+
+    IF counter = 0 THEN
+        counter += 1
+    ELSE IF notANumber IS NAN THEN
+        counter = 0
+    ELSE IF positiveInfinity IS INF AND negativeInfinity IS -INF THEN
+        counter = 0
+    ELSE IF counter < limit THEN
+        counter *= 2
+    ELSE
+        counter -= 1
+    END IF
+
+    WHILE counter < limit
+        counter += 1
+        EXIT WHILE
+    END WHILE
+
+    REPEAT
+        counter -= 1
+        EXIT REPEAT
+    UNTIL counter = 0
+    END REPEAT
+
+    FOR i AS INTEGER = 0 TO limit
+        PRINT i
+        EXIT FOR
+    END FOR
+
+    FOR EACH point AS Point IN points
+        PRINT point.X
+    END FOR
+
+    DELETE pointer
+    DELETE dynamicPointer
+    DELETE box
+END FUNCTION

@@ -1,0 +1,14 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT BNData AS Data
+
+FUNCTION Start() AS VOID
+    LET frame AS Data.DataFrame = NEW Data.DataFrame()
+    LET values AS STRING[3] = ["a", "b", "c"]
+    frame.AddStringColumn("value", values)
+    PRINT frame.RowCount()
+    DELETE frame
+END FUNCTION

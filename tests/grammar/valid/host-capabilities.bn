@@ -1,0 +1,17 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT HOST.Clock AS Clock
+IMPORT BNMath AS Math
+
+FUNCTION Start() AS VOID
+    LET count AS INTEGER = LEN(HOST.Args)
+    LET executable AS STRING = HOST.Args[0]
+    LET timestamp AS TIMESTAMP = Clock.Timestamp()
+    LET started AS INT64 = Clock.Monotonic()
+    LET hour AS INTEGER = Math.TOHOUR(timestamp)
+    LET weekday AS INTEGER = Math.TOWEEKDAY(timestamp)
+    PRINT count, executable, timestamp, started, hour, weekday
+END FUNCTION

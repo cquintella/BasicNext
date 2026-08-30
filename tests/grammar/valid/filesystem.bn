@@ -1,0 +1,18 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT HOST.FileSystem AS FS
+
+FUNCTION Start() AS VOID
+    LET file AS FS.File OR Error = FS.Open("Cargo.toml", FS.READ)
+    IF file IS Error THEN
+        PRINT file.Code
+    ELSE
+        LET line AS STRING OR EOF OR Error = file.ReadLine()
+        PRINT line
+        file.Close()
+        DELETE file
+    END IF
+END FUNCTION

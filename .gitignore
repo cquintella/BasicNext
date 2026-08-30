@@ -1,0 +1,14 @@
+/target/
+*.o
+*.obj
+*.exe
+__pycache__/
+.venv/
+.venv-kernel/
+*.egg-info/
+.DS_Store
+/todo/research/
+/analise.md
+AGENTS.md
+.env
+.vscode

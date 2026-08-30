@@ -1,0 +1,72 @@
+{
+  "name": "basicnext",
+  "displayName": "Basic Next",
+  "description": "Language support for Basic Next",
+  "version": "0.2.0",
+  "publisher": "basicnext",
+  "license": "MIT",
+  "engines": { "vscode": ">=1.80.0" },
+  "categories": ["Programming Languages"],
+  "activationEvents": ["onLanguage:basicnext"],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "basicnext.run", "title": "Basic Next: Run" },
+      { "command": "basicnext.buildAndRun", "title": "Basic Next: Build and Run" }
+    ],
+    "debuggers": [{
+      "type": "basicnext",
+      "label": "Basic Next",
+      "languages": ["basicnext"],
+      "runtime": "node",
+      "program": "./debugAdapter.js",
+      "initialConfigurations": [{
+        "type": "basicnext",
+        "request": "launch",
+        "name": "Run Basic Next",
+        "program": "${file}"
+      }],
+      "configurationAttributes": {
+        "launch": {
+          "required": ["program"],
+          "properties": {
+            "program": { "type": "string" },
+            "cwd": { "type": "string" },
+            "runtimeExecutable": { "type": "string" }
+          }
+        }
+      }
+    }],
+    "keybindings": [
+      { "command": "basicnext.run", "key": "ctrl+f5", "mac": "cmd+f5", "when": "editorLangId == basicnext" },
+      { "command": "basicnext.buildAndRun", "key": "ctrl+shift+f5", "mac": "cmd+shift+f5", "when": "editorLangId == basicnext" }
+    ],
+    "menus": {
+      "editor/title/run": [
+        { "command": "basicnext.run", "when": "editorLangId == basicnext", "group": "navigation" },
+        { "command": "basicnext.buildAndRun", "when": "editorLangId == basicnext", "group": "navigation" }
+      ]
+    },
+    "languages": [{
+      "id": "basicnext",
+      "aliases": ["Basic Next", "bn"],
+      "extensions": [".bn"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "basicnext",
+      "scopeName": "source.bn",
+      "path": "./syntaxes/basicnext.tmLanguage.json"
+    }],
+    "configuration": {
+      "title": "Basic Next",
+      "properties": {
+        "basicnext.executable": {
+          "type": "string",
+          "default": "bn",
+          "description": "Path to the bn executable used for linting."
+        }
+      }
+    }
+  }
+}

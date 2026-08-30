@@ -1,0 +1,13 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT BNMath AS Math
+
+FUNCTION Start() AS VOID
+    LET values AS INTEGER[2] = [2, 1]
+    LET minimum AS INTEGER = Math.MIN(values)
+    LET maximum AS INTEGER = Math.MAX(values)
+    PRINT minimum, maximum
+END FUNCTION

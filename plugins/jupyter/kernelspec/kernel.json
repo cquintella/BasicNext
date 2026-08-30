@@ -1,0 +1,5 @@
+{
+  "argv": ["python3", "-m", "bn_kernel", "-f", "{connection_file}"],
+  "display_name": "Basic Next",
+  "language": "basicnext"
+}

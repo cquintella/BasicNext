@@ -1,0 +1,197 @@
+.\" groff man page for the Basic Next reference tool.
+.TH BN 1 "August 28, 2026" "bn 0.2.0-dev" "Basic Next"
+.SH NAME
+bn \- Basic Next reference checker, interpreter, and compiler
+.SH SYNOPSIS
+.B bn
+.I command
+.RI [ options ]
+.I file.bn
+.RI [ "-- program-args" ]
+.SH DESCRIPTION
+.B bn
+processes UTF-8 Basic Next 0.2 source through a source-spanned pipeline:
+lexer, parser/AST, semantic analysis, typed BN IR, and either the reference
+interpreter or the LLVM backend.
+.PP
+The executable module must define
+.BR "FUNCTION Start" .
+No project file is required for a single program.
+.SH COMMANDS
+.TP
+.B check
+Validate lexical, syntactic, and semantic rules. With
+.BR --emit ,
+print a selected frontend artifact.
+.TP
+.B lex
+Print the token stream.
+.TP
+.B run
+Validate, lower to typed BN IR, and execute
+.BR Start .
+The successful process status is the program result.
+.TP
+.B build
+Lower the supported typed BN IR subset to LLVM IR. Without
+.BR -o ,
+print LLVM IR. With
+.BR -o ,
+invoke Clang to create a native executable or Clang and
+.B wasm-ld
+to create a linked WebAssembly module.
+.SH OPTIONS
+.TP
+.BR -v , " --verbose"
+Print pipeline stages. Repeat it, or use
+.BR -vv ,
+to also print tokens.
+.TP
+.BI --emit " tokens|ast|typed-ast|ir"
+Select the frontend artifact printed by
+.BR check .
+.TP
+.BR -o , " --output " file
+Write the selected artifact or compiled program to
+.IR file .
+.TP
+.BI --target " native|wasm32"
+Select the
+.B build
+target. The default is
+.BR native .
+.TP
+.B --no-filesystem
+With
+.BR run ,
+reject a
+.B HOST.FileSystem
+import before
+.BR Start .
+The Jupyter kernel uses this boundary.
+.TP
+.B --trace
+Report the interpreter entry point.
+.TP
+.BI --color " auto|always|never"
+Control ANSI colour on status messages.
+.TP
+.BR -V , " --version"
+Print the tool version.
+.TP
+.BR -h , " --help"
+Print command help.
+.TP
+.B --
+End tool options. Remaining values become program arguments.
+.SH ARGUMENTS
+.B HOST.Args
+is available only in the executable module and requires no import.
+.B HOST.Args[0]
+is the absolute source path under
+.BR "bn run" ;
+later entries are values after
+.BR -- .
+.B LEN(HOST.Args)
+returns the full count.
+.PP
+.B HOST.Main ,
+.BR SYSTEM ,
+.BR ArgumentCount() ,
+and
+.B Argument(index)
+were withdrawn in 0.2.
+.SH MODULES
+Every import declares an alias. Imported declarations are referenced as
+.IR alias.member .
+User modules belong beneath
+.BR modules/ .
+Standard modules such as
+.B BNMath
+and
+.B BNData
+belong beneath
+.B modules/bn/
+and require explicit imports.
+.PP
+.B HOST
+is the only built-in interface object. 0.2 provides
+.BR HOST.Args ,
+.BR HOST.Clock ,
+.BR HOST.Console ,
+.BR HOST.Random ,
+and
+.BR HOST.FileSystem .
+.SH WEBASSEMBLY
+A WebAssembly artifact produced by
+.B "bn build --target wasm32 -o program.wasm"
+runs in the reference Node.js host:
+.PP
+.nf
+.RS
+node bin/bn-wasm program.wasm [args...]
+.RE
+.fi
+.PP
+The host supplies stream input/output, arguments, allocation, and seeded
+random. Filesystem and positioned-console capabilities are unavailable.
+.SH DIAGNOSTICS
+A Basic Next diagnostic exits 1. Invalid command use, missing files, unavailable
+toolchains, and unsupported compiler lowering exit 2. Diagnostics include a
+stable code and source span when applicable.
+.PP
+.B BUILD_LOWERING_UNAVAILABLE
+means the program is valid but outside the current compiler subset; use
+.B bn run
+for the reference semantics.
+.SH ENVIRONMENT
+.TP
+.B BN_WASM_LD
+Command or path used as the WebAssembly linker.
+.PP
+.B bn
+does not read environment variables for language behaviour.
+.SH FILES
+.TP
+.I docs/language/0.2/0.2.ebnf
+Highest-priority accepted grammar.
+.TP
+.I docs/language/0.2/0.2.md
+Accepted 0.2 language contract.
+.TP
+.I docs/language/0.2/keywords.md
+Keyword and reserved-form contract.
+.TP
+.I docs/project/usage.md
+Installation, examples, limits, and troubleshooting.
+.TP
+.I docs/project/kernel.md
+Jupyter host contract.
+.TP
+.I done/project/compiler-0.2.md
+LLVM targets and WebAssembly host ABI.
+.SH LIMITATIONS
+LLVM lowering covers a typed scalar subset and rejects unsupported IR
+explicitly. Time-zone values do not apply TZDB zone rules. The VS Code adapter
+is launch-only and has no breakpoints or stepping. 0.2 has no package registry,
+network, GPU, DOM, or C FFI.
+.SH EXAMPLES
+.nf
+.RS
+bn check examples/hello.bn
+bn run examples/language-tour.bn
+bn run examples/hello.bn -- extra-argument
+bn check --emit ir examples/factorial.bn
+bn build examples/hello.bn -o hello
+bn build --target wasm32 examples/hello.bn -o hello.wasm
+.RE
+.fi
+.SH SEE ALSO
+.IR docs/book/en/toc.md ,
+.IR docs/project/usage.md ,
+.IR docs/project/kernel.md ,
+.IR docs/language/0.2/0.2.md ,
+.IR docs/library/host.md ,
+.IR docs/library/math.md
+.SH AUTHOR
+Carlos Quintella, Basic Next BDFL.

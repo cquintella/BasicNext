@@ -1,0 +1,79 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Knuth-Morris-Pratt (KMP) string matching algorithm
+// This example demonstrates arrays, string indexing, and loops in Basic Next.
+
+FUNCTION ComputeLPS(pattern AS STRING, M AS INTEGER) AS POINTER TO INTEGER[]
+    LET lps AS POINTER TO INTEGER[] = NEW INTEGER[M]
+    LET length AS INTEGER = 0
+    LET i AS INTEGER = 1
+    lps[0] = 0
+
+    WHILE i < M
+        IF pattern[i] = pattern[length] THEN
+            length += 1
+            lps[i] = length
+            i += 1
+        ELSE
+            IF length <> 0 THEN
+                length = lps[length - 1]
+            ELSE
+                lps[i] = 0
+                i += 1
+            END IF
+        END IF
+    END WHILE
+
+    RETURN lps
+END FUNCTION
+
+FUNCTION KMPSearch(pattern AS STRING, text AS STRING) AS VOID
+    LET M AS INTEGER = LEN(pattern)
+    LET N AS INTEGER = LEN(text)
+    
+    IF M = 0 THEN
+        RETURN
+    END IF
+
+    LET lps AS POINTER TO INTEGER[] = ComputeLPS(pattern, M)
+    LET i AS INTEGER = 0
+    LET j AS INTEGER = 0
+
+    WHILE i < N
+        IF pattern[j] = text[i] THEN
+            j += 1
+            i += 1
+        END IF
+        
+        IF j = M THEN
+            PRINT "Encontrado padrao no indice ", i - j
+            j = lps[j - 1]
+        ELSE
+            IF i < N THEN
+                IF pattern[j] <> text[i] THEN
+                    IF j <> 0 THEN
+                        j = lps[j - 1]
+                    ELSE
+                        i += 1
+                    END IF
+                END IF
+            END IF
+        END IF
+    END WHILE
+    
+    DELETE lps
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    LET text AS STRING = "ABABDABACDABABCABAB"
+    LET pattern AS STRING = "ABABCABAB"
+    
+    PRINT "Texto: ", text
+    PRINT "Padrao a buscar: ", pattern
+    KMPSearch(pattern, text)
+    
+    RETURN 0
+END FUNCTION

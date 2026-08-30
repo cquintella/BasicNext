@@ -1,0 +1,208 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Object-oriented linear collections backed by heap-allocated pointer regions.
+// Each object owns its region and releases it through Dispose().
+
+FUNCTION HeapWrite(region AS POINTER TO INTEGER[], index AS INTEGER, value AS INTEGER) AS VOID
+    region[index] = value
+END FUNCTION
+
+FUNCTION HeapRead(region AS POINTER TO INTEGER[], index AS INTEGER) AS INTEGER
+    RETURN region[index]
+END FUNCTION
+
+CLASS Stack
+    PRIVATE storage AS POINTER TO INTEGER[] = NEW INTEGER[0]
+    PRIVATE capacity AS INTEGER = 0
+    PRIVATE count AS INTEGER = 0
+
+    PUBLIC FUNCTION CONSTRUCTOR(capacity AS INTEGER)
+        DELETE SELF.storage
+        SELF.storage = NEW INTEGER[capacity]
+        SELF.capacity = capacity
+    END FUNCTION
+
+    PUBLIC FUNCTION Push(value AS INTEGER) AS VOID
+        IF SELF.count = SELF.capacity THEN
+            PRINT "  Stack overflow: ", value, " was not pushed."
+            RETURN
+        END IF
+        HeapWrite(SELF.storage, SELF.count, value)
+        SELF.count += 1
+    END FUNCTION
+
+    PUBLIC FUNCTION Pop() AS INTEGER OR NULL
+        IF SELF.count = 0 THEN
+            RETURN NULL
+        END IF
+        SELF.count -= 1
+        RETURN HeapRead(SELF.storage, SELF.count)
+    END FUNCTION
+
+    PUBLIC FUNCTION Count() AS INTEGER
+        RETURN SELF.count
+    END FUNCTION
+
+    PUBLIC FUNCTION Dispose() AS VOID
+        DELETE SELF.storage
+    END FUNCTION
+END CLASS
+
+CLASS Queue
+    PRIVATE storage AS POINTER TO INTEGER[] = NEW INTEGER[0]
+    PRIVATE capacity AS INTEGER = 0
+    PRIVATE front AS INTEGER = 0
+    PRIVATE count AS INTEGER = 0
+
+    PUBLIC FUNCTION CONSTRUCTOR(capacity AS INTEGER)
+        DELETE SELF.storage
+        SELF.storage = NEW INTEGER[capacity]
+        SELF.capacity = capacity
+    END FUNCTION
+
+    PUBLIC FUNCTION Enqueue(value AS INTEGER) AS VOID
+        IF SELF.count = SELF.capacity THEN
+            PRINT "  Queue overflow: ", value, " was not enqueued."
+            RETURN
+        END IF
+        HeapWrite(SELF.storage, SELF.front + SELF.count, value)
+        SELF.count += 1
+    END FUNCTION
+
+    PUBLIC FUNCTION Dequeue() AS INTEGER OR NULL
+        IF SELF.count = 0 THEN
+            RETURN NULL
+        END IF
+        LET value AS INTEGER = HeapRead(SELF.storage, SELF.front)
+        SELF.front += 1
+        SELF.count -= 1
+        RETURN value
+    END FUNCTION
+
+    PUBLIC FUNCTION Count() AS INTEGER
+        RETURN SELF.count
+    END FUNCTION
+
+    PUBLIC FUNCTION Dispose() AS VOID
+        DELETE SELF.storage
+    END FUNCTION
+END CLASS
+
+CLASS CircularDeque
+    PRIVATE storage AS POINTER TO INTEGER[] = NEW INTEGER[0]
+    PRIVATE capacity AS INTEGER = 0
+    PRIVATE front AS INTEGER = 0
+    PRIVATE count AS INTEGER = 0
+
+    PUBLIC FUNCTION CONSTRUCTOR(capacity AS INTEGER)
+        DELETE SELF.storage
+        SELF.storage = NEW INTEGER[capacity]
+        SELF.capacity = capacity
+    END FUNCTION
+
+    PUBLIC FUNCTION PushFront(value AS INTEGER) AS VOID
+        IF SELF.count = SELF.capacity THEN
+            PRINT "  Deque overflow: ", value, " was not inserted."
+            RETURN
+        END IF
+        SELF.front = (SELF.front - 1 + SELF.capacity) % SELF.capacity
+        HeapWrite(SELF.storage, SELF.front, value)
+        SELF.count += 1
+    END FUNCTION
+
+    PUBLIC FUNCTION PushBack(value AS INTEGER) AS VOID
+        IF SELF.count = SELF.capacity THEN
+            PRINT "  Deque overflow: ", value, " was not inserted."
+            RETURN
+        END IF
+        LET back AS INTEGER = (SELF.front + SELF.count) % SELF.capacity
+        HeapWrite(SELF.storage, back, value)
+        SELF.count += 1
+    END FUNCTION
+
+    PUBLIC FUNCTION PopFront() AS INTEGER OR NULL
+        IF SELF.count = 0 THEN
+            RETURN NULL
+        END IF
+        LET value AS INTEGER = HeapRead(SELF.storage, SELF.front)
+        SELF.front = (SELF.front + 1) % SELF.capacity
+        SELF.count -= 1
+        RETURN value
+    END FUNCTION
+
+    PUBLIC FUNCTION PopBack() AS INTEGER OR NULL
+        IF SELF.count = 0 THEN
+            RETURN NULL
+        END IF
+        LET back AS INTEGER = (SELF.front + SELF.count - 1) % SELF.capacity
+        LET value AS INTEGER = HeapRead(SELF.storage, back)
+        SELF.count -= 1
+        RETURN value
+    END FUNCTION
+
+    PUBLIC FUNCTION Count() AS INTEGER
+        RETURN SELF.count
+    END FUNCTION
+
+    PUBLIC FUNCTION Dispose() AS VOID
+        DELETE SELF.storage
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS INTEGER
+    PRINT "=== Stack: LIFO ==="
+    LET stack AS Stack = NEW Stack(3)
+    PRINT "Push 10, 20, 30. The top becomes 30."
+    stack.Push(10)
+    stack.Push(20)
+    stack.Push(30)
+    PRINT "Count: ", stack.Count()
+    PRINT "Pop -> ", stack.Pop(), "; now the top is 20."
+    PRINT "Pop -> ", stack.Pop(), "; then 10."
+    PRINT "Pop -> ", stack.Pop(), "; the stack is empty."
+    PRINT "Pop on an empty stack -> ", stack.Pop()
+    stack.Dispose()
+    DELETE stack
+
+    PRINT ""
+    PRINT "=== Queue: FIFO ==="
+    LET queue AS Queue = NEW Queue(3)
+    PRINT "Enqueue 10, 20, 30. The first item is 10."
+    queue.Enqueue(10)
+    queue.Enqueue(20)
+    queue.Enqueue(30)
+    PRINT "Count: ", queue.Count()
+    PRINT "Dequeue -> ", queue.Dequeue(), "; now 20 is first."
+    PRINT "Dequeue -> ", queue.Dequeue(), "; then 30."
+    PRINT "Dequeue -> ", queue.Dequeue(), "; the queue is empty."
+    PRINT "Dequeue on an empty queue -> ", queue.Dequeue()
+    queue.Dispose()
+    DELETE queue
+
+    PRINT ""
+    PRINT "=== Circular deque: both ends ==="
+    LET deque AS CircularDeque = NEW CircularDeque(4)
+    PRINT "PushBack 20 and 30; PushFront 10 and 5."
+    deque.PushBack(20)
+    deque.PushBack(30)
+    deque.PushFront(10)
+    deque.PushFront(5)
+    PRINT "Count: ", deque.Count(), "; logical order: 5, 10, 20, 30."
+    PRINT "PopFront -> ", deque.PopFront(), "; removes 5."
+    PRINT "PopBack -> ", deque.PopBack(), "; removes 30."
+    PRINT "PushBack 40 and 50; the ring wraps in the heap region."
+    deque.PushBack(40)
+    deque.PushBack(50)
+    PRINT "PopFront -> ", deque.PopFront(), "; removes 10."
+    PRINT "PopBack -> ", deque.PopBack(), "; removes 50."
+    PRINT "Remaining, front to back: ", deque.PopFront(), ", ", deque.PopFront()
+    PRINT "PopFront on an empty deque -> ", deque.PopFront()
+    deque.Dispose()
+    DELETE deque
+
+    PRINT "All heap regions were released."
+    RETURN 0
+END FUNCTION

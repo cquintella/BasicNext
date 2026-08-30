@@ -1,0 +1,141 @@
+name: binaries
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+          components: rustfmt, clippy
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install LLVM 22 and kernel dependencies
+        run: |
+          wget -q https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 22
+          sudo apt-get install -y lld-22
+          python -m pip install -e plugins/jupyter
+          mkdir -p "${RUNNER_TEMP}/llvm-22"
+          ln -s "$(command -v clang-22)" "${RUNNER_TEMP}/llvm-22/clang"
+          ln -s "$(command -v wasm-ld-22)" "${RUNNER_TEMP}/llvm-22/wasm-ld"
+          echo "${RUNNER_TEMP}/llvm-22" >> "${GITHUB_PATH}"
+      - name: Rust quality gate
+        run: |
+          cargo fmt --check
+          cargo test --locked
+          cargo clippy --locked -- -D warnings
+      - name: Kernel and compiler parity
+        run: |
+          python -m unittest tests/test_kernel.py tests/test_jupyter.py tests/test_compiler_parity.py tests/test_wasm_parity.py
+      - name: VS Code extension checks
+        run: |
+          for test in plugins/vscode/test/*.js; do node "$test"; done
+
+  build:
+    needs: quality
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset: bn-linux-x86_64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            asset: bn-linux-aarch64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            asset: bn-macos-aarch64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            asset: bn-macos-x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset: bn-windows-x86_64.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+          targets: ${{ matrix.target }}
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }} --bin bn
+      - name: Stage binary
+        shell: bash
+        run: |
+          mkdir -p dist
+          if [[ -f "target/${{ matrix.target }}/release/bn.exe" ]]; then
+            cp "target/${{ matrix.target }}/release/bn.exe" "dist/${{ matrix.asset }}"
+          else
+            cp "target/${{ matrix.target }}/release/bn" "dist/${{ matrix.asset }}"
+            chmod +x "dist/${{ matrix.asset }}"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name != 'pull_request'
+    needs: [quality, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Stage man page
+        run: |
+          mkdir -p dist
+          cp docs/man/bn.1 dist/bn.1
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum * | tee SHA256SUMS
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          notes="Compiled \`bn\` from \`${GITHUB_SHA:0:7}\`."
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            tag="${GITHUB_REF_NAME}"
+            gh release create "${tag}" dist/* \
+              --title "bn ${tag}" \
+              --notes "${notes}" \
+              --latest
+          else
+            tag=latest
+            if gh release view "${tag}" >/dev/null 2>&1; then
+              gh release upload "${tag}" dist/* --clobber
+              gh release edit "${tag}" --title "Latest bn" --notes "${notes}" --latest
+            else
+              gh release create "${tag}" dist/* \
+                --title "Latest bn" \
+                --notes "${notes}" \
+                --latest \
+                --target "${GITHUB_SHA}"
+            fi
+          fi

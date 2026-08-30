@@ -1,0 +1,19 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT BNData AS Data
+
+FUNCTION Start() AS VOID
+    LET table AS Data.DataFrame = NEW Data.DataFrame()
+    LET values AS INTEGER[1] = [1]
+    table.AddIntegerColumn("Id", values)
+    LET rows AS INTEGER[1]
+    rows[0] = -1
+    LET result AS Data.DataFrame OR Error = table.Select(rows, [0])
+    IF result IS Error THEN
+        PRINT result.Code
+    END IF
+    DELETE table
+END FUNCTION

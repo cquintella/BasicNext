@@ -1,0 +1,20 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT Pets AS Pets
+
+CLASS Dog IMPLEMENTS Pets.Named
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION Name() AS STRING
+        RETURN "Puck"
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET named AS Pets.Named = NEW Dog()
+    PRINT named.Name()
+END FUNCTION

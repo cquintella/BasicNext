@@ -1,0 +1,99 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT BNMath AS Math
+
+// Reverse Polish notation calculator.
+// Enter one token per line: digits 0 to 9, +, -, *, /, =, or Q.
+
+CLASS RpnCalculator
+
+    PRIVATE stack AS FLOAT[256]
+    PRIVATE top AS INTEGER = 0
+
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION Process(token AS STRING) AS VOID
+        IF token = "=" THEN
+            SELF.ShowResult()
+        ELSE IF token = "+" OR token = "-" OR token = "*" OR token = "/" THEN
+            SELF.Apply(token)
+        ELSE
+            SELF.PushNumber(token)
+        END IF
+    END FUNCTION
+
+    PRIVATE FUNCTION PushNumber(token AS STRING) AS VOID
+        SELF.Push(Math.VAL(token))
+    END FUNCTION
+
+    PRIVATE FUNCTION Push(value AS FLOAT) AS VOID
+        IF SELF.top = 256 THEN
+            PRINT "Stack overflow"
+        ELSE
+            SELF.stack[SELF.top] = value
+            SELF.top += 1
+        END IF
+    END FUNCTION
+
+    PRIVATE FUNCTION Pop() AS FLOAT
+        SELF.top -= 1
+        RETURN SELF.stack[SELF.top]
+    END FUNCTION
+
+    PRIVATE FUNCTION Apply(symbol AS STRING) AS VOID
+        IF SELF.top < 2 THEN
+            PRINT "Two values are required"
+        ELSE
+            LET right AS FLOAT = SELF.Pop()
+            LET left AS FLOAT = SELF.Pop()
+
+            IF symbol = "+" THEN
+                SELF.Push(left + right)
+            ELSE IF symbol = "-" THEN
+                SELF.Push(left - right)
+            ELSE IF symbol = "*" THEN
+                SELF.Push(left * right)
+            ELSE IF right = 0.0 THEN
+                PRINT "Division by zero"
+                SELF.Push(left)
+                SELF.Push(right)
+            ELSE
+                SELF.Push(left / right)
+            END IF
+        END IF
+    END FUNCTION
+
+    PRIVATE FUNCTION ShowResult() AS VOID
+        IF SELF.top <> 1 THEN
+            PRINT "The expression is incomplete"
+        ELSE
+            PRINT SELF.stack[0]
+        END IF
+    END FUNCTION
+
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET calculator AS RpnCalculator = NEW RpnCalculator()
+    LET running AS BOOLEAN = TRUE
+
+    PRINT "RPN calculator: 3, 4, +, 2, *, =. Enter Q to quit."
+
+    WHILE running
+        LET token AS STRING OR EOF = INPUT()
+
+        IF token IS EOF THEN
+            running = FALSE
+        ELSE IF token = "Q" THEN
+            running = FALSE
+        ELSE
+            calculator.Process(token)
+        END IF
+    END WHILE
+
+    DELETE calculator
+END FUNCTION

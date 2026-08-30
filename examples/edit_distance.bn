@@ -1,0 +1,82 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Levenshtein edit distance using Unicode-aware STRING indexing from Basic Next 0.2.
+// The distance is the minimum number of insertions, deletions, and substitutions.
+
+FUNCTION EditDistance(source AS STRING, target AS STRING) AS INTEGER
+    LET targetLength AS INTEGER = LEN(target)
+    LET previous AS POINTER TO INTEGER[] = NEW INTEGER[targetLength + 1]
+    LET current AS POINTER TO INTEGER[] = NEW INTEGER[targetLength + 1]
+    LET row AS INTEGER = 0
+    LET column AS INTEGER = 0
+
+    WHILE column <= targetLength
+        previous[column] = column
+        column += 1
+    END WHILE
+
+    WHILE row < LEN(source)
+        current[0] = row + 1
+        column = 1
+
+        WHILE column <= targetLength
+            LET cost AS INTEGER = 1
+            IF source[row] = target[column - 1] THEN
+                cost = 0
+            END IF
+            LET best AS INTEGER = previous[column] + 1
+            IF current[column - 1] + 1 < best THEN
+                best = current[column - 1] + 1
+            END IF
+            IF previous[column - 1] + cost < best THEN
+                best = previous[column - 1] + cost
+            END IF
+            current[column] = best
+            column += 1
+        END WHILE
+
+        column = 0
+        WHILE column <= targetLength
+            previous[column] = current[column]
+            column += 1
+        END WHILE
+        row += 1
+    END WHILE
+
+    LET distance AS INTEGER = previous[targetLength]
+    DELETE current
+    DELETE previous
+    RETURN distance
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    IF LEN(HOST.Args) > 1 THEN
+        IF HOST.Args[1] = "--h" OR HOST.Args[1] = "-h" THEN
+            PRINT "Usage: bn run examples/edit_distance.bn"
+            PRINT "Enter word 1 and word 2, one per line."
+            RETURN 0
+        END IF
+    END IF
+
+    PRINT "Word 1:"
+    LET source AS STRING OR EOF = INPUT()
+    IF source IS EOF THEN
+        PRINT "Expected word 1."
+        RETURN 1
+    END IF
+
+    PRINT "Word 2:"
+    LET target AS STRING OR EOF = INPUT()
+    IF target IS EOF THEN
+        PRINT "Expected word 2."
+        RETURN 1
+    END IF
+
+    LET distance AS INTEGER = EditDistance(source, target)
+
+    PRINT "Distance between ", source, " and ", target, ": ", distance
+    RETURN 0
+END FUNCTION

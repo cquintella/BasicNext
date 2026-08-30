@@ -1,0 +1,121 @@
+#!/usr/bin/env node
+"use strict";
+
+const fs = require("node:fs");
+
+const [modulePath, ...programArgs] = process.argv.slice(2);
+if (!modulePath) {
+    process.stderr.write("usage: bn-wasm module.wasm [args...]\n");
+    process.exit(2);
+}
+
+const input = fs.readFileSync(0);
+let inputOffset = 0;
+let instance;
+let heapCursor = 0;
+const allocations = new Map();
+
+function reserve(memory, size) {
+    const address = Math.ceil(heapCursor / 8) * 8;
+    const required = address + size;
+    if (required > memory.buffer.byteLength) {
+        memory.grow(Math.ceil((required - memory.buffer.byteLength) / 65536));
+    }
+    heapCursor = required;
+    return address;
+}
+
+function cString(memory, address) {
+    const bytes = new Uint8Array(memory.buffer);
+    let end = address;
+    while (bytes[end] !== 0) end += 1;
+    return Buffer.from(bytes.subarray(address, end)).toString("utf8");
+}
+
+function formatGeneral(value, precision) {
+    if (Number.isNaN(value)) return "NAN";
+    if (value === Infinity) return "INF";
+    if (value === -Infinity) return "-INF";
+    if (value === 0) return Object.is(value, -0) ? "-0" : "0";
+    const exponent = Math.floor(Math.log10(Math.abs(value)));
+    const trim = (text) => text.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+    if (exponent < -4 || exponent >= precision) {
+        const [mantissa, rawExponent] = value.toExponential(precision - 1).split("e");
+        const sign = rawExponent.startsWith("-") ? "-" : "+";
+        const digits = rawExponent.replace(/^[+-]/, "").padStart(2, "0");
+        return `${trim(mantissa)}e${sign}${digits}`;
+    }
+    return trim(value.toFixed(Math.max(0, precision - 1 - exponent)));
+}
+
+const imports = {
+    env: {
+        getchar() {
+            return inputOffset < input.length ? input[inputOffset++] : -1;
+        },
+        putchar(value) {
+            process.stdout.write(Buffer.from([value & 0xff]));
+            return value;
+        },
+        printf(formatAddress, argumentsAddress) {
+            const memory = instance.exports.memory;
+            const format = cString(memory, formatAddress);
+            const view = new DataView(memory.buffer);
+            let value;
+            if (format === "%lld") {
+                value = view.getBigInt64(argumentsAddress, true).toString();
+            } else if (format === "%s") {
+                value = cString(memory, view.getUint32(argumentsAddress, true));
+            } else if (format === "%.17g") {
+                value = formatGeneral(view.getFloat64(argumentsAddress, true), 17);
+            } else {
+                throw new Error(`unsupported Basic Next printf format: ${format}`);
+            }
+            process.stdout.write(value);
+            return Buffer.byteLength(value);
+        },
+        realloc(address, rawSize) {
+            const memory = instance.exports.memory;
+            const size = Number(rawSize);
+            const replacement = reserve(memory, size);
+            const previousSize = allocations.get(address) ?? 0;
+            if (address !== 0) {
+                const bytes = new Uint8Array(memory.buffer);
+                bytes.copyWithin(replacement, address, address + Math.min(previousSize, size));
+            }
+            allocations.set(replacement, size);
+            return replacement;
+        },
+    },
+};
+
+WebAssembly.instantiate(fs.readFileSync(modulePath), imports)
+    .then(({ instance: loaded }) => {
+        instance = loaded;
+        const memory = instance.exports.memory;
+        const encoder = new TextEncoder();
+        const argumentsList = [modulePath, ...programArgs];
+        let cursor = Number(instance.exports.__heap_base.value);
+        const pointers = cursor;
+        cursor += argumentsList.length * 4;
+        const encoded = argumentsList.map((value) => encoder.encode(value));
+        const required = cursor + encoded.reduce((size, value) => size + value.length + 1, 0);
+        if (required > memory.buffer.byteLength) {
+            memory.grow(Math.ceil((required - memory.buffer.byteLength) / 65536));
+        }
+        const bytes = new Uint8Array(memory.buffer);
+        const view = new DataView(memory.buffer);
+        encoded.forEach((value, index) => {
+            view.setUint32(pointers + index * 4, cursor, true);
+            bytes.set(value, cursor);
+            bytes[cursor + value.length] = 0;
+            cursor += value.length + 1;
+        });
+        heapCursor = cursor;
+        const code = instance.exports.main(argumentsList.length, pointers);
+        process.exit(Number(code));
+    })
+    .catch((error) => {
+        process.stderr.write(`bn-wasm: ${error.message}\n`);
+        process.exit(2);
+    });

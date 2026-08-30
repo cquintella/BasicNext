@@ -1,0 +1,25 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+FUNCTION Start() AS INTEGER
+    LET count AS INTEGER = 7
+    LET real AS FLOAT = 1.5
+    LET text AS STRING = "café"
+    LET values AS INTEGER[3] = [1, 2, 3]
+    LET grid AS INTEGER[2][3] = [[1, 2, 3], [4, 5, 6]]
+    LET fixed AS POINTER TO INTEGER[2] = NEW INTEGER[2]
+    LET dynamic AS POINTER TO INTEGER[] = NEW INTEGER[3]
+    LET empty AS POINTER TO INTEGER[] = NEW INTEGER[0]
+    PRINT LEN(count), SIZEOF(count)
+    PRINT LEN(real), SIZEOF(real)
+    PRINT LEN(text), SIZEOF(text)
+    PRINT LEN(values), SIZEOF(values)
+    PRINT LEN(grid), SIZEOF(grid)
+    PRINT LEN(fixed), LEN(dynamic), LEN(empty)
+    DELETE fixed
+    DELETE dynamic
+    DELETE empty
+    RETURN 0
+END FUNCTION

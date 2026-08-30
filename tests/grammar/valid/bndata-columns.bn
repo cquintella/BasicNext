@@ -1,0 +1,16 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT BNData AS Data
+
+FUNCTION Start() AS VOID
+    LET frame AS Data.DataFrame = NEW Data.DataFrame()
+    LET names AS STRING[2] = ["A", "B"]
+    LET ages AS INTEGER[2] = [1, 2]
+    frame.AddStringColumn("Name", names)
+    frame.AddIntegerColumn("Age", ages)
+    PRINT frame.RowCount(), frame.ColumnCount(), frame.ColumnName(1)
+    DELETE frame
+END FUNCTION
