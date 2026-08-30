@@ -30,14 +30,14 @@ only after the corresponding semantics have been defined and reviewed.
 Read [PHILOSOPHY.md](PHILOSOPHY.md) for the mission, vision, and complete set
 of design principles.
 
-## 🚀 Status: Version 0.3 planning active
+## 🚀 Status: Version 0.2 release restoration
 
 The accepted Basic Next 0.2 implementation is in place across the Rust
 reference frontend, typed IR interpreter, standard modules, Jupyter adapter,
 VS Code integration, and the accepted LLVM compiler subset. Cross-artifact
 conformance and repository-closure work is complete except for real Windows
-TTY evidence, transferred from R19 to the 0.3 release gate. The active
-[`ongoing/bucket.md`](ongoing/bucket.md) plans 0.3; the reconciled 0.2 defect inventory is
+TTY evidence. The active [`ongoing/bucket.md`](ongoing/bucket.md) tracks the
+restored 0.2 release; the reconciled defect inventory is
 [`ongoing/gap_analysis.md`](ongoing/gap_analysis.md).
 
 > **Note:** `bn build` is available for its supported typed-IR subset. The
@@ -52,9 +52,9 @@ The Basic Next reference implementation is a source-spanned lexer, handwritten r
 - `bn run file.bn [-- args...]` — Validates and immediately executes the accepted interpreter surface.
 - `bn build [--target native|wasm32] file.bn` — Emits LLVM IR, or an artifact with `-o`, for the supported compiler subset.
 
-See the [0.3 WBS](ongoing/WBS-0.3.md), [active bucket](ongoing/bucket.md),
+See the [0.2 WBS](ongoing/WBS-0.2.md), [active release bucket](ongoing/bucket.md),
 [archived 0.2 remediation program](archive/project/bucket-0.2.md), and
-[0.3 contract](docs/language/0.3/0.3.md) for delivery status and accepted semantics.
+[0.2 contract](docs/language/0.2/0.2.md) for delivery status and accepted semantics.
 
 To see under the hood, try:
 - `bn check -v file.bn` (reports completed stages)
