@@ -30,15 +30,14 @@ only after the corresponding semantics have been defined and reviewed.
 Read [PHILOSOPHY.md](PHILOSOPHY.md) for the mission, vision, and complete set
 of design principles.
 
-## 🚀 Status: Version 0.2 release restoration
+## 🚀 Status: Version 0.3 rebuilt release
 
-The accepted Basic Next 0.2 implementation is in place across the Rust
-reference frontend, typed IR interpreter, standard modules, Jupyter adapter,
-VS Code integration, and the accepted LLVM compiler subset. Cross-artifact
-conformance and repository-closure work is complete except for real Windows
-TTY evidence. The active [`ongoing/bucket.md`](ongoing/bucket.md) tracks the
-restored 0.2 release; the reconciled defect inventory is
-[`ongoing/gap_analysis.md`](ongoing/gap_analysis.md).
+The Basic Next 0.3 implementation has been rebuilt across the Rust reference
+frontend, typed IR interpreter, HOST capabilities, external BN modules, LLVM
+lowering, LSP/DAP tooling, plugins, and release documentation. Read the
+[0.3 release news](ongoing/0.3-release-news.md) for the complete summary.
+The active [`ongoing/bucket.md`](ongoing/bucket.md) records the delivery gates;
+the archived 0.2 program remains in [`archive/project/bucket-0.2.md`](archive/project/bucket-0.2.md).
 
 > **Note:** `bn build` is available for its supported typed-IR subset. The
 > interpreter remains the reference implementation for language surfaces
@@ -52,9 +51,10 @@ The Basic Next reference implementation is a source-spanned lexer, handwritten r
 - `bn run file.bn [-- args...]` — Validates and immediately executes the accepted interpreter surface.
 - `bn build [--target native|wasm32] file.bn` — Emits LLVM IR, or an artifact with `-o`, for the supported compiler subset.
 
-See the [0.2 WBS](ongoing/WBS-0.2.md), [active release bucket](ongoing/bucket.md),
+See the [0.3 release news](ongoing/0.3-release-news.md), [active release bucket](ongoing/bucket.md),
+[0.3 conformance evidence](ongoing/0.3-conformance.md),
 [archived 0.2 remediation program](archive/project/bucket-0.2.md), and
-[0.2 contract](docs/language/0.2/0.2.md) for delivery status and accepted semantics.
+[0.3 contract](docs/language/0.3/0.3.md) for delivery status and accepted semantics.
 
 To see under the hood, try:
 - `bn check -v file.bn` (reports completed stages)
@@ -100,7 +100,7 @@ cargo fmt --check && cargo test && cargo clippy --all-targets -- -D warnings && 
 Requires Rust 1.97. Current limitations include partial LLVM lowering;
 `TIMEZONE` does not apply zone rules. Linked wasm32 modules run through
 `node bin/bn-wasm`. See `archive/project/bucket-0.2.md` for the archived 0.2
-remediation work and `ongoing/gap_analysis.md` for its defect inventory.
+remediation work and `archive/project/bucket-0.2.md` for its historical defect inventory.
 
 `config.toml` contains local tool configuration. Currently it selects the
 `clang` command used by `bn build`; it does not alter language semantics.
@@ -116,6 +116,8 @@ remediation work and `ongoing/gap_analysis.md` for its defect inventory.
   [experience contract](docs/project/experience-contract.md).
 - `binaries/` — download index for prebuilt `bn` (binaries live on Releases).
 - `examples/` — programs that guide the specification.
+- [`examples/parallel-examples.md`](examples/parallel-examples.md) — bounded
+  `BNDispatch` examples, including a parallel Leibniz-series pi calculation.
 - `plugins/jupyter/` — installable Python Jupyter kernel host.
 - `plugins/vscode/` — VS Code extension and its tests.
 - `PHILOSOPHY.md` — design principles.

@@ -1,5 +1,5 @@
 # Sprint 4 audit
 
-Moved to [`ongoing/audit-sprint-4.md`](../../ongoing/audit-sprint-4.md)
+Archived with the 0.2 release bucket in [`bucket-0.2.md`](../../archive/project/bucket-0.2.md).
 because the remaining host-matrix evidence is R19, not a closed Sprint 4
 record.

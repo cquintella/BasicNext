@@ -208,9 +208,7 @@ fn validate_rejects_a_dangling_block_target() {
                 },
             },
         }],
-        bndata_providers: std::collections::HashSet::new(),
-        bnmath_providers: std::collections::HashSet::new(),
-        filesystem_import: None,
+        ..Module::default()
     };
     let error = validate(&module).expect_err("dangling terminator must fail");
     assert_eq!(error.code, "INVALID_IR");

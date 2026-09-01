@@ -1,0 +1,261 @@
+// Local TCP/UDP client-server validation example for HOST.Net and BNLog.
+IMPORT HOST.Net AS Net
+IMPORT BNLog AS Log
+IMPORT HOST.FileSystem AS FS
+
+FUNCTION Usage() AS VOID
+    PRINT "Usage: bn run examples/socket.bn -- --tcp|--udp --server|--client [--ipv6] [--log filename]"
+END FUNCTION
+
+FUNCTION LogConnection(path AS STRING, protocol AS STRING, peer AS Net.Endpoint) AS INTEGER
+    LET logger AS Log.Logger = NEW Log.Logger()
+    LET added AS VOID OR Error = logger.AddFile(path, 2)
+    IF added IS Error THEN
+        RETURN 1
+    END IF
+    LET fields AS Log.Fields = NEW Log.Fields()
+    LET protocolSet AS VOID OR Error = fields.SetString("protocol", protocol)
+    LET peerSet AS VOID OR Error = fields.SetString("peer", peer.Address().ToString())
+    IF protocolSet IS Error OR peerSet IS Error THEN
+        logger.Close(1000)
+        RETURN 1
+    END IF
+    LET recorded AS VOID OR Error = logger.Log(2, "connection accepted", fields)
+    LET flushed AS VOID OR Error = logger.Flush(1000)
+    LET closed AS VOID OR Error = logger.Close(1000)
+    IF recorded IS Error OR flushed IS Error OR closed IS Error THEN
+        RETURN 1
+    END IF
+    RETURN 0
+END FUNCTION
+
+FUNCTION WriteByte(stream AS Net.TCPStream, value AS BYTE) AS BOOLEAN
+    LET buffer AS POINTER TO BYTE[] = NEW BYTE[1]
+    buffer[0] = value
+    LET written AS INTEGER OR Error = stream.Write(buffer, 1)
+    DELETE buffer
+    RETURN written IS INTEGER AND written = 1
+END FUNCTION
+
+FUNCTION ReadByteEquals(stream AS Net.TCPStream, expected AS BYTE) AS BOOLEAN
+    LET buffer AS POINTER TO BYTE[] = NEW BYTE[1]
+    LET read AS INTEGER OR EOF OR Error = stream.Read(buffer, 1)
+    LET matches AS BOOLEAN = read IS INTEGER AND read = 1 AND buffer[0] = expected
+    DELETE buffer
+    RETURN matches
+END FUNCTION
+
+FUNCTION WritePing(stream AS Net.TCPStream, pong AS BOOLEAN) AS BOOLEAN
+    IF pong THEN
+        RETURN WriteByte(stream, 80) AND WriteByte(stream, 79) AND WriteByte(stream, 78) AND WriteByte(stream, 71)
+    END IF
+    RETURN WriteByte(stream, 80) AND WriteByte(stream, 73) AND WriteByte(stream, 78) AND WriteByte(stream, 71)
+END FUNCTION
+
+FUNCTION ReadPing(stream AS Net.TCPStream, pong AS BOOLEAN) AS BOOLEAN
+    IF pong THEN
+        RETURN ReadByteEquals(stream, 80) AND ReadByteEquals(stream, 79) AND ReadByteEquals(stream, 78) AND ReadByteEquals(stream, 71)
+    END IF
+    RETURN ReadByteEquals(stream, 80) AND ReadByteEquals(stream, 73) AND ReadByteEquals(stream, 78) AND ReadByteEquals(stream, 71)
+END FUNCTION
+
+FUNCTION TCPServer(endpoint AS Net.Endpoint, logPath AS STRING) AS INTEGER
+    LET endpoints AS Net.Endpoint[1] = [endpoint]
+    LET listener AS Net.TCPListener OR Error = Net.TCPListen(endpoints, 8)
+    IF listener IS Error THEN
+        PRINT "listen failed: ", listener.Message
+        RETURN 1
+    END IF
+    LET stream AS Net.TCPStream OR Error = listener.Accept(5000)
+    IF stream IS Error THEN
+        PRINT "accept failed"
+        listener.Close()
+        RETURN 1
+    END IF
+    LET peer AS Net.Endpoint OR Error = stream.RemoteEndpoint()
+    IF peer IS Error THEN
+        PRINT "peer lookup failed"
+        stream.Close()
+        listener.Close()
+        RETURN 1
+    END IF
+    IF ReadPing(stream, FALSE) THEN
+        LET written AS BOOLEAN = WritePing(stream, TRUE)
+        LET logged AS INTEGER = LogConnection(logPath, "tcp", peer)
+        stream.Close()
+        listener.Close()
+        IF NOT written OR logged <> 0 THEN
+            PRINT "reply or log failed"
+            RETURN 1
+        END IF
+        PRINT "request accepted"
+        RETURN 0
+    END IF
+    PRINT "unexpected request"
+    stream.Close()
+    listener.Close()
+    RETURN 1
+END FUNCTION
+
+FUNCTION TCPClient(endpoint AS Net.Endpoint) AS INTEGER
+    LET stream AS Net.TCPStream OR Error = Net.TCPConnect(endpoint, 5000)
+    IF stream IS Error THEN
+        PRINT "connect failed"
+        RETURN 1
+    END IF
+    LET written AS BOOLEAN = WritePing(stream, FALSE)
+    LET valid AS BOOLEAN = ReadPing(stream, TRUE)
+    stream.Close()
+    IF NOT written OR NOT valid THEN
+        PRINT "reply verification failed"
+        RETURN 1
+    END IF
+    PRINT "reply verified"
+    RETURN 0
+END FUNCTION
+
+FUNCTION UDPServer(endpoint AS Net.Endpoint, logPath AS STRING) AS INTEGER
+    LET socket AS Net.UDPSocket OR Error = Net.UDPBind(endpoint)
+    IF socket IS Error THEN
+        PRINT "bind failed: ", socket.Message
+        RETURN 1
+    END IF
+    LET packet AS Net.UDPPacket OR Error = socket.Receive(4, 5000)
+    IF packet IS Error THEN
+        PRINT "receive failed"
+        socket.Close()
+        RETURN 1
+    END IF
+    LET request AS POINTER TO BYTE[] = NEW BYTE[4]
+    LET copied AS INTEGER OR Error = packet.CopyTo(request, 4)
+    IF copied IS Error OR copied <> 4 OR request[0] <> 80 OR request[1] <> 73 OR request[2] <> 78 OR request[3] <> 71 THEN
+        PRINT "unexpected request"
+        DELETE request
+        socket.Close()
+        RETURN 1
+    END IF
+    LET reply AS POINTER TO BYTE[] = NEW BYTE[4]
+    reply[0] = 80
+    reply[1] = 79
+    reply[2] = 78
+    reply[3] = 71
+    LET sent AS INTEGER OR Error = socket.SendTo(packet.Source(), reply, 4)
+    LET logged AS INTEGER = LogConnection(logPath, "udp", packet.Source())
+    DELETE request
+    DELETE reply
+    socket.Close()
+    IF sent IS Error OR logged <> 0 THEN
+        PRINT "reply or log failed"
+        RETURN 1
+    END IF
+    PRINT "request accepted"
+    RETURN 0
+END FUNCTION
+
+FUNCTION UDPClient(server AS Net.Endpoint, local AS Net.Endpoint) AS INTEGER
+    LET socket AS Net.UDPSocket OR Error = Net.UDPBind(local)
+    IF socket IS Error THEN
+        PRINT "bind failed"
+        RETURN 1
+    END IF
+    LET request AS POINTER TO BYTE[] = NEW BYTE[4]
+    request[0] = 80
+    request[1] = 73
+    request[2] = 78
+    request[3] = 71
+    LET sent AS INTEGER OR Error = socket.SendTo(server, request, 4)
+    LET packet AS Net.UDPPacket OR Error = socket.Receive(4, 5000)
+    IF packet IS Error THEN
+        PRINT "receive failed"
+        DELETE request
+        socket.Close()
+        RETURN 1
+    END IF
+    LET reply AS POINTER TO BYTE[] = NEW BYTE[4]
+    LET copied AS INTEGER OR Error = packet.CopyTo(reply, 4)
+    LET valid AS BOOLEAN = copied IS INTEGER AND copied = 4 AND reply[0] = 80 AND reply[1] = 79 AND reply[2] = 78 AND reply[3] = 71
+    DELETE request
+    DELETE reply
+    socket.Close()
+    IF sent IS Error OR copied IS Error OR NOT valid THEN
+        PRINT "reply verification failed"
+        RETURN 1
+    END IF
+    PRINT "reply verified"
+    RETURN 0
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    LET tcp AS BOOLEAN = FALSE
+    LET udp AS BOOLEAN = FALSE
+    LET server AS BOOLEAN = FALSE
+    LET client AS BOOLEAN = FALSE
+    LET ipv6 AS BOOLEAN = FALSE
+    LET logPath AS STRING = "socket-server.log.jsonl"
+    LET index AS INTEGER = 1
+    WHILE index < LEN(HOST.Args)
+        LET argument AS STRING = HOST.Args[index]
+        IF argument = "--help" THEN
+            Usage()
+            RETURN 0
+        ELSE IF argument = "--tcp" THEN
+            tcp = TRUE
+        ELSE IF argument = "--udp" THEN
+            udp = TRUE
+        ELSE IF argument = "--server" THEN
+            server = TRUE
+        ELSE IF argument = "--client" THEN
+            client = TRUE
+        ELSE IF argument = "--ipv6" THEN
+            ipv6 = TRUE
+        ELSE IF argument = "--log" THEN
+            IF index + 1 >= LEN(HOST.Args) THEN
+                Usage()
+                RETURN 2
+            END IF
+            logPath = HOST.Args[index + 1]
+            index += 1
+        ELSE
+            Usage()
+            RETURN 2
+        END IF
+        index += 1
+    END WHILE
+    IF tcp = udp OR server = client THEN
+        Usage()
+        RETURN 2
+    END IF
+    LET host AS STRING = "127.0.0.1"
+    IF ipv6 THEN
+        host = "::1"
+    END IF
+    LET address AS Net.Address OR Error = Net.Address.Parse(host)
+    IF address IS Error THEN
+        PRINT "address setup failed"
+        RETURN 1
+    END IF
+    LET port AS UINT16 = 39102
+    IF tcp THEN
+        port = 39101
+    END IF
+    LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, port)
+    IF endpoint IS Error THEN
+        PRINT "endpoint setup failed"
+        RETURN 1
+    END IF
+    IF server THEN
+        IF tcp THEN
+            RETURN TCPServer(endpoint, logPath)
+        END IF
+        RETURN UDPServer(endpoint, logPath)
+    END IF
+    IF tcp THEN
+        RETURN TCPClient(endpoint)
+    END IF
+    LET local AS Net.Endpoint OR Error = Net.Endpoint.Create(address, 0)
+    IF local IS Error THEN
+        PRINT "local endpoint setup failed"
+        RETURN 1
+    END IF
+    RETURN UDPClient(endpoint, local)
+END FUNCTION

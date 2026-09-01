@@ -6,7 +6,7 @@
 use std::{fs, path::Path};
 
 use bn::{
-    ast::{DeclarationKind, ExpressionKind, Item, Statement},
+    ast::{DeclarationKind, ExpressionKind, Item, Statement, VectorDimension},
     lexer::lex,
     parser::{parse, parse_expression},
     source::SourceFile,
@@ -50,6 +50,7 @@ fn syntax_error_fixtures_are_rejected_by_the_parser() {
         "tests/grammar/invalid/bad-input-call.bn",
         "tests/grammar/invalid/cls-without-operand.bn",
         "tests/grammar/invalid/host-capability-lowercase.bn",
+        "tests/grammar/invalid/signature-vector-expression-dimension.bn",
     ] {
         assert!(parse_path(path).is_err(), "{path} must fail parsing");
     }
@@ -235,6 +236,31 @@ fn binding_preserves_its_initializer_expression() {
 }
 
 #[test]
+fn multi_binding_let_preserves_names_and_initializers() {
+    let source = SourceFile::new(
+        "binding.bn",
+        "FUNCTION Start() AS VOID\nLET first, second AS INTEGER = 1, 2\nEND FUNCTION\n",
+    );
+    let tokens = lex(&source).expect("lex source");
+    let program = parse(&tokens).expect("parse source");
+    let Item::Declaration { statements, .. } = &program.items[0] else {
+        panic!("expected function");
+    };
+    let Statement::Binding {
+        name,
+        additional_names,
+        additional_initializers,
+        ..
+    } = &statements[0]
+    else {
+        panic!("expected binding");
+    };
+    assert_eq!(name, "first");
+    assert_eq!(additional_names, &["second"]);
+    assert_eq!(additional_initializers.len(), 1);
+}
+
+#[test]
 fn vector_and_new_initializers_preserve_their_ast_nodes() {
     let source = SourceFile::new(
         "allocations.bn",
@@ -283,17 +309,38 @@ fn declaration_preserves_export_and_vector_dimensions() {
     let Statement::Binding { type_ref, .. } = &statements[0] else {
         panic!("expected field");
     };
-    assert_eq!(
-        type_ref.alternatives[0].parts,
+    let dimensions = &type_ref.alternatives[0].dimensions;
+    assert!(matches!(
+        dimensions.as_slice(),
         [
-            "LeftBracket",
-            "2",
-            "RightBracket",
-            "LeftBracket",
-            "3",
-            "RightBracket"
-        ]
+            VectorDimension::Literal { value: first, .. },
+            VectorDimension::Literal { value: second, .. }
+        ] if first == "2" && second == "3"
+    ));
+}
+
+#[test]
+fn test_parser_vector_variable_size() {
+    let source = SourceFile::new(
+        "vector-size.bn",
+        "FUNCTION Start() AS VOID\nLET n AS INTEGER = 4\nLET v AS INTEGER[n]\nEND FUNCTION\n",
     );
+    let tokens = lex(&source).expect("lex source");
+    let program = parse(&tokens).expect("parse source");
+    let Item::Declaration { statements, .. } = &program.items[0] else {
+        panic!("expected function");
+    };
+    let Statement::Binding { type_ref, .. } = &statements[1] else {
+        panic!("expected binding");
+    };
+    let [VectorDimension::Expression(expression)] = type_ref.alternatives[0].dimensions.as_slice()
+    else {
+        panic!("expected expression dimension");
+    };
+    assert!(matches!(
+        expression.kind,
+        ExpressionKind::Name { ref name } if name == "n"
+    ));
 }
 
 #[test]

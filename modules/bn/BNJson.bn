@@ -1,0 +1,13 @@
+// BNJson 0.3 external-module interface. The Rust provider supplies parsing and
+// bounded serialization; no JSON implementation is embedded in the language core.
+
+EXPORT CLASS Json
+    PUBLIC STATIC FUNCTION Parse(text AS STRING) AS Json OR Error
+        RETURN NEW Json()
+    END FUNCTION
+    PUBLIC STATIC FUNCTION Stringify(value AS Json) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS

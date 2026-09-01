@@ -152,7 +152,7 @@ fn lexer_classifies_every_generated_entry() {
     }
     for literal in special_float_literals() {
         let kinds = lex_kinds(&format!("{literal}\n"));
-        assert_eq!(kinds.first(), Some(&TokenKind::Special(*literal)));
+        assert_eq!(kinds.first(), Some(&TokenKind::Special(literal)));
         let lower = literal.to_ascii_lowercase();
         let kinds = lex_kinds(&format!("{lower}\n"));
         assert!(matches!(

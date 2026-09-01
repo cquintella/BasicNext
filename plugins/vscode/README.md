@@ -10,7 +10,7 @@ VSIX file:
 ```sh
 cd plugins/vscode
 npx --yes @vscode/vsce package --allow-missing-repository
-code --install-extension basicnext-0.2.0.vsix
+code --install-extension basicnext-0.3.0.vsix
 ```
 
 Restart VS Code completely after installing or updating the extension. The
@@ -26,6 +26,10 @@ executable.
 
 - Open a `.bn` file. VS Code selects the `Basic Next` language mode and
   applies syntax highlighting.
+- The extension starts `bn lsp` for open Basic Next workspaces and forwards
+  full-document changes. Diagnostics, definition lookup, and keyword
+  completion are provided by the Rust frontend; set `basicnext.executable` if
+  the binary is not on `PATH`.
 - Save the file to run `bn check`; source-spanned errors appear in the
   Problems panel.
 - Use **Basic Next: Run** from the Command Palette, the editor run menu, or

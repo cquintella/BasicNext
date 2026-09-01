@@ -1,0 +1,77 @@
+// Basic Next 0.3 BNDispatch example: parallel approximation of pi.
+//
+// Queue.Async accepts named, no-argument functions. Each worker computes one
+// independent quarter of the Leibniz series and prints its contribution. The
+// queue joins all workers before the program exits; output order is allowed to
+// vary because the workers run concurrently.
+IMPORT BNDispatch AS Dispatch
+
+FUNCTION PiPart0() AS VOID
+    LET sum AS FLOAT = 0.0
+    LET index AS INTEGER = 0
+    WHILE index < 100
+        LET denominator AS FLOAT = (4 * index + 1) AS FLOAT
+        sum += 1.0 / denominator
+        index += 1
+    END WHILE
+    PRINT "part 0: ", 4.0 * sum
+END FUNCTION
+
+FUNCTION PiPart1() AS VOID
+    LET sum AS FLOAT = 0.0
+    LET index AS INTEGER = 0
+    WHILE index < 100
+        LET denominator AS FLOAT = (4 * index + 3) AS FLOAT
+        sum -= 1.0 / denominator
+        index += 1
+    END WHILE
+    PRINT "part 1: ", 4.0 * sum
+END FUNCTION
+
+FUNCTION PiPart2() AS VOID
+    LET sum AS FLOAT = 0.0
+    LET index AS INTEGER = 0
+    WHILE index < 100
+        LET denominator AS FLOAT = (4 * index + 5) AS FLOAT
+        sum += 1.0 / denominator
+        index += 1
+    END WHILE
+    PRINT "part 2: ", 4.0 * sum
+END FUNCTION
+
+FUNCTION PiPart3() AS VOID
+    LET sum AS FLOAT = 0.0
+    LET index AS INTEGER = 0
+    WHILE index < 100
+        LET denominator AS FLOAT = (4 * index + 7) AS FLOAT
+        sum -= 1.0 / denominator
+        index += 1
+    END WHILE
+    PRINT "part 3: ", 4.0 * sum
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Concurrent(4)
+    IF queue IS Error THEN
+        PRINT "queue error: ", queue.Code
+        RETURN
+    END IF
+
+    LET first AS Dispatch.Ticket OR Error = queue.Async(PiPart0)
+    LET second AS Dispatch.Ticket OR Error = queue.Async(PiPart1)
+    LET third AS Dispatch.Ticket OR Error = queue.Async(PiPart2)
+    LET fourth AS Dispatch.Ticket OR Error = queue.Async(PiPart3)
+    IF first IS Error OR second IS Error OR third IS Error OR fourth IS Error THEN
+        PRINT "submission error"
+        queue.Close(1000)
+        RETURN
+    END IF
+
+    LET joined AS VOID OR Error = queue.Join(60000)
+    IF joined IS Error THEN
+        PRINT "join error: ", joined.Code
+    ELSE
+        PRINT "all four pi workers completed"
+    END IF
+    queue.Close(1000)
+END FUNCTION

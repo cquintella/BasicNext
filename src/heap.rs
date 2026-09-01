@@ -5,7 +5,7 @@
 
 use crate::{diagnostic::Diagnostic, source::Span};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct Handle {
     slot: u32,
     generation: u32,

@@ -18,6 +18,13 @@ END IF
 
 Every `IF` block must be explicitly closed with `END IF`.
 
+However, in version 0.3, a conditional containing exactly one simple statement per branch may remain on one physical line and does not require an `END IF`:
+
+```basic
+IF x = y THEN PRINT z
+IF ready THEN StartServer() ELSE PRINT "not ready"
+```
+
 ## Pre-condition and Post-condition Loops
 
 Basic Next offers two forms of indefinite loops: `WHILE` and `REPEAT`.

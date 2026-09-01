@@ -1,6 +1,9 @@
 # The Standard Library and Host
 
-Basic Next decouples the core language from the operating system. Platform-specific features are exposed strictly through explicitly imported "Host Capabilities," while portable pure functions are provided by the standard library.
+Basic Next decouples the core language from the operating system. `HOST` is
+the only built-in interface object. All `BN*` facilities are external modules
+and must be imported explicitly; their detailed contracts live in separate
+appendices.
 
 ## The `BNMath` namespace
 
@@ -23,7 +26,7 @@ The available surface includes:
 - Descriptive statistics: `MEAN`, `MEDIAN`, `MODE`, `STDEV`, `VARIANCE`, `RANGE`, `QUARTILE1`, `QUARTILE3`.
 - Range constants: `MAX_INTEGER`, `MIN_INTEGER`, `MAX_FLOAT`, `MIN_FLOAT` (and width-specific variants).
 
-## Host Capabilities
+## HOST capabilities
 
 Interaction with the underlying operating system—such as reading command-line arguments or checking the system clock—requires explicitly importing a capability from the `HOST` root.
 
@@ -50,6 +53,18 @@ IMPORT HOST.Clock AS Clock
 `HOST.Clock` provides time measurements:
 - `Clock.Timestamp() AS TIMESTAMP`: Returns the current signed UTC Unix-epoch time in milliseconds.
 - `Clock.Monotonic() AS INT64`: Returns a monotonically increasing count of nanoseconds. It does not represent a calendar time and is only used for measuring elapsed durations safely.
+
+### `HOST.NumProcs`
+
+`HOST.NumProcs()` needs no import and returns the logical processor count
+available to the current process. This respects host or container limits where
+they are reported, so it is appropriate for selecting a bounded worker-pool
+size rather than detecting physical CPU cores. It is available in the native
+interpreter.
+
+```basic
+LET workers AS INTEGER OR Error = HOST.NumProcs()
+```
 
 ### `HOST.Console`
 
@@ -94,15 +109,22 @@ ELSE
 END IF
 ```
 
-## `BNData`
+### `HOST.Net`
 
-Basic Next provides a standard library for data manipulation, `BNData`, which includes a `DataFrame` class and functions to read and write CSV files. It is explicitly imported as a logical module.
+`HOST.Net` is a native-host capability added in version 0.3 for IPv4/IPv6 addressing, system resolution, TCP, UDP, bounded ICMP Echo, and direct-neighbor lookup. The operating system owns the networking stack.
 
 ```basic
-IMPORT BNData AS Data
-
-LET df AS Data.DataFrame OR Error = Data.ReadCSV("data.csv")
+IMPORT HOST.Net AS Net
 ```
+
+## External module references
+
+Basic Next provides several provider-backed modules that must be explicitly imported:
+
+- `BNData`: Contract documented in [Appendix H](14_bndata.md).
+- `BNWeb`: Added in version 0.3, it provides an HTTP client/server, routes, filters, and URL boundaries. Contract in [Appendix G](13_bnweb.md).
+- `BNLog`: Added in version 0.3, it provides structured application and access logging. Contract in [Appendix F](12_bnlog.md).
+- `BNJson`: Added in version 0.3, it provides bounded JSON parsing and serialization. Contract in [Appendix E](11_bnjson.md).
 
 ## Temporal Data
 

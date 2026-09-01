@@ -1,0 +1,71 @@
+// Basic Next 0.3 BNDispatch example: independent parallel work.
+//
+// The queue owns four bounded workers. Each named task performs a separate
+// range reduction and reports its result through its ticket output.
+IMPORT BNDispatch AS Dispatch
+
+FUNCTION WorkA() AS VOID
+    LET total AS INTEGER = 0
+    LET value AS INTEGER = 1
+    WHILE value <= 1000
+        total += value
+        value += 1
+    END WHILE
+    PRINT "A sum 1..1000 = ", total
+END FUNCTION
+
+FUNCTION WorkB() AS VOID
+    LET total AS INTEGER = 0
+    LET value AS INTEGER = 1001
+    WHILE value <= 2000
+        total += value
+        value += 1
+    END WHILE
+    PRINT "B sum 1001..2000 = ", total
+END FUNCTION
+
+FUNCTION WorkC() AS VOID
+    LET total AS INTEGER = 0
+    LET value AS INTEGER = 2001
+    WHILE value <= 3000
+        total += value
+        value += 1
+    END WHILE
+    PRINT "C sum 2001..3000 = ", total
+END FUNCTION
+
+FUNCTION WorkD() AS VOID
+    LET total AS INTEGER = 0
+    LET value AS INTEGER = 3001
+    WHILE value <= 4000
+        total += value
+        value += 1
+    END WHILE
+    PRINT "D sum 3001..4000 = ", total
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Concurrent(4)
+    IF queue IS Error THEN
+        PRINT "queue error: ", queue.Code
+        RETURN
+    END IF
+
+    LET a AS Dispatch.Ticket OR Error = queue.Async(WorkA)
+    LET b AS Dispatch.Ticket OR Error = queue.Async(WorkB)
+    LET c AS Dispatch.Ticket OR Error = queue.Async(WorkC)
+    LET d AS Dispatch.Ticket OR Error = queue.Async(WorkD)
+    IF a IS Error OR b IS Error OR c IS Error OR d IS Error THEN
+        PRINT "submission error"
+        queue.Close(1000)
+        RETURN
+    END IF
+
+    LET joined AS VOID OR Error = queue.Join(60000)
+    IF joined IS Error THEN
+        PRINT "join error: ", joined.Code
+    ELSE
+        PRINT "all workers completed"
+    END IF
+    queue.Close(1000)
+END FUNCTION

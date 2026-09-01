@@ -4,17 +4,27 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 pub mod ast;
+pub mod dap;
 pub mod dataframe;
 pub mod diagnostic;
+mod dispatch;
 pub mod heap;
+pub(crate) mod http;
 pub mod ir;
+pub(crate) mod json;
 pub mod keyword_registry;
 pub mod lexer;
 pub mod llvm;
+pub(crate) mod log;
+pub mod lsp;
 pub mod module_graph;
+pub mod net;
 pub mod parser;
 pub mod runtime;
 pub mod semantic;
 pub mod source;
 pub mod temporal;
+pub(crate) mod tls;
 pub mod token;
+pub(crate) mod web;
+pub(crate) mod web_state;

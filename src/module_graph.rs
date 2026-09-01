@@ -24,6 +24,10 @@ pub struct ModuleId(pub u32);
 pub enum StandardModule {
     BNData,
     BNMath,
+    BNLog,
+    BNWeb,
+    BNJson,
+    BNDispatch,
 }
 
 #[derive(Debug)]
@@ -195,6 +199,10 @@ fn standard_module(path: &Path) -> Option<StandardModule> {
     match path.file_name().and_then(|name| name.to_str()) {
         Some("BNData.bn") if in_bn => Some(StandardModule::BNData),
         Some("BNMath.bn") if in_bn => Some(StandardModule::BNMath),
+        Some("BNLog.bn") if in_bn => Some(StandardModule::BNLog),
+        Some("BNWeb.bn") if in_bn => Some(StandardModule::BNWeb),
+        Some("BNJson.bn") if in_bn => Some(StandardModule::BNJson),
+        Some("BNDispatch.bn") if in_bn => Some(StandardModule::BNDispatch),
         _ => None,
     }
 }
@@ -239,6 +247,7 @@ fn normalize(path: &Path) -> PathBuf {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::{HashMap, Loader, Path, PathBuf};
 

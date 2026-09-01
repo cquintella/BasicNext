@@ -12,3 +12,5 @@ __pycache__/
 AGENTS.md
 .env
 .vscode
+.aider*
+.ua/

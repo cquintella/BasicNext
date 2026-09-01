@@ -1,0 +1,200 @@
+// BNWeb 0.3 external-module interface. Transport implementation is supplied
+// by the Rust provider over HOST.Net and BNLog.
+IMPORT HOST.Net AS Net
+IMPORT BNLog AS Log
+
+EXPORT CLASS HeaderValues
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Count() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION Get(index AS INTEGER) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS QueryValues
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Count() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION Get(index AS INTEGER) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS Request
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Method() AS STRING
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Target() AS STRING
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Headers(name AS STRING) AS HeaderValues OR Error
+        RETURN NEW HeaderValues()
+    END FUNCTION
+    PUBLIC FUNCTION Query(name AS STRING) AS QueryValues OR Error
+        RETURN NEW QueryValues()
+    END FUNCTION
+    PUBLIC FUNCTION Body(maximum AS INTEGER) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION PeerAddress() AS Net.Address
+        LET parsed AS Net.Address OR Error = Net.Address.Parse("0.0.0.0")
+        IF parsed IS Error THEN
+            STOP 1
+        ELSE
+            RETURN parsed
+        END IF
+    END FUNCTION
+    PUBLIC FUNCTION EffectiveClientAddress() AS Net.Address OR Error
+        RETURN Net.Address.Parse("0.0.0.0")
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS Response
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Status() AS INTEGER
+        RETURN 200
+    END FUNCTION
+    PUBLIC FUNCTION SetStatus(status AS INTEGER) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION SetHeader(name AS STRING, value AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Write(body AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Commit() AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION IsCommitted() AS BOOLEAN
+        RETURN FALSE
+    END FUNCTION
+    PUBLIC FUNCTION Close() AS VOID OR Error
+        RETURN
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS Server
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC STATIC FUNCTION New(logger AS Log.Logger) AS Server OR Error
+        RETURN NEW Server()
+    END FUNCTION
+    PUBLIC FUNCTION AddFilter(filter AS FUNCTION(request AS Request, response AS Response) AS VOID) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Route(method AS STRING, pattern AS STRING, handler AS FUNCTION(request AS Request, response AS Response) AS VOID) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Start(endpoint AS Net.Endpoint) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION StartTLS(endpoint AS Net.Endpoint, config AS TLSConfig) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Dispatch(request AS Request, response AS Response) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Stop(timeoutMs AS INTEGER) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Close(timeoutMs AS INTEGER) AS VOID OR Error
+        RETURN
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS Client
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC STATIC FUNCTION New(logger AS Log.Logger) AS Client OR Error
+        RETURN NEW Client()
+    END FUNCTION
+    PUBLIC FUNCTION Request(method AS STRING, url AS STRING, body AS STRING) AS Response OR Error
+        RETURN NEW Response()
+    END FUNCTION
+    PUBLIC FUNCTION Close() AS VOID OR Error
+        RETURN
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS TLSConfig
+    PUBLIC FUNCTION CONSTRUCTOR(certificatePem AS STRING, privateKeyPem AS STRING)
+    END FUNCTION
+    PUBLIC STATIC FUNCTION FromPEM(certificatePem AS STRING, privateKeyPem AS STRING) AS TLSConfig OR Error
+        RETURN NEW TLSConfig(certificatePem, privateKeyPem)
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS CookieJar
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Set(name AS STRING, value AS STRING, domain AS STRING, path AS STRING, maxAgeMs AS INTEGER) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Get(name AS STRING, domain AS STRING, path AS STRING) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Delete(name AS STRING, domain AS STRING, path AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Count() AS INTEGER
+        RETURN 0
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS SessionStore
+    PUBLIC FUNCTION CONSTRUCTOR(capacity AS INTEGER, idleMs AS INTEGER)
+    END FUNCTION
+    PUBLIC STATIC FUNCTION New(capacity AS INTEGER, idleMs AS INTEGER) AS SessionStore OR Error
+        RETURN NEW SessionStore(capacity, idleMs)
+    END FUNCTION
+    PUBLIC FUNCTION Create(value AS STRING) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Get(identifier AS STRING) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Set(identifier AS STRING, value AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Rotate(identifier AS STRING, value AS STRING) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Delete(identifier AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS Scraper
+    PUBLIC FUNCTION CONSTRUCTOR(html AS STRING)
+    END FUNCTION
+    PUBLIC STATIC FUNCTION Parse(html AS STRING) AS Scraper OR Error
+        RETURN NEW Scraper(html)
+    END FUNCTION
+    PUBLIC FUNCTION Text(selector AS STRING) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS ACL
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Allow(cidr AS Net.CIDR) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Deny(cidr AS Net.CIDR) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Check(address AS Net.Address) AS BOOLEAN OR Error
+        RETURN FALSE
+    END FUNCTION
+END CLASS
+// HTTP operations are supplied by the native Rust provider over HOST.Net.

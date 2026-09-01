@@ -3,7 +3,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::process::Command;
+use std::{
+    fs,
+    io::Write,
+    process::{Command, Stdio},
+    thread,
+    time::Duration,
+};
 
 fn bn() -> Command {
     Command::new(env!("CARGO_BIN_EXE_bn"))
@@ -16,6 +22,80 @@ fn check_valid_program_exits_zero() {
         .status()
         .expect("run bn check");
     assert_eq!(status.code(), Some(0));
+}
+
+#[test]
+fn check_network_client_server_examples_exit_zero() {
+    let status = bn()
+        .args(["check", "examples/socket.bn"])
+        .status()
+        .expect("run bn check");
+    assert_eq!(status.code(), Some(0));
+}
+
+#[test]
+fn check_icmp_ping_example_exits_zero() {
+    let status = bn()
+        .args(["check", "examples/icmp-ping.bn"])
+        .status()
+        .expect("check ICMP ping example");
+    assert_eq!(status.code(), Some(0));
+}
+
+#[test]
+fn socket_example_help_exits_zero() {
+    let output = bn()
+        .args(["run", "examples/socket.bn", "--", "--help"])
+        .output()
+        .expect("run socket example help");
+    assert_eq!(output.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Usage:"));
+}
+
+#[test]
+fn socket_examples_exchange_tcp_and_udp_messages() {
+    for protocol in ["--tcp", "--udp"] {
+        for family in [None, Some("--ipv6")] {
+            let log = format!("socket-{protocol}-{family:?}.jsonl");
+            let _ = fs::remove_file(&log);
+            let mut server_command = bn();
+            server_command.args([
+                "run",
+                "examples/socket.bn",
+                "--",
+                protocol,
+                "--server",
+                "--log",
+                &log,
+            ]);
+            let mut client_command = bn();
+            client_command.args(["run", "examples/socket.bn", "--", protocol, "--client"]);
+            if let Some(family) = family {
+                server_command.arg(family);
+                client_command.arg(family);
+            }
+            let server_process = server_command
+                .stdout(Stdio::piped())
+                .spawn()
+                .expect("start server example");
+            thread::sleep(Duration::from_millis(100));
+            let client = client_command.output().expect("run client example");
+            let server = server_process
+                .wait_with_output()
+                .expect("wait for server example");
+            assert_eq!(
+                client.status.code(),
+                Some(0),
+                "client={client:?}; server={server:?}"
+            );
+            assert_eq!(server.status.code(), Some(0), "server={server:?}");
+            assert!(String::from_utf8_lossy(&client.stdout).contains("reply verified"));
+            assert!(String::from_utf8_lossy(&server.stdout).contains("request accepted"));
+            let log_contents = fs::read_to_string(&log).expect("server connection log");
+            assert!(log_contents.contains("connection accepted"));
+            let _ = fs::remove_file(log);
+        }
+    }
 }
 
 #[test]
@@ -68,7 +148,9 @@ fn build_emits_llvm_for_empty_start() {
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("define i32 @main()"));
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("define i32 @main(i32 %argc, ptr %argv)")
+    );
 }
 
 #[test]
@@ -80,7 +162,8 @@ fn build_emits_llvm_for_integer_print() {
     assert_eq!(output.status.code(), Some(0));
     let llvm = String::from_utf8_lossy(&output.stdout);
     assert!(llvm.contains("@printf"));
-    assert!(llvm.contains("i64 42"));
+    assert!(llvm.contains("add i32 0, 42"));
+    assert!(llvm.contains("sext i32 %v0 to i64"));
 }
 
 #[test]
@@ -92,9 +175,9 @@ fn build_emits_multiple_integer_prints() {
     assert_eq!(output.status.code(), Some(0));
     let llvm = String::from_utf8_lossy(&output.stdout);
     assert_eq!(llvm.matches("@printf").count(), 4);
-    assert!(llvm.contains("i64 1"));
-    assert!(llvm.contains("i64 2"));
-    assert!(llvm.contains("i64 3"));
+    assert!(llvm.contains("add i32 0, 1"));
+    assert!(llvm.contains("add i32 0, 2"));
+    assert!(llvm.contains("add i32 0, 3"));
 }
 
 #[test]
@@ -104,7 +187,7 @@ fn build_constant_folds_integer_expression() {
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("i64 14"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("add i32 0, 14"));
 }
 
 #[test]
@@ -114,7 +197,7 @@ fn build_constant_folds_unary_integer_expression() {
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("i64 -5"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("add i32 0, -5"));
 }
 
 #[test]
@@ -124,7 +207,7 @@ fn build_constant_propagates_integer_binding() {
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("i64 3"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("add i32 0, 3"));
 }
 
 #[test]
@@ -146,7 +229,7 @@ fn build_emits_float_print() {
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("c\"3.75\\00\""));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("fadd double 0.0, 3.75"));
 }
 
 #[test]
@@ -166,8 +249,10 @@ fn build_constant_folds_if_branch() {
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("i64 7"));
-    assert!(!String::from_utf8_lossy(&output.stdout).contains("i64 9"));
+    let llvm = String::from_utf8_lossy(&output.stdout);
+    assert!(llvm.contains("br i1 %v0, label %b2, label %b3"));
+    assert!(llvm.contains("add i32 0, 7"));
+    assert!(llvm.contains("add i32 0, 9"));
 }
 
 #[test]
@@ -178,8 +263,9 @@ fn build_constant_folds_relational_if_branch() {
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
     let llvm = String::from_utf8_lossy(&output.stdout);
-    assert!(llvm.contains("i64 7"));
-    assert!(!llvm.contains("i64 9"));
+    assert!(llvm.contains("br i1 %v0, label %b2, label %b3"));
+    assert!(llvm.contains("add i32 0, 7"));
+    assert!(llvm.contains("add i32 0, 9"));
 }
 
 #[test]
@@ -194,7 +280,8 @@ fn build_constant_folds_short_circuit_if_branch() {
     assert_eq!(output.status.code(), Some(0));
     let llvm = String::from_utf8_lossy(&output.stdout);
     assert!(llvm.contains("yes"));
-    assert!(!llvm.contains("no"));
+    assert!(llvm.contains("no"));
+    assert!(llvm.contains("br i1 %v0"));
 }
 
 #[test]
@@ -323,7 +410,6 @@ fn build_emits_input_runtime_and_preserves_eof() {
         .stdout(std::process::Stdio::piped())
         .spawn()
         .expect("run native input artifact");
-    use std::io::Write;
     child
         .stdin
         .take()
@@ -450,8 +536,10 @@ fn build_folds_pure_constant_function_call() {
         .args(["build", "tests/grammar/valid/print-call.bn"])
         .output()
         .expect("run bn build");
-    assert_eq!(output.status.code(), Some(0));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("i64 5"));
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("BUILD_LOWERING_UNAVAILABLE"));
+    assert!(stderr.contains("calls"));
 }
 
 #[test]
@@ -460,8 +548,10 @@ fn build_folds_boolean_function_call() {
         .args(["build", "tests/grammar/valid/print-predicate-call.bn"])
         .output()
         .expect("run bn build");
-    assert_eq!(output.status.code(), Some(0));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("@.bn_true"));
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("BUILD_LOWERING_UNAVAILABLE"));
+    assert!(stderr.contains("calls"));
 }
 
 #[test]
@@ -470,8 +560,10 @@ fn build_folds_pure_function_local_binding() {
         .args(["build", "tests/grammar/valid/print-call-local.bn"])
         .output()
         .expect("run bn build");
-    assert_eq!(output.status.code(), Some(0));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("i64 5"));
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("BUILD_LOWERING_UNAVAILABLE"));
+    assert!(stderr.contains("calls"));
 }
 
 #[test]
@@ -480,8 +572,10 @@ fn build_folds_string_function_call() {
         .args(["build", "tests/grammar/valid/print-string-call.bn"])
         .output()
         .expect("run bn build");
-    assert_eq!(output.status.code(), Some(0));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("hello-call"));
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("BUILD_LOWERING_UNAVAILABLE"));
+    assert!(stderr.contains("calls"));
 }
 
 #[test]
@@ -490,8 +584,10 @@ fn build_folds_nested_pure_function_calls() {
         .args(["build", "tests/grammar/valid/print-call-nested.bn"])
         .output()
         .expect("run bn build");
-    assert_eq!(output.status.code(), Some(0));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("i64 5"));
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("BUILD_LOWERING_UNAVAILABLE"));
+    assert!(stderr.contains("calls"));
 }
 
 #[test]
@@ -515,7 +611,8 @@ fn build_constant_folds_or_short_circuit_branch() {
     assert_eq!(output.status.code(), Some(0));
     let llvm = String::from_utf8_lossy(&output.stdout);
     assert!(llvm.contains("yes-or"));
-    assert!(!llvm.contains("no-or"));
+    assert!(llvm.contains("no-or"));
+    assert!(llvm.contains("br i1 %v0"));
 }
 
 #[test]

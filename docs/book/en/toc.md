@@ -45,15 +45,25 @@
 - Pointers (`POINTER TO TYPE`, array pointers)
 - Memory Safety and Runtime Errors
 
-## 8. The Standard Library and Host
-- The `BNMath` Built-in Namespace
-- Host Capabilities (`HOST.Args`, `HOST.Clock`, `HOST.Console`, `HOST.Random`, `HOST.FileSystem`)
-- `BNData`
+## 8. Standard Library and HOST
+- The external module boundary
+- HOST capabilities (`HOST.Args`, `HOST.Clock`, `HOST.Console`, `HOST.Random`, `HOST.FileSystem`)
 - Temporal Data (`TIMESTAMP`, `DATE`, `TIME`, `TIMEZONE`)
 - Built-ins (`LEN`, `SIZEOF`)
+
+## 9. I/O and Concurrency
+- Synchronous, Bounded I/O (`HOST.FileSystem`, `HOST.Net`, `BNWeb`)
+- Concurrency and Parallelism (`BNDispatch`)
+- Constraints and Resource Management
 
 ## Appendices
 - Appendix A: Keywords Reference
 - Appendix B: Language Diagnostics
-- Appendix C: Draft Syntax (EBNF)
+- Appendix C: Accepted 0.3 Syntax (EBNF)
 - Appendix D: The `bn` Tool (`bn(1)`)
+- Appendix E: `BNJson`
+- Appendix F: `BNLog`
+- Appendix G: `BNWeb`
+- Appendix H: `BNData`
+- Appendix I: External module conventions
+- Appendix J: [BNDispatch](16_bndispatch.md)
