@@ -1,0 +1,99 @@
+// BNDispatch 0.3 external-module interface. The native Rust provider owns
+// bounded queues and never exposes operating-system thread handles.
+
+EXPORT CLASS Ticket
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Id() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION Status() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION Wait(timeoutMs AS INTEGER) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Cancel() AS BOOLEAN OR Error
+        RETURN FALSE
+    END FUNCTION
+    PUBLIC FUNCTION Error() AS Error OR NA
+        RETURN NA
+    END FUNCTION
+    PUBLIC FUNCTION IsDone() AS BOOLEAN
+        RETURN FALSE
+    END FUNCTION
+    PUBLIC FUNCTION Close() AS VOID
+        RETURN
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS Group
+    PUBLIC STATIC FUNCTION New() AS Group OR Error
+        RETURN NEW Group()
+    END FUNCTION
+    PUBLIC FUNCTION Enter() AS VOID
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Leave() AS VOID
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Wait(timeoutMs AS INTEGER) AS VOID OR Error
+        RETURN
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS Barrier
+    PUBLIC STATIC FUNCTION New(parties AS INTEGER) AS Barrier OR Error
+        RETURN NEW Barrier()
+    END FUNCTION
+    PUBLIC FUNCTION Wait(timeoutMs AS INTEGER) AS BOOLEAN OR Error
+        RETURN FALSE
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS Semaphore
+    PUBLIC STATIC FUNCTION New(permits AS INTEGER) AS Semaphore OR Error
+        RETURN NEW Semaphore()
+    END FUNCTION
+    PUBLIC FUNCTION Acquire(timeoutMs AS INTEGER) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Release() AS VOID
+        RETURN
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS Mutex
+    PUBLIC STATIC FUNCTION New() AS Mutex OR Error
+        RETURN NEW Mutex()
+    END FUNCTION
+    PUBLIC FUNCTION Lock(timeoutMs AS INTEGER) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Unlock() AS VOID
+        RETURN
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS Queue
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC STATIC FUNCTION Serial() AS Queue OR Error
+        RETURN NEW Queue()
+    END FUNCTION
+    PUBLIC STATIC FUNCTION Concurrent(workers AS INTEGER) AS Queue OR Error
+        RETURN NEW Queue()
+    END FUNCTION
+    PUBLIC STATIC FUNCTION Auto() AS Queue OR Error
+        RETURN NEW Queue()
+    END FUNCTION
+    PUBLIC FUNCTION Async(work AS FUNCTION() AS VOID OR Error) AS Ticket OR Error
+        RETURN NEW Ticket()
+    END FUNCTION
+    PUBLIC FUNCTION Join(timeoutMs AS INTEGER) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Close(timeoutMs AS INTEGER) AS VOID OR Error
+        RETURN
+    END FUNCTION
+END CLASS

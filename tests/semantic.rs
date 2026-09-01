@@ -43,6 +43,28 @@ fn duplicate_local_binding_is_rejected() {
 }
 
 #[test]
+fn multi_binding_initializers_cannot_see_declared_names() {
+    let source = SourceFile::new(
+        "multi-scope.bn",
+        "FUNCTION Start() AS VOID\nLET first, second AS INTEGER = second, 2\nEND FUNCTION\n",
+    );
+    let tokens = lex(&source).expect("lex source");
+    let program = parse(&tokens).expect("parse source");
+    let diagnostic = analyze(&program).expect_err("binding names must be out of scope");
+    assert_eq!(diagnostic.code, "NAME_NOT_FOUND");
+}
+
+#[test]
+fn multi_binding_initializer_count_must_match() {
+    let source = SourceFile::new(
+        "multi-count.bn",
+        "FUNCTION Start() AS VOID\nLET first, second AS INTEGER = 1\nEND FUNCTION\n",
+    );
+    let tokens = lex(&source).expect("lex source");
+    assert!(parse(&tokens).is_err());
+}
+
+#[test]
 fn pointer_binding_requires_initializer() {
     let source = SourceFile::new(
         "pointer.bn",
@@ -91,6 +113,17 @@ fn bnmath_requires_an_explicit_import() {
 #[test]
 fn accepted_host_members_have_exact_types() {
     analyze_path("tests/grammar/valid/host-capabilities.bn");
+}
+
+#[test]
+fn host_net_identity_exposes_typed_address_namespace() {
+    let source = SourceFile::new(
+        "host-net.bn",
+        "IMPORT HOST.Net AS Net\nFUNCTION Start() AS VOID\nLET address AS Net.Address\nEND FUNCTION\n",
+    );
+    let tokens = lex(&source).expect("lex source");
+    let program = parse(&tokens).expect("parse source");
+    analyze(&program).expect("HOST.Net.Address must resolve as a host type");
 }
 
 #[test]
@@ -207,6 +240,7 @@ fn semantic_fixtures_are_rejected() {
         "tests/grammar/invalid/filesystem-unknown-mode.bn",
         "tests/grammar/invalid/filesystem-seek.bn",
         "tests/grammar/invalid/filesystem-directory-api.bn",
+        "tests/grammar/invalid/local-vector-negative-dimension.bn",
     ] {
         let source = SourceFile::new(path, fs::read_to_string(path).expect("read fixture"));
         let tokens = lex(&source).expect("lex fixture");
@@ -470,6 +504,36 @@ fn pointer_shapes_allocation_sizes_and_delete_targets_are_checked() {
     ] {
         assert_eq!(
             analyze_text(text).expect_err("invalid pointer use").code,
+            code
+        );
+    }
+}
+
+#[test]
+fn local_vector_dimensions_require_non_negative_integer_values() {
+    analyze_text(
+        "FUNCTION Start() AS VOID\nLET count AS INTEGER = 0\nLET values AS INTEGER[count]\nEND FUNCTION\n",
+    )
+    .expect("zero-length local vector is valid");
+
+    for (text, code) in [
+        (
+            "FUNCTION Start() AS VOID\nLET count AS FLOAT = 2.0\nLET values AS INTEGER[count]\nEND FUNCTION\n",
+            "INVALID_VECTOR_DIMENSION",
+        ),
+        (
+            "FUNCTION Start() AS VOID\nLET values AS INTEGER[-1]\nEND FUNCTION\n",
+            "INVALID_VECTOR_DIMENSION",
+        ),
+        (
+            "FUNCTION Start() AS VOID\nLET values AS INTEGER[2147483648]\nEND FUNCTION\n",
+            "NUMERIC_OVERFLOW",
+        ),
+    ] {
+        assert_eq!(
+            analyze_text(text)
+                .expect_err("invalid vector dimension must fail")
+                .code,
             code
         );
     }

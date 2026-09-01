@@ -73,9 +73,12 @@ pub enum Statement {
         visibility: Option<Visibility>,
         is_static: bool,
         name: String,
+        additional_names: Vec<String>,
+        additional_name_spans: Vec<Span>,
         type_ref: TypeReference,
         initialized: bool,
         initializer: Option<Expression>,
+        additional_initializers: Vec<Expression>,
         span: Span,
     },
     Assignment {
@@ -168,7 +171,14 @@ pub struct TypeReference {
 pub struct TypeAtom {
     pub name: String,
     pub parts: Vec<String>,
+    pub dimensions: Vec<VectorDimension>,
     pub span: Span,
+}
+
+#[derive(Debug)]
+pub enum VectorDimension {
+    Literal { value: String, span: Span },
+    Expression(Expression),
 }
 
 #[derive(Debug)]

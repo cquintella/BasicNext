@@ -18,7 +18,7 @@ steps elsewhere.
 
 ## Structural reading
 
-Every compound form closes with `END` and the opening keyword. This makes a
+Every multi-line compound form closes with `END` and the opening keyword. This makes a
 program's coarse structure visible before a reader understands its details.
 Indentation is not syntactic, but code inside a block should be indented
 consistently; the official examples use four spaces per nesting level.
@@ -35,6 +35,14 @@ The official BN editor or editor extension should highlight the opening and
 closing members of these pairs together. This is a tooling requirement, not a
 new language construct.
 
+Basic Next 0.3 has one explicit compact exception: a single-line `IF` contains
+exactly one simple statement per branch on the same physical line and is not a
+block, so it has no `END IF`. It cannot contain a nested `IF`, loop, or other
+compound statement. The block form remains mandatory whenever a branch spans
+multiple statements or lines. `THEN NEWLINE` always selects that block form and
+therefore always requires `END IF`; a compact `ELSE`, when present, must remain
+on the same physical line as `THEN`.
+
 ## Explicit local contracts
 
 Every `LET` and `CONST` declaration has an explicit `AS TYPE`. BN must not add
@@ -47,6 +55,12 @@ contract visible at the point where it is introduced.
 BN keeps synonyms close to zero. A new language concept receives one canonical
 spelling and one mental model. `//` is the only line-comment form; new features
 must not introduce alternative spellings for the same concept.
+
+The single-line and block `IF` forms are distinguished structurally rather
+than by synonymous keywords: the presence of a line ending after `THEN`
+selects the block form, which must close with `END IF`; a statement on the same
+line selects the compact form, whose optional `ELSE` must be on that same line
+and which must not use `END IF`.
 
 Host capabilities use the same import form as modules:
 

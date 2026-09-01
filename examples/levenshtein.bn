@@ -1,0 +1,79 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Levenshtein edit distance translated from C example.
+
+FUNCTION Min3(a AS INTEGER, b AS INTEGER, c AS INTEGER) AS INTEGER
+    LET m AS INTEGER = a
+    IF b < m THEN m = b
+    IF c < m THEN m = c
+    RETURN m
+END FUNCTION
+
+FUNCTION Levenshtein(s AS STRING, t AS STRING) AS INTEGER
+    LET m AS INTEGER = LEN(s)
+    LET n AS INTEGER = LEN(t)
+    LET cols AS INTEGER = n + 1
+    LET rows AS INTEGER = m + 1
+    LET size AS INTEGER = rows * cols
+
+    // In Basic Next, pointers to pointers are not supported,
+    // so we map the 2D matrix to a 1D array of size (m + 1) * (n + 1).
+    LET D AS POINTER TO INTEGER[] = NEW INTEGER[size]
+
+    FOR iInit AS INTEGER = 0 TO m
+        D[iInit * cols] = iInit
+    END FOR
+
+    FOR jInit AS INTEGER = 0 TO n
+        D[jInit] = jInit
+    END FOR
+
+    FOR i AS INTEGER = 1 TO m
+
+        FOR j AS INTEGER = 1 TO n
+            LET cost AS INTEGER = 1
+            IF s[i - 1] = t[j - 1] THEN cost = 0
+
+            LET delCost AS INTEGER = D[(i - 1) * cols + j] + 1
+            LET insCost AS INTEGER = D[i * cols + (j - 1)] + 1
+            LET subCost AS INTEGER = D[(i - 1) * cols + (j - 1)] + cost
+
+            D[i * cols + j] = Min3(delCost, insCost, subCost)
+        END FOR
+    END FOR
+
+    LET r AS INTEGER = D[m * cols + n]
+    DELETE D
+    RETURN r
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    IF LEN(HOST.Args) > 1 THEN
+        IF HOST.Args[1] = "--h" OR HOST.Args[1] = "-h" THEN
+            PRINT "Usage: bn run examples/levenshtein.bn"
+            PRINT "Enter word 1 and word 2, one per line."
+            RETURN 0
+        END IF
+    END IF
+
+    PRINT "Word 1:"
+    LET source AS STRING OR EOF = INPUT()
+    IF source IS EOF THEN
+        PRINT "Expected word 1."
+        RETURN 1
+    END IF
+
+    PRINT "Word 2:"
+    LET target AS STRING OR EOF = INPUT()
+    IF target IS EOF THEN
+        PRINT "Expected word 2."
+        RETURN 1
+    END IF
+
+    LET distance AS INTEGER = Levenshtein(source, target)
+    PRINT "Distance: ", distance
+    RETURN 0
+END FUNCTION

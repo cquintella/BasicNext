@@ -6,11 +6,12 @@ This chapter covers the fundamental building blocks of a Basic Next program: how
 
 Basic Next enforces strict typing. Every variable must explicitly state its type. The language does not use type inference for bindings.
 
-Variables are declared using the `LET` keyword, followed by the name, `AS`, the type, and an optional initializer:
+Variables are declared using the `LET` keyword, followed by the name, `AS`, the type, and an optional initializer. In version 0.3, you can also declare multiple variables of the same type in a single `LET` binding:
 
 ```basic
 LET counter AS INTEGER = 10
 LET name AS STRING = "Alice"
+LET c, v AS STRING = "carro", "moto"
 ```
 
 If you omit the initializer, the variable is initialized to its type's default value. In Basic Next, there is no uninitialized storage. The default for numeric types is `0` or `0.0`, `BOOLEAN` defaults to `FALSE`, and `STRING` defaults to an empty string `""`.

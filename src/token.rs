@@ -7,7 +7,7 @@ use crate::source::Span;
 
 include!(concat!(env!("OUT_DIR"), "/reserved_words.rs"));
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
     pub span: Span,

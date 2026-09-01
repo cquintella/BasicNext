@@ -1,6 +1,6 @@
-# Basic Next 0.2 grammar fixtures
+# Basic Next 0.3 grammar fixtures
 
-These are source-level conformance fixtures for `docs/language/0.2/0.2.ebnf`.
+These are source-level conformance fixtures for `docs/language/0.3/0.3.ebnf`.
 They are intentionally framework-free: Sprint 2 and Sprint 3 must make `bn
 check` accept every file under `valid/` and reject every file under `invalid/`
 with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
@@ -13,7 +13,7 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `valid/cast-precedence.bn` | Accept | Postfix numeric and `BOOLEAN` casts, member access, indexing, calls, exponentiation and unary minus. |
 | `valid/type-tests-and-stop.bn` | Accept | Primitive alternative type test and program termination with `STOP`. |
 | `valid/start-exit-code.bn` | Accept | `Start` returning an operating-system exit code. |
-| `valid/multidimensional-vectors.bn` | Accept | Multidimensional vector type, nested literal, and chained indexing. |
+| `valid/multidimensional-vectors.bn` | Accept | Literal-dimension multidimensional vector type, nested literal, and chained indexing. |
 | `valid/function-values-and-control-flow.bn` | Accept | Function value type, call through a binding, signed `STEP`, `CONTINUE FOR`, and bare `RETURN` from `VOID`. |
 | `valid/integer-widening-conversion.bn` | Accept | `INT16 AS INT32` is a permitted integral widening conversion. |
 | `valid/integer-narrowing-conversion.bn` | Accept | An explicit `INT32 AS INT16` conversion is valid; its range is checked at runtime. |
@@ -24,6 +24,7 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `valid/bndata-csv.bn` | Accept and run | CSV header parsing, string columns, row/column counts. |
 | `valid/bndata-write-csv.bn` | Accept and run | CSV serialization through `Data.WriteCSV`. |
 | `valid/bndata-variable-length.bn` | Accept and run | DataFrame vector parameters accept arbitrary fixed lengths. |
+| `valid/local-vector-expression-dimension.bn` | Accept and run | Local `LET` bindings may allocate fixed vectors from declaration-time expressions. |
 | `valid/bndata-select-negative.bn` | Accept and run | `Select` with a negative index returns `Error`, not `INDEX_OUT_OF_BOUNDS`. |
 | `valid/bndata-empty-stats.bn` | Accept and run | Empty-frame `Slice` is `Error`; empty float `Mean` is `NAN`; empty `ZScore` is a 0-row frame. |
 | `valid/error-return-narrow.bn` | Accept and run | `IF file IS Error THEN RETURN` narrows `file` to `FS.File`. |
@@ -63,7 +64,9 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `invalid/pointer-void-index.bn` | Reject (semantic) | An opaque pointer must convert to a typed pointer before indexing. |
 | `invalid/new-void.bn` | Reject (syntax) | `POINTER TO VOID` is opaque; `NEW VOID` is not an allocation form. |
 | `invalid/void-vector.bn` | Reject (syntax) | `VOID` cannot be a vector element. |
+| `invalid/signature-vector-expression-dimension.bn` | Reject (syntax) | Signature vector dimensions remain literal-only. |
 | `invalid/ragged-vector-literal.bn` | Reject (semantic) | A nested vector literal must match every declared dimension. |
+| `invalid/local-vector-negative-dimension.bn` | Reject (semantic) | Local vector dimensions must be non-negative at declaration time. |
 | `invalid/removed-host-memory.bn` | Reject (semantic) | `HOST.Memory` is deferred and is not a 0.1 capability. |
 | `invalid/host-capability-lowercase.bn` | Reject (syntax) | Capability names after `HOST.` must start with a capital letter. |
 | `invalid/bad-input-call.bn` | Reject (syntax) | `INPUT` accepts no arguments. |

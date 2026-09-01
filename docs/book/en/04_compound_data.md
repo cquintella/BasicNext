@@ -11,7 +11,14 @@ LET dimensions AS INTEGER[3] = [10, 20, 30]
 LET grid AS INTEGER[2][3] = [[1, 2, 3], [4, 5, 6]]
 ```
 
-Each dimension must be a non-negative integer literal. Indices are zero-based, running from `0` to one less than the dimension. Accessing an index outside this range raises an `INDEX_OUT_OF_BOUNDS` runtime error.
+For function signatures, fields, and parameters, each dimension must be a non-negative integer literal. However, in version 0.3, local `LET` bindings can use declaration-time vector dimensions that are evaluated once at binding time:
+
+```basic
+LET n AS INTEGER = 4
+LET values AS INTEGER[n] = [1, 2, 3, 4]
+```
+
+Indices are zero-based, running from `0` to one less than the dimension. Accessing an index outside this range raises an `INDEX_OUT_OF_BOUNDS` runtime error.
 
 If you declare a vector without an initializer, each element is automatically assigned its type's default value:
 

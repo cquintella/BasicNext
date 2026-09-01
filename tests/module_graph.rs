@@ -115,6 +115,29 @@ fn standard_bn_modules_resolve_without_a_hard_coded_name_list() {
 }
 
 #[test]
+fn host_net_and_external_web_logging_identities_resolve() {
+    let graph =
+        load(Path::new("tests/modules/bn-identities/main.bn")).expect("load 0.3 identities");
+    analyze_modules(&graph).expect("identities must analyze");
+    assert!(
+        graph.modules.iter().any(|module| {
+            module.standard_module == Some(bn::module_graph::StandardModule::BNLog)
+        })
+    );
+    assert!(
+        graph.modules.iter().any(|module| {
+            module.standard_module == Some(bn::module_graph::StandardModule::BNWeb)
+        })
+    );
+    assert!(graph.modules.iter().any(|module| {
+        module.standard_module == Some(bn::module_graph::StandardModule::BNJson)
+    }));
+    assert!(graph.modules.iter().any(|module| {
+        module.standard_module == Some(bn::module_graph::StandardModule::BNDispatch)
+    }));
+}
+
+#[test]
 fn imported_function_is_not_visible_without_its_alias() {
     let graph = load(Path::new("tests/modules/unqualified/main.bn")).expect("load unqualified");
     let error = analyze_modules(&graph).expect_err("unqualified Soma must fail");

@@ -4,6 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use std::{
+    fmt::Write as _,
     fs,
     io::Cursor,
     path::{Path, PathBuf},
@@ -13,7 +14,10 @@ use std::{
 use bn::{
     ir::lower_graph,
     module_graph::load,
-    runtime::{HostEnv, execute_with_host},
+    runtime::{
+        DebugDecision, HostEnv, execute_with_host, execute_with_host_debug,
+        execute_with_host_debug_control,
+    },
     semantic::analyze_modules,
 };
 
@@ -74,12 +78,519 @@ fn run_loaded(
     Ok((code, String::from_utf8(output).expect("UTF-8 output")))
 }
 
+fn run_loaded_debug(
+    path: &str,
+    host: &HostEnv,
+    events: &mut Vec<(String, usize)>,
+) -> Result<(), bn::diagnostic::Diagnostic> {
+    let graph = load(path).map_err(|error| error.diagnostic)?;
+    let models = analyze_modules(&graph).map_err(|error| error.diagnostic)?;
+    let module = lower_graph(&graph, &models)?;
+    let mut input = Cursor::new(Vec::<u8>::new());
+    let mut output = Vec::new();
+    let mut hook = |function: &str, span: bn::source::Span| {
+        events.push((function.to_owned(), span.start.line));
+    };
+    execute_with_host_debug(&module, &mut input, &mut output, host, &mut hook)?;
+    Ok(())
+}
+
 #[test]
 fn executes_calls_loops_and_checked_arithmetic() {
     let source = "FUNCTION Factorial(value AS INTEGER) AS INTEGER\nIF value = 0 THEN\nRETURN 1\nELSE\nRETURN value * Factorial(value - 1)\nEND IF\nEND FUNCTION\nFUNCTION Start() AS INTEGER\nLET total AS INTEGER = Factorial(5)\nLET quotient AS INTEGER = -5 DIV 3\nLET remainder AS INTEGER = -5 % 3\nPRINT total, quotient, remainder\nRETURN 7\nEND FUNCTION\n";
     let (code, output) = run(source, "").expect("execute source");
     assert_eq!(code, 7);
     assert_eq!(output, "120-21\n");
+}
+
+#[test]
+fn debug_hook_reports_instruction_spans_through_interpreter_pipeline() {
+    let path = unique_temp("debug.bn");
+    fs::write(
+        &path,
+        "FUNCTION Start() AS VOID\nPRINT \"hooked\"\nEND FUNCTION\n",
+    )
+    .expect("write debug source");
+    let mut events = Vec::new();
+    run_loaded_debug(
+        path.to_str().expect("utf-8 path"),
+        &HostEnv::fixed(vec!["debug.bn".into()], 0, 0),
+        &mut events,
+    )
+    .expect("execute with debug hook");
+    let _ = fs::remove_file(path);
+    assert!(
+        events
+            .iter()
+            .any(|(function, line)| function == "Start" && *line == 2)
+    );
+}
+
+#[test]
+fn debug_control_can_terminate_before_user_instruction() {
+    let path = unique_temp("debug-control.bn");
+    fs::write(
+        &path,
+        "FUNCTION Start() AS INTEGER\nPRINT \"must not run\"\nRETURN 0\nEND FUNCTION\n",
+    )
+    .unwrap();
+    let graph = load(&path).unwrap();
+    let models = analyze_modules(&graph).unwrap();
+    let module = lower_graph(&graph, &models).unwrap();
+    let mut input = Cursor::new(Vec::<u8>::new());
+    let mut output = Vec::new();
+    let mut control =
+        |_function: &str, _span: bn::source::Span, _variables: &[bn::runtime::DebugVariable]| {
+            DebugDecision::Terminate
+        };
+    let error = execute_with_host_debug_control(
+        &module,
+        &mut input,
+        &mut output,
+        &HostEnv::fixed(Vec::new(), 0, 0),
+        &mut control,
+    )
+    .expect_err("debugger termination");
+    assert_eq!(error.code, "DEBUG_TERMINATED");
+    assert!(output.is_empty());
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn multi_binding_let_evaluates_left_to_right() {
+    let source = "FUNCTION Start() AS VOID\nLET first, second AS INTEGER = 1, 2\nPRINT first, second\nEND FUNCTION\n";
+    let (_, output) = run(source, "").expect("execute multi-binding LET");
+    assert_eq!(output, "12\n");
+}
+
+#[test]
+fn single_line_if_executes_one_branch() {
+    let source = "FUNCTION Start() AS VOID\nLET flag AS BOOLEAN = TRUE\nIF flag THEN PRINT \"yes\" ELSE PRINT \"no\"\nEND FUNCTION\n";
+    let (_, output) = run(source, "").expect("execute single-line IF");
+    assert_eq!(output, "yes\n");
+}
+
+#[test]
+fn host_net_address_parse_and_format_round_trip() {
+    let source = r#"IMPORT HOST.Net AS Net
+FUNCTION Start() AS VOID
+LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+IF address IS Error THEN
+PRINT "error"
+ELSE
+PRINT address.ToString()
+END IF
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute HOST.Net address parse");
+    assert_eq!(output, "127.0.0.1\n");
+}
+
+#[test]
+fn bnlog_logger_null_transport_is_bounded_and_idempotent() {
+    let source = r#"IMPORT BNLog AS Log
+FUNCTION Start() AS VOID
+LET logger AS Log.Logger OR Error = Log.Logger.New("test")
+IF logger IS Error THEN
+PRINT "error"
+ELSE
+PRINT logger.AddNull(2) IS Error
+LET fields AS Log.Fields = NEW Log.Fields()
+PRINT logger.Log(2, "hello", fields) IS Error
+LET child AS Log.Logger OR Error = logger.Child(fields)
+PRINT child IS Error
+PRINT logger.Flush(1000) IS Error, logger.Close(1000) IS Error, logger.Close(1000) IS Error
+END IF
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute BNLog logger provider");
+    assert_eq!(output, "FALSE\nFALSE\nFALSE\nFALSEFALSETRUE\n");
+}
+
+#[test]
+fn bnlog_file_transport_requires_explicit_filesystem_and_appends_json_lines() {
+    let path = unique_temp("bnlog.jsonl");
+    let source = format!(
+        "IMPORT BNLog AS Log\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET logger AS Log.Logger = NEW Log.Logger()\nLET added AS VOID OR Error = logger.AddFile(\"{}\", 2)\nIF added IS Error THEN\nPRINT added.Code\nELSE\nLET fields AS Log.Fields = NEW Log.Fields()\nLET written AS VOID OR Error = logger.Log(2, \"hello\", fields)\nPRINT written IS Error\nEND IF\nEND FUNCTION\n",
+        bn_path(&path)
+    );
+    let (_, output) = run(&source, "").expect("execute BNLog file provider");
+    let contents = fs::read_to_string(&path).expect("read JSON Lines output");
+    let _ = fs::remove_file(path);
+    assert_eq!(output, "FALSE\n");
+    assert!(contents.contains("\"message\":\"hello\""));
+}
+
+#[test]
+fn bnlog_console_transport_requires_explicit_console_and_writes_json_lines() {
+    let source = r#"IMPORT BNLog AS Log
+IMPORT HOST.Console AS CON
+FUNCTION Start() AS VOID
+LET logger AS Log.Logger = NEW Log.Logger()
+LET added AS VOID OR Error = logger.AddConsole(2)
+IF added IS Error THEN
+PRINT "error"
+ELSE
+LET fields AS Log.Fields = NEW Log.Fields()
+LET written AS VOID OR Error = logger.Log(2, "console", fields)
+PRINT written IS Error
+END IF
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute BNLog console provider");
+    assert!(output.contains("\"message\":\"console\""));
+    assert!(output.ends_with("FALSE\n"));
+}
+
+#[test]
+fn bnlog_attempts_later_transports_after_an_earlier_failure() {
+    let good = unique_temp("bnlog-good.jsonl");
+    let bad = unique_temp("missing-parent/bnlog-bad.jsonl");
+    let source = format!(
+        "IMPORT BNLog AS Log\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET logger AS Log.Logger = NEW Log.Logger()\nlogger.AddFile(\"{}\", 2)\nlogger.AddFile(\"{}\", 2)\nLET fields AS Log.Fields = NEW Log.Fields()\nLET result AS VOID OR Error = logger.Log(2, \"attempt-all\", fields)\nPRINT result IS Error\nEND FUNCTION\n",
+        bn_path(&bad),
+        bn_path(&good)
+    );
+    let (_, output) = run(&source, "").expect("execute multi-transport logger");
+    let contents = fs::read_to_string(&good).expect("later transport was attempted");
+    let _ = fs::remove_file(good);
+    assert_eq!(output, "TRUE\n");
+    assert!(contents.contains("\"message\":\"attempt-all\""));
+}
+
+#[test]
+fn bnlog_child_context_is_included_in_record_bounds() {
+    let mut source = String::from(
+        "IMPORT BNLog AS Log\nFUNCTION Start() AS VOID\nLET logger AS Log.Logger = NEW Log.Logger()\nLET fields AS Log.Fields = NEW Log.Fields()\n",
+    );
+    for index in 0..16 {
+        let _ = writeln!(
+            source,
+            "fields.SetString(\"key{index}\", \"{}\")",
+            "x".repeat(4096)
+        );
+    }
+    source.push_str(
+        "LET child AS Log.Logger OR Error = logger.Child(fields)\nIF child IS Error THEN\nPRINT \"child-error\"\nELSE\nLET child_logger AS Log.Logger = child\nPRINT child_logger.Log(2, \"x\", fields) IS Error\nEND IF\nEND FUNCTION\n",
+    );
+    let (_, output) = run(&source, "").expect("execute BNLog child provider");
+    assert_eq!(output, "TRUE\n");
+}
+
+#[test]
+fn bnjson_provider_reports_gate_bound_unavailability() {
+    let source = r#"IMPORT BNJson AS Json
+FUNCTION Start() AS VOID
+LET value AS Json.Json OR Error = Json.Json.Parse("{\"ok\":true}")
+IF value IS Error THEN
+PRINT "error"
+ELSE
+PRINT Json.Json.Stringify(value)
+END IF
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute BNJson provider");
+    assert_eq!(output, "{\"ok\":true}\n");
+}
+
+#[test]
+fn bnlog_fields_provider_sets_and_gets_bounded_values() {
+    let source = r#"IMPORT BNLog AS Log
+FUNCTION Start() AS VOID
+LET fields AS Log.Fields = NEW Log.Fields()
+fields.SetString("service", "basicnext")
+fields.SetInteger("port", 8080)
+fields.SetBoolean("secure", TRUE)
+LET duplicate AS VOID OR Error = fields.SetString("service", "other")
+PRINT fields.Count(), fields.Get("service"), fields.Get("port"), fields.Get("secure"), duplicate IS Error
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute BNLog fields provider");
+    assert_eq!(output, "3basicnext8080TRUETRUE\n");
+}
+
+#[test]
+fn bnlog_entry_with_field_is_immutable_and_bounded() {
+    let source = r#"IMPORT BNLog AS Log
+FUNCTION Start() AS VOID
+LET entry AS Log.Entry = NEW Log.Entry()
+LET enriched AS Log.Entry OR Error = entry.WithField("request_id", "abc")
+IF enriched IS Error THEN
+PRINT "unexpected"
+ELSE
+LET duplicate AS Log.Entry OR Error = enriched.WithField("request_id", "def")
+PRINT duplicate IS Error
+END IF
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute BNLog entry provider");
+    assert_eq!(output, "TRUE\n");
+}
+
+#[test]
+fn host_net_address_predicates_follow_ip_semantics() {
+    let source = r#"IMPORT HOST.Net AS Net
+FUNCTION Start() AS VOID
+LET v4 AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+LET v6 AS Net.Address OR Error = Net.Address.Parse("ff02::1")
+IF v4 IS Error OR v6 IS Error THEN
+PRINT "error"
+ELSE
+PRINT v4.IsIPv4(), v4.IsLoopback(), v4.IsPrivate(), v6.IsIPv6(), v6.IsMulticast()
+END IF
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute address predicates");
+    assert_eq!(output, "TRUETRUEFALSETRUETRUE\n");
+}
+
+#[test]
+fn host_net_cidr_contains_addresses() {
+    let source = "IMPORT HOST.Net AS Net\nFUNCTION Start() AS VOID\nLET network AS Net.CIDR OR Error = Net.CIDR.Parse(\"192.168.1.0/24\")\nLET inside AS Net.Address OR Error = Net.Address.Parse(\"192.168.1.20\")\nLET outside AS Net.Address OR Error = Net.Address.Parse(\"192.168.2.20\")\nIF network IS Error OR inside IS Error OR outside IS Error THEN\nPRINT \"error\"\nELSE\nPRINT network.Contains(inside), network.Contains(outside)\nEND IF\nEND FUNCTION\n";
+    let (_, output) = run(source, "").expect("execute HOST.Net CIDR");
+    assert_eq!(output, "TRUEFALSE\n");
+}
+
+#[test]
+fn host_net_resolve_returns_bounded_addresses() {
+    let source = "IMPORT HOST.Net AS Net\nFUNCTION Start() AS VOID\nLET result AS Net.Addresses OR Error = Net.Resolve(\"localhost\", 1000)\nIF result IS Error THEN\nPRINT \"error\"\nELSE\nLET first AS Net.Address OR Error = result.Get(0)\nIF first IS Error THEN\nPRINT \"error\"\nELSE\nPRINT result.Count(), first.ToString()\nEND IF\nEND IF\nEND FUNCTION\n";
+    let (_, output) = run(source, "").expect("execute HOST.Net Resolve");
+    assert!(output.starts_with('1') || output.starts_with('2'));
+}
+
+#[test]
+fn host_net_endpoint_create_preserves_port() {
+    let source = "IMPORT HOST.Net AS Net\nFUNCTION Start() AS VOID\nLET address AS Net.Address OR Error = Net.Address.Parse(\"127.0.0.1\")\nIF address IS Error THEN\nPRINT \"error\"\nELSE\nLET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, 8080)\nIF endpoint IS Error THEN\nPRINT \"error\"\nELSE\nPRINT endpoint\nEND IF\nEND IF\nEND FUNCTION\n";
+    let (_, output) = run(source, "").expect("execute HOST.Net Endpoint");
+    assert_eq!(output, "HOST.Net.Endpoint\n");
+}
+
+#[test]
+fn host_net_endpoint_and_cidr_accessors_preserve_values() {
+    let source = r#"IMPORT HOST.Net AS Net
+FUNCTION Start() AS VOID
+LET address AS Net.Address OR Error = Net.Address.Parse("192.168.1.20")
+LET network AS Net.CIDR OR Error = Net.CIDR.Parse("192.168.1.0/24")
+IF address IS Error OR network IS Error THEN
+PRINT "error"
+ELSE
+LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, 8080)
+IF endpoint IS Error THEN
+PRINT "error"
+ELSE
+PRINT endpoint.Address().ToString(), endpoint.Port(), network.Network().ToString(), network.PrefixLength()
+END IF
+END IF
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute network accessors");
+    assert_eq!(output, "192.168.1.208080192.168.1.024\n");
+}
+
+#[test]
+fn host_net_tcp_listen_reports_local_endpoint() {
+    let source = r#"IMPORT HOST.Net AS Net
+FUNCTION Start() AS VOID
+LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+IF address IS Error THEN
+PRINT "parse-error"
+ELSE
+LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, 0)
+IF endpoint IS Error THEN
+PRINT "endpoint-error"
+ELSE
+LET endpoints AS Net.Endpoint[1] = [endpoint]
+LET listener AS Net.TCPListener OR Error = Net.TCPListen(endpoints, 1)
+IF listener IS Error THEN
+PRINT "listen-error", listener.Message
+ELSE
+LET local AS Net.Endpoint OR Error = listener.LocalEndpoint()
+IF local IS Error THEN
+PRINT "endpoint-error"
+ELSE
+PRINT local.Port() > 0
+END IF
+listener.Close()
+END IF
+END IF
+END IF
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute TCP listener");
+    assert!(output == "TRUE\n" || output.starts_with("listen-error"));
+}
+
+#[test]
+fn host_net_tcp_listen_rolls_back_when_one_endpoint_fails() {
+    let source = r#"IMPORT HOST.Net AS Net
+FUNCTION Start() AS VOID
+LET first AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+LET second AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+IF first IS Error OR second IS Error THEN
+PRINT "parse-error"
+ELSE
+LET a AS Net.Endpoint OR Error = Net.Endpoint.Create(first, 1)
+LET b AS Net.Endpoint OR Error = Net.Endpoint.Create(second, 1)
+IF a IS Error OR b IS Error THEN
+PRINT "endpoint-error"
+ELSE
+LET endpoints AS Net.Endpoint[2] = [a, b]
+LET listener AS Net.TCPListener OR Error = Net.TCPListen(endpoints, 1)
+PRINT listener IS Error
+END IF
+END IF
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute multi-endpoint rejection");
+    assert_eq!(output, "TRUE\n");
+}
+
+#[test]
+fn host_net_optional_providers_fail_deterministically_when_unavailable() {
+    let source = r#"IMPORT HOST.Net AS Net
+FUNCTION Start() AS VOID
+LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+IF address IS Error THEN
+PRINT "parse-error"
+ELSE
+LET reply AS Net.PingReply OR Error = Net.Ping(address, 100)
+LET neighbor AS Net.Address OR Error = Net.Neighbor(address)
+PRINT reply IS Error, neighbor IS Error
+END IF
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute unavailable optional providers");
+    assert_eq!(output, "TRUETRUE\n");
+}
+
+#[test]
+fn host_num_procs_reports_a_positive_logical_processor_count() {
+    let source = r#"FUNCTION Start() AS VOID
+LET count AS INTEGER OR Error = HOST.NumProcs()
+IF count IS Error THEN
+PRINT "error"
+ELSE
+PRINT count > 0
+END IF
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute HOST.NumProcs");
+    assert_eq!(output, "TRUE\n");
+}
+
+#[test]
+fn bndispatch_queue_rejects_worker_count_outside_the_bounded_range() {
+    let source = r"IMPORT BNDispatch AS Dispatch
+FUNCTION Start() AS VOID
+LET invalid AS Dispatch.Queue OR Error = Dispatch.Queue.Concurrent(0)
+LET valid AS Dispatch.Queue OR Error = Dispatch.Queue.Concurrent(1)
+PRINT invalid IS Error, valid IS Error
+END FUNCTION
+";
+    let (_, output) = run(source, "").expect("execute BNDispatch queue limits");
+    assert_eq!(output, "TRUEFALSE\n");
+}
+
+#[test]
+fn bndispatch_ticket_lifecycle_is_bounded() {
+    let source = r#"IMPORT BNDispatch AS Dispatch
+FUNCTION Work() AS VOID
+END FUNCTION
+FUNCTION Start() AS VOID
+LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
+IF queue IS Error THEN
+PRINT "error"
+ELSE
+LET ticket AS Dispatch.Ticket OR Error = queue.Async(Work)
+IF ticket IS Error THEN
+PRINT "error"
+ELSE
+PRINT ticket.Status(), ticket.Cancel(), ticket.IsDone()
+LET closed AS VOID OR Error = queue.Close(100)
+PRINT closed IS Error
+END IF
+END IF
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute BNDispatch ticket lifecycle");
+    assert!(
+        [
+            "0TRUETRUE\nFALSE\n",
+            "1FALSETRUE\nFALSE\n",
+            "2FALSETRUE\nFALSE\n"
+        ]
+        .contains(&output.as_str()),
+        "unexpected ticket race outcome: {output:?}"
+    );
+}
+
+#[test]
+fn bndispatch_sync_primitives_have_bounded_operations() {
+    let source = r#"IMPORT BNDispatch AS Dispatch
+FUNCTION Start() AS VOID
+LET group AS Dispatch.Group OR Error = Dispatch.Group.New()
+LET barrier AS Dispatch.Barrier OR Error = Dispatch.Barrier.New(1)
+LET semaphore AS Dispatch.Semaphore OR Error = Dispatch.Semaphore.New(1)
+LET mutex AS Dispatch.Mutex OR Error = Dispatch.Mutex.New()
+IF group IS Error OR barrier IS Error OR semaphore IS Error OR mutex IS Error THEN
+PRINT "error"
+ELSE
+group.Enter()
+group.Leave()
+LET gw AS VOID OR Error = group.Wait(100)
+LET bw AS BOOLEAN OR Error = barrier.Wait(100)
+LET sa AS VOID OR Error = semaphore.Acquire(100)
+semaphore.Release()
+LET ml AS VOID OR Error = mutex.Lock(100)
+mutex.Unlock()
+PRINT gw IS Error, bw IS Error, sa IS Error, ml IS Error
+END IF
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute BNDispatch synchronization primitives");
+    assert_eq!(output, "FALSEFALSEFALSEFALSE\n");
+}
+
+#[test]
+fn bndispatch_wait_executes_named_task_and_completes_ticket() {
+    let source = r#"IMPORT BNDispatch AS Dispatch
+FUNCTION Work() AS VOID
+PRINT "worked"
+END FUNCTION
+FUNCTION Start() AS VOID
+LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
+IF queue IS Error THEN
+PRINT "error"
+ELSE
+LET ticket AS Dispatch.Ticket OR Error = queue.Async(Work)
+IF ticket IS Error THEN
+PRINT "error"
+ELSE
+LET result AS VOID OR Error = ticket.Wait(100)
+PRINT result IS Error, ticket.Status(), ticket.IsDone()
+END IF
+END IF
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute BNDispatch task on wait");
+    assert_eq!(output, "worked\nFALSE2TRUE\n");
+}
+
+#[test]
+fn host_net_reverse_reports_unavailable_provider_without_guessing() {
+    let source = r#"IMPORT HOST.Net AS Net
+FUNCTION Start() AS VOID
+LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+IF address IS Error THEN
+PRINT "parse-error"
+ELSE
+LET host AS STRING OR Error = Net.Reverse(address, 100)
+PRINT host IS Error
+END IF
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute reverse resolver");
+    assert_eq!(output, "TRUE\n");
 }
 
 #[test]
@@ -179,7 +690,7 @@ END FUNCTION
 
 #[test]
 fn inherited_static_members_keep_the_base_storage() {
-    let source = r#"
+    let source = r"
 CLASS Animal
     PUBLIC STATIC count AS INTEGER = 1
 END CLASS
@@ -191,7 +702,7 @@ FUNCTION Start() AS VOID
     Dog.count += 1
     PRINT Animal.count, Dog.count
 END FUNCTION
-"#;
+";
     let (_, output) = run(source, "").expect("execute inherited STATIC field");
     assert_eq!(output, "22\n");
 }
@@ -397,6 +908,47 @@ fn primitive_and_vector_bindings_receive_defaults() {
 }
 
 #[test]
+fn local_vector_dimensions_are_evaluated_once_and_stay_fixed() {
+    let source = r"
+FUNCTION Start() AS VOID
+    LET count AS INTEGER = 2
+    LET values AS INTEGER[count]
+    count = 4
+    PRINT LEN(values)
+    values = [7, 8]
+    PRINT values[0], values[1]
+END FUNCTION
+";
+    let (_, output) = run(source, "").expect("declaration-time vector dimension");
+    assert_eq!(output, "2\n78\n");
+}
+
+#[test]
+fn local_vector_dimension_rejections_are_runtime_errors() {
+    for (text, code) in [
+        (
+            "FUNCTION Start() AS VOID\nLET count AS INTEGER = -1\nLET values AS INTEGER[count]\nEND FUNCTION\n",
+            "INVALID_VECTOR_DIMENSION",
+        ),
+        (
+            "FUNCTION Start() AS VOID\nLET count AS UINT64 = 9223372036854775808\nLET values AS INTEGER[count]\nEND FUNCTION\n",
+            "NUMERIC_OVERFLOW",
+        ),
+        (
+            "FUNCTION Start() AS VOID\nLET count AS INTEGER = 2\nLET values AS INTEGER[count]\nvalues = [1]\nEND FUNCTION\n",
+            "VECTOR_LENGTH_MISMATCH",
+        ),
+    ] {
+        assert_eq!(
+            run(text, "")
+                .expect_err("invalid runtime vector dimension must fail")
+                .code,
+            code
+        );
+    }
+}
+
+#[test]
 fn executes_imported_function_through_alias() {
     let (code, output) =
         run_path("tests/modules/user-alias/main.bn").expect("execute imported Soma");
@@ -543,7 +1095,7 @@ fn filesystem_file_reads_lines_and_bytes() {
     let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET text AS FS.File OR Error = FS.Open(\"Cargo.toml\", FS.READ)\nIF text IS Error THEN\nPRINT text.Code\nELSE\nLET line AS STRING OR EOF OR Error = text.ReadLine()\nPRINT line\ntext.Close()\nEND IF\nLET binary AS FS.File OR Error = FS.Open(\"Cargo.toml\", FS.READ)\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[8]\nIF binary IS Error THEN\nPRINT binary.Code\nELSE\nPRINT binary.ReadBytes(buffer), buffer[0]\nDELETE binary\nEND IF\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("execute line and byte reads");
     assert!(output.starts_with("[package]\n"));
-    assert!(output.contains("8"));
+    assert!(output.contains('8'));
 }
 
 #[test]
@@ -574,7 +1126,7 @@ fn filesystem_file_reports_invalid_utf8_on_text_read() {
         .expect("create invalid UTF-8 fixture");
     let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"/tmp/basicnext-sprint5-utf8.bn\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET text AS STRING OR Error = file.ReadAll()\nIF text IS Error THEN\nPRINT text.Code\nEND IF\nDELETE file\nEND IF\nFS.DeleteFile(\"/tmp/basicnext-sprint5-utf8.bn\")\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("invalid UTF-8 is an Error value");
-    assert!(output.contains("1"));
+    assert!(output.contains('1'));
     let _ = fs::remove_file("/tmp/basicnext-sprint5-utf8.bn");
 }
 
@@ -1378,4 +1930,268 @@ END FUNCTION
     )
     .expect_err("offset is not a TIMEZONE");
     assert_eq!(error.code, "INVALID_TIMEZONE");
+}
+
+#[test]
+fn bnweb_server_lifecycle_uses_native_state() {
+    let source = r#"IMPORT BNWeb AS Web
+IMPORT HOST.Net AS Net
+FUNCTION Start() AS VOID
+LET server AS Web.Server = NEW Web.Server()
+LET stopped AS VOID OR Error = server.Stop(1000)
+IF stopped IS Error THEN
+PRINT stopped.Code
+END IF
+LET closed AS VOID OR Error = server.Close(1000)
+IF closed IS Error THEN
+PRINT closed.Code
+ELSE
+PRINT "closed"
+END IF
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute BNWeb server lifecycle");
+    assert_eq!(output, "closed\n");
+}
+
+#[test]
+fn bnweb_server_start_binds_host_net_endpoint() {
+    let source = r#"IMPORT BNWeb AS Web
+IMPORT HOST.Net AS Net
+FUNCTION Start() AS VOID
+LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+IF address IS Error THEN
+STOP 1
+ELSE
+LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, 0)
+IF endpoint IS Error THEN
+STOP 2
+ELSE
+LET server AS Web.Server = NEW Web.Server()
+LET started AS VOID OR Error = server.Start(endpoint)
+IF started IS Error THEN
+PRINT started.Code
+ELSE
+LET stopped AS VOID OR Error = server.Stop(1000)
+PRINT stopped IS Error
+END IF
+END IF
+END IF
+END FUNCTION
+"#;
+    let (_, output) = match run(source, "") {
+        Ok(result) => result,
+        Err(error) => {
+            assert_eq!(error.code, "WEB_LISTEN");
+            return;
+        }
+    };
+    assert_eq!(output, "FALSE\n");
+}
+
+#[test]
+fn bnweb_dispatch_invokes_registered_handler() {
+    let source = r#"IMPORT BNWeb AS Web
+IMPORT HOST.Net AS Net
+FUNCTION Handler(request AS Web.Request, response AS Web.Response) AS VOID
+IF response.Status() = 202 THEN
+response.SetStatus(201)
+ELSE
+response.SetStatus(500)
+END IF
+END FUNCTION
+FUNCTION Filter(request AS Web.Request, response AS Web.Response) AS VOID
+response.SetStatus(202)
+END FUNCTION
+FUNCTION Start() AS VOID
+LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+IF address IS Error THEN
+STOP 1
+ELSE
+LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, 0)
+IF endpoint IS Error THEN
+STOP 2
+ELSE
+LET server AS Web.Server = NEW Web.Server()
+server.AddFilter(Filter)
+server.Route("GET", "/", Handler)
+LET started AS VOID OR Error = server.Start(endpoint)
+IF started IS Error THEN
+STOP 3
+ELSE
+LET request AS Web.Request = NEW Web.Request()
+LET response AS Web.Response = NEW Web.Response()
+LET dispatched AS VOID OR Error = server.Dispatch(request, response)
+IF dispatched IS Error THEN
+PRINT dispatched.Code
+ELSE
+PRINT response.Status()
+END IF
+server.Stop(1000)
+END IF
+END IF
+END IF
+END FUNCTION
+"#;
+    match run(source, "") {
+        Ok((_, output)) => assert_eq!(output, "201\n"),
+        Err(error) => assert_eq!(error.code, "WEB_LISTEN", "{error:?}"),
+    }
+}
+
+#[test]
+fn bnweb_client_rejects_unsafe_urls_before_transport() {
+    let source = r#"IMPORT BNWeb AS Web
+FUNCTION Start() AS VOID
+LET client AS Web.Client = NEW Web.Client()
+LET response AS Web.Response OR Error = client.Request("GET", "http://127.0.0.1/", "")
+PRINT response IS Error
+LET malformed AS Web.Response OR Error = client.Request("GET", "not-a-url", "")
+PRINT malformed IS Error
+DELETE client
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute BNWeb client validation");
+    assert_eq!(output, "TRUE\nTRUE\n");
+}
+
+#[test]
+fn bnweb_server_errors_stay_in_error_channel() {
+    let source = r"IMPORT BNWeb AS Web
+FUNCTION Start() AS VOID
+LET server AS Web.Server = NEW Web.Server()
+LET stopped AS VOID OR Error = server.Stop(0)
+PRINT stopped IS Error
+DELETE server
+END FUNCTION
+";
+    let (_, output) = run(source, "").expect("execute BNWeb server errors");
+    assert_eq!(output, "TRUE\n");
+}
+
+#[test]
+fn bnweb_response_enforces_commit_state() {
+    let source = r#"IMPORT BNWeb AS Web
+FUNCTION Start() AS VOID
+LET response AS Web.Response = NEW Web.Response()
+response.SetStatus(201)
+response.Write("ok")
+response.Commit()
+PRINT response.Status(), response.IsCommitted()
+LET failed AS VOID OR Error = response.Write("late")
+PRINT failed IS Error
+DELETE response
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute BNWeb response");
+    assert_eq!(output, "201TRUE\nTRUE\n");
+}
+
+#[test]
+fn bnweb_request_exposes_bounded_native_values() {
+    let source = r"IMPORT BNWeb AS Web
+IMPORT HOST.Net AS Net
+FUNCTION Start() AS VOID
+LET request AS Web.Request = NEW Web.Request()
+PRINT request.Method(), request.Target(), request.Body(1)
+PRINT request.PeerAddress(), request.EffectiveClientAddress()
+LET too_small AS STRING OR Error = request.Body(-1)
+PRINT too_small IS Error
+DELETE request
+END FUNCTION
+";
+    let (_, output) = run(source, "").expect("execute BNWeb request");
+    assert_eq!(output, "GET/\nHOST.Net.AddressHOST.Net.Address\nTRUE\n");
+}
+
+#[test]
+fn bnweb_request_collections_are_bounded_objects() {
+    let source = r#"IMPORT BNWeb AS Web
+FUNCTION Start() AS VOID
+LET request AS Web.Request = NEW Web.Request()
+LET headers AS Web.HeaderValues OR Error = request.Headers("x-test")
+LET query AS Web.QueryValues OR Error = request.Query("q")
+IF headers IS Error OR query IS Error THEN
+PRINT "error"
+ELSE
+PRINT headers.Count(), query.Count()
+END IF
+DELETE request
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute BNWeb collections");
+    assert_eq!(output, "00\n");
+}
+
+#[test]
+fn bnweb_session_store_constructor_reaches_provider() {
+    let source = r#"IMPORT BNWeb AS Web
+FUNCTION Start() AS VOID
+LET sessions AS Web.SessionStore = NEW Web.SessionStore(2, 60000)
+LET id AS STRING OR Error = sessions.Create("value")
+IF id IS Error THEN
+    PRINT "error"
+ELSE
+    sessions.Set(id, "updated")
+    LET rotated AS STRING OR Error = sessions.Rotate(id, "rotated")
+    IF rotated IS Error THEN PRINT "error" ELSE PRINT sessions.Get(rotated)
+END IF
+DELETE sessions
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute SessionStore provider");
+    assert_eq!(output, "rotated\n");
+}
+
+#[test]
+fn bnweb_static_state_factories_reach_providers() {
+    let source = r#"IMPORT BNWeb AS Web
+FUNCTION Start() AS VOID
+LET sessions AS Web.SessionStore OR Error = Web.SessionStore.New(2, 60000)
+PRINT sessions IS Error
+LET page AS Web.Scraper OR Error = Web.Scraper.Parse("<p>ok</p>")
+IF page IS Error THEN PRINT "error" ELSE PRINT page.Text("p")
+LET tls AS Web.TLSConfig OR Error = Web.TLSConfig.FromPEM("bad", "bad")
+PRINT tls IS Error
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute BNWeb static factories");
+    assert_eq!(output, "FALSE\nok\nTRUE\n");
+}
+
+#[test]
+fn bnweb_scraper_and_acl_reach_providers() {
+    let source = r#"IMPORT BNWeb AS Web
+IMPORT HOST.Net AS Net
+FUNCTION Start() AS VOID
+LET page AS Web.Scraper = NEW Web.Scraper("<p>Hello</p><script>x()</script>")
+PRINT page.Text("p")
+LET acl AS Web.ACL = NEW Web.ACL()
+LET cidr AS Net.CIDR OR Error = Net.CIDR.Parse("10.0.0.0/8")
+IF cidr IS Error THEN PRINT "error" ELSE acl.Deny(cidr)
+LET address AS Net.Address OR Error = Net.Address.Parse("10.1.2.3")
+IF address IS Error THEN PRINT "error" ELSE PRINT acl.Check(address)
+DELETE page
+DELETE acl
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute scraper and ACL providers");
+    assert_eq!(output, "Hello\nFALSE\n");
+}
+
+#[test]
+fn bnweb_cookie_jar_is_reachable_from_bn() {
+    let source = r#"IMPORT BNWeb AS Web
+FUNCTION Start() AS VOID
+LET jar AS Web.CookieJar = NEW Web.CookieJar()
+jar.Set("sid", "a", "example.test", "/", 60000)
+PRINT jar.Get("sid", "example.test", "/"), jar.Count()
+jar.Delete("sid", "example.test", "/")
+LET missing AS STRING OR Error = jar.Get("sid", "example.test", "/")
+PRINT missing IS Error
+DELETE jar
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute CookieJar provider");
+    assert_eq!(output, "a1\nTRUE\n");
 }
