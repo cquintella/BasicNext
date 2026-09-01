@@ -3,7 +3,7 @@
 ![Basic Next Logo](docs/logo.jpg)
 
 [![Rust CI](https://img.shields.io/badge/Rust_CI-passing-brightgreen)](#)
-[![Version](https://img.shields.io/badge/version-v0.2.0-blue)](#)
+[![Version](https://img.shields.io/badge/version-v0.3.0-blue)](#)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE.md)
 
 An object-oriented, general-purpose programming language designed to reduce
