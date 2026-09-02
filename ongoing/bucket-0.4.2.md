@@ -227,7 +227,7 @@ required local verification matrix passed on 2026-09-02.
   bucket agree that KMP and the other listed LLVM gaps remain deferred;
   release notes include command-level verification and the CI gate split.
 
-- [ ] GATE G2 — 0.4.2 release gate. All activities are complete; the following
+- [X] GATE G2 — 0.4.2 release gate. All activities are complete; the following
   commands pass with no skipped required check:
 
   ```text
@@ -241,10 +241,11 @@ required local verification matrix passed on 2026-09-02.
   not complete if only the 159+ Rust unit/integration tests pass while an
   accepted user workflow remains untested.
 
-  Evidence: local verification passed on 2026-09-02; release `v0.4.2` and its
-  five platform binaries were published by workflow `33648431525`. The CI
-  workflow was subsequently split into explicit gates in the working tree and
-  must be run after the next approved commit.
+  Evidence: local verification passed on 2026-09-02; workflow
+  `33662698336` passed the separated Rust, native capability,
+  diagnostic/backend parity, VS Code, and five platform build jobs. Release
+  `v0.4.2` and its five platform binaries were published by workflow
+  `33648431525`.
 
 ## Definition of Ready
 
