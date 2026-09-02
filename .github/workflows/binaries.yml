@@ -40,8 +40,10 @@ jobs:
       - name: Rust quality gate
         run: |
           cargo fmt --check
-          cargo test --locked
-          cargo clippy --locked -- -D warnings
+          cargo test --locked --all-targets
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo run --locked -- build examples/hello.bn -o "$RUNNER_TEMP/bn-hello"
+          "$RUNNER_TEMP/bn-hello"
       - name: Kernel and compiler parity
         run: |
           python -m unittest tests/test_kernel.py tests/test_jupyter.py tests/test_compiler_parity.py tests/test_wasm_parity.py

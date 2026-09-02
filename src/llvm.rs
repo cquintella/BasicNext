@@ -63,10 +63,19 @@ pub fn lower_module(module: &Module) -> Result<String, String> {
 
 #[allow(clippy::too_many_lines)]
 fn lower_scalar_ir(module: &Module, function: &Function) -> Result<String, String> {
-    if !function.parameters.is_empty()
-        || !matches!(&function.return_type, Type::Named(name) if name == "VOID")
+    if !function.parameters.is_empty() {
+        return Err(format!(
+            "BUILD_LOWERING_UNAVAILABLE: Start has {} parameter(s); LLVM entry point requires FUNCTION Start()",
+            function.parameters.len()
+        ));
+    }
+    if !matches!(&function.return_type, Type::Named(name) if name == "VOID")
+        && !matches!(&function.return_type, Type::Integer(_))
     {
-        return Err("BUILD_LOWERING_UNAVAILABLE: Start must be FUNCTION Start() AS VOID".into());
+        return Err(format!(
+            "BUILD_LOWERING_UNAVAILABLE: Start return type '{}' is unsupported; LLVM entry point supports VOID or INTEGER",
+            render_start_type(&function.return_type)
+        ));
     }
     let analysis = analyze_function(module, function)?;
     let symbol_names = analysis
@@ -135,6 +144,18 @@ fn lower_scalar_ir(module: &Module, function: &Function) -> Result<String, Strin
     }
     text.push_str("}\n");
     Ok(text)
+}
+
+fn render_start_type(ty: &Type) -> &'static str {
+    match ty {
+        Type::Named(name) if name == "VOID" => "VOID",
+        Type::Integer(_) => "INTEGER",
+        Type::Named(_) => "named type",
+        Type::Boolean => "BOOLEAN",
+        Type::String => "STRING",
+        Type::Float(_) | Type::FloatLiteral => "FLOAT",
+        _ => "unsupported type",
+    }
 }
 
 #[allow(clippy::too_many_lines)]

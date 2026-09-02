@@ -652,8 +652,13 @@ fn server_stop_drains_a_slow_http_worker() {
         assert!(server.track_connection_socket(&accepted));
     }
     let worker_state = state.clone();
+    let (worker_done_sender, worker_done_receiver) = std::sync::mpsc::channel();
     let worker = std::thread::spawn(move || {
-        crate::http::serve_connection(accepted, worker_state).expect("slow worker exits cleanly");
+        let result = crate::http::serve_connection(accepted, worker_state)
+            .map_err(|error| error.to_string());
+        worker_done_sender
+            .send(result)
+            .expect("slow worker completion receiver");
     });
     client
         .write_all(b"GET /health HTTP/1.1\r\nHost: localhost\r\n")
@@ -664,20 +669,21 @@ fn server_stop_drains_a_slow_http_worker() {
         server.begin_stop(1000).unwrap();
     }
 
-    for _ in 0..1000 {
-        let finished = {
-            let mut server = state.lock().unwrap();
-            server.reap_finished_workers();
-            server.active_connections() == 0
-        };
-        if finished {
-            let mut server = state.lock().unwrap();
-            server.finish_stop().unwrap();
-            return;
-        }
-        std::thread::yield_now();
-    }
-    panic!("slow HTTP worker did not drain after socket cancellation");
+    let worker_result = worker_done_receiver
+        .recv_timeout(std::time::Duration::from_secs(1))
+        .expect("slow HTTP worker did not stop after socket cancellation");
+    let mut server = state.lock().unwrap();
+    server.reap_finished_workers();
+    let expected_cancellation = worker_result
+        .as_ref()
+        .err()
+        .is_none_or(|error| error.contains("IncompleteMessage"));
+    assert!(
+        expected_cancellation,
+        "unexpected slow worker result: {worker_result:?}"
+    );
+    assert_eq!(server.active_connections(), 0);
+    server.finish_stop().unwrap();
 }
 
 #[test]

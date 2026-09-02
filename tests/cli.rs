@@ -158,6 +158,29 @@ fn build_emits_llvm_for_empty_start() {
 }
 
 #[test]
+fn build_emits_integer_start_exit_code() {
+    let output = bn()
+        .args(["build", "tests/grammar/valid/start-exit-code.bn"])
+        .output()
+        .expect("run bn build");
+    assert_eq!(output.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("ret i32 %v"));
+}
+
+#[test]
+fn build_reports_the_user_function_that_blocks_kmp() {
+    let output = bn()
+        .args(["build", "examples/kmp.bn"])
+        .output()
+        .expect("run bn build for KMP");
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("examples/kmp.bn:76:5"));
+    assert!(stderr.contains("user-defined function 'KMPSearch'"));
+    assert!(stderr.contains("use 'bn run' or inline the call"));
+}
+
+#[test]
 fn build_emits_llvm_for_integer_print() {
     let output = bn()
         .args(["build", "tests/grammar/valid/print-integer.bn"])
@@ -543,7 +566,8 @@ fn build_folds_pure_constant_function_call() {
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("BUILD_LOWERING_UNAVAILABLE"));
-    assert!(stderr.contains("calls"));
+    assert!(stderr.contains("calls to user-defined function 'Add'"));
+    assert!(stderr.contains("use 'bn run' or inline the call"));
 }
 
 #[test]
