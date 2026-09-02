@@ -25,7 +25,11 @@ lowering, native artifact generation, and execution of the generated artifact.
   programs. Classify each fixture/example as `interpreter-supported`,
   `llvm-supported`, or `llvm-deferred`; record the expected exit status and
   output contract. `examples/kmp.bn` must remain `llvm-deferred` until the
-  backend supports its user-defined calls and dynamic pointer arrays.
+  backend supports its user-defined calls and dynamic pointer arrays. The
+  boolean-branch fixtures `print-if-boolean-expression.bn` and `print-if-or.bn`
+  also remain `llvm-deferred` until the emitter stops producing duplicate SSA
+  names in constant branches. `build-float-one.bn` remains deferred until
+  interpreter and LLVM float formatting have the same observable contract.
 
   Objective: prevent `bn check` or `bn run` success from being mistaken for
   native compiler support.
@@ -37,6 +41,8 @@ lowering, native artifact generation, and execution of the generated artifact.
   - The manifest names every release smoke example and its supported commands.
   - A deferred example has an expected diagnostic, not an implicit expectation
     of successful native compilation.
+  - Deferred LLVM fixtures are covered by focused negative tests that preserve
+    the known limitation and do not silently enter the positive parity set.
   - The manifest is consumed by an automated test rather than being documentation-only.
 
   Verification: run the manifest test and inspect its failure output with one
