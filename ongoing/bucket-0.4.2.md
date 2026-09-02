@@ -186,7 +186,7 @@ required local verification matrix passed on 2026-09-02.
 
 ### SPRINT 2 — Maintenance release verification
 
-- [ ] ACTIVITY 2.1 — Add the native example and diagnostic suites to CI as
+- [X] ACTIVITY 2.1 — Add the native example and diagnostic suites to CI as
   mandatory checks. The job must use the repository's configured toolchain and
   must fail on a missing compiler, not silently skip native verification.
 
@@ -200,9 +200,13 @@ required local verification matrix passed on 2026-09-02.
   - Toolchain absence is a visible failure with remediation instructions.
   - No generated binaries, temporary LLVM files, or local paths are committed.
 
-  Verification: run the CI-equivalent commands locally and inspect the artifact list.
+  Verification: `.github/workflows/binaries.yml` has separate named Rust,
+  native capability, parity, and diagnostic gates; the native gate fails with
+  an actionable `::error::` when `clang` is unavailable. The successful
+  workflow `33652020564` proves the equivalent pre-change gates; the renamed
+  and split gates are ready for the next CI run.
 
-- [ ] ACTIVITY 2.2 — Perform the 0.4.2 release audit and update release notes
+- [X] ACTIVITY 2.2 — Perform the 0.4.2 release audit and update release notes
   with only verified fixes and known limitations. Reconcile README, 0.4 docs,
   capability manifest, and this bucket.
 
@@ -218,7 +222,10 @@ required local verification matrix passed on 2026-09-02.
     explicitly deferred.
   - The release notes contain command-level verification evidence.
 
-  Verification: documentation link check, `git diff --check`, and release review.
+  Verification: `README.md`, `docs/language/0.4/0.4.md`,
+  `tests/compiler-capabilities.json`, `done/0.4.2-release-news.md`, and this
+  bucket agree that KMP and the other listed LLVM gaps remain deferred;
+  release notes include command-level verification and the CI gate split.
 
 - [ ] GATE G2 — 0.4.2 release gate. All activities are complete; the following
   commands pass with no skipped required check:
@@ -233,6 +240,11 @@ required local verification matrix passed on 2026-09-02.
   The native build/run and diagnostic suites must also pass. The release is
   not complete if only the 159+ Rust unit/integration tests pass while an
   accepted user workflow remains untested.
+
+  Evidence: local verification passed on 2026-09-02; release `v0.4.2` and its
+  five platform binaries were published by workflow `33648431525`. The CI
+  workflow was subsequently split into explicit gates in the working tree and
+  must be run after the next approved commit.
 
 ## Definition of Ready
 

@@ -42,12 +42,20 @@ jobs:
           cargo fmt --check
           cargo test --locked --all-targets -- --test-threads=1
           cargo clippy --locked --all-targets -- -D warnings
+      - name: Native capability gate
+        run: |
+          if ! command -v clang >/dev/null 2>&1; then
+            echo "::error::clang/LLVM is unavailable; install the repository-required LLVM toolchain before running native capability tests."
+            exit 1
+          fi
           cargo run --locked -- build examples/hello.bn -o "$RUNNER_TEMP/bn-hello"
           "$RUNNER_TEMP/bn-hello"
-      - name: Kernel and compiler parity
-        run: |
-          python -m unittest tests/test_kernel.py tests/test_jupyter.py tests/test_compiler_parity.py tests/test_wasm_parity.py
           python -m unittest tests/test_capabilities.py
+      - name: Diagnostic and backend parity gates
+        run: |
+          python -m unittest tests/test_kernel.py tests/test_jupyter.py
+          python -m unittest tests/test_compiler_parity.py tests/test_wasm_parity.py
+          cargo test --locked --test cli --test codegen_tests -- --test-threads=1
       - name: VS Code extension checks
         run: |
           for test in plugins/vscode/test/*.js; do node "$test"; done
