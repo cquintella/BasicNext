@@ -47,6 +47,7 @@ jobs:
       - name: Kernel and compiler parity
         run: |
           python -m unittest tests/test_kernel.py tests/test_jupyter.py tests/test_compiler_parity.py tests/test_wasm_parity.py
+          python -m unittest tests/test_capabilities.py
       - name: VS Code extension checks
         run: |
           for test in plugins/vscode/test/*.js; do node "$test"; done
