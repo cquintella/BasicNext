@@ -674,10 +674,10 @@ fn server_stop_drains_a_slow_http_worker() {
         .expect("slow HTTP worker did not stop after socket cancellation");
     let mut server = state.lock().unwrap();
     server.reap_finished_workers();
-    let expected_cancellation = worker_result
-        .as_ref()
-        .err()
-        .is_none_or(|error| error.contains("IncompleteMessage"));
+    let expected_cancellation = worker_result.as_ref().err().is_none_or(|error| {
+        error.contains("IncompleteMessage")
+            || error.contains("connection closed before message completed")
+    });
     assert!(
         expected_cancellation,
         "unexpected slow worker result: {worker_result:?}"
