@@ -227,7 +227,11 @@ pub(crate) fn unsupported_call_detail(module: &Module, name: &str) -> String {
     if name.starts_with("HOST.") {
         return format!("unsupported HOST call {name}");
     }
-    "calls".into()
+    format!(
+        "calls to user-defined function '{name}' are unavailable in the LLVM backend; \
+         function calls are not supported by this build target yet (use 'bn run' \
+         or inline the call)"
+    )
 }
 
 pub(crate) fn provider_name(module: &Module, name: &str) -> Option<&'static str> {

@@ -144,7 +144,7 @@ END FUNCTION
 ```
 
 **Line by line explanation:**
-- `FUNCTION Start() AS VOID`: Every executable program begins with the `Start` function. The `AS VOID` contract explicitly states that it does not return a value.
+- `FUNCTION Start() AS VOID` or `FUNCTION Start() AS INTEGER`: Every executable program begins with the `Start` function. LLVM emits an integer return as the process exit code; the interpreter supports both forms.
 - `PRINT "Bem Vindo ao Basic Next"`: The built-in macro outputs text to the console.
 - `LET counter AS INTEGER = 0`: Variable declarations are explicit (`LET`), always specify their type (`AS INTEGER`), and initialize their state.
 - `WHILE counter < 10`: A standard loop with a clear pre-condition.
