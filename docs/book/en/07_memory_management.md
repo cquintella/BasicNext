@@ -1,6 +1,6 @@
 # Memory Management
 
-Basic Next version 0.2 does not feature a garbage collector. Memory management is strictly manual. Developers are responsible for allocating memory when needed and explicitly freeing it when it is no longer required.
+Basic Next version 0.3 does not feature a garbage collector. Memory management is strictly manual. Developers are responsible for allocating memory when needed and explicitly freeing it when it is no longer required.
 
 ## Manual Allocation (`NEW` and `DELETE`)
 
@@ -18,7 +18,7 @@ If a constructor fails, the partially constructed object is discarded without ex
 
 ## Pointers
 
-Pointers reference dynamically allocated, contiguous numeric data. In version 0.2, pointer elements must be numeric types; pointers to strings, booleans, or classes are excluded. 
+Pointers reference dynamically allocated, contiguous numeric data. In version 0.3, pointer elements must be numeric types; pointers to strings, booleans, or classes are excluded.
 
 There are three ways to declare a pointer type, depending on its size constraints:
 
@@ -39,7 +39,7 @@ samples[0] = 1.5
 DELETE samples
 ```
 
-Allocated memory is zero-initialized (filled with the type's default value). Pointer indexing is strictly bounds-checked by the runtime, and pointer arithmetic is not permitted in version 0.2. In version 0.2, you can also use `LEN()` on region pointers (`POINTER TO TYPE[length]` and `POINTER TO TYPE[]`) to get their element count, but `LEN` on a single-value pointer remains a static error.
+Allocated memory is zero-initialized (filled with the type's default value). Pointer indexing is strictly bounds-checked by the runtime, and pointer arithmetic is not permitted in version 0.3. In the current version, you can also use `LEN()` on region pointers (`POINTER TO TYPE[length]` and `POINTER TO TYPE[]`) to get their element count, but `LEN` on a single-value pointer remains a static error.
 
 Pointer assignment and parameter passing copy the pointer handle (creating an alias) without transferring ownership implicitly. `DELETE` accepts any alias to the base pointer originally returned by `NEW`.
 

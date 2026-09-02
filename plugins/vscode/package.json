@@ -2,7 +2,7 @@
   "name": "basicnext",
   "displayName": "Basic Next",
   "description": "Language support for Basic Next",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "publisher": "basicnext",
   "license": "MPL-2.0",
   "engines": { "vscode": ">=1.80.0" },

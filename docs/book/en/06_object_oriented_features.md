@@ -34,7 +34,7 @@ END CLASS
 
 ## Constructors and Destructors
 
-A class can define exactly one constructor to initialize its state. Overloading is not supported in version 0.2. 
+A class can define exactly one constructor to initialize its state. Overloading is not supported in version 0.3.
 
 The constructor is declared as `FUNCTION CONSTRUCTOR` with an optional parameter list. It does not have a return type and is invoked automatically when `NEW` is called. If you do not declare a constructor, the compiler provides an implicit, parameterless `PRIVATE` constructor.
 
@@ -124,4 +124,4 @@ CLASS Report IMPLEMENTS Printable
 END CLASS
 ```
 
-An interface name acts as a type. A class reference can be assigned to a variable typed as an interface it implements. This implicit upcast preserves the object reference but restricts access to only the interface's members. In version 0.2, you cannot downcast an interface value back to a concrete class.
+An interface name acts as a type. A class reference can be assigned to a variable typed as an interface it implements. This implicit upcast preserves the object reference but restricts access to only the interface's members. In version 0.3, you cannot downcast an interface value back to a concrete class.

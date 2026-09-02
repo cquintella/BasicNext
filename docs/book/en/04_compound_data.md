@@ -86,7 +86,7 @@ END IF
 
 In the `ELSE` branch above, the compiler knows `line` cannot be `EOF`, so its type is narrowed to `STRING`, making it safe to use in `PRINT`. 
 
-In version 0.2, if an `IF` statement has no `ELSE` branch and all of its branches unconditionally terminate (e.g., via `RETURN` or `STOP`), the type is automatically narrowed in the remainder of the block:
+In version 0.3, if an `IF` statement has no `ELSE` branch and all of its branches unconditionally terminate (e.g., via `RETURN` or `STOP`), the type is automatically narrowed in the remainder of the block:
 
 ```basic
 LET file AS FS.File OR Error = FS.Open("config.txt", FS.READ)

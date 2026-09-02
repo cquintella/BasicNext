@@ -1,0 +1,86 @@
+// Parallel elementary cellular-automaton experiments on eight-cell rings.
+// The four tasks run five generations of independent rules.
+IMPORT BNDispatch AS Dispatch
+
+FUNCTION Evolve(rule AS INTEGER, seed AS INTEGER) AS INTEGER
+    LET cells AS INTEGER[8]
+    LET index AS INTEGER = 0
+    LET power AS INTEGER = 1
+    WHILE index < 8
+        cells[index] = (seed DIV power) % 2
+        power *= 2
+        index += 1
+    END WHILE
+
+    LET generation AS INTEGER = 0
+    WHILE generation < 5
+        LET following AS INTEGER[8]
+        index = 0
+        WHILE index < 8
+            LET left AS INTEGER = (index + 7) % 8
+            LET right AS INTEGER = (index + 1) % 8
+            LET pattern AS INTEGER = cells[left] * 4 + cells[index] * 2 + cells[right]
+            LET divisor AS INTEGER = 1
+            LET bit AS INTEGER = 0
+            WHILE bit < pattern
+                divisor *= 2
+                bit += 1
+            END WHILE
+            following[index] = (rule DIV divisor) % 2
+            index += 1
+        END WHILE
+        index = 0
+        WHILE index < 8
+            cells[index] = following[index]
+            index += 1
+        END WHILE
+        generation += 1
+    END WHILE
+
+    LET checksum AS INTEGER = 0
+    index = 0
+    WHILE index < 8
+        checksum += cells[index] * (index + 1)
+        index += 1
+    END WHILE
+    RETURN checksum
+END FUNCTION
+
+ASYNC FUNCTION Rule30() AS VOID
+    PRINT "rule-30 seed-37: checksum=", Evolve(30, 37)
+END FUNCTION
+
+ASYNC FUNCTION Rule45() AS VOID
+    PRINT "rule-45 seed-74: checksum=", Evolve(45, 74)
+END FUNCTION
+
+ASYNC FUNCTION Rule110() AS VOID
+    PRINT "rule-110 seed-1: checksum=", Evolve(110, 1)
+END FUNCTION
+
+ASYNC FUNCTION Rule184() AS VOID
+    PRINT "rule-184 seed-146: checksum=", Evolve(184, 146)
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Concurrent(4)
+    IF queue IS Error THEN
+        PRINT "queue error"
+        RETURN
+    END IF
+    LET r30 AS Dispatch.Ticket OR Error = ASYNC queue Rule30()
+    LET r45 AS Dispatch.Ticket OR Error = ASYNC queue Rule45()
+    LET r110 AS Dispatch.Ticket OR Error = ASYNC queue Rule110()
+    LET r184 AS Dispatch.Ticket OR Error = ASYNC queue Rule184()
+    IF r30 IS Error OR r45 IS Error OR r110 IS Error OR r184 IS Error THEN
+        PRINT "submission error"
+        queue.Close(1000)
+        RETURN
+    END IF
+    AWAIT r30(1000)
+    AWAIT r45(1000)
+    AWAIT r110(1000)
+    AWAIT r184(1000)
+    queue.Close(1000)
+    PRINT "cellular automaton complete"
+END FUNCTION

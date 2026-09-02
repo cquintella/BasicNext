@@ -7,13 +7,13 @@
 
 This document is the introductory tutorial for the Basic Next (BN) programming language.
 
-> **Note:** This book is the **Version 0.2** tutorial. It is not the normative
+> **Note:** This book is the **Version 0.3** tutorial. It is not the normative
 > language contract. When a chapter and the specification disagree, follow
-> [`docs/language/0.2/0.2.md`](../../language/0.2/0.2.md),
-> [`docs/language/0.2/0.2.ebnf`](../../language/0.2/0.2.ebnf), and
-> [`docs/language/0.2/keywords.md`](../../language/0.2/keywords.md).
-> Features planned for later versions (packages, LSP, `MATCH`, generic classes,
-> concurrency) are excluded.
+> [`docs/language/0.3/0.3.md`](../../language/0.3/0.3.md),
+> [`docs/language/0.3/0.3.ebnf`](../../language/0.3/0.3.ebnf), and
+> [`docs/language/0.3/keywords.md`](../../language/0.3/keywords.md).
+> Features planned for later versions (packages, `MATCH`, generic classes,
+> advanced concurrency) are excluded.
 
 ## What is Basic Next?
 
@@ -110,6 +110,6 @@ To get the best development experience with syntax highlighting and automatic er
    ```
 3. Install the generated package into Visual Studio Code:
    ```sh
-   code --install-extension basicnext-0.2.0.vsix
+   code --install-extension basicnext-0.3.0.vsix
    ```
 4. **Restart VS Code** completely after the installation to ensure the language server and debugger features load correctly.

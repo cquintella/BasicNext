@@ -133,7 +133,7 @@ Basic Next distinguishes strictly between instant-in-time timestamps and human c
 - `TIMESTAMP`: An alias for `INT64` representing an exact moment (milliseconds since the UTC Unix epoch). It supports standard integer arithmetic.
 - `DATE`: An immutable Gregorian date (e.g., `2026-08-25`). Logically a 32-bit day count.
 - `TIME`: An immutable time of day (e.g., `22:07:20.000`). Logically a 32-bit millisecond count.
-- `TIMEZONE`: An IANA identifier (e.g., `America/Sao_Paulo` or `UTC`). In version 0.2, the value stores that identifier; the interpreter does not load a TZDB
+- `TIMEZONE`: An IANA identifier (e.g., `America/Sao_Paulo` or `UTC`). The value stores that identifier; the interpreter does not load a TZDB
   database or apply zone rules.
 
 Calendar, formatting, and time-zone operations use explicit calls in the temporal library rather than implicit string conversions.

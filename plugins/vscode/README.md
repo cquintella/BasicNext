@@ -10,7 +10,7 @@ VSIX file:
 ```sh
 cd plugins/vscode
 npx --yes @vscode/vsce package --allow-missing-repository
-code --install-extension basicnext-0.4.0.vsix
+code --install-extension basicnext-0.4.1.vsix
 ```
 
 Restart VS Code completely after installing or updating the extension. The

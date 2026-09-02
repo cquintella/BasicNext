@@ -194,6 +194,19 @@ impl HostEnv {
             }
         }
     }
+
+    pub(crate) fn fork_for_task(&self) -> Self {
+        let seed = self
+            .random_state
+            .fetch_add(0x9E37_79B9_7F4A_7C15, std::sync::atomic::Ordering::Relaxed)
+            .max(1);
+        Self {
+            arguments: self.arguments.clone(),
+            clock: self.clock.clone(),
+            random_state: AtomicU64::new(seed),
+            filesystem: self.filesystem,
+        }
+    }
 }
 
 #[path = "runtime/support.rs"]

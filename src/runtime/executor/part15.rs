@@ -58,10 +58,19 @@ pub(crate) fn host_net_address_call(&mut self, name: &str, arguments: &[Value], 
                 let value = match name.rsplit('.').next().unwrap_or_default() {
                     "IsIPv4" => address.as_std().is_ipv4(),
                     "IsIPv6" => address.as_std().is_ipv6(),
-                    "IsLoopback" => address.as_std().is_loopback(),
+                    "IsLoopback" => match address.as_std() {
+                        std::net::IpAddr::V4(value) => value.is_loopback(),
+                        std::net::IpAddr::V6(value) => {
+                            value.is_loopback()
+                                || value.to_ipv4_mapped().is_some_and(|mapped| mapped.is_loopback())
+                        }
+                    },
                     "IsPrivate" => match address.as_std() {
                         std::net::IpAddr::V4(value) => value.is_private(),
-                        std::net::IpAddr::V6(value) => value.is_unique_local(),
+                        std::net::IpAddr::V6(value) => {
+                            value.is_unique_local()
+                                || value.to_ipv4_mapped().is_some_and(|mapped| mapped.is_private())
+                        }
                     },
                     "IsLinkLocal" => match address.as_std() {
                         std::net::IpAddr::V4(value) => value.is_link_local(),

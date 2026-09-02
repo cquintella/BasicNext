@@ -2024,6 +2024,39 @@ fn shortest_path_example_runs() {
 }
 
 #[test]
+fn dispatch_game_tournament_example_executes_in_ticket_order() {
+    let (code, output) = run_path("examples/dispatch_game_tournament.bn")
+        .expect("execute game-tournament dispatch example");
+    assert_eq!(code, 0);
+    assert_eq!(
+        output,
+        "CC: A=3000 B=3000\nCD: A=0 B=5000\nDC: A=5000 B=0\nDD: A=1000 B=1000\ntournament complete\n"
+    );
+}
+
+#[test]
+fn dispatch_reliability_simulation_example_executes_in_ticket_order() {
+    let (code, output) = run_path("examples/dispatch_reliability_simulation.bn")
+        .expect("execute reliability dispatch example");
+    assert_eq!(code, 0);
+    assert_eq!(
+        output,
+        "line-A: outages=12 cost=1200\nline-B: outages=16 cost=3200\nline-C: outages=20 cost=6000\nline-D: outages=24 cost=9600\nreliability simulation complete\n"
+    );
+}
+
+#[test]
+fn dispatch_cellular_automaton_example_executes_in_ticket_order() {
+    let (code, output) = run_path("examples/dispatch_cellular_automaton.bn")
+        .expect("execute cellular-automaton dispatch example");
+    assert_eq!(code, 0);
+    assert_eq!(
+        output,
+        "rule-30 seed-37: checksum=27\nrule-45 seed-74: checksum=13\nrule-110 seed-1: checksum=10\nrule-184 seed-146: checksum=14\ncellular automaton complete\n"
+    );
+}
+
+#[test]
 fn temporal_parse_rejects_invalid_civil_and_rfc3339_forms() {
     let error = run(
         r#"FUNCTION Start() AS VOID
