@@ -4,6 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 pub mod ast;
+pub(crate) mod config;
 pub mod dap;
 pub mod dataframe;
 pub mod diagnostic;
@@ -24,6 +25,8 @@ pub mod runtime;
 pub mod semantic;
 pub mod source;
 pub mod temporal;
+#[cfg(test)]
+pub(crate) mod test_support;
 pub(crate) mod tls;
 pub mod token;
 pub(crate) mod web;

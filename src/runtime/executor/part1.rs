@@ -32,6 +32,7 @@ impl Executor<'_, '_> {
                 if let Some(control) = self.debug_control.as_deref_mut()
                     && control(
                         &function.name,
+                        self.call_depth,
                         instruction.span(),
                         &debug_variables(&symbols, &values),
                     ) == DebugDecision::Terminate

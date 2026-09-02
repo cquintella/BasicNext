@@ -151,6 +151,44 @@ impl Executor<'_, '_> {
                 let result = self.call_named(&name, arguments, *span)?;
                 set(values, *destination, self.coerce_to(result, ty, *span)?);
             }
+            Instruction::DispatchSubmit {
+                destination,
+                callee,
+                queue,
+                task,
+                arguments,
+                ty,
+                span,
+            } => {
+                let call = Instruction::Call {
+                    destination: *destination,
+                    callee: *callee,
+                    arguments: std::iter::once(*queue)
+                        .chain(std::iter::once(*task))
+                        .chain(arguments.iter().copied())
+                        .collect(),
+                    ty: ty.clone(),
+                    span: *span,
+                };
+                self.instruction(&call, symbols, values)?;
+            }
+            Instruction::DispatchAwait {
+                destination,
+                callee,
+                ticket,
+                timeout,
+                ty,
+                span,
+            } => {
+                let call = Instruction::Call {
+                    destination: *destination,
+                    callee: *callee,
+                    arguments: vec![*ticket, *timeout],
+                    ty: ty.clone(),
+                    span: *span,
+                };
+                self.instruction(&call, symbols, values)?;
+            }
             Instruction::Input {
                 destination, span, ..
             } => {

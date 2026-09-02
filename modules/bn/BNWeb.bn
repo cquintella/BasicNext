@@ -68,6 +68,9 @@ EXPORT CLASS Response
     PUBLIC FUNCTION SetHeader(name AS STRING, value AS STRING) AS VOID OR Error
         RETURN
     END FUNCTION
+    PUBLIC FUNCTION Header(name AS STRING) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
     PUBLIC FUNCTION Write(body AS STRING) AS VOID OR Error
         RETURN
     END FUNCTION
@@ -97,7 +100,13 @@ EXPORT CLASS Server
     PUBLIC FUNCTION Start(endpoint AS Net.Endpoint) AS VOID OR Error
         RETURN
     END FUNCTION
+    PUBLIC FUNCTION StartWithOptions(endpoint AS Net.Endpoint, options AS ServerOptions) AS VOID OR Error
+        RETURN
+    END FUNCTION
     PUBLIC FUNCTION StartTLS(endpoint AS Net.Endpoint, config AS TLSConfig) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION StartTLSWithOptions(endpoint AS Net.Endpoint, config AS TLSConfig, options AS ServerOptions) AS VOID OR Error
         RETURN
     END FUNCTION
     PUBLIC FUNCTION Dispatch(request AS Request, response AS Response) AS VOID OR Error
@@ -108,6 +117,56 @@ EXPORT CLASS Server
     END FUNCTION
     PUBLIC FUNCTION Close(timeoutMs AS INTEGER) AS VOID OR Error
         RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Status() AS STRING
+        RETURN "Starting"
+    END FUNCTION
+    PUBLIC FUNCTION IsReady() AS BOOLEAN
+        RETURN FALSE
+    END FUNCTION
+    PUBLIC FUNCTION ActiveConnections() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION PendingRequests() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION AcceptedRequests() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION ActiveRequests() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION RejectedRequests() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION TimedOutRequests() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION CompletedRequests() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION FailedRequests() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION RateLimitedRequests() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION TotalRequestDurationMs() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION AverageRequestDurationMs() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION MaxRequestDurationMs() AS INTEGER
+        RETURN 0
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS ServerOptions
+    PUBLIC FUNCTION CONSTRUCTOR(activeConnections AS INTEGER, backlog AS INTEGER, pendingWork AS INTEGER, workerCount AS INTEGER, maxHeaderBytes AS INTEGER, maxHeaderFields AS INTEGER, maxTargetBytes AS INTEGER, maxBodyBytes AS INTEGER, tlsHandshakeMs AS INTEGER, headerReadMs AS INTEGER, bodyReadMs AS INTEGER, idleKeepAliveMs AS INTEGER, connectionTotalMs AS INTEGER, stopDrainMs AS INTEGER, rateLimitBurst AS INTEGER, rateLimitRefillPerSecond AS INTEGER, rateLimitKeyCapacity AS INTEGER, trustedProxy AS BOOLEAN, concurrentHandlers AS BOOLEAN)
+    END FUNCTION
+    PUBLIC STATIC FUNCTION New(activeConnections AS INTEGER, backlog AS INTEGER, pendingWork AS INTEGER, workerCount AS INTEGER, maxHeaderBytes AS INTEGER, maxHeaderFields AS INTEGER, maxTargetBytes AS INTEGER, maxBodyBytes AS INTEGER, tlsHandshakeMs AS INTEGER, headerReadMs AS INTEGER, bodyReadMs AS INTEGER, idleKeepAliveMs AS INTEGER, connectionTotalMs AS INTEGER, stopDrainMs AS INTEGER, rateLimitBurst AS INTEGER, rateLimitRefillPerSecond AS INTEGER, rateLimitKeyCapacity AS INTEGER, trustedProxy AS BOOLEAN, concurrentHandlers AS BOOLEAN) AS ServerOptions OR Error
+        RETURN NEW ServerOptions(activeConnections, backlog, pendingWork, workerCount, maxHeaderBytes, maxHeaderFields, maxTargetBytes, maxBodyBytes, tlsHandshakeMs, headerReadMs, bodyReadMs, idleKeepAliveMs, connectionTotalMs, stopDrainMs, rateLimitBurst, rateLimitRefillPerSecond, rateLimitKeyCapacity, trustedProxy, concurrentHandlers)
     END FUNCTION
 END CLASS
 
@@ -120,8 +179,19 @@ EXPORT CLASS Client
     PUBLIC FUNCTION Request(method AS STRING, url AS STRING, body AS STRING) AS Response OR Error
         RETURN NEW Response()
     END FUNCTION
+    PUBLIC FUNCTION RequestWithPolicy(method AS STRING, url AS STRING, body AS STRING, policy AS EgressPolicy) AS Response OR Error
+        RETURN NEW Response()
+    END FUNCTION
     PUBLIC FUNCTION Close() AS VOID OR Error
         RETURN
+    END FUNCTION
+END CLASS
+
+EXPORT CLASS EgressPolicy
+    PUBLIC FUNCTION CONSTRUCTOR(schemes AS STRING, cidrs AS STRING, ports AS STRING, maxRedirects AS INTEGER, totalDeadlineMs AS INTEGER)
+    END FUNCTION
+    PUBLIC STATIC FUNCTION New(schemes AS STRING, cidrs AS STRING, ports AS STRING, maxRedirects AS INTEGER, totalDeadlineMs AS INTEGER) AS EgressPolicy OR Error
+        RETURN NEW EgressPolicy(schemes, cidrs, ports, maxRedirects, totalDeadlineMs)
     END FUNCTION
 END CLASS
 
@@ -137,6 +207,9 @@ EXPORT CLASS CookieJar
     PUBLIC FUNCTION CONSTRUCTOR()
     END FUNCTION
     PUBLIC FUNCTION Set(name AS STRING, value AS STRING, domain AS STRING, path AS STRING, maxAgeMs AS INTEGER) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION SetWithPolicy(name AS STRING, value AS STRING, domain AS STRING, path AS STRING, maxAgeMs AS INTEGER, secure AS BOOLEAN, httpOnly AS BOOLEAN, sameSite AS STRING) AS VOID OR Error
         RETURN
     END FUNCTION
     PUBLIC FUNCTION Get(name AS STRING, domain AS STRING, path AS STRING) AS STRING OR Error

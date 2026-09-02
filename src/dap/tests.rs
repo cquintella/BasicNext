@@ -74,6 +74,6 @@ fn execution_session_pauses_then_resumes() {
         state = condvar.wait(state).unwrap();
     }
     drop(state);
-    resume_session(&session, false);
+    resume_session(&session, None);
     assert_eq!(worker.join().unwrap().unwrap(), 0);
 }

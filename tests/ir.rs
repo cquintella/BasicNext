@@ -36,6 +36,46 @@ fn factorial_lowers_to_typed_control_flow() {
 }
 
 #[test]
+fn async_function_metadata_survives_into_ir() {
+    let module = lower_path("tests/grammar/valid/async-function.bn");
+    let work = module
+        .functions
+        .iter()
+        .find(|function| function.name == "Work")
+        .expect("async function");
+    assert!(work.asynchronous);
+    assert!(
+        !module
+            .functions
+            .iter()
+            .find(|function| function.name == "Start")
+            .expect("Start")
+            .asynchronous
+    );
+}
+
+#[test]
+fn async_submit_and_await_lower_to_explicit_ir_operations() {
+    let module = lower_path("tests/grammar/valid/async-submit.bn");
+    let instructions = module
+        .functions
+        .iter()
+        .flat_map(|function| function.blocks.iter())
+        .flat_map(|block| block.instructions.iter())
+        .collect::<Vec<_>>();
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::DispatchSubmit { .. }))
+    );
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::DispatchAwait { .. }))
+    );
+}
+
+#[test]
 fn len_and_sizeof_lower_static_values_to_constants() {
     let module = lower_path("tests/grammar/valid/len-and-sizeof.bn");
     let start = module
@@ -187,6 +227,7 @@ fn validate_rejects_a_dangling_block_target() {
         source_name: None,
         functions: vec![Function {
             name: "Broken".into(),
+            asynchronous: false,
             parameters: Vec::new(),
             return_type: bn::semantic::Type::Named("VOID".into()),
             entry: BlockId(0),

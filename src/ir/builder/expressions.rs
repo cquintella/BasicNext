@@ -244,13 +244,45 @@ impl Builder<'_> {
                         span: expression.span,
                     }
                 } else {
+                    let is_async = matches!(callee.kind, ExpressionKind::Member { ref name, .. } if name == "Async");
+                    let is_await = matches!(callee.kind, ExpressionKind::Member { ref name, .. } if name == "Wait");
                     let (callee, arguments) = self.call_operands(callee, arguments)?;
-                    Instruction::Call {
-                        destination,
-                        callee,
-                        arguments,
-                        ty,
-                        span: expression.span,
+                    if is_async {
+                        let [queue, task, rest @ ..] = arguments.as_slice() else {
+                            return Err(ir_error(
+                                "ASYNC submission has invalid operands",
+                                expression.span,
+                            ));
+                        };
+                        Instruction::DispatchSubmit {
+                            destination,
+                            callee,
+                            queue: *queue,
+                            task: *task,
+                            arguments: rest.to_vec(),
+                            ty,
+                            span: expression.span,
+                        }
+                    } else if is_await {
+                        let [ticket, timeout] = arguments.as_slice() else {
+                            return Err(ir_error("AWAIT has invalid operands", expression.span));
+                        };
+                        Instruction::DispatchAwait {
+                            destination,
+                            callee,
+                            ticket: *ticket,
+                            timeout: *timeout,
+                            ty,
+                            span: expression.span,
+                        }
+                    } else {
+                        Instruction::Call {
+                            destination,
+                            callee,
+                            arguments,
+                            ty,
+                            span: expression.span,
+                        }
                     }
                 }
             }

@@ -44,12 +44,17 @@ impl Executor<'_, '_> {
             }
             "HOST.Random.Random" => {
                 require_arity(name, arguments, 0, span)?;
-                let mut state = self.host.random_state.get();
+                let mut state = self
+                    .host
+                    .random_state
+                    .load(std::sync::atomic::Ordering::Relaxed);
                 state ^= state >> 12;
                 state ^= state << 25;
                 state ^= state >> 27;
                 state = state.wrapping_mul(0x2545_F491_4F6C_DD1D);
-                self.host.random_state.set(state);
+                self.host
+                    .random_state
+                    .store(state, std::sync::atomic::Ordering::Relaxed);
                 Ok(Value::Float(
                     (state >> 11) as f64 / 9_007_199_254_740_992.0,
                     FloatType::Float64,
@@ -58,9 +63,10 @@ impl Executor<'_, '_> {
             "HOST.Random.Seed" => {
                 require_arity(name, arguments, 1, span)?;
                 let (seed, _) = integer(&arguments[0], span)?;
-                self.host
-                    .random_state
-                    .set(seed as u64 | u64::from(seed == 0));
+                self.host.random_state.store(
+                    seed as u64 | u64::from(seed == 0),
+                    std::sync::atomic::Ordering::Relaxed,
+                );
                 Ok(Value::Null)
             }
             "HOST.Console.Cls" => {

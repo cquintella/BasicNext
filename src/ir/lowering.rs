@@ -111,6 +111,7 @@ pub(crate) fn lower_program(
                     functions.push(lower_callable(
                         model,
                         &format!("{prefix}{type_name}.{name}"),
+                        false,
                         signature.as_ref(),
                         parameters,
                         &body.statements,
@@ -177,6 +178,7 @@ pub(crate) fn lower_program(
             kind: DeclarationKind::Function,
             name,
             signature: Some(signature),
+            asynchronous,
             statements,
             span,
             ..
@@ -187,6 +189,7 @@ pub(crate) fn lower_program(
         functions.push(lower_callable(
             model,
             &format!("{prefix}{name}"),
+            *asynchronous,
             Some(signature),
             &signature.parameters,
             statements,
@@ -256,6 +259,7 @@ pub(crate) fn lower_static_init(
     }
     Ok(Some(Function {
         name: format!("{class}.$init"),
+        asynchronous: false,
         parameters: Vec::new(),
         return_type: Type::Named("VOID".into()),
         entry: BlockId(0),
@@ -286,6 +290,7 @@ pub(crate) fn lower_instance_fields(
     }
     Ok(Function {
         name: format!("{prefix}{class_name}.$fields"),
+        asynchronous: false,
         parameters: vec![SYNTHETIC_SELF],
         return_type: Type::Named("VOID".into()),
         entry: BlockId(0),
@@ -316,6 +321,7 @@ pub(crate) fn lower_inherited_constructor(
     builder.terminate(Terminator::Return { value: None });
     Ok(Function {
         name: format!("{prefix}{class_name}.CONSTRUCTOR"),
+        asynchronous: false,
         parameters: vec![SYNTHETIC_SELF],
         return_type: Type::Named("VOID".into()),
         entry: BlockId(0),
@@ -358,6 +364,7 @@ pub(crate) fn lower_inherited_destructor(
     builder.terminate(Terminator::Return { value: None });
     Ok(Function {
         name: format!("{prefix}{class_name}.DESTRUCTOR"),
+        asynchronous: false,
         parameters: vec![SYNTHETIC_SELF],
         return_type: Type::Named("VOID".into()),
         entry: BlockId(0),
@@ -392,6 +399,7 @@ pub(crate) fn lower_struct_default(
     }
     Ok(Function {
         name: format!("{prefix}{struct_name}.$default"),
+        asynchronous: false,
         parameters: Vec::new(),
         return_type: ty,
         entry: BlockId(0),

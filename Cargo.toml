@@ -1,6 +1,6 @@
 [package]
 name = "bn"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.97"
 description = "Basic Next reference implementation"
@@ -30,5 +30,5 @@ ring = "0.17.14"
 rustls = { version = "0.23.43", default-features = false, features = ["ring", "std"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "1.53.1", default-features = false, features = ["net", "rt", "time"] }
+tokio = { version = "1.53.1", default-features = false, features = ["net", "rt", "rt-multi-thread", "sync", "time"] }
 tokio-rustls = { version = "0.26.4", default-features = false, features = ["ring"] }

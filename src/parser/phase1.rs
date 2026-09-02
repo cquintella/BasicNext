@@ -66,6 +66,10 @@ impl Parser<'_> {
         if exported {
             self.take();
         }
+        let asynchronous = self.keyword("ASYNC");
+        if asynchronous {
+            self.take();
+        }
         let kind = if self.keyword("FUNCTION") {
             DeclarationKind::Function
         } else if self.keyword("CLASS") {
@@ -77,6 +81,9 @@ impl Parser<'_> {
         } else {
             return Err(self.error("expected IMPORT or a top-level declaration"));
         };
+        if asynchronous && kind != DeclarationKind::Function {
+            return Err(self.error("ASYNC can only modify FUNCTION declarations"));
+        }
         self.take();
         let name = self.identifier_name()?;
         let base_class = if kind == DeclarationKind::Class {
@@ -104,6 +111,7 @@ impl Parser<'_> {
         let (end, statements) = self.block(kind.end_word())?;
         Ok(Item::Declaration {
             exported,
+            asynchronous,
             kind,
             name,
             base_class,

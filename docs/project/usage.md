@@ -69,8 +69,10 @@ Filesystem and positioned-console operations are rejected for that target.
   produces `BUILD_LOWERING_UNAVAILABLE` instead of changing semantics.
 - `TIMEZONE` stores an IANA identifier; UTC conversions do not apply zone
   rules.
-- The VS Code adapter launches programs but does not implement breakpoints or
-  step debugging.
+- The VS Code adapter uses the native `bn dap` service for breakpoints, pause,
+  continue, stack/scopes/variables, and step commands. Stepping is over IR
+  instructions carrying source spans; it is not a REPL or arbitrary-expression
+  evaluator.
 - There is no package registry, network, GPU, DOM, or C FFI in 0.2.
 
 Full command reference: [`bn(1)`](../man/bn.1). Tutorial:

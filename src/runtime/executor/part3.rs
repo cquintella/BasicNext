@@ -7,6 +7,29 @@
 )]
 use super::*;
 
+struct BoundedTaskOutput {
+    bytes: Vec<u8>,
+    maximum: usize,
+}
+
+impl std::io::Write for BoundedTaskOutput {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        let remaining = self.maximum.saturating_sub(self.bytes.len());
+        if bytes.len() > remaining {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::WriteZero,
+                "async task output exceeds configured bound",
+            ));
+        }
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 impl Executor<'_, '_> {
     pub(crate) fn call_named(
         &mut self,
@@ -67,6 +90,8 @@ impl Executor<'_, '_> {
                 || name.contains(".Response.")
                 || name.contains(".Client.")
                 || name.contains(".TLSConfig.")
+                || name.contains(".ServerOptions.")
+                || name.contains(".EgressPolicy.")
                 || name.contains(".CookieJar.")
                 || name.contains(".SessionStore.")
                 || name.contains(".Scraper.")
@@ -130,7 +155,9 @@ impl Executor<'_, '_> {
         if let Some(pinned) = pinned.clone() {
             self.pinned_dispatch.push(pinned);
         }
+        self.call_depth += 1;
         let result = self.function(&self.module.functions[index], arguments);
+        self.call_depth = self.call_depth.saturating_sub(1);
         if pinned.is_some() {
             let _ = self.pinned_dispatch.pop();
         }
@@ -260,9 +287,19 @@ impl Executor<'_, '_> {
                         else if function.name == "Start" { function.name = "__dispatch_start".into(); }
                     }
                     let mut input = std::io::Cursor::new(Vec::<u8>::new());
-                    let mut output = Vec::<u8>::new();
+                    let mut output = BoundedTaskOutput {
+                        bytes: Vec::new(),
+                        maximum: crate::config::web_limits().async_output_max_bytes,
+                    };
                     match crate::runtime::execute_with_host(&worker_module, &mut input, &mut output, &worker_host) {
-                        Ok(_) => { ticket.set_output(String::from_utf8_lossy(&output).into_owned()); ticket.mark_completed(); }
+                        Ok(_) => {
+                            let output = String::from_utf8_lossy(&output.bytes).into_owned();
+                            if ticket.set_output(output).is_ok() {
+                                ticket.mark_completed();
+                            } else {
+                                ticket.mark_failed(1, "async task output exceeds configured bound".into());
+                            }
+                        }
                         Err(error) => ticket.mark_failed(1, error.message),
                     }
                 }).map_err(|error| runtime_error("DISPATCH", format!("{error:?}"), span))?;
@@ -348,4 +385,24 @@ fn dispatch_error(error: crate::dispatch::DispatchError) -> Value {
         other => format!("{other:?}"),
     };
     Value::Error { code: 1, message }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BoundedTaskOutput;
+    use std::io::Write;
+
+    #[test]
+    fn task_output_writer_rejects_bytes_after_registry_bound() {
+        let maximum = crate::config::web_limits().async_output_max_bytes;
+        let mut output = BoundedTaskOutput {
+            bytes: Vec::new(),
+            maximum,
+        };
+
+        output.write_all(&vec![b'x'; maximum]).expect("bound fits");
+        let error = output.write_all(b"overflow").expect_err("overflow must fail");
+        assert_eq!(error.kind(), std::io::ErrorKind::WriteZero);
+        assert_eq!(output.bytes.len(), maximum);
+    }
 }

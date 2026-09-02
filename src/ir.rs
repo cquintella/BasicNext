@@ -216,6 +216,8 @@ fn instruction_defines(instruction: &Instruction) -> Option<ValueId> {
         | Instruction::Binary { destination, .. }
         | Instruction::Cast { destination, .. }
         | Instruction::Call { destination, .. }
+        | Instruction::DispatchSubmit { destination, .. }
+        | Instruction::DispatchAwait { destination, .. }
         | Instruction::Input { destination, .. }
         | Instruction::Vector { destination, .. }
         | Instruction::Index { destination, .. }
@@ -256,6 +258,23 @@ fn instruction_uses(instruction: &Instruction) -> Vec<ValueId> {
             used.extend(arguments.iter().copied());
             used
         }
+        Instruction::DispatchSubmit {
+            callee,
+            queue,
+            task,
+            arguments,
+            ..
+        } => {
+            let mut used = vec![*callee, *queue, *task];
+            used.extend(arguments.iter().copied());
+            used
+        }
+        Instruction::DispatchAwait {
+            callee,
+            ticket,
+            timeout,
+            ..
+        } => vec![*callee, *ticket, *timeout],
         Instruction::Vector { values, .. } | Instruction::Print { values, .. } => values.clone(),
         Instruction::Index { object, index, .. } => vec![*object, *index],
         Instruction::Member { object, .. }

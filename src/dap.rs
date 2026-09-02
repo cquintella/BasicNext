@@ -1,7 +1,10 @@
 use std::{
     collections::{BTreeSet, HashMap},
     io::{self, BufRead, Write},
-    sync::{Arc, Condvar, Mutex},
+    sync::{
+        Arc, Condvar, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
     thread,
 };
 
@@ -12,6 +15,7 @@ const MAX_MESSAGE_BYTES: usize = 1024 * 1024;
 #[derive(Clone, Debug)]
 struct DebugFrame {
     function: String,
+    depth: usize,
     line: u64,
     variables: Vec<crate::runtime::DebugVariable>,
 }
@@ -20,11 +24,18 @@ struct DebugFrame {
 #[derive(Debug, Default)]
 struct SessionState {
     paused: bool,
-    step: bool,
+    step: Option<StepMode>,
     terminate: bool,
     started: bool,
     frame: Option<DebugFrame>,
     events: Vec<Value>,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum StepMode {
+    Next(usize),
+    In,
+    Out(usize),
 }
 
 type SharedSession = Arc<(Mutex<SessionState>, Condvar)>;
@@ -38,14 +49,41 @@ type SharedSession = Arc<(Mutex<SessionState>, Condvar)>;
 pub fn run_stdio() -> Result<(), String> {
     let stdin = io::stdin();
     let mut input = stdin.lock();
-    let stdout = io::stdout();
-    let mut output = stdout.lock();
-    let mut sequence = 1_u64;
+    let output = Arc::new(Mutex::new(io::stdout()));
+    let sequence = Arc::new(AtomicU64::new(1));
     let breakpoints = Arc::new(Mutex::new(HashMap::<String, BTreeSet<u64>>::new()));
     let mut launched = false;
     let mut configured = false;
     let mut terminated = false;
     let session: SharedSession = Arc::new((Mutex::new(SessionState::default()), Condvar::new()));
+    let event_output = Arc::clone(&output);
+    let event_session = Arc::clone(&session);
+    let event_sequence = Arc::clone(&sequence);
+    thread::spawn(move || {
+        loop {
+            thread::sleep(std::time::Duration::from_millis(5));
+            let events = {
+                let (lock, _) = &*event_session;
+                let Ok(mut state) = lock.lock() else { break };
+                std::mem::take(&mut state.events)
+            };
+            if let Ok(mut output) = event_output.lock() {
+                for mut event in events {
+                    if let Some(object) = event.as_object_mut() {
+                        object.insert(
+                            "seq".into(),
+                            json!(event_sequence.fetch_add(1, Ordering::Relaxed)),
+                        );
+                    }
+                    if write_message(&mut *output, &event).is_err() {
+                        return;
+                    }
+                }
+            } else {
+                break;
+            }
+        }
+    });
     let mut execution = None;
     while let Some(message) = read_message(&mut input)? {
         let request_seq = message.get("seq").and_then(Value::as_u64).unwrap_or(0);
@@ -99,15 +137,25 @@ pub fn run_stdio() -> Result<(), String> {
                 Some("configurationDone requires launch".into()),
             ),
             "continue" => {
-                resume_session(&session, false);
+                resume_session(&session, None);
                 (true, json!({"allThreadsContinued": true}), None)
             }
             "pause" => {
                 request_pause(&session);
                 (true, json!({}), None)
             }
-            "next" | "stepIn" | "stepOut" => {
-                resume_session(&session, true);
+            "next" => {
+                let depth = current_depth(&session);
+                resume_session(&session, Some(StepMode::Next(depth)));
+                (true, json!({}), None)
+            }
+            "stepIn" => {
+                resume_session(&session, Some(StepMode::In));
+                (true, json!({}), None)
+            }
+            "stepOut" => {
+                let depth = current_depth(&session);
+                resume_session(&session, Some(StepMode::Out(depth.saturating_sub(1))));
                 (true, json!({}), None)
             }
             "threads" => (true, json!({"threads": [{"id": 1, "name": "Start"}]}), None),
@@ -132,10 +180,14 @@ pub fn run_stdio() -> Result<(), String> {
             }
             _ => (false, json!({}), Some("request is not implemented".into())),
         };
+        let response_sequence = sequence.fetch_add(1, Ordering::Relaxed);
+        let mut output_guard = output
+            .lock()
+            .map_err(|_| "DAP output lock poisoned".to_string())?;
         write_message(
-            &mut output,
+            &mut *output_guard,
             &json!({
-                "seq": sequence,
+                "seq": response_sequence,
                 "type": "response",
                 "request_seq": request_seq,
                 "success": success,
@@ -144,8 +196,6 @@ pub fn run_stdio() -> Result<(), String> {
                 "body": body,
             }),
         )?;
-        drain_events(&mut output, &session, &mut sequence)?;
-        sequence = sequence.checked_add(1).ok_or("DAP sequence exhausted")?;
         if command == "disconnect" || command == "terminate" {
             break;
         }
@@ -207,6 +257,7 @@ fn execute_program(
     let mut output = Vec::new();
     let session_for_hook = Arc::clone(session);
     let mut control = move |function: &str,
+                            depth: usize,
                             span: crate::source::Span,
                             variables: &[crate::runtime::DebugVariable]| {
         let (lock, condvar) = &*session_for_hook;
@@ -215,6 +266,7 @@ fn execute_program(
         };
         state.frame = Some(DebugFrame {
             function: function.to_owned(),
+            depth,
             line: u64::try_from(span.start.line).unwrap_or(u64::MAX),
             variables: variables.to_vec(),
         });
@@ -225,9 +277,15 @@ fn execute_program(
             .is_some_and(|lines| {
                 lines.contains(&state.frame.as_ref().map_or(0, |frame| frame.line))
             });
-        if !state.started || state.step || at_breakpoint {
+        let step_pause = match state.step {
+            Some(StepMode::Next(target)) => depth <= target,
+            Some(StepMode::In) => true,
+            Some(StepMode::Out(target)) => depth < target,
+            None => false,
+        };
+        if !state.started || step_pause || at_breakpoint {
             state.started = true;
-            state.step = false;
+            state.step = None;
             state.paused = true;
             state.events.push(json!({
                 "type": "event", "event": "stopped",
@@ -257,7 +315,7 @@ fn execute_program(
     .map_err(|error| error.message)
 }
 
-fn resume_session(session: &SharedSession, step: bool) {
+fn resume_session(session: &SharedSession, step: Option<StepMode>) {
     let (lock, condvar) = &**session;
     if let Ok(mut state) = lock.lock() {
         state.step = step;
@@ -267,6 +325,14 @@ fn resume_session(session: &SharedSession, step: bool) {
             .push(json!({"type": "event", "event": "continued", "body": {"threadId": 1}}));
         condvar.notify_all();
     }
+}
+
+fn current_depth(session: &SharedSession) -> usize {
+    let (lock, _) = &**session;
+    lock.lock()
+        .ok()
+        .and_then(|state| state.frame.as_ref().map(|frame| frame.depth))
+        .unwrap_or(0)
 }
 
 fn request_pause(session: &SharedSession) {
@@ -318,28 +384,6 @@ fn variables_response(session: &SharedSession) -> Value {
         })
         .unwrap_or_default();
     json!({"variables": variables})
-}
-
-fn drain_events(
-    output: &mut impl Write,
-    session: &SharedSession,
-    sequence: &mut u64,
-) -> Result<(), String> {
-    let (lock, _) = &**session;
-    let events = lock
-        .lock()
-        .map_err(|_| "debug session lock poisoned".to_string())?
-        .events
-        .drain(..)
-        .collect::<Vec<_>>();
-    for mut event in events {
-        if let Some(object) = event.as_object_mut() {
-            object.insert("seq".into(), Value::from(*sequence));
-        }
-        write_message(output, &event)?;
-        *sequence = sequence.checked_add(1).ok_or("DAP sequence exhausted")?;
-    }
-    Ok(())
 }
 
 fn breakpoint_response(message: &Value, registry: &mut HashMap<String, BTreeSet<u64>>) -> Value {

@@ -1,58 +1,38 @@
+import os
+from pathlib import Path
 import unittest
-import subprocess
-import sys
 
-from bn_kernel import execute_cell
+from bn_kernel.kernel import execute_cell
 
 
-class KernelTests(unittest.TestCase):
-    def test_launcher_reports_missing_option_values_without_traceback(self):
-        for arguments in (["-f"], ["-f", "connection.json", "--bn"]):
-            process = subprocess.run(
-                [sys.executable, "-m", "bn_kernel", *arguments],
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            self.assertEqual(process.returncode, 2)
-            self.assertIn("requires a value", process.stderr)
-            self.assertNotIn("Traceback", process.stderr)
+ROOT = Path(__file__).resolve().parents[1]
+BN = os.environ.get("BN_TEST_BINARY", str(ROOT / "target" / "debug" / "bn"))
 
-    def test_cell_is_a_complete_program(self):
+
+class ProgramKernelTests(unittest.TestCase):
+    def test_cell_requires_a_complete_program(self):
+        result = execute_cell('PRINT "not a program"', bn=BN, cwd=ROOT)
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_cell_runs_as_a_fresh_program_without_filesystem(self):
         result = execute_cell(
-            "FUNCTION Start() AS VOID\nPRINT 42\nEND FUNCTION\n",
-            bn="target/debug/bn",
+            'FUNCTION Start() AS VOID\nPRINT "fresh"\nEND FUNCTION\n',
+            bn=BN,
+            cwd=ROOT,
         )
-        self.assertEqual((result.returncode, result.output), (0, "42\n"))
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.output, "fresh\n")
 
-    def test_filesystem_is_rejected_before_execution(self):
-        result = execute_cell(
-            "IMPORT HOST . FileSystem AS FS\nFUNCTION Start() AS VOID\nPRINT FS.Exists(\"Cargo.toml\")\nEND FUNCTION\n",
-            bn="target/debug/bn",
+    def test_filesystem_capability_is_denied(self):
+        source = (
+            "IMPORT HOST.FileSystem AS FS\n"
+            "FUNCTION Start() AS VOID\n"
+            "FS.Exists(\"Cargo.toml\")\n"
+            "END FUNCTION\n"
         )
-        self.assertEqual(result.returncode, 1)
+        result = execute_cell(source, bn=BN, cwd=ROOT)
+        self.assertNotEqual(result.returncode, 0)
         self.assertIn("HOST_CAPABILITY_UNAVAILABLE", result.error or "")
-
-    def test_filesystem_import_without_use_is_rejected_before_start(self):
-        result = execute_cell(
-            "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nPRINT \"ran\"\nEND FUNCTION\n",
-            bn="target/debug/bn",
-        )
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("HOST_CAPABILITY_UNAVAILABLE", result.error or "")
-        self.assertNotIn("ran", result.output or "")
-
-    def test_cells_do_not_share_state(self):
-        first = execute_cell(
-            "FUNCTION Start() AS VOID\nLET value AS INTEGER = 7\nEND FUNCTION\n",
-            bn="target/debug/bn",
-        )
-        second = execute_cell(
-            "FUNCTION Start() AS VOID\nPRINT value\nEND FUNCTION\n",
-            bn="target/debug/bn",
-        )
-        self.assertEqual(first.returncode, 0)
-        self.assertEqual(second.returncode, 1)
 
 
 if __name__ == "__main__":

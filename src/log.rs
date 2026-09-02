@@ -101,10 +101,10 @@ impl Record {
             "{} - - [{}] \"{}\" {} {} \"{}\" \"{}\"\n",
             escape(field("remote")),
             escape(&self.timestamp),
-            escape(field("request")),
+            escape(&strip_query(field("request"))),
             escape(field("status")),
             escape(field("bytes_sent")),
-            escape(field("referrer")),
+            escape(&strip_query(field("referrer"))),
             escape(field("user_agent"))
         ))
     }
@@ -128,10 +128,60 @@ fn escape(value: &str) -> String {
 }
 
 fn is_sensitive(key: &str) -> bool {
+    let normalized = key.to_ascii_lowercase().replace(['-', '.'], "_");
     matches!(
-        key.to_ascii_lowercase().as_str(),
-        "authorization" | "cookie" | "set-cookie" | "session" | "session_id" | "query" | "body"
-    )
+        normalized.as_str(),
+        "authorization"
+            | "proxy_authorization"
+            | "cookie"
+            | "set_cookie"
+            | "session"
+            | "session_id"
+            | "query"
+            | "body"
+            | "password"
+            | "passwd"
+            | "secret"
+            | "token"
+            | "api_key"
+            | "apikey"
+            | "private_key"
+            | "client_secret"
+            | "access_key"
+            | "tls_key"
+            | "credential"
+            | "bearer"
+            | "refresh_token"
+            | "jwt"
+            | "signature"
+    ) || [
+        "authorization",
+        "cookie",
+        "session",
+        "password",
+        "secret",
+        "token",
+        "api_key",
+        "apikey",
+        "access_key",
+        "private_key",
+        "client_secret",
+        "credential",
+        "bearer",
+        "refresh_token",
+        "jwt",
+        "signature",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
+}
+
+fn strip_query(value: &str) -> String {
+    value
+        .split_whitespace()
+        .map(|part| part.split_once('?').map_or(part, |(path, _)| path))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 #[cfg(test)]
@@ -146,6 +196,11 @@ mod tests {
             fields: [
                 ("user".into(), "ana\t1".into()),
                 ("authorization".into(), "secret".into()),
+                ("X-Api-Key".into(), "api-secret".into()),
+                ("client_secret".into(), "another-secret".into()),
+                ("refresh-token".into(), "refresh-secret".into()),
+                ("Bearer".into(), "bearer-secret".into()),
+                ("jwt".into(), "jwt-secret".into()),
             ]
             .into_iter()
             .collect(),
@@ -157,6 +212,8 @@ mod tests {
         let json = record.json_line().unwrap();
         assert!(json.contains("hello\\nworld"));
         assert!(!json.contains("secret"));
+        assert!(!json.contains("api-secret"));
+        assert!(!json.contains("another-secret"));
         let text = record.text_line().unwrap();
         assert!(text.contains("hello world"));
         assert!(text.contains("user=ana 1"));
@@ -168,11 +225,17 @@ mod tests {
         record
             .fields
             .insert("request".into(), "GET / HTTP/1.1".into());
+        record.fields.insert(
+            "referrer".into(),
+            "https://example.test/?token=secret".into(),
+        );
         record.fields.insert("status".into(), "200".into());
         record.fields.insert("bytes_sent".into(), "5".into());
         let line = record.apache_combined().unwrap();
         assert!(line.contains("GET / HTTP/1.1"));
         assert!(!line.trim_end_matches('\n').contains('\n'));
+        assert!(line.contains("GET / HTTP/1.1"));
+        assert!(!line.contains("token=secret"));
     }
 
     #[test]

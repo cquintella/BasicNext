@@ -21,6 +21,7 @@ pub enum Item {
     },
     Declaration {
         exported: bool,
+        asynchronous: bool,
         kind: DeclarationKind,
         name: String,
         base_class: Option<TypeReference>,

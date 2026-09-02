@@ -29,8 +29,8 @@ fn lex_kinds(text: &str) -> Vec<TokenKind> {
 
 #[test]
 fn registry_matches_ebnf_and_generated_tables() {
-    let registry = parse_keywords_md(&read("docs/language/0.2/keywords.md")).expect("registry");
-    let ebnf = read("docs/language/0.2/0.2.ebnf");
+    let registry = parse_keywords_md(&read("docs/language/0.4/keywords.md")).expect("registry");
+    let ebnf = read("docs/language/0.4/0.4.ebnf");
     let reserved =
         parse_ebnf_quoted_production(&ebnf, "reserved-word").expect("EBNF reserved-word");
     let special = parse_ebnf_quoted_production(&ebnf, "special-float-literal")

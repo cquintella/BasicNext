@@ -84,6 +84,7 @@ impl Analyzer {
                 }
                 Item::Declaration {
                     name,
+                    asynchronous,
                     kind,
                     interfaces,
                     signature,
@@ -95,6 +96,20 @@ impl Analyzer {
                         || declaration_type(*kind, name),
                         |signature| self.resolve_type(function_type(signature)),
                     );
+                    if *asynchronous
+                        && !matches!(
+                            &ty,
+                            Type::Function { return_type, .. }
+                                if matches!(return_type.as_ref(), Type::Named(name) if name == "VOID")
+                                    || matches!(return_type.as_ref(), Type::Alternative(values) if values.len() == 2 && values.iter().any(|value| value == &Type::Named("VOID".into())) && values.iter().any(|value| value == &Type::Named("Error".into())))
+                        )
+                    {
+                        return Err(error(
+                            "ASYNC_RETURN_TYPE",
+                            "ASYNC FUNCTION must return VOID OR Error",
+                            *span,
+                        ));
+                    }
                     self.declare_global(name, ty, false, *span)?;
                     self.declaration_kinds.insert(name.clone(), *kind);
                     if *kind == DeclarationKind::Class {

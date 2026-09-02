@@ -54,6 +54,21 @@ mod tests {
     }
 
     #[test]
+    fn cookie_defaults_are_secure_http_only_and_lax() {
+        let mut jar = CookieJar::new();
+        jar.set("sid", "a", "example.test", "/", Duration::from_mins(1))
+            .unwrap();
+        assert_eq!(
+            jar.options("sid", "example.test", "/"),
+            Some(CookieOptions {
+                secure: true,
+                http_only: true,
+                same_site: SameSite::Lax,
+            })
+        );
+    }
+
+    #[test]
     fn session_store_rotates_and_expires() {
         let mut store = SessionStore::new(2, Duration::from_mins(1)).unwrap();
         let first = store.create("one").unwrap();
@@ -61,6 +76,48 @@ mod tests {
         assert_ne!(first, second);
         assert_eq!(store.get(&first), None);
         assert_eq!(store.get(&second), Some("two".into()));
+    }
+
+    #[test]
+    fn session_ids_are_random_and_have_at_least_128_bits() {
+        let mut store = SessionStore::new(2, Duration::from_mins(1)).unwrap();
+        let first = store.create("one").unwrap();
+        let second = store.create("two").unwrap();
+        assert_eq!(first.len(), 33);
+        assert_eq!(second.len(), 33);
+        assert!(first.starts_with('s'));
+        assert!(second.starts_with('s'));
+        assert_ne!(first, second);
+        assert_ne!(&first[1..17], &second[1..17]);
+    }
+
+    struct FailingEntropy;
+
+    impl EntropyProvider for FailingEntropy {
+        fn fill(&self, _destination: &mut [u8]) -> Result<(), ()> {
+            Err(())
+        }
+    }
+
+    #[test]
+    fn entropy_failure_does_not_insert_a_session() {
+        let store = SessionStore::new(1, Duration::from_mins(1)).unwrap();
+        let before = store.values.len();
+        assert!(new_session_id(&FailingEntropy).is_err());
+        assert_eq!(store.values.len(), before);
+    }
+
+    #[test]
+    fn request_ids_are_bounded_and_entropy_backed() {
+        let first = new_request_id(&SystemEntropy).unwrap();
+        let second = new_request_id(&SystemEntropy).unwrap();
+        assert_eq!(
+            first.len(),
+            1 + crate::config::web_limits().request_id_bytes * 2
+        );
+        assert!(first.starts_with('r'));
+        assert_ne!(first, second);
+        assert!(new_request_id(&FailingEntropy).is_err());
     }
 
     #[test]
@@ -119,8 +176,49 @@ use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
+use ring::rand::{SecureRandom, SystemRandom};
+
+pub(crate) trait EntropyProvider {
+    fn fill(&self, destination: &mut [u8]) -> Result<(), ()>;
+}
+
+pub(crate) struct SystemEntropy;
+
+impl EntropyProvider for SystemEntropy {
+    fn fill(&self, destination: &mut [u8]) -> Result<(), ()> {
+        SystemRandom::new().fill(destination).map_err(|_| ())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SameSite {
+    Strict,
+    Lax,
+    None,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct CookieOptions {
+    pub(crate) secure: bool,
+    pub(crate) http_only: bool,
+    pub(crate) same_site: SameSite,
+}
+
+type CookieKey = (String, String, String);
+type CookieEntry = (String, Option<Instant>, CookieOptions);
+
+impl Default for CookieOptions {
+    fn default() -> Self {
+        Self {
+            secure: true,
+            http_only: true,
+            same_site: SameSite::Lax,
+        }
+    }
+}
+
 pub(crate) struct CookieJar {
-    values: HashMap<(String, String, String), (String, Option<Instant>)>,
+    values: HashMap<CookieKey, CookieEntry>,
 }
 
 impl CookieJar {
@@ -137,6 +235,17 @@ impl CookieJar {
         path: &str,
         max_age: Duration,
     ) -> Result<(), String> {
+        self.set_with_options(name, value, domain, path, max_age, CookieOptions::default())
+    }
+    pub(crate) fn set_with_options(
+        &mut self,
+        name: &str,
+        value: &str,
+        domain: &str,
+        path: &str,
+        max_age: Duration,
+        options: CookieOptions,
+    ) -> Result<(), String> {
         if name.is_empty()
             || name.len() > 128
             || value.len() > 4096
@@ -151,7 +260,7 @@ impl CookieJar {
             return Ok(());
         }
         self.values
-            .insert(key, (value.into(), Some(Instant::now() + max_age)));
+            .insert(key, (value.into(), Some(Instant::now() + max_age), options));
         Ok(())
     }
     pub(crate) fn get(&mut self, name: &str, domain: &str, path: &str) -> Option<String> {
@@ -171,13 +280,18 @@ impl CookieJar {
         let expired = self
             .values
             .get(&key)
-            .is_some_and(|(_, expiry)| expiry.is_some_and(|time| Instant::now() >= time));
+            .is_some_and(|(_, expiry, _)| expiry.is_some_and(|time| Instant::now() >= time));
         if expired {
             self.values.remove(&key);
             None
         } else {
-            self.values.get(&key).map(|(value, _)| value.clone())
+            self.values.get(&key).map(|(value, _, _)| value.clone())
         }
+    }
+    pub(crate) fn options(&self, name: &str, domain: &str, path: &str) -> Option<CookieOptions> {
+        self.values
+            .get(&(name.into(), domain.to_ascii_lowercase(), path.into()))
+            .map(|(_, _, options)| *options)
     }
     pub(crate) fn len(&self) -> usize {
         self.values.len()
@@ -192,7 +306,6 @@ pub(crate) struct SessionStore {
     values: HashMap<String, (String, Instant)>,
     capacity: usize,
     idle: Duration,
-    next: u64,
 }
 impl SessionStore {
     pub(crate) fn new(capacity: i128, idle_ms: Duration) -> Result<Self, String> {
@@ -207,7 +320,6 @@ impl SessionStore {
             values: HashMap::new(),
             capacity,
             idle: idle_ms,
-            next: 1,
         })
     }
     pub(crate) fn create(&mut self, value: &str) -> Result<String, String> {
@@ -225,8 +337,7 @@ impl SessionStore {
         {
             self.values.remove(&oldest);
         }
-        let id = format!("s{:016x}", self.next);
-        self.next += 1;
+        let id = new_session_id(&SystemEntropy)?;
         self.values
             .insert(id.clone(), (value.into(), Instant::now()));
         Ok(id)
@@ -264,6 +375,35 @@ impl SessionStore {
             Err("session not found".into())
         }
     }
+}
+
+fn new_session_id(provider: &impl EntropyProvider) -> Result<String, String> {
+    let mut bytes = [0_u8; 16];
+    provider
+        .fill(&mut bytes)
+        .map_err(|()| "session entropy provider failed".to_string())?;
+    let mut id = String::with_capacity(33);
+    id.push('s');
+    for byte in bytes {
+        use std::fmt::Write;
+        write!(id, "{byte:02x}").map_err(|_| "session ID encoding failed".to_string())?;
+    }
+    Ok(id)
+}
+
+pub(crate) fn new_request_id(provider: &impl EntropyProvider) -> Result<String, String> {
+    let size = crate::config::web_limits().request_id_bytes;
+    let mut bytes = vec![0_u8; size];
+    provider
+        .fill(&mut bytes)
+        .map_err(|()| "request ID entropy provider failed".to_string())?;
+    let mut id = String::with_capacity(1 + bytes.len() * 2);
+    id.push('r');
+    for byte in bytes {
+        use std::fmt::Write;
+        write!(id, "{byte:02x}").map_err(|_| "request ID encoding failed".to_string())?;
+    }
+    Ok(id)
 }
 
 #[derive(Clone, Copy)]

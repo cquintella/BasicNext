@@ -91,6 +91,19 @@ fn tcp_listener_accepts_and_reports_local_endpoint() {
 }
 
 #[test]
+fn tcp_listener_bind_with_backlog_uses_bounded_socket_queue() {
+    let listener = match TcpListener::bind_with_backlog(
+        Endpoint::new(Address::parse("127.0.0.1").expect("address"), 0),
+        8,
+    ) {
+        Ok(listener) => listener,
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => return,
+        Err(error) => panic!("bind with backlog: {error}"),
+    };
+    assert_ne!(listener.local_endpoint().expect("local endpoint").port(), 0);
+}
+
+#[test]
 fn tcp_listener_accept_timeout_returns_empty() {
     let listener = match TcpListener::bind(Endpoint::new(
         Address::parse("127.0.0.1").expect("address"),

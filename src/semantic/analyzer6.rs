@@ -416,6 +416,30 @@ impl Analyzer {
                 ));
             }
         }
+        if let ExpressionKind::Member { name, .. } = &callee.kind {
+            if name == "Wait"
+                && let Some(timeout) = arguments.first().and_then(constant_integer)
+                && !(1..=60_000).contains(&timeout)
+            {
+                return Err(error(
+                    "AWAIT_TIMEOUT",
+                    "AWAIT timeout must be between 1 and 60000 milliseconds",
+                    arguments[0].span,
+                ));
+            }
+            if name == "Async"
+                && !matches!(
+                    arguments.first().map(|argument| &argument.kind),
+                    Some(ExpressionKind::Name { .. })
+                )
+            {
+                return Err(error(
+                    "ASYNC_TARGET",
+                    "ASYNC submission requires a named function target",
+                    span,
+                ));
+            }
+        }
         if let ExpressionKind::Member { name, .. } = &callee.kind
             && name == "Open"
             && let Some(mode) = arguments.get(1).and_then(constant_integer)

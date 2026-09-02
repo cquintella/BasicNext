@@ -25,6 +25,8 @@ impl Executor<'_, '_> {
                     self.web_servers.remove(&handle);
                     self.web_loggers.remove(&handle);
                     self.web_tls_configs.remove(&handle);
+                    self.web_server_options.remove(&handle);
+                    self.web_egress_policies.remove(&handle);
                     self.web_cookie_jars.remove(&handle);
                     self.web_session_stores.remove(&handle);
                     self.web_acls.remove(&handle);

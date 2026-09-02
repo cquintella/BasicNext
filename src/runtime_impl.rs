@@ -5,10 +5,10 @@
 
 #[allow(unused_imports)]
 use std::{
-    cell::Cell,
     collections::{HashMap, HashSet},
     io::IsTerminal,
     io::{BufRead, Read, Write},
+    sync::atomic::AtomicU64,
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -118,12 +118,25 @@ pub(crate) enum Value {
 }
 
 /// Host-supplied arguments and clocks for one `bn run` execution.
-#[derive(Clone)]
 pub struct HostEnv {
     arguments: Vec<String>,
     clock: ClockKind,
-    random_state: Cell<u64>,
+    random_state: AtomicU64,
     filesystem: bool,
+}
+
+impl Clone for HostEnv {
+    fn clone(&self) -> Self {
+        Self {
+            arguments: self.arguments.clone(),
+            clock: self.clock.clone(),
+            random_state: AtomicU64::new(
+                self.random_state
+                    .load(std::sync::atomic::Ordering::Relaxed),
+            ),
+            filesystem: self.filesystem,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -141,7 +154,7 @@ impl HostEnv {
         Self {
             arguments,
             clock: ClockKind::System,
-            random_state: Cell::new(host_random_seed()),
+            random_state: AtomicU64::new(host_random_seed()),
             filesystem: true,
         }
     }
@@ -154,7 +167,7 @@ impl HostEnv {
                 timestamp_ms,
                 monotonic_ns,
             },
-            random_state: Cell::new(1),
+            random_state: AtomicU64::new(1),
             filesystem: true,
         }
     }
@@ -242,6 +255,8 @@ struct Executor<'a, 'debug> {
     web_servers: HashMap<Handle, std::sync::Arc<std::sync::Mutex<crate::web::ServerState>>>,
     web_loggers: HashMap<Handle, u64>,
     web_tls_configs: HashMap<Handle, std::sync::Arc<rustls::ServerConfig>>,
+    web_server_options: HashMap<Handle, crate::web::ServerOptions>,
+    web_egress_policies: HashMap<Handle, crate::web::EgressPolicy>,
     web_cookie_jars: HashMap<Handle, crate::web_state::CookieJar>,
     web_session_stores: HashMap<Handle, crate::web_state::SessionStore>,
     web_acls: HashMap<Handle, crate::web_state::Acl>,
@@ -253,6 +268,75 @@ struct Executor<'a, 'debug> {
     web_values: HashMap<Handle, Vec<String>>,
     debug_hook: Option<DebugHook<'debug>>,
     debug_control: Option<DebugControl<'debug>>,
+    call_depth: usize,
+}
+
+impl<'a, 'debug> Executor<'a, 'debug> {
+    fn new(
+        module: &'a Module,
+        input: &'a mut dyn BufRead,
+        output: &'a mut dyn Write,
+        host: &'a HostEnv,
+        debug_hook: Option<DebugHook<'debug>>,
+        debug_control: Option<DebugControl<'debug>>,
+    ) -> Self {
+        Self {
+            module,
+            input,
+            output,
+            host,
+            stop_code: None,
+            statics: HashMap::new(),
+            class_init: HashMap::new(),
+            objects: Heap::default(),
+            memory: Heap::default(),
+            pinned_dispatch: Vec::new(),
+            files: HashMap::new(),
+            next_file: 1,
+            tcp_streams: HashMap::new(),
+            next_tcp_stream: 1,
+            tcp_listeners: HashMap::new(),
+            next_tcp_listener: 1,
+            udp_sockets: HashMap::new(),
+            next_udp_socket: 1,
+            log_fields: HashMap::new(),
+            next_log_fields: 1,
+            log_entries: HashMap::new(),
+            next_log_entry: 1,
+            log_loggers: HashMap::new(),
+            next_log_logger: 1,
+            json_values: HashMap::new(),
+            next_json_value: 1,
+            dispatch_queues: HashMap::new(),
+            next_dispatch_queue: 1,
+            dispatch_tickets: HashMap::new(),
+            next_dispatch_ticket: 1,
+            dispatch_groups: HashMap::new(),
+            dispatch_barriers: HashMap::new(),
+            dispatch_semaphores: HashMap::new(),
+            dispatch_mutexes: HashMap::new(),
+            next_dispatch_sync: 1,
+            dataframes: HashMap::new(),
+            next_dataframe: 1,
+            web_servers: HashMap::new(),
+            web_loggers: HashMap::new(),
+            web_tls_configs: HashMap::new(),
+            web_server_options: HashMap::new(),
+            web_egress_policies: HashMap::new(),
+            web_cookie_jars: HashMap::new(),
+            web_session_stores: HashMap::new(),
+            web_acls: HashMap::new(),
+            web_scrapers: HashMap::new(),
+            web_handlers: HashMap::new(),
+            web_filters: HashMap::new(),
+            web_responses: HashMap::new(),
+            web_requests: HashMap::new(),
+            web_values: HashMap::new(),
+            debug_hook,
+            debug_control,
+            call_depth: 0,
+        }
+    }
 }
 
 /// Read-only interpreter event emitted at an executable instruction boundary.
@@ -275,7 +359,7 @@ pub struct DebugVariable {
 /// Interactive debugger callback. It is invoked before each executable
 /// instruction and may block while the client is paused.
 pub type DebugControl<'a> =
-    &'a mut dyn FnMut(&str, crate::source::Span, &[DebugVariable]) -> DebugDecision;
+    &'a mut dyn FnMut(&str, usize, crate::source::Span, &[DebugVariable]) -> DebugDecision;
 
 struct FileResource {
     file: Option<std::fs::File>,
@@ -408,59 +492,7 @@ fn execute_with_host_inner<'debug>(
             start.span,
         ));
     }
-    let mut executor = Executor {
-        module,
-        input,
-        output,
-        host,
-        stop_code: None,
-        statics: HashMap::new(),
-        class_init: HashMap::new(),
-        objects: Heap::default(),
-        memory: Heap::default(),
-        pinned_dispatch: Vec::new(),
-        files: HashMap::new(),
-        next_file: 1,
-        tcp_streams: HashMap::new(),
-        next_tcp_stream: 1,
-        tcp_listeners: HashMap::new(),
-        next_tcp_listener: 1,
-        udp_sockets: HashMap::new(),
-        next_udp_socket: 1,
-        log_fields: HashMap::new(),
-        next_log_fields: 1,
-        log_entries: HashMap::new(),
-        next_log_entry: 1,
-        log_loggers: HashMap::new(),
-        next_log_logger: 1,
-        json_values: HashMap::new(),
-        next_json_value: 1,
-        dispatch_queues: HashMap::new(),
-        next_dispatch_queue: 1,
-        dispatch_tickets: HashMap::new(),
-        next_dispatch_ticket: 1,
-        dispatch_groups: HashMap::new(),
-        dispatch_barriers: HashMap::new(),
-        dispatch_semaphores: HashMap::new(),
-        dispatch_mutexes: HashMap::new(),
-        next_dispatch_sync: 1,
-        dataframes: HashMap::new(),
-        next_dataframe: 1,
-        web_servers: HashMap::new(),
-        web_loggers: HashMap::new(),
-        web_tls_configs: HashMap::new(),
-        web_cookie_jars: HashMap::new(),
-        web_session_stores: HashMap::new(),
-        web_acls: HashMap::new(),
-        web_scrapers: HashMap::new(),
-        web_handlers: HashMap::new(),
-        web_filters: HashMap::new(),
-        web_responses: HashMap::new(),
-        web_requests: HashMap::new(),
-        web_values: HashMap::new(),
-        debug_hook,
-        debug_control,
-    };
+    let mut executor = Executor::new(module, input, output, host, debug_hook, debug_control);
     match executor.function(start, Vec::new())? {
         Flow::Return(None) => Ok(0),
         Flow::Return(Some(Value::Integer(code, _))) | Flow::Stop(code) => {
@@ -472,6 +504,63 @@ fn execute_with_host_inner<'debug>(
             start.span,
         )),
     }
+}
+
+/// Executes one `BNWeb` callback in a fresh interpreter instance.
+///
+/// A network request must not borrow the `Executor` that registered the
+/// server: that executor may be running user code, and its heap is not
+/// thread-safe. The callback receives copies of the request/response state
+/// and returns the response projection to the transport layer.
+pub(crate) fn execute_web_callback(
+    module: &Module,
+    host: &HostEnv,
+    function_name: &str,
+    request: crate::web::Request,
+    response: crate::web::Response,
+) -> Result<crate::web::Response, String> {
+    crate::tls::install_ring_provider().map_err(std::borrow::ToOwned::to_owned)?;
+    if !host.filesystem && let Some(span) = module.filesystem_import {
+        return Err(runtime_error(
+            "HOST_CAPABILITY_UNAVAILABLE",
+            "HOST.FileSystem is not provided by this host",
+            span,
+        )
+        .message);
+    }
+    let mut input = std::io::Cursor::new(Vec::<u8>::new());
+    let mut output = Vec::<u8>::new();
+    let mut executor = Executor::new(module, &mut input, &mut output, host, None, None);
+    let request_value = executor
+        .allocate_object("BNWeb.Request", default_span())
+        .map_err(|error| error.message)?;
+    let response_value = executor
+        .allocate_object("BNWeb.Response", default_span())
+        .map_err(|error| error.message)?;
+    let request_handle = match &request_value {
+        Value::Object { handle, .. } => *handle,
+        _ => return Err("BNWeb callback object allocation failed".into()),
+    };
+    let response_handle = match &response_value {
+        Value::Object { handle, .. } => *handle,
+        _ => return Err("BNWeb callback object allocation failed".into()),
+    };
+    executor.web_requests.insert(request_handle, request);
+    executor.web_responses.insert(response_handle, response);
+    let result = executor
+        .call_named(
+            function_name,
+            vec![request_value, response_value],
+            default_span(),
+        )
+        .map_err(|error| error.message)?;
+    if let Value::Error { message, .. } = result {
+        return Err(message);
+    }
+    executor
+        .web_responses
+        .remove(&response_handle)
+        .ok_or_else(|| "BNWeb callback did not retain its response".into())
 }
 
 enum Flow {

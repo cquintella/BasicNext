@@ -1,0 +1,60 @@
+# Basic Next 0.4 BNWeb production-hardening registry.
+# This is the single versioned source for normative defaults and maxima.
+# Hosts may lower values, but may not raise them above these maxima.
+
+[connections]
+active_default = 128
+active_max = 256
+backlog_default = 128
+backlog_max = 128
+pending_work_default = 128
+pending_work_max = 512
+worker_count_default = 8
+worker_count_max = 64
+
+[http]
+max_header_bytes_default = 65536
+max_header_fields_default = 100
+max_target_bytes_default = 8192
+max_body_bytes_default = 8388608
+max_response_body_bytes_default = 8388608
+
+[timeouts_ms]
+tls_handshake_default = 5000
+tls_handshake_max = 60000
+header_read_default = 5000
+header_read_max = 60000
+body_read_default = 30000
+body_read_max = 60000
+idle_keep_alive_default = 60000
+idle_keep_alive_max = 300000
+connection_total_default = 120000
+connection_total_max = 600000
+stop_drain_default = 5000
+stop_drain_max = 60000
+
+[client]
+resolved_addresses_max = 16
+redirects_default = 10
+redirects_max = 10
+egress_list_max = 64
+trusted_proxy_default = 0
+
+[rate_limit]
+key_capacity_default = 10000
+key_capacity_max = 10000
+burst_default = 10
+burst_max = 10000
+refill_per_second_default = 10
+refill_per_second_max = 10000
+
+[identity]
+request_id_bytes = 16
+session_id_min_bytes = 16
+
+[dispatch]
+output_max_bytes = 65536
+concurrent_handlers_default = 0
+
+[logging]
+record_size_source = "BNLog"

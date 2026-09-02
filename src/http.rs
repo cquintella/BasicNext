@@ -3,14 +3,13 @@
 use std::{
     convert::Infallible,
     io,
-    net::ToSocketAddrs,
     sync::{Arc, Mutex},
 };
 
 use http_body_util::{BodyExt, Full};
 use hyper::{Request, Response, StatusCode, body::Bytes, service::service_fn};
 use hyper_util::{
-    rt::{TokioExecutor, TokioIo},
+    rt::{TokioExecutor, TokioIo, TokioTimer},
     server::conn::auto,
 };
 use tokio_rustls::TlsAcceptor;
@@ -20,16 +19,51 @@ use crate::{
     web::{RouteOutcome, ServerState},
 };
 
-const MAX_HTTP_BODY: usize = 8 * 1024 * 1024;
-const MAX_HTTP_RESPONSE_BODY: usize = 8 * 1024 * 1024;
-const REQUEST_BODY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
-const CONNECT_HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
-
 pub(crate) type Handler = Arc<
     dyn Fn(&crate::web::Request, &mut crate::web::Response) -> Result<(), &'static str>
         + Send
         + Sync,
 >;
+
+trait AddressResolver {
+    fn resolve(
+        &self,
+        host: &str,
+        port: u16,
+        maximum: usize,
+    ) -> Result<Vec<crate::net::Address>, String>;
+}
+
+struct SystemAddressResolver;
+
+struct HandlerTaskGuard(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+
+impl Drop for HandlerTaskGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+    }
+}
+
+struct HandlerAdmissionGuard(std::sync::Arc<std::sync::Mutex<ServerState>>);
+
+impl Drop for HandlerAdmissionGuard {
+    fn drop(&mut self) {
+        if let Ok(mut state) = self.0.lock() {
+            state.finish_handler();
+        }
+    }
+}
+
+impl AddressResolver for SystemAddressResolver {
+    fn resolve(
+        &self,
+        host: &str,
+        port: u16,
+        maximum: usize,
+    ) -> Result<Vec<crate::net::Address>, String> {
+        crate::net::resolve(host, port, maximum).map_err(|error| error.to_string())
+    }
+}
 
 /// Serves one already-accepted HOST.Net stream using Hyper's HTTP/1.1 and
 /// HTTP/2 auto-detection. Handlers remain synchronous inside the bounded
@@ -46,20 +80,33 @@ pub(crate) fn serve_connection_with_handler(
     state: Arc<Mutex<ServerState>>,
     handler: Option<Handler>,
 ) -> io::Result<()> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_io()
+        .enable_time()
+        .build()
+        .map_err(io::Error::other)?;
+    serve_connection_with_runtime(stream, state, handler, &runtime)
+}
+
+pub(crate) fn serve_connection_with_runtime(
+    stream: TcpStream,
+    state: Arc<Mutex<ServerState>>,
+    handler: Option<Handler>,
+    runtime: &tokio::runtime::Runtime,
+) -> io::Result<()> {
+    let options = state
+        .lock()
+        .map_err(|_| io::Error::other("server state unavailable"))?
+        .options();
     let peer = stream
         .remote_endpoint()
         .ok()
         .map(|endpoint| endpoint.address().as_std());
     let std_stream = stream.into_std();
     std_stream.set_nonblocking(true)?;
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_io()
-        .enable_time()
-        .build()
-        .map_err(io::Error::other)?;
     runtime.block_on(async move {
         let io = TokioIo::new(tokio::net::TcpStream::from_std(std_stream)?);
-        serve_hyper_connection(io, peer, state, handler).await
+        serve_hyper_connection(io, peer, state, handler, false, options).await
     })
 }
 
@@ -80,6 +127,25 @@ pub(crate) fn serve_tls_connection_with_handler(
     config: Arc<rustls::ServerConfig>,
     handler: Option<Handler>,
 ) -> io::Result<()> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_io()
+        .enable_time()
+        .build()
+        .map_err(io::Error::other)?;
+    serve_tls_connection_with_runtime(stream, state, config, handler, &runtime)
+}
+
+pub(crate) fn serve_tls_connection_with_runtime(
+    stream: TcpStream,
+    state: Arc<Mutex<ServerState>>,
+    config: Arc<rustls::ServerConfig>,
+    handler: Option<Handler>,
+    runtime: &tokio::runtime::Runtime,
+) -> io::Result<()> {
+    let options = state
+        .lock()
+        .map_err(|_| io::Error::other("server state unavailable"))?
+        .options();
     if !crate::tls::supports_http_alpn(&config.alpn_protocols) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -92,18 +158,16 @@ pub(crate) fn serve_tls_connection_with_handler(
         .map(|endpoint| endpoint.address().as_std());
     let std_stream = stream.into_std();
     std_stream.set_nonblocking(true)?;
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_io()
-        .enable_time()
-        .build()
-        .map_err(io::Error::other)?;
     runtime.block_on(async move {
         let stream = tokio::net::TcpStream::from_std(std_stream)?;
-        let stream = TlsAcceptor::from(config)
-            .accept(stream)
-            .await
-            .map_err(io::Error::other)?;
-        serve_hyper_connection(TokioIo::new(stream), peer, state, handler).await
+        let stream = tokio::time::timeout(
+            std::time::Duration::from_millis(options.tls_handshake_ms),
+            TlsAcceptor::from(config).accept(stream),
+        )
+        .await
+        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "TLS handshake timed out"))?
+        .map_err(io::Error::other)?;
+        serve_hyper_connection(TokioIo::new(stream), peer, state, handler, true, options).await
     })
 }
 
@@ -112,20 +176,81 @@ async fn serve_hyper_connection<I>(
     peer: Option<std::net::IpAddr>,
     state: Arc<Mutex<ServerState>>,
     handler: Option<Handler>,
+    secure_transport: bool,
+    options: crate::web::ServerOptions,
 ) -> io::Result<()>
 where
     I: hyper::rt::Read + hyper::rt::Write + Unpin + Send + 'static,
 {
-    let builder = auto::Builder::new(TokioExecutor::new());
+    let mut builder = auto::Builder::new(TokioExecutor::new());
+    let connection_timeout = std::time::Duration::from_millis(options.connection_total_ms);
+    let header_timeout = std::time::Duration::from_millis(options.header_read_ms);
+    let idle_timeout = std::time::Duration::from_millis(options.idle_keep_alive_ms);
+    let handler_slots = state
+        .lock()
+        .map_err(|_| io::Error::other("server state unavailable"))?
+        .handler_slots()
+        .unwrap_or_else(|| std::sync::Arc::new(tokio::sync::Semaphore::new(options.worker_count)));
+    let active_handler_tasks = state
+        .lock()
+        .map_err(|_| io::Error::other("server state unavailable"))?
+        .active_handler_tasks();
+    builder
+        .http1()
+        .timer(TokioTimer::new())
+        .header_read_timeout(header_timeout);
+    builder
+        .http2()
+        .timer(TokioTimer::new())
+        .keep_alive_interval(idle_timeout)
+        .keep_alive_timeout(idle_timeout);
     let service = service_fn(move |request: Request<hyper::body::Incoming>| {
         let state = Arc::clone(&state);
         let handler = handler.clone();
-        async move { Ok::<_, Infallible>(route_response(request, peer, &state, handler).await) }
+        let request_options = options.clone();
+        let handler_slots = std::sync::Arc::clone(&handler_slots);
+        let active_handler_tasks = std::sync::Arc::clone(&active_handler_tasks);
+        async move {
+            let request_id =
+                crate::web_state::new_request_id(&crate::web_state::SystemEntropy).ok();
+            let mut response = route_response(
+                request,
+                peer,
+                &state,
+                handler,
+                request_options,
+                handler_slots,
+                active_handler_tasks,
+            )
+            .await;
+            if let Some(request_id) = request_id {
+                response.headers_mut().insert(
+                    "x-request-id",
+                    hyper::header::HeaderValue::from_str(&request_id)
+                        .expect("request IDs use only ASCII hex"),
+                );
+            }
+            apply_default_security_headers(&mut response, secure_transport);
+            Ok::<_, Infallible>(response)
+        }
     });
-    builder
-        .serve_connection(io, service)
+    tokio::time::timeout(connection_timeout, builder.serve_connection(io, service))
         .await
+        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "connection deadline exceeded"))?
         .map_err(io::Error::other)
+}
+
+fn apply_default_security_headers(response: &mut Response<Full<Bytes>>, secure_transport: bool) {
+    response.headers_mut().insert(
+        "x-content-type-options",
+        hyper::header::HeaderValue::from_static("nosniff"),
+    );
+    if secure_transport {
+        response.headers_mut().insert(
+            "strict-transport-security",
+            hyper::header::HeaderValue::from_static("max-age=31536000"),
+        );
+    }
 }
 
 /// Performs one bounded cleartext HTTP/1.1 request through the HOST.Net
@@ -136,9 +261,51 @@ pub(crate) fn client_request(
     url: &str,
     body: &str,
 ) -> Result<crate::web::Response, String> {
+    let resolver = SystemAddressResolver;
+    client_request_with_resolver_and_policy(
+        method,
+        url,
+        body,
+        &resolver,
+        &crate::web::EgressPolicy::default(),
+    )
+}
+
+pub(crate) fn client_request_with_policy(
+    method: &str,
+    url: &str,
+    body: &str,
+    policy: &crate::web::EgressPolicy,
+) -> Result<crate::web::Response, String> {
+    let resolver = SystemAddressResolver;
+    client_request_with_resolver_and_policy(method, url, body, &resolver, policy)
+}
+
+fn client_request_with_resolver(
+    method: &str,
+    url: &str,
+    body: &str,
+    resolver: &dyn AddressResolver,
+) -> Result<crate::web::Response, String> {
+    client_request_with_resolver_and_policy(
+        method,
+        url,
+        body,
+        resolver,
+        &crate::web::EgressPolicy::default(),
+    )
+}
+
+fn client_request_with_resolver_and_policy(
+    method: &str,
+    url: &str,
+    body: &str,
+    resolver: &dyn AddressResolver,
+    policy: &crate::web::EgressPolicy,
+) -> Result<crate::web::Response, String> {
     let mut current = url.to_owned();
-    for _ in 0..=10 {
-        let response = client_request_once(method, &current, body)?;
+    for _ in 0..=policy.max_redirects() {
+        let response = client_request_once(method, &current, body, resolver, policy)?;
         if !(300..=399).contains(&response.status) {
             return Ok(response);
         }
@@ -158,8 +325,10 @@ fn client_request_once(
     method: &str,
     url: &str,
     body: &str,
+    resolver: &dyn AddressResolver,
+    policy: &crate::web::EgressPolicy,
 ) -> Result<crate::web::Response, String> {
-    if body.len() > MAX_HTTP_BODY {
+    if body.len() > crate::config::web_limits().max_body_bytes {
         return Err("request body exceeds 8 MiB".into());
     }
     let (scheme, rest) = url
@@ -176,12 +345,8 @@ fn client_request_once(
         &rest[authority_end..]
     };
     let (host, port) = parse_authority(authority)?;
-    let addresses = (host.as_str(), port)
-        .to_socket_addrs()
-        .map_err(|error| error.to_string())?
-        .map(|address| address.ip())
-        .collect::<Vec<_>>();
-    crate::web::validate_ssrf_destinations(&addresses, false).map_err(str::to_owned)?;
+    let addresses =
+        resolve_validated_addresses_with_policy(host.as_str(), port, resolver, policy, scheme)?;
     let address = addresses
         .first()
         .copied()
@@ -192,7 +357,7 @@ fn client_request_once(
                 .map_err(|_| "invalid resolved address")?,
             port,
         ),
-        std::time::Duration::from_secs(5),
+        std::time::Duration::from_millis(policy.total_deadline_ms()),
     )
     .map_err(|error| error.to_string())?;
     let std_stream = stream.into_std();
@@ -209,7 +374,7 @@ fn client_request_once(
             tokio::net::TcpStream::from_std(std_stream).map_err(|error| error.to_string())?,
         );
         let (mut sender, connection) = tokio::time::timeout(
-            CONNECT_HANDSHAKE_TIMEOUT,
+            std::time::Duration::from_millis(policy.total_deadline_ms()),
             hyper::client::conn::http1::handshake(io),
         )
         .await
@@ -226,7 +391,7 @@ fn client_request_once(
             .body(Full::new(Bytes::copy_from_slice(body.as_bytes())))
             .map_err(|error| error.to_string())?;
         let response = tokio::time::timeout(
-            std::time::Duration::from_secs(10),
+            std::time::Duration::from_millis(policy.total_deadline_ms()),
             sender.send_request(request),
         )
         .await
@@ -246,12 +411,15 @@ fn client_request_once(
         if has_unsupported_encoding(&headers) {
             return Err("compressed responses are unavailable without a bounded decoder".into());
         }
-        let bytes = tokio::time::timeout(REQUEST_BODY_TIMEOUT, response.into_body().collect())
-            .await
-            .map_err(|_| "HTTP response body timed out".to_string())?
-            .map_err(|error| error.to_string())?
-            .to_bytes();
-        if bytes.len() > MAX_HTTP_RESPONSE_BODY {
+        let bytes = tokio::time::timeout(
+            std::time::Duration::from_millis(policy.total_deadline_ms()),
+            response.into_body().collect(),
+        )
+        .await
+        .map_err(|_| "HTTP response body timed out".to_string())?
+        .map_err(|error| error.to_string())?
+        .to_bytes();
+        if bytes.len() > crate::config::web_limits().max_response_body_bytes {
             return Err("response body exceeds 8 MiB".into());
         }
         let text = String::from_utf8(bytes.to_vec())
@@ -263,6 +431,42 @@ fn client_request_once(
         result.commit().map_err(str::to_owned)?;
         Ok(result)
     })
+}
+
+fn resolve_validated_addresses(
+    host: &str,
+    port: u16,
+    resolver: &dyn AddressResolver,
+) -> Result<Vec<std::net::IpAddr>, String> {
+    resolve_validated_addresses_with_policy(
+        host,
+        port,
+        resolver,
+        &crate::web::EgressPolicy::default(),
+        "http",
+    )
+}
+
+fn resolve_validated_addresses_with_policy(
+    host: &str,
+    port: u16,
+    resolver: &dyn AddressResolver,
+    policy: &crate::web::EgressPolicy,
+    scheme: &str,
+) -> Result<Vec<std::net::IpAddr>, String> {
+    let addresses = resolver
+        .resolve(
+            host,
+            port,
+            crate::config::web_limits().resolved_addresses_max,
+        )?
+        .into_iter()
+        .map(crate::net::Address::as_std)
+        .collect::<Vec<_>>();
+    policy
+        .validate(scheme, port, &addresses)
+        .map_err(str::to_owned)?;
+    Ok(addresses)
 }
 
 fn has_unsupported_encoding(headers: &[(String, String)]) -> bool {
@@ -327,19 +531,42 @@ fn parse_authority(authority: &str) -> Result<(String, u16), String> {
     Ok((host.to_owned(), port.parse().map_err(|_| "invalid port")?))
 }
 
+#[allow(clippy::too_many_lines)]
 async fn route_response(
     request: Request<hyper::body::Incoming>,
     peer: Option<std::net::IpAddr>,
     state: &Arc<Mutex<ServerState>>,
     handler: Option<Handler>,
+    options: crate::web::ServerOptions,
+    handler_slots: std::sync::Arc<tokio::sync::Semaphore>,
+    active_handler_tasks: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 ) -> Response<Full<Bytes>> {
     let (parts, body) = request.into_parts();
-    let body = match tokio::time::timeout(REQUEST_BODY_TIMEOUT, body.collect()).await {
+    let header_bytes = parts
+        .headers
+        .iter()
+        .map(|(name, value)| name.as_str().len().saturating_add(value.as_bytes().len()))
+        .sum::<usize>();
+    if parts.headers.len() > options.max_header_fields
+        || header_bytes > options.max_header_bytes
+        || parts.uri.to_string().len() > options.max_target_bytes
+    {
+        return response(
+            StatusCode::REQUEST_HEADER_FIELDS_TOO_LARGE,
+            "request headers or target exceed configured bounds",
+        );
+    }
+    let body = match tokio::time::timeout(
+        std::time::Duration::from_millis(options.body_read_ms),
+        body.collect(),
+    )
+    .await
+    {
         Ok(Ok(body)) => body.to_bytes(),
         Ok(Err(_)) => return response(StatusCode::BAD_REQUEST, "invalid request body"),
         Err(_) => return response(StatusCode::REQUEST_TIMEOUT, "request body timed out"),
     };
-    if body.len() > MAX_HTTP_BODY {
+    if body.len() > options.max_body_bytes {
         return response(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeds 8 MiB");
     }
     let Ok(body) = String::from_utf8(body.to_vec()) else {
@@ -370,7 +597,7 @@ async fn route_response(
     else {
         return response(StatusCode::BAD_REQUEST, "invalid request");
     };
-    let (status, allow, application_response) = {
+    let (status, allow, matched, rate_limited) = {
         let Ok(mut state) = state.lock() else {
             return response(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -379,37 +606,104 @@ async fn route_response(
         };
         let mut status = StatusCode::NOT_FOUND;
         let mut allow = None;
-        let mut application_response = None;
+        let mut matched = false;
+        let mut rate_limited = false;
         let path = request.target.path.as_str();
         let method = request.method.as_str();
-        if state
-            .dispatch(method, path, |outcome| {
-                (status, allow) = route_status(method, &outcome);
-                if let RouteOutcome::Matched(_, _) = outcome
-                    && let Some(handler) = handler.as_ref()
-                {
-                    let mut response = crate::web::Response::new();
-                    if handler(&request, &mut response).is_ok() {
-                        application_response = Some(response);
-                    } else {
-                        status = StatusCode::INTERNAL_SERVER_ERROR;
-                    }
-                }
-            })
-            .is_err()
-        {
-            status = StatusCode::SERVICE_UNAVAILABLE;
+        let key = format!(
+            "{path}|{}",
+            request.effective_client_address(options.trusted_proxy)
+        );
+        let dispatch_result = state.dispatch_with_key(method, path, &key, |outcome| {
+            (status, allow) = route_status(method, &outcome);
+            if matches!(outcome, RouteOutcome::Matched(_, _)) {
+                matched = true;
+            }
+        });
+        if let Err(message) = dispatch_result {
+            if message == "rate limit exceeded" {
+                rate_limited = true;
+                status = StatusCode::TOO_MANY_REQUESTS;
+            } else {
+                status = StatusCode::SERVICE_UNAVAILABLE;
+            }
         }
-        (status, allow, application_response)
+        if rate_limited {
+            state.record_request_failure(false, true);
+        } else if status == StatusCode::SERVICE_UNAVAILABLE {
+            state.record_request_failure(false, false);
+        }
+        (status, allow, matched, rate_limited)
     };
-    if let Some(mut application_response) = application_response {
-        if application_response
-            .finish_for_method(&request.method)
-            .is_err()
-        {
-            return response(StatusCode::INTERNAL_SERVER_ERROR, "response commit failed");
+    if matched && let Some(handler) = handler {
+        if !options.concurrent_handlers {
+            let admitted = state
+                .lock()
+                .is_ok_and(|mut server| server.try_begin_handler().is_ok());
+            if !admitted {
+                if let Ok(mut server) = state.lock() {
+                    server.record_request_failure(false, false);
+                }
+                return response(StatusCode::SERVICE_UNAVAILABLE, "handler queue is full");
+            }
+            let _handler_admission = HandlerAdmissionGuard(std::sync::Arc::clone(state));
+            let mut application_response = crate::web::Response::new();
+            if handler(&request, &mut application_response).is_err() {
+                return response(StatusCode::INTERNAL_SERVER_ERROR, "handler failed");
+            }
+            if application_response
+                .finish_for_method(&request.method)
+                .is_err()
+            {
+                return response(StatusCode::INTERNAL_SERVER_ERROR, "response commit failed");
+            }
+            return response_from_web(application_response);
         }
-        return response_from_web(application_response);
+        let handler_request = request.clone();
+        let Ok(permit) = handler_slots.try_acquire_owned() else {
+            if let Ok(mut state) = state.lock() {
+                state.record_request_failure(false, false);
+            }
+            return response(StatusCode::SERVICE_UNAVAILABLE, "handler queue is full");
+        };
+        active_handler_tasks.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        let task_counter = std::sync::Arc::clone(&active_handler_tasks);
+        let handler_result = tokio::time::timeout(
+            std::time::Duration::from_millis(options.connection_total_ms),
+            tokio::task::spawn_blocking(move || {
+                let _task_guard = HandlerTaskGuard(task_counter);
+                let mut application_response = crate::web::Response::new();
+                let result = handler(&handler_request, &mut application_response);
+                (result, application_response, permit)
+            }),
+        )
+        .await;
+        match handler_result {
+            Ok(Ok((Ok(()), mut application_response, _permit))) => {
+                if application_response
+                    .finish_for_method(&request.method)
+                    .is_err()
+                {
+                    return response(StatusCode::INTERNAL_SERVER_ERROR, "response commit failed");
+                }
+                return response_from_web(application_response);
+            }
+            Ok(Ok((Err(_), _, _)) | Err(_)) => {
+                if let Ok(mut state) = state.lock() {
+                    state.record_request_failure(false, false);
+                }
+                return response(StatusCode::INTERNAL_SERVER_ERROR, "handler failed");
+            }
+            Err(_) => {
+                if let Ok(mut state) = state.lock() {
+                    state.record_request_failure(true, false);
+                }
+                return response(StatusCode::REQUEST_TIMEOUT, "handler timed out");
+            }
+        }
+    }
+    if rate_limited {
+        return response_with_retry_after(StatusCode::TOO_MANY_REQUESTS, "rate limit exceeded", 1);
     }
     let body = match status {
         StatusCode::NOT_FOUND => "not found",
@@ -462,8 +756,19 @@ fn response_with_allow(
         .unwrap_or_else(|_| Response::new(Full::new(Bytes::new())))
 }
 
-#[allow(dead_code)]
-const _: usize = MAX_HTTP_BODY;
+fn response_with_retry_after(
+    status: StatusCode,
+    body: &str,
+    retry_after: u64,
+) -> Response<Full<Bytes>> {
+    Response::builder()
+        .status(status)
+        .header("content-length", body.len())
+        .header("retry-after", retry_after)
+        .body(Full::new(Bytes::copy_from_slice(body.as_bytes())))
+        .unwrap_or_else(|_| Response::new(Full::new(Bytes::new())))
+}
 
+#[allow(dead_code)]
 #[cfg(test)]
 mod tests;
