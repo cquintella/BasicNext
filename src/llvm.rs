@@ -270,6 +270,7 @@ use helpers::{
     coerce_return_operand, escape_llvm, extend_to_i64, fold_binary, fold_cast, fold_unary,
     input_runtime_ir, instruction_name, integer_kind, integer_width_from_llvm, is_unsigned,
     parse_integer, render_float, unsupported_call_detail, unsupported_instruction,
+    unsupported_instruction_detail,
 };
 #[cfg(test)]
 mod tests {

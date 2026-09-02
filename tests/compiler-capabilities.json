@@ -13,6 +13,12 @@
       "stdout": ""
     },
     {
+      "path": "tests/grammar/valid/start-exit-code-nonzero.bn",
+      "support": "llvm-supported",
+      "exit_code": 7,
+      "stdout": ""
+    },
+    {
       "path": "tests/grammar/valid/print-integer.bn",
       "support": "llvm-supported",
       "exit_code": 0,

@@ -92,18 +92,22 @@ lowering, native artifact generation, and execution of the generated artifact.
   artifact for every `llvm-supported` entry and compares stdout and exit code;
   it passes for the current deterministic manifest.
 
-### GATE G0 — Evidence boundary
+### GATE G0 — Evidence boundary — CLOSED
 
 The gate closes only when the capability manifest is executable, every claimed
 LLVM example has a build-and-run test, and interpreter/native comparison is
 available for deterministic programs. A passing unit-test count alone is not
 gate evidence.
 
+Evidence: `tests/test_capabilities.py` now executes the manifest and compares
+interpreter/native stdout and exit status; GitHub Actions run `33652020564`
+passed the quality and native build jobs.
+
 ## SECTION 2 — LLVM diagnostics and regression contracts
 
 ### SPRINT 1 — Actionable failures without scope expansion
 
-- [ ] ACTIVITY 1.1 — Define diagnostic assertions for unsupported LLVM IR.
+- [X] ACTIVITY 1.1 — Define diagnostic assertions for unsupported LLVM IR.
   Every unsupported operation must report the diagnostic code, source path,
   line, column, enclosing function, operation, and the relevant callee/type
   when available.
@@ -124,10 +128,12 @@ gate evidence.
   - Existing diagnostic codes and source locations remain stable unless a
     deliberate compatibility note is added.
 
-  Verification: focused CLI tests for user-defined calls, arrays/pointers,
-  provider calls, invalid `Start`, and missing `Start`.
+  Verification: `tests/cli.rs`, `tests/codegen_tests.rs`, and
+  `src/llvm/helpers.rs` cover user-defined calls, vector/allocation type
+  shapes, source-spanned function context, invalid `Start`, and missing
+  `Start`. The full Rust suite and capability/parity suites pass.
 
-- [ ] ACTIVITY 1.2 — Add a KMP regression test that validates the current
+- [X] ACTIVITY 1.2 — Add a KMP regression test that validates the current
   contract boundary. The test must run `bn check` and `bn run` successfully,
   then assert that `bn build` fails with the exact actionable limitation for
   `KMPSearch` while the LLVM subset remains unchanged.
@@ -144,9 +150,11 @@ gate evidence.
   - `bn build examples/kmp.bn` exits with the documented lowering diagnostic.
   - The diagnostic includes the source location and `KMPSearch`.
 
-  Verification: focused KMP CLI test and manual command review.
+  Verification: `tests/cli.rs::build_reports_the_user_function_that_blocks_kmp`
+  and `tests/test_capabilities.py` cover check/run/build and the named
+  `KMPSearch` diagnostic.
 
-- [ ] ACTIVITY 1.3 — Add regression coverage for the 0.4.1 integer entry-point
+- [X] ACTIVITY 1.3 — Add regression coverage for the 0.4.1 integer entry-point
   fix. Test `Start() AS INTEGER` through LLVM emission, native artifact
   generation, and process execution for zero and non-zero exit codes.
 
@@ -159,13 +167,20 @@ gate evidence.
   expected native exit code; parameters and unsupported return types retain
   clear diagnostics.
 
-  Verification: focused CLI build-and-run tests plus the full Rust suite.
+  Verification: `tests/test_capabilities.py` builds and executes both zero and
+  non-zero integer-returning `Start` fixtures; the focused and full Rust suites
+  pass.
 
-### GATE G1 — Diagnostic contract
+### GATE G1 — Diagnostic contract — CLOSED
 
 The gate closes when unsupported programs fail deterministically with actionable
 source-spanned diagnostics, supported programs build and execute, and the KMP
 boundary is covered by a three-path (`check`/`run`/`build`) regression test.
+
+Evidence: `build_reports_the_user_function_that_blocks_kmp` validates the
+three-path KMP contract; vector and allocation diagnostics assert concrete type
+information; `start-exit-code-nonzero.bn` verifies native exit code 7. The
+required local verification matrix passed on 2026-09-02.
 
 ## SECTION 3 — CI and release quality gates
 

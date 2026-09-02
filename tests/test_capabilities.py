@@ -31,7 +31,8 @@ class CompilerCapabilityTests(unittest.TestCase):
                 checked = subprocess.run([BN, "check", path], capture_output=True, check=False)
                 self.assertEqual(checked.returncode, 0, checked.stderr.decode())
                 interpreted = subprocess.run([BN, "run", path], capture_output=True, check=False)
-                self.assertEqual(interpreted.returncode, 0, interpreted.stderr.decode())
+                expected_exit_code = program.get("exit_code", 0)
+                self.assertEqual(interpreted.returncode, expected_exit_code, program["path"])
                 expected_fragment = program.get("run_stdout_contains")
                 if expected_fragment:
                     self.assertIn(expected_fragment.encode(), interpreted.stdout)

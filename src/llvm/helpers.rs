@@ -378,3 +378,31 @@ pub(crate) fn instruction_name(instruction: &Instruction) -> &'static str {
         Instruction::StoreStatic { .. } => "static stores",
     }
 }
+
+pub(crate) fn unsupported_instruction_detail(instruction: &Instruction) -> String {
+    match instruction {
+        Instruction::Vector { ty, .. } => format!(
+            "LLVM lowering for vector type '{}' is unavailable",
+            crate::semantic::display(ty)
+        ),
+        Instruction::Allocate { type_name, ty, .. } => format!(
+            "LLVM lowering for allocation of '{type_name}' as '{}' is unavailable",
+            crate::semantic::display(ty)
+        ),
+        Instruction::Index { ty, .. } | Instruction::SetIndex { ty, .. } => format!(
+            "LLVM lowering for indexed access producing '{}' is unavailable",
+            crate::semantic::display(ty)
+        ),
+        Instruction::Default {
+            ty,
+            dimensions,
+            dynamic_dimensions,
+            ..
+        } if !dimensions.is_empty() || !dynamic_dimensions.is_empty() => format!(
+            "LLVM lowering for default value of '{}' with dimensions is unavailable",
+            crate::semantic::display(ty)
+        ),
+        Instruction::Delete { .. } => "LLVM lowering for pointer deletion is unavailable".into(),
+        _ => instruction_name(instruction).into(),
+    }
+}
