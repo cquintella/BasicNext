@@ -3,7 +3,7 @@
 ![Basic Next Logo](docs/logo.svg)
 
 [![Rust CI](https://img.shields.io/badge/Rust_CI-passing-brightgreen)](#)
-[![Version](https://img.shields.io/badge/version-v0.4.1-blue)](#)
+[![Version](https://img.shields.io/badge/version-v0.4.2-blue)](#)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE.md)
 
 An object-oriented, general-purpose programming language designed to reduce
@@ -30,13 +30,13 @@ only after the corresponding semantics have been defined and reviewed.
 Read [PHILOSOPHY.md](PHILOSOPHY.md) for the mission, vision, and complete set
 of design principles.
 
-## 🚀 Status: Version 0.4.1 release
+## 🚀 Status: Version 0.4.2 release
 
-The Basic Next 0.4.1 patch release extends the Rust reference frontend, typed IR
+The Basic Next 0.4.2 bug-fix release extends the Rust reference frontend, typed IR
 interpreter, HOST capabilities, external BN modules, HTTP hardening, bounded
 async runtime, debugger bridge, and notebook tooling. Read the
-[0.4.1 release notes](done/0.4.1-release-news.md) for the complete summary.
-BNDispatch native-provider conformance includes the 0.4.1 lifecycle,
+[0.4.2 release notes](done/0.4.2-release-news.md) for the complete summary.
+BNDispatch native-provider conformance includes the 0.4.2 lifecycle,
 synchronization, isolation, and networking corrections; see the [recovery
 design](docs/superpowers/specs/2026-09-02-bndispatch-recovery-design.md).
 The active [`ongoing/bucket.md`](ongoing/bucket.md) records the delivery gates;
@@ -54,7 +54,7 @@ The Basic Next reference implementation is a source-spanned lexer, handwritten r
 - `bn run file.bn [-- args...]` — Validates and immediately executes the accepted interpreter surface.
 - `bn build [--target native|wasm32] file.bn` — Emits LLVM IR, or an artifact with `-o`, for the supported compiler subset.
 
-See the [0.4.1 release notes](done/0.4.1-release-news.md), [active release bucket](ongoing/bucket.md),
+See the [0.4.2 release notes](done/0.4.2-release-news.md), [active release bucket](ongoing/bucket.md),
 [0.4 conformance evidence](ongoing/0.4-conformance.md),
 [archived 0.2 remediation program](archive/project/bucket-0.2.md), and
 [0.4 contract](docs/language/0.4/0.4.md) for delivery status and accepted semantics.
