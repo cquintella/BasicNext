@@ -32,10 +32,10 @@ of design principles.
 
 ## 🚀 Status: Version 0.4 release
 
-The Basic Next 0.3 implementation has been rebuilt across the Rust reference
-frontend, typed IR interpreter, HOST capabilities, external BN modules, LLVM
-lowering, LSP/DAP tooling, plugins, and release documentation. Read the
-[0.3 release news](done/0.3-release-news.md) for the complete summary.
+The Basic Next 0.4 release extends the Rust reference frontend, typed IR
+interpreter, HOST capabilities, external BN modules, HTTP hardening, bounded
+async runtime, debugger bridge, and notebook tooling. Read the
+[0.4 release notes](done/0.4-release-news.md) for the complete summary.
 The active [`ongoing/bucket.md`](ongoing/bucket.md) records the delivery gates;
 the archived 0.2 program remains in [`archive/project/bucket-0.2.md`](archive/project/bucket-0.2.md).
 
@@ -51,10 +51,10 @@ The Basic Next reference implementation is a source-spanned lexer, handwritten r
 - `bn run file.bn [-- args...]` — Validates and immediately executes the accepted interpreter surface.
 - `bn build [--target native|wasm32] file.bn` — Emits LLVM IR, or an artifact with `-o`, for the supported compiler subset.
 
-See the [0.3 release news](done/0.3-release-news.md), [active release bucket](ongoing/bucket.md),
-[0.3 conformance evidence](done/0.3-conformance.md),
+See the [0.4 release notes](done/0.4-release-news.md), [active release bucket](ongoing/bucket.md),
+[0.4 conformance evidence](ongoing/0.4-conformance.md),
 [archived 0.2 remediation program](archive/project/bucket-0.2.md), and
-[0.3 contract](docs/language/0.3/0.3.md) for delivery status and accepted semantics.
+[0.4 contract](docs/language/0.4/0.4.md) for delivery status and accepted semantics.
 
 To see under the hood, try:
 - `bn check -v file.bn` (reports completed stages)
