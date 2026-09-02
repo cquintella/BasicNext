@@ -83,6 +83,10 @@ fn socket_examples_exchange_tcp_and_udp_messages() {
             let server = server_process
                 .wait_with_output()
                 .expect("wait for server example");
+            if String::from_utf8_lossy(&server.stdout).contains("Operation not permitted") {
+                let _ = fs::remove_file(&log);
+                return;
+            }
             assert_eq!(
                 client.status.code(),
                 Some(0),

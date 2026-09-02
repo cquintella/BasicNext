@@ -43,6 +43,7 @@ pub struct Module {
 #[derive(Clone, Debug)]
 pub struct Function {
     pub name: String,
+    pub asynchronous: bool,
     pub parameters: Vec<SymbolId>,
     pub return_type: Type,
     pub entry: BlockId,
@@ -115,6 +116,23 @@ pub enum Instruction {
         destination: ValueId,
         callee: ValueId,
         arguments: Vec<ValueId>,
+        ty: Type,
+        span: Span,
+    },
+    DispatchSubmit {
+        destination: ValueId,
+        callee: ValueId,
+        queue: ValueId,
+        task: ValueId,
+        arguments: Vec<ValueId>,
+        ty: Type,
+        span: Span,
+    },
+    DispatchAwait {
+        destination: ValueId,
+        callee: ValueId,
+        ticket: ValueId,
+        timeout: ValueId,
         ty: Type,
         span: Span,
     },
@@ -233,6 +251,8 @@ impl Instruction {
             | Self::Binary { span, .. }
             | Self::Cast { span, .. }
             | Self::Call { span, .. }
+            | Self::DispatchSubmit { span, .. }
+            | Self::DispatchAwait { span, .. }
             | Self::Input { span, .. }
             | Self::Vector { span, .. }
             | Self::Index { span, .. }

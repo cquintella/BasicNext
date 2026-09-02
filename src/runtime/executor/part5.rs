@@ -52,6 +52,7 @@ impl Executor<'_, '_> {
         method: &str,
         path: &str,
         status: i128,
+        request_id: Option<&str>,
         span: Span,
     ) -> Result<(), Diagnostic> {
         let Some(&logger_id) = self.web_loggers.get(&server_handle) else {
@@ -63,6 +64,9 @@ impl Executor<'_, '_> {
         fields.insert("http.method".into(), method.into());
         fields.insert("http.path".into(), path.into());
         fields.insert("http.status".into(), status.to_string());
+        if let Some(request_id) = request_id {
+            fields.insert("request_id".into(), request_id.into());
+        }
         self.log_fields.insert(fields_id, fields);
         let result = self.log_logger_call(
             "BNLog.Logger.Log",

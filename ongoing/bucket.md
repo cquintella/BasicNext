@@ -1,264 +1,164 @@
-# Basic Next 0.3 Release Bucket
+# Basic Next 0.4 Security and Production-Hardened BNWeb Bucket
+
+This bucket supersedes the archived 0.3 delivery bucket for active 0.4 work.
+Execution is sequential: only the first sprint containing an unchecked
+activity is active. The 0.4 authority boundary now adopts the bounded
+`ASYNC`/`AWAIT` amendment; implementation remains gated by the threat-model
+and concurrency/provider decisions.
 
-This is an interactive live file to show the AGILE development process for version 0.3 of Basic Next.
+Detailed objectives, dependencies, acceptance criteria, and verification
+checks live in [`WBS-0.4.md`](WBS-0.4.md).
+
+All normative resource thresholds are recorded in the versioned registry
+[`config/0.4-bnweb-limits.toml`](../config/0.4-bnweb-limits.toml). Runtime code
+must consume one typed validated snapshot of that registry; duplicated limit
+literals and unbounded fallback defaults are release-gate failures.
 
-Release news: [`0.3-release-news.md`](0.3-release-news.md) summarizes the
-rebuilt implementation, completed gates, and explicit 0.4 boundaries.
+## SECTION 1 — Security inventory and authority
+
+### SPRINT 0 — Vulnerability register and threat-model gate
 
-Authority, in order: [`0.3.ebnf`](../docs/language/0.3/0.3.ebnf),
-[`0.3.md`](../docs/language/0.3/0.3.md), and
-[`keywords.md`](../docs/language/0.3/keywords.md).
+- [X] ACTIVITY 0.1 — Establish the active 0.3 vulnerability register from the code review, archived audit evidence, and the production-hardening findings. Evidence: [`0.4-security-register.md`](0.4-security-register.md), findings BN-SEC-001 through BN-SEC-007.
+- [X] ACTIVITY 0.2 — Reconcile the 0.4 prose/EBNF with the `ASYNC`/`AWAIT` design and freeze the normative boundary. Evidence: [`0.4-authority-audit.md`](0.4-authority-audit.md), [`docs/language/0.4/keywords.md`](../docs/language/0.4/keywords.md); Option A accepted on 2026-09-01.
+- [X] ACTIVITY 0.3 — Freeze the BNWeb threat model, resource quotas, error mappings, and residual-risk policy. Evidence: [`0.4-threat-model.md`](0.4-threat-model.md); defaults accepted on 2026-09-01.
+- [X] ACTIVITY 0.4 — Decide concurrency, task ownership, cancellation, provider, semaphore, response, logging, and shutdown contracts. Evidence: [`0.4-concurrency-decision.md`](0.4-concurrency-decision.md); contract accepted on 2026-09-01.
+- [X] ACTIVITY 0.5 — Create deterministic local resolver, clock, entropy-failure, slow-peer, TLS, connection-accounting, and rate-limit-key test seams. Evidence: [`0.4-test-harness.md`](0.4-test-harness.md); local HTTP lifecycle, deadline, cancellation, failure, repeated-stop, and bounded-key tests pass.
+- [X] GATE G0 — Active register, 0.4 authority boundary, threat-model defaults, concurrency contract, and deterministic-test seams are recorded with explicit owners and verification evidence. The gate was accepted on 2026-09-01; Activity 0.5 is closed with local lifecycle evidence.
 
-Execution is sequential. Only the first sprint containing an unchecked
-activity is active; a later sprint starts only after the preceding sprint and
-its decision gate are complete. Detailed objectives, deliverables,
-dependencies, acceptance criteria, and checks live in
-[`WBS-0.3.md`](WBS-0.3.md). Planning decisions and dependency evidence live in
-[`0.3-decisions.md`](0.3-decisions.md).
+Implementation requirements: tests must not depend on a public Internet host,
+wall-clock sleep, externally issued certificate, or real entropy failure.
 
-**Current execution point:** SPRINT 15 — COMPLETE. Sprint duration is set at kickoff from
-available capacity; scope and exit evidence do not move between sprints.
-The verified Sprint 11 boundary remains serial `Server.Dispatch`, explicit
-dispatch access records, and the HTTPS server/TLS adapter. Sprint 12 is the
-mandatory modularization/strict-Clippy gate introduced by the revised Rust
-engineering contract. Sprint 13 completed `BNDispatch`. Sprint 14 is deferred
-to 0.4; the concurrent `BNWeb` boundary remains outside the 0.3 support claim.
+Exit evidence: every finding has an owner and test; the 0.4 documents no
+longer claim to define 0.3; all security and concurrency decisions are explicit.
 
-## SECTION 1 — Contract, risk, and dependencies
+## SECTION 2 — Network and session security
 
-Freeze behavior before code or production dependencies.
+### SPRINT 1 — SSRF policy and session confidentiality
 
-### SPRINT 0 — API and threat-model gate
+- [X] ACTIVITY 1.1 — Centralize IPv4/IPv6 sensitive-range classification, including IPv4-mapped IPv6, CGNAT, documentation, and benchmark ranges. Evidence: shared `validate_ssrf_destinations` policy and mapped/special-range regression tests.
+- [X] ACTIVITY 1.2 — Apply the same SSRF policy after URL parsing, every DNS result, and every redirect. Evidence: injected resolver path plus mixed-answer and redirect revalidation tests fail closed.
+- [X] ACTIVITY 1.3 — Add immutable outbound `EgressPolicy` allowlists for schemes, CIDRs, ports, redirects, and deadlines. Evidence: typed `BNWeb.EgressPolicy`, `Client.RequestWithPolicy`, bounded CSV/CIDR parsing, shared resolver/redirect enforcement, and local runtime/policy tests.
+- [X] ACTIVITY 2.1 — Replace sequential `SessionStore` IDs with at least 128 bits from the approved CSPRNG and preserve rotation invalidation. Evidence: random 16-byte IDs, failure injection, uniqueness, rotation invalidation, and capacity tests.
+- [X] ACTIVITY 2.2 — Freeze secure cookie defaults and explicit session policy. Evidence: default `Secure`/`HttpOnly`/`SameSite=Lax` metadata, explicit BN `SetWithPolicy`, insecure `SameSite=None` rejection, and 0.4 contract documentation are implemented and tested.
+- [X] GATE G1 — SSRF and session tests demonstrate fail-closed classification and non-predictable identifiers. Evidence: mapped/special-range resolver tests, redirect revalidation, CSPRNG failure/rotation tests, secure cookie policy tests, and the public EgressPolicy runtime fixture.
 
-- [X] ACTIVITY 0.1 — Freeze `HOST.Net`, `BNJson`, `BNLog`, and `BNWeb` contracts.
-- [X] ACTIVITY 0.3 — Freeze the threat model and operational limits.
-- [X] DECISION D-005 — Freeze public signatures, ownership, errors, and defaults.
-- [X] DECISION D-006 — Accept or replace synchronous serial BN handler dispatch.
-- [X] DECISION D-014 — Resolve per-transport host-capability requirements for `BNLog`.
-- [X] DECISION D-019 — Freeze route conflict precedence.
-- [X] GATE G0 — Accept public signatures, ownership, errors, limits, and trust boundaries.
+Implementation requirements: the egress policy must recheck every resolved
+address and redirect; rate/security decisions must fail closed; session IDs use
+at least 128 CSPRNG bits and never a counter, clock, or PID.
 
-Exit evidence: accepted signature tables and limits in `host-net.md`,
-`bnlog.md`, and `bnweb.md`; no implementation-defined behavior remains.
+Exit evidence: mapped loopback/link-local/private/CGNAT cases are rejected;
+global addresses pass; session IDs are random, bounded, and invalidated on
+rotation.
 
-### SPRINT 1 — Dependency gate
+## SECTION 3 — HTTP protocol hardening
+
+### SPRINT 2 — Typed options, headers, cookies, and timeout closure
 
-- [X] ACTIVITY 0.2 — Approve exact dependencies, features, licenses, targets, and security evidence.
-- [X] DECISION D-004 — Accept standard-library-first `HOST.Net` and the CIDR boundary.
-- [X] DECISION D-009 — Accept the shared JSON/LSP and minimal DAP dependency policy.
-- [X] DECISION D-010 — Select and audit the Rustls cryptographic provider.
-- [X] DECISION D-016 — Select ICMP providers and per-host unavailable behavior.
-- [X] GATE G1 — Accept the locked dependency graph and Rustls cryptographic provider.
+- [X] ACTIVITY 2.3 — Introduce immutable typed `Server.Options` with finite validated configuration for quotas, backlog, target/header/body bounds, timeouts, `trustedProxy`, policies, and TLS-specific behavior. Evidence: versioned registry, immutable Rust snapshot, BN constructor, bounded `TcpSocket::listen(backlog)`, and cleartext/TLS start consumers with validation before bind.
+- [X] ACTIVITY 2.4 — Add typed default security response headers with correct HTTPS conditions. Evidence: `X-Content-Type-Options: nosniff` is always applied; HSTS is applied only to TLS responses; conflicting default values are replaced and covered by transport tests.
+- [X] ACTIVITY 2.5 — Add handshake, header, body, idle, connection, and shutdown deadlines to cleartext and TLS paths. Evidence: configured header/body/total deadlines, idle TLS handshake, and an HTTP/2 peer that ignores the keep-alive PING are covered by local fixtures. The transport mapping is explicit: body timeout is HTTP 408; header, TLS-handshake, and connection deadlines close the transport with a timeout error; admission overload is HTTP 503; rate limiting is HTTP 429 with `Retry-After`.
+- [X] GATE G2 — Slow clients and stalled TLS/HTTP2 peers terminate within configured bounds without weakening existing body/header limits. Accepted on 2026-09-01 after focused timeout fixtures and the full Rust test suite passed.
 
-Exit evidence: reviewed lock graph, feature tree, licenses, advisories, MSRV,
-native-code consequences, and target builds.
+Implementation requirements: `Start` and `StartTLS` consume exactly the same
+validated options; HSTS is never emitted over cleartext; duplicate conflicting
+security headers are rejected; invalid options bind no listener.
 
-## SECTION 2 — Language and provider identities
+Exit evidence: HTTP/1.1 and HTTP/2, cleartext and TLS, positive and timeout
+tests pass with documented response-header and cookie policies.
 
-Implement the smallest language amendment and secure the native identities.
+## SECTION 4 — Bounded server lifecycle
 
-### SPRINT 2 — Language amendments and provider identity
+### SPRINT 3 — Admission, workers, stop, and drain
 
-- [X] ACTIVITY 1.1 — Implement multi-binding `LET` end to end.
-- [X] ACTIVITY 1.2 — Implement single-line `IF` end to end.
-- [X] ACTIVITY 1.3 — Add unforgeable `HOST.Net`, `BNLog`, and `BNWeb` identities.
+- [X] ACTIVITY 3.1 — Enforce global connection limits before spawning connection work and define backlog/429/503/close semantics. Evidence: bounded backlog bind, shared cleartext/TLS admission, N+1 rejection, 503 request overload, 429 rate limit, and close-on-connection-cap behavior.
+- [X] ACTIVITY 3.2 — Replace per-connection unbounded thread/runtime creation with an approved bounded worker/provider model. Evidence: one fixed worker pool and one shared multi-thread Tokio runtime per server, bounded `sync_channel` from `pending_work`, synchronous handler admission held for the full handler lifetime via RAII, `try_send` rejection, panic isolation, N+1 admission test, and sender/runtime-drop drain/join.
+- [X] ACTIVITY 3.3 — Implement listener signaling, connection tracking, drain, join, cancellation, idempotent close, and deadline-aware stop. Evidence: listener handles are transferred out of the mutex and joined within the shared deadline; admitted sockets receive cooperative `shutdown(Both)` cancellation; worker drain observes the requested deadline; slow, failing, repeated-stop, multiple-socket, timeout, and listener-boundary tests pass.
+- [X] ACTIVITY 3.4 — Add bounded route-plus-effective-client token-bucket rate limiting with `429` and `Retry-After`. Evidence: bounded integer token bucket, deterministic oldest-key eviction with the evicted key asserted, millisecond refill arithmetic that preserves sub-second remainder, controlled-time refill, trusted-proxy provenance, route/client isolation, and HTTP `429`/`Retry-After: 1` test.
+- [X] ACTIVITY 3.5 — Expose read-only server readiness/drain status and counters without creating hidden HTTP routes. Evidence: typed lifecycle statuses, readiness transition, counters, and public stopped/not-ready projection tests.
+- [X] GATE G3 — Controlled `N+1` load cannot exceed the worker/connection quota, and successful stop leaves no untracked listener or connection worker. Evidence: N+1 admission/pool test, fixed worker/runtime tests, clear overload status tests, and lifecycle join/drain suite.
 
-Exit evidence: grammar, semantic, IR, runtime, negative, and diagnostic-span
-tests pass for both syntax changes and all three identities.
+Implementation requirements: an `N+1` local connection test cannot exceed the
+configured admission cap; the pool must create exactly `worker_count` workers,
+the queue must never exceed `pending_work`, and each accepted socket must be
+released exactly once on success, queue-full rejection, worker panic, timeout,
+or stop cancellation; rate-limit keys are bounded and honor trusted-proxy
+policy; rejected requests never execute handlers; successful stop accounts for
+every admitted connection and joins the listener plus all pool workers before
+the deadline. Cleartext and TLS must use the same admission and pool contract.
 
-## SECTION 3 — Native networking
+Required checks for 3.2: unit-test fixed worker count and queue saturation;
+exercise both accept paths with a controlled `N+1` load; assert no
+`bnweb-connection`/`bnweb-tls-connection` thread is created per socket; inject
+worker panic and verify unrelated work continues; stop with queued and active
+work and verify deterministic drain, join, and timeout behavior. Acceptance
+requires bounded thread count, bounded queue, no leaked admission, and a clear
+overload result (`close` until the explicit 503/backlog policy is accepted).
+The shared Tokio runtime is dimensioned by `worker_count` and is removed from
+server state during stop; only already-admitted work may retain it until drain.
 
-Build bounded host networking on operating-system services.
+Exit evidence: cleartext and TLS accept paths share quota and lifecycle rules;
+overload, worker failure, slow connection, stop, and close are deterministic.
 
-### SPRINT 3 — Addressing and sockets
+## SECTION 5 — Logging and evidence
 
-- [X] ACTIVITY 2.1 — Implement address, CIDR, endpoint, and resolver values.
-- [X] ACTIVITY 2.2 — Implement bounded TCP and UDP.
+### SPRINT 4 — Operational secrecy and conformance
 
-Exit evidence: deterministic local IPv4/IPv6 resolver, CIDR, TCP, UDP,
-timeout, EOF, truncation, close, and bound tests pass without Internet access.
+- [X] ACTIVITY 4.1 — Expand BNLog redaction and control-character defenses for secrets, credentials, session material, queries, bodies, and TLS keys. Evidence: case-insensitive denylist, modern token variants, control escaping, query stripping, record bound, and BNWeb field audit tests.
+- [X] ACTIVITY 4.2 — Add validated request correlation IDs and bounded read-only server statistics without external telemetry dependencies. Evidence: CSPRNG-backed fresh `X-Request-ID`, saturating request/connection counters, failure/timeout accounting, read-only Rust/BN projections, bounded total/average/maximum request-duration aggregates, BNWeb response/log correlation, concurrent snapshot reads, and cross-format redaction tests.
+- [X] ACTIVITY 4.3 — DEFERRED by the 0.4 release decision: atomic TLS certificate reload remains outside the base release and is not claimed as implemented.
+- [X] ACTIVITY 4.4 — Record executable security/conformance evidence and residual risks. Evidence: [`0.4-conformance.md`](0.4-conformance.md) maps every accepted hardening artifact to executable local evidence, platform boundaries, and residual-risk decisions; optional TLS reload and persistent Jupyter Session remain explicitly excluded.
+- [X] GATE G4 — No production-hardening claim lacks a test, documented default, platform boundary, and evidence record. Accepted on 2026-09-01 with [`0.4-conformance.md`](0.4-conformance.md); optional TLS reload remains excluded.
 
-### SPRINT 4 — Host-specific network evidence
+Implementation requirements: correlation IDs and stats never contain query,
+cookie, authorization, body, TLS, descriptor, or peer-secret data; invalid TLS
+reload keeps the previous configuration live; no cleartext fallback is valid.
 
-- [X] ACTIVITY 2.3 — Implement bounded IPv4/IPv6 ICMP Echo where supported.
-- [X] ACTIVITY 2.4 — Implement safe direct-neighbor lookup where supported.
-- [X] ACTIVITY 2.5 — Record transparent operating-system IPsec evidence.
+Exit evidence: all supported logging formats redact equivalent secrets and all
+required repository quality checks pass.
 
-Exit evidence: ICMP and neighbor availability are recorded per host; every
-IPsec claim has host-controlled executable evidence and exposes no BN IPsec API.
+## SECTION 6 — 0.4 language and concurrent BNWeb
 
-## SECTION 4 — Logging and web application model
+### SPRINT 5 — Async language contract and runtime
 
-Establish structured logging before the transport-neutral BN request pipeline.
+- [X] ACTIVITY 5.1 — Implement `ASYNC`/`AWAIT` across lexer, parser, semantics, IR, and runtime. Evidence: 0.4 lexical recognition, `ASYNC FUNCTION` parsing, async metadata, explicit `DispatchSubmit`/`DispatchAwait` IR operations, bounded provider-backed submission/await, registry-controlled task output, invalid-target/timeout diagnostics, cancellation/queue-close behavior, and output-isolation/overflow behavior are covered by local tests. The output limit is `dispatch.output_max_bytes` in [`config/0.4-bnweb-limits.toml`](../config/0.4-bnweb-limits.toml); workers enforce it while writing and convert overflow into a failed ticket, never retain an unbounded `String`.
+- [X] ACTIVITY 5.2 — Add opt-in concurrent BNWeb handlers over an explicit bounded queue with isolated request/response ownership. Evidence: `ServerOptions.concurrentHandlers` is registry-backed and opt-in; the HTTP transport uses one server-owned semaphore, offloads each handler to a bounded slot, gives it cloned request plus private response ownership, returns 503 without invoking the handler when all slots are occupied, maps failure to 500 and deadline expiry to 408, and counts active blocking handlers during stop/drain. `http::tests::opt_in_concurrent_handler_runs_with_bounded_handler_slot`, `opt_in_concurrent_handler_rejects_when_global_slot_is_occupied`, `opt_in_concurrent_handler_failure_maps_to_internal_error`, `opt_in_concurrent_handler_timeout_maps_to_request_timeout`, `web::tests::stop_does_not_claim_success_with_an_active_concurrent_handler`, and `tests/runtime.rs::bnweb_start_serves_registered_bn_handler_over_http` cover transport, lifecycle, and real BN listener integration. `runtime::tests::web_callback_uses_a_fresh_executor_and_projects_response` covers request-local interpreter ownership.
+- [X] DECISION G5-A — Adopt option A: `Server.Start` and `StartTLS` snapshot the module, host capability template, route handler names, and filters; each request creates a fresh `Executor` and marshals bounded `BNWeb.Request`/`BNWeb.Response` values. The live registering executor, its heaps, handles, and output writer are never captured by the HTTP callback. The bridge is implemented in `runtime::execute_web_callback` and `runtime/executor/part4.rs`; remaining acceptance evidence is the end-to-end BN listener fixture and failure/timeout/drain matrix.
+- [X] GATE G5 — Accepted on 2026-09-02: 0.4 grammar/runtime and concurrent BNWeb behavior are bounded, isolated, and supported by local Rust and BN listener evidence. The default remains synchronous; concurrency is opt-in and registry-bounded.
 
-### SPRINT 5 — Structured logging
+Exit evidence: synchronous 0.3 behavior remains intact; async/concurrent mode
+is opt-in, bounded, isolated, observable, and gracefully stoppable.
 
-- [X] ACTIVITY 3.1 — Implement `BNLog` levels, fields, formats, transports, flush, and close.
+## SECTION 7 — Debugger and notebook user experience
 
-Exit evidence: ordered multi-transport, structured JSON/text, bounds,
-redaction, partial failure, flush, close, and capability-availability tests pass.
+### SPRINT 6 — Native DAP integration and notebook contract
 
-### SPRINT 6 — Routes and lifecycle
+- [X] ACTIVITY 6.1 — Make `bn dap` deliver events while idle, distinguish next/step-in/step-out at IR instruction boundaries, and expose source-mapped stack snapshots. Evidence: Rust DAP session uses queued asynchronous events, depth-aware `Next`/`In`/`Out`, breakpoints, stack/source spans, and locals snapshots; `dap::tests::execution_session_pauses_then_resumes`, breakpoint/framing/source-line tests, and the native adapter smoke test pass.
+- [X] ACTIVITY 6.2 — Replace the VS Code launch-only `runInTerminal` adapter with a bounded local stdio bridge to `bn dap`. Evidence: `plugins/vscode/debugAdapter.js` forwards bounded DAP frames to the child `bn dap` process; `node plugins/vscode/test/debug-adapter.js` verifies queued launch/configuration, native stopped/continued/terminated flow, no `runInTerminal`, and child cleanup; extension checks pass.
+- [X] ACTIVITY 6.3 — Document native debugger stepping as source-mapped IR-instruction stepping, never as a REPL or arbitrary-expression evaluator. Evidence: VS Code, usage, language 0.4, and WBS docs state the IR/span stepping model, non-REPL boundary, unsupported targets, and locals snapshot semantics; link and extension checks pass.
+- [X] ACTIVITY 6.4 — Freeze Jupyter `Program` mode as the only 0.4 execution model: complete program, fresh process, no filesystem, no state between cells. Evidence: `tests/test_kernel.py` covers complete-program and filesystem-denial behavior; `tests/test_jupyter.py` covers kernel-info, execute/IOPub stream, shutdown, and wire framing with `pyzmq` 27.2.0 in the plugin virtual environment.
+- [X] ACTIVITY 6.5 — DEFERRED: persistent Jupyter `Session` mode is explicitly outside 0.4 and requires a new accepted execution/resource contract.
+- [X] GATE G6 — Accepted on 2026-09-02: VS Code uses native DAP, Jupyter Program-only mode has Rust/Python/wire evidence, and deferred Session/TLS features are not claimed.
 
-- [X] ACTIVITY 3.2 — Add `BNWeb` over `HOST.Net`, with bounded request/response values, logging, filters, provenance, and routes. (Core pipeline, explicit synchronous BN dispatch with bounded `BNLog` access records, and transport-neutral Rust handler response projection implemented; HTTP-to-BN projection is deferred by accepted D-023; HTTP transport access logs are deferred by accepted D-025.)
-- [X] ACTIVITY 3.3 — Implement bounded dispatch, overload, stop, and cleanup. (State machine, bounded lifecycle, and synchronous BN dispatch implemented; transport callback projection is deferred by accepted D-023.)
+Implementation requirements: the VS Code adapter forwards DAP rather than
+reimplementing debug semantics; `runInTerminal` is never a debug path;
+`stopped` must arrive without a second client request; source line mapping is
+derived from IR spans. Jupyter Program mode remains the default, requires a
+complete `FUNCTION Start()` program, runs in a fresh process, and shares no
+state between cells. A Session mode requires explicit transactional and
+resource bounds before code begins.
 
-Exit evidence: URL rejection/canonicalization, route precedence, filters,
-provenance, explicit-dispatch access logging, overload, stop, and cleanup pass
-over local `HOST.Net` provider connections; transport access logging is covered
-by the 0.4 forward plan.
+Exit evidence: local DAP protocol and VS Code extension tests cover launch,
+breakpoints, pause, all step commands, source/locals snapshots, child cleanup,
+and malformed framing. Jupyter tests cover Program-mode isolation, filesystem
+denial, input, heartbeat, interrupt, and shutdown; Session tests are required
+only if the optional mode is accepted.
 
-## SECTION 5 — HTTP transports and security
+## SECTION 8 — Release integration
 
-Deliver HTTP/1.1, HTTP/2, and TLS. HTTP/3 is deferred to 0.4.
+### SPRINT 7 — 0.4 release gate
 
-### SPRINT 7 — HTTP baseline
+- [X] ACTIVITY 6.6 — Close the 0.4 release gate and update language/module documentation, examples, VS Code, Jupyter, conformance, and residual-risk evidence. Evidence: accepted 0.4 grammar/docs, security/threat/concurrency/conformance records, registry-backed limits, BNWeb/async/DAP implementations, plugin tests, and full quality gate.
+- [X] GATE G7 — Accepted on 2026-09-02: all base 0.4 activities are recorded with executable evidence; optional TLS reload and Jupyter Session features are explicitly deferred and unclaimed.
 
-- [X] ACTIVITY 4.1 — Implement HTTP/1.1 and HTTP/2 adapters. (Local protocol adapters, parity tests including HEAD body suppression, bounded request deadline, strict invalid-header rejection, automatic 404/405 response bodies, and synchronous Rust handler response projection across cleartext/TLS adapters implemented; BN transport callback projection is deferred by accepted D-023.)
-- [X] ACTIVITY 4.2 — Implement HTTPS server and bounded transport policy. (TLSConfig API, StartTLS wiring, strict bounded PEM/Base64 validation, compressed-response rejection, and server-side limits landed; HTTPS client transport, trust roots, redirects, and client write-timeout matrix are deferred by accepted D-026.)
-- [X] GATE G2 — Accept local HTTP/TLS evidence for the accepted 0.3 boundary; transport-to-BN callbacks, transport access logs, and HTTPS client support are explicitly deferred by D-023/D-025/D-026.
-
-Exit evidence: HTTP/1.1 and HTTP/2 have identical application semantics; TLS,
-ALPN, certificate, decompression, and slow-client server tests pass. No HTTPS
-client or HTTP/3 support claim is present in the 0.3 graph.
-
-## SECTION 6 — Stateful web facilities
-
-Add bounded state and audit features without a browser or bundled datasets.
-
-### SPRINT 8 — State, scraping, policy, and audit
-
-- [X] ACTIVITY 5.1 — Implement cookie jars, sessions, and static scraping. (Cookie domain/subdomain/path matching including root paths and max-age deletion, session create/get/set/rotate/delete with idle expiry pruning, bounded 30-minute maximum idle timeout, and oldest-entry eviction, bounded tag-selector scraping, script exclusion, static factories, and BN runtime integration tests pass.)
-- [X] ACTIVITY 5.2 — Implement ACL and Apache-compatible logs. (ACL provider and Apache Combined formatter implemented and verified; geolocation is removed from the 0.3 support claim by accepted D-008 and tracked for a future version.)
-- [X] DECISION D-008 — Remove geolocation from the 0.3 support claim; no MMDB provider or dataset is included.
-- [X] GATE G3 — Confirm that no geolocation dataset is bundled or downloaded.
-
-Exit evidence: cookie isolation, session rotation/expiry/eviction, static
-non-execution, ACL/provenance, and log escaping pass; geolocation is not a 0.3
-support claim.
-
-## SECTION 7 — IDE tooling
-
-Reuse the existing frontend and interpreter through published local protocols.
-
-### SPRINT 9 — Language server
-
-- [X] ACTIVITY 6.1 — Implement the native LSP 3.18 subset and update VS Code integration. (stdio diagnostics/navigation/completion and VS Code extension checks pass; definition lookup follows explicitly imported matching open documents and bounded sibling `file://` modules capped at 8 MiB; the extension starts `bn lsp` and forwards lifecycle events.)
-
-Exit evidence: stdio lifecycle, document replacement, diagnostics, definition,
-references, completion, UTF-16 positions, and `bn check` span parity pass.
-
-### SPRINT 10 — Debug adapter
-
-- [X] ACTIVITY 6.2 — Implement the native DAP subset and interpreter debug hooks. (stateful lifecycle ordering, bounded `.bn` launch/module-graph validation through load/semantic/IR lowering, stateful `setBreakpoints` registry with deduplication/line validation, AST statement-span executable-line mapping, threaded runtime continue/pause/step control with DAP stopped/continued/terminated events, source-span stack frames, read-only symbol/value snapshots, and VS Code adapter checks pass.)
-
-Exit evidence: framing, launch, breakpoint mapping, stepping, stack/scopes,
-inspection without user-code execution, termination, and VS Code tests pass.
-
-## SECTION 8 — Release evidence
-
-Make every support statement executable and reproducible.
-
-### SPRINT 11 — Conformance and integrations
-
-- [X] ACTIVITY 7.1 — Complete conformance matrices, examples, plugins, capability evidence, and release checks. (All `modules/bn/*.bn` files pass `bn check`; [`examples/socket.bn`](../examples/socket.bn) covers `--help`, TCP/UDP, client/server, IPv4/IPv6 loopback, and server `BNLog` output; [`examples/icmp-ping.bn`](../examples/icmp-ping.bn) is a manual diagnostic for `www.intelliurb.com` and is not release evidence because current macOS `Ping` is deliberately operation-unavailable under D-016; VS Code and Jupyter manifests are at 0.3; VS Code grammar/extension/debug-adapter checks pass; Jupyter wire checks record the unavailable `pyzmq` provider; inherited Windows evidence is preserved.)
-- [X] ACTIVITY 7.2 — Document the 0.3 language and external modules in `docs/book`. (Core language concepts remain in main chapters; `BNJson`, `BNLog`, `BNWeb`, `BNData`, and external-module conventions are in separate appendices; `HOST` has a dedicated chapter near standard-library usage.)
-- [X] GATE G4 — Accept 0.3 only with local executable evidence for every claimed feature. (All WBS activities are DONE; Rust, module, IPv4/IPv6 socket example, VS Code, DAP, documentation, and capability evidence are recorded in [`0.3-conformance.md`](0.3-conformance.md); Jupyter remains explicitly provider-gated and Windows console evidence is inherited from 0.2.)
-
-Exit evidence: all WBS activities are DONE; conformance/capability matrices,
-examples, dependency inventory, plugins, Windows evidence, and release checks
-are complete.
-
-## SECTION 9 — Compiler/runtime modularization
-
-Remove the god-module bottleneck before adding concurrent execution paths.
-
-### SPRINT 12 — Refactoring and optimization gate
-
-- [X] ACTIVITY 8.0 — Split every Rust source file above 520 lines into responsibility-focused modules while preserving public APIs and the forward-only compiler pipeline. Sprint 12 status updated after the completed modularization, strict checks, and 517-line maximum audit.
-- [X] ACTIVITY 8.0.1 — Extract runtime numeric operations (`numeric.rs`, 164 lines), value rendering (`render.rs`, 53 lines), collection/index helpers (`collections.rs`, 67 lines), allocation helpers (`allocation.rs`), temporal providers (`temporal_ops.rs`), runtime lookup helpers (`helpers.rs`, 110 lines), and value/type comparison (`compare.rs`, 196 lines); focused runtime tests and strict Clippy pass; remaining runtime extraction stays in this sprint.
-- [X] ACTIVITY 8.0.1.1 — Route semantic binary typing, conversion checks, and numeric promotion through `semantic/types.rs`; preserve the existing analyzer contract and pass strict Clippy/tests.
-- [X] ACTIVITY 8.0.1.2 — Route AST declaration/reference-to-type conversion through `semantic/declarations.rs`; preserve vector-dimension and imported-type semantics with strict checks.
-- [X] ACTIVITY 8.0.1.3 — Move signature parsing, token-to-type conversion, qualified names, and pointer shape helpers into `semantic/declarations.rs`; focused checks remain green.
-- [X] ACTIVITY 8.0.1.4 — Move scalar type-name parsing, integer/float limits, literal folding, and default literal typing into `semantic/types.rs`; preserve diagnostics and analyzer behavior.
-- [X] ACTIVITY 8.0.1.5 — Move static length/size, scalar byte widths, and checked dimension products into `semantic/types.rs`, retaining public semantic API wrappers.
-- [X] ACTIVITY 8.0.1.6 — Remove legacy runtime equality/type-predicate implementations after routing all call sites through `runtime/compare.rs`; strict checks pass.
-- [X] ACTIVITY 8.0.1.7 — Extract BNMath vector reductions into `runtime/math.rs`; preserve numeric behavior and pass strict checks.
-- [X] ACTIVITY 8.0.1.8 — Extract network address/endpoint conversion helpers into `runtime/net_values.rs`; preserve HOST.Net behavior and pass strict checks.
-- [X] ACTIVITY 8.0.1.9 — Move IR structural validation and builder implementation into `ir/validate.rs`, preserving public `ir::validate` and lowering callers.
-- [X] ACTIVITY 8.0.1.10 — Separate IR builder implementation into `ir/builder.rs`, leaving structural validation focused; all IR and strict checks pass.
-- [X] ACTIVITY 8.0.1.11 — Extract builder state/emission primitives into `ir/builder/builder_state.rs`; strict checks and IR tests pass.
-- [X] ACTIVITY 8.0.1.12 — Extract IR statement lowering into `ir/builder/statements.rs` (208 lines); preserve lowering behavior and strict checks.
-- [X] ACTIVITY 8.0.1.13 — Extract IR expression lowering into `ir/builder/expressions.rs` (394 lines) and control-flow lowering into `ir/builder/control_flow.rs` (337 lines); reduce `builder.rs` below 520 lines.
-- [X] ACTIVITY 8.0.1.14 — Extract IR builder state into nested `ir/builder/builder_state.rs`; maintain crate-visible methods and pass IR tests.
-- [X] ACTIVITY 8.0.1.15 — Move networking unit fixtures into `net/tests.rs`; keep the production networking module below 520 lines and preserve IPv4/IPv6, TCP, UDP, CIDR, and resolver checks.
-- [X] ACTIVITY 8.0.1.16 — Move HTTP adapter fixtures into `http/tests.rs`; keep the production HTTP adapter below 520 lines and preserve protocol, routing, TLS, callback, and bounds checks.
-- [X] ACTIVITY 8.0.1.17 — Move LSP fixtures into `lsp/tests.rs`; keep the production LSP service below 520 lines while preserving navigation and completion checks.
-- [X] ACTIVITY 8.0.1.18 — Move DAP fixtures into `dap/tests.rs`; keep the production DAP service below 520 lines while preserving framing, launch, breakpoints, and execution-session checks.
-- [X] ACTIVITY 8.0.1.19 — Move BNWeb unit fixtures into `web/tests.rs`; preserve route, request/response, lifecycle, proxy, and bounds coverage while continuing production-module decomposition.
-- [X] ACTIVITY 8.0.1.20 — Split runtime executor responsibilities into phase-local `runtime/executor/part*.rs`, `terminal.rs`, and `helpers.rs`; preserve the runtime facade and strict checks. Large provider dispatch methods remain scheduled for follow-up extraction.
-- [X] ACTIVITY 8.0.1.21 — Isolate runtime host/support utilities and runtime tests; keep `runtime_impl.rs` below 520 lines with the same debug and clock behavior.
-- [X] ACTIVITY 8.0.1.22 — Extract DataFrame join/append/select/add/count operations into focused executor methods (`part12.rs`/`part13.rs`); `part9.rs` is now below 520 lines with behavior and strict checks preserved.
-- [X] ACTIVITY 8.0.1.23 — Extract `HOST.Net` dispatch from the general host dispatcher into `executor/part14.rs`; `part7.rs` is now below 520 lines and strict checks remain green.
-- [X] ACTIVITY 8.0.1.24 — Extract address/endpoint/CIDR/reachability operations into `executor/part15.rs`; the remaining `part14.rs` scope is limited to TCP/UDP and collection transports.
-- [X] ACTIVITY 8.0.1.25 — Extract TCP listener/stream and resolver branches into `executor/part16.rs`; `part14.rs` now contains only UDP and address-collection transport operations and is below 520 lines.
-- [X] ACTIVITY 8.0.1.26 — Extract BNWeb state/request/response dispatch branches into `executor/part17.rs`, `part18.rs`, and `part19.rs`; `part4.rs` is now below 520 lines with strict checks preserved.
-- [X] ACTIVITY 8.0.1.27 — Extract CLI frontend parsing/loading into `cli_frontend.rs` and move BNWeb routing/server lifecycle into `web/routing.rs` and `web/server.rs`; focused library tests and formatting pass.
-- [X] ACTIVITY 8.0.1.28 — Extract parser expression precedence/primary parsing into `parser/expressions.rs` (472 lines); parser API and library tests remain green.
-- [X] ACTIVITY 8.0.1.29 — Split the remaining parser declaration, statement, and token utility methods into four phase-local modules; all parser phase files remain below 520 lines.
-- [X] ACTIVITY 8.0.1.30 — Extract IR lowering and helper functions into `ir/lowering.rs`, `ir/lowering_callable.rs`, and `ir/helpers.rs`; focused tests and strict Clippy pass.
-- [X] ACTIVITY 8.0.1.31 — Split LLVM analysis, emission, tail dispatch, and helper logic into focused modules; all LLVM Rust files are below 520 lines and strict checks pass.
-- [X] ACTIVITY 8.0.1.32 — Split semantic module analysis into `semantic/module_analysis.rs`, preserving module graph diagnostics and focused semantic behavior.
-- [X] ACTIVITY 8.0.1.33 — Split semantic analyzer phases into eight phase-local modules and isolate HOST standard members in `semantic/host_defaults.rs`; preserve analyzer state and diagnostics.
-- [X] ACTIVITY 8.0.1.34 — Split semantic type helpers and operations into `semantic/helpers*.rs`, `semantic/type_ops.rs`, and `semantic/type_names.rs`; retain public size/type APIs and strict visibility.
-- [X] ACTIVITY 8.0.2 — Split semantic analysis, IR lowering/validation, parser phases, and LLVM lowering into phase-local modules with narrow state dependencies.
-- [X] ACTIVITY 8.0.3 — Split CLI, web, HTTP, LSP, DAP, and networking files that exceed 520 lines; remove dead code and close strict Clippy warnings.
-- [X] GATE G5 — Accept the refactoring only when no Rust file exceeds 520 lines and behavior remains unchanged under focused and full repository checks. Evidence: largest Rust file is 517 lines (`src/runtime_impl.rs`); `cargo test` (all suites), `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`, and `git diff --check` pass.
-
-Directives: preserve `Source -> Tokens -> AST -> Semantic Analysis -> IR`;
-`lib.rs` remains a re-export gateway; no new dependency or `unsafe`; use `?`
-for propagation; allocation/index/conversion boundaries remain checked; extract
-one testable slice at a time and keep each new file below 520 lines.
-
-Exit evidence: `wc -l src/**/*.rs src/*.rs`; parser, semantic, IR, runtime,
-codegen, CLI, module and protocol tests; `cargo fmt --check`; `cargo test`;
-`cargo clippy --all-targets -- -D warnings`; `git diff --check`.
-
-## SECTION 10 — Bounded dispatch and deferred web scope
-
-Backport only the accepted 0.4 dispatch foundation without moving `BNDispatch`
-into the language core. The concurrent `BNWeb` scope remains in the 0.4 plan.
-
-### SPRINT 13 — Dispatch API and bounded foundation
-
-- [X] ACTIVITY 8.1 — Freeze the `BNDispatch` execution, ownership, lifecycle, and resource contract. D-028/D-029 define bounded workers/tickets, pending-only cancellation, deadlines, isolated task ownership, and synchronized output forwarding.
-- [X] DECISION D-028 — Accept opaque `Ticket` lifecycle, task-error propagation, cancellation, and close rules.
-- [X] ACTIVITY 8.2 — Implement `HOST.NumProcs()` as the available logical-processor query for bounded worker-pool selection. (Semantic, IR, runtime, normative language/keyword/book documentation, and runtime test are complete.)
-- [X] ACTIVITY 8.3 — Implement bounded `BNDispatch` queues, tickets/join, groups, barriers, semaphores, and mutexes over the accepted worker model. Native queues now run a fixed 1..64 worker pool, retain bounded pending tickets, execute named functions in isolated module copies, forward output through ticket ownership, and expose deterministic synchronization/timeouts.
-- [X] GATE G5 — Accept the `BNDispatch` public API and execution model before concurrent BN work begins. Evidence: 87 library tests, 153 runtime tests, 44 CLI tests, 3 codegen tests, 7 IR tests, 46 semantic tests, strict Clippy, formatting, diff checks, and authorized local TCP/UDP socket validation all pass.
-
-Exit evidence: fixed external-module signatures and limits; `HOST.NumProcs()`;
-local queue/join/barrier/timeout/close tests; no unsafe shared interpreter state.
-
-### SPRINT 14 — Deferred concurrent `BNWeb` scope
-
-- [X] DECISION D-030 — Defer transport-to-BN callbacks, transport access logging, and HTTPS client/trust-root work to the 0.4 `BNWeb` revision.
-
-Exit evidence: [`0.4-forward-plan.md`](0.4-forward-plan.md) owns the deferred
-scope. No concurrent `BNWeb`, transport access-log, or HTTPS-client support is
-claimed by 0.3.
-
-## SECTION 11 — Vector and LLVM contract alignment
-
-Apply the accepted declaration-time vector and typed LLVM contract after the
-active refactoring and `BNDispatch` sprint sequence.
-
-### SPRINT 15 — Contract alignment and lowering evidence
-
-- [X] ACTIVITY 10.1 — Align local declaration-time vector dimensions, typed LLVM mappings, explicit CFG lowering, and resilient IR test construction with the accepted 0.3 contract.
-- [X] GATE G7 — Accept the vector/LLVM contract only with local parser, semantic, runtime, IR, codegen, metadata, and repository evidence. Focused parser/semantic/runtime/IR/codegen tests, `cargo metadata --no-deps`, full `cargo test`, `cargo fmt --check`, strict Clippy, and `git diff --check` pass; unsupported lowering remains explicit as `BUILD_LOWERING_UNAVAILABLE`.
-
-Exit evidence: local declaration-time vector dimensions remain fixed after
-binding; signatures and fields stay literal-only; LLVM lowering emits typed
-blocks/terminators without executing BN programs; unsupported lowering and
-overflow behavior are recorded with executable checks.
+Exit evidence: the accepted normative contract, implementation, security
+register, conformance evidence, examples, and plugins are mutually consistent.

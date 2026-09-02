@@ -310,6 +310,32 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                             |()| Value::Null,
                         ))
                 }
+                "SetWithPolicy" => {
+                    require_arity(name, arguments, 9, span)?;
+                    let (Value::String(n), Value::String(v), Value::String(d), Value::String(p), Value::Boolean(secure), Value::Boolean(http_only), Value::String(same_site)) =
+                        (&arguments[1], &arguments[2], &arguments[3], &arguments[4], &arguments[6], &arguments[7], &arguments[8])
+                    else {
+                        return Err(runtime_error("TYPE_MISMATCH", "cookie policy arguments have invalid types", span));
+                    };
+                    let age = integer(&arguments[5], span)?.0;
+                    if age < 0 {
+                        return Ok(Value::Error { code: 1, message: "negative cookie age".into() });
+                    }
+                    let same_site = match same_site.as_str() {
+                        "Strict" => crate::web_state::SameSite::Strict,
+                        "Lax" => crate::web_state::SameSite::Lax,
+                        "None" => crate::web_state::SameSite::None,
+                        _ => return Ok(Value::Error { code: 1, message: "invalid SameSite policy".into() }),
+                    };
+                    if same_site == crate::web_state::SameSite::None && !secure {
+                        return Ok(Value::Error { code: 1, message: "SameSite=None requires Secure".into() });
+                    }
+                    Ok(jar.set_with_options(
+                        n, v, d, p,
+                        std::time::Duration::from_millis(u64::try_from(age).unwrap_or(0)),
+                        crate::web_state::CookieOptions { secure: *secure, http_only: *http_only, same_site },
+                    ).map_or_else(|message| Value::Error { code: 1, message }, |()| Value::Null))
+                }
                 "Get" => {
                     require_arity(name, arguments, 4, span)?;
                     let (Value::String(n), Value::String(d), Value::String(p)) =
@@ -348,6 +374,112 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                     code: 1,
                     message: "CookieJar provider unavailable".into(),
                 }),
+            }
+        } else if name.contains(".EgressPolicy.") {
+            if method == "New" {
+                require_arity(name, arguments, 5, span)?;
+                let (Value::String(schemes), Value::String(cidrs), Value::String(ports)) =
+                    (&arguments[0], &arguments[1], &arguments[2])
+                else {
+                    return Err(runtime_error(
+                        "TYPE_MISMATCH",
+                        "EgressPolicy lists must be STRING",
+                        span,
+                    ));
+                };
+                let max_redirects = usize::try_from(integer(&arguments[3], span)?.0)
+                    .map_err(|_| runtime_error("INVALID_EGRESS_POLICY", "invalid redirect limit", span))?;
+                let deadline = u64::try_from(integer(&arguments[4], span)?.0)
+                    .map_err(|_| runtime_error("INVALID_EGRESS_POLICY", "invalid egress deadline", span))?;
+                let policy = crate::web::EgressPolicy::from_csv(
+                    schemes, cidrs, ports, max_redirects, deadline,
+                )
+                .map_err(|message| runtime_error("INVALID_EGRESS_POLICY", message, span))?;
+                let object = self.allocate_object("BNWeb.EgressPolicy", span)?;
+                if let Value::Object { handle, .. } = object {
+                    self.web_egress_policies.insert(handle, policy);
+                }
+                Ok(object)
+            } else {
+                Ok(Value::Error {
+                    code: 1,
+                    message: "EgressPolicy provider unavailable".into(),
+                })
+            }
+        } else if name.contains(".ServerOptions.") {
+            let make_options = |offset: usize| -> Result<crate::web::ServerOptions, Diagnostic> {
+                let value = |index: usize| {
+                    usize::try_from(integer(&arguments[offset + index], span)?.0)
+                        .map_err(|_| runtime_error("INVALID_OPTIONS", "server option must be non-negative", span))
+                };
+                let timeout = |index: usize| {
+                    u64::try_from(integer(&arguments[offset + index], span)?.0)
+                        .map_err(|_| runtime_error("INVALID_OPTIONS", "server timeout must be non-negative", span))
+                };
+                let trusted_proxy = match arguments.get(offset + 17) {
+                    Some(Value::Boolean(value)) => *value,
+                    _ => {
+                        return Err(runtime_error(
+                            "INVALID_OPTIONS",
+                            "trustedProxy must be BOOLEAN",
+                            span,
+                        ));
+                    }
+                };
+                let concurrent_handlers = match arguments.get(offset + 18) {
+                    Some(Value::Boolean(value)) => *value,
+                    _ => {
+                        return Err(runtime_error(
+                            "INVALID_OPTIONS",
+                            "concurrentHandlers must be BOOLEAN",
+                            span,
+                        ));
+                    }
+                };
+                Ok(crate::web::ServerOptions {
+                    active_connections: value(0)?,
+                    backlog: value(1)?,
+                    pending_work: value(2)?,
+                    worker_count: value(3)?,
+                    max_header_bytes: value(4)?,
+                    max_header_fields: value(5)?,
+                    max_target_bytes: value(6)?,
+                    max_body_bytes: value(7)?,
+                    trusted_proxy,
+                    tls_handshake_ms: timeout(8)?,
+                    header_read_ms: timeout(9)?,
+                    body_read_ms: timeout(10)?,
+                    idle_keep_alive_ms: timeout(11)?,
+                    connection_total_ms: timeout(12)?,
+                    stop_drain_ms: timeout(13)?,
+                    rate_limit_burst: value(14)?,
+                    rate_limit_refill_per_second: value(15)?,
+                    rate_limit_key_capacity: value(16)?,
+                    concurrent_handlers,
+                })
+            };
+            if method == "New" {
+                require_arity(name, arguments, 19, span)?;
+                let options = make_options(0)?;
+                options.validate().map_err(|message| runtime_error("INVALID_OPTIONS", message, span))?;
+                let object = self.allocate_object("BNWeb.ServerOptions", span)?;
+                if let Value::Object { handle, .. } = object {
+                    self.web_server_options.insert(handle, options);
+                }
+                Ok(object)
+            } else {
+                let Some(Value::Object { handle, .. }) = arguments.first() else {
+                    return Err(runtime_error("TYPE_MISMATCH", "ServerOptions receiver must be an object", span));
+                };
+                if method == "CONSTRUCTOR" {
+                    require_arity(name, arguments, 20, span)?;
+                    let options = make_options(1)?;
+                    options.validate().map_err(|message| runtime_error("INVALID_OPTIONS", message, span))?;
+                    self.web_server_options.insert(*handle, options);
+                    Ok(Value::Null)
+                } else {
+                    Ok(Value::Error { code: 1, message: "ServerOptions provider unavailable".into() })
+                }
             }
         } else if name.contains(".TLSConfig.") {
             if method == "FromPEM" {

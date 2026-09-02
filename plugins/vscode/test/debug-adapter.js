@@ -12,18 +12,37 @@ const adapter = cp.spawn(process.execPath, [path.join(root, "plugins/vscode/debu
 let buffer = Buffer.alloc(0);
 let sequence = 1;
 const messages = [];
-let terminalResponded = false;
+let continued = false;
+let finished = false;
 
-function send(command, arguments) {
-  const body = Buffer.from(JSON.stringify({ seq: sequence++, type: "request", command, arguments }));
+setTimeout(() => {
+  if (!finished) {
+    console.error(`debug adapter timeout; received ${messages.length} messages`);
+    process.exitCode = 1;
+    adapter.kill();
+  }
+}, 5000);
+
+function send(command, args) {
+  const body = Buffer.from(JSON.stringify({ seq: sequence++, type: "request", command, arguments: args }));
   adapter.stdin.write(`Content-Length: ${body.length}\r\n\r\n`);
   adapter.stdin.write(body);
 }
 
-function respond(message) {
-  const body = Buffer.from(JSON.stringify({ seq: sequence++, type: "response", request_seq: message.seq, command: message.command, success: true, body: { processId: 1 } }));
-  adapter.stdin.write(`Content-Length: ${body.length}\r\n\r\n`);
-  adapter.stdin.write(body);
+function handle(message) {
+  messages.push(message);
+  if (message.type === "event" && message.event === "stopped" && !continued) {
+    continued = true;
+    send("continue", { threadId: 1 });
+  }
+  if (message.type === "event" && message.event === "terminated" && !finished) {
+    finished = true;
+    assert(!messages.some((item) => item.type === "request" && item.command === "runInTerminal"));
+    assert(messages.some((item) => item.command === "initialize" && item.success));
+    assert(messages.some((item) => item.command === "launch" && item.success));
+    assert(messages.some((item) => item.command === "configurationDone" && item.success));
+    adapter.kill();
+  }
 }
 
 adapter.stdout.on("data", (data) => {
@@ -31,41 +50,22 @@ adapter.stdout.on("data", (data) => {
   while (true) {
     const boundary = buffer.indexOf("\r\n\r\n");
     if (boundary < 0) return;
-    const length = Number(buffer.subarray(0, boundary).toString().match(/Content-Length: (\d+)/i)[1]);
+    const header = buffer.subarray(0, boundary).toString();
+    const length = Number(header.match(/Content-Length: (\d+)/i)?.[1]);
     const start = boundary + 4;
-    if (buffer.length < start + length) return;
-    messages.push(JSON.parse(buffer.subarray(start, start + length).toString()));
+    if (!Number.isFinite(length) || buffer.length < start + length) return;
+    handle(JSON.parse(buffer.subarray(start, start + length).toString()));
     buffer = buffer.subarray(start + length);
-    const message = messages.at(-1);
-    if (message.type === "request" && message.command === "runInTerminal") {
-      assert.deepStrictEqual(message.arguments.args.slice(1), ["run", path.join(root, "examples/hello.bn")]);
-      assert.strictEqual(message.arguments.kind, "integrated");
-      const [executable, ...arguments] = message.arguments.args;
-      const result = cp.spawnSync(executable, arguments, { cwd: message.arguments.cwd, encoding: "utf8" });
-      assert.strictEqual(result.status, 0);
-      assert.match(result.stdout, /Basic Next0/);
-      respond(message);
-      terminalResponded = true;
-      setTimeout(() => {
-        assert(!messages.some((item) => item.event === "terminated"));
-        send("disconnect", {});
-      }, 50);
-    }
-    if (messages.some((message) => message.event === "terminated")) {
-      assert(terminalResponded);
-      assert(messages.some((message) => message.command === "initialize" && message.success));
-      assert(messages.some((message) => message.command === "runInTerminal"));
-      adapter.kill();
-      console.log("Basic Next debug adapter checks passed");
-    }
   }
 });
 
 adapter.on("close", () => {
-  if (!messages.some((message) => message.event === "terminated")) process.exitCode = 1;
+  if (!finished) process.exitCode = 1;
+  else console.log("Basic Next debug adapter checks passed");
 });
 
 send("initialize", {});
+send("configurationDone", {});
 send("launch", {
   program: path.join(root, "examples/hello.bn"),
   cwd: root,

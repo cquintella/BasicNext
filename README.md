@@ -3,7 +3,7 @@
 ![Basic Next Logo](docs/logo.jpg)
 
 [![Rust CI](https://img.shields.io/badge/Rust_CI-passing-brightgreen)](#)
-[![Version](https://img.shields.io/badge/version-v0.3.0-blue)](#)
+[![Version](https://img.shields.io/badge/version-v0.4.0-blue)](#)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE.md)
 
 An object-oriented, general-purpose programming language designed to reduce
@@ -30,12 +30,12 @@ only after the corresponding semantics have been defined and reviewed.
 Read [PHILOSOPHY.md](PHILOSOPHY.md) for the mission, vision, and complete set
 of design principles.
 
-## 🚀 Status: Version 0.3 rebuilt release
+## 🚀 Status: Version 0.4 release
 
 The Basic Next 0.3 implementation has been rebuilt across the Rust reference
 frontend, typed IR interpreter, HOST capabilities, external BN modules, LLVM
 lowering, LSP/DAP tooling, plugins, and release documentation. Read the
-[0.3 release news](ongoing/0.3-release-news.md) for the complete summary.
+[0.3 release news](done/0.3-release-news.md) for the complete summary.
 The active [`ongoing/bucket.md`](ongoing/bucket.md) records the delivery gates;
 the archived 0.2 program remains in [`archive/project/bucket-0.2.md`](archive/project/bucket-0.2.md).
 
@@ -51,8 +51,8 @@ The Basic Next reference implementation is a source-spanned lexer, handwritten r
 - `bn run file.bn [-- args...]` — Validates and immediately executes the accepted interpreter surface.
 - `bn build [--target native|wasm32] file.bn` — Emits LLVM IR, or an artifact with `-o`, for the supported compiler subset.
 
-See the [0.3 release news](ongoing/0.3-release-news.md), [active release bucket](ongoing/bucket.md),
-[0.3 conformance evidence](ongoing/0.3-conformance.md),
+See the [0.3 release news](done/0.3-release-news.md), [active release bucket](ongoing/bucket.md),
+[0.3 conformance evidence](done/0.3-conformance.md),
 [archived 0.2 remediation program](archive/project/bucket-0.2.md), and
 [0.3 contract](docs/language/0.3/0.3.md) for delivery status and accepted semantics.
 

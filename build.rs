@@ -8,8 +8,8 @@ use std::{env, fmt::Write as _, fs, path::PathBuf};
 #[path = "src/keyword_registry.rs"]
 mod keyword_registry;
 
-const REGISTRY: &str = "docs/language/0.2/keywords.md";
-const EBNF: &str = "docs/language/0.2/0.2.ebnf";
+const REGISTRY: &str = "docs/language/0.4/keywords.md";
+const EBNF: &str = "docs/language/0.4/0.4.ebnf";
 
 fn main() {
     println!("cargo:rerun-if-changed={REGISTRY}");
@@ -17,18 +17,18 @@ fn main() {
 
     let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("manifest directory"));
     let registry = fs::read_to_string(manifest.join(REGISTRY)).expect("read keyword registry");
-    let ebnf = fs::read_to_string(manifest.join(EBNF)).expect("read 0.2 EBNF");
+    let ebnf = fs::read_to_string(manifest.join(EBNF)).expect("read 0.4 EBNF");
     let parsed = keyword_registry::parse_keywords_md(&registry).unwrap_or_else(|error| {
-        panic!("keyword registry: {error}");
+        panic!("0.4 keyword registry: {error}");
     });
     let ebnf_reserved = keyword_registry::parse_ebnf_quoted_production(&ebnf, "reserved-word")
-        .unwrap_or_else(|error| panic!("EBNF reserved-word: {error}"));
+        .unwrap_or_else(|error| panic!("0.4 EBNF reserved-word: {error}"));
     let ebnf_special =
         keyword_registry::parse_ebnf_quoted_production(&ebnf, "special-float-literal")
             .unwrap_or_else(|error| panic!("EBNF special-float-literal: {error}"));
     assert_eq!(
         parsed.reserved, ebnf_reserved,
-        "keyword registry reserved-word list must match 0.2.ebnf"
+        "0.4 keyword registry reserved-word list must match 0.4.ebnf"
     );
     assert_eq!(
         parsed.special_literals, ebnf_special,

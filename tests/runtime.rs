@@ -6,10 +6,49 @@
 use std::{
     fmt::Write as _,
     fs,
-    io::Cursor,
+    io::{BufRead, Cursor, Read, Write},
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
+
+struct ChannelReader {
+    receiver: std::sync::mpsc::Receiver<Vec<u8>>,
+    current: Cursor<Vec<u8>>,
+}
+
+impl Read for ChannelReader {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        loop {
+            let position = usize::try_from(self.current.position()).unwrap_or(usize::MAX);
+            if position < self.current.get_ref().len() {
+                return self.current.read(buffer);
+            }
+            self.current = Cursor::new(self.receiver.recv().map_err(|_| {
+                std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "input channel closed")
+            })?);
+        }
+    }
+}
+
+impl BufRead for ChannelReader {
+    fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+        loop {
+            let position = usize::try_from(self.current.position()).unwrap_or(usize::MAX);
+            if position < self.current.get_ref().len() {
+                return Ok(&self.current.get_ref()[position..]);
+            }
+            self.current = Cursor::new(self.receiver.recv().map_err(|_| {
+                std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "input channel closed")
+            })?);
+        }
+    }
+
+    fn consume(&mut self, amount: usize) {
+        let position = self.current.position();
+        self.current
+            .set_position(position.saturating_add(u64::try_from(amount).unwrap_or(u64::MAX)));
+    }
+}
 
 use bn::{
     ir::lower_graph,
@@ -140,9 +179,10 @@ fn debug_control_can_terminate_before_user_instruction() {
     let mut input = Cursor::new(Vec::<u8>::new());
     let mut output = Vec::new();
     let mut control =
-        |_function: &str, _span: bn::source::Span, _variables: &[bn::runtime::DebugVariable]| {
-            DebugDecision::Terminate
-        };
+        |_function: &str,
+         _depth: usize,
+         _span: bn::source::Span,
+         _variables: &[bn::runtime::DebugVariable]| { DebugDecision::Terminate };
     let error = execute_with_host_debug_control(
         &module,
         &mut input,
@@ -516,12 +556,103 @@ END FUNCTION
     assert!(
         [
             "0TRUETRUE\nFALSE\n",
+            "0FALSEFALSE\nFALSE\n",
+            "1FALSEFALSE\nFALSE\n",
             "1FALSETRUE\nFALSE\n",
             "2FALSETRUE\nFALSE\n"
         ]
         .contains(&output.as_str()),
         "unexpected ticket race outcome: {output:?}"
     );
+}
+
+#[test]
+fn async_await_syntax_dispatches_through_bounded_queue_api() {
+    let source = r#"IMPORT BNDispatch AS Dispatch
+ASYNC FUNCTION Work() AS VOID
+PRINT "work"
+END FUNCTION
+FUNCTION Start() AS VOID
+LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
+IF queue IS Error THEN
+PRINT "queue-error"
+ELSE
+LET ticket AS Dispatch.Ticket OR Error = ASYNC queue Work()
+IF ticket IS Error THEN
+PRINT "ticket-error"
+ELSE
+LET result AS VOID OR Error = AWAIT ticket(1000)
+PRINT result IS Error
+END IF
+END IF
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("ASYNC/AWAIT dispatch syntax");
+    assert!(
+        output == "work\nFALSE\n" || output == "FALSE\n" || output == "workTRUE\n",
+        "unexpected output: {output:?}"
+    );
+}
+
+#[test]
+fn async_task_output_overflow_fails_ticket_without_retaining_partial_output() {
+    let output_source = (0..7_000)
+        .map(|_| "PRINT \"0123456789\"\n")
+        .collect::<String>();
+    let source = format!(
+        "IMPORT BNDispatch AS Dispatch\nASYNC FUNCTION Work() AS VOID\n{output_source}END FUNCTION\nFUNCTION Start() AS VOID\nLET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()\nIF queue IS Error THEN\nPRINT \"queue-error\"\nELSE\nLET ticket AS Dispatch.Ticket OR Error = ASYNC queue Work()\nIF ticket IS Error THEN\nPRINT \"ticket-error\"\nELSE\nLET result AS VOID OR Error = ticket.Wait(1000)\nPRINT result IS Error, ticket.Status()\nEND IF\nEND IF\nEND FUNCTION\n"
+    );
+    let (_, output) = run(&source, "").expect("execute bounded async output");
+    assert_eq!(output, "TRUE3\n");
+}
+
+#[test]
+fn async_function_rejects_non_task_return_type() {
+    let source = "ASYNC FUNCTION Invalid() AS INTEGER\nRETURN 1\nEND FUNCTION\nFUNCTION Start() AS VOID\nEND FUNCTION\n";
+    let error = run(source, "").expect_err("invalid ASYNC return type");
+    assert_eq!(error.code, "ASYNC_RETURN_TYPE");
+}
+
+#[test]
+fn async_submission_rejects_an_invalid_target_operand() {
+    let source = r"IMPORT BNDispatch AS Dispatch
+ASYNC FUNCTION Work() AS VOID
+END FUNCTION
+FUNCTION Start() AS VOID
+LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
+IF queue IS Error THEN
+RETURN
+ELSE
+LET target AS INTEGER = 1
+LET ticket AS Dispatch.Ticket OR Error = ASYNC queue target
+END IF
+END FUNCTION
+";
+    let error = run(source, "").expect_err("literal ASYNC target must be rejected");
+    assert_eq!(error.code, "E0100");
+}
+
+#[test]
+fn await_rejects_literal_timeout_outside_contract() {
+    let source = r"IMPORT BNDispatch AS Dispatch
+ASYNC FUNCTION Work() AS VOID
+END FUNCTION
+FUNCTION Start() AS VOID
+LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
+IF queue IS Error THEN
+RETURN
+ELSE
+LET ticket AS Dispatch.Ticket OR Error = ASYNC queue Work()
+IF ticket IS Error THEN
+RETURN
+ELSE
+LET result AS VOID OR Error = AWAIT ticket(0)
+END IF
+END IF
+END FUNCTION
+";
+    let error = run(source, "").expect_err("invalid AWAIT timeout");
+    assert_eq!(error.code, "AWAIT_TIMEOUT");
 }
 
 #[test]
@@ -1955,6 +2086,34 @@ END FUNCTION
 }
 
 #[test]
+fn bnweb_server_status_and_counters_are_read_only() {
+    let source = r"IMPORT BNWeb AS Web
+FUNCTION Start() AS VOID
+LET server AS Web.Server = NEW Web.Server()
+PRINT server.Status()
+PRINT server.IsReady()
+PRINT server.ActiveConnections()
+PRINT server.PendingRequests()
+PRINT server.AcceptedRequests()
+PRINT server.ActiveRequests()
+PRINT server.RejectedRequests()
+PRINT server.TimedOutRequests()
+PRINT server.CompletedRequests()
+PRINT server.FailedRequests()
+PRINT server.RateLimitedRequests()
+PRINT server.TotalRequestDurationMs()
+PRINT server.AverageRequestDurationMs()
+PRINT server.MaxRequestDurationMs()
+END FUNCTION
+";
+    let (_, output) = run(source, "").expect("read BNWeb server status");
+    assert_eq!(
+        output,
+        "Starting\nFALSE\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n"
+    );
+}
+
+#[test]
 fn bnweb_server_start_binds_host_net_endpoint() {
     let source = r#"IMPORT BNWeb AS Web
 IMPORT HOST.Net AS Net
@@ -1974,6 +2133,8 @@ PRINT started.Code
 ELSE
 LET stopped AS VOID OR Error = server.Stop(1000)
 PRINT stopped IS Error
+PRINT server.Status()
+PRINT server.IsReady()
 END IF
 END IF
 END IF
@@ -1982,7 +2143,47 @@ END FUNCTION
     let (_, output) = match run(source, "") {
         Ok(result) => result,
         Err(error) => {
-            assert_eq!(error.code, "WEB_LISTEN");
+            assert_eq!(error.code, "WEB_LISTEN", "{error:?}");
+            return;
+        }
+    };
+    assert_eq!(output, "FALSE\nStopped\nFALSE\n");
+}
+
+#[test]
+fn bnweb_server_options_are_validated_and_consumed_by_start() {
+    let source = r#"IMPORT BNWeb AS Web
+IMPORT HOST.Net AS Net
+FUNCTION Start() AS VOID
+LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+IF address IS Error THEN
+STOP 1
+ELSE
+LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, 0)
+IF endpoint IS Error THEN
+STOP 2
+ELSE
+LET options AS Web.ServerOptions OR Error = Web.ServerOptions.New(1, 128, 1, 1, 65536, 100, 8192, 8388608, 5000, 5000, 30000, 60000, 120000, 5000, 10, 10, 10000, FALSE, FALSE)
+IF options IS Error THEN
+PRINT "invalid"
+ELSE
+LET server AS Web.Server = NEW Web.Server()
+LET started AS VOID OR Error = server.StartWithOptions(endpoint, options)
+IF started IS Error THEN
+PRINT started.Code
+ELSE
+LET stopped AS VOID OR Error = server.Stop(1000)
+PRINT stopped IS Error
+END IF
+END IF
+END IF
+END IF
+END FUNCTION
+"#;
+    let (_, output) = match run(source, "") {
+        Ok(result) => result,
+        Err(error) => {
+            assert_eq!(error.code, "WEB_LISTEN", "{error:?}");
             return;
         }
     };
@@ -2026,6 +2227,12 @@ IF dispatched IS Error THEN
 PRINT dispatched.Code
 ELSE
 PRINT response.Status()
+LET requestId AS STRING OR Error = response.Header("X-Request-ID")
+IF requestId IS Error THEN
+PRINT "missing-request-id"
+ELSE
+PRINT LEN(requestId) >= 33
+END IF
 END IF
 server.Stop(1000)
 END IF
@@ -2034,9 +2241,170 @@ END IF
 END FUNCTION
 "#;
     match run(source, "") {
-        Ok((_, output)) => assert_eq!(output, "201\n"),
+        Ok((_, output)) => assert_eq!(output, "201\nTRUE\n"),
         Err(error) => assert_eq!(error.code, "WEB_LISTEN", "{error:?}"),
     }
+}
+
+#[test]
+fn bnweb_start_serves_registered_bn_handler_over_http() {
+    let probe = match std::net::TcpListener::bind("127.0.0.1:0") {
+        Ok(listener) => listener,
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => return,
+        Err(error) => panic!("bind BNWeb bridge probe: {error}"),
+    };
+    let port = probe.local_addr().expect("probe address").port();
+    drop(probe);
+    let source = format!(
+        r#"IMPORT BNWeb AS Web
+IMPORT HOST.Net AS Net
+FUNCTION Handler(request AS Web.Request, response AS Web.Response) AS VOID
+response.SetStatus(207)
+response.Write("bn-handler")
+END FUNCTION
+FUNCTION Start() AS VOID
+LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, {port})
+LET server AS Web.Server = NEW Web.Server()
+server.Route("GET", "/bridge", Handler)
+LET started AS VOID OR Error = server.Start(endpoint)
+IF started IS Error THEN
+STOP 3
+END IF
+LET gate AS STRING OR EOF = INPUT()
+server.Stop(1000)
+END FUNCTION
+"#
+    );
+    let path = unique_temp("bnweb-http-bridge.bn");
+    fs::write(&path, &source).expect("write BNWeb bridge fixture");
+    let graph = load(path.to_str().expect("fixture path")).expect("load BNWeb bridge fixture");
+    let models = analyze_modules(&graph).expect("analyze BNWeb bridge fixture");
+    let module = lower_graph(&graph, &models).expect("lower BNWeb bridge fixture");
+    let (input_sender, input_receiver) = std::sync::mpsc::channel();
+    let execution = std::thread::spawn(move || {
+        let reader = ChannelReader {
+            receiver: input_receiver,
+            current: Cursor::new(Vec::new()),
+        };
+        let mut input = std::io::BufReader::new(reader);
+        let mut output = Vec::new();
+        execute_with_host(
+            &module,
+            &mut input,
+            &mut output,
+            &HostEnv::fixed(vec!["bridge.bn".into()], 0, 0),
+        )
+        .map(|code| (code, output))
+    });
+    let mut client = None;
+    for _ in 0..200 {
+        match std::net::TcpStream::connect(("127.0.0.1", port)) {
+            Ok(stream) => {
+                client = Some(stream);
+                break;
+            }
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(1)),
+        }
+    }
+    let Some(mut client) = client else {
+        let _ = input_sender.send(b"release\n".to_vec());
+        let result = execution.join().expect("bridge execution thread");
+        let _ = fs::remove_file(path);
+        if let Err(error) = result {
+            assert_eq!(error.code, "WEB_LISTEN", "{error:?}");
+        }
+        return;
+    };
+    client
+        .write_all(b"GET /bridge HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+        .expect("write BNWeb bridge request");
+    let mut response = String::new();
+    client
+        .read_to_string(&mut response)
+        .expect("read BNWeb bridge response");
+    input_sender
+        .send(b"release\n".to_vec())
+        .expect("release BNWeb server");
+    let result = execution.join().expect("bridge execution thread");
+    let _ = fs::remove_file(path);
+    let (code, _) = result.expect("execute BNWeb bridge fixture");
+    assert_eq!(code, 0);
+    assert!(response.starts_with("HTTP/1.1 207"), "{response}");
+    assert!(response.ends_with("bn-handler"), "{response}");
+}
+
+#[test]
+fn bnweb_dispatch_correlates_response_id_with_redacted_log_record() {
+    let path = unique_temp("bnweb-correlation.jsonl");
+    let source = format!(
+        r#"IMPORT BNWeb AS Web
+IMPORT BNLog AS Log
+IMPORT HOST.Net AS Net
+IMPORT HOST.FileSystem AS FS
+FUNCTION Handler(request AS Web.Request, response AS Web.Response) AS VOID
+response.SetStatus(204)
+END FUNCTION
+FUNCTION Start() AS VOID
+LET logger AS Log.Logger = NEW Log.Logger()
+LET added AS VOID OR Error = logger.AddFile("{}", 3)
+IF added IS Error THEN
+PRINT "logger-error"
+ELSE
+LET serverResult AS Web.Server OR Error = Web.Server.New(logger)
+IF serverResult IS Error THEN
+PRINT "server-error"
+ELSE
+LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+IF address IS Error THEN
+PRINT "address-error"
+ELSE
+LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, 0)
+IF endpoint IS Error THEN
+PRINT "endpoint-error"
+ELSE
+LET server AS Web.Server = serverResult
+server.Route("GET", "/", Handler)
+LET started AS VOID OR Error = server.Start(endpoint)
+IF started IS Error THEN
+PRINT "start-error"
+ELSE
+LET request AS Web.Request = NEW Web.Request()
+LET response AS Web.Response = NEW Web.Response()
+LET dispatched AS VOID OR Error = server.Dispatch(request, response)
+IF dispatched IS Error THEN
+PRINT "dispatch-error"
+ELSE
+LET requestId AS STRING OR Error = response.Header("X-Request-ID")
+IF requestId IS Error THEN
+PRINT "missing-request-id"
+ELSE
+PRINT LEN(requestId) >= 33
+END IF
+END IF
+server.Stop(1000)
+END IF
+logger.Flush(1000)
+END IF
+END IF
+END IF
+END IF
+END FUNCTION
+"#,
+        bn_path(&path)
+    );
+    let (_, output) = match run(&source, "") {
+        Ok(result) => result,
+        Err(error) if error.code == "WEB_LISTEN" => {
+            let _ = fs::remove_file(path);
+            return;
+        }
+        Err(error) => panic!("execute BNWeb correlation path: {error:?}"),
+    };
+    let contents = fs::read_to_string(&path).expect("read BNWeb correlation log");
+    let _ = fs::remove_file(path);
+    assert_eq!(output, "TRUE\n");
+    assert!(contents.contains("\"request_id\":\"r"), "{contents}");
 }
 
 #[test]
@@ -2053,6 +2421,26 @@ END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute BNWeb client validation");
     assert_eq!(output, "TRUE\nTRUE\n");
+}
+
+#[test]
+fn bnweb_egress_policy_is_constructed_and_applied_before_transport() {
+    let source = r#"IMPORT BNWeb AS Web
+FUNCTION Start() AS VOID
+LET policy AS Web.EgressPolicy OR Error = Web.EgressPolicy.New("https", "203.0.113.0/24", "443", 2, 1000)
+PRINT policy IS Error
+LET client AS Web.Client = NEW Web.Client()
+IF policy IS Error THEN
+PRINT TRUE
+ELSE
+LET response AS Web.Response OR Error = client.RequestWithPolicy("GET", "http://127.0.0.1/", "", policy)
+PRINT response IS Error
+END IF
+DELETE client
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute BNWeb egress policy");
+    assert_eq!(output, "FALSE\nTRUE\n");
 }
 
 #[test]
@@ -2194,4 +2582,20 @@ END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute CookieJar provider");
     assert_eq!(output, "a1\nTRUE\n");
+}
+
+#[test]
+fn bnweb_cookie_jar_exposes_explicit_secure_policy() {
+    let source = r#"IMPORT BNWeb AS Web
+FUNCTION Start() AS VOID
+LET jar AS Web.CookieJar = NEW Web.CookieJar()
+LET accepted AS VOID OR Error = jar.SetWithPolicy("sid", "a", "example.test", "/", 60000, TRUE, TRUE, "Strict")
+PRINT accepted IS Error, jar.Count()
+LET rejected AS VOID OR Error = jar.SetWithPolicy("bad", "b", "example.test", "/", 60000, FALSE, TRUE, "None")
+PRINT rejected IS Error, jar.Count()
+DELETE jar
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute explicit CookieJar policy");
+    assert_eq!(output, "FALSE1\nTRUE1\n");
 }

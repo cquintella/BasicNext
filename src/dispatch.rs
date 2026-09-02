@@ -283,12 +283,16 @@ impl Ticket {
         state.error = Some((code, message));
         self.inner.wake.notify_all();
     }
-    pub(crate) fn set_output(&self, output: String) {
+    pub(crate) fn set_output(&self, output: String) -> Result<(), ()> {
+        if output.len() > crate::config::web_limits().async_output_max_bytes {
+            return Err(());
+        }
         self.inner
             .state
             .lock()
             .expect("ticket mutex poisoned")
             .output = output;
+        Ok(())
     }
     pub(crate) fn take_output(&self) -> String {
         std::mem::take(
@@ -354,6 +358,16 @@ mod tests {
         let ticket = queue.submit("Work".into()).expect("ticket");
         queue.close(100).expect("close");
         assert_eq!(ticket.status(), Ok(CANCELLED));
+    }
+
+    #[test]
+    fn ticket_rejects_output_above_registry_bound() {
+        let queue = Queue::new(1).expect("valid queue");
+        let ticket = queue.submit("Work".into()).expect("ticket");
+        let maximum = crate::config::web_limits().async_output_max_bytes;
+
+        assert!(ticket.set_output("x".repeat(maximum + 1)).is_err());
+        assert_eq!(ticket.take_output(), "");
     }
 
     #[test]

@@ -1,6 +1,122 @@
 #![allow(clippy::wildcard_imports, clippy::too_many_lines)]
 use super::*;
 
+fn bn_server_handler(
+    module: Module,
+    host: HostEnv,
+    handlers: HashMap<String, String>,
+    filters: Vec<String>,
+    state: std::sync::Arc<std::sync::Mutex<crate::web::ServerState>>,
+) -> crate::http::Handler {
+    std::sync::Arc::new(move |request, response| {
+        let pattern = state
+            .lock()
+            .ok()
+            .and_then(|server| server.matched_route_pattern(&request.method, &request.target.path))
+            .ok_or("BNWeb route disappeared")?;
+        let key = format!("{}\n{pattern}", request.method);
+        let handler = handlers.get(&key).ok_or("BNWeb handler is not live")?;
+        let mut current = crate::web::Response::new();
+        for filter in &filters {
+            current = crate::runtime::execute_web_callback(
+                &module,
+                &host,
+                filter,
+                request.clone(),
+                current,
+            )
+            .map_err(|_| "BNWeb filter failed")?;
+        }
+        current = crate::runtime::execute_web_callback(
+            &module,
+            &host,
+            handler,
+            request.clone(),
+            current,
+        )
+        .map_err(|_| "BNWeb handler failed")?;
+        *response = current;
+        Ok(())
+    })
+}
+
+fn drain_server(
+    state: &std::sync::Arc<std::sync::Mutex<crate::web::ServerState>>,
+    timeout_ms: i128,
+    close: bool,
+) -> Result<(), &'static str> {
+    let timeout = std::time::Duration::from_millis(
+        u64::try_from(timeout_ms).map_err(|_| "stop timeout is outside 1..60000 ms")?,
+    );
+    let deadline = std::time::Instant::now() + timeout;
+    let mut listener = {
+        let mut server = state
+            .lock()
+            .map_err(|_| "server state unavailable")?;
+        server.begin_stop(timeout_ms)?;
+        server.take_listener()
+    };
+    while let Some(handle) = listener {
+        if handle.is_finished() {
+            if handle.join().is_err() {
+                if let Ok(mut server) = state.lock() {
+                    server.mark_failed();
+                }
+                return Err("server listener join failed");
+            }
+            break;
+        }
+        if std::time::Instant::now() >= deadline {
+            let mut server = state
+                .lock()
+                .map_err(|_| "server state unavailable")?;
+            server
+                .install_listener(handle)
+                .map_err(|_| "server listener is already installed")?;
+            return Err("server listener join timed out");
+        }
+        std::thread::yield_now();
+        listener = Some(handle);
+    }
+    loop {
+        let result = {
+            let mut server = state
+                .lock()
+                .map_err(|_| "server state unavailable")?;
+            server.finish_stop()
+        };
+        match result {
+            Ok(()) => {
+                let workers_finished = state
+                    .lock()
+                    .map_err(|_| "server state unavailable")?
+                    .workers_finished();
+                if !workers_finished {
+                    if std::time::Instant::now() >= deadline {
+                        return Err("server worker drain timed out");
+                    }
+                    std::thread::yield_now();
+                    continue;
+                }
+                if close {
+                    state
+                        .lock()
+                        .map_err(|_| "server state unavailable")?
+                        .mark_closed();
+                }
+                return Ok(());
+            }
+            Err("server drain timed out with active connections") => {
+                if std::time::Instant::now() >= deadline {
+                    return Err("server drain timed out with active connections");
+                }
+            }
+            Err(message) => return Err(message),
+        }
+        std::thread::yield_now();
+    }
+}
+
 impl Executor<'_, '_> {
     pub(crate) fn web_call(
         &mut self,
@@ -9,7 +125,7 @@ impl Executor<'_, '_> {
         span: Span,
     ) -> Result<Value, Diagnostic> {
         let method = name.rsplit('.').next().unwrap_or_default();
-        if name.contains(".SessionStore.") || name.contains(".Scraper.") || name.contains(".ACL.") || name.contains(".CookieJar.") || name.contains(".TLSConfig.") || name.contains(".HeaderValues.") || name.contains(".QueryValues.") {
+        if name.contains(".SessionStore.") || name.contains(".Scraper.") || name.contains(".ACL.") || name.contains(".CookieJar.") || name.contains(".TLSConfig.") || name.contains(".ServerOptions.") || name.contains(".EgressPolicy.") || name.contains(".HeaderValues.") || name.contains(".QueryValues.") {
             return self.web_state_call(name, arguments, span);
         }
         if name.contains(".Request.") {
@@ -32,8 +148,9 @@ impl Executor<'_, '_> {
                     self.allocate_object("BNWeb.Client", span)
                 }
                 "CONSTRUCTOR" | "$fields" => Ok(Value::Null),
-                "Request" => {
-                    require_arity(name, arguments, 4, span)?;
+                "Request" | "RequestWithPolicy" => {
+                    let with_policy = method == "RequestWithPolicy";
+                    require_arity(name, arguments, if with_policy { 5 } else { 4 }, span)?;
                     let (Value::String(method), Value::String(url), Value::String(body)) =
                         (&arguments[1], &arguments[2], &arguments[3])
                     else {
@@ -77,7 +194,23 @@ impl Executor<'_, '_> {
                             message: message.into(),
                         });
                     }
-                    let response = match crate::http::client_request(method, url, body) {
+                    let policy = if with_policy {
+                        let Value::Object { handle, .. } = &arguments[4] else {
+                            return Err(runtime_error(
+                                "TYPE_MISMATCH",
+                                "RequestWithPolicy expects EgressPolicy",
+                                span,
+                            ));
+                        };
+                        self.web_egress_policies.get(handle).ok_or_else(|| {
+                            runtime_error("STALE_HANDLE", "EgressPolicy handle is not live", span)
+                        })?
+                    } else {
+                        &crate::web::EgressPolicy::default()
+                    };
+                    let response = match crate::http::client_request_with_policy(
+                        method, url, body, policy,
+                    ) {
                         Ok(response) => response,
                         Err(message) => {
                             return Ok(Value::Error { code: 1, message });
@@ -212,15 +345,71 @@ impl Executor<'_, '_> {
                         .insert(format!("{method}\n{pattern}"), handler.clone());
                     Ok(Value::Null)
                 }
-                "Start" => {
-                    require_arity(name, arguments, 2, span)?;
+                "Status" => {
+                    require_arity(name, arguments, 1, span)?;
+                    let status = match state.lock().map_err(|_| runtime_error("SERVER_STATE", "server state unavailable", span))?.status() {
+                        crate::web::ServerStatus::Starting => "Starting",
+                        crate::web::ServerStatus::Accepting => "Accepting",
+                        crate::web::ServerStatus::Draining => "Draining",
+                        crate::web::ServerStatus::Stopped => "Stopped",
+                        crate::web::ServerStatus::Failed => "Failed",
+                    };
+                    Ok(Value::String(status.into()))
+                }
+                "IsReady" => {
+                    require_arity(name, arguments, 1, span)?;
+                    Ok(Value::Boolean(state.lock().map_err(|_| runtime_error("SERVER_STATE", "server state unavailable", span))?.is_ready()))
+                }
+                "ActiveConnections" => {
+                    require_arity(name, arguments, 1, span)?;
+                    Ok(Value::Integer(state.lock().map_err(|_| runtime_error("SERVER_STATE", "server state unavailable", span))?.active_connections() as i128, IntegerType::Int32))
+                }
+                "PendingRequests" => {
+                    require_arity(name, arguments, 1, span)?;
+                    Ok(Value::Integer(state.lock().map_err(|_| runtime_error("SERVER_STATE", "server state unavailable", span))?.pending_requests() as i128, IntegerType::Int32))
+                }
+                "AcceptedRequests" | "ActiveRequests" | "RejectedRequests" | "TimedOutRequests" | "CompletedRequests" | "FailedRequests" | "RateLimitedRequests" | "TotalRequestDurationMs" | "AverageRequestDurationMs" | "MaxRequestDurationMs" => {
+                    require_arity(name, arguments, 1, span)?;
+                    let snapshot = state.lock().map_err(|_| runtime_error("SERVER_STATE", "server state unavailable", span))?.stats();
+                    let value = match method {
+                        "AcceptedRequests" => snapshot.accepted,
+                        "ActiveRequests" => snapshot.active,
+                        "RejectedRequests" => snapshot.rejected,
+                        "TimedOutRequests" => snapshot.timed_out,
+                        "CompletedRequests" => snapshot.completed,
+                        "FailedRequests" => snapshot.failed,
+                        "RateLimitedRequests" => snapshot.rate_limited,
+                        "TotalRequestDurationMs" => snapshot.duration_total_ms,
+                        "AverageRequestDurationMs" => snapshot
+                            .duration_total_ms
+                            .checked_div(snapshot.completed.max(1))
+                            .unwrap_or(0),
+                        "MaxRequestDurationMs" => snapshot.duration_max_ms,
+                        _ => unreachable!(),
+                    };
+                    Ok(Value::Integer(i128::from(value), IntegerType::Int32))
+                }
+                "Start" | "StartWithOptions" => {
+                    let options = if method == "StartWithOptions" {
+                        require_arity(name, arguments, 3, span)?;
+                        let Value::Object { handle, .. } = &arguments[2] else {
+                            return Err(runtime_error("TYPE_MISMATCH", "StartWithOptions expects ServerOptions", span));
+                        };
+                        self.web_server_options.get(handle).cloned().ok_or_else(|| {
+                            runtime_error("STALE_HANDLE", "ServerOptions handle is not live", span)
+                        })?
+                    } else {
+                        require_arity(name, arguments, 2, span)?;
+                        crate::web::ServerOptions::default()
+                    };
+                    options.validate().map_err(|message| runtime_error("INVALID_OPTIONS", message, span))?;
                     let endpoint = net_endpoint(&arguments[1], span)?;
-                    let listener = crate::net::TcpListener::bind(endpoint)
+                    let listener = crate::net::TcpListener::bind_with_backlog(endpoint, options.backlog)
                         .map_err(|error| runtime_error("WEB_LISTEN", error.to_string(), span))?;
                     let mut state_guard = state.lock().map_err(|_| {
                         runtime_error("SERVER_STATE", "server state unavailable", span)
                     })?;
-                    let started = state_guard.start();
+                    let started = state_guard.start_with_options(options);
                     drop(state_guard);
                     if let Err(message) = started {
                         return Ok(Value::Error {
@@ -228,8 +417,25 @@ impl Executor<'_, '_> {
                             message: message.into(),
                         });
                     }
+                    if let Err(message) = state
+                        .lock()
+                        .map_err(|_| runtime_error("SERVER_STATE", "server state unavailable", span))?
+                        .install_worker_pool()
+                    {
+                        return Ok(Value::Error {
+                            code: 1,
+                            message: message.into(),
+                        });
+                    }
+                    let request_handler = bn_server_handler(
+                        self.module.clone(),
+                        self.host.clone(),
+                        self.web_handlers.get(handle).cloned().unwrap_or_default(),
+                        self.web_filters.get(handle).cloned().unwrap_or_default(),
+                        state.clone(),
+                    );
                     let accept_state = state.clone();
-                    std::thread::Builder::new()
+                    let listener_handle = std::thread::Builder::new()
                         .name("bnweb-listener".into())
                         .spawn(move || {
                             loop {
@@ -242,15 +448,47 @@ impl Executor<'_, '_> {
                                 match listener.accept_timeout(std::time::Duration::from_millis(25))
                                 {
                                     Ok(Some(stream)) => {
+                                        let admitted = accept_state.lock().is_ok_and(|mut server| {
+                                            server.admit_connection().is_ok()
+                                                && server.track_connection_socket(&stream)
+                                        });
+                                        if !admitted {
+                                            continue;
+                                        }
+                                        let Some(http_runtime) = accept_state
+                                            .lock()
+                                            .ok()
+                                            .and_then(|server| server.http_runtime())
+                                        else {
+                                            if let Ok(mut server) = accept_state.lock() {
+                                                server.release_connection();
+                                            }
+                                            continue;
+                                        };
                                         let connection_state = accept_state.clone();
-                                        let _ = std::thread::Builder::new()
-                                            .name("bnweb-connection".into())
-                                            .spawn(move || {
-                                                let _ = crate::http::serve_connection(
-                                                    stream,
-                                                    connection_state,
-                                                );
-                                            });
+                                        let connection_handler = request_handler.clone();
+                                        let work: crate::web::ConnectionWork = Box::new(move || {
+                                            crate::web::ServerState::run_connection_worker(
+                                                &connection_state,
+                                                || {
+                                                    if let Err(error) = crate::http::serve_connection_with_runtime(
+                                                        stream,
+                                                        connection_state.clone(),
+                                                        Some(connection_handler),
+                                                        &http_runtime,
+                                                    ) && let Ok(mut server) = connection_state.lock() {
+                                                        server.record_connection_error(
+                                                            error.kind() == std::io::ErrorKind::TimedOut,
+                                                        );
+                                                    }
+                                                },
+                                            );
+                                        });
+                                        if !accept_state.lock().is_ok_and(|server| {
+                                            server.submit_connection_work(work).is_ok()
+                                        }) && let Ok(mut server) = accept_state.lock() {
+                                            server.release_connection();
+                                        }
                                     }
                                     Ok(None) => {}
                                     Err(_) => break,
@@ -258,10 +496,27 @@ impl Executor<'_, '_> {
                             }
                         })
                         .map_err(|error| runtime_error("WEB_LISTEN", error.to_string(), span))?;
+                    state
+                        .lock()
+                        .map_err(|_| runtime_error("SERVER_STATE", "server state unavailable", span))?
+                        .install_listener(listener_handle)
+                        .map_err(|message| runtime_error("WEB_LISTEN", message, span))?;
                     Ok(Value::Null)
                 }
-                "StartTLS" => {
-                    require_arity(name, arguments, 3, span)?;
+                "StartTLS" | "StartTLSWithOptions" => {
+                    let options = if method == "StartTLSWithOptions" {
+                        require_arity(name, arguments, 4, span)?;
+                        let Value::Object { handle, .. } = &arguments[3] else {
+                            return Err(runtime_error("TYPE_MISMATCH", "StartTLSWithOptions expects ServerOptions", span));
+                        };
+                        self.web_server_options.get(handle).cloned().ok_or_else(|| {
+                            runtime_error("STALE_HANDLE", "ServerOptions handle is not live", span)
+                        })?
+                    } else {
+                        require_arity(name, arguments, 3, span)?;
+                        crate::web::ServerOptions::default()
+                    };
+                    options.validate().map_err(|message| runtime_error("INVALID_OPTIONS", message, span))?;
                     let endpoint = net_endpoint(&arguments[1], span)?;
                     let Value::Object {
                         handle: config_handle,
@@ -285,12 +540,12 @@ impl Executor<'_, '_> {
                                 span,
                             )
                         })?;
-                    let listener = crate::net::TcpListener::bind(endpoint)
+                    let listener = crate::net::TcpListener::bind_with_backlog(endpoint, options.backlog)
                         .map_err(|error| runtime_error("WEB_LISTEN", error.to_string(), span))?;
                     let mut state_guard = state.lock().map_err(|_| {
                         runtime_error("SERVER_STATE", "server state unavailable", span)
                     })?;
-                    let started = state_guard.start();
+                    let started = state_guard.start_with_options(options);
                     drop(state_guard);
                     if let Err(message) = started {
                         return Ok(Value::Error {
@@ -298,8 +553,25 @@ impl Executor<'_, '_> {
                             message: message.into(),
                         });
                     }
+                    if let Err(message) = state
+                        .lock()
+                        .map_err(|_| runtime_error("SERVER_STATE", "server state unavailable", span))?
+                        .install_worker_pool()
+                    {
+                        return Ok(Value::Error {
+                            code: 1,
+                            message: message.into(),
+                        });
+                    }
+                    let request_handler = bn_server_handler(
+                        self.module.clone(),
+                        self.host.clone(),
+                        self.web_handlers.get(handle).cloned().unwrap_or_default(),
+                        self.web_filters.get(handle).cloned().unwrap_or_default(),
+                        state.clone(),
+                    );
                     let accept_state = state.clone();
-                    std::thread::Builder::new()
+                    let listener_handle = std::thread::Builder::new()
                         .name("bnweb-tls-listener".into())
                         .spawn(move || {
                             loop {
@@ -312,17 +584,49 @@ impl Executor<'_, '_> {
                                 match listener.accept_timeout(std::time::Duration::from_millis(25))
                                 {
                                     Ok(Some(stream)) => {
+                                        let admitted = accept_state.lock().is_ok_and(|mut server| {
+                                            server.admit_connection().is_ok()
+                                                && server.track_connection_socket(&stream)
+                                        });
+                                        if !admitted {
+                                            continue;
+                                        }
+                                        let Some(http_runtime) = accept_state
+                                            .lock()
+                                            .ok()
+                                            .and_then(|server| server.http_runtime())
+                                        else {
+                                            if let Ok(mut server) = accept_state.lock() {
+                                                server.release_connection();
+                                            }
+                                            continue;
+                                        };
                                         let connection_state = accept_state.clone();
                                         let tls_config = config.clone();
-                                        let _ = std::thread::Builder::new()
-                                            .name("bnweb-tls-connection".into())
-                                            .spawn(move || {
-                                                let _ = crate::http::serve_tls_connection(
-                                                    stream,
-                                                    connection_state,
-                                                    tls_config,
-                                                );
-                                            });
+                                        let connection_handler = request_handler.clone();
+                                        let work: crate::web::ConnectionWork = Box::new(move || {
+                                            crate::web::ServerState::run_connection_worker(
+                                                &connection_state,
+                                                || {
+                                                    if let Err(error) = crate::http::serve_tls_connection_with_runtime(
+                                                        stream,
+                                                        connection_state.clone(),
+                                                        tls_config,
+                                                        Some(connection_handler),
+                                                        &http_runtime,
+                                                    ) && let Ok(mut server) = connection_state.lock() {
+                                                        server.record_connection_error(
+                                                            error.kind() == std::io::ErrorKind::TimedOut,
+                                                        );
+                                                    }
+                                                },
+                                            );
+                                        });
+                                        if !accept_state.lock().is_ok_and(|server| {
+                                            server.submit_connection_work(work).is_ok()
+                                        }) && let Ok(mut server) = accept_state.lock() {
+                                            server.release_connection();
+                                        }
                                     }
                                     Ok(None) => {}
                                     Err(_) => break,
@@ -330,15 +634,18 @@ impl Executor<'_, '_> {
                             }
                         })
                         .map_err(|error| runtime_error("WEB_LISTEN", error.to_string(), span))?;
+                    state
+                        .lock()
+                        .map_err(|_| runtime_error("SERVER_STATE", "server state unavailable", span))?
+                        .install_listener(listener_handle)
+                        .map_err(|message| runtime_error("WEB_LISTEN", message, span))?;
                     Ok(Value::Null)
                 }
                 "Stop" => {
                     require_arity(name, arguments, 2, span)?;
                     let timeout = integer(&arguments[1], span)?.0;
-                    let mut state = state.lock().map_err(|_| {
-                        runtime_error("SERVER_STATE", "server state unavailable", span)
-                    })?;
-                    Ok(state.stop(timeout).map_or_else(
+                    let result = drain_server(&state, timeout, false);
+                    Ok(result.map_or_else(
                         |message| Value::Error {
                             code: 1,
                             message: message.into(),
@@ -421,6 +728,15 @@ impl Executor<'_, '_> {
                                         span,
                                     )
                                 })?;
+                            let request_id = crate::web_state::new_request_id(
+                                &crate::web_state::SystemEntropy,
+                            )
+                            .ok();
+                            if let Some(request_id) = request_id.as_deref()
+                                && let Some(response) = self.web_responses.get_mut(response_handle)
+                            {
+                                let _ = response.set_header("X-Request-ID", request_id);
+                            }
                             let result = self.call_named(
                                 &handler,
                                 vec![arguments[1].clone(), arguments[2].clone()],
@@ -430,7 +746,14 @@ impl Executor<'_, '_> {
                                 .web_responses
                                 .get(response_handle)
                                 .map_or(500, |response| i128::from(response.status));
-                            self.log_web_dispatch(*handle, &method_name, &path, status, span)?;
+                            self.log_web_dispatch(
+                                *handle,
+                                &method_name,
+                                &path,
+                                status,
+                                request_id.as_deref(),
+                                span,
+                            )?;
                             result
                         }
                         Err(status) if status == 404 || status == 405 => {
@@ -442,6 +765,7 @@ impl Executor<'_, '_> {
                                 &method_name,
                                 &path,
                                 i128::from(status),
+                                None,
                                 span,
                             )?;
                             Ok(Value::Null)
@@ -455,10 +779,8 @@ impl Executor<'_, '_> {
                 "Close" => {
                     require_arity(name, arguments, 2, span)?;
                     let timeout = integer(&arguments[1], span)?.0;
-                    let mut state = state.lock().map_err(|_| {
-                        runtime_error("SERVER_STATE", "server state unavailable", span)
-                    })?;
-                    Ok(state.close(timeout).map_or_else(
+                    let result = drain_server(&state, timeout, true);
+                    Ok(result.map_or_else(
                         |message| Value::Error {
                             code: 1,
                             message: message.into(),
@@ -480,5 +802,75 @@ impl Executor<'_, '_> {
                 message: "BNWeb provider unavailable".into(),
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::drain_server;
+    use crate::web::ServerState;
+    use std::sync::{Arc, Mutex};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::Instant;
+
+    #[test]
+    fn drain_server_times_out_without_holding_the_state_lock() {
+        let state = Arc::new(Mutex::new(ServerState::new()));
+        let release = Arc::new(AtomicBool::new(false));
+        {
+            let mut server = state.lock().unwrap();
+            server.start().unwrap();
+            server.admit_connection().unwrap();
+        }
+        let worker_release = release.clone();
+        let worker = std::thread::spawn(move || {
+            while !worker_release.load(Ordering::Acquire) {
+                std::thread::yield_now();
+            }
+        });
+        {
+            let mut server = state.lock().unwrap();
+            server.track_connection_worker(worker);
+        }
+        let started = Instant::now();
+        assert_eq!(
+            drain_server(&state, 1, false),
+            Err("server drain timed out with active connections")
+        );
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
+
+        release.store(true, Ordering::Release);
+        state.lock().unwrap().release_connection();
+        loop {
+            let finished = {
+                let mut server = state.lock().unwrap();
+                server.reap_finished_workers();
+                server.tracked_worker_count() == 0
+            };
+            if finished {
+                break;
+            }
+            std::thread::yield_now();
+        }
+    }
+
+    #[test]
+    fn drain_server_bounds_listener_join_at_the_minimum_timeout() {
+        let state = Arc::new(Mutex::new(ServerState::new()));
+        let release = Arc::new(AtomicBool::new(false));
+        let listener_release = release.clone();
+        let listener = std::thread::spawn(move || {
+            while !listener_release.load(Ordering::Acquire) {
+                std::thread::yield_now();
+            }
+        });
+        state.lock().unwrap().install_listener(listener).unwrap();
+
+        assert_eq!(
+            drain_server(&state, 1, false),
+            Err("server listener join timed out")
+        );
+        release.store(true, Ordering::Release);
+        drain_server(&state, 1000, false).unwrap();
     }
 }

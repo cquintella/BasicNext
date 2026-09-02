@@ -1,10 +1,54 @@
 use std::time::{Duration, UNIX_EPOCH};
 
+use std::{fs, sync::atomic::{AtomicU64, Ordering}};
+
     use super::{
         Value, coerce, default_span, host_random_seed, integer_from_i128_count, is_value,
         system_timestamp_ms,
     };
     use crate::semantic::{FloatType, IntegerType, Type};
+
+    #[test]
+    fn web_callback_uses_a_fresh_executor_and_projects_response() {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "basicnext-web-callback-{}-{}.bn",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let source = r#"IMPORT BNWeb AS Web
+FUNCTION Handler(request AS Web.Request, response AS Web.Response) AS VOID
+response.SetStatus(207)
+response.Write("isolated")
+END FUNCTION
+FUNCTION Start() AS VOID
+END FUNCTION
+"#;
+        fs::write(&path, source).expect("write callback fixture");
+        let graph = crate::module_graph::load(path.to_str().expect("fixture path"))
+            .expect("load callback fixture");
+        let models = crate::semantic::analyze_modules(&graph).expect("analyze callback fixture");
+        let module = crate::ir::lower_graph(&graph, &models).expect("lower callback fixture");
+        let request = crate::web::Request::new(
+            "GET",
+            "/callback",
+            Vec::new(),
+            "",
+            "127.0.0.1".parse().expect("peer address"),
+        )
+        .expect("construct callback request");
+        let response = super::execute_web_callback(
+            &module,
+            &super::HostEnv::fixed(vec!["callback.bn".into()], 0, 0),
+            "Handler",
+            request,
+            crate::web::Response::new(),
+        )
+        .expect("execute callback");
+        let _ = fs::remove_file(path);
+        assert_eq!(response.status, 207);
+        assert_eq!(response.body, "isolated");
+    }
 
     #[test]
     fn system_random_seed_is_never_zero() {

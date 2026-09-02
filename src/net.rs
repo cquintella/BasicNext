@@ -25,6 +25,7 @@ impl Address {
     }
 }
 
+#[derive(Debug)]
 pub struct TcpStream {
     inner: std::net::TcpStream,
 }
@@ -114,6 +115,30 @@ impl TcpListener {
         })
     }
 
+    pub fn bind_with_backlog(endpoint: Endpoint, backlog: usize) -> std::io::Result<Self> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_io()
+            .build()
+            .map_err(std::io::Error::other)?;
+        runtime
+            .block_on(async move {
+                let socket = match endpoint.address().as_std() {
+                    IpAddr::V4(_) => tokio::net::TcpSocket::new_v4()?,
+                    IpAddr::V6(_) => tokio::net::TcpSocket::new_v6()?,
+                };
+                socket.set_reuseaddr(true)?;
+                socket.bind(std::net::SocketAddr::new(
+                    endpoint.address().as_std(),
+                    endpoint.port(),
+                ))?;
+                let listener = socket.listen(u32::try_from(backlog).map_err(|_| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "backlog is too large")
+                })?)?;
+                listener.into_std()
+            })
+            .map(|inner| Self { inner })
+    }
+
     pub fn accept(&self) -> std::io::Result<TcpStream> {
         let (inner, _) = self.inner.accept()?;
         Ok(TcpStream { inner })
@@ -171,6 +196,12 @@ impl TcpStream {
                 &std::net::SocketAddr::new(endpoint.address().as_std(), endpoint.port()),
                 timeout,
             )?,
+        })
+    }
+
+    pub(crate) fn try_clone(&self) -> std::io::Result<Self> {
+        Ok(Self {
+            inner: self.inner.try_clone()?,
         })
     }
 

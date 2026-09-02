@@ -105,6 +105,8 @@ pub(crate) fn analyze_function<'a>(
                     values.insert(*destination, Type::Integer(IntegerType::Int32));
                 }
                 Instruction::Length { .. }
+                | Instruction::DispatchSubmit { .. }
+                | Instruction::DispatchAwait { .. }
                 | Instruction::Print { .. }
                 | Instruction::Vector { .. }
                 | Instruction::Member { .. }
@@ -273,7 +275,9 @@ fn validate_instruction(
         } => printed
             .iter()
             .all(|value| values.get(value).is_some_and(printable_type)),
-        Instruction::Vector { .. }
+        Instruction::DispatchSubmit { .. }
+        | Instruction::DispatchAwait { .. }
+        | Instruction::Vector { .. }
         | Instruction::ClearScreen { .. }
         | Instruction::Beep { .. }
         | Instruction::Member { .. }

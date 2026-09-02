@@ -20,10 +20,10 @@ KERNEL_INFO = {
     "status": "ok",
     "protocol_version": "5.3",
     "implementation": "bn",
-    "implementation_version": "0.3.0.dev0",
+    "implementation_version": "0.4.0",
     "language_info": {
         "name": "basicnext",
-        "version": "0.3.0",
+        "version": "0.4.0",
         "mimetype": "text/x-basicnext",
         "file_extension": ".bn",
     },
@@ -52,6 +52,7 @@ class JupyterKernel:
         self._execution_count = 0
         self._alive = True
         self._child = None
+        self._heartbeat_thread = None
         self._sockets = {}
         for channel in ("shell", "control", "iopub", "stdin", "hb"):
             kind = (
@@ -97,6 +98,10 @@ class JupyterKernel:
         while self._alive:
             if poller.poll(100):
                 socket.send(socket.recv())
+
+    def _close_sockets(self) -> None:
+        for socket in self._sockets.values():
+            socket.close(0)
 
     def _stop_child(self) -> None:
         child = self._child
@@ -177,6 +182,9 @@ class JupyterKernel:
                 stdout_thread.join()
                 stderr_thread.join()
                 returncode = process.wait()
+                for stream in (process.stdin, process.stdout, process.stderr):
+                    if stream is not None:
+                        stream.close()
                 self._child = None
         return output[0] if output else "", "".join(errors) or None, returncode
 
@@ -230,13 +238,18 @@ class JupyterKernel:
         return None
 
     def serve(self) -> None:
-        threading.Thread(target=self._heartbeat_loop, daemon=True).start()
+        self._heartbeat_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
+        self._heartbeat_thread.start()
         poller = self._zmq.Poller()
         poller.register(self._sockets["shell"], self._zmq.POLLIN)
         poller.register(self._sockets["control"], self._zmq.POLLIN)
         while self._alive:
             events = dict(poller.poll(100))
             if self._sockets["control"] in events and self._dispatch("control", timeout_ms=0) == "shutdown":
-                return
+                break
             if self._sockets["shell"] in events and self._dispatch("shell", timeout_ms=0) == "shutdown":
-                return
+                break
+        heartbeat = self._heartbeat_thread
+        if heartbeat is not None and heartbeat is not threading.current_thread():
+            heartbeat.join(timeout=1)
+        self._close_sockets()

@@ -25,7 +25,7 @@ use bn::{
     token::Token,
 };
 
-const VERSION: &str = "bn 0.2.0";
+const VERSION: &str = "bn 0.4.0";
 
 #[must_use]
 fn language_error() -> ExitCode {

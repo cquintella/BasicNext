@@ -353,6 +353,9 @@ pub(crate) fn instruction_name(instruction: &Instruction) -> &'static str {
         Instruction::Binary { .. } => "binary operations",
         Instruction::Cast { .. } => "casts",
         Instruction::Call { .. } => "calls",
+        Instruction::DispatchSubmit { .. } | Instruction::DispatchAwait { .. } => {
+            "asynchronous dispatch"
+        }
         Instruction::Input { .. } => "INPUT",
         Instruction::Vector { .. } => "vectors",
         Instruction::Index { .. } => "indexing",

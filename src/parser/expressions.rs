@@ -59,6 +59,12 @@ impl<'a> ExpressionParser<'a> {
 
     #[allow(clippy::too_many_lines)] // Primary-expression alternatives mirror the grammar.
     fn prefix(&mut self) -> Result<Expression, Diagnostic> {
+        if self.keyword("ASYNC") {
+            return self.async_submit();
+        }
+        if self.keyword("AWAIT") {
+            return self.await_expression();
+        }
         if self.keyword("INPUT") {
             let start = self.take().span.start;
             self.expect_symbol(Symbol::LeftParen)?;
@@ -236,6 +242,78 @@ impl<'a> ExpressionParser<'a> {
             });
         }
         Err(self.error("expected expression"))
+    }
+
+    fn async_submit(&mut self) -> Result<Expression, Diagnostic> {
+        let start = self.take().span.start;
+        // The queue operand is intentionally a single primary in the initial
+        // contract; parsing it without consuming the target keeps the sugar
+        // equivalent to `queue.Async(Function, ...)`.
+        let queue = self.prefix()?;
+        let target = self.identifier_token()?;
+        let target_name = match &target.kind {
+            TokenKind::Identifier(name) => name.clone(),
+            _ => unreachable!(),
+        };
+        self.expect_symbol(Symbol::LeftParen)?;
+        let mut arguments = vec![Expression {
+            kind: ExpressionKind::Name { name: target_name },
+            span: target.span,
+        }];
+        if !self.symbol(Symbol::RightParen) {
+            loop {
+                arguments.push(self.expression(0)?);
+                if !self.symbol(Symbol::Comma) {
+                    break;
+                }
+                self.take();
+            }
+        }
+        let end = self.expect_symbol(Symbol::RightParen)?.end;
+        let member = Expression {
+            span: Span {
+                start: queue.span.start,
+                end: target.span.end,
+            },
+            kind: ExpressionKind::Member {
+                object: Box::new(queue),
+                name: "Async".into(),
+            },
+        };
+        Ok(Expression {
+            span: Span { start, end },
+            kind: ExpressionKind::Call {
+                callee: Box::new(member),
+                arguments,
+            },
+        })
+    }
+
+    fn await_expression(&mut self) -> Result<Expression, Diagnostic> {
+        let start = self.take().span.start;
+        let ticket = self.prefix()?;
+        self.expect_symbol(Symbol::LeftParen)?;
+        let timeout = self.expression(0)?;
+        let end = self.expect_symbol(Symbol::RightParen)?.end;
+        let member = Expression {
+            // Keep a distinct span from the receiver: the IR model indexes
+            // resolved expression types by span.
+            span: Span {
+                start: ticket.span.start,
+                end: timeout.span.start,
+            },
+            kind: ExpressionKind::Member {
+                object: Box::new(ticket),
+                name: "Wait".into(),
+            },
+        };
+        Ok(Expression {
+            span: Span { start, end },
+            kind: ExpressionKind::Call {
+                callee: Box::new(member),
+                arguments: vec![timeout],
+            },
+        })
     }
     fn call(&mut self, callee: Expression) -> Result<Expression, Diagnostic> {
         self.take();

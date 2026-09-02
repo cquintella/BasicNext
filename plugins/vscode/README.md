@@ -10,7 +10,7 @@ VSIX file:
 ```sh
 cd plugins/vscode
 npx --yes @vscode/vsce package --allow-missing-repository
-code --install-extension basicnext-0.3.0.vsix
+code --install-extension basicnext-0.4.0.vsix
 ```
 
 Restart VS Code completely after installing or updating the extension. The
@@ -38,12 +38,14 @@ executable.
 - Use **Basic Next: Build and Run** or `Cmd+Shift+F5` (`Ctrl+Shift+F5`) to
   build a temporary native artifact and execute it. It works for the current
   supported `bn build` subset.
-- The Run and Debug view exposes **Run Basic Next** as a launch-only adapter.
-  It opens an integrated terminal and executes `bn run`; VS Code does not
-  receive the child-process lifetime from that terminal. End the launch
-  session with Stop/Disconnect after the program exits.
-
-Breakpoints, process tracking, and step debugging are not implemented yet.
+- The Run and Debug view exposes **Run Basic Next** through the native `bn dap`
+  service. The adapter forwards DAP over bounded local stdio; it does not open
+  a terminal or execute `bn run` for a debug session.
+- Breakpoints, pause, continue, stack/scopes/variables, and stepping are
+  debugger operations. Stepping follows interpreter IR instructions carrying
+  Basic Next source spans: multiple instructions may map to one source line,
+  and loops may revisit a line. The debugger is not a REPL and does not
+  evaluate arbitrary expressions.
 
 The bundled TextMate grammar is synchronized with
 `docs/library/basicnext.tmLanguage.json`.

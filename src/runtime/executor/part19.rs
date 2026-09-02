@@ -70,6 +70,22 @@ pub(crate) fn web_response_call(&mut self, name: &str, arguments: &[Value], span
                         |()| Value::Null,
                     ))
                 }
+                "Header" => {
+                    require_arity(name, arguments, 2, span)?;
+                    let Value::String(key) = &arguments[1] else {
+                        return Err(runtime_error(
+                            "TYPE_MISMATCH",
+                            "response header name must be STRING",
+                            span,
+                        ));
+                    };
+                    response
+                        .headers
+                        .iter()
+                        .find(|(name, _)| name.eq_ignore_ascii_case(key))
+                        .map(|(_, value)| Value::String(value.clone()))
+                        .ok_or_else(|| runtime_error("HEADER_NOT_FOUND", "response header is not present", span))
+                }
                 "Write" => {
                     require_arity(name, arguments, 2, span)?;
                     let Value::String(body) = &arguments[1] else {

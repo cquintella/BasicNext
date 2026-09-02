@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Parses the 0.2 keyword registry and EBNF productions.
+//! Parses the versioned keyword registry and EBNF productions.
 //!
 //! `build.rs` includes this file by path so the generator and the U1 tests
 //! share one parser. It has no `crate::` imports.

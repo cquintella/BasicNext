@@ -3,6 +3,149 @@
 use std::{collections::HashMap, net::IpAddr};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct EgressPolicy {
+    schemes: Option<Vec<String>>,
+    cidrs: Option<Vec<crate::net::Cidr>>,
+    ports: Option<Vec<u16>>,
+    max_redirects: usize,
+    total_deadline_ms: u64,
+}
+
+impl Default for EgressPolicy {
+    fn default() -> Self {
+        let limits = crate::config::web_limits();
+        Self {
+            schemes: None,
+            cidrs: None,
+            ports: None,
+            max_redirects: limits.redirects,
+            total_deadline_ms: limits.connection_total_ms,
+        }
+    }
+}
+
+impl EgressPolicy {
+    pub(crate) fn from_csv(
+        schemes: &str,
+        cidrs: &str,
+        ports: &str,
+        max_redirects: usize,
+        total_deadline_ms: u64,
+    ) -> Result<Self, &'static str> {
+        let schemes = Some(parse_csv(schemes, |value| match value {
+            "http" | "https" => Ok(value.to_owned()),
+            _ => Err("egress policy contains an unsupported scheme"),
+        })?);
+        let limits = crate::config::web_limits();
+        let cidrs = Some(parse_csv(cidrs, crate::net::Cidr::parse)?);
+        let ports = Some(parse_csv(ports, |value| {
+            value
+                .parse::<u16>()
+                .map_err(|_| "egress policy contains an invalid port")
+        })?);
+        if schemes
+            .as_ref()
+            .is_some_and(|values| values.len() > limits.egress_list_max)
+            || cidrs
+                .as_ref()
+                .is_some_and(|values| values.len() > limits.egress_list_max)
+            || ports
+                .as_ref()
+                .is_some_and(|values| values.len() > limits.egress_list_max)
+        {
+            return Err("egress policy list exceeds configured capacity");
+        }
+        Self::new(schemes, cidrs, ports, max_redirects, total_deadline_ms)
+    }
+
+    pub(crate) fn new(
+        schemes: Option<Vec<String>>,
+        cidrs: Option<Vec<crate::net::Cidr>>,
+        ports: Option<Vec<u16>>,
+        max_redirects: usize,
+        total_deadline_ms: u64,
+    ) -> Result<Self, &'static str> {
+        let limits = crate::config::web_limits();
+        if !(1..=limits.redirects_max).contains(&max_redirects)
+            || !(1..=limits.connection_total_max_ms).contains(&total_deadline_ms)
+        {
+            return Err("egress policy value is outside the configured bounds");
+        }
+        if schemes.as_ref().is_some_and(|values| {
+            values.is_empty()
+                || values
+                    .iter()
+                    .any(|scheme| !matches!(scheme.as_str(), "http" | "https"))
+        }) {
+            return Err("egress policy contains an unsupported scheme");
+        }
+        if ports.as_ref().is_some_and(|values| values.contains(&0)) {
+            return Err("egress policy contains an invalid port");
+        }
+        Ok(Self {
+            schemes,
+            cidrs,
+            ports,
+            max_redirects,
+            total_deadline_ms,
+        })
+    }
+
+    pub(crate) fn validate(
+        &self,
+        scheme: &str,
+        port: u16,
+        addresses: &[IpAddr],
+    ) -> Result<(), &'static str> {
+        if self
+            .schemes
+            .as_ref()
+            .is_some_and(|values| !values.iter().any(|value| value == scheme))
+            || self
+                .ports
+                .as_ref()
+                .is_some_and(|values| !values.contains(&port))
+        {
+            return Err("destination is outside the egress policy");
+        }
+        validate_ssrf_destinations(addresses, false)?;
+        if let Some(cidrs) = &self.cidrs
+            && (cidrs.is_empty()
+                || !addresses.iter().any(|address| {
+                    let address = match address {
+                        IpAddr::V4(address) => IpAddr::V4(*address),
+                        IpAddr::V6(address) => {
+                            address.to_ipv4().map_or(IpAddr::V6(*address), IpAddr::V4)
+                        }
+                    };
+                    crate::net::Address::parse(&address.to_string())
+                        .is_ok_and(|address| cidrs.iter().any(|cidr| cidr.contains(address)))
+                }))
+        {
+            return Err("destination is outside the egress CIDR allowlist");
+        }
+        Ok(())
+    }
+
+    pub(crate) const fn max_redirects(&self) -> usize {
+        self.max_redirects
+    }
+    pub(crate) const fn total_deadline_ms(&self) -> u64 {
+        self.total_deadline_ms
+    }
+}
+
+fn parse_csv<T, F>(input: &str, parse: F) -> Result<Vec<T>, &'static str>
+where
+    F: Fn(&str) -> Result<T, &'static str>,
+{
+    if input.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    input.split(',').map(str::trim).map(parse).collect()
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct Target {
     pub path: String,
     pub query: String,
@@ -34,7 +177,7 @@ impl Request {
         }
         let target = canonical_target(raw_target)?;
         validate_headers(&headers)?;
-        bounded_body(body, MAX_RESPONSE_BODY as i128)?;
+        bounded_body(body, crate::config::web_limits().max_body_bytes as i128)?;
         Ok(Self {
             method: method.into(),
             target,
@@ -71,12 +214,7 @@ impl Request {
     }
 }
 
-const MAX_RESPONSE_BODY: usize = 8 * 1024 * 1024;
-const MAX_HEADER_BYTES: usize = 64 * 1024;
-const MAX_HEADER_FIELDS: usize = 100;
-const MAX_TARGET_BYTES: usize = 8 * 1024;
-
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct Response {
     pub status: u16,
     pub headers: Vec<(String, String)>,
@@ -121,7 +259,7 @@ impl Response {
             .sum::<usize>()
             + name.len()
             + value.len()
-            > MAX_HEADER_BYTES
+            > crate::config::web_limits().max_header_bytes
         {
             return Err("response headers exceed 64 KiB");
         }
@@ -132,7 +270,7 @@ impl Response {
         if self.committed || self.closed {
             return Err("response is already committed or closed");
         }
-        if self.body.len() + body.len() > MAX_RESPONSE_BODY {
+        if self.body.len() + body.len() > crate::config::web_limits().max_response_body_bytes {
             return Err("response body exceeds 8 MiB");
         }
         self.body.push_str(body);
@@ -161,7 +299,7 @@ impl Response {
 
 pub(crate) fn canonical_target(raw: &str) -> Result<Target, &'static str> {
     if raw.is_empty()
-        || raw.len() > MAX_TARGET_BYTES
+        || raw.len() > crate::config::web_limits().max_target_bytes
         || raw
             .bytes()
             .any(|byte| byte == b'\\' || byte < 0x20 || byte == 0x7f)
@@ -195,20 +333,24 @@ pub(crate) fn canonical_target(raw: &str) -> Result<Target, &'static str> {
 }
 
 pub(crate) fn query_values(query: &str, name: &str) -> Result<Vec<String>, &'static str> {
-    if query.len() > MAX_TARGET_BYTES {
+    if query.len() > crate::config::web_limits().max_target_bytes {
         return Err("query exceeds 8 KiB");
     }
     let mut values = Vec::new();
     let mut field_count = 0;
     for pair in query.split('&').filter(|pair| !pair.is_empty()) {
         field_count += 1;
-        if pair.len() > 8 * 1024 || field_count > 100 {
+        if pair.len() > crate::config::web_limits().max_target_bytes
+            || field_count > crate::config::web_limits().max_header_fields
+        {
             return Err("query fields exceed bounds");
         }
         let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
         let key = decode_component(key)?;
         let value = decode_component(value)?;
-        if key.len() > 1024 || value.len() > 8 * 1024 {
+        if key.len() > crate::config::web_limits().max_target_bytes
+            || value.len() > crate::config::web_limits().max_target_bytes
+        {
             return Err("query key or value exceeds bounds");
         }
         if key == name {
@@ -254,12 +396,12 @@ pub(crate) fn header_values(
 }
 
 fn validate_headers(headers: &[(String, String)]) -> Result<(), &'static str> {
-    if headers.len() > MAX_HEADER_FIELDS
+    if headers.len() > crate::config::web_limits().max_header_fields
         || headers
             .iter()
             .map(|(name, value)| name.len() + value.len())
             .sum::<usize>()
-            > MAX_HEADER_BYTES
+            > crate::config::web_limits().max_header_bytes
     {
         return Err("request headers exceed bounds");
     }
@@ -309,7 +451,7 @@ pub(crate) fn validate_client_url(url: &str) -> Result<(), &'static str> {
 }
 
 pub(crate) fn bounded_body(body: &str, maximum: i128) -> Result<&str, &'static str> {
-    if maximum < 0 || maximum > MAX_RESPONSE_BODY as i128 {
+    if maximum < 0 || maximum > crate::config::web_limits().max_response_body_bytes as i128 {
         return Err("body limit exceeds 8 MiB");
     }
     let maximum = usize::try_from(maximum).map_err(|_| "body limit is invalid")?;
@@ -330,15 +472,10 @@ pub(crate) fn validate_ssrf_destinations(
         return Err("URL resolved to no addresses");
     }
     if addresses.iter().any(|address| match address {
-        IpAddr::V4(address) => {
-            address.is_private()
-                || address.is_loopback()
-                || address.is_link_local()
-                || address.is_multicast()
-                || address.is_unspecified()
-        }
+        IpAddr::V4(address) => is_sensitive_ipv4(*address),
         IpAddr::V6(address) => {
-            address.is_loopback()
+            address.to_ipv4().is_some_and(is_sensitive_ipv4)
+                || address.is_loopback()
                 || address.is_unicast_link_local()
                 || address.is_multicast()
                 || address.is_unspecified()
@@ -348,6 +485,22 @@ pub(crate) fn validate_ssrf_destinations(
         return Err("private or local destination requires explicit opt-in");
     }
     Ok(())
+}
+
+fn is_sensitive_ipv4(address: std::net::Ipv4Addr) -> bool {
+    let octets = address.octets();
+    let first = octets[0];
+    let second = octets[1];
+    address.is_private()
+        || address.is_loopback()
+        || address.is_link_local()
+        || address.is_multicast()
+        || address.is_unspecified()
+        || (first == 100 && (64..=127).contains(&second))
+        || (first == 192 && second == 0 && octets[2] == 2)
+        || (first == 198 && second == 51 && octets[2] == 100)
+        || (first == 203 && second == 0 && octets[2] == 113)
+        || (first == 198 && (18..=19).contains(&second))
 }
 
 pub(crate) fn effective_client_address(
@@ -395,11 +548,13 @@ fn hex(byte: u8) -> Option<u8> {
 }
 
 mod routing;
-pub(crate) use routing::{Route, RouteOutcome, dispatch_route, valid_method, valid_route_pattern};
+pub(crate) use routing::{
+    Route, RouteOutcome, dispatch_route, route_for_request, valid_method, valid_route_pattern,
+};
 #[cfg(test)]
-pub(crate) use routing::{allowed_methods, route_for_request, select_route};
+pub(crate) use routing::{allowed_methods, select_route};
 mod server;
-pub(crate) use server::ServerState;
+pub(crate) use server::{ConnectionWork, ServerOptions, ServerState, ServerStatus};
 
 #[cfg(test)]
 mod tests;

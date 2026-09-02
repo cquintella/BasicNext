@@ -5,6 +5,7 @@ use super::*;
 pub(crate) fn lower_callable(
     model: &SemanticModel,
     name: &str,
+    asynchronous: bool,
     signature: Option<&FunctionSignature>,
     parameters: &[crate::ast::Parameter],
     statements: &[Statement],
@@ -84,6 +85,7 @@ pub(crate) fn lower_callable(
     };
     Ok(Function {
         name: name.into(),
+        asynchronous,
         parameters: parameter_ids,
         return_type,
         entry: BlockId(0),
