@@ -298,7 +298,7 @@ fn validate_instruction(
             module,
             function,
             instruction,
-            instruction_name(instruction),
+            &unsupported_instruction_detail(instruction),
         ))
     }
 }

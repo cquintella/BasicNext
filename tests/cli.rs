@@ -169,6 +169,17 @@ fn build_emits_integer_start_exit_code() {
 
 #[test]
 fn build_reports_the_user_function_that_blocks_kmp() {
+    let check = bn()
+        .args(["check", "examples/kmp.bn"])
+        .output()
+        .expect("check KMP");
+    assert_eq!(check.status.code(), Some(0));
+    let run = bn()
+        .args(["run", "examples/kmp.bn"])
+        .output()
+        .expect("run KMP");
+    assert_eq!(run.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&run.stdout).contains("Encontrado padrao no indice 10"));
     let output = bn()
         .args(["build", "examples/kmp.bn"])
         .output()
@@ -178,6 +189,32 @@ fn build_reports_the_user_function_that_blocks_kmp() {
     assert!(stderr.contains("examples/kmp.bn:76:5"));
     assert!(stderr.contains("user-defined function 'KMPSearch'"));
     assert!(stderr.contains("use 'bn run' or inline the call"));
+}
+
+#[test]
+fn build_reports_the_type_for_unsupported_vector_lowering() {
+    let output = bn()
+        .args(["build", "tests/grammar/valid/multidimensional-vectors.bn"])
+        .output()
+        .expect("run vector build");
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("LLVM lowering for vector type"));
+    assert!(stderr.contains("INTEGER(INT32)[3]"));
+    assert!(stderr.contains("FUNCTION Start"));
+}
+
+#[test]
+fn build_reports_the_type_for_unsupported_allocation_lowering() {
+    let output = bn()
+        .args(["build", "tests/grammar/valid/pointer-void.bn"])
+        .output()
+        .expect("run pointer build");
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("LLVM lowering for allocation"));
+    assert!(stderr.contains("POINTER TO INTEGER(INT32)"));
+    assert!(stderr.contains("FUNCTION Start"));
 }
 
 #[test]

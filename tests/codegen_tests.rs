@@ -197,7 +197,8 @@ fn lower_module_rejects_unsupported_dead_vector_path() {
     ]);
     let error = lower_module(&module).expect_err("vector lowering must be rejected");
     assert!(error.contains("BUILD_LOWERING_UNAVAILABLE"));
-    assert!(error.contains("vectors"));
+    assert!(error.contains("LLVM lowering for vector type"));
+    assert!(error.contains("INTEGER(INT32)"));
     assert!(error.contains("Start"));
     assert!(error.contains("1:1"));
 }
