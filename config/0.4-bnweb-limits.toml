@@ -11,6 +11,7 @@ pending_work_default = 128
 pending_work_max = 512
 worker_count_default = 8
 worker_count_max = 64
+socket_handles_max = 256
 
 [http]
 max_header_bytes_default = 65536
@@ -35,6 +36,7 @@ stop_drain_max = 60000
 
 [client]
 resolved_addresses_max = 16
+datagram_max_bytes = 65536
 redirects_default = 10
 redirects_max = 10
 egress_list_max = 64
@@ -53,6 +55,12 @@ request_id_bytes = 16
 session_id_min_bytes = 16
 
 [dispatch]
+worker_count_default = 8
+worker_count_max = 64
+pending_tickets_default = 128
+pending_tickets_max = 1024
+timeout_min_ms = 1
+timeout_max_ms = 60000
 output_max_bytes = 65536
 concurrent_handlers_default = 0
 

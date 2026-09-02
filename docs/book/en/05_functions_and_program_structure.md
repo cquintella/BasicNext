@@ -45,7 +45,7 @@ FUNCTION Start() AS VOID
 END FUNCTION
 ```
 
-In version 0.2, only module-level functions and `STATIC` class methods can be used as function values. Instance methods cannot be stored this way, and there are no lambdas or closures.
+In version 0.3, only module-level functions and `STATIC` class methods can be used as function values. Instance methods cannot be stored this way, and there are no lambdas or closures.
 
 ## Modules and Visibility
 

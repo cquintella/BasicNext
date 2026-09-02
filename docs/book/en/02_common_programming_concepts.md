@@ -49,7 +49,7 @@ Floating-point numbers follow IEEE 754 semantics and include special values: `NA
 ### Boolean and String
 
 - `BOOLEAN` represents logical states with the keywords `TRUE` and `FALSE`.
-- `STRING` represents text. Strings are UTF-8 encoded and enclosed in double quotes. Line breaks inside strings are not permitted in version 0.2.
+- `STRING` represents text. Strings are UTF-8 encoded and enclosed in double quotes. Line breaks inside strings are not permitted in version 0.3.
 
 ### Temporal Types
 

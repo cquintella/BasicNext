@@ -12,6 +12,7 @@ pub(crate) struct WebLimits {
     pub pending_work_max: usize,
     pub worker_count: usize,
     pub worker_count_max: usize,
+    pub socket_handles_max: usize,
     pub max_header_bytes: usize,
     pub max_header_fields: usize,
     pub max_target_bytes: usize,
@@ -30,6 +31,7 @@ pub(crate) struct WebLimits {
     pub stop_drain_ms: u64,
     pub stop_drain_max_ms: u64,
     pub resolved_addresses_max: usize,
+    pub datagram_max_bytes: usize,
     pub redirects: usize,
     pub redirects_max: usize,
     pub egress_list_max: usize,
@@ -43,11 +45,27 @@ pub(crate) struct WebLimits {
     pub session_id_min_bytes: usize,
     pub async_output_max_bytes: usize,
     pub concurrent_handlers: bool,
+    pub dispatch: DispatchLimits,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct DispatchLimits {
+    pub worker_count: usize,
+    pub worker_count_max: usize,
+    pub pending_tickets: usize,
+    pub pending_tickets_max: usize,
+    pub timeout_min_ms: i128,
+    pub timeout_max_ms: i128,
+    pub output_max_bytes: usize,
 }
 
 pub(crate) fn web_limits() -> &'static WebLimits {
     static LIMITS: OnceLock<WebLimits> = OnceLock::new();
     LIMITS.get_or_init(|| parse_registry(LIMITS_REGISTRY).expect("invalid embedded 0.4 limits"))
+}
+
+pub(crate) fn dispatch_limits() -> &'static DispatchLimits {
+    &web_limits().dispatch
 }
 
 fn parse_registry(text: &str) -> Result<WebLimits, String> {
@@ -77,6 +95,15 @@ fn parse_registry(text: &str) -> Result<WebLimits, String> {
     let usize_value = |section: &str, key: &str| {
         usize::try_from(get(section, key)?).map_err(|_| format!("value too large: {section}.{key}"))
     };
+    let dispatch = DispatchLimits {
+        worker_count: usize_value("dispatch", "worker_count_default")?,
+        worker_count_max: usize_value("dispatch", "worker_count_max")?,
+        pending_tickets: usize_value("dispatch", "pending_tickets_default")?,
+        pending_tickets_max: usize_value("dispatch", "pending_tickets_max")?,
+        timeout_min_ms: i128::from(get("dispatch", "timeout_min_ms")?),
+        timeout_max_ms: i128::from(get("dispatch", "timeout_max_ms")?),
+        output_max_bytes: usize_value("dispatch", "output_max_bytes")?,
+    };
     let limits = WebLimits {
         active_connections: usize_value("connections", "active_default")?,
         active_connections_max: usize_value("connections", "active_max")?,
@@ -86,6 +113,7 @@ fn parse_registry(text: &str) -> Result<WebLimits, String> {
         pending_work_max: usize_value("connections", "pending_work_max")?,
         worker_count: usize_value("connections", "worker_count_default")?,
         worker_count_max: usize_value("connections", "worker_count_max")?,
+        socket_handles_max: usize_value("connections", "socket_handles_max")?,
         max_header_bytes: usize_value("http", "max_header_bytes_default")?,
         max_header_fields: usize_value("http", "max_header_fields_default")?,
         max_target_bytes: usize_value("http", "max_target_bytes_default")?,
@@ -104,6 +132,7 @@ fn parse_registry(text: &str) -> Result<WebLimits, String> {
         stop_drain_ms: get("timeouts_ms", "stop_drain_default")?,
         stop_drain_max_ms: get("timeouts_ms", "stop_drain_max")?,
         resolved_addresses_max: usize_value("client", "resolved_addresses_max")?,
+        datagram_max_bytes: usize_value("client", "datagram_max_bytes")?,
         redirects: usize_value("client", "redirects_default")?,
         redirects_max: usize_value("client", "redirects_max")?,
         egress_list_max: usize_value("client", "egress_list_max")?,
@@ -115,15 +144,23 @@ fn parse_registry(text: &str) -> Result<WebLimits, String> {
         rate_limit_refill_per_second_max: usize_value("rate_limit", "refill_per_second_max")?,
         request_id_bytes: usize_value("identity", "request_id_bytes")?,
         session_id_min_bytes: usize_value("identity", "session_id_min_bytes")?,
-        async_output_max_bytes: usize_value("dispatch", "output_max_bytes")?,
+        async_output_max_bytes: dispatch.output_max_bytes,
         concurrent_handlers: get("dispatch", "concurrent_handlers_default")? != 0,
+        dispatch,
     };
     if limits.active_connections > limits.active_connections_max
         || limits.backlog > limits.backlog_max
         || limits.pending_work > limits.pending_work_max
         || limits.worker_count > limits.worker_count_max
+        || limits.socket_handles_max == 0
+        || limits.datagram_max_bytes == 0
         || limits.max_body_bytes > limits.max_response_body_bytes
         || limits.redirects > limits.redirects_max
+        || dispatch.worker_count > dispatch.worker_count_max
+        || dispatch.pending_tickets > dispatch.pending_tickets_max
+        || dispatch.timeout_min_ms < 1
+        || dispatch.timeout_min_ms > dispatch.timeout_max_ms
+        || dispatch.timeout_max_ms > 60_000
     {
         return Err("registry default exceeds maximum".into());
     }
@@ -143,6 +180,12 @@ mod tests {
         assert_eq!(limits.backlog_max, 128);
         assert_eq!(limits.max_body_bytes, 8 * 1024 * 1024);
         assert_eq!(limits.session_id_min_bytes, 16);
+        assert_eq!(limits.dispatch.worker_count, 8);
+        assert_eq!(limits.dispatch.worker_count_max, 64);
+        assert_eq!(limits.dispatch.pending_tickets_max, 1_024);
+        assert_eq!(limits.dispatch.timeout_max_ms, 60_000);
+        assert_eq!(limits.socket_handles_max, 256);
+        assert_eq!(limits.datagram_max_bytes, 65_536);
     }
 
     #[test]

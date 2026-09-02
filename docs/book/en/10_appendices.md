@@ -41,3 +41,4 @@ External provider-backed modules are documented in separate appendices:
 - [`BNWeb`](13_bnweb.md)
 - [`BNData`](14_bndata.md)
 - [External module conventions](15_external_modules.md)
+- [`BNDispatch`](16_bndispatch.md)

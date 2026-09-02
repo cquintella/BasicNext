@@ -6,6 +6,33 @@ use std::{
     str::FromStr,
 };
 
+fn resolver_tasks() -> &'static std::sync::Mutex<Vec<std::thread::JoinHandle<()>>> {
+    static TASKS: std::sync::OnceLock<std::sync::Mutex<Vec<std::thread::JoinHandle<()>>>> =
+        std::sync::OnceLock::new();
+    TASKS.get_or_init(|| std::sync::Mutex::new(Vec::new()))
+}
+
+fn reap_resolver_tasks() {
+    let tasks = resolver_tasks();
+    let mut tasks = tasks.lock().expect("resolver task registry poisoned");
+    let mut index = 0;
+    while index < tasks.len() {
+        if tasks[index].is_finished() {
+            let task = tasks.swap_remove(index);
+            let _ = task.join();
+        } else {
+            index += 1;
+        }
+    }
+}
+
+fn retain_resolver_task(task: std::thread::JoinHandle<()>) {
+    resolver_tasks()
+        .lock()
+        .expect("resolver task registry poisoned")
+        .push(task);
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct Address(IpAddr);
 
@@ -53,6 +80,15 @@ impl UdpSocket {
 
     #[allow(clippy::missing_errors_doc)]
     pub fn send_to(&self, endpoint: Endpoint, bytes: &[u8]) -> std::io::Result<usize> {
+        let address = endpoint.address().as_std();
+        if address.is_multicast()
+            || matches!(address, IpAddr::V4(value) if value == std::net::Ipv4Addr::BROADCAST || value.octets()[3] == u8::MAX)
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "multicast and broadcast datagrams are denied",
+            ));
+        }
         self.inner.send_to(
             bytes,
             std::net::SocketAddr::new(endpoint.address().as_std(), endpoint.port()),
@@ -148,28 +184,31 @@ impl TcpListener {
         &self,
         timeout: std::time::Duration,
     ) -> std::io::Result<Option<TcpStream>> {
-        self.inner.set_nonblocking(true)?;
-        let deadline = std::time::Instant::now() + timeout;
-        loop {
-            match self.accept() {
-                Ok(stream) => {
-                    stream.inner.set_nonblocking(false)?;
-                    self.inner.set_nonblocking(false)?;
-                    return Ok(Some(stream));
+        let listener = self.inner.try_clone()?;
+        listener.set_nonblocking(true)?;
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_io()
+            .enable_time()
+            .build()
+            .map_err(std::io::Error::other)?;
+        runtime.block_on(async move {
+            match tokio::time::timeout(timeout, async {
+                tokio::net::TcpListener::from_std(listener)
+                    .map_err(std::io::Error::other)?
+                    .accept()
+                    .await
+            })
+            .await
+            {
+                Ok(Ok((stream, _))) => {
+                    let inner = stream.into_std()?;
+                    inner.set_nonblocking(false)?;
+                    Ok(Some(TcpStream { inner }))
                 }
-                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                    if std::time::Instant::now() >= deadline {
-                        self.inner.set_nonblocking(false)?;
-                        return Ok(None);
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(1));
-                }
-                Err(error) => {
-                    let _ = self.inner.set_nonblocking(false);
-                    return Err(error);
-                }
+                Ok(Err(error)) => Err(error),
+                Err(_) => Ok(None),
             }
-        }
+        })
     }
 
     pub fn local_endpoint(&self) -> std::io::Result<Endpoint> {
@@ -191,12 +230,13 @@ impl TcpStream {
     }
 
     pub fn connect(endpoint: Endpoint, timeout: std::time::Duration) -> std::io::Result<Self> {
-        Ok(Self {
-            inner: std::net::TcpStream::connect_timeout(
-                &std::net::SocketAddr::new(endpoint.address().as_std(), endpoint.port()),
-                timeout,
-            )?,
-        })
+        let inner = std::net::TcpStream::connect_timeout(
+            &std::net::SocketAddr::new(endpoint.address().as_std(), endpoint.port()),
+            timeout,
+        )?;
+        inner.set_read_timeout(Some(timeout))?;
+        inner.set_write_timeout(Some(timeout))?;
+        Ok(Self { inner })
     }
 
     pub(crate) fn try_clone(&self) -> std::io::Result<Self> {
@@ -374,16 +414,23 @@ pub fn resolve_timeout(
     maximum: usize,
     timeout: std::time::Duration,
 ) -> std::io::Result<Option<Vec<Address>>> {
-    // ponytail: detached resolver thread bounds caller wait; replace with cancellable OS API if available.
+    reap_resolver_tasks();
     let host = host.to_owned();
     let (sender, receiver) = std::sync::mpsc::sync_channel(1);
-    std::thread::spawn(move || {
+    let task = std::thread::spawn(move || {
         let _ = sender.send(resolve(&host, port, maximum));
     });
     match receiver.recv_timeout(timeout) {
-        Ok(result) => result.map(Some),
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Ok(None),
+        Ok(result) => {
+            let _ = task.join();
+            result.map(Some)
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            retain_resolver_task(task);
+            Ok(None)
+        }
         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            let _ = task.join();
             Err(std::io::Error::other("resolver provider stopped"))
         }
     }

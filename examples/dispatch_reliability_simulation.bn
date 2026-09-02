@@ -1,0 +1,74 @@
+// Deterministic parallel reliability simulation for four production lines.
+// Each task simulates 120 days with a periodic outage schedule.
+IMPORT BNDispatch AS Dispatch
+
+ASYNC FUNCTION LineA() AS VOID
+    LET day AS INTEGER = 0
+    LET outages AS INTEGER = 0
+    WHILE day < 120
+        IF day % 10 = 0 THEN
+            outages += 1
+        END IF
+        day += 1
+    END WHILE
+    PRINT "line-A: outages=", outages, " cost=", outages * 100
+END FUNCTION
+
+ASYNC FUNCTION LineB() AS VOID
+    LET day AS INTEGER = 0
+    LET outages AS INTEGER = 0
+    WHILE day < 120
+        IF day % 15 < 2 THEN
+            outages += 1
+        END IF
+        day += 1
+    END WHILE
+    PRINT "line-B: outages=", outages, " cost=", outages * 200
+END FUNCTION
+
+ASYNC FUNCTION LineC() AS VOID
+    LET day AS INTEGER = 0
+    LET outages AS INTEGER = 0
+    WHILE day < 120
+        IF day % 6 = 0 THEN
+            outages += 1
+        END IF
+        day += 1
+    END WHILE
+    PRINT "line-C: outages=", outages, " cost=", outages * 300
+END FUNCTION
+
+ASYNC FUNCTION LineD() AS VOID
+    LET day AS INTEGER = 0
+    LET outages AS INTEGER = 0
+    WHILE day < 120
+        IF day % 5 = 0 THEN
+            outages += 1
+        END IF
+        day += 1
+    END WHILE
+    PRINT "line-D: outages=", outages, " cost=", outages * 400
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Concurrent(4)
+    IF queue IS Error THEN
+        PRINT "queue error"
+        RETURN
+    END IF
+    LET a AS Dispatch.Ticket OR Error = ASYNC queue LineA()
+    LET b AS Dispatch.Ticket OR Error = ASYNC queue LineB()
+    LET c AS Dispatch.Ticket OR Error = ASYNC queue LineC()
+    LET d AS Dispatch.Ticket OR Error = ASYNC queue LineD()
+    IF a IS Error OR b IS Error OR c IS Error OR d IS Error THEN
+        PRINT "submission error"
+        queue.Close(1000)
+        RETURN
+    END IF
+    AWAIT a(1000)
+    AWAIT b(1000)
+    AWAIT c(1000)
+    AWAIT d(1000)
+    queue.Close(1000)
+    PRINT "reliability simulation complete"
+END FUNCTION

@@ -56,6 +56,41 @@ END FUNCTION
     }
 
     #[test]
+    fn async_host_forks_receive_independent_random_states() {
+        let host = super::HostEnv::fixed(vec!["async.bn".into()], 0, 0);
+        let first = host.fork_for_task();
+        let second = host.fork_for_task();
+        assert_ne!(
+            first.random_state.load(Ordering::Relaxed),
+            second.random_state.load(Ordering::Relaxed)
+        );
+    }
+
+    #[test]
+    fn async_tasks_do_not_cross_talk_through_host_random_state() {
+        let host = super::HostEnv::fixed(vec!["async.bn".into()], 0, 0);
+        let first = host.fork_for_task();
+        let second = host.fork_for_task();
+        let first_values = std::thread::spawn(move || {
+            [
+                first.random_state.fetch_add(1, Ordering::Relaxed),
+                first.random_state.fetch_add(1, Ordering::Relaxed),
+            ]
+        });
+        let second_values = std::thread::spawn(move || {
+            [
+                second.random_state.fetch_add(1, Ordering::Relaxed),
+                second.random_state.fetch_add(1, Ordering::Relaxed),
+            ]
+        });
+        let first_values = first_values.join().expect("first task");
+        let second_values = second_values.join().expect("second task");
+        assert_eq!(first_values[1], first_values[0] + 1);
+        assert_eq!(second_values[1], second_values[0] + 1);
+        assert_ne!(first_values[0], second_values[0]);
+    }
+
+    #[test]
     fn system_timestamp_before_epoch_is_negative() {
         assert_eq!(
             system_timestamp_ms(UNIX_EPOCH - Duration::from_millis(1)),

@@ -1,0 +1,72 @@
+// Bounded parallel payoff analysis for the Prisoner's Dilemma.
+// Each task evaluates 1,000 rounds of one strategy pairing.
+IMPORT BNDispatch AS Dispatch
+
+ASYNC FUNCTION MutualCooperation() AS VOID
+    LET rounds AS INTEGER = 0
+    LET left AS INTEGER = 0
+    LET right AS INTEGER = 0
+    WHILE rounds < 1000
+        left += 3
+        right += 3
+        rounds += 1
+    END WHILE
+    PRINT "CC: A=", left, " B=", right
+END FUNCTION
+
+ASYNC FUNCTION CooperateDefect() AS VOID
+    LET rounds AS INTEGER = 0
+    LET left AS INTEGER = 0
+    LET right AS INTEGER = 0
+    WHILE rounds < 1000
+        right += 5
+        rounds += 1
+    END WHILE
+    PRINT "CD: A=", left, " B=", right
+END FUNCTION
+
+ASYNC FUNCTION DefectCooperate() AS VOID
+    LET rounds AS INTEGER = 0
+    LET left AS INTEGER = 0
+    LET right AS INTEGER = 0
+    WHILE rounds < 1000
+        left += 5
+        rounds += 1
+    END WHILE
+    PRINT "DC: A=", left, " B=", right
+END FUNCTION
+
+ASYNC FUNCTION MutualDefection() AS VOID
+    LET rounds AS INTEGER = 0
+    LET left AS INTEGER = 0
+    LET right AS INTEGER = 0
+    WHILE rounds < 1000
+        left += 1
+        right += 1
+        rounds += 1
+    END WHILE
+    PRINT "DD: A=", left, " B=", right
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Concurrent(4)
+    IF queue IS Error THEN
+        PRINT "queue error"
+        RETURN
+    END IF
+    LET cc AS Dispatch.Ticket OR Error = ASYNC queue MutualCooperation()
+    LET cd AS Dispatch.Ticket OR Error = ASYNC queue CooperateDefect()
+    LET dc AS Dispatch.Ticket OR Error = ASYNC queue DefectCooperate()
+    LET dd AS Dispatch.Ticket OR Error = ASYNC queue MutualDefection()
+    IF cc IS Error OR cd IS Error OR dc IS Error OR dd IS Error THEN
+        PRINT "submission error"
+        queue.Close(1000)
+        RETURN
+    END IF
+    AWAIT cc(1000)
+    AWAIT cd(1000)
+    AWAIT dc(1000)
+    AWAIT dd(1000)
+    queue.Close(1000)
+    PRINT "tournament complete"
+END FUNCTION

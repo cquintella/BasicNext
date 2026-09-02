@@ -167,3 +167,26 @@ fn udp_loopback_reports_source_and_payload() {
     assert_eq!(packet.bytes(), b"ok");
     assert!(!packet.truncated());
 }
+
+#[test]
+fn udp_send_rejects_broadcast_and_multicast_destinations() {
+    let socket = match UdpSocket::bind(Endpoint::new(
+        Address::parse("127.0.0.1").expect("address"),
+        0,
+    )) {
+        Ok(socket) => socket,
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => return,
+        Err(error) => panic!("bind: {error}"),
+    };
+    for address in ["255.255.255.255", "192.168.1.255", "239.255.255.250"] {
+        let endpoint = Endpoint::new(Address::parse(address).expect("address"), 9);
+        let error = socket
+            .send_to(endpoint, b"probe")
+            .expect_err("restricted destination");
+        assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+        assert_eq!(
+            error.to_string(),
+            "multicast and broadcast datagrams are denied"
+        );
+    }
+}

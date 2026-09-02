@@ -217,7 +217,7 @@ impl Executor<'_, '_> {
             "Enter" | "Leave" | "Wait" if name.contains(".Group.") => {
                 let Value::DispatchGroup(id) = arguments.first().cloned().unwrap_or(Value::Null) else { return Err(runtime_error("TYPE_MISMATCH", "operation expects Group", span)); };
                 let group = self.dispatch_groups.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "group is invalid", span))?;
-                match method { "Enter" => { require_arity(name, arguments, 1, span)?; group.enter(); Ok(Value::Null) }, "Leave" => { require_arity(name, arguments, 1, span)?; group.leave(); Ok(Value::Null) }, _ => { require_arity(name, arguments, 2, span)?; Ok(group.wait(integer(&arguments[1], span)?.0).map_or_else(dispatch_error, |_| Value::Null)) } }
+                match method { "Enter" => { require_arity(name, arguments, 1, span)?; group.enter(); Ok(Value::Null) }, "Leave" => { require_arity(name, arguments, 1, span)?; Ok(group.leave().map_or_else(dispatch_error, |_| Value::Null)) }, _ => { require_arity(name, arguments, 2, span)?; Ok(group.wait(integer(&arguments[1], span)?.0).map_or_else(dispatch_error, |_| Value::Null)) } }
             }
             "New" | "Create" if name.contains(".Barrier.") => {
                 require_arity(name, arguments, 1, span)?;
@@ -239,7 +239,7 @@ impl Executor<'_, '_> {
             "Acquire" | "Release" if name.contains(".Semaphore.") => {
                 let Value::DispatchSemaphore(id) = arguments[0] else { return Err(runtime_error("TYPE_MISMATCH", "operation expects Semaphore", span)); };
                 let semaphore = self.dispatch_semaphores.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "semaphore is invalid", span))?;
-                if method == "Acquire" { require_arity(name, arguments, 2, span)?; Ok(semaphore.acquire(integer(&arguments[1], span)?.0).map_or_else(dispatch_error, |_| Value::Null)) } else { require_arity(name, arguments, 1, span)?; semaphore.release(); Ok(Value::Null) }
+                if method == "Acquire" { require_arity(name, arguments, 2, span)?; Ok(semaphore.acquire(integer(&arguments[1], span)?.0).map_or_else(dispatch_error, |_| Value::Null)) } else { require_arity(name, arguments, 1, span)?; Ok(semaphore.release().map_or_else(dispatch_error, |_| Value::Null)) }
             }
             "New" | "Create" if name.contains(".Mutex.") => {
                 require_arity(name, arguments, 0, span)?; let id = self.next_dispatch_sync; self.next_dispatch_sync = self.next_dispatch_sync.saturating_add(1); self.dispatch_mutexes.insert(id, crate::dispatch::DispatchMutex::new()); Ok(Value::DispatchMutex(id))
@@ -247,7 +247,7 @@ impl Executor<'_, '_> {
             "Lock" | "Unlock" if name.contains(".Mutex.") => {
                 let Value::DispatchMutex(id) = arguments[0] else { return Err(runtime_error("TYPE_MISMATCH", "operation expects Mutex", span)); };
                 let mutex = self.dispatch_mutexes.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "mutex is invalid", span))?;
-                if method == "Lock" { require_arity(name, arguments, 2, span)?; Ok(mutex.lock(integer(&arguments[1], span)?.0).map_or_else(dispatch_error, |_| Value::Null)) } else { require_arity(name, arguments, 1, span)?; mutex.unlock(); Ok(Value::Null) }
+                if method == "Lock" { require_arity(name, arguments, 2, span)?; Ok(mutex.lock(integer(&arguments[1], span)?.0).map_or_else(dispatch_error, |_| Value::Null)) } else { require_arity(name, arguments, 1, span)?; Ok(mutex.unlock().map_or_else(dispatch_error, |_| Value::Null)) }
             }
             "Serial" => {
                 require_arity(name, arguments, 0, span)?;
@@ -261,7 +261,7 @@ impl Executor<'_, '_> {
             "Auto" => {
                 require_arity(name, arguments, 0, span)?;
                 let workers = std::thread::available_parallelism()
-                    .map(|count| count.get().min(crate::dispatch::MAX_WORKERS))
+                    .map(|count| count.get().min(crate::config::dispatch_limits().worker_count_max))
                     .map_err(|error| {
                         runtime_error("HOST_CAPABILITY_UNAVAILABLE", error.to_string(), span)
                     })?;
@@ -278,9 +278,8 @@ impl Executor<'_, '_> {
                 let queue = self.dispatch_queues.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "queue is invalid", span))?.clone();
                 let task_name = task.clone();
                 let worker_module = self.module.clone();
-                let worker_host = self.host.clone();
+                let worker_host = self.host.fork_for_task();
                 let ticket = queue.submit_with(task_name.clone(), move |ticket| {
-                    if ticket.mark_running().is_err() { return; }
                     let mut worker_module = worker_module;
                     for function in &mut worker_module.functions {
                         if function.name == task_name { function.name = "Start".into(); }
@@ -289,7 +288,7 @@ impl Executor<'_, '_> {
                     let mut input = std::io::Cursor::new(Vec::<u8>::new());
                     let mut output = BoundedTaskOutput {
                         bytes: Vec::new(),
-                        maximum: crate::config::web_limits().async_output_max_bytes,
+                        maximum: crate::config::dispatch_limits().output_max_bytes,
                     };
                     match crate::runtime::execute_with_host(&worker_module, &mut input, &mut output, &worker_host) {
                         Ok(_) => {
@@ -340,7 +339,7 @@ impl Executor<'_, '_> {
                 let ticket = self.dispatch_tickets.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "ticket is invalid", span))?.clone();
                 return match method {
                     "Id" => { require_arity(name, arguments, 1, span)?; Ok(Value::Integer(i128::from(ticket.id()), crate::semantic::IntegerType::Int32)) }
-                    "Status" => { require_arity(name, arguments, 1, span)?; ticket.status().map_or_else(|error| Ok(dispatch_error(error)), |status| Ok(Value::Integer(i128::from(status), crate::semantic::IntegerType::Int32))) }
+                    "Status" => { require_arity(name, arguments, 1, span)?; Ok(Value::Integer(i128::from(ticket.status()), crate::semantic::IntegerType::Int32)) }
                     "Wait" => {
                         require_arity(name, arguments, 2, span)?;
                         let timeout = integer(&arguments[1], span)?.0;
@@ -350,8 +349,8 @@ impl Executor<'_, '_> {
                         Ok(result)
                     }
                     "Cancel" => { require_arity(name, arguments, 1, span)?; Ok(ticket.cancel().map_or_else(dispatch_error, Value::Boolean)) }
-                    "Error" => { require_arity(name, arguments, 1, span)?; Ok(ticket.error().map_or_else(|error| dispatch_error(error), |error| error.map_or(Value::NotAvailable, |(code, message)| Value::Error { code, message }))) }
-                    "IsDone" => { require_arity(name, arguments, 1, span)?; Ok(ticket.is_done().map_or_else(dispatch_error, Value::Boolean)) }
+                    "Error" => { require_arity(name, arguments, 1, span)?; Ok(ticket.error().map_or(Value::NotAvailable, |(code, message)| Value::Error { code, message })) }
+                    "IsDone" => { require_arity(name, arguments, 1, span)?; Ok(Value::Boolean(ticket.is_done())) }
                     "Close" => { require_arity(name, arguments, 1, span)?; ticket.close(); Ok(Value::Null) }
                     _ => unreachable!(),
                 };
@@ -370,7 +369,9 @@ impl Executor<'_, '_> {
                 message: "worker count must be in 1..64".into(),
             };
         };
-        debug_assert!((1..=crate::dispatch::MAX_WORKERS).contains(&queue.workers()));
+        debug_assert!(
+            (1..=crate::config::dispatch_limits().worker_count_max).contains(&queue.workers())
+        );
         let id = self.next_dispatch_queue;
         self.next_dispatch_queue += 1;
         self.dispatch_queues.insert(id, queue);
@@ -394,7 +395,7 @@ mod tests {
 
     #[test]
     fn task_output_writer_rejects_bytes_after_registry_bound() {
-        let maximum = crate::config::web_limits().async_output_max_bytes;
+        let maximum = crate::config::dispatch_limits().output_max_bytes;
         let mut output = BoundedTaskOutput {
             bytes: Vec::new(),
             maximum,

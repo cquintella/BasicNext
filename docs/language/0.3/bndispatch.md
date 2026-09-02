@@ -19,5 +19,10 @@ coordinates a bounded number of participants. `Semaphore.New(permits)`
 provides bounded `Acquire(timeoutMs)` and `Release`; `Mutex.New()` provides
 bounded `Lock(timeoutMs)` and `Unlock`.
 
+The 0.4 provider recovery amendment makes `Leave`, `Release`, and `Unlock`
+return `VOID OR Error`: unmatched group leave, excess semaphore release, and
+unlock by a non-owner are rejected. The 0.3 source contract remains otherwise
+unchanged; hosts implementing only 0.3 may retain the original signatures.
+
 All handles are opaque and must not be inspected as operating-system thread
 handles. Invalid bounds and expired waits return `Error`.

@@ -75,7 +75,7 @@ If you omit the `STEP` clause, it defaults to `1`. A step can be negative, in wh
 
 ### The `FOR EACH` Loop
 
-`FOR EACH` iterates in index order over a collection. In version 0.2, this is restricted to the outermost dimension of fixed-size vectors. The loop binding is read-only and its declared type must perfectly match the vector's element type.
+`FOR EACH` iterates in index order over a collection. In version 0.3, this is restricted to the outermost dimension of fixed-size vectors. The loop binding is read-only and its declared type must perfectly match the vector's element type.
 
 ```basic
 LET primes AS INTEGER[3] = [2, 3, 5]

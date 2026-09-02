@@ -13,6 +13,16 @@ pub(crate) fn host_net_call(&mut self, name: &str, arguments: &[Value], span: Sp
             "HOST.Net.UDPBind" => {
                 require_arity(name, arguments, 1, span)?;
                 let endpoint = net_endpoint(&arguments[0], span)?;
+                if self.tcp_streams.len()
+                    + self.udp_sockets.len()
+                    + self.tcp_listeners.values().map(Vec::len).sum::<usize>()
+                    >= crate::config::web_limits().socket_handles_max
+                {
+                    return Ok(Value::Error {
+                        code: 1,
+                        message: "socket handle quota exceeded".into(),
+                    });
+                }
                 match crate::net::UdpSocket::bind(endpoint) {
                     Ok(socket) => {
                         let id = self.next_udp_socket;
@@ -47,9 +57,12 @@ pub(crate) fn host_net_call(&mut self, name: &str, arguments: &[Value], span: Sp
                 let capacity = self.memory.len(handle, span)?;
                 let count = usize::try_from(count)
                     .ok()
-                    .filter(|value| *value <= capacity && *value <= 1_048_576)
+                    .filter(|value| {
+                        *value <= capacity
+                            && *value <= crate::config::web_limits().datagram_max_bytes
+                    })
                     .ok_or_else(|| {
-                        runtime_error("LIMIT", "datagram exceeds buffer or 1 MiB", span)
+                        runtime_error("LIMIT", "datagram exceeds buffer or configured limit", span)
                     })?;
                 let bytes = (0..count)
                     .map(|index| {
@@ -84,8 +97,10 @@ pub(crate) fn host_net_call(&mut self, name: &str, arguments: &[Value], span: Sp
                 let (timeout, _) = integer(&arguments[2], span)?;
                 let maximum = usize::try_from(maximum)
                     .ok()
-                    .filter(|value| *value <= 1_048_576)
-                    .ok_or_else(|| runtime_error("LIMIT", "receive exceeds 1 MiB", span))?;
+                    .filter(|value| *value <= crate::config::web_limits().datagram_max_bytes)
+                    .ok_or_else(|| {
+                        runtime_error("LIMIT", "receive exceeds configured limit", span)
+                    })?;
                 if !(1..=60_000).contains(&timeout) {
                     return Ok(Value::Error {
                         code: 1,

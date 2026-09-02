@@ -21,10 +21,20 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                         message: "invalid listener endpoints or backlog".into(),
                     });
                 }
-                // ponytail: std::net does not expose backlog; the OS default is used.
                 let mut listeners = Vec::with_capacity(endpoints.len());
                 for endpoint in endpoints {
-                    match crate::net::TcpListener::bind(net_endpoint(endpoint, span)?) {
+                    if self.tcp_listeners.values().map(Vec::len).sum::<usize>() + listeners.len()
+                        >= crate::config::web_limits().socket_handles_max
+                    {
+                        return Ok(Value::Error {
+                            code: 1,
+                            message: "socket handle quota exceeded".into(),
+                        });
+                    }
+                    match crate::net::TcpListener::bind_with_backlog(
+                        net_endpoint(endpoint, span)?,
+                        usize::try_from(backlog).expect("validated backlog is positive"),
+                    ) {
                         Ok(listener) => listeners.push(listener),
                         Err(error) => {
                             return Ok(Value::Error {
@@ -58,7 +68,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                 match crate::net::resolve_timeout(
                     host,
                     0,
-                    64,
+                    crate::config::web_limits().resolved_addresses_max,
                     std::time::Duration::from_millis(timeout as u64),
                 ) {
                     Ok(Some(addresses)) => Ok(Value::Record {
@@ -104,6 +114,22 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                     std::time::Duration::from_millis(timeout as u64),
                 ) {
                     Ok(stream) => {
+                        if self.tcp_streams.len()
+                            + self.udp_sockets.len()
+                            + self.tcp_listeners.values().map(Vec::len).sum::<usize>()
+                            >= crate::config::web_limits().socket_handles_max
+                        {
+                            return Ok(Value::Error {
+                                code: 1,
+                                message: "socket handle quota exceeded".into(),
+                            });
+                        }
+                        stream
+                            .set_timeouts(
+                                Some(std::time::Duration::from_millis(timeout as u64)),
+                                Some(std::time::Duration::from_millis(timeout as u64)),
+                            )
+                            .map_err(|error| runtime_error("IO", error.to_string(), span))?;
                         let id = self.next_tcp_stream;
                         self.next_tcp_stream += 1;
                         self.tcp_streams.insert(id, stream);
@@ -327,18 +353,15 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                         runtime_error("USE_AFTER_DELETE", "TCP listener is invalid", span)
                     })?
                     .as_slice();
-                let deadline =
-                    std::time::Instant::now() + std::time::Duration::from_millis(timeout as u64);
                 let mut stream = None;
-                while std::time::Instant::now() < deadline && stream.is_none() {
-                    for listener in listeners {
-                        if let Some(accepted) = listener
-                            .accept_timeout(std::time::Duration::from_millis(1))
-                            .map_err(|error| runtime_error("IO", error.to_string(), span))?
-                        {
-                            stream = Some(accepted);
-                            break;
-                        }
+                let accept_timeout = std::time::Duration::from_millis(timeout as u64);
+                for listener in listeners {
+                    if let Some(accepted) = listener
+                        .accept_timeout(accept_timeout)
+                        .map_err(|error| runtime_error("IO", error.to_string(), span))?
+                    {
+                        stream = Some(accepted);
+                        break;
                     }
                 }
                 let Some(stream) = stream else {
@@ -347,6 +370,16 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                         message: "accept timeout".into(),
                     });
                 };
+                if self.tcp_streams.len()
+                    + self.udp_sockets.len()
+                    + self.tcp_listeners.values().map(Vec::len).sum::<usize>()
+                    >= crate::config::web_limits().socket_handles_max
+                {
+                    return Ok(Value::Error {
+                        code: 1,
+                        message: "socket handle quota exceeded".into(),
+                    });
+                }
                 let stream_id = self.next_tcp_stream;
                 self.next_tcp_stream += 1;
                 self.tcp_streams.insert(stream_id, stream);
