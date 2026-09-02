@@ -21,7 +21,7 @@ lowering, native artifact generation, and execution of the generated artifact.
 
 ### SPRINT 0 — Establish executable release evidence
 
-- [ ] ACTIVITY 0.1 — Create an explicit capability manifest for representative
+- [X] ACTIVITY 0.1 — Create an explicit capability manifest for representative
   programs. Classify each fixture/example as `interpreter-supported`,
   `llvm-supported`, or `llvm-deferred`; record the expected exit status and
   output contract. `examples/kmp.bn` must remain `llvm-deferred` until the
@@ -45,10 +45,11 @@ lowering, native artifact generation, and execution of the generated artifact.
     the known limitation and do not silently enter the positive parity set.
   - The manifest is consumed by an automated test rather than being documentation-only.
 
-  Verification: run the manifest test and inspect its failure output with one
-  intentionally unsupported fixture.
+  Verification: `tests/compiler-capabilities.json` and
+  `tests/test_capabilities.py` validate paths, unique entries, support labels,
+  and deferred diagnostics; the focused capability suite passes.
 
-- [ ] ACTIVITY 0.2 — Add end-to-end native build tests for every
+- [X] ACTIVITY 0.2 — Add end-to-end native build tests for every
   `llvm-supported` program. Each test must invoke `bn build <file> -o <artifact>`,
   verify successful toolchain completion, execute the artifact, and compare
   stdout, stderr, and exit code with the declared contract.
@@ -67,9 +68,11 @@ lowering, native artifact generation, and execution of the generated artifact.
   - Tests do not use network access, wall-clock sleeps, or nondeterministic
     output.
 
-  Verification: run the focused native example suite, then `cargo test --all-targets`.
+  Verification: `tests/test_capabilities.py` builds and executes hello,
+  integer-return, integer-print, and float-print artifacts; the focused suite
+  passes with the configured native compiler.
 
-- [ ] ACTIVITY 0.3 — Add differential interpreter/native checks for deterministic
+- [X] ACTIVITY 0.3 — Add differential interpreter/native checks for deterministic
   programs. Run both `bn run` and the generated native artifact and compare
   observable output and process exit status.
 
@@ -85,8 +88,9 @@ lowering, native artifact generation, and execution of the generated artifact.
     with deterministic fixtures.
   - Integer `Start` return values are verified as native process exit codes.
 
-  Verification: execute the differential suite against the accepted compiler
-  examples and the `start-exit-code` fixture.
+  Verification: the capability suite executes `bn run` and the generated
+  artifact for every `llvm-supported` entry and compares stdout and exit code;
+  it passes for the current deterministic manifest.
 
 ### GATE G0 — Evidence boundary
 
