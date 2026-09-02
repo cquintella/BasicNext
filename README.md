@@ -1,6 +1,6 @@
 # Basic Next
 
-![Basic Next Logo](docs/logo.jpg)
+![Basic Next Logo](docs/logo.svg)
 
 [![Rust CI](https://img.shields.io/badge/Rust_CI-passing-brightgreen)](#)
 [![Version](https://img.shields.io/badge/version-v0.4.1-blue)](#)
