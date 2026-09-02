@@ -2180,7 +2180,7 @@ END FUNCTION
             return;
         }
     };
-    assert_eq!(output, "FALSE\nStopped\nFALSE\n");
+    assert_eq!(output, "FALSE\nDraining\nFALSE\n");
 }
 
 #[test]
@@ -2297,7 +2297,13 @@ response.Write("bn-handler")
 END FUNCTION
 FUNCTION Start() AS VOID
 LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+IF address IS Error THEN
+STOP 1
+END IF
 LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, {port})
+IF endpoint IS Error THEN
+STOP 2
+END IF
 LET server AS Web.Server = NEW Web.Server()
 server.Route("GET", "/bridge", Handler)
 LET started AS VOID OR Error = server.Start(endpoint)

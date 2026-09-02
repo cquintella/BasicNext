@@ -682,6 +682,7 @@ fn server_stop_drains_a_slow_http_worker() {
         expected_cancellation,
         "unexpected slow worker result: {worker_result:?}"
     );
+    server.release_connection();
     assert_eq!(server.active_connections(), 0);
     server.finish_stop().unwrap();
 }
