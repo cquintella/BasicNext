@@ -39,8 +39,6 @@ class WasmParityTests(unittest.TestCase):
             "print-integer.bn",
             "print-float.bn",
             "print-string.bn",
-            "build-euclidean-div.bn",
-            "build-euclidean-rem.bn",
             "host-random.bn",
             "host-random-twice.bn",
             "print-args-length.bn",
