@@ -43,6 +43,15 @@ function parseDiagnostics(output) {
   return diagnostics;
 }
 
+function lspCompletionItems(result) {
+  const items = Array.isArray(result) ? result : result?.items || [];
+  return items.map((item) => {
+    const completion = new vscode.CompletionItem(item.label, item.kind);
+    if (item.detail) completion.detail = item.detail;
+    return completion;
+  });
+}
+
 function startLanguageServer(context, collection) {
   if (typeof cp.spawn !== "function" || !vscode.languages.registerDefinitionProvider) return undefined;
   const executable = vscode.workspace.getConfiguration("basicnext").get("executable", "bn");
@@ -97,7 +106,7 @@ function startLanguageServer(context, collection) {
     vscode.workspace.onDidChangeTextDocument((event) => sync(event.document, "textDocument/didChange")),
     vscode.workspace.onDidCloseTextDocument((document) => notify("textDocument/didClose", { textDocument: { uri: document.uri.toString() } })),
     vscode.languages.registerDefinitionProvider("basicnext", { provideDefinition: (document, position) => send("textDocument/definition", { textDocument: { uri: document.uri.toString() }, position }).then((items) => items || []) }),
-    vscode.languages.registerCompletionItemProvider("basicnext", { provideCompletionItems: (document, position) => send("textDocument/completion", { textDocument: { uri: document.uri.toString() }, position }).then((items) => items?.items || []) }),
+    vscode.languages.registerCompletionItemProvider("basicnext", { provideCompletionItems: (document, position) => send("textDocument/completion", { textDocument: { uri: document.uri.toString() }, position }).then(lspCompletionItems) }, "."),
     { dispose: () => { notify("shutdown", null); notify("exit", null); child.kill(); } },
   );
   for (const document of vscode.workspace.textDocuments || []) sync(document);
@@ -151,4 +160,4 @@ function activate(context) {
 
 function deactivate() {}
 
-module.exports = { activate, deactivate, parseDiagnostics, shellQuote, startLanguageServer };
+module.exports = { activate, deactivate, parseDiagnostics, shellQuote, startLanguageServer, lspCompletionItems };

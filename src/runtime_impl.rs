@@ -6,10 +6,9 @@
 #[allow(unused_imports)]
 use std::{
     collections::{HashMap, HashSet},
-    io::IsTerminal,
     io::{BufRead, Read, Write},
     sync::atomic::AtomicU64,
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 #[path = "runtime/allocation.rs"]
@@ -40,7 +39,9 @@ use helpers::{
     constant_value, default_function_owner, empty_named, find_block, require_arity, set, value,
 };
 use math::reduce_vector;
-use net_values::{address_value, endpoint_value, net_address, net_addresses, net_endpoint};
+use net_values::{
+    address_value, endpoint_value, net_address, net_addresses, net_endpoint, ping_reply_value,
+};
 use numeric::{
     boolean, exit_code, float_kind, float_value, integer, integer_kind, integer_range,
     integer_width, is_float_value, number_as_float, ordered, parse_float, parse_integer, parse_val,
@@ -182,16 +183,14 @@ impl HostEnv {
     fn timestamp_ms(&self) -> i64 {
         match self.clock {
             ClockKind::Fixed { timestamp_ms, .. } => timestamp_ms,
-            ClockKind::System => system_timestamp_ms(SystemTime::now()),
+            ClockKind::System => bn_rt::timestamp_ms(),
         }
     }
 
     fn monotonic_ns(&self) -> i64 {
         match self.clock {
             ClockKind::Fixed { monotonic_ns, .. } => monotonic_ns,
-            ClockKind::System => {
-                i64::try_from(process_origin().elapsed().as_nanos()).unwrap_or(i64::MAX)
-            }
+            ClockKind::System => bn_rt::monotonic_ns(),
         }
     }
 
@@ -211,16 +210,11 @@ impl HostEnv {
 
 #[path = "runtime/support.rs"]
 mod support;
-use support::{debug_variables, host_random_seed, system_timestamp_ms};
+use support::{debug_variables, host_random_seed};
 
 #[cfg(test)]
 #[path = "runtime/tests.rs"]
 mod tests;
-
-fn process_origin() -> Instant {
-    static ORIGIN: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
-    *ORIGIN.get_or_init(Instant::now)
-}
 
 #[derive(Clone)]
 struct Instance {
@@ -598,6 +592,10 @@ fn integer_from_i128_count(count: i128, span: Span) -> Result<Value, Diagnostic>
 
 fn runtime_error(code: &'static str, message: impl Into<String>, span: Span) -> Diagnostic {
     Diagnostic { code, message: message.into(), span }
+}
+
+fn console_runtime_error(error: &bn_rt::ConsoleError, span: Span) -> Diagnostic {
+    runtime_error(error.code(), error.message(), span)
 }
 
 fn integer_overflow(span: Span) -> Diagnostic {

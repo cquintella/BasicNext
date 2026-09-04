@@ -257,7 +257,7 @@ pub(crate) fn host_net_address_call(&mut self, name: &str, arguments: &[Value], 
             }
             "HOST.Net.Ping" => {
                 require_arity(name, arguments, 2, span)?;
-                let _address = net_address(&arguments[0], span)?;
+                let address = net_address(&arguments[0], span)?;
                 let (timeout, _) = integer(&arguments[1], span)?;
                 if !(1..=60_000).contains(&timeout) {
                     return Ok(Value::Error {
@@ -265,22 +265,31 @@ pub(crate) fn host_net_address_call(&mut self, name: &str, arguments: &[Value], 
                         message: "ping timeout is outside 1..60000 ms".into(),
                     });
                 }
-                Ok(Value::Error {
-                    code: 1,
-                    message: "ICMP Echo provider unavailable".into(),
-                })
+                match crate::net::ping(
+                    address,
+                    std::time::Duration::from_millis(timeout as u64),
+                ) {
+                    Ok(reply) => Ok(ping_reply_value(reply)),
+                    Err(error) => Ok(Value::Error {
+                        code: 1,
+                        message: error.message(),
+                    }),
+                }
             }
             "HOST.Net.Neighbor" => {
                 require_arity(name, arguments, 1, span)?;
-                let _address = net_address(&arguments[0], span)?;
-                Ok(Value::Error {
-                    code: 1,
-                    message: "direct-neighbor provider unavailable".into(),
-                })
+                let address = net_address(&arguments[0], span)?;
+                match crate::net::neighbor(address) {
+                    Ok(neighbor) => Ok(address_value(neighbor.as_std())),
+                    Err(error) => Ok(Value::Error {
+                        code: 1,
+                        message: error.message(),
+                    }),
+                }
             }
             "HOST.Net.Reverse" => {
                 require_arity(name, arguments, 2, span)?;
-                let _address = net_address(&arguments[0], span)?;
+                let address = net_address(&arguments[0], span)?;
                 let (timeout, _) = integer(&arguments[1], span)?;
                 if !(1..=60_000).contains(&timeout) {
                     return Ok(Value::Error {
@@ -288,9 +297,55 @@ pub(crate) fn host_net_address_call(&mut self, name: &str, arguments: &[Value], 
                         message: "reverse timeout is outside 1..60000 ms".into(),
                     });
                 }
-                Ok(Value::Error {
-                    code: 1,
-                    message: "reverse resolver provider unavailable".into(),
+                match crate::net::reverse_timeout(
+                    address,
+                    std::time::Duration::from_millis(timeout as u64),
+                ) {
+                    Ok(name) => Ok(Value::String(name)),
+                    Err(error) => Ok(Value::Error {
+                        code: 1,
+                        message: error.message(),
+                    }),
+                }
+            }
+            "HOST.Net.PingReply.Address" => {
+                require_arity(name, arguments, 1, span)?;
+                let Value::Record { type_name, fields } = &arguments[0] else {
+                    return Err(runtime_error(
+                        "TYPE_MISMATCH",
+                        "Address expects PingReply",
+                        span,
+                    ));
+                };
+                if type_name != "HOST.Net.PingReply" {
+                    return Err(runtime_error(
+                        "TYPE_MISMATCH",
+                        "Address expects PingReply",
+                        span,
+                    ));
+                }
+                fields.get("address").cloned().ok_or_else(|| {
+                    runtime_error("TYPE_MISMATCH", "invalid PingReply value", span)
+                })
+            }
+            "HOST.Net.PingReply.RoundTripMicroseconds" => {
+                require_arity(name, arguments, 1, span)?;
+                let Value::Record { type_name, fields } = &arguments[0] else {
+                    return Err(runtime_error(
+                        "TYPE_MISMATCH",
+                        "RoundTripMicroseconds expects PingReply",
+                        span,
+                    ));
+                };
+                if type_name != "HOST.Net.PingReply" {
+                    return Err(runtime_error(
+                        "TYPE_MISMATCH",
+                        "RoundTripMicroseconds expects PingReply",
+                        span,
+                    ));
+                }
+                fields.get("roundTripMicroseconds").cloned().ok_or_else(|| {
+                    runtime_error("TYPE_MISMATCH", "invalid PingReply value", span)
                 })
             }
 

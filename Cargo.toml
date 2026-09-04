@@ -1,6 +1,10 @@
+[workspace]
+members = ["crates/bn_rt"]
+resolver = "3"
+
 [package]
 name = "bn"
-version = "0.4.2"
+version = "0.4.3"
 edition = "2024"
 rust-version = "1.97"
 description = "Basic Next reference implementation"
@@ -21,6 +25,8 @@ all = "warn"
 pedantic = "warn"
 
 [dependencies]
+bn_rt = { path = "crates/bn_rt" }
+dns-lookup = "2"
 http-body-util = "0.1.5"
 hyper = { version = "1.11.1", default-features = false, features = ["client", "http1", "http2", "server"] }
 hyper-util = { version = "0.1.20", default-features = false, features = ["http1", "http2", "server", "tokio"] }
@@ -30,5 +36,6 @@ ring = "0.17.14"
 rustls = { version = "0.23.43", default-features = false, features = ["ring", "std"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+socket2 = "0.6"
 tokio = { version = "1.53.1", default-features = false, features = ["net", "rt", "rt-multi-thread", "sync", "time"] }
 tokio-rustls = { version = "0.26.4", default-features = false, features = ["ring"] }

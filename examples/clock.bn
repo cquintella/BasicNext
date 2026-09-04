@@ -1,0 +1,11 @@
+IMPORT HOST.Clock AS Clock
+IMPORT BNMath as Math
+
+FUNCTION Start() AS VOID
+
+    PRINT Date(Clock.Monotonic())
+
+END FUNCTION
+
+
+

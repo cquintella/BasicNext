@@ -1,0 +1,13 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+FUNCTION Start() AS VOID
+    LET n AS INTEGER = LEN(HOST.Args)
+    PRINT 2 ** (n - n + 3)
+    PRINT 1 SHL (n - n + 3)
+    PRINT 16 SHR (n - n + 2)
+    PRINT NOT (n - n)
+    PRINT (-1) SHR (n - n + 1)
+END FUNCTION

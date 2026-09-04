@@ -39,7 +39,6 @@ impl Analyzer {
                     additional_name_spans,
                     additional_initializers,
                     span,
-                    is_static,
                     ..
                 } => {
                     self.validate_type_reference(type_ref)?;
@@ -89,13 +88,6 @@ impl Analyzer {
                                 "{} bindings require an initializer",
                                 type_ref.alternatives[0].name
                             ),
-                            *span,
-                        ));
-                    }
-                    if declaration_kind == DeclarationKind::Class && *is_static && !initialized {
-                        return Err(error(
-                            "TYPE_MISMATCH",
-                            "STATIC field requires an initializer",
                             *span,
                         ));
                     }

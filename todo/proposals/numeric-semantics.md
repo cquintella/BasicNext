@@ -1,120 +1,99 @@
 # Proposal: Checked Numeric Semantics
 
-## Status
+**Status:** 0.1 language rules accepted and present in the interpreter.
+Audit 2026-09-03 against `src/semantic/type_ops.rs`, `src/runtime/executor.rs`,
+`src/heap.rs`, `examples/type_test.bn`, and `tests/runtime.rs`. `[X]` is in
+the tree. `[ ]` is not. The historical `docs/language/0.1/0.1.md` path is gone;
+keywords and the runtime are the live contract.
 
-The rules prohibiting implicit assignment conversion between declared numeric
-types, widening signed integers through `INT64`, unsigned integers through
-`UINT64`, and `FLOAT32` to `FLOAT64` in numeric
-expressions, requiring checked integral overflow, making `/` return `FLOAT`, using
-Euclidean integer division and modulo, using `**` for both integral and
-floating exponentiation, and contextual numeric literals are accepted for
-Basic Next 0.1. Explicit floating-to-integer conversion truncates toward zero.
-These decisions are recorded in `docs/language/0.1/0.1.md`. The rest of this document remains proposed and
-non-normative until accepted. It changes semantics only; the grammar is
-unchanged.
+It changes semantics only; the grammar is unchanged (`^` is not exponentiation).
 
-## Direction
+Overflow is a fatal runtime diagnostic (`NUMERIC_OVERFLOW`, process exit 1),
+not an `Error` object. That matches `examples/type_test.bn` and
+`tests/runtime.rs`. It never wraps and must not panic.
 
-Basic Next performs no implicit conversion between declared numeric types,
-including widening conversion. An
-integer literal is an exact, untyped integer while its expression is being
-checked; a floating literal is an exact, untyped `FLOAT` value. A literal takes
-the required type from its declaration, assignment target, or the other operand
-of a numeric operation. If no context is available, integer literals are
-`INTEGER` and floating literals are `FLOAT`.
+## Types, literals, and widening
 
-```basic
-LET port AS UINT32 = 65536
-LET ratio AS FLOAT32 = 0.5
-LET total AS INT32 = 2 + 3
-LET mask AS UINT32 = 0x80000000
-```
+- [X] No implicit assignment conversion between declared numeric types
+      (including no silent widening on `LET` / `=`)
+- [X] Contextual integer/float literals take the target type; untyped default
+      is `INTEGER` / `FLOAT`
+- [X] Signed expression widening `INT8 → INT16 → INT32 → INT64`
+- [X] Unsigned expression widening `BYTE → UINT16 → UINT32 → UINT64`
+- [X] `BYTE` is the only unsigned that widens into signed (`INT16`)
+- [X] `UINT16`/`UINT32`/`UINT64` do not combine with signed integers
+      (`promote_integers` returns `None` → `TYPE_MISMATCH`)
+- [X] `FLOAT32` and `FLOAT64` combine as `FLOAT64`
+- [X] Integers do not combine implicitly with floats (except an integer
+      literal next to a float)
 
-In numeric binary expressions, the signed widening sequence is `INT8 → INT16
-→ INT32 → INT64`; `BYTE` also widens to `INT16`. The unsigned widening sequence
-is `BYTE → UINT16 → UINT32 → UINT64`. The result has the widest integral type
-present in its sequence. `FLOAT32` and `FLOAT64` combine as `FLOAT64`. `UINT16`,
-`UINT32`, and `UINT64` do not combine implicitly with signed integral values;
-`BYTE` is the sole exception because it widens safely to `INT16`. Integers do
-not combine implicitly with floating values.
-Contextual literals may adopt the required numeric type, but
-assignment never widens or narrows declared values implicitly. A numeric binary
-operation returns the selected operand type, except `/`, which returns
-`FLOAT`. `**` applies integral widening and returns the widest type for integral
-operands; for floating operands, it applies floating widening and returns the
-promoted floating type.
+## Operations
 
-## Checked operations
+- [X] Integral `+ - * ** SHL`, unary `-`, `+= -= *= **=`, and `FOR` binding
+      updates are range-checked; overflow is `NUMERIC_OVERFLOW`
+- [X] `/` returns `FLOAT` (IEEE 754). `1 / 0` is `INF`, `0 / 0` is `NAN`
+- [X] `DIV` and `%` are Euclidean integers. `(-5) DIV 2 = -3`, `(-5) % 2 = 1`
+- [X] `%` / `DIV` by zero is `DIVISION_BY_ZERO` (runtime)
+- [X] Integral `**` rejects a negative literal statically and a negative or
+      oversized computed exponent with `INVALID_EXPONENT`
+- [X] Floating `**` allows a negative exponent
+- [X] Shift count in `0 .. width`; literal out of range is
+      `INVALID_SHIFT_COUNT` (semantic); computed is the same at runtime
+- [X] `SHR` is logical; `SHL` is checked, not masked
+- [X] `/=` only when the left target is `FLOAT`; `%=` only for integrals
+- [X] Compound assignment does not silently narrow
+- [X] `^` is not exponentiation (`tests/grammar/invalid/caret-exponentiation.bn`)
 
-Every integral result is range-checked in the destination type. This includes
-unary `-`, binary `+`, `-`, `*`, `**`, `SHL`, `+=`, `-=`, `*=`, `**=`, and the loop
-binding update performed by `FOR`. Overflow raises the runtime `Error`
-`NUMERIC_OVERFLOW`; it never wraps and must not panic the interpreter.
+## IEEE and conversions
 
-`/` performs IEEE 754 `FLOAT` division. A zero divisor produces the corresponding
-IEEE result, including `INF`, `-INF`, or `NAN`. `%` accepts integral operands
-only. A zero divisor raises `DIVISION_BY_ZERO`; otherwise its result follows the
-existing Euclidean rule, including `INT32_MIN % -1 = 0`, without overflowing.
+- [X] Float ops are IEEE 754 binary with `roundTiesToEven` (host `f32`/`f64`)
+- [X] `NAN`, signed zero, infinities are values; float `/ 0` is IEEE, not a
+      BN error
+- [X] No IEEE status flags, traps, NaN payloads, or rounding-mode API
+- [X] `NAN` unordered: `=` is false (IEEE `==`), `<>` is true; ordered
+      `< <= > >=` are false in Rust `f64` compares
+- [X] Explicit conversion among integrals, with range check
+- [X] `INTEGER` follows `INT32`
+- [X] Float-to-integer truncates toward zero, then range-checks
+      (`value.trunc()`)
+- [X] `NAN` / `INF` / `-INF` to integer is `INVALID_NUMERIC_CONVERSION`
+- [X] Conversion to `FLOAT32`/`FLOAT` uses IEEE rounding; overflow becomes
+      signed infinity
 
-Integral `**` requires a non-negative exponent: a negative literal is a static
-error and a negative computed exponent raises `INVALID_EXPONENT`. Floating
-`**` permits a negative exponent. A shift count must be non-negative and less
-than the width of the left operand. An invalid literal count is a static error;
-an invalid computed count raises `INVALID_SHIFT_COUNT`. `SHR` is logical. `SHL`
-is checked rather than masked.
+## Allocation sizes
 
-`/=` is valid only when its left assignment target has type `FLOAT`, because
-`/` returns `FLOAT`. `%=` is valid only for integral targets. The other compound
-assignments require the ordinary operation result to be assignable to the left
-target; no compound assignment silently narrows a value.
+- [X] Vector/`NEW` dimensions: negative → `ALLOCATION_SIZE_INVALID`
+- [X] Dimension product overflow → `ALLOCATION_SIZE_OVERFLOW`
+- [X] Size over host limit → `ALLOCATION_TOO_LARGE`
+- [X] No wrapped size reaches the allocator (`src/heap.rs`,
+      `src/runtime/executor/part10.rs`)
 
-Floating operations use IEEE 754 binary arithmetic for their declared result
-type with `roundTiesToEven`. `NAN`, signed zero, and signed infinities are BN
-values and propagate according to IEEE 754; floating overflow and floating
-division by zero produce the corresponding IEEE value rather than a BN runtime
-error. BN 0.1 does not expose IEEE status flags, traps, NaN payloads, or a
-program-selectable rounding direction. `NAN` and infinities cannot be converted
-to an integer and raise `INVALID_NUMERIC_CONVERSION`.
-`**` applies integral widening and returns the widest operand type for integral
-operands. For floating operands, it applies floating widening and returns the
-promoted floating type.
+## Conformance fixtures
 
-`NAN` is unordered: every ordered comparison involving it returns `FALSE`, as
-does equality; inequality returns `TRUE`.
+Positive coverage exists (`examples/type_test.bn`, `tests/runtime.rs`
+overflow, IEEE `/ 0`, Euclidean in the factorial program).
 
-## Conversions and sizes
+- [X] Integral overflow (`INT8` `+= 1`, constructor overflow, type_test probes)
+- [X] IEEE `/ 0` → `INF` / `NAN`
+- [X] Euclidean `DIV` / `%` on negatives
+- [X] `SHL` / `SHR` happy path
+- [X] `ALLOCATION_TOO_LARGE` / `ALLOCATION_SIZE_INVALID` tests
+- [ ] Executable fixture for `DIVISION_BY_ZERO` (`DIV` / `%`)
+- [ ] Executable fixture for `INVALID_SHIFT_COUNT` (computed count)
+- [ ] Executable fixture for `INVALID_EXPONENT`
+- [ ] Executable fixture for `INVALID_NUMERIC_CONVERSION` (`NAN`/`INF` as INT)
+- [ ] `INT32_MIN % -1 = 0` (rule is in the proposal; not asserted in type_test)
+- [ ] `NAN = NAN` / ordered compares as `CheckBoolean` in type_test
+- [ ] Multidimensional `ALLOCATION_SIZE_OVERFLOW` fixture
 
-An explicit conversion is permitted between any integral types, including
-narrowing conversions and signed/unsigned changes. The runtime checks that the
-source value fits the target range and raises `INVALID_NUMERIC_CONVERSION`
-otherwise. `INTEGER` follows `INT32`. Floating-to-integer conversion truncates
-toward zero, then checks the target range. `NAN`, positive infinity, and
-negative infinity raise
-`INVALID_NUMERIC_CONVERSION`. Conversion to `FLOAT32` or `FLOAT` uses IEEE 754
-rounding. A finite value that overflows the target floating type becomes the
-appropriately signed infinity; `NAN` and infinities convert to their
-corresponding target values.
+## Compiled path (not this proposal's 0.1 text, noted)
 
-Before allocating `TYPE[d1][d2]...`, the runtime validates each dimension and
-multiplies dimensions with checked non-negative arithmetic. It then checks the
-element count and byte size against the host allocation limit. Arithmetic
-overflow raises `ALLOCATION_SIZE_OVERFLOW`; a valid size exceeding that limit
-raises `ALLOCATION_TOO_LARGE`. No wrapped size may reach the allocator. The
-same checks apply to `NEW TYPE[count]`.
+LLVM analysis now lists `DIV`, `%`, `**`, `SHL`, `SHR` as supported and uses
+overflow intrinsics for `+ - *`. Differential `bn build` vs `bn run` for those
+ops is the 0.4.3 bucket, not a hole in this numeric contract.
 
-## Alternatives considered
+## Alternatives considered (accepted)
 
-- Silent two's-complement wrapping was rejected: it hides ordinary mistakes
-  and makes behavior differ from BN's safety-oriented runtime direction.
-- Automatic numeric widening was rejected: it weakens explicit typing and
-  makes assignment and compound assignment rules harder to predict.
-- Saturating arithmetic was rejected: it silently changes calculations and
-  loses the source of the error.
-
-## Conformance work after acceptance
-
-Add executable positive and negative fixtures for each integral boundary,
-division/modulo by zero, exponentiation, shift counts, conversions from `NAN`
-and infinity, IEEE special floating values, and multidimensional allocation-size overflow. The Rust runtime
-must use checked arithmetic and translate every failure to the listed BN
-`Error` codes.
+- [X] No two's-complement wrap
+- [X] No automatic assignment widening
+- [X] No saturating arithmetic

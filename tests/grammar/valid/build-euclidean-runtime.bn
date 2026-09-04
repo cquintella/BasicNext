@@ -1,0 +1,23 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+FUNCTION Start() AS VOID
+    LET n AS INTEGER = LEN(HOST.Args)
+    LET dividend AS INTEGER = n - n - 5
+    LET divisor AS INTEGER = n - n + 3
+    PRINT dividend DIV divisor
+    PRINT dividend % divisor
+    LET min AS INTEGER = -2147483648 + n - n
+    LET neg AS INTEGER = -1 + n - n
+    PRINT min % neg
+    LET b AS BYTE = (10 + n - n) AS BYTE
+    LET c AS BYTE = (3 + n - n) AS BYTE
+    PRINT b DIV c
+    PRINT b % c
+    LET s AS INT8 = (-5 + n - n) AS INT8
+    LET t AS INT8 = (2 + n - n) AS INT8
+    PRINT s DIV t
+    PRINT s % t
+END FUNCTION

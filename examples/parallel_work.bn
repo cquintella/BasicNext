@@ -2,9 +2,10 @@
 //
 // The queue owns four bounded workers. Each named task performs a separate
 // range reduction and reports its result through its ticket output.
+
 IMPORT BNDispatch AS Dispatch
 
-FUNCTION WorkA() AS VOID
+FUNCTION WorkA() AS INTEGER 
     LET total AS INTEGER = 0
     LET value AS INTEGER = 1
     WHILE value <= 1000
@@ -12,6 +13,7 @@ FUNCTION WorkA() AS VOID
         value += 1
     END WHILE
     PRINT "A sum 1..1000 = ", total
+    RETURN total
 END FUNCTION
 
 FUNCTION WorkB() AS VOID

@@ -1,13 +1,6 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn system_timestamp_ms(time: SystemTime) -> i64 {
-    match time.duration_since(UNIX_EPOCH) {
-        Ok(duration) => i64::try_from(duration.as_millis()).unwrap_or(i64::MAX),
-        Err(error) => i64::try_from(error.duration().as_millis()).map_or(i64::MIN, |value| -value),
-    }
-}
-
 pub(super) fn debug_variables(
     symbols: &HashMap<SymbolId, Value>,
     values: &HashMap<ValueId, Value>,

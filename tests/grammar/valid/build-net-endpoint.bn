@@ -1,0 +1,15 @@
+IMPORT HOST.Net AS Net
+
+FUNCTION Start() AS VOID
+    LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    IF address IS Error THEN
+        PRINT "error"
+    ELSE
+        LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, 8080)
+        IF endpoint IS Error THEN
+            PRINT "error"
+        ELSE
+            PRINT endpoint.Port()
+        END IF
+    END IF
+END FUNCTION

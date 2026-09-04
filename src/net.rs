@@ -33,6 +33,15 @@ fn retain_resolver_task(task: std::thread::JoinHandle<()>) {
         .push(task);
 }
 
+/// Joins every retained resolver/reverse worker. Safe to call more than once.
+pub fn join_resolver_tasks() {
+    let tasks = resolver_tasks();
+    let mut tasks = tasks.lock().expect("resolver task registry poisoned");
+    while let Some(task) = tasks.pop() {
+        let _ = task.join();
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct Address(IpAddr);
 
@@ -44,6 +53,11 @@ impl Address {
     /// Returns the standard parser error when `text` is not an address.
     pub fn parse(text: &str) -> Result<Self, std::net::AddrParseError> {
         text.parse().map(Self)
+    }
+
+    #[must_use]
+    pub const fn from_ip(address: IpAddr) -> Self {
+        Self(address)
     }
 
     #[must_use]
@@ -435,6 +449,14 @@ pub fn resolve_timeout(
         }
     }
 }
+
+mod icmp;
+mod neighbor;
+mod reverse;
+
+pub use icmp::{PingError, PingReply, ping};
+pub use neighbor::{NeighborError, neighbor};
+pub use reverse::{ReverseError, reverse_timeout};
 
 #[cfg(test)]
 mod tests;

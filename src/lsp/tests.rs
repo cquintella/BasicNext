@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use super::{find_definition, find_locations, lsp_range, word_prefix};
+use super::{
+    completion::completion_items, find_definition, find_locations, lsp_range, word_prefix,
+};
 use crate::source::SourceFile;
 
 #[test]
@@ -15,6 +17,59 @@ fn spans_are_zero_based_at_the_protocol_boundary() {
 fn completion_prefix_uses_the_requested_line_and_utf8_chars() {
     let source = SourceFile::new("test.bn", "LET valor AS INTEGER\nPRI");
     assert_eq!(word_prefix(&source, super::Position::new(1, 3)), "PRI");
+}
+
+fn labels(source: &str, line: u32, character: u32) -> Vec<String> {
+    let uri = "file:///test.bn";
+    let file = SourceFile::new(uri, source);
+    let documents = HashMap::from([(uri.into(), file)]);
+    completion_items(
+        documents.get(uri).expect("fixture"),
+        super::Position::new(line, character),
+        &documents,
+        None,
+    )
+    .into_iter()
+    .map(|item| item.label)
+    .collect()
+}
+
+#[test]
+fn completion_filters_keywords_by_prefix() {
+    let items = labels("PRI", 0, 3);
+    assert!(items.contains(&"PRINT".into()), "{items:?}");
+    assert!(items.contains(&"PRIVATE".into()), "{items:?}");
+    assert!(!items.contains(&"LET".into()), "{items:?}");
+}
+
+#[test]
+fn completion_lists_host_capabilities_after_a_dot() {
+    let items = labels("PRINT HOST.", 0, 11);
+    assert!(items.contains(&"Clock".into()), "{items:?}");
+    assert!(items.contains(&"Console".into()), "{items:?}");
+    assert!(!items.contains(&"PRINT".into()), "{items:?}");
+}
+
+#[test]
+fn completion_lists_console_members_on_an_import_alias() {
+    let source = "IMPORT HOST.Console AS CON\nFUNCTION Start() AS VOID\nCON.Cl\nEND FUNCTION\n";
+    let items = labels(source, 2, 6);
+    assert!(items.contains(&"Cls".into()), "{items:?}");
+    assert!(!items.contains(&"Beep".into()), "{items:?}");
+}
+
+#[test]
+fn completion_lists_local_functions() {
+    let source = "FUNCTION Add(a AS INTEGER, b AS INTEGER) AS INTEGER\nRETURN a + b\nEND FUNCTION\nFUNCTION Start() AS VOID\nAd\nEND FUNCTION\n";
+    let items = labels(source, 4, 2);
+    assert!(items.contains(&"Add".into()), "{items:?}");
+}
+
+#[test]
+fn completion_lists_bnmath_exports_on_alias() {
+    let source = "IMPORT BNMath AS Math\nFUNCTION Start() AS VOID\nMath.AB\nEND FUNCTION\n";
+    let items = labels(source, 2, 7);
+    assert!(items.contains(&"ABS".into()), "{items:?}");
 }
 
 #[test]

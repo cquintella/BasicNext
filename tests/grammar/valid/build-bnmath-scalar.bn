@@ -1,0 +1,14 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT BNMath AS Math
+
+FUNCTION Start() AS VOID
+    PRINT Math.ABS(-5)
+    PRINT Math.SIN(0.0)
+    PRINT Math.VAL("-2.5")
+    PRINT Math.TOHOUR(0 AS TIMESTAMP)
+    PRINT Math.MIN(2, 9)
+END FUNCTION

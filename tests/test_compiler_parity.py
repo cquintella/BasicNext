@@ -23,6 +23,18 @@ class CompilerParityTests(unittest.TestCase):
             "print-if-constant.bn",
             "print-while-false.bn",
             "build-print-same-value.bn",
+            "build-euclidean-div.bn",
+            "build-euclidean-rem.bn",
+            "build-euclidean-runtime.bn",
+            "build-power-shift.bn",
+            "build-power-shift-runtime.bn",
+            "build-widths.bn",
+            "build-clock.bn",
+            "cls-and-beep.bn",
+            "print-call.bn",
+            "print-call-nested.bn",
+            "print-predicate-call.bn",
+            "print-string-call.bn",
         )
         for fixture in fixtures:
             path = ROOT / fixture if fixture.startswith("examples/") else ROOT / "tests" / "grammar" / "valid" / fixture

@@ -1,0 +1,20 @@
+IMPORT BNMath as MATH
+
+FUNCTION Start() AS VOID
+    LET value AS FLOAT
+    LET vect AS INTEGER[10]
+    LET right AS BOOLEAN
+
+    PRINT right
+    PRINT value
+    value = 1.0
+    right = TRUE
+    PRINT right
+    PRINT value
+    PRINT vect
+    vect = [1,2,3,4,5,6,7,8,9,0]
+    PRINT vect
+    vect[0]=100
+    PRINT vect
+    PRINT MAX_INTEGER
+END FUNCTION

@@ -12,6 +12,10 @@ use lsp_types::{
 
 use crate::{lexer::lex, parser::parse_named, semantic::analyze, source::SourceFile};
 
+#[path = "lsp/completion.rs"]
+mod completion;
+use completion::completion_items;
+
 const MAX_DOCUMENT_BYTES: usize = 8 * 1024 * 1024;
 
 /// Runs the bounded LSP service over standard input/output.
@@ -25,12 +29,18 @@ pub fn run_stdio() -> Result<(), String> {
     let (initialize_id, initialize_value) = connection
         .initialize_start()
         .map_err(|error| format!("LSP initialize read failed: {error}"))?;
-    let _: InitializeParams = serde_json::from_value(initialize_value)
+    let initialize: InitializeParams = serde_json::from_value(initialize_value)
         .map_err(|error| format!("invalid initialize params: {error}"))?;
+    let workspace_root = workspace_root(&initialize);
     let capabilities = ServerCapabilities {
-        completion_provider: Some(CompletionOptions::default()),
+        completion_provider: Some(CompletionOptions {
+            trigger_characters: Some(vec![".".into()]),
+            ..CompletionOptions::default()
+        }),
         definition_provider: Some(lsp_types::OneOf::Left(true)),
         references_provider: Some(lsp_types::OneOf::Left(true)),
+        hover_provider: Some(lsp_types::HoverProviderCapability::Simple(true)),
+        document_symbol_provider: Some(lsp_types::OneOf::Left(true)),
         text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
         ..ServerCapabilities::default()
     };
@@ -56,13 +66,19 @@ pub fn run_stdio() -> Result<(), String> {
                     .map_err(|error| error.to_string())?;
             }
             Message::Request(request) if request.method == "textDocument/completion" => {
-                respond_completion(&connection, request, &documents)?;
+                respond_completion(&connection, request, &documents, workspace_root.as_ref())?;
             }
             Message::Request(request) if request.method == "textDocument/definition" => {
                 respond_definition(&connection, request, &documents)?;
             }
             Message::Request(request) if request.method == "textDocument/references" => {
                 respond_references(&connection, request, &documents)?;
+            }
+            Message::Request(request) if request.method == "textDocument/hover" => {
+                respond_hover(&connection, request, &documents)?;
+            }
+            Message::Request(request) if request.method == "textDocument/documentSymbol" => {
+                respond_document_symbols(&connection, request, &documents)?;
             }
             Message::Request(request) => respond_unsupported(&connection, request)?,
             Message::Notification(notification) if notification.method == "exit" => break,
@@ -126,28 +142,96 @@ fn respond_unsupported(connection: &Connection, request: Request) -> Result<(), 
         .map_err(|error| error.to_string())
 }
 
+#[allow(deprecated)]
+fn workspace_root(params: &InitializeParams) -> Option<PathBuf> {
+    let uri = params
+        .workspace_folders
+        .as_ref()
+        .and_then(|folders| folders.first())
+        .map(|folder| folder.uri.as_str())
+        .or_else(|| params.root_uri.as_ref().map(|uri| uri.as_str()))?;
+    uri.strip_prefix("file://").map(PathBuf::from)
+}
+
 fn respond_completion(
     connection: &Connection,
     request: Request,
     documents: &HashMap<String, SourceFile>,
+    workspace_root: Option<&PathBuf>,
 ) -> Result<(), String> {
     let params: CompletionParams = serde_json::from_value(request.params)
         .map_err(|error| format!("invalid completion params: {error}"))?;
-    let prefix = documents
+    let items = documents
         .get(&params.text_document_position.text_document.uri.to_string())
-        .map(|source| word_prefix(source, params.text_document_position.position))
+        .map(|source| {
+            completion_items(
+                source,
+                params.text_document_position.position,
+                documents,
+                workspace_root.map(PathBuf::as_path),
+            )
+        })
         .unwrap_or_default();
-    let items = crate::token::reserved_words()
-        .iter()
-        .filter(|word| word.starts_with(&prefix))
-        .map(|word| CompletionItem::new_simple((*word).into(), "Basic Next keyword".into()))
-        .collect::<Vec<_>>();
     let result = serde_json::to_value(CompletionResponse::Array(items))
         .map_err(|error| error.to_string())?;
     connection
         .sender
         .send(Message::Response(Response::new_ok(request.id, result)))
         .map_err(|error| error.to_string())
+}
+
+fn respond_hover(
+    connection: &Connection,
+    request: Request,
+    documents: &HashMap<String, SourceFile>,
+) -> Result<(), String> {
+    let params: lsp_types::HoverParams = serde_json::from_value(request.params)
+        .map_err(|error| format!("invalid hover params: {error}"))?;
+    let uri = params.text_document_position_params.text_document.uri;
+    let position = params.text_document_position_params.position;
+    let result = documents.get(&uri.to_string()).and_then(|source| {
+        let word = word_prefix(source, position);
+        (!word.is_empty()).then(|| serde_json::json!({
+            "contents": {"kind": "markdown", "value": format!("**{word}** — Basic Next symbol")}
+        }))
+    });
+    connection.sender.send(Message::Response(Response::new_ok(
+        request.id,
+        serde_json::to_value(result).map_err(|error| error.to_string())?,
+    ))).map_err(|error| error.to_string())
+}
+
+fn respond_document_symbols(
+    connection: &Connection,
+    request: Request,
+    documents: &HashMap<String, SourceFile>,
+) -> Result<(), String> {
+    let params: lsp_types::DocumentSymbolParams = serde_json::from_value(request.params)
+        .map_err(|error| format!("invalid document symbol params: {error}"))?;
+    let symbols = if let Some(source) = documents.get(&params.text_document.uri.to_string()) {
+            let tokens = lex(source).map_err(|error| error.message)?;
+            let program = parse_named(&tokens, source.name.clone()).map_err(|error| error.message)?;
+            program.items.into_iter().filter_map(|item| match item {
+                crate::ast::Item::Declaration { kind, name, span, .. } => Some(serde_json::json!({
+                    "name": name,
+                    "kind": match kind {
+                        crate::ast::DeclarationKind::Function => 12,
+                        crate::ast::DeclarationKind::Class => 5,
+                        crate::ast::DeclarationKind::Struct => 23,
+                        crate::ast::DeclarationKind::Interface => 11,
+                    },
+                    "range": lsp_range(span.start.line, span.start.column, span.end.line, span.end.column),
+                    "selectionRange": lsp_range(span.start.line, span.start.column, span.end.line, span.end.column)
+                })),
+                crate::ast::Item::Import { .. } => None,
+            }).collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    connection.sender.send(Message::Response(Response::new_ok(
+        request.id,
+        serde_json::Value::Array(symbols),
+    ))).map_err(|error| error.to_string())
 }
 
 fn respond_definition(

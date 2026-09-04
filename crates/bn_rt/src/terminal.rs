@@ -1,3 +1,11 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+//! TTY window size. Same ioctl/Win32 query the interpreter used.
+
+/// Columns and rows of stdout when it is a terminal.
 #[cfg(all(
     unix,
     any(
@@ -11,8 +19,9 @@
         target_os = "netbsd"
     )
 ))]
-#[allow(unsafe_code)]
-pub(super) fn terminal_dimensions() -> Option<(i128, i128)> {
+#[must_use]
+#[allow(unsafe_code)] // Narrow ioctl TIOCGWINSZ; no Rust memory is retained by the kernel.
+pub fn terminal_dimensions() -> Option<(i128, i128)> {
     use std::os::raw::{c_int, c_ulong};
 
     #[repr(C)]
@@ -64,13 +73,15 @@ pub(super) fn terminal_dimensions() -> Option<(i128, i128)> {
         target_os = "netbsd"
     ))
 ))]
-pub(super) fn terminal_dimensions() -> Option<(i128, i128)> {
+#[must_use]
+pub fn terminal_dimensions() -> Option<(i128, i128)> {
     None
 }
 
 #[cfg(windows)]
+#[must_use]
 #[allow(unsafe_code)] // Narrow BDFL-approved Win32 terminal query; no Rust memory is retained by Windows.
-pub(super) fn terminal_dimensions() -> Option<(i128, i128)> {
+pub fn terminal_dimensions() -> Option<(i128, i128)> {
     #[repr(C)]
     struct Coord {
         x: i16,
@@ -115,6 +126,7 @@ pub(super) fn terminal_dimensions() -> Option<(i128, i128)> {
 }
 
 #[cfg(not(any(unix, windows)))]
-pub(super) fn terminal_dimensions() -> Option<(i128, i128)> {
+#[must_use]
+pub fn terminal_dimensions() -> Option<(i128, i128)> {
     None
 }

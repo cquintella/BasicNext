@@ -6,6 +6,7 @@ pub(crate) fn lower_terminator(
     terminator: &Terminator,
     analysis: &LoweringAnalysis<'_>,
     _block_state: &mut BlockState,
+    state: &mut EmissionState,
 ) {
     match terminator {
         Terminator::Jump { target } => {
@@ -16,14 +17,57 @@ pub(crate) fn lower_terminator(
             then_block,
             else_block,
         } => {
+            let operand = i1_operand(text, analysis, state, *condition);
             let _ = writeln!(
                 text,
-                "  br i1 %v{}, label %b{}, label %b{}",
-                condition.0, then_block.0, else_block.0
+                "  br i1 {operand}, label %b{}, label %b{}",
+                then_block.0, else_block.0
             );
         }
-        Terminator::Return { value: None } => {
+        Terminator::Return { value: None } if state.is_start => {
             text.push_str("  ret i32 0\n");
+        }
+        Terminator::Return { value: None } if state.return_llvm == "void" => {
+            text.push_str("  ret void\n");
+        }
+        Terminator::Return { value: None } => {
+            text.push_str("  unreachable\n");
+        }
+        Terminator::Stop { code: value } if !state.is_start => {
+            let operand = coerce_return_operand(
+                text,
+                *value,
+                analysis.values.get(value).expect("validated stop type"),
+            );
+            let _ = writeln!(text, "  call void @exit(i32 {operand})");
+            text.push_str("  unreachable\n");
+        }
+        Terminator::Return { value: Some(value) } if !state.is_start => {
+            if state.return_llvm == "void" {
+                text.push_str("  ret void\n");
+            } else {
+                let value_ty = analysis.values.get(value).expect("validated return type");
+                let operand = if llvm_type(value_ty) == Some(state.return_llvm) {
+                    format!("%v{}", value.0)
+                } else if matches!(state.return_llvm, "i8" | "i16" | "i32" | "i64")
+                    && matches!(llvm_type(value_ty), Some("i8" | "i16" | "i32" | "i64"))
+                {
+                    coerce_to_type(
+                        text,
+                        *value,
+                        value_ty,
+                        match state.return_llvm {
+                            "i8" => &Type::Integer(IntegerType::Int8),
+                            "i16" => &Type::Integer(IntegerType::Int16),
+                            "i32" => &Type::Integer(IntegerType::Int32),
+                            _ => &Type::Integer(IntegerType::Int64),
+                        },
+                    )
+                } else {
+                    format!("%v{}", value.0)
+                };
+                let _ = writeln!(text, "  ret {} {operand}", state.return_llvm);
+            }
         }
         Terminator::Return { value: Some(value) } | Terminator::Stop { code: value } => {
             let operand = coerce_return_operand(
@@ -36,114 +80,65 @@ pub(crate) fn lower_terminator(
     }
 }
 
-pub(crate) fn lower_cast(
-    text: &mut String,
-    destination: ValueId,
-    value: ValueId,
-    source_ty: &Type,
-    target_ty: &Type,
-) {
-    let source = llvm_type(source_ty).expect("validated cast source type");
-    let target = llvm_type(target_ty).expect("validated cast target type");
-    match (source, target) {
-        ("i8" | "i16" | "i32" | "i64", "i8" | "i16" | "i32" | "i64") => {
-            if source == target {
-                let _ = writeln!(
-                    text,
-                    "  %v{} = add {target} 0, %v{}",
-                    destination.0, value.0
-                );
-            } else if integer_width_from_llvm(source) < integer_width_from_llvm(target) {
-                let opcode = if is_unsigned(source_ty) {
-                    "zext"
-                } else {
-                    "sext"
-                };
-                let _ = writeln!(
-                    text,
-                    "  %v{} = {opcode} {source} %v{} to {target}",
-                    destination.0, value.0
-                );
-            } else {
-                let _ = writeln!(
-                    text,
-                    "  %v{} = trunc {source} %v{} to {target}",
-                    destination.0, value.0
-                );
-            }
-        }
-        ("i8" | "i16" | "i32" | "i64", "float" | "double") => {
-            let opcode = if is_unsigned(source_ty) {
-                "uitofp"
-            } else {
-                "sitofp"
-            };
-            let _ = writeln!(
-                text,
-                "  %v{} = {opcode} {source} %v{} to {target}",
-                destination.0, value.0
-            );
-        }
-        ("float" | "double", "i8" | "i16" | "i32" | "i64") => {
-            let opcode = if is_unsigned(target_ty) {
-                "fptoui"
-            } else {
-                "fptosi"
-            };
-            let _ = writeln!(
-                text,
-                "  %v{} = {opcode} {source} %v{} to {target}",
-                destination.0, value.0
-            );
-        }
-        ("float", "double") => {
-            let _ = writeln!(
-                text,
-                "  %v{} = fpext float %v{} to double",
-                destination.0, value.0
-            );
-        }
-        ("double", "float") => {
-            let _ = writeln!(
-                text,
-                "  %v{} = fptrunc double %v{} to float",
-                destination.0, value.0
-            );
-        }
-        ("i1", "i1") => {
-            let _ = writeln!(text, "  %v{} = or i1 false, %v{}", destination.0, value.0);
-        }
-        ("ptr", "ptr") => {
-            let _ = writeln!(
-                text,
-                "  %v{} = getelementptr i8, ptr %v{}, i64 0",
-                destination.0, value.0
-            );
-        }
-        ("float", "float") => {
-            let _ = writeln!(
-                text,
-                "  %v{} = fadd float 0.0, %v{}",
-                destination.0, value.0
-            );
-        }
-        ("double", "double") => {
-            let _ = writeln!(
-                text,
-                "  %v{} = fadd double 0.0, %v{}",
-                destination.0, value.0
-            );
-        }
-        _ => unreachable!("validated cast shape"),
-    }
-}
-
 pub(crate) fn lower_print_value(
     text: &mut String,
     value: ValueId,
     ty: &Type,
     state: &mut EmissionState,
 ) {
+    if matches!(ty, Type::Named(name) if name == "DATE") {
+        let _ = writeln!(text, "  call void @bn_rt_print_date(i32 %v{})", value.0);
+        return;
+    }
+    if matches!(ty, Type::Named(name) if name == "TIME") {
+        let _ = writeln!(text, "  call void @bn_rt_print_time(i32 %v{})", value.0);
+        return;
+    }
+    if llvm_type(ty) == Some("{ i1, ptr, i64 }") {
+        let count = state.print_count;
+        let _ = writeln!(
+            text,
+            "  %netprint{count} = extractvalue {{ i1, ptr, i64 }} %v{}, 1",
+            value.0
+        );
+        let _ = writeln!(
+            text,
+            "  %print{count} = call i32 (ptr, ...) @printf(ptr @.bn_fmt_str, ptr %netprint{count})"
+        );
+        state.print_count += 1;
+        return;
+    }
+    if llvm_type(ty) == Some("{ i1, double }") {
+        let count = state.print_count;
+        let _ = writeln!(
+            text,
+            "  %optisna{count} = extractvalue {{ i1, double }} %v{}, 0",
+            value.0
+        );
+        let _ = writeln!(
+            text,
+            "  %optval{count} = extractvalue {{ i1, double }} %v{}, 1",
+            value.0
+        );
+        let _ = writeln!(
+            text,
+            "  br i1 %optisna{count}, label %optna{count}, label %optnum{count}"
+        );
+        let _ = writeln!(text, "optna{count}:");
+        let _ = writeln!(
+            text,
+            "  %optnaprint{count} = call i32 (ptr, ...) @printf(ptr @.bn_fmt_str, ptr @.bn_na)"
+        );
+        let _ = writeln!(text, "  br label %optjoin{count}");
+        let _ = writeln!(text, "optnum{count}:");
+        let _ = writeln!(
+            text,
+            "  call void @bn_rt_print_float(double %optval{count})"
+        );
+        let _ = writeln!(text, "  br label %optjoin{count}");
+        let _ = writeln!(text, "optjoin{count}:");
+        return;
+    }
     match llvm_type(ty).expect("validated print type") {
         "i1" => {
             let _ = writeln!(
@@ -173,9 +168,14 @@ pub(crate) fn lower_print_value(
             );
         }
         "i64" => {
+            let fmt = if is_unsigned(ty) {
+                "@.bn_fmt_uint"
+            } else {
+                "@.bn_fmt_int"
+            };
             let _ = writeln!(
                 text,
-                "  %print{} = call i32 (ptr, ...) @printf(ptr @.bn_fmt_int, i64 %v{})",
+                "  %print{} = call i32 (ptr, ...) @printf(ptr {fmt}, i64 %v{})",
                 state.print_count, value.0
             );
         }
@@ -187,16 +187,12 @@ pub(crate) fn lower_print_value(
             );
             let _ = writeln!(
                 text,
-                "  %print{} = call i32 (ptr, ...) @printf(ptr @.bn_fmt_float, double %printfloat{})",
-                state.print_count, state.print_count
+                "  call void @bn_rt_print_float(double %printfloat{})",
+                state.print_count
             );
         }
         "double" => {
-            let _ = writeln!(
-                text,
-                "  %print{} = call i32 (ptr, ...) @printf(ptr @.bn_fmt_float, double %v{})",
-                state.print_count, value.0
-            );
+            let _ = writeln!(text, "  call void @bn_rt_print_float(double %v{})", value.0);
         }
         "ptr" => {
             let _ = writeln!(
@@ -218,17 +214,19 @@ pub(crate) fn emit_checked_integer_op(
     operator: &str,
     left: ValueId,
     right: Option<ValueId>,
+    left_ty: &Type,
+    right_ty: &Type,
     ty: &Type,
     state: &mut EmissionState,
 ) {
     let intrinsic = checked_intrinsic_name(ty, operator).expect("validated checked intrinsic");
     let llvm_ty = llvm_type(ty).expect("validated integer type");
     let (left_operand, right_operand) = if operator == "Minus" && right.is_none() {
-        ("0".into(), format!("%v{}", left.0))
+        ("0".into(), coerce_to_type(text, left, left_ty, ty))
     } else {
         (
-            format!("%v{}", left.0),
-            format!("%v{}", right.expect("binary op right").0),
+            coerce_to_type(text, left, left_ty, ty),
+            coerce_to_type(text, right.expect("binary op right"), right_ty, ty),
         )
     };
     let _ = writeln!(

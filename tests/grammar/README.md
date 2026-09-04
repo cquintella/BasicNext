@@ -60,6 +60,8 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `invalid/void-return-value.bn` | Reject (semantic) | A `VOID` function cannot return a value. |
 | `invalid/nonvoid-bare-return.bn` | Reject (semantic) | A value-producing function cannot use bare `RETURN`. |
 | `invalid/uninitialized-pointer.bn` | Reject (semantic) | A non-defaultable `LET` type requires an initializer. |
+| `valid/static-field-type-default.bn` | Accept and run | Defaultable `STATIC` fields omit `=` and use the `LET` type default. |
+| `invalid/static-pointer-uninitialized.bn` | Reject (semantic) | A `STATIC POINTER` field still requires an initializer. |
 | `invalid/pointer-unknown-named-type.bn` | Reject (semantic) | A named pointer element must resolve to a declared or imported type. |
 | `invalid/pointer-void-index.bn` | Reject (semantic) | An opaque pointer must convert to a typed pointer before indexing. |
 | `invalid/new-void.bn` | Reject (syntax) | `POINTER TO VOID` is opaque; `NEW VOID` is not an allocation form. |

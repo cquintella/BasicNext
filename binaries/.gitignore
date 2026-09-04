@@ -2,4 +2,7 @@
 !.gitignore
 !README.md
 .venv-kernel
-.venv
+.venv/*
+/src/.ua/*
+.superpowers/*
+/.ua*

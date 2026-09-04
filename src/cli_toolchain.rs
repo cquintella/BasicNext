@@ -1,4 +1,7 @@
-use std::{env, fs, path::Path};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 
 pub(crate) fn configured_wasm_ld() -> String {
     if let Ok(command) = env::var("BN_WASM_LD") {
@@ -46,6 +49,44 @@ pub(crate) fn configured_wasm_clang() -> Result<String, String> {
 
 pub(crate) fn configured_clang() -> Result<String, String> {
     Ok(toolchain_value("clang")?.unwrap_or_else(|| "clang".into()))
+}
+
+pub(crate) fn configured_bn_rt_lib() -> Result<PathBuf, String> {
+    if let Ok(path) = env::var("BN_RT_LIB") {
+        let path = PathBuf::from(path);
+        if path.is_file() {
+            return Ok(path);
+        }
+        return Err(format!("BN_RT_LIB is not a file: {}", path.display()));
+    }
+    let file_name = if cfg!(windows) {
+        "bn_rt.lib"
+    } else {
+        "libbn_rt.a"
+    };
+    let mut candidates = Vec::new();
+    if let Ok(exe) = env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        candidates.push(dir.join(file_name));
+        if let Some(parent) = dir.parent() {
+            candidates.push(parent.join(file_name));
+            candidates.push(parent.join("lib").join(file_name));
+        }
+    }
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for profile in ["debug", "release"] {
+        candidates.push(manifest.join("target").join(profile).join(file_name));
+    }
+    if let Ok(dir) = env::var("CARGO_TARGET_DIR") {
+        for profile in ["debug", "release"] {
+            candidates.push(PathBuf::from(&dir).join(profile).join(file_name));
+        }
+    }
+    candidates
+        .into_iter()
+        .find(|path| path.is_file())
+        .ok_or_else(|| "libbn_rt.a not found; build the bn_rt crate (cargo build -p bn_rt)".into())
 }
 
 pub(crate) fn toolchain_value(key: &str) -> Result<Option<String>, String> {

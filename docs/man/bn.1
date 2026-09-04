@@ -1,5 +1,5 @@
 .\" groff man page for the Basic Next reference tool.
-.TH BN 1 "August 28, 2026" "bn 0.2.0-dev" "Basic Next"
+.TH BN 1 "September 3, 2026" "bn 0.4.3" "Basic Next"
 .SH NAME
 bn \- Basic Next reference checker, interpreter, and compiler
 .SH SYNOPSIS
@@ -40,6 +40,12 @@ print LLVM IR. With
 invoke Clang to create a native executable or Clang and
 .B wasm-ld
 to create a linked WebAssembly module.
+.TP
+.B lsp
+Serve the Language Server Protocol over standard input and output.
+.TP
+.B dap
+Serve the Debug Adapter Protocol over standard input and output.
 .SH OPTIONS
 .TP
 .BR -v , " --verbose"
@@ -60,6 +66,12 @@ Select the
 .B build
 target. The default is
 .BR native .
+.TP
+.BI --opt " none|1|2|3|s"
+Select the Clang/WebAssembly linker optimization level. The default is
+.BR 2 ;
+.B s
+optimizes for size.
 .TP
 .B --no-filesystem
 With

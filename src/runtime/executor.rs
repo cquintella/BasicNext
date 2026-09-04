@@ -1,9 +1,6 @@
 #![allow(clippy::wildcard_imports, clippy::too_many_lines)]
 use super::*;
 
-#[path = "executor/terminal.rs"]
-mod terminal;
-use terminal::terminal_dimensions;
 #[path = "executor/helpers.rs"]
 mod helpers;
 #[allow(unused_imports)]

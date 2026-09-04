@@ -1,0 +1,20 @@
+IMPORT HOST.Net AS Net
+
+FUNCTION Start() AS VOID
+    LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    IF address IS Error THEN
+        PRINT "error"
+    ELSE
+        LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, 0)
+        IF endpoint IS Error THEN
+            PRINT "error"
+        ELSE
+            LET socket AS Net.UDPSocket OR Error = Net.UDPBind(endpoint)
+            IF socket IS Error THEN
+                PRINT "error"
+            ELSE
+                PRINT "ok"
+            END IF
+        END IF
+    END IF
+END FUNCTION

@@ -1,0 +1,27 @@
+IMPORT HOST.Net AS Net
+
+FUNCTION Start() AS VOID
+    LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    IF address IS Error THEN
+        PRINT "error"
+    ELSE
+        LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, 0)
+        IF endpoint IS Error THEN
+            PRINT "error"
+        ELSE
+            LET endpoints AS Net.Endpoint[1] = [endpoint]
+            LET listener AS Net.TCPListener OR Error = Net.TCPListen(endpoints, 1)
+            IF listener IS Error THEN
+                PRINT "error"
+            ELSE
+                LET local AS Net.Endpoint OR Error = listener.LocalEndpoint()
+                IF local IS Error THEN
+                    PRINT "error"
+                ELSE
+                    PRINT local.Port() > 0
+                END IF
+                listener.Close()
+            END IF
+        END IF
+    END IF
+END FUNCTION

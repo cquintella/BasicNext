@@ -3,7 +3,12 @@ use super::*;
 
 impl Executor<'_, '_> {
 pub(crate) fn host_net_call(&mut self, name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
-        if name.starts_with("HOST.Net.Address.") || name.starts_with("HOST.Net.Endpoint.") || name.starts_with("HOST.Net.CIDR.") || matches!(name, "HOST.Net.Ping" | "HOST.Net.Neighbor" | "HOST.Net.Reverse") {
+        if name.starts_with("HOST.Net.Address.")
+            || name.starts_with("HOST.Net.Endpoint.")
+            || name.starts_with("HOST.Net.CIDR.")
+            || name.starts_with("HOST.Net.PingReply.")
+            || matches!(name, "HOST.Net.Ping" | "HOST.Net.Neighbor" | "HOST.Net.Reverse")
+        {
             return self.host_net_address_call(name, arguments, span);
         }
         if name.starts_with("HOST.Net.TCP") || name == "HOST.Net.Resolve" {

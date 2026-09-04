@@ -53,6 +53,7 @@ pub(crate) fn parse_options(
     let mut filesystem = true;
     let mut jupyter_stdin = false;
     let mut program_arguments = Vec::new();
+    let mut optimization = Optimization::Level(2);
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--" => {
@@ -65,6 +66,16 @@ pub(crate) fn parse_options(
             "--trace" => trace = true,
             "--no-filesystem" => filesystem = false,
             "--jupyter-stdin" => jupyter_stdin = true,
+            "--opt" => {
+                optimization = match arguments.next().as_deref() {
+                    Some("none") => Optimization::None,
+                    Some("1") => Optimization::Level(1),
+                    Some("2") => Optimization::Level(2),
+                    Some("3") => Optimization::Level(3),
+                    Some("s") => Optimization::Size,
+                    _ => return Err("--opt expects none, 1, 2, 3, or s".into()),
+                };
+            }
             "--target" => {
                 target = match arguments.next().as_deref() {
                     Some("native") => Target::Native,
@@ -118,6 +129,22 @@ pub(crate) fn parse_options(
         filesystem,
         jupyter_stdin,
         program_arguments,
+        optimization,
     })
     .ok_or_else(|| "missing source file".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_options;
+    use crate::{Optimization, Target};
+
+    #[test]
+    fn optimization_option_has_explicit_levels_and_default() {
+        assert_eq!(parse_options(["file.bn".into()].into_iter()).expect("default").optimization, Optimization::Level(2));
+        assert_eq!(parse_options(["--opt".into(), "none".into(), "file.bn".into()].into_iter()).expect("none").optimization, Optimization::None);
+        assert_eq!(parse_options(["--opt".into(), "s".into(), "file.bn".into()].into_iter()).expect("size").optimization, Optimization::Size);
+        assert_eq!(parse_options(["--target".into(), "wasm32".into(), "file.bn".into()].into_iter()).expect("target").target, Target::Wasm32);
+        assert!(parse_options(["--opt".into(), "4".into(), "file.bn".into()].into_iter()).is_err());
+    }
 }

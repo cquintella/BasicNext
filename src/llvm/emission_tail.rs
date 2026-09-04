@@ -5,10 +5,10 @@ pub(crate) fn lower_scalar_instruction_tail(
     text: &mut String,
     module: &Module,
     function: &Function,
-    _block_id: BlockId,
+    block_id: BlockId,
     instruction: &Instruction,
     analysis: &LoweringAnalysis<'_>,
-    _symbols: &HashMap<SymbolId, usize>,
+    symbols: &HashMap<SymbolId, usize>,
     block_state: &mut BlockState,
     state: &mut EmissionState,
 ) -> Result<(), String> {
@@ -24,6 +24,33 @@ pub(crate) fn lower_scalar_instruction_tail(
             .copied()
             .expect("validated callee")
         {
+            name if bnmath_method(module, name).is_some() => {
+                lower_bnmath_call(
+                    text,
+                    *destination,
+                    bnmath_method(module, name).expect("validated BNMath"),
+                    arguments,
+                    analysis,
+                );
+            }
+            name if is_bn_rt_host_call(name) => {
+                lower_bn_rt_call(
+                    text,
+                    block_id,
+                    *destination,
+                    name,
+                    arguments,
+                    analysis,
+                    state,
+                );
+            }
+            name if module
+                .functions
+                .iter()
+                .any(|function| function.name == name.strip_prefix("@super:").unwrap_or(name)) =>
+            {
+                lower_user_call(text, module, *destination, name, arguments, analysis, state);
+            }
             "HOST.Random.Seed" => {
                 let seed = extend_to_i64(
                     text,
@@ -39,10 +66,12 @@ pub(crate) fn lower_scalar_instruction_tail(
                     "  %rngseed{} = select i1 %rngzero{}, i64 1, i64 {seed}",
                     destination.0, destination.0
                 );
-                let _ = writeln!(text, "  store i64 %rngseed{}, ptr %rng", destination.0);
+                let rng = rng_ptr(state);
+                let _ = writeln!(text, "  store i64 %rngseed{}, ptr {rng}", destination.0);
             }
             "HOST.Random.Random" => {
-                let _ = writeln!(text, "  %rng0{} = load i64, ptr %rng", destination.0);
+                let rng = rng_ptr(state);
+                let _ = writeln!(text, "  %rng0{} = load i64, ptr {rng}", destination.0);
                 let _ = writeln!(
                     text,
                     "  %rng1{} = lshr i64 %rng0{}, 12",
@@ -78,7 +107,8 @@ pub(crate) fn lower_scalar_instruction_tail(
                     "  %rngnext{} = mul i64 %rng6{}, 2685821657736338717",
                     destination.0, destination.0
                 );
-                let _ = writeln!(text, "  store i64 %rngnext{}, ptr %rng", destination.0);
+                let rng = rng_ptr(state);
+                let _ = writeln!(text, "  store i64 %rngnext{}, ptr {rng}", destination.0);
                 let _ = writeln!(
                     text,
                     "  %rngscale{} = lshr i64 %rngnext{}, 11",
@@ -108,6 +138,257 @@ pub(crate) fn lower_scalar_instruction_tail(
         } if analysis.values.get(vector) == Some(&Type::HostArgs) => {
             block_state.constants.remove(destination);
             let _ = writeln!(text, "  %v{} = add i32 0, %argc", destination.0);
+        }
+        Instruction::Length {
+            destination,
+            vector,
+            ..
+        } if analysis.values.get(vector) == Some(&Type::String) => {
+            block_state.constants.remove(destination);
+            let _ = writeln!(
+                text,
+                "  %v{} = call i32 @bn_rt_str_len(ptr %v{})",
+                destination.0, vector.0
+            );
+        }
+        Instruction::Length {
+            destination,
+            vector,
+            ..
+        } if matches!(
+            analysis.values.get(vector),
+            Some(Type::Vector { .. } | Type::Pointer { .. })
+        ) =>
+        {
+            block_state.constants.remove(destination);
+            emit_vector_length(text, *destination, *vector);
+        }
+        Instruction::Vector {
+            destination,
+            values: elements,
+            ty,
+            ..
+        } => {
+            block_state.constants.remove(destination);
+            emit_vector(text, *destination, elements, ty, analysis);
+        }
+        Instruction::Allocate {
+            destination,
+            type_name,
+            arguments,
+            ty,
+            ..
+        } => {
+            block_state.constants.remove(destination);
+            let object_bytes = class_instance_bytes(module, type_name);
+            emit_allocate(text, *destination, arguments, ty, analysis, object_bytes);
+            if !matches!(ty, Type::Pointer { .. }) {
+                let class_global = format!("@.bn_cls_{}", sanitize_symbol(type_name));
+                emit_store_object_class(text, *destination, &class_global);
+            }
+        }
+        Instruction::Delete { value, .. } => {
+            let ty = analysis
+                .values
+                .get(value)
+                .expect("validated delete value type");
+            emit_delete(text, *value, ty);
+        }
+        Instruction::EnsureClass { class, .. } => {
+            let flag = class_init_flag(class);
+            let init_name = format!("{class}.$init");
+            let n = state.continuation_count;
+            state.continuation_count += 1;
+            let tag = format!("{}{n}", sanitize_symbol(class));
+            let _ = writeln!(text, "  %initflag{tag} = load i1, ptr {flag}");
+            let _ = writeln!(
+                text,
+                "  br i1 %initflag{tag}, label %initdone{tag}, label %initrun{tag}"
+            );
+            let _ = writeln!(text, "initrun{tag}:");
+            let _ = writeln!(text, "  store i1 true, ptr {flag}");
+            if module
+                .functions
+                .iter()
+                .any(|function| function.name == init_name)
+            {
+                let init = llvm_function_symbol(&init_name);
+                let _ = writeln!(text, "  call void @{init}()");
+            }
+            let _ = writeln!(text, "  br label %initdone{tag}");
+            let _ = writeln!(text, "initdone{tag}:");
+        }
+        Instruction::LoadStatic {
+            destination,
+            class,
+            field,
+            ty,
+            ..
+        } => {
+            block_state.constants.remove(destination);
+            let llvm_ty = llvm_type(ty).expect("validated static type");
+            let global = static_global_name(class, field);
+            let _ = writeln!(text, "  %v{} = load {llvm_ty}, ptr {global}", destination.0);
+        }
+        Instruction::StoreStatic {
+            class,
+            field,
+            value,
+            ty,
+            ..
+        } => {
+            let llvm_ty = llvm_type(ty).expect("validated static type");
+            let value_ty = analysis
+                .values
+                .get(value)
+                .expect("validated static value type");
+            let operand = coerce_to_type(text, *value, value_ty, ty);
+            let global = static_global_name(class, field);
+            let _ = writeln!(text, "  store {llvm_ty} {operand}, ptr {global}");
+        }
+        Instruction::SetMember {
+            object,
+            name,
+            owner,
+            value,
+            ty,
+            ..
+        } => {
+            let offset = field_byte_offset(module, owner, name);
+            let value_ty = analysis
+                .values
+                .get(value)
+                .expect("validated member value type");
+            emit_set_member(text, *object, offset, *value, value_ty, ty);
+        }
+        Instruction::SetField {
+            symbol,
+            path,
+            value,
+            ty,
+            ..
+        } => {
+            let owner = match analysis.symbols.get(symbol) {
+                Some(Type::Named(name)) | Some(Type::ImportedNamed { name, .. }) => name.as_str(),
+                _ => "Box",
+            };
+            let field = path.first().map(String::as_str).unwrap_or("value");
+            let offset = field_byte_offset(module, owner, field);
+            let value_ty = analysis
+                .values
+                .get(value)
+                .expect("validated field value type");
+            let _ = writeln!(
+                text,
+                "  %fieldobj{} = load ptr, ptr %s{}",
+                value.0, symbols[symbol]
+            );
+            // Reuse SetMember emitter with a synthetic object value id name via temp.
+            let llvm_ty = llvm_type(ty).expect("validated field type");
+            let value_op = coerce_to_type(text, *value, value_ty, ty);
+            let _ = writeln!(
+                text,
+                "  %fieldptr{} = getelementptr i8, ptr %fieldobj{}, i32 {offset}",
+                value.0, value.0
+            );
+            let _ = writeln!(
+                text,
+                "  store {llvm_ty} {value_op}, ptr %fieldptr{}",
+                value.0
+            );
+        }
+        Instruction::Member {
+            destination,
+            object,
+            name,
+            owner,
+            ty,
+            ..
+        } => {
+            block_state.constants.remove(destination);
+            if owner == "Error" && name == "Message" {
+                let _ = writeln!(
+                    text,
+                    "  %v{} = extractvalue {{ i1, ptr, i64 }} %v{}, 1",
+                    destination.0, object.0
+                );
+            } else {
+                let offset = field_byte_offset(module, owner, name);
+                emit_member(text, *destination, *object, offset, ty);
+            }
+        }
+        Instruction::SetIndex {
+            symbol,
+            indices,
+            value,
+            ty,
+            ..
+        } => {
+            let index = indices[0];
+            let index_ty = analysis
+                .values
+                .get(&index)
+                .expect("validated setindex index type");
+            let value_ty = analysis
+                .values
+                .get(value)
+                .expect("validated setindex value type");
+            emit_pointer_set_index(
+                text,
+                block_id,
+                symbols[symbol],
+                index,
+                index_ty,
+                *value,
+                value_ty,
+                ty,
+                state,
+            );
+        }
+        Instruction::Index {
+            destination,
+            object,
+            index,
+            ty,
+            ..
+        } if analysis
+            .values
+            .get(object)
+            .is_some_and(|ty| is_int_vector(ty) || is_int_pointer(ty)) =>
+        {
+            block_state.constants.remove(destination);
+            let index_ty = analysis
+                .values
+                .get(index)
+                .expect("validated vector index type");
+            emit_vector_index(
+                text,
+                block_id,
+                *destination,
+                *object,
+                *index,
+                index_ty,
+                ty,
+                state,
+            );
+        }
+        Instruction::Index {
+            destination,
+            object,
+            index,
+            ..
+        } if analysis.values.get(object) == Some(&Type::String) => {
+            block_state.constants.remove(destination);
+            let idx = extend_to_i32_index(
+                text,
+                *index,
+                analysis.values.get(index).expect("validated index type"),
+            );
+            let _ = writeln!(
+                text,
+                "  %v{} = call ptr @bn_rt_str_index(ptr %v{}, i32 {idx})",
+                destination.0, object.0
+            );
         }
         Instruction::Index {
             destination,
@@ -181,4 +462,25 @@ pub(crate) fn lower_scalar_instruction_tail(
         }
     }
     Ok(())
+}
+
+fn extend_to_i32_index(text: &mut String, value: ValueId, ty: &Type) -> String {
+    match llvm_type(ty).expect("validated index type") {
+        "i32" => format!("%v{}", value.0),
+        "i64" => {
+            let temp = format!("stridx{}", value.0);
+            let _ = writeln!(text, "  %{temp} = trunc i64 %v{} to i32", value.0);
+            format!("%{temp}")
+        }
+        llvm_ty => {
+            let opcode = if is_unsigned(ty) { "zext" } else { "sext" };
+            let temp = format!("stridx{}", value.0);
+            let _ = writeln!(text, "  %{temp} = {opcode} {llvm_ty} %v{} to i32", value.0);
+            format!("%{temp}")
+        }
+    }
+}
+
+fn rng_ptr(state: &EmissionState) -> &'static str {
+    if state.rng_global { "@bn_rng" } else { "%rng" }
 }

@@ -12,9 +12,9 @@ FUNCTION Factorial(value AS INTEGER) AS INTEGER
 END FUNCTION
 
 FUNCTION Start() AS INTEGER
-    LET value AS INTEGER = 5
+    LET value AS INTEGER = 10
     LET result AS INTEGER = Factorial(value)
 
-    PRINT "Factorial of", value, "is", result
+    PRINT "Factorial of ", value, " is ", result
     RETURN 0
 END FUNCTION

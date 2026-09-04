@@ -1,0 +1,40 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+FUNCTION Start() AS VOID
+    LET b AS BYTE = 10
+    LET i8v AS INT8 = -5
+    LET i16v AS INT16 = -300
+    LET u16v AS UINT16 = 40000
+    LET i32v AS INT32 = 100000
+    LET u32v AS UINT32 = 3000000000
+    LET i64v AS INT64 = -1
+    LET u64v AS UINT64 = 1
+    LET f32v AS FLOAT32 = 1.5
+    LET f64v AS FLOAT64 = 2.25
+    LET flag AS BOOLEAN = TRUE
+    PRINT b + b
+    PRINT i8v + i8v
+    PRINT i16v + 1 AS INT16
+    PRINT u16v - 1 AS UINT16
+    PRINT i32v * 2
+    PRINT u32v DIV 2 AS UINT32
+    PRINT i64v - i64v
+    PRINT u64v + u64v
+    PRINT f32v * f32v
+    PRINT f64v / 2.0
+    PRINT NOT flag
+    PRINT 0 AS BOOLEAN
+    PRINT 1 AS BOOLEAN
+    PRINT 0.0 AS BOOLEAN
+    PRINT 1.5 AS BOOLEAN
+    PRINT "" AS BOOLEAN
+    PRINT "x" AS BOOLEAN
+    PRINT 42 AS INT16
+    PRINT 42 AS BYTE
+    PRINT 1.9 AS INTEGER
+    PRINT (i32v AS FLOAT) + 0.5
+    PRINT f32v AS FLOAT64
+END FUNCTION

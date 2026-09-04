@@ -75,7 +75,7 @@ tests pass with documented response-header and cookie policies.
 - [X] ACTIVITY 3.3 — Implement listener signaling, connection tracking, drain, join, cancellation, idempotent close, and deadline-aware stop. Evidence: listener handles are transferred out of the mutex and joined within the shared deadline; admitted sockets receive cooperative `shutdown(Both)` cancellation; worker drain observes the requested deadline; slow, failing, repeated-stop, multiple-socket, timeout, and listener-boundary tests pass.
 - [X] ACTIVITY 3.4 — Add bounded route-plus-effective-client token-bucket rate limiting with `429` and `Retry-After`. Evidence: bounded integer token bucket, deterministic oldest-key eviction with the evicted key asserted, millisecond refill arithmetic that preserves sub-second remainder, controlled-time refill, trusted-proxy provenance, route/client isolation, and HTTP `429`/`Retry-After: 1` test.
 - [X] ACTIVITY 3.5 — Expose read-only server readiness/drain status and counters without creating hidden HTTP routes. Evidence: typed lifecycle statuses, readiness transition, counters, and public stopped/not-ready projection tests.
-- [X] ACTIVITY 3.6 — Close native HOST.Net resource and timeout gaps. Evidence: resolver tasks retain JoinHandles and are reaped; TCP connect applies read/write deadlines; TCPListen uses `bind_with_backlog`; TCP accept uses an async deadline instead of 1 ms polling; TCP/UDP handle counts, resolver results, and datagrams use registry limits; mapped IPv4 predicates are classified as IPv4; UDP multicast/broadcast sends are denied. `Ping`, `Neighbor`, and `Reverse` remain explicit provider-deferred capabilities because a portable implementation requires a new permission/timeout/provider contract.
+- [ ] ACTIVITY 3.6 — Close native HOST.Net resource and timeout gaps, then implement the remaining 0.3 operations. Resource/timeout work is in tree (resolver JoinHandles reaped; TCP connect deadlines; `TCPListen` `bind_with_backlog`; accept deadline instead of 1 ms polling; TCP/UDP/resolver/datagram registry limits; mapped IPv4 predicates; UDP multicast/broadcast denied). Reopened 2026-09-02: `Ping`, `Reverse`, and `Neighbor` are still `provider unavailable` and are not deferred. Complete them in `ongoing/bucket-0.4.3.md` Sprint 4 (ICMP Echo, reverse DNS, ARP/NDP; no `ping(8)`). This activity stays open until G4 there.
 - [X] GATE G3 — Controlled `N+1` load cannot exceed the worker/connection quota, and successful stop leaves no untracked listener or connection worker. Evidence: N+1 admission/pool test, fixed worker/runtime tests, clear overload status tests, and lifecycle join/drain suite.
 
 Implementation requirements: an `N+1` local connection test cannot exceed the
@@ -163,3 +163,72 @@ only if the optional mode is accepted.
 
 Exit evidence: the accepted normative contract, implementation, security
 register, conformance evidence, examples, and plugins are mutually consistent.
+
+## APPENDIX A — Complete parity-gap diagnosis (0.4.x)
+
+This appendix is the diagnostic baseline for claiming 100% functionality of
+the interpreted and compiled versions. “100%” means that every accepted
+language construct and standard-module operation has either equivalent
+semantics on both execution paths or an explicit, versioned target boundary
+with executable conformance evidence. A passing `bn check` alone is not
+evidence of compiler support.
+
+### Diagnostic matrix
+
+- [ ] Language inventory — enumerate every accepted token, grammar production,
+  semantic rule, type, statement, expression, control-flow form, lifetime
+  rule, error, and source-span rule from the normative 0.4 documents.
+- [ ] Interpreter inventory — map each inventory item to parser, semantic
+  analysis, IR, executor, host provider, and positive/negative tests.
+- [ ] LLVM inventory — map each IR instruction and type to validation,
+  lowering, emitted runtime support, native execution, and wasm execution.
+- [ ] Differential fixtures — run the same deterministic programs through
+  `bn run`, native LLVM artifacts, and wasm artifacts; compare stdout, stderr,
+  exit status, diagnostics, mutations, and observable errors.
+- [ ] Negative parity — prove that unsupported compiler targets reject
+  deterministically without changing interpreter semantics, and that every
+  rejection names the operation and source span.
+- [ ] Coverage closure — require one positive and one negative fixture for
+  every matrix row, including boundary values, failure paths, recursion,
+  cleanup, and control-flow reachability.
+
+### Functional gap families
+
+- [ ] Functions and calls — LLVM definitions, parameters, returns, `VOID`,
+  direct calls, nested calls, recursion policy, methods, and cross-module
+  symbols.
+- [ ] Scalars — complete integer widths/signedness, floats, booleans, casts,
+  overflow traps, comparisons, defaults, and ABI consistency.
+- [ ] Strings — representation, allocation, indexing, length, comparison,
+  concatenation, input ownership, return values, and cross-function passing.
+- [ ] Arrays/vectors/pointers — literals, dimensions, dynamic allocation,
+  indexing, indexed stores, bounds checks, `LEN`, `SIZEOF`, copying, deletion,
+  aliasing, and lifetime diagnostics.
+- [ ] Classes/objects — object layout, `NEW`, fields, constructors,
+  destructors, inheritance, overrides, `SUPER`, dynamic dispatch, and cleanup.
+- [ ] Modules/statics — imports, qualified names, module initialization,
+  static load/store, external module linkage, and duplicate-symbol behavior.
+- [ ] Control flow — branches, loops, short-circuiting, `RETURN`, unreachable
+  blocks, fallthrough validation, and source-span preservation after lowering.
+- [ ] HOST and standard modules — `HOST.Random`, clock, console, filesystem,
+  networking, BNWeb, BNData, BNLog, and BNDispatch, each with a target-specific
+  provider or an explicit conformance boundary.
+- [ ] Async/concurrency — submit/await, cancellation, synchronization,
+  isolation, failure propagation, quotas, and deterministic shutdown on every
+  supported target.
+- [ ] Runtime and ABI — allocator, string/vector runtime, traps, I/O,
+  arguments, environment boundaries, deterministic random seeding, and
+  platform calling conventions.
+- [ ] Tooling parity — `bn check/run/build`, diagnostics, DAP stepping and
+  stack/locals, Jupyter Program mode, VS Code adapter, and wasm host behavior.
+- [ ] Release evidence — rerun examples, grammar fixtures, runtime suites,
+  compiler suites, wasm suites, plugin checks, formatting, clippy, and diff
+  hygiene before closing the release gate.
+
+### Completion gate
+
+- [ ] No accepted 0.4 program is silently unsupported by `bn run`.
+- [ ] Every compiler-supported program produces equivalent native and wasm
+  behavior, or the target boundary is explicitly documented and tested.
+- [ ] The gap matrix, fixtures, diagnostics, specification, examples, and
+  plugins agree; unresolved rows block the 100% claim.
