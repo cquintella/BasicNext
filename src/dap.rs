@@ -166,6 +166,7 @@ pub fn run_stdio() -> Result<(), String> {
                 None,
             ),
             "variables" => (true, variables_response(&session), None),
+            "evaluate" => (true, evaluate_response(&session, &message), None),
             "disconnect" | "terminate" => {
                 terminate_session(&session);
                 terminated = true;
@@ -384,6 +385,24 @@ fn variables_response(session: &SharedSession) -> Value {
         })
         .unwrap_or_default();
     json!({"variables": variables})
+}
+
+fn evaluate_response(session: &SharedSession, request: &Value) -> Value {
+    let expression = request
+        .get("arguments")
+        .and_then(|arguments| arguments.get("expression"))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim();
+    let value = session
+        .0
+        .lock()
+        .ok()
+        .and_then(|state| state.frame.clone())
+        .and_then(|frame| frame.variables.into_iter().find(|variable| variable.name == expression))
+        .map(|variable| variable.value)
+        .unwrap_or_else(|| "<unavailable>".into());
+    json!({"result": value, "variablesReference": 0})
 }
 
 fn breakpoint_response(message: &Value, registry: &mut HashMap<String, BTreeSet<u64>>) -> Value {

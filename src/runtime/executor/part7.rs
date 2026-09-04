@@ -71,25 +71,16 @@ impl Executor<'_, '_> {
             }
             "HOST.Console.Cls" => {
                 require_arity(name, arguments, 0, span)?;
-                write!(self.output, "\x1b[2J\x1b[H")
-                    .map_err(|e| runtime_error("OUTPUT_ERROR", e.to_string(), span))?;
+                bn_rt::cls(self.output).map_err(|error| console_runtime_error(&error, span))?;
                 Ok(Value::Null)
             }
             "HOST.Console.Beep" => {
                 require_arity(name, arguments, 0, span)?;
-                write!(self.output, "\x07")
-                    .map_err(|e| runtime_error("OUTPUT_ERROR", e.to_string(), span))?;
+                bn_rt::beep(self.output).map_err(|error| console_runtime_error(&error, span))?;
                 Ok(Value::Null)
             }
             "HOST.Console.PrintAt" => {
                 require_arity(name, arguments, 3, span)?;
-                if !std::io::stdout().is_terminal() {
-                    return Err(runtime_error(
-                        "HOST_CAPABILITY_UNAVAILABLE",
-                        "PrintAt requires a TTY",
-                        span,
-                    ));
-                }
                 let (column, _) = integer(&arguments[0], span)?;
                 let (row, _) = integer(&arguments[1], span)?;
                 let Value::String(text) = &arguments[2] else {
@@ -99,48 +90,23 @@ impl Executor<'_, '_> {
                         span,
                     ));
                 };
-                let (cols, rows) = terminal_dimensions().ok_or_else(|| {
-                    runtime_error(
-                        "HOST_CAPABILITY_UNAVAILABLE",
-                        "terminal dimensions are unavailable",
-                        span,
-                    )
-                })?;
-                let width = i128::try_from(text.chars().count()).unwrap_or(i128::MAX);
-                if column < 1 || row < 1 || row > rows || column > cols || width > cols - column + 1
-                {
-                    return Err(runtime_error(
-                        "INDEX_OUT_OF_BOUNDS",
-                        "console coordinate is outside the window",
-                        span,
-                    ));
-                }
-                write!(self.output, "\x1b[{row};{column}H{text}")
-                    .map_err(|e| runtime_error("OUTPUT_ERROR", e.to_string(), span))?;
+                bn_rt::print_at(self.output, column, row, text)
+                    .map_err(|error| console_runtime_error(&error, span))?;
                 Ok(Value::Null)
             }
-            "HOST.Console.NumCols" | "HOST.Console.NumRows" => {
+            "HOST.Console.NumCols" => {
                 require_arity(name, arguments, 0, span)?;
-                if !std::io::stdout().is_terminal() {
-                    return Err(runtime_error(
-                        "HOST_CAPABILITY_UNAVAILABLE",
-                        "window size requires a TTY",
-                        span,
-                    ));
+                match bn_rt::num_cols() {
+                    Ok(value) => Ok(Value::Integer(i128::from(value), IntegerType::Int32)),
+                    Err(error) => Err(console_runtime_error(&error, span)),
                 }
-                let (cols, rows) = terminal_dimensions().ok_or_else(|| {
-                    runtime_error(
-                        "HOST_CAPABILITY_UNAVAILABLE",
-                        "terminal dimensions are unavailable",
-                        span,
-                    )
-                })?;
-                let value = if name.ends_with("NumCols") {
-                    cols
-                } else {
-                    rows
-                };
-                integer_from_i128_count(value, span)
+            }
+            "HOST.Console.NumRows" => {
+                require_arity(name, arguments, 0, span)?;
+                match bn_rt::num_rows() {
+                    Ok(value) => Ok(Value::Integer(i128::from(value), IntegerType::Int32)),
+                    Err(error) => Err(console_runtime_error(&error, span)),
+                }
             }
             "HOST.FileSystem.Exists" => {
                 require_arity(name, arguments, 1, span)?;

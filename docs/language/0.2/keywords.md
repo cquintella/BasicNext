@@ -131,7 +131,7 @@ NAN
 | `IMPLEMENTS` | Declares the interfaces implemented by a class. Each name is a `named-type` (`Printable` or `Pets.Named`). 0.2. | Reserved |
 | `EXTENDS` | Declares the single base class for inheritance. | Accepted syntax |
 | `PARALLEL` | Reserved for structured data-parallel blocks; no 0.1 semantics yet. Candidate forms are `PARALLEL ... END PARALLEL`, `PARALLEL FOR ... END PARALLEL FOR`, and `PARALLEL FOR EACH ... END PARALLEL FOR`. | Reserved for future use |
-| `STATIC` | Declares a class-level field or function; it is accessed through the class name. | Reserved |
+| `STATIC` | Declares a class-level field or function; it is accessed through the class name. A defaultable static field may omit `=` and then uses the type default. | Reserved |
 | `EXPORT` | Makes a module-level declaration available to importing modules. | Reserved |
 | `END` | Closes a compound declaration or statement, such as `END FUNCTION` or `END IF`. | Reserved |
 | `IMPORT` | Imports a module or host capability under an explicit local alias. Imported names are used only as `alias.member`. Language source modules use the `BN` root. | Reserved |

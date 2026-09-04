@@ -14,7 +14,7 @@ use std::{
 
 use bn::{
     ast::Program,
-    ir::{Constant, Instruction, Module as IrModule, lower_graph},
+    ir::{Module as IrModule, lower_graph},
     lexer::lex,
     llvm::lower_module,
     module_graph::{ModuleGraph, load},
@@ -25,7 +25,7 @@ use bn::{
     token::Token,
 };
 
-const VERSION: &str = "bn 0.4.2";
+const VERSION: &str = concat!("bn ", env!("CARGO_PKG_VERSION"));
 
 #[must_use]
 fn language_error() -> ExitCode {
@@ -72,6 +72,40 @@ struct Options {
     filesystem: bool,
     jupyter_stdin: bool,
     program_arguments: Vec<String>,
+    optimization: Optimization,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Optimization {
+    None,
+    Level(u8),
+    Size,
+}
+
+impl Optimization {
+    fn clang_flag(self) -> &'static str {
+        match self {
+            Self::None => "-O0",
+            Self::Level(level) => match level {
+                1 => "-O1",
+                3 => "-O3",
+                _ => "-O2",
+            },
+            Self::Size => "-Oz",
+        }
+    }
+
+    fn linker_flag(self) -> &'static str {
+        match self {
+            Self::None => "-O0",
+            Self::Level(level) => match level {
+                1 => "-O1",
+                3 => "-O3",
+                _ => "-O2",
+            },
+            Self::Size => "-O2",
+        }
+    }
 }
 
 struct Frontend {
@@ -186,21 +220,6 @@ fn requires_unavailable_wasm_capability(module: &IrModule) -> bool {
         || module.network_import.is_some()
         || module.bnlog_import.is_some()
         || module.bnweb_import.is_some()
-        || module
-            .functions
-            .iter()
-            .flat_map(|function| &function.blocks)
-            .flat_map(|block| &block.instructions)
-            .any(|instruction| {
-                matches!(
-                    instruction,
-                    Instruction::Constant {
-                        value: Constant::HostConsole,
-                        ..
-                    } | Instruction::ClearScreen { .. }
-                        | Instruction::Beep { .. }
-                )
-            })
 }
 
 fn emit_build_output(llvm: String, options: &Options) -> ExitCode {
@@ -208,7 +227,7 @@ fn emit_build_output(llvm: String, options: &Options) -> ExitCode {
         return emit_output(llvm, None);
     };
     let temporary = env::temp_dir().join(format!("basicnext-llvm-{}.ll", std::process::id()));
-    if let Err(error) = fs::write(&temporary, llvm) {
+    if let Err(error) = fs::write(&temporary, &llvm) {
         eprintln!("error: cannot write temporary LLVM IR: {error}");
         return tool_error();
     }
@@ -228,6 +247,7 @@ fn emit_build_output(llvm: String, options: &Options) -> ExitCode {
     let result = if options.target == Target::Wasm32 {
         let compiled = std::process::Command::new(clang)
             .args([
+                options.optimization.clang_flag(),
                 "--target=wasm32-unknown-unknown",
                 "-Wno-override-module",
                 "-c",
@@ -241,6 +261,7 @@ fn emit_build_output(llvm: String, options: &Options) -> ExitCode {
                 failed_tool = "wasm-ld";
                 std::process::Command::new(configured_wasm_ld())
                     .args([
+                        options.optimization.linker_flag(),
                         "--no-entry",
                         "--export=main",
                         "--export=__heap_base",
@@ -254,9 +275,20 @@ fn emit_build_output(llvm: String, options: &Options) -> ExitCode {
             compiled => compiled,
         }
     } else {
-        std::process::Command::new(clang)
-            .args([temporary.to_string_lossy().as_ref(), "-o", output])
-            .output()
+        let mut command = std::process::Command::new(clang);
+        command.arg(options.optimization.clang_flag());
+        command.arg(temporary.to_string_lossy().as_ref());
+        if llvm.contains("@bn_rt_") {
+            let bn_rt = match configured_bn_rt_lib() {
+                Ok(path) => path,
+                Err(message) => {
+                    eprintln!("error[BUILD_TOOLCHAIN_UNAVAILABLE]: {message}");
+                    return tool_error();
+                }
+            };
+            command.arg(bn_rt);
+        }
+        command.args(["-o", output]).output()
     };
     let _ = fs::remove_file(temporary);
     let _ = fs::remove_file(object);
@@ -277,7 +309,9 @@ fn emit_build_output(llvm: String, options: &Options) -> ExitCode {
 }
 
 mod cli_toolchain;
-use cli_toolchain::{configured_clang, configured_wasm_clang, configured_wasm_ld};
+use cli_toolchain::{
+    configured_bn_rt_lib, configured_clang, configured_wasm_clang, configured_wasm_ld,
+};
 
 fn run(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
     let frontend = match load_frontend(source, tokens, options) {

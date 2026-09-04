@@ -33,6 +33,7 @@ Module._load = (request, parent, isMain) => {
       Range: class Range { constructor(...values) { this.values = values; } },
       Diagnostic: class Diagnostic { constructor(range, message, severity) { Object.assign(this, { range, message, severity }); } },
       languages: { createDiagnosticCollection: () => ({ set: (...values) => calls.push(values) }) },
+      CompletionItem: class CompletionItem { constructor(label, kind) { Object.assign(this, { label, kind }); } },
       workspace: { getConfiguration: () => ({ get: () => "bn" }), getWorkspaceFolder: () => undefined, onDidSaveTextDocument: (listener) => { saved = listener; return { dispose() {} }; } },
       window: {
         get activeTextEditor() { return activeEditor; },
@@ -44,7 +45,16 @@ Module._load = (request, parent, isMain) => {
   if (request === "child_process") return { execFile: (...args) => pending.push(args.at(-1)) };
   return originalLoad(request, parent, isMain);
 };
-const { activate, parseDiagnostics } = require(path.join(extension, "extension.js"));
+const { activate, parseDiagnostics, lspCompletionItems } = require(path.join(extension, "extension.js"));
+assert.deepStrictEqual(
+  lspCompletionItems([{ label: "PRINT", kind: 14, detail: "Basic Next keyword" }]).map((item) => item.label),
+  ["PRINT"],
+);
+assert.deepStrictEqual(
+  lspCompletionItems({ items: [{ label: "LET", kind: 14 }] }).map((item) => item.label),
+  ["LET"],
+);
+assert.deepStrictEqual(lspCompletionItems(null), []);
 Module._load = originalLoad;
 const diagnostics = parseDiagnostics("error[E100]: first\n --> sample.bn:2:5\nerror[E200]: second\n --> sample.bn:4:1\n");
 assert.strictEqual(diagnostics.length, 2);

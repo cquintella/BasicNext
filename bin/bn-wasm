@@ -32,6 +32,17 @@ function cString(memory, address) {
     return Buffer.from(bytes.subarray(address, end)).toString("utf8");
 }
 
+function formatInterpreterFloat(value) {
+    if (Number.isNaN(value)) return "NAN";
+    if (value === Infinity) return "INF";
+    if (value === -Infinity) return "-INF";
+    let text = Object.is(value, -0) ? "-0" : value.toString();
+    if (!/[.eE]/.test(text)) {
+        text += ".0";
+    }
+    return text;
+}
+
 function formatGeneral(value, precision) {
     if (Number.isNaN(value)) return "NAN";
     if (value === Infinity) return "INF";
@@ -50,6 +61,73 @@ function formatGeneral(value, precision) {
 
 const imports = {
     env: {
+        bn_rt_clock_timestamp() {
+            return BigInt(Date.now());
+        },
+        bn_rt_clock_monotonic() {
+            return process.hrtime.bigint();
+        },
+        bn_rt_console_cls() {
+            return 0;
+        },
+        bn_rt_console_beep() {
+            return 0;
+        },
+        bn_rt_console_print_at(column, row, textAddress) {
+            process.stdout.write(cString(instance.exports.memory, textAddress));
+            return 0;
+        },
+        bn_rt_console_num_cols() {
+            return 80;
+        },
+        bn_rt_console_num_rows() {
+            return 24;
+        },
+        bn_rt_math_iabs(value) { return value < 0n ? -value : value; },
+        bn_rt_math_isign(value) { return value < 0n ? -1n : value > 0n ? 1n : 0n; },
+        bn_rt_math_imin(left, right) { return left < right ? left : right; },
+        bn_rt_math_imax(left, right) { return left > right ? left : right; },
+        bn_rt_math_fabs(value) { return Math.abs(value); },
+        bn_rt_math_fsign(value) { return value < 0 ? -1 : value > 0 ? 1 : 0; },
+        bn_rt_math_fmin(left, right) { return Number.isNaN(left) || Number.isNaN(right) ? NaN : Math.min(left, right); },
+        bn_rt_math_fmax(left, right) { return Number.isNaN(left) || Number.isNaN(right) ? NaN : Math.max(left, right); },
+        bn_rt_math_sin(value) { return Math.sin(value); },
+        bn_rt_math_cos(value) { return Math.cos(value); },
+        bn_rt_math_tan(value) { return Math.tan(value); },
+        bn_rt_math_asin(value) { return Math.asin(value); },
+        bn_rt_math_acos(value) { return Math.acos(value); },
+        bn_rt_math_atan(value) { return Math.atan(value); },
+        bn_rt_math_atan2(left, right) { return Math.atan2(left, right); },
+        bn_rt_math_sqrt(value) { return Math.sqrt(value); },
+        bn_rt_math_exp(value) { return Math.exp(value); },
+        bn_rt_math_log(value) { return Math.log(value); },
+        bn_rt_math_log10(value) { return Math.log10(value); },
+        bn_rt_math_log2(value) { return Math.log2(value); },
+        bn_rt_math_pow(left, right) { return Math.pow(left, right); },
+        bn_rt_math_floor(value) { return Math.floor(value); },
+        bn_rt_math_ceil(value) { return Math.ceil(value); },
+        bn_rt_math_round(value, digits) {
+            const scale = 10 ** digits;
+            const scaled = value * scale;
+            const floor = Math.floor(scaled);
+            const fraction = scaled - floor;
+            const rounded = fraction < 0.5 ? floor : fraction > 0.5 ? floor + 1 : (floor % 2 === 0 ? floor : floor + 1);
+            return rounded / scale;
+        },
+        bn_rt_math_trunc(value) { return Math.trunc(value); },
+        bn_rt_math_hypot(left, right) { return Math.hypot(left, right); },
+        bn_rt_math_fma(left, middle, right) { return left * middle + right; },
+        bn_rt_math_val(address) { return Number(cString(instance.exports.memory, address)); },
+        bn_rt_math_tohour(value) {
+            return Math.floor(((Number(value) % 86400000) + 86400000) % 86400000 / 3600000);
+        },
+        bn_rt_math_toweekday(value) {
+            const days = Math.floor(Number(value) / 86400000);
+            return ((days + 3) % 7 + 7) % 7 + 1;
+        },
+        bn_rt_math_todate(value) { return Math.floor(Number(value) / 86400000); },
+        bn_rt_math_totime(value) { return ((Number(value) % 86400000) + 86400000) % 86400000; },
+        bn_rt_math_totimestamp(days, millis) { return BigInt(Number(days) * 86400000 + Number(millis)); },
         getchar() {
             return inputOffset < input.length ? input[inputOffset++] : -1;
         },
@@ -74,6 +152,9 @@ const imports = {
             process.stdout.write(value);
             return Buffer.byteLength(value);
         },
+        bn_rt_print_float(value) {
+            process.stdout.write(formatInterpreterFloat(value));
+        },
         realloc(address, rawSize) {
             const memory = instance.exports.memory;
             const size = Number(rawSize);
@@ -85,6 +166,47 @@ const imports = {
             }
             allocations.set(replacement, size);
             return replacement;
+        },
+        malloc(rawSize) {
+            const memory = instance.exports.memory;
+            const size = Number(rawSize);
+            const address = reserve(memory, size);
+            allocations.set(address, size);
+            const bytes = new Uint8Array(memory.buffer);
+            bytes.fill(0, address, address + size);
+            return address;
+        },
+        free(address) {
+            allocations.delete(address);
+        },
+        exit(code) {
+            process.exit(Number(code));
+        },
+        bn_rt_str_len(address) {
+            const text = cString(instance.exports.memory, address);
+            return [...text].length;
+        },
+        bn_rt_str_index(address, index) {
+            const memory = instance.exports.memory;
+            const text = cString(memory, address);
+            const chars = [...text];
+            if (index < 0 || index >= chars.length) {
+                process.stderr.write(
+                    `bn-wasm: INDEX_OUT_OF_BOUNDS index ${index} is outside string length ${chars.length}\n`,
+                );
+                process.exit(1);
+            }
+            const encoded = Buffer.from(chars[index], "utf8");
+            const out = reserve(memory, encoded.length + 1);
+            const bytes = new Uint8Array(memory.buffer);
+            bytes.set(encoded, out);
+            bytes[out + encoded.length] = 0;
+            allocations.set(out, encoded.length + 1);
+            return out;
+        },
+        bn_rt_str_eq(left, right) {
+            const memory = instance.exports.memory;
+            return cString(memory, left) === cString(memory, right) ? 1 : 0;
         },
     },
 };

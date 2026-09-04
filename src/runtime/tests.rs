@@ -4,7 +4,6 @@ use std::{fs, sync::atomic::{AtomicU64, Ordering}};
 
     use super::{
         Value, coerce, default_span, host_random_seed, integer_from_i128_count, is_value,
-        system_timestamp_ms,
     };
     use crate::semantic::{FloatType, IntegerType, Type};
 
@@ -93,7 +92,7 @@ END FUNCTION
     #[test]
     fn system_timestamp_before_epoch_is_negative() {
         assert_eq!(
-            system_timestamp_ms(UNIX_EPOCH - Duration::from_millis(1)),
+            bn_rt::timestamp_ms_from(UNIX_EPOCH - Duration::from_millis(1)),
             -1
         );
     }

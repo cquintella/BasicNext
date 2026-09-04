@@ -1,0 +1,20 @@
+IMPORT HOST.Net AS Net
+
+FUNCTION Start() AS VOID
+    LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    IF address IS Error THEN
+        PRINT "error"
+    ELSE
+        LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, 1)
+        IF endpoint IS Error THEN
+            PRINT "error"
+        ELSE
+            LET stream AS Net.TCPStream OR Error = Net.TCPConnect(endpoint, 10)
+            IF stream IS Error THEN
+                PRINT "error"
+            ELSE
+                PRINT "connected"
+            END IF
+        END IF
+    END IF
+END FUNCTION

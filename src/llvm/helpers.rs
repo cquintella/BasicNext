@@ -18,11 +18,15 @@ pub(crate) fn fold_unary(
         ("Plus", ConstantValue::Float(value)) => Some(ConstantValue::Float(*value)),
         ("Minus", ConstantValue::Float(value)) => Some(ConstantValue::Float(-value)),
         ("NOT", ConstantValue::Boolean(value)) => Some(ConstantValue::Boolean(!value)),
+        ("NOT", ConstantValue::Integer(value, _)) => Some(ConstantValue::Integer(
+            checked_integer_value(!*value, ty)?,
+            integer_kind(ty),
+        )),
         _ => None,
     }
 }
 
-#[allow(clippy::cast_sign_loss, clippy::float_cmp)]
+#[allow(clippy::cast_sign_loss, clippy::float_cmp, clippy::too_many_lines)]
 pub(crate) fn fold_binary(
     operator: &str,
     left: Option<&ConstantValue>,
@@ -43,6 +47,34 @@ pub(crate) fn fold_binary(
                 checked_integer_value(left.checked_mul(*right)?, ty)?,
                 integer_kind(ty),
             )),
+            "DIV" if *right != 0 => Some(ConstantValue::Integer(
+                checked_integer_value(left.checked_div_euclid(*right)?, ty)?,
+                integer_kind(ty),
+            )),
+            "Percent" if *right != 0 => Some(ConstantValue::Integer(
+                checked_integer_value(left.checked_rem_euclid(*right)?, ty)?,
+                integer_kind(ty),
+            )),
+            "Power" if *right >= 0 => Some(ConstantValue::Integer(
+                checked_integer_value(left.checked_pow(u32::try_from(*right).ok()?)?, ty)?,
+                integer_kind(ty),
+            )),
+            "SHL" if (0..i128::from(shift_width(ty))).contains(right) => {
+                let count = u32::try_from(*right).ok()?;
+                checked_integer_value(left.checked_shl(count)?, ty)
+                    .map(|value| ConstantValue::Integer(value, integer_kind(ty)))
+            }
+            "SHR" if (0..i128::from(shift_width(ty))).contains(right) => {
+                let count = u32::try_from(*right).ok()?;
+                let mask = (1_u128 << shift_width(ty)) - 1;
+                Some(ConstantValue::Integer(
+                    checked_integer_value(
+                        ((left.cast_unsigned() & mask) >> count).cast_signed(),
+                        ty,
+                    )?,
+                    integer_kind(ty),
+                ))
+            }
             "AND" => Some(ConstantValue::Integer(
                 checked_integer_value(*left & *right, ty)?,
                 integer_kind(ty),
@@ -92,6 +124,7 @@ pub(crate) fn fold_binary(
             "Minus" => Some(ConstantValue::Float(left - right)),
             "Star" | "Multiply" => Some(ConstantValue::Float(left * right)),
             "Slash" | "Divide" => Some(ConstantValue::Float(left / right)),
+            "Power" => Some(ConstantValue::Float(left.powf(*right))),
             "Less" => Some(ConstantValue::Boolean(left < right)),
             "LessEqual" => Some(ConstantValue::Boolean(left <= right)),
             "Greater" => Some(ConstantValue::Boolean(left > right)),
@@ -101,6 +134,15 @@ pub(crate) fn fold_binary(
             _ => None,
         },
         _ => None,
+    }
+}
+
+fn shift_width(ty: &Type) -> u8 {
+    match integer_kind(ty) {
+        IntegerType::Byte | IntegerType::Int8 => 8,
+        IntegerType::Int16 | IntegerType::UInt16 => 16,
+        IntegerType::Int32 | IntegerType::UInt32 => 32,
+        IntegerType::Int64 | IntegerType::UInt64 => 64,
     }
 }
 
@@ -127,6 +169,13 @@ pub(crate) fn fold_cast(value: Option<&ConstantValue>, ty: &Type) -> Option<Cons
             ))
         }
         (ConstantValue::Boolean(value), Type::Boolean) => Some(ConstantValue::Boolean(*value)),
+        (ConstantValue::Integer(value, _), Type::Boolean) => {
+            Some(ConstantValue::Boolean(*value != 0))
+        }
+        (ConstantValue::Float(value), Type::Boolean) => Some(ConstantValue::Boolean(*value != 0.0)),
+        (ConstantValue::String(value), Type::Boolean) => {
+            Some(ConstantValue::Boolean(!value.is_empty()))
+        }
         (ConstantValue::String(value), Type::String) => Some(ConstantValue::String(value.clone())),
         _ => None,
     }
@@ -141,7 +190,94 @@ pub(crate) fn checked_integer_value(value: i128, ty: &Type) -> Option<i128> {
 pub(crate) fn integer_kind(ty: &Type) -> IntegerType {
     match ty {
         Type::Integer(kind) => *kind,
+        Type::IntegerLiteral(_) => IntegerType::Int64,
         _ => IntegerType::Int32,
+    }
+}
+
+/// Render an integer for LLVM IR. Never pass BN hex source (`0x…`) through:
+/// LLVM treats `0x` as a floating-point constant encoding.
+pub(crate) fn render_llvm_integer(value: i128, llvm_ty: &str) -> String {
+    match llvm_ty {
+        "i8" => i128::from(value as u8 as i8).to_string(),
+        "i16" => i128::from(value as u16 as i16).to_string(),
+        "i32" => i128::from(value as u32 as i32).to_string(),
+        "i64" => i128::from(value as u64 as i64).to_string(),
+        _ => value.to_string(),
+    }
+}
+
+pub(crate) fn coerce_integer(
+    text: &mut String,
+    value: ValueId,
+    from_ty: &str,
+    to_ty: &str,
+    unsigned: bool,
+) -> String {
+    if from_ty == to_ty {
+        return format!("%v{}", value.0);
+    }
+    let temp = format!("coer{}_{from_ty}_{to_ty}", value.0);
+    let from_w = integer_llvm_width(from_ty);
+    let to_w = integer_llvm_width(to_ty);
+    if from_w < to_w {
+        let opcode = if unsigned { "zext" } else { "sext" };
+        let _ = writeln!(
+            text,
+            "  %{temp} = {opcode} {from_ty} %v{} to {to_ty}",
+            value.0
+        );
+    } else {
+        let _ = writeln!(text, "  %{temp} = trunc {from_ty} %v{} to {to_ty}", value.0);
+    }
+    format!("%{temp}")
+}
+
+pub(crate) fn coerce_to_type(text: &mut String, value: ValueId, from: &Type, to: &Type) -> String {
+    let from_llvm = llvm_type(from).expect("validated coerce source");
+    let to_llvm = llvm_type(to).expect("validated coerce target");
+    if from_llvm == to_llvm {
+        return format!("%v{}", value.0);
+    }
+    if matches!(from_llvm, "i8" | "i16" | "i32" | "i64")
+        && matches!(to_llvm, "i8" | "i16" | "i32" | "i64")
+    {
+        return coerce_integer(
+            text,
+            value,
+            from_llvm,
+            to_llvm,
+            is_unsigned(to) || is_unsigned(from),
+        );
+    }
+    if matches!(
+        (from_llvm, to_llvm),
+        ("float", "double") | ("double", "float")
+    ) {
+        let temp = format!("fcoer{}_{from_llvm}_{to_llvm}", value.0);
+        let opcode = if from_llvm == "float" {
+            "fpext"
+        } else {
+            "fptrunc"
+        };
+        let _ = writeln!(
+            text,
+            "  %{temp} = {opcode} {from_llvm} %v{} to {to_llvm}",
+            value.0
+        );
+        return format!("%{temp}");
+    }
+    format!("%v{}", value.0)
+}
+
+fn integer_llvm_width(llvm_ty: &str) -> u8 {
+    match llvm_ty {
+        "i1" => 1,
+        "i8" => 8,
+        "i16" => 16,
+        "i32" => 32,
+        "i64" => 64,
+        _ => 64,
     }
 }
 
@@ -165,16 +301,6 @@ pub(crate) fn is_unsigned(ty: &Type) -> bool {
             IntegerType::Byte | IntegerType::UInt16 | IntegerType::UInt32 | IntegerType::UInt64
         )
     )
-}
-
-pub(crate) fn integer_width_from_llvm(llvm_ty: &str) -> u8 {
-    match llvm_ty {
-        "i8" => 8,
-        "i16" => 16,
-        "i32" => 32,
-        "i64" => 64,
-        _ => unreachable!("integer LLVM type"),
-    }
 }
 
 pub(crate) fn extend_to_i64(text: &mut String, value: ValueId, ty: &Type) -> String {
@@ -213,10 +339,141 @@ pub(crate) fn coerce_return_operand(text: &mut String, value: ValueId, ty: &Type
 }
 
 #[allow(clippy::cast_possible_truncation)]
+pub(crate) fn sanitize_symbol(name: &str) -> String {
+    name.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+pub(crate) fn static_global_name(class: &str, field: &str) -> String {
+    format!(
+        "@bn_st_{}_{}",
+        sanitize_symbol(class),
+        sanitize_symbol(field)
+    )
+}
+
+pub(crate) fn class_init_flag(class: &str) -> String {
+    format!("@bn_init_{}", sanitize_symbol(class))
+}
+
+pub(crate) fn field_byte_offset(module: &Module, owner: &str, field: &str) -> u32 {
+    let mut offset = OBJECT_HEADER_BYTES;
+    for function in &module.functions {
+        if !function.name.ends_with(".$fields") {
+            continue;
+        }
+        let class = function
+            .name
+            .trim_end_matches(".$fields")
+            .rsplit('.')
+            .next()
+            .unwrap_or(function.name.as_str());
+        if class != owner && !function.name.ends_with(&format!("{owner}.$fields")) {
+            continue;
+        }
+        for block in &function.blocks {
+            for instruction in &block.instructions {
+                if let Instruction::SetMember {
+                    name,
+                    ty,
+                    owner: set_owner,
+                    ..
+                } = instruction
+                {
+                    if set_owner != owner && set_owner.rsplit('.').next() != Some(owner) {
+                        continue;
+                    }
+                    if name == field {
+                        return offset;
+                    }
+                    let width = match llvm_type(ty) {
+                        Some("i1" | "i8") => 1,
+                        Some("i16") => 2,
+                        Some("i32" | "float") => 4,
+                        Some("i64" | "double" | "ptr") => 8,
+                        _ => 4,
+                    };
+                    offset = offset.saturating_add(width);
+                }
+            }
+        }
+    }
+    offset
+}
+
+pub(crate) const OBJECT_HEADER_BYTES: u32 = 8;
+
+pub(crate) fn class_instance_bytes(module: &Module, type_name: &str) -> u64 {
+    let owner = type_name.rsplit('.').next().unwrap_or(type_name);
+    let mut total = OBJECT_HEADER_BYTES;
+    for function in &module.functions {
+        if !function.name.ends_with(&format!("{owner}.$fields"))
+            && !function.name.ends_with(".$fields")
+        {
+            continue;
+        }
+        let class = function
+            .name
+            .trim_end_matches(".$fields")
+            .rsplit('.')
+            .next()
+            .unwrap_or("");
+        if class != owner {
+            continue;
+        }
+        for block in &function.blocks {
+            for instruction in &block.instructions {
+                if let Instruction::SetMember { ty, .. } = instruction {
+                    total = total.saturating_add(match llvm_type(ty) {
+                        Some("i1" | "i8") => 1,
+                        Some("i16") => 2,
+                        Some("i32" | "float") => 4,
+                        Some("i64" | "double" | "ptr") => 8,
+                        _ => 4,
+                    });
+                }
+            }
+        }
+        break;
+    }
+    // Inheritance may add parent fields via other `$fields` helpers; keep slack.
+    u64::from(total.max(64))
+}
+
+pub(crate) fn parse_float_constant(value: &str) -> Option<f64> {
+    match value {
+        "NAN" | "nan" | "NaN" => Some(f64::NAN),
+        "INF" | "inf" | "+INF" | "+inf" => Some(f64::INFINITY),
+        "-INF" | "-inf" => Some(f64::NEG_INFINITY),
+        _ => value.parse().ok(),
+    }
+}
+
 pub(crate) fn render_float(value: f64, ty: &Type) -> String {
-    match ty {
+    if value.is_nan() {
+        return "0x7FF8000000000000".into();
+    }
+    if value == f64::INFINITY {
+        return "0x7FF0000000000000".into();
+    }
+    if value == f64::NEG_INFINITY {
+        return "0xFFF0000000000000".into();
+    }
+    let rendered = match ty {
         Type::Float(FloatType::Float32) => f64::from(value as f32).to_string(),
         _ => value.to_string(),
+    };
+    if rendered.contains('.') || rendered.contains('e') || rendered.contains('E') {
+        rendered
+    } else {
+        format!("{rendered}.0")
     }
 }
 
@@ -251,6 +508,12 @@ pub(crate) fn provider_name(module: &Module, name: &str) -> Option<&'static str>
         .any(|provider| provider.0 == module_id)
     {
         Some("BNDispatch")
+    } else if module
+        .bnmath_providers
+        .iter()
+        .any(|provider| provider.0 == module_id)
+    {
+        Some("BNMath")
     } else {
         None
     }
@@ -282,7 +545,6 @@ pub(crate) fn parse_integer(value: &str) -> Option<i128> {
 
 pub(crate) fn input_runtime_ir() -> &'static str {
     r#"
-@.bn_eof = private unnamed_addr constant [4 x i8] c"EOF\00"
 declare i32 @getchar()
 declare ptr @realloc(ptr, i64)
 

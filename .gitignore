@@ -13,4 +13,10 @@ AGENTS.md
 .env
 .vscode
 .aider*
-.ua/
+.ua/*
+.superpowers
+superpowers/*
+todo/*
+ongoing/*
+done/*
+.aider*

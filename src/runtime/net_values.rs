@@ -138,3 +138,16 @@ pub(super) fn address_value(address: std::net::IpAddr) -> Value {
         fields: HashMap::from([("value".into(), Value::String(address.to_string()))]),
     }
 }
+
+pub(super) fn ping_reply_value(reply: crate::net::PingReply) -> Value {
+    Value::Record {
+        type_name: "HOST.Net.PingReply".into(),
+        fields: HashMap::from([
+            ("address".into(), address_value(reply.address.as_std())),
+            (
+                "roundTripMicroseconds".into(),
+                Value::Integer(i128::from(reply.round_trip_microseconds), IntegerType::Int64),
+            ),
+        ]),
+    }
+}

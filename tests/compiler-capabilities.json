@@ -34,13 +34,43 @@
       "path": "examples/kmp.bn",
       "support": "llvm-deferred",
       "run_stdout_contains": "Encontrado padrao no indice 10",
-      "build_diagnostic_contains": "user-defined function 'KMPSearch'"
+      "build_diagnostic_contains": "FUNCTION KMPSearch"
     },
     {
       "path": "tests/grammar/valid/print-if-or.bn",
       "support": "llvm-deferred",
       "run_stdout_contains": "yes-or",
       "build_diagnostic_contains": "BUILD_EMISSION_FAILED"
+    },
+    {
+      "path": "tests/grammar/valid/build-euclidean-div.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "stdout": "-2\n"
+    },
+    {
+      "path": "tests/grammar/valid/build-euclidean-rem.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "stdout": "1\n"
+    },
+    {
+      "path": "tests/grammar/valid/build-power-shift.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "stdout": "8\n8\n4\n-1\nabcd\n0.5\n"
+    },
+    {
+      "path": "tests/grammar/valid/build-clock.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "stdout": "TRUE\nTRUE\nTRUE\n"
+    },
+    {
+      "path": "tests/grammar/valid/cls-and-beep.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "stdout": "\u001b[2J\u001b[H\u0007ok\n"
     }
   ]
 }

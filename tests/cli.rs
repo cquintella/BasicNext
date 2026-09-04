@@ -25,6 +25,17 @@ fn check_valid_program_exits_zero() {
 }
 
 #[test]
+fn cli_help_and_version_advertise_current_commands() {
+    let help = bn().arg("--help").output().expect("run bn help");
+    assert_eq!(help.status.code(), Some(0));
+    let help = String::from_utf8_lossy(&help.stdout);
+    assert!(help.contains("lsp") && help.contains("dap"));
+    let version = bn().arg("--version").output().expect("run bn version");
+    assert_eq!(version.status.code(), Some(0));
+    assert_eq!(String::from_utf8_lossy(&version.stdout).trim(), "bn 0.4.3");
+}
+
+#[test]
 fn check_network_client_server_examples_exit_zero() {
     let status = bn()
         .args(["check", "examples/socket.bn"])
@@ -186,9 +197,8 @@ fn build_reports_the_user_function_that_blocks_kmp() {
         .expect("run bn build for KMP");
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("examples/kmp.bn:76:5"));
-    assert!(stderr.contains("user-defined function 'KMPSearch'"));
-    assert!(stderr.contains("use 'bn run' or inline the call"));
+    assert!(stderr.contains("FUNCTION KMPSearch"));
+    assert!(stderr.contains("BUILD_LOWERING_UNAVAILABLE"));
 }
 
 #[test]
@@ -242,6 +252,127 @@ fn build_emits_multiple_integer_prints() {
     assert!(llvm.contains("add i32 0, 1"));
     assert!(llvm.contains("add i32 0, 2"));
     assert!(llvm.contains("add i32 0, 3"));
+}
+
+fn native_matches_interpreter(path: &str) {
+    let output_path = std::env::temp_dir().join(format!(
+        "basicnext-euclid-{}-{}",
+        std::process::id(),
+        path.replace(['/', '.'], "_")
+    ));
+    let _ = fs::remove_file(&output_path);
+    let built = bn()
+        .args([
+            "build",
+            path,
+            "-o",
+            output_path.to_str().expect("temporary path"),
+        ])
+        .output()
+        .expect("run bn build");
+    assert_eq!(
+        built.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let compiled = Command::new(&output_path)
+        .output()
+        .expect("run compiled artifact");
+    let interpreted = bn().args(["run", path]).output().expect("run interpreter");
+    assert_eq!(compiled.status.code(), interpreted.status.code(), "{path}");
+    assert_eq!(compiled.stdout, interpreted.stdout, "{path}");
+    let _ = fs::remove_file(output_path);
+}
+
+#[test]
+fn build_lowers_euclidean_div_and_remainder_matching_interpreter() {
+    native_matches_interpreter("tests/grammar/valid/build-euclidean-div.bn");
+    native_matches_interpreter("tests/grammar/valid/build-euclidean-rem.bn");
+    native_matches_interpreter("tests/grammar/valid/build-euclidean-runtime.bn");
+    native_matches_interpreter("tests/grammar/valid/build-euclidean-overflow.bn");
+    native_matches_interpreter("tests/grammar/valid/build-divide-zero.bn");
+}
+
+#[test]
+fn build_lowers_power_shift_not_and_string_concat_matching_interpreter() {
+    native_matches_interpreter("tests/grammar/valid/build-power-shift.bn");
+    native_matches_interpreter("tests/grammar/valid/build-power-shift-runtime.bn");
+    native_matches_interpreter("tests/grammar/valid/build-invalid-exponent.bn");
+    native_matches_interpreter("tests/grammar/valid/build-invalid-shift.bn");
+}
+
+#[test]
+fn build_lowers_all_numeric_widths_and_checked_casts() {
+    native_matches_interpreter("tests/grammar/valid/build-widths.bn");
+    native_matches_interpreter("tests/grammar/valid/build-cast-overflow.bn");
+    native_matches_interpreter("tests/grammar/valid/integer-narrowing-conversion.bn");
+}
+
+#[test]
+fn build_lowers_host_clock_and_console_through_bn_rt() {
+    native_matches_interpreter("tests/grammar/valid/build-clock.bn");
+    native_matches_interpreter("tests/grammar/valid/cls-and-beep.bn");
+    native_matches_interpreter("tests/grammar/valid/console-size.bn");
+    native_matches_interpreter("tests/grammar/valid/console-print-at.bn");
+}
+
+#[test]
+fn build_lowers_host_net_resolve_through_bn_rt() {
+    native_matches_interpreter("tests/grammar/valid/build-net-resolve.bn");
+    native_matches_interpreter("tests/grammar/valid/build-net-endpoint.bn");
+    native_matches_interpreter("tests/grammar/valid/build-net-udp-bind.bn");
+    native_matches_interpreter("tests/grammar/valid/build-net-tcp-connect.bn");
+    native_matches_interpreter("tests/grammar/valid/build-net-udp-close.bn");
+    native_matches_interpreter("tests/grammar/valid/build-net-udp-send.bn");
+    native_matches_interpreter("tests/grammar/valid/build-net-udp-receive.bn");
+    native_matches_interpreter("tests/grammar/valid/build-net-udp-packet.bn");
+    native_matches_interpreter("tests/grammar/valid/build-net-tcp-listen.bn");
+    native_matches_interpreter("tests/grammar/valid/build-net-tcp-accept.bn");
+}
+
+#[test]
+fn compiled_console_tty_errors_match_interpreter() {
+    let path = "tests/grammar/valid/console-size.bn";
+    let interpreted = bn().args(["run", path]).output().expect("run interpreter");
+    assert_eq!(interpreted.status.code(), Some(1));
+    let interpreted_err = String::from_utf8_lossy(&interpreted.stderr);
+    assert!(
+        interpreted_err.contains("HOST_CAPABILITY_UNAVAILABLE"),
+        "{interpreted_err}"
+    );
+    assert!(
+        interpreted_err.contains("window size requires a TTY"),
+        "{interpreted_err}"
+    );
+
+    let output_path =
+        std::env::temp_dir().join(format!("basicnext-console-tty-{}", std::process::id()));
+    let _ = fs::remove_file(&output_path);
+    let built = bn()
+        .args(["build", path, "-o", output_path.to_str().expect("path")])
+        .output()
+        .expect("build console-size");
+    assert_eq!(
+        built.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let compiled = Command::new(&output_path)
+        .output()
+        .expect("run compiled console-size");
+    let _ = fs::remove_file(&output_path);
+    assert_eq!(compiled.status.code(), Some(1));
+    let compiled_err = String::from_utf8_lossy(&compiled.stderr);
+    assert!(
+        compiled_err.contains("HOST_CAPABILITY_UNAVAILABLE"),
+        "{compiled_err}"
+    );
+    assert!(
+        compiled_err.contains("window size requires a TTY"),
+        "{compiled_err}"
+    );
 }
 
 #[test]
@@ -596,63 +727,37 @@ fn build_folds_relational_print() {
 
 #[test]
 fn build_folds_pure_constant_function_call() {
-    let output = bn()
-        .args(["build", "tests/grammar/valid/print-call.bn"])
-        .output()
-        .expect("run bn build");
-    assert_eq!(output.status.code(), Some(2));
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("BUILD_LOWERING_UNAVAILABLE"));
-    assert!(stderr.contains("calls to user-defined function 'Add'"));
-    assert!(stderr.contains("use 'bn run' or inline the call"));
+    native_matches_interpreter("tests/grammar/valid/print-call.bn");
 }
 
 #[test]
 fn build_folds_boolean_function_call() {
-    let output = bn()
-        .args(["build", "tests/grammar/valid/print-predicate-call.bn"])
-        .output()
-        .expect("run bn build");
-    assert_eq!(output.status.code(), Some(2));
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("BUILD_LOWERING_UNAVAILABLE"));
-    assert!(stderr.contains("calls"));
+    native_matches_interpreter("tests/grammar/valid/print-predicate-call.bn");
 }
 
 #[test]
 fn build_folds_pure_function_local_binding() {
-    let output = bn()
-        .args(["build", "tests/grammar/valid/print-call-local.bn"])
-        .output()
-        .expect("run bn build");
-    assert_eq!(output.status.code(), Some(2));
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("BUILD_LOWERING_UNAVAILABLE"));
-    assert!(stderr.contains("calls"));
+    native_matches_interpreter("tests/grammar/valid/print-call-local.bn");
 }
 
 #[test]
 fn build_folds_string_function_call() {
-    let output = bn()
-        .args(["build", "tests/grammar/valid/print-string-call.bn"])
-        .output()
-        .expect("run bn build");
-    assert_eq!(output.status.code(), Some(2));
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("BUILD_LOWERING_UNAVAILABLE"));
-    assert!(stderr.contains("calls"));
+    native_matches_interpreter("tests/grammar/valid/print-string-call.bn");
 }
 
 #[test]
 fn build_folds_nested_pure_function_calls() {
-    let output = bn()
-        .args(["build", "tests/grammar/valid/print-call-nested.bn"])
-        .output()
-        .expect("run bn build");
-    assert_eq!(output.status.code(), Some(2));
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("BUILD_LOWERING_UNAVAILABLE"));
-    assert!(stderr.contains("calls"));
+    native_matches_interpreter("tests/grammar/valid/print-call-nested.bn");
+}
+
+#[test]
+fn build_lowers_factorial_recursion_matching_interpreter() {
+    native_matches_interpreter("examples/factorial.bn");
+}
+
+#[test]
+fn build_lowers_bnmath_scalars_matching_interpreter() {
+    native_matches_interpreter("tests/grammar/valid/build-bnmath-scalar.bn");
 }
 
 #[test]
@@ -661,10 +766,17 @@ fn build_rejects_recursive_constant_call_without_stack_overflow() {
         .args(["build", "tests/grammar/valid/build-recursive.bn"])
         .output()
         .expect("run bn build");
-    assert_eq!(output.status.code(), Some(2));
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("BUILD_LOWERING_UNAVAILABLE"));
-    assert!(stderr.contains("calls"));
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("call i32 @bn_Loop"),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
 }
 
 #[test]
@@ -681,7 +793,7 @@ fn build_constant_folds_or_short_circuit_branch() {
 }
 
 #[test]
-fn wasm_build_rejects_host_capability() {
+fn wasm_build_supports_host_console_capability() {
     let output = bn()
         .args([
             "build",
@@ -691,8 +803,7 @@ fn wasm_build_rejects_host_capability() {
         ])
         .output()
         .expect("run wasm build");
-    assert_eq!(output.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("BUILD_CAPABILITY_UNAVAILABLE"));
+    assert_eq!(output.status.code(), Some(0), "{}", String::from_utf8_lossy(&output.stderr));
 }
 
 #[test]

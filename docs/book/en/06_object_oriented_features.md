@@ -52,7 +52,7 @@ You may also define a destructor using `FUNCTION DESTRUCTOR()`. The destructor t
 
 ## Static Members
 
-Basic Next supports class-level state and behavior through the `STATIC` keyword. A static field exists exactly once per class and must be initialized. A static method cannot use the `SELF` keyword or access instance fields.
+Basic Next supports class-level state and behavior through the `STATIC` keyword. A static field exists exactly once per class. If the initializer is omitted, a defaultable type uses the same default as `LET` (`INTEGER` is `0`, `STRING` is `""`, `BOOLEAN` is `FALSE`). Types without a default (`POINTER`, class-typed fields, alternatives) still require `=`. A static method cannot use the `SELF` keyword or access instance fields.
 
 Static members are always accessed through the class name, never through an instance.
 

@@ -1,0 +1,10 @@
+IMPORT HOST.Net AS Net
+
+FUNCTION Start() AS VOID
+    LET result AS Net.Addresses OR Error = Net.Resolve("localhost", 1000)
+    IF result IS Error THEN
+        PRINT "error"
+    ELSE
+        PRINT result.Count()
+    END IF
+END FUNCTION

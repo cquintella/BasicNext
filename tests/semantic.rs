@@ -224,6 +224,7 @@ fn semantic_fixtures_are_rejected() {
         "tests/grammar/invalid/super-not-first.bn",
         "tests/grammar/invalid/super-member-as-value.bn",
         "tests/grammar/invalid/uninitialized-pointer.bn",
+        "tests/grammar/invalid/static-pointer-uninitialized.bn",
         "tests/grammar/invalid/void-return-value.bn",
         "tests/grammar/invalid/zero-for-step.bn",
         "tests/grammar/invalid/ragged-vector-literal.bn",
@@ -350,14 +351,25 @@ fn declared_numeric_values_do_not_convert_implicitly() {
 }
 
 #[test]
-fn static_field_requires_an_initializer() {
+fn static_field_uses_type_default_when_initializer_is_omitted() {
     let source = SourceFile::new(
         "static.bn",
-        "CLASS Counter\nSTATIC value AS INTEGER\nEND CLASS\n",
+        "CLASS Counter\nPUBLIC STATIC value AS INTEGER\nEND CLASS\nFUNCTION Start() AS VOID\nPRINT Counter.value\nEND FUNCTION\n",
     );
     let tokens = lex(&source).expect("lex source");
     let program = parse(&tokens).expect("parse source");
-    let diagnostic = analyze(&program).expect_err("static field without initializer must fail");
+    analyze(&program).expect("defaultable STATIC INTEGER may omit initializer");
+}
+
+#[test]
+fn static_pointer_field_still_requires_an_initializer() {
+    let source = SourceFile::new(
+        "static-pointer.bn",
+        "CLASS Holder\nSTATIC slot AS POINTER TO INTEGER\nEND CLASS\n",
+    );
+    let tokens = lex(&source).expect("lex source");
+    let program = parse(&tokens).expect("parse source");
+    let diagnostic = analyze(&program).expect_err("STATIC POINTER requires an initializer");
     assert_eq!(diagnostic.code, "TYPE_MISMATCH");
 }
 

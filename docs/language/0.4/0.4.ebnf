@@ -54,7 +54,7 @@ class-member         = [ visibility ] ( static-member | field-declaration
 visibility           = "PUBLIC" | "PRIVATE" ;
 static-member        = "STATIC" ( static-field-declaration | function-declaration ) ;
 field-declaration    = identifier "AS" variable-type [ "=" expression ] NEWLINE ;
-static-field-declaration = identifier "AS" variable-type "=" expression NEWLINE ;
+static-field-declaration = identifier "AS" variable-type [ "=" expression ] NEWLINE ;
 constructor-declaration = "FUNCTION" "CONSTRUCTOR" "(" [ parameters ] ")" NEWLINE
                        statement-block "END" "FUNCTION" NEWLINE ;
 destructor-declaration = "FUNCTION" "DESTRUCTOR" "(" ")" NEWLINE statement-block

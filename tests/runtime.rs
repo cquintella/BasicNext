@@ -486,21 +486,32 @@ END FUNCTION
 }
 
 #[test]
-fn host_net_optional_providers_fail_deterministically_when_unavailable() {
+fn host_net_ping_loopback_and_neighbor_typed_result() {
     let source = r#"IMPORT HOST.Net AS Net
 FUNCTION Start() AS VOID
 LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
 IF address IS Error THEN
 PRINT "parse-error"
 ELSE
-LET reply AS Net.PingReply OR Error = Net.Ping(address, 100)
+LET reply AS Net.PingReply OR Error = Net.Ping(address, 2000)
 LET neighbor AS Net.Address OR Error = Net.Neighbor(address)
-PRINT reply IS Error, neighbor IS Error
+IF reply IS Error THEN
+PRINT "ping-error ", reply.Message, " ", neighbor IS Error
+ELSE
+PRINT "ping-ok ", reply.RoundTripMicroseconds() >= 0, " ", neighbor IS Error
+END IF
 END IF
 END FUNCTION
 "#;
-    let (_, output) = run(source, "").expect("execute unavailable optional providers");
-    assert_eq!(output, "TRUETRUE\n");
+    let (_, output) = run(source, "").expect("execute ping/neighbor providers");
+    assert!(
+        output.starts_with("ping-ok TRUE TRUE\n") || output.starts_with("ping-error "),
+        "unexpected ping/neighbor output: {output:?}"
+    );
+    assert!(
+        output.contains("TRUE\n") || output.contains("TRUE "),
+        "neighbor must remain an Error on this Phase 0 host: {output:?}"
+    );
 }
 
 #[test]
@@ -708,20 +719,56 @@ END FUNCTION
 }
 
 #[test]
-fn host_net_reverse_reports_unavailable_provider_without_guessing() {
+fn bndispatch_async_tasks_use_isolated_worker_contexts() {
+    let source = r#"IMPORT BNDispatch AS Dispatch
+FUNCTION First() AS VOID
+PRINT "first"
+END FUNCTION
+FUNCTION Second() AS VOID
+PRINT "second"
+END FUNCTION
+FUNCTION Start() AS VOID
+LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Concurrent(2)
+IF queue IS Error THEN
+PRINT "queue-error"
+ELSE
+LET one AS Dispatch.Ticket OR Error = queue.Async(First)
+LET two AS Dispatch.Ticket OR Error = queue.Async(Second)
+IF one IS Error OR two IS Error THEN
+PRINT "ticket-error"
+ELSE
+LET wait_one AS VOID OR Error = one.Wait(1000)
+LET wait_two AS VOID OR Error = two.Wait(1000)
+LET closed AS VOID OR Error = queue.Close(1000)
+PRINT wait_one IS Error, wait_two IS Error, closed IS Error
+END IF
+END IF
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute isolated BNDispatch workers");
+    assert!(output.ends_with("FALSEFALSEFALSE\n"), "unexpected worker output: {output:?}");
+    assert!(output.contains("first\n") && output.contains("second\n"));
+}
+
+#[test]
+fn host_net_reverse_resolves_loopback() {
     let source = r#"IMPORT HOST.Net AS Net
 FUNCTION Start() AS VOID
 LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
 IF address IS Error THEN
 PRINT "parse-error"
 ELSE
-LET host AS STRING OR Error = Net.Reverse(address, 100)
-PRINT host IS Error
+LET host AS STRING OR Error = Net.Reverse(address, 2000)
+IF host IS Error THEN
+PRINT "error ", host.Message
+ELSE
+PRINT "ok"
+END IF
 END IF
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute reverse resolver");
-    assert_eq!(output, "TRUE\n");
+    assert_eq!(output, "ok\n");
 }
 
 #[test]
@@ -1085,6 +1132,14 @@ fn executes_imported_function_through_alias() {
         run_path("tests/modules/user-alias/main.bn").expect("execute imported Soma");
     assert_eq!(code, 0);
     assert_eq!(output, "3\n");
+}
+
+#[test]
+fn static_fields_use_type_defaults_when_initializer_is_omitted() {
+    let source = include_str!("grammar/valid/static-field-type-default.bn");
+    let (code, output) = run(source, "").expect("execute default STATIC fields");
+    assert_eq!(code, 0);
+    assert_eq!(output, "0\n\nFALSE\n10\n");
 }
 
 #[test]

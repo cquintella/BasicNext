@@ -380,6 +380,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                         message: "socket handle quota exceeded".into(),
                     });
                 }
+                let _ = stream.set_timeouts(Some(accept_timeout), Some(accept_timeout));
                 let stream_id = self.next_tcp_stream;
                 self.next_tcp_stream += 1;
                 self.tcp_streams.insert(stream_id, stream);
