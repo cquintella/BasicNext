@@ -69,11 +69,18 @@ pub(crate) fn emit_shift(
     state.needs_numeric_overflow_trap = true;
     let _ = writeln!(text, "  %shamt{dest} = zext i64 %shcnt{dest} to i128");
     if operator == "SHR" {
+        let shift_left = if left_llvm == llvm_ty {
+            format!("%v{}", left.0)
+        } else {
+            let narrow = format!("shnarrow{dest}");
+            let _ = writeln!(text, "  %{narrow} = trunc {left_llvm} %v{} to {llvm_ty}", left.0);
+            format!("%{narrow}")
+        };
         emit_cast_integer(
             text,
             &format!("shbits{dest}"),
-            &format!("%v{}", left.0),
-            left_llvm,
+            &shift_left,
+            llvm_ty,
             "i128",
             "zext",
         );

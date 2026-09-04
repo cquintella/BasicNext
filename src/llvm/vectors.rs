@@ -78,15 +78,15 @@ pub(crate) fn emit_allocate(
             "i64" | "double" | "ptr" => 8,
             _ => 4,
         };
-        let len_value = arguments
-            .first()
-            .copied()
-            .expect("validated allocate length");
-        let len_ty = analysis
-            .values
-            .get(&len_value)
-            .expect("validated allocate length type");
-        let len_op = coerce_to_type(text, len_value, len_ty, &Type::Integer(IntegerType::Int32));
+        let len_op = if let Some(len_value) = arguments.first().copied() {
+            let len_ty = analysis
+                .values
+                .get(&len_value)
+                .expect("validated allocate length type");
+            coerce_to_type(text, len_value, len_ty, &Type::Integer(IntegerType::Int32))
+        } else {
+            "1".to_string()
+        };
         let _ = writeln!(text, "  %alloclen{dest} = zext i32 {len_op} to i64");
         let _ = writeln!(
             text,
