@@ -293,10 +293,11 @@ Reopens `bucket.md` Activity 3.6. Stubs are not done.
 
 ### SPRINT 6 — Dispatch on every target `bn run` already has
 
-- [ ] ACTIVITY 6.1 — Progress 2026-09-03: lock-poison paths recover typed
+- [X] ACTIVITY 6.1 — CLOSED 2026-09-03: lock-poison paths recover typed
   state, queue self-close returns `SelfJoin`, ticket IDs are opaque/non-
   sequential, and a two-worker Async isolation regression passes. The
-  residual interpreter audit remains open. Close residual interpreter items: lock poison must not
+  residual interpreter audit is closed. Evidence: 19 dispatch unit tests and
+  the two-worker isolation regression. Close residual interpreter items: lock poison must not
   abort the process (typed error or recovered mutex); `Queue.Close` from a
   worker of that queue returns Error instead of self-join; sequential ticket
   IDs replaced or documented only if a contract change is accepted—default
@@ -314,11 +315,12 @@ Reopens `bucket.md` Activity 3.6. Stubs are not done.
 
 ### SPRINT 7 — CLI, DAP, LSP, Jupyter, opt
 
-- [ ] ACTIVITY 7.1 — Progress 2026-09-03: `bn --help` and usage now list
+- [X] ACTIVITY 7.1 — CLOSED 2026-09-04: `bn --help` and usage now list
   `lsp` and `dap`; CLI version derives from `CARGO_PKG_VERSION` and reports
   `bn 0.4.3`. Plugin manifests/lock metadata and `docs/man/bn.1` were aligned
   to 0.4.3; README badge/status are aligned as well. Full plugin/version audit
-  remains open.
+  audit passes: no stale 0.4.2/0.2.0 runtime version remains outside release
+  notes; CLI, package, plugin, and man-page metadata agree on 0.4.3.
   version equals the crate version (`0.4.x`, not a stale `bn 0.2.0`/`0.4.2`
   mismatch).
 - [ ] ACTIVITY 7.2 — Progress 2026-09-03: DAP `evaluate` now resolves a
@@ -412,8 +414,8 @@ prose. Owner defaults to the 0.4.3 LLVM/`bn_rt` track.
 | BN-043-011 | HTTPS client | rejected until TLS adapter | 5.1 | local TLS fixture |
 | BN-043-012 | BNWeb fallback arms | several `provider unavailable` | 5.2 | named ops implemented |
 | BN-043-013 | BNDispatch compiled | `DispatchSubmit` rejected | 6.2 | dispatch examples compile |
-| BN-043-014 | Dispatch residuals | IN PROGRESS 2026-09-03 — poison recovery, worker self-join handling, opaque ticket IDs, and two-worker Async isolation test pass; residual audit remains | 6.1 | tests in `src/dispatch.rs` and `tests/runtime.rs` |
-| BN-043-015 | CLI help/version | IN PROGRESS 2026-09-03 — help lists lsp/dap; version derives from crate and reports 0.4.3; plugin metadata aligned | 7.1 | `--help` and `-V` match crate |
+| BN-043-014 | Dispatch residuals | DONE 2026-09-03 — poison recovery, worker self-join handling, opaque ticket IDs, and two-worker Async isolation test pass | 6.1 | tests in `src/dispatch.rs` and `tests/runtime.rs` |
+| BN-043-015 | CLI help/version | DONE 2026-09-04 — help lists lsp/dap; version derives from crate and reports 0.4.3; plugin, README, and man-page metadata aligned | 7.1 | `--help` and `-V` match crate |
 | BN-043-016 | DAP evaluate/etc. | IN PROGRESS 2026-09-03 — evaluate implemented; adapter smoke/unit tests pass; full protocol audit remains | 7.2 | VS Code launch+step+inspect |
 | BN-043-017 | LSP hover/symbols | IN PROGRESS 2026-09-03 — handlers and capability flags added | 7.3 | capabilities == implementation |
 | BN-043-018 | `bn build` opt | IN PROGRESS 2026-09-03 — `--opt` propagated to clang/wasm-ld, default O2; parser and native smoke test pass | 7.5 | `--opt` documented and tested |
