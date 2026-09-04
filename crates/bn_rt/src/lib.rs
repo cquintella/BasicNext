@@ -76,24 +76,6 @@ impl Write for LibcStdout {
     }
 }
 
-#[allow(unsafe_code)] // Darwin libc exposes stdout as __stdoutp, not a `stdout` static.
-fn libc_stdout() -> *mut libc::FILE {
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    {
-        unsafe extern "C" {
-            static mut __stdoutp: *mut libc::FILE;
-        }
-        unsafe { __stdoutp }
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-    {
-        #[allow(unsafe_code)]
-        unsafe {
-            libc::stdout
-        }
-    }
-}
-
 #[allow(unsafe_code)] // C ABI: write(1) after flushing libc stdout used by LLVM printf.
 fn libc_write_stdout(buf: &[u8]) -> io::Result<()> {
     if buf.is_empty() {
@@ -123,7 +105,9 @@ fn libc_write_stdout(buf: &[u8]) -> io::Result<()> {
 
 #[allow(unsafe_code)] // C ABI: flush libc stdout so PRINT and Console share order.
 fn libc_fflush() -> io::Result<()> {
-    let rc = unsafe { libc::fflush(libc_stdout()) };
+    // A null stream flushes all open output streams and avoids platform-specific
+    // `stdout` symbols (`__stdoutp` on Darwin, unavailable on some libc targets).
+    let rc = unsafe { libc::fflush(std::ptr::null_mut()) };
     if rc == 0 {
         Ok(())
     } else {
