@@ -399,7 +399,12 @@ fn evaluate_response(session: &SharedSession, request: &Value) -> Value {
         .lock()
         .ok()
         .and_then(|state| state.frame.clone())
-        .and_then(|frame| frame.variables.into_iter().find(|variable| variable.name == expression))
+        .and_then(|frame| {
+            frame
+                .variables
+                .into_iter()
+                .find(|variable| variable.name == expression)
+        })
         .map(|variable| variable.value)
         .unwrap_or_else(|| "<unavailable>".into());
     json!({"result": value, "variablesReference": 0})

@@ -9,6 +9,7 @@ pub enum NeighborError {
 }
 
 impl NeighborError {
+    #[must_use]
     pub fn message(&self) -> String {
         match self {
             Self::Unsupported => "direct-neighbor lookup unsupported on this host".into(),

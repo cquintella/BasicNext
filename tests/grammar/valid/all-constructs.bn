@@ -58,8 +58,8 @@ FUNCTION Start() AS VOID
     LET shortUnsigned AS UINT16 = 65535
     LET sampleCount AS INT64 = 4294967296
     LET address AS UINT64 = 0xFFFFFFFFFFFFFFFF
-    LET capturedAt AS TIMESTAMP = Clock.Timestamp()
-    LET monotonic AS INT64 = Clock.Monotonic()
+    LET capturedAt AS TIMESTAMP = Clock.Now()
+    LET monotonic AS INT64 = Clock.Timer()
     LET argumentCount AS INTEGER = LEN(HOST.Args)
     LET executable AS STRING = HOST.Args[0]
     LET ready AS BOOLEAN = FALSE

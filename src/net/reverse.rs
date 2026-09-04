@@ -12,6 +12,7 @@ pub enum ReverseError {
 }
 
 impl ReverseError {
+    #[must_use]
     pub fn message(&self) -> String {
         match self {
             Self::Timeout => "reverse timeout".into(),
@@ -47,7 +48,9 @@ pub fn reverse_timeout(address: Address, timeout: Duration) -> Result<String, Re
         }
         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
             let _ = task.join();
-            Err(ReverseError::Io(io::Error::other("reverse resolver stopped")))
+            Err(ReverseError::Io(io::Error::other(
+                "reverse resolver stopped",
+            )))
         }
     }
 }

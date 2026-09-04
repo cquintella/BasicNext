@@ -848,8 +848,8 @@ IMPORT HOST.Clock AS Clock
 ```
 
 `HOST.Clock` provides time measurements:
-- `Clock.Timestamp() AS TIMESTAMP`: Returns the current signed UTC Unix-epoch time in milliseconds.
-- `Clock.Monotonic() AS INT64`: Returns a monotonically increasing count of nanoseconds. It does not represent a calendar time and is only used for measuring elapsed durations safely.
+- `Clock.Now() AS TIMESTAMP`: Returns the current signed UTC Unix-epoch time in milliseconds.
+- `Clock.Timer() AS INT64`: Returns a monotonically increasing count of nanoseconds. It does not represent a calendar time and is only used for measuring elapsed durations safely.
 
 ### `HOST.NumProcs`
 

@@ -284,7 +284,7 @@ fn members_of(path: &str) -> &'static [&'static str] {
             "NumProcs",
             "Random",
         ],
-        "HOST.Clock" => &["Monotonic", "Timestamp"],
+        "HOST.Clock" => &["Now", "Timer"],
         "HOST.Console" => &["Beep", "Cls", "NumCols", "NumRows", "PrintAt"],
         "HOST.Random" => &["Random", "Seed"],
         "HOST.FileSystem" => &[

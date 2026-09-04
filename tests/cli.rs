@@ -195,7 +195,12 @@ fn build_kmp_compiles_through_native_backend() {
         .args(["build", "examples/kmp.bn"])
         .output()
         .expect("run bn build for KMP");
-    assert_eq!(output.status.code(), Some(0), "{}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     native_matches_interpreter("examples/kmp.bn");
 }
 
@@ -218,7 +223,12 @@ fn build_reports_the_type_for_unsupported_allocation_lowering() {
         .args(["build", "tests/grammar/valid/pointer-void.bn"])
         .output()
         .expect("run pointer build");
-    assert_eq!(output.status.code(), Some(0), "{}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert!(String::from_utf8_lossy(&output.stdout).contains("call ptr @malloc"));
 }
 
@@ -797,7 +807,12 @@ fn wasm_build_supports_host_console_capability() {
         ])
         .output()
         .expect("run wasm build");
-    assert_eq!(output.status.code(), Some(0), "{}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]

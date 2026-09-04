@@ -582,9 +582,20 @@ fn void_pointer_has_c_style_conversion_and_requires_a_typed_dereference() {
 #[test]
 fn exact_temporal_types_and_host_clock_survive_name_collisions() {
     analyze_text(
-        "IMPORT HOST.Clock AS HostClock\nCLASS Clock\nEND CLASS\nFUNCTION Start() AS VOID\nLET timestamp AS TIMESTAMP = HostClock.Timestamp()\nLET date AS DATE = Date.Parse(\"2026-08-22\")\nLET time AS TIME = Time.Parse(\"10:20:30.000\")\nLET zone AS TIMEZONE = TimeZone.Parse(\"America/Sao_Paulo\")\nLET parsed AS TIMESTAMP = Timestamp.Parse(\"2026-08-22T10:20:30.000Z\")\nLET rendered AS STRING = Timestamp.Format(parsed)\nEND FUNCTION\n",
+        "IMPORT HOST.Clock AS HostClock\nCLASS Clock\nEND CLASS\nFUNCTION Start() AS VOID\nLET timestamp AS TIMESTAMP = HostClock.Now()\nLET date AS DATE = Date.Parse(\"2026-08-22\")\nLET time AS TIME = Time.Parse(\"10:20:30.000\")\nLET zone AS TIMEZONE = TimeZone.Parse(\"America/Sao_Paulo\")\nLET parsed AS TIMESTAMP = Timestamp.Parse(\"2026-08-22T10:20:30.000Z\")\nLET rendered AS STRING = Timestamp.Format(parsed)\nLET elapsed AS INT64 = HostClock.Timer()\nEND FUNCTION\n",
     )
     .expect("temporal namespaces and HOST.Clock must retain exact types");
+}
+
+#[test]
+fn host_clock_old_member_names_are_rejected() {
+    for member in ["Timestamp", "Monotonic"] {
+        let source = format!(
+            "IMPORT HOST.Clock AS Clock\nFUNCTION Start() AS VOID\nPRINT Clock.{member}()\nEND FUNCTION\n"
+        );
+        let error = analyze_text(&source).expect_err("old HOST.Clock member must be rejected");
+        assert_eq!(error.code, "NAME_NOT_FOUND");
+    }
 }
 
 #[test]

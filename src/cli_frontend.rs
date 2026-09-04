@@ -141,10 +141,30 @@ mod tests {
 
     #[test]
     fn optimization_option_has_explicit_levels_and_default() {
-        assert_eq!(parse_options(["file.bn".into()].into_iter()).expect("default").optimization, Optimization::Level(2));
-        assert_eq!(parse_options(["--opt".into(), "none".into(), "file.bn".into()].into_iter()).expect("none").optimization, Optimization::None);
-        assert_eq!(parse_options(["--opt".into(), "s".into(), "file.bn".into()].into_iter()).expect("size").optimization, Optimization::Size);
-        assert_eq!(parse_options(["--target".into(), "wasm32".into(), "file.bn".into()].into_iter()).expect("target").target, Target::Wasm32);
+        assert_eq!(
+            parse_options(["file.bn".into()].into_iter())
+                .expect("default")
+                .optimization,
+            Optimization::Level(2)
+        );
+        assert_eq!(
+            parse_options(["--opt".into(), "none".into(), "file.bn".into()].into_iter())
+                .expect("none")
+                .optimization,
+            Optimization::None
+        );
+        assert_eq!(
+            parse_options(["--opt".into(), "s".into(), "file.bn".into()].into_iter())
+                .expect("size")
+                .optimization,
+            Optimization::Size
+        );
+        assert_eq!(
+            parse_options(["--target".into(), "wasm32".into(), "file.bn".into()].into_iter())
+                .expect("target")
+                .target,
+            Target::Wasm32
+        );
         assert!(parse_options(["--opt".into(), "4".into(), "file.bn".into()].into_iter()).is_err());
     }
 }

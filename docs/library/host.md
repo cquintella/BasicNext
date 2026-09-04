@@ -72,12 +72,12 @@ conversion:
 ```basic
 IMPORT HOST.Clock AS Clock
 
-LET now AS TIMESTAMP = Clock.Timestamp()
-LET started AS INT64 = Clock.Monotonic()
+LET now AS TIMESTAMP = Clock.Now()
+LET started AS INT64 = Clock.Timer()
 ```
 
-`Clock.Timestamp()` returns a `TIMESTAMP`: signed milliseconds since
-1970-01-01T00:00:00Z. `Clock.Monotonic()` returns a nondecreasing `INT64` count
+`Clock.Now()` returns a `TIMESTAMP`: signed milliseconds since
+1970-01-01T00:00:00Z. `Clock.Timer()` returns a nondecreasing `INT64` count
 of nanoseconds from an unspecified origin. A monotonic value measures elapsed
 time only; it is not a timestamp and cannot be converted to a calendar date.
 

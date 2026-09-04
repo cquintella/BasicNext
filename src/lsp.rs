@@ -189,16 +189,20 @@ fn respond_hover(
         .map_err(|error| format!("invalid hover params: {error}"))?;
     let uri = params.text_document_position_params.text_document.uri;
     let position = params.text_document_position_params.position;
-    let result = documents.get(&uri.to_string()).and_then(|source| {
-        let word = word_prefix(source, position);
-        (!word.is_empty()).then(|| serde_json::json!({
+    let result =
+        documents.get(&uri.to_string()).and_then(|source| {
+            let word = word_prefix(source, position);
+            (!word.is_empty()).then(|| serde_json::json!({
             "contents": {"kind": "markdown", "value": format!("**{word}** — Basic Next symbol")}
         }))
-    });
-    connection.sender.send(Message::Response(Response::new_ok(
-        request.id,
-        serde_json::to_value(result).map_err(|error| error.to_string())?,
-    ))).map_err(|error| error.to_string())
+        });
+    connection
+        .sender
+        .send(Message::Response(Response::new_ok(
+            request.id,
+            serde_json::to_value(result).map_err(|error| error.to_string())?,
+        )))
+        .map_err(|error| error.to_string())
 }
 
 fn respond_document_symbols(
@@ -209,9 +213,9 @@ fn respond_document_symbols(
     let params: lsp_types::DocumentSymbolParams = serde_json::from_value(request.params)
         .map_err(|error| format!("invalid document symbol params: {error}"))?;
     let symbols = if let Some(source) = documents.get(&params.text_document.uri.to_string()) {
-            let tokens = lex(source).map_err(|error| error.message)?;
-            let program = parse_named(&tokens, source.name.clone()).map_err(|error| error.message)?;
-            program.items.into_iter().filter_map(|item| match item {
+        let tokens = lex(source).map_err(|error| error.message)?;
+        let program = parse_named(&tokens, source.name.clone()).map_err(|error| error.message)?;
+        program.items.into_iter().filter_map(|item| match item {
                 crate::ast::Item::Declaration { kind, name, span, .. } => Some(serde_json::json!({
                     "name": name,
                     "kind": match kind {
@@ -228,10 +232,13 @@ fn respond_document_symbols(
     } else {
         Vec::new()
     };
-    connection.sender.send(Message::Response(Response::new_ok(
-        request.id,
-        serde_json::Value::Array(symbols),
-    ))).map_err(|error| error.to_string())
+    connection
+        .sender
+        .send(Message::Response(Response::new_ok(
+            request.id,
+            serde_json::Value::Array(symbols),
+        )))
+        .map_err(|error| error.to_string())
 }
 
 fn respond_definition(

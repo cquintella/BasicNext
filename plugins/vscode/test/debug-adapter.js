@@ -14,6 +14,7 @@ let sequence = 1;
 const messages = [];
 let continued = false;
 let finished = false;
+let inspected = false;
 
 setTimeout(() => {
   if (!finished) {
@@ -32,6 +33,11 @@ function send(command, args) {
 function handle(message) {
   messages.push(message);
   if (message.type === "event" && message.event === "stopped" && !continued) {
+    send("stackTrace", { threadId: 1 });
+    send("scopes", { frameId: 0 });
+    send("variables", { variablesReference: 0 });
+    send("evaluate", { expression: "argc", frameId: 0 });
+    inspected = true;
     continued = true;
     send("continue", { threadId: 1 });
   }
@@ -41,6 +47,10 @@ function handle(message) {
     assert(messages.some((item) => item.command === "initialize" && item.success));
     assert(messages.some((item) => item.command === "launch" && item.success));
     assert(messages.some((item) => item.command === "configurationDone" && item.success));
+    assert(inspected);
+    for (const command of ["stackTrace", "scopes", "variables", "evaluate", "continue"]) {
+      assert(messages.some((item) => item.command === command && item.success), command);
+    }
     adapter.kill();
   }
 }

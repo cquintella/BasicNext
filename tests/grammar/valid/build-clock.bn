@@ -6,9 +6,9 @@
 IMPORT HOST.Clock AS Clock
 
 FUNCTION Start() AS VOID
-    LET t1 AS INT64 = Clock.Timestamp()
-    LET m1 AS INT64 = Clock.Monotonic()
-    LET m2 AS INT64 = Clock.Monotonic()
+    LET t1 AS TIMESTAMP = Clock.Now()
+    LET m1 AS INT64 = Clock.Timer()
+    LET m2 AS INT64 = Clock.Timer()
     PRINT t1 >= (0 AS INT64)
     PRINT m1 >= (0 AS INT64)
     PRINT m2 >= m1

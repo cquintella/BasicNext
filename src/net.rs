@@ -34,6 +34,10 @@ fn retain_resolver_task(task: std::thread::JoinHandle<()>) {
 }
 
 /// Joins every retained resolver/reverse worker. Safe to call more than once.
+///
+/// # Panics
+///
+/// Panics if the resolver task registry mutex is poisoned.
 pub fn join_resolver_tasks() {
     let tasks = resolver_tasks();
     let mut tasks = tasks.lock().expect("resolver task registry poisoned");

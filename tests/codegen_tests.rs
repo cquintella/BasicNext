@@ -459,7 +459,7 @@ fn lower_module_casts_integer_to_boolean_and_traps_narrowing_overflow() {
 }
 
 #[test]
-fn lower_module_rejects_unsupported_dead_vector_path() {
+fn lower_module_emits_dead_vector_path() {
     let module = start_module(vec![
         BasicBlock {
             id: BlockId(0),
@@ -505,12 +505,9 @@ fn lower_module_rejects_unsupported_dead_vector_path() {
             terminator: Terminator::Return { value: None },
         },
     ]);
-    let error = lower_module(&module).expect_err("vector lowering must be rejected");
-    assert!(error.contains("BUILD_LOWERING_UNAVAILABLE"));
-    assert!(error.contains("LLVM lowering for vector type"));
-    assert!(error.contains("INTEGER(INT32)"));
-    assert!(error.contains("Start"));
-    assert!(error.contains("1:1"));
+    let llvm = lower_module(&module).expect("vector lowering");
+    assert!(llvm.contains("alloca [1 x i32]"));
+    assert!(llvm.contains("insertvalue { ptr, i32 }"));
 }
 
 #[test]
@@ -520,7 +517,7 @@ fn lower_module_emits_bn_rt_clock_and_console_calls() {
         instructions: vec![
             Instruction::Constant {
                 destination: ValueId(0),
-                value: Constant::Function("HOST.Clock.Timestamp".into()),
+                value: Constant::Function("HOST.Clock.Now".into()),
                 ty: Type::Function {
                     parameters: Vec::new(),
                     return_type: Box::new(Type::Integer(IntegerType::Int64)),
@@ -537,12 +534,9 @@ fn lower_module_emits_bn_rt_clock_and_console_calls() {
         ],
         terminator: Terminator::Return { value: None },
     }]);
-    let llvm = lower_module(&clock).expect("lower HOST.Clock.Timestamp");
-    assert!(
-        llvm.contains("declare i64 @bn_rt_clock_timestamp()"),
-        "{llvm}"
-    );
-    assert!(llvm.contains("call i64 @bn_rt_clock_timestamp()"), "{llvm}");
+    let llvm = lower_module(&clock).expect("lower HOST.Clock.Now");
+    assert!(llvm.contains("declare i64 @bn_rt_clock_now()"), "{llvm}");
+    assert!(llvm.contains("call i64 @bn_rt_clock_now()"), "{llvm}");
 
     let cls = start_module(vec![BasicBlock {
         id: BlockId(0),

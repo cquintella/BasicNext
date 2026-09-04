@@ -2,8 +2,8 @@
 use super::*;
 
 pub(crate) const BN_RT_DECLS: &str = "\
-declare i64 @bn_rt_clock_timestamp()
-declare i64 @bn_rt_clock_monotonic()
+declare i64 @bn_rt_clock_now()
+declare i64 @bn_rt_clock_timer()
 declare i32 @bn_rt_console_cls()
 declare i32 @bn_rt_console_beep()
 declare i32 @bn_rt_console_print_at(i32, i32, ptr)
@@ -39,8 +39,8 @@ declare i32 @bn_rt_net_udp_packet_source(i64, ptr, ptr)
 pub(crate) fn is_bn_rt_host_call(name: &str) -> bool {
     matches!(
         name,
-        "HOST.Clock.Timestamp"
-            | "HOST.Clock.Monotonic"
+        "HOST.Clock.Now"
+            | "HOST.Clock.Timer"
             | "HOST.Console.Cls"
             | "HOST.Console.Beep"
             | "HOST.Console.PrintAt"
@@ -86,8 +86,8 @@ pub(crate) fn bn_rt_call_supported(
     values: &HashMap<ValueId, Type>,
 ) -> bool {
     match name {
-        "HOST.Clock.Timestamp"
-        | "HOST.Clock.Monotonic"
+        "HOST.Clock.Now"
+        | "HOST.Clock.Timer"
         | "HOST.Console.Cls"
         | "HOST.Console.Beep"
         | "HOST.Console.NumCols"
@@ -149,33 +149,81 @@ pub(crate) fn bn_rt_call_supported(
         "HOST.Net.TCPConnect" => endpoint_net_call_supported(arguments, values, 2),
         "HOST.Net.TCPListen" => {
             arguments.len() == 2
-                && arguments.first().and_then(|value| values.get(value)).and_then(llvm_type) == Some("{ ptr, i32 }")
-                && arguments.get(1).and_then(|value| values.get(value)).and_then(llvm_type).is_some_and(integer_llvm)
+                && arguments
+                    .first()
+                    .and_then(|value| values.get(value))
+                    .and_then(llvm_type)
+                    == Some("{ ptr, i32 }")
+                && arguments
+                    .get(1)
+                    .and_then(|value| values.get(value))
+                    .and_then(llvm_type)
+                    .is_some_and(integer_llvm)
         }
         "HOST.Net.TCPListener.Accept" => {
             arguments.len() == 2
-                && arguments.first().and_then(|value| values.get(value)).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
-                && arguments.get(1).and_then(|value| values.get(value)).and_then(llvm_type).is_some_and(integer_llvm)
+                && arguments
+                    .first()
+                    .and_then(|value| values.get(value))
+                    .and_then(llvm_type)
+                    == Some("{ i1, ptr, i64 }")
+                && arguments
+                    .get(1)
+                    .and_then(|value| values.get(value))
+                    .and_then(llvm_type)
+                    .is_some_and(integer_llvm)
         }
         "HOST.Net.TCPListener.LocalEndpoint" => {
             arguments.len() == 1
-                && arguments.first().and_then(|value| values.get(value)).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+                && arguments
+                    .first()
+                    .and_then(|value| values.get(value))
+                    .and_then(llvm_type)
+                    == Some("{ i1, ptr, i64 }")
         }
         "HOST.Net.TCPStream.Write" => {
             arguments.len() == 3
-                && arguments.first().and_then(|value| values.get(value)).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
-                && arguments.get(1).and_then(|value| values.get(value)).and_then(llvm_type) == Some("{ ptr, i32 }")
-                && arguments.get(2).and_then(|value| values.get(value)).and_then(llvm_type).is_some_and(integer_llvm)
+                && arguments
+                    .first()
+                    .and_then(|value| values.get(value))
+                    .and_then(llvm_type)
+                    == Some("{ i1, ptr, i64 }")
+                && arguments
+                    .get(1)
+                    .and_then(|value| values.get(value))
+                    .and_then(llvm_type)
+                    == Some("{ ptr, i32 }")
+                && arguments
+                    .get(2)
+                    .and_then(|value| values.get(value))
+                    .and_then(llvm_type)
+                    .is_some_and(integer_llvm)
         }
         "HOST.Net.TCPStream.Read" => {
             arguments.len() == 3
-                && arguments.first().and_then(|value| values.get(value)).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
-                && arguments.get(1).and_then(|value| values.get(value)).and_then(llvm_type) == Some("{ ptr, i32 }")
-                && arguments.get(2).and_then(|value| values.get(value)).and_then(llvm_type).is_some_and(integer_llvm)
+                && arguments
+                    .first()
+                    .and_then(|value| values.get(value))
+                    .and_then(llvm_type)
+                    == Some("{ i1, ptr, i64 }")
+                && arguments
+                    .get(1)
+                    .and_then(|value| values.get(value))
+                    .and_then(llvm_type)
+                    == Some("{ ptr, i32 }")
+                && arguments
+                    .get(2)
+                    .and_then(|value| values.get(value))
+                    .and_then(llvm_type)
+                    .is_some_and(integer_llvm)
         }
         "HOST.Net.TCPStream.LocalEndpoint" | "HOST.Net.TCPStream.RemoteEndpoint" => {
             arguments.len() == 1
-                && arguments.first().and_then(|value| values.get(value)).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+                && arguments
+                    .first()
+                    .and_then(|value| values.get(value))
+                    .and_then(llvm_type)
+                    == Some("{ i1, ptr, i64 }")
         }
         "HOST.Net.TCPStream.Close" | "HOST.Net.TCPListener.Close" | "HOST.Net.UDPSocket.Close" => {
             arguments.len() == 1
@@ -185,29 +233,65 @@ pub(crate) fn bn_rt_call_supported(
         }
         "HOST.Net.UDPSocket.SendTo" => {
             arguments.len() == 4
-                && arguments.first().is_some_and(|value| values.get(value).and_then(llvm_type) == Some("{ i1, ptr, i64 }"))
-                && arguments.get(1).is_some_and(|value| matches!(values.get(value).and_then(llvm_type), Some("{ ptr, i32 }" | "{ i1, ptr, i32 }")))
-                && arguments.get(2).is_some_and(|value| values.get(value).and_then(llvm_type) == Some("{ ptr, i32 }"))
-                && arguments.get(3).is_some_and(|value| matches!(values.get(value).and_then(llvm_type), Some("i32" | "i64")))
+                && arguments.first().is_some_and(|value| {
+                    values.get(value).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+                })
+                && arguments.get(1).is_some_and(|value| {
+                    matches!(
+                        values.get(value).and_then(llvm_type),
+                        Some("{ ptr, i32 }" | "{ i1, ptr, i32 }")
+                    )
+                })
+                && arguments.get(2).is_some_and(|value| {
+                    values.get(value).and_then(llvm_type) == Some("{ ptr, i32 }")
+                })
+                && arguments.get(3).is_some_and(|value| {
+                    matches!(values.get(value).and_then(llvm_type), Some("i32" | "i64"))
+                })
         }
         "HOST.Net.UDPSocket.Receive" => {
             arguments.len() == 3
-                && arguments.first().is_some_and(|value| values.get(value).and_then(llvm_type) == Some("{ i1, ptr, i64 }"))
-                && arguments.get(1).and_then(|value| values.get(value)).and_then(llvm_type).is_some_and(integer_llvm)
-                && arguments.get(2).and_then(|value| values.get(value)).and_then(llvm_type).is_some_and(integer_llvm)
+                && arguments.first().is_some_and(|value| {
+                    values.get(value).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+                })
+                && arguments
+                    .get(1)
+                    .and_then(|value| values.get(value))
+                    .and_then(llvm_type)
+                    .is_some_and(integer_llvm)
+                && arguments
+                    .get(2)
+                    .and_then(|value| values.get(value))
+                    .and_then(llvm_type)
+                    .is_some_and(integer_llvm)
         }
-        "HOST.Net.UDPPacket.Size" | "HOST.Net.UDPPacket.Truncated" | "HOST.Net.UDPPacket.WasTruncated" => {
-            arguments.len() == 1 && arguments.first().is_some_and(|value| values.get(value).and_then(llvm_type) == Some("{ i1, ptr, i64 }"))
+        "HOST.Net.UDPPacket.Size"
+        | "HOST.Net.UDPPacket.Truncated"
+        | "HOST.Net.UDPPacket.WasTruncated" => {
+            arguments.len() == 1
+                && arguments.first().is_some_and(|value| {
+                    values.get(value).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+                })
         }
         "HOST.Net.UDPPacket.CopyTo" => {
             arguments.len() == 3
-                && arguments.first().is_some_and(|value| values.get(value).and_then(llvm_type) == Some("{ i1, ptr, i64 }"))
-                && arguments.get(1).is_some_and(|value| values.get(value).and_then(llvm_type) == Some("{ ptr, i32 }"))
-                && arguments.get(2).and_then(|value| values.get(value)).and_then(llvm_type).is_some_and(integer_llvm)
+                && arguments.first().is_some_and(|value| {
+                    values.get(value).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+                })
+                && arguments.get(1).is_some_and(|value| {
+                    values.get(value).and_then(llvm_type) == Some("{ ptr, i32 }")
+                })
+                && arguments
+                    .get(2)
+                    .and_then(|value| values.get(value))
+                    .and_then(llvm_type)
+                    .is_some_and(integer_llvm)
         }
         "HOST.Net.UDPPacket.Source" => {
             arguments.len() == 1
-                && arguments.first().is_some_and(|value| values.get(value).and_then(llvm_type) == Some("{ i1, ptr, i64 }"))
+                && arguments.first().is_some_and(|value| {
+                    values.get(value).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+                })
         }
         "HOST.Net.Ping" | "HOST.Net.Reverse" => {
             arguments.len() == 2
@@ -276,77 +360,198 @@ pub(crate) fn lower_bn_rt_call(
     state: &mut EmissionState,
 ) {
     match name {
-        "HOST.Clock.Timestamp" => {
-            let _ = writeln!(
-                text,
-                "  %v{} = call i64 @bn_rt_clock_timestamp()",
-                destination.0
-            );
+        "HOST.Clock.Now" => {
+            let _ = writeln!(text, "  %v{} = call i64 @bn_rt_clock_now()", destination.0);
         }
         "HOST.Net.UDPSocket.SendTo" => {
             let dest = destination.0;
-            let _ = writeln!(text, "  %nethandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2", arguments[0].0);
+            let _ = writeln!(
+                text,
+                "  %nethandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                arguments[0].0
+            );
             let (address, port) = endpoint_parts(text, arguments[1], analysis);
-            let byte_ty = analysis.values.get(&arguments[2]).and_then(llvm_type).unwrap_or("{ ptr, i32 }");
+            let byte_ty = analysis
+                .values
+                .get(&arguments[2])
+                .and_then(llvm_type)
+                .unwrap_or("{ ptr, i32 }");
             let bytes = format!("%netbytes{dest}");
             let length = format!("%netlen{dest}");
             if byte_ty == "{ ptr, i32 }" {
-                let _ = writeln!(text, "  {bytes} = extractvalue {{ ptr, i32 }} %v{}, 0", arguments[2].0);
+                let _ = writeln!(
+                    text,
+                    "  {bytes} = extractvalue {{ ptr, i32 }} %v{}, 0",
+                    arguments[2].0
+                );
             }
-            let len = extend_to_i32(text, arguments[3], analysis.values.get(&arguments[3]).expect("validated length"));
+            let len = extend_to_i32(
+                text,
+                arguments[3],
+                analysis
+                    .values
+                    .get(&arguments[3])
+                    .expect("validated length"),
+            );
             let _ = writeln!(text, "  {length} = add i32 {len}, 0");
             let _ = writeln!(text, "  %netwritten{dest} = alloca i32");
-            let _ = writeln!(text, "  %netrc{dest} = call i32 @bn_rt_net_udp_send_to(i64 %nethandle{dest}, ptr {address}, i32 {port}, ptr {bytes}, i32 {length}, ptr %netwritten{dest})");
-            let _ = writeln!(text, "  %netwrittenv{dest} = load i32, ptr %netwritten{dest}");
-            let _ = writeln!(text, "  %netwritten64{dest} = sext i32 %netwrittenv{dest} to i64");
-            emit_handle_result(text, destination, format!("%netrc{dest}"), format!("%netwritten64{dest}"));
+            let _ = writeln!(
+                text,
+                "  %netrc{dest} = call i32 @bn_rt_net_udp_send_to(i64 %nethandle{dest}, ptr {address}, i32 {port}, ptr {bytes}, i32 {length}, ptr %netwritten{dest})"
+            );
+            let _ = writeln!(
+                text,
+                "  %netwrittenv{dest} = load i32, ptr %netwritten{dest}"
+            );
+            let _ = writeln!(
+                text,
+                "  %netwritten64{dest} = sext i32 %netwrittenv{dest} to i64"
+            );
+            emit_handle_result(
+                text,
+                destination,
+                format!("%netrc{dest}"),
+                format!("%netwritten64{dest}"),
+            );
         }
         "HOST.Net.TCPStream.Read" => {
             let dest = destination.0;
-            let _ = writeln!(text, "  %nethandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2", arguments[0].0);
-            let _ = writeln!(text, "  %netbuffer{dest} = extractvalue {{ ptr, i32 }} %v{}, 0", arguments[1].0);
-            let length = extend_to_i32(text, arguments[2], analysis.values.get(&arguments[2]).expect("validated length"));
+            let _ = writeln!(
+                text,
+                "  %nethandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                arguments[0].0
+            );
+            let _ = writeln!(
+                text,
+                "  %netbuffer{dest} = extractvalue {{ ptr, i32 }} %v{}, 0",
+                arguments[1].0
+            );
+            let length = extend_to_i32(
+                text,
+                arguments[2],
+                analysis
+                    .values
+                    .get(&arguments[2])
+                    .expect("validated length"),
+            );
             let _ = writeln!(text, "  %netout{dest} = alloca i32");
-            let _ = writeln!(text, "  %netrc{dest} = call i32 @bn_rt_net_tcp_read(i64 %nethandle{dest}, ptr %netbuffer{dest}, i32 {length}, ptr %netout{dest})");
+            let _ = writeln!(
+                text,
+                "  %netrc{dest} = call i32 @bn_rt_net_tcp_read(i64 %nethandle{dest}, ptr %netbuffer{dest}, i32 {length}, ptr %netout{dest})"
+            );
             let _ = writeln!(text, "  %netread{dest} = load i32, ptr %netout{dest}");
             let _ = writeln!(text, "  %netread64{dest} = sext i32 %netread{dest} to i64");
             let _ = writeln!(text, "  %neterr{dest} = icmp ne i32 %netrc{dest}, 0");
             let _ = writeln!(text, "  %neteof{dest} = icmp eq i32 %netread{dest}, 0");
-            let _ = writeln!(text, "  %neteofptr{dest} = getelementptr [4 x i8], ptr @.bn_eof, i64 0, i64 0");
-            let _ = writeln!(text, "  %nettagptr{dest} = select i1 %neteof{dest}, ptr %neteofptr{dest}, ptr null");
-            let _ = writeln!(text, "  %netagg{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %neterr{dest}, 0");
-            let _ = writeln!(text, "  %netaggp{dest} = insertvalue {{ i1, ptr, i64 }} %netagg{dest}, ptr %nettagptr{dest}, 1");
-            let _ = writeln!(text, "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %netaggp{dest}, i64 %netread64{dest}, 2");
+            let _ = writeln!(
+                text,
+                "  %neteofptr{dest} = getelementptr [4 x i8], ptr @.bn_eof, i64 0, i64 0"
+            );
+            let _ = writeln!(
+                text,
+                "  %nettagptr{dest} = select i1 %neteof{dest}, ptr %neteofptr{dest}, ptr null"
+            );
+            let _ = writeln!(
+                text,
+                "  %netagg{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %neterr{dest}, 0"
+            );
+            let _ = writeln!(
+                text,
+                "  %netaggp{dest} = insertvalue {{ i1, ptr, i64 }} %netagg{dest}, ptr %nettagptr{dest}, 1"
+            );
+            let _ = writeln!(
+                text,
+                "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %netaggp{dest}, i64 %netread64{dest}, 2"
+            );
         }
         "HOST.Net.TCPStream.LocalEndpoint" | "HOST.Net.TCPStream.RemoteEndpoint" => {
             let dest = destination.0;
-            let _ = writeln!(text, "  %nethandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2", arguments[0].0);
+            let _ = writeln!(
+                text,
+                "  %nethandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                arguments[0].0
+            );
             let _ = writeln!(text, "  %netaddress{dest} = alloca ptr");
             let _ = writeln!(text, "  %netport{dest} = alloca i32");
-            let function = if name.ends_with("LocalEndpoint") { "bn_rt_net_tcp_stream_local_endpoint" } else { "bn_rt_net_tcp_stream_remote_endpoint" };
-            let _ = writeln!(text, "  %netrc{dest} = call i32 @{function}(i64 %nethandle{dest}, ptr %netaddress{dest}, ptr %netport{dest})");
+            let function = if name.ends_with("LocalEndpoint") {
+                "bn_rt_net_tcp_stream_local_endpoint"
+            } else {
+                "bn_rt_net_tcp_stream_remote_endpoint"
+            };
+            let _ = writeln!(
+                text,
+                "  %netrc{dest} = call i32 @{function}(i64 %nethandle{dest}, ptr %netaddress{dest}, ptr %netport{dest})"
+            );
             let _ = writeln!(text, "  %netaddrv{dest} = load ptr, ptr %netaddress{dest}");
             let _ = writeln!(text, "  %netportv{dest} = load i32, ptr %netport{dest}");
             let _ = writeln!(text, "  %neterr{dest} = icmp ne i32 %netrc{dest}, 0");
-            let _ = writeln!(text, "  %netep0{dest} = insertvalue {{ i1, ptr, i32 }} undef, i1 %neterr{dest}, 0");
-            let _ = writeln!(text, "  %netep1{dest} = insertvalue {{ i1, ptr, i32 }} %netep0{dest}, ptr %netaddrv{dest}, 1");
-            let _ = writeln!(text, "  %v{dest} = insertvalue {{ i1, ptr, i32 }} %netep1{dest}, i32 %netportv{dest}, 2");
+            let _ = writeln!(
+                text,
+                "  %netep0{dest} = insertvalue {{ i1, ptr, i32 }} undef, i1 %neterr{dest}, 0"
+            );
+            let _ = writeln!(
+                text,
+                "  %netep1{dest} = insertvalue {{ i1, ptr, i32 }} %netep0{dest}, ptr %netaddrv{dest}, 1"
+            );
+            let _ = writeln!(
+                text,
+                "  %v{dest} = insertvalue {{ i1, ptr, i32 }} %netep1{dest}, i32 %netportv{dest}, 2"
+            );
         }
         "HOST.Net.UDPSocket.Receive" => {
             let dest = destination.0;
-            let _ = writeln!(text, "  %nethandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2", arguments[0].0);
-            let maximum = extend_to_i32(text, arguments[1], analysis.values.get(&arguments[1]).expect("validated maximum"));
-            let timeout = extend_to_i32(text, arguments[2], analysis.values.get(&arguments[2]).expect("validated timeout"));
+            let _ = writeln!(
+                text,
+                "  %nethandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                arguments[0].0
+            );
+            let maximum = extend_to_i32(
+                text,
+                arguments[1],
+                analysis
+                    .values
+                    .get(&arguments[1])
+                    .expect("validated maximum"),
+            );
+            let timeout = extend_to_i32(
+                text,
+                arguments[2],
+                analysis
+                    .values
+                    .get(&arguments[2])
+                    .expect("validated timeout"),
+            );
             let _ = writeln!(text, "  %netout{dest} = alloca i64");
-            let _ = writeln!(text, "  %netrc{dest} = call i32 @bn_rt_net_udp_receive_handle(i64 %nethandle{dest}, i32 {maximum}, i32 {timeout}, ptr %netout{dest})");
+            let _ = writeln!(
+                text,
+                "  %netrc{dest} = call i32 @bn_rt_net_udp_receive_handle(i64 %nethandle{dest}, i32 {maximum}, i32 {timeout}, ptr %netout{dest})"
+            );
             let _ = writeln!(text, "  %netdata{dest} = load i64, ptr %netout{dest}");
-            emit_handle_result(text, destination, format!("%netrc{dest}"), format!("%netdata{dest}"));
+            emit_handle_result(
+                text,
+                destination,
+                format!("%netrc{dest}"),
+                format!("%netdata{dest}"),
+            );
         }
-        "HOST.Net.UDPPacket.Size" | "HOST.Net.UDPPacket.Truncated" | "HOST.Net.UDPPacket.WasTruncated" => {
+        "HOST.Net.UDPPacket.Size"
+        | "HOST.Net.UDPPacket.Truncated"
+        | "HOST.Net.UDPPacket.WasTruncated" => {
             let dest = destination.0;
-            let _ = writeln!(text, "  %nethandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2", arguments[0].0);
-            let function = if name.ends_with("Size") { "bn_rt_net_udp_packet_size" } else { "bn_rt_net_udp_packet_truncated" };
-            let _ = writeln!(text, "  %netpacket{dest} = call i32 @{function}(i64 %nethandle{dest})");
+            let _ = writeln!(
+                text,
+                "  %nethandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                arguments[0].0
+            );
+            let function = if name.ends_with("Size") {
+                "bn_rt_net_udp_packet_size"
+            } else {
+                "bn_rt_net_udp_packet_truncated"
+            };
+            let _ = writeln!(
+                text,
+                "  %netpacket{dest} = call i32 @{function}(i64 %nethandle{dest})"
+            );
             if name.ends_with("Size") {
                 let _ = writeln!(text, "  %v{dest} = add i32 %netpacket{dest}, 0");
             } else {
@@ -355,43 +560,111 @@ pub(crate) fn lower_bn_rt_call(
         }
         "HOST.Net.UDPPacket.CopyTo" => {
             let dest = destination.0;
-            let _ = writeln!(text, "  %nethandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2", arguments[0].0);
-            let _ = writeln!(text, "  %netbuffer{dest} = extractvalue {{ ptr, i32 }} %v{}, 0", arguments[1].0);
-            let maximum = extend_to_i32(text, arguments[2], analysis.values.get(&arguments[2]).expect("validated maximum"));
+            let _ = writeln!(
+                text,
+                "  %nethandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                arguments[0].0
+            );
+            let _ = writeln!(
+                text,
+                "  %netbuffer{dest} = extractvalue {{ ptr, i32 }} %v{}, 0",
+                arguments[1].0
+            );
+            let maximum = extend_to_i32(
+                text,
+                arguments[2],
+                analysis
+                    .values
+                    .get(&arguments[2])
+                    .expect("validated maximum"),
+            );
             let _ = writeln!(text, "  %netcopied{dest} = alloca i32");
-            let _ = writeln!(text, "  %netrc{dest} = call i32 @bn_rt_net_udp_packet_copy_to(i64 %nethandle{dest}, ptr %netbuffer{dest}, i32 {maximum}, ptr %netcopied{dest})");
+            let _ = writeln!(
+                text,
+                "  %netrc{dest} = call i32 @bn_rt_net_udp_packet_copy_to(i64 %nethandle{dest}, ptr %netbuffer{dest}, i32 {maximum}, ptr %netcopied{dest})"
+            );
             let _ = writeln!(text, "  %netcopiedv{dest} = load i32, ptr %netcopied{dest}");
-            let _ = writeln!(text, "  %netcopied64{dest} = sext i32 %netcopiedv{dest} to i64");
-            emit_handle_result(text, destination, format!("%netrc{dest}"), format!("%netcopied64{dest}"));
+            let _ = writeln!(
+                text,
+                "  %netcopied64{dest} = sext i32 %netcopiedv{dest} to i64"
+            );
+            emit_handle_result(
+                text,
+                destination,
+                format!("%netrc{dest}"),
+                format!("%netcopied64{dest}"),
+            );
         }
         "HOST.Net.UDPPacket.Source" => {
             let dest = destination.0;
-            let _ = writeln!(text, "  %nethandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2", arguments[0].0);
+            let _ = writeln!(
+                text,
+                "  %nethandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                arguments[0].0
+            );
             let _ = writeln!(text, "  %netaddr{dest} = alloca ptr");
             let _ = writeln!(text, "  %netport{dest} = alloca i32");
-            let _ = writeln!(text, "  %netrc{dest} = call i32 @bn_rt_net_udp_packet_source(i64 %nethandle{dest}, ptr %netaddr{dest}, ptr %netport{dest})");
+            let _ = writeln!(
+                text,
+                "  %netrc{dest} = call i32 @bn_rt_net_udp_packet_source(i64 %nethandle{dest}, ptr %netaddr{dest}, ptr %netport{dest})"
+            );
             let _ = writeln!(text, "  %netaddrv{dest} = load ptr, ptr %netaddr{dest}");
             let _ = writeln!(text, "  %netportv{dest} = load i32, ptr %netport{dest}");
             let _ = writeln!(text, "  %neterr{dest} = icmp ne i32 %netrc{dest}, 0");
-            let _ = writeln!(text, "  %netep0{dest} = insertvalue {{ i1, ptr, i32 }} undef, i1 %neterr{dest}, 0");
-            let _ = writeln!(text, "  %netep1{dest} = insertvalue {{ i1, ptr, i32 }} %netep0{dest}, ptr %netaddrv{dest}, 1");
-            let _ = writeln!(text, "  %v{dest} = insertvalue {{ i1, ptr, i32 }} %netep1{dest}, i32 %netportv{dest}, 2");
+            let _ = writeln!(
+                text,
+                "  %netep0{dest} = insertvalue {{ i1, ptr, i32 }} undef, i1 %neterr{dest}, 0"
+            );
+            let _ = writeln!(
+                text,
+                "  %netep1{dest} = insertvalue {{ i1, ptr, i32 }} %netep0{dest}, ptr %netaddrv{dest}, 1"
+            );
+            let _ = writeln!(
+                text,
+                "  %v{dest} = insertvalue {{ i1, ptr, i32 }} %netep1{dest}, i32 %netportv{dest}, 2"
+            );
         }
         "HOST.Net.TCPStream.Write" => {
             let dest = destination.0;
-            let _ = writeln!(text, "  %nethandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2", arguments[0].0);
-            let _ = writeln!(text, "  %netbuffer{dest} = extractvalue {{ ptr, i32 }} %v{}, 0", arguments[1].0);
-            let length = extend_to_i32(text, arguments[2], analysis.values.get(&arguments[2]).expect("validated length"));
-            let _ = writeln!(text, "  %netout{dest} = alloca i32");
-            let _ = writeln!(text, "  %netrc{dest} = call i32 @bn_rt_net_tcp_write(i64 %nethandle{dest}, ptr %netbuffer{dest}, i32 {length}, ptr %netout{dest})");
-            let _ = writeln!(text, "  %netwritten{dest} = load i32, ptr %netout{dest}");
-            let _ = writeln!(text, "  %netwritten64{dest} = sext i32 %netwritten{dest} to i64");
-            emit_handle_result(text, destination, format!("%netrc{dest}"), format!("%netwritten64{dest}"));
-        }
-        "HOST.Clock.Monotonic" => {
             let _ = writeln!(
                 text,
-                "  %v{} = call i64 @bn_rt_clock_monotonic()",
+                "  %nethandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                arguments[0].0
+            );
+            let _ = writeln!(
+                text,
+                "  %netbuffer{dest} = extractvalue {{ ptr, i32 }} %v{}, 0",
+                arguments[1].0
+            );
+            let length = extend_to_i32(
+                text,
+                arguments[2],
+                analysis
+                    .values
+                    .get(&arguments[2])
+                    .expect("validated length"),
+            );
+            let _ = writeln!(text, "  %netout{dest} = alloca i32");
+            let _ = writeln!(
+                text,
+                "  %netrc{dest} = call i32 @bn_rt_net_tcp_write(i64 %nethandle{dest}, ptr %netbuffer{dest}, i32 {length}, ptr %netout{dest})"
+            );
+            let _ = writeln!(text, "  %netwritten{dest} = load i32, ptr %netout{dest}");
+            let _ = writeln!(
+                text,
+                "  %netwritten64{dest} = sext i32 %netwritten{dest} to i64"
+            );
+            emit_handle_result(
+                text,
+                destination,
+                format!("%netrc{dest}"),
+                format!("%netwritten64{dest}"),
+            );
+        }
+        "HOST.Clock.Timer" => {
+            let _ = writeln!(
+                text,
+                "  %v{} = call i64 @bn_rt_clock_timer()",
                 destination.0
             );
         }
@@ -538,37 +811,94 @@ pub(crate) fn lower_bn_rt_call(
         }
         "HOST.Net.TCPListen" => {
             let dest = destination.0;
-            let backlog = extend_to_i32(text, arguments[1], analysis.values.get(&arguments[1]).expect("validated backlog"));
-            let _ = writeln!(text, "  %netvec{dest} = extractvalue {{ ptr, i32 }} %v{}, 0", arguments[0].0);
+            let backlog = extend_to_i32(
+                text,
+                arguments[1],
+                analysis
+                    .values
+                    .get(&arguments[1])
+                    .expect("validated backlog"),
+            );
+            let _ = writeln!(
+                text,
+                "  %netvec{dest} = extractvalue {{ ptr, i32 }} %v{}, 0",
+                arguments[0].0
+            );
             let _ = writeln!(text, "  %netaddress{dest} = load ptr, ptr %netvec{dest}");
-            let _ = writeln!(text, "  %netportptr{dest} = getelementptr i8, ptr %netvec{dest}, i64 8");
+            let _ = writeln!(
+                text,
+                "  %netportptr{dest} = getelementptr i8, ptr %netvec{dest}, i64 8"
+            );
             let _ = writeln!(text, "  %netport{dest} = load i32, ptr %netportptr{dest}");
             let _ = writeln!(text, "  %netout{dest} = alloca i64");
-            let _ = writeln!(text, "  %netrc{dest} = call i32 @bn_rt_net_tcp_listen_with_backlog(ptr %netaddress{dest}, i32 %netport{dest}, i32 {backlog}, ptr %netout{dest})");
+            let _ = writeln!(
+                text,
+                "  %netrc{dest} = call i32 @bn_rt_net_tcp_listen_with_backlog(ptr %netaddress{dest}, i32 %netport{dest}, i32 {backlog}, ptr %netout{dest})"
+            );
             let _ = writeln!(text, "  %netdata{dest} = load i64, ptr %netout{dest}");
-            emit_handle_result(text, destination, format!("%netrc{dest}"), format!("%netdata{dest}"));
+            emit_handle_result(
+                text,
+                destination,
+                format!("%netrc{dest}"),
+                format!("%netdata{dest}"),
+            );
         }
         "HOST.Net.TCPListener.Accept" => {
             let dest = destination.0;
-            let _ = writeln!(text, "  %nethandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2", arguments[0].0);
-            let timeout = extend_to_i32(text, arguments[1], analysis.values.get(&arguments[1]).expect("validated timeout"));
+            let _ = writeln!(
+                text,
+                "  %nethandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                arguments[0].0
+            );
+            let timeout = extend_to_i32(
+                text,
+                arguments[1],
+                analysis
+                    .values
+                    .get(&arguments[1])
+                    .expect("validated timeout"),
+            );
             let _ = writeln!(text, "  %netout{dest} = alloca i64");
-            let _ = writeln!(text, "  %netrc{dest} = call i32 @bn_rt_net_tcp_accept(i64 %nethandle{dest}, i32 {timeout}, ptr %netout{dest})");
+            let _ = writeln!(
+                text,
+                "  %netrc{dest} = call i32 @bn_rt_net_tcp_accept(i64 %nethandle{dest}, i32 {timeout}, ptr %netout{dest})"
+            );
             let _ = writeln!(text, "  %netdata{dest} = load i64, ptr %netout{dest}");
-            emit_handle_result(text, destination, format!("%netrc{dest}"), format!("%netdata{dest}"));
+            emit_handle_result(
+                text,
+                destination,
+                format!("%netrc{dest}"),
+                format!("%netdata{dest}"),
+            );
         }
         "HOST.Net.TCPListener.LocalEndpoint" => {
             let dest = destination.0;
-            let _ = writeln!(text, "  %nethandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2", arguments[0].0);
+            let _ = writeln!(
+                text,
+                "  %nethandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                arguments[0].0
+            );
             let _ = writeln!(text, "  %netaddress{dest} = alloca ptr");
             let _ = writeln!(text, "  %netport{dest} = alloca i32");
-            let _ = writeln!(text, "  %netrc{dest} = call i32 @bn_rt_net_tcp_listener_local_endpoint(i64 %nethandle{dest}, ptr %netaddress{dest}, ptr %netport{dest})");
+            let _ = writeln!(
+                text,
+                "  %netrc{dest} = call i32 @bn_rt_net_tcp_listener_local_endpoint(i64 %nethandle{dest}, ptr %netaddress{dest}, ptr %netport{dest})"
+            );
             let _ = writeln!(text, "  %netaddrv{dest} = load ptr, ptr %netaddress{dest}");
             let _ = writeln!(text, "  %netportv{dest} = load i32, ptr %netport{dest}");
             let _ = writeln!(text, "  %neterr{dest} = icmp ne i32 %netrc{dest}, 0");
-            let _ = writeln!(text, "  %netep0{dest} = insertvalue {{ i1, ptr, i32 }} undef, i1 %neterr{dest}, 0");
-            let _ = writeln!(text, "  %netep1{dest} = insertvalue {{ i1, ptr, i32 }} %netep0{dest}, ptr %netaddrv{dest}, 1");
-            let _ = writeln!(text, "  %v{dest} = insertvalue {{ i1, ptr, i32 }} %netep1{dest}, i32 %netportv{dest}, 2");
+            let _ = writeln!(
+                text,
+                "  %netep0{dest} = insertvalue {{ i1, ptr, i32 }} undef, i1 %neterr{dest}, 0"
+            );
+            let _ = writeln!(
+                text,
+                "  %netep1{dest} = insertvalue {{ i1, ptr, i32 }} %netep0{dest}, ptr %netaddrv{dest}, 1"
+            );
+            let _ = writeln!(
+                text,
+                "  %v{dest} = insertvalue {{ i1, ptr, i32 }} %netep1{dest}, i32 %netportv{dest}, 2"
+            );
         }
         "HOST.Net.TCPStream.Close" | "HOST.Net.TCPListener.Close" | "HOST.Net.UDPSocket.Close" => {
             let dest = destination.0;

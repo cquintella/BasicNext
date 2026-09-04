@@ -269,7 +269,7 @@ pub(crate) fn lower_scalar_instruction_tail(
             ..
         } => {
             let owner = match analysis.symbols.get(symbol) {
-                Some(Type::Named(name)) | Some(Type::ImportedNamed { name, .. }) => name.as_str(),
+                Some(Type::Named(name) | Type::ImportedNamed { name, .. }) => name.as_str(),
                 _ => "Box",
             };
             let field = path.first().map(String::as_str).unwrap_or("value");
