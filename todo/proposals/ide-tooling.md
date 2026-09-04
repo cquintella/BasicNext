@@ -26,14 +26,13 @@ parser / semantics / interpreter as `bn`.
       `file://` module load
 - [X] Find references (`textDocument/references`) in the server
 - [X] Context-aware completion (`textDocument/completion`, trigger `.`)
-- [X] Capabilities advertised match implemented methods (no hover/rename/format
-      advertised)
+- [X] Capabilities advertised match implemented methods (hover and document
+      symbols are advertised; rename/format are not)
 - [X] UTF-16 positions at the protocol boundary (`len_utf16` in prefix/range)
 - [X] Unknown methods return protocol "method not implemented"
 - [X] Server does not execute the program
-- [ ] `bn --help` / usage list the `lsp` command
-- [ ] Find references wired in the VS Code client
-      (`registerReferenceProvider` is missing)
+- [X] `bn --help` / usage list the `lsp` command
+- [X] Find references wired in the VS Code client (`registerReferenceProvider`)
 
 ## DAP (Rust `bn dap`)
 
@@ -44,11 +43,11 @@ parser / semantics / interpreter as `bn`.
 - [X] `continue`, `pause`, `next` (step over), `stepIn`, `stepOut`
 - [X] `threads`, `stackTrace`, `scopes`, `variables` (in-scope locals)
 - [X] Interpreter debug hook / dedicated execution thread
-- [X] No expression `evaluate` in 0.3 (snapshots only; catch-all returns
-      `request is not implemented`)
+- [X] Expression `evaluate` resolves paused-frame locals; unsupported optional
+      requests still return the protocol error
 - [X] Unknown optional requests get the unsupported response
 - [X] VS Code `plugins/vscode/debugAdapter.js` spawns `bn dap`
-- [ ] `bn --help` / usage list the `dap` command
+- [X] `bn --help` / usage list the `dap` command
 
 ## VS Code client
 
@@ -57,9 +56,10 @@ parser / semantics / interpreter as `bn`.
 - [X] Completion provider talks to the language server
 - [X] Debugger type `basicnext` launches through `debugAdapter.js` → `bn dap`
 - [X] Plugin tests exist (`plugins/vscode/test/`)
-- [ ] Client must not duplicate parsing: `extension.js` still runs `bn check`
-      on save and on activate, and overwrites LSP diagnostics
-- [ ] `package.json` `basicnext.executable` description still says "linting"
+- [X] Client does not duplicate parsing: diagnostics come only from the LSP
+      `textDocument/publishDiagnostics` stream
+- [X] `package.json` `basicnext.executable` describes the language server and
+      debugger, not linting
 
 ## Outside 0.3 (do not treat as this proposal)
 
@@ -69,7 +69,5 @@ sprint 7 if they ship.
 
 ## Remaining to close this proposal
 
-1. List `lsp` and `dap` in `bn --help`.
-2. Stop `bn check` on save in the VS Code extension; diagnostics come only
-   from `textDocument/publishDiagnostics`.
-3. Register find-references in the VS Code client.
+All checklist items are now closed. `bn --help` lists `lsp` and `dap`; the
+VS Code client delegates diagnostics and references to the native LSP.

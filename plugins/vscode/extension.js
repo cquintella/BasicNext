@@ -106,6 +106,7 @@ function startLanguageServer(context, collection) {
     vscode.workspace.onDidChangeTextDocument((event) => sync(event.document, "textDocument/didChange")),
     vscode.workspace.onDidCloseTextDocument((document) => notify("textDocument/didClose", { textDocument: { uri: document.uri.toString() } })),
     vscode.languages.registerDefinitionProvider("basicnext", { provideDefinition: (document, position) => send("textDocument/definition", { textDocument: { uri: document.uri.toString() }, position }).then((items) => items || []) }),
+    vscode.languages.registerReferenceProvider("basicnext", { provideReferences: (document, position, context) => send("textDocument/references", { textDocument: { uri: document.uri.toString() }, position, context: { includeDeclaration: Boolean(context?.includeDeclaration) } }).then((items) => items || []) }),
     vscode.languages.registerCompletionItemProvider("basicnext", { provideCompletionItems: (document, position) => send("textDocument/completion", { textDocument: { uri: document.uri.toString() }, position }).then(lspCompletionItems) }, "."),
     { dispose: () => { notify("shutdown", null); notify("exit", null); child.kill(); } },
   );
@@ -115,23 +116,6 @@ function startLanguageServer(context, collection) {
 
 function activate(context) {
   const collection = vscode.languages.createDiagnosticCollection("basicnext");
-  const lint = (document) => {
-    if (document.languageId !== "basicnext" || document.isUntitled) return;
-    const version = document.version;
-    const executable = vscode.workspace.getConfiguration("basicnext").get("executable", "bn");
-    cp.execFile(executable, ["check", document.fileName], { cwd: vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath }, (error, stdout, stderr) => {
-      if (document.version !== version) return;
-      if (error?.code === "ENOENT") {
-        collection.set(document.uri, [new vscode.Diagnostic(
-          new vscode.Range(0, 0, 0, 1),
-          `cannot execute Basic Next checker '${executable}'`,
-          vscode.DiagnosticSeverity.Error,
-        )]);
-        return;
-      }
-      collection.set(document.uri, parseDiagnostics(stderr || ""));
-    });
-  };
   const run = async () => {
     const document = activeDocument();
     if (!document) return;
@@ -150,12 +134,10 @@ function activate(context) {
   };
   context.subscriptions.push(
     collection,
-    vscode.workspace.onDidSaveTextDocument(lint),
     vscode.commands.registerCommand("basicnext.run", run),
     vscode.commands.registerCommand("basicnext.buildAndRun", buildAndRun),
   );
   startLanguageServer(context, collection);
-  if (vscode.window.activeTextEditor) lint(vscode.window.activeTextEditor.document);
 }
 
 function deactivate() {}

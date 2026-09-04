@@ -64,7 +64,7 @@
         "basicnext.executable": {
           "type": "string",
           "default": "bn",
-          "description": "Path to the bn executable used for linting."
+          "description": "Path to the bn executable used by the Basic Next language server and debugger."
         }
       }
     }
