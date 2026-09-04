@@ -175,11 +175,11 @@ fn build_emits_integer_start_exit_code() {
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("ret i32 %v"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("ret i32 %ret"));
 }
 
 #[test]
-fn build_reports_the_user_function_that_blocks_kmp() {
+fn build_kmp_compiles_through_native_backend() {
     let check = bn()
         .args(["check", "examples/kmp.bn"])
         .output()
@@ -195,10 +195,8 @@ fn build_reports_the_user_function_that_blocks_kmp() {
         .args(["build", "examples/kmp.bn"])
         .output()
         .expect("run bn build for KMP");
-    assert_eq!(output.status.code(), Some(2));
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("FUNCTION KMPSearch"));
-    assert!(stderr.contains("BUILD_LOWERING_UNAVAILABLE"));
+    assert_eq!(output.status.code(), Some(0), "{}", String::from_utf8_lossy(&output.stderr));
+    native_matches_interpreter("examples/kmp.bn");
 }
 
 #[test]
@@ -210,7 +208,7 @@ fn build_reports_the_type_for_unsupported_vector_lowering() {
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("LLVM lowering for vector type"));
-    assert!(stderr.contains("INTEGER(INT32)[3]"));
+    assert!(stderr.contains("INTEGER(INT32)[2][3]"));
     assert!(stderr.contains("FUNCTION Start"));
 }
 
@@ -220,11 +218,8 @@ fn build_reports_the_type_for_unsupported_allocation_lowering() {
         .args(["build", "tests/grammar/valid/pointer-void.bn"])
         .output()
         .expect("run pointer build");
-    assert_eq!(output.status.code(), Some(2));
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("LLVM lowering for allocation"));
-    assert!(stderr.contains("POINTER TO INTEGER(INT32)"));
-    assert!(stderr.contains("FUNCTION Start"));
+    assert_eq!(output.status.code(), Some(0), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("call ptr @malloc"));
 }
 
 #[test]
@@ -236,8 +231,7 @@ fn build_emits_llvm_for_integer_print() {
     assert_eq!(output.status.code(), Some(0));
     let llvm = String::from_utf8_lossy(&output.stdout);
     assert!(llvm.contains("@printf"));
-    assert!(llvm.contains("add i32 0, 42"));
-    assert!(llvm.contains("sext i32 %v0 to i64"));
+    assert!(llvm.contains("add i64 0, 42"));
 }
 
 #[test]
@@ -249,9 +243,9 @@ fn build_emits_multiple_integer_prints() {
     assert_eq!(output.status.code(), Some(0));
     let llvm = String::from_utf8_lossy(&output.stdout);
     assert_eq!(llvm.matches("@printf").count(), 4);
-    assert!(llvm.contains("add i32 0, 1"));
-    assert!(llvm.contains("add i32 0, 2"));
-    assert!(llvm.contains("add i32 0, 3"));
+    assert!(llvm.contains("add i64 0, 1"));
+    assert!(llvm.contains("add i64 0, 2"));
+    assert!(llvm.contains("add i64 0, 3"));
 }
 
 fn native_matches_interpreter(path: &str) {
@@ -382,7 +376,7 @@ fn build_constant_folds_integer_expression() {
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("add i32 0, 14"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("add i64 0, 14"));
 }
 
 #[test]
@@ -392,7 +386,7 @@ fn build_constant_folds_unary_integer_expression() {
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("add i32 0, -5"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("add i64 0, -5"));
 }
 
 #[test]
@@ -446,8 +440,8 @@ fn build_constant_folds_if_branch() {
     assert_eq!(output.status.code(), Some(0));
     let llvm = String::from_utf8_lossy(&output.stdout);
     assert!(llvm.contains("br i1 %v0, label %b2, label %b3"));
-    assert!(llvm.contains("add i32 0, 7"));
-    assert!(llvm.contains("add i32 0, 9"));
+    assert!(llvm.contains("add i64 0, 7"));
+    assert!(llvm.contains("add i64 0, 9"));
 }
 
 #[test]
@@ -459,8 +453,8 @@ fn build_constant_folds_relational_if_branch() {
     assert_eq!(output.status.code(), Some(0));
     let llvm = String::from_utf8_lossy(&output.stdout);
     assert!(llvm.contains("br i1 %v0, label %b2, label %b3"));
-    assert!(llvm.contains("add i32 0, 7"));
-    assert!(llvm.contains("add i32 0, 9"));
+    assert!(llvm.contains("add i64 0, 7"));
+    assert!(llvm.contains("add i64 0, 9"));
 }
 
 #[test]
@@ -476,7 +470,7 @@ fn build_constant_folds_short_circuit_if_branch() {
     let llvm = String::from_utf8_lossy(&output.stdout);
     assert!(llvm.contains("yes"));
     assert!(llvm.contains("no"));
-    assert!(llvm.contains("br i1 %v0"));
+    assert!(llvm.contains("br i1 %v1"));
 }
 
 #[test]
@@ -789,7 +783,7 @@ fn build_constant_folds_or_short_circuit_branch() {
     let llvm = String::from_utf8_lossy(&output.stdout);
     assert!(llvm.contains("yes-or"));
     assert!(llvm.contains("no-or"));
-    assert!(llvm.contains("br i1 %v0"));
+    assert!(llvm.contains("br i1 %v1"));
 }
 
 #[test]
