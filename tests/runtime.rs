@@ -746,7 +746,10 @@ END IF
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute isolated BNDispatch workers");
-    assert!(output.ends_with("FALSEFALSEFALSE\n"), "unexpected worker output: {output:?}");
+    assert!(
+        output.ends_with("FALSEFALSEFALSE\n"),
+        "unexpected worker output: {output:?}"
+    );
     assert!(output.contains("first\n") && output.contains("second\n"));
 }
 
@@ -1280,7 +1283,7 @@ fn filesystem_file_delete_closes_and_rejects_reuse() {
 fn filesystem_file_reads_lines_and_bytes() {
     let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET text AS FS.File OR Error = FS.Open(\"Cargo.toml\", FS.READ)\nIF text IS Error THEN\nPRINT text.Code\nELSE\nLET line AS STRING OR EOF OR Error = text.ReadLine()\nPRINT line\ntext.Close()\nEND IF\nLET binary AS FS.File OR Error = FS.Open(\"Cargo.toml\", FS.READ)\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[8]\nIF binary IS Error THEN\nPRINT binary.Code\nELSE\nPRINT binary.ReadBytes(buffer), buffer[0]\nDELETE binary\nEND IF\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("execute line and byte reads");
-    assert!(output.starts_with("[package]\n"));
+    assert!(output.starts_with("[workspace]\n"));
     assert!(output.contains('8'));
 }
 
@@ -2000,8 +2003,8 @@ fn host_clock_uses_injected_providers() {
 IMPORT HOST.Clock AS Clock
 
 FUNCTION Start() AS VOID
-    PRINT Clock.Timestamp()
-    PRINT Clock.Monotonic()
+    PRINT Clock.Now()
+    PRINT Clock.Timer()
 END FUNCTION
 ";
     let host = HostEnv::fixed(vec!["runtime.bn".into()], 1_000, 42);

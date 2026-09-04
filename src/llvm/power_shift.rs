@@ -73,7 +73,11 @@ pub(crate) fn emit_shift(
             format!("%v{}", left.0)
         } else {
             let narrow = format!("shnarrow{dest}");
-            let _ = writeln!(text, "  %{narrow} = trunc {left_llvm} %v{} to {llvm_ty}", left.0);
+            let _ = writeln!(
+                text,
+                "  %{narrow} = trunc {left_llvm} %v{} to {llvm_ty}",
+                left.0
+            );
             format!("%{narrow}")
         };
         emit_cast_integer(

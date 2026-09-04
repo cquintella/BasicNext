@@ -33,7 +33,7 @@ impl Analyzer {
             "HOST.Clock".into(),
             HashMap::from([
                 (
-                    "Timestamp".into(),
+                    "Now".into(),
                     Member {
                         ty: Type::Function {
                             parameters: Vec::new(),
@@ -45,7 +45,7 @@ impl Analyzer {
                     },
                 ),
                 (
-                    "Monotonic".into(),
+                    "Timer".into(),
                     Member {
                         ty: Type::Function {
                             parameters: Vec::new(),

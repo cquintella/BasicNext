@@ -1,5 +1,11 @@
 # Basic Next 0.4.3 — Complete the advertised code
 
+> **Feature freeze (2026-09-04):** 0.4.3 no longer accepts new language
+> features, capabilities, keywords, IR kinds, or public APIs. Remaining work
+> is limited to bug fixes, regressions, security/correctness fixes, tests,
+> release evidence, and documentation required to describe already accepted
+> behavior.
+
 This bucket is the 0.4.3 implementation plan. The interpreter stays the
 semantic reference. The release claim is: every construct `bn run` accepts,
 every HOST/BN* operation the 0.3/0.4 contracts name, and every CLI/tool the
@@ -87,7 +93,7 @@ user call exists.
   `integer-narrowing-conversion.bn`. `codegen_tests` cover BOOLEAN fold and
   narrowing overflow. `cargo fmt --check`, `clippy -D warnings`, `cli` (51),
   `codegen_tests`, and Python parity pass.
-- [X] ACTIVITY 0.4 — CLOSED 2026-09-03: Lower `HOST.Clock.Timestamp` / `Monotonic` and
+- [X] ACTIVITY 0.4 — CLOSED 2026-09-04: Lower `HOST.Clock.Now` / `Timer` and
   `HOST.Console.Cls` / `Beep` / `PrintAt` / `NumCols` / `NumRows` through
   `bn_rt` (TTY-unavailable errors identical to the interpreter). Evidence:
   crate `crates/bn_rt` (rlib+staticlib) shares Clock/Console with `bn run`;
@@ -409,7 +415,7 @@ prose. Owner defaults to the 0.4.3 LLVM/`bn_rt` track.
 | BN-043-004 | BNMath compiled | DONE 2026-09-03 — scalar+stats+civil `bn_rt`; `type_test.bn` native match | 1.3 | `type_test.bn` native match |
 | BN-043-005 | Vectors/`NEW`/`DELETE`/`LEN` | DONE 2026-09-03 — fat-pointer NEW/DELETE/index + string LEN/[]; `kmp.bn` native+wasm | 2.* | `kmp.bn` native+wasm |
 | BN-043-006 | Classes/statics/imports | DONE 2026-09-03 — objects/statics/inheritance native match | 3.* | `tests/modules/objects` native |
-| BN-043-007 | HOST.Clock/Console compiled | DONE 2026-09-03 — `bn_rt` Clock/Console + native parity | 0.4 | clock/console fixtures compile |
+| BN-043-007 | HOST.Clock/Console compiled | DONE 2026-09-04 — `bn_rt` Clock.Now/Timer + Console + native parity | 0.4 | clock/console fixtures compile |
 | BN-043-008 | HOST.Net interpreter holes | DONE 2026-09-03 — Accept R/W timeouts + resolver join API; prior caps/mapped/UDP | 4.1 | audit items 1–8 closed in code |
 | BN-043-009 | `Ping`/`Reverse`/`Neighbor` | DONE 2026-09-03 — ICMP DGRAM Ping, reverse DNS, Neighbor typed unsupported | 4.2–4.3 | loopback tests, no `ping(8)` |
 | BN-043-010 | HOST.Net compiled | IN PROGRESS 2026-09-03 — Address/Endpoint/Resolve/UDPBind/TCPConnect, UDP SendTo/Receive and UDPPacket Size/Truncated/Source/CopyTo, TCPListen/LocalEndpoint/Accept, TCPStream Write/Read and endpoint accessors lower through `bn_rt`; native differential fixtures, backlog-aware provider, and runtime tests pass; deterministic EOF fixture, lifetime audit, and WASI remain | 4.4 | `IMPORT HOST.Net` native binary |

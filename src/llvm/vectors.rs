@@ -262,12 +262,12 @@ pub(crate) fn emit_is(
     left_ty: &Type,
     right_ty: &Type,
 ) {
-    let test = match right_ty {
+    let test_name = match right_ty {
         Type::TypeName(name) | Type::Named(name) => name.as_str(),
         Type::NotAvailable => "NA",
         _ => "",
     };
-    if llvm_type(left_ty) == Some("{ i1, ptr, i64 }") && test == "Error" {
+    if llvm_type(left_ty) == Some("{ i1, ptr, i64 }") && test_name == "Error" {
         let _ = writeln!(
             text,
             "  %v{} = extractvalue {{ i1, ptr, i64 }} %v{}, 0",
@@ -275,7 +275,9 @@ pub(crate) fn emit_is(
         );
         return;
     }
-    if llvm_type(left_ty) == Some("{ i1, ptr, i64 }") && matches!(right_ty, Type::EndOfFile) {
+    if llvm_type(left_ty) == Some("{ i1, ptr, i64 }")
+        && (test_name == "EOF" || matches!(right_ty, Type::EndOfFile))
+    {
         let _ = writeln!(
             text,
             "  %eofptr{} = getelementptr [4 x i8], ptr @.bn_eof, i64 0, i64 0",
@@ -293,7 +295,7 @@ pub(crate) fn emit_is(
         );
         return;
     }
-    if llvm_type(left_ty) == Some("{ i1, double }") && test == "NA" {
+    if llvm_type(left_ty) == Some("{ i1, double }") && test_name == "NA" {
         let _ = writeln!(
             text,
             "  %v{} = extractvalue {{ i1, double }} %v{}, 0",
@@ -301,7 +303,7 @@ pub(crate) fn emit_is(
         );
         return;
     }
-    if llvm_type(left_ty) == Some("{ i1, double }") && matches!(test, "FLOAT" | "FLOAT64") {
+    if llvm_type(left_ty) == Some("{ i1, double }") && matches!(test_name, "FLOAT" | "FLOAT64") {
         let _ = writeln!(
             text,
             "  %isna{} = extractvalue {{ i1, double }} %v{}, 0",
@@ -320,7 +322,7 @@ pub(crate) fn emit_is(
         _ => None,
     };
     if let Some(llvm_ty) = float_llvm {
-        match test {
+        match test_name {
             "NAN" => {
                 let _ = writeln!(
                     text,
@@ -348,7 +350,7 @@ pub(crate) fn emit_is(
             _ => {}
         }
     }
-    let is_na = test == "NA";
+    let is_na = test_name == "NA";
     let _ = writeln!(
         text,
         "  %v{} = or i1 false, {}",
@@ -381,4 +383,31 @@ fn take_continuation(block_id: BlockId, state: &mut EmissionState) -> String {
     let name = format!("b{}.cont{}", block_id.0, state.continuation_count);
     state.continuation_count += 1;
     name
+}
+
+#[cfg(test)]
+mod tests {
+    use super::emit_is;
+    use crate::{
+        ir::ValueId,
+        semantic::{IntegerType, Type},
+    };
+
+    #[test]
+    fn eof_type_name_uses_the_eof_marker_for_alternative_values() {
+        let mut llvm = String::new();
+        emit_is(
+            &mut llvm,
+            ValueId(2),
+            ValueId(1),
+            &Type::Alternative(vec![
+                Type::Integer(IntegerType::Int32),
+                Type::EndOfFile,
+                Type::Named("Error".into()),
+            ]),
+            &Type::TypeName("EOF".into()),
+        );
+        assert!(llvm.contains("icmp eq ptr"));
+        assert!(llvm.contains("@.bn_eof"));
+    }
 }

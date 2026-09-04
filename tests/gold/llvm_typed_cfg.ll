@@ -5,6 +5,8 @@
 @.bn_fmt_str = private unnamed_addr constant [3 x i8] c"%s\00"
 @.bn_true = private unnamed_addr constant [5 x i8] c"TRUE\00"
 @.bn_false = private unnamed_addr constant [6 x i8] c"FALSE\00"
+@.bn_empty = private unnamed_addr constant [1 x i8] c"\00"
+@.bn_eof = private unnamed_addr constant [4 x i8] c"EOF\00"
 
 declare i32 @printf(ptr, ...)
 declare i32 @putchar(i32)

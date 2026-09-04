@@ -544,7 +544,7 @@ pub(crate) fn parse_integer(value: &str) -> Option<i128> {
 }
 
 pub(crate) fn input_runtime_ir() -> &'static str {
-    r#"
+    r"
 declare i32 @getchar()
 declare ptr @realloc(ptr, i64)
 
@@ -595,7 +595,7 @@ input.done:
 input.eof.out:
   ret ptr @.bn_eof
 }
-"#
+"
 }
 
 pub(crate) fn escape_llvm(value: &str) -> String {

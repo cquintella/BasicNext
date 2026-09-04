@@ -157,7 +157,10 @@ fn llvm_type(ty: &Type) -> Option<&'static str> {
         Type::Named(name)
             if matches!(
                 name.as_str(),
-                "HOST.Net.TCPStream" | "HOST.Net.TCPListener" | "HOST.Net.UDPSocket" | "HOST.Net.UDPPacket"
+                "HOST.Net.TCPStream"
+                    | "HOST.Net.TCPListener"
+                    | "HOST.Net.UDPSocket"
+                    | "HOST.Net.UDPPacket"
             ) =>
         {
             Some("{ i1, ptr, i64 }")
@@ -170,7 +173,10 @@ fn llvm_type(ty: &Type) -> Option<&'static str> {
         Type::ImportedNamed { name, .. } if name == "Addresses" => Some("{ i1, ptr }"),
         Type::ImportedNamed { name, .. } if name == "Endpoint" => Some("{ ptr, i32 }"),
         Type::ImportedNamed { name, .. }
-            if matches!(name.as_str(), "TCPStream" | "TCPListener" | "UDPSocket" | "UDPPacket") =>
+            if matches!(
+                name.as_str(),
+                "TCPStream" | "TCPListener" | "UDPSocket" | "UDPPacket"
+            ) =>
         {
             Some("{ i1, ptr, i64 }")
         }
@@ -252,7 +258,9 @@ fn net_or_error(alternatives: &[Type]) -> bool {
 
 fn void_or_error(alternatives: &[Type]) -> bool {
     alternatives.len() == 2
-        && alternatives.iter().any(|ty| matches!(ty, Type::Named(name) if name == "VOID"))
+        && alternatives
+            .iter()
+            .any(|ty| matches!(ty, Type::Named(name) if name == "VOID"))
         && alternatives.iter().any(is_error_type)
 }
 

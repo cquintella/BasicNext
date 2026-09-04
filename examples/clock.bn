@@ -3,9 +3,8 @@ IMPORT BNMath as Math
 
 FUNCTION Start() AS VOID
 
-    PRINT Date(Clock.Monotonic())
+    PRINT Clock.Timer()
 
 END FUNCTION
-
 
 

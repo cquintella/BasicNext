@@ -72,8 +72,8 @@ FUNCTION Start() AS INTEGER
     LET largeCount AS INT64 = 4294967296
     LET unsignedCount AS UINT32 = 4294967295
     LET address AS UINT64 = 0xFFFFFFFFFFFFFFFF
-    LET capturedAt AS TIMESTAMP = Clock.Timestamp()
-    LET monotonic AS INT64 = Clock.Monotonic()
+    LET capturedAt AS TIMESTAMP = Clock.Now()
+    LET monotonic AS INT64 = Clock.Timer()
     LET today AS DATE = Math.TODATE(capturedAt)
     LET now AS TIME = Math.TOTIME(capturedAt)
     LET tz AS TIMEZONE = TimeZone.Parse("UTC")

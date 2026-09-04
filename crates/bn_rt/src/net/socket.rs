@@ -71,11 +71,14 @@ impl TcpListener {
     pub fn bind_with_backlog(endpoint: Endpoint, backlog: usize) -> io::Result<Self> {
         let address = SocketAddr::new(endpoint.address().as_std(), endpoint.port());
         let domain = socket2::Domain::for_address(address);
-        let socket = socket2::Socket::new(domain, socket2::Type::STREAM, Some(socket2::Protocol::TCP))?;
+        let socket =
+            socket2::Socket::new(domain, socket2::Type::STREAM, Some(socket2::Protocol::TCP))?;
         socket.set_reuse_address(true)?;
         socket.bind(&socket2::SockAddr::from(address))?;
         socket.listen(i32::try_from(backlog).map_err(|_| io::Error::other("backlog overflow"))?)?;
-        Ok(Self { inner: socket.into() })
+        Ok(Self {
+            inner: socket.into(),
+        })
     }
 
     pub fn accept_timeout(&self, timeout: Duration) -> io::Result<Option<TcpStream>> {

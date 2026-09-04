@@ -12,14 +12,14 @@ impl Executor<'_, '_> {
             return self.host_net_call(name, arguments, span);
         }
         match name {
-            "HOST.Clock.Timestamp" => {
+            "HOST.Clock.Now" => {
                 require_arity(name, arguments, 0, span)?;
                 Ok(Value::Integer(
                     i128::from(self.host.timestamp_ms()),
                     IntegerType::Int64,
                 ))
             }
-            "HOST.Clock.Monotonic" => {
+            "HOST.Clock.Timer" => {
                 require_arity(name, arguments, 0, span)?;
                 Ok(Value::Integer(
                     i128::from(self.host.monotonic_ns()),

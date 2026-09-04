@@ -11,7 +11,8 @@ specification.
 - [Alternative types](../../done/proposals/alternative-types.md) — accepted
   for 0.1; 0.2 withdrew `Float.TryParse`.
 - [LLVM IR optimization before compile](llvm-ir-optimization.md) — proposed 0.4.3 `bn build --opt` (clang `-O` on emitted LLVM IR). `bn run` stays off LLVM.
-- [HOST.Clock `Now` / `Timer`](host-clock-names.md) — proposed 0.4.3 rename of `Timestamp` / `Monotonic`; no alias.
+- [Expressive diagnostics](expressive-diagnostics.md) (target **0.4.5**) — Fluent shards by pipeline; lazy render; DiagId registry; per-code warning levels + overlay; no SQLite. Locked 2026-09-04.
+- [HOST.Clock `Now` / `Timer`](../../done/proposals/host-clock-names.md) — accepted and implemented in 0.4.3; no alias.
 - [BNText Markdown](bntext-markdown.md) — proposed portable Markdown text
   values for 0.3.
 - [C Foreign Function Interface](c-ffi.md) — proposed `HOST.c` capability and
