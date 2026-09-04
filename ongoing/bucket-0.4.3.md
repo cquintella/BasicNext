@@ -342,11 +342,13 @@ Reopens `bucket.md` Activity 3.6. Stubs are not done.
   cell as a complete fresh `Start()` process with `--no-filesystem` and
   `--jupyter-stdin`; stdin notifications/shutdown follow the wire contract.
   Tests `tests.test_kernel` and `tests.test_jupyter` pass (4 tests).
-- [ ] ACTIVITY 7.5 — Progress 2026-09-03: `bn build` passes a documented
+- [X] ACTIVITY 7.5 — CLOSED 2026-09-04: `bn build` passes a documented
   optimization level to clang/wasm-ld (default `-O2`, `--opt none|1|2|3|s`);
   parser/unit test and native `--opt none` smoke build pass. Optional typed-IR
   optimizer for `bn run` (fold/DCE/jump-thread, `--no-optimize` to disable)
-  shares semantics with compiled `-O0` vs interpreter.
+  shares semantics with compiled `-O0` vs interpreter. Evidence: optimization
+  matrix for hello/clock/Euclidean/type_test/overflow, all five option values,
+  and invalid-option parser test.
 - [ ] GATE G7 — Help, version, DAP, LSP, Jupyter, and opt flags are true.
   Plugin tests and `bn --help` snapshots agree.
 
@@ -418,7 +420,7 @@ prose. Owner defaults to the 0.4.3 LLVM/`bn_rt` track.
 | BN-043-015 | CLI help/version | DONE 2026-09-04 — help lists lsp/dap; version derives from crate and reports 0.4.3; plugin, README, and man-page metadata aligned | 7.1 | `--help` and `-V` match crate |
 | BN-043-016 | DAP evaluate/etc. | IN PROGRESS 2026-09-03 — evaluate implemented; adapter smoke/unit tests pass; full protocol audit remains | 7.2 | VS Code launch+step+inspect |
 | BN-043-017 | LSP hover/symbols | IN PROGRESS 2026-09-03 — handlers and capability flags added | 7.3 | capabilities == implementation |
-| BN-043-018 | `bn build` opt | IN PROGRESS 2026-09-03 — `--opt` propagated to clang/wasm-ld, default O2; parser and native smoke test pass | 7.5 | `--opt` documented and tested |
+| BN-043-018 | `bn build` opt | DONE 2026-09-04 — `--opt` propagated to clang/wasm-ld, default O2; five-level optimization matrix and differential fixtures pass; invalid option rejected | 7.5 | `--opt` documented and tested |
 | BN-043-019 | Wasm HOST/BN* | IN PROGRESS 2026-09-03 — bn-wasm imports cover Args/Random/Clock/Console/BNMath fixtures; native WASI runtime and remaining providers open | 8.* | wasm examples run |
 | BN-043-020 | False-done 3.6 | `bucket.md` `[X]` vs incomplete Net | 4.* | 3.6 reopened until G4 |
 | BN-043-021 | Jupyter Program mode | DONE 2026-09-03 — fresh process, stdin protocol, filesystem denial, shutdown tests pass | 7.4 | kernel test suite green |

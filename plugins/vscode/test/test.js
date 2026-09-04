@@ -21,7 +21,6 @@ assert.deepStrictEqual(
 const originalLoad = Module._load;
 const calls = [];
 let saved;
-const pending = [];
 const commands = {};
 const terminalLines = [];
 let activeEditor;
@@ -32,9 +31,22 @@ Module._load = (request, parent, isMain) => {
       DiagnosticSeverity: { Error: 0, Warning: 1 },
       Range: class Range { constructor(...values) { this.values = values; } },
       Diagnostic: class Diagnostic { constructor(range, message, severity) { Object.assign(this, { range, message, severity }); } },
-      languages: { createDiagnosticCollection: () => ({ set: (...values) => calls.push(values) }) },
+      languages: {
+        createDiagnosticCollection: () => ({ set: (...values) => calls.push(values) }),
+        registerDefinitionProvider: () => ({ dispose() {} }),
+        registerReferenceProvider: () => ({ dispose() {} }),
+        registerCompletionItemProvider: () => ({ dispose() {} }),
+      },
       CompletionItem: class CompletionItem { constructor(label, kind) { Object.assign(this, { label, kind }); } },
-      workspace: { getConfiguration: () => ({ get: () => "bn" }), getWorkspaceFolder: () => undefined, onDidSaveTextDocument: (listener) => { saved = listener; return { dispose() {} }; } },
+      workspace: {
+        getConfiguration: () => ({ get: () => "bn" }),
+        getWorkspaceFolder: () => undefined,
+        onDidOpenTextDocument: () => ({ dispose() {} }),
+        onDidChangeTextDocument: () => ({ dispose() {} }),
+        onDidCloseTextDocument: () => ({ dispose() {} }),
+        onDidSaveTextDocument: (listener) => { saved = listener; return { dispose() {} }; },
+        textDocuments: [],
+      },
       window: {
         get activeTextEditor() { return activeEditor; },
         createTerminal: () => ({ show() {}, sendText: (line) => terminalLines.push(line) }),
@@ -42,7 +54,7 @@ Module._load = (request, parent, isMain) => {
       commands: { registerCommand: (name, command) => { commands[name] = command; return { dispose() {} }; } },
     };
   }
-  if (request === "child_process") return { execFile: (...args) => pending.push(args.at(-1)) };
+  if (request === "child_process") return { spawn: () => ({ stdin: { write() {} }, stdout: { on() {} }, on() {}, kill() {} }) };
   return originalLoad(request, parent, isMain);
 };
 const { activate, parseDiagnostics, lspCompletionItems } = require(path.join(extension, "extension.js"));
@@ -61,17 +73,7 @@ assert.strictEqual(diagnostics.length, 2);
 assert.deepStrictEqual(diagnostics.map((diagnostic) => [diagnostic.message, diagnostic.range.values]), [["first", [1, 4, 1, 5]], ["second", [3, 0, 3, 1]]]);
 const document = { languageId: "basicnext", isUntitled: false, fileName: "sample.bn", uri: "sample", version: 1 };
 activate({ subscriptions: { push() {} } });
-saved(document);
-document.version = 2;
-saved(document);
-pending[0](null, "", "error[E100]: stale\n --> sample.bn:1:1\n");
-pending[1](null, "", "error[E200]: current\n --> sample.bn:2:1\n");
-assert.strictEqual(calls.length, 1);
-assert.strictEqual(calls[0][1][0].message, "current");
-document.version = 3;
-saved(document);
-pending[2](Object.assign(new Error("not found"), { code: "ENOENT" }), "", "");
-assert.match(calls[1][1][0].message, /cannot execute Basic Next checker 'bn'/);
+assert.strictEqual(saved, undefined);
 
 (async () => {
   activeEditor = { document: {
