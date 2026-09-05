@@ -10,9 +10,10 @@ pub(crate) fn emit_constant_assignment(
     match llvm_type(ty).expect("validated constant type") {
         "i8" | "i16" | "i32" | "i64" => {
             let llvm_ty = llvm_type(ty).expect("validated integer constant type");
-            let rendered = parse_integer(value)
-                .map(|number| render_llvm_integer(number, llvm_ty))
-                .unwrap_or_else(|| value.to_string());
+            let rendered = parse_integer(value).map_or_else(
+                || value.to_string(),
+                |number| render_llvm_integer(number, llvm_ty),
+            );
             let _ = writeln!(text, "  %v{} = add {llvm_ty} 0, {rendered}", destination.0);
         }
         "float" => {
@@ -34,7 +35,7 @@ pub(crate) fn emit_boolean_assignment(text: &mut String, destination: ValueId, v
     );
 }
 
-/// Short-circuit AND/OR reuses one ValueId across blocks. Those values live in
+/// Short-circuit AND/OR reuses one `ValueId` across blocks. Those values live in
 /// `%scN` allocas; never emit a second `%vN` SSA def for them.
 pub(crate) fn define_boolean(
     text: &mut String,

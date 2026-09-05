@@ -138,6 +138,7 @@ pub enum Instruction {
     },
     Input {
         destination: ValueId,
+        prompt: Option<ValueId>,
         ty: Type,
         span: Span,
     },

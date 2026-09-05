@@ -82,6 +82,14 @@ impl Analyzer {
                     };
                     self.declare_global(alias, ty, false, *span)?;
                 }
+                Item::Constant {
+                    name,
+                    type_ref,
+                    span,
+                    ..
+                } => {
+                    self.declare_global(name, self.resolve_reference(type_ref), true, *span)?;
+                }
                 Item::Declaration {
                     name,
                     asynchronous,

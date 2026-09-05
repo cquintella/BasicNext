@@ -53,7 +53,13 @@ function lspCompletionItems(result) {
 }
 
 function startLanguageServer(context, collection) {
-  if (typeof cp.spawn !== "function" || !vscode.languages.registerDefinitionProvider) return undefined;
+  if (
+    typeof cp.spawn !== "function" ||
+    !vscode.languages.registerDefinitionProvider ||
+    !vscode.languages.registerReferenceProvider ||
+    !vscode.languages.registerHoverProvider ||
+    !vscode.languages.registerDocumentSymbolProvider
+  ) return undefined;
   const executable = vscode.workspace.getConfiguration("basicnext").get("executable", "bn");
   const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const child = cp.spawn(executable, ["lsp"], { cwd, stdio: ["pipe", "pipe", "pipe"] });
@@ -107,6 +113,8 @@ function startLanguageServer(context, collection) {
     vscode.workspace.onDidCloseTextDocument((document) => notify("textDocument/didClose", { textDocument: { uri: document.uri.toString() } })),
     vscode.languages.registerDefinitionProvider("basicnext", { provideDefinition: (document, position) => send("textDocument/definition", { textDocument: { uri: document.uri.toString() }, position }).then((items) => items || []) }),
     vscode.languages.registerReferenceProvider("basicnext", { provideReferences: (document, position, context) => send("textDocument/references", { textDocument: { uri: document.uri.toString() }, position, context: { includeDeclaration: Boolean(context?.includeDeclaration) } }).then((items) => items || []) }),
+    vscode.languages.registerHoverProvider("basicnext", { provideHover: (document, position) => send("textDocument/hover", { textDocument: { uri: document.uri.toString() }, position }) }),
+    vscode.languages.registerDocumentSymbolProvider("basicnext", { provideDocumentSymbols: (document) => send("textDocument/documentSymbol", { textDocument: { uri: document.uri.toString() } }).then((items) => items || []) }),
     vscode.languages.registerCompletionItemProvider("basicnext", { provideCompletionItems: (document, position) => send("textDocument/completion", { textDocument: { uri: document.uri.toString() }, position }).then(lspCompletionItems) }, "."),
     { dispose: () => { notify("shutdown", null); notify("exit", null); child.kill(); } },
   );

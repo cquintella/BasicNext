@@ -12,6 +12,14 @@ impl Parser<'_> {
                     return Err(self.error("IMPORT declarations must precede all declarations"));
                 }
                 items.push(self.import()?);
+            } else if self.keyword("CONST")
+                || (self.keyword("EXPORT")
+                    && matches!(
+                        self.tokens.get(self.index + 1).map(|token| &token.kind),
+                        Some(TokenKind::Keyword(word)) if word == "CONST"
+                    ))
+            {
+                items.push(self.constant()?);
             } else {
                 items.push(self.declaration()?);
                 saw_declaration = true;
@@ -47,6 +55,43 @@ impl Parser<'_> {
         Ok(Item::Import {
             path,
             alias,
+            span: Span { start, end },
+        })
+    }
+
+    pub(crate) fn constant(&mut self) -> Result<Item, Diagnostic> {
+        let start = self.peek().span.start;
+        let exported = self.keyword("EXPORT");
+        if exported {
+            self.take();
+        }
+        self.expect_keyword("CONST")?;
+        let name = self.identifier_name()?;
+        self.expect_keyword("AS")?;
+        let line = self.line_tokens();
+        let line_len = line.len();
+        let assign = line
+            .iter()
+            .position(|token| matches!(token.kind, TokenKind::Symbol(Symbol::Assign)))
+            .ok_or_else(|| self.error("CONST requires an initializer"))?;
+        if assign == 0 || assign + 1 >= line.len() {
+            return Err(self.error("CONST requires a type and initializer"));
+        }
+        let type_ref = self.type_reference(&line[..assign], false)?;
+        let initializer = parse_expression(&line[assign + 1..])?;
+        self.index += line_len;
+        let end = self.newline()?;
+        if !exported {
+            return Err(self.error("top-level CONST declarations must be exported"));
+        }
+        if !matches!(initializer.kind, ExpressionKind::Literal(_)) {
+            return Err(self.error("module constants require a literal initializer"));
+        }
+        Ok(Item::Constant {
+            exported,
+            name,
+            type_ref,
+            initializer,
             span: Span { start, end },
         })
     }

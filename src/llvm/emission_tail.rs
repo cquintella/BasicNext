@@ -1,5 +1,6 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::llvm::functions::dispatch_trampoline_symbol;
 
 pub(crate) fn lower_scalar_instruction_tail(
     text: &mut String,
@@ -43,6 +44,27 @@ pub(crate) fn lower_scalar_instruction_tail(
                     analysis,
                     state,
                 );
+            }
+            name if name.ends_with(".Queue.Concurrent")
+                || name.ends_with(".Queue.Serial")
+                || name.ends_with(".Queue.Auto")
+                || name.ends_with(".Queue.Join")
+                || name.ends_with(".Queue.Close")
+                || name.ends_with(".Ticket.Close")
+                || name.ends_with(".Group.New")
+                || name.ends_with(".Group.Enter")
+                || name.ends_with(".Group.Leave")
+                || name.ends_with(".Group.Wait")
+                || name.ends_with(".Barrier.New")
+                || name.ends_with(".Barrier.Wait")
+                || name.ends_with(".Semaphore.New")
+                || name.ends_with(".Semaphore.Acquire")
+                || name.ends_with(".Semaphore.Release")
+                || name.ends_with(".Mutex.New")
+                || name.ends_with(".Mutex.Lock")
+                || name.ends_with(".Mutex.Unlock") =>
+            {
+                lower_bn_dispatch_call(text, *destination, name, arguments, analysis);
             }
             name if module
                 .functions
@@ -127,8 +149,94 @@ pub(crate) fn lower_scalar_instruction_tail(
             }
             _ => unreachable!("validated call target"),
         },
-        Instruction::Input { destination, .. } => {
+        Instruction::DispatchSubmit {
+            destination,
+            queue,
+            task,
+            arguments,
+            ..
+        } => {
+            if !arguments.is_empty() {
+                return Err(unsupported_instruction(
+                    module,
+                    function,
+                    instruction,
+                    "dispatch arguments are not yet representable in the compiled task ABI",
+                ));
+            }
+            let task_name = analysis.functions.get(task).copied().ok_or_else(|| {
+                unsupported_instruction(module, function, instruction, "missing async task target")
+            })?;
+            let _ = writeln!(
+                text,
+                "  %dispatchqueue{} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                destination.0, queue.0
+            );
+            let _ = writeln!(text, "  %dispatchticket{} = alloca i64", destination.0);
+            let _ = writeln!(
+                text,
+                "  %dispatchrc{} = call i32 @bn_rt_dispatch_submit(i64 %dispatchqueue{}, ptr @{}, ptr null, ptr null, i32 0, ptr %dispatchticket{})",
+                destination.0,
+                destination.0,
+                dispatch_trampoline_symbol(task_name),
+                destination.0
+            );
+            let _ = writeln!(
+                text,
+                "  %dispatchhandle{} = load i64, ptr %dispatchticket{}",
+                destination.0, destination.0
+            );
+            emit_handle_result(
+                text,
+                *destination,
+                format!("%dispatchrc{}", destination.0),
+                format!("%dispatchhandle{}", destination.0),
+            );
+        }
+        Instruction::DispatchAwait {
+            destination,
+            ticket,
+            timeout,
+            ..
+        } => {
+            let _ = writeln!(
+                text,
+                "  %dispatchticket{} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                destination.0, ticket.0
+            );
+            let timeout_ty = analysis
+                .values
+                .get(timeout)
+                .expect("validated timeout type");
+            let timeout = extend_to_i64(text, *timeout, timeout_ty);
+            let _ = writeln!(
+                text,
+                "  %dispatchresult{} = alloca [32 x i8]",
+                destination.0
+            );
+            let _ = writeln!(text, "  %dispatcherror{} = alloca [24 x i8]", destination.0);
+            emit_void_result(
+                text,
+                *destination,
+                format!(
+                    "call i32 @bn_rt_dispatch_await(i64 %dispatchticket{}, i64 {}, ptr %dispatchresult{}, ptr %dispatcherror{})",
+                    destination.0, timeout, destination.0, destination.0
+                ),
+            );
+        }
+        Instruction::Input {
+            destination,
+            prompt,
+            ..
+        } => {
             block_state.constants.remove(destination);
+            if let Some(prompt) = prompt {
+                let _ = writeln!(
+                    text,
+                    "  call i32 (ptr, ...) @printf(ptr @.bn_fmt_str, ptr %v{})",
+                    prompt.0
+                );
+            }
             let _ = writeln!(text, "  %v{} = call ptr @bn_input()", destination.0);
         }
         Instruction::Length {
@@ -272,7 +380,7 @@ pub(crate) fn lower_scalar_instruction_tail(
                 Some(Type::Named(name) | Type::ImportedNamed { name, .. }) => name.as_str(),
                 _ => "Box",
             };
-            let field = path.first().map(String::as_str).unwrap_or("value");
+            let field = path.first().map_or("value", String::as_str);
             let offset = field_byte_offset(module, owner, field);
             let value_ty = analysis
                 .values
@@ -434,7 +542,20 @@ pub(crate) fn lower_scalar_instruction_tail(
         Instruction::Print {
             values: printed, ..
         } => {
-            for value in printed {
+            let stdout = format!("%stdout{}", state.print_count);
+            if state.synchronize_prints {
+                let _ = writeln!(text, "  {stdout} = load ptr, ptr @__stdoutp");
+                let _ = writeln!(text, "  call void @flockfile(ptr {stdout})");
+            }
+            for (index, value) in printed.iter().enumerate() {
+                if index > 0 {
+                    let _ = writeln!(
+                        text,
+                        "  %separator{} = call i32 @putchar(i32 32)",
+                        state.print_count
+                    );
+                    state.print_count += 1;
+                }
                 lower_print_value(
                     text,
                     *value,
@@ -451,6 +572,9 @@ pub(crate) fn lower_scalar_instruction_tail(
                 state.print_count
             );
             state.print_count += 1;
+            if state.synchronize_prints {
+                let _ = writeln!(text, "  call void @funlockfile(ptr {stdout})");
+            }
         }
         _ => {
             return Err(unsupported_instruction(

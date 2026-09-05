@@ -139,7 +139,20 @@ fn executes_calls_loops_and_checked_arithmetic() {
     let source = "FUNCTION Factorial(value AS INTEGER) AS INTEGER\nIF value = 0 THEN\nRETURN 1\nELSE\nRETURN value * Factorial(value - 1)\nEND IF\nEND FUNCTION\nFUNCTION Start() AS INTEGER\nLET total AS INTEGER = Factorial(5)\nLET quotient AS INTEGER = -5 DIV 3\nLET remainder AS INTEGER = -5 % 3\nPRINT total, quotient, remainder\nRETURN 7\nEND FUNCTION\n";
     let (code, output) = run(source, "").expect("execute source");
     assert_eq!(code, 7);
-    assert_eq!(output, "120-21\n");
+    assert_eq!(output, "120 -2 1\n");
+}
+
+#[test]
+fn print_concatenates_with_plus_and_separates_comma_arguments() {
+    let source = "FUNCTION Start() AS VOID\nPRINT \"CASA\" + \"SHO\"\nPRINT \"CASA\", \"SHO\"\nEND FUNCTION\n";
+    let (_, output) = run(source, "").expect("execute PRINT source");
+    assert_eq!(output, "CASASHO\nCASA SHO\n");
+}
+
+#[test]
+fn executes_bnpallet_exported_color_constants() {
+    let (_, output) = run_path("tests/grammar/valid/bnpallet.bn").expect("execute BNPallet");
+    assert_eq!(output, "255 16711680 6697881\n");
 }
 
 #[test]
@@ -200,7 +213,7 @@ fn debug_control_can_terminate_before_user_instruction() {
 fn multi_binding_let_evaluates_left_to_right() {
     let source = "FUNCTION Start() AS VOID\nLET first, second AS INTEGER = 1, 2\nPRINT first, second\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("execute multi-binding LET");
-    assert_eq!(output, "12\n");
+    assert_eq!(output, "1 2\n");
 }
 
 #[test]
@@ -244,7 +257,7 @@ END IF
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute BNLog logger provider");
-    assert_eq!(output, "FALSE\nFALSE\nFALSE\nFALSEFALSETRUE\n");
+    assert_eq!(output, "FALSE\nFALSE\nFALSE\nFALSE FALSE TRUE\n");
 }
 
 #[test]
@@ -346,7 +359,7 @@ PRINT fields.Count(), fields.Get("service"), fields.Get("port"), fields.Get("sec
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute BNLog fields provider");
-    assert_eq!(output, "3basicnext8080TRUETRUE\n");
+    assert_eq!(output, "3 basicnext 8080 TRUE TRUE\n");
 }
 
 #[test]
@@ -381,14 +394,14 @@ END IF
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute address predicates");
-    assert_eq!(output, "TRUETRUEFALSETRUETRUE\n");
+    assert_eq!(output, "TRUE TRUE FALSE TRUE TRUE\n");
 }
 
 #[test]
 fn host_net_cidr_contains_addresses() {
     let source = "IMPORT HOST.Net AS Net\nFUNCTION Start() AS VOID\nLET network AS Net.CIDR OR Error = Net.CIDR.Parse(\"192.168.1.0/24\")\nLET inside AS Net.Address OR Error = Net.Address.Parse(\"192.168.1.20\")\nLET outside AS Net.Address OR Error = Net.Address.Parse(\"192.168.2.20\")\nIF network IS Error OR inside IS Error OR outside IS Error THEN\nPRINT \"error\"\nELSE\nPRINT network.Contains(inside), network.Contains(outside)\nEND IF\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("execute HOST.Net CIDR");
-    assert_eq!(output, "TRUEFALSE\n");
+    assert_eq!(output, "TRUE FALSE\n");
 }
 
 #[test]
@@ -424,7 +437,7 @@ END IF
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute network accessors");
-    assert_eq!(output, "192.168.1.208080192.168.1.024\n");
+    assert_eq!(output, "192.168.1.20 8080 192.168.1.0 24\n");
 }
 
 #[test]
@@ -505,7 +518,7 @@ END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute ping/neighbor providers");
     assert!(
-        output.starts_with("ping-ok TRUE TRUE\n") || output.starts_with("ping-error "),
+        output.starts_with("ping-ok  TRUE   TRUE\n") || output.starts_with("ping-error "),
         "unexpected ping/neighbor output: {output:?}"
     );
     assert!(
@@ -539,7 +552,7 @@ PRINT invalid IS Error, valid IS Error
 END FUNCTION
 ";
     let (_, output) = run(source, "").expect("execute BNDispatch queue limits");
-    assert_eq!(output, "TRUEFALSE\n");
+    assert_eq!(output, "TRUE FALSE\n");
 }
 
 #[test]
@@ -566,11 +579,11 @@ END FUNCTION
     let (_, output) = run(source, "").expect("execute BNDispatch ticket lifecycle");
     assert!(
         [
-            "0TRUETRUE\nFALSE\n",
-            "0FALSEFALSE\nFALSE\n",
-            "1FALSEFALSE\nFALSE\n",
-            "1FALSETRUE\nFALSE\n",
-            "2FALSETRUE\nFALSE\n"
+            "0 TRUE TRUE\nFALSE\n",
+            "0 FALSE FALSE\nFALSE\n",
+            "1 FALSE FALSE\nFALSE\n",
+            "1 FALSE TRUE\nFALSE\n",
+            "2 FALSE TRUE\nFALSE\n"
         ]
         .contains(&output.as_str()),
         "unexpected ticket race outcome: {output:?}"
@@ -600,7 +613,7 @@ END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("ASYNC/AWAIT dispatch syntax");
     assert!(
-        output == "work\nFALSE\n" || output == "FALSE\n" || output == "workTRUE\n",
+        output == "work\nFALSE\n" || output == "FALSE\n" || output == "work TRUE\n",
         "unexpected output: {output:?}"
     );
 }
@@ -614,7 +627,7 @@ fn async_task_output_overflow_fails_ticket_without_retaining_partial_output() {
         "IMPORT BNDispatch AS Dispatch\nASYNC FUNCTION Work() AS VOID\n{output_source}END FUNCTION\nFUNCTION Start() AS VOID\nLET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()\nIF queue IS Error THEN\nPRINT \"queue-error\"\nELSE\nLET ticket AS Dispatch.Ticket OR Error = ASYNC queue Work()\nIF ticket IS Error THEN\nPRINT \"ticket-error\"\nELSE\nLET result AS VOID OR Error = ticket.Wait(1000)\nPRINT result IS Error, ticket.Status()\nEND IF\nEND IF\nEND FUNCTION\n"
     );
     let (_, output) = run(&source, "").expect("execute bounded async output");
-    assert_eq!(output, "TRUE3\n");
+    assert_eq!(output, "TRUE 3\n");
 }
 
 #[test]
@@ -690,7 +703,7 @@ END IF
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute BNDispatch synchronization primitives");
-    assert_eq!(output, "FALSEFALSEFALSEFALSE\n");
+    assert_eq!(output, "FALSE FALSE FALSE FALSE\n");
 }
 
 #[test]
@@ -715,7 +728,7 @@ END IF
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute BNDispatch task on wait");
-    assert_eq!(output, "worked\nFALSE2TRUE\n");
+    assert_eq!(output, "worked\nFALSE 2 TRUE\n");
 }
 
 #[test]
@@ -747,7 +760,7 @@ END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute isolated BNDispatch workers");
     assert!(
-        output.ends_with("FALSEFALSEFALSE\n"),
+        output.ends_with("FALSE FALSE FALSE\n"),
         "unexpected worker output: {output:?}"
     );
     assert!(output.contains("first\n") && output.contains("second\n"));
@@ -792,7 +805,7 @@ fn boolean_and_or_short_circuit() {
 fn floating_division_uses_ieee_special_values() {
     let source = "FUNCTION Start() AS VOID\nPRINT 1 / 0, 0 / 0\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("execute source");
-    assert_eq!(output, "INFNAN\n");
+    assert_eq!(output, "INF NAN\n");
 }
 
 #[test]
@@ -806,14 +819,14 @@ fn checked_integer_overflow_is_a_runtime_error() {
 fn executes_vectors_foreach_input_and_math() {
     let source = "IMPORT BNMath AS Math\nFUNCTION Start() AS VOID\nLET values AS INTEGER[3] = [1, 2, 3]\nLET total AS INTEGER = 0\nFOR EACH item AS INTEGER IN values\ntotal += item\nEND FOR\nLET line AS STRING OR EOF = INPUT()\nPRINT total, Math.SQRT(9.0), line\nEND FUNCTION\n";
     let (_, output) = run(source, "ready\n").expect("execute source");
-    assert_eq!(output, "63.0ready\n");
+    assert_eq!(output, "6 3.0 ready\n");
 }
 
 #[test]
 fn indexes_unicode_strings_by_scalar() {
     let source = "FUNCTION Start() AS VOID\nLET text AS STRING = \"café\"\nPRINT text[3], LEN(text)\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("execute source");
-    assert_eq!(output, "é4\n");
+    assert_eq!(output, "é 4\n");
 }
 
 #[test]
@@ -841,7 +854,7 @@ FUNCTION Start() AS VOID
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute inheritance");
-    assert_eq!(output, "animalAD\n");
+    assert_eq!(output, "animal AD\n");
 }
 
 #[test]
@@ -885,7 +898,7 @@ FUNCTION Start() AS VOID
 END FUNCTION
 ";
     let (_, output) = run(source, "").expect("execute inherited STATIC field");
-    assert_eq!(output, "22\n");
+    assert_eq!(output, "2 2\n");
 }
 
 #[test]
@@ -1070,7 +1083,7 @@ fn string_index_out_of_bounds_is_diagnosed() {
 fn converts_timestamps_to_utc_components() {
     let source = "IMPORT BNMath AS Math\nFUNCTION Start() AS VOID\nPRINT Math.TOHOUR(0 AS TIMESTAMP), Math.TOWEEKDAY(0 AS TIMESTAMP)\nPRINT Math.TOHOUR(-1 AS TIMESTAMP), Math.TOWEEKDAY(-1 AS TIMESTAMP)\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("execute timestamp conversion");
-    assert_eq!(output, "04\n233\n");
+    assert_eq!(output, "0 4\n23 3\n");
 }
 
 #[test]
@@ -1085,7 +1098,7 @@ fn stop_propagates_through_function_calls() {
 fn primitive_and_vector_bindings_receive_defaults() {
     let source = "FUNCTION Start() AS VOID\nLET count AS INTEGER\nLET ready AS BOOLEAN\nLET text AS STRING\nLET values AS INTEGER[2]\nPRINT count, ready, text, values[1]\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("execute source");
-    assert_eq!(output, "0FALSE0\n");
+    assert_eq!(output, "0 FALSE  0\n");
 }
 
 #[test]
@@ -1101,7 +1114,7 @@ FUNCTION Start() AS VOID
 END FUNCTION
 ";
     let (_, output) = run(source, "").expect("declaration-time vector dimension");
-    assert_eq!(output, "2\n78\n");
+    assert_eq!(output, "2\n7 8\n");
 }
 
 #[test]
@@ -1171,14 +1184,14 @@ fn executes_len_and_sizeof_counts_and_byte_sizes() {
     let source = include_str!("grammar/valid/len-and-sizeof.bn");
     let (code, output) = run(source, "").expect("execute LEN and SIZEOF");
     assert_eq!(code, 0);
-    assert_eq!(output, "14\n18\n45\n312\n624\n230\n");
+    assert_eq!(output, "1 4\n1 8\n4 5\n3 12\n6 24\n2 3 0\n");
 }
 
 #[test]
 fn executes_bnmath_02_conversion_constants_and_statistics() {
     let source = "IMPORT BNMath AS Math\nFUNCTION Start() AS VOID\nLET values AS INTEGER[4] = [1, 2, 2, 5]\nPRINT Math.VAL(\" 3,14\"), Math.MAX_INTEGER, Math.MEAN(values), Math.MEDIAN(values), Math.MODE(values), Math.RANGE(values)\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("execute BNMath 0.2");
-    assert_eq!(output, "3.021474836472.52.02.04.0\n");
+    assert_eq!(output, "3.0 2147483647 2.5 2.0 2.0 4.0\n");
 }
 
 #[test]
@@ -1192,7 +1205,7 @@ fn bnmath_intrinsics_require_the_bnmath_module_identity() {
 fn bnmath_vector_min_max_preserve_integer_type() {
     let (_, output) = run_path("tests/grammar/valid/bnmath-vector-minmax.bn")
         .expect("integer vector min/max execute");
-    assert_eq!(output, "12\n");
+    assert_eq!(output, "1 2\n");
 }
 
 #[test]
@@ -1238,7 +1251,7 @@ fn bnmath_vector_min_max_preserve_float32_rounding() {
 fn host_random_seed_is_deterministic_and_bounded() {
     let source = "IMPORT HOST.Random AS R\nFUNCTION Start() AS VOID\nR.Seed(1)\nPRINT R.Random(), R.Random()\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("execute HOST.Random");
-    assert_eq!(output, "0.280835050050359470.14023887919672862\n");
+    assert_eq!(output, "0.28083505005035947 0.14023887919672862\n");
 }
 
 #[test]
@@ -1255,7 +1268,7 @@ fn console_tty_calls_fail_only_when_executed() {
 fn filesystem_capability_reports_file_existence() {
     let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nPRINT FS.Exists(\"Cargo.toml\"), FS.Exists(\"missing-file.bn\")\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("execute HOST.FileSystem");
-    assert_eq!(output, "TRUEFALSE\n");
+    assert_eq!(output, "TRUE FALSE\n");
 }
 
 #[test]
@@ -1291,7 +1304,7 @@ fn filesystem_file_reads_lines_and_bytes() {
 fn filesystem_file_writes_bytes_round_trip() {
     let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET out AS FS.File OR Error = FS.Open(\"/tmp/basicnext-sprint5.bn\", FS.WRITE)\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[2]\nbuffer[0] = 65\nbuffer[1] = 66\nIF out IS Error THEN\nPRINT out.Code\nELSE\nLET result AS VOID OR Error = out.WriteBytes(buffer, 2)\nIF result IS Error THEN\nPRINT result.Code\nEND IF\nout.Close()\nEND IF\nLET input AS FS.File OR Error = FS.Open(\"/tmp/basicnext-sprint5.bn\", FS.READ)\nIF input IS Error THEN\nPRINT input.Code\nELSE\nLET read_buffer AS POINTER TO BYTE[] = NEW BYTE[2]\nPRINT input.ReadBytes(read_buffer), read_buffer[0], read_buffer[1]\nDELETE input\nEND IF\nFS.DeleteFile(\"/tmp/basicnext-sprint5.bn\")\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("execute byte write");
-    assert!(output.contains("26566"));
+    assert!(output.contains("2 65 66"));
 }
 
 #[test]
@@ -1330,7 +1343,7 @@ fn filesystem_failed_text_write_does_not_lock_out_binary_reads() {
 fn filesystem_rejects_directory_open_and_missing_delete() {
     let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\".\", FS.READ)\nIF file IS Error THEN\nPRINT \"open\", file.Code\nELSE\nPRINT \"opened\"\nDELETE file\nEND IF\nLET removed AS VOID OR Error = FS.DeleteFile(\"/tmp/basicnext-sprint5-missing.bn\")\nIF removed IS Error THEN\nPRINT \"del\", removed.Code\nEND IF\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("unsupported paths return Error values");
-    assert_eq!(output, "open1\ndel1\n");
+    assert_eq!(output, "open 1\ndel 1\n");
 }
 
 #[test]
@@ -1409,14 +1422,14 @@ fn filesystem_capability_is_checked_before_start() {
 fn bndata_import_constructs_and_releases_empty_frame() {
     let path = "tests/grammar/valid/bndata-import.bn";
     let (_, output) = run_path(path).expect("execute BNData import");
-    assert_eq!(output, "00\n");
+    assert_eq!(output, "0 0\n");
 }
 
 #[test]
 fn bndata_frame_adds_columns_and_reports_counts() {
     let (_, output) =
         run_path("tests/grammar/valid/bndata-columns.bn").expect("add DataFrame columns");
-    assert_eq!(output, "22Age\n");
+    assert_eq!(output, "2 2 Age\n");
 }
 
 #[test]
@@ -1437,34 +1450,37 @@ fn bndata_set_label_renames_a_column_in_place() {
 fn bndata_transpose_returns_string_columns() {
     let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET ids AS INTEGER[2] = [1, 2]\nLET names AS STRING[2] = [\"Ana\", \"Bia\"]\ntable.AddIntegerColumn(\"Id\", ids)\ntable.AddStringColumn(\"Name\", names)\nLET result AS Data.DataFrame OR Error = table.Transpose()\nIF result IS Error THEN\nPRINT result.Code\nELSE\nPRINT result.GetString(0, \"Column\"), result.GetString(1, \"Row0\"), result.GetString(1, \"Row1\")\nDELETE result\nEND IF\nDELETE table\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("transpose DataFrame");
-    assert_eq!(output, "IdAnaBia\n");
+    assert_eq!(output, "Id Ana Bia\n");
 }
 
 #[test]
 fn bndata_append_rows_returns_a_new_frame() {
     let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET left AS Data.DataFrame = NEW Data.DataFrame()\nLET right AS Data.DataFrame = NEW Data.DataFrame()\nLET first AS INTEGER[1] = [1]\nLET second AS INTEGER[1] = [2]\nleft.AddIntegerColumn(\"Id\", first)\nright.AddIntegerColumn(\"Id\", second)\nLET joined AS Data.DataFrame OR Error = left.AppendRows(right)\nIF joined IS Error THEN\nPRINT joined.Code\nELSE\nPRINT left.RowCount(), joined.RowCount(), joined.GetInteger(1, \"Id\")\nDELETE joined\nEND IF\nDELETE left\nDELETE right\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("append DataFrame rows");
-    assert_eq!(output, "122\n");
+    assert_eq!(output, "1 2 2\n");
 }
 
 #[test]
 fn bndata_append_columns_returns_a_new_frame() {
     let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET left AS Data.DataFrame = NEW Data.DataFrame()\nLET right AS Data.DataFrame = NEW Data.DataFrame()\nLET ids AS INTEGER[1] = [1]\nLET names AS STRING[1] = [\"Ana\"]\nleft.AddIntegerColumn(\"Id\", ids)\nright.AddStringColumn(\"Name\", names)\nLET joined AS Data.DataFrame OR Error = left.AppendColumns(right)\nIF joined IS Error THEN\nPRINT joined.Code\nELSE\nPRINT left.ColumnCount(), joined.ColumnCount(), joined.GetString(0, \"Name\")\nDELETE joined\nEND IF\nDELETE left\nDELETE right\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("append DataFrame columns");
-    assert_eq!(output, "12Ana\n");
+    assert_eq!(output, "1 2 Ana\n");
 }
 
 #[test]
 fn bndata_join_variants_preserve_their_outer_side() {
     let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET left AS Data.DataFrame = NEW Data.DataFrame()\nLET right AS Data.DataFrame = NEW Data.DataFrame()\nLET leftIds AS INTEGER[2] = [1, 2]\nLET scores AS INTEGER[2] = [10, 20]\nLET rightIds AS INTEGER[2] = [2, 3]\nLET names AS STRING[2] = [\"Bia\", \"Caio\"]\nleft.AddIntegerColumn(\"Id\", leftIds)\nleft.AddIntegerColumn(\"Score\", scores)\nright.AddIntegerColumn(\"Id\", rightIds)\nright.AddStringColumn(\"Name\", names)\nLET inner AS Data.DataFrame OR Error = left.Join(right, \"Id\", \"Id\")\nLET leftJoin AS Data.DataFrame OR Error = left.LeftJoin(right, \"Id\", \"Id\")\nLET rightJoin AS Data.DataFrame OR Error = left.RightJoin(right, \"Id\", \"Id\")\nLET full AS Data.DataFrame OR Error = left.FullJoin(right, \"Id\", \"Id\")\nIF inner IS Error OR leftJoin IS Error OR rightJoin IS Error OR full IS Error THEN\nPRINT \"error\"\nELSE\nPRINT inner.RowCount(), leftJoin.RowCount(), rightJoin.RowCount(), full.RowCount(), full.GetInteger(2, \"Id\")\nLET missing AS INTEGER OR NA OR Error = full.GetInteger(2, \"Score\")\nPRINT missing\nDELETE inner\nDELETE leftJoin\nDELETE rightJoin\nDELETE full\nEND IF\nDELETE left\nDELETE right\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("join DataFrames");
-    assert_eq!(output, "12233\nNA\n");
+    assert_eq!(output, "1 2 2 3 3\nNA\n");
 }
 
 #[test]
 fn bndata_read_csv_builds_string_columns() {
     let (_, output) = run_path("tests/grammar/valid/bndata-csv.bn").expect("read CSV");
-    assert_eq!(output, "22age\nAna\n3531.5\n31.5\n31.528.035.0\n22\n11\n");
+    assert_eq!(
+        output,
+        "2 2 age\nAna\n35 31.5\n31.5\n31.5 28.0 35.0\n2 2\n1 1\n"
+    );
 }
 
 #[test]
@@ -1529,7 +1545,7 @@ fn bndata_conversion_failure_leaves_the_column_unchanged() {
 fn bndata_copy_failure_leaves_the_destination_unchanged() {
     let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET text AS STRING[2] = [\"1\", \"\"]\nLET target AS POINTER TO INTEGER[] = NEW INTEGER[2]\ntarget[0] = 9\ntarget[1] = 9\ntable.AddStringColumn(\"Id\", text)\ntable.ConvertToInteger(\"Id\")\nLET copied AS VOID OR Error = table.CopyIntegerColumn(\"Id\", target)\nIF copied IS Error THEN\nPRINT target[0], target[1]\nEND IF\nDELETE target\nDELETE table\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("run atomic copy");
-    assert_eq!(output, "99\n");
+    assert_eq!(output, "9 9\n");
 }
 
 #[test]
@@ -1680,7 +1696,7 @@ fn bndata_read_csv_ignores_a_trailing_blank_line() {
 fn asc_and_char_convert_unicode_scalars() {
     let source = "FUNCTION Start() AS VOID\nLET a AS INTEGER OR Error = ASC(\"é\")\nLET c AS STRING OR Error = CHAR(66)\nPRINT a, c\nLET empty AS INTEGER OR Error = ASC(\"\")\nIF empty IS Error THEN\nPRINT empty.Code\nEND IF\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("execute ASC and CHAR");
-    assert_eq!(output, "233B\n1\n");
+    assert_eq!(output, "233 B\n1\n");
 }
 
 #[test]
@@ -1742,7 +1758,10 @@ END FUNCTION
 ";
     let (code, output) = run(source, "").expect("execute struct/class/interface program");
     assert_eq!(code, 0);
-    assert_eq!(output, "0.010.012\nFALSETRUE0.016\n2224\nTRUEFALSE\n");
+    assert_eq!(
+        output,
+        "0.0 10.0 1 2\nFALSE TRUE 0.0 16\n2 2 2 4\nTRUE FALSE\n"
+    );
 }
 
 #[test]
@@ -1767,7 +1786,7 @@ END FUNCTION
 fn executes_imported_class_constructor_and_methods() {
     let (code, output) = run_path("tests/modules/objects/main.bn").expect("execute imported Box");
     assert_eq!(code, 0);
-    assert_eq!(output, "771\n");
+    assert_eq!(output, "7 7 1\n");
 }
 
 #[test]
@@ -1783,7 +1802,7 @@ fn executes_a_class_derived_from_an_imported_base() {
     let (code, output) = run_path("tests/modules/imported-inheritance/main.bn")
         .expect("execute imported class inheritance");
     assert_eq!(code, 0);
-    assert_eq!(output, "animalanimal dog\n");
+    assert_eq!(output, "animal animal dog\n");
 }
 
 #[test]
@@ -1815,7 +1834,7 @@ END FUNCTION
 ";
     let (code, output) = run(source, "").expect("execute fixed pointer");
     assert_eq!(code, 0);
-    assert_eq!(output, "1.52.0\n");
+    assert_eq!(output, "1.5 2.0\n");
 }
 
 #[test]
@@ -2045,7 +2064,7 @@ END FUNCTION
     assert_eq!(code, 0);
     assert_eq!(
         output,
-        "0108000001970-01-01T00:00:00.000Z\n2026-08-2210:20:30.000America/Sao_Paulo\n1970-01-0100:00:00.00044\n1787394030000TRUE\n"
+        "0 10800000 1970-01-01T00:00:00.000Z\n2026-08-22 10:20:30.000 America/Sao_Paulo\n1970-01-01 00:00:00.000 4 4\n1787394030000 TRUE\n"
     );
 }
 
@@ -2088,7 +2107,7 @@ fn dispatch_game_tournament_example_executes_in_ticket_order() {
     assert_eq!(code, 0);
     assert_eq!(
         output,
-        "CC: A=3000 B=3000\nCD: A=0 B=5000\nDC: A=5000 B=0\nDD: A=1000 B=1000\ntournament complete\n"
+        "CC: A= 3000  B= 3000\nCD: A= 0  B= 5000\nDC: A= 5000  B= 0\nDD: A= 1000  B= 1000\ntournament complete\n"
     );
 }
 
@@ -2099,7 +2118,7 @@ fn dispatch_reliability_simulation_example_executes_in_ticket_order() {
     assert_eq!(code, 0);
     assert_eq!(
         output,
-        "line-A: outages=12 cost=1200\nline-B: outages=16 cost=3200\nline-C: outages=20 cost=6000\nline-D: outages=24 cost=9600\nreliability simulation complete\n"
+        "line-A: outages= 12  cost= 1200\nline-B: outages= 16  cost= 3200\nline-C: outages= 20  cost= 6000\nline-D: outages= 24  cost= 9600\nreliability simulation complete\n"
     );
 }
 
@@ -2110,7 +2129,7 @@ fn dispatch_cellular_automaton_example_executes_in_ticket_order() {
     assert_eq!(code, 0);
     assert_eq!(
         output,
-        "rule-30 seed-37: checksum=27\nrule-45 seed-74: checksum=13\nrule-110 seed-1: checksum=10\nrule-184 seed-146: checksum=14\ncellular automaton complete\n"
+        "rule-30 seed-37: checksum= 27\nrule-45 seed-74: checksum= 13\nrule-110 seed-1: checksum= 10\nrule-184 seed-146: checksum= 14\ncellular automaton complete\n"
     );
 }
 
@@ -2569,7 +2588,7 @@ DELETE response
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute BNWeb response");
-    assert_eq!(output, "201TRUE\nTRUE\n");
+    assert_eq!(output, "201 TRUE\nTRUE\n");
 }
 
 #[test]
@@ -2586,7 +2605,7 @@ DELETE request
 END FUNCTION
 ";
     let (_, output) = run(source, "").expect("execute BNWeb request");
-    assert_eq!(output, "GET/\nHOST.Net.AddressHOST.Net.Address\nTRUE\n");
+    assert_eq!(output, "GET / \nHOST.Net.Address HOST.Net.Address\nTRUE\n");
 }
 
 #[test]
@@ -2605,7 +2624,7 @@ DELETE request
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute BNWeb collections");
-    assert_eq!(output, "00\n");
+    assert_eq!(output, "0 0\n");
 }
 
 #[test]
@@ -2678,7 +2697,7 @@ DELETE jar
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute CookieJar provider");
-    assert_eq!(output, "a1\nTRUE\n");
+    assert_eq!(output, "a 1\nTRUE\n");
 }
 
 #[test]
@@ -2694,5 +2713,5 @@ DELETE jar
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute explicit CookieJar policy");
-    assert_eq!(output, "FALSE1\nTRUE1\n");
+    assert_eq!(output, "FALSE 1\nTRUE 1\n");
 }

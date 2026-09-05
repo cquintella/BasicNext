@@ -46,6 +46,13 @@ the values after `--`. Use `LEN(HOST.Args)` for the count.
 Jupyter kernel uses this option. `--jupyter-stdin` is a private kernel/tool
 protocol flag, not a normal user option.
 
+The `wasm32` target currently supports `HOST.Args`, `HOST.Random`, `HOST.Clock`,
+`HOST.Console`, string operations, and scalar `BNMath`. `HOST.FileSystem`,
+`HOST.Net`, `BNLog`, and `BNWeb` are not in the WASI capability matrix yet;
+`bn build --target wasm32` rejects those imports with
+`BUILD_CAPABILITY_UNAVAILABLE` instead of emitting a non-functional socket
+stub. WASI socket support is a follow-up provider contract.
+
 ## Modules and capabilities
 
 User imports resolve beneath `modules/`. Standard modules such as `BNMath`

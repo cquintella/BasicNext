@@ -22,5 +22,5 @@ specification.
   `INVALID_SHIFT_COUNT`, `INVALID_EXPONENT`, `INVALID_NUMERIC_CONVERSION`).
   Audit 2026-09-03.
 - [Host capabilities](host-capabilities.md) — exploratory; not accepted.
-- [Parallel computing](parallel-computing.md) — future `PARALLEL` syntax.
-- [Native LSP & DAP](ide-tooling.md) — 0.3 surface mostly in tree; remaining: `--help`, VS Code `bn check` on save, find-references client. Audit 2026-09-03.
+- Parallel computing — future `PARALLEL` syntax; proposal not yet materialized as a document.
+- [Native LSP & DAP](../../docs/architecture/README.md) — 0.3 surface mostly in tree; remaining: `--help`, VS Code `bn check` on save, find-references client. Audit 2026-09-03.

@@ -4,11 +4,8 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 FUNCTION Start() AS VOID
-    PRINT "Bem Vindo ao Basic Next"
-    LET counter AS INTEGER = 0
+    LET X AS FLOAT = 0.5
+    LET Y AS FLOAT = 10.2
+    PRINT X/Y
 
-    WHILE counter < 10
-        PRINT "Basic Next", counter
-        counter += 1
-    END WHILE
 END FUNCTION

@@ -202,9 +202,9 @@ mod helpers;
 use helpers::{
     assignment_operator, class_ir_name, console_import_span, constant, destructor_name,
     display_type, filesystem_constant, filesystem_import_span, host_capability_constant,
-    invalid_ir, ir_error, is_namespace_type, is_numeric_type_name, math_constant, named_or_void,
-    namespace_function, network_import_span, standard_import_span, static_class_name, type_at,
-    type_test_name, user_class_name,
+    invalid_ir, ir_error, is_namespace_type, is_numeric_type_name, math_constant, module_constant,
+    named_or_void, namespace_function, network_import_span, standard_import_span,
+    static_class_name, type_at, type_test_name, user_class_name,
 };
 fn instruction_defines(instruction: &Instruction) -> Option<ValueId> {
     match instruction {

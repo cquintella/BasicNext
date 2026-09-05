@@ -48,6 +48,31 @@ fn read_gold(path: &str) -> String {
 }
 
 #[test]
+fn float32_special_constants_use_float_width_hex_encoding() {
+    let module = start_module(vec![BasicBlock {
+        id: BlockId(0),
+        instructions: vec![
+            Instruction::Constant {
+                destination: ValueId(0),
+                value: Constant::Float("NAN".into()),
+                ty: Type::Float(FloatType::Float32),
+                span: span(),
+            },
+            Instruction::Constant {
+                destination: ValueId(1),
+                value: Constant::Float("INF".into()),
+                ty: Type::Float(FloatType::Float32),
+                span: span(),
+            },
+        ],
+        terminator: Terminator::Return { value: None },
+    }]);
+    let llvm = lower_module(&module).expect("lower FLOAT32 special constants");
+    assert!(llvm.contains("fadd float 0.0, 0x7FC00000"), "{llvm}");
+    assert!(llvm.contains("fadd float 0.0, 0x7F800000"), "{llvm}");
+}
+
+#[test]
 fn lower_module_emits_contract_types_and_cfg() {
     let module = start_module(vec![
         BasicBlock {

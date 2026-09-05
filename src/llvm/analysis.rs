@@ -1,4 +1,4 @@
-#![allow(clippy::wildcard_imports)]
+#![allow(clippy::wildcard_imports, clippy::match_same_arms)]
 use super::*;
 
 pub(crate) fn analyze_function<'a>(
@@ -64,7 +64,11 @@ pub(crate) fn analyze_function<'a>(
                     dimensions,
                     dynamic_dimensions,
                     ..
-                } if dimensions.is_empty() && dynamic_dimensions.is_empty() => {
+                } if (dimensions.is_empty() && dynamic_dimensions.is_empty())
+                    || matches!(ty, Type::Vector { .. })
+                        && dimensions.len() == 1
+                        && dynamic_dimensions.is_empty() =>
+                {
                     values.insert(*destination, ty.clone());
                 }
                 Instruction::Load {
@@ -172,6 +176,15 @@ pub(crate) fn analyze_function<'a>(
                 } => {
                     values.insert(*destination, ty.clone());
                 }
+                Instruction::DispatchSubmit {
+                    destination, ty, ..
+                }
+                | Instruction::DispatchAwait {
+                    destination, ty, ..
+                } => {
+                    uses_bn_rt = true;
+                    values.insert(*destination, ty.clone());
+                }
                 Instruction::Print {
                     values: printed, ..
                 } => {
@@ -234,8 +247,6 @@ pub(crate) fn analyze_function<'a>(
                 }
                 Instruction::StoreStatic { .. } => {}
                 Instruction::Length { .. }
-                | Instruction::DispatchSubmit { .. }
-                | Instruction::DispatchAwait { .. }
                 | Instruction::SizeOf { .. }
                 | Instruction::ClearScreen { .. }
                 | Instruction::Beep { .. }
@@ -361,7 +372,14 @@ fn validate_instruction(
             dimensions,
             dynamic_dimensions,
             ..
-        } => dimensions.is_empty() && dynamic_dimensions.is_empty() && llvm_type(ty).is_some(),
+        } => {
+            (dimensions.is_empty() && dynamic_dimensions.is_empty() && llvm_type(ty).is_some())
+                || (matches!(ty, Type::Vector { dimensions: ty_dimensions, .. }
+                    if ty_dimensions.len() == 1
+                        && dimensions.len() == 1
+                        && dynamic_dimensions.is_empty()
+                        && llvm_type(ty).is_some()))
+        }
         Instruction::Load {
             destination,
             symbol,
@@ -433,6 +451,32 @@ fn validate_instruction(
             Some("HOST.Random.Seed") => arguments.len() == 1,
             Some("HOST.Random.Random") => arguments.is_empty(),
             Some(name) if is_bn_rt_host_call(name) => bn_rt_call_supported(name, arguments, values),
+            Some(name)
+                if name.ends_with(".Queue.Concurrent")
+                    || name.ends_with(".Queue.Serial")
+                    || name.ends_with(".Queue.Auto")
+                    || name.ends_with(".Queue.Join")
+                    || name.ends_with(".Queue.Close")
+                    || name.ends_with(".Ticket.Close")
+                    || name.ends_with(".Group.New")
+                    || name.ends_with(".Group.Enter")
+                    || name.ends_with(".Group.Leave")
+                    || name.ends_with(".Group.Wait")
+                    || name.ends_with(".Barrier.New")
+                    || name.ends_with(".Barrier.Wait")
+                    || name.ends_with(".Semaphore.New")
+                    || name.ends_with(".Semaphore.Acquire")
+                    || name.ends_with(".Semaphore.Release")
+                    || name.ends_with(".Mutex.New")
+                    || name.ends_with(".Mutex.Lock")
+                    || name.ends_with(".Mutex.Unlock") =>
+            {
+                arguments.iter().all(|argument| {
+                    values
+                        .get(argument)
+                        .is_some_and(|ty| llvm_type(ty).is_some())
+                })
+            }
             Some(name) if bnmath_method(module, name).is_some() => bnmath_call_supported(
                 bnmath_method(module, name).unwrap_or(name),
                 arguments,
@@ -510,7 +554,9 @@ fn validate_instruction(
             ..
         } => {
             indices.len() == 1
-                && symbols.get(symbol).is_some_and(is_int_pointer)
+                && symbols
+                    .get(symbol)
+                    .is_some_and(|ty| is_int_pointer(ty) || is_int_vector(ty))
                 && indices
                     .iter()
                     .all(|index| values.get(index).and_then(llvm_type).is_some())
@@ -544,11 +590,10 @@ fn validate_instruction(
         Instruction::StoreStatic { value, ty, .. } => {
             llvm_type(ty).is_some() && values.get(value).and_then(llvm_type).is_some()
         }
-        Instruction::DispatchSubmit { .. }
-        | Instruction::DispatchAwait { .. }
-        | Instruction::ClearScreen { .. }
-        | Instruction::Beep { .. }
-        | Instruction::SizeOf { .. } => false,
+        Instruction::DispatchSubmit { .. } | Instruction::DispatchAwait { .. } => true,
+        Instruction::ClearScreen { .. } | Instruction::Beep { .. } | Instruction::SizeOf { .. } => {
+            false
+        }
     };
     if supported {
         Ok(())

@@ -70,7 +70,7 @@ impl<'a> ExpressionParser<'a> {
             self.expect_symbol(Symbol::LeftParen)?;
             let end = self.expect_symbol(Symbol::RightParen)?.end;
             return Ok(Expression {
-                kind: ExpressionKind::Input,
+                kind: ExpressionKind::Input { prompt: None },
                 span: Span { start, end },
             });
         }

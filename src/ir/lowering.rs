@@ -312,6 +312,7 @@ pub(crate) fn lower_inherited_constructor(
         layouts: std::collections::HashMap::new(),
         base_classes: std::collections::HashMap::new(),
         bnmath_modules: HashSet::new(),
+        module_constants: std::collections::HashMap::new(),
     };
     let mut builder = Builder::new(&empty_model, methods.clone(), prefix);
     builder.derived_fields = Some(format!("{prefix}{class_name}.$fields"));
@@ -343,6 +344,7 @@ pub(crate) fn lower_inherited_destructor(
         layouts: std::collections::HashMap::new(),
         base_classes: std::collections::HashMap::new(),
         bnmath_modules: HashSet::new(),
+        module_constants: std::collections::HashMap::new(),
     };
     let mut builder = Builder::new(&empty_model, methods.clone(), prefix);
     let receiver = builder.load(SYNTHETIC_SELF, Type::Named(class_name.into()), span);

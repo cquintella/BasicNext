@@ -98,7 +98,7 @@ pub fn run_stdio() -> Result<(), String> {
                 if notification.method == "textDocument/didChange" =>
             {
                 let params: DidChangeTextDocumentParams = decode(notification)?;
-                let Some(change) = params.content_changes.into_iter().next() else {
+                let Some(change) = params.content_changes.into_iter().last() else {
                     continue;
                 };
                 publish(
@@ -227,7 +227,7 @@ fn respond_document_symbols(
                     "range": lsp_range(span.start.line, span.start.column, span.end.line, span.end.column),
                     "selectionRange": lsp_range(span.start.line, span.start.column, span.end.line, span.end.column)
                 })),
-                crate::ast::Item::Import { .. } => None,
+                crate::ast::Item::Import { .. } | crate::ast::Item::Constant { .. } => None,
             }).collect::<Vec<_>>()
     } else {
         Vec::new()
@@ -280,7 +280,7 @@ fn find_definition(
         .iter()
         .filter_map(|item| match item {
             crate::ast::Item::Import { path, alias, .. } => Some((path.clone(), alias.clone())),
-            crate::ast::Item::Declaration { .. } => None,
+            crate::ast::Item::Declaration { .. } | crate::ast::Item::Constant { .. } => None,
         })
         .collect::<Vec<_>>();
     let local = program
@@ -421,6 +421,7 @@ fn respond_references(
         documents,
         &params.text_document_position.text_document.uri,
         params.text_document_position.position,
+        params.context.include_declaration,
     )?;
     let value = serde_json::to_value(locations).map_err(|error| error.to_string())?;
     connection
@@ -433,6 +434,7 @@ fn find_locations(
     documents: &HashMap<String, SourceFile>,
     uri: &Uri,
     position: Position,
+    include_declaration: bool,
 ) -> Result<Vec<Location>, String> {
     let Some(source) = documents.get(&uri.to_string()) else {
         return Ok(Vec::new());
@@ -443,12 +445,27 @@ fn find_locations(
     }
     let tokens = lex(source).map_err(|error| error.message)?;
     Ok(tokens
-        .into_iter()
-        .filter_map(|token| {
-            let crate::token::TokenKind::Identifier(name) = token.kind else {
+        .iter()
+        .enumerate()
+        .filter_map(|(index, token)| {
+            let crate::token::TokenKind::Identifier(name) = &token.kind else {
                 return None;
             };
-            (name == prefix).then(|| {
+            let declaration = tokens[..index]
+                .iter()
+                .rev()
+                .find(|previous| !matches!(previous.kind, crate::token::TokenKind::Newline))
+                .is_some_and(|previous| {
+                    matches!(
+                        &previous.kind,
+                        crate::token::TokenKind::Keyword(keyword)
+                            if matches!(keyword.as_str(), "LET" | "FUNCTION" | "CLASS" | "STRUCT" | "INTERFACE" | "IMPORT")
+                    )
+                });
+            if declaration && !include_declaration {
+                return None;
+            }
+            (name == &prefix).then(|| {
                 Location::new(
                     uri.clone(),
                     lsp_range(

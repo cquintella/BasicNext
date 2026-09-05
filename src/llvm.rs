@@ -5,6 +5,8 @@
 
 //! Dependency-free LLVM textual backend. Unsupported IR is rejected explicitly.
 
+#![allow(clippy::match_same_arms)]
+
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     fmt::Write as _,
@@ -56,6 +58,7 @@ struct EmissionState {
     needs_bn_rt_trap: bool,
     is_start: bool,
     rng_global: bool,
+    synchronize_prints: bool,
     return_llvm: &'static str,
 }
 
@@ -66,6 +69,18 @@ struct EmissionState {
 /// Returns a diagnostic when the module contains unsupported IR or has no
 /// executable entry point.
 pub fn lower_module(module: &Module) -> Result<String, String> {
+    // Keep the public IR-only helper byte-for-byte compatible with the
+    // historical textual output; the CLI selects native/Wasm host interop.
+    lower_module_for_target(module, true)
+}
+
+/// Lowers a module while selecting target-specific host interop behavior.
+///
+/// # Errors
+///
+/// Returns a diagnostic when the module has no supported entry point or
+/// contains an instruction outside the target lowering contract.
+pub fn lower_module_for_target(module: &Module, wasm32: bool) -> Result<String, String> {
     let Some(start) = module
         .functions
         .iter()
@@ -91,9 +106,9 @@ pub fn lower_module(module: &Module) -> Result<String, String> {
     let mut text = String::from(
         "; Basic Next 0.2\n@.bn_fmt_int = private unnamed_addr constant [5 x i8] c\"%lld\\00\"\n@.bn_fmt_uint = private unnamed_addr constant [5 x i8] c\"%llu\\00\"\n@.bn_fmt_float = private unnamed_addr constant [6 x i8] c\"%.17g\\00\"\n@.bn_fmt_str = private unnamed_addr constant [3 x i8] c\"%s\\00\"\n@.bn_true = private unnamed_addr constant [5 x i8] c\"TRUE\\00\"\n@.bn_false = private unnamed_addr constant [6 x i8] c\"FALSE\\00\"\n@.bn_empty = private unnamed_addr constant [1 x i8] c\"\\00\"\n@.bn_eof = private unnamed_addr constant [4 x i8] c\"EOF\\00\"\n",
     );
-    let rng_global = emit_preamble(&mut text, &functions);
+    let rng_global = emit_preamble(&mut text, &functions, !wasm32);
     for (function, analysis) in &functions {
-        emit_function(&mut text, module, function, analysis, rng_global)?;
+        emit_function(&mut text, module, function, analysis, rng_global, !wasm32)?;
     }
     Ok(text)
 }
@@ -148,6 +163,12 @@ fn llvm_type(ty: &Type) -> Option<&'static str> {
         Type::Alternative(alternatives) if integer_eof_or_error(alternatives) => {
             Some("{ i1, ptr, i64 }")
         }
+        Type::Alternative(alternatives) if imported_or_error(alternatives) => {
+            Some("{ i1, ptr, i64 }")
+        }
+        Type::Alternative(alternatives) if opaque_or_error(alternatives) => {
+            Some("{ i1, ptr, i64 }")
+        }
         Type::Named(name) if name == "Error" => Some("{ i1, ptr, i64 }"),
         Type::Named(name) if name == "HOST.Net.Address" || name == "HOST.Net.PingReply" => {
             Some("{ i1, ptr, i64 }")
@@ -180,6 +201,12 @@ fn llvm_type(ty: &Type) -> Option<&'static str> {
         {
             Some("{ i1, ptr, i64 }")
         }
+        Type::ImportedNamed { name, .. } if dispatch_handle_name(name) => Some("{ i1, ptr, i64 }"),
+        Type::ImportedTypeName { name, .. } if dispatch_handle_name(name) => {
+            Some("{ i1, ptr, i64 }")
+        }
+        Type::ImportedNamed { .. } => Some("ptr"),
+        Type::ImportedTypeName { .. } => Some("ptr"),
         Type::Vector {
             element,
             dimensions,
@@ -190,7 +217,6 @@ fn llvm_type(ty: &Type) -> Option<&'static str> {
         Type::Pointer { element, .. } if llvm_type(element).is_some() => Some("{ ptr, i32 }"),
         Type::Named(name) if name == "POINTER" => Some("{ ptr, i32 }"),
         // User class instances (NEW Box(...)) lower as opaque pointers.
-        Type::ImportedNamed { .. } => Some("ptr"),
         Type::Named(name)
             if !matches!(
                 name.as_str(),
@@ -275,6 +301,39 @@ fn integer_eof_or_error(alternatives: &[Type]) -> bool {
         && alternatives.iter().any(|ty| matches!(ty, Type::Integer(_)))
         && alternatives.iter().any(|ty| matches!(ty, Type::EndOfFile))
         && alternatives.iter().any(is_error_type)
+}
+
+fn imported_or_error(alternatives: &[Type]) -> bool {
+    alternatives.len() == 2
+        && alternatives
+            .iter()
+            .any(|ty| matches!(ty, Type::Named(name) if name == "Error"))
+        && alternatives.iter().any(|ty| {
+            matches!(
+                ty,
+                Type::ImportedNamed { .. } | Type::ImportedTypeName { .. }
+            )
+        })
+}
+
+fn opaque_or_error(alternatives: &[Type]) -> bool {
+    alternatives.len() == 2
+        && alternatives
+            .iter()
+            .any(|ty| matches!(ty, Type::Named(name) if name == "Error"))
+        && alternatives.iter().any(|ty| {
+            matches!(
+                ty,
+                Type::Named(_) | Type::ImportedNamed { .. } | Type::ImportedTypeName { .. }
+            )
+        })
+}
+
+fn dispatch_handle_name(name: &str) -> bool {
+    matches!(
+        name,
+        "Queue" | "Ticket" | "Group" | "Barrier" | "Semaphore" | "Mutex"
+    )
 }
 
 fn is_int_vector(ty: &Type) -> bool {
@@ -428,7 +487,10 @@ mod binary;
 use binary::emit_runtime_binary;
 #[path = "llvm/runtime.rs"]
 mod runtime;
-use runtime::{BN_RT_DECLS, bn_rt_call_supported, is_bn_rt_host_call, lower_bn_rt_call};
+use runtime::{
+    BN_RT_DECLS, bn_rt_call_supported, emit_handle_result, emit_void_result, is_bn_rt_host_call,
+    lower_bn_dispatch_call, lower_bn_rt_call,
+};
 #[path = "llvm/math.rs"]
 mod math;
 use math::{BN_RT_MATH_DECLS, bnmath_call_supported, bnmath_method, lower_bnmath_call};
@@ -463,7 +525,7 @@ use helpers::{
 };
 #[cfg(test)]
 mod tests {
-    use super::llvm_type;
+    use super::{helpers::render_llvm_integer, llvm_type};
     use crate::semantic::{FloatType, IntegerType, Type};
 
     #[test]
@@ -477,5 +539,16 @@ mod tests {
     fn llvm_type_uses_contract_float_widths() {
         assert_eq!(llvm_type(&Type::Float(FloatType::Float32)), Some("float"));
         assert_eq!(llvm_type(&Type::Float(FloatType::Float64)), Some("double"));
+    }
+
+    #[test]
+    fn llvm_integer_rendering_preserves_signed_bit_patterns_without_cast_wrap() {
+        assert_eq!(render_llvm_integer(255, "i8"), "-1");
+        assert_eq!(render_llvm_integer(-129, "i8"), "127");
+        assert_eq!(render_llvm_integer(65_536, "i16"), "0");
+        assert_eq!(
+            render_llvm_integer(-9_223_372_036_854_775_809, "i64"),
+            "9223372036854775807"
+        );
     }
 }

@@ -1,0 +1,5 @@
+FUNCTION Start() AS VOID
+    LET line AS STRING OR EOF = ""
+    INPUT line
+    PRINT line
+END FUNCTION

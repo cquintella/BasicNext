@@ -16,7 +16,7 @@ use bn::{
     ast::Program,
     ir::{Module as IrModule, lower_graph},
     lexer::lex,
-    llvm::lower_module,
+    llvm::lower_module_for_target,
     module_graph::{ModuleGraph, load},
     parser::parse_named,
     runtime::{HostEnv, execute_with_host},
@@ -202,11 +202,11 @@ fn build(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
     };
     if options.target == Target::Wasm32 && requires_unavailable_wasm_capability(&module) {
         eprintln!(
-            "error[BUILD_CAPABILITY_UNAVAILABLE]: target wasm32 does not provide HOST.FileSystem, HOST.Console, HOST.Net, BNLog, or BNWeb"
+            "error[BUILD_CAPABILITY_UNAVAILABLE]: target wasm32 does not provide HOST.FileSystem, HOST.Net, BNLog, or BNWeb; HOST.Console is supported"
         );
         return language_error();
     }
-    match lower_module(&module) {
+    match lower_module_for_target(&module, options.target == Target::Wasm32) {
         Ok(llvm) => emit_build_output(llvm, options),
         Err(message) => {
             eprintln!("error[{message}]");

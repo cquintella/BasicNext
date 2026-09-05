@@ -1,0 +1,1515 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Basic Next Programming Language</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      white-space: pre-wrap;
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+    /* CSS for syntax highlighting */
+    html { -webkit-text-size-adjust: 100%; }
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Basic Next Programming Language</h1>
+</header>
+<h1 id="introduction">Introduction</h1>
+<p><strong>Author:</strong> Carlos Quintella<br />
+<strong>Date:</strong> August 29, 2026<br />
+<strong>License:</strong> Mozilla Public License 2.0 (MPL-2.0)</p>
+<figure>
+<img src="../cover.jpg" alt="Basic Next Book Cover" />
+<figcaption aria-hidden="true">Basic Next Book Cover</figcaption>
+</figure>
+<p>This document is the introductory tutorial for the Basic Next (BN)
+programming language.</p>
+<blockquote>
+<p><strong>Note:</strong> This book is the <strong>Version 0.3</strong>
+tutorial. It is not the normative language contract. When a chapter and
+the specification disagree, follow <a
+href="../../language/0.3/0.3.md"><code>docs/language/0.3/0.3.md</code></a>,
+<a
+href="../../language/0.3/0.3.ebnf"><code>docs/language/0.3/0.3.ebnf</code></a>,
+and <a
+href="../../language/0.3/keywords.md"><code>docs/language/0.3/keywords.md</code></a>.
+Features planned for later versions (packages, <code>MATCH</code>,
+generic classes, advanced concurrency) are excluded.</p>
+</blockquote>
+<h2 id="what-is-basic-next">What is Basic Next?</h2>
+<p>Basic Next is an explicitly typed, object-oriented language designed
+for clarity and predictable execution. It favors explicit declarations
+and strict types over implicit conversions or hidden behaviors.
+Everything in Basic Next is explicit: variable types are required,
+memory management is manual, and every execution path in a function must
+return a value.</p>
+<p>The current reference implementation uses a straightforward pipeline
+comprising a lexer, a parser (producing an Abstract Syntax Tree), a
+semantic analyzer, and a reference interpreter.</p>
+<h2 id="target-audience">Target Audience</h2>
+<p>Basic Next is built for developers who value explicit contracts, low
+cognitive load, and clean architecture without the burden of excessive
+boilerplates or imposing frameworks. It is suitable for both beginners
+learning fundamental computing concepts—thanks to its straightforward
+syntax and readable design—and experienced engineers looking for a
+predictable, transparent language to craft cross-platform tools,
+systems, and applications.</p>
+<h2 id="philosophy">Philosophy</h2>
+<p>The language’s design is heavily informed by Zen principles: clarity,
+restraint, and deliberate choices over novelty. The core mission is to
+make modern programming more readable, predictable, pleasurable, and
+accessible.</p>
+<p>Basic Next follows several key design principles: - <strong>Low
+cognitive load</strong>: Common code should be easy to understand and
+intent should be local. - <strong>Readability first</strong>: Source
+code is communication, not merely an instruction to a machine. -
+<strong>Explicit contracts</strong>: Types, boundaries, and effects
+should not be surprising. Every declaration states its type. -
+<strong>Keep it simple (KISS)</strong>: Complexity must earn its place
+through a concrete problem, not anticipation. - <strong>Object-oriented
+by default</strong>: Behavior belongs to cohesive objects, with explicit
+dependencies. - <strong>Small core, broad reach</strong>: Richness
+belongs in external modules and host capabilities, keeping reserved
+words and built-in features to a minimum.</p>
+<h2 id="installation-and-the-bn-cli">Installation and the
+<code>bn</code> CLI</h2>
+<p>Basic Next source files use the <code>.bn</code> extension and are
+UTF-8 encoded. The language is distributed with a command-line tool,
+<code>bn</code>. Install it with <code>cargo install --path .</code>
+from this repository, or download a prebuilt binary from GitHub
+Releases. The Unix manual is <code>bn(1)</code>
+(<code>docs/man/bn.1</code>).</p>
+<ul>
+<li><code>bn check &lt;file.bn&gt;</code>: lexer, parser, and semantics.
+Exit <code>0</code> if valid, <code>1</code> for a language diagnostic,
+<code>2</code> for invalid tool use or a tool failure.</li>
+<li><code>bn run &lt;file.bn&gt; [-- args...]</code>: validate, lower to
+typed BN IR, and execute <code>Start</code>. On success the process exit
+code is <code>Start</code>’s result. Language errors exit
+<code>1</code>; tool failures exit <code>2</code>.</li>
+<li><code>bn build &lt;file.bn&gt;</code>: compile to a native
+executable or WebAssembly artifact using the LLVM backend.</li>
+<li><code>bn lex &lt;file.bn&gt;</code>: print the token stream and
+stop.</li>
+</ul>
+<p><code>HOST.Args[0]</code> is the absolute executable entry given to
+<code>bn run</code> or <code>bn build</code>. Further program arguments
+follow <code>--</code>. Frontend artifacts are available with
+<code>--emit tokens</code>, <code>--emit ast</code>,
+<code>--emit typed-ast</code>, and <code>--emit ir</code>.
+<code>-v</code> prints pipeline stages; <code>-vv</code> also prints
+tokens.</p>
+<p>Basic Next diagnostics reject invalid source before execution. There
+are no warnings. Full command reference: <a
+href="../../man/bn.1"><code>bn(1)</code></a>.</p>
+<h2 id="hello-world">Hello, World!</h2>
+<p>A complete Basic Next program requires an entry point. The simplest
+valid program consists of exactly one <code>Start</code> function that
+prints text to the screen:</p>
+<pre class="basic"><code>FUNCTION Start() AS VOID
+    PRINT &quot;Hello, World!&quot;
+END FUNCTION</code></pre>
+<p><code>PRINT</code> is a built-in macro that writes text to standard
+output, followed by a line ending.</p>
+<h2 id="modules-and-the-start-function">Modules and the
+<code>Start</code> Function</h2>
+<p>Every Basic Next file is a module. The executable module—the one
+passed to <code>bn run</code>—must contain exactly one function named
+<code>Start</code> taking no parameters.</p>
+<p>The <code>Start</code> function can be declared with a
+<code>VOID</code> return type or an <code>INTEGER</code> return
+type:</p>
+<pre class="basic"><code>FUNCTION Start() AS INTEGER
+    PRINT &quot;Running successfully.&quot;
+    RETURN 0
+END FUNCTION</code></pre>
+<p>When <code>Start</code> returns an <code>INTEGER</code>, it must
+return a value between <code>0</code> and <code>255</code>. This value
+is directly passed back to the host operating system as the process exit
+code. When <code>Start</code> is <code>VOID</code>, a successful
+completion automatically yields an exit code of <code>0</code>.</p>
+<p>Basic Next requires all statements to be contained within functions,
+classes, interfaces, or structs. You cannot write executable statements
+at the top level of a module.</p>
+<h2 id="ecosystem-tools">Ecosystem Tools</h2>
+<p>Basic Next provides tools for modern development workflows:</p>
+<ul>
+<li><strong>Jupyter Kernel (<code>bn-kernel</code>)</strong>: A
+Python-based Jupyter kernel that evaluates Basic Next cells. Each cell
+is treated as a complete program with a <code>Start</code> function. To
+use it, install the <code>bn-kernel</code> Python package.</li>
+<li><strong>VS Code Extension</strong>: Located in the
+<code>plugins/vscode/</code> directory, this extension provides syntax
+highlighting and on-save linting diagnostics powered by the
+<code>bn check</code> compiler.</li>
+</ul>
+<h3 id="installing-the-vs-code-extension">Installing the VS Code
+Extension</h3>
+<p>To get the best development experience with syntax highlighting and
+automatic error checking on save, you can install the official Basic
+Next VS Code extension directly from the repository.</p>
+<ol type="1">
+<li><p>Open your terminal and navigate to the VS Code plugin
+directory:</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> plugins/vscode</span></code></pre></div></li>
+<li><p>Package the extension into a <code>.vsix</code> file using
+<code>vsce</code> (requires Node.js):</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">npx</span> <span class="at">--yes</span> @vscode/vsce package <span class="at">--allow-missing-repository</span></span></code></pre></div></li>
+<li><p>Install the generated package into Visual Studio Code:</p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">code</span> <span class="at">--install-extension</span> basicnext-0.3.0.vsix</span></code></pre></div></li>
+<li><p><strong>Restart VS Code</strong> completely after the
+installation to ensure the language server and debugger features load
+correctly.</p></li>
+</ol>
+<div style="page-break-after: always;">
+
+</div>
+<h1 id="common-programming-concepts">Common Programming Concepts</h1>
+<p>This chapter covers the fundamental building blocks of a Basic Next
+program: how to store data, manipulate values, and interact with the
+console.</p>
+<h2 id="variables-and-constants">Variables and Constants</h2>
+<p>Basic Next enforces strict typing. Every variable must explicitly
+state its type. The language does not use type inference for
+bindings.</p>
+<p>Variables are declared using the <code>LET</code> keyword, followed
+by the name, <code>AS</code>, the type, and an optional initializer. In
+version 0.3, you can also declare multiple variables of the same type in
+a single <code>LET</code> binding:</p>
+<pre class="basic"><code>LET counter AS INTEGER = 10
+LET name AS STRING = &quot;Alice&quot;
+LET c, v AS STRING = &quot;carro&quot;, &quot;moto&quot;</code></pre>
+<p>If you omit the initializer, the variable is initialized to its
+type’s default value. In Basic Next, there is no uninitialized storage.
+The default for numeric types is <code>0</code> or <code>0.0</code>,
+<code>BOOLEAN</code> defaults to <code>FALSE</code>, and
+<code>STRING</code> defaults to an empty string <code>""</code>.</p>
+<pre class="basic"><code>LET score AS INTEGER  // Initialized to 0
+LET active AS BOOLEAN // Initialized to FALSE</code></pre>
+<p>Constants are declared using the <code>CONST</code> keyword. They
+must always include an initializer and cannot be reassigned:</p>
+<pre class="basic"><code>CONST MAX_USERS AS INTEGER = 100</code></pre>
+<p><em>Note: <code>CONST</code> fixes the binding itself. It does not
+make a referenced class or allocated pointer deeply immutable.</em></p>
+<h2 id="primitive-types">Primitive Types</h2>
+<p>Basic Next features a rich set of primitive types with guaranteed,
+cross-platform representations.</p>
+<h3 id="numeric-types">Numeric Types</h3>
+<p>The default numeric types are <code>INTEGER</code> (an alias for a
+signed 32-bit integer) and <code>FLOAT</code> (an alias for an IEEE 754
+64-bit floating-point number).</p>
+<p>When exact memory layout is important, Basic Next provides
+fixed-width types: - <strong>Signed:</strong> <code>INT8</code>,
+<code>INT16</code>, <code>INT32</code>, <code>INT64</code> -
+<strong>Unsigned:</strong> <code>BYTE</code> (unsigned 8-bit),
+<code>UINT16</code>, <code>UINT32</code>, <code>UINT64</code> -
+<strong>Floating-point:</strong> <code>FLOAT32</code>,
+<code>FLOAT64</code></p>
+<p>Integer arithmetic in Basic Next never wraps or saturates implicitly.
+An operation that produces a result outside the destination type’s range
+raises a <code>NUMERIC_OVERFLOW</code> error at runtime.</p>
+<p>Floating-point numbers follow IEEE 754 semantics and include special
+values: <code>NAN</code> (Not a Number), <code>INF</code> (positive
+infinity), and <code>-INF</code> (negative infinity).</p>
+<h3 id="boolean-and-string">Boolean and String</h3>
+<ul>
+<li><code>BOOLEAN</code> represents logical states with the keywords
+<code>TRUE</code> and <code>FALSE</code>.</li>
+<li><code>STRING</code> represents text. Strings are UTF-8 encoded and
+enclosed in double quotes. Line breaks inside strings are not permitted
+in version 0.3.</li>
+</ul>
+<h3 id="temporal-types">Temporal Types</h3>
+<p>Basic Next treats time as primitive data: - <code>TIMESTAMP</code>:
+An alias for <code>INT64</code> representing UTC Unix-epoch
+milliseconds. - <code>DATE</code>, <code>TIME</code>,
+<code>TIMEZONE</code>: Value types representing specific calendar and
+clock concepts. Their default values are <code>1970-01-01</code>,
+<code>00:00:00.000</code>, and <code>UTC</code> respectively.</p>
+<h2 id="operators-and-expressions">Operators and Expressions</h2>
+<p>Basic Next expressions are strictly typed. The compiler prevents
+mixing incompatible types, such as adding a string to a number, without
+explicit conversion.</p>
+<h3 id="arithmetic">Arithmetic</h3>
+<p>The basic arithmetic operators are <code>+</code>, <code>-</code>,
+<code>*</code>, and <code>**</code> (exponentiation). Basic Next
+distinguishes strictly between integer and floating-point division: -
+<code>/</code> always performs floating-point division and returns a
+<code>FLOAT</code>, even if both operands are integers. -
+<code>DIV</code> performs Euclidean integer division. - <code>%</code>
+performs Euclidean modulo (the remainder is always non-negative).</p>
+<pre class="basic"><code>LET half AS FLOAT = 5 / 2       // 2.5
+LET quotient AS INTEGER = 5 DIV 2 // 2
+LET remainder AS INTEGER = 5 % 2  // 1</code></pre>
+<p>The <code>+</code> operator also concatenates <code>STRING</code>
+values.</p>
+<h3 id="equality-and-comparison">Equality and Comparison</h3>
+<p>Equality (<code>=</code>) and inequality (<code>&lt;&gt;</code>)
+require operands to have the exact same static type, outside of allowed
+numeric widening. You cannot implicitly compare a <code>STRING</code> to
+<code>FALSE</code> or an <code>INTEGER</code> to a <code>FLOAT</code>
+without explicit conversion.</p>
+<pre class="basic"><code>IF counter = 10 THEN
+    PRINT &quot;Limit reached&quot;
+END IF</code></pre>
+<h3 id="logical-and-bitwise-operators">Logical and Bitwise
+Operators</h3>
+<p>The operators <code>AND</code>, <code>OR</code>, <code>NOT</code>,
+and <code>XOR</code> change their behavior based on the static type of
+their operands: - When used with <code>BOOLEAN</code>, they perform
+logical operations. <code>AND</code> and <code>OR</code> use
+short-circuit evaluation. - When used with integer types, they perform
+bitwise operations.</p>
+<p>Basic Next also provides <code>SHL</code> (shift left) and
+<code>SHR</code> (shift right) for integers.</p>
+<h2 id="explicit-type-conversion">Explicit Type Conversion</h2>
+<p>Because assignments and comparisons do not implicitly widen or coerce
+values, you must use the <code>AS</code> keyword to convert values
+explicitly:</p>
+<pre class="basic"><code>LET count AS INTEGER = 3
+LET ratio AS FLOAT = count AS FLOAT</code></pre>
+<p>Converting a floating-point number to an integer truncates toward
+zero. Conversions are checked at runtime: attempting to convert a value
+that falls outside the target type’s range raises an
+<code>INVALID_NUMERIC_CONVERSION</code> error.</p>
+<p><code>AS BOOLEAN</code> is a special case: for numeric types,
+<code>0</code> becomes <code>FALSE</code> and any non-zero value
+(including <code>NAN</code>) becomes <code>TRUE</code>. For strings,
+<code>""</code> is <code>FALSE</code> and any non-empty string is
+<code>TRUE</code>.</p>
+<h2 id="basic-console-io">Basic Console I/O</h2>
+<p>Interacting with the console uses straightforward built-in
+macros.</p>
+<p><code>PRINT</code> writes text to standard output and then a line
+ending. Several expressions are concatenated with no separator. With no
+expression it writes a blank line.</p>
+<pre class="basic"><code>PRINT &quot;Processing user: &quot;, name
+PRINT &quot;Processing user: &quot; + name</code></pre>
+<p><code>INPUT()</code> reads a line from standard input. Because the
+input might end, it returns a compound alternative type:
+<code>STRING OR EOF</code>.</p>
+<pre class="basic"><code>LET line AS STRING OR EOF = INPUT()
+IF line IS EOF THEN
+    PRINT &quot;End of input stream.&quot;
+END IF</code></pre>
+<p>To manage the terminal window, pass the <code>HOST.Console</code>
+capability to explicitly access terminal control methods.
+<code>HOST.Console</code> is a primary expression.</p>
+<pre class="basic"><code>IMPORT HOST.Console AS Console
+Console.Cls()
+Console.Beep()
+Console.PrintAt(1, 1, &quot;Top left corner&quot;)</code></pre>
+<div style="page-break-after: always;">
+
+</div>
+<h1 id="control-flow">Control Flow</h1>
+<p>Basic Next provides explicit and block-scoped control flow
+constructs. Every block has a strict opening and closing keyword, such
+as <code>END IF</code> or <code>END WHILE</code>.</p>
+<h2 id="conditional-branching">Conditional Branching</h2>
+<p>The <code>IF</code> statement evaluates a <code>BOOLEAN</code>
+expression and executes a block of code if the condition is
+<code>TRUE</code>. The condition must be strictly <code>BOOLEAN</code>;
+Basic Next does not implicitly convert integers or strings to boolean
+values for conditions.</p>
+<pre class="basic"><code>LET active AS BOOLEAN = TRUE
+
+IF active THEN
+    PRINT &quot;System is active.&quot;
+ELSE
+    PRINT &quot;System is offline.&quot;
+END IF</code></pre>
+<p>Every <code>IF</code> block must be explicitly closed with
+<code>END IF</code>.</p>
+<p>However, in version 0.3, a conditional containing exactly one simple
+statement per branch may remain on one physical line and does not
+require an <code>END IF</code>:</p>
+<pre class="basic"><code>IF x = y THEN PRINT z
+IF ready THEN StartServer() ELSE PRINT &quot;not ready&quot;</code></pre>
+<h2 id="pre-condition-and-post-condition-loops">Pre-condition and
+Post-condition Loops</h2>
+<p>Basic Next offers two forms of indefinite loops: <code>WHILE</code>
+and <code>REPEAT</code>.</p>
+<h3 id="the-while-loop">The <code>WHILE</code> Loop</h3>
+<p>A <code>WHILE</code> loop checks its <code>BOOLEAN</code> condition
+before executing the block. If the condition is initially
+<code>FALSE</code>, the loop body never executes.</p>
+<pre class="basic"><code>LET counter AS INTEGER = 0
+
+WHILE counter &lt; 5
+    PRINT counter
+    counter += 1
+END WHILE</code></pre>
+<h3 id="the-repeat-loop">The <code>REPEAT</code> Loop</h3>
+<p>A <code>REPEAT</code> loop executes its block at least once. It
+evaluates a <code>BOOLEAN</code> post-condition using the
+<code>UNTIL</code> keyword at the end of the block. The block repeats as
+long as the condition remains <code>FALSE</code>.</p>
+<p>Note that <code>UNTIL</code> is part of the loop’s logic, but the
+block itself must still be closed with <code>END REPEAT</code>.</p>
+<pre class="basic"><code>LET value AS INTEGER = 10
+
+REPEAT
+    value -= 1
+UNTIL value = 0
+END REPEAT</code></pre>
+<h2 id="counted-and-collection-iteration">Counted and Collection
+Iteration</h2>
+<p>For iterating over ranges or collections, Basic Next provides
+<code>FOR</code> and <code>FOR EACH</code>.</p>
+<h3 id="the-counted-for-loop">The Counted <code>FOR</code> Loop</h3>
+<p>A counted <code>FOR</code> loop iterates a binding over a numeric
+range. You must declare the loop binding and its type explicitly. The
+start, end, and optional <code>STEP</code> expressions are evaluated
+exactly once before the loop begins.</p>
+<pre class="basic"><code>FOR i AS INTEGER = 0 TO 9 STEP 2
+    PRINT i
+END FOR</code></pre>
+<p>If you omit the <code>STEP</code> clause, it defaults to
+<code>1</code>. A step can be negative, in which case the loop continues
+while the binding is greater than or equal to the end value. The loop
+binding updates automatically at the end of the block.</p>
+<h3 id="the-for-each-loop">The <code>FOR EACH</code> Loop</h3>
+<p><code>FOR EACH</code> iterates in index order over a collection. In
+version 0.3, this is restricted to the outermost dimension of fixed-size
+vectors. The loop binding is read-only and its declared type must
+perfectly match the vector’s element type.</p>
+<pre class="basic"><code>LET primes AS INTEGER[3] = [2, 3, 5]
+
+FOR EACH prime AS INTEGER IN primes
+    PRINT prime
+END FOR</code></pre>
+<h2 id="loop-control-and-termination">Loop Control and Termination</h2>
+<p>Basic Next does not have generic <code>break</code> or
+<code>continue</code> keywords. Instead, early loop exits must
+explicitly name the loop type they are targeting: <code>EXIT FOR</code>,
+<code>EXIT WHILE</code>, or <code>EXIT REPEAT</code>.</p>
+<p>Similarly, skipping to the next iteration uses
+<code>CONTINUE FOR</code>, <code>CONTINUE WHILE</code>, or
+<code>CONTINUE REPEAT</code>.</p>
+<pre class="basic"><code>FOR i AS INTEGER = 1 TO 10
+    IF i = 5 THEN
+        CONTINUE FOR
+    END IF
+    IF i = 8 THEN
+        EXIT FOR
+    END IF
+    PRINT i
+END FOR</code></pre>
+<p>By naming the loop construct, you make your intent clear and avoid
+accidental behavioral changes if loops are refactored or nested
+differently in the future.</p>
+<h2 id="halting-the-program">Halting the Program</h2>
+<p>If you encounter a fatal condition and must terminate the entire
+program immediately, use the <code>STOP</code> statement.</p>
+<p><code>STOP</code> requires a single <code>INTEGER</code> expression
+that produces a value between <code>0</code> and <code>255</code>. This
+value is passed directly to the host operating system as the process
+exit code.</p>
+<pre class="basic"><code>IF fatalError THEN
+    PRINT &quot;Halting immediately.&quot;
+    STOP 1
+END IF</code></pre>
+<p>For standard, graceful program termination, you should instead
+<code>RETURN</code> an integer from your <code>Start</code> function.
+<code>STOP</code> should be reserved for exceptional halting.</p>
+<div style="page-break-after: always;">
+
+</div>
+<h1 id="compound-data-and-error-handling">Compound Data and Error
+Handling</h1>
+<p>Basic Next provides mechanisms to group data together and explicitly
+manage missing or erroneous values. It heavily favors explicit
+structures over hidden state or implicit nullability.</p>
+<h2 id="fixed-size-vectors">Fixed-Size Vectors</h2>
+<p>A fixed-size vector stores multiple values of the same type
+sequentially. Vectors are defined by an element type followed by one or
+more dimensions inside brackets.</p>
+<pre class="basic"><code>LET dimensions AS INTEGER[3] = [10, 20, 30]
+LET grid AS INTEGER[2][3] = [[1, 2, 3], [4, 5, 6]]</code></pre>
+<p>For function signatures, fields, and parameters, each dimension must
+be a non-negative integer literal. However, in version 0.3, local
+<code>LET</code> bindings can use declaration-time vector dimensions
+that are evaluated once at binding time:</p>
+<pre class="basic"><code>LET n AS INTEGER = 4
+LET values AS INTEGER[n] = [1, 2, 3, 4]</code></pre>
+<p>Indices are zero-based, running from <code>0</code> to one less than
+the dimension. Accessing an index outside this range raises an
+<code>INDEX_OUT_OF_BOUNDS</code> runtime error.</p>
+<p>If you declare a vector without an initializer, each element is
+automatically assigned its type’s default value:</p>
+<pre class="basic"><code>LET values AS INTEGER[5]  // A vector of five 0s
+values[2] = 42</code></pre>
+<p>In Basic Next, vectors have value semantics for assignments and
+parameter passing. Assigning a vector to a new variable copies all of
+its elements. The new vector does not alias the old one; modifying one
+will not affect the other.</p>
+<h2 id="value-types-struct">Value Types (<code>STRUCT</code>)</h2>
+<p>A <code>STRUCT</code> declares a small, composite value type with
+named fields. Structs cannot contain methods, static fields,
+constructors, or visibility modifiers (all fields are implicitly
+public).</p>
+<pre class="basic"><code>STRUCT Point
+    X AS FLOAT = 0.0
+    Y AS FLOAT = 0.0
+END STRUCT
+
+LET origin AS Point
+LET moved AS Point = origin
+moved.X = 10.0</code></pre>
+<p>Like vectors, structs have value semantics. Assignment or parameter
+passing creates a complete copy of the field values. Changing
+<code>moved.X</code> in the example above does not affect
+<code>origin.X</code>. The <code>NEW</code> and <code>DELETE</code>
+keywords are not used with structs.</p>
+<h2 id="string-indexing">String Indexing</h2>
+<p>Strings in Basic Next are UTF-8 encoded, and their contents can be
+read using zero-based indexing to access individual Unicode scalars
+(characters).</p>
+<pre class="basic"><code>LET greeting AS STRING = &quot;Hello&quot;
+LET firstChar AS STRING = greeting[0] // &quot;H&quot;</code></pre>
+<p>String indexing is read-only. Attempting to assign to a string index
+(e.g., <code>greeting[0] = "J"</code>) results in a static error.
+Accessing an index outside the string’s length raises an
+<code>INDEX_OUT_OF_BOUNDS</code> runtime error.</p>
+<h2 id="alternative-types-and-absence">Alternative Types and
+Absence</h2>
+<p>Basic Next does not allow variables to be implicitly null or missing.
+If a variable might contain an absence marker or an error, you must
+explicitly declare it using an alternative type with the <code>OR</code>
+keyword.</p>
+<p>Basic Next provides specific singleton values to represent the
+absence of data: - <code>EOF</code>: End of input. - <code>NA</code>: A
+missing observation or data point. - <code>NULL</code>: The explicit
+absence of an object reference or pointer.</p>
+<pre class="basic"><code>LET line AS STRING OR EOF = INPUT()</code></pre>
+<p>You cannot use a variable with an alternative type directly if the
+operation requires a concrete type. You must first test and narrow the
+type using the <code>IS</code> operator.</p>
+<h3 id="narrowing-with-is">Narrowing with <code>IS</code></h3>
+<p>The <code>IS</code> operator tests if a value matches a specific
+alternative or singleton. When used inside an <code>IF</code> condition,
+the compiler automatically narrows the type for the corresponding
+branch.</p>
+<pre class="basic"><code>IF line IS EOF THEN
+    PRINT &quot;Stream ended.&quot;
+ELSE
+    PRINT line
+END IF</code></pre>
+<p>In the <code>ELSE</code> branch above, the compiler knows
+<code>line</code> cannot be <code>EOF</code>, so its type is narrowed to
+<code>STRING</code>, making it safe to use in <code>PRINT</code>.</p>
+<p>In version 0.3, if an <code>IF</code> statement has no
+<code>ELSE</code> branch and all of its branches unconditionally
+terminate (e.g., via <code>RETURN</code> or <code>STOP</code>), the type
+is automatically narrowed in the remainder of the block:</p>
+<pre class="basic"><code>LET file AS FS.File OR Error = FS.Open(&quot;config.txt&quot;, FS.READ)
+IF file IS Error THEN
+    RETURN
+END IF
+// After the returning branch, &#39;file&#39; is safely narrowed to FS.File
+LET closed AS VOID OR Error = file.Close()</code></pre>
+<p>You can also test for <code>NULL</code> or <code>NA</code> using
+<code>IS NULL</code> or <code>IS NA</code>.</p>
+<h2 id="error-handling">Error Handling</h2>
+<p>Basic Next does not use exceptions for error handling. Fallible
+operations explicitly return their success value or a built-in
+<code>Error</code> object.</p>
+<p>The <code>Error</code> object provides standard properties:
+<code>Code AS INTEGER</code> and <code>Message AS STRING</code>.
+Functions that might fail indicate this by returning their standard type
+<code>OR Error</code>.</p>
+<pre class="basic"><code>IMPORT HOST.FileSystem AS FS
+
+LET file AS FS.File OR Error = FS.Open(&quot;config.txt&quot;, FS.READ)
+
+IF file IS Error THEN
+    PRINT &quot;Failed to open file: &quot; + file.Message
+ELSE
+    PRINT &quot;File opened successfully.&quot;
+    file.Close()
+END IF</code></pre>
+<p>By returning <code>Error</code> as an alternative type, Basic Next
+forces the caller to explicitly check for and handle the error before
+accessing the underlying value, eliminating unhandled exceptions at
+runtime.</p>
+<div style="page-break-after: always;">
+
+</div>
+<h1 id="functions-and-program-structure">Functions and Program
+Structure</h1>
+<p>Basic Next programs are composed of functions organized into files
+called modules. The language requires explicit signatures, strictly
+verifies return paths, and uses a disciplined import system to prevent
+namespace pollution.</p>
+<h2 id="function-declarations">Function Declarations</h2>
+<p>A function is declared using the <code>FUNCTION</code> keyword,
+followed by its parameter list, the <code>AS</code> keyword, and its
+return type. The block is closed with <code>END FUNCTION</code>.</p>
+<pre class="basic"><code>FUNCTION Add(a AS INTEGER, b AS INTEGER) AS INTEGER
+    RETURN a + b
+END FUNCTION</code></pre>
+<p>If a function does not return a value, its return type must be
+explicitly declared as <code>VOID</code>. In a <code>VOID</code>
+function, you can omit the <code>RETURN</code> statement entirely, or
+use a bare <code>RETURN</code> for an early exit.</p>
+<pre class="basic"><code>FUNCTION LogMessage(msg AS STRING) AS VOID
+    IF msg = &quot;&quot; THEN
+        RETURN
+    END IF
+    PRINT msg
+END FUNCTION</code></pre>
+<h3 id="return-analysis">Return Analysis</h3>
+<p>Basic Next employs strict return analysis at compile time. For any
+function with a return type other than <code>VOID</code>, the compiler
+verifies that <em>every</em> possible execution path ends with a valid
+<code>RETURN</code> statement (or a <code>STOP</code>).</p>
+<p>If a path could theoretically reach <code>END FUNCTION</code> without
+returning a value, the analyzer rejects the program. The analyzer does
+not assume that loops run forever; a <code>RETURN</code> hidden
+exclusively inside a <code>WHILE</code> or <code>REPEAT</code> loop does
+not satisfy the return rule.</p>
+<h2 id="function-values">Function Values</h2>
+<p>Basic Next supports treating functions as first-class values,
+allowing you to pass them as arguments or store them in variables. The
+type of a function value is written as
+<code>FUNCTION(parameter-types) AS return-type</code>.</p>
+<pre class="basic"><code>FUNCTION Double(value AS INTEGER) AS INTEGER
+    RETURN value * 2
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET transform AS FUNCTION(INTEGER) AS INTEGER = Double
+    LET result AS INTEGER = transform(21)
+    PRINT result
+END FUNCTION</code></pre>
+<p>In version 0.3, only module-level functions and <code>STATIC</code>
+class methods can be used as function values. Instance methods cannot be
+stored this way, and there are no lambdas or closures.</p>
+<h2 id="modules-and-visibility">Modules and Visibility</h2>
+<p>Every <code>.bn</code> source file is a module. By default, any
+<code>FUNCTION</code>, <code>CLASS</code>, <code>STRUCT</code>, or
+<code>INTERFACE</code> declared in a module is private to that
+module.</p>
+<p>To make a declaration visible to other files, you must precede it
+with the <code>EXPORT</code> keyword:</p>
+<pre class="basic"><code>// In MathUtils.bn
+EXPORT FUNCTION Square(n AS INTEGER) AS INTEGER
+    RETURN n * n
+END FUNCTION
+
+FUNCTION Helper() AS VOID
+    // Only visible inside MathUtils.bn
+END FUNCTION</code></pre>
+<h2 id="importing-modules">Importing Modules</h2>
+<p>To use exported declarations from another module, you must import it
+using the <code>IMPORT</code> keyword. Every import requires an explicit
+local alias using <code>AS</code>.</p>
+<pre class="basic"><code>// In main.bn
+IMPORT MathUtils AS Math
+
+FUNCTION Start() AS VOID
+    PRINT Math.Square(5)
+END FUNCTION</code></pre>
+<p>Imported members are only accessible through their alias (e.g.,
+<code>Math.Square</code>). Basic Next never injects imported names into
+your module’s global scope, ensuring that two modules can export
+functions with the same name without colliding.</p>
+<p>Module resolution happens relative to the project root (the directory
+of the executable module), typically under a <code>modules/</code>
+directory. Language standard-library modules resolve from
+<code>modules/bn/</code>. For example,
+<code>IMPORT BNData AS Data</code> resolves to
+<code>modules/bn/BNData.bn</code>. Host capabilities use the
+<code>HOST</code> root, such as <code>IMPORT HOST.Random AS R</code>.
+<code>BNMath</code> is a standard-library module and requires
+<code>IMPORT BNMath AS Math</code>.</p>
+<p>Basic Next checks for import cycles and will reject the program if a
+circular dependency is detected.</p>
+<div style="page-break-after: always;">
+
+</div>
+<h1 id="object-oriented-features">Object-Oriented Features</h1>
+<p>While Basic Next provides <code>STRUCT</code> for simple value types,
+it uses <code>CLASS</code> and <code>INTERFACE</code> for reference
+types, encapsulation, and polymorphism.</p>
+<h2 id="reference-types-class">Reference Types (<code>CLASS</code>)</h2>
+<p>A <code>CLASS</code> defines a reference type. Unlike a struct,
+assigning a class instance to a new variable does not copy the
+underlying data; it copies the reference. Both variables will point to
+the same object in memory.</p>
+<p>Class instances are always allocated dynamically using the
+<code>NEW</code> keyword.</p>
+<pre class="basic"><code>LET customer AS Customer = NEW Customer(10)</code></pre>
+<p><em>(Note: The explicit lifecycle of class instances, including the
+<code>DELETE</code> keyword, is covered in detail in Chapter 7: Memory
+Management).</em></p>
+<h2 id="visibility-and-self">Visibility and <code>SELF</code></h2>
+<p>By default, all fields and methods within a class are
+<code>PRIVATE</code>. Private members are scoped to the declaring class,
+meaning any method of that class can access the private members of any
+instance of that same class.</p>
+<p>To make a member available to external code, you must explicitly mark
+it as <code>PUBLIC</code>.</p>
+<p>Inside a class method, you cannot access instance fields or methods
+using an unqualified name. You must always explicitly qualify instance
+access using the <code>SELF</code> keyword.</p>
+<pre class="basic"><code>CLASS Counter
+    PRIVATE count AS INTEGER = 0
+
+    PUBLIC FUNCTION Increment() AS VOID
+        SELF.count += 1
+    END FUNCTION
+END CLASS</code></pre>
+<h2 id="constructors-and-destructors">Constructors and Destructors</h2>
+<p>A class can define exactly one constructor to initialize its state.
+Overloading is not supported in version 0.3.</p>
+<p>The constructor is declared as <code>FUNCTION CONSTRUCTOR</code> with
+an optional parameter list. It does not have a return type and is
+invoked automatically when <code>NEW</code> is called. If you do not
+declare a constructor, the compiler provides an implicit, parameterless
+<code>PRIVATE</code> constructor.</p>
+<pre class="basic"><code>CLASS Customer
+    PRIVATE id AS INTEGER
+
+    PUBLIC FUNCTION CONSTRUCTOR(id AS INTEGER)
+        SELF.id = id
+    END FUNCTION
+END CLASS</code></pre>
+<p>You may also define a destructor using
+<code>FUNCTION DESTRUCTOR()</code>. The destructor takes no parameters
+and has no return type. It executes exactly once when the instance is
+explicitly freed using <code>DELETE</code>.</p>
+<h2 id="static-members">Static Members</h2>
+<p>Basic Next supports class-level state and behavior through the
+<code>STATIC</code> keyword. A static field exists exactly once per
+class and must be initialized. A static method cannot use the
+<code>SELF</code> keyword or access instance fields.</p>
+<p>Static members are always accessed through the class name, never
+through an instance.</p>
+<pre class="basic"><code>CLASS Session
+    PRIVATE STATIC nextId AS INTEGER = 0
+
+    PUBLIC STATIC FUNCTION NextId() AS INTEGER
+        Session.nextId += 1
+        RETURN Session.nextId
+    END FUNCTION
+END CLASS
+
+// Accessing the static method
+LET id AS INTEGER = Session.NextId()</code></pre>
+<p>Re-entering the initialization of static fields raises a
+<code>STATIC_INITIALIZATION_CYCLE</code> error at runtime, ensuring
+partially initialized state is never observable.</p>
+<h2 id="inheritance">Inheritance</h2>
+<p>Basic Next supports single class inheritance using the
+<code>EXTENDS</code> keyword. A subclass inherits the methods and fields
+of its base class.</p>
+<p>If the base class has a constructor, the subclass constructor must
+call it as the first statement using the <code>SUPER</code> keyword.</p>
+<pre class="basic"><code>CLASS Animal
+    PUBLIC FUNCTION Speak() AS VOID
+        PRINT &quot;...&quot;
+    END FUNCTION
+END CLASS
+
+CLASS Dog EXTENDS Animal
+    PUBLIC FUNCTION CONSTRUCTOR()
+        SUPER()
+    END FUNCTION
+
+    PUBLIC FUNCTION Speak() AS VOID
+        PRINT &quot;Woof&quot;
+    END FUNCTION
+END CLASS</code></pre>
+<p>Methods in the subclass automatically override methods in the base
+class with the same signature. Virtual dispatch ensures the correct
+method is called at runtime, even when the object is accessed through a
+base class reference (upcast).</p>
+<pre class="basic"><code>LET myDog AS Dog = NEW Dog()
+LET myAnimal AS Animal = myDog // Upcast
+myAnimal.Speak() // Prints &quot;Woof&quot;</code></pre>
+<h2 id="contracts-interface-and-implements">Contracts
+(<code>INTERFACE</code> and <code>IMPLEMENTS</code>)</h2>
+<p>An <code>INTERFACE</code> is a named public contract consisting only
+of function signatures. It cannot contain fields, constructors, or
+implementation bodies. Interface members are implicitly public.</p>
+<pre class="basic"><code>INTERFACE Printable
+    FUNCTION Print() AS VOID
+END INTERFACE</code></pre>
+<p>A class implements one or more interfaces explicitly using the
+<code>IMPLEMENTS</code> keyword followed by a comma-separated list of
+interface names (which can be imported from other modules, e.g.,
+<code>IMPLEMENTS Pets.Named</code>). The class must provide a
+<code>PUBLIC</code> instance method for every required signature,
+matching the parameter count, types, and return type perfectly.</p>
+<pre class="basic"><code>CLASS Report IMPLEMENTS Printable
+    PUBLIC FUNCTION Print() AS VOID
+        PRINT &quot;Report data&quot;
+    END FUNCTION
+END CLASS</code></pre>
+<p>An interface name acts as a type. A class reference can be assigned
+to a variable typed as an interface it implements. This implicit upcast
+preserves the object reference but restricts access to only the
+interface’s members. In version 0.3, you cannot downcast an interface
+value back to a concrete class.</p>
+<div style="page-break-after: always;">
+
+</div>
+<h1 id="memory-management">Memory Management</h1>
+<p>Basic Next version 0.3 does not feature a garbage collector. Memory
+management is strictly manual. Developers are responsible for allocating
+memory when needed and explicitly freeing it when it is no longer
+required.</p>
+<h2 id="manual-allocation-new-and-delete">Manual Allocation
+(<code>NEW</code> and <code>DELETE</code>)</h2>
+<p>The <code>NEW</code> keyword is the sole mechanism for dynamic
+allocation. It is used to create class instances or contiguous typed
+memory regions.</p>
+<p>When you allocate a class instance, <code>NEW</code> executes the
+constructor. When you are finished with the object, you release it using
+<code>DELETE</code>, which runs the class’s <code>DESTRUCTOR</code> (if
+defined) before freeing the memory.</p>
+<pre class="basic"><code>LET customer AS Customer = NEW Customer(10)
+// ... use the object ...
+DELETE customer</code></pre>
+<p>If a constructor fails, the partially constructed object is discarded
+without executing the destructor. At program termination, the runtime
+recovers any memory not released by <code>DELETE</code>, but destructors
+are <em>not</em> run for those leaked objects. <code>DELETE</code> is
+the only deterministic destruction point.</p>
+<h2 id="pointers">Pointers</h2>
+<p>Pointers reference dynamically allocated, contiguous numeric data. In
+version 0.3, pointer elements must be numeric types; pointers to
+strings, booleans, or classes are excluded.</p>
+<p>There are three ways to declare a pointer type, depending on its size
+constraints:</p>
+<ol type="1">
+<li><strong>Single Value</strong>: <code>POINTER TO TYPE</code></li>
+<li><strong>Fixed-Size Region</strong>:
+<code>POINTER TO TYPE[length]</code></li>
+<li><strong>Dynamic Region</strong>: <code>POINTER TO TYPE[]</code></li>
+</ol>
+<pre class="basic"><code>// Allocating a single value
+LET value AS POINTER TO INTEGER = NEW INTEGER
+value[0] = 42
+DELETE value
+
+// Allocating a dynamic region
+LET count AS INTEGER = 1024
+LET samples AS POINTER TO FLOAT[] = NEW FLOAT[count]
+samples[0] = 1.5
+DELETE samples</code></pre>
+<p>Allocated memory is zero-initialized (filled with the type’s default
+value). Pointer indexing is strictly bounds-checked by the runtime, and
+pointer arithmetic is not permitted in version 0.3. In the current
+version, you can also use <code>LEN()</code> on region pointers
+(<code>POINTER TO TYPE[length]</code> and
+<code>POINTER TO TYPE[]</code>) to get their element count, but
+<code>LEN</code> on a single-value pointer remains a static error.</p>
+<p>Pointer assignment and parameter passing copy the pointer handle
+(creating an alias) without transferring ownership implicitly.
+<code>DELETE</code> accepts any alias to the base pointer originally
+returned by <code>NEW</code>.</p>
+<h2 id="memory-safety-and-runtime-errors">Memory Safety and Runtime
+Errors</h2>
+<p>Because memory is managed manually, Basic Next enforces strict
+runtime checks to prevent silent corruption:</p>
+<ul>
+<li><strong>Null Pointers</strong>: Pointers can be <code>NULL</code>.
+Indexing or dereferencing a <code>NULL</code> pointer—or attempting to
+<code>DELETE NULL</code>—raises a <code>NULL_POINTER_ACCESS</code>
+error. You must explicitly test optional pointers using
+<code>IS NULL</code>.</li>
+<li><strong>Use After Delete</strong>: Once an allocation is deleted,
+all aliases become invalid. Attempting to access the memory later raises
+a <code>USE_AFTER_DELETE</code> error.</li>
+<li><strong>Double Delete</strong>: Attempting to delete memory that has
+already been deleted raises a <code>DOUBLE_DELETE</code> error. An
+allocation is considered deleted while its destructor runs, so a
+reentrant <code>DELETE</code> also triggers this error.</li>
+<li><strong>Out of Bounds</strong>: Any index outside the allocated
+region raises an <code>INDEX_OUT_OF_BOUNDS</code> error.</li>
+<li><strong>Allocation Limits</strong>: Requesting memory with a
+computed negative count raises <code>ALLOCATION_SIZE_INVALID</code>. If
+the requested size overflows or exceeds the host’s capacity,
+<code>ALLOCATION_SIZE_OVERFLOW</code> or
+<code>ALLOCATION_TOO_LARGE</code> is raised.</li>
+</ul>
+<div style="page-break-after: always;">
+
+</div>
+<h1 id="the-standard-library-and-host">The Standard Library and
+Host</h1>
+<p>Basic Next decouples the core language from the operating system.
+<code>HOST</code> is the only built-in interface object. All
+<code>BN*</code> facilities are external modules and must be imported
+explicitly; their detailed contracts live in separate appendices.</p>
+<h2 id="the-bnmath-namespace">The <code>BNMath</code> namespace</h2>
+<p>The mathematics standard library is the <code>BNMath</code> module.
+Every use requires an import; the alias is used for member calls.</p>
+<pre class="basic"><code>IMPORT BNMath AS Math
+LET root AS FLOAT = Math.SQRT(9.0)
+LET rounded AS FLOAT = Math.ROUND(3.14159, 2)
+LET lower AS FLOAT = Math.FLOOR(3.9)</code></pre>
+<p><code>BNMath</code> provides strict IEEE 754 implementations for
+common mathematical functions. Operations return <code>FLOAT</code>
+unless restricted to integers.</p>
+<p>The available surface includes: - Mathematical and exponential
+functions: <code>ABS</code>, <code>MIN</code>, <code>MAX</code>,
+<code>SIGN</code>, <code>FLOOR</code>, <code>CEIL</code>,
+<code>TRUNC</code>, <code>ROUND</code>, <code>SQRT</code>,
+<code>HYPOT</code>, <code>FMA</code>, <code>EXP</code>,
+<code>LOG</code>, <code>LOG10</code>, <code>LOG2</code>,
+<code>POW</code>. - Trigonometry: <code>SIN</code>, <code>COS</code>,
+<code>TAN</code>, <code>ASIN</code>, <code>ACOS</code>,
+<code>ATAN</code>, <code>ATAN2</code>. - Text parsing:
+<code>VAL(text AS STRING) AS FLOAT</code>. - Descriptive statistics:
+<code>MEAN</code>, <code>MEDIAN</code>, <code>MODE</code>,
+<code>STDEV</code>, <code>VARIANCE</code>, <code>RANGE</code>,
+<code>QUARTILE1</code>, <code>QUARTILE3</code>. - Range constants:
+<code>MAX_INTEGER</code>, <code>MIN_INTEGER</code>,
+<code>MAX_FLOAT</code>, <code>MIN_FLOAT</code> (and width-specific
+variants).</p>
+<h2 id="host-capabilities">HOST capabilities</h2>
+<p>Interaction with the underlying operating system—such as reading
+command-line arguments or checking the system clock—requires explicitly
+importing a capability from the <code>HOST</code> root.</p>
+<h3 id="host.args"><code>HOST.Args</code></h3>
+<p><code>HOST.Args</code> provides access to the arguments passed by the
+host. <strong>Only the executable module</strong> (the module containing
+the <code>Start</code> function) is permitted to access
+<code>HOST.Args</code>. It does not require an <code>IMPORT</code>
+statement.</p>
+<p>You access the arguments using indexing
+(<code>HOST.Args[index]</code>) and check the total number using
+<code>LEN(HOST.Args)</code>. Index <code>0</code> is the absolute
+executable name or path supplied by the host. Further program arguments
+follow <code>--</code>.</p>
+<pre class="basic"><code>FUNCTION Start() AS VOID
+    IF LEN(HOST.Args) &gt; 1 THEN
+        PRINT &quot;First user argument: &quot; + HOST.Args[1]
+    END IF
+END FUNCTION</code></pre>
+<h3 id="host.clock"><code>HOST.Clock</code></h3>
+<pre class="basic"><code>IMPORT HOST.Clock AS Clock</code></pre>
+<p><code>HOST.Clock</code> provides time measurements: -
+<code>Clock.Now() AS TIMESTAMP</code>: Returns the current signed
+UTC Unix-epoch time in milliseconds. -
+<code>Clock.Timer() AS INT64</code>: Returns a monotonically
+increasing count of nanoseconds. It does not represent a calendar time
+and is only used for measuring elapsed durations safely.</p>
+<h3 id="host.numprocs"><code>HOST.NumProcs</code></h3>
+<p><code>HOST.NumProcs()</code> needs no import and returns the logical
+processor count available to the current process. This respects host or
+container limits where they are reported, so it is appropriate for
+selecting a bounded worker-pool size rather than detecting physical CPU
+cores. It is available in the native interpreter.</p>
+<pre class="basic"><code>LET workers AS INTEGER OR Error = HOST.NumProcs()</code></pre>
+<h3 id="host.console"><code>HOST.Console</code></h3>
+<p>The runtime provides a default console used implicitly by
+<code>PRINT</code> and <code>INPUT()</code>. To interact explicitly with
+the terminal window, use the <code>HOST.Console</code> capability.</p>
+<p><code>HOST.Console</code> provides methods for clearing the screen,
+emitting a beep, positioning the cursor, and querying the window
+size:</p>
+<pre class="basic"><code>IMPORT HOST.Console AS CON
+
+CON.Cls()
+CON.Beep()
+CON.PrintAt(1, 1, &quot;Hello at top-left&quot;) // 1-based coordinates
+LET cols AS INTEGER = CON.NumCols()
+LET rows AS INTEGER = CON.NumRows()</code></pre>
+<h3 id="host.random"><code>HOST.Random</code></h3>
+<p><code>HOST.Random</code> provides pseudorandom number generation.</p>
+<pre class="basic"><code>IMPORT HOST.Random AS R
+
+LET chance AS FLOAT = R.Random() // Returns a FLOAT in [0, 1)
+R.Seed(42) // Explicitly seed the generator</code></pre>
+<h3 id="host.filesystem"><code>HOST.FileSystem</code></h3>
+<p><code>HOST.FileSystem</code> provides access to the local file
+system. The <code>FS.File</code> class is used to read and write
+files.</p>
+<pre class="basic"><code>IMPORT HOST.FileSystem AS FS
+
+LET file AS FS.File OR Error = FS.Open(&quot;data.txt&quot;, FS.READ)
+IF file IS Error THEN
+    PRINT &quot;Could not open file&quot;
+ELSE
+    LET content AS STRING OR Error = file.ReadAll()
+    file.Close()
+END IF</code></pre>
+<h3 id="host.net"><code>HOST.Net</code></h3>
+<p><code>HOST.Net</code> is a native-host capability added in version
+0.3 for IPv4/IPv6 addressing, system resolution, TCP, UDP, bounded ICMP
+Echo, and direct-neighbor lookup. The operating system owns the
+networking stack.</p>
+<pre class="basic"><code>IMPORT HOST.Net AS Net</code></pre>
+<h2 id="external-module-references">External module references</h2>
+<p>Basic Next provides several provider-backed modules that must be
+explicitly imported:</p>
+<ul>
+<li><code>BNData</code>: Contract documented in <a
+href="14_bndata.md">Appendix H</a>.</li>
+<li><code>BNWeb</code>: Added in version 0.3, it provides an HTTP
+client/server, routes, filters, and URL boundaries. Contract in <a
+href="13_bnweb.md">Appendix G</a>.</li>
+<li><code>BNLog</code>: Added in version 0.3, it provides structured
+application and access logging. Contract in <a
+href="12_bnlog.md">Appendix F</a>.</li>
+<li><code>BNJson</code>: Added in version 0.3, it provides bounded JSON
+parsing and serialization. Contract in <a href="11_bnjson.md">Appendix
+E</a>.</li>
+</ul>
+<h2 id="temporal-data">Temporal Data</h2>
+<p>Basic Next distinguishes strictly between instant-in-time timestamps
+and human calendar values.</p>
+<ul>
+<li><code>TIMESTAMP</code>: An alias for <code>INT64</code> representing
+an exact moment (milliseconds since the UTC Unix epoch). It supports
+standard integer arithmetic.</li>
+<li><code>DATE</code>: An immutable Gregorian date (e.g.,
+<code>2026-08-25</code>). Logically a 32-bit day count.</li>
+<li><code>TIME</code>: An immutable time of day (e.g.,
+<code>22:07:20.000</code>). Logically a 32-bit millisecond count.</li>
+<li><code>TIMEZONE</code>: An IANA identifier (e.g.,
+<code>America/Sao_Paulo</code> or <code>UTC</code>). The value stores
+that identifier; the interpreter does not load a TZDB database or apply
+zone rules.</li>
+</ul>
+<p>Calendar, formatting, and time-zone operations use explicit calls in
+the temporal library rather than implicit string conversions.</p>
+<h2 id="built-ins-len-and-sizeof">Built-ins: <code>LEN</code> and
+<code>SIZEOF</code></h2>
+<p>Basic Next provides two built-in forms for measuring size. Both
+evaluate their operand and return an <code>INTEGER</code>.</p>
+<h3 id="lenvalue"><code>LEN(value)</code></h3>
+<p>Returns the logical count of items: - For a numeric value, the length
+is <code>1</code>. - For a <code>STRING</code>, it is the number of
+Unicode scalar values (characters). - For a fixed-size vector, it is the
+total number of elements across all dimensions.</p>
+<h3 id="sizeofvalue"><code>SIZEOF(value)</code></h3>
+<p>Returns the portable byte size of the value’s representation, with no
+padding. - <code>BOOLEAN</code> is 1 byte. - <code>DATE</code> and
+<code>TIME</code> are 4 bytes. - <code>STRING</code> returns the exact
+UTF-8 byte length of its text. - Vectors and structs return the sum of
+their elements’ sizes.</p>
+<p><code>SIZEOF</code> is a static error for pointers, interfaces,
+alternative types, and structs containing dynamically sized strings.</p>
+<div style="page-break-after: always;">
+
+</div>
+<h1 id="io-and-concurrency">I/O and Concurrency</h1>
+<p>Basic Next version 0.3 handles input/output (I/O) and concurrency
+through explicit capabilities and external modules. This design ensures
+that the core language remains deterministic and predictable, while
+providing powerful tools for building network services and concurrent
+programs.</p>
+<h2 id="synchronous-bounded-io">Synchronous, Bounded I/O</h2>
+<p>All I/O in Basic Next is synchronous and bounded. The language does
+not use implicit asynchronous runtimes (like <code>async/await</code> in
+other languages). Instead, operations block until they complete or hit
+an explicit timeout, returning either the requested data or an explicit
+<code>Error</code> object.</p>
+<h3 id="file-system">File System</h3>
+<p>Access to local files is managed through
+<code>HOST.FileSystem</code>.</p>
+<pre class="basic"><code>IMPORT HOST.FileSystem AS FS
+
+LET file AS FS.File OR Error = FS.Open(&quot;config.txt&quot;, FS.READ)
+IF file IS Error THEN
+    PRINT &quot;Error opening file: &quot; + file.Message
+ELSE
+    LET data AS STRING OR Error = file.ReadAll()
+    file.Close()
+END IF</code></pre>
+<h3 id="networking">Networking</h3>
+<p>Raw network access is provided by the native host capability
+<code>HOST.Net</code>. It supports IPv4 and IPv6 addressing, system DNS
+resolution, TCP, UDP, and bounded ICMP Echo. The operating system owns
+the underlying network stack.</p>
+<pre class="basic"><code>IMPORT HOST.Net AS Net</code></pre>
+<p>For HTTP communication, you should use the <code>BNWeb</code> module
+instead of raw sockets. <code>BNWeb</code> consumes
+<code>HOST.Net</code> internally to provide a bounded request/response
+model, routing, filters, and local HTTP/1.1, HTTP/2, and HTTPS server
+adapters.</p>
+<pre class="basic"><code>IMPORT BNWeb AS Web</code></pre>
+<h2 id="concurrency-and-parallelism">Concurrency and Parallelism</h2>
+<p>Basic Next version 0.3 introduces concurrency through the
+<code>BNDispatch</code> module. While the language itself does not have
+a <code>PARALLEL</code> keyword or built-in threads,
+<code>BNDispatch</code> provides a robust, host-backed task
+dispatcher.</p>
+<pre class="basic"><code>IMPORT BNDispatch AS Dispatch</code></pre>
+<h3 id="bndispatch">BNDispatch</h3>
+<p><code>BNDispatch</code> provides bounded serial and concurrent
+queues, named-function tasks, tickets, joins, groups, barriers,
+semaphores, and mutexes.</p>
+<p>These APIs are deliberately separated from the core language and do
+not expose native thread handles directly to the programmer. Instead,
+you dispatch tasks to queues.</p>
+<p>To determine the available parallel capacity of the host system, you
+can use <code>HOST.NumProcs()</code>, which exposes the logical
+processor count available to bounded dispatch selection.</p>
+<pre class="basic"><code>LET cores AS INTEGER OR Error = HOST.NumProcs()
+IF cores IS Error THEN
+    cores = 2 // Fallback
+END IF</code></pre>
+<h3 id="constraints-and-resource-management">Constraints and Resource
+Management</h3>
+<p>To prevent resource exhaustion and ensure determinism: - Queue
+workers are limited to a maximum of 64. - Pending work items are limited
+to 1,024. - Lifecycle waits use explicit timeouts ranging from 1 to
+60,000 milliseconds. - Synchronization operations (like acquiring a
+mutex or waiting on a barrier) return an <code>Error</code> on timeout
+or if invalid bounds are supplied.</p>
+<p>This explicit error handling forces the application to deal with
+resource pressure, timeouts, and concurrency limits gracefully, rather
+than crashing or hanging indefinitely.</p>
+<div style="page-break-after: always;">
+
+</div>
+<h1 id="appendices">Appendices</h1>
+<p>Because Basic Next specifies behavior transparently, the exact
+language specifications and technical lists are maintained in their
+respective normative files within the repository.</p>
+<h2 id="appendix-a-keywords-reference">Appendix A: Keywords
+Reference</h2>
+<p>Basic Next maintains a strict registry of reserved words to guarantee
+backward compatibility. A word is only reserved in its exact uppercase
+spelling.</p>
+<p>For the complete list of keywords, their semantic meanings, and
+decision statuses, see the normative document: - <a
+href="../../language/0.3/keywords.md">0.3 Keyword Registry</a></p>
+<h2 id="appendix-b-language-diagnostics">Appendix B: Language
+Diagnostics</h2>
+<p>Basic Next is designed with a zero-warning policy. Diagnostics either
+reject the source entirely or report a clear runtime failure.</p>
+<p>Diagnostic behavior follows the accepted language contract and
+command reference:</p>
+<ul>
+<li><a href="../../language/0.3/0.3.md">Version 0.3 language
+contract</a></li>
+<li><a href="../../man/bn.1"><code>bn(1)</code></a></li>
+</ul>
+<h2 id="appendix-c-accepted-0.3-syntax-ebnf">Appendix C: Accepted 0.3
+Syntax (EBNF)</h2>
+<p>The structural grammar of Basic Next is strictly defined using
+Extended Backus-Naur Form (EBNF). The EBNF focuses exclusively on
+parsing valid syntax, while semantic rules (such as return analysis) are
+enforced by the compiler.</p>
+<p>For the definitive structural grammar of version 0.3, see:</p>
+<ul>
+<li><a href="../../language/0.3/0.3.ebnf">Version 0.3 EBNF</a></li>
+</ul>
+<h2 id="appendix-d-the-bn-tool">Appendix D: The <code>bn</code>
+Tool</h2>
+<p>The Unix manual for the reference tool is <a
+href="../../man/bn.1"><code>bn(1)</code></a>. Installation and
+troubleshooting are in <a
+href="../../project/usage.md"><code>docs/project/usage.md</code></a>.
+The normative language text is <a
+href="../../language/0.3/0.3.md"><code>0.3.md</code></a>.</p>
+<p>External provider-backed modules are documented in separate
+appendices:</p>
+<ul>
+<li><a href="11_bnjson.md"><code>BNJson</code></a></li>
+<li><a href="12_bnlog.md"><code>BNLog</code></a></li>
+<li><a href="13_bnweb.md"><code>BNWeb</code></a></li>
+<li><a href="14_bndata.md"><code>BNData</code></a></li>
+<li><a href="15_external_modules.md">External module
+conventions</a></li>
+<li><a href="16_bndispatch.md"><code>BNDispatch</code></a></li>
+</ul>
+<div style="page-break-after: always;">
+
+</div>
+<h1 id="appendix-e-bnjson">Appendix E: BNJson</h1>
+<p><code>BNJson</code> is an external provider-backed module. It is not
+part of the Basic Next core and every consumer must import it
+explicitly:</p>
+<pre class="basic"><code>IMPORT BNJson AS Json</code></pre>
+<p>The accepted 0.3 contract, ownership rules, limits, and errors are
+defined in <a
+href="../../language/0.3/bnjson.md"><code>docs/language/0.3/bnjson.md</code></a>.
+Providers may use Rust implementations, but must preserve the documented
+behavior.</p>
+<div style="page-break-after: always;">
+
+</div>
+<h1 id="appendix-f-bnlog">Appendix F: BNLog</h1>
+<p><code>BNLog</code> is an external structured-logging module, not a
+language primitive. Import it explicitly:</p>
+<pre class="basic"><code>IMPORT BNLog AS Log</code></pre>
+<p>The 0.3 API, JSON Lines format, bounded fields, escaping, and
+transport policy are specified in <a
+href="../../language/0.3/bnlog.md"><code>docs/language/0.3/bnlog.md</code></a>.</p>
+<div style="page-break-after: always;">
+
+</div>
+<h1 id="appendix-g-bnweb">Appendix G: BNWeb</h1>
+<p><code>BNWeb</code> is the external standard module for web
+communication. It provides HTTP client and server adapters, routing,
+filtering, and a shared request/response pipeline.</p>
+<p>Because <code>BNWeb</code> is an external module, you must import it
+explicitly:</p>
+<pre class="basic"><code>IMPORT BNWeb AS Web</code></pre>
+<h2 id="architecture-and-dependencies">Architecture and
+Dependencies</h2>
+<p><code>BNWeb</code> is built on top of <code>HOST.Net</code> for all
+socket and DNS resolution operations. It does not create its own network
+capability. Furthermore, it integrates with <code>BNLog</code> for
+structured access logging.</p>
+<p>You must import capabilities directly; importing <code>BNWeb</code>
+does not expose <code>Net</code> or <code>Log</code> implicitly:</p>
+<pre class="basic"><code>IMPORT HOST.Net AS Net
+IMPORT BNLog AS Log
+IMPORT BNWeb AS Web</code></pre>
+<h2 id="url-boundary-and-safety">URL Boundary and Safety</h2>
+<p><code>BNWeb</code> follows a strict URL boundary to prevent security
+flaws like path traversal and request smuggling: 1. Parse -&gt; Validate
+-&gt; Canonicalize -&gt; Route Match -&gt; Ordered Filters -&gt; Handler
+2. Invalid or ambiguous URLs are rejected immediately with
+<code>400 Bad Request</code>. 3. Encoded path separators
+(<code>%2F</code>, <code>%5C</code>) and <code>.</code>/<code>..</code>
+segments are rejected.</p>
+<p>The framework ensures the original malformed string is never executed
+as a route or filesystem path.</p>
+<h2 id="protocol-scope-and-0.4-roadmap">Protocol Scope and 0.4
+Roadmap</h2>
+<p>Version 0.3 requires <strong>HTTP/1.1</strong>,
+<strong>HTTP/2</strong>, TLS, and ALPN.</p>
+<p>To manage expectations and scope, the following advanced features are
+explicitly deferred to <strong>version 0.4</strong>: * <strong>HTTP/3
+and QUIC:</strong> Not supported in the 0.3 pipeline. *
+<strong>Concurrent Transport Callbacks:</strong> <code>BNWeb</code>
+transport-to-BN threading relies on sequential bounds for now;
+concurrent dispatch integration is scheduled for 0.4. * <strong>HTTPS
+Client Trust-Root Management:</strong> Advanced client-side certificate
+authority configurations. * <strong>Transport Access-Log
+Integration:</strong> Deeply integrated native transport logging.</p>
+<div style="page-break-after: always;">
+
+</div>
+<h1 id="appendix-h-bndata">Appendix H: BNData</h1>
+<p><code>BNData</code> is an external data-provider module. It is not
+built into the core; use an explicit import:</p>
+<pre class="basic"><code>IMPORT BNData AS Data</code></pre>
+<p>Its accepted 0.3 surface and provider requirements are maintained in
+the module contract and conformance fixtures under
+<code>docs/language/0.3/</code> and <code>tests/modules/</code>.</p>
+<div style="page-break-after: always;">
+
+</div>
+<h1 id="appendix-i-external-module-conventions">Appendix I: External
+module conventions</h1>
+<p>Every <code>BN*</code> facility is an external module backed by a
+host/provider interface. External modules:</p>
+<ul>
+<li>are never implicitly available in the language core;</li>
+<li>require an explicit <code>IMPORT</code> and alias;</li>
+<li>must expose bounded, deterministic errors when a provider is
+unavailable;</li>
+<li>must keep their normative API and fixtures separate from core
+grammar;</li>
+<li>may be implemented by Rust providers without changing BN
+syntax.</li>
+</ul>
+<p><code>HOST</code> is the sole built-in interface object in the
+language specification. The planned <code>BNThreads</code>,
+<code>BNCrypto</code>, and other future modules follow these same
+rules.</p>
+<div style="page-break-after: always;">
+
+</div>
+<h1 id="appendix-j-bndispatch">Appendix J: BNDispatch</h1>
+<p><code>BNDispatch</code> is a host-backed external module providing
+concurrency primitives and job orchestration. It is explicitly separated
+from the core language to ensure safety and determinism.</p>
+<pre class="basic"><code>IMPORT BNDispatch AS Dispatch</code></pre>
+<h2 id="concurrency-without-native-threads">Concurrency without Native
+Threads</h2>
+<p>Basic Next does not expose native OS thread handles, nor does it
+include a <code>PARALLEL</code> language keyword in version 0.3.
+Instead, <code>BNDispatch</code> provides an abstraction based on
+dispatch queues, tasks, and synchronization primitives:</p>
+<ul>
+<li><strong>Bounded Queues:</strong> You can create serial (one-by-one)
+or concurrent dispatch queues.</li>
+<li><strong>Tasks and Tickets:</strong> Tasks are named functions
+dispatched to a queue. Dispatching a task returns a Ticket, which you
+can use to <code>Join</code> (wait for completion) or
+<code>Cancel</code> the operation.</li>
+<li><strong>Groups and Barriers:</strong> Used to coordinate multiple
+tasks, ensuring a set of operations finishes before proceeding.</li>
+<li><strong>Semaphores and Mutexes:</strong> Standard synchronization
+primitives to protect shared resources across concurrent tasks.</li>
+</ul>
+<h2 id="constraints-and-resource-limits">Constraints and Resource
+Limits</h2>
+<p>To avoid resource exhaustion and deadlocks, <code>BNDispatch</code>
+strictly limits execution contexts and forces bounded wait times:</p>
+<ul>
+<li><strong>Workers:</strong> The maximum number of queue workers is
+capped at <code>64</code>.</li>
+<li><strong>Pending Work:</strong> Queues will hold a maximum of
+<code>1,024</code> pending tasks.</li>
+<li><strong>Timeouts:</strong> Lifecycle waits (such as joining a ticket
+or acquiring a mutex) require explicit timeouts ranging from
+<code>1</code> to <code>60,000</code> milliseconds.</li>
+</ul>
+<p>Synchronization operations return an <code>Error</code> on timeout or
+invalid bounds. This forces the programmer to explicitly handle resource
+pressure:</p>
+<pre class="basic"><code>// Conceptual example of bounded synchronization
+LET mtx AS Dispatch.Mutex = Dispatch.CreateMutex()
+LET lock AS VOID OR Error = mtx.Acquire(5000) // 5000ms timeout
+
+IF lock IS Error THEN
+    PRINT &quot;Failed to acquire lock: &quot; + lock.Message
+ELSE
+    // Critical section
+    mtx.Release()
+END IF</code></pre>
+<h2 id="integration-with-host.numprocs">Integration with
+HOST.NumProcs</h2>
+<p>For concurrent queues, you can query the host system’s logical
+processor count to tune the number of concurrent workers dynamically,
+avoiding over-subscription:</p>
+<pre class="basic"><code>LET cores AS INTEGER OR Error = HOST.NumProcs()</code></pre>
+<h2 id="forward-to-0.4">Forward to 0.4</h2>
+<p>While <code>BNDispatch</code> introduces powerful concurrency, full
+integration of concurrent threading with <code>BNWeb</code> transport
+callbacks remains deferred to version 0.4.</p>
+</body>
+</html>

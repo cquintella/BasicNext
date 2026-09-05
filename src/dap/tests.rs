@@ -35,6 +35,7 @@ fn breakpoint_registry_deduplicates_and_bounds_lines() {
     );
     assert_eq!(response["breakpoints"].as_array().unwrap().len(), 1);
     assert_eq!(registry["main.bn"].len(), 1);
+    assert_eq!(response["breakpoints"][0]["verified"], false);
 }
 
 #[test]

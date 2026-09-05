@@ -212,7 +212,7 @@ fn icmp_checksum(packet: &[u8]) -> u16 {
     while sum >> 16 != 0 {
         sum = (sum & 0xffff) + (sum >> 16);
     }
-    !(sum as u16)
+    !u16::try_from(sum).expect("Internet checksum folding keeps the sum within u16")
 }
 
 fn map_open(error: io::Error) -> PingError {
