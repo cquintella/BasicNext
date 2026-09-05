@@ -190,8 +190,16 @@ impl Executor<'_, '_> {
                 self.instruction(&call, symbols, values)?;
             }
             Instruction::Input {
-                destination, span, ..
+                destination, prompt, span, ..
             } => {
+                if let Some(prompt) = prompt {
+                    write!(self.output, "{}", render(value(values, *prompt, *span)?)).map_err(|error| {
+                        runtime_error("OUTPUT_ERROR", format!("cannot write output: {error}"), *span)
+                    })?;
+                    self.output.flush().map_err(|error| {
+                        runtime_error("OUTPUT_ERROR", format!("cannot flush output: {error}"), *span)
+                    })?;
+                }
                 let mut line = String::new();
                 let count = self.input.read_line(&mut line).map_err(|error| {
                     runtime_error("INPUT_ERROR", format!("cannot read input: {error}"), *span)
@@ -309,7 +317,16 @@ impl Executor<'_, '_> {
                 values: printed,
                 span,
             } => {
-                for printed in printed {
+                for (index, printed) in printed.iter().enumerate() {
+                    if index > 0 {
+                        write!(self.output, " ").map_err(|error| {
+                            runtime_error(
+                                "OUTPUT_ERROR",
+                                format!("cannot write output: {error}"),
+                                *span,
+                            )
+                        })?;
+                    }
                     write!(self.output, "{}", render(value(values, *printed, *span)?)).map_err(
                         |error| {
                             runtime_error(

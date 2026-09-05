@@ -1,4 +1,8 @@
-#![allow(clippy::wildcard_imports)]
+#![allow(
+    clippy::wildcard_imports,
+    clippy::match_same_arms,
+    clippy::too_many_lines
+)]
 use super::*;
 use std::collections::HashSet;
 
@@ -15,6 +19,10 @@ pub(crate) fn llvm_function_symbol(name: &str) -> String {
         }
     }
     symbol
+}
+
+pub(crate) fn dispatch_trampoline_symbol(name: &str) -> String {
+    format!("bn_dispatch_trampoline_{}", llvm_function_symbol(name))
 }
 
 pub(crate) fn string_global(function_name: &str, value: u32) -> String {
@@ -52,12 +60,6 @@ pub(crate) fn analyze_reachable<'a>(
         if analyzed.contains_key(function.name.as_str()) {
             continue;
         }
-        if function.asynchronous {
-            return Err(format!(
-                "BUILD_LOWERING_UNAVAILABLE: asynchronous function '{}' is unavailable in the LLVM backend",
-                function.name
-            ));
-        }
         if function.name != "Start" {
             validate_user_function(function)?;
         }
@@ -85,6 +87,16 @@ pub(crate) fn analyze_reachable<'a>(
                                     }
                                 }
                             }
+                        }
+                    }
+                    Instruction::DispatchSubmit { task, .. } => {
+                        if let Some(name) = analysis.functions.get(task).copied()
+                            && let Some(callee_fn) = module
+                                .functions
+                                .iter()
+                                .find(|candidate| candidate.name == name)
+                        {
+                            stack.push(callee_fn);
                         }
                     }
                     Instruction::EnsureClass { class, .. } => {
@@ -126,6 +138,7 @@ fn validate_user_function(function: &Function) -> Result<(), String> {
 pub(crate) fn emit_preamble(
     text: &mut String,
     functions: &[(&Function, LoweringAnalysis<'_>)],
+    synchronize_prints: bool,
 ) -> bool {
     let mut uses_concat = false;
     let mut uses_bn_rt = false;
@@ -170,6 +183,9 @@ pub(crate) fn emit_preamble(
         text.push_str(input_runtime_ir());
     }
     text.push_str("\ndeclare i32 @printf(ptr, ...)\ndeclare i32 @putchar(i32)\n");
+    if synchronize_prints {
+        text.push_str("@__stdoutp = external global ptr\ndeclare void @flockfile(ptr)\ndeclare void @funlockfile(ptr)\n");
+    }
     if uses_concat {
         text.push_str(STRING_CONCAT_DECLS);
     }
@@ -304,6 +320,42 @@ pub(crate) fn emit_preamble(
     for intrinsic in intrinsics {
         let _ = writeln!(text, "declare {intrinsic}");
     }
+    let mut trampolines = BTreeSet::new();
+    for (_, analysis) in functions {
+        for name in analysis.functions.values().copied() {
+            if name.starts_with("@super:") {
+                continue;
+            }
+            if functions.iter().any(|(function, _)| {
+                function.blocks.iter().any(|block| {
+                    block.instructions.iter().any(|instruction| {
+                        matches!(instruction, Instruction::DispatchSubmit { task, .. } if analysis.functions.get(task).copied() == Some(name))
+                    })
+                })
+            }) {
+                trampolines.insert(name.to_string());
+            }
+        }
+    }
+    for task in trampolines {
+        let Some((task_fn, _)) = functions.iter().find(|(function, _)| function.name == task)
+        else {
+            continue;
+        };
+        let symbol = llvm_function_symbol(&task);
+        let wrapper = dispatch_trampoline_symbol(&task);
+        let ret = function_return_llvm(&task_fn.return_type).unwrap_or("void");
+        let _ = writeln!(
+            text,
+            "\ndefine i32 @{wrapper}(ptr %context, ptr %arguments, i32 %argument_count, ptr %result, ptr %error) {{"
+        );
+        if ret == "void" {
+            let _ = writeln!(text, "  call void @{symbol}()");
+        } else {
+            let _ = writeln!(text, "  %dispatch_value = call {ret} @{symbol}()");
+        }
+        text.push_str("  ret i32 0\n}\n");
+    }
     let _ = uses_exit;
     random_global
 }
@@ -314,6 +366,7 @@ pub(crate) fn emit_function(
     function: &Function,
     analysis: &LoweringAnalysis<'_>,
     rng_global: bool,
+    synchronize_prints: bool,
 ) -> Result<(), String> {
     let is_start = function.name == "Start";
     let symbol_names = analysis
@@ -335,6 +388,7 @@ pub(crate) fn emit_function(
         needs_bn_rt_trap: false,
         is_start,
         rng_global,
+        synchronize_prints,
         return_llvm: if is_start {
             "i32"
         } else {
@@ -586,8 +640,7 @@ fn emit_virtual_method_call(
     for (index, candidate) in overrides.iter().enumerate() {
         let class = candidate
             .rsplit_once('.')
-            .map(|(class, _)| class)
-            .unwrap_or(candidate);
+            .map_or(*candidate, |(class, _)| class);
         let class_leaf = class.rsplit('.').next().unwrap_or(class);
         let label = format!("vcase{n}_{index}");
         let next = if index + 1 == overrides.len() {

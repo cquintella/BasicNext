@@ -1,4 +1,8 @@
-#![allow(clippy::wildcard_imports)]
+#![allow(
+    clippy::wildcard_imports,
+    clippy::match_same_arms,
+    clippy::too_many_lines
+)]
 use super::*;
 
 pub(crate) const BN_RT_DECLS: &str = "\
@@ -34,6 +38,28 @@ declare i32 @bn_rt_net_udp_packet_size(i64)
 declare i32 @bn_rt_net_udp_packet_truncated(i64)
 declare i32 @bn_rt_net_udp_packet_copy_to(i64, ptr, i32, ptr)
 declare i32 @bn_rt_net_udp_packet_source(i64, ptr, ptr)
+declare i32 @bn_rt_dispatch_queue_create(i32, ptr)
+declare i32 @bn_rt_dispatch_submit(i64, ptr, ptr, ptr, i32, ptr)
+declare i32 @bn_rt_dispatch_await(i64, i64, ptr, ptr)
+declare i32 @bn_rt_dispatch_cancel(i64)
+declare i32 @bn_rt_dispatch_ticket_close(i64)
+declare i32 @bn_rt_dispatch_queue_join(i64, i64)
+declare i32 @bn_rt_dispatch_queue_close(i64, i64)
+declare i32 @bn_rt_dispatch_group_create(ptr)
+declare i32 @bn_rt_dispatch_group_add(i64, i64)
+declare i32 @bn_rt_dispatch_group_wait(i64, i64)
+declare i32 @bn_rt_dispatch_group_close(i64)
+declare i32 @bn_rt_dispatch_barrier_create(i32, ptr)
+declare i32 @bn_rt_dispatch_barrier_wait(i64, i64)
+declare i32 @bn_rt_dispatch_barrier_close(i64)
+declare i32 @bn_rt_dispatch_semaphore_create(i32, ptr)
+declare i32 @bn_rt_dispatch_semaphore_acquire(i64, i64)
+declare i32 @bn_rt_dispatch_semaphore_release(i64)
+declare i32 @bn_rt_dispatch_semaphore_close(i64)
+declare i32 @bn_rt_dispatch_mutex_create(ptr)
+declare i32 @bn_rt_dispatch_mutex_lock(i64, i64)
+declare i32 @bn_rt_dispatch_mutex_unlock(i64)
+declare i32 @bn_rt_dispatch_mutex_close(i64)
 ";
 
 pub(crate) fn is_bn_rt_host_call(name: &str) -> bool {
@@ -952,7 +978,7 @@ pub(crate) fn lower_bn_rt_call(
                 .get(&arguments[0])
                 .and_then(llvm_type)
                 .unwrap_or("{ i1, ptr, i32 }");
-            let index = if ty == "{ ptr, i32 }" { 0 } else { 1 };
+            let index = i32::from(ty != "{ ptr, i32 }");
             let _ = writeln!(
                 text,
                 "  %netaddr{dest} = extractvalue {ty} %v{}, {index}",
@@ -1132,6 +1158,144 @@ pub(crate) fn lower_bn_rt_call(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn lower_bn_dispatch_call(
+    text: &mut String,
+    destination: ValueId,
+    name: &str,
+    arguments: &[ValueId],
+    analysis: &LoweringAnalysis<'_>,
+) {
+    let dest = destination.0;
+    if name.ends_with(".Queue.Concurrent")
+        || name.ends_with(".Queue.Serial")
+        || name.ends_with(".Queue.Auto")
+    {
+        let workers = if name.ends_with(".Queue.Concurrent") {
+            extend_to_i32(
+                text,
+                arguments.first().copied().expect("validated worker count"),
+                analysis
+                    .values
+                    .get(arguments.first().expect("validated worker count"))
+                    .expect("validated worker type"),
+            )
+        } else {
+            "1".into()
+        };
+        let _ = writeln!(text, "  %dispatchqueue{dest} = alloca i64");
+        let _ = writeln!(
+            text,
+            "  %dispatchrc{dest} = call i32 @bn_rt_dispatch_queue_create(i32 {workers}, ptr %dispatchqueue{dest})"
+        );
+        let _ = writeln!(
+            text,
+            "  %dispatchhandle{dest} = load i64, ptr %dispatchqueue{dest}"
+        );
+        emit_handle_result(
+            text,
+            destination,
+            format!("%dispatchrc{dest}"),
+            format!("%dispatchhandle{dest}"),
+        );
+        return;
+    }
+    let constructor = if name.ends_with(".Group.New") {
+        Some(("bn_rt_dispatch_group_create", false))
+    } else if name.ends_with(".Barrier.New") {
+        Some(("bn_rt_dispatch_barrier_create", true))
+    } else if name.ends_with(".Semaphore.New") {
+        Some(("bn_rt_dispatch_semaphore_create", true))
+    } else if name.ends_with(".Mutex.New") {
+        Some(("bn_rt_dispatch_mutex_create", false))
+    } else {
+        None
+    };
+    if let Some((function, has_argument)) = constructor {
+        let out = format!("%dispatchout{dest}");
+        let _ = writeln!(text, "  {out} = alloca i64");
+        if has_argument {
+            let value = extend_to_i32(
+                text,
+                arguments[0],
+                analysis
+                    .values
+                    .get(&arguments[0])
+                    .expect("validated constructor argument"),
+            );
+            let _ = writeln!(
+                text,
+                "  %dispatchrc{dest} = call i32 @{function}(i32 {value}, ptr {out})"
+            );
+        } else {
+            let _ = writeln!(
+                text,
+                "  %dispatchrc{dest} = call i32 @{function}(ptr {out})"
+            );
+        }
+        let _ = writeln!(text, "  %dispatchcreated{dest} = load i64, ptr {out}");
+        emit_handle_result(
+            text,
+            destination,
+            format!("%dispatchrc{dest}"),
+            format!("%dispatchcreated{dest}"),
+        );
+        return;
+    }
+    let handle = format!("%dispatchhandle{dest}");
+    let _ = writeln!(
+        text,
+        "  {handle} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+        arguments.first().expect("validated dispatch handle").0
+    );
+    let timeout = arguments.get(1).map_or_else(
+        || "0".into(),
+        |value| {
+            extend_to_i64(
+                text,
+                *value,
+                analysis.values.get(value).expect("validated timeout type"),
+            )
+        },
+    );
+    let function = if name.ends_with(".Queue.Join") {
+        "bn_rt_dispatch_queue_join"
+    } else if name.ends_with(".Queue.Close") {
+        "bn_rt_dispatch_queue_close"
+    } else if name.ends_with(".Group.Wait") {
+        "bn_rt_dispatch_group_wait"
+    } else if name.ends_with(".Group.Leave") {
+        "bn_rt_dispatch_group_close"
+    } else if name.ends_with(".Barrier.Wait") {
+        "bn_rt_dispatch_barrier_wait"
+    } else if name.ends_with(".Semaphore.Acquire") {
+        "bn_rt_dispatch_semaphore_acquire"
+    } else if name.ends_with(".Semaphore.Release") {
+        "bn_rt_dispatch_semaphore_release"
+    } else if name.ends_with(".Mutex.Lock") {
+        "bn_rt_dispatch_mutex_lock"
+    } else if name.ends_with(".Mutex.Unlock") {
+        "bn_rt_dispatch_mutex_unlock"
+    } else {
+        "bn_rt_dispatch_ticket_close"
+    };
+    let call = if matches!(
+        function,
+        "bn_rt_dispatch_group_close"
+            | "bn_rt_dispatch_barrier_close"
+            | "bn_rt_dispatch_semaphore_close"
+            | "bn_rt_dispatch_mutex_close"
+            | "bn_rt_dispatch_ticket_close"
+            | "bn_rt_dispatch_semaphore_release"
+            | "bn_rt_dispatch_mutex_unlock"
+    ) {
+        format!("call i32 @{function}(i64 {handle})")
+    } else {
+        format!("call i32 @{function}(i64 {handle}, i64 {timeout})")
+    };
+    emit_void_result(text, destination, call);
+}
+
 fn net_payload_ptr(text: &mut String, value: ValueId) -> String {
     let temp = format!("netpay{}", value.0);
     let _ = writeln!(
@@ -1181,7 +1345,7 @@ fn endpoint_parts(
     }
 }
 
-fn emit_handle_result(
+pub(crate) fn emit_handle_result(
     text: &mut String,
     destination: ValueId,
     rc: impl AsRef<str>,
@@ -1205,7 +1369,7 @@ fn emit_handle_result(
     );
 }
 
-fn emit_void_result(text: &mut String, destination: ValueId, rc: impl AsRef<str>) {
+pub(crate) fn emit_void_result(text: &mut String, destination: ValueId, rc: impl AsRef<str>) {
     let dest = destination.0;
     let _ = writeln!(text, "  %netrc{dest} = {}", rc.as_ref());
     let _ = writeln!(text, "  %neterr{dest} = icmp ne i32 %netrc{dest}, 0");

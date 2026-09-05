@@ -89,6 +89,18 @@ pub struct SemanticModel {
     pub layouts: HashMap<String, u64>,
     pub base_classes: HashMap<String, String>,
     pub(crate) bnmath_modules: HashSet<ModuleId>,
+    pub(crate) module_constants: HashMap<(ModuleId, String), ConstantValue>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum ConstantValue {
+    Integer(String),
+    Float(String),
+    String(String),
+    Boolean(bool),
+    Null,
+    NotAvailable,
+    EndOfFile,
 }
 
 impl SemanticModel {
@@ -260,6 +272,7 @@ pub fn analyze(program: &Program) -> Result<SemanticModel, Diagnostic> {
         HashMap::new(),
         HashMap::new(),
         HashMap::new(),
+        HashMap::new(),
         HashSet::new(),
         HashSet::new(),
         true,
@@ -285,6 +298,7 @@ pub fn analyze_modules(graph: &ModuleGraph) -> Result<Vec<SemanticModel>, Module
         .map(|module| (module.id, exported_declarations(module.id, &module.program)))
         .collect::<HashMap<_, _>>();
     let imported_types = imported_type_catalog(graph);
+    let module_constants = exported_constants(graph);
     let mut models = Vec::with_capacity(graph.modules.len());
     for module in &graph.modules {
         if module.id != graph.root
@@ -334,6 +348,7 @@ pub fn analyze_modules(graph: &ModuleGraph) -> Result<Vec<SemanticModel>, Module
             exports.clone(),
             imported_modules,
             imported_types.clone(),
+            module_constants.clone(),
             bnmath_modules,
             standard_modules,
             module.id == graph.root,

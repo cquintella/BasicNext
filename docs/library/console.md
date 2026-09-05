@@ -13,13 +13,14 @@ alias has the same type as `HOST.Console`.
 `BEEP`, and `PRINTAT` are not reserved words in 0.2. The replacement is
 methods on the console object.
 
-## Stream macros (unchanged)
+## Stream macros
 
-`PRINT` writes the text representations of zero or more expressions, without a
-separator, followed by one line ending. `PRINT` with no expression writes a
-blank line. `INPUT()` takes no arguments, returns one `STRING` without its line
-ending, and returns `EOF` after standard input ends; later calls also return
-`EOF`.
+`PRINT` writes the text representations of zero or more expressions, separated
+by one space, followed by one line ending. `PRINT` with no expression writes a
+blank line. The `+` operator concatenates strings within one expression; it
+does not add a separator. `INPUT()` takes no arguments, returns one `STRING`
+without its line ending, and returns `EOF` after standard input ends; later
+calls also return `EOF`.
 
 `PRINT` renders booleans and special values as `TRUE`, `FALSE`, `NAN`, `INF`,
 `-INF`, `NULL`, `NA`, and `EOF`. Strings have no quotes. Finite floats use the

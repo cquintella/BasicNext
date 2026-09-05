@@ -1,4 +1,4 @@
-#![allow(clippy::wildcard_imports)]
+#![allow(clippy::wildcard_imports, clippy::match_same_arms)]
 use super::*;
 
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]

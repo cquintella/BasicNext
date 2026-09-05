@@ -91,6 +91,55 @@ pub(crate) fn lower_scalar_instruction(
             }
         },
         Instruction::Default {
+            destination,
+            ty,
+            dimensions,
+            ..
+        } if !dimensions.is_empty() => {
+            let Type::Vector { element, .. } = ty else {
+                unreachable!("validated multidimensional default type");
+            };
+            let element_llvm = llvm_type(element).expect("validated vector element type");
+            let len = dimensions[0];
+            let dest = destination.0;
+            let _ = writeln!(
+                text,
+                "  %vecdefault{dest} = alloca [{len} x {element_llvm}]"
+            );
+            for index in 0..len {
+                let _ = writeln!(
+                    text,
+                    "  %vecdefaultslot{dest}_{index} = getelementptr [{len} x {element_llvm}], ptr %vecdefault{dest}, i32 0, i32 {index}"
+                );
+                let zero = match element_llvm {
+                    "i1" | "i8" | "i16" | "i32" | "i64" => format!("{element_llvm} 0"),
+                    "float" => "float 0.0".into(),
+                    "double" => "double 0.0".into(),
+                    _ => {
+                        return Err(unsupported_instruction(
+                            module,
+                            function,
+                            instruction,
+                            "vector element default",
+                        ));
+                    }
+                };
+                let _ = writeln!(text, "  store {zero}, ptr %vecdefaultslot{dest}_{index}");
+            }
+            let _ = writeln!(
+                text,
+                "  %vecdefaultptr{dest} = getelementptr [{len} x {element_llvm}], ptr %vecdefault{dest}, i32 0, i32 0"
+            );
+            let _ = writeln!(
+                text,
+                "  %vecdefaultfat{dest} = insertvalue {{ ptr, i32 }} undef, ptr %vecdefaultptr{dest}, 0"
+            );
+            let _ = writeln!(
+                text,
+                "  %v{dest} = insertvalue {{ ptr, i32 }} %vecdefaultfat{dest}, i32 {len}, 1"
+            );
+        }
+        Instruction::Default {
             destination, ty, ..
         } => match llvm_type(ty).expect("validated default type") {
             "i1" => define_boolean(text, analysis, *destination, false),

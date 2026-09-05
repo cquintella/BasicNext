@@ -1,4 +1,8 @@
-#![allow(clippy::wildcard_imports)]
+#![allow(
+    clippy::wildcard_imports,
+    clippy::match_same_arms,
+    clippy::cast_possible_truncation
+)]
 use super::*;
 
 pub(crate) fn fold_unary(
@@ -199,11 +203,22 @@ pub(crate) fn integer_kind(ty: &Type) -> IntegerType {
 /// LLVM treats `0x` as a floating-point constant encoding.
 pub(crate) fn render_llvm_integer(value: i128, llvm_ty: &str) -> String {
     match llvm_ty {
-        "i8" => i128::from(value as u8 as i8).to_string(),
-        "i16" => i128::from(value as u16 as i16).to_string(),
-        "i32" => i128::from(value as u32 as i32).to_string(),
-        "i64" => i128::from(value as u64 as i64).to_string(),
+        "i8" => render_signed_bits(value, 8),
+        "i16" => render_signed_bits(value, 16),
+        "i32" => render_signed_bits(value, 32),
+        "i64" => render_signed_bits(value, 64),
         _ => value.to_string(),
+    }
+}
+
+fn render_signed_bits(value: i128, bits: u32) -> String {
+    let modulus = 1_i128 << bits;
+    let normalized = value.rem_euclid(modulus);
+    let sign = 1_i128 << (bits - 1);
+    if normalized >= sign {
+        (normalized - modulus).to_string()
+    } else {
+        normalized.to_string()
     }
 }
 
@@ -457,14 +472,27 @@ pub(crate) fn parse_float_constant(value: &str) -> Option<f64> {
 }
 
 pub(crate) fn render_float(value: f64, ty: &Type) -> String {
+    let is_float32 = matches!(ty, Type::Float(FloatType::Float32));
     if value.is_nan() {
-        return "0x7FF8000000000000".into();
+        return if is_float32 {
+            "0x7FC00000".into()
+        } else {
+            "0x7FF8000000000000".into()
+        };
     }
     if value == f64::INFINITY {
-        return "0x7FF0000000000000".into();
+        return if is_float32 {
+            "0x7F800000".into()
+        } else {
+            "0x7FF0000000000000".into()
+        };
     }
     if value == f64::NEG_INFINITY {
-        return "0xFFF0000000000000".into();
+        return if is_float32 {
+            "0xFF800000".into()
+        } else {
+            "0xFFF0000000000000".into()
+        };
     }
     let rendered = match ty {
         Type::Float(FloatType::Float32) => f64::from(value as f32).to_string(),

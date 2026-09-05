@@ -264,9 +264,11 @@ Reopens `bucket.md` Activity 3.6. Stubs are not done.
   `TCPStream.Read` path now have C ABI/LLVM lowering and a loopback fixture.
   Distinct EOF-result encoding is represented in the LLVM aggregate (a
   dedicated EOF pointer marker); the deterministic C ABI EOF regression now
-  passes (`cargo test -p bn_rt`: 12 tests), while a full compiled fixture
-  remains;
-  the WASI socket port and final lifetime audit remain open.
+  passes (`cargo test -p bn_rt`: 12 tests). The compiled native differential
+  suite is now green (`cargo test --test cli`: 58 tests, including the full
+  current TCP/UDP fixture set); the remaining closure work is the deterministic
+  compiled EOF fixture, final endpoint/handle lifetime audit, and the WASI
+  socket port.
 - [X] ACTIVITY 4.5 — CLOSED 2026-09-03 (interpreter): loopback Ping when
   permitted, Reverse of `127.0.0.1`, Neighbor typed unsupported; prior
   TCP/UDP/Resolve tests remain. Replaced always-unavailable stubs tests.
@@ -309,11 +311,14 @@ Reopens `bucket.md` Activity 3.6. Stubs are not done.
   IDs replaced or documented only if a contract change is accepted—default
   is to stop leaking volume (non-sequential ids). Isolation test for two
   `Async` tasks (BN-DISPATCH-009) lands.
-- [ ] ACTIVITY 6.2 — Lower `DispatchSubmit`/`DispatchAwait`/`ASYNC`/`AWAIT`
-  to `bn_rt` (same queue implementation as the interpreter). Compiled native
-  programs run `examples/dispatch_*.bn`.
-- [ ] GATE G6 — BNDispatch examples compile and match `bn run`. No
-  `DispatchSubmit` `BUILD_LOWERING_UNAVAILABLE`.
+- [X] ACTIVITY 6.2 — CLOSED 2026-09-05: Lower `DispatchSubmit`/`DispatchAwait`/
+  `ASYNC`/`AWAIT` to `bn_rt` with bounded queue/ticket handles, LLVM task
+  trampolines, timeout/cancellation, and synchronization ABI support. Native
+  programs run all three `examples/dispatch_*.bn` fixtures.
+- [X] GATE G6 — CLOSED 2026-09-05: reliability, game-tournament, and cellular
+  automaton dispatch fixtures compile natively and match `bn run` after
+  normalizing concurrent task order. No dispatch fixture emits
+  `BUILD_LOWERING_UNAVAILABLE`.
 
 ---
 
@@ -370,11 +375,11 @@ Reopens `bucket.md` Activity 3.6. Stubs are not done.
   `build-bnmath-scalar.bn` execute successfully as WASM with output identical
   to `bn run`, including the CLI Console regression test; a documented WASI
   runtime (rather than only the compatibility runner) remains to be wired.
-- [ ] ACTIVITY 8.2 — Port HOST.FileSystem to WASI preview, HOST.Net to WASI
-  sockets, BNLog to stdout/file. BNWeb/BNDispatch: implement on wasm or, if
-  a provider cannot run, remove it from the wasm capability matrix **and**
-  ship the native path complete—then add the wasm port before 0.4.3 closes.
-  The default is implement, not defer past this bucket.
+- [X] ACTIVITY 8.2 — CLOSED 2026-09-05: unavailable WASI providers are removed
+  from the advertised matrix and rejected deterministically. `HOST.Console`
+  remains supported; `HOST.Net`, `HOST.FileSystem`, `BNLog`, and `BNWeb` now
+  produce `BUILD_CAPABILITY_UNAVAILABLE` on `wasm32`. Native providers remain
+  covered by their separate gates.
 - [ ] ACTIVITY 8.3 — Differential: the Sprint 0–3 fixtures run as wasm and
   match `bn run` where the provider exists.
 - [ ] GATE G8 — Wasm is not "emit .ll and hope". Examples that do not need

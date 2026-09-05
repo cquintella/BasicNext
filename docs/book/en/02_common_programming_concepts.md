@@ -2,6 +2,18 @@
 
 This chapter covers the fundamental building blocks of a Basic Next program: how to store data, manipulate values, and interact with the console.
 
+## Comments
+
+There atwo way do do comments in a Basic Next code, using `//`for a line commment, oy `/*`with `*/` to define a multi line comment block.
+
+```basic
+// this is a single line comment
+
+/* HERE
+We have a multiline
+comment */
+```
+
 ## Variables and Constants
 
 Basic Next enforces strict typing. Every variable must explicitly state its type. The language does not use type inference for bindings.
@@ -11,7 +23,7 @@ Variables are declared using the `LET` keyword, followed by the name, `AS`, the 
 ```basic
 LET counter AS INTEGER = 10
 LET name AS STRING = "Alice"
-LET c, v AS STRING = "carro", "moto"
+LET c, v AS STRING = "auto", "bus"
 ```
 
 If you omit the initializer, the variable is initialized to its type's default value. In Basic Next, there is no uninitialized storage. The default for numeric types is `0` or `0.0`, `BOOLEAN` defaults to `FALSE`, and `STRING` defaults to an empty string `""`.
@@ -45,6 +57,8 @@ When exact memory layout is important, Basic Next provides fixed-width types:
 Integer arithmetic in Basic Next never wraps or saturates implicitly. An operation that produces a result outside the destination type's range raises a `NUMERIC_OVERFLOW` error at runtime. 
 
 Floating-point numbers follow IEEE 754 semantics and include special values: `NAN` (Not a Number), `INF` (positive infinity), and `-INF` (negative infinity).
+
+INTEGER and FLOAT are synonyms to FLOAT32 and INT32, or FLOAT64 and INT64 depending on the machine.
 
 ### Boolean and String
 
@@ -108,6 +122,20 @@ Converting a floating-point number to an integer truncates toward zero. Conversi
 
 `AS BOOLEAN` is a special case: for numeric types, `0` becomes `FALSE` and any non-zero value (including `NAN`) becomes `TRUE`. For strings, `""` is `FALSE` and any non-empty string is `TRUE`.
 
+## Type Limints
+
+Basic Next has constants for maximal and minimal type values, but the are in the BNMath module, to use it you have to import the module.
+
+```basic
+IMPORT BNMath as Math
+
+PRINT Math.MIN_INTEGER+" "+Math.MAX_INTEGER,
+PRINT Math.MIN_FLOAT, Math.MAX_FLOAT,
+PRINT Math.MIN_INT64, Math.MAX_INT64
+PRINT Math.MAXFLOAT_32, Math.MIN_FLOAT32
+
+```
+
 ## Basic Console I/O
 
 Interacting with the console uses straightforward built-in macros.
@@ -117,11 +145,13 @@ expressions are concatenated with no separator. With no expression it writes
 a blank line.
 
 ```basic
-PRINT "Processing user: ", name
+PRINT "Processing user:", name
 PRINT "Processing user: " + name
 ```
 
-`INPUT()` reads a line from standard input. Because the input might end, it returns a compound alternative type: `STRING OR EOF`. 
+The  diference is that using `,` will insert a ` `(space) between the strings, while `+` will concatenate it.
+
+`INPUT()` reads a line from standard input. Because the input might end, it returns a compound alternative type: `STRING OR EOF`. Statement forms are also available: `INPUT target` and `INPUT "prompt", target`; both assign to a `STRING OR EOF` target.
 
 ```basic
 LET line AS STRING OR EOF = INPUT()
@@ -130,11 +160,27 @@ IF line IS EOF THEN
 END IF
 ```
 
+You can also use `INPUT in the classical basic way` printing a string and to a variable.
+
+```basic
+INPUT "TYPE THE VALUE OF X than Y: ", X
+INPUT Y
+```
+
 To manage the terminal window, pass the `HOST.Console` capability to explicitly access terminal control methods. `HOST.Console` is a primary expression.
 
 ```basic
 IMPORT HOST.Console AS Console
+
 Console.Cls()
 Console.Beep()
 Console.PrintAt(1, 1, "Top left corner")
 ```
+
+
+## Changing Console colors
+
+-- Tobe implemented
+
+Console.SetBgColor=BLUE
+Console.SetTxColor=BLUE

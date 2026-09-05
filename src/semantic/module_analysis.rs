@@ -7,6 +7,7 @@ pub(crate) fn analyze_with_modules(
     module_exports: HashMap<ModuleId, HashMap<String, Type>>,
     module_imports: HashMap<String, ModuleId>,
     imported_types: HashMap<(ModuleId, String), ImportedTypeInfo>,
+    module_constants: HashMap<(ModuleId, String), ConstantValue>,
     bnmath_modules: HashSet<ModuleId>,
     standard_modules: HashSet<ModuleId>,
     executable_module: bool,
@@ -48,12 +49,26 @@ pub(crate) fn analyze_with_modules(
         layouts: analyzer.layouts,
         base_classes: analyzer.base_classes,
         bnmath_modules: analyzer.bnmath_modules,
+        module_constants,
     })
 }
 
 pub(crate) fn exported_declarations(module: ModuleId, program: &Program) -> HashMap<String, Type> {
     let mut exports = HashMap::new();
     for item in &program.items {
+        if let Item::Constant {
+            exported: true,
+            name,
+            type_ref,
+            ..
+        } = item
+        {
+            exports.insert(
+                name.clone(),
+                qualify_local_type(module, program, type_from_reference(type_ref)),
+            );
+            continue;
+        }
         let Item::Declaration {
             exported: true,
             name,
@@ -92,6 +107,42 @@ pub(crate) fn exported_declarations(module: ModuleId, program: &Program) -> Hash
         }
     }
     exports
+}
+
+pub(crate) fn exported_constants(
+    graph: &ModuleGraph,
+) -> HashMap<(ModuleId, String), ConstantValue> {
+    let mut constants = HashMap::new();
+    for module in &graph.modules {
+        for item in &module.program.items {
+            let Item::Constant {
+                exported: true,
+                name,
+                initializer,
+                ..
+            } = item
+            else {
+                continue;
+            };
+            let ExpressionKind::Literal(literal) = &initializer.kind else {
+                continue;
+            };
+            let value = match literal {
+                Literal::Integer(value) => ConstantValue::Integer(value.clone()),
+                Literal::Float(value) | Literal::Special(value) => {
+                    ConstantValue::Float(value.clone())
+                }
+                Literal::String(value) => ConstantValue::String(value.clone()),
+                Literal::Boolean(value) => ConstantValue::Boolean(*value),
+                Literal::Null => ConstantValue::Null,
+                Literal::NotAvailable => ConstantValue::NotAvailable,
+                Literal::EndOfFile => ConstantValue::EndOfFile,
+                Literal::TypeName(_) => continue,
+            };
+            constants.insert((module.id, name.clone()), value);
+        }
+    }
+    constants
 }
 
 #[allow(clippy::too_many_lines)] // Imported type catalogs preserve declaration shape explicitly.

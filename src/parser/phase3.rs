@@ -142,6 +142,42 @@ impl<'a> Parser<'a> {
                 Some(parse_expression(&line[1..])?)
             };
             Ok(Statement::Return { value, span })
+        } else if self.keyword("INPUT") {
+            let comma = line
+                .iter()
+                .position(|token| matches!(token.kind, TokenKind::Symbol(Symbol::Comma)));
+            let (prompt, target_tokens) = if let Some(comma) = comma {
+                if comma <= 1 || comma + 1 >= line.len() {
+                    return Err(self.error("INPUT prompt requires a target"));
+                }
+                (
+                    Some(Box::new(parse_expression(&line[1..comma])?)),
+                    &line[comma + 1..],
+                )
+            } else {
+                if line.len() != 2 {
+                    return Err(self.error("INPUT requires a target or prompt and target"));
+                }
+                (None, &line[1..])
+            };
+            let target = parse_expression(target_tokens)?;
+            if !matches!(
+                target.kind,
+                ExpressionKind::Name { .. }
+                    | ExpressionKind::Member { .. }
+                    | ExpressionKind::Index { .. }
+            ) {
+                return Err(self.error("INPUT target must be assignable"));
+            }
+            Ok(Statement::Assignment {
+                target,
+                operator: "Assign".into(),
+                value: Expression {
+                    kind: ExpressionKind::Input { prompt },
+                    span,
+                },
+                span,
+            })
         } else if self.keyword("PRINT") {
             Ok(Statement::Print {
                 values: Self::expression_list(&line[1..])?,

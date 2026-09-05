@@ -108,6 +108,26 @@ fn single_identifier_import_uses_an_alias() {
 }
 
 #[test]
+fn exported_module_constant_is_preserved_in_the_ast() {
+    let source = SourceFile::new("constants.bn", "EXPORT CONST BLUE AS UINT32 = 0x0000FF\n");
+    let tokens = lex(&source).expect("lex constant");
+    let program = parse(&tokens).expect("parse constant");
+    let Item::Constant {
+        exported: true,
+        name,
+        type_ref,
+        initializer,
+        ..
+    } = &program.items[0]
+    else {
+        panic!("expected exported constant");
+    };
+    assert_eq!(name, "BLUE");
+    assert_eq!(type_ref.alternatives[0].name, "UINT32");
+    assert!(matches!(initializer.kind, ExpressionKind::Literal(_)));
+}
+
+#[test]
 fn class_extends_and_super_are_preserved_in_the_ast() {
     let source = SourceFile::new(
         "inheritance.bn",
@@ -163,8 +183,10 @@ fn sizeof_is_a_primary_form() {
 
 #[test]
 fn loop_body_is_nested_in_the_ast() {
-    let text = fs::read_to_string("examples/hello.bn").expect("read example");
-    let source = SourceFile::new("examples/hello.bn", text);
+    let source = SourceFile::new(
+        "loop.bn",
+        "FUNCTION Start() AS VOID\nWHILE TRUE\nPRINT 1\nPRINT 2\nEND WHILE\nEND FUNCTION\n",
+    );
     let tokens = lex(&source).expect("lex example");
     let program = parse(&tokens).expect("parse example");
     let Some(Item::Declaration { statements, .. }) = program.items.iter().find(|item| {

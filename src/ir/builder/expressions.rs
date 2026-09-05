@@ -117,11 +117,18 @@ impl Builder<'_> {
                     }
                 }
             }
-            ExpressionKind::Input => Instruction::Input {
-                destination,
-                ty,
-                span: expression.span,
-            },
+            ExpressionKind::Input { prompt } => {
+                let prompt = prompt
+                    .as_ref()
+                    .map(|prompt| self.expression(prompt))
+                    .transpose()?;
+                Instruction::Input {
+                    destination,
+                    prompt,
+                    ty,
+                    span: expression.span,
+                }
+            }
             ExpressionKind::HostCapability { name } => Instruction::Constant {
                 destination,
                 value: host_capability_constant(name, expression.span)?,
@@ -342,6 +349,16 @@ impl Builder<'_> {
                     Instruction::Constant {
                         destination,
                         value,
+                        ty,
+                        span: expression.span,
+                    }
+                } else if let Type::Module(module) = object_type
+                    && let Some(value) = self.model.module_constants.get(&(module, name.clone()))
+                {
+                    let _ = self.expression(object)?;
+                    Instruction::Constant {
+                        destination,
+                        value: module_constant(value),
                         ty,
                         span: expression.span,
                     }

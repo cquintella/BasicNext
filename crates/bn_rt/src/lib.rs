@@ -20,12 +20,14 @@ use std::{
 
 mod civil;
 mod console;
+mod dispatch_abi;
 mod math;
 mod net;
 mod stats;
 mod terminal;
 
 pub use console::{ConsoleError, beep, cls, num_cols, num_rows, print_at};
+pub use dispatch_abi::*;
 pub use net::{
     Address as NetAddress, AddressesHandle, NeighborError, PingError, PingReply, ReverseError,
     join_resolver_tasks, neighbor, ping, reverse_timeout,

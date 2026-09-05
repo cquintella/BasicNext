@@ -77,9 +77,19 @@ fn navigation_returns_all_matching_identifier_spans() {
     let uri: super::Uri = "file:///test.bn".parse().unwrap();
     let source = SourceFile::new(uri.to_string(), "LET value AS INTEGER\nPRINT value\n");
     let documents = HashMap::from([(uri.to_string(), source)]);
-    let locations = find_locations(&documents, &uri, super::Position::new(1, 11)).unwrap();
+    let locations = find_locations(&documents, &uri, super::Position::new(1, 11), true).unwrap();
     assert_eq!(locations.len(), 2);
     assert_eq!(locations[0].range, lsp_range(1, 5, 1, 10));
+}
+
+#[test]
+fn references_can_exclude_the_declaration_span() {
+    let uri: super::Uri = "file:///test.bn".parse().unwrap();
+    let source = SourceFile::new(uri.to_string(), "LET value AS INTEGER\nPRINT value\n");
+    let documents = HashMap::from([(uri.to_string(), source)]);
+    let locations = find_locations(&documents, &uri, super::Position::new(1, 11), false).unwrap();
+    assert_eq!(locations.len(), 1);
+    assert_eq!(locations[0].range, lsp_range(2, 7, 2, 12));
 }
 
 #[test]

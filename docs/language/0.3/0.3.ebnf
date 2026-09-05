@@ -17,7 +17,7 @@
 
 source-file          = program EOF ;
 program              = { NEWLINE } { import-declaration { NEWLINE } }
-                       { declaration { NEWLINE } } ;
+                       { ( exported-constant-declaration | declaration ) { NEWLINE } } ;
 import-declaration   = "IMPORT" import-path "AS" identifier NEWLINE ;
 import-path          = host-import-path | module-import-path ;
 host-import-path     = "HOST" "." importable-host-capability-name { "." identifier } ;
@@ -26,6 +26,7 @@ host-capability-name = "Args" | "Clock" | "Console" | "FileSystem" | "Net" | "Ra
 module-import-path   = identifier { "." identifier } ;
 declaration          = [ "EXPORT" ] ( function-declaration | class-declaration
                        | struct-declaration | interface-declaration ) ;
+exported-constant-declaration = "EXPORT" "CONST" identifier "AS" variable-type "=" literal NEWLINE ;
 
 (* A block admits blank and comment-only lines because the lexer emits NEWLINE. *)
 
@@ -104,7 +105,7 @@ parameter-type-list  = parameter-type { "," parameter-type } ;
 statement            = simple-statement NEWLINE | if-statement | while-statement
                        | repeat-statement | for-statement ;
 simple-statement     = let-declaration | const-declaration | assignment-statement
-                       | call-statement | print-statement | delete-statement
+                       | call-statement | print-statement | input-statement | delete-statement
                        | return-statement | exit-statement | continue-statement
                        | stop-statement ;
 let-declaration      = "LET" identifier { "," identifier } "AS" local-variable-type
@@ -117,6 +118,8 @@ assignment-target    = identifier { member-suffix | index-suffix }
 assignment-operator  = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "**=" ;
 call-statement       = call-expression ;
 print-statement      = "PRINT" [ expression-list ] ;
+input-statement      = "INPUT" assignment-target
+                       | "INPUT" expression "," assignment-target ;
 delete-statement     = "DELETE" expression ;
 return-statement     = "RETURN" [ expression ] ;
 exit-statement       = "EXIT" ( "FOR" | "WHILE" | "REPEAT" ) ;

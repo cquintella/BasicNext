@@ -190,7 +190,7 @@ fn build_kmp_compiles_through_native_backend() {
         .output()
         .expect("run KMP");
     assert_eq!(run.status.code(), Some(0));
-    assert!(String::from_utf8_lossy(&run.stdout).contains("Encontrado padrao no indice 10"));
+    assert!(String::from_utf8_lossy(&run.stdout).contains("Encontrado padrao no indice  10"));
     let output = bn()
         .args(["build", "examples/kmp.bn"])
         .output()
@@ -304,6 +304,103 @@ fn build_lowers_power_shift_not_and_string_concat_matching_interpreter() {
     native_matches_interpreter("tests/grammar/valid/build-power-shift-runtime.bn");
     native_matches_interpreter("tests/grammar/valid/build-invalid-exponent.bn");
     native_matches_interpreter("tests/grammar/valid/build-invalid-shift.bn");
+}
+
+#[test]
+fn build_lowers_print_expression_and_argument_separators_matching_interpreter() {
+    native_matches_interpreter("tests/grammar/valid/print-separators.bn");
+}
+
+#[test]
+fn build_lowers_dispatch_examples_with_native_parity() {
+    native_matches_dispatch("examples/dispatch_game_tournament.bn");
+    native_matches_dispatch("examples/dispatch_cellular_automaton.bn");
+
+    let path = "examples/dispatch_reliability_simulation.bn";
+    let output_path = std::env::temp_dir().join(format!(
+        "basicnext-dispatch-reliability-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_file(&output_path);
+    let built = bn()
+        .args([
+            "build",
+            path,
+            "-o",
+            output_path.to_str().expect("temporary path"),
+        ])
+        .output()
+        .expect("build dispatch reliability example");
+    assert_eq!(
+        built.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let compiled = Command::new(&output_path)
+        .output()
+        .expect("run compiled dispatch example");
+    let interpreted = bn()
+        .args(["run", path])
+        .output()
+        .expect("run dispatch interpreter example");
+    assert_eq!(compiled.status.code(), interpreted.status.code());
+    let normalize = |output: &[u8]| {
+        let mut lines = String::from_utf8_lossy(output)
+            .lines()
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        lines.sort();
+        lines.join("\n")
+    };
+    assert_eq!(normalize(&compiled.stdout), normalize(&interpreted.stdout));
+    let _ = fs::remove_file(output_path);
+}
+
+fn native_matches_dispatch(path: &str) {
+    let output_path = std::env::temp_dir().join(format!(
+        "basicnext-dispatch-{}-{}",
+        std::process::id(),
+        path.replace(['/', '.'], "_")
+    ));
+    let _ = fs::remove_file(&output_path);
+    let built = bn()
+        .args([
+            "build",
+            path,
+            "-o",
+            output_path.to_str().expect("temporary path"),
+        ])
+        .output()
+        .expect("build dispatch example");
+    assert_eq!(
+        built.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let compiled = Command::new(&output_path)
+        .output()
+        .expect("run compiled dispatch example");
+    let interpreted = bn()
+        .args(["run", path])
+        .output()
+        .expect("run dispatch interpreter example");
+    assert_eq!(compiled.status.code(), interpreted.status.code(), "{path}");
+    let normalize = |output: &[u8]| {
+        let mut lines = String::from_utf8_lossy(output)
+            .lines()
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        lines.sort();
+        lines.join("\n")
+    };
+    assert_eq!(
+        normalize(&compiled.stdout),
+        normalize(&interpreted.stdout),
+        "{path}"
+    );
+    let _ = fs::remove_file(output_path);
 }
 
 #[test]
@@ -816,6 +913,24 @@ fn wasm_build_supports_host_console_capability() {
 }
 
 #[test]
+fn wasm_build_rejects_host_net_with_an_explicit_capability_diagnostic() {
+    let output = bn()
+        .args([
+            "build",
+            "--target",
+            "wasm32",
+            "tests/grammar/valid/build-net-resolve.bn",
+        ])
+        .output()
+        .expect("run wasm HOST.Net build");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("BUILD_CAPABILITY_UNAVAILABLE"));
+    assert!(stderr.contains("HOST.Net"));
+    assert!(stderr.contains("HOST.Console is supported"));
+}
+
+#[test]
 fn wasm_build_allows_host_capability_names_in_strings() {
     let output = bn()
         .args([
@@ -845,7 +960,7 @@ fn console_size_uses_stdout_when_stdin_is_piped() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout).replace('\r', "");
-    assert_eq!(stdout, "8024\n");
+    assert_eq!(stdout, "80 24\n");
 }
 
 #[test]

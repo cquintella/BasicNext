@@ -133,6 +133,7 @@ NAN
 | `PARALLEL` | Reserved for structured data-parallel blocks; no 0.1 semantics yet. Candidate forms are `PARALLEL ... END PARALLEL`, `PARALLEL FOR ... END PARALLEL FOR`, and `PARALLEL FOR EACH ... END PARALLEL FOR`. | Reserved for future use |
 | `STATIC` | Declares a class-level field or function; it is accessed through the class name. A defaultable static field may omit `=` and then uses the type default. | Reserved |
 | `EXPORT` | Makes a module-level declaration available to importing modules. | Reserved |
+| `CONST` | Declares an immutable value; module constants exported with `EXPORT CONST` are accessed through an import alias. | Reserved |
 | `END` | Closes a compound declaration or statement, such as `END FUNCTION` or `END IF`. | Reserved |
 | `IMPORT` | Imports a module or host capability under an explicit local alias. Imported names are used only as `alias.member`. Language source modules use the `BN` root. | Reserved |
 | `HOST` | Names the environment that provides capabilities: `HOST.Args`, `HOST.Clock`, `HOST.Console`, `HOST.Random`, `HOST.FileSystem`, `HOST.Net`, and `HOST.NumProcs()`. `HOST.Main` and `HOST.Network` are not capabilities. | Reserved |
@@ -235,8 +236,10 @@ belong to a module.
 
 | Form | Meaning | Status |
 | --- | --- | --- |
-| `PRINT` | Macro for `Console.WriteLine(...)`; writes to standard output. | Reserved |
-| `INPUT()` | Macro for `Console.ReadLine()`; reads one line as a `STRING`, or returns `EOF` at end of input. | Reserved syntax |
+| `PRINT` | Writes each expression in its list separated by one space, followed by one line ending; `+` concatenates within an expression. | Reserved |
+| `INPUT()` | Expression macro for `Console.ReadLine()`; reads one line as a `STRING`, or returns `EOF` at end of input. | Reserved syntax |
+| `INPUT target` | Reads one line and assigns it to an assignable `STRING OR EOF` target. | Reserved syntax |
+| `INPUT "prompt", target` | Writes the prompt, then reads one line and assigns it to an assignable `STRING OR EOF` target. | Reserved syntax |
 | `HOST.Console.Cls()` | 0.2 method: clear display and home cursor. Withdraws the 0.1 statement `CLS(HOST.Console)`. `CLS` is not reserved in 0.2. | Host method |
 | `HOST.Console.Beep()` | 0.2 method: host bell. Withdraws the 0.1 statement `BEEP(HOST.Console)`. `BEEP` is not reserved in 0.2. | Host method |
 | `HOST.Console.PrintAt(column, row, text)` | 0.2 method: positioned write, 1-based cells. `PRINTAT` is not a keyword. | Host method |

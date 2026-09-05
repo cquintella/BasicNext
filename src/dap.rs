@@ -91,7 +91,11 @@ pub fn run_stdio() -> Result<(), String> {
         let (success, body, message_text) = match command {
             "initialize" => (
                 true,
-                json!({"supportsConfigurationDoneRequest": true, "supportsTerminateRequest": true}),
+                json!({
+                    "supportsConfigurationDoneRequest": true,
+                    "supportsTerminateRequest": true,
+                    "supportsEvaluateForHovers": true
+                }),
                 None,
             ),
             "launch" => match validate_launch(&message) {
@@ -179,6 +183,7 @@ pub fn run_stdio() -> Result<(), String> {
                 );
                 (true, response, None)
             }
+            "setExceptionBreakpoints" => (true, json!({"breakpoints": []}), None),
             _ => (false, json!({}), Some("request is not implemented".into())),
         };
         let response_sequence = sequence.fetch_add(1, Ordering::Relaxed);
@@ -405,8 +410,7 @@ fn evaluate_response(session: &SharedSession, request: &Value) -> Value {
                 .into_iter()
                 .find(|variable| variable.name == expression)
         })
-        .map(|variable| variable.value)
-        .unwrap_or_else(|| "<unavailable>".into());
+        .map_or_else(|| "<unavailable>".into(), |variable| variable.value);
     json!({"result": value, "variablesReference": 0})
 }
 
@@ -443,7 +447,7 @@ fn breakpoint_response(message: &Value, registry: &mut HashMap<String, BTreeSet<
     json!({"breakpoints": requested.into_iter().map(|line| {
         let verified = executable.as_ref().is_some_and(|lines| lines.contains(&line));
         let message = if verified {
-            "interpreter debug hooks are unavailable"
+            "breakpoint mapped to an executable statement"
         } else if executable.is_some() {
             "line is not an executable statement"
         } else {

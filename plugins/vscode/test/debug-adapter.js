@@ -15,6 +15,7 @@ const messages = [];
 let continued = false;
 let finished = false;
 let inspected = false;
+let exceptionConfigured = false;
 
 setTimeout(() => {
   if (!finished) {
@@ -32,6 +33,10 @@ function send(command, args) {
 
 function handle(message) {
   messages.push(message);
+  if (message.type === "response" && message.command === "initialize" && message.success && !exceptionConfigured) {
+    exceptionConfigured = true;
+    send("setExceptionBreakpoints", { filters: [] });
+  }
   if (message.type === "event" && message.event === "stopped" && !continued) {
     send("stackTrace", { threadId: 1 });
     send("scopes", { frameId: 0 });
@@ -45,10 +50,11 @@ function handle(message) {
     finished = true;
     assert(!messages.some((item) => item.type === "request" && item.command === "runInTerminal"));
     assert(messages.some((item) => item.command === "initialize" && item.success));
+    assert(messages.some((item) => item.command === "initialize" && item.body?.supportsEvaluateForHovers === true));
     assert(messages.some((item) => item.command === "launch" && item.success));
     assert(messages.some((item) => item.command === "configurationDone" && item.success));
     assert(inspected);
-    for (const command of ["stackTrace", "scopes", "variables", "evaluate", "continue"]) {
+    for (const command of ["setExceptionBreakpoints", "stackTrace", "scopes", "variables", "evaluate", "continue"]) {
       assert(messages.some((item) => item.command === command && item.success), command);
     }
     adapter.kill();

@@ -62,7 +62,7 @@ String indexing is read-only. Attempting to assign to a string index (e.g., `gre
 Basic Next does not allow variables to be implicitly null or missing. If a variable might contain an absence marker or an error, you must explicitly declare it using an alternative type with the `OR` keyword.
 
 Basic Next provides specific singleton values to represent the absence of data:
-- `EOF`: End of input.
+- `EOF`: End of input. `INPUT()` returns `STRING OR EOF`; statement forms `INPUT target` and `INPUT "prompt", target` assign the same result to a target.
 - `NA`: A missing observation or data point.
 - `NULL`: The explicit absence of an object reference or pointer.
 

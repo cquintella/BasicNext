@@ -25,7 +25,19 @@ impl Analyzer {
                 expression.span,
             )),
             ExpressionKind::Literal(literal) => Ok(literal_type(literal)),
-            ExpressionKind::Input => Ok(Type::Alternative(vec![Type::String, Type::EndOfFile])),
+            ExpressionKind::Input { prompt } => {
+                if let Some(prompt) = prompt {
+                    let prompt_type = self.expression(prompt, locals)?;
+                    if prompt_type != Type::String {
+                        return Err(error(
+                            "INPUT_PROMPT_TYPE",
+                            "INPUT prompt must be STRING",
+                            prompt.span,
+                        ));
+                    }
+                }
+                Ok(Type::Alternative(vec![Type::String, Type::EndOfFile]))
+            }
             ExpressionKind::HostCapability { name } if name == "Args" => {
                 if self.executable_module {
                     Err(error(

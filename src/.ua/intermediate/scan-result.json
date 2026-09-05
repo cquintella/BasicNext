@@ -1,0 +1,872 @@
+{
+  "name": "src",
+  "description": "No description available",
+  "languages": [
+    "markdown",
+    "rust"
+  ],
+  "frameworks": [],
+  "files": [
+    {
+      "path": "README.md",
+      "language": "markdown",
+      "sizeLines": 150,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "ast.rs",
+      "language": "rust",
+      "sizeLines": 269,
+      "fileCategory": "code"
+    },
+    {
+      "path": "cli_frontend.rs",
+      "language": "rust",
+      "sizeLines": 123,
+      "fileCategory": "code"
+    },
+    {
+      "path": "cli_help.rs",
+      "language": "rust",
+      "sizeLines": 40,
+      "fileCategory": "code"
+    },
+    {
+      "path": "cli_output.rs",
+      "language": "rust",
+      "sizeLines": 27,
+      "fileCategory": "code"
+    },
+    {
+      "path": "cli_tests.rs",
+      "language": "rust",
+      "sizeLines": 29,
+      "fileCategory": "code"
+    },
+    {
+      "path": "cli_toolchain.rs",
+      "language": "rust",
+      "sizeLines": 117,
+      "fileCategory": "code"
+    },
+    {
+      "path": "dap.rs",
+      "language": "rust",
+      "sizeLines": 500,
+      "fileCategory": "code"
+    },
+    {
+      "path": "dap/tests.rs",
+      "language": "rust",
+      "sizeLines": 79,
+      "fileCategory": "code"
+    },
+    {
+      "path": "dataframe.rs",
+      "language": "rust",
+      "sizeLines": 204,
+      "fileCategory": "code"
+    },
+    {
+      "path": "diagnostic.rs",
+      "language": "rust",
+      "sizeLines": 39,
+      "fileCategory": "code"
+    },
+    {
+      "path": "dispatch.rs",
+      "language": "rust",
+      "sizeLines": 387,
+      "fileCategory": "code"
+    },
+    {
+      "path": "dispatch/sync.rs",
+      "language": "rust",
+      "sizeLines": 184,
+      "fileCategory": "code"
+    },
+    {
+      "path": "heap.rs",
+      "language": "rust",
+      "sizeLines": 277,
+      "fileCategory": "code"
+    },
+    {
+      "path": "http.rs",
+      "language": "rust",
+      "sizeLines": 469,
+      "fileCategory": "code"
+    },
+    {
+      "path": "http/tests.rs",
+      "language": "rust",
+      "sizeLines": 219,
+      "fileCategory": "code"
+    },
+    {
+      "path": "ir.rs",
+      "language": "rust",
+      "sizeLines": 300,
+      "fileCategory": "code"
+    },
+    {
+      "path": "ir/builder.rs",
+      "language": "rust",
+      "sizeLines": 395,
+      "fileCategory": "code"
+    },
+    {
+      "path": "ir/builder/builder_state.rs",
+      "language": "rust",
+      "sizeLines": 67,
+      "fileCategory": "code"
+    },
+    {
+      "path": "ir/builder/control_flow.rs",
+      "language": "rust",
+      "sizeLines": 337,
+      "fileCategory": "code"
+    },
+    {
+      "path": "ir/builder/expressions.rs",
+      "language": "rust",
+      "sizeLines": 394,
+      "fileCategory": "code"
+    },
+    {
+      "path": "ir/builder/statements.rs",
+      "language": "rust",
+      "sizeLines": 208,
+      "fileCategory": "code"
+    },
+    {
+      "path": "ir/helpers.rs",
+      "language": "rust",
+      "sizeLines": 303,
+      "fileCategory": "code"
+    },
+    {
+      "path": "ir/lowering.rs",
+      "language": "rust",
+      "sizeLines": 438,
+      "fileCategory": "code"
+    },
+    {
+      "path": "ir/lowering_callable.rs",
+      "language": "rust",
+      "sizeLines": 93,
+      "fileCategory": "code"
+    },
+    {
+      "path": "ir/model.rs",
+      "language": "rust",
+      "sizeLines": 288,
+      "fileCategory": "code"
+    },
+    {
+      "path": "ir/validate.rs",
+      "language": "rust",
+      "sizeLines": 79,
+      "fileCategory": "code"
+    },
+    {
+      "path": "json.rs",
+      "language": "rust",
+      "sizeLines": 310,
+      "fileCategory": "code"
+    },
+    {
+      "path": "keyword_registry.rs",
+      "language": "rust",
+      "sizeLines": 172,
+      "fileCategory": "code"
+    },
+    {
+      "path": "lexer.rs",
+      "language": "rust",
+      "sizeLines": 320,
+      "fileCategory": "code"
+    },
+    {
+      "path": "lib.rs",
+      "language": "rust",
+      "sizeLines": 30,
+      "fileCategory": "code"
+    },
+    {
+      "path": "llvm.rs",
+      "language": "rust",
+      "sizeLines": 270,
+      "fileCategory": "code"
+    },
+    {
+      "path": "llvm/analysis.rs",
+      "language": "rust",
+      "sizeLines": 300,
+      "fileCategory": "code"
+    },
+    {
+      "path": "llvm/emission1.rs",
+      "language": "rust",
+      "sizeLines": 474,
+      "fileCategory": "code"
+    },
+    {
+      "path": "llvm/emission2.rs",
+      "language": "rust",
+      "sizeLines": 421,
+      "fileCategory": "code"
+    },
+    {
+      "path": "llvm/emission3.rs",
+      "language": "rust",
+      "sizeLines": 60,
+      "fileCategory": "code"
+    },
+    {
+      "path": "llvm/emission_tail.rs",
+      "language": "rust",
+      "sizeLines": 184,
+      "fileCategory": "code"
+    },
+    {
+      "path": "llvm/helpers.rs",
+      "language": "rust",
+      "sizeLines": 373,
+      "fileCategory": "code"
+    },
+    {
+      "path": "log.rs",
+      "language": "rust",
+      "sizeLines": 196,
+      "fileCategory": "code"
+    },
+    {
+      "path": "lsp.rs",
+      "language": "rust",
+      "sizeLines": 494,
+      "fileCategory": "code"
+    },
+    {
+      "path": "lsp/tests.rs",
+      "language": "rust",
+      "sizeLines": 92,
+      "fileCategory": "code"
+    },
+    {
+      "path": "main.rs",
+      "language": "rust",
+      "sizeLines": 446,
+      "fileCategory": "code"
+    },
+    {
+      "path": "module_graph.rs",
+      "language": "rust",
+      "sizeLines": 295,
+      "fileCategory": "code"
+    },
+    {
+      "path": "net.rs",
+      "language": "rust",
+      "sizeLines": 362,
+      "fileCategory": "code"
+    },
+    {
+      "path": "net/tests.rs",
+      "language": "rust",
+      "sizeLines": 156,
+      "fileCategory": "code"
+    },
+    {
+      "path": "parser.rs",
+      "language": "rust",
+      "sizeLines": 133,
+      "fileCategory": "code"
+    },
+    {
+      "path": "parser/expressions.rs",
+      "language": "rust",
+      "sizeLines": 473,
+      "fileCategory": "code"
+    },
+    {
+      "path": "parser/phase1.rs",
+      "language": "rust",
+      "sizeLines": 358,
+      "fileCategory": "code"
+    },
+    {
+      "path": "parser/phase2.rs",
+      "language": "rust",
+      "sizeLines": 356,
+      "fileCategory": "code"
+    },
+    {
+      "path": "parser/phase3.rs",
+      "language": "rust",
+      "sizeLines": 432,
+      "fileCategory": "code"
+    },
+    {
+      "path": "parser/phase4.rs",
+      "language": "rust",
+      "sizeLines": 133,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime.rs",
+      "language": "rust",
+      "sizeLines": 1,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/allocation.rs",
+      "language": "rust",
+      "sizeLines": 55,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/collections.rs",
+      "language": "rust",
+      "sizeLines": 67,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/compare.rs",
+      "language": "rust",
+      "sizeLines": 216,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor.rs",
+      "language": "rust",
+      "sizeLines": 491,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor/helpers.rs",
+      "language": "rust",
+      "sizeLines": 103,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor/part1.rs",
+      "language": "rust",
+      "sizeLines": 109,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor/part10.rs",
+      "language": "rust",
+      "sizeLines": 332,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor/part11.rs",
+      "language": "rust",
+      "sizeLines": 402,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor/part12.rs",
+      "language": "rust",
+      "sizeLines": 129,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor/part13.rs",
+      "language": "rust",
+      "sizeLines": 78,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor/part14.rs",
+      "language": "rust",
+      "sizeLines": 290,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor/part15.rs",
+      "language": "rust",
+      "sizeLines": 291,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor/part16.rs",
+      "language": "rust",
+      "sizeLines": 371,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor/part17.rs",
+      "language": "rust",
+      "sizeLines": 479,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor/part18.rs",
+      "language": "rust",
+      "sizeLines": 125,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor/part19.rs",
+      "language": "rust",
+      "sizeLines": 120,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor/part2.rs",
+      "language": "rust",
+      "sizeLines": 463,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor/part3.rs",
+      "language": "rust",
+      "sizeLines": 351,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor/part4.rs",
+      "language": "rust",
+      "sizeLines": 494,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor/part5.rs",
+      "language": "rust",
+      "sizeLines": 248,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor/part6.rs",
+      "language": "rust",
+      "sizeLines": 345,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor/part7.rs",
+      "language": "rust",
+      "sizeLines": 240,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor/part8.rs",
+      "language": "rust",
+      "sizeLines": 356,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor/part9.rs",
+      "language": "rust",
+      "sizeLines": 491,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/executor/terminal.rs",
+      "language": "rust",
+      "sizeLines": 120,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/helpers.rs",
+      "language": "rust",
+      "sizeLines": 110,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/math.rs",
+      "language": "rust",
+      "sizeLines": 161,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/net_values.rs",
+      "language": "rust",
+      "sizeLines": 140,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/numeric.rs",
+      "language": "rust",
+      "sizeLines": 164,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/render.rs",
+      "language": "rust",
+      "sizeLines": 58,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/support.rs",
+      "language": "rust",
+      "sizeLines": 36,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/temporal_ops.rs",
+      "language": "rust",
+      "sizeLines": 121,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime/tests.rs",
+      "language": "rust",
+      "sizeLines": 59,
+      "fileCategory": "code"
+    },
+    {
+      "path": "runtime_impl.rs",
+      "language": "rust",
+      "sizeLines": 517,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic.rs",
+      "language": "rust",
+      "sizeLines": 397,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic/analyzer1.rs",
+      "language": "rust",
+      "sizeLines": 219,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic/analyzer2.rs",
+      "language": "rust",
+      "sizeLines": 334,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic/analyzer3.rs",
+      "language": "rust",
+      "sizeLines": 432,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic/analyzer4.rs",
+      "language": "rust",
+      "sizeLines": 183,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic/analyzer5.rs",
+      "language": "rust",
+      "sizeLines": 482,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic/analyzer6.rs",
+      "language": "rust",
+      "sizeLines": 432,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic/analyzer7.rs",
+      "language": "rust",
+      "sizeLines": 432,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic/analyzer8.rs",
+      "language": "rust",
+      "sizeLines": 340,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic/declarations.rs",
+      "language": "rust",
+      "sizeLines": 248,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic/helpers1.rs",
+      "language": "rust",
+      "sizeLines": 474,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic/helpers2.rs",
+      "language": "rust",
+      "sizeLines": 438,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic/helpers3.rs",
+      "language": "rust",
+      "sizeLines": 60,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic/host_defaults.rs",
+      "language": "rust",
+      "sizeLines": 420,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic/host_members1.rs",
+      "language": "rust",
+      "sizeLines": 390,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic/host_members2.rs",
+      "language": "rust",
+      "sizeLines": 417,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic/host_members3.rs",
+      "language": "rust",
+      "sizeLines": 402,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic/host_members4.rs",
+      "language": "rust",
+      "sizeLines": 36,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic/module_analysis.rs",
+      "language": "rust",
+      "sizeLines": 362,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic/type_names.rs",
+      "language": "rust",
+      "sizeLines": 59,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic/type_ops.rs",
+      "language": "rust",
+      "sizeLines": 199,
+      "fileCategory": "code"
+    },
+    {
+      "path": "semantic/types.rs",
+      "language": "rust",
+      "sizeLines": 361,
+      "fileCategory": "code"
+    },
+    {
+      "path": "source.rs",
+      "language": "rust",
+      "sizeLines": 41,
+      "fileCategory": "code"
+    },
+    {
+      "path": "temporal.rs",
+      "language": "rust",
+      "sizeLines": 330,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tls.rs",
+      "language": "rust",
+      "sizeLines": 117,
+      "fileCategory": "code"
+    },
+    {
+      "path": "token.rs",
+      "language": "rust",
+      "sizeLines": 99,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web.rs",
+      "language": "rust",
+      "sizeLines": 405,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/routing.rs",
+      "language": "rust",
+      "sizeLines": 161,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/server.rs",
+      "language": "rust",
+      "sizeLines": 106,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/tests.rs",
+      "language": "rust",
+      "sizeLines": 325,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web_state.rs",
+      "language": "rust",
+      "sizeLines": 380,
+      "fileCategory": "code"
+    }
+  ],
+  "totalFiles": 117,
+  "filteredByIgnore": 0,
+  "estimatedComplexity": "moderate",
+  "importMap": {
+    "README.md": [],
+    "ast.rs": [],
+    "cli_frontend.rs": [],
+    "cli_help.rs": [],
+    "cli_output.rs": [],
+    "cli_tests.rs": [],
+    "cli_toolchain.rs": [],
+    "dap.rs": [],
+    "dap/tests.rs": [],
+    "dataframe.rs": [],
+    "diagnostic.rs": [],
+    "dispatch.rs": [],
+    "dispatch/sync.rs": [],
+    "heap.rs": [],
+    "http.rs": [],
+    "http/tests.rs": [],
+    "ir.rs": [],
+    "ir/builder.rs": [],
+    "ir/builder/builder_state.rs": [],
+    "ir/builder/control_flow.rs": [],
+    "ir/builder/expressions.rs": [],
+    "ir/builder/statements.rs": [],
+    "ir/helpers.rs": [],
+    "ir/lowering.rs": [
+      "ir/lowering_callable.rs"
+    ],
+    "ir/lowering_callable.rs": [],
+    "ir/model.rs": [],
+    "ir/validate.rs": [],
+    "json.rs": [],
+    "keyword_registry.rs": [],
+    "lexer.rs": [],
+    "lib.rs": [
+      "ast.rs",
+      "dap.rs",
+      "dataframe.rs",
+      "diagnostic.rs",
+      "dispatch.rs",
+      "heap.rs",
+      "http.rs",
+      "ir.rs",
+      "json.rs",
+      "keyword_registry.rs",
+      "lexer.rs",
+      "llvm.rs",
+      "log.rs",
+      "lsp.rs",
+      "module_graph.rs",
+      "net.rs",
+      "parser.rs",
+      "runtime.rs",
+      "semantic.rs",
+      "source.rs",
+      "temporal.rs",
+      "tls.rs",
+      "token.rs",
+      "web.rs",
+      "web_state.rs"
+    ],
+    "llvm.rs": [],
+    "llvm/analysis.rs": [],
+    "llvm/emission1.rs": [
+      "llvm/emission_tail.rs"
+    ],
+    "llvm/emission2.rs": [],
+    "llvm/emission3.rs": [],
+    "llvm/emission_tail.rs": [],
+    "llvm/helpers.rs": [],
+    "log.rs": [],
+    "lsp.rs": [],
+    "lsp/tests.rs": [],
+    "main.rs": [
+      "cli_frontend.rs",
+      "cli_help.rs",
+      "cli_output.rs",
+      "cli_toolchain.rs"
+    ],
+    "module_graph.rs": [],
+    "net.rs": [],
+    "net/tests.rs": [],
+    "parser.rs": [],
+    "parser/expressions.rs": [],
+    "parser/phase1.rs": [],
+    "parser/phase2.rs": [],
+    "parser/phase3.rs": [],
+    "parser/phase4.rs": [],
+    "runtime.rs": [],
+    "runtime/allocation.rs": [],
+    "runtime/collections.rs": [],
+    "runtime/compare.rs": [],
+    "runtime/executor.rs": [
+      "runtime/helpers.rs"
+    ],
+    "runtime/executor/helpers.rs": [],
+    "runtime/executor/part1.rs": [],
+    "runtime/executor/part10.rs": [],
+    "runtime/executor/part11.rs": [],
+    "runtime/executor/part12.rs": [],
+    "runtime/executor/part13.rs": [],
+    "runtime/executor/part14.rs": [],
+    "runtime/executor/part15.rs": [],
+    "runtime/executor/part16.rs": [],
+    "runtime/executor/part17.rs": [],
+    "runtime/executor/part18.rs": [],
+    "runtime/executor/part19.rs": [],
+    "runtime/executor/part2.rs": [],
+    "runtime/executor/part3.rs": [],
+    "runtime/executor/part4.rs": [],
+    "runtime/executor/part5.rs": [],
+    "runtime/executor/part6.rs": [],
+    "runtime/executor/part7.rs": [],
+    "runtime/executor/part8.rs": [],
+    "runtime/executor/part9.rs": [],
+    "runtime/executor/terminal.rs": [],
+    "runtime/helpers.rs": [],
+    "runtime/math.rs": [],
+    "runtime/net_values.rs": [],
+    "runtime/numeric.rs": [],
+    "runtime/render.rs": [],
+    "runtime/support.rs": [],
+    "runtime/temporal_ops.rs": [],
+    "runtime/tests.rs": [],
+    "runtime_impl.rs": [],
+    "semantic.rs": [],
+    "semantic/analyzer1.rs": [],
+    "semantic/analyzer2.rs": [],
+    "semantic/analyzer3.rs": [],
+    "semantic/analyzer4.rs": [],
+    "semantic/analyzer5.rs": [],
+    "semantic/analyzer6.rs": [],
+    "semantic/analyzer7.rs": [],
+    "semantic/analyzer8.rs": [],
+    "semantic/declarations.rs": [],
+    "semantic/helpers1.rs": [],
+    "semantic/helpers2.rs": [],
+    "semantic/helpers3.rs": [],
+    "semantic/host_defaults.rs": [],
+    "semantic/host_members1.rs": [],
+    "semantic/host_members2.rs": [],
+    "semantic/host_members3.rs": [],
+    "semantic/host_members4.rs": [],
+    "semantic/module_analysis.rs": [],
+    "semantic/type_names.rs": [],
+    "semantic/type_ops.rs": [],
+    "semantic/types.rs": [],
+    "source.rs": [],
+    "temporal.rs": [],
+    "tls.rs": [],
+    "token.rs": [],
+    "web.rs": [],
+    "web/routing.rs": [],
+    "web/server.rs": [],
+    "web/tests.rs": [],
+    "web_state.rs": []
+  }
+}

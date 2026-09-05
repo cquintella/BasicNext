@@ -19,6 +19,13 @@ pub enum Item {
         alias: String,
         span: Span,
     },
+    Constant {
+        exported: bool,
+        name: String,
+        type_ref: TypeReference,
+        initializer: Expression,
+        span: Span,
+    },
     Declaration {
         exported: bool,
         asynchronous: bool,
@@ -209,7 +216,9 @@ pub enum ExpressionKind {
         name: String,
     },
     Super,
-    Input,
+    Input {
+        prompt: Option<Box<Expression>>,
+    },
     HostCapability {
         name: String,
     },

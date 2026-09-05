@@ -1,4 +1,8 @@
-#![allow(clippy::wildcard_imports)]
+#![allow(
+    clippy::wildcard_imports,
+    clippy::match_same_arms,
+    clippy::too_many_arguments
+)]
 use super::*;
 
 pub(crate) fn emit_vector(

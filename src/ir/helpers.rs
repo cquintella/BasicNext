@@ -32,6 +32,18 @@ pub(crate) fn constant(literal: &Literal) -> Constant {
     }
 }
 
+pub(crate) fn module_constant(value: &crate::semantic::ConstantValue) -> Constant {
+    match value {
+        crate::semantic::ConstantValue::Integer(value) => Constant::Integer(value.clone()),
+        crate::semantic::ConstantValue::Float(value) => Constant::Float(value.clone()),
+        crate::semantic::ConstantValue::String(value) => Constant::String(value.clone()),
+        crate::semantic::ConstantValue::Boolean(value) => Constant::Boolean(*value),
+        crate::semantic::ConstantValue::Null => Constant::Null,
+        crate::semantic::ConstantValue::NotAvailable => Constant::NotAvailable,
+        crate::semantic::ConstantValue::EndOfFile => Constant::EndOfFile,
+    }
+}
+
 pub(crate) fn assignment_operator(operator: &str) -> Result<&'static str, Diagnostic> {
     match operator {
         "PlusAssign" => Ok("Plus"),
