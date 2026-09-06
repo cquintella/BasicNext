@@ -1,5 +1,7 @@
 # Control Flow
 
+Um programa não teria muita utilidade se tivesse apenas um fluxo unico possivel de execucao
+
 Basic Next provides explicit and block-scoped control flow constructs. Every block has a strict opening and closing keyword, such as `END IF` or `END WHILE`.
 
 ## Conditional Branching

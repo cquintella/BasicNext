@@ -69,8 +69,35 @@ impl<'a> Parser<'a> {
         if self.keyword("LET") || self.keyword("CONST") {
             let as_index = line
                 .iter()
-                .position(|token| matches!(&token.kind, TokenKind::Keyword(word) if word == "AS"))
-                .ok_or_else(|| self.error("a binding declaration requires AS TYPE"))?;
+                .position(|token| matches!(&token.kind, TokenKind::Keyword(word) if word == "AS"));
+            if self.keyword("CONST") && as_index.is_none() {
+                let assign = line
+                    .iter()
+                    .position(|token| matches!(token.kind, TokenKind::Symbol(Symbol::Assign)))
+                    .ok_or_else(|| self.error("CONST requires an initializer"))?;
+                if assign != 2 || line.len() <= assign + 1 {
+                    return Err(self.error("inferred CONST requires one name and one literal"));
+                }
+                let TokenKind::Identifier(name) = &line[1].kind else {
+                    return Err(self.error("expected binding name"));
+                };
+                let initializer = parse_expression(&line[assign + 1..])?;
+                return Ok(Statement::Binding {
+                    constant: true,
+                    visibility: None,
+                    is_static: false,
+                    name: name.clone(),
+                    additional_names: Vec::new(),
+                    additional_name_spans: Vec::new(),
+                    type_ref: inferred_constant_type(&initializer)?,
+                    initialized: true,
+                    initializer: Some(initializer),
+                    additional_initializers: Vec::new(),
+                    span,
+                });
+            }
+            let as_index =
+                as_index.ok_or_else(|| self.error("a binding declaration requires AS TYPE"))?;
             let name_parts = line[1..as_index]
                 .split(|token| matches!(token.kind, TokenKind::Symbol(Symbol::Comma)))
                 .map(|part| match part {
@@ -465,4 +492,40 @@ impl<'a> Parser<'a> {
         }
         matches!(self.tokens.get(self.index + offset).map(|token| &token.kind), Some(TokenKind::Keyword(word)) if word == "FUNCTION")
     }
+}
+
+fn inferred_constant_type(
+    initializer: &Expression,
+) -> Result<crate::ast::TypeReference, Diagnostic> {
+    let ExpressionKind::Literal(literal) = &initializer.kind else {
+        return Err(Diagnostic::lexical(
+            "CONST inference supports only BOOLEAN, INTEGER, FLOAT, and STRING literals",
+            initializer.span,
+        ));
+    };
+    let name = match literal {
+        Literal::Boolean(_) => "BOOLEAN",
+        Literal::Integer(_) => "INTEGER",
+        Literal::Float(_) => "FLOAT",
+        Literal::String(_) => "STRING",
+        Literal::Special(_)
+        | Literal::Null
+        | Literal::NotAvailable
+        | Literal::EndOfFile
+        | Literal::TypeName(_) => {
+            return Err(Diagnostic::lexical(
+                "CONST inference does not support this literal; use AS TYPE",
+                initializer.span,
+            ));
+        }
+    };
+    Ok(crate::ast::TypeReference {
+        alternatives: vec![crate::ast::TypeAtom {
+            name: name.into(),
+            parts: Vec::new(),
+            dimensions: Vec::new(),
+            span: initializer.span,
+        }],
+        span: initializer.span,
+    })
 }

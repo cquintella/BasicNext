@@ -16,6 +16,20 @@ struct ChannelReader {
     current: Cursor<Vec<u8>>,
 }
 
+#[test]
+fn inferred_constants_and_typeof_use_canonical_types() {
+    let source = r#"FUNCTION Start() AS VOID
+CONST integer_value = 5
+CONST float_value = 10.2
+CONST boolean_value = TRUE
+CONST string_value = "SS"
+PRINT TYPEOF(integer_value), TYPEOF(float_value), TYPEOF(boolean_value), TYPEOF(string_value)
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute inferred constants and TYPEOF");
+    assert_eq!(output, "INT32 FLOAT64 BOOLEAN STRING\n");
+}
+
 impl Read for ChannelReader {
     fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
         loop {

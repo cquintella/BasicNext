@@ -44,7 +44,7 @@ imports, no silent TLS-to-cleartext fallback.
 ### 2. Wasm and feature gates
 
 Compile-to-wasm and optional feature sets must read the **same** capability
-story as the oracle. A binary that omits host-web or llvm still must not
+story as the executable reference. A binary that omits host-web or llvm still must not
 claim HOST surfaces it cannot enforce. Success criteria in
 [target-architecture.md](target-architecture.md) call this out explicitly.
 
@@ -64,7 +64,7 @@ The **LLVM toolchain** (clang, ld, opt) is an **external entity** on DFD-0/1
 (**F25** / **F26**). `bn_llvm` emits IR and invokes tools; it does not absorb
 the full LLVM libraries as the product boundary. Architecture treats tool
 exit status and stderr as inputs to diagnostics and the process log — not as
-a second semantic oracle. Supply-chain and “what binary did we link?”
+a second source of language meaning. Supply-chain and “what binary did we link?”
 questions belong to build forensics + documented argv, not to language
 meaning.
 

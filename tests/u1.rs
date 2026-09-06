@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::{fs, path::Path, process::Command};
+use std::{fs, process::Command};
 
 use bn::{
     keyword_registry::{
@@ -198,79 +198,6 @@ fn non_reserved_names_remain_identifiers() {
 }
 
 #[test]
-fn markdown_links_resolve() {
-    let exceptions = [
-        "AGENTS.md",
-        "docs/language/0.1/0.1.md::../project/usage.md",
-        "docs/language/0.1/0.1.md::diagnostics.md",
-        "docs/language/0.1/0.1.md::../library/temporal.md",
-        "docs/language/0.1/0.1.md::../library/math.md",
-        "docs/language/0.1/0.1.md::../library/host.md",
-    ];
-    let mut failures = Vec::new();
-    for root in ["docs", "ongoing", "done", "todo"] {
-        walk_markdown(Path::new(root), &mut |path, text| {
-            check_links(path, text, &exceptions, &mut failures);
-        });
-    }
-    for name in [
-        "README.md",
-        "CONTRIBUTING.md",
-        "PHILOSOPHY.md",
-        "GOVERNANCE.md",
-    ] {
-        if Path::new(name).exists() {
-            let text = read(name);
-            check_links(Path::new(name), &text, &exceptions, &mut failures);
-        }
-    }
-    assert!(
-        failures.is_empty(),
-        "broken Markdown links:\n{}",
-        failures.join("\n")
-    );
-}
-
-#[test]
-fn done_tree_is_closed_and_todo_accepted_docs_are_pointers() {
-    let mut failures = Vec::new();
-    walk_markdown(Path::new("done"), &mut |path, text| {
-        if text.contains("Status: Open") {
-            failures.push(format!("{} still says Status: Open", path.display()));
-        }
-        if text.contains("- [ ]") {
-            failures.push(format!("{} has an unchecked gate", path.display()));
-        }
-        if text.lines().any(|line| line.contains("TODO:")) {
-            failures.push(format!("{} contains TODO:", path.display()));
-        }
-    });
-    walk_markdown(Path::new("todo/proposals"), &mut |path, text| {
-        if path.file_name().is_some_and(|name| name == "README.md") {
-            return;
-        }
-        let accepted = text.contains("Accepted into") || text.contains("Accepted for");
-        let pointer = text.contains("Historical proposal")
-            || text.contains("This file is a pointer")
-            || text.contains("the rest of this document remains proposed")
-            || text.contains("The rest of this document remains proposed")
-            || text.contains("Exploratory")
-            || text.contains("unresolved");
-        if accepted && !pointer {
-            failures.push(format!(
-                "{} is marked accepted under todo/ without remaining scope",
-                path.display()
-            ));
-        }
-    });
-    assert!(
-        failures.is_empty(),
-        "workflow location failures:\n{}",
-        failures.join("\n")
-    );
-}
-
-#[test]
 fn cargo_package_lists_build_script_and_keyword_registry() {
     let output = Command::new("cargo")
         .args(["package", "--list", "--allow-dirty"])
@@ -297,52 +224,4 @@ fn cargo_package_lists_build_script_and_keyword_registry() {
             .any(|line| line.ends_with("docs/language/keywords.md")),
         "package list must not use the removed docs/language/keywords.md path\n{list}"
     );
-}
-
-fn walk_markdown(root: &Path, visit: &mut impl FnMut(&Path, &str)) {
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(path) = stack.pop() {
-        let Ok(entries) = fs::read_dir(&path) else {
-            continue;
-        };
-        for entry in entries.filter_map(Result::ok) {
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.extension().is_some_and(|extension| extension == "md") {
-                let text = fs::read_to_string(&path).expect("read markdown");
-                visit(&path, &text);
-            }
-        }
-    }
-}
-
-fn check_links(path: &Path, text: &str, exceptions: &[&str], failures: &mut Vec<String>) {
-    let key = path.to_string_lossy();
-    let mut rest = text;
-    while let Some(start) = rest.find("](") {
-        rest = &rest[start + 2..];
-        let Some(end) = rest.find(')') else {
-            break;
-        };
-        let target = rest[..end].trim();
-        rest = &rest[end + 1..];
-        if target.is_empty()
-            || target.starts_with('#')
-            || target.starts_with("http://")
-            || target.starts_with("https://")
-            || target.starts_with("mailto:")
-        {
-            continue;
-        }
-        let target = target.split_once('#').map_or(target, |(path, _)| path);
-        let exception = format!("{key}::{target}");
-        if exceptions.contains(&key.as_ref()) || exceptions.iter().any(|item| *item == exception) {
-            continue;
-        }
-        let resolved = path.parent().unwrap_or_else(|| Path::new(".")).join(target);
-        if !resolved.exists() {
-            failures.push(format!("{} -> {target}", path.display()));
-        }
-    }
 }

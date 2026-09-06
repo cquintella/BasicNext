@@ -3,7 +3,7 @@
 ![Basic Next Logo](docs/logo.svg)
 
 [![Rust CI](https://img.shields.io/badge/Rust_CI-passing-brightgreen)](#)
-[![Version](https://img.shields.io/badge/version-v0.4.3-blue)](#)
+[![Version](https://img.shields.io/badge/version-v0.4.4-blue)](#)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE.md)
 
 An object-oriented, general-purpose programming language designed to reduce
@@ -30,13 +30,13 @@ only after the corresponding semantics have been defined and reviewed.
 Read [PHILOSOPHY.md](PHILOSOPHY.md) for the mission, vision, and complete set
 of design principles.
 
-## 🚀 Status: Version 0.4.3 development
+## 🚀 Status: Version 0.4.4 release-ready
 
-The Basic Next 0.4.3 release extends the Rust reference frontend, typed IR
+The Basic Next 0.4.4 release extends the Rust reference frontend, typed IR
 interpreter, HOST capabilities, external BN modules, HTTP hardening, bounded
 async runtime, debugger bridge, and notebook tooling. Read the
 [0.4.2 release notes](done/0.4.2-release-news.md) for the complete summary.
-BNDispatch native-provider conformance includes the 0.4.3 lifecycle,
+BNDispatch native-provider conformance includes the 0.4.4 lifecycle,
 synchronization, isolation, and networking corrections; see the [recovery
 design](docs/superpowers/specs/2026-09-02-bndispatch-recovery-design.md).
 The active [`ongoing/bucket.md`](ongoing/bucket.md) records the delivery gates;

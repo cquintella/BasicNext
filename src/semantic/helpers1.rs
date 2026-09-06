@@ -472,3 +472,43 @@ pub(crate) fn display(ty: &Type) -> String {
         other => format!("{other:?}").to_uppercase(),
     }
 }
+
+pub(crate) fn typeof_name(ty: &Type) -> String {
+    match ty {
+        Type::Boolean => "BOOLEAN".into(),
+        Type::Integer(IntegerType::Byte) => "BYTE".into(),
+        Type::Integer(IntegerType::Int8) => "INT8".into(),
+        Type::Integer(IntegerType::Int16) => "INT16".into(),
+        Type::Integer(IntegerType::Int32) | Type::IntegerLiteral(_) => "INT32".into(),
+        Type::Integer(IntegerType::Int64) => "INT64".into(),
+        Type::Integer(IntegerType::UInt16) => "UINT16".into(),
+        Type::Integer(IntegerType::UInt32) => "UINT32".into(),
+        Type::Integer(IntegerType::UInt64) => "UINT64".into(),
+        Type::Float(FloatType::Float32) => "FLOAT32".into(),
+        Type::Float(FloatType::Float64) | Type::FloatLiteral => "FLOAT64".into(),
+        Type::String => "STRING".into(),
+        Type::Null => "NULL".into(),
+        Type::NotAvailable => "NA".into(),
+        Type::EndOfFile => "EOF".into(),
+        Type::Alternative(types) => types
+            .iter()
+            .map(typeof_name)
+            .collect::<Vec<_>>()
+            .join(" OR "),
+        Type::Vector {
+            element,
+            dimensions,
+        } => format!(
+            "{}{}",
+            typeof_name(element),
+            dimensions
+                .iter()
+                .fold(String::new(), |mut name, dimension| {
+                    use std::fmt::Write;
+                    let _ = write!(name, "[{dimension}]");
+                    name
+                })
+        ),
+        other => display(other),
+    }
+}

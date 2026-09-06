@@ -3,6 +3,8 @@
 Target toolchain architecture for BasicNext: minimalist language,
 frontend → IR → interpret(IR) | compile(IR), optional `bnc`, external LLVM.
 
+Standing agent/contributor brief (authority + acceptance, including well-formed IR handoff **W1–W5**): [`../../AGENTS.md`](../../AGENTS.md).
+
 ## Documents
 
 | Path | Role |
@@ -14,6 +16,16 @@ frontend → IR → interpret(IR) | compile(IR), optional `bnc`, external LLVM.
 | [dfd/dfd-2/README.md](dfd/dfd-2/README.md) | DFD-2 index (one file per process) |
 | [dfd/data-dictionary.md](dfd/data-dictionary.md) | Data dictionary (flows, elements, stores) |
 | [ir-contract.md](ir-contract.md) | BN IR contract (to-be) — stub |
+| [module-path.md](module-path.md) | Ordered **module-path** (dirs to search for `.bn` imports) |
+| [semantic-analysis.md](semantic-analysis.md) | **2.5** contract: definitions, operands, booleans, calls/returns, references |
+| [conformance.md](conformance.md) | Spec → reference interpret → compile; two CI comparisons |
+| [value-memory-abi.md](value-memory-abi.md) | Value/memory/ABI + numeric lowering (`nsw` ≠ BN overflow) |
+| [frontend-session.md](frontend-session.md) | `FrontendSession`: snapshots, SourceId/Revision, check≡LSP diagnostics |
+| [completion-gates.md](completion-gates.md) | Correctness gates (**GC-***); priority sequence; DAG+smoke ≠ enough |
+| [review-status.md](review-status.md) | Honest review table: design met vs partial vs insufficient |
+| [to-close.md](to-close.md) | **Checklist of what remains to close** each contract |
+| [ownership.md](ownership.md) | 0.4.4 current FE/IR/BE/EDGE ownership inventory and debt |
+| [driver-sequence.md](driver-sequence.md) | 0.4.4 as-is CLI pipeline and LSP/DAP divergence inventory |
 
 ## Deeper design (P2 companions)
 
@@ -24,7 +36,7 @@ frontend → IR → interpret(IR) | compile(IR), optional `bnc`, external LLVM.
 | [nfr-security.md](nfr-security.md) | NFR/security architecture index (points to threat model + register) |
 | [open-questions.md](open-questions.md) | Open architecture decisions register |
 | [glossary.md](glossary.md) | Architecture glossary |
-| [support-matrix.md](support-matrix.md) | Interpret × LLVM support matrix — **stub** (EXAMPLE rows only) |
+| [support-matrix.md](support-matrix.md) | Support matrix **contract** (structured + verifiable); data still stub/EXAMPLE |
 
 ## Language specification (companion — not DFD)
 
@@ -33,10 +45,10 @@ Toolchain architecture **consumes** the language; it does not replace the gramma
 | Path | Role |
 |------|------|
 | [../language/0.4/0.4.ebnf](../language/0.4/0.4.ebnf) | Normative **EBNF** syntax (0.4) |
-| [../language/0.4/0.4.md](../language/0.4/0.4.md) | Static semantics, runtime behaviour, diagnostics |
+| [../language/0.4/0.4.md](../language/0.4/0.4.md) | Static semantics, runtime behaviour, diagnostics — **active draft** (0.3 incorporated; not G0-accepted final) |
 | [../language/0.4/keywords.md](../language/0.4/keywords.md) | Keywords |
 
-DFD **2.0 Analyze Sources** (lex/parse) must match this EBNF.
+DFD **2.0 Analyze Sources**: lex/parse must match the EBNF; **2.5** must satisfy [semantic-analysis.md](semantic-analysis.md).
 
 ## Decisions & proposals (linked)
 
@@ -53,10 +65,16 @@ DFD **2.0 Analyze Sources** (lex/parse) must match this EBNF.
 | Item | Status |
 |------|--------|
 | Minimalist language posture | **Locked** |
-| One IR; interpret = oracle (not `lli`); LLVM tools external | **Locked** |
+| One IR; interpret = **executable reference** subordinate to the **spec** (not `lli`); LLVM equivalent on support subset; conformance = spec fixtures + cross-backend | **Locked** |
 | Same Frontend→IR for CLI and IDE | **Locked** |
 | `bnc` UX: default interpret / `-c` / `--target` / `--check` | **Locked** |
 | Companion process log + `--log-level`; plugins-dir reserved | **Locked (MVP)** |
+| **Module search path** = ordered list (`--module-path` repeatable) | **Locked (direction 2026-09-05)** |
+| **Semantic analysis** must cover definitions-by-path, operand compatibility, boolean conditions, call/return signatures, valid references | **Locked (2026-09-05)** |
+| **`bn_ir` independent of frontend** — lowering in frontend; IR = types/ops/validate only; backends consume IR without semantic analyzer | **Locked (2026-09-05)** |
+| **Value/memory/ABI contract** required for interpret↔compile equivalence (beyond `bn_value` extract); LLVM poison/`nsw` ≠ BN `Error` | **Locked (2026-09-05)** |
+| **HOST: program requirements ≠ target support ≠ execution policy**; deny ≠ unimplemented; `bn_rt` enforces policy at runtime | **Locked (2026-09-05)** |
+| **Support matrix** = structured verifiable catalog; `validate` ≠ target-support check; parity gates beyond stdout | **Locked (2026-09-05)**; **data inventory still open** |
 | Ship `bnc` binary in 0.4.5 | **Optional / proposed** |
 | IDE subscription to pipeline events | **Future** |
 | Fluent catalogs for `bn_diag` | **Chosen for 0.4.5** (proposal); wire into crates in XM6 |

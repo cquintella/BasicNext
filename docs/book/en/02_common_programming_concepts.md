@@ -14,11 +14,22 @@ We have a multiline
 comment */
 ```
 
-## Variables and Constants
+Comentários são importantes para explicar e contextualizar o código. Dizem que bons códigos não precisam ser comentados, mas eu discordo disso fortemente. Talvez dentro da mesma equipe não precise, porque todos compartilham uma cultura comum, mas grande parte do desenvolvimento, principalmente o open source, vai ter seu software lido por pessoas de diferentes culturas, vivências e habilidades de desenvolvimento. Eu aprendi a sempre documentar claramente cada arquivo, função, classe, programa. 
+
+Algumas dicas são:
+- Explique o porque e não o que o código faz. O porque não é óbvio, mas o que tá escrito em linguaguem de programação.
+- Documente as APIs Públicas.
+- Mantenha os comentários atualizados, sempre que acabar de altera um código leia se os comentários estão condizentes.
+- Não repita o que o código diz
+- Use tags padronizados: TODO, FIX, TEMP.
+
+## Variables
 
 Basic Next enforces strict typing. Every variable must explicitly state its type. The language does not use type inference for bindings.
 
-Variables are declared using the `LET` keyword, followed by the name, `AS`, the type, and an optional initializer. In version 0.3, you can also declare multiple variables of the same type in a single `LET` binding:
+Isso significa que uma variável come;ca com um tipo vai até o final com ele. Não pode guardar FLOAT em uma variável INTEGER.
+
+Variables are declared using the `LET` keyword (statement), followed by the name, `AS`, the type, and an optional initializer. You can also declare multiple variables of the same type in a single `LET` binding:
 
 ```basic
 LET counter AS INTEGER = 10
@@ -32,6 +43,14 @@ If you omit the initializer, the variable is initialized to its type's default v
 LET score AS INTEGER  // Initialized to 0
 LET active AS BOOLEAN // Initialized to FALSE
 ```
+Sempre precisa declar ao tipo de variável que está sendo criada. O exemplo abaixo não é válido
+
+```basic
+LET G="Google"
+> error[E0100]: a binding declaration requires AS TYPE
+```
+
+## Constantes
 
 Constants are declared using the `CONST` keyword. They must always include an initializer and cannot be reassigned:
 
@@ -39,7 +58,14 @@ Constants are declared using the `CONST` keyword. They must always include an in
 CONST MAX_USERS AS INTEGER = 100
 ```
 
-*Note: `CONST` fixes the binding itself. It does not make a referenced class or allocated pointer deeply immutable.*
+*Note: `CONST` fixes the binding itself. It does not make a referenced class or allocated pointer deeply immutable.* 
+
+Podemos ter constantes tendo seu tipo deduzido do valor literal carregado.
+
+```basic
+CONST VEL=100  // Vai deduzir que VEL é um INT32
+```
+mas essa forma é somente para literais existem casos que não vão funcionar. Então como regra e estilo recomendamos que usa a forma complera
 
 ## Primitive Types
 
@@ -84,9 +110,9 @@ Basic Next distinguishes strictly between integer and floating-point division:
 - `%` performs Euclidean modulo (the remainder is always non-negative).
 
 ```basic
-LET half AS FLOAT = 5 / 2       // 2.5
-LET quotient AS INTEGER = 5 DIV 2 // 2
-LET remainder AS INTEGER = 5 % 2  // 1
+LET half AS FLOAT = 5 / 2            // 2.5
+LET quotient AS INTEGER = 5 DIV 2    // 2
+LET remainder AS INTEGER = 5 % 2     // 1
 ```
 
 The `+` operator also concatenates `STRING` values.
@@ -179,6 +205,7 @@ Console.PrintAt(1, 1, "Top left corner")
 
 
 ## Changing Console colors
+
 
 -- Tobe implemented
 

@@ -1,9 +1,12 @@
-IMPORT BNMath as MATH
+IMPORT BNMath AS MATH
 
 FUNCTION Start() AS VOID
     LET value AS FLOAT
     LET vect AS INTEGER[10]
     LET right AS BOOLEAN
+    LET mynum AS INTEGER = 10
+
+    CONST TORQUE=10
 
     PRINT right
     PRINT value

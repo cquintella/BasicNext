@@ -366,6 +366,19 @@ impl Analyzer {
         locals: &HashMap<String, Symbol>,
         span: Span,
     ) -> Result<Type, Diagnostic> {
+        if let ExpressionKind::Name { name } = &callee.kind
+            && name == "TYPEOF"
+        {
+            if arguments.len() != 1 {
+                return Err(error(
+                    "TYPE_MISMATCH",
+                    format!("TYPEOF expects 1 argument, found {}", arguments.len()),
+                    span,
+                ));
+            }
+            self.expression(&arguments[0], locals)?;
+            return Ok(Type::String);
+        }
         let callee_type = self.expression(callee, locals)?;
         if let ExpressionKind::Member { object, name } = &callee.kind
             && let Some(Type::Module(module)) = self

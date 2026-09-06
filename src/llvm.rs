@@ -13,7 +13,10 @@ use std::{
 };
 
 use crate::{
-    ir::{BlockId, Constant, Function, Instruction, Module, Terminator, ValueId},
+    ir::{
+        BlockId, Constant, Function, Instruction, Module, Terminator, ValidatedModule, ValueId,
+        validate_module,
+    },
     semantic::{FloatType, IntegerType, SymbolId, Type},
 };
 
@@ -64,6 +67,10 @@ struct EmissionState {
 
 /// Lower the supported typed BN IR subset to LLVM IR.
 ///
+/// Rejection here means that the target/backend support subset is incomplete;
+/// it does not mean the language IR failed `ir::validate`. The eventual
+/// `validate_for(target)` matrix check will make this distinction explicit.
+///
 /// # Errors
 ///
 /// Returns a diagnostic when the module contains unsupported IR or has no
@@ -81,6 +88,22 @@ pub fn lower_module(module: &Module) -> Result<String, String> {
 /// Returns a diagnostic when the module has no supported entry point or
 /// contains an instruction outside the target lowering contract.
 pub fn lower_module_for_target(module: &Module, wasm32: bool) -> Result<String, String> {
+    let validated = validate_module(module.clone())
+        .map_err(|error| format!("{}: {}", error.code, error.message))?;
+    lower_validated_module_for_target(&validated, wasm32)
+}
+
+/// Lowers IR after the language validator has produced its proof object.
+///
+/// # Errors
+///
+/// Returns a diagnostic when the validated module is outside the target
+/// support subset or has no executable entry point.
+pub fn lower_validated_module_for_target(
+    validated: &ValidatedModule,
+    wasm32: bool,
+) -> Result<String, String> {
+    let module = validated.as_module();
     let Some(start) = module
         .functions
         .iter()

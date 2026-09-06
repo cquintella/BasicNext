@@ -542,6 +542,39 @@ fn explicit_egress_policy_is_applied_after_resolution() {
 }
 
 #[test]
+fn https_resolution_uses_tls_scheme_and_default_port() {
+    let resolver = ScriptedResolver {
+        answers: HashMap::from([(
+            "secure.test".into(),
+            vec![crate::net::Address::parse("93.184.216.34").unwrap()],
+        )]),
+    };
+    let policy =
+        crate::web::EgressPolicy::new(Some(vec!["https".into()]), None, Some(vec![443]), 2, 1000)
+            .unwrap();
+    assert!(
+        super::resolve_validated_addresses_with_policy(
+            "secure.test",
+            443,
+            &resolver,
+            &policy,
+            "https"
+        )
+        .is_ok()
+    );
+    assert!(
+        super::resolve_validated_addresses_with_policy(
+            "secure.test",
+            80,
+            &resolver,
+            &policy,
+            "http"
+        )
+        .is_err()
+    );
+}
+
+#[test]
 fn rate_limited_http_request_returns_429_and_retry_after() {
     let listener = match TcpListener::bind("127.0.0.1:0") {
         Ok(listener) => listener,

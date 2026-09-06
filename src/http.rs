@@ -12,7 +12,9 @@ use hyper_util::{
     rt::{TokioExecutor, TokioIo, TokioTimer},
     server::conn::auto,
 };
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_rustls::TlsAcceptor;
+use tokio_rustls::TlsConnector;
 
 use crate::{
     net::TcpStream,
@@ -253,9 +255,9 @@ fn apply_default_security_headers(response: &mut Response<Full<Bytes>>, secure_t
     }
 }
 
-/// Performs one bounded cleartext HTTP/1.1 request through the HOST.Net
-/// socket provider. HTTPS is rejected by the caller until the TLS adapter is
-/// installed; no cleartext downgrade is attempted.
+/// Performs one bounded HTTP/1.1 request through the HOST.Net socket provider.
+/// HTTPS uses Rustls with the host system CA bundle; no cleartext downgrade is
+/// attempted.
 pub(crate) fn client_request(
     method: &str,
     url: &str,
@@ -334,8 +336,8 @@ fn client_request_once(
     let (scheme, rest) = url
         .split_once("://")
         .ok_or_else(|| "URL requires an authority".to_string())?;
-    if scheme != "http" {
-        return Err("HTTPS client transport is not available".into());
+    if scheme != "http" && scheme != "https" {
+        return Err("unsupported URL scheme".into());
     }
     let authority_end = rest.find(['/', '?']).unwrap_or(rest.len());
     let authority = &rest[..authority_end];
@@ -344,7 +346,8 @@ fn client_request_once(
     } else {
         &rest[authority_end..]
     };
-    let (host, port) = parse_authority(authority)?;
+    let (host, port) =
+        parse_authority_with_default(authority, if scheme == "https" { 443 } else { 80 })?;
     let addresses =
         resolve_validated_addresses_with_policy(host.as_str(), port, resolver, policy, scheme)?;
     let address = addresses
@@ -370,67 +373,93 @@ fn client_request_once(
         .build()
         .map_err(|error| error.to_string())?;
     runtime.block_on(async move {
-        let io = TokioIo::new(
-            tokio::net::TcpStream::from_std(std_stream).map_err(|error| error.to_string())?,
-        );
-        let (mut sender, connection) = tokio::time::timeout(
-            std::time::Duration::from_millis(policy.total_deadline_ms()),
-            hyper::client::conn::http1::handshake(io),
-        )
-        .await
-        .map_err(|_| "HTTP handshake timed out".to_string())?
-        .map_err(|error| error.to_string())?;
-        tokio::spawn(async move {
-            let _ = connection.await;
-        });
-        let request = Request::builder()
-            .method(method)
-            .uri(target)
-            .header("host", authority)
-            .header("content-length", body.len())
-            .body(Full::new(Bytes::copy_from_slice(body.as_bytes())))
-            .map_err(|error| error.to_string())?;
-        let response = tokio::time::timeout(
-            std::time::Duration::from_millis(policy.total_deadline_ms()),
-            sender.send_request(request),
-        )
-        .await
-        .map_err(|_| "HTTP request timed out".to_string())?
-        .map_err(|error| error.to_string())?;
-        let status = response.status().as_u16();
-        let headers = response
-            .headers()
-            .iter()
-            .filter_map(|(name, value)| {
-                value
-                    .to_str()
-                    .ok()
-                    .map(|value| (name.as_str().to_owned(), value.to_owned()))
-            })
-            .collect::<Vec<_>>();
-        if has_unsupported_encoding(&headers) {
-            return Err("compressed responses are unavailable without a bounded decoder".into());
+        let stream =
+            tokio::net::TcpStream::from_std(std_stream).map_err(|error| error.to_string())?;
+        if scheme == "https" {
+            let config = crate::tls::client_config()?;
+            let connector = TlsConnector::from(Arc::new(config));
+            let server_name = rustls::pki_types::ServerName::try_from(host.clone())
+                .map_err(|_| "invalid TLS server name".to_string())?;
+            let stream = connector
+                .connect(server_name, stream)
+                .await
+                .map_err(|error| format!("TLS handshake failed: {error}"))?;
+            perform_http_request(stream, method, authority, target, body, policy).await
+        } else {
+            perform_http_request(stream, method, authority, target, body, policy).await
         }
-        let bytes = tokio::time::timeout(
-            std::time::Duration::from_millis(policy.total_deadline_ms()),
-            response.into_body().collect(),
-        )
-        .await
-        .map_err(|_| "HTTP response body timed out".to_string())?
-        .map_err(|error| error.to_string())?
-        .to_bytes();
-        if bytes.len() > crate::config::web_limits().max_response_body_bytes {
-            return Err("response body exceeds 8 MiB".into());
-        }
-        let text = String::from_utf8(bytes.to_vec())
-            .map_err(|_| "response body is not UTF-8".to_string())?;
-        let mut result = crate::web::Response::new();
-        result.status = status;
-        result.headers = headers;
-        result.body = text;
-        result.commit().map_err(str::to_owned)?;
-        Ok(result)
     })
+}
+
+async fn perform_http_request<I>(
+    stream: I,
+    method: &str,
+    authority: &str,
+    target: &str,
+    body: &str,
+    policy: &crate::web::EgressPolicy,
+) -> Result<crate::web::Response, String>
+where
+    I: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    let io = TokioIo::new(stream);
+    let (mut sender, connection) = tokio::time::timeout(
+        std::time::Duration::from_millis(policy.total_deadline_ms()),
+        hyper::client::conn::http1::handshake(io),
+    )
+    .await
+    .map_err(|_| "HTTP handshake timed out".to_string())?
+    .map_err(|error| error.to_string())?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let request = Request::builder()
+        .method(method)
+        .uri(target)
+        .header("host", authority)
+        .header("content-length", body.len())
+        .body(Full::new(Bytes::copy_from_slice(body.as_bytes())))
+        .map_err(|error| error.to_string())?;
+    let response = tokio::time::timeout(
+        std::time::Duration::from_millis(policy.total_deadline_ms()),
+        sender.send_request(request),
+    )
+    .await
+    .map_err(|_| "HTTP request timed out".to_string())?
+    .map_err(|error| error.to_string())?;
+    let status = response.status().as_u16();
+    let headers = response
+        .headers()
+        .iter()
+        .filter_map(|(name, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (name.as_str().to_owned(), value.to_owned()))
+        })
+        .collect::<Vec<_>>();
+    if has_unsupported_encoding(&headers) {
+        return Err("compressed responses are unavailable without a bounded decoder".into());
+    }
+    let bytes = tokio::time::timeout(
+        std::time::Duration::from_millis(policy.total_deadline_ms()),
+        response.into_body().collect(),
+    )
+    .await
+    .map_err(|_| "HTTP response body timed out".to_string())?
+    .map_err(|error| error.to_string())?
+    .to_bytes();
+    if bytes.len() > crate::config::web_limits().max_response_body_bytes {
+        return Err("response body exceeds 8 MiB".into());
+    }
+    let text =
+        String::from_utf8(bytes.to_vec()).map_err(|_| "response body is not UTF-8".to_string())?;
+    let mut result = crate::web::Response::new();
+    result.status = status;
+    result.headers = headers;
+    result.body = text;
+    result.commit().map_err(str::to_owned)?;
+    Ok(result)
 }
 
 fn resolve_validated_addresses(
@@ -504,6 +533,13 @@ fn resolve_redirect(base: &str, location: &str) -> Result<String, String> {
 }
 
 fn parse_authority(authority: &str) -> Result<(String, u16), String> {
+    parse_authority_with_default(authority, 80)
+}
+
+fn parse_authority_with_default(
+    authority: &str,
+    default_port: u16,
+) -> Result<(String, u16), String> {
     if authority.is_empty() || authority.contains('@') {
         return Err("invalid URL authority".into());
     }
@@ -515,7 +551,7 @@ fn parse_authority(authority: &str) -> Result<(String, u16), String> {
         let port = host
             .get(close + 1..)
             .filter(|suffix| !suffix.is_empty())
-            .map_or(Ok(80), |suffix| {
+            .map_or(Ok(default_port), |suffix| {
                 suffix
                     .strip_prefix(':')
                     .ok_or("invalid IPv6 authority")?
@@ -524,7 +560,10 @@ fn parse_authority(authority: &str) -> Result<(String, u16), String> {
             })?;
         return Ok((address.to_owned(), port));
     }
-    let (host, port) = authority.rsplit_once(':').unwrap_or((authority, "80"));
+    let default_port = default_port.to_string();
+    let (host, port) = authority
+        .rsplit_once(':')
+        .unwrap_or((authority, default_port.as_str()));
     if host.is_empty() {
         return Err("invalid URL authority".into());
     }

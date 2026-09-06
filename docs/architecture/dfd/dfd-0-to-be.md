@@ -60,7 +60,7 @@ What the IDE sends is protocol traffic (document open/change, requests, debug la
 
 The file system holds the durable stuff: project sources, optional config files, build outputs, and logs.
 
-The toolchain **reads** `.bn` modules (and config when present) from disk. It **writes** native executables or `.wasm`, may write temporary LLVM `.ll` files during compile, and writes the companion process log next to (or under a configured directory for) the build. The programs-dir and plugins-dir ideas are really about **which places on this entity** we are allowed to search — plugins stay reserved until there is a safe loading story.
+The toolchain **reads** `.bn` modules (and config when present) from disk. It **writes** native executables or `.wasm`, may write temporary LLVM `.ll` files during compile, and writes the companion process log next to (or under a configured directory for) the build. **programs-dir** is the project/entry root; **module-path** is the ordered list of directories searched for imported `.bn` modules; **plugins-dir** stays reserved until there is a safe loading story. See [`../module-path.md`](../module-path.md).
 
 Nothing mystical here: if disk fails (permissions, full volume), the system must fail in a way the developer can see, without pretending the compile succeeded.
 
@@ -68,7 +68,7 @@ Nothing mystical here: if disk fails (permissions, full volume), the system must
 
 This is **clang**, the linker, and optionally `opt` — tools the industry already maintains. They are **not** part of the BasicNext source tree as “our compiler frontend.” Our code emits LLVM IR (textual `.ll` or equivalent) and **invokes** those tools with an argument list; they return object code / a linked binary / a wasm module and an exit status.
 
-Drawing E4 outside the circle is deliberate. It keeps a hard product boundary: BasicNext owns **language semantics on BN IR** and **lowering to LLVM IR**; the battle-tested code generator and linker stay external. We do **not** make LLVM’s `lli` the meaning of BasicNext “run” — that would replace our oracle with LLVM’s.
+Drawing E4 outside the circle is deliberate. It keeps a hard product boundary: BasicNext owns **language semantics on BN IR** and **lowering to LLVM IR**; the battle-tested code generator and linker stay external. We do **not** make LLVM’s `lli` the meaning of BasicNext “run” — that would replace the language specification / reference interpreter with LLVM’s.
 
 ---
 
@@ -81,7 +81,7 @@ The circle is the whole product at level 0. Inside it (still opaque here) live:
 - A **controller** (`bnc`, target): chooses the pipeline profile (check / interpret / compile), applies configuration, and records the process log.
 - An **engine** (libraries behind today’s `bn`): runs the shared **frontend** until a single **IR** (Intermediate Representation) exists, then either **interprets that IR** or **compiles that IR** through `bn_llvm` toward E4.
 
-The interpreter on **BN IR** is the **semantic oracle**: it defines what the language means. Compile must aim at the same IR, not at a second private meaning of the source text. That is how a minimalist language stays one language with two ways to execute.
+The **specification** defines what the language means. The interpreter on **BN IR** is the **executable reference** (subordinate to that spec). Compile must aim at the **same IR** and match the spec on the supported subset — not a second private meaning of the source text, and not “copy interpreter bugs.” See [`../conformance.md`](../conformance.md).
 
 Process 0 does **not**, at this level, expose HOST, dataframe, or HTTP as separate bubbles — those are internal to the engine’s backend when we open DFD-1. Process 0 also does not grow keywords or new language surface; architecture changes are about packaging and data flow.
 

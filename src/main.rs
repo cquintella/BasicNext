@@ -14,12 +14,11 @@ use std::{
 
 use bn::{
     ast::Program,
-    ir::{Module as IrModule, lower_graph},
+    ir::{Module as IrModule, lower_graph, lower_graph_validated},
     lexer::lex,
-    llvm::lower_module_for_target,
+    llvm::lower_validated_module_for_target,
     module_graph::{ModuleGraph, load},
-    parser::parse_named,
-    runtime::{HostEnv, execute_with_host},
+    runtime::{HostEnv, execute_validated_with_host},
     semantic::{SemanticModel, analyze_modules},
     source::SourceFile,
     token::Token,
@@ -110,7 +109,6 @@ impl Optimization {
 
 struct Frontend {
     graph: ModuleGraph,
-    program: Program,
     models: Vec<SemanticModel>,
 }
 
@@ -193,20 +191,21 @@ fn build(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
         Ok(frontend) => frontend,
         Err(code) => return code,
     };
-    let module = match lower_graph(&frontend.graph, &frontend.models) {
+    let module = match lower_graph_validated(&frontend.graph, &frontend.models) {
         Ok(module) => module,
         Err(diagnostic) => {
             eprintln!("{}", diagnostic.render(source));
             return language_error();
         }
     };
-    if options.target == Target::Wasm32 && requires_unavailable_wasm_capability(&module) {
+    if options.target == Target::Wasm32 && requires_unavailable_wasm_capability(module.as_module())
+    {
         eprintln!(
             "error[BUILD_CAPABILITY_UNAVAILABLE]: target wasm32 does not provide HOST.FileSystem, HOST.Net, BNLog, or BNWeb; HOST.Console is supported"
         );
         return language_error();
     }
-    match lower_module_for_target(&module, options.target == Target::Wasm32) {
+    match lower_validated_module_for_target(&module, options.target == Target::Wasm32) {
         Ok(llvm) => emit_build_output(llvm, options),
         Err(message) => {
             eprintln!("error[{message}]");
@@ -319,7 +318,7 @@ fn run(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
         Err(code) => return code,
     };
     log(options.verbosity, 1, "lowering typed BN IR");
-    let module = match lower_graph(&frontend.graph, &frontend.models) {
+    let module = match lower_graph_validated(&frontend.graph, &frontend.models) {
         Ok(module) => module,
         Err(diagnostic) => {
             eprintln!("{}", diagnostic.render(source));
@@ -351,7 +350,7 @@ fn run(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
         input: stdin.lock(),
         notify: options.jupyter_stdin,
     };
-    match execute_with_host(&module, &mut input, &mut stdout.lock(), &host) {
+    match execute_validated_with_host(&module, &mut input, &mut stdout.lock(), &host) {
         Ok(code) => ExitCode::from(code),
         Err(diagnostic) => {
             eprintln!("{}", diagnostic.render(source));
@@ -407,8 +406,11 @@ fn check(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
         };
         let output = match emit {
             Emit::Tokens => tokens_text(tokens),
-            Emit::Ast => format!("{:#?}\n", frontend.program),
-            Emit::TypedAst => format!("{:#?}\n{semantic_model:#?}\n", frontend.program),
+            Emit::Ast => format!("{:#?}\n", root_program(&frontend.graph)),
+            Emit::TypedAst => format!(
+                "{:#?}\n{semantic_model:#?}\n",
+                root_program(&frontend.graph)
+            ),
             Emit::Ir => match lower_graph(&frontend.graph, &frontend.models) {
                 Ok(module) => format!("{module:#?}\n"),
                 Err(diagnostic) => {
@@ -439,6 +441,15 @@ fn check(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
         )
     );
     ExitCode::SUCCESS
+}
+
+fn root_program(graph: &ModuleGraph) -> &Program {
+    graph
+        .modules
+        .iter()
+        .find(|module| module.id == graph.root)
+        .map(|module| &module.program)
+        .expect("module graph always contains its root")
 }
 
 mod cli_frontend;

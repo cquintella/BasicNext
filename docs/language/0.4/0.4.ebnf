@@ -112,7 +112,7 @@ simple-statement     = let-declaration | const-declaration | assignment-statemen
 let-declaration      = "LET" identifier { "," identifier } "AS" local-variable-type
                        [ "=" expression { "," expression } ] ;
 local-variable-type  = local-value-type ;
-const-declaration    = "CONST" identifier "AS" variable-type "=" expression ;
+const-declaration    = "CONST" identifier [ "AS" variable-type ] "=" expression ;
 assignment-statement = assignment-target assignment-operator expression ;
 assignment-target    = identifier { member-suffix | index-suffix }
                        | "SELF" member-suffix { member-suffix | index-suffix } ;

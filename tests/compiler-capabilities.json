@@ -4,73 +4,231 @@
       "path": "examples/hello.bn",
       "support": "llvm-supported",
       "exit_code": 0,
-      "stdout": "Bem Vindo ao Basic Next\nBasic Next0\nBasic Next1\nBasic Next2\nBasic Next3\nBasic Next4\nBasic Next5\nBasic Next6\nBasic Next7\nBasic Next8\nBasic Next9\n"
+      "stdout": "0.04901960784313726\n",
+      "id": "cap.hello",
+      "target": "llvm-native",
+      "op": "program.start",
+      "type_constraints": [
+        "fixture-defined"
+      ],
+      "conditions": [
+        "fixture-defined operands"
+      ],
+      "tests": [
+        "examples/hello.bn"
+      ],
+      "reject_diag": null
     },
     {
       "path": "tests/grammar/valid/start-exit-code.bn",
       "support": "llvm-supported",
       "exit_code": 0,
-      "stdout": ""
+      "stdout": "",
+      "id": "cap.start-exit-code",
+      "target": "llvm-native",
+      "op": "program.start",
+      "type_constraints": [
+        "fixture-defined"
+      ],
+      "conditions": [
+        "fixture-defined operands"
+      ],
+      "tests": [
+        "tests/grammar/valid/start-exit-code.bn"
+      ],
+      "reject_diag": null
     },
     {
       "path": "tests/grammar/valid/start-exit-code-nonzero.bn",
       "support": "llvm-supported",
       "exit_code": 7,
-      "stdout": ""
+      "stdout": "",
+      "id": "cap.start-exit-code-nonzero",
+      "target": "llvm-native",
+      "op": "program.start",
+      "type_constraints": [
+        "fixture-defined"
+      ],
+      "conditions": [
+        "fixture-defined operands"
+      ],
+      "tests": [
+        "tests/grammar/valid/start-exit-code-nonzero.bn"
+      ],
+      "reject_diag": null
     },
     {
       "path": "tests/grammar/valid/print-integer.bn",
       "support": "llvm-supported",
       "exit_code": 0,
-      "stdout": "42\n"
+      "stdout": "42\n",
+      "id": "cap.print-integer",
+      "target": "llvm-native",
+      "op": "program.fixture",
+      "type_constraints": [
+        "fixture-defined"
+      ],
+      "conditions": [
+        "fixture-defined operands"
+      ],
+      "tests": [
+        "tests/grammar/valid/print-integer.bn"
+      ],
+      "reject_diag": null
     },
     {
       "path": "tests/grammar/valid/print-float.bn",
       "support": "llvm-supported",
       "exit_code": 0,
-      "stdout": "3.75\n"
+      "stdout": "3.75\n",
+      "id": "cap.print-float",
+      "target": "llvm-native",
+      "op": "program.fixture",
+      "type_constraints": [
+        "fixture-defined"
+      ],
+      "conditions": [
+        "fixture-defined operands"
+      ],
+      "tests": [
+        "tests/grammar/valid/print-float.bn"
+      ],
+      "reject_diag": null
     },
     {
       "path": "examples/kmp.bn",
-      "support": "llvm-deferred",
-      "run_stdout_contains": "Encontrado padrao no indice 10",
-      "build_diagnostic_contains": "FUNCTION KMPSearch"
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "stdout": "Texto:  ABABDABACDABABCABAB\nPadrao a buscar:  ABABCABAB\nEncontrado padrao no indice  10\n",
+      "run_stdout_contains": "Encontrado padrao no indice  10",
+      "id": "cap.kmp",
+      "target": "llvm-native",
+      "op": "program.start",
+      "type_constraints": [
+        "fixture-defined"
+      ],
+      "conditions": [
+        "fixture-defined operands"
+      ],
+      "tests": [
+        "examples/kmp.bn"
+      ],
+      "reject_diag": null
     },
     {
       "path": "tests/grammar/valid/print-if-or.bn",
-      "support": "llvm-deferred",
+      "support": "llvm-supported",
       "run_stdout_contains": "yes-or",
-      "build_diagnostic_contains": "BUILD_EMISSION_FAILED"
+      "exit_code": 0,
+      "stdout": "yes-or\n",
+      "id": "cap.print-if-or",
+      "target": "llvm-native",
+      "op": "program.fixture",
+      "type_constraints": [
+        "fixture-defined"
+      ],
+      "conditions": [
+        "fixture-defined operands"
+      ],
+      "tests": [
+        "tests/grammar/valid/print-if-or.bn"
+      ],
+      "reject_diag": null
     },
     {
       "path": "tests/grammar/valid/build-euclidean-div.bn",
       "support": "llvm-supported",
       "exit_code": 0,
-      "stdout": "-2\n"
+      "stdout": "-2\n",
+      "id": "cap.build-euclidean-div",
+      "target": "llvm-native",
+      "op": "program.fixture",
+      "type_constraints": [
+        "fixture-defined"
+      ],
+      "conditions": [
+        "fixture-defined operands"
+      ],
+      "tests": [
+        "tests/grammar/valid/build-euclidean-div.bn"
+      ],
+      "reject_diag": null
     },
     {
       "path": "tests/grammar/valid/build-euclidean-rem.bn",
       "support": "llvm-supported",
       "exit_code": 0,
-      "stdout": "1\n"
+      "stdout": "1\n",
+      "id": "cap.build-euclidean-rem",
+      "target": "llvm-native",
+      "op": "program.fixture",
+      "type_constraints": [
+        "fixture-defined"
+      ],
+      "conditions": [
+        "fixture-defined operands"
+      ],
+      "tests": [
+        "tests/grammar/valid/build-euclidean-rem.bn"
+      ],
+      "reject_diag": null
     },
     {
       "path": "tests/grammar/valid/build-power-shift.bn",
       "support": "llvm-supported",
       "exit_code": 0,
-      "stdout": "8\n8\n4\n-1\nabcd\n0.5\n"
+      "stdout": "8\n8\n4\n-1\nabcd\n0.5\n",
+      "id": "cap.build-power-shift",
+      "target": "llvm-native",
+      "op": "program.fixture",
+      "type_constraints": [
+        "fixture-defined"
+      ],
+      "conditions": [
+        "fixture-defined operands"
+      ],
+      "tests": [
+        "tests/grammar/valid/build-power-shift.bn"
+      ],
+      "reject_diag": null
     },
     {
       "path": "tests/grammar/valid/build-clock.bn",
       "support": "llvm-supported",
       "exit_code": 0,
-      "stdout": "TRUE\nTRUE\nTRUE\n"
+      "stdout": "TRUE\nTRUE\nTRUE\n",
+      "id": "cap.build-clock",
+      "target": "llvm-native",
+      "op": "program.fixture",
+      "type_constraints": [
+        "fixture-defined"
+      ],
+      "conditions": [
+        "fixture-defined operands"
+      ],
+      "tests": [
+        "tests/grammar/valid/build-clock.bn"
+      ],
+      "reject_diag": null
     },
     {
       "path": "tests/grammar/valid/cls-and-beep.bn",
       "support": "llvm-supported",
       "exit_code": 0,
-      "stdout": "\u001b[2J\u001b[H\u0007ok\n"
+      "stdout": "\u001b[2J\u001b[H\u0007ok\n",
+      "id": "cap.cls-and-beep",
+      "target": "llvm-native",
+      "op": "program.fixture",
+      "type_constraints": [
+        "fixture-defined"
+      ],
+      "conditions": [
+        "fixture-defined operands"
+      ],
+      "tests": [
+        "tests/grammar/valid/cls-and-beep.bn"
+      ],
+      "reject_diag": null
     }
   ]
 }

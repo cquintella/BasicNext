@@ -32,7 +32,7 @@ fn cli_help_and_version_advertise_current_commands() {
     assert!(help.contains("lsp") && help.contains("dap"));
     let version = bn().arg("--version").output().expect("run bn version");
     assert_eq!(version.status.code(), Some(0));
-    assert_eq!(String::from_utf8_lossy(&version.stdout).trim(), "bn 0.4.3");
+    assert_eq!(String::from_utf8_lossy(&version.stdout).trim(), "bn 0.4.4");
 }
 
 #[test]

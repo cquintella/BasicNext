@@ -34,12 +34,12 @@ Three numbering schemes existed. Use the **prefixes** below in new writing; keep
 
 | Id | Name | Rough SM overlap |
 | --- | --- | --- |
-| XM0 | Document matrix + oracle (docs) | SM0 |
+| XM0 | Document matrix + executable-reference role (docs) | SM0 |
 | XM1 | Normal `mod` layout for runtime | SM1-ish |
 | XM2 | Extract `bn_value`; fix dataframe cycle | SM3 |
 | XM3 | Handler trait inversion; fix http cycle | SM3 |
 | XM4 | `FrontendSession`; wire CLI+LSP+DAP | SM1–SM2 |
-| XM5 | Unified `Capabilities`; wasm console | SM3–SM4 area |
+| XM5 | Split requirements/support/**execution policy**; policy → `bn_rt`; wasm console | SM3–SM4 area |
 | XM6 | `bn_diag` + llvm Diagnostic return | 0.4.5 Fluent track |
 | XM7 | `bn_host_spec`; catalogs out of semantic | SM4 |
 | XM8 | Cut `bn_frontend`, `bn_ir` | SM5–SM6 |
@@ -55,10 +55,21 @@ XM and SM are **parallel views** (extract vs soft/hard). Do not assume `Mn` in o
 
 | Bucket | Intent |
 | --- | --- |
-| **0.4.4** | Pre-refactor: SM0–SM2, start SM3 — bug-fix / soft prep |
-| **0.4.5** | Hard split SM3leftover–SM6 + **Fluent / expressive diagnostics**; SM7/`bnc` optional |
+| **0.4.4** | Pre-refactor: SM0–SM2, start SM3 — bug-fix / soft prep; **path APPROVED**; **G-SOFT** before 0.4.5 hard-split |
+| **0.4.5** | Hard split SM3leftover–SM6 + Fluent; SM7/`bnc` optional; **GC-*** correctness gates required — [completion-gates.md](completion-gates.md) |
 
 ---
+
+## Priority sequence vs weak gates
+
+See [completion-gates.md](completion-gates.md). Short form:
+
+1. IR contract + validator negatives (**GC-IR** / **GC-SUP**)
+2. Matrix evidence + memory/ABI + execution policy (**GC-MX** / **GC-ABI** / **GC-POL**)
+3. FrontendSession + no semantic leak (**GC-FE** / **GC-DEP**)
+4. Crate extract with contract re-check (**GC-EXT**) — DAG+smoke never enough
+
+Bucket **0.4.5** gates G2/G3 were strengthened accordingly.
 
 ## Related product locks (not milestone numbers)
 
