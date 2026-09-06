@@ -23,6 +23,26 @@ pub use model::{
     BasicBlock, BlockId, Constant, Function, Instruction, Module, Terminator, ValueId,
 };
 
+/// IR that has passed the language-level validation contract.
+///
+/// The inner module is private so backend entrypoints can require this proof
+/// object instead of accepting an unchecked module from a driver.
+#[derive(Debug)]
+pub struct ValidatedModule {
+    module: Module,
+}
+
+impl ValidatedModule {
+    #[must_use]
+    pub fn as_module(&self) -> &Module {
+        &self.module
+    }
+
+    pub(crate) fn into_module(self) -> Module {
+        self.module
+    }
+}
+
 struct OpenBlock {
     instructions: Vec<Instruction>,
     terminator: Option<Terminator>,
@@ -72,7 +92,7 @@ struct Builder<'a> {
 /// # Errors
 ///
 /// Returns a diagnostic when semantic information is missing or lowering encounters an unsupported construct.
-pub fn lower(program: &Program, model: &SemanticModel) -> Result<Module, Diagnostic> {
+fn lower_unvalidated(program: &Program, model: &SemanticModel) -> Result<Module, Diagnostic> {
     let functions = lower_program(program, model, "", &collect_methods(program, ""))?;
     let module = Module {
         source_name: program.source_name.clone(),
@@ -89,8 +109,37 @@ pub fn lower(program: &Program, model: &SemanticModel) -> Result<Module, Diagnos
         bnlog_import: standard_import_span(program, "BNLog"),
         bnweb_import: standard_import_span(program, "BNWeb"),
     };
-    validate(&module)?;
     Ok(module)
+}
+
+/// Lowers and validates one program for a backend handoff.
+///
+/// This is the language-level gate only. Target capability checks (for example
+/// whether LLVM can emit a valid BN operation) belong to a separate
+/// `validate_for(target)` stage and must report support diagnostics rather than
+/// turning a valid BN program into invalid IR.
+///
+/// # Errors
+///
+/// Returns a source-spanned diagnostic when lowering or language validation
+/// fails.
+pub fn lower_validated(
+    program: &Program,
+    model: &SemanticModel,
+) -> Result<ValidatedModule, Diagnostic> {
+    validate_module(lower_unvalidated(program, model)?)
+}
+
+/// Lowers one program, retaining the historical unchecked-module API.
+///
+/// New backend handoffs must use [`lower_validated`].
+///
+/// # Errors
+///
+/// Returns a source-spanned diagnostic when lowering or language validation
+/// fails.
+pub fn lower(program: &Program, model: &SemanticModel) -> Result<Module, Diagnostic> {
+    lower_validated(program, model).map(ValidatedModule::into_module)
 }
 
 /// Lowers every module in an acyclic graph into one IR module.
@@ -100,7 +149,10 @@ pub fn lower(program: &Program, model: &SemanticModel) -> Result<Module, Diagnos
 /// # Errors
 ///
 /// Returns a source-spanned diagnostic if any module cannot be lowered.
-pub fn lower_graph(graph: &ModuleGraph, models: &[SemanticModel]) -> Result<Module, Diagnostic> {
+fn lower_graph_unvalidated(
+    graph: &ModuleGraph,
+    models: &[SemanticModel],
+) -> Result<Module, Diagnostic> {
     let mut method_names = HashSet::new();
     for loaded in &graph.modules {
         let prefix = module_prefix(graph.root, loaded.id);
@@ -182,8 +234,32 @@ pub fn lower_graph(graph: &ModuleGraph, models: &[SemanticModel]) -> Result<Modu
         bnlog_import,
         bnweb_import,
     };
-    validate(&module)?;
     Ok(module)
+}
+
+/// Lowers and validates a complete module graph for a backend handoff.
+///
+/// # Errors
+///
+/// Returns a source-spanned diagnostic when lowering or language validation
+/// fails.
+pub fn lower_graph_validated(
+    graph: &ModuleGraph,
+    models: &[SemanticModel],
+) -> Result<ValidatedModule, Diagnostic> {
+    validate_module(lower_graph_unvalidated(graph, models)?)
+}
+
+/// Lowers a complete graph, retaining the historical module-returning API.
+///
+/// New backend handoffs must use [`lower_graph_validated`].
+///
+/// # Errors
+///
+/// Returns a source-spanned diagnostic when lowering or language validation
+/// fails.
+pub fn lower_graph(graph: &ModuleGraph, models: &[SemanticModel]) -> Result<Module, Diagnostic> {
+    lower_graph_validated(graph, models).map(ValidatedModule::into_module)
 }
 
 mod lowering;
@@ -196,6 +272,16 @@ use lowering::{class_method_name, collect_methods, lower_program, module_prefix}
 /// Returns `INVALID_IR` when a block, value, or terminator reference is invalid.
 pub fn validate(module: &Module) -> Result<(), Diagnostic> {
     validate::validate(module)
+}
+
+/// Proves that a module satisfies the language-level IR contract.
+///
+/// # Errors
+///
+/// Returns `INVALID_IR` when the module is not well formed.
+pub fn validate_module(module: Module) -> Result<ValidatedModule, Diagnostic> {
+    validate(&module)?;
+    Ok(ValidatedModule { module })
 }
 
 mod helpers;
@@ -294,12 +380,14 @@ fn instruction_uses(instruction: &Instruction) -> Vec<ValueId> {
             vec![*value]
         }
         Instruction::Allocate { arguments, .. } => arguments.clone(),
+        Instruction::Default {
+            dynamic_dimensions, ..
+        } => dynamic_dimensions.clone(),
+        Instruction::Input { prompt, .. } => prompt.iter().copied().collect(),
         Instruction::EnsureClass { .. }
         | Instruction::LoadStatic { .. }
         | Instruction::Constant { .. }
-        | Instruction::Default { .. }
-        | Instruction::Load { .. }
-        | Instruction::Input { .. } => Vec::new(),
+        | Instruction::Load { .. } => Vec::new(),
     }
 }
 

@@ -1,0 +1,41 @@
+# Existing dependency debt. Format: path:line:exact source line.
+## S1.3 baseline: backend/runtime semantic-type and display edges. These are
+## quarantined until the 0.4.5 IR/value-model extraction; new edges fail CI.
+src/runtime_impl.rs:62:    semantic::{
+src/llvm.rs:20:    semantic::{FloatType, IntegerType, SymbolId, Type},
+src/llvm.rs:548:    use crate::semantic::{FloatType, IntegerType, Type};
+src/runtime/collections.rs:7:    dataframe::DataFrameColumn, diagnostic::Diagnostic, heap::Heap, semantic::FloatType,
+src/runtime/allocation.rs:8:    semantic::{FloatType, Type, integer_byte_size},
+src/runtime/helpers.rs:11:    semantic::{IntegerType, Type},
+src/llvm/vectors.rs:397:        semantic::{IntegerType, Type},
+src/runtime/compare.rs:6:use crate::semantic::{FloatType, IntegerType, Type};
+src/runtime/temporal_ops.rs:6:use crate::{diagnostic::Diagnostic, semantic::IntegerType, source::Span, temporal};
+src/llvm/helpers.rs:676:            crate::semantic::display(ty)
+src/llvm/helpers.rs:680:            crate::semantic::display(ty)
+src/llvm/helpers.rs:684:            crate::semantic::display(ty)
+src/llvm/helpers.rs:693:            crate::semantic::display(ty)
+src/runtime/math.rs:6:use crate::{diagnostic::Diagnostic, heap::Heap, semantic::FloatType, source::Span};
+src/runtime/net_values.rs:8:use crate::{diagnostic::Diagnostic, semantic::IntegerType, source::Span};
+src/llvm/functions.rs:132:            crate::semantic::display(&function.return_type)
+src/runtime/tests.rs:8:    use crate::semantic::{FloatType, IntegerType, Type};
+src/runtime/tests.rs:29:        let models = crate::semantic::analyze_modules(&graph).expect("analyze callback fixture");
+src/runtime/numeric.rs:8:    semantic::{FloatType, IntegerType, Type},
+src/runtime/executor/part3.rs:341:                    "Id" => { require_arity(name, arguments, 1, span)?; Ok(Value::Integer(i128::from(ticket.id()), crate::semantic::IntegerType::Int32)) }
+src/runtime/executor/part3.rs:342:                    "Status" => { require_arity(name, arguments, 1, span)?; Ok(Value::Integer(i128::from(ticket.status()), crate::semantic::IntegerType::Int32)) }
+## S1.4 / W5 freeze: public IR model as-is semantic and module-graph debt.
+src/ir/model.rs:8:    module_graph::ModuleId,
+src/ir/model.rs:9:    semantic::{SymbolId, Type},
+src/llvm.rs:529:    use crate::semantic::{FloatType, IntegerType, Type};
+src/runtime/compare.rs:6:use crate::semantic::{FloatType, IntegerType, Type};
+src/runtime/math.rs:6:use crate::{diagnostic::Diagnostic, heap::Heap, semantic::FloatType, source::Span};
+src/runtime/net_values.rs:8:use crate::{diagnostic::Diagnostic, semantic::IntegerType, source::Span};
+src/runtime/temporal_ops.rs:6:use crate::{diagnostic::Diagnostic, semantic::IntegerType, source::Span, temporal};
+src/runtime/tests.rs:8:    use crate::semantic::{FloatType, IntegerType, Type};
+src/runtime/tests.rs:29:        let models = crate::semantic::analyze_modules(&graph).expect("analyze callback fixture");
+src/runtime/executor/part3.rs:341:                    "Id" => { require_arity(name, arguments, 1, span)?; Ok(Value::Integer(i128::from(ticket.id()), crate::semantic::IntegerType::Int32)) }
+src/runtime/executor/part3.rs:342:                    "Status" => { require_arity(name, arguments, 1, span)?; Ok(Value::Integer(i128::from(ticket.status()), crate::semantic::IntegerType::Int32)) }
+src/llvm/functions.rs:132:            crate::semantic::display(&function.return_type)
+src/llvm/helpers.rs:676:            crate::semantic::display(ty)
+src/llvm/helpers.rs:680:            crate::semantic::display(ty)
+src/llvm/helpers.rs:684:            crate::semantic::display(ty)
+src/llvm/helpers.rs:693:            crate::semantic::display(ty)

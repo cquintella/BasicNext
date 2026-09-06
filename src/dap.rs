@@ -244,7 +244,7 @@ fn validate_launch(message: &Value) -> Result<(), String> {
             error.diagnostic.message
         )
     })?;
-    crate::ir::lower_graph(&graph, &models)
+    crate::ir::lower_graph_validated(&graph, &models)
         .map_err(|error| format!("launch lowering failed: {}", error.message))?;
     Ok(())
 }
@@ -258,7 +258,8 @@ fn execute_program(
         crate::module_graph::load(path).map_err(|error| error.diagnostic.message.clone())?;
     let models = crate::semantic::analyze_modules(&graph)
         .map_err(|error| error.diagnostic.message.clone())?;
-    let module = crate::ir::lower_graph(&graph, &models).map_err(|error| error.message.clone())?;
+    let module =
+        crate::ir::lower_graph_validated(&graph, &models).map_err(|error| error.message.clone())?;
     let mut input = io::Cursor::new(Vec::<u8>::new());
     let mut output = Vec::new();
     let session_for_hook = Arc::clone(session);
@@ -311,7 +312,7 @@ fn execute_program(
             crate::runtime::DebugDecision::Continue
         }
     };
-    crate::runtime::execute_with_host_debug_control(
+    crate::runtime::execute_validated_with_host_debug_control(
         &module,
         &mut input,
         &mut output,

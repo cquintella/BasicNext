@@ -67,18 +67,27 @@ impl Parser<'_> {
         }
         self.expect_keyword("CONST")?;
         let name = self.identifier_name()?;
-        self.expect_keyword("AS")?;
         let line = self.line_tokens();
         let line_len = line.len();
         let assign = line
             .iter()
             .position(|token| matches!(token.kind, TokenKind::Symbol(Symbol::Assign)))
             .ok_or_else(|| self.error("CONST requires an initializer"))?;
-        if assign == 0 || assign + 1 >= line.len() {
-            return Err(self.error("CONST requires a type and initializer"));
+        if assign + 1 >= line.len() {
+            return Err(self.error("CONST requires an initializer"));
         }
-        let type_ref = self.type_reference(&line[..assign], false)?;
         let initializer = parse_expression(&line[assign + 1..])?;
+        let type_ref = if assign > 0 {
+            if !matches!(&line[0].kind, TokenKind::Keyword(word) if word == "AS") {
+                return Err(self.error("CONST requires AS before an explicit type"));
+            }
+            if assign == 1 {
+                return Err(self.error("CONST requires a type and initializer"));
+            }
+            self.type_reference(&line[1..assign], false)?
+        } else {
+            inferred_constant_type(&initializer)?
+        };
         self.index += line_len;
         let end = self.newline()?;
         if !exported {
@@ -408,4 +417,40 @@ impl Parser<'_> {
             (BlockTerm::Else | BlockTerm::Until(_), _) => unreachable!(),
         }
     }
+}
+
+fn inferred_constant_type(
+    initializer: &Expression,
+) -> Result<crate::ast::TypeReference, Diagnostic> {
+    let ExpressionKind::Literal(literal) = &initializer.kind else {
+        return Err(Diagnostic::lexical(
+            "CONST inference supports only BOOLEAN, INTEGER, FLOAT, and STRING literals",
+            initializer.span,
+        ));
+    };
+    let name = match literal {
+        Literal::Boolean(_) => "BOOLEAN",
+        Literal::Integer(_) => "INTEGER",
+        Literal::Float(_) => "FLOAT",
+        Literal::String(_) => "STRING",
+        Literal::Special(_)
+        | Literal::Null
+        | Literal::NotAvailable
+        | Literal::EndOfFile
+        | Literal::TypeName(_) => {
+            return Err(Diagnostic::lexical(
+                "CONST inference does not support this literal; use AS TYPE",
+                initializer.span,
+            ));
+        }
+    };
+    Ok(crate::ast::TypeReference {
+        alternatives: vec![crate::ast::TypeAtom {
+            name: name.into(),
+            parts: Vec::new(),
+            dimensions: Vec::new(),
+            span: initializer.span,
+        }],
+        span: initializer.span,
+    })
 }

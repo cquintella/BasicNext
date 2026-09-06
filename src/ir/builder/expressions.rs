@@ -253,42 +253,60 @@ impl Builder<'_> {
                 } else {
                     let is_async = matches!(callee.kind, ExpressionKind::Member { ref name, .. } if name == "Async");
                     let is_await = matches!(callee.kind, ExpressionKind::Member { ref name, .. } if name == "Wait");
-                    let (callee, arguments) = self.call_operands(callee, arguments)?;
-                    if is_async {
-                        let [queue, task, rest @ ..] = arguments.as_slice() else {
-                            return Err(ir_error(
-                                "ASYNC submission has invalid operands",
-                                expression.span,
-                            ));
+                    if matches!(callee.kind, ExpressionKind::Name { ref name } if name == "TYPEOF")
+                    {
+                        let [argument] = arguments.as_slice() else {
+                            return Err(ir_error("TYPEOF has invalid operands", expression.span));
                         };
-                        Instruction::DispatchSubmit {
+                        let _ = self.expression(argument)?;
+                        let argument_type = type_at(self.model, argument.span)?;
+                        Instruction::Constant {
                             destination,
-                            callee,
-                            queue: *queue,
-                            task: *task,
-                            arguments: rest.to_vec(),
-                            ty,
-                            span: expression.span,
-                        }
-                    } else if is_await {
-                        let [ticket, timeout] = arguments.as_slice() else {
-                            return Err(ir_error("AWAIT has invalid operands", expression.span));
-                        };
-                        Instruction::DispatchAwait {
-                            destination,
-                            callee,
-                            ticket: *ticket,
-                            timeout: *timeout,
+                            value: Constant::String(crate::semantic::typeof_name(&argument_type)),
                             ty,
                             span: expression.span,
                         }
                     } else {
-                        Instruction::Call {
-                            destination,
-                            callee,
-                            arguments,
-                            ty,
-                            span: expression.span,
+                        let (callee, arguments) = self.call_operands(callee, arguments)?;
+                        if is_async {
+                            let [queue, task, rest @ ..] = arguments.as_slice() else {
+                                return Err(ir_error(
+                                    "ASYNC submission has invalid operands",
+                                    expression.span,
+                                ));
+                            };
+                            Instruction::DispatchSubmit {
+                                destination,
+                                callee,
+                                queue: *queue,
+                                task: *task,
+                                arguments: rest.to_vec(),
+                                ty,
+                                span: expression.span,
+                            }
+                        } else if is_await {
+                            let [ticket, timeout] = arguments.as_slice() else {
+                                return Err(ir_error(
+                                    "AWAIT has invalid operands",
+                                    expression.span,
+                                ));
+                            };
+                            Instruction::DispatchAwait {
+                                destination,
+                                callee,
+                                ticket: *ticket,
+                                timeout: *timeout,
+                                ty,
+                                span: expression.span,
+                            }
+                        } else {
+                            Instruction::Call {
+                                destination,
+                                callee,
+                                arguments,
+                                ty,
+                                span: expression.span,
+                            }
                         }
                     }
                 }

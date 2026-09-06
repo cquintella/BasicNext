@@ -1,6 +1,6 @@
 # Target Architecture — BasicNext
 
-**Product type:** language toolchain — shared frontend → **IR** (Intermediate Representation), **interpreter as semantic oracle** (source of truth for behavior), optional **LLVM** (Low Level Virtual Machine) backend, **HOST** platform services behind traits, **IDE** (Integrated Development Environment) hosts via **LSP** (Language Server Protocol) and **DAP** (Debug Adapter Protocol).  
+**Product type:** language toolchain — shared frontend → **IR** (Intermediate Representation), **interpreter as executable reference** (subordinate to the language specification), optional **LLVM** (Low Level Virtual Machine) backend, **HOST** platform services behind traits, **IDE** (Integrated Development Environment) hosts via **LSP** (Language Server Protocol) and **DAP** (Debug Adapter Protocol).  
 **Hard rule:** **acyclic** package graph — a **DAG** (Directed Acyclic Graph): no A↔B circular dependencies; extract shared types downward; invert callbacks via traits.  
 **Split rule:** separate program/**crate** (Rust package) only when ≥2 of: different lifecycle, deploy weight, clear API, reduces coupling (`plan.md`).
 
@@ -8,8 +8,8 @@
 
 ## Principles
 
-1. **Oracle** — `bn_runtime` defines language+HOST execution semantics for conformance tests. LLVM implements a **documented subset**; CI gates llvm against the support matrix, not the other way around.
-2. **Shared frontend → IR** — one `FrontendSession` / graph+analyze path for CLI, LSP, DAP, and lowering. No shadow ASTs; no single-file LSP fork.
+1. **Specification above implementations** — The **language specification** (`docs/language/…`, especially `0.4.md`) defines language+HOST **behaviour**. `bn_runtime` (interpret) is the **executable reference implementation** of that behaviour — not a second law. A bug in the interpreter must be fixed to match the spec; it must **not** become mandatory behaviour for the compiler. LLVM/`bn_llvm` must be **equivalent** on the **documented supported subset** ([support-matrix.md](support-matrix.md)). Validation uses **two** comparisons: (a) each backend against **expected results derived from the specification**, and (b) backends **against each other** on the shared subset. Because Frontend and lowering are shared, both backends can agree on the **same static error** — that agreement is necessary but **not sufficient** if both inherit a Frontend bug; expected results must still be grounded in the spec.
+2. **Shared frontend → IR** — one `FrontendSession` / graph+analyze+**lower** path for CLI, LSP, DAP. No shadow ASTs; no single-file LSP fork. Session must handle **snapshots** (incl. unsaved), **revisions**, invalidation, cancel, and revision-scoped diagnostics; spans carry **SourceId** through lowering ([frontend-session.md](frontend-session.md)). Backends start from **validated `bn_ir`**, never from AST/semantic crates.
 3. **Thin CLI** — `bn` binary owns flags, toolchain discovery, and orchestration only. It does not own parse/semantic/HOST catalogs.
 4. **HOST behind traits** — network/http/web/dispatch/fs/console are provider interfaces. Semantic and docs consume **`bn_host_spec`** (ABI tables), never http/net implementations.
 5. **Diagnostics sink** — all engines emit into a shared `bn_diag` taxonomy (codes + spans). Render path targets **Fluent** `.ftl` catalogs (see [`../../todo/proposals/expressive-diagnostics.md`](../../todo/proposals/expressive-diagnostics.md); bucket 0.4.5). Build/llvm must not bypass with bare `String`.
@@ -184,7 +184,7 @@ flowchart LR
 flowchart LR
   SRC[".bn sources"] --> FS["FrontendSession<br/>load graph + analyze"]
   FS --> IR4["bn_ir Module"]
-  IR4 --> RUN["bn_runtime<br/>oracle"]
+  IR4 --> RUN["bn_runtime<br/>exec reference"]
   IR4 --> BUILD["bn_llvm<br/>documented subset"]
   FS --> IDE2["LSP queries"]
   IR4 --> DBG["DAP debug"]
@@ -232,9 +232,8 @@ flowchart BT
 
   FE --> DIAG
   FE --> SPEC
-  IR --> FE
+  FE --> IR
   IR --> DIAG
-  IR --> SPEC
   VAL --> DIAG
   NET --> DIAG
   WEB --> NET
@@ -263,24 +262,40 @@ flowchart BT
   DAP --> RT
 ```
 
+> **IR independence (locked 2026-09-05):** `bn_ir` must **not** depend on `bn_frontend`. Backends (`bn_runtime`, `bn_llvm`) consume **validated IR only** and must not pull the semantic analyzer transitively. **Lowering** (AST+semantic → BN IR) lives in **`bn_frontend`** (may remain an internal module; no new crate / no HIR required for this rule). Today’s `src/ir/model.rs` importing `semantic::{SymbolId, Type}` and `module_graph::ModuleId` is **as-is debt** to erase when cutting crates (IR-owned ids/types instead).
+>
+> **`bn_source` leaf (locked 2026-09-05):** `SourceId` / `Revision` / `Span` are **not** frontend-private. `bn_source` sits **below** `bn_frontend`, `bn_diag`, and `bn_ir` so IR/diagnostics never import the frontend for locations — [frontend-session.md](frontend-session.md).
+
 ### Ownership table
 
 | Crate / binary | Owns | Depends on | Split justification |
 |----------------|------|------------|---------------------|
-| **`bn_diag`** | `Diagnostic`, code catalog, render | (leaf; maybe `bn_source` spans) | Clear API + reduces coupling (score 2) |
-| **`bn_value`** | Interpreter `Value` / handles / dataframe column payloads | `bn_diag` | Clear API + **breaks cycle** (score 2) — mandatory extract |
+| **`bn_source`** | `SourceId`, `Revision`, `Span`, source text helpers | (true leaf) | **Locked shared leaf** — diag/ir/frontend depend here; never only-inside-frontend |
+| **`bn_diag`** | `Diagnostic`, code catalog, render | **`bn_source`**, (fluent later) | Clear API + reduces coupling (score 2) |
+| **`bn_value`** | Interpreter `Value` / handles / dataframe column payloads | `bn_diag` | Clear API + **breaks cycle** (score 2) — mandatory extract; **does not** alone define interpret↔compile equivalence ([value-memory-abi.md](value-memory-abi.md)) |
 | **`bn_host_spec`** | HOST member/capability schema consumed by semantic & docs | `bn_diag` | Lifecycle + clear API + reduces FE↔HOST churn (3) |
-| **`bn_frontend`** | lexer, parser, AST, tokens, module_graph, semantic, `FrontendSession` | diag, host_spec, source | Lifecycle (IDE+CLI) + API + coupling (3) |
-| **`bn_ir`** | model, lower, validate, `Capabilities`, support-matrix types | frontend (or HIR later), diag, host_spec | Semver lifecycle + API + coupling (3) |
+| **`bn_frontend`** | lexer, parser, AST, tokens, module_graph, semantic, **lowering to BN IR**, `FrontendSession` | **`bn_source`**, diag, host_spec, **`bn_ir`** (writes IR) | Lifecycle (IDE+CLI) + API + coupling (3) |
+| **`bn_ir`** | **own** IR types/ids, instructions, module model, **validation** (incl. CFG definite assignment), support-matrix types | **`bn_source`**, diag (**not** frontend/semantic) | Semver lifecycle + API + coupling (3); **consumable without the analyzer** |
 | **`bn_host_net`** | sockets/TLS primitives, CIDR, low-level net | diag | Deploy + API + lifecycle + coupling (4) |
 | **`bn_host_web`** | Request/Response/EgressPolicy models, web limits | net, diag | Deploy + API + lifecycle (4) |
 | **`bn_host_http`** | client/server transport; **`Handler` trait** (no runtime import) | web, diag | Deploy + API + **breaks callback cycle** (4) |
-| **`bn_runtime`** | Executor scheduler, HostEnv, provider facades, heap, dispatch, dataframe *ops*, debug hooks | ir, value, host_*, spec, diag | Oracle lifecycle + deploy + API (4) |
+| **`bn_runtime`** | Executor scheduler, HostEnv, provider facades, heap, dispatch, dataframe *ops*, debug hooks | ir, value, host_*, spec, diag | Reference runtime lifecycle + deploy + API (4) |
 | **`bn_llvm`** | textual LLVM emission, analysis, bn_rt call lowering | ir, diag, bn_rt | Deploy (clang/wasm) + lifecycle + API (4); **optional** feature |
-| **`bn_rt`** | native helpers for linked binaries | (existing) | Keep |
+| **`bn_rt`** | native helpers / **ABI surface** for linked binaries; may be shared with interpret for HOST-adjacent helpers | (existing) | Keep crate; **expand documented ABI** — see [value-memory-abi.md](value-memory-abi.md) |
 | **`bn`** (binary) | CLI parse, toolchain, check/run/build orchestration | frontend, ir, runtime, llvm (features) | Thin driver |
 | **`bn-lsp`** (binary / `bn_lsp` lib) | LSP protocol; queries session | frontend, diag — **not** runtime | Lifecycle + deploy + API (4) |
 | **`bn-dap`** (binary / `bn_dap` lib) | DAP protocol; `execute_with_host_debug_control` | frontend, ir, runtime | Lifecycle + deploy + API (4) |
+
+### Responsibility split (Frontend / IR / backends)
+
+| Component | Responsibility |
+| --- | --- |
+| **Frontend** (`bn_frontend`) | AST, name resolution, semantic analysis, and **lowering** to BN IR |
+| **IR** (`bn_ir`) | Own types, instructions, identities, and **validation** of IR — no import of the semantic analyzer |
+| **Interpreter** (`bn_runtime`) | Execute **validated** IR |
+| **LLVM backend** (`bn_llvm`) | Convert **validated** IR to the target (then external clang/ld) |
+
+Lowering may stay an **internal module** of the frontend. This rule does **not** require a new crate or HIR. The point is: **understand and consume IR without importing the semantic analyzer**.
 
 ### Dropped / deferred (fail split rule or premature)
 
@@ -344,18 +359,25 @@ bn_host_http never imports bn_runtime
 
 | Boundary | Contract | Stability |
 |----------|----------|-----------|
-| **CLI ↔ frontend** | `FrontendSession::open(path) -> Graph + Diagnostics`; emit derived from graph root | Stable for tools |
-| **Frontend ↔ IR** | `lower_graph(graph, models) -> Module`; only producer of IR | Producer-only |
-| **IR crate API** | Typed `BinOp`/`UnaryOp`; instruction enum; `ir_version` when serialized; `Capabilities` bitflags/struct | Semver on `bn_ir` |
+| **CLI ↔ frontend** | `FrontendSession` snapshot APIs; `open(path)` is CLI convenience over filesystem snapshots | Stable for tools — [frontend-session.md](frontend-session.md) |
+| **IDE ↔ frontend** | Unsaved buffers, revisions, dependent invalidation, cancel, revision-scoped publishDiagnostics; Span carries **SourceId**; lowering preserves source identity | **Locked direction** — [frontend-session.md](frontend-session.md) |
+| **Check ≡ LSP baseline diagnostics** | Default IDE Problems path = same stages as `--check` (through language `validate`) | **Locked** |
+| **Frontend → IR** | Frontend **owns lowering**: `lower_*(ast, semantic, graph) -> bn_ir::Module`; only producer of IR. `bn_ir` does **not** call back into frontend. | Producer-only; breaks `bn_ir → bn_frontend` |
+| **IR crate API** | Own typed ops/ids; instruction enum; validate(Module); `ir_version` when serialized; `Capabilities` — **no** `semantic::Type` / `module_graph` in the public IR model | Semver on `bn_ir`; backends depend on IR only |
 | **IR ↔ consumers** | `validate(module)`; `validate_for(Backend::Interpreter \| Llvm)` | Matrix is public |
-| **Support matrix** | Instruction × HOST op × {oracle, llvm, notes} checked into repo | Required for llvm releases |
-| **Runtime HostEnv** | Mirrors `Capabilities`; deny at execute with one path | Shared with driver policy |
+| **Support matrix** | Structured catalog: op × type constraints × conditions × target/provider × reject_diag × tests; docs generated from it | **Required before matrix-backed releases**; [support-matrix.md](support-matrix.md) |
+| **`validate` vs support check** | Language IR validity ≠ target implementation gap; distinct diagnostics | **Locked** |
+| **Completion gates** | GC-* independent of Fluent/`bnc`; extract verifies contracts per cut — [completion-gates.md](completion-gates.md) | **Locked** |
+| **Runtime HostEnv** | Binds **providers** (target support) + **execution policy** (scoped auth); deny at each HOST op | Shared story with `bn_rt` — [host-traits.md](host-traits.md) |
+| **Program requirements vs support vs policy** | Three dimensions — must not collapse into one Capabilities bitset; deny ≠ unimplemented | **Locked** — [host-traits.md](host-traits.md) |
+| **Compiled policy enforcement** | Policy must reach the executable; **`bn_rt` re-checks** at call boundary (build-time check insufficient) | Required for `-c` / wasm |
 | **HOST ABI** | `bn_host_spec` tables = semantic members = documented HOST surface | Version with language |
 | **http Handler** | Trait/callback registered upward; Request/Response from `bn_host_web` | Stable for embedders |
 | **Diagnostics** | All paths → `Diagnostic { code, message, span? }` | Catalog versioned |
 | **DAP ↔ runtime** | `DebugHook` / `DebugControl` / `DebugVariable` (keep F-TOOL-003) | Stable across extract |
 | **LSP ↔ frontend** | Publish/hover/def over cached `SemanticModel` + graph | No re-lex per request long-term |
-| **LLVM ↔ bn_rt** | Known extern call set for HOST subset | Documented with matrix |
+| **LLVM ↔ bn_rt** | Known extern call set for HOST subset **plus** ownership, layout, and error taxonomy | Documented with matrix + [value-memory-abi.md](value-memory-abi.md) |
+| **Value / memory / ABI** | Identity/aliasing; construct/`DELETE`/handles; dispatch & static init; native layout; ABI ownership; `Error` vs trap vs internal failure; numeric lowering (e.g. LLVM `nsw` ≠ BN overflow) | **Required** — [value-memory-abi.md](value-memory-abi.md) |
 | **Config** | Toolchain: project/manifest/user search order in driver; web/dispatch limits: host-crate defaults + optional override | One story, two files OK if documented |
 
 ---
@@ -368,15 +390,15 @@ Do **not** invent a second frontend/runtime. Move code, then delete the old path
 
 | Phase | Action | Unblocks |
 |-------|--------|----------|
-| **XM0** | Document matrix + oracle role in-tree (docs only) | Aligns teams; no code risk |
+| **XM0** | Document matrix + executable-reference role in-tree (docs only) | Aligns teams; no code risk |
 | **XM1** | Normal `mod` layout for runtime (drop `include!`) | Honest graphs; safer extracts |
 | **XM2** | Extract `bn_value`; fix dataframe cycle | Any runtime/host crate cut |
 | **XM3** | Handler trait inversion; fix http cycle | `bn_host_http` crate |
 | **XM4** | `FrontendSession`; wire CLI + LSP + DAP; delete shadow parse | Tooling trust |
-| **XM5** | `Capabilities` unified; fix wasm console; align HostEnv | Sandbox honesty |
+| **XM5** | Split **requirements / support / policy**; scoped FS/net; policy → `bn_rt`; fix wasm console; align HostEnv | Sandbox honesty |
 | **XM6** | `bn_diag` + llvm Diagnostic return; start code catalog | Operability |
 | **XM7** | `bn_host_spec`; generate or move catalogs out of semantic | FE purity |
-| **XM8** | Cut `bn_frontend`, `bn_ir` (typed ops as you go) | Semver boundary |
+| **XM8** | Cut `bn_frontend` (incl. lowering) and `bn_ir` (model+validate only; **no FE dep**; erase semantic types from IR model) | Semver boundary |
 | **XM9** | Cut `bn_runtime` + `bn_host_{net,http,web}`; rename executor domains | Testable HOST |
 | **XM10** | Cut `bn_llvm` optional; `validate_for(Llvm)` enforced in `bn build` | Honest build |
 | **XM11** | `bn-lsp` / `bn-dap` binaries or features; thin `bn` | Deploy weight |
@@ -391,9 +413,10 @@ Do **not** invent a second frontend/runtime. Move code, then delete the old path
 
 | Today (`src/`) | Tomorrow |
 |----------------|----------|
-| `lexer`, `parser`, `ast`, `token`, `source`, `module_graph`, `semantic/**` | `bn_frontend` |
+| `lexer`, `parser`, `ast`, `token`, `source`, `module_graph`, `semantic/**`, **`ir/lowering*`** | `bn_frontend` |
 | `semantic/host_*` | data → `bn_host_spec`; analyzer stays frontend |
-| `ir/**` | `bn_ir` |
+| `ir/model`, `ir/validate`, IR public types (after decoupling from semantic) | `bn_ir` |
+| `ir/**` (today monolith path; lowering moves with frontend) | split per rows above |
 | `runtime*`, `heap`, `dispatch`, dataframe ops | `bn_runtime` (+ `bn_value`) |
 | `llvm/**` | `bn_llvm` |
 | `net`, `tls` | `bn_host_net` |
@@ -491,7 +514,7 @@ Expose **full** configuration through CLI, including at least:
 
 Prefer a consistent pattern:
 
-- Long flags for everything important (`--log-file`, `--log-dir`, `--programs-dir`, `--plugins-dir`, …).
+- Long flags for everything important (`--log-file`, `--log-dir`, `--programs-dir`, repeatable `--module-path`, `--plugins-dir`, …). See [`module-path.md`](module-path.md).
 - Optional `--config path.toml` that can set the same keys.
 - Precedence documented: CLI > config file > defaults.
 - Reject unknown flags; do not silently ignore options (addresses audit finding on ignored globals).
@@ -539,7 +562,7 @@ Land companion `.log` + explicit `--programs-dir` / `--plugins-dir` / log flags 
 
 - `cargo` dependency graph is a **DAG**; CI can fail on cycles.
 - LSP diagnostics match `bn check` on multi-module fixtures.
-- Published **support matrix**; llvm rejects outside matrix with `Diagnostic` codes.
-- Wasm/sandbox gates read the same `Capabilities` as IR.
+- Published **verifiable support matrix** (structured source + tests); llvm rejects outside matrix with **support** diagnostics (not fake language errors); CI parity expands beyond stdout (numeric/errors/effects/objects/opts) — [support-matrix.md](support-matrix.md), [conformance.md](conformance.md).
+- Wasm/sandbox: **program requirements** on IR, **support** from matrix/providers, **execution policy** enforced at runtime/`bn_rt` — not one conflated bitset.
 - Optional installs can omit llvm and/or host-web and/or IDE hosts without rebuilding language core from a different tree.
 - Companion `.log` + configurable programs/plugins dirs — **MVP locked**; ship on `bn` and/or `bnc` (IDE event fan-out still future).

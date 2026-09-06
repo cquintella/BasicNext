@@ -20,10 +20,10 @@ KERNEL_INFO = {
     "status": "ok",
     "protocol_version": "5.3",
     "implementation": "bn",
-    "implementation_version": "0.4.3",
+    "implementation_version": "0.4.4",
     "language_info": {
         "name": "basicnext",
-    "version": "0.4.3",
+    "version": "0.4.4",
         "mimetype": "text/x-basicnext",
         "file_extension": ".bn",
     },

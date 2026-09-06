@@ -111,7 +111,7 @@ sequenceDiagram
 runtime/HOST diagnostics into **D3**, and streams run output to the Developer
 (**F22**). Completion **C22** closes the Control loop so the controller exit
 code and process log (**C28**, **F24**) agree with what the program did.
-Interpret is the **semantic oracle**; this path is never replaced by LLVM
+Interpret is the **executable reference** (spec is normative); this path is never replaced by LLVM
 `lli`.
 
 ---
@@ -181,26 +181,32 @@ sequenceDiagram
 
   Ed->>C: F02 IDE job (LSP open/change / check-like)
   C->>A: F03 schedule Frontend (same path as --check)
-  A->>L: F16 handoff (as needed for IR-aware services)
+  A->>L: F16 handoff (required for check-equivalent diagnostics)
   A->>D3: F12 analysis diagnostics
-  L->>D3: F18 IR diagnostics
-  D3-->>Ed: F36 publishDiagnostics (from D3)
+  L->>D3: F18 IR / validate diagnostics
+  Note over A,L: Snapshots are (SourceId, Revision, text); publish only for matching revision — see frontend-session.md
+  D3-->>Ed: F36 publishDiagnostics (from D3, revision-scoped)
   C-->>Ed: C27 pipeline / session outcome (as applicable)
 ```
 
 **Prose.** **F02** is the IDE front door into the same circle as CLI jobs.
-Language-service replies must derive from the shared Analyze → Lower/Validate
-understanding so squiggles match `bnc --check`. **F36** is explicitly
-diagnostics to the IDE from store **D3**, not a parallel message catalog.
-Shipping `bn-lsp` as its own binary later does not add a new semantic path;
-it remains a door into process **0** / **1.0**.
+**Baseline** Problems / `publishDiagnostics` must run the **same** Analyze →
+Lower → language **`validate`** stages as `bnc --check` on the editor’s
+**current snapshots** (including unsaved buffers), so squiggles match CLI check
+for the same text. “Lower as needed” is **not** the default diagnostics path;
+it only applies to optional IR-consuming IDE features beyond check-equivalent
+diagnostics — [frontend-session.md](frontend-session.md). **F36** publishes
+diagnostic *facts* from **D3** tagged with **SourceId + Revision**; never apply
+an older revision’s results to a newer buffer. Shipping `bn-lsp` as its own
+binary later does not add a new semantic path; it remains a door into process
+**0** / **1.0**.
 
 ---
 
 ## DAP: debug launch through Interpret
 
 Debug launch drives **4.0 Interpret** under debug control. Stopped events and
-variables come from the IR oracle, not from a second runtime.
+variables come from the reference interpreter on IR, not from a second runtime.
 
 ```mermaid
 sequenceDiagram

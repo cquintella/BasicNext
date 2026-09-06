@@ -57,7 +57,7 @@ use crate::{
     },
     diagnostic::Diagnostic,
     heap::{Handle, Heap},
-    ir::{Function, Instruction, Module, Terminator, ValueId},
+    ir::{Function, Instruction, Module, Terminator, ValidatedModule, ValueId, validate_module},
     module_graph::ModuleId,
     semantic::{
         FloatType, IntegerType, PointerLength, SymbolId, Type, integer_byte_size, static_size_of,
@@ -422,7 +422,24 @@ pub fn execute_with_host(
     output: &mut dyn Write,
     host: &HostEnv,
 ) -> Result<u8, Diagnostic> {
-    execute_with_host_inner(module, input, output, host, None, None)
+    let validated = validate_module(module.clone())?;
+    execute_validated_with_host(&validated, input, output, host)
+}
+
+/// Executes a module after the language validator has produced its proof
+/// object.
+///
+/// # Errors
+///
+/// Returns a runtime diagnostic for invalid operations, missing entry points,
+/// capability failures, or I/O errors.
+pub fn execute_validated_with_host(
+    validated: &ValidatedModule,
+    input: &mut dyn BufRead,
+    output: &mut dyn Write,
+    host: &HostEnv,
+) -> Result<u8, Diagnostic> {
+    execute_with_host_inner(validated.as_module(), input, output, host, None, None)
 }
 
 /// Executes `Start` while reporting each interpreter instruction to a caller-owned
@@ -438,7 +455,30 @@ pub fn execute_with_host_debug(
     host: &HostEnv,
     debug_hook: DebugHook<'_>,
 ) -> Result<u8, Diagnostic> {
-    execute_with_host_inner(module, input, output, host, Some(debug_hook), None)
+    let validated = validate_module(module.clone())?;
+    execute_validated_with_host_debug(&validated, input, output, host, debug_hook)
+}
+
+/// Executes validated IR while reporting instruction-boundary debug events.
+///
+/// # Errors
+///
+/// Returns the same runtime diagnostics as [`execute_validated_with_host`].
+pub fn execute_validated_with_host_debug(
+    validated: &ValidatedModule,
+    input: &mut dyn BufRead,
+    output: &mut dyn Write,
+    host: &HostEnv,
+    debug_hook: DebugHook<'_>,
+) -> Result<u8, Diagnostic> {
+    execute_with_host_inner(
+        validated.as_module(),
+        input,
+        output,
+        host,
+        Some(debug_hook),
+        None,
+    )
 }
 
 /// Executes `Start` with an interactive debugger control callback.
@@ -459,7 +499,31 @@ pub fn execute_with_host_debug_control(
     host: &HostEnv,
     debug_control: DebugControl<'_>,
 ) -> Result<u8, Diagnostic> {
-    execute_with_host_inner(module, input, output, host, None, Some(debug_control))
+    let validated = validate_module(module.clone())?;
+    execute_validated_with_host_debug_control(&validated, input, output, host, debug_control)
+}
+
+/// Executes validated IR with an interactive debugger control callback.
+///
+/// # Errors
+///
+/// Returns the same runtime diagnostics as [`execute_validated_with_host`],
+/// including a termination diagnostic when the callback requests it.
+pub fn execute_validated_with_host_debug_control(
+    validated: &ValidatedModule,
+    input: &mut dyn BufRead,
+    output: &mut dyn Write,
+    host: &HostEnv,
+    debug_control: DebugControl<'_>,
+) -> Result<u8, Diagnostic> {
+    execute_with_host_inner(
+        validated.as_module(),
+        input,
+        output,
+        host,
+        None,
+        Some(debug_control),
+    )
 }
 
 fn execute_with_host_inner<'debug>(

@@ -3,7 +3,7 @@ use super::*;
 
 pub(crate) fn load_frontend(
     source: &SourceFile,
-    tokens: &[Token],
+    _tokens: &[Token],
     options: &Options,
 ) -> Result<Frontend, ExitCode> {
     log(options.verbosity, 1, "loading module graph");
@@ -11,11 +11,11 @@ pub(crate) fn load_frontend(
         eprintln!("{}", error.diagnostic.render(&error.source));
         language_error()
     })?;
-    log(options.verbosity, 1, "syntax analysis");
-    let program = parse_named(tokens, &source.name).map_err(|diagnostic| {
-        eprintln!("{}", diagnostic.render(source));
-        language_error()
-    })?;
+    log(
+        options.verbosity,
+        1,
+        "syntax analysis (module graph root reused)",
+    );
     log(options.verbosity, 1, "semantic analysis");
     let models = match analyze_modules(&graph) {
         Ok(models) => models,
@@ -31,13 +31,12 @@ pub(crate) fn load_frontend(
     log(
         options.verbosity,
         1,
-        format!("parser completed: {} top-level items", program.items.len()),
+        format!(
+            "parser completed: {} top-level items",
+            root_program(&graph).items.len()
+        ),
     );
-    Ok(Frontend {
-        graph,
-        program,
-        models,
-    })
+    Ok(Frontend { graph, models })
 }
 
 pub(crate) fn parse_options(

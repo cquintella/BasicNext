@@ -24,7 +24,7 @@ This is the developer (or their script) asking the toolchain to do something wit
   - **`-c --target …`** = compile for an explicit platform (for example `wasm32`);
   - **`--check`** = analyze only (frontend through validated IR, no run/link);
   - logging controls (**`--log-level`**, log path/dir, or `--no-log`);
-  - location controls (**`--programs-dir`**, and **`--plugins-dir`** reserved);
+  - location controls (**`--programs-dir`**, repeatable **`--module-path`**, and **`--plugins-dir`** reserved);
   - build output path when compiling (**`-o` / `--output`**);
   - optional **`--config`** file that supplies the same keys with CLI override.
 
@@ -64,7 +64,7 @@ The editor does not send “source .bn, options” as a shell argv line; it spea
 - **LSP → 0**: document open/change, completion/hover/definition/references requests, and configuration the client attaches. Process 0 must analyze with the **same frontend → IR** understanding as `bnc --check`, not a weaker toy path.
 - **0 → LSP**: diagnostics for squiggles, hover/symbol info, and other language-service replies derived from that shared analysis.
 - **DAP → 0**: debug launch/attach, breakpoints, continue/step, evaluate requests — which drive **interpret IR** under debug control.
-- **0 → DAP**: stopped events, stack/variables snapshots, output, and termination — still from the IR oracle, not from a second semantics.
+- **0 → DAP**: stopped events, stack/variables snapshots, output, and termination — still from the reference interpreter on IR, not from a second semantics.
 
 Shipping `bn-lsp` / `bn-dap` as separate binaries later does not add new externals; they remain doors into the same circle 0.
 
@@ -168,7 +168,7 @@ Process-log events for lower/validate: started, finished, IR size/summary safe t
 
 #### F20 — D2 → 4.0 — IR to interpret
 
-Interpret reads validated BN IR from D2. This is the **semantic oracle** path: running the language means executing this IR, not calling LLVM `lli`.
+Interpret reads validated BN IR from D2. This is the **executable reference** path: running the language means executing this IR under the spec, not calling LLVM `lli`.
 
 #### F21 — D2 → 5.0 — IR to compile
 
@@ -232,7 +232,7 @@ Human-facing diagnostics (errors/warnings with locations, and expressive title/m
 
 #### F36 — D3 → Editor IDE — diagnostics to IDE
 
-**Description:** Diagnostics from store **D3** are published to the Editor IDE (typically as LSP `publishDiagnostics` / related protocol payloads): codes, severities, source spans, and messages (plus expressive fields when available). The IDE must show the **same diagnostic facts** the CLI would show for the same analysis of the same sources — not a weaker or alternate checker. DAP may surface related runtime diagnostics while debugging, but F36 is the primary “squiggles and Problems panel” path from D3 to E2.
+**Description:** Diagnostics from store **D3** are published to the Editor IDE (typically as LSP `publishDiagnostics` / related protocol payloads): codes, severities, source spans, and messages (plus expressive fields when available). The IDE must show the **same diagnostic facts** the CLI would show for the same analysis of the same sources — not a weaker or alternate checker. Publications are **revision-scoped** (`SourceId` + `Revision`); never apply an older analysis to a newer buffer — [frontend-session.md](../frontend-session.md). DAP may surface related runtime diagnostics while debugging, but F36 is the primary “squiggles and Problems panel” path from D3 to E2.
 
 ---
 
@@ -283,9 +283,9 @@ Load and merge config writes the effective settings blob (CLI over file over def
 
 Resolve directories reads the current effective config so it can fix programs-dir (and reserved plugins-dir) against the job context.
 
-#### C07 — 1.3 → D_cfg — resolved dirs (programs-dir, plugins-dir reserved)
+#### C07 — 1.3 → D_cfg — resolved dirs (programs-dir, module-path, plugins-dir reserved)
 
-Resolved directory paths are written back into **D_cfg**. Plugins-dir remains reserved for a future extension surface; programs-dir anchors source loads in Analyze.
+Resolved directory paths are written back into **D_cfg**: **programs-dir** (entry/project root), ordered **module-path** (import search list), and **plugins-dir** (reserved). Analyze **2.1** uses module-path when resolving `IMPORT`s.
 
 #### C08 — D_cfg → 1.4 — settings
 
@@ -377,7 +377,7 @@ Final controller events for the process log: pipeline finished, overall ok/fail,
 
 #### A01 — 1.0 → 2.1 — schedule Frontend
 
-Control schedules the Frontend leg: entry path, resolved programs-dir, and the note that Analyze must run for this job (from F03 / C16). Load entry and modules is the first subprocess to receive it.
+Control schedules the Frontend leg: entry path, resolved programs-dir + ordered module-path, and the note that Analyze must run for this job (from F03 / C16). Load entry and modules is the first subprocess to receive it.
 
 #### A02 — File system → 2.1 — source bytes
 
@@ -526,7 +526,7 @@ Process-log events for validate: started, finished, outcome (parent F19).
 
 #### L11 — D2 → 4.0 — IR to interpret
 
-When Control commanded interpret, Interpret reads validated BN IR from **D2** (parent F20 / I02). This is the semantic-oracle input.
+When Control commanded interpret, Interpret reads validated BN IR from **D2** (parent F20 / I02). This is the executable-reference input.
 
 #### L12 — D2 → 5.0 — IR to compile
 
