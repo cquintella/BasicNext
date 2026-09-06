@@ -3,8 +3,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// BNData is a standard-library module. Data operations are supplied by the
-// reference runtime/compiler intrinsic implementation behind this API.
+// BNData is a standard-library module.
+//
+// [NATIVE BINDING BOUNDARY]
+// Pending AQ-22 EXTERN grammar delivery (docs/architecture/native-stdlib-binding.md),
+// data operations and DataFrame methods in this module are native intrinsic
+// bindings provided directly by bn_rt (DataProvider / bn_rt_dataframe_* C ABI)
+// and the execution runtime. The method signatures below define the verified semantic API.
 IMPORT HOST.FileSystem AS FS
 EXPORT CLASS DataFrame
     PUBLIC FUNCTION CONSTRUCTOR()

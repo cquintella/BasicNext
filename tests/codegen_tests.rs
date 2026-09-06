@@ -15,11 +15,15 @@ use bn::{
 fn span() -> Span {
     Span {
         start: Position {
+            source_id: Position::UNKNOWN_SOURCE,
+            revision: Position::UNKNOWN_REVISION,
             offset: 0,
             line: 1,
             column: 1,
         },
         end: Position {
+            source_id: Position::UNKNOWN_SOURCE,
+            revision: Position::UNKNOWN_REVISION,
             offset: 0,
             line: 1,
             column: 1,
@@ -591,7 +595,13 @@ fn lower_module_emits_bn_rt_clock_and_console_calls() {
         ],
         terminator: Terminator::Return { value: None },
     }]);
+    let mut cls = cls;
+    cls.console_import = Some(span());
     let llvm = lower_module(&cls).expect("lower HOST.Console.Cls");
+    assert!(
+        llvm.contains("call i32 @bn_rt_policy_init(i32 1, i64 2)"),
+        "{llvm}"
+    );
     assert!(llvm.contains("declare i32 @bn_rt_console_cls()"), "{llvm}");
     assert!(llvm.contains("call i32 @bn_rt_console_cls()"), "{llvm}");
     assert!(llvm.contains("trap_bn_rt"), "{llvm}");

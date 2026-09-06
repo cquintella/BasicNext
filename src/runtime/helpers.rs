@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use crate::{
     diagnostic::Diagnostic,
     ir::{BasicBlock, BlockId, Constant, Function, ValueId},
-    semantic::{IntegerType, Type},
+    types::{IntegerType, Type},
     source::Span,
     temporal,
 };

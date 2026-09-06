@@ -55,6 +55,16 @@ Lowering **must preserve** `SourceId` (and enough location info) on IR so backen
 
 `FrontendSession::open(path)` remains a convenience for CLI; it is **not** the full IDE contract.
 
+### 0.4.5 implementation procedure (AQ-18)
+
+Use immutable snapshot sets, monotonically increasing per-source revisions and
+reverse import edges for invalidation. Replacing a snapshot invalidates that
+source and its importers. Cancellation may abort work or discard its results;
+publication must check source/revision freshness in either case. Exact Rust
+method names and debounce tuning are implementation details, not prerequisite
+product decisions. Multi-source unsaved-buffer, invalidation, cancellation and
+stale-publication tests are required before GC-FE closes.
+
 ---
 
 ## Diagnostic classes vs operations (check ≡ LSP promise)

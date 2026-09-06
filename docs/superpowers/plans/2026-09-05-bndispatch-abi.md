@@ -66,7 +66,7 @@
 
 **Files:**
 - Create: `tests/grammar/valid/build-dispatch-reliability.bn`
-- Modify: `tests/cli.rs`, `ongoing/bucket-0.4.4.md`, `ongoing/bucket-0.4.3.md`
+- Modify: `tests/cli.rs`, `done/bucket-0.4.4.md`, `ongoing/bucket-0.4.3.md`
 
 - [X] Compile and run dispatch reliability, cellular automaton, and game tournament examples; `parallel_work.bn` is outside the declared `Queue.Async(FUNCTION() AS VOID OR Error)` signature and is rejected semantically.
 - [X] Compare native output and exit status for all three dispatch fixtures; concurrent task order is normalized, and cancellation/timeout are covered by the ABI unit tests.

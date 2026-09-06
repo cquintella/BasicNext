@@ -18,6 +18,7 @@ files; this page is a map of vocabulary.
 | **IR** | Intermediate Representation in general. |
 | **Value/memory/ABI contract** | Rules that make interpret and compile agree on identity, lifetime, dispatch, layout, ABI ownership, and error classes — [value-memory-abi.md](value-memory-abi.md). Extracting `bn_value` alone is not enough. |
 | **`bn_rt`** | Native runtime helpers linked into compiled artifacts; ABI surface that may also back selected interpreter HOST helpers. |
+| **Native stdlib binding** | Stdlib modules implemented via shared `bn_rt` C ABI + honest declarations (not empty `.bn` stubs); interpret and compile link the same symbols — [native-stdlib-binding.md](native-stdlib-binding.md). Distinct from `HOST.c` FFI. |
 | **IR independence** | To-be rule: `bn_ir` does not depend on `bn_frontend`; lowering lives in the frontend; backends take validated IR only. |
 | **BN IR** | BasicNext’s **single** IR between Frontend and the interpret/compile backends; stored in **D2**. |
 | **Executable reference** | The **interpret** path (`bn_runtime` on validated BN IR under HostEnv): implements the language **specification** so behaviour can be executed and tested. Subordinate to the spec — interpreter bugs are defects, not compiler law. (Older docs said “oracle”; prefer this term.) |
@@ -28,6 +29,7 @@ files; this page is a map of vocabulary.
 | **Revision** | Identity of a particular text snapshot of a `SourceId` (monotonic id or content hash). Diagnostics publish only for matching revisions. |
 | **Support matrix** | Verifiable catalog of op×types×target support + reject diagnostics + tests — [support-matrix.md](support-matrix.md). Distinct from language `validate`. |
 | **`validate` / `validate_for`** | Language IR validity vs per-target support check; do not collapse — [ir-contract.md](ir-contract.md). |
+| **`validate_for` on compile** | Mandatory subprocess **5.1** on **every** `bn build` Backend (native and wasm) before LLVM emit; failures are `TARGET_UNSUPPORTED_*` only — [dfd-2/5.0 Compile IR.md](dfd/dfd-2/5.0 Compile IR.md). |
 | **Definite assignment (IR)** | Every IR value use is defined on **all executable paths** to that use; CFG/`φ` validation in `bn_ir`, not FE name binding. |
 | **`bn_source`** | Shared leaf for `SourceId`/`Revision`/`Span` below frontend, diag, and IR. |
 | **GC-*** / completion gates** | Independent correctness gates (IR, support, matrix, parity, ABI, policy, session, deps, extract) — [completion-gates.md](completion-gates.md). DAG+smoke are not enough. |

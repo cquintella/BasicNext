@@ -2,6 +2,21 @@
 use super::*;
 
 pub(crate) fn member_target(object: &Type, name: &str) -> Option<MemberTarget> {
+    let host_capability = match object {
+        Type::HostClock => Some(crate::host_spec::Capability::Clock),
+        Type::HostRandom => Some(crate::host_spec::Capability::Random),
+        Type::HostFileSystem => Some(crate::host_spec::Capability::FileSystem),
+        Type::HostNet => Some(crate::host_spec::Capability::Net),
+        Type::HostConsole => Some(crate::host_spec::Capability::Console),
+        _ => None,
+    };
+    if let Some(capability) = host_capability {
+        return Some(MemberTarget {
+            module: None,
+            owner: Some(capability.owner().into()),
+            name: name.into(),
+        });
+    }
     match object {
         Type::Module(module) => Some(MemberTarget {
             module: Some(*module),
@@ -28,31 +43,6 @@ pub(crate) fn member_target(object: &Type, name: &str) -> Option<MemberTarget> {
         Type::System => Some(MemberTarget {
             module: None,
             owner: Some("SYSTEM".into()),
-            name: name.into(),
-        }),
-        Type::HostClock => Some(MemberTarget {
-            module: None,
-            owner: Some("HOST.Clock".into()),
-            name: name.into(),
-        }),
-        Type::HostRandom => Some(MemberTarget {
-            module: None,
-            owner: Some("HOST.Random".into()),
-            name: name.into(),
-        }),
-        Type::HostFileSystem => Some(MemberTarget {
-            module: None,
-            owner: Some("HOST.FileSystem".into()),
-            name: name.into(),
-        }),
-        Type::HostNet => Some(MemberTarget {
-            module: None,
-            owner: Some("HOST.Net".into()),
-            name: name.into(),
-        }),
-        Type::HostConsole => Some(MemberTarget {
-            module: None,
-            owner: Some("HOST.Console".into()),
             name: name.into(),
         }),
         Type::Alternative(types) => {

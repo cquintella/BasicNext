@@ -5,8 +5,6 @@
 
 **Notation:** rectangle = external entity (may repeat); circle = process; cylinder = data store.
 
-**I/O rule:** every process has ≥1 inbound and ≥1 outbound data flow. Stage→Control **completion** returns are detailed in [DFD-2 Control](dfd-2/1.0 Control.md) (C21–C28); at DFD-1, Control still has inbound job requests and outbound schedules plus diagnostics/log paths that balance each process.
-
 Starts at **1.0 Control**. All flows are named. External entities are drawn **next to each interaction**, even when the same entity appears more than once.
 
 ```mermaid

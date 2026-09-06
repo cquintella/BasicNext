@@ -5,7 +5,20 @@ use std::{fs, sync::atomic::{AtomicU64, Ordering}};
     use super::{
         Value, coerce, default_span, host_random_seed, integer_from_i128_count, is_value,
     };
-    use crate::semantic::{FloatType, IntegerType, Type};
+    use crate::types::{FloatType, IntegerType, Type};
+
+    #[test]
+    fn filesystem_policy_separates_read_and_write_roots() {
+        let root = std::env::current_dir().expect("repository root");
+        let policy = super::HostEnv::fixed(Vec::new(), 0, 0)
+            .with_filesystem_roots(vec![root.clone()], Vec::new())
+            .expect("current directory is a valid policy root");
+        assert!(policy.filesystem.allows_path(&root.join("Cargo.toml"), false));
+        assert!(!policy.filesystem.allows_path(&root.join("Cargo.toml"), true));
+        assert!(!policy
+            .filesystem
+            .allows_path(std::path::Path::new("/etc/hosts"), false));
+    }
 
     #[test]
     fn web_callback_uses_a_fresh_executor_and_projects_response() {

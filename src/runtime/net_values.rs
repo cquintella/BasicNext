@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use crate::{diagnostic::Diagnostic, semantic::IntegerType, source::Span};
+use crate::{diagnostic::Diagnostic, source::Span, types::IntegerType};
 
 use super::{Value, runtime_error};
 

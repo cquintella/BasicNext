@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/bn_rt"]
+members = ["crates/bn_rt", "crates/bn_source", "crates/bn_types", "crates/bn_diag", "crates/bn_ir", "crates/bn_frontend", "crates/bn_runtime", "crates/bn_value", "crates/bn_llvm"]
 resolver = "3"
 
 [package]
@@ -9,6 +9,9 @@ edition = "2024"
 rust-version = "1.97"
 description = "Basic Next reference implementation"
 license = "MPL-2.0"
+
+[features]
+frontend-host-spec-path = []
 
 [lib]
 path = "src/lib.rs"
@@ -26,6 +29,14 @@ pedantic = "warn"
 
 [dependencies]
 bn_rt = { path = "crates/bn_rt" }
+bn_diag = { path = "crates/bn_diag" }
+bn_ir = { path = "crates/bn_ir" }
+bn_frontend = { path = "crates/bn_frontend" }
+bn_runtime = { path = "crates/bn_runtime" }
+bn_value = { path = "crates/bn_value" }
+bn_llvm = { path = "crates/bn_llvm" }
+bn_source = { path = "crates/bn_source" }
+bn_types = { path = "crates/bn_types" }
 dns-lookup = "2"
 http-body-util = "0.1.5"
 hyper = { version = "1.11.1", default-features = false, features = ["client", "http1", "http2", "server"] }

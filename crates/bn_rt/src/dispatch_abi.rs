@@ -26,6 +26,7 @@ pub const BN_DISPATCH_CANCELLED: BNDispatchStatus = 3;
 pub const BN_DISPATCH_CLOSED: BNDispatchStatus = 4;
 pub const BN_DISPATCH_INVALID_HANDLE: BNDispatchStatus = 5;
 pub const BN_DISPATCH_LIMIT: BNDispatchStatus = 6;
+pub const BN_DISPATCH_POLICY_DENIED: BNDispatchStatus = 7;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -168,6 +169,9 @@ pub extern "C" fn bn_rt_dispatch_queue_create(
     workers: u32,
     out_queue: *mut BNDispatchHandle,
 ) -> BNDispatchStatus {
+    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
+        return BN_DISPATCH_POLICY_DENIED;
+    }
     if out_queue.is_null() {
         return BN_DISPATCH_ERROR;
     }
@@ -206,6 +210,9 @@ pub extern "C" fn bn_rt_dispatch_submit(
     argument_count: u32,
     out_ticket: *mut BNDispatchHandle,
 ) -> BNDispatchStatus {
+    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
+        return BN_DISPATCH_POLICY_DENIED;
+    }
     if out_ticket.is_null() || task.is_none() || (argument_count > 0 && arguments.is_null()) {
         return BN_DISPATCH_ERROR;
     }
@@ -341,6 +348,9 @@ pub extern "C" fn bn_rt_dispatch_await(
     out_result: *mut BNValue,
     out_error: *mut BNDispatchError,
 ) -> BNDispatchStatus {
+    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
+        return BN_DISPATCH_POLICY_DENIED;
+    }
     let ticket_ref = registry()
         .tickets
         .lock()
@@ -393,6 +403,9 @@ pub extern "C" fn bn_rt_dispatch_await(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_dispatch_cancel(ticket: BNDispatchHandle) -> BNDispatchStatus {
+    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
+        return BN_DISPATCH_POLICY_DENIED;
+    }
     let ticket_ref = registry()
         .tickets
         .lock()
@@ -539,6 +552,9 @@ impl NonnegativeDuration for i64 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_dispatch_group_create(out: *mut BNDispatchHandle) -> BNDispatchStatus {
+    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
+        return BN_DISPATCH_POLICY_DENIED;
+    }
     if out.is_null() {
         return BN_DISPATCH_ERROR;
     }
@@ -564,6 +580,9 @@ pub extern "C" fn bn_rt_dispatch_group_add(
     group: BNDispatchHandle,
     ticket: BNDispatchHandle,
 ) -> BNDispatchStatus {
+    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
+        return BN_DISPATCH_POLICY_DENIED;
+    }
     let Some(group) = registry()
         .groups
         .lock()
@@ -594,6 +613,9 @@ pub extern "C" fn bn_rt_dispatch_group_wait(
     group: BNDispatchHandle,
     timeout_ms: i64,
 ) -> BNDispatchStatus {
+    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
+        return BN_DISPATCH_POLICY_DENIED;
+    }
     let Some(group) = registry()
         .groups
         .lock()
@@ -650,6 +672,9 @@ pub extern "C" fn bn_rt_dispatch_barrier_create(
     parties: u32,
     out: *mut BNDispatchHandle,
 ) -> BNDispatchStatus {
+    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
+        return BN_DISPATCH_POLICY_DENIED;
+    }
     if out.is_null() || parties == 0 {
         return BN_DISPATCH_ERROR;
     }
@@ -675,6 +700,9 @@ pub extern "C" fn bn_rt_dispatch_barrier_wait(
     barrier: BNDispatchHandle,
     _timeout_ms: i64,
 ) -> BNDispatchStatus {
+    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
+        return BN_DISPATCH_POLICY_DENIED;
+    }
     let Some(barrier) = registry()
         .barriers
         .lock()
@@ -703,6 +731,9 @@ pub extern "C" fn bn_rt_dispatch_semaphore_create(
     initial: u32,
     out: *mut BNDispatchHandle,
 ) -> BNDispatchStatus {
+    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
+        return BN_DISPATCH_POLICY_DENIED;
+    }
     if out.is_null() {
         return BN_DISPATCH_ERROR;
     }
@@ -729,6 +760,9 @@ pub extern "C" fn bn_rt_dispatch_semaphore_acquire(
     semaphore: BNDispatchHandle,
     timeout_ms: i64,
 ) -> BNDispatchStatus {
+    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
+        return BN_DISPATCH_POLICY_DENIED;
+    }
     let Some(semaphore) = registry()
         .semaphores
         .lock()
@@ -771,6 +805,9 @@ pub extern "C" fn bn_rt_dispatch_semaphore_acquire(
 pub extern "C" fn bn_rt_dispatch_semaphore_release(
     semaphore: BNDispatchHandle,
 ) -> BNDispatchStatus {
+    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
+        return BN_DISPATCH_POLICY_DENIED;
+    }
     let Some(semaphore) = registry()
         .semaphores
         .lock()
@@ -801,6 +838,9 @@ pub extern "C" fn bn_rt_dispatch_semaphore_close(semaphore: BNDispatchHandle) ->
 
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_dispatch_mutex_create(out: *mut BNDispatchHandle) -> BNDispatchStatus {
+    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
+        return BN_DISPATCH_POLICY_DENIED;
+    }
     if out.is_null() {
         return BN_DISPATCH_ERROR;
     }
@@ -827,6 +867,9 @@ pub extern "C" fn bn_rt_dispatch_mutex_lock(
     mutex: BNDispatchHandle,
     timeout_ms: i64,
 ) -> BNDispatchStatus {
+    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
+        return BN_DISPATCH_POLICY_DENIED;
+    }
     let Some(mutex) = registry()
         .mutexes
         .lock()
@@ -867,6 +910,9 @@ pub extern "C" fn bn_rt_dispatch_mutex_lock(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_dispatch_mutex_unlock(mutex: BNDispatchHandle) -> BNDispatchStatus {
+    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
+        return BN_DISPATCH_POLICY_DENIED;
+    }
     let Some(mutex) = registry()
         .mutexes
         .lock()
@@ -1133,5 +1179,39 @@ mod tests {
         assert_eq!(bn_rt_dispatch_ticket_close(second), BN_DISPATCH_OK);
         assert_eq!(bn_rt_dispatch_queue_close(queue, 1_000), BN_DISPATCH_OK);
         assert_eq!(bn_rt_dispatch_ticket_close(first), BN_DISPATCH_OK);
+    }
+
+    #[test]
+    fn c_abi_value_layout_keeps_discriminant_flags_and_payload_stable() {
+        use std::mem::{align_of, offset_of, size_of};
+
+        assert_eq!(size_of::<BNValueKind>(), size_of::<u32>());
+        assert_eq!(offset_of!(BNValue, kind), 0);
+        assert_eq!(offset_of!(BNValue, flags), size_of::<BNValueKind>());
+        assert_eq!(
+            offset_of!(BNValue, payload),
+            size_of::<BNValueKind>() + size_of::<u32>()
+        );
+        assert_eq!(
+            size_of::<BNValue>(),
+            offset_of!(BNValue, payload) + size_of::<BNValuePayload>()
+        );
+        assert_eq!(align_of::<BNValue>(), align_of::<BNValuePayload>());
+    }
+
+    #[test]
+    fn c_abi_error_layout_places_owned_message_after_code() {
+        use std::mem::{align_of, offset_of, size_of};
+
+        assert_eq!(offset_of!(BNDispatchError, code), 0);
+        assert!(offset_of!(BNDispatchError, message) >= size_of::<u32>());
+        assert_eq!(
+            offset_of!(BNDispatchError, message) % align_of::<*mut c_char>(),
+            0
+        );
+        assert_eq!(
+            offset_of!(BNDispatchError, message_length),
+            offset_of!(BNDispatchError, message) + size_of::<*mut c_char>()
+        );
     }
 }

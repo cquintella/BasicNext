@@ -72,6 +72,8 @@ impl<'a> Lexer<'a> {
 
     fn position(&self) -> Position {
         Position {
+            source_id: self.source.source_id,
+            revision: self.source.revision,
             offset: self.offset,
             line: self.line,
             column: self.column,

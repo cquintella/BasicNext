@@ -13,16 +13,6 @@ impl Executor<'_, '_> {
                     span,
                 ));
             };
-            if frame
-                .columns
-                .iter()
-                .any(|column| column.name == *column_name)
-            {
-                return Ok(Value::Error {
-                    code: 1,
-                    message: "duplicate column name".into(),
-                });
-            }
             let values = match &arguments[2] {
                 Value::Vector(values) => values.clone(),
                 Value::Pointer { handle } => (0..self.memory.len(*handle, span)?)
@@ -49,21 +39,10 @@ impl Executor<'_, '_> {
                     message: "column type mismatch".into(),
                 });
             }
-            if frame
-                .columns
-                .first()
-                .is_some_and(|column| column.values.len() != values.len())
-            {
-                return Ok(Value::Error {
-                    code: 1,
-                    message: "column length mismatch".into(),
-                });
+            match add_dataframe_column(frame, column_name.clone(), values) {
+                Ok(()) => Ok(Value::Null),
+                Err(message) => Ok(Value::Error { code: 1, message }),
             }
-            frame.columns.push(DataFrameColumn {
-                name: column_name.clone(),
-                values,
-            });
-        Ok(Value::Null)
     }
 
     pub(crate) fn dataframe_count(&mut self, name: &str, method: &str, id: u64, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {

@@ -9,7 +9,7 @@ Three numbering schemes existed. Use the **prefixes** below in new writing; keep
 | --- | --- | --- |
 | **SM** | Soft→hard **frontend/backend split** gates | [`../../audit/workpapers/09-synthesis/fe-be-split-milestones.md`](../../audit/workpapers/09-synthesis/fe-be-split-milestones.md) |
 | **XM** | Crate-**extraction** / DAG migration roadmap | [`target-architecture.md`](target-architecture.md) § Migration order |
-| **Bucket** | Release buckets (implementation checklists) | [`../../ongoing/bucket-0.4.4.md`](../../ongoing/bucket-0.4.4.md), [`../../ongoing/bucket-0.4.5.md`](../../ongoing/bucket-0.4.5.md) |
+| **Bucket** | Release buckets (implementation checklists) | [`../../done/bucket-0.4.4.md`](../../done/bucket-0.4.4.md), [`../../ongoing/bucket-0.4.5.md`](../../ongoing/bucket-0.4.5.md) |
 
 ---
 

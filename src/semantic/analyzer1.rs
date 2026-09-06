@@ -50,27 +50,8 @@ impl Analyzer {
                                 *span,
                             ));
                         }
-                        [host, capability] if host == "HOST" && capability == "Clock" => {
-                            Type::HostClock
-                        }
-                        [host, capability] if host == "HOST" && capability == "Console" => {
-                            Type::HostConsole
-                        }
-                        [host, capability] if host == "HOST" && capability == "Random" => {
-                            Type::HostRandom
-                        }
-                        [host, capability] if host == "HOST" && capability == "FileSystem" => {
-                            Type::HostFileSystem
-                        }
-                        [host, capability] if host == "HOST" && capability == "Net" => {
-                            Type::HostNet
-                        }
                         [host, capability] if host == "HOST" => {
-                            return Err(error(
-                                "NAME_NOT_FOUND",
-                                format!("HOST.{capability} is not a Basic Next 0.2 capability"),
-                                *span,
-                            ));
+                            host_capability_type(capability, *span)?
                         }
                         _ => Type::Module(*self.module_imports.get(alias).ok_or_else(|| {
                             error(

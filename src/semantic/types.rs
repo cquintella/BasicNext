@@ -328,7 +328,7 @@ pub(super) fn static_len(ty: &Type) -> Option<u64> {
 pub(super) fn static_size_of(ty: &Type) -> Option<u64> {
     match ty {
         Type::Boolean => Some(1),
-        Type::Integer(kind) => Some(integer_byte_size(*kind)),
+        Type::Integer(kind) => Some(crate::types::integer_byte_size(*kind)),
         Type::IntegerLiteral(_) | Type::Float(FloatType::Float32) => Some(4),
         Type::Float(FloatType::Float64) | Type::FloatLiteral => Some(8),
         Type::Named(name) if name == "DATE" || name == "TIME" => Some(4),
@@ -342,15 +342,6 @@ pub(super) fn static_size_of(ty: &Type) -> Option<u64> {
 }
 
 #[must_use]
-pub(super) fn integer_byte_size(kind: IntegerType) -> u64 {
-    match kind {
-        IntegerType::Byte | IntegerType::Int8 => 1,
-        IntegerType::Int16 | IntegerType::UInt16 => 2,
-        IntegerType::Int32 | IntegerType::UInt32 => 4,
-        IntegerType::Int64 | IntegerType::UInt64 => 8,
-    }
-}
-
 pub(super) fn dimension_product(dimensions: &[u64]) -> Option<u64> {
     if dimensions.contains(&u64::MAX) {
         return None;

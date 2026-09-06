@@ -1,0 +1,21 @@
+# Build diagnostics
+target-unsupported-entrypoint = {$message}
+    .title = Unsupported entrypoint
+    .code = TARGET_UNSUPPORTED_ENTRYPOINT
+    .label = unsupported entrypoint
+target-unsupported-host = {$message}
+    .title = Unsupported HOST capability
+    .code = TARGET_UNSUPPORTED_HOST
+    .label = unsupported capability
+target-unsupported-op = {$message}
+    .title = Unsupported operation for target
+    .code = TARGET_UNSUPPORTED_OP
+    .label = unsupported operation
+target-unsupported-type = {$message}
+    .title = Unsupported type for target
+    .code = TARGET_UNSUPPORTED_TYPE
+    .label = unsupported type
+target-unsupported-llvm = {$message}
+    .title = Unsupported LLVM operation
+    .code = TARGET_UNSUPPORTED_LLVM
+    .label = unsupported operation

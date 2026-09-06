@@ -36,12 +36,18 @@ pub enum Reduction {
     Na,
 }
 
-#[allow(clippy::cast_precision_loss, clippy::float_cmp)]
+#[allow(clippy::cast_precision_loss)]
 pub fn reduce(name: &str, values: &[i32]) -> Reduction {
-    let mut numbers = values
+    let numbers = values
         .iter()
         .map(|value| f64::from(*value))
         .collect::<Vec<_>>();
+    reduce_f64(name, &numbers)
+}
+
+#[allow(clippy::cast_precision_loss, clippy::float_cmp)]
+pub fn reduce_f64(name: &str, values: &[f64]) -> Reduction {
+    let mut numbers = values.to_vec();
     if numbers.iter().any(|value| value.is_nan()) {
         return Reduction::Float(f64::NAN);
     }
@@ -105,5 +111,34 @@ pub fn reduce(name: &str, values: &[i32]) -> Reduction {
             }
         }
         _ => Reduction::Float(f64::NAN),
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::float_cmp)] // Contract fixtures use exactly representable values.
+mod tests {
+    use super::{Reduction, reduce_f64};
+
+    #[test]
+    fn float_reductions_match_the_bnmath_contract() {
+        let values = [1.0, 2.0, 2.0, 5.0];
+        assert!(matches!(reduce_f64("MEAN", &values), Reduction::Float(value) if value == 2.5));
+        assert!(matches!(reduce_f64("MEDIAN", &values), Reduction::Float(value) if value == 2.0));
+        assert!(
+            matches!(reduce_f64("QUARTILE1", &values), Reduction::Float(value) if value == 1.5)
+        );
+        assert!(
+            matches!(reduce_f64("QUARTILE3", &values), Reduction::Float(value) if value == 3.5)
+        );
+        assert!(matches!(reduce_f64("MODE", &values), Reduction::Float(value) if value == 2.0));
+    }
+
+    #[test]
+    fn float_reductions_preserve_nan_and_mode_na_rules() {
+        assert!(
+            matches!(reduce_f64("MEAN", &[f64::NAN, 1.0]), Reduction::Float(value) if value.is_nan())
+        );
+        assert!(matches!(reduce_f64("MODE", &[1.0, 2.0]), Reduction::Na));
+        assert!(matches!(reduce_f64("MODE", &[]), Reduction::Na));
     }
 }

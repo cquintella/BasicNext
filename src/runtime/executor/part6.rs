@@ -154,7 +154,9 @@ impl Executor<'_, '_> {
             }
             "AddFile" => {
                 require_arity(name, arguments, 3, span)?;
-                if self.module.filesystem_import.is_none() || !self.host.filesystem {
+                if self.module.filesystem_import.is_none()
+                    || !self.host.filesystem.allows_capability()
+                {
                     return Ok(Value::Error {
                         code: 1,
                         message: "HOST.FileSystem capability is required for AddFile".into(),
@@ -167,6 +169,17 @@ impl Executor<'_, '_> {
                         span,
                     ));
                 };
+                if !self
+                    .host
+                    .filesystem
+                    .allows_path(std::path::Path::new(path), true)
+                {
+                    return Err(runtime_error(
+                        "EXECUTION_POLICY_DENIED",
+                        "logger file path is outside the execution policy",
+                        span,
+                    ));
+                }
                 let minimum = integer(&arguments[2], span)?.0;
                 if path.is_empty() || path.len() > 4096 || !(0..=6).contains(&minimum) {
                     return Ok(Value::Error {

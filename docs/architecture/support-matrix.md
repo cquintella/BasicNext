@@ -1,14 +1,16 @@
 # Support matrix — verifiable contract (to-be)
 
 > Canonical: `docs/architecture/support-matrix.md`  
-> **Status:** **contract direction locked 2026-09-05**; a bounded 0.4.4
-> subset is claimed with executable evidence. Unlisted combinations remain
+> **Status:** **contract direction locked 2026-09-05**; the bounded fixture-exact
+> subset is recorded with executable evidence. Unlisted combinations remain
 > explicitly unclaimed.
 > A markdown table of “addition = yes” is **not** enough to sustain releases.
 
 ---
 
 ## Purpose
+
+**Production rule:** `validate_for(Backend)` runs on **every** compile path (host native and wasm) before LLVM emit; rejects use `TARGET_UNSUPPORTED_*` only.
 
 Record, in a form that tools and CI can check, which **BN IR operations** (under which **type / condition** constraints) each **target/provider** supports, what **diagnostic** fires on reject, and which **tests** prove it.
 
@@ -34,11 +36,16 @@ Without that, CI cannot prove coverage and reviewers cannot tell poison/`nsw` ha
 
 ## Structured source of truth (required shape)
 
-Prefer one **machine-readable** catalog (TOML/YAML/JSON — exact format open, AQ-08) as the source; generate human docs and coverage reports from it. Each **row** (or record) must associate at least:
+Use the existing **JSON** catalog `tests/compiler-capabilities.json` as the
+source (AQ-08 implementation choice for 0.4.5); evolve its schema without
+breaking current test consumers. Generate human docs and coverage reports from
+it. Inventory and evidence remain delivery work, not completed by this format
+choice. Each **row** (or record) must associate at least:
 
 | Field | Meaning |
 | --- | --- |
 | **`op`** | IR opcode / HOST op / feature id (stable id, not marketing prose) |
+| **`ir_instructions`** | Exact `bn_ir::Instruction` variants emitted by the cited fixture; checked from `bn check --emit ir` |
 | **`type_constraints`** | Operand/result types or type classes this row applies to |
 | **`conditions`** | Extra predicates (overflow mode, const-eval only, requires HOST.X, …) |
 | **`target`** | `interpret` \| `llvm-native` \| `wasm32` \| … |
@@ -49,7 +56,7 @@ Prefer one **machine-readable** catalog (TOML/YAML/JSON — exact format open, A
 
 Documentation markdown and coverage dashboards are **views** of this catalog, not the other way around.
 
-### Record shape
+### Record shape (illustrative fields, not the on-disk format)
 
 ```toml
 [[entry]]
@@ -72,7 +79,7 @@ notes = "Must not lower checked overflow as bare add nsw (poison ≠ BN Error)"
 | **`validate` (language IR)** | Is this IR well-formed for the **language**? | Program/IR is **invalid** — language/Frontend/IR contract broken |
 | **`validate_for(target)` / support check** | Does **this backend** implement this IR under the matrix? | Program may be **valid BN**; this **target** cannot (yet) run/compile it |
 
-**Normative:** an LLVM (or wasm) limitation must **not** be reported as if the program violated the language. Use a distinct diagnostic family for target-support rejection (name TBD; e.g. `TARGET_UNSUPPORTED_*`). Language errors stay language errors.
+**Normative:** an LLVM (or wasm) limitation must **not** be reported as if the program violated the language. Use `TARGET_UNSUPPORTED_*` for target-support rejection. Language errors stay language errors; internal invariant failures and external tool failures retain their own diagnostic classes.
 
 DFD **3.2 Validate IR** is the language/structural gate. Support filtering for compile profiles is a **later/sibling** gate (Control/compile path / `validate_for`), driven by this matrix — see [ir-contract.md](ir-contract.md).
 
@@ -88,7 +95,8 @@ A release that advertises llvm/subset support should not ship until:
 4. `validate` vs support-check diagnostics are distinguishable in fixtures.
 5. Conformance gates below cover more than happy-path stdout (next section).
 
-Until then, status remains **stub data** even though this **contract shape** is locked.
+The current catalog is intentionally fixture-exact and does not claim whole-op
+support. Full opcode/type/condition coverage and gap reporting remain open.
 
 ---
 

@@ -26,7 +26,16 @@ options:
   --target native|wasm32     select the build target (build only)
   --opt none|1|2|3|s         optimization level for native/Wasm builds (default 2)
   --no-filesystem            deny HOST.FileSystem imports (run only)
+  --warnings errors           promote all warning diagnostics to errors
+  --allow <CODE>              suppress one warning diagnostic (repeatable)
+  --warn <CODE>               keep one warning diagnostic at warning level
+  --deny <CODE>               promote one warning diagnostic to an error
   --color auto|always|never  control ANSI color on status messages
+  --log-level error|warn|info|debug
+                             process log verbosity (build)
+  --log-file <file>          companion process log path (build)
+  --no-log                   disable the companion process log
+  --config <file>            load warning/logging configuration
   -V, --version              print version
   -h, --help                 print this help
 

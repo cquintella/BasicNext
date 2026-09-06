@@ -2,6 +2,15 @@
 
 ## Status
 
+**0.4.5 architecture decision approved by Carlos:** one EXTERN declaration
+mechanism with explicit stdlib-native and foreign-C profiles (AQ-22). This
+selects the shared mechanism, not the illustrative grammar or HOST.c surface
+below. Finish functions, classes, constructors, methods, types, ownership,
+symbols, errors and profile restrictions before dependent implementation;
+update active language specification/EBNF/keywords and fixtures together.
+See [native-stdlib-binding.md](../../docs/architecture/native-stdlib-binding.md).
+Dynamic loading remains outside 0.4.5 scope.
+
 Proposed for post-0.1. This document does not add syntax, keywords, or runtime
 behavior to Basic Next 0.1.
 

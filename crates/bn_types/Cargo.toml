@@ -1,0 +1,17 @@
+[package]
+name = "bn_types"
+version = "0.4.4"
+edition = "2024"
+rust-version = "1.97"
+description = "Shared Basic Next language and IR type identities"
+license = "MPL-2.0"
+
+[lib]
+path = "src/lib.rs"
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"

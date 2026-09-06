@@ -1,0 +1,20 @@
+[package]
+name = "bn_diag"
+version = "0.4.4"
+edition = "2024"
+rust-version = "1.97"
+description = "Basic Next diagnostic facts and rendering primitives"
+license = "MPL-2.0"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+bn_source = { path = "../bn_source" }
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"

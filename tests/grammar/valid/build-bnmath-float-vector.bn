@@ -1,0 +1,11 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT BNMath AS Math
+
+FUNCTION Start() AS VOID
+    LET values AS FLOAT[4] = [1.0, 2.0, 2.0, 5.0]
+    PRINT Math.MEAN(values), Math.MEDIAN(values), Math.MAX(values)
+END FUNCTION

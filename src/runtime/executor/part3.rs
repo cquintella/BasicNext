@@ -338,8 +338,8 @@ impl Executor<'_, '_> {
                 };
                 let ticket = self.dispatch_tickets.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "ticket is invalid", span))?.clone();
                 return match method {
-                    "Id" => { require_arity(name, arguments, 1, span)?; Ok(Value::Integer(i128::from(ticket.id()), crate::semantic::IntegerType::Int32)) }
-                    "Status" => { require_arity(name, arguments, 1, span)?; Ok(Value::Integer(i128::from(ticket.status()), crate::semantic::IntegerType::Int32)) }
+                    "Id" => { require_arity(name, arguments, 1, span)?; Ok(Value::Integer(i128::from(ticket.id()), crate::types::IntegerType::Int32)) }
+                    "Status" => { require_arity(name, arguments, 1, span)?; Ok(Value::Integer(i128::from(ticket.status()), crate::types::IntegerType::Int32)) }
                     "Wait" => {
                         require_arity(name, arguments, 2, span)?;
                         let timeout = integer(&arguments[1], span)?.0;

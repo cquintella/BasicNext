@@ -9,13 +9,14 @@
 
 ## 2. Common Programming Concepts
 - Variables and Constants (`LET`, `CONST`)
+- Type Inspection (`TYPEOF`)
 - Primitive Types (Integers, Floats, Boolean, String, Temporal)
 - Operators and Expressions
 - Explicit Type Conversion (`AS`)
 - Basic Console I/O (`PRINT`, `INPUT`)
 
 ## 3. Control Flow
-- Conditional Branching (`IF`, `ELSE`)
+- Conditional Branching (`IF`, `ELSE`, single-line `IF`)
 - Pre-condition and Post-condition Loops (`WHILE`, `REPEAT ... UNTIL`)
 - Counted and Collection Iteration (`FOR`, `FOR EACH`)
 - Loop Control and Termination (`EXIT`, `CONTINUE`, `STOP`)

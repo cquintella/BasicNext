@@ -20,6 +20,7 @@ Standing agent/contributor brief (authority + acceptance, including well-formed 
 | [semantic-analysis.md](semantic-analysis.md) | **2.5** contract: definitions, operands, booleans, calls/returns, references |
 | [conformance.md](conformance.md) | Spec → reference interpret → compile; two CI comparisons |
 | [value-memory-abi.md](value-memory-abi.md) | Value/memory/ABI + numeric lowering (`nsw` ≠ BN overflow) |
+| [native-stdlib-binding.md](native-stdlib-binding.md) | Stdlib native ABI: shared `bn_rt`, honest modules, HostEnv providers; plugins deferred |
 | [frontend-session.md](frontend-session.md) | `FrontendSession`: snapshots, SourceId/Revision, check≡LSP diagnostics |
 | [completion-gates.md](completion-gates.md) | Correctness gates (**GC-***); priority sequence; DAG+smoke ≠ enough |
 | [review-status.md](review-status.md) | Honest review table: design met vs partial vs insufficient |
@@ -73,14 +74,17 @@ DFD **2.0 Analyze Sources**: lex/parse must match the EBNF; **2.5** must satisfy
 | **Semantic analysis** must cover definitions-by-path, operand compatibility, boolean conditions, call/return signatures, valid references | **Locked (2026-09-05)** |
 | **`bn_ir` independent of frontend** — lowering in frontend; IR = types/ops/validate only; backends consume IR without semantic analyzer | **Locked (2026-09-05)** |
 | **Value/memory/ABI contract** required for interpret↔compile equivalence (beyond `bn_value` extract); LLVM poison/`nsw` ≠ BN `Error` | **Locked (2026-09-05)** |
-| **HOST: program requirements ≠ target support ≠ execution policy**; deny ≠ unimplemented; `bn_rt` enforces policy at runtime | **Locked (2026-09-05)** |
+| **HOST: program requirements ≠ target support ≠ execution policy**; deny ≠ unimplemented; `bn_rt` enforces policy at runtime | **Locked**; Carlos approved AQ-17 C: embedded ceiling + execution-time restrictions only |
 | **Support matrix** = structured verifiable catalog; `validate` ≠ target-support check; parity gates beyond stdout | **Locked (2026-09-05)**; **data inventory still open** |
+| **Every compile path** (native + wasm): language `validate` then **`validate_for(Backend)`** before emit; `TARGET_UNSUPPORTED_*` only for support | **Locked (2026-09-06)** production bar |
+| **Stdlib native binding**: shared `bn_rt` ABI for interpret+compile; no empty `.bn` stubs; HostEnv providers; dynamic plugins deferred | **Locked**; Carlos approved AQ-22 B: EXTERN with explicit stdlib/C profiles; full grammar/contract remains delivery work |
 | Ship `bnc` binary in 0.4.5 | **Optional / proposed** |
 | IDE subscription to pipeline events | **Future** |
-| Fluent catalogs for `bn_diag` | **Chosen for 0.4.5** (proposal); wire into crates in XM6 |
+| Fluent catalogs for `bn_diag` | **Required for 0.4.5**, per bucket success claim/G4 and proposal's existing final decisions; wire into crates in XM6 |
 
 ## Related
 
-- Pre-refactor implementation: `ongoing/bucket-0.4.4.md`
+- Pre-refactor implementation: `done/bucket-0.4.4.md`
 - Refactor + diagnostics implementation: `ongoing/bucket-0.4.5.md`
+- Active WBS: `ongoing/WBS-0.4.5.md`
 - As-is audit DFDs (local): `audit/workpapers/09-synthesis/dfd-*-as-is.md`

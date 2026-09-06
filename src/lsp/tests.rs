@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use super::{
     completion::completion_items, find_definition, find_locations, lsp_range, word_prefix,
 };
-use crate::source::SourceFile;
+use crate::{
+    diagnostic::Diagnostic,
+    source::{Position, Revision, SourceFile, SourceId, Span},
+};
 
 #[test]
 fn spans_are_zero_based_at_the_protocol_boundary() {
@@ -11,6 +14,74 @@ fn spans_are_zero_based_at_the_protocol_boundary() {
     assert_eq!(range.start.line, 2);
     assert_eq!(range.start.character, 3);
     assert_eq!(range.end.character, 8);
+}
+
+#[test]
+fn registered_diagnostics_reach_lsp_with_catalog_prose() {
+    let diagnostic = Diagnostic {
+        code: "E0100",
+        message: "expected AS".into(),
+        span: Span {
+            start: Position {
+                source_id: SourceId(1),
+                revision: Revision(1),
+                offset: 0,
+                line: 1,
+                column: 1,
+            },
+            end: Position {
+                source_id: SourceId(1),
+                revision: Revision(1),
+                offset: 3,
+                line: 1,
+                column: 4,
+            },
+        },
+    };
+    let uri: super::Uri = "file:///main.bn".parse().expect("URI");
+    let rendered = super::to_lsp(&diagnostic, &uri);
+    assert_eq!(rendered.severity, Some(super::DiagnosticSeverity::ERROR));
+    assert_eq!(
+        rendered.code,
+        Some(super::NumberOrString::String("E0100".into()))
+    );
+    assert!(rendered.message.starts_with("Syntax error: expected AS"));
+}
+
+#[test]
+fn warning_diagnostics_reach_lsp_with_warning_severity() {
+    let diagnostic = Diagnostic {
+        code: "UNREACHABLE_CODE",
+        message: "statement is unreachable".into(),
+        span: Span {
+            start: Position {
+                source_id: SourceId(1),
+                revision: Revision(1),
+                offset: 0,
+                line: 2,
+                column: 5,
+            },
+            end: Position {
+                source_id: SourceId(1),
+                revision: Revision(1),
+                offset: 5,
+                line: 2,
+                column: 10,
+            },
+        },
+    };
+    let uri: super::Uri = "file:///main.bn".parse().expect("URI");
+    let rendered = super::to_lsp(&diagnostic, &uri);
+    assert_eq!(rendered.severity, Some(super::DiagnosticSeverity::WARNING));
+    assert_eq!(
+        rendered.code,
+        Some(super::NumberOrString::String("UNREACHABLE_CODE".into()))
+    );
+    assert!(
+        rendered
+            .message
+            .starts_with("Unreachable code: statement is unreachable")
+    );
 }
 
 #[test]
@@ -154,4 +225,73 @@ fn definition_loads_sibling_module_from_filesystem() {
     let _ = std::fs::remove_file(module_path);
     assert_eq!(locations.len(), 1);
     assert_eq!(locations[0].uri, module_uri);
+}
+
+#[test]
+fn diagnostics_use_unsaved_imported_sources_and_the_shared_validated_pipeline() {
+    let suffix = std::process::id();
+    let directory = std::path::PathBuf::from(format!("/tmp/basicnext-lsp-graph-{suffix}"));
+    std::fs::create_dir_all(&directory).expect("create fixture directory");
+    let main_path = directory.join("main.bn");
+    let module_path = directory.join("Module.bn");
+    std::fs::write(
+        &main_path,
+        "IMPORT Module AS Module\nFUNCTION Start() AS INTEGER\nRETURN Module.Value()\nEND FUNCTION\n",
+    )
+    .expect("write main fixture");
+    std::fs::write(
+        &module_path,
+        "FUNCTION Value() AS INTEGER\nRETURN 1\nEND FUNCTION\n",
+    )
+    .expect("write module fixture");
+    let main_uri: super::Uri = format!("file://{}", main_path.display())
+        .parse()
+        .expect("main URI");
+    let module_uri: super::Uri = format!("file://{}", module_path.display())
+        .parse()
+        .expect("module URI");
+    let mut documents = HashMap::from([
+        (
+            main_uri.to_string(),
+            SourceFile::new(
+                main_uri.to_string(),
+                "IMPORT Module AS Module\nFUNCTION Start() AS INTEGER\nRETURN Module.Value()\nEND FUNCTION\n",
+            ),
+        ),
+        (
+            module_uri.to_string(),
+            SourceFile::new(
+                module_uri.to_string(),
+                "EXPORT FUNCTION Value() AS STRING\nRETURN \"changed\"\nEND FUNCTION\n",
+            ),
+        ),
+    ]);
+    let mut session = crate::frontend_session::FrontendSession::default();
+    let diagnostics = super::graph_diagnostics(&main_uri, &documents, &mut session);
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0].code,
+        Some(super::NumberOrString::String("TYPE_MISMATCH".into()))
+    );
+    documents.insert(
+        module_uri.to_string(),
+        SourceFile::new(
+            module_uri.to_string(),
+            "EXPORT FUNCTION Value() AS INTEGER\nRETURN \"bad\"\nEND FUNCTION\n",
+        ),
+    );
+    let module_diagnostics = super::graph_diagnostics(&module_uri, &documents, &mut session);
+    assert_eq!(module_diagnostics.len(), 1);
+    assert_eq!(
+        module_diagnostics[0].code,
+        Some(super::NumberOrString::String("TYPE_MISMATCH".into()))
+    );
+    documents.insert(
+        module_uri.to_string(),
+        SourceFile::new(
+            module_uri.to_string(),
+            "EXPORT FUNCTION Value() AS INTEGER\nRETURN 1\nEND FUNCTION\n",
+        ),
+    );
+    assert!(super::graph_diagnostics(&main_uri, &documents, &mut session).is_empty());
 }

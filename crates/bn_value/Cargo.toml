@@ -1,0 +1,21 @@
+[package]
+name = "bn_value"
+version = "0.4.4"
+edition = "2024"
+rust-version = "1.97"
+description = "Basic Next runtime value representation"
+license = "MPL-2.0"
+publish = false
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+
+[dependencies]
+bn_types = { path = "../bn_types" }
+
+[dev-dependencies]
+bn_source = { path = "../bn_source" }

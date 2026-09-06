@@ -1,16 +1,29 @@
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fs,
+    path::PathBuf,
+};
 
 use lsp_server::{Connection, Message, Notification, Request, Response};
 use lsp_types::{
     CompletionItem, CompletionOptions, CompletionParams, CompletionResponse,
-    Diagnostic as LspDiagnostic, DiagnosticSeverity, DidChangeTextDocumentParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, GotoDefinitionParams,
-    GotoDefinitionResponse, InitializeParams, Location, NumberOrString, Position,
-    PublishDiagnosticsParams, ReferenceParams, ServerCapabilities, TextDocumentSyncCapability,
-    TextDocumentSyncKind, Uri,
+    Diagnostic as LspDiagnostic, DiagnosticRelatedInformation, DiagnosticSeverity,
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    GotoDefinitionParams, GotoDefinitionResponse, InitializeParams, Location, NumberOrString,
+    Position, PublishDiagnosticsParams, ReferenceParams, ServerCapabilities,
+    TextDocumentSyncCapability, TextDocumentSyncKind, Uri,
 };
 
-use crate::{lexer::lex, parser::parse_named, semantic::analyze, source::SourceFile};
+use crate::{
+    diagnostic::{Catalog, Diagnostic, Severity},
+    frontend_session::FrontendSession,
+    ir::lower_graph_validated,
+    lexer::lex,
+    module_graph::load_with_overlays,
+    parser::parse_named,
+    semantic::analyze,
+    source::{SourceFile, SourceId},
+};
 
 #[path = "lsp/completion.rs"]
 mod completion;
@@ -52,6 +65,8 @@ pub fn run_stdio() -> Result<(), String> {
         .map_err(|error| format!("LSP initialize response failed: {error}"))?;
 
     let mut documents = HashMap::<String, SourceFile>::new();
+    let mut source_ids = HashMap::<String, SourceId>::new();
+    let mut session = FrontendSession::default();
     let mut shutdown = false;
     for message in &connection.receiver {
         match message {
@@ -84,35 +99,28 @@ pub fn run_stdio() -> Result<(), String> {
             Message::Notification(notification) if notification.method == "exit" => break,
             Message::Notification(notification) if notification.method == "initialized" => {}
             Message::Notification(notification)
-                if notification.method == "textDocument/didOpen" =>
+                if matches!(
+                    notification.method.as_str(),
+                    "textDocument/didOpen" | "textDocument/didChange"
+                ) =>
             {
-                let params: DidOpenTextDocumentParams = decode(notification)?;
-                publish(
+                publish_document_update(
                     &connection,
                     &mut documents,
-                    params.text_document.uri,
-                    params.text_document.text,
-                )?;
-            }
-            Message::Notification(notification)
-                if notification.method == "textDocument/didChange" =>
-            {
-                let params: DidChangeTextDocumentParams = decode(notification)?;
-                let Some(change) = params.content_changes.into_iter().last() else {
-                    continue;
-                };
-                publish(
-                    &connection,
-                    &mut documents,
-                    params.text_document.uri,
-                    change.text,
+                    &mut source_ids,
+                    &mut session,
+                    notification,
                 )?;
             }
             Message::Notification(notification)
                 if notification.method == "textDocument/didClose" =>
             {
                 let params: DidCloseTextDocumentParams = decode(notification)?;
-                documents.remove(&params.text_document.uri.to_string());
+                let key = params.text_document.uri.to_string();
+                documents.remove(&key);
+                if let Some(source) = source_ids.remove(&key) {
+                    let _ = session.remove(source);
+                }
                 publish_diagnostics(&connection, params.text_document.uri, Vec::new())?;
             }
             Message::Notification(_) | Message::Response(_) => {}
@@ -129,6 +137,38 @@ pub fn run_stdio() -> Result<(), String> {
 fn decode<T: serde::de::DeserializeOwned>(notification: Notification) -> Result<T, String> {
     serde_json::from_value(notification.params)
         .map_err(|error| format!("invalid LSP notification: {error}"))
+}
+
+fn publish_document_update(
+    connection: &Connection,
+    documents: &mut HashMap<String, SourceFile>,
+    source_ids: &mut HashMap<String, SourceId>,
+    session: &mut FrontendSession,
+    notification: Notification,
+) -> Result<(), String> {
+    if notification.method == "textDocument/didOpen" {
+        let params: DidOpenTextDocumentParams = decode(notification)?;
+        return publish(
+            connection,
+            documents,
+            source_ids,
+            session,
+            params.text_document.uri,
+            params.text_document.text,
+        );
+    }
+    let params: DidChangeTextDocumentParams = decode(notification)?;
+    let Some(change) = params.content_changes.into_iter().last() else {
+        return Ok(());
+    };
+    publish(
+        connection,
+        documents,
+        source_ids,
+        session,
+        params.text_document.uri,
+        change.text,
+    )
 }
 
 fn respond_unsupported(connection: &Connection, request: Request) -> Result<(), String> {
@@ -510,39 +550,215 @@ fn word_prefix(source: &SourceFile, position: Position) -> String {
 fn publish(
     connection: &Connection,
     documents: &mut HashMap<String, SourceFile>,
+    source_ids: &mut HashMap<String, SourceId>,
+    session: &mut FrontendSession,
     uri: Uri,
     text: String,
 ) -> Result<(), String> {
+    let key = uri.to_string();
+    let source_id = source_ids.get(&key).copied();
+    let snapshot = session.upsert(source_id, text.clone());
+    source_ids.insert(key.clone(), snapshot.source);
+    let request = session
+        .request(snapshot.source)
+        .ok_or_else(|| "LSP snapshot became stale before analysis".to_string())?;
     if text.len() > MAX_DOCUMENT_BYTES {
-        return publish_diagnostics(
-            connection,
-            uri,
-            vec![LspDiagnostic {
-                range: lsp_range(1, 1, 1, 1),
-                severity: Some(DiagnosticSeverity::ERROR),
-                code: None,
-                code_description: None,
-                source: Some("bn".into()),
-                message: "document exceeds 8 MiB".into(),
-                related_information: None,
-                tags: None,
-                data: None,
-            }],
-        );
+        let diagnostics = vec![LspDiagnostic {
+            range: lsp_range(1, 1, 1, 1),
+            severity: Some(DiagnosticSeverity::ERROR),
+            code: None,
+            code_description: None,
+            source: Some("bn".into()),
+            message: "document exceeds 8 MiB".into(),
+            related_information: None,
+            tags: None,
+            data: None,
+        }];
+        if session.accept(request).is_none() {
+            return Ok(());
+        }
+        return publish_diagnostics(connection, uri, diagnostics);
     }
     let source = SourceFile::new(uri.to_string(), text);
-    let diagnostics = match lex(&source) {
-        Ok(tokens) => match parse_named(&tokens, source.name.clone()) {
-            Ok(program) => analyze(&program).err().into_iter().map(to_lsp).collect(),
-            Err(error) => vec![to_lsp(error)],
-        },
-        Err(error) => vec![to_lsp(error)],
+    documents.insert(key, source);
+    if session.accept(request).is_none() {
+        return Ok(());
+    }
+    let Some(entry) = uri_to_path(&uri) else {
+        return Ok(());
     };
-    documents.insert(uri.to_string(), source);
-    publish_diagnostics(connection, uri, diagnostics)
+    let diagnostics_by_uri = diagnostics_for_documents(&entry, documents, session);
+    for (open_uri, diagnostics) in diagnostics_by_uri {
+        let open_uri = open_uri
+            .parse::<Uri>()
+            .map_err(|error| format!("invalid open document URI: {error}"))?;
+        publish_diagnostics(connection, open_uri, diagnostics)?;
+    }
+    Ok(())
 }
 
-fn to_lsp(error: crate::diagnostic::Diagnostic) -> LspDiagnostic {
+#[cfg(test)]
+fn graph_diagnostics(
+    uri: &Uri,
+    documents: &HashMap<String, SourceFile>,
+    session: &mut FrontendSession,
+) -> Vec<LspDiagnostic> {
+    let Some(entry) = uri_to_path(uri) else {
+        return Vec::new();
+    };
+    diagnostics_for_documents(&entry, documents, session)
+        .remove(&uri.to_string())
+        .unwrap_or_default()
+}
+
+/// Collects diagnostics for an open multi-file snapshot set.
+///
+/// This is the same load → semantic analysis → lowering → language validation
+/// pipeline used by the CLI. The returned map is keyed by the URI of the open
+/// document that owns each diagnostic, so clients can publish one coherent
+/// baseline for every affected buffer.
+pub fn diagnostics_for_documents<S: std::hash::BuildHasher>(
+    entry: &PathBuf,
+    documents: &HashMap<String, SourceFile, S>,
+    session: &mut FrontendSession,
+) -> HashMap<String, Vec<LspDiagnostic>> {
+    let overlays = documents
+        .values()
+        .filter_map(|source| {
+            uri_to_path_string(&source.name).map(|path| {
+                (
+                    std::fs::canonicalize(&path).unwrap_or(path),
+                    source.text.clone(),
+                )
+            })
+        })
+        .collect::<BTreeMap<_, _>>();
+    let target = std::fs::canonicalize(entry).unwrap_or_else(|_| entry.clone());
+    let target_source = SourceFile::new(target.display().to_string(), "").source_id;
+    let mut result = documents
+        .keys()
+        .filter_map(|key| {
+            key.parse::<Uri>()
+                .ok()
+                .map(|uri| (uri.to_string(), Vec::new()))
+        })
+        .collect::<HashMap<_, Vec<_>>>();
+    let source_uris = documents
+        .keys()
+        .filter_map(|key| {
+            key.parse::<Uri>().ok().and_then(|uri| {
+                uri_to_path(&uri).map(|path| {
+                    let path = path.canonicalize().unwrap_or(path);
+                    (
+                        SourceFile::new(path.display().to_string(), "").source_id,
+                        uri.to_string(),
+                    )
+                })
+            })
+        })
+        .collect::<HashMap<_, _>>();
+    let add = |diagnostic: &Diagnostic, result: &mut HashMap<String, Vec<LspDiagnostic>>| {
+        let source = diagnostic_source(diagnostic);
+        let uri = source_uris.get(&source).cloned().or_else(|| {
+            if source == target_source {
+                documents
+                    .keys()
+                    .find(|key| {
+                        uri_to_path_string(key)
+                            .is_some_and(|path| path.canonicalize().unwrap_or(path) == target)
+                    })
+                    .cloned()
+            } else {
+                None
+            }
+        });
+        if let Some(uri) = uri
+            && let Ok(parsed) = uri.parse::<Uri>()
+        {
+            result
+                .entry(uri)
+                .or_default()
+                .push(to_lsp(diagnostic, &parsed));
+        }
+    };
+    let graph = match load_with_overlays(entry, session, &overlays) {
+        Ok(graph) => graph,
+        Err(error) => {
+            add(&error.diagnostic, &mut result);
+            return result;
+        }
+    };
+    let analysis = match crate::semantic::analyze_modules_with_warnings(&graph) {
+        Ok(analysis) => analysis,
+        Err(error) => {
+            add(&error.diagnostic, &mut result);
+            return result;
+        }
+    };
+    if let Err(error) = lower_graph_validated(&graph, &analysis.models) {
+        add(&error, &mut result);
+        return result;
+    }
+    for warning in &analysis.warnings {
+        add(&warning.diagnostic, &mut result);
+    }
+    result
+}
+
+fn diagnostic_source(diagnostic: &Diagnostic) -> crate::source::SourceId {
+    diagnostic.span.start.source_id
+}
+
+fn uri_to_path(uri: &Uri) -> Option<PathBuf> {
+    uri_to_path_string(uri.as_str())
+}
+
+fn uri_to_path_string(uri: &str) -> Option<PathBuf> {
+    uri.strip_prefix("file://").map(PathBuf::from)
+}
+
+fn to_lsp(error: &Diagnostic, uri: &Uri) -> LspDiagnostic {
+    let structured = error
+        .spec()
+        .and_then(|spec| Catalog::global_for_environment().ok()?.render(&spec).ok());
+    let related_information = structured.as_ref().map(|rendered| {
+        rendered
+            .labels
+            .iter()
+            .filter(|label| label.style == crate::diagnostic::LabelStyle::Secondary)
+            .map(|label| DiagnosticRelatedInformation {
+                location: Location {
+                    uri: uri.clone(),
+                    range: lsp_range(
+                        label.span.start.line,
+                        label.span.start.column,
+                        label.span.end.line,
+                        label.span.end.column,
+                    ),
+                },
+                message: label.text.clone().unwrap_or_default(),
+            })
+            .collect::<Vec<_>>()
+    });
+    let (severity, message) = structured.map_or(
+        (DiagnosticSeverity::ERROR, error.message.clone()),
+        |rendered| {
+            let mut message = format!("{}: {}", rendered.title, rendered.message);
+            for cause in rendered.causes {
+                message.push_str("\n= cause: ");
+                message.push_str(&cause);
+            }
+            if let Some(help) = rendered.help {
+                message.push_str("\n= help: ");
+                message.push_str(&help);
+            }
+            let severity = match rendered.severity {
+                Severity::Error => DiagnosticSeverity::ERROR,
+                Severity::Warning => DiagnosticSeverity::WARNING,
+            };
+            (severity, message)
+        },
+    );
     LspDiagnostic {
         range: lsp_range(
             error.span.start.line,
@@ -550,12 +766,12 @@ fn to_lsp(error: crate::diagnostic::Diagnostic) -> LspDiagnostic {
             error.span.end.line,
             error.span.end.column,
         ),
-        severity: Some(DiagnosticSeverity::ERROR),
+        severity: Some(severity),
         code: Some(NumberOrString::String(error.code.into())),
         code_description: None,
         source: Some("bn".into()),
-        message: error.message,
-        related_information: None,
+        message,
+        related_information,
         tags: None,
         data: None,
     }

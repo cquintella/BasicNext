@@ -15,8 +15,7 @@ specification.
 - [HOST.Clock `Now` / `Timer`](../../done/proposals/host-clock-names.md) — accepted and implemented in 0.4.3; no alias.
 - [BNText Markdown](bntext-markdown.md) — proposed portable Markdown text
   values for 0.3.
-- [C Foreign Function Interface](c-ffi.md) — proposed `HOST.c` capability and
-  a deliberately narrow C ABI profile.
+- [C Foreign Function Interface](c-ffi.md) — proposed `HOST.c` capability and a deliberately narrow C ABI profile. Distinct from architecture [native-stdlib-binding](../../docs/architecture/native-stdlib-binding.md) (stdlib → shared `bn_rt`).
 - [Checked Numeric Semantics](numeric-semantics.md) — 0.1 rules in the
   interpreter; remaining work is negative fixtures (`DIVISION_BY_ZERO`,
   `INVALID_SHIFT_COUNT`, `INVALID_EXPONENT`, `INVALID_NUMERIC_CONVERSION`).
@@ -24,3 +23,5 @@ specification.
 - [Host capabilities](host-capabilities.md) — exploratory; not accepted.
 - Parallel computing — future `PARALLEL` syntax; proposal not yet materialized as a document.
 - [Native LSP & DAP](../../docs/architecture/README.md) — 0.3 surface mostly in tree; remaining: `--help`, VS Code `bn check` on save, find-references client. Audit 2026-09-03.
+- [Early `Error` propagation](error-propagation.md) — proposed postfix `?` (or CHECK/PROPAGATE); language DNA; desugars to IF/RETURN; does **not** change toolchain diagnostics.
+- [BNData Expansion (Series & Analytics)](bndata-expansion.md) — proposed 1D dynamic series, NA semantics, vectorized operations, and DataFrame enhancements.

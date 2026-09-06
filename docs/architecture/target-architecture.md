@@ -150,7 +150,7 @@ flowchart TB
   BNdap --> RT3
   FE3 --> DIAG
   FE3 --> SPEC
-  IR3 --> FE3
+  FE3 --> IR3
   IR3 --> DIAG
   RT3 --> IR3
   RT3 --> VAL
@@ -215,7 +215,7 @@ flowchart LR
 flowchart BT
   DIAG[bn_diag]
   VAL[bn_value]
-  SRC[bn_source / or inside frontend]
+  SRC[bn_source shared leaf]
   SPEC[bn_host_spec]
   FE[bn_frontend]
   IR[bn_ir]
@@ -231,9 +231,12 @@ flowchart BT
   EXT["clang / LLVM toolchain EXTERNAL"]
 
   FE --> DIAG
+  FE --> SRC
   FE --> SPEC
   FE --> IR
   IR --> DIAG
+  IR --> SRC
+  DIAG --> SRC
   VAL --> DIAG
   NET --> DIAG
   WEB --> NET
@@ -364,9 +367,10 @@ bn_host_http never imports bn_runtime
 | **Check ≡ LSP baseline diagnostics** | Default IDE Problems path = same stages as `--check` (through language `validate`) | **Locked** |
 | **Frontend → IR** | Frontend **owns lowering**: `lower_*(ast, semantic, graph) -> bn_ir::Module`; only producer of IR. `bn_ir` does **not** call back into frontend. | Producer-only; breaks `bn_ir → bn_frontend` |
 | **IR crate API** | Own typed ops/ids; instruction enum; validate(Module); `ir_version` when serialized; `Capabilities` — **no** `semantic::Type` / `module_graph` in the public IR model | Semver on `bn_ir`; backends depend on IR only |
-| **IR ↔ consumers** | `validate(module)`; `validate_for(Backend::Interpreter \| Llvm)` | Matrix is public |
-| **Support matrix** | Structured catalog: op × type constraints × conditions × target/provider × reject_diag × tests; docs generated from it | **Required before matrix-backed releases**; [support-matrix.md](support-matrix.md) |
-| **`validate` vs support check** | Language IR validity ≠ target implementation gap; distinct diagnostics | **Locked** |
+| **IR ↔ consumers** | `validate(module)` then, on **every compile path**, `validate_for(Backend)` for that Backend (`LlvmNative`, `Wasm32`, …) | Matrix is public; production-complete |
+| **Support matrix** | Structured catalog: op × type constraints × conditions × target/provider × reject_diag × tests; docs generated from it | **Required** for claimed compile support; [support-matrix.md](support-matrix.md) |
+| **`validate` vs support check** | Language IR ≠ target gap; support codes `TARGET_UNSUPPORTED_*` only; **5.1 before emit** on native **and** wasm | **Locked (production bar 2026-09-06)** |
+| **Compile pipeline order** | Frontend `validate` → **5.1 `validate_for(Backend)`** → emit → link; no stub `validate_for` | **Locked** — [dfd-2/5.0](dfd/dfd-2/5.0 Compile IR.md) |
 | **Completion gates** | GC-* independent of Fluent/`bnc`; extract verifies contracts per cut — [completion-gates.md](completion-gates.md) | **Locked** |
 | **Runtime HostEnv** | Binds **providers** (target support) + **execution policy** (scoped auth); deny at each HOST op | Shared story with `bn_rt` — [host-traits.md](host-traits.md) |
 | **Program requirements vs support vs policy** | Three dimensions — must not collapse into one Capabilities bitset; deny ≠ unimplemented | **Locked** — [host-traits.md](host-traits.md) |
@@ -377,6 +381,7 @@ bn_host_http never imports bn_runtime
 | **DAP ↔ runtime** | `DebugHook` / `DebugControl` / `DebugVariable` (keep F-TOOL-003) | Stable across extract |
 | **LSP ↔ frontend** | Publish/hover/def over cached `SemanticModel` + graph | No re-lex per request long-term |
 | **LLVM ↔ bn_rt** | Known extern call set for HOST subset **plus** ownership, layout, and error taxonomy | Documented with matrix + [value-memory-abi.md](value-memory-abi.md) |
+| **Stdlib native binding** | Shared `bn_rt` C ABI for interpret+compile; honest module decls; HostEnv providers; no empty stubs; dynamic plugins deferred | [native-stdlib-binding.md](native-stdlib-binding.md) |
 | **Value / memory / ABI** | Identity/aliasing; construct/`DELETE`/handles; dispatch & static init; native layout; ABI ownership; `Error` vs trap vs internal failure; numeric lowering (e.g. LLVM `nsw` ≠ BN overflow) | **Required** — [value-memory-abi.md](value-memory-abi.md) |
 | **Config** | Toolchain: project/manifest/user search order in driver; web/dispatch limits: host-crate defaults + optional override | One story, two files OK if documented |
 
@@ -400,7 +405,7 @@ Do **not** invent a second frontend/runtime. Move code, then delete the old path
 | **XM7** | `bn_host_spec`; generate or move catalogs out of semantic | FE purity |
 | **XM8** | Cut `bn_frontend` (incl. lowering) and `bn_ir` (model+validate only; **no FE dep**; erase semantic types from IR model) | Semver boundary |
 | **XM9** | Cut `bn_runtime` + `bn_host_{net,http,web}`; rename executor domains | Testable HOST |
-| **XM10** | Cut `bn_llvm` optional; `validate_for(Llvm)` enforced in `bn build` | Honest build |
+| **XM10** | Cut `bn_llvm` optional; **`validate_for` enforced on every `bn build` Backend** (native + wasm); migrate `BUILD_LOWERING_UNAVAILABLE` | Honest build |
 | **XM11** | `bn-lsp` / `bn-dap` binaries or features; thin `bn` | Deploy weight |
 
 **Compatibility:** keep `bn check|run|build|lsp|dap` UX during XM4–XM11; internal crate names can change behind the binary. Prefer workspace path deps until first external semver promise on `bn_ir` / `bn_host_spec`.

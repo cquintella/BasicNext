@@ -1,0 +1,25 @@
+[package]
+name = "bn_frontend"
+version = "0.4.4"
+edition = "2024"
+rust-version = "1.97"
+description = "Basic Next source frontend and semantic analysis"
+license = "MPL-2.0"
+build = "build.rs"
+
+[features]
+default = ["frontend-host-spec-path"]
+frontend-host-spec-path = []
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+
+[dependencies]
+bn_diag = { path = "../bn_diag" }
+bn_ir = { path = "../bn_ir" }
+bn_source = { path = "../bn_source" }
+bn_types = { path = "../bn_types" }

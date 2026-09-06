@@ -54,6 +54,13 @@ impl Executor<'_, '_> {
                     self.default_value(ty, &evaluated, *span)?,
                 );
             }
+            Instruction::Phi { span, .. } => {
+                return Err(runtime_error(
+                    "INVALID_IR",
+                    "Phi must be resolved by the executor control-flow loop",
+                    *span,
+                ));
+            }
             Instruction::Load {
                 destination,
                 symbol,

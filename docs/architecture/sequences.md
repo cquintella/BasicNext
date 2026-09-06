@@ -118,9 +118,11 @@ Interpret is the **executable reference** (spec is normative); this path is neve
 
 ## Profile: compile (`bnc -c` / `-c --target`)
 
-Compile reuses the Frontend, then **5.0 Compile IR** lowers BN IR to LLVM IR
-and invokes the **external** LLVM toolchain. The artifact lands in **D5** /
-the file system; Control receives **C23**.
+Compile reuses the Frontend (language **`validate`**), then **5.0** runs
+mandatory **`validate_for(Backend)`** for **native and wasm** (every compile
+path), then lowers BN IR to LLVM IR and invokes the **external** LLVM
+toolchain. Support rejects use **`TARGET_UNSUPPORTED_*`** — never language-invalid
+codes. See [dfd-2/5.0 Compile IR.md](dfd/dfd-2/5.0 Compile IR.md).
 
 ```mermaid
 sequenceDiagram
@@ -135,34 +137,43 @@ sequenceDiagram
   participant D5 as D5 Build artifact
   participant D3 as D3 Diagnostics
 
-  Dev->>C: F01 job request (-c / --target)
+  Dev->>C: F01 job request (-c / --target → Backend)
   C->>A: F03 / C16 schedule Frontend
   A->>L: F16 handoff
-  L->>D2: F17 validated IR
+  L->>D2: F17 language-validated IR
   A-->>C: C21 Frontend done
   alt Frontend failed
     C-->>Dev: C26 fail + F35 diagnostics
   else Frontend ok
-    C->>G: F05 / C18 compile command
+    C->>G: F05 / C18 compile command (Backend)
     D2->>G: F21 IR to compile
-    G->>Ext: F25 LLVM IR + argv
-    Ext-->>G: F26 linked object / binary
-    G->>D5: F27 build artifact
-    G->>D3: F28 compile diagnostics
-    G->>Log: F29 compile events
-    D5-->>Dev: F30 artifact path
-    G-->>C: C23 Compile done (ok|fail + artifact path)
-    C->>Log: C28 completion events
-    C-->>Dev: C26 pipeline outcome
+    Note over G: 5.1 validate_for(Backend) — mandatory native and wasm
+    alt Support reject
+      G->>D3: TARGET_UNSUPPORTED_* (not INVALID_IR)
+      G->>Log: support reject events
+      G-->>C: C23 Compile done fail (support)
+      C-->>Dev: C26 fail + F35 (support codes)
+    else Support OK
+      G->>Ext: F25 LLVM IR + argv
+      Ext-->>G: F26 linked object / binary
+      G->>D5: F27 build artifact
+      G->>D3: F28 compile/link diagnostics
+      G->>Log: F29 compile events
+      D5-->>Dev: F30 artifact path
+      G-->>C: C23 Compile done (ok|fail + artifact path)
+      C->>Log: C28 completion events
+      C-->>Dev: C26 pipeline outcome
+    end
   end
 ```
 
 **Prose.** Compile never invents a second meaning from AST alone: it consumes
-the same validated BN IR (**F21**) that interpret would. Process **5.0** emits
-LLVM IR and argv across the trust boundary to clang/ld/opt (**F25**), accepts
-the linked product (**F26**), records the artifact (**F27** / **F30**), and
-reports completion to Control (**C23**). Process-log events (**F29**, **C28**)
-must capture tool argv without secrets.
+the same **language-validated** BN IR (**F21**) that interpret would. Before any
+LLVM emit, **5.1 `validate_for`** checks the support matrix for the selected
+Backend (host native **or** wasm — **both required**). Only then does **5.0**
+emit LLVM IR and argv to clang/ld/opt (**F25**), accept the linked product
+(**F26**), and record the artifact (**F27** / **F30**). Mid-emit
+`BUILD_LOWERING_UNAVAILABLE` must not be the first discovery of a matrix gap.
 
 ---
 

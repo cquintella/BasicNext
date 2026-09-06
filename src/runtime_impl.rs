@@ -7,9 +7,12 @@
 use std::{
     collections::{HashMap, HashSet},
     io::{BufRead, Read, Write},
-    sync::atomic::AtomicU64,
+    sync::{Arc, atomic::AtomicU64},
     time::{SystemTime, UNIX_EPOCH},
+    path::{Path, PathBuf},
 };
+
+use bn_value::Value;
 
 #[path = "runtime/allocation.rs"]
 mod allocation;
@@ -32,7 +35,7 @@ mod temporal_ops;
 
 use allocation::{add_sizes, display_element, pointer_element_default, pointer_element_size};
 use collections::{
-    collect_indices, dataframe_index_error, dataframe_numeric_values, unsigned_indices,
+    collect_indices, dataframe_index_error, unsigned_indices,
 };
 use compare::{equals, is_host_file_method, is_host_file_type, is_value, value_matches_type};
 use helpers::{
@@ -49,73 +52,32 @@ use numeric::{
 use render::render;
 use temporal_ops::{is_temporal_builtin, temporal_call};
 
+pub use bn_rt::{DataProvider, StandardDataProvider};
+
 #[allow(unused_imports)]
 use crate::{
     dataframe::{
-        DataFrameColumn, DataFrameJoin, DataFrameResource, duplicate_column_names, join_dataframes,
-        parse_csv,
+        DataFrameColumn as GenericDataFrameColumn, DataFrameJoin, DataFrameJoinConfig,
+        DataFrameResource as GenericDataFrameResource, add_dataframe_column,
+        append_columns, append_rows, column_name, convert_dataframe_column,
+        copy_dataframe_column, dataframe_reduce_column, duplicate_column_names,
+        get_dataframe_cell, join_dataframes, select_dataframe, set_column_label,
+        transpose_dataframe, zscore_column,
     },
     diagnostic::Diagnostic,
     heap::{Handle, Heap},
-    ir::{Function, Instruction, Module, Terminator, ValidatedModule, ValueId, validate_module},
-    module_graph::ModuleId,
-    semantic::{
-        FloatType, IntegerType, PointerLength, SymbolId, Type, integer_byte_size, static_size_of,
-    },
+    ir::{Function, Instruction, Module, ModuleId, SymbolId, Terminator, ValidatedModule, ValueId, validate_module},
     source::Span,
+    types::{
+        FloatType, IntegerType, PointerLength, Type, integer_byte_size, static_size_of,
+    },
 };
 
-#[derive(Clone, Debug)]
-pub(crate) enum Value {
-    Integer(i128, IntegerType),
-    Float(f64, FloatType),
-    Boolean(bool),
-    String(String),
-    Vector(Vec<Value>),
-    Function(String),
-    Type(String),
-    Null,
-    NotAvailable,
-    EndOfFile,
-    #[allow(dead_code)]
-    Error {
-        code: i32,
-        message: String,
-    },
-    HostConsole,
-    HostArgs,
-    TcpStream(u64),
-    TcpListener(u64),
-    UdpSocket(u64),
-    LogFields(u64),
-    LogEntry(u64),
-    LogLogger(u64),
-    Json(u64),
-    DispatchQueue(u64),
-    DispatchTicket(u64),
-    DispatchGroup(u64),
-    DispatchBarrier(u64),
-    DispatchSemaphore(u64),
-    DispatchMutex(u64),
-    File(u64),
-    DataFrame(u64),
-    Handle {
-        type_name: String,
-    },
-    Record {
-        type_name: String,
-        fields: HashMap<String, Value>,
-    },
-    Object {
-        handle: Handle,
-        class: String,
-    },
-    Pointer {
-        handle: Handle,
-    },
-    Date(i32),
-    Time(u32),
-    TimeZone(String),
+type DataFrameColumn = GenericDataFrameColumn<Value>;
+type DataFrameResource = GenericDataFrameResource<Value>;
+
+fn is_not_available(value: &Value) -> bool {
+    matches!(value, Value::NotAvailable)
 }
 
 /// Host-supplied arguments and clocks for one `bn run` execution.
@@ -123,7 +85,57 @@ pub struct HostEnv {
     arguments: Vec<String>,
     clock: ClockKind,
     random_state: AtomicU64,
-    filesystem: bool,
+    filesystem: FilesystemPolicy,
+    data_provider: Arc<dyn DataProvider>,
+}
+
+#[derive(Clone, Debug)]
+pub struct FilesystemPolicy {
+    read_roots: Option<Vec<PathBuf>>,
+    write_roots: Option<Vec<PathBuf>>,
+}
+
+impl FilesystemPolicy {
+    fn unrestricted() -> Self {
+        Self {
+            read_roots: None,
+            write_roots: None,
+        }
+    }
+
+    fn denied() -> Self {
+        Self {
+            read_roots: Some(Vec::new()),
+            write_roots: Some(Vec::new()),
+        }
+    }
+
+    fn allows_capability(&self) -> bool {
+        self.read_roots.as_ref().is_none_or(|roots| !roots.is_empty())
+            || self
+                .write_roots
+                .as_ref()
+                .is_none_or(|roots| !roots.is_empty())
+    }
+
+    fn allows_path(&self, path: &Path, write: bool) -> bool {
+        let roots = if write {
+            &self.write_roots
+        } else {
+            &self.read_roots
+        };
+        let Some(roots) = roots else {
+            return true;
+        };
+        let candidate = if path.exists() {
+            path.canonicalize().ok()
+        } else {
+            path.parent()
+                .and_then(|parent| parent.canonicalize().ok())
+                .and_then(|parent| path.file_name().map(|name| parent.join(name)))
+        };
+        candidate.is_some_and(|candidate| roots.iter().any(|root| candidate.starts_with(root)))
+    }
 }
 
 impl Clone for HostEnv {
@@ -135,7 +147,8 @@ impl Clone for HostEnv {
                 self.random_state
                     .load(std::sync::atomic::Ordering::Relaxed),
             ),
-            filesystem: self.filesystem,
+            filesystem: self.filesystem.clone(),
+            data_provider: Arc::clone(&self.data_provider),
         }
     }
 }
@@ -156,7 +169,8 @@ impl HostEnv {
             arguments,
             clock: ClockKind::System,
             random_state: AtomicU64::new(host_random_seed()),
-            filesystem: true,
+            filesystem: FilesystemPolicy::unrestricted(),
+            data_provider: Arc::new(StandardDataProvider),
         }
     }
 
@@ -169,15 +183,58 @@ impl HostEnv {
                 monotonic_ns,
             },
             random_state: AtomicU64::new(1),
-            filesystem: true,
+            filesystem: FilesystemPolicy::unrestricted(),
+            data_provider: Arc::new(StandardDataProvider),
         }
     }
 
     /// Creates an environment that denies filesystem capability imports.
     #[must_use]
     pub fn without_filesystem(mut self) -> Self {
-        self.filesystem = false;
+        self.filesystem = FilesystemPolicy::denied();
         self
+    }
+
+    /// Replaces the standard-library data provider for this execution.
+    #[must_use]
+    pub fn with_data_provider(mut self, provider: Arc<dyn DataProvider>) -> Self {
+        self.data_provider = provider;
+        self
+    }
+
+    /// Restricts filesystem reads and writes to canonicalized directory roots.
+    ///
+    /// Existing roots must be directories. An empty root list denies that
+    /// operation; passing both lists empty denies all filesystem access.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a configured root does not exist or is not a
+    /// directory.
+    pub fn with_filesystem_roots(
+        mut self,
+        read_roots: Vec<PathBuf>,
+        write_roots: Vec<PathBuf>,
+    ) -> Result<Self, &'static str> {
+        let canonicalize_roots = |roots: Vec<PathBuf>| {
+            roots
+                .into_iter()
+                .map(|root| {
+                    let root = root
+                        .canonicalize()
+                        .map_err(|_| "filesystem policy root does not exist")?;
+                    if !root.is_dir() {
+                        return Err("filesystem policy root is not a directory");
+                    }
+                    Ok(root)
+                })
+                .collect::<Result<Vec<_>, _>>()
+        };
+        self.filesystem = FilesystemPolicy {
+            read_roots: Some(canonicalize_roots(read_roots)?),
+            write_roots: Some(canonicalize_roots(write_roots)?),
+        };
+        Ok(self)
     }
 
     fn timestamp_ms(&self) -> i64 {
@@ -203,7 +260,8 @@ impl HostEnv {
             arguments: self.arguments.clone(),
             clock: self.clock.clone(),
             random_state: AtomicU64::new(seed),
-            filesystem: self.filesystem,
+            filesystem: self.filesystem.clone(),
+            data_provider: Arc::clone(&self.data_provider),
         }
     }
 }
@@ -536,7 +594,7 @@ fn execute_with_host_inner<'debug>(
 ) -> Result<u8, Diagnostic> {
     crate::tls::install_ring_provider()
         .map_err(|message| runtime_error("TLS_PROVIDER_UNAVAILABLE", message, default_span()))?;
-    if !host.filesystem
+    if !host.filesystem.allows_capability()
         && let Some(span) = module.filesystem_import
     {
         return Err(runtime_error(
@@ -591,7 +649,7 @@ pub(crate) fn execute_web_callback(
     response: crate::web::Response,
 ) -> Result<crate::web::Response, String> {
     crate::tls::install_ring_provider().map_err(std::borrow::ToOwned::to_owned)?;
-    if !host.filesystem && let Some(span) = module.filesystem_import {
+    if !host.filesystem.allows_capability() && let Some(span) = module.filesystem_import {
         return Err(runtime_error(
             "HOST_CAPABILITY_UNAVAILABLE",
             "HOST.FileSystem is not provided by this host",
@@ -668,11 +726,15 @@ fn integer_overflow(span: Span) -> Diagnostic {
 fn default_span() -> Span {
     Span {
         start: crate::source::Position {
+            source_id: crate::source::Position::UNKNOWN_SOURCE,
+            revision: crate::source::Position::UNKNOWN_REVISION,
             offset: 0,
             line: 1,
             column: 1,
         },
         end: crate::source::Position {
+            source_id: crate::source::Position::UNKNOWN_SOURCE,
+            revision: crate::source::Position::UNKNOWN_REVISION,
             offset: 0,
             line: 1,
             column: 1,

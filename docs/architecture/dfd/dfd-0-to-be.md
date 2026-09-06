@@ -1,7 +1,7 @@
 # DFD-0 — TO-BE (target architecture)
 
 > **Canonical location:** `docs/architecture/dfd/dfd-0-to-be.md`
-> Lives under **`docs/architecture/`**. As-is audit DFDs stay under `audit/` (local). Implementation: `ongoing/bucket-0.4.4.md` / `bucket-0.4.5.md`.
+> Lives under **`docs/architecture/`**. As-is audit DFDs stay under `audit/` (local). Implementation: `done/bucket-0.4.4.md` / `bucket-0.4.5.md`.
 
 **Scope:** target toolchain architecture (design). This is **not** the as-is audit DFD.  
 **Language posture:** BasicNext stays a **minimalist** language (few elements, standardization, object-orientation, expressiveness). This diagram describes the **tools around** that language, not new syntax.  
