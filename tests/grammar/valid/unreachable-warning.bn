@@ -1,0 +1,4 @@
+FUNCTION Start() AS VOID
+    RETURN
+    PRINT "never"
+END FUNCTION

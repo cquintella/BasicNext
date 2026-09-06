@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fs,
     path::{Path, PathBuf},
 };
@@ -12,13 +12,13 @@ use std::{
 use crate::{
     ast::{Item, Program},
     diagnostic::Diagnostic,
+    frontend_session::FrontendSession,
     lexer::lex,
     parser::parse_named,
     source::{Position, SourceFile, Span},
 };
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-pub struct ModuleId(pub u32);
+pub use crate::types::ModuleId;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StandardModule {
@@ -49,7 +49,7 @@ pub struct ModuleGraph {
 #[derive(Debug)]
 pub struct ModuleError {
     pub source: Box<SourceFile>,
-    pub diagnostic: Diagnostic,
+    pub diagnostic: Box<Diagnostic>,
 }
 
 /// Loads the executable module and its non-HOST imports beneath its directory.
@@ -59,6 +59,42 @@ pub struct ModuleError {
 /// Returns the source file that owns a lexical, syntax, missing-module, or
 /// import-cycle diagnostic.
 pub fn load(entry: impl AsRef<Path>) -> Result<ModuleGraph, ModuleError> {
+    let mut session = FrontendSession::default();
+    load_with_session(entry, &mut session)
+}
+
+/// Loads a module graph while recording every source snapshot in the supplied
+/// frontend session.
+///
+/// The session owns the revision boundary used by frontend clients. The
+/// resulting source files and all spans produced from them carry the same
+/// `SourceId` and session revision.
+///
+/// # Errors
+///
+/// Returns the source file that owns a lexical, syntax, missing-module, or
+/// import-cycle diagnostic.
+pub fn load_with_session(
+    entry: impl AsRef<Path>,
+    session: &mut FrontendSession,
+) -> Result<ModuleGraph, ModuleError> {
+    load_with_overlays(entry, session, &BTreeMap::new())
+}
+
+/// Loads a module graph using in-memory source overlays before consulting disk.
+///
+/// Overlay paths are normalized in the same way as the entry path. This is the
+/// handoff used by IDE clients for unsaved buffers.
+///
+/// # Errors
+///
+/// Returns the source file that owns a lexical, syntax, missing-module, or
+/// import-cycle diagnostic.
+pub fn load_with_overlays(
+    entry: impl AsRef<Path>,
+    session: &mut FrontendSession,
+    overlays: &BTreeMap<PathBuf, String>,
+) -> Result<ModuleGraph, ModuleError> {
     let entry = normalize(entry.as_ref());
     let root_directory = entry.parent().map_or_else(PathBuf::new, PathBuf::from);
     let standard_directory = root_directory
@@ -80,6 +116,8 @@ pub fn load(entry: impl AsRef<Path>) -> Result<ModuleGraph, ModuleError> {
         standard_directory,
         states: HashMap::new(),
         modules: Vec::new(),
+        session,
+        overlays,
     };
     let root = loader.visit(&entry, None)?;
     Ok(ModuleGraph {
@@ -93,14 +131,16 @@ enum State {
     Loaded(ModuleId),
 }
 
-struct Loader {
+struct Loader<'a> {
     root_directory: PathBuf,
     standard_directory: PathBuf,
     states: HashMap<PathBuf, State>,
     modules: Vec<LoadedModule>,
+    session: &'a mut FrontendSession,
+    overlays: &'a BTreeMap<PathBuf, String>,
 }
 
-impl Loader {
+impl Loader<'_> {
     fn visit(
         &mut self,
         path: &Path,
@@ -121,14 +161,14 @@ impl Loader {
                 }
             };
         }
-        let source = read_source(&path, importer)?;
+        let source = read_source(&path, importer, self.session, self.overlays)?;
         let tokens = lex(&source).map_err(|diagnostic| ModuleError {
             source: Box::new(source.clone()),
-            diagnostic,
+            diagnostic: Box::new(diagnostic),
         })?;
         let program = parse_named(&tokens, &source.name).map_err(|diagnostic| ModuleError {
             source: Box::new(source.clone()),
-            diagnostic,
+            diagnostic: Box::new(diagnostic),
         })?;
         self.states.insert(path.clone(), State::Visiting);
 
@@ -210,10 +250,25 @@ fn standard_module(path: &Path) -> Option<StandardModule> {
 fn read_source(
     path: &Path,
     importer: Option<(&SourceFile, Span)>,
+    session: &mut FrontendSession,
+    overlays: &BTreeMap<PathBuf, String>,
 ) -> Result<SourceFile, ModuleError> {
     let name = path.display().to_string();
-    match fs::read_to_string(path) {
-        Ok(text) => Ok(SourceFile::new(name, text)),
+    let text = overlays
+        .get(path)
+        .cloned()
+        .map_or_else(|| fs::read_to_string(path), Ok);
+    match text {
+        Ok(text) => {
+            let identity = SourceFile::new(name.clone(), "").source_id;
+            let snapshot = session.upsert_if_changed(Some(identity), text.clone());
+            Ok(SourceFile {
+                name,
+                text,
+                source_id: snapshot.source,
+                revision: snapshot.revision,
+            })
+        }
         Err(error) => {
             let (source, span) = importer.map_or_else(
                 || (SourceFile::new(name.clone(), ""), default_span()),
@@ -226,11 +281,11 @@ fn read_source(
             );
             Err(ModuleError {
                 source: Box::new(source),
-                diagnostic: Diagnostic {
+                diagnostic: Box::new(Diagnostic {
                     code: "MODULE_NOT_FOUND",
                     message: format!("cannot load module {name}: {error}"),
                     span,
-                },
+                }),
             })
         }
     }
@@ -249,23 +304,73 @@ fn normalize(path: &Path) -> PathBuf {
 #[cfg(test)]
 #[allow(clippy::items_after_test_module)]
 mod tests {
-    use super::{HashMap, Loader, Path, PathBuf};
+    use super::{BTreeMap, HashMap, Item, Loader, PathBuf, load_with_session};
+    use crate::frontend_session::FrontendSession;
 
     #[test]
     fn loader_reuses_a_module_across_equivalent_path_spellings() {
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let repository = if manifest.join("tests/modules").is_dir() {
+            manifest
+        } else {
+            manifest
+                .parent()
+                .and_then(|parent| parent.parent())
+                .expect("frontend crate lives below the repository root")
+                .to_path_buf()
+        };
+        let graph = repository.join("tests/modules/graph");
+        let mut session = FrontendSession::default();
+        let overlays = BTreeMap::new();
         let mut loader = Loader {
-            root_directory: PathBuf::from("tests/modules/graph"),
-            standard_directory: PathBuf::from("modules/bn"),
+            root_directory: graph.clone(),
+            standard_directory: repository.join("modules/bn"),
             states: HashMap::new(),
             modules: Vec::new(),
+            session: &mut session,
+            overlays: &overlays,
         };
         let first = loader
-            .visit(Path::new("tests/modules/graph/main.bn"), None)
+            .visit(&graph.join("main.bn"), None)
             .expect("load module");
         let second = loader
-            .visit(Path::new("./tests/modules/graph/main.bn"), None)
+            .visit(&graph.join("./main.bn"), None)
             .expect("reuse module");
         assert_eq!(first, second);
+    }
+
+    #[test]
+    fn load_with_session_propagates_snapshot_identity_to_module_spans() {
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let repository = if manifest.join("tests/modules").is_dir() {
+            manifest
+        } else {
+            manifest
+                .parent()
+                .and_then(|parent| parent.parent())
+                .expect("frontend crate lives below the repository root")
+                .to_path_buf()
+        };
+        let entry = repository.join("tests/modules/graph/main.bn");
+        let mut session = FrontendSession::default();
+        let graph = load_with_session(&entry, &mut session).expect("load module graph");
+        let root = graph
+            .modules
+            .iter()
+            .find(|module| module.id == graph.root)
+            .expect("graph root");
+        let snapshot = session
+            .snapshot(root.source.source_id)
+            .expect("root snapshot");
+        assert_eq!(root.source.source_id, snapshot.source);
+        assert_eq!(root.source.revision, snapshot.revision);
+        let span = match &root.program.items[0] {
+            Item::Import { span, .. }
+            | Item::Constant { span, .. }
+            | Item::Declaration { span, .. } => *span,
+        };
+        assert_ne!(span.source_id(), crate::source::SourceId::UNKNOWN);
+        assert_eq!(span.revision(), snapshot.revision);
     }
 }
 
@@ -277,16 +382,18 @@ fn module_error(
 ) -> ModuleError {
     ModuleError {
         source: Box::new(SourceFile::new(source.name.clone(), source.text.clone())),
-        diagnostic: Diagnostic {
+        diagnostic: Box::new(Diagnostic {
             code,
             message: message.into(),
             span,
-        },
+        }),
     }
 }
 
 fn default_span() -> Span {
     let start = Position {
+        source_id: Position::UNKNOWN_SOURCE,
+        revision: Position::UNKNOWN_REVISION,
         offset: 0,
         line: 1,
         column: 1,

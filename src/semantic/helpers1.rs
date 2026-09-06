@@ -153,68 +153,37 @@ pub(crate) fn static_len(ty: &Type) -> Option<u64> {
         return Some(1);
     }
     if let Type::Vector { dimensions, .. } = ty {
-        return dimension_product(dimensions);
+        return crate::types::dimension_product(dimensions);
     }
     None
 }
 
 #[must_use]
-pub(crate) fn static_size_of(ty: &Type) -> Option<u64> {
-    match ty {
-        Type::Boolean => Some(1),
-        Type::Integer(kind) => Some(integer_byte_size(*kind)),
-        Type::IntegerLiteral(_) | Type::Float(FloatType::Float32) => Some(4),
-        Type::Float(FloatType::Float64) | Type::FloatLiteral => Some(8),
-        Type::Named(name) if name == "DATE" || name == "TIME" => Some(4),
-        Type::Vector {
-            element,
-            dimensions,
-        } => static_size_of(element)
-            .and_then(|element| dimension_product(dimensions)?.checked_mul(element)),
-        _ => None,
-    }
-}
-
-#[must_use]
-pub(crate) fn integer_byte_size(kind: IntegerType) -> u64 {
-    match kind {
-        IntegerType::Byte | IntegerType::Int8 => 1,
-        IntegerType::Int16 | IntegerType::UInt16 => 2,
-        IntegerType::Int32 | IntegerType::UInt32 => 4,
-        IntegerType::Int64 | IntegerType::UInt64 => 8,
-    }
-}
-
 pub(crate) fn dimension_product(dimensions: &[u64]) -> Option<u64> {
-    if dimensions.contains(&u64::MAX) {
-        return None;
-    }
-    dimensions
-        .iter()
-        .try_fold(1u64, |product, dimension| product.checked_mul(*dimension))
+    crate::types::dimension_product(dimensions)
 }
 
 pub(crate) fn host_capability_type(name: &str, span: Span) -> Result<Type, Diagnostic> {
-    match name {
-        "Args" => Ok(Type::HostArgs),
-        "Console" => Ok(Type::HostConsole),
-        "Main" => Err(error(
-            "NAME_NOT_FOUND",
-            "HOST.Main was withdrawn in 0.2; use HOST.Args",
-            span,
-        )),
-        "Clock" => Ok(Type::HostClock),
-        "Random" => Ok(Type::HostRandom),
-        "FileSystem" => Ok(Type::HostFileSystem),
-        "Net" => Ok(Type::HostNet),
-        "NumProcs" => Ok(Type::Function {
+    match crate::host_spec::capability(name) {
+        Some(crate::host_spec::Capability::Args) => Ok(Type::HostArgs),
+        Some(crate::host_spec::Capability::Console) => Ok(Type::HostConsole),
+        Some(crate::host_spec::Capability::Clock) => Ok(Type::HostClock),
+        Some(crate::host_spec::Capability::Random) => Ok(Type::HostRandom),
+        Some(crate::host_spec::Capability::FileSystem) => Ok(Type::HostFileSystem),
+        Some(crate::host_spec::Capability::Net) => Ok(Type::HostNet),
+        Some(crate::host_spec::Capability::NumProcs) => Ok(Type::Function {
             parameters: Vec::new(),
             return_type: Box::new(Type::Alternative(vec![
                 Type::Integer(IntegerType::Int32),
                 Type::Named("Error".into()),
             ])),
         }),
-        _ => Err(error(
+        None if name == "Main" => Err(error(
+            "NAME_NOT_FOUND",
+            "HOST.Main was withdrawn in 0.2; use HOST.Args",
+            span,
+        )),
+        None => Err(error(
             "NAME_NOT_FOUND",
             format!("HOST.{name} is not a Basic Next 0.2 capability"),
             span,
@@ -414,7 +383,7 @@ pub(crate) fn vector_shape(expression: &Expression) -> Option<Vec<usize>> {
     }
     Some(shape)
 }
-pub(crate) fn display(ty: &Type) -> String {
+pub fn display(ty: &Type) -> String {
     match ty {
         Type::Named(name) | Type::TypeName(name) => name.clone(),
         Type::ImportedNamed { module, name } | Type::ImportedTypeName { module, name } => {
@@ -473,7 +442,7 @@ pub(crate) fn display(ty: &Type) -> String {
     }
 }
 
-pub(crate) fn typeof_name(ty: &Type) -> String {
+pub fn typeof_name(ty: &Type) -> String {
     match ty {
         Type::Boolean => "BOOLEAN".into(),
         Type::Integer(IntegerType::Byte) => "BYTE".into(),

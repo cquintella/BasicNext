@@ -38,7 +38,8 @@ fi
 declare -a backend_paths=(
   src/runtime_impl.rs src/runtime src/heap.rs src/dispatch.rs src/dispatch
   src/net.rs src/net src/http.rs src/web.rs src/web src/web_state.rs
-  src/dataframe.rs src/llvm.rs src/llvm crates/bn_rt/src
+  src/dataframe.rs src/llvm.rs src/llvm crates/bn_rt/src crates/bn_runtime/src
+  crates/bn_value/src crates/bn_llvm/src
 )
 
 found=0
@@ -88,11 +89,32 @@ if ((${#frontend_paths[@]} > 0)); then
   done < <(rg -n --no-heading --glob '*.rs' 'execute_with_host' "${frontend_paths[@]}" 2>/dev/null || true)
 fi
 
-# W5 freeze: the public IR model currently carries semantic and module-graph
-# types as an explicitly versioned debt. Any changed import line must be
-# reviewed and added deliberately; new symbols on an existing line also fail.
-ir_model="$repo_root/src/ir/model.rs"
-if [[ -f "$ir_model" ]]; then
+# Frontend semantic analysis may consume the HOST specification, but never a
+# host implementation. Keep the implementation boundary explicit until the
+# dedicated crates are extracted.
+if ((${#frontend_paths[@]} > 0)); then
+  while IFS=: read -r path line text; do
+    [[ -n "$path" ]] || continue
+    rel=${path#"$repo_root/"}
+    record="$rel:$line:$text"
+    if ! grep -Fqx -- "$record" "$allowlist"; then
+      printf 'forbidden dependency (frontend→host implementation): %s\n' "$record" >&2
+      found=1
+    fi
+  done < <(rg -n --no-heading --glob '*.rs' \
+    -e '(^|[^[:alnum:]_])(crate::|use[[:space:]]+)(net|http|web|web_state|tls|dispatch)::' \
+    -e 'use[[:space:]]+(crate|super)::\{[^}]*\b(net|http|web|web_state|tls|dispatch)\b' \
+    "${frontend_paths[@]}" 2>/dev/null || true)
+fi
+
+# W5 freeze: inspect the current extracted public IR model (and retain the
+# legacy path while the compatibility facade is still present). Any semantic
+# or module-graph import in either model is a contract violation.
+ir_models=()
+for candidate in "$repo_root/crates/bn_ir/src/model.rs" "$repo_root/src/ir/model.rs"; do
+  [[ -f "$candidate" ]] && ir_models+=("$candidate")
+done
+for ir_model in "${ir_models[@]}"; do
   while IFS=: read -r path line text; do
     [[ -n "$path" ]] || continue
     rel=${path#"$repo_root/"}
@@ -105,7 +127,7 @@ if [[ -f "$ir_model" ]]; then
     -e '(^|[^[:alnum:]_])semantic::' \
     -e '(^|[^[:alnum:]_])module_graph::' \
     "$ir_model" 2>/dev/null || true)
-fi
+done
 
 if ((found != 0)); then
   echo "forbidden dependency check failed" >&2

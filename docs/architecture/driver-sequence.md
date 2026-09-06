@@ -56,4 +56,4 @@ in this bucket.
 
 Related contracts: [target architecture](target-architecture.md),
 [FrontendSession](frontend-session.md), and the 0.4.4 S0.3 activity in the
-[bucket](../../ongoing/bucket-0.4.4.md).
+[bucket](../../done/bucket-0.4.4.md).

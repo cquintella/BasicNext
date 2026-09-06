@@ -23,6 +23,7 @@ impl Executor<'_, '_> {
             .collect::<HashMap<_, _>>();
         let mut values = HashMap::new();
         let mut block = function.entry;
+        let mut previous_block = None;
         loop {
             let current = find_block(function, block)?;
             for instruction in &current.instructions {
@@ -43,18 +44,51 @@ impl Executor<'_, '_> {
                         instruction.span(),
                     ));
                 }
-                self.instruction(instruction, &mut symbols, &mut values)?;
+                if let Instruction::Phi {
+                    destination,
+                    incoming,
+                    span,
+                    ..
+                } = instruction
+                {
+                    let predecessor = previous_block.ok_or_else(|| {
+                        runtime_error(
+                            "INVALID_IR",
+                            "Phi cannot execute in the function entry block",
+                            *span,
+                        )
+                    })?;
+                    let source = incoming
+                        .iter()
+                        .find(|(candidate, _)| *candidate == predecessor)
+                        .map(|(_, source)| *source)
+                        .ok_or_else(|| {
+                            runtime_error(
+                                "INVALID_IR",
+                                "Phi has no incoming value for the predecessor block",
+                                *span,
+                            )
+                        })?;
+                    let selected = value(&values, source, *span)?.clone();
+                    set(&mut values, *destination, selected);
+                } else {
+                    self.instruction(instruction, &mut symbols, &mut values)?;
+                }
                 if let Some(code) = self.stop_code.take() {
                     return Ok(Flow::Stop(code));
                 }
             }
             match &current.terminator {
-                Terminator::Jump { target } => block = *target,
+                Terminator::Jump { target } => {
+                    previous_block = Some(block);
+                    block = *target;
+                }
                 Terminator::Branch {
                     condition,
                     then_block,
                     else_block,
                 } => {
+                    previous_block = Some(block);
                     block = if boolean(value(&values, *condition, function.span)?, function.span)? {
                         *then_block
                     } else {

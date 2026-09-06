@@ -1,12 +1,14 @@
 # Control Flow
 
-Um programa não teria muita utilidade se tivesse apenas um fluxo unico possivel de execucao
-
-Basic Next provides explicit and block-scoped control flow constructs. Every block has a strict opening and closing keyword, such as `END IF` or `END WHILE`.
+Programs make decisions and repeat actions based on conditions and runtime data. Basic Next provides structured, block-scoped control flow statements with explicit openings and closings.
 
 ## Conditional Branching
 
-The `IF` statement evaluates a `BOOLEAN` expression and executes a block of code if the condition is `TRUE`. The condition must be strictly `BOOLEAN`; Basic Next does not implicitly convert integers or strings to boolean values for conditions.
+The `IF` statement evaluates a `BOOLEAN` condition and executes a body of statements when the condition is `TRUE`. Conditions must strictly evaluate to `BOOLEAN`; integers or strings are never treated as truthy or falsy in conditions.
+
+### Block `IF` Statements
+
+Standard conditionals use the block form, terminated by `END IF`:
 
 ```basic
 LET active AS BOOLEAN = TRUE
@@ -18,22 +20,42 @@ ELSE
 END IF
 ```
 
-Every `IF` block must be explicitly closed with `END IF`.
-
-However, in version 0.3, a conditional containing exactly one simple statement per branch may remain on one physical line and does not require an `END IF`:
+You can chain additional conditions using `ELSE IF`:
 
 ```basic
-IF x = y THEN PRINT z
-IF ready THEN StartServer() ELSE PRINT "not ready"
+IF score >= 90 THEN
+    PRINT "Grade: A"
+ELSE IF score >= 80 THEN
+    PRINT "Grade: B"
+ELSE
+    PRINT "Grade: C"
+END IF
 ```
 
-## Pre-condition and Post-condition Loops
+### Single-Line `IF` Statements
 
-Basic Next offers two forms of indefinite loops: `WHILE` and `REPEAT`.
+When a conditional consists of a single simple statement per branch, Basic Next allows a concise single-line form:
+
+```basic
+IF condition THEN simple-statement [ELSE simple-statement]
+```
+
+Single-line `IF` statements must fit entirely on one physical line and do not use `END IF`:
+
+```basic
+LET flag AS BOOLEAN = TRUE
+
+IF flag THEN PRINT "yes" ELSE PRINT "no"
+IF count > 100 THEN STOP 1
+```
+
+## Indefinite Loops
+
+Basic Next provides two loop constructs for conditions evaluated before or after iterations: `WHILE` and `REPEAT`.
 
 ### The `WHILE` Loop
 
-A `WHILE` loop checks its `BOOLEAN` condition before executing the block. If the condition is initially `FALSE`, the loop body never executes.
+A `WHILE` loop tests its condition before executing the body. If the condition is initially `FALSE`, the loop body is skipped entirely:
 
 ```basic
 LET counter AS INTEGER = 0
@@ -46,9 +68,7 @@ END WHILE
 
 ### The `REPEAT` Loop
 
-A `REPEAT` loop executes its block at least once. It evaluates a `BOOLEAN` post-condition using the `UNTIL` keyword at the end of the block. The block repeats as long as the condition remains `FALSE`.
-
-Note that `UNTIL` is part of the loop's logic, but the block itself must still be closed with `END REPEAT`.
+A `REPEAT` loop executes its body at least once. It evaluates a post-condition with `UNTIL`, repeating as long as the condition remains `FALSE`:
 
 ```basic
 LET value AS INTEGER = 10
@@ -59,13 +79,15 @@ UNTIL value = 0
 END REPEAT
 ```
 
+The loop block must always close with `END REPEAT`.
+
 ## Counted and Collection Iteration
 
-For iterating over ranges or collections, Basic Next provides `FOR` and `FOR EACH`.
+Basic Next provides `FOR` and `FOR EACH` for fixed counts and collection traversal.
 
 ### The Counted `FOR` Loop
 
-A counted `FOR` loop iterates a binding over a numeric range. You must declare the loop binding and its type explicitly. The start, end, and optional `STEP` expressions are evaluated exactly once before the loop begins.
+A counted `FOR` loop increments a numeric variable across a specified range. The loop variable and its type are declared directly in the header:
 
 ```basic
 FOR i AS INTEGER = 0 TO 9 STEP 2
@@ -73,11 +95,11 @@ FOR i AS INTEGER = 0 TO 9 STEP 2
 END FOR
 ```
 
-If you omit the `STEP` clause, it defaults to `1`. A step can be negative, in which case the loop continues while the binding is greater than or equal to the end value. The loop binding updates automatically at the end of the block.
+If `STEP` is omitted, it defaults to `1`. Negative step values iterate downwards as long as the counter is greater than or equal to the target value. The block closes with `END FOR`.
 
 ### The `FOR EACH` Loop
 
-`FOR EACH` iterates in index order over a collection. In version 0.3, this is restricted to the outermost dimension of fixed-size vectors. The loop binding is read-only and its declared type must perfectly match the vector's element type.
+`FOR EACH` iterates over elements of a fixed-size vector. The loop variable is read-only and its type must match the vector's element type:
 
 ```basic
 LET primes AS INTEGER[3] = [2, 3, 5]
@@ -89,9 +111,10 @@ END FOR
 
 ## Loop Control and Termination
 
-Basic Next does not have generic `break` or `continue` keywords. Instead, early loop exits must explicitly name the loop type they are targeting: `EXIT FOR`, `EXIT WHILE`, or `EXIT REPEAT`. 
+Basic Next avoids ambiguous generic break statements. Loop exits and jumps must explicitly state the loop kind being controlled:
 
-Similarly, skipping to the next iteration uses `CONTINUE FOR`, `CONTINUE WHILE`, or `CONTINUE REPEAT`.
+- `EXIT FOR`, `EXIT WHILE`, or `EXIT REPEAT` exits the loop immediately.
+- `CONTINUE FOR`, `CONTINUE WHILE`, or `CONTINUE REPEAT` jumps directly to the next iteration.
 
 ```basic
 FOR i AS INTEGER = 1 TO 10
@@ -105,13 +128,13 @@ FOR i AS INTEGER = 1 TO 10
 END FOR
 ```
 
-By naming the loop construct, you make your intent clear and avoid accidental behavioral changes if loops are refactored or nested differently in the future.
+Explicitly specifying the loop construct prevents accidental bugs during refactoring and nested loop maintenance.
 
 ## Halting the Program
 
-If you encounter a fatal condition and must terminate the entire program immediately, use the `STOP` statement.
+To terminate program execution immediately upon an unrecoverable error, use the `STOP` statement.
 
-`STOP` requires a single `INTEGER` expression that produces a value between `0` and `255`. This value is passed directly to the host operating system as the process exit code.
+`STOP` takes an `INTEGER` value between `0` and `255`, which is returned to the host operating system as the exit code:
 
 ```basic
 IF fatalError THEN
@@ -120,4 +143,4 @@ IF fatalError THEN
 END IF
 ```
 
-For standard, graceful program termination, you should instead `RETURN` an integer from your `Start` function. `STOP` should be reserved for exceptional halting.
+For routine program termination, return a status code from your `Start` function. `STOP` is intended for abnormal, unrecoverable situations.

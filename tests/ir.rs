@@ -4,7 +4,10 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use bn::{
-    ir::{BlockId, Constant, Function, Instruction, Module, Terminator, lower_graph, validate},
+    ir::{
+        BlockId, Constant, Function, Instruction, Module, ModuleId, Terminator, lower_graph,
+        validate,
+    },
     module_graph::load,
     semantic::analyze_modules,
 };
@@ -212,7 +215,11 @@ fn bndata_provider_is_not_lowered_as_executable_bn() {
         .expect("BNData provider");
     let models = analyze_modules(&graph).expect("analyze BNData");
     let module = lower_graph(&graph, &models).expect("lower BNData user program");
-    assert!(module.bndata_providers.contains(&provider.id));
+    assert!(
+        module
+            .bndata_providers
+            .contains(&ModuleId::from(provider.id))
+    );
     assert!(
         !module
             .functions
@@ -238,11 +245,15 @@ fn validate_rejects_a_dangling_block_target() {
             }],
             span: bn::source::Span {
                 start: bn::source::Position {
+                    source_id: bn::source::Position::UNKNOWN_SOURCE,
+                    revision: bn::source::Position::UNKNOWN_REVISION,
                     offset: 0,
                     line: 1,
                     column: 1,
                 },
                 end: bn::source::Position {
+                    source_id: bn::source::Position::UNKNOWN_SOURCE,
+                    revision: bn::source::Position::UNKNOWN_REVISION,
                     offset: 0,
                     line: 1,
                     column: 1,

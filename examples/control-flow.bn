@@ -1,0 +1,79 @@
+FUNCTION Start() AS VOID
+    PRINT "--- 1. BLOCK IF / ELSE IF / ELSE ---"
+    LET score AS INTEGER = 85
+    IF score >= 90 THEN
+        PRINT "score 90+: A"
+    ELSE IF score >= 80 THEN
+        PRINT "score 80-89: B"
+    ELSE
+        PRINT "score <80: C"
+    END IF
+
+    PRINT "--- 2. SINGLE-LINE IF / THEN / ELSE ---"
+    LET ready AS BOOLEAN = TRUE
+    IF ready THEN PRINT "ready is TRUE" ELSE PRINT "ready is FALSE"
+    ready = FALSE
+    IF ready THEN PRINT "not expected" ELSE PRINT "ready is now FALSE"
+
+    PRINT "--- 3. WHILE LOOP (WITH CONTINUE AND EXIT) ---"
+    LET w AS INTEGER = 0
+    LET w_sum AS INTEGER = 0
+    WHILE w < 10
+        w += 1
+        IF w = 3 THEN
+            CONTINUE WHILE
+        END IF
+        IF w = 7 THEN
+            EXIT WHILE
+        END IF
+        w_sum += w
+    END WHILE
+    PRINT "w final:", w, "w_sum (skip 3, stop at 7):", w_sum
+
+    PRINT "--- 4. REPEAT ... UNTIL LOOP (WITH CONTINUE AND EXIT) ---"
+    LET r AS INTEGER = 0
+    LET r_sum AS INTEGER = 0
+    REPEAT
+        r += 1
+        IF r = 2 THEN
+            CONTINUE REPEAT
+        END IF
+        IF r = 6 THEN
+            EXIT REPEAT
+        END IF
+        r_sum += r
+    UNTIL r >= 10
+    END REPEAT
+    PRINT "r final:", r, "r_sum (skip 2, stop at 6):", r_sum
+
+    PRINT "--- 5. COUNTED FOR (ASCENDING) ---"
+    LET for_sum AS INTEGER = 0
+    FOR i AS INTEGER = 1 TO 5
+        for_sum += i
+    END FOR
+    PRINT "for 1 to 5 sum:", for_sum
+
+    PRINT "--- 6. COUNTED FOR (WITH STEP AND BREAK/CONTINUE) ---"
+    LET step_sum AS INTEGER = 0
+    FOR s AS INTEGER = 10 TO 0 STEP -2
+        IF s = 6 THEN
+            CONTINUE FOR
+        END IF
+        IF s = 2 THEN
+            EXIT FOR
+        END IF
+        step_sum += s
+    END FOR
+    PRINT "for 10 to 0 step -2 (skip 6, exit at 2):", step_sum
+
+    PRINT "--- 7. FOR EACH (ITERATING OVER VECTOR) ---"
+    LET items AS INTEGER[4] = [10, 20, 30, 40]
+    LET total AS INTEGER = 0
+    FOR EACH item AS INTEGER IN items
+        IF item = 20 THEN
+            CONTINUE FOR
+        END IF
+        total += item
+    END FOR
+    PRINT "for each sum (skip 20):", total
+END FUNCTION

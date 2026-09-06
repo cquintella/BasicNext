@@ -22,11 +22,16 @@ impl Analyzer {
                 ));
             }
             if terminated {
-                return Err(error(
+                let diagnostic = error(
                     "UNREACHABLE_CODE",
                     "statement is unreachable after control flow leaves this path",
                     statement_span(statement),
-                ));
+                );
+                if self.collect_warnings {
+                    self.warnings.push(diagnostic);
+                    continue;
+                }
+                return Err(diagnostic);
             }
             match statement {
                 Statement::Binding {

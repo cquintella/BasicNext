@@ -4,6 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use std::{
+    collections::HashMap,
     fs,
     io::Write,
     process::{Command, Stdio},
@@ -22,6 +23,307 @@ fn check_valid_program_exits_zero() {
         .status()
         .expect("run bn check");
     assert_eq!(status.code(), Some(0));
+}
+
+#[test]
+fn check_and_lsp_report_the_same_multi_file_diagnostic_owner() {
+    let directory = std::env::temp_dir().join(format!("bn-cli-lsp-parity-{}", std::process::id()));
+    fs::create_dir_all(&directory).expect("create parity fixture directory");
+    let main_path = directory.join("main.bn");
+    let module_path = directory.join("Module.bn");
+    let main_text = "IMPORT Module AS Module\nFUNCTION Start() AS INTEGER\nRETURN Module.Value()\nEND FUNCTION\n";
+    let module_text = "EXPORT FUNCTION Value() AS INTEGER\nRETURN \"bad\"\nEND FUNCTION\n";
+    fs::write(&main_path, main_text).expect("write main parity fixture");
+    fs::write(&module_path, module_text).expect("write module parity fixture");
+
+    let cli = bn()
+        .args(["check", main_path.to_str().expect("main path")])
+        .output()
+        .expect("run CLI parity check");
+    assert_eq!(cli.status.code(), Some(1));
+    let cli_stderr = String::from_utf8_lossy(&cli.stderr);
+    assert!(cli_stderr.contains("TYPE_MISMATCH"));
+    assert!(cli_stderr.contains("Module.bn:2"), "{cli_stderr}");
+
+    let main_uri = format!("file://{}", main_path.display());
+    let module_uri = format!("file://{}", module_path.display());
+    let documents = HashMap::from([
+        (
+            main_uri,
+            bn::source::SourceFile::new(format!("file://{}", main_path.display()), main_text),
+        ),
+        (
+            module_uri.clone(),
+            bn::source::SourceFile::new(format!("file://{}", module_path.display()), module_text),
+        ),
+    ]);
+    let mut session = bn::frontend_session::FrontendSession::default();
+    let diagnostics = bn::lsp::diagnostics_for_documents(&main_path, &documents, &mut session);
+    let module_diagnostics = diagnostics.get(&module_uri).expect("module diagnostics");
+    assert_eq!(module_diagnostics.len(), 1);
+    assert_eq!(
+        module_diagnostics[0].code,
+        Some(lsp_types::NumberOrString::String("TYPE_MISMATCH".into()))
+    );
+    assert_eq!(module_diagnostics[0].range.start.line, 1);
+    assert_eq!(module_diagnostics[0].range.start.character, 7);
+}
+
+#[test]
+fn warning_policy_controls_unreachable_diagnostic_end_to_end() {
+    let default = bn()
+        .args(["check", "tests/grammar/valid/unreachable-warning.bn"])
+        .output()
+        .expect("run default warning check");
+    assert_eq!(default.status.code(), Some(0));
+    let default_stderr = String::from_utf8_lossy(&default.stderr);
+    assert!(default_stderr.contains("warning[UNREACHABLE_CODE]"));
+
+    let allowed = bn()
+        .args([
+            "check",
+            "--allow",
+            "UNREACHABLE_CODE",
+            "tests/grammar/valid/unreachable-warning.bn",
+        ])
+        .output()
+        .expect("run allowed warning check");
+    assert_eq!(allowed.status.code(), Some(0));
+    assert!(!String::from_utf8_lossy(&allowed.stderr).contains("UNREACHABLE_CODE"));
+
+    let denied = bn()
+        .args([
+            "check",
+            "--deny",
+            "UNREACHABLE_CODE",
+            "tests/grammar/valid/unreachable-warning.bn",
+        ])
+        .output()
+        .expect("run denied warning check");
+    assert_eq!(denied.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&denied.stderr).contains("error[UNREACHABLE_CODE]"));
+}
+
+#[test]
+fn warning_analysis_emits_unused_binding() {
+    let output = bn()
+        .args(["check", "tests/grammar/valid/unused-binding-warning.bn"])
+        .output()
+        .expect("run unused binding check");
+    assert_eq!(output.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("warning[UNUSED_BINDING]"));
+}
+
+#[test]
+fn warning_analysis_emits_unused_import() {
+    let output = bn()
+        .args(["check", "tests/grammar/valid/unused-import-warning.bn"])
+        .output()
+        .expect("run unused import check");
+    assert_eq!(output.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("warning[UNUSED_IMPORT]"));
+}
+
+#[test]
+fn build_writes_companion_process_log_next_to_artifact() {
+    let directory = std::env::temp_dir().join(format!("bn-process-log-cli-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("process log test directory");
+    let output_path = directory.join("hello");
+    let output = bn()
+        .args([
+            "build",
+            "examples/hello.bn",
+            "--log-level",
+            "debug",
+            "-o",
+            output_path.to_str().expect("UTF-8 output path"),
+        ])
+        .output()
+        .expect("build with process log");
+    assert_eq!(output.status.code(), Some(0));
+    let log_path = output_path.with_extension("log");
+    let log = fs::read_to_string(&log_path).expect("companion process log");
+    assert!(log.contains("phase=pipeline"));
+    assert!(log.contains("event=start") && log.contains("event=end"));
+    assert!(log.contains("phase=frontend") && log.contains("phase=lower"));
+    assert!(log.contains("phase=validate_for") && log.contains("phase=llvm_emit"));
+    assert!(log.contains("phase=link"));
+    assert!(log.contains("phase=diagnostic") && log.contains("event=summary"));
+    assert!(log.contains("detail=errors=0\\swarnings=0\\sexit="));
+    assert!(log.contains("phase=config") && log.contains("event=snapshot"));
+    assert!(log.contains("event=modules") && log.contains("phase=external"));
+    fs::remove_dir_all(directory).expect("remove process log test directory");
+}
+
+#[test]
+fn warn_level_process_log_keeps_warning_events_and_summary() {
+    let directory =
+        std::env::temp_dir().join(format!("bn-process-log-warn-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("warn log directory");
+    let log_path = directory.join("warn.log");
+    let output = bn()
+        .args([
+            "build",
+            "tests/grammar/valid/unused-binding-warning.bn",
+            "--log-level",
+            "warn",
+            "--log-file",
+            log_path.to_str().expect("UTF-8 log path"),
+        ])
+        .output()
+        .expect("build with warn-level process log");
+    assert_eq!(output.status.code(), Some(0));
+    let log = fs::read_to_string(&log_path).expect("warn-level process log");
+    assert!(log.contains("level=warn phase=diagnostic event=emit detail=code=UNUSED_BINDING"));
+    assert!(log.contains(
+        "level=warn phase=diagnostic event=summary detail=errors=0\\swarnings=1\\sexit="
+    ));
+    assert!(!log.contains("level=info"));
+    fs::remove_dir_all(directory).expect("remove warn log directory");
+}
+
+#[test]
+fn failed_build_writes_partial_process_log_with_failure_stage() {
+    let directory =
+        std::env::temp_dir().join(format!("bn-process-log-fail-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("failed build log directory");
+    let log_path = directory.join("failed.log");
+    let output = bn()
+        .args([
+            "build",
+            "tests/grammar/valid/multidimensional-vectors.bn",
+            "--log-level",
+            "error",
+            "--log-file",
+            log_path.to_str().expect("UTF-8 log path"),
+        ])
+        .output()
+        .expect("failed build with process log");
+    assert_eq!(output.status.code(), Some(2));
+    let log = fs::read_to_string(&log_path).expect("partial process log");
+    assert!(log.contains("phase=validate_for") && log.contains("event=fail"));
+    assert!(log.contains("detail=errors=1\\swarnings=0\\sexit="));
+    assert!(log.contains("phase=pipeline") && log.contains("event=end"));
+    assert!(!log.contains("level=info"));
+    fs::remove_dir_all(directory).expect("remove failed build log directory");
+}
+
+#[test]
+fn no_log_disables_companion_and_unwritable_log_is_a_tool_error() {
+    let directory =
+        std::env::temp_dir().join(format!("bn-process-log-policy-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("policy log directory");
+    let output_path = directory.join("hello");
+    let no_log = bn()
+        .args([
+            "build",
+            "examples/hello.bn",
+            "--no-log",
+            "-o",
+            output_path.to_str().expect("UTF-8 output path"),
+        ])
+        .output()
+        .expect("build without log");
+    assert_eq!(no_log.status.code(), Some(0));
+    assert!(!output_path.with_extension("log").exists());
+
+    let not_directory = directory.join("not-directory");
+    fs::write(&not_directory, "file").expect("blocking file");
+    let unwritable = bn()
+        .args([
+            "build",
+            "examples/hello.bn",
+            "--log-file",
+            not_directory
+                .join("build.log")
+                .to_str()
+                .expect("UTF-8 log path"),
+        ])
+        .output()
+        .expect("build with unwritable log");
+    assert_eq!(unwritable.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&unwritable.stderr).contains("PROCESS_LOG_WRITE"));
+    fs::remove_dir_all(directory).expect("remove policy log directory");
+}
+
+#[test]
+fn config_file_controls_process_log_level_and_destination() {
+    let directory =
+        std::env::temp_dir().join(format!("bn-process-log-config-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("config log directory");
+    let config_path = directory.join("config.toml");
+    let output_path = directory.join("hello");
+    let log_path = directory.join("configured.log");
+    fs::write(
+        &config_path,
+        format!(
+            "[logging]\nlevel = \"error\"\nfile = \"{}\"\n",
+            log_path.display()
+        ),
+    )
+    .expect("write logging config");
+    let output = bn()
+        .args([
+            "build",
+            "tests/grammar/valid/multidimensional-vectors.bn",
+            "--config",
+            config_path.to_str().expect("UTF-8 config path"),
+            "-o",
+            output_path.to_str().expect("UTF-8 output path"),
+        ])
+        .output()
+        .expect("build with configured process log");
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("TARGET_UNSUPPORTED_TYPE"));
+    let log = fs::read_to_string(&log_path).expect("configured process log");
+    assert!(log.contains("level=error phase=pipeline event=end"));
+    assert!(log.contains("phase=validate_for") && log.contains("event=fail"));
+    assert!(!log.contains("level=info"));
+    assert!(!output_path.with_extension("log").exists());
+    fs::remove_dir_all(directory).expect("remove config log directory");
+}
+
+#[test]
+fn cli_log_file_overrides_configured_disabled_logging() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-process-log-config-disabled-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("config log directory");
+    let config_path = directory.join("config.toml");
+    let log_path = directory.join("cli.log");
+    fs::write(
+        &config_path,
+        format!(
+            "[logging]\nenabled = false\nfile = \"{}\"\n",
+            directory.join("config.log").display()
+        ),
+    )
+    .expect("write disabled logging config");
+
+    let output = bn()
+        .args([
+            "build",
+            "examples/hello.bn",
+            "--config",
+            config_path.to_str().expect("UTF-8 config path"),
+            "--log-file",
+            log_path.to_str().expect("UTF-8 log path"),
+        ])
+        .output()
+        .expect("build with CLI logging override");
+    assert_eq!(output.status.code(), Some(0));
+    assert!(log_path.exists());
+    assert!(!directory.join("config.log").exists());
+
+    fs::remove_dir_all(directory).expect("remove config log directory");
 }
 
 #[test]
@@ -862,6 +1164,16 @@ fn build_lowers_bnmath_scalars_matching_interpreter() {
 }
 
 #[test]
+fn build_lowers_bnmath_float_vectors_matching_interpreter() {
+    native_matches_interpreter("tests/grammar/valid/build-bnmath-float-vector.bn");
+}
+
+#[test]
+fn build_lowers_bndata_empty_frame_lifecycle_matching_interpreter() {
+    native_matches_interpreter("tests/grammar/valid/bndata-import.bn");
+}
+
+#[test]
 fn build_rejects_recursive_constant_call_without_stack_overflow() {
     let output = bn()
         .args(["build", "tests/grammar/valid/build-recursive.bn"])
@@ -923,9 +1235,9 @@ fn wasm_build_rejects_host_net_with_an_explicit_capability_diagnostic() {
         ])
         .output()
         .expect("run wasm HOST.Net build");
-    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("BUILD_CAPABILITY_UNAVAILABLE"));
+    assert!(stderr.contains("TARGET_UNSUPPORTED_HOST"));
     assert!(stderr.contains("HOST.Net"));
     assert!(stderr.contains("HOST.Console is supported"));
 }

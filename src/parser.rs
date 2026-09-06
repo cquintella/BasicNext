@@ -67,6 +67,7 @@ fn require_host_capability_name(name: &str) -> Result<(), &'static str> {
     }
 }
 
+#[path = "parser/expressions.rs"]
 mod expressions;
 use expressions::ExpressionParser;
 fn text(token: &Token) -> String {
@@ -116,9 +117,13 @@ enum BlockTerm {
     Until(Expression),
 }
 
+#[path = "parser/phase1.rs"]
 mod phase1;
+#[path = "parser/phase2.rs"]
 mod phase2;
+#[path = "parser/phase3.rs"]
 mod phase3;
+#[path = "parser/phase4.rs"]
 mod phase4;
 
 impl DeclarationKind {

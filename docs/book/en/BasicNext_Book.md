@@ -89,6 +89,25 @@ When `Start` returns an `INTEGER`, it must return a value between `0` and `255`.
 
 Basic Next requires all statements to be contained within functions, classes, interfaces, or structs. You cannot write executable statements at the top level of a module.
 
+Basic Next does not provide mutable global variables. Shared state should be passed explicitly as function arguments or stored in static class fields:
+
+```basic
+CLASS Library
+    PUBLIC STATIC shared AS INTEGER = 0
+    PUBLIC STATIC note AS STRING = "Ready"
+END CLASS
+
+FUNCTION lesser(num1 AS INTEGER, num2 AS INTEGER) AS BOOLEAN
+    IF num1 < num2 THEN RETURN TRUE ELSE RETURN FALSE
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    Library.shared = 10
+    PRINT lesser(Library.shared, 20)
+    PRINT Library.note
+END FUNCTION
+```
+
 ## Ecosystem Tools
 
 Basic Next provides tools for modern development workflows:
@@ -98,21 +117,14 @@ Basic Next provides tools for modern development workflows:
 
 ### Installing the VS Code Extension
 
-To get the best development experience with syntax highlighting and automatic error checking on save, you can install the official Basic Next VS Code extension directly from the repository.
+To install the official extension for Visual Studio Code:
 
-1. Open your terminal and navigate to the VS Code plugin directory:
-   ```sh
-   cd plugins/vscode
-   ```
-2. Package the extension into a `.vsix` file using `vsce` (requires Node.js):
-   ```sh
-   npx --yes @vscode/vsce package --allow-missing-repository
-   ```
-3. Install the generated package into Visual Studio Code:
-   ```sh
-   code --install-extension basicnext-0.3.0.vsix
-   ```
-4. **Restart VS Code** completely after the installation to ensure the language server and debugger features load correctly.
+- Open your terminal and navigate to `plugins/vscode`.
+- Package the extension into a `.vsix` file using `vsce`:
+  `npx --yes @vscode/vsce package --allow-missing-repository`
+- Install the file into VS Code:
+  `code --install-extension basicnext-0.3.0.vsix`
+- Restart VS Code to initialize language features.
 
 
 <div style="page-break-after: always;"></div>
@@ -120,34 +132,113 @@ To get the best development experience with syntax highlighting and automatic er
 
 # Common Programming Concepts
 
-This chapter covers the fundamental building blocks of a Basic Next program: how to store data, manipulate values, and interact with the console.
+This chapter covers the fundamental building blocks of Basic Next: how to document code, store data in variables and constants, inspect types, and interact with the console.
 
-## Variables and Constants
+## Comments
 
-Basic Next enforces strict typing. Every variable must explicitly state its type. The language does not use type inference for bindings.
+Comments help document the intent and operation of your code. Basic Next supports two comment styles:
 
-Variables are declared using the `LET` keyword, followed by the name, `AS`, the type, and an optional initializer. In version 0.3, you can also declare multiple variables of the same type in a single `LET` binding:
+- Single-line comments starting with `//`
+- Multi-line comments enclosed within `/*` and `*/`
+
+```basic
+// This is a single-line comment
+
+/*
+This is a multi-line comment.
+It spans several lines.
+*/
+```
+
+Code tells the machine what to do, while comments tell other developers why it was done. Even when writing software for yourself, notes on decisions and edge cases save significant time later.
+
+Helpful guidelines for writing comments:
+- Explain the rationale (*why*), not just the syntax (*what*).
+- Document public functions, classes, and exported module APIs.
+- Keep comments updated whenever you modify the corresponding code.
+- Avoid obvious comments that only repeat what the code already states.
+- Use recognizable markers for work in progress: `TODO`, `FIXME`, or `NOTE`.
+
+## Variables
+
+Basic Next is an explicitly typed language. Every variable must have a declared type, and that type remains fixed throughout the variable's lifetime. An `INTEGER` variable, for example, can never hold a `FLOAT` value.
+
+Variables are declared using the `LET` keyword, followed by the name, `AS`, the type, and an optional initial value:
 
 ```basic
 LET counter AS INTEGER = 10
 LET name AS STRING = "Alice"
-LET c, v AS STRING = "carro", "moto"
+LET first, second AS STRING = "auto", "bus"
 ```
 
-If you omit the initializer, the variable is initialized to its type's default value. In Basic Next, there is no uninitialized storage. The default for numeric types is `0` or `0.0`, `BOOLEAN` defaults to `FALSE`, and `STRING` defaults to an empty string `""`.
+If you do not provide an initial value, Basic Next initializes the variable to a safe default for its type:
+- Numeric types default to `0` or `0.0`
+- `BOOLEAN` defaults to `FALSE`
+- `STRING` defaults to an empty string `""`
 
 ```basic
-LET score AS INTEGER  // Initialized to 0
-LET active AS BOOLEAN // Initialized to FALSE
+LET score AS INTEGER   // Initialized to 0
+LET active AS BOOLEAN  // Initialized to FALSE
 ```
 
-Constants are declared using the `CONST` keyword. They must always include an initializer and cannot be reassigned:
+Omitting the type annotation in a `LET` binding causes a compile-time error:
+
+```basic
+LET message = "Hello"
+// error[E0100]: a binding declaration requires AS TYPE
+```
+
+## Constants
+
+Constants store fixed values that cannot be reassigned once defined. They are declared with the `CONST` keyword and always require an initial value:
 
 ```basic
 CONST MAX_USERS AS INTEGER = 100
 ```
 
-*Note: `CONST` fixes the binding itself. It does not make a referenced class or allocated pointer deeply immutable.*
+Basic Next can infer the type of a constant when the assigned value is a direct scalar literal:
+- Whole numbers infer `INTEGER` (`INT32`)
+- Decimal numbers infer `FLOAT` (`FLOAT64`)
+- `TRUE` or `FALSE` infer `BOOLEAN`
+- Quoted text infers `STRING`
+
+```basic
+CONST LIMIT = 100        // Inferred as INT32
+CONST RATIO = 3.14159    // Inferred as FLOAT64
+CONST ACTIVE = TRUE      // Inferred as BOOLEAN
+CONST APP_NAME = "MyApp" // Inferred as STRING
+```
+
+When you need a specific integer width or signedness (such as `UINT32` or `INT64`), provide the type explicitly:
+
+```basic
+CONST BUFFER_SIZE AS UINT32 = 4096
+```
+
+Explicit type annotations are also required when initializing constants from expressions, vectors, or special values like `NULL` or `EOF`.
+
+`CONST` prevents reassigning the variable name. It does not make referenced heap objects or pointers deeply immutable.
+
+## Type Inspection with `TYPEOF`
+
+Basic Next provides a built-in `TYPEOF(expression)` function to inspect the static type of any value or variable. It returns the canonical type name as a `STRING`.
+
+Standard aliases are reported using their underlying representation:
+- `INTEGER` is reported as `"INT32"`
+- `FLOAT` is reported as `"FLOAT64"`
+- Explicit types return their canonical name (`"BOOLEAN"`, `"STRING"`, `"UINT32"`, etc.)
+
+```basic
+CONST count = 10
+CONST rate = 10.2
+LET flag AS BOOLEAN = TRUE
+LET message AS STRING = "Basic Next"
+
+PRINT TYPEOF(count)    // Outputs: INT32
+PRINT TYPEOF(rate)     // Outputs: FLOAT64
+PRINT TYPEOF(flag)     // Outputs: BOOLEAN
+PRINT TYPEOF(message)  // Outputs: STRING
+```
 
 ## Primitive Types
 
@@ -155,7 +246,7 @@ Basic Next features a rich set of primitive types with guaranteed, cross-platfor
 
 ### Numeric Types
 
-The default numeric types are `INTEGER` (an alias for a signed 32-bit integer) and `FLOAT` (an alias for an IEEE 754 64-bit floating-point number). 
+The default numeric types are `INTEGER` (an alias for a signed 32-bit integer, `INT32`) and `FLOAT` (an alias for an IEEE 754 64-bit floating-point number, `FLOAT64`).
 
 When exact memory layout is important, Basic Next provides fixed-width types:
 - **Signed:** `INT8`, `INT16`, `INT32`, `INT64`
@@ -228,20 +319,33 @@ Converting a floating-point number to an integer truncates toward zero. Conversi
 
 `AS BOOLEAN` is a special case: for numeric types, `0` becomes `FALSE` and any non-zero value (including `NAN`) becomes `TRUE`. For strings, `""` is `FALSE` and any non-empty string is `TRUE`.
 
-## Basic Console I/O
+## Type Limits
 
-Interacting with the console uses straightforward built-in macros.
-
-`PRINT` writes text to standard output and then a line ending. Several
-expressions are concatenated with no separator. With no expression it writes
-a blank line.
+To inspect the minimum and maximum boundaries of numeric types, import the standard `BNMath` module:
 
 ```basic
-PRINT "Processing user: ", name
-PRINT "Processing user: " + name
+IMPORT BNMath AS Math
+
+PRINT Math.MIN_INT32, Math.MAX_INT32
+PRINT Math.MIN_FLOAT, Math.MAX_FLOAT
+PRINT Math.MIN_INT64, Math.MAX_INT64
 ```
 
-`INPUT()` reads a line from standard input. Because the input might end, it returns a compound alternative type: `STRING OR EOF`. 
+## Basic Console I/O
+
+Console output and input are handled through built-in statements:
+
+`PRINT` outputs text to standard output followed by a line ending. When multiple expressions are supplied separated by a comma (`,`), they are printed separated by a single space. Using `+` concatenates strings directly without added spacing:
+
+```basic
+LET name AS STRING = "Alice"
+PRINT "Processing user:", name       // Prints: Processing user: Alice
+PRINT "Processing user: " + name     // Prints: Processing user: Alice
+```
+
+Calling `PRINT` without arguments prints an empty line.
+
+`INPUT()` reads a line from standard input. Because the input might end, it returns a compound alternative type: `STRING OR EOF`. Statement forms are also available: `INPUT target` and `INPUT "prompt", target`, both assigning to a `STRING OR EOF` variable:
 
 ```basic
 LET line AS STRING OR EOF = INPUT()
@@ -250,14 +354,29 @@ IF line IS EOF THEN
 END IF
 ```
 
-To manage the terminal window, pass the `HOST.Console` capability to explicitly access terminal control methods. `HOST.Console` is a primary expression.
+Basic Next also supports prompt-style input statements:
+
+```basic
+LET x AS STRING OR EOF
+LET y AS STRING OR EOF
+
+INPUT "Enter value for X: ", x
+INPUT "Enter value for Y: ", y
+```
+
+To manage the terminal window, pass the `HOST.Console` capability to explicitly access terminal control methods:
 
 ```basic
 IMPORT HOST.Console AS Console
+
 Console.Cls()
 Console.Beep()
 Console.PrintAt(1, 1, "Top left corner")
 ```
+
+## Changing Console Colors
+
+Setting foreground and background colors in the terminal is an upcoming feature planned for `HOST.Console`. Dedicated color functions will be added in a future release.
 
 
 <div style="page-break-after: always;"></div>
@@ -265,11 +384,15 @@ Console.PrintAt(1, 1, "Top left corner")
 
 # Control Flow
 
-Basic Next provides explicit and block-scoped control flow constructs. Every block has a strict opening and closing keyword, such as `END IF` or `END WHILE`.
+Programs make decisions and repeat actions based on conditions and runtime data. Basic Next provides structured, block-scoped control flow statements with explicit openings and closings.
 
 ## Conditional Branching
 
 The `IF` statement evaluates a `BOOLEAN` expression and executes a block of code if the condition is `TRUE`. The condition must be strictly `BOOLEAN`; Basic Next does not implicitly convert integers or strings to boolean values for conditions.
+
+### Block `IF` Statements
+
+Standard conditionals use the block form, terminated by `END IF`:
 
 ```basic
 LET active AS BOOLEAN = TRUE
@@ -281,13 +404,33 @@ ELSE
 END IF
 ```
 
-Every `IF` block must be explicitly closed with `END IF`.
-
-However, in version 0.3, a conditional containing exactly one simple statement per branch may remain on one physical line and does not require an `END IF`:
+You can chain additional conditions using `ELSE IF`:
 
 ```basic
-IF x = y THEN PRINT z
-IF ready THEN StartServer() ELSE PRINT "not ready"
+IF score >= 90 THEN
+    PRINT "Grade: A"
+ELSE IF score >= 80 THEN
+    PRINT "Grade: B"
+ELSE
+    PRINT "Grade: C"
+END IF
+```
+
+### Single-Line `IF` Statements
+
+When a conditional consists of a single simple statement per branch, Basic Next allows a concise single-line form:
+
+```basic
+IF condition THEN simple-statement [ELSE simple-statement]
+```
+
+Single-line `IF` statements must fit entirely on one physical line and do not use `END IF`:
+
+```basic
+LET flag AS BOOLEAN = TRUE
+
+IF flag THEN PRINT "yes" ELSE PRINT "no"
+IF count > 100 THEN STOP 1
 ```
 
 ## Pre-condition and Post-condition Loops
@@ -966,21 +1109,140 @@ Basic Next version 0.3 handles input/output (I/O) and concurrency through explic
 
 ## Synchronous, Bounded I/O
 
-All I/O in Basic Next is synchronous and bounded. The language does not use implicit asynchronous runtimes (like `async/await` in other languages). Instead, operations block until they complete or hit an explicit timeout, returning either the requested data or an explicit `Error` object.
+All I/O in Basic Next is synchronous and bounded. Operations block until they complete or encounter an explicit timeout or failure, returning either the requested data or an explicit `Error` object.
 
-### File System
+Basic Next separates general file access from tabular data manipulation:
+- **`HOST.FileSystem`**: The native host capability for reading and writing raw text and binary files.
+- **`BNData`**: The standard external module for columnar tabular data (`DataFrame`) and CSV parsing.
 
-Access to local files is managed through `HOST.FileSystem`.
+## File System Operations (`HOST.FileSystem`)
+
+File access is managed through the `HOST.FileSystem` capability:
 
 ```basic
 IMPORT HOST.FileSystem AS FS
+```
 
-LET file AS FS.File OR Error = FS.Open("config.txt", FS.READ)
+### Opening and Closing Files
+
+`FS.Open` takes a path and an access mode constant:
+- `FS.READ` (`0`): Open an existing file for reading.
+- `FS.WRITE` (`1`): Create or truncate a file for writing.
+- `FS.APPEND` (`2`): Open or create a file for appending data at the end.
+
+Every `FS.File` instance must be closed with `.Close()` and deterministically deallocated with `DELETE file` to avoid leaking operating system handles:
+
+```basic
+LET file AS FS.File OR Error = FS.Open("log.txt", FS.WRITE)
 IF file IS Error THEN
     PRINT "Error opening file: " + file.Message
+    RETURN
+END IF
+
+file.WriteLine("System initialized.")
+file.Close()
+DELETE file
+```
+
+### Text Family vs. Binary Family Rule
+
+When a file handle is opened, it has no assigned family. Upon the first I/O operation, the handle permanently locks into one of two mutually exclusive modes:
+- **Text family**: Triggered by calling `ReadLine()`, `ReadAll()`, `Write()`, or `WriteLine()`.
+- **Binary family**: Triggered by calling `ReadBytes()` or `WriteBytes()`.
+
+Mixing text and binary methods on the same open handle causes subsequent calls to return an `Error`.
+
+### Reading and Writing Text Files
+
+For reading whole files or line-by-line streaming:
+
+```basic
+LET file AS FS.File OR Error = FS.Open("config.txt", FS.READ)
+IF file IS Error THEN
+    PRINT "Failed to open config."
+    RETURN
+END IF
+
+// Reading line by line until EOF
+REPEAT
+    LET line AS STRING OR EOF OR Error = file.ReadLine()
+    IF line IS EOF THEN
+        EXIT REPEAT
+    END IF
+    IF line IS Error THEN
+        PRINT "Read error: " + line.Message
+        EXIT REPEAT
+    END IF
+    PRINT "Config entry: " + line
+END REPEAT
+
+file.Close()
+DELETE file
+```
+
+To read the entire file content in one call, use `file.ReadAll()`.
+
+### Reading and Writing Binary Files
+
+Binary I/O operates on raw buffers using pointers to byte arrays (`POINTER TO BYTE[]`).
+
+Writing binary bytes:
+
+```basic
+LET file AS FS.File OR Error = FS.Open("output.bin", FS.WRITE)
+IF file IS Error THEN
+    RETURN
+END IF
+
+LET buffer AS POINTER TO BYTE[] = NEW BYTE[4]
+buffer[0] = 0xDE AS BYTE
+buffer[1] = 0xAD AS BYTE
+buffer[2] = 0xBE AS BYTE
+buffer[3] = 0xEF AS BYTE
+
+LET status AS VOID OR Error = file.WriteBytes(buffer, 4)
+IF status IS Error THEN
+    PRINT "Write failed: " + status.Message
+END IF
+
+file.Close()
+DELETE file
+DELETE buffer
+```
+
+Reading binary bytes into an allocated buffer:
+
+```basic
+LET file AS FS.File OR Error = FS.Open("input.bin", FS.READ)
+IF file IS Error THEN
+    RETURN
+END IF
+
+LET buffer AS POINTER TO BYTE[] = NEW BYTE[1024]
+LET bytesRead AS INTEGER OR EOF OR Error = file.ReadBytes(buffer)
+
+IF bytesRead IS EOF THEN
+    PRINT "File is empty."
+ELSE IF bytesRead IS Error THEN
+    PRINT "Read error: " + bytesRead.Message
 ELSE
-    LET data AS STRING OR Error = file.ReadAll()
-    file.Close()
+    PRINT "Bytes read:", bytesRead
+END IF
+
+file.Close()
+DELETE file
+DELETE buffer
+```
+
+### Capability File Helpers
+
+`HOST.FileSystem` also provides standalone utility methods that do not require opening a handle:
+- `FS.Exists(path AS STRING) AS BOOLEAN OR Error`: Checks if a file exists on disk.
+- `FS.DeleteFile(path AS STRING) AS VOID OR Error`: Removes a file from disk.
+
+```basic
+IF FS.Exists("temp.dat") = TRUE THEN
+    FS.DeleteFile("temp.dat")
 END IF
 ```
 

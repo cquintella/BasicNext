@@ -91,11 +91,23 @@ A check or compile-time gate **alone** does not control operations the binary pe
 
 1. **Policy materialization** — Control/driver supplies an execution policy (CLI/config/embedder API) when launching interpret **or** when producing/running a native/wasm artifact.
 2. **Who enforces** — Sensitive ops in **`bn_rt`** (and any in-process HOST stubs) must **re-check** policy at the call boundary. Compiler-emitted “I proved FS was allowed at build time” is **not** sufficient for ops that happen after start.
-3. **How it is carried** (implementation choices — pick one or combine; document in XM5):
-   - Embed a **policy blob** / sealed config into the artifact or sidecar next to it;
-   - Pass policy via **environment / launch argv** that `bn_rt` reads once at startup;
-   - For embedders, inject policy through a **bn_rt init** API before any HOST call.
-4. **Default-deny** for powerful surfaces when no policy is provided (product default may start permissive for local CLI — but the **mechanism** must exist and be testable).
+3. **Carrier — AQ-17 alternative C, approved by Carlos:** embed a versioned
+   permission ceiling in the artifact. Execution configuration may only restrict
+   it; effective permissions are the intersection. Launch configuration and
+   embedders cannot widen the ceiling.
+4. **Initialization:** initialize bn_rt with the validated context before any
+   sensitive call; recheck operation and scope at every call boundary.
+5. **Complete before acceptance:** specify scope intersection, configuration
+   precedence, missing/invalid policy behavior, CLI defaults and compatibility,
+   native/wasm encoding, embedding and diagnostic taxonomy. TODO: finish and
+   test these details in bucket 2b.3. Default-deny remains the direction for
+   powerful surfaces without policy; existing local CLI behavior requires an
+   explicit migration contract, not an assumed default change.
+
+Acceptance includes attempted external privilege widening, scope combinations,
+initialization ordering and absent/malformed policy tests. This contract governs
+execution through the intact runtime; it is not an OS sandbox against an actor
+who can modify the binary.
 
 Interpret **4.1 Bind HostEnv** and compile-linked **`bn_rt` init** are two faces of the same policy dimension.
 
@@ -130,6 +142,7 @@ milestones.
 | **Net** | Sockets/resolve; **support** vs **policy scope** (CIDR/port/scheme) are different failures | `bn_host_net` |
 | **Http / Web handlers** | Request/Response models + **Handler** trait registered *upward* from runtime/driver | `bn_host_web` / `bn_host_http` — no runtime import inside http |
 | **Other profiles** | Dispatch, dataframe *ops*, Random, etc. | Co-located under runtime/host until deploy weight justifies a crate |
+| **DataProvider** (sketch) | DataFrame / BNData ops (read_csv, mean, …) — **not** hardcoded in Executor | Bound into HostEnv; impl calls **`bn_rt_*`** — [native-stdlib-binding.md](native-stdlib-binding.md) |
 
 `bn_host_spec` answers “which members exist and what they mean in the language
 catalog.” Implementations answer “how this OS or embedder fulfills them.”
@@ -207,6 +220,14 @@ keeps **4.3** from becoming a cycle.
 
 ---
 
+## Stdlib native modules vs HOST
+
+Standard modules with native implementations (BNData, …) follow
+[native-stdlib-binding.md](native-stdlib-binding.md): shared **`bn_rt`**
+symbols for interpret and compile; HostEnv **provider traits** for
+interpret wiring; **no** empty `.bn` stub bodies. That is adjacent to
+HOST providers but is **stdlib native ABI**, not `HOST.c` foreign FFI.
+
 ## Non-goals for this sketch
 
 - Freezing Rust trait method lists or crate feature names.
@@ -222,4 +243,5 @@ keeps **4.3** from becoming a cycle.
 - [support-matrix.md](support-matrix.md) — interpret × llvm coverage (stub)
 - [glossary.md](glossary.md) — HostEnv, program requirements / target support / execution policy, HOST, bn_host_spec
 - [value-memory-abi.md](value-memory-abi.md) — Error vs trap vs internal failure
+- [native-stdlib-binding.md](native-stdlib-binding.md) — stdlib → `bn_rt` + providers
 - [conformance.md](conformance.md)

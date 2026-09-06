@@ -82,6 +82,8 @@ fn token_stream_and_spans_are_exact() {
         (tokens[9].span.start.line, tokens[9].span.start.column),
         (2, 9)
     );
+    assert_eq!(tokens[0].span.source_id(), source.source_id);
+    assert_eq!(tokens[0].span.revision(), source.revision);
 }
 
 #[test]

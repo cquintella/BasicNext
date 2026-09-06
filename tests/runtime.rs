@@ -8,7 +8,10 @@ use std::{
     fs,
     io::{BufRead, Cursor, Read, Write},
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 struct ChannelReader {
@@ -122,8 +125,8 @@ fn run_loaded(
     input: &str,
     host: &HostEnv,
 ) -> Result<(u8, String), bn::diagnostic::Diagnostic> {
-    let graph = load(path).map_err(|error| error.diagnostic)?;
-    let models = analyze_modules(&graph).map_err(|error| error.diagnostic)?;
+    let graph = load(path).map_err(|error| *error.diagnostic)?;
+    let models = analyze_modules(&graph).map_err(|error| *error.diagnostic)?;
     let module = lower_graph(&graph, &models)?;
     let mut input = Cursor::new(input.as_bytes());
     let mut output = Vec::new();
@@ -136,8 +139,8 @@ fn run_loaded_debug(
     host: &HostEnv,
     events: &mut Vec<(String, usize)>,
 ) -> Result<(), bn::diagnostic::Diagnostic> {
-    let graph = load(path).map_err(|error| error.diagnostic)?;
-    let models = analyze_modules(&graph).map_err(|error| error.diagnostic)?;
+    let graph = load(path).map_err(|error| *error.diagnostic)?;
+    let models = analyze_modules(&graph).map_err(|error| *error.diagnostic)?;
     let module = lower_graph(&graph, &models)?;
     let mut input = Cursor::new(Vec::<u8>::new());
     let mut output = Vec::new();
@@ -532,12 +535,12 @@ END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute ping/neighbor providers");
     assert!(
-        output.starts_with("ping-ok  TRUE   TRUE\n") || output.starts_with("ping-error "),
+        output.starts_with("ping-ok  TRUE   FALSE\n") || output.starts_with("ping-error "),
         "unexpected ping/neighbor output: {output:?}"
     );
     assert!(
-        output.contains("TRUE\n") || output.contains("TRUE "),
-        "neighbor must remain an Error on this Phase 0 host: {output:?}"
+        output.contains("FALSE\n") || output.contains("FALSE "),
+        "loopback neighbor must be a valid address: {output:?}"
     );
 }
 
@@ -1495,6 +1498,35 @@ fn bndata_read_csv_builds_string_columns() {
         output,
         "2 2 age\nAna\n35 31.5\n31.5\n31.5 28.0 35.0\n2 2\n1 1\n"
     );
+}
+
+struct InjectedDataProvider;
+static NEXT_PROVIDER: AtomicU64 = AtomicU64::new(0);
+
+impl bn::runtime::DataProvider for InjectedDataProvider {
+    fn read_csv(&self, _text: &str, _separator: char) -> Result<Vec<Vec<String>>, String> {
+        Ok(vec![vec![String::from("provided")]])
+    }
+}
+
+#[test]
+fn bndata_read_csv_uses_the_injected_data_provider() {
+    let path = std::env::temp_dir().join(format!(
+        "basicnext-provider-{}-{}.csv",
+        std::process::id(),
+        NEXT_PROVIDER.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::write(&path, "ignored\n").expect("write provider fixture");
+    let source = format!(
+        "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"{}\", FS.READ)\nIF file IS Error THEN\nRETURN\nEND IF\nLET table AS Data.DataFrame OR Error = Data.ReadCSV(file, FALSE, \",\")\nIF table IS Error THEN\nRETURN\nEND IF\nPRINT table.GetString(0, \"Column1\")\nDELETE table\nfile.Close()\nDELETE file\nEND FUNCTION\n",
+        path.display()
+    );
+    let host = HostEnv::fixed(vec!["provider.bn".into()], 0, 0)
+        .with_data_provider(Arc::new(InjectedDataProvider));
+    let result = run_with_host(&source, "", &host);
+    let _ = fs::remove_file(path);
+    let (_, output) = result.expect("injected data provider");
+    assert_eq!(output, "provided\n");
 }
 
 #[test]

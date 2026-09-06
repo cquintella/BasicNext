@@ -432,50 +432,31 @@ fn builtin(
         .map(|value| number_as_float(value, span))
         .collect::<Result<Vec<_>, _>>()?;
     let result = match math_name {
-        "ABS" => numbers[0].abs(),
+        "ABS" => bn_rt::bn_rt_math_fabs(numbers[0]),
         "MIN" => {
-            if numbers.iter().any(|value| value.is_nan()) {
-                f64::NAN
-            } else {
-                numbers[0].min(numbers[1])
-            }
+            bn_rt::bn_rt_math_fmin(numbers[0], numbers[1])
         }
-        "MAX" => {
-            if numbers.iter().any(|value| value.is_nan()) {
-                f64::NAN
-            } else {
-                numbers[0].max(numbers[1])
-            }
-        }
-        "SIGN" => {
-            if numbers[0] == 0.0 || numbers[0].is_nan() {
-                numbers[0]
-            } else {
-                numbers[0].signum()
-            }
-        }
-        "FLOOR" => numbers[0].floor(),
-        "CEIL" => numbers[0].ceil(),
-        "TRUNC" => numbers[0].trunc(),
-        "ROUND" => {
-            let scale = 10_f64.powf(numbers[1]);
-            (numbers[0] * scale).round_ties_even() / scale
-        }
-        "EXP" => numbers[0].exp(),
-        "LOG" => numbers[0].ln(),
-        "LOG10" => numbers[0].log10(),
-        "LOG2" => numbers[0].log2(),
-        "POW" => numbers[0].powf(numbers[1]),
-        "SIN" => numbers[0].sin(),
-        "COS" => numbers[0].cos(),
-        "TAN" => numbers[0].tan(),
-        "ASIN" => numbers[0].asin(),
-        "ACOS" => numbers[0].acos(),
-        "ATAN" => numbers[0].atan(),
-        "ATAN2" => numbers[0].atan2(numbers[1]),
-        "SQRT" => numbers[0].sqrt(),
-        "HYPOT" => numbers[0].hypot(numbers[1]),
-        "FMA" => numbers[0].mul_add(numbers[1], numbers[2]),
+        "MAX" => bn_rt::bn_rt_math_fmax(numbers[0], numbers[1]),
+        "SIGN" => bn_rt::bn_rt_math_fsign(numbers[0]),
+        "FLOOR" => bn_rt::bn_rt_math_floor(numbers[0]),
+        "CEIL" => bn_rt::bn_rt_math_ceil(numbers[0]),
+        "TRUNC" => bn_rt::bn_rt_math_trunc(numbers[0]),
+        "ROUND" => bn_rt::bn_rt_math_round(numbers[0], numbers[1]),
+        "EXP" => bn_rt::bn_rt_math_exp(numbers[0]),
+        "LOG" => bn_rt::bn_rt_math_log(numbers[0]),
+        "LOG10" => bn_rt::bn_rt_math_log10(numbers[0]),
+        "LOG2" => bn_rt::bn_rt_math_log2(numbers[0]),
+        "POW" => bn_rt::bn_rt_math_pow(numbers[0], numbers[1]),
+        "SIN" => bn_rt::bn_rt_math_sin(numbers[0]),
+        "COS" => bn_rt::bn_rt_math_cos(numbers[0]),
+        "TAN" => bn_rt::bn_rt_math_tan(numbers[0]),
+        "ASIN" => bn_rt::bn_rt_math_asin(numbers[0]),
+        "ACOS" => bn_rt::bn_rt_math_acos(numbers[0]),
+        "ATAN" => bn_rt::bn_rt_math_atan(numbers[0]),
+        "ATAN2" => bn_rt::bn_rt_math_atan2(numbers[0], numbers[1]),
+        "SQRT" => bn_rt::bn_rt_math_sqrt(numbers[0]),
+        "HYPOT" => bn_rt::bn_rt_math_hypot(numbers[0], numbers[1]),
+        "FMA" => bn_rt::bn_rt_math_fma(numbers[0], numbers[1], numbers[2]),
         _ => {
             return Err(runtime_error(
                 "NAME_NOT_FOUND",

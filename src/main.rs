@@ -3,27 +3,32 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 mod cli_help;
+mod process_log;
 use cli_help::{help, usage};
 // would this file load configurations if there is any?
 
 use std::{
     env, fs,
     io::{self, BufRead, Read},
+    path::{Path, PathBuf},
     process::ExitCode,
 };
 
+#[allow(unused_imports)]
+use bn::diagnostic::{DiagId, Level};
 use bn::{
     ast::Program,
-    ir::{Module as IrModule, lower_graph, lower_graph_validated},
+    diagnostic::{Catalog, Diagnostic, WarningPolicy},
+    ir::ValidatedModule,
     lexer::lex,
-    llvm::lower_validated_module_for_target,
-    module_graph::{ModuleGraph, load},
+    llvm::{Target as LlvmTarget, lower_validated_module_for_target, validate_for},
+    module_graph::{ModuleGraph, load_with_session},
     runtime::{HostEnv, execute_validated_with_host},
-    semantic::{SemanticModel, analyze_modules},
+    semantic::{ModuleAnalysisError, SemanticModel, analyze_modules_with_warnings},
     source::SourceFile,
     token::Token,
 };
-
+use process_log::{LogLevel, ProcessLog};
 const VERSION: &str = concat!("bn ", env!("CARGO_PKG_VERSION"));
 
 #[must_use]
@@ -34,6 +39,20 @@ fn language_error() -> ExitCode {
 #[must_use]
 fn tool_error() -> ExitCode {
     ExitCode::from(2)
+}
+
+fn render_diagnostic(
+    diagnostic: &Diagnostic,
+    source: &SourceFile,
+    policy: &WarningPolicy,
+) -> String {
+    match Catalog::global_for_environment() {
+        Ok(catalog) => diagnostic.render_with_catalog_and_policy(source, catalog, policy),
+        Err(error) => format!(
+            "{}\n\nerror: cannot load diagnostic catalog overlay: {error}",
+            diagnostic.render(source)
+        ),
+    }
 }
 
 // can enum and structs be in another file?
@@ -60,6 +79,7 @@ enum Target {
 }
 
 #[derive(Debug)]
+#[allow(clippy::struct_excessive_bools)] // CLI flags map directly to independent policies.
 struct Options {
     path: String,
     verbosity: u8,
@@ -72,6 +92,10 @@ struct Options {
     jupyter_stdin: bool,
     program_arguments: Vec<String>,
     optimization: Optimization,
+    warning_policy: WarningPolicy,
+    log_level: LogLevel,
+    log_file: Option<String>,
+    no_log: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -110,6 +134,82 @@ impl Optimization {
 struct Frontend {
     graph: ModuleGraph,
     models: Vec<SemanticModel>,
+    warnings: Vec<ModuleAnalysisError>,
+    validated: ValidatedModule,
+}
+
+fn emit_frontend_warnings(frontend: &Frontend, source: &SourceFile, options: &Options) -> bool {
+    let mut fatal = false;
+    for warning in &frontend.warnings {
+        let Some(id) = DiagId::from_code(warning.diagnostic.code) else {
+            eprintln!(
+                "{}",
+                render_diagnostic(&warning.diagnostic, source, &options.warning_policy)
+            );
+            fatal = true;
+            continue;
+        };
+        let level = options.warning_policy.level(id);
+        let Some(module) = frontend.graph.modules.get(module_index(warning.module.0)) else {
+            eprintln!("error: warning refers to a missing module");
+            fatal = true;
+            continue;
+        };
+        let rendered =
+            render_diagnostic(&warning.diagnostic, &module.source, &options.warning_policy);
+        if !rendered.is_empty() {
+            eprintln!("{rendered}");
+        }
+        fatal |= level == Level::Error;
+    }
+    fatal
+}
+
+fn process_log_path(options: &Options) -> Option<PathBuf> {
+    if options.no_log {
+        return None;
+    }
+    options.log_file.as_ref().map_or_else(
+        || {
+            options
+                .output
+                .as_ref()
+                .map(|output| Path::new(output).with_extension("log"))
+        },
+        |path| Some(PathBuf::from(path)),
+    )
+}
+
+fn finish_process_log(log: &ProcessLog, options: &Options) -> bool {
+    let Some(path) = process_log_path(options) else {
+        return false;
+    };
+    if let Err(error) = log.write_to(&path) {
+        eprintln!(
+            "error[PROCESS_LOG_WRITE]: cannot write process log {}: {error}",
+            path.display()
+        );
+        return true;
+    }
+    false
+}
+
+fn mirror_frontend_diagnostics(frontend: &Frontend, log: &mut ProcessLog) {
+    for diagnostic in &frontend.warnings {
+        log.record_warning();
+        log.event(
+            LogLevel::Warn,
+            "diagnostic",
+            "emit",
+            format!(
+                "code={} source={} line={} column={}",
+                diagnostic.diagnostic.code,
+                diagnostic.module.0,
+                diagnostic.diagnostic.span.start.line,
+                diagnostic.diagnostic.span.start.column
+            ),
+        );
+    }
 }
 
 fn main() -> ExitCode {
@@ -168,7 +268,10 @@ fn main() -> ExitCode {
     let tokens = match lex(&source) {
         Ok(tokens) => tokens,
         Err(diagnostic) => {
-            eprintln!("{}", diagnostic.render(&source));
+            eprintln!(
+                "{}",
+                render_diagnostic(&diagnostic, &source, &options.warning_policy)
+            );
             return language_error();
         }
     };
@@ -187,41 +290,176 @@ fn main() -> ExitCode {
 }
 
 fn build(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
+    let mut process_log = ProcessLog::new(options.log_level);
+    process_log.event(
+        LogLevel::Info,
+        "pipeline",
+        "start",
+        format!("target={:?} output={:?}", options.target, options.output),
+    );
+    let result = build_inner(source, tokens, options, &mut process_log);
+    process_log.event(
+        if result == ExitCode::SUCCESS {
+            LogLevel::Warn
+        } else {
+            LogLevel::Error
+        },
+        "diagnostic",
+        "summary",
+        format!(
+            "errors={} warnings={} exit={result:?}",
+            usize::from(result != ExitCode::SUCCESS),
+            process_log.warning_count()
+        ),
+    );
+    process_log.event(
+        if result == ExitCode::SUCCESS {
+            LogLevel::Info
+        } else {
+            LogLevel::Error
+        },
+        "pipeline",
+        "end",
+        format!("exit={result:?}"),
+    );
+    if finish_process_log(&process_log, options) {
+        return tool_error();
+    }
+    result
+}
+
+#[allow(clippy::too_many_lines)] // Build stage events stay adjacent to their real transitions.
+fn build_inner(
+    source: &SourceFile,
+    tokens: &[Token],
+    options: &Options,
+    process_log: &mut ProcessLog,
+) -> ExitCode {
+    process_log.event(
+        LogLevel::Info,
+        "frontend",
+        "start",
+        "load and analyze modules",
+    );
     let frontend = match load_frontend(source, tokens, options) {
         Ok(frontend) => frontend,
-        Err(code) => return code,
-    };
-    let module = match lower_graph_validated(&frontend.graph, &frontend.models) {
-        Ok(module) => module,
-        Err(diagnostic) => {
-            eprintln!("{}", diagnostic.render(source));
-            return language_error();
+        Err(code) => {
+            process_log.event(
+                LogLevel::Error,
+                "frontend",
+                "fail",
+                format!("exit={code:?}"),
+            );
+            return code;
         }
     };
-    if options.target == Target::Wasm32 && requires_unavailable_wasm_capability(module.as_module())
-    {
-        eprintln!(
-            "error[BUILD_CAPABILITY_UNAVAILABLE]: target wasm32 does not provide HOST.FileSystem, HOST.Net, BNLog, or BNWeb; HOST.Console is supported"
+    process_log.event(
+        LogLevel::Info,
+        "frontend",
+        "success",
+        "semantic analysis complete",
+    );
+    mirror_frontend_diagnostics(&frontend, process_log);
+    process_log.event(
+        LogLevel::Debug,
+        "config",
+        "snapshot",
+        format!(
+            "target={:?} opt={:?} log_level={:?} no_log={}",
+            options.target, options.optimization, options.log_level, options.no_log
+        ),
+    );
+    process_log.event(
+        LogLevel::Debug,
+        "frontend",
+        "modules",
+        format!(
+            "count={} names={:?}",
+            frontend.graph.modules.len(),
+            frontend
+                .graph
+                .modules
+                .iter()
+                .map(|module| module.source.name.as_str())
+                .collect::<Vec<_>>()
+        ),
+    );
+    if emit_frontend_warnings(&frontend, source, options) {
+        process_log.event(
+            LogLevel::Error,
+            "frontend",
+            "fail",
+            "warning promoted to error",
         );
         return language_error();
     }
-    match lower_validated_module_for_target(&module, options.target == Target::Wasm32) {
-        Ok(llvm) => emit_build_output(llvm, options),
+    process_log.event(LogLevel::Info, "lower", "start", "lower and validate IR");
+    let module = &frontend.validated;
+    process_log.event(LogLevel::Info, "lower", "success", "validated IR ready");
+    let llvm_target = if options.target == Target::Wasm32 {
+        LlvmTarget::Wasm32
+    } else {
+        LlvmTarget::Native
+    };
+    if let Err(error) = validate_for(module, llvm_target) {
+        process_log.event(
+            LogLevel::Error,
+            "validate_for",
+            "fail",
+            format!(
+                "code={} source={} line={} column={}",
+                error.code,
+                error.span.start.source_id.0,
+                error.span.start.line,
+                error.span.start.column
+            ),
+        );
+        eprintln!("error[{}]: {}", error.code, error.message);
+        return tool_error();
+    }
+    process_log.event(
+        LogLevel::Info,
+        "validate_for",
+        "success",
+        "target support accepted",
+    );
+    process_log.event(LogLevel::Info, "llvm_emit", "start", "emit target LLVM");
+    let result = match lower_validated_module_for_target(module, options.target == Target::Wasm32) {
+        Ok(llvm) => {
+            process_log.event(LogLevel::Info, "llvm_emit", "success", "LLVM emitted");
+            process_log.event(LogLevel::Info, "link", "start", "write artifact");
+            emit_build_output(llvm, options, process_log)
+        }
         Err(message) => {
+            process_log.event(
+                LogLevel::Error,
+                "llvm_emit",
+                "fail",
+                format!("error={message}"),
+            );
             eprintln!("error[{message}]");
             tool_error()
         }
-    }
+    };
+    process_log.event(
+        if result == ExitCode::SUCCESS {
+            LogLevel::Info
+        } else {
+            LogLevel::Error
+        },
+        "link",
+        if result == ExitCode::SUCCESS {
+            "success"
+        } else {
+            "fail"
+        },
+        format!("exit={result:?}"),
+    );
+    result
 }
 
-fn requires_unavailable_wasm_capability(module: &IrModule) -> bool {
-    module.filesystem_import.is_some()
-        || module.network_import.is_some()
-        || module.bnlog_import.is_some()
-        || module.bnweb_import.is_some()
-}
-
-fn emit_build_output(llvm: String, options: &Options) -> ExitCode {
+#[allow(clippy::too_many_lines)] // External tool command construction stays auditable here.
+fn emit_build_output(llvm: String, options: &Options, process_log: &mut ProcessLog) -> ExitCode {
     let Some(output) = options.output.as_deref() else {
         return emit_output(llvm, None);
     };
@@ -244,6 +482,23 @@ fn emit_build_output(llvm: String, options: &Options) -> ExitCode {
     let object = temporary.with_extension("o");
     let mut failed_tool = "clang";
     let result = if options.target == Target::Wasm32 {
+        process_log.event(
+            LogLevel::Debug,
+            "external",
+            "invoke",
+            format!(
+                "tool=clang argv={:?}",
+                [
+                    options.optimization.clang_flag(),
+                    "--target=wasm32-unknown-unknown",
+                    "-Wno-override-module",
+                    "-c",
+                    temporary.to_string_lossy().as_ref(),
+                    "-o",
+                    object.to_string_lossy().as_ref(),
+                ]
+            ),
+        );
         let compiled = std::process::Command::new(clang)
             .args([
                 options.optimization.clang_flag(),
@@ -258,6 +513,24 @@ fn emit_build_output(llvm: String, options: &Options) -> ExitCode {
         match compiled {
             Ok(compiled) if compiled.status.success() => {
                 failed_tool = "wasm-ld";
+                process_log.event(
+                    LogLevel::Debug,
+                    "external",
+                    "invoke",
+                    format!(
+                        "tool=wasm-ld argv={:?}",
+                        [
+                            options.optimization.linker_flag(),
+                            "--no-entry",
+                            "--export=main",
+                            "--export=__heap_base",
+                            "--allow-undefined",
+                            object.to_string_lossy().as_ref(),
+                            "-o",
+                            output,
+                        ]
+                    ),
+                );
                 std::process::Command::new(configured_wasm_ld())
                     .args([
                         options.optimization.linker_flag(),
@@ -275,8 +548,10 @@ fn emit_build_output(llvm: String, options: &Options) -> ExitCode {
         }
     } else {
         let mut command = std::process::Command::new(clang);
-        command.arg(options.optimization.clang_flag());
-        command.arg(temporary.to_string_lossy().as_ref());
+        let mut command_args = vec![
+            options.optimization.clang_flag().to_string(),
+            temporary.to_string_lossy().into_owned(),
+        ];
         if llvm.contains("@bn_rt_") {
             let bn_rt = match configured_bn_rt_lib() {
                 Ok(path) => path,
@@ -285,9 +560,16 @@ fn emit_build_output(llvm: String, options: &Options) -> ExitCode {
                     return tool_error();
                 }
             };
-            command.arg(bn_rt);
+            command_args.push(bn_rt.display().to_string());
         }
-        command.args(["-o", output]).output()
+        command_args.extend(["-o".into(), output.into()]);
+        process_log.event(
+            LogLevel::Debug,
+            "external",
+            "invoke",
+            format!("tool=clang argv={command_args:?}"),
+        );
+        command.args(&command_args).output()
     };
     let _ = fs::remove_file(temporary);
     let _ = fs::remove_file(object);
@@ -317,14 +599,11 @@ fn run(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
         Ok(frontend) => frontend,
         Err(code) => return code,
     };
+    if emit_frontend_warnings(&frontend, source, options) {
+        return language_error();
+    }
     log(options.verbosity, 1, "lowering typed BN IR");
-    let module = match lower_graph_validated(&frontend.graph, &frontend.models) {
-        Ok(module) => module,
-        Err(diagnostic) => {
-            eprintln!("{}", diagnostic.render(source));
-            return language_error();
-        }
-    };
+    let module = &frontend.validated;
     if options.trace {
         log(
             options.verbosity.max(1),
@@ -350,10 +629,13 @@ fn run(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
         input: stdin.lock(),
         notify: options.jupyter_stdin,
     };
-    match execute_validated_with_host(&module, &mut input, &mut stdout.lock(), &host) {
+    match execute_validated_with_host(module, &mut input, &mut stdout.lock(), &host) {
         Ok(code) => ExitCode::from(code),
         Err(diagnostic) => {
-            eprintln!("{}", diagnostic.render(source));
+            eprintln!(
+                "{}",
+                render_diagnostic(&diagnostic, source, &options.warning_policy)
+            );
             language_error()
         }
     }
@@ -396,6 +678,9 @@ fn check(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
         Ok(frontend) => frontend,
         Err(code) => return code,
     };
+    if emit_frontend_warnings(&frontend, source, options) {
+        return language_error();
+    }
     if options.verbosity > 1 {
         print!("{}", tokens_text(tokens));
     }
@@ -411,13 +696,7 @@ fn check(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
                 "{:#?}\n{semantic_model:#?}\n",
                 root_program(&frontend.graph)
             ),
-            Emit::Ir => match lower_graph(&frontend.graph, &frontend.models) {
-                Ok(module) => format!("{module:#?}\n"),
-                Err(diagnostic) => {
-                    eprintln!("{}", diagnostic.render(source));
-                    return language_error();
-                }
-            },
+            Emit::Ir => format!("{:#?}\n", frontend.validated.as_module()),
         };
         if emit_output(output, options.output.as_deref()) != ExitCode::SUCCESS {
             return tool_error();

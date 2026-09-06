@@ -1,0 +1,17 @@
+[package]
+name = "bn_source"
+version = "0.4.4"
+edition = "2024"
+rust-version = "1.97"
+description = "Shared source identity and span types for Basic Next"
+license = "MPL-2.0"
+
+[lib]
+path = "src/lib.rs"
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"

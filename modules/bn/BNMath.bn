@@ -3,8 +3,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// BNMath is a standard-library module. The signatures in this file are the
-// semantic API. Numeric evaluation is supplied by the reference runtime.
+// BNMath is a standard-library module.
+//
+// [NATIVE BINDING BOUNDARY]
+// Pending AQ-22 EXTERN grammar delivery (docs/architecture/native-stdlib-binding.md),
+// numeric evaluation is supplied directly by bn_rt (bn_rt_math_* C ABI) and the
+// execution runtime, while Limits constants are folded via compiler/lowering constants.
+// The function signatures and Limits members below define the verified semantic API.
 //
 // MIN/MAX also accept one numeric vector or region; ABS/SIGN/MIN/MAX accept
 // any numeric type. Those forms are checked by the frontend and are not

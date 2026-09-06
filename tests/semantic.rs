@@ -7,7 +7,7 @@ use bn::{
     lexer::lex,
     module_graph::load,
     parser::parse,
-    semantic::{PointerLength, Type, analyze, analyze_modules},
+    semantic::{PointerLength, Type, analyze, analyze_modules, analyze_with_warnings},
     source::SourceFile,
 };
 use std::fs;
@@ -324,6 +324,19 @@ fn statement_after_return_is_rejected_as_unreachable() {
     let program = parse(&tokens).expect("parse source");
     let diagnostic = analyze(&program).expect_err("unreachable statement must fail");
     assert_eq!(diagnostic.code, "UNREACHABLE_CODE");
+}
+
+#[test]
+fn warning_analysis_collects_unreachable_without_failing_model() {
+    let source = SourceFile::new(
+        "unreachable-warning.bn",
+        "FUNCTION Start() AS VOID\nRETURN\nPRINT \"never\"\nEND FUNCTION\n",
+    );
+    let tokens = lex(&source).expect("lex source");
+    let program = parse(&tokens).expect("parse source");
+    let analysis = analyze_with_warnings(&program).expect("warning analysis");
+    assert_eq!(analysis.warnings.len(), 1);
+    assert_eq!(analysis.warnings[0].code, "UNREACHABLE_CODE");
 }
 
 #[test]

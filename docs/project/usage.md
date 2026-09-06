@@ -72,8 +72,10 @@ Filesystem and positioned-console operations are rejected for that target.
 
 ## Current limits
 
-- LLVM lowering intentionally covers a typed scalar subset; unsupported IR
-  produces `BUILD_LOWERING_UNAVAILABLE` instead of changing semantics.
+- LLVM lowering intentionally covers a typed subset; valid IR outside the
+  selected target subset is rejected before emission with a stable
+  `TARGET_UNSUPPORTED_OP`, `TARGET_UNSUPPORTED_TYPE` or
+  `TARGET_UNSUPPORTED_HOST` diagnostic instead of changing semantics.
 - `TIMEZONE` stores an IANA identifier; UTC conversions do not apply zone
   rules.
 - The VS Code adapter uses the native `bn dap` service for breakpoints, pause,
@@ -92,5 +94,5 @@ Full command reference: [`bn(1)`](../man/bn.1). Tutorial:
 | `NAME_NOT_FOUND` on an imported member | Call it through the declared alias: `alias.member`. |
 | `HOST_CAPABILITY_UNAVAILABLE` in Jupyter | The kernel intentionally denies filesystem and has no TTY. |
 | `BUILD_TOOLCHAIN_UNAVAILABLE` | Install LLVM/Clang 22 and `wasm-ld`, or set `BN_WASM_CLANG` / `BN_WASM_LD` (Homebrew: `llvm` + `lld@20`). Apple Clang cannot emit `wasm32`. |
-| `BUILD_LOWERING_UNAVAILABLE` | The valid program is outside the current compiler subset; use `bn run`. |
+| `TARGET_UNSUPPORTED_*` | The valid program is outside the selected compiler target subset; use `bn run` or adjust the target/capabilities. |
 | `INPUT()` returns `EOF` | Standard input ended before a line was available. |

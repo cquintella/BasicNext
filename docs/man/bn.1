@@ -1,5 +1,5 @@
 .\" groff man page for the Basic Next reference tool.
-.TH BN 1 "September 3, 2026" "bn 0.4.3" "Basic Next"
+.TH BN 1 "September 6, 2026" "bn 0.4.4" "Basic Next"
 .SH NAME
 bn \- Basic Next reference checker, interpreter, and compiler
 .SH SYNOPSIS
@@ -10,7 +10,7 @@ bn \- Basic Next reference checker, interpreter, and compiler
 .RI [ "-- program-args" ]
 .SH DESCRIPTION
 .B bn
-processes UTF-8 Basic Next 0.2 source through a source-spanned pipeline:
+processes UTF-8 Basic Next source through a source-spanned pipeline:
 lexer, parser/AST, semantic analysis, typed BN IR, and either the reference
 interpreter or the LLVM backend.
 .PP
@@ -85,6 +85,31 @@ The Jupyter kernel uses this boundary.
 .B --trace
 Report the interpreter entry point.
 .TP
+.BI --warnings " errors"
+Promote all warning diagnostics to errors.
+.TP
+.BI --allow " CODE"
+Suppress one warning diagnostic (repeatable).
+.TP
+.BI --warn " CODE"
+Keep one warning diagnostic at warning level.
+.TP
+.BI --deny " CODE"
+Promote one warning diagnostic to an error.
+.TP
+.BI --log-level " error|warn|info|debug"
+Process log verbosity during build.
+.TP
+.BI --log-file " file"
+Companion process log file path during build.
+.TP
+.B --no-log
+Disable companion process logging.
+.TP
+.BI --config " file"
+Load warning and process logging configuration from
+.IR file .
+.TP
 .BI --color " auto|always|never"
 Control ANSI colour on status messages.
 .TP
@@ -119,21 +144,25 @@ Every import declares an alias. Imported declarations are referenced as
 User modules belong beneath
 .BR modules/ .
 Standard modules such as
-.B BNMath
+.BR BNMath ,
+.BR BNData ,
+.BR BNLog ,
+.BR BNWeb ,
 and
-.B BNData
+.B BNJson
 belong beneath
 .B modules/bn/
 and require explicit imports.
 .PP
 .B HOST
-is the only built-in interface object. 0.2 provides
+is the only built-in interface object. Facilities provided include
 .BR HOST.Args ,
 .BR HOST.Clock ,
 .BR HOST.Console ,
 .BR HOST.Random ,
+.BR HOST.FileSystem ,
 and
-.BR HOST.FileSystem .
+.BR HOST.Net .
 .SH WEBASSEMBLY
 A WebAssembly artifact produced by
 .B "bn build --target wasm32 -o program.wasm"
@@ -165,13 +194,13 @@ Command or path used as the WebAssembly linker.
 does not read environment variables for language behaviour.
 .SH FILES
 .TP
-.I docs/language/0.2/0.2.ebnf
-Highest-priority accepted grammar.
+.I docs/language/0.4/0.4.ebnf
+Highest-priority accepted grammar planning surface.
 .TP
-.I docs/language/0.2/0.2.md
-Accepted 0.2 language contract.
+.I docs/language/0.4/0.4.md
+Active 0.4 language specification draft.
 .TP
-.I docs/language/0.2/keywords.md
+.I docs/language/0.4/keywords.md
 Keyword and reserved-form contract.
 .TP
 .I docs/project/usage.md
@@ -179,14 +208,10 @@ Installation, examples, limits, and troubleshooting.
 .TP
 .I docs/project/kernel.md
 Jupyter host contract.
-.TP
-.I done/project/compiler-0.2.md
-LLVM targets and WebAssembly host ABI.
 .SH LIMITATIONS
-LLVM lowering covers a typed scalar subset and rejects unsupported IR
+LLVM lowering covers a typed scalar and vector subset and rejects unsupported IR
 explicitly. Time-zone values do not apply TZDB zone rules. The VS Code adapter
-is launch-only and has no breakpoints or stepping. 0.2 has no package registry,
-network, GPU, DOM, or C FFI.
+is launch-only and has no breakpoints or stepping.
 .SH EXAMPLES
 .nf
 .RS
@@ -202,7 +227,7 @@ bn build --target wasm32 examples/hello.bn -o hello.wasm
 .IR docs/book/en/toc.md ,
 .IR docs/project/usage.md ,
 .IR docs/project/kernel.md ,
-.IR docs/language/0.2/0.2.md ,
+.IR docs/language/0.4/0.4.md ,
 .IR docs/library/host.md ,
 .IR docs/library/math.md
 .SH AUTHOR

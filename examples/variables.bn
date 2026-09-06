@@ -1,23 +1,60 @@
-IMPORT BNMath AS MATH
-
 FUNCTION Start() AS VOID
-    LET value AS FLOAT
-    LET vect AS INTEGER[10]
-    LET right AS BOOLEAN
-    LET mynum AS INTEGER = 10
+    LET b_min AS BYTE = 0
+    LET b_max AS BYTE = 255
+    LET i8_min AS INT8 = -128
+    LET i8_max AS INT8 = 127
+    LET i16_min AS INT16 = -32768
+    LET i16_max AS INT16 = 32767
+    LET u16_min AS UINT16 = 0
+    LET u16_max AS UINT16 = 65535
+    LET i32_min AS INT32 = -2147483648
+    LET i32_max AS INT32 = 2147483647
+    LET u32_min AS UINT32 = 0
+    LET u32_max AS UINT32 = 4294967295
+    LET i64_max AS INT64 = 9223372036854775807
+    LET u64_min AS UINT64 = 0
+    LET u64_max AS UINT64 = 18446744073709551615
+    LET f32_val AS FLOAT32 = 1.25
+    LET f64_val AS FLOAT64 = 3.141592653589793
+    LET flag_f AS BOOLEAN = FALSE
+    LET flag_t AS BOOLEAN = TRUE
+    LET text_val AS STRING = "BasicNext"
 
-    CONST TORQUE=10
+    PRINT b_min, b_max
+    PRINT i8_min, i8_max
+    PRINT i16_min, i16_max
+    PRINT u16_min, u16_max
+    PRINT i32_min, i32_max
+    PRINT u32_min, u32_max
+    PRINT i64_max
+    PRINT u64_min, u64_max
+    PRINT f32_val, f64_val
+    PRINT flag_f, flag_t
+    PRINT text_val
 
-    PRINT right
-    PRINT value
-    value = 1.0
-    right = TRUE
-    PRINT right
-    PRINT value
-    PRINT vect
-    vect = [1,2,3,4,5,6,7,8,9,0]
-    PRINT vect
-    vect[0]=100
-    PRINT vect
-    PRINT MAX_INTEGER
+    LET v50 AS INTEGER[50]
+    FOR i AS INTEGER = 0 TO 49
+        v50[i] = i * 2
+    END FOR
+    PRINT v50
+
+    LET cast_source AS INT32 = 65
+    LET cast_byte AS BYTE = cast_source AS BYTE
+    LET cast_float AS FLOAT64 = cast_source AS FLOAT64
+    LET cast_bool AS BOOLEAN = cast_source AS BOOLEAN
+    PRINT cast_source, cast_byte, cast_float, cast_bool
+
+    PRINT LEN(b_min), SIZEOF(b_min)
+    PRINT LEN(i8_min), SIZEOF(i8_min)
+    PRINT LEN(i16_min), SIZEOF(i16_min)
+    PRINT LEN(u16_min), SIZEOF(u16_min)
+    PRINT LEN(i32_min), SIZEOF(i32_min)
+    PRINT LEN(u32_min), SIZEOF(u32_min)
+    PRINT LEN(i64_max), SIZEOF(i64_max)
+    PRINT LEN(u64_max), SIZEOF(u64_max)
+    PRINT LEN(f32_val), SIZEOF(f32_val)
+    PRINT LEN(f64_val), SIZEOF(f64_val)
+    PRINT SIZEOF(flag_t)
+    PRINT LEN(text_val), SIZEOF(text_val)
+    PRINT LEN(v50), SIZEOF(v50)
 END FUNCTION

@@ -1,7 +1,12 @@
-# BN IR contract (to-be) — stub
+# BN IR contract (to-be) — release-slice inventory
 
 > Canonical: `docs/architecture/ir-contract.md`  
-> **Status:** **stub / incomplete** (2026-09-05). Direction and handoff **W1–W5** are locked; **op catalog, types, and full validation rules are not a closed contract.** Fill the **next release slice** with concrete rules + evidence before claiming closed. See [review-status.md](review-status.md).
+> **Status:** **release-slice inventory in progress** (updated 2026-09-06).
+> Handoff **W1**, CFG validation, explicit `Phi`, and an initial pre-emit
+> `validate_for` are in code. The operation inventory below is synchronized with
+> historically `src/ir/model.rs` — now `crates/bn_ir`; support coverage and final
+> diagnostic catalog remain open. See [review-status.md](review-status.md),
+> [to-close.md](to-close.md).
 
 ## Purpose
 
@@ -15,7 +20,15 @@ Define the **single Intermediate Representation (BN IR)** that sits between the 
 - **Support check / `validate_for(target)`**: “Does **this target** implement this IR under the [support-matrix.md](support-matrix.md)?” Failure ⇒ valid program, unsupported here.
 - Do not collapse the two. Matrix rows must name `reject_diag` + `tests`.
 
-**API shape (to implement):**
+**Production-complete `validate_for` (required — not a stub):**
+
+- Must run on every compile path before llvm emit.
+- Failures use only `TARGET_UNSUPPORTED_*` (or catalog ids), never language `INVALID_IR_*`.
+- Must cover the same rejects users hit today via `BUILD_LOWERING_UNAVAILABLE` /
+  `unsupported_instruction`, or those sites must be removed.
+- Claimed support subset must have matrix evidence + fixtures (see [to-close.md](to-close.md)).
+
+**API shape:**
 
 ```rust
 // Language IR — CFG definite assignment, complete uses, structure
@@ -45,11 +58,18 @@ pub fn validate_for(module: &Module, backend: Backend) -> Result<(), Diagnostic>
 
 No `bn_ir → bn_frontend` edge. No new crate/HIR required to satisfy this — move lowering under frontend when splitting.
 
+**0.4.5 migration procedure (AQ-15):** define IR-owned types and identities,
+add explicit frontend conversions and graph-scoped ID remapping during lowering,
+migrate validation and both consumers, then remove old imports/re-exports before
+extracting crates. Shared source identities stay in the source leaf. Test
+multi-module collisions and type conversion; a semantic type alias under an IR
+name does not satisfy GC-DEP.
+
 
 - **Interpret is the executable reference** (subordinate to the language specification). Running a program means executing validated BN IR under HostEnv — not LLVM `lli`, and not a private AST interpreter. Compiler equivalence is judged against the **spec** (and the support matrix), not against “whatever the interpreter did when buggy.” See [conformance.md](conformance.md).
 - **Compile lowers the same IR.** Compile reads the same validated BN IR and lowers BN IR → LLVM IR for the external clang/ld/opt toolchain. It must not invent a second meaning from AST alone.
 - Frontend produces AST + symbols; **2.5** must satisfy [semantic-analysis.md](semantic-analysis.md). **Lowering** (AST+semantic → BN IR) is a **Frontend** responsibility; **`bn_ir` must not depend on `bn_frontend`/semantic**. Process **3.0** in the DFD is the logical lower+validate stage: lower runs in the frontend crate, **validate** is the IR crate’s job. Backends consume validated IR only and do not re-lower from AST.
-- **As-is debt:** `src/ir/model.rs` still imports `semantic::{SymbolId, Type}` and `module_graph::ModuleId` — forbidden in the to-be `bn_ir` public model.
+- **As-is debt (updated 2026-09-06):** IR lives in `crates/bn_ir` on `bn_types` / IR-owned `SymbolId`/`ModuleId` — **no** `semantic::` imports. Remaining GC-DEP debt is **packaging** (path-shim frontend, thin-`bn`), not semantic leakage into the IR model.
 
 ## Pointers
 
@@ -92,27 +112,26 @@ That check belongs in **`bn_ir` `validate`** (language IR validity — **W2** / 
 5. **All operands** count — including nested fields of instructions (see as-is gaps).
 6. Failure ⇒ **language** IR diagnostic (stable code), not a target-support code.
 
-### As-is debt (`src/ir/validate.rs`)
+### Validator status (`src/ir/validate.rs`) — synced 2026-09-05
 
-Current validate accumulates a `HashSet` of definitions by **block list order**,
-not by CFG dominance / path merge. That misses branch/join/loop defects.
+**Done (0.4.4 S1.2):** reachable-CFG **must-definition** via predecessor/successor
+graphs and a fixed-point over per-block incoming/outgoing defined sets (not
+block-list order). `instruction_uses` includes `Input.prompt` and
+`Default.dynamic_dimensions`. Negative/positive fixtures:
+`tests/validated_ir.rs` (diamond one-branch use; undefined prompt; undefined
+dynamic dimension).
 
-The 0.4.4 S1.2 slice now performs reachable-CFG must-definition analysis and
-enumerates `Input.prompt` and `Default.dynamic_dimensions`. Its negative and
-positive fixtures live in `tests/validated_ir.rs`; the full contract remains
-open until the remaining operand inventory and explicit `Phi` support are
-closed.
+**Still open:**
 
-Also, `instruction_uses` is incomplete — known holes (must be fixed as part of
-GC-IR / W2, not waved through):
-
-| Instruction field | Issue |
+| Item | Status |
 | --- | --- |
-| `Input.prompt` | Present on the instruction; **omitted** from `instruction_uses` |
-| `Default.dynamic_dimensions` | `Vec<ValueId>` on the instruction; **omitted** from `instruction_uses` |
+| Full operand-field inventory on every `Instruction` variant | Audited in `instruction_uses`; keep exhaustive match synchronized with model changes |
+| Explicit `Instruction::Phi` in `ir/model` + lowering | AQ-20 **implemented** for the scalar subset; target-specific coverage remains matrix-owned |
+| Formal op catalog + IR-owned type system (no `semantic::`) | Types moved to `bn_types` / `bn_ir`; **op catalog** still incomplete; packaging GC-DEP remains |
+| Historical “block-order HashSet” bug | **Fixed** — do not cite as current behaviour |
 
-Any other operand fields not enumerated in `instruction_uses` are the same class
-of defect: validator blind spots.
+The diamond worked example below is the **acceptance case**; the CFG checker is
+expected to **reject** it today (see `validator_rejects_value_defined_on_only_one_branch`).
 
 
 ### Worked example — diamond (minimal pseudo-IR)
@@ -153,8 +172,8 @@ Suppose `function.blocks` is stored as `[B0, B1, B2, B3]` (common lowering order
 
 | Checker | What it does at B3 | Result |
 | --- | --- | --- |
-| **As-is** (`validate.rs`: one `HashSet`, scan blocks in vector order) | Visited B1 earlier → `%x` already in the set when B3 runs | **PASS** (wrong) — path B0→B2→B3 never defined `%x` |
-| **CFG definite assignment** | `%x` must be defined on **every** predecessor edge into B3 (from B1 **and** B2), or an explicit merge/`φ` must define `%x` in B3 | **REJECT** (correct) — B2 has no definition |
+| **Historical bug** (block-list `HashSet`) | Visited B1 earlier → `%x` already in the set when B3 runs | **PASS** (wrong) |
+| **Current CFG must-definition** | `%x` must be defined on **every** predecessor path into B3, or an explicit `Phi` | **REJECT** (required; fixture exists) |
 
 Valid repairs under the **locked** φ rule:
 
@@ -162,12 +181,12 @@ Valid repairs under the **locked** φ rule:
 2. Avoid the merge in lowering (e.g. only `Load`/`Store` of a local — no SSA temp across the join); or  
 3. Define and use only on paths that dominate (no join use).
 
-**Negative fixture expectation:** constructing the diamond above (no merge, `%x`
-missing on one arm) must fail language `validate` with a stable code once CFG
-checking lands — today it may wrongly succeed.
+**Negative fixture:** the diamond above (no merge, `%x` missing on one arm) is
+covered by `tests/validated_ir.rs` and must **fail** language `validate`.
 
-**Related hole:** even a correct CFG walk fails if `instruction_uses` omits an
-operand (e.g. `Input.prompt`): the use is invisible to the checker.
+**Related hole (mitigated for known cases):** `Input.prompt` /
+`Default.dynamic_dimensions` are now in `instruction_uses`; keep auditing other
+operand fields so no use stays invisible.
 
 
 ### Merge / φ form (**AQ-20 locked 2026-09-05**)
@@ -196,11 +215,63 @@ that must merge across CFG edges.
 
 Before claiming “well-formed IR to both backends” for a release slice:
 
-- [ ] CFG-based definite assignment (or equivalent SSA verify) implemented
-- [ ] Negative fixtures: undefined on one branch of a diamond; loop-carried gap; join without merge
-- [ ] `instruction_uses` complete for all operand-bearing instructions in the slice (incl. Input.prompt, Default.dynamic_dimensions)
+- [x] CFG-based definite assignment MVP implemented (`src/ir/validate.rs` fixed-point)
+- [x] Negative fixtures seed: diamond one-branch; undefined prompt; undefined dynamic dimension (`tests/validated_ir.rs`)
+- [ ] Broader negative set (loop-carried gap; richer joins) as slice grows
+- [x] `instruction_uses` for Input.prompt + Default.dynamic_dimensions; [ ] full Instruction audit
 - [x] Document which merge/`φ` form the IR uses — **explicit `Phi`** (AQ-20 locked)
-- [ ] Implement `Instruction::Phi` + CFG validate + lowering emission where needed
+- [x] Implement `Instruction::Phi` + validate/lowering emission where needed for the scalar LLVM subset; target-specific unsupported cases remain matrix-owned.
+
+## Release-slice operation inventory
+
+This table is normative for the current in-tree IR shape. `result` identifies
+the single SSA destination, `uses` lists every `ValueId` consumed by the
+operation (including collection fields), and `effect` records observable or
+stateful behavior. It is intentionally independent of target support: an
+operation can be valid BN IR while remaining unsupported by a backend.
+
+| Operation | Result | Uses | Effect / validation notes |
+| --- | --- | --- | --- |
+| `Constant` | `destination` | — | Pure literal or host/module/function/type token; `ty` must match `value` (including host/module/function token forms). |
+| `Default` | `destination` | `dynamic_dimensions` | Allocates a typed default value; dimensions are non-negative and bounded. |
+| `Phi` | `destination` | one value per incoming edge | Pure SSA merge; incoming edges must exactly equal reachable predecessors and each value must be defined on its predecessor path. |
+| `Load` | `destination` | — | Reads a symbol slot; symbol/type relationship is frontend-owned metadata. |
+| `Store` | — | `value` | Writes a symbol slot; `ty` describes the stored value. |
+| `Copy` | `destination` | `source` | Pure value copy with type compatibility. |
+| `Unary` | `destination` | `operand` | Pure checked unary operation; operator/type are validated by the language layer. |
+| `Binary` | `destination` | `left`, `right` | Pure checked binary operation; operator/type are validated by the language layer. |
+| `Cast` | `destination` | `value` | Checked language conversion; target support is separate. |
+| `Call` | `destination` | `callee`, `arguments` | Calls a BN function value; may observe or mutate host/program state. |
+| `DispatchSubmit` | `destination` | `callee`, `queue`, `task`, `arguments` | Submits asynchronous work; dispatch policy and handle validity are runtime concerns. |
+| `DispatchAwait` | `destination` | `callee`, `ticket`, `timeout` | Waits for asynchronous work; timeout and ticket errors are runtime diagnostics. |
+| `Input` | `destination` | optional `prompt` | Reads host input; prompt is a complete operand when present. |
+| `Vector` | `destination` | `values` | Constructs a vector; all elements are operands and dimensions/types must agree. |
+| `Index` | `destination` | `object`, `index` | Reads an indexed value; bounds/type checks are language/runtime rules. |
+| `Member` | `destination` | `object` | Reads a member; owner/name identity must resolve. |
+| `SetIndex` | — | `indices`, `value` | Mutates indexed storage; every index and the assigned value are operands. |
+| `Length` | `destination` | `vector` | Pure shape/length query. |
+| `SizeOf` | `destination` | `value` | Pure static-size query for the value/type model. |
+| `Print` | — | `values` | Console effect; every printed value is an operand. |
+| `ClearScreen` | — | `console` | Console effect; execution policy is rechecked at the boundary. |
+| `Beep` | — | `console` | Console effect; execution policy is rechecked at the boundary. |
+| `Allocate` | `destination` | `arguments` | Allocates a class/object value; class identity and constructor arguments must resolve. |
+| `Delete` | — | `value` | Releases an object/pointer and optionally invokes its destructor. |
+| `SetMember` | — | `object`, `value` | Mutates an object member; owner/name/type must resolve. |
+| `EnsureClass` | — | — | Ensures static class initialization; class identity must resolve. |
+| `LoadStatic` | `destination` | — | Reads a static class field; class/field/type must resolve. |
+| `StoreStatic` | — | `value` | Writes a static class field; class/field/type must resolve. |
+
+The control-flow terminators are `Jump { target }`, `Branch { condition,
+then_block, else_block }`, `Return { value }`, and `Stop { code }`. `Jump` and
+`Branch` define CFG edges; `Branch.condition`, `Return.value` when present, and
+`Stop.code` are operands. Block IDs must be dense and ordered in the current
+in-memory representation, and all referenced targets must exist.
+
+The current `Constant` alternatives are `Integer`, `Float`, `String`,
+`Boolean`, `Null`, `NotAvailable`, `EndOfFile`, `Function`, `Type`,
+`HostConsole`, and `HostArgs`. There is no serialized-IR compatibility promise
+in 0.4.5; the in-memory model version is the toolchain release boundary until
+an explicit schema/versioning decision is accepted.
 
 ## Well-formed IR handoff (acceptance — both backends)
 
@@ -216,26 +287,26 @@ verifiable claim before hard-split “done” — also summarized as **W1–W5**
 | **W2** | Ill-formed IR → **language** diagnostics, including **CFG definite assignment** and complete operand-use enumeration | Negative fixtures (**GC-IR**); see § Definite assignment |
 | **W3** | Same validated IR for interpret and compile of one job | Single lower+validate; compile does not re-lower from AST |
 | **W4** | Target gaps → **support** diagnostics via `validate_for` | Distinct codes (**GC-SUP**); not reported as W2 failures |
-| **W5** | `bn_ir` public model free of FE/semantic types | **GC-DEP**; do not grow `semantic::{Type,SymbolId}` in IR |
+| **W5** | `bn_ir` public model free of FE/semantic types | **Met in model** (2026-09-06); keep regressions out; packaging/shim debt tracked in bucket C-P0.3 / C-P1.5 |
 
 Until W2/W5 have automated evidence for the release slice, do not advertise
 “both backends receive semantically well-formed IR” as satisfied.
 
-## Checklist — what the full contract must eventually define
+## Checklist — remaining contract closure
 
 - [ ] **Module / program shape** — units, linkage of modules, entry, how imports appear in IR.
-- [ ] **Ops / instruction set** — complete op catalog (kinds, operands, side-effect notes) aligned with `ir/model` (and crate `bn_ir` after split).
-- [ ] **Types** — IR type system vs language types; lowering rules; HOST value boundaries. IR types must be **IR-owned** (not re-exports of `semantic::Type`).
-- [ ] **Validation rules** — structural / language IR checks performed by **`validate`** (3.2); error codes into **D3**.
+- [x] **Ops / instruction set** — release-slice catalog (kinds, operands, side-effect notes) aligned with `ir/model`; re-audit is required whenever the model changes.
+- [X] **Types (ownership)** — IR types via `bn_types` / IR-owned ids (not `semantic::Type`). Remaining: full catalog + HOST boundaries prose.
+- [ ] **Validation rules** — structural / language IR checks performed by **`validate`** (3.2); error codes into **D3**. The current slice rejects incompatible constant categories, copies, vector elements, and indices.
 - [ ] **Definite assignment / CFG** — every use defined on all executable paths; complete `instruction_uses`; see § above (priority for well-formed IR claim).
-- [ ] **Target-support check (separate)** — `validate_for(target)` / matrix lookup; failures use a **support** diagnostic family (e.g. `TARGET_UNSUPPORTED_*`), **not** language-invalid IR. An LLVM gap must not look like a language error. See [support-matrix.md](support-matrix.md).
-- [ ] **Versioning** — IR format / schema version; compatibility expectations across toolchain releases.
+- [x] **Target-support check (separate)** — `llvm::validate_for` runs after language validation on native/wasm emission paths and returns `TARGET_UNSUPPORTED_*`; complete matrix lookup remains open. An LLVM gap must not look like a language error. See [support-matrix.md](support-matrix.md).
+- [x] **Versioning** — 0.4.5 explicitly makes no serialized-IR compatibility promise; an in-memory model version is the toolchain release boundary. A serialized schema remains future work.
 - [ ] **LLVM subset matrix** — which BN IR ops are supported for compile vs interpret-only; see [support-matrix.md](support-matrix.md) (structured catalog; EXAMPLE rows are not coverage). Unsupported-for-llvm must fail the **support check** / `validate_for`, with a stable **support** diagnostic — not `validate` (bucket 0.4.5 G2 / XM10).
 - [ ] **Diagnostics on FE→IR path** — lower/validate use `Diagnostic` (no free-form `String` on the contract boundary).
 - [ ] **Source identity** — spans / debug locs carry **SourceId** (and revision where published); types live in shared **`bn_source` leaf** (not inside frontend); lowering preserves identity — [frontend-session.md](frontend-session.md).
 - [ ] **Invariants for backends** — interpret and compile consumption rules; no AST fork; HostEnv vs `bn_rt` boundaries.
 
-## Non-goals for this stub
+## Non-goals for this release-slice contract
 
 - Does not replace the language EBNF or `0.4.md`.
 - Does not specify Fluent catalogs or CLI UX (`bnc` options).

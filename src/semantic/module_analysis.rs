@@ -13,6 +13,60 @@ pub(crate) fn analyze_with_modules(
     executable_module: bool,
     allow_variable_vectors: bool,
 ) -> Result<SemanticModel, Diagnostic> {
+    Ok(analyze_with_modules_mode(
+        program,
+        module_exports,
+        module_imports,
+        imported_types,
+        module_constants,
+        bnmath_modules,
+        standard_modules,
+        executable_module,
+        allow_variable_vectors,
+        false,
+    )?
+    .model)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn analyze_with_modules_collecting(
+    program: &Program,
+    module_exports: HashMap<ModuleId, HashMap<String, Type>>,
+    module_imports: HashMap<String, ModuleId>,
+    imported_types: HashMap<(ModuleId, String), ImportedTypeInfo>,
+    module_constants: HashMap<(ModuleId, String), ConstantValue>,
+    bnmath_modules: HashSet<ModuleId>,
+    standard_modules: HashSet<ModuleId>,
+    executable_module: bool,
+    allow_variable_vectors: bool,
+) -> Result<SemanticAnalysis, Diagnostic> {
+    analyze_with_modules_mode(
+        program,
+        module_exports,
+        module_imports,
+        imported_types,
+        module_constants,
+        bnmath_modules,
+        standard_modules,
+        executable_module,
+        allow_variable_vectors,
+        true,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn analyze_with_modules_mode(
+    program: &Program,
+    module_exports: HashMap<ModuleId, HashMap<String, Type>>,
+    module_imports: HashMap<String, ModuleId>,
+    imported_types: HashMap<(ModuleId, String), ImportedTypeInfo>,
+    module_constants: HashMap<(ModuleId, String), ConstantValue>,
+    bnmath_modules: HashSet<ModuleId>,
+    standard_modules: HashSet<ModuleId>,
+    executable_module: bool,
+    allow_variable_vectors: bool,
+    collect_warnings: bool,
+) -> Result<SemanticAnalysis, Diagnostic> {
     let mut analyzer = Analyzer {
         globals: HashMap::new(),
         members: HashMap::new(),
@@ -34,6 +88,8 @@ pub(crate) fn analyze_with_modules(
         layouts: HashMap::new(),
         executable_module,
         allow_variable_vectors,
+        collect_warnings,
+        warnings: Vec::new(),
     };
     analyzer.declare_globals(program)?;
     validate_implemented_interfaces(
@@ -43,14 +99,118 @@ pub(crate) fn analyze_with_modules(
         &analyzer.members,
     )?;
     analyzer.analyze_declarations(program)?;
-    Ok(SemanticModel {
+    let model = SemanticModel {
         symbols: analyzer.symbols,
         expressions: analyzer.expressions,
         layouts: analyzer.layouts,
         base_classes: analyzer.base_classes,
         bnmath_modules: analyzer.bnmath_modules,
         module_constants,
-    })
+    };
+    let mut warnings = analyzer.warnings;
+    if collect_warnings {
+        warnings.extend(unused_binding_warnings(program, &model));
+        warnings.extend(unused_import_warnings(program, &model));
+    }
+    Ok(SemanticAnalysis { model, warnings })
+}
+
+fn unused_import_warnings(program: &Program, model: &SemanticModel) -> Vec<Diagnostic> {
+    let used_symbols = model
+        .expressions
+        .iter()
+        .filter_map(|expression| expression.symbol_id)
+        .collect::<HashSet<_>>();
+    program
+        .items
+        .iter()
+        .filter_map(|item| {
+            let Item::Import { alias, span, .. } = item else {
+                return None;
+            };
+            let symbol = model
+                .symbols
+                .iter()
+                .find(|symbol| symbol.name == *alias && symbol.span == *span)?;
+            (!used_symbols.contains(&symbol.id)).then(|| Diagnostic {
+                code: "UNUSED_IMPORT",
+                message: format!("import '{alias}' is never used"),
+                span: *span,
+            })
+        })
+        .collect()
+}
+
+fn unused_binding_warnings(program: &Program, model: &SemanticModel) -> Vec<Diagnostic> {
+    let used_symbols = model
+        .expressions
+        .iter()
+        .filter_map(|expression| expression.symbol_id)
+        .collect::<HashSet<_>>();
+    let mut candidates = Vec::new();
+    for item in &program.items {
+        match item {
+            Item::Constant { .. } | Item::Import { .. } => {}
+            Item::Declaration { statements, .. } => {
+                binding_candidates(statements, &mut candidates);
+            }
+        }
+    }
+    candidates
+        .into_iter()
+        .filter_map(|(name, span)| {
+            let symbol = model
+                .symbols
+                .iter()
+                .find(|symbol| symbol.name == name && symbol.span == span)?;
+            (!used_symbols.contains(&symbol.id)).then(|| Diagnostic {
+                code: "UNUSED_BINDING",
+                message: format!("binding '{name}' is never read"),
+                span,
+            })
+        })
+        .collect()
+}
+
+fn binding_candidates(statements: &[Statement], candidates: &mut Vec<(String, Span)>) {
+    for statement in statements {
+        match statement {
+            Statement::Binding {
+                name,
+                additional_names,
+                additional_name_spans,
+                span,
+                ..
+            } => {
+                candidates.push((name.clone(), *span));
+                candidates.extend(additional_names.iter().enumerate().map(|(index, name)| {
+                    (
+                        name.clone(),
+                        additional_name_spans.get(index).copied().unwrap_or(*span),
+                    )
+                }));
+            }
+            Statement::If {
+                branches,
+                otherwise,
+                ..
+            } => {
+                for branch in branches {
+                    binding_candidates(&branch.body.statements, candidates);
+                }
+                if let Some(otherwise) = otherwise {
+                    binding_candidates(&otherwise.statements, candidates);
+                }
+            }
+            Statement::While { body, .. }
+            | Statement::Repeat { body, .. }
+            | Statement::For { body, .. }
+            | Statement::MemberFunction {
+                body: Some(body), ..
+            } => binding_candidates(&body.statements, candidates),
+            _ => {}
+        }
+    }
 }
 
 pub(crate) fn exported_declarations(module: ModuleId, program: &Program) -> HashMap<String, Type> {

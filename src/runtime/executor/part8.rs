@@ -208,7 +208,7 @@ impl Executor<'_, '_> {
                         });
                     }
                 };
-                let mut rows = match parse_csv(&text, separator[0]) {
+                let mut rows = match self.host.data_provider.read_csv(&text, separator[0]) {
                     Ok(rows) => rows,
                     Err(message) => {
                         return Ok(Value::Error { code: 1, message });

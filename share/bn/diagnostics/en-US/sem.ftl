@@ -1,0 +1,25 @@
+# Semantic diagnostics
+type-mismatch = {$message}
+    .title = Type mismatch
+    .code = TYPE_MISMATCH
+    .label = incompatible types
+    .help = add an explicit conversion or change the declaration
+numeric-overflow = {$message}
+    .title = Numeric overflow
+    .code = NUMERIC_OVERFLOW
+    .label = overflow
+    .help = use a wider numeric type or reduce the value
+unused-binding = {$message}
+    .title = Unused binding
+    .code = UNUSED_BINDING
+    .label = never read
+    .help = remove the binding or use it
+unused-import = {$message}
+    .title = Unused import
+    .code = UNUSED_IMPORT
+    .label = never used
+    .help = remove the import
+unreachable-code = {$message}
+    .title = Unreachable code
+    .code = UNREACHABLE_CODE
+    .label = unreachable

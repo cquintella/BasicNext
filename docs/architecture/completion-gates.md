@@ -3,10 +3,23 @@
 > Canonical: `docs/architecture/completion-gates.md`  
 > **Locked direction 2026-09-05.**  
 > Acyclic DAG and smoke tests are **necessary** and **not sufficient** for semantic consistency.
+>
+> **Production bar (2026-09-06):** the product is in production. Gates below are not
+> satisfiable by stubs, EXAMPLE fiction, or “MVP that still mis-classifies errors.”
+> Shrink announced support rather than shipping incomplete classification.
 
 ---
 
 ## Problem with weak gates
+
+**Carlos-approved 0.4.5 completion clarification:** existing functionality must
+have complete contracts and connected declaration, analysis, IR, runtime,
+advertised backend, diagnostic and test paths. Increased release effort is
+preferable to leaving these paths incomplete. Earlier language about shrinking
+support applies only to honestly bounded new/unannounced support; it cannot
+hide unfinished existing features or remove behavior users rely on. Stubs,
+fake returns and partial gates never close an activity. Explicit non-goals
+remain outside scope.
 
 As written historically in [`../../ongoing/bucket-0.4.5.md`](../../ongoing/bucket-0.4.5.md):
 

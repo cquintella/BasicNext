@@ -1,113 +1,153 @@
 # Common Programming Concepts
 
-This chapter covers the fundamental building blocks of a Basic Next program: how to store data, manipulate values, and interact with the console.
+This chapter covers the fundamental building blocks of Basic Next: how to document code, store data in variables and constants, inspect types, and interact with the console.
 
 ## Comments
 
-There atwo way do do comments in a Basic Next code, using `//`for a line commment, oy `/*`with `*/` to define a multi line comment block.
+Comments help document the intent and operation of your code. Basic Next supports two comment styles:
+
+- Single-line comments starting with `//`
+- Multi-line comments enclosed within `/*` and `*/`
 
 ```basic
-// this is a single line comment
+// This is a single-line comment
 
-/* HERE
-We have a multiline
-comment */
+/*
+This is a multi-line comment.
+It spans several lines.
+*/
 ```
 
-Comentários são importantes para explicar e contextualizar o código. Dizem que bons códigos não precisam ser comentados, mas eu discordo disso fortemente. Talvez dentro da mesma equipe não precise, porque todos compartilham uma cultura comum, mas grande parte do desenvolvimento, principalmente o open source, vai ter seu software lido por pessoas de diferentes culturas, vivências e habilidades de desenvolvimento. Eu aprendi a sempre documentar claramente cada arquivo, função, classe, programa. 
+Code tells the machine what to do, while comments tell other developers why it was done. Even when writing software for yourself, notes on decisions and edge cases save significant time later.
 
-Algumas dicas são:
-- Explique o porque e não o que o código faz. O porque não é óbvio, mas o que tá escrito em linguaguem de programação.
-- Documente as APIs Públicas.
-- Mantenha os comentários atualizados, sempre que acabar de altera um código leia se os comentários estão condizentes.
-- Não repita o que o código diz
-- Use tags padronizados: TODO, FIX, TEMP.
+Helpful guidelines for writing comments:
+- Explain the rationale (*why*), not just the syntax (*what*).
+- Document public functions, classes, and exported module APIs.
+- Keep comments updated whenever you modify the corresponding code.
+- Avoid obvious comments that only repeat what the code already states.
+- Use recognizable markers for work in progress: `TODO`, `FIXME`, or `NOTE`.
 
 ## Variables
 
-Basic Next enforces strict typing. Every variable must explicitly state its type. The language does not use type inference for bindings.
+Basic Next is an explicitly typed language. Every variable must have a declared type, and that type remains fixed throughout the variable's lifetime. An `INTEGER` variable, for example, can never hold a `FLOAT` value.
 
-Isso significa que uma variável come;ca com um tipo vai até o final com ele. Não pode guardar FLOAT em uma variável INTEGER.
-
-Variables are declared using the `LET` keyword (statement), followed by the name, `AS`, the type, and an optional initializer. You can also declare multiple variables of the same type in a single `LET` binding:
+Variables are declared using the `LET` keyword, followed by the name, `AS`, the type, and an optional initial value:
 
 ```basic
 LET counter AS INTEGER = 10
 LET name AS STRING = "Alice"
-LET c, v AS STRING = "auto", "bus"
+LET first, second AS STRING = "auto", "bus"
 ```
 
-If you omit the initializer, the variable is initialized to its type's default value. In Basic Next, there is no uninitialized storage. The default for numeric types is `0` or `0.0`, `BOOLEAN` defaults to `FALSE`, and `STRING` defaults to an empty string `""`.
+If you do not provide an initial value, Basic Next initializes the variable to a safe default for its type:
+- Numeric types default to `0` or `0.0`
+- `BOOLEAN` defaults to `FALSE`
+- `STRING` defaults to an empty string `""`
 
 ```basic
-LET score AS INTEGER  // Initialized to 0
-LET active AS BOOLEAN // Initialized to FALSE
+LET score AS INTEGER   // Initialized to 0
+LET active AS BOOLEAN  // Initialized to FALSE
 ```
-Sempre precisa declar ao tipo de variável que está sendo criada. O exemplo abaixo não é válido
+
+Omitting the type annotation in a `LET` binding causes a compile-time error:
 
 ```basic
-LET G="Google"
-> error[E0100]: a binding declaration requires AS TYPE
+LET message = "Hello"
+// error[E0100]: a binding declaration requires AS TYPE
 ```
 
-## Constantes
+## Constants
 
-Constants are declared using the `CONST` keyword. They must always include an initializer and cannot be reassigned:
+Constants store fixed values that cannot be reassigned once defined. They are declared with the `CONST` keyword and always require an initial value:
 
 ```basic
 CONST MAX_USERS AS INTEGER = 100
 ```
 
-*Note: `CONST` fixes the binding itself. It does not make a referenced class or allocated pointer deeply immutable.* 
-
-Podemos ter constantes tendo seu tipo deduzido do valor literal carregado.
+Basic Next can infer the type of a constant when the assigned value is a direct scalar literal:
+- Whole numbers infer `INTEGER` (`INT32`)
+- Decimal numbers infer `FLOAT` (`FLOAT64`)
+- `TRUE` or `FALSE` infer `BOOLEAN`
+- Quoted text infers `STRING`
 
 ```basic
-CONST VEL=100  // Vai deduzir que VEL é um INT32
+CONST LIMIT = 100        // Inferred as INT32
+CONST RATIO = 3.14159    // Inferred as FLOAT64
+CONST ACTIVE = TRUE      // Inferred as BOOLEAN
+CONST APP_NAME = "MyApp" // Inferred as STRING
 ```
-mas essa forma é somente para literais existem casos que não vão funcionar. Então como regra e estilo recomendamos que usa a forma complera
+
+When you need a specific integer width or signedness (such as `UINT32` or `INT64`), provide the type explicitly:
+
+```basic
+CONST BUFFER_SIZE AS UINT32 = 4096
+```
+
+Explicit type annotations are also required when initializing constants from expressions, vectors, or special values like `NULL` or `EOF`.
+
+`CONST` prevents reassigning the variable name. It does not make referenced heap objects or pointers deeply immutable.
+
+## Type Inspection with `TYPEOF`
+
+Basic Next provides a built-in `TYPEOF(expression)` function to inspect the static type of any value or variable. It returns the canonical type name as a `STRING`.
+
+Standard aliases are reported using their underlying representation:
+- `INTEGER` is reported as `"INT32"`
+- `FLOAT` is reported as `"FLOAT64"`
+- Explicit types return their canonical name (`"BOOLEAN"`, `"STRING"`, `"UINT32"`, etc.)
+
+```basic
+CONST count = 10
+CONST rate = 10.2
+LET flag AS BOOLEAN = TRUE
+LET message AS STRING = "Basic Next"
+
+PRINT TYPEOF(count)    // Outputs: INT32
+PRINT TYPEOF(rate)     // Outputs: FLOAT64
+PRINT TYPEOF(flag)     // Outputs: BOOLEAN
+PRINT TYPEOF(message)  // Outputs: STRING
+```
 
 ## Primitive Types
 
-Basic Next features a rich set of primitive types with guaranteed, cross-platform representations.
+Basic Next provides clear primitive types with guaranteed, cross-platform behavior.
 
 ### Numeric Types
 
-The default numeric types are `INTEGER` (an alias for a signed 32-bit integer) and `FLOAT` (an alias for an IEEE 754 64-bit floating-point number). 
+The standard numeric types are `INTEGER` (a signed 32-bit integer, `INT32`) and `FLOAT` (an IEEE 754 64-bit floating-point number, `FLOAT64`).
 
-When exact memory layout is important, Basic Next provides fixed-width types:
-- **Signed:** `INT8`, `INT16`, `INT32`, `INT64`
-- **Unsigned:** `BYTE` (unsigned 8-bit), `UINT16`, `UINT32`, `UINT64`
+Fixed-width types are available when exact memory layout is needed:
+- **Signed integers:** `INT8`, `INT16`, `INT32`, `INT64`
+- **Unsigned integers:** `BYTE` (unsigned 8-bit), `UINT16`, `UINT32`, `UINT64`
 - **Floating-point:** `FLOAT32`, `FLOAT64`
 
-Integer arithmetic in Basic Next never wraps or saturates implicitly. An operation that produces a result outside the destination type's range raises a `NUMERIC_OVERFLOW` error at runtime. 
+Integer operations in Basic Next never silently wrap around or overflow. If a calculation exceeds the bounds of its type, the program halts with a `NUMERIC_OVERFLOW` error at runtime.
 
-Floating-point numbers follow IEEE 754 semantics and include special values: `NAN` (Not a Number), `INF` (positive infinity), and `-INF` (negative infinity).
+Floating-point numbers support standard IEEE 754 values, including `NAN` (Not a Number), `INF` (positive infinity), and `-INF` (negative infinity).
 
-INTEGER and FLOAT are synonyms to FLOAT32 and INT32, or FLOAT64 and INT64 depending on the machine.
+### Boolean and String Types
 
-### Boolean and String
-
-- `BOOLEAN` represents logical states with the keywords `TRUE` and `FALSE`.
-- `STRING` represents text. Strings are UTF-8 encoded and enclosed in double quotes. Line breaks inside strings are not permitted in version 0.3.
+- `BOOLEAN` represents logical states using `TRUE` and `FALSE`.
+- `STRING` represents UTF-8 encoded text enclosed in double quotes. Line breaks inside string literals are not permitted.
 
 ### Temporal Types
 
-Basic Next treats time as primitive data:
-- `TIMESTAMP`: An alias for `INT64` representing UTC Unix-epoch milliseconds.
-- `DATE`, `TIME`, `TIMEZONE`: Value types representing specific calendar and clock concepts. Their default values are `1970-01-01`, `00:00:00.000`, and `UTC` respectively. 
+Basic Next includes built-in temporal primitives:
+- `TIMESTAMP`: An alias for `INT64` representing milliseconds since the Unix epoch (UTC).
+- `DATE`, `TIME`, and `TIMEZONE`: Dedicated value types for calendar dates and clock times. Their defaults are `1970-01-01`, `00:00:00.000`, and `UTC`.
 
 ## Operators and Expressions
 
-Basic Next expressions are strictly typed. The compiler prevents mixing incompatible types, such as adding a string to a number, without explicit conversion.
+Expressions in Basic Next are strictly typed. Mixing incompatible types without an explicit conversion is rejected by the compiler.
 
-### Arithmetic
+### Arithmetic Operators
 
-The basic arithmetic operators are `+`, `-`, `*`, and `**` (exponentiation). 
-Basic Next distinguishes strictly between integer and floating-point division:
-- `/` always performs floating-point division and returns a `FLOAT`, even if both operands are integers.
-- `DIV` performs Euclidean integer division.
-- `%` performs Euclidean modulo (the remainder is always non-negative).
+The basic arithmetic operators are `+`, `-`, `*`, and `**` (exponentiation).
+
+Division is strictly distinguished:
+- `/` always performs floating-point division and returns a `FLOAT`, even with integer operands.
+- `DIV` performs integer division (truncating towards zero).
+- `%` calculates the integer modulo (remainder).
 
 ```basic
 LET half AS FLOAT = 5 / 2            // 2.5
@@ -115,11 +155,11 @@ LET quotient AS INTEGER = 5 DIV 2    // 2
 LET remainder AS INTEGER = 5 % 2     // 1
 ```
 
-The `+` operator also concatenates `STRING` values.
+The `+` operator is also used to concatenate `STRING` values.
 
 ### Equality and Comparison
 
-Equality (`=`) and inequality (`<>`) require operands to have the exact same static type, outside of allowed numeric widening. You cannot implicitly compare a `STRING` to `FALSE` or an `INTEGER` to a `FLOAT` without explicit conversion.
+Comparisons using `=` (equal) and `<>` (not equal), as well as `<`, `<=`, `>`, and `>=`, require operands to share the same static type:
 
 ```basic
 IF counter = 10 THEN
@@ -129,55 +169,54 @@ END IF
 
 ### Logical and Bitwise Operators
 
-The operators `AND`, `OR`, `NOT`, and `XOR` change their behavior based on the static type of their operands:
-- When used with `BOOLEAN`, they perform logical operations. `AND` and `OR` use short-circuit evaluation.
-- When used with integer types, they perform bitwise operations.
+The operators `AND`, `OR`, `NOT`, and `XOR` adjust their behavior depending on operand types:
+- With `BOOLEAN` operands, they perform short-circuit logical operations.
+- With integer operands, they perform bitwise operations.
 
-Basic Next also provides `SHL` (shift left) and `SHR` (shift right) for integers.
+Basic Next also provides `SHL` (shift left) and `SHR` (shift right) for integer types.
 
 ## Explicit Type Conversion
 
-Because assignments and comparisons do not implicitly widen or coerce values, you must use the `AS` keyword to convert values explicitly:
+Because Basic Next does not perform implicit type coercion, use the `AS` operator when converting values between compatible types:
 
 ```basic
 LET count AS INTEGER = 3
 LET ratio AS FLOAT = count AS FLOAT
 ```
 
-Converting a floating-point number to an integer truncates toward zero. Conversions are checked at runtime: attempting to convert a value that falls outside the target type's range raises an `INVALID_NUMERIC_CONVERSION` error.
+Converting a floating-point number to an integer truncates any fractional portion. If a value falls outside the target type's range, an `INVALID_NUMERIC_CONVERSION` error is raised.
 
-`AS BOOLEAN` is a special case: for numeric types, `0` becomes `FALSE` and any non-zero value (including `NAN`) becomes `TRUE`. For strings, `""` is `FALSE` and any non-empty string is `TRUE`.
+When converting to `BOOLEAN`:
+- Numeric `0` becomes `FALSE`, while any non-zero value becomes `TRUE`.
+- An empty string `""` becomes `FALSE`, while non-empty strings become `TRUE`.
 
-## Type Limints
+## Type Limits
 
-Basic Next has constants for maximal and minimal type values, but the are in the BNMath module, to use it you have to import the module.
+To inspect the minimum and maximum boundaries of numeric types, import the standard `BNMath` module:
 
 ```basic
-IMPORT BNMath as Math
+IMPORT BNMath AS Math
 
-PRINT Math.MIN_INTEGER+" "+Math.MAX_INTEGER,
-PRINT Math.MIN_FLOAT, Math.MAX_FLOAT,
+PRINT Math.MIN_INT32, Math.MAX_INT32
+PRINT Math.MIN_FLOAT, Math.MAX_FLOAT
 PRINT Math.MIN_INT64, Math.MAX_INT64
-PRINT Math.MAXFLOAT_32, Math.MIN_FLOAT32
-
 ```
 
 ## Basic Console I/O
 
-Interacting with the console uses straightforward built-in macros.
+Console output and input are handled through built-in statements:
 
-`PRINT` writes text to standard output and then a line ending. Several
-expressions are concatenated with no separator. With no expression it writes
-a blank line.
+`PRINT` outputs text to the screen followed by a new line. Separating values with a comma (`,`) inserts a single space between them. Using `+` concatenates strings directly without spaces:
 
 ```basic
-PRINT "Processing user:", name
-PRINT "Processing user: " + name
+LET name AS STRING = "Alice"
+PRINT "Processing user:", name       // Prints: Processing user: Alice
+PRINT "Processing user: " + name     // Prints: Processing user: Alice
 ```
 
-The  diference is that using `,` will insert a ` `(space) between the strings, while `+` will concatenate it.
+Calling `PRINT` without arguments prints an empty line.
 
-`INPUT()` reads a line from standard input. Because the input might end, it returns a compound alternative type: `STRING OR EOF`. Statement forms are also available: `INPUT target` and `INPUT "prompt", target`; both assign to a `STRING OR EOF` target.
+`INPUT()` reads a line of text from standard input. Because the stream may terminate, it returns an alternative type: `STRING OR EOF`.
 
 ```basic
 LET line AS STRING OR EOF = INPUT()
@@ -186,14 +225,17 @@ IF line IS EOF THEN
 END IF
 ```
 
-You can also use `INPUT in the classical basic way` printing a string and to a variable.
+Basic Next also supports prompt-style input statements:
 
 ```basic
-INPUT "TYPE THE VALUE OF X than Y: ", X
-INPUT Y
+LET x AS STRING OR EOF
+LET y AS STRING OR EOF
+
+INPUT "Enter value for X: ", x
+INPUT "Enter value for Y: ", y
 ```
 
-To manage the terminal window, pass the `HOST.Console` capability to explicitly access terminal control methods. `HOST.Console` is a primary expression.
+For screen positioning and cursor manipulation, import `HOST.Console`:
 
 ```basic
 IMPORT HOST.Console AS Console
@@ -203,11 +245,6 @@ Console.Beep()
 Console.PrintAt(1, 1, "Top left corner")
 ```
 
+## Changing Console Colors
 
-## Changing Console colors
-
-
--- Tobe implemented
-
-Console.SetBgColor=BLUE
-Console.SetTxColor=BLUE
+Setting foreground and background colors in the terminal is an upcoming feature planned for `HOST.Console`. Dedicated color functions will be added in a future release.

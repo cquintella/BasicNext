@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use crate::{
-    dataframe::DataFrameColumn, diagnostic::Diagnostic, heap::Heap, semantic::FloatType,
+    diagnostic::Diagnostic, heap::Heap,
     source::Span,
 };
 
@@ -22,24 +22,6 @@ pub(super) fn unsigned_indices(values: Vec<i128>) -> Option<Vec<usize>> {
         .into_iter()
         .map(|value| usize::try_from(value).ok())
         .collect()
-}
-
-#[allow(clippy::cast_precision_loss)]
-pub(super) fn dataframe_numeric_values(
-    column: &DataFrameColumn,
-) -> Result<Vec<Value>, &'static str> {
-    let mut values = Vec::new();
-    for value in &column.values {
-        match value {
-            Value::Integer(number, _) => {
-                values.push(Value::Float(*number as f64, FloatType::Float64));
-            }
-            Value::Float(number, _) => values.push(Value::Float(*number, FloatType::Float64)),
-            Value::NotAvailable => {}
-            _ => return Err("column is not numeric"),
-        }
-    }
-    Ok(values)
 }
 
 pub(super) fn collect_indices(

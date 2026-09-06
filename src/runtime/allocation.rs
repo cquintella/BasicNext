@@ -5,7 +5,7 @@
 
 use crate::{
     diagnostic::Diagnostic,
-    semantic::{FloatType, Type, integer_byte_size},
+    types::{integer_byte_size, FloatType, Type},
     source::Span,
 };
 

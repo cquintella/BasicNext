@@ -20,17 +20,34 @@ use std::{
 
 mod civil;
 mod console;
+mod dataframe;
+mod dataframe_abi;
 mod dispatch_abi;
 mod math;
 mod net;
+mod policy;
 mod stats;
 mod terminal;
 
+pub use stats::{Reduction, reduce};
+
 pub use console::{ConsoleError, beep, cls, num_cols, num_rows, print_at};
+pub use dataframe::{
+    DataFrameColumn, DataFrameJoin, DataFrameJoinConfig, DataFrameResource, DataProvider,
+    StandardDataProvider, add_dataframe_column, append_columns, append_rows, column_name,
+    convert_dataframe_column, copy_dataframe_column, dataframe_reduce_column,
+    duplicate_column_names, get_dataframe_cell, join_dataframes, parse_csv, select_dataframe,
+    set_column_label, transpose_dataframe, zscore_column,
+};
+pub use dataframe_abi::*;
 pub use dispatch_abi::*;
 pub use net::{
     Address as NetAddress, AddressesHandle, NeighborError, PingError, PingReply, ReverseError,
     join_resolver_tasks, neighbor, ping, reverse_timeout,
+};
+pub use policy::{
+    POLICY_ALL, POLICY_CLOCK, POLICY_CONSOLE, POLICY_DISPATCH, POLICY_FILESYSTEM, POLICY_INVALID,
+    POLICY_NET, POLICY_OK, POLICY_RANDOM, POLICY_VERSION, bn_rt_policy_init, bn_rt_policy_restrict,
 };
 pub use terminal::terminal_dimensions;
 
@@ -140,6 +157,13 @@ pub extern "C" fn bn_rt_clock_timer() -> i64 {
 #[allow(unsafe_code)] // C ABI export for LLVM-emitted HOST.Console.Cls.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_console_cls() -> i32 {
+    if !policy::allows(policy::POLICY_CONSOLE) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Console is denied by execution policy",
+        );
+        return 2;
+    }
     match cls(&mut LibcStdout) {
         Ok(()) => 0,
         Err(error) => {
@@ -152,6 +176,13 @@ pub extern "C" fn bn_rt_console_cls() -> i32 {
 #[allow(unsafe_code)] // C ABI export for LLVM-emitted HOST.Console.Beep.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_console_beep() -> i32 {
+    if !policy::allows(policy::POLICY_CONSOLE) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Console is denied by execution policy",
+        );
+        return 2;
+    }
     match beep(&mut LibcStdout) {
         Ok(()) => 0,
         Err(error) => {
@@ -164,6 +195,13 @@ pub extern "C" fn bn_rt_console_beep() -> i32 {
 #[allow(unsafe_code)] // C ABI export for LLVM-emitted HOST.Console.PrintAt.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_console_print_at(column: i32, row: i32, text: *const c_char) -> i32 {
+    if !policy::allows(policy::POLICY_CONSOLE) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Console is denied by execution policy",
+        );
+        return 2;
+    }
     let Some(text) = c_str(text) else {
         fail("TYPE_MISMATCH", "PrintAt expects STRING");
         return 1;
@@ -180,6 +218,13 @@ pub extern "C" fn bn_rt_console_print_at(column: i32, row: i32, text: *const c_c
 #[allow(unsafe_code)] // C ABI export for LLVM-emitted HOST.Console.NumCols.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_console_num_cols() -> i32 {
+    if !policy::allows(policy::POLICY_CONSOLE) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Console is denied by execution policy",
+        );
+        return -2;
+    }
     match num_cols() {
         Ok(value) => value,
         Err(error) => {
@@ -287,10 +332,52 @@ pub extern "C" fn bn_rt_math_vmin_i32(ptr: *const i32, len: i32) -> i32 {
     stats::vmin_i32(stats::i32_slice(ptr, len))
 }
 
+#[allow(unsafe_code)] // C ABI: FLOAT[] MIN.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_math_vmin_f64(ptr: *const f64, len: i32) -> f64 {
+    float_slice(ptr, len)
+        .iter()
+        .copied()
+        .reduce(|left, right| {
+            if left.is_nan() || right.is_nan() {
+                f64::NAN
+            } else {
+                left.min(right)
+            }
+        })
+        .unwrap_or_else(|| {
+            math::fail(
+                "INDEX_OUT_OF_BOUNDS",
+                "BNMath reduction received an empty vector",
+            )
+        })
+}
+
 #[allow(unsafe_code)] // C ABI: INTEGER[] MAX.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_math_vmax_i32(ptr: *const i32, len: i32) -> i32 {
     stats::vmax_i32(stats::i32_slice(ptr, len))
+}
+
+#[allow(unsafe_code)] // C ABI: FLOAT[] MAX.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_math_vmax_f64(ptr: *const f64, len: i32) -> f64 {
+    float_slice(ptr, len)
+        .iter()
+        .copied()
+        .reduce(|left, right| {
+            if left.is_nan() || right.is_nan() {
+                f64::NAN
+            } else {
+                left.max(right)
+            }
+        })
+        .unwrap_or_else(|| {
+            math::fail(
+                "INDEX_OUT_OF_BOUNDS",
+                "BNMath reduction received an empty vector",
+            )
+        })
 }
 
 fn reduce_i32(name: &str, ptr: *const i32, len: i32) -> f64 {
@@ -346,6 +433,53 @@ pub extern "C" fn bn_rt_math_variance_i32(ptr: *const i32, len: i32) -> f64 {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_math_mode_i32(ptr: *const i32, len: i32, out: *mut f64) -> i32 {
     match stats::reduce("MODE", stats::i32_slice(ptr, len)) {
+        stats::Reduction::Na => 1,
+        stats::Reduction::Float(value) => {
+            if !out.is_null() {
+                unsafe { out.write(value) };
+            }
+            0
+        }
+    }
+}
+
+fn reduce_f64(name: &str, ptr: *const f64, len: i32) -> stats::Reduction {
+    stats::reduce_f64(name, float_slice(ptr, len))
+}
+
+#[allow(unsafe_code)] // C ABI: FLOAT[] buffer from LLVM alloca or interpreter adapter.
+fn float_slice<'a>(ptr: *const f64, len: i32) -> &'a [f64] {
+    if ptr.is_null() || len <= 0 {
+        return &[];
+    }
+    unsafe { std::slice::from_raw_parts(ptr, usize::try_from(len).unwrap_or(0)) }
+}
+
+macro_rules! float_reduction {
+    ($export:ident, $name:literal) => {
+        #[allow(unsafe_code)]
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $export(ptr: *const f64, len: i32) -> f64 {
+            match reduce_f64($name, ptr, len) {
+                stats::Reduction::Float(value) => value,
+                stats::Reduction::Na => f64::NAN,
+            }
+        }
+    };
+}
+
+float_reduction!(bn_rt_math_mean_f64, "MEAN");
+float_reduction!(bn_rt_math_median_f64, "MEDIAN");
+float_reduction!(bn_rt_math_quartile1_f64, "QUARTILE1");
+float_reduction!(bn_rt_math_quartile3_f64, "QUARTILE3");
+float_reduction!(bn_rt_math_range_f64, "RANGE");
+float_reduction!(bn_rt_math_stdev_f64, "STDEV");
+float_reduction!(bn_rt_math_variance_f64, "VARIANCE");
+
+#[allow(unsafe_code)] // C ABI: MODE writes *out and returns 1 for NA.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_math_mode_f64(ptr: *const f64, len: i32, out: *mut f64) -> i32 {
+    match reduce_f64("MODE", ptr, len) {
         stats::Reduction::Na => 1,
         stats::Reduction::Float(value) => {
             if !out.is_null() {
@@ -458,6 +592,13 @@ pub extern "C" fn bn_rt_str_index(text: *const c_char, index: i32) -> *mut c_cha
 #[allow(unsafe_code)] // C ABI export for LLVM-emitted HOST.Console.NumRows.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_console_num_rows() -> i32 {
+    if !policy::allows(policy::POLICY_CONSOLE) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Console is denied by execution policy",
+        );
+        return -2;
+    }
     match num_rows() {
         Ok(value) => value,
         Err(error) => {
@@ -483,6 +624,13 @@ fn c_string(text: &str) -> *mut c_char {
 #[allow(unsafe_code)] // C ABI for HOST.Net.Address.Parse.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_address_parse(text: *const c_char, out: *mut *mut c_char) -> i32 {
+    if !policy::allows(policy::POLICY_NET) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Net is denied by execution policy",
+        );
+        return 2;
+    }
     let Some(text) = c_str(text) else {
         unsafe {
             if !out.is_null() {
@@ -522,6 +670,13 @@ pub extern "C" fn bn_rt_net_ping(
     out: *mut *mut c_char,
     out_rtt: *mut i64,
 ) -> i32 {
+    if !policy::allows(policy::POLICY_NET) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Net is denied by execution policy",
+        );
+        return 2;
+    }
     let Some(text) = c_str(address) else {
         unsafe {
             if !out.is_null() {
@@ -581,6 +736,13 @@ pub extern "C" fn bn_rt_net_reverse(
     timeout_ms: i32,
     out: *mut *mut c_char,
 ) -> i32 {
+    if !policy::allows(policy::POLICY_NET) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Net is denied by execution policy",
+        );
+        return 2;
+    }
     let Some(text) = c_str(address) else {
         unsafe {
             if !out.is_null() {
@@ -624,6 +786,13 @@ pub extern "C" fn bn_rt_net_reverse(
 #[allow(unsafe_code)] // C ABI for HOST.Net.Neighbor.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_neighbor(address: *const c_char, out: *mut *mut c_char) -> i32 {
+    if !policy::allows(policy::POLICY_NET) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Net is denied by execution policy",
+        );
+        return 2;
+    }
     let Some(text) = c_str(address) else {
         unsafe {
             if !out.is_null() {
@@ -669,6 +838,13 @@ pub extern "C" fn bn_rt_net_resolve(
     timeout_ms: i32,
     out: *mut *mut std::ffi::c_void,
 ) -> i32 {
+    if !policy::allows(policy::POLICY_NET) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Net is denied by execution policy",
+        );
+        return 2;
+    }
     let Some(host) = c_str(host) else {
         unsafe {
             if !out.is_null() {
@@ -710,6 +886,13 @@ pub extern "C" fn bn_rt_net_resolve(
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_addresses_count(handle: *const std::ffi::c_void) -> i32 {
+    if !policy::allows(policy::POLICY_NET) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Net is denied by execution policy",
+        );
+        return -2;
+    }
     if handle.is_null() {
         return -1;
     }
@@ -724,6 +907,13 @@ pub extern "C" fn bn_rt_net_addresses_get(
     index: i32,
     out: *mut *mut c_char,
 ) -> i32 {
+    if !policy::allows(policy::POLICY_NET) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Net is denied by execution policy",
+        );
+        return 2;
+    }
     if handle.is_null() || index < 0 {
         return 1;
     }
@@ -756,6 +946,13 @@ pub extern "C" fn bn_rt_net_addresses_free(handle: *mut std::ffi::c_void) {
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_udp_bind(address: *const c_char, port: i32, out: *mut i64) -> i32 {
+    if !policy::allows(policy::POLICY_NET) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Net is denied by execution policy",
+        );
+        return 2;
+    }
     let Some(address) = c_str(address) else {
         return 1;
     };
@@ -832,6 +1029,13 @@ pub extern "C" fn bn_rt_net_udp_send_to(
     length: i32,
     out_written: *mut i32,
 ) -> i32 {
+    if !policy::allows(policy::POLICY_NET) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Net is denied by execution policy",
+        );
+        return 2;
+    }
     let Ok(handle) = usize::try_from(handle) else {
         return 1;
     };
@@ -882,6 +1086,13 @@ pub extern "C" fn bn_rt_net_udp_receive(
     out_port: *mut i32,
     out_truncated: *mut i32,
 ) -> i32 {
+    if !policy::allows(policy::POLICY_NET) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Net is denied by execution policy",
+        );
+        return 2;
+    }
     let Ok(handle) = usize::try_from(handle) else {
         return 1;
     };
@@ -937,6 +1148,13 @@ pub extern "C" fn bn_rt_net_udp_receive_handle(
     timeout_ms: i32,
     out: *mut i64,
 ) -> i32 {
+    if !policy::allows(policy::POLICY_NET) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Net is denied by execution policy",
+        );
+        return 2;
+    }
     let Ok(handle) = usize::try_from(handle) else {
         return 1;
     };
@@ -1080,6 +1298,13 @@ pub extern "C" fn bn_rt_net_tcp_connect(
     timeout_ms: i32,
     out: *mut i64,
 ) -> i32 {
+    if !policy::allows(policy::POLICY_NET) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Net is denied by execution policy",
+        );
+        return 2;
+    }
     let Some(address) = c_str(address) else {
         return 1;
     };
@@ -1108,6 +1333,13 @@ pub extern "C" fn bn_rt_net_tcp_connect(
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_tcp_listen(address: *const c_char, port: i32, out: *mut i64) -> i32 {
+    if !policy::allows(policy::POLICY_NET) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Net is denied by execution policy",
+        );
+        return 2;
+    }
     let Some(address) = c_str(address) else {
         return 1;
     };
@@ -1140,6 +1372,13 @@ pub extern "C" fn bn_rt_net_tcp_listen_with_backlog(
     backlog: i32,
     out: *mut i64,
 ) -> i32 {
+    if !policy::allows(policy::POLICY_NET) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Net is denied by execution policy",
+        );
+        return 2;
+    }
     let Some(address) = c_str(address) else {
         return 1;
     };
@@ -1175,6 +1414,13 @@ pub extern "C" fn bn_rt_net_tcp_listen_with_backlog(
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_tcp_accept(handle: i64, timeout_ms: i32, out: *mut i64) -> i32 {
+    if !policy::allows(policy::POLICY_NET) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Net is denied by execution policy",
+        );
+        return 2;
+    }
     let Ok(handle) = usize::try_from(handle) else {
         return 1;
     };
@@ -1289,6 +1535,13 @@ pub extern "C" fn bn_rt_net_tcp_read(
     length: i32,
     out_read: *mut i32,
 ) -> i32 {
+    if !policy::allows(policy::POLICY_NET) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Net is denied by execution policy",
+        );
+        return 2;
+    }
     let Ok(handle) = usize::try_from(handle) else {
         return 1;
     };
@@ -1321,6 +1574,13 @@ pub extern "C" fn bn_rt_net_tcp_write(
     length: i32,
     out_written: *mut i32,
 ) -> i32 {
+    if !policy::allows(policy::POLICY_NET) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Net is denied by execution policy",
+        );
+        return 2;
+    }
     let Ok(handle) = usize::try_from(handle) else {
         return 1;
     };
@@ -1385,6 +1645,7 @@ pub(crate) fn network_test_lock() -> std::sync::MutexGuard<'static, ()> {
 
 #[cfg(test)]
 mod tests {
+    use super::{POLICY_ALL, POLICY_CONSOLE, POLICY_NET, POLICY_OK, POLICY_VERSION};
     use super::{bn_rt_net_addresses_count, bn_rt_net_addresses_free, bn_rt_net_resolve};
     use super::{
         bn_rt_net_buffer_free, bn_rt_net_handle_close, bn_rt_net_string_free, bn_rt_net_udp_bind,
@@ -1399,6 +1660,26 @@ mod tests {
     use std::io::{Read, Write};
     use std::net::TcpStream as StdTcpStream;
     use std::time::{Duration, UNIX_EPOCH};
+
+    #[test]
+    fn console_c_abi_rechecks_execution_policy_at_call_boundary() {
+        super::policy::reset_for_tests();
+        assert_eq!(
+            super::bn_rt_policy_init(POLICY_VERSION, POLICY_ALL),
+            POLICY_OK
+        );
+        assert_eq!(
+            super::bn_rt_policy_restrict(POLICY_ALL & !(POLICY_CONSOLE | POLICY_NET)),
+            POLICY_OK
+        );
+        assert_eq!(super::bn_rt_console_beep(), 2);
+        assert_eq!(super::bn_rt_net_addresses_count(std::ptr::null()), -2);
+        assert_eq!(
+            super::bn_rt_net_addresses_get(std::ptr::null(), 0, std::ptr::null_mut()),
+            2
+        );
+        super::policy::reset_for_tests();
+    }
 
     #[test]
     fn timestamp_before_epoch_is_negative() {

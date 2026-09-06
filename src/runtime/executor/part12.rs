@@ -31,7 +31,19 @@ impl Executor<'_, '_> {
             let right = self.dataframes.get(&other_id).ok_or_else(|| {
                 runtime_error("USE_AFTER_DELETE", "DataFrame handle is invalid", span)
             })?;
-            let frame = match join_dataframes(left, right, left_label, right_label, kind, equals) {
+            let not_available = Value::NotAvailable;
+            let frame = match join_dataframes(
+                left,
+                right,
+                &DataFrameJoinConfig {
+                    left_label,
+                    right_label,
+                    kind,
+                    equals,
+                    is_not_available: super::super::is_not_available,
+                    not_available: &not_available,
+                },
+            ) {
                 Ok(frame) => frame,
                 Err(message) => return Ok(Value::Error { code: 1, message }),
             };
@@ -57,73 +69,28 @@ impl Executor<'_, '_> {
                 runtime_error("USE_AFTER_DELETE", "DataFrame handle is invalid", span)
             })?;
             if method == "AppendRows" {
-                if left.columns.len() != right.columns.len()
-                    || left
-                        .columns
-                        .iter()
-                        .zip(&right.columns)
-                        .any(|(left, right)| left.name != right.name)
-                {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "column layouts differ".into(),
-                    });
-                }
-                let mut columns = left.columns.clone();
-                for (column, other) in columns.iter_mut().zip(&right.columns) {
-                    let left_type = column
-                        .values
-                        .iter()
-                        .find(|value| !matches!(value, Value::NotAvailable))
-                        .map(std::mem::discriminant);
-                    let right_type = other
-                        .values
-                        .iter()
-                        .find(|value| !matches!(value, Value::NotAvailable))
-                        .map(std::mem::discriminant);
-                    if left_type.is_some() && right_type.is_some() && left_type != right_type {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: "column types differ".into(),
-                        });
-                    }
-                    column.values.extend(other.values.clone());
-                }
+                let columns = match append_rows(
+                    left,
+                    right,
+                    super::super::is_not_available,
+                    |left, right| std::mem::discriminant(left) == std::mem::discriminant(right),
+                ) {
+                    Ok(frame) => frame,
+                    Err(message) => return Ok(Value::Error { code: 1, message }),
+                };
                 let new_id = self.next_dataframe;
                 self.next_dataframe += 1;
                 self.dataframes
-                    .insert(new_id, DataFrameResource { columns });
+                    .insert(new_id, columns);
                 return Ok(Value::DataFrame(new_id));
             }
-            let rows = left.columns.first().map_or(0, |column| column.values.len());
-            if rows
-                != right
-                    .columns
-                    .first()
-                    .map_or(0, |column| column.values.len())
-            {
-                return Ok(Value::Error {
-                    code: 1,
-                    message: "row counts differ".into(),
-                });
-            }
-            if left.columns.iter().any(|left_column| {
-                right
-                    .columns
-                    .iter()
-                    .any(|right_column| left_column.name == right_column.name)
-            }) {
-                return Ok(Value::Error {
-                    code: 1,
-                    message: "duplicate column label".into(),
-                });
-            }
-            let mut columns = left.columns.clone();
-            columns.extend(right.columns.clone());
+            let columns = match append_columns(left, right) {
+                Ok(frame) => frame,
+                Err(message) => return Ok(Value::Error { code: 1, message }),
+            };
             let new_id = self.next_dataframe;
             self.next_dataframe += 1;
-            self.dataframes
-                .insert(new_id, DataFrameResource { columns });
+            self.dataframes.insert(new_id, columns);
             Ok(Value::DataFrame(new_id))
     }
 }

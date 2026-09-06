@@ -14,9 +14,21 @@ import tempfile
 from typing import Sequence
 
 
-def run(command: Sequence[str], *, timeout: float = 30.0) -> subprocess.CompletedProcess[bytes]:
+def run(
+    command: Sequence[str],
+    *,
+    input: bytes | None = None,
+    timeout: float = 30.0,
+) -> subprocess.CompletedProcess[bytes]:
     try:
-        result = subprocess.run(command, capture_output=True, check=False, timeout=timeout)
+        result = subprocess.run(
+            command,
+            input=input,
+            stdin=subprocess.DEVNULL if input is None else None,
+            capture_output=True,
+            check=False,
+            timeout=timeout,
+        )
     except subprocess.TimeoutExpired as error:
         report = {
             "command": [str(item) for item in command],

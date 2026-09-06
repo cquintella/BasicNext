@@ -11,11 +11,15 @@ use bn::{
 fn span() -> Span {
     Span {
         start: Position {
+            source_id: Position::UNKNOWN_SOURCE,
+            revision: Position::UNKNOWN_REVISION,
             offset: 0,
             line: 1,
             column: 1,
         },
         end: Position {
+            source_id: Position::UNKNOWN_SOURCE,
+            revision: Position::UNKNOWN_REVISION,
             offset: 1,
             line: 1,
             column: 2,
