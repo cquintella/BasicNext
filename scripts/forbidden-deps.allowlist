@@ -23,6 +23,7 @@ src/runtime/numeric.rs:8:    semantic::{FloatType, IntegerType, Type},
 src/runtime/executor/part3.rs:341:                    "Id" => { require_arity(name, arguments, 1, span)?; Ok(Value::Integer(i128::from(ticket.id()), crate::semantic::IntegerType::Int32)) }
 src/runtime/executor/part3.rs:342:                    "Status" => { require_arity(name, arguments, 1, span)?; Ok(Value::Integer(i128::from(ticket.status()), crate::semantic::IntegerType::Int32)) }
 src/runtime/tests.rs:42:        let models = crate::semantic::analyze_modules(&graph).expect("analyze callback fixture");
+src/runtime/tests.rs:77:        let models = crate::semantic::analyze_modules(&graph).expect("analyze callback fixture");
 ## S1.4 / W5 freeze: public IR model retains semantic Type until the type-model
 ## migration. SymbolId and ModuleId are now IR-owned.
 src/ir/model.rs:7:use crate::{semantic::Type, source::Span};
