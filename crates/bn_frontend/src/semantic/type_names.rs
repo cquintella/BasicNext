@@ -32,15 +32,15 @@ pub(crate) fn pointer_element_type(parts: &[String]) -> Type {
         return type_from_name(first);
     }
     let mut name = first.clone();
-    let mut suffix = element[1..].chunks_exact(2);
-    for pair in &mut suffix {
+    let (suffix, remainder) = element[1..].as_chunks::<2>();
+    for pair in suffix {
         if pair[0] != "Dot" {
             return Type::Unknown;
         }
         name.push('.');
         name.push_str(&pair[1]);
     }
-    if !suffix.remainder().is_empty() {
+    if !remainder.is_empty() {
         return Type::Unknown;
     }
     type_from_name(&name)

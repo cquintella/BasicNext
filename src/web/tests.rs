@@ -917,6 +917,23 @@ fn egress_policy_is_immutable_and_fail_closed() {
         .collect::<Vec<_>>()
         .join(",");
     assert!(super::EgressPolicy::from_csv(&too_many, "", "", 1, 1000).is_err());
+
+    // Multi-candidate filtering checks on EgressPolicy directly
+    let multi_ips = [
+        "100.64.0.1".parse::<IpAddr>().unwrap(),
+        "93.184.216.34".parse::<IpAddr>().unwrap(),
+        "1.1.1.1".parse::<IpAddr>().unwrap(),
+    ];
+    let filtered = policy
+        .filter_allowed_addresses("http", 80, &multi_ips)
+        .unwrap();
+    assert_eq!(filtered, vec!["93.184.216.34".parse::<IpAddr>().unwrap()]);
+    assert!(
+        policy
+            .filter_allowed_addresses("http", 80, &["100.64.0.1".parse::<IpAddr>().unwrap()])
+            .is_err()
+    );
+    assert!(policy.filter_allowed_addresses("http", 80, &[]).is_err());
 }
 
 #[test]

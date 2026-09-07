@@ -145,12 +145,26 @@ fn c_str<'a>(ptr: *const c_char) -> Option<&'a str> {
 #[allow(unsafe_code)] // C ABI export for LLVM-emitted HOST.Clock.Now.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_clock_now() -> i64 {
+    if !policy::allows(policy::POLICY_CLOCK) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Clock is denied by execution policy",
+        );
+        return -1;
+    }
     timestamp_ms()
 }
 
 #[allow(unsafe_code)] // C ABI export for LLVM-emitted HOST.Clock.Timer.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_clock_timer() -> i64 {
+    if !policy::allows(policy::POLICY_CLOCK) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Clock is denied by execution policy",
+        );
+        return -1;
+    }
     monotonic_ns()
 }
 
@@ -1937,5 +1951,19 @@ mod tests {
         bn_rt_net_string_free(rendered.cast());
         assert_eq!(bn_rt_net_handle_close(accepted), 0);
         assert_eq!(bn_rt_net_handle_close(listener), 0);
+    }
+
+    #[test]
+    fn clock_functions_respect_policy_clock() {
+        super::policy::reset_for_tests();
+        assert!(super::bn_rt_clock_now() > 0);
+        assert!(super::bn_rt_clock_timer() >= 0);
+
+        // Restrict policy to exclude POLICY_CLOCK
+        super::policy::bn_rt_policy_restrict(super::policy::POLICY_CONSOLE);
+        assert_eq!(super::bn_rt_clock_now(), -1);
+        assert_eq!(super::bn_rt_clock_timer(), -1);
+
+        super::policy::reset_for_tests();
     }
 }

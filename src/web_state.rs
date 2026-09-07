@@ -171,6 +171,153 @@ mod tests {
         assert!(page.text("script").is_err());
         assert!(page.text("div").is_err());
     }
+
+    #[test]
+    fn format_set_cookie_serializes_options_correctly() {
+        let options = CookieOptions {
+            secure: true,
+            http_only: true,
+            same_site: SameSite::Lax,
+        };
+        let cookie = options
+            .format_set_cookie(
+                "session",
+                "abc123",
+                Some("example.test"),
+                "/",
+                Some(Duration::from_secs(3600)),
+            )
+            .unwrap();
+        assert_eq!(
+            cookie,
+            "session=abc123; Path=/; Domain=example.test; Max-Age=3600; Secure; HttpOnly; SameSite=Lax"
+        );
+    }
+
+    #[test]
+    fn format_set_cookie_rejects_invalid_chars() {
+        let options = CookieOptions::default();
+        assert!(
+            options
+                .format_set_cookie("bad=name", "123", None, "/", None)
+                .is_err()
+        );
+        assert!(
+            options
+                .format_set_cookie("name", "val;ue", None, "/", None)
+                .is_err()
+        );
+        assert!(
+            options
+                .format_set_cookie("name", "val\nue", None, "/", None)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn response_cookie_rejects_secure_on_cleartext_accepts_on_tls() {
+        let mut res = crate::web::Response::new();
+        let options = CookieOptions {
+            secure: true,
+            http_only: true,
+            same_site: SameSite::Strict,
+        };
+        // Cleartext: must be rejected
+        let err = res.set_cookie(
+            "sid",
+            "token123",
+            None,
+            "/",
+            Some(Duration::from_secs(60)),
+            options,
+            false,
+        );
+        assert!(err.is_err());
+        assert_eq!(
+            err.unwrap_err(),
+            "Secure cookies cannot be sent over cleartext HTTP"
+        );
+        assert!(res.headers.is_empty());
+
+        // Insecure cookie on cleartext is allowed
+        let insecure = CookieOptions {
+            secure: false,
+            http_only: true,
+            same_site: SameSite::Lax,
+        };
+        assert!(
+            res.set_cookie("insecure", "val", None, "/", None, insecure, false)
+                .is_ok()
+        );
+        assert_eq!(res.headers.len(), 1);
+        assert_eq!(res.headers[0].0, "set-cookie");
+        assert_eq!(
+            res.headers[0].1,
+            "insecure=val; Path=/; HttpOnly; SameSite=Lax"
+        );
+
+        // TLS: secure cookie is accepted
+        assert!(
+            res.set_cookie(
+                "sid",
+                "token123",
+                None,
+                "/",
+                Some(Duration::from_secs(60)),
+                options,
+                true
+            )
+            .is_ok()
+        );
+        assert_eq!(res.headers.len(), 2);
+        assert!(res.headers[1].1.contains("Secure"));
+    }
+
+    #[test]
+    fn response_session_store_lifecycle_headers() {
+        let mut store = SessionStore::new(10, Duration::from_mins(15)).unwrap();
+        let session_id = store.create("user_state_data").unwrap();
+
+        let mut res = crate::web::Response::new();
+        // 1. Set session cookie on create
+        res.set_session_cookie(
+            &session_id,
+            Some("example.com"),
+            "/",
+            Duration::from_mins(15),
+            true,
+        )
+        .unwrap();
+        assert_eq!(res.headers.len(), 1);
+        assert_eq!(res.headers[0].0, "set-cookie");
+        assert!(res.headers[0].1.starts_with(&format!("sid={session_id}; Path=/; Domain=example.com; Max-Age=900; Secure; HttpOnly; SameSite=Lax")));
+
+        // 2. Rotate session cookie
+        let rotated_id = store.rotate(&session_id, "user_state_updated").unwrap();
+        assert_ne!(session_id, rotated_id);
+        res.headers.clear();
+        res.set_session_cookie(
+            &rotated_id,
+            Some("example.com"),
+            "/",
+            Duration::from_mins(15),
+            true,
+        )
+        .unwrap();
+        assert_eq!(res.headers.len(), 1);
+        assert!(res.headers[0].1.starts_with(&format!("sid={rotated_id}; Path=/; Domain=example.com; Max-Age=900; Secure; HttpOnly; SameSite=Lax")));
+
+        // 3. Clear/delete session cookie
+        store.delete(&rotated_id).unwrap();
+        res.headers.clear();
+        res.clear_cookie("sid", Some("example.com"), "/", true)
+            .unwrap();
+        assert_eq!(res.headers.len(), 1);
+        assert_eq!(
+            res.headers[0].1,
+            "sid=; Path=/; Domain=example.com; Max-Age=0; Secure; HttpOnly; SameSite=Lax"
+        );
+    }
 }
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -214,6 +361,68 @@ impl Default for CookieOptions {
             http_only: true,
             same_site: SameSite::Lax,
         }
+    }
+}
+
+impl CookieOptions {
+    pub(crate) fn format_set_cookie(
+        self,
+        name: &str,
+        value: &str,
+        domain: Option<&str>,
+        path: &str,
+        max_age: Option<Duration>,
+    ) -> Result<String, &'static str> {
+        use std::fmt::Write;
+        if name.is_empty()
+            || name.len() > 128
+            || name
+                .bytes()
+                .any(|b| b <= 0x20 || b >= 0x7f || b == b'=' || b == b';')
+        {
+            return Err("invalid cookie name");
+        }
+        if value.len() > 4096
+            || value
+                .bytes()
+                .any(|b| (b < 0x20 && b != b'\t') || b == 0x7f || b == b';')
+        {
+            return Err("invalid cookie value");
+        }
+        if path.is_empty()
+            || path
+                .bytes()
+                .any(|b| (b < 0x20 && b != b'\t') || b == 0x7f || b == b';')
+        {
+            return Err("invalid cookie path");
+        }
+        let mut out = format!("{name}={value}; Path={path}");
+        if let Some(domain) = domain {
+            if domain.is_empty()
+                || domain
+                    .bytes()
+                    .any(|b| (b < 0x20 && b != b'\t') || b == 0x7f || b == b';')
+            {
+                return Err("invalid cookie domain");
+            }
+            out.push_str("; Domain=");
+            out.push_str(domain);
+        }
+        if let Some(age) = max_age {
+            let _ = write!(out, "; Max-Age={}", age.as_secs());
+        }
+        if self.secure {
+            out.push_str("; Secure");
+        }
+        if self.http_only {
+            out.push_str("; HttpOnly");
+        }
+        match self.same_site {
+            SameSite::Strict => out.push_str("; SameSite=Strict"),
+            SameSite::Lax => out.push_str("; SameSite=Lax"),
+            SameSite::None => out.push_str("; SameSite=None"),
+        }
+        Ok(out)
     }
 }
 

@@ -69,19 +69,19 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            asset: bn-linux-x86_64
+            platform: linux-x86_64
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-            asset: bn-linux-aarch64
+            platform: linux-aarch64
           - os: macos-latest
             target: aarch64-apple-darwin
-            asset: bn-macos-aarch64
+            platform: macos-aarch64
           - os: macos-latest
             target: x86_64-apple-darwin
-            asset: bn-macos-x86_64
+            platform: macos-x86_64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            asset: bn-windows-x86_64.exe
+            platform: windows-x86_64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -90,21 +90,20 @@ jobs:
           toolchain: "1.97"
           targets: ${{ matrix.target }}
       - name: Build
-        run: cargo build --release --locked --target ${{ matrix.target }} --bin bn
-      - name: Stage binary
+        run: cargo build --release --locked --target ${{ matrix.target }} --bin bn --bin bnc
+      - name: Stage binaries
         shell: bash
         run: |
           mkdir -p dist
-          if [[ -f "target/${{ matrix.target }}/release/bn.exe" ]]; then
-            cp "target/${{ matrix.target }}/release/bn.exe" "dist/${{ matrix.asset }}"
-          else
-            cp "target/${{ matrix.target }}/release/bn" "dist/${{ matrix.asset }}"
-            chmod +x "dist/${{ matrix.asset }}"
-          fi
+          exe=""
+          if [[ "${{ matrix.target }}" == *-windows-* ]]; then exe=".exe"; fi
+          cp "target/${{ matrix.target }}/release/bn${exe}" "dist/bn-${{ matrix.platform }}${exe}"
+          cp "target/${{ matrix.target }}/release/bnc${exe}" "dist/bnc-${{ matrix.platform }}${exe}"
+          chmod +x "dist/bn-${{ matrix.platform }}${exe}" "dist/bnc-${{ matrix.platform }}${exe}" || true
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset }}
-          path: dist/${{ matrix.asset }}
+          name: binaries-${{ matrix.platform }}
+          path: dist/*
           if-no-files-found: error
 
   publish:
@@ -131,7 +130,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          notes="Compiled \`bn\` from \`${GITHUB_SHA:0:7}\`."
+          notes="Compiled \`bn\` and \`bnc\` from \`${GITHUB_SHA:0:7}\` (0.4.6 security)."
           tag="${GITHUB_REF_NAME}"
           if gh release view "${tag}" >/dev/null 2>&1; then
             gh release upload "${tag}" dist/* --clobber

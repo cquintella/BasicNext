@@ -21,6 +21,41 @@ use std::{fs, sync::atomic::{AtomicU64, Ordering}};
     }
 
     #[test]
+    fn host_env_sandbox_defaults_to_fail_closed_filesystem() {
+        let env = super::HostEnv::sandbox(Vec::new());
+        assert!(!env.filesystem.allows_capability());
+        assert!(!env.filesystem.allows_path(std::path::Path::new("/"), false));
+        assert!(!env.filesystem.allows_path(std::path::Path::new("/etc/hosts"), false));
+        assert!(!env.filesystem.allows_path(std::path::Path::new("Cargo.toml"), true));
+    }
+
+    #[test]
+    fn filesystem_policy_mitigates_symlink_escape() {
+        let temp_dir = std::env::temp_dir().join(format!("bn_symlink_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let target_file = temp_dir.join("outside.txt");
+        std::fs::write(&target_file, "secret").unwrap();
+
+        let sandbox_dir = temp_dir.join("sandbox");
+        std::fs::create_dir_all(&sandbox_dir).unwrap();
+        let symlink_path = sandbox_dir.join("leak_link.txt");
+
+        #[cfg(unix)]
+        {
+            let _ = std::os::unix::fs::symlink(&target_file, &symlink_path);
+            let policy = super::HostEnv::fixed(Vec::new(), 0, 0)
+                .with_filesystem_roots(vec![sandbox_dir.clone()], Vec::new())
+                .unwrap();
+
+            // Canonicalization resolves the link to outside.txt, which is outside sandbox_dir -> must be denied!
+            assert!(!policy.filesystem.allows_path(&symlink_path, false));
+        }
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
     fn web_callback_uses_a_fresh_executor_and_projects_response() {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let path = std::env::temp_dir().join(format!(

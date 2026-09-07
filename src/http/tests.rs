@@ -138,6 +138,57 @@ fn projects_callback_response_over_local_http11() {
 }
 
 #[test]
+fn serves_cookie_and_session_headers_over_http11() {
+    let listener = match TcpListener::bind("127.0.0.1:0") {
+        Ok(listener) => listener,
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => return,
+        Err(error) => panic!("bind test listener: {error}"),
+    };
+    let endpoint = listener.local_addr().expect("listener address");
+    let mut state = ServerState::new();
+    state.add_route("GET".into(), "/session".into()).unwrap();
+    state.start().unwrap();
+    let state = Arc::new(Mutex::new(state));
+    let callback: Handler = Arc::new(|_, response| {
+        let options = crate::web_state::CookieOptions {
+            secure: false,
+            http_only: true,
+            same_site: crate::web_state::SameSite::Lax,
+        };
+        response.set_cookie(
+            "pref",
+            "dark",
+            None,
+            "/",
+            Some(Duration::from_secs(3600)),
+            options,
+            false,
+        )?;
+        response.write("session-ok")?;
+        Ok(())
+    });
+    let server_state = Arc::clone(&state);
+    let server = std::thread::spawn(move || {
+        let (stream, _) = listener.accept().expect("accept test connection");
+        serve_connection_with_handler(TcpStream::from_std(stream), server_state, Some(callback))
+            .expect("serve callback connection");
+    });
+    let mut client = std::net::TcpStream::connect(endpoint).expect("connect test server");
+    client
+        .write_all(b"GET /session HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+        .expect("write request");
+    let mut response = String::new();
+    client.read_to_string(&mut response).expect("read response");
+    server.join().expect("server thread");
+    assert!(response.starts_with("HTTP/1.1 200 OK"), "{response}");
+    assert!(
+        response.contains("set-cookie: pref=dark; Path=/; Max-Age=3600; HttpOnly; SameSite=Lax"),
+        "{response}"
+    );
+    assert!(response.ends_with("session-ok"), "{response}");
+}
+
+#[test]
 fn opt_in_concurrent_handler_runs_with_bounded_handler_slot() {
     let listener = match TcpListener::bind("127.0.0.1:0") {
         Ok(listener) => listener,
@@ -475,7 +526,7 @@ fn client_rejects_oversized_request_before_transport() {
 }
 
 #[test]
-fn client_resolver_rechecks_mixed_dns_answers_fail_closed() {
+fn client_resolver_filters_mixed_dns_answers_under_rule_i() {
     let resolver = ScriptedResolver {
         answers: HashMap::from([
             (
@@ -495,11 +546,16 @@ fn client_resolver_rechecks_mixed_dns_answers_fail_closed() {
             ),
         ]),
     };
-    assert!(super::resolve_validated_addresses("mixed.test", 80, &resolver).is_err());
+    // Under Rule I, mixed candidates are filtered: private IP is rejected, public IP survives
+    assert_eq!(
+        super::resolve_validated_addresses("mixed.test", 80, &resolver).unwrap(),
+        vec!["8.8.8.8".parse::<std::net::IpAddr>().unwrap()]
+    );
     assert_eq!(
         super::resolve_validated_addresses("public.test", 80, &resolver).unwrap(),
         vec!["8.8.8.8".parse::<std::net::IpAddr>().unwrap()]
     );
+    // If all candidates are blocked, resolve_validated_addresses fails closed
     assert!(super::resolve_validated_addresses("blocked.test", 80, &resolver).is_err());
 }
 
@@ -572,6 +628,104 @@ fn https_resolution_uses_tls_scheme_and_default_port() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn egress_policy_multi_a_first_out_of_cidr_later_allowlisted() {
+    // Case (a): first candidate is out-of-CIDR, second is allowlisted -> only allowlisted survives
+    let resolver = ScriptedResolver {
+        answers: HashMap::from([(
+            "multi-a.test".into(),
+            vec![
+                crate::net::Address::parse("1.1.1.1").unwrap(), // out of CIDR
+                crate::net::Address::parse("93.184.216.34").unwrap(), // in CIDR
+            ],
+        )]),
+    };
+    let policy = crate::web::EgressPolicy::new(
+        Some(vec!["http".into()]),
+        Some(vec![crate::net::Cidr::parse("93.184.216.0/24").unwrap()]),
+        Some(vec![80]),
+        2,
+        1000,
+    )
+    .unwrap();
+    let addresses = super::resolve_validated_addresses_with_policy(
+        "multi-a.test",
+        80,
+        &resolver,
+        &policy,
+        "http",
+    )
+    .expect("surviving allowlisted address");
+    assert_eq!(
+        addresses,
+        vec!["93.184.216.34".parse::<std::net::IpAddr>().unwrap()]
+    );
+}
+
+#[test]
+fn egress_policy_multi_a_first_allowlisted_later_out_of_cidr() {
+    // Case (b): first candidate is allowlisted, second is out-of-CIDR -> only allowlisted survives, does not include non-allowlisted
+    let resolver = ScriptedResolver {
+        answers: HashMap::from([(
+            "multi-b.test".into(),
+            vec![
+                crate::net::Address::parse("93.184.216.34").unwrap(), // in CIDR
+                crate::net::Address::parse("1.1.1.1").unwrap(),       // out of CIDR
+            ],
+        )]),
+    };
+    let policy = crate::web::EgressPolicy::new(
+        Some(vec!["http".into()]),
+        Some(vec![crate::net::Cidr::parse("93.184.216.0/24").unwrap()]),
+        Some(vec![80]),
+        2,
+        1000,
+    )
+    .unwrap();
+    let addresses = super::resolve_validated_addresses_with_policy(
+        "multi-b.test",
+        80,
+        &resolver,
+        &policy,
+        "http",
+    )
+    .expect("surviving allowlisted address");
+    assert_eq!(
+        addresses,
+        vec!["93.184.216.34".parse::<std::net::IpAddr>().unwrap()]
+    );
+}
+
+#[test]
+fn egress_policy_multi_a_none_allowlisted_fails_closed() {
+    // Case (c): none allowlisted -> fails closed
+    let resolver = ScriptedResolver {
+        answers: HashMap::from([(
+            "multi-c.test".into(),
+            vec![
+                crate::net::Address::parse("1.1.1.1").unwrap(),
+                crate::net::Address::parse("2.2.2.2").unwrap(),
+            ],
+        )]),
+    };
+    let policy = crate::web::EgressPolicy::new(
+        Some(vec!["http".into()]),
+        Some(vec![crate::net::Cidr::parse("93.184.216.0/24").unwrap()]),
+        Some(vec![80]),
+        2,
+        1000,
+    )
+    .unwrap();
+    let result = super::resolve_validated_addresses_with_policy(
+        "multi-c.test",
+        80,
+        &resolver,
+        &policy,
+        "http",
+    );
+    assert!(result.is_err());
 }
 
 #[test]

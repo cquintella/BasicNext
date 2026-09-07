@@ -80,7 +80,11 @@ representation; it is not ABI-visible.
 The rows above close only the listed 0.4.5 slice. The structural DataFrame
 row is an ABI foundation and has tested ownership/handle semantics, but is not
 yet a claimed compiled-language feature until LLVM lowering and parity fixtures
-are present. Unlisted BNData/DataFrame
+are present. Execution policy bit coverage for compiled targets is currently
+enforced across active `bn_rt` entry points for `POLICY_CLOCK`, `POLICY_CONSOLE`,
+`POLICY_NET`, and `POLICY_DISPATCH`. `POLICY_FILESYSTEM` and `POLICY_RANDOM` are
+currently enforced interpret-only via HostEnv / Capabilities; native compilation
+does not yet lower filesystem/random HOST ops to `bn_rt` native calls. Unlisted BNData/DataFrame
 native symbols, full network ownership tables, and the final extracted-crate
 ABI remain open; do not treat this document as a complete ABI manual.
 
