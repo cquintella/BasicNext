@@ -36,6 +36,7 @@ pub enum Reduction {
     Na,
 }
 
+#[must_use]
 #[allow(clippy::cast_precision_loss)]
 pub fn reduce(name: &str, values: &[i32]) -> Reduction {
     let numbers = values
@@ -45,6 +46,7 @@ pub fn reduce(name: &str, values: &[i32]) -> Reduction {
     reduce_f64(name, &numbers)
 }
 
+#[must_use]
 #[allow(clippy::cast_precision_loss, clippy::float_cmp)]
 pub fn reduce_f64(name: &str, values: &[f64]) -> Reduction {
     let mut numbers = values.to_vec();

@@ -85,6 +85,6 @@ DFD **2.0 Analyze Sources**: lex/parse must match the EBNF; **2.5** must satisfy
 ## Related
 
 - Pre-refactor implementation: `done/bucket-0.4.4.md`
-- Refactor + diagnostics implementation: `ongoing/bucket-0.4.5.md`
-- Active WBS: `ongoing/WBS-0.4.5.md`
+- Refactor + diagnostics implementation: `done/bucket-0.4.5.md`
+- Active WBS: `done/WBS-0.4.5.md`
 - As-is audit DFDs (local): `audit/workpapers/09-synthesis/dfd-*-as-is.md`

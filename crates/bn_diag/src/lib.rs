@@ -72,6 +72,7 @@ impl DiagId {
         "POINTER_LENGTH_MISMATCH",
         "PROCESS_LOG_WRITE",
         "REQUEST_INVALID",
+        "RESOURCE_LIMIT",
         "SCRAPER_INPUT",
         "SERVER_STATE",
         "SESSION_CONFIG",
@@ -429,9 +430,23 @@ impl Catalog {
     /// Returns an invalid overlay error without panicking.
     pub fn global_for_environment() -> Result<&'static Self, String> {
         static CATALOG: OnceLock<Result<Catalog, String>> = OnceLock::new();
-        match CATALOG.get_or_init(|| match std::env::var_os("BN_DIAGNOSTICS_DIR") {
-            Some(directory) => Self::embedded_en_us_with_overlay(Path::new(&directory)),
-            None => Self::embedded_en_us(),
+        match CATALOG.get_or_init(|| {
+            if let Some(directory) = std::env::var_os("BN_DIAGNOSTICS_DIR") {
+                return Self::embedded_en_us_with_overlay(Path::new(&directory));
+            }
+            let beside = std::env::current_exe().ok().and_then(|exe| {
+                let parent = exe.parent()?;
+                let local = parent.join("share/bn/diagnostics/en-US");
+                if local.is_dir() {
+                    return Some(local);
+                }
+                let prefix = parent.parent()?.join("share/bn/diagnostics/en-US");
+                prefix.is_dir().then_some(prefix)
+            });
+            if let Some(directory) = beside {
+                return Self::embedded_en_us_with_overlay(&directory);
+            }
+            Self::embedded_en_us()
         }) {
             Ok(catalog) => Ok(catalog),
             Err(error) => Err(error.clone()),
@@ -940,7 +955,7 @@ mod tests {
     #[test]
     fn embedded_catalog_covers_registry_and_renders_arguments_lazily() {
         let catalog = super::Catalog::embedded_en_us().expect("embedded catalog");
-        assert_eq!(catalog.len(), 63);
+        assert_eq!(catalog.len(), 64);
         let span = span(7);
         let spec = super::DiagnosticSpec {
             id: DiagId::UnusedBinding,
@@ -974,7 +989,7 @@ mod tests {
         let first = super::Catalog::embedded_global();
         let second = super::Catalog::embedded_global();
         assert!(std::ptr::eq(first, second));
-        assert_eq!(first.len(), 63);
+        assert_eq!(first.len(), 64);
     }
 
     #[test]

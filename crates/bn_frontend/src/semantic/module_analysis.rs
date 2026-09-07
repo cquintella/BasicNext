@@ -24,6 +24,7 @@ pub(crate) fn analyze_with_modules(
         executable_module,
         allow_variable_vectors,
         false,
+        false,
     )?
     .model)
 }
@@ -50,11 +51,12 @@ pub(crate) fn analyze_with_modules_collecting(
         standard_modules,
         executable_module,
         allow_variable_vectors,
+        false,
         true,
     )
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
 pub(crate) fn analyze_with_modules_mode(
     program: &Program,
     module_exports: HashMap<ModuleId, HashMap<String, Type>>,
@@ -65,6 +67,7 @@ pub(crate) fn analyze_with_modules_mode(
     standard_modules: HashSet<ModuleId>,
     executable_module: bool,
     allow_variable_vectors: bool,
+    is_standard_module: bool,
     collect_warnings: bool,
 ) -> Result<SemanticAnalysis, Diagnostic> {
     let mut analyzer = Analyzer {
@@ -81,6 +84,7 @@ pub(crate) fn analyze_with_modules_mode(
         imported_types,
         bnmath_modules,
         standard_modules,
+        is_standard_module,
         next_symbol: 0,
         next_type: 0,
         symbols: Vec::new(),

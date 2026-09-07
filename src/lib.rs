@@ -12,7 +12,6 @@ pub mod heap;
 pub(crate) mod http;
 pub mod ir;
 pub(crate) mod json;
-pub mod keyword_registry;
 pub mod llvm;
 pub(crate) mod log;
 pub mod lsp;
@@ -26,4 +25,6 @@ pub(crate) mod tls;
 pub use bn_types as types;
 pub(crate) mod web;
 pub(crate) mod web_state;
-pub use bn_frontend::{ast, frontend_session, lexer, module_graph, parser, semantic, token};
+pub use bn_frontend::{
+    ast, frontend_session, keyword_registry, lexer, module_graph, parser, semantic, token,
+};

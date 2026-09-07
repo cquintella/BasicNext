@@ -1,6 +1,6 @@
 use std::{env, fmt::Write as _, fs, path::PathBuf};
 
-#[path = "../../src/keyword_registry.rs"]
+#[path = "src/keyword_registry.rs"]
 mod keyword_registry;
 
 const REGISTRY: &str = "../../docs/language/0.4/keywords.md";
