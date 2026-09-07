@@ -715,3 +715,19 @@ pub(crate) fn unsupported_instruction_detail(instruction: &Instruction) -> Strin
         _ => instruction_name(instruction).into(),
     }
 }
+
+
+/// Libc `FILE *stdout` symbol name for native PRINT synchronization.
+pub(crate) fn stdout_file_symbol() -> &'static str {
+    if cfg!(any(
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "tvos",
+        target_os = "watchos",
+        target_os = "freebsd"
+    )) {
+        "__stdoutp"
+    } else {
+        "stdout"
+    }
+}
