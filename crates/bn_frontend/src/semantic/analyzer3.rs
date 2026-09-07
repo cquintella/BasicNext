@@ -413,7 +413,9 @@ impl Analyzer {
                         declaration_name,
                         return_type.as_ref(),
                     )?;
-                    if let Some(signature) = signature {
+                    if let Some(signature) = signature
+                        && (!self.is_standard_module || !body.statements.is_empty())
+                    {
                         validate_returns(&body.statements, &signature.return_type, false)?;
                     }
                 }

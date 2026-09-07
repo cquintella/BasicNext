@@ -16,7 +16,7 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bn"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "bn_diag",
  "bn_frontend",
@@ -44,14 +44,14 @@ dependencies = [
 
 [[package]]
 name = "bn_diag"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "bn_source",
 ]
 
 [[package]]
 name = "bn_frontend"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "bn_diag",
  "bn_ir",
@@ -61,7 +61,7 @@ dependencies = [
 
 [[package]]
 name = "bn_ir"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "bn_diag",
  "bn_source",
@@ -70,7 +70,7 @@ dependencies = [
 
 [[package]]
 name = "bn_llvm"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "bn_diag",
  "bn_ir",
@@ -80,7 +80,7 @@ dependencies = [
 
 [[package]]
 name = "bn_rt"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "dns-lookup",
  "libc",
@@ -89,7 +89,7 @@ dependencies = [
 
 [[package]]
 name = "bn_runtime"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "bn_diag",
  "bn_source",
@@ -98,15 +98,15 @@ dependencies = [
 
 [[package]]
 name = "bn_source"
-version = "0.4.4"
+version = "0.4.5"
 
 [[package]]
 name = "bn_types"
-version = "0.4.4"
+version = "0.4.5"
 
 [[package]]
 name = "bn_value"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "bn_source",
  "bn_types",

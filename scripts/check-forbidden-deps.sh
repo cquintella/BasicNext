@@ -129,6 +129,42 @@ for ir_model in "${ir_models[@]}"; do
     "$ir_model" 2>/dev/null || true)
 done
 
+# Section 6 / Activity 6.5 guards:
+# 1. Ensure zero path-shims from crates into src/
+while IFS=: read -r file_path line_num match_text; do
+  [[ -n "$file_path" ]] || continue
+  rel=${file_path#"$repo_root/"}
+  printf 'forbidden path-shim from crates into src (Activity 6.5): %s:%s:%s\n' "$rel" "$line_num" "$match_text" >&2
+  found=1
+done < <(grep -rnE '#\[path\s*=\s*".*(\.\./)+src/' "$repo_root/crates" 2>/dev/null || true)
+
+# 2. Ensure banned orphan paths never return to src/
+banned_orphans=(
+  src/lexer.rs
+  src/token.rs
+  src/parser.rs
+  src/parser
+  src/ast.rs
+  src/source.rs
+  src/host_spec.rs
+  src/host_spec
+  src/module_graph.rs
+  src/semantic.rs
+  src/semantic
+  src/keyword_registry.rs
+  src/ir/lowering.rs
+  src/ir/lowering_callable.rs
+  src/ir/builder
+  src/ir/model.rs
+  src/ir/validate.rs
+)
+for orphan in "${banned_orphans[@]}"; do
+  if [[ -e "$repo_root/$orphan" ]]; then
+    printf 'banned orphan path returned to src/ (Activity 6.5): %s\n' "$orphan" >&2
+    found=1
+  fi
+done
+
 if ((found != 0)); then
   echo "forbidden dependency check failed" >&2
   exit 1

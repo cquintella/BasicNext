@@ -268,6 +268,7 @@ pub(crate) struct ImportedTypeInfo {
     constructor: Option<Constructor>,
     interfaces: Vec<String>,
 }
+#[allow(clippy::struct_excessive_bools)]
 struct Analyzer {
     globals: HashMap<String, Symbol>,
     members: HashMap<String, HashMap<String, Member>>,
@@ -282,6 +283,7 @@ struct Analyzer {
     imported_types: HashMap<(ModuleId, String), ImportedTypeInfo>,
     bnmath_modules: HashSet<ModuleId>,
     standard_modules: HashSet<ModuleId>,
+    is_standard_module: bool,
     next_symbol: u32,
     next_type: u32,
     symbols: Vec<ResolvedSymbol>,
@@ -435,6 +437,7 @@ fn analyze_modules_with_warnings_mode(
             bnmath_modules,
             standard_modules,
             module.id == graph.root,
+            module.standard_module.is_some(),
             module.standard_module.is_some(),
             collect_warnings,
         )

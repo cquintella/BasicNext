@@ -1,5 +1,6 @@
 #![allow(clippy::wildcard_imports, clippy::too_many_lines, clippy::cast_possible_truncation, clippy::cast_precision_loss)]
 use super::*;
+use bn_rt::Reduction;
 impl Executor<'_, '_> {
     pub(crate) fn dataframe_call(
         &mut self,
@@ -206,7 +207,6 @@ impl Executor<'_, '_> {
                     Value::NotAvailable => Ok(None),
                     _ => Err("column is not numeric"),
                 };
-                use bn_rt::Reduction;
                 match dataframe_reduce_column(frame, column_name, method, to_f64) {
                     Ok(Reduction::Float(val)) => Ok(Value::Float(val, FloatType::Float64)),
                     Ok(Reduction::Na) => Ok(Value::NotAvailable),

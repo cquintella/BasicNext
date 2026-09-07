@@ -4,7 +4,7 @@ resolver = "3"
 
 [package]
 name = "bn"
-version = "0.4.4"
+version = "0.4.5"
 edition = "2024"
 rust-version = "1.97"
 description = "Basic Next reference implementation"
@@ -19,6 +19,10 @@ path = "src/lib.rs"
 [[bin]]
 name = "bn"
 path = "src/main.rs"
+
+[[bin]]
+name = "bnc"
+path = "src/bnc.rs"
 
 [lints.rust]
 unsafe_code = "deny"

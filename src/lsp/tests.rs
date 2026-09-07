@@ -295,3 +295,46 @@ fn diagnostics_use_unsaved_imported_sources_and_the_shared_validated_pipeline() 
     );
     assert!(super::graph_diagnostics(&main_uri, &documents, &mut session).is_empty());
 }
+
+#[test]
+fn lsp_problems_equivalent_to_cli_check_on_shared_fixture() {
+    let path = std::path::PathBuf::from("tests/grammar/invalid/cross-type-equality.bn")
+        .canonicalize()
+        .expect("canonical path for fixture");
+    let text = std::fs::read_to_string(&path).expect("read fixture text");
+    let uri: super::Uri = format!("file://{}", path.display())
+        .parse()
+        .expect("fixture URI");
+    let documents = HashMap::from([(
+        uri.to_string(),
+        SourceFile::new(uri.to_string(), text.clone()),
+    )]);
+    let mut session = crate::frontend_session::FrontendSession::default();
+    let lsp_diags = super::graph_diagnostics(&uri, &documents, &mut session);
+    assert_eq!(
+        lsp_diags.len(),
+        1,
+        "LSP should produce exactly 1 diagnostic"
+    );
+    let lsp_code = match &lsp_diags[0].code {
+        Some(super::NumberOrString::String(s)) => s.as_str(),
+        _ => "",
+    };
+    assert_eq!(lsp_code, "TYPE_MISMATCH");
+
+    // Verify against the CLI pipeline (load_with_session -> analyze_modules_with_warnings -> lower_graph_validated)
+    let mut cli_session = crate::frontend_session::FrontendSession::default();
+    let graph =
+        crate::module_graph::load_with_session(&path, &mut cli_session).expect("module graph");
+    let analysis_err = crate::semantic::analyze_modules_with_warnings(&graph)
+        .expect_err("semantic analysis must fail");
+    assert_eq!(analysis_err.diagnostic.code, "TYPE_MISMATCH");
+    assert_eq!(
+        analysis_err.diagnostic.span.start.line,
+        lsp_diags[0].range.start.line as usize + 1
+    );
+    assert_eq!(
+        analysis_err.diagnostic.span.start.column,
+        lsp_diags[0].range.start.character as usize + 1
+    );
+}

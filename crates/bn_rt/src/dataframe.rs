@@ -321,7 +321,7 @@ pub fn set_column_label<T>(
     Ok(())
 }
 
-/// Transposes a DataFrame resource, shaping column names into a first column and
+/// Transposes a `DataFrame` resource, shaping column names into a first column and
 /// rows into numbered row columns formatted using the provided renderer.
 pub fn transpose_dataframe<T: Clone>(
     frame: &DataFrameResource<T>,
@@ -350,7 +350,7 @@ pub fn transpose_dataframe<T: Clone>(
     DataFrameResource { columns }
 }
 
-/// Adds a new column to a DataFrame resource, checking for uniqueness and length consistency.
+/// Adds a new column to a `DataFrame` resource, checking for uniqueness and length consistency.
 ///
 /// # Errors
 ///
@@ -427,16 +427,16 @@ pub fn convert_dataframe_column<T>(
     else {
         return Err("column not found");
     };
-    let converted = column
+    let new_values = column
         .values
         .iter()
         .map(&mut converter)
         .collect::<Result<Vec<_>, &'static str>>()?;
-    column.values = converted;
+    column.values = new_values;
     Ok(())
 }
 
-/// Computes the z-score for a numeric column, returning a new single-column DataFrameResource.
+/// Computes the z-score for a numeric column, returning a new single-column `DataFrameResource`.
 ///
 /// # Errors
 ///
@@ -464,7 +464,7 @@ pub fn zscore_column<T: Clone>(
     let (mean, stdev) = if numeric.is_empty() {
         (f64::NAN, f64::NAN)
     } else {
-        use super::stats::{reduce_f64, Reduction};
+        use super::stats::{Reduction, reduce_f64};
         let m = match reduce_f64("MEAN", &numeric) {
             Reduction::Float(val) => val,
             Reduction::Na => f64::NAN,
@@ -501,7 +501,7 @@ pub fn zscore_column<T: Clone>(
     })
 }
 
-/// Computes a BNMath numeric reduction on a named column in a DataFrameResource.
+/// Computes a `BNMath` numeric reduction on a named column in a `DataFrameResource`.
 ///
 /// # Errors
 ///
@@ -512,6 +512,7 @@ pub fn dataframe_reduce_column<T>(
     method: &str,
     to_f64: impl Fn(&T) -> Result<Option<f64>, &'static str>,
 ) -> Result<super::stats::Reduction, &'static str> {
+    use super::stats::{Reduction, reduce_f64};
     let Some(column) = frame
         .columns
         .iter()
@@ -521,9 +522,8 @@ pub fn dataframe_reduce_column<T>(
     };
     let mut numeric = Vec::new();
     for cell in &column.values {
-        match to_f64(cell)? {
-            Some(val) => numeric.push(val),
-            None => {}
+        if let Some(val) = to_f64(cell)? {
+            numeric.push(val);
         }
     }
     if matches!(method, "Min" | "Max") && numeric.is_empty() {
@@ -542,7 +542,6 @@ pub fn dataframe_reduce_column<T>(
         "Max" => "MAX",
         _ => return Err("unknown reduction method"),
     };
-    use super::stats::{reduce_f64, Reduction};
     if math_name == "MIN" {
         let min_val = numeric.iter().copied().fold(f64::INFINITY, f64::min);
         Ok(Reduction::Float(min_val))
@@ -718,8 +717,8 @@ mod tests {
                 values: vec![3],
             }],
         };
-        let rows = append_rows(&left, &right, |_| false, |_left, _right| true)
-            .expect("append rows");
+        let rows =
+            append_rows(&left, &right, |_| false, |_left, _right| true).expect("append rows");
         assert_eq!(rows.columns[0].values, vec![1, 2, 3]);
         let extra = DataFrameResource {
             columns: vec![DataFrameColumn {

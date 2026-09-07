@@ -325,6 +325,7 @@ impl Analyzer {
             self.current_class = previous_class;
             if *kind == DeclarationKind::Function
                 && let Some(signature) = signature
+                && (!self.is_standard_module || !statements.is_empty())
             {
                 validate_returns(statements, &signature.return_type, name == "Start")?;
             }

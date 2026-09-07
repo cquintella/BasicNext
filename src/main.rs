@@ -636,7 +636,11 @@ fn run(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
                 "{}",
                 render_diagnostic(&diagnostic, source, &options.warning_policy)
             );
-            language_error()
+            if diagnostic.code == "EXECUTION_POLICY_DENIED" {
+                tool_error()
+            } else {
+                language_error()
+            }
         }
     }
 }
