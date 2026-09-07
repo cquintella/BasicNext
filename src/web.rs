@@ -97,6 +97,16 @@ impl EgressPolicy {
         port: u16,
         addresses: &[IpAddr],
     ) -> Result<(), &'static str> {
+        self.filter_allowed_addresses(scheme, port, addresses)
+            .map(|_| ())
+    }
+
+    pub(crate) fn filter_allowed_addresses(
+        &self,
+        scheme: &str,
+        port: u16,
+        addresses: &[IpAddr],
+    ) -> Result<Vec<IpAddr>, &'static str> {
         if self
             .schemes
             .as_ref()
@@ -108,23 +118,42 @@ impl EgressPolicy {
         {
             return Err("destination is outside the egress policy");
         }
-        validate_ssrf_destinations(addresses, false)?;
-        if let Some(cidrs) = &self.cidrs
-            && (cidrs.is_empty()
-                || !addresses.iter().any(|address| {
-                    let address = match address {
-                        IpAddr::V4(address) => IpAddr::V4(*address),
-                        IpAddr::V6(address) => {
-                            address.to_ipv4().map_or(IpAddr::V6(*address), IpAddr::V4)
-                        }
-                    };
-                    crate::net::Address::parse(&address.to_string())
-                        .is_ok_and(|address| cidrs.iter().any(|cidr| cidr.contains(address)))
-                }))
-        {
-            return Err("destination is outside the egress CIDR allowlist");
+        if addresses.is_empty() {
+            return Err("URL resolved to no addresses");
         }
-        Ok(())
+        let mut allowed = Vec::new();
+        for &address in addresses {
+            if self.allows_candidate(address) {
+                allowed.push(address);
+            }
+        }
+        if allowed.is_empty() {
+            return Err("destination is outside the egress policy");
+        }
+        Ok(allowed)
+    }
+
+    fn allows_candidate(&self, address: IpAddr) -> bool {
+        if validate_ssrf_destinations(&[address], false).is_err() {
+            return false;
+        }
+        if let Some(cidrs) = &self.cidrs {
+            if cidrs.is_empty() {
+                return false;
+            }
+            let normalized = match address {
+                IpAddr::V4(addr) => IpAddr::V4(addr),
+                IpAddr::V6(addr) => addr.to_ipv4().map_or(IpAddr::V6(addr), IpAddr::V4),
+            };
+            if let Ok(net_addr) = crate::net::Address::parse(&normalized.to_string()) {
+                if !cidrs.iter().any(|cidr| cidr.contains(net_addr)) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        true
     }
 
     pub(crate) const fn max_redirects(&self) -> usize {
@@ -265,6 +294,52 @@ impl Response {
         }
         self.headers.push((name.to_ascii_lowercase(), value.into()));
         Ok(())
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn set_cookie(
+        &mut self,
+        name: &str,
+        value: &str,
+        domain: Option<&str>,
+        path: &str,
+        max_age: Option<std::time::Duration>,
+        options: crate::web_state::CookieOptions,
+        is_tls: bool,
+    ) -> Result<(), &'static str> {
+        if options.secure && !is_tls {
+            return Err("Secure cookies cannot be sent over cleartext HTTP");
+        }
+        let cookie_header = options.format_set_cookie(name, value, domain, path, max_age)?;
+        self.set_header("set-cookie", &cookie_header)
+    }
+    pub(crate) fn set_session_cookie(
+        &mut self,
+        session_id: &str,
+        domain: Option<&str>,
+        path: &str,
+        idle: std::time::Duration,
+        is_tls: bool,
+    ) -> Result<(), &'static str> {
+        let options = crate::web_state::CookieOptions::default();
+        self.set_cookie("sid", session_id, domain, path, Some(idle), options, is_tls)
+    }
+    pub(crate) fn clear_cookie(
+        &mut self,
+        name: &str,
+        domain: Option<&str>,
+        path: &str,
+        is_tls: bool,
+    ) -> Result<(), &'static str> {
+        let options = crate::web_state::CookieOptions::default();
+        self.set_cookie(
+            name,
+            "",
+            domain,
+            path,
+            Some(std::time::Duration::ZERO),
+            options,
+            is_tls,
+        )
     }
     pub(crate) fn write(&mut self, body: &str) -> Result<(), &'static str> {
         if self.committed || self.closed {

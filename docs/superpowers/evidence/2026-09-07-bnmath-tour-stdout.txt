@@ -1,0 +1,248 @@
+warning[UNUSED_BINDING]: Unused binding: binding 'MAX_INT8' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:129:5
+  |
+129 |     PUBLIC STATIC MAX_INT8 AS INT8 = 127
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MIN_INT8' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:130:5
+  |
+130 |     PUBLIC STATIC MIN_INT8 AS INT8 = -128
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MAX_INT16' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:131:5
+  |
+131 |     PUBLIC STATIC MAX_INT16 AS INT16 = 32767
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MIN_INT16' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:132:5
+  |
+132 |     PUBLIC STATIC MIN_INT16 AS INT16 = -32768
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MAX_INTEGER' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:133:5
+  |
+133 |     PUBLIC STATIC MAX_INTEGER AS INTEGER = 2147483647
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MIN_INTEGER' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:134:5
+  |
+134 |     PUBLIC STATIC MIN_INTEGER AS INTEGER = -2147483648
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MAX_INT32' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:135:5
+  |
+135 |     PUBLIC STATIC MAX_INT32 AS INTEGER = 2147483647
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MIN_INT32' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:136:5
+  |
+136 |     PUBLIC STATIC MIN_INT32 AS INTEGER = -2147483648
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MAX_INT64' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:137:5
+  |
+137 |     PUBLIC STATIC MAX_INT64 AS INT64 = 9223372036854775807
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MIN_INT64' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:138:5
+  |
+138 |     PUBLIC STATIC MIN_INT64 AS INT64 = -9223372036854775808
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MAX_TIMESTAMP' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:139:5
+  |
+139 |     PUBLIC STATIC MAX_TIMESTAMP AS TIMESTAMP = 9223372036854775807
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MIN_TIMESTAMP' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:140:5
+  |
+140 |     PUBLIC STATIC MIN_TIMESTAMP AS TIMESTAMP = -9223372036854775808
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MAX_BYTE' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:141:5
+  |
+141 |     PUBLIC STATIC MAX_BYTE AS BYTE = 255
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MIN_BYTE' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:142:5
+  |
+142 |     PUBLIC STATIC MIN_BYTE AS BYTE = 0
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MAX_UINT16' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:143:5
+  |
+143 |     PUBLIC STATIC MAX_UINT16 AS UINT16 = 65535
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MIN_UINT16' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:144:5
+  |
+144 |     PUBLIC STATIC MIN_UINT16 AS UINT16 = 0
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MAX_UINT32' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:145:5
+  |
+145 |     PUBLIC STATIC MAX_UINT32 AS UINT32 = 4294967295
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MIN_UINT32' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:146:5
+  |
+146 |     PUBLIC STATIC MIN_UINT32 AS UINT32 = 0
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MAX_UINT64' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:147:5
+  |
+147 |     PUBLIC STATIC MAX_UINT64 AS UINT64 = 18446744073709551615
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MIN_UINT64' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:148:5
+  |
+148 |     PUBLIC STATIC MIN_UINT64 AS UINT64 = 0
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MAX_FLOAT32' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:149:5
+  |
+149 |     PUBLIC STATIC MAX_FLOAT32 AS FLOAT32 = 0.0
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MIN_FLOAT32' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:150:5
+  |
+150 |     PUBLIC STATIC MIN_FLOAT32 AS FLOAT32 = 0.0
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MIN_POSITIVE_FLOAT32' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:151:5
+  |
+151 |     PUBLIC STATIC MIN_POSITIVE_FLOAT32 AS FLOAT32 = 0.0
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MAX_FLOAT' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:152:5
+  |
+152 |     PUBLIC STATIC MAX_FLOAT AS FLOAT = 0.0
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MIN_FLOAT' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:153:5
+  |
+153 |     PUBLIC STATIC MIN_FLOAT AS FLOAT = 0.0
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MAX_FLOAT64' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:154:5
+  |
+154 |     PUBLIC STATIC MAX_FLOAT64 AS FLOAT = 0.0
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MIN_FLOAT64' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:155:5
+  |
+155 |     PUBLIC STATIC MIN_FLOAT64 AS FLOAT = 0.0
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MIN_POSITIVE_FLOAT' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:156:5
+  |
+156 |     PUBLIC STATIC MIN_POSITIVE_FLOAT AS FLOAT = 0.0
+  |     ^
+warning[UNUSED_BINDING]: Unused binding: binding 'MIN_POSITIVE_FLOAT64' is never read
+ --> /Users/caq/src/BasicNext/modules/bn/BNMath.bn:157:5
+  |
+157 |     PUBLIC STATIC MIN_POSITIVE_FLOAT64 AS FLOAT = 0.0
+  |     ^
+=== BNMath tour: Limits (namespace members) ===
+PASS   MAX_INT8   expected= 127   got= 127
+PASS   MIN_INT8   expected= -128   got= -128
+PASS   MAX_INT16   expected= 32767   got= 32767
+PASS   MIN_INT16   expected= -32768   got= -32768
+PASS   MAX_INTEGER   expected= 2147483647   got= 2147483647
+PASS   MIN_INTEGER   expected= -2147483648   got= -2147483648
+PASS   MAX_INT32 alias   expected= 2147483647   got= 2147483647
+PASS   MIN_INT32 alias   expected= -2147483648   got= -2147483648
+PASS   MAX_INT64   expected= 9223372036854775807   got= 9223372036854775807
+PASS   MIN_INT64   expected= -9223372036854775808   got= -9223372036854775808
+PASS   MAX_TIMESTAMP alias   expected= 9223372036854775807   got= 9223372036854775807
+PASS   MIN_TIMESTAMP alias   expected= -9223372036854775808   got= -9223372036854775808
+PASS   MAX_BYTE   expected= 255   got= 255
+PASS   MIN_BYTE   expected= 0   got= 0
+PASS   MAX_UINT16   expected= 65535   got= 65535
+PASS   MIN_UINT16   expected= 0   got= 0
+PASS   MAX_UINT32   expected= 4294967295   got= 4294967295
+PASS   MIN_UINT32   expected= 0   got= 0
+PASS   MAX_UINT64   expected= 18446744073709551615   got= 18446744073709551615
+PASS   MAX_UINT64 > 0   expected= TRUE   got= TRUE
+PASS   MIN_UINT64   expected= 0   got= 0
+PASS   MAX_FLOAT32 self   expected= 340282346638528860000000000000000000000.0   got= 340282346638528860000000000000000000000.0
+PASS   MIN_FLOAT32 = -MAX_FLOAT32   expected= -340282346638528860000000000000000000000.0   got= -340282346638528860000000000000000000000.0
+PASS   MAX_FLOAT alias MAX_FLOAT64   expected= 179769313486231570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.0   got= 179769313486231570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.0
+PASS   MIN_FLOAT alias MIN_FLOAT64   expected= -179769313486231570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.0   got= -179769313486231570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.0
+PASS   MIN_POSITIVE_FLOAT alias   expected= 0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000022250738585072014   got= 0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000022250738585072014
+INFO  MAX_FLOAT32= 340282346638528860000000000000000000000.0   MIN_POSITIVE_FLOAT32= 0.000000000000000000000000000000000000011754943508222875
+INFO  MAX_FLOAT= 179769313486231570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.0   MIN_POSITIVE_FLOAT= 0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000022250738585072014
+=== BNMath tour: integer / general numeric ===
+PASS   ABS(-5)   expected= 5   got= 5
+PASS   ABS(5)   expected= 5   got= 5
+PASS   ABS(-INF)   expected= INF   got= INF
+PASS   MIN(2, 9)   expected= 2   got= 2
+PASS   MAX(2, 9)   expected= 9   got= 9
+PASS   SIGN(-3)   expected= -1   got= -1
+PASS   SIGN(0)   expected= 0   got= 0
+PASS   SIGN(5)   expected= 1   got= 1
+PASS   SIGN(NAN)   expected=NAN  got=NAN
+=== BNMath tour: rounding ===
+PASS   FLOOR(1.9)   expected= 1.0   got= 1.0
+PASS   FLOOR(-1.2)   expected= -2.0   got= -2.0
+PASS   CEIL(1.1)   expected= 2.0   got= 2.0
+PASS   CEIL(-1.2)   expected= -1.0   got= -1.0
+PASS   TRUNC(1.9)   expected= 1.0   got= 1.0
+PASS   TRUNC(-1.2)   expected= -1.0   got= -1.0
+PASS   ROUND(2.5, 0) ties-to-even   expected= 2.0   got= 2.0
+PASS   ROUND(1.5, 0) ties-to-even   expected= 2.0   got= 2.0
+PASS   ROUND(3.14159, 2)   expected= 3.14   got= 3.14
+=== BNMath tour: exp / log / power ===
+PASS   EXP(0)   expected= 1.0   got= 1.0
+PASS   EXP(-INF)   expected= 0.0   got= 0.0
+PASS   EXP(INF)   expected= INF   got= INF
+PASS   LOG(1)   expected= 0.0   got= 0.0
+PASS   LOG(0)   expected= -INF   got= -INF
+PASS   LOG(-1)   expected=NAN  got=NAN
+PASS   LOG10(1000)   expected= 3.0   got= 3.0
+PASS   LOG2(8)   expected= 3.0   got= 3.0
+PASS   POW(2, 3)   expected= 8.0   got= 8.0
+PASS   POW(-2, 0.5) undefined   expected=NAN  got=NAN
+=== BNMath tour: trig ===
+PASS   SIN(0)   expected= 0.0   got= 0.0
+PASS   COS(0)   expected= 1.0   got= 1.0
+PASS   TAN(0)   expected= 0.0   got= 0.0
+PASS   SIN(INF)   expected=NAN  got=NAN
+PASS   ASIN(0)   expected= 0.0   got= 0.0
+PASS   ACOS(1)   expected= 0.0   got= 0.0
+PASS   ATAN(0)   expected= 0.0   got= 0.0
+PASS   ASIN(2)   expected=NAN  got=NAN
+PASS   ATAN2(0, 1)   expected= 0.0   got= 0.0
+=== BNMath tour: stable compound ===
+PASS   SQRT(9)   expected= 3.0   got= 3.0
+PASS   SQRT(-1)   expected=NAN  got=NAN
+PASS   HYPOT(3, 4)   expected= 5.0   got= 5.0
+PASS   FMA(2, 3, 4)   expected= 10.0   got= 10.0
+=== BNMath tour: VAL ===
+PASS   VAL("  12abc")   expected= 12.0   got= 12.0
+PASS   VAL("3,14")   expected= 3.0   got= 3.0
+PASS   VAL("1e10")   expected= 1.0   got= 1.0
+PASS   VAL("INF")   expected= 0.0   got= 0.0
+PASS   VAL("")   expected= 0.0   got= 0.0
+PASS   VAL("-2.5")   expected= -2.5   got= -2.5
+=== BNMath tour: descriptive statistics ===
+PASS   MIN(vector)   expected= 1   got= 1
+PASS   MAX(vector)   expected= 5   got= 5
+PASS   MEAN([1,2,2,5])   expected= 2.5   got= 2.5
+PASS   MEDIAN([1,2,2,5])   expected= 2.0   got= 2.0
+PASS   QUARTILE1([1,2,2,5]) Tukey   expected= 1.5   got= 1.5
+PASS   QUARTILE3([1,2,2,5]) Tukey   expected= 3.5   got= 3.5
+PASS   RANGE([1,2,2,5])   expected= 4.0   got= 4.0
+PASS   STDEV([1,2,3]) sample   expected= 1.0   got= 1.0
+PASS   VARIANCE([1,2,3]) sample   expected= 1.0   got= 1.0
+PASS   MODE([1,2,2,5])   expected= 2.0   got= 2.0
+PASS  MODE tie [1,2]  expected=NA  got=NA
+=== BNMath tour: UTC temporal ===
+PASS   TOHOUR(0)   expected= 0   got= 0
+PASS   TOWEEKDAY(0) Thursday=4   expected= 4   got= 4
+PASS   TOHOUR(-1) previous day 23   expected= 23   got= 23
+PASS   TOWEEKDAY(-1) Wednesday=3   expected= 3   got= 3
+PASS   TOTIMESTAMP round-trip 0   expected= 0   got= 0
+INFO  TODATE(0)= 1970-01-01   TOTIME(0)= 00:00:00.000
+=== bnmath_tour complete ===
+bnmath_exit:0

@@ -350,19 +350,34 @@ fn client_request_once(
         parse_authority_with_default(authority, if scheme == "https" { 443 } else { 80 })?;
     let addresses =
         resolve_validated_addresses_with_policy(host.as_str(), port, resolver, policy, scheme)?;
-    let address = addresses
-        .first()
-        .copied()
-        .ok_or_else(|| "URL resolved to no addresses".to_string())?;
-    let stream = crate::net::TcpStream::connect(
-        crate::net::Endpoint::new(
-            crate::net::Address::parse(&address.to_string())
-                .map_err(|_| "invalid resolved address")?,
-            port,
-        ),
-        std::time::Duration::from_millis(policy.total_deadline_ms()),
-    )
-    .map_err(|error| error.to_string())?;
+    if addresses.is_empty() {
+        return Err("URL resolved to no addresses".to_string());
+    }
+    let mut connect_error = None;
+    let mut stream = None;
+    for address in &addresses {
+        let endpoint = match crate::net::Address::parse(&address.to_string()) {
+            Ok(addr) => crate::net::Endpoint::new(addr, port),
+            Err(_) => continue,
+        };
+        match crate::net::TcpStream::connect(
+            endpoint,
+            std::time::Duration::from_millis(policy.total_deadline_ms()),
+        ) {
+            Ok(connected) => {
+                stream = Some(connected);
+                break;
+            }
+            Err(err) => {
+                connect_error = Some(err.to_string());
+            }
+        }
+    }
+    let Some(stream) = stream else {
+        return Err(
+            connect_error.unwrap_or_else(|| "failed to connect to allowed destination".to_string())
+        );
+    };
     let std_stream = stream.into_std();
     std_stream
         .set_nonblocking(true)
@@ -493,9 +508,8 @@ fn resolve_validated_addresses_with_policy(
         .map(crate::net::Address::as_std)
         .collect::<Vec<_>>();
     policy
-        .validate(scheme, port, &addresses)
-        .map_err(str::to_owned)?;
-    Ok(addresses)
+        .filter_allowed_addresses(scheme, port, &addresses)
+        .map_err(str::to_owned)
 }
 
 fn has_unsupported_encoding(headers: &[(String, String)]) -> bool {

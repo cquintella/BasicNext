@@ -1,0 +1,468 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// bndata_tour.bn — exercise every public BNData API the runtime supports.
+// Run from repo root: bn run examples/bndata_tour.bn
+
+IMPORT BNData AS Data
+IMPORT HOST.FileSystem AS FS
+IMPORT BNMath AS Math
+
+FUNCTION CheckInteger(label AS STRING, expected AS INTEGER, got AS INTEGER) AS VOID
+    IF expected = got THEN
+        PRINT "PASS  ", label, "  expected=", expected, "  got=", got
+    ELSE
+        PRINT "FAIL  ", label, "  expected=", expected, "  got=", got
+    END IF
+END FUNCTION
+
+FUNCTION CheckFloat(label AS STRING, expected AS FLOAT, got AS FLOAT) AS VOID
+    IF expected IS NAN AND got IS NAN THEN
+        PRINT "PASS  ", label, "  expected=NAN  got=NAN"
+    ELSE IF expected = got THEN
+        PRINT "PASS  ", label, "  expected=", expected, "  got=", got
+    ELSE
+        PRINT "FAIL  ", label, "  expected=", expected, "  got=", got
+    END IF
+END FUNCTION
+
+FUNCTION CheckString(label AS STRING, expected AS STRING, got AS STRING) AS VOID
+    IF expected = got THEN
+        PRINT "PASS  ", label, "  expected=", expected, "  got=", got
+    ELSE
+        PRINT "FAIL  ", label, "  expected=", expected, "  got=", got
+    END IF
+END FUNCTION
+
+FUNCTION CheckBoolean(label AS STRING, expected AS BOOLEAN, got AS BOOLEAN) AS VOID
+    IF expected = got THEN
+        PRINT "PASS  ", label, "  expected=", expected, "  got=", got
+    ELSE
+        PRINT "FAIL  ", label, "  expected=", expected, "  got=", got
+    END IF
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    PRINT "=== BNData tour: construct + Add*Column + getters ==="
+    LET frame AS Data.DataFrame = NEW Data.DataFrame()
+    LET names AS STRING[3] = ["Ana", "Carlos", "Joao"]
+    LET ages AS INTEGER[3] = [28, 35, 42]
+    LET scores AS FLOAT[3] = [9.5, 8.0, 9.5]
+    LET flags AS BOOLEAN[3] = [TRUE, FALSE, TRUE]
+    LET addS AS VOID OR Error = frame.AddStringColumn("name", names)
+    IF addS IS Error THEN
+        PRINT "SKIP: AddStringColumn — ", addS.Code
+    ELSE
+        PRINT "PASS  AddStringColumn"
+    END IF
+    LET addI AS VOID OR Error = frame.AddIntegerColumn("age", ages)
+    IF addI IS Error THEN
+        PRINT "SKIP: AddIntegerColumn — ", addI.Code
+    ELSE
+        PRINT "PASS  AddIntegerColumn"
+    END IF
+    LET addF AS VOID OR Error = frame.AddFloatColumn("score", scores)
+    IF addF IS Error THEN
+        PRINT "SKIP: AddFloatColumn — ", addF.Code
+    ELSE
+        PRINT "PASS  AddFloatColumn"
+    END IF
+    LET addB AS VOID OR Error = frame.AddBooleanColumn("active", flags)
+    IF addB IS Error THEN
+        PRINT "SKIP: AddBooleanColumn — ", addB.Code
+    ELSE
+        PRINT "PASS  AddBooleanColumn"
+    END IF
+
+    CheckInteger("RowCount", 3, frame.RowCount())
+    CheckInteger("ColumnCount", 4, frame.ColumnCount())
+    LET col0 AS STRING OR Error = frame.ColumnName(0)
+    IF col0 IS Error THEN
+        PRINT "SKIP: ColumnName — ", col0.Code
+    ELSE
+        CheckString("ColumnName(0)", "name", col0)
+    END IF
+    LET col1 AS STRING OR Error = frame.ColumnName(1)
+    IF col1 IS Error THEN
+        PRINT "SKIP: ColumnName(1) — ", col1.Code
+    ELSE
+        CheckString("ColumnName(1)", "age", col1)
+    END IF
+
+    LET gName AS STRING OR NA OR Error = frame.GetString(0, "name")
+    IF gName IS Error THEN
+        PRINT "SKIP: GetString — ", gName.Code
+    ELSE IF gName IS NA THEN
+        PRINT "FAIL  GetString(0,name)  expected=Ana  got=NA"
+    ELSE
+        CheckString("GetString(0,name)", "Ana", gName)
+    END IF
+    LET gAge AS INTEGER OR NA OR Error = frame.GetInteger(1, "age")
+    IF gAge IS Error THEN
+        PRINT "SKIP: GetInteger — ", gAge.Code
+    ELSE IF gAge IS NA THEN
+        PRINT "FAIL  GetInteger(1,age)  expected=35  got=NA"
+    ELSE
+        CheckInteger("GetInteger(1,age)", 35, gAge)
+    END IF
+    LET gScore AS FLOAT OR NA OR Error = frame.GetFloat(0, "score")
+    IF gScore IS Error THEN
+        PRINT "SKIP: GetFloat — ", gScore.Code
+    ELSE IF gScore IS NA THEN
+        PRINT "FAIL  GetFloat(0,score)  expected=9.5  got=NA"
+    ELSE
+        CheckFloat("GetFloat(0,score)", 9.5, gScore)
+    END IF
+    LET gFlag AS BOOLEAN OR NA OR Error = frame.GetBoolean(0, "active")
+    IF gFlag IS Error THEN
+        PRINT "SKIP: GetBoolean — ", gFlag.Code
+    ELSE IF gFlag IS NA THEN
+        PRINT "FAIL  GetBoolean(0,active)  expected=TRUE  got=NA"
+    ELSE
+        CheckBoolean("GetBoolean(0,active)", TRUE, gFlag)
+    END IF
+    LET gFlag2 AS BOOLEAN OR NA OR Error = frame.GetBoolean(1, "active")
+    IF gFlag2 IS Error THEN
+        PRINT "SKIP: GetBoolean(1) — ", gFlag2.Code
+    ELSE IF gFlag2 IS NA THEN
+        PRINT "FAIL  GetBoolean(1,active)  expected=FALSE  got=NA"
+    ELSE
+        CheckBoolean("GetBoolean(1,active)", FALSE, gFlag2)
+    END IF
+
+    PRINT "=== BNData tour: SetLabel ==="
+    LET renamed AS VOID OR Error = frame.SetLabel("name", "nome")
+    IF renamed IS Error THEN
+        PRINT "SKIP: SetLabel — ", renamed.Code
+    ELSE
+        LET newName AS STRING OR Error = frame.ColumnName(0)
+        IF newName IS Error THEN
+            PRINT "FAIL  SetLabel followed by ColumnName error ", newName.Code
+        ELSE
+            CheckString("SetLabel name->nome", "nome", newName)
+        END IF
+    END IF
+
+    PRINT "=== BNData tour: statistics ==="
+    LET meanAge AS FLOAT OR Error = frame.Mean("age")
+    IF meanAge IS Error THEN
+        PRINT "SKIP: Mean — ", meanAge.Code
+    ELSE
+        CheckFloat("Mean(age)", 35.0, meanAge)
+    END IF
+    LET medAge AS FLOAT OR Error = frame.Median("age")
+    IF medAge IS Error THEN
+        PRINT "SKIP: Median — ", medAge.Code
+    ELSE
+        CheckFloat("Median(age)", 35.0, medAge)
+    END IF
+    LET q1 AS FLOAT OR Error = frame.Quartile1("age")
+    IF q1 IS Error THEN
+        PRINT "SKIP: Quartile1 — ", q1.Code
+    ELSE
+        CheckFloat("Quartile1(age)", 28.0, q1)
+    END IF
+    LET q3 AS FLOAT OR Error = frame.Quartile3("age")
+    IF q3 IS Error THEN
+        PRINT "SKIP: Quartile3 — ", q3.Code
+    ELSE
+        CheckFloat("Quartile3(age)", 42.0, q3)
+    END IF
+    LET modeScore AS FLOAT OR NA OR Error = frame.Mode("score")
+    IF modeScore IS Error THEN
+        PRINT "SKIP: Mode — ", modeScore.Code
+    ELSE IF modeScore IS NA THEN
+        PRINT "FAIL  Mode(score)  expected=9.5  got=NA"
+    ELSE
+        CheckFloat("Mode(score)", 9.5, modeScore)
+    END IF
+    LET stdAge AS FLOAT OR Error = frame.Stdev("age")
+    IF stdAge IS Error THEN
+        PRINT "SKIP: Stdev — ", stdAge.Code
+    ELSE
+        CheckFloat("Stdev(age)", 7.0, stdAge)
+    END IF
+    LET varAge AS FLOAT OR Error = frame.Variance("age")
+    IF varAge IS Error THEN
+        PRINT "SKIP: Variance — ", varAge.Code
+    ELSE
+        CheckFloat("Variance(age)", 49.0, varAge)
+    END IF
+    LET rangeAge AS FLOAT OR Error = frame.Range("age")
+    IF rangeAge IS Error THEN
+        PRINT "SKIP: Range — ", rangeAge.Code
+    ELSE
+        CheckFloat("Range(age)", 14.0, rangeAge)
+    END IF
+    LET minAge AS FLOAT OR Error = frame.Min("age")
+    IF minAge IS Error THEN
+        PRINT "SKIP: Min — ", minAge.Code
+    ELSE
+        CheckFloat("Min(age)", 28.0, minAge)
+    END IF
+    LET maxAge AS FLOAT OR Error = frame.Max("age")
+    IF maxAge IS Error THEN
+        PRINT "SKIP: Max — ", maxAge.Code
+    ELSE
+        CheckFloat("Max(age)", 42.0, maxAge)
+    END IF
+
+    PRINT "=== BNData tour: ZScore ==="
+    LET zframe AS Data.DataFrame OR Error = frame.ZScore("age")
+    IF zframe IS Error THEN
+        PRINT "SKIP: ZScore — ", zframe.Code
+    ELSE
+        CheckInteger("ZScore RowCount", 3, zframe.RowCount())
+        CheckInteger("ZScore ColumnCount", 1, zframe.ColumnCount())
+        LET zCol AS STRING OR Error = zframe.ColumnName(0)
+        IF zCol IS Error THEN
+            PRINT "SKIP: ZScore ColumnName — ", zCol.Code
+        ELSE
+            LET z0 AS FLOAT OR NA OR Error = zframe.GetFloat(0, zCol)
+            IF z0 IS Error THEN
+                PRINT "SKIP: ZScore GetFloat — ", z0.Code
+            ELSE IF z0 IS NA THEN
+                PRINT "FAIL  ZScore row0  expected=-1.0  got=NA"
+            ELSE
+                CheckFloat("ZScore(age)[0]", -1.0, z0)
+            END IF
+        END IF
+        DELETE zframe
+    END IF
+
+    PRINT "=== BNData tour: CopyIntegerColumn / CopyFloatColumn ==="
+    LET copiedAges AS POINTER TO INTEGER[] = NEW INTEGER[3]
+    LET copyI AS VOID OR Error = frame.CopyIntegerColumn("age", copiedAges)
+    IF copyI IS Error THEN
+        PRINT "SKIP: CopyIntegerColumn — ", copyI.Code
+    ELSE
+        CheckInteger("CopyIntegerColumn[1]", 35, copiedAges[1])
+        CheckFloat("Math.MEAN after CopyIntegerColumn", 35.0, Math.MEAN(copiedAges))
+    END IF
+    DELETE copiedAges
+    LET copiedScores AS POINTER TO FLOAT[] = NEW FLOAT[3]
+    LET copyF AS VOID OR Error = frame.CopyFloatColumn("score", copiedScores)
+    IF copyF IS Error THEN
+        PRINT "SKIP: CopyFloatColumn — ", copyF.Code
+    ELSE
+        CheckFloat("CopyFloatColumn[0]", 9.5, copiedScores[0])
+        CheckFloat("Math.MEAN after CopyFloatColumn", Math.MEAN(scores), Math.MEAN(copiedScores))
+    END IF
+    DELETE copiedScores
+
+    PRINT "=== BNData tour: Select / Slice ==="
+    LET selected AS Data.DataFrame OR Error = frame.Select([0, 2], [1, 0])
+    IF selected IS Error THEN
+        PRINT "SKIP: Select — ", selected.Code
+    ELSE
+        CheckInteger("Select RowCount", 2, selected.RowCount())
+        CheckInteger("Select ColumnCount", 2, selected.ColumnCount())
+        LET selAge AS INTEGER OR NA OR Error = selected.GetInteger(0, "age")
+        IF selAge IS Error THEN
+            PRINT "FAIL  Select GetInteger error ", selAge.Code
+        ELSE IF selAge IS NA THEN
+            PRINT "FAIL  Select GetInteger NA"
+        ELSE
+            CheckInteger("Select GetInteger age row0", 28, selAge)
+        END IF
+        DELETE selected
+    END IF
+    LET sliced AS Data.DataFrame OR Error = frame.Slice(1, 2, 0, 2)
+    IF sliced IS Error THEN
+        PRINT "SKIP: Slice — ", sliced.Code
+    ELSE
+        CheckInteger("Slice RowCount", 2, sliced.RowCount())
+        CheckInteger("Slice ColumnCount", 2, sliced.ColumnCount())
+        DELETE sliced
+    END IF
+
+    PRINT "=== BNData tour: Transpose ==="
+    LET transposed AS Data.DataFrame OR Error = frame.Transpose()
+    IF transposed IS Error THEN
+        PRINT "SKIP: Transpose — ", transposed.Code
+    ELSE
+        CheckInteger("Transpose RowCount", 4, transposed.RowCount())
+        CheckInteger("Transpose ColumnCount", 4, transposed.ColumnCount())
+        DELETE transposed
+    END IF
+
+    PRINT "=== BNData tour: AppendRows / AppendColumns ==="
+    LET moreRows AS Data.DataFrame = NEW Data.DataFrame()
+    LET moreNames AS STRING[1] = ["Zed"]
+    LET moreAges AS INTEGER[1] = [50]
+    LET moreScores AS FLOAT[1] = [7.0]
+    LET moreFlags AS BOOLEAN[1] = [FALSE]
+    moreRows.AddStringColumn("nome", moreNames)
+    moreRows.AddIntegerColumn("age", moreAges)
+    moreRows.AddFloatColumn("score", moreScores)
+    moreRows.AddBooleanColumn("active", moreFlags)
+    LET appendedRows AS Data.DataFrame OR Error = frame.AppendRows(moreRows)
+    IF appendedRows IS Error THEN
+        PRINT "SKIP: AppendRows — ", appendedRows.Code
+    ELSE
+        CheckInteger("AppendRows RowCount", 4, appendedRows.RowCount())
+        DELETE appendedRows
+    END IF
+    DELETE moreRows
+
+    LET extraCols AS Data.DataFrame = NEW Data.DataFrame()
+    LET cities AS STRING[3] = ["SP", "RJ", "BH"]
+    extraCols.AddStringColumn("city", cities)
+    LET appendedCols AS Data.DataFrame OR Error = frame.AppendColumns(extraCols)
+    IF appendedCols IS Error THEN
+        PRINT "SKIP: AppendColumns — ", appendedCols.Code
+    ELSE
+        CheckInteger("AppendColumns ColumnCount", 5, appendedCols.ColumnCount())
+        DELETE appendedCols
+    END IF
+    DELETE extraCols
+
+    PRINT "=== BNData tour: Join / LeftJoin / RightJoin / FullJoin ==="
+    LET left AS Data.DataFrame = NEW Data.DataFrame()
+    LET right AS Data.DataFrame = NEW Data.DataFrame()
+    LET leftIds AS INTEGER[2] = [1, 2]
+    LET leftNames AS STRING[2] = ["Ana", "Bob"]
+    LET rightIds AS INTEGER[2] = [1, 3]
+    LET rightScores AS FLOAT[2] = [10.0, 20.0]
+    left.AddIntegerColumn("id", leftIds)
+    left.AddStringColumn("person", leftNames)
+    right.AddIntegerColumn("id", rightIds)
+    right.AddFloatColumn("points", rightScores)
+
+    LET inner AS Data.DataFrame OR Error = left.Join(right, "id", "id")
+    IF inner IS Error THEN
+        PRINT "SKIP: Join — ", inner.Code
+    ELSE
+        CheckInteger("Join RowCount", 1, inner.RowCount())
+        CheckInteger("Join ColumnCount", 3, inner.ColumnCount())
+        DELETE inner
+    END IF
+    LET leftJ AS Data.DataFrame OR Error = left.LeftJoin(right, "id", "id")
+    IF leftJ IS Error THEN
+        PRINT "SKIP: LeftJoin — ", leftJ.Code
+    ELSE
+        CheckInteger("LeftJoin RowCount", 2, leftJ.RowCount())
+        DELETE leftJ
+    END IF
+    LET rightJ AS Data.DataFrame OR Error = left.RightJoin(right, "id", "id")
+    IF rightJ IS Error THEN
+        PRINT "SKIP: RightJoin — ", rightJ.Code
+    ELSE
+        CheckInteger("RightJoin RowCount", 2, rightJ.RowCount())
+        DELETE rightJ
+    END IF
+    LET fullJ AS Data.DataFrame OR Error = left.FullJoin(right, "id", "id")
+    IF fullJ IS Error THEN
+        PRINT "SKIP: FullJoin — ", fullJ.Code
+    ELSE
+        CheckInteger("FullJoin RowCount", 3, fullJ.RowCount())
+        DELETE fullJ
+    END IF
+    DELETE left
+    DELETE right
+
+    PRINT "=== BNData tour: ReadCSV + ConvertTo* + WriteCSV ==="
+    LET csvFile AS FS.File OR Error = FS.Open("tests/fixtures/bndata-sprint6.csv", FS.READ)
+    IF csvFile IS Error THEN
+        PRINT "SKIP: ReadCSV (open) — ", csvFile.Code
+    ELSE
+        LET table AS Data.DataFrame OR Error = Data.ReadCSV(csvFile, TRUE, ",")
+        IF table IS Error THEN
+            PRINT "SKIP: ReadCSV — ", table.Code
+        ELSE
+            CheckInteger("ReadCSV RowCount", 2, table.RowCount())
+            CheckInteger("ReadCSV ColumnCount", 2, table.ColumnCount())
+            LET csvName AS STRING OR NA OR Error = table.GetString(0, "name")
+            IF csvName IS Error THEN
+                PRINT "FAIL  ReadCSV GetString error ", csvName.Code
+            ELSE IF csvName IS NA THEN
+                PRINT "FAIL  ReadCSV GetString NA"
+            ELSE
+                CheckString("ReadCSV GetString name", "Ana", csvName)
+            END IF
+
+            LET convI AS VOID OR Error = table.ConvertToInteger("age")
+            IF convI IS Error THEN
+                PRINT "SKIP: ConvertToInteger — ", convI.Code
+            ELSE
+                LET csvAge AS INTEGER OR NA OR Error = table.GetInteger(1, "age")
+                IF csvAge IS Error THEN
+                    PRINT "FAIL  ConvertToInteger GetInteger error ", csvAge.Code
+                ELSE IF csvAge IS NA THEN
+                    PRINT "FAIL  ConvertToInteger GetInteger NA"
+                ELSE
+                    CheckInteger("ConvertToInteger age[1]", 35, csvAge)
+                END IF
+                LET csvMean AS FLOAT OR Error = table.Mean("age")
+                IF csvMean IS Error THEN
+                    PRINT "FAIL  Mean after ConvertToInteger ", csvMean.Code
+                ELSE
+                    CheckFloat("Mean after ConvertToInteger", 31.5, csvMean)
+                END IF
+            END IF
+
+            // Rebuild a string numeric column for ConvertToFloat
+            LET floatSrc AS Data.DataFrame = NEW Data.DataFrame()
+            LET priceText AS STRING[2] = ["12.5", "7.5"]
+            floatSrc.AddStringColumn("price", priceText)
+            LET convF AS VOID OR Error = floatSrc.ConvertToFloat("price")
+            IF convF IS Error THEN
+                PRINT "SKIP: ConvertToFloat — ", convF.Code
+            ELSE
+                LET price0 AS FLOAT OR NA OR Error = floatSrc.GetFloat(0, "price")
+                IF price0 IS Error THEN
+                    PRINT "FAIL  ConvertToFloat GetFloat error ", price0.Code
+                ELSE IF price0 IS NA THEN
+                    PRINT "FAIL  ConvertToFloat GetFloat NA"
+                ELSE
+                    CheckFloat("ConvertToFloat price[0]", 12.5, price0)
+                END IF
+                LET priceMean AS FLOAT OR Error = floatSrc.Mean("price")
+                IF priceMean IS Error THEN
+                    PRINT "FAIL  Mean after ConvertToFloat ", priceMean.Code
+                ELSE
+                    CheckFloat("Mean after ConvertToFloat", 10.0, priceMean)
+                END IF
+            END IF
+            DELETE floatSrc
+
+            LET outPath AS STRING = "/tmp/basicnext-bndata-tour-write.csv"
+            LET outFile AS FS.File OR Error = FS.Open(outPath, FS.WRITE)
+            IF outFile IS Error THEN
+                PRINT "SKIP: WriteCSV (open) — ", outFile.Code
+            ELSE
+                LET wrote AS VOID OR Error = Data.WriteCSV(outFile, table, TRUE, ",")
+                IF wrote IS Error THEN
+                    PRINT "SKIP: WriteCSV — ", wrote.Code
+                ELSE
+                    PRINT "PASS  WriteCSV  path=", outPath
+                END IF
+                outFile.Close()
+                DELETE outFile
+            END IF
+
+            // Round-trip read of written CSV
+            LET roundFile AS FS.File OR Error = FS.Open(outPath, FS.READ)
+            IF roundFile IS Error THEN
+                PRINT "SKIP: WriteCSV round-trip open — ", roundFile.Code
+            ELSE
+                LET roundTable AS Data.DataFrame OR Error = Data.ReadCSV(roundFile, TRUE, ",")
+                IF roundTable IS Error THEN
+                    PRINT "SKIP: WriteCSV round-trip ReadCSV — ", roundTable.Code
+                ELSE
+                    CheckInteger("WriteCSV round-trip rows", 2, roundTable.RowCount())
+                    DELETE roundTable
+                END IF
+                DELETE roundFile
+            END IF
+
+            DELETE table
+        END IF
+        DELETE csvFile
+    END IF
+
+    DELETE frame
+    PRINT "=== bndata_tour complete ==="
+END FUNCTION

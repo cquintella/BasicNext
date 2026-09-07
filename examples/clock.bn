@@ -1,10 +1,15 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
 IMPORT HOST.Clock AS Clock
-IMPORT BNMath as Math
+IMPORT BNMath AS Math
 
 FUNCTION Start() AS VOID
-
-    PRINT Clock.Timer()
-
+    LET now AS TIMESTAMP = Clock.Now()
+    LET today AS DATE = Math.TODATE(now)
+    LET clock AS TIME = Math.TOTIME(now)
+    PRINT "Data: ", today
+    PRINT "Hora: ", clock
 END FUNCTION
-
-

@@ -19,6 +19,9 @@ pub const BN_DATAFRAME_INVALID_ARGUMENT: BNDataFrameStatus = 1;
 pub const BN_DATAFRAME_INVALID_HANDLE: BNDataFrameStatus = 2;
 pub const BN_DATAFRAME_CONTRACT_ERROR: BNDataFrameStatus = 3;
 
+/// Maximum allowed byte length for column names passed across the C ABI.
+pub const MAX_COLUMN_NAME_LENGTH: usize = 256;
+
 /// Borrowed input view. Names and values are copied during `create`.
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -71,6 +74,12 @@ fn with_frames<T>(operation: impl FnOnce(&mut HashMap<BNDataFrameHandle, Frame>)
 
 #[allow(unsafe_code)]
 unsafe fn copy_value(value: &BNValue) -> Option<StoredValue> {
+    // Validate value.kind range before inspecting union payload to avoid UB on hostile/uninitialized FFI values.
+    // We read the raw 4-byte discriminant at value's address.
+    let raw_kind = unsafe { *std::ptr::from_ref::<BNValue>(value).cast::<u32>() };
+    if raw_kind > (super::dispatch_abi::BNValueKind::EndOfFile as u32) {
+        return None;
+    }
     match value.kind {
         super::dispatch_abi::BNValueKind::Boolean => {
             Some(StoredValue::Boolean(unsafe { value.payload.boolean != 0 }))
@@ -114,6 +123,15 @@ unsafe fn copy_column(view: &BNDataFrameColumnView) -> Option<DataFrameColumn<St
     if view.name.is_null() || (view.length > 0 && view.values.is_null()) {
         return None;
     }
+    // Scan at most MAX_COLUMN_NAME_LENGTH + 1 bytes looking for NUL terminator.
+    let name_slice = unsafe {
+        let ptr = view.name.cast::<u8>();
+        std::slice::from_raw_parts(ptr, MAX_COLUMN_NAME_LENGTH + 1)
+    };
+    let nul_pos = name_slice.iter().position(|&b| b == 0)?;
+    if nul_pos > MAX_COLUMN_NAME_LENGTH {
+        return None;
+    }
     let name = unsafe { CStr::from_ptr(view.name) }
         .to_str()
         .ok()?
@@ -137,29 +155,34 @@ pub extern "C" fn bn_rt_dataframe_create(
     column_count: u32,
     out_frame: *mut BNDataFrameHandle,
 ) -> BNDataFrameStatus {
-    if out_frame.is_null() || (column_count > 0 && columns.is_null()) {
-        return BN_DATAFRAME_INVALID_ARGUMENT;
-    }
-    let views = if column_count == 0 {
-        &[]
-    } else {
-        unsafe { std::slice::from_raw_parts(columns, usize::try_from(column_count).unwrap_or(0)) }
-    };
-    let Some(columns) = views
-        .iter()
-        .map(|view| unsafe { copy_column(view) })
-        .collect::<Option<Vec<_>>>()
-    else {
-        return BN_DATAFRAME_INVALID_ARGUMENT;
-    };
-    let handle = next_handle();
-    with_frames(|frames| {
-        frames.insert(handle, DataFrameResource { columns });
-    });
-    unsafe {
-        *out_frame = handle;
-    }
-    BN_DATAFRAME_OK
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if out_frame.is_null() || (column_count > 0 && columns.is_null()) {
+            return BN_DATAFRAME_INVALID_ARGUMENT;
+        }
+        let views = if column_count == 0 {
+            &[]
+        } else {
+            unsafe {
+                std::slice::from_raw_parts(columns, usize::try_from(column_count).unwrap_or(0))
+            }
+        };
+        let Some(columns) = views
+            .iter()
+            .map(|view| unsafe { copy_column(view) })
+            .collect::<Option<Vec<_>>>()
+        else {
+            return BN_DATAFRAME_INVALID_ARGUMENT;
+        };
+        let handle = next_handle();
+        with_frames(|frames| {
+            frames.insert(handle, DataFrameResource { columns });
+        });
+        unsafe {
+            *out_frame = handle;
+        }
+        BN_DATAFRAME_OK
+    }))
+    .unwrap_or(BN_DATAFRAME_CONTRACT_ERROR)
 }
 
 fn same_stored_type(left: &StoredValue, right: &StoredValue) -> bool {
@@ -177,28 +200,31 @@ pub extern "C" fn bn_rt_dataframe_append_rows(
     right: BNDataFrameHandle,
     out_frame: *mut BNDataFrameHandle,
 ) -> BNDataFrameStatus {
-    if out_frame.is_null() {
-        return BN_DATAFRAME_INVALID_ARGUMENT;
-    }
-    let result = with_frames(|frames| {
-        let (Some(left), Some(right)) = (frames.get(&left), frames.get(&right)) else {
-            return Err(BN_DATAFRAME_INVALID_HANDLE);
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if out_frame.is_null() {
+            return BN_DATAFRAME_INVALID_ARGUMENT;
+        }
+        let result = with_frames(|frames| {
+            let (Some(left), Some(right)) = (frames.get(&left), frames.get(&right)) else {
+                return Err(BN_DATAFRAME_INVALID_HANDLE);
+            };
+            append_rows(left, right, is_missing, same_stored_type)
+                .map_err(|_| BN_DATAFRAME_CONTRACT_ERROR)
+        });
+        let frame = match result {
+            Ok(frame) => frame,
+            Err(status) => return status,
         };
-        append_rows(left, right, is_missing, same_stored_type)
-            .map_err(|_| BN_DATAFRAME_CONTRACT_ERROR)
-    });
-    let frame = match result {
-        Ok(frame) => frame,
-        Err(status) => return status,
-    };
-    let handle = next_handle();
-    with_frames(|frames| {
-        frames.insert(handle, frame);
-    });
-    unsafe {
-        *out_frame = handle;
-    }
-    BN_DATAFRAME_OK
+        let handle = next_handle();
+        with_frames(|frames| {
+            frames.insert(handle, frame);
+        });
+        unsafe {
+            *out_frame = handle;
+        }
+        BN_DATAFRAME_OK
+    }))
+    .unwrap_or(BN_DATAFRAME_CONTRACT_ERROR)
 }
 
 /// Appends columns and returns a new owning frame handle.
@@ -208,27 +234,30 @@ pub extern "C" fn bn_rt_dataframe_append_columns(
     right: BNDataFrameHandle,
     out_frame: *mut BNDataFrameHandle,
 ) -> BNDataFrameStatus {
-    if out_frame.is_null() {
-        return BN_DATAFRAME_INVALID_ARGUMENT;
-    }
-    let result = with_frames(|frames| {
-        let (Some(left), Some(right)) = (frames.get(&left), frames.get(&right)) else {
-            return Err(BN_DATAFRAME_INVALID_HANDLE);
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if out_frame.is_null() {
+            return BN_DATAFRAME_INVALID_ARGUMENT;
+        }
+        let result = with_frames(|frames| {
+            let (Some(left), Some(right)) = (frames.get(&left), frames.get(&right)) else {
+                return Err(BN_DATAFRAME_INVALID_HANDLE);
+            };
+            append_columns(left, right).map_err(|_| BN_DATAFRAME_CONTRACT_ERROR)
+        });
+        let frame = match result {
+            Ok(frame) => frame,
+            Err(status) => return status,
         };
-        append_columns(left, right).map_err(|_| BN_DATAFRAME_CONTRACT_ERROR)
-    });
-    let frame = match result {
-        Ok(frame) => frame,
-        Err(status) => return status,
-    };
-    let handle = next_handle();
-    with_frames(|frames| {
-        frames.insert(handle, frame);
-    });
-    unsafe {
-        *out_frame = handle;
-    }
-    BN_DATAFRAME_OK
+        let handle = next_handle();
+        with_frames(|frames| {
+            frames.insert(handle, frame);
+        });
+        unsafe {
+            *out_frame = handle;
+        }
+        BN_DATAFRAME_OK
+    }))
+    .unwrap_or(BN_DATAFRAME_CONTRACT_ERROR)
 }
 
 /// Returns the number of rows in a frame.
@@ -237,26 +266,29 @@ pub extern "C" fn bn_rt_dataframe_row_count(
     frame: BNDataFrameHandle,
     out_count: *mut u32,
 ) -> BNDataFrameStatus {
-    if out_count.is_null() {
-        return BN_DATAFRAME_INVALID_ARGUMENT;
-    }
-    let Some(count) = with_frames(|frames| {
-        frames.get(&frame).map(|resource| {
-            resource
-                .columns
-                .first()
-                .map_or(0, |column| column.values.len())
-        })
-    }) else {
-        return BN_DATAFRAME_INVALID_HANDLE;
-    };
-    let Ok(count) = u32::try_from(count) else {
-        return BN_DATAFRAME_CONTRACT_ERROR;
-    };
-    unsafe {
-        *out_count = count;
-    }
-    BN_DATAFRAME_OK
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if out_count.is_null() {
+            return BN_DATAFRAME_INVALID_ARGUMENT;
+        }
+        let Some(count) = with_frames(|frames| {
+            frames.get(&frame).map(|resource| {
+                resource
+                    .columns
+                    .first()
+                    .map_or(0, |column| column.values.len())
+            })
+        }) else {
+            return BN_DATAFRAME_INVALID_HANDLE;
+        };
+        let Ok(count) = u32::try_from(count) else {
+            return BN_DATAFRAME_CONTRACT_ERROR;
+        };
+        unsafe {
+            *out_count = count;
+        }
+        BN_DATAFRAME_OK
+    }))
+    .unwrap_or(BN_DATAFRAME_CONTRACT_ERROR)
 }
 
 /// Returns the number of columns in a frame.
@@ -265,21 +297,24 @@ pub extern "C" fn bn_rt_dataframe_column_count(
     frame: BNDataFrameHandle,
     out_count: *mut u32,
 ) -> BNDataFrameStatus {
-    if out_count.is_null() {
-        return BN_DATAFRAME_INVALID_ARGUMENT;
-    }
-    let Some(count) =
-        with_frames(|frames| frames.get(&frame).map(|resource| resource.columns.len()))
-    else {
-        return BN_DATAFRAME_INVALID_HANDLE;
-    };
-    let Ok(count) = u32::try_from(count) else {
-        return BN_DATAFRAME_CONTRACT_ERROR;
-    };
-    unsafe {
-        *out_count = count;
-    }
-    BN_DATAFRAME_OK
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if out_count.is_null() {
+            return BN_DATAFRAME_INVALID_ARGUMENT;
+        }
+        let Some(count) =
+            with_frames(|frames| frames.get(&frame).map(|resource| resource.columns.len()))
+        else {
+            return BN_DATAFRAME_INVALID_HANDLE;
+        };
+        let Ok(count) = u32::try_from(count) else {
+            return BN_DATAFRAME_CONTRACT_ERROR;
+        };
+        unsafe {
+            *out_count = count;
+        }
+        BN_DATAFRAME_OK
+    }))
+    .unwrap_or(BN_DATAFRAME_CONTRACT_ERROR)
 }
 
 /// Selects rows and columns and returns a new owning frame handle.
@@ -293,69 +328,78 @@ pub extern "C" fn bn_rt_dataframe_select(
     column_count: u32,
     out_frame: *mut BNDataFrameHandle,
 ) -> BNDataFrameStatus {
-    if out_frame.is_null()
-        || (row_count > 0 && rows.is_null())
-        || (column_count > 0 && columns.is_null())
-    {
-        return BN_DATAFRAME_INVALID_ARGUMENT;
-    }
-    let row_values = if row_count == 0 {
-        &[]
-    } else {
-        unsafe { std::slice::from_raw_parts(rows, usize::try_from(row_count).unwrap_or(0)) }
-    };
-    let row_indices = row_values
-        .iter()
-        .map(|index| usize::try_from(*index).unwrap_or(usize::MAX))
-        .collect::<Vec<_>>();
-    let column_values = if column_count == 0 {
-        &[]
-    } else {
-        unsafe { std::slice::from_raw_parts(columns, usize::try_from(column_count).unwrap_or(0)) }
-    };
-    let column_indices = column_values
-        .iter()
-        .map(|index| usize::try_from(*index).unwrap_or(usize::MAX))
-        .collect::<Vec<_>>();
-    let result = with_frames(|frames| {
-        let Some(source) = frames.get(&frame) else {
-            return Err(BN_DATAFRAME_INVALID_HANDLE);
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if out_frame.is_null()
+            || (row_count > 0 && rows.is_null())
+            || (column_count > 0 && columns.is_null())
+        {
+            return BN_DATAFRAME_INVALID_ARGUMENT;
+        }
+        let row_values = if row_count == 0 {
+            &[]
+        } else {
+            unsafe { std::slice::from_raw_parts(rows, usize::try_from(row_count).unwrap_or(0)) }
         };
-        select_dataframe(source, &row_indices, &column_indices)
-            .map_err(|_| BN_DATAFRAME_CONTRACT_ERROR)
-    });
-    let result = match result {
-        Ok(result) => result,
-        Err(status) => return status,
-    };
-    let handle = next_handle();
-    with_frames(|frames| {
-        frames.insert(handle, result);
-    });
-    unsafe {
-        *out_frame = handle;
-    }
-    BN_DATAFRAME_OK
+        let row_indices = row_values
+            .iter()
+            .map(|index| usize::try_from(*index).unwrap_or(usize::MAX))
+            .collect::<Vec<_>>();
+        let column_values = if column_count == 0 {
+            &[]
+        } else {
+            unsafe {
+                std::slice::from_raw_parts(columns, usize::try_from(column_count).unwrap_or(0))
+            }
+        };
+        let column_indices = column_values
+            .iter()
+            .map(|index| usize::try_from(*index).unwrap_or(usize::MAX))
+            .collect::<Vec<_>>();
+        let result = with_frames(|frames| {
+            let Some(source) = frames.get(&frame) else {
+                return Err(BN_DATAFRAME_INVALID_HANDLE);
+            };
+            select_dataframe(source, &row_indices, &column_indices)
+                .map_err(|_| BN_DATAFRAME_CONTRACT_ERROR)
+        });
+        let result = match result {
+            Ok(result) => result,
+            Err(status) => return status,
+        };
+        let handle = next_handle();
+        with_frames(|frames| {
+            frames.insert(handle, result);
+        });
+        unsafe {
+            *out_frame = handle;
+        }
+        BN_DATAFRAME_OK
+    }))
+    .unwrap_or(BN_DATAFRAME_CONTRACT_ERROR)
 }
 
 /// Closes a frame handle. Closing twice returns `INVALID_HANDLE`.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_dataframe_close(frame: BNDataFrameHandle) -> BNDataFrameStatus {
-    with_frames(|frames| {
-        frames
-            .remove(&frame)
-            .map_or(BN_DATAFRAME_INVALID_HANDLE, |_| BN_DATAFRAME_OK)
-    })
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        with_frames(|frames| {
+            frames
+                .remove(&frame)
+                .map_or(BN_DATAFRAME_INVALID_HANDLE, |_| BN_DATAFRAME_OK)
+        })
+    }))
+    .unwrap_or(BN_DATAFRAME_CONTRACT_ERROR)
 }
 
 #[cfg(test)]
 mod tests {
     use super::super::dispatch_abi::{BNValueBytes, BNValueKind, BNValuePayload};
     use super::{
-        BN_DATAFRAME_CONTRACT_ERROR, BN_DATAFRAME_INVALID_HANDLE, BN_DATAFRAME_OK,
-        BNDataFrameColumnView, BNDataFrameHandle, BNValue, bn_rt_dataframe_append_columns,
-        bn_rt_dataframe_append_rows, bn_rt_dataframe_close, bn_rt_dataframe_column_count,
-        bn_rt_dataframe_create, bn_rt_dataframe_row_count, bn_rt_dataframe_select,
+        BN_DATAFRAME_CONTRACT_ERROR, BN_DATAFRAME_INVALID_ARGUMENT, BN_DATAFRAME_INVALID_HANDLE,
+        BN_DATAFRAME_OK, BNDataFrameColumnView, BNDataFrameHandle, BNValue, MAX_COLUMN_NAME_LENGTH,
+        bn_rt_dataframe_append_columns, bn_rt_dataframe_append_rows, bn_rt_dataframe_close,
+        bn_rt_dataframe_column_count, bn_rt_dataframe_create, bn_rt_dataframe_row_count,
+        bn_rt_dataframe_select,
     };
 
     #[test]
@@ -476,6 +520,85 @@ mod tests {
         );
         assert_eq!(
             bn_rt_dataframe_column_count(frame, &raw mut columns),
+            BN_DATAFRAME_INVALID_HANDLE
+        );
+    }
+
+    #[test]
+    fn hostile_column_names_are_rejected_with_invalid_argument() {
+        // 1. Null column name
+        let null_name_view = BNDataFrameColumnView {
+            name: std::ptr::null(),
+            values: std::ptr::null(),
+            length: 0,
+        };
+        let mut frame = 0;
+        assert_eq!(
+            bn_rt_dataframe_create(&raw const null_name_view, 1, &raw mut frame),
+            BN_DATAFRAME_INVALID_ARGUMENT
+        );
+
+        // 2. Overlong column name (> 256 bytes)
+        let overlong_bytes = vec![b'a'; MAX_COLUMN_NAME_LENGTH + 10];
+        let overlong_c = std::ffi::CString::new(overlong_bytes).unwrap();
+        let overlong_view = BNDataFrameColumnView {
+            name: overlong_c.as_ptr(),
+            values: std::ptr::null(),
+            length: 0,
+        };
+        assert_eq!(
+            bn_rt_dataframe_create(&raw const overlong_view, 1, &raw mut frame),
+            BN_DATAFRAME_INVALID_ARGUMENT
+        );
+
+        // 3. Exactly MAX_COLUMN_NAME_LENGTH (256 bytes) is allowed
+        let exact_bytes = vec![b'b'; MAX_COLUMN_NAME_LENGTH];
+        let exact_c = std::ffi::CString::new(exact_bytes).unwrap();
+        let exact_view = BNDataFrameColumnView {
+            name: exact_c.as_ptr(),
+            values: std::ptr::null(),
+            length: 0,
+        };
+        assert_eq!(
+            bn_rt_dataframe_create(&raw const exact_view, 1, &raw mut frame),
+            BN_DATAFRAME_OK
+        );
+        assert_eq!(bn_rt_dataframe_close(frame), BN_DATAFRAME_OK);
+    }
+
+    #[test]
+    fn invalid_value_kind_is_rejected_safely() {
+        let name = c"bad_kind_col";
+        // Construct properly aligned buffer matching BNValue layout with out-of-range kind (99)
+        let mut uninit = std::mem::MaybeUninit::<BNValue>::uninit();
+        let uninit_ptr = uninit.as_mut_ptr();
+        unsafe {
+            uninit_ptr
+                .cast::<u8>()
+                .write_bytes(0, std::mem::size_of::<BNValue>());
+            uninit_ptr.cast::<u32>().write(99);
+        }
+        let bad_value_ptr = uninit.as_ptr();
+
+        let view = BNDataFrameColumnView {
+            name: name.as_ptr(),
+            values: bad_value_ptr,
+            length: 1,
+        };
+        let mut frame = 0;
+        assert_eq!(
+            bn_rt_dataframe_create(&raw const view, 1, &raw mut frame),
+            BN_DATAFRAME_INVALID_ARGUMENT
+        );
+    }
+
+    #[test]
+    fn catch_unwind_prevents_process_abort_on_panic() {
+        // An unmapped / invalid handle returns BN_DATAFRAME_INVALID_HANDLE without unwinding
+        assert_eq!(bn_rt_dataframe_close(999_999), BN_DATAFRAME_INVALID_HANDLE);
+        let mut count = 0;
+        assert_eq!(
+            bn_rt_dataframe_row_count(999_999, &raw mut count),
             BN_DATAFRAME_INVALID_HANDLE
         );
     }

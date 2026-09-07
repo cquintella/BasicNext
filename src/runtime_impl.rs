@@ -188,6 +188,19 @@ impl HostEnv {
         }
     }
 
+    /// Creates an untrusted sandbox environment that is fail-closed by default:
+    /// filesystem access is completely denied unless explicitly configured with roots.
+    #[must_use]
+    pub fn sandbox(arguments: Vec<String>) -> Self {
+        Self {
+            arguments,
+            clock: ClockKind::System,
+            random_state: AtomicU64::new(host_random_seed()),
+            filesystem: FilesystemPolicy::denied(),
+            data_provider: Arc::new(StandardDataProvider),
+        }
+    }
+
     /// Creates an environment that denies filesystem capability imports.
     #[must_use]
     pub fn without_filesystem(mut self) -> Self {

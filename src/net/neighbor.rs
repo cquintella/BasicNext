@@ -60,8 +60,25 @@ fn ndp_entry_present(address: &str) -> bool {
     command_entry_present("ndp", &["-an"], address)
 }
 
+fn resolve_trusted_program(program: &str) -> Option<&'static str> {
+    const TRUSTED_PATHS: &[&str] = &[
+        "/usr/sbin/arp",
+        "/usr/bin/arp",
+        "/sbin/arp",
+        "/usr/sbin/ndp",
+        "/usr/bin/ndp",
+    ];
+    TRUSTED_PATHS
+        .iter()
+        .copied()
+        .find(|path| path.ends_with(&format!("/{program}")) && std::path::Path::new(path).exists())
+}
+
 fn command_entry_present(program: &str, arguments: &[&str], address: &str) -> bool {
-    let Ok(output) = Command::new(program).args(arguments).output() else {
+    let Some(binary_path) = resolve_trusted_program(program) else {
+        return false;
+    };
+    let Ok(output) = Command::new(binary_path).args(arguments).output() else {
         return false;
     };
     output.status.success()
@@ -100,5 +117,17 @@ mod tests {
             "? (192.0.2.2) at aa:bb:cc:dd:ee:ff on en0",
             "192.0.2.1"
         ));
+    }
+
+    #[test]
+    fn resolve_trusted_program_rejects_untrusted_names_and_paths() {
+        assert!(super::resolve_trusted_program("sh").is_none());
+        assert!(super::resolve_trusted_program("evil").is_none());
+        assert!(super::resolve_trusted_program("../arp").is_none());
+        #[cfg(target_os = "macos")]
+        {
+            assert!(super::resolve_trusted_program("arp").is_some());
+            assert!(super::resolve_trusted_program("ndp").is_some());
+        }
     }
 }

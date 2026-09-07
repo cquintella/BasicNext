@@ -16,8 +16,8 @@ leak secrets, and which trust boundaries the DFDs already name.
 
 | Document | Role |
 | --- | --- |
-| [`../../ongoing/0.4-threat-model.md`](../../ongoing/0.4-threat-model.md) | Working **threat model** and resource policy for 0.4 BNWeb hardening |
-| [`../../ongoing/0.4-security-register.md`](../../ongoing/0.4-security-register.md) | Active **security register** (findings, mitigations, residual risk) |
+| [`../security/threat-model.md`](../security/threat-model.md) | Working **threat model** and resource policy for 0.4 BNWeb hardening |
+| [`../security/security-register.md`](../security/security-register.md) | Active **security register** (findings, mitigations, residual risk) |
 
 If a control’s evidence or severity changes, update the register / threat
 model — not this page. This page only maps those controls onto the target
@@ -81,6 +81,30 @@ SSRF classification, admission limits, session entropy, and stop/drain rules
 live in host/web implementation and the 0.4 register — not as new IR opcodes
 or Frontend forks. Runtime must call one validated policy layer; Frontend
 only needs `bn_host_spec` catalogs, not http internals.
+
+Under F-01 (Rule I connect-to-allowlisted-only), egress resolution filters all DNS
+address candidates against scheme, port, SSRF, and CIDR policies before any connect
+attempt; connections are established only to surviving allowlisted candidates in resolver
+order, failing closed if none survive.
+
+### 7. Random honesty (F-04)
+
+`HOST.Random` (`Random`, `Seed`) is an explicitly **non-cryptographic PRNG** (xorshift64*/LCG-derived)
+intended solely for simulations, games, and non-adversarial randomized algorithms. It must
+**never** be used for security tokens, cryptographic keys, nonces, or session management.
+
+All security-sensitive identifiers in BasicNext (such as HTTP session IDs via `SessionStore`
+and request IDs via `new_request_id` in `src/web_state.rs`) are backed exclusively by
+`SystemEntropy` via `ring::rand::SystemRandom` (operating system CSPRNG). Session and request
+IDs never consume `HOST.Random`.
+
+### 8. Filesystem default sandbox and rooted TOCTOU (F-05)
+
+Untrusted execution environments default to **fail-closed / denied** filesystem access (`HostEnv::sandbox`),
+where all reads and writes are denied unless explicit directory roots are granted via `with_filesystem_roots`.
+`HostEnv::system` represents an explicit grant of full host filesystem trust to developer tools, CLI runs,
+and trusted compiler pipelines. In rooted mode, `allows_path` canonicalizes paths before access, mitigating
+symlink escapes across configured root boundaries.
 
 ---
 

@@ -5,11 +5,7 @@ use std::sync::OnceLock;
 /// The loader fails closed when no system trust store is available.
 pub(crate) fn client_config() -> Result<rustls::ClientConfig, String> {
     let mut roots = rustls::RootCertStore::empty();
-    let candidates = [
-        "/etc/ssl/cert.pem",
-        "/etc/ssl/certs/ca-certificates.crt",
-        "/System/Library/Keychains/SystemRootCertificates.keychain",
-    ];
+    let candidates = ["/etc/ssl/cert.pem", "/etc/ssl/certs/ca-certificates.crt"];
     let mut loaded = false;
     for path in candidates {
         let Ok(pem) = std::fs::read_to_string(path) else {
@@ -90,7 +86,7 @@ fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
     }
     let mut out = Vec::with_capacity(input.len() * 3 / 4);
     let bytes = input.as_bytes();
-    for chunk in bytes.chunks_exact(4) {
+    for chunk in bytes.as_chunks::<4>().0 {
         if (chunk[0..2]).contains(&b'=') || (chunk[2] == b'=' && chunk[3] != b'=') {
             return Err("invalid PEM base64".into());
         }
