@@ -35,6 +35,12 @@ if [[ -z "$allowlist" ]]; then
 fi
 [[ -f "$allowlist" ]] || { echo "missing allowlist: $allowlist" >&2; exit 2; }
 
+# Fail closed: without ripgrep the scans are empty and look like a clean tree.
+if ! command -v rg >/dev/null 2>&1; then
+  echo "ripgrep (rg) is required for forbidden-dependency checks" >&2
+  exit 2
+fi
+
 declare -a backend_paths=(
   src/runtime_impl.rs src/runtime src/heap.rs src/dispatch.rs src/dispatch
   src/net.rs src/net src/http.rs src/web.rs src/web src/web_state.rs
@@ -60,7 +66,7 @@ check_matches() {
     -e '(^|[^[:alnum:]_])semantic::' \
     -e '(^|[^[:alnum:]_])super::(parser|lexer|semantic)::' \
     -e 'use[[:space:]]+(crate|super)::\{[^}]*\b(parser|lexer|semantic)\b' \
-    "$@" 2>/dev/null || true)
+    "$@" || true)
 }
 
 existing_paths=()
@@ -86,7 +92,7 @@ if ((${#frontend_paths[@]} > 0)); then
       printf 'forbidden dependency (frontend→runtime): %s\n' "$record" >&2
       found=1
     fi
-  done < <(rg -n --no-heading --glob '*.rs' 'execute_with_host' "${frontend_paths[@]}" 2>/dev/null || true)
+  done < <(rg -n --no-heading --glob '*.rs' 'execute_with_host' "${frontend_paths[@]}" || true)
 fi
 
 # Frontend semantic analysis may consume the HOST specification, but never a
@@ -104,7 +110,7 @@ if ((${#frontend_paths[@]} > 0)); then
   done < <(rg -n --no-heading --glob '*.rs' \
     -e '(^|[^[:alnum:]_])(crate::|use[[:space:]]+)(net|http|web|web_state|tls|dispatch)::' \
     -e 'use[[:space:]]+(crate|super)::\{[^}]*\b(net|http|web|web_state|tls|dispatch)\b' \
-    "${frontend_paths[@]}" 2>/dev/null || true)
+    "${frontend_paths[@]}" || true)
 fi
 
 # W5 freeze: inspect the current extracted public IR model (and retain the
@@ -114,20 +120,22 @@ ir_models=()
 for candidate in "$repo_root/crates/bn_ir/src/model.rs" "$repo_root/src/ir/model.rs"; do
   [[ -f "$candidate" ]] && ir_models+=("$candidate")
 done
-for ir_model in "${ir_models[@]}"; do
-  while IFS=: read -r path line text; do
-    [[ -n "$path" ]] || continue
-    rel=${path#"$repo_root/"}
-    record="$rel:$line:$text"
-    if ! grep -Fqx -- "$record" "$allowlist"; then
-      printf 'forbidden dependency (public IR model W5): %s\n' "$record" >&2
-      found=1
-    fi
-  done < <(rg -n --with-filename --no-heading --glob '*.rs' \
-    -e '(^|[^[:alnum:]_])semantic::' \
-    -e '(^|[^[:alnum:]_])module_graph::' \
-    "$ir_model" 2>/dev/null || true)
-done
+if ((${#ir_models[@]} > 0)); then
+  for ir_model in "${ir_models[@]}"; do
+    while IFS=: read -r path line text; do
+      [[ -n "$path" ]] || continue
+      rel=${path#"$repo_root/"}
+      record="$rel:$line:$text"
+      if ! grep -Fqx -- "$record" "$allowlist"; then
+        printf 'forbidden dependency (public IR model W5): %s\n' "$record" >&2
+        found=1
+      fi
+    done < <(rg -n --with-filename --no-heading --glob '*.rs' \
+      -e '(^|[^[:alnum:]_])semantic::' \
+      -e '(^|[^[:alnum:]_])module_graph::' \
+      "$ir_model" || true)
+  done
+fi
 
 # Section 6 / Activity 6.5 guards:
 # 1. Ensure zero path-shims from crates into src/

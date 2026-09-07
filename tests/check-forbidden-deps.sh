@@ -9,6 +9,11 @@ if [[ ! -x "$checker" ]]; then
   exit 1
 fi
 
+if ! command -v rg >/dev/null 2>&1; then
+  echo "ripgrep (rg) is required for forbidden-dependency checks" >&2
+  exit 2
+fi
+
 "$checker" --root "$repo_root"
 
 fixture=$(mktemp -d "${TMPDIR:-/tmp}/bn-forbidden-deps.XXXXXX")

@@ -37,6 +37,8 @@ jobs:
           ln -s "$(command -v clang-22)" "${RUNNER_TEMP}/llvm-22/clang"
           ln -s "$(command -v wasm-ld-22)" "${RUNNER_TEMP}/llvm-22/wasm-ld"
           echo "${RUNNER_TEMP}/llvm-22" >> "${GITHUB_PATH}"
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
       - name: Rust quality gate
         run: |
           tests/check-forbidden-deps.sh
