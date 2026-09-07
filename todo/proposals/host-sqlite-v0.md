@@ -1,16 +1,17 @@
-# Proposal: HOST.SQLite capability (v0) - Exec -> DataFrame OR VOID OR Error
+# Proposal: HOST.SQLite capability (v0) - Exec vs Query
 
 **Status:** Proposed - design only (no IR / host / bn_rt / module stub in this document).
 **Date:** 2026-09-07
 **Owner (tracker):** Doug until Carlos names implementer.
-**Motivation:** Give Basic Next a teachable, portable path to embedded SQL without new language keywords. SQLite is the first concrete database capability: file-backed, ubiquitous, and a natural producer/consumer of tabular data already modeled by **BNData.DataFrame**. Carlos (2026-09-07): one **Exec(sql)** whose result is an alternative type - **DataFrame**, **VOID** (ok without rows), or **Error** - so the author does not guess statement kind up front between Query vs Exec.
+**Motivation:** Give Basic Next a teachable, portable path to embedded SQL without new language keywords. SQLite is the first concrete database capability: file-backed, ubiquitous, and a natural producer/consumer of tabular data already modeled by **BNData.DataFrame**.
+
+**API evolution in this draft:** Carlos first asked for one Exec with multiple success shapes, then for a RESULT+DF struct, then (2026-09-07) preferred **splitting SELECT from the rest** because **only SELECT returns a DataFrame**. This revision locks that split: clear return types, no triple alternative, no result wrapper class.
 
 **Related (do not conflate):**
-- [PHILOSOPHY.md](../../PHILOSOPHY.md) - small core, HOST capabilities, explicit contracts, KISS, anti-framework
+- [PHILOSOPHY.md](../../PHILOSOPHY.md) - small core, HOST capabilities, explicit contracts, KISS
 - [host-capabilities.md](host-capabilities.md) - exploratory HOST pattern
-- [host-ui-bnui-v0.md](host-ui-bnui-v0.md) - sibling capability slice (UI); SQLite is independent
-- [docs/library/bndata.md](../../docs/library/bndata.md) - normative Data.DataFrame / DataFrame OR Error patterns
-- Architecture host traits / execution policy - opening a DB file is an effect; deny != unimplemented
+- [host-ui-bnui-v0.md](host-ui-bnui-v0.md) - sibling capability slice (UI)
+- [docs/library/bndata.md](../../docs/library/bndata.md) - Data.DataFrame / DataFrame OR Error patterns
 
 Nothing here is normative until accepted into docs/language/ / docs/library/host.md (or successor) and fixtures.
 
@@ -20,30 +21,23 @@ Nothing here is normative until accepted into docs/language/ / docs/library/host
 
 | Gap | Today |
 | --- | --- |
-| Persistence | FileSystem + CSV via BNData; no SQL engine in-tree as a HOST contract |
-| Teaching | Students know table in / table out; CSV alone hides transactions and predicates |
-| Typing | A parallel Recordset type would fork the tabular story owned by DataFrame |
-| Errors | Open and SQL execution must be able to fail without panicking |
-| Result kinds | One SQL string may yield rows, yield no rows, or fail - the API must say so in the type |
+| Persistence | FileSystem + CSV via BNData; no SQL HOST contract |
+| Teaching | Need SQL without ORM or new keywords |
+| Typing | Mixing "maybe a frame" into one Exec forces DataFrame OR VOID OR Error or a RESULT/DF struct - heavier than two methods |
+| Errors | Open and SQL must return OR Error; caller captures |
 
 ---
 
 ## Goals (v0)
 
-1. Capability **HOST.SQLite**, imported explicitly (e.g. `IMPORT HOST.SQLite AS Db`) - no new keywords.
-2. Connection-oriented API: **Open**, **Close**, **Exec**, **Begin** / **Commit** / **Rollback**.
-3. Primary SQL entry:
-
-```basic
-Db.Exec(sql AS STRING) AS Data.DataFrame OR VOID OR Error
-```
-
-   - **Error** - not open, syntax, constraint, policy deny, mapping failure, ...
-   - **VOID** - success with no result set (typical CREATE / INSERT / UPDATE / DELETE)
-   - **Data.DataFrame** - success with a result set (typical SELECT); column names from metadata
-
-4. **Open** returns `VOID OR Error` (or Connection OR Error if Open constructs a handle - see Open questions).
-5. **Caller captures returns** with ordinary BN bindings - no last-result register on Db:
+1. Capability **HOST.SQLite** (`IMPORT HOST.SQLite AS Db`) - no new keywords.
+2. Split SQL by return shape:
+   - **`Exec(sql)`** - statements **without** a row result set -> `VOID OR Error`
+   - **`Query(sql)`** - row-producing statements (SELECT and host-allowed equivalents) -> `Data.DataFrame OR Error`
+3. **Open** / **Close** / **Begin** / **Commit** / **Rollback** as connection/session control (`VOID OR Error` where fallible).
+4. **Caller captures** returns with LET - no last-result register on Db.
+5. Integrate with **BNData** (IMPORT BNData AS Data when binding frames).
+6. Fail closed under HOST policy.
 
 ```basic
 IMPORT HOST.SQLite AS Db
@@ -56,39 +50,42 @@ FUNCTION Start() AS VOID
     RETURN
   END IF
 
-  LET result AS Data.DataFrame OR VOID OR Error = Db.Exec("SELECT id, name FROM people")
-  IF result IS Error THEN
-    PRINT result.Code
-  ELSE IF result IS VOID THEN
-    PRINT "ok, sem frame"
+  LET wrote AS VOID OR Error = Db.Exec("INSERT INTO people (id, name) VALUES (1, 'Ana')")
+  IF wrote IS Error THEN
+    PRINT wrote.Code
+    Db.Close()
+    RETURN
+  END IF
+
+  LET people AS Data.DataFrame OR Error = Db.Query("SELECT id, name FROM people")
+  IF people IS Error THEN
+    PRINT people.Code
   ELSE
-    PRINT result.RowCount()
+    PRINT people.RowCount()
   END IF
 
   Db.Close()
 END FUNCTION
 ```
 
-6. Fail closed under HOST policy. Interpret is reference where supported; compile only with support-matrix evidence later.
-
 ## Non-goals (v0)
 
-- Prepared statements / bound parameters (stringly SQL in v0; document injection risk; binds = v0.1).
-- Connection pools, network drivers, ORM, migrations framework.
-- A parallel Recordset / Cursor type competing with DataFrame.
-- Streaming cursors (v0 materializes full results into a DataFrame; huge results may Error - see Open).
-- Requiring a separate Query method (optional alias later).
-- Claiming demos before the capability is hosted for real.
+- Prepared statements / binds (stringly SQL; document injection risk; binds = v0.1).
+- ExecResult / RESULT+DF wrapper (rejected in favor of Exec vs Query split).
+- Triple return `DataFrame OR VOID OR Error` on one method (superseded).
+- Recordset/Cursor parallel to DataFrame.
+- ORM, pools, network SQL drivers, BLOB, streaming cursors.
+- Silent success when the author calls Query with non-SELECT (fail closed -> Error) or Exec with SELECT (fail closed -> Error directing to Query).
 
 ---
 
 ## Design principles
 
-- Capability, not keyword.
-- One tabular type: BNData.DataFrame.
-- Explicit errors and explicit success shapes (DataFrame vs VOID).
-- Caller owns the value via LET.
-- KISS: one Exec name for SQL text.
+- **KISS / explicit types:** each method has one success arm (VOID or DataFrame), plus Error.
+- **Capability, not keyword.**
+- **One tabular type:** DataFrame only from Query.
+- **Caller owns values** via LET + IS Error.
+- Prefer two honest names over one overloaded Exec.
 
 ---
 
@@ -96,29 +93,30 @@ END FUNCTION
 
 | Piece | Name | Notes |
 | --- | --- | --- |
-| Capability | HOST.SQLite | Carlos spelling; lock registry normalization |
-| Import alias | AS Db | Teaching default |
-| Tabular result | Data.DataFrame | Programs that bind frames also IMPORT BNData AS Data |
-| Optional module | none in v0 | Capability methods are enough |
+| Capability | HOST.SQLite | Lock registry spelling |
+| Import | AS Db | Teaching default |
+| Frames | Data.DataFrame | Requires IMPORT BNData when used |
 
 | Method | Signature (illustrative) | Role |
 | --- | --- | --- |
-| Open | Open(path AS STRING) AS VOID OR Error | Open/create per documented flags |
-| Close | Close() AS VOID OR Error | Release handle; prefer idempotent Close |
-| Exec | Exec(sql AS STRING) AS Data.DataFrame OR VOID OR Error | Primary SQL entry |
+| Open | Open(path AS STRING) AS VOID OR Error | Open/create per flags |
+| Close | Close() AS VOID OR Error | Release; prefer idempotent |
+| Exec | Exec(sql AS STRING) AS VOID OR Error | DDL/DML / non-row SQL |
+| Query | Query(sql AS STRING) AS Data.DataFrame OR Error | SELECT (row-producing only) |
 | Begin | Begin() AS VOID OR Error | Transaction start |
-| Commit | Commit() AS VOID OR Error | Transaction end |
-| Rollback | Rollback() AS VOID OR Error | Abort transaction |
+| Commit | Commit() AS VOID OR Error | Commit |
+| Rollback | Rollback() AS VOID OR Error | Rollback |
 
-### Exec result discrimination
+Alias **Select** for Query is optional sugar later; v0 normative name is **Query** (pairs with Exec; avoids clashing with DataFrame.Select).
 
-| Outcome | Type arm | When |
-| --- | --- | --- |
-| Failure | Error | SQL/host/policy/mapping failures |
-| Success, no result set | VOID | DDL/DML without rows to return |
-| Success, with rows | Data.DataFrame | SELECT (and other row-producing statements); zero rows => empty DataFrame (preferred), not VOID |
+### Misuse rules (fail closed)
 
-Teaching order: check `IS Error`, then `IS VOID`, else use as DataFrame.
+| Call | Host behavior |
+| --- | --- |
+| Exec with row-producing SQL | Error (use Query) |
+| Query with non-row SQL | Error (use Exec) |
+| Either when not open | Error |
+| Query success, zero rows | Empty DataFrame (columns from metadata when possible), not Error |
 
 ---
 
@@ -126,31 +124,27 @@ Teaching order: check `IS Error`, then `IS VOID`, else use as DataFrame.
 
 The **caller**:
 
-1. Exec returns `Data.DataFrame OR VOID OR Error`.
-2. Assign with LET into that alternative type.
-3. Discriminate before use.
-4. No implicit last Exec result on Db.
-
-Open never returns a DataFrame - only `VOID OR Error`.
+- `LET x AS VOID OR Error = Db.Exec(...)`
+- `LET t AS Data.DataFrame OR Error = Db.Query(...)`
+- Discriminate with IS Error before using the success arm.
+- No RESULT/DF struct; no implicit last result on Db.
 
 ---
 
 ## Error model
 
-| Operation | Success arms | Failure examples |
+| Operation | Success | Failure examples |
 | --- | --- | --- |
-| Open | VOID | missing file, access denied, corrupt DB, policy deny, already open |
-| Exec | DataFrame or VOID | syntax, constraint, not open, policy, mapping, result too large |
-| Begin / Commit / Rollback | VOID | no transaction, not open, I/O error |
-| Close | VOID | prefer success if already closed |
+| Open | VOID | missing file, access denied, corrupt DB, policy deny |
+| Exec | VOID | syntax, constraint, not open, SELECT-used-as-Exec |
+| Query | DataFrame | syntax, not open, non-SELECT, mapping, result too large |
+| Begin/Commit/Rollback/Close | VOID | tx/state/I/O errors |
 
 ---
 
 ## DataFrame mapping (v0)
 
-- Each SQL result column -> one DataFrame column.
-- Provisional mapping: INTEGER->INTEGER, REAL->FLOAT, TEXT->STRING; NUMERIC host-consistent; BLOB out of v0 (Error); NULL cells follow BNData NA rules where possible.
-- Empty SELECT: empty DataFrame with columns when metadata allows (not VOID).
+Same intent as CSV path: INTEGER/REAL/TEXT -> INTEGER/FLOAT/STRING; NUMERIC host-consistent; BLOB out of v0 (Error); NULL -> BNData NA rules where possible.
 
 ---
 
@@ -161,35 +155,31 @@ IMPORT HOST.SQLite AS Db
 IMPORT BNData AS Data
 
 FUNCTION Start() AS VOID
-  LET opened AS VOID OR Error = Db.Open("hello.db")
-  IF opened IS Error THEN
-    PRINT opened.Code
+  LET err AS VOID OR Error = Db.Open("hello.db")
+  IF err IS Error THEN
+    PRINT err.Code
     RETURN
   END IF
 
-  LET r AS Data.DataFrame OR VOID OR Error = Db.Exec(
-    "CREATE TABLE IF NOT EXISTS people (id INTEGER, name TEXT)"
-  )
-  IF r IS Error THEN
-    PRINT r.Code
+  err = Db.Exec("CREATE TABLE IF NOT EXISTS people (id INTEGER, name TEXT)")
+  IF err IS Error THEN
+    PRINT err.Code
     Db.Close()
     RETURN
   END IF
 
-  r = Db.Exec("INSERT INTO people (id, name) VALUES (1, 'Ana')")
-  IF r IS Error THEN
-    PRINT r.Code
+  err = Db.Exec("INSERT INTO people (id, name) VALUES (1, 'Ana')")
+  IF err IS Error THEN
+    PRINT err.Code
     Db.Close()
     RETURN
   END IF
 
-  r = Db.Exec("SELECT id, name FROM people ORDER BY id")
-  IF r IS Error THEN
-    PRINT r.Code
-  ELSE IF r IS VOID THEN
-    PRINT "SELECT sem frame - nao esperado"
+  LET people AS Data.DataFrame OR Error = Db.Query("SELECT id, name FROM people ORDER BY id")
+  IF people IS Error THEN
+    PRINT people.Code
   ELSE
-    PRINT r.RowCount()
+    PRINT people.RowCount()
   END IF
 
   Db.Close()
@@ -198,40 +188,47 @@ END FUNCTION
 
 ---
 
-## Implementation boundaries (when accepted - not this document)
+## Why not the other shapes
+
+| Shape | Why not for v0 |
+| --- | --- |
+| Exec -> DataFrame OR VOID OR Error | One method, three arms; harder to teach than Exec vs Query |
+| ExecResult with RESULT + DF | Extra type; DF often empty; Error still needed as OR Error for honesty |
+| Exec only, ignore frames | Cannot integrate with BNData |
+
+---
+
+## Implementation boundaries (when accepted)
 
 | Layer | Responsibility |
 | --- | --- |
-| Spec / host library docs | Capability surface, alternative return, mapping, non-goals |
-| Frontend | Typecheck imports and Data.DataFrame OR VOID OR Error returns |
-| IR | HOST calls unless a later native-binding note says otherwise |
-| bn_rt / host | Embed/link SQLite; policy on paths; build DataFrame via existing dataframe ABI |
-| Support matrix | Native first; other targets unsupported until proposed |
+| Spec / host docs | Capability, Exec vs Query, mapping, misuse Errors |
+| Frontend | Typecheck signatures; IMPORT HOST.SQLite / BNData |
+| bn_rt / host | Embed SQLite; policy; materialize DataFrame on Query |
+| Support matrix | Native first |
 
-Production bar: no stub Open/Exec that always returns VOID.
+Production bar: no stub Open/Exec/Query.
 
 ---
 
 ## Evolution (after v0)
 
 1. Prepared statements / binds.
-2. Explicit Connection object if multi-DB needs it.
-3. Optional Query alias that Errors on VOID.
-4. BLOB / InsertFrame helpers.
-5. Optional BNSQLite sugar module.
+2. Connection object if multi-DB.
+3. Optional Select alias; InsertFrame helpers.
+4. BLOB support with DataFrame story locked.
 
 ---
 
 ## Open questions
 
-1. Open flags: create-if-missing vs modes.
-2. Methods on Db after Open vs Open returns Connection.
-3. Result size limit.
-4. Must programs IMPORT BNData explicitly (preferred) vs re-export.
-5. Transaction autocommit defaults for teaching.
+1. Open flags / create-if-missing.
+2. Methods on Db vs Open returns Connection.
+3. Result size limit on Query.
+4. BNData import mandatory vs re-export (prefer explicit IMPORT BNData).
+5. Autocommit defaults for teaching.
 6. Registry spelling HOST.SQLite vs HOST.Sqlite.
-7. Frontend ergonomics of Data.DataFrame OR VOID OR Error (IS VOID / IS Error) without a Result wrapper class.
-8. Confirm empty SELECT => empty DataFrame (proposal default) vs VOID.
+7. Exact Error when Exec gets SELECT / Query gets INSERT (stable codes).
 
 ---
 
@@ -240,9 +237,10 @@ Production bar: no stub Open/Exec that always returns VOID.
 | Topic | v0 decision |
 | --- | --- |
 | Keywords | None new |
-| Capability | HOST.SQLite (IMPORT ... AS Db) |
-| SQL API | Exec(sql) AS Data.DataFrame OR VOID OR Error |
+| Capability | HOST.SQLite |
+| Non-row SQL | Exec -> VOID OR Error |
+| Row SQL | Query -> Data.DataFrame OR Error |
 | Who captures | Caller via LET |
-| Separate Query | Not required |
-| Recordset type | None - use BNData |
-| Prepared SQL | Out of v0 |
+| Struct RESULT+DF | Not used |
+| Triple OR on Exec | Not used |
+| Recordset | None - BNData only |
