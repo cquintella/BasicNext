@@ -716,7 +716,6 @@ pub(crate) fn unsupported_instruction_detail(instruction: &Instruction) -> Strin
     }
 }
 
-
 /// Libc `FILE *stdout` symbol name for native PRINT synchronization.
 pub(crate) fn stdout_file_symbol() -> &'static str {
     if cfg!(any(
