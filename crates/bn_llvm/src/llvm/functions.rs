@@ -184,7 +184,12 @@ pub(crate) fn emit_preamble(
     }
     text.push_str("\ndeclare i32 @printf(ptr, ...)\ndeclare i32 @putchar(i32)\n");
     if synchronize_prints {
-        text.push_str("@__stdoutp = external global ptr\ndeclare void @flockfile(ptr)\ndeclare void @funlockfile(ptr)\n");
+        // Darwin/FreeBSD: __stdoutp; Linux/glibc: stdout.
+        let stdout_sym = crate::helpers::stdout_file_symbol();
+        let _ = write!(
+            text,
+            "@{stdout_sym} = external global ptr\ndeclare void @flockfile(ptr)\ndeclare void @funlockfile(ptr)\n"
+        );
     }
     if uses_concat {
         text.push_str(STRING_CONCAT_DECLS);

@@ -43,6 +43,8 @@ jobs:
         run: |
           tests/check-forbidden-deps.sh
           cargo fmt --check
+          # Native `bn build` links the bn_rt staticlib; cargo test alone may not emit it.
+          cargo build -p bn_rt --locked
           cargo test --locked --all-targets -- --test-threads=1
           cargo clippy --locked --all-targets -- -D warnings
       - name: Native capability gate

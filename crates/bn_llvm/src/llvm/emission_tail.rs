@@ -610,7 +610,8 @@ pub(crate) fn lower_scalar_instruction_tail(
         } => {
             let stdout = format!("%stdout{}", state.print_count);
             if state.synchronize_prints {
-                let _ = writeln!(text, "  {stdout} = load ptr, ptr @__stdoutp");
+                let stdout_sym = crate::helpers::stdout_file_symbol();
+                let _ = writeln!(text, "  {stdout} = load ptr, ptr @{stdout_sym}");
                 let _ = writeln!(text, "  call void @flockfile(ptr {stdout})");
             }
             for (index, value) in printed.iter().enumerate() {
