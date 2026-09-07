@@ -22,7 +22,7 @@ specification.
   Audit 2026-09-03.
 - [Host capabilities](host-capabilities.md) — exploratory; not accepted.
 - [HOST.Ui + BNUI (v0)](host-ui-bnui-v0.md) — Flow-only UI capability/module; no EVENT keyword; absolute/scroll deferred. Proposed 2026-09-07.
-- [HOST.SQLite (v0)](host-sqlite-v0.md) - `Exec(sql) AS Data.DataFrame OR VOID OR Error`; Open/tx OR Error; caller captures. Proposed 2026-09-07.
+- [HOST.SQLite (v0)](host-sqlite-v0.md) - Exec -> VOID OR Error; Query -> Data.DataFrame OR Error; BNData integration. Proposed 2026-09-07.
 - Parallel computing — future `PARALLEL` syntax; proposal not yet materialized as a document.
 - [Native LSP & DAP](../../docs/architecture/README.md) — 0.3 surface mostly in tree; remaining: `--help`, VS Code `bn check` on save, find-references client. Audit 2026-09-03.
 - [BNString extras](string-extras.md) — stdlib Split/Join/Contains/IndexOf/Trim (**0.4.7** G7.5); interpolation `$"..."` deferred (language DNA). Draft expanded 2026-09-07.
