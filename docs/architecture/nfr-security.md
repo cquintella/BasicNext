@@ -103,8 +103,10 @@ IDs never consume `HOST.Random`.
 Untrusted execution environments default to **fail-closed / denied** filesystem access (`HostEnv::sandbox`),
 where all reads and writes are denied unless explicit directory roots are granted via `with_filesystem_roots`.
 `HostEnv::system` represents an explicit grant of full host filesystem trust to developer tools, CLI runs,
-and trusted compiler pipelines. In rooted mode, `allows_path` canonicalizes paths before access, mitigating
-symlink escapes across configured root boundaries.
+and trusted compiler pipelines. Rooted Unix mode pins each configured root as a directory descriptor and
+traverses beneath it with `openat` plus `O_NOFOLLOW`; removal uses `unlinkat` relative to the pinned parent.
+The interpreter, compiled file ABI, and BNLog file transports use this same primitive. Rooted access fails
+closed on platforms without descriptor-relative traversal.
 
 ---
 

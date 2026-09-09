@@ -2,7 +2,7 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use bn_source::Span;
 use bn_types::Type;
@@ -48,6 +48,10 @@ impl ValueId {
 pub struct Module {
     pub source_name: Option<String>,
     pub functions: Vec<Function>,
+    /// Fully qualified class identity to its fully qualified direct base.
+    /// Backends use this language-level relation to compute inherited layout
+    /// without depending on frontend semantic types.
+    pub class_bases: HashMap<String, String>,
     pub bndata_providers: HashSet<ModuleId>,
     pub bnmath_providers: HashSet<ModuleId>,
     pub bnlog_providers: HashSet<ModuleId>,
@@ -55,6 +59,8 @@ pub struct Module {
     pub bnweb_providers: HashSet<ModuleId>,
     pub bndispatch_providers: HashSet<ModuleId>,
     pub filesystem_import: Option<Span>,
+    pub clock_import: Option<Span>,
+    pub random_import: Option<Span>,
     pub console_import: Option<Span>,
     pub network_import: Option<Span>,
     pub bnlog_import: Option<Span>,
@@ -197,6 +203,37 @@ pub enum Instruction {
         ty: Type,
         span: Span,
     },
+    /// Stores through an indexed object member without materializing a copy
+    /// of the member value. This preserves object-field aliasing for values
+    /// such as vectors and pointer regions.
+    SetMemberIndex {
+        object: ValueId,
+        name: String,
+        owner: String,
+        indices: Vec<ValueId>,
+        value: ValueId,
+        ty: Type,
+        span: Span,
+    },
+    /// Stores through an indexed field path rooted in a mutable binding. This
+    /// preserves value semantics for nested structs as well as object handles.
+    SetFieldIndex {
+        symbol: SymbolId,
+        path: Vec<String>,
+        indices: Vec<ValueId>,
+        value: ValueId,
+        ty: Type,
+        span: Span,
+    },
+    /// Stores through an indexed static field.
+    SetStaticIndex {
+        class: String,
+        field: String,
+        indices: Vec<ValueId>,
+        value: ValueId,
+        ty: Type,
+        span: Span,
+    },
     Length {
         destination: ValueId,
         vector: ValueId,
@@ -287,6 +324,9 @@ impl Instruction {
             | Self::Index { span, .. }
             | Self::Member { span, .. }
             | Self::SetIndex { span, .. }
+            | Self::SetMemberIndex { span, .. }
+            | Self::SetFieldIndex { span, .. }
+            | Self::SetStaticIndex { span, .. }
             | Self::Length { span, .. }
             | Self::SizeOf { span, .. }
             | Self::Print { span, .. }

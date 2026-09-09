@@ -35,6 +35,39 @@ node bin/bn-wasm hello.wasm
 | `run` | Execute `Start` through the typed-IR interpreter. |
 | `build` | Emit LLVM IR, or create an artifact with `-o`, for the supported compiler subset. |
 
+`bnc -c` writes textual LLVM IR. Running that IR directly with `lli` requires
+loading the Basic Next runtime archive explicitly whenever the program uses
+`bn_rt_*` symbols:
+
+```shell
+cargo build --locked -p bn_rt
+bnc -c examples/rabin-karp.bn | \
+  lli --extra-archive=target/debug/libbn_rt.a -
+```
+
+The final `-` tells `lli` to read LLVM IR from standard input. From inside the
+`examples/` directory, both the manifest and runtime archive are one directory
+above:
+
+```shell
+cargo build --manifest-path ../Cargo.toml --locked -p bn_rt
+bnc -c rabin-karp.bn | \
+  lli --extra-archive=../target/debug/libbn_rt.a -
+```
+
+To turn previously emitted LLVM IR into a native executable directly with
+Clang:
+
+```shell
+bnc -c examples/rabin-karp.bn > /tmp/rabin-karp.ll
+clang /tmp/rabin-karp.ll target/debug/libbn_rt.a -o /tmp/rabin-karp -lm
+/tmp/rabin-karp
+```
+
+The normal product path is `bn build ... -o <artifact>`; it locates and links
+`libbn_rt.a` automatically. Set `BN_RT_LIB` when the archive is outside the
+standard `target/debug` or `target/release` location.
+
 BN diagnostics exit `1`; invalid CLI use or unavailable build tooling exits
 `2`. `-v` prints pipeline stages, and `-vv` also prints tokens.
 

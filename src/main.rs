@@ -21,7 +21,10 @@ use bn::{
     diagnostic::{Catalog, Diagnostic, WarningPolicy},
     ir::ValidatedModule,
     lexer::lex,
-    llvm::{Target as LlvmTarget, lower_validated_module_for_target, validate_for},
+    llvm::{
+        CompiledPolicy, Target as LlvmTarget, lower_validated_module_for_target_with_policy,
+        validate_for,
+    },
     module_graph::{ModuleGraph, load_with_session},
     runtime::{HostEnv, execute_validated_with_host},
     semantic::{ModuleAnalysisError, SemanticModel, analyze_modules_with_warnings},
@@ -89,6 +92,9 @@ struct Options {
     color: Color,
     target: Target,
     filesystem: bool,
+    sandbox: bool,
+    read_roots: Vec<PathBuf>,
+    write_roots: Vec<PathBuf>,
     jupyter_stdin: bool,
     program_arguments: Vec<String>,
     optimization: Optimization,
@@ -424,7 +430,24 @@ fn build_inner(
         "target support accepted",
     );
     process_log.event(LogLevel::Info, "llvm_emit", "start", "emit target LLVM");
-    let result = match lower_validated_module_for_target(module, options.target == Target::Wasm32) {
+    let policy = CompiledPolicy {
+        sandboxed: options.sandbox,
+        read_roots: options
+            .read_roots
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect(),
+        write_roots: options
+            .write_roots
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect(),
+    };
+    let result = match lower_validated_module_for_target_with_policy(
+        module,
+        options.target == Target::Wasm32,
+        &policy,
+    ) {
         Ok(llvm) => {
             process_log.event(LogLevel::Info, "llvm_emit", "success", "LLVM emitted");
             process_log.event(LogLevel::Info, "link", "start", "write artifact");
@@ -618,11 +641,30 @@ fn run(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
         .map_or_else(|_| options.path.clone(), |path| path.display().to_string());
     let mut arguments = vec![executable];
     arguments.extend(options.program_arguments.iter().cloned());
-    let host = if options.filesystem {
+    let mut host = if options.sandbox {
+        match HostEnv::system(arguments.clone())
+            .with_filesystem_roots(options.read_roots.clone(), options.write_roots.clone())
+        {
+            Ok(host) => host,
+            Err(message) => {
+                eprintln!("error: {message}");
+                return tool_error();
+            }
+        }
+    } else if options.filesystem {
         HostEnv::system(arguments)
     } else {
         HostEnv::system(arguments).without_filesystem()
     };
+    match env::var("BN_FS_POLICY").as_deref() {
+        Ok("deny") => host = host.without_filesystem(),
+        Ok("read-only") => host = host.without_filesystem_writes(),
+        Ok("") | Err(_) => {}
+        Ok(value) => {
+            eprintln!("error: invalid BN_FS_POLICY '{value}' (expected deny or read-only)");
+            return tool_error();
+        }
+    }
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut input = JupyterInput {

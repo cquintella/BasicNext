@@ -1,0 +1,26 @@
+// Phi predecessors are local to a function, including checked-operation continuations.
+FUNCTION First(flag AS BOOLEAN) AS BOOLEAN
+    RETURN flag AND TRUE
+END FUNCTION
+
+FUNCTION Second(value AS INTEGER) AS BOOLEAN
+    RETURN TRUE AND value + 1 > 0
+END FUNCTION
+
+CLASS Flags
+    PUBLIC STATIC enabled AS BOOLEAN = TRUE
+END CLASS
+
+FUNCTION Third(flag AS BOOLEAN) AS BOOLEAN
+    RETURN flag AND Flags.enabled
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    PRINT First(TRUE)
+    PRINT First(FALSE)
+    PRINT Second(1)
+    PRINT Second(-2)
+    PRINT Third(TRUE)
+    PRINT Third(FALSE)
+    RETURN 0
+END FUNCTION

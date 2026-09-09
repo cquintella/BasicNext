@@ -1,6 +1,8 @@
+import datetime
 import json
 import pathlib
 import re
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -27,12 +29,13 @@ def llvm_declared_runtime_symbols():
 
 
 def runtime_exported_symbols():
-    export_pattern = re.compile(r'pub extern "C" fn (?P<symbol>bn_rt_[A-Za-z0-9_]+)')
-    return {
-        symbol
-        for source in (ROOT / "crates" / "bn_rt" / "src").rglob("*.rs")
-        for symbol in export_pattern.findall(source.read_text())
-    }
+    # Inspect the built archive: source regexes miss macro-generated exports.
+    archive = ROOT / "target" / "debug" / "libbn_rt.a"
+    nm = shutil.which("llvm-nm") or shutil.which("nm")
+    if nm is None:
+        raise RuntimeError("llvm-nm or nm is required for the ABI export gate")
+    symbols = subprocess.run([nm, "-g", str(archive)], capture_output=True, text=True, check=True)
+    return set(re.findall(r"\bT\s+_?(bn_rt_[A-Za-z0-9_]+)\b", symbols.stdout))
 
 
 def abi_documented_symbols():
@@ -87,7 +90,19 @@ class CompilerCapabilityTests(unittest.TestCase):
                 program["path"],
             )
             if program["support"] == "llvm-deferred":
-                self.assertRegex(program.get("reject_diag", ""), r"^(BUILD_|TARGET_UNSUPPORTED_)")
+                self.assertRegex(program.get("reject_diag", ""), r"^TARGET_UNSUPPORTED_[A-Z_]+$")
+                conditions = "\n".join(program["conditions"])
+                for prefix in ("Owner:", "Defer-until:", "Risk:"):
+                    self.assertRegex(
+                        conditions,
+                        rf"(?m)^{re.escape(prefix)} .+$",
+                        program["path"],
+                    )
+                self.assertEqual(
+                    program.get("build_diagnostic_contains"),
+                    f"error[{program['reject_diag']}]",
+                    program["path"],
+                )
 
     def test_declared_capabilities_match_user_visible_commands(self):
         for program in self.manifest["programs"]:
@@ -95,9 +110,17 @@ class CompilerCapabilityTests(unittest.TestCase):
                 path = ROOT / program["path"]
                 checked = run([BN, "check", path])
                 self.assertEqual(checked.returncode, 0, checked.stderr.decode())
-                interpreted = run([BN, "run", path])
+                started = datetime.datetime.now(datetime.timezone.utc)
+                arguments = program.get("args", [])
+                interpreted = run([BN, "run", path, "--", *arguments], input=program.get("stdin", "").encode())
+                finished = datetime.datetime.now(datetime.timezone.utc)
                 expected_exit_code = program.get("exit_code", 0)
-                self.assertEqual(interpreted.returncode, expected_exit_code, program["path"])
+                self.assertIn(
+                    interpreted.returncode,
+                    program.get("run_exit_codes", [expected_exit_code]),
+                    program["path"],
+                )
+                self.assertNotIn(b"FAIL", interpreted.stdout, program["path"])
                 expected_fragment = program.get("run_stdout_contains")
                 if expected_fragment:
                     self.assertIn(expected_fragment.encode(), interpreted.stdout)
@@ -107,13 +130,73 @@ class CompilerCapabilityTests(unittest.TestCase):
                     built = run([BN, "build", path, "-o", artifact])
                     if program["support"] == "llvm-supported":
                         self.assertEqual(built.returncode, 0, built.stderr.decode())
-                        compiled = run([artifact])
-                        self.assertEqual(compiled.returncode, program["exit_code"], program["path"])
-                        self.assertEqual(compiled.stdout, program["stdout"].encode(), program["path"])
+                        native_started = datetime.datetime.now(datetime.timezone.utc)
+                        compiled = run([artifact, *arguments], input=program.get("stdin", "").encode())
+                        native_finished = datetime.datetime.now(datetime.timezone.utc)
+                        self.assertIn(
+                            compiled.returncode,
+                            program.get("run_exit_codes", [program["exit_code"]]),
+                            program["path"],
+                        )
+                        self.assertNotIn(b"FAIL", compiled.stdout, program["path"])
+                        if program.get("observation") == "utc-clock":
+                            for output, before, after in (
+                                (interpreted.stdout, started, finished),
+                                (compiled.stdout, native_started, native_finished),
+                            ):
+                                value = datetime.datetime.strptime(output.decode(), "Data:  %Y-%m-%d\nHora:  %H:%M:%S.%f\n").replace(tzinfo=datetime.timezone.utc)
+                                self.assertLessEqual(before - datetime.timedelta(milliseconds=1), value)
+                                self.assertLessEqual(value, after)
+                        elif program.get("observation") == "language-tour":
+                            outputs = (interpreted.stdout, compiled.stdout)
+                            normalized = []
+                            for output in outputs:
+                                lines = output.splitlines()
+                                self.assertEqual(len(lines), 15, output)
+                                clock_fields = lines[5].split()
+                                self.assertEqual(len(clock_fields), 7, lines[5])
+                                self.assertGreater(int(clock_fields[5]), 0)
+                                self.assertGreaterEqual(int(clock_fields[6]), 0)
+                                clock_fields[5:] = [b"<timestamp>", b"<monotonic>"]
+                                lines[5] = b" ".join(clock_fields)
+
+                                argument_fields = lines[6].split(maxsplit=2)
+                                self.assertEqual(argument_fields[0], b"1")
+                                self.assertTrue(argument_fields[1])
+                                argument_fields[1] = b"<program>"
+                                lines[6] = b" ".join(argument_fields)
+
+                                temporal_fields = lines[7].split()
+                                self.assertEqual(len(temporal_fields), 2)
+                                self.assertIn(int(temporal_fields[0]), range(24))
+                                self.assertIn(int(temporal_fields[1]), range(7))
+                                lines[7] = b"<derived-temporal>"
+                                normalized.append(lines)
+                            self.assertEqual(normalized[0], normalized[1], program["path"])
+                        elif program.get("observation") == "unordered-prefix-lines":
+                            interpreted_lines = interpreted.stdout.splitlines()
+                            compiled_lines = compiled.stdout.splitlines()
+                            self.assertEqual(len(interpreted_lines), len(compiled_lines), program["path"])
+                            self.assertEqual(interpreted_lines[-1], compiled_lines[-1], program["path"])
+                            self.assertEqual(
+                                sorted(interpreted_lines[:-1]),
+                                sorted(compiled_lines[:-1]),
+                                program["path"],
+                            )
+                        elif program.get("observation") == "environment-dependent-network":
+                            self.assertTrue(interpreted.stdout, program["path"])
+                            self.assertTrue(compiled.stdout, program["path"])
+                        else:
+                            self.assertEqual(compiled.stdout, interpreted.stdout, program["path"])
+                        if "stdout" in program:
+                            self.assertEqual(interpreted.stdout, program["stdout"].encode(), program["path"])
+                        if expected_fragment:
+                            self.assertIn(expected_fragment.encode(), compiled.stdout)
                     else:
                         self.assertNotEqual(built.returncode, 0, program["path"])
                         diagnostic = built.stderr.decode()
                         self.assertIn(program["build_diagnostic_contains"], diagnostic)
+                        self.assertEqual(set(re.findall(r"error\[([^]]+)\]", diagnostic)), {program["reject_diag"]})
 
     def test_catalogued_ir_inventory_matches_lowered_fixture(self):
         """Keep the matrix tied to the IR artifact, not only command outcomes."""

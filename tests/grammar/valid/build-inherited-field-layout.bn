@@ -1,0 +1,28 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+CLASS Parent
+    PUBLIC first AS INTEGER = 17
+    PUBLIC second AS INTEGER = 23
+
+    PUBLIC FUNCTION DESTRUCTOR()
+    END FUNCTION
+END CLASS
+
+CLASS Child EXTENDS Parent
+    PUBLIC third AS INTEGER = 31
+
+    PUBLIC FUNCTION CONSTRUCTOR()
+        SUPER()
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET value AS Child = NEW Child()
+    PRINT value.first
+    PRINT value.second
+    PRINT value.third
+    DELETE value
+END FUNCTION

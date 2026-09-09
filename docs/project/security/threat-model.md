@@ -2,7 +2,7 @@
 
 This document is the working threat model for the 0.4 BNWeb hardening
 program. It is derived from the 0.3 capability model and the active findings
-in [`0.4-security-register.md`](0.4-security-register.md). Values marked
+in [`security-register.md`](security-register.md). Values marked
 proposed require acceptance at the 0.4 authority gate before they become
 normative.
 
@@ -42,11 +42,12 @@ silently grant a host capability.
 | T-08 | Trusted-proxy spoofing | Use forwarded client identity only for explicitly trusted proxies; otherwise use transport peer | BN-SEC-002/007; proxy provenance tests |
 | T-09 | Async/shared-state corruption | Explicit queue, isolated module/runtime ownership, no shared mutable BN objects or output writers | 0.4 async design; worker-isolation tests |
 | T-10 | Capability confusion or downgrade | Explicit imports, provider checks before execution, no TLS-to-cleartext fallback, deterministic unavailable errors | 0.3 contract; capability and TLS tests |
+| T-11 | Rooted filesystem escape through symlink replacement between authorization and use | Pin each configured root as a directory descriptor; traverse with `openat` and `O_NOFOLLOW`; perform deletion with `unlinkat`; fail closed where descriptor-relative traversal is unavailable | F-05; `bn_rt::secure_fs` race and symlink tests; compiled sandbox integration test |
 
 ## Accepted 0.4 defaults and bounds
 
 The machine-readable registry at
-[`config/0.4-bnweb-limits.toml`](../config/0.4-bnweb-limits.toml) is the single
+[`config/0.4-bnweb-limits.toml`](../../config/0.4-bnweb-limits.toml) is the single
 versioned source for these values. Hosts may configure a lower value but may
 not raise a value beyond the maximum without a new contract decision.
 
@@ -104,6 +105,9 @@ admission or queue overload. The two cases must not be conflated.
   responsibilities and must be recorded when platform evidence is claimed.
 - `HOST.FileSystem` remains explicitly imported and provider-gated; Jupyter
   retains its `--no-filesystem` boundary.
+- Rooted filesystem access is descriptor-relative on Unix. Platforms without
+  that primitive fail closed for rooted access; `HostEnv::system` remains the
+  explicit unrestricted trust profile.
 - Cleartext and TLS use the same admission, timeout, lifecycle, and logging
   invariants. TLS never falls back to cleartext.
 - The 0.4 async/concurrent design cannot weaken the synchronous 0.3 contract;

@@ -57,6 +57,12 @@
 - Concurrency and Parallelism (`BNDispatch`)
 - Constraints and Resource Management
 
+## 10. Architecture and Execution Policy
+- Unrestricted and sandboxed filesystem profiles
+- Artifact ceilings and execution-time restrictions
+- Runtime authorization and target support
+- Sandboxed path handling and policy precedence
+
 ## Appendices
 - Appendix A: Keywords Reference
 - Appendix B: Language Diagnostics

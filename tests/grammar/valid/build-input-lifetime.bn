@@ -1,0 +1,11 @@
+FUNCTION Start() AS VOID
+    LET first AS STRING OR EOF = "initial"
+    first = INPUT()
+    LET second AS STRING OR EOF = INPUT()
+    PRINT first
+    PRINT second
+
+    first = INPUT()
+    PRINT first
+    PRINT second
+END FUNCTION

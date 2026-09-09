@@ -87,6 +87,6 @@ DFD **2.0 Analyze Sources**: lex/parse must match the EBNF; **2.5** must satisfy
 - Pre-refactor implementation: `done/bucket-0.4.4.md`
 - Refactor + diagnostics implementation: `done/bucket-0.4.5.md`
 - Closed security: `done/bucket-0.4.6.md`
-- Active: `ongoing/bucket-0.4.7.md` (LLVM matrix; §P0 UNUSED_BINDING first), `ongoing/WBS-0.4.6-release.md`
+- Active: `ongoing/bucket-0.4.7.md` (LLVM matrix; formal closeout awaiting commit), `ongoing/WBS-0.4.6-release.md`
 - Closed WBS/bucket 0.4.5: `done/WBS-0.4.5.md`, `done/bucket-0.4.5.md`
 - As-is audit DFDs (local): `audit/workpapers/09-synthesis/dfd-*-as-is.md`

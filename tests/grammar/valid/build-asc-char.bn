@@ -1,0 +1,14 @@
+FUNCTION Start() AS VOID
+    LET code AS INTEGER OR Error = ASC("é")
+    LET character AS STRING OR Error = CHAR(66)
+    PRINT code, character
+
+    LET empty AS INTEGER OR Error = ASC("")
+    LET invalid AS STRING OR Error = CHAR(1114112)
+    IF empty IS Error THEN
+        PRINT empty.Code
+    END IF
+    IF invalid IS Error THEN
+        PRINT invalid.Code
+    END IF
+END FUNCTION

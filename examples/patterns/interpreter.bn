@@ -1,0 +1,5 @@
+// UNSUPPORTED: Interpreter needs a recursive object graph of expression nodes
+// and dynamic dispatch; recursive heterogeneous trees are not supported yet.
+FUNCTION Start() AS VOID
+    PRINT "UNSUPPORTED: recursive heterogeneous expression trees are not available"
+END FUNCTION

@@ -120,12 +120,14 @@ Cross-backend diffs remain comparison **B** in [conformance.md](conformance.md);
 
 ---
 
-## Bounded 0.4.4 claimed subset
+## Bounded 0.4.7 claimed subset
 
-These rows project the machine-readable catalog in
+For the 0.4.6 release train, these rows project the 0.4.7 machine-readable
+catalog in
 [`../../tests/compiler-capabilities.json`](../../tests/compiler-capabilities.json).
 They claim only the exact fixture/type/condition combinations exercised there;
-other uses of the same operation remain unclaimed.
+other uses of the same operation remain unclaimed. The catalog is the source
+of truth; this section is its human-readable view.
 
 | Stable row | Target | Constraint / evidence |
 | --- | --- | --- |

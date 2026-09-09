@@ -275,15 +275,28 @@ impl Executor<'_, '_> {
                     if level as i128 > transport.minimum {
                         continue;
                     }
-                    let result = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(&transport.path)
+                    let result = self
+                        .host
+                        .filesystem
+                        .open(
+                            std::path::Path::new(&transport.path),
+                            bn_rt::secure_fs::OpenMode::Append,
+                        )
                         .and_then(|mut file| {
                             use std::io::Write as _;
                             file.write_all(json_line.as_bytes())?;
                             file.write_all(b"\n")
                         });
+                    if result
+                        .as_ref()
+                        .is_err_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied)
+                    {
+                        return Err(runtime_error(
+                            "EXECUTION_POLICY_DENIED",
+                            "logger file path is outside the execution policy",
+                            span,
+                        ));
+                    }
                     if let Err(error) = result {
                         first_error.get_or_insert_with(|| error.to_string());
                     }
@@ -307,11 +320,24 @@ impl Executor<'_, '_> {
                 }
                 let mut first_error = None;
                 for transport in &logger.file_transports {
-                    let result = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(&transport.path)
+                    let result = self
+                        .host
+                        .filesystem
+                        .open(
+                            std::path::Path::new(&transport.path),
+                            bn_rt::secure_fs::OpenMode::Append,
+                        )
                         .and_then(|file| file.sync_all());
+                    if result
+                        .as_ref()
+                        .is_err_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied)
+                    {
+                        return Err(runtime_error(
+                            "EXECUTION_POLICY_DENIED",
+                            "logger file path is outside the execution policy",
+                            span,
+                        ));
+                    }
                     if let Err(error) = result {
                         first_error.get_or_insert_with(|| error.to_string());
                     }

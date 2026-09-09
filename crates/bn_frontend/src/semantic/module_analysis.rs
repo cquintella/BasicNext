@@ -151,10 +151,23 @@ fn unused_binding_warnings(program: &Program, model: &SemanticModel) -> Vec<Diag
         .iter()
         .filter_map(|expression| expression.symbol_id)
         .collect::<HashSet<_>>();
+    let used_members = model
+        .expressions
+        .iter()
+        .filter_map(|expression| expression.member_target.as_ref())
+        .filter_map(|target| Some((target.owner.as_deref()?, target.name.as_str())))
+        .collect::<HashSet<_>>();
     let mut candidates = Vec::new();
     for item in &program.items {
         match item {
             Item::Constant { .. } | Item::Import { .. } => {}
+            Item::Declaration {
+                kind: DeclarationKind::Class,
+                name,
+                exported,
+                statements,
+                ..
+            } => class_binding_candidates(name, *exported, statements, &mut candidates),
             Item::Declaration { statements, .. } => {
                 binding_candidates(statements, &mut candidates);
             }
@@ -162,12 +175,23 @@ fn unused_binding_warnings(program: &Program, model: &SemanticModel) -> Vec<Diag
     }
     candidates
         .into_iter()
-        .filter_map(|(name, span)| {
+        .filter_map(|candidate| {
+            let BindingCandidate {
+                name,
+                span,
+                member_owner,
+            } = candidate;
             let symbol = model
                 .symbols
                 .iter()
                 .find(|symbol| symbol.name == name && symbol.span == span)?;
-            (!used_symbols.contains(&symbol.id)).then(|| Diagnostic {
+            let member_used = member_owner.as_deref().is_some_and(|owner| {
+                used_members.iter().any(|(used_owner, used_name)| {
+                    *used_name == name
+                        && (*used_owner == owner || used_owner.rsplit('.').next() == Some(owner))
+                })
+            });
+            (!used_symbols.contains(&symbol.id) && !member_used).then(|| Diagnostic {
                 code: "UNUSED_BINDING",
                 message: format!("binding '{name}' is never read"),
                 span,
@@ -176,7 +200,51 @@ fn unused_binding_warnings(program: &Program, model: &SemanticModel) -> Vec<Diag
         .collect()
 }
 
-fn binding_candidates(statements: &[Statement], candidates: &mut Vec<(String, Span)>) {
+struct BindingCandidate {
+    name: String,
+    span: Span,
+    member_owner: Option<String>,
+}
+
+fn class_binding_candidates(
+    owner: &str,
+    exported: bool,
+    statements: &[Statement],
+    candidates: &mut Vec<BindingCandidate>,
+) {
+    for statement in statements {
+        match statement {
+            Statement::Binding {
+                name,
+                additional_names,
+                additional_name_spans,
+                visibility,
+                span,
+                ..
+            } if !(exported && *visibility == Some(crate::ast::Visibility::Public)) => {
+                candidates.push(BindingCandidate {
+                    name: name.clone(),
+                    span: *span,
+                    member_owner: Some(owner.to_string()),
+                });
+                candidates.extend(additional_names.iter().enumerate().map(|(index, name)| {
+                    BindingCandidate {
+                        name: name.clone(),
+                        span: additional_name_spans.get(index).copied().unwrap_or(*span),
+                        member_owner: Some(owner.to_string()),
+                    }
+                }));
+            }
+            Statement::Binding { .. } => {}
+            Statement::MemberFunction {
+                body: Some(body), ..
+            } => binding_candidates(&body.statements, candidates),
+            _ => binding_candidates(std::slice::from_ref(statement), candidates),
+        }
+    }
+}
+
+fn binding_candidates(statements: &[Statement], candidates: &mut Vec<BindingCandidate>) {
     for statement in statements {
         match statement {
             Statement::Binding {
@@ -186,12 +254,17 @@ fn binding_candidates(statements: &[Statement], candidates: &mut Vec<(String, Sp
                 span,
                 ..
             } => {
-                candidates.push((name.clone(), *span));
+                candidates.push(BindingCandidate {
+                    name: name.clone(),
+                    span: *span,
+                    member_owner: None,
+                });
                 candidates.extend(additional_names.iter().enumerate().map(|(index, name)| {
-                    (
-                        name.clone(),
-                        additional_name_spans.get(index).copied().unwrap_or(*span),
-                    )
+                    BindingCandidate {
+                        name: name.clone(),
+                        span: additional_name_spans.get(index).copied().unwrap_or(*span),
+                        member_owner: None,
+                    }
                 }));
             }
             Statement::If {

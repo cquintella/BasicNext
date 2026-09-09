@@ -254,6 +254,28 @@ pub(crate) fn coerce_to_type(text: &mut String, value: ValueId, from: &Type, to:
     if from_llvm == to_llvm {
         return format!("%v{}", value.0);
     }
+    if from_llvm == "{ i1, ptr, i32 }" && to_llvm == "{ ptr, i32 }" {
+        let tag = format!("endpointcoerce{}", value.0);
+        let _ = writeln!(
+            text,
+            "  %{tag}_ptr = extractvalue {{ i1, ptr, i32 }} %v{}, 1",
+            value.0
+        );
+        let _ = writeln!(
+            text,
+            "  %{tag}_port = extractvalue {{ i1, ptr, i32 }} %v{}, 2",
+            value.0
+        );
+        let _ = writeln!(
+            text,
+            "  %{tag}_0 = insertvalue {{ ptr, i32 }} undef, ptr %{tag}_ptr, 0"
+        );
+        let _ = writeln!(
+            text,
+            "  %{tag} = insertvalue {{ ptr, i32 }} %{tag}_0, i32 %{tag}_port, 1"
+        );
+        return format!("%{tag}");
+    }
     if matches!(from_llvm, "i8" | "i16" | "i32" | "i64")
         && matches!(to_llvm, "i8" | "i16" | "i32" | "i64")
     {
@@ -376,90 +398,6 @@ pub(crate) fn static_global_name(class: &str, field: &str) -> String {
 
 pub(crate) fn class_init_flag(class: &str) -> String {
     format!("@bn_init_{}", sanitize_symbol(class))
-}
-
-pub(crate) fn field_byte_offset(module: &Module, owner: &str, field: &str) -> u32 {
-    let mut offset = OBJECT_HEADER_BYTES;
-    for function in &module.functions {
-        if !function.name.ends_with(".$fields") {
-            continue;
-        }
-        let class = function
-            .name
-            .trim_end_matches(".$fields")
-            .rsplit('.')
-            .next()
-            .unwrap_or(function.name.as_str());
-        if class != owner && !function.name.ends_with(&format!("{owner}.$fields")) {
-            continue;
-        }
-        for block in &function.blocks {
-            for instruction in &block.instructions {
-                if let Instruction::SetMember {
-                    name,
-                    ty,
-                    owner: set_owner,
-                    ..
-                } = instruction
-                {
-                    if set_owner != owner && set_owner.rsplit('.').next() != Some(owner) {
-                        continue;
-                    }
-                    if name == field {
-                        return offset;
-                    }
-                    let width = match llvm_type(ty) {
-                        Some("i1" | "i8") => 1,
-                        Some("i16") => 2,
-                        Some("i32" | "float") => 4,
-                        Some("i64" | "double" | "ptr") => 8,
-                        _ => 4,
-                    };
-                    offset = offset.saturating_add(width);
-                }
-            }
-        }
-    }
-    offset
-}
-
-pub(crate) const OBJECT_HEADER_BYTES: u32 = 8;
-
-pub(crate) fn class_instance_bytes(module: &Module, type_name: &str) -> u64 {
-    let owner = type_name.rsplit('.').next().unwrap_or(type_name);
-    let mut total = OBJECT_HEADER_BYTES;
-    for function in &module.functions {
-        if !function.name.ends_with(&format!("{owner}.$fields"))
-            && !function.name.ends_with(".$fields")
-        {
-            continue;
-        }
-        let class = function
-            .name
-            .trim_end_matches(".$fields")
-            .rsplit('.')
-            .next()
-            .unwrap_or("");
-        if class != owner {
-            continue;
-        }
-        for block in &function.blocks {
-            for instruction in &block.instructions {
-                if let Instruction::SetMember { ty, .. } = instruction {
-                    total = total.saturating_add(match llvm_type(ty) {
-                        Some("i1" | "i8") => 1,
-                        Some("i16") => 2,
-                        Some("i32" | "float") => 4,
-                        Some("i64" | "double" | "ptr") => 8,
-                        _ => 4,
-                    });
-                }
-            }
-        }
-        break;
-    }
-    // Inheritance may add parent fields via other `$fields` helpers; keep slack.
-    u64::from(total.max(64))
 }
 
 pub(crate) fn parse_float_constant(value: &str) -> Option<f64> {
@@ -589,10 +527,11 @@ pub(crate) fn input_runtime_ir() -> &'static str {
     r"
 declare i32 @getchar()
 declare ptr @realloc(ptr, i64)
+declare void @free(ptr)
 
-define ptr @bn_input() {
+define ptr @bn_input(ptr %input.reusable) {
 entry:
-  %input.initial = call ptr @realloc(ptr null, i64 64)
+  %input.initial = call ptr @realloc(ptr %input.reusable, i64 64)
   br label %input.read
 input.read:
   %input.buffer = phi ptr [ %input.initial, %entry ], [ %input.active.buffer, %input.store ], [ %input.buffer, %input.carriage ]
@@ -635,9 +574,52 @@ input.done:
   store i8 0, ptr %input.end
   ret ptr %input.buffer
 input.eof.out:
+  call void @free(ptr %input.buffer)
   ret ptr @.bn_eof
 }
 "
+}
+
+pub(crate) fn string_byte_length_ir() -> &'static str {
+    r"
+define i64 @bn_string_byte_length(ptr %text) {
+entry:
+  br label %length.scan
+length.scan:
+  %length.index = phi i64 [ 0, %entry ], [ %length.next, %length.more ]
+  %length.slot = getelementptr i8, ptr %text, i64 %length.index
+  %length.byte = load i8, ptr %length.slot
+  %length.done = icmp eq i8 %length.byte, 0
+  br i1 %length.done, label %length.out, label %length.more
+length.more:
+  %length.next = add i64 %length.index, 1
+  br label %length.scan
+length.out:
+  ret i64 %length.index
+}
+"
+}
+
+pub(crate) fn is_canonical_timezone(text: &str) -> bool {
+    if text == "UTC" {
+        return true;
+    }
+    let mut parts = 0;
+    for part in text.split('/') {
+        parts += 1;
+        let mut characters = part.chars();
+        let Some(first) = characters.next() else {
+            return false;
+        };
+        if !first.is_ascii_alphabetic()
+            || !characters.all(|character| {
+                character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '+')
+            })
+        {
+            return false;
+        }
+    }
+    parts >= 2
 }
 
 pub(crate) fn escape_llvm(value: &str) -> String {
@@ -670,6 +652,9 @@ pub(crate) fn instruction_name(instruction: &Instruction) -> &'static str {
         Instruction::Index { .. } => "indexing",
         Instruction::Member { .. } => "member access",
         Instruction::SetIndex { .. } => "indexed stores",
+        Instruction::SetMemberIndex { .. } => "indexed member stores",
+        Instruction::SetFieldIndex { .. } => "indexed field stores",
+        Instruction::SetStaticIndex { .. } => "indexed static stores",
         Instruction::Length { .. } => "LEN",
         Instruction::SizeOf { .. } => "SIZEOF",
         Instruction::Print { .. } => "PRINT",
@@ -698,8 +683,18 @@ pub(crate) fn unsupported_instruction_detail(instruction: &Instruction) -> Strin
             "LLVM lowering for allocation of '{type_name}' as '{}' is unavailable",
             crate::display_type(ty)
         ),
-        Instruction::Index { ty, .. } | Instruction::SetIndex { ty, .. } => format!(
+        Instruction::Index { ty, .. }
+        | Instruction::SetIndex { ty, .. }
+        | Instruction::SetMemberIndex { ty, .. } => format!(
             "LLVM lowering for indexed access producing '{}' is unavailable",
+            crate::display_type(ty)
+        ),
+        Instruction::SetFieldIndex { ty, .. } => format!(
+            "LLVM lowering for indexed field assignment of '{}' is unavailable",
+            crate::display_type(ty)
+        ),
+        Instruction::SetStaticIndex { ty, .. } => format!(
+            "LLVM lowering for indexed static assignment of '{}' is unavailable",
             crate::display_type(ty)
         ),
         Instruction::Default {

@@ -1,0 +1,26 @@
+// GRASP Polymorphism: each payment type implements Pay differently.
+INTERFACE Payment
+    FUNCTION Pay(amount AS INTEGER) AS INTEGER
+END INTERFACE
+
+CLASS CardPayment IMPLEMENTS Payment
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Pay(amount AS INTEGER) AS INTEGER
+        RETURN amount + 1
+    END FUNCTION
+END CLASS
+
+CLASS CashPayment IMPLEMENTS Payment
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Pay(amount AS INTEGER) AS INTEGER
+        RETURN amount
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET card AS CardPayment = NEW CardPayment()
+    LET cash AS CashPayment = NEW CashPayment()
+    PRINT card.Pay(10), cash.Pay(10)
+END FUNCTION

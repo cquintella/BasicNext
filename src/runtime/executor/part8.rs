@@ -208,47 +208,19 @@ impl Executor<'_, '_> {
                         });
                     }
                 };
-                let mut rows = match self.host.data_provider.read_csv(&text, separator[0]) {
+                let rows = match self.host.data_provider.read_csv(&text, separator[0]) {
                     Ok(rows) => rows,
                     Err(message) => {
                         return Ok(Value::Error { code: 1, message });
                     }
                 };
-                let headers = if has_header && !rows.is_empty() {
-                    rows.remove(0)
-                } else {
-                    Vec::new()
+                let frame = match bn_rt::frame_from_csv_rows(rows, has_header, Value::String) {
+                    Ok(frame) => frame,
+                    Err(message) => return Ok(Value::Error { code: 1, message }),
                 };
-                let width = headers.len().max(rows.first().map_or(0, Vec::len));
-                if rows.iter().any(|row| row.len() != width)
-                    || (has_header && headers.len() != width)
-                {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "ragged CSV row".into(),
-                    });
-                }
-                let columns: Vec<DataFrameColumn> = (0..width)
-                    .map(|index| DataFrameColumn {
-                        name: headers
-                            .get(index)
-                            .cloned()
-                            .unwrap_or_else(|| format!("Column{}", index + 1)),
-                        values: rows
-                            .iter()
-                            .map(|row| Value::String(row[index].clone()))
-                            .collect(),
-                    })
-                    .collect();
-                if duplicate_column_names(&columns) {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "duplicate column name".into(),
-                    });
-                }
                 let id = self.next_dataframe;
                 self.next_dataframe += 1;
-                self.dataframes.insert(id, DataFrameResource { columns });
+                self.dataframes.insert(id, frame);
                 Ok(Value::DataFrame(id))
             }
             "WriteCSV" => {

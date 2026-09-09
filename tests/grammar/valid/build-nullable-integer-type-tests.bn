@@ -1,0 +1,20 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+FUNCTION Maybe(present AS BOOLEAN) AS INTEGER OR NULL
+    IF present THEN
+        RETURN 4
+    END IF
+    RETURN NULL
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET missing AS INTEGER OR NULL = Maybe(FALSE)
+    LET present AS INTEGER OR NULL = Maybe(TRUE)
+    PRINT missing IS NULL
+    PRINT missing IS INTEGER
+    PRINT present IS NULL
+    PRINT present IS INTEGER
+END FUNCTION

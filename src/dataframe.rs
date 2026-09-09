@@ -6,8 +6,8 @@
 //! Compatibility facade for the runtime-owned `DataFrame` primitives.
 
 pub(crate) use bn_rt::{
-    DataFrameColumn, DataFrameJoin, DataFrameJoinConfig, DataFrameResource, add_dataframe_column,
-    append_columns, append_rows, column_name, convert_dataframe_column, copy_dataframe_column,
+    DataFrameJoin, DataFrameJoinConfig, DataFrameResource, add_dataframe_column, append_columns,
+    append_rows, column_name, convert_dataframe_column, copy_dataframe_column,
     dataframe_reduce_column, duplicate_column_names, get_dataframe_cell, join_dataframes,
     select_dataframe, set_column_label, transpose_dataframe, zscore_column,
 };

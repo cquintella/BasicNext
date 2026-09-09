@@ -284,6 +284,48 @@ impl Executor<'_, '_> {
                 })?;
                 self.set_index(target, &indices, source, *span)?;
             }
+            Instruction::SetMemberIndex {
+                object,
+                name,
+                indices,
+                value: source,
+                ty,
+                span,
+                ..
+            } => {
+                let indices = indices
+                    .iter()
+                    .map(|index| {
+                        usize::try_from(integer(value(values, *index, *span)?, *span)?.0).map_err(
+                            |_| runtime_error("INDEX_OUT_OF_BOUNDS", "index cannot be negative", *span),
+                        )
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                let source = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
+                self.set_member_index_value(values, *object, name, &indices, source, *span)?;
+            }
+            Instruction::SetFieldIndex {
+                symbol,
+                path,
+                indices,
+                value: source,
+                ty,
+                span,
+            } => {
+                let indices = indices
+                    .iter()
+                    .map(|index| {
+                        usize::try_from(integer(value(values, *index, *span)?, *span)?.0).map_err(
+                            |_| runtime_error("INDEX_OUT_OF_BOUNDS", "index cannot be negative", *span),
+                        )
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                let source = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
+                let target = symbols.get_mut(symbol).ok_or_else(|| {
+                    runtime_error("UNINITIALIZED_VALUE", "binding has no value", *span)
+                })?;
+                self.set_field_index_path(target, path, &indices, source, *span)?;
+            }
             Instruction::Length {
                 destination,
                 vector,
@@ -517,6 +559,34 @@ impl Executor<'_, '_> {
             } => {
                 let stored = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
                 self.statics.insert((class.clone(), field.clone()), stored);
+            }
+            Instruction::SetStaticIndex {
+                class,
+                field,
+                indices,
+                value: source,
+                ty,
+                span,
+            } => {
+                let indices = indices
+                    .iter()
+                    .map(|index| {
+                        usize::try_from(integer(value(values, *index, *span)?, *span)?.0).map_err(
+                            |_| runtime_error("INDEX_OUT_OF_BOUNDS", "index cannot be negative", *span),
+                        )
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                let source = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
+                let key = (class.clone(), field.clone());
+                let mut target = self.statics.get(&key).cloned().ok_or_else(|| {
+                    runtime_error(
+                        "UNINITIALIZED_VALUE",
+                        format!("STATIC {class}.{field} has no value"),
+                        *span,
+                    )
+                })?;
+                self.set_index(&mut target, &indices, source, *span)?;
+                self.statics.insert(key, target);
             }
         }
         Ok(())

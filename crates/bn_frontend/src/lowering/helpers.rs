@@ -82,10 +82,19 @@ pub(crate) fn type_test_name(atom: &TypeAtom) -> String {
 }
 
 pub(crate) fn named_or_void(reference: &TypeReference) -> Type {
-    let name = reference
+    let alternatives = reference
         .alternatives
-        .first()
-        .map_or("VOID", |atom| atom.name.as_str());
+        .iter()
+        .map(|atom| named_type(&atom.name))
+        .collect::<Vec<_>>();
+    match alternatives.as_slice() {
+        [] => Type::Named("VOID".into()),
+        [ty] => ty.clone(),
+        _ => Type::Alternative(alternatives),
+    }
+}
+
+fn named_type(name: &str) -> Type {
     match name {
         "INTEGER" | "INT32" => Type::Integer(IntegerType::Int32),
         "INT8" => Type::Integer(IntegerType::Int8),
@@ -99,6 +108,9 @@ pub(crate) fn named_or_void(reference: &TypeReference) -> Type {
         "FLOAT32" => Type::Float(crate::types::FloatType::Float32),
         "BOOLEAN" => Type::Boolean,
         "STRING" => Type::String,
+        "NULL" => Type::Null,
+        "NA" => Type::NotAvailable,
+        "EOF" => Type::EndOfFile,
         "VOID" => Type::Named("VOID".into()),
         other => Type::Named(other.into()),
     }
@@ -162,6 +174,28 @@ pub(crate) fn console_import_span(program: &Program) -> Option<Span> {
     program.items.iter().find_map(|item| match item {
         Item::Import { path, span, .. }
             if path.len() == 2 && path[0] == "HOST" && path[1] == "Console" =>
+        {
+            Some(*span)
+        }
+        _ => None,
+    })
+}
+
+pub(crate) fn clock_import_span(program: &Program) -> Option<Span> {
+    program.items.iter().find_map(|item| match item {
+        Item::Import { path, span, .. }
+            if path.len() == 2 && path[0] == "HOST" && path[1] == "Clock" =>
+        {
+            Some(*span)
+        }
+        _ => None,
+    })
+}
+
+pub(crate) fn random_import_span(program: &Program) -> Option<Span> {
+    program.items.iter().find_map(|item| match item {
+        Item::Import { path, span, .. }
+            if path.len() == 2 && path[0] == "HOST" && path[1] == "Random" =>
         {
             Some(*span)
         }

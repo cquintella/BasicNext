@@ -29,7 +29,7 @@ Tracked findings and residual risks are maintained here with living evidence.
 | F-02 | POLICY_CLOCK / FILESYSTEM / RANDOM vs bn_rt | Fixed | `docs/superpowers/evidence/2026-09-07-0.4.6-g2a-policy.md` | Doug | 2026-09-07 |
 | F-03 | CookieJar / Set-Cookie HTTP | Fixed | `docs/superpowers/evidence/2026-09-07-0.4.6-g3-cookies.md` | Doug | 2026-09-07 |
 | F-04 | HOST.Random non-CSPRNG documentation | Fixed | `docs/superpowers/evidence/2026-09-07-0.4.6-g4a-random.md` | Doug | 2026-09-07 |
-| F-05 | FS default sandbox & rooted TOCTOU | Fixed | `docs/superpowers/evidence/2026-09-07-0.4.6-g4b-fs.md` | Doug | 2026-09-07 |
+| F-05 | FS default sandbox & rooted TOCTOU | Fixed | `docs/superpowers/evidence/2026-09-07-0.4.6-g4b-fs.md` | Doug | 2026-09-09 |
 | F-06 | DataFrame FFI bounds and safety | Fixed | `docs/superpowers/evidence/2026-09-07-0.4.6-g2b-ffi.md` | Doug | 2026-09-07 |
 | F-07 | 503 on admit failure | Fixed | `docs/superpowers/evidence/2026-09-07-0.4.6-g5-register.md` | Doug | 2026-09-07 |
 | F-08 | Living threat model and BN-SEC register | Fixed | `docs/security/threat-model.md`, `docs/security/security-register.md` | Doug | 2026-09-07 |
@@ -40,6 +40,6 @@ Tracked findings and residual risks are maintained here with living evidence.
 
 | id | title | status | evidence_path | owner | updated |
 | --- | --- | --- | --- | --- | --- |
-| R-01 | SSRF DNS rebinding and redirect limits | Residual | Re-resolve on redirect; allowlist preferred | Doug | 2026-09-07 |
-| R-02 | Session store process-local lifetime | Residual | In-memory sessions lost on restart | Doug | 2026-09-07 |
-| R-03 | OS file descriptor / socket backlog limits | Residual | Subject to host kernel quotas | Doug | 2026-09-07 |
+| R-01 | SSRF DNS rebinding and redirect limits | Residual | `docs/superpowers/evidence/2026-09-07-0.4.6-g5-register.md` | Doug | 2026-09-09 |
+| R-02 | Session store process-local lifetime | Residual | `docs/superpowers/evidence/2026-09-07-0.4.6-g5-register.md` | Doug | 2026-09-09 |
+| R-03 | OS file descriptor / socket backlog limits | Residual | `docs/superpowers/evidence/2026-09-07-0.4.6-g5-register.md` | Doug | 2026-09-09 |

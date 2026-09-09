@@ -8,6 +8,7 @@ use std::{
     fs,
     io::{BufRead, Cursor, Read, Write},
     path::{Path, PathBuf},
+    process::Command,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -1277,8 +1278,20 @@ fn console_tty_calls_fail_only_when_executed() {
     run(skipped, "").expect("unexecuted TTY call must be valid");
     let executed =
         "IMPORT HOST.Console AS CON\nFUNCTION Start() AS VOID\nCON.NumCols()\nEND FUNCTION\n";
-    let error = run(executed, "").expect_err("piped NumCols must fail at call");
-    assert_eq!(error.code, "HOST_CAPABILITY_UNAVAILABLE");
+    let path =
+        std::env::temp_dir().join(format!("basicnext-console-pipe-{}.bn", std::process::id()));
+    fs::write(&path, executed).expect("write piped console fixture");
+    let output = Command::new(env!("CARGO_BIN_EXE_bn"))
+        .args(["run", path.to_str().expect("UTF-8 fixture path")])
+        .output()
+        .expect("run with captured standard output");
+    let _ = fs::remove_file(path);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("HOST_CAPABILITY_UNAVAILABLE"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]

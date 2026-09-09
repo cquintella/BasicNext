@@ -1,0 +1,5 @@
+// UNSUPPORTED: Mediator requires a shared interface reference between peers;
+// interface-typed fields and dynamic dispatch are not yet complete.
+FUNCTION Start() AS VOID
+    PRINT "UNSUPPORTED: interface-typed peer references are not available"
+END FUNCTION

@@ -26,6 +26,395 @@ fn check_valid_program_exits_zero() {
 }
 
 #[test]
+fn check_accepts_rpn_member_vector_assignment() {
+    let output = bn()
+        .args(["check", "examples/rpn-calculator.bn"])
+        .output()
+        .expect("check RPN calculator");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn check_accepts_nullable_returns_in_linear_collections() {
+    let output = bn()
+        .args(["check", "examples/linear_collections.bn"])
+        .output()
+        .expect("check linear collections");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn build_executes_nullable_integer_collection_results_like_interpret() {
+    let interpreted = bn()
+        .args(["run", "examples/linear_collections.bn"])
+        .output()
+        .expect("interpret linear collections");
+    assert_eq!(interpreted.status.code(), Some(0));
+
+    let artifact =
+        std::env::temp_dir().join(format!("bn-linear-collections-{}", std::process::id()));
+    let built = bn()
+        .args([
+            "build",
+            "examples/linear_collections.bn",
+            "-o",
+            artifact.to_str().expect("artifact path"),
+        ])
+        .output()
+        .expect("build linear collections");
+    assert_eq!(
+        built.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    assert!(
+        !String::from_utf8_lossy(&built.stderr).contains("warning[UNUSED_BINDING]"),
+        "used object fields must not be diagnosed as unused: {}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let compiled = Command::new(&artifact)
+        .output()
+        .expect("run compiled linear collections");
+    assert_eq!(compiled.status.code(), Some(0));
+    assert_eq!(compiled.stdout, interpreted.stdout);
+    let _ = fs::remove_file(artifact);
+}
+
+#[test]
+#[allow(clippy::too_many_lines)] // One end-to-end sandbox fixture exercises one compiled policy artifact.
+fn compiled_sandbox_enforces_read_write_roots_and_symlink_escape() {
+    let base = std::env::temp_dir().join(format!("bn-sandbox-matrix-{}", std::process::id()));
+    let read_root = base.join("read");
+    let write_root = base.join("write");
+    let outside_root = base.join("outside");
+    fs::create_dir_all(&read_root).expect("create read root");
+    fs::create_dir_all(&write_root).expect("create write root");
+    fs::create_dir_all(&outside_root).expect("create outside root");
+    fs::write(read_root.join("allowed.txt"), "allowed\n").expect("write allowed input");
+    fs::write(outside_root.join("outside.txt"), "outside\n").expect("write outside input");
+
+    let fixture = base.join("sandbox.bn");
+    fs::write(
+        &fixture,
+        "IMPORT BNData AS Data\n\
+IMPORT HOST.FileSystem AS FS\n\
+FUNCTION Start() AS VOID\n\
+    LET mode AS STRING = HOST.Args[1]\n\
+    LET path AS STRING = HOST.Args[2]\n\
+    IF mode = \"read\" THEN\n\
+        LET file AS FS.File OR Error = FS.Open(path, FS.READ)\n\
+        IF file IS Error THEN\n\
+            PRINT \"open-error\"\n\
+        ELSE\n\
+            PRINT \"read-ok\"\n\
+            file.Close()\n\
+            DELETE file\n\
+        END IF\n\
+    ELSE\n\
+        LET file AS FS.File OR Error = FS.Open(path, FS.WRITE)\n\
+        IF file IS Error THEN\n\
+            PRINT \"open-error\"\n\
+        ELSE\n\
+            LET frame AS Data.DataFrame = NEW Data.DataFrame()\n\
+            LET names AS STRING[1] = [\"sandbox\"]\n\
+            frame.AddStringColumn(\"value\", names)\n\
+            LET result AS VOID OR Error = Data.WriteCSV(file, frame, TRUE, \",\")\n\
+            PRINT \"write-ok\"\n\
+            DELETE frame\n\
+            file.Close()\n\
+            DELETE file\n\
+        END IF\n\
+    END IF\n\
+END FUNCTION\n",
+    )
+    .expect("write sandbox fixture");
+
+    let artifact = base.join("sandbox");
+    let built = bn()
+        .args([
+            "build",
+            "--sandbox",
+            "--read-root",
+            read_root.to_str().expect("read root path"),
+            "--write-root",
+            write_root.to_str().expect("write root path"),
+            fixture.to_str().expect("fixture path"),
+            "-o",
+            artifact.to_str().expect("artifact path"),
+        ])
+        .output()
+        .expect("build sandbox fixture");
+    assert_eq!(
+        built.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+
+    let run = |mode: &str, path: &std::path::Path| {
+        Command::new(&artifact)
+            .args([mode, path.to_str().expect("test path")])
+            .output()
+            .expect("run sandbox artifact")
+    };
+
+    let allowed_read = run("read", &read_root.join("allowed.txt"));
+    assert_eq!(allowed_read.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&allowed_read.stdout).contains("read-ok"));
+
+    let denied_read = run("read", &outside_root.join("outside.txt"));
+    assert_eq!(denied_read.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&denied_read.stderr).contains("EXECUTION_POLICY_DENIED"));
+
+    let allowed_write = write_root.join("created.txt");
+    let write_result = run("write", &allowed_write);
+    assert_eq!(write_result.status.code(), Some(0));
+    assert!(allowed_write.is_file());
+    assert!(
+        fs::read_to_string(&allowed_write)
+            .expect("read created file")
+            .contains("sandbox")
+    );
+
+    let denied_write = outside_root.join("forbidden.txt");
+    let denied_write_result = run("write", &denied_write);
+    assert_eq!(denied_write_result.status.code(), Some(0));
+    assert!(!denied_write.exists());
+    assert!(
+        String::from_utf8_lossy(&denied_write_result.stderr).contains("EXECUTION_POLICY_DENIED")
+    );
+
+    #[cfg(unix)]
+    {
+        let link = read_root.join("escape.txt");
+        std::os::unix::fs::symlink(outside_root.join("outside.txt"), &link)
+            .expect("create symlink escape");
+        let escaped = run("read", &link);
+        assert!(String::from_utf8_lossy(&escaped.stderr).contains("EXECUTION_POLICY_DENIED"));
+    }
+
+    let deny_all_artifact = base.join("sandbox-deny-all");
+    let deny_all_build = bn()
+        .args([
+            "build",
+            "--sandbox",
+            fixture.to_str().expect("fixture path"),
+            "-o",
+            deny_all_artifact.to_str().expect("deny-all artifact path"),
+        ])
+        .output()
+        .expect("build deny-all sandbox fixture");
+    assert_eq!(
+        deny_all_build.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&deny_all_build.stderr)
+    );
+    let deny_all = Command::new(&deny_all_artifact)
+        .args([
+            "read",
+            read_root
+                .join("allowed.txt")
+                .to_str()
+                .expect("allowed path"),
+        ])
+        .output()
+        .expect("run deny-all sandbox artifact");
+    assert!(String::from_utf8_lossy(&deny_all.stderr).contains("EXECUTION_POLICY_DENIED"));
+
+    let _ = fs::remove_dir_all(base);
+}
+
+#[test]
+#[allow(clippy::too_many_lines)] // One end-to-end matrix proves environment policy never widens either backend.
+fn filesystem_policy_environment_only_narrows_interpreted_and_compiled_execution() {
+    let base = std::env::temp_dir().join(format!(
+        "bn-filesystem-environment-policy-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&base);
+    fs::create_dir_all(&base).expect("create fixture directory");
+    let readable = base.join("readable.txt");
+    let writable = base.join("writable.txt");
+    fs::write(&readable, "readable\n").expect("write readable fixture");
+
+    let fixture = base.join("filesystem-policy.bn");
+    fs::write(
+        &fixture,
+        "IMPORT HOST.FileSystem AS FS\n\
+FUNCTION Start() AS VOID\n\
+    LET mode AS STRING = HOST.Args[1]\n\
+    LET path AS STRING = HOST.Args[2]\n\
+    IF mode = \"read\" THEN\n\
+        LET file AS FS.File OR Error = FS.Open(path, FS.READ)\n\
+        IF file IS Error THEN\n\
+            PRINT \"denied\"\n\
+        ELSE\n\
+            PRINT \"opened\"\n\
+            file.Close()\n\
+            DELETE file\n\
+        END IF\n\
+    ELSE\n\
+        LET file AS FS.File OR Error = FS.Open(path, FS.WRITE)\n\
+        IF file IS Error THEN\n\
+            PRINT \"denied\"\n\
+        ELSE\n\
+            PRINT \"opened\"\n\
+            file.Close()\n\
+            DELETE file\n\
+        END IF\n\
+    END IF\n\
+END FUNCTION\n",
+    )
+    .expect("write filesystem policy fixture");
+
+    let interpreted_deny = bn()
+        .env("BN_FS_POLICY", "deny")
+        .args([
+            "run",
+            fixture.to_str().expect("fixture path"),
+            "--",
+            "read",
+            readable.to_str().expect("readable path"),
+        ])
+        .output()
+        .expect("run interpreted deny fixture");
+    assert_eq!(
+        interpreted_deny.status.code(),
+        Some(1),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&interpreted_deny.stdout),
+        String::from_utf8_lossy(&interpreted_deny.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&interpreted_deny.stderr).contains("HOST_CAPABILITY_UNAVAILABLE")
+    );
+
+    let interpreted_read_only = bn()
+        .env("BN_FS_POLICY", "read-only")
+        .args([
+            "run",
+            fixture.to_str().expect("fixture path"),
+            "--",
+            "write",
+            writable.to_str().expect("writable path"),
+        ])
+        .output()
+        .expect("run interpreted read-only fixture");
+    assert_eq!(
+        interpreted_read_only.status.code(),
+        Some(2),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&interpreted_read_only.stdout),
+        String::from_utf8_lossy(&interpreted_read_only.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&interpreted_read_only.stderr).contains("EXECUTION_POLICY_DENIED")
+    );
+    assert!(!writable.exists());
+
+    let artifact = base.join("filesystem-policy");
+    let built = bn()
+        .args([
+            "build",
+            fixture.to_str().expect("fixture path"),
+            "-o",
+            artifact.to_str().expect("artifact path"),
+        ])
+        .output()
+        .expect("build filesystem policy fixture");
+    assert_eq!(
+        built.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+
+    let compiled_deny = Command::new(&artifact)
+        .env("BN_FS_POLICY", "deny")
+        .args(["read", readable.to_str().expect("readable path")])
+        .output()
+        .expect("run compiled deny fixture");
+    assert_eq!(compiled_deny.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&compiled_deny.stdout).contains("denied"));
+
+    let compiled_read_only = Command::new(&artifact)
+        .env("BN_FS_POLICY", "read-only")
+        .args(["write", writable.to_str().expect("writable path")])
+        .output()
+        .expect("run compiled read-only fixture");
+    assert_eq!(compiled_read_only.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&compiled_read_only.stdout).contains("denied"));
+    assert!(!writable.exists());
+
+    let sandbox_artifact = base.join("filesystem-policy-sandbox");
+    let sandbox_build = bn()
+        .args([
+            "build",
+            "--sandbox",
+            fixture.to_str().expect("fixture path"),
+            "-o",
+            sandbox_artifact.to_str().expect("sandbox artifact path"),
+        ])
+        .output()
+        .expect("build sandbox filesystem policy fixture");
+    assert_eq!(
+        sandbox_build.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&sandbox_build.stderr)
+    );
+    let compiled_cannot_widen = Command::new(&sandbox_artifact)
+        .env("BN_FS_POLICY", "read-only")
+        .args(["read", readable.to_str().expect("readable path")])
+        .output()
+        .expect("run sandbox read-only fixture");
+    assert_eq!(compiled_cannot_widen.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&compiled_cannot_widen.stdout).contains("denied"));
+
+    let _ = fs::remove_dir_all(base);
+}
+
+#[test]
+fn check_accepts_scalar_float_initializer_in_div_example() {
+    let output = bn()
+        .args(["check", "examples/div.bn"])
+        .output()
+        .expect("check division example");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn check_accepts_dispatch_task_returning_void() {
+    let output = bn()
+        .args(["check", "examples/parallel_work.bn"])
+        .output()
+        .expect("check parallel work example");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn check_and_lsp_report_the_same_multi_file_diagnostic_owner() {
     let directory = std::env::temp_dir().join(format!("bn-cli-lsp-parity-{}", std::process::id()));
     fs::create_dir_all(&directory).expect("create parity fixture directory");
@@ -115,6 +504,16 @@ fn warning_analysis_emits_unused_binding() {
 }
 
 #[test]
+fn warning_analysis_exempts_public_exported_class_bindings() {
+    let output = bn()
+        .args(["check", "examples/clock.bn"])
+        .output()
+        .expect("run clock check");
+    assert_eq!(output.status.code(), Some(0));
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("warning[UNUSED_BINDING]"));
+}
+
+#[test]
 fn warning_analysis_emits_unused_import() {
     let output = bn()
         .args(["check", "tests/grammar/valid/unused-import-warning.bn"])
@@ -194,7 +593,9 @@ fn failed_build_writes_partial_process_log_with_failure_stage() {
     let output = bn()
         .args([
             "build",
-            "tests/grammar/valid/multidimensional-vectors.bn",
+            "tests/grammar/valid/struct-return-lifetime-deferred.bn",
+            "--allow",
+            "UNUSED_BINDING",
             "--log-level",
             "error",
             "--log-file",
@@ -270,7 +671,9 @@ fn config_file_controls_process_log_level_and_destination() {
     let output = bn()
         .args([
             "build",
-            "tests/grammar/valid/multidimensional-vectors.bn",
+            "tests/grammar/valid/struct-return-lifetime-deferred.bn",
+            "--allow",
+            "UNUSED_BINDING",
             "--config",
             config_path.to_str().expect("UTF-8 config path"),
             "-o",
@@ -280,7 +683,7 @@ fn config_file_controls_process_log_level_and_destination() {
         .expect("build with configured process log");
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("TARGET_UNSUPPORTED_TYPE"));
+    assert!(stderr.contains("TARGET_UNSUPPORTED_OP"));
     let log = fs::read_to_string(&log_path).expect("configured process log");
     assert!(log.contains("level=error phase=pipeline event=end"));
     assert!(log.contains("phase=validate_for") && log.contains("event=fail"));
@@ -327,17 +730,14 @@ fn cli_log_file_overrides_configured_disabled_logging() {
 }
 
 #[test]
-fn cli_help_and_version_advertise_current_commands() {
+fn cli_help_and_version_advertise_0_4_7() {
     let help = bn().arg("--help").output().expect("run bn help");
     assert_eq!(help.status.code(), Some(0));
     let help = String::from_utf8_lossy(&help.stdout);
     assert!(help.contains("lsp") && help.contains("dap"));
     let version = bn().arg("--version").output().expect("run bn version");
     assert_eq!(version.status.code(), Some(0));
-    assert_eq!(
-        String::from_utf8_lossy(&version.stdout).trim(),
-        concat!("bn ", env!("CARGO_PKG_VERSION"))
-    );
+    assert_eq!(String::from_utf8_lossy(&version.stdout).trim(), "bn 0.4.7");
 }
 
 #[test]
@@ -510,16 +910,8 @@ fn build_kmp_compiles_through_native_backend() {
 }
 
 #[test]
-fn build_reports_the_type_for_unsupported_vector_lowering() {
-    let output = bn()
-        .args(["build", "tests/grammar/valid/multidimensional-vectors.bn"])
-        .output()
-        .expect("run vector build");
-    assert_eq!(output.status.code(), Some(2));
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("LLVM lowering for vector type"));
-    assert!(stderr.contains("INTEGER(INT32)[2][3]"));
-    assert!(stderr.contains("FUNCTION Start"));
+fn build_executes_multidimensional_vector_like_interpreter() {
+    native_matches_interpreter("tests/grammar/valid/multidimensional-vectors.bn");
 }
 
 #[test]
@@ -594,6 +986,65 @@ fn native_matches_interpreter(path: &str) {
     let _ = fs::remove_file(output_path);
 }
 
+fn native_matches_interpreter_with_input(path: &str, input: &str) {
+    let output_path = std::env::temp_dir().join(format!(
+        "basicnext-input-parity-{}-{}",
+        std::process::id(),
+        path.replace(['/', '.'], "_")
+    ));
+    let _ = fs::remove_file(&output_path);
+    let built = bn()
+        .args([
+            "build",
+            path,
+            "-o",
+            output_path.to_str().expect("temporary path"),
+        ])
+        .output()
+        .expect("run bn build");
+    assert_eq!(
+        built.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+
+    let mut compiled = Command::new(&output_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("run compiled artifact");
+    compiled
+        .stdin
+        .take()
+        .expect("compiled stdin")
+        .write_all(input.as_bytes())
+        .expect("write compiled stdin");
+    let compiled = compiled
+        .wait_with_output()
+        .expect("wait for native artifact");
+
+    let mut interpreted = bn()
+        .args(["run", path])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("run interpreter");
+    interpreted
+        .stdin
+        .take()
+        .expect("interpreter stdin")
+        .write_all(input.as_bytes())
+        .expect("write interpreter stdin");
+    let interpreted = interpreted
+        .wait_with_output()
+        .expect("wait for interpreter");
+
+    assert_eq!(compiled.status.code(), interpreted.status.code(), "{path}");
+    assert_eq!(compiled.stdout, interpreted.stdout, "{path}");
+    let _ = fs::remove_file(output_path);
+}
+
 #[test]
 fn build_lowers_euclidean_div_and_remainder_matching_interpreter() {
     native_matches_interpreter("tests/grammar/valid/build-euclidean-div.bn");
@@ -617,95 +1068,58 @@ fn build_lowers_print_expression_and_argument_separators_matching_interpreter() 
 }
 
 #[test]
-fn build_lowers_dispatch_examples_with_native_parity() {
-    native_matches_dispatch("examples/dispatch_game_tournament.bn");
-    native_matches_dispatch("examples/dispatch_cellular_automaton.bn");
-
-    let path = "examples/dispatch_reliability_simulation.bn";
-    let output_path = std::env::temp_dir().join(format!(
-        "basicnext-dispatch-reliability-{}",
-        std::process::id()
-    ));
-    let _ = fs::remove_file(&output_path);
-    let built = bn()
-        .args([
-            "build",
-            path,
-            "-o",
-            output_path.to_str().expect("temporary path"),
-        ])
-        .output()
-        .expect("build dispatch reliability example");
-    assert_eq!(
-        built.status.code(),
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&built.stderr)
-    );
-    let compiled = Command::new(&output_path)
-        .output()
-        .expect("run compiled dispatch example");
-    let interpreted = bn()
-        .args(["run", path])
-        .output()
-        .expect("run dispatch interpreter example");
-    assert_eq!(compiled.status.code(), interpreted.status.code());
-    let normalize = |output: &[u8]| {
-        let mut lines = String::from_utf8_lossy(output)
-            .lines()
-            .map(str::to_owned)
+fn build_executes_dispatch_examples_with_equivalent_results() {
+    for path in [
+        "examples/parallel_pi.bn",
+        "examples/parallel_work.bn",
+        "examples/dispatch_game_tournament.bn",
+        "examples/dispatch_cellular_automaton.bn",
+        "examples/dispatch_reliability_simulation.bn",
+    ] {
+        let interpreted = bn()
+            .args(["run", path])
+            .output()
+            .expect("run dispatch example");
+        assert_eq!(interpreted.status.code(), Some(0), "{path}");
+        let artifact = std::env::temp_dir().join(format!(
+            "basicnext-dispatch-{}-{}",
+            std::process::id(),
+            path.replace(['/', '.'], "_")
+        ));
+        let _ = fs::remove_file(&artifact);
+        let built = bn()
+            .args(["build", path, "-o", artifact.to_str().expect("UTF-8 path")])
+            .output()
+            .expect("build dispatch example");
+        assert_eq!(
+            built.status.code(),
+            Some(0),
+            "{path}: {}",
+            String::from_utf8_lossy(&built.stderr)
+        );
+        let compiled = Command::new(&artifact)
+            .output()
+            .expect("execute dispatch artifact");
+        assert_eq!(compiled.status.code(), Some(0), "{path}");
+        let interpreted_lines = interpreted
+            .stdout
+            .split(|byte| *byte == b'\n')
+            .filter(|line| !line.is_empty())
             .collect::<Vec<_>>();
-        lines.sort();
-        lines.join("\n")
-    };
-    assert_eq!(normalize(&compiled.stdout), normalize(&interpreted.stdout));
-    let _ = fs::remove_file(output_path);
-}
-
-fn native_matches_dispatch(path: &str) {
-    let output_path = std::env::temp_dir().join(format!(
-        "basicnext-dispatch-{}-{}",
-        std::process::id(),
-        path.replace(['/', '.'], "_")
-    ));
-    let _ = fs::remove_file(&output_path);
-    let built = bn()
-        .args([
-            "build",
-            path,
-            "-o",
-            output_path.to_str().expect("temporary path"),
-        ])
-        .output()
-        .expect("build dispatch example");
-    assert_eq!(
-        built.status.code(),
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&built.stderr)
-    );
-    let compiled = Command::new(&output_path)
-        .output()
-        .expect("run compiled dispatch example");
-    let interpreted = bn()
-        .args(["run", path])
-        .output()
-        .expect("run dispatch interpreter example");
-    assert_eq!(compiled.status.code(), interpreted.status.code(), "{path}");
-    let normalize = |output: &[u8]| {
-        let mut lines = String::from_utf8_lossy(output)
-            .lines()
-            .map(str::to_owned)
+        let compiled_lines = compiled
+            .stdout
+            .split(|byte| *byte == b'\n')
+            .filter(|line| !line.is_empty())
             .collect::<Vec<_>>();
-        lines.sort();
-        lines.join("\n")
-    };
-    assert_eq!(
-        normalize(&compiled.stdout),
-        normalize(&interpreted.stdout),
-        "{path}"
-    );
-    let _ = fs::remove_file(output_path);
+        assert_eq!(interpreted_lines.len(), compiled_lines.len(), "{path}");
+        assert_eq!(interpreted_lines.last(), compiled_lines.last(), "{path}");
+        let mut interpreted_prefix = interpreted_lines[..interpreted_lines.len() - 1].to_vec();
+        let mut compiled_prefix = compiled_lines[..compiled_lines.len() - 1].to_vec();
+        interpreted_prefix.sort_unstable();
+        compiled_prefix.sort_unstable();
+        assert_eq!(interpreted_prefix, compiled_prefix, "{path}");
+        let _ = fs::remove_file(&artifact);
+    }
 }
 
 #[test]
@@ -721,6 +1135,16 @@ fn build_lowers_host_clock_and_console_through_bn_rt() {
     native_matches_interpreter("tests/grammar/valid/cls-and-beep.bn");
     native_matches_interpreter("tests/grammar/valid/console-size.bn");
     native_matches_interpreter("tests/grammar/valid/console-print-at.bn");
+}
+
+#[test]
+fn build_invokes_object_destructor_before_delete() {
+    native_matches_interpreter("tests/grammar/valid/build-destructor-delete.bn");
+}
+
+#[test]
+fn build_preserves_dataframe_error_values() {
+    native_matches_interpreter("tests/grammar/valid/build-dataframe-errors.bn");
 }
 
 #[test]
@@ -1029,6 +1453,14 @@ fn build_emits_input_runtime_and_preserves_eof() {
 }
 
 #[test]
+fn build_keeps_distinct_input_values_alive_across_later_reads() {
+    native_matches_interpreter_with_input(
+        "tests/grammar/valid/build-input-lifetime.bn",
+        "first\nsecond\nreplacement\n",
+    );
+}
+
+#[test]
 fn build_emits_seeded_random_with_interpreter_sequence() {
     let output_path = std::env::temp_dir().join(format!("basicnext-random-{}", std::process::id()));
     let _ = std::fs::remove_file(&output_path);
@@ -1122,6 +1554,23 @@ fn build_emits_host_args_index_zero() {
 }
 
 #[test]
+fn build_truncates_int64_host_argument_indices() {
+    let output = bn()
+        .args(["build", "examples/edit_distance.bn"])
+        .output()
+        .expect("emit edit-distance LLVM");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let llvm = String::from_utf8_lossy(&output.stdout);
+    assert!(llvm.contains("trunc i64"), "{llvm}");
+    assert!(!llvm.contains("sext i64"), "{llvm}");
+}
+
+#[test]
 fn build_folds_relational_print() {
     let output = bn()
         .args(["build", "tests/grammar/valid/print-comparison.bn"])
@@ -1159,6 +1608,52 @@ fn build_folds_nested_pure_function_calls() {
 #[test]
 fn build_lowers_factorial_recursion_matching_interpreter() {
     native_matches_interpreter("examples/factorial.bn");
+}
+
+#[test]
+fn build_lowers_global_static_field_matching_interpreter() {
+    native_matches_interpreter("examples/global.bn");
+}
+
+#[test]
+fn build_lowers_indexed_object_vector_fields_matching_interpreter() {
+    native_matches_interpreter("tests/grammar/valid/build-indexed-object-vector-field.bn");
+    native_matches_interpreter_with_input("examples/rpn-calculator.bn", "3\n4\n+\n2\n*\n=\nQ\n");
+}
+
+#[test]
+fn build_lowers_variables_vector_print_matching_interpreter() {
+    native_matches_interpreter("examples/variables.bn");
+}
+
+#[test]
+fn build_lowers_counted_for_control_flow_matching_interpreter() {
+    native_matches_interpreter("examples/variables.bn");
+    native_matches_interpreter("examples/control-flow.bn");
+}
+
+#[test]
+fn build_lowers_type_test_matching_interpreter() {
+    native_matches_interpreter("examples/type_test.bn");
+}
+
+#[test]
+fn build_lowers_string_search_and_codec_examples_matching_interpreter() {
+    for path in [
+        "examples/naive_search.bn",
+        "examples/boyer-moore.bn",
+        "examples/rabin-karp.bn",
+        "examples/huffman.bn",
+        "examples/shortest_path.bn",
+        "examples/lexical.bn",
+    ] {
+        native_matches_interpreter(path);
+    }
+}
+
+#[test]
+fn build_lowers_asc_and_char_matching_interpreter() {
+    native_matches_interpreter("tests/grammar/valid/build-asc-char.bn");
 }
 
 #[test]

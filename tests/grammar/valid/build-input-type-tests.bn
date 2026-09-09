@@ -1,0 +1,13 @@
+FUNCTION Start() AS INTEGER
+    LET value AS STRING OR EOF = INPUT()
+    IF value IS EOF THEN
+        PRINT "EOF"
+        RETURN 1
+    END IF
+    IF value IS STRING THEN
+        PRINT "STRING"
+        RETURN 0
+    END IF
+    PRINT "INVALID"
+    RETURN 2
+END FUNCTION

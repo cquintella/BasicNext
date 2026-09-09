@@ -1,0 +1,31 @@
+// GoF Facade: Checkout hides the sequence required by two subsystems.
+CLASS Inventory
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Reserve(item AS INTEGER) AS INTEGER
+        RETURN item
+    END FUNCTION
+END CLASS
+
+CLASS PaymentGateway
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Charge(amount AS INTEGER) AS INTEGER
+        RETURN amount
+    END FUNCTION
+END CLASS
+
+CLASS Checkout
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Complete(inventory AS Inventory, payment AS PaymentGateway, item AS INTEGER, amount AS INTEGER) AS INTEGER
+        RETURN payment.Charge(inventory.Reserve(item)) + amount
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET checkout AS Checkout = NEW Checkout()
+    LET inventory AS Inventory = NEW Inventory()
+    LET payment AS PaymentGateway = NEW PaymentGateway()
+    PRINT checkout.Complete(inventory, payment, 2, 5)
+END FUNCTION

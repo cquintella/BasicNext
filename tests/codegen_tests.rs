@@ -567,6 +567,14 @@ fn lower_module_emits_bn_rt_clock_and_console_calls() {
     assert!(llvm.contains("declare i64 @bn_rt_clock_now()"), "{llvm}");
     assert!(llvm.contains("call i64 @bn_rt_clock_now()"), "{llvm}");
 
+    let mut permitted_clock = clock;
+    permitted_clock.clock_import = Some(span());
+    let llvm = lower_module(&permitted_clock).expect("lower permitted HOST.Clock.Now");
+    assert!(
+        llvm.contains("call i32 @bn_rt_policy_init(i32 1, i64 1)"),
+        "{llvm}"
+    );
+
     let cls = start_module(vec![BasicBlock {
         id: BlockId(0),
         instructions: vec![

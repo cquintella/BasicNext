@@ -207,6 +207,94 @@ impl Executor<'_, '_> {
         }
     }
 
+    pub(crate) fn set_member_index_value(
+        &mut self,
+        values: &mut HashMap<ValueId, Value>,
+        object: ValueId,
+        name: &str,
+        indices: &[usize],
+        stored: Value,
+        span: Span,
+    ) -> Result<(), Diagnostic> {
+        match values.get(&object) {
+            Some(Value::Object { handle, .. }) => {
+                let mut target = self
+                    .objects
+                    .get(*handle, 0, span)?
+                    .fields
+                    .get(name)
+                    .cloned()
+                    .ok_or_else(|| runtime_error("NAME_NOT_FOUND", format!("runtime value has no member '{name}'"), span))?;
+                self.set_index(&mut target, indices, stored, span)?;
+                self.objects
+                    .get_mut(*handle, 0, span)?
+                    .fields
+                    .insert(name.to_string(), target);
+                Ok(())
+            }
+            Some(Value::Record { .. }) => Err(runtime_error(
+                "INVALID_IR",
+                "indexed value-type fields require a binding-rooted field store",
+                span,
+            )),
+            _ => Err(runtime_error(
+                "NAME_NOT_FOUND",
+                format!("runtime value has no member '{name}'"),
+                span,
+            )),
+        }
+    }
+
+    pub(crate) fn set_field_index_path(
+        &mut self,
+        target: &mut Value,
+        path: &[String],
+        indices: &[usize],
+        stored: Value,
+        span: Span,
+    ) -> Result<(), Diagnostic> {
+        let Some((name, rest)) = path.split_first() else {
+            return self.set_index(target, indices, stored, span);
+        };
+        match target {
+            Value::Record { fields, .. } => {
+                let mut nested = fields.get(name).cloned().ok_or_else(|| {
+                    runtime_error(
+                        "NAME_NOT_FOUND",
+                        format!("runtime value has no member '{name}'"),
+                        span,
+                    )
+                })?;
+                self.set_field_index_path(&mut nested, rest, indices, stored, span)?;
+                fields.insert(name.clone(), nested);
+                Ok(())
+            }
+            Value::Object { handle, .. } => {
+                let handle = *handle;
+                let mut nested = self
+                    .objects
+                    .get(handle, 0, span)?
+                    .fields
+                    .get(name)
+                    .cloned()
+                    .ok_or_else(|| {
+                        runtime_error(
+                            "NAME_NOT_FOUND",
+                            format!("runtime value has no member '{name}'"),
+                            span,
+                        )
+                    })?;
+                self.set_field_index_path(&mut nested, rest, indices, stored, span)?;
+                self.objects
+                    .get_mut(handle, 0, span)?
+                    .fields
+                    .insert(name.clone(), nested);
+                Ok(())
+            }
+            _ => Err(runtime_error("TYPE_MISMATCH", "value has no fields", span)),
+        }
+    }
+
     pub(crate) fn set_field_path(
         &mut self,
         target: &mut Value,

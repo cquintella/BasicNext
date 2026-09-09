@@ -1,0 +1,30 @@
+
+
+STRUCT 	Location
+    X AS INTEGER
+    Y AS INTEGER
+END STRUCT
+
+END STUCT
+
+CLASS Alien
+
+    LET id AS NUMBER
+    LET pos AS Location
+    FUNCTION CONSTRUCTOR()
+
+
+    END FUNCTION
+    FUNCTION Funck(ind AS INTEGER) AS INTEGER
+
+    RETURN ind++
+    END FUNCTION
+
+
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET xeta AS Object = NEW(Alien)
+    LET minus AS Alien = NEW(Alien)
+    PRINT xeta.Funck(10)
+    minus.Funck(3)

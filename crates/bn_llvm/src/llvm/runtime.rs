@@ -6,18 +6,61 @@
 use super::*;
 
 pub(crate) const BN_RT_DECLS: &str = "\
+@.bn_log_error = private constant [23 x i8] c\"BNLog operation failed\\00\"
 declare i32 @bn_rt_policy_init(i32, i64)
+declare i32 @bn_rt_policy_filesystem_sandboxed()
+declare i32 @bn_rt_policy_filesystem_root(i32, ptr)
 declare i32 @bn_rt_dataframe_create(ptr, i32, ptr)
 declare i32 @bn_rt_dataframe_row_count(i64, ptr)
 declare i32 @bn_rt_dataframe_column_count(i64, ptr)
+declare i32 @bn_rt_dataframe_add_integer_start(i64, ptr, i32)
+declare i32 @bn_rt_dataframe_set_integer_cell(i64, i32, i32, i64)
+declare i32 @bn_rt_dataframe_add_float(i64, ptr, ptr, i32)
+declare i32 @bn_rt_dataframe_add_boolean(i64, ptr, ptr, i32)
+declare i32 @bn_rt_dataframe_add_string(i64, ptr, ptr, i32)
+declare i32 @bn_rt_dataframe_get_integer(i64, i32, ptr, ptr, ptr)
+declare i32 @bn_rt_dataframe_get_float(i64, i32, ptr, ptr, ptr)
+declare i32 @bn_rt_dataframe_get_boolean(i64, i32, ptr, ptr, ptr)
+declare i32 @bn_rt_dataframe_get_string(i64, i32, ptr, ptr, ptr)
+declare i32 @bn_rt_dataframe_set_label(i64, ptr, ptr)
+declare i32 @bn_rt_dataframe_reduce(i64, ptr, i32, ptr, ptr)
+declare i32 @bn_rt_dataframe_zscore(i64, ptr, ptr)
+declare i32 @bn_rt_dataframe_copy_integer(i64, ptr, ptr, i32)
+declare i32 @bn_rt_dataframe_copy_float(i64, ptr, ptr, i32)
+declare i32 @bn_rt_dataframe_select(i64, ptr, i32, ptr, i32, ptr)
+declare i32 @bn_rt_dataframe_slice(i64, i32, i32, i32, i32, ptr)
+declare i32 @bn_rt_dataframe_transpose(i64, ptr)
+declare i32 @bn_rt_dataframe_append_rows(i64, i64, ptr)
+declare i32 @bn_rt_dataframe_append_columns(i64, i64, ptr)
+declare i32 @bn_rt_dataframe_join(i64, i64, ptr, ptr, i32, ptr)
+declare i32 @bn_rt_dataframe_convert_integer(i64, ptr)
+declare i32 @bn_rt_dataframe_convert_float(i64, ptr)
+declare ptr @bn_rt_dataframe_column_name_owned(i64, i32)
 declare i32 @bn_rt_dataframe_close(i64)
+declare i32 @bn_rt_file_open(ptr, i32, ptr)
+declare i32 @bn_rt_file_close(i64)
+declare i32 @bn_rt_dataframe_read_csv(i64, i8, ptr, ptr)
+declare i32 @bn_rt_dataframe_write_csv(i64, i64, i8, ptr)
+declare i64 @bn_rt_log_fields_create()
+declare i64 @bn_rt_log_logger_create()
+declare i32 @bn_rt_log_fields_set_string(i64, ptr, ptr)
+declare i32 @bn_rt_log_logger_add_file(i64, ptr, i64)
+declare i32 @bn_rt_log_logger_log(i64, i64, ptr, i64)
+declare i32 @bn_rt_log_logger_flush(i64, i64)
+declare i32 @bn_rt_log_logger_close(i64, i64)
+declare i32 @bn_rt_log_fields_close(i64)
+declare i32 @bn_rt_log_logger_delete(i64)
 declare i64 @bn_rt_clock_now()
 declare i64 @bn_rt_clock_timer()
+declare i32 @bn_rt_random_seed(i64)
+declare double @bn_rt_random_next()
 declare i32 @bn_rt_console_cls()
 declare i32 @bn_rt_console_beep()
 declare i32 @bn_rt_console_print_at(i32, i32, ptr)
 declare i32 @bn_rt_console_num_cols()
 declare i32 @bn_rt_console_num_rows()
+declare i64 @bn_rt_str_asc(ptr)
+declare i64 @bn_rt_str_char_utf8(i64)
 declare i32 @bn_rt_net_address_parse(ptr, ptr)
 declare i32 @bn_rt_net_ping(ptr, i32, ptr, ptr)
 declare i32 @bn_rt_net_reverse(ptr, i32, ptr)
@@ -77,7 +120,10 @@ pub(crate) fn is_bn_rt_host_call(name: &str) -> bool {
             | "HOST.Console.PrintAt"
             | "HOST.Console.NumCols"
             | "HOST.Console.NumRows"
+            | "HOST.FileSystem.Open"
+            | "FS.File.Close"
             | "HOST.Net.Address.Parse"
+            | "HOST.Net.Address.ToString"
             | "HOST.Net.Endpoint.Create"
             | "HOST.Net.Endpoint.Port"
             | "HOST.Net.Endpoint.Address"
@@ -111,22 +157,83 @@ pub(crate) fn is_bn_rt_host_call(name: &str) -> bool {
     )
 }
 
-pub(crate) fn is_bndata_dataframe_call(module: &Module, name: &str) -> bool {
-    let Some(module_id) = name
+pub(crate) fn is_bndata_dataframe_call(_module: &Module, name: &str) -> bool {
+    let Some(rest) = name
         .strip_prefix('#')
-        .and_then(|rest| rest.split('.').next())
-        .and_then(|value| value.parse::<u32>().ok())
-        .map(bn_types::ModuleId)
+        .and_then(|value| value.split_once('.').map(|(_, rest)| rest))
     else {
         return false;
     };
-    module
-        .bndata_providers
-        .contains(&bn_ir::ModuleId(module_id.0))
-        && matches!(
-            name.strip_prefix(&format!("#{}.DataFrame.", module_id.0)),
-            Some("CONSTRUCTOR" | "RowCount" | "ColumnCount")
+    // Imported standard-module functions are lowered with the caller's
+    // canonical function prefix in some module-graph paths.  The provider
+    // set is the authority that BNData is imported; the numeric prefix is
+    // only a symbol identity and may differ after graph normalization.
+    // `DataFrame` is a reserved standard-provider class name; no user class
+    // can declare a colliding imported provider symbol.
+    matches!(
+        rest.strip_prefix("DataFrame."),
+        Some(
+            "CONSTRUCTOR"
+                | "RowCount"
+                | "ColumnCount"
+                | "AddStringColumn"
+                | "AddIntegerColumn"
+                | "AddFloatColumn"
+                | "AddBooleanColumn"
+                | "ColumnName"
+                | "SetLabel"
+                | "GetString"
+                | "GetInteger"
+                | "GetFloat"
+                | "GetBoolean"
+                | "Mean"
+                | "Median"
+                | "Quartile1"
+                | "Quartile3"
+                | "Mode"
+                | "Stdev"
+                | "Variance"
+                | "Range"
+                | "Min"
+                | "Max"
+                | "ZScore"
+                | "CopyIntegerColumn"
+                | "CopyFloatColumn"
+                | "Select"
+                | "Slice"
+                | "Transpose"
+                | "AppendRows"
+                | "AppendColumns"
+                | "Join"
+                | "LeftJoin"
+                | "RightJoin"
+                | "FullJoin"
+                | "ConvertToInteger"
+                | "ConvertToFloat"
         )
+    )
+}
+
+pub(crate) fn is_bndata_function(name: &str) -> bool {
+    matches!(name.rsplit('.').next(), Some("ReadCSV" | "WriteCSV"))
+}
+
+pub(crate) fn bnlog_method(module: &Module, name: &str) -> Option<&'static str> {
+    let (module_id, rest) = name.strip_prefix('#')?.split_once('.')?;
+    let module_id = bn_ir::ModuleId(module_id.parse().ok()?);
+    if !module.bnlog_providers.contains(&module_id) {
+        return None;
+    }
+    match rest {
+        "Fields.CONSTRUCTOR" => Some("fields_constructor"),
+        "Fields.SetString" => Some("fields_set_string"),
+        "Logger.CONSTRUCTOR" => Some("logger_constructor"),
+        "Logger.AddFile" => Some("logger_add_file"),
+        "Logger.Log" => Some("logger_log"),
+        "Logger.Flush" => Some("logger_flush"),
+        "Logger.Close" => Some("logger_close"),
+        _ => None,
+    }
 }
 
 pub(crate) fn bndata_dataframe_method(name: &str) -> Option<&'static str> {
@@ -134,8 +241,54 @@ pub(crate) fn bndata_dataframe_method(name: &str) -> Option<&'static str> {
         "CONSTRUCTOR" => Some("constructor"),
         "RowCount" => Some("row_count"),
         "ColumnCount" => Some("column_count"),
+        "AddIntegerColumn" => Some("add_integer_column"),
+        "AddStringColumn" => Some("add_string_column"),
+        "AddFloatColumn" => Some("add_float_column"),
+        "AddBooleanColumn" => Some("add_boolean_column"),
+        "ColumnName" => Some("column_name"),
+        "SetLabel" => Some("set_label"),
+        "GetString" => Some("get_string"),
+        "GetInteger" => Some("get_integer"),
+        "GetFloat" => Some("get_float"),
+        "GetBoolean" => Some("get_boolean"),
+        "Mean" => Some("mean"),
+        "Median" => Some("median"),
+        "Quartile1" => Some("quartile1"),
+        "Quartile3" => Some("quartile3"),
+        "Mode" => Some("mode"),
+        "Stdev" => Some("stdev"),
+        "Variance" => Some("variance"),
+        "Range" => Some("range"),
+        "Min" => Some("min"),
+        "Max" => Some("max"),
+        "ZScore" => Some("zscore"),
+        "CopyIntegerColumn" => Some("copy_integer"),
+        "CopyFloatColumn" => Some("copy_float"),
+        "Select" => Some("select"),
+        "Slice" => Some("slice"),
+        "Transpose" => Some("transpose"),
+        "AppendRows" => Some("append_rows"),
+        "AppendColumns" => Some("append_columns"),
+        "Join" => Some("join"),
+        "LeftJoin" => Some("left_join"),
+        "RightJoin" => Some("right_join"),
+        "FullJoin" => Some("full_join"),
+        "ConvertToInteger" => Some("convert_integer"),
+        "ConvertToFloat" => Some("convert_float"),
         _ => None,
     }
+}
+
+pub(crate) fn is_float_vector(ty: &Type) -> bool {
+    matches!(ty, Type::Vector { element, dimensions } if dimensions.len() == 1 && matches!(element.as_ref(), Type::Float(_)))
+}
+
+pub(crate) fn is_bool_vector(ty: &Type) -> bool {
+    matches!(ty, Type::Vector { element, dimensions } if dimensions.len() == 1 && **element == Type::Boolean)
+}
+
+pub(crate) fn is_string_vector(ty: &Type) -> bool {
+    matches!(ty, Type::Vector { element, dimensions } if dimensions.len() == 1 && **element == Type::String)
 }
 
 pub(crate) fn bn_rt_call_supported(
@@ -144,6 +297,10 @@ pub(crate) fn bn_rt_call_supported(
     values: &HashMap<ValueId, Type>,
 ) -> bool {
     match name {
+        "HOST.FileSystem.Open" => arguments.len() == 2
+            && values.get(&arguments[0]) == Some(&Type::String)
+            && values.get(&arguments[1]).and_then(llvm_type).is_some_and(integer_llvm),
+        "FS.File.Close" => arguments.len() == 1,
         "HOST.Clock.Now"
         | "HOST.Clock.Timer"
         | "HOST.Console.Cls"
@@ -173,6 +330,17 @@ pub(crate) fn bn_rt_call_supported(
                 && arguments
                     .first()
                     .is_some_and(|value| values.get(value) == Some(&Type::String))
+        }
+        "HOST.Net.Address.ToString" => {
+            arguments.len() == 1
+                && arguments.first().is_some_and(|value| {
+                    values
+                        .get(value)
+                        .is_some_and(|ty| {
+                            is_net_address_type(ty)
+                                || matches!(ty, Type::Alternative(alternatives) if alternatives.iter().any(is_net_address_type) && alternatives.iter().any(is_error_type))
+                        })
+                })
         }
         "HOST.Net.Endpoint.Create" => {
             arguments.len() == 2
@@ -418,6 +586,43 @@ pub(crate) fn lower_bn_rt_call(
     state: &mut EmissionState,
 ) {
     match name {
+        "HOST.FileSystem.Open" => {
+            let dest = destination.0;
+            let mode = extend_to_i32(
+                text,
+                arguments[1],
+                analysis
+                    .values
+                    .get(&arguments[1])
+                    .expect("validated file mode"),
+            );
+            let _ = writeln!(text, "  %fileout{dest} = alloca i64");
+            let _ = writeln!(
+                text,
+                "  %filerc{dest} = call i32 @bn_rt_file_open(ptr %v{}, i32 {mode}, ptr %fileout{dest})",
+                arguments[0].0
+            );
+            let _ = writeln!(text, "  %filehandle{dest} = load i64, ptr %fileout{dest}");
+            emit_handle_result(
+                text,
+                destination,
+                format!("%filerc{dest}"),
+                format!("%filehandle{dest}"),
+            );
+        }
+        "FS.File.Close" => {
+            let dest = destination.0;
+            let _ = writeln!(
+                text,
+                "  %fileclosehandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                arguments[0].0
+            );
+            emit_void_result(
+                text,
+                destination,
+                format!("call i32 @bn_rt_file_close(i64 %fileclosehandle{dest})"),
+            );
+        }
         "HOST.Clock.Now" => {
             let _ = writeln!(text, "  %v{} = call i64 @bn_rt_clock_now()", destination.0);
         }
@@ -796,6 +1001,13 @@ pub(crate) fn lower_bn_rt_call(
                 format!("%netrc{dest}"),
                 format!("%netout{dest}"),
                 "0",
+            );
+        }
+        "HOST.Net.Address.ToString" => {
+            let _ = writeln!(
+                text,
+                "  %v{} = extractvalue {{ i1, ptr, i64 }} %v{}, 1",
+                destination.0, arguments[0].0
             );
         }
         "HOST.Net.Endpoint.Create" => {
@@ -1465,7 +1677,7 @@ pub(crate) fn emit_checked_i32_eq_zero(
         "  br i1 %bnrtok{}, label %{ok}, label %trap_bn_rt",
         destination.0
     );
-    let _ = writeln!(text, "{ok}:");
+    state.control_flow.label(text, ok.clone());
     state.needs_bn_rt_trap = true;
 }
 
@@ -1488,7 +1700,7 @@ fn emit_checked_i32_sge_zero(
         "  br i1 %bnrtok{}, label %{ok}, label %trap_bn_rt",
         destination.0
     );
-    let _ = writeln!(text, "{ok}:");
+    state.control_flow.label(text, ok.clone());
     state.needs_bn_rt_trap = true;
 }
 

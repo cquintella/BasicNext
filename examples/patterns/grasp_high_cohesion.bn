@@ -1,0 +1,13 @@
+// GRASP High Cohesion: TaxCalculator owns only tax-related behavior.
+CLASS TaxCalculator
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Calculate(net AS INTEGER) AS INTEGER
+        RETURN net DIV 10
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET calculator AS TaxCalculator = NEW TaxCalculator()
+    PRINT calculator.Calculate(90)
+END FUNCTION

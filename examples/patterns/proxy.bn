@@ -1,0 +1,25 @@
+// GoF Proxy: the proxy controls access before forwarding the operation.
+CLASS Service
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Read() AS INTEGER
+        RETURN 9
+    END FUNCTION
+END CLASS
+
+CLASS ServiceProxy
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Read(service AS Service, allowed AS BOOLEAN) AS INTEGER
+        IF allowed THEN
+            RETURN service.Read()
+        END IF
+        RETURN 0
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET service AS Service = NEW Service()
+    LET proxy AS ServiceProxy = NEW ServiceProxy()
+    PRINT proxy.Read(service, TRUE)
+END FUNCTION

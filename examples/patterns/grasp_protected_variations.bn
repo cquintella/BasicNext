@@ -1,0 +1,17 @@
+// GRASP Protected Variations: callers use a stable interface around change.
+INTERFACE Clock
+    FUNCTION Value() AS INTEGER
+END INTERFACE
+
+CLASS FixedClock IMPLEMENTS Clock
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Value() AS INTEGER
+        RETURN 12
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET clock AS FixedClock = NEW FixedClock()
+    PRINT clock.Value()
+END FUNCTION

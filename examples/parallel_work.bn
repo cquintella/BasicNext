@@ -5,7 +5,7 @@
 
 IMPORT BNDispatch AS Dispatch
 
-FUNCTION WorkA() AS INTEGER 
+FUNCTION WorkA() AS VOID
     LET total AS INTEGER = 0
     LET value AS INTEGER = 1
     WHILE value <= 1000
@@ -13,7 +13,6 @@ FUNCTION WorkA() AS INTEGER
         value += 1
     END WHILE
     PRINT "A sum 1..1000 = ", total
-    RETURN total
 END FUNCTION
 
 FUNCTION WorkB() AS VOID

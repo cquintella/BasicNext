@@ -57,7 +57,7 @@ pub use bn_rt::{DataProvider, StandardDataProvider};
 #[allow(unused_imports)]
 use crate::{
     dataframe::{
-        DataFrameColumn as GenericDataFrameColumn, DataFrameJoin, DataFrameJoinConfig,
+        DataFrameJoin, DataFrameJoinConfig,
         DataFrameResource as GenericDataFrameResource, add_dataframe_column,
         append_columns, append_rows, column_name, convert_dataframe_column,
         copy_dataframe_column, dataframe_reduce_column, duplicate_column_names,
@@ -73,7 +73,6 @@ use crate::{
     },
 };
 
-type DataFrameColumn = GenericDataFrameColumn<Value>;
 type DataFrameResource = GenericDataFrameResource<Value>;
 
 fn is_not_available(value: &Value) -> bool {
@@ -91,8 +90,8 @@ pub struct HostEnv {
 
 #[derive(Clone, Debug)]
 pub struct FilesystemPolicy {
-    read_roots: Option<Vec<PathBuf>>,
-    write_roots: Option<Vec<PathBuf>>,
+    read_roots: Option<Vec<bn_rt::secure_fs::RootedDir>>,
+    write_roots: Option<Vec<bn_rt::secure_fs::RootedDir>>,
 }
 
 impl FilesystemPolicy {
@@ -127,14 +126,58 @@ impl FilesystemPolicy {
         let Some(roots) = roots else {
             return true;
         };
-        let candidate = if path.exists() {
-            path.canonicalize().ok()
+        roots.iter().any(|root| root.contains_resolved(path))
+    }
+
+    fn open(&self, path: &Path, mode: bn_rt::secure_fs::OpenMode) -> std::io::Result<std::fs::File> {
+        let roots = if mode == bn_rt::secure_fs::OpenMode::Read {
+            &self.read_roots
         } else {
-            path.parent()
-                .and_then(|parent| parent.canonicalize().ok())
-                .and_then(|parent| path.file_name().map(|name| parent.join(name)))
+            &self.write_roots
         };
-        candidate.is_some_and(|candidate| roots.iter().any(|root| candidate.starts_with(root)))
+        let Some(roots) = roots else {
+            let mut options = std::fs::OpenOptions::new();
+            match mode {
+                bn_rt::secure_fs::OpenMode::Read => {
+                    options.read(true);
+                }
+                bn_rt::secure_fs::OpenMode::Write => {
+                    options.write(true).create(true).truncate(true);
+                }
+                bn_rt::secure_fs::OpenMode::Append => {
+                    options.append(true).create(true);
+                }
+            }
+            return options.open(path);
+        };
+        roots
+            .iter()
+            .filter(|root| root.contains(path))
+            .max_by_key(|root| root.path().components().count())
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "filesystem path is outside the execution policy",
+                )
+            })?
+            .open(path, mode)
+    }
+
+    fn remove_file(&self, path: &Path) -> std::io::Result<()> {
+        let Some(roots) = &self.write_roots else {
+            return std::fs::remove_file(path);
+        };
+        roots
+            .iter()
+            .filter(|root| root.contains(path))
+            .max_by_key(|root| root.path().components().count())
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "filesystem path is outside the execution policy",
+                )
+            })?
+            .remove_file(path)
     }
 }
 
@@ -208,6 +251,13 @@ impl HostEnv {
         self
     }
 
+    /// Restricts writes while preserving the default read capability.
+    #[must_use]
+    pub fn without_filesystem_writes(mut self) -> Self {
+        self.filesystem.write_roots = Some(Vec::new());
+        self
+    }
+
     /// Replaces the standard-library data provider for this execution.
     #[must_use]
     pub fn with_data_provider(mut self, provider: Arc<dyn DataProvider>) -> Self {
@@ -233,13 +283,8 @@ impl HostEnv {
             roots
                 .into_iter()
                 .map(|root| {
-                    let root = root
-                        .canonicalize()
-                        .map_err(|_| "filesystem policy root does not exist")?;
-                    if !root.is_dir() {
-                        return Err("filesystem policy root is not a directory");
-                    }
-                    Ok(root)
+                    bn_rt::secure_fs::RootedDir::new(&root)
+                        .map_err(|_| "filesystem policy root cannot be opened")
                 })
                 .collect::<Result<Vec<_>, _>>()
         };

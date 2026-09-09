@@ -1,0 +1,22 @@
+// GRASP Low Coupling: the report depends on a narrow formatter object.
+CLASS Formatter
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Format(value AS INTEGER) AS INTEGER
+        RETURN value * 10
+    END FUNCTION
+END CLASS
+
+CLASS Report
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Render(formatter AS Formatter, value AS INTEGER) AS INTEGER
+        RETURN formatter.Format(value)
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET formatter AS Formatter = NEW Formatter()
+    LET report AS Report = NEW Report()
+    PRINT report.Render(formatter, 4)
+END FUNCTION

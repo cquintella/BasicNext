@@ -463,6 +463,89 @@ fn missing_start_is_a_target_entrypoint_rejection() {
     assert_eq!(error.code, "TARGET_UNSUPPORTED_ENTRYPOINT");
 }
 
+#[test]
+fn validator_rejects_indexed_member_store_without_an_object_receiver() {
+    let module = function_with_blocks(vec![BasicBlock {
+        id: BlockId(0),
+        instructions: vec![
+            Instruction::Constant {
+                destination: bn::ir::ValueId(0),
+                value: Constant::Boolean(true),
+                ty: bn::semantic::Type::Boolean,
+                span: span(),
+            },
+            Instruction::Constant {
+                destination: bn::ir::ValueId(1),
+                value: Constant::Integer("0".into()),
+                ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+                span: span(),
+            },
+            Instruction::SetMemberIndex {
+                object: bn::ir::ValueId(0),
+                name: "data".into(),
+                owner: "Fake".into(),
+                indices: vec![bn::ir::ValueId(1)],
+                value: bn::ir::ValueId(0),
+                ty: bn::semantic::Type::Boolean,
+                span: span(),
+            },
+        ],
+        terminator: Terminator::Return { value: None },
+    }]);
+    let error = validate_module(module).expect_err("receiver must have object identity");
+    assert_eq!(error.code, "INVALID_IR");
+}
+
+#[test]
+fn validator_rejects_an_indexed_store_without_indices() {
+    let module = function_with_blocks(vec![BasicBlock {
+        id: BlockId(0),
+        instructions: vec![
+            Instruction::Load {
+                destination: bn::ir::ValueId(0),
+                symbol: bn::ir::SymbolId::from_raw(0),
+                ty: bn::semantic::Type::Named("Box".into()),
+                span: span(),
+            },
+            Instruction::Constant {
+                destination: bn::ir::ValueId(1),
+                value: Constant::Integer("1".into()),
+                ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+                span: span(),
+            },
+            Instruction::SetMemberIndex {
+                object: bn::ir::ValueId(0),
+                name: "data".into(),
+                owner: "Box".into(),
+                indices: Vec::new(),
+                value: bn::ir::ValueId(1),
+                ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+                span: span(),
+            },
+        ],
+        terminator: Terminator::Return { value: None },
+    }]);
+    let error = validate_module(module).expect_err("indexed store needs an index");
+    assert_eq!(error.code, "INVALID_IR");
+}
+
+#[test]
+fn validator_rejects_cyclic_class_layout_metadata() {
+    let mut module = Module::default();
+    module.class_bases.insert("A".into(), "B".into());
+    module.class_bases.insert("B".into(), "A".into());
+    let error = validate_module(module).expect_err("layout inheritance must be acyclic");
+    assert_eq!(error.code, "INVALID_IR");
+}
+
+#[test]
+fn validator_rejects_dangling_class_layout_metadata() {
+    let mut module = Module::default();
+    module.class_bases.insert("Child".into(), "Parent".into());
+    let error = validate_module(module).expect_err("layout classes must exist in the module");
+    assert_eq!(error.code, "INVALID_IR");
+}
+
 fn function_with_blocks(blocks: Vec<BasicBlock>) -> Module {
     Module {
         functions: vec![Function {

@@ -9,7 +9,13 @@
       "id": "cap.hello",
       "target": "llvm-native",
       "op": "arithmetic.divide",
-      "ir_instructions": ["Binary", "Constant", "Load", "Print", "Store"],
+      "ir_instructions": [
+        "Binary",
+        "Constant",
+        "Load",
+        "Print",
+        "Store"
+      ],
       "type_constraints": [
         "FLOAT"
       ],
@@ -32,7 +38,9 @@
       "id": "cap.start-exit-code",
       "target": "llvm-native",
       "op": "program.start",
-      "ir_instructions": ["Constant"],
+      "ir_instructions": [
+        "Constant"
+      ],
       "type_constraints": [
         "INTEGER"
       ],
@@ -54,7 +62,9 @@
       "id": "cap.start-exit-code-nonzero",
       "target": "llvm-native",
       "op": "program.start",
-      "ir_instructions": ["Constant"],
+      "ir_instructions": [
+        "Constant"
+      ],
       "type_constraints": [
         "INTEGER"
       ],
@@ -77,7 +87,10 @@
       "id": "cap.print-integer",
       "target": "llvm-native",
       "op": "output.print",
-      "ir_instructions": ["Constant", "Print"],
+      "ir_instructions": [
+        "Constant",
+        "Print"
+      ],
       "type_constraints": [
         "INTEGER_LITERAL"
       ],
@@ -99,7 +112,11 @@
       "id": "cap.print-float",
       "target": "llvm-native",
       "op": "output.print",
-      "ir_instructions": ["Binary", "Constant", "Print"],
+      "ir_instructions": [
+        "Binary",
+        "Constant",
+        "Print"
+      ],
       "type_constraints": [
         "FLOAT_LITERAL"
       ],
@@ -122,7 +139,19 @@
       "id": "cap.kmp",
       "target": "llvm-native",
       "op": "function.call",
-      "ir_instructions": ["Allocate", "Binary", "Call", "Constant", "Delete", "Index", "Length", "Load", "Print", "SetIndex", "Store"],
+      "ir_instructions": [
+        "Allocate",
+        "Binary",
+        "Call",
+        "Constant",
+        "Delete",
+        "Index",
+        "Length",
+        "Load",
+        "Print",
+        "SetIndex",
+        "Store"
+      ],
       "type_constraints": [
         "STRING",
         "INTEGER"
@@ -147,7 +176,12 @@
       "id": "cap.print-if-or",
       "target": "llvm-native",
       "op": "control.short_circuit",
-      "ir_instructions": ["Constant", "Copy", "Phi", "Print"],
+      "ir_instructions": [
+        "Constant",
+        "Copy",
+        "Phi",
+        "Print"
+      ],
       "type_constraints": [
         "BOOLEAN",
         "STRING"
@@ -170,7 +204,12 @@
       "id": "cap.build-euclidean-div",
       "target": "llvm-native",
       "op": "arithmetic.euclidean_div",
-      "ir_instructions": ["Binary", "Constant", "Print", "Unary"],
+      "ir_instructions": [
+        "Binary",
+        "Constant",
+        "Print",
+        "Unary"
+      ],
       "type_constraints": [
         "INTEGER"
       ],
@@ -193,7 +232,12 @@
       "id": "cap.build-euclidean-rem",
       "target": "llvm-native",
       "op": "arithmetic.euclidean_rem",
-      "ir_instructions": ["Binary", "Constant", "Print", "Unary"],
+      "ir_instructions": [
+        "Binary",
+        "Constant",
+        "Print",
+        "Unary"
+      ],
       "type_constraints": [
         "INTEGER"
       ],
@@ -216,7 +260,12 @@
       "id": "cap.build-power-shift",
       "target": "llvm-native",
       "op": "arithmetic.power_shift",
-      "ir_instructions": ["Binary", "Constant", "Print", "Unary"],
+      "ir_instructions": [
+        "Binary",
+        "Constant",
+        "Print",
+        "Unary"
+      ],
       "type_constraints": [
         "INTEGER",
         "FLOAT",
@@ -241,7 +290,15 @@
       "id": "cap.build-clock",
       "target": "llvm-native",
       "op": "host.clock",
-      "ir_instructions": ["Binary", "Call", "Cast", "Constant", "Load", "Print", "Store"],
+      "ir_instructions": [
+        "Binary",
+        "Call",
+        "Cast",
+        "Constant",
+        "Load",
+        "Print",
+        "Store"
+      ],
       "type_constraints": [
         "TIMESTAMP",
         "INT64",
@@ -266,7 +323,11 @@
       "id": "cap.cls-and-beep",
       "target": "llvm-native",
       "op": "host.console_control",
-      "ir_instructions": ["Call", "Constant", "Print"],
+      "ir_instructions": [
+        "Call",
+        "Constant",
+        "Print"
+      ],
       "type_constraints": [
         "STRING"
       ],
@@ -289,7 +350,15 @@
       "id": "cap.build-widths",
       "target": "llvm-native",
       "op": "numeric.widths",
-      "ir_instructions": ["Binary", "Cast", "Constant", "Load", "Print", "Store", "Unary"],
+      "ir_instructions": [
+        "Binary",
+        "Cast",
+        "Constant",
+        "Load",
+        "Print",
+        "Store",
+        "Unary"
+      ],
       "type_constraints": [
         "BYTE",
         "INT8",
@@ -322,7 +391,12 @@
       "id": "cap.build-input",
       "target": "llvm-native",
       "op": "input.read",
-      "ir_instructions": ["Input", "Load", "Print", "Store"],
+      "ir_instructions": [
+        "Input",
+        "Load",
+        "Print",
+        "Store"
+      ],
       "type_constraints": [
         "STRING",
         "EOF"
@@ -346,7 +420,13 @@
       "id": "cap.build-bnmath-scalar",
       "target": "llvm-native",
       "op": "host.bnmath.scalar",
-      "ir_instructions": ["Call", "Cast", "Constant", "Print", "Unary"],
+      "ir_instructions": [
+        "Call",
+        "Cast",
+        "Constant",
+        "Print",
+        "Unary"
+      ],
       "type_constraints": [
         "INTEGER",
         "FLOAT",
@@ -371,7 +451,14 @@
       "id": "cap.build-net-resolve",
       "target": "llvm-native",
       "op": "host.net.resolve",
-      "ir_instructions": ["Binary", "Call", "Constant", "Load", "Print", "Store"],
+      "ir_instructions": [
+        "Binary",
+        "Call",
+        "Constant",
+        "Load",
+        "Print",
+        "Store"
+      ],
       "type_constraints": [
         "STRING",
         "HOST.Net"
@@ -395,7 +482,14 @@
       "id": "cap.build-random-branch",
       "target": "llvm-native",
       "op": "host.random.seeded",
-      "ir_instructions": ["Binary", "Call", "Constant", "Load", "Print", "Store"],
+      "ir_instructions": [
+        "Binary",
+        "Call",
+        "Constant",
+        "Load",
+        "Print",
+        "Store"
+      ],
       "type_constraints": [
         "INTEGER",
         "BOOLEAN",
@@ -420,7 +514,10 @@
       "id": "cap.build-print-same-value",
       "target": "llvm-native",
       "op": "value.single-definition",
-      "ir_instructions": ["Constant", "Print"],
+      "ir_instructions": [
+        "Constant",
+        "Print"
+      ],
       "type_constraints": [
         "INTEGER"
       ],
@@ -443,7 +540,14 @@
       "id": "cap.build-bnmath-float-vector",
       "target": "llvm-native",
       "op": "host.bnmath.vector-reduction",
-      "ir_instructions": ["Call", "Constant", "Load", "Print", "Store", "Vector"],
+      "ir_instructions": [
+        "Call",
+        "Constant",
+        "Load",
+        "Print",
+        "Store",
+        "Vector"
+      ],
       "type_constraints": [
         "FLOAT[4]",
         "FLOAT64 ABI"
@@ -496,7 +600,7 @@
     },
     {
       "path": "tests/grammar/valid/multidimensional-vectors.bn",
-      "support": "llvm-deferred",
+      "support": "llvm-supported",
       "exit_code": 0,
       "stdout": "9\n",
       "run_stdout_contains": "9",
@@ -517,14 +621,1057 @@
       ],
       "conditions": [
         "multidimensional vector",
-        "deferred until nested buffer layout is implemented"
+        "nested fat-pointer layout",
+        "bounds-checked SetIndex across every dimension"
       ],
       "tests": [
         "tests/grammar/valid/multidimensional-vectors.bn"
       ],
-      "reject_diag": "TARGET_UNSUPPORTED_TYPE",
-      "build_diagnostic_contains": "TARGET_UNSUPPORTED_TYPE",
+      "reject_diag": null,
       "provider": "language",
+      "evidence": "fixture-exact"
+    },
+    {
+      "path": "examples/factorial.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "stdout": "Factorial of  10  is  3628800\n",
+      "id": "cap.factorial",
+      "target": "llvm-native",
+      "op": "function.call.recursion",
+      "ir_instructions": [
+        "Binary",
+        "Call",
+        "Constant",
+        "Load",
+        "Print",
+        "Store"
+      ],
+      "type_constraints": [
+        "INTEGER"
+      ],
+      "conditions": [
+        "recursive function call",
+        "INTEGER return"
+      ],
+      "tests": [
+        "examples/factorial.bn"
+      ],
+      "reject_diag": null,
+      "provider": "language",
+      "evidence": "fixture-exact"
+    },
+    {
+      "path": "examples/global.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "stdout": "TRUE\n",
+      "id": "cap.global",
+      "target": "llvm-native",
+      "op": "class.static.field",
+      "ir_instructions": [
+        "Binary",
+        "Call",
+        "Constant",
+        "Default",
+        "EnsureClass",
+        "Load",
+        "LoadStatic",
+        "Print",
+        "StoreStatic"
+      ],
+      "type_constraints": [
+        "INTEGER"
+      ],
+      "conditions": [
+        "static class field access",
+        "EnsureClass initialization"
+      ],
+      "tests": [
+        "examples/global.bn"
+      ],
+      "reject_diag": null,
+      "provider": "language",
+      "evidence": "fixture-exact"
+    },
+    {
+      "path": "examples/rpn-calculator.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "id": "cap.rpn-calculator",
+      "target": "llvm-native",
+      "op": "class.field.index.assign",
+      "ir_instructions": [
+        "Allocate",
+        "Binary",
+        "Call",
+        "Constant",
+        "Copy",
+        "Default",
+        "Delete",
+        "EnsureClass",
+        "Index",
+        "Input",
+        "Load",
+        "Member",
+        "Phi",
+        "Print",
+        "SetField",
+        "SetFieldIndex",
+        "SetMember",
+        "Store"
+      ],
+      "type_constraints": [
+        "FLOAT field vector",
+        "INTEGER index",
+        "STRING OR EOF input"
+      ],
+      "conditions": [
+        "binding-rooted indexed FLOAT field assignment emits bounds-checked native storage",
+        "INPUT buffer ownership transfers to the destination variable and is reused only by that variable",
+        "native output and exit code match the interpreter for the recorded input sequence"
+      ],
+      "tests": [
+        "examples/rpn-calculator.bn",
+        "tests/grammar/valid/build-indexed-object-vector-field.bn",
+        "tests/grammar/valid/build-input-lifetime.bn",
+        "tests/cli.rs::build_lowers_indexed_object_vector_fields_matching_interpreter",
+        "tests/cli.rs::build_keeps_distinct_input_values_alive_across_later_reads"
+      ],
+      "reject_diag": null,
+      "provider": "language",
+      "evidence": "fixture-exact",
+      "stdout": "RPN calculator: 3, 4, +, 2, *, =. Enter Q to quit.\n"
+    },
+    {
+      "path": "examples/variables.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "id": "cap.variables",
+      "target": "llvm-native",
+      "op": "control.for-loop",
+      "ir_instructions": [
+        "Binary",
+        "Call",
+        "Cast",
+        "Constant",
+        "Default",
+        "Length",
+        "Load",
+        "Print",
+        "SetIndex",
+        "SizeOf",
+        "Store",
+        "Unary"
+      ],
+      "type_constraints": [
+        "INTEGER",
+        "FLOAT",
+        "STRING"
+      ],
+      "conditions": [
+        "counted FOR emits checked ascending control flow",
+        "one-dimensional INTEGER vector PRINT preserves interpreter formatting",
+        "dynamic STRING SIZEOF counts UTF-8 storage bytes with checked INTEGER conversion"
+      ],
+      "tests": [
+        "examples/variables.bn",
+        "tests/cli.rs::build_lowers_counted_for_control_flow_matching_interpreter"
+      ],
+      "reject_diag": null,
+      "provider": "language",
+      "evidence": "fixture-exact",
+      "stdout": "0 255\n-128 127\n-32768 32767\n0 65535\n-2147483648 2147483647\n0 4294967295\n9223372036854775807\n0 18446744073709551615\n1.25 3.141592653589793\nFALSE TRUE\nBasicNext\n[0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 62, 64, 66, 68, 70, 72, 74, 76, 78, 80, 82, 84, 86, 88, 90, 92, 94, 96, 98]\n65 65 65.0 TRUE\n1 1\n1 1\n1 2\n1 2\n1 4\n1 4\n1 8\n1 8\n1 4\n1 8\n1\n9 9\n50 200\n"
+    },
+    {
+      "path": "examples/control-flow.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "id": "cap.control-flow",
+      "target": "llvm-native",
+      "op": "control.for-loop",
+      "ir_instructions": [
+        "Binary",
+        "Call",
+        "Constant",
+        "Index",
+        "Length",
+        "Load",
+        "Phi",
+        "Print",
+        "Store",
+        "Unary",
+        "Vector"
+      ],
+      "type_constraints": [
+        "INTEGER",
+        "BOOLEAN"
+      ],
+      "conditions": [
+        "counted FOR with positive and negative STEP",
+        "FOR EACH with CONTINUE",
+        "checked arithmetic CFG edges preserve Phi predecessors"
+      ],
+      "tests": [
+        "examples/control-flow.bn"
+      ],
+      "reject_diag": null,
+      "build_diagnostic_contains": null,
+      "provider": "language",
+      "evidence": "fixture-exact",
+      "run_stdout_contains": "for each sum (skip 20): 80"
+    },
+    {
+      "path": "examples/type_test.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "run_stdout_contains": "=== type_test complete ===",
+      "id": "cap.type_test",
+      "target": "llvm-native",
+      "op": "type.matrix.comprehensive",
+      "ir_instructions": [
+        "Binary",
+        "Call",
+        "Cast",
+        "Constant",
+        "Copy",
+        "Default",
+        "Index",
+        "Length",
+        "Load",
+        "Phi",
+        "Print",
+        "Store",
+        "Unary",
+        "Vector"
+      ],
+      "type_constraints": [
+        "INTEGER",
+        "FLOAT",
+        "BOOLEAN",
+        "STRING"
+      ],
+      "conditions": [
+        "comprehensive primitive and vector typing",
+        "BNMath operations"
+      ],
+      "tests": [
+        "examples/type_test.bn"
+      ],
+      "reject_diag": null,
+      "provider": "language",
+      "evidence": "fixture-exact"
+    },
+    {
+      "path": "examples/div.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "id": "cap.div",
+      "target": "llvm-native",
+      "op": "arithmetic.divide",
+      "ir_instructions": [
+        "Binary",
+        "Constant",
+        "Load",
+        "Print",
+        "Store"
+      ],
+      "type_constraints": [
+        "FLOAT"
+      ],
+      "conditions": [
+        "Validated scalar arithmetic"
+      ],
+      "tests": [
+        "examples/div.bn"
+      ],
+      "reject_diag": null,
+      "provider": "language",
+      "evidence": "fixture-exact",
+      "stdout": "0.041666666666666664\n"
+    },
+    {
+      "path": "examples/linear_collections.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "id": "cap.linear_collections",
+      "target": "llvm-native",
+      "op": "collection.linear",
+      "ir_instructions": [
+        "Allocate",
+        "Binary",
+        "Call",
+        "Constant",
+        "Delete",
+        "EnsureClass",
+        "Index",
+        "Load",
+        "Member",
+        "Print",
+        "SetField",
+        "SetIndex",
+        "SetMember",
+        "Store"
+      ],
+      "type_constraints": [
+        "INTEGER"
+      ],
+      "conditions": [
+        "INTEGER OR NULL uses a tagged native return value",
+        "object field offsets follow native size and alignment",
+        "heap-backed Stack, Queue, and CircularDeque lifecycle"
+      ],
+      "tests": [
+        "examples/linear_collections.bn",
+        "tests/cli.rs::build_executes_nullable_integer_collection_results_like_interpret"
+      ],
+      "reject_diag": null,
+      "provider": "language",
+      "evidence": "fixture-exact"
+    },
+    {
+      "path": "examples/naive_search.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "id": "cap.naive_search",
+      "target": "llvm-native",
+      "op": "string.search.naive",
+      "ir_instructions": [
+        "Binary",
+        "Call",
+        "Constant",
+        "Index",
+        "Load",
+        "Print",
+        "Store",
+        "Unary",
+        "Vector"
+      ],
+      "type_constraints": [
+        "STRING",
+        "INTEGER"
+      ],
+      "conditions": [
+        "string indexing",
+        "user function call"
+      ],
+      "tests": [
+        "examples/naive_search.bn"
+      ],
+      "reject_diag": null,
+      "build_diagnostic_contains": null,
+      "provider": "language",
+      "evidence": "fixture-exact",
+      "stdout": "Padrao encontrado no indice: 10\n"
+    },
+    {
+      "path": "examples/boyer-moore.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "stdout": "Texto:  ABABDABACDABABCABAB\nPadrao a buscar:  ABABCABAB\nEncontrado padrao no indice  10\n",
+      "id": "cap.boyer-moore",
+      "target": "llvm-native",
+      "op": "string.search.boyer-moore",
+      "ir_instructions": [
+        "Allocate",
+        "Binary",
+        "Call",
+        "Constant",
+        "Copy",
+        "Delete",
+        "Index",
+        "Length",
+        "Load",
+        "Phi",
+        "Print",
+        "SetIndex",
+        "Store",
+        "Unary"
+      ],
+      "type_constraints": [
+        "STRING",
+        "INTEGER"
+      ],
+      "conditions": [
+        "user function call",
+        "heap pointer buffer",
+        "string indexing"
+      ],
+      "tests": [
+        "examples/boyer-moore.bn"
+      ],
+      "reject_diag": null,
+      "provider": "language",
+      "evidence": "fixture-exact"
+    },
+    {
+      "path": "examples/rabin-karp.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "stdout": "Texto:  ABABDABACDABABCABAB\nPadrao a buscar:  ABABCABAB\nEncontrado padrao no indice  10\n",
+      "id": "cap.rabin-karp",
+      "target": "llvm-native",
+      "op": "string.search.rabin-karp",
+      "ir_instructions": [
+        "Binary",
+        "Call",
+        "Constant",
+        "Copy",
+        "Index",
+        "Length",
+        "Load",
+        "Phi",
+        "Print",
+        "Store"
+      ],
+      "type_constraints": [
+        "STRING",
+        "INTEGER"
+      ],
+      "conditions": [
+        "hash rolling",
+        "user function call",
+        "string indexing"
+      ],
+      "tests": [
+        "examples/rabin-karp.bn"
+      ],
+      "reject_diag": null,
+      "provider": "language",
+      "evidence": "fixture-exact"
+    },
+    {
+      "path": "examples/edit_distance.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "id": "cap.edit_distance",
+      "target": "llvm-native",
+      "op": "string.edit-distance",
+      "ir_instructions": [
+        "Allocate",
+        "Binary",
+        "Call",
+        "Constant",
+        "Copy",
+        "Delete",
+        "Index",
+        "Input",
+        "Length",
+        "Load",
+        "Phi",
+        "Print",
+        "SetIndex",
+        "Store"
+      ],
+      "type_constraints": [
+        "STRING",
+        "INTEGER"
+      ],
+      "conditions": [
+        "Interactive Unicode edit distance with checked integer loops and heap buffers",
+        "EOF exits with code 1; successful two-line input exits with code 0"
+      ],
+      "tests": [
+        "examples/edit_distance.bn",
+        "tests/test_compiler_parity.py::CompilerParityTests::test_distance_examples_cover_input_and_eof"
+      ],
+      "reject_diag": null,
+      "provider": "language",
+      "evidence": "fixture-exact",
+      "stdin": "kitten\nsitting\n",
+      "stdout": "Word 1:\nWord 2:\nDistance between  kitten  and  sitting :  3\n"
+    },
+    {
+      "path": "examples/levenshtein.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "id": "cap.levenshtein",
+      "target": "llvm-native",
+      "op": "string.levenshtein",
+      "ir_instructions": [
+        "Allocate",
+        "Binary",
+        "Call",
+        "Constant",
+        "Copy",
+        "Delete",
+        "Index",
+        "Input",
+        "Length",
+        "Load",
+        "Phi",
+        "Print",
+        "SetIndex",
+        "Store"
+      ],
+      "type_constraints": [
+        "STRING",
+        "INTEGER"
+      ],
+      "conditions": [
+        "Interactive Unicode edit distance with checked integer loops and heap buffers",
+        "EOF exits with code 1; successful two-line input exits with code 0"
+      ],
+      "tests": [
+        "examples/levenshtein.bn",
+        "tests/test_compiler_parity.py::CompilerParityTests::test_distance_examples_cover_input_and_eof"
+      ],
+      "reject_diag": null,
+      "provider": "language",
+      "evidence": "fixture-exact",
+      "stdin": "kitten\nsitting\n",
+      "stdout": "Word 1:\nWord 2:\nDistance:  3\n"
+    },
+    {
+      "path": "examples/huffman.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "id": "cap.huffman",
+      "target": "llvm-native",
+      "op": "codec.huffman",
+      "ir_instructions": [
+        "Allocate",
+        "Binary",
+        "Call",
+        "Constant",
+        "Copy",
+        "Delete",
+        "Index",
+        "Length",
+        "Load",
+        "Phi",
+        "Print",
+        "SetIndex",
+        "Store",
+        "Unary"
+      ],
+      "type_constraints": [
+        "STRING",
+        "INTEGER"
+      ],
+      "conditions": [
+        "heap-backed integer buffers",
+        "user function call"
+      ],
+      "tests": [
+        "examples/huffman.bn"
+      ],
+      "reject_diag": null,
+      "build_diagnostic_contains": null,
+      "provider": "language",
+      "evidence": "fixture-exact",
+      "run_stdout_contains": "Huffman codes for  BANANA"
+    },
+    {
+      "path": "examples/shortest_path.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "id": "cap.shortest_path",
+      "target": "llvm-native",
+      "op": "graph.shortest-path",
+      "ir_instructions": [
+        "Binary",
+        "Constant",
+        "Index",
+        "Load",
+        "Print",
+        "Store",
+        "Vector"
+      ],
+      "type_constraints": [
+        "INTEGER[3][3]"
+      ],
+      "conditions": [
+        "nested vector literals use recursive fat-pointer elements",
+        "each dimension performs its own checked zero-based index operation",
+        "native output and exit code match the interpreter"
+      ],
+      "tests": [
+        "examples/shortest_path.bn",
+        "tests/cli.rs::build_lowers_string_search_and_codec_examples_matching_interpreter"
+      ],
+      "reject_diag": null,
+      "provider": "language",
+      "evidence": "fixture-exact",
+      "stdout": "6\n"
+    },
+    {
+      "path": "examples/lexical.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "stdout": "Basic Next 1\n",
+      "id": "cap.lexical",
+      "target": "llvm-native",
+      "op": "string.literal.escape",
+      "ir_instructions": [
+        "Constant",
+        "Load",
+        "Print",
+        "Store"
+      ],
+      "type_constraints": [
+        "STRING"
+      ],
+      "conditions": [
+        "string literal print"
+      ],
+      "tests": [
+        "examples/lexical.bn"
+      ],
+      "reject_diag": null,
+      "provider": "language",
+      "evidence": "fixture-exact"
+    },
+    {
+      "path": "examples/language-tour.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "run_stdout_contains": "counter deleted\ncounter deleted\n",
+      "id": "cap.language-tour",
+      "target": "llvm-native",
+      "op": "language.tour",
+      "ir_instructions": [
+        "Allocate",
+        "Binary",
+        "Call",
+        "Constant",
+        "Copy",
+        "Default",
+        "Delete",
+        "EnsureClass",
+        "Index",
+        "Input",
+        "Length",
+        "Load",
+        "LoadStatic",
+        "Member",
+        "Phi",
+        "Print",
+        "SetField",
+        "SetIndex",
+        "SetMember",
+        "SizeOf",
+        "Store",
+        "StoreStatic",
+        "Unary",
+        "Vector"
+      ],
+      "type_constraints": [
+        "STRING",
+        "INTEGER",
+        "FLOAT"
+      ],
+      "conditions": [
+        "constant canonical TimeZone.Parse",
+        "DataFrame integer-column operations",
+        "object destructors run before DELETE",
+        "HOST Clock and Random cross the bn_rt policy boundary",
+        "dynamic clock and argv fields are validated then normalized for parity"
+      ],
+      "tests": [
+        "examples/language-tour.bn"
+      ],
+      "reject_diag": null,
+      "provider": "language",
+      "evidence": "fixture-exact",
+      "observation": "language-tour"
+    },
+    {
+      "path": "examples/clock.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "run_stdout_contains": "Data: ",
+      "id": "cap.clock",
+      "target": "llvm-native",
+      "op": "host.clock.temporal",
+      "ir_instructions": [
+        "Call",
+        "Constant",
+        "Load",
+        "Print",
+        "Store"
+      ],
+      "type_constraints": [
+        "TIMESTAMP"
+      ],
+      "conditions": [
+        "BNMath temporal conversion",
+        "TODATE/TOTIME via bn_rt"
+      ],
+      "tests": [
+        "examples/clock.bn"
+      ],
+      "reject_diag": null,
+      "provider": "bn_rt",
+      "evidence": "fixture-exact",
+      "observation": "utc-clock"
+    },
+    {
+      "path": "examples/net.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "stdout": "8080\n",
+      "id": "cap.net",
+      "target": "llvm-native",
+      "op": "host.net.endpoint",
+      "ir_instructions": [
+        "Binary",
+        "Call",
+        "Constant",
+        "EnsureClass",
+        "Load",
+        "Print",
+        "Store"
+      ],
+      "type_constraints": [
+        "HOST.Net",
+        "INTEGER"
+      ],
+      "conditions": [
+        "Parse loopback address and construct endpoint with port 8080",
+        "bn_rt network policy check"
+      ],
+      "tests": [
+        "examples/net.bn"
+      ],
+      "reject_diag": null,
+      "provider": "bn_rt",
+      "evidence": "fixture-exact"
+    },
+    {
+      "path": "examples/socket.bn",
+      "args": ["--help"],
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "id": "cap.socket",
+      "target": "llvm-native",
+      "op": "host.net.socket",
+      "ir_instructions": [
+        "Allocate",
+        "Binary",
+        "Call",
+        "Constant",
+        "Copy",
+        "Delete",
+        "EnsureClass",
+        "Index",
+        "Length",
+        "Load",
+        "Member",
+        "Phi",
+        "Print",
+        "SetIndex",
+        "Store",
+        "Unary",
+        "Vector"
+      ],
+      "type_constraints": [
+        "HOST.Net",
+        "INTEGER"
+      ],
+      "conditions": [
+        "bn_rt HOST.Net linked",
+        "--help fixture compile and interpret parity verified"
+      ],
+      "tests": [
+        "examples/socket.bn"
+      ],
+      "reject_diag": null,
+      "provider": "bn_rt",
+      "evidence": "fixture-exact"
+    },
+    {
+      "path": "examples/icmp-ping.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "id": "cap.icmp-ping",
+      "target": "llvm-native",
+      "op": "host.net.ping",
+      "ir_instructions": [
+        "Binary",
+        "Call",
+        "Constant",
+        "Load",
+        "Member",
+        "Print",
+        "Store"
+      ],
+      "type_constraints": [
+        "HOST.Net"
+      ],
+      "conditions": [
+        "Address.ToString is a borrowed projection of the runtime address payload",
+        "Interpret exit 0 on ICMP reply, 1 on DNS/ICMP failure; external network is environment-dependent"
+      ],
+      "tests": [
+        "examples/icmp-ping.bn"
+      ],
+      "reject_diag": null,
+      "observation": "environment-dependent-network",
+      "provider": "bn_rt",
+      "evidence": "fixture-exact",
+      "run_exit_codes": [
+        0,
+        1
+      ]
+    },
+    {
+      "path": "examples/bnmath_tour.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "run_stdout_contains": "=== bnmath_tour complete ===",
+      "id": "cap.bnmath_tour",
+      "target": "llvm-native",
+      "op": "library.bnmath.tour",
+      "ir_instructions": [
+        "Binary",
+        "Call",
+        "Cast",
+        "Constant",
+        "Copy",
+        "Load",
+        "Phi",
+        "Print",
+        "Store",
+        "Unary",
+        "Vector"
+      ],
+      "type_constraints": [
+        "FLOAT",
+        "INTEGER"
+      ],
+      "conditions": [
+        "comprehensive BNMath functions",
+        "shared bn_rt C ABI"
+      ],
+      "tests": [
+        "examples/bnmath_tour.bn"
+      ],
+      "reject_diag": null,
+      "provider": "bn_rt",
+      "evidence": "fixture-exact"
+    },
+    {
+      "path": "examples/bndata_tour.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "id": "cap.bndata_tour",
+      "target": "llvm-native",
+      "op": "library.bndata.tour",
+      "ir_instructions": [
+        "Allocate",
+        "Binary",
+        "Call",
+        "Constant",
+        "Copy",
+        "Delete",
+        "EnsureClass",
+        "Index",
+        "Load",
+        "Member",
+        "Phi",
+        "Print",
+        "Store",
+        "Unary",
+        "Vector"
+      ],
+      "type_constraints": [
+        "BNData.DataFrame"
+      ],
+      "conditions": [
+        "bn_rt DataFrame ABI linked",
+        "native compile and execution verified"
+      ],
+      "tests": [
+        "examples/bndata_tour.bn"
+      ],
+      "reject_diag": null,
+      "provider": "bn_rt",
+      "evidence": "fixture-exact"
+    },
+    {
+      "path": "examples/parallel_pi.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "id": "cap.parallel_pi",
+      "target": "llvm-native",
+      "op": "dispatch.parallel_pi",
+      "ir_instructions": [
+        "Binary",
+        "Call",
+        "Cast",
+        "Constant",
+        "Copy",
+        "DispatchSubmit",
+        "EnsureClass",
+        "Load",
+        "Member",
+        "Phi",
+        "Print",
+        "Store"
+      ],
+      "type_constraints": [
+        "INTEGER",
+        "FLOAT"
+      ],
+      "conditions": [
+        "named no-argument VOID tasks",
+        "bounded concurrent queue",
+        "order-independent worker output"
+      ],
+      "tests": [
+        "examples/parallel_pi.bn"
+      ],
+      "reject_diag": null,
+      "observation": "unordered-prefix-lines",
+      "provider": "bn_rt",
+      "evidence": "fixture-exact"
+    },
+    {
+      "path": "examples/parallel_work.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "id": "cap.parallel_work",
+      "target": "llvm-native",
+      "op": "dispatch.parallel_work",
+      "ir_instructions": [
+        "Binary",
+        "Call",
+        "Constant",
+        "Copy",
+        "DispatchSubmit",
+        "EnsureClass",
+        "Load",
+        "Member",
+        "Phi",
+        "Print",
+        "Store"
+      ],
+      "type_constraints": [
+        "INTEGER"
+      ],
+      "conditions": [
+        "named no-argument VOID tasks",
+        "bounded concurrent queue",
+        "order-independent worker output"
+      ],
+      "tests": [
+        "examples/parallel_work.bn"
+      ],
+      "reject_diag": null,
+      "observation": "unordered-prefix-lines",
+      "provider": "bn_rt",
+      "evidence": "fixture-exact"
+    },
+    {
+      "path": "examples/dispatch_cellular_automaton.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "id": "cap.dispatch_cellular_automaton",
+      "target": "llvm-native",
+      "op": "dispatch.cellular_automaton",
+      "ir_instructions": [
+        "Binary",
+        "Call",
+        "Constant",
+        "Copy",
+        "Default",
+        "DispatchAwait",
+        "DispatchSubmit",
+        "EnsureClass",
+        "Index",
+        "Load",
+        "Phi",
+        "Print",
+        "SetIndex",
+        "Store"
+      ],
+      "type_constraints": [
+        "INTEGER"
+      ],
+      "conditions": [
+        "named no-argument VOID tasks",
+        "VOID ticket await",
+        "order-independent worker output"
+      ],
+      "tests": [
+        "examples/dispatch_cellular_automaton.bn"
+      ],
+      "reject_diag": null,
+      "observation": "unordered-prefix-lines",
+      "provider": "bn_rt",
+      "evidence": "fixture-exact"
+    },
+    {
+      "path": "examples/dispatch_game_tournament.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "id": "cap.dispatch_game_tournament",
+      "target": "llvm-native",
+      "op": "dispatch.game_tournament",
+      "ir_instructions": [
+        "Binary",
+        "Call",
+        "Constant",
+        "Copy",
+        "DispatchAwait",
+        "DispatchSubmit",
+        "EnsureClass",
+        "Load",
+        "Phi",
+        "Print",
+        "Store"
+      ],
+      "type_constraints": [
+        "INTEGER"
+      ],
+      "conditions": [
+        "named no-argument VOID tasks",
+        "VOID ticket await",
+        "order-independent worker output"
+      ],
+      "tests": [
+        "examples/dispatch_game_tournament.bn"
+      ],
+      "reject_diag": null,
+      "observation": "unordered-prefix-lines",
+      "provider": "bn_rt",
+      "evidence": "fixture-exact"
+    },
+    {
+      "path": "examples/dispatch_reliability_simulation.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "id": "cap.dispatch_reliability_simulation",
+      "target": "llvm-native",
+      "op": "dispatch.reliability_simulation",
+      "ir_instructions": [
+        "Binary",
+        "Call",
+        "Constant",
+        "Copy",
+        "DispatchAwait",
+        "DispatchSubmit",
+        "EnsureClass",
+        "Load",
+        "Phi",
+        "Print",
+        "Store"
+      ],
+      "type_constraints": [
+        "INTEGER"
+      ],
+      "conditions": [
+        "named no-argument VOID tasks",
+        "VOID ticket await",
+        "order-independent worker output"
+      ],
+      "tests": [
+        "examples/dispatch_reliability_simulation.bn"
+      ],
+      "reject_diag": null,
+      "observation": "unordered-prefix-lines",
+      "provider": "bn_rt",
       "evidence": "fixture-exact"
     }
   ]

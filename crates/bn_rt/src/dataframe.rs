@@ -4,6 +4,9 @@
 
 //! Runtime-owned CSV parsing used by the `BNData` provider.
 
+mod checked;
+pub use checked::{frame_from_csv_rows, slice_dataframe};
+
 /// Provider boundary for standard-library data ingestion.
 pub trait DataProvider: Send + Sync {
     /// Parses CSV text into rows.

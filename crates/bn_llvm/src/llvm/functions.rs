@@ -67,6 +67,18 @@ pub(crate) fn analyze_reachable<'a>(
         for block in &function.blocks {
             for instruction in &block.instructions {
                 match instruction {
+                    Instruction::Constant {
+                        value: Constant::Function(name),
+                        ..
+                    } => {
+                        if let Some(callee_fn) = module
+                            .functions
+                            .iter()
+                            .find(|candidate| candidate.name == *name)
+                        {
+                            stack.push(callee_fn);
+                        }
+                    }
                     Instruction::Call { callee, .. } => {
                         if let Some(name) = analysis.functions.get(callee).copied() {
                             let resolved = name.strip_prefix("@super:").unwrap_or(name);
@@ -87,6 +99,18 @@ pub(crate) fn analyze_reachable<'a>(
                                     }
                                 }
                             }
+                        }
+                    }
+                    Instruction::Delete {
+                        destructor: Some(destructor),
+                        ..
+                    } => {
+                        if let Some(destructor_fn) = module
+                            .functions
+                            .iter()
+                            .find(|candidate| candidate.name == *destructor)
+                        {
+                            stack.push(destructor_fn);
                         }
                     }
                     Instruction::DispatchSubmit { task, .. } => {
@@ -139,18 +163,19 @@ pub(crate) fn emit_preamble(
     text: &mut String,
     functions: &[(&Function, LoweringAnalysis<'_>)],
     synchronize_prints: bool,
-) -> bool {
+    needs_na: bool,
+) {
     let mut uses_concat = false;
     let mut uses_bn_rt = false;
     let mut uses_input = false;
-    let mut uses_random = false;
+    let mut uses_string_sizeof = false;
     let mut uses_exit = false;
     let mut intrinsics = BTreeSet::new();
     for (function, analysis) in functions {
         uses_concat |= analysis.uses_string_concat;
         uses_bn_rt |= analysis.uses_bn_rt;
         uses_input |= analysis.input_count > 0;
-        uses_random |= analysis.uses_random;
+        uses_string_sizeof |= analysis.uses_string_sizeof;
         uses_exit |= function.name != "Start"
             && (analysis.uses_bn_rt
                 || function.blocks.iter().any(|block| {
@@ -165,22 +190,18 @@ pub(crate) fn emit_preamble(
             let global = string_global(&function.name, value.0);
             let _ = writeln!(
                 text,
-                "{global} = private unnamed_addr constant [{} x i8] c\"{}\\00\"",
+                "{global} = private constant [{} x i8] c\"{}\\00\"",
                 string.len() + 1,
                 escape_llvm(string)
             );
         }
         intrinsics.extend(analysis.intrinsics.iter().copied());
     }
-    let random_global = uses_random
-        && functions
-            .iter()
-            .any(|(function, analysis)| function.name != "Start" && analysis.uses_random);
-    if random_global {
-        text.push_str("@bn_rng = global i64 1\n");
-    }
     if uses_input {
         text.push_str(input_runtime_ir());
+    }
+    if uses_string_sizeof {
+        text.push_str(string_byte_length_ir());
     }
     text.push_str("\ndeclare i32 @printf(ptr, ...)\ndeclare i32 @putchar(i32)\n");
     if synchronize_prints {
@@ -215,27 +236,41 @@ pub(crate) fn emit_preamble(
     {
         text.push_str("declare void @bn_rt_print_date(i32)\ndeclare void @bn_rt_print_time(i32)\n");
     }
-    if functions.iter().any(|(_, analysis)| {
-        analysis
-            .values
-            .values()
-            .any(|ty| llvm_type(ty) == Some("{ i1, double }"))
-    }) {
+    if needs_na || functions.iter().any(|(_, analysis)| {
+            analysis.values.values().any(|ty| {
+                llvm_type(ty) == Some("{ i1, double }")
+                    || matches!(ty, Type::Alternative(types) if string_na_or_error(types) || scalar_na_or_error(types))
+            })
+        })
+    {
         text.push_str("@.bn_na = private unnamed_addr constant [3 x i8] c\"NA\\00\"\n");
+    }
+    if functions.iter().any(|(_, analysis)| {
+        analysis.values.values().any(|ty| {
+            llvm_type(ty) == Some("{ i1, i32 }")
+                || matches!(ty, Type::Alternative(types) if void_or_error(types))
+        })
+    }) {
+        text.push_str("@.bn_null = private constant [5 x i8] c\"NULL\\00\"\n");
     }
     if functions
         .iter()
         .any(|(_, analysis)| analysis.uses_string_ops)
     {
         text.push_str(
-            "declare i32 @bn_rt_str_len(ptr)\ndeclare ptr @bn_rt_str_index(ptr, i32)\ndeclare i32 @bn_rt_str_eq(ptr, ptr)\n",
+            "declare i32 @bn_rt_str_len(ptr)\ndeclare i64 @bn_rt_str_index_utf8(ptr, i32)\ndeclare i32 @bn_rt_str_eq(ptr, ptr)\n",
         );
     }
     if functions.iter().any(|(_, analysis)| analysis.uses_heap) {
         if !uses_concat {
-            text.push_str("declare ptr @malloc(i64)\n");
+            text.push_str(
+                "declare ptr @malloc(i64)\ndeclare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\n",
+            );
         }
-        text.push_str("declare void @free(ptr)\n");
+        text.push_str("declare ptr @calloc(i64, i64)\n");
+        if !uses_input {
+            text.push_str("declare void @free(ptr)\n");
+        }
     }
     let mut static_globals = BTreeSet::new();
     let mut class_inits = BTreeSet::new();
@@ -362,7 +397,6 @@ pub(crate) fn emit_preamble(
         text.push_str("  ret i32 0\n}\n");
     }
     let _ = uses_exit;
-    random_global
 }
 
 pub(crate) fn emit_function(
@@ -370,8 +404,8 @@ pub(crate) fn emit_function(
     module: &Module,
     function: &Function,
     analysis: &LoweringAnalysis<'_>,
-    rng_global: bool,
     synchronize_prints: bool,
+    policy: &crate::CompiledPolicy,
 ) -> Result<(), String> {
     let is_start = function.name == "Start";
     let symbol_names = analysis
@@ -387,12 +421,13 @@ pub(crate) fn emit_function(
     }
     let mut state = EmissionState {
         print_count: 0,
+        input_cleanup_count: 0,
         continuation_count: 0,
+        control_flow: control_flow::EmittedControlFlow::default(),
         md_temp: 0,
         needs_numeric_overflow_trap: false,
         needs_bn_rt_trap: false,
         is_start,
-        rng_global,
         synchronize_prints,
         return_llvm: if is_start {
             "i32"
@@ -400,21 +435,72 @@ pub(crate) fn emit_function(
             function_return_llvm(&function.return_type).expect("validated return type")
         },
     };
+    let reachable_blocks = reachable_block_ids(function);
     for block in &function.blocks {
-        let _ = writeln!(text, "b{}:", block.id.0);
+        if !reachable_blocks.contains(&block.id.0) {
+            continue;
+        }
+        state.control_flow.label(text, format!("b{}", block.id.0));
         if block.id == function.entry {
             if is_start {
                 let ceiling = super::policy_ceiling(module);
                 if ceiling != 0 {
                     let _ = writeln!(text, "  call i32 @bn_rt_policy_init(i32 1, i64 {ceiling})");
+                    if policy.sandboxed {
+                        let _ = writeln!(text, "  call i32 @bn_rt_policy_filesystem_sandboxed()");
+                        for (index, _) in policy.read_roots.iter().enumerate() {
+                            let _ = writeln!(
+                                text,
+                                "  call i32 @bn_rt_policy_filesystem_root(i32 0, ptr @.bn_policy_root{index})"
+                            );
+                        }
+                        let offset = policy.read_roots.len();
+                        for (index, _) in policy.write_roots.iter().enumerate() {
+                            let _ = writeln!(
+                                text,
+                                "  call i32 @bn_rt_policy_filesystem_root(i32 1, ptr @.bn_policy_root{})",
+                                offset + index
+                            );
+                        }
+                    }
                 }
             }
             for (symbol, ty) in &analysis.symbols {
                 let llvm_ty = llvm_type(ty).expect("validated alloca type");
                 let _ = writeln!(text, "  %s{} = alloca {llvm_ty}", symbol_names[symbol]);
             }
-            if analysis.uses_random && is_start && !rng_global {
-                text.push_str("  %rng = alloca i64\n  store i64 1, ptr %rng\n");
+            for symbol in &analysis.input_symbols {
+                let slot = symbol_names[symbol];
+                let _ = writeln!(
+                    text,
+                    "  %inputowned{slot} = alloca i1\n  store ptr null, ptr %s{slot}\n  store i1 false, ptr %inputowned{slot}"
+                );
+            }
+            let mut owned_struct_results = analysis
+                .owned_struct_results
+                .iter()
+                .copied()
+                .collect::<Vec<_>>();
+            owned_struct_results.sort_by_key(|value| value.0);
+            for value in owned_struct_results {
+                let _ = writeln!(
+                    text,
+                    "  %structowned{} = alloca ptr\n  store ptr null, ptr %structowned{}",
+                    value.0, value.0
+                );
+            }
+            let mut owned_log_results = analysis
+                .owned_log_results
+                .keys()
+                .copied()
+                .collect::<Vec<_>>();
+            owned_log_results.sort_by_key(|value| value.0);
+            for value in owned_log_results {
+                let _ = writeln!(
+                    text,
+                    "  %logowned{} = alloca i64\n  store i64 0, ptr %logowned{}",
+                    value.0, value.0
+                );
             }
             for value in &analysis.multi_defs {
                 let _ = writeln!(text, "  %sc{} = alloca i1", value.0);
@@ -440,17 +526,50 @@ pub(crate) fn emit_function(
                 &mut state,
             )?;
         }
+        state.control_flow.finish_block(block.id);
         lower_terminator(
             text,
             &block.terminator,
             analysis,
+            &symbol_names,
             &mut block_state,
             &mut state,
         );
     }
-    emit_traps(text, &state);
+    emit_traps(text, analysis, &symbol_names, &mut state);
     text.push_str("}\n");
-    Ok(())
+    state.control_flow.resolve(text)
+}
+
+fn reachable_block_ids(function: &Function) -> HashSet<u32> {
+    let blocks = function
+        .blocks
+        .iter()
+        .map(|block| (block.id.0, block))
+        .collect::<HashMap<_, _>>();
+    let mut reachable = HashSet::new();
+    let mut pending = vec![function.entry.0];
+    while let Some(id) = pending.pop() {
+        if !reachable.insert(id) {
+            continue;
+        }
+        let Some(block) = blocks.get(&id) else {
+            continue;
+        };
+        match &block.terminator {
+            Terminator::Jump { target } => pending.push(target.0),
+            Terminator::Branch {
+                then_block,
+                else_block,
+                ..
+            } => {
+                pending.push(then_block.0);
+                pending.push(else_block.0);
+            }
+            Terminator::Return { .. } | Terminator::Stop { .. } => {}
+        }
+    }
+    reachable
 }
 
 fn emit_user_signature(
@@ -576,10 +695,81 @@ pub(crate) fn lower_user_call(
             continue;
         }
         let param_llvm = llvm_type(param_ty).unwrap_or("ptr");
-        let operand = if param_llvm == "i1" {
+        let operand = if param_llvm == "{ ptr, i32 }"
+            && llvm_type(arg_ty) == Some("{ i1, ptr, i32 }")
+        {
+            let tag = state.continuation_count;
+            state.continuation_count += 1;
+            let _ = writeln!(
+                text,
+                "  %call_endpoint_ptr{tag} = extractvalue {{ i1, ptr, i32 }} %v{}, 1",
+                argument.0
+            );
+            let _ = writeln!(
+                text,
+                "  %call_endpoint_port{tag} = extractvalue {{ i1, ptr, i32 }} %v{}, 2",
+                argument.0
+            );
+            let _ = writeln!(
+                text,
+                "  %call_endpoint{tag}_0 = insertvalue {{ ptr, i32 }} undef, ptr %call_endpoint_ptr{tag}, 0"
+            );
+            let _ = writeln!(
+                text,
+                "  %call_endpoint{tag} = insertvalue {{ ptr, i32 }} %call_endpoint{tag}_0, i32 %call_endpoint_port{tag}, 1"
+            );
+            format!("%call_endpoint{tag}")
+        } else if param_llvm == "i1" && llvm_type(arg_ty) == Some("{ i1, ptr, i64 }") {
+            let tag = format!("callbool{}_{}", destination.0, argument.0);
+            let _ = writeln!(
+                text,
+                "  %{tag}raw = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                argument.0
+            );
+            let _ = writeln!(text, "  %{tag} = trunc i64 %{tag}raw to i1");
+            format!("%{tag}")
+        } else if param_llvm == "i1" {
             i1_operand(text, analysis, state, *argument)
         } else if param_llvm == "ptr" && llvm_type(arg_ty) == Some("ptr") {
             format!("%v{}", argument.0)
+        } else if param_llvm == "ptr" && llvm_type(arg_ty) == Some("{ i1, ptr, i64 }") {
+            let tag = format!("callstr{}_{}", destination.0, argument.0);
+            let _ = writeln!(
+                text,
+                "  %{tag}msg = extractvalue {{ i1, ptr, i64 }} %v{}, 1",
+                argument.0
+            );
+            let _ = writeln!(
+                text,
+                "  %{tag}raw = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                argument.0
+            );
+            let _ = writeln!(text, "  %{tag}payload = inttoptr i64 %{tag}raw to ptr");
+            let _ = writeln!(text, "  %{tag}hasmsg = icmp ne ptr %{tag}msg, null");
+            let _ = writeln!(
+                text,
+                "  %{tag} = select i1 %{tag}hasmsg, ptr %{tag}msg, ptr %{tag}payload"
+            );
+            format!("%{tag}")
+        } else if llvm_type(arg_ty) == Some("{ i1, ptr, i64 }")
+            && matches!(param_llvm, "i32" | "i64" | "i1" | "double")
+        {
+            let tag = format!("callunion{}_{}", destination.0, argument.0);
+            let _ = writeln!(
+                text,
+                "  %{tag}raw = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                argument.0
+            );
+            if param_llvm == "double" {
+                let _ = writeln!(text, "  %{tag} = bitcast i64 %{tag}raw to double");
+            } else if param_llvm == "i1" {
+                let _ = writeln!(text, "  %{tag} = trunc i64 %{tag}raw to i1");
+            } else if param_llvm == "i32" {
+                let _ = writeln!(text, "  %{tag} = trunc i64 %{tag}raw to i32");
+            } else {
+                let _ = writeln!(text, "  %{tag} = add i64 %{tag}raw, 0");
+            }
+            format!("%{tag}")
         } else {
             coerce_to_type(text, *argument, arg_ty, param_ty)
         };
@@ -628,6 +818,18 @@ pub(crate) fn lower_user_call(
             "  %v{} = call {ret} @{symbol}({args_joined})",
             destination.0
         );
+        if analysis.owned_struct_results.contains(&destination) {
+            let _ = writeln!(
+                text,
+                "  store ptr %v{}, ptr %structowned{}",
+                destination.0, destination.0
+            );
+        }
+    }
+    for argument in arguments {
+        if analysis.owned_string_results.contains(argument) {
+            let _ = writeln!(text, "  call void @free(ptr %v{})", argument.0);
+        }
     }
 }
 
@@ -669,7 +871,7 @@ fn emit_virtual_method_call(
             text,
             "  br i1 %vhit{n}_{index}, label %{label}, label %{next}"
         );
-        let _ = writeln!(text, "{label}:");
+        state.control_flow.label(text, label.clone());
         let symbol = llvm_function_symbol(candidate);
         if ret == "void" {
             let _ = writeln!(text, "  call void @{symbol}({args})");
@@ -679,20 +881,20 @@ fn emit_virtual_method_call(
         }
         let _ = writeln!(text, "  br label %{join}");
         if index + 1 != overrides.len() {
-            let _ = writeln!(text, "{next}:");
+            state.control_flow.label(text, next.clone());
         }
     }
-    let _ = writeln!(text, "{fallback_label}:");
+    state.control_flow.label(text, fallback_label.clone());
     let fallback_symbol = llvm_function_symbol(fallback);
     if ret == "void" {
         let _ = writeln!(text, "  call void @{fallback_symbol}({args})");
         let _ = writeln!(text, "  br label %{join}");
-        let _ = writeln!(text, "{join}:");
+        state.control_flow.label(text, join.clone());
     } else {
         let _ = writeln!(text, "  %vfb{n} = call {ret} @{fallback_symbol}({args})");
         incoming.push(format!("[ %vfb{n}, %{fallback_label} ]"));
         let _ = writeln!(text, "  br label %{join}");
-        let _ = writeln!(text, "{join}:");
+        state.control_flow.label(text, join.clone());
         let _ = writeln!(
             text,
             "  %v{} = phi {ret} {}",
@@ -702,17 +904,26 @@ fn emit_virtual_method_call(
     }
 }
 
-fn emit_traps(text: &mut String, state: &EmissionState) {
+fn emit_traps(
+    text: &mut String,
+    analysis: &LoweringAnalysis<'_>,
+    symbols: &HashMap<SymbolId, usize>,
+    state: &mut EmissionState,
+) {
     if state.needs_numeric_overflow_trap {
         if state.is_start {
-            text.push_str("trap_numeric_overflow:\n  ret i32 1\n");
+            text.push_str("trap_numeric_overflow:\n");
+            cleanup_owned_memory(text, analysis, symbols, state);
+            text.push_str("  ret i32 1\n");
         } else {
             text.push_str("trap_numeric_overflow:\n  call void @exit(i32 1)\n  unreachable\n");
         }
     }
     if state.needs_bn_rt_trap {
         if state.is_start {
-            text.push_str("trap_bn_rt:\n  ret i32 1\n");
+            text.push_str("trap_bn_rt:\n");
+            cleanup_owned_memory(text, analysis, symbols, state);
+            text.push_str("  ret i32 1\n");
         } else {
             text.push_str("trap_bn_rt:\n  call void @exit(i32 1)\n  unreachable\n");
         }

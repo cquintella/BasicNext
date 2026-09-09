@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     ast::{
@@ -33,6 +33,40 @@ fn ir_module_id(value: FrontendModuleId) -> ModuleId {
     ModuleId(value.0)
 }
 
+fn qualified_class_name(prefix: &str, name: &str) -> String {
+    if name.starts_with('#') {
+        name.to_string()
+    } else {
+        format!("{prefix}{name}")
+    }
+}
+
+fn lowered_class_bases(
+    program: &Program,
+    model: &SemanticModel,
+    prefix: &str,
+) -> HashMap<String, String> {
+    program
+        .items
+        .iter()
+        .filter_map(|item| {
+            let Item::Declaration {
+                kind: DeclarationKind::Class,
+                name,
+                ..
+            } = item
+            else {
+                return None;
+            };
+            let base = model.base_classes.get(name)?;
+            Some((
+                qualified_class_name(prefix, name),
+                qualified_class_name(prefix, base),
+            ))
+        })
+        .collect()
+}
+
 struct OpenBlock {
     instructions: Vec<Instruction>,
     terminator: Option<Terminator>,
@@ -54,6 +88,17 @@ enum AssignPlace {
         name: String,
         owner: String,
     },
+    MemberIndex {
+        object: ValueId,
+        name: String,
+        owner: String,
+        indices: Vec<ValueId>,
+    },
+    FieldIndex {
+        symbol: SymbolId,
+        path: Vec<String>,
+        indices: Vec<ValueId>,
+    },
     Field {
         symbol: SymbolId,
         path: Vec<String>,
@@ -61,6 +106,11 @@ enum AssignPlace {
     Static {
         class: String,
         field: String,
+    },
+    StaticIndex {
+        class: String,
+        field: String,
+        indices: Vec<ValueId>,
     },
 }
 
@@ -87,6 +137,7 @@ fn lower_unvalidated(program: &Program, model: &SemanticModel) -> Result<Module,
     let module = Module {
         source_name: program.source_name.clone(),
         functions,
+        class_bases: lowered_class_bases(program, model, ""),
         bndata_providers: HashSet::new(),
         bnmath_providers: HashSet::new(),
         bnlog_providers: HashSet::new(),
@@ -94,6 +145,8 @@ fn lower_unvalidated(program: &Program, model: &SemanticModel) -> Result<Module,
         bnweb_providers: HashSet::new(),
         bndispatch_providers: HashSet::new(),
         filesystem_import: filesystem_import_span(program),
+        clock_import: clock_import_span(program),
+        random_import: random_import_span(program),
         console_import: console_import_span(program),
         network_import: network_import_span(program),
         bnlog_import: standard_import_span(program, "BNLog"),
@@ -149,6 +202,7 @@ fn lower_graph_unvalidated(
         method_names.extend(collect_methods(&loaded.program, &prefix));
     }
     let mut functions = Vec::new();
+    let mut class_bases = HashMap::new();
     for loaded in &graph.modules {
         if loaded.standard_module.is_some() {
             continue;
@@ -159,6 +213,7 @@ fn lower_graph_unvalidated(
             .get(index)
             .ok_or_else(|| ir_error("missing semantic model for module", default_span()))?;
         let prefix = module_prefix(ir_module_id(graph.root), ir_module_id(loaded.id));
+        class_bases.extend(lowered_class_bases(&loaded.program, model, &prefix));
         functions.extend(lower_program(
             &loaded.program,
             model,
@@ -169,6 +224,8 @@ fn lower_graph_unvalidated(
     let root = graph.modules.iter().find(|module| module.id == graph.root);
     let source_name = root.and_then(|module| module.program.source_name.clone());
     let filesystem_import = root.and_then(|module| filesystem_import_span(&module.program));
+    let clock_import = root.and_then(|module| clock_import_span(&module.program));
+    let random_import = root.and_then(|module| random_import_span(&module.program));
     let console_import = root.and_then(|module| console_import_span(&module.program));
     let network_import = root.and_then(|module| network_import_span(&module.program));
     let bnlog_import = root.and_then(|module| standard_import_span(&module.program, "BNLog"));
@@ -176,6 +233,7 @@ fn lower_graph_unvalidated(
     let module = Module {
         source_name,
         functions,
+        class_bases,
         bndata_providers: graph
             .modules
             .iter()
@@ -225,6 +283,8 @@ fn lower_graph_unvalidated(
             })
             .collect(),
         filesystem_import,
+        clock_import,
+        random_import,
         console_import,
         network_import,
         bnlog_import,
@@ -265,11 +325,11 @@ use program_lowering::{class_method_name, collect_methods, lower_program, module
 #[path = "lowering/helpers.rs"]
 mod helpers;
 use helpers::{
-    assignment_operator, class_ir_name, console_import_span, constant, destructor_name,
-    display_type, filesystem_constant, filesystem_import_span, host_capability_constant, ir_error,
-    is_namespace_type, is_numeric_type_name, math_constant, module_constant, named_or_void,
-    namespace_function, network_import_span, standard_import_span, static_class_name, type_at,
-    type_test_name, user_class_name,
+    assignment_operator, class_ir_name, clock_import_span, console_import_span, constant,
+    destructor_name, display_type, filesystem_constant, filesystem_import_span,
+    host_capability_constant, ir_error, is_namespace_type, is_numeric_type_name, math_constant,
+    module_constant, named_or_void, namespace_function, network_import_span, random_import_span,
+    standard_import_span, static_class_name, type_at, type_test_name, user_class_name,
 };
 fn default_span() -> Span {
     Span {

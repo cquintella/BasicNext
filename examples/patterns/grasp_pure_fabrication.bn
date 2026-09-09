@@ -1,0 +1,13 @@
+// GRASP Pure Fabrication: ReceiptRepository is created to isolate persistence.
+CLASS ReceiptRepository
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Save(amount AS INTEGER) AS INTEGER
+        RETURN amount
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET repository AS ReceiptRepository = NEW ReceiptRepository()
+    PRINT repository.Save(18)
+END FUNCTION
