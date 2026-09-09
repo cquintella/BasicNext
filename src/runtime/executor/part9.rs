@@ -279,7 +279,7 @@ impl Executor<'_, '_> {
 
     pub(crate) fn dataframe_select_slice(&mut self, method: &str, id: u64, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
         let frame = self.dataframes.get(&id).ok_or_else(|| runtime_error("USE_AFTER_DELETE", "DataFrame handle is invalid", span))?;
-        let (row_indices, column_indices) = if method == "Select" {
+        let selected = if method == "Select" {
                 require_arity(method, arguments, 3, span)?;
                 let Some(row_indices) =
                     unsigned_indices(collect_indices(&arguments[1], &self.memory, span)?)
@@ -291,7 +291,7 @@ impl Executor<'_, '_> {
                 else {
                     return Ok(dataframe_index_error());
                 };
-                (row_indices, column_indices)
+                select_dataframe(frame, &row_indices, &column_indices)
             } else {
                 require_arity(method, arguments, 5, span)?;
                 let (start_row, _) = integer(&arguments[1], span)?;
@@ -308,12 +308,9 @@ impl Executor<'_, '_> {
                         message: "negative slice bound".into(),
                     });
                 };
-                (
-                    (values[0]..values[0].saturating_add(values[1])).collect(),
-                    (values[2]..values[2].saturating_add(values[3])).collect(),
-                )
+                bn_rt::slice_dataframe(frame, values[0], values[1], values[2], values[3])
             };
-            let selected = match select_dataframe(frame, &row_indices, &column_indices) {
+            let selected = match selected {
                 Ok(frame) => frame,
                 Err(message) if message == "DataFrame index out of bounds" => {
                     return Ok(dataframe_index_error());

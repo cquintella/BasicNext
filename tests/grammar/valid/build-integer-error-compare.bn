@@ -1,0 +1,10 @@
+FUNCTION Value() AS INTEGER OR Error
+    RETURN 4
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET value AS INTEGER OR Error = Value()
+    IF value IS INTEGER AND value = 4 THEN
+        PRINT "ok"
+    END IF
+END FUNCTION

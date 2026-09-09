@@ -14,6 +14,7 @@ let inputOffset = 0;
 let instance;
 let heapCursor = 0;
 const allocations = new Map();
+let randomState = 1n;
 
 function reserve(memory, size) {
     const address = Math.ceil(heapCursor / 8) * 8;
@@ -61,6 +62,22 @@ function formatGeneral(value, precision) {
 
 const imports = {
     env: {
+        bn_rt_policy_init() {
+            return 0;
+        },
+        bn_rt_random_seed(seed) {
+            randomState = BigInt.asUintN(64, BigInt(seed)) || 1n;
+            return 0;
+        },
+        bn_rt_random_next() {
+            let next = randomState;
+            next ^= next >> 12n;
+            next ^= BigInt.asUintN(64, next << 25n);
+            next ^= next >> 27n;
+            next = BigInt.asUintN(64, next * 0x2545f4914f6cdd1dn);
+            randomState = next;
+            return Number(next >> 11n) / 9007199254740992;
+        },
         bn_rt_clock_timestamp() {
             return BigInt(Date.now());
         },

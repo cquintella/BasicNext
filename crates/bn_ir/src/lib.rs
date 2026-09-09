@@ -14,7 +14,7 @@ pub use model::{
     BasicBlock, BlockId, Constant, Function, Instruction, Module, ModuleId, SymbolId, Terminator,
     ValueId,
 };
-pub use validate::validate;
+pub use validate::{instruction_uses, validate};
 
 pub use bn_types::{FloatType, IntegerType, PointerLength, Type};
 

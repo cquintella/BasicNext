@@ -208,7 +208,7 @@ fn emit_float_to_integer(
         text,
         "  br i1 %castbad{dest}, label %trap_numeric_overflow, label %{finite}"
     );
-    let _ = writeln!(text, "{finite}:");
+    state.control_flow.label(text, finite.clone());
     state.needs_numeric_overflow_trap = true;
     let _ = writeln!(
         text,
@@ -235,7 +235,7 @@ fn emit_i128_fit_trunc(
         text,
         "  br i1 %castov{dest}, label %trap_numeric_overflow, label %{ok}"
     );
-    let _ = writeln!(text, "{ok}:");
+    state.control_flow.label(text, ok.clone());
     let _ = writeln!(text, "  %v{dest} = trunc i128 %castw{dest} to {target}");
     state.needs_numeric_overflow_trap = true;
 }

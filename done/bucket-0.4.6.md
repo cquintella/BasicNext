@@ -174,7 +174,15 @@ Evidence must include a multi-A fixture where the first address is out-of-CIDR a
 - [X] **ACTIVITY 4b.2** — Rooted mode: mitigate symlink escape (Linux `O_NOFOLLOW` and/or post-open revalidation; document macOS behaviour).  
   **Owner:** Doug · **Accept:** symlink-escape attempt test fails closed on CI Linux; macOS noted if divergent.  
   **Evidence:** `docs/superpowers/evidence/2026-09-07-0.4.6-g4b-fs.md`
-- [X] **GATE G4b (F-05)** — **Owner:** Doug · **Accept:** 4b.1–4b.2 Fixed or Deferred with Owner+risk+Defer-until; F-05 row updated.
+- [X] **ACTIVITY 4b.3 (corrective, 2026-09-09)** — Eliminate the check/use
+  race left by canonicalization-only path checks. Pin rooted directories and
+  perform open, create, truncate, append, delete, and log-file traversal
+  relative to descriptors without following symlinks.
+  **Owner:** Doug · **Accept:** deterministic root/intermediate/final symlink
+  replacements and a concurrent swap test never access the outside target;
+  interpreter and compiled paths share the primitive.
+  **Evidence:** `docs/superpowers/evidence/2026-09-07-0.4.6-g4b-fs.md`
+- [X] **GATE G4b (F-05)** — **Owner:** Doug · **Accept:** 4b.1–4b.3 Fixed or Deferred with Owner+risk+Defer-until; F-05 row updated.
 
 ---
 

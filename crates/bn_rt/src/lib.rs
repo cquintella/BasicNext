@@ -1,5 +1,7 @@
 #![allow(clippy::not_unsafe_ptr_arg_deref)] // C ABI exports validate nullable out-pointers.
 #![allow(clippy::single_match_else)]
+#![allow(clippy::cast_precision_loss)]
+// Random conversion intentionally uses the 53-bit mantissa.
 // C ABI branches keep success/error writes symmetric.
 
 // Author: Carlos Quintella
@@ -15,6 +17,7 @@
 use std::{
     ffi::{CStr, c_char},
     io::{self, Write},
+    sync::atomic::{AtomicU64, Ordering},
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -23,12 +26,18 @@ mod console;
 mod dataframe;
 mod dataframe_abi;
 mod dispatch_abi;
+mod file_abi;
+mod log;
+mod log_abi;
 mod math;
 mod net;
 mod policy;
+pub mod secure_fs;
 mod stats;
 mod terminal;
 
+pub use log::{Level as LogLevel, Record as LogRecord};
+pub use log_abi::*;
 pub use stats::{Reduction, reduce};
 
 pub use console::{ConsoleError, beep, cls, num_cols, num_rows, print_at};
@@ -36,11 +45,12 @@ pub use dataframe::{
     DataFrameColumn, DataFrameJoin, DataFrameJoinConfig, DataFrameResource, DataProvider,
     StandardDataProvider, add_dataframe_column, append_columns, append_rows, column_name,
     convert_dataframe_column, copy_dataframe_column, dataframe_reduce_column,
-    duplicate_column_names, get_dataframe_cell, join_dataframes, parse_csv, select_dataframe,
-    set_column_label, transpose_dataframe, zscore_column,
+    duplicate_column_names, frame_from_csv_rows, get_dataframe_cell, join_dataframes, parse_csv,
+    select_dataframe, set_column_label, slice_dataframe, transpose_dataframe, zscore_column,
 };
 pub use dataframe_abi::*;
 pub use dispatch_abi::*;
+pub use file_abi::*;
 pub use net::{
     Address as NetAddress, AddressesHandle, NeighborError, PingError, PingReply, ReverseError,
     join_resolver_tasks, neighbor, ping, reverse_timeout,
@@ -166,6 +176,51 @@ pub extern "C" fn bn_rt_clock_timer() -> i64 {
         return -1;
     }
     monotonic_ns()
+}
+
+static COMPILED_RANDOM_STATE: AtomicU64 = AtomicU64::new(1);
+
+#[allow(unsafe_code)] // C ABI export for LLVM-emitted HOST.Random.Seed.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_random_seed(seed: i64) -> i32 {
+    if !policy::allows(policy::POLICY_RANDOM) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Random is denied by execution policy",
+        );
+        return 2;
+    }
+    COMPILED_RANDOM_STATE.store(seed.cast_unsigned().max(1), Ordering::Relaxed);
+    0
+}
+
+#[allow(unsafe_code)] // C ABI export for LLVM-emitted HOST.Random.Random.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_random_next() -> f64 {
+    if !policy::allows(policy::POLICY_RANDOM) {
+        fail(
+            "EXECUTION_POLICY_DENIED",
+            "HOST.Random is denied by execution policy",
+        );
+        return f64::NAN;
+    }
+    let mut current = COMPILED_RANDOM_STATE.load(Ordering::Relaxed);
+    loop {
+        let mut next = current;
+        next ^= next >> 12;
+        next ^= next << 25;
+        next ^= next >> 27;
+        next = next.wrapping_mul(0x2545_F491_4F6C_DD1D);
+        match COMPILED_RANDOM_STATE.compare_exchange_weak(
+            current,
+            next,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => return (next >> 11) as f64 / 9_007_199_254_740_992.0,
+            Err(observed) => current = observed,
+        }
+    }
 }
 
 #[allow(unsafe_code)] // C ABI export for LLVM-emitted HOST.Console.Cls.
@@ -576,6 +631,71 @@ pub extern "C" fn bn_rt_str_len(text: *const c_char) -> i32 {
     i32::try_from(text.chars().count()).unwrap_or(i32::MAX)
 }
 
+#[allow(unsafe_code)] // C ABI: decode the first Unicode scalar from a borrowed STRING.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_str_asc(text: *const c_char) -> i64 {
+    c_str(text)
+        .and_then(|text| text.chars().next())
+        .map_or(-1, |character| i64::from(u32::from(character)))
+}
+
+fn pack_utf8(character: char) -> u64 {
+    let mut encoded = [0_u8; 4];
+    let text = character.encode_utf8(&mut encoded);
+    let mut bytes = [0_u8; size_of::<u64>()];
+    bytes[..text.len()].copy_from_slice(text.as_bytes());
+    u64::from_ne_bytes(bytes)
+}
+
+/// Returns one UTF-8 scalar packed in native byte order, including a trailing
+/// NUL byte. `u64::MAX` represents an invalid Unicode scalar.
+#[allow(unsafe_code)] // C ABI export for LLVM-emitted CHAR.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_str_char_utf8(code: i64) -> u64 {
+    let Some(character) = u32::try_from(code).ok().and_then(char::from_u32) else {
+        return u64::MAX;
+    };
+    pack_utf8(character)
+}
+
+#[allow(unsafe_code)] // C ABI: the column name is a borrowed NUL-terminated STRING.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_dataframe_add_integer_start(
+    frame: u64,
+    name: *const c_char,
+    length: u32,
+) -> i32 {
+    let Some(name) = c_str(name) else {
+        return -1;
+    };
+    dataframe_abi::add_integer_column_storage(frame, name.to_owned(), length)
+        .and_then(|index| {
+            i32::try_from(index).map_err(|_| dataframe_abi::BN_DATAFRAME_CONTRACT_ERROR)
+        })
+        .unwrap_or_else(|status| -i32::try_from(status).unwrap_or(1))
+}
+
+#[allow(unsafe_code)] // C ABI export; all arguments are scalar values.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_dataframe_set_integer_cell(
+    frame: u64,
+    column: i32,
+    row: u32,
+    value: i64,
+) -> u32 {
+    let Ok(column) = u32::try_from(column) else {
+        return dataframe_abi::BN_DATAFRAME_INVALID_ARGUMENT;
+    };
+    dataframe_abi::set_integer_cell_storage(frame, column, row, value)
+}
+
+#[allow(unsafe_code)] // C ABI export; returned storage is released by the LLVM caller.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_dataframe_column_name_owned(frame: u64, index: u32) -> *mut c_char {
+    dataframe_abi::column_name_storage(frame, index)
+        .map_or(std::ptr::null_mut(), |name| c_string(&name))
+}
+
 #[allow(unsafe_code)] // C ABI: STRING[index] as a freshly allocated 1-char string.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_str_index(text: *const c_char, index: i32) -> *mut c_char {
@@ -601,6 +721,31 @@ pub extern "C" fn bn_rt_str_index(text: *const c_char, index: i32) -> *mut c_cha
     let ptr = boxed.as_mut_ptr().cast::<c_char>();
     std::mem::forget(boxed);
     ptr
+}
+
+/// Returns `STRING[index]` as one NUL-terminated UTF-8 scalar packed in native
+/// byte order. This ABI lets the LLVM caller materialize function-local
+/// storage, so indexing does not create heap ownership.
+#[allow(unsafe_code)] // C ABI: STRING[index] from a borrowed UTF-8 string.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_str_index_utf8(text: *const c_char, index: i32) -> u64 {
+    let Some(text) = c_str(text) else {
+        fail("INDEX_OUT_OF_BOUNDS", "index 0 is outside string length 0");
+        std::process::exit(1);
+    };
+    let Ok(index_usize) = usize::try_from(index) else {
+        fail("INDEX_OUT_OF_BOUNDS", "index cannot be negative");
+        std::process::exit(1);
+    };
+    let len = text.chars().count();
+    let Some(character) = text.chars().nth(index_usize) else {
+        fail(
+            "INDEX_OUT_OF_BOUNDS",
+            &format!("index {index_usize} is outside string length {len}"),
+        );
+        std::process::exit(1);
+    };
+    pack_utf8(character)
 }
 
 #[allow(unsafe_code)] // C ABI export for LLVM-emitted HOST.Console.NumRows.
@@ -1654,7 +1799,9 @@ pub(crate) fn network_test_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
     LOCK.get_or_init(|| std::sync::Mutex::new(()))
         .lock()
-        .expect("network test lock")
+        // One environment-level bind failure must not turn every later,
+        // independent network test into a mutex-poison cascade.
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 #[cfg(test)]
@@ -1674,6 +1821,29 @@ mod tests {
     use std::io::{Read, Write};
     use std::net::TcpStream as StdTcpStream;
     use std::time::{Duration, UNIX_EPOCH};
+
+    #[test]
+    fn packed_string_index_preserves_ascii_and_multibyte_scalars() {
+        let text = CString::new("Aé界").expect("literal has no NUL");
+        for (index, expected) in ["A", "é", "界"].into_iter().enumerate() {
+            let packed = super::bn_rt_str_index_utf8(
+                text.as_ptr(),
+                i32::try_from(index).expect("small index"),
+            );
+            let bytes = packed.to_ne_bytes();
+            let nul = bytes.iter().position(|byte| *byte == 0).expect("NUL");
+            assert_eq!(std::str::from_utf8(&bytes[..nul]), Ok(expected));
+        }
+    }
+
+    #[test]
+    fn packed_char_uses_the_same_native_byte_contract_as_string_index() {
+        let text = CString::new("é").expect("literal has no NUL");
+        assert_eq!(
+            super::bn_rt_str_char_utf8(i64::from(u32::from('é'))),
+            super::bn_rt_str_index_utf8(text.as_ptr(), 0)
+        );
+    }
 
     #[test]
     fn console_c_abi_rechecks_execution_policy_at_call_boundary() {

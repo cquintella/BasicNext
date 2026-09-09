@@ -1,0 +1,26 @@
+// GRASP Information Expert: the object holding the data calculates the total.
+CLASS Cart
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PRIVATE first AS INTEGER = 0
+    PRIVATE second AS INTEGER = 0
+
+    PUBLIC FUNCTION Add(value AS INTEGER) AS VOID
+        IF SELF.first = 0 THEN
+            SELF.first = value
+        ELSE
+            SELF.second = value
+        END IF
+    END FUNCTION
+
+    PUBLIC FUNCTION Total() AS INTEGER
+        RETURN SELF.first + SELF.second
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET cart AS Cart = NEW Cart()
+    cart.Add(7)
+    cart.Add(5)
+    PRINT cart.Total()
+END FUNCTION

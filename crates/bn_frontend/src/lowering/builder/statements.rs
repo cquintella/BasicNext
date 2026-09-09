@@ -104,10 +104,40 @@ impl Builder<'_> {
                             span: *span,
                         });
                     }
+                    AssignPlace::MemberIndex {
+                        object,
+                        name,
+                        owner,
+                        indices,
+                    } => {
+                        self.emit(Instruction::SetMemberIndex {
+                            object,
+                            name,
+                            owner,
+                            indices,
+                            value: result,
+                            ty: type_at(self.model, target.span)?,
+                            span: *span,
+                        });
+                    }
                     AssignPlace::Field { symbol, path } => {
                         self.emit(Instruction::SetField {
                             symbol,
                             path,
+                            value: result,
+                            ty: type_at(self.model, target.span)?,
+                            span: *span,
+                        });
+                    }
+                    AssignPlace::FieldIndex {
+                        symbol,
+                        path,
+                        indices,
+                    } => {
+                        self.emit(Instruction::SetFieldIndex {
+                            symbol,
+                            path,
+                            indices,
                             value: result,
                             ty: type_at(self.model, target.span)?,
                             span: *span,
@@ -118,6 +148,21 @@ impl Builder<'_> {
                         self.emit(Instruction::StoreStatic {
                             class,
                             field,
+                            value: result,
+                            ty: type_at(self.model, target.span)?,
+                            span: *span,
+                        });
+                    }
+                    AssignPlace::StaticIndex {
+                        class,
+                        field,
+                        indices,
+                    } => {
+                        self.ensure_class(&class, *span);
+                        self.emit(Instruction::SetStaticIndex {
+                            class,
+                            field,
+                            indices,
                             value: result,
                             ty: type_at(self.model, target.span)?,
                             span: *span,

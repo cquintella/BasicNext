@@ -1,0 +1,13 @@
+CLASS Resource
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION DESTRUCTOR()
+        PRINT "destroyed"
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET resource AS Resource = NEW Resource()
+    DELETE resource
+END FUNCTION

@@ -24,7 +24,7 @@ pub(crate) fn emit_euclidean_integer_op(
         text,
         "  br i1 %divz{dest}, label %trap_numeric_overflow, label %{zero_ok}"
     );
-    let _ = writeln!(text, "{zero_ok}:");
+    state.control_flow.label(text, zero_ok.clone());
     state.needs_numeric_overflow_trap = true;
     if is_unsigned(ty) {
         let opcode = match operator {
@@ -52,7 +52,7 @@ pub(crate) fn emit_euclidean_integer_op(
                 text,
                 "  br i1 %divovf{dest}, label %trap_numeric_overflow, label %{ok}"
             );
-            let _ = writeln!(text, "{ok}:");
+            state.control_flow.label(text, ok.clone());
             emit_signed_div(text, dest, llvm_ty, &left_op, &right_op);
         }
         "Percent" => {
@@ -63,12 +63,12 @@ pub(crate) fn emit_euclidean_integer_op(
                 text,
                 "  br i1 %divovf{dest}, label %{min_case}, label %{ok}"
             );
-            let _ = writeln!(text, "{min_case}:");
+            state.control_flow.label(text, min_case.clone());
             let _ = writeln!(text, "  br label %{join}");
-            let _ = writeln!(text, "{ok}:");
+            state.control_flow.label(text, ok.clone());
             emit_signed_rem(text, dest, llvm_ty, &left_op, &right_op);
             let _ = writeln!(text, "  br label %{join}");
-            let _ = writeln!(text, "{join}:");
+            state.control_flow.label(text, join.clone());
             let _ = writeln!(
                 text,
                 "  %v{dest} = phi {llvm_ty} [ 0, %{min_case} ], [ %eucl{dest}, %{ok} ]"

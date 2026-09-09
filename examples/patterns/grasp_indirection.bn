@@ -1,0 +1,22 @@
+// GRASP Indirection: a service object mediates between the client and storage.
+CLASS Storage
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Put(value AS INTEGER) AS INTEGER
+        RETURN value
+    END FUNCTION
+END CLASS
+
+CLASS StorageService
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Store(storage AS Storage, value AS INTEGER) AS INTEGER
+        RETURN storage.Put(value)
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET storage AS Storage = NEW Storage()
+    LET service AS StorageService = NEW StorageService()
+    PRINT service.Store(storage, 33)
+END FUNCTION

@@ -26,6 +26,9 @@ options:
   --target native|wasm32     select the build target (build only)
   --opt none|1|2|3|s         optimization level for native/Wasm builds (default 2)
   --no-filesystem            deny HOST.FileSystem imports (run only)
+  --sandbox                  opt into filesystem root restrictions
+  --read-root <dir>          allow reads below a sandbox root (repeatable)
+  --write-root <dir>         allow writes below a sandbox root (repeatable)
   --warnings errors           promote all warning diagnostics to errors
   --allow <CODE>              suppress one warning diagnostic (repeatable)
   --warn <CODE>               keep one warning diagnostic at warning level

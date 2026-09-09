@@ -1,0 +1,5 @@
+// UNSUPPORTED: a heterogeneous linked chain requires nullable self-referential
+// class fields and dynamic dispatch through an interface reference.
+FUNCTION Start() AS VOID
+    PRINT "UNSUPPORTED: heterogeneous linked dispatch is not available"
+END FUNCTION

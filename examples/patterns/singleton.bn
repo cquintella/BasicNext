@@ -1,0 +1,18 @@
+// GoF Singleton: one process-wide service instance is exposed by a static API.
+CLASS Configuration
+    PUBLIC INT value AS INTEGER=42
+    PUBLIC STATIC FUNCTION GetInstance() AS OBJECT
+    RETURN SELF
+    END FUNCTION
+
+    PUBLIC STATIC value AS INTEGER = 42
+
+    PUBLIC STATIC FUNCTION Current() AS INTEGER
+        RETURN Configuration.value
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET Conf AS INTEGER = Configuration.GetInstance().value
+    PRINT Conf
+END FUNCTION

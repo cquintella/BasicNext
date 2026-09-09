@@ -1,0 +1,26 @@
+// GoF State: the context delegates behavior to its current state object.
+INTERFACE DoorState
+    FUNCTION Next() AS INTEGER
+END INTERFACE
+
+CLASS ClosedDoor IMPLEMENTS DoorState
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Next() AS INTEGER
+        RETURN 1
+    END FUNCTION
+END CLASS
+
+CLASS Door
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Transition(state AS ClosedDoor) AS INTEGER
+        RETURN state.Next()
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET door AS Door = NEW Door()
+    LET closed AS ClosedDoor = NEW ClosedDoor()
+    PRINT door.Transition(closed)
+END FUNCTION

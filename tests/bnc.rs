@@ -22,14 +22,14 @@ fn bnc_help_succeeds() {
 }
 
 #[test]
-fn bnc_version_succeeds() {
+fn bnc_version_advertises_0_4_7() {
     let output = Command::new(bnc_bin())
         .arg("--version")
         .output()
         .expect("run bnc --version");
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.starts_with("bnc "));
+    assert_eq!(stdout.trim(), "bnc 0.4.7");
 }
 
 #[test]

@@ -117,17 +117,20 @@ impl Executor<'_, '_> {
                         span,
                     ));
                 };
-                if !self.host.filesystem.allows_path(std::path::Path::new(path), false) {
-                    return Err(runtime_error(
-                        "EXECUTION_POLICY_DENIED",
-                        "filesystem read is outside the execution policy",
-                        span,
-                    ));
-                }
-                match std::fs::metadata(path) {
-                    Ok(meta) => Ok(Value::Boolean(meta.is_file())),
+                match self.host.filesystem.open(
+                    std::path::Path::new(path),
+                    bn_rt::secure_fs::OpenMode::Read,
+                ) {
+                    Ok(file) => Ok(Value::Boolean(file.metadata().is_ok_and(|meta| meta.is_file()))),
                     Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                         Ok(Value::Boolean(false))
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+                        Err(runtime_error(
+                            "EXECUTION_POLICY_DENIED",
+                            "filesystem read is outside the execution policy",
+                            span,
+                        ))
                     }
                     Err(error) => Ok(Value::Error {
                         code: 1,
@@ -145,35 +148,10 @@ impl Executor<'_, '_> {
                     ));
                 };
                 let (mode, _) = integer(&arguments[1], span)?;
-                let write = mode != 0;
-                if !self
-                    .host
-                    .filesystem
-                    .allows_path(std::path::Path::new(path), write)
-                {
-                    return Err(runtime_error(
-                        "EXECUTION_POLICY_DENIED",
-                        "filesystem path is outside the execution policy",
-                        span,
-                    ));
-                }
-                if std::fs::metadata(path).is_ok_and(|meta| meta.is_dir()) {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "path is a directory".into(),
-                    });
-                }
-                let result = match mode {
-                    0 => std::fs::OpenOptions::new().read(true).open(path),
-                    1 => std::fs::OpenOptions::new()
-                        .write(true)
-                        .create(true)
-                        .truncate(true)
-                        .open(path),
-                    2 => std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(path),
+                let open_mode = match mode {
+                    0 => bn_rt::secure_fs::OpenMode::Read,
+                    1 => bn_rt::secure_fs::OpenMode::Write,
+                    2 => bn_rt::secure_fs::OpenMode::Append,
                     _ => {
                         return Ok(Value::Error {
                             code: 1,
@@ -181,8 +159,18 @@ impl Executor<'_, '_> {
                         });
                     }
                 };
+                let result = self
+                    .host
+                    .filesystem
+                    .open(std::path::Path::new(path), open_mode);
                 match result {
                     Ok(file) => {
+                        if file.metadata().is_ok_and(|meta| meta.is_dir()) {
+                            return Ok(Value::Error {
+                                code: 1,
+                                message: "path is a directory".into(),
+                            });
+                        }
                         let id = self.next_file;
                         self.next_file += 1;
                         self.files.insert(
@@ -193,6 +181,13 @@ impl Executor<'_, '_> {
                             },
                         );
                         Ok(Value::File(id))
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+                        Err(runtime_error(
+                            "EXECUTION_POLICY_DENIED",
+                            "filesystem path is outside the execution policy",
+                            span,
+                        ))
                     }
                     Err(error) => Ok(Value::Error {
                         code: 1,
@@ -209,15 +204,19 @@ impl Executor<'_, '_> {
                         span,
                     ));
                 };
-                if !self.host.filesystem.allows_path(std::path::Path::new(path), true) {
-                    return Err(runtime_error(
-                        "EXECUTION_POLICY_DENIED",
-                        "filesystem deletion is outside the execution policy",
-                        span,
-                    ));
-                }
-                match std::fs::remove_file(path) {
+                match self
+                    .host
+                    .filesystem
+                    .remove_file(std::path::Path::new(path))
+                {
                     Ok(()) => Ok(Value::Null),
+                    Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+                        Err(runtime_error(
+                            "EXECUTION_POLICY_DENIED",
+                            "filesystem deletion is outside the execution policy",
+                            span,
+                        ))
+                    }
                     Err(error) => Ok(Value::Error {
                         code: 1,
                         message: error.to_string(),

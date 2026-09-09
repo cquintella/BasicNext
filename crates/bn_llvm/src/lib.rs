@@ -6,6 +6,7 @@
 //! Dependency-free LLVM textual backend. Unsupported IR is rejected explicitly.
 
 #![allow(clippy::match_same_arms)]
+#![allow(clippy::too_many_lines)]
 
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
@@ -24,6 +25,21 @@ use bn_types::{FloatType, IntegerType, Type};
 pub enum Target {
     Native,
     Wasm32,
+}
+
+/// Execution-policy materialized into a compiled artifact.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CompiledPolicy {
+    pub sandboxed: bool,
+    pub read_roots: Vec<String>,
+    pub write_roots: Vec<String>,
+}
+
+impl CompiledPolicy {
+    #[must_use]
+    pub fn unrestricted() -> Self {
+        Self::default()
+    }
 }
 
 fn display_type(ty: &Type) -> String {
@@ -98,10 +114,28 @@ pub(crate) fn is_bndata_dataframe_type(module: &Module, ty: &Type) -> bool {
     )
 }
 
+pub(crate) fn bnlog_resource_kind(module: &Module, ty: &Type) -> Option<&'static str> {
+    match ty {
+        Type::ImportedNamed {
+            module: module_id,
+            name,
+        } if module
+            .bnlog_providers
+            .contains(&bn_ir::ModuleId::from(*module_id))
+            && matches!(name.as_str(), "Fields" | "Logger") =>
+        {
+            Some(if name == "Fields" { "Fields" } else { "Logger" })
+        }
+        _ => None,
+    }
+}
+
+const POLICY_CLOCK: u64 = 1;
 const POLICY_CONSOLE: u64 = 1 << 1;
 const POLICY_FILESYSTEM: u64 = 1 << 2;
 const POLICY_NET: u64 = 1 << 3;
 const POLICY_DISPATCH: u64 = 1 << 4;
+const POLICY_RANDOM: u64 = 1 << 5;
 
 #[derive(Clone, Debug)]
 enum ConstantValue {
@@ -118,12 +152,17 @@ struct LoweringAnalysis<'a> {
     functions: HashMap<ValueId, &'a str>,
     strings: Vec<(ValueId, String)>,
     input_count: usize,
-    uses_random: bool,
+    input_targets: HashMap<ValueId, SymbolId>,
+    input_symbols: HashSet<SymbolId>,
+    owned_string_results: HashSet<ValueId>,
+    owned_struct_results: HashSet<ValueId>,
+    owned_log_results: HashMap<ValueId, &'static str>,
     uses_string_concat: bool,
     uses_bn_rt: bool,
     uses_bn_rt_math: bool,
     uses_float_print: bool,
     uses_string_ops: bool,
+    uses_string_sizeof: bool,
     uses_temporal_print: bool,
     uses_heap: bool,
     multi_defs: HashSet<ValueId>,
@@ -138,12 +177,13 @@ struct BlockState {
 #[allow(clippy::struct_excessive_bools)]
 struct EmissionState {
     print_count: usize,
+    input_cleanup_count: usize,
     continuation_count: usize,
+    control_flow: control_flow::EmittedControlFlow,
     md_temp: usize,
     needs_numeric_overflow_trap: bool,
     needs_bn_rt_trap: bool,
     is_start: bool,
-    rng_global: bool,
     synchronize_prints: bool,
     return_llvm: &'static str,
 }
@@ -191,6 +231,23 @@ pub fn lower_validated_module_for_target(
     validated: &ValidatedModule,
     wasm32: bool,
 ) -> Result<String, String> {
+    lower_validated_module_for_target_with_policy(validated, wasm32, &CompiledPolicy::default())
+}
+
+/// Lowers a validated module while materializing its execution policy.
+///
+/// # Errors
+///
+/// Returns a diagnostic when the validated module is outside target support.
+///
+/// # Panics
+///
+/// Panics if the validated module has no `Start` entry point.
+pub fn lower_validated_module_for_target_with_policy(
+    validated: &ValidatedModule,
+    wasm32: bool,
+    policy: &CompiledPolicy,
+) -> Result<String, String> {
     validate_for(
         validated,
         if wasm32 {
@@ -208,11 +265,29 @@ pub fn lower_validated_module_for_target(
         .expect("validated entry point");
     let functions = analyze_reachable(module, start)?;
     let mut text = String::from(
-        "; Basic Next 0.2\n@.bn_fmt_int = private unnamed_addr constant [5 x i8] c\"%lld\\00\"\n@.bn_fmt_uint = private unnamed_addr constant [5 x i8] c\"%llu\\00\"\n@.bn_fmt_float = private unnamed_addr constant [6 x i8] c\"%.17g\\00\"\n@.bn_fmt_str = private unnamed_addr constant [3 x i8] c\"%s\\00\"\n@.bn_true = private unnamed_addr constant [5 x i8] c\"TRUE\\00\"\n@.bn_false = private unnamed_addr constant [6 x i8] c\"FALSE\\00\"\n@.bn_empty = private unnamed_addr constant [1 x i8] c\"\\00\"\n@.bn_eof = private unnamed_addr constant [4 x i8] c\"EOF\\00\"\n",
+        "; Basic Next 0.2\n@.bn_fmt_int = private unnamed_addr constant [5 x i8] c\"%lld\\00\"\n@.bn_fmt_uint = private unnamed_addr constant [5 x i8] c\"%llu\\00\"\n@.bn_fmt_float = private unnamed_addr constant [6 x i8] c\"%.17g\\00\"\n@.bn_fmt_str = private unnamed_addr constant [3 x i8] c\"%s\\00\"\n@.bn_fmt_error = private unnamed_addr constant [16 x i8] c\"Error(%lld, %s)\\00\"\n@.bn_asc_error = private unnamed_addr constant [32 x i8] c\"ASC requires a non-empty STRING\\00\"\n@.bn_char_error = private unnamed_addr constant [34 x i8] c\"CHAR code is not a Unicode scalar\\00\"\n@.bn_dataframe_error = private unnamed_addr constant [25 x i8] c\"DataFrame column failure\\00\"\n@.bn_dataframe_duplicate = private unnamed_addr constant [22 x i8] c\"duplicate column name\\00\"\n@.bn_dataframe_length = private unnamed_addr constant [23 x i8] c\"column length mismatch\\00\"\n@.bn_dataframe_index = private unnamed_addr constant [27 x i8] c\"column index out of bounds\\00\"\n@.bn_true = private unnamed_addr constant [5 x i8] c\"TRUE\\00\"\n@.bn_false = private unnamed_addr constant [6 x i8] c\"FALSE\\00\"\n@.bn_empty = private unnamed_addr constant [1 x i8] c\"\\00\"\n@.bn_eof = private constant [4 x i8] c\"EOF\\00\"\n",
     );
-    let rng_global = emit_preamble(&mut text, &functions, !wasm32);
+    for (index, root) in policy
+        .read_roots
+        .iter()
+        .chain(&policy.write_roots)
+        .enumerate()
+    {
+        let _ = writeln!(
+            text,
+            "@.bn_policy_root{index} = private constant [{} x i8] c\"{}\\00\"",
+            root.len() + 1,
+            escape_llvm(root)
+        );
+    }
+    emit_preamble(
+        &mut text,
+        &functions,
+        !wasm32,
+        !module.bndata_providers.is_empty(),
+    );
     for (function, analysis) in &functions {
-        emit_function(&mut text, module, function, analysis, rng_global, !wasm32)?;
+        emit_function(&mut text, module, function, analysis, !wasm32, policy)?;
     }
     Ok(text)
 }
@@ -298,6 +373,12 @@ fn support_diagnostic(message: &str) -> (&'static str, &str) {
 
 pub(crate) fn policy_ceiling(module: &Module) -> u64 {
     let mut ceiling = 0;
+    if module.clock_import.is_some() {
+        ceiling |= POLICY_CLOCK;
+    }
+    if module.random_import.is_some() {
+        ceiling |= POLICY_RANDOM;
+    }
     if module.console_import.is_some() {
         ceiling |= POLICY_CONSOLE;
     }
@@ -369,9 +450,20 @@ fn llvm_type(ty: &Type) -> Option<&'static str> {
         Type::Float(FloatType::Float32) => Some("float"),
         Type::Float(FloatType::Float64) | Type::FloatLiteral => Some("double"),
         Type::String => Some("ptr"),
+        Type::Null => Some("ptr"),
+        Type::Function { .. } => Some("ptr"),
         Type::Named(name) if name == "DATE" || name == "TIME" => Some("i32"),
         Type::NotAvailable => Some("{ i1, double }"),
         Type::Alternative(alternatives) if float_or_na(alternatives) => Some("{ i1, double }"),
+        Type::Alternative(alternatives) if integer_or_null(alternatives) => Some("{ i1, i32 }"),
+        Type::Alternative(alternatives) if string_or_null(alternatives) => Some("ptr"),
+        Type::Alternative(alternatives) if string_na_or_error(alternatives) => {
+            Some("{ i1, ptr, i64 }")
+        }
+        Type::Alternative(alternatives) if scalar_na_or_error(alternatives) => {
+            Some("{ i1, ptr, i64 }")
+        }
+        Type::Alternative(alternatives) if float_or_error(alternatives) => Some("{ i1, ptr, i64 }"),
         // HOST.Net aggregate results OR Error, and narrowed network values.
         Type::Alternative(alternatives) if net_or_error(alternatives) => {
             if alternatives.iter().any(is_net_addresses_type) {
@@ -436,7 +528,10 @@ fn llvm_type(ty: &Type) -> Option<&'static str> {
         Type::Vector {
             element,
             dimensions,
-        } if dimensions.len() == 1 && dimensions[0] != u64::MAX && llvm_type(element).is_some() => {
+        } if !dimensions.is_empty()
+            && dimensions.iter().all(|dimension| *dimension != u64::MAX)
+            && llvm_type(element).is_some() =>
+        {
             Some("{ ptr, i32 }")
         }
         // Dynamic `NEW T[n]` / `POINTER TO T[]` share the vector fat pointer.
@@ -522,6 +617,64 @@ fn integer_or_error(alternatives: &[Type]) -> bool {
         && alternatives.iter().any(is_error_type)
 }
 
+fn integer_union_payload(ty: &Type) -> Option<&Type> {
+    let Type::Alternative(alternatives) = ty else {
+        return None;
+    };
+    if !(integer_or_error(alternatives) || integer_eof_or_error(alternatives)) {
+        return None;
+    }
+    alternatives
+        .iter()
+        .find(|alternative| matches!(alternative, Type::Integer(_)))
+}
+
+fn string_or_error(alternatives: &[Type]) -> bool {
+    alternatives.len() == 2
+        && alternatives.iter().any(|ty| matches!(ty, Type::String))
+        && alternatives.iter().any(is_error_type)
+}
+
+fn string_na_or_error(alternatives: &[Type]) -> bool {
+    alternatives.len() == 3
+        && alternatives.iter().any(|ty| matches!(ty, Type::String))
+        && alternatives
+            .iter()
+            .any(|ty| matches!(ty, Type::NotAvailable))
+        && alternatives.iter().any(is_error_type)
+}
+
+fn scalar_na_or_error(alternatives: &[Type]) -> bool {
+    alternatives.len() == 3
+        && alternatives
+            .iter()
+            .any(|ty| matches!(ty, Type::Integer(_) | Type::Float(_) | Type::Boolean))
+        && alternatives
+            .iter()
+            .any(|ty| matches!(ty, Type::NotAvailable))
+        && alternatives.iter().any(is_error_type)
+}
+
+fn float_or_error(alternatives: &[Type]) -> bool {
+    alternatives.len() == 2
+        && alternatives.iter().any(|ty| matches!(ty, Type::Float(_)))
+        && alternatives.iter().any(is_error_type)
+}
+
+fn string_or_null(alternatives: &[Type]) -> bool {
+    alternatives.len() == 2
+        && alternatives.iter().any(|ty| matches!(ty, Type::String))
+        && alternatives.iter().any(|ty| matches!(ty, Type::Null))
+}
+
+fn integer_or_null(alternatives: &[Type]) -> bool {
+    alternatives.len() == 2
+        && alternatives
+            .iter()
+            .any(|ty| matches!(ty, Type::Integer(IntegerType::Int32)))
+        && alternatives.iter().any(|ty| matches!(ty, Type::Null))
+}
+
 fn integer_eof_or_error(alternatives: &[Type]) -> bool {
     alternatives.len() == 3
         && alternatives.iter().any(|ty| matches!(ty, Type::Integer(_)))
@@ -562,6 +715,16 @@ fn dispatch_handle_name(name: &str) -> bool {
     )
 }
 
+fn is_native_vector(ty: &Type) -> bool {
+    matches!(
+        ty,
+        Type::Vector { element, dimensions }
+            if !dimensions.is_empty()
+                && dimensions.iter().all(|dimension| *dimension != u64::MAX)
+                && llvm_type(element).is_some()
+    )
+}
+
 fn is_int_vector(ty: &Type) -> bool {
     matches!(
         ty,
@@ -572,19 +735,17 @@ fn is_int_vector(ty: &Type) -> bool {
     )
 }
 
-fn is_int_pointer(ty: &Type) -> bool {
+fn is_native_pointer(ty: &Type) -> bool {
     matches!(
         ty,
         Type::Pointer { element, .. }
-            if matches!(
-                element.as_ref(),
-                Type::Integer(IntegerType::Int32) | Type::IntegerLiteral(_)
-            )
+            if llvm_type(element).is_some()
+                || matches!(element.as_ref(), Type::Vector { dimensions, .. } if dimensions.len() == 1)
     ) || matches!(ty, Type::Named(name) if name == "POINTER")
 }
 
 fn printable_type(ty: &Type) -> bool {
-    matches!(
+    (matches!(
         ty,
         Type::Boolean
             | Type::String
@@ -595,7 +756,13 @@ fn printable_type(ty: &Type) -> bool {
             | Type::Named(_)
             | Type::NotAvailable
             | Type::Alternative(_)
-    ) && llvm_type(ty).is_some()
+    ) && llvm_type(ty).is_some())
+        || matches!(
+            ty,
+            Type::Vector { element, dimensions }
+                if dimensions.len() == 1
+                    && matches!(element.as_ref(), Type::Integer(IntegerType::Int32))
+        )
 }
 
 fn unary_supported(operator: &str, operand: Option<&Type>, ty: &Type) -> bool {
@@ -663,6 +830,9 @@ fn binary_supported(operator: &str, left: &Type, right: &Type, result: &Type) ->
                 && (left_llvm == right_llvm
                     || integer_llvm(left_llvm) && integer_llvm(right_llvm)
                     || float_llvm(left_llvm) && float_llvm(right_llvm))
+                || result_llvm == "i1"
+                    && (integer_union_payload(left).is_some() && integer_llvm(right_llvm)
+                        || integer_union_payload(right).is_some() && integer_llvm(left_llvm))
         }
         _ => false,
     }
@@ -685,6 +855,12 @@ fn cast_supported(source: Option<&Type>, target: &Type) -> bool {
     )
 }
 
+#[path = "llvm/control_flow.rs"]
+mod control_flow;
+
+#[path = "llvm/layout.rs"]
+mod layout;
+
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::too_many_lines)]
 #[path = "llvm/emission1.rs"]
@@ -693,8 +869,8 @@ use emission1::lower_scalar_instruction;
 #[path = "llvm/emission2.rs"]
 mod emission2;
 use emission2::{
-    checked_intrinsic_declaration, emit_checked_integer_op, float_compare_opcode,
-    integer_compare_opcode, lower_print_value, lower_terminator,
+    checked_intrinsic_declaration, cleanup_owned_memory, emit_checked_integer_op,
+    float_compare_opcode, integer_compare_opcode, lower_print_value, lower_terminator,
 };
 #[path = "llvm/casts.rs"]
 mod casts;
@@ -714,9 +890,9 @@ use binary::emit_runtime_binary;
 #[path = "llvm/runtime.rs"]
 mod runtime;
 use runtime::{
-    BN_RT_DECLS, bn_rt_call_supported, bndata_dataframe_method, emit_checked_i32_eq_zero,
-    emit_handle_result, emit_void_result, is_bn_rt_host_call, is_bndata_dataframe_call,
-    lower_bn_dispatch_call, lower_bn_rt_call, take_continuation,
+    BN_RT_DECLS, bn_rt_call_supported, bndata_dataframe_method, bnlog_method,
+    emit_checked_i32_eq_zero, emit_handle_result, emit_void_result, is_bn_rt_host_call,
+    is_bndata_dataframe_call, lower_bn_dispatch_call, lower_bn_rt_call, take_continuation,
 };
 #[path = "llvm/math.rs"]
 mod math;
@@ -724,10 +900,13 @@ use math::{BN_RT_MATH_DECLS, bnmath_call_supported, bnmath_method, lower_bnmath_
 #[path = "llvm/vectors.rs"]
 mod vectors;
 use vectors::{
-    emit_allocate, emit_delete, emit_is, emit_member, emit_optional_float_default,
-    emit_pointer_set_index, emit_set_member, emit_store_object_class, emit_vector,
-    emit_vector_index, emit_vector_length, extract_optional_float,
+    emit_allocate, emit_delete, emit_is, emit_member, emit_optional_float_default, emit_set_member,
+    emit_store_object_class, emit_vector, emit_vector_index, emit_vector_length,
+    extract_optional_float,
 };
+#[path = "llvm/indexed_store.rs"]
+mod indexed_store;
+use indexed_store::{emit_field_set_index, emit_pointer_set_index, emit_vector_set_indices};
 #[path = "llvm/functions.rs"]
 mod functions;
 use functions::{
@@ -744,12 +923,15 @@ use emission3::{
 #[path = "llvm/helpers.rs"]
 mod helpers;
 use helpers::{
-    OBJECT_HEADER_BYTES, class_init_flag, class_instance_bytes, coerce_return_operand,
-    coerce_to_type, escape_llvm, extend_to_i64, field_byte_offset, fold_binary, fold_cast,
-    fold_unary, input_runtime_ir, instruction_name, integer_kind, is_unsigned,
-    parse_float_constant, parse_integer, render_float, render_llvm_integer, sanitize_symbol,
-    static_global_name, unsupported_call_detail, unsupported_instruction,
-    unsupported_instruction_detail,
+    class_init_flag, coerce_return_operand, coerce_to_type, escape_llvm, extend_to_i64,
+    fold_binary, fold_cast, fold_unary, input_runtime_ir, instruction_name, integer_kind,
+    is_canonical_timezone, is_unsigned, parse_float_constant, parse_integer, render_float,
+    render_llvm_integer, sanitize_symbol, static_global_name, string_byte_length_ir,
+    unsupported_call_detail, unsupported_instruction, unsupported_instruction_detail,
+};
+use layout::{
+    OBJECT_HEADER_BYTES, class_instance_bytes, field_byte_offset, field_type, is_struct_type,
+    struct_copy_supported, vector_field_offsets,
 };
 #[cfg(test)]
 mod tests {

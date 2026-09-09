@@ -1,0 +1,5 @@
+// UNSUPPORTED: Visitor requires overload-based double dispatch. Basic Next
+// does not currently support method overloading by parameter type.
+FUNCTION Start() AS VOID
+    PRINT "UNSUPPORTED: overload-based double dispatch is not available"
+END FUNCTION

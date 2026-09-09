@@ -9,6 +9,7 @@ pub(crate) fn lower_terminator(
     text: &mut String,
     terminator: &Terminator,
     analysis: &LoweringAnalysis<'_>,
+    symbols: &HashMap<SymbolId, usize>,
     _block_state: &mut BlockState,
     state: &mut EmissionState,
 ) {
@@ -29,9 +30,11 @@ pub(crate) fn lower_terminator(
             );
         }
         Terminator::Return { value: None } if state.is_start => {
+            cleanup_owned_memory(text, analysis, symbols, state);
             text.push_str("  ret i32 0\n");
         }
         Terminator::Return { value: None } if state.return_llvm == "void" => {
+            cleanup_owned_memory(text, analysis, symbols, state);
             text.push_str("  ret void\n");
         }
         Terminator::Return { value: None } => {
@@ -43,15 +46,23 @@ pub(crate) fn lower_terminator(
                 *value,
                 analysis.values.get(value).expect("validated stop type"),
             );
+            cleanup_owned_memory(text, analysis, symbols, state);
             let _ = writeln!(text, "  call void @exit(i32 {operand})");
             text.push_str("  unreachable\n");
         }
         Terminator::Return { value: Some(value) } if !state.is_start => {
             if state.return_llvm == "void" {
+                cleanup_owned_memory(text, analysis, symbols, state);
                 text.push_str("  ret void\n");
             } else {
                 let value_ty = analysis.values.get(value).expect("validated return type");
-                let operand = if llvm_type(value_ty) == Some(state.return_llvm) {
+                let operand = if state.return_llvm == "{ i1, ptr, i64 }"
+                    && matches!(value_ty, Type::Integer(_) | Type::IntegerLiteral(_))
+                {
+                    integer_error_union_return_operand(text, *value, value_ty)
+                } else if state.return_llvm == "{ i1, i32 }" {
+                    optional_integer_return_operand(text, *value, value_ty)
+                } else if llvm_type(value_ty) == Some(state.return_llvm) {
                     format!("%v{}", value.0)
                 } else if matches!(state.return_llvm, "i8" | "i16" | "i32" | "i64")
                     && matches!(llvm_type(value_ty), Some("i8" | "i16" | "i32" | "i64"))
@@ -70,6 +81,7 @@ pub(crate) fn lower_terminator(
                 } else {
                     format!("%v{}", value.0)
                 };
+                cleanup_owned_memory(text, analysis, symbols, state);
                 let _ = writeln!(text, "  ret {} {operand}", state.return_llvm);
             }
         }
@@ -79,8 +91,198 @@ pub(crate) fn lower_terminator(
                 *value,
                 analysis.values.get(value).expect("validated return type"),
             );
+            cleanup_owned_memory(text, analysis, symbols, state);
             let _ = writeln!(text, "  ret i32 {operand}");
         }
+    }
+}
+
+fn integer_error_union_return_operand(text: &mut String, value: ValueId, ty: &Type) -> String {
+    let payload = coerce_to_type(text, value, ty, &Type::Integer(IntegerType::Int64));
+    let _ = writeln!(
+        text,
+        "  %retuniontag{} = insertvalue {{ i1, ptr, i64 }} undef, i1 false, 0",
+        value.0
+    );
+    let _ = writeln!(
+        text,
+        "  %retunionmessage{} = insertvalue {{ i1, ptr, i64 }} %retuniontag{}, ptr null, 1",
+        value.0, value.0
+    );
+    let _ = writeln!(
+        text,
+        "  %retunion{} = insertvalue {{ i1, ptr, i64 }} %retunionmessage{}, i64 {payload}, 2",
+        value.0, value.0
+    );
+    format!("%retunion{}", value.0)
+}
+
+fn lower_print_language_error_union(
+    text: &mut String,
+    value: ValueId,
+    integer_value: bool,
+    void_value: bool,
+    scalar: Option<&Type>,
+    state: &mut EmissionState,
+) {
+    let count = state.print_count;
+    let _ = writeln!(
+        text,
+        "  %unionerror{count} = extractvalue {{ i1, ptr, i64 }} %v{}, 0",
+        value.0
+    );
+    let _ = writeln!(
+        text,
+        "  %unionmessage{count} = extractvalue {{ i1, ptr, i64 }} %v{}, 1",
+        value.0
+    );
+    let _ = writeln!(
+        text,
+        "  %unionpayload{count} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+        value.0
+    );
+    let _ = writeln!(
+        text,
+        "  br i1 %unionerror{count}, label %unionerr{count}, label %unionvalue{count}"
+    );
+    state.control_flow.label(text, format!("unionerr{count}"));
+    let _ = writeln!(
+        text,
+        "  %unionerrprint{count} = call i32 (ptr, ...) @printf(ptr @.bn_fmt_error, i64 %unionpayload{count}, ptr %unionmessage{count})"
+    );
+    let _ = writeln!(text, "  br label %unionjoin{count}");
+    state.control_flow.label(text, format!("unionvalue{count}"));
+    if scalar.is_some() {
+        let _ = writeln!(
+            text,
+            "  %unionnaptr{count} = getelementptr [3 x i8], ptr @.bn_na, i64 0, i64 0"
+        );
+        let _ = writeln!(
+            text,
+            "  %unionisna{count} = icmp eq ptr %unionmessage{count}, %unionnaptr{count}"
+        );
+        let _ = writeln!(
+            text,
+            "  br i1 %unionisna{count}, label %unionna{count}, label %unionpresent{count}"
+        );
+        state.control_flow.label(text, format!("unionna{count}"));
+        let _ = writeln!(
+            text,
+            "  call i32 (ptr, ...) @printf(ptr @.bn_fmt_str, ptr %unionnaptr{count})"
+        );
+        let _ = writeln!(text, "  br label %unionjoin{count}");
+        state
+            .control_flow
+            .label(text, format!("unionpresent{count}"));
+    }
+    if matches!(scalar, Some(Type::Float(_))) {
+        let _ = writeln!(
+            text,
+            "  %unionfloat{count} = bitcast i64 %unionpayload{count} to double"
+        );
+        let _ = writeln!(
+            text,
+            "  call void @bn_rt_print_float(double %unionfloat{count})"
+        );
+    } else if matches!(scalar, Some(Type::Boolean)) {
+        let _ = writeln!(
+            text,
+            "  %unionbool{count} = icmp ne i64 %unionpayload{count}, 0"
+        );
+        let _ = writeln!(
+            text,
+            "  %unionboolstr{count} = select i1 %unionbool{count}, ptr @.bn_true, ptr @.bn_false"
+        );
+        let _ = writeln!(
+            text,
+            "  call i32 (ptr, ...) @printf(ptr @.bn_fmt_str, ptr %unionboolstr{count})"
+        );
+    } else if integer_value || matches!(scalar, Some(Type::Integer(_))) {
+        let _ = writeln!(
+            text,
+            "  %unionintprint{count} = call i32 (ptr, ...) @printf(ptr @.bn_fmt_int, i64 %unionpayload{count})"
+        );
+    } else if void_value {
+        let _ = writeln!(
+            text,
+            "  %unionnullprint{count} = call i32 (ptr, ...) @printf(ptr @.bn_fmt_str, ptr @.bn_null)"
+        );
+    } else {
+        let _ = writeln!(
+            text,
+            "  %unionstrprint{count} = call i32 (ptr, ...) @printf(ptr @.bn_fmt_str, ptr %unionmessage{count})"
+        );
+    }
+    let _ = writeln!(text, "  br label %unionjoin{count}");
+    state.control_flow.label(text, format!("unionjoin{count}"));
+    state.print_count += 1;
+}
+
+pub(crate) fn cleanup_owned_memory(
+    text: &mut String,
+    analysis: &LoweringAnalysis<'_>,
+    symbols: &HashMap<SymbolId, usize>,
+    state: &mut EmissionState,
+) {
+    let cleanup = state.input_cleanup_count;
+    state.input_cleanup_count += 1;
+    let mut input_symbols = analysis.input_symbols.iter().collect::<Vec<_>>();
+    input_symbols.sort_by_key(|symbol| symbol.0);
+    for symbol in input_symbols {
+        let slot = symbols[symbol];
+        let _ = writeln!(
+            text,
+            "  %inputfree{cleanup}_{slot} = load ptr, ptr %s{slot}"
+        );
+        let _ = writeln!(
+            text,
+            "  %inputfreeowned{cleanup}_{slot} = load i1, ptr %inputowned{slot}"
+        );
+        let _ = writeln!(
+            text,
+            "  %inputfreenull{cleanup}_{slot} = select i1 %inputfreeowned{cleanup}_{slot}, ptr %inputfree{cleanup}_{slot}, ptr null"
+        );
+        let _ = writeln!(
+            text,
+            "  call void @free(ptr %inputfreenull{cleanup}_{slot})"
+        );
+    }
+    let mut struct_results = analysis
+        .owned_struct_results
+        .iter()
+        .copied()
+        .collect::<Vec<_>>();
+    struct_results.sort_by_key(|value| value.0);
+    for value in struct_results {
+        let _ = writeln!(
+            text,
+            "  %structfree{cleanup}_{} = load ptr, ptr %structowned{}",
+            value.0, value.0
+        );
+        let _ = writeln!(
+            text,
+            "  call void @free(ptr %structfree{cleanup}_{})",
+            value.0
+        );
+    }
+    let mut log_results = analysis.owned_log_results.iter().collect::<Vec<_>>();
+    log_results.sort_by_key(|(value, _)| value.0);
+    for (value, kind) in log_results {
+        let symbol = if *kind == "Fields" {
+            "bn_rt_log_fields_close"
+        } else {
+            "bn_rt_log_logger_delete"
+        };
+        let _ = writeln!(
+            text,
+            "  %logfree{cleanup}_{} = load i64, ptr %logowned{}",
+            value.0, value.0
+        );
+        let _ = writeln!(
+            text,
+            "  %logfreerc{cleanup}_{} = call i32 @{symbol}(i64 %logfree{cleanup}_{})",
+            value.0, value.0
+        );
     }
 }
 
@@ -90,6 +292,42 @@ pub(crate) fn lower_print_value(
     ty: &Type,
     state: &mut EmissionState,
 ) {
+    if let Type::Alternative(alternatives) = ty
+        && (integer_or_error(alternatives)
+            || string_or_error(alternatives)
+            || void_or_error(alternatives)
+            || string_na_or_error(alternatives)
+            || scalar_na_or_error(alternatives))
+    {
+        lower_print_language_error_union(
+            text,
+            value,
+            integer_or_error(alternatives),
+            void_or_error(alternatives),
+            if string_na_or_error(alternatives) || scalar_na_or_error(alternatives) {
+                alternatives.iter().find(|ty| {
+                    matches!(
+                        ty,
+                        Type::Integer(_) | Type::Float(_) | Type::Boolean | Type::String
+                    )
+                })
+            } else {
+                None
+            },
+            state,
+        );
+        return;
+    }
+    if let Type::Vector {
+        element,
+        dimensions,
+    } = ty
+        && dimensions.len() == 1
+        && matches!(element.as_ref(), Type::Integer(IntegerType::Int32))
+    {
+        lower_print_int32_vector(text, value, dimensions[0], state);
+        return;
+    }
     if matches!(ty, Type::Named(name) if name == "DATE") {
         let _ = writeln!(text, "  call void @bn_rt_print_date(i32 %v{})", value.0);
         return;
@@ -112,6 +350,10 @@ pub(crate) fn lower_print_value(
         state.print_count += 1;
         return;
     }
+    if llvm_type(ty) == Some("{ i1, i32 }") {
+        lower_print_optional_integer(text, value, state);
+        return;
+    }
     if llvm_type(ty) == Some("{ i1, double }") {
         let count = state.print_count;
         let _ = writeln!(
@@ -128,19 +370,19 @@ pub(crate) fn lower_print_value(
             text,
             "  br i1 %optisna{count}, label %optna{count}, label %optnum{count}"
         );
-        let _ = writeln!(text, "optna{count}:");
+        state.control_flow.label(text, format!("optna{count}"));
         let _ = writeln!(
             text,
             "  %optnaprint{count} = call i32 (ptr, ...) @printf(ptr @.bn_fmt_str, ptr @.bn_na)"
         );
         let _ = writeln!(text, "  br label %optjoin{count}");
-        let _ = writeln!(text, "optnum{count}:");
+        state.control_flow.label(text, format!("optnum{count}"));
         let _ = writeln!(
             text,
             "  call void @bn_rt_print_float(double %optval{count})"
         );
         let _ = writeln!(text, "  br label %optjoin{count}");
-        let _ = writeln!(text, "optjoin{count}:");
+        state.control_flow.label(text, format!("optjoin{count}"));
         return;
     }
     match llvm_type(ty).expect("validated print type") {
@@ -210,6 +452,104 @@ pub(crate) fn lower_print_value(
     state.print_count += 1;
 }
 
+fn lower_print_int32_vector(
+    text: &mut String,
+    value: ValueId,
+    length: u64,
+    state: &mut EmissionState,
+) {
+    let vector = state.print_count;
+    let _ = writeln!(text, "  %vecopen{vector} = call i32 @putchar(i32 91)");
+    let _ = writeln!(
+        text,
+        "  %vecprintdata{vector} = extractvalue {{ ptr, i32 }} %v{}, 0",
+        value.0
+    );
+    state.print_count += 1;
+    for index in 0..length {
+        let item = state.print_count;
+        if index > 0 {
+            let _ = writeln!(text, "  %veccomma{item} = call i32 @putchar(i32 44)");
+            let _ = writeln!(text, "  %vecspace{item} = call i32 @putchar(i32 32)");
+        }
+        let _ = writeln!(
+            text,
+            "  %vecitemptr{item} = getelementptr i32, ptr %vecprintdata{vector}, i64 {index}"
+        );
+        let _ = writeln!(text, "  %vecitem{item} = load i32, ptr %vecitemptr{item}");
+        let _ = writeln!(text, "  %vecitem64_{item} = sext i32 %vecitem{item} to i64");
+        let _ = writeln!(
+            text,
+            "  %vecprint{item} = call i32 (ptr, ...) @printf(ptr @.bn_fmt_int, i64 %vecitem64_{item})"
+        );
+        state.print_count += 1;
+    }
+    let close = state.print_count;
+    let _ = writeln!(text, "  %vecclose{close} = call i32 @putchar(i32 93)");
+    state.print_count += 1;
+}
+
+fn optional_integer_return_operand(text: &mut String, value: ValueId, ty: &Type) -> String {
+    if llvm_type(ty) == Some("{ i1, i32 }") {
+        return format!("%v{}", value.0);
+    }
+
+    let is_null = matches!(ty, Type::Null);
+    let payload = if is_null {
+        "0".to_string()
+    } else {
+        coerce_to_type(text, value, ty, &Type::Integer(IntegerType::Int32))
+    };
+    let tag = u8::from(is_null);
+    let _ = writeln!(
+        text,
+        "  %retopttag{} = insertvalue {{ i1, i32 }} undef, i1 {tag}, 0",
+        value.0
+    );
+    let _ = writeln!(
+        text,
+        "  %retopt{} = insertvalue {{ i1, i32 }} %retopttag{}, i32 {payload}, 1",
+        value.0, value.0
+    );
+    format!("%retopt{}", value.0)
+}
+
+fn lower_print_optional_integer(text: &mut String, value: ValueId, state: &mut EmissionState) {
+    let count = state.print_count;
+    let _ = writeln!(
+        text,
+        "  %optisnull{count} = extractvalue {{ i1, i32 }} %v{}, 0",
+        value.0
+    );
+    let _ = writeln!(
+        text,
+        "  %optintval{count} = extractvalue {{ i1, i32 }} %v{}, 1",
+        value.0
+    );
+    let _ = writeln!(
+        text,
+        "  br i1 %optisnull{count}, label %optnull{count}, label %optint{count}"
+    );
+    state.control_flow.label(text, format!("optnull{count}"));
+    let _ = writeln!(
+        text,
+        "  %optnullprint{count} = call i32 (ptr, ...) @printf(ptr @.bn_fmt_str, ptr @.bn_null)"
+    );
+    let _ = writeln!(text, "  br label %optintjoin{count}");
+    state.control_flow.label(text, format!("optint{count}"));
+    let _ = writeln!(
+        text,
+        "  %optintwide{count} = sext i32 %optintval{count} to i64"
+    );
+    let _ = writeln!(
+        text,
+        "  %optintprint{count} = call i32 (ptr, ...) @printf(ptr @.bn_fmt_int, i64 %optintwide{count})"
+    );
+    let _ = writeln!(text, "  br label %optintjoin{count}");
+    state.control_flow.label(text, format!("optintjoin{count}"));
+    state.print_count += 1;
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_checked_integer_op(
     text: &mut String,
@@ -255,7 +595,7 @@ pub(crate) fn emit_checked_integer_op(
         "  br i1 %ovf{}, label %trap_numeric_overflow, label %{continuation}",
         destination.0
     );
-    let _ = writeln!(text, "{continuation}:");
+    state.control_flow.label(text, continuation.clone());
     state.needs_numeric_overflow_trap = true;
 }
 

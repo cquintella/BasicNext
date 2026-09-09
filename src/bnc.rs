@@ -19,6 +19,7 @@ enum Profile {
 }
 
 #[derive(Debug)]
+#[allow(clippy::struct_excessive_bools)]
 struct BncOptions {
     entry: String,
     profile: Profile,
@@ -40,6 +41,9 @@ struct BncOptions {
     quiet: bool,
     verbose: u8,
     no_filesystem: bool,
+    sandbox: bool,
+    read_roots: Vec<String>,
+    write_roots: Vec<String>,
     warnings: Option<String>,
     allows: Vec<String>,
     warns: Vec<String>,
@@ -82,6 +86,9 @@ General options:
   --log-dir <dir>                  Directory for process logs
   --no-log                         Disable companion process log file
   --no-filesystem                  Deny HOST.FileSystem imports (interpret)
+  --sandbox                         Opt into filesystem root restrictions
+  --read-root <dir>                 Allow reads below a sandbox root (repeatable)
+  --write-root <dir>                Allow writes below a sandbox root (repeatable)
   -q, --quiet                      Quiet mode (equivalent to --log-level warning)
   -v, --verbose                    Verbose mode (can be repeated)
   --color <auto|always|never>      Control ANSI color output
@@ -134,6 +141,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<BncOptions, String> 
     let mut quiet = false;
     let mut verbose = 0u8;
     let mut no_filesystem = false;
+    let mut sandbox = false;
+    let mut read_roots = Vec::new();
+    let mut write_roots = Vec::new();
     let mut warnings = None;
     let mut allows = Vec::new();
     let mut warns = Vec::new();
@@ -227,6 +237,13 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<BncOptions, String> 
             "--no-filesystem" => {
                 no_filesystem = true;
             }
+            "--sandbox" => sandbox = true,
+            "--read-root" => {
+                read_roots.push(args.next().ok_or("--read-root requires a directory")?);
+            }
+            "--write-root" => {
+                write_roots.push(args.next().ok_or("--write-root requires a directory")?);
+            }
             "--warnings" => {
                 let val = args.next().ok_or("--warnings requires a mode")?;
                 warnings = Some(val);
@@ -273,6 +290,12 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<BncOptions, String> 
         Profile::Interpret
     };
 
+    if sandbox && no_filesystem {
+        return Err("--sandbox cannot be combined with --no-filesystem".into());
+    }
+    if (!read_roots.is_empty() || !write_roots.is_empty()) && !sandbox {
+        return Err("--read-root/--write-root require --sandbox".into());
+    }
     Ok(BncOptions {
         entry,
         profile,
@@ -291,6 +314,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<BncOptions, String> 
         quiet,
         verbose,
         no_filesystem,
+        sandbox,
+        read_roots,
+        write_roots,
         warnings,
         allows,
         warns,
@@ -393,6 +419,15 @@ fn build_bn_command(options: &BncOptions) -> Command {
     // Filesystem capability
     if options.no_filesystem {
         cmd.arg("--no-filesystem");
+    }
+    if options.sandbox {
+        cmd.arg("--sandbox");
+        for root in &options.read_roots {
+            cmd.arg("--read-root").arg(root);
+        }
+        for root in &options.write_roots {
+            cmd.arg("--write-root").arg(root);
+        }
     }
 
     // Warning policy

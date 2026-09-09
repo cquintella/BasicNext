@@ -125,7 +125,7 @@ dynamic dimension).
 
 | Item | Status |
 | --- | --- |
-| Full operand-field inventory on every `Instruction` variant | Audited in `instruction_uses`; keep exhaustive match synchronized with model changes |
+| Full operand-field inventory on every `Instruction` variant | Complete and compiler-enforced by the exhaustive `instruction_uses` match; new indexed field/static stores are covered |
 | Explicit `Instruction::Phi` in `ir/model` + lowering | AQ-20 **implemented** for the scalar subset; target-specific coverage remains matrix-owned |
 | Formal op catalog + IR-owned type system (no `semantic::`) | Types moved to `bn_types` / `bn_ir`; **op catalog** still incomplete; packaging GC-DEP remains |
 | Historical “block-order HashSet” bug | **Fixed** — do not cite as current behaviour |
@@ -218,7 +218,7 @@ Before claiming “well-formed IR to both backends” for a release slice:
 - [x] CFG-based definite assignment MVP implemented (`src/ir/validate.rs` fixed-point)
 - [x] Negative fixtures seed: diamond one-branch; undefined prompt; undefined dynamic dimension (`tests/validated_ir.rs`)
 - [ ] Broader negative set (loop-carried gap; richer joins) as slice grows
-- [x] `instruction_uses` for Input.prompt + Default.dynamic_dimensions; [ ] full Instruction audit
+- [x] Full exhaustive `instruction_uses` audit, including `Input.prompt`, `Default.dynamic_dimensions`, and every indexed-store operand
 - [x] Document which merge/`φ` form the IR uses — **explicit `Phi`** (AQ-20 locked)
 - [x] Implement `Instruction::Phi` + validate/lowering emission where needed for the scalar LLVM subset; target-specific unsupported cases remain matrix-owned.
 
@@ -249,6 +249,9 @@ operation can be valid BN IR while remaining unsupported by a backend.
 | `Index` | `destination` | `object`, `index` | Reads an indexed value; bounds/type checks are language/runtime rules. |
 | `Member` | `destination` | `object` | Reads a member; owner/name identity must resolve. |
 | `SetIndex` | — | `indices`, `value` | Mutates indexed storage; every index and the assigned value are operands. |
+| `SetMemberIndex` | — | `object`, `indices`, `value` | Mutates indexed storage owned by an object identity; the receiver and at least one integer index are required. |
+| `SetFieldIndex` | — | `indices`, `value` | Mutates an indexed field path rooted in a binding, preserving struct value semantics. |
+| `SetStaticIndex` | — | `indices`, `value` | Mutates indexed static storage after class initialization. |
 | `Length` | `destination` | `vector` | Pure shape/length query. |
 | `SizeOf` | `destination` | `value` | Pure static-size query for the value/type model. |
 | `Print` | — | `values` | Console effect; every printed value is an operand. |
@@ -260,6 +263,10 @@ operation can be valid BN IR while remaining unsupported by a backend.
 | `EnsureClass` | — | — | Ensures static class initialization; class identity must resolve. |
 | `LoadStatic` | `destination` | — | Reads a static class field; class/field/type must resolve. |
 | `StoreStatic` | — | `value` | Writes a static class field; class/field/type must resolve. |
+
+`Module.class_bases` carries fully qualified direct-base identities. It is
+language IR metadata, has no frontend type dependency, must be acyclic, and
+allows backends to lay out inherited fields in base-to-derived order.
 
 The control-flow terminators are `Jump { target }`, `Branch { condition,
 then_block, else_block }`, `Return { value }`, and `Stop { code }`. `Jump` and

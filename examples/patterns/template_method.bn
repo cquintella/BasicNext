@@ -1,0 +1,21 @@
+// GoF Template Method: the base algorithm fixes the steps and calls a hook.
+CLASS ReportTemplate
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Build(value AS INTEGER) AS INTEGER
+        RETURN SELF.Prepare(value) + SELF.Finish(value)
+    END FUNCTION
+
+    PUBLIC FUNCTION Prepare(value AS INTEGER) AS INTEGER
+        RETURN value
+    END FUNCTION
+
+    PUBLIC FUNCTION Finish(value AS INTEGER) AS INTEGER
+        RETURN value
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET report AS ReportTemplate = NEW ReportTemplate()
+    PRINT report.Build(4)
+END FUNCTION

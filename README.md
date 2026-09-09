@@ -3,7 +3,7 @@
 ![Basic Next Logo](docs/logo.svg)
 
 [![Rust CI](https://img.shields.io/badge/Rust_CI-passing-brightgreen)](#)
-[![Version](https://img.shields.io/badge/version-v0.4.4-blue)](#)
+[![Version](https://img.shields.io/badge/version-v0.4.7-blue)](#)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE.md)
 
 An object-oriented, general-purpose programming language designed to reduce
@@ -30,13 +30,13 @@ only after the corresponding semantics have been defined and reviewed.
 Read [PHILOSOPHY.md](PHILOSOPHY.md) for the mission, vision, and complete set
 of design principles.
 
-## 🚀 Status: Version 0.4.4 release-ready
+## 🚀 Status: Version 0.4.7 release candidate
 
-The Basic Next 0.4.4 release extends the Rust reference frontend, typed IR
+The Basic Next 0.4.7 release candidate extends the Rust reference frontend, typed IR
 interpreter, HOST capabilities, external BN modules, HTTP hardening, bounded
 async runtime, debugger bridge, and notebook tooling. Read the
 [0.4.2 release notes](done/0.4.2-release-news.md) for the complete summary.
-BNDispatch native-provider conformance includes the 0.4.4 lifecycle,
+BNDispatch native-provider conformance includes lifecycle,
 synchronization, isolation, and networking corrections; see the [recovery
 design](docs/superpowers/specs/2026-09-02-bndispatch-recovery-design.md).
 The active [`ongoing/bucket.md`](ongoing/bucket.md) records the delivery gates;
@@ -45,6 +45,34 @@ the archived 0.2 program remains in [`archive/project/bucket-0.2.md`](archive/pr
 > **Note:** `bn build` is available for its supported typed-IR subset. The
 > interpreter remains the reference implementation for language surfaces
 > outside that subset.
+
+## What's New — 0.4.7
+
+The 0.4.7 delivery train strengthens the native LLVM path while keeping the
+typed BN IR validation boundary shared by `bn run` and `bn build`.
+
+- The compiler capability catalog now covers the complete `examples/*.bn`
+  roster. Supported fixtures are built and exercised as native artifacts; any
+  remaining target limitation must use a stable `TARGET_UNSUPPORTED_*`
+  diagnostic rather than masquerading as a language error.
+- Native lowering and parity coverage expanded across calls and returns,
+  counted loops, collections, nullable integers, object layout and inheritance,
+  indexed assignment, input/EOF behavior, and selected HOST and standard-module
+  surfaces.
+- Compiled filesystem policy now carries sandbox roots into `bn_rt`, where it
+  is re-checked at the file boundary. `BN_FS_POLICY=deny` and `read-only` can
+  only narrow interpreter or compiled-artifact access.
+- Rooted filesystem access is hardened against symlink replacement races on
+  Unix through pinned directory descriptors with `openat`/`O_NOFOLLOW` and
+  `unlinkat`; platforms without that primitive deny rooted access.
+- The ABI index now checks that every LLVM-declared `bn_rt` function is both
+  exported by the runtime archive and documented in the value/memory contract.
+
+See the [0.4.7 closeout evidence](docs/superpowers/evidence/2026-09-07-0.4.7-closeout.md),
+[capability catalog](tests/compiler-capabilities.json), and
+[filesystem-policy evidence](docs/superpowers/evidence/2026-09-09-0.4.7-g797-environment-policy.md).
+The release tag remains subject to the formal closeout commit and BDFL release
+acceptance.
 
 ## 🎯 Active implementation
 

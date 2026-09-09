@@ -75,6 +75,9 @@ pub(crate) fn parse_options(arguments: impl Iterator<Item = String>) -> Result<O
     let mut color = Color::Auto;
     let mut target = Target::Native;
     let mut filesystem = true;
+    let mut sandbox = false;
+    let mut read_roots = Vec::new();
+    let mut write_roots = Vec::new();
     let mut jupyter_stdin = false;
     let mut program_arguments = Vec::new();
     let mut optimization = Optimization::Level(2);
@@ -93,6 +96,19 @@ pub(crate) fn parse_options(arguments: impl Iterator<Item = String>) -> Result<O
             "-vv" => verbosity = 2,
             "--trace" => trace = true,
             "--no-filesystem" => filesystem = false,
+            "--sandbox" => sandbox = true,
+            "--read-root" => read_roots.push(PathBuf::from(
+                arguments
+                    .next()
+                    .filter(|v| !v.starts_with('-'))
+                    .ok_or("--read-root expects a directory".to_string())?,
+            )),
+            "--write-root" => write_roots.push(PathBuf::from(
+                arguments
+                    .next()
+                    .filter(|v| !v.starts_with('-'))
+                    .ok_or("--write-root expects a directory".to_string())?,
+            )),
             "--jupyter-stdin" => jupyter_stdin = true,
             "--config" => {
                 let _ = arguments
@@ -193,6 +209,12 @@ pub(crate) fn parse_options(arguments: impl Iterator<Item = String>) -> Result<O
             _ => return Err(format!("unknown or repeated option '{argument}'")),
         }
     }
+    if sandbox && !filesystem {
+        return Err("--sandbox cannot be combined with --no-filesystem".into());
+    }
+    if (!read_roots.is_empty() || !write_roots.is_empty()) && !sandbox {
+        return Err("--read-root/--write-root require --sandbox".into());
+    }
     path.map(|path| Options {
         path,
         verbosity,
@@ -202,6 +224,9 @@ pub(crate) fn parse_options(arguments: impl Iterator<Item = String>) -> Result<O
         color,
         target,
         filesystem,
+        sandbox,
+        read_roots,
+        write_roots,
         jupyter_stdin,
         program_arguments,
         optimization,

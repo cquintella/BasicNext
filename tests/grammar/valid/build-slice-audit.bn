@@ -1,0 +1,18 @@
+IMPORT BNData AS Data
+
+FUNCTION Start() AS VOID
+    LET table AS Data.DataFrame = NEW Data.DataFrame()
+    table.AddIntegerColumn("x", [10, 20])
+    LET huge AS Data.DataFrame OR Error = table.Slice(0, 2147483647, 0, 1)
+    PRINT huge IS Error
+    LET negative AS Data.DataFrame OR Error = table.Slice(-1, 1, 0, 1)
+    PRINT negative IS Error
+    LET valid AS Data.DataFrame OR Error = table.Slice(1, 1, 0, 1)
+    IF valid IS Error THEN
+        PRINT "unexpected-error"
+    ELSE
+        PRINT valid.GetInteger(0, "x")
+        DELETE valid
+    END IF
+    DELETE table
+END FUNCTION

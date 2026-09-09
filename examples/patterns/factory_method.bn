@@ -1,0 +1,22 @@
+// GoF Factory Method: the creator method centralizes product construction.
+CLASS Product
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC value AS INTEGER = 0
+END CLASS
+
+CLASS ProductFactory
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Create(value AS INTEGER) AS Product
+        LET product AS Product = NEW Product()
+        product.value = value
+        RETURN product
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET factory AS ProductFactory = NEW ProductFactory()
+    LET product AS Product = factory.Create(8)
+    PRINT product.value
+END FUNCTION

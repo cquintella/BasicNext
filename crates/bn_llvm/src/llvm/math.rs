@@ -59,17 +59,48 @@ declare i64 @bn_rt_math_totimestamp(i32, i32)
 
 pub(crate) fn bnmath_method<'a>(module: &Module, name: &'a str) -> Option<&'a str> {
     let method = name.rsplit('.').next()?;
-    let module_id = name
-        .strip_prefix('#')?
-        .split('.')
-        .next()?
-        .parse::<u32>()
-        .ok()?;
-    module
-        .bnmath_providers
-        .iter()
-        .any(|provider| provider.0 == module_id)
-        .then_some(method)
+    (!module.bnmath_providers.is_empty()
+        && matches!(
+            method,
+            "VAL"
+                | "TOHOUR"
+                | "TOWEEKDAY"
+                | "TODATE"
+                | "TOTIME"
+                | "TOTIMESTAMP"
+                | "ABS"
+                | "SIGN"
+                | "FLOOR"
+                | "CEIL"
+                | "TRUNC"
+                | "EXP"
+                | "LOG"
+                | "LOG10"
+                | "LOG2"
+                | "SIN"
+                | "COS"
+                | "TAN"
+                | "ASIN"
+                | "ACOS"
+                | "ATAN"
+                | "SQRT"
+                | "MIN"
+                | "MAX"
+                | "MEAN"
+                | "MEDIAN"
+                | "QUARTILE1"
+                | "QUARTILE3"
+                | "RANGE"
+                | "STDEV"
+                | "VARIANCE"
+                | "MODE"
+                | "POW"
+                | "ATAN2"
+                | "HYPOT"
+                | "ROUND"
+                | "FMA"
+        ))
+    .then_some(method)
 }
 
 pub(crate) fn bnmath_call_supported(
@@ -122,7 +153,9 @@ fn is_f64_vector(ty: &Type) -> bool {
 }
 
 fn is_supported_numeric_vector(ty: &Type) -> bool {
-    is_int_vector(ty) || is_f64_vector(ty)
+    is_int_vector(ty)
+        || is_f64_vector(ty)
+        || matches!(ty, Type::Pointer { element, .. } if matches!(element.as_ref(), Type::Integer(_) | Type::Float(_)))
 }
 
 fn numeric_arg(ty: &Type) -> bool {
@@ -210,6 +243,12 @@ fn lower_vector_math(
     vector_ty: &Type,
 ) {
     let dest = destination.0;
+    let float_vector = match vector_ty {
+        Type::Pointer { element, .. } => {
+            matches!(element.as_ref(), Type::Float(FloatType::Float64))
+        }
+        _ => is_f64_vector(vector_ty),
+    };
     let _ = writeln!(
         text,
         "  %statptr{dest} = extractvalue {{ ptr, i32 }} %v{}, 0",
@@ -220,18 +259,18 @@ fn lower_vector_math(
         "  %statlen{dest} = extractvalue {{ ptr, i32 }} %v{}, 1",
         vector.0
     );
-    let float_vector = is_f64_vector(vector_ty);
+    let length = format!("%statlen{dest}");
     match method {
         "MIN" => {
             if float_vector {
                 let _ = writeln!(
                     text,
-                    "  %v{dest} = call double @bn_rt_math_vmin_f64(ptr %statptr{dest}, i32 %statlen{dest})"
+                    "  %v{dest} = call double @bn_rt_math_vmin_f64(ptr %statptr{dest}, i32 {length})"
                 );
             } else {
                 let _ = writeln!(
                     text,
-                    "  %v{dest} = call i32 @bn_rt_math_vmin_i32(ptr %statptr{dest}, i32 %statlen{dest})"
+                    "  %v{dest} = call i32 @bn_rt_math_vmin_i32(ptr %statptr{dest}, i32 {length})"
                 );
             }
         }
@@ -239,12 +278,12 @@ fn lower_vector_math(
             if float_vector {
                 let _ = writeln!(
                     text,
-                    "  %v{dest} = call double @bn_rt_math_vmax_f64(ptr %statptr{dest}, i32 %statlen{dest})"
+                    "  %v{dest} = call double @bn_rt_math_vmax_f64(ptr %statptr{dest}, i32 {length})"
                 );
             } else {
                 let _ = writeln!(
                     text,
-                    "  %v{dest} = call i32 @bn_rt_math_vmax_i32(ptr %statptr{dest}, i32 %statlen{dest})"
+                    "  %v{dest} = call i32 @bn_rt_math_vmax_i32(ptr %statptr{dest}, i32 {length})"
                 );
             }
         }
@@ -257,7 +296,7 @@ fn lower_vector_math(
             };
             let _ = writeln!(
                 text,
-                "  %modena{dest} = call i32 @{intrinsic}(ptr %statptr{dest}, i32 %statlen{dest}, ptr %modeout{dest})"
+                "  %modena{dest} = call i32 @{intrinsic}(ptr %statptr{dest}, i32 {length}, ptr %modeout{dest})"
             );
             let _ = writeln!(text, "  %modeis{dest} = icmp ne i32 %modena{dest}, 0");
             let _ = writeln!(text, "  %modeval{dest} = load double, ptr %modeout{dest}");
@@ -289,7 +328,7 @@ fn lower_vector_math(
             };
             let _ = writeln!(
                 text,
-                "  %v{dest} = call double @{intrinsic}(ptr %statptr{dest}, i32 %statlen{dest})"
+                "  %v{dest} = call double @{intrinsic}(ptr %statptr{dest}, i32 {length})"
             );
         }
         _ => unreachable!("validated vector BNMath"),

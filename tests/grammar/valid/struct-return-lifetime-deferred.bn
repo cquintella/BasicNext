@@ -1,0 +1,14 @@
+STRUCT Token
+END STRUCT
+
+FUNCTION MakeToken() AS Token
+    LET token AS Token
+    RETURN token
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET token AS Token = MakeToken()
+    IF token IS Token THEN
+        PRINT "ok"
+    END IF
+END FUNCTION

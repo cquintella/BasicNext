@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use bn_source::{Position, Revision, SourceId, Span};
 use bn_types::{IntegerType, Type};
 
 use super::{Diagnostic, Module, Terminator, invalid_ir};
@@ -27,6 +28,9 @@ fn instruction_defines(instruction: &super::Instruction) -> Option<super::ValueI
         | super::Instruction::LoadStatic { destination, .. } => Some(*destination),
         super::Instruction::Store { .. }
         | super::Instruction::SetIndex { .. }
+        | super::Instruction::SetMemberIndex { .. }
+        | super::Instruction::SetFieldIndex { .. }
+        | super::Instruction::SetStaticIndex { .. }
         | super::Instruction::SetMember { .. }
         | super::Instruction::SetField { .. }
         | super::Instruction::Print { .. }
@@ -38,7 +42,9 @@ fn instruction_defines(instruction: &super::Instruction) -> Option<super::ValueI
     }
 }
 
-fn instruction_uses(instruction: &super::Instruction) -> Vec<super::ValueId> {
+/// Enumerates every SSA operand read by an instruction.
+#[must_use]
+pub fn instruction_uses(instruction: &super::Instruction) -> Vec<super::ValueId> {
     match instruction {
         super::Instruction::Copy { source, .. }
         | super::Instruction::Unary {
@@ -85,8 +91,21 @@ fn instruction_uses(instruction: &super::Instruction) -> Vec<super::ValueId> {
         | super::Instruction::Beep {
             console: object, ..
         } => vec![*object],
-        super::Instruction::SetIndex { indices, value, .. } => {
+        super::Instruction::SetIndex { indices, value, .. }
+        | super::Instruction::SetFieldIndex { indices, value, .. }
+        | super::Instruction::SetStaticIndex { indices, value, .. } => {
             let mut used = indices.clone();
+            used.push(*value);
+            used
+        }
+        super::Instruction::SetMemberIndex {
+            object,
+            indices,
+            value,
+            ..
+        } => {
+            let mut used = vec![*object];
+            used.extend(indices.iter().copied());
             used.push(*value);
             used
         }
@@ -118,6 +137,7 @@ fn instruction_uses(instruction: &super::Instruction) -> Vec<super::ValueId> {
 /// Returns `INVALID_IR` when the module violates an IR structural or
 /// definite-assignment invariant.
 pub fn validate(module: &Module) -> Result<(), Diagnostic> {
+    validate_class_bases(module)?;
     for function in &module.functions {
         let block_count = u32::try_from(function.blocks.len())
             .map_err(|_| invalid_ir("function has too many basic blocks", function.span))?;
@@ -318,6 +338,58 @@ pub fn validate(module: &Module) -> Result<(), Diagnostic> {
     Ok(())
 }
 
+fn validate_class_bases(module: &Module) -> Result<(), Diagnostic> {
+    let span = module.functions.first().map_or_else(
+        || {
+            let position = Position {
+                source_id: SourceId::UNKNOWN,
+                revision: Revision::UNKNOWN,
+                offset: 0,
+                line: 1,
+                column: 1,
+            };
+            Span {
+                start: position,
+                end: position,
+            }
+        },
+        |function| function.span,
+    );
+    for (class, base) in &module.class_bases {
+        if class.is_empty() || base.is_empty() {
+            return Err(invalid_ir(
+                "class and base identities cannot be empty",
+                span,
+            ));
+        }
+        let mut seen = HashSet::new();
+        let mut current = class.as_str();
+        while let Some(parent) = module.class_bases.get(current) {
+            if !seen.insert(current) {
+                return Err(invalid_ir(
+                    "class inheritance metadata must be acyclic",
+                    span,
+                ));
+            }
+            current = parent;
+        }
+        for identity in [class, base] {
+            let fields = format!("{identity}.$fields");
+            if !module
+                .functions
+                .iter()
+                .any(|function| function.name == fields)
+            {
+                return Err(invalid_ir(
+                    format!("class layout metadata references missing class '{identity}'"),
+                    span,
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 struct PhiContext<'a> {
     predecessors: &'a [Vec<usize>],
     reachable: &'a [bool],
@@ -435,6 +507,9 @@ fn validate_instruction_types(
         | super::Instruction::SetField { value, ty, .. }
         | super::Instruction::StoreStatic { value, ty, .. }
         | super::Instruction::SetIndex { value, ty, .. }
+        | super::Instruction::SetMemberIndex { value, ty, .. }
+        | super::Instruction::SetFieldIndex { value, ty, .. }
+        | super::Instruction::SetStaticIndex { value, ty, .. }
             if value_types
                 .get(value)
                 .is_none_or(|value_type| !assignment_types_compatible(value_type, ty)) =>
@@ -629,6 +704,7 @@ fn validate_instruction_types(
         }
         super::Instruction::Member { name, owner, .. }
         | super::Instruction::SetMember { name, owner, .. }
+        | super::Instruction::SetMemberIndex { name, owner, .. }
             if name.is_empty() || owner.is_empty() =>
         {
             return Err(invalid_ir(
@@ -636,8 +712,20 @@ fn validate_instruction_types(
                 span,
             ));
         }
+        super::Instruction::SetMemberIndex { object, .. }
+            if !matches!(
+                value_types.get(object),
+                Some(Type::Named(_) | Type::ImportedNamed { .. })
+            ) =>
+        {
+            return Err(invalid_ir(
+                "indexed member store receiver must be an object identity",
+                span,
+            ));
+        }
         super::Instruction::LoadStatic { class, field, .. }
         | super::Instruction::StoreStatic { class, field, .. }
+        | super::Instruction::SetStaticIndex { class, field, .. }
             if class.is_empty() || field.is_empty() =>
         {
             return Err(invalid_ir(
@@ -658,6 +746,7 @@ fn validate_instruction_types(
             return Err(invalid_ir("destructor name cannot be empty", span));
         }
         super::Instruction::SetField { path, .. }
+        | super::Instruction::SetFieldIndex { path, .. }
             if path.is_empty() || path.iter().any(String::is_empty) =>
         {
             return Err(invalid_ir("field path cannot be empty", span));
@@ -678,11 +767,18 @@ fn validate_instruction_types(
             }
         }
         super::Instruction::SetIndex { indices, .. }
-            if indices
-                .iter()
-                .any(|index| !is_integer(value_types.get(index))) =>
+        | super::Instruction::SetMemberIndex { indices, .. }
+        | super::Instruction::SetFieldIndex { indices, .. }
+        | super::Instruction::SetStaticIndex { indices, .. }
+            if indices.is_empty()
+                || indices
+                    .iter()
+                    .any(|index| !is_integer(value_types.get(index))) =>
         {
-            return Err(invalid_ir("index must have an integer type", span));
+            return Err(invalid_ir(
+                "indexed store requires at least one integer index",
+                span,
+            ));
         }
         _ => {}
     }

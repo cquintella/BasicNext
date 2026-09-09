@@ -1,0 +1,5 @@
+// UNSUPPORTED: Flyweight requires an identity-keyed cache of shared objects;
+// the language has no map/dictionary type in the current surface.
+FUNCTION Start() AS VOID
+    PRINT "UNSUPPORTED: identity-keyed object cache is not available"
+END FUNCTION

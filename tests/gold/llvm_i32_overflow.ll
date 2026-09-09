@@ -3,10 +3,17 @@
 @.bn_fmt_uint = private unnamed_addr constant [5 x i8] c"%llu\00"
 @.bn_fmt_float = private unnamed_addr constant [6 x i8] c"%.17g\00"
 @.bn_fmt_str = private unnamed_addr constant [3 x i8] c"%s\00"
+@.bn_fmt_error = private unnamed_addr constant [16 x i8] c"Error(%lld, %s)\00"
+@.bn_asc_error = private unnamed_addr constant [32 x i8] c"ASC requires a non-empty STRING\00"
+@.bn_char_error = private unnamed_addr constant [34 x i8] c"CHAR code is not a Unicode scalar\00"
+@.bn_dataframe_error = private unnamed_addr constant [25 x i8] c"DataFrame column failure\00"
+@.bn_dataframe_duplicate = private unnamed_addr constant [22 x i8] c"duplicate column name\00"
+@.bn_dataframe_length = private unnamed_addr constant [23 x i8] c"column length mismatch\00"
+@.bn_dataframe_index = private unnamed_addr constant [27 x i8] c"column index out of bounds\00"
 @.bn_true = private unnamed_addr constant [5 x i8] c"TRUE\00"
 @.bn_false = private unnamed_addr constant [6 x i8] c"FALSE\00"
 @.bn_empty = private unnamed_addr constant [1 x i8] c"\00"
-@.bn_eof = private unnamed_addr constant [4 x i8] c"EOF\00"
+@.bn_eof = private constant [4 x i8] c"EOF\00"
 
 declare i32 @printf(ptr, ...)
 declare i32 @putchar(i32)

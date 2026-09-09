@@ -97,6 +97,42 @@ END FUNCTION
         assert_eq!(response.body, "isolated");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn filesystem_policy_open_cannot_be_redirected_after_root_configuration() {
+        use std::io::Read as _;
+
+        let temp_dir = std::env::temp_dir().join(format!(
+            "bn_symlink_race_test_{}",
+            std::process::id()
+        ));
+        let root = temp_dir.join("root");
+        let moved = temp_dir.join("configured-root");
+        let outside = temp_dir.join("outside");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(root.join("value.txt"), "inside").unwrap();
+        std::fs::write(outside.join("value.txt"), "outside").unwrap();
+        let policy = super::HostEnv::fixed(Vec::new(), 0, 0)
+            .with_filesystem_roots(vec![root.clone()], Vec::new())
+            .unwrap();
+        std::fs::rename(&root, &moved).unwrap();
+        std::os::unix::fs::symlink(&outside, &root).unwrap();
+
+        let mut text = String::new();
+        policy
+            .filesystem
+            .open(&root.join("value.txt"), bn_rt::secure_fs::OpenMode::Read)
+            .unwrap()
+            .read_to_string(&mut text)
+            .unwrap();
+        assert_eq!(text, "inside");
+        assert_eq!(std::fs::read_to_string(outside.join("value.txt")).unwrap(), "outside");
+        std::fs::remove_file(root).unwrap();
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
     #[test]
     fn system_random_seed_is_never_zero() {
         assert_ne!(host_random_seed(), 0);

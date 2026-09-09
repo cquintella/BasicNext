@@ -284,7 +284,13 @@ pub(crate) fn lower_instance_fields(
     let mut builder = Builder::new(model, method_names.clone(), prefix);
     builder.receiver = Some((SYNTHETIC_SELF, Type::Named(class_name.into())));
     let receiver = builder.load(SYNTHETIC_SELF, Type::Named(class_name.into()), span);
-    emit_field_inits(&mut builder, model, statements, receiver, class_name)?;
+    emit_field_inits(
+        &mut builder,
+        model,
+        statements,
+        receiver,
+        &qualified_class_name(prefix, class_name),
+    )?;
     if !builder.terminated() {
         builder.terminate(Terminator::Return { value: None });
     }
@@ -393,7 +399,13 @@ pub(crate) fn lower_struct_default(
         dynamic_dimensions: Vec::new(),
         span,
     });
-    emit_field_inits(&mut builder, model, statements, record, struct_name)?;
+    emit_field_inits(
+        &mut builder,
+        model,
+        statements,
+        record,
+        &qualified_class_name(prefix, struct_name),
+    )?;
     if !builder.terminated() {
         builder.terminate(Terminator::Return {
             value: Some(record),

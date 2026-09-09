@@ -1,0 +1,22 @@
+IMPORT BNData AS Data
+IMPORT HOST.FileSystem AS FS
+
+FUNCTION Start() AS VOID
+    LET file AS FS.File OR Error = FS.Open(HOST.Args[1], FS.READ)
+    IF file IS Error THEN
+        PRINT "open-error"
+        RETURN
+    END IF
+    LET table AS Data.DataFrame OR Error = Data.ReadCSV(file, HOST.Args[2] = "header", ",")
+    IF table IS Error THEN
+        PRINT "csv-error"
+    ELSE
+        PRINT table.RowCount(), table.ColumnCount()
+        IF table.RowCount() > 0 AND table.ColumnCount() > 0 THEN
+            PRINT table.GetString(0, "Column1")
+        END IF
+        DELETE table
+    END IF
+    file.Close()
+    DELETE file
+END FUNCTION

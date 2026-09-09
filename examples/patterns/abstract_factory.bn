@@ -1,0 +1,17 @@
+// GoF Abstract Factory: families are represented by a factory interface.
+INTERFACE WidgetFactory
+    FUNCTION Create() AS INTEGER
+END INTERFACE
+
+CLASS DarkWidgetFactory IMPLEMENTS WidgetFactory
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Create() AS INTEGER
+        RETURN 1
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET factory AS DarkWidgetFactory = NEW DarkWidgetFactory()
+    PRINT factory.Create()
+END FUNCTION

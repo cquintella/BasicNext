@@ -15,7 +15,7 @@ pub(crate) fn emit_integer_not(
             text,
             "  br i1 true, label %trap_numeric_overflow, label %{cont}"
         );
-        let _ = writeln!(text, "{cont}:");
+        state.control_flow.label(text, cont.clone());
         let _ = writeln!(text, "  %v{} = add {llvm_ty} 0, 0", destination.0);
         state.needs_numeric_overflow_trap = true;
         return;
@@ -65,7 +65,7 @@ pub(crate) fn emit_shift(
         text,
         "  br i1 %shbad{dest}, label %trap_numeric_overflow, label %{ok}"
     );
-    let _ = writeln!(text, "{ok}:");
+    state.control_flow.label(text, ok.clone());
     state.needs_numeric_overflow_trap = true;
     let _ = writeln!(text, "  %shamt{dest} = zext i64 %shcnt{dest} to i128");
     if operator == "SHR" {
@@ -150,7 +150,7 @@ pub(crate) fn emit_integer_power(
         text,
         "  br i1 %pbad{dest}, label %trap_numeric_overflow, label %{setup}"
     );
-    let _ = writeln!(text, "{setup}:");
+    state.control_flow.label(text, setup.clone());
     state.needs_numeric_overflow_trap = true;
     let loop_h = format!("b{}.pow{dest}.loop", block_id.0);
     let work = format!("b{}.pow{dest}.work", block_id.0);
@@ -159,7 +159,7 @@ pub(crate) fn emit_integer_power(
     let square = format!("b{}.pow{dest}.sq", block_id.0);
     let done = format!("b{}.pow{dest}.done", block_id.0);
     let _ = writeln!(text, "  br label %{loop_h}");
-    let _ = writeln!(text, "{loop_h}:");
+    state.control_flow.label(text, loop_h.clone());
     let square_ok = format!("{square}.ok");
     let mulr_ok = format!("{mulr}.ok");
     let _ = writeln!(
@@ -176,13 +176,13 @@ pub(crate) fn emit_integer_power(
     );
     let _ = writeln!(text, "  %pez{dest} = icmp eq i128 %pe{dest}, 0");
     let _ = writeln!(text, "  br i1 %pez{dest}, label %{done}, label %{work}");
-    let _ = writeln!(text, "{work}:");
+    state.control_flow.label(text, work.clone());
     let _ = writeln!(text, "  %podd{dest} = trunc i128 %pe{dest} to i1");
     let _ = writeln!(text, "  br i1 %podd{dest}, label %{mulr}, label %{after}");
-    let _ = writeln!(text, "{mulr}:");
+    state.control_flow.label(text, mulr.clone());
     emit_checked_i128_mul(text, dest, "pr", "pb", "prm", &mulr);
     let _ = writeln!(text, "  br label %{after}");
-    let _ = writeln!(text, "{after}:");
+    state.control_flow.label(text, after.clone());
     let _ = writeln!(
         text,
         "  %pr2{dest} = phi i128 [ %prm{dest}, %{mulr_ok} ], [ %pr{dest}, %{work} ]"
@@ -190,10 +190,10 @@ pub(crate) fn emit_integer_power(
     let _ = writeln!(text, "  %pe1{dest} = lshr i128 %pe{dest}, 1");
     let _ = writeln!(text, "  %pmore{dest} = icmp ne i128 %pe1{dest}, 0");
     let _ = writeln!(text, "  br i1 %pmore{dest}, label %{square}, label %{done}");
-    let _ = writeln!(text, "{square}:");
+    state.control_flow.label(text, square.clone());
     emit_checked_i128_mul(text, dest, "pb", "pb", "pb2", &square);
     let _ = writeln!(text, "  br label %{loop_h}");
-    let _ = writeln!(text, "{done}:");
+    state.control_flow.label(text, done.clone());
     let _ = writeln!(
         text,
         "  %shraw{dest} = phi i128 [ %pr{dest}, %{loop_h} ], [ %pr2{dest}, %{after} ]"
@@ -316,7 +316,7 @@ fn emit_i128_range_trunc(
         text,
         "  br i1 %shov{dest}, label %trap_numeric_overflow, label %{ok}"
     );
-    let _ = writeln!(text, "{ok}:");
+    state.control_flow.label(text, ok.clone());
     let _ = writeln!(text, "  %v{dest} = trunc i128 %shraw{dest} to {llvm_ty}");
     state.needs_numeric_overflow_trap = true;
 }

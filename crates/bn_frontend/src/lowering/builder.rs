@@ -16,6 +16,27 @@ mod expressions;
 mod statements;
 
 impl<'a> Builder<'a> {
+    fn emitted_member_owner(&self, owner: String) -> String {
+        if self
+            .methods
+            .contains(&class_method_name(&self.prefix, &owner, "$fields"))
+        {
+            qualified_class_name(&self.prefix, &owner)
+        } else {
+            owner
+        }
+    }
+
+    fn resolved_member_owner(&self, expression: &Expression) -> String {
+        let owner = self
+            .model
+            .expression(expression.span)
+            .and_then(|resolved| resolved.member_target.as_ref())
+            .and_then(|target| target.owner.clone())
+            .unwrap_or_default();
+        self.emitted_member_owner(owner)
+    }
+
     pub(super) fn new(model: &'a SemanticModel, methods: HashSet<String>, prefix: &str) -> Self {
         Self {
             model,
@@ -191,7 +212,7 @@ impl<'a> Builder<'a> {
                 symbol: self.expression_symbol(current)?,
                 indices,
             }),
-            ExpressionKind::Member { object, name } if indices.is_empty() => {
+            ExpressionKind::Member { object, name } => {
                 let mut path = vec![name.clone()];
                 let mut base = object.as_ref();
                 while let ExpressionKind::Member {
@@ -215,14 +236,34 @@ impl<'a> Builder<'a> {
                                 || static_class_name(&object_type, &self.prefix),
                                 |owner| format!("{}{}", self.prefix, owner),
                             );
-                        return Ok(AssignPlace::Static {
-                            class,
-                            field: path.last().cloned().unwrap_or_default(),
-                        });
+                        let field = path.last().cloned().unwrap_or_default();
+                        return if indices.is_empty() {
+                            Ok(AssignPlace::Static { class, field })
+                        } else {
+                            Ok(AssignPlace::StaticIndex {
+                                class,
+                                field,
+                                indices,
+                            })
+                        };
                     }
-                    return Ok(AssignPlace::Field {
-                        symbol: self.expression_symbol(base)?,
-                        path,
+                    let symbol = self.expression_symbol(base)?;
+                    return if indices.is_empty() {
+                        Ok(AssignPlace::Field { symbol, path })
+                    } else {
+                        Ok(AssignPlace::FieldIndex {
+                            symbol,
+                            path,
+                            indices,
+                        })
+                    };
+                }
+                if !indices.is_empty() {
+                    return Ok(AssignPlace::MemberIndex {
+                        object: self.expression(object)?,
+                        name: name.clone(),
+                        owner: self.resolved_member_owner(current),
+                        indices,
                     });
                 }
                 let object_type = type_at(self.model, object.span)?;
@@ -241,16 +282,10 @@ impl<'a> Builder<'a> {
                         field: name.clone(),
                     })
                 } else {
-                    let owner = self
-                        .model
-                        .expression(current.span)
-                        .and_then(|resolved| resolved.member_target.as_ref())
-                        .and_then(|target| target.owner.clone())
-                        .unwrap_or_default();
                     Ok(AssignPlace::Member {
                         object: self.expression(object)?,
                         name: name.clone(),
-                        owner,
+                        owner: self.resolved_member_owner(current),
                     })
                 }
             }

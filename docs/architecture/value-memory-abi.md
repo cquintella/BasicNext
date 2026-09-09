@@ -47,12 +47,21 @@ closed by its owning `*_close` operation.
 | BN integer `BYTE`/`INT8`/`INT16`/`INT32`/`INT64` and unsigned widths | LLVM `i8`/`i16`/`i32`/`i64`; signedness is an operation rule, not a different bit layout | Value copied; no pointer ownership | Checked language overflow/trap path, never LLVM poison | `src/llvm.rs`; `tests/codegen_tests.rs` numeric fixtures |
 | BN `FLOAT32` / `FLOAT64` | LLVM `float` / `double` | Value copied | BN floating semantics; no `nsw`/`nuw` flags | `src/llvm.rs`; `tests/codegen_tests.rs` |
 | BN `STRING` passed to `bn_rt` | NUL-terminated borrowed `ptr` for the call; compiler-owned literal storage or temporary buffer | `bn_rt` does not retain or free the pointer | Non-zero status is converted to a runtime diagnostic | `src/llvm/runtime.rs`; `crates/bn_rt/src/console.rs` |
+| `INPUT()` result stored in a local variable | NUL-terminated heap `ptr`, or the unique static `EOF` sentinel | The destination variable owns a non-EOF buffer. A later `INPUT()` assignment may resize and reuse that buffer; replacing the value releases it, and function exit releases every remaining owned input buffer. Distinct live variables retain distinct buffers. | EOF releases any reusable buffer before returning the sentinel; ownership tags keep the static sentinel outside allocator calls | `crates/bn_llvm/src/llvm/helpers.rs`; `tests/grammar/valid/build-input-lifetime.bn`; `tests/cli.rs` |
 | `BNValue` dispatch argument/result | `#[repr(C)] { kind: u32, flags: u32, payload: union }`; byte payload is `(const u8*, u32)` | Task copies the value; pointer payload is borrowed for task duration; result storage is caller-owned | `BNDispatchStatus`, distinct from language `Error` | `crates/bn_rt/src/dispatch_abi.rs` layout tests |
 | `BNDispatchError` | `#[repr(C)] { code: u32, message: char*, message_length: u32 }` | Runtime owns allocated message until `bn_rt_dispatch_error_free`; null is accepted | Dispatch/tool failure, not a BN `Error` value | `crates/bn_rt/src/dispatch_abi.rs` |
 | Opaque network/dispatch handles | LLVM/C `i64` handle | Owning close operation invalidates the handle; use-after-close returns status/diagnostic | Runtime handle failure, never undefined behaviour | `src/llvm/runtime.rs`; `tests/runtime.rs` handle fixtures |
 | BNData structural frame handles | `BNDataFrameHandle = u64`; borrowed `BNDataFrameColumnView` inputs are copied into the runtime registry | `create` copies names/values; `append_*`/`select` return new owning handles; `bn_rt_dataframe_close` invalidates exactly one handle; input views are never retained | `BNDataFrameStatus`: invalid argument, invalid handle, or contract error; no undefined behavior for rejected bounds/layout | `crates/bn_rt/src/dataframe_abi.rs` ABI test; empty-frame lifecycle lowered in `crates/bn_llvm/src/llvm/vectors.rs` |
 | BNMath scalar and reduction ops | Scalar: `i64`/`double` values passed and returned by value; Vector reduction: borrowed buffer `ptr` + element count `i32` | Callee borrows array slice for duration of reduction call; does not retain or free buffer | Return status/NaN on empty or domain errors | `crates/bn_rt/src/stats.rs`; `crates/bn_llvm/src/llvm/math.rs` |
 | Temporal and string helpers (`bn_rt_print_*`, `bn_rt_str_*`) | Dates/times passed as scalar `i32`/`i64`; strings passed as borrowed C `ptr` | Callee borrows pointer for duration of query/print; does not free or mutate | Status or fallback representation | `crates/bn_llvm/src/llvm/functions.rs`; `crates/bn_rt/src/lib.rs` |
+| `INTEGER OR NULL` | LLVM `{ i1, i32 }`: field 0 is `true` exactly for `NULL`; field 1 holds the integer payload and is zero when null | Passed and returned by value; no owned storage | `PRINT` emits `NULL` for a set tag and the signed integer otherwise | `examples/linear_collections.bn`; `tests/cli.rs` |
+
+Object fields use the target ABI size and natural alignment of their LLVM
+representation. In particular, the vector/pointer fat value `{ ptr, i32 }`
+occupies 16 bytes at 8-byte alignment on the supported native ABI; a following
+field cannot overlap its pointer, length, or padding. Class allocation follows
+the validated `Module.class_bases` chain in base-to-derived order and rounds
+the complete instance size to its maximum field alignment.
 
 ### Complete `bn_rt` Symbol Ownership for LLVM-Emitted Symbols
 
@@ -60,7 +69,7 @@ The table below catalogs ownership and lifetime for all symbols declared in `BN_
 
 | Symbol Group | Symbols | Parameter Ownership | Return / Out-Parameter Ownership | Invalidation / Lifetime |
 | --- | --- | --- | --- | --- |
-| **Execution Policy** | `bn_rt_policy_init(mode, mask)` | Scalars copied | Return code `i32` (0 = OK) | Process-wide static policy; immutable after init |
+| **Execution Policy** | `bn_rt_policy_init(version, ceiling)`, `bn_rt_policy_filesystem_sandboxed()`, `bn_rt_policy_filesystem_root(write, path)` | `version`, `ceiling`, and `write` scalars copied; `path` is a NUL-terminated borrowed UTF-8 pointer for the call | Return code `i32` (0 = OK) | Process-wide policy can only narrow. Sandboxing clears prior roots; each accepted root is pinned by the runtime and remains owned until process exit. |
 | **DataFrame Lifecycle** | `bn_rt_dataframe_create`, `bn_rt_dataframe_row_count`, `bn_rt_dataframe_column_count`, `bn_rt_dataframe_close` | `ptr` views borrowed for duration of call; handle `i64`/`u64` copied | Out pointer receives owned `u64` handle or count scalar | `bn_rt_dataframe_close` destroys frame in registry; subsequent calls fail with invalid handle status |
 | **Console & Clock** | `bn_rt_clock_now`, `bn_rt_clock_timer`, `bn_rt_console_cls`, `bn_rt_console_beep`, `bn_rt_console_print_at`, `bn_rt_console_num_cols`, `bn_rt_console_num_rows` | Scalars copied; string `ptr` in `print_at` borrowed | Timestamp `i64` or status `i32` | No retained state; ephemeral duration of call |
 | **Network Endpoints & Handles** | `bn_rt_net_address_parse`, `bn_rt_net_ping`, `bn_rt_net_reverse`, `bn_rt_net_neighbor`, `bn_rt_net_resolve`, `bn_rt_net_addresses_*`, `bn_rt_net_handle_close` | String `ptr` borrowed; out pointers caller-allocated | Out pointer populated; handles returned by value | Address lists freed by `bn_rt_net_addresses_free`; socket handles closed by `bn_rt_net_handle_close` |
@@ -68,7 +77,7 @@ The table below catalogs ownership and lifetime for all symbols declared in `BN_
 | **Dispatch & Concurrency** | `bn_rt_dispatch_queue_*`, `bn_rt_dispatch_submit`, `bn_rt_dispatch_await`, `bn_rt_dispatch_cancel`, `bn_rt_dispatch_ticket_close`, `bn_rt_dispatch_group_*`, `bn_rt_dispatch_barrier_*`, `bn_rt_dispatch_semaphore_*`, `bn_rt_dispatch_mutex_*` | Function pointer and context `ptr` borrowed; queue/ticket handles copied | Ticket handle or completion status returned | Tickets closed by `bn_rt_dispatch_ticket_close`; synchronization primitives closed by matching `*_close` |
 | **BNMath Scalars & Temporal** | `bn_rt_math_iabs`, `bn_rt_math_isign`, `bn_rt_math_imin`, `bn_rt_math_imax`, `bn_rt_math_fabs`, `bn_rt_math_fsign`, `bn_rt_math_floor`, `bn_rt_math_ceil`, `bn_rt_math_trunc`, `bn_rt_math_exp`, `bn_rt_math_log*`, `bn_rt_math_sin`, `bn_rt_math_cos`, `bn_rt_math_tan`, `bn_rt_math_asin`, `bn_rt_math_acos`, `bn_rt_math_atan*`, `bn_rt_math_sqrt`, `bn_rt_math_pow`, `bn_rt_math_hypot`, `bn_rt_math_fmin`, `bn_rt_math_fmax`, `bn_rt_math_round`, `bn_rt_math_fma`, `bn_rt_math_todate`, `bn_rt_math_totime`, `bn_rt_math_totimestamp` | Scalars copied by value | Return value computed and returned by value | Pure mathematical functions; no heap or persistent lifetime |
 | **BNMath Vector Reductions** | `bn_rt_math_vmin_*`, `bn_rt_math_vmax_*`, `bn_rt_math_mean_*`, `bn_rt_math_median_*`, `bn_rt_math_quartile1_*`, `bn_rt_math_quartile3_*`, `bn_rt_math_range_*`, `bn_rt_math_stdev_*`, `bn_rt_math_variance_*`, `bn_rt_math_mode_*` | Array `ptr` borrowed for call; length `i32` copied | Scalar reduction value returned; mode writes into caller-owned buffer | Read-only slice access; callee neither mutates nor frees the buffer |
-| **String Operations** | `bn_rt_str_len`, `bn_rt_str_index`, `bn_rt_str_eq`, `bn_rt_print_date`, `bn_rt_print_time`, `bn_rt_print_float` | `ptr` borrowed for call duration | Scalar result or borrowed substring `ptr` | Pure operations on immutable string buffers |
+| **String Operations** | `bn_rt_str_len`, `bn_rt_str_index_utf8`, `bn_rt_str_eq`, `bn_rt_print_date`, `bn_rt_print_time`, `bn_rt_print_float` | `ptr` borrowed for call duration | Scalar result; `bn_rt_str_index_utf8` packs one NUL-terminated scalar in native byte order | Pure operations on immutable string buffers; the LLVM caller materializes indexed characters in function-local storage |
 
 The layout assertions cover the release slice on every supported target by
 checking field offsets and alignment rather than baking a host pointer width
@@ -82,11 +91,12 @@ row is an ABI foundation and has tested ownership/handle semantics, but is not
 yet a claimed compiled-language feature until LLVM lowering and parity fixtures
 are present. Execution policy bit coverage for compiled targets is currently
 enforced across active `bn_rt` entry points for `POLICY_CLOCK`, `POLICY_CONSOLE`,
-`POLICY_NET`, and `POLICY_DISPATCH`. `POLICY_FILESYSTEM` and `POLICY_RANDOM` are
-currently enforced interpret-only via HostEnv / Capabilities; native compilation
-does not yet lower filesystem/random HOST ops to `bn_rt` native calls. Unlisted BNData/DataFrame
-native symbols, full network ownership tables, and the final extracted-crate
-ABI remain open; do not treat this document as a complete ABI manual.
+`POLICY_FILESYSTEM`, `POLICY_NET`, `POLICY_DISPATCH`, and `POLICY_RANDOM`.
+Native filesystem HOST calls receive the artifact ceiling and rooted policy through
+the policy ABI and re-check it at the `bn_rt` call boundary. Unlisted
+BNData/DataFrame native symbols, full network ownership tables, and the final
+extracted-crate ABI remain open; do not treat this document as a complete ABI
+manual.
 
 ## Required contract areas (normative checklist)
 
@@ -198,3 +208,168 @@ Policy denials (unauthorized HOST op) are **not** language `Error` values unless
 - [host-traits.md](host-traits.md)
 - [target-architecture.md](target-architecture.md) (contracts table)
 - [LLVM LangRef — `add`](https://llvm.org/docs/LangRef.html#add-instruction)
+
+## LLVM-declared runtime symbol index (0.4.7 audit)
+
+The exact declaration index below complements the ownership groups above.
+`tests.test_capabilities` verifies each symbol against the built static archive
+(including macro-generated exports), rather than treating source text as proof
+of an exported ABI. This index does not expand the advertised language subset.
+
+```text llvm-emitted-bn-rt-symbols
+bn_rt_dataframe_add_boolean
+bn_rt_dataframe_add_float
+bn_rt_dataframe_add_string
+bn_rt_dataframe_append_columns
+bn_rt_dataframe_append_rows
+bn_rt_dataframe_convert_float
+bn_rt_dataframe_convert_integer
+bn_rt_dataframe_copy_float
+bn_rt_dataframe_copy_integer
+bn_rt_dataframe_get_boolean
+bn_rt_dataframe_get_float
+bn_rt_dataframe_get_integer
+bn_rt_dataframe_get_string
+bn_rt_dataframe_join
+bn_rt_dataframe_read_csv
+bn_rt_dataframe_reduce
+bn_rt_dataframe_select
+bn_rt_dataframe_set_label
+bn_rt_dataframe_slice
+bn_rt_dataframe_transpose
+bn_rt_dataframe_write_csv
+bn_rt_dataframe_zscore
+bn_rt_file_close
+bn_rt_file_open
+bn_rt_log_fields_close
+bn_rt_log_fields_create
+bn_rt_log_fields_set_string
+bn_rt_log_logger_add_file
+bn_rt_log_logger_close
+bn_rt_log_logger_create
+bn_rt_log_logger_delete
+bn_rt_log_logger_flush
+bn_rt_log_logger_log
+bn_rt_clock_now
+bn_rt_clock_timer
+bn_rt_console_beep
+bn_rt_console_cls
+bn_rt_console_num_cols
+bn_rt_console_num_rows
+bn_rt_console_print_at
+bn_rt_dataframe_close
+bn_rt_dataframe_column_count
+bn_rt_dataframe_create
+bn_rt_dataframe_row_count
+bn_rt_dispatch_await
+bn_rt_dispatch_barrier_close
+bn_rt_dispatch_barrier_create
+bn_rt_dispatch_barrier_wait
+bn_rt_dispatch_cancel
+bn_rt_dispatch_group_add
+bn_rt_dispatch_group_close
+bn_rt_dispatch_group_create
+bn_rt_dispatch_group_wait
+bn_rt_dispatch_mutex_close
+bn_rt_dispatch_mutex_create
+bn_rt_dispatch_mutex_lock
+bn_rt_dispatch_mutex_unlock
+bn_rt_dispatch_queue_close
+bn_rt_dispatch_queue_create
+bn_rt_dispatch_queue_join
+bn_rt_dispatch_semaphore_acquire
+bn_rt_dispatch_semaphore_close
+bn_rt_dispatch_semaphore_create
+bn_rt_dispatch_semaphore_release
+bn_rt_dispatch_submit
+bn_rt_dispatch_ticket_close
+bn_rt_math_acos
+bn_rt_math_asin
+bn_rt_math_atan
+bn_rt_math_atan2
+bn_rt_math_ceil
+bn_rt_math_cos
+bn_rt_math_exp
+bn_rt_math_fabs
+bn_rt_math_floor
+bn_rt_math_fma
+bn_rt_math_fmax
+bn_rt_math_fmin
+bn_rt_math_fsign
+bn_rt_math_hypot
+bn_rt_math_iabs
+bn_rt_math_imax
+bn_rt_math_imin
+bn_rt_math_isign
+bn_rt_math_log
+bn_rt_math_log10
+bn_rt_math_log2
+bn_rt_math_mean_f64
+bn_rt_math_mean_i32
+bn_rt_math_median_f64
+bn_rt_math_median_i32
+bn_rt_math_mode_f64
+bn_rt_math_mode_i32
+bn_rt_math_pow
+bn_rt_math_quartile1_f64
+bn_rt_math_quartile1_i32
+bn_rt_math_quartile3_f64
+bn_rt_math_quartile3_i32
+bn_rt_math_range_f64
+bn_rt_math_range_i32
+bn_rt_math_round
+bn_rt_math_sin
+bn_rt_math_sqrt
+bn_rt_math_stdev_f64
+bn_rt_math_stdev_i32
+bn_rt_math_tan
+bn_rt_math_todate
+bn_rt_math_tohour
+bn_rt_math_totime
+bn_rt_math_totimestamp
+bn_rt_math_toweekday
+bn_rt_math_trunc
+bn_rt_math_val
+bn_rt_math_variance_f64
+bn_rt_math_variance_i32
+bn_rt_math_vmax_f64
+bn_rt_math_vmax_i32
+bn_rt_math_vmin_f64
+bn_rt_math_vmin_i32
+bn_rt_dataframe_add_integer_start
+bn_rt_dataframe_column_name_owned
+bn_rt_dataframe_set_integer_cell
+bn_rt_net_address_parse
+bn_rt_net_addresses_count
+bn_rt_net_addresses_free
+bn_rt_net_addresses_get
+bn_rt_net_handle_close
+bn_rt_net_neighbor
+bn_rt_net_ping
+bn_rt_net_resolve
+bn_rt_net_reverse
+bn_rt_net_tcp_accept
+bn_rt_net_tcp_connect
+bn_rt_net_tcp_listen
+bn_rt_net_tcp_listen_with_backlog
+bn_rt_net_tcp_listener_local_endpoint
+bn_rt_net_tcp_read
+bn_rt_net_tcp_stream_local_endpoint
+bn_rt_net_tcp_stream_remote_endpoint
+bn_rt_net_tcp_write
+bn_rt_net_udp_bind
+bn_rt_net_udp_packet_copy_to
+bn_rt_net_udp_packet_size
+bn_rt_net_udp_packet_source
+bn_rt_net_udp_packet_truncated
+bn_rt_net_udp_receive_handle
+bn_rt_net_udp_send_to
+bn_rt_policy_init
+bn_rt_policy_filesystem_root
+bn_rt_policy_filesystem_sandboxed
+bn_rt_random_next
+bn_rt_random_seed
+bn_rt_str_asc
+bn_rt_str_char_utf8
+bn_rt_str_index_utf8
+```

@@ -54,10 +54,21 @@ pub(crate) fn lower_scalar_instruction(
                     string_global(&function.name, destination.0)
                 );
             }
-            Constant::HostArgs
-            | Constant::Type(_)
-            | Constant::Function(_)
-            | Constant::HostConsole => {}
+            Constant::Function(name) => {
+                if module
+                    .functions
+                    .iter()
+                    .any(|function| function.name == *name)
+                {
+                    let symbol = llvm_function_symbol(name);
+                    let _ = writeln!(
+                        text,
+                        "  %v{} = select i1 true, ptr @{symbol}, ptr null",
+                        destination.0
+                    );
+                }
+            }
+            Constant::HostArgs | Constant::Type(_) | Constant::HostConsole => {}
             Constant::NotAvailable => {
                 let dest = destination.0;
                 let _ = writeln!(
@@ -83,12 +94,9 @@ pub(crate) fn lower_scalar_instruction(
             ..
         } => {
             let llvm_ty = llvm_type(ty).expect("validated Phi type");
-            let incoming = incoming
-                .iter()
-                .map(|(block, value)| format!("[ %v{}, %b{} ]", value.0, block.0))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let _ = writeln!(text, "  %v{} = phi {llvm_ty} {incoming}", destination.0);
+            state
+                .control_flow
+                .defer_phi(text.len(), *destination, llvm_ty, incoming);
         }
         Instruction::Default {
             destination,
@@ -151,11 +159,24 @@ pub(crate) fn lower_scalar_instruction(
                 let _ = writeln!(text, "  %v{} = fadd double 0.0, 0.0", destination.0);
             }
             "ptr" => {
-                let _ = writeln!(
-                    text,
-                    "  %v{} = getelementptr i8, ptr @.bn_empty, i64 0",
-                    destination.0
-                );
+                if function.name.ends_with(".$default") {
+                    let owner = function
+                        .name
+                        .strip_suffix(".$default")
+                        .expect("validated struct default function name");
+                    let bytes = class_instance_bytes(module, owner);
+                    let _ = writeln!(
+                        text,
+                        "  %v{} = call ptr @calloc(i64 1, i64 {bytes})",
+                        destination.0
+                    );
+                } else {
+                    let _ = writeln!(
+                        text,
+                        "  %v{} = getelementptr i8, ptr @.bn_empty, i64 0",
+                        destination.0
+                    );
+                }
             }
             "{ i1, double }" => emit_optional_float_default(text, *destination),
             "{ ptr, i32 }" => {
@@ -179,7 +200,33 @@ pub(crate) fn lower_scalar_instruction(
             let slot_ty = analysis.symbols.get(symbol).unwrap_or(value_ty);
             let value_llvm = llvm_type(value_ty).expect("validated store LLVM type");
             let slot_llvm = llvm_type(slot_ty).expect("validated slot LLVM type");
-            let operand = if slot_llvm == "i1" {
+            let operand = if is_struct_type(module, slot_ty) {
+                let Type::Named(owner) = slot_ty else {
+                    unreachable!("validated struct type");
+                };
+                let bytes = class_instance_bytes(module, owner);
+                let tag = value.0;
+                let _ = writeln!(text, "  %structcopy{tag} = alloca [{bytes} x i8]");
+                let _ = writeln!(
+                    text,
+                    "  call void @llvm.memcpy.p0.p0.i64(ptr %structcopy{tag}, ptr %v{tag}, i64 {bytes}, i1 false)"
+                );
+                format!("%structcopy{tag}")
+            } else if slot_llvm == "{ i1, double }" && matches!(value_llvm, "float" | "double") {
+                let optional_value =
+                    coerce_to_type(text, *value, value_ty, &Type::Float(FloatType::Float64));
+                let _ = writeln!(
+                    text,
+                    "  %optstoretag{} = insertvalue {{ i1, double }} undef, i1 false, 0",
+                    value.0
+                );
+                let _ = writeln!(
+                    text,
+                    "  %optstore{} = insertvalue {{ i1, double }} %optstoretag{}, double {optional_value}, 1",
+                    value.0, value.0
+                );
+                format!("%optstore{}", value.0)
+            } else if slot_llvm == "i1" {
                 i1_operand(text, analysis, state, *value)
             } else if value_llvm != slot_llvm
                 && (matches!(value_llvm, "i8" | "i16" | "i32" | "i64")
@@ -193,11 +240,44 @@ pub(crate) fn lower_scalar_instruction(
             } else {
                 format!("%v{}", value.0)
             };
+            if analysis.input_symbols.contains(symbol)
+                && !analysis.input_targets.contains_key(value)
+            {
+                let slot = symbols[symbol];
+                let tag = value.0;
+                let _ = writeln!(
+                    text,
+                    "  %inputreplaceowned{tag} = load i1, ptr %inputowned{slot}"
+                );
+                let _ = writeln!(text, "  %inputreplaceold{tag} = load ptr, ptr %s{slot}");
+                let _ = writeln!(
+                    text,
+                    "  %inputreplacefree{tag} = select i1 %inputreplaceowned{tag}, ptr %inputreplaceold{tag}, ptr null"
+                );
+                let _ = writeln!(text, "  call void @free(ptr %inputreplacefree{tag})");
+            }
             let _ = writeln!(
                 text,
                 "  store {slot_llvm} {operand}, ptr %s{}",
                 symbols[symbol]
             );
+            if analysis.input_symbols.contains(symbol) {
+                let slot = symbols[symbol];
+                if analysis.input_targets.contains_key(value) {
+                    let _ = writeln!(
+                        text,
+                        "  %inputisvalue{} = icmp ne ptr %v{}, @.bn_eof",
+                        value.0, value.0
+                    );
+                    let _ = writeln!(
+                        text,
+                        "  store i1 %inputisvalue{}, ptr %inputowned{slot}",
+                        value.0
+                    );
+                } else {
+                    let _ = writeln!(text, "  store i1 false, ptr %inputowned{slot}");
+                }
+            }
             if let Some(value) = block_state.constants.get(value).cloned() {
                 block_state.bindings.insert(*symbol, value);
             } else {

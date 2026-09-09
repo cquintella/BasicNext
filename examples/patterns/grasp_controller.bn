@@ -1,0 +1,13 @@
+// GRASP Controller: CheckoutController receives the system operation request.
+CLASS CheckoutController
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Checkout(amount AS INTEGER) AS INTEGER
+        RETURN amount * 2
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET controller AS CheckoutController = NEW CheckoutController()
+    PRINT controller.Checkout(21)
+END FUNCTION

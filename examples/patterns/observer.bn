@@ -1,0 +1,6 @@
+// UNSUPPORTED: Observer needs a collection of interface-typed subscribers and
+// iteration over heterogeneous objects. Basic Next currently has no generic
+// interface collection or safe downcast operation for that model.
+FUNCTION Start() AS VOID
+    PRINT "UNSUPPORTED: Observer requires interface collection dispatch"
+END FUNCTION

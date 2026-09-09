@@ -17,6 +17,41 @@ pub(crate) fn emit_runtime_binary(
     let left_llvm = llvm_type(left_ty).expect("validated binary LLVM type");
     let right_llvm = llvm_type(right_ty).expect("validated binary LLVM type");
     let result_llvm = llvm_type(ty).expect("validated binary result LLVM type");
+    if matches!(
+        operator,
+        "Less" | "LessEqual" | "Greater" | "GreaterEqual" | "Equal" | "Assign" | "NotEqual"
+    ) && let Some(payload_ty) = integer_union_payload(left_ty)
+        && integer_llvm(right_llvm)
+    {
+        emit_integer_union_compare(
+            text,
+            destination,
+            operator,
+            left,
+            right,
+            right_ty,
+            payload_ty,
+            true,
+        );
+        return;
+    } else if matches!(
+        operator,
+        "Less" | "LessEqual" | "Greater" | "GreaterEqual" | "Equal" | "Assign" | "NotEqual"
+    ) && let Some(payload_ty) = integer_union_payload(right_ty)
+        && integer_llvm(left_llvm)
+    {
+        emit_integer_union_compare(
+            text,
+            destination,
+            operator,
+            right,
+            left,
+            left_ty,
+            payload_ty,
+            false,
+        );
+        return;
+    }
     if matches!(operator, "Slash" | "Divide")
         && integer_llvm(left_llvm)
         && integer_llvm(right_llvm)
@@ -265,6 +300,36 @@ pub(crate) fn emit_runtime_binary(
         }
         _ => unreachable!("validated binary operator"),
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_integer_union_compare(
+    text: &mut String,
+    destination: ValueId,
+    operator: &str,
+    union: ValueId,
+    scalar: ValueId,
+    scalar_ty: &Type,
+    payload_ty: &Type,
+    union_on_left: bool,
+) {
+    let dest = destination.0;
+    let _ = writeln!(
+        text,
+        "  %unioncmp{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+        union.0
+    );
+    let scalar_i64 = coerce_to_type(text, scalar, scalar_ty, &Type::Integer(IntegerType::Int64));
+    let (left, right) = if union_on_left {
+        (format!("%unioncmp{dest}"), scalar_i64)
+    } else {
+        (scalar_i64, format!("%unioncmp{dest}"))
+    };
+    let _ = writeln!(
+        text,
+        "  %v{dest} = {} i64 {left}, {right}",
+        integer_compare_opcode(operator, payload_ty)
+    );
 }
 
 fn wider_integer_type<'a>(left: &'a Type, right: &'a Type) -> &'a Type {

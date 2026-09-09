@@ -1,0 +1,26 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+CLASS FloatStack
+    PRIVATE values AS FLOAT[2]
+
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION Put(index AS INTEGER, value AS FLOAT) AS VOID
+        SELF.values[index] = value
+    END FUNCTION
+
+    PUBLIC FUNCTION Get(index AS INTEGER) AS FLOAT
+        RETURN SELF.values[index]
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET stack AS FloatStack = NEW FloatStack()
+    stack.Put(1, 3.5)
+    PRINT stack.Get(1)
+    DELETE stack
+END FUNCTION
