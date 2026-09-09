@@ -27,3 +27,12 @@ fn apple_clang_is_not_a_wasm32_compiler() {
         );
     }
 }
+
+#[test]
+fn native_runtime_linking_adds_libm_only_on_linux() {
+    #[cfg(target_os = "linux")]
+    assert_eq!(super::native_runtime_link_args(), ["-lm"]);
+
+    #[cfg(not(target_os = "linux"))]
+    assert!(super::native_runtime_link_args().is_empty());
+}

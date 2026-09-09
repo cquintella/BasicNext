@@ -34,6 +34,18 @@ use bn::{
 use process_log::{LogLevel, ProcessLog};
 const VERSION: &str = concat!("bn ", env!("CARGO_PKG_VERSION"));
 
+fn native_runtime_link_args() -> &'static [&'static str] {
+    #[cfg(target_os = "linux")]
+    {
+        &["-lm"]
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        &[]
+    }
+}
+
 #[must_use]
 fn language_error() -> ExitCode {
     ExitCode::from(1)
@@ -584,6 +596,7 @@ fn emit_build_output(llvm: String, options: &Options, process_log: &mut ProcessL
                 }
             };
             command_args.push(bn_rt.display().to_string());
+            command_args.extend(native_runtime_link_args().iter().map(ToString::to_string));
         }
         command_args.extend(["-o".into(), output.into()]);
         process_log.event(
