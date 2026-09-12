@@ -181,7 +181,12 @@ Rules:
 - Hello and ordinary teaching examples **need not** use `RELEASE`. Prefer
   end of scope and reassignment.
 - `RELEASE` is not a rename of force-dispose and is not a substitute for
-  HOST `Close`.
+  HOST / `bn_rt` **`Close`**.
+- **Aggregate only for fixed vectors of handles:** `RELEASE tickets` is
+  allowed (drops the strong binding of the whole vector). **`RELEASE tickets[i]`
+  is forbidden** in teaching and intended semantics — it punches a hole in a
+  fixed vector and is a bad model. Close each element first; then optionally
+  `RELEASE` the aggregate (or just leave scope).
 
 ```basic
 FUNCTION EarlyDrop() AS VOID
@@ -192,6 +197,28 @@ FUNCTION EarlyDrop() AS VOID
 END FUNCTION
 ```
 
+### Teaching pattern: tickets vector (Carlos lock 2026-09-12)
+
+`Close` per element releases the **bn_rt** resource. `RELEASE` applies only to
+the **aggregate** binding `tickets`, never to `tickets[i]`. Hello may omit
+`RELEASE` and rely on end of scope.
+
+```basic
+FOR i = 0 TO 3
+    tickets[i].Close()
+END FOR
+RELEASE tickets
+```
+
+Equivalent hello (no `RELEASE`):
+
+```basic
+FOR i = 0 TO 3
+    tickets[i].Close()
+END FOR
+// tickets released automatically when the binding leaves scope
+```
+
 ## HOST: `Close` / `*_close` only
 
 Opaque HOST / registry resources (files, DataFrame handles, net objects,
@@ -199,6 +226,10 @@ dispatch tickets, and similar) continue to use capability methods such as
 `Close` and `*_close`. **Do not** reintroduce the `DELETE` keyword as sugar
 over those closes. Unifying HOST handles into ARC class types is a **later**
 proposal, not part of this 0.5.0 DNA lock.
+
+For a **fixed vector of tickets**, teach: loop `tickets[i].Close()` (bn_rt
+resource), then optionally `RELEASE tickets` on the aggregate — never
+`RELEASE tickets[i]`. See [`RELEASE`](#release-optional-advanced).
 
 ```basic
 IMPORT HOST.FileSystem AS FS
@@ -296,10 +327,14 @@ Still open or confirm-deferred (from the corrective proposal):
 4. **Dispatch** — confirm **replay until Close** and MVP type set including `STRING` if still open.
 
 Locked and not reopened here: `DELETE` DNA purge; `RELEASE` optional advanced;
-HOST `Close` / `*_close` only; typed `AWAIT` primary; ARC compliance required.
+HOST `Close` / `*_close` only; typed `AWAIT` primary; ARC compliance required;
+tickets teaching: Close per element, `RELEASE` aggregate only.
 
 ## History
 
 - **2026-09-12** — Drafted from `docs/language/0.4/` plus locks in
   `todo/proposals/bucket-0.5.0-corrective.md` (ARC, `DELETE` purge, `RELEASE`,
   typed `AWAIT`, HOST Close). Docs only — no parser/runtime in this commit.
+- **2026-09-12** — Carlos teaching lock (via Quorra): tickets vector —
+  `Close` per element (bn_rt); `RELEASE tickets` only on the aggregate; never
+  `RELEASE tickets[i]`; hello may omit `RELEASE` and leave scope.
