@@ -1,8 +1,8 @@
 # Proposal: BNString extras (stdlib) + string interpolation (language, deferred)
 
 **Status:** Surface B (interpolation) remains deferred.  
-**Preferred string helper (Carlos lock 2026-09-12):** **`CLASS String`** (object over primary `STRING`) in **`examples/string_class.bn`**, with **`Tokenizer`** owned by that class (`String.Tokenizer(sep)` / `Tokenizer.New`). **Not** Split→vector; **not** a loose Tokenizer-only module as the product surface.  
-Surface A vectorial (`Split`/`Join`/`Contains`/…) is **not** the preferred path.  
+**Preferred string helper (Carlos lock 2026-09-12):** official **`modules/bn/BNString.bn`** — **`CLASS String`** + **`Tokenizer`** on the class (`IMPORT BNString AS S`). Primary `STRING` intact; not core inflation; not Split→vector.  
+Docs: [`docs/library/bnstring.md`](../../docs/library/bnstring.md). Tour: `examples/bnstring_tour.bn`.  
 **Date:** 2026-09-07 (locks updated 2026-09-12)  
 **Bucket link:** Track B helpers → [`ongoing/bucket-0.4.7.md`](../../ongoing/bucket-0.4.7.md) §7.5 / **G7.5-string** (G7.5 closed deferred; this proposal tracks the post-defer preferred API).  
 **Interpolation** (`$"..."`) is **language DNA** and is **not** in the 0.4.7 critical path (Appendix E / Defer-until post-0.4.7 language bucket).
@@ -30,7 +30,7 @@ change, not a stdlib method set.
 
 | Surface | Kind | Status |
 | --- | --- | --- |
-| **Tokenizer (preferred)** | Example/class in repo **or** thin module — **not** core `STRING` inflation | **Carlos lock 2026-09-12** — primary direction for field walking |
+| **BNString CLASS (preferred)** | Official `modules/bn/BNString.bn` — `S.String` + `S.Tokenizer` | **Carlos lock 2026-09-12** — official extras directory |
 | **A — BNString vectorial helpers** | `Split`→`STRING[]`, `Join`, `Contains`, … | **Not preferred**; deferred / demoted vs Tokenizer |
 | **B — Interpolation `$"..."`** | Language DNA | **Deferred** |
 
@@ -40,11 +40,12 @@ change, not a stdlib method set.
 
 ## Preferred API — `CLASS String` + `Tokenizer` (Carlos lock 2026-09-12)
 
-**Working example:** [`examples/string_class.bn`](../../examples/string_class.bn) (`bn run` green on 0.4.7).
+**Official module:** [`modules/bn/BNString.bn`](../../modules/bn/BNString.bn) — `IMPORT BNString AS S` (`bn run` via `examples/bnstring_tour.bn`).  
+Library doc: [`docs/library/bnstring.md`](../../docs/library/bnstring.md).
 
-**Product shape:** Java-like **`CLASS String`** wrapping the primary `STRING` (`PRIVATE value`).  
-`Tokenizer` is **part of that object story** (`String.Tokenizer(sep)`), not a free-floating stdlib module “outside BN.”  
-Class name **`String`** is OK: reserved word is exact-uppercase `STRING`.
+**Product shape:** Java-like **`EXPORT CLASS String`** wrapping primary `STRING`.  
+`Tokenizer` is **on that class** (`S.String.Tokenizer(sep)` / `S.Tokenizer.New`).  
+Class name **`String`** is OK vs keyword `STRING`.
 
 **Tokenizer:** name `Tokenizer` (not Splitter). KISS iterator — not “allocate a vector of all parts.”
 
@@ -57,7 +58,7 @@ Class name **`String`** is OK: reserved word is exact-uppercase `STRING`.
 **Rules (locked intent):**
 
 - **Empty `sep` → `Error` on `New`** (fail closed; no undefined “split every char” surprise in MVP).
-- Prefer **`examples/string_class.bn`** (done) or later a thin `modules/bn` mirror — do **not** inchar core `STRING` primaries (`LEN` / index stay).
+- **Shipped:** `modules/bn/BNString.bn` (+ `docs/library/bnstring.md`). Do **not** inchar core `STRING` primaries.
 - Surface A vectorial (`Split` / `Join` / `Contains` / …) is **not** the preferred path for this need.
 
 ### Sketch
@@ -79,10 +80,11 @@ UNTIL FALSE
 
 ### Acceptance
 
-1. Example `examples/string_class.bn` exists with `CLASS String` + `CLASS Tokenizer` and a `Start()` that exercises New/Contains/Tokenizer — **done** (`bn run` 2026-09-12).
-2. Empty sep fail-closed (`NULL` today; `Error` when user-constructible); walk fields; `EOF` after last; optional `Reset`.
-3. No core `STRING` keyword growth — primary `LEN`/index unchanged.
-4. Optional later: promote to `docs/library/` / `modules/bn` without demoting the object API back to Surface A vectors.
+1. Official `modules/bn/BNString.bn` + `docs/library/bnstring.md` — **done**.
+2. Tour `examples/bnstring_tour.bn` — `bn run` green (2026-09-12).
+3. Empty sep fail-closed (`NULL` today); walk fields; `EOF`; optional `Reset`.
+4. No core `STRING` keyword growth; no `.bno` until 0.5.x pipeline (documented intent).
+5. Do not revive Surface A Split→vector as the preferred path.
 
 ---
 
@@ -158,3 +160,6 @@ processing. Do not merge modules without a separate accept.
   (`bn run` ok). Preferred path updated away from loose Tokenizer-only module
   and Surface A vectors. CharAt/Tokenizer fail-closed via NULL until Error is
   user-constructible.
+- 2026-09-12 — Carlos (via Quorra): promote to official **`modules/bn/BNString.bn`**
+  + `docs/library/bnstring.md`; precompiled `.bno` = 0.5.x intent only; tour
+  `examples/bnstring_tour.bn`.
