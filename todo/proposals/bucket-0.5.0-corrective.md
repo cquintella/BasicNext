@@ -83,7 +83,7 @@ For **class instances** (reference types):
 | --- | --- |
 | Strong (default, automatic) | Locals, fields, params, and returns of class types are strong unless annotated weak. **Assign / param / return / scope** insert retain/release in the toolchain (interpret reference; LLVM later). User does not manually retain. |
 | Zero strong | Run destructor chain, then free. |
-| Weak | Non-owning; breaks cycles; becomes empty/nil when object dies. Spelling TBD (open). |
+| Weak | Non-owning; breaks cycles. Spelling **LOCKED:** `AS WEAK ClassName`; dead → `NULL`. |
 | Unowned | **Deferred** (out of MVP). |
 | Cycles | Strong cycles leak until broken with weak; at least one teaching fixture. |
 | No force-dispose | There is **no** operation that destroys a live object while other strong aliases remain. |
@@ -210,7 +210,7 @@ Shared release claim “0.5.0” requires: D1 green + M0 locked + M1 docs merged
 ## Open questions (Carlos)
 
 1. ~~**DELETE policy**~~ — **LOCKED:** **`DELETE` keyword removed from language DNA** (not deprecate-only).  
-2. **Weak spelling:** attribute vs type wrapper vs method — pick one for M1.  
+2. ~~**Weak spelling**~~ — **LOCKED (Quorra):** `AS WEAK ClassName`; dead → `NULL` (docs/0.5.0).  
 3. **0.5.0 tag content:** locks+dispatch only, or include interpret ARC (M2)?  
 4. **Unowned:** confirm deferred.  
 5. ~~**HOST handles**~~ — **LOCKED for 0.5.0:** stay capability `Close` / `*_close` (not ARC-wrapped; **not** reintroduced as `DELETE`). Later unify proposal optional.  
@@ -227,6 +227,7 @@ Shared release claim “0.5.0” requires: D1 green + M0 locked + M1 docs merged
 | Memory teaching model | Swift-like **automatic strong + weak for cycles** + end of scope |
 | Strong | Toolchain/interpret inserts retain/release on assign/param/return/scope; zero strong → destructor |
 | Unowned | Deferred |
+| Weak spelling | **`AS WEAK ClassName`**; dead reads as **`NULL`** — Quorra lock 2026-09-12 |
 | **`DELETE` keyword** | **Removed from language DNA** (grammar/book/fixtures) — Carlos lock 2026-09-12 via Quorra |
 | `RELEASE` | **In MVP as optional advanced** — drop one strong only; deinit only at count→0; hello may omit; never kill-all-aliases |
 | Tickets teaching (Carlos) | `tickets[i].Close()` per element (bn_rt); `RELEASE tickets` only on the **aggregate**; **never** `RELEASE tickets[i]`; hello may omit RELEASE and leave scope |
@@ -249,3 +250,4 @@ Shared release claim “0.5.0” requires: D1 green + M0 locked + M1 docs merged
 - 2026-09-12 — Carlos lock (via Quorra): **remove `DELETE` from the language** (full DNA purge, not class-only deprecation); HOST stays `Close`/`*_close`; migration note for 0.4.x; plan/docs only — no parser yet.
 - 2026-09-12 — Carlos teaching lock (via Quorra): tickets — Close per element (bn_rt); RELEASE only on aggregate `tickets`; never `RELEASE tickets[i]`; hello may omit RELEASE.
 - 2026-09-12 — Carlos lock (via Quorra): RELEASE applies to primaries/vector/struct/object; use-after-release error; no RELEASE a[i] as remove-middle.
+- 2026-09-12 — Quorra (Carlos audit): weak spelling locked; arc-conformance.md + memory-migration.md; async args documented; opens updated. Spec docs only — M2/M4/.bn still open.

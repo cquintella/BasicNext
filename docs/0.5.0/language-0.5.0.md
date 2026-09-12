@@ -26,7 +26,7 @@ and semantics here are the contract those waves must honour.
 
 | Topic | 0.5.0 lock |
 | --- | --- |
-| **ARC** | Class instances use automatic strong retain/release on assign, parameter, return, and end of scope. Zero strong → destructor chain, then free. Weak for cycles (spelling TBD). Unowned deferred. No force-dispose. Interpret = reference. |
+| **ARC** | Class instances use automatic strong retain/release on assign, parameter, return, and end of scope. Zero strong → destructor chain, then free. **Weak:** `AS WEAK ClassName` (dead → `NULL`). Unowned deferred. No force-dispose. Interpret = reference. |
 | **`DELETE` removed** | Keyword purged from grammar, reserved-word list, and teaching surface. Not “deprecate on classes only.” |
 | **`RELEASE`** | Optional **advanced**: early end of a **binding** for primaries, fixed vectors, structs, and class objects (see section). Hello may omit and leave scope. |
 | **Typed `AWAIT`** | Primary surface: when the ticket comes from `FUNCTION … AS T OR Error`, `AWAIT ticket(ms)` yields `T OR Error`. `Ticket.Result()` is not primary. ABI remains `bn_rt_dispatch_await`. Replay stored success until `Close`. |
@@ -65,17 +65,46 @@ destructor chain (most-derived toward base), then frees the allocation. Each
 no-op step in the chain. There is no `SUPER` in a destructor; the chain is
 implicit (unchanged from 0.4’s destructor chaining shape).
 
-### Weak references (cycles)
+### Weak references (cycles) — **LOCKED (Quorra, 2026-09-12)**
 
-Weak references are **non-owning**. They break retain cycles. When the object
-dies, a weak reference becomes empty / nil (exact empty form follows the
-spelling lock). At least one teaching fixture must show a cycle broken with
-weak.
+Weak references are **non-owning**. They break retain cycles. They do not keep
+the referent alive.
 
-**Spelling TBD (Carlos open).** This draft does **not** invent attribute,
-type-wrapper, or method syntax for weak. The EBNF likewise omits fake weak
-productions. Until locked, treat “weak” as a semantic requirement with
-surface syntax deferred.
+**Spelling (locals and fields):**
+
+```basic
+LET x AS WEAK Counter OR NULL = someStrong
+PRIVATE other AS WEAK Node
+PRIVATE other AS WEAK Node OR NULL = NULL
+```
+
+- Grammar: `WEAK` + `named-type` (`weak-named-type` in [`0.5.0.ebnf`](0.5.0.ebnf)).
+- Prefer `OR NULL` so a dead weak is assignable and testable with `IS NULL`.
+- When the referent’s strong count reaches zero and the object is collected,
+  every weak binding to it reads as **`NULL`**.
+- Assigning a strong class value into a weak binding does not retain; the weak
+  observes the object while it lives.
+- Conformance: cycle broken with weak → `NULL` after the last strong drops
+  ([`arc-conformance.md`](arc-conformance.md)).
+
+```basic
+CLASS Node
+    PUBLIC next AS WEAK Node OR NULL = NULL
+    PUBLIC label AS STRING
+
+    FUNCTION CONSTRUCTOR(label AS STRING)
+        SELF.label = label
+    END FUNCTION
+END CLASS
+
+FUNCTION CycleBreak() AS VOID
+    LET a AS Node = NEW Node("a")
+    LET b AS Node = NEW Node("b")
+    a.next = b
+    b.next = a
+    // next is weak — no strong cycle
+END FUNCTION
+```
 
 ### Unowned
 
@@ -302,8 +331,59 @@ exposes a native synchronization handle. Queue close cancels pending work;
 running work is not force-killed. Timeout, queue failure, or task failure
 produces a typed `Error` result.
 
-**Note:** whether replay-until-Close and MVP inclusion of `STRING` remain
-fully locked is listed under Open questions if still open in the proposal.
+### Async submit with arguments (KISS)
+
+Workers may take parameters. Two equivalent surfaces (arity and types must
+match the named function’s parameters — **no** partial-application object):
+
+1. **Keyword form (grammar):** `ASYNC queue Fn(arg1, arg2, …)`
+2. **Method form (ordinary call on the queue):** `queue.Async(Fn, arg1, arg2, …)`
+
+Both produce a `Dispatch.Ticket OR Error`. Typed `AWAIT` then yields the
+worker’s `T OR Error`.
+
+π-style teaching sketch:
+
+```basic
+IMPORT BNDispatch AS Dispatch
+
+FUNCTION PiPart(i AS INTEGER) AS FLOAT OR Error
+    // compute slice i …
+    RETURN 0.0
+END FUNCTION
+
+FUNCTION Start() AS VOID OR Error
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Concurrent(4)
+    IF queue IS Error THEN
+        RETURN queue
+    END IF
+    LET tickets AS Dispatch.Ticket[4]
+    FOR i AS INTEGER = 0 TO 3
+        LET t AS Dispatch.Ticket OR Error = ASYNC queue PiPart(i)
+        // equivalent: queue.Async(PiPart, i)
+        IF t IS Error THEN
+            RETURN t
+        END IF
+        tickets[i] = t
+    END FOR
+    LET sum AS FLOAT = 0.0
+    FOR i AS INTEGER = 0 TO 3
+        LET part AS FLOAT OR Error = AWAIT tickets[i](60000)
+        IF part IS Error THEN
+            RETURN part
+        END IF
+        sum = sum + part
+    END FOR
+    FOR i AS INTEGER = 0 TO 3
+        tickets[i].Close()
+    END FOR
+    RELEASE tickets
+    PRINT sum
+END FUNCTION
+```
+
+**Note:** confirm **replay until Close** and MVP inclusion of `STRING` under
+Open questions if still open in the proposal.
 
 ## Migration: 0.4.x → 0.5.0
 
@@ -333,16 +413,19 @@ list):
 
 ## Open questions (Carlos)
 
-Still open or confirm-deferred (from the corrective proposal):
+Still open or confirm-deferred:
 
-1. **Weak spelling** — attribute vs type wrapper vs method; pick one for M1.
+1. ~~**Weak spelling**~~ — **LOCKED (Quorra):** `AS WEAK ClassName`; dead → `NULL`.
 2. **0.5.0 tag content** — locks + typed dispatch only, or include interpret ARC (M2)?
 3. **Unowned** — confirm deferred.
 4. **Dispatch** — confirm **replay until Close** and MVP type set including `STRING` if still open.
 
-Locked and not reopened here: `DELETE` DNA purge; `RELEASE` optional advanced;
-HOST `Close` / `*_close` only; typed `AWAIT` primary; ARC compliance required;
-tickets teaching: Close per element, `RELEASE` aggregate only; `RELEASE` on primaries/vector/struct/object.
+Locked here: `DELETE` purge; `RELEASE` (primaries/vector/struct/object); HOST
+`Close`; typed `AWAIT`; async with args; ARC compliance; tickets pattern; weak
+spelling.
+
+Normative fixture checklist: [`arc-conformance.md`](arc-conformance.md).  
+Book bridge: [`memory-migration.md`](memory-migration.md).
 
 ## History
 
@@ -355,3 +438,6 @@ tickets teaching: Close per element, `RELEASE` aggregate only; `RELEASE` on prim
 - **2026-09-12** — Carlos lock (via Quorra): `RELEASE` applies to primaries,
   vectors, structs, and objects (early end of binding); use-after-release =
   error; fixed vector = whole aggregate only, not `RELEASE a[i]` as remove-middle.
+- **2026-09-12** — Quorra lock (Carlos audit): weak `AS WEAK ClassName` → dead
+  `NULL`; arc-conformance checklist; memory-migration bridge; async with args
+  (`ASYNC queue Fn(args…)` / `queue.Async`); docs only — no M2/M4/executable `.bn` yet.

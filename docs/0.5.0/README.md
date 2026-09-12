@@ -8,6 +8,9 @@ It is the Carlos path for 0.5.0 docs — **not** `docs/language/0.5/`.
 | [`0.5.0.ebnf`](0.5.0.ebnf) | Normative grammar (ISO 14977-style EBNF) |
 | [`language-0.5.0.md`](language-0.5.0.md) | Normative semantics and amendments |
 | [`keywords.md`](keywords.md) | Reserved-word registry |
+| [`arc-conformance.md`](arc-conformance.md) | Normative ARC/lifetime fixture checklist |
+| [`memory-migration.md`](memory-migration.md) | 0.4.x → 0.5.0 memory migration; book ch.7 superseded |
+
 
 ## Relationship to other trees
 
