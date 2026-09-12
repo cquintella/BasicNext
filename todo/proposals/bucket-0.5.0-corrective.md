@@ -1,6 +1,6 @@
 # Proposal: Bucket 0.5.0 — Corrective plan (memory ARC + typed dispatch returns)
 
-**Status:** Proposed — **action plan / language DNA lock**, not implementation. **Carlos lock 2026-09-12 (via Quorra):** ARC compliance required; class force-`DELETE` out; optional `RELEASE` only if a keyword remains.  
+**Status:** Proposed — **action plan / language DNA lock**, not implementation. **Carlos locks 2026-09-12 (via Quorra):** ARC compliance; force-`DELETE` out; **`RELEASE` = optional advanced in MVP** (drop one strong only).  
 **Date:** 2026-09-12  
 **Owner (tracker):** Tron (ex-Doug) until Carlos names implementer.  
 **Gate:** Quorra before Carlos.  
@@ -51,7 +51,7 @@ Nothing here is normative until accepted into `docs/language/`, architecture con
 
 1. **Lock** a single language memory model for **class instances** that is **ARC-strong by default**, teachable, and compatible with PHILOSOPHY (explicit contracts, KISS, small core, made to teach).
 2. Specify **weak** (required for cycles in the plan) and decide **unowned** (in or deferred).
-3. **Locked:** class force-dispose `DELETE` is **out** (anti-ARC). If a keyword remains for “drop one strong binding,” it is **`RELEASE`** (not `DELETE`); hello/teaching may omit it (scope end is enough).
+3. **Locked:** class force-dispose `DELETE` is **out** (anti-ARC). **`RELEASE`** is in MVP as an **optional advanced** keyword: drop one strong binding only; deinit only when count → 0; hello need not use it (scope end is enough).
 4. Require **interpret = reference** for the new rules; list what LLVM must eventually match (no silent native drift).
 5. **Accept and schedule** typed dispatch returns: primary surface **typed `AWAIT` → `T OR Error`**, wiring to existing `bn_rt_dispatch_await` result pointer.
 6. Write acceptance criteria with **`.bn` fixtures + tests** (no “done” without evidence).
@@ -94,9 +94,9 @@ For **structs / scalars / vectors (value types):** unchanged copy semantics — 
 | --- | --- |
 | Force-immediate destroy | **Out.** `DELETE` on a class instance that forces destroy regardless of other strong refs is **anti-ARC** and rejected (former R2; also rejects R3 assert-unique dispose as the class lifetime story). |
 | Normal lifetime | Strong retain/release only. **End of scope / reassignment** drops the binding; hello and teaching examples need **no** dispose keyword. |
-| Keyword if any remains | Do **not** call that keyword `DELETE`. If the surface still needs an explicit “drop one strong binding,” name it **`RELEASE`**: decrement this binding’s strong count only; run deinit **only** when count → 0. Same semantics as leaving scope for that binding — never “kill all aliases.” |
-| MVP / KISS (Quorra recommend) | Prefer **omit `RELEASE` from MVP teaching** if it clutters KISS; scope end is enough for hello. `RELEASE` = optional/advanced, or deferred entirely until needed. |
-| Former options | **R1 locked** as: deprecate/remove class force-`DELETE`; optional rename remnant to `RELEASE` only if a keyword stays. R2/R3 **rejected** for class instances. |
+| `RELEASE` (locked) | Explicit keyword for “drop one strong binding”: decrement this binding’s strong count only; run deinit **only** when count → 0. Same effect as leaving scope for that binding — **never** kill-all-aliases. Do **not** name this `DELETE`. |
+| MVP surface | **`RELEASE` is in MVP as optional advanced** (Carlos 2026-09-12). Hello/teaching may ignore it; scope end remains the primary story. Not omitted from the language. |
+| Former options | **R1 locked** (force-`DELETE` out + `RELEASE` for drop-one-strong). R2/R3 **rejected** for class instances. |
 
 HOST handles (`FS.File`, DataFrame close, tickets) stay **explicit close** until a separate proposal maps them into ARC types. Do not silently ARC-wrap every handle in 0.5.0. Host close vocabulary is **not** a license to keep force-`DELETE` on BN classes.
 
@@ -120,8 +120,8 @@ HOST handles (`FS.File`, DataFrame close, tickets) stay **explicit close** until
 
 | Wave | Work | Done when |
 | --- | --- | --- |
-| M0 | Locks recorded: automatic strong, weak for cycles, force-`DELETE` out, `RELEASE` optional/omit-MVP, ARC compliance objective | Carlos lock (done 2026-09-12 via Quorra) + decision log pointer |
-| M1 | Spec + book rewrite of ch.7; weak spelling; remove class force-`DELETE` from teaching; `RELEASE` only if kept | Docs PR accepted; **Quorra ARC-compliance gate** |
+| M0 | Locks recorded: automatic strong, weak for cycles, force-`DELETE` out, `RELEASE` optional-advanced in MVP, ARC compliance objective | Carlos locks (done 2026-09-12 via Quorra) + decision log pointer |
+| M1 | Spec + book rewrite of ch.7; weak spelling; remove class force-`DELETE`; document `RELEASE` as advanced drop-one-strong | Docs PR accepted; **Quorra ARC-compliance gate** |
 | M2 | Interpret implements strong/weak retain/release; compliance fixtures green | Evidence under `docs/superpowers/evidence/`; **Quorra ARC gate** |
 | M3 | Close `value-memory-abi` object lifetime rows for interpret | Checklist + tests; **Quorra ARC gate** |
 | M4 | LLVM retain/release design + matrix rows (may slip past 0.5.0 tag if interpret-first) | Native parity or honest deferred; **Quorra ARC gate** |
@@ -184,7 +184,7 @@ Shared release claim “0.5.0” requires: D1 green + M0 locked + M1 docs merged
 **Dispatch:** criteria in `dispatch-typed-return.md` Acceptance section.  
 **ARC interpret:**  
 1. Teaching examples: strong share, scope deinit, reassign drop, weak cycle break — **without** force-dispose.  
-2. No class force-`DELETE`; if `RELEASE` exists, examples treat it as optional drop-one-strong only.  
+2. No class force-`DELETE`; teaching shows `RELEASE` only as optional advanced drop-one-strong (hello without it).  
 3. Compliance fixtures: aliasing, scope deinit, reassign drop, weak cycle, **and** prove no “kill all aliases” path.  
 4. `value-memory-abi` object section updated with ARC observables.  
 5. Quorra ARC-compliance gate passed for the wave claiming done.
@@ -205,13 +205,13 @@ Shared release claim “0.5.0” requires: D1 green + M0 locked + M1 docs merged
 
 ## Open questions (Carlos)
 
-1. ~~**DELETE policy**~~ — **LOCKED:** force-dispose out; optional `RELEASE` (drop one strong) or omit from MVP.  
+1. ~~**DELETE policy**~~ — **LOCKED:** force-dispose out.  
 2. **Weak spelling:** attribute vs type wrapper vs method — pick one for M1.  
 3. **0.5.0 tag content:** locks+dispatch only, or include interpret ARC (M2)?  
 4. **Unowned:** confirm deferred.  
 5. **HOST handles:** confirm stay manual close in 0.5.0.  
 6. Dispatch: confirm **replay until Close** and MVP type set including STRING.  
-7. **`RELEASE` in MVP?** Quorra leans omit for KISS (scope end enough) — confirm omit vs optional advanced keyword.
+7. ~~**`RELEASE` in MVP?**~~ — **LOCKED:** optional advanced in MVP (drop one strong only; hello need not use; never kill-all-aliases).
 
 ---
 
@@ -224,7 +224,7 @@ Shared release claim “0.5.0” requires: D1 green + M0 locked + M1 docs merged
 | Strong | Toolchain/interpret inserts retain/release on assign/param/return/scope; zero strong → destructor |
 | Unowned | Deferred |
 | Force-`DELETE` on classes | **Out** (anti-ARC) — Carlos lock 2026-09-12 |
-| If keyword for drop-one-strong | Name it **`RELEASE`** (not DELETE); deinit only at count→0; Quorra: prefer omit from MVP teaching |
+| `RELEASE` | **In MVP as optional advanced** — drop one strong only; deinit only at count→0; hello may omit; never kill-all-aliases |
 | BnArc | Implementation detail for interpret, not language API |
 | DataFrame/File closes | Remain explicit HOST/registry for now |
 | Quorra | ARC **compliance gate** on every M* wave |
@@ -238,3 +238,4 @@ Shared release claim “0.5.0” requires: D1 green + M0 locked + M1 docs merged
 
 - 2026-09-12 — Drafted by Tron after Quorra brief; Carlos authorized corrective plan (docs only).
 - 2026-09-12 — Carlos lock (via Quorra): ARC compliance required; automatic strong; weak for cycles; class force-`DELETE` out; remnant drop-one-strong = `RELEASE` or omit MVP; Quorra gates each M*; fixtures must prove no “kill all aliases.” Plan only — no runtime yet.
+- 2026-09-12 — Carlos final lock (via Quorra): `RELEASE` **in MVP as optional advanced** (not omitted); semantics = drop one strong only; deinit only count→0; never kill-all-aliases.
