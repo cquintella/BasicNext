@@ -2,7 +2,8 @@
 
 **Status:** Proposed — **language DNA + BNDispatch module contract** (not examples-only).  
 **Date:** 2026-09-07  
-**Owner (tracker):** Doug until Carlos names implementer.  
+**Owner (tracker):** Tron until Carlos names implementer.
+**0.5.0 corrective:** see [bucket-0.5.0-corrective.md](bucket-0.5.0-corrective.md) Track B — locks below.  
 **Motivation:** Without a way to **capture worker return values**, `BNDispatch` /
 `ASYNC`/`AWAIT` only synchronize side effects (`PRINT`). Aggregation examples
 (`parallel_work`, `parallel_pi`) cannot honestly sum results. Carlos: *se não
@@ -134,13 +135,18 @@ async-await design “await more than once after completion”) **or** consume-o
 
 ## Open questions (must close at accept)
 
-1. Typed `AWAIT` vs `Ticket.Result()` as primary?
-2. Result replay vs consume-once?
-3. MVP type set: include `STRING`? exclude composite?
-4. Does `Queue.Join` stay completion-only (yes recommended) while per-ticket await carries values?
+**Proposed locks for bucket 0.5.0 (Carlos confirm):**
+
+1. **Primary:** typed `AWAIT` (not `Ticket.Result()` as primary).
+2. **Replay** stored success value until `Close` (not consume-once).
+3. **MVP `T`:** include `STRING`; exclude composites/DataFrame until phase 2.
+4. **`Queue.Join`:** completion-only; values only via per-ticket await.
+
+Remaining only if Carlos rejects a lock above.
 
 ---
 
 ## History
 
 - 2026-09-07 — Drafted after parallel-example request blocked on VOID-only surface; ABI already has result pointer.
+- 2026-09-12 — 0.5.0 corrective train: prefer typed AWAIT; ABI re-confirmed; linked from bucket-0.5.0-corrective.md.

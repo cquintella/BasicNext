@@ -27,5 +27,6 @@ specification.
 - [Native LSP & DAP](../../docs/architecture/README.md) — 0.3 surface mostly in tree; remaining: `--help`, VS Code `bn check` on save, find-references client. Audit 2026-09-03.
 - [BNString extras](string-extras.md) — stdlib Split/Join/Contains/IndexOf/Trim (**0.4.7** G7.5); interpolation `$"..."` deferred (language DNA). Draft expanded 2026-09-07.
 - [Typed Dispatch results](dispatch-typed-return.md) — language/`AWAIT` (or `Ticket.Result`) to surface worker returns; `bn_rt` already has result pointer. Proposed 2026-09-07.
+- [Bucket 0.5.0 corrective](bucket-0.5.0-corrective.md) — ARC memory lock (strong/weak) + typed dispatch AWAIT; plan only. Proposed 2026-09-12.
 - [Early `Error` propagation](error-propagation.md) — proposed postfix `?` (or CHECK/PROPAGATE); language DNA; desugars to IF/RETURN; does **not** change toolchain diagnostics.
 - [BNData Expansion (Series & Analytics)](bndata-expansion.md) — proposed 1D dynamic series, NA semantics, vectorized operations, and DataFrame enhancements.
