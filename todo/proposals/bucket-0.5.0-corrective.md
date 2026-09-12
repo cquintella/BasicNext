@@ -97,7 +97,7 @@ For **structs / scalars / vectors (value types):** unchanged copy semantics — 
 | **`DELETE` keyword** | **Removed from language DNA for 0.5.0** — not “deprecate on classes only.” No `DELETE` in grammar, book teaching, or fixtures for the new model. Migration note required for 0.4.x programs that used `DELETE`. |
 | Force-immediate destroy | **Out** with the keyword (former R2/R3 rejected). |
 | Normal lifetime | ARC **strong/weak** + **end of scope / reassignment**. Hello needs no dispose keyword. |
-| `RELEASE` (locked) | Optional **advanced** MVP keyword: drop **one** strong binding only; deinit **only** when count → 0; never kill-all-aliases. Not a rename of force-dispose. |
+| `RELEASE` (locked) | Optional **advanced** MVP keyword: drop **one** strong binding only; deinit **only** when count → 0; never kill-all-aliases. Not a rename of force-dispose. For fixed vectors of tickets: **`RELEASE tickets` only** — never `RELEASE tickets[i]`; Close each element first. |
 | HOST / registry | Capability methods stay (`Close`, `*_close`, ticket close). **Do not** reintroduce `DELETE` as sugar over those closes. Unifying HOST into ARC types is a **later** proposal. |
 | Former options | Superseded: R1 “deprecate class DELETE” → escalated to **full keyword removal**. R2/R3 rejected. |
 
@@ -229,6 +229,7 @@ Shared release claim “0.5.0” requires: D1 green + M0 locked + M1 docs merged
 | Unowned | Deferred |
 | **`DELETE` keyword** | **Removed from language DNA** (grammar/book/fixtures) — Carlos lock 2026-09-12 via Quorra |
 | `RELEASE` | **In MVP as optional advanced** — drop one strong only; deinit only at count→0; hello may omit; never kill-all-aliases |
+| Tickets teaching (Carlos) | `tickets[i].Close()` per element (bn_rt); `RELEASE tickets` only on the **aggregate**; **never** `RELEASE tickets[i]`; hello may omit RELEASE and leave scope |
 | BnArc | Implementation detail for interpret, not language API |
 | HOST / DataFrame / File | Capability **`Close` / `*_close` only** — do not reintroduce `DELETE` |
 | Migration | Book/spec note for 0.4.x programs that used `DELETE` |
@@ -245,3 +246,4 @@ Shared release claim “0.5.0” requires: D1 green + M0 locked + M1 docs merged
 - 2026-09-12 — Carlos lock (via Quorra): ARC compliance required; automatic strong; weak for cycles; class force-`DELETE` out; remnant drop-one-strong = `RELEASE` or omit MVP; Quorra gates each M*; fixtures must prove no “kill all aliases.” Plan only — no runtime yet.
 - 2026-09-12 — Carlos final lock (via Quorra): `RELEASE` **in MVP as optional advanced** (not omitted); semantics = drop one strong only; deinit only count→0; never kill-all-aliases.
 - 2026-09-12 — Carlos lock (via Quorra): **remove `DELETE` from the language** (full DNA purge, not class-only deprecation); HOST stays `Close`/`*_close`; migration note for 0.4.x; plan/docs only — no parser yet.
+- 2026-09-12 — Carlos teaching lock (via Quorra): tickets — Close per element (bn_rt); RELEASE only on aggregate `tickets`; never `RELEASE tickets[i]`; hello may omit RELEASE.
