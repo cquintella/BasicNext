@@ -10,7 +10,7 @@
   - The DELETE keyword and delete-statement production are removed from DNA.
   - RELEASE statement added (optional advanced: drop one strong binding).
   - AWAIT remains; typed result T OR Error is semantic (see language-0.5.0.md).
-  - Weak annotation spelling for ARC is TBD — not invented in this grammar.
+  - Weak class types: WEAK named-type (e.g. LET x AS WEAK Counter OR NULL).
 
   Dialect: ISO 14977-style EBNF. Quoted text is a terminal; {} repeats zero
   or more times; [] is optional; () groups alternatives; and ?...? is a lexer
@@ -78,9 +78,12 @@ parameter-type       = value-type ;
 value-type           = data-type { "OR" ( data-type | "NULL" | "NA" | "EOF" ) } ;
 local-value-type     = local-data-type { "OR" ( local-data-type | "NULL" | "NA" | "EOF" ) } ;
 data-type            = scalar-type | vector-type | pointer-type | function-type
-                       | named-type | system-type ;
+                       | weak-named-type | named-type | system-type ;
 local-data-type      = scalar-type | local-vector-type | pointer-type | function-type
-                       | named-type | system-type ;
+                       | weak-named-type | named-type | system-type ;
+(* Weak references to class instances. Spelling: AS WEAK ClassName [OR NULL].
+   Dead weak reads as NULL. Target must be a class named-type. *)
+weak-named-type      = "WEAK" named-type ;
 scalar-type          = "BOOLEAN" | numeric-type | "STRING" | "DATE" | "TIME"
                        | "TIMEZONE" ;
 numeric-type         = "BYTE" | "INT8" | "INT16" | "INT32" | "INT64"
@@ -177,12 +180,10 @@ primary              = literal | identifier | "SELF" | "SUPER" | input-expressio
                        | sizeof-expression | host-capability-expression | new-expression
                        | vector-literal | async-submit-expression | await-expression
                        | "(" expression ")" ;
-(* ASYNC has the explicit surface `ASYNC queue Function(args)`. The queue
-   expression ends at the named function call; semantic analysis requires a
-   Dispatch.Queue operand and a named function target. AWAIT has the surface
-   `AWAIT ticket(timeoutMs)` and requires a Dispatch.Ticket operand.
-   In 0.5.0, when the ticket comes from a FUNCTION declared AS T OR Error,
-   the static type of AWAIT is T OR Error (typed await — see language-0.5.0.md). *)
+(* ASYNC keyword form: ASYNC queue Function(args…).
+   Queue operand + named function; arity/types must match parameters (KISS).
+   Method form (ordinary call): queue.Async(Function, arg1, …) — see language-0.5.0.md.
+   AWAIT ticket(timeoutMs); typed T OR Error when ticket from FUNCTION AS T OR Error. *)
 async-submit-expression = "ASYNC" expression identifier "(" [ expression-list ] ")" ;
 await-expression        = "AWAIT" expression "(" expression ")" ;
 host-capability-expression = "HOST" "." host-capability-name ;
@@ -209,7 +210,7 @@ reserved-word        = "AND" | "AS" | "ASYNC" | "AWAIT" | "BOOLEAN" | "BYTE" | "
                        | "PUBLIC" | "RELEASE" | "REPEAT" | "RETURN" | "SELF" | "SHL" | "SHR" | "SIZEOF" | "STATIC"
                        | "STEP" | "STOP" | "STRING" | "STRUCT" | "SUPER" | "SYSTEM" | "THEN" | "TO" | "TRUE"
                        | "TIMESTAMP" | "TIME" | "TIMEZONE" | "UINT16" | "UINT32" | "UINT64"
-                       | "UNTIL" | "VOID" | "WHILE" | "XOR" ;
+                       | "UNTIL" | "VOID" | "WEAK" | "WHILE" | "XOR" ;
 identifier           = identifier-start { identifier-continue } ;
 identifier-start     = ASCII-letter | "_" ;
 identifier-continue  = identifier-start | ASCII-digit ;

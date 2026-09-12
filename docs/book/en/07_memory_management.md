@@ -1,3 +1,9 @@
+> **0.5.0 overlay:** This chapter’s manual `NEW`/`DELETE` story is **superseded**
+> for Basic Next 0.5.0 by the ARC contract in
+> [`docs/0.5.0/language-0.5.0.md`](../../0.5.0/language-0.5.0.md).
+> Migration notes: [`docs/0.5.0/memory-migration.md`](../../0.5.0/memory-migration.md).
+> Conformance checklist: [`docs/0.5.0/arc-conformance.md`](../../0.5.0/arc-conformance.md).
+
 # Memory Management
 
 Basic Next version 0.3 does not feature a garbage collector. Memory management is strictly manual. Developers are responsible for allocating memory when needed and explicitly freeing it when it is no longer required.

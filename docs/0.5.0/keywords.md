@@ -9,14 +9,14 @@ except as amended below.
 | Change | Detail |
 |---|---|
 | **Removed** | `DELETE` — purged from language DNA (not class-only deprecation). |
+| **Added** | `WEAK` — weak class-type qualifier: `AS WEAK ClassName` (typically with `OR NULL`); dead weak reads as `NULL`. |
 | **Added** | `RELEASE` — optional advanced: early end of a binding (primary, fixed vector, struct, or class object); class = drop one strong; use-after-release is an error; not element-remove on fixed vectors. |
 | **Retained** | `ASYNC`, `AWAIT` — typed `AWAIT` yields `T OR Error` when the ticket comes from `FUNCTION … AS T OR Error` (semantics in language-0.5.0.md). |
 | **Retained** | `NEW`, `DESTRUCTOR` — allocation and destructor bodies remain; lifetime is ARC, not manual dispose. |
 
 `ASYNC` and `AWAIT` remain exact-uppercase reserved words. `BNDispatch` remains an
 explicitly imported external module. `PARALLEL` remains reserved lexical-only.
-Weak-reference annotation spelling is **TBD** (Carlos open) and is not a keyword
-in this registry until locked.
+Weak class types use the reserved word `WEAK` in `AS WEAK ClassName` forms.
 
 HOST resource teardown uses capability methods (`Close`, `*_close`), which are
 **identifiers on host types**, not the removed `DELETE` keyword.
@@ -99,6 +99,7 @@ UINT32
 UINT64
 UNTIL
 VOID
+WEAK
 WHILE
 XOR
 ```
