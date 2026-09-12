@@ -9,7 +9,7 @@ except as amended below.
 | Change | Detail |
 |---|---|
 | **Removed** | `DELETE` — purged from language DNA (not class-only deprecation). |
-| **Added** | `RELEASE` — optional advanced statement: drop **one** strong binding; deinit only when strong count reaches zero; never kills all aliases. |
+| **Added** | `RELEASE` — optional advanced: early end of a binding (primary, fixed vector, struct, or class object); class = drop one strong; use-after-release is an error; not element-remove on fixed vectors. |
 | **Retained** | `ASYNC`, `AWAIT` — typed `AWAIT` yields `T OR Error` when the ticket comes from `FUNCTION … AS T OR Error` (semantics in language-0.5.0.md). |
 | **Retained** | `NEW`, `DESTRUCTOR` — allocation and destructor bodies remain; lifetime is ARC, not manual dispose. |
 
