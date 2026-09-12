@@ -1,6 +1,6 @@
 # Proposal: Bucket 0.5.0 — Corrective plan (memory ARC + typed dispatch returns)
 
-**Status:** Proposed — **action plan / language DNA lock**, not implementation.  
+**Status:** Proposed — **action plan / language DNA lock**, not implementation. **Carlos lock 2026-09-12 (via Quorra):** ARC compliance required; class force-`DELETE` out; optional `RELEASE` only if a keyword remains.  
 **Date:** 2026-09-12  
 **Owner (tracker):** Tron (ex-Doug) until Carlos names implementer.  
 **Gate:** Quorra before Carlos.  
@@ -51,7 +51,7 @@ Nothing here is normative until accepted into `docs/language/`, architecture con
 
 1. **Lock** a single language memory model for **class instances** that is **ARC-strong by default**, teachable, and compatible with PHILOSOPHY (explicit contracts, KISS, small core, made to teach).
 2. Specify **weak** (required for cycles in the plan) and decide **unowned** (in or deferred).
-3. Define the fate of **`DELETE` / Dispose** under ARC (deprecate, restrict, or redefine) so authors are not taught two conflicting truths.
+3. **Locked:** class force-dispose `DELETE` is **out** (anti-ARC). If a keyword remains for “drop one strong binding,” it is **`RELEASE`** (not `DELETE`); hello/teaching may omit it (scope end is enough).
 4. Require **interpret = reference** for the new rules; list what LLVM must eventually match (no silent native drift).
 5. **Accept and schedule** typed dispatch returns: primary surface **typed `AWAIT` → `T OR Error`**, wiring to existing `bn_rt_dispatch_await` result pointer.
 6. Write acceptance criteria with **`.bn` fixtures + tests** (no “done” without evidence).
@@ -64,6 +64,8 @@ Nothing here is normative until accepted into `docs/language/`, architecture con
 - Composite / DataFrame payloads on dispatch tickets (phase 2 after scalars).
 - Shipping both typed `AWAIT` and `Ticket.Result()` as equal primary APIs.
 - Closing unfinished 0.4.7 matrix compile gate by pretending ARC fixes FOR/PRINT gaps.
+- **Force-dispose / “DELETE kills all aliases”** for class instances (anti-ARC; rejected).
+- Teaching semi-manual lifetime for classes (User must not need to sprinkle dispose to be correct).
 
 ---
 
@@ -71,29 +73,32 @@ Nothing here is normative until accepted into `docs/language/`, architecture con
 
 ### A.1 Target language rules (normative intent)
 
+**Objective (Carlos lock):** BN **must be able** to implement ARC, and the language/toolchain **must require ARC compliance** — not a semi-manual story where the User is responsible for dispose.
+
 For **class instances** (reference types):
 
 | Rule | Intent |
 | --- | --- |
-| Strong (default) | Locals, fields, and parameters to class types are strong unless annotated otherwise. Assign / pass / return increment; end of lifetime / reassignment decrement. |
-| Zero strong | Run destructor chain (same order as today’s DELETE chain), then free. |
-| Weak | Non-owning; does not keep alive; becomes empty/nil when object dies; used to break cycles. Surface: explicit annotation or type form TBD at accept (keep core small — prefer one spelling). |
-| Unowned | **Deferred recommendation:** out of 0.5.0 MVP (easy to misuse; Swift advanced). Revisit after weak + cycles fixtures exist. |
-| Cycles | Document that strong cycles leak until broken with weak; provide at least one teaching fixture. |
+| Strong (default, automatic) | Locals, fields, params, and returns of class types are strong unless annotated weak. **Assign / param / return / scope** insert retain/release in the toolchain (interpret reference; LLVM later). User does not manually retain. |
+| Zero strong | Run destructor chain, then free. |
+| Weak | Non-owning; breaks cycles; becomes empty/nil when object dies. Spelling TBD (open). |
+| Unowned | **Deferred** (out of MVP). |
+| Cycles | Strong cycles leak until broken with weak; at least one teaching fixture. |
+| No force-dispose | There is **no** operation that destroys a live object while other strong aliases remain. |
 
 For **structs / scalars / vectors (value types):** unchanged copy semantics — not ARC.
 
-### A.2 `DELETE` / Dispose under ARC
+### A.2 `DELETE` / `RELEASE` under ARC — **LOCKED (Carlos via Quorra, 2026-09-12)**
 
-**Recommendation for 0.5.0 accept text (Carlos must lock one):**
+| Lock | Decision |
+| --- | --- |
+| Force-immediate destroy | **Out.** `DELETE` on a class instance that forces destroy regardless of other strong refs is **anti-ARC** and rejected (former R2; also rejects R3 assert-unique dispose as the class lifetime story). |
+| Normal lifetime | Strong retain/release only. **End of scope / reassignment** drops the binding; hello and teaching examples need **no** dispose keyword. |
+| Keyword if any remains | Do **not** call that keyword `DELETE`. If the surface still needs an explicit “drop one strong binding,” name it **`RELEASE`**: decrement this binding’s strong count only; run deinit **only** when count → 0. Same semantics as leaving scope for that binding — never “kill all aliases.” |
+| MVP / KISS (Quorra recommend) | Prefer **omit `RELEASE` from MVP teaching** if it clutters KISS; scope end is enough for hello. `RELEASE` = optional/advanced, or deferred entirely until needed. |
+| Former options | **R1 locked** as: deprecate/remove class force-`DELETE`; optional rename remnant to `RELEASE` only if a keyword stays. R2/R3 **rejected** for class instances. |
 
-| Option | Meaning | Verdict |
-| --- | --- | --- |
-| **R1 (preferred)** | Class `DELETE` becomes **unnecessary** for normal life; remaining `DELETE` on class instances is either removed from teaching or defined as “release this strong binding only” **without** forcing immediate deinit if other strong refs exist (Swift has no DELETE). Prefer **deprecate `DELETE` on classes** in book/spec once ARC lands. |
-| R2 | Keep `DELETE` as **immediate dispose** ignoring other aliases | Reject — recreates use-after-delete footguns and fights ARC. |
-| R3 | `DELETE` = assert unique strong owner then deinit | Possible escape hatch; only if teaching needs deterministic teardown — mark advanced. |
-
-HOST handles (`FS.File`, DataFrame close, tickets) stay **explicit close + DELETE/close** until a separate proposal maps them into ARC types. Do not silently ARC-wrap every handle in 0.5.0.
+HOST handles (`FS.File`, DataFrame close, tickets) stay **explicit close** until a separate proposal maps them into ARC types. Do not silently ARC-wrap every handle in 0.5.0. Host close vocabulary is **not** a license to keep force-`DELETE` on BN classes.
 
 ### A.3 Interpret vs LLVM alignment
 
@@ -101,7 +106,7 @@ HOST handles (`FS.File`, DataFrame close, tickets) stay **explicit close + DELET
 | --- | --- |
 | Interpret | Must implement the accepted ARC rules as **executable reference** (may use `BnArc` / counts internally). |
 | LLVM / `bn_rt` | Must not claim ARC parity until support-matrix rows + retain/release strategy exist. Plan wave: document required inserts (retain on copy, release on end-of-life) and identity observables from `value-memory-abi.md` §1–2. |
-| Conformance | Fixtures: aliasing, scope exit deinit, reassignment drop, weak zeroing, cycle+weak, no double-deinit. |
+| Conformance | Fixtures **must prove ARC compliance**: aliasing, scope deinit, reassign drop, weak cycle, **and** that no path “DELETE/RELEASE kills all aliases.” No double-deinit. |
 
 ### A.4 Philosophy fit
 
@@ -115,11 +120,13 @@ HOST handles (`FS.File`, DataFrame close, tickets) stay **explicit close + DELET
 
 | Wave | Work | Done when |
 | --- | --- | --- |
-| M0 | Accept this proposal’s A.* locks (strong default, weak yes, unowned deferred, DELETE policy R1 or R3) | Carlos/Quorra gate written into language decision log |
-| M1 | Spec + book rewrite of ch.7; keyword/annotation grammar sketch; update PHILOSOPHY cross-links if needed | Docs PR accepted |
-| M2 | Interpret implements strong/weak; fixtures green | Evidence under `docs/superpowers/evidence/` |
-| M3 | Close `value-memory-abi` object lifetime rows for interpret | Checklist items marked with tests |
-| M4 | LLVM retain/release design + matrix rows (may slip past 0.5.0 tag if interpret-first release) | Native parity on ARC subset or honest deferred |
+| M0 | Locks recorded: automatic strong, weak for cycles, force-`DELETE` out, `RELEASE` optional/omit-MVP, ARC compliance objective | Carlos lock (done 2026-09-12 via Quorra) + decision log pointer |
+| M1 | Spec + book rewrite of ch.7; weak spelling; remove class force-`DELETE` from teaching; `RELEASE` only if kept | Docs PR accepted; **Quorra ARC-compliance gate** |
+| M2 | Interpret implements strong/weak retain/release; compliance fixtures green | Evidence under `docs/superpowers/evidence/`; **Quorra ARC gate** |
+| M3 | Close `value-memory-abi` object lifetime rows for interpret | Checklist + tests; **Quorra ARC gate** |
+| M4 | LLVM retain/release design + matrix rows (may slip past 0.5.0 tag if interpret-first) | Native parity or honest deferred; **Quorra ARC gate** |
+
+**Quorra’s role:** ARC **compliance gate** on every M* wave — reject any wave that reintroduces semi-manual dispose or force-destroy semantics for classes.
 
 ---
 
@@ -168,7 +175,7 @@ Shared release claim “0.5.0” requires: D1 green + M0 locked + M1 docs merged
 
 ### This proposal is “done” as a plan when
 
-1. Quorra gate + Carlos accept the locks in A.2, A.5, B.1.  
+1. Quorra gate + Carlos accept the locks in A.2 (DONE for DELETE/RELEASE), A.5, B.1; remaining opens listed below.  
 2. File linked from `todo/proposals/README.md`.  
 3. Opens below answered or explicitly deferred with Owner.
 
@@ -176,10 +183,11 @@ Shared release claim “0.5.0” requires: D1 green + M0 locked + M1 docs merged
 
 **Dispatch:** criteria in `dispatch-typed-return.md` Acceptance section.  
 **ARC interpret:**  
-1. Teaching examples: strong share, scope deinit, weak cycle break.  
-2. No reliance on `DELETE` for normal class lifetime in new examples.  
-3. Conformance fixtures for aliasing/deinit on interpret.  
-4. `value-memory-abi` object section updated with ARC observables.
+1. Teaching examples: strong share, scope deinit, reassign drop, weak cycle break — **without** force-dispose.  
+2. No class force-`DELETE`; if `RELEASE` exists, examples treat it as optional drop-one-strong only.  
+3. Compliance fixtures: aliasing, scope deinit, reassign drop, weak cycle, **and** prove no “kill all aliases” path.  
+4. `value-memory-abi` object section updated with ARC observables.  
+5. Quorra ARC-compliance gate passed for the wave claiming done.
 
 ---
 
@@ -187,7 +195,7 @@ Shared release claim “0.5.0” requires: D1 green + M0 locked + M1 docs merged
 
 | Risk | Mitigation |
 | --- | --- |
-| Two memory stories (DELETE + ARC) confuse Users | Lock R1; rewrite book ch.7 in same PR as accept |
+| Two memory stories (force-DELETE + ARC) confuse Users | Force-DELETE out; rewrite book ch.7; Quorra gate each M* |
 | Weak annotation grows syntax | One form only; no unowned in MVP |
 | Native ships without retain and “looks fine” | Matrix gate; no ARC claim on compile until M4 |
 | Dispatch dual API | Typed AWAIT only as primary |
@@ -197,12 +205,13 @@ Shared release claim “0.5.0” requires: D1 green + M0 locked + M1 docs merged
 
 ## Open questions (Carlos)
 
-1. **DELETE policy:** R1 (deprecate class DELETE) vs R3 (assert-unique dispose)?  
+1. ~~**DELETE policy**~~ — **LOCKED:** force-dispose out; optional `RELEASE` (drop one strong) or omit from MVP.  
 2. **Weak spelling:** attribute vs type wrapper vs method — pick one for M1.  
 3. **0.5.0 tag content:** locks+dispatch only, or include interpret ARC (M2)?  
 4. **Unowned:** confirm deferred.  
 5. **HOST handles:** confirm stay manual close in 0.5.0.  
-6. Dispatch: confirm **replay until Close** and MVP type set including STRING.
+6. Dispatch: confirm **replay until Close** and MVP type set including STRING.  
+7. **`RELEASE` in MVP?** Quorra leans omit for KISS (scope end enough) — confirm omit vs optional advanced keyword.
 
 ---
 
@@ -210,11 +219,15 @@ Shared release claim “0.5.0” requires: D1 green + M0 locked + M1 docs merged
 
 | Topic | 0.5.0 plan decision |
 | --- | --- |
-| Memory teaching model | Swift-like **strong default + weak for cycles** |
+| Objective | BN **can** implement ARC; surface/toolchain **require ARC compliance** (not semi-manual) |
+| Memory teaching model | Swift-like **automatic strong + weak for cycles** |
+| Strong | Toolchain/interpret inserts retain/release on assign/param/return/scope; zero strong → destructor |
 | Unowned | Deferred |
-| DELETE on classes | Prefer deprecate under ARC (R1) — Carlos lock |
+| Force-`DELETE` on classes | **Out** (anti-ARC) — Carlos lock 2026-09-12 |
+| If keyword for drop-one-strong | Name it **`RELEASE`** (not DELETE); deinit only at count→0; Quorra: prefer omit from MVP teaching |
 | BnArc | Implementation detail for interpret, not language API |
 | DataFrame/File closes | Remain explicit HOST/registry for now |
+| Quorra | ARC **compliance gate** on every M* wave |
 | Dispatch primary | **Typed AWAIT → T OR Error** |
 | Ticket.Result | Not primary |
 | ABI | Existing `bn_rt_dispatch_await` result pointer |
@@ -224,3 +237,4 @@ Shared release claim “0.5.0” requires: D1 green + M0 locked + M1 docs merged
 ## History
 
 - 2026-09-12 — Drafted by Tron after Quorra brief; Carlos authorized corrective plan (docs only).
+- 2026-09-12 — Carlos lock (via Quorra): ARC compliance required; automatic strong; weak for cycles; class force-`DELETE` out; remnant drop-one-strong = `RELEASE` or omit MVP; Quorra gates each M*; fixtures must prove no “kill all aliases.” Plan only — no runtime yet.
