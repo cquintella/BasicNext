@@ -1,0 +1,36 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Thin tour of official BNString (modules/bn/BNString.bn).
+
+IMPORT BNString AS S
+
+FUNCTION Start() AS VOID
+    LET s AS S.String = NEW S.String("  hello,world,bn  ")
+    PRINT "Len=", s.Len()
+    PRINT "Contains world? ", s.Contains("world")
+    LET trimmed AS S.String = s.Trim()
+    PRINT "Trimmed=", trimmed.ToString()
+
+    LET tok AS S.Tokenizer OR NULL = trimmed.Tokenizer(",")
+    IF tok IS NULL THEN
+        PRINT "Tokenizer failed"
+        STOP 1
+    END IF
+    PRINT "Tokens:"
+    REPEAT
+        LET part AS STRING OR EOF = tok.Next()
+        IF part IS EOF THEN
+            EXIT REPEAT
+        END IF
+        PRINT "  [", part, "]"
+    UNTIL FALSE
+    END REPEAT
+
+    LET emptyTok AS S.Tokenizer OR NULL = S.Tokenizer.New("a,b", "")
+    IF emptyTok IS NULL THEN
+        PRINT "empty sep -> NULL (ok)"
+    END IF
+END FUNCTION

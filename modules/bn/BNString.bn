@@ -2,23 +2,21 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
-//
-// Canonical official module: modules/bn/BNString.bn (IMPORT BNString AS S).
-// This file keeps a self-contained copy for reading without IMPORT; prefer
-// examples/bnstring_tour.bn for the module path.
-//
-// Example: Java-like CLASS String wrapping the STRING primary + Tokenizer.
-// Preferred path for string-extras (Carlos 2026-09-12 via Quorra): object API
-// in examples/, not Surface A vectorial Split→[] and not a loose Tokenizer module.
-//
-// Grammar: Basic Next 0.4.x (bn 0.4.7). Class name is `String` (exact-uppercase
-// `STRING` remains the primary type keyword — no conflict).
-// Implementation: LEN + character index + loops only — no new runtime.
-//
-// Error values: user code cannot NEW Error in 0.4.7, so fail-closed paths use
-// NULL (Tokenizer) or NULL (CharAt OOB) instead of OR Error. IndexOf uses NA.
-// When Error construction is available, prefer OR Error as in the proposal.
 
+// BNString — official extras module (Carlos 2026-09-12 via Quorra).
+// Java-like CLASS String over the STRING primary + CLASS Tokenizer on that API.
+// Implementation: LEN + character index + loops only (no native bn_rt binding).
+// Primary STRING (LEN/index) stays intact; this module does not replace it.
+//
+ // Fail-closed: empty Tokenizer sep and CharAt OOB return NULL (user code cannot
+// NEW Error in 0.4.7). Prefer OR Error when Error is constructible.
+//
+// Access:
+//   IMPORT BNString AS S
+//   LET s AS S.String = NEW S.String("hi")
+//
+// Precompiled module objects (.bno / compile cache): not in toolchain yet —
+// intent for 0.5.x; ship source `.bn` now (see modules/README.md).
 
 FUNCTION IsAsciiSpace(ch AS STRING) AS BOOLEAN
     LET code AS INTEGER OR Error = ASC(ch)
@@ -31,7 +29,7 @@ FUNCTION IsAsciiSpace(ch AS STRING) AS BOOLEAN
     RETURN FALSE
 END FUNCTION
 
-CLASS Tokenizer
+EXPORT CLASS Tokenizer
     PRIVATE text AS STRING = ""
     PRIVATE sep AS STRING = ""
     PRIVATE pos AS INTEGER = 0
@@ -107,7 +105,7 @@ CLASS Tokenizer
     END FUNCTION
 END CLASS
 
-CLASS String
+EXPORT CLASS String
     PRIVATE value AS STRING = ""
 
     PUBLIC FUNCTION CONSTRUCTOR(s AS STRING)
@@ -204,39 +202,3 @@ CLASS String
         RETURN SELF.value
     END FUNCTION
 END CLASS
-
-FUNCTION Start() AS VOID
-    LET s AS String = NEW String("  hello,world,bn  ")
-    PRINT "Len=", s.Len()
-    PRINT "Contains world? ", s.Contains("world")
-    LET trimmed AS String = s.Trim()
-    PRINT "Trimmed=", trimmed.ToString()
-
-    LET tok AS Tokenizer OR NULL = trimmed.Tokenizer(",")
-    IF tok IS NULL THEN
-        PRINT "Tokenizer failed (empty sep?)"
-        STOP 1
-    END IF
-    PRINT "Tokens:"
-    REPEAT
-        LET part AS STRING OR EOF = tok.Next()
-        IF part IS EOF THEN
-            EXIT REPEAT
-        END IF
-        PRINT "  [", part, "]"
-    UNTIL FALSE
-    END REPEAT
-
-    LET emptyTok AS Tokenizer OR NULL = Tokenizer.New("a,b", "")
-    IF emptyTok IS NULL THEN
-        PRINT "empty sep -> NULL (ok)"
-    END IF
-
-    LET hi AS String = NEW String("ab")
-    LET c0 AS STRING OR NULL = hi.CharAt(0)
-    LET c9 AS STRING OR NULL = hi.CharAt(9)
-    PRINT "CharAt0=", c0
-    IF c9 IS NULL THEN
-        PRINT "CharAt9=NULL (ok)"
-    END IF
-END FUNCTION
