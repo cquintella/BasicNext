@@ -1,7 +1,7 @@
 # Proposal: BNString extras (stdlib) + string interpolation (language, deferred)
 
 **Status:** Surface B (interpolation) remains deferred.  
-**Preferred string helper (Carlos lock 2026-09-12):** **`Tokenizer`** (iterator `Next`), **not** Split→vector.  
+**Preferred string helper (Carlos lock 2026-09-12):** **`CLASS String`** (object over primary `STRING`) in **`examples/string_class.bn`**, with **`Tokenizer`** owned by that class (`String.Tokenizer(sep)` / `Tokenizer.New`). **Not** Split→vector; **not** a loose Tokenizer-only module as the product surface.  
 Surface A vectorial (`Split`/`Join`/`Contains`/…) is **not** the preferred path.  
 **Date:** 2026-09-07 (locks updated 2026-09-12)  
 **Bucket link:** Track B helpers → [`ongoing/bucket-0.4.7.md`](../../ongoing/bucket-0.4.7.md) §7.5 / **G7.5-string** (G7.5 closed deferred; this proposal tracks the post-defer preferred API).  
@@ -38,10 +38,15 @@ change, not a stdlib method set.
 
 ---
 
-## Preferred API — `Tokenizer` (Carlos lock 2026-09-12)
+## Preferred API — `CLASS String` + `Tokenizer` (Carlos lock 2026-09-12)
 
-**Name:** `Tokenizer` (not Splitter).  
-**Shape:** KISS iterator — not “allocate a vector of all parts.”
+**Working example:** [`examples/string_class.bn`](../../examples/string_class.bn) (`bn run` green on 0.4.7).
+
+**Product shape:** Java-like **`CLASS String`** wrapping the primary `STRING` (`PRIVATE value`).  
+`Tokenizer` is **part of that object story** (`String.Tokenizer(sep)`), not a free-floating stdlib module “outside BN.”  
+Class name **`String`** is OK: reserved word is exact-uppercase `STRING`.
+
+**Tokenizer:** name `Tokenizer` (not Splitter). KISS iterator — not “allocate a vector of all parts.”
 
 | API | Meaning |
 | --- | --- |
@@ -52,7 +57,7 @@ change, not a stdlib method set.
 **Rules (locked intent):**
 
 - **Empty `sep` → `Error` on `New`** (fail closed; no undefined “split every char” surprise in MVP).
-- Prefer shipping as an **example/class in the repo** or a **thin module** — do **not** inchar core `STRING`.
+- Prefer **`examples/string_class.bn`** (done) or later a thin `modules/bn` mirror — do **not** inchar core `STRING` primaries (`LEN` / index stay).
 - Surface A vectorial (`Split` / `Join` / `Contains` / …) is **not** the preferred path for this need.
 
 ### Sketch
@@ -72,12 +77,12 @@ REPEAT
 UNTIL FALSE
 ```
 
-### Acceptance (when scheduled — not claiming done here)
+### Acceptance
 
-1. Normative library or example doc names `Tokenizer` and the table above.
-2. Interpret fixtures: empty sep → Error; walk fields; EOF after last; optional Reset.
-3. No core `STRING` keyword/method growth for this feature.
-4. Evidence with `bn run` (or agreed harness). **Docs lock in this commit only — no runtime yet.**
+1. Example `examples/string_class.bn` exists with `CLASS String` + `CLASS Tokenizer` and a `Start()` that exercises New/Contains/Tokenizer — **done** (`bn run` 2026-09-12).
+2. Empty sep fail-closed (`NULL` today; `Error` when user-constructible); walk fields; `EOF` after last; optional `Reset`.
+3. No core `STRING` keyword growth — primary `LEN`/index unchanged.
+4. Optional later: promote to `docs/library/` / `modules/bn` without demoting the object API back to Surface A vectors.
 
 ---
 
@@ -148,3 +153,8 @@ processing. Do not merge modules without a separate accept.
   `Next() AS STRING OR EOF`, optional `Reset`; empty sep → Error on New;
   name Tokenizer (not Splitter); example/class or thin module — **not** core
   STRING; Surface A vectorial is not the preferred path. Docs only.
+- 2026-09-12 — Carlos (via Quorra): deliver **CLASS String** object over primary
+  `STRING` with Tokenizer on the class; example `examples/string_class.bn`
+  (`bn run` ok). Preferred path updated away from loose Tokenizer-only module
+  and Surface A vectors. CharAt/Tokenizer fail-closed via NULL until Error is
+  user-constructible.
