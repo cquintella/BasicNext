@@ -28,7 +28,7 @@ and semantics here are the contract those waves must honour.
 | --- | --- |
 | **ARC** | Class instances use automatic strong retain/release on assign, parameter, return, and end of scope. Zero strong → destructor chain, then free. Weak for cycles (spelling TBD). Unowned deferred. No force-dispose. Interpret = reference. |
 | **`DELETE` removed** | Keyword purged from grammar, reserved-word list, and teaching surface. Not “deprecate on classes only.” |
-| **`RELEASE`** | Optional **advanced** statement: drop **one** strong binding only; deinit only when the strong count reaches zero; never kill-all-aliases. Hello programs need not use it. |
+| **`RELEASE`** | Optional **advanced**: early end of a **binding** for primaries, fixed vectors, structs, and class objects (see section). Hello may omit and leave scope. |
 | **Typed `AWAIT`** | Primary surface: when the ticket comes from `FUNCTION … AS T OR Error`, `AWAIT ticket(ms)` yields `T OR Error`. `Ticket.Result()` is not primary. ABI remains `bn_rt_dispatch_await`. Replay stored success until `Close`. |
 | **HOST Close** | Capability methods stay `Close` / `*_close` (and ticket close). Never reintroduce `DELETE` as sugar over those closes. |
 
@@ -167,26 +167,31 @@ END FUNCTION
 
 ## `RELEASE` (optional advanced)
 
-`RELEASE expression` drops **one** strong binding held by the expression’s
-designated storage (typically a local or field binding of class type). It
-decrements the strong count by one for that binding and leaves the binding
-empty / unusable for further strong use of that slot (exact post-state
-diagnostics are a frontend concern).
+**Carlos lock (2026-09-12):** `RELEASE` ends a binding **early**. It applies to
+**primaries, fixed vectors, structs, and class objects** — not only ARC
+classes. The operand must name a **whole binding** (local or field slot), not
+an “element remove” into a fixed aggregate.
 
-Rules:
+After `RELEASE`, any use of that binding is a **use-after-release** error
+(frontend/runtime diagnostic). Hello programs may omit `RELEASE` and simply
+leave scope; scope exit performs the same end-of-binding work.
 
-- Deinit runs **only** if the strong count reaches zero after this drop.
-- `RELEASE` **never** kills all aliases. Other strong references keep the
-  object alive.
-- Hello and ordinary teaching examples **need not** use `RELEASE`. Prefer
-  end of scope and reassignment.
-- `RELEASE` is not a rename of force-dispose and is not a substitute for
-  HOST / `bn_rt` **`Close`**.
-- **Aggregate only for fixed vectors of handles:** `RELEASE tickets` is
-  allowed (drops the strong binding of the whole vector). **`RELEASE tickets[i]`
-  is forbidden** in teaching and intended semantics — it punches a hole in a
-  fixed vector and is a bad model. Close each element first; then optionally
-  `RELEASE` the aggregate (or just leave scope).
+### By kind
+
+| Operand kind | Effect of `RELEASE binding` |
+| --- | --- |
+| **Class / object** | Drop **one** strong from this binding; run destructor only if strong count → 0. Other strong aliases keep the object alive (never kill-all-aliases). |
+| **Fixed vector** | End the **aggregate** binding. Nested element lifetimes follow ordinary rules as the vector storage ends (including releasing strong elements). **`RELEASE a[i]` is not** “remove middle element” — invalid / forbidden teaching. |
+| **Struct** | End the **aggregate** binding; nested field rules apply (value fields discarded; class fields released as strong drops). |
+| **Primary** (scalar / non-refcount: `INTEGER`, `FLOAT`, `BOOLEAN`, `STRING`, …) | End the **local binding only** — no reference count. Slot becomes unusable until redeclared (same use-after-release rule). |
+
+### Cross-cutting rules
+
+- `RELEASE` is **not** a substitute for HOST / `bn_rt` **`Close`**. Close
+  releases the capability resource; `RELEASE` ends the BN binding.
+- Prefer end of scope and reassignment in ordinary teaching.
+- Fixed vector of tickets: `Close` each element, then optionally `RELEASE`
+  the whole `tickets` binding — never `RELEASE tickets[i]` as element removal.
 
 ```basic
 FUNCTION EarlyDrop() AS VOID
@@ -194,14 +199,23 @@ FUNCTION EarlyDrop() AS VOID
     c.Inc()
     RELEASE c
     // if no other strong aliases, destructor runs here
+    // c.Inc()  // use-after-release — error
+END FUNCTION
+```
+
+```basic
+FUNCTION ReleasePrimary() AS VOID
+    LET n AS INTEGER = 42
+    RELEASE n
+    // PRINT n  // use-after-release — error
 END FUNCTION
 ```
 
 ### Teaching pattern: tickets vector (Carlos lock 2026-09-12)
 
-`Close` per element releases the **bn_rt** resource. `RELEASE` applies only to
-the **aggregate** binding `tickets`, never to `tickets[i]`. Hello may omit
-`RELEASE` and rely on end of scope.
+`Close` per element releases the **bn_rt** resource. `RELEASE` applies to the
+**aggregate** binding `tickets`, never to `tickets[i]` as middle-element
+removal. Hello may omit `RELEASE` and rely on end of scope.
 
 ```basic
 FOR i = 0 TO 3
@@ -328,7 +342,7 @@ Still open or confirm-deferred (from the corrective proposal):
 
 Locked and not reopened here: `DELETE` DNA purge; `RELEASE` optional advanced;
 HOST `Close` / `*_close` only; typed `AWAIT` primary; ARC compliance required;
-tickets teaching: Close per element, `RELEASE` aggregate only.
+tickets teaching: Close per element, `RELEASE` aggregate only; `RELEASE` on primaries/vector/struct/object.
 
 ## History
 
@@ -338,3 +352,6 @@ tickets teaching: Close per element, `RELEASE` aggregate only.
 - **2026-09-12** — Carlos teaching lock (via Quorra): tickets vector —
   `Close` per element (bn_rt); `RELEASE tickets` only on the aggregate; never
   `RELEASE tickets[i]`; hello may omit `RELEASE` and leave scope.
+- **2026-09-12** — Carlos lock (via Quorra): `RELEASE` applies to primaries,
+  vectors, structs, and objects (early end of binding); use-after-release =
+  error; fixed vector = whole aggregate only, not `RELEASE a[i]` as remove-middle.
