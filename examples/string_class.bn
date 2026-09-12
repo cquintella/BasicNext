@@ -1,0 +1,238 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// Example: Java-like CLASS String wrapping the STRING primary + Tokenizer.
+// Preferred path for string-extras (Carlos 2026-09-12 via Quorra): object API
+// in examples/, not Surface A vectorial Split→[] and not a loose Tokenizer module.
+//
+// Grammar: Basic Next 0.4.x (bn 0.4.7). Class name is `String` (exact-uppercase
+// `STRING` remains the primary type keyword — no conflict).
+// Implementation: LEN + character index + loops only — no new runtime.
+//
+// Error values: user code cannot NEW Error in 0.4.7, so fail-closed paths use
+// NULL (Tokenizer) or NULL (CharAt OOB) instead of OR Error. IndexOf uses NA.
+// When Error construction is available, prefer OR Error as in the proposal.
+
+
+FUNCTION IsAsciiSpace(ch AS STRING) AS BOOLEAN
+    LET code AS INTEGER OR Error = ASC(ch)
+    IF code IS Error THEN
+        RETURN FALSE
+    END IF
+    IF code = 32 OR code = 9 OR code = 10 OR code = 13 THEN
+        RETURN TRUE
+    END IF
+    RETURN FALSE
+END FUNCTION
+
+CLASS Tokenizer
+    PRIVATE text AS STRING = ""
+    PRIVATE sep AS STRING = ""
+    PRIVATE pos AS INTEGER = 0
+    PRIVATE done AS BOOLEAN = FALSE
+
+    PUBLIC FUNCTION CONSTRUCTOR(text AS STRING, sep AS STRING)
+        SELF.text = text
+        SELF.sep = sep
+        SELF.pos = 0
+        SELF.done = FALSE
+    END FUNCTION
+
+    // Empty sep → NULL (fail-closed). Prefer OR Error when constructible.
+    PUBLIC STATIC FUNCTION New(text AS STRING, sep AS STRING) AS Tokenizer OR NULL
+        IF LEN(sep) = 0 THEN
+            RETURN NULL
+        END IF
+        RETURN NEW Tokenizer(text, sep)
+    END FUNCTION
+
+    PUBLIC FUNCTION Reset() AS VOID
+        SELF.pos = 0
+        SELF.done = FALSE
+    END FUNCTION
+
+    PUBLIC FUNCTION Next() AS STRING OR EOF
+        IF SELF.done THEN
+            RETURN EOF
+        END IF
+        LET n AS INTEGER = LEN(SELF.text)
+        LET sepLen AS INTEGER = LEN(SELF.sep)
+        IF SELF.pos > n THEN
+            SELF.done = TRUE
+            RETURN EOF
+        END IF
+        // Empty remainder after a trailing separator → one empty field, then EOF.
+        IF SELF.pos = n THEN
+            SELF.done = TRUE
+            RETURN ""
+        END IF
+        LET i AS INTEGER = SELF.pos
+        WHILE i <= n - sepLen
+            LET matched AS BOOLEAN = TRUE
+            LET k AS INTEGER = 0
+            WHILE k < sepLen
+                IF SELF.text[i + k] <> SELF.sep[k] THEN
+                    matched = FALSE
+                    EXIT WHILE
+                END IF
+                k = k + 1
+            END WHILE
+            IF matched THEN
+                LET part AS STRING = ""
+                LET j AS INTEGER = SELF.pos
+                WHILE j < i
+                    part = part + SELF.text[j]
+                    j = j + 1
+                END WHILE
+                SELF.pos = i + sepLen
+                RETURN part
+            END IF
+            i = i + 1
+        END WHILE
+        // No more separator: rest of string.
+        LET rest AS STRING = ""
+        LET j2 AS INTEGER = SELF.pos
+        WHILE j2 < n
+            rest = rest + SELF.text[j2]
+            j2 = j2 + 1
+        END WHILE
+        SELF.done = TRUE
+        RETURN rest
+    END FUNCTION
+END CLASS
+
+CLASS String
+    PRIVATE value AS STRING = ""
+
+    PUBLIC FUNCTION CONSTRUCTOR(s AS STRING)
+        SELF.value = s
+    END FUNCTION
+
+    PUBLIC FUNCTION Len() AS INTEGER
+        RETURN LEN(SELF.value)
+    END FUNCTION
+
+    // One Unicode scalar at i as STRING length 1; NULL if out of range.
+    PUBLIC FUNCTION CharAt(i AS INTEGER) AS STRING OR NULL
+        IF i < 0 OR i >= LEN(SELF.value) THEN
+            RETURN NULL
+        END IF
+        RETURN SELF.value[i]
+    END FUNCTION
+
+    PUBLIC FUNCTION Concat(other AS STRING) AS String
+        RETURN NEW String(SELF.value + other)
+    END FUNCTION
+
+    PUBLIC FUNCTION Contains(needle AS STRING) AS BOOLEAN
+        LET idx AS INTEGER OR NA = SELF.IndexOf(needle)
+        IF idx IS NA THEN
+            RETURN FALSE
+        END IF
+        RETURN TRUE
+    END FUNCTION
+
+    PUBLIC FUNCTION IndexOf(needle AS STRING) AS INTEGER OR NA
+        LET n AS INTEGER = LEN(SELF.value)
+        LET m AS INTEGER = LEN(needle)
+        IF m = 0 THEN
+            RETURN 0
+        END IF
+        IF m > n THEN
+            RETURN NA
+        END IF
+        LET i AS INTEGER = 0
+        WHILE i <= n - m
+            LET matched AS BOOLEAN = TRUE
+            LET k AS INTEGER = 0
+            WHILE k < m
+                IF SELF.value[i + k] <> needle[k] THEN
+                    matched = FALSE
+                    EXIT WHILE
+                END IF
+                k = k + 1
+            END WHILE
+            IF matched THEN
+                RETURN i
+            END IF
+            i = i + 1
+        END WHILE
+        RETURN NA
+    END FUNCTION
+
+    PUBLIC FUNCTION Trim() AS String
+        LET n AS INTEGER = LEN(SELF.value)
+        LET start AS INTEGER = 0
+        WHILE start < n
+            LET ch AS STRING = SELF.value[start]
+            IF IsAsciiSpace(ch) THEN
+                start = start + 1
+            ELSE
+                EXIT WHILE
+            END IF
+        END WHILE
+        LET endPos AS INTEGER = n
+        WHILE endPos > start
+            LET ch2 AS STRING = SELF.value[endPos - 1]
+            IF IsAsciiSpace(ch2) THEN
+                endPos = endPos - 1
+            ELSE
+                EXIT WHILE
+            END IF
+        END WHILE
+        LET out AS STRING = ""
+        LET j AS INTEGER = start
+        WHILE j < endPos
+            out = out + SELF.value[j]
+            j = j + 1
+        END WHILE
+        RETURN NEW String(out)
+    END FUNCTION
+
+    // Tokenizer belongs to String (Carlos): not a loose external module API.
+    PUBLIC FUNCTION Tokenizer(sep AS STRING) AS Tokenizer OR NULL
+        RETURN Tokenizer.New(SELF.value, sep)
+    END FUNCTION
+
+    PUBLIC FUNCTION ToString() AS STRING
+        RETURN SELF.value
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET s AS String = NEW String("  hello,world,bn  ")
+    PRINT "Len=", s.Len()
+    PRINT "Contains world? ", s.Contains("world")
+    LET trimmed AS String = s.Trim()
+    PRINT "Trimmed=", trimmed.ToString()
+
+    LET tok AS Tokenizer OR NULL = trimmed.Tokenizer(",")
+    IF tok IS NULL THEN
+        PRINT "Tokenizer failed (empty sep?)"
+        STOP 1
+    END IF
+    PRINT "Tokens:"
+    REPEAT
+        LET part AS STRING OR EOF = tok.Next()
+        IF part IS EOF THEN
+            EXIT REPEAT
+        END IF
+        PRINT "  [", part, "]"
+    UNTIL FALSE
+    END REPEAT
+
+    LET emptyTok AS Tokenizer OR NULL = Tokenizer.New("a,b", "")
+    IF emptyTok IS NULL THEN
+        PRINT "empty sep -> NULL (ok)"
+    END IF
+
+    LET hi AS String = NEW String("ab")
+    LET c0 AS STRING OR NULL = hi.CharAt(0)
+    LET c9 AS STRING OR NULL = hi.CharAt(9)
+    PRINT "CharAt0=", c0
+    IF c9 IS NULL THEN
+        PRINT "CharAt9=NULL (ok)"
+    END IF
+END FUNCTION
