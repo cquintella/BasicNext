@@ -5,7 +5,7 @@
 **Target release:** **0.5.1** (after 0.5.0 ARC + typed `AWAIT` claim).  
 **Owner (tracker):** Tron until Carlos names implementer.  
 **Gate:** Quorra before Carlos.  
-**Motivation:** The external [Basic Next REPL](file:///Users/caq/src/Basic%20Next%20REPL) (and similar hosts) must drive the **installed** `/usr/local/bin/bn` without rewriting Basic Next. Today `bn` is file-oriented (`bn run <file.bn>`). A documented **eval** mode lets a REPL (or scripts) submit source fragments and receive structured results without vendoring the language.
+**Motivation:** The external **Basic Next REPL** project (local companion under `~/src/Basic Next REPL`) (and similar hosts) must drive the **installed** `/usr/local/bin/bn` without rewriting Basic Next. Today `bn` is file-oriented (`bn run <file.bn>`). A documented **eval** mode lets a REPL (or scripts) submit source fragments and receive structured results without vendoring the language.
 
 **Related (do not conflate):**
 - Jupyter `bn-kernel` — already writes a temp `.bn` and calls `bn run --no-filesystem --jupyter-stdin`; **stateless between cells** ([`docs/project/kernel.md`](../../docs/project/kernel.md)).
