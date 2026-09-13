@@ -18,6 +18,8 @@ FUNCTION Start() AS VOID
     PRINT "Unicode LowCaps=", acao.LowCaps().ToString()
     LET acaoLow AS S.String = NEW S.String("ação")
     PRINT "Unicode HiCaps=", acaoLow.HiCaps().ToString()
+    LET sharp AS S.String = NEW S.String("straße")
+    PRINT "Unicode HiCaps eszett=", sharp.HiCaps().ToString()
 
     PRINT "Contains world? ", s.Contains("world")
     LET trimmed AS S.String = s.Trim()
