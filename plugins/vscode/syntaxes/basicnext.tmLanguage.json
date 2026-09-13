@@ -225,7 +225,11 @@
                 },
                 {
                     "name": "keyword.operator.new.bn",
-                    "match": "\\b(NEW|DELETE)\\b"
+                    "match": "\\b(NEW)\\b"
+                },
+                {
+                    "name": "invalid.illegal.deprecated.delete.bn",
+                    "match": "\\b(DELETE)\\b"
                 },
                 {
                     "name": "variable.language.this.bn",

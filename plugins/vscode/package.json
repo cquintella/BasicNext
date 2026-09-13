@@ -1,8 +1,8 @@
 {
   "name": "basicnext",
   "displayName": "Basic Next",
-  "description": "Language support for Basic Next",
-  "version": "0.4.6",
+  "description": "Language support for Basic Next 0.5.0 (ARC DNA: no DELETE; RELEASE/WEAK; typed AWAIT)",
+  "version": "0.5.0",
   "publisher": "basicnext",
   "license": "MPL-2.0",
   "engines": {
@@ -224,6 +224,13 @@
             "scope": "support.function.bn",
             "settings": {
               "foreground": "#DCDCAA"
+            }
+          },
+          {
+            "scope": "invalid.illegal.deprecated.delete.bn",
+            "settings": {
+              "foreground": "#F44747",
+              "fontStyle": "strikethrough bold"
             }
           }
         ]
