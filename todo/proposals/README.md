@@ -28,6 +28,6 @@ specification.
 - [BNString extras](string-extras.md) — stdlib Split/Join/Contains/IndexOf/Trim (**0.4.7** G7.5); interpolation `$"..."` deferred (language DNA). Draft expanded 2026-09-07.
 - [Typed Dispatch results](dispatch-typed-return.md) — language/`AWAIT` (or `Ticket.Result`) to surface worker returns; `bn_rt` already has result pointer. Proposed 2026-09-07.
 - [Bucket 0.5.0 corrective](bucket-0.5.0-corrective.md) — ARC memory lock (strong/weak) + typed dispatch AWAIT; plan only. Proposed 2026-09-12.
-- [bn eval mode (0.5.1)](bn-eval-mode-0.5.1.md) — CLI eval/oneshot (+ optional session) for REPL hosts using installed `/usr/local/bin/bn`; not in 0.5.0 claim. Proposed 2026-09-12.
+- [bn -e eval mode (0.5.1)](bn-eval-mode-0.5.1.md) — global `-e`/`--expr` eval/oneshot (+ optional session) for `bnr` / hosts using installed `/usr/local/bin/bn`; not a `bn eval` subcommand; not in 0.5.0 claim. Proposed 2026-09-12; lock `-e` 2026-09-13.
 - [Early `Error` propagation](error-propagation.md) — proposed postfix `?` (or CHECK/PROPAGATE); language DNA; desugars to IF/RETURN; does **not** change toolchain diagnostics.
 - [BNData Expansion (Series & Analytics)](bndata-expansion.md) — proposed 1D dynamic series, NA semantics, vectorized operations, and DataFrame enhancements.
