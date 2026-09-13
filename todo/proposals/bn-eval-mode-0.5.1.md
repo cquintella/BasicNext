@@ -1,11 +1,11 @@
-# Proposal: `bn eval` mode (tooling surface for 0.5.1)
+# Proposal: `bn -e` eval mode (tooling surface for 0.5.1)
 
 **Status:** Proposed — **CLI / toolchain contract** (not a new language keyword).  
 **Date:** 2026-09-12  
 **Target release:** **0.5.1** (after 0.5.0 ARC + typed `AWAIT` claim).  
 **Owner (tracker):** Tron until Carlos names implementer.  
 **Gate:** Quorra before Carlos.  
-**Motivation:** The external **Basic Next REPL** (`bnr`; local companion under `~/src/Basic Next REPL`) (and similar hosts) must drive the **installed** `/usr/local/bin/bn` without rewriting Basic Next. Today `bn` is file-oriented (`bn run <file.bn>`). A documented **eval** mode lets a REPL (or scripts) submit source fragments and receive structured results without vendoring the language.
+**Motivation:** The external **Basic Next REPL** (`bnr`; local companion under `~/src/Basic Next REPL`) (and similar hosts) must drive the **installed** `/usr/local/bin/bn` without rewriting Basic Next. Today `bn` is file-oriented (`bn run <file.bn>`). A documented **`-e` / eval** mode lets a REPL (or scripts) submit source fragments and receive structured results without vendoring the language.
 
 **Related (do not conflate):**
 - Jupyter `bn-kernel` — already writes a temp `.bn` and calls `bn run --no-filesystem --jupyter-stdin`; **stateless between cells** ([`docs/project/kernel.md`](../../docs/project/kernel.md)).
@@ -13,7 +13,7 @@
 - 0.5.0 bucket — ARC + typed dispatch; **eval is explicitly 0.5.1**, not in the 0.5.0 claim.
 - REPL architecture lock — thin shell around `/usr/local/bin/bn`; no `path` dependency on `~/src/BasicNext`.
 
-Nothing here is normative until accepted into `docs/project/usage.md`, `docs/man/bn.1`, and implemented behind `bn eval`.
+Nothing here is normative until accepted into `docs/project/usage.md`, `docs/man/bn.1`, and implemented behind **`bn -e`** (global flag / eval entry; not a separate `bn eval` subcommand).
 
 ---
 
@@ -32,12 +32,12 @@ So interactive and embedding hosts either wrap files ad hoc (Jupyter) or cannot 
 
 ## Goals
 
-1. Add a first-class **`bn eval`** command (name locked below) that accepts Basic Next source from **argv string**, **stdin**, or **file**, without requiring the caller to invent an undocumented wrapper forever.
+1. Add a first-class **`bn -e`** eval entry (name locked below) that accepts Basic Next source from **argv string**, **stdin**, or **file**, without requiring the caller to invent an undocumented wrapper forever.
 2. Define **fragment kinds** and how they map to existing frontend + interpret (reference) — prefer reuse of `check`/`run` pipelines over a second semantic engine.
 3. Define a **stable result envelope** (stdout and/or exit codes) suitable for a REPL subprocess: success value presentation, diagnostics, exit status.
 4. Specify an optional **session** mode (multi-eval process) vs **oneshot** (default), with clear HOST/policy defaults.
 5. Keep interpret as reference for eval; native/`bn build` eval is **out of 0.5.1 MVP** unless trivially free.
-6. Document how the Basic Next REPL must call `/usr/local/bin/bn eval` only — no source tree required.
+6. Document how `bnr` must call `/usr/local/bin/bn -e` only — no source tree required.
 
 ---
 
@@ -55,24 +55,23 @@ So interactive and embedding hosts either wrap files ad hoc (Jupyter) or cannot 
 
 ## Proposed CLI surface
 
-### Command name
+### Entry form (Carlos lock 2026-09-13)
 
-**Locked proposal:** `bn eval`
+**Locked:** eval is **`bn -e`**, not a `bn eval` subcommand.
 
 ```text
-bn eval [options] [<file.bn>]
-bn eval [options] -e '<source>'
-bn eval [options] --stdin
+bn -e '<source>' [options]
+bn --expr '<source>' [options]
+bn -e --stdin [options]          # optional: source from stdin when -e is set without string
 ```
 
 | Form | Meaning |
 | --- | --- |
-| `-e` / `--expr` *source* | Evaluate the given source string (shell-quoted by the caller) |
-| `--stdin` | Read entire stdin as source (UTF-8) |
-| *file* | Read source from file (same as today for other commands) |
-| (none of the above) | **Error** with usage — do not silently wait on TTY without `--stdin` |
+| `-e` / `--expr` *source* | Evaluate the given source string (shell-quoted by the caller) — **primary MVP** |
+| `-e` with `--stdin` | Read entire stdin as the eval source (UTF-8) |
+| `bn eval …` | **Not** part of this proposal — do not add a parallel subcommand in 0.5.1 |
 
-Exactly one source form required.
+Presence of `-e` / `--expr` selects the eval pipeline (snippet/program wrapping, result envelope). Other top-level commands (`run`, `check`, `build`, …) remain unchanged and still take a file path.
 
 ### Options (MVP)
 
@@ -80,7 +79,7 @@ Exactly one source form required.
 | --- | --- | --- |
 | `--mode snippet\|program` | `snippet` | See fragment kinds |
 | `--format text\|json` | `text` | Result envelope |
-| `--session` | off | Keep process alive; read successive JSON Lines requests on stdin (see Session) |
+| `--session` | off | With `-e`: keep process alive; read successive JSON Lines requests on stdin (see Session) |
 | Existing policy flags | as `bn run` | `--no-filesystem`, `--sandbox`, `--read-root`, `--write-root`, warning controls |
 
 Reuse warning/`--color` flags from the global CLI where applicable.
@@ -166,7 +165,7 @@ On failure: `"ok": false`, diagnostics mirrored in `stderr` and/or a `diagnostic
 
 ---
 
-## Session mode (`--session`) — optional but specified
+## Session mode (`bn -e --session`) — optional but specified
 
 **Purpose:** allow a REPL to keep **one** `bn` process and send many fragments without cold-start each time; optionally retain bindings.
 
@@ -199,7 +198,7 @@ If S1 is pulled into 0.5.1 by Carlos, acceptance must include ARC fixtures for b
 
 ## Security and HOST defaults
 
-- Default filesystem policy for `bn eval` should match **`bn run`** unless flags say otherwise.
+- Default filesystem policy for `bn -e` should match **`bn run`** unless flags say otherwise.
 - REPL hosts that are untrusted-input facing should pass `--no-filesystem` (and sandbox roots) explicitly — document as host responsibility.
 - No new ambient authority beyond `bn run`.
 
@@ -207,7 +206,7 @@ If S1 is pulled into 0.5.1 by Carlos, acceptance must include ARC fixtures for b
 
 ## Implementation sketch (non-prescriptive)
 
-1. CLI parse for `eval` + source forms.  
+1. CLI parse for global `-e` / `--expr` (+ optional `--stdin` / `--session` / `--format`).  
 2. Materialize source string → existing frontend (`check` path) → interpret `Start` (reuse `bn run` engine).  
 3. Snippet parse probe: try expression vs statements; wrap; on failure emit actionable diagnostic.  
 4. JSON envelope writer.  
@@ -218,14 +217,14 @@ If S1 is pulled into 0.5.1 by Carlos, acceptance must include ARC fixtures for b
 
 ## Acceptance (0.5.1 done when)
 
-1. `bn eval -e 'PRINT 1+1'` exits 0 and prints `2` (or equivalent PRINT formatting).  
-2. `bn eval -e 'LET x AS INTEGER = 3\nPRINT x'` works in snippet mode.  
-3. `bn eval --format json -e 'PRINT \"hi\"'` yields parseable JSON with `ok: true`.  
+1. `bn -e 'PRINT 1+1'` exits 0 and prints `2` (or equivalent PRINT formatting).  
+2. `bn -e 'LET x AS INTEGER = 3\nPRINT x'` works in snippet mode.  
+3. `bn -e 'PRINT "hi"' --format json` yields parseable JSON with `ok: true`.  
 4. Invalid snippet → non-zero exit + diagnostic; JSON form has `ok: false`.  
-5. `bn eval` without source form → usage, exit 2.  
+5. `bn -e` without a source string (and without `--stdin`) → usage, exit 2.  
 6. Evidence directory with NOTES + commands; Quorra gate.  
-7. Basic Next REPL README updated to call `/usr/local/bin/bn eval` (still no source dependency).  
-8. Man page `bn.1` documents `eval`.
+7. `bnr` README updated to call `/usr/local/bin/bn -e` (still no source dependency).  
+8. Man page `bn.1` documents `-e` / `--expr` (and states there is no `bn eval` subcommand in 0.5.1).
 
 ---
 
@@ -235,7 +234,7 @@ If S1 is pulled into 0.5.1 by Carlos, acceptance must include ARC fixtures for b
 | --- | --- |
 | S1 accumulating session | Needs ARC session story |
 | Expression result without PRINT wrapper | Nice-to-have if IR can return a value to the host |
-| `bn eval` → LLVM | Not needed for REPL |
+| `bn -e` → LLVM | Not needed for REPL |
 | Language-level `EVAL` keyword | Separate DNA proposal |
 
 ---
@@ -243,7 +242,7 @@ If S1 is pulled into 0.5.1 by Carlos, acceptance must include ARC fixtures for b
 ## Open questions (Carlos)
 
 1. Confirm **S0 vs S1** for 0.5.1 session (recommend S0).  
-2. Confirm command name **`bn eval`** vs `bn execute` / `bn -e` only.  
+2. ~~Command shape~~ — **LOCKED (Carlos 2026-09-13):** **`bn -e`** (not `bn eval` subcommand).  
 3. Confirm whether snippet auto-promotes when `FUNCTION Start` is present.  
 4. JSON diagnostics: stderr empty vs duplicated — prefer single machine channel.
 
@@ -252,3 +251,4 @@ If S1 is pulled into 0.5.1 by Carlos, acceptance must include ARC fixtures for b
 ## History
 
 - **2026-09-12** — Drafted for 0.5.1 after REPL scaffold (`~/src/Basic Next REPL`) locked to `/usr/local/bin/bn` without rewriting Basic Next. Carlos: place under `todo/proposals/`.
+- **2026-09-13** — Carlos: eval entry is **`bn -e`**, not subcommand `bn eval`.
