@@ -639,6 +639,31 @@ pub extern "C" fn bn_rt_str_asc(text: *const c_char) -> i64 {
         .map_or(-1, |character| i64::from(u32::from(character)))
 }
 
+/// Unicode lowercase (Rust `str::to_lowercase` — full Unicode case mapping,
+/// not ASCII-only). Returns a freshly allocated NUL-terminated UTF-8 string.
+/// Caller frees with the same allocator used for other owned rt strings
+/// (`bn_rt_file_string_free` / libc free of the `c_string` allocation).
+#[allow(unsafe_code)] // C ABI: owned UTF-8 STRING.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_str_to_lower(text: *const c_char) -> *mut c_char {
+    let Some(text) = c_str(text) else {
+        return c_string("");
+    };
+    c_string(&text.to_lowercase())
+}
+
+/// Unicode uppercase (Rust `str::to_uppercase` — full Unicode case mapping,
+/// not ASCII-only). May change scalar length (e.g. `ß` → `SS`).
+#[allow(unsafe_code)] // C ABI: owned UTF-8 STRING.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_str_to_upper(text: *const c_char) -> *mut c_char {
+    let Some(text) = c_str(text) else {
+        return c_string("");
+    };
+    c_string(&text.to_uppercase())
+}
+
+
 fn pack_utf8(character: char) -> u64 {
     let mut encoded = [0_u8; 4];
     let text = character.encode_utf8(&mut encoded);
@@ -1823,6 +1848,8 @@ mod tests {
     use std::time::{Duration, UNIX_EPOCH};
 
     #[test]
+    
+
     fn packed_string_index_preserves_ascii_and_multibyte_scalars() {
         let text = CString::new("Aé界").expect("literal has no NUL");
         for (index, expected) in ["A", "é", "界"].into_iter().enumerate() {

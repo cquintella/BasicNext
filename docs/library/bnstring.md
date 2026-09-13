@@ -6,7 +6,7 @@ Official **extras** module (Carlos lock 2026-09-12 via Quorra). Source of truth:
 `modules/bn/BNString.bn`. Implemented in Basic Next (LEN + index + loops) — not a
 `bn_rt` native stub. Primary `STRING` remains unchanged.
 
-`LowCaps` / `HiCaps` are **ASCII-only** in v0 (letters `A–Z` / `a–z`). No Unicode or locale case folding.
+`LowCaps` / `HiCaps` use **Unicode case mapping** via builtins `TOLOWER` / `TOUPPER` (backed by `bn_rt_str_to_lower` / `bn_rt_str_to_upper`, Rust `str::to_lowercase` / `to_uppercase`). Not ASCII-only. Mapping can change scalar length (e.g. `ß` → `SS`). Not locale-tailored (no Turkish dotted-I rules beyond Unicode default).
 
 Nothing here replaces core `STRING` indexing/`LEN`.
 
@@ -35,8 +35,8 @@ Logical import name: `BNString`. Path is not used in source.
 | `CONSTRUCTOR(s AS STRING)` | Store `s` |
 | `Len() AS INTEGER` | `LEN(value)` |
 | `Length() AS INTEGER` | Synonym of `Len()` |
-| `LowCaps() AS S.String` | ASCII `A–Z` → `a–z` (v0; no Unicode/locale folding) |
-| `HiCaps() AS S.String` | ASCII `a–z` → `A–Z` (v0; no Unicode/locale folding) |
+| `LowCaps() AS S.String` | Unicode lowercase (`TOLOWER`) |
+| `HiCaps() AS S.String` | Unicode uppercase (`TOUPPER`) |
 | `CharAt(i AS INTEGER) AS STRING OR NULL` | One scalar at `i`, or `NULL` if OOB |
 | `Concat(other AS STRING) AS S.String` | `NEW String(value + other)` |
 | `Contains(needle AS STRING) AS BOOLEAN` | Substring test |

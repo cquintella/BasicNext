@@ -105,6 +105,8 @@ fn add_builtins(items: &mut BTreeMap<String, CompletionItem>, prefix: &str) {
         items,
         [
             "ASC",
+            "TOLOWER",
+            "TOUPPER",
             "CHAR",
             "Date",
             "Error",

@@ -121,7 +121,7 @@ impl Executor<'_, '_> {
         if is_temporal_builtin(name) {
             return temporal_call(name, &arguments, span);
         }
-        if name.starts_with("BNMath.") || matches!(name, "ASC" | "CHAR") || name == "$for_condition"
+        if name.starts_with("BNMath.") || matches!(name, "ASC" | "CHAR" | "TOLOWER" | "TOUPPER") || name == "$for_condition"
         {
             return builtin(name, &arguments, span, &self.memory);
         }
