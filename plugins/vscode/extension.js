@@ -52,6 +52,130 @@ function lspCompletionItems(result) {
   });
 }
 
+
+/** Reserved words from docs/0.5.0/0.5.0.ebnf (uppercase spellings). */
+const RESERVED_WORDS = new Set([
+  "AND", "AS", "ASYNC", "AWAIT", "BOOLEAN", "BYTE", "CLASS", "CONST",
+  "CONSTRUCTOR", "CONTINUE", "DATE", "DESTRUCTOR", "DIV", "EACH", "ELSE",
+  "END", "EOF", "EXIT", "EXPORT", "EXTENDS", "FALSE", "FLOAT", "FLOAT32",
+  "FLOAT64", "FOR", "FUNCTION", "HOST", "IF", "IMPLEMENTS", "IMPORT", "IN",
+  "INPUT", "INT8", "INT16", "INT32", "INT64", "INTEGER", "INTERFACE", "IS",
+  "LEN", "LET", "NA", "NEW", "NOT", "NULL", "OR", "PARALLEL", "POINTER",
+  "PRINT", "PRIVATE", "PUBLIC", "RELEASE", "REPEAT", "RETURN", "SELF", "SHL",
+  "SHR", "SIZEOF", "STATIC", "STEP", "STOP", "STRING", "STRUCT", "SUPER",
+  "SYSTEM", "THEN", "TIME", "TIMESTAMP", "TIMEZONE", "TO", "TRUE", "UINT16",
+  "UINT32", "UINT64", "UNTIL", "VOID", "WEAK", "WHILE", "XOR",
+]);
+
+const WORD_CHAR = /[A-Za-z0-9_]/
+const BOUNDARY_INSERTED = /[\s\(\)\[\]\{\},;:\.+\-*\/=<>!&|^%~]/
+
+/** True if column is inside // comment or "…" string on the line (simple scan). */
+function inStringOrLineComment(lineText, column) {
+  let inString = false;
+  let i = 0;
+  while (i < column && i < lineText.length) {
+    const ch = lineText[i];
+    if (!inString && ch === "/" && lineText[i + 1] === "/") return true;
+    if (ch === "\\" && inString) {
+      i += 2;
+      continue;
+    }
+    if (ch === "\"") inString = !inString;
+    i += 1;
+  }
+  return inString;
+}
+
+/**
+ * If the edit just finished a reserved word (typed non-word after it, or the
+ * word itself), return { start, end, upper } offsets in the document; else null.
+ */
+function reservedWordUppercaseEdit(documentText, change) {
+  if (!change || typeof change.text !== "string") return null;
+  const startOffset = (() => {
+    // Prefer rangeOffset when present (VS Code TextDocumentContentChangeEvent)
+    if (typeof change.rangeOffset === "number") return change.rangeOffset;
+    return null;
+  })();
+  if (startOffset === null) return null;
+
+  const inserted = change.text;
+  if (inserted.length === 0) return null;
+
+  // Case A: user typed a boundary char after a word — uppercase the word before.
+  if (inserted.length === 1 && BOUNDARY_INSERTED.test(inserted) && !WORD_CHAR.test(inserted)) {
+    const before = startOffset; // caret was here before insert; word ends here
+    let end = before;
+    let start = end;
+    while (start > 0 && WORD_CHAR.test(documentText[start - 1])) start -= 1;
+    if (start === end) return null;
+    const word = documentText.slice(start, end);
+    const upper = word.toUpperCase();
+    if (!RESERVED_WORDS.has(upper) || word === upper) return null;
+    // Ensure not inside string/comment: find line
+    const lineStart = documentText.lastIndexOf("\n", start - 1) + 1;
+    const lineEnd = documentText.indexOf("\n", start);
+    const lineText = documentText.slice(lineStart, lineEnd < 0 ? documentText.length : lineEnd);
+    const col = start - lineStart;
+    if (inStringOrLineComment(lineText, col)) return null;
+    return { start, end, upper };
+  }
+
+  // Case B: pasted or completed a whole word that is reserved (no trailing boundary yet)
+  // Only when the insert is a single identifier token.
+  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(inserted)) {
+    const upper = inserted.toUpperCase();
+    if (!RESERVED_WORDS.has(upper) || inserted === upper) return null;
+    const end = startOffset + inserted.length;
+    // Require word boundary after (EOF or non-word) and before
+    const beforeOk = startOffset === 0 || !WORD_CHAR.test(documentText[startOffset - 1]);
+    const afterOk = end >= documentText.length || !WORD_CHAR.test(documentText[end]);
+    // After our change, document already has inserted text at startOffset
+    // But documentText passed should be AFTER the change (VS Code event order).
+    if (!beforeOk || !afterOk) return null;
+    const lineStart = documentText.lastIndexOf("\n", startOffset - 1) + 1;
+    const lineEnd = documentText.indexOf("\n", startOffset);
+    const lineText = documentText.slice(lineStart, lineEnd < 0 ? documentText.length : lineEnd);
+    if (inStringOrLineComment(lineText, startOffset - lineStart)) return null;
+    return { start: startOffset, end, upper };
+  }
+
+  return null;
+}
+
+function enableAutoUppercaseKeywords() {
+  return vscode.workspace.getConfiguration("basicnext").get("autoUppercaseKeywords", true) !== false;
+}
+
+function registerAutoUppercaseKeywords(context) {
+  let applying = false;
+  const sub = vscode.workspace.onDidChangeTextDocument(async (event) => {
+    if (applying) return;
+    if (!enableAutoUppercaseKeywords()) return;
+    const document = event.document;
+    if (document.languageId !== "basicnext") return;
+    if (!event.contentChanges || event.contentChanges.length !== 1) return;
+    const change = event.contentChanges[0];
+    const edit = reservedWordUppercaseEdit(document.getText(), change);
+    if (!edit) return;
+    const editor = vscode.window.visibleTextEditors.find((e) => e.document === document)
+      || (vscode.window.activeTextEditor?.document === document ? vscode.window.activeTextEditor : undefined);
+    if (!editor) return;
+    applying = true;
+    try {
+      await editor.edit((builder) => {
+        const start = document.positionAt(edit.start);
+        const end = document.positionAt(edit.end);
+        builder.replace(new vscode.Range(start, end), edit.upper);
+      }, { undoStopBefore: false, undoStopAfter: false });
+    } finally {
+      applying = false;
+    }
+  });
+  context.subscriptions.push(sub);
+}
+
 function startLanguageServer(context, collection) {
   if (
     typeof cp.spawn !== "function" ||
@@ -145,9 +269,10 @@ function activate(context) {
     vscode.commands.registerCommand("basicnext.run", run),
     vscode.commands.registerCommand("basicnext.buildAndRun", buildAndRun),
   );
+  registerAutoUppercaseKeywords(context);
   startLanguageServer(context, collection);
 }
 
 function deactivate() {}
 
-module.exports = { activate, deactivate, parseDiagnostics, shellQuote, startLanguageServer, lspCompletionItems };
+module.exports = { activate, deactivate, parseDiagnostics, shellQuote, startLanguageServer, lspCompletionItems, RESERVED_WORDS, inStringOrLineComment, reservedWordUppercaseEdit };

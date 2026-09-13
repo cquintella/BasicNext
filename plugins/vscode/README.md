@@ -10,7 +10,7 @@ VSIX file:
 ```sh
 cd plugins/vscode
 npx --yes @vscode/vsce package --allow-missing-repository
-code --install-extension basicnext-0.4.5.vsix
+code --install-extension basicnext-0.4.6.vsix
 ```
 
 Restart VS Code completely after installing or updating the extension. The
@@ -21,6 +21,10 @@ debugger contribution is loaded when the VS Code application starts.
 The extension runs `bn` from `PATH` by default. If necessary, set
 `basicnext.executable` in VS Code settings to the full path of the `bn`
 executable.
+
+Reserved words are uppercased as you type by default (`function` becomes
+`FUNCTION` when you finish the word). Disable with
+`basicnext.autoUppercaseKeywords`: `false`.
 
 ## Use
 
