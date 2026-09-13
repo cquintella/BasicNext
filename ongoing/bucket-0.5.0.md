@@ -180,10 +180,11 @@ without cutting claim. Do not block M1/M2 on opaque-ticket D1-TYPE.
   parameter). **No** generic syntax; **no** silent default to VOID. Sprint 1
   **proceeds** for known `T` (F13 INTEGER and other statically known workers).
   D1-TYPE does **not** block M1/M2 and does **not** freeze all of D0–D1.
-- [ ] **Extra acceptance (beyond F13 INTEGER):** retain on params/returns where
-  payloads are ARC values; destructor chains; early exits; dispatch
-  FLOAT/STRING/BOOLEAN + INTEGER; **replay until Close**; timeout / cancel /
-  task / closed-ticket errors. Reject mismatched args/results.
+- [ ] **Extra acceptance (beyond F13 INTEGER):** dispatch payloads for MVP
+  return set **VOID / INTEGER / FLOAT / STRING / BOOLEAN**; **replay until
+  Close**; timeout / cancel / task / closed-ticket errors; early exits on the
+  await path; reject mismatched args/results. **ARC retain/destructor chains
+  belong to S-M2/S-M4** — do not make Sprint 1 depend on ARC payload lifetime.
 - [ ] **Definition of Done:** Deliverables + acceptance green on interpret;
   evidence committed; IDE plugin updates if surface-facing; review agrees.
   Native claims require S-D2 evidence separately.
@@ -211,7 +212,9 @@ without cutting claim. Do not block M1/M2 on opaque-ticket D1-TYPE.
   `RELEASE`; weak→NULL; use-after-release diagnostics; destructor on strong→0;
   committed green evidence for F1–F13 under `docs/superpowers/evidence/arc-0.5.0/`.
 - [ ] **Dependencies:** S-M1 (grammar surface) or equivalent FE readiness; may
-  **parallelize with Sprint 1**. Not blocked by D1-TYPE opaque residual.
+  **develop in parallel with Sprint 1**, but **closes only after** Sprint 1
+  typed AWAIT interpret is green enough for **F11/F13** (ticket Close pattern +
+  typed await observables). Not blocked by D1-TYPE opaque residual.
 - [ ] **Fixtures:** F1–F13 on interpret (`bn run`); F12 split checks per NOTES.
 - [ ] **Gates:** Quorra ARC-compliance per fixture wave; no done-oco.
 - [ ] **Extra acceptance:** retain on **params/returns**; **destructor chains**;
@@ -242,8 +245,10 @@ without cutting claim. Do not block M1/M2 on opaque-ticket D1-TYPE.
 - [ ] **Fixtures:** F13 native; FLOAT/STRING/BOOLEAN + INTEGER dispatch;
   replay-until-Close; error paths — **F13 INTEGER alone ≠ D2 done**.
 - [ ] **Gates:** Quorra; matrix honesty (no silent native drift).
-- [ ] **Extra acceptance:** retain params/returns for ARC payloads; destructor
-  chains; early exits; replay until Close; timeout/cancel/task/closed errors.
+- [ ] **Extra acceptance:** MVP return set VOID/INTEGER/FLOAT/STRING/BOOLEAN
+  on native; early exits on the await path; replay until Close;
+  timeout/cancel/task/closed errors. **ARC retain/destructor chains belong to
+  S-M4** — do not make S-D2 depend on ARC object lifetime.
 - [ ] **Definition of Ready:** D1 interpret green for known T; ABI out-param
   contract unchanged.
 - [ ] **Definition of Done:** Native typed AWAIT evidence committed; F13 native
@@ -407,3 +412,4 @@ VOID. M1/M2 are not blocked.
 
 - 2026-09-12 — Carlos (via Quorra): **amplify** — ARC required on interpret **and** compile (M4 in claim); extra sprints = calendar overflow only.
 - 2026-09-12 — Carlos (via Quorra) review: complete sprints; D2 in claim before M4 F13 native; D1-TYPE narrowed; G9/G10 closed; F12 NOTES split.
+- 2026-09-12 — Carlos review (4 localized): M4 no deferred in arc-conformance; ARC criteria off Sprint1/S-D2; S-M2 close-after D1 for F11/F13; F12 DELETE gate exit-code strict + tree+grammar scan.

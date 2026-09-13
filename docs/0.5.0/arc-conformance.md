@@ -16,7 +16,7 @@ with evidence (path + command + exit status).
 | --- | --- |
 | Spec lock (this docs train) | Checklist present; Quorra gate OK; no `DELETE` in 0.5.0 grammar |
 | Interpret ARC (M2) | Each fixture below has a `.bn` (or equivalent harness) green on interpret |
-| Native ARC (M4) | Same fixtures green on compile path, or honest deferred rows |
+| Native ARC (M4) | Same fixtures green on compile path — **mandatory** for 0.5.0 claim; **no** deferred / honest-skip rows for in-scope F1–F13 |
 
 ## Required fixtures
 
