@@ -4,9 +4,11 @@
 **Authority:** [`language-0.5.0.md`](language-0.5.0.md), [`0.5.0.ebnf`](0.5.0.ebnf),  
 [`todo/proposals/bucket-0.5.0-corrective.md`](../../todo/proposals/bucket-0.5.0-corrective.md).
 
-This document lists **required fixtures**. Executable `.bn` files are a **later
-wave** (M2+). A wave may not claim ARC/lifetime “done” until every applicable
-row has evidence (path + command + exit status).
+This document lists **required fixtures**. Programs live under
+[`docs/superpowers/evidence/arc-0.5.0/`](../superpowers/evidence/arc-0.5.0/)
+(**fixtures-first**, Carlos 2026-09-12). They may be **red** until M2/D1 runtime.
+A wave may not claim ARC/lifetime “done” until every applicable row is **green**
+with evidence (path + command + exit status).
 
 ## Done when (per wave)
 
@@ -34,15 +36,16 @@ row has evidence (path + command + exit status).
 | F12 | No `DELETE` | Grammar/fixtures under 0.5.0 contain **zero** `DELETE` keyword | Any `DELETE` statement |
 | F13 | Typed AWAIT + args | `ASYNC queue PiPart(i)` (or `queue.Async(PiPart, i)`); `AWAIT` → `T OR Error` | Untyped discard of worker result as the only API |
 
-## Evidence layout (when implementing)
-
-Prefer:
+## Evidence layout
 
 ```text
 docs/superpowers/evidence/arc-0.5.0/<fixture-id>/
   program.bn
-  NOTES.md          # command, backend, exit code, observation
+  NOTES.md          # command, backend, expected exit, observation
 ```
+
+Index: [`../superpowers/evidence/arc-0.5.0/README.md`](../superpowers/evidence/arc-0.5.0/README.md).  
+DELETE quarantine (examples): [`../superpowers/evidence/arc-0.5.0/QUARANTINE-DELETE-examples.md`](../superpowers/evidence/arc-0.5.0/QUARANTINE-DELETE-examples.md).
 
 Quorra **ARC compliance gate** on every M* wave: reject reintroduction of
 `DELETE`, force-dispose, or semi-manual “must dispose to be correct” teaching.

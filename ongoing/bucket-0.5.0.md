@@ -115,7 +115,7 @@
 | G2 | Live toolchain still 0.4 `DELETE` | **Critical** | Spec 0.5.0 ≠ running grammar |
 | G3 | Interpret ARC not wired; heap DELETE diagnostics | **Critical** | `bn_arc` ≠ done |
 | G4 | BNDispatch / AWAIT still completion-only VOID | **Critical** for dispatch claim | ABI ready, language not |
-| G5 | F1–F13 `.bn` fixtures missing | **Critical** for M2 close | Checklist only |
+| G5 | F1–F13 fixtures | **In progress → committed paths** | `docs/superpowers/evidence/arc-0.5.0/F1…F13/` (red until M2/D1) |
 | G6 | Examples + tests still teach `DELETE` | High | Blocks “no DELETE in surface” claim |
 | G7 | Book ch.7 body not rewritten | Med | Overlay + migration exist |
 | G8 | ~~Tag content~~ — **LOCKED:** all-or-nothing ARC (M2+F1–F13+D0–D1) | Closed | Carlos 2026-09-12 via Quorra |
@@ -125,6 +125,14 @@
 | G12 | Duplicative docs trees `docs/language/0.5/` empty vs `docs/0.5.0/` | Low | Carlos path is `docs/0.5.0/` — keep |
 
 **Wrong / out of scope if claimed done:** treating `bn_arc.rs` or BNString Unicode as ARC lifetime done; treating binaries CI green as 0.5.0 language complete.
+
+
+## Fixtures-first rule (Carlos 2026-09-12 via Quorra)
+
+**No M2/D1 runtime implementation wave starts** until F1–F13 (and typed-AWAIT F13)
+are **committed** under `docs/superpowers/evidence/arc-0.5.0/` with `program.bn` +
+`NOTES.md`. Expected red on current toolchain is OK. Green evidence is required
+to close the wave.
 
 ## Critical path (executable order)
 
@@ -164,3 +172,4 @@ Do **not** move to `done/`, do not claim “0.5.0 closed”, and do not tag a la
 - 2026-09-12 — Spec locks + `docs/0.5.0/` + proposals (Quorra/Carlos).  
 - 2026-09-12 — Tron creates this bucket: cross-check gaps; executable waves; tag recommendation.
 - 2026-09-12 — Carlos (via Quorra): tag 0.5.0 **ARC all-or-nothing** (M2+F1–F13+D0–D1); Tron Option A superseded; residual reco section removed.
+- 2026-09-12 — Carlos (via Quorra): **fixtures first** — F1–F13 + F13 typed AWAIT committed under `docs/superpowers/evidence/arc-0.5.0/`; G6 quarantine list for DELETE examples; G5 paths landed (red expected).
