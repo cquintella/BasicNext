@@ -6,6 +6,8 @@ Official **extras** module (Carlos lock 2026-09-12 via Quorra). Source of truth:
 `modules/bn/BNString.bn`. Implemented in Basic Next (LEN + index + loops) — not a
 `bn_rt` native stub. Primary `STRING` remains unchanged.
 
+`LowCaps` / `HiCaps` are **ASCII-only** in v0 (letters `A–Z` / `a–z`). No Unicode or locale case folding.
+
 Nothing here replaces core `STRING` indexing/`LEN`.
 
 ## Access
@@ -32,6 +34,9 @@ Logical import name: `BNString`. Path is not used in source.
 | --- | --- |
 | `CONSTRUCTOR(s AS STRING)` | Store `s` |
 | `Len() AS INTEGER` | `LEN(value)` |
+| `Length() AS INTEGER` | Synonym of `Len()` |
+| `LowCaps() AS S.String` | ASCII `A–Z` → `a–z` (v0; no Unicode/locale folding) |
+| `HiCaps() AS S.String` | ASCII `a–z` → `A–Z` (v0; no Unicode/locale folding) |
 | `CharAt(i AS INTEGER) AS STRING OR NULL` | One scalar at `i`, or `NULL` if OOB |
 | `Concat(other AS STRING) AS S.String` | `NEW String(value + other)` |
 | `Contains(needle AS STRING) AS BOOLEAN` | Substring test |
