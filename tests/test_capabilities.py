@@ -169,7 +169,7 @@ class CompilerCapabilityTests(unittest.TestCase):
                                 temporal_fields = lines[7].split()
                                 self.assertEqual(len(temporal_fields), 2)
                                 self.assertIn(int(temporal_fields[0]), range(24))
-                                self.assertIn(int(temporal_fields[1]), range(7))
+                                self.assertIn(int(temporal_fields[1]), range(1, 8))  # ISO weekday Mon=1..Sun=7
                                 lines[7] = b"<derived-temporal>"
                                 normalized.append(lines)
                             self.assertEqual(normalized[0], normalized[1], program["path"])
