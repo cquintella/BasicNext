@@ -10,7 +10,7 @@ VSIX file:
 ```sh
 cd plugins/vscode
 npx --yes @vscode/vsce package --allow-missing-repository
-code --install-extension basicnext-0.4.4.vsix
+code --install-extension basicnext-0.4.5.vsix
 ```
 
 Restart VS Code completely after installing or updating the extension. The
@@ -53,3 +53,7 @@ executable.
 
 The bundled TextMate grammar is synchronized with
 `docs/library/basicnext.tmLanguage.json`.
+
+Block keywords use distinct TextMate scopes and default colors, for example
+`FUNCTION` / `END FUNCTION`, `WHILE` / `END WHILE`, `IF` / `END IF`,
+`FOR` / `END FOR`, `CLASS` / `END CLASS` (and struct/interface/constructor).
