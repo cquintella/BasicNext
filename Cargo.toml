@@ -9,6 +9,7 @@ edition = "2024"
 rust-version = "1.97"
 description = "Basic Next reference implementation"
 license = "MPL-2.0"
+default-run = "bn"
 
 [features]
 frontend-host-spec-path = []
