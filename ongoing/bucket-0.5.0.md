@@ -1,25 +1,28 @@
 # Basic Next 0.5.0 — Corrective train (ARC DNA + typed dispatch returns)
 
-**Status:** Active executable bucket (Tron audit 2026-09-12). **Tag policy locked by Carlos: ARC all-or-nothing (interpret M2 + F1–F13 + typed AWAIT); not locks/dispatch-only.**  
+**Status:** Active executable bucket (Tron audit 2026-09-12). **Tag policy locked by Carlos: ARC all-or-nothing on BOTH interpret (M2) and compile/LLVM (M4) + F1–F13 + typed AWAIT; not locks/dispatch-only; not interpret-only.**  
 **Objective:** Make the **locked** 0.5.0 language DNA real: ARC compliance (no `DELETE`), typed `AWAIT → T OR Error`, fixtures F1–F13. Spec locks already exist; this file is the **implementation WBS**.
 
 **Owner (tracker):** Tron until Carlos names implementer.  
 **Gate:** Quorra ARC-compliance + no done-oco (fixtures + evidence) before Carlos.
 
 
-## Carlos lock — tag 0.5.0 content (2026-09-12, via Quorra)
+## Carlos lock — tag 0.5.0 content (2026-09-12, via Quorra; **amplified same day**)
 
-**Policy:** **All or nothing on ARC.** Version 0.5.0 must not ship as locks-only or typed-`AWAIT`-only.
+**Policy:** **All or nothing on ARC for both backends.** Version 0.5.0 must not ship as locks-only, typed-`AWAIT`-only, or **interpret-only ARC**.
 
-**In the 0.5.0 tag (minimum):**
-1. Full **interpret** ARC as executable reference: strong/weak (`AS WEAK`), optional `RELEASE`, **`DELETE` keyword purged** from grammar/FE/fixtures/examples under the 0.5.0 surface.
-2. Conformance fixtures **F1–F13** with committed evidence (no empty done).
-3. Typed **`AWAIT → T OR Error`** (D0–D1) in the same release train.
-4. Book/migration alignment for 0.4.x → 0.5.0 memory model.
+**In the 0.5.0 claim (required):**
+1. Full **interpret** ARC (`bn run`) as executable reference: strong/weak (`AS WEAK`), optional `RELEASE`, **`DELETE` keyword purged** from grammar/FE/fixtures/examples under the 0.5.0 surface. (**M2**)
+2. Full **compile** ARC (`bn build` / LLVM): retain/release (or equivalent) so the same fixtures F1–F13 are green on the native path, or an honest matrix row is forbidden — **no silent native drift**. (**M4** — now **in** scope)
+3. Conformance fixtures **F1–F13** with committed evidence on **interpret and compile** (no empty done).
+4. Typed **`AWAIT → T OR Error`** (D0–D1; D2 native as needed for compile claim) in the same release train.
+5. Book/migration alignment for 0.4.x → 0.5.0 memory model.
 
-**Out of minimum tag unless Carlos expands scope:** M4 LLVM retain/release native parity (may follow as 0.5.x). Unowned remains deferred. HOST stays `Close`/`*_close`.
+**Still out unless further expanded:** Unowned; HOST-as-ARC classes (capability `Close`/`*_close` stays).
 
-**Supersedes:** Tron’s earlier recommendation “0.5.0 = locks + D0–D1; M2 → 0.5.1” for *tag content*. Wave *ordering* may still do D1 in parallel with M2, but **release claim 0.5.0 requires M2 green**, not D1 alone.
+**Extra sprints:** If M4 (or D2) cannot finish inside the first implementation cycle, **append extra sprints at the end of this bucket** — do not close 0.5.0 with only M2 green. Ordering tip: M2 reference first, then M4 parity; D1 may parallelize with M2; D2 with M4.
+
+**Supersedes:** (1) Tron “0.5.0 = locks + D0–D1; M2 → 0.5.1”; (2) prior Quorra note “M4 out of minimum tag”.
 
 
 ## Inputs (locks — do not renegotiate here)
@@ -142,30 +145,90 @@ to close the wave.
 4. **M2** — Interpret ARC + RELEASE + WEAK; land F1–F13 with evidence. Quorra gate each.  
 5. **M3 / D2 / D3 / M4** — as capacity; M4 may be 0.5.1.
 
+## SECTION 1 — Sprint execution
+
+Carlos confirmed on 2026-09-12: the execution unit is a **complete sprint**.
+Tasks within a sprint are not separate delivery boundaries. The waves above
+remain the scope authority; this section groups their executable work.
+
+### SPRINT 1 — D0–D1 typed dispatch on interpret
+
+- [ ] ACTIVITY TODO — Deliver typed worker arguments and results through
+  BNDispatch, frontend analysis, validated IR, and interpret together.
+  **Status:** Exploration complete; normative decision gate pending.
+  **Objective:** Let callers aggregate actual worker results, including the
+  existing F13 sum fixture, while preserving timeout/cancellation/task errors.
+  **Dependencies:** D0 contract and the committed fixtures-first gate. F1–F13
+  `program.bn` and `NOTES.md` are tracked in commit `98af828`.
+  **Definition of Ready:** Existing 0.5.0 locks plus an explicit rule for
+  awaiting a ticket whose worker result type cannot be established statically.
+  **Decision gate D1-TYPE:** TODO: Carlos decides whether an unknown ticket
+  result type causes a static diagnostic or uses the destination type with
+  runtime verification. The current specification gives every ticket the
+  same source-level `Dispatch.Ticket` type but requires `AWAIT` to return the
+  originating worker's `T OR Error`; it does not define this boundary for
+  opaque ticket parameters. Do not introduce generic syntax or silently
+  default unknown payloads to VOID to resolve this gap.
+  **Deliverables:** BNDispatch contract, argument checking and payload typing,
+  interpreter submission/result transport, relevant IR negatives and target
+  support checks, regression tests, and F13 evidence.
+  **Acceptance:** F13 returns 0 and observes sum 10; both submission forms
+  preserve argument arity/types; scalar payloads and existing VOID tasks work;
+  repeated await, timeout, cancellation, task errors, and closed tickets follow
+  the accepted contract; ticket aliases and vector indexing preserve typing.
+  Reject mismatched arguments/results. W1–W5 and GC-IR/GC-SUP/GC-DEP apply;
+  native support claims require their own evidence.
+  **Definition of Done:** All deliverables and acceptance checks pass,
+  `cargo build -p bn_rt`, `cargo fmt --check`, `cargo test`,
+  `cargo clippy -- -D warnings`, and `git diff --check` have recorded results;
+  IDE-facing changes receive the required plugin updates; review and evidence
+  agree with this activity. No commit/tag/release is authorized by this task.
+  **Baseline:** See [2026-09-12 execution baseline](#execution-baseline--2026-09-12).
+  `cargo build --bin bn` passed; F13 currently fails `ASYNC_RETURN_TYPE`.
+
+The sprint remains open at D1-TYPE. M1/M2 implementation does not start as a
+substitute for completing this sprint. The release remains ARC all-or-nothing.
+
 ## Hard acceptance gate (no done-oco)
 
 Do **not** move to `done/`, do not claim “0.5.0 closed”, and do not tag a language-complete 0.5.0 until:
 
 1. **No `DELETE`** in 0.5.0 grammar path + new ARC fixtures (F12). Quorra rejects DELETE return.  
 2. **F1–F13** have committed `.bn` (or harness) + evidence under `docs/superpowers/evidence/arc-0.5.0/` for every wave claiming ARC done.  
-3. **Typed AWAIT** fixture green on interpret if tag includes D1.  
+2b. Same fixtures **green on `bn build` / native** (M4) before 0.5.0 claim — interpret-only is insufficient.  
+3. **Typed AWAIT** fixture green on interpret (D1) and on compile as required (D2).  
 4. Rust gate green on the committed diff (`fmt` / `test` / `clippy` / `git diff --check`) with pasted evidence.  
 5. Working-tree-only checkboxes / untracked `bn_arc` alone ≠ acceptance.
 
 ## Tag content (Carlos lock — authoritative)
 
-| In 0.5.0 tag | Out of minimum |
+| In 0.5.0 claim | Out of claim |
 | --- | --- |
-| M0–M1 docs + **M2** interpret ARC + F1–F13 evidence | **M4** LLVM ARC (unless Carlos expands) |
-| **D0–D1** typed AWAIT interpret + evidence | Unowned; HOST-as-ARC |
-| Book/migration alignment | Done-oco / locks-only / D1-only tag |
+| M0–M1 docs + **M2** interpret ARC + F1–F13 on `bn run` | Unowned; HOST-as-ARC |
+| **M4** compile/LLVM ARC + F1–F13 on `bn build` (same observables) | Done-oco / locks-only / D1-only / **interpret-only ARC** |
+| **D0–D1** typed AWAIT interpret (+ **D2** as needed for native) | — |
+| Book/migration alignment | — |
 
-**Tron:** prior Option A (M2→0.5.1) is **superseded**. Parallelize D1 with M2 in work order; **do not claim 0.5.0** until M2 green. No M4 required for the tag.
+**Tron:** prior Option A and “M4 out of minimum” are **superseded**. Parallelize D1 with M2; M4 after M2 reference (or overlap carefully). **Do not claim 0.5.0** until **M2 and M4** green (plus D1/D2 as required). If M4 needs more time, **add extra sprints at the end of this bucket** — do not truncate scope.
 
 ## Related out-of-band (not this bucket’s success claim)
 
 - BNString / TOLOWER / TOUPPER already on main — extras, not ARC lifetime.
 - Binaries CI green (`dc6e820`) — release engineering, not 0.5.0 DNA done.
+
+
+## Extra sprints (if needed)
+
+Append at the **end** of this bucket when the first cycle cannot finish compile ARC:
+
+| Sprint (suggested) | Focus | Done when |
+| --- | --- | --- |
+| S-M4a | LLVM retain/release design + emission for class strong/weak | Design note + failing→passing subset of F1–F3 on `bn build` |
+| S-M4b | Full F1–F13 native green (or honest deferred rows **forbidden** for in-scope items) | Evidence NOTES updated with compile commands |
+| S-D2 | Typed AWAIT on compile path if D1-only left a gap | F13 green on `bn build` |
+| S-purge | Finish G6 example migration off `DELETE` | Quarantine empty or legacy folder explicit |
+
+Do not use extra sprints to shrink the Carlos claim — only to schedule overflow work **without** closing early.
 
 ## History
 
@@ -173,3 +236,72 @@ Do **not** move to `done/`, do not claim “0.5.0 closed”, and do not tag a la
 - 2026-09-12 — Tron creates this bucket: cross-check gaps; executable waves; tag recommendation.
 - 2026-09-12 — Carlos (via Quorra): tag 0.5.0 **ARC all-or-nothing** (M2+F1–F13+D0–D1); Tron Option A superseded; residual reco section removed.
 - 2026-09-12 — Carlos (via Quorra): **fixtures first** — F1–F13 + F13 typed AWAIT committed under `docs/superpowers/evidence/arc-0.5.0/`; G6 quarantine list for DELETE examples; G5 paths landed (red expected).
+
+## Execution baseline — 2026-09-12
+
+### Commands and scope
+
+`cargo build --bin bn` completed successfully (exit 0). Each existing fixture
+was then executed using the newly built binary:
+
+```bash
+target/debug/bn run docs/superpowers/evidence/arc-0.5.0/F1/program.bn
+```
+
+The same command was run individually for F2 through F13. These observations
+describe the existing working tree, including pre-existing local changes;
+they are not acceptance evidence for a committed implementation. No source
+implementation was changed for this baseline. Fixture sources and notes are
+already tracked in commit `98af828`.
+
+### Observations
+
+| Fixture | Exit | Actual observation | Acceptance implication |
+| --- | --- | --- | --- |
+| F1 | 0 | `PASS F1 strong alias n= 7` | Existing alias mutation works; does not establish ARC lifetime. |
+| F2 | 0 | `IN_SCOPE`, `AFTER_SCOPE`; no `DEINIT` | Fails required scope destruction order. |
+| F3 | 0 | `HELD  2`; no `DEINIT` | Fails required destruction on reassignment. |
+| F4 | 1 | `UNKNOWN_TYPE`: `WEAK` is not declared/imported | Weak references unavailable. |
+| F5 | 1 | `E0100` at `RELEASE c` | Syntax failure does not prove use-after-release checking. |
+| F6 | 1 | `E0100` at `RELEASE n` | Syntax failure does not prove scalar binding lifetime checking. |
+| F7 | 1 | `E0100` at `RELEASE w` | Aggregate release unavailable. |
+| F8 | 1 | `E0100` at `RELEASE boxes` | Vector release unavailable. |
+| F9 | 1 | `E0100` at `RELEASE boxes[0]` | Rejected before RELEASE support; does not establish element-specific validation. |
+| F10 | 1 | `E0100` at `RELEASE a` | Cannot check survival of the other strong alias yet. |
+| F11 | 1 | `E0100`: expected punctuation at `AWAIT tickets[i](60000)` | Await parser currently accepts a primary receiver without this index suffix. |
+| F12 | 0 | `LIVE`; no `DEINIT` | Runtime lifetime observation fails; grammar purge is a separate check. |
+| F13 | 1 | `ASYNC_RETURN_TYPE`: ASYNC FUNCTION must return VOID OR Error | First D0–D1 regression target. |
+
+F2 and F12 also emitted `UNUSED_BINDING` warnings. No fixture was marked done
+from its exit status alone. F12's existing NOTES command needs review: a
+zero-match `rg` returns 1, so `rg ... && bn run ...` cannot express a
+successful absence check followed by execution. Scanning explanatory Markdown
+also differs from checking grammar and executable fixture tokens.
+
+### Implementation map for sprint 1
+
+- `modules/bn/BNDispatch.bn`: `Queue.Async` currently accepts a zero-argument
+  VOID/Error function; `Ticket.Wait` returns VOID/Error.
+- `crates/bn_frontend/src/parser/expressions.rs`: keyword submission lowers to
+  an ordinary `Async` call; await becomes `Wait`; indexed await needs parsing.
+- `crates/bn_frontend/src/semantic/analyzer1.rs`: rejects typed ASYNC returns.
+- `crates/bn_frontend/src/semantic/analyzer6.rs`: call checking currently uses
+  the ordinary module signature, including submission arity.
+- `crates/bn_frontend/src/lowering/builder/expressions.rs`: already emits
+  `DispatchSubmit` and `DispatchAwait`.
+- `crates/bn_ir/src/validate.rs`: dispatch-specific checking must accompany
+  any new operand/result contracts, independently of target support.
+- `src/runtime/executor/part2.rs`: dispatch IR operations route through calls.
+- `src/runtime/executor/part3.rs`: submission requires queue plus function,
+  renames the worker to Start, and records completion; wait discards payload.
+- `src/dispatch.rs`: interpreter queue/ticket implementation. The existing
+  `bn_rt` ABI result pointer does not by itself connect this execution path.
+- `tests/runtime.rs`, `tests/ir.rs`, `tests/validated_ir.rs`: existing dispatch
+  regressions and validation fixtures to extend alongside F13.
+
+### Decision required before implementation
+
+TODO: D1-TYPE in the bucket records the missing static typing rule for tickets
+whose originating worker type is unknown, such as an opaque ticket parameter.
+This is a language boundary decision, not permission to begin authorized work.
+- 2026-09-12 — Carlos (via Quorra): **amplify** — ARC required on interpret **and** compile (M4 in claim); extra sprints at bucket end if needed.
