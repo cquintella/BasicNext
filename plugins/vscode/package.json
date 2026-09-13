@@ -1,63 +1,116 @@
 {
   "name": "basicnext",
   "displayName": "Basic Next",
-  "description": "Language support for Basic Next",
-  "version": "0.4.4",
+  "description": "Language support for Basic Next 0.5.0 (ARC DNA: no DELETE; RELEASE/WEAK; typed AWAIT)",
+  "version": "0.5.0",
   "publisher": "basicnext",
   "license": "MPL-2.0",
-  "engines": { "vscode": ">=1.80.0" },
-  "categories": ["Programming Languages"],
-  "activationEvents": ["onLanguage:basicnext"],
+  "engines": {
+    "vscode": ">=1.80.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:basicnext"
+  ],
   "main": "./extension.js",
   "contributes": {
     "commands": [
-      { "command": "basicnext.run", "title": "Basic Next: Run" },
-      { "command": "basicnext.buildAndRun", "title": "Basic Next: Build and Run" }
+      {
+        "command": "basicnext.run",
+        "title": "Basic Next: Run"
+      },
+      {
+        "command": "basicnext.buildAndRun",
+        "title": "Basic Next: Build and Run"
+      }
     ],
-    "debuggers": [{
-      "type": "basicnext",
-      "label": "Basic Next",
-      "languages": ["basicnext"],
-      "runtime": "node",
-      "program": "./debugAdapter.js",
-      "initialConfigurations": [{
+    "debuggers": [
+      {
         "type": "basicnext",
-        "request": "launch",
-        "name": "Run Basic Next",
-        "program": "${file}"
-      }],
-      "configurationAttributes": {
-        "launch": {
-          "required": ["program"],
-          "properties": {
-            "program": { "type": "string" },
-            "cwd": { "type": "string" },
-            "runtimeExecutable": { "type": "string" }
+        "label": "Basic Next",
+        "languages": [
+          "basicnext"
+        ],
+        "runtime": "node",
+        "program": "./debugAdapter.js",
+        "initialConfigurations": [
+          {
+            "type": "basicnext",
+            "request": "launch",
+            "name": "Run Basic Next",
+            "program": "${file}"
+          }
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "program"
+            ],
+            "properties": {
+              "program": {
+                "type": "string"
+              },
+              "cwd": {
+                "type": "string"
+              },
+              "runtimeExecutable": {
+                "type": "string"
+              }
+            }
           }
         }
       }
-    }],
+    ],
     "keybindings": [
-      { "command": "basicnext.run", "key": "ctrl+f5", "mac": "cmd+f5", "when": "editorLangId == basicnext" },
-      { "command": "basicnext.buildAndRun", "key": "ctrl+shift+f5", "mac": "cmd+shift+f5", "when": "editorLangId == basicnext" }
+      {
+        "command": "basicnext.run",
+        "key": "ctrl+f5",
+        "mac": "cmd+f5",
+        "when": "editorLangId == basicnext"
+      },
+      {
+        "command": "basicnext.buildAndRun",
+        "key": "ctrl+shift+f5",
+        "mac": "cmd+shift+f5",
+        "when": "editorLangId == basicnext"
+      }
     ],
     "menus": {
       "editor/title/run": [
-        { "command": "basicnext.run", "when": "editorLangId == basicnext", "group": "navigation" },
-        { "command": "basicnext.buildAndRun", "when": "editorLangId == basicnext", "group": "navigation" }
+        {
+          "command": "basicnext.run",
+          "when": "editorLangId == basicnext",
+          "group": "navigation"
+        },
+        {
+          "command": "basicnext.buildAndRun",
+          "when": "editorLangId == basicnext",
+          "group": "navigation"
+        }
       ]
     },
-    "languages": [{
-      "id": "basicnext",
-      "aliases": ["Basic Next", "bn"],
-      "extensions": [".bn"],
-      "configuration": "./language-configuration.json"
-    }],
-    "grammars": [{
-      "language": "basicnext",
-      "scopeName": "source.bn",
-      "path": "./syntaxes/basicnext.tmLanguage.json"
-    }],
+    "languages": [
+      {
+        "id": "basicnext",
+        "aliases": [
+          "Basic Next",
+          "bn"
+        ],
+        "extensions": [
+          ".bn"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "basicnext",
+        "scopeName": "source.bn",
+        "path": "./syntaxes/basicnext.tmLanguage.json"
+      }
+    ],
     "configuration": {
       "title": "Basic Next",
       "properties": {
@@ -65,7 +118,122 @@
           "type": "string",
           "default": "bn",
           "description": "Path to the bn executable used by the Basic Next language server and debugger."
+        },
+        "basicnext.autoUppercaseKeywords": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically convert Basic Next reserved words to uppercase as you type (for example function \u2192 FUNCTION)."
         }
+      }
+    },
+    "configurationDefaults": {
+      "editor.tokenColorCustomizations": {
+        "textMateRules": [
+          {
+            "scope": "storage.type.function.bn",
+            "settings": {
+              "foreground": "#C586C0",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "keyword.control.end.bn",
+            "settings": {
+              "foreground": "#9E9E9E"
+            }
+          },
+          {
+            "scope": "keyword.control.loop.while.bn",
+            "settings": {
+              "foreground": "#D7BA7D",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "keyword.control.loop.for.bn",
+            "settings": {
+              "foreground": "#CE9178",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "keyword.control.loop.repeat.bn",
+            "settings": {
+              "foreground": "#DCDCAA",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "keyword.control.conditional.bn",
+            "settings": {
+              "foreground": "#569CD6",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "keyword.control.flow.bn",
+            "settings": {
+              "foreground": "#F44747"
+            }
+          },
+          {
+            "scope": "keyword.control.await.bn",
+            "settings": {
+              "foreground": "#B267E6",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "storage.type.class.bn",
+            "settings": {
+              "foreground": "#4EC9B0",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "storage.type.struct.bn",
+            "settings": {
+              "foreground": "#4EC9B0"
+            }
+          },
+          {
+            "scope": "storage.type.interface.bn",
+            "settings": {
+              "foreground": "#4EC9B0"
+            }
+          },
+          {
+            "scope": "storage.type.constructor.bn",
+            "settings": {
+              "foreground": "#9CDCFE"
+            }
+          },
+          {
+            "scope": "storage.type.destructor.bn",
+            "settings": {
+              "foreground": "#9CDCFE"
+            }
+          },
+          {
+            "scope": "keyword.declaration.bn",
+            "settings": {
+              "foreground": "#569CD6"
+            }
+          },
+          {
+            "scope": "support.function.bn",
+            "settings": {
+              "foreground": "#DCDCAA"
+            }
+          },
+          {
+            "scope": "invalid.illegal.deprecated.delete.bn",
+            "settings": {
+              "foreground": "#F44747",
+              "fontStyle": "strikethrough bold"
+            }
+          }
+        ]
       }
     }
   }
