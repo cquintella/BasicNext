@@ -1,10 +1,26 @@
 # Basic Next 0.5.0 — Corrective train (ARC DNA + typed dispatch returns)
 
-**Status:** Active executable bucket (Tron audit 2026-09-12).  
+**Status:** Active executable bucket (Tron audit 2026-09-12). **Tag policy locked by Carlos: ARC all-or-nothing (interpret M2 + F1–F13 + typed AWAIT); not locks/dispatch-only.**  
 **Objective:** Make the **locked** 0.5.0 language DNA real: ARC compliance (no `DELETE`), typed `AWAIT → T OR Error`, fixtures F1–F13. Spec locks already exist; this file is the **implementation WBS**.
 
 **Owner (tracker):** Tron until Carlos names implementer.  
 **Gate:** Quorra ARC-compliance + no done-oco (fixtures + evidence) before Carlos.
+
+
+## Carlos lock — tag 0.5.0 content (2026-09-12, via Quorra)
+
+**Policy:** **All or nothing on ARC.** Version 0.5.0 must not ship as locks-only or typed-`AWAIT`-only.
+
+**In the 0.5.0 tag (minimum):**
+1. Full **interpret** ARC as executable reference: strong/weak (`AS WEAK`), optional `RELEASE`, **`DELETE` keyword purged** from grammar/FE/fixtures/examples under the 0.5.0 surface.
+2. Conformance fixtures **F1–F13** with committed evidence (no empty done).
+3. Typed **`AWAIT → T OR Error`** (D0–D1) in the same release train.
+4. Book/migration alignment for 0.4.x → 0.5.0 memory model.
+
+**Out of minimum tag unless Carlos expands scope:** M4 LLVM retain/release native parity (may follow as 0.5.x). Unowned remains deferred. HOST stays `Close`/`*_close`.
+
+**Supersedes:** Tron’s earlier recommendation “0.5.0 = locks + D0–D1; M2 → 0.5.1” for *tag content*. Wave *ordering* may still do D1 in parallel with M2, but **release claim 0.5.0 requires M2 green**, not D1 alone.
+
 
 ## Inputs (locks — do not renegotiate here)
 
