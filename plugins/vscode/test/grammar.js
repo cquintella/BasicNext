@@ -87,9 +87,17 @@ assert.ok(escape.test("\\\""));
 assert.ok(escape.test("\\\\"));
 assert.ok(!escape.test("\\x"));
 
-const control = matchNamed(library, "keyword.control.bn");
+const control = matchNamed(library, "keyword.control.conditional.bn");
 assert.ok(control.test("IF"));
 assert.ok(!control.test("if"));
+const fn = matchNamed(library, "storage.type.function.bn");
+assert.ok(fn.test("FUNCTION"));
+assert.ok(!fn.test("WHILE"));
+const wh = matchNamed(library, "keyword.control.loop.while.bn");
+assert.ok(wh.test("WHILE"));
+assert.ok(!wh.test("FUNCTION"));
+const endkw = matchNamed(library, "keyword.control.end.bn");
+assert.ok(endkw.test("END"));
 
 const lineComment = matchNamed(library, "comment.line.double-slash.bn");
 assert.ok(lineComment.test("// comment"));
