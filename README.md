@@ -18,6 +18,17 @@ writing software.
 This repository starts with the specification: an implementation is introduced
 only after the corresponding semantics have been defined and reviewed.
 
+## Name
+
+**Basic Next** (also written **BasicNext**) is not [NextBASIC](https://wiki.specnext.dev/NextBASIC),
+the extended Sinclair BASIC interpreter that ships with the
+[ZX Spectrum Next](https://www.specnext.com/). NextBASIC belongs to that retro
+hardware and firmware ecosystem (NextZXOS / SpecNext). This project is a
+separate, modern language with explicit types, a typed intermediate
+representation, an interpreter (`bn run`), and an LLVM-backed compiler
+(`bn build`). Please use the forms *Basic Next* / *BasicNext*; avoid the
+compound spelling *NextBASIC* when referring to this repository.
+
 ## Design goals
 
 - Readability before abbreviation.
