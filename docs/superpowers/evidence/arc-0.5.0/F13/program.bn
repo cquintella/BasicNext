@@ -1,0 +1,33 @@
+// F13 typed AWAIT + args — honest aggregation
+IMPORT BNDispatch AS Dispatch
+
+ASYNC FUNCTION PiPart(i AS INTEGER) AS INTEGER OR Error
+    RETURN i + 1
+END FUNCTION
+
+FUNCTION Start() AS VOID OR Error
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Concurrent(4)
+    IF queue IS Error THEN
+        RETURN queue
+    END IF
+    LET sum AS INTEGER = 0
+    LET i AS INTEGER = 0
+    WHILE i < 4
+        LET ticket AS Dispatch.Ticket OR Error = ASYNC queue PiPart(i)
+        IF ticket IS Error THEN
+            RETURN ticket
+        END IF
+        LET part AS INTEGER OR Error = AWAIT ticket(60000)
+        IF part IS Error THEN
+            RETURN part
+        END IF
+        sum = sum + part
+        ticket.Close()
+        i = i + 1
+    END WHILE
+    IF sum <> 10 THEN
+        PRINT "FAIL F13 sum=", sum
+        STOP 1
+    END IF
+    PRINT "PASS F13 sum=", sum
+END FUNCTION

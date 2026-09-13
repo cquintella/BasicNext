@@ -1,0 +1,26 @@
+// F4 cycle + weak — weak edge; after strong drop, weak IS NULL
+CLASS Node
+    PUBLIC next AS WEAK Node OR NULL = NULL
+    PUBLIC label AS STRING = ""
+    PUBLIC FUNCTION CONSTRUCTOR(label AS STRING)
+        SELF.label = label
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET a AS Node = NEW Node("a")
+    LET b AS Node = NEW Node("b")
+    a.next = b
+    b.next = a
+    LET weakA AS WEAK Node OR NULL = a
+    // drop strong a,b by leaving nested scope after nulling strong locals via reassignment
+    a = NEW Node("orphan")
+    b = NEW Node("orphan2")
+    // original cycle objects should die if only weak edges remain
+    IF weakA IS NULL THEN
+        PRINT "PASS F4 weak NULL"
+    ELSE
+        PRINT "FAIL F4 weak still live"
+        STOP 1
+    END IF
+END FUNCTION

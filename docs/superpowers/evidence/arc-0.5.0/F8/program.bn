@@ -1,0 +1,16 @@
+// F8 RELEASE vector aggregate
+CLASS Box
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    FUNCTION DESTRUCTOR()
+        PRINT "BOX_DEINIT"
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET boxes AS Box[2]
+    boxes[0] = NEW Box()
+    boxes[1] = NEW Box()
+    RELEASE boxes
+    PRINT "AFTER_RELEASE_VECTOR"
+END FUNCTION

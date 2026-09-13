@@ -1,0 +1,8 @@
+// F6 RELEASE primary — end scalar binding; use-after-release error
+FUNCTION Start() AS VOID
+    LET n AS INTEGER = 42
+    RELEASE n
+    PRINT n
+    PRINT "FAIL F6 silent reuse"
+    STOP 1
+END FUNCTION

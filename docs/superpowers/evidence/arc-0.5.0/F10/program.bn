@@ -1,0 +1,21 @@
+// F10 RELEASE object — drop one strong; other alias keeps alive
+CLASS Box
+    PUBLIC n AS INTEGER = 0
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    FUNCTION DESTRUCTOR()
+        PRINT "DEINIT"
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET a AS Box = NEW Box()
+    LET b AS Box = a
+    a.n = 3
+    RELEASE a
+    IF b.n <> 3 THEN
+        PRINT "FAIL kill-all-aliases"
+        STOP 1
+    END IF
+    PRINT "PASS F10 survivor n=", b.n
+END FUNCTION

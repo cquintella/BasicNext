@@ -1,0 +1,17 @@
+// F1 strong aliasing — two strong bindings share one object
+CLASS Box
+    PUBLIC n AS INTEGER = 0
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET a AS Box = NEW Box()
+    LET b AS Box = a
+    a.n = 7
+    IF b.n <> 7 THEN
+        PRINT "FAIL alias"
+        STOP 1
+    END IF
+    PRINT "PASS F1 strong alias n=", b.n
+END FUNCTION

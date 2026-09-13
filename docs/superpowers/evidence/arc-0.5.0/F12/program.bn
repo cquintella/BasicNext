@@ -1,0 +1,13 @@
+// F12 no kill-keyword (purged DNA) — lifetime by scope only
+CLASS Box
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    FUNCTION DESTRUCTOR()
+        PRINT "DEINIT"
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET x AS Box = NEW Box()
+    PRINT "LIVE"
+END FUNCTION

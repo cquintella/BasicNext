@@ -1,0 +1,16 @@
+// F3 reassign drop — previous object deinit when no other strong
+CLASS Probe
+    PUBLIC id AS INTEGER = 0
+    PUBLIC FUNCTION CONSTRUCTOR(id AS INTEGER)
+        SELF.id = id
+    END FUNCTION
+    FUNCTION DESTRUCTOR()
+        PRINT "DEINIT ", SELF.id
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET x AS Probe = NEW Probe(1)
+    x = NEW Probe(2)
+    PRINT "HELD ", x.id
+END FUNCTION

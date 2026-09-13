@@ -1,0 +1,19 @@
+// F7 RELEASE struct aggregate — nested class field strong-dropped
+CLASS Inner
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    FUNCTION DESTRUCTOR()
+        PRINT "INNER_DEINIT"
+    END FUNCTION
+END CLASS
+
+STRUCT Wrap
+    item AS Inner
+END STRUCT
+
+FUNCTION Start() AS VOID
+    LET w AS Wrap
+    w.item = NEW Inner()
+    RELEASE w
+    PRINT "AFTER_RELEASE_STRUCT"
+END FUNCTION

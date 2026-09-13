@@ -1,0 +1,14 @@
+// F5 use-after-release — must error (non-zero exit)
+CLASS Box
+    PUBLIC n AS INTEGER = 1
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET c AS Box = NEW Box()
+    RELEASE c
+    PRINT c.n
+    PRINT "FAIL F5 silent reuse"
+    STOP 1
+END FUNCTION

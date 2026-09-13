@@ -1,0 +1,16 @@
+// F2 scope deinit — last strong leaves scope → destructor once
+CLASS Probe
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    FUNCTION DESTRUCTOR()
+        PRINT "DEINIT"
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    IF TRUE THEN
+        LET p AS Probe = NEW Probe()
+        PRINT "IN_SCOPE"
+    END IF
+    PRINT "AFTER_SCOPE"
+END FUNCTION

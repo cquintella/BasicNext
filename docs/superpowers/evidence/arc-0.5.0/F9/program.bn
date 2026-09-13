@@ -1,0 +1,14 @@
+// F9 forbidden: RELEASE a[i] as remove-middle — must be rejected
+CLASS Box
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET boxes AS Box[2]
+    boxes[0] = NEW Box()
+    boxes[1] = NEW Box()
+    RELEASE boxes[0]
+    PRINT "FAIL F9 accepted element RELEASE"
+    STOP 1
+END FUNCTION
