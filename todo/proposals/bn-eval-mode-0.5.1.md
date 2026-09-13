@@ -45,7 +45,7 @@ So interactive and embedding hosts either wrap files ad hoc (Jupyter) or cannot 
 
 - Rewriting or vendoring frontend/runtime into the REPL repo.
 - A language keyword `EVAL` / `EXECUTE` inside Basic Next programs (different proposal if ever needed).
-- Full Jupyter replacement (kernel may adopt `bn eval` later; not required to ship 0.5.1).
+- Full Jupyter replacement (kernel may adopt `bn -e` later; not required to ship 0.5.1).
 - Persistent process state across **separate** OS processes without an explicit session protocol.
 - Compiling each fragment with LLVM (`bn build`) as the eval backend.
 - Guaranteeing ARC teaching fixtures via eval (0.5.0 owns ARC; eval must not weaken ARC rules).
@@ -104,7 +104,7 @@ A **snippet** is one of:
 
 **Wrapper (normative intent):**
 
-- If the snippet parses as an **expression**, `bn eval` wraps as:
+- If the snippet parses as an **expression**, `bn -e` wraps as:
 
   ```basic
   FUNCTION Start() AS VOID
