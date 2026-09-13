@@ -12,17 +12,28 @@ file is missing or `rg` errors. Accept **only** `rg` exit code **1** (no
 matches). Exit **0** (matches found) and exit **≥2** (error / missing path)
 are **failures**.
 
-```bash
-# (a1) every arc-0.5.0 fixture program — expect exit 1 (no matches)
-rg -n '\\bDELETE\\b' docs/superpowers/evidence/arc-0.5.0/*/program.bn
-test $? -eq 1
+Pattern must be `\bDELETE\b` (one backslash before each `b`). Over-escaped
+forms such as `\\bDELETE\\b` do **not** match a real `DELETE` token and return
+exit 1 incorrectly.
 
-# (a2) 0.5.0 EBNF reserved/productions — expect exit 1 (keyword absent;
-# comments that spell DELETE in prose are outside reserved-word / productions;
-# prefer scanning reserved-word and statement productions, or require zero
-# DELETE as a quoted terminal)
+Each check must **fail the script** when the expectation fails, so a later
+command cannot overwrite the result:
+
+```bash
+set -e
+# (a1) every arc-0.5.0 fixture program — expect rg exit 1 (no matches)
+set +e
+rg -n '\bDELETE\b' docs/superpowers/evidence/arc-0.5.0/*/program.bn
+ec=$?
+set -e
+[ "$ec" -eq 1 ] || { echo "F12(a1) FAIL: expected rg exit 1, got $ec" >&2; exit 1; }
+
+# (a2) 0.5.0 EBNF — no quoted DELETE terminal — expect rg exit 1
+set +e
 rg -n '"DELETE"' docs/0.5.0/0.5.0.ebnf
-test $? -eq 1
+ec=$?
+set -e
+[ "$ec" -eq 1 ] || { echo "F12(a2) FAIL: expected rg exit 1, got $ec" >&2; exit 1; }
 ```
 
 Scope of (a1): **all** `docs/superpowers/evidence/arc-0.5.0/*/program.bn`, not
