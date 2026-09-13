@@ -57,10 +57,10 @@
             "patterns": [
                 {
                     "name": "meta.block.end.function.bn",
-                    "match": "\\b(END)\\s+(FUNCTION)\\b",
+                    "match": "\\\\b(END)\\\\s+(FUNCTION)\\\\b",
                     "captures": {
                         "1": {
-                            "name": "keyword.control.end.bn"
+                            "name": "storage.type.function.bn"
                         },
                         "2": {
                             "name": "storage.type.function.bn"
@@ -69,10 +69,10 @@
                 },
                 {
                     "name": "meta.block.end.while.bn",
-                    "match": "\\b(END)\\s+(WHILE)\\b",
+                    "match": "\\\\b(END)\\\\s+(WHILE)\\\\b",
                     "captures": {
                         "1": {
-                            "name": "keyword.control.end.bn"
+                            "name": "keyword.control.loop.while.bn"
                         },
                         "2": {
                             "name": "keyword.control.loop.while.bn"
@@ -81,10 +81,10 @@
                 },
                 {
                     "name": "meta.block.end.if.bn",
-                    "match": "\\b(END)\\s+(IF)\\b",
+                    "match": "\\\\b(END)\\\\s+(IF)\\\\b",
                     "captures": {
                         "1": {
-                            "name": "keyword.control.end.bn"
+                            "name": "keyword.control.conditional.bn"
                         },
                         "2": {
                             "name": "keyword.control.conditional.bn"
@@ -93,10 +93,10 @@
                 },
                 {
                     "name": "meta.block.end.for.bn",
-                    "match": "\\b(END)\\s+(FOR)\\b",
+                    "match": "\\\\b(END)\\\\s+(FOR)\\\\b",
                     "captures": {
                         "1": {
-                            "name": "keyword.control.end.bn"
+                            "name": "keyword.control.loop.for.bn"
                         },
                         "2": {
                             "name": "keyword.control.loop.for.bn"
@@ -105,10 +105,10 @@
                 },
                 {
                     "name": "meta.block.end.class.bn",
-                    "match": "\\b(END)\\s+(CLASS)\\b",
+                    "match": "\\\\b(END)\\\\s+(CLASS)\\\\b",
                     "captures": {
                         "1": {
-                            "name": "keyword.control.end.bn"
+                            "name": "storage.type.class.bn"
                         },
                         "2": {
                             "name": "storage.type.class.bn"
@@ -117,10 +117,10 @@
                 },
                 {
                     "name": "meta.block.end.struct.bn",
-                    "match": "\\b(END)\\s+(STRUCT)\\b",
+                    "match": "\\\\b(END)\\\\s+(STRUCT)\\\\b",
                     "captures": {
                         "1": {
-                            "name": "keyword.control.end.bn"
+                            "name": "storage.type.struct.bn"
                         },
                         "2": {
                             "name": "storage.type.struct.bn"
@@ -129,10 +129,10 @@
                 },
                 {
                     "name": "meta.block.end.interface.bn",
-                    "match": "\\b(END)\\s+(INTERFACE)\\b",
+                    "match": "\\\\b(END)\\\\s+(INTERFACE)\\\\b",
                     "captures": {
                         "1": {
-                            "name": "keyword.control.end.bn"
+                            "name": "storage.type.interface.bn"
                         },
                         "2": {
                             "name": "storage.type.interface.bn"
@@ -141,10 +141,10 @@
                 },
                 {
                     "name": "meta.block.end.constructor.bn",
-                    "match": "\\b(END)\\s+(CONSTRUCTOR)\\b",
+                    "match": "\\\\b(END)\\\\s+(CONSTRUCTOR)\\\\b",
                     "captures": {
                         "1": {
-                            "name": "keyword.control.end.bn"
+                            "name": "storage.type.constructor.bn"
                         },
                         "2": {
                             "name": "storage.type.constructor.bn"
@@ -153,10 +153,10 @@
                 },
                 {
                     "name": "meta.block.end.destructor.bn",
-                    "match": "\\b(END)\\s+(DESTRUCTOR)\\b",
+                    "match": "\\\\b(END)\\\\s+(DESTRUCTOR)\\\\b",
                     "captures": {
                         "1": {
-                            "name": "keyword.control.end.bn"
+                            "name": "storage.type.destructor.bn"
                         },
                         "2": {
                             "name": "storage.type.destructor.bn"
