@@ -10,6 +10,9 @@
             "include": "#strings"
         },
         {
+            "include": "#end-blocks"
+        },
+        {
             "include": "#keywords"
         },
         {
@@ -50,19 +53,183 @@
                 }
             ]
         },
+        "end-blocks": {
+            "patterns": [
+                {
+                    "name": "meta.block.end.function.bn",
+                    "match": "\\b(END)\\s+(FUNCTION)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.control.end.bn"
+                        },
+                        "2": {
+                            "name": "storage.type.function.bn"
+                        }
+                    }
+                },
+                {
+                    "name": "meta.block.end.while.bn",
+                    "match": "\\b(END)\\s+(WHILE)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.control.end.bn"
+                        },
+                        "2": {
+                            "name": "keyword.control.loop.while.bn"
+                        }
+                    }
+                },
+                {
+                    "name": "meta.block.end.if.bn",
+                    "match": "\\b(END)\\s+(IF)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.control.end.bn"
+                        },
+                        "2": {
+                            "name": "keyword.control.conditional.bn"
+                        }
+                    }
+                },
+                {
+                    "name": "meta.block.end.for.bn",
+                    "match": "\\b(END)\\s+(FOR)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.control.end.bn"
+                        },
+                        "2": {
+                            "name": "keyword.control.loop.for.bn"
+                        }
+                    }
+                },
+                {
+                    "name": "meta.block.end.class.bn",
+                    "match": "\\b(END)\\s+(CLASS)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.control.end.bn"
+                        },
+                        "2": {
+                            "name": "storage.type.class.bn"
+                        }
+                    }
+                },
+                {
+                    "name": "meta.block.end.struct.bn",
+                    "match": "\\b(END)\\s+(STRUCT)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.control.end.bn"
+                        },
+                        "2": {
+                            "name": "storage.type.struct.bn"
+                        }
+                    }
+                },
+                {
+                    "name": "meta.block.end.interface.bn",
+                    "match": "\\b(END)\\s+(INTERFACE)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.control.end.bn"
+                        },
+                        "2": {
+                            "name": "storage.type.interface.bn"
+                        }
+                    }
+                },
+                {
+                    "name": "meta.block.end.constructor.bn",
+                    "match": "\\b(END)\\s+(CONSTRUCTOR)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.control.end.bn"
+                        },
+                        "2": {
+                            "name": "storage.type.constructor.bn"
+                        }
+                    }
+                },
+                {
+                    "name": "meta.block.end.destructor.bn",
+                    "match": "\\b(END)\\s+(DESTRUCTOR)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.control.end.bn"
+                        },
+                        "2": {
+                            "name": "storage.type.destructor.bn"
+                        }
+                    }
+                }
+            ]
+        },
         "keywords": {
             "patterns": [
                 {
-                    "name": "keyword.control.bn",
-                    "match": "\\b(IF|THEN|ELSE|END|WHILE|FOR|REPEAT|UNTIL|EXIT|CONTINUE|RETURN|STOP|STEP|EACH|IN|IS)\\b"
+                    "name": "storage.type.function.bn",
+                    "match": "\\b(FUNCTION|ASYNC)\\b"
+                },
+                {
+                    "name": "keyword.control.loop.while.bn",
+                    "match": "\\b(WHILE)\\b"
+                },
+                {
+                    "name": "keyword.control.loop.for.bn",
+                    "match": "\\b(FOR|STEP|EACH)\\b"
+                },
+                {
+                    "name": "keyword.control.loop.repeat.bn",
+                    "match": "\\b(REPEAT|UNTIL)\\b"
+                },
+                {
+                    "name": "keyword.control.conditional.bn",
+                    "match": "\\b(IF|THEN|ELSE)\\b"
+                },
+                {
+                    "name": "keyword.control.flow.bn",
+                    "match": "\\b(EXIT|CONTINUE|RETURN|STOP)\\b"
+                },
+                {
+                    "name": "keyword.control.await.bn",
+                    "match": "\\b(AWAIT)\\b"
+                },
+                {
+                    "name": "keyword.control.end.bn",
+                    "match": "\\b(END)\\b"
+                },
+                {
+                    "name": "storage.type.class.bn",
+                    "match": "\\b(CLASS)\\b"
+                },
+                {
+                    "name": "storage.type.struct.bn",
+                    "match": "\\b(STRUCT)\\b"
+                },
+                {
+                    "name": "storage.type.interface.bn",
+                    "match": "\\b(INTERFACE)\\b"
+                },
+                {
+                    "name": "storage.type.constructor.bn",
+                    "match": "\\b(CONSTRUCTOR)\\b"
+                },
+                {
+                    "name": "storage.type.destructor.bn",
+                    "match": "\\b(DESTRUCTOR)\\b"
                 },
                 {
                     "name": "keyword.declaration.bn",
-                    "match": "\\b(LET|CONST|AS|FUNCTION|CLASS|STRUCT|INTERFACE|IMPLEMENTS|EXTENDS|IMPORT|EXPORT|PUBLIC|PRIVATE|STATIC|CONSTRUCTOR|DESTRUCTOR)\\b"
+                    "match": "\\b(LET|CONST|AS|IMPLEMENTS|EXTENDS|IMPORT|EXPORT|PUBLIC|PRIVATE|STATIC|IN|IS|RELEASE|WEAK)\\b"
                 },
                 {
                     "name": "keyword.operator.new.bn",
-                    "match": "\\b(NEW|DELETE)\\b"
+                    "match": "\\b(NEW)\\b"
+                },
+                {
+                    "name": "invalid.illegal.deprecated.delete.bn",
+                    "match": "\\b(DELETE)\\b"
                 },
                 {
                     "name": "variable.language.this.bn",

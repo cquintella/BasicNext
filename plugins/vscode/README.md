@@ -1,6 +1,9 @@
 # Basic Next for VS Code
 
-Basic Next language support for Visual Studio Code.
+Basic Next **0.5.0** language support for Visual Studio Code.
+
+Aligned with `docs/0.5.0/`: `RELEASE` / `WEAK` / `ASYNC` / `AWAIT` highlighted;
+`DELETE` marked deprecated/illegal (purged from language DNA).
 
 ## Install
 
@@ -10,7 +13,7 @@ VSIX file:
 ```sh
 cd plugins/vscode
 npx --yes @vscode/vsce package --allow-missing-repository
-code --install-extension basicnext-0.4.4.vsix
+code --install-extension basicnext-0.5.0.vsix
 ```
 
 Restart VS Code completely after installing or updating the extension. The
@@ -21,6 +24,10 @@ debugger contribution is loaded when the VS Code application starts.
 The extension runs `bn` from `PATH` by default. If necessary, set
 `basicnext.executable` in VS Code settings to the full path of the `bn`
 executable.
+
+Reserved words are uppercased as you type by default (`function` becomes
+`FUNCTION` when you finish the word). Disable with
+`basicnext.autoUppercaseKeywords`: `false`.
 
 ## Use
 
@@ -53,3 +60,7 @@ executable.
 
 The bundled TextMate grammar is synchronized with
 `docs/library/basicnext.tmLanguage.json`.
+
+Block keywords use distinct TextMate scopes and default colors, for example
+`FUNCTION` / `END FUNCTION`, `WHILE` / `END WHILE`, `IF` / `END IF`,
+`FOR` / `END FOR`, `CLASS` / `END CLASS` (and struct/interface/constructor).
