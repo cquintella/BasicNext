@@ -53,7 +53,7 @@ jobs:
             echo "::error::clang/LLVM is unavailable; install the repository-required LLVM toolchain before running native capability tests."
             exit 1
           fi
-          cargo run --locked -- build examples/hello.bn -o "$RUNNER_TEMP/bn-hello"
+          cargo run --locked --bin bn -- build examples/hello.bn -o "$RUNNER_TEMP/bn-hello"
           "$RUNNER_TEMP/bn-hello"
           python -m unittest tests/test_capabilities.py
       - name: Diagnostic and backend parity gates
