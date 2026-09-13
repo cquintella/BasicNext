@@ -1,6 +1,9 @@
 # Basic Next for VS Code
 
-Basic Next language support for Visual Studio Code.
+Basic Next **0.5.0** language support for Visual Studio Code.
+
+Aligned with `docs/0.5.0/`: `RELEASE` / `WEAK` / `ASYNC` / `AWAIT` highlighted;
+`DELETE` marked deprecated/illegal (purged from language DNA).
 
 ## Install
 
@@ -10,7 +13,7 @@ VSIX file:
 ```sh
 cd plugins/vscode
 npx --yes @vscode/vsce package --allow-missing-repository
-code --install-extension basicnext-0.4.6.vsix
+code --install-extension basicnext-0.5.0.vsix
 ```
 
 Restart VS Code completely after installing or updating the extension. The
