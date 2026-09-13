@@ -416,7 +416,7 @@ list):
 Still open or confirm-deferred:
 
 1. ~~**Weak spelling**~~ — **LOCKED (Quorra):** `AS WEAK ClassName`; dead → `NULL`.
-2. **0.5.0 tag content** — locks + typed dispatch only, or include interpret ARC (M2)?
+2. ~~**0.5.0 tag content**~~ — **LOCKED:** all-or-nothing ARC (M2 + F1–F13 + D0–D1); M4 out of minimum.
 3. **Unowned** — confirm deferred.
 4. **Dispatch** — confirm **replay until Close** and MVP type set including `STRING` if still open.
 

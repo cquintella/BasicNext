@@ -118,7 +118,7 @@
 | G5 | F1–F13 `.bn` fixtures missing | **Critical** for M2 close | Checklist only |
 | G6 | Examples + tests still teach `DELETE` | High | Blocks “no DELETE in surface” claim |
 | G7 | Book ch.7 body not rewritten | Med | Overlay + migration exist |
-| G8 | Tag content open (locks+D1 vs +M2) | Med | Carlos open #3 |
+| G8 | ~~Tag content~~ — **LOCKED:** all-or-nothing ARC (M2+F1–F13+D0–D1) | Closed | Carlos 2026-09-12 via Quorra |
 | G9 | Replay-until-Close + STRING in MVP T | Low/Med | Proposal open #6 |
 | G10 | Unowned confirm deferred | Low | Open #4 |
 | G11 | `bn_arc.rs` untracked / not integrated | Med | Commit when M2 starts or drop if unused |
@@ -144,15 +144,15 @@ Do **not** move to `done/`, do not claim “0.5.0 closed”, and do not tag a la
 4. Rust gate green on the committed diff (`fmt` / `test` / `clippy` / `git diff --check`) with pasted evidence.  
 5. Working-tree-only checkboxes / untracked `bn_arc` alone ≠ acceptance.
 
-## Tag recommendation (Tron → Carlos)
+## Tag content (Carlos lock — authoritative)
 
-| Option | Contents | When |
-| --- | --- | --- |
-| **A — Prefer for first tag** | M0+M1 docs + **D0+D1** typed AWAIT interpret + evidence; ARC interpret **Deferred** to 0.5.1 with Owner | Staffing tight; ABI ready; unlocks parallel honesty |
-| **B — Prefer if capacity** | A + **M2** interpret ARC + F1–F13 green | Matches proposal “prefer interpret ARC in 0.5.0” |
-| **Avoid** | Tag claiming ARC or typed await without fixtures | Done-oco |
+| In 0.5.0 tag | Out of minimum |
+| --- | --- |
+| M0–M1 docs + **M2** interpret ARC + F1–F13 evidence | **M4** LLVM ARC (unless Carlos expands) |
+| **D0–D1** typed AWAIT interpret + evidence | Unowned; HOST-as-ARC |
+| Book/migration alignment | Done-oco / locks-only / D1-only tag |
 
-**Tron recommendation:** Tag **0.5.0 = Option A** (locks + typed dispatch interpret) **unless** Carlos staffs M2 immediately; then Option B. Do **not** wait for M4 LLVM ARC to tag 0.5.0.
+**Tron:** prior Option A (M2→0.5.1) is **superseded**. Parallelize D1 with M2 in work order; **do not claim 0.5.0** until M2 green. No M4 required for the tag.
 
 ## Related out-of-band (not this bucket’s success claim)
 
@@ -163,3 +163,4 @@ Do **not** move to `done/`, do not claim “0.5.0 closed”, and do not tag a la
 
 - 2026-09-12 — Spec locks + `docs/0.5.0/` + proposals (Quorra/Carlos).  
 - 2026-09-12 — Tron creates this bucket: cross-check gaps; executable waves; tag recommendation.
+- 2026-09-12 — Carlos (via Quorra): tag 0.5.0 **ARC all-or-nothing** (M2+F1–F13+D0–D1); Tron Option A superseded; residual reco section removed.
