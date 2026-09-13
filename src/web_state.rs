@@ -185,7 +185,7 @@ mod tests {
                 "abc123",
                 Some("example.test"),
                 "/",
-                Some(Duration::from_secs(3600)),
+                Some(Duration::from_hours(1)),
             )
             .unwrap();
         assert_eq!(
@@ -228,7 +228,7 @@ mod tests {
             "token123",
             None,
             "/",
-            Some(Duration::from_secs(60)),
+            Some(Duration::from_mins(1)),
             options,
             false,
         );
@@ -263,7 +263,7 @@ mod tests {
                 "token123",
                 None,
                 "/",
-                Some(Duration::from_secs(60)),
+                Some(Duration::from_mins(1)),
                 options,
                 true
             )

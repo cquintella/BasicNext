@@ -160,7 +160,7 @@ fn serves_cookie_and_session_headers_over_http11() {
             "dark",
             None,
             "/",
-            Some(Duration::from_secs(3600)),
+            Some(Duration::from_hours(1)),
             options,
             false,
         )?;
