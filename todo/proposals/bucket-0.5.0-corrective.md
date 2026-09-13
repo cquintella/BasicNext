@@ -211,7 +211,7 @@ Shared release claim “0.5.0” requires: D1 green + M0 locked + M1 docs merged
 
 1. ~~**DELETE policy**~~ — **LOCKED:** **`DELETE` keyword removed from language DNA** (not deprecate-only).  
 2. ~~**Weak spelling**~~ — **LOCKED (Quorra):** `AS WEAK ClassName`; dead → `NULL` (docs/0.5.0).  
-3. **0.5.0 tag content:** locks+dispatch only, or include interpret ARC (M2)?  
+3. ~~**0.5.0 tag content**~~ — **LOCKED (Carlos via Quorra):** all-or-nothing ARC — M2 interpret + F1–F13 + D0–D1 typed AWAIT (+ book/migration); not locks/D1-only. M4 out of minimum.  
 4. **Unowned:** confirm deferred.  
 5. ~~**HOST handles**~~ — **LOCKED for 0.5.0:** stay capability `Close` / `*_close` (not ARC-wrapped; **not** reintroduced as `DELETE`). Later unify proposal optional.  
 6. Dispatch: confirm **replay until Close** and MVP type set including STRING.  
