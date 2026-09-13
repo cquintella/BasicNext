@@ -13,7 +13,7 @@ VSIX file:
 ```sh
 cd plugins/vscode
 npx --yes @vscode/vsce package --allow-missing-repository
-code --install-extension basicnext-0.5.0.vsix
+code --install-extension basicnext-0.5.1.vsix
 ```
 
 Restart VS Code completely after installing or updating the extension. The
@@ -61,6 +61,7 @@ Reserved words are uppercased as you type by default (`function` becomes
 The bundled TextMate grammar is synchronized with
 `docs/library/basicnext.tmLanguage.json`.
 
-Block keywords use distinct TextMate scopes and default colors, for example
-`FUNCTION` / `END FUNCTION`, `WHILE` / `END WHILE`, `IF` / `END IF`,
-`FOR` / `END FOR`, `CLASS` / `END CLASS` (and struct/interface/constructor).
+Block keywords use distinct TextMate scopes and default colors per block kind.
+`END` shares the **same** color as its block keyword (`END FUNCTION` with
+`FUNCTION`, `END WHILE` with `WHILE`, `END IF` with `IF`, and likewise for
+`FOR` / `CLASS` / `STRUCT` / `INTERFACE` / constructor / destructor).
