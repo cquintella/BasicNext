@@ -15,14 +15,14 @@
 1. Full **interpret** ARC (`bn run`) as executable reference: strong/weak (`AS WEAK`), optional `RELEASE`, **`DELETE` keyword purged** from grammar/FE/fixtures/examples under the 0.5.0 surface. (**M2**)
 2. Full **compile** ARC (`bn build` / LLVM): retain/release (or equivalent) so the same fixtures F1–F13 are green on the native path, or an honest matrix row is forbidden — **no silent native drift**. (**M4** — now **in** scope)
 3. Conformance fixtures **F1–F13** with committed evidence on **interpret and compile** (no empty done).
-4. Typed **`AWAIT → T OR Error`** (D0–D1; D2 native as needed for compile claim) in the same release train.
+4. Typed **`AWAIT → T OR Error`** (D0–D1 on interpret; **D2** native typed AWAIT **before or with** F13 native / M4) in the same release train. F13 native is mandatory; D2 is **in** the claim.
 5. Book/migration alignment for 0.4.x → 0.5.0 memory model.
 
 **Still out unless further expanded:** Unowned; HOST-as-ARC classes (capability `Close`/`*_close` stays).
 
-**Extra sprints:** If M4 (or D2) cannot finish inside the first implementation cycle, **append extra sprints at the end of this bucket** — do not close 0.5.0 with only M2 green. Ordering tip: M2 reference first, then M4 parity; D1 may parallelize with M2; D2 with M4.
+**Extra sprints:** If M4 (or D2) cannot finish inside the first implementation cycle, **append extra sprints at the end of this bucket** as **calendar overflow only** — do not close 0.5.0 with only M2 green, and **never** reopen an out-of-minimum / slip-to-next-tag scope cut for compile ARC. Ordering tip: M2 reference first; **D2 before or with M4 F13 native**; D1 may parallelize with M2.
 
-**Supersedes:** (1) Tron “0.5.0 = locks + D0–D1; M2 → 0.5.1”; (2) prior Quorra note “M4 out of minimum tag”.
+**Supersedes:** (1) Tron “0.5.0 = locks + D0–D1; M2 → next tag”; (2) prior Quorra note that compile ARC was outside the minimum tag.
 
 
 ## Inputs (locks — do not renegotiate here)
@@ -71,7 +71,7 @@
 | **M1** | Spec/grammar/book purge DELETE; WEAK; RELEASE; migration | **Mostly DONE** in `docs/0.5.0/` + book overlay; book ch.7 body still 0.3 manual text (superseded by overlay, not rewritten) | FE still parses `DELETE` (0.4 grammar live) |
 | **M2** | Interpret strong/weak + F1–F13 | Spec ready | **NOT STARTED as language surface** — `bn_arc.rs` untracked private Rust helper only; heap still `USE_AFTER_DELETE` / `DOUBLE_DELETE` |
 | **M3** | `value-memory-abi` object rows closed for interpret | Checklist still PARTIAL historically | **OPEN** |
-| **M4** | LLVM retain/release + matrix | Deferred OK if interpret-first | **OPEN** |
+| **M4** | LLVM retain/release + matrix | **In claim** (overflow sprints OK; not out-of-minimum) | **OPEN** |
 
 ### Track D — Typed dispatch
 
@@ -121,9 +121,9 @@
 | G5 | F1–F13 fixtures | **In progress → committed paths** | `docs/superpowers/evidence/arc-0.5.0/F1…F13/` (red until M2/D1) |
 | G6 | Examples + tests still teach `DELETE` | High | Blocks “no DELETE in surface” claim |
 | G7 | Book ch.7 body not rewritten | Med | Overlay + migration exist |
-| G8 | ~~Tag content~~ — **LOCKED:** all-or-nothing ARC (M2+F1–F13+D0–D1) | Closed | Carlos 2026-09-12 via Quorra |
-| G9 | Replay-until-Close + STRING in MVP T | Low/Med | Proposal open #6 |
-| G10 | Unowned confirm deferred | Low | Open #4 |
+| G8 | ~~Tag content~~ — **LOCKED:** all-or-nothing ARC (M2+M4+F1–F13+D0–D1+D2) | Closed | Carlos 2026-09-12 via Quorra (amplified) |
+| G9 | ~~Replay-until-Close + STRING in MVP T~~ | Closed | Locked: replay until Close; MVP T includes STRING (with VOID/INTEGER/FLOAT/BOOLEAN) |
+| G10 | ~~Unowned confirm deferred~~ | Closed | Unowned remains deferred / out of 0.5.0 claim (non-goal confirmed) |
 | G11 | `bn_arc.rs` untracked / not integrated | Med | Commit when M2 starts or drop if unused |
 | G12 | Duplicative docs trees `docs/language/0.5/` empty vs `docs/0.5.0/` | Low | Carlos path is `docs/0.5.0/` — keep |
 
@@ -139,55 +139,154 @@ to close the wave.
 
 ## Critical path (executable order)
 
-1. **D0** — Update BNDispatch + language docs already in 0.5.0 (module signatures for typed workers).  
-2. **D1** — FE+interpret typed AWAIT (ABI exists). Evidence: parallel sum fixture.  
-3. **M1 residual** — Switch active grammar authority to 0.5.0 (or dual-track flag); purge DELETE from FE reserved words.  
-4. **M2** — Interpret ARC + RELEASE + WEAK; land F1–F13 with evidence. Quorra gate each.  
-5. **M3 / D2 / D3 / M4** — as capacity; M4 may be 0.5.1.
+Waves remain the scope map; **execution = sprints** in SECTION 1.
+
+1. **Sprint 1 (D0–D1)** — Typed AWAIT on interpret for **known** worker `T` (F13 INTEGER first). Opaque-ticket **D1-TYPE** is a narrowed residual only — does **not** freeze M1/M2.  
+2. **S-M1** — Live grammar/FE purge `DELETE`; `RELEASE` / `WEAK` surface.  
+3. **S-M2** — Interpret ARC + RELEASE + WEAK; F1–F13 evidence on `bn run` (may parallelize with Sprint 1).  
+4. **S-M3** — `value-memory-abi` object lifetime rows closed for interpret.  
+5. **S-D2** — Typed AWAIT on compile/LLVM (**before or with** M4 F13 native — S-M4 must not require F13 native green while D2 is still later).  
+6. **S-M4** — LLVM retain/release + F1–F13 on `bn build` (F13 native needs S-D2).  
+7. **S-D3 / S-purge** — honest parallel examples + finish G6 DELETE example migration (calendar overflow OK; scope stays in claim).
+
+**Never** treat extra sprints as reopening an out-of-minimum cut or slipping compile ARC to the next tag.
 
 ## SECTION 1 — Sprint execution
 
 Carlos confirmed on 2026-09-12: the execution unit is a **complete sprint**.
-Tasks within a sprint are not separate delivery boundaries. The waves above
-remain the scope authority; this section groups their executable work.
+Tasks within a sprint are not separate delivery boundaries. The **waves** above
+remain the scope map; **execution = sprints** below.
 
-### SPRINT 1 — D0–D1 typed dispatch on interpret
+**Dependency order (summary):** Sprint 1 (D0–D1 known-T) ∥ S-M1 → S-M2 → S-M3;
+then **S-D2 before/with S-M4 F13 native**; S-D3 / S-purge can trail as overflow
+without cutting claim. Do not block M1/M2 on opaque-ticket D1-TYPE.
 
-- [ ] ACTIVITY TODO — Deliver typed worker arguments and results through
-  BNDispatch, frontend analysis, validated IR, and interpret together.
-  **Status:** Exploration complete; normative decision gate pending.
-  **Objective:** Let callers aggregate actual worker results, including the
-  existing F13 sum fixture, while preserving timeout/cancellation/task errors.
-  **Dependencies:** D0 contract and the committed fixtures-first gate. F1–F13
-  `program.bn` and `NOTES.md` are tracked in commit `98af828`.
-  **Definition of Ready:** Existing 0.5.0 locks plus an explicit rule for
-  awaiting a ticket whose worker result type cannot be established statically.
-  **Decision gate D1-TYPE:** TODO: Carlos decides whether an unknown ticket
-  result type causes a static diagnostic or uses the destination type with
-  runtime verification. The current specification gives every ticket the
-  same source-level `Dispatch.Ticket` type but requires `AWAIT` to return the
-  originating worker's `T OR Error`; it does not define this boundary for
-  opaque ticket parameters. Do not introduce generic syntax or silently
-  default unknown payloads to VOID to resolve this gap.
-  **Deliverables:** BNDispatch contract, argument checking and payload typing,
-  interpreter submission/result transport, relevant IR negatives and target
-  support checks, regression tests, and F13 evidence.
-  **Acceptance:** F13 returns 0 and observes sum 10; both submission forms
-  preserve argument arity/types; scalar payloads and existing VOID tasks work;
-  repeated await, timeout, cancellation, task errors, and closed tickets follow
-  the accepted contract; ticket aliases and vector indexing preserve typing.
-  Reject mismatched arguments/results. W1–W5 and GC-IR/GC-SUP/GC-DEP apply;
-  native support claims require their own evidence.
-  **Definition of Done:** All deliverables and acceptance checks pass,
-  `cargo build -p bn_rt`, `cargo fmt --check`, `cargo test`,
-  `cargo clippy -- -D warnings`, and `git diff --check` have recorded results;
-  IDE-facing changes receive the required plugin updates; review and evidence
-  agree with this activity. No commit/tag/release is authorized by this task.
-  **Baseline:** See [2026-09-12 execution baseline](#execution-baseline--2026-09-12).
-  `cargo build --bin bn` passed; F13 currently fails `ASYNC_RETURN_TYPE`.
+### Sprint 1 — D0–D1 typed dispatch on interpret (narrowed D1-TYPE)
 
-The sprint remains open at D1-TYPE. M1/M2 implementation does not start as a
-substitute for completing this sprint. The release remains ARC all-or-nothing.
+- [ ] **Deliverables:** BNDispatch typed worker contract; FE argument/result
+  checking; interpret ticket stores `Value` and typed `AWAIT` unbox; IR
+  negatives + target support checks; regression tests; F13 interpret evidence.
+- [ ] **Dependencies:** D0 locks; fixtures-first gate (F1–F13 `program.bn` +
+  `NOTES.md` in `98af828`). **Does not depend on** closing opaque-ticket
+  D1-TYPE for all tickets.
+- [ ] **Fixtures:** F13 (INTEGER sum) on `bn run`; plus typed-dispatch coverage
+  for FLOAT / STRING / BOOLEAN (and VOID) workers — **F13 INTEGER alone ≠ done**.
+- [ ] **Gates:** Quorra no done-oco; W1–W5 and GC-IR/GC-SUP/GC-DEP; Rust
+  `fmt` / `test` / `clippy` / `git diff --check`.
+- [ ] **Definition of Ready:** 0.5.0 locks; known worker `T` path specified;
+  D1-TYPE delimited (below) so Sprint 1 is not frozen.
+- [ ] **D1-TYPE (delimited):** Applies **only** to opaque tickets whose worker
+  result type `T` cannot be established statically (e.g. opaque ticket
+  parameter). **No** generic syntax; **no** silent default to VOID. Sprint 1
+  **proceeds** for known `T` (F13 INTEGER and other statically known workers).
+  D1-TYPE does **not** block M1/M2 and does **not** freeze all of D0–D1.
+- [ ] **Extra acceptance (beyond F13 INTEGER):** retain on params/returns where
+  payloads are ARC values; destructor chains; early exits; dispatch
+  FLOAT/STRING/BOOLEAN + INTEGER; **replay until Close**; timeout / cancel /
+  task / closed-ticket errors. Reject mismatched args/results.
+- [ ] **Definition of Done:** Deliverables + acceptance green on interpret;
+  evidence committed; IDE plugin updates if surface-facing; review agrees.
+  Native claims require S-D2 evidence separately.
+- **Baseline:** [2026-09-12 execution baseline](#execution-baseline--2026-09-12).
+  F13 currently fails `ASYNC_RETURN_TYPE`.
+
+### S-M1 — Grammar / FE surface purge (M1 residual)
+
+- [ ] **Deliverables:** Live grammar/FE reserved words match `docs/0.5.0`:
+  purge `DELETE`; parse `RELEASE`; `AS WEAK ClassName`; book/migration residual
+  as needed (overlay OK if M1 docs accepted).
+- [ ] **Dependencies:** Spec locks in `docs/0.5.0/` (already mostly DONE).
+  Independent of opaque D1-TYPE.
+- [ ] **Fixtures / checks:** Grammar/negative tests that `DELETE` is rejected;
+  `RELEASE` / `WEAK` parse; F12 NOTES (a) `program.bn`-only DELETE scan.
+- [ ] **Gates:** Quorra rejects any DELETE return on 0.5.0 surface.
+- [ ] **Definition of Ready:** Normative EBNF/keywords/language docs present.
+- [ ] **Definition of Done:** Active toolchain grammar authority is 0.5.0 (or
+  dual-track flag documented); FE no longer accepts `DELETE` as keyword sugar;
+  evidence noted in sprint close.
+
+### S-M2 — Interpret ARC + F1–F13 on `bn run`
+
+- [ ] **Deliverables:** Semantic + runtime strong/weak retain/release; optional
+  `RELEASE`; weak→NULL; use-after-release diagnostics; destructor on strong→0;
+  committed green evidence for F1–F13 under `docs/superpowers/evidence/arc-0.5.0/`.
+- [ ] **Dependencies:** S-M1 (grammar surface) or equivalent FE readiness; may
+  **parallelize with Sprint 1**. Not blocked by D1-TYPE opaque residual.
+- [ ] **Fixtures:** F1–F13 on interpret (`bn run`); F12 split checks per NOTES.
+- [ ] **Gates:** Quorra ARC-compliance per fixture wave; no done-oco.
+- [ ] **Extra acceptance:** retain on **params/returns**; **destructor chains**;
+  **early exits**; use-after-release / invalid binding; weak cycle break; no
+  force-dispose. Treat `bn_arc.rs` helper alone as **not** done.
+- [ ] **Definition of Ready:** Fixtures-first paths committed (red OK until green).
+- [ ] **Definition of Done:** F1–F13 green on `bn run` with NOTES evidence;
+  Rust gate on the diff; Quorra pass.
+
+### S-M3 — value-memory-abi object rows (interpret)
+
+- [ ] **Deliverables:** `docs/architecture/value-memory-abi.md` object lifetime
+  rows closed for interpret ARC observables; checklist PARTIAL → closed.
+- [ ] **Dependencies:** S-M2 interpret observables stable enough to document.
+- [ ] **Fixtures:** Cross-links to F1–F13 / ABI examples as needed.
+- [ ] **Gates:** Doc review; no silent contradiction with M2 evidence.
+- [ ] **Definition of Ready:** M2 semantics known for strong/weak/RELEASE.
+- [ ] **Definition of Done:** ABI doc object section matches interpret reality;
+  historical PARTIAL rows closed or explicitly N/A.
+
+### S-D2 — Typed AWAIT on compile / LLVM (in claim; before M4 F13 native)
+
+- [ ] **Deliverables:** LLVM/native out-param wiring for typed await; matrix /
+  support rows; F13 (and multi-T) green on `bn build`.
+- [ ] **Dependencies:** Sprint 1 (D1 interpret reference). **Ordered before or
+  with S-M4’s F13 native** — S-M4 must **not** require F13 native green while
+  D2 is scheduled later. Remove any “D2 optional/deferred” hedging.
+- [ ] **Fixtures:** F13 native; FLOAT/STRING/BOOLEAN + INTEGER dispatch;
+  replay-until-Close; error paths — **F13 INTEGER alone ≠ D2 done**.
+- [ ] **Gates:** Quorra; matrix honesty (no silent native drift).
+- [ ] **Extra acceptance:** retain params/returns for ARC payloads; destructor
+  chains; early exits; replay until Close; timeout/cancel/task/closed errors.
+- [ ] **Definition of Ready:** D1 interpret green for known T; ABI out-param
+  contract unchanged.
+- [ ] **Definition of Done:** Native typed AWAIT evidence committed; F13 native
+  mandatory for claim.
+
+### S-M4 — Compile / LLVM ARC + F1–F13 on `bn build`
+
+- [ ] **Deliverables:** LLVM retain/release (or equivalent) so F1–F13 match
+  interpret observables on `bn build`; design note as needed.
+- [ ] **Dependencies:** S-M2 interpret reference; **S-D2 before/with F13
+  native** (do not gate “all F1–F13 native” on a later D2). M3 may overlap.
+- [ ] **Fixtures:** F1–F13 on `bn build` with NOTES compile commands.
+- [ ] **Gates:** Quorra ARC gate on native; no interpret-only claim.
+- [ ] **Extra acceptance:** retain params/returns; destructor chains; early
+  exits; same observables as interpret for in-scope fixtures.
+- [ ] **Definition of Ready:** M2 green reference; D2 ready for F13 native path.
+- [ ] **Definition of Done:** F1–F13 native green (or forbidden to claim row);
+  evidence committed. Calendar overflow → append extra sprints **without**
+  shrinking claim / without slipping compile ARC to the next tag.
+
+### S-D3 — Honest parallel examples (`parallel_work` / `parallel_pi`)
+
+- [ ] **Deliverables:** Examples/docs use typed aggregation; no PRINT-as-API;
+  no DELETE-heavy teaching on 0.5.0 surface.
+- [ ] **Dependencies:** Sprint 1 (D1) at minimum; prefer after S-D2 for native
+  demo paths.
+- [ ] **Fixtures / checks:** Example runs or documented harness; Quorra sample
+  review.
+- [ ] **Gates:** Honesty vs typed AWAIT locks.
+- [ ] **Definition of Ready:** D1 contract stable.
+- [ ] **Definition of Done:** Examples match DNA; DELETE purged or quarantined.
+
+### S-purge — G6 example / test DELETE migration
+
+- [ ] **Deliverables:** `examples/**` (and tests teaching DELETE) migrated or
+  explicitly quarantined for 0.5.0 claim.
+- [ ] **Dependencies:** S-M1 surface rules; can run parallel to S-M2+.
+- [ ] **Fixtures / checks:** Repo scan for `\bDELETE\b` under claimed 0.5.0
+  teaching paths; quarantine folder explicit if legacy kept.
+- [ ] **Gates:** Quorra surface purity.
+- [ ] **Definition of Ready:** G6 list known.
+- [ ] **Definition of Done:** Quarantine empty or legacy folder explicit; claim
+  paths DELETE-free.
 
 ## Hard acceptance gate (no done-oco)
 
@@ -196,7 +295,7 @@ Do **not** move to `done/`, do not claim “0.5.0 closed”, and do not tag a la
 1. **No `DELETE`** in 0.5.0 grammar path + new ARC fixtures (F12). Quorra rejects DELETE return.  
 2. **F1–F13** have committed `.bn` (or harness) + evidence under `docs/superpowers/evidence/arc-0.5.0/` for every wave claiming ARC done.  
 2b. Same fixtures **green on `bn build` / native** (M4) before 0.5.0 claim — interpret-only is insufficient.  
-3. **Typed AWAIT** fixture green on interpret (D1) and on compile as required (D2).  
+3. **Typed AWAIT** fixture green on interpret (D1) and on compile (**D2** — in claim; before/with F13 native).  
 4. Rust gate green on the committed diff (`fmt` / `test` / `clippy` / `git diff --check`) with pasted evidence.  
 5. Working-tree-only checkboxes / untracked `bn_arc` alone ≠ acceptance.
 
@@ -204,12 +303,12 @@ Do **not** move to `done/`, do not claim “0.5.0 closed”, and do not tag a la
 
 | In 0.5.0 claim | Out of claim |
 | --- | --- |
-| M0–M1 docs + **M2** interpret ARC + F1–F13 on `bn run` | Unowned; HOST-as-ARC |
+| M0–M1 docs + **M2** interpret ARC + F1–F13 on `bn run` | Unowned (deferred); HOST-as-ARC |
 | **M4** compile/LLVM ARC + F1–F13 on `bn build` (same observables) | Done-oco / locks-only / D1-only / **interpret-only ARC** |
-| **D0–D1** typed AWAIT interpret (+ **D2** as needed for native) | — |
+| **D0–D1** typed AWAIT interpret + **D2** native typed AWAIT (F13 native mandatory) | — |
 | Book/migration alignment | — |
 
-**Tron:** prior Option A and “M4 out of minimum” are **superseded**. Parallelize D1 with M2; M4 after M2 reference (or overlap carefully). **Do not claim 0.5.0** until **M2 and M4** green (plus D1/D2 as required). If M4 needs more time, **add extra sprints at the end of this bucket** — do not truncate scope.
+**Tron:** prior Option A and any compile-ARC-out-of-minimum / next-tag slip are **superseded** and must not reappear as scope cuts. Parallelize D1 with M2; **D2 before or with M4 F13 native**; M4 after M2 reference (or overlap carefully). **Do not claim 0.5.0** until **M2, M4, D1, and D2** green. If calendar slips, **append extra sprints** — overflow only, never reopen an out-of-minimum cut.
 
 ## Related out-of-band (not this bucket’s success claim)
 
@@ -219,14 +318,16 @@ Do **not** move to `done/`, do not claim “0.5.0 closed”, and do not tag a la
 
 ## Extra sprints (if needed)
 
-Append at the **end** of this bucket when the first cycle cannot finish compile ARC:
+Append at the **end** of this bucket when the first cycle cannot finish compile ARC / native typed AWAIT.
+**Calendar overflow only** — never reopen an out-of-minimum cut, slip compile ARC to the next tag, or drop D2 from the claim.
 
-| Sprint (suggested) | Focus | Done when |
-| --- | --- | --- |
-| S-M4a | LLVM retain/release design + emission for class strong/weak | Design note + failing→passing subset of F1–F3 on `bn build` |
-| S-M4b | Full F1–F13 native green (or honest deferred rows **forbidden** for in-scope items) | Evidence NOTES updated with compile commands |
-| S-D2 | Typed AWAIT on compile path if D1-only left a gap | F13 green on `bn build` |
-| S-purge | Finish G6 example migration off `DELETE` | Quarantine empty or legacy folder explicit |
+| Sprint (suggested) | Focus | Done when | Ordering note |
+| --- | --- | --- | --- |
+| S-D2 (overflow slice) | Native typed AWAIT remaining matrix | F13 + multi-T + replay/errors on `bn build` | **Before/with** M4 F13 native — not after a deferred-D2 deferral |
+| S-M4a | LLVM retain/release design + emission for class strong/weak | Design note + failing→passing subset of F1–F3 on `bn build` | After M2 reference |
+| S-M4b | Full F1–F13 native green (deferred rows **forbidden** for in-scope items) | Evidence NOTES updated with compile commands | Needs S-D2 for F13 native |
+| S-D3 | Honest `parallel_*` examples | Examples match typed AWAIT DNA | After D1; prefer after D2 |
+| S-purge | Finish G6 example migration off `DELETE` | Quarantine empty or legacy folder explicit | Parallel OK |
 
 Do not use extra sprints to shrink the Carlos claim — only to schedule overflow work **without** closing early.
 
@@ -273,10 +374,9 @@ already tracked in commit `98af828`.
 | F13 | 1 | `ASYNC_RETURN_TYPE`: ASYNC FUNCTION must return VOID OR Error | First D0–D1 regression target. |
 
 F2 and F12 also emitted `UNUSED_BINDING` warnings. No fixture was marked done
-from its exit status alone. F12's existing NOTES command needs review: a
-zero-match `rg` returns 1, so `rg ... && bn run ...` cannot express a
-successful absence check followed by execution. Scanning explanatory Markdown
-also differs from checking grammar and executable fixture tokens.
+from its exit status alone. F12 NOTES are split: (a) no `DELETE` in
+`program.bn` only; (b) `bn run` scope/lifetime test; (c) NOTES prose may mention
+DELETE. Do not use a broken `rg && bn run` pipeline (zero-match `rg` exits 1).
 
 ### Implementation map for sprint 1
 
@@ -299,9 +399,11 @@ also differs from checking grammar and executable fixture tokens.
 - `tests/runtime.rs`, `tests/ir.rs`, `tests/validated_ir.rs`: existing dispatch
   regressions and validation fixtures to extend alongside F13.
 
-### Decision required before implementation
+### Decision residual (does not freeze Sprint 1 / M1 / M2)
 
-TODO: D1-TYPE in the bucket records the missing static typing rule for tickets
-whose originating worker type is unknown, such as an opaque ticket parameter.
-This is a language boundary decision, not permission to begin authorized work.
-- 2026-09-12 — Carlos (via Quorra): **amplify** — ARC required on interpret **and** compile (M4 in claim); extra sprints at bucket end if needed.
+**D1-TYPE** is delimited to opaque tickets without static worker `T` only.
+Sprint 1 proceeds for known `T` (F13 INTEGER). No generic syntax; no default
+VOID. M1/M2 are not blocked.
+
+- 2026-09-12 — Carlos (via Quorra): **amplify** — ARC required on interpret **and** compile (M4 in claim); extra sprints = calendar overflow only.
+- 2026-09-12 — Carlos (via Quorra) review: complete sprints; D2 in claim before M4 F13 native; D1-TYPE narrowed; G9/G10 closed; F12 NOTES split.

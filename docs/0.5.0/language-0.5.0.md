@@ -298,7 +298,7 @@ amends the **result type** contract:
 | Not primary | `Ticket.Result()` — optional later compat only |
 | ABI | Wire to existing `bn_rt_dispatch_await(ticket, timeout_ms, out_result, out_error)` |
 | Replay | Replay the stored success value until the ticket is `Close`d (not consume-once) |
-| MVP `T` (plan) | `VOID` \| `INTEGER` \| `FLOAT` \| `STRING` \| `BOOLEAN` (STRING confirm still open if needed) |
+| MVP `T` (plan) | `VOID` \| `INTEGER` \| `FLOAT` \| `STRING` \| `BOOLEAN` — **LOCKED** (STRING included; replay until Close) |
 
 ```basic
 IMPORT BNDispatch AS Dispatch
@@ -382,8 +382,8 @@ FUNCTION Start() AS VOID OR Error
 END FUNCTION
 ```
 
-**Note:** confirm **replay until Close** and MVP inclusion of `STRING` under
-Open questions if still open in the proposal.
+**Note:** **Replay until Close** and MVP `T` including `STRING` are **locked**
+(see Open questions — G9 closed).
 
 ## Migration: 0.4.x → 0.5.0
 
@@ -413,16 +413,16 @@ list):
 
 ## Open questions (Carlos)
 
-Still open or confirm-deferred:
+All prior opens closed or confirm-deferred as follows:
 
 1. ~~**Weak spelling**~~ — **LOCKED (Quorra):** `AS WEAK ClassName`; dead → `NULL`.
-2. ~~**0.5.0 tag content**~~ — **LOCKED:** all-or-nothing ARC (M2 + F1–F13 + D0–D1); M4 out of minimum.
-3. **Unowned** — confirm deferred.
-4. **Dispatch** — confirm **replay until Close** and MVP type set including `STRING` if still open.
+2. ~~**0.5.0 tag content**~~ — **LOCKED (Carlos via Quorra, amplified):** all-or-nothing ARC on **interpret (M2) and compile (M4)** + F1–F13 + typed AWAIT **D0–D1 and D2**; F13 native mandatory. Extra sprints = **calendar overflow only** — never an out-of-minimum / slip-to-next-tag scope cut.
+3. ~~**Unowned**~~ — **CLOSED (deferred):** remains out of 0.5.0 claim / non-goal (G10).
+4. ~~**Dispatch replay + MVP T**~~ — **LOCKED (G9):** replay stored success until `Close`; MVP `T` = `VOID` \| `INTEGER` \| `FLOAT` \| `STRING` \| `BOOLEAN`.
 
 Locked here: `DELETE` purge; `RELEASE` (primaries/vector/struct/object); HOST
 `Close`; typed `AWAIT`; async with args; ARC compliance; tickets pattern; weak
-spelling.
+spelling; replay until Close; MVP T including STRING; M4 + D2 in claim.
 
 Normative fixture checklist: [`arc-conformance.md`](arc-conformance.md).  
 Book bridge: [`memory-migration.md`](memory-migration.md).

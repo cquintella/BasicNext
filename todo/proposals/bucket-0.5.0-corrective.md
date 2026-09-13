@@ -127,7 +127,7 @@ For **structs / scalars / vectors (value types):** unchanged copy semantics — 
 | M1 | Spec + book ch.7 rewrite; **purge `DELETE`** from grammar/teaching/fixtures; migration note 0.4.x; weak spelling; document `RELEASE` advanced | Docs PR accepted; **Quorra ARC-compliance gate** |
 | M2 | Interpret implements strong/weak retain/release; compliance fixtures green | Evidence under `docs/superpowers/evidence/`; **Quorra ARC gate** |
 | M3 | Close `value-memory-abi` object lifetime rows for interpret | Checklist + tests; **Quorra ARC gate** |
-| M4 | LLVM retain/release design + matrix rows (may slip past 0.5.0 tag if interpret-first) | Native parity or honest deferred; **Quorra ARC gate** |
+| M4 | LLVM retain/release design + matrix rows (**in 0.5.0 claim**; calendar overflow sprints OK — not out-of-minimum) | Native parity; **Quorra ARC gate**; F13 native needs D2 before/with |
 
 **Quorra’s role:** ARC **compliance gate** on every M* wave — reject any wave that reintroduces `DELETE`, semi-manual dispose, or force-destroy semantics.
 
@@ -161,16 +161,15 @@ Details and acceptance fixtures: [dispatch-typed-return.md](dispatch-typed-retur
 
 ## Bucket shape / ordering
 
-Suggested critical path for **0.5.0**:
+Suggested critical path for **0.5.0** (execution = sprints in `ongoing/bucket-0.5.0.md`):
 
-1. **D0–D1** (typed await) — smaller, ABI ready, unlocks parallel honesty fast.  
-2. **M0–M2** (ARC lock + interpret) — larger DNA; do not block D1.  
-3. **M3 / D2** — contracts + native as capacity allows.  
-4. **M4 / D3** — matrix + example promotion.
+1. **D0–D1** (typed await interpret, known `T`) — smaller, ABI ready; opaque D1-TYPE residual does not freeze M1/M2.  
+2. **M0–M2** (ARC lock + interpret) — larger DNA; may parallelize with D1.  
+3. **M3** — value-memory-abi object rows.  
+4. **D2 before/with M4 F13 native** — typed AWAIT compile + LLVM ARC; F13 native mandatory; D2 **in claim**.  
+5. **D3 / purge** — honest examples + DELETE migration (overflow OK).
 
-Shared release claim “0.5.0” requires: D1 green + M0 locked + M1 docs merged; M2 interpret ARC may be the same tag or immediately follow — **Carlos chooses** whether 0.5.0 ships ARC interpret or only locks+dispatch.
-
-**Recommendation:** 0.5.0 ships **(a)** accepted ARC language lock + book draft, **(b)** typed await interpret+module, **(c)** evidence. Full ARC interpret + LLVM retain can be 0.5.0 vs 0.5.1 — prefer **interpret ARC in 0.5.0** if staffing allows; otherwise 0.5.0 = locks+dispatch, 0.5.1 = interpret ARC.
+**Tag claim (Carlos amplified):** 0.5.0 = M2 + M4 + F1–F13 on interpret **and** compile + D0–D1 + **D2** + book/migration. Extra sprints = **calendar overflow only** — never reopen an out-of-minimum cut or ship interpret-only ARC.
 
 ---
 
@@ -211,10 +210,10 @@ Shared release claim “0.5.0” requires: D1 green + M0 locked + M1 docs merged
 
 1. ~~**DELETE policy**~~ — **LOCKED:** **`DELETE` keyword removed from language DNA** (not deprecate-only).  
 2. ~~**Weak spelling**~~ — **LOCKED (Quorra):** `AS WEAK ClassName`; dead → `NULL` (docs/0.5.0).  
-3. ~~**0.5.0 tag content**~~ — **LOCKED (Carlos via Quorra):** all-or-nothing ARC — M2 interpret + F1–F13 + D0–D1 typed AWAIT (+ book/migration); not locks/D1-only. M4 out of minimum.  
-4. **Unowned:** confirm deferred.  
+3. ~~**0.5.0 tag content**~~ — **LOCKED (Carlos via Quorra, amplified):** all-or-nothing ARC — **M2 + M4** + F1–F13 on interpret **and** compile + D0–D1 + **D2** (+ book/migration); not locks/D1-only / not interpret-only. Extra sprints = calendar overflow only — **never** an out-of-minimum cut for compile ARC.  
+4. ~~**Unowned**~~ — **CLOSED (deferred):** remains out of 0.5.0 claim / non-goal (G10).  
 5. ~~**HOST handles**~~ — **LOCKED for 0.5.0:** stay capability `Close` / `*_close` (not ARC-wrapped; **not** reintroduced as `DELETE`). Later unify proposal optional.  
-6. Dispatch: confirm **replay until Close** and MVP type set including STRING.  
+6. ~~**Dispatch replay + MVP T**~~ — **LOCKED (G9):** replay until `Close`; MVP `T` includes `VOID` \| `INTEGER` \| `FLOAT` \| `STRING` \| `BOOLEAN`.  
 7. ~~**`RELEASE` in MVP?**~~ — **LOCKED:** optional advanced; applies to primaries/vector/struct/object (early binding end); class = drop one strong; use-after-release error; hello may omit.
 
 ---
@@ -251,3 +250,4 @@ Shared release claim “0.5.0” requires: D1 green + M0 locked + M1 docs merged
 - 2026-09-12 — Carlos teaching lock (via Quorra): tickets — Close per element (bn_rt); RELEASE only on aggregate `tickets`; never `RELEASE tickets[i]`; hello may omit RELEASE.
 - 2026-09-12 — Carlos lock (via Quorra): RELEASE applies to primaries/vector/struct/object; use-after-release error; no RELEASE a[i] as remove-middle.
 - 2026-09-12 — Quorra (Carlos audit): weak spelling locked; arc-conformance.md + memory-migration.md; async args documented; opens updated. Spec docs only — M2/M4/.bn still open.
+- 2026-09-12 — Carlos (via Quorra) review: M4+D2 in claim; extra sprints = overflow only; G9 replay+STRING locked; G10 unowned deferred closed; align with bucket sprints.
