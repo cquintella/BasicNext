@@ -10,6 +10,7 @@
 //
  // Fail-closed: empty Tokenizer sep and CharAt OOB return NULL (user code cannot
 // NEW Error in 0.4.7). Prefer OR Error when Error is constructible.
+// LowCaps/HiCaps: ASCII A–Z / a–z only in v0 — no Unicode/locale case folding.
 //
 // Access:
 //   IMPORT BNString AS S
@@ -114,6 +115,61 @@ EXPORT CLASS String
 
     PUBLIC FUNCTION Len() AS INTEGER
         RETURN LEN(SELF.value)
+    END FUNCTION
+
+    // Synonym of Len() (Carlos 2026-09-12).
+    PUBLIC FUNCTION Length() AS INTEGER
+        RETURN SELF.Len()
+    END FUNCTION
+
+    // ASCII A–Z → a–z only (v0). Other scalars unchanged. No Unicode case fold.
+    PUBLIC FUNCTION LowCaps() AS String
+        LET n AS INTEGER = LEN(SELF.value)
+        LET out AS STRING = ""
+        LET i AS INTEGER = 0
+        WHILE i < n
+            LET ch AS STRING = SELF.value[i]
+            LET code AS INTEGER OR Error = ASC(ch)
+            IF code IS Error THEN
+                out = out + ch
+            ELSE IF code >= 65 AND code <= 90 THEN
+                LET lower AS STRING OR Error = CHAR(code + 32)
+                IF lower IS Error THEN
+                    out = out + ch
+                ELSE
+                    out = out + lower
+                END IF
+            ELSE
+                out = out + ch
+            END IF
+            i = i + 1
+        END WHILE
+        RETURN NEW String(out)
+    END FUNCTION
+
+    // ASCII a–z → A–Z only (v0). Other scalars unchanged. No Unicode case fold.
+    PUBLIC FUNCTION HiCaps() AS String
+        LET n AS INTEGER = LEN(SELF.value)
+        LET out AS STRING = ""
+        LET i AS INTEGER = 0
+        WHILE i < n
+            LET ch AS STRING = SELF.value[i]
+            LET code AS INTEGER OR Error = ASC(ch)
+            IF code IS Error THEN
+                out = out + ch
+            ELSE IF code >= 97 AND code <= 122 THEN
+                LET upper AS STRING OR Error = CHAR(code - 32)
+                IF upper IS Error THEN
+                    out = out + ch
+                ELSE
+                    out = out + upper
+                END IF
+            ELSE
+                out = out + ch
+            END IF
+            i = i + 1
+        END WHILE
+        RETURN NEW String(out)
     END FUNCTION
 
     // One Unicode scalar at i as STRING length 1; NULL if out of range.

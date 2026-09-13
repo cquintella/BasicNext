@@ -10,6 +10,9 @@ IMPORT BNString AS S
 FUNCTION Start() AS VOID
     LET s AS S.String = NEW S.String("  hello,world,bn  ")
     PRINT "Len=", s.Len()
+    PRINT "Length=", s.Length()
+    PRINT "LowCaps=", s.LowCaps().ToString()
+    PRINT "HiCaps=", s.HiCaps().ToString()
     PRINT "Contains world? ", s.Contains("world")
     LET trimmed AS S.String = s.Trim()
     PRINT "Trimmed=", trimmed.ToString()
