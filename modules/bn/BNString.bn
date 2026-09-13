@@ -10,7 +10,8 @@
 //
  // Fail-closed: empty Tokenizer sep and CharAt OOB return NULL (user code cannot
 // NEW Error in 0.4.7). Prefer OR Error when Error is constructible.
-// LowCaps/HiCaps: ASCII A–Z / a–z only in v0 — no Unicode/locale case folding.
+// LowCaps/HiCaps: Unicode case via language builtins TOLOWER/TOUPPER
+// (bn_rt_str_to_lower / bn_rt_str_to_upper — Rust Unicode mapping, not ASCII).
 //
 // Access:
 //   IMPORT BNString AS S
@@ -122,55 +123,17 @@ EXPORT CLASS String
         RETURN SELF.Len()
     END FUNCTION
 
-    // ASCII A–Z → a–z only (v0). Other scalars unchanged. No Unicode case fold.
+    // Unicode lowercase (TOLOWER → bn_rt / Rust to_lowercase). Length may change.
     PUBLIC FUNCTION LowCaps() AS String
-        LET n AS INTEGER = LEN(SELF.value)
-        LET out AS STRING = ""
-        LET i AS INTEGER = 0
-        WHILE i < n
-            LET ch AS STRING = SELF.value[i]
-            LET code AS INTEGER OR Error = ASC(ch)
-            IF code IS Error THEN
-                out = out + ch
-            ELSE IF code >= 65 AND code <= 90 THEN
-                LET lower AS STRING OR Error = CHAR(code + 32)
-                IF lower IS Error THEN
-                    out = out + ch
-                ELSE
-                    out = out + lower
-                END IF
-            ELSE
-                out = out + ch
-            END IF
-            i = i + 1
-        END WHILE
-        RETURN NEW String(out)
+        RETURN NEW String(TOLOWER(SELF.value))
     END FUNCTION
 
-    // ASCII a–z → A–Z only (v0). Other scalars unchanged. No Unicode case fold.
+
+    // Unicode uppercase (TOUPPER → bn_rt / Rust to_uppercase). Length may change.
     PUBLIC FUNCTION HiCaps() AS String
-        LET n AS INTEGER = LEN(SELF.value)
-        LET out AS STRING = ""
-        LET i AS INTEGER = 0
-        WHILE i < n
-            LET ch AS STRING = SELF.value[i]
-            LET code AS INTEGER OR Error = ASC(ch)
-            IF code IS Error THEN
-                out = out + ch
-            ELSE IF code >= 97 AND code <= 122 THEN
-                LET upper AS STRING OR Error = CHAR(code - 32)
-                IF upper IS Error THEN
-                    out = out + ch
-                ELSE
-                    out = out + upper
-                END IF
-            ELSE
-                out = out + ch
-            END IF
-            i = i + 1
-        END WHILE
-        RETURN NEW String(out)
+        RETURN NEW String(TOUPPER(SELF.value))
     END FUNCTION
+
 
     // One Unicode scalar at i as STRING length 1; NULL if out of range.
     PUBLIC FUNCTION CharAt(i AS INTEGER) AS STRING OR NULL

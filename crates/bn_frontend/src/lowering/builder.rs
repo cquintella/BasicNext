@@ -311,7 +311,7 @@ impl<'a> Builder<'a> {
         arguments: &[Expression],
     ) -> Result<(ValueId, Vec<ValueId>), Diagnostic> {
         if let ExpressionKind::Name { name } = &callee.kind
-            && matches!(name.as_str(), "ASC" | "CHAR")
+            && matches!(name.as_str(), "ASC" | "CHAR" | "TOLOWER" | "TOUPPER")
         {
             let values = arguments
                 .iter()

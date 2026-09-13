@@ -375,6 +375,20 @@ fn builtin(
                 |c| Value::String(c.into()),
             ));
     }
+    if name == "TOLOWER" {
+        let Value::String(text) = &arguments[0] else {
+            return Err(runtime_error("TYPE_MISMATCH", "TOLOWER expects STRING", span));
+        };
+        // Unicode case mapping (same as bn_rt_str_to_lower / Rust to_lowercase).
+        return Ok(Value::String(text.to_lowercase()));
+    }
+    if name == "TOUPPER" {
+        let Value::String(text) = &arguments[0] else {
+            return Err(runtime_error("TYPE_MISMATCH", "TOUPPER expects STRING", span));
+        };
+        // Unicode case mapping (same as bn_rt_str_to_upper / Rust to_uppercase).
+        return Ok(Value::String(text.to_uppercase()));
+    }
     let math_name = name
         .strip_prefix("BNMath.")
         .ok_or_else(|| runtime_error("NAME_NOT_FOUND", "unknown builtin", span))?;

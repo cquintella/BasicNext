@@ -13,6 +13,12 @@ FUNCTION Start() AS VOID
     PRINT "Length=", s.Length()
     PRINT "LowCaps=", s.LowCaps().ToString()
     PRINT "HiCaps=", s.HiCaps().ToString()
+
+    LET acao AS S.String = NEW S.String("AÇÃO")
+    PRINT "Unicode LowCaps=", acao.LowCaps().ToString()
+    LET acaoLow AS S.String = NEW S.String("ação")
+    PRINT "Unicode HiCaps=", acaoLow.HiCaps().ToString()
+
     PRINT "Contains world? ", s.Contains("world")
     LET trimmed AS S.String = s.Trim()
     PRINT "Trimmed=", trimmed.ToString()

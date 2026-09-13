@@ -25,6 +25,17 @@ impl Analyzer {
                 default_span(),
             )?;
         }
+        for name in ["TOLOWER", "TOUPPER"] {
+            self.declare_global(
+                name,
+                Type::Function {
+                    parameters: vec![Type::String],
+                    return_type: Box::new(Type::String),
+                },
+                false,
+                default_span(),
+            )?;
+        }
         self.declare_global(
             "Float",
             Type::TypeName("Float".into()),

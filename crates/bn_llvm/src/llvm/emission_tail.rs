@@ -1417,6 +1417,24 @@ pub(crate) fn lower_scalar_instruction_tail(
                         destination.0, argument.0
                     );
                 }
+                "TOLOWER" => {
+                    let dest = destination.0;
+                    let argument = arguments[0];
+                    let _ = writeln!(
+                        text,
+                        "  %v{dest} = call ptr @bn_rt_str_to_lower(ptr %v{})",
+                        argument.0
+                    );
+                }
+                "TOUPPER" => {
+                    let dest = destination.0;
+                    let argument = arguments[0];
+                    let _ = writeln!(
+                        text,
+                        "  %v{dest} = call ptr @bn_rt_str_to_upper(ptr %v{})",
+                        argument.0
+                    );
+                }
                 "ASC" => {
                     let dest = destination.0;
                     let argument = arguments[0];

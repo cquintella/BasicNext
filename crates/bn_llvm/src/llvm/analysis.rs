@@ -50,7 +50,7 @@ pub(crate) fn analyze_function<'a>(
                         if is_bn_rt_host_call(name) {
                             uses_bn_rt = true;
                         }
-                        if matches!(name.as_str(), "ASC" | "CHAR") {
+                        if matches!(name.as_str(), "ASC" | "CHAR" | "TOLOWER" | "TOUPPER") {
                             uses_bn_rt = true;
                         }
                         if is_bndata_dataframe_call(module, name) {
@@ -858,6 +858,9 @@ fn validate_instruction(
                     })
             }
             Some("ASC") => arguments.len() == 1 && values.get(&arguments[0]) == Some(&Type::String),
+            Some("TOLOWER" | "TOUPPER") => {
+                arguments.len() == 1 && values.get(&arguments[0]) == Some(&Type::String)
+            }
             Some("CHAR") => {
                 arguments.len() == 1
                     && values
