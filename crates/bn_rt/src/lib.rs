@@ -113,6 +113,8 @@ fn libc_write_stdout(buf: &[u8]) -> io::Result<()> {
     libc_fflush()?;
     let mut written = 0;
     while written < buf.len() {
+        // Unix: STDOUT_FILENO + size_t count. Windows CRT: fd 1 + c_uint count.
+        #[cfg(unix)]
         let next = unsafe {
             libc::write(
                 libc::STDOUT_FILENO,
@@ -120,6 +122,14 @@ fn libc_write_stdout(buf: &[u8]) -> io::Result<()> {
                 buf.len() - written,
             )
         };
+        #[cfg(windows)]
+        let next = unsafe {
+            let remaining = buf.len() - written;
+            let chunk = u32::try_from(remaining).unwrap_or(u32::MAX);
+            libc::write(1, buf[written..].as_ptr().cast(), chunk)
+        };
+        #[cfg(not(any(unix, windows)))]
+        compile_error!("libc_write_stdout requires unix or windows");
         if next <= 0 {
             return Err(if next < 0 {
                 io::Error::last_os_error()
