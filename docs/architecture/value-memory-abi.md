@@ -1,7 +1,7 @@
 # Value, memory, and ABI contract (to-be)
 
 > Canonical: `docs/architecture/value-memory-abi.md`  
-> Status: **requirements checklist locked; contract content PARTIAL / NOT CLOSED (2026-09-05).** This file states *what* must be contracted. It does **not** yet specify concrete layouts or per-symbol ownership for `bn_rt`. Fill the **next release subset** with tables + tests before claiming closed — [review-status.md](review-status.md), AQ-16.
+> Status: **0.5.0 object contract specified; implementation evidence remains per-wave.** The rows below are the normative ownership/lifetime invariants for ARC objects; they do not claim that M2 or M4 is complete.
 
 ## Why this exists
 
@@ -11,7 +11,7 @@ Today the architecture largely treats `bn_rt` as “Keep” with an interface th
 
 ## Hierarchy (same as conformance)
 
-1. **Language specification** defines observable behaviour (including `Error`, traps, `DELETE`, static init, numeric rules).
+1. **Language specification** defines observable behaviour (including `Error`, traps, ARC lifetime, static init, and numeric rules).
 2. **Executable reference** (`bn_runtime` + interpreter `Value`/`bn_value`) implements that behaviour for tests.
 3. **Compiled path** (`bn_llvm` + **`bn_rt`** + layout) must match the specification on the [support-matrix.md](support-matrix.md) subset — see [conformance.md](conformance.md).
 
@@ -35,7 +35,7 @@ into `bn_rt` (or one-way modules exporting C ABI), catalog each symbol here
 
 ---
 
-## Release-slice ABI rows (0.4.5)
+## Release-slice ABI rows (0.5.0)
 
 The following rows are the concrete ABI slice currently exercised by compiled
 programs. Fields marked “borrowed” are valid only for the duration stated by
@@ -55,6 +55,17 @@ closed by its owning `*_close` operation.
 | BNMath scalar and reduction ops | Scalar: `i64`/`double` values passed and returned by value; Vector reduction: borrowed buffer `ptr` + element count `i32` | Callee borrows array slice for duration of reduction call; does not retain or free buffer | Return status/NaN on empty or domain errors | `crates/bn_rt/src/stats.rs`; `crates/bn_llvm/src/llvm/math.rs` |
 | Temporal and string helpers (`bn_rt_print_*`, `bn_rt_str_*`) | Dates/times passed as scalar `i32`/`i64`; strings passed as borrowed C `ptr` | Callee borrows pointer for duration of query/print; does not free or mutate | Status or fallback representation | `crates/bn_llvm/src/llvm/functions.rs`; `crates/bn_rt/src/lib.rs` |
 | `INTEGER OR NULL` | LLVM `{ i1, i32 }`: field 0 is `true` exactly for `NULL`; field 1 holds the integer payload and is zero when null | Passed and returned by value; no owned storage | `PRINT` emits `NULL` for a set tag and the signed integer otherwise | `examples/linear_collections.bn`; `tests/cli.rs` |
+
+### ARC object ownership rows
+
+| Boundary | Representation | Ownership / lifetime invariant | Invalid operation | Evidence required |
+| --- | --- | --- | --- | --- |
+| Strong class binding | Interpreter `Value::Object { handle, class }`; native opaque object handle | Assignment, parameter passing, and return retain one strong reference. Scope exit and reassignment release exactly that binding. The object is destroyed only when the strong count reaches zero. | Use after the binding has been released is a language diagnostic; no force-dispose. | F1–F3, F10 on interpret and native support rows where implemented |
+| Weak class binding | `AS WEAK ClassName [OR NULL]`; native weak handle or nullable object pointer | Creating a weak binding never increments the strong count. When the last strong reference is released, reads produce `NULL`; weak storage is cleared without running the destructor twice. | Dereferencing a dead weak value is `NULL`, not undefined memory. | F4 |
+| Explicit `RELEASE` | Binding identity, never an element removal operation | `RELEASE x` releases one strong binding (or ends a primary/aggregate binding). It never invalidates aliases that still hold a strong reference. `RELEASE a[i]` is invalid for fixed vectors. | Releasing an already released binding reports `DOUBLE_RELEASE`; using it reports `USE_AFTER_RELEASE`. | F5–F10 |
+| Struct/vector aggregate | Inline aggregate containing nested values | Releasing the aggregate releases nested strong fields/elements in language order. The aggregate storage remains structurally valid until its binding ends; fixed-vector indices are never punched into holes. | Element release as removal is rejected. | F7–F9 |
+| Destructor boundary | Private interpreter callback / native destructor entry | Destructor runs exactly once at strong count zero, before storage is reclaimed. Reentrant release observes a destroying state and cannot run the destructor again. | Reentrant or repeated destruction reports a stable double-release diagnostic. | F2, F3, F10, M4 matrix |
+| ABI object handle | Opaque `u64`/pointer plus runtime type metadata; layout is target-owned | ABI calls borrow object pointers for the duration of the call unless the symbol explicitly says retain/transfer. Returned handles are owned by the caller and must be closed/released exactly once. | Stale or wrong-generation handles return a runtime status/diagnostic, never UB. | `bn_rt` layout tests and support-matrix fixtures |
 
 Object fields use the target ABI size and natural alignment of their LLVM
 representation. In particular, the vector/pointer fat value `{ ptr, i32 }`
@@ -113,10 +124,10 @@ For objects, vectors, strings, and other language values:
 
 Interpret and compile must agree on these observables for the support subset.
 
-### 2. Construction, destruction, `DELETE`, and handle validity
+### 2. Construction, destruction, `RELEASE`, and handle validity
 
 - How values are **constructed** (defaults, constructors, static fields).
-- How **`DELETE`** (and any related disposal) affects handle validity.
+- How **`RELEASE`** (and scope/reassignment) affects binding and handle validity.
 - When using a handle after delete / move is a **language trap** vs undefined/internal failure.
 - Interaction with HOST resources (files, sockets) if a handle wraps them — deny/use-after-close rules.
 

@@ -138,6 +138,13 @@ of truth; this section is its human-readable view.
 | `cap.power-shift` | interpret, llvm-native | integer/float power and shift fixture |
 | `cap.clock` | interpret, llvm-native | clock predicate fixture |
 | `cap.console-control` | interpret, llvm-native | `HOST.Console` control output fixture |
+| `cap.dispatch-await-typed` | interpret, llvm-native (zero-argument workers) | Typed `AWAIT` result ABI and scalar aggregation; argument-bearing native workers remain deferred |
+| `cap.arc-conformance-f1-f4` | interpret, llvm-native | Strong aliasing, scope destruction, reassignment drop, and weak-to-NULL; fixtures `arc-0.5.0/F1`–`F4` |
+| `cap.arc-conformance-f5-f6` | interpret, llvm-native | Use-after-release and primitive `RELEASE` terminate with a non-zero trap; fixtures `arc-0.5.0/F5`–`F6` |
+| `cap.arc-conformance-f7-f8` | interpret, llvm-native | Struct and vector aggregate release destruct contained objects; fixtures `arc-0.5.0/F7`–`F8` |
+| `cap.arc-conformance-f9` | interpret, llvm-native (language reject) | Indexed-element / member `RELEASE` is rejected with **`INVALID_RELEASE_TARGET`** (language error on both backends — not `TARGET_UNSUPPORTED_OP`); fixture `arc-0.5.0/F9` |
+| `cap.arc-conformance-f10-f12` | interpret, llvm-native | Alias-safe object release, ticket aggregate release, and no-`DELETE` surface; fixtures `arc-0.5.0/F10`–`F12` |
+| `cap.arc-conformance-f13` | interpret, llvm-native | Typed `AWAIT` with INTEGER argument and result; fixture `arc-0.5.0/F13` |
 
 The catalog also records explicit `llvm-deferred` rows for valid programs whose
 interpreter behavior is known but whose LLVM lowering is not claimed. Wasm and

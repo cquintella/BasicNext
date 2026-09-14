@@ -19,7 +19,7 @@ FUNCTION Start() AS VOID
             PRINT result.Code
         END IF
         file.Close()
-        DELETE file
+        RELEASE file
     END IF
-    DELETE frame
+    RELEASE frame
 END FUNCTION

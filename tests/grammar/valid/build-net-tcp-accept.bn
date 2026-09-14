@@ -28,8 +28,8 @@ FUNCTION Start() AS VOID
                         LET received AS POINTER TO BYTE[] = NEW BYTE[1]
                         LET read AS INTEGER OR EOF OR Error = accepted.Read(received, 1)
                         PRINT written IS Error, read IS EOF
-                        DELETE received
-                        DELETE payload
+                        RELEASE received
+                        RELEASE payload
                         client.Close()
                         accepted.Close()
                     END IF

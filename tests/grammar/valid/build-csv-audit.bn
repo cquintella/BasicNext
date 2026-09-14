@@ -15,8 +15,8 @@ FUNCTION Start() AS VOID
         IF table.RowCount() > 0 AND table.ColumnCount() > 0 THEN
             PRINT table.GetString(0, "Column1")
         END IF
-        DELETE table
+        RELEASE table
     END IF
     file.Close()
-    DELETE file
+    RELEASE file
 END FUNCTION

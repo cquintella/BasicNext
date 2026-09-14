@@ -166,7 +166,7 @@ class CompilerParityTests(unittest.TestCase):
         path = ROOT / "tests/grammar/valid/build-inherited-field-layout.bn"
         emitted = subprocess.run([BN, "build", path], capture_output=True, timeout=30)
         self.assertEqual(emitted.returncode, 0, emitted.stderr.decode())
-        self.assertIn(b"call ptr @calloc(i64 1, i64 24)", emitted.stdout)
+        self.assertIn(b"call ptr @calloc(i64 1, i64 32)", emitted.stdout)
         interpreted = subprocess.run([BN, "run", path], capture_output=True, timeout=30)
         self.assertEqual(interpreted.returncode, 0, interpreted.stderr.decode())
         self.assertEqual(interpreted.stdout, b"17\n23\n31\n")
@@ -182,10 +182,10 @@ class CompilerParityTests(unittest.TestCase):
         path = ROOT / "tests/grammar/valid/build-struct-layout-lifetime.bn"
         emitted = subprocess.run([BN, "build", path], capture_output=True, timeout=30)
         self.assertEqual(emitted.returncode, 0, emitted.stderr.decode())
-        self.assertIn(b"call ptr @calloc(i64 1, i64 16)", emitted.stdout)
+        self.assertIn(b"call ptr @calloc(i64 1, i64 32)", emitted.stdout)
         self.assertIn(b"getelementptr i8, ptr %fieldobj", emitted.stdout)
-        self.assertIn(b"i32 8", emitted.stdout)
-        self.assertIn(b"i32 12", emitted.stdout)
+        self.assertIn(b"i32 16", emitted.stdout)
+        self.assertIn(b"i32 20", emitted.stdout)
         self.assertIn(b"call void @free(ptr %structfree", emitted.stdout)
         interpreted = subprocess.run([BN, "run", path], capture_output=True, timeout=30)
         self.assertEqual(interpreted.returncode, 0, interpreted.stderr.decode())

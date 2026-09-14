@@ -38,6 +38,7 @@ fn malformed_module() -> Module {
                 instructions: Vec::new(),
                 terminator: Terminator::Jump { target: BlockId(9) },
             }],
+            weak_symbols: std::collections::HashSet::default(),
             span: span(),
         }],
         ..Module::default()
@@ -96,7 +97,7 @@ fn target_support_is_checked_after_language_validation() {
 }
 
 #[test]
-fn vector_default_with_non_scalar_element_is_rejected_before_emit() {
+fn vector_default_with_string_element_is_supported_before_emit() {
     let module = function_with_blocks(vec![BasicBlock {
         id: BlockId(0),
         instructions: vec![Instruction::Default {
@@ -112,9 +113,8 @@ fn vector_default_with_non_scalar_element_is_rejected_before_emit() {
         terminator: Terminator::Return { value: None },
     }]);
     let validated = validate_module(module).expect("vector default is valid language IR");
-    let error = validate_for(&validated, Target::Native)
-        .expect_err("LLVM must reject a non-scalar vector default before emission");
-    assert_eq!(error.code, "TARGET_UNSUPPORTED_TYPE");
+    validate_for(&validated, Target::Native)
+        .expect("LLVM supports fixed vectors whose element has a native representation");
 }
 
 #[test]
@@ -320,7 +320,7 @@ fn member_and_class_identity_names_cannot_be_empty() {
                 ty: bn::ir::Type::Integer(bn::ir::IntegerType::Int32),
                 span: span(),
             },
-            Instruction::Delete {
+            Instruction::Release {
                 value: bn::ir::ValueId(0),
                 destructor: Some(String::new()),
                 span: span(),
@@ -555,6 +555,7 @@ fn function_with_blocks(blocks: Vec<BasicBlock>) -> Module {
             return_type: bn::semantic::Type::Named("VOID".into()),
             entry: BlockId(0),
             blocks,
+            weak_symbols: std::collections::HashSet::default(),
             span: span(),
         }],
         ..Module::default()

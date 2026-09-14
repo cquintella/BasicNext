@@ -115,13 +115,13 @@ FUNCTION Huffman(text AS STRING) AS VOID
         PRINT text[origin[outputLeaf]], ": ", code, " (frequency ", weight[outputLeaf], ")"
     END FOR
 
-    DELETE active
-    DELETE origin
-    DELETE bit
-    DELETE parent
-    DELETE right
-    DELETE left
-    DELETE weight
+    RELEASE active
+    RELEASE origin
+    RELEASE bit
+    RELEASE parent
+    RELEASE right
+    RELEASE left
+    RELEASE weight
 END FUNCTION
 
 FUNCTION Start() AS INTEGER

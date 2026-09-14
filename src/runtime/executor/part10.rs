@@ -20,7 +20,7 @@ impl Executor<'_, '_> {
             let resource = self
                 .files
                 .get_mut(&id)
-                .ok_or_else(|| runtime_error("USE_AFTER_DELETE", "file handle is invalid", span))?;
+                .ok_or_else(|| runtime_error("USE_AFTER_RELEASE", "file handle is invalid", span))?;
             if resource.family == Some(true) {
                 return Ok(Value::Error {
                     code: 1,
@@ -97,7 +97,7 @@ impl Executor<'_, '_> {
         let resource = self
             .files
             .get_mut(&id)
-            .ok_or_else(|| runtime_error("USE_AFTER_DELETE", "file handle is invalid", span))?;
+            .ok_or_else(|| runtime_error("USE_AFTER_RELEASE", "file handle is invalid", span))?;
         if resource.family == Some(true) {
             return Ok(Value::Error {
                 code: 1,
@@ -162,6 +162,7 @@ impl Executor<'_, '_> {
             class,
             1,
             Instance {
+                class: class.to_string(),
                 fields: HashMap::new(),
             },
             span,
@@ -329,4 +330,25 @@ impl Executor<'_, '_> {
         }
     }
 
+}
+
+pub(crate) fn indexed_value<'a>(
+    value: &'a Value,
+    indices: &[usize],
+    span: Span,
+) -> Result<&'a Value, Diagnostic> {
+    let Some((&index, remaining)) = indices.split_first() else {
+        return Ok(value);
+    };
+    let Value::Vector(values) = value else {
+        return Err(runtime_error("TYPE_MISMATCH", "value is not indexable", span));
+    };
+    let element = values.get(index).ok_or_else(|| {
+        runtime_error(
+            "INDEX_OUT_OF_BOUNDS",
+            format!("index {index} is outside vector length {}", values.len()),
+            span,
+        )
+    })?;
+    indexed_value(element, remaining, span)
 }

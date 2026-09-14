@@ -44,7 +44,6 @@ pub(crate) fn collect_methods(program: &Program, prefix: &str) -> HashSet<String
                 names.insert(format!("{prefix}{name}.$fields"));
                 if base_class.is_some() {
                     names.insert(format!("{prefix}{name}.CONSTRUCTOR"));
-                    names.insert(format!("{prefix}{name}.DESTRUCTOR"));
                 }
             }
             DeclarationKind::Struct => {
@@ -54,6 +53,30 @@ pub(crate) fn collect_methods(program: &Program, prefix: &str) -> HashSet<String
                 names.insert(format!("{prefix}{name}"));
             }
             DeclarationKind::Interface => {}
+        }
+    }
+    loop {
+        let mut changed = false;
+        for item in &program.items {
+            let Item::Declaration {
+                kind: DeclarationKind::Class,
+                name,
+                base_class: Some(base),
+                ..
+            } = item
+            else {
+                continue;
+            };
+            let Some(base) = base.alternatives.first() else {
+                continue;
+            };
+            let base_destructor = class_method_name(prefix, &base.name, "DESTRUCTOR");
+            if names.contains(&base_destructor) {
+                changed |= names.insert(class_method_name(prefix, name, "DESTRUCTOR"));
+            }
+        }
+        if !changed {
+            break;
         }
     }
     names
@@ -149,6 +172,9 @@ pub(crate) fn lower_program(
                 if base_class.is_some()
                     && !statements.iter().any(|statement| {
                         matches!(statement, Statement::MemberFunction { name, .. } if name == "DESTRUCTOR")
+                    })
+                    && resolved_base.as_ref().is_some_and(|base| {
+                        method_names.contains(&class_method_name(prefix, base, "DESTRUCTOR"))
                     })
                 {
                     functions.push(lower_inherited_destructor(
@@ -261,6 +287,7 @@ pub(crate) fn lower_static_init(
         name: format!("{class}.$init"),
         asynchronous: false,
         parameters: Vec::new(),
+        weak_symbols: HashSet::new(),
         return_type: Type::Named("VOID".into()),
         entry: BlockId(0),
         blocks: builder.finish()?,
@@ -298,6 +325,7 @@ pub(crate) fn lower_instance_fields(
         name: format!("{prefix}{class_name}.$fields"),
         asynchronous: false,
         parameters: vec![SYNTHETIC_SELF],
+        weak_symbols: HashSet::new(),
         return_type: Type::Named("VOID".into()),
         entry: BlockId(0),
         blocks: builder.finish()?,
@@ -330,6 +358,7 @@ pub(crate) fn lower_inherited_constructor(
         name: format!("{prefix}{class_name}.CONSTRUCTOR"),
         asynchronous: false,
         parameters: vec![SYNTHETIC_SELF],
+        weak_symbols: HashSet::new(),
         return_type: Type::Named("VOID".into()),
         entry: BlockId(0),
         blocks: builder.finish()?,
@@ -374,6 +403,7 @@ pub(crate) fn lower_inherited_destructor(
         name: format!("{prefix}{class_name}.DESTRUCTOR"),
         asynchronous: false,
         parameters: vec![SYNTHETIC_SELF],
+        weak_symbols: HashSet::new(),
         return_type: Type::Named("VOID".into()),
         entry: BlockId(0),
         blocks: builder.finish()?,
@@ -415,6 +445,7 @@ pub(crate) fn lower_struct_default(
         name: format!("{prefix}{struct_name}.$default"),
         asynchronous: false,
         parameters: Vec::new(),
+        weak_symbols: HashSet::new(),
         return_type: ty,
         entry: BlockId(0),
         blocks: builder.finish()?,

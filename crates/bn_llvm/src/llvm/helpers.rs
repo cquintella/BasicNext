@@ -254,6 +254,39 @@ pub(crate) fn coerce_to_type(text: &mut String, value: ValueId, from: &Type, to:
     if from_llvm == to_llvm {
         return format!("%v{}", value.0);
     }
+    if from_llvm == "{ i1, ptr, i64 }"
+        && matches!(to_llvm, "i8" | "i16" | "i32" | "i64" | "float" | "double")
+    {
+        let tag = format!("unionpayload{}", value.0);
+        let _ = writeln!(
+            text,
+            "  %{tag} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+            value.0
+        );
+        if matches!(to_llvm, "float" | "double") {
+            let ftag = format!("{tag}f");
+            let _ = writeln!(text, "  %{ftag} = bitcast i64 %{tag} to double");
+            if to_llvm == "float" {
+                let f32tag = format!("{tag}f32");
+                let _ = writeln!(text, "  %{f32tag} = fptrunc double %{ftag} to float");
+                return format!("%{f32tag}");
+            }
+            return format!("%{ftag}");
+        }
+        if to_llvm == "i64" {
+            return format!("%{tag}");
+        }
+        let ctag = format!("{tag}c");
+        let opcode = if integer_llvm_width(to_llvm) < 64 {
+            "trunc"
+        } else if is_unsigned(to) {
+            "zext"
+        } else {
+            "sext"
+        };
+        let _ = writeln!(text, "  %{ctag} = {opcode} i64 %{tag} to {to_llvm}");
+        return format!("%{ctag}");
+    }
     if from_llvm == "{ i1, ptr, i32 }" && to_llvm == "{ ptr, i32 }" {
         let tag = format!("endpointcoerce{}", value.0);
         let _ = writeln!(
@@ -369,6 +402,16 @@ pub(crate) fn coerce_return_operand(text: &mut String, value: ValueId, ty: &Type
         "i64" => {
             let temp = format!("ret{}", value.0);
             let _ = writeln!(text, "  %{temp} = trunc i64 %v{} to i32", value.0);
+            format!("%{temp}")
+        }
+        "{ i1, ptr, i64 }" => {
+            let temp = format!("ret{}", value.0);
+            let _ = writeln!(
+                text,
+                "  %{temp}flag = extractvalue {{ i1, ptr, i64 }} %v{}, 0",
+                value.0
+            );
+            let _ = writeln!(text, "  %{temp} = zext i1 %{temp}flag to i32");
             format!("%{temp}")
         }
         _ => unreachable!("validated return type"),
@@ -660,7 +703,7 @@ pub(crate) fn instruction_name(instruction: &Instruction) -> &'static str {
         Instruction::Print { .. } => "PRINT",
         Instruction::ClearScreen { .. } | Instruction::Beep { .. } => "console operations",
         Instruction::Allocate { .. } => "allocation",
-        Instruction::Delete { .. } => "deletion",
+        Instruction::Release { .. } => "release",
         Instruction::SetMember { .. } => "member stores",
         Instruction::SetField { .. } => "field stores",
         Instruction::EnsureClass { .. } => "class initialization",
@@ -706,7 +749,7 @@ pub(crate) fn unsupported_instruction_detail(instruction: &Instruction) -> Strin
             "LLVM lowering for default value of '{}' with dimensions is unavailable",
             crate::display_type(ty)
         ),
-        Instruction::Delete { .. } => "LLVM lowering for pointer deletion is unavailable".into(),
+        Instruction::Release { .. } => "LLVM lowering for pointer release is unavailable".into(),
         _ => instruction_name(instruction).into(),
     }
 }

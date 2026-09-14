@@ -12,5 +12,5 @@ FUNCTION Start() AS VOID
     frame.AddStringColumn("Name", names)
     frame.AddIntegerColumn("Age", ages)
     PRINT frame.RowCount(), frame.ColumnCount(), frame.ColumnName(1)
-    DELETE frame
+    RELEASE frame
 END FUNCTION

@@ -200,13 +200,13 @@ FUNCTION Start() AS INTEGER
     PRINT inheritedCounter.Value(), restoredCell[0], fixedLength, dynamicLength
     PRINT randomValue, frame.RowCount(), frame.ColumnCount(), frame.ColumnName(0)
 
-    DELETE fixedMemory
-    DELETE dynamicMemory
-    DELETE buffer
-    DELETE opaqueCell
-    DELETE frame
-    DELETE inheritedCounter
-    DELETE counter
+    RELEASE fixedMemory
+    RELEASE dynamicMemory
+    RELEASE buffer
+    RELEASE opaqueCell
+    RELEASE frame
+    RELEASE inheritedCounter
+    RELEASE counter
     IF count < 0 THEN
         STOP 1
     END IF

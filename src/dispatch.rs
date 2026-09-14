@@ -6,6 +6,7 @@ use std::sync::{Arc, Condvar, Mutex, Weak, mpsc};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use bn_value::Value;
 use ring::rand::{SecureRandom, SystemRandom};
 
 pub(crate) mod sync;
@@ -56,6 +57,7 @@ struct TicketState {
     closed: bool,
     task: String,
     output: String,
+    result: Option<Value>,
 }
 
 impl Queue {
@@ -144,6 +146,7 @@ impl Queue {
                 closed: false,
                 task,
                 output: String::new(),
+                result: None,
             }),
             wake: Condvar::new(),
             queue_wake: Arc::downgrade(&self.inner),
@@ -453,6 +456,21 @@ impl Ticket {
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .output,
         )
+    }
+    pub(crate) fn set_result(&self, result: Value) {
+        self.inner
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .result = Some(result);
+    }
+    pub(crate) fn result(&self) -> Option<Value> {
+        self.inner
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .result
+            .clone()
     }
 }
 

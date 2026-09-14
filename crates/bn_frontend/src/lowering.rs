@@ -67,6 +67,38 @@ fn lowered_class_bases(
         .collect()
 }
 
+fn lowered_weak_fields(program: &Program, prefix: &str) -> HashSet<(String, String)> {
+    let mut fields = HashSet::new();
+    for item in &program.items {
+        let Item::Declaration {
+            kind: DeclarationKind::Class,
+            name,
+            statements,
+            ..
+        } = item
+        else {
+            continue;
+        };
+        let class = qualified_class_name(prefix, name);
+        for statement in statements {
+            if let Statement::Binding {
+                name: field,
+                type_ref,
+                is_static: false,
+                ..
+            } = statement
+                && type_ref
+                    .alternatives
+                    .first()
+                    .is_some_and(|atom| atom.name == "WEAK")
+            {
+                fields.insert((class.clone(), field.clone()));
+            }
+        }
+    }
+    fields
+}
+
 struct OpenBlock {
     instructions: Vec<Instruction>,
     terminator: Option<Terminator>,
@@ -138,6 +170,7 @@ fn lower_unvalidated(program: &Program, model: &SemanticModel) -> Result<Module,
         source_name: program.source_name.clone(),
         functions,
         class_bases: lowered_class_bases(program, model, ""),
+        weak_fields: lowered_weak_fields(program, ""),
         bndata_providers: HashSet::new(),
         bnmath_providers: HashSet::new(),
         bnlog_providers: HashSet::new(),
@@ -203,6 +236,7 @@ fn lower_graph_unvalidated(
     }
     let mut functions = Vec::new();
     let mut class_bases = HashMap::new();
+    let mut weak_fields = HashSet::new();
     for loaded in &graph.modules {
         if loaded.standard_module.is_some() {
             continue;
@@ -214,6 +248,7 @@ fn lower_graph_unvalidated(
             .ok_or_else(|| ir_error("missing semantic model for module", default_span()))?;
         let prefix = module_prefix(ir_module_id(graph.root), ir_module_id(loaded.id));
         class_bases.extend(lowered_class_bases(&loaded.program, model, &prefix));
+        weak_fields.extend(lowered_weak_fields(&loaded.program, &prefix));
         functions.extend(lower_program(
             &loaded.program,
             model,
@@ -234,6 +269,7 @@ fn lower_graph_unvalidated(
         source_name,
         functions,
         class_bases,
+        weak_fields,
         bndata_providers: graph
             .modules
             .iter()

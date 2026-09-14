@@ -1,13 +1,16 @@
 # F9 — No RELEASE a[i] as remove-middle
 
-**Status:** `RED_EXPECTED_UNTIL_M2` — fixture committed before M2/D1 runtime (Carlos/Quorra fixtures-first).  
-**Backend:** interpret (`bn run`)  
-**Command:**
+**Status:** `GREEN_REJECT` interpret + `GREEN_REJECT` native (Tron 2026-09-13).
+**Backend:** interpret (`bn run`) and LLVM/native (`bn build`) — rejected in frontend validation before emit
+
+**Commands:**
 ```bash
 bn run docs/superpowers/evidence/arc-0.5.0/F9/program.bn
+bn build docs/superpowers/evidence/arc-0.5.0/F9/program.bn -o /tmp/F9 && /tmp/F9
 ```
-**Expected exit (when M2/D1 green):** `non-zero`  
-**Expected observation:** Reject RELEASE of fixed-vector element (parse/type/runtime diagnostic); must NOT print FAIL F9
 
-**Today (pre-M2):** may fail parse/typecheck/runtime on 0.4 toolchain — that is intentional red until waves land.  
+**Expected exit:** `1` (both; build fails, no native artifact)
+**Observed (interpret):** exit `1`; `INVALID_RELEASE_TARGET` (indexed RELEASE rejected)
+**Observed (native/build):** exit `1`; same `INVALID_RELEASE_TARGET` diagnostic (not `TARGET_UNSUPPORTED_OP`)
+
 **Forbidden:** `DELETE`, force-dispose, silent use-after-release.

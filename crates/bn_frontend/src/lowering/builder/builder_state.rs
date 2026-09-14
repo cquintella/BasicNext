@@ -35,6 +35,19 @@ impl Builder<'_> {
             .push(instruction);
     }
 
+    pub(crate) fn patch_await_type(&mut self, value: ValueId, ty: Type) {
+        if let Some(Instruction::DispatchAwait {
+            destination,
+            ty: current,
+            ..
+        }) = self.blocks[self.current.0 as usize].instructions.last_mut()
+            && *destination == value
+            && matches!(current, Type::Unknown)
+        {
+            *current = ty;
+        }
+    }
+
     pub(crate) fn terminate(&mut self, terminator: Terminator) {
         self.blocks[self.current.0 as usize].terminator = Some(terminator);
     }

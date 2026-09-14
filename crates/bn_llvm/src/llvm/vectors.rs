@@ -160,6 +160,11 @@ pub(crate) fn emit_allocate(
     }
     let bytes = object_bytes.max(u64::from(OBJECT_HEADER_BYTES) + 4);
     let _ = writeln!(text, "  %v{dest} = call ptr @calloc(i64 1, i64 {bytes})");
+    let _ = writeln!(
+        text,
+        "  %arccount{dest} = getelementptr i8, ptr %v{dest}, i64 8"
+    );
+    let _ = writeln!(text, "  store i64 1, ptr %arccount{dest}");
 }
 
 pub(crate) fn emit_store_object_class(text: &mut String, object: ValueId, class_global: &str) {
@@ -168,11 +173,16 @@ pub(crate) fn emit_store_object_class(text: &mut String, object: ValueId, class_
 
 pub(crate) fn emit_set_member(
     text: &mut String,
+    module: &Module,
+    function: &Function,
+    analysis: &LoweringAnalysis<'_>,
+    symbols: &HashMap<SymbolId, usize>,
     object: ValueId,
     field_offset: u32,
     value: ValueId,
     value_ty: &Type,
     field_ty: &Type,
+    strong_object_field: bool,
     state: &mut EmissionState,
 ) {
     let llvm_ty = llvm_type(field_ty).expect("validated member type");
@@ -237,6 +247,16 @@ pub(crate) fn emit_set_member(
         );
         let _ = writeln!(text, "  call void @free(ptr %fieldoldptr{tag})");
     }
+    if strong_object_field {
+        let old = format!("%fieldoldobj{}", value.0);
+        let _ = writeln!(text, "  {old} = load ptr, ptr %mbrptr{}", value.0);
+        emit_destroy_if_last(text, module, function, &old, field_ty, symbols, state);
+        if analysis.owned_object_results.contains_key(&value) {
+            let _ = writeln!(text, "  store ptr null, ptr %objectowned{}", value.0);
+        } else {
+            let _ = writeln!(text, "  call void @bn_arc_retain(ptr {value_op})");
+        }
+    }
     let _ = writeln!(text, "  store {llvm_ty} {value_op}, ptr %mbrptr{}", value.0);
 }
 
@@ -249,6 +269,11 @@ pub(crate) fn emit_member(
 ) {
     let llvm_ty = llvm_type(field_ty).expect("validated member type");
     let dest = destination.0;
+    let _ = writeln!(
+        text,
+        "  %membernull{dest} = icmp eq ptr %v{}, null\n  br i1 %membernull{dest}, label %trap_use_after_release_{dest}, label %member_load_{dest}\ntrap_use_after_release_{dest}:\n  call i32 (ptr, ...) @printf(ptr @.bn_use_after_release)\n  call void @exit(i32 1)\n  unreachable\nmember_load_{dest}:",
+        object.0
+    );
     let _ = writeln!(
         text,
         "  %mbrptr{dest} = getelementptr i8, ptr %v{}, i32 {field_offset}",

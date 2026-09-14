@@ -8,5 +8,5 @@ IMPORT BNData AS Data
 FUNCTION Start() AS VOID
     LET frame AS Data.DataFrame = NEW Data.DataFrame()
     PRINT frame.RowCount(), frame.ColumnCount()
-    DELETE frame
+    RELEASE frame
 END FUNCTION

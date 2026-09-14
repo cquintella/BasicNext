@@ -5,21 +5,24 @@ ASYNC FUNCTION PiPart(i AS INTEGER) AS INTEGER OR Error
     RETURN i + 1
 END FUNCTION
 
-FUNCTION Start() AS VOID OR Error
+FUNCTION Start() AS VOID
     LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Concurrent(4)
     IF queue IS Error THEN
-        RETURN queue
+        PRINT "FAIL F13 queue"
+        RETURN
     END IF
     LET sum AS INTEGER = 0
     LET i AS INTEGER = 0
     WHILE i < 4
         LET ticket AS Dispatch.Ticket OR Error = ASYNC queue PiPart(i)
         IF ticket IS Error THEN
-            RETURN ticket
+            PRINT "FAIL F13 ticket"
+            RETURN
         END IF
         LET part AS INTEGER OR Error = AWAIT ticket(60000)
         IF part IS Error THEN
-            RETURN part
+            PRINT "FAIL F13 part"
+            RETURN
         END IF
         sum = sum + part
         ticket.Close()

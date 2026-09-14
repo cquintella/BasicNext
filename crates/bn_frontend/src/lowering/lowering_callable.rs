@@ -87,9 +87,49 @@ pub(crate) fn lower_callable(
         name: name.into(),
         asynchronous,
         parameters: parameter_ids,
+        weak_symbols: collect_weak_symbols(model, statements),
         return_type,
         entry: BlockId(0),
         blocks: builder.finish()?,
         span,
     })
+}
+
+fn collect_weak_symbols(model: &SemanticModel, statements: &[Statement]) -> HashSet<SymbolId> {
+    fn collect(model: &SemanticModel, statements: &[Statement], output: &mut HashSet<SymbolId>) {
+        for statement in statements {
+            match statement {
+                Statement::Binding { type_ref, span, .. }
+                    if type_ref
+                        .alternatives
+                        .first()
+                        .is_some_and(|atom| atom.name == "WEAK") =>
+                {
+                    if let Some(symbol) = model.symbol_at(*span) {
+                        output.insert(super::ir_symbol_id(symbol.id));
+                    }
+                }
+                Statement::If {
+                    branches,
+                    otherwise,
+                    ..
+                } => {
+                    for branch in branches {
+                        collect(model, &branch.body.statements, output);
+                    }
+                    if let Some(otherwise) = otherwise {
+                        collect(model, &otherwise.statements, output);
+                    }
+                }
+                Statement::While { body, .. }
+                | Statement::Repeat { body, .. }
+                | Statement::For { body, .. } => collect(model, &body.statements, output),
+                _ => {}
+            }
+        }
+    }
+
+    let mut output = HashSet::new();
+    collect(model, statements, &mut output);
+    output
 }

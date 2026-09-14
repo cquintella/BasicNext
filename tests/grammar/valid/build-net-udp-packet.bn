@@ -30,10 +30,10 @@ FUNCTION Start() AS VOID
                         PRINT packet.Size()
                         PRINT source.Port()
                     END IF
-                    DELETE copy
+                    RELEASE copy
                 END IF
             END IF
-            DELETE payload
+            RELEASE payload
         END IF
     END IF
 END FUNCTION

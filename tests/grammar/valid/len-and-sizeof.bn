@@ -18,8 +18,8 @@ FUNCTION Start() AS INTEGER
     PRINT LEN(values), SIZEOF(values)
     PRINT LEN(grid), SIZEOF(grid)
     PRINT LEN(fixed), LEN(dynamic), LEN(empty)
-    DELETE fixed
-    DELETE dynamic
-    DELETE empty
+    RELEASE fixed
+    RELEASE dynamic
+    RELEASE empty
     RETURN 0
 END FUNCTION

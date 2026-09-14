@@ -39,7 +39,7 @@ Basic Next is built on the principle that code structure should emerge naturally
 
 ## 3. A Synthesis of Influences: The Best of Every World
 
-Basic Next doesn't try to reinvent the wheel out of vanity; it distills the finest qualities of iconic languages while stripping away cognitive friction:
+Basic Next doesn't try to reinvent the wheel out of nothing; it distills the finest qualities of iconic languages while stripping away cognitive friction:
 
 * **From BASIC:** The retro aesthetic, clear keywords, and nostalgia from a time when programming was pure excitement.
 * **From Pascal:** Syntactic elegance and the discipline of explicit declarations.
@@ -56,7 +56,7 @@ Basic Next doesn't try to reinvent the wheel out of vanity; it distills the fine
 
 ## 4. An Architecture Built for Modern Computing
 
-Despite its nostalgic soul and retro aesthetic, Basic Next is engineered for present and future computational challenges:
+Despite its nostalgic aura and retro aesthetic, Basic Next is engineered for present and future computational challenges:
 
 * **Native Text Handling:** Intuitive and safe string manipulation, eliminating the headaches of traditional C char pointers.
 * **Native Parallelism and Concurrency:** Direct support for multiprocessing and parallel execution to leverage multi-core CPUs.

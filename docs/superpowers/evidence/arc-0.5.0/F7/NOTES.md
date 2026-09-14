@@ -1,13 +1,16 @@
 # F7 — RELEASE struct
 
-**Status:** `RED_EXPECTED` — fixture committed before M2/D1 runtime (Carlos/Quorra fixtures-first).  
-**Backend:** interpret (`bn run`)  
-**Command:**
+**Status:** `GREEN` interpret + `GREEN` native (Tron 2026-09-13).
+**Backend:** interpret (`bn run`) and LLVM/native (`bn build`)
+
+**Commands:**
 ```bash
 bn run docs/superpowers/evidence/arc-0.5.0/F7/program.bn
+bn build docs/superpowers/evidence/arc-0.5.0/F7/program.bn -o /tmp/F7 && /tmp/F7
 ```
-**Expected exit (when M2/D1 green):** `0`  
-**Expected observation:** INNER_DEINIT (when last strong) then AFTER_RELEASE_STRUCT; no element-hole API
 
-**Today (pre-M2):** may fail parse/typecheck/runtime on 0.4 toolchain — that is intentional red until waves land.  
+**Expected exit:** `0` (both)
+**Observed (interpret):** exit `0`; `INNER_DEINIT` / `AFTER_RELEASE_STRUCT` (`UNUSED_BINDING` warn OK)
+**Observed (native):** exit `0`; same observations
+
 **Forbidden:** `DELETE`, force-dispose, silent use-after-release.

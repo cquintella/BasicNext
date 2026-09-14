@@ -36,7 +36,7 @@ module.
 
 `HOST.Console` is the named console capability. Capability names after `HOST.`
 use an initial capital letter (`HOST.Args`, `HOST.Clock`, `HOST.Console`,
-`HOST.Random`, `HOST.FileSystem`; later `HOST.Network`).
+`HOST.Random`, `HOST.FileSystem`; from 0.3, `HOST.Net` for networking — never `HOST.Network`).
 
 0.1 statements `CLS(HOST.Console)` and `BEEP(HOST.Console)` are withdrawn in
 0.2. Console operations are methods. `PRINT` and `INPUT()` remain the default
@@ -222,5 +222,8 @@ An imported host capability is required. Execution fails before `Start` with
 use `NEW TYPE[count]`. Shared memory, memory-mapped I/O, device buffers, and
 FFI memory require a later capability contract.
 
-Networking, time zones, concurrency, GPU devices, DOM access, and other
-optional capabilities remain outside 0.2.
+Networking in later releases is the capability **`HOST.Net`** (see
+`docs/language/0.3/host-net.md` and language 0.4). The name **`HOST.Network`
+must not be used** — it is not a capability. Time zones, concurrency, GPU
+devices, DOM access, and other optional capabilities remain outside 0.2 in
+this document's historical scope.

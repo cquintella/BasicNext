@@ -52,6 +52,8 @@ pub struct Module {
     /// Backends use this language-level relation to compute inherited layout
     /// without depending on frontend semantic types.
     pub class_bases: HashMap<String, String>,
+    /// Fully qualified class field identities declared with `AS WEAK`.
+    pub weak_fields: HashSet<(String, String)>,
     pub bndata_providers: HashSet<ModuleId>,
     pub bnmath_providers: HashSet<ModuleId>,
     pub bnlog_providers: HashSet<ModuleId>,
@@ -72,6 +74,8 @@ pub struct Function {
     pub name: String,
     pub asynchronous: bool,
     pub parameters: Vec<SymbolId>,
+    /// Local bindings declared with `AS WEAK`.
+    pub weak_symbols: HashSet<SymbolId>,
     pub return_type: Type,
     pub entry: BlockId,
     pub blocks: Vec<BasicBlock>,
@@ -263,7 +267,7 @@ pub enum Instruction {
         ty: Type,
         span: Span,
     },
-    Delete {
+    Release {
         value: ValueId,
         destructor: Option<String>,
         span: Span,
@@ -333,7 +337,7 @@ impl Instruction {
             | Self::ClearScreen { span, .. }
             | Self::Beep { span, .. }
             | Self::Allocate { span, .. }
-            | Self::Delete { span, .. }
+            | Self::Release { span, .. }
             | Self::SetMember { span, .. }
             | Self::SetField { span, .. }
             | Self::EnsureClass { span, .. }

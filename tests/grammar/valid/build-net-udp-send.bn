@@ -14,7 +14,7 @@ FUNCTION Start() AS VOID
             LET payload AS POINTER TO BYTE[] = NEW BYTE[1]
             IF socket IS Error THEN
                 PRINT "error"
-                DELETE payload
+                RELEASE payload
             ELSE
                 LET sent AS INTEGER OR Error = socket.SendTo(target, payload, 1)
                 IF sent IS Error THEN
@@ -22,7 +22,7 @@ FUNCTION Start() AS VOID
                 ELSE
                     PRINT "sent"
                 END IF
-                DELETE payload
+                RELEASE payload
                 socket.Close()
             END IF
         END IF

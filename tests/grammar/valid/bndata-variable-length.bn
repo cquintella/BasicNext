@@ -10,5 +10,5 @@ FUNCTION Start() AS VOID
     LET values AS STRING[3] = ["a", "b", "c"]
     frame.AddStringColumn("value", values)
     PRINT frame.RowCount()
-    DELETE frame
+    RELEASE frame
 END FUNCTION

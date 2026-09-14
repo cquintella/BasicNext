@@ -1,6 +1,6 @@
 use super::{HashSet, Instruction, Module, Type, llvm_type};
 
-pub(crate) const OBJECT_HEADER_BYTES: u32 = 8;
+pub(crate) const OBJECT_HEADER_BYTES: u32 = 16;
 
 pub(crate) fn field_byte_offset(module: &Module, owner: &str, field: &str) -> u32 {
     let mut offset = OBJECT_HEADER_BYTES;
@@ -73,7 +73,7 @@ fn class_names_match(left: &str, right: &str) -> bool {
     left == right || left.rsplit('.').next() == right.rsplit('.').next()
 }
 
-fn class_layout_fields(module: &Module, class: &str) -> Vec<(String, String, Type)> {
+pub(crate) fn class_layout_fields(module: &Module, class: &str) -> Vec<(String, String, Type)> {
     fn append(
         module: &Module,
         class: &str,

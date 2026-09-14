@@ -39,7 +39,7 @@ impl Executor<'_, '_> {
             return self.dataframe_count(name, method, id, arguments, span);
         }
         let frame = self.dataframes.get_mut(&id).ok_or_else(|| {
-            runtime_error("USE_AFTER_DELETE", "DataFrame handle is invalid", span)
+            runtime_error("USE_AFTER_RELEASE", "DataFrame handle is invalid", span)
         })?;
         match method {
             "ColumnName" => {
@@ -174,7 +174,7 @@ impl Executor<'_, '_> {
                     ));
                 };
                 let frame = self.dataframes.get(&id).ok_or_else(|| {
-                    runtime_error("USE_AFTER_DELETE", "DataFrame handle is invalid", span)
+                    runtime_error("USE_AFTER_RELEASE", "DataFrame handle is invalid", span)
                 })?;
                 let to_f64 = |val: &Value| match val {
                     Value::Integer(number, _) => Some(*number as f64),
@@ -278,7 +278,7 @@ impl Executor<'_, '_> {
         }
 
     pub(crate) fn dataframe_select_slice(&mut self, method: &str, id: u64, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
-        let frame = self.dataframes.get(&id).ok_or_else(|| runtime_error("USE_AFTER_DELETE", "DataFrame handle is invalid", span))?;
+        let frame = self.dataframes.get(&id).ok_or_else(|| runtime_error("USE_AFTER_RELEASE", "DataFrame handle is invalid", span))?;
         let selected = if method == "Select" {
                 require_arity(method, arguments, 3, span)?;
                 let Some(row_indices) =

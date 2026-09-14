@@ -20,7 +20,6 @@ CLASS Stack
     PRIVATE count AS INTEGER = 0
 
     PUBLIC FUNCTION CONSTRUCTOR(capacity AS INTEGER)
-        DELETE SELF.storage
         SELF.storage = NEW INTEGER[capacity]
         SELF.capacity = capacity
     END FUNCTION
@@ -47,7 +46,8 @@ CLASS Stack
     END FUNCTION
 
     PUBLIC FUNCTION Dispose() AS VOID
-        DELETE SELF.storage
+        LET ownedStorage AS POINTER TO INTEGER[] = SELF.storage
+        RELEASE ownedStorage
     END FUNCTION
 END CLASS
 
@@ -58,7 +58,6 @@ CLASS Queue
     PRIVATE count AS INTEGER = 0
 
     PUBLIC FUNCTION CONSTRUCTOR(capacity AS INTEGER)
-        DELETE SELF.storage
         SELF.storage = NEW INTEGER[capacity]
         SELF.capacity = capacity
     END FUNCTION
@@ -87,7 +86,8 @@ CLASS Queue
     END FUNCTION
 
     PUBLIC FUNCTION Dispose() AS VOID
-        DELETE SELF.storage
+        LET ownedStorage AS POINTER TO INTEGER[] = SELF.storage
+        RELEASE ownedStorage
     END FUNCTION
 END CLASS
 
@@ -98,7 +98,6 @@ CLASS CircularDeque
     PRIVATE count AS INTEGER = 0
 
     PUBLIC FUNCTION CONSTRUCTOR(capacity AS INTEGER)
-        DELETE SELF.storage
         SELF.storage = NEW INTEGER[capacity]
         SELF.capacity = capacity
     END FUNCTION
@@ -148,7 +147,8 @@ CLASS CircularDeque
     END FUNCTION
 
     PUBLIC FUNCTION Dispose() AS VOID
-        DELETE SELF.storage
+        LET ownedStorage AS POINTER TO INTEGER[] = SELF.storage
+        RELEASE ownedStorage
     END FUNCTION
 END CLASS
 
@@ -165,7 +165,7 @@ FUNCTION Start() AS INTEGER
     PRINT "Pop -> ", stack.Pop(), "; the stack is empty."
     PRINT "Pop on an empty stack -> ", stack.Pop()
     stack.Dispose()
-    DELETE stack
+    RELEASE stack
 
     PRINT ""
     PRINT "=== Queue: FIFO ==="
@@ -180,7 +180,7 @@ FUNCTION Start() AS INTEGER
     PRINT "Dequeue -> ", queue.Dequeue(), "; the queue is empty."
     PRINT "Dequeue on an empty queue -> ", queue.Dequeue()
     queue.Dispose()
-    DELETE queue
+    RELEASE queue
 
     PRINT ""
     PRINT "=== Circular deque: both ends ==="
@@ -201,7 +201,7 @@ FUNCTION Start() AS INTEGER
     PRINT "Remaining, front to back: ", deque.PopFront(), ", ", deque.PopFront()
     PRINT "PopFront on an empty deque -> ", deque.PopFront()
     deque.Dispose()
-    DELETE deque
+    RELEASE deque
 
     PRINT "All heap regions were released."
     RETURN 0

@@ -107,14 +107,40 @@ impl Builder<'_> {
             });
             self.current = body;
             self.statements(&branch.body.statements)?;
+            self.release_block_bindings(&branch.body.statements)?;
             self.jump_if_open(join);
             self.current = next;
         }
         if let Some(otherwise) = otherwise {
             self.statements(&otherwise.statements)?;
+            self.release_block_bindings(&otherwise.statements)?;
         }
         self.jump_if_open(join);
         self.current = join;
+        Ok(())
+    }
+
+    fn release_block_bindings(&mut self, statements: &[Statement]) -> Result<(), Diagnostic> {
+        for statement in statements {
+            if let Statement::Binding { span, .. } = statement {
+                let ty = type_at(self.model, *span)?;
+                if matches!(ty, Type::Named(_)) {
+                    let symbol = self.symbol(*span)?;
+                    let value = self.value();
+                    self.emit(Instruction::Load {
+                        destination: value,
+                        symbol,
+                        ty: ty.clone(),
+                        span: *span,
+                    });
+                    self.emit(Instruction::Release {
+                        value,
+                        destructor: destructor_name(self.model, *span, &self.methods, &self.prefix),
+                        span: *span,
+                    });
+                }
+            }
+        }
         Ok(())
     }
 
