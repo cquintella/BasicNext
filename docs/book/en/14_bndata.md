@@ -22,7 +22,7 @@ END IF
 // Read CSV with headers and semicolon separator
 LET table AS Data.DataFrame OR Error = Data.ReadCSV(file, TRUE, ";")
 file.Close()
-DELETE file
+RELEASE file
 
 IF table IS Error THEN
     PRINT "CSV Error: " + table.Message
@@ -40,7 +40,7 @@ END IF
 
 LET status AS VOID OR Error = Data.WriteCSV(outFile, table, TRUE, ",")
 outFile.Close()
-DELETE outFile
+RELEASE outFile
 ```
 
 ## The `Data.DataFrame` Class
@@ -63,7 +63,7 @@ df.AddIntegerColumn("Age", ages)
 PRINT "Rows:", df.RowCount()
 PRINT "Cols:", df.ColumnCount()
 
-DELETE df
+RELEASE df
 ```
 
 ### Statistics and Conversions
@@ -78,4 +78,4 @@ IF NOT (conv IS Error) THEN
 END IF
 ```
 
-Every `Data.DataFrame` instance must be released with `DELETE df` when no longer needed.
+Every `Data.DataFrame` instance must be released with `RELEASE df` when no longer needed.

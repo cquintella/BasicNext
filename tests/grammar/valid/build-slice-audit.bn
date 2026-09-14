@@ -12,7 +12,7 @@ FUNCTION Start() AS VOID
         PRINT "unexpected-error"
     ELSE
         PRINT valid.GetInteger(0, "x")
-        DELETE valid
+        RELEASE valid
     END IF
-    DELETE table
+    RELEASE table
 END FUNCTION

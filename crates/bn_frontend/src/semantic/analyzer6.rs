@@ -359,6 +359,7 @@ impl Analyzer {
         Ok(Type::Named("VOID".into()))
     }
 
+    #[allow(clippy::too_many_lines)]
     pub(crate) fn call(
         &mut self,
         callee: &Expression,
@@ -389,6 +390,74 @@ impl Analyzer {
             && self.bnmath_modules.contains(module)
         {
             return self.math_call(name, arguments, locals, span);
+        }
+        if let ExpressionKind::Member { name, .. } = &callee.kind {
+            if name == "Async" {
+                let Some((target, rest)) = arguments.split_first() else {
+                    return Err(error(
+                        "TYPE_MISMATCH",
+                        "Async requires a function target",
+                        span,
+                    ));
+                };
+                let target_type = self.expression(target, locals)?;
+                let Type::Function { parameters, .. } = target_type else {
+                    return Err(error(
+                        "TYPE_MISMATCH",
+                        "Async target must be a function",
+                        target.span,
+                    ));
+                };
+                if rest.len() != parameters.len() {
+                    return Err(error(
+                        "TYPE_MISMATCH",
+                        format!(
+                            "Async expects {} argument(s), found {}",
+                            parameters.len(),
+                            rest.len()
+                        ),
+                        span,
+                    ));
+                }
+                for (argument, parameter) in rest.iter().zip(parameters) {
+                    let actual = self.expression_as(argument, &parameter, locals)?;
+                    if !self.compatible(&parameter, &actual) {
+                        return Err(error(
+                            "TYPE_MISMATCH",
+                            "Async argument type does not match worker parameter",
+                            argument.span,
+                        ));
+                    }
+                }
+                let Type::Function { return_type, .. } = callee_type.clone() else {
+                    return Err(error(
+                        "TYPE_MISMATCH",
+                        "Async provider is not callable",
+                        span,
+                    ));
+                };
+                return Ok(*return_type);
+            }
+            if name == "Wait" {
+                if arguments.len() != 1 {
+                    return Err(error(
+                        "TYPE_MISMATCH",
+                        "AWAIT expects one timeout argument",
+                        span,
+                    ));
+                }
+                if let Some(timeout) = arguments.first().and_then(constant_integer)
+                    && !(1..=60_000).contains(&timeout)
+                {
+                    return Err(error(
+                        "AWAIT_TIMEOUT",
+                        "AWAIT timeout must be between 1 and 60000 milliseconds",
+                        arguments[0].span,
+                    ));
+                }
+                self.expression(&arguments[0], locals)?;
+                return Ok(Type::Unknown);
+            }
         }
         let Type::Function {
             parameters,

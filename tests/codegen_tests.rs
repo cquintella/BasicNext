@@ -41,6 +41,7 @@ fn start_module(blocks: Vec<BasicBlock>) -> Module {
             return_type: Type::Named("VOID".into()),
             entry: BlockId(0),
             blocks,
+            weak_symbols: std::collections::HashSet::default(),
             span: span(),
         }],
         ..Module::default()

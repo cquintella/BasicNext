@@ -1,0 +1,20 @@
+CLASS Box
+    PUBLIC value AS INTEGER = 7
+
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    FUNCTION DESTRUCTOR()
+        PRINT "DEINIT"
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET owner AS Box = NEW Box()
+    LET boxes AS Box[2]
+    boxes[0] = owner
+    boxes[1] = owner
+    RELEASE boxes
+    PRINT "VALUE", owner.value
+    RELEASE owner
+END FUNCTION

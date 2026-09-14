@@ -1,5 +1,6 @@
 #![allow(clippy::wildcard_imports, clippy::too_many_lines)]
 use super::*;
+use super::part10::indexed_value;
 
 impl Executor<'_, '_> {
     pub(crate) fn instruction(
@@ -67,10 +68,38 @@ impl Executor<'_, '_> {
                 span,
                 ..
             } => {
+                if self
+                    .ownership_frames
+                    .last()
+                    .is_some_and(|frame| frame.released_symbols.contains(symbol))
+                {
+                    let releasing_again = self
+                        .ownership_frames
+                        .last()
+                        .is_some_and(|frame| frame.release_values.contains(destination));
+                    return Err(runtime_error(
+                        if releasing_again {
+                            "DOUBLE_RELEASE"
+                        } else {
+                            "USE_AFTER_RELEASE"
+                        },
+                        if releasing_again {
+                            "binding was already released"
+                        } else {
+                            "binding was released"
+                        },
+                        *span,
+                    ));
+                }
                 let loaded = symbols.get(symbol).cloned().ok_or_else(|| {
                     runtime_error("UNINITIALIZED_VALUE", "binding has no value", *span)
                 })?;
                 set(values, *destination, loaded);
+                self.ownership_frames
+                    .last_mut()
+                    .expect("instruction executes in an ownership frame")
+                    .loaded_values
+                    .insert(*destination, *symbol);
             }
             Instruction::Store {
                 symbol,
@@ -89,7 +118,31 @@ impl Executor<'_, '_> {
                         *span,
                     ));
                 }
+                let (weak, transferred) = {
+                    let frame = self
+                        .ownership_frames
+                        .last_mut()
+                        .expect("instruction executes in an ownership frame");
+                    (
+                        frame.weak_symbols.contains(symbol),
+                        frame.owned_values.remove(source),
+                    )
+                };
+                if !weak && !transferred {
+                    self.retain_owned_value(&stored, *span)?;
+                }
+                if !weak
+                    && let Some(previous) = symbols.remove(symbol)
+                {
+                    self.release_owned_value(previous, *span)?;
+                }
                 symbols.insert(*symbol, stored);
+                self.ownership_frames
+                    .last_mut()
+                    .expect("instruction executes in an ownership frame")
+                    .released_symbols
+                    .remove(symbol);
+                self.refresh_weak_symbols(symbols);
             }
             Instruction::Copy {
                 destination,
@@ -98,7 +151,13 @@ impl Executor<'_, '_> {
                 span,
             } => {
                 let copied = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
+                self.retain_owned_value(&copied, *span)?;
                 set(values, *destination, copied);
+                self.ownership_frames
+                    .last_mut()
+                    .expect("instruction executes in an ownership frame")
+                    .owned_values
+                    .insert(*destination);
             }
             Instruction::Unary {
                 destination,
@@ -157,6 +216,14 @@ impl Executor<'_, '_> {
                     .collect::<Result<Vec<_>, _>>()?;
                 let result = self.call_named(&name, arguments, *span)?;
                 set(values, *destination, self.coerce_to(result, ty, *span)?);
+                if matches!(values.get(destination), Some(Value::Object { .. } | Value::Vector(_) | Value::Record { .. })) {
+                    self.ownership_frames
+                        .last_mut()
+                        .expect("instruction executes in an ownership frame")
+                        .owned_values
+                        .insert(*destination);
+                }
+                self.refresh_weak_symbols(symbols);
             }
             Instruction::DispatchSubmit {
                 destination,
@@ -278,11 +345,33 @@ impl Executor<'_, '_> {
                         )
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                let source = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
+                let stored = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
+                let target_snapshot = symbols.get(symbol).cloned().ok_or_else(|| {
+                    runtime_error("UNINITIALIZED_VALUE", "binding has no value", *span)
+                })?;
+                let previous = if matches!(target_snapshot, Value::Null) {
+                    Value::Null
+                } else if matches!(target_snapshot, Value::Pointer { .. })
+                    && indices.len() == 1
+                {
+                    self.index_value(&target_snapshot, indices[0], *span)?
+                } else {
+                    indexed_value(&target_snapshot, &indices, *span)?.clone()
+                };
+                let transferred = self
+                    .ownership_frames
+                    .last_mut()
+                    .expect("instruction executes in an ownership frame")
+                    .owned_values
+                    .remove(source);
+                if !transferred {
+                    self.retain_owned_value(&stored, *span)?;
+                }
                 let target = symbols.get_mut(symbol).ok_or_else(|| {
                     runtime_error("UNINITIALIZED_VALUE", "binding has no value", *span)
                 })?;
-                self.set_index(target, &indices, source, *span)?;
+                self.set_index(target, &indices, stored, *span)?;
+                self.release_owned_value(previous, *span)?;
             }
             Instruction::SetMemberIndex {
                 object,
@@ -499,25 +588,82 @@ impl Executor<'_, '_> {
                     _ => self.allocate_object(type_name, *span)?,
                 };
                 set(values, *destination, allocated);
+                self.ownership_frames
+                    .last_mut()
+                    .expect("instruction executes in an ownership frame")
+                    .owned_values
+                    .insert(*destination);
             }
-            Instruction::Delete {
+            Instruction::Release {
                 value: deleted,
                 destructor,
                 span,
             } => {
                 let target = value(values, *deleted, *span)?.clone();
-                self.delete_value(target, destructor.as_deref(), *span)?;
+                let symbol = self
+                    .ownership_frames
+                    .last()
+                    .and_then(|frame| frame.loaded_values.get(deleted).copied());
+                if let Some(symbol) = symbol {
+                    let weak = self
+                        .ownership_frames
+                        .last()
+                        .is_some_and(|frame| frame.weak_symbols.contains(&symbol));
+                    let removed = symbols.remove(&symbol).unwrap_or(target);
+                    if weak {
+                        // A weak binding owns no reference; RELEASE only ends the binding.
+                    } else if matches!(
+                        &removed,
+                        Value::Object { .. } | Value::Vector(_) | Value::Record { .. }
+                    ) {
+                        self.release_owned_value(removed, *span)?;
+                    } else {
+                        self.delete_value(removed, destructor.as_deref(), *span)?;
+                    }
+                    self.ownership_frames
+                        .last_mut()
+                        .expect("instruction executes in an ownership frame")
+                        .released_symbols
+                        .insert(symbol);
+                    self.refresh_weak_symbols(symbols);
+                } else {
+                    self.delete_value(target, destructor.as_deref(), *span)?;
+                }
             }
             Instruction::SetMember {
                 object,
                 name,
+                owner,
                 value: source,
                 ty,
                 span,
-                ..
             } => {
                 let stored = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
+                let weak = self.module.weak_fields.contains(&(owner.clone(), name.clone()));
+                let transferred = self
+                    .ownership_frames
+                    .last_mut()
+                    .expect("instruction executes in an ownership frame")
+                    .owned_values
+                    .remove(source);
+                if !weak && !transferred {
+                    self.retain_owned_value(&stored, *span)?;
+                }
+                let previous = match values.get(object) {
+                    Some(Value::Object { handle, .. }) => self
+                        .objects
+                        .get(*handle, 0, *span)?
+                        .fields
+                        .get(name)
+                        .cloned(),
+                    _ => None,
+                };
                 self.set_member_value(values, *object, name, stored, *span)?;
+                if !weak
+                    && let Some(previous) = previous
+                {
+                    self.release_owned_value(previous, *span)?;
+                }
             }
             Instruction::SetField {
                 symbol,

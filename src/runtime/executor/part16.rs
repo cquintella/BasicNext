@@ -180,7 +180,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                     .tcp_streams
                     .get_mut(&id)
                     .ok_or_else(|| {
-                        runtime_error("USE_AFTER_DELETE", "TCP stream is invalid", span)
+                        runtime_error("USE_AFTER_RELEASE", "TCP stream is invalid", span)
                     })?
                     .read_bounded(&mut bytes)
                     .map_err(|error| runtime_error("IO", error.to_string(), span))?;
@@ -230,7 +230,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                     .tcp_streams
                     .get_mut(&id)
                     .ok_or_else(|| {
-                        runtime_error("USE_AFTER_DELETE", "TCP stream is invalid", span)
+                        runtime_error("USE_AFTER_RELEASE", "TCP stream is invalid", span)
                     })?
                     .write_bounded(&bytes)
                     .map_err(|error| runtime_error("IO", error.to_string(), span))?;
@@ -249,7 +249,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                     ));
                 };
                 let stream = self.tcp_streams.get(&id).ok_or_else(|| {
-                    runtime_error("USE_AFTER_DELETE", "TCP stream is invalid", span)
+                    runtime_error("USE_AFTER_RELEASE", "TCP stream is invalid", span)
                 })?;
                 let endpoint = if name.ends_with("LocalEndpoint") {
                     stream.local_endpoint()
@@ -279,7 +279,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                 self.tcp_streams
                     .get(&id)
                     .ok_or_else(|| {
-                        runtime_error("USE_AFTER_DELETE", "TCP stream is invalid", span)
+                        runtime_error("USE_AFTER_RELEASE", "TCP stream is invalid", span)
                     })?
                     .set_timeouts(
                         Some(std::time::Duration::from_millis(read_ms as u64)),
@@ -298,7 +298,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                     ));
                 };
                 let listener = self.tcp_listeners.get(&id).ok_or_else(|| {
-                    runtime_error("USE_AFTER_DELETE", "TCP listener is invalid", span)
+                    runtime_error("USE_AFTER_RELEASE", "TCP listener is invalid", span)
                 })?;
                 let endpoint = listener
                     .first()
@@ -324,7 +324,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                 self.tcp_streams
                     .get(&id)
                     .ok_or_else(|| {
-                        runtime_error("USE_AFTER_DELETE", "TCP stream is invalid", span)
+                        runtime_error("USE_AFTER_RELEASE", "TCP stream is invalid", span)
                     })?
                     .shutdown(direction)
                     .map_err(|error| runtime_error("IO", error.to_string(), span))?;
@@ -350,7 +350,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                     .tcp_listeners
                     .get(&id)
                     .ok_or_else(|| {
-                        runtime_error("USE_AFTER_DELETE", "TCP listener is invalid", span)
+                        runtime_error("USE_AFTER_RELEASE", "TCP listener is invalid", span)
                     })?
                     .as_slice();
                 let mut stream = None;

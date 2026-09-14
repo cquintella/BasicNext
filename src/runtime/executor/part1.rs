@@ -22,6 +22,31 @@ impl Executor<'_, '_> {
             .zip(arguments)
             .collect::<HashMap<_, _>>();
         let mut values = HashMap::new();
+        let local_symbols = function
+            .blocks
+            .iter()
+            .flat_map(|block| &block.instructions)
+            .filter_map(|instruction| match instruction {
+                Instruction::Store { symbol, .. } if !function.parameters.contains(symbol) => {
+                    Some(*symbol)
+                }
+                _ => None,
+            })
+            .collect();
+        self.ownership_frames.push(OwnershipFrame {
+            local_symbols,
+            weak_symbols: function.weak_symbols.clone(),
+            release_values: function
+                .blocks
+                .iter()
+                .flat_map(|block| &block.instructions)
+                .filter_map(|instruction| match instruction {
+                    Instruction::Release { value, .. } => Some(*value),
+                    _ => None,
+                })
+                .collect(),
+            ..OwnershipFrame::default()
+        });
         let mut block = function.entry;
         let mut previous_block = None;
         loop {
@@ -96,14 +121,15 @@ impl Executor<'_, '_> {
                     };
                 }
                 Terminator::Return { value: result } => {
-                    return Ok(Flow::Return(
-                        result
-                            .map(|result| value(&values, result, function.span).cloned())
-                            .transpose()?,
-                    ));
+                    let returned = result
+                        .map(|result| value(&values, result, function.span).cloned())
+                        .transpose()?;
+                    self.finish_ownership_frame(&mut symbols, *result, function.span)?;
+                    return Ok(Flow::Return(returned));
                 }
                 Terminator::Stop { code } => {
                     let code = integer(value(&values, *code, function.span)?, function.span)?.0;
+                    self.finish_ownership_frame(&mut symbols, None, function.span)?;
                     return Ok(Flow::Stop(code));
                 }
             }

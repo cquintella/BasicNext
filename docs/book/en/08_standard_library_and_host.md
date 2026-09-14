@@ -26,6 +26,34 @@ The available surface includes:
 - Descriptive statistics: `MEAN`, `MEDIAN`, `MODE`, `STDEV`, `VARIANCE`, `RANGE`, `QUARTILE1`, `QUARTILE3`.
 - Range constants: `MAX_INTEGER`, `MIN_INTEGER`, `MAX_FLOAT`, `MIN_FLOAT` (and width-specific variants).
 
+## The `BNString` module
+
+`BNString` is an external module that wraps the primary `STRING` value in the
+ARC-managed `S.String` object. Import it explicitly when you need fluent string
+operations:
+
+```basic
+IMPORT BNString AS S
+
+LET text AS S.String = NEW S.String("  Olá,BN  ")
+LET clean AS S.String = text.Trim()
+PRINT clean.LowCaps().ToString()
+PRINT clean.Contains("BN")
+
+LET words AS S.Tokenizer OR NULL = clean.Tokenizer(",")
+IF words IS NOT NULL THEN
+    PRINT words.Next()
+END IF
+```
+
+`Len`/`Length` report Unicode scalar values, `LowCaps` and `HiCaps` perform
+Unicode-aware case conversion, and `Tokenizer` walks separator-delimited tokens.
+`S.String` instances follow the same ARC rules as other class objects: strong
+bindings retain them, scope exit releases them, and weak bindings become `NULL`
+when the last strong reference is gone. See the full API in
+[`docs/library/bnstring.md`](../../library/bnstring.md) and the runnable
+[`bnstring_tour.bn`](../../../examples/bnstring_tour.bn).
+
 ## HOST capabilities
 
 Interaction with the underlying operating system—such as reading command-line arguments or checking the system clock—requires explicitly importing a capability from the `HOST` root.
@@ -108,6 +136,41 @@ ELSE
     file.Close()
 END IF
 ```
+
+
+### `HOST.Exec` (proposed for 0.5.1 — not shipped)
+
+> **Status:** Contract accepted for planning under [`todo/proposals/host-exec-0.5.1.md`](../../todo/proposals/host-exec-0.5.1.md) and `ongoing/bucket-0.5.1.md`. Do **not** treat this section as available in a released toolchain until fixtures E1–E7 are green on interpret and native and Quorra has gated the capability.
+
+`HOST.Exec` runs an **external program** and captures its output, in the style of a language-level `exec()`: the host **spawns** a child, **waits** until it finishes, and returns a structured result. It does **not** replace the Basic Next process image (that would be POSIX `execve`, which is out of 0.5.1).
+
+```basic
+IMPORT HOST.Exec AS Exec
+
+FUNCTION Start() AS VOID
+    LET args AS STRING[1]
+    args[0] = "-s"
+    LET r AS Exec.Result OR Error = Exec.Run("uname", args)
+    IF r IS Error THEN
+        PRINT r.Message
+        STOP 1
+    END IF
+    PRINT r.ReturnCode
+    PRINT r.Stdout
+END FUNCTION
+```
+
+| Piece | Contract |
+| --- | --- |
+| Import | `IMPORT HOST.Exec AS Exec` — no new reserved word |
+| Primary API | `Run(program AS STRING, args AS STRING[]) AS Exec.Result OR Error` |
+| `Exec.Result` | `ReturnCode AS INTEGER` (child return code), `Stdout AS STRING`, `Stderr AS STRING` |
+| Child stdin | Closed (no input blob in 0.5.1) |
+| Shell | Forbidden as the implementation of `Run` (no `sh -c` / `cmd /c` default) |
+| Non-zero child code | Still a `Result` — inspect `ReturnCode`; `Error` is for Host/OS launch or capture failure |
+| Restricted profiles | Deny `HOST.Exec` by default (for example Jupyter-style hosts) |
+
+Do not confuse `HOST.Exec` with `HOST.SQLite` / `Db.Exec(sql)` (SQL execution), which is a different capability.
 
 ### `HOST.Net`
 

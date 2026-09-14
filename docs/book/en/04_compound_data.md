@@ -44,7 +44,7 @@ LET moved AS Point = origin
 moved.X = 10.0
 ```
 
-Like vectors, structs have value semantics. Assignment or parameter passing creates a complete copy of the field values. Changing `moved.X` in the example above does not affect `origin.X`. The `NEW` and `DELETE` keywords are not used with structs.
+Like vectors, structs have value semantics. Assignment or parameter passing creates a complete copy of the field values. Changing `moved.X` in the example above does not affect `origin.X`. Structs have value semantics; class-style `NEW` and `RELEASE` are not used to manage them.
 
 ## String Indexing
 

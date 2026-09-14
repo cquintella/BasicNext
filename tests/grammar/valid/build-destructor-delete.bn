@@ -9,5 +9,5 @@ END CLASS
 
 FUNCTION Start() AS VOID
     LET resource AS Resource = NEW Resource()
-    DELETE resource
+    RELEASE resource
 END FUNCTION

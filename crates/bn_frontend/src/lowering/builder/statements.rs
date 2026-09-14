@@ -40,7 +40,9 @@ impl Builder<'_> {
                 }));
                 for (symbol, initializer, binding_span) in bindings {
                     let value = if let Some(initializer) = initializer {
-                        self.expression(initializer)?
+                        let value = self.expression(initializer)?;
+                        self.patch_await_type(value, ty.clone());
+                        value
                     } else {
                         self.default_value(ty.clone(), type_ref, binding_span)?
                     };
@@ -59,6 +61,7 @@ impl Builder<'_> {
                 span,
             } => {
                 let mut result = self.expression(value)?;
+                self.patch_await_type(result, type_at(self.model, target.span)?);
                 if operator != "Assign" {
                     let left = self.expression(target)?;
                     let destination = self.value();
@@ -236,11 +239,11 @@ impl Builder<'_> {
                     target: destination,
                 });
             }
-            Statement::Delete { value, span } => {
+            Statement::Release { value, span } => {
                 let deleted = self.expression(value)?;
                 let destructor =
                     destructor_name(self.model, value.span, &self.methods, &self.prefix);
-                self.emit(Instruction::Delete {
+                self.emit(Instruction::Release {
                     value: deleted,
                     destructor,
                     span: *span,

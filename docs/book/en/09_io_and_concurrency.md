@@ -25,7 +25,7 @@ IMPORT HOST.FileSystem AS FS
 - `FS.WRITE` (`1`): Create or truncate a file for writing.
 - `FS.APPEND` (`2`): Open or create a file for appending data at the end.
 
-Every `FS.File` instance must be closed with `.Close()` and deterministically deallocated with `DELETE file` to avoid leaking operating system handles:
+Every `FS.File` instance must be closed with `.Close()` and released with `RELEASE file` to avoid leaking operating system handles:
 
 ```basic
 LET file AS FS.File OR Error = FS.Open("log.txt", FS.WRITE)
@@ -36,7 +36,7 @@ END IF
 
 file.WriteLine("System initialized.")
 file.Close()
-DELETE file
+RELEASE file
 ```
 
 ### Text Family vs. Binary Family Rule
@@ -72,7 +72,7 @@ REPEAT
 END REPEAT
 
 file.Close()
-DELETE file
+RELEASE file
 ```
 
 To read the entire file content in one call, use `file.ReadAll()`.
@@ -101,8 +101,8 @@ IF status IS Error THEN
 END IF
 
 file.Close()
-DELETE file
-DELETE buffer
+RELEASE file
+RELEASE buffer
 ```
 
 Reading binary bytes into an allocated buffer:
@@ -125,8 +125,8 @@ ELSE
 END IF
 
 file.Close()
-DELETE file
-DELETE buffer
+RELEASE file
+RELEASE buffer
 ```
 
 ### Capability File Helpers

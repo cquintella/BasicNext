@@ -15,13 +15,13 @@ FUNCTION Start() AS VOID
         PRINT "z-error"
     ELSE
         PRINT z.RowCount()
-        DELETE z
+        RELEASE z
     END IF
-    DELETE empty
+    RELEASE empty
     LET blank AS Data.DataFrame = NEW Data.DataFrame()
     LET sliced AS Data.DataFrame OR Error = blank.Slice(0, 1, 0, 0)
     IF sliced IS Error THEN
         PRINT sliced.Code
     END IF
-    DELETE blank
+    RELEASE blank
 END FUNCTION

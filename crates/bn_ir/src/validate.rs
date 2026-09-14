@@ -36,7 +36,7 @@ fn instruction_defines(instruction: &super::Instruction) -> Option<super::ValueI
         | super::Instruction::Print { .. }
         | super::Instruction::ClearScreen { .. }
         | super::Instruction::Beep { .. }
-        | super::Instruction::Delete { .. }
+        | super::Instruction::Release { .. }
         | super::Instruction::EnsureClass { .. }
         | super::Instruction::StoreStatic { .. } => None,
     }
@@ -54,7 +54,7 @@ pub fn instruction_uses(instruction: &super::Instruction) -> Vec<super::ValueId>
         | super::Instruction::Length { vector: source, .. }
         | super::Instruction::SizeOf { value: source, .. }
         | super::Instruction::Store { value: source, .. }
-        | super::Instruction::Delete { value: source, .. } => vec![*source],
+        | super::Instruction::Release { value: source, .. } => vec![*source],
         super::Instruction::Binary { left, right, .. } => vec![*left, *right],
         super::Instruction::Call {
             callee, arguments, ..
@@ -739,7 +739,7 @@ fn validate_instruction_types(
         super::Instruction::Allocate { type_name, .. } if type_name.is_empty() => {
             return Err(invalid_ir("allocated type name cannot be empty", span));
         }
-        super::Instruction::Delete {
+        super::Instruction::Release {
             destructor: Some(destructor),
             ..
         } if destructor.is_empty() => {
@@ -937,17 +937,19 @@ fn validate_return_type(
     value: Option<&super::ValueId>,
     value_types: &HashMap<super::ValueId, Type>,
 ) -> Result<(), Diagnostic> {
-    let returns_void = matches!(&function.return_type, Type::Named(name) if name == "VOID");
-    match (returns_void, value) {
-        (true, Some(_)) => Err(invalid_ir(
+    let void_only = matches!(&function.return_type, Type::Named(name) if name == "VOID");
+    let allows_void = void_only
+        || matches!(&function.return_type, Type::Alternative(values) if values.iter().any(|value| matches!(value, Type::Named(name) if name == "VOID")));
+    match (void_only, allows_void, value) {
+        (true, _, Some(_)) => Err(invalid_ir(
             "VOID function cannot return a value",
             function.span,
         )),
-        (false, None) => Err(invalid_ir(
+        (false, false, None) => Err(invalid_ir(
             "non-VOID function must return a value",
             function.span,
         )),
-        (false, Some(value))
+        (false, _, Some(value))
             if value_types
                 .get(value)
                 .is_none_or(|value_type| !types_compatible(value_type, &function.return_type)) =>
@@ -1033,7 +1035,8 @@ fn types_compatible(actual: &Type, expected: &Type) -> bool {
 /// preserve that valid subtype assignment here while retaining strict checks
 /// for primitive, pointer and vector values.
 fn assignment_types_compatible(actual: &Type, expected: &Type) -> bool {
-    types_compatible(actual, expected)
+    matches!(actual, Type::Unknown) || matches!(expected, Type::Unknown)
+        || types_compatible(actual, expected)
         || (is_named_value_type(actual) && is_named_value_type(expected))
         // Pointer length is a runtime invariant: allocation can produce a
         // dynamic length that a fixed destination checks when stored. The

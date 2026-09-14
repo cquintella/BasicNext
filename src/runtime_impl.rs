@@ -334,7 +334,18 @@ mod tests;
 
 #[derive(Clone)]
 struct Instance {
+    class: String,
     fields: HashMap<String, Value>,
+}
+
+#[derive(Default)]
+struct OwnershipFrame {
+    owned_values: std::collections::HashSet<ValueId>,
+    loaded_values: HashMap<ValueId, SymbolId>,
+    released_symbols: std::collections::HashSet<SymbolId>,
+    release_values: std::collections::HashSet<ValueId>,
+    local_symbols: std::collections::HashSet<SymbolId>,
+    weak_symbols: std::collections::HashSet<SymbolId>,
 }
 
 struct Executor<'a, 'debug> {
@@ -392,6 +403,7 @@ struct Executor<'a, 'debug> {
     debug_hook: Option<DebugHook<'debug>>,
     debug_control: Option<DebugControl<'debug>>,
     call_depth: usize,
+    ownership_frames: Vec<OwnershipFrame>,
 }
 
 impl<'a, 'debug> Executor<'a, 'debug> {
@@ -458,6 +470,7 @@ impl<'a, 'debug> Executor<'a, 'debug> {
             debug_hook,
             debug_control,
             call_depth: 0,
+            ownership_frames: Vec::new(),
         }
     }
 }
@@ -540,6 +553,31 @@ pub fn execute_with_host(
 ) -> Result<u8, Diagnostic> {
     let validated = validate_module(module.clone())?;
     execute_validated_with_host(&validated, input, output, host)
+}
+
+/// Executes a named function for an isolated dispatch worker and preserves its
+/// returned BN value for the ticket.
+pub(crate) fn execute_named_with_host(
+    module: &Module,
+    name: &str,
+    arguments: Vec<Value>,
+    input: &mut dyn BufRead,
+    output: &mut dyn Write,
+    host: &HostEnv,
+) -> Result<Value, Diagnostic> {
+    let validated = validate_module(module.clone())?;
+    let function = validated
+        .as_module()
+        .functions
+        .iter()
+        .find(|function| function.name == name)
+        .ok_or_else(|| runtime_error("FUNCTION_NOT_FOUND", format!("function '{name}' was not found"), default_span()))?;
+    let mut executor = Executor::new(validated.as_module(), input, output, host, None, None);
+    match executor.function(function, arguments)? {
+        Flow::Return(Some(value)) => Ok(value),
+        Flow::Return(None) => Ok(Value::Null),
+        Flow::Stop(code) => Ok(Value::Integer(code, IntegerType::Int32)),
+    }
 }
 
 /// Executes a module after the language validator has produced its proof
@@ -681,9 +719,12 @@ fn execute_with_host_inner<'debug>(
     }
     let mut executor = Executor::new(module, input, output, host, debug_hook, debug_control);
     match executor.function(start, Vec::new())? {
-        Flow::Return(None) => Ok(0),
+        Flow::Return(None | Some(Value::Null)) => Ok(0),
         Flow::Return(Some(Value::Integer(code, _))) | Flow::Stop(code) => {
             exit_code(code, start.span)
+        }
+        Flow::Return(Some(Value::Error { code, message })) => {
+            Err(runtime_error("DISPATCH", format!("{code}: {message}"), start.span))
         }
         Flow::Return(Some(_)) => Err(runtime_error(
             "INVALID_START",

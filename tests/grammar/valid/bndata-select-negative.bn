@@ -15,5 +15,5 @@ FUNCTION Start() AS VOID
     IF result IS Error THEN
         PRINT result.Code
     END IF
-    DELETE table
+    RELEASE table
 END FUNCTION

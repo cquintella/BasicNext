@@ -22,5 +22,5 @@ FUNCTION Start() AS VOID
     LET stack AS FloatStack = NEW FloatStack()
     stack.Put(1, 3.5)
     PRINT stack.Get(1)
-    DELETE stack
+    RELEASE stack
 END FUNCTION

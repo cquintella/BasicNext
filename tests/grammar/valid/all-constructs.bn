@@ -116,7 +116,7 @@ FUNCTION Start() AS VOID
         PRINT point.X
     END FOR
 
-    DELETE pointer
-    DELETE dynamicPointer
-    DELETE box
+    RELEASE pointer
+    RELEASE dynamicPointer
+    RELEASE box
 END FUNCTION

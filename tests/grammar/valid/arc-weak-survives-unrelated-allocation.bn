@@ -1,0 +1,26 @@
+CLASS Box
+    PUBLIC value AS INTEGER = 7
+
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET owner AS Box = NEW Box()
+    LET observer AS WEAK Box OR NULL = owner
+    LET unrelated AS Box = NEW Box()
+    IF observer IS NULL THEN
+        PRINT "CLEARED_EARLY"
+        STOP 1
+    END IF
+    PRINT "LIVE", observer.value
+    RELEASE owner
+    LET expired AS WEAK Box OR NULL = observer
+    IF expired IS NULL THEN
+        PRINT "EXPIRED"
+    ELSE
+        PRINT "STILL_LIVE"
+        STOP 1
+    END IF
+    RELEASE unrelated
+END FUNCTION

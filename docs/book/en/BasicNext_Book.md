@@ -7,17 +7,17 @@
 
 This document is the introductory tutorial for the Basic Next (BN) programming language.
 
-> **Note:** This book is the **Version 0.3** tutorial. It is not the normative
+> **Note:** This book is the **Version 0.5.0** tutorial. It is not the normative
 > language contract. When a chapter and the specification disagree, follow
-> [`docs/language/0.3/0.3.md`](../../language/0.3/0.3.md),
-> [`docs/language/0.3/0.3.ebnf`](../../language/0.3/0.3.ebnf), and
-> [`docs/language/0.3/keywords.md`](../../language/0.3/keywords.md).
+> [`docs/0.5.0/language-0.5.0.md`](../../0.5.0/language-0.5.0.md),
+> [`docs/0.5.0/language-0.5.0.md`](../../0.5.0/language-0.5.0.md), and
+> [`docs/0.5.0/language-0.5.0.md`](../../0.5.0/language-0.5.0.md).
 > Features planned for later versions (packages, `MATCH`, generic classes,
 > advanced concurrency) are excluded.
 
 ## What is Basic Next?
 
-Basic Next is an explicitly typed, object-oriented language designed for clarity and predictable execution. It favors explicit declarations and strict types over implicit conversions or hidden behaviors. Everything in Basic Next is explicit: variable types are required, memory management is manual, and every execution path in a function must return a value.
+Basic Next is an explicitly typed, object-oriented language designed for clarity and predictable execution. It favors explicit declarations and strict types over implicit conversions or hidden behaviors. Everything in Basic Next is explicit: variable types are required, memory management uses automatic reference counting (ARC), and every execution path in a function must return a value.
 
 The current reference implementation uses a straightforward pipeline comprising a lexer, a parser (producing an Abstract Syntax Tree), a semantic analyzer, and a reference interpreter. 
 
@@ -578,7 +578,7 @@ LET moved AS Point = origin
 moved.X = 10.0
 ```
 
-Like vectors, structs have value semantics. Assignment or parameter passing creates a complete copy of the field values. Changing `moved.X` in the example above does not affect `origin.X`. The `NEW` and `DELETE` keywords are not used with structs.
+Like vectors, structs have value semantics. Assignment or parameter passing creates a complete copy of the field values. Changing `moved.X` in the example above does not affect `origin.X`. Structs have value semantics; class-style `NEW` and `RELEASE` are not used to manage them.
 
 ## String Indexing
 
@@ -761,7 +761,7 @@ Class instances are always allocated dynamically using the `NEW` keyword.
 LET customer AS Customer = NEW Customer(10)
 ```
 
-*(Note: The explicit lifecycle of class instances, including the `DELETE` keyword, is covered in detail in Chapter 7: Memory Management).*
+*(Note: The explicit lifecycle of class instances, including ARC and the `RELEASE` statement, is covered in detail in Chapter 7: Memory Management).*
 
 ## Visibility and `SELF`
 
@@ -797,7 +797,7 @@ CLASS Customer
 END CLASS
 ```
 
-You may also define a destructor using `FUNCTION DESTRUCTOR()`. The destructor takes no parameters and has no return type. It executes exactly once when the instance is explicitly freed using `DELETE`.
+You may also define a destructor using `FUNCTION DESTRUCTOR()`. The destructor takes no parameters and has no return type. It executes exactly once when the instance is released when the last strong reference disappears, by scope exit or `RELEASE`.
 
 ## Static Members
 
@@ -881,59 +881,91 @@ An interface name acts as a type. A class reference can be assigned to a variabl
 
 # Memory Management
 
-Basic Next version 0.3 does not feature a garbage collector. Memory management is strictly manual. Developers are responsible for allocating memory when needed and explicitly freeing it when it is no longer required.
+Basic Next 0.5.0 uses automatic reference counting (ARC) for class objects.
+The runtime tracks strong references, releases them when bindings leave scope, and
+runs a class destructor exactly once when the last strong reference disappears.
 
-## Manual Allocation (`NEW` and `DELETE`)
+## Strong references and destructors
 
-The `NEW` keyword is the sole mechanism for dynamic allocation. It is used to create class instances or contiguous typed memory regions. 
-
-When you allocate a class instance, `NEW` executes the constructor. When you are finished with the object, you release it using `DELETE`, which runs the class's `DESTRUCTOR` (if defined) before freeing the memory.
-
-```basic
-LET customer AS Customer = NEW Customer(10)
-// ... use the object ...
-DELETE customer
-```
-
-If a constructor fails, the partially constructed object is discarded without executing the destructor. At program termination, the runtime recovers any memory not released by `DELETE`, but destructors are *not* run for those leaked objects. `DELETE` is the only deterministic destruction point.
-
-## Pointers
-
-Pointers reference dynamically allocated, contiguous numeric data. In version 0.3, pointer elements must be numeric types; pointers to strings, booleans, or classes are excluded.
-
-There are three ways to declare a pointer type, depending on its size constraints:
-
-1. **Single Value**: `POINTER TO TYPE`
-2. **Fixed-Size Region**: `POINTER TO TYPE[length]`
-3. **Dynamic Region**: `POINTER TO TYPE[]`
+Assignment to a class binding creates another strong reference. `RELEASE` drops
+one binding early; it does not force destruction while another strong reference
+still exists.
 
 ```basic
-// Allocating a single value
-LET value AS POINTER TO INTEGER = NEW INTEGER
-value[0] = 42
-DELETE value
+CLASS Box
+    PUBLIC value AS INTEGER = 7
 
-// Allocating a dynamic region
-LET count AS INTEGER = 1024
-LET samples AS POINTER TO FLOAT[] = NEW FLOAT[count]
-samples[0] = 1.5
-DELETE samples
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    FUNCTION DESTRUCTOR()
+        PRINT "DEINIT"
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET first AS Box = NEW Box()
+    LET second AS Box = first
+    RELEASE first
+    PRINT second.value
+END FUNCTION
 ```
 
-Allocated memory is zero-initialized (filled with the type's default value). Pointer indexing is strictly bounds-checked by the runtime, and pointer arithmetic is not permitted in version 0.3. In the current version, you can also use `LEN()` on region pointers (`POINTER TO TYPE[length]` and `POINTER TO TYPE[]`) to get their element count, but `LEN` on a single-value pointer remains a static error.
+The assignment to `second` retains the object. Releasing `first` therefore leaves
+`second` valid. When `second` leaves `Start`, the count reaches zero and
+`DEINIT` is printed once.
 
-Pointer assignment and parameter passing copy the pointer handle (creating an alias) without transferring ownership implicitly. `DELETE` accepts any alias to the base pointer originally returned by `NEW`.
+## Weak references
 
-## Memory Safety and Runtime Errors
+A weak reference does not keep an object alive. Declare it with `AS WEAK` and
+make the nullable state explicit:
 
-Because memory is managed manually, Basic Next enforces strict runtime checks to prevent silent corruption:
+```basic
+CLASS Node
+    PUBLIC next AS WEAK Node OR NULL = NULL
+END CLASS
 
-- **Null Pointers**: Pointers can be `NULL`. Indexing or dereferencing a `NULL` pointer—or attempting to `DELETE NULL`—raises a `NULL_POINTER_ACCESS` error. You must explicitly test optional pointers using `IS NULL`.
-- **Use After Delete**: Once an allocation is deleted, all aliases become invalid. Attempting to access the memory later raises a `USE_AFTER_DELETE` error.
-- **Double Delete**: Attempting to delete memory that has already been deleted raises a `DOUBLE_DELETE` error. An allocation is considered deleted while its destructor runs, so a reentrant `DELETE` also triggers this error.
-- **Out of Bounds**: Any index outside the allocated region raises an `INDEX_OUT_OF_BOUNDS` error.
-- **Allocation Limits**: Requesting memory with a computed negative count raises `ALLOCATION_SIZE_INVALID`. If the requested size overflows or exceeds the host's capacity, `ALLOCATION_SIZE_OVERFLOW` or `ALLOCATION_TOO_LARGE` is raised.
+FUNCTION Start() AS VOID
+    LET owner AS Node = NEW Node()
+    LET observer AS WEAK Node OR NULL = owner
+    RELEASE owner
+    IF observer IS NULL THEN
+        PRINT "expired"
+    END IF
+END FUNCTION
+```
 
+When the last strong reference is released, every weak reference to that object
+is cleared to `NULL`.
+
+## `RELEASE`
+
+`RELEASE` is valid for managed object bindings and for owned values such as
+primaries, structs, and vectors. It is a statement on a binding:
+
+```basic
+LET number AS INTEGER = 10
+LET name AS STRING = "temporary"
+LET values AS INTEGER[] = [1, 2, 3]
+RELEASE number
+RELEASE name
+RELEASE values
+```
+
+Element expressions are not bindings, so `RELEASE values[0]` is rejected. Close
+HOST resources through their API (for example `file.Close()`) and then release
+the owning binding. `DELETE` is not a 0.5.0 language keyword.
+
+## Pointers and diagnostics
+
+Pointer allocation follows the value/memory ABI rules. Release an owned pointer
+binding with `RELEASE`; never access it after that point. The validator and
+runtime diagnose `USE_AFTER_RELEASE`, `DOUBLE_RELEASE`, `NULL_POINTER_ACCESS`,
+and invalid bounds instead of silently continuing.
+
+The normative ownership and ABI contract is in
+[`language-0.5.0.md`](../../0.5.0/language-0.5.0.md). The implementation evidence
+and conformance fixtures are tracked with the 0.5.0 release bucket.
 
 <div style="page-break-after: always;"></div>
 
@@ -965,6 +997,34 @@ The available surface includes:
 - Text parsing: `VAL(text AS STRING) AS FLOAT`.
 - Descriptive statistics: `MEAN`, `MEDIAN`, `MODE`, `STDEV`, `VARIANCE`, `RANGE`, `QUARTILE1`, `QUARTILE3`.
 - Range constants: `MAX_INTEGER`, `MIN_INTEGER`, `MAX_FLOAT`, `MIN_FLOAT` (and width-specific variants).
+
+## The `BNString` module
+
+`BNString` is an external module that wraps the primary `STRING` value in the
+ARC-managed `S.String` object. Import it explicitly when you need fluent string
+operations:
+
+```basic
+IMPORT BNString AS S
+
+LET text AS S.String = NEW S.String("  Olá,BN  ")
+LET clean AS S.String = text.Trim()
+PRINT clean.LowCaps().ToString()
+PRINT clean.Contains("BN")
+
+LET words AS S.Tokenizer OR NULL = clean.Tokenizer(",")
+IF words IS NOT NULL THEN
+    PRINT words.Next()
+END IF
+```
+
+`Len`/`Length` report Unicode scalar values, `LowCaps` and `HiCaps` perform
+Unicode-aware case conversion, and `Tokenizer` walks separator-delimited tokens.
+`S.String` instances follow the same ARC rules as other class objects: strong
+bindings retain them, scope exit releases them, and weak bindings become `NULL`
+when the last strong reference is gone. See the full API in
+[`docs/library/bnstring.md`](../../library/bnstring.md) and the runnable
+[`bnstring_tour.bn`](../../../examples/bnstring_tour.bn).
 
 ## HOST capabilities
 
@@ -1049,6 +1109,41 @@ ELSE
 END IF
 ```
 
+
+### `HOST.Exec` (proposed for 0.5.1 — not shipped)
+
+> **Status:** Contract accepted for planning under [`todo/proposals/host-exec-0.5.1.md`](../../todo/proposals/host-exec-0.5.1.md) and `ongoing/bucket-0.5.1.md`. Do **not** treat this section as available in a released toolchain until fixtures E1–E7 are green on interpret and native and Quorra has gated the capability.
+
+`HOST.Exec` runs an **external program** and captures its output, in the style of a language-level `exec()`: the host **spawns** a child, **waits** until it finishes, and returns a structured result. It does **not** replace the Basic Next process image (that would be POSIX `execve`, which is out of 0.5.1).
+
+```basic
+IMPORT HOST.Exec AS Exec
+
+FUNCTION Start() AS VOID
+    LET args AS STRING[1]
+    args[0] = "-s"
+    LET r AS Exec.Result OR Error = Exec.Run("uname", args)
+    IF r IS Error THEN
+        PRINT r.Message
+        STOP 1
+    END IF
+    PRINT r.ReturnCode
+    PRINT r.Stdout
+END FUNCTION
+```
+
+| Piece | Contract |
+| --- | --- |
+| Import | `IMPORT HOST.Exec AS Exec` — no new reserved word |
+| Primary API | `Run(program AS STRING, args AS STRING[]) AS Exec.Result OR Error` |
+| `Exec.Result` | `ReturnCode AS INTEGER` (child return code), `Stdout AS STRING`, `Stderr AS STRING` |
+| Child stdin | Closed (no input blob in 0.5.1) |
+| Shell | Forbidden as the implementation of `Run` (no `sh -c` / `cmd /c` default) |
+| Non-zero child code | Still a `Result` — inspect `ReturnCode`; `Error` is for Host/OS launch or capture failure |
+| Restricted profiles | Deny `HOST.Exec` by default (for example Jupyter-style hosts) |
+
+Do not confuse `HOST.Exec` with `HOST.SQLite` / `Db.Exec(sql)` (SQL execution), which is a different capability.
+
 ### `HOST.Net`
 
 `HOST.Net` is a native-host capability added in version 0.3 for IPv4/IPv6 addressing, system resolution, TCP, UDP, bounded ICMP Echo, and direct-neighbor lookup. The operating system owns the networking stack.
@@ -1130,7 +1225,7 @@ IMPORT HOST.FileSystem AS FS
 - `FS.WRITE` (`1`): Create or truncate a file for writing.
 - `FS.APPEND` (`2`): Open or create a file for appending data at the end.
 
-Every `FS.File` instance must be closed with `.Close()` and deterministically deallocated with `DELETE file` to avoid leaking operating system handles:
+Every `FS.File` instance must be closed with `.Close()` and deterministically deallocated with `RELEASE file` to avoid leaking operating system handles:
 
 ```basic
 LET file AS FS.File OR Error = FS.Open("log.txt", FS.WRITE)
@@ -1141,7 +1236,7 @@ END IF
 
 file.WriteLine("System initialized.")
 file.Close()
-DELETE file
+RELEASE file
 ```
 
 ### Text Family vs. Binary Family Rule
@@ -1177,7 +1272,7 @@ REPEAT
 END REPEAT
 
 file.Close()
-DELETE file
+RELEASE file
 ```
 
 To read the entire file content in one call, use `file.ReadAll()`.
@@ -1206,8 +1301,8 @@ IF status IS Error THEN
 END IF
 
 file.Close()
-DELETE file
-DELETE buffer
+RELEASE file
+RELEASE buffer
 ```
 
 Reading binary bytes into an allocated buffer:
@@ -1230,8 +1325,8 @@ ELSE
 END IF
 
 file.Close()
-DELETE file
-DELETE buffer
+RELEASE file
+RELEASE buffer
 ```
 
 ### Capability File Helpers
@@ -1306,7 +1401,7 @@ Because Basic Next specifies behavior transparently, the exact language specific
 Basic Next maintains a strict registry of reserved words to guarantee backward compatibility. A word is only reserved in its exact uppercase spelling.
 
 For the complete list of keywords, their semantic meanings, and decision statuses, see the normative document:
-- [0.3 Keyword Registry](../../language/0.3/keywords.md)
+- [0.3 Keyword Registry](../../0.5.0/language-0.5.0.md)
 
 ## Appendix B: Language Diagnostics
 
@@ -1315,7 +1410,7 @@ Basic Next is designed with a zero-warning policy. Diagnostics either reject the
 Diagnostic behavior follows the accepted language contract and command
 reference:
 
-- [Version 0.3 language contract](../../language/0.3/0.3.md)
+- [Version 0.3 language contract](../../0.5.0/language-0.5.0.md)
 - [`bn(1)`](../../man/bn.1)
 
 ## Appendix C: Accepted 0.3 Syntax (EBNF)
@@ -1324,14 +1419,14 @@ The structural grammar of Basic Next is strictly defined using Extended Backus-N
 
 For the definitive structural grammar of version 0.3, see:
 
-- [Version 0.3 EBNF](../../language/0.3/0.3.ebnf)
+- [Version 0.3 EBNF](../../0.5.0/language-0.5.0.md)
 
 ## Appendix D: The `bn` Tool
 
 The Unix manual for the reference tool is [`bn(1)`](../../man/bn.1).
 Installation and troubleshooting are in
 [`docs/project/usage.md`](../../project/usage.md). The normative language text
-is [`0.3.md`](../../language/0.3/0.3.md).
+is [`0.3.md`](../../0.5.0/language-0.5.0.md).
 
 External provider-backed modules are documented in separate appendices:
 

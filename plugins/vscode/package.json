@@ -2,14 +2,16 @@
   "name": "basicnext",
   "displayName": "Basic Next",
   "description": "Language support for Basic Next 0.5.0 (ARC DNA: no DELETE; RELEASE/WEAK; typed AWAIT)",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "publisher": "basicnext",
   "license": "MPL-2.0",
   "engines": {
     "vscode": ">=1.80.0"
   },
   "categories": [
-    "Programming Languages"
+    "Programming Languages",
+    "Themes",
+    "Snippets"
   ],
   "activationEvents": [
     "onLanguage:basicnext"
@@ -24,6 +26,14 @@
       {
         "command": "basicnext.buildAndRun",
         "title": "Basic Next: Build and Run"
+      },
+      {
+        "command": "basicnext.check",
+        "title": "Basic Next: Check"
+      },
+      {
+        "command": "basicnext.statusBarAction",
+        "title": "Basic Next: Status Bar"
       }
     ],
     "debuggers": [
@@ -111,22 +121,161 @@
         "path": "./syntaxes/basicnext.tmLanguage.json"
       }
     ],
+    "snippets": [
+      {
+        "language": "basicnext",
+        "path": "./snippets/basicnext.json"
+      }
+    ],
+    "themes": [
+      {
+        "label": "Basic Next Grid",
+        "uiTheme": "vs-dark",
+        "path": "./themes/basic-next-grid-color-theme.json"
+      }
+    ],
     "configuration": {
       "title": "Basic Next",
       "properties": {
         "basicnext.executable": {
           "type": "string",
           "default": "bn",
-          "description": "Path to the bn executable used by the Basic Next language server and debugger."
+          "description": "Path to the bn executable used by the Basic Next language server, checker, and debugger."
         },
         "basicnext.autoUppercaseKeywords": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically convert Basic Next reserved words to uppercase as you type (for example function \u2192 FUNCTION)."
+          "description": "Automatically convert Basic Next reserved words to uppercase as you type (for example function → FUNCTION)."
+        },
+        "basicnext.autoUppercaseOnPaste": {
+          "type": "boolean",
+          "default": true,
+          "description": "When auto-uppercase is enabled, also uppercase reserved words inserted as a whole token (paste or completion)."
+        },
+        "basicnext.autoUppercaseExclusions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Uppercase reserved-word spellings to skip when auto-uppercasing (for example [\"STEP\"])."
+        },
+        "basicnext.formatOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "On save, uppercase reserved words outside strings/comments and normalize END <block> spacing (for example END   FUNCTION → END FUNCTION)."
+        },
+        "basicnext.runArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments inserted after `bn run` and before the source file."
+        },
+        "basicnext.buildArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments inserted after `bn build` and before the source file."
+        },
+        "basicnext.checkArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments inserted after `bn check` and before the source file."
+        },
+        "basicnext.lspArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments inserted after `bn lsp`."
+        },
+        "basicnext.checkOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run `bn check` when a Basic Next document is saved and publish diagnostics."
+        },
+        "basicnext.checkOnType": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run `bn check` while typing (debounced)."
+        },
+        "basicnext.checkDebounceMs": {
+          "type": "number",
+          "default": 500,
+          "minimum": 0,
+          "description": "Debounce delay in milliseconds for check-on-type."
+        },
+        "basicnext.diagnosticsMinimumSeverity": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "hint"
+          ],
+          "default": "warning",
+          "description": "Minimum diagnostic severity to show from `bn check` (error = errors only; warning = errors+warnings; hint = all)."
+        },
+        "basicnext.snippets.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Documented toggle for Basic Next snippets. Snippets are contributed via package.json; disable individual snippets in the VS Code Snippets UI if needed. When false, the extension does not register duplicate snippet completions."
+        },
+        "basicnext.blockColors.function": {
+          "type": "string",
+          "default": "#C586C0",
+          "description": "Foreground color for FUNCTION / END FUNCTION (hex)."
+        },
+        "basicnext.blockColors.while": {
+          "type": "string",
+          "default": "#D7BA7D",
+          "description": "Foreground color for WHILE / END WHILE (hex)."
+        },
+        "basicnext.blockColors.for": {
+          "type": "string",
+          "default": "#CE9178",
+          "description": "Foreground color for FOR / END FOR (hex)."
+        },
+        "basicnext.blockColors.repeat": {
+          "type": "string",
+          "default": "#DCDCAA",
+          "description": "Foreground color for REPEAT / UNTIL (hex)."
+        },
+        "basicnext.blockColors.conditional": {
+          "type": "string",
+          "default": "#569CD6",
+          "description": "Foreground color for IF / ELSE / END IF (hex)."
+        },
+        "basicnext.blockColors.class": {
+          "type": "string",
+          "default": "#4EC9B0",
+          "description": "Foreground color for CLASS / END CLASS (hex)."
+        },
+        "basicnext.blockColors.flow": {
+          "type": "string",
+          "default": "#F44747",
+          "description": "Foreground color for flow keywords such as RETURN / EXIT / CONTINUE / STOP (hex)."
+        },
+        "basicnext.blockColors.await": {
+          "type": "string",
+          "default": "#B267E6",
+          "description": "Foreground color for AWAIT / ASYNC (hex)."
         }
       }
     },
     "configurationDefaults": {
+      "[basicnext]": {
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true,
+        "editor.detectIndentation": true
+      },
       "editor.tokenColorCustomizations": {
         "textMateRules": [
           {

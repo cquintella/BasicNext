@@ -215,6 +215,9 @@ impl Analyzer {
     }
 
     pub(crate) fn compatible(&self, expected: &Type, actual: &Type) -> bool {
+        if matches!(expected, Type::Unknown) || matches!(actual, Type::Unknown) {
+            return true;
+        }
         if compatible(expected, actual) {
             return true;
         }
@@ -310,10 +313,21 @@ impl Analyzer {
 
     pub(crate) fn deletable(&self, ty: &Type) -> bool {
         match ty {
-            Type::Pointer { .. } | Type::Null => true,
+            Type::Pointer { .. }
+            | Type::Null
+            | Type::Integer(_)
+            | Type::IntegerLiteral(_)
+            | Type::Float(_)
+            | Type::FloatLiteral
+            | Type::Boolean
+            | Type::String => true,
+            Type::Vector { element, .. } => self.deletable(element),
             Type::Named(name) => {
                 name == "FS.File"
-                    || self.declaration_kinds.get(name) == Some(&DeclarationKind::Class)
+                    || matches!(
+                        self.declaration_kinds.get(name),
+                        Some(&DeclarationKind::Class | &DeclarationKind::Struct)
+                    )
             }
             Type::ImportedNamed { module, name } => self
                 .imported_types

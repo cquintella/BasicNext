@@ -1,60 +1,87 @@
-> **0.5.0 overlay:** This chapter’s manual `NEW`/`DELETE` story is **superseded**
-> for Basic Next 0.5.0 by the ARC contract in
-> [`docs/0.5.0/language-0.5.0.md`](../../0.5.0/language-0.5.0.md).
-> Migration notes: [`docs/0.5.0/memory-migration.md`](../../0.5.0/memory-migration.md).
-> Conformance checklist: [`docs/0.5.0/arc-conformance.md`](../../0.5.0/arc-conformance.md).
-
 # Memory Management
 
-Basic Next version 0.3 does not feature a garbage collector. Memory management is strictly manual. Developers are responsible for allocating memory when needed and explicitly freeing it when it is no longer required.
+Basic Next 0.5.0 uses automatic reference counting (ARC) for class objects.
+The runtime tracks strong references, releases them when bindings leave scope, and
+runs a class destructor exactly once when the last strong reference disappears.
 
-## Manual Allocation (`NEW` and `DELETE`)
+## Strong references and destructors
 
-The `NEW` keyword is the sole mechanism for dynamic allocation. It is used to create class instances or contiguous typed memory regions. 
-
-When you allocate a class instance, `NEW` executes the constructor. When you are finished with the object, you release it using `DELETE`, which runs the class's `DESTRUCTOR` (if defined) before freeing the memory.
-
-```basic
-LET customer AS Customer = NEW Customer(10)
-// ... use the object ...
-DELETE customer
-```
-
-If a constructor fails, the partially constructed object is discarded without executing the destructor. At program termination, the runtime recovers any memory not released by `DELETE`, but destructors are *not* run for those leaked objects. `DELETE` is the only deterministic destruction point.
-
-## Pointers
-
-Pointers reference dynamically allocated, contiguous numeric data. In version 0.3, pointer elements must be numeric types; pointers to strings, booleans, or classes are excluded.
-
-There are three ways to declare a pointer type, depending on its size constraints:
-
-1. **Single Value**: `POINTER TO TYPE`
-2. **Fixed-Size Region**: `POINTER TO TYPE[length]`
-3. **Dynamic Region**: `POINTER TO TYPE[]`
+Assignment to a class binding creates another strong reference. `RELEASE` drops
+one binding early; it does not force destruction while another strong reference
+still exists.
 
 ```basic
-// Allocating a single value
-LET value AS POINTER TO INTEGER = NEW INTEGER
-value[0] = 42
-DELETE value
+CLASS Box
+    PUBLIC value AS INTEGER = 7
 
-// Allocating a dynamic region
-LET count AS INTEGER = 1024
-LET samples AS POINTER TO FLOAT[] = NEW FLOAT[count]
-samples[0] = 1.5
-DELETE samples
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    FUNCTION DESTRUCTOR()
+        PRINT "DEINIT"
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET first AS Box = NEW Box()
+    LET second AS Box = first
+    RELEASE first
+    PRINT second.value
+END FUNCTION
 ```
 
-Allocated memory is zero-initialized (filled with the type's default value). Pointer indexing is strictly bounds-checked by the runtime, and pointer arithmetic is not permitted in version 0.3. In the current version, you can also use `LEN()` on region pointers (`POINTER TO TYPE[length]` and `POINTER TO TYPE[]`) to get their element count, but `LEN` on a single-value pointer remains a static error.
+The assignment to `second` retains the object. Releasing `first` therefore leaves
+`second` valid. When `second` leaves `Start`, the count reaches zero and
+`DEINIT` is printed once.
 
-Pointer assignment and parameter passing copy the pointer handle (creating an alias) without transferring ownership implicitly. `DELETE` accepts any alias to the base pointer originally returned by `NEW`.
+## Weak references
 
-## Memory Safety and Runtime Errors
+A weak reference does not keep an object alive. Declare it with `AS WEAK` and
+make the nullable state explicit:
 
-Because memory is managed manually, Basic Next enforces strict runtime checks to prevent silent corruption:
+```basic
+CLASS Node
+    PUBLIC next AS WEAK Node OR NULL = NULL
+END CLASS
 
-- **Null Pointers**: Pointers can be `NULL`. Indexing or dereferencing a `NULL` pointer—or attempting to `DELETE NULL`—raises a `NULL_POINTER_ACCESS` error. You must explicitly test optional pointers using `IS NULL`.
-- **Use After Delete**: Once an allocation is deleted, all aliases become invalid. Attempting to access the memory later raises a `USE_AFTER_DELETE` error.
-- **Double Delete**: Attempting to delete memory that has already been deleted raises a `DOUBLE_DELETE` error. An allocation is considered deleted while its destructor runs, so a reentrant `DELETE` also triggers this error.
-- **Out of Bounds**: Any index outside the allocated region raises an `INDEX_OUT_OF_BOUNDS` error.
-- **Allocation Limits**: Requesting memory with a computed negative count raises `ALLOCATION_SIZE_INVALID`. If the requested size overflows or exceeds the host's capacity, `ALLOCATION_SIZE_OVERFLOW` or `ALLOCATION_TOO_LARGE` is raised.
+FUNCTION Start() AS VOID
+    LET owner AS Node = NEW Node()
+    LET observer AS WEAK Node OR NULL = owner
+    RELEASE owner
+    IF observer IS NULL THEN
+        PRINT "expired"
+    END IF
+END FUNCTION
+```
+
+When the last strong reference is released, every weak reference to that object
+is cleared to `NULL`.
+
+## `RELEASE`
+
+`RELEASE` is valid for managed object bindings and for owned values such as
+primaries, structs, and vectors. It is a statement on a binding:
+
+```basic
+LET number AS INTEGER = 10
+LET name AS STRING = "temporary"
+LET values AS INTEGER[] = [1, 2, 3]
+RELEASE number
+RELEASE name
+RELEASE values
+```
+
+Element expressions are not bindings, so `RELEASE values[0]` is rejected. Close
+HOST resources through their API (for example `file.Close()`) and then release
+the owning binding. `DELETE` is not a 0.5.0 language keyword.
+
+## Pointers and diagnostics
+
+Pointer allocation follows the value/memory ABI rules. Release an owned pointer
+binding with `RELEASE`; never access it after that point. The validator and
+runtime diagnose `USE_AFTER_RELEASE`, `DOUBLE_RELEASE`, `NULL_POINTER_ACCESS`,
+and invalid bounds instead of silently continuing.
+
+The normative ownership and ABI contract is in
+[`language-0.5.0.md`](../../0.5.0/language-0.5.0.md). The implementation evidence
+and conformance fixtures are tracked with the 0.5.0 release bucket.

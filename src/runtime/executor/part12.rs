@@ -26,10 +26,10 @@ impl Executor<'_, '_> {
                 ));
             };
             let left = self.dataframes.get(&id).ok_or_else(|| {
-                runtime_error("USE_AFTER_DELETE", "DataFrame handle is invalid", span)
+                runtime_error("USE_AFTER_RELEASE", "DataFrame handle is invalid", span)
             })?;
             let right = self.dataframes.get(&other_id).ok_or_else(|| {
-                runtime_error("USE_AFTER_DELETE", "DataFrame handle is invalid", span)
+                runtime_error("USE_AFTER_RELEASE", "DataFrame handle is invalid", span)
             })?;
             let not_available = Value::NotAvailable;
             let frame = match join_dataframes(
@@ -63,10 +63,10 @@ impl Executor<'_, '_> {
                 ));
             };
             let left = self.dataframes.get(&id).ok_or_else(|| {
-                runtime_error("USE_AFTER_DELETE", "DataFrame handle is invalid", span)
+                runtime_error("USE_AFTER_RELEASE", "DataFrame handle is invalid", span)
             })?;
             let right = self.dataframes.get(&other_id).ok_or_else(|| {
-                runtime_error("USE_AFTER_DELETE", "DataFrame handle is invalid", span)
+                runtime_error("USE_AFTER_RELEASE", "DataFrame handle is invalid", span)
             })?;
             if method == "AppendRows" {
                 let columns = match append_rows(
