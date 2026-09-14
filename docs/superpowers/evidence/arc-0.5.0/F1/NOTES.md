@@ -1,13 +1,16 @@
 # F1 — Strong aliasing
 
-**Status:** `RED_EXPECTED` — fixture committed before M2/D1 runtime (Carlos/Quorra fixtures-first).  
-**Backend:** interpret (`bn run`)  
-**Command:**
+**Status:** `GREEN` interpret + `GREEN` native (Tron 2026-09-13).
+**Backend:** interpret (`bn run`) and LLVM/native (`bn build`)
+
+**Commands:**
 ```bash
 bn run docs/superpowers/evidence/arc-0.5.0/F1/program.bn
+bn build docs/superpowers/evidence/arc-0.5.0/F1/program.bn -o /tmp/F1 && /tmp/F1
 ```
-**Expected exit (when M2/D1 green):** `0`  
-**Expected observation:** PASS F1; both aliases see n=7; no premature deinit
 
-**Today (pre-M2):** may fail parse/typecheck/runtime on 0.4 toolchain — that is intentional red until waves land.  
+**Expected exit:** `0` (both)
+**Observed (interpret):** exit `0`; `PASS F1 strong alias n= 7`
+**Observed (native):** exit `0`; `PASS F1 strong alias n= 7`
+
 **Forbidden:** `DELETE`, force-dispose, silent use-after-release.

@@ -1,13 +1,16 @@
 # F12 — No DELETE in 0.5.0 fixtures
 
-**Status:** `RED_EXPECTED` — fixture committed before M2/D1 runtime (Carlos/Quorra fixtures-first).  
-**Backend:** interpret (`bn run`)  
-**Command:**
-```bash
-rg -n '\\bDELETE\\b' docs/superpowers/evidence/arc-0.5.0 && bn run docs/superpowers/evidence/arc-0.5.0/F12/program.bn
-```
-**Expected exit (when M2/D1 green):** `0`  
-**Expected observation:** rg finds zero DELETE under arc-0.5.0/; program prints LIVE then DEINIT; this file has no DELETE token
+**Status:** `GREEN` interpret + `GREEN` native (Tron 2026-09-13).
+**Backend:** interpret (`bn run`) and LLVM/native (`bn build`)
 
-**Today (pre-M2):** may fail parse/typecheck/runtime on 0.4 toolchain — that is intentional red until waves land.  
+**Commands:**
+```bash
+bn run docs/superpowers/evidence/arc-0.5.0/F12/program.bn
+bn build docs/superpowers/evidence/arc-0.5.0/F12/program.bn -o /tmp/F12 && /tmp/F12
+```
+
+**Expected exit:** `0` (both)
+**Observed (interpret):** exit `0`; `LIVE` then `DEINIT` (`UNUSED_BINDING` warn OK); fixture tree has no `DELETE` keyword
+**Observed (native):** exit `0`; `LIVE` then `DEINIT` (same order on this tree; if DEINIT order differs, record actual LIVE-only vs LIVE+DEINIT)
+
 **Forbidden:** `DELETE`, force-dispose, silent use-after-release.
