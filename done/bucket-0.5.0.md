@@ -501,3 +501,4 @@ interpret+native matrix is green as recorded in each `NOTES.md`:
 Close-out commands: `cargo build --release --bin bn`; spot-check F1/F5/F9/F13
 interpret; `cargo test --test runtime` → **182 passed**. Full `fmt`/`clippy`
 not re-run on this close-out paste — do not invent that evidence.
+- 2026-09-13 — Quorra PASS gate PR #4; Tron: support-matrix F9 → `INVALID_RELEASE_TARGET` (not `TARGET_UNSUPPORTED_OP`).
