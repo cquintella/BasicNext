@@ -154,8 +154,10 @@ struct LoweringAnalysis<'a> {
     input_count: usize,
     input_targets: HashMap<ValueId, SymbolId>,
     input_symbols: HashSet<SymbolId>,
+    released_symbols: HashSet<SymbolId>,
     owned_string_results: HashSet<ValueId>,
     owned_struct_results: HashSet<ValueId>,
+    owned_object_results: HashMap<ValueId, String>,
     owned_log_results: HashMap<ValueId, &'static str>,
     uses_string_concat: bool,
     uses_bn_rt: bool,
@@ -326,11 +328,12 @@ pub fn validate_for(validated: &ValidatedModule, target: Target) -> Result<(), D
     }
     if !matches!(&start.return_type, Type::Named(name) if name == "VOID")
         && !matches!(&start.return_type, Type::Integer(_))
+        && !matches!(&start.return_type, Type::Alternative(alternatives) if void_or_error(alternatives))
     {
         return Err(Diagnostic {
             code: "TARGET_UNSUPPORTED_ENTRYPOINT",
             message: format!(
-                "Start return type '{}' is unsupported; LLVM entry point supports VOID or INTEGER",
+                "Start return type '{}' is unsupported; LLVM entry point supports VOID, VOID OR Error, or INTEGER",
                 render_start_type(&start.return_type)
             ),
             span: start.span,
@@ -436,6 +439,15 @@ fn render_start_type(ty: &Type) -> &'static str {
 #[path = "llvm/analysis.rs"]
 mod analysis;
 use analysis::analyze_function;
+#[path = "llvm/analysis_calls.rs"]
+mod analysis_calls;
+use analysis_calls::call_instruction_supported;
+#[path = "llvm/analysis_helpers.rs"]
+mod analysis_helpers;
+use analysis_helpers::{block_is_cyclic, instruction_destination, llvm_vector_dimension_supported};
+#[path = "llvm/analysis_validate.rs"]
+mod analysis_validate;
+use analysis_validate::{for_condition_supported, validate_instruction};
 fn llvm_type(ty: &Type) -> Option<&'static str> {
     match ty {
         Type::Boolean => Some("i1"),
@@ -457,6 +469,13 @@ fn llvm_type(ty: &Type) -> Option<&'static str> {
         Type::Alternative(alternatives) if float_or_na(alternatives) => Some("{ i1, double }"),
         Type::Alternative(alternatives) if integer_or_null(alternatives) => Some("{ i1, i32 }"),
         Type::Alternative(alternatives) if string_or_null(alternatives) => Some("ptr"),
+        Type::Alternative(alternatives)
+            if alternatives.len() == 2
+                && alternatives.iter().any(|ty| matches!(ty, Type::Null))
+                && alternatives.iter().any(|ty| matches!(ty, Type::Named(_))) =>
+        {
+            Some("ptr")
+        }
         Type::Alternative(alternatives) if string_na_or_error(alternatives) => {
             Some("{ i1, ptr, i64 }")
         }
@@ -464,6 +483,9 @@ fn llvm_type(ty: &Type) -> Option<&'static str> {
             Some("{ i1, ptr, i64 }")
         }
         Type::Alternative(alternatives) if float_or_error(alternatives) => Some("{ i1, ptr, i64 }"),
+        Type::Alternative(alternatives) if boolean_or_error(alternatives) => {
+            Some("{ i1, ptr, i64 }")
+        }
         // HOST.Net aggregate results OR Error, and narrowed network values.
         Type::Alternative(alternatives) if net_or_error(alternatives) => {
             if alternatives.iter().any(is_net_addresses_type) {
@@ -617,6 +639,12 @@ fn integer_or_error(alternatives: &[Type]) -> bool {
         && alternatives.iter().any(is_error_type)
 }
 
+fn boolean_or_error(alternatives: &[Type]) -> bool {
+    alternatives.len() == 2
+        && alternatives.iter().any(|ty| matches!(ty, Type::Boolean))
+        && alternatives.iter().any(is_error_type)
+}
+
 fn integer_union_payload(ty: &Type) -> Option<&Type> {
     let Type::Alternative(alternatives) = ty else {
         return None;
@@ -627,6 +655,18 @@ fn integer_union_payload(ty: &Type) -> Option<&Type> {
     alternatives
         .iter()
         .find(|alternative| matches!(alternative, Type::Integer(_)))
+}
+
+fn float_union_payload(ty: &Type) -> Option<&Type> {
+    let Type::Alternative(alternatives) = ty else {
+        return None;
+    };
+    if !float_or_error(alternatives) {
+        return None;
+    }
+    alternatives
+        .iter()
+        .find(|alternative| matches!(alternative, Type::Float(_)))
 }
 
 fn string_or_error(alternatives: &[Type]) -> bool {
@@ -803,6 +843,18 @@ fn binary_supported(operator: &str, left: &Type, right: &Type, result: &Type) ->
         "Plus" | "Minus" | "Star" | "Multiply" => {
             integer_llvm(left_llvm) && integer_llvm(right_llvm) && integer_llvm(result_llvm)
                 || float_llvm(left_llvm) && float_llvm(right_llvm) && float_llvm(result_llvm)
+                || integer_union_payload(left).is_some()
+                    && integer_union_payload(right).is_some()
+                    && integer_llvm(result_llvm)
+                || (integer_union_payload(left).is_some() && integer_llvm(right_llvm)
+                    || integer_union_payload(right).is_some() && integer_llvm(left_llvm))
+                    && integer_llvm(result_llvm)
+                || (float_union_payload(left).is_some() && float_llvm(right_llvm)
+                    || float_union_payload(right).is_some() && float_llvm(left_llvm))
+                    && float_llvm(result_llvm)
+                || float_union_payload(left).is_some()
+                    && float_union_payload(right).is_some()
+                    && float_llvm(result_llvm)
                 || operator == "Plus"
                     && left_llvm == "ptr"
                     && right_llvm == "ptr"
@@ -811,6 +863,18 @@ fn binary_supported(operator: &str, left: &Type, right: &Type, result: &Type) ->
         "Slash" | "Divide" => {
             float_llvm(left_llvm) && float_llvm(right_llvm) && float_llvm(result_llvm)
                 || integer_llvm(left_llvm) && integer_llvm(right_llvm) && float_llvm(result_llvm)
+                || integer_union_payload(left).is_some()
+                    && integer_union_payload(right).is_some()
+                    && float_llvm(result_llvm)
+                || (integer_union_payload(left).is_some() && integer_llvm(right_llvm)
+                    || integer_union_payload(right).is_some() && integer_llvm(left_llvm))
+                    && float_llvm(result_llvm)
+                || (float_union_payload(left).is_some() && float_llvm(right_llvm)
+                    || float_union_payload(right).is_some() && float_llvm(left_llvm))
+                    && float_llvm(result_llvm)
+                || float_union_payload(left).is_some()
+                    && float_union_payload(right).is_some()
+                    && float_llvm(result_llvm)
         }
         // IntegerLiteral is i64; expression results may be narrower INTEGER/BYTE/….
         // Emission coerces operands to the result width.
@@ -858,6 +922,8 @@ fn cast_supported(source: Option<&Type>, target: &Type) -> bool {
 #[path = "llvm/control_flow.rs"]
 mod control_flow;
 
+#[path = "llvm/arc.rs"]
+mod arc;
 #[path = "llvm/layout.rs"]
 mod layout;
 
@@ -872,6 +938,54 @@ use emission2::{
     checked_intrinsic_declaration, cleanup_owned_memory, emit_checked_integer_op,
     float_compare_opcode, integer_compare_opcode, lower_print_value, lower_terminator,
 };
+#[path = "llvm/dispatch_results.rs"]
+mod dispatch_results;
+use dispatch_results::{
+    emit_boolean_dispatch_result, emit_float_dispatch_result, emit_integer_dispatch_result,
+    emit_string_dispatch_result,
+};
+#[path = "llvm/loop_emission.rs"]
+mod loop_emission;
+use loop_emission::lower_for_condition;
+#[path = "llvm/bndata_columns.rs"]
+mod bndata_columns;
+use bndata_columns::{
+    lower_bndata_add_integer_column, lower_bndata_add_simple_column, lower_bndata_column_name,
+    lower_bndata_count, lower_bndata_status_call,
+};
+#[path = "llvm/bndata_ops.rs"]
+mod bndata_ops;
+use bndata_ops::{
+    lower_bndata_binary_transform, lower_bndata_copy, lower_bndata_join, lower_bndata_reduce,
+    lower_bndata_select, lower_bndata_set_label, lower_bndata_transform, lower_bndata_zscore,
+};
+#[path = "llvm/bndata_convert.rs"]
+mod bndata_convert;
+use bndata_convert::{lower_bndata_convert, lower_bndata_slice};
+#[path = "llvm/log_emission.rs"]
+mod log_emission;
+use log_emission::lower_bnlog_call;
+#[path = "llvm/indirect_call.rs"]
+mod indirect_call;
+use indirect_call::lower_indirect_call;
+#[path = "llvm/call_emission.rs"]
+mod call_emission;
+use call_emission::lower_call_instruction;
+#[path = "llvm/dispatch_emission.rs"]
+mod dispatch_emission;
+use dispatch_emission::lower_dispatch_emission;
+#[path = "llvm/value_emission.rs"]
+mod value_emission;
+use value_emission::lower_value_emission;
+#[path = "llvm/ownership_emission.rs"]
+mod ownership_emission;
+use ownership_emission::lower_ownership_emission;
+#[path = "llvm/access_emission.rs"]
+mod access_emission;
+use access_emission::lower_access_emission;
+#[path = "llvm/print_emission.rs"]
+mod print_emission;
+use print_emission::lower_print_emission;
 #[path = "llvm/casts.rs"]
 mod casts;
 use casts::lower_cast;
@@ -907,12 +1021,18 @@ use vectors::{
 #[path = "llvm/indexed_store.rs"]
 mod indexed_store;
 use indexed_store::{emit_field_set_index, emit_pointer_set_index, emit_vector_set_indices};
+#[path = "llvm/calls.rs"]
+mod calls;
+use calls::{emit_user_signature, lower_user_call, store_parameters};
 #[path = "llvm/functions.rs"]
 mod functions;
 use functions::{
-    analyze_reachable, emit_function, emit_preamble, is_void_type, llvm_function_symbol,
-    lower_user_call, string_global,
+    analyze_reachable, dispatch_trampoline_symbol, emit_function, function_return_llvm,
+    is_void_type, llvm_function_symbol, string_global,
 };
+#[path = "llvm/preamble.rs"]
+mod preamble;
+use preamble::emit_preamble;
 #[path = "llvm/emission3.rs"]
 mod emission3;
 use emission3::{
@@ -922,6 +1042,7 @@ use emission3::{
 
 #[path = "llvm/helpers.rs"]
 mod helpers;
+use arc::{destructor_symbol, emit_destroy_if_last, is_class_type};
 use helpers::{
     class_init_flag, coerce_return_operand, coerce_to_type, escape_llvm, extend_to_i64,
     fold_binary, fold_cast, fold_unary, input_runtime_ir, instruction_name, integer_kind,
@@ -930,8 +1051,8 @@ use helpers::{
     unsupported_call_detail, unsupported_instruction, unsupported_instruction_detail,
 };
 use layout::{
-    OBJECT_HEADER_BYTES, class_instance_bytes, field_byte_offset, field_type, is_struct_type,
-    struct_copy_supported, vector_field_offsets,
+    OBJECT_HEADER_BYTES, class_instance_bytes, class_layout_fields, field_byte_offset, field_type,
+    is_struct_type, struct_copy_supported, vector_field_offsets,
 };
 #[cfg(test)]
 mod tests {

@@ -8,5 +8,5 @@ IMPORT Files AS F
 FUNCTION Start() AS VOID
     LET f AS F.File = NEW F.File()
     PRINT f.Close()
-    DELETE f
+    RELEASE f
 END FUNCTION

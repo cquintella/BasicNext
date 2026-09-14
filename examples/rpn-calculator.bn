@@ -95,5 +95,5 @@ FUNCTION Start() AS VOID
         END IF
     END WHILE
 
-    DELETE calculator
+    RELEASE calculator
 END FUNCTION

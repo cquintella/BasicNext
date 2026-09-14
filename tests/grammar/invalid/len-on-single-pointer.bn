@@ -6,5 +6,5 @@
 FUNCTION Start() AS VOID
     LET value AS POINTER TO INTEGER = NEW INTEGER
     PRINT LEN(value)
-    DELETE value
+    RELEASE value
 END FUNCTION

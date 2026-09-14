@@ -33,7 +33,7 @@ FUNCTION WriteByte(stream AS Net.TCPStream, value AS BYTE) AS BOOLEAN
     LET buffer AS POINTER TO BYTE[] = NEW BYTE[1]
     buffer[0] = value
     LET written AS INTEGER OR Error = stream.Write(buffer, 1)
-    DELETE buffer
+    RELEASE buffer
     RETURN written IS INTEGER AND written = 1
 END FUNCTION
 
@@ -41,7 +41,7 @@ FUNCTION ReadByteEquals(stream AS Net.TCPStream, expected AS BYTE) AS BOOLEAN
     LET buffer AS POINTER TO BYTE[] = NEW BYTE[1]
     LET read AS INTEGER OR EOF OR Error = stream.Read(buffer, 1)
     LET matches AS BOOLEAN = read IS INTEGER AND read = 1 AND buffer[0] = expected
-    DELETE buffer
+    RELEASE buffer
     RETURN matches
 END FUNCTION
 
@@ -130,7 +130,7 @@ FUNCTION UDPServer(endpoint AS Net.Endpoint, logPath AS STRING) AS INTEGER
     LET copied AS INTEGER OR Error = packet.CopyTo(request, 4)
     IF copied IS Error OR copied <> 4 OR request[0] <> 80 OR request[1] <> 73 OR request[2] <> 78 OR request[3] <> 71 THEN
         PRINT "unexpected request"
-        DELETE request
+        RELEASE request
         socket.Close()
         RETURN 1
     END IF
@@ -141,8 +141,8 @@ FUNCTION UDPServer(endpoint AS Net.Endpoint, logPath AS STRING) AS INTEGER
     reply[3] = 71
     LET sent AS INTEGER OR Error = socket.SendTo(packet.Source(), reply, 4)
     LET logged AS INTEGER = LogConnection(logPath, "udp", packet.Source())
-    DELETE request
-    DELETE reply
+    RELEASE request
+    RELEASE reply
     socket.Close()
     IF sent IS Error OR logged <> 0 THEN
         PRINT "reply or log failed"
@@ -167,15 +167,15 @@ FUNCTION UDPClient(server AS Net.Endpoint, local AS Net.Endpoint) AS INTEGER
     LET packet AS Net.UDPPacket OR Error = socket.Receive(4, 5000)
     IF packet IS Error THEN
         PRINT "receive failed"
-        DELETE request
+        RELEASE request
         socket.Close()
         RETURN 1
     END IF
     LET reply AS POINTER TO BYTE[] = NEW BYTE[4]
     LET copied AS INTEGER OR Error = packet.CopyTo(reply, 4)
     LET valid AS BOOLEAN = copied IS INTEGER AND copied = 4 AND reply[0] = 80 AND reply[1] = 79 AND reply[2] = 78 AND reply[3] = 71
-    DELETE request
-    DELETE reply
+    RELEASE request
+    RELEASE reply
     socket.Close()
     IF sent IS Error OR copied IS Error OR NOT valid THEN
         PRINT "reply verification failed"

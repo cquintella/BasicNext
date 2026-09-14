@@ -24,7 +24,7 @@ FUNCTION Start() AS VOID
                     PRINT packet.Size()
                 END IF
             END IF
-            DELETE payload
+            RELEASE payload
         END IF
     END IF
 END FUNCTION

@@ -46,7 +46,7 @@ FUNCTION Levenshtein(s AS STRING, t AS STRING) AS INTEGER
     END FOR
 
     LET r AS INTEGER = D[m * cols + n]
-    DELETE D
+    RELEASE D
     RETURN r
 END FUNCTION
 

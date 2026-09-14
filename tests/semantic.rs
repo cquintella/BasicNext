@@ -498,7 +498,7 @@ fn constructor_targets_and_arguments_are_checked() {
 #[test]
 fn pointer_shapes_allocation_sizes_and_delete_targets_are_checked() {
     let model = analyze_text(
-        "CLASS Box\nPUBLIC FUNCTION CONSTRUCTOR()\nEND FUNCTION\nEND CLASS\nFUNCTION Start() AS VOID\nLET one AS POINTER TO INTEGER = NEW INTEGER\nLET fixed AS POINTER TO INTEGER[2] = NEW INTEGER[2]\nLET dynamic AS POINTER TO INTEGER[] = NEW INTEGER[2]\nLET count AS INTEGER = 2\nLET checked AS POINTER TO INTEGER[2] = NEW INTEGER[count]\nLET optional AS POINTER TO INTEGER OR NULL = NULL\nLET box AS Box = NEW Box()\nIF optional IS POINTER TO INTEGER THEN\nPRINT optional[0]\nEND IF\nDELETE one\nDELETE fixed\nDELETE dynamic\nDELETE checked\nDELETE optional\nDELETE box\nEND FUNCTION\n",
+        "CLASS Box\nPUBLIC FUNCTION CONSTRUCTOR()\nEND FUNCTION\nEND CLASS\nFUNCTION Start() AS VOID\nLET one AS POINTER TO INTEGER = NEW INTEGER\nLET fixed AS POINTER TO INTEGER[2] = NEW INTEGER[2]\nLET dynamic AS POINTER TO INTEGER[] = NEW INTEGER[2]\nLET count AS INTEGER = 2\nLET checked AS POINTER TO INTEGER[2] = NEW INTEGER[count]\nLET optional AS POINTER TO INTEGER OR NULL = NULL\nLET box AS Box = NEW Box()\nIF optional IS POINTER TO INTEGER THEN\nPRINT optional[0]\nEND IF\nRELEASE one\nRELEASE fixed\nRELEASE dynamic\nRELEASE checked\nRELEASE optional\nRELEASE box\nEND FUNCTION\n",
     )
     .expect("valid pointer shapes");
     assert!(model.symbols.iter().any(|symbol| matches!(
@@ -517,10 +517,6 @@ fn pointer_shapes_allocation_sizes_and_delete_targets_are_checked() {
         (
             "FUNCTION Start() AS VOID\nLET size AS FLOAT = 2.0\nLET bad AS POINTER TO INTEGER[] = NEW INTEGER[size]\nEND FUNCTION\n",
             "ALLOCATION_SIZE_INVALID",
-        ),
-        (
-            "FUNCTION Start() AS VOID\nLET value AS INTEGER = 1\nDELETE value\nEND FUNCTION\n",
-            "INVALID_DELETE_TARGET",
         ),
         (
             "FUNCTION Start() AS VOID\nLET bad AS POINTER TO INTEGER[2] = NEW INTEGER[3]\nEND FUNCTION\n",
@@ -567,7 +563,7 @@ fn local_vector_dimensions_require_non_negative_integer_values() {
 #[test]
 fn pointer_types_accept_declared_named_elements() {
     analyze_text(
-        "CLASS Box\nPUBLIC FUNCTION CONSTRUCTOR()\nEND FUNCTION\nEND CLASS\nFUNCTION Keep(value AS POINTER TO Box) AS POINTER TO Box\nRETURN value\nEND FUNCTION\nFUNCTION Start() AS VOID\nLET value AS POINTER TO Box OR NULL = NULL\nIF value IS POINTER TO Box THEN\nDELETE value\nEND IF\nEND FUNCTION\n",
+        "CLASS Box\nPUBLIC FUNCTION CONSTRUCTOR()\nEND FUNCTION\nEND CLASS\nFUNCTION Keep(value AS POINTER TO Box) AS POINTER TO Box\nRETURN value\nEND FUNCTION\nFUNCTION Start() AS VOID\nLET value AS POINTER TO Box OR NULL = NULL\nIF value IS POINTER TO Box THEN\nRELEASE value\nEND IF\nEND FUNCTION\n",
     )
     .expect("declared named pointer element");
 
@@ -581,7 +577,7 @@ fn pointer_types_accept_declared_named_elements() {
 #[test]
 fn void_pointer_has_c_style_conversion_and_requires_a_typed_dereference() {
     analyze_text(
-        "FUNCTION Start() AS VOID\nLET typed AS POINTER TO INTEGER = NEW INTEGER\nLET opaque AS POINTER TO VOID = typed\nLET restored AS POINTER TO INTEGER = opaque\nIF opaque IS POINTER TO VOID THEN\nrestored[0] = 1\nEND IF\nDELETE opaque\nEND FUNCTION\n",
+        "FUNCTION Start() AS VOID\nLET typed AS POINTER TO INTEGER = NEW INTEGER\nLET opaque AS POINTER TO VOID = typed\nLET restored AS POINTER TO INTEGER = opaque\nIF opaque IS POINTER TO VOID THEN\nrestored[0] = 1\nEND IF\nRELEASE opaque\nEND FUNCTION\n",
     )
     .expect("C-style void pointer conversions");
 

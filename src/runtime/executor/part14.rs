@@ -80,7 +80,7 @@ pub(crate) fn host_net_call(&mut self, name: &str, arguments: &[Value], span: Sp
                     .udp_sockets
                     .get(&id)
                     .ok_or_else(|| {
-                        runtime_error("USE_AFTER_DELETE", "UDP socket is invalid", span)
+                        runtime_error("USE_AFTER_RELEASE", "UDP socket is invalid", span)
                     })?
                     .send_to(endpoint, &bytes)
                     .map_err(|error| runtime_error("IO", error.to_string(), span))?;
@@ -113,7 +113,7 @@ pub(crate) fn host_net_call(&mut self, name: &str, arguments: &[Value], span: Sp
                     });
                 }
                 let socket = self.udp_sockets.get(&id).ok_or_else(|| {
-                    runtime_error("USE_AFTER_DELETE", "UDP socket is invalid", span)
+                    runtime_error("USE_AFTER_RELEASE", "UDP socket is invalid", span)
                 })?;
                 socket
                     .set_read_timeout(Some(std::time::Duration::from_millis(timeout as u64)))
@@ -267,7 +267,7 @@ pub(crate) fn host_net_call(&mut self, name: &str, arguments: &[Value], span: Sp
                     .udp_sockets
                     .get(&id)
                     .ok_or_else(|| {
-                        runtime_error("USE_AFTER_DELETE", "UDP socket is invalid", span)
+                        runtime_error("USE_AFTER_RELEASE", "UDP socket is invalid", span)
                     })?
                     .local_endpoint()
                     .map_err(|error| runtime_error("IO", error.to_string(), span))?;

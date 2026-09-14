@@ -1,0 +1,118 @@
+; Basic Next 0.2
+@.bn_fmt_int = private unnamed_addr constant [5 x i8] c"%lld\00"
+@.bn_fmt_uint = private unnamed_addr constant [5 x i8] c"%llu\00"
+@.bn_fmt_float = private unnamed_addr constant [6 x i8] c"%.17g\00"
+@.bn_fmt_str = private unnamed_addr constant [3 x i8] c"%s\00"
+@.bn_fmt_error = private unnamed_addr constant [16 x i8] c"Error(%lld, %s)\00"
+@.bn_asc_error = private unnamed_addr constant [32 x i8] c"ASC requires a non-empty STRING\00"
+@.bn_char_error = private unnamed_addr constant [34 x i8] c"CHAR code is not a Unicode scalar\00"
+@.bn_dataframe_error = private unnamed_addr constant [25 x i8] c"DataFrame column failure\00"
+@.bn_dataframe_duplicate = private unnamed_addr constant [22 x i8] c"duplicate column name\00"
+@.bn_dataframe_length = private unnamed_addr constant [23 x i8] c"column length mismatch\00"
+@.bn_dataframe_index = private unnamed_addr constant [27 x i8] c"column index out of bounds\00"
+@.bn_true = private unnamed_addr constant [5 x i8] c"TRUE\00"
+@.bn_false = private unnamed_addr constant [6 x i8] c"FALSE\00"
+@.bn_empty = private unnamed_addr constant [1 x i8] c"\00"
+@.bn_eof = private constant [4 x i8] c"EOF\00"
+
+declare i32 @printf(ptr, ...)
+declare i32 @putchar(i32)
+@__stdoutp = external global ptr
+declare void @flockfile(ptr)
+declare void @funlockfile(ptr)
+declare ptr @malloc(i64)
+declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)
+declare ptr @calloc(i64, i64)
+declare void @free(ptr)
+@bn_init_ReportTemplate = global i1 false
+declare i32 @bn_rt_str_eq(ptr, ptr)
+@.bn_cls_ReportTemplate = private unnamed_addr constant [15 x i8] c"ReportTemplate\00"
+declare void @exit(i32)
+declare { i32, i1 } @llvm.sadd.with.overflow.i32(i32, i32)
+
+define void @bn_ReportTemplate_2e_24fields(ptr %p0) {
+b0:
+  %s0 = alloca ptr
+  store ptr %p0, ptr %s0
+  %v0 = load ptr, ptr %s0
+  ret void
+}
+
+define void @bn_ReportTemplate_2eCONSTRUCTOR(ptr %p0) {
+b0:
+  %s0 = alloca ptr
+  store ptr %p0, ptr %s0
+  %v0 = load ptr, ptr %s0
+  %v2 = select i1 true, ptr @bn_ReportTemplate_2e_24fields, ptr null
+  call void @bn_ReportTemplate_2e_24fields(ptr %v0)
+  ret void
+}
+
+define i32 @bn_ReportTemplate_2eBuild(ptr %p0, i32 %p1) {
+b0:
+  %s0 = alloca i32
+  %s1 = alloca ptr
+  store ptr %p0, ptr %s1
+  store i32 %p1, ptr %s0
+  %v2 = load ptr, ptr %s1
+  %v3 = select i1 true, ptr @bn_ReportTemplate_2ePrepare, ptr null
+  %v4 = load i32, ptr %s0
+  %v1 = call i32 @bn_ReportTemplate_2ePrepare(ptr %v2, i32 %v4)
+  %v6 = load ptr, ptr %s1
+  %v7 = select i1 true, ptr @bn_ReportTemplate_2eFinish, ptr null
+  %v8 = load i32, ptr %s0
+  %v5 = call i32 @bn_ReportTemplate_2eFinish(ptr %v6, i32 %v8)
+  %ov0 = call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %v1, i32 %v5)
+  %v0 = extractvalue { i32, i1 } %ov0, 0
+  %ovf0 = extractvalue { i32, i1 } %ov0, 1
+  br i1 %ovf0, label %trap_numeric_overflow, label %b0.cont0
+b0.cont0:
+  ret i32 %v0
+trap_numeric_overflow:
+  call void @exit(i32 1)
+  unreachable
+}
+
+define i32 @bn_ReportTemplate_2ePrepare(ptr %p0, i32 %p1) {
+b0:
+  %s0 = alloca i32
+  store i32 %p1, ptr %s0
+  %v0 = load i32, ptr %s0
+  ret i32 %v0
+}
+
+define i32 @bn_ReportTemplate_2eFinish(ptr %p0, i32 %p1) {
+b0:
+  %s0 = alloca i32
+  store i32 %p1, ptr %s0
+  %v0 = load i32, ptr %s0
+  ret i32 %v0
+}
+
+define i32 @main(i32 %argc, ptr %argv) {
+b0:
+  %s0 = alloca ptr
+  %initflagReportTemplate0 = load i1, ptr @bn_init_ReportTemplate
+  br i1 %initflagReportTemplate0, label %initdoneReportTemplate0, label %initrunReportTemplate0
+initrunReportTemplate0:
+  store i1 true, ptr @bn_init_ReportTemplate
+  br label %initdoneReportTemplate0
+initdoneReportTemplate0:
+  %v0 = call ptr @calloc(i64 1, i64 12)
+  store ptr @.bn_cls_ReportTemplate, ptr %v0
+  %v1 = select i1 true, ptr @bn_ReportTemplate_2eCONSTRUCTOR, ptr null
+  call void @bn_ReportTemplate_2eCONSTRUCTOR(ptr %v0)
+  store ptr %v0, ptr %s0
+  %v4 = load ptr, ptr %s0
+  %v5 = select i1 true, ptr @bn_ReportTemplate_2eBuild, ptr null
+  %v6 = add i64 0, 4
+  %coer6_i64_i32 = trunc i64 %v6 to i32
+  %v3 = call i32 @bn_ReportTemplate_2eBuild(ptr %v4, i32 %coer6_i64_i32)
+  %stdout0 = load ptr, ptr @__stdoutp
+  call void @flockfile(ptr %stdout0)
+  %printint0 = sext i32 %v3 to i64
+  %print0 = call i32 (ptr, ...) @printf(ptr @.bn_fmt_int, i64 %printint0)
+  %newline1 = call i32 @putchar(i32 10)
+  call void @funlockfile(ptr %stdout0)
+  ret i32 0
+}

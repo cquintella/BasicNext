@@ -1,5 +1,10 @@
-// BNDispatch 0.3 external-module interface. The native Rust provider owns
+// BNDispatch 0.5 external-module interface. The native Rust provider owns
 // bounded queues and never exposes operating-system thread handles.
+//
+// Queue.Async is result-polymorphic in the semantic analyzer: the named worker
+// may return VOID, INTEGER, FLOAT, STRING, or BOOLEAN (optionally OR Error),
+// while the ticket remains opaque. AWAIT preserves the worker result type at
+// the call site and reports timeout, cancellation, and task failure as Error.
 
 EXPORT CLASS Ticket
     PUBLIC FUNCTION CONSTRUCTOR()
@@ -10,6 +15,7 @@ EXPORT CLASS Ticket
     PUBLIC FUNCTION Status() AS INTEGER
         RETURN 0
     END FUNCTION
+    // Completion-only compatibility method; typed AWAIT is the primary result API.
     PUBLIC FUNCTION Wait(timeoutMs AS INTEGER) AS VOID OR Error
         RETURN
     END FUNCTION
@@ -87,6 +93,8 @@ EXPORT CLASS Queue
     PUBLIC STATIC FUNCTION Auto() AS Queue OR Error
         RETURN NEW Queue()
     END FUNCTION
+    // Semantic analysis accepts a named worker with matching parameters and
+    // any MVP scalar result; this declaration supplies the module identity.
     PUBLIC FUNCTION Async(work AS FUNCTION() AS VOID OR Error) AS Ticket OR Error
         RETURN NEW Ticket()
     END FUNCTION

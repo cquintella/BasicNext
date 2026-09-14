@@ -2,49 +2,176 @@
 use super::*;
 
 impl Executor<'_, '_> {
+    pub(crate) fn retain_owned_value(
+        &mut self,
+        value: &Value,
+        span: Span,
+    ) -> Result<(), Diagnostic> {
+        match value {
+            Value::Object { handle, .. } => self.objects.retain(*handle, span),
+            Value::Vector(values) => {
+                for value in values {
+                    self.retain_owned_value(value, span)?;
+                }
+                Ok(())
+            }
+            Value::Record { fields, .. } => {
+                for value in fields.values() {
+                    self.retain_owned_value(value, span)?;
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
+    pub(crate) fn release_owned_value(
+        &mut self,
+        value: Value,
+        span: Span,
+    ) -> Result<(), Diagnostic> {
+        match value {
+            Value::Object { handle, class } => {
+                if !self.objects.release(handle, span)? {
+                    return Ok(());
+                }
+                self.objects.begin_delete(handle, span)?;
+                let target = Value::Object {
+                    handle,
+                    class: class.clone(),
+                };
+                let destructor = format!("{class}.DESTRUCTOR");
+                let result = if self
+                    .module
+                    .functions
+                    .iter()
+                    .any(|function| function.name == destructor)
+                {
+                    self.call_named(&destructor, vec![target], span).map(|_| ())
+                } else {
+                    Ok(())
+                };
+                let instance = self.objects.get(handle, 0, span)?.clone();
+                self.objects.for_each_live_mut(|candidate| {
+                    for (name, field) in &mut candidate.fields {
+                        if self
+                            .module
+                            .weak_fields
+                            .contains(&(candidate.class.clone(), name.clone()))
+                            && matches!(field, Value::Object { handle: other, .. } if *other == handle)
+                        {
+                            *field = Value::Null;
+                        }
+                    }
+                });
+                self.web_servers.remove(&handle);
+                self.web_loggers.remove(&handle);
+                self.web_tls_configs.remove(&handle);
+                self.web_server_options.remove(&handle);
+                self.web_egress_policies.remove(&handle);
+                self.web_cookie_jars.remove(&handle);
+                self.web_session_stores.remove(&handle);
+                self.web_acls.remove(&handle);
+                self.web_scrapers.remove(&handle);
+                self.web_handlers.remove(&handle);
+                self.web_filters.remove(&handle);
+                self.web_responses.remove(&handle);
+                self.web_requests.remove(&handle);
+                self.web_values.remove(&handle);
+                self.objects.finish_delete(handle, span)?;
+                for (name, field) in instance.fields {
+                    if !self.module.weak_fields.contains(&(class.clone(), name)) {
+                        self.release_owned_value(field, span)?;
+                    }
+                }
+                result
+            }
+            Value::Vector(values) => {
+                for value in values {
+                    self.release_owned_value(value, span)?;
+                }
+                Ok(())
+            }
+            Value::Record { fields, .. } => {
+                for value in fields.into_values() {
+                    self.release_owned_value(value, span)?;
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
+    pub(crate) fn refresh_weak_symbols(
+        &self,
+        symbols: &mut HashMap<SymbolId, Value>,
+    ) {
+        let Some(frame) = self.ownership_frames.last() else {
+            return;
+        };
+        for symbol in &frame.weak_symbols {
+            if matches!(symbols.get(symbol), Some(Value::Object { handle, .. }) if !self.objects.is_live(*handle))
+            {
+                symbols.insert(*symbol, Value::Null);
+            }
+        }
+    }
+
+    pub(crate) fn finish_ownership_frame(
+        &mut self,
+        symbols: &mut HashMap<SymbolId, Value>,
+        returned: Option<ValueId>,
+        span: Span,
+    ) -> Result<(), Diagnostic> {
+        let transferred_symbol = returned.and_then(|value| {
+            self.ownership_frames
+                .last()
+                .and_then(|frame| frame.loaded_values.get(&value).copied())
+        });
+        let (locals, weak) = {
+            let frame = self
+                .ownership_frames
+                .last()
+                .expect("ownership frame exists while executing a function");
+            (frame.local_symbols.clone(), frame.weak_symbols.clone())
+        };
+        if let Some(symbol) = transferred_symbol {
+            symbols.remove(&symbol);
+        }
+        for symbol in locals {
+            if Some(symbol) == transferred_symbol || weak.contains(&symbol) {
+                continue;
+            }
+            if let Some(value) = symbols.remove(&symbol) {
+                self.release_owned_value(value, span)?;
+            }
+        }
+        self.ownership_frames.pop();
+        Ok(())
+    }
+
     pub(crate) fn delete_value(
         &mut self,
         target: Value,
-        destructor: Option<&str>,
+        _destructor: Option<&str>,
         span: Span,
     ) -> Result<(), Diagnostic> {
         match target {
             Value::Null => Err(runtime_error(
                 "NULL_POINTER_ACCESS",
-                "cannot DELETE NULL",
+                "cannot RELEASE NULL",
                 span,
             )),
             Value::Pointer { handle } => self.memory.delete(handle, span),
-            Value::Object { handle, .. } => {
-                if let Some(destructor) = destructor {
-                    self.objects.begin_delete(handle, span)?;
-                    let result = self.call_named(destructor, vec![target], span);
-                    self.objects.finish_delete(handle, span)?;
-                    result.map(|_| ())
-                } else {
-                    self.web_servers.remove(&handle);
-                    self.web_loggers.remove(&handle);
-                    self.web_tls_configs.remove(&handle);
-                    self.web_server_options.remove(&handle);
-                    self.web_egress_policies.remove(&handle);
-                    self.web_cookie_jars.remove(&handle);
-                    self.web_session_stores.remove(&handle);
-                    self.web_acls.remove(&handle);
-                    self.web_scrapers.remove(&handle);
-                    self.web_handlers.remove(&handle);
-                    self.web_filters.remove(&handle);
-                    self.web_responses.remove(&handle);
-                    self.web_requests.remove(&handle);
-                    self.web_values.remove(&handle);
-                    self.objects.delete(handle, span)
-                }
+            Value::Object { .. } | Value::Vector(_) | Value::Record { .. } => {
+                self.release_owned_value(target, span)
             }
             Value::File(id) => {
                 if self.files.remove(&id).is_some() {
                     Ok(())
                 } else {
                     Err(runtime_error(
-                        "DOUBLE_DELETE",
+                        "DOUBLE_RELEASE",
                         "file handle was already deleted",
                         span,
                     ))
@@ -55,7 +182,7 @@ impl Executor<'_, '_> {
                     Ok(())
                 } else {
                     Err(runtime_error(
-                        "DOUBLE_DELETE",
+                        "DOUBLE_RELEASE",
                         "DataFrame handle was already deleted",
                         span,
                     ))
@@ -66,7 +193,7 @@ impl Executor<'_, '_> {
                     Ok(())
                 } else {
                     Err(runtime_error(
-                        "DOUBLE_DELETE",
+                        "DOUBLE_RELEASE",
                         "BNLog.Fields was already deleted",
                         span,
                     ))
@@ -77,7 +204,7 @@ impl Executor<'_, '_> {
                     Ok(())
                 } else {
                     Err(runtime_error(
-                        "DOUBLE_DELETE",
+                        "DOUBLE_RELEASE",
                         "BNLog.Entry was already deleted",
                         span,
                     ))
@@ -88,7 +215,7 @@ impl Executor<'_, '_> {
                     Ok(())
                 } else {
                     Err(runtime_error(
-                        "DOUBLE_DELETE",
+                        "DOUBLE_RELEASE",
                         "BNLog.Logger was already deleted",
                         span,
                     ))
@@ -99,21 +226,20 @@ impl Executor<'_, '_> {
                     Ok(())
                 } else {
                     Err(runtime_error(
-                        "DOUBLE_DELETE",
+                        "DOUBLE_RELEASE",
                         "BNJson.Json was already deleted",
                         span,
                     ))
                 }
             }
-            _ => Err(runtime_error(
-                "TYPE_MISMATCH",
-                "DELETE requires a pointer or CLASS reference",
-                span,
-            )),
+            _ => Ok(()),
         }
     }
 
     pub(crate) fn coerce_to(&self, value: Value, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
+        if matches!(ty, Type::Unknown) {
+            return Ok(value);
+        }
         if let (
             Value::Pointer { handle },
             Type::Pointer {

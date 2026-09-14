@@ -508,7 +508,7 @@ fn collect_statement_lines(statements: &[crate::ast::Statement], lines: &mut BTr
             | crate::ast::Statement::Print { span, .. }
             | crate::ast::Statement::ClearScreen { span, .. }
             | crate::ast::Statement::Beep { span, .. }
-            | crate::ast::Statement::Delete { span, .. }
+            | crate::ast::Statement::Release { span, .. }
             | crate::ast::Statement::Stop { span, .. }
             | crate::ast::Statement::Control { span, .. }
             | crate::ast::Statement::Call { span, .. } => *span,

@@ -5,8 +5,11 @@
 )]
 use super::*;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn lower_terminator(
     text: &mut String,
+    module: &Module,
+    function: &Function,
     terminator: &Terminator,
     analysis: &LoweringAnalysis<'_>,
     symbols: &HashMap<SymbolId, usize>,
@@ -30,12 +33,18 @@ pub(crate) fn lower_terminator(
             );
         }
         Terminator::Return { value: None } if state.is_start => {
-            cleanup_owned_memory(text, analysis, symbols, state);
+            cleanup_owned_memory(text, module, function, analysis, symbols, None, state);
             text.push_str("  ret i32 0\n");
         }
         Terminator::Return { value: None } if state.return_llvm == "void" => {
-            cleanup_owned_memory(text, analysis, symbols, state);
+            cleanup_owned_memory(text, module, function, analysis, symbols, None, state);
             text.push_str("  ret void\n");
+        }
+        Terminator::Return { value: None } if state.return_llvm == "{ i1, ptr, i64 }" => {
+            cleanup_owned_memory(text, module, function, analysis, symbols, None, state);
+            text.push_str(
+                "  %implicitret0 = insertvalue { i1, ptr, i64 } undef, i1 false, 0\n  %implicitret1 = insertvalue { i1, ptr, i64 } %implicitret0, ptr null, 1\n  %implicitret2 = insertvalue { i1, ptr, i64 } %implicitret1, i64 0, 2\n  ret { i1, ptr, i64 } %implicitret2\n",
+            );
         }
         Terminator::Return { value: None } => {
             text.push_str("  unreachable\n");
@@ -46,13 +55,13 @@ pub(crate) fn lower_terminator(
                 *value,
                 analysis.values.get(value).expect("validated stop type"),
             );
-            cleanup_owned_memory(text, analysis, symbols, state);
+            cleanup_owned_memory(text, module, function, analysis, symbols, None, state);
             let _ = writeln!(text, "  call void @exit(i32 {operand})");
             text.push_str("  unreachable\n");
         }
         Terminator::Return { value: Some(value) } if !state.is_start => {
             if state.return_llvm == "void" {
-                cleanup_owned_memory(text, analysis, symbols, state);
+                cleanup_owned_memory(text, module, function, analysis, symbols, None, state);
                 text.push_str("  ret void\n");
             } else {
                 let value_ty = analysis.values.get(value).expect("validated return type");
@@ -60,6 +69,18 @@ pub(crate) fn lower_terminator(
                     && matches!(value_ty, Type::Integer(_) | Type::IntegerLiteral(_))
                 {
                     integer_error_union_return_operand(text, *value, value_ty)
+                } else if state.return_llvm == "{ i1, ptr, i64 }"
+                    && matches!(value_ty, Type::Float(_) | Type::FloatLiteral)
+                {
+                    float_error_union_return_operand(text, *value, value_ty)
+                } else if state.return_llvm == "{ i1, ptr, i64 }"
+                    && matches!(value_ty, Type::String)
+                {
+                    string_error_union_return_operand(text, *value)
+                } else if state.return_llvm == "{ i1, ptr, i64 }"
+                    && matches!(value_ty, Type::Boolean)
+                {
+                    boolean_error_union_return_operand(text, *value)
                 } else if state.return_llvm == "{ i1, i32 }" {
                     optional_integer_return_operand(text, *value, value_ty)
                 } else if llvm_type(value_ty) == Some(state.return_llvm) {
@@ -81,7 +102,15 @@ pub(crate) fn lower_terminator(
                 } else {
                     format!("%v{}", value.0)
                 };
-                cleanup_owned_memory(text, analysis, symbols, state);
+                cleanup_owned_memory(
+                    text,
+                    module,
+                    function,
+                    analysis,
+                    symbols,
+                    Some(*value),
+                    state,
+                );
                 let _ = writeln!(text, "  ret {} {operand}", state.return_llvm);
             }
         }
@@ -91,7 +120,7 @@ pub(crate) fn lower_terminator(
                 *value,
                 analysis.values.get(value).expect("validated return type"),
             );
-            cleanup_owned_memory(text, analysis, symbols, state);
+            cleanup_owned_memory(text, module, function, analysis, symbols, None, state);
             let _ = writeln!(text, "  ret i32 {operand}");
         }
     }
@@ -117,11 +146,77 @@ fn integer_error_union_return_operand(text: &mut String, value: ValueId, ty: &Ty
     format!("%retunion{}", value.0)
 }
 
+fn float_error_union_return_operand(text: &mut String, value: ValueId, ty: &Type) -> String {
+    let payload = coerce_to_type(text, value, ty, &Type::Float(FloatType::Float64));
+    let bits = format!("%retunionbits{}", value.0);
+    let _ = writeln!(text, "  {bits} = bitcast double {payload} to i64");
+    let _ = writeln!(
+        text,
+        "  %retuniontag{} = insertvalue {{ i1, ptr, i64 }} undef, i1 false, 0",
+        value.0
+    );
+    let _ = writeln!(
+        text,
+        "  %retunionmessage{} = insertvalue {{ i1, ptr, i64 }} %retuniontag{}, ptr null, 1",
+        value.0, value.0
+    );
+    let _ = writeln!(
+        text,
+        "  %retunion{} = insertvalue {{ i1, ptr, i64 }} %retunionmessage{}, i64 {bits}, 2",
+        value.0, value.0
+    );
+    format!("%retunion{}", value.0)
+}
+
+fn string_error_union_return_operand(text: &mut String, value: ValueId) -> String {
+    let _ = writeln!(
+        text,
+        "  %retuniontag{} = insertvalue {{ i1, ptr, i64 }} undef, i1 false, 0",
+        value.0
+    );
+    let _ = writeln!(
+        text,
+        "  %retunionmessage{} = insertvalue {{ i1, ptr, i64 }} %retuniontag{}, ptr %v{}, 1",
+        value.0, value.0, value.0
+    );
+    let _ = writeln!(
+        text,
+        "  %retunion{} = insertvalue {{ i1, ptr, i64 }} %retunionmessage{}, i64 0, 2",
+        value.0, value.0
+    );
+    format!("%retunion{}", value.0)
+}
+
+fn boolean_error_union_return_operand(text: &mut String, value: ValueId) -> String {
+    let _ = writeln!(
+        text,
+        "  %retunionbool{} = zext i1 %v{} to i64",
+        value.0, value.0
+    );
+    let _ = writeln!(
+        text,
+        "  %retuniontag{} = insertvalue {{ i1, ptr, i64 }} undef, i1 false, 0",
+        value.0
+    );
+    let _ = writeln!(
+        text,
+        "  %retunionmessage{} = insertvalue {{ i1, ptr, i64 }} %retuniontag{}, ptr null, 1",
+        value.0, value.0
+    );
+    let _ = writeln!(
+        text,
+        "  %retunion{} = insertvalue {{ i1, ptr, i64 }} %retunionmessage{}, i64 %retunionbool{}, 2",
+        value.0, value.0, value.0
+    );
+    format!("%retunion{}", value.0)
+}
+
 fn lower_print_language_error_union(
     text: &mut String,
     value: ValueId,
     integer_value: bool,
     void_value: bool,
+    has_na: bool,
     scalar: Option<&Type>,
     state: &mut EmissionState,
 ) {
@@ -152,7 +247,7 @@ fn lower_print_language_error_union(
     );
     let _ = writeln!(text, "  br label %unionjoin{count}");
     state.control_flow.label(text, format!("unionvalue{count}"));
-    if scalar.is_some() {
+    if has_na {
         let _ = writeln!(
             text,
             "  %unionnaptr{count} = getelementptr [3 x i8], ptr @.bn_na, i64 0, i64 0"
@@ -220,12 +315,20 @@ fn lower_print_language_error_union(
 
 pub(crate) fn cleanup_owned_memory(
     text: &mut String,
+    module: &Module,
+    function: &Function,
     analysis: &LoweringAnalysis<'_>,
     symbols: &HashMap<SymbolId, usize>,
+    returned: Option<ValueId>,
     state: &mut EmissionState,
 ) {
     let cleanup = state.input_cleanup_count;
     state.input_cleanup_count += 1;
+    for symbol in &function.weak_symbols {
+        if let Some(slot) = symbols.get(symbol) {
+            let _ = writeln!(text, "  call void @bn_arc_weak_unregister(ptr %s{slot})");
+        }
+    }
     let mut input_symbols = analysis.input_symbols.iter().collect::<Vec<_>>();
     input_symbols.sort_by_key(|symbol| symbol.0);
     for symbol in input_symbols {
@@ -265,6 +368,59 @@ pub(crate) fn cleanup_owned_memory(
             value.0
         );
     }
+    if let Some(returned) = returned {
+        if analysis.owned_object_results.contains_key(&returned) {
+            let _ = writeln!(text, "  store ptr null, ptr %objectowned{}", returned.0);
+        }
+        if let Some(symbol) = function
+            .blocks
+            .iter()
+            .flat_map(|block| &block.instructions)
+            .find_map(|instruction| match instruction {
+                Instruction::Load {
+                    destination,
+                    symbol,
+                    ..
+                } if *destination == returned => Some(*symbol),
+                _ => None,
+            })
+            && analysis
+                .symbols
+                .get(&symbol)
+                .is_some_and(|ty| is_class_type(module, ty))
+            && !function.weak_symbols.contains(&symbol)
+        {
+            if function.parameters.contains(&symbol) {
+                let _ = writeln!(text, "  call void @bn_arc_retain(ptr %v{})", returned.0);
+            } else {
+                let _ = writeln!(text, "  store ptr null, ptr %s{}", symbols[&symbol]);
+            }
+        }
+    }
+    let mut object_results = analysis.owned_object_results.iter().collect::<Vec<_>>();
+    object_results.sort_by_key(|(value, _)| value.0);
+    for (value, _) in object_results {
+        let ty = &analysis.values[value];
+        let object = format!("%arcptr{cleanup}_{}", value.0);
+        let _ = writeln!(text, "  {object} = load ptr, ptr %objectowned{}", value.0);
+        emit_destroy_if_last(text, module, function, &object, ty, symbols, state);
+    }
+    let mut object_symbols = analysis
+        .symbols
+        .iter()
+        .filter(|(symbol, ty)| {
+            is_class_type(module, ty)
+                && !function.weak_symbols.contains(symbol)
+                && !function.parameters.contains(symbol)
+        })
+        .collect::<Vec<_>>();
+    object_symbols.sort_by_key(|(symbol, _)| symbol.0);
+    for (symbol, ty) in object_symbols {
+        let slot = symbols[symbol];
+        let object = format!("%arcsymbol{cleanup}_{slot}");
+        let _ = writeln!(text, "  {object} = load ptr, ptr %s{slot}");
+        emit_destroy_if_last(text, module, function, &object, ty, symbols, state);
+    }
     let mut log_results = analysis.owned_log_results.iter().collect::<Vec<_>>();
     log_results.sort_by_key(|(value, _)| value.0);
     for (value, kind) in log_results {
@@ -294,6 +450,8 @@ pub(crate) fn lower_print_value(
 ) {
     if let Type::Alternative(alternatives) = ty
         && (integer_or_error(alternatives)
+            || float_or_error(alternatives)
+            || boolean_or_error(alternatives)
             || string_or_error(alternatives)
             || void_or_error(alternatives)
             || string_na_or_error(alternatives)
@@ -304,7 +462,12 @@ pub(crate) fn lower_print_value(
             value,
             integer_or_error(alternatives),
             void_or_error(alternatives),
-            if string_na_or_error(alternatives) || scalar_na_or_error(alternatives) {
+            string_na_or_error(alternatives) || scalar_na_or_error(alternatives),
+            if float_or_error(alternatives)
+                || boolean_or_error(alternatives)
+                || string_na_or_error(alternatives)
+                || scalar_na_or_error(alternatives)
+            {
                 alternatives.iter().find(|ty| {
                     matches!(
                         ty,

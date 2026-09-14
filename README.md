@@ -1,9 +1,9 @@
 # Basic Next
 
-![Basic Next Logo](docs/logo.svg)
+![Basic Next Logo](docs/logo.png)
 
 [![Rust CI](https://img.shields.io/badge/Rust_CI-passing-brightgreen)](#)
-[![Version](https://img.shields.io/badge/version-v0.4.7-blue)](#)
+[![Version](https://img.shields.io/badge/version-v0.5.0-blue)](#)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE.md)
 
 An object-oriented, general-purpose programming language designed to reduce
@@ -41,9 +41,9 @@ compound spelling *NextBASIC* when referring to this repository.
 Read [PHILOSOPHY.md](PHILOSOPHY.md) for the mission, vision, and complete set
 of design principles.
 
-## 🚀 Status: Version 0.4.7 release candidate
+## 🚀 Status: Version 0.5.0 release candidate
 
-The Basic Next 0.4.7 release candidate extends the Rust reference frontend, typed IR
+The Basic Next 0.5.0 release candidate extends the Rust reference frontend, typed IR
 interpreter, HOST capabilities, external BN modules, HTTP hardening, bounded
 async runtime, debugger bridge, and notebook tooling. Read the
 [0.4.2 release notes](done/0.4.2-release-news.md) for the complete summary.
@@ -57,9 +57,28 @@ the archived 0.2 program remains in [`archive/project/bucket-0.2.md`](archive/pr
 > interpreter remains the reference implementation for language surfaces
 > outside that subset.
 
-## What's New — 0.4.7
+## What's New — 0.5.0
 
-The 0.4.7 delivery train strengthens the native LLVM path while keeping the
+Basic Next 0.5.0 makes automatic reference counting (ARC) the class lifetime
+model. Strong assignments retain references, the last strong reference runs the
+destructor, and `AS WEAK` references become `NULL` after destruction. `RELEASE`
+can end a binding early; the `DELETE` keyword is not part of the 0.5.0 surface.
+
+The external `BNString` module provides an object wrapper around primary
+`STRING`, with Unicode case conversion, trimming, substring search, and a
+separator tokenizer:
+
+```basic
+IMPORT BNString AS S
+LET text AS S.String = NEW S.String("  Olá,BN  ")
+LET clean AS S.String = text.Trim()
+PRINT clean.LowCaps().ToString()
+```
+
+See [`docs/library/bnstring.md`](docs/library/bnstring.md) and
+[`examples/bnstring_tour.bn`](examples/bnstring_tour.bn).
+
+The 0.5.0 delivery train strengthens the native LLVM path while keeping the
 typed BN IR validation boundary shared by `bn run` and `bn build`.
 
 - The compiler capability catalog now covers the complete `examples/*.bn`
@@ -96,7 +115,7 @@ The Basic Next reference implementation is a source-spanned lexer, handwritten r
 See the [0.4.2 release notes](done/0.4.2-release-news.md), [active release bucket](ongoing/bucket.md),
 [0.4 conformance evidence](ongoing/0.4-conformance.md),
 [archived 0.2 remediation program](archive/project/bucket-0.2.md), and
-[0.4 contract](docs/language/0.4/0.4.md) for delivery status and accepted semantics.
+[0.5.0 contract](docs/0.5.0/language-0.5.0.md) for delivery status and accepted semantics.
 
 To see under the hood, try:
 - `bn check -v file.bn` (reports completed stages)

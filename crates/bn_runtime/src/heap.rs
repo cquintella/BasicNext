@@ -14,6 +14,7 @@ struct Allocation<T> {
     payload: Vec<T>,
     live: bool,
     destroying: bool,
+    strong_count: usize,
 }
 
 #[derive(Debug)]
@@ -30,6 +31,18 @@ impl<T> Default for Heap<T> {
 }
 
 impl<T: Clone> Heap<T> {
+    /// Applies a mutation to every live allocation. Used by ARC bookkeeping
+    /// to invalidate weak references when an object is destroyed.
+    pub fn for_each_live_mut(&mut self, mut f: impl FnMut(&mut T)) {
+        for allocation in &mut self.allocations {
+            if allocation.live || allocation.destroying {
+                for value in &mut allocation.payload {
+                    f(value);
+                }
+            }
+        }
+    }
+
     /// Creates a live checked allocation, including valid zero-length regions.
     ///
     /// # Errors
@@ -107,7 +120,7 @@ impl<T: Clone> Heap<T> {
         self.finish_delete(handle, span)
     }
 
-    /// Marks an allocation deleted so a reentrant `DELETE` is `DOUBLE_DELETE`
+    /// Marks an allocation deleted so a reentrant `DELETE` is `DOUBLE_RELEASE`
     /// while a destructor may still read the payload.
     ///
     /// # Errors
@@ -117,14 +130,14 @@ impl<T: Clone> Heap<T> {
         let allocation = self.slot_mut(handle, span)?;
         if allocation.generation != handle.generation {
             return Err(heap_error(
-                "USE_AFTER_DELETE",
+                "USE_AFTER_RELEASE",
                 "allocation handle is stale",
                 span,
             ));
         }
         if !allocation.live || allocation.destroying {
             return Err(heap_error(
-                "DOUBLE_DELETE",
+                "DOUBLE_RELEASE",
                 "allocation was already deleted",
                 span,
             ));
@@ -143,7 +156,7 @@ impl<T: Clone> Heap<T> {
         let allocation = self.slot_mut(handle, span)?;
         if allocation.generation != handle.generation {
             return Err(heap_error(
-                "USE_AFTER_DELETE",
+                "USE_AFTER_RELEASE",
                 "allocation handle is stale",
                 span,
             ));
@@ -152,6 +165,54 @@ impl<T: Clone> Heap<T> {
         allocation.destroying = false;
         allocation.live = false;
         Ok(())
+    }
+
+    /// Increments the strong-reference count for a live allocation.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stale-handle or retain-overflow diagnostic.
+    pub fn retain(&mut self, handle: Handle, span: Span) -> Result<(), Diagnostic> {
+        let allocation = self.live_mut(handle, span)?;
+        allocation.strong_count = allocation.strong_count.checked_add(1).ok_or_else(|| {
+            heap_error("RETAIN_OVERFLOW", "strong-reference count overflowed", span)
+        })?;
+        Ok(())
+    }
+
+    /// Decrements the strong-reference count and reports whether it reached zero.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stale-handle or double-release diagnostic.
+    pub fn release(&mut self, handle: Handle, span: Span) -> Result<bool, Diagnostic> {
+        let allocation = self.live_mut(handle, span)?;
+        if allocation.strong_count == 0 {
+            return Err(heap_error(
+                "DOUBLE_RELEASE",
+                "allocation was already released",
+                span,
+            ));
+        }
+        allocation.strong_count -= 1;
+        Ok(allocation.strong_count == 0)
+    }
+
+    /// Returns the current strong-reference count.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stale-handle diagnostic.
+    pub fn strong_count(&self, handle: Handle, span: Span) -> Result<usize, Diagnostic> {
+        Ok(self.live(handle, span)?.strong_count)
+    }
+
+    /// Reports whether a handle still names its live allocation.
+    #[must_use]
+    pub fn is_live(&self, handle: Handle) -> bool {
+        self.allocations
+            .get(handle.slot as usize)
+            .is_some_and(|allocation| allocation.generation == handle.generation && allocation.live)
     }
 
     fn allocate_region(
@@ -176,6 +237,7 @@ impl<T: Clone> Heap<T> {
             allocation.payload = payload;
             allocation.live = true;
             allocation.destroying = false;
+            allocation.strong_count = 1;
             return Ok(Handle {
                 slot: u32::try_from(slot).map_err(|_| too_large(span))?,
                 generation: allocation.generation,
@@ -188,6 +250,7 @@ impl<T: Clone> Heap<T> {
             payload,
             live: true,
             destroying: false,
+            strong_count: 1,
         });
         Ok(Handle {
             slot,
@@ -199,7 +262,7 @@ impl<T: Clone> Heap<T> {
         let allocation = self
             .allocations
             .get(handle.slot as usize)
-            .ok_or_else(|| heap_error("USE_AFTER_DELETE", "allocation handle is stale", span))?;
+            .ok_or_else(|| heap_error("USE_AFTER_RELEASE", "allocation handle is stale", span))?;
         validate_live(allocation, handle, span)?;
         Ok(allocation)
     }
@@ -213,7 +276,7 @@ impl<T: Clone> Heap<T> {
     fn slot_mut(&mut self, handle: Handle, span: Span) -> Result<&mut Allocation<T>, Diagnostic> {
         self.allocations
             .get_mut(handle.slot as usize)
-            .ok_or_else(|| heap_error("USE_AFTER_DELETE", "allocation handle is stale", span))
+            .ok_or_else(|| heap_error("USE_AFTER_RELEASE", "allocation handle is stale", span))
     }
 }
 
@@ -241,13 +304,13 @@ fn validate_live<T>(
 ) -> Result<(), Diagnostic> {
     if allocation.generation != handle.generation {
         Err(heap_error(
-            "USE_AFTER_DELETE",
+            "USE_AFTER_RELEASE",
             "allocation handle is stale",
             span,
         ))
     } else if !allocation.live && !allocation.destroying {
         Err(heap_error(
-            "USE_AFTER_DELETE",
+            "USE_AFTER_RELEASE",
             "allocation handle refers to deleted memory",
             span,
         ))

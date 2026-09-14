@@ -11,5 +11,5 @@ FUNCTION Start() AS VOID
         LET restored AS POINTER TO INTEGER = opaque
         PRINT restored[0]
     END IF
-    DELETE opaque
+    RELEASE opaque
 END FUNCTION

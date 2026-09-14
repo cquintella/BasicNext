@@ -1,0 +1,70 @@
+IMPORT BNDispatch AS Dispatch
+
+ASYNC FUNCTION FloatWork() AS FLOAT OR Error
+    RETURN 2.5
+END FUNCTION
+
+ASYNC FUNCTION StringWork() AS STRING OR Error
+    RETURN "ready"
+END FUNCTION
+
+ASYNC FUNCTION BooleanWork() AS BOOLEAN OR Error
+    RETURN TRUE
+END FUNCTION
+
+ASYNC FUNCTION VoidWork() AS VOID OR Error
+    RETURN
+END FUNCTION
+
+FUNCTION Start() AS VOID OR Error
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
+    IF queue IS Error THEN
+        RETURN queue
+    END IF
+
+    LET floatTicket AS Dispatch.Ticket OR Error = ASYNC queue FloatWork()
+    IF floatTicket IS Error THEN
+        RETURN floatTicket
+    END IF
+    LET floatResult AS FLOAT OR Error = AWAIT floatTicket(1000)
+    IF floatResult IS Error THEN
+        RETURN floatResult
+    END IF
+    PRINT "FLOAT", floatResult
+    floatTicket.Close()
+
+    LET stringTicket AS Dispatch.Ticket OR Error = ASYNC queue StringWork()
+    IF stringTicket IS Error THEN
+        RETURN stringTicket
+    END IF
+    LET stringResult AS STRING OR Error = AWAIT stringTicket(1000)
+    IF stringResult IS Error THEN
+        RETURN stringResult
+    END IF
+    PRINT "STRING", stringResult
+    stringTicket.Close()
+
+    LET booleanTicket AS Dispatch.Ticket OR Error = ASYNC queue BooleanWork()
+    IF booleanTicket IS Error THEN
+        RETURN booleanTicket
+    END IF
+    LET booleanResult AS BOOLEAN OR Error = AWAIT booleanTicket(1000)
+    IF booleanResult IS Error THEN
+        RETURN booleanResult
+    END IF
+    PRINT "BOOLEAN", booleanResult
+    booleanTicket.Close()
+
+    LET voidTicket AS Dispatch.Ticket OR Error = ASYNC queue VoidWork()
+    IF voidTicket IS Error THEN
+        RETURN voidTicket
+    END IF
+    LET voidResult AS VOID OR Error = AWAIT voidTicket(1000)
+    IF voidResult IS Error THEN
+        RETURN voidResult
+    END IF
+    PRINT "VOID"
+    voidTicket.Close()
+
+    RETURN queue.Close(1000)
+END FUNCTION

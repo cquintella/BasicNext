@@ -119,7 +119,7 @@ FUNCTION Start() AS VOID\n\
         ELSE\n\
             PRINT \"read-ok\"\n\
             file.Close()\n\
-            DELETE file\n\
+            RELEASE file\n\
         END IF\n\
     ELSE\n\
         LET file AS FS.File OR Error = FS.Open(path, FS.WRITE)\n\
@@ -131,9 +131,9 @@ FUNCTION Start() AS VOID\n\
             frame.AddStringColumn(\"value\", names)\n\
             LET result AS VOID OR Error = Data.WriteCSV(file, frame, TRUE, \",\")\n\
             PRINT \"write-ok\"\n\
-            DELETE frame\n\
+            RELEASE frame\n\
             file.Close()\n\
-            DELETE file\n\
+            RELEASE file\n\
         END IF\n\
     END IF\n\
 END FUNCTION\n",
@@ -263,7 +263,7 @@ FUNCTION Start() AS VOID\n\
         ELSE\n\
             PRINT \"opened\"\n\
             file.Close()\n\
-            DELETE file\n\
+            RELEASE file\n\
         END IF\n\
     ELSE\n\
         LET file AS FS.File OR Error = FS.Open(path, FS.WRITE)\n\
@@ -272,7 +272,7 @@ FUNCTION Start() AS VOID\n\
         ELSE\n\
             PRINT \"opened\"\n\
             file.Close()\n\
-            DELETE file\n\
+            RELEASE file\n\
         END IF\n\
     END IF\n\
 END FUNCTION\n",
@@ -737,7 +737,7 @@ fn cli_help_and_version_advertise_0_4_7() {
     assert!(help.contains("lsp") && help.contains("dap"));
     let version = bn().arg("--version").output().expect("run bn version");
     assert_eq!(version.status.code(), Some(0));
-    assert_eq!(String::from_utf8_lossy(&version.stdout).trim(), "bn 0.4.7");
+    assert_eq!(String::from_utf8_lossy(&version.stdout).trim(), "bn 0.5.0");
 }
 
 #[test]
@@ -1669,6 +1669,29 @@ fn build_lowers_bnmath_float_vectors_matching_interpreter() {
 #[test]
 fn build_lowers_bndata_empty_frame_lifecycle_matching_interpreter() {
     native_matches_interpreter("tests/grammar/valid/bndata-import.bn");
+}
+
+#[test]
+fn build_arc_and_dispatch_counterexamples_match_interpreter() {
+    for path in [
+        "tests/grammar/valid/arc-returned-object.bn",
+        "tests/grammar/valid/arc-vector-aliases.bn",
+        "tests/grammar/valid/arc-weak-survives-unrelated-allocation.bn",
+        "tests/grammar/valid/release-unused-primary.bn",
+        "tests/grammar/valid/dispatch-worker-error.bn",
+    ] {
+        native_matches_interpreter(path);
+    }
+}
+
+#[test]
+fn build_typed_dispatch_supports_all_mvp_scalar_results() {
+    native_matches_interpreter("tests/grammar/valid/dispatch-mvp-scalars.bn");
+}
+
+#[test]
+fn build_typed_dispatch_supports_all_mvp_scalar_arguments() {
+    native_matches_interpreter("tests/grammar/valid/dispatch-mvp-arguments.bn");
 }
 
 #[test]
