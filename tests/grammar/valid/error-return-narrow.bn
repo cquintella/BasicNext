@@ -12,5 +12,5 @@ FUNCTION Start() AS VOID
     END IF
     PRINT file.ReadLine()
     file.Close()
-    DELETE file
+    RELEASE file
 END FUNCTION

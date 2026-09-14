@@ -60,7 +60,7 @@ impl Executor<'_, '_> {
             };
             if !self.log_fields.contains_key(&fields_id) {
                 return Err(runtime_error(
-                    "USE_AFTER_DELETE",
+                    "USE_AFTER_RELEASE",
                     "BNLog.Fields is invalid",
                     span,
                 ));
@@ -68,14 +68,14 @@ impl Executor<'_, '_> {
             let parent = self
                 .log_loggers
                 .get(id)
-                .ok_or_else(|| runtime_error("USE_AFTER_DELETE", "BNLog.Logger is invalid", span))?
+                .ok_or_else(|| runtime_error("USE_AFTER_RELEASE", "BNLog.Logger is invalid", span))?
                 .clone();
             let mut context = parent.context;
             context.extend(
                 self.log_fields
                     .get(&fields_id)
                     .ok_or_else(|| {
-                        runtime_error("USE_AFTER_DELETE", "BNLog.Fields is invalid", span)
+                        runtime_error("USE_AFTER_RELEASE", "BNLog.Fields is invalid", span)
                     })?
                     .iter()
                     .map(|(key, value)| (key.clone(), value.clone())),
@@ -97,7 +97,7 @@ impl Executor<'_, '_> {
         }
         let logger =
             self.log_loggers.get(id).cloned().ok_or_else(|| {
-                runtime_error("USE_AFTER_DELETE", "BNLog.Logger is invalid", span)
+                runtime_error("USE_AFTER_RELEASE", "BNLog.Logger is invalid", span)
             })?;
         if method == "CONSTRUCTOR" {
             return Ok(Value::Null);
@@ -241,7 +241,7 @@ impl Executor<'_, '_> {
                 };
                 let mut fields = logger.context.clone();
                 let provided = self.log_fields.get(&fields_id).ok_or_else(|| {
-                    runtime_error("USE_AFTER_DELETE", "BNLog.Fields is invalid", span)
+                    runtime_error("USE_AFTER_RELEASE", "BNLog.Fields is invalid", span)
                 })?;
                 fields.extend(provided.clone());
                 let Some(level) = crate::log::Level::from_i128(level) else {

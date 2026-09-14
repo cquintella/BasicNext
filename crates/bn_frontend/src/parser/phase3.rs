@@ -210,11 +210,11 @@ impl<'a> Parser<'a> {
                 values: Self::expression_list(&line[1..])?,
                 span,
             })
-        } else if self.keyword("DELETE") {
+        } else if self.keyword("RELEASE") {
             if line.len() == 1 {
-                return Err(self.error("DELETE requires an expression"));
+                return Err(self.error("RELEASE requires an expression"));
             }
-            Ok(Statement::Delete {
+            Ok(Statement::Release {
                 value: parse_expression(&line[1..])?,
                 span,
             })

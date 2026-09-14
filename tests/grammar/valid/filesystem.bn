@@ -13,6 +13,6 @@ FUNCTION Start() AS VOID
         LET line AS STRING OR EOF OR Error = file.ReadLine()
         PRINT line
         file.Close()
-        DELETE file
+        RELEASE file
     END IF
 END FUNCTION

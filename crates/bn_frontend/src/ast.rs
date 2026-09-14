@@ -111,7 +111,7 @@ pub enum Statement {
         console: Expression,
         span: Span,
     },
-    Delete {
+    Release {
         value: Expression,
         span: Span,
     },

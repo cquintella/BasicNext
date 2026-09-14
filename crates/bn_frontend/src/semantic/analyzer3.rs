@@ -315,13 +315,20 @@ impl Analyzer {
                         *span,
                     ));
                 }
-                Statement::Delete { value, .. } => {
+                Statement::Release { value, .. } => {
+                    if !matches!(value.kind, ExpressionKind::Name { .. }) {
+                        return Err(error(
+                            "INVALID_RELEASE_TARGET",
+                            "RELEASE requires a binding; indexed and member targets are not bindings",
+                            value.span,
+                        ));
+                    }
                     let ty = self.expression(value, locals)?;
                     if !self.deletable(&ty) {
                         return Err(error(
-                            "INVALID_DELETE_TARGET",
+                            "INVALID_RELEASE_TARGET",
                             format!(
-                                "DELETE requires a pointer or CLASS reference, found {}",
+                                "RELEASE requires a pointer or CLASS reference, found {}",
                                 display(&ty)
                             ),
                             value.span,

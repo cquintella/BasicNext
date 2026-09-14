@@ -15,6 +15,6 @@ END FUNCTION
 FUNCTION Start() AS VOID
     LET value AS POINTER TO Box OR NULL = NULL
     IF value IS POINTER TO Box THEN
-        DELETE value
+        RELEASE value
     END IF
 END FUNCTION

@@ -2,7 +2,7 @@
 // Each task evaluates 1,000 rounds of one strategy pairing.
 IMPORT BNDispatch AS Dispatch
 
-ASYNC FUNCTION MutualCooperation() AS VOID
+ASYNC FUNCTION MutualCooperation() AS VOID OR Error
     LET rounds AS INTEGER = 0
     LET left AS INTEGER = 0
     LET right AS INTEGER = 0
@@ -14,7 +14,7 @@ ASYNC FUNCTION MutualCooperation() AS VOID
     PRINT "CC: A=", left, " B=", right
 END FUNCTION
 
-ASYNC FUNCTION CooperateDefect() AS VOID
+ASYNC FUNCTION CooperateDefect() AS VOID OR Error
     LET rounds AS INTEGER = 0
     LET left AS INTEGER = 0
     LET right AS INTEGER = 0
@@ -25,7 +25,7 @@ ASYNC FUNCTION CooperateDefect() AS VOID
     PRINT "CD: A=", left, " B=", right
 END FUNCTION
 
-ASYNC FUNCTION DefectCooperate() AS VOID
+ASYNC FUNCTION DefectCooperate() AS VOID OR Error
     LET rounds AS INTEGER = 0
     LET left AS INTEGER = 0
     LET right AS INTEGER = 0
@@ -36,7 +36,7 @@ ASYNC FUNCTION DefectCooperate() AS VOID
     PRINT "DC: A=", left, " B=", right
 END FUNCTION
 
-ASYNC FUNCTION MutualDefection() AS VOID
+ASYNC FUNCTION MutualDefection() AS VOID OR Error
     LET rounds AS INTEGER = 0
     LET left AS INTEGER = 0
     LET right AS INTEGER = 0

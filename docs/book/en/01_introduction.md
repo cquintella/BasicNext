@@ -7,13 +7,10 @@
 
 This document is the introductory tutorial for the Basic Next (BN) programming language.
 
-> **Note:** This book is the **Version 0.3** tutorial. It is not the normative
+> **Note:** This book is the **Version 0.5.0** tutorial. It is not the normative
 > language contract. When a chapter and the specification disagree, follow
-> [`docs/language/0.3/0.3.md`](../../language/0.3/0.3.md),
-> [`docs/language/0.3/0.3.ebnf`](../../language/0.3/0.3.ebnf), and
-> [`docs/language/0.3/keywords.md`](../../language/0.3/keywords.md).
-> Features planned for later versions (packages, `MATCH`, generic classes,
-> advanced concurrency) are excluded.
+> [`docs/0.5.0/language-0.5.0.md`](../../0.5.0/language-0.5.0.md)
+
 
 ## What is Basic Next?
 
@@ -35,6 +32,8 @@ Basic Next provides both an interactive reference interpreter and ahead-of-time 
 
 Under the hood, the Basic Next toolchain uses a modular pipeline: a Lexer, a Parser producing an Abstract Syntax Tree (AST), a Semantic Analyzer, an Intermediate Representation (BN IR), and dedicated backends. This structure keeps language rules clean, predictable, and maintainable.
 
+For more information on the usage of bn and other Basic Next tools, check [Architeture Chapter](./17_architecture_and_filesystem_policy.md).
+
 ### Systems and Engine Architecture
 
 Combining an approachable syntax with deterministic low-level control, Basic Next gives programmers a clear view of how software interacts with computer memory and hardware resources. It serves as both a solid platform for systems development and an effective environment for learning software engineering.
@@ -45,7 +44,7 @@ Combining an approachable syntax with deterministic low-level control, Basic Nex
 
 ## Target Audience
 
-Basic Next is built for learners and engineers who value explicit contracts, low cognitive load, and clean architecture without unnecessary boilerplate. It is well suited for beginners learning fundamental computer science concepts—thanks to readable syntax and helpful diagnostic messages—as well as experienced developers crafting predictable tools and applications.
+Basic Next is built for learners and makers who value explicit contracts, low cognitive load, and clean architecture without unnecessary boilerplate. It is well suited for beginners learning fundamental computer science concepts—thanks to readable syntax and helpful diagnostic messages—as well as experienced developers crafting predictable tools and applications.
 
 ## Philosophy
 
@@ -86,6 +85,7 @@ Basic commands:
 - `bn run <file.bn> [-- args...]`: Validates, lowers to BN IR, and executes the program starting from `Start`.
 - `bn build <file.bn>`: Compiles the source file into a native executable or WebAssembly artifact using the LLVM backend.
 - `bn lex <file.bn>`: Prints the token stream produced by the lexer.
+- `bn -e` / `bn --expr` (**proposed for 0.5.1 — not shipped until the 0.5.1 gate**): evaluate a source string or stdin fragment without inventing an ad hoc temp file. See [`todo/proposals/bn-eval-mode-0.5.1.md`](../../todo/proposals/bn-eval-mode-0.5.1.md). There is **no** `bn eval` subcommand in the 0.5.1 contract.
 
 Basic Next diagnostics reject invalid code before execution starts, providing clear feedback on errors.
 

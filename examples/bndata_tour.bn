@@ -229,7 +229,7 @@ FUNCTION Start() AS VOID
                 CheckFloat("ZScore(age)[0]", -1.0, z0)
             END IF
         END IF
-        DELETE zframe
+        RELEASE zframe
     END IF
 
     PRINT "=== BNData tour: CopyIntegerColumn / CopyFloatColumn ==="
@@ -241,7 +241,7 @@ FUNCTION Start() AS VOID
         CheckInteger("CopyIntegerColumn[1]", 35, copiedAges[1])
         CheckFloat("Math.MEAN after CopyIntegerColumn", 35.0, Math.MEAN(copiedAges))
     END IF
-    DELETE copiedAges
+    RELEASE copiedAges
     LET copiedScores AS POINTER TO FLOAT[] = NEW FLOAT[3]
     LET copyF AS VOID OR Error = frame.CopyFloatColumn("score", copiedScores)
     IF copyF IS Error THEN
@@ -250,7 +250,7 @@ FUNCTION Start() AS VOID
         CheckFloat("CopyFloatColumn[0]", 9.5, copiedScores[0])
         CheckFloat("Math.MEAN after CopyFloatColumn", Math.MEAN(scores), Math.MEAN(copiedScores))
     END IF
-    DELETE copiedScores
+    RELEASE copiedScores
 
     PRINT "=== BNData tour: Select / Slice ==="
     LET selected AS Data.DataFrame OR Error = frame.Select([0, 2], [1, 0])
@@ -267,7 +267,7 @@ FUNCTION Start() AS VOID
         ELSE
             CheckInteger("Select GetInteger age row0", 28, selAge)
         END IF
-        DELETE selected
+        RELEASE selected
     END IF
     LET sliced AS Data.DataFrame OR Error = frame.Slice(1, 2, 0, 2)
     IF sliced IS Error THEN
@@ -275,7 +275,7 @@ FUNCTION Start() AS VOID
     ELSE
         CheckInteger("Slice RowCount", 2, sliced.RowCount())
         CheckInteger("Slice ColumnCount", 2, sliced.ColumnCount())
-        DELETE sliced
+        RELEASE sliced
     END IF
 
     PRINT "=== BNData tour: Transpose ==="
@@ -285,7 +285,7 @@ FUNCTION Start() AS VOID
     ELSE
         CheckInteger("Transpose RowCount", 4, transposed.RowCount())
         CheckInteger("Transpose ColumnCount", 4, transposed.ColumnCount())
-        DELETE transposed
+        RELEASE transposed
     END IF
 
     PRINT "=== BNData tour: AppendRows / AppendColumns ==="
@@ -303,9 +303,9 @@ FUNCTION Start() AS VOID
         PRINT "SKIP: AppendRows — ", appendedRows.Code
     ELSE
         CheckInteger("AppendRows RowCount", 4, appendedRows.RowCount())
-        DELETE appendedRows
+        RELEASE appendedRows
     END IF
-    DELETE moreRows
+    RELEASE moreRows
 
     LET extraCols AS Data.DataFrame = NEW Data.DataFrame()
     LET cities AS STRING[3] = ["SP", "RJ", "BH"]
@@ -315,9 +315,9 @@ FUNCTION Start() AS VOID
         PRINT "SKIP: AppendColumns — ", appendedCols.Code
     ELSE
         CheckInteger("AppendColumns ColumnCount", 5, appendedCols.ColumnCount())
-        DELETE appendedCols
+        RELEASE appendedCols
     END IF
-    DELETE extraCols
+    RELEASE extraCols
 
     PRINT "=== BNData tour: Join / LeftJoin / RightJoin / FullJoin ==="
     LET left AS Data.DataFrame = NEW Data.DataFrame()
@@ -337,31 +337,31 @@ FUNCTION Start() AS VOID
     ELSE
         CheckInteger("Join RowCount", 1, inner.RowCount())
         CheckInteger("Join ColumnCount", 3, inner.ColumnCount())
-        DELETE inner
+        RELEASE inner
     END IF
     LET leftJ AS Data.DataFrame OR Error = left.LeftJoin(right, "id", "id")
     IF leftJ IS Error THEN
         PRINT "SKIP: LeftJoin — ", leftJ.Code
     ELSE
         CheckInteger("LeftJoin RowCount", 2, leftJ.RowCount())
-        DELETE leftJ
+        RELEASE leftJ
     END IF
     LET rightJ AS Data.DataFrame OR Error = left.RightJoin(right, "id", "id")
     IF rightJ IS Error THEN
         PRINT "SKIP: RightJoin — ", rightJ.Code
     ELSE
         CheckInteger("RightJoin RowCount", 2, rightJ.RowCount())
-        DELETE rightJ
+        RELEASE rightJ
     END IF
     LET fullJ AS Data.DataFrame OR Error = left.FullJoin(right, "id", "id")
     IF fullJ IS Error THEN
         PRINT "SKIP: FullJoin — ", fullJ.Code
     ELSE
         CheckInteger("FullJoin RowCount", 3, fullJ.RowCount())
-        DELETE fullJ
+        RELEASE fullJ
     END IF
-    DELETE left
-    DELETE right
+    RELEASE left
+    RELEASE right
 
     PRINT "=== BNData tour: ReadCSV + ConvertTo* + WriteCSV ==="
     LET csvFile AS FS.File OR Error = FS.Open("tests/fixtures/bndata-sprint6.csv", FS.READ)
@@ -426,7 +426,7 @@ FUNCTION Start() AS VOID
                     CheckFloat("Mean after ConvertToFloat", 10.0, priceMean)
                 END IF
             END IF
-            DELETE floatSrc
+            RELEASE floatSrc
 
             LET outPath AS STRING = "/tmp/basicnext-bndata-tour-write.csv"
             LET outFile AS FS.File OR Error = FS.Open(outPath, FS.WRITE)
@@ -440,7 +440,7 @@ FUNCTION Start() AS VOID
                     PRINT "PASS  WriteCSV  path=", outPath
                 END IF
                 outFile.Close()
-                DELETE outFile
+                RELEASE outFile
             END IF
 
             // Round-trip read of written CSV
@@ -453,16 +453,16 @@ FUNCTION Start() AS VOID
                     PRINT "SKIP: WriteCSV round-trip ReadCSV — ", roundTable.Code
                 ELSE
                     CheckInteger("WriteCSV round-trip rows", 2, roundTable.RowCount())
-                    DELETE roundTable
+                    RELEASE roundTable
                 END IF
-                DELETE roundFile
+                RELEASE roundFile
             END IF
 
-            DELETE table
+            RELEASE table
         END IF
-        DELETE csvFile
+        RELEASE csvFile
     END IF
 
-    DELETE frame
+    RELEASE frame
     PRINT "=== bndata_tour complete ==="
 END FUNCTION

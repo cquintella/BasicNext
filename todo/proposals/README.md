@@ -11,7 +11,7 @@ specification.
 - [Alternative types](../../done/proposals/alternative-types.md) — accepted
   for 0.1; 0.2 withdrew `Float.TryParse`.
 - [LLVM IR optimization before compile](llvm-ir-optimization.md) — proposed 0.4.3 `bn build --opt` (clang `-O` on emitted LLVM IR). `bn run` stays off LLVM.
-- [Expressive diagnostics](expressive-diagnostics.md) (target **0.4.5**) — Fluent shards by pipeline; lazy render; DiagId registry; per-code warning levels + overlay; no SQLite. Locked 2026-09-04.
+- [Expressive diagnostics](expressive-diagnostics.md) (target **0.5.1**, was 0.4.5) — Fluent shards by pipeline; lazy render; DiagId registry; per-code warning levels + overlay; no SQLite. Locked 2026-09-04; retarget Carlos 2026-09-13. Bucket: `ongoing/bucket-0.5.1.md` (DX1).
 - [HOST.Clock `Now` / `Timer`](../../done/proposals/host-clock-names.md) — accepted and implemented in 0.4.3; no alias.
 - [BNText Markdown](bntext-markdown.md) — proposed portable Markdown text
   values for 0.3.
@@ -29,5 +29,7 @@ specification.
 - [Typed Dispatch results](dispatch-typed-return.md) — language/`AWAIT` (or `Ticket.Result`) to surface worker returns; `bn_rt` already has result pointer. Proposed 2026-09-07.
 - [Bucket 0.5.0 corrective](bucket-0.5.0-corrective.md) — ARC memory lock (strong/weak) + typed dispatch AWAIT; plan only. Proposed 2026-09-12.
 - [bn -e eval mode (0.5.1)](bn-eval-mode-0.5.1.md) — global `-e`/`--expr` eval/oneshot (+ optional session) for `bnr` / hosts using installed `/usr/local/bin/bn`; not a `bn eval` subcommand; not in 0.5.0 claim. Proposed 2026-09-12; lock `-e` 2026-09-13.
+- [HOST.Exec (0.5.1)](host-exec-0.5.1.md) — capability to run an external program (argv), wait, capture ReturnCode/Stdout/Stderr (`Result OR Error`); not POSIX execve; not in 0.5.0. Proposed 2026-09-13. Bucket: `ongoing/bucket-0.5.1.md`.
+- [Qualified export import (0.5.2)](import-qualified-export-0.5.2.md) — `IMPORT Module.Export AS Alias` (e.g. `IMPORT BNString.String AS Str`); not nested-module path when last segment is an EXPORT; no FROM. Proposed 2026-09-13. Bucket: `ongoing/bucket-0.5.2.md`.
 - [Early `Error` propagation](error-propagation.md) — proposed postfix `?` (or CHECK/PROPAGATE); language DNA; desugars to IF/RETURN; does **not** change toolchain diagnostics.
 - [BNData Expansion (Series & Analytics)](bndata-expansion.md) — proposed 1D dynamic series, NA semantics, vectorized operations, and DataFrame enhancements.

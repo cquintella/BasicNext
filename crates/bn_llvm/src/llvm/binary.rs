@@ -69,14 +69,15 @@ pub(crate) fn emit_runtime_binary(
         return;
     }
     // Match on result width for integer ops so IntegerLiteral (i64) can feed INTEGER.
-    let int_op_llvm = if integer_llvm(result_llvm) {
+    let int_op_llvm = if integer_llvm(result_llvm) || float_llvm(result_llvm) {
         result_llvm
     } else {
         left_llvm
     };
     match (operator, int_op_llvm) {
         ("Plus" | "Minus" | "Star" | "Multiply", "i8" | "i16" | "i32" | "i64")
-            if integer_llvm(left_llvm) && integer_llvm(right_llvm) =>
+            if (integer_llvm(left_llvm) || integer_union_payload(left_ty).is_some())
+                && (integer_llvm(right_llvm) || integer_union_payload(right_ty).is_some()) =>
         {
             emit_checked_integer_op(
                 text,
@@ -92,7 +93,8 @@ pub(crate) fn emit_runtime_binary(
             );
         }
         ("DIV" | "Percent", "i8" | "i16" | "i32" | "i64")
-            if integer_llvm(left_llvm) && integer_llvm(right_llvm) =>
+            if (integer_llvm(left_llvm) || integer_union_payload(left_ty).is_some())
+                && (integer_llvm(right_llvm) || integer_union_payload(right_ty).is_some()) =>
         {
             emit_euclidean_integer_op(
                 text,
@@ -179,60 +181,44 @@ pub(crate) fn emit_runtime_binary(
             );
         }
         ("Plus", "float") => {
-            let _ = writeln!(
-                text,
-                "  %v{} = fadd float %v{}, %v{}",
-                destination.0, left.0, right.0
-            );
+            let left = coerce_to_type(text, left, left_ty, ty);
+            let right = coerce_to_type(text, right, right_ty, ty);
+            let _ = writeln!(text, "  %v{} = fadd float {left}, {right}", destination.0);
         }
         ("Minus", "float") => {
-            let _ = writeln!(
-                text,
-                "  %v{} = fsub float %v{}, %v{}",
-                destination.0, left.0, right.0
-            );
+            let left = coerce_to_type(text, left, left_ty, ty);
+            let right = coerce_to_type(text, right, right_ty, ty);
+            let _ = writeln!(text, "  %v{} = fsub float {left}, {right}", destination.0);
         }
         ("Star" | "Multiply", "float") => {
-            let _ = writeln!(
-                text,
-                "  %v{} = fmul float %v{}, %v{}",
-                destination.0, left.0, right.0
-            );
+            let left = coerce_to_type(text, left, left_ty, ty);
+            let right = coerce_to_type(text, right, right_ty, ty);
+            let _ = writeln!(text, "  %v{} = fmul float {left}, {right}", destination.0);
         }
         ("Slash" | "Divide", "float") => {
-            let _ = writeln!(
-                text,
-                "  %v{} = fdiv float %v{}, %v{}",
-                destination.0, left.0, right.0
-            );
+            let left = coerce_to_type(text, left, left_ty, ty);
+            let right = coerce_to_type(text, right, right_ty, ty);
+            let _ = writeln!(text, "  %v{} = fdiv float {left}, {right}", destination.0);
         }
         ("Plus", "double") => {
-            let _ = writeln!(
-                text,
-                "  %v{} = fadd double %v{}, %v{}",
-                destination.0, left.0, right.0
-            );
+            let left = coerce_to_type(text, left, left_ty, ty);
+            let right = coerce_to_type(text, right, right_ty, ty);
+            let _ = writeln!(text, "  %v{} = fadd double {left}, {right}", destination.0);
         }
         ("Minus", "double") => {
-            let _ = writeln!(
-                text,
-                "  %v{} = fsub double %v{}, %v{}",
-                destination.0, left.0, right.0
-            );
+            let left = coerce_to_type(text, left, left_ty, ty);
+            let right = coerce_to_type(text, right, right_ty, ty);
+            let _ = writeln!(text, "  %v{} = fsub double {left}, {right}", destination.0);
         }
         ("Star" | "Multiply", "double") => {
-            let _ = writeln!(
-                text,
-                "  %v{} = fmul double %v{}, %v{}",
-                destination.0, left.0, right.0
-            );
+            let left = coerce_to_type(text, left, left_ty, ty);
+            let right = coerce_to_type(text, right, right_ty, ty);
+            let _ = writeln!(text, "  %v{} = fmul double {left}, {right}", destination.0);
         }
         ("Slash" | "Divide", "double") => {
-            let _ = writeln!(
-                text,
-                "  %v{} = fdiv double %v{}, %v{}",
-                destination.0, left.0, right.0
-            );
+            let left = coerce_to_type(text, left, left_ty, ty);
+            let right = coerce_to_type(text, right, right_ty, ty);
+            let _ = writeln!(text, "  %v{} = fdiv double {left}, {right}", destination.0);
         }
         ("AND", "i1") => {
             let _ = writeln!(

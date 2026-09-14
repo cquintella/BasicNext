@@ -140,11 +140,11 @@ pub(crate) fn validate_returns(
     is_start: bool,
 ) -> Result<(), Diagnostic> {
     validate_return_statements(statements, return_type, is_start)?;
-    let is_void = return_type
+    let allows_empty = return_type
         .alternatives
-        .first()
-        .is_some_and(|atom| atom.name == "VOID");
-    if !is_void && !guarantees_return(statements) {
+        .iter()
+        .any(|atom| atom.name == "VOID");
+    if !allows_empty && !guarantees_return(statements) {
         return Err(error(
             "MISSING_RETURN",
             "non-VOID FUNCTION can complete without RETURN expression",
@@ -159,10 +159,11 @@ pub(crate) fn validate_return_statements(
     return_type: &TypeReference,
     is_start: bool,
 ) -> Result<(), Diagnostic> {
-    let is_void = return_type
-        .alternatives
-        .first()
-        .is_some_and(|atom| atom.name == "VOID");
+    let is_void_only = return_type.alternatives.len() == 1
+        && return_type
+            .alternatives
+            .first()
+            .is_some_and(|atom| atom.name == "VOID");
     for statement in statements {
         match statement {
             Statement::Return {
@@ -176,14 +177,19 @@ pub(crate) fn validate_return_statements(
                     value.span,
                 ));
             }
-            Statement::Return { value, span } if is_void && value.is_some() => {
+            Statement::Return { value, span } if is_void_only && value.is_some() => {
                 return Err(error(
                     "TYPE_MISMATCH",
                     "VOID FUNCTION cannot return a value",
                     *span,
                 ));
             }
-            Statement::Return { value: None, span } if !is_void => {
+            Statement::Return { value: None, span }
+                if !return_type
+                    .alternatives
+                    .iter()
+                    .any(|atom| atom.name == "VOID") =>
+            {
                 return Err(error(
                     "TYPE_MISMATCH",
                     "non-VOID FUNCTION must return a value",
@@ -240,7 +246,7 @@ pub(crate) fn statement_span(statement: &Statement) -> Span {
         | Statement::Print { span, .. }
         | Statement::ClearScreen { span, .. }
         | Statement::Beep { span, .. }
-        | Statement::Delete { span, .. }
+        | Statement::Release { span, .. }
         | Statement::Stop { span, .. }
         | Statement::Control { span, .. }
         | Statement::Call { span, .. }
@@ -274,7 +280,7 @@ pub(crate) fn block_uses_self(statements: &[Statement]) -> bool {
         Statement::Print { values, .. } => values.iter().any(expression_uses_self),
         Statement::ClearScreen { console: value, .. }
         | Statement::Beep { console: value, .. }
-        | Statement::Delete { value, .. }
+        | Statement::Release { value, .. }
         | Statement::Stop { code: value, .. }
         | Statement::Call {
             expression: value, ..
@@ -315,7 +321,7 @@ pub(crate) fn statement_uses_super(statement: &Statement) -> bool {
         Statement::Print { values, .. } => values.iter().any(expression_uses_super),
         Statement::ClearScreen { console, .. }
         | Statement::Beep { console, .. }
-        | Statement::Delete { value: console, .. }
+        | Statement::Release { value: console, .. }
         | Statement::Stop { code: console, .. }
         | Statement::Call {
             expression: console,
@@ -358,7 +364,7 @@ pub(crate) fn statement_has_invalid_super(statement: &Statement) -> bool {
         Statement::Print { values, .. } => values.iter().any(expression_has_invalid_super),
         Statement::ClearScreen { console, .. }
         | Statement::Beep { console, .. }
-        | Statement::Delete { value: console, .. }
+        | Statement::Release { value: console, .. }
         | Statement::Stop { code: console, .. }
         | Statement::Call {
             expression: console,

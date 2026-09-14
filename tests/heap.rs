@@ -46,7 +46,7 @@ fn heap_checks_bounds_deletion_and_stale_handles() {
         heap.delete(first, span())
             .expect_err("second delete must fail")
             .code,
-        "DOUBLE_DELETE"
+        "DOUBLE_RELEASE"
     );
     let replacement = heap
         .allocate("INTEGER", 1, 0_i64, span())
@@ -55,7 +55,7 @@ fn heap_checks_bounds_deletion_and_stale_handles() {
         heap.get(first, 0, span())
             .expect_err("old generation must fail")
             .code,
-        "USE_AFTER_DELETE"
+        "USE_AFTER_RELEASE"
     );
     assert_eq!(*heap.get(replacement, 0, span()).expect("new handle"), 0);
 }

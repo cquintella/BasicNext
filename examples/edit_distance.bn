@@ -47,8 +47,8 @@ FUNCTION EditDistance(source AS STRING, target AS STRING) AS INTEGER
     END WHILE
 
     LET distance AS INTEGER = previous[targetLength]
-    DELETE current
-    DELETE previous
+    RELEASE current
+    RELEASE previous
     RETURN distance
 END FUNCTION
 

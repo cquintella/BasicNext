@@ -2,7 +2,7 @@
 
 ## 1. Introduction
 - What is Basic Next?
-- Installation and the `bn` CLI (`bn run`, `bn check`, `bn build`, `bn lex`)
+- Installation and the `bn` CLI (`bn run`, `bn check`, `bn build`, `bn lex`, `bn -e` proposed for 0.5.1)
 - Hello, World!
 - Modules and the `Start` Function
 - Ecosystem Tools (Jupyter, VS Code)
@@ -42,11 +42,12 @@
 - Contracts (`INTERFACE` and `IMPLEMENTS`)
 
 ## 7. Memory Management
-- Manual Allocation (`NEW`, `DELETE`)
+- Memory Management (ARC, `RELEASE`, pointers)
 - Pointers (`POINTER TO TYPE`, array pointers)
 - Memory Safety and Runtime Errors
 
 ## 8. Standard Library and HOST
+- `HOST.Exec` (proposed for 0.5.1 — not shipped)
 - The external module boundary
 - HOST capabilities (`HOST.Args`, `HOST.Clock`, `HOST.Console`, `HOST.Random`, `HOST.FileSystem`)
 - Temporal Data (`TIMESTAMP`, `DATE`, `TIME`, `TIMEZONE`)

@@ -40,6 +40,15 @@ pub(super) fn type_from_reference(reference: &TypeReference) -> Type {
 }
 
 pub(super) fn type_from_atom(atom: &crate::ast::TypeAtom) -> Type {
+    if atom.name == "WEAK" {
+        // The weak qualifier is represented in the existing TypeAtom shape
+        // until the 0.5 AST grows an explicit ownership qualifier. Weak
+        // references are class named types in the current surface.
+        return atom
+            .parts
+            .first()
+            .map_or(Type::Unknown, |name| Type::Named(name.clone()));
+    }
     if atom.name == "FUNCTION" {
         return function_type_from_parts(&atom.parts);
     }

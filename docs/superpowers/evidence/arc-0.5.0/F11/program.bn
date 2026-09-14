@@ -5,32 +5,40 @@ ASYNC FUNCTION Worker(n AS INTEGER) AS INTEGER OR Error
     RETURN n
 END FUNCTION
 
-FUNCTION Start() AS VOID OR Error
+FUNCTION Start() AS VOID
     LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Concurrent(2)
     IF queue IS Error THEN
-        RETURN queue
+        RETURN
     END IF
     LET tickets AS Dispatch.Ticket[2]
     LET i AS INTEGER = 0
     WHILE i < 2
         LET t AS Dispatch.Ticket OR Error = ASYNC queue Worker(i)
         IF t IS Error THEN
-            RETURN t
+            RETURN
         END IF
         tickets[i] = t
         i = i + 1
     END WHILE
     i = 0
     WHILE i < 2
-        LET r AS INTEGER OR Error = AWAIT tickets[i](60000)
+        LET ticket AS Dispatch.Ticket OR Error = tickets[i]
+        IF ticket IS Error THEN
+            RETURN
+        END IF
+        LET r AS INTEGER OR Error = AWAIT ticket(60000)
         IF r IS Error THEN
-            RETURN r
+            RETURN
         END IF
         i = i + 1
     END WHILE
     i = 0
     WHILE i < 2
-        tickets[i].Close()
+        LET closeTicket AS Dispatch.Ticket OR Error = tickets[i]
+        IF closeTicket IS Error THEN
+            RETURN
+        END IF
+        closeTicket.Close()
         i = i + 1
     END WHILE
     RELEASE tickets

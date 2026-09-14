@@ -202,6 +202,12 @@ pub(crate) fn type_from_reference(reference: &TypeReference) -> Type {
     }
 }
 pub(crate) fn type_from_atom(atom: &crate::ast::TypeAtom) -> Type {
+    if atom.name == "WEAK" {
+        return atom
+            .parts
+            .first()
+            .map_or(Type::Unknown, |name| Type::Named(name.clone()));
+    }
     if atom.name == "FUNCTION" {
         return function_type_from_parts(&atom.parts);
     }

@@ -268,7 +268,9 @@ impl Executor<'_, '_> {
                 Ok(self.dispatch_queue(i128::try_from(workers).expect("usize fits i128")))
             }
             "Async" => {
-                require_arity(name, arguments, 2, span)?;
+                if arguments.len() < 2 {
+                    return Err(runtime_error("TYPE_MISMATCH", "Async expects a queue and function target", span));
+                }
                 let Value::DispatchQueue(id) = arguments[0] else {
                     return Err(runtime_error("TYPE_MISMATCH", "Async expects Queue", span));
                 };
@@ -277,6 +279,7 @@ impl Executor<'_, '_> {
                 };
                 let queue = self.dispatch_queues.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "queue is invalid", span))?.clone();
                 let task_name = task.clone();
+                let task_arguments = arguments[2..].to_vec();
                 let worker_module = self.module.clone();
                 let worker_host = self.host.fork_for_task();
                 let ticket = queue.submit_with(task_name.clone(), move |ticket| {
@@ -290,10 +293,11 @@ impl Executor<'_, '_> {
                         bytes: Vec::new(),
                         maximum: crate::config::dispatch_limits().output_max_bytes,
                     };
-                    match crate::runtime::execute_with_host(&worker_module, &mut input, &mut output, &worker_host) {
-                        Ok(_) => {
+                    match crate::runtime::execute_named_with_host(&worker_module, "Start", task_arguments, &mut input, &mut output, &worker_host) {
+                        Ok(result) => {
                             let output = String::from_utf8_lossy(&output.bytes).into_owned();
                             if ticket.set_output(output).is_ok() {
+                                ticket.set_result(result);
                                 ticket.mark_completed();
                             } else {
                                 ticket.mark_failed(1, "async task output exceeds configured bound".into());
@@ -343,7 +347,7 @@ impl Executor<'_, '_> {
                     "Wait" => {
                         require_arity(name, arguments, 2, span)?;
                         let timeout = integer(&arguments[1], span)?.0;
-                        let result = ticket.wait(timeout).map_or_else(dispatch_error, |_| Value::Null);
+                        let result = ticket.wait(timeout).map_or_else(dispatch_error, |_| ticket.result().unwrap_or(Value::Null));
                         let output = ticket.take_output();
                         self.output.write_all(output.as_bytes()).map_err(|error| runtime_error("IO", error.to_string(), span))?;
                         Ok(result)

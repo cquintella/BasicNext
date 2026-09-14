@@ -177,7 +177,7 @@ fn language_tour_lowers_to_extended_ir() {
     assert!(
         instructions
             .iter()
-            .any(|instruction| matches!(instruction, Instruction::Delete { .. }))
+            .any(|instruction| matches!(instruction, Instruction::Release { .. }))
     );
     assert!(
         instructions
@@ -243,6 +243,7 @@ fn validate_rejects_a_dangling_block_target() {
                 instructions: Vec::new(),
                 terminator: Terminator::Jump { target: BlockId(9) },
             }],
+            weak_symbols: std::collections::HashSet::default(),
             span: bn::source::Span {
                 start: bn::source::Position {
                     source_id: bn::source::Position::UNKNOWN_SOURCE,

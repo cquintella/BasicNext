@@ -274,6 +274,15 @@ pub(super) fn coerce(value: Value, ty: &Type, span: Span) -> Result<Value, Diagn
             Type::Named(_) | Type::TypeName(_) | Type::ImportedNamed { .. } | Type::ImportedTypeName { .. },
         )
         | (
+            Value::DispatchQueue(_)
+            | Value::DispatchTicket(_)
+            | Value::DispatchGroup(_)
+            | Value::DispatchBarrier(_)
+            | Value::DispatchSemaphore(_)
+            | Value::DispatchMutex(_),
+            Type::Named(_) | Type::ImportedNamed { .. },
+        )
+        | (
             Value::File(_),
             Type::Named(_)
             | Type::ImportedNamed { .. }
@@ -300,14 +309,11 @@ pub(super) fn coerce(value: Value, ty: &Type, span: Span) -> Result<Value, Diagn
         (Value::TimeZone(_), Type::Named(name)) if name == "TIMEZONE" => Ok(value),
         (Value::Null, Type::Named(name)) if name == "VOID" => Ok(value),
         (Value::Error { .. }, Type::Named(name)) if name == "Error" => Ok(value),
-        _ => {
-            eprintln!("DEBUG coerce value={value:?} ty={ty:?}");
-            Err(runtime_error(
+        _ => Err(runtime_error(
             "TYPE_MISMATCH",
             "runtime value does not match its IR destination type",
             span,
-        ))
-        }
+        )),
     }
 }
 

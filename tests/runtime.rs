@@ -637,6 +637,125 @@ END FUNCTION
 }
 
 #[test]
+fn typed_async_await_returns_worker_integer_result() {
+    let source = r"IMPORT BNDispatch AS Dispatch
+ASYNC FUNCTION PiPart(i AS INTEGER) AS INTEGER OR Error
+RETURN i + 1
+END FUNCTION
+FUNCTION Start() AS VOID OR Error
+LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
+IF queue IS Error THEN
+RETURN queue
+END IF
+LET ticket AS Dispatch.Ticket OR Error = ASYNC queue PiPart(3)
+IF ticket IS Error THEN
+RETURN ticket
+END IF
+LET result AS INTEGER OR Error = AWAIT ticket(1000)
+IF result IS Error THEN
+RETURN result
+END IF
+PRINT result
+RETURN ticket.Close()
+END FUNCTION
+";
+    let (_, output) = run(source, "").expect("typed AWAIT should return worker value");
+    assert_eq!(output, "4\n");
+}
+
+#[test]
+fn typed_async_await_supports_mvp_scalars_and_replay() {
+    let source = r#"IMPORT BNDispatch AS Dispatch
+ASYNC FUNCTION MakeFloat() AS FLOAT OR Error
+RETURN 1.5
+END FUNCTION
+ASYNC FUNCTION MakeString() AS STRING OR Error
+RETURN "ok"
+END FUNCTION
+ASYNC FUNCTION MakeBoolean() AS BOOLEAN OR Error
+RETURN TRUE
+END FUNCTION
+FUNCTION Start() AS VOID OR Error
+LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
+IF queue IS Error THEN
+RETURN queue
+END IF
+LET tf AS Dispatch.Ticket OR Error = ASYNC queue MakeFloat()
+LET ts AS Dispatch.Ticket OR Error = ASYNC queue MakeString()
+LET tb AS Dispatch.Ticket OR Error = ASYNC queue MakeBoolean()
+IF tf IS Error OR ts IS Error OR tb IS Error THEN
+RETURN
+END IF
+LET f AS FLOAT OR Error = AWAIT tf(1000)
+LET s AS STRING OR Error = AWAIT ts(1000)
+LET b AS BOOLEAN OR Error = AWAIT tb(1000)
+LET f_again AS FLOAT OR Error = AWAIT tf(1000)
+IF f IS Error OR s IS Error OR b IS Error OR f_again IS Error THEN
+RETURN
+END IF
+PRINT f, s, b, f_again
+tf.Close()
+ts.Close()
+tb.Close()
+RETURN queue.Close(1000)
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("typed scalar AWAIT should replay values");
+    assert_eq!(output, "1.5 ok TRUE 1.5\n");
+}
+
+#[test]
+fn typed_async_submission_passes_worker_arguments() {
+    let source = r"IMPORT BNDispatch AS Dispatch
+ASYNC FUNCTION Add(left AS INTEGER, right AS INTEGER) AS INTEGER OR Error
+RETURN left + right
+END FUNCTION
+FUNCTION Start() AS VOID OR Error
+LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
+IF queue IS Error THEN
+RETURN queue
+END IF
+LET ticket AS Dispatch.Ticket OR Error = ASYNC queue Add(2, 3)
+IF ticket IS Error THEN
+RETURN ticket
+END IF
+LET result AS INTEGER OR Error = AWAIT ticket(1000)
+IF result IS Error THEN
+RETURN result
+END IF
+PRINT result
+RETURN queue.Close(1000)
+END FUNCTION
+";
+    let (_, output) = run(source, "").expect("typed async submission should pass worker arguments");
+    assert_eq!(output, "5\n");
+}
+
+#[test]
+fn typed_async_await_rejects_runtime_result_type_mismatch() {
+    let source = r#"IMPORT BNDispatch AS Dispatch
+ASYNC FUNCTION Text() AS STRING OR Error
+RETURN "wrong"
+END FUNCTION
+FUNCTION Start() AS VOID OR Error
+LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
+IF queue IS Error THEN
+RETURN queue
+END IF
+LET ticket AS Dispatch.Ticket OR Error = ASYNC queue Text()
+IF ticket IS Error THEN
+RETURN ticket
+END IF
+LET result AS INTEGER OR Error = AWAIT ticket(1000)
+PRINT result IS Error
+RETURN queue.Close(1000)
+END FUNCTION
+"#;
+    let error = run(source, "").expect_err("mismatched typed AWAIT should be rejected");
+    assert_eq!(error.code, "TYPE_MISMATCH");
+}
+
+#[test]
 fn async_task_output_overflow_fails_ticket_without_retaining_partial_output() {
     let output_source = (0..7_000)
         .map(|_| "PRINT \"0123456789\"\n")
@@ -649,9 +768,9 @@ fn async_task_output_overflow_fails_ticket_without_retaining_partial_output() {
 }
 
 #[test]
-fn async_function_rejects_non_task_return_type() {
+fn async_function_requires_error_alternative_for_typed_return_type() {
     let source = "ASYNC FUNCTION Invalid() AS INTEGER\nRETURN 1\nEND FUNCTION\nFUNCTION Start() AS VOID\nEND FUNCTION\n";
-    let error = run(source, "").expect_err("invalid ASYNC return type");
+    let error = run(source, "").expect_err("typed ASYNC return must include Error");
     assert_eq!(error.code, "ASYNC_RETURN_TYPE");
 }
 
@@ -807,7 +926,7 @@ END FUNCTION
 
 #[test]
 fn local_dataframe_class_is_not_a_bndata_intrinsic() {
-    let source = "CLASS DataFrame\nPUBLIC FUNCTION CONSTRUCTOR()\nEND FUNCTION\nPUBLIC FUNCTION RowCount() AS INTEGER\nRETURN 42\nEND FUNCTION\nEND CLASS\nFUNCTION Start() AS VOID\nLET frame AS DataFrame = NEW DataFrame()\nPRINT frame.RowCount()\nDELETE frame\nEND FUNCTION\n";
+    let source = "CLASS DataFrame\nPUBLIC FUNCTION CONSTRUCTOR()\nEND FUNCTION\nPUBLIC FUNCTION RowCount() AS INTEGER\nRETURN 42\nEND FUNCTION\nEND CLASS\nFUNCTION Start() AS VOID\nLET frame AS DataFrame = NEW DataFrame()\nPRINT frame.RowCount()\nRELEASE frame\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("execute local DataFrame");
     assert_eq!(output, "42\n");
 }
@@ -972,7 +1091,7 @@ END CLASS
 
 FUNCTION Start() AS VOID
     LET pet AS Dog = NEW Dog()
-    DELETE pet
+    RELEASE pet
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute destructor chain");
@@ -1030,7 +1149,7 @@ END CLASS
 
 FUNCTION Start() AS VOID
     LET pet AS Dog = NEW Dog()
-    DELETE pet
+    RELEASE pet
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute lifecycle dispatch");
@@ -1303,7 +1422,7 @@ fn filesystem_capability_reports_file_existence() {
 
 #[test]
 fn file_is_test_and_identity_equality() {
-    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Nop() AS VOID\nEND FUNCTION\nFUNCTION Start() AS VOID\nLET missing AS FS.File OR Error = FS.Open(\"no-such-basicnext-r5-file\", FS.READ)\nIF missing IS Error THEN\nPRINT \"err\"\nEND IF\nLET file AS FS.File OR Error = FS.Open(\"Cargo.toml\", FS.READ)\nIF file IS FS.File THEN\nPRINT \"file\"\nLET alias AS FS.File OR Error = file\nIF alias = file THEN\nPRINT \"same\"\nEND IF\nDELETE file\nEND IF\nLET e AS Error\nIF e IS Error THEN\nPRINT e.Code\nEND IF\nLET v AS VOID OR Error = Nop()\nLET both AS VOID OR Error = e\nPRINT v = both\nEND FUNCTION\n";
+    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Nop() AS VOID\nEND FUNCTION\nFUNCTION Start() AS VOID\nLET missing AS FS.File OR Error = FS.Open(\"no-such-basicnext-r5-file\", FS.READ)\nIF missing IS Error THEN\nPRINT \"err\"\nEND IF\nLET file AS FS.File OR Error = FS.Open(\"Cargo.toml\", FS.READ)\nIF file IS FS.File THEN\nPRINT \"file\"\nLET alias AS FS.File OR Error = file\nIF alias = file THEN\nPRINT \"same\"\nEND IF\nRELEASE file\nEND IF\nLET e AS Error\nIF e IS Error THEN\nPRINT e.Code\nEND IF\nLET v AS VOID OR Error = Nop()\nLET both AS VOID OR Error = e\nPRINT v = both\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("IS FS.File and identity");
     assert_eq!(output, "err\nfile\nsame\n0\nFALSE\n");
 }
@@ -1317,14 +1436,14 @@ fn filesystem_file_opens_reads_and_closes() {
 
 #[test]
 fn filesystem_file_delete_closes_and_rejects_reuse() {
-    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"Cargo.toml\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nDELETE file\nDELETE file\nEND IF\nEND FUNCTION\n";
-    let error = run(source, "").expect_err("second DELETE must fail");
-    assert_eq!(error.code, "DOUBLE_DELETE");
+    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"Cargo.toml\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nRELEASE file\nRELEASE file\nEND IF\nEND FUNCTION\n";
+    let error = run(source, "").expect_err("second RELEASE must fail");
+    assert_eq!(error.code, "DOUBLE_RELEASE");
 }
 
 #[test]
 fn filesystem_file_reads_lines_and_bytes() {
-    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET text AS FS.File OR Error = FS.Open(\"Cargo.toml\", FS.READ)\nIF text IS Error THEN\nPRINT text.Code\nELSE\nLET line AS STRING OR EOF OR Error = text.ReadLine()\nPRINT line\ntext.Close()\nEND IF\nLET binary AS FS.File OR Error = FS.Open(\"Cargo.toml\", FS.READ)\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[8]\nIF binary IS Error THEN\nPRINT binary.Code\nELSE\nPRINT binary.ReadBytes(buffer), buffer[0]\nDELETE binary\nEND IF\nEND FUNCTION\n";
+    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET text AS FS.File OR Error = FS.Open(\"Cargo.toml\", FS.READ)\nIF text IS Error THEN\nPRINT text.Code\nELSE\nLET line AS STRING OR EOF OR Error = text.ReadLine()\nPRINT line\ntext.Close()\nEND IF\nLET binary AS FS.File OR Error = FS.Open(\"Cargo.toml\", FS.READ)\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[8]\nIF binary IS Error THEN\nPRINT binary.Code\nELSE\nPRINT binary.ReadBytes(buffer), buffer[0]\nRELEASE binary\nEND IF\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("execute line and byte reads");
     assert!(output.starts_with("[workspace]\n"));
     assert!(output.contains('8'));
@@ -1332,14 +1451,14 @@ fn filesystem_file_reads_lines_and_bytes() {
 
 #[test]
 fn filesystem_file_writes_bytes_round_trip() {
-    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET out AS FS.File OR Error = FS.Open(\"/tmp/basicnext-sprint5.bn\", FS.WRITE)\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[2]\nbuffer[0] = 65\nbuffer[1] = 66\nIF out IS Error THEN\nPRINT out.Code\nELSE\nLET result AS VOID OR Error = out.WriteBytes(buffer, 2)\nIF result IS Error THEN\nPRINT result.Code\nEND IF\nout.Close()\nEND IF\nLET input AS FS.File OR Error = FS.Open(\"/tmp/basicnext-sprint5.bn\", FS.READ)\nIF input IS Error THEN\nPRINT input.Code\nELSE\nLET read_buffer AS POINTER TO BYTE[] = NEW BYTE[2]\nPRINT input.ReadBytes(read_buffer), read_buffer[0], read_buffer[1]\nDELETE input\nEND IF\nFS.DeleteFile(\"/tmp/basicnext-sprint5.bn\")\nEND FUNCTION\n";
+    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET out AS FS.File OR Error = FS.Open(\"/tmp/basicnext-sprint5.bn\", FS.WRITE)\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[2]\nbuffer[0] = 65\nbuffer[1] = 66\nIF out IS Error THEN\nPRINT out.Code\nELSE\nLET result AS VOID OR Error = out.WriteBytes(buffer, 2)\nIF result IS Error THEN\nPRINT result.Code\nEND IF\nout.Close()\nEND IF\nLET input AS FS.File OR Error = FS.Open(\"/tmp/basicnext-sprint5.bn\", FS.READ)\nIF input IS Error THEN\nPRINT input.Code\nELSE\nLET read_buffer AS POINTER TO BYTE[] = NEW BYTE[2]\nPRINT input.ReadBytes(read_buffer), read_buffer[0], read_buffer[1]\nRELEASE input\nEND IF\nFS.DeleteFile(\"/tmp/basicnext-sprint5.bn\")\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("execute byte write");
     assert!(output.contains("2 65 66"));
 }
 
 #[test]
 fn filesystem_write_bytes_on_a_read_only_file_returns_error() {
-    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"Cargo.toml\", FS.READ)\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[1]\nbuffer[0] = 65\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET written AS VOID OR Error = file.WriteBytes(buffer, 1)\nIF written IS Error THEN\nPRINT written.Code\nEND IF\nDELETE file\nEND IF\nEND FUNCTION\n";
+    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"Cargo.toml\", FS.READ)\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[1]\nbuffer[0] = 65\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET written AS VOID OR Error = file.WriteBytes(buffer, 1)\nIF written IS Error THEN\nPRINT written.Code\nEND IF\nRELEASE file\nEND IF\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("WriteBytes I/O failure is an Error value");
     assert_eq!(output, "1\n");
 }
@@ -1356,7 +1475,7 @@ fn filesystem_file_rejects_byte_count_outside_buffer() {
 fn filesystem_file_reports_invalid_utf8_on_text_read() {
     fs::write("/tmp/basicnext-sprint5-utf8.bn", [0xff, 0xfe])
         .expect("create invalid UTF-8 fixture");
-    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"/tmp/basicnext-sprint5-utf8.bn\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET text AS STRING OR Error = file.ReadAll()\nIF text IS Error THEN\nPRINT text.Code\nEND IF\nDELETE file\nEND IF\nFS.DeleteFile(\"/tmp/basicnext-sprint5-utf8.bn\")\nEND FUNCTION\n";
+    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"/tmp/basicnext-sprint5-utf8.bn\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET text AS STRING OR Error = file.ReadAll()\nIF text IS Error THEN\nPRINT text.Code\nEND IF\nRELEASE file\nEND IF\nFS.DeleteFile(\"/tmp/basicnext-sprint5-utf8.bn\")\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("invalid UTF-8 is an Error value");
     assert!(output.contains('1'));
     let _ = fs::remove_file("/tmp/basicnext-sprint5-utf8.bn");
@@ -1364,14 +1483,14 @@ fn filesystem_file_reports_invalid_utf8_on_text_read() {
 
 #[test]
 fn filesystem_failed_text_write_does_not_lock_out_binary_reads() {
-    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"Cargo.toml\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET written AS VOID OR Error = file.Write(\"x\")\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[8]\nPRINT file.ReadBytes(buffer)\nDELETE file\nEND IF\nEND FUNCTION\n";
+    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"Cargo.toml\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET written AS VOID OR Error = file.Write(\"x\")\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[8]\nPRINT file.ReadBytes(buffer)\nRELEASE file\nEND IF\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("failed text write must not change file family");
     assert_eq!(output, "8\n");
 }
 
 #[test]
 fn filesystem_rejects_directory_open_and_missing_delete() {
-    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\".\", FS.READ)\nIF file IS Error THEN\nPRINT \"open\", file.Code\nELSE\nPRINT \"opened\"\nDELETE file\nEND IF\nLET removed AS VOID OR Error = FS.DeleteFile(\"/tmp/basicnext-sprint5-missing.bn\")\nIF removed IS Error THEN\nPRINT \"del\", removed.Code\nEND IF\nEND FUNCTION\n";
+    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\".\", FS.READ)\nIF file IS Error THEN\nPRINT \"open\", file.Code\nELSE\nPRINT \"opened\"\nRELEASE file\nEND IF\nLET removed AS VOID OR Error = FS.DeleteFile(\"/tmp/basicnext-sprint5-missing.bn\")\nIF removed IS Error THEN\nPRINT \"del\", removed.Code\nEND IF\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("unsupported paths return Error values");
     assert_eq!(output, "open 1\ndel 1\n");
 }
@@ -1394,7 +1513,7 @@ fn filesystem_eof_locks_the_text_family() {
     let path = "/tmp/basicnext-r8-empty-text.bn";
     let _ = fs::remove_file(path);
     let source = format!(
-        "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET out AS FS.File OR Error = FS.Open(\"{path}\", FS.WRITE)\nIF out IS Error THEN\nPRINT out.Code\nELSE\nout.Close()\nDELETE out\nEND IF\nLET text AS FS.File OR Error = FS.Open(\"{path}\", FS.READ)\nIF text IS Error THEN\nPRINT text.Code\nELSE\nLET line AS STRING OR EOF OR Error = text.ReadLine()\nIF line IS EOF THEN\nPRINT \"eof\"\nEND IF\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[1]\nLET bytes AS INTEGER OR EOF OR Error = text.ReadBytes(buffer)\nIF bytes IS Error THEN\nPRINT \"blocked\"\nEND IF\nDELETE buffer\nDELETE text\nEND IF\nFS.DeleteFile(\"{path}\")\nEND FUNCTION\n"
+        "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET out AS FS.File OR Error = FS.Open(\"{path}\", FS.WRITE)\nIF out IS Error THEN\nPRINT out.Code\nELSE\nout.Close()\nRELEASE out\nEND IF\nLET text AS FS.File OR Error = FS.Open(\"{path}\", FS.READ)\nIF text IS Error THEN\nPRINT text.Code\nELSE\nLET line AS STRING OR EOF OR Error = text.ReadLine()\nIF line IS EOF THEN\nPRINT \"eof\"\nEND IF\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[1]\nLET bytes AS INTEGER OR EOF OR Error = text.ReadBytes(buffer)\nIF bytes IS Error THEN\nPRINT \"blocked\"\nEND IF\nRELEASE buffer\nRELEASE text\nEND IF\nFS.DeleteFile(\"{path}\")\nEND FUNCTION\n"
     );
     let (_, output) = run(&source, "").expect("ReadLine EOF locks text family");
     assert_eq!(output, "eof\nblocked\n");
@@ -1405,7 +1524,7 @@ fn filesystem_eof_locks_the_binary_family() {
     let path = "/tmp/basicnext-r8-empty-binary.bn";
     let _ = fs::remove_file(path);
     let source = format!(
-        "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET out AS FS.File OR Error = FS.Open(\"{path}\", FS.WRITE)\nIF out IS Error THEN\nPRINT out.Code\nELSE\nout.Close()\nDELETE out\nEND IF\nLET binary AS FS.File OR Error = FS.Open(\"{path}\", FS.READ)\nIF binary IS Error THEN\nPRINT binary.Code\nELSE\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[1]\nLET bytes AS INTEGER OR EOF OR Error = binary.ReadBytes(buffer)\nIF bytes IS EOF THEN\nPRINT \"eof\"\nEND IF\nLET line AS STRING OR EOF OR Error = binary.ReadLine()\nIF line IS Error THEN\nPRINT \"blocked\"\nEND IF\nDELETE buffer\nDELETE binary\nEND IF\nFS.DeleteFile(\"{path}\")\nEND FUNCTION\n"
+        "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET out AS FS.File OR Error = FS.Open(\"{path}\", FS.WRITE)\nIF out IS Error THEN\nPRINT out.Code\nELSE\nout.Close()\nRELEASE out\nEND IF\nLET binary AS FS.File OR Error = FS.Open(\"{path}\", FS.READ)\nIF binary IS Error THEN\nPRINT binary.Code\nELSE\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[1]\nLET bytes AS INTEGER OR EOF OR Error = binary.ReadBytes(buffer)\nIF bytes IS EOF THEN\nPRINT \"eof\"\nEND IF\nLET line AS STRING OR EOF OR Error = binary.ReadLine()\nIF line IS Error THEN\nPRINT \"blocked\"\nEND IF\nRELEASE buffer\nRELEASE binary\nEND IF\nFS.DeleteFile(\"{path}\")\nEND FUNCTION\n"
     );
     let (_, output) = run(&source, "").expect("ReadBytes EOF locks binary family");
     assert_eq!(output, "eof\nblocked\n");
@@ -1416,7 +1535,7 @@ fn filesystem_close_flushes_written_bytes_to_disk() {
     let path = "/tmp/basicnext-r8-close-flush.bn";
     let _ = fs::remove_file(path);
     let source = format!(
-        "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET out AS FS.File OR Error = FS.Open(\"{path}\", FS.WRITE)\nIF out IS Error THEN\nPRINT out.Code\nELSE\nLET written AS VOID OR Error = out.Write(\"flushed\")\nIF written IS Error THEN\nPRINT written.Code\nELSE\nLET closed AS VOID OR Error = out.Close()\nIF closed IS Error THEN\nPRINT closed.Code\nEND IF\nEND IF\nDELETE out\nEND IF\nLET input AS FS.File OR Error = FS.Open(\"{path}\", FS.READ)\nIF input IS Error THEN\nPRINT input.Code\nELSE\nPRINT input.ReadAll()\nDELETE input\nEND IF\nFS.DeleteFile(\"{path}\")\nEND FUNCTION\n"
+        "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET out AS FS.File OR Error = FS.Open(\"{path}\", FS.WRITE)\nIF out IS Error THEN\nPRINT out.Code\nELSE\nLET written AS VOID OR Error = out.Write(\"flushed\")\nIF written IS Error THEN\nPRINT written.Code\nELSE\nLET closed AS VOID OR Error = out.Close()\nIF closed IS Error THEN\nPRINT closed.Code\nEND IF\nEND IF\nRELEASE out\nEND IF\nLET input AS FS.File OR Error = FS.Open(\"{path}\", FS.READ)\nIF input IS Error THEN\nPRINT input.Code\nELSE\nPRINT input.ReadAll()\nRELEASE input\nEND IF\nFS.DeleteFile(\"{path}\")\nEND FUNCTION\n"
     );
     let (_, output) = run(&source, "").expect("Close flushes before release");
     assert_eq!(output, "flushed\n");
@@ -1424,7 +1543,7 @@ fn filesystem_close_flushes_written_bytes_to_disk() {
 
 #[test]
 fn filesystem_new_file_starts_closed() {
-    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File = NEW FS.File()\nLET closed AS VOID OR Error = file.Close()\nIF closed IS Error THEN\nPRINT closed.Code\nEND IF\nLET text AS STRING OR Error = file.ReadAll()\nIF text IS Error THEN\nPRINT text.Code\nEND IF\nDELETE file\nEND FUNCTION\n";
+    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File = NEW FS.File()\nLET closed AS VOID OR Error = file.Close()\nIF closed IS Error THEN\nPRINT closed.Code\nEND IF\nLET text AS STRING OR Error = file.ReadAll()\nIF text IS Error THEN\nPRINT text.Code\nEND IF\nRELEASE file\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("NEW FS.File creates a closed handle");
     assert_eq!(output, "1\n");
 }
@@ -1464,42 +1583,42 @@ fn bndata_frame_adds_columns_and_reports_counts() {
 
 #[test]
 fn dataframe_is_test_and_identity_equality() {
-    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET ids AS INTEGER[1] = [1]\ntable.AddIntegerColumn(\"Id\", ids)\nLET selected AS Data.DataFrame OR Error = table.Select([0], [0])\nIF selected IS Data.DataFrame THEN\nPRINT \"frame\"\nLET alias AS Data.DataFrame OR Error = selected\nIF alias = selected THEN\nPRINT \"same\"\nEND IF\nDELETE selected\nEND IF\nLET other AS Data.DataFrame = NEW Data.DataFrame()\nIF table = other THEN\nPRINT \"diff\"\nEND IF\nDELETE table\nDELETE other\nEND FUNCTION\n";
+    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET ids AS INTEGER[1] = [1]\ntable.AddIntegerColumn(\"Id\", ids)\nLET selected AS Data.DataFrame OR Error = table.Select([0], [0])\nIF selected IS Data.DataFrame THEN\nPRINT \"frame\"\nLET alias AS Data.DataFrame OR Error = selected\nIF alias = selected THEN\nPRINT \"same\"\nEND IF\nRELEASE selected\nEND IF\nLET other AS Data.DataFrame = NEW Data.DataFrame()\nIF table = other THEN\nPRINT \"diff\"\nEND IF\nRELEASE table\nRELEASE other\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("IS DataFrame");
     assert_eq!(output, "frame\nsame\n");
 }
 
 #[test]
 fn bndata_set_label_renames_a_column_in_place() {
-    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET values AS INTEGER[1] = [7]\ntable.AddIntegerColumn(\"old\", values)\ntable.SetLabel(\"old\", \"new\")\nPRINT table.ColumnName(0)\nDELETE table\nEND FUNCTION\n";
+    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET values AS INTEGER[1] = [7]\ntable.AddIntegerColumn(\"old\", values)\ntable.SetLabel(\"old\", \"new\")\nPRINT table.ColumnName(0)\nRELEASE table\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("rename DataFrame label");
     assert_eq!(output, "new\n");
 }
 
 #[test]
 fn bndata_transpose_returns_string_columns() {
-    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET ids AS INTEGER[2] = [1, 2]\nLET names AS STRING[2] = [\"Ana\", \"Bia\"]\ntable.AddIntegerColumn(\"Id\", ids)\ntable.AddStringColumn(\"Name\", names)\nLET result AS Data.DataFrame OR Error = table.Transpose()\nIF result IS Error THEN\nPRINT result.Code\nELSE\nPRINT result.GetString(0, \"Column\"), result.GetString(1, \"Row0\"), result.GetString(1, \"Row1\")\nDELETE result\nEND IF\nDELETE table\nEND FUNCTION\n";
+    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET ids AS INTEGER[2] = [1, 2]\nLET names AS STRING[2] = [\"Ana\", \"Bia\"]\ntable.AddIntegerColumn(\"Id\", ids)\ntable.AddStringColumn(\"Name\", names)\nLET result AS Data.DataFrame OR Error = table.Transpose()\nIF result IS Error THEN\nPRINT result.Code\nELSE\nPRINT result.GetString(0, \"Column\"), result.GetString(1, \"Row0\"), result.GetString(1, \"Row1\")\nRELEASE result\nEND IF\nRELEASE table\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("transpose DataFrame");
     assert_eq!(output, "Id Ana Bia\n");
 }
 
 #[test]
 fn bndata_append_rows_returns_a_new_frame() {
-    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET left AS Data.DataFrame = NEW Data.DataFrame()\nLET right AS Data.DataFrame = NEW Data.DataFrame()\nLET first AS INTEGER[1] = [1]\nLET second AS INTEGER[1] = [2]\nleft.AddIntegerColumn(\"Id\", first)\nright.AddIntegerColumn(\"Id\", second)\nLET joined AS Data.DataFrame OR Error = left.AppendRows(right)\nIF joined IS Error THEN\nPRINT joined.Code\nELSE\nPRINT left.RowCount(), joined.RowCount(), joined.GetInteger(1, \"Id\")\nDELETE joined\nEND IF\nDELETE left\nDELETE right\nEND FUNCTION\n";
+    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET left AS Data.DataFrame = NEW Data.DataFrame()\nLET right AS Data.DataFrame = NEW Data.DataFrame()\nLET first AS INTEGER[1] = [1]\nLET second AS INTEGER[1] = [2]\nleft.AddIntegerColumn(\"Id\", first)\nright.AddIntegerColumn(\"Id\", second)\nLET joined AS Data.DataFrame OR Error = left.AppendRows(right)\nIF joined IS Error THEN\nPRINT joined.Code\nELSE\nPRINT left.RowCount(), joined.RowCount(), joined.GetInteger(1, \"Id\")\nRELEASE joined\nEND IF\nRELEASE left\nRELEASE right\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("append DataFrame rows");
     assert_eq!(output, "1 2 2\n");
 }
 
 #[test]
 fn bndata_append_columns_returns_a_new_frame() {
-    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET left AS Data.DataFrame = NEW Data.DataFrame()\nLET right AS Data.DataFrame = NEW Data.DataFrame()\nLET ids AS INTEGER[1] = [1]\nLET names AS STRING[1] = [\"Ana\"]\nleft.AddIntegerColumn(\"Id\", ids)\nright.AddStringColumn(\"Name\", names)\nLET joined AS Data.DataFrame OR Error = left.AppendColumns(right)\nIF joined IS Error THEN\nPRINT joined.Code\nELSE\nPRINT left.ColumnCount(), joined.ColumnCount(), joined.GetString(0, \"Name\")\nDELETE joined\nEND IF\nDELETE left\nDELETE right\nEND FUNCTION\n";
+    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET left AS Data.DataFrame = NEW Data.DataFrame()\nLET right AS Data.DataFrame = NEW Data.DataFrame()\nLET ids AS INTEGER[1] = [1]\nLET names AS STRING[1] = [\"Ana\"]\nleft.AddIntegerColumn(\"Id\", ids)\nright.AddStringColumn(\"Name\", names)\nLET joined AS Data.DataFrame OR Error = left.AppendColumns(right)\nIF joined IS Error THEN\nPRINT joined.Code\nELSE\nPRINT left.ColumnCount(), joined.ColumnCount(), joined.GetString(0, \"Name\")\nRELEASE joined\nEND IF\nRELEASE left\nRELEASE right\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("append DataFrame columns");
     assert_eq!(output, "1 2 Ana\n");
 }
 
 #[test]
 fn bndata_join_variants_preserve_their_outer_side() {
-    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET left AS Data.DataFrame = NEW Data.DataFrame()\nLET right AS Data.DataFrame = NEW Data.DataFrame()\nLET leftIds AS INTEGER[2] = [1, 2]\nLET scores AS INTEGER[2] = [10, 20]\nLET rightIds AS INTEGER[2] = [2, 3]\nLET names AS STRING[2] = [\"Bia\", \"Caio\"]\nleft.AddIntegerColumn(\"Id\", leftIds)\nleft.AddIntegerColumn(\"Score\", scores)\nright.AddIntegerColumn(\"Id\", rightIds)\nright.AddStringColumn(\"Name\", names)\nLET inner AS Data.DataFrame OR Error = left.Join(right, \"Id\", \"Id\")\nLET leftJoin AS Data.DataFrame OR Error = left.LeftJoin(right, \"Id\", \"Id\")\nLET rightJoin AS Data.DataFrame OR Error = left.RightJoin(right, \"Id\", \"Id\")\nLET full AS Data.DataFrame OR Error = left.FullJoin(right, \"Id\", \"Id\")\nIF inner IS Error OR leftJoin IS Error OR rightJoin IS Error OR full IS Error THEN\nPRINT \"error\"\nELSE\nPRINT inner.RowCount(), leftJoin.RowCount(), rightJoin.RowCount(), full.RowCount(), full.GetInteger(2, \"Id\")\nLET missing AS INTEGER OR NA OR Error = full.GetInteger(2, \"Score\")\nPRINT missing\nDELETE inner\nDELETE leftJoin\nDELETE rightJoin\nDELETE full\nEND IF\nDELETE left\nDELETE right\nEND FUNCTION\n";
+    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET left AS Data.DataFrame = NEW Data.DataFrame()\nLET right AS Data.DataFrame = NEW Data.DataFrame()\nLET leftIds AS INTEGER[2] = [1, 2]\nLET scores AS INTEGER[2] = [10, 20]\nLET rightIds AS INTEGER[2] = [2, 3]\nLET names AS STRING[2] = [\"Bia\", \"Caio\"]\nleft.AddIntegerColumn(\"Id\", leftIds)\nleft.AddIntegerColumn(\"Score\", scores)\nright.AddIntegerColumn(\"Id\", rightIds)\nright.AddStringColumn(\"Name\", names)\nLET inner AS Data.DataFrame OR Error = left.Join(right, \"Id\", \"Id\")\nLET leftJoin AS Data.DataFrame OR Error = left.LeftJoin(right, \"Id\", \"Id\")\nLET rightJoin AS Data.DataFrame OR Error = left.RightJoin(right, \"Id\", \"Id\")\nLET full AS Data.DataFrame OR Error = left.FullJoin(right, \"Id\", \"Id\")\nIF inner IS Error OR leftJoin IS Error OR rightJoin IS Error OR full IS Error THEN\nPRINT \"error\"\nELSE\nPRINT inner.RowCount(), leftJoin.RowCount(), rightJoin.RowCount(), full.RowCount(), full.GetInteger(2, \"Id\")\nLET missing AS INTEGER OR NA OR Error = full.GetInteger(2, \"Score\")\nPRINT missing\nRELEASE inner\nRELEASE leftJoin\nRELEASE rightJoin\nRELEASE full\nEND IF\nRELEASE left\nRELEASE right\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("join DataFrames");
     assert_eq!(output, "1 2 2 3 3\nNA\n");
 }
@@ -1531,7 +1650,7 @@ fn bndata_read_csv_uses_the_injected_data_provider() {
     ));
     fs::write(&path, "ignored\n").expect("write provider fixture");
     let source = format!(
-        "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"{}\", FS.READ)\nIF file IS Error THEN\nRETURN\nEND IF\nLET table AS Data.DataFrame OR Error = Data.ReadCSV(file, FALSE, \",\")\nIF table IS Error THEN\nRETURN\nEND IF\nPRINT table.GetString(0, \"Column1\")\nDELETE table\nfile.Close()\nDELETE file\nEND FUNCTION\n",
+        "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"{}\", FS.READ)\nIF file IS Error THEN\nRETURN\nEND IF\nLET table AS Data.DataFrame OR Error = Data.ReadCSV(file, FALSE, \",\")\nIF table IS Error THEN\nRETURN\nEND IF\nPRINT table.GetString(0, \"Column1\")\nRELEASE table\nfile.Close()\nRELEASE file\nEND FUNCTION\n",
         path.display()
     );
     let host = HostEnv::fixed(vec!["provider.bn".into()], 0, 0)
@@ -1547,7 +1666,7 @@ fn bndata_read_csv_rejects_ragged_rows() {
     let csv = unique_temp("ragged.csv");
     fs::write(&csv, "name;score\nAna;10\nCarlos\n").expect("create ragged CSV fixture");
     let source = format!(
-        "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"{}\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET table AS Data.DataFrame OR Error = Data.ReadCSV(file, TRUE, \";\")\nIF table IS Error THEN\nPRINT table.Code\nEND IF\nfile.Close()\nDELETE file\nEND IF\nEND FUNCTION\n",
+        "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"{}\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET table AS Data.DataFrame OR Error = Data.ReadCSV(file, TRUE, \";\")\nIF table IS Error THEN\nPRINT table.Code\nEND IF\nfile.Close()\nRELEASE file\nEND IF\nEND FUNCTION\n",
         bn_path(&csv)
     );
     let (_, output) = run(&source, "").expect("ragged CSV returns Error");
@@ -1560,7 +1679,7 @@ fn bndata_read_csv_rejects_unterminated_quotes() {
     let csv = unique_temp("unquoted.csv");
     fs::write(&csv, "name\n\"Ana\n").expect("create unterminated CSV fixture");
     let source = format!(
-        "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"{}\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET table AS Data.DataFrame OR Error = Data.ReadCSV(file, TRUE, \",\")\nIF table IS Error THEN\nPRINT table.Code\nEND IF\nfile.Close()\nDELETE file\nEND IF\nEND FUNCTION\n",
+        "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"{}\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET table AS Data.DataFrame OR Error = Data.ReadCSV(file, TRUE, \",\")\nIF table IS Error THEN\nPRINT table.Code\nEND IF\nfile.Close()\nRELEASE file\nEND IF\nEND FUNCTION\n",
         bn_path(&csv)
     );
     let (_, output) = run(&source, "").expect("unterminated CSV quotes return Error");
@@ -1573,7 +1692,7 @@ fn bndata_write_csv_on_a_closed_file_returns_error() {
     let csv = unique_temp("writecsv-closed.csv");
     let path = bn_path(&csv);
     let source = format!(
-        "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"{path}\", FS.WRITE)\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET names AS STRING[1] = [\"Ana\"]\ntable.AddStringColumn(\"name\", names)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nfile.Close()\nLET written AS VOID OR Error = Data.WriteCSV(file, table, TRUE, \",\")\nIF written IS Error THEN\nPRINT written.Code\nEND IF\nDELETE file\nEND IF\nDELETE table\nFS.DeleteFile(\"{path}\")\nEND FUNCTION\n"
+        "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"{path}\", FS.WRITE)\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET names AS STRING[1] = [\"Ana\"]\ntable.AddStringColumn(\"name\", names)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nfile.Close()\nLET written AS VOID OR Error = Data.WriteCSV(file, table, TRUE, \",\")\nIF written IS Error THEN\nPRINT written.Code\nEND IF\nRELEASE file\nEND IF\nRELEASE table\nFS.DeleteFile(\"{path}\")\nEND FUNCTION\n"
     );
     let (_, output) = run(&source, "").expect("WriteCSV on a closed file returns Error");
     assert_eq!(output, "1\n");
@@ -1582,7 +1701,7 @@ fn bndata_write_csv_on_a_closed_file_returns_error() {
 
 #[test]
 fn bndata_read_csv_rejects_invalid_separator() {
-    let source = "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"Cargo.toml\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET table AS Data.DataFrame OR Error = Data.ReadCSV(file, TRUE, \"\\\"\")\nIF table IS Error THEN\nPRINT table.Code\nEND IF\nDELETE file\nEND IF\nEND FUNCTION\n";
+    let source = "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"Cargo.toml\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET table AS Data.DataFrame OR Error = Data.ReadCSV(file, TRUE, \"\\\"\")\nIF table IS Error THEN\nPRINT table.Code\nEND IF\nRELEASE file\nEND IF\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("invalid separator returns Error");
     assert_eq!(output, "1\n");
 }
@@ -1592,7 +1711,7 @@ fn bndata_conversion_failure_leaves_the_column_unchanged() {
     let csv = unique_temp("conversion.csv");
     fs::write(&csv, "value\n10\n999999999999999999999\n").expect("create conversion CSV fixture");
     let source = format!(
-        "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"{}\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET table AS Data.DataFrame OR Error = Data.ReadCSV(file, TRUE, \";\")\nIF table IS Error THEN\nPRINT table.Code\nELSE\nLET converted AS VOID OR Error = table.ConvertToInteger(\"value\")\nIF converted IS Error THEN\nLET first AS STRING OR NA OR Error = table.GetString(0, \"value\")\nPRINT first\nEND IF\nDELETE table\nEND IF\nDELETE file\nEND IF\nEND FUNCTION\n",
+        "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"{}\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET table AS Data.DataFrame OR Error = Data.ReadCSV(file, TRUE, \";\")\nIF table IS Error THEN\nPRINT table.Code\nELSE\nLET converted AS VOID OR Error = table.ConvertToInteger(\"value\")\nIF converted IS Error THEN\nLET first AS STRING OR NA OR Error = table.GetString(0, \"value\")\nPRINT first\nEND IF\nRELEASE table\nEND IF\nRELEASE file\nEND IF\nEND FUNCTION\n",
         bn_path(&csv)
     );
     let (_, output) = run(&source, "").expect("conversion failure is an Error");
@@ -1602,42 +1721,42 @@ fn bndata_conversion_failure_leaves_the_column_unchanged() {
 
 #[test]
 fn bndata_copy_failure_leaves_the_destination_unchanged() {
-    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET text AS STRING[2] = [\"1\", \"\"]\nLET target AS POINTER TO INTEGER[] = NEW INTEGER[2]\ntarget[0] = 9\ntarget[1] = 9\ntable.AddStringColumn(\"Id\", text)\ntable.ConvertToInteger(\"Id\")\nLET copied AS VOID OR Error = table.CopyIntegerColumn(\"Id\", target)\nIF copied IS Error THEN\nPRINT target[0], target[1]\nEND IF\nDELETE target\nDELETE table\nEND FUNCTION\n";
+    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET text AS STRING[2] = [\"1\", \"\"]\nLET target AS POINTER TO INTEGER[] = NEW INTEGER[2]\ntarget[0] = 9\ntarget[1] = 9\ntable.AddStringColumn(\"Id\", text)\ntable.ConvertToInteger(\"Id\")\nLET copied AS VOID OR Error = table.CopyIntegerColumn(\"Id\", target)\nIF copied IS Error THEN\nPRINT target[0], target[1]\nEND IF\nRELEASE target\nRELEASE table\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("run atomic copy");
     assert_eq!(output, "9 9\n");
 }
 
 #[test]
 fn bndata_zscore_standardizes_a_float_column() {
-    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET xs AS FLOAT[3] = [1.0, 2.0, 3.0]\ntable.AddFloatColumn(\"x\", xs)\nLET z AS Data.DataFrame OR Error = table.ZScore(\"x\")\nIF z IS Error THEN\nPRINT z.Code\nELSE\nPRINT z.GetFloat(0, \"x\")\nPRINT z.GetFloat(1, \"x\")\nPRINT z.GetFloat(2, \"x\")\nDELETE z\nEND IF\nLET missing AS Data.DataFrame OR Error = table.ZScore(\"nope\")\nIF missing IS Error THEN\nPRINT missing.Code\nEND IF\nDELETE table\nEND FUNCTION\n";
+    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET xs AS FLOAT[3] = [1.0, 2.0, 3.0]\ntable.AddFloatColumn(\"x\", xs)\nLET z AS Data.DataFrame OR Error = table.ZScore(\"x\")\nIF z IS Error THEN\nPRINT z.Code\nELSE\nPRINT z.GetFloat(0, \"x\")\nPRINT z.GetFloat(1, \"x\")\nPRINT z.GetFloat(2, \"x\")\nRELEASE z\nEND IF\nLET missing AS Data.DataFrame OR Error = table.ZScore(\"nope\")\nIF missing IS Error THEN\nPRINT missing.Code\nEND IF\nRELEASE table\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("run ZScore");
     assert_eq!(output, "-1.0\n0.0\n1.0\n1\n");
 }
 
 #[test]
 fn bndata_select_rejects_out_of_bounds_indices() {
-    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET values AS INTEGER[1] = [1]\ntable.AddIntegerColumn(\"Id\", values)\nLET result AS Data.DataFrame OR Error = table.Select([1], [0])\nIF result IS Error THEN\nPRINT result.Code\nEND IF\nDELETE table\nEND FUNCTION\n";
+    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET values AS INTEGER[1] = [1]\ntable.AddIntegerColumn(\"Id\", values)\nLET result AS Data.DataFrame OR Error = table.Select([1], [0])\nIF result IS Error THEN\nPRINT result.Code\nEND IF\nRELEASE table\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("run bounds check");
     assert_eq!(output, "1\n");
 }
 
 #[test]
 fn bndata_select_rejects_negative_indices_as_error() {
-    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET values AS INTEGER[1] = [1]\ntable.AddIntegerColumn(\"Id\", values)\nLET rows AS INTEGER[1]\nrows[0] = -1\nLET result AS Data.DataFrame OR Error = table.Select(rows, [0])\nIF result IS Error THEN\nPRINT result.Code\nEND IF\nDELETE table\nEND FUNCTION\n";
+    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET values AS INTEGER[1] = [1]\ntable.AddIntegerColumn(\"Id\", values)\nLET rows AS INTEGER[1]\nrows[0] = -1\nLET result AS Data.DataFrame OR Error = table.Select(rows, [0])\nIF result IS Error THEN\nPRINT result.Code\nEND IF\nRELEASE table\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("negative Select is Error");
     assert_eq!(output, "1\n");
 }
 
 #[test]
 fn bndata_slice_rejects_row_range_on_empty_frame() {
-    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET sliced AS Data.DataFrame OR Error = table.Slice(0, 1, 0, 0)\nIF sliced IS Error THEN\nPRINT sliced.Code\nEND IF\nDELETE table\nEND FUNCTION\n";
+    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET sliced AS Data.DataFrame OR Error = table.Slice(0, 1, 0, 0)\nIF sliced IS Error THEN\nPRINT sliced.Code\nEND IF\nRELEASE table\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("empty-frame Slice is Error");
     assert_eq!(output, "1\n");
 }
 
 #[test]
 fn bndata_empty_and_all_na_reductions_follow_bnmath() {
-    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET empty AS Data.DataFrame = NEW Data.DataFrame()\nLET xs AS FLOAT[0] = []\nempty.AddFloatColumn(\"x\", xs)\nPRINT empty.Mean(\"x\")\nPRINT empty.Median(\"x\")\nPRINT empty.Range(\"x\")\nDELETE empty\nLET nas AS Data.DataFrame = NEW Data.DataFrame()\nLET text AS STRING[2] = [\"\", \"\"]\nnas.AddStringColumn(\"n\", text)\nnas.ConvertToInteger(\"n\")\nPRINT nas.Mean(\"n\")\nPRINT nas.Quartile1(\"n\")\nLET mode AS FLOAT OR NA OR Error = nas.Mode(\"n\")\nPRINT mode\nDELETE nas\nEND FUNCTION\n";
+    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET empty AS Data.DataFrame = NEW Data.DataFrame()\nLET xs AS FLOAT[0] = []\nempty.AddFloatColumn(\"x\", xs)\nPRINT empty.Mean(\"x\")\nPRINT empty.Median(\"x\")\nPRINT empty.Range(\"x\")\nRELEASE empty\nLET nas AS Data.DataFrame = NEW Data.DataFrame()\nLET text AS STRING[2] = [\"\", \"\"]\nnas.AddStringColumn(\"n\", text)\nnas.ConvertToInteger(\"n\")\nPRINT nas.Mean(\"n\")\nPRINT nas.Quartile1(\"n\")\nLET mode AS FLOAT OR NA OR Error = nas.Mode(\"n\")\nPRINT mode\nRELEASE nas\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("empty and all-NA reductions");
     assert_eq!(output, "NAN\nNAN\nNAN\nNAN\nNAN\nNA\n");
 }
@@ -1651,9 +1770,9 @@ fn bnmath_mode_returns_na_for_an_empty_vector() {
 
 #[test]
 fn bndata_deleted_frame_rejects_reuse() {
-    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nDELETE table\nPRINT table.RowCount()\nEND FUNCTION\n";
+    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nRELEASE table\nPRINT table.RowCount()\nEND FUNCTION\n";
     let error = run(source, "").expect_err("reject deleted frame");
-    assert_eq!(error.code, "USE_AFTER_DELETE");
+    assert_eq!(error.code, "USE_AFTER_RELEASE");
 }
 
 #[test]
@@ -1661,7 +1780,7 @@ fn bndata_write_csv_serializes_headers_and_rows() {
     let csv = unique_temp("sprint6-write.csv");
     let path = bn_path(&csv);
     let source = format!(
-        "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET frame AS Data.DataFrame = NEW Data.DataFrame()\nLET names AS STRING[2] = [\"Ana\", \"Carlos\"]\nframe.AddStringColumn(\"name\", names)\nLET file AS FS.File OR Error = FS.Open(\"{path}\", FS.WRITE)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET result AS VOID OR Error = Data.WriteCSV(file, frame, TRUE, \",\")\nIF result IS Error THEN\nPRINT result.Code\nEND IF\nfile.Close()\nDELETE file\nEND IF\nDELETE frame\nEND FUNCTION\n"
+        "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET frame AS Data.DataFrame = NEW Data.DataFrame()\nLET names AS STRING[2] = [\"Ana\", \"Carlos\"]\nframe.AddStringColumn(\"name\", names)\nLET file AS FS.File OR Error = FS.Open(\"{path}\", FS.WRITE)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET result AS VOID OR Error = Data.WriteCSV(file, frame, TRUE, \",\")\nIF result IS Error THEN\nPRINT result.Code\nEND IF\nfile.Close()\nRELEASE file\nEND IF\nRELEASE frame\nEND FUNCTION\n"
     );
     run(&source, "").expect("write CSV");
     let text = fs::read_to_string(&csv).expect("read written CSV");
@@ -1678,7 +1797,7 @@ fn bndata_accepts_variable_fixed_vector_lengths() {
 
 #[test]
 fn local_class_file_is_not_a_host_file() {
-    let source = "CLASS File\nPUBLIC name AS STRING = \"user\"\nPUBLIC FUNCTION CONSTRUCTOR()\nEND FUNCTION\nEND CLASS\nFUNCTION Start() AS VOID\nLET f AS File = NEW File()\nPRINT f.name\nDELETE f\nEND FUNCTION\n";
+    let source = "CLASS File\nPUBLIC name AS STRING = \"user\"\nPUBLIC FUNCTION CONSTRUCTOR()\nEND FUNCTION\nEND CLASS\nFUNCTION Start() AS VOID\nLET f AS File = NEW File()\nPRINT f.name\nRELEASE f\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("local CLASS File");
     assert_eq!(output, "user\n");
 }
@@ -1699,28 +1818,28 @@ fn error_return_narrows_file_for_the_rest_of_the_block() {
 
 #[test]
 fn error_return_narrows_dataframe_for_readcsv() {
-    let source = "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"tests/fixtures/bndata-sprint6.csv\", FS.READ)\nIF file IS Error THEN\nRETURN\nEND IF\nLET table AS Data.DataFrame OR Error = Data.ReadCSV(file, TRUE, \",\")\nIF table IS Error THEN\nfile.Close()\nDELETE file\nRETURN\nEND IF\nPRINT table.RowCount()\nDELETE table\nfile.Close()\nDELETE file\nEND FUNCTION\n";
+    let source = "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"tests/fixtures/bndata-sprint6.csv\", FS.READ)\nIF file IS Error THEN\nRETURN\nEND IF\nLET table AS Data.DataFrame OR Error = Data.ReadCSV(file, TRUE, \",\")\nIF table IS Error THEN\nfile.Close()\nRELEASE file\nRETURN\nEND IF\nPRINT table.RowCount()\nRELEASE table\nfile.Close()\nRELEASE file\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("narrow DataFrame after RETURN");
     assert_eq!(output, "2\n");
 }
 
 #[test]
 fn bndata_zscore_empty_and_all_na_follow_bnmath() {
-    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET empty AS Data.DataFrame = NEW Data.DataFrame()\nLET xs AS FLOAT[0] = []\nempty.AddFloatColumn(\"x\", xs)\nLET z AS Data.DataFrame OR Error = empty.ZScore(\"x\")\nIF z IS Error THEN\nPRINT \"empty-error\"\nELSE\nPRINT z.RowCount()\nDELETE z\nEND IF\nDELETE empty\nLET nas AS Data.DataFrame = NEW Data.DataFrame()\nLET text AS STRING[2] = [\"\", \"\"]\nnas.AddStringColumn(\"n\", text)\nnas.ConvertToInteger(\"n\")\nLET z2 AS Data.DataFrame OR Error = nas.ZScore(\"n\")\nIF z2 IS Error THEN\nPRINT \"na-error\"\nELSE\nPRINT z2.GetFloat(0, \"n\")\nDELETE z2\nEND IF\nDELETE nas\nEND FUNCTION\n";
+    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET empty AS Data.DataFrame = NEW Data.DataFrame()\nLET xs AS FLOAT[0] = []\nempty.AddFloatColumn(\"x\", xs)\nLET z AS Data.DataFrame OR Error = empty.ZScore(\"x\")\nIF z IS Error THEN\nPRINT \"empty-error\"\nELSE\nPRINT z.RowCount()\nRELEASE z\nEND IF\nRELEASE empty\nLET nas AS Data.DataFrame = NEW Data.DataFrame()\nLET text AS STRING[2] = [\"\", \"\"]\nnas.AddStringColumn(\"n\", text)\nnas.ConvertToInteger(\"n\")\nLET z2 AS Data.DataFrame OR Error = nas.ZScore(\"n\")\nIF z2 IS Error THEN\nPRINT \"na-error\"\nELSE\nPRINT z2.GetFloat(0, \"n\")\nRELEASE z2\nEND IF\nRELEASE nas\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("ZScore empty and all-NA");
     assert_eq!(output, "0\nNA\n");
 }
 
 #[test]
 fn bndata_getstring_returns_na_for_unmatched_join_cells() {
-    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET left AS Data.DataFrame = NEW Data.DataFrame()\nLET right AS Data.DataFrame = NEW Data.DataFrame()\nLET leftIds AS INTEGER[1] = [1]\nLET names AS STRING[1] = [\"Ana\"]\nLET rightIds AS INTEGER[1] = [2]\nLET extra AS STRING[1] = [\"Bia\"]\nleft.AddIntegerColumn(\"Id\", leftIds)\nleft.AddStringColumn(\"Name\", names)\nright.AddIntegerColumn(\"Id\", rightIds)\nright.AddStringColumn(\"Other\", extra)\nLET full AS Data.DataFrame OR Error = left.FullJoin(right, \"Id\", \"Id\")\nIF full IS Error THEN\nPRINT \"join-error\"\nELSE\nLET missing AS STRING OR NA OR Error = full.GetString(1, \"Name\")\nPRINT missing\nDELETE full\nEND IF\nDELETE left\nDELETE right\nEND FUNCTION\n";
+    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET left AS Data.DataFrame = NEW Data.DataFrame()\nLET right AS Data.DataFrame = NEW Data.DataFrame()\nLET leftIds AS INTEGER[1] = [1]\nLET names AS STRING[1] = [\"Ana\"]\nLET rightIds AS INTEGER[1] = [2]\nLET extra AS STRING[1] = [\"Bia\"]\nleft.AddIntegerColumn(\"Id\", leftIds)\nleft.AddStringColumn(\"Name\", names)\nright.AddIntegerColumn(\"Id\", rightIds)\nright.AddStringColumn(\"Other\", extra)\nLET full AS Data.DataFrame OR Error = left.FullJoin(right, \"Id\", \"Id\")\nIF full IS Error THEN\nPRINT \"join-error\"\nELSE\nLET missing AS STRING OR NA OR Error = full.GetString(1, \"Name\")\nPRINT missing\nRELEASE full\nEND IF\nRELEASE left\nRELEASE right\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("GetString NA from join");
     assert_eq!(output, "NA\n");
 }
 
 #[test]
 fn bndata_select_rejects_duplicate_column_indices() {
-    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET values AS INTEGER[2] = [1, 2]\ntable.AddIntegerColumn(\"Id\", values)\nLET result AS Data.DataFrame OR Error = table.Select([0, 1], [0, 0])\nIF result IS Error THEN\nPRINT result.Code\nEND IF\nDELETE table\nEND FUNCTION\n";
+    let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET values AS INTEGER[2] = [1, 2]\ntable.AddIntegerColumn(\"Id\", values)\nLET result AS Data.DataFrame OR Error = table.Select([0, 1], [0, 0])\nIF result IS Error THEN\nPRINT result.Code\nEND IF\nRELEASE table\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("duplicate Select columns");
     assert_eq!(output, "1\n");
 }
@@ -1730,7 +1849,7 @@ fn bndata_read_csv_rejects_duplicate_headers() {
     let csv = unique_temp("dup-header.csv");
     fs::write(&csv, "name,name\nAna,Bia\n").expect("create duplicate-header CSV");
     let source = format!(
-        "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"{}\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET table AS Data.DataFrame OR Error = Data.ReadCSV(file, TRUE, \",\")\nIF table IS Error THEN\nPRINT table.Code\nEND IF\nfile.Close()\nDELETE file\nEND IF\nEND FUNCTION\n",
+        "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"{}\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET table AS Data.DataFrame OR Error = Data.ReadCSV(file, TRUE, \",\")\nIF table IS Error THEN\nPRINT table.Code\nEND IF\nfile.Close()\nRELEASE file\nEND IF\nEND FUNCTION\n",
         bn_path(&csv)
     );
     let (_, output) = run(&source, "").expect("duplicate CSV headers");
@@ -1743,7 +1862,7 @@ fn bndata_read_csv_ignores_a_trailing_blank_line() {
     let csv = unique_temp("trailing-blank.csv");
     fs::write(&csv, "name,age\nAna,28\n\n").expect("create trailing-blank CSV");
     let source = format!(
-        "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"{}\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET table AS Data.DataFrame OR Error = Data.ReadCSV(file, TRUE, \",\")\nIF table IS Error THEN\nPRINT \"error\"\nELSE\nPRINT table.RowCount()\nDELETE table\nEND IF\nfile.Close()\nDELETE file\nEND IF\nEND FUNCTION\n",
+        "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"{}\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET table AS Data.DataFrame OR Error = Data.ReadCSV(file, TRUE, \",\")\nIF table IS Error THEN\nPRINT \"error\"\nELSE\nPRINT table.RowCount()\nRELEASE table\nEND IF\nfile.Close()\nRELEASE file\nEND IF\nEND FUNCTION\n",
         bn_path(&csv)
     );
     let (_, output) = run(&source, "").expect("trailing blank CSV");
@@ -1872,7 +1991,7 @@ FUNCTION Start() AS VOID
     value[0] = 42
     LET alias AS POINTER TO INTEGER = value
     PRINT alias[0]
-    DELETE alias
+    RELEASE alias
 END FUNCTION
 ";
     let (code, output) = run(source, "").expect("execute pointer alias");
@@ -1888,7 +2007,7 @@ FUNCTION Start() AS VOID
     samples[0] = 1.5
     samples[3] = 2.0
     PRINT samples[0], samples[3]
-    DELETE samples
+    RELEASE samples
 END FUNCTION
 ";
     let (code, output) = run(source, "").expect("execute fixed pointer");
@@ -1914,12 +2033,12 @@ fn deleted_pointer_is_stale_for_every_alias() {
 FUNCTION Start() AS VOID
     LET value AS POINTER TO INTEGER = NEW INTEGER
     LET alias AS POINTER TO INTEGER = value
-    DELETE value
+    RELEASE value
     alias[0] = 1
 END FUNCTION
 ";
     let error = run(source, "").expect_err("stale alias must fail");
-    assert_eq!(error.code, "USE_AFTER_DELETE");
+    assert_eq!(error.code, "USE_AFTER_RELEASE");
 }
 
 #[test]
@@ -1927,12 +2046,12 @@ fn second_delete_is_double_delete() {
     let source = r"
 FUNCTION Start() AS VOID
     LET value AS POINTER TO INTEGER = NEW INTEGER
-    DELETE value
-    DELETE value
+    RELEASE value
+    RELEASE value
 END FUNCTION
 ";
     let error = run(source, "").expect_err("second delete must fail");
-    assert_eq!(error.code, "DOUBLE_DELETE");
+    assert_eq!(error.code, "DOUBLE_RELEASE");
 }
 
 #[test]
@@ -1948,7 +2067,7 @@ END FUNCTION
     let source = r"
 FUNCTION Start() AS VOID
     LET value AS POINTER TO INTEGER OR NULL = NULL
-    DELETE value
+    RELEASE value
 END FUNCTION
 ";
     let error = run(source, "").expect_err("NULL delete must fail");
@@ -1993,7 +2112,7 @@ END CLASS
 
 FUNCTION Start() AS VOID
     LET box AS Box = NEW Box()
-    DELETE box
+    RELEASE box
     PRINT "after"
 END FUNCTION
 "#;
@@ -2003,7 +2122,47 @@ END FUNCTION
 }
 
 #[test]
-fn leaked_class_does_not_run_its_destructor() {
+fn arc_returned_object_remains_live_until_caller_scope_exit() {
+    let source = include_str!("grammar/valid/arc-returned-object.bn");
+    let (code, output) = run(source, "").expect("returned object remains live");
+    assert_eq!(code, 0);
+    assert_eq!(output, "VALUE 7\nDEINIT\n");
+}
+
+#[test]
+fn arc_vector_aliases_release_each_ownership_without_double_free() {
+    let source = include_str!("grammar/valid/arc-vector-aliases.bn");
+    let (code, output) = run(source, "").expect("aggregate aliases retain owner");
+    assert_eq!(code, 0);
+    assert_eq!(output, "VALUE 7\nDEINIT\n");
+}
+
+#[test]
+fn arc_weak_reference_survives_unrelated_allocation_then_expires() {
+    let source = include_str!("grammar/valid/arc-weak-survives-unrelated-allocation.bn");
+    let (code, output) = run(source, "").expect("weak observer follows its object");
+    assert_eq!(code, 0);
+    assert_eq!(output, "LIVE 7\nEXPIRED\n");
+}
+
+#[test]
+fn release_unused_primary_ends_binding_without_trapping() {
+    let source = include_str!("grammar/valid/release-unused-primary.bn");
+    let (code, output) = run(source, "").expect("unused released primary is valid");
+    assert_eq!(code, 0);
+    assert_eq!(output, "OK\n");
+}
+
+#[test]
+fn typed_async_await_preserves_worker_error() {
+    let source = include_str!("grammar/valid/dispatch-worker-error.bn");
+    let (code, output) = run(source, "").expect("worker Error reaches AWAIT caller");
+    assert_eq!(code, 0);
+    assert_eq!(output, "ERROR\n");
+}
+
+#[test]
+fn class_scope_exit_runs_its_destructor() {
     let source = r#"
 CLASS Box
     PUBLIC FUNCTION CONSTRUCTOR()
@@ -2019,9 +2178,9 @@ FUNCTION Start() AS VOID
     PRINT "end"
 END FUNCTION
 "#;
-    let (code, output) = run(source, "").expect("execute leak");
+    let (code, output) = run(source, "").expect("execute scope cleanup");
     assert_eq!(code, 0);
-    assert_eq!(output, "end\n");
+    assert_eq!(output, "end\ndestroyed\n");
 }
 
 #[test]
@@ -2032,17 +2191,17 @@ CLASS Box
     END FUNCTION
 
     PUBLIC FUNCTION DESTRUCTOR()
-        DELETE SELF
+        RELEASE SELF
     END FUNCTION
 END CLASS
 
 FUNCTION Start() AS VOID
     LET box AS Box = NEW Box()
-    DELETE box
+    RELEASE box
 END FUNCTION
 ";
     let error = run(source, "").expect_err("reentrant delete must fail");
-    assert_eq!(error.code, "DOUBLE_DELETE");
+    assert_eq!(error.code, "DOUBLE_RELEASE");
 }
 
 #[test]
@@ -2591,7 +2750,7 @@ LET response AS Web.Response OR Error = client.Request("GET", "http://127.0.0.1/
 PRINT response IS Error
 LET malformed AS Web.Response OR Error = client.Request("GET", "not-a-url", "")
 PRINT malformed IS Error
-DELETE client
+RELEASE client
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute BNWeb client validation");
@@ -2611,7 +2770,7 @@ ELSE
 LET response AS Web.Response OR Error = client.RequestWithPolicy("GET", "http://127.0.0.1/", "", policy)
 PRINT response IS Error
 END IF
-DELETE client
+RELEASE client
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute BNWeb egress policy");
@@ -2625,7 +2784,7 @@ FUNCTION Start() AS VOID
 LET server AS Web.Server = NEW Web.Server()
 LET stopped AS VOID OR Error = server.Stop(0)
 PRINT stopped IS Error
-DELETE server
+RELEASE server
 END FUNCTION
 ";
     let (_, output) = run(source, "").expect("execute BNWeb server errors");
@@ -2643,7 +2802,7 @@ response.Commit()
 PRINT response.Status(), response.IsCommitted()
 LET failed AS VOID OR Error = response.Write("late")
 PRINT failed IS Error
-DELETE response
+RELEASE response
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute BNWeb response");
@@ -2660,7 +2819,7 @@ PRINT request.Method(), request.Target(), request.Body(1)
 PRINT request.PeerAddress(), request.EffectiveClientAddress()
 LET too_small AS STRING OR Error = request.Body(-1)
 PRINT too_small IS Error
-DELETE request
+RELEASE request
 END FUNCTION
 ";
     let (_, output) = run(source, "").expect("execute BNWeb request");
@@ -2679,7 +2838,7 @@ PRINT "error"
 ELSE
 PRINT headers.Count(), query.Count()
 END IF
-DELETE request
+RELEASE request
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute BNWeb collections");
@@ -2699,7 +2858,7 @@ ELSE
     LET rotated AS STRING OR Error = sessions.Rotate(id, "rotated")
     IF rotated IS Error THEN PRINT "error" ELSE PRINT sessions.Get(rotated)
 END IF
-DELETE sessions
+RELEASE sessions
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute SessionStore provider");
@@ -2734,8 +2893,8 @@ LET cidr AS Net.CIDR OR Error = Net.CIDR.Parse("10.0.0.0/8")
 IF cidr IS Error THEN PRINT "error" ELSE acl.Deny(cidr)
 LET address AS Net.Address OR Error = Net.Address.Parse("10.1.2.3")
 IF address IS Error THEN PRINT "error" ELSE PRINT acl.Check(address)
-DELETE page
-DELETE acl
+RELEASE page
+RELEASE acl
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute scraper and ACL providers");
@@ -2752,7 +2911,7 @@ PRINT jar.Get("sid", "example.test", "/"), jar.Count()
 jar.Delete("sid", "example.test", "/")
 LET missing AS STRING OR Error = jar.Get("sid", "example.test", "/")
 PRINT missing IS Error
-DELETE jar
+RELEASE jar
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute CookieJar provider");
@@ -2768,7 +2927,7 @@ LET accepted AS VOID OR Error = jar.SetWithPolicy("sid", "a", "example.test", "/
 PRINT accepted IS Error, jar.Count()
 LET rejected AS VOID OR Error = jar.SetWithPolicy("bad", "b", "example.test", "/", 60000, FALSE, TRUE, "None")
 PRINT rejected IS Error, jar.Count()
-DELETE jar
+RELEASE jar
 END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute explicit CookieJar policy");

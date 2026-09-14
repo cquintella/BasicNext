@@ -3,6 +3,9 @@ use super::*;
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_pointer_set_index(
     text: &mut String,
+    module: &Module,
+    function: &Function,
+    symbols: &HashMap<SymbolId, usize>,
     block_id: BlockId,
     symbol_slot: usize,
     index: ValueId,
@@ -10,6 +13,7 @@ pub(crate) fn emit_pointer_set_index(
     value: ValueId,
     value_ty: &Type,
     elem_ty: &Type,
+    transfers_object: bool,
     state: &mut EmissionState,
 ) {
     let tag = state.continuation_count;
@@ -29,6 +33,12 @@ pub(crate) fn emit_pointer_set_index(
         &index_op,
         &value_op,
         llvm_elem,
+        is_class_type(module, elem_ty),
+        transfers_object,
+        module,
+        function,
+        elem_ty,
+        symbols,
         ok,
         state,
     );
@@ -108,6 +118,9 @@ pub(crate) fn emit_vector_set_indices(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_field_set_index(
     text: &mut String,
+    module: &Module,
+    function: &Function,
+    symbols: &HashMap<SymbolId, usize>,
     block_id: BlockId,
     symbol_slot: usize,
     field_offset: u32,
@@ -116,6 +129,7 @@ pub(crate) fn emit_field_set_index(
     value: ValueId,
     value_ty: &Type,
     elem_ty: &Type,
+    transfers_object: bool,
     state: &mut EmissionState,
 ) {
     let tag = state.continuation_count;
@@ -140,6 +154,12 @@ pub(crate) fn emit_field_set_index(
         &index_op,
         &value_op,
         llvm_elem,
+        is_class_type(module, elem_ty),
+        transfers_object,
+        module,
+        function,
+        elem_ty,
+        symbols,
         ok,
         state,
     );
@@ -154,6 +174,12 @@ fn emit_fat_pointer_store(
     index: &str,
     value: &str,
     llvm_elem: &str,
+    owns_object: bool,
+    transfers_object: bool,
+    module: &Module,
+    function: &Function,
+    element_ty: &Type,
+    symbols: &HashMap<SymbolId, usize>,
     continuation: String,
     state: &mut EmissionState,
 ) {
@@ -177,6 +203,14 @@ fn emit_fat_pointer_store(
         text,
         "  %setslot{tag} = getelementptr {llvm_elem}, ptr %setptr{tag}, i32 {index}"
     );
+    if owns_object {
+        let old = format!("%setold{tag}");
+        let _ = writeln!(text, "  {old} = load ptr, ptr %setslot{tag}");
+        emit_destroy_if_last(text, module, function, &old, element_ty, symbols, state);
+        if !transfers_object {
+            let _ = writeln!(text, "  call void @bn_arc_retain(ptr {value})");
+        }
+    }
     let _ = writeln!(text, "  store {llvm_elem} {value}, ptr %setslot{tag}");
     state.needs_numeric_overflow_trap = true;
 }

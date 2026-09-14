@@ -75,7 +75,7 @@ FUNCTION BoyerMoore(pattern AS STRING, text AS STRING) AS VOID
         END IF
     END WHILE
     
-    DELETE badchar
+    RELEASE badchar
 END FUNCTION
 
 FUNCTION Start() AS INTEGER

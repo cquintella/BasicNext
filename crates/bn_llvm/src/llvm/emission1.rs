@@ -123,6 +123,9 @@ pub(crate) fn lower_scalar_instruction(
                     "i1" | "i8" | "i16" | "i32" | "i64" => format!("{element_llvm} 0"),
                     "float" => "float 0.0".into(),
                     "double" => "double 0.0".into(),
+                    "ptr" => "ptr null".into(),
+                    "{ i1, ptr, i64 }" => "{ i1, ptr, i64 } zeroinitializer".into(),
+                    "{ i1, ptr }" => "{ i1, ptr } zeroinitializer".into(),
                     _ => unreachable!("validated vector element type"),
                 };
                 let _ = writeln!(text, "  store {zero}, ptr %vecdefaultslot{dest}_{index}");
@@ -256,11 +259,32 @@ pub(crate) fn lower_scalar_instruction(
                 );
                 let _ = writeln!(text, "  call void @free(ptr %inputreplacefree{tag})");
             }
+            if is_class_type(module, slot_ty) && !function.weak_symbols.contains(symbol) {
+                let slot = symbols[symbol];
+                let old = format!("%arcstoreold{}_{}", value.0, slot);
+                let _ = writeln!(text, "  {old} = load ptr, ptr %s{slot}");
+                emit_destroy_if_last(text, module, function, &old, slot_ty, symbols, state);
+                if analysis.owned_object_results.contains_key(value) {
+                    let _ = writeln!(text, "  store ptr null, ptr %objectowned{}", value.0);
+                } else {
+                    let _ = writeln!(text, "  call void @bn_arc_retain(ptr {operand})");
+                }
+            }
             let _ = writeln!(
                 text,
                 "  store {slot_llvm} {operand}, ptr %s{}",
                 symbols[symbol]
             );
+            if is_class_type(module, slot_ty) && function.weak_symbols.contains(symbol) {
+                let _ = writeln!(
+                    text,
+                    "  call void @bn_arc_weak_register(ptr {operand}, ptr %s{})",
+                    symbols[symbol]
+                );
+            }
+            if analysis.released_symbols.contains(symbol) {
+                let _ = writeln!(text, "  store i1 true, ptr %slive{}", symbols[symbol]);
+            }
             if analysis.input_symbols.contains(symbol) {
                 let slot = symbols[symbol];
                 if analysis.input_targets.contains_key(value) {
@@ -296,6 +320,28 @@ pub(crate) fn lower_scalar_instruction(
             let slot_ty = analysis.symbols.get(symbol).unwrap_or(dest_ty);
             let dest_llvm = llvm_type(dest_ty).expect("validated load LLVM type");
             let slot_llvm = llvm_type(slot_ty).expect("validated slot LLVM type");
+            if analysis.released_symbols.contains(symbol) {
+                let tag = destination.0;
+                let diagnostic = if function
+                    .blocks
+                    .iter()
+                    .flat_map(|block| &block.instructions)
+                    .any(|instruction| matches!(instruction, Instruction::Release { value, .. } if value == destination))
+                {
+                    "@.bn_double_release"
+                } else {
+                    "@.bn_use_after_release"
+                };
+                let _ = writeln!(
+                    text,
+                    "  %loadlive{tag} = load i1, ptr %slive{}",
+                    symbols[symbol]
+                );
+                let _ = writeln!(
+                    text,
+                    "  br i1 %loadlive{tag}, label %load_live_{tag}, label %load_released_{tag}\nload_released_{tag}:\n  call i32 (ptr, ...) @printf(ptr {diagnostic})\n  call void @exit(i32 1)\n  unreachable\nload_live_{tag}:"
+                );
+            }
             if slot_llvm == "{ i1, double }" && matches!(dest_llvm, "float" | "double") {
                 let _ = writeln!(
                     text,

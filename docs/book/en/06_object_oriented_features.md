@@ -12,7 +12,7 @@ Class instances are always allocated dynamically using the `NEW` keyword.
 LET customer AS Customer = NEW Customer(10)
 ```
 
-*(Note: The explicit lifecycle of class instances, including the `DELETE` keyword, is covered in detail in Chapter 7: Memory Management).*
+*(Note: The explicit lifecycle of class instances, including ARC and the `RELEASE` statement, is covered in detail in Chapter 7: Memory Management).*
 
 ## Visibility and `SELF`
 
@@ -48,7 +48,7 @@ CLASS Customer
 END CLASS
 ```
 
-You may also define a destructor using `FUNCTION DESTRUCTOR()`. The destructor takes no parameters and has no return type. It executes exactly once when the instance is explicitly freed using `DELETE`.
+You may also define a destructor using `FUNCTION DESTRUCTOR()`. The destructor takes no parameters and has no return type. It executes exactly once when the last strong reference is released, either by scope exit or `RELEASE`.
 
 ## Static Members
 

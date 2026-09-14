@@ -64,7 +64,7 @@ FUNCTION KMPSearch(pattern AS STRING, text AS STRING) AS VOID
         END IF
     END WHILE
     
-    DELETE lps
+    RELEASE lps
 END FUNCTION
 
 FUNCTION Start() AS INTEGER
