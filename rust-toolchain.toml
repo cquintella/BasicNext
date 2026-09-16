@@ -1,0 +1,6 @@
+# Single source of truth for the toolchain: local, CI and contributors all use
+# the same Rust so clippy/rustfmt lints never diverge between machines.
+# Bump deliberately (and re-run `cargo clippy --all-targets -- -D warnings`).
+[toolchain]
+channel = "1.98"
+components = ["rustfmt", "clippy"]

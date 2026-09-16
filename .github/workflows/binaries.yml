@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.97"
+          toolchain: "1.98"
           components: rustfmt, clippy
       - uses: actions/setup-python@v5
         with:
@@ -91,7 +91,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.97"
+          toolchain: "1.98"
           targets: ${{ matrix.target }}
       - name: Build
         run: cargo build --release --locked --target ${{ matrix.target }} --bin bn --bin bnc
