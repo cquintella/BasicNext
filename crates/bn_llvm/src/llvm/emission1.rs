@@ -269,6 +269,18 @@ pub(crate) fn lower_scalar_instruction(
                 } else {
                     let _ = writeln!(text, "  call void @bn_arc_retain(ptr {operand})");
                 }
+            } else if is_region_type(slot_ty) {
+                let slot = symbols[symbol];
+                let old_fat = format!("%regstoreold{}_{}", value.0, slot);
+                let _ = writeln!(text, "  {old_fat} = load {{ ptr, i32 }}, ptr %s{slot}");
+                let old_base = emit_region_base(text, &old_fat, state);
+                emit_destroy_if_last(text, module, function, &old_base, slot_ty, symbols, state);
+                if analysis.owned_object_results.contains_key(value) {
+                    let _ = writeln!(text, "  store ptr null, ptr %objectowned{}", value.0);
+                } else {
+                    let new_base = emit_region_base(text, &operand, state);
+                    let _ = writeln!(text, "  call void @bn_arc_retain(ptr {new_base})");
+                }
             }
             let _ = writeln!(
                 text,

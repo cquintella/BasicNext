@@ -77,10 +77,29 @@ the owning binding. `DELETE` is not a 0.5.0 language keyword.
 
 ## Pointers and diagnostics
 
-Pointer allocation follows the value/memory ABI rules. Release an owned pointer
-binding with `RELEASE`; never access it after that point. The validator and
-runtime diagnose `USE_AFTER_RELEASE`, `DOUBLE_RELEASE`, `NULL_POINTER_ACCESS`,
-and invalid bounds instead of silently continuing.
+A region created with `NEW T[n]` is reference-counted exactly like a class
+instance: every `POINTER TO T[]` binding to it is one strong reference, and
+the region is freed when the last one ends. `RELEASE` on a pointer binding
+means "drop **my** reference" — it never takes the region away from another
+binding:
+
+```basic
+FUNCTION Start() AS VOID
+    LET a AS POINTER TO INTEGER[] = NEW INTEGER[3]
+    a[0] = 7
+    LET b AS POINTER TO INTEGER[] = a    // two strong references
+    RELEASE a                            // a is done; the region lives on
+    PRINT b[0]                           // 7
+END FUNCTION                             // b leaves scope: region freed
+```
+
+Passing a pointer to a function works the same way: the callee may `RELEASE`
+its parameter without affecting the caller's binding.
+
+Never touch a binding after releasing it. The validator and runtime diagnose
+`USE_AFTER_RELEASE` (`p[i]`, `LEN(p)`, passing `p`), `DOUBLE_RELEASE`,
+`NULL_POINTER_ACCESS`, and invalid bounds instead of silently continuing — on
+both `bn run` and `bn build` artifacts.
 
 The normative ownership and ABI contract is in
 [`0.5.md`](../../language/0.5/0.5.md#memory-model-arc). The implementation evidence

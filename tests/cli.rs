@@ -1708,7 +1708,10 @@ fn build_reports_the_type_for_unsupported_allocation_lowering() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(String::from_utf8_lossy(&output.stdout).contains("call ptr @malloc"));
+    let llvm = String::from_utf8_lossy(&output.stdout);
+    // A region is a counted allocation: header + elements, count stored at +8.
+    assert!(llvm.contains("call ptr @calloc"), "{llvm}");
+    assert!(llvm.contains("store i64 1, ptr %alloccount"), "{llvm}");
 }
 
 #[test]
@@ -2378,6 +2381,59 @@ fn build_arc_and_dispatch_counterexamples_match_interpreter() {
     ] {
         native_matches_interpreter(path);
     }
+}
+
+#[test]
+fn build_arc_pointer_alias_release_matches_interpreter() {
+    native_matches_interpreter("tests/grammar/valid/arc-pointer-alias-release.bn");
+}
+
+#[test]
+fn native_released_pointer_binding_is_diagnosed_at_runtime() {
+    let base = std::env::temp_dir().join(format!("bn-ptr-f15-{}", std::process::id()));
+    fs::create_dir_all(&base).expect("scratch dir");
+    for (label, tail, code) in [
+        ("index", "PRINT p[0]", "USE_AFTER_RELEASE"),
+        ("len", "PRINT LEN(p)", "USE_AFTER_RELEASE"),
+        ("double", "RELEASE p", "DOUBLE_RELEASE"),
+    ] {
+        let source = base.join(format!("{label}.bn"));
+        fs::write(
+            &source,
+            format!(
+                "FUNCTION Start() AS VOID\n    LET p AS POINTER TO INTEGER[] = NEW INTEGER[2]\n    RELEASE p\n    {tail}\nEND FUNCTION\n"
+            ),
+        )
+        .expect("write fixture");
+        let artifact = base.join(format!("{label}.bin"));
+        let built = bn()
+            .args([
+                "build",
+                source.to_str().expect("source"),
+                "-o",
+                artifact.to_str().expect("artifact"),
+            ])
+            .output()
+            .expect("build");
+        assert_eq!(
+            built.status.code(),
+            Some(0),
+            "{label}: {}",
+            String::from_utf8_lossy(&built.stderr)
+        );
+        let ran = Command::new(&artifact).output().expect("run artifact");
+        assert_eq!(ran.status.code(), Some(1), "{label}: native must fail");
+        let printed = format!(
+            "{}{}",
+            String::from_utf8_lossy(&ran.stdout),
+            String::from_utf8_lossy(&ran.stderr)
+        );
+        assert!(
+            printed.contains(code),
+            "{label}: expected {code}, got: {printed}"
+        );
+    }
+    fs::remove_dir_all(&base).ok();
 }
 
 #[test]

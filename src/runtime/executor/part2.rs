@@ -209,7 +209,15 @@ impl Executor<'_, '_> {
                     .collect::<Result<Vec<_>, _>>()?;
                 let result = self.call_named(&name, arguments, *span)?;
                 set(values, *destination, self.coerce_to(result, ty, *span)?);
-                if matches!(values.get(destination), Some(Value::Object { .. } | Value::Vector(_) | Value::Record { .. })) {
+                if matches!(
+                    values.get(destination),
+                    Some(
+                        Value::Object { .. }
+                            | Value::Vector(_)
+                            | Value::Record { .. }
+                            | Value::Pointer { .. }
+                    )
+                ) {
                     self.ownership_frames
                         .last_mut()
                         .expect("instruction executes in an ownership frame")
@@ -583,6 +591,17 @@ impl Executor<'_, '_> {
                 span,
             } => {
                 let target = value(values, *deleted, *span)?.clone();
+                // An explicit RELEASE of an object whose destructor is running
+                // (e.g. RELEASE SELF inside DESTRUCTOR) is a reentrant release.
+                if let Value::Object { handle, .. } = &target
+                    && self.objects.is_destroying(*handle)
+                {
+                    return Err(runtime_error(
+                        crate::diagnostic::DiagId::DOUBLE_RELEASE,
+                        "allocation was already deleted",
+                        *span,
+                    ));
+                }
                 let symbol = self
                     .ownership_frames
                     .last()
@@ -597,8 +616,14 @@ impl Executor<'_, '_> {
                         // A weak binding owns no reference; RELEASE only ends the binding.
                     } else if matches!(
                         &removed,
-                        Value::Object { .. } | Value::Vector(_) | Value::Record { .. }
+                        Value::Object { .. }
+                            | Value::Vector(_)
+                            | Value::Record { .. }
+                            | Value::Pointer { .. }
+                            | Value::Null
                     ) {
+                        // ARC kinds: drop this binding's strong only. A NULL
+                        // pointer binding holds no region; RELEASE ends the binding.
                         self.release_owned_value(removed, *span)?;
                     } else {
                         self.delete_value(removed, destructor.as_deref(), *span)?;

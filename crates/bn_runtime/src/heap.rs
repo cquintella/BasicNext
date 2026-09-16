@@ -174,6 +174,12 @@ impl<T: Clone> Heap<T> {
     /// Returns a stale-handle or retain-overflow diagnostic.
     pub fn retain(&mut self, handle: Handle, span: Span) -> Result<(), Diagnostic> {
         let allocation = self.live_mut(handle, span)?;
+        // While the destructor runs the count is frozen: a transient strong
+        // binding (the destructor's own SELF, a local alias) must neither
+        // resurrect the object nor free it a second time on exit.
+        if allocation.destroying {
+            return Ok(());
+        }
         allocation.strong_count = allocation.strong_count.checked_add(1).ok_or_else(|| {
             heap_error(
                 bn_diag::DiagId::RETAIN_OVERFLOW,
@@ -191,6 +197,9 @@ impl<T: Clone> Heap<T> {
     /// Returns a stale-handle or double-release diagnostic.
     pub fn release(&mut self, handle: Handle, span: Span) -> Result<bool, Diagnostic> {
         let allocation = self.live_mut(handle, span)?;
+        if allocation.destroying {
+            return Ok(false);
+        }
         if allocation.strong_count == 0 {
             return Err(heap_error(
                 bn_diag::DiagId::DOUBLE_RELEASE,
@@ -209,6 +218,16 @@ impl<T: Clone> Heap<T> {
     /// Returns a stale-handle diagnostic.
     pub fn strong_count(&self, handle: Handle, span: Span) -> Result<usize, Diagnostic> {
         Ok(self.live(handle, span)?.strong_count)
+    }
+
+    /// Reports whether the allocation is inside its destructor run.
+    #[must_use]
+    pub fn is_destroying(&self, handle: Handle) -> bool {
+        self.allocations
+            .get(handle.slot as usize)
+            .is_some_and(|allocation| {
+                allocation.generation == handle.generation && allocation.destroying
+            })
     }
 
     /// Reports whether a handle still names its live allocation.

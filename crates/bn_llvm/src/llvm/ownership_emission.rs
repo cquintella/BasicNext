@@ -106,6 +106,21 @@ pub(crate) fn lower_ownership_emission(
             } else if matches!(ty, Type::Vector { .. }) {
                 // Fixed aggregate vectors use function-local storage; RELEASE
                 // closes their elements but never frees the fat-pointer base.
+            } else if is_region_type(ty) {
+                // Drop this binding's strong only. A parameter binding is
+                // borrowed on the native path (no retain on entry), so RELEASE
+                // just ends the binding; the caller's count is untouched.
+                if !released_symbol.is_some_and(|symbol| function.parameters.contains(&symbol)) {
+                    let base = emit_region_base(text, &format!("%v{}", value.0), state);
+                    emit_destroy_if_last(text, module, function, &base, ty, symbols, state);
+                }
+                if let Some(symbol) = released_symbol {
+                    let _ = writeln!(
+                        text,
+                        "  store {{ ptr, i32 }} zeroinitializer, ptr %s{}",
+                        symbols[&symbol]
+                    );
+                }
             } else if is_bndata_dataframe_type(module, ty) {
                 let handle = format!("%dfdelhandle{}", value.0);
                 let _ = writeln!(text, "  {handle} = ptrtoint ptr %v{} to i64", value.0);

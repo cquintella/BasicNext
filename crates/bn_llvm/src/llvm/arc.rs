@@ -11,6 +11,34 @@ pub(crate) fn is_class_type(module: &Module, ty: &Type) -> bool {
             .any(|function| function.name == format!("{name}.$fields"))
 }
 
+/// A `NEW T[n]` region: reference-counted like a class instance (0.5). The
+/// fat pointer's data begins `REGION_HEADER_BYTES` past the malloc base, whose
+/// `+8` slot holds the strong count exactly like an object header.
+pub(crate) fn is_region_type(ty: &Type) -> bool {
+    matches!(ty, Type::Pointer { .. })
+}
+
+pub(crate) const REGION_HEADER_BYTES: u64 = 16;
+
+/// Emits the header base for a `{ ptr, i32 }` region value (`null` stays
+/// `null`, so `bn_arc_*` treat an unset binding as a no-op). Returns the
+/// SSA name holding the base pointer.
+pub(crate) fn emit_region_base(text: &mut String, fat: &str, state: &mut EmissionState) -> String {
+    let n = state.continuation_count;
+    state.continuation_count += 1;
+    let _ = writeln!(text, "  %rdata{n} = extractvalue {{ ptr, i32 }} {fat}, 0");
+    let _ = writeln!(text, "  %rnull{n} = icmp eq ptr %rdata{n}, null");
+    let _ = writeln!(
+        text,
+        "  %rbase0{n} = getelementptr i8, ptr %rdata{n}, i64 -{REGION_HEADER_BYTES}"
+    );
+    let _ = writeln!(
+        text,
+        "  %rbase{n} = select i1 %rnull{n}, ptr null, ptr %rbase0{n}"
+    );
+    format!("%rbase{n}")
+}
+
 pub(crate) fn class_name(ty: &Type) -> Option<String> {
     match ty {
         Type::Named(name) => Some(name.clone()),

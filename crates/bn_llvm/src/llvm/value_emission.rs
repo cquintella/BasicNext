@@ -137,11 +137,19 @@ pub(crate) fn lower_value_emission(
                 emit_store_object_class(text, *destination, &class_global);
             }
             if analysis.owned_object_results.contains_key(destination) {
-                let _ = writeln!(
-                    text,
-                    "  store ptr %v{}, ptr %objectowned{}",
-                    destination.0, destination.0
-                );
+                if is_region_type(ty) {
+                    let _ = writeln!(
+                        text,
+                        "  store ptr %allocbase{}, ptr %objectowned{}",
+                        destination.0, destination.0
+                    );
+                } else {
+                    let _ = writeln!(
+                        text,
+                        "  store ptr %v{}, ptr %objectowned{}",
+                        destination.0, destination.0
+                    );
+                }
             }
         }
         _ => return false,

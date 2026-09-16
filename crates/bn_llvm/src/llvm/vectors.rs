@@ -144,9 +144,24 @@ pub(crate) fn emit_allocate(
             text,
             "  %allocbytes{dest} = mul i64 %alloclen{dest}, {elem_bytes}"
         );
+        // Region header (count at +8) precedes the elements so the region is
+        // reference-counted with the same bn_arc_* primitives as objects.
         let _ = writeln!(
             text,
-            "  %allocptr{dest} = call ptr @malloc(i64 %allocbytes{dest})"
+            "  %allocall{dest} = add i64 %allocbytes{dest}, {REGION_HEADER_BYTES}"
+        );
+        let _ = writeln!(
+            text,
+            "  %allocbase{dest} = call ptr @calloc(i64 1, i64 %allocall{dest})"
+        );
+        let _ = writeln!(
+            text,
+            "  %alloccount{dest} = getelementptr i8, ptr %allocbase{dest}, i64 8"
+        );
+        let _ = writeln!(text, "  store i64 1, ptr %alloccount{dest}");
+        let _ = writeln!(
+            text,
+            "  %allocptr{dest} = getelementptr i8, ptr %allocbase{dest}, i64 {REGION_HEADER_BYTES}"
         );
         let _ = writeln!(
             text,

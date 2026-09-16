@@ -244,6 +244,15 @@ pub(crate) fn emit_function(
                 {
                     let _ = writeln!(text, "  store ptr null, ptr %s{}", symbol_names[symbol]);
                 }
+                if is_region_type(ty) && !function.parameters.contains(symbol) {
+                    // The first Store releases the "previous" region; a zeroed
+                    // slot makes that a no-op instead of a garbage pointer.
+                    let _ = writeln!(
+                        text,
+                        "  store {{ ptr, i32 }} zeroinitializer, ptr %s{}",
+                        symbol_names[symbol]
+                    );
+                }
                 if analysis.released_symbols.contains(symbol) {
                     let slot = symbol_names[symbol];
                     let _ = writeln!(text, "  %slive{slot} = alloca i1");

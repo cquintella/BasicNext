@@ -387,11 +387,23 @@ pub(crate) fn cleanup_owned_memory(
             && analysis
                 .symbols
                 .get(&symbol)
-                .is_some_and(|ty| is_class_type(module, ty))
+                .is_some_and(|ty| is_class_type(module, ty) || is_region_type(ty))
             && !function.weak_symbols.contains(&symbol)
         {
+            let region = analysis.symbols.get(&symbol).is_some_and(is_region_type);
             if function.parameters.contains(&symbol) {
-                let _ = writeln!(text, "  call void @bn_arc_retain(ptr %v{})", returned.0);
+                if region {
+                    let base = emit_region_base(text, &format!("%v{}", returned.0), state);
+                    let _ = writeln!(text, "  call void @bn_arc_retain(ptr {base})");
+                } else {
+                    let _ = writeln!(text, "  call void @bn_arc_retain(ptr %v{})", returned.0);
+                }
+            } else if region {
+                let _ = writeln!(
+                    text,
+                    "  store {{ ptr, i32 }} zeroinitializer, ptr %s{}",
+                    symbols[&symbol]
+                );
             } else {
                 let _ = writeln!(text, "  store ptr null, ptr %s{}", symbols[&symbol]);
             }
@@ -409,7 +421,7 @@ pub(crate) fn cleanup_owned_memory(
         .symbols
         .iter()
         .filter(|(symbol, ty)| {
-            is_class_type(module, ty)
+            (is_class_type(module, ty) || is_region_type(ty))
                 && !function.weak_symbols.contains(symbol)
                 && !function.parameters.contains(symbol)
         })
@@ -417,9 +429,16 @@ pub(crate) fn cleanup_owned_memory(
     object_symbols.sort_by_key(|(symbol, _)| symbol.0);
     for (symbol, ty) in object_symbols {
         let slot = symbols[symbol];
-        let object = format!("%arcsymbol{cleanup}_{slot}");
-        let _ = writeln!(text, "  {object} = load ptr, ptr %s{slot}");
-        emit_destroy_if_last(text, module, function, &object, ty, symbols, state);
+        if is_region_type(ty) {
+            let fat = format!("%arcregion{cleanup}_{slot}");
+            let _ = writeln!(text, "  {fat} = load {{ ptr, i32 }}, ptr %s{slot}");
+            let base = emit_region_base(text, &fat, state);
+            emit_destroy_if_last(text, module, function, &base, ty, symbols, state);
+        } else {
+            let object = format!("%arcsymbol{cleanup}_{slot}");
+            let _ = writeln!(text, "  {object} = load ptr, ptr %s{slot}");
+            emit_destroy_if_last(text, module, function, &object, ty, symbols, state);
+        }
     }
     let mut log_results = analysis.owned_log_results.iter().collect::<Vec<_>>();
     log_results.sort_by_key(|(value, _)| value.0);

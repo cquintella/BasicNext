@@ -17,17 +17,32 @@ impl Executor<'_, '_> {
             .copied()
             .zip(arguments)
             .collect::<HashMap<_, _>>();
+        // A parameter is a strong binding of the callee (0.5 ARC): retain on
+        // entry, release with the other locals on exit unless it is returned.
+        for (symbol, argument) in &symbols {
+            if !function.weak_symbols.contains(symbol) {
+                self.retain_owned_value(argument, function.span)?;
+            }
+        }
         let mut values = HashMap::new();
         let local_symbols = function
-            .blocks
+            .parameters
             .iter()
-            .flat_map(|block| &block.instructions)
-            .filter_map(|instruction| match instruction {
-                Instruction::Store { symbol, .. } if !function.parameters.contains(symbol) => {
-                    Some(*symbol)
-                }
-                _ => None,
-            })
+            .copied()
+            .chain(
+                function
+                    .blocks
+                    .iter()
+                    .flat_map(|block| &block.instructions)
+                    .filter_map(|instruction| match instruction {
+                        Instruction::Store { symbol, .. }
+                            if !function.parameters.contains(symbol) =>
+                        {
+                            Some(*symbol)
+                        }
+                        _ => None,
+                    }),
+            )
             .collect();
         self.ownership_frames.push(OwnershipFrame {
             local_symbols,

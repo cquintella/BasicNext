@@ -9,6 +9,7 @@ impl Executor<'_, '_> {
     ) -> Result<(), Diagnostic> {
         match value {
             Value::Object { handle, .. } => self.objects.retain(*handle, span),
+            Value::Pointer { handle } => self.memory.retain(*handle, span),
             Value::Vector(values) => {
                 for value in values {
                     self.retain_owned_value(value, span)?;
@@ -95,6 +96,12 @@ impl Executor<'_, '_> {
             Value::Record { fields, .. } => {
                 for value in fields.into_values() {
                     self.release_owned_value(value, span)?;
+                }
+                Ok(())
+            }
+            Value::Pointer { handle } => {
+                if self.memory.release(handle, span)? {
+                    self.memory.delete(handle, span)?;
                 }
                 Ok(())
             }

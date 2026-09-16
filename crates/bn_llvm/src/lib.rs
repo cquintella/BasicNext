@@ -1070,7 +1070,10 @@ use emission3::{
 
 #[path = "llvm/helpers.rs"]
 mod helpers;
-use arc::{destructor_symbol, emit_destroy_if_last, is_class_type};
+use arc::{
+    REGION_HEADER_BYTES, destructor_symbol, emit_destroy_if_last, emit_region_base, is_class_type,
+    is_region_type,
+};
 use helpers::{
     class_init_flag, coerce_return_operand, coerce_to_type, escape_llvm, extend_to_i64,
     fold_binary, fold_cast, fold_unary, input_runtime_ir, instruction_name, integer_kind,

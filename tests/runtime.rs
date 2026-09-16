@@ -2034,17 +2034,21 @@ END FUNCTION
 }
 
 #[test]
-fn deleted_pointer_is_stale_for_every_alias() {
+fn released_pointer_binding_leaves_other_aliases_live() {
     let source = r"
 FUNCTION Start() AS VOID
     LET value AS POINTER TO INTEGER = NEW INTEGER
     LET alias AS POINTER TO INTEGER = value
     RELEASE value
     alias[0] = 1
+    PRINT alias[0]
 END FUNCTION
 ";
-    let error = run(source, "").expect_err("stale alias must fail");
-    assert_eq!(error.code, "USE_AFTER_RELEASE");
+    // 0.5 (Carlos lock 2026-09-16): RELEASE drops one strong on `value` only;
+    // `alias` keeps the region alive.
+    let (code, output) = run(source, "").expect("alias survives release of one binding");
+    assert_eq!(code, 0);
+    assert_eq!(output, "1\n");
 }
 
 #[test]
@@ -2074,10 +2078,13 @@ END FUNCTION
 FUNCTION Start() AS VOID
     LET value AS POINTER TO INTEGER OR NULL = NULL
     RELEASE value
+    PRINT value IS NULL
 END FUNCTION
 ";
-    let error = run(source, "").expect_err("NULL delete must fail");
-    assert_eq!(error.code, "NULL_POINTER_ACCESS");
+    // A NULL binding holds no region: RELEASE ends the binding only, and any
+    // later use is use-after-release.
+    let error = run(source, "").expect_err("released NULL binding is unusable");
+    assert_eq!(error.code, "USE_AFTER_RELEASE");
 }
 
 #[test]
@@ -2149,6 +2156,32 @@ fn arc_weak_reference_survives_unrelated_allocation_then_expires() {
     let (code, output) = run(source, "").expect("weak observer follows its object");
     assert_eq!(code, 0);
     assert_eq!(output, "LIVE 7\nEXPIRED\n");
+}
+
+#[test]
+fn arc_pointer_alias_survives_release_of_one_binding() {
+    let source = include_str!("grammar/valid/arc-pointer-alias-release.bn");
+    let (code, output) = run(source, "").expect("F14: alias keeps the region alive");
+    assert_eq!(code, 0);
+    assert_eq!(output, "7\n3\n7\n7\nDONE\n");
+}
+
+#[test]
+fn arc_released_pointer_binding_rejects_index_len_and_pass() {
+    for tail in ["PRINT p[0]", "PRINT LEN(p)", "PRINT Peek(p)"] {
+        let source = format!(
+            "FUNCTION Peek(q AS POINTER TO INTEGER[]) AS INTEGER\n    RETURN q[0]\nEND FUNCTION\nFUNCTION Start() AS VOID\n    LET p AS POINTER TO INTEGER[] = NEW INTEGER[2]\n    RELEASE p\n    {tail}\nEND FUNCTION\n"
+        );
+        let error = run(&source, "").expect_err(tail);
+        assert_eq!(error.code, "USE_AFTER_RELEASE", "{tail}");
+    }
+}
+
+#[test]
+fn arc_pointer_binding_released_twice_is_double_release() {
+    let source = "FUNCTION Start() AS VOID\n    LET p AS POINTER TO INTEGER[] = NEW INTEGER[2]\n    RELEASE p\n    RELEASE p\nEND FUNCTION\n";
+    let error = run(source, "").expect_err("F15: double release");
+    assert_eq!(error.code, "DOUBLE_RELEASE");
 }
 
 #[test]

@@ -335,7 +335,7 @@ pub(crate) fn analyze_function<'a>(
                         uses_bn_rt = true;
                         owned_log_results.insert(*destination, kind);
                     }
-                    if is_class_type(module, ty) {
+                    if is_class_type(module, ty) || is_region_type(ty) {
                         owned_object_results.insert(
                             *destination,
                             destructor_symbol(module, ty).unwrap_or_default(),
