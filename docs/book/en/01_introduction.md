@@ -146,16 +146,16 @@ END FUNCTION
 
 Basic Next provides integrations for standard development workflows:
 
-- **Jupyter Kernel (`bn-kernel`)**: A kernel allowing interactive execution of Basic Next cells inside Jupyter notebooks.
-- **VS Code Extension**: Located in `plugins/vscode/`, offering syntax highlighting and automatic diagnostic checks on save.
+- **Jupyter Kernel (`bn-kernel`)**: A kernel allowing interactive execution of Basic Next cells inside Jupyter notebooks. It lives in its own repository: [cquintella/basicnext-jupyter](https://github.com/cquintella/basicnext-jupyter).
+- **VS Code Extension**: Syntax highlighting and automatic diagnostic checks on save, in its own repository: [cquintella/basicnext-vscode](https://github.com/cquintella/basicnext-vscode).
 
 ### Installing the VS Code Extension
 
 To install the official extension for Visual Studio Code:
 
-- Open your terminal and navigate to `plugins/vscode`.
+- Clone [cquintella/basicnext-vscode](https://github.com/cquintella/basicnext-vscode) and open a terminal in it.
 - Package the extension into a `.vsix` file using `vsce`:
   `npx --yes @vscode/vsce package --allow-missing-repository`
 - Install the file into VS Code:
-  `code --install-extension basicnext-0.3.0.vsix`
+  `code --install-extension basicnext-0.5.1.vsix`
 - Restart VS Code to initialize language features.

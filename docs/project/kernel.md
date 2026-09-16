@@ -1,5 +1,10 @@
 # `bn-kernel` host
 
+> The kernel package now lives in its own repository:
+> [cquintella/basicnext-jupyter](https://github.com/cquintella/basicnext-jupyter).
+> This document records the `bn`-side contract (`bn run --jupyter-stdin`) it
+> depends on.
+
 `bn-kernel` keeps the Rust crate dependency-free. The installable Python
 package uses `pyzmq` for the Jupyter v5 wire transport. Each request writes
 one complete Basic Next program to a fresh temporary `.bn` file and invokes
@@ -7,7 +12,7 @@ one complete Basic Next program to a fresh temporary `.bn` file and invokes
 survive between cells.
 
 The package API is `bn_kernel.execute_cell`. Without a connection file, the
-`plugins/jupyter/bin/bn-kernel` launcher also supports JSON Lines
+`bn-kernel` launcher also supports JSON Lines
 (`{"code": "...", "stdin": "..."}`). With a connection file (`-f`), it
 serves the Jupyter wire.
 

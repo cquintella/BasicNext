@@ -234,8 +234,8 @@ Requires Rust 1.97. Current limitations include partial LLVM lowering;
 - `examples/` — programs that guide the specification.
 - [`examples/parallel-examples.md`](examples/parallel-examples.md) — bounded
   `BNDispatch` examples, including a parallel Leibniz-series pi calculation.
-- `plugins/jupyter/` — installable Python Jupyter kernel host.
-- `plugins/vscode/` — VS Code extension and its tests.
+- Jupyter kernel — separate repository: [cquintella/basicnext-jupyter](https://github.com/cquintella/basicnext-jupyter).
+- VS Code extension — separate repository: [cquintella/basicnext-vscode](https://github.com/cquintella/basicnext-vscode).
 - `PHILOSOPHY.md` — design principles.
 - `GOVERNANCE.md` — how decisions are made.
 - `TRADEMARK.md` — use of the project name.

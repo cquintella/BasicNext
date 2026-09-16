@@ -24,7 +24,10 @@ def llvm_declared_runtime_symbols():
     return {
         symbol
         for declaration in LLVM_RUNTIME_DECLARATIONS
-        for symbol in re.findall(r"@(?P<symbol>bn_rt_[A-Za-z0-9_]+)", declaration.read_text())
+        # Require a call/decl paren after the name so format-string templates
+        # such as `@bn_rt_exec_result_{}` are not misread as a `bn_rt_exec_result_`
+        # symbol (real declares and calls are always `@name(`).
+        for symbol in re.findall(r"@(?P<symbol>bn_rt_[A-Za-z0-9_]+)\(", declaration.read_text())
     }
 
 

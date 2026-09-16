@@ -32,7 +32,6 @@ jobs:
           chmod +x llvm.sh
           sudo ./llvm.sh 22
           sudo apt-get install -y lld-22
-          python -m pip install -e plugins/jupyter
           mkdir -p "${RUNNER_TEMP}/llvm-22"
           ln -s "$(command -v clang-22)" "${RUNNER_TEMP}/llvm-22/clang"
           ln -s "$(command -v wasm-ld-22)" "${RUNNER_TEMP}/llvm-22/wasm-ld"
@@ -58,12 +57,8 @@ jobs:
           python -m unittest tests/test_capabilities.py
       - name: Diagnostic and backend parity gates
         run: |
-          python -m unittest tests/test_kernel.py tests/test_jupyter.py
           python -m unittest tests/test_compiler_parity.py tests/test_wasm_parity.py
           cargo test --locked --test cli --test codegen_tests -- --test-threads=1
-      - name: VS Code extension checks
-        run: |
-          for test in plugins/vscode/test/*.js; do node "$test"; done
 
   build:
     needs: quality

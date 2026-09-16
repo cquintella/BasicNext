@@ -250,6 +250,11 @@ bn_rt_dataframe_slice
 bn_rt_dataframe_transpose
 bn_rt_dataframe_write_csv
 bn_rt_dataframe_zscore
+bn_rt_exec_result_close
+bn_rt_exec_result_return_code
+bn_rt_exec_result_stderr
+bn_rt_exec_result_stdout
+bn_rt_exec_run
 bn_rt_file_close
 bn_rt_file_open
 bn_rt_log_fields_close
