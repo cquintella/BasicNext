@@ -114,8 +114,8 @@ stop, cleanup, and idempotent close have explicit time and queue bounds.
 
 The 0.4 design may add opt-in asynchronous named functions scheduled on an
 explicit `BNDispatch` queue and awaited through bounded tickets. That design is
-not part of this 0.3 grammar or support claim; see the [0.4 async/await
-design](../../superpowers/specs/2026-09-01-async-await-0.4-design.md).
+not part of this 0.3 grammar or support claim; it is described in the internal
+0.4 async/await design.
 
 ## Client and security policy
 

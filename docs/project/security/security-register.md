@@ -18,28 +18,28 @@ Tracked findings and residual risks are maintained here with living evidence.
 | BN-SEC-003 | Predictable session ID generation | Fixed | `src/web_state.rs::tests::session_ids_are_random_and_have_at_least_128_bits` | Doug | 2026-09-07 |
 | BN-SEC-004 | Unbounded per-connection thread creation | Fixed | `src/web/tests.rs::server_admission_bounds_connections_before_worker_spawn` | Doug | 2026-09-07 |
 | BN-SEC-005 | Incomplete graceful stop and connection tracking | Fixed | `src/web/tests.rs::server_stop_drains_a_slow_http_worker` | Doug | 2026-09-07 |
-| BN-SEC-006 | Response security and cookie policy | Fixed | `docs/superpowers/evidence/2026-09-07-0.4.6-g3-cookies.md` | Doug | 2026-09-07 |
+| BN-SEC-006 | Response security and cookie policy | Fixed | internal evidence | Doug | 2026-09-07 |
 | BN-SEC-007 | Log redaction and observability leakage | Fixed | `src/log.rs` / format tests | Doug | 2026-09-07 |
 
 ## Audit 2026-09-07 Findings Disposition
 
 | id | title | status | evidence_path | owner | updated |
 | --- | --- | --- | --- | --- | --- |
-| F-01 | Egress multi-A connect-to-allowlisted-only | Fixed | `docs/superpowers/evidence/2026-09-07-0.4.6-g1-f01.md` | Doug | 2026-09-07 |
-| F-02 | POLICY_CLOCK / FILESYSTEM / RANDOM vs bn_rt | Fixed | `docs/superpowers/evidence/2026-09-07-0.4.6-g2a-policy.md` | Doug | 2026-09-07 |
-| F-03 | CookieJar / Set-Cookie HTTP | Fixed | `docs/superpowers/evidence/2026-09-07-0.4.6-g3-cookies.md` | Doug | 2026-09-07 |
-| F-04 | HOST.Random non-CSPRNG documentation | Fixed | `docs/superpowers/evidence/2026-09-07-0.4.6-g4a-random.md` | Doug | 2026-09-07 |
-| F-05 | FS default sandbox & rooted TOCTOU | Fixed | `docs/superpowers/evidence/2026-09-07-0.4.6-g4b-fs.md` | Doug | 2026-09-09 |
-| F-06 | DataFrame FFI bounds and safety | Fixed | `docs/superpowers/evidence/2026-09-07-0.4.6-g2b-ffi.md` | Doug | 2026-09-07 |
-| F-07 | 503 on admit failure | Fixed | `docs/superpowers/evidence/2026-09-07-0.4.6-g5-register.md` | Doug | 2026-09-07 |
+| F-01 | Egress multi-A connect-to-allowlisted-only | Fixed | internal evidence | Doug | 2026-09-07 |
+| F-02 | POLICY_CLOCK / FILESYSTEM / RANDOM vs bn_rt | Fixed | internal evidence | Doug | 2026-09-07 |
+| F-03 | CookieJar / Set-Cookie HTTP | Fixed | internal evidence | Doug | 2026-09-07 |
+| F-04 | HOST.Random non-CSPRNG documentation | Fixed | internal evidence | Doug | 2026-09-07 |
+| F-05 | FS default sandbox & rooted TOCTOU | Fixed | internal evidence | Doug | 2026-09-09 |
+| F-06 | DataFrame FFI bounds and safety | Fixed | internal evidence | Doug | 2026-09-07 |
+| F-07 | 503 on admit failure | Fixed | internal evidence | Doug | 2026-09-07 |
 | F-08 | Living threat model and BN-SEC register | Fixed | `docs/security/threat-model.md`, `docs/security/security-register.md` | Doug | 2026-09-07 |
-| F-09 | macOS keychain PEM | Fixed | `docs/superpowers/evidence/2026-09-07-0.4.6-g5-register.md` | Doug | 2026-09-07 |
-| F-10 | arp/ndp PATH | Fixed | `docs/superpowers/evidence/2026-09-07-0.4.6-g5-register.md` | Doug | 2026-09-07 |
+| F-09 | macOS keychain PEM | Fixed | internal evidence | Doug | 2026-09-07 |
+| F-10 | arp/ndp PATH | Fixed | internal evidence | Doug | 2026-09-07 |
 
 ## Residuals
 
 | id | title | status | evidence_path | owner | updated |
 | --- | --- | --- | --- | --- | --- |
-| R-01 | SSRF DNS rebinding and redirect limits | Residual | `docs/superpowers/evidence/2026-09-07-0.4.6-g5-register.md` | Doug | 2026-09-09 |
-| R-02 | Session store process-local lifetime | Residual | `docs/superpowers/evidence/2026-09-07-0.4.6-g5-register.md` | Doug | 2026-09-09 |
-| R-03 | OS file descriptor / socket backlog limits | Residual | `docs/superpowers/evidence/2026-09-07-0.4.6-g5-register.md` | Doug | 2026-09-09 |
+| R-01 | SSRF DNS rebinding and redirect limits | Residual | internal evidence | Doug | 2026-09-09 |
+| R-02 | Session store process-local lifetime | Residual | internal evidence | Doug | 2026-09-09 |
+| R-03 | OS file descriptor / socket backlog limits | Residual | internal evidence | Doug | 2026-09-09 |

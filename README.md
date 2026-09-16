@@ -50,13 +50,9 @@ expressive structured diagnostics, an ordered module search path, and the
 
 The Basic Next reference implementation includes the Rust frontend, typed IR
 interpreter, HOST capabilities, external BN modules, HTTP hardening, bounded
-async runtime, debugger bridge, and notebook tooling. Read the
-[0.4.2 release notes](done/0.4.2-release-news.md) for the complete summary.
-BNDispatch native-provider conformance includes lifecycle,
-synchronization, isolation, and networking corrections; see the [recovery
-design](docs/superpowers/specs/2026-09-02-bndispatch-recovery-design.md).
-The active [`ongoing/bucket.md`](ongoing/bucket.md) records the delivery gates;
-the archived 0.2 program remains in [`archive/project/bucket-0.2.md`](archive/project/bucket-0.2.md).
+async runtime, debugger bridge, and notebook tooling. BNDispatch
+native-provider conformance includes lifecycle, synchronization, isolation, and
+networking corrections.
 
 > **Note:** `bn build` is available for its supported typed-IR subset. The
 > interpreter remains the reference implementation for language surfaces
@@ -124,11 +120,9 @@ typed BN IR validation boundary shared by `bn run` and `bn build`.
 - The ABI index now checks that every LLVM-declared `bn_rt` function is both
   exported by the runtime archive and documented in the value/memory contract.
 
-See the [0.4.7 closeout evidence](docs/superpowers/evidence/2026-09-07-0.4.7-closeout.md),
-[capability catalog](tests/compiler-capabilities.json), and
-[filesystem-policy evidence](docs/superpowers/evidence/2026-09-09-0.4.7-g797-environment-policy.md).
-The release tag remains subject to the formal closeout commit and BDFL release
-acceptance.
+See the [capability catalog](tests/compiler-capabilities.json) for the machine
+inventory of the supported compiler surface. The release tag remains subject to
+the formal closeout commit and BDFL release acceptance.
 
 ## 🎯 Active implementation
 
@@ -138,10 +132,7 @@ The Basic Next reference implementation is a source-spanned lexer, handwritten r
 - `bn run file.bn [-- args...]` — Validates and immediately executes the accepted interpreter surface.
 - `bn build [--target native|wasm32] file.bn` — Emits LLVM IR, or an artifact with `-o`, for the supported compiler subset.
 
-See the [0.4.2 release notes](done/0.4.2-release-news.md), [active release bucket](ongoing/bucket.md),
-[0.4 conformance evidence](ongoing/0.4-conformance.md),
-[archived 0.2 remediation program](archive/project/bucket-0.2.md), and
-[0.5.0 contract](docs/0.5.0/language-0.5.0.md) for delivery status and accepted semantics.
+See the [0.5.0 contract](docs/0.5.0/language-0.5.0.md) for delivery status and accepted semantics.
 
 To see under the hood, try:
 - `bn check -v file.bn` (reports completed stages)
@@ -225,8 +216,7 @@ cargo fmt --check && cargo test && cargo clippy --all-targets -- -D warnings && 
 
 Requires Rust 1.97. Current limitations include partial LLVM lowering;
 `TIMEZONE` does not apply zone rules. Linked wasm32 modules run through
-`node bin/bn-wasm`. See `archive/project/bucket-0.2.md` for the archived 0.2
-remediation work and `archive/project/bucket-0.2.md` for its historical defect inventory.
+`node bin/bn-wasm`.
 
 `config.toml` contains local tool configuration. Currently it selects the
 `clang` command used by `bn build`; it does not alter language semantics.
