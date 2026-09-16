@@ -1,0 +1,225 @@
+version = 1
+
+# This is the executable DX01 route inventory. `state = "legacy"` means the
+# producer still creates bn_diag::Diagnostic with free-form arguments and must
+# be migrated by DX03. `structured` means it emits DiagnosticSpec/DiagId before
+# presentation. Paths are repository-relative and verified by CI.
+# The native runtime bridges are intentionally source-less C-ABI stderr
+# boundaries; they cannot carry a SourceId/Span and remain explicit DX03
+# exceptions until the native diagnostic ABI is versioned.
+
+[[route]]
+name = "lexer"
+producer = "crates/bn_frontend/src/lexer.rs"
+marker = "Diagnostic::lexical"
+identity = "E0001"
+catalog = "share/bn/diagnostics/en-US/lex.ftl"
+consumer = "src/main.rs"
+state = "structured"
+
+[[route]]
+name = "parser-expression"
+producer = "crates/bn_frontend/src/parser/expressions.rs"
+marker = "code: \"E0100\""
+identity = "E0100"
+catalog = "share/bn/diagnostics/en-US/parse.ftl"
+consumer = "src/main.rs"
+state = "structured"
+
+[[route]]
+name = "parser-declaration"
+producer = "crates/bn_frontend/src/parser/phase4.rs"
+marker = "code: \"E0100\""
+identity = "E0100"
+catalog = "share/bn/diagnostics/en-US/parse.ftl"
+consumer = "src/lsp.rs"
+state = "structured"
+
+[[route]]
+name = "semantic-errors"
+producer = "crates/bn_frontend/src/semantic/helpers2.rs"
+marker = "pub(crate) fn error(code: &'static str"
+identity = "call-site"
+catalog = "share/bn/diagnostics/en-US/sem.ftl"
+consumer = "src/main.rs"
+state = "structured"
+
+[[route]]
+name = "semantic-unused-import"
+producer = "crates/bn_frontend/src/semantic/module_analysis.rs"
+marker = "DiagId::UnusedImport"
+identity = "UNUSED_IMPORT"
+catalog = "share/bn/diagnostics/en-US/sem.ftl"
+consumer = "src/lsp.rs"
+state = "structured"
+
+[[route]]
+name = "semantic-unused-binding"
+producer = "crates/bn_frontend/src/semantic/module_analysis.rs"
+marker = "DiagId::UnusedBinding"
+identity = "UNUSED_BINDING"
+catalog = "share/bn/diagnostics/en-US/sem.ftl"
+consumer = "src/lsp.rs"
+state = "structured"
+
+[[route]]
+name = "module-graph"
+producer = "crates/bn_frontend/src/module_graph.rs"
+marker = "DiagId::ModuleNotFound"
+identity = "MODULE_NOT_FOUND"
+catalog = "share/bn/diagnostics/en-US/lsp.ftl"
+consumer = "src/lsp.rs"
+state = "structured"
+
+[[route]]
+name = "module-graph-dynamic"
+producer = "crates/bn_frontend/src/module_graph.rs"
+marker = "fn module_error("
+identity = "call-site"
+catalog = "share/bn/diagnostics/en-US/lsp.ftl"
+consumer = "src/lsp.rs"
+state = "structured"
+
+[[route]]
+name = "ir-lowering"
+producer = "crates/bn_frontend/src/lowering/helpers.rs"
+marker = "DiagId::IrLowering"
+identity = "IR_LOWERING"
+catalog = "share/bn/diagnostics/en-US/runtime.ftl"
+consumer = "src/main.rs"
+state = "structured"
+
+[[route]]
+name = "ir-validation"
+producer = "crates/bn_ir/src/lib.rs"
+marker = "DiagId::InvalidIr"
+identity = "INVALID_IR"
+catalog = "share/bn/diagnostics/en-US/runtime.ftl"
+consumer = "src/main.rs"
+state = "structured"
+
+[[route]]
+name = "llvm-support"
+producer = "crates/bn_llvm/src/lib.rs"
+marker = "TARGET_UNSUPPORTED_"
+identity = "call-site"
+catalog = "share/bn/diagnostics/en-US/build.ftl"
+consumer = "src/main.rs"
+state = "structured"
+
+[[route]]
+name = "interpreter-runtime"
+producer = "src/runtime/executor/helpers.rs"
+marker = "pub(super) fn runtime_error(code: &'static str"
+identity = "call-site"
+catalog = "share/bn/diagnostics/en-US/runtime.ftl"
+consumer = "src/main.rs"
+state = "structured"
+
+[[route]]
+name = "runtime-heap"
+producer = "crates/bn_runtime/src/heap.rs"
+marker = "fn heap_error(code: &'static str"
+identity = "call-site"
+catalog = "share/bn/diagnostics/en-US/runtime.ftl"
+consumer = "src/main.rs"
+state = "structured"
+
+[[route]]
+name = "runtime-temporal"
+producer = "src/temporal.rs"
+marker = "fn temporal_error(code: &'static str"
+identity = "call-site"
+catalog = "share/bn/diagnostics/en-US/runtime.ftl"
+consumer = "src/main.rs"
+state = "structured"
+
+[[route]]
+name = "runtime-entry"
+producer = "src/runtime_impl.rs"
+marker = "fn runtime_error(code: &'static str"
+identity = "call-site"
+catalog = "share/bn/diagnostics/en-US/runtime.ftl"
+consumer = "src/main.rs"
+state = "structured"
+
+[[route]]
+name = "runtime-native-error-code"
+producer = "src/runtime_impl.rs"
+marker = "runtime_error(error.code(), error.message(), span)"
+identity = "call-site"
+catalog = "share/bn/diagnostics/en-US/runtime.ftl"
+consumer = "src/main.rs"
+state = "structured"
+
+[[route]]
+name = "native-runtime-failure"
+producer = "crates/bn_rt/src/lib.rs"
+marker = "format_failure(code, message)"
+identity = "call-site"
+catalog = "share/bn/diagnostics/en-US/runtime.ftl"
+consumer = "src/main.rs"
+state = "legacy"
+
+[[route]]
+name = "native-math-failure"
+producer = "crates/bn_rt/src/math.rs"
+marker = "format_failure(code, message)"
+identity = "call-site"
+catalog = "share/bn/diagnostics/en-US/runtime.ftl"
+consumer = "src/main.rs"
+state = "legacy"
+
+[[route]]
+name = "runtime-function-not-found"
+producer = "src/runtime_impl.rs"
+marker = "runtime_error(\"FUNCTION_NOT_FOUND\""
+identity = "FUNCTION_NOT_FOUND"
+catalog = "share/bn/diagnostics/en-US/runtime.ftl"
+consumer = "src/main.rs"
+state = "structured"
+
+[[route]]
+name = "runtime-use-after-release"
+producer = "crates/bn_runtime/src/heap.rs"
+marker = "\"USE_AFTER_RELEASE\""
+identity = "USE_AFTER_RELEASE"
+catalog = "share/bn/diagnostics/en-US/runtime.ftl"
+consumer = "src/main.rs"
+state = "structured"
+
+[[route]]
+name = "runtime-double-release"
+producer = "crates/bn_runtime/src/heap.rs"
+marker = "\"DOUBLE_RELEASE\""
+identity = "DOUBLE_RELEASE"
+catalog = "share/bn/diagnostics/en-US/runtime.ftl"
+consumer = "src/main.rs"
+state = "structured"
+
+[[route]]
+name = "bnc-arguments"
+producer = "src/bnc.rs"
+marker = "error[BNC]"
+identity = "BNC"
+catalog = "share/bn/diagnostics/en-US/build.ftl"
+consumer = "src/bnc.rs"
+state = "structured"
+
+[[route]]
+name = "bnc-engine"
+producer = "src/bnc.rs"
+marker = "error[BNC_ENGINE]"
+identity = "BNC_ENGINE"
+catalog = "share/bn/diagnostics/en-US/build.ftl"
+consumer = "src/bnc.rs"
+state = "structured"
+
+[[route]]
+name = "shared-diagnostic-sink"
+producer = "crates/bn_diag/src/lib.rs"
+marker = "pub fn emit("
+identity = "DiagId"
+catalog = "share/bn/diagnostics/en-US/sem.ftl"
+consumer = "src/lsp.rs"
+state = "structured"

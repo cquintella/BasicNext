@@ -1,0 +1,14 @@
+IMPORT HOST.Exec AS Exec
+
+FUNCTION Start() AS VOID
+    LET args AS STRING[1]
+    args[0] = ""
+    LET empty AS Exec.Result OR Error = Exec.Run("", args)
+    IF empty IS Error THEN
+        PRINT "empty", empty.Code
+    END IF
+    LET missing AS Exec.Result OR Error = Exec.Run("/definitely/missing/basicnext-exec", args)
+    IF missing IS Error THEN
+        PRINT "missing", missing.Code
+    END IF
+END FUNCTION
