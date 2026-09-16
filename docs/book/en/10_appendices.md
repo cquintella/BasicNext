@@ -16,23 +16,25 @@ Basic Next is designed with a zero-warning policy. Diagnostics either reject the
 Diagnostic behavior follows the accepted language contract and command
 reference:
 
-- [Version 0.5.0 language contract](../../0.5.0/language-0.5.0.md)
+- [0.5 language specification](../../language/0.5/0.5.md)
 - [`bn(1)`](../../man/bn.1)
 
-## Appendix C: Accepted 0.3 Syntax (EBNF)
+## Appendix C: Accepted Syntax (EBNF)
 
 The structural grammar of Basic Next is strictly defined using Extended Backus-Naur Form (EBNF). The EBNF focuses exclusively on parsing valid syntax, while semantic rules (such as return analysis) are enforced by the compiler.
 
-For the definitive structural grammar of version 0.3, see:
+The normative grammar for the current 0.5 line is:
 
-- [Version 0.5.0 language contract](../../0.5.0/language-0.5.0.md)
+- [`0.5.ebnf`](../../language/0.5/0.5.ebnf) — grammar
+- [`0.5.md`](../../language/0.5/0.5.md) — semantics
+- [`keywords.md`](../../language/0.5/keywords.md) — reserved words
 
 ## Appendix D: The `bn` Tool
 
 The Unix manual for the reference tool is [`bn(1)`](../../man/bn.1).
 Installation and troubleshooting are in
 [`docs/project/usage.md`](../../project/usage.md). The normative language text
-is [`0.3.md`](../../0.5.0/language-0.5.0.md).
+is [`0.5.md`](../../language/0.5/0.5.md).
 
 External provider-backed modules are documented in separate appendices:
 
