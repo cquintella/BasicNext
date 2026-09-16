@@ -1,6 +1,11 @@
 # Proposal: HOST.SQLite capability (v0) - Exec vs Query
 
-**Status:** Proposed - design only (no IR / host / bn_rt / module stub in this document).
+> **SUPERSEDED (Carlos 2026-09-14, direction B).**
+> Host does **not** embed an SGBD. Authoritative claim: **`BNSqlite`** module — see [`bnsqlite-0.5.3.md`](bnsqlite-0.5.3.md) and `ongoing/bucket-0.5.3.md` (**S1** / **F1**).
+> This document remains for API history (Exec vs Query split, fail-closed, BNData). Do **not** implement `HOST.SQLite`.
+
+
+**Status:** **SUPERSEDED** — design history only. See `bnsqlite-0.5.3.md`.
 **Date:** 2026-09-07
 **Owner (tracker):** Doug until Carlos names implementer.
 **Motivation:** Give Basic Next a teachable, portable path to embedded SQL without new language keywords. SQLite is the first concrete database capability: file-backed, ubiquitous, and a natural producer/consumer of tabular data already modeled by **BNData.DataFrame**.
@@ -244,3 +249,7 @@ Production bar: no stub Open/Exec/Query.
 | Struct RESULT+DF | Not used |
 | Triple OR on Exec | Not used |
 | Recordset | None - BNData only |
+
+## History
+
+- **2026-09-14** — Superseded by direction B / `bnsqlite-0.5.3.md` (BNSqlite + F1).

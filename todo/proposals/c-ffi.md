@@ -14,6 +14,9 @@ Dynamic loading remains outside 0.4.5 scope.
 Proposed for post-0.1. This document does not add syntax, keywords, or runtime
 behavior to Basic Next 0.1.
 
+
+**0.5.3 note:** bucket **F1** may consume a *minimum* native/EXTERN slice for [`bnsqlite-0.5.3.md`](bnsqlite-0.5.3.md) only; that does **not** close this full FFI proposal.
+
 ## Motivation
 
 BN needs a controlled path to established native libraries: operating-system

@@ -22,14 +22,16 @@ specification.
   Audit 2026-09-03.
 - [Host capabilities](host-capabilities.md) — exploratory; not accepted.
 - [HOST.Ui + BNUI (v0)](host-ui-bnui-v0.md) — Flow-only UI capability/module; no EVENT keyword; absolute/scroll deferred. Proposed 2026-09-07.
-- [HOST.SQLite (v0)](host-sqlite-v0.md) - Exec -> VOID OR Error; Query -> Data.DataFrame OR Error; BNData integration. Proposed 2026-09-07.
 - Parallel computing — future `PARALLEL` syntax; proposal not yet materialized as a document.
 - [Native LSP & DAP](../../docs/architecture/README.md) — 0.3 surface mostly in tree; remaining: `--help`, VS Code `bn check` on save, find-references client. Audit 2026-09-03.
 - [BNString extras](string-extras.md) — stdlib Split/Join/Contains/IndexOf/Trim (**0.4.7** G7.5); interpolation `$"..."` deferred (language DNA). Draft expanded 2026-09-07.
 - [Typed Dispatch results](dispatch-typed-return.md) — language/`AWAIT` (or `Ticket.Result`) to surface worker returns; `bn_rt` already has result pointer. Proposed 2026-09-07.
 - [Bucket 0.5.0 corrective](bucket-0.5.0-corrective.md) — ARC memory lock (strong/weak) + typed dispatch AWAIT; plan only. Proposed 2026-09-12.
-- [bn -e eval mode (0.5.1)](bn-eval-mode-0.5.1.md) — global `-e`/`--expr` eval/oneshot (+ optional session) for `bnr` / hosts using installed `/usr/local/bin/bn`; not a `bn eval` subcommand; not in 0.5.0 claim. Proposed 2026-09-12; lock `-e` 2026-09-13.
+- [bn eval mode (0.5.1)](bn-eval-mode-0.5.1.md) — subcommand `bn eval` / `bn eval --stdin` (oneshot) for `bnr` / hosts using installed `/usr/local/bin/bn`; **not** global `-e`/`--expr`; not in 0.5.0 claim. Proposed 2026-09-12; lock reverted to `bn eval` 2026-09-14.
 - [HOST.Exec (0.5.1)](host-exec-0.5.1.md) — capability to run an external program (argv), wait, capture ReturnCode/Stdout/Stderr (`Result OR Error`); not POSIX execve; not in 0.5.0. Proposed 2026-09-13. Bucket: `ongoing/bucket-0.5.1.md`.
+- [Ordered module search path / MP1 (0.5.1)](module-path-0.5.1.md) — repeatable `--module-path`, config array, first hit wins; Frontend/`module_graph` wire. Carlos 2026-09-14. Bucket: `ongoing/bucket-0.5.1.md`.
 - [Qualified export import (0.5.2)](import-qualified-export-0.5.2.md) — `IMPORT Module.Export AS Alias` (e.g. `IMPORT BNString.String AS Str`); not nested-module path when last segment is an EXPORT; no FROM. Proposed 2026-09-13. Bucket: `ongoing/bucket-0.5.2.md`.
 - [Early `Error` propagation](error-propagation.md) — proposed postfix `?` (or CHECK/PROPAGATE); language DNA; desugars to IF/RETURN; does **not** change toolchain diagnostics.
 - [BNData Expansion (Series & Analytics)](bndata-expansion.md) — proposed 1D dynamic series, NA semantics, vectorized operations, and DataFrame enhancements.
+- [BNSqlite / S1+F1 (0.5.3)](bnsqlite-0.5.3.md) — aparte module + native SQLite backend; supersedes HOST.SQLite. Carlos direction B 2026-09-14. Bucket: `ongoing/bucket-0.5.3.md`.
+- [HOST.SQLite v0 — SUPERSEDED](host-sqlite-v0.md) — direction A; API history only.
