@@ -164,8 +164,7 @@ impl Executor<'_, '_> {
                         Ok(Value::Boolean(false))
                     }
                     Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
-                        Err(runtime_error(
-                            "EXECUTION_POLICY_DENIED",
+                        Err(runtime_error(crate::diagnostic::DiagId::EXECUTION_POLICY_DENIED,
                             "filesystem read is outside the execution policy",
                             span,
                         ))
@@ -222,8 +221,7 @@ impl Executor<'_, '_> {
                         Ok(Value::File(id))
                     }
                     Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
-                        Err(runtime_error(
-                            "EXECUTION_POLICY_DENIED",
+                        Err(runtime_error(crate::diagnostic::DiagId::EXECUTION_POLICY_DENIED,
                             "filesystem path is outside the execution policy",
                             span,
                         ))
@@ -251,8 +249,7 @@ impl Executor<'_, '_> {
                 {
                     Ok(()) => Ok(Value::Null),
                     Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
-                        Err(runtime_error(
-                            "EXECUTION_POLICY_DENIED",
+                        Err(runtime_error(crate::diagnostic::DiagId::EXECUTION_POLICY_DENIED,
                             "filesystem deletion is outside the execution policy",
                             span,
                         ))
@@ -263,8 +260,7 @@ impl Executor<'_, '_> {
                     }),
                 }
             }
-            _ => Err(runtime_error(
-                "HOST_CAPABILITY_UNAVAILABLE",
+            _ => Err(runtime_error(crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE,
                 format!("host function '{name}' is not available"),
                 span,
             )),

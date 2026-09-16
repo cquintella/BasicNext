@@ -138,7 +138,7 @@ fn unused_import_warnings(program: &Program, model: &SemanticModel) -> Vec<Diagn
                 .find(|symbol| symbol.name == *alias && symbol.span == *span)?;
             (!used_symbols.contains(&symbol.id)).then(|| {
                 Diagnostic::structured(
-                    DiagId::UnusedImport,
+                    DiagId::UNUSED_IMPORT,
                     vec![("module".into(), DiagnosticValue::Text(alias.clone()))],
                     vec![Label {
                         span: *span,
@@ -200,7 +200,7 @@ fn unused_binding_warnings(program: &Program, model: &SemanticModel) -> Vec<Diag
             });
             (!used_symbols.contains(&symbol.id) && !member_used).then(|| {
                 Diagnostic::structured(
-                    DiagId::UnusedBinding,
+                    DiagId::UNUSED_BINDING,
                     vec![("name".into(), DiagnosticValue::Text(name.clone()))],
                     vec![Label {
                         span,
@@ -611,14 +611,14 @@ pub(crate) fn validate_implemented_interfaces(
             } else if let Some((alias, name)) = interface.split_once('.') {
                 let module = module_imports.get(alias).ok_or_else(|| {
                     error(
-                        "NAME_NOT_FOUND",
+                        DiagId::NAME_NOT_FOUND,
                         format!("interface module '{alias}' is not imported"),
                         *span,
                     )
                 })?;
                 let info = imported_types.get(&(*module, name.into())).ok_or_else(|| {
                     error(
-                        "NAME_NOT_FOUND",
+                        DiagId::NAME_NOT_FOUND,
                         format!("interface '{interface}' is not declared"),
                         *span,
                     )
@@ -638,7 +638,7 @@ pub(crate) fn validate_implemented_interfaces(
                     .collect::<Vec<_>>()
             } else {
                 return Err(error(
-                    "NAME_NOT_FOUND",
+                    DiagId::NAME_NOT_FOUND,
                     format!("interface '{interface}' is not declared"),
                     *span,
                 ));

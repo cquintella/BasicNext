@@ -51,6 +51,10 @@ fn syntax_error_fixtures_are_rejected_by_the_parser() {
         "tests/grammar/invalid/cls-without-operand.bn",
         "tests/grammar/invalid/host-capability-lowercase.bn",
         "tests/grammar/invalid/signature-vector-expression-dimension.bn",
+        "tests/grammar/invalid/unterminated-dimension-expression.bn",
+        "tests/grammar/invalid/let-missing-initializer.bn",
+        "tests/grammar/invalid/field-missing-initializer.bn",
+        "tests/grammar/invalid/for-markers-out-of-order.bn",
     ] {
         assert!(parse_path(path).is_err(), "{path} must fail parsing");
     }
@@ -429,4 +433,17 @@ fn new_expression_enforces_numeric_and_class_forms() {
         expression.kind,
         ExpressionKind::New { ref type_name, .. } if type_name == "Models.Box"
     ));
+}
+
+#[test]
+fn expression_slice_without_eof_terminates_on_dangling_paren() {
+    let source = SourceFile::new("dangling.bn", "(");
+    let tokens = lex(&source).expect("lex");
+    let paren_only = &tokens[..1];
+    assert!(parse_expression(paren_only).is_err());
+}
+
+#[test]
+fn empty_expression_slice_is_an_error_not_a_panic() {
+    assert!(parse_expression(&[]).is_err());
 }

@@ -67,8 +67,7 @@ fn binary(
 ) -> Result<Value, Diagnostic> {
     if operator == "IS" {
         let Value::Type(test) = right else {
-            return Err(runtime_error(
-                "INVALID_IR",
+            return Err(runtime_error(crate::diagnostic::DiagId::INVALID_IR,
                 "IS requires a type operand",
                 span,
             ));
@@ -130,13 +129,12 @@ fn binary(
         "DIV" | "Percent" => Err(division_by_zero(operator, span)),
         "Power" if right >= 0 => checked_integer(
             left.checked_pow(u32::try_from(right).map_err(|_| {
-                runtime_error("INVALID_EXPONENT", "integer exponent is too large", span)
+                runtime_error(crate::diagnostic::DiagId::INVALID_EXPONENT, "integer exponent is too large", span)
             })?),
             ty,
             span,
         ),
-        "Power" => Err(runtime_error(
-            "INVALID_EXPONENT",
+        "Power" => Err(runtime_error(crate::diagnostic::DiagId::INVALID_EXPONENT,
             "integer exponent cannot be negative",
             span,
         )),
@@ -155,7 +153,7 @@ fn binary(
 
 fn division_by_zero(operator: &str, span: Span) -> Diagnostic {
     Diagnostic::structured(
-        crate::diagnostic::DiagId::Runtime("DIVISION_BY_ZERO"),
+        crate::diagnostic::DiagId::DIVISION_BY_ZERO,
         vec![("operation".into(), operator.into())],
         vec![crate::diagnostic::Label {
             span,
@@ -198,8 +196,7 @@ mod diagnostic_tests {
 fn shift(value: i128, count: i128, ty: &Type, left: bool, span: Span) -> Result<Value, Diagnostic> {
     let width = integer_width(integer_kind(ty).unwrap_or(IntegerType::Int32));
     if count < 0 || count >= i128::from(width) {
-        return Err(runtime_error(
-            "INVALID_SHIFT_COUNT",
+        return Err(runtime_error(crate::diagnostic::DiagId::INVALID_SHIFT_COUNT,
             format!("shift count must be in 0..{width}"),
             span,
         ));
@@ -234,8 +231,7 @@ fn cast(value: Value, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
             Value::Float(value, _) if value.is_finite() => {
                 checked_integer(Some(value.trunc() as i128), ty, span)
             }
-            Value::Float(_, _) => Err(runtime_error(
-                "INVALID_NUMERIC_CONVERSION",
+            Value::Float(_, _) => Err(runtime_error(crate::diagnostic::DiagId::INVALID_NUMERIC_CONVERSION,
                 "NAN and infinity cannot convert to an integer",
                 span,
             )),
@@ -345,8 +341,7 @@ fn builtin(
         let end = integer(&arguments[1], span)?.0;
         let step = integer(&arguments[2], span)?.0;
         if step == 0 {
-            return Err(runtime_error(
-                "INVALID_FOR_STEP",
+            return Err(runtime_error(crate::diagnostic::DiagId::INVALID_FOR_STEP,
                 "FOR STEP cannot be zero",
                 span,
             ));

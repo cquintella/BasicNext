@@ -1,0 +1,9 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+// Fuzz-minimized: TO before = in a counted FOR must be a syntax error, not a slice panic.
+FUNCTION Start() AS VOID
+    FOR i AS INTEGER TO 5 = 0
+    NEXT
+END FUNCTION

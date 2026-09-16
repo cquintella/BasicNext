@@ -16,7 +16,7 @@ pub(crate) fn web_request_call(&mut self, name: &str, arguments: &[Value], span:
                     "",
                     std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
                 )
-                .map_err(|message| runtime_error("REQUEST_INVALID", message, span))?;
+                .map_err(|message| runtime_error(crate::diagnostic::DiagId::REQUEST_INVALID, message, span))?;
                 self.web_requests.insert(*handle, request);
                 return Ok(Value::Null);
             }
@@ -24,7 +24,7 @@ pub(crate) fn web_request_call(&mut self, name: &str, arguments: &[Value], span:
                 return Err(super::type_mismatch("BNWeb.Request", "non-object value", "BNWeb.Request operation receiver", span));
             };
             let request = self.web_requests.get(handle).ok_or_else(|| {
-                runtime_error("STALE_HANDLE", "BNWeb.Request handle is not live", span)
+                runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "BNWeb.Request handle is not live", span)
             })?;
             match method {
                 "Method" => {
@@ -102,8 +102,7 @@ pub(crate) fn web_request_call(&mut self, name: &str, arguments: &[Value], span:
                 }),
             }
         } else {
-            Err(runtime_error(
-                "HOST_CAPABILITY_UNAVAILABLE",
+            Err(runtime_error(crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE,
                 format!("web function '{name}' is not available"),
                 span,
             ))

@@ -16,7 +16,7 @@ impl Analyzer {
         for statement in statements {
             if statement_has_invalid_super(statement) {
                 return Err(error(
-                    "INVALID_SUPER",
+                    DiagId::INVALID_SUPER,
                     "SUPER is only valid as SUPER(...) or SUPER.Name(...)",
                     statement_span(statement),
                 ));
@@ -57,7 +57,7 @@ impl Analyzer {
                                     let dimension_type = self.expression(expression, locals)?;
                                     if !is_integer(&dimension_type) {
                                         return Err(error(
-                                            "INVALID_VECTOR_DIMENSION",
+                                            DiagId::INVALID_VECTOR_DIMENSION,
                                             "vector dimension must be a non-negative integer",
                                             expression.span,
                                         ));
@@ -68,14 +68,14 @@ impl Analyzer {
                             if let Some(value) = value {
                                 if value < 0 {
                                     return Err(error(
-                                        "INVALID_VECTOR_DIMENSION",
+                                        DiagId::INVALID_VECTOR_DIMENSION,
                                         "vector dimension must be a non-negative integer",
                                         span,
                                     ));
                                 }
                                 if value > i128::from(i32::MAX) {
                                     return Err(error(
-                                        "NUMERIC_OVERFLOW",
+                                        DiagId::NUMERIC_OVERFLOW,
                                         "vector dimension does not fit INTEGER",
                                         span,
                                     ));
@@ -98,7 +98,7 @@ impl Analyzer {
                         if !self.compatible(&ty, &actual) {
                             return Err(if pointer_literal_length_mismatch(&ty, &actual) {
                                 error(
-                                    "POINTER_LENGTH_MISMATCH",
+                                    DiagId::POINTER_LENGTH_MISMATCH,
                                     format!(
                                         "cannot assign {} to {}",
                                         display(&actual),
@@ -177,7 +177,7 @@ impl Analyzer {
                         return Err(
                             if pointer_literal_length_mismatch(&target_type, &result_type) {
                                 error(
-                                    "POINTER_LENGTH_MISMATCH",
+                                    DiagId::POINTER_LENGTH_MISMATCH,
                                     format!(
                                         "cannot assign {} to {}",
                                         display(&result_type),
@@ -281,7 +281,7 @@ impl Analyzer {
                         || !loops.iter().rev().any(|loop_kind| *loop_kind == target)
                     {
                         return Err(error(
-                            "INVALID_LOOP_CONTROL",
+                            DiagId::INVALID_LOOP_CONTROL,
                             format!("{kind} {target} requires an enclosing {target} loop"),
                             *span,
                         ));
@@ -321,7 +321,7 @@ impl Analyzer {
                 }
                 Statement::ClearScreen { span, .. } | Statement::Beep { span, .. } => {
                     return Err(error(
-                        "NAME_NOT_FOUND",
+                        DiagId::NAME_NOT_FOUND,
                         "CLS and BEEP statements were withdrawn in 0.2; use HOST.Console methods",
                         *span,
                     ));
@@ -329,7 +329,7 @@ impl Analyzer {
                 Statement::Release { value, .. } => {
                     if !matches!(value.kind, ExpressionKind::Name { .. }) {
                         return Err(error(
-                            "INVALID_RELEASE_TARGET",
+                            DiagId::INVALID_RELEASE_TARGET,
                             "RELEASE requires a binding; indexed and member targets are not bindings",
                             value.span,
                         ));
@@ -337,7 +337,7 @@ impl Analyzer {
                     let ty = self.expression(value, locals)?;
                     if !self.deletable(&ty) {
                         return Err(error(
-                            "INVALID_RELEASE_TARGET",
+                            DiagId::INVALID_RELEASE_TARGET,
                             format!(
                                 "RELEASE requires a pointer or CLASS reference, found {}",
                                 display(&ty)
@@ -359,7 +359,7 @@ impl Analyzer {
                         && !(0..=255).contains(&value)
                     {
                         return Err(error(
-                            "INVALID_EXIT_CODE",
+                            DiagId::INVALID_EXIT_CODE,
                             "STOP exit code must be in 0..255",
                             code.span,
                         ));

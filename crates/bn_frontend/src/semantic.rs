@@ -393,8 +393,7 @@ fn analyze_modules_with_warnings_mode(
         {
             return Err(ModuleAnalysisError {
                 module: module.id,
-                diagnostic: Box::new(error(
-                    "HOST_IMPORT_SCOPE",
+                diagnostic: Box::new(error(DiagId::HOST_IMPORT_SCOPE,
                     "only the executable module may import HOST.Main",
                     *span,
                 )),
@@ -407,8 +406,7 @@ fn analyze_modules_with_warnings_mode(
         {
             return Err(ModuleAnalysisError {
                 module: module.id,
-                diagnostic: Box::new(error(
-                    "IMPORTED_START",
+                diagnostic: Box::new(error(DiagId::IMPORTED_START,
                     "an imported module must not declare Start",
                     *span,
                 )),

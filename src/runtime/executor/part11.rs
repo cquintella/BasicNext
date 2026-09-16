@@ -157,8 +157,7 @@ impl Executor<'_, '_> {
         span: Span,
     ) -> Result<(), Diagnostic> {
         match target {
-            Value::Null => Err(runtime_error(
-                "NULL_POINTER_ACCESS",
+            Value::Null => Err(runtime_error(crate::diagnostic::DiagId::NULL_POINTER_ACCESS,
                 "cannot RELEASE NULL",
                 span,
             )),
@@ -170,8 +169,7 @@ impl Executor<'_, '_> {
                 if self.files.remove(&id).is_some() {
                     Ok(())
                 } else {
-                    Err(runtime_error(
-                        "DOUBLE_RELEASE",
+                    Err(runtime_error(crate::diagnostic::DiagId::DOUBLE_RELEASE,
                         "file handle was already deleted",
                         span,
                     ))
@@ -181,8 +179,7 @@ impl Executor<'_, '_> {
                 if self.dataframes.remove(&id).is_some() {
                     Ok(())
                 } else {
-                    Err(runtime_error(
-                        "DOUBLE_RELEASE",
+                    Err(runtime_error(crate::diagnostic::DiagId::DOUBLE_RELEASE,
                         "DataFrame handle was already deleted",
                         span,
                     ))
@@ -192,8 +189,7 @@ impl Executor<'_, '_> {
                 if self.log_fields.remove(&id).is_some() {
                     Ok(())
                 } else {
-                    Err(runtime_error(
-                        "DOUBLE_RELEASE",
+                    Err(runtime_error(crate::diagnostic::DiagId::DOUBLE_RELEASE,
                         "BNLog.Fields was already deleted",
                         span,
                     ))
@@ -203,8 +199,7 @@ impl Executor<'_, '_> {
                 if self.log_entries.remove(&id).is_some() {
                     Ok(())
                 } else {
-                    Err(runtime_error(
-                        "DOUBLE_RELEASE",
+                    Err(runtime_error(crate::diagnostic::DiagId::DOUBLE_RELEASE,
                         "BNLog.Entry was already deleted",
                         span,
                     ))
@@ -214,8 +209,7 @@ impl Executor<'_, '_> {
                 if self.log_loggers.remove(&id).is_some() {
                     Ok(())
                 } else {
-                    Err(runtime_error(
-                        "DOUBLE_RELEASE",
+                    Err(runtime_error(crate::diagnostic::DiagId::DOUBLE_RELEASE,
                         "BNLog.Logger was already deleted",
                         span,
                     ))
@@ -225,8 +219,7 @@ impl Executor<'_, '_> {
                 if self.json_values.remove(&id).is_some() {
                     Ok(())
                 } else {
-                    Err(runtime_error(
-                        "DOUBLE_RELEASE",
+                    Err(runtime_error(crate::diagnostic::DiagId::DOUBLE_RELEASE,
                         "BNJson.Json was already deleted",
                         span,
                     ))
@@ -249,15 +242,13 @@ impl Executor<'_, '_> {
         ) = (&value, ty)
         {
             let actual = u64::try_from(self.memory.len(*handle, span)?).map_err(|_| {
-                runtime_error(
-                    "POINTER_LENGTH_MISMATCH",
+                runtime_error(crate::diagnostic::DiagId::POINTER_LENGTH_MISMATCH,
                     "pointer length does not fit INTEGER",
                     span,
                 )
             })?;
             if actual != *expected {
-                return Err(runtime_error(
-                    "POINTER_LENGTH_MISMATCH",
+                return Err(runtime_error(crate::diagnostic::DiagId::POINTER_LENGTH_MISMATCH,
                     format!("pointer length {actual} does not match {expected}"),
                     span,
                 ));
@@ -304,8 +295,7 @@ impl Executor<'_, '_> {
             }
             Some(Value::Record { .. }) => {
                 let Some(Value::Record { fields, .. }) = values.get_mut(&object) else {
-                    return Err(runtime_error(
-                        "INVALID_IR",
+                    return Err(runtime_error(crate::diagnostic::DiagId::INVALID_IR,
                         "record value disappeared",
                         span,
                     ));
@@ -342,8 +332,7 @@ impl Executor<'_, '_> {
                     .insert(name.to_string(), target);
                 Ok(())
             }
-            Some(Value::Record { .. }) => Err(runtime_error(
-                "INVALID_IR",
+            Some(Value::Record { .. }) => Err(runtime_error(crate::diagnostic::DiagId::INVALID_IR,
                 "indexed value-type fields require a binding-rooted field store",
                 span,
             )),
@@ -468,15 +457,14 @@ impl Executor<'_, '_> {
                         .map(|dimension| usize::try_from(*dimension))
                         .collect::<Result<Vec<_>, _>>()
                         .map_err(|_| {
-                            runtime_error("INVALID_IR", "vector dimension is too large", span)
+                            runtime_error(crate::diagnostic::DiagId::INVALID_IR, "vector dimension is too large", span)
                         })?;
                     &owned_dimensions
                 } else {
                     dimensions
                 };
                 let Some(_) = dimensions.first() else {
-                    return Err(runtime_error(
-                        "INVALID_IR",
+                    return Err(runtime_error(crate::diagnostic::DiagId::INVALID_IR,
                         "vector default is missing its dimension",
                         span,
                     ));
@@ -486,8 +474,7 @@ impl Executor<'_, '_> {
                     size.checked_mul(u64::try_from(*length).ok()?)
                 });
                 if total.is_none_or(|size| size > isize::MAX as u64) {
-                    return Err(runtime_error(
-                        "NUMERIC_OVERFLOW",
+                    return Err(runtime_error(crate::diagnostic::DiagId::NUMERIC_OVERFLOW,
                         "vector allocation size overflowed",
                         span,
                     ));
@@ -505,7 +492,7 @@ impl Executor<'_, '_> {
             Type::Alternative(types) => self.default_value(
                 types
                     .first()
-                    .ok_or_else(|| runtime_error("INVALID_IR", "empty alternative type", span))?,
+                    .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::INVALID_IR, "empty alternative type", span))?,
                 dimensions,
                 span,
             ),
@@ -519,8 +506,7 @@ impl Executor<'_, '_> {
             Type::HostFileSystem => Ok(Value::Type("HOST.FileSystem".into())),
             Type::HostNet => Ok(Value::Type("HOST.Net".into())),
             Type::HostExec => Ok(Value::Type("HOST.Exec".into())),
-            _ => Err(runtime_error(
-                "UNINITIALIZED_VALUE",
+            _ => Err(runtime_error(crate::diagnostic::DiagId::UNINITIALIZED_VALUE,
                 "type has no default value",
                 span,
             )),

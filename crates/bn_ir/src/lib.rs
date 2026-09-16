@@ -39,7 +39,7 @@ impl ValidatedModule {
 /// Constructs the stable language-level diagnostic for malformed IR.
 pub(crate) fn invalid_ir(message: impl Into<String>, span: Span) -> Diagnostic {
     Diagnostic::structured(
-        DiagId::InvalidIr,
+        DiagId::INVALID_IR,
         vec![("detail".into(), message.into().into())],
         vec![Label {
             span,

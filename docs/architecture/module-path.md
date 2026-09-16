@@ -57,9 +57,26 @@ Compile (`-c`) and interpret share the **same** resolution rules so link and run
 - Dynamic download of modules.
 - Plugin ABI via `--plugins-dir`.
 
+### Provenance and `BN_HOME` (0.5.1a, D-F8-03)
+
+Every effective root carries a typed `RootProvenance` (`EntryDir`, `BnHome`,
+`EntryAncestor`, `Cwd`, `ExeInstall`, `StdlibDefault`, `Config`, `CliFlag`),
+and every resolved module records the root that won. The process log
+(`--log-level debug`) prints both, so an ancestor `modules/bn` can never
+hijack resolution silently.
+
+`BN_HOME`, when set, names the standard library explicitly
+(`$BN_HOME/share/bn/modules/bn`, else `$BN_HOME/modules/bn`) and **replaces**
+the ancestor/cwd/executable search. It is fail-closed: a `BN_HOME` without a
+stdlib is still used as the stdlib root, so standard imports fail at that path
+instead of falling through. Ordering of the effective list is unchanged:
+entry dir, `entry/modules`, stdlib, config extras, CLI extras.
+
 ## As-is today
 
-`module_graph::load` uses the entry’s parent directory plus a discovered `modules/bn` standard directory — **not** yet a user-supplied list. This document is the to-be contract for Control + Frontend.
+`module_graph::load_with_overlays_and_paths` builds the ordered list above
+(MP1, 0.5.1) with provenance and `BN_HOME` (0.5.1a). `--programs-dir` /
+`--plugins-dir` remain reserved.
 
 ## See also
 

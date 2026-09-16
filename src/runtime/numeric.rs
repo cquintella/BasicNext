@@ -129,7 +129,7 @@ pub(super) fn parse_float(value: &str) -> f64 {
 
 pub(super) fn exit_code(code: i128, span: Span) -> Result<u8, Diagnostic> {
     u8::try_from(code)
-        .map_err(|_| runtime_error("INVALID_EXIT_CODE", "exit code must be in 0..255", span))
+        .map_err(|_| runtime_error(crate::diagnostic::DiagId::INVALID_EXIT_CODE, "exit code must be in 0..255", span))
 }
 
 pub(super) fn ordered<T: Ord>(

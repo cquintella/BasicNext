@@ -58,7 +58,7 @@ pub(crate) fn assignment_operator(operator: &str) -> Result<&'static str, Diagno
 
 pub(crate) fn ir_error(message: impl Into<String>, span: Span) -> Diagnostic {
     Diagnostic::structured(
-        bn_diag::DiagId::IrLowering,
+        bn_diag::DiagId::IR_LOWERING,
         vec![("detail".into(), message.into().into())],
         vec![bn_diag::Label {
             span,

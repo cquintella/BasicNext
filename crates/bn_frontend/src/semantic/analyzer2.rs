@@ -1,5 +1,6 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::diagnostic::DiagId;
 
 impl Analyzer {
     pub(crate) fn declare_bases(&mut self, program: &Program) -> Result<(), Diagnostic> {
@@ -72,7 +73,7 @@ impl Analyzer {
             while let Some(base) = self.base_classes.get(current) {
                 if !seen.insert(current) {
                     return Err(error(
-                        "INHERITANCE_CYCLE",
+                        DiagId::INHERITANCE_CYCLE,
                         "class inheritance must be acyclic",
                         default_span(),
                     ));
@@ -144,7 +145,7 @@ impl Analyzer {
                             && member.ty == base_member.ty;
                         if !valid_override {
                             return Err(error(
-                                "INVALID_OVERRIDE",
+                                DiagId::INVALID_OVERRIDE,
                                 format!("member '{class}.{name}' conflicts with inherited member"),
                                 default_span(),
                             ));
@@ -157,7 +158,7 @@ impl Analyzer {
             }
             if !progressed {
                 return Err(error(
-                    "INHERITANCE_CYCLE",
+                    DiagId::INHERITANCE_CYCLE,
                     "class inheritance must be acyclic",
                     default_span(),
                 ));
@@ -197,7 +198,7 @@ impl Analyzer {
                 for (index, statement) in body.statements.iter().enumerate() {
                     if statement_uses_super(statement) && (!explicit || index != 0) {
                         return Err(error(
-                            "INVALID_SUPER",
+                            DiagId::INVALID_SUPER,
                             "SUPER(...) must be the first constructor statement",
                             statement_span(statement),
                         ));
@@ -211,7 +212,7 @@ impl Analyzer {
                     .is_some_and(|constructor| !constructor.parameters.is_empty())
             {
                 return Err(error(
-                    "INVALID_SUPER",
+                    DiagId::INVALID_SUPER,
                     format!("constructor for '{name}' must call SUPER(...)"),
                     constructor.map_or(default_span(), |(_, span)| span),
                 ));
@@ -251,14 +252,14 @@ impl Analyzer {
                     };
                     if matches!(member_name.as_str(), "CONSTRUCTOR" | "DESTRUCTOR") && *is_static {
                         return Err(error(
-                            "INVALID_CONSTRUCTOR",
+                            DiagId::INVALID_CONSTRUCTOR,
                             "CONSTRUCTOR and DESTRUCTOR must be instance functions",
                             *member_span,
                         ));
                     }
                     if member_name == "DESTRUCTOR" && !parameters.is_empty() {
                         return Err(error(
-                            "INVALID_DESTRUCTOR",
+                            DiagId::INVALID_DESTRUCTOR,
                             "DESTRUCTOR must not declare parameters",
                             *member_span,
                         ));
@@ -269,7 +270,7 @@ impl Analyzer {
                         for statement in &body.statements {
                             if statement_uses_super(statement) {
                                 return Err(error(
-                                    "INVALID_SUPER",
+                                    DiagId::INVALID_SUPER,
                                     "there is no SUPER in a destructor; the chain is implicit",
                                     statement_span(statement),
                                 ));

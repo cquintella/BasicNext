@@ -97,7 +97,7 @@ pub(super) fn integer_overflow(span: Span) -> Diagnostic {
 
 pub(super) fn numeric_overflow(operation: impl Into<String>, span: Span) -> Diagnostic {
     Diagnostic::structured(
-        crate::diagnostic::DiagId::NumericOverflow,
+        crate::diagnostic::DiagId::NUMERIC_OVERFLOW,
         vec![("operation".into(), operation.into().into())],
         vec![crate::diagnostic::Label {
             span,
@@ -108,16 +108,19 @@ pub(super) fn numeric_overflow(operation: impl Into<String>, span: Span) -> Diag
     .expect("numeric-overflow diagnostic schema")
 }
 
-pub(super) fn runtime_error(code: &'static str, message: impl Into<String>, span: Span) -> Diagnostic {
-    let message = message.into();
-    let id = crate::diagnostic::DiagId::from_code(code)
-        .unwrap_or(crate::diagnostic::DiagId::Runtime(code));
-    let argument = if matches!(id, crate::diagnostic::DiagId::NumericOverflow) {
-        ("operation", message.into())
-    } else if matches!(id, crate::diagnostic::DiagId::DoubleRelease | crate::diagnostic::DiagId::UseAfterRelease | crate::diagnostic::DiagId::Runtime("ALLOCATION_SIZE_INVALID" | "ALLOCATION_SIZE_OVERFLOW" | "HOST_CAPABILITY_UNAVAILABLE" | "EXECUTION_POLICY_DENIED" | "INVALID_EXIT_CODE" | "INVALID_EXPONENT" | "INVALID_SHIFT_COUNT" | "INVALID_VALUE" | "INVALID_INPUT" | "INPUT_ERROR" | "DISPATCH" | "INVALID_JSON" | "INVALID_EGRESS_POLICY")) {
-        ("detail", message.into())
-    } else {
-        ("message", message.into())
+pub(super) fn runtime_error(
+    id: crate::diagnostic::DiagId,
+    message: impl Into<String>,
+    span: Span,
+) -> Diagnostic {
+    let message: String = message.into();
+    let argument = match id.argument_schema() {
+        [only] => (only.name, message.into()),
+        schema => unreachable!(
+            "{} needs an explicit argument mapping ({} arguments)",
+            id.code(),
+            schema.len()
+        ),
     };
     Diagnostic::structured(
         id,

@@ -1,5 +1,6 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::diagnostic::DiagId;
 
 pub(crate) fn binary_type(
     operator: &str,
@@ -40,7 +41,7 @@ pub(crate) fn binary_type(
                 && (count < 0 || count >= i128::from(integer_width(&result)))
             {
                 return Err(error(
-                    "INVALID_SHIFT_COUNT",
+                    DiagId::INVALID_SHIFT_COUNT,
                     "shift count must be non-negative and smaller than the left operand width",
                     expression.span,
                 ));

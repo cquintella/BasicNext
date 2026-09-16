@@ -16,7 +16,7 @@ impl Executor<'_, '_> {
                     return Err(super::super::type_mismatch("STRING", "non-STRING value", "BNJson.Parse input", span));
                 };
                 let parsed = crate::json::parse(text)
-                    .map_err(|message| runtime_error("INVALID_JSON", message, span))?;
+                    .map_err(|message| runtime_error(crate::diagnostic::DiagId::INVALID_JSON, message, span))?;
                 let id = self.next_json_value;
                 self.next_json_value += 1;
                 self.json_values.insert(id, parsed);
@@ -28,10 +28,10 @@ impl Executor<'_, '_> {
                     return Err(super::super::type_mismatch("BNJson.Json", "non-BNJson.Json value", "BNJson.Stringify input", span));
                 };
                 let value = self.json_values.get(&id).ok_or_else(|| {
-                    runtime_error("USE_AFTER_RELEASE", "BNJson.Json is invalid", span)
+                    runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "BNJson.Json is invalid", span)
                 })?;
                 let text = crate::json::stringify(value)
-                    .map_err(|message| runtime_error("INVALID_JSON", message, span))?;
+                    .map_err(|message| runtime_error(crate::diagnostic::DiagId::INVALID_JSON, message, span))?;
                 Ok(Value::String(text))
             }
             "CONSTRUCTOR" => Ok(Value::Null),
@@ -94,7 +94,7 @@ impl Executor<'_, '_> {
         let fields = self
             .log_fields
             .get_mut(id)
-            .ok_or_else(|| runtime_error("USE_AFTER_RELEASE", "BNLog.Fields is invalid", span))?;
+            .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "BNLog.Fields is invalid", span))?;
         match method {
             "CONSTRUCTOR" => Ok(Value::Null),
             "Count" => integer_from_i128_count(fields.len() as i128, span),
@@ -149,7 +149,7 @@ impl Executor<'_, '_> {
                     .get(key)
                     .cloned()
                     .map(Value::String)
-                    .ok_or_else(|| runtime_error("NOT_FOUND", "field key was not found", span))
+                    .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::NOT_FOUND, "field key was not found", span))
             }
             _ => Ok(Value::Error {
                 code: 1,
@@ -174,7 +174,7 @@ impl Executor<'_, '_> {
         let fields = self
             .log_entries
             .get(id)
-            .ok_or_else(|| runtime_error("USE_AFTER_RELEASE", "BNLog.Entry is invalid", span))?;
+            .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "BNLog.Entry is invalid", span))?;
         match method {
             "CONSTRUCTOR" => Ok(Value::Null),
             "WithField" => {

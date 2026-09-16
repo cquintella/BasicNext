@@ -128,7 +128,13 @@ pub(crate) fn parse_options(arguments: impl Iterator<Item = String>) -> Result<O
     let mut log_file = configured_log_file;
     let mut log_file_from_cli = false;
     let mut no_log = configured_no_log;
-    let mut module_paths = configured_module_paths;
+    let mut module_paths: Vec<bn::module_graph::ModuleRoot> = configured_module_paths
+        .into_iter()
+        .map(|path| bn::module_graph::ModuleRoot {
+            path,
+            provenance: bn::module_graph::RootProvenance::Config,
+        })
+        .collect();
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--" => {
@@ -154,12 +160,15 @@ pub(crate) fn parse_options(arguments: impl Iterator<Item = String>) -> Result<O
                     .ok_or("--write-root expects a directory".to_string())?,
             )),
             "--jupyter-stdin" => jupyter_stdin = true,
-            "--module-path" => module_paths.push(PathBuf::from(
-                arguments
-                    .next()
-                    .filter(|value| !value.starts_with('-'))
-                    .ok_or_else(|| "--module-path expects a directory".to_string())?,
-            )),
+            "--module-path" => module_paths.push(bn::module_graph::ModuleRoot {
+                path: PathBuf::from(
+                    arguments
+                        .next()
+                        .filter(|value| !value.starts_with('-'))
+                        .ok_or_else(|| "--module-path expects a directory".to_string())?,
+                ),
+                provenance: bn::module_graph::RootProvenance::CliFlag,
+            }),
             "--config" => {
                 let _ = arguments
                     .next()
@@ -634,11 +643,11 @@ mod tests {
         )
         .expect("warning flags");
         assert_eq!(
-            options.warning_policy.level(DiagId::UnusedBinding),
+            options.warning_policy.level(DiagId::UNUSED_BINDING),
             Level::Warn
         );
         assert_eq!(
-            options.warning_policy.level(DiagId::UnusedImport),
+            options.warning_policy.level(DiagId::UNUSED_IMPORT),
             Level::Error
         );
         assert!(
@@ -665,7 +674,7 @@ mod tests {
         .expect("write config fixture");
         let configured = configured_settings(Some(&path)).expect("config");
         assert_eq!(
-            configured.warning_policy.level(DiagId::UnusedImport),
+            configured.warning_policy.level(DiagId::UNUSED_IMPORT),
             Level::Error
         );
         assert_eq!(format!("{:?}", configured.log_level), "Debug");
@@ -706,7 +715,7 @@ mod tests {
         )
         .expect("CLI overrides");
         assert_eq!(
-            options.warning_policy.level(DiagId::UnusedBinding),
+            options.warning_policy.level(DiagId::UNUSED_BINDING),
             Level::Warn
         );
         assert_eq!(format!("{:?}", options.log_level), "Error");

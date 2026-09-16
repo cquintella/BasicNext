@@ -614,7 +614,7 @@ pub(crate) fn execute_named_with_host(
         .functions
         .iter()
         .find(|function| function.name == name)
-        .ok_or_else(|| runtime_error("FUNCTION_NOT_FOUND", format!("function '{name}' was not found"), default_span()))?;
+        .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::FUNCTION_NOT_FOUND, format!("function '{name}' was not found"), default_span()))?;
     let mut executor = Executor::new(validated.as_module(), input, output, host, None, None);
     match executor.function(function, arguments)? {
         Flow::Return(Some(value)) => Ok(value),
@@ -732,12 +732,11 @@ fn execute_with_host_inner<'debug>(
     debug_control: Option<DebugControl<'debug>>,
 ) -> Result<u8, Diagnostic> {
     crate::tls::install_ring_provider()
-        .map_err(|message| runtime_error("TLS_PROVIDER_UNAVAILABLE", message, default_span()))?;
+        .map_err(|message| runtime_error(crate::diagnostic::DiagId::TLS_PROVIDER_UNAVAILABLE, message, default_span()))?;
     if !host.filesystem.allows_capability()
         && let Some(span) = module.filesystem_import
     {
-        return Err(runtime_error(
-            "HOST_CAPABILITY_UNAVAILABLE",
+        return Err(runtime_error(crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE,
             "HOST.FileSystem is not provided by this host",
             span,
         ));
@@ -747,15 +746,13 @@ fn execute_with_host_inner<'debug>(
         .iter()
         .find(|function| function.name == "Start")
         .ok_or_else(|| {
-            runtime_error(
-                "START_NOT_FOUND",
+            runtime_error(crate::diagnostic::DiagId::START_NOT_FOUND,
                 "executable module requires FUNCTION Start",
                 default_span(),
             )
         })?;
     if !start.parameters.is_empty() {
-        return Err(runtime_error(
-            "INVALID_START",
+        return Err(runtime_error(crate::diagnostic::DiagId::INVALID_START,
             "FUNCTION Start cannot declare parameters",
             start.span,
         ));
@@ -767,10 +764,9 @@ fn execute_with_host_inner<'debug>(
             exit_code(code, start.span)
         }
         Flow::Return(Some(Value::Error { code, message })) => {
-            Err(runtime_error("DISPATCH", format!("{code}: {message}"), start.span))
+            Err(runtime_error(crate::diagnostic::DiagId::DISPATCH, format!("{code}: {message}"), start.span))
         }
-        Flow::Return(Some(_)) => Err(runtime_error(
-            "INVALID_START",
+        Flow::Return(Some(_)) => Err(runtime_error(crate::diagnostic::DiagId::INVALID_START,
             "FUNCTION Start must return VOID or INTEGER",
             start.span,
         )),
@@ -792,8 +788,7 @@ pub(crate) fn execute_web_callback(
 ) -> Result<crate::web::Response, String> {
     crate::tls::install_ring_provider().map_err(std::borrow::ToOwned::to_owned)?;
     if !host.filesystem.allows_capability() && let Some(span) = module.filesystem_import {
-        return Err(runtime_error(
-            "HOST_CAPABILITY_UNAVAILABLE",
+        return Err(runtime_error(crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE,
             "HOST.FileSystem is not provided by this host",
             span,
         )
@@ -854,52 +849,37 @@ fn integer_from_i128_count(count: i128, span: Span) -> Result<Value, Diagnostic>
     Ok(Value::Integer(count, IntegerType::Int32))
 }
 
-#[allow(clippy::match_same_arms)]
-fn runtime_error(code: &'static str, message: impl Into<String>, span: Span) -> Diagnostic {
+fn runtime_error(
+    id: crate::diagnostic::DiagId,
+    message: impl Into<String>,
+    span: Span,
+) -> Diagnostic {
     let message = message.into();
-    let id = crate::diagnostic::DiagId::from_code(code)
-        .unwrap_or(crate::diagnostic::DiagId::Runtime(code));
     let arguments = match id {
-        crate::diagnostic::DiagId::NumericOverflow => {
-            vec![("operation".into(), message.into())]
-        }
-        crate::diagnostic::DiagId::Runtime("NAME_NOT_FOUND") => vec![
+        crate::diagnostic::DiagId::NAME_NOT_FOUND => vec![
             ("name".into(), message.clone().into()),
             ("context".into(), "runtime lookup".into()),
         ],
-        crate::diagnostic::DiagId::Runtime("INDEX_OUT_OF_BOUNDS") => vec![
+        crate::diagnostic::DiagId::INDEX_OUT_OF_BOUNDS => vec![
             ("index".into(), "unknown".into()),
             ("bound".into(), "unknown".into()),
             ("context".into(), message.into()),
         ],
-        crate::diagnostic::DiagId::TypeMismatch => vec![
+        crate::diagnostic::DiagId::TYPE_MISMATCH => vec![
             ("expected".into(), "a value matching the operation".into()),
             ("actual".into(), "an incompatible value".into()),
             ("context".into(), message.into()),
         ],
-        crate::diagnostic::DiagId::DoubleRelease | crate::diagnostic::DiagId::UseAfterRelease => {
-            vec![("detail".into(), message.into())]
-        }
-        crate::diagnostic::DiagId::Runtime("ALLOCATION_SIZE_INVALID" | "ALLOCATION_SIZE_OVERFLOW") => {
-            vec![("detail".into(), message.into())]
-        }
-        crate::diagnostic::DiagId::FunctionNotFound
-        | crate::diagnostic::DiagId::Runtime("INVALID_START") => {
-            vec![("detail".into(), message.into())]
-        }
-        crate::diagnostic::DiagId::Runtime(
-            "HOST_CAPABILITY_UNAVAILABLE" | "EXECUTION_POLICY_DENIED",
-        ) => vec![("detail".into(), message.into())],
-        crate::diagnostic::DiagId::Runtime(
-            "INVALID_EXIT_CODE" | "INVALID_EXPONENT" | "INVALID_SHIFT_COUNT",
-        ) => vec![("detail".into(), message.into())],
-        crate::diagnostic::DiagId::Runtime("INVALID_VALUE" | "INVALID_INPUT" | "INPUT_ERROR") => {
-            vec![("detail".into(), message.into())]
-        }
-        crate::diagnostic::DiagId::Runtime("DISPATCH" | "INVALID_JSON" | "INVALID_EGRESS_POLICY") => {
-            vec![("detail".into(), message.into())]
-        }
-        _ => vec![("message".into(), message.into())],
+        // Single-argument schemas (`message`, `detail`, `operation`, …) take
+        // the whole text under the registry's argument name.
+        _ => match id.argument_schema() {
+            [only] => vec![(only.name.into(), message.into())],
+            schema => unreachable!(
+                "{} needs an explicit argument mapping ({} arguments)",
+                id.code(),
+                schema.len()
+            ),
+        },
     };
     Diagnostic::structured(
         id,
@@ -915,7 +895,7 @@ fn runtime_error(code: &'static str, message: impl Into<String>, span: Span) -> 
 
 fn name_not_found(name: impl Into<String>, context: impl Into<String>, span: Span) -> Diagnostic {
     Diagnostic::structured(
-        crate::diagnostic::DiagId::Runtime("NAME_NOT_FOUND"),
+        crate::diagnostic::DiagId::NAME_NOT_FOUND,
         vec![
             ("name".into(), name.into().into()),
             ("context".into(), context.into().into()),
@@ -936,7 +916,7 @@ fn index_out_of_bounds(
     span: Span,
 ) -> Diagnostic {
     Diagnostic::structured(
-        crate::diagnostic::DiagId::Runtime("INDEX_OUT_OF_BOUNDS"),
+        crate::diagnostic::DiagId::INDEX_OUT_OF_BOUNDS,
         vec![
             ("index".into(), index.to_string().into()),
             ("bound".into(), bound.to_string().into()),
@@ -958,7 +938,7 @@ fn type_mismatch(
     span: Span,
 ) -> Diagnostic {
     Diagnostic::structured(
-        crate::diagnostic::DiagId::TypeMismatch,
+        crate::diagnostic::DiagId::TYPE_MISMATCH,
         vec![
             ("expected".into(), expected.to_string().into()),
             ("actual".into(), actual.to_string().into()),
@@ -974,12 +954,21 @@ fn type_mismatch(
 }
 
 fn console_runtime_error(error: &bn_rt::ConsoleError, span: Span) -> Diagnostic {
-    runtime_error(error.code(), error.message(), span)
+    // `bn_rt` reports codes as strings (C ABI boundary); the interpreter owns
+    // the mapping onto registry identities.
+    let id = match error {
+        bn_rt::ConsoleError::Unavailable(_) => crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE,
+        bn_rt::ConsoleError::OutOfBounds => crate::diagnostic::DiagId::INDEX_OUT_OF_BOUNDS,
+        bn_rt::ConsoleError::Output(_) => crate::diagnostic::DiagId::OUTPUT_ERROR,
+        bn_rt::ConsoleError::Overflow => crate::diagnostic::DiagId::NUMERIC_OVERFLOW,
+    };
+    debug_assert_eq!(id.code(), error.code());
+    runtime_error(id, error.message(), span)
 }
 
 fn integer_overflow(span: Span) -> Diagnostic {
     Diagnostic::structured(
-        crate::diagnostic::DiagId::NumericOverflow,
+        crate::diagnostic::DiagId::NUMERIC_OVERFLOW,
         vec![(
             "operation".into(),
             "converting a value to INTEGER".into(),

@@ -220,7 +220,7 @@ impl<'a> ExpressionParser<'a> {
             return Ok(expression);
         }
         if matches!(
-            self.peek().kind,
+            *self.peek_kind(),
             TokenKind::Identifier(_)
                 | TokenKind::Integer(_)
                 | TokenKind::Float(_)
@@ -233,7 +233,7 @@ impl<'a> ExpressionParser<'a> {
             || self.keyword("EOF")
             || self.keyword("SELF")
             || self.keyword("SUPER")
-            || matches!(&self.peek().kind, TokenKind::Keyword(word) if matches!(word.as_str(), "BOOLEAN" | "BYTE" | "INT8" | "INT16" | "INT32" | "INT64" | "UINT16" | "UINT32" | "UINT64" | "FLOAT32" | "FLOAT64" | "INTEGER" | "FLOAT" | "TIMESTAMP" | "STRING" | "SYSTEM"))
+            || matches!(self.peek_kind(), TokenKind::Keyword(word) if matches!(word.as_str(), "BOOLEAN" | "BYTE" | "INT8" | "INT16" | "INT32" | "INT64" | "UINT16" | "UINT32" | "UINT64" | "FLOAT32" | "FLOAT64" | "INTEGER" | "FLOAT" | "TIMESTAMP" | "STRING" | "SYSTEM"))
         {
             let token = self.take();
             return Ok(Expression {
@@ -374,7 +374,7 @@ impl<'a> ExpressionParser<'a> {
     }
     fn cast(&mut self, value: Expression) -> Result<Expression, Diagnostic> {
         self.take();
-        if !matches!(&self.peek().kind, TokenKind::Keyword(word) if matches!(word.as_str(), "BYTE" | "INT8" | "INT16" | "INT32" | "INT64" | "UINT16" | "UINT32" | "UINT64" | "FLOAT32" | "FLOAT64" | "INTEGER" | "FLOAT" | "TIMESTAMP" | "BOOLEAN"))
+        if !matches!(self.peek_kind(), TokenKind::Keyword(word) if matches!(word.as_str(), "BYTE" | "INT8" | "INT16" | "INT32" | "INT64" | "UINT16" | "UINT32" | "UINT64" | "FLOAT32" | "FLOAT64" | "INTEGER" | "FLOAT" | "TIMESTAMP" | "BOOLEAN"))
         {
             return Err(self.error("expected numeric type or BOOLEAN after AS"));
         }
@@ -400,8 +400,8 @@ impl<'a> ExpressionParser<'a> {
         })
     }
     fn type_test_start(&self) -> bool {
-        matches!(self.peek().kind, TokenKind::Identifier(_))
-            || matches!(&self.peek().kind, TokenKind::Keyword(word) if matches!(word.as_str(),
+        matches!(*self.peek_kind(), TokenKind::Identifier(_))
+            || matches!(self.peek_kind(), TokenKind::Keyword(word) if matches!(word.as_str(),
                 "BOOLEAN" | "BYTE" | "INT8" | "INT16" | "INT32" | "INT64" | "UINT16"
                 | "UINT32" | "UINT64" | "FLOAT32" | "FLOAT64" | "INTEGER" | "FLOAT"
                 | "TIMESTAMP" | "STRING" | "DATE" | "TIME" | "TIMEZONE" | "SYSTEM" | "POINTER"))
@@ -414,13 +414,13 @@ impl<'a> ExpressionParser<'a> {
                 return Err(self.error("expected TO in POINTER type test"));
             }
             tokens.push(self.take());
-            if matches!(&self.peek().kind, TokenKind::Keyword(word) if matches!(word.as_str(),
+            if matches!(self.peek_kind(), TokenKind::Keyword(word) if matches!(word.as_str(),
                 "BYTE" | "INT8" | "INT16" | "INT32" | "INT64" | "UINT16" | "UINT32"
                 | "UINT64" | "FLOAT32" | "FLOAT64" | "INTEGER" | "FLOAT" | "TIMESTAMP"
                 | "VOID"))
             {
                 tokens.push(self.take());
-            } else if matches!(self.peek().kind, TokenKind::Identifier(_)) {
+            } else if matches!(*self.peek_kind(), TokenKind::Identifier(_)) {
                 tokens.push(self.take());
                 while !self.at_end() && self.symbol(Symbol::Dot) {
                     tokens.push(self.take());
@@ -434,7 +434,7 @@ impl<'a> ExpressionParser<'a> {
             if !self.at_end() && self.symbol(Symbol::LeftBracket) {
                 tokens.push(self.take());
                 if !self.symbol(Symbol::RightBracket) {
-                    if !matches!(self.peek().kind, TokenKind::Integer(_)) {
+                    if !matches!(*self.peek_kind(), TokenKind::Integer(_)) {
                         return Err(self.error("pointer shape requires an integer literal"));
                     }
                     tokens.push(self.take());
@@ -471,7 +471,7 @@ impl<'a> ExpressionParser<'a> {
         })
     }
     fn binary(&self) -> Option<(u8, bool)> {
-        let value = match &self.peek().kind {
+        let value = match self.peek_kind() {
             TokenKind::Keyword(word) => match word.as_str() {
                 "OR" => (1, false),
                 "XOR" => (2, false),
@@ -507,10 +507,10 @@ impl<'a> ExpressionParser<'a> {
     }
 
     fn keyword(&self, word: &str) -> bool {
-        matches!(&self.peek().kind, TokenKind::Keyword(value) if value == word)
+        matches!(self.peek_kind(), TokenKind::Keyword(value) if value == word)
     }
     fn symbol(&self, symbol: Symbol) -> bool {
-        matches!(self.peek().kind, TokenKind::Symbol(value) if value == symbol)
+        matches!(*self.peek_kind(), TokenKind::Symbol(value) if value == symbol)
     }
     fn expect_symbol(&mut self, symbol: Symbol) -> Result<Span, Diagnostic> {
         if self.symbol(symbol) {
@@ -520,12 +520,21 @@ impl<'a> ExpressionParser<'a> {
         }
     }
     fn identifier_token(&mut self) -> Result<&'a Token, Diagnostic> {
-        if matches!(self.peek().kind, TokenKind::Identifier(_)) {
+        if matches!(*self.peek_kind(), TokenKind::Identifier(_)) {
             Ok(self.take())
         } else {
             Err(self.error("expected identifier"))
         }
     }
+    /// Token kind at the cursor; `Eof` past the end so no real token is ever
+    /// re-read (a slice without a trailing `EOF` must still terminate).
+    pub(crate) fn peek_kind(&self) -> &'a TokenKind {
+        static EOF: TokenKind = TokenKind::Eof;
+        self.tokens
+            .get(self.index)
+            .map_or(&EOF, |token| &token.kind)
+    }
+    /// Token at the cursor, or the last token past the end (for spans only).
     pub(crate) fn peek(&self) -> &'a Token {
         if self.index < self.tokens.len() {
             &self.tokens[self.index]
@@ -534,11 +543,13 @@ impl<'a> ExpressionParser<'a> {
         }
     }
     pub(crate) fn at_end(&self) -> bool {
-        self.index == self.tokens.len()
+        self.index >= self.tokens.len()
     }
     fn take(&mut self) -> &'a Token {
         let token = self.peek();
-        self.index += 1;
+        if self.index < self.tokens.len() {
+            self.index += 1;
+        }
         token
     }
     pub(crate) fn error(&self, message: impl Into<String>) -> Diagnostic {

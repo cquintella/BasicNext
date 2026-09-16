@@ -31,7 +31,7 @@ impl Analyzer {
     ) -> Result<Type, Diagnostic> {
         if object == &Type::Unknown {
             return Err(error(
-                "UNRESOLVED_TYPE",
+                DiagId::UNRESOLVED_TYPE,
                 "member receiver has no resolved type",
                 span,
             ));
@@ -44,7 +44,7 @@ impl Analyzer {
                 .cloned()
                 .ok_or_else(|| {
                     error(
-                        "NAME_NOT_FOUND",
+                        DiagId::NAME_NOT_FOUND,
                         format!("imported module does not export '{name}'"),
                         span,
                     )
@@ -66,7 +66,7 @@ impl Analyzer {
                 .and_then(|info| info.members.get(name));
             let member = member.ok_or_else(|| {
                 error(
-                    "NAME_NOT_FOUND",
+                    DiagId::NAME_NOT_FOUND,
                     format!(
                         "imported type '{}' has no exported member '{name}'",
                         display(object)
@@ -146,7 +146,7 @@ impl Analyzer {
             .and_then(|members| members.get(name))
             .ok_or_else(|| {
                 error(
-                    "NAME_NOT_FOUND",
+                    DiagId::NAME_NOT_FOUND,
                     format!("type '{owner}' has no member '{name}'"),
                     span,
                 )
@@ -169,7 +169,7 @@ impl Analyzer {
         }
         if member.private && self.current_class.as_deref() != Some(owner) {
             return Err(error(
-                "PRIVATE_ACCESS",
+                DiagId::PRIVATE_ACCESS,
                 format!("member '{owner}.{name}' is PRIVATE"),
                 span,
             ));
@@ -184,7 +184,7 @@ impl Analyzer {
     ) -> Result<(), Diagnostic> {
         let test_type = is_test_type(test).ok_or_else(|| {
             error(
-                "INVALID_ALTERNATIVE_USE",
+                DiagId::INVALID_ALTERNATIVE_USE,
                 "IS requires a type, NULL, NA, EOF, NAN, or INF test",
                 test.span,
             )
@@ -200,7 +200,7 @@ impl Analyzer {
             Ok(())
         } else {
             Err(error(
-                "INVALID_ALTERNATIVE_USE",
+                DiagId::INVALID_ALTERNATIVE_USE,
                 format!(
                     "{} is not an alternative of {}",
                     display(&test_type),
@@ -252,7 +252,7 @@ impl Analyzer {
         let test_type = if operator == "IS" {
             self.resolve_type(is_test_type(right).ok_or_else(|| {
                 error(
-                    "INVALID_ALTERNATIVE_USE",
+                    DiagId::INVALID_ALTERNATIVE_USE,
                     "IS requires a valid type test",
                     right.span,
                 )
@@ -269,7 +269,7 @@ impl Analyzer {
         let mut narrowed = locals.clone();
         let symbol = narrowed.get_mut(name).ok_or_else(|| {
             error(
-                "NAME_NOT_FOUND",
+                DiagId::NAME_NOT_FOUND,
                 format!("name '{name}' is not declared"),
                 left.span,
             )
@@ -324,14 +324,14 @@ impl Analyzer {
     pub(crate) fn direct_base(&self, span: Span) -> Result<String, Diagnostic> {
         let class = self.current_class.as_deref().ok_or_else(|| {
             error(
-                "INVALID_SUPER",
+                DiagId::INVALID_SUPER,
                 "SUPER is valid only in a derived CLASS",
                 span,
             )
         })?;
         self.base_classes.get(class).cloned().ok_or_else(|| {
             error(
-                "INVALID_SUPER",
+                DiagId::INVALID_SUPER,
                 "SUPER is valid only in a derived CLASS",
                 span,
             )
@@ -465,7 +465,7 @@ impl Analyzer {
                     && !(1..=60_000).contains(&timeout)
                 {
                     return Err(error(
-                        "AWAIT_TIMEOUT",
+                        DiagId::AWAIT_TIMEOUT,
                         "AWAIT timeout must be between 1 and 60000 milliseconds",
                         arguments[0].span,
                     ));
@@ -483,7 +483,7 @@ impl Analyzer {
                 self.expression(argument, locals)?;
             }
             return Err(error(
-                "NOT_CALLABLE",
+                DiagId::NOT_CALLABLE,
                 format!("{} is not callable", display(&callee_type)),
                 span,
             ));
@@ -513,7 +513,7 @@ impl Analyzer {
                 && !(1..=60_000).contains(&timeout)
             {
                 return Err(error(
-                    "AWAIT_TIMEOUT",
+                    DiagId::AWAIT_TIMEOUT,
                     "AWAIT timeout must be between 1 and 60000 milliseconds",
                     arguments[0].span,
                 ));
@@ -525,7 +525,7 @@ impl Analyzer {
                 )
             {
                 return Err(error(
-                    "ASYNC_TARGET",
+                    DiagId::ASYNC_TARGET,
                     "ASYNC submission requires a named function target",
                     span,
                 ));
@@ -537,7 +537,7 @@ impl Analyzer {
             && !matches!(mode, 0..=2)
         {
             return Err(error(
-                "INVALID_FILE_MODE",
+                DiagId::INVALID_FILE_MODE,
                 "FS.Open mode must be FS.READ, FS.WRITE, or FS.APPEND",
                 arguments[1].span,
             ));

@@ -43,6 +43,17 @@ node bin/bn-wasm hello.wasm
 the entry directory and discovered standard-library directory remain the
 defaults, followed by configured paths and then CLI paths.
 
+The standard-library directory is discovered, in order, from `BN_HOME`
+(`$BN_HOME/share/bn/modules/bn` or `$BN_HOME/modules/bn`), then the nearest
+`modules/bn` above the entry file, then above the working directory, then
+relative to the `bn` executable. Setting `BN_HOME` **disables** the ancestor
+search: a home without a standard library fails standard imports instead of
+silently picking up a `modules/bn` elsewhere in the tree. With
+`--log-level debug` the process log records every effective root with its
+origin (`entry-dir`, `BN_HOME`, `entry-ancestor`, `cwd-ancestor`,
+`exe-install`, `stdlib-default`, `config`, `cli-flag`) and, per imported
+module, the root that resolved it.
+
 `bnc -c` writes textual LLVM IR. Running that IR directly with `lli` requires
 loading the Basic Next runtime archive explicitly whenever the program uses
 `bn_rt_*` symbols:

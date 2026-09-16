@@ -4,6 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use crate::{
+use crate::diagnostic::DiagId;
     ast::{Expression, ExpressionKind, Literal},
     diagnostic::Diagnostic,
 };
@@ -48,8 +49,7 @@ pub(super) fn binary_type(
             if let Some(count) = constant_integer_from_type(right)
                 && (count < 0 || count >= i128::from(integer_width(&result)))
             {
-                return Err(error(
-                    "INVALID_SHIFT_COUNT",
+                return Err(error(DiagId::INVALID_SHIFT_COUNT,
                     "shift count must be non-negative and smaller than the left operand width",
                     expression.span,
                 ));

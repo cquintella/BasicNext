@@ -24,7 +24,7 @@ impl Parser<'_> {
                 if line.len() == 1 {
                     return Err(self.error("UNTIL requires an expression"));
                 }
-                let condition = parse_expression(&line[1..])?;
+                let condition = self.expression_in(&line[1..])?;
                 self.consume_to_newline()?;
                 return Ok((BlockTerm::Until(condition), statements));
             }
@@ -110,7 +110,7 @@ impl Parser<'_> {
     ) -> Result<crate::ast::Statement, Diagnostic> {
         let line = self.line_tokens();
         let condition = if kind == "WHILE" {
-            Some(parse_expression(&line[1..])?)
+            Some(self.expression_in(&line[1..])?)
         } else {
             None
         };
@@ -191,7 +191,7 @@ impl Parser<'_> {
             return Ok(crate::ast::ForHeader::Each {
                 variable,
                 type_ref: self.type_reference(&line[as_index + 1..in_index], false)?,
-                iterable: parse_expression(&line[in_index + 1..])?,
+                iterable: self.expression_in(&line[in_index + 1..])?,
             });
         }
         let variable = name(
@@ -214,13 +214,16 @@ impl Parser<'_> {
         {
             return Err(self.error("expected AS in FOR"));
         }
+        if equal <= as_index || to <= equal || step.is_some_and(|step| step <= to) {
+            return Err(self.error("expected FOR name AS type = start TO end [STEP step]"));
+        }
         Ok(crate::ast::ForHeader::Counted {
             variable,
             type_ref: self.type_reference(&line[as_index + 1..equal], false)?,
-            start: parse_expression(&line[equal + 1..to])?,
-            end: parse_expression(&line[to + 1..step.unwrap_or(line.len())])?,
+            start: self.expression_in(&line[equal + 1..to])?,
+            end: self.expression_in(&line[to + 1..step.unwrap_or(line.len())])?,
             step: step
-                .map(|index| parse_expression(&line[index + 1..]))
+                .map(|index| self.expression_in(&line[index + 1..]))
                 .transpose()?,
         })
     }
@@ -231,7 +234,7 @@ impl Parser<'_> {
             .iter()
             .position(|token| matches!(&token.kind, TokenKind::Keyword(word) if word == "THEN"))
             .ok_or_else(|| self.error("expected THEN after IF condition"))?;
-        let condition = parse_expression(&line[1..then])?;
+        let condition = self.expression_in(&line[1..then])?;
         let start = self.take().span.start;
         if then + 1 < line.len() {
             let else_index = line[then + 1..]
@@ -288,7 +291,7 @@ impl Parser<'_> {
                         |token| matches!(&token.kind, TokenKind::Keyword(word) if word == "THEN"),
                     )
                     .ok_or_else(|| self.error("expected THEN after ELSE IF condition"))?;
-                let condition = parse_expression(&line[..then])?;
+                let condition = self.expression_in(&line[..then])?;
                 self.consume_to_newline()?;
                 let (next, body) = self.block_until("IF", true)?;
                 branches.push(crate::ast::IfBranch {

@@ -27,7 +27,7 @@ impl Executor<'_, '_> {
         let resource = self
             .files
             .get_mut(id)
-            .ok_or_else(|| runtime_error("USE_AFTER_RELEASE", "file handle is invalid", span))?;
+            .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "file handle is invalid", span))?;
         match name.rsplit('.').next().unwrap_or_default() {
             "Close" => {
                 require_arity(name, arguments, 1, span)?;
@@ -247,7 +247,7 @@ impl Executor<'_, '_> {
                 };
                 let lines = {
                     let frame = self.dataframes.get(&id).ok_or_else(|| {
-                        runtime_error("USE_AFTER_RELEASE", "DataFrame handle is invalid", span)
+                        runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "DataFrame handle is invalid", span)
                     })?;
                     let mut lines = Vec::new();
                     if write_header {

@@ -14,10 +14,10 @@ impl Executor<'_, '_> {
                 return Err(super::super::type_mismatch("STRING", "non-STRING value", "join right key", span));
             };
             let left = self.dataframes.get(&id).ok_or_else(|| {
-                runtime_error("USE_AFTER_RELEASE", "DataFrame handle is invalid", span)
+                runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "DataFrame handle is invalid", span)
             })?;
             let right = self.dataframes.get(&other_id).ok_or_else(|| {
-                runtime_error("USE_AFTER_RELEASE", "DataFrame handle is invalid", span)
+                runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "DataFrame handle is invalid", span)
             })?;
             let not_available = Value::NotAvailable;
             let frame = match join_dataframes(
@@ -47,10 +47,10 @@ impl Executor<'_, '_> {
                 return Err(super::super::type_mismatch("DataFrame", "non-DataFrame value", method, span));
             };
             let left = self.dataframes.get(&id).ok_or_else(|| {
-                runtime_error("USE_AFTER_RELEASE", "DataFrame handle is invalid", span)
+                runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "DataFrame handle is invalid", span)
             })?;
             let right = self.dataframes.get(&other_id).ok_or_else(|| {
-                runtime_error("USE_AFTER_RELEASE", "DataFrame handle is invalid", span)
+                runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "DataFrame handle is invalid", span)
             })?;
             if method == "AppendRows" {
                 let columns = match append_rows(

@@ -453,31 +453,41 @@ fn module_path_is_repeatable_and_first_directory_wins_for_check() {
     assert_eq!(built.status.code(), Some(0));
     assert_eq!(built.stdout, b"1\n");
     let log = fs::read_to_string(base.join("main.log")).expect("module-path process log");
-    let expected_roots = [
-        fs::canonicalize(&base).expect("canonical base"),
-        fs::canonicalize(&base)
-            .expect("canonical base")
-            .join("modules"),
-        std::env::current_dir()
-            .expect("repository directory")
-            .join("modules/bn"),
-        fs::canonicalize(&first).expect("canonical first"),
-        fs::canonicalize(&second).expect("canonical second"),
-    ];
-    let snapshot = log
-        .split("module_paths=[")
-        .nth(1)
-        .and_then(|tail| tail.split(']').next())
-        .expect("module_paths snapshot");
-    let actual: Vec<_> = snapshot
-        .split(",\\s")
-        .map(|item| item.trim().trim_matches('"').to_string())
-        .collect();
-    let expected: Vec<_> = expected_roots
-        .iter()
-        .map(|root| root.display().to_string())
-        .collect();
-    assert_eq!(actual, expected, "effective module-path snapshot");
+    let canonical_base = fs::canonicalize(&base).expect("canonical base");
+    let expected: Vec<String> = [
+        (canonical_base.clone(), "entry-dir"),
+        (canonical_base.join("modules"), "entry-dir"),
+        (
+            std::env::current_dir()
+                .expect("repository directory")
+                .join("modules/bn"),
+            "cwd-ancestor",
+        ),
+        (
+            fs::canonicalize(&first).expect("canonical first"),
+            "cli-flag",
+        ),
+        (
+            fs::canonicalize(&second).expect("canonical second"),
+            "cli-flag",
+        ),
+    ]
+    .iter()
+    .map(|(root, provenance)| format!("{} ({provenance})", root.display()))
+    .collect();
+    assert_eq!(
+        module_roots_snapshot(&log),
+        expected,
+        "effective module-root snapshot with provenance"
+    );
+    let unescaped = log.replace("\\s", " ");
+    assert!(
+        unescaped.contains(&format!(
+            "Greeting.bn <- {} (cli-flag)",
+            fs::canonicalize(&first).expect("canonical first").display()
+        )),
+        "per-module winning root missing from log: {log}"
+    );
     fs::write(
         base.join("config.toml"),
         format!("module-path = [\"{}\"]\n", first.display()),
@@ -509,6 +519,136 @@ fn module_path_is_repeatable_and_first_directory_wins_for_check() {
     let _ = fs::remove_dir_all(base);
 }
 
+fn module_roots_snapshot(log: &str) -> Vec<String> {
+    // The process log escapes whitespace as `\s` inside values.
+    let unescaped = log.replace("\\s", " ");
+    unescaped
+        .split("module_roots=[")
+        .nth(1)
+        .and_then(|tail| tail.split(']').next())
+        .expect("module_roots snapshot")
+        .split("\", \"")
+        .map(|item| item.trim().trim_matches(['"', '\\']).to_string())
+        .collect()
+}
+
+#[test]
+#[allow(clippy::too_many_lines)] // three real CLI scenarios share one fixture tree
+fn bn_home_overrides_ancestor_stdlib_and_is_logged() {
+    let base = std::env::temp_dir().join(format!("bn-home-cli-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&base);
+    // Hijack layout: the entry's parent chain carries its own modules/bn.
+    let hijack_stdlib = base.join("project/modules/bn");
+    let entry_dir = base.join("project/src");
+    fs::create_dir_all(&hijack_stdlib).expect("hijack stdlib");
+    fs::create_dir_all(&entry_dir).expect("entry dir");
+    fs::write(
+        hijack_stdlib.join("Shim.bn"),
+        "EXPORT FUNCTION Tag() AS INTEGER\n    RETURN 1\nEND FUNCTION\n",
+    )
+    .expect("hijack module");
+    let home_stdlib = base.join("home/modules/bn");
+    fs::create_dir_all(&home_stdlib).expect("home stdlib");
+    fs::write(
+        home_stdlib.join("Shim.bn"),
+        "EXPORT FUNCTION Tag() AS INTEGER\n    RETURN 2\nEND FUNCTION\n",
+    )
+    .expect("home module");
+    let entry = entry_dir.join("main.bn");
+    fs::write(
+        &entry,
+        "IMPORT Shim AS M\nFUNCTION Start() AS VOID\n    PRINT M.Tag()\nEND FUNCTION\n",
+    )
+    .expect("entry");
+    let entry_arg = entry.to_str().expect("entry");
+
+    // `run` shows which module won; `build` writes the process-log snapshot.
+    let build_log = |label: &str, home: Option<&std::path::Path>| -> String {
+        let log_path = base.join(format!("{label}.log"));
+        let mut command = bn();
+        match home {
+            Some(home) => command.env("BN_HOME", home),
+            None => command.env_remove("BN_HOME"),
+        };
+        let output = command
+            .args([
+                "build",
+                entry_arg,
+                "-o",
+                base.join(format!("{label}.bin"))
+                    .to_str()
+                    .expect("artifact"),
+                "--log-file",
+                log_path.to_str().expect("log"),
+                "--log-level",
+                "debug",
+            ])
+            .output()
+            .expect("build for provenance log");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        fs::read_to_string(&log_path)
+            .expect("process log")
+            .replace("\\s", " ")
+    };
+
+    // Without BN_HOME the ancestor modules/bn wins and the log says so.
+    let output = bn()
+        .env_remove("BN_HOME")
+        .args(["run", entry_arg])
+        .output()
+        .expect("run without BN_HOME");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(output.stdout, b"1\n");
+    let log = build_log("ancestor", None);
+    assert!(log.contains("bn_home=false"), "{log}");
+    let hijack_root = format!(
+        "{} (entry-ancestor)",
+        fs::canonicalize(&hijack_stdlib)
+            .expect("canonical hijack")
+            .display()
+    );
+    assert!(log.contains(&hijack_root), "{log}");
+    assert!(log.contains(&format!("Shim.bn <- {hijack_root}")), "{log}");
+
+    // With BN_HOME the explicit home wins over the ancestor.
+    let home = base.join("home");
+    let output = bn()
+        .env("BN_HOME", &home)
+        .args(["run", entry_arg])
+        .output()
+        .expect("run with BN_HOME");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(output.stdout, b"2\n");
+    let log = build_log("home", Some(&home));
+    assert!(log.contains("bn_home=true"), "{log}");
+    let home_root = format!(
+        "{} (BN_HOME)",
+        fs::canonicalize(&home_stdlib)
+            .expect("canonical home")
+            .display()
+    );
+    assert!(log.contains(&home_root), "{log}");
+    assert!(log.contains(&format!("Shim.bn <- {home_root}")), "{log}");
+    assert!(!log.contains("(entry-ancestor)"), "{log}");
+
+    // BN_HOME pointing nowhere never falls through to the ancestor stdlib.
+    let output = bn()
+        .env("BN_HOME", base.join("nowhere"))
+        .args(["check", entry_arg])
+        .output()
+        .expect("check with bad BN_HOME");
+    assert_ne!(
+        output.status.code(),
+        Some(0),
+        "bad BN_HOME must not resolve via ancestor"
+    );
+    fs::remove_dir_all(&base).ok();
+}
 #[test]
 fn selected_config_applies_relative_diagnostic_overlay() {
     let root = std::env::temp_dir().join(format!("bn-diag-cli-{}", std::process::id()));

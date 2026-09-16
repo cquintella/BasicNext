@@ -68,7 +68,7 @@ impl<T: Clone> Heap<T> {
         let allocation = self.live(handle, span)?;
         allocation.payload.get(index).ok_or_else(|| {
             heap_error(
-                "INDEX_OUT_OF_BOUNDS",
+                bn_diag::DiagId::INDEX_OUT_OF_BOUNDS,
                 format!(
                     "index {index} is outside {} region length {}",
                     allocation.declared_type,
@@ -94,7 +94,7 @@ impl<T: Clone> Heap<T> {
         let length = allocation.payload.len();
         allocation.payload.get_mut(index).ok_or_else(|| {
             heap_error(
-                "INDEX_OUT_OF_BOUNDS",
+                bn_diag::DiagId::INDEX_OUT_OF_BOUNDS,
                 format!("index {index} is outside region length {length}"),
                 span,
             )
@@ -130,14 +130,14 @@ impl<T: Clone> Heap<T> {
         let allocation = self.slot_mut(handle, span)?;
         if allocation.generation != handle.generation {
             return Err(heap_error(
-                "USE_AFTER_RELEASE",
+                bn_diag::DiagId::USE_AFTER_RELEASE,
                 "allocation handle is stale",
                 span,
             ));
         }
         if !allocation.live || allocation.destroying {
             return Err(heap_error(
-                "DOUBLE_RELEASE",
+                bn_diag::DiagId::DOUBLE_RELEASE,
                 "allocation was already deleted",
                 span,
             ));
@@ -156,7 +156,7 @@ impl<T: Clone> Heap<T> {
         let allocation = self.slot_mut(handle, span)?;
         if allocation.generation != handle.generation {
             return Err(heap_error(
-                "USE_AFTER_RELEASE",
+                bn_diag::DiagId::USE_AFTER_RELEASE,
                 "allocation handle is stale",
                 span,
             ));
@@ -175,7 +175,11 @@ impl<T: Clone> Heap<T> {
     pub fn retain(&mut self, handle: Handle, span: Span) -> Result<(), Diagnostic> {
         let allocation = self.live_mut(handle, span)?;
         allocation.strong_count = allocation.strong_count.checked_add(1).ok_or_else(|| {
-            heap_error("RETAIN_OVERFLOW", "strong-reference count overflowed", span)
+            heap_error(
+                bn_diag::DiagId::RETAIN_OVERFLOW,
+                "strong-reference count overflowed",
+                span,
+            )
         })?;
         Ok(())
     }
@@ -189,7 +193,7 @@ impl<T: Clone> Heap<T> {
         let allocation = self.live_mut(handle, span)?;
         if allocation.strong_count == 0 {
             return Err(heap_error(
-                "DOUBLE_RELEASE",
+                bn_diag::DiagId::DOUBLE_RELEASE,
                 "allocation was already released",
                 span,
             ));
@@ -259,10 +263,13 @@ impl<T: Clone> Heap<T> {
     }
 
     fn live(&self, handle: Handle, span: Span) -> Result<&Allocation<T>, Diagnostic> {
-        let allocation = self
-            .allocations
-            .get(handle.slot as usize)
-            .ok_or_else(|| heap_error("USE_AFTER_RELEASE", "allocation handle is stale", span))?;
+        let allocation = self.allocations.get(handle.slot as usize).ok_or_else(|| {
+            heap_error(
+                bn_diag::DiagId::USE_AFTER_RELEASE,
+                "allocation handle is stale",
+                span,
+            )
+        })?;
         validate_live(allocation, handle, span)?;
         Ok(allocation)
     }
@@ -276,7 +283,13 @@ impl<T: Clone> Heap<T> {
     fn slot_mut(&mut self, handle: Handle, span: Span) -> Result<&mut Allocation<T>, Diagnostic> {
         self.allocations
             .get_mut(handle.slot as usize)
-            .ok_or_else(|| heap_error("USE_AFTER_RELEASE", "allocation handle is stale", span))
+            .ok_or_else(|| {
+                heap_error(
+                    bn_diag::DiagId::USE_AFTER_RELEASE,
+                    "allocation handle is stale",
+                    span,
+                )
+            })
     }
 }
 
@@ -288,7 +301,7 @@ fn allocation_payload<T: Clone>(
     let mut payload = Vec::new();
     payload.try_reserve_exact(length).map_err(|_| {
         heap_error(
-            "ALLOCATION_TOO_LARGE",
+            bn_diag::DiagId::ALLOCATION_TOO_LARGE,
             "allocation payload cannot be reserved",
             span,
         )
@@ -304,13 +317,13 @@ fn validate_live<T>(
 ) -> Result<(), Diagnostic> {
     if allocation.generation != handle.generation {
         Err(heap_error(
-            "USE_AFTER_RELEASE",
+            bn_diag::DiagId::USE_AFTER_RELEASE,
             "allocation handle is stale",
             span,
         ))
     } else if !allocation.live && !allocation.destroying {
         Err(heap_error(
-            "USE_AFTER_RELEASE",
+            bn_diag::DiagId::USE_AFTER_RELEASE,
             "allocation handle refers to deleted memory",
             span,
         ))
@@ -321,16 +334,15 @@ fn validate_live<T>(
 
 fn too_large(span: Span) -> Diagnostic {
     heap_error(
-        "ALLOCATION_TOO_LARGE",
+        bn_diag::DiagId::ALLOCATION_TOO_LARGE,
         "allocation table exceeds the portable handle limit",
         span,
     )
 }
 
-fn heap_error(code: &'static str, message: impl Into<String>, span: Span) -> Diagnostic {
-    let id = bn_diag::DiagId::from_code(code).unwrap_or(bn_diag::DiagId::Runtime(code));
+fn heap_error(id: bn_diag::DiagId, message: impl Into<String>, span: Span) -> Diagnostic {
     let message = message.into();
-    let arguments = if id == bn_diag::DiagId::Runtime("INDEX_OUT_OF_BOUNDS") {
+    let arguments = if id == bn_diag::DiagId::INDEX_OUT_OF_BOUNDS {
         vec![
             (
                 "index".into(),
@@ -343,20 +355,14 @@ fn heap_error(code: &'static str, message: impl Into<String>, span: Span) -> Dia
             ("context".into(), bn_diag::DiagnosticValue::Text(message)),
         ]
     } else {
-        vec![(
-            (if matches!(
-                id,
-                bn_diag::DiagId::DoubleRelease
-                    | bn_diag::DiagId::UseAfterRelease
-                    | bn_diag::DiagId::Runtime("ALLOCATION_TOO_LARGE")
-            ) {
-                "detail"
-            } else {
-                "message"
-            })
-            .into(),
-            bn_diag::DiagnosticValue::Text(message),
-        )]
+        match id.argument_schema() {
+            [only] => vec![(only.name.into(), bn_diag::DiagnosticValue::Text(message))],
+            schema => unreachable!(
+                "{} needs an explicit argument mapping ({} arguments)",
+                id.code(),
+                schema.len()
+            ),
+        }
     };
     Diagnostic::structured(
         id,

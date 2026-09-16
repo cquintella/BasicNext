@@ -1,5 +1,6 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::diagnostic::DiagId;
 
 impl Analyzer {
     #[allow(clippy::too_many_lines)]
@@ -389,7 +390,7 @@ impl Analyzer {
             })
         {
             return Err(error(
-                "INVALID_VECTOR_TYPE",
+                DiagId::INVALID_VECTOR_TYPE,
                 "variable-length vectors are reserved for the BNData library",
                 reference.span,
             ));
@@ -447,7 +448,7 @@ impl Analyzer {
                 continue;
             }
             return Err(error(
-                "UNKNOWN_TYPE",
+                DiagId::UNKNOWN_TYPE,
                 format!("type '{name}' is not declared or imported"),
                 atom.span,
             ));

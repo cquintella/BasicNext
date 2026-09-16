@@ -79,7 +79,7 @@ pub(crate) fn host_net_address_call(&mut self, name: &str, arguments: &[Value], 
                 }
                 let (port, _) = integer(&arguments[1], span)?;
                 let port = u16::try_from(port).map_err(|_| {
-                    runtime_error("INVALID_INPUT", "port is outside 0..65535", span)
+                    runtime_error(crate::diagnostic::DiagId::INVALID_INPUT, "port is outside 0..65535", span)
                 })?;
                 Ok(Value::Record {
                     type_name: "HOST.Net.Endpoint".into(),
@@ -171,9 +171,9 @@ pub(crate) fn host_net_address_call(&mut self, name: &str, arguments: &[Value], 
                     return Err(super::type_mismatch("Address.value STRING", "missing or invalid field", "HOST.Net.CIDR.Contains", span));
                 };
                 let cidr = crate::net::Cidr::parse(&format!("{network}/{prefix}"))
-                    .map_err(|message| runtime_error("INVALID_VALUE", message, span))?;
+                    .map_err(|message| runtime_error(crate::diagnostic::DiagId::INVALID_VALUE, message, span))?;
                 let address = crate::net::Address::parse(address)
-                    .map_err(|_| runtime_error("INVALID_VALUE", "invalid Address value", span))?;
+                    .map_err(|_| runtime_error(crate::diagnostic::DiagId::INVALID_VALUE, "invalid Address value", span))?;
                 Ok(Value::Boolean(cidr.contains(address)))
             }
             "HOST.Net.CIDR.Network" | "HOST.Net.CIDR.PrefixLength" => {
@@ -273,7 +273,7 @@ pub(crate) fn host_net_address_call(&mut self, name: &str, arguments: &[Value], 
                 fields.get("roundTripMicroseconds").cloned().ok_or_else(|| super::type_mismatch("PingReply.roundTripMicroseconds field", "missing field", "HOST.Net.PingReply.RoundTripMicroseconds", span))
             }
 
-            _ => Err(runtime_error("HOST_CAPABILITY_UNAVAILABLE", format!("host function '{name}' is not available"), span)),
+            _ => Err(runtime_error(crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE, format!("host function '{name}' is not available"), span)),
         }
     }
 }

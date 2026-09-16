@@ -312,7 +312,7 @@ pub fn validate_for(validated: &ValidatedModule, target: Target) -> Result<(), D
         .find(|function| function.name == "Start")
     else {
         return Err(support_fact(
-            DiagId::TargetUnsupportedEntrypoint,
+            DiagId::TARGET_UNSUPPORTED_ENTRYPOINT,
             target,
             "LLVM target requires an executable Start function",
             default_span(),
@@ -320,7 +320,7 @@ pub fn validate_for(validated: &ValidatedModule, target: Target) -> Result<(), D
     };
     if !start.parameters.is_empty() {
         return Err(support_fact(
-            DiagId::TargetUnsupportedEntrypoint,
+            DiagId::TARGET_UNSUPPORTED_ENTRYPOINT,
             target,
             &format!(
                 "LLVM entry point requires FUNCTION Start(), found {} parameter(s)",
@@ -334,7 +334,7 @@ pub fn validate_for(validated: &ValidatedModule, target: Target) -> Result<(), D
         && !matches!(&start.return_type, Type::Alternative(alternatives) if void_or_error(alternatives))
     {
         return Err(support_fact(
-            DiagId::TargetUnsupportedEntrypoint,
+            DiagId::TARGET_UNSUPPORTED_ENTRYPOINT,
             target,
             &format!(
                 "Start return type '{}' is unsupported; LLVM entry point supports VOID, VOID OR Error, or INTEGER",
@@ -345,7 +345,7 @@ pub fn validate_for(validated: &ValidatedModule, target: Target) -> Result<(), D
     }
     if target == Target::Wasm32 && requires_unavailable_wasm_capability(module) {
         return Err(support_fact(
-            DiagId::TargetUnsupportedHost,
+            DiagId::TARGET_UNSUPPORTED_HOST,
             target,
             "HOST.FileSystem, HOST.Net, BNLog and BNWeb are unavailable; HOST.Console is supported",
             start.span,
@@ -353,7 +353,7 @@ pub fn validate_for(validated: &ValidatedModule, target: Target) -> Result<(), D
     }
     analyze_reachable(module, start).map_err(|message| {
         let (code, message) = support_diagnostic(&message);
-        let id = DiagId::from_code(code).unwrap_or(DiagId::TargetUnsupportedLlvm);
+        let id = DiagId::from_code(code).unwrap_or(DiagId::TARGET_UNSUPPORTED_LLVM);
         support_fact(id, target, message, start.span)
     })?;
     Ok(())

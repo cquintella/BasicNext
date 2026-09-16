@@ -1,5 +1,6 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::diagnostic::DiagId;
 
 pub(crate) fn allocation_length(arguments: &[Expression]) -> PointerLength {
     arguments.first().map_or(PointerLength::One, |length| {
@@ -229,7 +230,7 @@ pub(crate) fn require_integer_fit(value: Option<u64>, span: Span) -> Result<(), 
     match value {
         Some(value) if value <= 2_147_483_647 => Ok(()),
         None | Some(_) => Err(error(
-            "NUMERIC_OVERFLOW",
+            DiagId::NUMERIC_OVERFLOW,
             "result does not fit INTEGER",
             span,
         )),

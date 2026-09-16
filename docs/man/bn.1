@@ -192,6 +192,17 @@ belong beneath
 .B modules/bn/
 and require explicit imports.
 .PP
+The standard-library directory is located, in order: from
+.BR BN_HOME
+when set (see ENVIRONMENT); otherwise the nearest
+.B modules/bn
+above the entry file, then above the working directory, then relative to the
+.B bn
+executable (installed layout). The effective import roots and the origin of
+each one, plus the root that resolved every imported module, are recorded in
+the process log at debug level (
+.BR "--log-level debug" ).
+.PP
 .B HOST
 is the only built-in interface object. Facilities provided include
 .BR HOST.Args ,
@@ -199,8 +210,9 @@ is the only built-in interface object. Facilities provided include
 .BR HOST.Console ,
 .BR HOST.Random ,
 .BR HOST.FileSystem ,
+.BR HOST.Net ,
 and
-.BR HOST.Net .
+.BR HOST.Exec .
 .SH WEBASSEMBLY
 A WebAssembly artifact produced by
 .B "bn build --target wasm32 -o program.wasm"
@@ -224,6 +236,18 @@ means the program is valid but outside the current compiler subset; use
 .B bn run
 for the reference semantics.
 .SH ENVIRONMENT
+.TP
+.B BN_HOME
+Explicit Basic Next home. When set, the standard-library modules are taken from
+.I $BN_HOME/share/bn/modules/bn
+or
+.IR $BN_HOME/modules/bn ,
+and the ancestor-directory search is skipped entirely: a
+.B BN_HOME
+without a standard library makes standard imports fail rather than silently
+resolving to another
+.B modules/bn
+higher in the tree.
 .TP
 .B BN_WASM_LD
 Command or path used as the WebAssembly linker.

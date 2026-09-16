@@ -121,7 +121,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                                 Some(std::time::Duration::from_millis(timeout as u64)),
                                 Some(std::time::Duration::from_millis(timeout as u64)),
                             )
-                            .map_err(|error| runtime_error("IO", error.to_string(), span))?;
+                            .map_err(|error| runtime_error(crate::diagnostic::DiagId::IO, error.to_string(), span))?;
                         let id = self.next_tcp_stream;
                         self.next_tcp_stream += 1;
                         self.tcp_streams.insert(id, stream);
@@ -154,16 +154,16 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                 let maximum = usize::try_from(maximum)
                     .ok()
                     .filter(|value| *value <= capacity && *value <= 1_048_576)
-                    .ok_or_else(|| runtime_error("LIMIT", "read exceeds buffer or 1 MiB", span))?;
+                    .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::LIMIT, "read exceeds buffer or 1 MiB", span))?;
                 let mut bytes = vec![0; maximum];
                 let count = self
                     .tcp_streams
                     .get_mut(&id)
                     .ok_or_else(|| {
-                        runtime_error("USE_AFTER_RELEASE", "TCP stream is invalid", span)
+                        runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "TCP stream is invalid", span)
                     })?
                     .read_bounded(&mut bytes)
-                    .map_err(|error| runtime_error("IO", error.to_string(), span))?;
+                    .map_err(|error| runtime_error(crate::diagnostic::DiagId::IO, error.to_string(), span))?;
                 if count == 0 {
                     return Ok(Value::EndOfFile);
                 }
@@ -189,7 +189,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                 let count = usize::try_from(count)
                     .ok()
                     .filter(|value| *value <= capacity && *value <= 1_048_576)
-                    .ok_or_else(|| runtime_error("LIMIT", "write exceeds buffer or 1 MiB", span))?;
+                    .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::LIMIT, "write exceeds buffer or 1 MiB", span))?;
                 let bytes = (0..count)
                     .map(|index| {
                         let value = self.memory.get(handle, index, span)?;
@@ -202,10 +202,10 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                     .tcp_streams
                     .get_mut(&id)
                     .ok_or_else(|| {
-                        runtime_error("USE_AFTER_RELEASE", "TCP stream is invalid", span)
+                        runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "TCP stream is invalid", span)
                     })?
                     .write_bounded(&bytes)
-                    .map_err(|error| runtime_error("IO", error.to_string(), span))?;
+                    .map_err(|error| runtime_error(crate::diagnostic::DiagId::IO, error.to_string(), span))?;
                 Ok(Value::Integer(
                     i128::try_from(written).unwrap_or(i128::MAX),
                     IntegerType::Int32,
@@ -217,14 +217,14 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                     return Err(super::super::type_mismatch("TCPStream", "non-TCPStream value", "TCPStream endpoint", span));
                 };
                 let stream = self.tcp_streams.get(&id).ok_or_else(|| {
-                    runtime_error("USE_AFTER_RELEASE", "TCP stream is invalid", span)
+                    runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "TCP stream is invalid", span)
                 })?;
                 let endpoint = if name.ends_with("LocalEndpoint") {
                     stream.local_endpoint()
                 } else {
                     stream.remote_endpoint()
                 }
-                .map_err(|error| runtime_error("IO", error.to_string(), span))?;
+                .map_err(|error| runtime_error(crate::diagnostic::DiagId::IO, error.to_string(), span))?;
                 Ok(endpoint_value(endpoint))
             }
             "HOST.Net.TCPStream.SetTimeouts" => {
@@ -243,13 +243,13 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                 self.tcp_streams
                     .get(&id)
                     .ok_or_else(|| {
-                        runtime_error("USE_AFTER_RELEASE", "TCP stream is invalid", span)
+                        runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "TCP stream is invalid", span)
                     })?
                     .set_timeouts(
                         Some(std::time::Duration::from_millis(read_ms as u64)),
                         Some(std::time::Duration::from_millis(write_ms as u64)),
                     )
-                    .map_err(|error| runtime_error("IO", error.to_string(), span))?;
+                    .map_err(|error| runtime_error(crate::diagnostic::DiagId::IO, error.to_string(), span))?;
                 Ok(Value::Null)
             }
             "HOST.Net.TCPListener.LocalEndpoint" => {
@@ -258,13 +258,13 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                     return Err(super::super::type_mismatch("TCPListener", "non-TCPListener value", "TCPListener.LocalEndpoint", span));
                 };
                 let listener = self.tcp_listeners.get(&id).ok_or_else(|| {
-                    runtime_error("USE_AFTER_RELEASE", "TCP listener is invalid", span)
+                    runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "TCP listener is invalid", span)
                 })?;
                 let endpoint = listener
                     .first()
-                    .ok_or_else(|| runtime_error("IO", "listener has no endpoints", span))?
+                    .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::IO, "listener has no endpoints", span))?
                     .local_endpoint()
-                    .map_err(|error| runtime_error("IO", error.to_string(), span))?;
+                    .map_err(|error| runtime_error(crate::diagnostic::DiagId::IO, error.to_string(), span))?;
                 Ok(endpoint_value(endpoint))
             }
             "HOST.Net.TCPStream.ShutdownRead" | "HOST.Net.TCPStream.ShutdownWrite" => {
@@ -280,10 +280,10 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                 self.tcp_streams
                     .get(&id)
                     .ok_or_else(|| {
-                        runtime_error("USE_AFTER_RELEASE", "TCP stream is invalid", span)
+                        runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "TCP stream is invalid", span)
                     })?
                     .shutdown(direction)
-                    .map_err(|error| runtime_error("IO", error.to_string(), span))?;
+                    .map_err(|error| runtime_error(crate::diagnostic::DiagId::IO, error.to_string(), span))?;
                 Ok(Value::Null)
             }
             "HOST.Net.TCPListener.Accept" => {
@@ -302,7 +302,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                     .tcp_listeners
                     .get(&id)
                     .ok_or_else(|| {
-                        runtime_error("USE_AFTER_RELEASE", "TCP listener is invalid", span)
+                        runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "TCP listener is invalid", span)
                     })?
                     .as_slice();
                 let mut stream = None;
@@ -310,7 +310,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                 for listener in listeners {
                     if let Some(accepted) = listener
                         .accept_timeout(accept_timeout)
-                        .map_err(|error| runtime_error("IO", error.to_string(), span))?
+                        .map_err(|error| runtime_error(crate::diagnostic::DiagId::IO, error.to_string(), span))?
                     {
                         stream = Some(accepted);
                         break;
@@ -347,7 +347,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                 Ok(Value::Null)
             }
 
-            _ => Err(runtime_error("HOST_CAPABILITY_UNAVAILABLE", format!("host function '{name}' is not available"), span)),
+            _ => Err(runtime_error(crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE, format!("host function '{name}' is not available"), span)),
         }
     }
 }

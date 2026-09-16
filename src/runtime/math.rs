@@ -62,8 +62,7 @@ pub(super) fn reduce_vector(
             return Err(super::type_mismatch("numeric value", "non-numeric value", "BNMath reduction", span));
         };
         let length = i32::try_from(numbers.len()).map_err(|_| {
-            runtime_error(
-                "RESOURCE_LIMIT",
+            runtime_error(crate::diagnostic::DiagId::RESOURCE_LIMIT,
                 "BNMath reduction vector is too large",
                 span,
             )
@@ -87,8 +86,7 @@ pub(super) fn reduce_vector(
             })
             .expect("FLOAT reduction has a FLOAT first value");
         let length = i32::try_from(numbers.len()).map_err(|_| {
-            runtime_error(
-                "RESOURCE_LIMIT",
+            runtime_error(crate::diagnostic::DiagId::RESOURCE_LIMIT,
                 "BNMath reduction vector is too large",
                 span,
             )

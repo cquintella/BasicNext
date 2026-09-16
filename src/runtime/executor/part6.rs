@@ -47,8 +47,7 @@ impl Executor<'_, '_> {
                 return Err(super::super::type_mismatch("BNLog.Fields", "non-BNLog.Fields value", "BNLog.Logger.Child fields", span));
             };
             if !self.log_fields.contains_key(&fields_id) {
-                return Err(runtime_error(
-                    "USE_AFTER_RELEASE",
+                return Err(runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE,
                     "BNLog.Fields is invalid",
                     span,
                 ));
@@ -56,14 +55,14 @@ impl Executor<'_, '_> {
             let parent = self
                 .log_loggers
                 .get(id)
-                .ok_or_else(|| runtime_error("USE_AFTER_RELEASE", "BNLog.Logger is invalid", span))?
+                .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "BNLog.Logger is invalid", span))?
                 .clone();
             let mut context = parent.context;
             context.extend(
                 self.log_fields
                     .get(&fields_id)
                     .ok_or_else(|| {
-                        runtime_error("USE_AFTER_RELEASE", "BNLog.Fields is invalid", span)
+                        runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "BNLog.Fields is invalid", span)
                     })?
                     .iter()
                     .map(|(key, value)| (key.clone(), value.clone())),
@@ -85,7 +84,7 @@ impl Executor<'_, '_> {
         }
         let logger =
             self.log_loggers.get(id).cloned().ok_or_else(|| {
-                runtime_error("USE_AFTER_RELEASE", "BNLog.Logger is invalid", span)
+                runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "BNLog.Logger is invalid", span)
             })?;
         if method == "CONSTRUCTOR" {
             return Ok(Value::Null);
@@ -158,8 +157,7 @@ impl Executor<'_, '_> {
                     .filesystem
                     .allows_path(std::path::Path::new(path), true)
                 {
-                    return Err(runtime_error(
-                        "EXECUTION_POLICY_DENIED",
+                    return Err(runtime_error(crate::diagnostic::DiagId::EXECUTION_POLICY_DENIED,
                         "logger file path is outside the execution policy",
                         span,
                     ));
@@ -217,7 +215,7 @@ impl Executor<'_, '_> {
                 };
                 let mut fields = logger.context.clone();
                 let provided = self.log_fields.get(&fields_id).ok_or_else(|| {
-                    runtime_error("USE_AFTER_RELEASE", "BNLog.Fields is invalid", span)
+                    runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "BNLog.Fields is invalid", span)
                 })?;
                 fields.extend(provided.clone());
                 let Some(level) = crate::log::Level::from_i128(level) else {
@@ -267,8 +265,7 @@ impl Executor<'_, '_> {
                         .as_ref()
                         .is_err_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied)
                     {
-                        return Err(runtime_error(
-                            "EXECUTION_POLICY_DENIED",
+                        return Err(runtime_error(crate::diagnostic::DiagId::EXECUTION_POLICY_DENIED,
                             "logger file path is outside the execution policy",
                             span,
                         ));
@@ -308,8 +305,7 @@ impl Executor<'_, '_> {
                         .as_ref()
                         .is_err_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied)
                     {
-                        return Err(runtime_error(
-                            "EXECUTION_POLICY_DENIED",
+                        return Err(runtime_error(crate::diagnostic::DiagId::EXECUTION_POLICY_DENIED,
                             "logger file path is outside the execution policy",
                             span,
                         ));

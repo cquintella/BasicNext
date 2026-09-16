@@ -59,7 +59,7 @@ pub(crate) fn host_net_call(&mut self, name: &str, arguments: &[Value], span: Sp
                             && *value <= crate::config::web_limits().datagram_max_bytes
                     })
                     .ok_or_else(|| {
-                        runtime_error("LIMIT", "datagram exceeds buffer or configured limit", span)
+                        runtime_error(crate::diagnostic::DiagId::LIMIT, "datagram exceeds buffer or configured limit", span)
                     })?;
                 let bytes = (0..count)
                     .map(|index| {
@@ -72,10 +72,10 @@ pub(crate) fn host_net_call(&mut self, name: &str, arguments: &[Value], span: Sp
                     .udp_sockets
                     .get(&id)
                     .ok_or_else(|| {
-                        runtime_error("USE_AFTER_RELEASE", "UDP socket is invalid", span)
+                        runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "UDP socket is invalid", span)
                     })?
                     .send_to(endpoint, &bytes)
-                    .map_err(|error| runtime_error("IO", error.to_string(), span))?;
+                    .map_err(|error| runtime_error(crate::diagnostic::DiagId::IO, error.to_string(), span))?;
                 Ok(Value::Integer(
                     i128::try_from(sent).unwrap_or(i128::MAX),
                     IntegerType::Int32,
@@ -92,7 +92,7 @@ pub(crate) fn host_net_call(&mut self, name: &str, arguments: &[Value], span: Sp
                     .ok()
                     .filter(|value| *value <= crate::config::web_limits().datagram_max_bytes)
                     .ok_or_else(|| {
-                        runtime_error("LIMIT", "receive exceeds configured limit", span)
+                        runtime_error(crate::diagnostic::DiagId::LIMIT, "receive exceeds configured limit", span)
                     })?;
                 if !(1..=60_000).contains(&timeout) {
                     return Ok(Value::Error {
@@ -101,11 +101,11 @@ pub(crate) fn host_net_call(&mut self, name: &str, arguments: &[Value], span: Sp
                     });
                 }
                 let socket = self.udp_sockets.get(&id).ok_or_else(|| {
-                    runtime_error("USE_AFTER_RELEASE", "UDP socket is invalid", span)
+                    runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "UDP socket is invalid", span)
                 })?;
                 socket
                     .set_read_timeout(Some(std::time::Duration::from_millis(timeout as u64)))
-                    .map_err(|error| runtime_error("IO", error.to_string(), span))?;
+                    .map_err(|error| runtime_error(crate::diagnostic::DiagId::IO, error.to_string(), span))?;
                 match socket.receive(maximum) {
                     Ok(packet) => Ok(Value::Record {
                         type_name: "HOST.Net.UDPPacket".into(),
@@ -184,7 +184,7 @@ pub(crate) fn host_net_call(&mut self, name: &str, arguments: &[Value], span: Sp
                 let maximum = usize::try_from(maximum)
                     .ok()
                     .filter(|value| *value <= capacity && *value <= 1_048_576)
-                    .ok_or_else(|| runtime_error("LIMIT", "copy exceeds buffer or 1 MiB", span))?;
+                    .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::LIMIT, "copy exceeds buffer or 1 MiB", span))?;
                 let count = bytes.len().min(maximum);
                 for (index, byte) in bytes.iter().take(count).enumerate() {
                     *self.memory.get_mut(handle, index, span)? = byte.clone();
@@ -211,10 +211,10 @@ pub(crate) fn host_net_call(&mut self, name: &str, arguments: &[Value], span: Sp
                     .udp_sockets
                     .get(&id)
                     .ok_or_else(|| {
-                        runtime_error("USE_AFTER_RELEASE", "UDP socket is invalid", span)
+                        runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "UDP socket is invalid", span)
                     })?
                     .local_endpoint()
-                    .map_err(|error| runtime_error("IO", error.to_string(), span))?;
+                    .map_err(|error| runtime_error(crate::diagnostic::DiagId::IO, error.to_string(), span))?;
                 Ok(endpoint_value(endpoint))
             }
             "HOST.Net.Addresses.Count" => {
@@ -234,8 +234,7 @@ pub(crate) fn host_net_call(&mut self, name: &str, arguments: &[Value], span: Sp
                 })
             }
 
-            _ => Err(runtime_error(
-                "HOST_CAPABILITY_UNAVAILABLE",
+            _ => Err(runtime_error(crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE,
                 format!("host function '{name}' is not available"),
                 span,
             )),

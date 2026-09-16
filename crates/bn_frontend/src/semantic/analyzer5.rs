@@ -10,17 +10,17 @@ impl Analyzer {
     ) -> Result<Type, Diagnostic> {
         let result = match &expression.kind {
             ExpressionKind::Super => Err(error(
-                "INVALID_SUPER",
+                DiagId::INVALID_SUPER,
                 "SUPER is only valid as SUPER(...) or SUPER.Name(...)",
                 expression.span,
             )),
             ExpressionKind::Literal(Literal::TypeName(name)) => Err(error(
-                "TYPE_NAME_AS_VALUE",
+                DiagId::TYPE_NAME_AS_VALUE,
                 format!("type name '{name}' is not a first-class value"),
                 expression.span,
             )),
             ExpressionKind::TypeTest { .. } => Err(error(
-                "TYPE_NAME_AS_VALUE",
+                DiagId::TYPE_NAME_AS_VALUE,
                 "a type test may appear only to the right of IS",
                 expression.span,
             )),
@@ -30,7 +30,7 @@ impl Analyzer {
                     let prompt_type = self.expression(prompt, locals)?;
                     if prompt_type != Type::String {
                         return Err(error(
-                            "INPUT_PROMPT_TYPE",
+                            DiagId::INPUT_PROMPT_TYPE,
                             "INPUT prompt must be STRING",
                             prompt.span,
                         ));
@@ -41,13 +41,13 @@ impl Analyzer {
             ExpressionKind::HostCapability { name } if name == "Args" => {
                 if self.executable_module {
                     Err(error(
-                        "INVALID_HOST_ARGS_USE",
+                        DiagId::INVALID_HOST_ARGS_USE,
                         "HOST.Args is valid only in LEN(HOST.Args) or HOST.Args[index]",
                         expression.span,
                     ))
                 } else {
                     Err(error(
-                        "HOST_ARGS_SCOPE",
+                        DiagId::HOST_ARGS_SCOPE,
                         "HOST.Args is valid only in the executable module",
                         expression.span,
                     ))
@@ -61,7 +61,7 @@ impl Analyzer {
                         Ok(Type::Integer(IntegerType::Int32))
                     } else {
                         Err(error(
-                            "HOST_ARGS_SCOPE",
+                            DiagId::HOST_ARGS_SCOPE,
                             "HOST.Args is valid only in the executable module",
                             operand.span,
                         ))
@@ -135,7 +135,7 @@ impl Analyzer {
                         && !is_integer(&argument_type)
                     {
                         return Err(error(
-                            "ALLOCATION_SIZE_INVALID",
+                            DiagId::ALLOCATION_SIZE_INVALID,
                             "numeric NEW length must be integral",
                             argument.span,
                         ));
@@ -144,7 +144,7 @@ impl Analyzer {
                         && constant_integer(argument).is_some_and(|length| length < 0)
                     {
                         return Err(error(
-                            "ALLOCATION_SIZE_INVALID",
+                            DiagId::ALLOCATION_SIZE_INVALID,
                             "numeric NEW length cannot be negative",
                             argument.span,
                         ));
@@ -166,21 +166,21 @@ impl Analyzer {
                             .get(&(module, name.clone()))
                             .ok_or_else(|| {
                                 error(
-                                    "UNKNOWN_TYPE",
+                                    DiagId::UNKNOWN_TYPE,
                                     format!("imported type '{type_name}' is unavailable"),
                                     expression.span,
                                 )
                             })?;
                         if info.kind != DeclarationKind::Class {
                             return Err(error(
-                                "INVALID_CONSTRUCTOR",
+                                DiagId::INVALID_CONSTRUCTOR,
                                 format!("NEW requires a CLASS, found '{type_name}'"),
                                 expression.span,
                             ));
                         }
                         let constructor = info.constructor.as_ref().ok_or_else(|| {
                             error(
-                                "PRIVATE_ACCESS",
+                                DiagId::PRIVATE_ACCESS,
                                 format!(
                                     "CLASS '{type_name}' has only an implicit PRIVATE constructor"
                                 ),
@@ -189,7 +189,7 @@ impl Analyzer {
                         })?;
                         if !constructor.public {
                             return Err(error(
-                                "PRIVATE_ACCESS",
+                                DiagId::PRIVATE_ACCESS,
                                 format!("constructor for CLASS '{type_name}' is PRIVATE"),
                                 expression.span,
                             ));
@@ -202,7 +202,7 @@ impl Analyzer {
                                 .any(|(expected, actual)| !self.compatible(expected, actual))
                         {
                             return Err(error(
-                                "INVALID_CONSTRUCTOR",
+                                DiagId::INVALID_CONSTRUCTOR,
                                 format!("arguments do not match constructor for '{type_name}'"),
                                 expression.span,
                             ));
@@ -215,7 +215,7 @@ impl Analyzer {
                     _ => {
                         if self.declaration_kinds.get(type_name) != Some(&DeclarationKind::Class) {
                             return Err(error(
-                                "INVALID_CONSTRUCTOR",
+                                DiagId::INVALID_CONSTRUCTOR,
                                 format!("NEW requires a declared CLASS, found '{type_name}'"),
                                 expression.span,
                             ));
@@ -230,7 +230,7 @@ impl Analyzer {
                         });
                         let Some(constructor) = constructor else {
                             return Err(error(
-                                "PRIVATE_ACCESS",
+                                DiagId::PRIVATE_ACCESS,
                                 format!(
                                     "CLASS '{type_name}' has only an implicit PRIVATE constructor"
                                 ),
@@ -241,14 +241,14 @@ impl Analyzer {
                             && self.current_class.as_deref() != Some(type_name.as_str())
                         {
                             return Err(error(
-                                "PRIVATE_ACCESS",
+                                DiagId::PRIVATE_ACCESS,
                                 format!("constructor for CLASS '{type_name}' is PRIVATE"),
                                 expression.span,
                             ));
                         }
                         if constructor.parameters.len() != argument_types.len() {
                             return Err(error(
-                                "INVALID_CONSTRUCTOR",
+                                DiagId::INVALID_CONSTRUCTOR,
                                 format!(
                                     "constructor for CLASS '{type_name}' expects {} argument(s), found {}",
                                     constructor.parameters.len(),
@@ -265,7 +265,7 @@ impl Analyzer {
                         {
                             if !self.compatible(expected, actual) {
                                 return Err(error(
-                                    "INVALID_CONSTRUCTOR",
+                                    DiagId::INVALID_CONSTRUCTOR,
                                     format!(
                                         "constructor argument has type {}, expected {}",
                                         display(actual),
@@ -337,7 +337,7 @@ impl Analyzer {
                         Type::HostArgs
                     } else {
                         return Err(error(
-                            "HOST_ARGS_SCOPE",
+                            DiagId::HOST_ARGS_SCOPE,
                             "HOST.Args is valid only in the executable module",
                             object.span,
                         ));
@@ -394,7 +394,7 @@ impl Analyzer {
                             )
                         }),
                     Type::Unknown => Err(error(
-                        "UNRESOLVED_TYPE",
+                        DiagId::UNRESOLVED_TYPE,
                         "indexed expression has no resolved type",
                         object.span,
                     )),

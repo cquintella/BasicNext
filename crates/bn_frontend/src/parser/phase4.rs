@@ -128,6 +128,15 @@ impl<'a> Parser<'a> {
     pub(crate) fn previous(&self) -> &'a Token {
         &self.tokens[self.index - 1]
     }
+    /// Parses an expression slice taken from the current line; an empty slice
+    /// (e.g. `LET x AS INTEGER =`) is a syntax error at the cursor, never a panic.
+    pub(crate) fn expression_in(&self, tokens: &[Token]) -> Result<Expression, Diagnostic> {
+        if tokens.is_empty() {
+            return Err(self.error("expected expression"));
+        }
+        parse_expression(tokens)
+    }
+
     pub(crate) fn error(&self, message: impl Into<String>) -> Diagnostic {
         let message = message.into();
         Diagnostic::parse_facts(message, "source parser", self.peek().span).unwrap_or_else(|_| {

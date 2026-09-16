@@ -1,11 +1,11 @@
 # Diagnostic data contract
 
-This document defines the 0.5.1 diagnostic handoff. Exact emit sites are in the
-generated [`diagnostics/sites.json`](../../diagnostics/sites.json); constructor
-routes are classified in
-[`diagnostics/inventory.toml`](../../diagnostics/inventory.toml). These files are
-inventory data, not the message catalog. User-facing messages remain in the
-Fluent shards under `share/bn/diagnostics/en-US/`.
+This document defines the diagnostic handoff (0.5.1, registry redesign in
+0.5.1a). Identity lives in one table — `REGISTRY: &[DiagDesc]` in
+`crates/bn_diag/src/lib.rs` — and user-facing messages in the Fluent shards
+under `share/bn/diagnostics/en-US/`. There is no separate emit-site inventory:
+the type system and a Rust test gate replace it (see
+[Registry and gate](#registry-and-gate)).
 
 ## Ownership and flow
 
@@ -59,27 +59,44 @@ toolchain `DiagnosticSpec`. A runtime failure may produce a diagnostic at the
 host boundary, but registration or rendering must not alter the BN `Error`
 value, its code, or catchability.
 
-## Inventory states
+## Registry and gate
 
-Each named route in the inventory is either:
+`DiagId` is a validated handle (an index) into `REGISTRY`; every identity is a
+`const` on the type (`DiagId::TYPE_MISMATCH`, `DiagId::DIVISION_BY_ZERO`).
+Each row carries `code`, `fluent_id`, default `severity` and the typed
+argument `schema`. The `diagnostic_registry!` macro generates the handles and
+the table from the same list, so an index cannot drift.
 
-- `structured`: creates a `DiagnosticSpec` with `DiagId` before presentation;
-- `legacy`: still creates a free-form `Diagnostic` or prints a diagnostic and
-  must be migrated by DX03.
+There is **no** way to construct an identity outside the table: the former
+`DiagId::Runtime(&str)` escape hatch is gone, and every producer helper
+(`runtime_error`, `heap_error`, `temporal_error`, semantic `error`) takes a
+`DiagId`, not a code string. A typo in a code is a compile error, not a CI
+finding. Runtime crates that report codes as strings across the C ABI
+(`bn_rt`) are mapped onto registry identities by the interpreter, one variant
+at a time, never by string lookup.
 
-The generator records every recognized emit call with exact path and line,
-identity, catalog, consumers and migration state. The gate regenerates it in
-memory and rejects any difference, then checks constructor routes, registered
-literal codes and catalog paths. Adding or moving a recognized producer makes
-the checked-in inventory stale. Dynamic-code constructor routes remain explicit
-in the TOML classification. Clearing a route from the DX03 migration requires
-changing its state only after its producer and consumer evidence exists.
-Direct `eprintln!` producers without a literal stable code are recorded as
-`legacy:uncoded` or `legacy:dynamic`, with no fictitious catalog entry; the
-emitting file is also their current rendering consumer.
+**Adding a diagnostic** is one registry row plus one `.ftl` entry whose
+`{$arguments}` match the row's schema. Nothing else.
 
-Regenerate intentionally with `python3 tests/update_diagnostic_inventory.py`;
-CI uses its `--check` mode.
+**Gate** (`cargo test -p bn_diag`, always on):
+
+- `registry_matches_pre_refactor_golden` — `tests/registry-golden.tsv` pins
+  code / fluent id / severity / schema for every identity; a change to any of
+  them is deliberate and updates the golden in the same change.
+- `registry_catalog_and_schema_are_mutually_exhaustive` — every row has a
+  catalog entry with the same code, every `{$arg}` in that entry is in the
+  schema, no orphans in either direction, no duplicate machine code.
+- `gate_rejects_*` — negative fixtures prove the catalog loader fails on an
+  orphan catalog entry, an uncovered registry row, and a template argument
+  outside the schema.
+
+The same checks run at catalog load (`Catalog::from_shards`), so an installed
+overlay that drifts is rejected at startup as well.
+
+The Python emit-site inventory (`tests/update_diagnostic_inventory.py`,
+`tests/test_diagnostic_inventory.py`, `diagnostics/sites.json`,
+`diagnostics/inventory.toml`) was retired in 0.5.1a (D-F8-02); CI no longer
+needs Python for diagnostics.
 
 ## Supported Fluent subset
 

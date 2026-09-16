@@ -1,5 +1,6 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::diagnostic::DiagId;
 
 impl Analyzer {
     #[allow(clippy::too_many_lines)] // Global and standard namespaces share one declaration pass.
@@ -56,7 +57,7 @@ impl Analyzer {
                     let ty = match path.as_slice() {
                         [host, capability] if host == "HOST" && capability == "Main" => {
                             return Err(error(
-                                "NAME_NOT_FOUND",
+                                DiagId::NAME_NOT_FOUND,
                                 "HOST.Main was withdrawn in 0.2; use HOST.Args",
                                 *span,
                             ));
@@ -66,7 +67,7 @@ impl Analyzer {
                         }
                         _ => Type::Module(*self.module_imports.get(alias).ok_or_else(|| {
                             error(
-                                "MODULE_NOT_RESOLVED",
+                                DiagId::MODULE_NOT_RESOLVED,
                                 format!("module alias '{alias}' has no resolved ModuleId"),
                                 *span,
                             )
@@ -106,7 +107,7 @@ impl Analyzer {
                             .any(|atom| atom.name == "Error")
                     {
                         return Err(error(
-                            "ASYNC_RETURN_TYPE",
+                            DiagId::ASYNC_RETURN_TYPE,
                             "typed ASYNC FUNCTION must return T OR Error",
                             signature.return_type.span,
                         ));
@@ -122,7 +123,7 @@ impl Analyzer {
                         for interface in interfaces {
                             if !declared_interfaces.insert(interface) {
                                 return Err(error(
-                                    "DUPLICATE_INTERFACE",
+                                    DiagId::DUPLICATE_INTERFACE,
                                     format!("CLASS '{name}' repeats interface '{interface}'"),
                                     *span,
                                 ));
@@ -140,8 +141,7 @@ impl Analyzer {
                             matches!(statement, Statement::MemberFunction { name, .. } if name == "CONSTRUCTOR")
                         }) {
                             if *is_static {
-                                return Err(error(
-                                    "INVALID_CONSTRUCTOR",
+                                return Err(error(DiagId::INVALID_CONSTRUCTOR,
                                     "CONSTRUCTOR must be an instance function",
                                     *constructor_span,
                                 ));

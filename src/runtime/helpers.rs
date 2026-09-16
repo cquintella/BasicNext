@@ -23,7 +23,7 @@ pub(super) fn find_block(function: &Function, id: BlockId) -> Result<&BasicBlock
         .blocks
         .get(id.0 as usize)
         .filter(|block| block.id == id)
-        .ok_or_else(|| runtime_error("INVALID_IR", "basic block does not exist", function.span))
+        .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::INVALID_IR, "basic block does not exist", function.span))
 }
 
 pub(super) fn set(values: &mut HashMap<ValueId, Value>, destination: ValueId, value: Value) {
@@ -37,7 +37,7 @@ pub(super) fn value(
 ) -> Result<&Value, Diagnostic> {
     values
         .get(&id)
-        .ok_or_else(|| runtime_error("INVALID_IR", format!("value %{} is undefined", id.0), span))
+        .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::INVALID_IR, format!("value %{} is undefined", id.0), span))
 }
 
 pub(super) fn constant_value(
@@ -48,7 +48,7 @@ pub(super) fn constant_value(
     match constant {
         Constant::Integer(value) => Ok(Value::Integer(
             parse_integer(value)
-                .ok_or_else(|| runtime_error("INVALID_IR", "invalid integer constant", span))?,
+                .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::INVALID_IR, "invalid integer constant", span))?,
             integer_kind(ty).unwrap_or(IntegerType::Int32),
         )),
         Constant::Float(value) => Ok(float_value(parse_float(value), float_kind(ty))),

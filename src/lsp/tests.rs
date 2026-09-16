@@ -68,7 +68,7 @@ fn warning_diagnostics_reach_lsp_with_warning_severity() {
         },
     };
     let diagnostic = Diagnostic::structured(
-        crate::diagnostic::DiagId::UnreachableCode,
+        crate::diagnostic::DiagId::UNREACHABLE_CODE,
         vec![(
             "context".into(),
             "statement follows a terminating path".into(),

@@ -82,7 +82,7 @@ pub(crate) fn validate_type_reference(reference: &TypeReference) -> Result<(), D
     for alternative in &reference.alternatives {
         if alternative.name == "POINTER" && !valid_pointer_parts(&alternative.parts) {
             return Err(error(
-                "INVALID_POINTER_TYPE",
+                DiagId::INVALID_POINTER_TYPE,
                 "POINTER must name a numeric or declared element type, optionally followed by [literal] or []",
                 alternative.span,
             ));
@@ -90,7 +90,7 @@ pub(crate) fn validate_type_reference(reference: &TypeReference) -> Result<(), D
         let ty = type_from_atom(alternative);
         if matches!(ty, Type::System) {
             return Err(error(
-                "NAME_NOT_FOUND",
+                DiagId::NAME_NOT_FOUND,
                 "SYSTEM was withdrawn in 0.2; use HOST.Args",
                 alternative.span,
             ));
@@ -129,21 +129,8 @@ pub(crate) fn valid_pointer_parts(parts: &[String]) -> bool {
         _ => false,
     }
 }
-pub(crate) fn error(code: &'static str, message: impl Into<String>, span: Span) -> Diagnostic {
-    let id = DiagId::from_code(code).unwrap_or(DiagId::Runtime(code));
-    let argument_name = match id {
-        DiagId::UnreachableCode => "context",
-        DiagId::Runtime("DUPLICATE_NAME" | "NAME_NOT_FOUND") => "name",
-        DiagId::NumericOverflow => "operation",
-        DiagId::Runtime(
-            "ALLOCATION_SIZE_INVALID"
-            | "ALLOCATION_SIZE_OVERFLOW"
-            | "INVALID_EXIT_CODE"
-            | "INVALID_SHIFT_COUNT",
-        ) => "detail",
-        _ => "message",
-    };
-    if matches!(id, DiagId::Runtime("NAME_NOT_FOUND")) {
+pub(crate) fn error(id: DiagId, message: impl Into<String>, span: Span) -> Diagnostic {
+    if matches!(id, DiagId::NAME_NOT_FOUND) {
         return Diagnostic::structured(
             id,
             vec![
@@ -161,7 +148,7 @@ pub(crate) fn error(code: &'static str, message: impl Into<String>, span: Span) 
         )
         .expect("name-not-found compatibility schema");
     }
-    if matches!(id, DiagId::TypeMismatch) {
+    if matches!(id, DiagId::TYPE_MISMATCH) {
         return Diagnostic::structured(
             id,
             vec![
@@ -183,6 +170,14 @@ pub(crate) fn error(code: &'static str, message: impl Into<String>, span: Span) 
         )
         .expect("type-mismatch compatibility schema");
     }
+    let argument_name = match id.argument_schema() {
+        [only] => only.name,
+        schema => unreachable!(
+            "{} needs an explicit argument mapping ({} arguments)",
+            id.code(),
+            schema.len()
+        ),
+    };
     Diagnostic::structured(
         id,
         vec![(argument_name.into(), DiagnosticValue::Text(message.into()))],
@@ -192,7 +187,7 @@ pub(crate) fn error(code: &'static str, message: impl Into<String>, span: Span) 
             text: None,
         }],
     )
-    .expect("message is the compatibility schema for registered diagnostics")
+    .expect("single-argument schema for registered diagnostics")
 }
 
 pub(crate) fn type_mismatch(
@@ -202,7 +197,7 @@ pub(crate) fn type_mismatch(
     span: Span,
 ) -> Diagnostic {
     Diagnostic::structured(
-        DiagId::TypeMismatch,
+        DiagId::TYPE_MISMATCH,
         vec![
             ("expected".into(), DiagnosticValue::Text(expected.into())),
             ("actual".into(), DiagnosticValue::Text(actual.into())),
@@ -219,7 +214,7 @@ pub(crate) fn type_mismatch(
 
 pub(crate) fn unreachable_code(context: impl Into<String>, span: Span) -> Diagnostic {
     Diagnostic::structured(
-        DiagId::UnreachableCode,
+        DiagId::UNREACHABLE_CODE,
         vec![("context".into(), DiagnosticValue::Text(context.into()))],
         vec![Label {
             span,
@@ -232,7 +227,7 @@ pub(crate) fn unreachable_code(context: impl Into<String>, span: Span) -> Diagno
 
 pub(crate) fn duplicate_name(name: impl Into<String>, span: Span) -> Diagnostic {
     Diagnostic::structured(
-        DiagId::Runtime("DUPLICATE_NAME"),
+        DiagId::DUPLICATE_NAME,
         vec![("name".into(), DiagnosticValue::Text(name.into()))],
         vec![Label {
             span,
@@ -249,7 +244,7 @@ pub(crate) fn undefined_name(
     span: Span,
 ) -> Diagnostic {
     Diagnostic::structured(
-        DiagId::Runtime("NAME_NOT_FOUND"),
+        DiagId::NAME_NOT_FOUND,
         vec![
             ("name".into(), DiagnosticValue::Text(name.into())),
             ("context".into(), DiagnosticValue::Text(context.into())),
@@ -274,7 +269,7 @@ pub(crate) fn validate_returns(
         .any(|atom| atom.name == "VOID");
     if !allows_empty && !guarantees_return(statements) {
         return Err(error(
-            "MISSING_RETURN",
+            DiagId::MISSING_RETURN,
             "non-VOID FUNCTION can complete without RETURN expression",
             return_type.span,
         ));
@@ -300,7 +295,7 @@ pub(crate) fn validate_return_statements(
                 && integer_literal(value).is_some_and(|code| !(0..=255).contains(&code)) =>
             {
                 return Err(error(
-                    "INVALID_EXIT_CODE",
+                    DiagId::INVALID_EXIT_CODE,
                     "Start return code must be in 0..255",
                     value.span,
                 ));

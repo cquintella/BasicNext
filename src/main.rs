@@ -191,7 +191,7 @@ fn eval_promotion_diagnostic(source_text: &str, span: bn::source::Span) -> Diagn
         },
     };
     Diagnostic::structured(
-        DiagId::Runtime("EVAL_START_PROMOTED"),
+        DiagId::EVAL_START_PROMOTED,
         vec![(
             "message".into(),
             DiagnosticValue::from(
@@ -675,7 +675,7 @@ struct Options {
     target: Target,
     filesystem: bool,
     sandbox: bool,
-    module_paths: Vec<PathBuf>,
+    module_paths: Vec<bn::module_graph::ModuleRoot>,
     read_roots: Vec<PathBuf>,
     write_roots: Vec<PathBuf>,
     jupyter_stdin: bool,
@@ -967,18 +967,43 @@ fn build_inner(
         "semantic analysis complete",
     );
     mirror_frontend_diagnostics(&frontend, process_log);
+    let roots = frontend
+        .graph
+        .roots
+        .iter()
+        .map(|root| format!("{} ({})", root.path.display(), root.provenance.label()))
+        .collect::<Vec<_>>();
     process_log.event(
         LogLevel::Debug,
         "config",
         "snapshot",
         format!(
-            "target={:?} opt={:?} log_level={:?} no_log={} module_paths={:?}",
+            "target={:?} opt={:?} log_level={:?} no_log={} bn_home={} module_roots={roots:?}",
             options.target,
             options.optimization,
             options.log_level,
             options.no_log,
-            frontend.graph.module_paths
+            std::env::var_os("BN_HOME").is_some(),
         ),
+    );
+    let resolved = frontend
+        .graph
+        .modules
+        .iter()
+        .filter(|module| module.id != frontend.graph.root)
+        .map(|module| {
+            let origin = module.root.as_ref().map_or_else(
+                || "unresolved".to_string(),
+                |root| format!("{} ({})", root.path.display(), root.provenance.label()),
+            );
+            format!("{} <- {origin}", module.source.name)
+        })
+        .collect::<Vec<_>>();
+    process_log.event(
+        LogLevel::Debug,
+        "frontend",
+        "module-roots",
+        format!("resolved={resolved:?}"),
     );
     process_log.event(
         LogLevel::Debug,
@@ -1290,9 +1315,7 @@ fn run_loaded(
                 .eval_promotion_span
                 .expect("promotion warning has a source span"),
         );
-        let level = options
-            .warning_policy
-            .level(DiagId::Runtime("EVAL_START_PROMOTED"));
+        let level = options.warning_policy.level(DiagId::EVAL_START_PROMOTED);
         if level == Level::Error {
             if options.output_format == OutputFormat::Json {
                 println!(
@@ -1389,11 +1412,7 @@ fn run_loaded(
                     .eval_promotion_span
                     .expect("promotion warning has a source span"),
             );
-            if options
-                .warning_policy
-                .level(DiagId::Runtime("EVAL_START_PROMOTED"))
-                != Level::Allow
-            {
+            if options.warning_policy.level(DiagId::EVAL_START_PROMOTED) != Level::Allow {
                 diagnostics.insert(0, diagnostic_json(&promotion, source, options, "cli"));
             }
         }

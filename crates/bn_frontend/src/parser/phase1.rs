@@ -76,7 +76,7 @@ impl Parser<'_> {
         if assign + 1 >= line.len() {
             return Err(self.error("CONST requires an initializer"));
         }
-        let initializer = parse_expression(&line[assign + 1..])?;
+        let initializer = self.expression_in(&line[assign + 1..])?;
         let type_ref = if assign > 0 {
             if !matches!(&line[0].kind, TokenKind::Keyword(word) if word == "AS") {
                 return Err(self.error("CONST requires AS before an explicit type"));

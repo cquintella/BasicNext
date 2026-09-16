@@ -212,29 +212,29 @@ impl Executor<'_, '_> {
             }
             "Enter" | "Leave" | "Wait" if name.contains(".Group.") => {
                 let Value::DispatchGroup(id) = arguments.first().cloned().unwrap_or(Value::Null) else { return Err(super::super::type_mismatch("Group", "non-Group value", "dispatch group", span)); };
-                let group = self.dispatch_groups.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "group is invalid", span))?;
+                let group = self.dispatch_groups.get(&id).ok_or_else(|| runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "group is invalid", span))?;
                 match method { "Enter" => { require_arity(name, arguments, 1, span)?; group.enter(); Ok(Value::Null) }, "Leave" => { require_arity(name, arguments, 1, span)?; Ok(group.leave().map_or_else(dispatch_error, |_| Value::Null)) }, _ => { require_arity(name, arguments, 2, span)?; Ok(group.wait(integer(&arguments[1], span)?.0).map_or_else(dispatch_error, |_| Value::Null)) } }
             }
             "New" | "Create" if name.contains(".Barrier.") => {
                 require_arity(name, arguments, 1, span)?;
                 let parties = integer(&arguments[0], span)?.0;
-                let barrier = crate::dispatch::Barrier::new(parties).ok_or_else(|| runtime_error("DISPATCH", "barrier parties must be in 1..64", span))?;
+                let barrier = crate::dispatch::Barrier::new(parties).ok_or_else(|| runtime_error(crate::diagnostic::DiagId::DISPATCH, "barrier parties must be in 1..64", span))?;
                 let id = self.next_dispatch_sync; self.next_dispatch_sync = self.next_dispatch_sync.saturating_add(1); self.dispatch_barriers.insert(id, barrier); Ok(Value::DispatchBarrier(id))
             }
             "Wait" if name.contains(".Barrier.") => {
                 require_arity(name, arguments, 2, span)?;
                 let Value::DispatchBarrier(id) = arguments[0] else { return Err(super::super::type_mismatch("Barrier", "non-Barrier value", "dispatch barrier", span)); };
-                let barrier = self.dispatch_barriers.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "barrier is invalid", span))?;
+                let barrier = self.dispatch_barriers.get(&id).ok_or_else(|| runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "barrier is invalid", span))?;
                 Ok(barrier.wait(integer(&arguments[1], span)?.0).map_or_else(dispatch_error, Value::Boolean))
             }
             "New" | "Create" if name.contains(".Semaphore.") => {
                 require_arity(name, arguments, 1, span)?;
-                let semaphore = crate::dispatch::DispatchSemaphore::new(integer(&arguments[0], span)?.0).ok_or_else(|| runtime_error("DISPATCH", "semaphore permits must be in 1..1024", span))?;
+                let semaphore = crate::dispatch::DispatchSemaphore::new(integer(&arguments[0], span)?.0).ok_or_else(|| runtime_error(crate::diagnostic::DiagId::DISPATCH, "semaphore permits must be in 1..1024", span))?;
                 let id = self.next_dispatch_sync; self.next_dispatch_sync = self.next_dispatch_sync.saturating_add(1); self.dispatch_semaphores.insert(id, semaphore); Ok(Value::DispatchSemaphore(id))
             }
             "Acquire" | "Release" if name.contains(".Semaphore.") => {
                 let Value::DispatchSemaphore(id) = arguments[0] else { return Err(super::super::type_mismatch("Semaphore", "non-Semaphore value", "dispatch semaphore", span)); };
-                let semaphore = self.dispatch_semaphores.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "semaphore is invalid", span))?;
+                let semaphore = self.dispatch_semaphores.get(&id).ok_or_else(|| runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "semaphore is invalid", span))?;
                 if method == "Acquire" { require_arity(name, arguments, 2, span)?; Ok(semaphore.acquire(integer(&arguments[1], span)?.0).map_or_else(dispatch_error, |_| Value::Null)) } else { require_arity(name, arguments, 1, span)?; Ok(semaphore.release().map_or_else(dispatch_error, |_| Value::Null)) }
             }
             "New" | "Create" if name.contains(".Mutex.") => {
@@ -242,7 +242,7 @@ impl Executor<'_, '_> {
             }
             "Lock" | "Unlock" if name.contains(".Mutex.") => {
                 let Value::DispatchMutex(id) = arguments[0] else { return Err(super::super::type_mismatch("Mutex", "non-Mutex value", "dispatch mutex", span)); };
-                let mutex = self.dispatch_mutexes.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "mutex is invalid", span))?;
+                let mutex = self.dispatch_mutexes.get(&id).ok_or_else(|| runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "mutex is invalid", span))?;
                 if method == "Lock" { require_arity(name, arguments, 2, span)?; Ok(mutex.lock(integer(&arguments[1], span)?.0).map_or_else(dispatch_error, |_| Value::Null)) } else { require_arity(name, arguments, 1, span)?; Ok(mutex.unlock().map_or_else(dispatch_error, |_| Value::Null)) }
             }
             "Serial" => {
@@ -259,7 +259,7 @@ impl Executor<'_, '_> {
                 let workers = std::thread::available_parallelism()
                     .map(|count| count.get().min(crate::config::dispatch_limits().worker_count_max))
                     .map_err(|error| {
-                        runtime_error("HOST_CAPABILITY_UNAVAILABLE", error.to_string(), span)
+                        runtime_error(crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE, error.to_string(), span)
                     })?;
                 Ok(self.dispatch_queue(i128::try_from(workers).expect("usize fits i128")))
             }
@@ -273,7 +273,7 @@ impl Executor<'_, '_> {
                 let Value::Function(task) = &arguments[1] else {
                     return Ok(Value::Error { code: 1, message: "Async expects a named function".into() });
                 };
-                let queue = self.dispatch_queues.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "queue is invalid", span))?.clone();
+                let queue = self.dispatch_queues.get(&id).ok_or_else(|| runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "queue is invalid", span))?.clone();
                 let task_name = task.clone();
                 let task_arguments = arguments[2..].to_vec();
                 let worker_module = self.module.clone();
@@ -301,7 +301,7 @@ impl Executor<'_, '_> {
                         }
                         Err(error) => ticket.mark_failed(1, error.message.to_string()),
                     }
-                }).map_err(|error| runtime_error("DISPATCH", format!("{error:?}"), span))?;
+                }).map_err(|error| runtime_error(crate::diagnostic::DiagId::DISPATCH, format!("{error:?}"), span))?;
                 let ticket_id = self.next_dispatch_ticket;
                 self.next_dispatch_ticket = self.next_dispatch_ticket.saturating_add(1);
                 self.dispatch_tickets.insert(ticket_id, ticket);
@@ -313,12 +313,12 @@ impl Executor<'_, '_> {
                     return Err(super::super::type_mismatch("Queue", "non-Queue value", "dispatch operation", span));
                 };
                 let timeout = integer(&arguments[1], span)?.0;
-                let queue = self.dispatch_queues.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "queue is invalid", span))?.clone();
+                let queue = self.dispatch_queues.get(&id).ok_or_else(|| runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "queue is invalid", span))?.clone();
                 let tickets = queue.tickets();
                 let result = if method == "Join" { queue.join(timeout) } else { queue.close(timeout) };
                 for ticket in tickets {
                     let output = ticket.take_output();
-                    self.output.write_all(output.as_bytes()).map_err(|error| runtime_error("IO", error.to_string(), span))?;
+                    self.output.write_all(output.as_bytes()).map_err(|error| runtime_error(crate::diagnostic::DiagId::IO, error.to_string(), span))?;
                 }
                 return Ok(result.map_or_else(|error| dispatch_error(error), |_| Value::Null));
             }
@@ -328,7 +328,7 @@ impl Executor<'_, '_> {
                     return Err(super::super::type_mismatch("Queue", "non-Queue value", "dispatch operation", span));
                 };
                 let timeout = integer(&arguments[1], span)?.0;
-                let queue = self.dispatch_queues.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "queue is invalid", span))?;
+                let queue = self.dispatch_queues.get(&id).ok_or_else(|| runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "queue is invalid", span))?;
                 Ok(queue.close(timeout).map_or_else(dispatch_error, |_| Value::Null))
             }
             "Id" | "Status" | "Wait" | "Cancel" | "Error" | "IsDone" | "Close"
@@ -336,7 +336,7 @@ impl Executor<'_, '_> {
                 let Value::DispatchTicket(id) = arguments.first().cloned().unwrap_or(Value::Null) else {
                     return Err(super::super::type_mismatch("Ticket", "non-Ticket value", "dispatch ticket", span));
                 };
-                let ticket = self.dispatch_tickets.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "ticket is invalid", span))?.clone();
+                let ticket = self.dispatch_tickets.get(&id).ok_or_else(|| runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "ticket is invalid", span))?.clone();
                 return match method {
                     "Id" => { require_arity(name, arguments, 1, span)?; Ok(Value::Integer(i128::from(ticket.id()), crate::types::IntegerType::Int32)) }
                     "Status" => { require_arity(name, arguments, 1, span)?; Ok(Value::Integer(i128::from(ticket.status()), crate::types::IntegerType::Int32)) }
@@ -345,7 +345,7 @@ impl Executor<'_, '_> {
                         let timeout = integer(&arguments[1], span)?.0;
                         let result = ticket.wait(timeout).map_or_else(dispatch_error, |_| ticket.result().unwrap_or(Value::Null));
                         let output = ticket.take_output();
-                        self.output.write_all(output.as_bytes()).map_err(|error| runtime_error("IO", error.to_string(), span))?;
+                        self.output.write_all(output.as_bytes()).map_err(|error| runtime_error(crate::diagnostic::DiagId::IO, error.to_string(), span))?;
                         Ok(result)
                     }
                     "Cancel" => { require_arity(name, arguments, 1, span)?; Ok(ticket.cancel().map_or_else(dispatch_error, Value::Boolean)) }

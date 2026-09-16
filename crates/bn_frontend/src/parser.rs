@@ -47,9 +47,37 @@ pub fn parse_named(
 ///
 /// Returns a diagnostic when the expression does not follow BN precedence rules.
 pub fn parse_expression(tokens: &[Token]) -> Result<Expression, Diagnostic> {
+    if tokens.is_empty() {
+        // Callers with a position use `Parser::expression_in`; this backstop only
+        // guarantees the public entry point never panics on an empty slice.
+        let unknown = crate::source::Position {
+            source_id: crate::source::SourceId::UNKNOWN,
+            revision: crate::source::Revision::UNKNOWN,
+            offset: 0,
+            line: 1,
+            column: 1,
+        };
+        return Err(Diagnostic::parse_facts(
+            "expected expression",
+            "expression parser",
+            Span {
+                start: unknown,
+                end: unknown,
+            },
+        )
+        .unwrap_or_else(|_| Diagnostic {
+            code: "E0100",
+            message: "parser error".into(),
+            span: Span {
+                start: unknown,
+                end: unknown,
+            },
+            structured: None,
+        }));
+    }
     let mut parser = ExpressionParser { tokens, index: 0 };
     let expression = parser.expression(0)?;
-    if !parser.at_end() && !matches!(parser.peek().kind, TokenKind::Newline | TokenKind::Eof) {
+    if !parser.at_end() && !matches!(parser.peek_kind(), TokenKind::Newline | TokenKind::Eof) {
         return Err(parser.error("unexpected token after expression"));
     }
     Ok(expression)

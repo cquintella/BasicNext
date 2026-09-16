@@ -490,7 +490,7 @@ fn main() -> ExitCode {
         Err(err) => {
             eprintln!(
                 "error[BNC]: {}",
-                source_less_diagnostic(bn::diagnostic::DiagId::Bnc, err)
+                source_less_diagnostic(bn::diagnostic::DiagId::BNC, err)
             );
             return usage();
         }
@@ -509,7 +509,7 @@ fn main() -> ExitCode {
             eprintln!(
                 "error[BNC_ENGINE]: {}",
                 source_less_diagnostic(
-                    bn::diagnostic::DiagId::BncEngine,
+                    bn::diagnostic::DiagId::BNC_ENGINE,
                     format!("failed to execute bn engine: {err}")
                 )
             );

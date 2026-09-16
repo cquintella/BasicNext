@@ -191,7 +191,7 @@ impl Executor<'_, '_> {
                             return Err(super::type_mismatch("EgressPolicy", "non-policy value", "BNWeb.Client.RequestWithPolicy", span));
                         };
                         self.web_egress_policies.get(handle).ok_or_else(|| {
-                            runtime_error("STALE_HANDLE", "EgressPolicy handle is not live", span)
+                            runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "EgressPolicy handle is not live", span)
                         })?
                     } else {
                         &crate::web::EgressPolicy::default()
@@ -263,7 +263,7 @@ impl Executor<'_, '_> {
                 return Err(super::type_mismatch("BNWeb.Server", "non-object value", "BNWeb.Server operation receiver", span));
             };
             let state = self.web_servers.get(handle).cloned().ok_or_else(|| {
-                runtime_error("STALE_HANDLE", "BNWeb.Server handle is not live", span)
+                runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "BNWeb.Server handle is not live", span)
             })?;
             match method {
                 "AddFilter" => {
@@ -298,7 +298,7 @@ impl Executor<'_, '_> {
                         });
                     }
                     let mut state = state.lock().map_err(|_| {
-                        runtime_error("SERVER_STATE", "server state unavailable", span)
+                        runtime_error(crate::diagnostic::DiagId::SERVER_STATE, "server state unavailable", span)
                     })?;
                     let result = state.add_route(method.clone(), pattern.clone());
                     drop(state);
@@ -319,7 +319,7 @@ impl Executor<'_, '_> {
                 }
                 "Status" => {
                     require_arity(name, arguments, 1, span)?;
-                    let status = match state.lock().map_err(|_| runtime_error("SERVER_STATE", "server state unavailable", span))?.status() {
+                    let status = match state.lock().map_err(|_| runtime_error(crate::diagnostic::DiagId::SERVER_STATE, "server state unavailable", span))?.status() {
                         crate::web::ServerStatus::Starting => "Starting",
                         crate::web::ServerStatus::Accepting => "Accepting",
                         crate::web::ServerStatus::Draining => "Draining",
@@ -330,19 +330,19 @@ impl Executor<'_, '_> {
                 }
                 "IsReady" => {
                     require_arity(name, arguments, 1, span)?;
-                    Ok(Value::Boolean(state.lock().map_err(|_| runtime_error("SERVER_STATE", "server state unavailable", span))?.is_ready()))
+                    Ok(Value::Boolean(state.lock().map_err(|_| runtime_error(crate::diagnostic::DiagId::SERVER_STATE, "server state unavailable", span))?.is_ready()))
                 }
                 "ActiveConnections" => {
                     require_arity(name, arguments, 1, span)?;
-                    Ok(Value::Integer(state.lock().map_err(|_| runtime_error("SERVER_STATE", "server state unavailable", span))?.active_connections() as i128, IntegerType::Int32))
+                    Ok(Value::Integer(state.lock().map_err(|_| runtime_error(crate::diagnostic::DiagId::SERVER_STATE, "server state unavailable", span))?.active_connections() as i128, IntegerType::Int32))
                 }
                 "PendingRequests" => {
                     require_arity(name, arguments, 1, span)?;
-                    Ok(Value::Integer(state.lock().map_err(|_| runtime_error("SERVER_STATE", "server state unavailable", span))?.pending_requests() as i128, IntegerType::Int32))
+                    Ok(Value::Integer(state.lock().map_err(|_| runtime_error(crate::diagnostic::DiagId::SERVER_STATE, "server state unavailable", span))?.pending_requests() as i128, IntegerType::Int32))
                 }
                 "AcceptedRequests" | "ActiveRequests" | "RejectedRequests" | "TimedOutRequests" | "CompletedRequests" | "FailedRequests" | "RateLimitedRequests" | "TotalRequestDurationMs" | "AverageRequestDurationMs" | "MaxRequestDurationMs" => {
                     require_arity(name, arguments, 1, span)?;
-                    let snapshot = state.lock().map_err(|_| runtime_error("SERVER_STATE", "server state unavailable", span))?.stats();
+                    let snapshot = state.lock().map_err(|_| runtime_error(crate::diagnostic::DiagId::SERVER_STATE, "server state unavailable", span))?.stats();
                     let value = match method {
                         "AcceptedRequests" => snapshot.accepted,
                         "ActiveRequests" => snapshot.active,
@@ -368,18 +368,18 @@ impl Executor<'_, '_> {
                             return Err(super::type_mismatch("ServerOptions", "non-options value", "BNWeb.Server.StartWithOptions", span));
                         };
                         self.web_server_options.get(handle).cloned().ok_or_else(|| {
-                            runtime_error("STALE_HANDLE", "ServerOptions handle is not live", span)
+                            runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "ServerOptions handle is not live", span)
                         })?
                     } else {
                         require_arity(name, arguments, 2, span)?;
                         crate::web::ServerOptions::default()
                     };
-                    options.validate().map_err(|message| runtime_error("INVALID_OPTIONS", message, span))?;
+                    options.validate().map_err(|message| runtime_error(crate::diagnostic::DiagId::INVALID_OPTIONS, message, span))?;
                     let endpoint = net_endpoint(&arguments[1], span)?;
                     let listener = crate::net::TcpListener::bind_with_backlog(endpoint, options.backlog)
-                        .map_err(|error| runtime_error("WEB_LISTEN", error.to_string(), span))?;
+                        .map_err(|error| runtime_error(crate::diagnostic::DiagId::WEB_LISTEN, error.to_string(), span))?;
                     let mut state_guard = state.lock().map_err(|_| {
-                        runtime_error("SERVER_STATE", "server state unavailable", span)
+                        runtime_error(crate::diagnostic::DiagId::SERVER_STATE, "server state unavailable", span)
                     })?;
                     let started = state_guard.start_with_options(options);
                     drop(state_guard);
@@ -391,7 +391,7 @@ impl Executor<'_, '_> {
                     }
                     if let Err(message) = state
                         .lock()
-                        .map_err(|_| runtime_error("SERVER_STATE", "server state unavailable", span))?
+                        .map_err(|_| runtime_error(crate::diagnostic::DiagId::SERVER_STATE, "server state unavailable", span))?
                         .install_worker_pool()
                     {
                         return Ok(Value::Error {
@@ -467,12 +467,12 @@ impl Executor<'_, '_> {
                                 }
                             }
                         })
-                        .map_err(|error| runtime_error("WEB_LISTEN", error.to_string(), span))?;
+                        .map_err(|error| runtime_error(crate::diagnostic::DiagId::WEB_LISTEN, error.to_string(), span))?;
                     state
                         .lock()
-                        .map_err(|_| runtime_error("SERVER_STATE", "server state unavailable", span))?
+                        .map_err(|_| runtime_error(crate::diagnostic::DiagId::SERVER_STATE, "server state unavailable", span))?
                         .install_listener(listener_handle)
-                        .map_err(|message| runtime_error("WEB_LISTEN", message, span))?;
+                        .map_err(|message| runtime_error(crate::diagnostic::DiagId::WEB_LISTEN, message, span))?;
                     Ok(Value::Null)
                 }
                 "StartTLS" | "StartTLSWithOptions" => {
@@ -482,13 +482,13 @@ impl Executor<'_, '_> {
                             return Err(super::type_mismatch("ServerOptions", "non-options value", "BNWeb.Server.StartTLSWithOptions", span));
                         };
                         self.web_server_options.get(handle).cloned().ok_or_else(|| {
-                            runtime_error("STALE_HANDLE", "ServerOptions handle is not live", span)
+                            runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "ServerOptions handle is not live", span)
                         })?
                     } else {
                         require_arity(name, arguments, 3, span)?;
                         crate::web::ServerOptions::default()
                     };
-                    options.validate().map_err(|message| runtime_error("INVALID_OPTIONS", message, span))?;
+                    options.validate().map_err(|message| runtime_error(crate::diagnostic::DiagId::INVALID_OPTIONS, message, span))?;
                     let endpoint = net_endpoint(&arguments[1], span)?;
                     let Value::Object {
                         handle: config_handle,
@@ -502,16 +502,15 @@ impl Executor<'_, '_> {
                         .get(config_handle)
                         .cloned()
                         .ok_or_else(|| {
-                            runtime_error(
-                                "STALE_HANDLE",
+                            runtime_error(crate::diagnostic::DiagId::STALE_HANDLE,
                                 "BNWeb.TLSConfig handle is not live",
                                 span,
                             )
                         })?;
                     let listener = crate::net::TcpListener::bind_with_backlog(endpoint, options.backlog)
-                        .map_err(|error| runtime_error("WEB_LISTEN", error.to_string(), span))?;
+                        .map_err(|error| runtime_error(crate::diagnostic::DiagId::WEB_LISTEN, error.to_string(), span))?;
                     let mut state_guard = state.lock().map_err(|_| {
-                        runtime_error("SERVER_STATE", "server state unavailable", span)
+                        runtime_error(crate::diagnostic::DiagId::SERVER_STATE, "server state unavailable", span)
                     })?;
                     let started = state_guard.start_with_options(options);
                     drop(state_guard);
@@ -523,7 +522,7 @@ impl Executor<'_, '_> {
                     }
                     if let Err(message) = state
                         .lock()
-                        .map_err(|_| runtime_error("SERVER_STATE", "server state unavailable", span))?
+                        .map_err(|_| runtime_error(crate::diagnostic::DiagId::SERVER_STATE, "server state unavailable", span))?
                         .install_worker_pool()
                     {
                         return Ok(Value::Error {
@@ -601,12 +600,12 @@ impl Executor<'_, '_> {
                                 }
                             }
                         })
-                        .map_err(|error| runtime_error("WEB_LISTEN", error.to_string(), span))?;
+                        .map_err(|error| runtime_error(crate::diagnostic::DiagId::WEB_LISTEN, error.to_string(), span))?;
                     state
                         .lock()
-                        .map_err(|_| runtime_error("SERVER_STATE", "server state unavailable", span))?
+                        .map_err(|_| runtime_error(crate::diagnostic::DiagId::SERVER_STATE, "server state unavailable", span))?
                         .install_listener(listener_handle)
-                        .map_err(|message| runtime_error("WEB_LISTEN", message, span))?;
+                        .map_err(|message| runtime_error(crate::diagnostic::DiagId::WEB_LISTEN, message, span))?;
                     Ok(Value::Null)
                 }
                 "Stop" => {
@@ -637,13 +636,13 @@ impl Executor<'_, '_> {
                         return Err(super::type_mismatch("Request, Response", "non-request/response values", "BNWeb.Server.Dispatch", span));
                     };
                     let request = self.web_requests.get(request_handle).ok_or_else(|| {
-                        runtime_error("STALE_HANDLE", "BNWeb.Request handle is not live", span)
+                        runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "BNWeb.Request handle is not live", span)
                     })?;
                     let method_name = request.method.clone();
                     let path = request.target.path.clone();
                     let selected = {
                         let mut state = state.lock().map_err(|_| {
-                            runtime_error("SERVER_STATE", "server state unavailable", span)
+                            runtime_error(crate::diagnostic::DiagId::SERVER_STATE, "server state unavailable", span)
                         })?;
                         let mut selected = None;
                         if state
@@ -686,8 +685,7 @@ impl Executor<'_, '_> {
                                 })
                                 .cloned()
                                 .ok_or_else(|| {
-                                    runtime_error(
-                                        "HANDLER_NOT_FOUND",
+                                    runtime_error(crate::diagnostic::DiagId::HANDLER_NOT_FOUND,
                                         "route handler is not live",
                                         span,
                                     )

@@ -38,7 +38,7 @@ impl<'a> Parser<'a> {
             let initializer = line
                 .iter()
                 .position(|token| matches!(token.kind, TokenKind::Symbol(Symbol::Assign)))
-                .map(|index| parse_expression(&line[index + 1..]))
+                .map(|index| self.expression_in(&line[index + 1..]))
                 .transpose()?;
             return Ok(Statement::Binding {
                 constant: false,
@@ -81,7 +81,7 @@ impl<'a> Parser<'a> {
                 let TokenKind::Identifier(name) = &line[1].kind else {
                     return Err(self.error("expected binding name"));
                 };
-                let initializer = parse_expression(&line[assign + 1..])?;
+                let initializer = self.expression_in(&line[assign + 1..])?;
                 return Ok(Statement::Binding {
                     constant: true,
                     visibility: None,
@@ -137,9 +137,12 @@ impl<'a> Parser<'a> {
                 .position(|token| matches!(token.kind, TokenKind::Symbol(Symbol::Assign)))
                 .map(|index| &line[index + 1..]);
             let initializers = initializer_tokens
-                .map(Self::expression_list)
+                .map(|tokens| self.expression_list(tokens))
                 .transpose()?
                 .unwrap_or_default();
+            if has_initializer && initializers.is_empty() {
+                return Err(self.error("expected expression"));
+            }
             if !initializers.is_empty() && initializers.len() != additional_names.len() + 1 {
                 return Err(self.error("initializer count must match binding count"));
             }
@@ -166,7 +169,7 @@ impl<'a> Parser<'a> {
             let value = if line.len() == 1 {
                 None
             } else {
-                Some(parse_expression(&line[1..])?)
+                Some(self.expression_in(&line[1..])?)
             };
             Ok(Statement::Return { value, span })
         } else if self.keyword("INPUT") {
@@ -178,7 +181,7 @@ impl<'a> Parser<'a> {
                     return Err(self.error("INPUT prompt requires a target"));
                 }
                 (
-                    Some(Box::new(parse_expression(&line[1..comma])?)),
+                    Some(Box::new(self.expression_in(&line[1..comma])?)),
                     &line[comma + 1..],
                 )
             } else {
@@ -187,7 +190,7 @@ impl<'a> Parser<'a> {
                 }
                 (None, &line[1..])
             };
-            let target = parse_expression(target_tokens)?;
+            let target = self.expression_in(target_tokens)?;
             if !matches!(
                 target.kind,
                 ExpressionKind::Name { .. }
@@ -207,7 +210,7 @@ impl<'a> Parser<'a> {
             })
         } else if self.keyword("PRINT") {
             Ok(Statement::Print {
-                values: Self::expression_list(&line[1..])?,
+                values: self.expression_list(&line[1..])?,
                 span,
             })
         } else if self.keyword("RELEASE") {
@@ -215,7 +218,7 @@ impl<'a> Parser<'a> {
                 return Err(self.error("RELEASE requires an expression"));
             }
             Ok(Statement::Release {
-                value: parse_expression(&line[1..])?,
+                value: self.expression_in(&line[1..])?,
                 span,
             })
         } else if self.keyword("STOP") {
@@ -223,7 +226,7 @@ impl<'a> Parser<'a> {
                 return Err(self.error("STOP requires an exit-code expression"));
             }
             Ok(Statement::Stop {
-                code: parse_expression(&line[1..])?,
+                code: self.expression_in(&line[1..])?,
                 span,
             })
         } else if matches!(line.first().map(|token| &token.kind), Some(TokenKind::Keyword(word)) if matches!(word.as_str(), "IF" | "WHILE" | "REPEAT" | "FOR" | "EXIT" | "CONTINUE"))
@@ -243,7 +246,7 @@ impl<'a> Parser<'a> {
             if operator == 0 || operator + 1 == line.len() {
                 return Err(self.error("assignment requires a target and expression"));
             }
-            let target = parse_expression(&line[..operator])?;
+            let target = self.expression_in(&line[..operator])?;
             if !matches!(
                 target.kind,
                 ExpressionKind::Name { .. }
@@ -257,11 +260,11 @@ impl<'a> Parser<'a> {
             Ok(Statement::Assignment {
                 target,
                 operator: text(&line[operator]),
-                value: parse_expression(&line[operator + 1..])?,
+                value: self.expression_in(&line[operator + 1..])?,
                 span,
             })
         } else {
-            let expression = parse_expression(line)?;
+            let expression = self.expression_in(line)?;
             if !matches!(expression.kind, ExpressionKind::Call { .. }) {
                 return Err(self.error("expected a call statement"));
             }
@@ -344,7 +347,7 @@ impl<'a> Parser<'a> {
         index == tokens.len()
     }
 
-    pub(crate) fn expression_list(tokens: &[Token]) -> Result<Vec<Expression>, Diagnostic> {
+    pub(crate) fn expression_list(&self, tokens: &[Token]) -> Result<Vec<Expression>, Diagnostic> {
         if tokens.is_empty() {
             return Ok(Vec::new());
         }
@@ -356,13 +359,13 @@ impl<'a> Parser<'a> {
                 TokenKind::Symbol(Symbol::LeftParen | Symbol::LeftBracket) => depth += 1,
                 TokenKind::Symbol(Symbol::RightParen | Symbol::RightBracket) => depth -= 1,
                 TokenKind::Symbol(Symbol::Comma) if depth == 0 => {
-                    values.push(parse_expression(&tokens[start..index])?);
+                    values.push(self.expression_in(&tokens[start..index])?);
                     start = index + 1;
                 }
                 _ => {}
             }
         }
-        values.push(parse_expression(&tokens[start..])?);
+        values.push(self.expression_in(&tokens[start..])?);
         Ok(values)
     }
 
@@ -462,7 +465,7 @@ impl<'a> Parser<'a> {
                     span,
                 }),
                 _ if allow_expressions => dimensions.push(crate::ast::VectorDimension::Expression(
-                    parse_expression(content)?,
+                    self.expression_in(content)?,
                 )),
                 _ => {
                     return Err(self.error(

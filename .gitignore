@@ -11,6 +11,7 @@ __pycache__/
 /todo/research/
 /analise.md
 AGENTS.md
+CLAUDE.md
 .env
 .vscode/
 .aider*
@@ -33,3 +34,11 @@ done/*
 # Architecture audit working papers and reports (local)
 audit/
 docs/.obsidian/
+
+# Understand-Anything knowledge graph and dashboard (local analysis cache)
+.understand-anything/
+
+# cargo-fuzz build output and generated corpus (fuzz/ crate itself is tracked)
+fuzz/target/
+fuzz/corpus/
+fuzz/artifacts/

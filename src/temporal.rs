@@ -24,15 +24,30 @@ pub(crate) fn default_time() -> u32 {
 }
 
 pub(crate) fn parse_date(text: &str, span: Span) -> Result<i32, Diagnostic> {
-    let (year, month, day) = parse_ymd(text)
-        .ok_or_else(|| temporal_error("INVALID_DATE", "DATE must be YYYY-MM-DD", span))?;
-    days_from_civil(year, month, day)
-        .ok_or_else(|| temporal_error("INVALID_DATE", format!("{text} is not a valid DATE"), span))
+    let (year, month, day) = parse_ymd(text).ok_or_else(|| {
+        temporal_error(
+            crate::diagnostic::DiagId::INVALID_DATE,
+            "DATE must be YYYY-MM-DD",
+            span,
+        )
+    })?;
+    days_from_civil(year, month, day).ok_or_else(|| {
+        temporal_error(
+            crate::diagnostic::DiagId::INVALID_DATE,
+            format!("{text} is not a valid DATE"),
+            span,
+        )
+    })
 }
 
 pub(crate) fn parse_time(text: &str, span: Span) -> Result<u32, Diagnostic> {
-    parse_hms(text, true)
-        .ok_or_else(|| temporal_error("INVALID_TIME", "TIME must be HH:MM:SS.mmm", span))
+    parse_hms(text, true).ok_or_else(|| {
+        temporal_error(
+            crate::diagnostic::DiagId::INVALID_TIME,
+            "TIME must be HH:MM:SS.mmm",
+            span,
+        )
+    })
 }
 
 pub(crate) fn parse_timezone(text: &str, span: Span) -> Result<String, Diagnostic> {
@@ -40,7 +55,7 @@ pub(crate) fn parse_timezone(text: &str, span: Span) -> Result<String, Diagnosti
         Ok(text.to_string())
     } else {
         Err(temporal_error(
-            "INVALID_TIMEZONE",
+            crate::diagnostic::DiagId::INVALID_TIMEZONE,
             format!("'{text}' is not a canonical IANA time-zone identifier"),
             span,
         ))
@@ -50,7 +65,7 @@ pub(crate) fn parse_timezone(text: &str, span: Span) -> Result<String, Diagnosti
 pub(crate) fn parse_rfc3339(text: &str, span: Span) -> Result<i64, Diagnostic> {
     parse_rfc3339_text(text).ok_or_else(|| {
         temporal_error(
-            "PARSE_ERROR",
+            crate::diagnostic::DiagId::PARSE_ERROR,
             format!("'{text}' is not an RFC 3339 TIMESTAMP"),
             span,
         )
@@ -92,7 +107,7 @@ pub(crate) fn timestamp_from_date_time(
     require_civil_date(days, span)?;
     if millis > 86_399_999 {
         return Err(temporal_error(
-            "INVALID_TIME",
+            crate::diagnostic::DiagId::INVALID_TIME,
             "TIME must be in 00:00:00.000..23:59:59.999",
             span,
         ));
@@ -102,7 +117,7 @@ pub(crate) fn timestamp_from_date_time(
         .and_then(|value| i64::try_from(value).ok())
         .ok_or_else(|| {
             temporal_error(
-                "FORMAT_OUT_OF_RANGE",
+                crate::diagnostic::DiagId::FORMAT_OUT_OF_RANGE,
                 "TIMESTAMP is outside 0001-01-01..9999-12-31",
                 span,
             )
@@ -132,7 +147,7 @@ fn require_civil_date(days: i32, span: Span) -> Result<(), Diagnostic> {
 
 fn out_of_range(span: Span) -> Diagnostic {
     temporal_error(
-        "FORMAT_OUT_OF_RANGE",
+        crate::diagnostic::DiagId::FORMAT_OUT_OF_RANGE,
         "civil time must be in years 0001 through 9999",
         span,
     )
@@ -321,20 +336,22 @@ fn civil_time(millis: u32) -> (u32, u32, u32, u32) {
     (hour, minute, second, millis)
 }
 
-fn temporal_error(code: &'static str, message: impl Into<String>, span: Span) -> Diagnostic {
+fn temporal_error(
+    id: crate::diagnostic::DiagId,
+    message: impl Into<String>,
+    span: Span,
+) -> Diagnostic {
     let message = message.into();
-    let id = crate::diagnostic::DiagId::from_code(code)
-        .unwrap_or(crate::diagnostic::DiagId::Runtime(code));
-    let arguments = if id == crate::diagnostic::DiagId::Runtime("PARSE_ERROR") {
-        vec![(
-            "message".into(),
+    let arguments = match id.argument_schema() {
+        [only] => vec![(
+            only.name.into(),
             crate::diagnostic::DiagnosticValue::Text(message),
-        )]
-    } else {
-        vec![(
-            "detail".into(),
-            crate::diagnostic::DiagnosticValue::Text(message),
-        )]
+        )],
+        schema => unreachable!(
+            "{} needs an explicit argument mapping ({} arguments)",
+            id.code(),
+            schema.len()
+        ),
     };
     Diagnostic::structured(
         id,

@@ -19,7 +19,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                     capacity,
                     std::time::Duration::from_millis(u64::try_from(idle).unwrap_or(0)),
                 )
-                .map_err(|message| runtime_error("SESSION_CONFIG", message, span))?;
+                .map_err(|message| runtime_error(crate::diagnostic::DiagId::SESSION_CONFIG, message, span))?;
                 let object = self.allocate_object("BNWeb.SessionStore", span)?;
                 if let Value::Object { handle, .. } = object {
                     self.web_session_stores.insert(handle, store);
@@ -43,12 +43,12 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                     capacity,
                     std::time::Duration::from_millis(u64::try_from(idle).unwrap_or(0)),
                 )
-                .map_err(|message| runtime_error("SESSION_CONFIG", message, span))?;
+                .map_err(|message| runtime_error(crate::diagnostic::DiagId::SESSION_CONFIG, message, span))?;
                 self.web_session_stores.insert(*handle, store);
                 return Ok(Value::Null);
             }
             let store = self.web_session_stores.get_mut(handle).ok_or_else(|| {
-                runtime_error("STALE_HANDLE", "SessionStore handle is not live", span)
+                runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "SessionStore handle is not live", span)
             })?;
             match method {
                 "Create" => {
@@ -133,14 +133,14 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                     return Err(super::super::type_mismatch("STRING", "non-STRING value", "Scraper constructor HTML", span));
                 };
                 let scraper = crate::web_state::Scraper::parse(html)
-                    .map_err(|message| runtime_error("SCRAPER_INPUT", message, span))?;
+                    .map_err(|message| runtime_error(crate::diagnostic::DiagId::SCRAPER_INPUT, message, span))?;
                 self.web_scrapers.insert(*handle, scraper);
                 return Ok(Value::Null);
             }
             let scraper = self
                 .web_scrapers
                 .get(handle)
-                .ok_or_else(|| runtime_error("STALE_HANDLE", "Scraper handle is not live", span))?;
+                .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "Scraper handle is not live", span))?;
             if method == "Text" {
                 require_arity(name, arguments, 2, span)?;
                 let Value::String(selector) = &arguments[1] else {
@@ -165,7 +165,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
             let acl = self
                 .web_acls
                 .get_mut(handle)
-                .ok_or_else(|| runtime_error("STALE_HANDLE", "ACL handle is not live", span))?;
+                .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "ACL handle is not live", span))?;
             match method {
                 "Allow" | "Deny" => {
                     require_arity(name, arguments, 2, span)?;
@@ -224,7 +224,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                 return Ok(Value::Null);
             }
             let jar = self.web_cookie_jars.get_mut(handle).ok_or_else(|| {
-                runtime_error("STALE_HANDLE", "CookieJar handle is not live", span)
+                runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "CookieJar handle is not live", span)
             })?;
             match method {
                 "Set" => {
@@ -320,13 +320,13 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                     return Err(super::super::type_mismatch("STRING, STRING, STRING", "non-STRING argument", "EgressPolicy.New", span));
                 };
                 let max_redirects = usize::try_from(integer(&arguments[3], span)?.0)
-                    .map_err(|_| runtime_error("INVALID_EGRESS_POLICY", "invalid redirect limit", span))?;
+                    .map_err(|_| runtime_error(crate::diagnostic::DiagId::INVALID_EGRESS_POLICY, "invalid redirect limit", span))?;
                 let deadline = u64::try_from(integer(&arguments[4], span)?.0)
-                    .map_err(|_| runtime_error("INVALID_EGRESS_POLICY", "invalid egress deadline", span))?;
+                    .map_err(|_| runtime_error(crate::diagnostic::DiagId::INVALID_EGRESS_POLICY, "invalid egress deadline", span))?;
                 let policy = crate::web::EgressPolicy::from_csv(
                     schemes, cidrs, ports, max_redirects, deadline,
                 )
-                .map_err(|message| runtime_error("INVALID_EGRESS_POLICY", message, span))?;
+                .map_err(|message| runtime_error(crate::diagnostic::DiagId::INVALID_EGRESS_POLICY, message, span))?;
                 let object = self.allocate_object("BNWeb.EgressPolicy", span)?;
                 if let Value::Object { handle, .. } = object {
                     self.web_egress_policies.insert(handle, policy);
@@ -342,17 +342,16 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
             let make_options = |offset: usize| -> Result<crate::web::ServerOptions, Diagnostic> {
                 let value = |index: usize| {
                     usize::try_from(integer(&arguments[offset + index], span)?.0)
-                        .map_err(|_| runtime_error("INVALID_OPTIONS", "server option must be non-negative", span))
+                        .map_err(|_| runtime_error(crate::diagnostic::DiagId::INVALID_OPTIONS, "server option must be non-negative", span))
                 };
                 let timeout = |index: usize| {
                     u64::try_from(integer(&arguments[offset + index], span)?.0)
-                        .map_err(|_| runtime_error("INVALID_OPTIONS", "server timeout must be non-negative", span))
+                        .map_err(|_| runtime_error(crate::diagnostic::DiagId::INVALID_OPTIONS, "server timeout must be non-negative", span))
                 };
                 let trusted_proxy = match arguments.get(offset + 17) {
                     Some(Value::Boolean(value)) => *value,
                     _ => {
-                        return Err(runtime_error(
-                            "INVALID_OPTIONS",
+                        return Err(runtime_error(crate::diagnostic::DiagId::INVALID_OPTIONS,
                             "trustedProxy must be BOOLEAN",
                             span,
                         ));
@@ -361,8 +360,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                 let concurrent_handlers = match arguments.get(offset + 18) {
                     Some(Value::Boolean(value)) => *value,
                     _ => {
-                        return Err(runtime_error(
-                            "INVALID_OPTIONS",
+                        return Err(runtime_error(crate::diagnostic::DiagId::INVALID_OPTIONS,
                             "concurrentHandlers must be BOOLEAN",
                             span,
                         ));
@@ -393,7 +391,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
             if method == "New" {
                 require_arity(name, arguments, 19, span)?;
                 let options = make_options(0)?;
-                options.validate().map_err(|message| runtime_error("INVALID_OPTIONS", message, span))?;
+                options.validate().map_err(|message| runtime_error(crate::diagnostic::DiagId::INVALID_OPTIONS, message, span))?;
                 let object = self.allocate_object("BNWeb.ServerOptions", span)?;
                 if let Value::Object { handle, .. } = object {
                     self.web_server_options.insert(handle, options);
@@ -406,7 +404,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                 if method == "CONSTRUCTOR" {
                     require_arity(name, arguments, 20, span)?;
                     let options = make_options(1)?;
-                    options.validate().map_err(|message| runtime_error("INVALID_OPTIONS", message, span))?;
+                    options.validate().map_err(|message| runtime_error(crate::diagnostic::DiagId::INVALID_OPTIONS, message, span))?;
                     self.web_server_options.insert(*handle, options);
                     Ok(Value::Null)
                 } else {
@@ -481,7 +479,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                 return Err(super::super::type_mismatch("BNWeb values object", "non-object value", "values method", span));
             };
             let values = self.web_values.get(handle).ok_or_else(|| {
-                runtime_error("STALE_HANDLE", "BNWeb values handle is not live", span)
+                runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "BNWeb values handle is not live", span)
             })?;
             match method {
                 "Count" => {
@@ -513,7 +511,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
 
         }
         else {
-            Err(runtime_error("HOST_CAPABILITY_UNAVAILABLE", format!("web function '{name}' is not available"), span))
+            Err(runtime_error(crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE, format!("web function '{name}' is not available"), span))
         }
     }
 }

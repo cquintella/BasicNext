@@ -17,7 +17,7 @@ pub(crate) fn web_response_call(&mut self, name: &str, arguments: &[Value], span
                 return Err(super::type_mismatch("BNWeb.Response", "non-object value", "BNWeb.Response operation receiver", span));
             };
             let response = self.web_responses.get_mut(handle).ok_or_else(|| {
-                runtime_error("STALE_HANDLE", "BNWeb.Response handle is not live", span)
+                runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "BNWeb.Response handle is not live", span)
             })?;
             match method {
                 "Status" => {
@@ -68,7 +68,7 @@ pub(crate) fn web_response_call(&mut self, name: &str, arguments: &[Value], span
                         .iter()
                         .find(|(name, _)| name.eq_ignore_ascii_case(key))
                         .map(|(_, value)| Value::String(value.clone()))
-                        .ok_or_else(|| runtime_error("HEADER_NOT_FOUND", "response header is not present", span))
+                        .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::HEADER_NOT_FOUND, "response header is not present", span))
                 }
                 "Write" => {
                     require_arity(name, arguments, 2, span)?;
@@ -110,7 +110,7 @@ pub(crate) fn web_response_call(&mut self, name: &str, arguments: &[Value], span
 
         }
         else {
-            Err(runtime_error("HOST_CAPABILITY_UNAVAILABLE", format!("web function '{name}' is not available"), span))
+            Err(runtime_error(crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE, format!("web function '{name}' is not available"), span))
         }
     }
 }

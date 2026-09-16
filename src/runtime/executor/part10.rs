@@ -16,7 +16,7 @@ impl Executor<'_, '_> {
             let resource = self
                 .files
                 .get_mut(&id)
-                .ok_or_else(|| runtime_error("USE_AFTER_RELEASE", "file handle is invalid", span))?;
+                .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "file handle is invalid", span))?;
             if resource.family == Some(true) {
                 return Ok(Value::Error {
                     code: 1,
@@ -85,7 +85,7 @@ impl Executor<'_, '_> {
         let resource = self
             .files
             .get_mut(&id)
-            .ok_or_else(|| runtime_error("USE_AFTER_RELEASE", "file handle is invalid", span))?;
+            .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::USE_AFTER_RELEASE, "file handle is invalid", span))?;
         if resource.family == Some(true) {
             return Ok(Value::Error {
                 code: 1,
@@ -171,15 +171,13 @@ impl Executor<'_, '_> {
         let count = if let Some(argument) = arguments.first() {
             let (count, _) = integer(value(values, *argument, span)?, span)?;
             if count < 0 {
-                return Err(runtime_error(
-                    "ALLOCATION_SIZE_INVALID",
+                return Err(runtime_error(crate::diagnostic::DiagId::ALLOCATION_SIZE_INVALID,
                     "numeric NEW length cannot be negative",
                     span,
                 ));
             }
             usize::try_from(count).map_err(|_| {
-                runtime_error(
-                    "ALLOCATION_SIZE_OVERFLOW",
+                runtime_error(crate::diagnostic::DiagId::ALLOCATION_SIZE_OVERFLOW,
                     "allocation length does not fit the host",
                     span,
                 )
@@ -194,15 +192,13 @@ impl Executor<'_, '_> {
             .ok()
             .and_then(|count| count.checked_mul(element_size))
             .ok_or_else(|| {
-                runtime_error(
-                    "ALLOCATION_SIZE_OVERFLOW",
+                runtime_error(crate::diagnostic::DiagId::ALLOCATION_SIZE_OVERFLOW,
                     "allocation byte size overflowed",
                     span,
                 )
             })?;
         if bytes > isize::MAX as u64 {
-            return Err(runtime_error(
-                "ALLOCATION_TOO_LARGE",
+            return Err(runtime_error(crate::diagnostic::DiagId::ALLOCATION_TOO_LARGE,
                 "allocation exceeds the host limit",
                 span,
             ));
@@ -216,8 +212,7 @@ impl Executor<'_, '_> {
 
     pub(crate) fn index_value(&self, object: &Value, index: usize, span: Span) -> Result<Value, Diagnostic> {
         match object {
-            Value::Null => Err(runtime_error(
-                "NULL_POINTER_ACCESS",
+            Value::Null => Err(runtime_error(crate::diagnostic::DiagId::NULL_POINTER_ACCESS,
                 "cannot index a NULL pointer",
                 span,
             )),
@@ -257,8 +252,7 @@ impl Executor<'_, '_> {
             return Ok(());
         };
         match target {
-            Value::Null => Err(runtime_error(
-                "NULL_POINTER_ACCESS",
+            Value::Null => Err(runtime_error(crate::diagnostic::DiagId::NULL_POINTER_ACCESS,
                 "cannot index a NULL pointer",
                 span,
             )),

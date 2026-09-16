@@ -33,7 +33,7 @@ pub(super) fn net_address(value: &Value, span: Span) -> Result<crate::net::Addre
         return Err(type_mismatch("value: STRING", "missing or non-string field", "HOST.Net.Address", span));
     };
     crate::net::Address::parse(address)
-        .map_err(|_| runtime_error("INVALID_INPUT", "invalid Net.Address value", span))
+        .map_err(|_| runtime_error(crate::diagnostic::DiagId::INVALID_INPUT, "invalid Net.Address value", span))
 }
 
 pub(super) fn net_endpoint(value: &Value, span: Span) -> Result<crate::net::Endpoint, Diagnostic> {
@@ -60,9 +60,9 @@ pub(super) fn net_endpoint(value: &Value, span: Span) -> Result<crate::net::Endp
         return Err(type_mismatch("port: INTEGER", "missing or non-integer field", "HOST.Net.Endpoint", span));
     };
     let port = u16::try_from(*port)
-        .map_err(|_| runtime_error("INVALID_INPUT", "port is outside 0..65535", span))?;
+        .map_err(|_| runtime_error(crate::diagnostic::DiagId::INVALID_INPUT, "port is outside 0..65535", span))?;
     let address = crate::net::Address::parse(address)
-        .map_err(|_| runtime_error("INVALID_INPUT", "invalid Net.Address value", span))?;
+        .map_err(|_| runtime_error(crate::diagnostic::DiagId::INVALID_INPUT, "invalid Net.Address value", span))?;
     Ok(crate::net::Endpoint::new(address, port))
 }
 

@@ -63,8 +63,7 @@ pub(super) fn temporal_call(
             require_arity(name, arguments, 1, span)?;
             let (timestamp, _) = integer(&arguments[0], span)?;
             let timestamp = i64::try_from(timestamp).map_err(|_| {
-                runtime_error(
-                    "FORMAT_OUT_OF_RANGE",
+                runtime_error(crate::diagnostic::DiagId::FORMAT_OUT_OF_RANGE,
                     "TIMESTAMP is outside 0001-01-01..9999-12-31",
                     span,
                 )

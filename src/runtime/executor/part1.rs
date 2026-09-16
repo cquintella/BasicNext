@@ -59,8 +59,7 @@ impl Executor<'_, '_> {
                         &debug_variables(&symbols, &values),
                     ) == DebugDecision::Terminate
                 {
-                    return Err(runtime_error(
-                        "DEBUG_TERMINATED",
+                    return Err(runtime_error(crate::diagnostic::DiagId::DEBUG_TERMINATED,
                         "execution terminated by debugger",
                         instruction.span(),
                     ));
@@ -73,8 +72,7 @@ impl Executor<'_, '_> {
                 } = instruction
                 {
                     let predecessor = previous_block.ok_or_else(|| {
-                        runtime_error(
-                            "INVALID_IR",
+                        runtime_error(crate::diagnostic::DiagId::INVALID_IR,
                             "Phi cannot execute in the function entry block",
                             *span,
                         )
@@ -84,8 +82,7 @@ impl Executor<'_, '_> {
                         .find(|(candidate, _)| *candidate == predecessor)
                         .map(|(_, source)| *source)
                         .ok_or_else(|| {
-                            runtime_error(
-                                "INVALID_IR",
+                            runtime_error(crate::diagnostic::DiagId::INVALID_IR,
                                 "Phi has no incoming value for the predecessor block",
                                 *span,
                             )
@@ -136,8 +133,7 @@ impl Executor<'_, '_> {
         match self.class_init.get(class).copied() {
             Some(ClassInit::Ready) => return Ok(()),
             Some(ClassInit::Running) => {
-                return Err(runtime_error(
-                    "STATIC_INITIALIZATION_CYCLE",
+                return Err(runtime_error(crate::diagnostic::DiagId::STATIC_INITIALIZATION_CYCLE,
                     format!("STATIC initialization of {class} reentered"),
                     span,
                 ));

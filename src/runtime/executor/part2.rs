@@ -27,8 +27,7 @@ impl Executor<'_, '_> {
                 for dimension in dynamic_dimensions {
                     let value = integer(
                         values.get(dimension).ok_or_else(|| {
-                            runtime_error(
-                                "UNINITIALIZED_VALUE",
+                            runtime_error(crate::diagnostic::DiagId::UNINITIALIZED_VALUE,
                                 "vector dimension is unavailable",
                                 *span,
                             )
@@ -39,9 +38,9 @@ impl Executor<'_, '_> {
                     let dimension = usize::try_from(value).map_err(|_| {
                         runtime_error(
                             if value < 0 {
-                                "INVALID_VECTOR_DIMENSION"
+                                crate::diagnostic::DiagId::INVALID_VECTOR_DIMENSION
                             } else {
-                                "NUMERIC_OVERFLOW"
+                                crate::diagnostic::DiagId::NUMERIC_OVERFLOW
                             },
                             "vector dimension must be a non-negative size",
                             *span,
@@ -56,8 +55,7 @@ impl Executor<'_, '_> {
                 );
             }
             Instruction::Phi { span, .. } => {
-                return Err(runtime_error(
-                    "INVALID_IR",
+                return Err(runtime_error(crate::diagnostic::DiagId::INVALID_IR,
                     "Phi must be resolved by the executor control-flow loop",
                     *span,
                 ));
@@ -79,9 +77,9 @@ impl Executor<'_, '_> {
                         .is_some_and(|frame| frame.release_values.contains(destination));
                     return Err(runtime_error(
                         if releasing_again {
-                            "DOUBLE_RELEASE"
+                            crate::diagnostic::DiagId::DOUBLE_RELEASE
                         } else {
-                            "USE_AFTER_RELEASE"
+                            crate::diagnostic::DiagId::USE_AFTER_RELEASE
                         },
                         if releasing_again {
                             "binding was already released"
@@ -92,7 +90,7 @@ impl Executor<'_, '_> {
                     ));
                 }
                 let loaded = symbols.get(symbol).cloned().ok_or_else(|| {
-                    runtime_error("UNINITIALIZED_VALUE", "binding has no value", *span)
+                    runtime_error(crate::diagnostic::DiagId::UNINITIALIZED_VALUE, "binding has no value", *span)
                 })?;
                 set(values, *destination, loaded);
                 self.ownership_frames
@@ -112,8 +110,7 @@ impl Executor<'_, '_> {
                     (symbols.get(symbol), &stored)
                     && previous.len() != next.len()
                 {
-                    return Err(runtime_error(
-                        "VECTOR_LENGTH_MISMATCH",
+                    return Err(runtime_error(crate::diagnostic::DiagId::VECTOR_LENGTH_MISMATCH,
                         "assigned vector length differs from the declared length",
                         *span,
                     ));
@@ -264,15 +261,15 @@ impl Executor<'_, '_> {
             } => {
                 if let Some(prompt) = prompt {
                     write!(self.output, "{}", render(value(values, *prompt, *span)?)).map_err(|error| {
-                        runtime_error("OUTPUT_ERROR", format!("cannot write output: {error}"), *span)
+                        runtime_error(crate::diagnostic::DiagId::OUTPUT_ERROR, format!("cannot write output: {error}"), *span)
                     })?;
                     self.output.flush().map_err(|error| {
-                        runtime_error("OUTPUT_ERROR", format!("cannot flush output: {error}"), *span)
+                        runtime_error(crate::diagnostic::DiagId::OUTPUT_ERROR, format!("cannot flush output: {error}"), *span)
                     })?;
                 }
                 let mut line = String::new();
                 let count = self.input.read_line(&mut line).map_err(|error| {
-                    runtime_error("INPUT_ERROR", format!("cannot read input: {error}"), *span)
+                    runtime_error(crate::diagnostic::DiagId::INPUT_ERROR, format!("cannot read input: {error}"), *span)
                 })?;
                 let result = if count == 0 {
                     Value::EndOfFile
@@ -339,7 +336,7 @@ impl Executor<'_, '_> {
                     .collect::<Result<Vec<_>, _>>()?;
                 let stored = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
                 let target_snapshot = symbols.get(symbol).cloned().ok_or_else(|| {
-                    runtime_error("UNINITIALIZED_VALUE", "binding has no value", *span)
+                    runtime_error(crate::diagnostic::DiagId::UNINITIALIZED_VALUE, "binding has no value", *span)
                 })?;
                 let previous = if matches!(target_snapshot, Value::Null) {
                     Value::Null
@@ -360,7 +357,7 @@ impl Executor<'_, '_> {
                     self.retain_owned_value(&stored, *span)?;
                 }
                 let target = symbols.get_mut(symbol).ok_or_else(|| {
-                    runtime_error("UNINITIALIZED_VALUE", "binding has no value", *span)
+                    runtime_error(crate::diagnostic::DiagId::UNINITIALIZED_VALUE, "binding has no value", *span)
                 })?;
                 self.set_index(target, &indices, stored, *span)?;
                 self.release_owned_value(previous, *span)?;
@@ -403,7 +400,7 @@ impl Executor<'_, '_> {
                     .collect::<Result<Vec<_>, _>>()?;
                 let source = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
                 let target = symbols.get_mut(symbol).ok_or_else(|| {
-                    runtime_error("UNINITIALIZED_VALUE", "binding has no value", *span)
+                    runtime_error(crate::diagnostic::DiagId::UNINITIALIZED_VALUE, "binding has no value", *span)
                 })?;
                 self.set_field_index_path(target, path, &indices, source, *span)?;
             }
@@ -420,8 +417,7 @@ impl Executor<'_, '_> {
                         integer_from_count(self.memory.len(*handle, *span)?, *span)?
                     }
                     Value::Null => {
-                        return Err(runtime_error(
-                            "NULL_POINTER_ACCESS",
+                        return Err(runtime_error(crate::diagnostic::DiagId::NULL_POINTER_ACCESS,
                             "cannot read the length of a NULL pointer",
                             *span,
                         ));
@@ -450,8 +446,7 @@ impl Executor<'_, '_> {
                 for (index, printed) in printed.iter().enumerate() {
                     if index > 0 {
                         write!(self.output, " ").map_err(|error| {
-                            runtime_error(
-                                "OUTPUT_ERROR",
+                            runtime_error(crate::diagnostic::DiagId::OUTPUT_ERROR,
                                 format!("cannot write output: {error}"),
                                 *span,
                             )
@@ -459,8 +454,7 @@ impl Executor<'_, '_> {
                     }
                     write!(self.output, "{}", render(value(values, *printed, *span)?)).map_err(
                         |error| {
-                            runtime_error(
-                                "OUTPUT_ERROR",
+                            runtime_error(crate::diagnostic::DiagId::OUTPUT_ERROR,
                                 format!("cannot write output: {error}"),
                                 *span,
                             )
@@ -468,8 +462,7 @@ impl Executor<'_, '_> {
                     )?;
                 }
                 writeln!(self.output).map_err(|error| {
-                    runtime_error(
-                        "OUTPUT_ERROR",
+                    runtime_error(crate::diagnostic::DiagId::OUTPUT_ERROR,
                         format!("cannot write output: {error}"),
                         *span,
                     )
@@ -478,8 +471,7 @@ impl Executor<'_, '_> {
             Instruction::ClearScreen { console, span } => {
                 require_console(value(values, *console, *span)?, *span)?;
                 write!(self.output, "\x1b[2J\x1b[H").map_err(|error| {
-                    runtime_error(
-                        "OUTPUT_ERROR",
+                    runtime_error(crate::diagnostic::DiagId::OUTPUT_ERROR,
                         format!("cannot write output: {error}"),
                         *span,
                     )
@@ -488,8 +480,7 @@ impl Executor<'_, '_> {
             Instruction::Beep { console, span } => {
                 require_console(value(values, *console, *span)?, *span)?;
                 write!(self.output, "\x07").map_err(|error| {
-                    runtime_error(
-                        "OUTPUT_ERROR",
+                    runtime_error(crate::diagnostic::DiagId::OUTPUT_ERROR,
                         format!("cannot write output: {error}"),
                         *span,
                     )
@@ -666,7 +657,7 @@ impl Executor<'_, '_> {
             } => {
                 let stored = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
                 let target = symbols.get_mut(symbol).ok_or_else(|| {
-                    runtime_error("UNINITIALIZED_VALUE", "binding has no value", *span)
+                    runtime_error(crate::diagnostic::DiagId::UNINITIALIZED_VALUE, "binding has no value", *span)
                 })?;
                 self.set_field_path(target, path, stored, *span)?;
             }
@@ -680,8 +671,7 @@ impl Executor<'_, '_> {
             } => {
                 let loaded = self.statics.get(&(class.clone(), field.clone())).cloned();
                 let loaded = loaded.ok_or_else(|| {
-                    runtime_error(
-                        "UNINITIALIZED_VALUE",
+                    runtime_error(crate::diagnostic::DiagId::UNINITIALIZED_VALUE,
                         format!("STATIC {class}.{field} has no value"),
                         *span,
                     )
@@ -717,8 +707,7 @@ impl Executor<'_, '_> {
                 let source = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
                 let key = (class.clone(), field.clone());
                 let mut target = self.statics.get(&key).cloned().ok_or_else(|| {
-                    runtime_error(
-                        "UNINITIALIZED_VALUE",
+                    runtime_error(crate::diagnostic::DiagId::UNINITIALIZED_VALUE,
                         format!("STATIC {class}.{field} has no value"),
                         *span,
                     )

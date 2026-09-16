@@ -12,381 +12,223 @@ use std::sync::OnceLock;
 
 use bn_source::{Position, Revision, SourceFile, SourceId, Span};
 
+/// Stable diagnostic identity: a validated handle into the single
+/// [`REGISTRY`] table. Every identity is a `const` on this type
+/// (`DiagId::TYPE_MISMATCH`); there is no way to construct an identity whose
+/// code is not a registry row.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum DiagId {
-    Lexical,
-    Parse,
-    TypeMismatch,
-    NumericOverflow,
-    InvalidIr,
-    IrLowering,
-    ModuleNotFound,
-    Bnc,
-    BncEngine,
-    DoubleRelease,
-    FunctionNotFound,
-    UseAfterRelease,
-    TargetUnsupportedEntrypoint,
-    TargetUnsupportedHost,
-    TargetUnsupportedOp,
-    TargetUnsupportedType,
-    TargetUnsupportedLlvm,
-    UnusedBinding,
-    UnusedImport,
-    UnreachableCode,
-    /// Runtime and toolchain codes retained as stable legacy identifiers while
-    /// their richer argument schemas are migrated incrementally.
-    Runtime(&'static str),
+pub struct DiagId(u16);
+
+/// One registry row: machine code, Fluent message id, default severity and the
+/// typed argument contract.
+#[derive(Clone, Copy, Debug)]
+pub struct DiagDesc {
+    pub code: &'static str,
+    pub fluent_id: &'static str,
+    pub severity: Severity,
+    pub schema: &'static [ArgumentSpec],
+}
+
+mod schema {
+    use super::{ArgumentKind, ArgumentSpec};
+
+    const fn text(name: &'static str) -> ArgumentSpec {
+        ArgumentSpec {
+            name,
+            kind: ArgumentKind::Text,
+        }
+    }
+
+    pub(super) const LEGACY_MESSAGE: &[ArgumentSpec] = &[text("message")];
+    pub(super) const NAME: &[ArgumentSpec] = &[text("name")];
+    pub(super) const LEXICAL: &[ArgumentSpec] = &[text("found"), text("expected")];
+    pub(super) const PARSE: &[ArgumentSpec] = &[text("expected"), text("context")];
+    pub(super) const NAME_CONTEXT: &[ArgumentSpec] = &[text("name"), text("context")];
+    pub(super) const OPERATION: &[ArgumentSpec] = &[text("operation")];
+    pub(super) const INDEX_OUT_OF_BOUNDS: &[ArgumentSpec] =
+        &[text("index"), text("bound"), text("context")];
+    pub(super) const TYPE_MISMATCH: &[ArgumentSpec] =
+        &[text("expected"), text("actual"), text("context")];
+    pub(super) const MODULE: &[ArgumentSpec] = &[text("module")];
+    pub(super) const CONTEXT: &[ArgumentSpec] = &[text("context")];
+    pub(super) const TARGET_SUPPORT: &[ArgumentSpec] = &[text("target"), text("detail")];
+    pub(super) const DETAIL: &[ArgumentSpec] = &[text("detail")];
+    pub(super) const PATH: &[ArgumentSpec] = &[text("path")];
+}
+
+/// Declares the registry once: the `const DiagId::NAME` handles and the
+/// `REGISTRY` rows come from the same list, so an index can never drift.
+macro_rules! diagnostic_registry {
+    ($( $name:ident { code: $code:literal, fluent: $fluent:literal, severity: $severity:ident, schema: $schema:ident } ),+ $(,)?) => {
+        #[allow(non_camel_case_types, clippy::upper_case_acronyms)]
+        #[repr(u16)]
+        enum RegistryKey { $( $name ),+ }
+
+        impl DiagId {
+            $( pub const $name: DiagId = DiagId(RegistryKey::$name as u16); )+
+        }
+
+        static REGISTRY: &[DiagDesc] = &[
+            $( DiagDesc {
+                code: $code,
+                fluent_id: $fluent,
+                severity: Severity::$severity,
+                schema: schema::$schema,
+            } ),+
+        ];
+
+        const _: () = assert!(REGISTRY.len() <= u16::MAX as usize, "DiagId index is u16");
+    };
+}
+
+diagnostic_registry! {
+    LEXICAL { code: "E0001", fluent: "lexical-error", severity: Error, schema: LEXICAL },
+    PARSE { code: "E0100", fluent: "parse-error", severity: Error, schema: PARSE },
+    TYPE_MISMATCH { code: "TYPE_MISMATCH", fluent: "type-mismatch", severity: Error, schema: TYPE_MISMATCH },
+    NUMERIC_OVERFLOW { code: "NUMERIC_OVERFLOW", fluent: "numeric-overflow", severity: Error, schema: OPERATION },
+    INVALID_IR { code: "INVALID_IR", fluent: "invalid-ir", severity: Error, schema: DETAIL },
+    IR_LOWERING { code: "IR_LOWERING", fluent: "ir-lowering", severity: Error, schema: DETAIL },
+    MODULE_NOT_FOUND { code: "MODULE_NOT_FOUND", fluent: "module-not-found", severity: Error, schema: PATH },
+    BNC { code: "BNC", fluent: "bnc", severity: Error, schema: DETAIL },
+    BNC_ENGINE { code: "BNC_ENGINE", fluent: "bnc-engine", severity: Error, schema: DETAIL },
+    DOUBLE_RELEASE { code: "DOUBLE_RELEASE", fluent: "double-release", severity: Error, schema: DETAIL },
+    FUNCTION_NOT_FOUND { code: "FUNCTION_NOT_FOUND", fluent: "function-not-found", severity: Error, schema: DETAIL },
+    USE_AFTER_RELEASE { code: "USE_AFTER_RELEASE", fluent: "use-after-release", severity: Error, schema: DETAIL },
+    TARGET_UNSUPPORTED_ENTRYPOINT { code: "TARGET_UNSUPPORTED_ENTRYPOINT", fluent: "target-unsupported-entrypoint", severity: Error, schema: TARGET_SUPPORT },
+    TARGET_UNSUPPORTED_HOST { code: "TARGET_UNSUPPORTED_HOST", fluent: "target-unsupported-host", severity: Error, schema: TARGET_SUPPORT },
+    TARGET_UNSUPPORTED_OP { code: "TARGET_UNSUPPORTED_OP", fluent: "target-unsupported-op", severity: Error, schema: TARGET_SUPPORT },
+    TARGET_UNSUPPORTED_TYPE { code: "TARGET_UNSUPPORTED_TYPE", fluent: "target-unsupported-type", severity: Error, schema: TARGET_SUPPORT },
+    TARGET_UNSUPPORTED_LLVM { code: "TARGET_UNSUPPORTED_LLVM", fluent: "target-unsupported-llvm", severity: Error, schema: TARGET_SUPPORT },
+    UNUSED_BINDING { code: "UNUSED_BINDING", fluent: "unused-binding", severity: Warning, schema: NAME },
+    UNUSED_IMPORT { code: "UNUSED_IMPORT", fluent: "unused-import", severity: Warning, schema: MODULE },
+    UNREACHABLE_CODE { code: "UNREACHABLE_CODE", fluent: "unreachable-code", severity: Warning, schema: CONTEXT },
+    ALLOCATION_SIZE_INVALID { code: "ALLOCATION_SIZE_INVALID", fluent: "ALLOCATION_SIZE_INVALID", severity: Error, schema: DETAIL },
+    ALLOCATION_SIZE_OVERFLOW { code: "ALLOCATION_SIZE_OVERFLOW", fluent: "ALLOCATION_SIZE_OVERFLOW", severity: Error, schema: DETAIL },
+    ALLOCATION_TOO_LARGE { code: "ALLOCATION_TOO_LARGE", fluent: "ALLOCATION_TOO_LARGE", severity: Error, schema: DETAIL },
+    ASYNC_RETURN_TYPE { code: "ASYNC_RETURN_TYPE", fluent: "ASYNC_RETURN_TYPE", severity: Error, schema: LEGACY_MESSAGE },
+    ASYNC_TARGET { code: "ASYNC_TARGET", fluent: "ASYNC_TARGET", severity: Error, schema: LEGACY_MESSAGE },
+    AWAIT_TIMEOUT { code: "AWAIT_TIMEOUT", fluent: "AWAIT_TIMEOUT", severity: Error, schema: LEGACY_MESSAGE },
+    BUILD_EMISSION_FAILED { code: "BUILD_EMISSION_FAILED", fluent: "BUILD_EMISSION_FAILED", severity: Error, schema: LEGACY_MESSAGE },
+    BUILD_TOOLCHAIN_UNAVAILABLE { code: "BUILD_TOOLCHAIN_UNAVAILABLE", fluent: "BUILD_TOOLCHAIN_UNAVAILABLE", severity: Error, schema: LEGACY_MESSAGE },
+    CONFIG_INVALID { code: "CONFIG_INVALID", fluent: "CONFIG_INVALID", severity: Error, schema: LEGACY_MESSAGE },
+    DEBUG_TERMINATED { code: "DEBUG_TERMINATED", fluent: "DEBUG_TERMINATED", severity: Error, schema: LEGACY_MESSAGE },
+    DISPATCH { code: "DISPATCH", fluent: "DISPATCH", severity: Error, schema: DETAIL },
+    DIVISION_BY_ZERO { code: "DIVISION_BY_ZERO", fluent: "DIVISION_BY_ZERO", severity: Error, schema: OPERATION },
+    DOUBLE_DELETE { code: "DOUBLE_DELETE", fluent: "DOUBLE_DELETE", severity: Error, schema: LEGACY_MESSAGE },
+    DUPLICATE_INTERFACE { code: "DUPLICATE_INTERFACE", fluent: "DUPLICATE_INTERFACE", severity: Error, schema: LEGACY_MESSAGE },
+    DUPLICATE_NAME { code: "DUPLICATE_NAME", fluent: "DUPLICATE_NAME", severity: Error, schema: NAME },
+    EVAL_START_PROMOTED { code: "EVAL_START_PROMOTED", fluent: "EVAL_START_PROMOTED", severity: Warning, schema: LEGACY_MESSAGE },
+    EXECUTION_POLICY_DENIED { code: "EXECUTION_POLICY_DENIED", fluent: "EXECUTION_POLICY_DENIED", severity: Error, schema: DETAIL },
+    FORMAT_OUT_OF_RANGE { code: "FORMAT_OUT_OF_RANGE", fluent: "FORMAT_OUT_OF_RANGE", severity: Error, schema: LEGACY_MESSAGE },
+    HANDLER_NOT_FOUND { code: "HANDLER_NOT_FOUND", fluent: "HANDLER_NOT_FOUND", severity: Error, schema: LEGACY_MESSAGE },
+    HEADER_NOT_FOUND { code: "HEADER_NOT_FOUND", fluent: "HEADER_NOT_FOUND", severity: Error, schema: LEGACY_MESSAGE },
+    HOST_ARGS_SCOPE { code: "HOST_ARGS_SCOPE", fluent: "HOST_ARGS_SCOPE", severity: Error, schema: LEGACY_MESSAGE },
+    HOST_CAPABILITY_UNAVAILABLE { code: "HOST_CAPABILITY_UNAVAILABLE", fluent: "HOST_CAPABILITY_UNAVAILABLE", severity: Error, schema: DETAIL },
+    HOST_IMPORT_SCOPE { code: "HOST_IMPORT_SCOPE", fluent: "HOST_IMPORT_SCOPE", severity: Error, schema: LEGACY_MESSAGE },
+    IMPORTED_START { code: "IMPORTED_START", fluent: "IMPORTED_START", severity: Error, schema: LEGACY_MESSAGE },
+    IMPORT_CYCLE { code: "IMPORT_CYCLE", fluent: "IMPORT_CYCLE", severity: Error, schema: DETAIL },
+    INDEX_OUT_OF_BOUNDS { code: "INDEX_OUT_OF_BOUNDS", fluent: "INDEX_OUT_OF_BOUNDS", severity: Error, schema: INDEX_OUT_OF_BOUNDS },
+    INHERITANCE_CYCLE { code: "INHERITANCE_CYCLE", fluent: "INHERITANCE_CYCLE", severity: Error, schema: LEGACY_MESSAGE },
+    INPUT_ERROR { code: "INPUT_ERROR", fluent: "INPUT_ERROR", severity: Error, schema: DETAIL },
+    INPUT_PROMPT_TYPE { code: "INPUT_PROMPT_TYPE", fluent: "INPUT_PROMPT_TYPE", severity: Error, schema: LEGACY_MESSAGE },
+    INVALID_ALTERNATIVE_USE { code: "INVALID_ALTERNATIVE_USE", fluent: "INVALID_ALTERNATIVE_USE", severity: Error, schema: LEGACY_MESSAGE },
+    INVALID_CONSTRUCTOR { code: "INVALID_CONSTRUCTOR", fluent: "INVALID_CONSTRUCTOR", severity: Error, schema: LEGACY_MESSAGE },
+    INVALID_DATE { code: "INVALID_DATE", fluent: "INVALID_DATE", severity: Error, schema: DETAIL },
+    INVALID_DESTRUCTOR { code: "INVALID_DESTRUCTOR", fluent: "INVALID_DESTRUCTOR", severity: Error, schema: LEGACY_MESSAGE },
+    INVALID_EGRESS_POLICY { code: "INVALID_EGRESS_POLICY", fluent: "INVALID_EGRESS_POLICY", severity: Error, schema: DETAIL },
+    INVALID_EXIT_CODE { code: "INVALID_EXIT_CODE", fluent: "INVALID_EXIT_CODE", severity: Error, schema: DETAIL },
+    INVALID_EXPONENT { code: "INVALID_EXPONENT", fluent: "INVALID_EXPONENT", severity: Error, schema: DETAIL },
+    INVALID_FILE_MODE { code: "INVALID_FILE_MODE", fluent: "INVALID_FILE_MODE", severity: Error, schema: LEGACY_MESSAGE },
+    INVALID_FOR_STEP { code: "INVALID_FOR_STEP", fluent: "INVALID_FOR_STEP", severity: Error, schema: LEGACY_MESSAGE },
+    INVALID_HOST_ARGS_USE { code: "INVALID_HOST_ARGS_USE", fluent: "INVALID_HOST_ARGS_USE", severity: Error, schema: LEGACY_MESSAGE },
+    INVALID_INPUT { code: "INVALID_INPUT", fluent: "INVALID_INPUT", severity: Error, schema: DETAIL },
+    INVALID_JSON { code: "INVALID_JSON", fluent: "INVALID_JSON", severity: Error, schema: DETAIL },
+    INVALID_LOOP_CONTROL { code: "INVALID_LOOP_CONTROL", fluent: "INVALID_LOOP_CONTROL", severity: Error, schema: LEGACY_MESSAGE },
+    INVALID_NUMERIC_CONVERSION { code: "INVALID_NUMERIC_CONVERSION", fluent: "INVALID_NUMERIC_CONVERSION", severity: Error, schema: LEGACY_MESSAGE },
+    INVALID_OPTIONS { code: "INVALID_OPTIONS", fluent: "INVALID_OPTIONS", severity: Error, schema: LEGACY_MESSAGE },
+    INVALID_OVERRIDE { code: "INVALID_OVERRIDE", fluent: "INVALID_OVERRIDE", severity: Error, schema: LEGACY_MESSAGE },
+    INVALID_POINTER_TYPE { code: "INVALID_POINTER_TYPE", fluent: "INVALID_POINTER_TYPE", severity: Error, schema: LEGACY_MESSAGE },
+    INVALID_RELEASE_TARGET { code: "INVALID_RELEASE_TARGET", fluent: "INVALID_RELEASE_TARGET", severity: Error, schema: LEGACY_MESSAGE },
+    INVALID_SHIFT_COUNT { code: "INVALID_SHIFT_COUNT", fluent: "INVALID_SHIFT_COUNT", severity: Error, schema: DETAIL },
+    INVALID_START { code: "INVALID_START", fluent: "INVALID_START", severity: Error, schema: DETAIL },
+    INVALID_SUPER { code: "INVALID_SUPER", fluent: "INVALID_SUPER", severity: Error, schema: LEGACY_MESSAGE },
+    INVALID_TIME { code: "INVALID_TIME", fluent: "INVALID_TIME", severity: Error, schema: DETAIL },
+    INVALID_TIMEZONE { code: "INVALID_TIMEZONE", fluent: "INVALID_TIMEZONE", severity: Error, schema: DETAIL },
+    INVALID_VALUE { code: "INVALID_VALUE", fluent: "INVALID_VALUE", severity: Error, schema: DETAIL },
+    INVALID_VECTOR_DIMENSION { code: "INVALID_VECTOR_DIMENSION", fluent: "INVALID_VECTOR_DIMENSION", severity: Error, schema: LEGACY_MESSAGE },
+    INVALID_VECTOR_TYPE { code: "INVALID_VECTOR_TYPE", fluent: "INVALID_VECTOR_TYPE", severity: Error, schema: LEGACY_MESSAGE },
+    IO { code: "IO", fluent: "IO", severity: Error, schema: LEGACY_MESSAGE },
+    LIMIT { code: "LIMIT", fluent: "LIMIT", severity: Error, schema: LEGACY_MESSAGE },
+    MISSING_RETURN { code: "MISSING_RETURN", fluent: "MISSING_RETURN", severity: Error, schema: LEGACY_MESSAGE },
+    MODULE_LIMIT { code: "MODULE_LIMIT", fluent: "MODULE_LIMIT", severity: Error, schema: DETAIL },
+    MODULE_NOT_RESOLVED { code: "MODULE_NOT_RESOLVED", fluent: "MODULE_NOT_RESOLVED", severity: Error, schema: LEGACY_MESSAGE },
+    NAME_NOT_FOUND { code: "NAME_NOT_FOUND", fluent: "NAME_NOT_FOUND", severity: Error, schema: NAME_CONTEXT },
+    NOT_CALLABLE { code: "NOT_CALLABLE", fluent: "NOT_CALLABLE", severity: Error, schema: LEGACY_MESSAGE },
+    NOT_FOUND { code: "NOT_FOUND", fluent: "NOT_FOUND", severity: Error, schema: LEGACY_MESSAGE },
+    NULL_POINTER_ACCESS { code: "NULL_POINTER_ACCESS", fluent: "NULL_POINTER_ACCESS", severity: Error, schema: LEGACY_MESSAGE },
+    OUTPUT_ERROR { code: "OUTPUT_ERROR", fluent: "OUTPUT_ERROR", severity: Error, schema: LEGACY_MESSAGE },
+    PARSE_ERROR { code: "PARSE_ERROR", fluent: "PARSE_ERROR", severity: Error, schema: LEGACY_MESSAGE },
+    POINTER_LENGTH_MISMATCH { code: "POINTER_LENGTH_MISMATCH", fluent: "POINTER_LENGTH_MISMATCH", severity: Error, schema: LEGACY_MESSAGE },
+    PRIVATE_ACCESS { code: "PRIVATE_ACCESS", fluent: "PRIVATE_ACCESS", severity: Error, schema: LEGACY_MESSAGE },
+    PROCESS_LOG_WRITE { code: "PROCESS_LOG_WRITE", fluent: "PROCESS_LOG_WRITE", severity: Error, schema: LEGACY_MESSAGE },
+    REQUEST_INVALID { code: "REQUEST_INVALID", fluent: "REQUEST_INVALID", severity: Error, schema: LEGACY_MESSAGE },
+    RESOURCE_LIMIT { code: "RESOURCE_LIMIT", fluent: "RESOURCE_LIMIT", severity: Error, schema: LEGACY_MESSAGE },
+    RETAIN_OVERFLOW { code: "RETAIN_OVERFLOW", fluent: "RETAIN_OVERFLOW", severity: Error, schema: LEGACY_MESSAGE },
+    SCRAPER_INPUT { code: "SCRAPER_INPUT", fluent: "SCRAPER_INPUT", severity: Error, schema: LEGACY_MESSAGE },
+    SERVER_STATE { code: "SERVER_STATE", fluent: "SERVER_STATE", severity: Error, schema: LEGACY_MESSAGE },
+    SESSION_CONFIG { code: "SESSION_CONFIG", fluent: "SESSION_CONFIG", severity: Error, schema: LEGACY_MESSAGE },
+    STALE_HANDLE { code: "STALE_HANDLE", fluent: "STALE_HANDLE", severity: Error, schema: LEGACY_MESSAGE },
+    START_NOT_FOUND { code: "START_NOT_FOUND", fluent: "START_NOT_FOUND", severity: Error, schema: LEGACY_MESSAGE },
+    STATIC_INITIALIZATION_CYCLE { code: "STATIC_INITIALIZATION_CYCLE", fluent: "STATIC_INITIALIZATION_CYCLE", severity: Error, schema: LEGACY_MESSAGE },
+    TLS_PROVIDER_UNAVAILABLE { code: "TLS_PROVIDER_UNAVAILABLE", fluent: "TLS_PROVIDER_UNAVAILABLE", severity: Error, schema: LEGACY_MESSAGE },
+    TYPE_NAME_AS_VALUE { code: "TYPE_NAME_AS_VALUE", fluent: "TYPE_NAME_AS_VALUE", severity: Error, schema: LEGACY_MESSAGE },
+    UNINITIALIZED_VALUE { code: "UNINITIALIZED_VALUE", fluent: "UNINITIALIZED_VALUE", severity: Error, schema: LEGACY_MESSAGE },
+    UNKNOWN_TYPE { code: "UNKNOWN_TYPE", fluent: "UNKNOWN_TYPE", severity: Error, schema: LEGACY_MESSAGE },
+    UNRESOLVED_TYPE { code: "UNRESOLVED_TYPE", fluent: "UNRESOLVED_TYPE", severity: Error, schema: LEGACY_MESSAGE },
+    USE_AFTER_DELETE { code: "USE_AFTER_DELETE", fluent: "USE_AFTER_DELETE", severity: Error, schema: LEGACY_MESSAGE },
+    VECTOR_LENGTH_MISMATCH { code: "VECTOR_LENGTH_MISMATCH", fluent: "VECTOR_LENGTH_MISMATCH", severity: Error, schema: LEGACY_MESSAGE },
+    WEB_LISTEN { code: "WEB_LISTEN", fluent: "WEB_LISTEN", severity: Error, schema: LEGACY_MESSAGE },
 }
 
 impl DiagId {
-    const LEGACY_MESSAGE_SCHEMA: &'static [ArgumentSpec] = &[ArgumentSpec {
-        name: "message",
-        kind: ArgumentKind::Text,
-    }];
-    const UNUSED_BINDING_SCHEMA: &'static [ArgumentSpec] = &[ArgumentSpec {
-        name: "name",
-        kind: ArgumentKind::Text,
-    }];
-    const LEXICAL_SCHEMA: &'static [ArgumentSpec] = &[
-        ArgumentSpec {
-            name: "found",
-            kind: ArgumentKind::Text,
-        },
-        ArgumentSpec {
-            name: "expected",
-            kind: ArgumentKind::Text,
-        },
-    ];
-    const PARSE_SCHEMA: &'static [ArgumentSpec] = &[
-        ArgumentSpec {
-            name: "expected",
-            kind: ArgumentKind::Text,
-        },
-        ArgumentSpec {
-            name: "context",
-            kind: ArgumentKind::Text,
-        },
-    ];
-    const DUPLICATE_NAME_SCHEMA: &'static [ArgumentSpec] = &[ArgumentSpec {
-        name: "name",
-        kind: ArgumentKind::Text,
-    }];
-    const NAME_NOT_FOUND_SCHEMA: &'static [ArgumentSpec] = &[
-        ArgumentSpec {
-            name: "name",
-            kind: ArgumentKind::Text,
-        },
-        ArgumentSpec {
-            name: "context",
-            kind: ArgumentKind::Text,
-        },
-    ];
-    const NUMERIC_OVERFLOW_SCHEMA: &'static [ArgumentSpec] = &[ArgumentSpec {
-        name: "operation",
-        kind: ArgumentKind::Text,
-    }];
-    const DIVISION_BY_ZERO_SCHEMA: &'static [ArgumentSpec] = &[ArgumentSpec {
-        name: "operation",
-        kind: ArgumentKind::Text,
-    }];
-    const INDEX_OUT_OF_BOUNDS_SCHEMA: &'static [ArgumentSpec] = &[
-        ArgumentSpec {
-            name: "index",
-            kind: ArgumentKind::Text,
-        },
-        ArgumentSpec {
-            name: "bound",
-            kind: ArgumentKind::Text,
-        },
-        ArgumentSpec {
-            name: "context",
-            kind: ArgumentKind::Text,
-        },
-    ];
-    const TYPE_MISMATCH_SCHEMA: &'static [ArgumentSpec] = &[
-        ArgumentSpec {
-            name: "expected",
-            kind: ArgumentKind::Text,
-        },
-        ArgumentSpec {
-            name: "actual",
-            kind: ArgumentKind::Text,
-        },
-        ArgumentSpec {
-            name: "context",
-            kind: ArgumentKind::Text,
-        },
-    ];
-    const UNUSED_IMPORT_SCHEMA: &'static [ArgumentSpec] = &[ArgumentSpec {
-        name: "module",
-        kind: ArgumentKind::Text,
-    }];
-    const UNREACHABLE_SCHEMA: &'static [ArgumentSpec] = &[ArgumentSpec {
-        name: "context",
-        kind: ArgumentKind::Text,
-    }];
-    const TARGET_SUPPORT_SCHEMA: &'static [ArgumentSpec] = &[
-        ArgumentSpec {
-            name: "target",
-            kind: ArgumentKind::Text,
-        },
-        ArgumentSpec {
-            name: "detail",
-            kind: ArgumentKind::Text,
-        },
-    ];
-    const DETAIL_SCHEMA: &'static [ArgumentSpec] = &[ArgumentSpec {
-        name: "detail",
-        kind: ArgumentKind::Text,
-    }];
-    const PATH_SCHEMA: &'static [ArgumentSpec] = &[ArgumentSpec {
-        name: "path",
-        kind: ArgumentKind::Text,
-    }];
-    const RUNTIME_CODES: &'static [&'static str] = &[
-        "ALLOCATION_SIZE_INVALID",
-        "ALLOCATION_SIZE_OVERFLOW",
-        "ALLOCATION_TOO_LARGE",
-        "ASYNC_RETURN_TYPE",
-        "ASYNC_TARGET",
-        "AWAIT_TIMEOUT",
-        "BUILD_EMISSION_FAILED",
-        "BUILD_TOOLCHAIN_UNAVAILABLE",
-        "CONFIG_INVALID",
-        "DEBUG_TERMINATED",
-        "DISPATCH",
-        "DIVISION_BY_ZERO",
-        "DUPLICATE_INTERFACE",
-        "DUPLICATE_NAME",
-        "EVAL_START_PROMOTED",
-        "DOUBLE_DELETE",
-        "EXECUTION_POLICY_DENIED",
-        "FORMAT_OUT_OF_RANGE",
-        "HANDLER_NOT_FOUND",
-        "HEADER_NOT_FOUND",
-        "HOST_CAPABILITY_UNAVAILABLE",
-        "HOST_ARGS_SCOPE",
-        "HOST_IMPORT_SCOPE",
-        "IMPORTED_START",
-        "IMPORT_CYCLE",
-        "INDEX_OUT_OF_BOUNDS",
-        "INPUT_ERROR",
-        "INPUT_PROMPT_TYPE",
-        "INHERITANCE_CYCLE",
-        "INVALID_ALTERNATIVE_USE",
-        "INVALID_CONSTRUCTOR",
-        "INVALID_DESTRUCTOR",
-        "INVALID_EGRESS_POLICY",
-        "INVALID_DATE",
-        "INVALID_EXIT_CODE",
-        "INVALID_EXPONENT",
-        "INVALID_FILE_MODE",
-        "INVALID_FOR_STEP",
-        "INVALID_HOST_ARGS_USE",
-        "INVALID_INPUT",
-        "INVALID_JSON",
-        "INVALID_LOOP_CONTROL",
-        "INVALID_NUMERIC_CONVERSION",
-        "INVALID_OPTIONS",
-        "INVALID_OVERRIDE",
-        "INVALID_POINTER_TYPE",
-        "INVALID_RELEASE_TARGET",
-        "INVALID_SHIFT_COUNT",
-        "INVALID_START",
-        "INVALID_SUPER",
-        "INVALID_TIME",
-        "INVALID_TIMEZONE",
-        "INVALID_VALUE",
-        "INVALID_VECTOR_DIMENSION",
-        "INVALID_VECTOR_TYPE",
-        "IO",
-        "LIMIT",
-        "MISSING_RETURN",
-        "MODULE_NOT_RESOLVED",
-        "MODULE_LIMIT",
-        "NAME_NOT_FOUND",
-        "NOT_FOUND",
-        "NOT_CALLABLE",
-        "NULL_POINTER_ACCESS",
-        "OUTPUT_ERROR",
-        "PARSE_ERROR",
-        "POINTER_LENGTH_MISMATCH",
-        "PRIVATE_ACCESS",
-        "PROCESS_LOG_WRITE",
-        "REQUEST_INVALID",
-        "RETAIN_OVERFLOW",
-        "RESOURCE_LIMIT",
-        "SCRAPER_INPUT",
-        "SERVER_STATE",
-        "SESSION_CONFIG",
-        "STALE_HANDLE",
-        "START_NOT_FOUND",
-        "STATIC_INITIALIZATION_CYCLE",
-        "TLS_PROVIDER_UNAVAILABLE",
-        "TYPE_NAME_AS_VALUE",
-        "UNINITIALIZED_VALUE",
-        "UNKNOWN_TYPE",
-        "UNRESOLVED_TYPE",
-        "USE_AFTER_DELETE",
-        "VECTOR_LENGTH_MISMATCH",
-        "WEB_LISTEN",
-    ];
+    #[must_use]
+    pub fn desc(self) -> &'static DiagDesc {
+        &REGISTRY[usize::from(self.0)]
+    }
 
     #[must_use]
-    pub const fn fluent_id(self) -> &'static str {
-        match self {
-            Self::Lexical => "lexical-error",
-            Self::Parse => "parse-error",
-            Self::TypeMismatch => "type-mismatch",
-            Self::NumericOverflow => "numeric-overflow",
-            Self::InvalidIr => "invalid-ir",
-            Self::IrLowering => "ir-lowering",
-            Self::ModuleNotFound => "module-not-found",
-            Self::Bnc => "bnc",
-            Self::BncEngine => "bnc-engine",
-            Self::DoubleRelease => "double-release",
-            Self::FunctionNotFound => "function-not-found",
-            Self::UseAfterRelease => "use-after-release",
-            Self::TargetUnsupportedEntrypoint => "target-unsupported-entrypoint",
-            Self::TargetUnsupportedHost => "target-unsupported-host",
-            Self::TargetUnsupportedOp => "target-unsupported-op",
-            Self::TargetUnsupportedType => "target-unsupported-type",
-            Self::TargetUnsupportedLlvm => "target-unsupported-llvm",
-            Self::UnusedBinding => "unused-binding",
-            Self::UnusedImport => "unused-import",
-            Self::UnreachableCode => "unreachable-code",
-            Self::Runtime(code) => code,
-        }
+    pub fn fluent_id(self) -> &'static str {
+        self.desc().fluent_id
     }
 
     #[must_use]
     pub fn from_fluent_id(id: &str) -> Option<Self> {
-        [
-            Self::Lexical,
-            Self::Parse,
-            Self::TypeMismatch,
-            Self::NumericOverflow,
-            Self::InvalidIr,
-            Self::IrLowering,
-            Self::ModuleNotFound,
-            Self::Bnc,
-            Self::BncEngine,
-            Self::DoubleRelease,
-            Self::FunctionNotFound,
-            Self::UseAfterRelease,
-            Self::TargetUnsupportedEntrypoint,
-            Self::TargetUnsupportedHost,
-            Self::TargetUnsupportedOp,
-            Self::TargetUnsupportedType,
-            Self::TargetUnsupportedLlvm,
-            Self::UnusedBinding,
-            Self::UnusedImport,
-            Self::UnreachableCode,
-        ]
-        .into_iter()
-        .find(|candidate| candidate.fluent_id() == id)
-        .or_else(|| Self::from_code(id))
+        Self::all()
+            .find(|candidate| candidate.fluent_id() == id)
+            .or_else(|| Self::from_code(id))
     }
 
     #[must_use]
-    pub const fn code(self) -> &'static str {
-        match self {
-            Self::Lexical => "E0001",
-            Self::Parse => "E0100",
-            Self::TypeMismatch => "TYPE_MISMATCH",
-            Self::NumericOverflow => "NUMERIC_OVERFLOW",
-            Self::InvalidIr => "INVALID_IR",
-            Self::IrLowering => "IR_LOWERING",
-            Self::ModuleNotFound => "MODULE_NOT_FOUND",
-            Self::Bnc => "BNC",
-            Self::BncEngine => "BNC_ENGINE",
-            Self::DoubleRelease => "DOUBLE_RELEASE",
-            Self::FunctionNotFound => "FUNCTION_NOT_FOUND",
-            Self::UseAfterRelease => "USE_AFTER_RELEASE",
-            Self::TargetUnsupportedEntrypoint => "TARGET_UNSUPPORTED_ENTRYPOINT",
-            Self::TargetUnsupportedHost => "TARGET_UNSUPPORTED_HOST",
-            Self::TargetUnsupportedOp => "TARGET_UNSUPPORTED_OP",
-            Self::TargetUnsupportedType => "TARGET_UNSUPPORTED_TYPE",
-            Self::TargetUnsupportedLlvm => "TARGET_UNSUPPORTED_LLVM",
-            Self::UnusedBinding => "UNUSED_BINDING",
-            Self::UnusedImport => "UNUSED_IMPORT",
-            Self::UnreachableCode => "UNREACHABLE_CODE",
-            Self::Runtime(code) => code,
-        }
+    pub fn code(self) -> &'static str {
+        self.desc().code
     }
 
     #[must_use]
     pub fn from_code(code: &str) -> Option<Self> {
-        [
-            Self::Lexical,
-            Self::Parse,
-            Self::TypeMismatch,
-            Self::NumericOverflow,
-            Self::InvalidIr,
-            Self::IrLowering,
-            Self::ModuleNotFound,
-            Self::Bnc,
-            Self::BncEngine,
-            Self::DoubleRelease,
-            Self::FunctionNotFound,
-            Self::UseAfterRelease,
-            Self::TargetUnsupportedEntrypoint,
-            Self::TargetUnsupportedHost,
-            Self::TargetUnsupportedOp,
-            Self::TargetUnsupportedType,
-            Self::TargetUnsupportedLlvm,
-            Self::UnusedBinding,
-            Self::UnusedImport,
-            Self::UnreachableCode,
-        ]
-        .into_iter()
-        .find(|id| id.code() == code)
-        .or_else(|| {
-            Self::RUNTIME_CODES
-                .iter()
-                .copied()
-                .find(|candidate| *candidate == code)
-                .map(Self::Runtime)
-        })
+        Self::all().find(|id| id.code() == code)
     }
 
-    fn all() -> impl Iterator<Item = Self> {
-        [
-            Self::Lexical,
-            Self::Parse,
-            Self::TypeMismatch,
-            Self::NumericOverflow,
-            Self::InvalidIr,
-            Self::IrLowering,
-            Self::ModuleNotFound,
-            Self::Bnc,
-            Self::BncEngine,
-            Self::DoubleRelease,
-            Self::FunctionNotFound,
-            Self::UseAfterRelease,
-            Self::TargetUnsupportedEntrypoint,
-            Self::TargetUnsupportedHost,
-            Self::TargetUnsupportedOp,
-            Self::TargetUnsupportedType,
-            Self::TargetUnsupportedLlvm,
-            Self::UnusedBinding,
-            Self::UnusedImport,
-            Self::UnreachableCode,
-        ]
-        .into_iter()
-        .chain(Self::RUNTIME_CODES.iter().copied().map(Self::Runtime))
+    /// Every registered identity, in table order.
+    pub fn all() -> impl Iterator<Item = Self> {
+        // The const assertion on `REGISTRY` guarantees `try_from` never fails.
+        (0..REGISTRY.len())
+            .filter_map(|index| u16::try_from(index).ok())
+            .map(Self)
     }
 
     #[must_use]
     pub fn severity(self) -> Severity {
-        match self {
-            Self::UnusedBinding
-            | Self::UnusedImport
-            | Self::UnreachableCode
-            | Self::Runtime("EVAL_START_PROMOTED") => Severity::Warning,
-            _ => Severity::Error,
-        }
+        self.desc().severity
     }
 
     #[must_use]
@@ -394,55 +236,10 @@ impl DiagId {
         matches!(self.severity(), Severity::Warning)
     }
 
-    /// Typed argument contract for this identity. DX03 replaces the legacy
-    /// message-only schemas as each producer is migrated.
+    /// Typed argument contract for this identity.
     #[must_use]
-    #[allow(clippy::match_same_arms, clippy::match_wildcard_for_single_variants)]
     pub fn argument_schema(self) -> &'static [ArgumentSpec] {
-        match self {
-            Self::Lexical => Self::LEXICAL_SCHEMA,
-            Self::Parse => Self::PARSE_SCHEMA,
-            Self::Runtime("DUPLICATE_NAME") => Self::DUPLICATE_NAME_SCHEMA,
-            Self::Runtime("NAME_NOT_FOUND") => Self::NAME_NOT_FOUND_SCHEMA,
-            Self::Runtime("DIVISION_BY_ZERO") => Self::DIVISION_BY_ZERO_SCHEMA,
-            Self::Runtime("INDEX_OUT_OF_BOUNDS") => Self::INDEX_OUT_OF_BOUNDS_SCHEMA,
-            Self::TypeMismatch => Self::TYPE_MISMATCH_SCHEMA,
-            Self::NumericOverflow => Self::NUMERIC_OVERFLOW_SCHEMA,
-            Self::UnusedBinding => Self::UNUSED_BINDING_SCHEMA,
-            Self::UnusedImport => Self::UNUSED_IMPORT_SCHEMA,
-            Self::UnreachableCode => Self::UNREACHABLE_SCHEMA,
-            Self::TargetUnsupportedEntrypoint
-            | Self::TargetUnsupportedHost
-            | Self::TargetUnsupportedOp
-            | Self::TargetUnsupportedType
-            | Self::TargetUnsupportedLlvm => Self::TARGET_SUPPORT_SCHEMA,
-            Self::IrLowering | Self::InvalidIr | Self::Runtime("IMPORT_CYCLE" | "MODULE_LIMIT") => {
-                Self::DETAIL_SCHEMA
-            }
-            Self::ModuleNotFound => Self::PATH_SCHEMA,
-            Self::Runtime(
-                "ALLOCATION_TOO_LARGE"
-                | "INVALID_DATE"
-                | "INVALID_TIME"
-                | "INVALID_TIMEZONE"
-                | "ALLOCATION_SIZE_INVALID"
-                | "ALLOCATION_SIZE_OVERFLOW",
-            ) => Self::DETAIL_SCHEMA,
-            Self::DoubleRelease | Self::UseAfterRelease => Self::DETAIL_SCHEMA,
-            Self::FunctionNotFound | Self::Runtime("INVALID_START") => Self::DETAIL_SCHEMA,
-            Self::Runtime("HOST_CAPABILITY_UNAVAILABLE" | "EXECUTION_POLICY_DENIED") => {
-                Self::DETAIL_SCHEMA
-            }
-            Self::Runtime("INVALID_EXIT_CODE" | "INVALID_EXPONENT" | "INVALID_SHIFT_COUNT") => {
-                Self::DETAIL_SCHEMA
-            }
-            Self::Runtime("INVALID_VALUE" | "INVALID_INPUT" | "INPUT_ERROR") => Self::DETAIL_SCHEMA,
-            Self::Runtime("DISPATCH" | "INVALID_JSON" | "INVALID_EGRESS_POLICY") => {
-                Self::DETAIL_SCHEMA
-            }
-            Self::Bnc | Self::BncEngine => Self::DETAIL_SCHEMA,
-            _ => Self::LEGACY_MESSAGE_SCHEMA,
-        }
+        self.desc().schema
     }
 }
 
@@ -1075,10 +872,10 @@ fn render_structured_message(spec: &DiagnosticSpec) -> String {
                         .map_or_else(|| "<unknown>".to_string(), |(_, value)| value.to_string())
                 };
                 match spec.id {
-                    DiagId::Lexical => {
+                    DiagId::LEXICAL => {
                         format!("found '{}', expected {}", value("found"), value("expected"))
                     }
-                    DiagId::Parse => {
+                    DiagId::PARSE => {
                         format!("expected {} in {}", value("expected"), value("context"))
                     }
                     _ => spec
@@ -1458,7 +1255,7 @@ impl Diagnostic {
         span: Span,
     ) -> Result<Self, String> {
         Self::structured(
-            DiagId::Lexical,
+            DiagId::LEXICAL,
             vec![
                 ("found".into(), found.into().into()),
                 ("expected".into(), expected.into().into()),
@@ -1484,7 +1281,7 @@ impl Diagnostic {
         span: Span,
     ) -> Result<Self, String> {
         Self::structured(
-            DiagId::Parse,
+            DiagId::PARSE,
             vec![
                 ("expected".into(), expected.into().into()),
                 ("context".into(), context.into().into()),
@@ -1511,7 +1308,7 @@ impl Diagnostic {
             return Some((**spec).clone());
         }
         let id = DiagId::from_code(self.code)?;
-        if id == DiagId::Lexical {
+        if id == DiagId::LEXICAL {
             return Some(DiagnosticSpec {
                 id,
                 effective_severity: id.severity(),
@@ -1526,7 +1323,7 @@ impl Diagnostic {
                 }],
             });
         }
-        if id == DiagId::Parse {
+        if id == DiagId::PARSE {
             return Some(DiagnosticSpec {
                 id,
                 effective_severity: id.severity(),
@@ -1551,7 +1348,7 @@ impl Diagnostic {
                 }],
             });
         }
-        if id == DiagId::Runtime("INDEX_OUT_OF_BOUNDS") {
+        if id == DiagId::INDEX_OUT_OF_BOUNDS {
             return Some(DiagnosticSpec {
                 id,
                 effective_severity: id.severity(),
@@ -1567,7 +1364,7 @@ impl Diagnostic {
                 }],
             });
         }
-        if id == DiagId::TypeMismatch {
+        if id == DiagId::TYPE_MISMATCH {
             return Some(DiagnosticSpec {
                 id,
                 effective_severity: id.severity(),
@@ -1690,6 +1487,122 @@ fn render_catalog_diagnostic(source: &SourceFile, rendered: &RenderedDiagnostic)
 
 #[cfg(test)]
 mod tests {
+    /// One line per registered identity: `code\tfluent_id\tseverity\tschema`.
+    /// Frozen before the registry refactor (bucket 0.5.1a §2.1); the refactor
+    /// must reproduce it byte for byte.
+    fn registry_dump() -> String {
+        let mut lines: Vec<String> = super::DiagId::all()
+            .map(|id| {
+                let schema = id
+                    .argument_schema()
+                    .iter()
+                    .map(|spec| format!("{}:{:?}", spec.name, spec.kind))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                format!(
+                    "{}\t{}\t{:?}\t{}",
+                    id.code(),
+                    id.fluent_id(),
+                    id.severity(),
+                    schema
+                )
+            })
+            .collect();
+        lines.sort();
+        lines.join("\n") + "\n"
+    }
+
+    #[test]
+    #[ignore = "writes the golden; run once on the pre-refactor code"]
+    fn dump_registry_golden() {
+        std::fs::write(
+            concat!(env!("CARGO_MANIFEST_DIR"), "/tests/registry-golden.tsv"),
+            registry_dump(),
+        )
+        .expect("write golden");
+    }
+
+    #[test]
+    fn registry_matches_pre_refactor_golden() {
+        let golden = include_str!("../tests/registry-golden.tsv");
+        assert_eq!(
+            registry_dump(),
+            golden,
+            "registry identity drifted from golden"
+        );
+    }
+
+    /// Registry ↔ catalog ↔ schema exhaustiveness gate (bucket 0.5.1a §2.3).
+    /// Replaces the Python emit-site inventory: adding a diagnostic is one
+    /// registry row plus one `.ftl` entry, and any drift fails here.
+    #[test]
+    fn registry_catalog_and_schema_are_mutually_exhaustive() {
+        let catalog = super::Catalog::embedded_en_us().expect("embedded catalog");
+        // (a) every registry row has a catalog entry whose code matches;
+        // (b) every `{$arg}` used by that entry is declared in the schema.
+        for id in DiagId::all() {
+            let entry = catalog
+                .entries
+                .get(&id)
+                .unwrap_or_else(|| panic!("no catalog entry for {}", id.code()));
+            assert_eq!(entry.code, id.code());
+            super::validate_catalog_entry(entry)
+                .unwrap_or_else(|error| panic!("{}: {error}", id.code()));
+        }
+        // (c) no orphans in either direction.
+        assert_eq!(catalog.len(), DiagId::all().count());
+        let codes: std::collections::HashSet<_> = DiagId::all().map(DiagId::code).collect();
+        assert_eq!(
+            codes.len(),
+            DiagId::all().count(),
+            "duplicate machine code in registry"
+        );
+    }
+
+    #[test]
+    fn gate_rejects_orphan_catalog_entry() {
+        let shard =
+            "NOT_A_REGISTERED_CODE = boom\n    .title = Boom\n    .code = NOT_A_REGISTERED_CODE\n";
+        let error = Catalog::from_ftl(shard).expect_err("orphan catalog entry must fail");
+        assert!(error.contains("unknown Fluent diagnostic id"), "{error}");
+    }
+
+    #[test]
+    fn gate_rejects_registry_row_without_catalog_entry() {
+        // A shard that covers exactly one identity leaves every other row orphaned.
+        let shard = "DIVISION_BY_ZERO = Division by zero in {$operation}.\n    .title = Division by zero\n    .code = DIVISION_BY_ZERO\n";
+        let error = Catalog::from_ftl(shard).expect_err("uncovered registry row must fail");
+        assert!(error.contains("missing catalog entry for"), "{error}");
+    }
+
+    #[test]
+    fn gate_rejects_template_argument_outside_schema() {
+        let shard = "DIVISION_BY_ZERO = Division by zero in {$operation} at {$bogus}.\n    .title = Division by zero\n    .code = DIVISION_BY_ZERO\n";
+        let error = Catalog::from_ftl(shard).expect_err("argument outside schema must fail");
+        assert!(
+            error.contains("unknown catalog argument for DIVISION_BY_ZERO: bogus"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn every_code_round_trips_through_from_code() {
+        for id in super::DiagId::all() {
+            assert_eq!(
+                super::DiagId::from_code(id.code()),
+                Some(id),
+                "{}",
+                id.code()
+            );
+            assert_eq!(
+                super::DiagId::from_fluent_id(id.fluent_id()),
+                Some(id),
+                "{}",
+                id.fluent_id()
+            );
+        }
+    }
+
     use bn_source::{Position, Revision, SourceId, Span};
 
     use bn_source::SourceFile;
@@ -1715,11 +1628,11 @@ mod tests {
 
     #[test]
     fn registry_exposes_stable_codes_and_severities() {
-        assert_eq!(DiagId::TypeMismatch.code(), "TYPE_MISMATCH");
-        assert_eq!(DiagId::TypeMismatch.severity(), Severity::Error);
-        assert_eq!(DiagId::UnusedBinding.severity(), Severity::Warning);
-        assert!(DiagId::UnusedBinding.warnings_allowed());
-        assert!(!DiagId::TypeMismatch.warnings_allowed());
+        assert_eq!(DiagId::TYPE_MISMATCH.code(), "TYPE_MISMATCH");
+        assert_eq!(DiagId::TYPE_MISMATCH.severity(), Severity::Error);
+        assert_eq!(DiagId::UNUSED_BINDING.severity(), Severity::Warning);
+        assert!(DiagId::UNUSED_BINDING.warnings_allowed());
+        assert!(!DiagId::TYPE_MISMATCH.warnings_allowed());
     }
 
     #[test]
@@ -1757,7 +1670,7 @@ mod tests {
     fn catalog_rejects_arguments_outside_the_identity_schema() {
         let catalog = Catalog::embedded_en_us().expect("embedded catalog");
         let base = |args| super::DiagnosticSpec {
-            id: DiagId::TypeMismatch,
+            id: DiagId::TYPE_MISMATCH,
             effective_severity: Severity::Error,
             args,
             labels: Vec::new(),
@@ -1789,15 +1702,15 @@ mod tests {
             "[warnings]\ndefault = \"error\"\n[warnings.levels]\nUNUSED_BINDING = \"allow\"\n",
         )
         .expect("warning config");
-        assert_eq!(policy.level(DiagId::UnusedBinding), Level::Allow);
-        assert_eq!(policy.level(DiagId::UnusedImport), Level::Error);
+        assert_eq!(policy.level(DiagId::UNUSED_BINDING), Level::Allow);
+        assert_eq!(policy.level(DiagId::UNUSED_IMPORT), Level::Error);
         policy.set_warnings_as_errors(true);
-        assert_eq!(policy.level(DiagId::UnusedBinding), Level::Error);
+        assert_eq!(policy.level(DiagId::UNUSED_BINDING), Level::Error);
         policy
-            .set_cli(DiagId::UnusedBinding, Level::Allow)
+            .set_cli(DiagId::UNUSED_BINDING, Level::Allow)
             .expect("CLI override");
-        assert_eq!(policy.level(DiagId::UnusedBinding), Level::Allow);
-        assert_eq!(policy.level(DiagId::TypeMismatch), Level::Error);
+        assert_eq!(policy.level(DiagId::UNUSED_BINDING), Level::Allow);
+        assert_eq!(policy.level(DiagId::TYPE_MISMATCH), Level::Error);
     }
 
     #[test]
@@ -1830,13 +1743,13 @@ mod tests {
             text: None,
         };
         let mut sink = DiagnosticSink::default();
-        sink.emit(DiagId::TypeMismatch, Vec::new(), vec![primary.clone()]);
-        sink.emit(DiagId::TypeMismatch, Vec::new(), vec![primary]);
+        sink.emit(DiagId::TYPE_MISMATCH, Vec::new(), vec![primary.clone()]);
+        sink.emit(DiagId::TYPE_MISMATCH, Vec::new(), vec![primary]);
         assert_eq!(sink.len(), 1);
-        sink.set_level(DiagId::UnusedBinding, Level::Allow)
+        sink.set_level(DiagId::UNUSED_BINDING, Level::Allow)
             .expect("warnings may be allowed");
         sink.emit(
-            DiagId::UnusedBinding,
+            DiagId::UNUSED_BINDING,
             vec![("name".into(), "temporary".into())],
             vec![Label {
                 span: span(5),
@@ -1859,7 +1772,7 @@ mod tests {
                 column: 4,
             };
             sink.emit(
-                DiagId::TypeMismatch,
+                DiagId::TYPE_MISMATCH,
                 Vec::new(),
                 vec![Label {
                     span: Span {
@@ -1877,10 +1790,10 @@ mod tests {
     #[test]
     fn sink_retains_effective_severity_as_structured_data() {
         let mut sink = DiagnosticSink::default();
-        sink.set_level(DiagId::UnusedBinding, Level::Error)
+        sink.set_level(DiagId::UNUSED_BINDING, Level::Error)
             .expect("warnings may be promoted");
         sink.emit(
-            DiagId::UnusedBinding,
+            DiagId::UNUSED_BINDING,
             vec![("name".into(), "temporary".into())],
             vec![Label {
                 span: span(1),
@@ -1901,7 +1814,7 @@ mod tests {
     #[test]
     fn hard_errors_cannot_be_suppressed() {
         let mut sink = DiagnosticSink::default();
-        assert!(sink.set_level(DiagId::TypeMismatch, Level::Allow).is_err());
+        assert!(sink.set_level(DiagId::TYPE_MISMATCH, Level::Allow).is_err());
     }
 
     #[test]
@@ -1910,7 +1823,7 @@ mod tests {
         assert_eq!(catalog.len(), DiagId::all().count());
         let span = span(7);
         let spec = super::DiagnosticSpec {
-            id: DiagId::UnusedBinding,
+            id: DiagId::UNUSED_BINDING,
             effective_severity: Severity::Warning,
             args: vec![("name".into(), "temporary".into())],
             labels: vec![Label {
@@ -1926,7 +1839,7 @@ mod tests {
         assert_eq!(rendered.labels.len(), 1);
 
         let division = super::DiagnosticSpec {
-            id: DiagId::Runtime("DIVISION_BY_ZERO"),
+            id: DiagId::DIVISION_BY_ZERO,
             effective_severity: Severity::Error,
             args: vec![("operation".into(), "DIV".into())],
             labels: vec![Label {
@@ -1940,7 +1853,7 @@ mod tests {
         assert!(rendered_division.help.is_some());
 
         let missing = super::DiagnosticSpec {
-            id: DiagId::Runtime("NAME_NOT_FOUND"),
+            id: DiagId::NAME_NOT_FOUND,
             effective_severity: Severity::Error,
             args: vec![
                 ("name".into(), "missingField".into()),
@@ -2010,7 +1923,7 @@ mod tests {
 
         let catalog = Catalog::embedded_en_us().expect("embedded catalog");
         let diagnostic = super::DiagnosticSpec {
-            id: DiagId::TypeMismatch,
+            id: DiagId::TYPE_MISMATCH,
             effective_severity: Severity::Error,
             args: vec![
                 ("expected".into(), "INTEGER".into()),
@@ -2066,7 +1979,7 @@ mod tests {
         let catalog =
             super::Catalog::embedded_en_us_with_overlay(&directory).expect("overlay catalog");
         let lexical = super::DiagnosticSpec {
-            id: DiagId::Lexical,
+            id: DiagId::LEXICAL,
             effective_severity: Severity::Error,
             args: vec![
                 ("found".into(), "bad token".into()),
@@ -2083,7 +1996,7 @@ mod tests {
             "Erro lexical personalizado"
         );
         let parse = super::DiagnosticSpec {
-            id: DiagId::Parse,
+            id: DiagId::PARSE,
             effective_severity: Severity::Error,
             args: vec![
                 ("expected".into(), "AS".into()),
@@ -2160,7 +2073,7 @@ mod tests {
         let title = |catalog: Catalog| {
             catalog
                 .render(&super::DiagnosticSpec {
-                    id: DiagId::Lexical,
+                    id: DiagId::LEXICAL,
                     effective_severity: Severity::Error,
                     args: vec![
                         ("found".into(), "bad token".into()),
@@ -2205,7 +2118,7 @@ mod tests {
         let source = SourceFile::new("main.bn", "@");
         let diagnostic = Diagnostic::lexical("invalid token", span(0));
         let spec = diagnostic.spec().expect("registered lexical code");
-        assert_eq!(spec.id, DiagId::Lexical);
+        assert_eq!(spec.id, DiagId::LEXICAL);
         assert_eq!(
             spec.args,
             vec![
@@ -2241,7 +2154,7 @@ mod tests {
             structured: None,
         };
         let spec = diagnostic.spec().expect("registered parse code");
-        assert_eq!(spec.id, DiagId::Parse);
+        assert_eq!(spec.id, DiagId::PARSE);
         let rendered = diagnostic.render_with_catalog(&source, super::Catalog::embedded_global());
         assert!(rendered.starts_with("error[E0100]: Syntax error: Expected AS"));
     }
@@ -2257,7 +2170,7 @@ mod tests {
             column: 7,
         };
         let diagnostic = Diagnostic::structured(
-            DiagId::TypeMismatch,
+            DiagId::TYPE_MISMATCH,
             vec![
                 ("expected".into(), "INTEGER".into()),
                 ("actual".into(), "STRING".into()),
