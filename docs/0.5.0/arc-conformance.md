@@ -35,6 +35,8 @@ with evidence (path + command + exit status).
 | F11 | Tickets Close + RELEASE | Loop `tickets[i].Close()` then `RELEASE tickets` (or scope exit without RELEASE) | `DELETE`; `RELEASE tickets[i]` as element remove |
 | F12 | No `DELETE` | Grammar/fixtures under 0.5.0 contain **zero** `DELETE` keyword | Any `DELETE` statement |
 | F13 | Typed AWAIT + args | `ASYNC queue PiPart(i)` (or `queue.Async(PiPart, i)`); `AWAIT` → `T OR Error` | Untyped discard of worker result as the only API |
+| F14 | Pointer region aliasing | `b = a` on `POINTER TO T[]`; `RELEASE a`; `b[i]` and `LEN(b)` still read the live region on **both** backends | Region freed for all aliases (kill-all-aliases); native reading a freed region |
+| F15 | Pointer binding release | After `RELEASE p`: `p[i]` / `LEN(p)` → use-after-release error; second `RELEASE p` → double-release error | Silent reuse; diagnosing the region instead of the binding |
 
 ## Evidence layout
 
@@ -49,3 +51,5 @@ evidence directory.
 
 Quorra **ARC compliance gate** on every M* wave: reject reintroduction of
 `DELETE`, force-dispose, or semi-manual “must dispose to be correct” teaching.
+
+- **2026-09-16** — F14–F15 added (pointer regions under ARC; Carlos lock recorded in `docs/language/0.5/0.5.md`). Known failing at lock time on both backends; corrective bucket 0.5.1b.

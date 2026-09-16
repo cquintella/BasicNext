@@ -37,7 +37,6 @@ IF file IS Error THEN
 END IF
 LET tabela AS Data.DataFrame OR Error = Data.ReadCSV(file, TRUE, ";")
 LET closed AS VOID OR Error = file.Close()
-DELETE file
 ```
 
 | Function | Meaning |
@@ -67,9 +66,11 @@ df.AddStringColumn("Nome", nomes)
 df.AddIntegerColumn("Idade", idades)
 ```
 
-`NEW Data.DataFrame()` creates an empty frame. Every instance, including
-those returned by `ReadCSV`, `Select`, and `Slice`, must be released with
-`DELETE`. A user class must not `EXTENDS Data.DataFrame`.
+`NEW Data.DataFrame()` creates an empty frame. A `DataFrame` instance,
+including those returned by `ReadCSV`, `Select`, and `Slice`, is an ARC value
+(0.5.0): it is released when its last strong binding leaves scope or is
+`RELEASE`d. There is no `DELETE`. A user class must not
+`EXTENDS Data.DataFrame`.
 
 `Add*Column` appends a fixed-size vector. The parameter accepts every
 declared length of that element type (`INTEGER[1]`, `INTEGER[2]`, …). That
@@ -160,7 +161,9 @@ otherwise `Error`.
 ## Copy-out interop with `BNMath`
 
 A caller that already allocated a region may copy a column into it. The
-caller owns the region and `DELETE`s it. `LEN` of `dest` must equal
+region is an ordinary `POINTER TO T[]` allocation under ARC (0.5); it is
+freed when the caller's last strong pointer binding ends. `LEN` of `dest`
+must equal
 `RowCount()`; otherwise `Error`.
 
 | Method | Meaning |
