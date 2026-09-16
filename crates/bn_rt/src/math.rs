@@ -6,8 +6,12 @@
 use std::process;
 
 pub(crate) fn fail(code: &str, message: &str) -> ! {
-    eprintln!("error[{code}]: {message}");
+    eprintln!("{}", format_failure(code, message));
     process::exit(1);
+}
+
+fn format_failure(code: &str, message: &str) -> String {
+    format!("error[{code}]: {message}")
 }
 
 pub fn parse_val(text: &str) -> f64 {

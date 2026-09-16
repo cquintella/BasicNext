@@ -6,10 +6,11 @@
 //! Stable diagnostic facts shared by frontend, IR and backend crates.
 
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::path::Path;
 use std::sync::OnceLock;
 
-use bn_source::{SourceFile, Span};
+use bn_source::{Position, Revision, SourceFile, SourceId, Span};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum DiagId {
@@ -20,6 +21,11 @@ pub enum DiagId {
     InvalidIr,
     IrLowering,
     ModuleNotFound,
+    Bnc,
+    BncEngine,
+    DoubleRelease,
+    FunctionNotFound,
+    UseAfterRelease,
     TargetUnsupportedEntrypoint,
     TargetUnsupportedHost,
     TargetUnsupportedOp,
@@ -34,44 +40,182 @@ pub enum DiagId {
 }
 
 impl DiagId {
+    const LEGACY_MESSAGE_SCHEMA: &'static [ArgumentSpec] = &[ArgumentSpec {
+        name: "message",
+        kind: ArgumentKind::Text,
+    }];
+    const UNUSED_BINDING_SCHEMA: &'static [ArgumentSpec] = &[ArgumentSpec {
+        name: "name",
+        kind: ArgumentKind::Text,
+    }];
+    const LEXICAL_SCHEMA: &'static [ArgumentSpec] = &[
+        ArgumentSpec {
+            name: "found",
+            kind: ArgumentKind::Text,
+        },
+        ArgumentSpec {
+            name: "expected",
+            kind: ArgumentKind::Text,
+        },
+    ];
+    const PARSE_SCHEMA: &'static [ArgumentSpec] = &[
+        ArgumentSpec {
+            name: "expected",
+            kind: ArgumentKind::Text,
+        },
+        ArgumentSpec {
+            name: "context",
+            kind: ArgumentKind::Text,
+        },
+    ];
+    const DUPLICATE_NAME_SCHEMA: &'static [ArgumentSpec] = &[ArgumentSpec {
+        name: "name",
+        kind: ArgumentKind::Text,
+    }];
+    const NAME_NOT_FOUND_SCHEMA: &'static [ArgumentSpec] = &[
+        ArgumentSpec {
+            name: "name",
+            kind: ArgumentKind::Text,
+        },
+        ArgumentSpec {
+            name: "context",
+            kind: ArgumentKind::Text,
+        },
+    ];
+    const NUMERIC_OVERFLOW_SCHEMA: &'static [ArgumentSpec] = &[ArgumentSpec {
+        name: "operation",
+        kind: ArgumentKind::Text,
+    }];
+    const DIVISION_BY_ZERO_SCHEMA: &'static [ArgumentSpec] = &[ArgumentSpec {
+        name: "operation",
+        kind: ArgumentKind::Text,
+    }];
+    const INDEX_OUT_OF_BOUNDS_SCHEMA: &'static [ArgumentSpec] = &[
+        ArgumentSpec {
+            name: "index",
+            kind: ArgumentKind::Text,
+        },
+        ArgumentSpec {
+            name: "bound",
+            kind: ArgumentKind::Text,
+        },
+        ArgumentSpec {
+            name: "context",
+            kind: ArgumentKind::Text,
+        },
+    ];
+    const TYPE_MISMATCH_SCHEMA: &'static [ArgumentSpec] = &[
+        ArgumentSpec {
+            name: "expected",
+            kind: ArgumentKind::Text,
+        },
+        ArgumentSpec {
+            name: "actual",
+            kind: ArgumentKind::Text,
+        },
+        ArgumentSpec {
+            name: "context",
+            kind: ArgumentKind::Text,
+        },
+    ];
+    const UNUSED_IMPORT_SCHEMA: &'static [ArgumentSpec] = &[ArgumentSpec {
+        name: "module",
+        kind: ArgumentKind::Text,
+    }];
+    const UNREACHABLE_SCHEMA: &'static [ArgumentSpec] = &[ArgumentSpec {
+        name: "context",
+        kind: ArgumentKind::Text,
+    }];
+    const TARGET_SUPPORT_SCHEMA: &'static [ArgumentSpec] = &[
+        ArgumentSpec {
+            name: "target",
+            kind: ArgumentKind::Text,
+        },
+        ArgumentSpec {
+            name: "detail",
+            kind: ArgumentKind::Text,
+        },
+    ];
+    const DETAIL_SCHEMA: &'static [ArgumentSpec] = &[ArgumentSpec {
+        name: "detail",
+        kind: ArgumentKind::Text,
+    }];
+    const PATH_SCHEMA: &'static [ArgumentSpec] = &[ArgumentSpec {
+        name: "path",
+        kind: ArgumentKind::Text,
+    }];
     const RUNTIME_CODES: &'static [&'static str] = &[
         "ALLOCATION_SIZE_INVALID",
         "ALLOCATION_SIZE_OVERFLOW",
         "ALLOCATION_TOO_LARGE",
+        "ASYNC_RETURN_TYPE",
+        "ASYNC_TARGET",
+        "AWAIT_TIMEOUT",
         "BUILD_EMISSION_FAILED",
         "BUILD_TOOLCHAIN_UNAVAILABLE",
         "CONFIG_INVALID",
         "DEBUG_TERMINATED",
         "DISPATCH",
         "DIVISION_BY_ZERO",
+        "DUPLICATE_INTERFACE",
+        "DUPLICATE_NAME",
+        "EVAL_START_PROMOTED",
         "DOUBLE_DELETE",
         "EXECUTION_POLICY_DENIED",
         "FORMAT_OUT_OF_RANGE",
         "HANDLER_NOT_FOUND",
         "HEADER_NOT_FOUND",
         "HOST_CAPABILITY_UNAVAILABLE",
+        "HOST_ARGS_SCOPE",
+        "HOST_IMPORT_SCOPE",
+        "IMPORTED_START",
+        "IMPORT_CYCLE",
         "INDEX_OUT_OF_BOUNDS",
         "INPUT_ERROR",
+        "INPUT_PROMPT_TYPE",
+        "INHERITANCE_CYCLE",
+        "INVALID_ALTERNATIVE_USE",
+        "INVALID_CONSTRUCTOR",
+        "INVALID_DESTRUCTOR",
         "INVALID_EGRESS_POLICY",
+        "INVALID_DATE",
         "INVALID_EXIT_CODE",
         "INVALID_EXPONENT",
+        "INVALID_FILE_MODE",
         "INVALID_FOR_STEP",
+        "INVALID_HOST_ARGS_USE",
         "INVALID_INPUT",
         "INVALID_JSON",
+        "INVALID_LOOP_CONTROL",
         "INVALID_NUMERIC_CONVERSION",
         "INVALID_OPTIONS",
+        "INVALID_OVERRIDE",
+        "INVALID_POINTER_TYPE",
+        "INVALID_RELEASE_TARGET",
         "INVALID_SHIFT_COUNT",
         "INVALID_START",
+        "INVALID_SUPER",
+        "INVALID_TIME",
+        "INVALID_TIMEZONE",
         "INVALID_VALUE",
+        "INVALID_VECTOR_DIMENSION",
+        "INVALID_VECTOR_TYPE",
         "IO",
         "LIMIT",
+        "MISSING_RETURN",
+        "MODULE_NOT_RESOLVED",
+        "MODULE_LIMIT",
         "NAME_NOT_FOUND",
         "NOT_FOUND",
+        "NOT_CALLABLE",
         "NULL_POINTER_ACCESS",
         "OUTPUT_ERROR",
+        "PARSE_ERROR",
         "POINTER_LENGTH_MISMATCH",
+        "PRIVATE_ACCESS",
         "PROCESS_LOG_WRITE",
         "REQUEST_INVALID",
+        "RETAIN_OVERFLOW",
         "RESOURCE_LIMIT",
         "SCRAPER_INPUT",
         "SERVER_STATE",
@@ -80,7 +224,10 @@ impl DiagId {
         "START_NOT_FOUND",
         "STATIC_INITIALIZATION_CYCLE",
         "TLS_PROVIDER_UNAVAILABLE",
+        "TYPE_NAME_AS_VALUE",
         "UNINITIALIZED_VALUE",
+        "UNKNOWN_TYPE",
+        "UNRESOLVED_TYPE",
         "USE_AFTER_DELETE",
         "VECTOR_LENGTH_MISMATCH",
         "WEB_LISTEN",
@@ -96,6 +243,11 @@ impl DiagId {
             Self::InvalidIr => "invalid-ir",
             Self::IrLowering => "ir-lowering",
             Self::ModuleNotFound => "module-not-found",
+            Self::Bnc => "bnc",
+            Self::BncEngine => "bnc-engine",
+            Self::DoubleRelease => "double-release",
+            Self::FunctionNotFound => "function-not-found",
+            Self::UseAfterRelease => "use-after-release",
             Self::TargetUnsupportedEntrypoint => "target-unsupported-entrypoint",
             Self::TargetUnsupportedHost => "target-unsupported-host",
             Self::TargetUnsupportedOp => "target-unsupported-op",
@@ -118,6 +270,11 @@ impl DiagId {
             Self::InvalidIr,
             Self::IrLowering,
             Self::ModuleNotFound,
+            Self::Bnc,
+            Self::BncEngine,
+            Self::DoubleRelease,
+            Self::FunctionNotFound,
+            Self::UseAfterRelease,
             Self::TargetUnsupportedEntrypoint,
             Self::TargetUnsupportedHost,
             Self::TargetUnsupportedOp,
@@ -142,6 +299,11 @@ impl DiagId {
             Self::InvalidIr => "INVALID_IR",
             Self::IrLowering => "IR_LOWERING",
             Self::ModuleNotFound => "MODULE_NOT_FOUND",
+            Self::Bnc => "BNC",
+            Self::BncEngine => "BNC_ENGINE",
+            Self::DoubleRelease => "DOUBLE_RELEASE",
+            Self::FunctionNotFound => "FUNCTION_NOT_FOUND",
+            Self::UseAfterRelease => "USE_AFTER_RELEASE",
             Self::TargetUnsupportedEntrypoint => "TARGET_UNSUPPORTED_ENTRYPOINT",
             Self::TargetUnsupportedHost => "TARGET_UNSUPPORTED_HOST",
             Self::TargetUnsupportedOp => "TARGET_UNSUPPORTED_OP",
@@ -164,6 +326,11 @@ impl DiagId {
             Self::InvalidIr,
             Self::IrLowering,
             Self::ModuleNotFound,
+            Self::Bnc,
+            Self::BncEngine,
+            Self::DoubleRelease,
+            Self::FunctionNotFound,
+            Self::UseAfterRelease,
             Self::TargetUnsupportedEntrypoint,
             Self::TargetUnsupportedHost,
             Self::TargetUnsupportedOp,
@@ -193,6 +360,11 @@ impl DiagId {
             Self::InvalidIr,
             Self::IrLowering,
             Self::ModuleNotFound,
+            Self::Bnc,
+            Self::BncEngine,
+            Self::DoubleRelease,
+            Self::FunctionNotFound,
+            Self::UseAfterRelease,
             Self::TargetUnsupportedEntrypoint,
             Self::TargetUnsupportedHost,
             Self::TargetUnsupportedOp,
@@ -207,28 +379,70 @@ impl DiagId {
     }
 
     #[must_use]
-    pub const fn severity(self) -> Severity {
+    pub fn severity(self) -> Severity {
         match self {
-            Self::UnusedBinding | Self::UnusedImport | Self::UnreachableCode => Severity::Warning,
-            Self::Lexical
-            | Self::Parse
-            | Self::TypeMismatch
-            | Self::NumericOverflow
-            | Self::InvalidIr
-            | Self::IrLowering
-            | Self::ModuleNotFound
-            | Self::TargetUnsupportedEntrypoint
-            | Self::TargetUnsupportedHost
-            | Self::TargetUnsupportedOp
-            | Self::TargetUnsupportedType
-            | Self::TargetUnsupportedLlvm
-            | Self::Runtime(_) => Severity::Error,
+            Self::UnusedBinding
+            | Self::UnusedImport
+            | Self::UnreachableCode
+            | Self::Runtime("EVAL_START_PROMOTED") => Severity::Warning,
+            _ => Severity::Error,
         }
     }
 
     #[must_use]
-    pub const fn warnings_allowed(self) -> bool {
+    pub fn warnings_allowed(self) -> bool {
         matches!(self.severity(), Severity::Warning)
+    }
+
+    /// Typed argument contract for this identity. DX03 replaces the legacy
+    /// message-only schemas as each producer is migrated.
+    #[must_use]
+    #[allow(clippy::match_same_arms, clippy::match_wildcard_for_single_variants)]
+    pub fn argument_schema(self) -> &'static [ArgumentSpec] {
+        match self {
+            Self::Lexical => Self::LEXICAL_SCHEMA,
+            Self::Parse => Self::PARSE_SCHEMA,
+            Self::Runtime("DUPLICATE_NAME") => Self::DUPLICATE_NAME_SCHEMA,
+            Self::Runtime("NAME_NOT_FOUND") => Self::NAME_NOT_FOUND_SCHEMA,
+            Self::Runtime("DIVISION_BY_ZERO") => Self::DIVISION_BY_ZERO_SCHEMA,
+            Self::Runtime("INDEX_OUT_OF_BOUNDS") => Self::INDEX_OUT_OF_BOUNDS_SCHEMA,
+            Self::TypeMismatch => Self::TYPE_MISMATCH_SCHEMA,
+            Self::NumericOverflow => Self::NUMERIC_OVERFLOW_SCHEMA,
+            Self::UnusedBinding => Self::UNUSED_BINDING_SCHEMA,
+            Self::UnusedImport => Self::UNUSED_IMPORT_SCHEMA,
+            Self::UnreachableCode => Self::UNREACHABLE_SCHEMA,
+            Self::TargetUnsupportedEntrypoint
+            | Self::TargetUnsupportedHost
+            | Self::TargetUnsupportedOp
+            | Self::TargetUnsupportedType
+            | Self::TargetUnsupportedLlvm => Self::TARGET_SUPPORT_SCHEMA,
+            Self::IrLowering | Self::InvalidIr | Self::Runtime("IMPORT_CYCLE" | "MODULE_LIMIT") => {
+                Self::DETAIL_SCHEMA
+            }
+            Self::ModuleNotFound => Self::PATH_SCHEMA,
+            Self::Runtime(
+                "ALLOCATION_TOO_LARGE"
+                | "INVALID_DATE"
+                | "INVALID_TIME"
+                | "INVALID_TIMEZONE"
+                | "ALLOCATION_SIZE_INVALID"
+                | "ALLOCATION_SIZE_OVERFLOW",
+            ) => Self::DETAIL_SCHEMA,
+            Self::DoubleRelease | Self::UseAfterRelease => Self::DETAIL_SCHEMA,
+            Self::FunctionNotFound | Self::Runtime("INVALID_START") => Self::DETAIL_SCHEMA,
+            Self::Runtime("HOST_CAPABILITY_UNAVAILABLE" | "EXECUTION_POLICY_DENIED") => {
+                Self::DETAIL_SCHEMA
+            }
+            Self::Runtime("INVALID_EXIT_CODE" | "INVALID_EXPONENT" | "INVALID_SHIFT_COUNT") => {
+                Self::DETAIL_SCHEMA
+            }
+            Self::Runtime("INVALID_VALUE" | "INVALID_INPUT" | "INPUT_ERROR") => Self::DETAIL_SCHEMA,
+            Self::Runtime("DISPATCH" | "INVALID_JSON" | "INVALID_EGRESS_POLICY") => {
+                Self::DETAIL_SCHEMA
+            }
+            Self::Bnc | Self::BncEngine => Self::DETAIL_SCHEMA,
+            _ => Self::LEGACY_MESSAGE_SCHEMA,
+        }
     }
 }
 
@@ -270,8 +484,9 @@ impl WarningPolicy {
     pub fn from_config(text: &str) -> Result<Self, String> {
         let mut policy = Self::default();
         let mut section = "";
+        let mut seen = HashSet::new();
         for raw in text.lines() {
-            let line = raw.split('#').next().unwrap_or_default().trim();
+            let line = strip_config_comment(raw)?.trim();
             if line.is_empty() {
                 continue;
             }
@@ -283,20 +498,29 @@ impl WarningPolicy {
                 return Err(format!("malformed warning configuration: {line}"));
             };
             let key = key.trim();
-            let value = value.trim().trim_matches('"');
+            let full_key = format!("{section}.{}", key.trim());
+            if matches!(section, "warnings" | "warnings.levels") && !seen.insert(full_key) {
+                return Err(format!(
+                    "duplicate warning configuration key: {}",
+                    key.trim()
+                ));
+            }
             match section {
                 "warnings" if key == "default" => {
-                    let level = parse_level(value)?;
+                    let value = parse_config_string(value.trim())?;
+                    let level = parse_level(&value)?;
                     if level == Level::Allow {
                         return Err("warning default cannot be allow".into());
                     }
                     policy.config_default = Some(level);
                 }
                 "warnings.levels" => {
+                    let value = parse_config_string(value.trim())?;
                     let id = DiagId::from_code(key)
                         .ok_or_else(|| format!("unknown diagnostic code in warnings: {key}"))?;
-                    policy.set_config(id, parse_level(value)?)?;
+                    policy.set_config(id, parse_level(&value)?)?;
                 }
+                "warnings" => return Err(format!("unknown warnings key: {key}")),
                 _ => {}
             }
         }
@@ -346,6 +570,52 @@ impl WarningPolicy {
     }
 }
 
+fn strip_config_comment(line: &str) -> Result<&str, String> {
+    let mut quoted = false;
+    let mut escaped = false;
+    for (index, character) in line.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match character {
+            '\\' if quoted => escaped = true,
+            '"' => quoted = !quoted,
+            '#' if !quoted => return Ok(&line[..index]),
+            _ => {}
+        }
+    }
+    if quoted || escaped {
+        return Err("unterminated quoted config value".into());
+    }
+    Ok(line)
+}
+
+fn parse_config_string(value: &str) -> Result<String, String> {
+    if !(value.starts_with('"') && value.ends_with('"') && value.len() >= 2) {
+        return Err(format!(
+            "configuration value must be a quoted string: {value}"
+        ));
+    }
+    let mut output = String::new();
+    let mut characters = value[1..value.len() - 1].chars();
+    while let Some(character) = characters.next() {
+        if character != '\\' {
+            output.push(character);
+            continue;
+        }
+        output.push(match characters.next() {
+            Some('"') => '"',
+            Some('\\') => '\\',
+            Some('n') => '\n',
+            Some('t') => '\t',
+            Some(other) => return Err(format!("unsupported config escape: \\{other}")),
+            None => return Err("unterminated config escape".into()),
+        });
+    }
+    Ok(output)
+}
+
 fn parse_level(value: &str) -> Result<Level, String> {
     match value {
         "allow" => Ok(Level::Allow),
@@ -369,10 +639,87 @@ pub struct Label {
     pub text: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ArgumentKind {
+    Text,
+    Signed,
+    Unsigned,
+    Boolean,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ArgumentSpec {
+    pub name: &'static str,
+    pub kind: ArgumentKind,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DiagnosticValue {
+    Text(String),
+    Signed(i64),
+    Unsigned(u64),
+    Boolean(bool),
+}
+
+impl fmt::Display for DiagnosticValue {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Text(value) => formatter.write_str(value),
+            Self::Signed(value) => value.fmt(formatter),
+            Self::Unsigned(value) => value.fmt(formatter),
+            Self::Boolean(value) => value.fmt(formatter),
+        }
+    }
+}
+
+impl DiagnosticValue {
+    #[must_use]
+    pub const fn kind(&self) -> ArgumentKind {
+        match self {
+            Self::Text(_) => ArgumentKind::Text,
+            Self::Signed(_) => ArgumentKind::Signed,
+            Self::Unsigned(_) => ArgumentKind::Unsigned,
+            Self::Boolean(_) => ArgumentKind::Boolean,
+        }
+    }
+}
+
+impl From<String> for DiagnosticValue {
+    fn from(value: String) -> Self {
+        Self::Text(value)
+    }
+}
+
+impl From<&str> for DiagnosticValue {
+    fn from(value: &str) -> Self {
+        Self::Text(value.into())
+    }
+}
+
+impl From<i64> for DiagnosticValue {
+    fn from(value: i64) -> Self {
+        Self::Signed(value)
+    }
+}
+
+impl From<u64> for DiagnosticValue {
+    fn from(value: u64) -> Self {
+        Self::Unsigned(value)
+    }
+}
+
+impl From<bool> for DiagnosticValue {
+    fn from(value: bool) -> Self {
+        Self::Boolean(value)
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DiagnosticSpec {
     pub id: DiagId,
-    pub args: Vec<(String, String)>,
+    /// Severity after warning policy, retained as a fact rather than encoded in prose.
+    pub effective_severity: Severity,
+    pub args: Vec<(String, DiagnosticValue)>,
     pub labels: Vec<Label>,
 }
 
@@ -405,6 +752,47 @@ pub struct Catalog {
 }
 
 impl Catalog {
+    /// Selects one immutable catalog using environment, configured directory,
+    /// installation share directory, then embedded en-US precedence.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the selected overlay cannot be read or validated.
+    pub fn selected(configured_directory: Option<&Path>) -> Result<Self, String> {
+        let environment = std::env::var_os("BN_DIAGNOSTICS_DIR").map(std::path::PathBuf::from);
+        let beside = std::env::current_exe().ok().and_then(|exe| {
+            let parent = exe.parent()?;
+            let local = parent.join("share/bn/diagnostics/en-US");
+            if local.is_dir() {
+                return Some(local);
+            }
+            let prefix = parent.parent()?.join("share/bn/diagnostics/en-US");
+            prefix.is_dir().then_some(prefix)
+        });
+        Self::selected_from_paths(
+            environment.as_deref(),
+            configured_directory,
+            beside.as_deref(),
+        )
+    }
+
+    /// Pure selection primitive used to verify path precedence without
+    /// mutating process environment.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the selected overlay cannot be read or validated.
+    pub fn selected_from_paths(
+        environment: Option<&Path>,
+        configured: Option<&Path>,
+        installed: Option<&Path>,
+    ) -> Result<Self, String> {
+        if let Some(directory) = environment.or(configured).or(installed) {
+            return Self::embedded_en_us_with_overlay(directory);
+        }
+        Self::embedded_en_us()
+    }
+
     /// Returns the process-wide validated embedded `en-US` catalog.
     ///
     /// # Panics
@@ -430,24 +818,7 @@ impl Catalog {
     /// Returns an invalid overlay error without panicking.
     pub fn global_for_environment() -> Result<&'static Self, String> {
         static CATALOG: OnceLock<Result<Catalog, String>> = OnceLock::new();
-        match CATALOG.get_or_init(|| {
-            if let Some(directory) = std::env::var_os("BN_DIAGNOSTICS_DIR") {
-                return Self::embedded_en_us_with_overlay(Path::new(&directory));
-            }
-            let beside = std::env::current_exe().ok().and_then(|exe| {
-                let parent = exe.parent()?;
-                let local = parent.join("share/bn/diagnostics/en-US");
-                if local.is_dir() {
-                    return Some(local);
-                }
-                let prefix = parent.parent()?.join("share/bn/diagnostics/en-US");
-                prefix.is_dir().then_some(prefix)
-            });
-            if let Some(directory) = beside {
-                return Self::embedded_en_us_with_overlay(&directory);
-            }
-            Self::embedded_en_us()
-        }) {
+        match CATALOG.get_or_init(|| Self::selected(None)) {
             Ok(catalog) => Ok(catalog),
             Err(error) => Err(error.clone()),
         }
@@ -479,6 +850,12 @@ impl Catalog {
     /// Returns an error when an overlay shard cannot be read, contains a
     /// duplicate entry, or contains invalid Fluent attributes.
     pub fn embedded_en_us_with_overlay(directory: &Path) -> Result<Self, String> {
+        if !directory.is_dir() {
+            return Err(format!(
+                "diagnostic overlay is not a readable directory: {}",
+                directory.display()
+            ));
+        }
         let mut catalog = Self::embedded_en_us()?;
         let mut overlay_ids = HashSet::new();
         for shard in ["lex", "parse", "sem", "runtime", "build", "lsp"] {
@@ -490,6 +867,7 @@ impl Catalog {
                 format!("cannot read diagnostic overlay {}: {error}", path.display())
             })?;
             for entry in parse_shard(&text)? {
+                validate_catalog_entry(&entry)?;
                 if !overlay_ids.insert(entry.id) {
                     return Err(format!(
                         "duplicate diagnostic id in overlay: {}",
@@ -517,6 +895,7 @@ impl Catalog {
         for shard in shards {
             let parsed = parse_shard(shard)?;
             for entry in parsed {
+                validate_catalog_entry(&entry)?;
                 if entries.insert(entry.id, entry).is_some() {
                     return Err("duplicate diagnostic id".into());
                 }
@@ -550,6 +929,7 @@ impl Catalog {
     /// Returns an error when the spec has no catalog entry or an argument is
     /// missing from its message pattern.
     pub fn render(&self, spec: &DiagnosticSpec) -> Result<RenderedDiagnostic, String> {
+        validate_arguments(spec)?;
         let entry = self
             .entries
             .get(&spec.id)
@@ -565,16 +945,182 @@ impl Catalog {
             .as_ref()
             .map(|help| substitute(help, &spec.args))
             .transpose()?;
+        let labels = spec
+            .labels
+            .iter()
+            .map(|label| {
+                let default = match label.style {
+                    LabelStyle::Primary => entry.label.as_ref(),
+                    LabelStyle::Secondary => entry.label_secondary.as_ref(),
+                };
+                let text = match (&label.text, default) {
+                    (Some(text), _) => Some(text.clone()),
+                    (None, Some(pattern)) => Some(substitute(pattern, &spec.args)?),
+                    (None, None) => None,
+                };
+                Ok(Label {
+                    span: label.span,
+                    style: label.style,
+                    text,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
         Ok(RenderedDiagnostic {
-            severity: spec.id.severity(),
+            severity: spec.effective_severity,
             code: entry.code,
             title: substitute(&entry.title, &spec.args)?,
             message,
-            labels: spec.labels.clone(),
+            labels,
             causes,
             help,
         })
     }
+}
+
+/// Reads `[diagnostics].dir` from the supported strict config subset.
+///
+/// # Errors
+///
+/// Returns an error for malformed, duplicate or unknown diagnostics settings.
+pub fn diagnostic_directory_from_config(
+    text: &str,
+    config_path: &Path,
+) -> Result<Option<std::path::PathBuf>, String> {
+    let mut section = "";
+    let mut directory = None;
+    for raw in text.lines() {
+        let line = strip_config_comment(raw)?.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            section = &line[1..line.len() - 1];
+            continue;
+        }
+        if section != "diagnostics" {
+            continue;
+        }
+        let (key, value) = line
+            .split_once('=')
+            .ok_or_else(|| format!("malformed diagnostics configuration: {line}"))?;
+        if key.trim() != "dir" {
+            return Err(format!("unknown diagnostics key: {}", key.trim()));
+        }
+        if directory.is_some() {
+            return Err("duplicate diagnostics configuration key: dir".into());
+        }
+        let path = std::path::PathBuf::from(parse_config_string(value.trim())?);
+        directory = Some(if path.is_absolute() {
+            path
+        } else {
+            config_path
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join(path)
+        });
+    }
+    Ok(directory)
+}
+
+fn validate_catalog_entry(entry: &CatalogEntry) -> Result<(), String> {
+    let schema = entry.id.argument_schema();
+    for pattern in std::iter::once(&entry.message)
+        .chain(std::iter::once(&entry.title))
+        .chain(entry.label.iter())
+        .chain(entry.label_secondary.iter())
+        .chain(entry.causes.iter())
+        .chain(entry.help.iter())
+    {
+        for argument in pattern_arguments(pattern)? {
+            if !schema.iter().any(|expected| expected.name == argument) {
+                return Err(format!(
+                    "unknown catalog argument for {}: {argument}",
+                    entry.id.code()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn pattern_arguments(pattern: &str) -> Result<Vec<&str>, String> {
+    let mut arguments = Vec::new();
+    let mut cursor = 0;
+    while let Some(relative) = pattern[cursor..].find("{$") {
+        let start = cursor + relative + 2;
+        let end = pattern[start..]
+            .find('}')
+            .map(|offset| start + offset)
+            .ok_or_else(|| format!("unterminated Fluent argument in {pattern}"))?;
+        arguments.push(&pattern[start..end]);
+        cursor = end + 1;
+    }
+    Ok(arguments)
+}
+
+/// Renders the human-readable message for a structured spec from its arguments.
+/// An explicit `message` argument wins; otherwise a per-code shape is used, and
+/// the fallback joins all argument values (so `detail`-only codes render their
+/// detail verbatim).
+fn render_structured_message(spec: &DiagnosticSpec) -> String {
+    spec.args
+        .iter()
+        .find(|(name, _)| name == "message")
+        .map_or_else(
+            || {
+                let value = |name: &str| {
+                    spec.args
+                        .iter()
+                        .find(|(argument, _)| argument == name)
+                        .map_or_else(|| "<unknown>".to_string(), |(_, value)| value.to_string())
+                };
+                match spec.id {
+                    DiagId::Lexical => {
+                        format!("found '{}', expected {}", value("found"), value("expected"))
+                    }
+                    DiagId::Parse => {
+                        format!("expected {} in {}", value("expected"), value("context"))
+                    }
+                    _ => spec
+                        .args
+                        .iter()
+                        .map(|(_, value)| value.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                }
+            },
+            |(_, value)| value.to_string(),
+        )
+}
+
+fn validate_arguments(spec: &DiagnosticSpec) -> Result<(), String> {
+    let schema = spec.id.argument_schema();
+    let mut seen = HashSet::new();
+    for (name, value) in &spec.args {
+        if !seen.insert(name.as_str()) {
+            return Err(format!("duplicate diagnostic argument: {name}"));
+        }
+        let expected = schema
+            .iter()
+            .find(|argument| argument.name == name)
+            .ok_or_else(|| format!("unknown diagnostic argument for {}: {name}", spec.id.code()))?;
+        if value.kind() != expected.kind {
+            return Err(format!(
+                "invalid type for diagnostic argument {}.{name}: expected {:?}, got {:?}",
+                spec.id.code(),
+                expected.kind,
+                value.kind()
+            ));
+        }
+    }
+    if let Some(missing) = schema.iter().find(|argument| !seen.contains(argument.name)) {
+        return Err(format!(
+            "missing diagnostic argument for {}: {}",
+            spec.id.code(),
+            missing.name
+        ));
+    }
+    Ok(())
 }
 
 fn parse_shard(text: &str) -> Result<Vec<CatalogEntry>, String> {
@@ -601,6 +1147,10 @@ fn parse_shard(text: &str) -> Result<Vec<CatalogEntry>, String> {
             .as_mut()
             .ok_or_else(|| format!("attribute without message: {line}"))?;
         let attribute = line.trim();
+        if !attribute.starts_with('.') {
+            builder.continuation(attribute)?;
+            continue;
+        }
         let (name, value) = attribute
             .split_once('=')
             .ok_or_else(|| format!("malformed Fluent attribute: {line}"))?;
@@ -622,6 +1172,8 @@ struct CatalogEntryBuilder {
     label_secondary: Option<String>,
     causes: Vec<String>,
     help: Option<String>,
+    last_field: Option<&'static str>,
+    attributes: HashSet<String>,
 }
 
 impl CatalogEntryBuilder {
@@ -629,11 +1181,15 @@ impl CatalogEntryBuilder {
         Self {
             id: Some(id),
             message: message.into(),
+            last_field: Some("message"),
             ..Self::default()
         }
     }
 
     fn attribute(&mut self, name: &str, value: &str) -> Result<(), String> {
+        if !self.attributes.insert(name.into()) {
+            return Err(format!("duplicate Fluent attribute: {name}"));
+        }
         match name {
             "title" => self.title = Some(value.into()),
             "code" => {
@@ -648,19 +1204,55 @@ impl CatalogEntryBuilder {
             "help" => self.help = Some(value.into()),
             _ => return Err(format!("unknown Fluent attribute: {name}")),
         }
+        self.last_field = Some(match name {
+            "title" => "title",
+            "code" => "code",
+            "label" => "label",
+            "label_secondary" => "label_secondary",
+            "cause" | "cause2" | "cause3" => "cause",
+            "help" => "help",
+            _ => unreachable!("attribute names checked above"),
+        });
+        Ok(())
+    }
+
+    fn continuation(&mut self, value: &str) -> Result<(), String> {
+        let target = match self.last_field {
+            Some("message") => &mut self.message,
+            Some("title") => self.title.as_mut().expect("title was assigned"),
+            Some("label") => self.label.as_mut().expect("label was assigned"),
+            Some("label_secondary") => self
+                .label_secondary
+                .as_mut()
+                .expect("secondary label was assigned"),
+            Some("cause") => self.causes.last_mut().expect("cause was assigned"),
+            Some("help") => self.help.as_mut().expect("help was assigned"),
+            Some("code") => return Err("Fluent code attribute cannot be multiline".into()),
+            _ => return Err("Fluent continuation has no preceding value".into()),
+        };
+        target.push('\n');
+        target.push_str(value);
         Ok(())
     }
 
     fn finish(self) -> Result<CatalogEntry, String> {
         let id = self.id.expect("builder id");
+        if self.message.trim().is_empty() {
+            return Err(format!("empty message for {}", id.code()));
+        }
+        if self
+            .title
+            .as_deref()
+            .is_none_or(|title| title.trim().is_empty())
+        {
+            return Err(format!("empty or missing title for {}", id.code()));
+        }
         Ok(CatalogEntry {
             id,
             code: self
                 .code
                 .ok_or_else(|| format!("missing code for {}", id.code()))?,
-            title: self
-                .title
-                .ok_or_else(|| format!("missing title for {}", id.code()))?,
+            title: self.title.expect("non-empty title checked above"),
             message: self.message,
             label: self.label,
             label_secondary: self.label_secondary,
@@ -670,7 +1262,7 @@ impl CatalogEntryBuilder {
     }
 }
 
-fn substitute(pattern: &str, args: &[(String, String)]) -> Result<String, String> {
+fn substitute(pattern: &str, args: &[(String, DiagnosticValue)]) -> Result<String, String> {
     let mut output = pattern.to_owned();
     let mut cursor = 0;
     while let Some(relative) = output[cursor..].find("{$") {
@@ -683,9 +1275,9 @@ fn substitute(pattern: &str, args: &[(String, String)]) -> Result<String, String
         let value = args
             .iter()
             .find(|(key, _)| key == name)
-            .map(|(_, value)| value)
+            .map(|(_, value)| value.to_string())
             .ok_or_else(|| format!("missing Fluent argument: {name}"))?;
-        output.replace_range(start..=end, value);
+        output.replace_range(start..=end, &value);
         cursor = start + value.len();
     }
     Ok(output)
@@ -700,7 +1292,12 @@ pub struct DiagnosticSink {
 
 impl DiagnosticSink {
     /// Emits a cheap, unformatted diagnostic specification.
-    pub fn emit(&mut self, id: DiagId, args: Vec<(String, String)>, labels: Vec<Label>) -> bool {
+    pub fn emit(
+        &mut self,
+        id: DiagId,
+        args: Vec<(String, DiagnosticValue)>,
+        labels: Vec<Label>,
+    ) -> bool {
         let level = self
             .levels
             .get(&id)
@@ -719,7 +1316,17 @@ impl DiagnosticSink {
         {
             return false;
         }
-        self.specs.push(DiagnosticSpec { id, args, labels });
+        let effective_severity = match level {
+            Level::Allow => unreachable!("allowed diagnostics return before storage"),
+            Level::Warn => Severity::Warning,
+            Level::Error => Severity::Error,
+        };
+        self.specs.push(DiagnosticSpec {
+            id,
+            effective_severity,
+            args,
+            labels,
+        });
         true
     }
 
@@ -755,8 +1362,9 @@ impl DiagnosticSink {
 #[derive(Debug)]
 pub struct Diagnostic {
     pub code: &'static str,
-    pub message: String,
+    pub message: Box<str>,
     pub span: Span,
+    pub structured: Option<Box<DiagnosticSpec>>,
 }
 
 impl Diagnostic {
@@ -764,19 +1372,221 @@ impl Diagnostic {
     pub fn lexical(message: impl Into<String>, span: Span) -> Self {
         Self {
             code: "E0001",
-            message: message.into(),
+            message: message.into().into_boxed_str(),
             span,
+            structured: None,
         }
     }
 
+    /// # Errors
+    ///
+    /// Returns an error when the labels or typed arguments violate the
+    /// registered diagnostic contract.
+    pub fn structured(
+        id: DiagId,
+        args: Vec<(String, DiagnosticValue)>,
+        labels: Vec<Label>,
+    ) -> Result<Self, String> {
+        let span = labels
+            .iter()
+            .find(|label| label.style == LabelStyle::Primary)
+            .ok_or_else(|| format!("diagnostic {} has no primary label", id.code()))?
+            .span;
+        let spec = DiagnosticSpec {
+            id,
+            effective_severity: id.severity(),
+            args,
+            labels,
+        };
+        validate_arguments(&spec)?;
+        let message = render_structured_message(&spec);
+        Ok(Self {
+            code: id.code(),
+            message: message.into_boxed_str(),
+            span,
+            structured: Some(Box::new(spec)),
+        })
+    }
+
+    /// Builds a source-less structured diagnostic: no primary label and a
+    /// synthetic zero span, for tool-boundary producers (e.g. `bnc`) that carry
+    /// structured facts but have no BN source identity. Renders identically to
+    /// [`Self::structured`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the arguments violate the code's schema.
+    pub fn structured_source_less(
+        id: DiagId,
+        args: Vec<(String, DiagnosticValue)>,
+    ) -> Result<Self, String> {
+        let spec = DiagnosticSpec {
+            id,
+            effective_severity: id.severity(),
+            args,
+            labels: Vec::new(),
+        };
+        validate_arguments(&spec)?;
+        let message = render_structured_message(&spec);
+        let zero = Position {
+            source_id: SourceId(0),
+            revision: Revision(0),
+            offset: 0,
+            line: 0,
+            column: 0,
+        };
+        Ok(Self {
+            code: id.code(),
+            message: message.into_boxed_str(),
+            span: Span {
+                start: zero,
+                end: zero,
+            },
+            structured: Some(Box::new(spec)),
+        })
+    }
+
+    /// Creates a lexical diagnostic from the offending token and expectation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when either required lexical fact is absent or has the
+    /// wrong type.
+    pub fn lexical_facts(
+        found: impl Into<String>,
+        expected: impl Into<String>,
+        span: Span,
+    ) -> Result<Self, String> {
+        Self::structured(
+            DiagId::Lexical,
+            vec![
+                ("found".into(), found.into().into()),
+                ("expected".into(), expected.into().into()),
+            ],
+            vec![Label {
+                span,
+                style: LabelStyle::Primary,
+                text: None,
+            }],
+        )
+    }
+
+    /// Creates a parser diagnostic from the required token and syntactic
+    /// context.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the parser facts do not satisfy the registry
+    /// contract.
+    pub fn parse_facts(
+        expected: impl Into<String>,
+        context: impl Into<String>,
+        span: Span,
+    ) -> Result<Self, String> {
+        Self::structured(
+            DiagId::Parse,
+            vec![
+                ("expected".into(), expected.into().into()),
+                ("context".into(), context.into().into()),
+            ],
+            vec![Label {
+                span,
+                style: LabelStyle::Primary,
+                text: None,
+            }],
+        )
+    }
+
+    /// Creates a diagnostic from facts that are independent of presentation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when there is no primary label or the arguments do not
+    /// match the registry schema for `id`.
     /// Converts diagnostics whose legacy code is already in the registry into
     /// the structured form consumed by the Fluent catalog.
     #[must_use]
     pub fn spec(&self) -> Option<DiagnosticSpec> {
+        if let Some(spec) = &self.structured {
+            return Some((**spec).clone());
+        }
         let id = DiagId::from_code(self.code)?;
+        if id == DiagId::Lexical {
+            return Some(DiagnosticSpec {
+                id,
+                effective_severity: id.severity(),
+                args: vec![
+                    ("found".into(), self.message.to_string().into()),
+                    ("expected".into(), "a valid Basic Next token".into()),
+                ],
+                labels: vec![Label {
+                    span: self.span,
+                    style: LabelStyle::Primary,
+                    text: None,
+                }],
+            });
+        }
+        if id == DiagId::Parse {
+            return Some(DiagnosticSpec {
+                id,
+                effective_severity: id.severity(),
+                args: vec![
+                    (
+                        "expected".into(),
+                        self.message
+                            .strip_prefix("expected ")
+                            .unwrap_or(self.message.as_ref())
+                            .to_string()
+                            .into(),
+                    ),
+                    (
+                        "context".into(),
+                        "the current declaration or statement".into(),
+                    ),
+                ],
+                labels: vec![Label {
+                    span: self.span,
+                    style: LabelStyle::Primary,
+                    text: None,
+                }],
+            });
+        }
+        if id == DiagId::Runtime("INDEX_OUT_OF_BOUNDS") {
+            return Some(DiagnosticSpec {
+                id,
+                effective_severity: id.severity(),
+                args: vec![
+                    ("index".into(), "unknown".into()),
+                    ("bound".into(), "unknown".into()),
+                    ("context".into(), self.message.to_string().into()),
+                ],
+                labels: vec![Label {
+                    span: self.span,
+                    style: LabelStyle::Primary,
+                    text: None,
+                }],
+            });
+        }
+        if id == DiagId::TypeMismatch {
+            return Some(DiagnosticSpec {
+                id,
+                effective_severity: id.severity(),
+                args: vec![
+                    ("expected".into(), "the operation's expected type".into()),
+                    ("actual".into(), "an incompatible value".into()),
+                    ("context".into(), self.message.to_string().into()),
+                ],
+                labels: vec![Label {
+                    span: self.span,
+                    style: LabelStyle::Primary,
+                    text: None,
+                }],
+            });
+        }
         Some(DiagnosticSpec {
             id,
-            args: vec![("message".into(), self.message.clone())],
+            effective_severity: id.severity(),
+            args: vec![("message".into(), self.message.to_string().into())],
             labels: vec![Label {
                 span: self.span,
                 style: LabelStyle::Primary,
@@ -795,32 +1605,7 @@ impl Diagnostic {
         let Ok(rendered) = catalog.render(&spec) else {
             return self.render(source);
         };
-        let position = self.span.start;
-        let label = rendered
-            .labels
-            .first()
-            .and_then(|label| label.text.as_deref())
-            .unwrap_or("");
-        format!(
-            "{severity}[{code}]: {title}: {message}\n --> {name}:{line}:{column}\n  |\n{line:>3} | {text}\n  | {padding}^{label}",
-            severity = match rendered.severity {
-                Severity::Error => "error",
-                Severity::Warning => "warning",
-            },
-            code = rendered.code,
-            title = rendered.title,
-            message = rendered.message,
-            name = source.name,
-            line = position.line,
-            column = position.column,
-            text = source.line(position.line),
-            padding = " ".repeat(position.column.saturating_sub(1)),
-            label = if label.is_empty() {
-                String::new()
-            } else {
-                format!(" {label}")
-            },
-        )
+        render_catalog_diagnostic(source, &rendered)
     }
 
     /// Applies the effective warning level before rendering a catalog-backed
@@ -838,9 +1623,14 @@ impl Diagnostic {
         match policy.level(spec.id) {
             Level::Allow => String::new(),
             Level::Warn => self.render_with_catalog(source, catalog),
-            Level::Error => self
-                .render_with_catalog(source, catalog)
-                .replacen("warning[", "error[", 1),
+            Level::Error => {
+                let mut promoted = spec;
+                promoted.effective_severity = Severity::Error;
+                catalog.render(&promoted).map_or_else(
+                    |_| self.render(source),
+                    |rendered| render_catalog_diagnostic(source, &rendered),
+                )
+            }
         }
     }
 
@@ -858,6 +1648,44 @@ impl Diagnostic {
             padding = " ".repeat(position.column.saturating_sub(1))
         )
     }
+}
+
+fn render_catalog_diagnostic(source: &SourceFile, rendered: &RenderedDiagnostic) -> String {
+    let position = rendered.labels.first().map_or(
+        Position {
+            source_id: source.source_id,
+            revision: source.revision,
+            offset: 0,
+            line: 1,
+            column: 1,
+        },
+        |label| label.span.start,
+    );
+    let label = rendered
+        .labels
+        .first()
+        .and_then(|label| label.text.as_deref())
+        .unwrap_or("");
+    format!(
+        "{severity}[{code}]: {title}: {message}\n --> {name}:{line}:{column}\n  |\n{line:>3} | {text}\n  | {padding}^{label}",
+        severity = match rendered.severity {
+            Severity::Error => "error",
+            Severity::Warning => "warning",
+        },
+        code = rendered.code,
+        title = rendered.title,
+        message = rendered.message,
+        name = source.name,
+        line = position.line,
+        column = position.column,
+        text = source.line(position.line),
+        padding = " ".repeat(position.column.saturating_sub(1)),
+        label = if label.is_empty() {
+            String::new()
+        } else {
+            format!(" {label}")
+        },
+    )
 }
 
 #[cfg(test)]
@@ -895,6 +1723,67 @@ mod tests {
     }
 
     #[test]
+    fn registry_classifies_current_runtime_and_bnc_codes() {
+        for code in [
+            "BNC",
+            "BNC_ENGINE",
+            "DOUBLE_RELEASE",
+            "FUNCTION_NOT_FOUND",
+            "USE_AFTER_RELEASE",
+        ] {
+            let id = DiagId::from_code(code)
+                .unwrap_or_else(|| panic!("current producer code {code} must be registered"));
+            assert_eq!(id.code(), code);
+            assert_eq!(id.severity(), Severity::Error);
+        }
+    }
+
+    #[test]
+    fn typed_diagnostic_values_render_deterministically() {
+        let rendered = super::substitute(
+            "signed={$signed}; unsigned={$unsigned}; enabled={$enabled}; name={$name}",
+            &[
+                ("signed".into(), (-7_i64).into()),
+                ("unsigned".into(), 9_u64.into()),
+                ("enabled".into(), true.into()),
+                ("name".into(), "value".into()),
+            ],
+        )
+        .expect("typed substitution");
+        assert_eq!(rendered, "signed=-7; unsigned=9; enabled=true; name=value");
+    }
+
+    #[test]
+    fn catalog_rejects_arguments_outside_the_identity_schema() {
+        let catalog = Catalog::embedded_en_us().expect("embedded catalog");
+        let base = |args| super::DiagnosticSpec {
+            id: DiagId::TypeMismatch,
+            effective_severity: Severity::Error,
+            args,
+            labels: Vec::new(),
+        };
+        assert!(catalog.render(&base(Vec::new())).is_err());
+        assert!(
+            catalog
+                .render(&base(vec![("unknown".into(), "value".into())]))
+                .is_err()
+        );
+        assert!(
+            catalog
+                .render(&base(vec![("message".into(), 1_u64.into())]))
+                .is_err()
+        );
+        assert!(
+            catalog
+                .render(&base(vec![
+                    ("message".into(), "first".into()),
+                    ("message".into(), "second".into()),
+                ]))
+                .is_err()
+        );
+    }
+
+    #[test]
     fn warning_policy_obeys_config_global_and_cli_precedence() {
         let mut policy = WarningPolicy::from_config(
             "[warnings]\ndefault = \"error\"\n[warnings.levels]\nUNUSED_BINDING = \"allow\"\n",
@@ -919,6 +1808,18 @@ mod tests {
             WarningPolicy::from_config("[warnings.levels]\nTYPE_MISMATCH = \"allow\"\n").is_err()
         );
         assert!(WarningPolicy::from_config("[warnings]\ndefault = \"maybe\"\n").is_err());
+        assert!(WarningPolicy::from_config("[warnings]\nunknown = \"warn\"\n").is_err());
+        assert!(
+            WarningPolicy::from_config("[warnings]\ndefault = \"warn\"\ndefault = \"error\"\n")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn warning_config_preserves_hash_inside_quoted_values() {
+        let error = WarningPolicy::from_config("[warnings]\ndefault = \"warn#still-value\"\n")
+            .expect_err("quoted hash belongs to the value");
+        assert!(error.contains("warn#still-value"));
     }
 
     #[test]
@@ -947,6 +1848,57 @@ mod tests {
     }
 
     #[test]
+    fn sink_does_not_merge_different_sources_or_revisions() {
+        let mut sink = DiagnosticSink::default();
+        for (source_id, revision) in [(1, 1), (2, 1), (1, 2)] {
+            let position = Position {
+                source_id: SourceId(source_id),
+                revision: Revision(revision),
+                offset: 3,
+                line: 1,
+                column: 4,
+            };
+            sink.emit(
+                DiagId::TypeMismatch,
+                Vec::new(),
+                vec![Label {
+                    span: Span {
+                        start: position,
+                        end: position,
+                    },
+                    style: LabelStyle::Primary,
+                    text: None,
+                }],
+            );
+        }
+        assert_eq!(sink.len(), 3);
+    }
+
+    #[test]
+    fn sink_retains_effective_severity_as_structured_data() {
+        let mut sink = DiagnosticSink::default();
+        sink.set_level(DiagId::UnusedBinding, Level::Error)
+            .expect("warnings may be promoted");
+        sink.emit(
+            DiagId::UnusedBinding,
+            vec![("name".into(), "temporary".into())],
+            vec![Label {
+                span: span(1),
+                style: LabelStyle::Primary,
+                text: None,
+            }],
+        );
+        let spec = &sink.specs()[0];
+        assert_eq!(spec.id.severity(), Severity::Warning);
+        assert_eq!(spec.effective_severity, Severity::Error);
+        let rendered = Catalog::embedded_en_us()
+            .expect("embedded catalog")
+            .render(spec)
+            .expect("rendered diagnostic");
+        assert_eq!(rendered.severity, Severity::Error);
+    }
+
+    #[test]
     fn hard_errors_cannot_be_suppressed() {
         let mut sink = DiagnosticSink::default();
         assert!(sink.set_level(DiagId::TypeMismatch, Level::Allow).is_err());
@@ -955,14 +1907,12 @@ mod tests {
     #[test]
     fn embedded_catalog_covers_registry_and_renders_arguments_lazily() {
         let catalog = super::Catalog::embedded_en_us().expect("embedded catalog");
-        assert_eq!(catalog.len(), 64);
+        assert_eq!(catalog.len(), DiagId::all().count());
         let span = span(7);
         let spec = super::DiagnosticSpec {
             id: DiagId::UnusedBinding,
-            args: vec![
-                ("name".into(), "temporary".into()),
-                ("message".into(), "temporary is never read".into()),
-            ],
+            effective_severity: Severity::Warning,
+            args: vec![("name".into(), "temporary".into())],
             labels: vec![Label {
                 span,
                 style: LabelStyle::Primary,
@@ -974,6 +1924,38 @@ mod tests {
         assert_eq!(rendered.severity, Severity::Warning);
         assert!(rendered.message.contains("temporary"));
         assert_eq!(rendered.labels.len(), 1);
+
+        let division = super::DiagnosticSpec {
+            id: DiagId::Runtime("DIVISION_BY_ZERO"),
+            effective_severity: Severity::Error,
+            args: vec![("operation".into(), "DIV".into())],
+            labels: vec![Label {
+                span,
+                style: LabelStyle::Primary,
+                text: None,
+            }],
+        };
+        let rendered_division = catalog.render(&division).expect("render division error");
+        assert_eq!(rendered_division.causes.len(), 1);
+        assert!(rendered_division.help.is_some());
+
+        let missing = super::DiagnosticSpec {
+            id: DiagId::Runtime("NAME_NOT_FOUND"),
+            effective_severity: Severity::Error,
+            args: vec![
+                ("name".into(), "missingField".into()),
+                ("context".into(), "object member".into()),
+            ],
+            labels: vec![Label {
+                span,
+                style: LabelStyle::Primary,
+                text: None,
+            }],
+        };
+        let rendered_missing = catalog.render(&missing).expect("render missing name");
+        assert!(rendered_missing.message.contains("missingField"));
+        assert_eq!(rendered_missing.causes.len(), 1);
+        assert!(rendered_missing.help.is_some());
     }
 
     #[test]
@@ -982,6 +1964,78 @@ mod tests {
         assert!(super::Catalog::from_ftl(duplicate).is_err());
         let missing_title = "type-mismatch = message\n    .code = TYPE_MISMATCH\n";
         assert!(super::Catalog::from_ftl(missing_title).is_err());
+        assert!(
+            super::parse_shard(
+                "type-mismatch =   \n    .title = Title\n    .code = TYPE_MISMATCH\n"
+            )
+            .is_err()
+        );
+        assert!(
+            super::parse_shard(
+                "type-mismatch = message\n    .title =   \n    .code = TYPE_MISMATCH\n"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn fluent_subset_rejects_duplicate_attributes_and_unknown_arguments() {
+        let duplicate = "type-mismatch = {$message}\n    .title = First\n    .title = Second\n    .code = TYPE_MISMATCH\n";
+        assert!(
+            super::parse_shard(duplicate)
+                .expect_err("duplicate title")
+                .contains("duplicate Fluent attribute: title")
+        );
+        let unknown =
+            "type-mismatch = {$unknown}\n    .title = Type mismatch\n    .code = TYPE_MISMATCH\n";
+        assert!(super::parse_shard(unknown).is_ok());
+        assert!(
+            super::Catalog::from_ftl(unknown)
+                .expect_err("unknown argument")
+                .contains("unknown catalog argument")
+        );
+    }
+
+    #[test]
+    fn fluent_subset_supports_multiline_values_and_catalog_label_defaults() {
+        let entries = super::parse_shard(
+            "type-mismatch = first {$expected}\n    second line\n    .title = Type mismatch\n    .code = TYPE_MISMATCH\n    .label = expected {$expected}\n      here\n    .label_secondary = declared here\n",
+        )
+        .expect("supported multiline Fluent subset");
+        assert_eq!(entries[0].message, "first {$expected}\nsecond line");
+        assert_eq!(
+            entries[0].label.as_deref(),
+            Some("expected {$expected}\nhere")
+        );
+
+        let catalog = Catalog::embedded_en_us().expect("embedded catalog");
+        let diagnostic = super::DiagnosticSpec {
+            id: DiagId::TypeMismatch,
+            effective_severity: Severity::Error,
+            args: vec![
+                ("expected".into(), "INTEGER".into()),
+                ("actual".into(), "STRING".into()),
+                ("context".into(), "assignment".into()),
+            ],
+            labels: vec![
+                Label {
+                    span: span(1),
+                    style: LabelStyle::Primary,
+                    text: None,
+                },
+                Label {
+                    span: span(2),
+                    style: LabelStyle::Secondary,
+                    text: Some("producer detail".into()),
+                },
+            ],
+        };
+        let rendered = catalog.render(&diagnostic).expect("render labels");
+        assert_eq!(
+            rendered.labels[0].text.as_deref(),
+            Some("incompatible value")
+        );
+        assert_eq!(rendered.labels[1].text.as_deref(), Some("producer detail"));
     }
 
     #[test]
@@ -989,7 +2043,7 @@ mod tests {
         let first = super::Catalog::embedded_global();
         let second = super::Catalog::embedded_global();
         assert!(std::ptr::eq(first, second));
-        assert_eq!(first.len(), 64);
+        assert_eq!(first.len(), DiagId::all().count());
     }
 
     #[test]
@@ -1005,7 +2059,7 @@ mod tests {
         fs::create_dir_all(&directory).expect("overlay directory");
         fs::write(
             directory.join("lex.ftl"),
-            "lexical-error = {$message}\n    .title = Erro lexical personalizado\n    .code = E0001\n    .label = token inválido\n",
+            "lexical-error = Found {$found}, expected {$expected}.\n    .title = Erro lexical personalizado\n    .code = E0001\n    .label = token inválido\n",
         )
         .expect("overlay shard");
 
@@ -1013,7 +2067,11 @@ mod tests {
             super::Catalog::embedded_en_us_with_overlay(&directory).expect("overlay catalog");
         let lexical = super::DiagnosticSpec {
             id: DiagId::Lexical,
-            args: vec![("message".into(), "bad token".into())],
+            effective_severity: Severity::Error,
+            args: vec![
+                ("found".into(), "bad token".into()),
+                ("expected".into(), "a valid Basic Next token".into()),
+            ],
             labels: vec![Label {
                 span: span(0),
                 style: LabelStyle::Primary,
@@ -1026,7 +2084,14 @@ mod tests {
         );
         let parse = super::DiagnosticSpec {
             id: DiagId::Parse,
-            args: vec![("message".into(), "expected AS".into())],
+            effective_severity: Severity::Error,
+            args: vec![
+                ("expected".into(), "AS".into()),
+                (
+                    "context".into(),
+                    "the current declaration or statement".into(),
+                ),
+            ],
             labels: Vec::new(),
         };
         assert_eq!(
@@ -1037,15 +2102,133 @@ mod tests {
     }
 
     #[test]
+    fn explicitly_selected_missing_overlay_is_an_error() {
+        let directory =
+            std::env::temp_dir().join(format!("bn-missing-diag-overlay-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        let error = Catalog::embedded_en_us_with_overlay(&directory)
+            .expect_err("explicitly selected missing overlay must fail");
+        assert!(error.contains("not a readable directory"));
+        assert!(error.contains(&directory.display().to_string()));
+    }
+
+    #[test]
+    fn diagnostics_directory_is_relative_to_selected_config() {
+        let config = std::path::Path::new("/project/config/config.toml");
+        assert_eq!(
+            super::diagnostic_directory_from_config(
+                "[diagnostics]\ndir = \"catalogs/en-US#local\" # comment\n",
+                config,
+            )
+            .expect("diagnostics config"),
+            Some(std::path::PathBuf::from(
+                "/project/config/catalogs/en-US#local"
+            ))
+        );
+        assert!(
+            super::diagnostic_directory_from_config(
+                "[diagnostics]\ndir = \"one\"\ndir = \"two\"\n",
+                config,
+            )
+            .is_err()
+        );
+        assert!(super::diagnostic_directory_from_config(
+            "[diagnostics]\nunknown = \"value\"\n",
+            config,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn catalog_path_precedence_is_environment_config_install_embedded() {
+        let root = std::env::temp_dir().join(format!("bn-diag-precedence-{}", std::process::id()));
+        let environment = root.join("environment");
+        let configured = root.join("configured");
+        let installed = root.join("installed");
+        for (directory, title) in [
+            (&environment, "Environment"),
+            (&configured, "Configured"),
+            (&installed, "Installed"),
+        ] {
+            std::fs::create_dir_all(directory).expect("overlay directory");
+            std::fs::write(
+                directory.join("lex.ftl"),
+                format!("lexical-error = Found {{$found}}, expected {{$expected}}.\n    .title = {title}\n    .code = E0001\n"),
+            )
+            .expect("overlay fixture");
+        }
+        let title = |catalog: Catalog| {
+            catalog
+                .render(&super::DiagnosticSpec {
+                    id: DiagId::Lexical,
+                    effective_severity: Severity::Error,
+                    args: vec![
+                        ("found".into(), "bad token".into()),
+                        ("expected".into(), "a valid Basic Next token".into()),
+                    ],
+                    labels: Vec::new(),
+                })
+                .expect("render")
+                .title
+        };
+        assert_eq!(
+            title(
+                Catalog::selected_from_paths(
+                    Some(&environment),
+                    Some(&configured),
+                    Some(&installed)
+                )
+                .expect("environment")
+            ),
+            "Environment"
+        );
+        assert_eq!(
+            title(
+                Catalog::selected_from_paths(None, Some(&configured), Some(&installed))
+                    .expect("configured")
+            ),
+            "Configured"
+        );
+        assert_eq!(
+            title(Catalog::selected_from_paths(None, None, Some(&installed)).expect("installed")),
+            "Installed"
+        );
+        assert_eq!(
+            title(Catalog::selected_from_paths(None, None, None).expect("embedded")),
+            "Lexical error"
+        );
+        std::fs::remove_dir_all(root).expect("remove precedence fixtures");
+    }
+
+    #[test]
     fn legacy_lexical_diagnostic_bridges_to_catalog() {
         let source = SourceFile::new("main.bn", "@");
         let diagnostic = Diagnostic::lexical("invalid token", span(0));
         let spec = diagnostic.spec().expect("registered lexical code");
         assert_eq!(spec.id, DiagId::Lexical);
-        assert_eq!(spec.args, vec![("message".into(), "invalid token".into())]);
+        assert_eq!(
+            spec.args,
+            vec![
+                ("found".into(), "invalid token".into()),
+                ("expected".into(), "a valid Basic Next token".into()),
+            ]
+        );
         let rendered = diagnostic.render_with_catalog(&source, super::Catalog::embedded_global());
-        assert!(rendered.starts_with("error[E0001]: Lexical error: invalid token"));
+        assert!(rendered.starts_with("error[E0001]: Lexical error: Found 'invalid token'"));
         assert!(rendered.contains("invalid token"));
+    }
+
+    #[test]
+    fn typed_lexical_and_parser_diagnostics_keep_compatibility_text() {
+        let lexical =
+            Diagnostic::lexical_facts("§", "a Basic Next token", span(0)).expect("lexical facts");
+        assert!(lexical.message.contains("§"));
+        assert!(lexical.message.contains("a Basic Next token"));
+
+        let parse =
+            Diagnostic::parse_facts("AS", "a binding declaration", span(0)).expect("parser facts");
+        assert!(parse.message.contains("AS"));
+        assert!(parse.message.contains("binding declaration"));
     }
 
     #[test]
@@ -1055,11 +2238,46 @@ mod tests {
             code: "E0100",
             message: "expected AS".into(),
             span: span(0),
+            structured: None,
         };
         let spec = diagnostic.spec().expect("registered parse code");
         assert_eq!(spec.id, DiagId::Parse);
         let rendered = diagnostic.render_with_catalog(&source, super::Catalog::embedded_global());
-        assert!(rendered.starts_with("error[E0100]: Syntax error: expected AS"));
+        assert!(rendered.starts_with("error[E0100]: Syntax error: Expected AS"));
+    }
+
+    #[test]
+    fn catalog_renderer_preserves_unicode_lines_and_crlf_coordinates() {
+        let source = SourceFile::new("unicode.bn", "LET α AS STRING\r\nPRINT α\r\n");
+        let position = Position {
+            source_id: source.source_id,
+            revision: source.revision,
+            offset: 22,
+            line: 2,
+            column: 7,
+        };
+        let diagnostic = Diagnostic::structured(
+            DiagId::TypeMismatch,
+            vec![
+                ("expected".into(), "INTEGER".into()),
+                ("actual".into(), "STRING".into()),
+                ("context".into(), "PRINT operand".into()),
+            ],
+            vec![Label {
+                span: Span {
+                    start: position,
+                    end: position,
+                },
+                style: LabelStyle::Primary,
+                text: None,
+            }],
+        )
+        .expect("structured type mismatch");
+        let rendered = diagnostic.render_with_catalog(&source, Catalog::embedded_global());
+        assert!(rendered.contains("unicode.bn:2:7"));
+        assert!(rendered.contains("PRINT α"));
+        assert!(!rendered.contains("PRINT α\r"));
+        assert!(rendered.contains("Expected INTEGER, but found STRING"));
     }
 
     #[test]
@@ -1068,6 +2286,7 @@ mod tests {
             code: "INDEX_OUT_OF_BOUNDS",
             message: "index 4 is outside the vector".into(),
             span: span(2),
+            structured: None,
         };
         let spec = diagnostic.spec().expect("runtime code is registered");
         assert_eq!(spec.id.code(), "INDEX_OUT_OF_BOUNDS");

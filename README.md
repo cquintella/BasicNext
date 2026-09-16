@@ -3,7 +3,7 @@
 ![Basic Next Logo](docs/logo.png)
 
 [![Rust CI](https://img.shields.io/badge/Rust_CI-passing-brightgreen)](#)
-[![Version](https://img.shields.io/badge/version-v0.5.0-blue)](#)
+[![Version](https://img.shields.io/badge/version-v0.5.1-blue)](#)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE.md)
 
 An object-oriented, general-purpose programming language designed to reduce
@@ -41,9 +41,14 @@ compound spelling *NextBASIC* when referring to this repository.
 Read [PHILOSOPHY.md](PHILOSOPHY.md) for the mission, vision, and complete set
 of design principles.
 
-## 🚀 Status: Version 0.5.0 release candidate
+## 🚀 Status: Version 0.5.1
 
-The Basic Next 0.5.0 release candidate extends the Rust reference frontend, typed IR
+Basic Next 0.5.1 builds on 0.5.0 with an evaluation subcommand (`bn eval`),
+expressive structured diagnostics, an ordered module search path, and the
+`HOST.Exec` capability with interpreter↔native parity. See
+[What's New — 0.5.1](#whats-new--051) below.
+
+The Basic Next reference implementation includes the Rust frontend, typed IR
 interpreter, HOST capabilities, external BN modules, HTTP hardening, bounded
 async runtime, debugger bridge, and notebook tooling. Read the
 [0.4.2 release notes](done/0.4.2-release-news.md) for the complete summary.
@@ -56,6 +61,27 @@ the archived 0.2 program remains in [`archive/project/bucket-0.2.md`](archive/pr
 > **Note:** `bn build` is available for its supported typed-IR subset. The
 > interpreter remains the reference implementation for language surfaces
 > outside that subset.
+
+## What's New — 0.5.1
+
+- **`bn eval` subcommand.** Evaluate a source fragment from an argument or
+  `--stdin` in one shot: `bn eval 'PRINT 1 + 1'`. A top-level `FUNCTION Start`
+  auto-promotes to program semantics with one structured warning. `--format json`
+  emits a single JSON v1 envelope (program stdout/stderr and structured
+  `diagnostics[]`) with an otherwise-empty process stderr.
+- **Expressive diagnostics.** Every user-visible toolchain diagnostic now carries
+  structured facts (codes, typed arguments, primary/secondary spans, causes and
+  help) from an external Fluent catalog under `share/bn/diagnostics/`, shared by
+  the CLI, the `bn eval` JSON channel, and the LSP.
+- **Ordered module search path.** Repeatable `--module-path <dir>` and a config
+  `module-path = [...]` array; first hit wins, with the entry-file directory and
+  the discovered stdlib `modules/bn` as defaults, applied identically to
+  `check` / `run` / `build` / `eval`.
+- **`HOST.Exec` capability.** `IMPORT HOST.Exec` exposes `Run(program, args)`:
+  launch an OS executable without a shell, closed child stdin, concurrent bounded
+  stdout/stderr capture, a wall-clock timeout, and a portable `Exec.Result OR
+  Error` with signal-aware return codes — enforced by execution policy and
+  available on both the interpreter and the native (LLVM) path.
 
 ## What's New — 0.5.0
 
@@ -129,15 +155,54 @@ locations, and exit-code model.
 
 ### Quick Installation
 
-**1. For Users (Direct Download)**
-The easiest way to get started is to download the pre-compiled binary for your operating system (Linux, macOS, Windows) directly from [GitHub Releases](https://github.com/cquintella/BasicNext/releases/latest). 
+**1. Install script (recommended)**
+The install scripts build `bn` and `bnc` from source and place the binaries plus
+the runtime files they need (standard-library `.bn` modules, diagnostics catalog,
+and the Unix man page) in a single prefix. `bn` then discovers its modules and
+catalog by walking upward from its own location — zero configuration afterwards.
+
+Linux / macOS (installs to `/usr/local`, uses `sudo` only if that prefix is not
+writable):
+```shell
+./scripts/install.sh
+# user-local, no sudo:
+PREFIX="$HOME/.local" ./scripts/install.sh
+# custom prefix:
+./scripts/install.sh --prefix /opt/basicnext
+```
+
+Windows (PowerShell; installs to `%LOCALAPPDATA%\Programs\BasicNext` and adds it
+to your user `PATH`, no admin needed):
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install.ps1
+# custom prefix:
+powershell -ExecutionPolicy Bypass -File scripts\install.ps1 -Prefix C:\Tools\BasicNext
+```
+
+Installed layout (FHS):
+
+| Path | Contents |
+| --- | --- |
+| `<prefix>/bin/bn`, `<prefix>/bin/bnc` | executables |
+| `<prefix>/share/bn/modules/bn/*.bn` | standard-library modules |
+| `<prefix>/share/bn/diagnostics/en-US/*.ftl` | diagnostics catalog (optional — an identical catalog is embedded) |
+| `<prefix>/share/man/man1/bn.1` | Unix manual page (Linux/macOS) |
+
+Each script verifies the install by running `bn --version` and resolving a
+standard-library module from a clean directory. Pass `--no-build` (Bash) or
+`-NoBuild` (PowerShell) to install already-built `target/release` binaries.
+
+**2. For Users (Direct Download)**
+Alternatively, download the pre-compiled binary for your operating system (Linux, macOS, Windows) directly from [GitHub Releases](https://github.com/cquintella/BasicNext/releases/latest).
 The asset names and checksums are listed in [`binaries/README.md`](binaries/README.md).
 
-**2. For Developers (Build from Source)**
+**3. For Developers (Build from Source)**
 If you prefer building from source and have Rust (1.97+) installed, you can install the CLI from this repository:
 ```shell
 cargo install --path .
 ```
+Note that `cargo install` places only the binary on your `PATH`; use the install
+script above if you also want the stdlib modules and catalog on disk.
 
 Usage, limits, and troubleshooting: [`docs/project/usage.md`](docs/project/usage.md).
 Unix manual: [`bn(1)`](docs/man/bn.1) (`man docs/man/bn.1`).

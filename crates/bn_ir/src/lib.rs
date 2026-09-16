@@ -4,7 +4,7 @@
 
 //! Language-owned BN IR model, validation, and backend handoff proof.
 
-use bn_diag::Diagnostic;
+use bn_diag::{DiagId, Diagnostic, Label, LabelStyle};
 use bn_source::Span;
 
 mod model;
@@ -38,11 +38,16 @@ impl ValidatedModule {
 
 /// Constructs the stable language-level diagnostic for malformed IR.
 pub(crate) fn invalid_ir(message: impl Into<String>, span: Span) -> Diagnostic {
-    Diagnostic {
-        code: "INVALID_IR",
-        message: message.into(),
-        span,
-    }
+    Diagnostic::structured(
+        DiagId::InvalidIr,
+        vec![("detail".into(), message.into().into())],
+        vec![Label {
+            span,
+            style: LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("invalid IR diagnostic schema is registered")
 }
 
 /// Proves that a module satisfies the language-level IR contract.

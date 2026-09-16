@@ -8,7 +8,7 @@ use crate::{
     diagnostic::Diagnostic,
 };
 
-use super::{FloatType, IntegerType, Type, display, error, is_float, is_integer};
+use super::{FloatType, IntegerType, Type, display, error, is_float, is_integer, type_mismatch};
 
 pub(super) fn comparable(left: &Type, right: &Type) -> bool {
     super::compatible(left, right)
@@ -22,17 +22,12 @@ pub(super) fn binary_type(
     right: &Type,
     expression: &Expression,
 ) -> Result<Type, Diagnostic> {
-    let invalid = || {
-        error(
-            "TYPE_MISMATCH",
-            format!(
-                "operator {operator} cannot combine {} and {}",
-                display(left),
-                display(right)
-            ),
-            expression.span,
-        )
-    };
+    let invalid = || type_mismatch(
+        "compatible operands",
+        format!("{} and {}", display(left), display(right)),
+        format!("binary operator {operator}"),
+        expression.span,
+    );
 
     match operator {
         "Assign" | "NotEqual" => comparable(left, right)

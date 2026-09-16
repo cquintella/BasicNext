@@ -11,13 +11,9 @@ impl Executor<'_, '_> {
         let Value::DataFrame(id) = arguments
             .first()
             .cloned()
-            .ok_or_else(|| runtime_error("TYPE_MISMATCH", "DataFrame receiver missing", span))?
+            .ok_or_else(|| super::super::type_mismatch("DataFrame", "missing receiver", "DataFrame method", span))?
         else {
-            return Err(runtime_error(
-                "TYPE_MISMATCH",
-                "receiver is not DataFrame",
-                span,
-            ));
+            return Err(super::super::type_mismatch("DataFrame", "non-DataFrame value", "DataFrame method", span));
         };
         let method = name.rsplit('.').next().unwrap_or_default();
         if let Some(kind) = match method {
@@ -59,18 +55,10 @@ impl Executor<'_, '_> {
             "SetLabel" => {
                 require_arity(method, arguments, 3, span)?;
                 let Value::String(old_label) = &arguments[1] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "old label must be STRING",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING", "non-STRING value", "DataFrame.SetLabel old label", span));
                 };
                 let Value::String(new_label) = &arguments[2] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "new label must be STRING",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING", "non-STRING value", "DataFrame.SetLabel new label", span));
                 };
                 match set_column_label(frame, old_label, new_label) {
                     Ok(()) => Ok(Value::Null),
@@ -89,11 +77,7 @@ impl Executor<'_, '_> {
                 require_arity(name, arguments, 3, span)?;
                 let (row, _) = integer(&arguments[1], span)?;
                 let Value::String(column_name) = &arguments[2] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "column name must be STRING",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING", "non-STRING value", "DataFrame column name", span));
                 };
                 let Ok(row) = usize::try_from(row) else {
                     return Ok(Value::Error {
@@ -127,11 +111,7 @@ impl Executor<'_, '_> {
             "ConvertToInteger" | "ConvertToFloat" => {
                 require_arity(name, arguments, 2, span)?;
                 let Value::String(column_name) = &arguments[1] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "column name must be STRING",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING", "non-STRING value", "DataFrame column name", span));
                 };
                 let converter = |value: &Value| {
                     let Value::String(text) = value else {
@@ -167,11 +147,7 @@ impl Executor<'_, '_> {
             "ZScore" => {
                 require_arity(name, arguments, 2, span)?;
                 let Value::String(column_name) = &arguments[1] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "column name must be STRING",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING", "non-STRING value", "DataFrame column name", span));
                 };
                 let frame = self.dataframes.get(&id).ok_or_else(|| {
                     runtime_error("USE_AFTER_RELEASE", "DataFrame handle is invalid", span)
@@ -195,11 +171,7 @@ impl Executor<'_, '_> {
             | "Range" | "Min" | "Max" => {
                 require_arity(name, arguments, 2, span)?;
                 let Value::String(column_name) = &arguments[1] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "column name must be STRING",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING", "non-STRING value", "DataFrame column name", span));
                 };
                 let to_f64 = |val: &Value| match val {
                     Value::Integer(number, _) => Ok(Some(*number as f64)),
@@ -219,18 +191,10 @@ impl Executor<'_, '_> {
             "CopyIntegerColumn" | "CopyFloatColumn" => {
                 require_arity(name, arguments, 3, span)?;
                 let Value::String(column_name) = &arguments[1] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "column name must be STRING",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING", "non-STRING value", "DataFrame column name", span));
                 };
                 let Value::Pointer { handle } = arguments[2] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "destination must be a pointer",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("pointer", "non-pointer value", "DataFrame column copy", span));
                 };
                 let target_len = self.memory.len(handle, span)?;
                 let adapter = |value: &Value| match (method, value) {
@@ -269,11 +233,7 @@ impl Executor<'_, '_> {
                 Ok(Value::Null)
             }
             "Select" | "Slice" => self.dataframe_select_slice(method, id, arguments, span),
-            _ => Err(runtime_error(
-                "NAME_NOT_FOUND",
-                "unknown DataFrame method",
-                span,
-            )),
+            _ => Err(super::super::name_not_found(method, "DataFrame method", span)),
         }
         }
 

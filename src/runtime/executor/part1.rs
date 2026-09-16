@@ -4,14 +4,10 @@ use super::*;
 impl Executor<'_, '_> {
     pub(crate) fn function(&mut self, function: &Function, arguments: Vec<Value>) -> Result<Flow, Diagnostic> {
         if arguments.len() != function.parameters.len() {
-            return Err(runtime_error(
-                "TYPE_MISMATCH",
-                format!(
-                    "FUNCTION {} expects {} argument(s), found {}",
-                    function.name,
-                    function.parameters.len(),
-                    arguments.len()
-                ),
+            return Err(super::super::type_mismatch(
+                format!("{} argument(s)", function.parameters.len()),
+                format!("{} argument(s)", arguments.len()),
+                format!("FUNCTION {}", function.name),
                 function.span,
             ));
         }

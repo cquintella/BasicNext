@@ -273,27 +273,15 @@ impl Executor<'_, '_> {
             }
             (Value::Error { message, .. }, "Message") => Ok(Value::String(message.clone())),
             (Value::Record { fields, .. }, _) => fields.get(name).cloned().ok_or_else(|| {
-                runtime_error(
-                    "NAME_NOT_FOUND",
-                    format!("runtime value has no member '{name}'"),
-                    span,
-                )
+                super::name_not_found(name, "record member", span)
             }),
             (Value::Object { handle, .. }, _) => {
                 let instance = self.objects.get(*handle, 0, span)?;
                 instance.fields.get(name).cloned().ok_or_else(|| {
-                    runtime_error(
-                        "NAME_NOT_FOUND",
-                        format!("runtime value has no member '{name}'"),
-                        span,
-                    )
+                    super::name_not_found(name, "object member", span)
                 })
             }
-            _ => Err(runtime_error(
-                "NAME_NOT_FOUND",
-                format!("runtime value has no member '{name}'"),
-                span,
-            )),
+            _ => Err(super::name_not_found(name, "member lookup", span)),
         }
     }
 
@@ -325,11 +313,7 @@ impl Executor<'_, '_> {
                 fields.insert(name.to_string(), stored);
                 Ok(())
             }
-            _ => Err(runtime_error(
-                "NAME_NOT_FOUND",
-                format!("runtime value has no member '{name}'"),
-                span,
-            )),
+            _ => Err(super::name_not_found(name, "member assignment", span)),
         }
     }
 
@@ -350,7 +334,7 @@ impl Executor<'_, '_> {
                     .fields
                     .get(name)
                     .cloned()
-                    .ok_or_else(|| runtime_error("NAME_NOT_FOUND", format!("runtime value has no member '{name}'"), span))?;
+                    .ok_or_else(|| super::name_not_found(name, "object member", span))?;
                 self.set_index(&mut target, indices, stored, span)?;
                 self.objects
                     .get_mut(*handle, 0, span)?
@@ -363,11 +347,7 @@ impl Executor<'_, '_> {
                 "indexed value-type fields require a binding-rooted field store",
                 span,
             )),
-            _ => Err(runtime_error(
-                "NAME_NOT_FOUND",
-                format!("runtime value has no member '{name}'"),
-                span,
-            )),
+            _ => Err(super::name_not_found(name, "indexed member assignment", span)),
         }
     }
 
@@ -385,11 +365,7 @@ impl Executor<'_, '_> {
         match target {
             Value::Record { fields, .. } => {
                 let mut nested = fields.get(name).cloned().ok_or_else(|| {
-                    runtime_error(
-                        "NAME_NOT_FOUND",
-                        format!("runtime value has no member '{name}'"),
-                        span,
-                    )
+                    super::name_not_found(name, "nested record member", span)
                 })?;
                 self.set_field_index_path(&mut nested, rest, indices, stored, span)?;
                 fields.insert(name.clone(), nested);
@@ -404,11 +380,7 @@ impl Executor<'_, '_> {
                     .get(name)
                     .cloned()
                     .ok_or_else(|| {
-                        runtime_error(
-                            "NAME_NOT_FOUND",
-                            format!("runtime value has no member '{name}'"),
-                            span,
-                        )
+                        super::name_not_found(name, "nested object member", span)
                     })?;
                 self.set_field_index_path(&mut nested, rest, indices, stored, span)?;
                 self.objects
@@ -417,7 +389,7 @@ impl Executor<'_, '_> {
                     .insert(name.clone(), nested);
                 Ok(())
             }
-            _ => Err(runtime_error("TYPE_MISMATCH", "value has no fields", span)),
+            _ => Err(super::type_mismatch("record or object", "value without fields", "field index assignment", span)),
         }
     }
 
@@ -439,11 +411,7 @@ impl Executor<'_, '_> {
                     return Ok(());
                 }
                 let mut nested = fields.get(name).cloned().ok_or_else(|| {
-                    runtime_error(
-                        "NAME_NOT_FOUND",
-                        format!("runtime value has no member '{name}'"),
-                        span,
-                    )
+                    super::name_not_found(name, "nested record member", span)
                 })?;
                 self.set_field_path(&mut nested, rest, stored, span)?;
                 fields.insert(name.clone(), nested);
@@ -465,11 +433,7 @@ impl Executor<'_, '_> {
                     .get(name)
                     .cloned()
                     .ok_or_else(|| {
-                        runtime_error(
-                            "NAME_NOT_FOUND",
-                            format!("runtime value has no member '{name}'"),
-                            span,
-                        )
+                        super::name_not_found(name, "nested object member", span)
                     })?;
                 self.set_field_path(&mut nested, rest, stored, span)?;
                 self.objects
@@ -478,7 +442,7 @@ impl Executor<'_, '_> {
                     .insert(name.clone(), nested);
                 Ok(())
             }
-            _ => Err(runtime_error("TYPE_MISMATCH", "value has no fields", span)),
+            _ => Err(super::type_mismatch("record or object", "value without fields", "field assignment", span)),
         }
     }
 
@@ -554,6 +518,7 @@ impl Executor<'_, '_> {
             Type::HostRandom => Ok(Value::Type("HOST.Random".into())),
             Type::HostFileSystem => Ok(Value::Type("HOST.FileSystem".into())),
             Type::HostNet => Ok(Value::Type("HOST.Net".into())),
+            Type::HostExec => Ok(Value::Type("HOST.Exec".into())),
             _ => Err(runtime_error(
                 "UNINITIALIZED_VALUE",
                 "type has no default value",
@@ -606,11 +571,7 @@ impl Executor<'_, '_> {
                 total
             }
             _ => {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "value has no byte size",
-                    span,
-                ));
+                return Err(super::type_mismatch("sized value", "unsized value", "SIZE operation", span));
             }
         };
         integer_from_u64(size, span)

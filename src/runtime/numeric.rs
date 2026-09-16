@@ -9,26 +9,18 @@ use crate::{
     source::Span,
 };
 
-use super::{Value, runtime_error};
+use super::{Value, runtime_error, type_mismatch};
 
 pub(super) fn integer(value: &Value, span: Span) -> Result<(i128, IntegerType), Diagnostic> {
     let Value::Integer(value, kind) = value else {
-        return Err(runtime_error(
-            "TYPE_MISMATCH",
-            "expected integral value",
-            span,
-        ));
+        return Err(super::type_mismatch("integral value", "non-integral value", "integer operation", span));
     };
     Ok((*value, *kind))
 }
 
 pub(super) fn boolean(value: &Value, span: Span) -> Result<bool, Diagnostic> {
     let Value::Boolean(value) = value else {
-        return Err(runtime_error(
-            "TYPE_MISMATCH",
-            "expected BOOLEAN value",
-            span,
-        ));
+        return Err(super::type_mismatch("BOOLEAN", "non-BOOLEAN value", "boolean operation", span));
     };
     Ok(*value)
 }
@@ -41,11 +33,7 @@ pub(super) fn number_as_float(value: &Value, span: Span) -> Result<f64, Diagnost
             FloatType::Float32 => f64::from(*value as f32),
             FloatType::Float64 => *value,
         }),
-        _ => Err(runtime_error(
-            "TYPE_MISMATCH",
-            "expected numeric value",
-            span,
-        )),
+        _ => Err(super::type_mismatch("numeric value", "non-numeric value", "numeric operation", span)),
     }
 }
 
@@ -155,10 +143,6 @@ pub(super) fn ordered<T: Ord>(
         "LessEqual" => Ok(Value::Boolean(left <= right)),
         "Greater" => Ok(Value::Boolean(left > right)),
         "GreaterEqual" => Ok(Value::Boolean(left >= right)),
-        _ => Err(runtime_error(
-            "TYPE_MISMATCH",
-            "invalid ordered comparison",
-            span,
-        )),
+        _ => Err(type_mismatch("ordered comparison operator", operator, "numeric ordered comparison", span)),
     }
 }

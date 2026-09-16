@@ -7,11 +7,7 @@ impl Executor<'_, '_> {
 
             require_arity(name, arguments, 3, span)?;
             let Value::String(column_name) = &arguments[1] else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "column name must be STRING",
-                    span,
-                ));
+                return Err(super::type_mismatch("STRING", "non-STRING value", "DataFrame.AddColumn name", span));
             };
             let values = match &arguments[2] {
                 Value::Vector(values) => values.clone(),
@@ -19,11 +15,7 @@ impl Executor<'_, '_> {
                     .map(|index| self.memory.get(*handle, index, span).cloned())
                     .collect::<Result<Vec<_>, _>>()?,
                 _ => {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "column values must be a vector",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("vector", "non-vector value", "DataFrame.AddColumn values", span));
                 }
             };
             let type_ok = values.iter().all(|value| match method {

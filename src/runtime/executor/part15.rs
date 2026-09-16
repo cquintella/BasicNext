@@ -9,11 +9,7 @@ pub(crate) fn host_net_address_call(&mut self, name: &str, arguments: &[Value], 
             "HOST.Net.Address.Parse" => {
                 require_arity(name, arguments, 1, span)?;
                 let Value::String(text) = &arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Address.Parse expects STRING",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("STRING", "non-STRING value", "HOST.Net.Address.Parse", span));
                 };
                 match crate::net::Address::parse(text) {
                     Ok(address) => Ok(Value::Record {
@@ -32,18 +28,10 @@ pub(crate) fn host_net_address_call(&mut self, name: &str, arguments: &[Value], 
             "HOST.Net.Address.ToString" => {
                 require_arity(name, arguments, 1, span)?;
                 let Value::Record { fields, .. } = &arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Address.ToString expects Address",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("HOST.Net.Address", "non-address value", "HOST.Net.Address.ToString", span));
                 };
                 let Some(Value::String(value)) = fields.get("value") else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "invalid Address value",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("Address.value STRING", "missing or invalid field", "HOST.Net.Address.ToString", span));
                 };
                 Ok(Value::String(value.clone()))
             }
@@ -84,18 +72,10 @@ pub(crate) fn host_net_address_call(&mut self, name: &str, arguments: &[Value], 
             "HOST.Net.Endpoint.Create" => {
                 require_arity(name, arguments, 2, span)?;
                 let Value::Record { type_name, .. } = &arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Endpoint.Create expects Address",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("HOST.Net.Address", "non-address value", "HOST.Net.Endpoint.Create", span));
                 };
                 if type_name != "HOST.Net.Address" {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "invalid Address value",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("HOST.Net.Address", type_name, "HOST.Net.Endpoint.Create", span));
                 }
                 let (port, _) = integer(&arguments[1], span)?;
                 let port = u16::try_from(port).map_err(|_| {
@@ -115,53 +95,33 @@ pub(crate) fn host_net_address_call(&mut self, name: &str, arguments: &[Value], 
             "HOST.Net.Endpoint.Address" => {
                 require_arity(name, arguments, 1, span)?;
                 let Value::Record { type_name, fields } = &arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Address expects Endpoint",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("HOST.Net.Endpoint", "non-endpoint value", "HOST.Net.Endpoint.Address", span));
                 };
                 if type_name != "HOST.Net.Endpoint" {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "invalid Endpoint value",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("HOST.Net.Endpoint", type_name, "HOST.Net.Endpoint.Address", span));
                 }
                 fields
                     .get("address")
                     .cloned()
-                    .ok_or_else(|| runtime_error("TYPE_MISMATCH", "invalid Endpoint value", span))
+                    .ok_or_else(|| super::type_mismatch("Endpoint.address field", "missing field", "HOST.Net.Endpoint.Address", span))
             }
             "HOST.Net.Endpoint.Port" => {
                 require_arity(name, arguments, 1, span)?;
                 let Value::Record { type_name, fields } = &arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Port expects Endpoint",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("HOST.Net.Endpoint", "non-endpoint value", "HOST.Net.Endpoint.Port", span));
                 };
                 if type_name != "HOST.Net.Endpoint" {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "invalid Endpoint value",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("HOST.Net.Endpoint", type_name, "HOST.Net.Endpoint.Port", span));
                 }
                 fields
                     .get("port")
                     .cloned()
-                    .ok_or_else(|| runtime_error("TYPE_MISMATCH", "invalid Endpoint value", span))
+                    .ok_or_else(|| super::type_mismatch("Endpoint.port field", "missing field", "HOST.Net.Endpoint.Port", span))
             }
             "HOST.Net.CIDR.Parse" => {
                 require_arity(name, arguments, 1, span)?;
                 let Value::String(text) = &arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "CIDR.Parse expects STRING",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("STRING", "non-STRING value", "HOST.Net.CIDR.Parse", span));
                 };
                 match crate::net::Cidr::parse(text) {
                     Ok(cidr) => Ok(Value::Record {
@@ -186,45 +146,29 @@ pub(crate) fn host_net_address_call(&mut self, name: &str, arguments: &[Value], 
             "HOST.Net.CIDR.Contains" => {
                 require_arity(name, arguments, 2, span)?;
                 let Value::Record { type_name, fields } = &arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "CIDR.Contains expects CIDR",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("HOST.Net.CIDR", "non-CIDR value", "HOST.Net.CIDR.Contains", span));
                 };
                 if type_name != "HOST.Net.CIDR" {
-                    return Err(runtime_error("TYPE_MISMATCH", "invalid CIDR value", span));
+                    return Err(super::type_mismatch("HOST.Net.CIDR", type_name, "HOST.Net.CIDR.Contains", span));
                 }
                 let Some(Value::String(network)) = fields.get("network") else {
-                    return Err(runtime_error("TYPE_MISMATCH", "invalid CIDR value", span));
+                    return Err(super::type_mismatch("CIDR.network STRING", "missing or invalid field", "HOST.Net.CIDR.Contains", span));
                 };
                 let Some(Value::Integer(prefix, _)) = fields.get("prefix") else {
-                    return Err(runtime_error("TYPE_MISMATCH", "invalid CIDR value", span));
+                    return Err(super::type_mismatch("CIDR.prefix INTEGER", "missing or invalid field", "HOST.Net.CIDR.Contains", span));
                 };
                 let Value::Record {
                     type_name: address_type,
                     fields: address_fields,
                 } = &arguments[1]
                 else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Contains expects Address",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("HOST.Net.Address", "non-address value", "HOST.Net.CIDR.Contains", span));
                 };
                 if address_type != "HOST.Net.Address" {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "invalid Address value",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("HOST.Net.Address", address_type, "HOST.Net.CIDR.Contains", span));
                 }
                 let Some(Value::String(address)) = address_fields.get("value") else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "invalid Address value",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("Address.value STRING", "missing or invalid field", "HOST.Net.CIDR.Contains", span));
                 };
                 let cidr = crate::net::Cidr::parse(&format!("{network}/{prefix}"))
                     .map_err(|message| runtime_error("INVALID_VALUE", message, span))?;
@@ -235,14 +179,14 @@ pub(crate) fn host_net_address_call(&mut self, name: &str, arguments: &[Value], 
             "HOST.Net.CIDR.Network" | "HOST.Net.CIDR.PrefixLength" => {
                 require_arity(name, arguments, 1, span)?;
                 let Value::Record { type_name, fields } = &arguments[0] else {
-                    return Err(runtime_error("TYPE_MISMATCH", "expected CIDR", span));
+                    return Err(super::type_mismatch("HOST.Net.CIDR", "non-CIDR value", "HOST.Net.CIDR accessor", span));
                 };
                 if type_name != "HOST.Net.CIDR" {
-                    return Err(runtime_error("TYPE_MISMATCH", "invalid CIDR value", span));
+                    return Err(super::type_mismatch("HOST.Net.CIDR", type_name, "HOST.Net.CIDR accessor", span));
                 }
                 if name.ends_with(".Network") {
                     let Some(Value::String(network)) = fields.get("network") else {
-                        return Err(runtime_error("TYPE_MISMATCH", "invalid CIDR value", span));
+                        return Err(super::type_mismatch("CIDR.network STRING", "missing or invalid field", "HOST.Net.CIDR.Network", span));
                     };
                     Ok(Value::Record {
                         type_name: "HOST.Net.Address".into(),
@@ -252,7 +196,7 @@ pub(crate) fn host_net_address_call(&mut self, name: &str, arguments: &[Value], 
                     fields
                         .get("prefix")
                         .cloned()
-                        .ok_or_else(|| runtime_error("TYPE_MISMATCH", "invalid CIDR value", span))
+                        .ok_or_else(|| super::type_mismatch("CIDR.prefix INTEGER", "missing or invalid field", "HOST.Net.CIDR.PrefixLength", span))
                 }
             }
             "HOST.Net.Ping" => {
@@ -311,42 +255,22 @@ pub(crate) fn host_net_address_call(&mut self, name: &str, arguments: &[Value], 
             "HOST.Net.PingReply.Address" => {
                 require_arity(name, arguments, 1, span)?;
                 let Value::Record { type_name, fields } = &arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Address expects PingReply",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("HOST.Net.PingReply", "non-PingReply value", "HOST.Net.PingReply.Address", span));
                 };
                 if type_name != "HOST.Net.PingReply" {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Address expects PingReply",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("HOST.Net.PingReply", type_name, "HOST.Net.PingReply.Address", span));
                 }
-                fields.get("address").cloned().ok_or_else(|| {
-                    runtime_error("TYPE_MISMATCH", "invalid PingReply value", span)
-                })
+                fields.get("address").cloned().ok_or_else(|| super::type_mismatch("PingReply.address field", "missing field", "HOST.Net.PingReply.Address", span))
             }
             "HOST.Net.PingReply.RoundTripMicroseconds" => {
                 require_arity(name, arguments, 1, span)?;
                 let Value::Record { type_name, fields } = &arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "RoundTripMicroseconds expects PingReply",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("HOST.Net.PingReply", "non-PingReply value", "HOST.Net.PingReply.RoundTripMicroseconds", span));
                 };
                 if type_name != "HOST.Net.PingReply" {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "RoundTripMicroseconds expects PingReply",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("HOST.Net.PingReply", type_name, "HOST.Net.PingReply.RoundTripMicroseconds", span));
                 }
-                fields.get("roundTripMicroseconds").cloned().ok_or_else(|| {
-                    runtime_error("TYPE_MISMATCH", "invalid PingReply value", span)
-                })
+                fields.get("roundTripMicroseconds").cloned().ok_or_else(|| super::type_mismatch("PingReply.roundTripMicroseconds field", "missing field", "HOST.Net.PingReply.RoundTripMicroseconds", span))
             }
 
             _ => Err(runtime_error("HOST_CAPABILITY_UNAVAILABLE", format!("host function '{name}' is not available"), span)),

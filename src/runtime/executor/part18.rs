@@ -7,11 +7,7 @@ pub(crate) fn web_request_call(&mut self, name: &str, arguments: &[Value], span:
         if name.contains(".Request.") {
             if method == "CONSTRUCTOR" {
                 let Some(Value::Object { handle, .. }) = arguments.first() else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "BNWeb.Request receiver must be an object",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("BNWeb.Request", "non-object value", "BNWeb.Request operation receiver", span));
                 };
                 let request = crate::web::Request::new(
                     "GET",
@@ -25,11 +21,7 @@ pub(crate) fn web_request_call(&mut self, name: &str, arguments: &[Value], span:
                 return Ok(Value::Null);
             }
             let Some(Value::Object { handle, .. }) = arguments.first() else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "BNWeb.Request receiver must be an object",
-                    span,
-                ));
+                return Err(super::type_mismatch("BNWeb.Request", "non-object value", "BNWeb.Request operation receiver", span));
             };
             let request = self.web_requests.get(handle).ok_or_else(|| {
                 runtime_error("STALE_HANDLE", "BNWeb.Request handle is not live", span)
@@ -46,11 +38,7 @@ pub(crate) fn web_request_call(&mut self, name: &str, arguments: &[Value], span:
                 "Headers" | "Query" => {
                     require_arity(name, arguments, 2, span)?;
                     let Value::String(key) = &arguments[1] else {
-                        return Err(runtime_error(
-                            "TYPE_MISMATCH",
-                            "collection name must be STRING",
-                            span,
-                        ));
+                        return Err(super::type_mismatch("STRING", "non-STRING value", "BNWeb.Request collection name", span));
                     };
                     let values = if method == "Headers" {
                         request.header(key).map(|values| {

@@ -5,7 +5,7 @@
 
 use crate::{diagnostic::Diagnostic, source::Span, temporal, types::IntegerType};
 
-use super::{Value, integer, require_arity, runtime_error};
+use super::{Value, integer, require_arity, runtime_error, type_mismatch};
 
 pub(super) fn is_temporal_builtin(name: &str) -> bool {
     matches!(
@@ -31,44 +31,28 @@ pub(super) fn temporal_call(
         "Date.Parse" => {
             require_arity(name, arguments, 1, span)?;
             let Value::String(text) = &arguments[0] else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "Date.Parse expects STRING",
-                    span,
-                ));
+                return Err(type_mismatch("STRING", "non-STRING value", "Date.Parse", span));
             };
             Ok(Value::Date(temporal::parse_date(text, span)?))
         }
         "Time.Parse" => {
             require_arity(name, arguments, 1, span)?;
             let Value::String(text) = &arguments[0] else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "Time.Parse expects STRING",
-                    span,
-                ));
+                return Err(type_mismatch("STRING", "non-STRING value", "Time.Parse", span));
             };
             Ok(Value::Time(temporal::parse_time(text, span)?))
         }
         "TimeZone.Parse" => {
             require_arity(name, arguments, 1, span)?;
             let Value::String(text) = &arguments[0] else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "TimeZone.Parse expects STRING",
-                    span,
-                ));
+                return Err(type_mismatch("STRING", "non-STRING value", "TimeZone.Parse", span));
             };
             Ok(Value::TimeZone(temporal::parse_timezone(text, span)?))
         }
         "Timestamp.Parse" => {
             require_arity(name, arguments, 1, span)?;
             let Value::String(text) = &arguments[0] else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "Timestamp.Parse expects STRING",
-                    span,
-                ));
+                return Err(type_mismatch("STRING", "non-STRING value", "Timestamp.Parse", span));
             };
             Ok(Value::Integer(
                 i128::from(temporal::parse_rfc3339(text, span)?),
@@ -94,28 +78,16 @@ pub(super) fn temporal_call(
         "BNMath.TOTIMESTAMP" => {
             require_arity(name, arguments, 2, span)?;
             let Value::Date(days) = arguments[0] else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "BNMath.TOTIMESTAMP expects DATE and TIME",
-                    span,
-                ));
+                return Err(type_mismatch("DATE", "non-DATE value", "BNMath.TOTIMESTAMP date", span));
             };
             let Value::Time(millis) = arguments[1] else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "BNMath.TOTIMESTAMP expects DATE and TIME",
-                    span,
-                ));
+                return Err(type_mismatch("TIME", "non-TIME value", "BNMath.TOTIMESTAMP time", span));
             };
             Ok(Value::Integer(
                 i128::from(temporal::timestamp_from_date_time(days, millis, span)?),
                 IntegerType::Int64,
             ))
         }
-        _ => Err(runtime_error(
-            "NAME_NOT_FOUND",
-            format!("unknown temporal function '{name}'"),
-            span,
-        )),
+        _ => Err(super::name_not_found(name, "temporal function", span)),
     }
 }

@@ -29,6 +29,8 @@ mod members4;
 #[cfg(not(feature = "frontend-host-spec-path"))]
 #[path = "host_spec/members4.rs"]
 mod members4;
+#[path = "host_spec/members5.rs"]
+mod members5;
 
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -108,6 +110,7 @@ pub(crate) enum Capability {
     Random,
     FileSystem,
     Net,
+    Exec,
     NumProcs,
 }
 
@@ -121,6 +124,7 @@ impl Capability {
             Self::Random => "HOST.Random",
             Self::FileSystem => "HOST.FileSystem",
             Self::Net => "HOST.Net",
+            Self::Exec => "HOST.Exec",
             Self::NumProcs => "HOST.NumProcs",
         }
     }
@@ -135,6 +139,7 @@ pub(crate) fn capability(name: &str) -> Option<Capability> {
         "Random" => Some(Capability::Random),
         "FileSystem" => Some(Capability::FileSystem),
         "Net" => Some(Capability::Net),
+        "Exec" => Some(Capability::Exec),
         "NumProcs" => Some(Capability::NumProcs),
         _ => None,
     }
@@ -159,6 +164,7 @@ pub(crate) fn catalog() -> Catalog {
     members3::declare_15(&mut catalog);
     members3::declare_16(&mut catalog);
     members4::declare_17(&mut catalog);
+    members5::declare_exec(&mut catalog);
     catalog
 }
 
@@ -175,6 +181,7 @@ mod tests {
             "Random",
             "FileSystem",
             "Net",
+            "Exec",
             "NumProcs",
         ] {
             assert!(capability(name).is_some(), "missing HOST capability {name}");
@@ -196,6 +203,7 @@ mod tests {
             "HOST.FileSystem",
             "HOST.Console",
             "HOST.Net",
+            "HOST.Exec",
             "FS.File",
         ] {
             assert!(catalog.members.contains_key(owner), "missing {owner}");
@@ -203,5 +211,6 @@ mod tests {
         assert_eq!(catalog.members["HOST.Clock"].len(), 2);
         assert_eq!(catalog.members["HOST.Random"].len(), 2);
         assert_eq!(catalog.members["HOST.Console"].len(), 5);
+        assert!(catalog.members["HOST.Exec"].contains_key("Run"));
     }
 }

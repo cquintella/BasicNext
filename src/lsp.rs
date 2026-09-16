@@ -743,7 +743,15 @@ fn to_lsp(error: &Diagnostic, uri: &Uri) -> LspDiagnostic {
     let (severity, message) = structured.map_or(
         (DiagnosticSeverity::ERROR, error.message.clone()),
         |rendered| {
-            let mut message = format!("{}: {}", rendered.title, rendered.message);
+            // Legacy diagnostics still carry an intentional compatibility
+            // message; catalog rendering supplies the stable title while the
+            // original facts remain verbatim until that producer is migrated.
+            let rendered_message = if error.structured.is_none() {
+                error.message.to_string()
+            } else {
+                rendered.message.clone()
+            };
+            let mut message = format!("{}: {}", rendered.title, rendered_message);
             for cause in rendered.causes {
                 message.push_str("\n= cause: ");
                 message.push_str(&cause);
@@ -756,7 +764,7 @@ fn to_lsp(error: &Diagnostic, uri: &Uri) -> LspDiagnostic {
                 Severity::Error => DiagnosticSeverity::ERROR,
                 Severity::Warning => DiagnosticSeverity::WARNING,
             };
-            (severity, message)
+            (severity, message.into())
         },
     );
     LspDiagnostic {
@@ -770,7 +778,7 @@ fn to_lsp(error: &Diagnostic, uri: &Uri) -> LspDiagnostic {
         code: Some(NumberOrString::String(error.code.into())),
         code_description: None,
         source: Some("bn".into()),
-        message,
+        message: message.to_string(),
         related_information,
         tags: None,
         data: None,

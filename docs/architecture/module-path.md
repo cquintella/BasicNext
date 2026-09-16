@@ -1,7 +1,7 @@
 # Module search path (to-be)
 
 > Canonical: `docs/architecture/module-path.md`  
-> Status: **architecture direction locked 2026-09-05** (list of directories). Implementation still follows today’s single-root + `modules/bn` heuristic until Control/Frontend wire this.
+> Status: **architecture direction locked 2026-09-05**; **0.5.1 claim MP1 accepted** (Quorra re-gate 2026-09-14) — see [`todo/proposals/module-path-0.5.1.md`](../../todo/proposals/module-path-0.5.1.md) and `ongoing/bucket-0.5.1.md`. CLI/config paths are carried through Control/Frontend into `module_graph`; effective ordered roots and first-hit behavior are covered by unit/integration evidence.
 
 ## Problem
 
@@ -32,11 +32,14 @@ Optional short alias later: `-L <dir>` (linker-style); not required for MVP nami
 
 Defaults (illustrative): if `--module-path` is omitted, the effective list still includes at least:
 
-1. Directory of the entry file (or `--programs-dir` when that is the project root convention).
-2. The resolved **standard-library** tree (`modules/bn` — same role as today’s loader).
-3. Any paths from config when present.
+1. Directory of the entry file (**MP1 default**).
+2. The entry `modules/` compatibility root (when present).
+3. The resolved **standard-library** tree (`modules/bn` — same role as today’s loader).
+4. Any paths from config / CLI `--module-path` when present.
 
-Exact default composition is an implementation detail; the **architecture requirement** is: **the search path is a list**, not a single directory, and it is visible in Control config + process log.
+`--programs-dir` / `--plugins-dir`: reserved/future in architecture diagrams; **not** required to ship MP1.
+
+Exact default composition was open as **AQ-13**; **MP1 (0.5.1)** locks the ordered defaults: entry directory, compatibility `entry/modules` root, and discovered stdlib `modules/bn`; extras only via `--module-path` / config. `--programs-dir` / `--plugins-dir` remain **reserved/future** architecture notes — **not** MP1 DoD (Carlos 2026-09-14). The **architecture requirement** remains: **the search path is a list**, not a single directory, and it is visible in Control config + process log.
 
 ### Who consumes it
 

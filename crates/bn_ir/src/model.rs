@@ -65,6 +65,7 @@ pub struct Module {
     pub random_import: Option<Span>,
     pub console_import: Option<Span>,
     pub network_import: Option<Span>,
+    pub exec_import: Option<Span>,
     pub bnlog_import: Option<Span>,
     pub bnweb_import: Option<Span>,
 }

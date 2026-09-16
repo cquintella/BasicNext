@@ -10,7 +10,7 @@ use crate::{
         Block, DeclarationKind, Expression, ExpressionKind, ForHeader, FunctionSignature, Item,
         Literal, Program, Statement, TypeReference,
     },
-    diagnostic::Diagnostic,
+    diagnostic::{DiagId, Diagnostic, DiagnosticValue, Label, LabelStyle},
     module_graph::{ModuleGraph, ModuleId},
     source::Span,
 };

@@ -30,6 +30,13 @@ use std::{fs, sync::atomic::{AtomicU64, Ordering}};
     }
 
     #[test]
+    fn host_env_exec_policy_can_be_denied_independently() {
+        assert!(super::HostEnv::system(Vec::new()).exec_allowed);
+        assert!(!super::HostEnv::system(Vec::new()).without_exec().exec_allowed);
+        assert!(!super::HostEnv::sandbox(Vec::new()).exec_allowed);
+    }
+
+    #[test]
     fn filesystem_policy_mitigates_symlink_escape() {
         let temp_dir = std::env::temp_dir().join(format!("bn_symlink_test_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&temp_dir);

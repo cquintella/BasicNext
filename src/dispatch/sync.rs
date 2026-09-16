@@ -1,3 +1,5 @@
+// Implementação do dispatch (paralelismo)
+
 use std::sync::{Condvar, Mutex};
 use std::thread::ThreadId;
 use std::time::{Duration, Instant};

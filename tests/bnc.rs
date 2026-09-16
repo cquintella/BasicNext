@@ -29,7 +29,7 @@ fn bnc_version_advertises_0_4_7() {
         .expect("run bnc --version");
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout.trim(), "bnc 0.5.0");
+    assert_eq!(stdout.trim(), "bnc 0.5.1");
 }
 
 #[test]

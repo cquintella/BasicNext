@@ -139,11 +139,7 @@ impl Executor<'_, '_> {
             .iter()
             .position(|function| function.name == resolved)
             .ok_or_else(|| {
-                runtime_error(
-                    "NAME_NOT_FOUND",
-                    format!("function '{resolved}' is not available"),
-                    span,
-                )
+                super::super::name_not_found(&resolved, "function dispatch", span)
             })?;
         let constructed = (name.ends_with(".CONSTRUCTOR") || name.ends_with(".$fields"))
             .then(|| match arguments.first() {
@@ -215,7 +211,7 @@ impl Executor<'_, '_> {
                 Ok(Value::DispatchGroup(id))
             }
             "Enter" | "Leave" | "Wait" if name.contains(".Group.") => {
-                let Value::DispatchGroup(id) = arguments.first().cloned().unwrap_or(Value::Null) else { return Err(runtime_error("TYPE_MISMATCH", "operation expects Group", span)); };
+                let Value::DispatchGroup(id) = arguments.first().cloned().unwrap_or(Value::Null) else { return Err(super::super::type_mismatch("Group", "non-Group value", "dispatch group", span)); };
                 let group = self.dispatch_groups.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "group is invalid", span))?;
                 match method { "Enter" => { require_arity(name, arguments, 1, span)?; group.enter(); Ok(Value::Null) }, "Leave" => { require_arity(name, arguments, 1, span)?; Ok(group.leave().map_or_else(dispatch_error, |_| Value::Null)) }, _ => { require_arity(name, arguments, 2, span)?; Ok(group.wait(integer(&arguments[1], span)?.0).map_or_else(dispatch_error, |_| Value::Null)) } }
             }
@@ -227,7 +223,7 @@ impl Executor<'_, '_> {
             }
             "Wait" if name.contains(".Barrier.") => {
                 require_arity(name, arguments, 2, span)?;
-                let Value::DispatchBarrier(id) = arguments[0] else { return Err(runtime_error("TYPE_MISMATCH", "operation expects Barrier", span)); };
+                let Value::DispatchBarrier(id) = arguments[0] else { return Err(super::super::type_mismatch("Barrier", "non-Barrier value", "dispatch barrier", span)); };
                 let barrier = self.dispatch_barriers.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "barrier is invalid", span))?;
                 Ok(barrier.wait(integer(&arguments[1], span)?.0).map_or_else(dispatch_error, Value::Boolean))
             }
@@ -237,7 +233,7 @@ impl Executor<'_, '_> {
                 let id = self.next_dispatch_sync; self.next_dispatch_sync = self.next_dispatch_sync.saturating_add(1); self.dispatch_semaphores.insert(id, semaphore); Ok(Value::DispatchSemaphore(id))
             }
             "Acquire" | "Release" if name.contains(".Semaphore.") => {
-                let Value::DispatchSemaphore(id) = arguments[0] else { return Err(runtime_error("TYPE_MISMATCH", "operation expects Semaphore", span)); };
+                let Value::DispatchSemaphore(id) = arguments[0] else { return Err(super::super::type_mismatch("Semaphore", "non-Semaphore value", "dispatch semaphore", span)); };
                 let semaphore = self.dispatch_semaphores.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "semaphore is invalid", span))?;
                 if method == "Acquire" { require_arity(name, arguments, 2, span)?; Ok(semaphore.acquire(integer(&arguments[1], span)?.0).map_or_else(dispatch_error, |_| Value::Null)) } else { require_arity(name, arguments, 1, span)?; Ok(semaphore.release().map_or_else(dispatch_error, |_| Value::Null)) }
             }
@@ -245,7 +241,7 @@ impl Executor<'_, '_> {
                 require_arity(name, arguments, 0, span)?; let id = self.next_dispatch_sync; self.next_dispatch_sync = self.next_dispatch_sync.saturating_add(1); self.dispatch_mutexes.insert(id, crate::dispatch::DispatchMutex::new()); Ok(Value::DispatchMutex(id))
             }
             "Lock" | "Unlock" if name.contains(".Mutex.") => {
-                let Value::DispatchMutex(id) = arguments[0] else { return Err(runtime_error("TYPE_MISMATCH", "operation expects Mutex", span)); };
+                let Value::DispatchMutex(id) = arguments[0] else { return Err(super::super::type_mismatch("Mutex", "non-Mutex value", "dispatch mutex", span)); };
                 let mutex = self.dispatch_mutexes.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "mutex is invalid", span))?;
                 if method == "Lock" { require_arity(name, arguments, 2, span)?; Ok(mutex.lock(integer(&arguments[1], span)?.0).map_or_else(dispatch_error, |_| Value::Null)) } else { require_arity(name, arguments, 1, span)?; Ok(mutex.unlock().map_or_else(dispatch_error, |_| Value::Null)) }
             }
@@ -269,10 +265,10 @@ impl Executor<'_, '_> {
             }
             "Async" => {
                 if arguments.len() < 2 {
-                    return Err(runtime_error("TYPE_MISMATCH", "Async expects a queue and function target", span));
+                    return Err(super::super::type_mismatch("Queue, FUNCTION", "insufficient arguments", "Async", span));
                 }
                 let Value::DispatchQueue(id) = arguments[0] else {
-                    return Err(runtime_error("TYPE_MISMATCH", "Async expects Queue", span));
+                    return Err(super::super::type_mismatch("Queue", "non-Queue value", "Async", span));
                 };
                 let Value::Function(task) = &arguments[1] else {
                     return Ok(Value::Error { code: 1, message: "Async expects a named function".into() });
@@ -303,7 +299,7 @@ impl Executor<'_, '_> {
                                 ticket.mark_failed(1, "async task output exceeds configured bound".into());
                             }
                         }
-                        Err(error) => ticket.mark_failed(1, error.message),
+                        Err(error) => ticket.mark_failed(1, error.message.to_string()),
                     }
                 }).map_err(|error| runtime_error("DISPATCH", format!("{error:?}"), span))?;
                 let ticket_id = self.next_dispatch_ticket;
@@ -314,7 +310,7 @@ impl Executor<'_, '_> {
             "Join" if name.contains(".Queue.") => {
                 require_arity(name, arguments, 2, span)?;
                 let Value::DispatchQueue(id) = arguments[0] else {
-                    return Err(runtime_error("TYPE_MISMATCH", "operation expects Queue", span));
+                    return Err(super::super::type_mismatch("Queue", "non-Queue value", "dispatch operation", span));
                 };
                 let timeout = integer(&arguments[1], span)?.0;
                 let queue = self.dispatch_queues.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "queue is invalid", span))?.clone();
@@ -329,7 +325,7 @@ impl Executor<'_, '_> {
             "Close" if name.contains(".Queue.") => {
                 require_arity(name, arguments, 2, span)?;
                 let Value::DispatchQueue(id) = arguments[0] else {
-                    return Err(runtime_error("TYPE_MISMATCH", "operation expects Queue", span));
+                    return Err(super::super::type_mismatch("Queue", "non-Queue value", "dispatch operation", span));
                 };
                 let timeout = integer(&arguments[1], span)?.0;
                 let queue = self.dispatch_queues.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "queue is invalid", span))?;
@@ -338,7 +334,7 @@ impl Executor<'_, '_> {
             "Id" | "Status" | "Wait" | "Cancel" | "Error" | "IsDone" | "Close"
                 if name.contains(".Ticket.") => {
                 let Value::DispatchTicket(id) = arguments.first().cloned().unwrap_or(Value::Null) else {
-                    return Err(runtime_error("TYPE_MISMATCH", "operation expects Ticket", span));
+                    return Err(super::super::type_mismatch("Ticket", "non-Ticket value", "dispatch ticket", span));
                 };
                 let ticket = self.dispatch_tickets.get(&id).ok_or_else(|| runtime_error("STALE_HANDLE", "ticket is invalid", span))?.clone();
                 return match method {

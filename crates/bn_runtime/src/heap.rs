@@ -328,9 +328,44 @@ fn too_large(span: Span) -> Diagnostic {
 }
 
 fn heap_error(code: &'static str, message: impl Into<String>, span: Span) -> Diagnostic {
-    Diagnostic {
-        code,
-        message: message.into(),
-        span,
-    }
+    let id = bn_diag::DiagId::from_code(code).unwrap_or(bn_diag::DiagId::Runtime(code));
+    let message = message.into();
+    let arguments = if id == bn_diag::DiagId::Runtime("INDEX_OUT_OF_BOUNDS") {
+        vec![
+            (
+                "index".into(),
+                bn_diag::DiagnosticValue::Text("unknown".into()),
+            ),
+            (
+                "bound".into(),
+                bn_diag::DiagnosticValue::Text("unknown".into()),
+            ),
+            ("context".into(), bn_diag::DiagnosticValue::Text(message)),
+        ]
+    } else {
+        vec![(
+            (if matches!(
+                id,
+                bn_diag::DiagId::DoubleRelease
+                    | bn_diag::DiagId::UseAfterRelease
+                    | bn_diag::DiagId::Runtime("ALLOCATION_TOO_LARGE")
+            ) {
+                "detail"
+            } else {
+                "message"
+            })
+            .into(),
+            bn_diag::DiagnosticValue::Text(message),
+        )]
+    };
+    Diagnostic::structured(
+        id,
+        arguments,
+        vec![bn_diag::Label {
+            span,
+            style: bn_diag::LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("runtime compatibility diagnostic schema")
 }

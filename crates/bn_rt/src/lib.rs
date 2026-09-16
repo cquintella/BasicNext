@@ -26,6 +26,7 @@ mod console;
 mod dataframe;
 mod dataframe_abi;
 mod dispatch_abi;
+mod exec;
 mod file_abi;
 mod log;
 mod log_abi;
@@ -50,14 +51,16 @@ pub use dataframe::{
 };
 pub use dataframe_abi::*;
 pub use dispatch_abi::*;
+pub use exec::*;
 pub use file_abi::*;
 pub use net::{
     Address as NetAddress, AddressesHandle, NeighborError, PingError, PingReply, ReverseError,
     join_resolver_tasks, neighbor, ping, reverse_timeout,
 };
 pub use policy::{
-    POLICY_ALL, POLICY_CLOCK, POLICY_CONSOLE, POLICY_DISPATCH, POLICY_FILESYSTEM, POLICY_INVALID,
-    POLICY_NET, POLICY_OK, POLICY_RANDOM, POLICY_VERSION, bn_rt_policy_init, bn_rt_policy_restrict,
+    POLICY_ALL, POLICY_CLOCK, POLICY_CONSOLE, POLICY_DISPATCH, POLICY_EXEC, POLICY_FILESYSTEM,
+    POLICY_INVALID, POLICY_NET, POLICY_OK, POLICY_RANDOM, POLICY_VERSION, bn_rt_policy_init,
+    bn_rt_policy_restrict,
 };
 pub use terminal::terminal_dimensions;
 
@@ -85,7 +88,11 @@ pub fn monotonic_ns() -> i64 {
 }
 
 fn fail(code: &str, message: &str) {
-    eprintln!("error[{code}]: {message}");
+    eprintln!("{}", format_failure(code, message));
+}
+
+fn format_failure(code: &str, message: &str) -> String {
+    format!("error[{code}]: {message}")
 }
 
 fn emit_console_error(error: &ConsoleError) {
@@ -2170,5 +2177,13 @@ mod tests {
         assert_eq!(super::bn_rt_clock_timer(), -1);
 
         super::policy::reset_for_tests();
+    }
+
+    #[test]
+    fn native_failure_bridge_has_stable_machine_prefix() {
+        assert_eq!(
+            super::format_failure("INVALID_JSON", "bad token"),
+            "error[INVALID_JSON]: bad token"
+        );
     }
 }

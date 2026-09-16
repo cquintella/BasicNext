@@ -7,50 +7,30 @@ use std::collections::HashMap;
 
 use crate::{diagnostic::Diagnostic, source::Span, types::IntegerType};
 
-use super::{Value, runtime_error};
+use super::{Value, runtime_error, type_mismatch};
 
 pub(super) fn net_addresses(value: &Value, span: Span) -> Result<&Vec<Value>, Diagnostic> {
     let Value::Record { type_name, fields } = value else {
-        return Err(runtime_error(
-            "TYPE_MISMATCH",
-            "expected Net.Addresses",
-            span,
-        ));
+        return Err(type_mismatch("HOST.Net.Addresses", "non-record value", "HOST.Net", span));
     };
     if type_name != "HOST.Net.Addresses" {
-        return Err(runtime_error(
-            "TYPE_MISMATCH",
-            "invalid Net.Addresses value",
-            span,
-        ));
+        return Err(type_mismatch("HOST.Net.Addresses", type_name, "HOST.Net", span));
     }
     let Some(Value::Vector(values)) = fields.get("values") else {
-        return Err(runtime_error(
-            "TYPE_MISMATCH",
-            "invalid Net.Addresses value",
-            span,
-        ));
+        return Err(type_mismatch("values: vector", "missing or non-vector field", "HOST.Net.Addresses", span));
     };
     Ok(values)
 }
 
 pub(super) fn net_address(value: &Value, span: Span) -> Result<crate::net::Address, Diagnostic> {
     let Value::Record { type_name, fields } = value else {
-        return Err(runtime_error("TYPE_MISMATCH", "expected Net.Address", span));
+        return Err(type_mismatch("HOST.Net.Address", "non-record value", "HOST.Net", span));
     };
     if type_name != "HOST.Net.Address" {
-        return Err(runtime_error(
-            "TYPE_MISMATCH",
-            "invalid Net.Address value",
-            span,
-        ));
+        return Err(type_mismatch("HOST.Net.Address", type_name, "HOST.Net", span));
     }
     let Some(Value::String(address)) = fields.get("value") else {
-        return Err(runtime_error(
-            "TYPE_MISMATCH",
-            "invalid Net.Address value",
-            span,
-        ));
+        return Err(type_mismatch("value: STRING", "missing or non-string field", "HOST.Net.Address", span));
     };
     crate::net::Address::parse(address)
         .map_err(|_| runtime_error("INVALID_INPUT", "invalid Net.Address value", span))
@@ -58,50 +38,26 @@ pub(super) fn net_address(value: &Value, span: Span) -> Result<crate::net::Addre
 
 pub(super) fn net_endpoint(value: &Value, span: Span) -> Result<crate::net::Endpoint, Diagnostic> {
     let Value::Record { type_name, fields } = value else {
-        return Err(runtime_error(
-            "TYPE_MISMATCH",
-            "expected Net.Endpoint",
-            span,
-        ));
+        return Err(type_mismatch("HOST.Net.Endpoint", "non-record value", "HOST.Net", span));
     };
     if type_name != "HOST.Net.Endpoint" {
-        return Err(runtime_error(
-            "TYPE_MISMATCH",
-            "invalid Net.Endpoint value",
-            span,
-        ));
+        return Err(type_mismatch("HOST.Net.Endpoint", type_name, "HOST.Net", span));
     }
     let Some(Value::Record {
         type_name: address_type,
         fields: address_fields,
     }) = fields.get("address")
     else {
-        return Err(runtime_error(
-            "TYPE_MISMATCH",
-            "invalid Net.Endpoint value",
-            span,
-        ));
+        return Err(type_mismatch("address: HOST.Net.Address", "missing or incompatible field", "HOST.Net.Endpoint", span));
     };
     if address_type != "HOST.Net.Address" {
-        return Err(runtime_error(
-            "TYPE_MISMATCH",
-            "invalid Net.Address value",
-            span,
-        ));
+        return Err(type_mismatch("HOST.Net.Address", address_type, "HOST.Net.Endpoint.address", span));
     }
     let Some(Value::String(address)) = address_fields.get("value") else {
-        return Err(runtime_error(
-            "TYPE_MISMATCH",
-            "invalid Net.Address value",
-            span,
-        ));
+        return Err(type_mismatch("value: STRING", "missing or non-string field", "HOST.Net.Address", span));
     };
     let Some(Value::Integer(port, _)) = fields.get("port") else {
-        return Err(runtime_error(
-            "TYPE_MISMATCH",
-            "invalid Net.Endpoint value",
-            span,
-        ));
+        return Err(type_mismatch("port: INTEGER", "missing or non-integer field", "HOST.Net.Endpoint", span));
     };
     let port = u16::try_from(*port)
         .map_err(|_| runtime_error("INVALID_INPUT", "port is outside 0..65535", span))?;

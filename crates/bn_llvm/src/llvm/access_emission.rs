@@ -45,6 +45,32 @@ pub(crate) fn lower_access_emission(
                     "  %v{} = trunc i64 %errorcode{} to i32",
                     destination.0, destination.0
                 );
+            } else if owner == "HOST.Exec.Result"
+                && matches!(name.as_str(), "ReturnCode" | "Stdout" | "Stderr")
+            {
+                let suffix = match name.as_str() {
+                    "ReturnCode" => "return_code",
+                    "Stdout" => "stdout",
+                    "Stderr" => "stderr",
+                    _ => unreachable!(),
+                };
+                let _ = writeln!(
+                    text,
+                    "  %execmemberhandle{} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                    destination.0, object.0
+                );
+                let _ = writeln!(
+                    text,
+                    "  %v{} = call {} @bn_rt_exec_result_{}(i64 %execmemberhandle{})",
+                    destination.0,
+                    if suffix == "return_code" {
+                        "i64"
+                    } else {
+                        "ptr"
+                    },
+                    suffix,
+                    destination.0
+                );
             } else {
                 let offset = field_byte_offset(module, owner, name);
                 emit_member(text, *destination, *object, offset, ty);

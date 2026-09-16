@@ -14,9 +14,10 @@ impl Analyzer {
                 continue;
             };
             if base_class.alternatives.len() != 1 {
-                return Err(error(
-                    "TYPE_MISMATCH",
-                    "EXTENDS requires one CLASS name",
+                return Err(type_mismatch(
+                    "one CLASS name",
+                    format!("{} alternatives", base_class.alternatives.len()),
+                    "EXTENDS clause",
                     base_class.span,
                 ));
             }
@@ -33,9 +34,10 @@ impl Analyzer {
                         .is_some_and(|info| info.kind == DeclarationKind::Class) =>
                 {
                     if self.standard_modules.contains(&module) {
-                        return Err(error(
-                            "TYPE_MISMATCH",
-                            "EXTENDS cannot target a host or standard-library class",
+                        return Err(type_mismatch(
+                            "user-defined CLASS",
+                            "host/standard-library CLASS",
+                            "EXTENDS clause",
                             base_class.span,
                         ));
                     }
@@ -54,9 +56,10 @@ impl Analyzer {
                 }
                 _ => {
                     let base = qualified_type_name(&base_class.alternatives[0]);
-                    return Err(error(
-                        "TYPE_MISMATCH",
-                        format!("EXTENDS requires a declared CLASS, found '{base}'"),
+                    return Err(type_mismatch(
+                        "declared CLASS",
+                        format!("'{base}'"),
+                        "EXTENDS clause",
                         base_class.span,
                     ));
                 }

@@ -15,7 +15,7 @@ fn lex_path(path: &str) -> Result<(), String> {
     let text = fs::read_to_string(path).map_err(|error| error.to_string())?;
     lex(&SourceFile::new(path, text))
         .map(|_| ())
-        .map_err(|diagnostic| diagnostic.message)
+        .map_err(|diagnostic| diagnostic.message.to_string())
 }
 
 #[test]

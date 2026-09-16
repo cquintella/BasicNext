@@ -4,7 +4,9 @@ use super::*;
 #[path = "executor/helpers.rs"]
 mod helpers;
 #[allow(unused_imports)]
-use self::helpers::{integer_from_count, integer_from_u64, lifecycle_dispatch, require_console};
+use self::helpers::{
+    integer_from_count, integer_from_u64, lifecycle_dispatch, numeric_overflow, require_console,
+};
 
 #[path = "executor/part1.rs"]
 mod part1;
@@ -51,11 +53,7 @@ fn unary(operator: &str, operand: &Value, ty: &Type, span: Span) -> Result<Value
         ("Minus", Value::Float(value, _)) => Ok(float_value(-value, float_kind(ty))),
         ("NOT", Value::Boolean(value)) => Ok(Value::Boolean(!value)),
         ("NOT", Value::Integer(value, _)) => checked_integer(Some(!value), ty, span),
-        _ => Err(runtime_error(
-            "TYPE_MISMATCH",
-            "invalid unary operation",
-            span,
-        )),
+        _ => Err(super::type_mismatch("numeric or BOOLEAN operand", "incompatible value", format!("unary {operator}"), span)),
     }
 }
 
@@ -90,21 +88,13 @@ fn binary(
             "AND" => Ok(Value::Boolean(*left && *right)),
             "OR" => Ok(Value::Boolean(*left || *right)),
             "XOR" => Ok(Value::Boolean(*left ^ *right)),
-            _ => Err(runtime_error(
-                "TYPE_MISMATCH",
-                "invalid BOOLEAN operation",
-                span,
-            )),
+            _ => Err(super::type_mismatch("AND, OR or XOR", operator, "BOOLEAN operation", span)),
         };
     }
     if let (Value::String(left), Value::String(right)) = (left, right) {
         return match operator {
             "Plus" => Ok(Value::String(format!("{left}{right}"))),
-            _ => Err(runtime_error(
-                "TYPE_MISMATCH",
-                "invalid STRING operation",
-                span,
-            )),
+            _ => Err(super::type_mismatch("Plus", operator, "STRING operation", span)),
         };
     }
     if let (Value::Date(left), Value::Date(right)) = (left, right) {
@@ -126,11 +116,7 @@ fn binary(
             "LessEqual" => Ok(Value::Boolean(left <= right)),
             "Greater" => Ok(Value::Boolean(left > right)),
             "GreaterEqual" => Ok(Value::Boolean(left >= right)),
-            _ => Err(runtime_error(
-                "TYPE_MISMATCH",
-                "invalid floating operation",
-                span,
-            )),
+            _ => Err(super::type_mismatch("numeric operator", operator, "floating operation", span)),
         };
     }
     let (left, _) = integer(left, span)?;
@@ -141,11 +127,7 @@ fn binary(
         "Star" => checked_integer(left.checked_mul(right), ty, span),
         "DIV" if right != 0 => checked_integer(left.checked_div_euclid(right), ty, span),
         "Percent" if right != 0 => checked_integer(left.checked_rem_euclid(right), ty, span),
-        "DIV" | "Percent" => Err(runtime_error(
-            "DIVISION_BY_ZERO",
-            "integer divisor cannot be zero",
-            span,
-        )),
+        "DIV" | "Percent" => Err(division_by_zero(operator, span)),
         "Power" if right >= 0 => checked_integer(
             left.checked_pow(u32::try_from(right).map_err(|_| {
                 runtime_error("INVALID_EXPONENT", "integer exponent is too large", span)
@@ -167,11 +149,49 @@ fn binary(
         "LessEqual" => Ok(Value::Boolean(left <= right)),
         "Greater" => Ok(Value::Boolean(left > right)),
         "GreaterEqual" => Ok(Value::Boolean(left >= right)),
-        _ => Err(runtime_error(
-            "TYPE_MISMATCH",
-            "invalid integer operation",
+        _ => Err(super::type_mismatch("integer operator", operator, "integer operation", span)),
+    }
+}
+
+fn division_by_zero(operator: &str, span: Span) -> Diagnostic {
+    Diagnostic::structured(
+        crate::diagnostic::DiagId::Runtime("DIVISION_BY_ZERO"),
+        vec![("operation".into(), operator.into())],
+        vec![crate::diagnostic::Label {
             span,
-        )),
+            style: crate::diagnostic::LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("division-by-zero diagnostic schema")
+}
+
+#[cfg(test)]
+#[allow(clippy::items_after_test_module)] // shared executor helpers follow this inline module.
+mod diagnostic_tests {
+    use super::{default_span, division_by_zero};
+
+    #[test]
+    fn division_by_zero_preserves_operator_fact() {
+        let diagnostic = division_by_zero("Percent", default_span());
+        let spec = diagnostic
+            .structured
+            .expect("division-by-zero must use the structured catalog");
+        assert_eq!(spec.id.code(), "DIVISION_BY_ZERO");
+        assert_eq!(spec.args[0].0, "operation");
+        assert_eq!(spec.args[0].1.to_string(), "Percent");
+    }
+
+    #[test]
+    fn index_error_preserves_bound_and_context_facts() {
+        let diagnostic = super::super::index_out_of_bounds(4, 3, "vector", default_span());
+        let spec = diagnostic
+            .structured
+            .expect("index error must use the structured catalog");
+        assert_eq!(spec.id.code(), "INDEX_OUT_OF_BOUNDS");
+        assert_eq!(spec.args[0].1.to_string(), "4");
+        assert_eq!(spec.args[1].1.to_string(), "3");
+        assert_eq!(spec.args[2].1.to_string(), "vector");
     }
 }
 
@@ -219,28 +239,16 @@ fn cast(value: Value, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
                 "NAN and infinity cannot convert to an integer",
                 span,
             )),
-            _ => Err(runtime_error(
-                "TYPE_MISMATCH",
-                "value cannot convert to an integer",
-                span,
-            )),
+            _ => Err(super::type_mismatch("INTEGER", "non-integer-compatible value", "integer conversion", span)),
         },
         Type::Float(_) => Ok(float_value(number_as_float(&value, span)?, float_kind(ty))),
         Type::Named(_) | Type::ImportedNamed { .. } => match value {
             Value::Object { .. } | Value::Record { .. } | Value::Handle { .. } | Value::Null => {
                 Ok(value)
             }
-            _ => Err(runtime_error(
-                "TYPE_MISMATCH",
-                "unsupported conversion",
-                span,
-            )),
+            _ => Err(super::type_mismatch("named value", "incompatible value", "named conversion", span)),
         },
-        _ => Err(runtime_error(
-            "TYPE_MISMATCH",
-            "unsupported conversion",
-            span,
-        )),
+        _ => Err(super::type_mismatch("supported conversion target", "incompatible value or type", "value conversion", span)),
     }
 }
 
@@ -302,32 +310,25 @@ pub(super) fn coerce(value: Value, ty: &Type, span: Span) -> Result<Value, Diagn
             | Type::HostClock
             | Type::HostRandom
             | Type::HostFileSystem
-            | Type::HostNet,
+            | Type::HostNet
+            | Type::HostExec,
         ) => Ok(value),
         (Value::Date(_), Type::Named(name)) if name == "DATE" => Ok(value),
         (Value::Time(_), Type::Named(name)) if name == "TIME" => Ok(value),
         (Value::TimeZone(_), Type::Named(name)) if name == "TIMEZONE" => Ok(value),
         (Value::Null, Type::Named(name)) if name == "VOID" => Ok(value),
         (Value::Error { .. }, Type::Named(name)) if name == "Error" => Ok(value),
-        _ => Err(runtime_error(
-            "TYPE_MISMATCH",
-            "runtime value does not match its IR destination type",
-            span,
-        )),
+        _ => Err(super::type_mismatch("IR destination type", "runtime value", "IR coercion", span)),
     }
 }
 
 fn checked_integer(value: Option<i128>, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
     let value = value
-        .ok_or_else(|| runtime_error("NUMERIC_OVERFLOW", "integer operation overflowed", span))?;
+        .ok_or_else(|| numeric_overflow("performing an integer operation", span))?;
     let kind = integer_kind(ty).unwrap_or(IntegerType::Int32);
     let (minimum, maximum) = integer_range(kind);
     if !(minimum..=maximum).contains(&value) {
-        return Err(runtime_error(
-            "NUMERIC_OVERFLOW",
-            format!("{value} does not fit {kind:?}"),
-            span,
-        ));
+        return Err(numeric_overflow(format!("converting {value} to {kind:?}"), span));
     }
     Ok(Value::Integer(value, kind))
 }
@@ -358,7 +359,7 @@ fn builtin(
     }
     if name == "ASC" {
         let Value::String(text) = &arguments[0] else {
-            return Err(runtime_error("TYPE_MISMATCH", "ASC expects STRING", span));
+            return Err(super::type_mismatch("STRING", "non-STRING value", "ASC", span));
         };
         return Ok(text.chars().next().map_or_else(
             || Value::Error {
@@ -383,21 +384,21 @@ fn builtin(
     }
     if name == "TOLOWER" {
         let Value::String(text) = &arguments[0] else {
-            return Err(runtime_error("TYPE_MISMATCH", "TOLOWER expects STRING", span));
+            return Err(super::type_mismatch("STRING", "non-STRING value", "TOLOWER", span));
         };
         // Unicode case mapping (same as bn_rt_str_to_lower / Rust to_lowercase).
         return Ok(Value::String(text.to_lowercase()));
     }
     if name == "TOUPPER" {
         let Value::String(text) = &arguments[0] else {
-            return Err(runtime_error("TYPE_MISMATCH", "TOUPPER expects STRING", span));
+            return Err(super::type_mismatch("STRING", "non-STRING value", "TOUPPER", span));
         };
         // Unicode case mapping (same as bn_rt_str_to_upper / Rust to_uppercase).
         return Ok(Value::String(text.to_uppercase()));
     }
     let math_name = name
         .strip_prefix("BNMath.")
-        .ok_or_else(|| runtime_error("NAME_NOT_FOUND", "unknown builtin", span))?;
+        .ok_or_else(|| super::name_not_found(name, "builtin dispatch", span))?;
     if matches!(math_name, "TOHOUR" | "TOWEEKDAY") {
         let milliseconds = integer(&arguments[0], span)?.0;
         let days = milliseconds.div_euclid(86_400_000);
@@ -411,11 +412,7 @@ fn builtin(
     }
     if math_name == "VAL" {
         let Value::String(text) = &arguments[0] else {
-            return Err(runtime_error(
-                "TYPE_MISMATCH",
-                "BNMath.VAL expects STRING",
-                span,
-            ));
+            return Err(super::type_mismatch("STRING", "non-STRING value", "BNMath.VAL", span));
         };
         return Ok(Value::Float(parse_val(text), FloatType::Float64));
     }
@@ -439,7 +436,7 @@ fn builtin(
         let result = match math_name {
             "ABS" => integers[0]
                 .checked_abs()
-                .ok_or_else(|| runtime_error("NUMERIC_OVERFLOW", "BNMath.ABS overflowed", span))?,
+                .ok_or_else(|| numeric_overflow("evaluating BNMath.ABS", span))?,
             "MIN" => integers[0].min(integers[1]),
             "MAX" => integers[0].max(integers[1]),
             "SIGN" => integers[0].signum(),
@@ -478,11 +475,7 @@ fn builtin(
         "HYPOT" => bn_rt::bn_rt_math_hypot(numbers[0], numbers[1]),
         "FMA" => bn_rt::bn_rt_math_fma(numbers[0], numbers[1], numbers[2]),
         _ => {
-            return Err(runtime_error(
-                "NAME_NOT_FOUND",
-                format!("unknown BNMath function '{math_name}'"),
-                span,
-            ));
+            return Err(super::name_not_found(math_name, "BNMath function", span));
         }
     };
     Ok(Value::Float(result, FloatType::Float64))

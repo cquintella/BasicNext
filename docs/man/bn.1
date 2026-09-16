@@ -1,12 +1,12 @@
 .\" groff man page for the Basic Next reference tool.
-.TH BN 1 "September 9, 2026" "bn 0.4.7" "Basic Next"
+.TH BN 1 "September 15, 2026" "bn 0.5.1" "Basic Next"
 .SH NAME
 bn \- Basic Next reference checker, interpreter, and compiler
 .SH SYNOPSIS
 .B bn
 .I command
 .RI [ options ]
-.I file.bn
+.I source-or-file
 .RI [ "-- program-args" ]
 .SH DESCRIPTION
 .B bn
@@ -18,6 +18,24 @@ The executable module must define
 .BR "FUNCTION Start" .
 No project file is required for a single program.
 .SH COMMANDS
+.TP
+.B eval
+Evaluate one source fragment or complete program through the typed BN IR
+interpreter. Pass the source as one argument, or use
+.BR --stdin
+to consume the complete source from standard input. Arguments after
+.B --
+are exposed through
+.BR HOST.Args .
+The
+.BR --format
+.B json
+form emits one JSON v1 result envelope and owns both process channels. This
+command is distinct from the file-oriented
+.BR run
+and
+.BR build
+commands.
 .TP
 .B check
 Validate lexical, syntactic, and semantic rules. With
@@ -61,11 +79,31 @@ Select the frontend artifact printed by
 Write the selected artifact or compiled program to
 .IR file .
 .TP
+.BI --mode " snippet|program"
+Select
+.B eval
+fragment or complete-program semantics. The default is
+.BR snippet .
+.TP
+.BI --format " text|json"
+Select the
+.B eval
+result format. JSON emits exactly one versioned envelope on standard output;
+it is not available for
+.BR check ,
+.BR run , or
+.BR build .
+.TP
 .BI --target " native|wasm32"
 Select the
 .B build
 target. The default is
 .BR native .
+.TP
+.BI --module-path " dir"
+Append an ordered directory used to resolve imported source modules. The
+option is repeatable; earlier directories win. Configuration entries are
+applied before command-line entries.
 .TP
 .BI --opt " none|1|2|3|s"
 Select the Clang/WebAssembly linker optimization level. The default is
@@ -216,6 +254,8 @@ is launch-only and has no breakpoints or stepping.
 .nf
 .RS
 bn check examples/hello.bn
+bn eval 'PRINT 1 + 1'
+printf 'PRINT 2\n' | bn eval --stdin
 bn run examples/language-tour.bn
 bn run examples/hello.bn -- extra-argument
 bn check --emit ir examples/factorial.bn

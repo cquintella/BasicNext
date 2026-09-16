@@ -25,6 +25,7 @@ pub enum Type {
     HostConsole,
     HostFileSystem,
     HostNet,
+    HostExec,
     HostArgs,
     Named(String),
     TypeName(String),

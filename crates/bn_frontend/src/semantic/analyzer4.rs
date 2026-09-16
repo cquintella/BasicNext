@@ -17,9 +17,10 @@ impl Analyzer {
             } => {
                 for expression in [start, end] {
                     if !is_integer(&self.expression(expression, locals)?) {
-                        return Err(error(
-                            "TYPE_MISMATCH",
-                            "counted FOR bounds must be integral",
+                        return Err(type_mismatch(
+                            "INTEGER",
+                            "non-INTEGER value",
+                            "counted FOR bound",
                             expression.span,
                         ));
                     }
@@ -27,16 +28,22 @@ impl Analyzer {
                 if let Some(step) = step
                     && !is_integer(&self.expression(step, locals)?)
                 {
-                    return Err(error(
-                        "TYPE_MISMATCH",
-                        "FOR STEP must be integral",
+                    return Err(type_mismatch(
+                        "INTEGER",
+                        "non-INTEGER value",
+                        "FOR STEP",
                         step.span,
                     ));
                 }
                 if let Some(step) = step
                     && integer_literal(step) == Some(0)
                 {
-                    return Err(error("TYPE_MISMATCH", "FOR STEP cannot be zero", step.span));
+                    return Err(type_mismatch(
+                        "non-zero INTEGER",
+                        "0",
+                        "FOR STEP",
+                        step.span,
+                    ));
                 }
                 self.declare_local(
                     locals,
@@ -57,27 +64,27 @@ impl Analyzer {
                     dimensions,
                 } = iterable_type
                 else {
-                    return Err(error(
-                        "TYPE_MISMATCH",
-                        "FOR EACH requires a fixed-length vector",
+                    return Err(type_mismatch(
+                        "fixed-length vector",
+                        display(&iterable_type),
+                        "FOR EACH iterable",
                         iterable.span,
                     ));
                 };
                 if dimensions.contains(&u64::MAX) {
-                    return Err(error(
-                        "TYPE_MISMATCH",
-                        "FOR EACH requires a fixed-length vector",
+                    return Err(type_mismatch(
+                        "fixed-length vector",
+                        "dynamic-length vector",
+                        "FOR EACH iterable",
                         iterable.span,
                     ));
                 }
                 let declared = self.resolve_reference(type_ref);
                 if declared != *element {
-                    return Err(error(
-                        "TYPE_MISMATCH",
-                        format!(
-                            "FOR EACH binding must have element type {}",
-                            display(&element)
-                        ),
+                    return Err(type_mismatch(
+                        display(&element),
+                        display(&declared),
+                        "FOR EACH binding",
                         type_ref.span,
                     ));
                 }
@@ -93,17 +100,15 @@ impl Analyzer {
     ) -> Result<Type, Diagnostic> {
         match &expression.kind {
             ExpressionKind::Name { name } => {
-                let symbol = self.lookup(name, locals).cloned().ok_or_else(|| {
-                    error(
-                        "NAME_NOT_FOUND",
-                        format!("name '{name}' is not declared"),
-                        expression.span,
-                    )
-                })?;
+                let symbol = self
+                    .lookup(name, locals)
+                    .cloned()
+                    .ok_or_else(|| undefined_name(name, "assignment target", expression.span))?;
                 if symbol.constant {
-                    return Err(error(
-                        "TYPE_MISMATCH",
-                        format!("cannot assign to CONST '{name}'"),
+                    return Err(type_mismatch(
+                        "mutable binding",
+                        format!("CONST '{name}'"),
+                        "assignment target",
                         expression.span,
                     ));
                 }
@@ -117,35 +122,39 @@ impl Analyzer {
                 let ty = self.expression(expression, locals)?;
                 let object_type = self.expression(object, locals)?;
                 if !self.member_mutable(&object_type, name) {
-                    return Err(error(
-                        "TYPE_MISMATCH",
-                        format!("member '{name}' is not an assignable field"),
+                    return Err(type_mismatch(
+                        "assignable field",
+                        format!("non-assignable member '{name}'"),
+                        "member assignment",
                         expression.span,
                     ));
                 }
                 Ok(ty)
             }
             ExpressionKind::Index { object, .. } if matches!(object.kind, ExpressionKind::HostCapability { ref name } if name == "Args") => {
-                Err(error(
-                    "TYPE_MISMATCH",
-                    "HOST.Args entries are immutable",
+                Err(type_mismatch(
+                    "mutable value",
+                    "HOST.Args entry",
+                    "HOST.Args assignment",
                     expression.span,
                 ))
             }
             ExpressionKind::Index { object, .. } => {
                 let object_type = self.expression(object, locals)?;
                 if object_type == Type::String {
-                    return Err(error(
-                        "TYPE_MISMATCH",
-                        "STRING indices are read-only",
+                    return Err(type_mismatch(
+                        "mutable indexed value",
+                        "STRING index",
+                        "indexed assignment",
                         expression.span,
                     ));
                 }
                 self.expression(expression, locals)
             }
-            _ => Err(error(
-                "TYPE_MISMATCH",
-                "assignment target is not mutable",
+            _ => Err(type_mismatch(
+                "mutable assignment target",
+                "non-mutable value",
+                "assignment",
                 expression.span,
             )),
         }
@@ -159,9 +168,10 @@ impl Analyzer {
         if compatible(&Type::Boolean, &ty) {
             Ok(())
         } else {
-            Err(error(
-                "TYPE_MISMATCH",
-                format!("condition must be BOOLEAN, found {}", display(&ty)),
+            Err(type_mismatch(
+                "BOOLEAN",
+                display(&ty),
+                "condition",
                 expression.span,
             ))
         }

@@ -8,6 +8,7 @@ use cli_help::{help, usage};
 // would this file load configurations if there is any?
 
 use std::{
+    collections::BTreeMap,
     env, fs,
     io::{self, BufRead, Read},
     path::{Path, PathBuf},
@@ -17,15 +18,15 @@ use std::{
 #[allow(unused_imports)]
 use bn::diagnostic::{DiagId, Level};
 use bn::{
-    ast::Program,
-    diagnostic::{Catalog, Diagnostic, WarningPolicy},
+    ast::{DeclarationKind, Item, Program},
+    diagnostic::{Catalog, Diagnostic, DiagnosticValue, Label, LabelStyle, WarningPolicy},
     ir::ValidatedModule,
     lexer::lex,
     llvm::{
         CompiledPolicy, Target as LlvmTarget, lower_validated_module_for_target_with_policy,
         validate_for,
     },
-    module_graph::{ModuleGraph, load_with_session},
+    module_graph::ModuleGraph,
     runtime::{HostEnv, execute_validated_with_host},
     semantic::{ModuleAnalysisError, SemanticModel, analyze_modules_with_warnings},
     source::SourceFile,
@@ -56,18 +57,567 @@ fn tool_error() -> ExitCode {
     ExitCode::from(2)
 }
 
-fn render_diagnostic(
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum EvalMode {
+    Snippet,
+    Program,
+}
+
+fn eval_source(args: Vec<String>) -> Result<(String, Vec<String>, EvalMode), String> {
+    let mut source = None;
+    let mut options = Vec::new();
+    let mut program_arguments = Vec::new();
+    let mut stdin_source = false;
+    let mut mode = EvalMode::Snippet;
+    let mut after_separator = false;
+    let mut arguments = args.into_iter();
+    while let Some(argument) = arguments.next() {
+        if after_separator {
+            program_arguments.push(argument);
+        } else if argument == "--" {
+            after_separator = true;
+        } else if argument == "--stdin" {
+            if stdin_source {
+                return Err("duplicate --stdin".into());
+            }
+            stdin_source = true;
+        } else if argument == "--session" {
+            return Err("--session is not available in 0.5.1".into());
+        } else if argument == "--format" {
+            options.push(argument);
+            options.push(
+                arguments
+                    .next()
+                    .ok_or_else(|| "--format expects text or json".to_string())?,
+            );
+        } else if argument == "--mode" {
+            mode = match arguments.next().as_deref() {
+                Some("snippet") => EvalMode::Snippet,
+                Some("program") => EvalMode::Program,
+                _ => return Err("--mode expects snippet or program".into()),
+            };
+        } else if matches!(
+            argument.as_str(),
+            "--warnings"
+                | "--allow"
+                | "--deny"
+                | "--warn"
+                | "--config"
+                | "--target"
+                | "--opt"
+                | "--color"
+                | "--emit"
+                | "-o"
+                | "--output"
+                | "--log-level"
+                | "--log-file"
+                | "--read-root"
+                | "--write-root"
+                | "--module-path"
+        ) {
+            options.push(argument);
+            options.push(
+                arguments
+                    .next()
+                    .ok_or_else(|| "option expects a value".to_string())?,
+            );
+        } else if matches!(
+            argument.as_str(),
+            "-v" | "-vv"
+                | "--verbose"
+                | "--trace"
+                | "--no-filesystem"
+                | "--sandbox"
+                | "--jupyter-stdin"
+                | "--no-log"
+        ) {
+            options.push(argument);
+        } else if source.is_none() {
+            source = Some(argument);
+        } else {
+            options.push(argument);
+        }
+    }
+    if stdin_source == source.is_some() {
+        return Err("bn eval requires exactly one source form: SOURCE or --stdin".into());
+    }
+    let text = if stdin_source {
+        let mut text = String::new();
+        io::stdin()
+            .read_to_string(&mut text)
+            .map_err(|error| format!("cannot read eval source: {error}"))?;
+        text
+    } else {
+        source.expect("source form checked above")
+    };
+    if !program_arguments.is_empty() {
+        options.push("--".into());
+        options.extend(program_arguments);
+    }
+    Ok((text, options, mode))
+}
+
+fn eval_top_level_start_span(source_text: &str) -> Option<bn::source::Span> {
+    let source = SourceFile::new("<eval-classify>", source_text);
+    let Ok(tokens) = lex(&source) else {
+        return None;
+    };
+    let Ok(program) = bn::parser::parse(&tokens) else {
+        return None;
+    };
+    program.items.iter().find_map(|item| match item {
+        Item::Declaration {
+            kind: DeclarationKind::Function,
+            name,
+            span,
+            ..
+        } if name == "Start" => Some(*span),
+        _ => None,
+    })
+}
+
+fn eval_promotion_diagnostic(source_text: &str, span: bn::source::Span) -> Diagnostic {
+    let source = SourceFile::new("<eval>", source_text);
+    let span = bn::source::Span {
+        start: bn::source::Position {
+            source_id: source.source_id,
+            revision: source.revision,
+            ..span.start
+        },
+        end: bn::source::Position {
+            source_id: source.source_id,
+            revision: source.revision,
+            ..span.end
+        },
+    };
+    Diagnostic::structured(
+        DiagId::Runtime("EVAL_START_PROMOTED"),
+        vec![(
+            "message".into(),
+            DiagnosticValue::from(
+                "top-level FUNCTION Start was detected; evaluating as a complete program",
+            ),
+        )],
+        vec![Label {
+            span,
+            style: LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("promotion diagnostic schema is registered")
+}
+
+fn eval_line_partition(line: &str, in_block_comment: &mut bool) -> (bool, bool) {
+    let bytes = line.as_bytes();
+    let mut index = 0;
+    let mut string = false;
+    let mut visible = String::new();
+    while index < bytes.len() {
+        if *in_block_comment {
+            if bytes[index..].starts_with(b"*/") {
+                *in_block_comment = false;
+                index += 2;
+            } else {
+                index += 1;
+            }
+            continue;
+        }
+        if string {
+            visible.push(bytes[index] as char);
+            if bytes[index] == b'\\' {
+                if let Some(next) = bytes.get(index + 1) {
+                    visible.push(*next as char);
+                }
+                index = (index + 2).min(bytes.len());
+            } else if bytes[index] == b'"' {
+                string = false;
+                index += 1;
+            } else {
+                index += 1;
+            }
+            continue;
+        }
+        if bytes[index..].starts_with(b"//") {
+            break;
+        }
+        if bytes[index..].starts_with(b"/*") {
+            *in_block_comment = true;
+            index += 2;
+        } else if bytes[index] == b'"' {
+            string = true;
+            visible.push('"');
+            index += 1;
+        } else {
+            visible.push(bytes[index] as char);
+            index += 1;
+        }
+    }
+    let trimmed = visible.trim_start();
+    (trimmed.is_empty(), trimmed.starts_with("IMPORT "))
+}
+
+fn eval_json_error(code: &str, message: impl Into<String>, phase: &str, exit_code: u8) -> ExitCode {
+    println!(
+        "{}",
+        serde_json::json!({
+            "schema_version": 1, "ok": false, "exit_code": exit_code,
+            "stdout": "", "stderr": "",
+            "diagnostics": [{"code": code, "severity": "error", "phase": phase,
+                "title": "Invalid eval configuration", "message": message.into(),
+                "labels": [], "causes": [], "help": serde_json::Value::Null}],
+        })
+    );
+    ExitCode::from(exit_code)
+}
+
+#[allow(clippy::too_many_lines)]
+fn eval(command_arguments: Vec<String>) -> ExitCode {
+    let json_requested = command_arguments
+        .windows(2)
+        .any(|window| window[0] == "--format" && window[1] == "json");
+    let (snippet, mut arguments, mode) = match eval_source(command_arguments) {
+        Ok(value) => value,
+        Err(message) => {
+            if json_requested {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "schema_version": 1,
+                        "ok": false,
+                        "exit_code": 2,
+                        "stdout": "",
+                        "stderr": "",
+                        "diagnostics": [{
+                            "code": "CONFIG_INVALID",
+                            "severity": "error",
+                            "phase": "cli",
+                            "title": "Invalid eval options",
+                            "message": message,
+                            "labels": [],
+                            "causes": [],
+                            "help": serde_json::Value::Null,
+                        }],
+                    })
+                );
+            } else {
+                eprintln!("error: {message}");
+            }
+            return tool_error();
+        }
+    };
+    let promotion_span = (mode == EvalMode::Snippet)
+        .then(|| eval_top_level_start_span(&snippet))
+        .flatten();
+    let has_start = promotion_span.is_some();
+    let virtual_path = env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(if mode == EvalMode::Program || has_start {
+            ".bn-eval-program.bn"
+        } else {
+            ".bn-eval-input.bn"
+        });
+    let separator = arguments.iter().position(|argument| argument == "--");
+    if let Some(index) = separator {
+        arguments.insert(index, virtual_path.display().to_string());
+    } else {
+        arguments.push(virtual_path.display().to_string());
+    }
+    let mut options = match parse_options(arguments.into_iter()) {
+        Ok(options) => options,
+        Err(message) => {
+            if json_requested {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "schema_version": 1,
+                        "ok": false,
+                        "exit_code": 2,
+                        "stdout": "",
+                        "stderr": "",
+                        "diagnostics": [{
+                            "code": "CONFIG_INVALID",
+                            "severity": "error",
+                            "phase": "cli",
+                            "title": "Invalid eval options",
+                            "message": message,
+                            "labels": [],
+                            "causes": [],
+                            "help": serde_json::Value::Null,
+                        }],
+                    })
+                );
+            } else {
+                eprintln!("error: {message}");
+            }
+            return tool_error();
+        }
+    };
+    if options.output_format == OutputFormat::Json {
+        // JSON v1 owns both channels; verbosity/token tracing are incompatible
+        // with the one-document stdout contract and are therefore suppressed.
+        options.verbosity = 0;
+        options.trace = false;
+        options.jupyter_stdin = false;
+        options.no_log = true;
+    }
+    options.eval_promotion_warning = has_start && mode == EvalMode::Snippet;
+    options.eval_promotion_span = promotion_span;
+    let mut expression_wrapped = false;
+    let wrapped = if mode == EvalMode::Program || has_start {
+        snippet.clone()
+    } else {
+        let mut imports = Vec::new();
+        let mut body = Vec::new();
+        let mut body_started = false;
+        let mut in_block_comment = false;
+        for line in snippet.split_inclusive('\n') {
+            let (trivia, is_import) = eval_line_partition(line, &mut in_block_comment);
+            if !body_started && (trivia || is_import) {
+                imports.push(line);
+            } else {
+                body_started = true;
+                body.push(line);
+            }
+        }
+        let body_text = body.concat();
+        let expression_candidate = body_text.trim_end_matches(['\r', '\n']);
+        let expression = {
+            let expression_source = SourceFile::new("<eval-expression>", expression_candidate);
+            bn::lexer::lex(&expression_source)
+                .ok()
+                .and_then(|tokens| bn::parser::parse_expression(&tokens).ok())
+                .is_some()
+                && !expression_candidate.contains(['\r', '\n'])
+        };
+        let body = if expression {
+            expression_wrapped = true;
+            format!("PRINT {body_text}")
+        } else {
+            body_text.clone()
+        };
+        let mut wrapped = imports.concat();
+        wrapped.push_str("FUNCTION Start() AS VOID\n");
+        wrapped.push_str(&body);
+        if !body.ends_with('\n') {
+            wrapped.push('\n');
+        }
+        wrapped.push_str("END FUNCTION\n");
+        wrapped
+    };
+    let (insertion_offset, inserted_length, insertion_line) =
+        if mode == EvalMode::Program || has_start {
+            (0, 0, 1)
+        } else {
+            let marker = "FUNCTION Start() AS VOID\n";
+            let insertion_offset = wrapped.find(marker).unwrap_or(0);
+            (
+                insertion_offset,
+                marker.len(),
+                wrapped[..insertion_offset]
+                    .bytes()
+                    .filter(|byte| *byte == b'\n')
+                    .count()
+                    + 1,
+            )
+        };
+    options.eval_mapping = Some(EvalMapping {
+        source_name: "<eval>".into(),
+        insertion_offset,
+        inserted_length,
+        insertion_line,
+        expression_prefix: expression_wrapped
+            .then_some((insertion_offset + inserted_length, "PRINT ".len())),
+    });
+    options.eval_source_text = Some(snippet.clone());
+    let source = SourceFile::new(&options.path, wrapped.clone());
+    let tokens = match lex(&source) {
+        Ok(tokens) => tokens,
+        Err(diagnostic) => {
+            if options.output_format == OutputFormat::Json {
+                let envelope = serde_json::json!({
+                    "schema_version": 1,
+                    "ok": false,
+                    "exit_code": 1,
+                    "stdout": "",
+                    "stderr": "",
+                    "diagnostics": [diagnostic_json(&diagnostic, &source, &options, "lexical")],
+                });
+                println!("{envelope}");
+            } else {
+                eprintln!("{}", render_diagnostic(&diagnostic, &source, &options));
+            }
+            return language_error();
+        }
+    };
+    let mut overlays = BTreeMap::new();
+    overlays.insert(PathBuf::from(&options.path), wrapped);
+    let frontend = match load_frontend_with_overlays(&source, &options, &overlays) {
+        Ok(frontend) => frontend,
+        Err(code) => return code,
+    };
+    run_loaded(&source, &tokens, &options, &frontend)
+}
+
+fn render_diagnostic(diagnostic: &Diagnostic, source: &SourceFile, options: &Options) -> String {
+    let diagnostic = remap_eval_diagnostic(diagnostic, options);
+    let display_source = options
+        .eval_source_text
+        .as_ref()
+        .map_or_else(|| source.clone(), |text| SourceFile::new("<eval>", text));
+    diagnostic.render_with_catalog_and_policy(
+        &display_source,
+        &options.diagnostic_catalog,
+        &options.warning_policy,
+    )
+}
+
+fn remap_eval_diagnostic(diagnostic: &Diagnostic, options: &Options) -> Diagnostic {
+    let Some(mapping) = options.eval_mapping.as_ref() else {
+        return Diagnostic {
+            code: diagnostic.code,
+            message: diagnostic.message.clone(),
+            span: diagnostic.span,
+            structured: diagnostic
+                .structured
+                .as_ref()
+                .map(|spec| Box::new((**spec).clone())),
+        };
+    };
+    let map_position = |mut position: bn::source::Position| {
+        let original_offset = position.offset;
+        if mapping.inserted_length > 0 {
+            if position.line > mapping.insertion_line {
+                position.line = position.line.saturating_sub(1);
+            }
+            let inserted_end = mapping.insertion_offset + mapping.inserted_length;
+            if position.offset >= inserted_end {
+                position.offset = position.offset.saturating_sub(mapping.inserted_length);
+            }
+        }
+        if let Some((prefix_offset, prefix_length)) = mapping.expression_prefix
+            && original_offset >= prefix_offset + prefix_length
+        {
+            position.offset = position.offset.saturating_sub(prefix_length);
+            position.column = position.column.saturating_sub(prefix_length);
+        }
+        position.source_id = bn::source::Position::UNKNOWN_SOURCE;
+        position.revision = bn::source::Position::UNKNOWN_REVISION;
+        position
+    };
+    let mut mapped = Diagnostic {
+        code: diagnostic.code,
+        message: diagnostic.message.clone(),
+        span: diagnostic.span,
+        structured: diagnostic
+            .structured
+            .as_ref()
+            .map(|spec| Box::new((**spec).clone())),
+    };
+    mapped.span.start = map_position(mapped.span.start);
+    mapped.span.end = map_position(mapped.span.end);
+    if let Some(spec) = mapped.structured.as_mut() {
+        for label in &mut spec.labels {
+            label.span.start = map_position(label.span.start);
+            label.span.end = map_position(label.span.end);
+        }
+    }
+    mapped
+}
+
+fn diagnostic_json(
     diagnostic: &Diagnostic,
     source: &SourceFile,
-    policy: &WarningPolicy,
-) -> String {
-    match Catalog::global_for_environment() {
-        Ok(catalog) => diagnostic.render_with_catalog_and_policy(source, catalog, policy),
-        Err(error) => format!(
-            "{}\n\nerror: cannot load diagnostic catalog overlay: {error}",
-            diagnostic.render(source)
-        ),
-    }
+    options: &Options,
+    phase: &str,
+) -> serde_json::Value {
+    let mapping = options.eval_mapping.as_ref();
+    let identity_source = options
+        .eval_source_text
+        .as_ref()
+        .map(|text| SourceFile::new("<eval>", text));
+    let rendered = diagnostic
+        .spec()
+        .and_then(|spec| options.diagnostic_catalog.render(&spec).ok());
+    let labels = rendered
+        .as_ref()
+        .map(|value| {
+            value
+                .labels
+                .iter()
+                .map(|label| {
+                    let mut start_line = label.span.start.line;
+                    let mut end_line = label.span.end.line;
+                    let mut start_offset = label.span.start.offset;
+                    let mut end_offset = label.span.end.offset;
+                    let mut start_column = label.span.start.column;
+                    let mut end_column = label.span.end.column;
+                    let original_start_offset = label.span.start.offset;
+                    let original_end_offset = label.span.end.offset;
+                    if let Some(mapping) = mapping {
+                        if mapping.inserted_length > 0 && start_line > mapping.insertion_line {
+                            start_line = start_line.saturating_sub(1);
+                        }
+                        if mapping.inserted_length > 0 && end_line > mapping.insertion_line {
+                            end_line = end_line.saturating_sub(1);
+                        }
+                        let inserted_end = mapping.insertion_offset + mapping.inserted_length;
+                        if start_offset >= inserted_end {
+                            start_offset = start_offset.saturating_sub(mapping.inserted_length);
+                        }
+                        if end_offset >= inserted_end {
+                            end_offset = end_offset.saturating_sub(mapping.inserted_length);
+                        }
+                        if let Some((prefix_offset, prefix_length)) = mapping.expression_prefix {
+                            if original_start_offset >= prefix_offset + prefix_length {
+                                start_offset = start_offset.saturating_sub(prefix_length);
+                            }
+                            if original_end_offset >= prefix_offset + prefix_length {
+                                end_offset = end_offset.saturating_sub(prefix_length);
+                            }
+                            if original_start_offset >= prefix_offset + prefix_length {
+                                start_column = start_column.saturating_sub(prefix_length);
+                            }
+                            if original_end_offset >= prefix_offset + prefix_length {
+                                end_column = end_column.saturating_sub(prefix_length);
+                            }
+                        }
+                    }
+                    serde_json::json!({
+                        "source_id": identity_source.as_ref().map_or(label.span.start.source_id.0, |value| value.source_id.0),
+                        "revision": identity_source.as_ref().map_or(label.span.start.revision.0, |value| value.revision.0),
+                        "source_name": mapping.map_or_else(|| source.name.clone(), |mapping| mapping.source_name.clone()),
+                        "style": format!("{:?}", label.style).to_lowercase(),
+                        "text": label.text.clone(),
+                        "start": {"offset": start_offset, "line": start_line, "column": start_column},
+                        "end": {"offset": end_offset, "line": end_line, "column": end_column},
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let severity = DiagId::from_code(diagnostic.code)
+        .filter(|id| id.warnings_allowed())
+        .map(|id| match options.warning_policy.level(id) {
+            Level::Error => "error",
+            Level::Allow | Level::Warn => "warning",
+        })
+        .map(str::to_string)
+        .or_else(|| {
+            rendered
+                .as_ref()
+                .map(|value| format!("{:?}", value.severity).to_lowercase())
+        })
+        .unwrap_or_else(|| "error".into());
+    serde_json::json!({
+        "code": diagnostic.code,
+        "severity": severity,
+        "phase": phase,
+        "title": rendered.as_ref().map_or_else(|| diagnostic.code.to_string(), |value| value.title.clone()),
+        "message": rendered.as_ref().map_or_else(|| diagnostic.message.to_string(), |value| value.message.clone()),
+        "labels": labels,
+        "causes": rendered.as_ref().map_or_else(Vec::new, |value| value.causes.clone()),
+        "help": rendered.as_ref().and_then(|value| value.help.clone()),
+    })
 }
 
 // can enum and structs be in another file?
@@ -78,6 +628,21 @@ enum Emit {
     Ast,
     TypedAst,
     Ir,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum OutputFormat {
+    Text,
+    Json,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct EvalMapping {
+    pub source_name: String,
+    pub insertion_offset: usize,
+    pub inserted_length: usize,
+    pub insertion_line: usize,
+    pub expression_prefix: Option<(usize, usize)>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -100,17 +665,24 @@ struct Options {
     verbosity: u8,
     emit: Option<Emit>,
     output: Option<String>,
+    output_format: OutputFormat,
+    eval_mapping: Option<EvalMapping>,
+    eval_source_text: Option<String>,
+    eval_promotion_warning: bool,
+    eval_promotion_span: Option<bn::source::Span>,
     trace: bool,
     color: Color,
     target: Target,
     filesystem: bool,
     sandbox: bool,
+    module_paths: Vec<PathBuf>,
     read_roots: Vec<PathBuf>,
     write_roots: Vec<PathBuf>,
     jupyter_stdin: bool,
     program_arguments: Vec<String>,
     optimization: Optimization,
     warning_policy: WarningPolicy,
+    diagnostic_catalog: Catalog,
     log_level: LogLevel,
     log_file: Option<String>,
     no_log: bool,
@@ -159,10 +731,20 @@ struct Frontend {
 fn emit_frontend_warnings(frontend: &Frontend, source: &SourceFile, options: &Options) -> bool {
     let mut fatal = false;
     for warning in &frontend.warnings {
+        if options.output_format == OutputFormat::Json {
+            // JSON aggregation is emitted by the eval boundary; never leak
+            // human-readable warning text onto process stderr.
+            let Some(id) = DiagId::from_code(warning.diagnostic.code) else {
+                fatal = true;
+                continue;
+            };
+            fatal |= options.warning_policy.level(id) == Level::Error;
+            continue;
+        }
         let Some(id) = DiagId::from_code(warning.diagnostic.code) else {
             eprintln!(
                 "{}",
-                render_diagnostic(&warning.diagnostic, source, &options.warning_policy)
+                render_diagnostic(&warning.diagnostic, source, options)
             );
             fatal = true;
             continue;
@@ -173,8 +755,7 @@ fn emit_frontend_warnings(frontend: &Frontend, source: &SourceFile, options: &Op
             fatal = true;
             continue;
         };
-        let rendered =
-            render_diagnostic(&warning.diagnostic, &module.source, &options.warning_policy);
+        let rendered = render_diagnostic(&warning.diagnostic, &module.source, options);
         if !rendered.is_empty() {
             eprintln!("{rendered}");
         }
@@ -235,6 +816,9 @@ fn main() -> ExitCode {
     let Some(command) = arguments.next() else {
         return usage();
     };
+    if command == "eval" {
+        return eval(arguments.collect());
+    }
     match command.as_str() {
         "-h" | "--help" => return help(),
         "-V" | "--version" => {
@@ -268,10 +852,18 @@ fn main() -> ExitCode {
     let options = match parse_options(arguments) {
         Ok(options) => options,
         Err(message) => {
-            eprintln!("error: {message}");
+            if let Some(message) = message.strip_prefix("CONFIG_INVALID: ") {
+                eprintln!("error[CONFIG_INVALID]: {message}");
+            } else {
+                eprintln!("error: {message}");
+            }
             return usage();
         }
     };
+    if options.output_format != OutputFormat::Text {
+        eprintln!("error: --format is available only with bn eval");
+        return tool_error();
+    }
 
     log(options.verbosity, 1, format!("reading {}", options.path));
     let text = match fs::read_to_string(&options.path) {
@@ -286,10 +878,7 @@ fn main() -> ExitCode {
     let tokens = match lex(&source) {
         Ok(tokens) => tokens,
         Err(diagnostic) => {
-            eprintln!(
-                "{}",
-                render_diagnostic(&diagnostic, &source, &options.warning_policy)
-            );
+            eprintln!("{}", render_diagnostic(&diagnostic, &source, &options));
             return language_error();
         }
     };
@@ -383,8 +972,12 @@ fn build_inner(
         "config",
         "snapshot",
         format!(
-            "target={:?} opt={:?} log_level={:?} no_log={}",
-            options.target, options.optimization, options.log_level, options.no_log
+            "target={:?} opt={:?} log_level={:?} no_log={} module_paths={:?}",
+            options.target,
+            options.optimization,
+            options.log_level,
+            options.no_log,
+            frontend.graph.module_paths
         ),
     );
     process_log.event(
@@ -635,7 +1228,43 @@ fn run(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
         Ok(frontend) => frontend,
         Err(code) => return code,
     };
-    if emit_frontend_warnings(&frontend, source, options) {
+    run_loaded(source, tokens, options, &frontend)
+}
+
+#[allow(clippy::too_many_lines)]
+fn run_loaded(
+    source: &SourceFile,
+    tokens: &[Token],
+    options: &Options,
+    frontend: &Frontend,
+) -> ExitCode {
+    if emit_frontend_warnings(frontend, source, options) {
+        if options.output_format == OutputFormat::Json {
+            let diagnostics = frontend
+                .warnings
+                .iter()
+                .filter_map(|warning| {
+                    let module = frontend.graph.modules.get(module_index(warning.module.0))?;
+                    Some(diagnostic_json(
+                        &warning.diagnostic,
+                        &module.source,
+                        options,
+                        "semantic",
+                    ))
+                })
+                .collect::<Vec<_>>();
+            println!(
+                "{}",
+                serde_json::json!({
+                    "schema_version": 1,
+                    "ok": false,
+                    "exit_code": 1,
+                    "stdout": "",
+                    "stderr": "",
+                    "diagnostics": diagnostics,
+                })
+            );
+        }
         return language_error();
     }
     log(options.verbosity, 1, "lowering typed BN IR");
@@ -654,12 +1283,44 @@ fn run(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
         .map_or_else(|_| options.path.clone(), |path| path.display().to_string());
     let mut arguments = vec![executable];
     arguments.extend(options.program_arguments.iter().cloned());
+    if options.eval_promotion_warning {
+        let promotion = eval_promotion_diagnostic(
+            options.eval_source_text.as_deref().unwrap_or(""),
+            options
+                .eval_promotion_span
+                .expect("promotion warning has a source span"),
+        );
+        let level = options
+            .warning_policy
+            .level(DiagId::Runtime("EVAL_START_PROMOTED"));
+        if level == Level::Error {
+            if options.output_format == OutputFormat::Json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "schema_version": 1, "ok": false, "exit_code": 1,
+                        "stdout": "", "stderr": "",
+                        "diagnostics": [diagnostic_json(&promotion, source, options, "cli")],
+                    })
+                );
+            } else {
+                eprintln!("{}", render_diagnostic(&promotion, source, options));
+            }
+            return language_error();
+        }
+        if level == Level::Warn && options.output_format == OutputFormat::Text {
+            eprintln!("{}", render_diagnostic(&promotion, source, options));
+        }
+    }
     let mut host = if options.sandbox {
         match HostEnv::system(arguments.clone())
             .with_filesystem_roots(options.read_roots.clone(), options.write_roots.clone())
         {
             Ok(host) => host,
             Err(message) => {
+                if options.output_format == OutputFormat::Json {
+                    return eval_json_error("CONFIG_INVALID", message, "config", 2);
+                }
                 eprintln!("error: {message}");
                 return tool_error();
             }
@@ -674,27 +1335,107 @@ fn run(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
         Ok("read-only") => host = host.without_filesystem_writes(),
         Ok("") | Err(_) => {}
         Ok(value) => {
-            eprintln!("error: invalid BN_FS_POLICY '{value}' (expected deny or read-only)");
+            let message = format!("invalid BN_FS_POLICY '{value}' (expected deny or read-only)");
+            if options.output_format == OutputFormat::Json {
+                return eval_json_error("CONFIG_INVALID", message, "config", 2);
+            }
+            eprintln!("error: {message}");
+            return tool_error();
+        }
+    }
+    // Restricted profiles deny HOST.Exec through the same env var the compiled
+    // artifact honors in bn_rt, so interpret and native share one policy switch.
+    match env::var("BN_EXEC_POLICY").as_deref() {
+        Ok("deny") => host = host.without_exec(),
+        Ok("") | Err(_) => {}
+        Ok(value) => {
+            let message = format!("invalid BN_EXEC_POLICY '{value}' (expected deny)");
+            if options.output_format == OutputFormat::Json {
+                return eval_json_error("CONFIG_INVALID", message, "config", 2);
+            }
+            eprintln!("error: {message}");
             return tool_error();
         }
     }
     let stdin = io::stdin();
-    let stdout = io::stdout();
-    let mut input = JupyterInput {
-        input: stdin.lock(),
-        notify: options.jupyter_stdin,
-    };
-    match execute_validated_with_host(module, &mut input, &mut stdout.lock(), &host) {
-        Ok(code) => ExitCode::from(code),
-        Err(diagnostic) => {
-            eprintln!(
-                "{}",
-                render_diagnostic(&diagnostic, source, &options.warning_policy)
+    if options.output_format == OutputFormat::Json {
+        let mut output = Vec::new();
+        let mut input = JupyterInput {
+            input: stdin.lock(),
+            notify: options.jupyter_stdin,
+        };
+        let result = execute_validated_with_host(module, &mut input, &mut output, &host);
+        let mut diagnostics = frontend
+            .warnings
+            .iter()
+            .filter_map(|warning| {
+                let id = DiagId::from_code(warning.diagnostic.code)?;
+                if options.warning_policy.level(id) == Level::Allow {
+                    return None;
+                }
+                let module = frontend.graph.modules.get(module_index(warning.module.0))?;
+                Some(diagnostic_json(
+                    &warning.diagnostic,
+                    &module.source,
+                    options,
+                    "semantic",
+                ))
+            })
+            .collect::<Vec<_>>();
+        if options.eval_promotion_warning {
+            let promotion = eval_promotion_diagnostic(
+                options.eval_source_text.as_deref().unwrap_or(""),
+                options
+                    .eval_promotion_span
+                    .expect("promotion warning has a source span"),
             );
-            if diagnostic.code == "EXECUTION_POLICY_DENIED" {
-                tool_error()
-            } else {
-                language_error()
+            if options
+                .warning_policy
+                .level(DiagId::Runtime("EVAL_START_PROMOTED"))
+                != Level::Allow
+            {
+                diagnostics.insert(0, diagnostic_json(&promotion, source, options, "cli"));
+            }
+        }
+        let (ok, exit_code) = match result {
+            Ok(code) => (code == 0, code),
+            Err(diagnostic) => {
+                diagnostics.push(diagnostic_json(&diagnostic, source, options, "runtime"));
+                (
+                    false,
+                    if diagnostic.code == "EXECUTION_POLICY_DENIED" {
+                        2
+                    } else {
+                        1
+                    },
+                )
+            }
+        };
+        let envelope = serde_json::json!({
+            "schema_version": 1,
+            "ok": ok,
+            "exit_code": exit_code,
+            "stdout": String::from_utf8_lossy(&output),
+            "stderr": "",
+            "diagnostics": diagnostics,
+        });
+        println!("{envelope}");
+        ExitCode::from(exit_code)
+    } else {
+        let stdout = io::stdout();
+        let mut input = JupyterInput {
+            input: stdin.lock(),
+            notify: options.jupyter_stdin,
+        };
+        match execute_validated_with_host(module, &mut input, &mut stdout.lock(), &host) {
+            Ok(code) => ExitCode::from(code),
+            Err(diagnostic) => {
+                eprintln!("{}", render_diagnostic(&diagnostic, source, options));
+                if diagnostic.code == "EXECUTION_POLICY_DENIED" {
+                    tool_error()
+                } else {
+                    language_error()
+                }
             }
         }
     }
@@ -791,7 +1532,7 @@ fn root_program(graph: &ModuleGraph) -> &Program {
 }
 
 mod cli_frontend;
-use cli_frontend::{load_frontend, parse_options};
+use cli_frontend::{load_frontend, load_frontend_with_overlays, parse_options};
 
 fn tokens_text(tokens: &[Token]) -> String {
     tokens

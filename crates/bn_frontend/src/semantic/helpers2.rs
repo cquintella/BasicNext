@@ -7,6 +7,7 @@ pub(crate) fn member_target(object: &Type, name: &str) -> Option<MemberTarget> {
         Type::HostRandom => Some(crate::host_spec::Capability::Random),
         Type::HostFileSystem => Some(crate::host_spec::Capability::FileSystem),
         Type::HostNet => Some(crate::host_spec::Capability::Net),
+        Type::HostExec => Some(crate::host_spec::Capability::Exec),
         Type::HostConsole => Some(crate::host_spec::Capability::Console),
         _ => None,
     };
@@ -95,9 +96,10 @@ pub(crate) fn validate_type_reference(reference: &TypeReference) -> Result<(), D
             ));
         }
         if types.contains(&ty) {
-            return Err(error(
-                "TYPE_MISMATCH",
-                format!("duplicate alternative type '{}'", display(&ty)),
+            return Err(type_mismatch(
+                "unique alternative type",
+                display(&ty),
+                "alternative declaration",
                 alternative.span,
             ));
         }
@@ -128,11 +130,137 @@ pub(crate) fn valid_pointer_parts(parts: &[String]) -> bool {
     }
 }
 pub(crate) fn error(code: &'static str, message: impl Into<String>, span: Span) -> Diagnostic {
-    Diagnostic {
-        code,
-        message: message.into(),
-        span,
+    let id = DiagId::from_code(code).unwrap_or(DiagId::Runtime(code));
+    let argument_name = match id {
+        DiagId::UnreachableCode => "context",
+        DiagId::Runtime("DUPLICATE_NAME" | "NAME_NOT_FOUND") => "name",
+        DiagId::NumericOverflow => "operation",
+        DiagId::Runtime(
+            "ALLOCATION_SIZE_INVALID"
+            | "ALLOCATION_SIZE_OVERFLOW"
+            | "INVALID_EXIT_CODE"
+            | "INVALID_SHIFT_COUNT",
+        ) => "detail",
+        _ => "message",
+    };
+    if matches!(id, DiagId::Runtime("NAME_NOT_FOUND")) {
+        return Diagnostic::structured(
+            id,
+            vec![
+                ("name".into(), DiagnosticValue::Text(message.into())),
+                (
+                    "context".into(),
+                    DiagnosticValue::Text("semantic analysis".into()),
+                ),
+            ],
+            vec![Label {
+                span,
+                style: LabelStyle::Primary,
+                text: None,
+            }],
+        )
+        .expect("name-not-found compatibility schema");
     }
+    if matches!(id, DiagId::TypeMismatch) {
+        return Diagnostic::structured(
+            id,
+            vec![
+                (
+                    "expected".into(),
+                    DiagnosticValue::Text("the operation's expected type".into()),
+                ),
+                (
+                    "actual".into(),
+                    DiagnosticValue::Text("an incompatible value".into()),
+                ),
+                ("context".into(), DiagnosticValue::Text(message.into())),
+            ],
+            vec![Label {
+                span,
+                style: LabelStyle::Primary,
+                text: None,
+            }],
+        )
+        .expect("type-mismatch compatibility schema");
+    }
+    Diagnostic::structured(
+        id,
+        vec![(argument_name.into(), DiagnosticValue::Text(message.into()))],
+        vec![Label {
+            span,
+            style: LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("message is the compatibility schema for registered diagnostics")
+}
+
+pub(crate) fn type_mismatch(
+    expected: impl Into<String>,
+    actual: impl Into<String>,
+    context: impl Into<String>,
+    span: Span,
+) -> Diagnostic {
+    Diagnostic::structured(
+        DiagId::TypeMismatch,
+        vec![
+            ("expected".into(), DiagnosticValue::Text(expected.into())),
+            ("actual".into(), DiagnosticValue::Text(actual.into())),
+            ("context".into(), DiagnosticValue::Text(context.into())),
+        ],
+        vec![Label {
+            span,
+            style: LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("type-mismatch diagnostic schema")
+}
+
+pub(crate) fn unreachable_code(context: impl Into<String>, span: Span) -> Diagnostic {
+    Diagnostic::structured(
+        DiagId::UnreachableCode,
+        vec![("context".into(), DiagnosticValue::Text(context.into()))],
+        vec![Label {
+            span,
+            style: LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("unreachable-code diagnostic schema")
+}
+
+pub(crate) fn duplicate_name(name: impl Into<String>, span: Span) -> Diagnostic {
+    Diagnostic::structured(
+        DiagId::Runtime("DUPLICATE_NAME"),
+        vec![("name".into(), DiagnosticValue::Text(name.into()))],
+        vec![Label {
+            span,
+            style: LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("duplicate-name diagnostic schema")
+}
+
+pub(crate) fn undefined_name(
+    name: impl Into<String>,
+    context: impl Into<String>,
+    span: Span,
+) -> Diagnostic {
+    Diagnostic::structured(
+        DiagId::Runtime("NAME_NOT_FOUND"),
+        vec![
+            ("name".into(), DiagnosticValue::Text(name.into())),
+            ("context".into(), DiagnosticValue::Text(context.into())),
+        ],
+        vec![Label {
+            span,
+            style: LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("name-not-found diagnostic schema")
 }
 pub(crate) fn validate_returns(
     statements: &[Statement],
@@ -178,9 +306,10 @@ pub(crate) fn validate_return_statements(
                 ));
             }
             Statement::Return { value, span } if is_void_only && value.is_some() => {
-                return Err(error(
-                    "TYPE_MISMATCH",
-                    "VOID FUNCTION cannot return a value",
+                return Err(type_mismatch(
+                    "VOID return",
+                    "value",
+                    "VOID FUNCTION return",
                     *span,
                 ));
             }
@@ -190,9 +319,10 @@ pub(crate) fn validate_return_statements(
                     .iter()
                     .any(|atom| atom.name == "VOID") =>
             {
-                return Err(error(
-                    "TYPE_MISMATCH",
-                    "non-VOID FUNCTION must return a value",
+                return Err(type_mismatch(
+                    "return value",
+                    "no value",
+                    "non-VOID FUNCTION return",
                     *span,
                 ));
             }
@@ -262,11 +392,7 @@ pub(crate) fn validate_member_names(statements: &[Statement]) -> Result<(), Diag
             _ => continue,
         };
         if !names.insert(name) {
-            return Err(error(
-                "DUPLICATE_NAME",
-                format!("duplicate member '{name}'"),
-                span,
-            ));
+            return Err(duplicate_name(name, span));
         }
     }
     Ok(())

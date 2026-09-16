@@ -29,11 +29,7 @@ pub(super) fn reduce_vector(
             &owned
         }
         _ => {
-            return Err(runtime_error(
-                "TYPE_MISMATCH",
-                "BNMath reduction expects a vector",
-                span,
-            ));
+            return Err(super::type_mismatch("vector", "non-vector value", "BNMath reduction", span));
         }
     };
     let mut numbers = values
@@ -42,18 +38,10 @@ pub(super) fn reduce_vector(
         .collect::<Result<Vec<_>, _>>()?;
     if matches!(name, "MIN" | "MAX") {
         if numbers.is_empty() {
-            return Err(runtime_error(
-                "INDEX_OUT_OF_BOUNDS",
-                "BNMath reduction received an empty vector",
-                span,
-            ));
+            return Err(super::index_out_of_bounds("none", 0, "BNMath reduction", span));
         }
         let first = values.first().ok_or_else(|| {
-            runtime_error(
-                "INDEX_OUT_OF_BOUNDS",
-                "BNMath reduction received an empty vector",
-                span,
-            )
+            super::index_out_of_bounds("none", 0, "BNMath reduction", span)
         })?;
         if let Value::Integer(_, kind) = first {
             let integers = values
@@ -66,20 +54,12 @@ pub(super) fn reduce_vector(
                 integers.iter().copied().reduce(i128::max)
             }
             .ok_or_else(|| {
-                runtime_error(
-                    "INDEX_OUT_OF_BOUNDS",
-                    "BNMath reduction received an empty vector",
-                    span,
-                )
+                super::index_out_of_bounds("none", 0, "BNMath reduction", span)
             })?;
             return Ok(Value::Integer(result, *kind));
         }
         let Value::Float(_, kind) = first else {
-            return Err(runtime_error(
-                "TYPE_MISMATCH",
-                "BNMath reduction expects numeric values",
-                span,
-            ));
+            return Err(super::type_mismatch("numeric value", "non-numeric value", "BNMath reduction", span));
         };
         let length = i32::try_from(numbers.len()).map_err(|_| {
             runtime_error(

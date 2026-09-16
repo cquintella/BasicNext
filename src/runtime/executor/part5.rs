@@ -13,11 +13,7 @@ impl Executor<'_, '_> {
             "Parse" => {
                 require_arity(name, arguments, 1, span)?;
                 let Value::String(text) = &arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "JSON input must be STRING",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING", "non-STRING value", "BNJson.Parse input", span));
                 };
                 let parsed = crate::json::parse(text)
                     .map_err(|message| runtime_error("INVALID_JSON", message, span))?;
@@ -29,7 +25,7 @@ impl Executor<'_, '_> {
             "Stringify" => {
                 require_arity(name, arguments, 1, span)?;
                 let Value::Json(id) = arguments[0] else {
-                    return Err(runtime_error("TYPE_MISMATCH", "expected BNJson.Json", span));
+                    return Err(super::super::type_mismatch("BNJson.Json", "non-BNJson.Json value", "BNJson.Stringify input", span));
                 };
                 let value = self.json_values.get(&id).ok_or_else(|| {
                     runtime_error("USE_AFTER_RELEASE", "BNJson.Json is invalid", span)
@@ -90,14 +86,10 @@ impl Executor<'_, '_> {
     ) -> Result<Value, Diagnostic> {
         let method = name.rsplit('.').next().unwrap_or_default();
         let Value::LogFields(id) = arguments.first().ok_or_else(|| {
-            runtime_error("TYPE_MISMATCH", "BNLog.Fields receiver is missing", span)
+            super::super::type_mismatch("BNLog.Fields", "missing receiver", "BNLog.Fields operation", span)
         })?
         else {
-            return Err(runtime_error(
-                "TYPE_MISMATCH",
-                "expected BNLog.Fields",
-                span,
-            ));
+            return Err(super::super::type_mismatch("BNLog.Fields", "non-BNLog.Fields value", "BNLog.Fields operation", span));
         };
         let fields = self
             .log_fields
@@ -109,11 +101,7 @@ impl Executor<'_, '_> {
             "SetString" | "SetInteger" | "SetBoolean" => {
                 require_arity(name, arguments, 3, span)?;
                 let Value::String(key) = &arguments[1] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "field key must be STRING",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING", "non-STRING value", "BNLog.Fields key", span));
                 };
                 if key.is_empty() || key.len() > 128 {
                     return Ok(Value::Error {
@@ -136,11 +124,7 @@ impl Executor<'_, '_> {
                 let value = match method {
                     "SetString" => {
                         let Value::String(value) = &arguments[2] else {
-                            return Err(runtime_error(
-                                "TYPE_MISMATCH",
-                                "field value must be STRING",
-                                span,
-                            ));
+                            return Err(super::super::type_mismatch("STRING", "non-STRING value", "BNLog.Fields.SetString value", span));
                         };
                         value.clone()
                     }
@@ -148,11 +132,7 @@ impl Executor<'_, '_> {
                     "SetBoolean" => match arguments[2] {
                         Value::Boolean(value) => value.to_string().to_uppercase(),
                         _ => {
-                            return Err(runtime_error(
-                                "TYPE_MISMATCH",
-                                "field value must be BOOLEAN",
-                                span,
-                            ));
+                            return Err(super::super::type_mismatch("BOOLEAN", "non-BOOLEAN value", "BNLog.Fields.SetBoolean value", span));
                         }
                     },
                     _ => unreachable!(),
@@ -163,11 +143,7 @@ impl Executor<'_, '_> {
             "Get" => {
                 require_arity(name, arguments, 2, span)?;
                 let Value::String(key) = &arguments[1] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "field key must be STRING",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING", "non-STRING value", "BNLog.Fields.Get key", span));
                 };
                 fields
                     .get(key)
@@ -190,10 +166,10 @@ impl Executor<'_, '_> {
     ) -> Result<Value, Diagnostic> {
         let method = name.rsplit('.').next().unwrap_or_default();
         let Value::LogEntry(id) = arguments.first().ok_or_else(|| {
-            runtime_error("TYPE_MISMATCH", "BNLog.Entry receiver is missing", span)
+            super::super::type_mismatch("BNLog.Entry", "missing receiver", "BNLog.Entry operation", span)
         })?
         else {
-            return Err(runtime_error("TYPE_MISMATCH", "expected BNLog.Entry", span));
+            return Err(super::super::type_mismatch("BNLog.Entry", "non-BNLog.Entry value", "BNLog.Entry operation", span));
         };
         let fields = self
             .log_entries
@@ -204,18 +180,10 @@ impl Executor<'_, '_> {
             "WithField" => {
                 require_arity(name, arguments, 3, span)?;
                 let Value::String(key) = &arguments[1] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "field key must be STRING",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING", "non-STRING value", "BNLog.Entry.WithField key", span));
                 };
                 let Value::String(value) = &arguments[2] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "field value must be STRING",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING", "non-STRING value", "BNLog.Entry.WithField value", span));
                 };
                 if key.is_empty() || key.len() > 128 || value.len() > 4096 {
                     return Ok(Value::Error {

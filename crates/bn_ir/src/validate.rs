@@ -812,6 +812,7 @@ fn constant_matches_type(value: &super::Constant, ty: &Type) -> bool {
                 | Type::HostRandom
                 | Type::HostFileSystem
                 | Type::HostNet
+                | Type::HostExec
         ),
         super::Constant::HostConsole => matches!(ty, Type::HostConsole),
         super::Constant::HostArgs => matches!(ty, Type::HostArgs),

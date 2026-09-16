@@ -2,7 +2,7 @@
 
 ## 1. Introduction
 - What is Basic Next?
-- Installation and the `bn` CLI (`bn run`, `bn check`, `bn build`, `bn lex`, `bn -e` proposed for 0.5.1)
+- Installation and the `bn` CLI (`bn run`, `bn check`, `bn build`, `bn lex`, `bn eval` proposed for 0.5.1)
 - Hello, World!
 - Modules and the `Start` Function
 - Ecosystem Tools (Jupyter, VS Code)

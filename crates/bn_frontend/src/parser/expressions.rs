@@ -542,10 +542,14 @@ impl<'a> ExpressionParser<'a> {
         token
     }
     pub(crate) fn error(&self, message: impl Into<String>) -> Diagnostic {
-        Diagnostic {
-            code: "E0100",
-            message: message.into(),
-            span: self.peek().span,
-        }
+        let message = message.into();
+        Diagnostic::parse_facts(message, "expression parser", self.peek().span).unwrap_or_else(
+            |_| Diagnostic {
+                code: "E0100",
+                message: "parser error".into(),
+                span: self.peek().span,
+                structured: None,
+            },
+        )
     }
 }

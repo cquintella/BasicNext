@@ -12,11 +12,7 @@ impl Executor<'_, '_> {
         if method == "New" {
             require_arity(name, arguments, 1, span)?;
             let Value::String(label) = &arguments[0] else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "logger label must be STRING",
-                    span,
-                ));
+                return Err(super::super::type_mismatch("STRING", "non-STRING value", "BNLog.Logger.New label", span));
             };
             if label.is_empty() || label.len() > 128 {
                 return Ok(Value::Error {
@@ -40,23 +36,15 @@ impl Executor<'_, '_> {
             return Ok(Value::LogLogger(id));
         }
         let Value::LogLogger(id) = arguments.first().ok_or_else(|| {
-            runtime_error("TYPE_MISMATCH", "BNLog.Logger receiver is missing", span)
+            super::super::type_mismatch("BNLog.Logger", "missing receiver", "BNLog.Logger operation", span)
         })?
         else {
-            return Err(runtime_error(
-                "TYPE_MISMATCH",
-                "expected BNLog.Logger",
-                span,
-            ));
+            return Err(super::super::type_mismatch("BNLog.Logger", "non-BNLog.Logger value", "BNLog.Logger operation", span));
         };
         if method == "Child" {
             require_arity(name, arguments, 2, span)?;
             let Value::LogFields(fields_id) = arguments[1] else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "child fields must be BNLog.Fields",
-                    span,
-                ));
+                return Err(super::super::type_mismatch("BNLog.Fields", "non-BNLog.Fields value", "BNLog.Logger.Child fields", span));
             };
             if !self.log_fields.contains_key(&fields_id) {
                 return Err(runtime_error(
@@ -163,11 +151,7 @@ impl Executor<'_, '_> {
                     });
                 }
                 let Value::String(path) = &arguments[1] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "file path must be STRING",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING", "non-STRING value", "BNLog.Logger.AddFile path", span));
                 };
                 if !self
                     .host
@@ -217,11 +201,7 @@ impl Executor<'_, '_> {
                     });
                 }
                 let Value::String(message) = &arguments[2] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "log message must be STRING",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING", "non-STRING value", "BNLog.Logger.Log message", span));
                 };
                 if message.len() > 16 * 1024 {
                     return Ok(Value::Error {
@@ -230,11 +210,7 @@ impl Executor<'_, '_> {
                     });
                 }
                 if !matches!(arguments[3], Value::LogFields(_)) {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "log fields must be BNLog.Fields",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("BNLog.Fields", "non-BNLog.Fields value", "BNLog.Logger.Log fields", span));
                 }
                 let Value::LogFields(fields_id) = arguments[3] else {
                     unreachable!("fields type was validated above")

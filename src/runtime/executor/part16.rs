@@ -8,11 +8,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
             "HOST.Net.TCPListen" => {
                 require_arity(name, arguments, 2, span)?;
                 let Value::Vector(endpoints) = &arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "TCPListen expects Endpoint[]",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("Endpoint[]", "non-vector value", "TCPListen endpoints", span));
                 };
                 let (backlog, _) = integer(&arguments[1], span)?;
                 if !(1..=128).contains(&backlog) || endpoints.is_empty() || endpoints.len() > 16 {
@@ -52,11 +48,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
             "HOST.Net.Resolve" => {
                 require_arity(name, arguments, 2, span)?;
                 let Value::String(host) = &arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Resolve expects STRING host",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING", "non-STRING value", "Net.Resolve host", span));
                 };
                 let (timeout, _) = integer(&arguments[1], span)?;
                 if !(1..=60_000).contains(&timeout) {
@@ -144,11 +136,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
             "HOST.Net.TCPStream.Close" => {
                 require_arity(name, arguments, 1, span)?;
                 let Value::TcpStream(id) = arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Close expects TCPStream",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("TCPStream", "non-TCPStream value", "TCPStream.Close", span));
                 };
                 self.tcp_streams.remove(&id);
                 Ok(Value::Null)
@@ -156,18 +144,10 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
             "HOST.Net.TCPStream.Read" => {
                 require_arity(name, arguments, 3, span)?;
                 let Value::TcpStream(id) = arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Read expects TCPStream",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("TCPStream", "non-TCPStream value", "TCPStream.Read", span));
                 };
                 let Value::Pointer { handle } = arguments[1] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Read expects BYTE buffer",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("BYTE buffer pointer", "non-pointer value", "TCPStream.Read", span));
                 };
                 let (maximum, _) = integer(&arguments[2], span)?;
                 let capacity = self.memory.len(handle, span)?;
@@ -199,18 +179,10 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
             "HOST.Net.TCPStream.Write" => {
                 require_arity(name, arguments, 3, span)?;
                 let Value::TcpStream(id) = arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Write expects TCPStream",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("TCPStream", "non-TCPStream value", "TCPStream.Write receiver", span));
                 };
                 let Value::Pointer { handle } = arguments[1] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Write expects BYTE buffer",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("BYTE buffer pointer", "non-pointer value", "TCPStream.Write buffer", span));
                 };
                 let (count, _) = integer(&arguments[2], span)?;
                 let capacity = self.memory.len(handle, span)?;
@@ -223,7 +195,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
                         let value = self.memory.get(handle, index, span)?;
                         let (value, _) = integer(value, span)?;
                         u8::try_from(value)
-                            .map_err(|_| runtime_error("TYPE_MISMATCH", "buffer is not BYTE", span))
+                            .map_err(|_| super::super::type_mismatch("BYTE", "non-BYTE value", "TCPStream.Write buffer", span))
                     })
                     .collect::<Result<Vec<_>, _>>()?;
                 let written = self
@@ -242,11 +214,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
             "HOST.Net.TCPStream.LocalEndpoint" | "HOST.Net.TCPStream.RemoteEndpoint" => {
                 require_arity(name, arguments, 1, span)?;
                 let Value::TcpStream(id) = arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "endpoint inspection expects TCPStream",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("TCPStream", "non-TCPStream value", "TCPStream endpoint", span));
                 };
                 let stream = self.tcp_streams.get(&id).ok_or_else(|| {
                     runtime_error("USE_AFTER_RELEASE", "TCP stream is invalid", span)
@@ -262,11 +230,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
             "HOST.Net.TCPStream.SetTimeouts" => {
                 require_arity(name, arguments, 3, span)?;
                 let Value::TcpStream(id) = arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "SetTimeouts expects TCPStream",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("TCPStream", "non-TCPStream value", "TCPStream.SetTimeouts", span));
                 };
                 let (read_ms, _) = integer(&arguments[1], span)?;
                 let (write_ms, _) = integer(&arguments[2], span)?;
@@ -291,11 +255,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
             "HOST.Net.TCPListener.LocalEndpoint" => {
                 require_arity(name, arguments, 1, span)?;
                 let Value::TcpListener(id) = arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "endpoint inspection expects TCPListener",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("TCPListener", "non-TCPListener value", "TCPListener.LocalEndpoint", span));
                 };
                 let listener = self.tcp_listeners.get(&id).ok_or_else(|| {
                     runtime_error("USE_AFTER_RELEASE", "TCP listener is invalid", span)
@@ -310,11 +270,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
             "HOST.Net.TCPStream.ShutdownRead" | "HOST.Net.TCPStream.ShutdownWrite" => {
                 require_arity(name, arguments, 1, span)?;
                 let Value::TcpStream(id) = arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "shutdown expects TCPStream",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("TCPStream", "non-TCPStream value", "TCPStream.Shutdown", span));
                 };
                 let direction = if name.ends_with("ShutdownRead") {
                     std::net::Shutdown::Read
@@ -333,11 +289,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
             "HOST.Net.TCPListener.Accept" => {
                 require_arity(name, arguments, 2, span)?;
                 let Value::TcpListener(id) = arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Accept expects TCPListener",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("TCPListener", "non-TCPListener value", "TCPListener.Accept", span));
                 };
                 let (timeout, _) = integer(&arguments[1], span)?;
                 if !(1..=60_000).contains(&timeout) {
@@ -389,11 +341,7 @@ pub(crate) fn host_net_tcp_call(&mut self, name: &str, arguments: &[Value], span
             "HOST.Net.TCPListener.Close" => {
                 require_arity(name, arguments, 1, span)?;
                 let Value::TcpListener(id) = arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Close expects TCPListener",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("TCPListener", "non-TCPListener value", "TCPListener.Close", span));
                 };
                 self.tcp_listeners.remove(&id);
                 Ok(Value::Null)

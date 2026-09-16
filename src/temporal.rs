@@ -322,9 +322,28 @@ fn civil_time(millis: u32) -> (u32, u32, u32, u32) {
 }
 
 fn temporal_error(code: &'static str, message: impl Into<String>, span: Span) -> Diagnostic {
-    Diagnostic {
-        code,
-        message: message.into(),
-        span,
-    }
+    let message = message.into();
+    let id = crate::diagnostic::DiagId::from_code(code)
+        .unwrap_or(crate::diagnostic::DiagId::Runtime(code));
+    let arguments = if id == crate::diagnostic::DiagId::Runtime("PARSE_ERROR") {
+        vec![(
+            "message".into(),
+            crate::diagnostic::DiagnosticValue::Text(message),
+        )]
+    } else {
+        vec![(
+            "detail".into(),
+            crate::diagnostic::DiagnosticValue::Text(message),
+        )]
+    };
+    Diagnostic::structured(
+        id,
+        arguments,
+        vec![crate::diagnostic::Label {
+            span,
+            style: crate::diagnostic::LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("runtime compatibility diagnostic schema")
 }

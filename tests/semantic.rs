@@ -7,7 +7,7 @@ use bn::{
     lexer::lex,
     module_graph::load,
     parser::parse,
-    semantic::{PointerLength, Type, analyze, analyze_modules, analyze_with_warnings},
+    semantic::{IntegerType, PointerLength, Type, analyze, analyze_modules, analyze_with_warnings},
     source::SourceFile,
 };
 use std::fs;
@@ -259,7 +259,15 @@ fn host_args_index_assignment_reports_immutability() {
         analyze_text("FUNCTION Start() AS VOID\nHOST.Args[0] = \"changed\"\nEND FUNCTION\n")
             .expect_err("HOST.Args entries are immutable");
     assert_eq!(error.code, "TYPE_MISMATCH");
-    assert_eq!(error.message, "HOST.Args entries are immutable");
+    // DX03: the machine contract is the code plus structured facts; the raw
+    // fallback message joins them (the catalog renders "Expected mutable value,
+    // but found HOST.Args entry in HOST.Args assignment"). Assert the path is
+    // identified rather than pinning brittle prose.
+    assert!(
+        error.message.contains("HOST.Args"),
+        "immutability diagnostic should identify HOST.Args, got: {}",
+        error.message
+    );
 }
 
 #[test]
@@ -690,5 +698,121 @@ fn interface_implementation_requires_the_exact_signature() {
             .expect_err("mismatched interface signature must fail")
             .code,
         "TYPE_MISMATCH"
+    );
+}
+
+fn symbol_type<'a>(model: &'a bn::semantic::SemanticModel, name: &str) -> &'a Type {
+    &model
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == name)
+        .unwrap_or_else(|| panic!("symbol '{name}' must be resolved"))
+        .ty
+}
+
+#[test]
+fn normalized_aliases_cannot_repeat_in_an_alternative() {
+    for (left, right) in [("INTEGER", "INT32"), ("FLOAT", "FLOAT64")] {
+        let source =
+            format!("FUNCTION Start() AS VOID\nLET value AS {left} OR {right} = 1\nEND FUNCTION\n");
+        let diagnostic = analyze_text(&source).expect_err("aliases denote one alternative type");
+        assert_eq!(diagnostic.code, "TYPE_MISMATCH");
+    }
+}
+
+#[test]
+fn function_type_preserves_composed_pointer_types() {
+    let model = analyze_text(
+        "FUNCTION Identity(value AS POINTER TO INTEGER) AS POINTER TO INTEGER\n\
+             RETURN value\n\
+         END FUNCTION\n\
+         FUNCTION Start() AS VOID\n\
+             LET identity AS FUNCTION(POINTER TO INTEGER) AS POINTER TO INTEGER = Identity\n\
+             LET pointer AS POINTER TO INTEGER = NEW INTEGER\n\
+             LET same AS POINTER TO INTEGER = identity(pointer)\n\
+         END FUNCTION\n",
+    )
+    .expect("FUNCTION types must retain their POINTER parameter and result");
+
+    let pointer = Type::Pointer {
+        element: Box::new(Type::Integer(IntegerType::Int32)),
+        length: PointerLength::One,
+    };
+    assert_eq!(
+        symbol_type(&model, "identity"),
+        &Type::Function {
+            parameters: vec![pointer.clone()],
+            return_type: Box::new(pointer),
+        }
+    );
+}
+
+#[test]
+fn vector_dimensions_are_exact_and_empty_literals_use_context() {
+    let model = analyze_text(
+        "FUNCTION Start() AS VOID\n\
+             LET matrix AS INTEGER[2][3] = [[1, 2, 3], [4, 5, 6]]\n\
+             LET empty AS INTEGER[0] = []\n\
+         END FUNCTION\n",
+    )
+    .expect("matching dimensions and a context-typed empty vector must be accepted");
+
+    assert_eq!(
+        symbol_type(&model, "matrix"),
+        &Type::Vector {
+            element: Box::new(Type::Integer(IntegerType::Int32)),
+            dimensions: vec![2, 3],
+        }
+    );
+    assert_eq!(
+        symbol_type(&model, "empty"),
+        &Type::Vector {
+            element: Box::new(Type::Integer(IntegerType::Int32)),
+            dimensions: vec![0],
+        }
+    );
+    assert!(
+        model
+            .expressions
+            .iter()
+            .all(|expression| expression.ty != Type::Unknown)
+    );
+
+    let diagnostic = analyze_text(
+        "FUNCTION Start() AS VOID\n\
+             LET matrix AS INTEGER[2][2] = [[1, 2]]\n\
+         END FUNCTION\n",
+    )
+    .expect_err("a vector literal must match every declared dimension");
+    assert_eq!(diagnostic.code, "TYPE_MISMATCH");
+}
+
+#[test]
+fn calling_a_non_executable_value_is_rejected() {
+    let diagnostic = analyze_text(
+        "FUNCTION Start() AS VOID\n\
+             LET value AS INTEGER = 1\n\
+             value()\n\
+         END FUNCTION\n",
+    )
+    .expect_err("an INTEGER value is not callable");
+    assert_eq!(diagnostic.code, "NOT_CALLABLE");
+}
+
+#[test]
+fn hexadecimal_pointer_length_is_a_fixed_length() {
+    let model = analyze_text(
+        "FUNCTION Start() AS VOID\n\
+             LET memory AS POINTER TO INTEGER[0x10] = NEW INTEGER[0x10]\n\
+         END FUNCTION\n",
+    )
+    .expect("hexadecimal integer literals are valid pointer lengths");
+
+    assert_eq!(
+        symbol_type(&model, "memory"),
+        &Type::Pointer {
+            element: Box::new(Type::Integer(IntegerType::Int32)),
+            length: PointerLength::Fixed(16),
+        }
     );
 }

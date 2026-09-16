@@ -44,19 +44,11 @@ pub(crate) fn host_net_call(&mut self, name: &str, arguments: &[Value], span: Sp
             "HOST.Net.UDPSocket.SendTo" => {
                 require_arity(name, arguments, 4, span)?;
                 let Value::UdpSocket(id) = arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "SendTo expects UDPSocket",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("UDPSocket", "non-UDPSocket value", "HOST.Net.UDPSocket.SendTo", span));
                 };
                 let endpoint = net_endpoint(&arguments[1], span)?;
                 let Value::Pointer { handle } = arguments[2] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "SendTo expects BYTE buffer",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("BYTE buffer", "non-pointer value", "HOST.Net.UDPSocket.SendTo buffer", span));
                 };
                 let (count, _) = integer(&arguments[3], span)?;
                 let capacity = self.memory.len(handle, span)?;
@@ -73,7 +65,7 @@ pub(crate) fn host_net_call(&mut self, name: &str, arguments: &[Value], span: Sp
                     .map(|index| {
                         let (value, _) = integer(self.memory.get(handle, index, span)?, span)?;
                         u8::try_from(value)
-                            .map_err(|_| runtime_error("TYPE_MISMATCH", "buffer is not BYTE", span))
+                            .map_err(|_| super::type_mismatch("BYTE", "non-BYTE value", "HOST.Net.UDPSocket.SendTo buffer element", span))
                     })
                     .collect::<Result<Vec<_>, _>>()?;
                 let sent = self
@@ -92,11 +84,7 @@ pub(crate) fn host_net_call(&mut self, name: &str, arguments: &[Value], span: Sp
             "HOST.Net.UDPSocket.Receive" => {
                 require_arity(name, arguments, 3, span)?;
                 let Value::UdpSocket(id) = arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Receive expects UDPSocket",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("UDPSocket", "non-UDPSocket value", "HOST.Net.UDPSocket.Receive", span));
                 };
                 let (maximum, _) = integer(&arguments[1], span)?;
                 let (timeout, _) = integer(&arguments[2], span)?;
@@ -147,86 +135,50 @@ pub(crate) fn host_net_call(&mut self, name: &str, arguments: &[Value], span: Sp
             "HOST.Net.UDPPacket.Source" => {
                 require_arity(name, arguments, 1, span)?;
                 let Value::Record { type_name, fields } = &arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Source expects UDPPacket",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("UDPPacket", "non-UDPPacket value", "HOST.Net.UDPPacket.Source", span));
                 };
                 if type_name != "HOST.Net.UDPPacket" {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "invalid UDPPacket value",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("UDPPacket", type_name, "HOST.Net.UDPPacket.Source", span));
                 }
                 fields
                     .get("source")
                     .cloned()
-                    .ok_or_else(|| runtime_error("TYPE_MISMATCH", "invalid UDPPacket value", span))
+                    .ok_or_else(|| super::type_mismatch("UDPPacket.source field", "missing field", "HOST.Net.UDPPacket.Source", span))
             }
             "HOST.Net.UDPPacket.Size" => {
                 require_arity(name, arguments, 1, span)?;
                 let Value::Record { fields, .. } = &arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Size expects UDPPacket",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("UDPPacket", "non-UDPPacket value", "HOST.Net.UDPPacket.Size", span));
                 };
                 let Some(Value::Vector(bytes)) = fields.get("bytes") else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "invalid UDPPacket value",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("UDPPacket.bytes vector", "missing or invalid field", "HOST.Net.UDPPacket.Size", span));
                 };
                 integer_from_i128_count(bytes.len() as i128, span)
             }
             "HOST.Net.UDPPacket.Truncated" | "HOST.Net.UDPPacket.WasTruncated" => {
                 require_arity(name, arguments, 1, span)?;
                 let Value::Record { fields, .. } = &arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Truncated expects UDPPacket",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("UDPPacket", "non-UDPPacket value", "HOST.Net.UDPPacket.Truncated", span));
                 };
                 fields
                     .get("truncated")
                     .cloned()
-                    .ok_or_else(|| runtime_error("TYPE_MISMATCH", "invalid UDPPacket value", span))
+                    .ok_or_else(|| super::type_mismatch("UDPPacket.truncated field", "missing field", "HOST.Net.UDPPacket.Truncated", span))
             }
             "HOST.Net.UDPPacket.CopyTo" => {
                 require_arity(name, arguments, 3, span)?;
                 let Value::Record { type_name, fields } = &arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "CopyTo expects UDPPacket",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("UDPPacket", "non-UDPPacket value", "HOST.Net.UDPPacket.CopyTo", span));
                 };
                 if type_name != "HOST.Net.UDPPacket" {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "invalid UDPPacket value",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("UDPPacket", type_name, "HOST.Net.UDPPacket.CopyTo", span));
                 }
                 let Value::Pointer { handle } = arguments[1] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "CopyTo expects BYTE buffer",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("BYTE buffer", "non-pointer value", "HOST.Net.UDPPacket.CopyTo buffer", span));
                 };
                 let (maximum, _) = integer(&arguments[2], span)?;
                 let Some(Value::Vector(bytes)) = fields.get("bytes") else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "invalid UDPPacket value",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("UDPPacket.bytes vector", "missing or invalid field", "HOST.Net.UDPPacket.CopyTo", span));
                 };
                 let capacity = self.memory.len(handle, span)?;
                 let maximum = usize::try_from(maximum)
@@ -245,11 +197,7 @@ pub(crate) fn host_net_call(&mut self, name: &str, arguments: &[Value], span: Sp
             "HOST.Net.UDPSocket.Close" => {
                 require_arity(name, arguments, 1, span)?;
                 let Value::UdpSocket(id) = arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Close expects UDPSocket",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("UDPSocket", "non-UDPSocket value", "HOST.Net.UDPSocket.Close", span));
                 };
                 self.udp_sockets.remove(&id);
                 Ok(Value::Null)
@@ -257,11 +205,7 @@ pub(crate) fn host_net_call(&mut self, name: &str, arguments: &[Value], span: Sp
             "HOST.Net.UDPSocket.LocalEndpoint" => {
                 require_arity(name, arguments, 1, span)?;
                 let Value::UdpSocket(id) = arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "LocalEndpoint expects UDPSocket",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("UDPSocket", "non-UDPSocket value", "HOST.Net.UDPSocket.LocalEndpoint", span));
                 };
                 let endpoint = self
                     .udp_sockets
@@ -283,14 +227,10 @@ pub(crate) fn host_net_call(&mut self, name: &str, arguments: &[Value], span: Sp
                 let values = net_addresses(&arguments[0], span)?;
                 let (index, _) = integer(&arguments[1], span)?;
                 let index = usize::try_from(index).map_err(|_| {
-                    runtime_error("INDEX_OUT_OF_BOUNDS", "address index is negative", span)
+                    super::super::index_out_of_bounds("negative", "0", "HOST.Net.Addresses", span)
                 })?;
                 values.get(index).cloned().ok_or_else(|| {
-                    runtime_error(
-                        "INDEX_OUT_OF_BOUNDS",
-                        "address index is outside the result",
-                        span,
-                    )
+                    super::super::index_out_of_bounds(index, values.len(), "HOST.Net.Addresses", span)
                 })
             }
 

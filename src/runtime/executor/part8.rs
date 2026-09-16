@@ -10,11 +10,12 @@ impl Executor<'_, '_> {
     ) -> Result<Value, Diagnostic> {
         let Value::File(id) = arguments
             .first()
-            .ok_or_else(|| runtime_error("TYPE_MISMATCH", "file receiver missing", span))?
+            .ok_or_else(|| super::super::type_mismatch("FS.File", "missing receiver", "file operation", span))?
         else {
-            return Err(runtime_error(
-                "TYPE_MISMATCH",
-                "receiver is not FS.File",
+            return Err(super::super::type_mismatch(
+                "FS.File",
+                "non-FS.File value",
+                "file operation receiver",
                 span,
             ));
         };
@@ -125,7 +126,7 @@ impl Executor<'_, '_> {
             "Write" | "WriteLine" => {
                 require_arity(name, arguments, 2, span)?;
                 let Value::String(text) = &arguments[1] else {
-                    return Err(runtime_error("TYPE_MISMATCH", "Write expects STRING", span));
+                    return Err(super::super::type_mismatch("STRING", "non-STRING value", "FS.File.Write text", span));
                 };
                 let Some(file) = resource.file.as_mut() else {
                     return Ok(Value::Error {
@@ -155,11 +156,7 @@ impl Executor<'_, '_> {
                     }),
                 }
             }
-            _ => Err(runtime_error(
-                "NAME_NOT_FOUND",
-                "unknown FS.File method",
-                span,
-            )),
+            _ => Err(super::super::name_not_found(name, "FS.File method", span)),
         }
     }
 
@@ -174,18 +171,10 @@ impl Executor<'_, '_> {
             "ReadCSV" => {
                 require_arity(name, arguments, 3, span)?;
                 let Value::Boolean(has_header) = arguments[1] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "ReadCSV expects BOOLEAN header flag",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("BOOLEAN", "non-BOOLEAN value", "FS.File.ReadCSV header flag", span));
                 };
                 let Value::String(separator) = &arguments[2] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "ReadCSV expects STRING separator",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING", "non-STRING value", "FS.File.ReadCSV separator", span));
                 };
                 let separator = separator.chars().collect::<Vec<_>>();
                 if separator.len() != 1
@@ -226,32 +215,16 @@ impl Executor<'_, '_> {
             "WriteCSV" => {
                 require_arity(name, arguments, 4, span)?;
                 let Value::File(_) = arguments[0] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "WriteCSV expects FS.File",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("FS.File", "non-FS.File value", "FS.File.WriteCSV file", span));
                 };
                 let Value::DataFrame(id) = arguments[1] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "WriteCSV expects DataFrame",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("DataFrame", "non-DataFrame value", "FS.File.WriteCSV data", span));
                 };
                 let Value::Boolean(write_header) = arguments[2] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "WriteCSV expects BOOLEAN header flag",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("BOOLEAN", "non-BOOLEAN value", "FS.File.WriteCSV header flag", span));
                 };
                 let Value::String(separator) = &arguments[3] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "WriteCSV expects STRING separator",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING", "non-STRING value", "FS.File.WriteCSV separator", span));
                 };
                 let separator = separator.chars().collect::<Vec<_>>();
                 if separator.len() != 1
@@ -317,11 +290,7 @@ impl Executor<'_, '_> {
                     _ => Ok(Value::Null),
                 }
             }
-            _ => Err(runtime_error(
-                "NAME_NOT_FOUND",
-                "unknown BNData function",
-                span,
-            )),
+            _ => Err(super::super::name_not_found(name, "BNData function", span)),
         }
     }
 

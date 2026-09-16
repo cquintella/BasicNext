@@ -44,6 +44,7 @@ pub struct LoadedModule {
 pub struct ModuleGraph {
     pub root: ModuleId,
     pub modules: Vec<LoadedModule>,
+    pub module_paths: Vec<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -95,6 +96,21 @@ pub fn load_with_overlays(
     session: &mut FrontendSession,
     overlays: &BTreeMap<PathBuf, String>,
 ) -> Result<ModuleGraph, ModuleError> {
+    load_with_overlays_and_paths(entry, session, overlays, &[])
+}
+
+/// Loads a module graph with an ordered list of additional import roots.
+///
+/// # Errors
+///
+/// Returns the source and diagnostic for a lexical, syntax, missing-module, or
+/// import-cycle failure.
+pub fn load_with_overlays_and_paths(
+    entry: impl AsRef<Path>,
+    session: &mut FrontendSession,
+    overlays: &BTreeMap<PathBuf, String>,
+    module_paths: &[PathBuf],
+) -> Result<ModuleGraph, ModuleError> {
     let entry = normalize(entry.as_ref());
     let root_directory = entry.parent().map_or_else(PathBuf::new, PathBuf::from);
     let standard_directory = root_directory
@@ -102,28 +118,75 @@ pub fn load_with_overlays(
         .map(|directory| directory.join("modules/bn"))
         .find(|directory| directory.is_dir())
         .or_else(|| {
-            std::env::current_exe().ok().and_then(|executable| {
-                executable
-                    .parent()?
+            std::env::current_dir().ok().and_then(|working_directory| {
+                working_directory
                     .ancestors()
                     .map(|directory| directory.join("modules/bn"))
                     .find(|directory| directory.is_dir())
             })
         })
+        .or_else(|| {
+            std::env::current_exe().ok().and_then(|executable| {
+                // Installed layout (FHS): the binary lives in <prefix>/bin and the
+                // arch-independent stdlib lives in <prefix>/share/bn/modules/bn,
+                // matching the diagnostics-catalog convention. `lib/bn/modules/bn`
+                // and a portable `modules/bn` beside the executable are also
+                // accepted. First existing directory wins.
+                executable
+                    .parent()?
+                    .ancestors()
+                    .flat_map(|directory| {
+                        [
+                            directory.join("share/bn/modules/bn"),
+                            directory.join("lib/bn/modules/bn"),
+                            directory.join("modules/bn"),
+                        ]
+                    })
+                    .find(|directory| directory.is_dir())
+            })
+        })
         .unwrap_or_else(|| root_directory.join("modules/bn"));
+    let effective_paths =
+        effective_module_paths(&root_directory, &standard_directory, module_paths);
     let mut loader = Loader {
         root_directory,
-        standard_directory,
         states: HashMap::new(),
         modules: Vec::new(),
         session,
         overlays,
+        module_paths: &effective_paths,
     };
     let root = loader.visit(&entry, None)?;
     Ok(ModuleGraph {
         root,
         modules: loader.modules,
+        module_paths: effective_paths,
     })
+}
+
+/// Computes the ordered import roots. Earlier roots win when the same module
+/// exists in multiple roots.
+#[must_use]
+pub fn effective_module_paths(
+    root_directory: &Path,
+    standard_directory: &Path,
+    extras: &[PathBuf],
+) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    for path in [
+        root_directory.to_path_buf(),
+        root_directory.join("modules"),
+        standard_directory.to_path_buf(),
+    ]
+    .into_iter()
+    .chain(extras.iter().cloned())
+    {
+        let path = normalize(&path);
+        if !paths.contains(&path) {
+            paths.push(path);
+        }
+    }
+    paths
 }
 
 enum State {
@@ -133,11 +196,11 @@ enum State {
 
 struct Loader<'a> {
     root_directory: PathBuf,
-    standard_directory: PathBuf,
     states: HashMap<PathBuf, State>,
     modules: Vec<LoadedModule>,
     session: &'a mut FrontendSession,
     overlays: &'a BTreeMap<PathBuf, String>,
+    module_paths: &'a [PathBuf],
 }
 
 impl Loader<'_> {
@@ -209,27 +272,34 @@ impl Loader<'_> {
     }
 
     fn import_path(&self, parts: &[String]) -> PathBuf {
-        if parts.len() == 1 && parts[0].starts_with("BN") {
-            let mut path = self.standard_directory.clone();
-            path.push(&parts[0]);
-            path.set_extension("bn");
-            return path;
-        }
-        let mut path = self.root_directory.clone();
-        path.push("modules");
+        let mut fallback = self.root_directory.clone();
         for part in parts {
-            path.push(part);
+            fallback.push(part);
         }
-        path.set_extension("bn");
-        if !path.exists() {
-            path.clone_from(&self.root_directory);
+        fallback.set_extension("bn");
+        for directory in self.module_paths {
+            let mut candidate = directory.clone();
             for part in parts {
-                path.push(part);
+                candidate.push(part);
             }
-            path.set_extension("bn");
+            candidate.set_extension("bn");
+            if exact_file_exists(&candidate) {
+                return candidate;
+            }
         }
-        path
+        fallback
     }
+}
+
+fn exact_file_exists(path: &Path) -> bool {
+    let Some(parent) = path.parent() else {
+        return false;
+    };
+    let Some(name) = path.file_name() else {
+        return false;
+    };
+    fs::read_dir(parent)
+        .is_ok_and(|entries| entries.flatten().any(|entry| entry.file_name() == name))
 }
 
 fn standard_module(path: &Path) -> Option<StandardModule> {
@@ -281,11 +351,18 @@ fn read_source(
             );
             Err(ModuleError {
                 source: Box::new(source),
-                diagnostic: Box::new(Diagnostic {
-                    code: "MODULE_NOT_FOUND",
-                    message: format!("cannot load module {name}: {error}"),
-                    span,
-                }),
+                diagnostic: Box::new(
+                    Diagnostic::structured(
+                        crate::diagnostic::DiagId::ModuleNotFound,
+                        vec![("path".into(), format!("{name}: {error}").into())],
+                        vec![crate::diagnostic::Label {
+                            span,
+                            style: crate::diagnostic::LabelStyle::Primary,
+                            text: None,
+                        }],
+                    )
+                    .expect("module-not-found diagnostic schema is registered"),
+                ),
             })
         }
     }
@@ -304,7 +381,9 @@ fn normalize(path: &Path) -> PathBuf {
 #[cfg(test)]
 #[allow(clippy::items_after_test_module)]
 mod tests {
-    use super::{BTreeMap, HashMap, Item, Loader, PathBuf, load_with_session};
+    use super::{
+        BTreeMap, HashMap, Item, Loader, PathBuf, effective_module_paths, load_with_session,
+    };
     use crate::frontend_session::FrontendSession;
 
     #[test]
@@ -322,13 +401,14 @@ mod tests {
         let graph = repository.join("tests/modules/graph");
         let mut session = FrontendSession::default();
         let overlays = BTreeMap::new();
+        let module_paths = effective_module_paths(&graph, &repository.join("modules/bn"), &[]);
         let mut loader = Loader {
             root_directory: graph.clone(),
-            standard_directory: repository.join("modules/bn"),
             states: HashMap::new(),
             modules: Vec::new(),
             session: &mut session,
             overlays: &overlays,
+            module_paths: &module_paths,
         };
         let first = loader
             .visit(&graph.join("main.bn"), None)
@@ -380,13 +460,28 @@ fn module_error(
     message: impl Into<String>,
     span: Span,
 ) -> ModuleError {
+    let diagnostic = crate::diagnostic::DiagId::from_code(code)
+        .and_then(|id| {
+            Diagnostic::structured(
+                id,
+                vec![("detail".into(), message.into().into())],
+                vec![crate::diagnostic::Label {
+                    span,
+                    style: crate::diagnostic::LabelStyle::Primary,
+                    text: None,
+                }],
+            )
+            .ok()
+        })
+        .unwrap_or_else(|| Diagnostic {
+            code,
+            message: "module graph error".into(),
+            span,
+            structured: None,
+        });
     ModuleError {
         source: Box::new(SourceFile::new(source.name.clone(), source.text.clone())),
-        diagnostic: Box::new(Diagnostic {
-            code,
-            message: message.into(),
-            span,
-        }),
+        diagnostic: Box::new(diagnostic),
     }
 }
 

@@ -182,6 +182,7 @@ fn lower_unvalidated(program: &Program, model: &SemanticModel) -> Result<Module,
         random_import: random_import_span(program),
         console_import: console_import_span(program),
         network_import: network_import_span(program),
+        exec_import: exec_import_span(program),
         bnlog_import: standard_import_span(program, "BNLog"),
         bnweb_import: standard_import_span(program, "BNWeb"),
     };
@@ -263,6 +264,7 @@ fn lower_graph_unvalidated(
     let random_import = root.and_then(|module| random_import_span(&module.program));
     let console_import = root.and_then(|module| console_import_span(&module.program));
     let network_import = root.and_then(|module| network_import_span(&module.program));
+    let exec_import = root.and_then(|module| exec_import_span(&module.program));
     let bnlog_import = root.and_then(|module| standard_import_span(&module.program, "BNLog"));
     let bnweb_import = root.and_then(|module| standard_import_span(&module.program, "BNWeb"));
     let module = Module {
@@ -323,6 +325,7 @@ fn lower_graph_unvalidated(
         random_import,
         console_import,
         network_import,
+        exec_import,
         bnlog_import,
         bnweb_import,
     };
@@ -362,7 +365,7 @@ use program_lowering::{class_method_name, collect_methods, lower_program, module
 mod helpers;
 use helpers::{
     assignment_operator, class_ir_name, clock_import_span, console_import_span, constant,
-    destructor_name, display_type, filesystem_constant, filesystem_import_span,
+    destructor_name, display_type, exec_import_span, filesystem_constant, filesystem_import_span,
     host_capability_constant, ir_error, is_namespace_type, is_numeric_type_name, math_constant,
     module_constant, named_or_void, namespace_function, network_import_span, random_import_span,
     standard_import_span, static_class_name, type_at, type_test_name, user_class_name,

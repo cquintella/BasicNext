@@ -139,11 +139,7 @@ impl Executor<'_, '_> {
                 "New" => {
                     require_arity(name, arguments, 1, span)?;
                     if !matches!(arguments.first(), Some(Value::Object { .. })) {
-                        return Err(runtime_error(
-                            "TYPE_MISMATCH",
-                            "Client.New expects a BNLog.Logger",
-                            span,
-                        ));
+                        return Err(super::type_mismatch("BNLog.Logger", "non-logger value", "BNWeb.Client.New", span));
                     }
                     self.allocate_object("BNWeb.Client", span)
                 }
@@ -154,11 +150,7 @@ impl Executor<'_, '_> {
                     let (Value::String(method), Value::String(url), Value::String(body)) =
                         (&arguments[1], &arguments[2], &arguments[3])
                     else {
-                        return Err(runtime_error(
-                            "TYPE_MISMATCH",
-                            "client request expects STRING method, URL, and body",
-                            span,
-                        ));
+                        return Err(super::type_mismatch("STRING, STRING, STRING", "non-STRING request argument", "BNWeb.Client.Request", span));
                     };
                     if !matches!(
                         method.as_str(),
@@ -196,11 +188,7 @@ impl Executor<'_, '_> {
                     }
                     let policy = if with_policy {
                         let Value::Object { handle, .. } = &arguments[4] else {
-                            return Err(runtime_error(
-                                "TYPE_MISMATCH",
-                                "RequestWithPolicy expects EgressPolicy",
-                                span,
-                            ));
+                            return Err(super::type_mismatch("EgressPolicy", "non-policy value", "BNWeb.Client.RequestWithPolicy", span));
                         };
                         self.web_egress_policies.get(handle).ok_or_else(|| {
                             runtime_error("STALE_HANDLE", "EgressPolicy handle is not live", span)
@@ -242,11 +230,7 @@ impl Executor<'_, '_> {
                     arguments.first(),
                     Some(Value::Object { .. } | Value::LogLogger(_))
                 ) {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "Server.New expects a BNLog.Logger",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("BNLog.Logger", "non-logger value", "BNWeb.Server.New", span));
                 }
                 let object = self.allocate_object("BNWeb.Server", span)?;
                 if let Value::Object { handle, .. } = object {
@@ -264,11 +248,7 @@ impl Executor<'_, '_> {
             }
             if method == "CONSTRUCTOR" {
                 let Some(Value::Object { handle, .. }) = arguments.first() else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "BNWeb.Server receiver must be an object",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("BNWeb.Server", "non-object value", "BNWeb.Server constructor receiver", span));
                 };
                 self.web_servers.insert(
                     *handle,
@@ -280,11 +260,7 @@ impl Executor<'_, '_> {
                 return Ok(Value::Null);
             }
             let Some(Value::Object { handle, .. }) = arguments.first() else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "BNWeb.Server receiver must be an object",
-                    span,
-                ));
+                return Err(super::type_mismatch("BNWeb.Server", "non-object value", "BNWeb.Server operation receiver", span));
             };
             let state = self.web_servers.get(handle).cloned().ok_or_else(|| {
                 runtime_error("STALE_HANDLE", "BNWeb.Server handle is not live", span)
@@ -313,11 +289,7 @@ impl Executor<'_, '_> {
                     let (Value::String(method), Value::String(pattern)) =
                         (&arguments[1], &arguments[2])
                     else {
-                        return Err(runtime_error(
-                            "TYPE_MISMATCH",
-                            "route method and pattern must be STRING",
-                            span,
-                        ));
+                        return Err(super::type_mismatch("STRING, STRING", "non-STRING route argument", "BNWeb.Server.Route", span));
                     };
                     if !matches!(arguments[3], Value::Function(_)) {
                         return Ok(Value::Error {
@@ -393,7 +365,7 @@ impl Executor<'_, '_> {
                     let options = if method == "StartWithOptions" {
                         require_arity(name, arguments, 3, span)?;
                         let Value::Object { handle, .. } = &arguments[2] else {
-                            return Err(runtime_error("TYPE_MISMATCH", "StartWithOptions expects ServerOptions", span));
+                            return Err(super::type_mismatch("ServerOptions", "non-options value", "BNWeb.Server.StartWithOptions", span));
                         };
                         self.web_server_options.get(handle).cloned().ok_or_else(|| {
                             runtime_error("STALE_HANDLE", "ServerOptions handle is not live", span)
@@ -507,7 +479,7 @@ impl Executor<'_, '_> {
                     let options = if method == "StartTLSWithOptions" {
                         require_arity(name, arguments, 4, span)?;
                         let Value::Object { handle, .. } = &arguments[3] else {
-                            return Err(runtime_error("TYPE_MISMATCH", "StartTLSWithOptions expects ServerOptions", span));
+                            return Err(super::type_mismatch("ServerOptions", "non-options value", "BNWeb.Server.StartTLSWithOptions", span));
                         };
                         self.web_server_options.get(handle).cloned().ok_or_else(|| {
                             runtime_error("STALE_HANDLE", "ServerOptions handle is not live", span)
@@ -523,11 +495,7 @@ impl Executor<'_, '_> {
                         ..
                     } = &arguments[2]
                     else {
-                        return Err(runtime_error(
-                            "TYPE_MISMATCH",
-                            "StartTLS expects TLSConfig",
-                            span,
-                        ));
+                        return Err(super::type_mismatch("TLSConfig", "non-TLSConfig value", "BNWeb.Server.StartTLS", span));
                     };
                     let config = self
                         .web_tls_configs
@@ -666,11 +634,7 @@ impl Executor<'_, '_> {
                         },
                     ) = (&arguments[1], &arguments[2])
                     else {
-                        return Err(runtime_error(
-                            "TYPE_MISMATCH",
-                            "Dispatch expects Request and Response objects",
-                            span,
-                        ));
+                        return Err(super::type_mismatch("Request, Response", "non-request/response values", "BNWeb.Server.Dispatch", span));
                     };
                     let request = self.web_requests.get(request_handle).ok_or_else(|| {
                         runtime_error("STALE_HANDLE", "BNWeb.Request handle is not live", span)

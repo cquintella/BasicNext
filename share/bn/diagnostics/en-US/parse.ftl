@@ -1,5 +1,5 @@
 # Parser diagnostics
-parse-error = {$message}
+parse-error = Expected {$expected} in {$context}.
     .title = Syntax error
     .code = E0100
     .label = syntax error

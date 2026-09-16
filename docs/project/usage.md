@@ -22,9 +22,12 @@ also require Clang/LLVM 22; the WebAssembly target requires a Clang with a
 bn check examples/hello.bn
 bn lex examples/hello.bn
 bn run examples/hello.bn -- extra-argument
+bn eval 'PRINT 1 + 1'
+printf 'PRINT 2\n' | bn eval --stdin
 bn build examples/hello.bn
 bn build examples/hello.bn -o hello
 bn build --target wasm32 examples/hello.bn -o hello.wasm
+bn check --module-path vendor/bn examples/hello.bn
 node bin/bn-wasm hello.wasm
 ```
 
@@ -34,6 +37,11 @@ node bin/bn-wasm hello.wasm
 | `lex` | Print the token stream. |
 | `run` | Execute `Start` through the typed-IR interpreter. |
 | `build` | Emit LLVM IR, or create an artifact with `-o`, for the supported compiler subset. |
+| `eval` | Evaluate one source fragment or complete program through the typed-IR interpreter; use `--stdin` for source input and `--` for `HOST.Args`. |
+
+`--module-path <dir>` is repeatable and appends an import search directory;
+the entry directory and discovered standard-library directory remain the
+defaults, followed by configured paths and then CLI paths.
 
 `bnc -c` writes textual LLVM IR. Running that IR directly with `lli` requires
 loading the Basic Next runtime archive explicitly whenever the program uses

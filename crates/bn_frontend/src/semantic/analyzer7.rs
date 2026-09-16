@@ -25,18 +25,20 @@ impl Analyzer {
                     _ => unreachable!(),
                 });
             }
-            return Err(error(
-                "TYPE_MISMATCH",
-                "BNMath.MIN/MAX expects a numeric vector",
+            return Err(type_mismatch(
+                "numeric vector",
+                display(&ty),
+                format!("BNMath.{name}"),
                 span,
             ));
         }
         if !(matches!(name, "MIN" | "MAX") && arguments.len() == 1)
             && arguments.len() != expected_count
         {
-            return Err(error(
-                "TYPE_MISMATCH",
-                format!("BNMath.{name} expects {expected_count} argument(s)"),
+            return Err(type_mismatch(
+                format!("{expected_count} argument(s)"),
+                format!("{} argument(s)", arguments.len()),
+                format!("BNMath.{name}"),
                 span,
             ));
         }
@@ -46,7 +48,12 @@ impl Analyzer {
             .collect::<Result<Vec<_>, _>>()?;
         if name == "VAL" {
             if types[0] != Type::String {
-                return Err(error("TYPE_MISMATCH", "BNMath.VAL expects STRING", span));
+                return Err(type_mismatch(
+                    "STRING",
+                    display(&types[0]),
+                    "BNMath.VAL",
+                    span,
+                ));
             }
             return Ok(Type::Float(FloatType::Float64));
         }
@@ -57,9 +64,10 @@ impl Analyzer {
             let valid = matches!(types[0], Type::Vector { ref element, .. } if is_numeric(element))
                 || matches!(types[0], Type::Pointer { ref element, .. } if is_numeric(element));
             if !valid {
-                return Err(error(
-                    "TYPE_MISMATCH",
-                    format!("BNMath.{name} expects a numeric vector"),
+                return Err(type_mismatch(
+                    "numeric vector",
+                    display(&types[0]),
+                    format!("BNMath.{name}"),
                     span,
                 ));
             }
@@ -71,9 +79,10 @@ impl Analyzer {
         }
         if matches!(name, "TOHOUR" | "TOWEEKDAY") {
             if !matches!(types[0], Type::Integer(IntegerType::Int64)) {
-                return Err(error(
-                    "TYPE_MISMATCH",
-                    format!("BNMath.{name} expects TIMESTAMP"),
+                return Err(type_mismatch(
+                    "TIMESTAMP",
+                    display(&types[0]),
+                    format!("BNMath.{name}"),
                     span,
                 ));
             }
@@ -81,9 +90,10 @@ impl Analyzer {
         }
         if matches!(name, "TODATE" | "TOTIME") {
             if !matches!(types[0], Type::Integer(IntegerType::Int64)) {
-                return Err(error(
-                    "TYPE_MISMATCH",
-                    format!("BNMath.{name} expects TIMESTAMP"),
+                return Err(type_mismatch(
+                    "TIMESTAMP",
+                    display(&types[0]),
+                    format!("BNMath.{name}"),
                     span,
                 ));
             }
@@ -93,9 +103,10 @@ impl Analyzer {
         }
         if name == "TOTIMESTAMP" {
             if types != [Type::Named("DATE".into()), Type::Named("TIME".into())] {
-                return Err(error(
-                    "TYPE_MISMATCH",
-                    "BNMath.TOTIMESTAMP expects DATE and TIME",
+                return Err(type_mismatch(
+                    "DATE, TIME",
+                    types.iter().map(display).collect::<Vec<_>>().join(", "),
+                    "BNMath.TOTIMESTAMP",
                     span,
                 ));
             }
@@ -103,9 +114,10 @@ impl Analyzer {
         }
         if name == "ROUND" {
             if !is_float(&types[0]) || !is_integer(&types[1]) {
-                return Err(error(
-                    "TYPE_MISMATCH",
-                    "BNMath.ROUND expects a floating value and an INTEGER digit count",
+                return Err(type_mismatch(
+                    "FLOAT, INTEGER",
+                    format!("{}, {}", display(&types[0]), display(&types[1])),
+                    "BNMath.ROUND",
                     span,
                 ));
             }
@@ -115,26 +127,29 @@ impl Analyzer {
             let mut result = types[0].clone();
             for ty in &types[1..] {
                 result = numeric_result(&result, ty).ok_or_else(|| {
-                    error(
-                        "TYPE_MISMATCH",
-                        format!("BNMath.{name} requires compatible numeric arguments"),
+                    type_mismatch(
+                        "compatible numeric arguments",
+                        format!("{}, {}", display(&result), display(ty)),
+                        format!("BNMath.{name}"),
                         span,
                     )
                 })?;
             }
             if !is_numeric(&result) {
-                return Err(error(
-                    "TYPE_MISMATCH",
-                    format!("BNMath.{name} requires numeric arguments"),
+                return Err(type_mismatch(
+                    "numeric arguments",
+                    display(&result),
+                    format!("BNMath.{name}"),
                     span,
                 ));
             }
             return Ok(default_literal_type(result));
         }
         if types.iter().any(|ty| !is_float(ty)) {
-            return Err(error(
-                "TYPE_MISMATCH",
-                format!("BNMath.{name} requires floating-point arguments"),
+            return Err(type_mismatch(
+                "floating-point arguments",
+                types.iter().map(display).collect::<Vec<_>>().join(", "),
+                format!("BNMath.{name}"),
                 span,
             ));
         }
@@ -153,11 +168,7 @@ impl Analyzer {
     ) -> Result<(), Diagnostic> {
         let symbol = self.symbol(ty, constant);
         if self.globals.insert(name.into(), symbol).is_some() {
-            return Err(error(
-                "DUPLICATE_NAME",
-                format!("duplicate top-level declaration '{name}'"),
-                span,
-            ));
+            return Err(duplicate_name(name, span));
         }
         let record = self.globals.get(name).expect("inserted global").clone();
         self.record_symbol(name, &record, span);
@@ -173,11 +184,7 @@ impl Analyzer {
     ) -> Result<(), Diagnostic> {
         let symbol = self.symbol(ty, constant);
         if locals.insert(name.into(), symbol).is_some() {
-            return Err(error(
-                "DUPLICATE_NAME",
-                format!("duplicate binding '{name}' in the same scope"),
-                span,
-            ));
+            return Err(duplicate_name(name, span));
         }
         let record = locals.get(name).expect("inserted local").clone();
         self.record_symbol(name, &record, span);
@@ -419,6 +426,14 @@ impl Analyzer {
                     .globals
                     .get(alias)
                     .is_some_and(|symbol| symbol.ty == Type::HostNet)
+            {
+                continue;
+            }
+            if let Some((alias, _)) = name.split_once('.')
+                && self
+                    .globals
+                    .get(alias)
+                    .is_some_and(|symbol| symbol.ty == Type::HostExec)
             {
                 continue;
             }

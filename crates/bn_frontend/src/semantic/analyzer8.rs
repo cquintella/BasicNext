@@ -14,6 +14,14 @@ impl Analyzer {
                     return Type::Named(format!("HOST.Net.{exported_name}"));
                 }
                 if let Some((alias, exported_name)) = name.split_once('.')
+                    && self
+                        .globals
+                        .get(alias)
+                        .is_some_and(|symbol| symbol.ty == Type::HostExec)
+                {
+                    return Type::Named(format!("HOST.Exec.{exported_name}"));
+                }
+                if let Some((alias, exported_name)) = name.split_once('.')
                     && exported_name == "File"
                     && self
                         .globals
@@ -92,9 +100,10 @@ impl Analyzer {
                 require_integer_fit(Some(size), span)?;
                 Ok(Type::Integer(IntegerType::Int32))
             }
-            None => Err(error(
-                "TYPE_MISMATCH",
-                "SIZEOF requires a value with a defined byte size",
+            None => Err(type_mismatch(
+                "value with defined byte size",
+                "unsized value",
+                "SIZEOF",
                 span,
             )),
         }

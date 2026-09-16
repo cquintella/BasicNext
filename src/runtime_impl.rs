@@ -85,6 +85,11 @@ pub struct HostEnv {
     clock: ClockKind,
     random_state: AtomicU64,
     filesystem: FilesystemPolicy,
+    exec_allowed: bool,
+    /// Wall-clock ceiling for HOST.Exec.Run (D-H1-02). Policy may reduce; never exceeds 60s.
+    exec_timeout: std::time::Duration,
+    /// Per-stream capture ceiling in bytes (D-H1-02). Policy may reduce; never exceeds 16 MiB.
+    exec_capture_limit: usize,
     data_provider: Arc<dyn DataProvider>,
 }
 
@@ -191,6 +196,9 @@ impl Clone for HostEnv {
                     .load(std::sync::atomic::Ordering::Relaxed),
             ),
             filesystem: self.filesystem.clone(),
+            exec_allowed: self.exec_allowed,
+            exec_timeout: self.exec_timeout,
+            exec_capture_limit: self.exec_capture_limit,
             data_provider: Arc::clone(&self.data_provider),
         }
     }
@@ -213,6 +221,9 @@ impl HostEnv {
             clock: ClockKind::System,
             random_state: AtomicU64::new(host_random_seed()),
             filesystem: FilesystemPolicy::unrestricted(),
+            exec_allowed: true,
+            exec_timeout: std::time::Duration::from_secs(60),
+            exec_capture_limit: 16 * 1024 * 1024,
             data_provider: Arc::new(StandardDataProvider),
         }
     }
@@ -227,6 +238,9 @@ impl HostEnv {
             },
             random_state: AtomicU64::new(1),
             filesystem: FilesystemPolicy::unrestricted(),
+            exec_allowed: true,
+            exec_timeout: std::time::Duration::from_secs(60),
+            exec_capture_limit: 16 * 1024 * 1024,
             data_provider: Arc::new(StandardDataProvider),
         }
     }
@@ -240,6 +254,9 @@ impl HostEnv {
             clock: ClockKind::System,
             random_state: AtomicU64::new(host_random_seed()),
             filesystem: FilesystemPolicy::denied(),
+            exec_allowed: false,
+            exec_timeout: std::time::Duration::from_secs(60),
+            exec_capture_limit: 16 * 1024 * 1024,
             data_provider: Arc::new(StandardDataProvider),
         }
     }
@@ -248,6 +265,29 @@ impl HostEnv {
     #[must_use]
     pub fn without_filesystem(mut self) -> Self {
         self.filesystem = FilesystemPolicy::denied();
+        self
+    }
+
+    /// Denies HOST.Exec capability for this execution.
+    #[must_use]
+    pub fn without_exec(mut self) -> Self {
+        self.exec_allowed = false;
+        self
+    }
+
+    /// Reduces the HOST.Exec wall-clock ceiling. Values above 60 seconds are clamped
+    /// to the compiled default (D-H1-02: policy may reduce, never exceed).
+    #[must_use]
+    pub fn with_exec_timeout_secs(mut self, seconds: u64) -> Self {
+        self.exec_timeout = std::time::Duration::from_secs(seconds.min(60));
+        self
+    }
+
+    /// Reduces the per-stream HOST.Exec capture ceiling. Values above 16 MiB are
+    /// clamped to the compiled default (D-H1-02).
+    #[must_use]
+    pub fn with_exec_capture_limit(mut self, bytes: usize) -> Self {
+        self.exec_capture_limit = bytes.min(16 * 1024 * 1024);
         self
     }
 
@@ -319,6 +359,9 @@ impl HostEnv {
             clock: self.clock.clone(),
             random_state: AtomicU64::new(seed),
             filesystem: self.filesystem.clone(),
+            exec_allowed: self.exec_allowed,
+            exec_timeout: self.exec_timeout,
+            exec_capture_limit: self.exec_capture_limit,
             data_provider: Arc::clone(&self.data_provider),
         }
     }
@@ -754,7 +797,7 @@ pub(crate) fn execute_web_callback(
             "HOST.FileSystem is not provided by this host",
             span,
         )
-        .message);
+        .message.to_string());
     }
     let mut input = std::io::Cursor::new(Vec::<u8>::new());
     let mut output = Vec::<u8>::new();
@@ -811,8 +854,123 @@ fn integer_from_i128_count(count: i128, span: Span) -> Result<Value, Diagnostic>
     Ok(Value::Integer(count, IntegerType::Int32))
 }
 
+#[allow(clippy::match_same_arms)]
 fn runtime_error(code: &'static str, message: impl Into<String>, span: Span) -> Diagnostic {
-    Diagnostic { code, message: message.into(), span }
+    let message = message.into();
+    let id = crate::diagnostic::DiagId::from_code(code)
+        .unwrap_or(crate::diagnostic::DiagId::Runtime(code));
+    let arguments = match id {
+        crate::diagnostic::DiagId::NumericOverflow => {
+            vec![("operation".into(), message.into())]
+        }
+        crate::diagnostic::DiagId::Runtime("NAME_NOT_FOUND") => vec![
+            ("name".into(), message.clone().into()),
+            ("context".into(), "runtime lookup".into()),
+        ],
+        crate::diagnostic::DiagId::Runtime("INDEX_OUT_OF_BOUNDS") => vec![
+            ("index".into(), "unknown".into()),
+            ("bound".into(), "unknown".into()),
+            ("context".into(), message.into()),
+        ],
+        crate::diagnostic::DiagId::TypeMismatch => vec![
+            ("expected".into(), "a value matching the operation".into()),
+            ("actual".into(), "an incompatible value".into()),
+            ("context".into(), message.into()),
+        ],
+        crate::diagnostic::DiagId::DoubleRelease | crate::diagnostic::DiagId::UseAfterRelease => {
+            vec![("detail".into(), message.into())]
+        }
+        crate::diagnostic::DiagId::Runtime("ALLOCATION_SIZE_INVALID" | "ALLOCATION_SIZE_OVERFLOW") => {
+            vec![("detail".into(), message.into())]
+        }
+        crate::diagnostic::DiagId::FunctionNotFound
+        | crate::diagnostic::DiagId::Runtime("INVALID_START") => {
+            vec![("detail".into(), message.into())]
+        }
+        crate::diagnostic::DiagId::Runtime(
+            "HOST_CAPABILITY_UNAVAILABLE" | "EXECUTION_POLICY_DENIED",
+        ) => vec![("detail".into(), message.into())],
+        crate::diagnostic::DiagId::Runtime(
+            "INVALID_EXIT_CODE" | "INVALID_EXPONENT" | "INVALID_SHIFT_COUNT",
+        ) => vec![("detail".into(), message.into())],
+        crate::diagnostic::DiagId::Runtime("INVALID_VALUE" | "INVALID_INPUT" | "INPUT_ERROR") => {
+            vec![("detail".into(), message.into())]
+        }
+        crate::diagnostic::DiagId::Runtime("DISPATCH" | "INVALID_JSON" | "INVALID_EGRESS_POLICY") => {
+            vec![("detail".into(), message.into())]
+        }
+        _ => vec![("message".into(), message.into())],
+    };
+    Diagnostic::structured(
+        id,
+        arguments,
+        vec![crate::diagnostic::Label {
+            span,
+            style: crate::diagnostic::LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("runtime compatibility diagnostic schema")
+}
+
+fn name_not_found(name: impl Into<String>, context: impl Into<String>, span: Span) -> Diagnostic {
+    Diagnostic::structured(
+        crate::diagnostic::DiagId::Runtime("NAME_NOT_FOUND"),
+        vec![
+            ("name".into(), name.into().into()),
+            ("context".into(), context.into().into()),
+        ],
+        vec![crate::diagnostic::Label {
+            span,
+            style: crate::diagnostic::LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("name-not-found diagnostic schema")
+}
+
+fn index_out_of_bounds(
+    index: impl std::fmt::Display,
+    bound: impl std::fmt::Display,
+    context: impl std::fmt::Display,
+    span: Span,
+) -> Diagnostic {
+    Diagnostic::structured(
+        crate::diagnostic::DiagId::Runtime("INDEX_OUT_OF_BOUNDS"),
+        vec![
+            ("index".into(), index.to_string().into()),
+            ("bound".into(), bound.to_string().into()),
+            ("context".into(), context.to_string().into()),
+        ],
+        vec![crate::diagnostic::Label {
+            span,
+            style: crate::diagnostic::LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("index-out-of-bounds diagnostic schema")
+}
+
+fn type_mismatch(
+    expected: impl std::fmt::Display,
+    actual: impl std::fmt::Display,
+    context: impl std::fmt::Display,
+    span: Span,
+) -> Diagnostic {
+    Diagnostic::structured(
+        crate::diagnostic::DiagId::TypeMismatch,
+        vec![
+            ("expected".into(), expected.to_string().into()),
+            ("actual".into(), actual.to_string().into()),
+            ("context".into(), context.to_string().into()),
+        ],
+        vec![crate::diagnostic::Label {
+            span,
+            style: crate::diagnostic::LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("type-mismatch diagnostic schema")
 }
 
 fn console_runtime_error(error: &bn_rt::ConsoleError, span: Span) -> Diagnostic {
@@ -820,7 +978,19 @@ fn console_runtime_error(error: &bn_rt::ConsoleError, span: Span) -> Diagnostic 
 }
 
 fn integer_overflow(span: Span) -> Diagnostic {
-    runtime_error("NUMERIC_OVERFLOW", "result does not fit INTEGER", span)
+    Diagnostic::structured(
+        crate::diagnostic::DiagId::NumericOverflow,
+        vec![(
+            "operation".into(),
+            "converting a value to INTEGER".into(),
+        )],
+        vec![crate::diagnostic::Label {
+            span,
+            style: crate::diagnostic::LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("numeric-overflow diagnostic schema")
 }
 fn default_span() -> Span {
     Span {

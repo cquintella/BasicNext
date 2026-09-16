@@ -7,9 +7,11 @@
 
 This document is the introductory tutorial for the Basic Next (BN) programming language.
 
-> **Note:** This book is the **Version 0.5.0** tutorial. It is not the normative
+> **Note:** This book is the **Version 0.5.1** tutorial. It is not the normative
 > language contract. When a chapter and the specification disagree, follow
-> [`docs/0.5.0/language-0.5.0.md`](../../0.5.0/language-0.5.0.md)
+> [`docs/0.5.0/language-0.5.0.md`](../../0.5.0/language-0.5.0.md) as amended by
+> the 0.5.1 delivery (`bn eval`, expressive diagnostics, ordered module search
+> path, and `HOST.Exec`).
 
 
 ## What is Basic Next?
@@ -28,11 +30,13 @@ By catching potential issues before code ever runs, Basic Next helps you resolve
 
 Basic Next provides both an interactive reference interpreter and ahead-of-time (AOT) compilation. Developers can use the interpreter for rapid experimentation and learning, then compile directly to native binaries or WebAssembly artifacts for efficient production deployment.
 
+Isso implica numa funcionalidade total
+
 ### Decoupled Modular Architecture
 
 Under the hood, the Basic Next toolchain uses a modular pipeline: a Lexer, a Parser producing an Abstract Syntax Tree (AST), a Semantic Analyzer, an Intermediate Representation (BN IR), and dedicated backends. This structure keeps language rules clean, predictable, and maintainable.
 
-For more information on the usage of bn and other Basic Next tools, check [Architeture Chapter](./17_architecture_and_filesystem_policy.md).
+For more information on the usage of bn and other Basic Next tools, check [Architeture Chapter](./17_architecture).
 
 ### Systems and Engine Architecture
 
@@ -85,7 +89,7 @@ Basic commands:
 - `bn run <file.bn> [-- args...]`: Validates, lowers to BN IR, and executes the program starting from `Start`.
 - `bn build <file.bn>`: Compiles the source file into a native executable or WebAssembly artifact using the LLVM backend.
 - `bn lex <file.bn>`: Prints the token stream produced by the lexer.
-- `bn -e` / `bn --expr` (**proposed for 0.5.1 — not shipped until the 0.5.1 gate**): evaluate a source string or stdin fragment without inventing an ad hoc temp file. See [`todo/proposals/bn-eval-mode-0.5.1.md`](../../todo/proposals/bn-eval-mode-0.5.1.md). There is **no** `bn eval` subcommand in the 0.5.1 contract.
+- `bn eval` (**0.5.1**): evaluate a source string or stdin fragment without inventing an ad hoc temp file (`bn eval SOURCE` / `bn eval --stdin`). A top-level `FUNCTION Start` auto-promotes to program semantics with one structured warning; `--format json` emits a single JSON v1 envelope. There is **no** global `-e` / `--expr` entry. See [`todo/proposals/bn-eval-mode-0.5.1.md`](../../todo/proposals/bn-eval-mode-0.5.1.md).
 
 Basic Next diagnostics reject invalid code before execution starts, providing clear feedback on errors.
 

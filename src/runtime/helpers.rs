@@ -15,6 +15,7 @@ use crate::{
 
 use super::{
     Value, float_kind, float_value, integer_kind, parse_float, parse_integer, runtime_error,
+    type_mismatch,
 };
 
 pub(super) fn find_block(function: &Function, id: BlockId) -> Result<&BasicBlock, Diagnostic> {
@@ -91,9 +92,10 @@ pub(super) fn require_arity(
     if arguments.len() == expected {
         Ok(())
     } else {
-        Err(runtime_error(
-            "TYPE_MISMATCH",
-            format!("{name} expects {expected} argument(s)"),
+        Err(type_mismatch(
+            format!("{expected} argument(s)"),
+            format!("{} argument(s)", arguments.len()),
+            name,
             span,
         ))
     }

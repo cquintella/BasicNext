@@ -136,10 +136,17 @@ fn unused_import_warnings(program: &Program, model: &SemanticModel) -> Vec<Diagn
                 .symbols
                 .iter()
                 .find(|symbol| symbol.name == *alias && symbol.span == *span)?;
-            (!used_symbols.contains(&symbol.id)).then(|| Diagnostic {
-                code: "UNUSED_IMPORT",
-                message: format!("import '{alias}' is never used"),
-                span: *span,
+            (!used_symbols.contains(&symbol.id)).then(|| {
+                Diagnostic::structured(
+                    DiagId::UnusedImport,
+                    vec![("module".into(), DiagnosticValue::Text(alias.clone()))],
+                    vec![Label {
+                        span: *span,
+                        style: LabelStyle::Primary,
+                        text: None,
+                    }],
+                )
+                .expect("unused import diagnostic schema")
             })
         })
         .collect()
@@ -191,10 +198,17 @@ fn unused_binding_warnings(program: &Program, model: &SemanticModel) -> Vec<Diag
                         && (*used_owner == owner || used_owner.rsplit('.').next() == Some(owner))
                 })
             });
-            (!used_symbols.contains(&symbol.id) && !member_used).then(|| Diagnostic {
-                code: "UNUSED_BINDING",
-                message: format!("binding '{name}' is never read"),
-                span,
+            (!used_symbols.contains(&symbol.id) && !member_used).then(|| {
+                Diagnostic::structured(
+                    DiagId::UnusedBinding,
+                    vec![("name".into(), DiagnosticValue::Text(name.clone()))],
+                    vec![Label {
+                        span,
+                        style: LabelStyle::Primary,
+                        text: None,
+                    }],
+                )
+                .expect("unused binding diagnostic schema")
             })
         })
         .collect()
@@ -610,9 +624,10 @@ pub(crate) fn validate_implemented_interfaces(
                     )
                 })?;
                 if info.kind != DeclarationKind::Interface {
-                    return Err(error(
-                        "TYPE_MISMATCH",
+                    return Err(type_mismatch(
+                        "INTERFACE",
                         format!("'{interface}' is not an INTERFACE"),
+                        "interface implementation",
                         *span,
                     ));
                 }
@@ -635,11 +650,10 @@ pub(crate) fn validate_implemented_interfaces(
                 if implementation.is_none_or(|member| {
                     member.private || member.is_static || member.ty != required_signature
                 }) {
-                    return Err(error(
-                        "TYPE_MISMATCH",
-                        format!(
-                            "CLASS must implement PUBLIC instance FUNCTION {method} with the exact signature from interface {interface}"
-                        ),
+                    return Err(type_mismatch(
+                        format!("PUBLIC instance FUNCTION {method} matching {interface}"),
+                        "missing/private/static/incompatible implementation",
+                        "interface implementation",
                         *span,
                     ));
                 }

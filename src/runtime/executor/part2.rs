@@ -203,11 +203,7 @@ impl Executor<'_, '_> {
                 span,
             } => {
                 let Value::Function(name) = value(values, *callee, *span)? else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "value is not callable",
-                        *span,
-                    ));
+                    return Err(super::super::type_mismatch("FUNCTION", "non-callable value", "function call", *span));
                 };
                 let name = name.clone();
                 let arguments = arguments
@@ -309,7 +305,7 @@ impl Executor<'_, '_> {
             } => {
                 let index = usize::try_from(integer(value(values, *index, *span)?, *span)?.0)
                     .map_err(|_| {
-                        runtime_error("INDEX_OUT_OF_BOUNDS", "index cannot be negative", *span)
+                        super::super::index_out_of_bounds("negative", "0", "index", *span)
                     })?;
                 let element = self.index_value(value(values, *object, *span)?, index, *span)?;
                 set(values, *destination, element);
@@ -336,11 +332,7 @@ impl Executor<'_, '_> {
                     .map(|index| {
                         usize::try_from(integer(value(values, *index, *span)?, *span)?.0).map_err(
                             |_| {
-                                runtime_error(
-                                    "INDEX_OUT_OF_BOUNDS",
-                                    "index cannot be negative",
-                                    *span,
-                                )
+                                super::super::index_out_of_bounds("negative", "0", "index", *span)
                             },
                         )
                     })
@@ -386,7 +378,7 @@ impl Executor<'_, '_> {
                     .iter()
                     .map(|index| {
                         usize::try_from(integer(value(values, *index, *span)?, *span)?.0).map_err(
-                            |_| runtime_error("INDEX_OUT_OF_BOUNDS", "index cannot be negative", *span),
+                            |_| super::super::index_out_of_bounds("negative", "0", "index", *span),
                         )
                     })
                     .collect::<Result<Vec<_>, _>>()?;
@@ -405,7 +397,7 @@ impl Executor<'_, '_> {
                     .iter()
                     .map(|index| {
                         usize::try_from(integer(value(values, *index, *span)?, *span)?.0).map_err(
-                            |_| runtime_error("INDEX_OUT_OF_BOUNDS", "index cannot be negative", *span),
+                            |_| super::super::index_out_of_bounds("negative", "0", "index", *span),
                         )
                     })
                     .collect::<Result<Vec<_>, _>>()?;
@@ -438,7 +430,7 @@ impl Executor<'_, '_> {
                         Value::Integer(1, IntegerType::Int32)
                     }
                     _ => {
-                        return Err(runtime_error("TYPE_MISMATCH", "value has no length", *span));
+                        return Err(super::super::type_mismatch("length-bearing value", "value without length", "LEN", *span));
                     }
                 };
                 set(values, *destination, length);
@@ -718,7 +710,7 @@ impl Executor<'_, '_> {
                     .iter()
                     .map(|index| {
                         usize::try_from(integer(value(values, *index, *span)?, *span)?.0).map_err(
-                            |_| runtime_error("INDEX_OUT_OF_BOUNDS", "index cannot be negative", *span),
+                            |_| super::super::index_out_of_bounds("negative", "0", "index", *span),
                         )
                     })
                     .collect::<Result<Vec<_>, _>>()?;

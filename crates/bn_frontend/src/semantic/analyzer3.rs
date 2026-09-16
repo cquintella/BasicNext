@@ -22,8 +22,7 @@ impl Analyzer {
                 ));
             }
             if terminated {
-                let diagnostic = error(
-                    "UNREACHABLE_CODE",
+                let diagnostic = unreachable_code(
                     "statement is unreachable after control flow leaves this path",
                     statement_span(statement),
                 );
@@ -87,27 +86,34 @@ impl Analyzer {
                     if !initialized
                         && (requires_initializer(type_ref) || self.type_requires_initializer(&ty))
                     {
-                        return Err(error(
-                            "TYPE_MISMATCH",
-                            format!(
-                                "{} bindings require an initializer",
-                                type_ref.alternatives[0].name
-                            ),
+                        return Err(type_mismatch(
+                            "initializer",
+                            "missing initializer",
+                            format!("{} binding", type_ref.alternatives[0].name),
                             *span,
                         ));
                     }
                     if let Some(initializer) = initializer {
                         let actual = self.expression_as(initializer, &ty, locals)?;
                         if !self.compatible(&ty, &actual) {
-                            return Err(error(
-                                if pointer_literal_length_mismatch(&ty, &actual) {
-                                    "POINTER_LENGTH_MISMATCH"
-                                } else {
-                                    "TYPE_MISMATCH"
-                                },
-                                format!("cannot assign {} to {}", display(&actual), display(&ty)),
-                                initializer.span,
-                            ));
+                            return Err(if pointer_literal_length_mismatch(&ty, &actual) {
+                                error(
+                                    "POINTER_LENGTH_MISMATCH",
+                                    format!(
+                                        "cannot assign {} to {}",
+                                        display(&actual),
+                                        display(&ty)
+                                    ),
+                                    initializer.span,
+                                )
+                            } else {
+                                type_mismatch(
+                                    display(&ty),
+                                    display(&actual),
+                                    "binding initializer",
+                                    initializer.span,
+                                )
+                            });
                         }
                     }
                     self.declare_local(locals, name, ty.clone(), *constant, *span)?;
@@ -115,25 +121,20 @@ impl Analyzer {
                         if let Some(additional_initializer) = additional_initializers.get(index) {
                             let actual = self.expression_as(additional_initializer, &ty, locals)?;
                             if !self.compatible(&ty, &actual) {
-                                return Err(error(
-                                    "TYPE_MISMATCH",
-                                    format!(
-                                        "cannot assign {} to {}",
-                                        display(&actual),
-                                        display(&ty)
-                                    ),
+                                return Err(type_mismatch(
+                                    display(&ty),
+                                    display(&actual),
+                                    "additional binding initializer",
                                     additional_initializer.span,
                                 ));
                             }
                         } else if requires_initializer(type_ref)
                             || self.type_requires_initializer(&ty)
                         {
-                            return Err(error(
-                                "TYPE_MISMATCH",
-                                format!(
-                                    "{} bindings require an initializer",
-                                    type_ref.alternatives[0].name
-                                ),
+                            return Err(type_mismatch(
+                                "initializer",
+                                "missing initializer",
+                                format!("{} binding", type_ref.alternatives[0].name),
                                 *span,
                             ));
                         }
@@ -160,7 +161,12 @@ impl Analyzer {
                     } else {
                         binary_type(
                             compound_operator(operator).ok_or_else(|| {
-                                error("TYPE_MISMATCH", "unknown assignment operator", *span)
+                                type_mismatch(
+                                    "known assignment operator",
+                                    "unknown operator",
+                                    "assignment",
+                                    *span,
+                                )
                             })?,
                             &target_type,
                             &value_type,
@@ -168,19 +174,26 @@ impl Analyzer {
                         )?
                     };
                     if !self.compatible(&target_type, &result_type) {
-                        return Err(error(
+                        return Err(
                             if pointer_literal_length_mismatch(&target_type, &result_type) {
-                                "POINTER_LENGTH_MISMATCH"
+                                error(
+                                    "POINTER_LENGTH_MISMATCH",
+                                    format!(
+                                        "cannot assign {} to {}",
+                                        display(&result_type),
+                                        display(&target_type)
+                                    ),
+                                    *span,
+                                )
                             } else {
-                                "TYPE_MISMATCH"
+                                type_mismatch(
+                                    display(&target_type),
+                                    display(&result_type),
+                                    "assignment",
+                                    *span,
+                                )
                             },
-                            format!(
-                                "cannot assign {} to {}",
-                                display(&result_type),
-                                display(&target_type)
-                            ),
-                            *span,
-                        ));
+                        );
                     }
                     Self::replace_narrowing_fact(target, &result_type, locals);
                 }
@@ -276,9 +289,10 @@ impl Analyzer {
                 }
                 Statement::Return { value, span } => {
                     if declaration_kind != DeclarationKind::Function && value.is_some() {
-                        return Err(error(
-                            "TYPE_MISMATCH",
-                            "constructors and destructors cannot return a value",
+                        return Err(type_mismatch(
+                            "VOID return",
+                            "value",
+                            "constructor/destructor return",
                             *span,
                         ));
                     }
@@ -291,13 +305,10 @@ impl Analyzer {
                         if let Some(return_type) = return_type
                             && !self.compatible(return_type, &value_type)
                         {
-                            return Err(error(
-                                "TYPE_MISMATCH",
-                                format!(
-                                    "cannot return {} from FUNCTION AS {}",
-                                    display(&value_type),
-                                    display(return_type)
-                                ),
+                            return Err(type_mismatch(
+                                display(return_type),
+                                display(&value_type),
+                                "FUNCTION return",
                                 value.span,
                             ));
                         }
@@ -337,9 +348,10 @@ impl Analyzer {
                 }
                 Statement::Stop { code, .. } => {
                     if !is_integer(&self.expression(code, locals)?) {
-                        return Err(error(
-                            "TYPE_MISMATCH",
-                            "STOP requires an INTEGER exit code",
+                        return Err(type_mismatch(
+                            "INTEGER",
+                            "non-INTEGER value",
+                            "STOP exit code",
                             code.span,
                         ));
                     }
@@ -365,9 +377,10 @@ impl Analyzer {
                     ..
                 } => {
                     if *is_static && block_uses_self(&body.statements) {
-                        return Err(error(
-                            "TYPE_MISMATCH",
-                            "STATIC FUNCTION cannot access SELF",
+                        return Err(type_mismatch(
+                            "no SELF access",
+                            "SELF reference",
+                            "STATIC FUNCTION body",
                             body.span,
                         ));
                     }

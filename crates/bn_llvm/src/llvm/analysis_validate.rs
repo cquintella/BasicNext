@@ -275,6 +275,10 @@ pub(crate) fn validate_instruction(
                 || (owner == "Error"
                     && name == "Code"
                     && values.get(object).and_then(llvm_type) == Some("{ i1, ptr, i64 }"))
+                || (owner == "HOST.Exec.Result"
+                    && matches!(name.as_str(), "ReturnCode" | "Stdout" | "Stderr")
+                    && values.get(object).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+                    && llvm_type(ty).is_some())
                 || (values.get(object).and_then(llvm_type) == Some("ptr")
                     && llvm_type(ty).is_some())
         }

@@ -37,6 +37,7 @@ fn registered_diagnostics_reach_lsp_with_catalog_prose() {
                 column: 4,
             },
         },
+        structured: None,
     };
     let uri: super::Uri = "file:///main.bn".parse().expect("URI");
     let rendered = super::to_lsp(&diagnostic, &uri);
@@ -50,26 +51,35 @@ fn registered_diagnostics_reach_lsp_with_catalog_prose() {
 
 #[test]
 fn warning_diagnostics_reach_lsp_with_warning_severity() {
-    let diagnostic = Diagnostic {
-        code: "UNREACHABLE_CODE",
-        message: "statement is unreachable".into(),
-        span: Span {
-            start: Position {
-                source_id: SourceId(1),
-                revision: Revision(1),
-                offset: 0,
-                line: 2,
-                column: 5,
-            },
-            end: Position {
-                source_id: SourceId(1),
-                revision: Revision(1),
-                offset: 5,
-                line: 2,
-                column: 10,
-            },
+    let span = Span {
+        start: Position {
+            source_id: SourceId(1),
+            revision: Revision(1),
+            offset: 0,
+            line: 2,
+            column: 5,
+        },
+        end: Position {
+            source_id: SourceId(1),
+            revision: Revision(1),
+            offset: 5,
+            line: 2,
+            column: 10,
         },
     };
+    let diagnostic = Diagnostic::structured(
+        crate::diagnostic::DiagId::UnreachableCode,
+        vec![(
+            "context".into(),
+            "statement follows a terminating path".into(),
+        )],
+        vec![crate::diagnostic::Label {
+            span,
+            style: crate::diagnostic::LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("structured warning");
     let uri: super::Uri = "file:///main.bn".parse().expect("URI");
     let rendered = super::to_lsp(&diagnostic, &uri);
     assert_eq!(rendered.severity, Some(super::DiagnosticSeverity::WARNING));
@@ -80,7 +90,7 @@ fn warning_diagnostics_reach_lsp_with_warning_severity() {
     assert!(
         rendered
             .message
-            .starts_with("Unreachable code: statement is unreachable")
+            .starts_with("Unreachable code: This code is unreachable")
     );
 }
 
@@ -204,12 +214,14 @@ fn definition_searches_other_open_documents_when_not_local() {
 #[test]
 fn definition_loads_sibling_module_from_filesystem() {
     let suffix = std::process::id();
-    let main_path = format!("/tmp/basicnext-lsp-main-{suffix}.bn");
-    let module_path = "/tmp/Module.bn";
+    let directory = format!("/tmp/basicnext-lsp-sibling-{suffix}");
+    let main_path = format!("{directory}/main.bn");
+    let module_path = format!("{directory}/Module.bn");
+    std::fs::create_dir_all(&directory).unwrap();
     let main_uri: super::Uri = format!("file://{main_path}").parse().unwrap();
     let module_uri: super::Uri = format!("file://{module_path}").parse().unwrap();
     std::fs::write(
-        module_path,
+        &module_path,
         "FUNCTION Value() AS INTEGER\nRETURN 1\nEND FUNCTION\n",
     )
     .unwrap();
@@ -222,7 +234,8 @@ fn definition_loads_sibling_module_from_filesystem() {
     )]);
     let locations = find_definition(&documents, &main_uri, super::Position::new(2, 12)).unwrap();
     let _ = std::fs::remove_file(main_path);
-    let _ = std::fs::remove_file(module_path);
+    let _ = std::fs::remove_file(&module_path);
+    let _ = std::fs::remove_dir(&directory);
     assert_eq!(locations.len(), 1);
     assert_eq!(locations[0].uri, module_uri);
 }

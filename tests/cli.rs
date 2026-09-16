@@ -3,6 +3,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+// Multi-line raw-string BN program templates read more clearly with named
+// placeholders than with inlined path expressions.
+#![allow(clippy::uninlined_format_args)]
+
 use std::{
     collections::HashMap,
     fs,
@@ -17,12 +21,572 @@ fn bn() -> Command {
 }
 
 #[test]
+fn eval_json_owns_both_process_channels_even_with_verbosity() {
+    let output = bn()
+        .args(["eval", "-vv", "--format", "json", "PRINT 1"])
+        .output()
+        .expect("run bn eval JSON");
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        output.stderr.is_empty(),
+        "stderr leaked: {:?}",
+        output.stderr
+    );
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("one JSON envelope");
+    assert_eq!(envelope["stdout"], "1\n");
+    assert_eq!(envelope["diagnostics"].as_array().map(Vec::len), Some(0));
+}
+
+#[test]
+fn eval_json_wraps_late_environment_policy_errors() {
+    let output = bn()
+        .args(["eval", "--format", "json", "PRINT 1"])
+        .env("BN_FS_POLICY", "invalid-policy")
+        .output()
+        .expect("run bn eval with invalid policy");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stderr.is_empty());
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("one JSON envelope");
+    assert_eq!(envelope["diagnostics"][0]["code"], "CONFIG_INVALID");
+}
+
+#[test]
+fn eval_promotes_only_top_level_start_and_reports_one_warning() {
+    let program = "FUNCTION Start() AS VOID\n    PRINT 1\nEND FUNCTION\n";
+    let output = bn()
+        .args(["eval", "--format", "json", program])
+        .output()
+        .expect("eval program");
+    assert_eq!(output.status.code(), Some(0));
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("one JSON envelope");
+    assert_eq!(envelope["stdout"], "1\n");
+    assert_eq!(envelope["diagnostics"].as_array().map(Vec::len), Some(1));
+    assert_eq!(envelope["diagnostics"][0]["code"], "EVAL_START_PROMOTED");
+
+    let nested =
+        "CLASS C\n    FUNCTION Start() AS VOID\n        PRINT 1\n    END FUNCTION\nEND CLASS\n";
+    let nested_output = bn()
+        .args(["eval", "--format", "json", nested])
+        .output()
+        .expect("eval nested declaration");
+    let nested_envelope: serde_json::Value =
+        serde_json::from_slice(&nested_output.stdout).expect("one JSON envelope");
+    assert!(
+        nested_envelope["diagnostics"]
+            .as_array()
+            .is_some_and(|items| items
+                .iter()
+                .all(|item| item["code"] != "EVAL_START_PROMOTED"))
+    );
+}
+
+#[test]
+fn eval_does_not_promote_start_text_inside_string_or_comment() {
+    let source = "// FUNCTION Start() AS VOID\nPRINT \"FUNCTION Start() AS VOID\"\n";
+    let output = bn()
+        .args(["eval", "--format", "json", source])
+        .output()
+        .expect("eval text containing Start");
+    assert_eq!(output.status.code(), Some(0));
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("one JSON envelope");
+    assert_eq!(envelope["stdout"], "FUNCTION Start() AS VOID\n");
+    assert_eq!(envelope["diagnostics"].as_array().map(Vec::len), Some(0));
+}
+
+#[test]
 fn check_valid_program_exits_zero() {
     let status = bn()
         .args(["check", "examples/hello.bn"])
         .status()
         .expect("run bn check");
     assert_eq!(status.code(), Some(0));
+}
+
+#[test]
+fn eval_rejects_imports_after_the_leading_import_block() {
+    let output = bn()
+        .args([
+            "eval",
+            "--format",
+            "json",
+            "PRINT 1\nIMPORT BNMath AS M\nPRINT 2",
+        ])
+        .output()
+        .expect("run eval with late import");
+    assert_eq!(output.status.code(), Some(1));
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("one JSON envelope");
+    assert_eq!(envelope["diagnostics"][0]["code"], "E0100");
+    assert_eq!(envelope["diagnostics"][0]["labels"][0]["start"]["line"], 2);
+    assert_eq!(
+        envelope["diagnostics"][0]["labels"][0]["start"]["offset"],
+        8
+    );
+}
+
+#[test]
+fn eval_allows_leading_block_comments_before_imports() {
+    for source in [
+        "/* heading */\nIMPORT BNMath AS M\nPRINT 1",
+        "/* heading\ncontinued */\nIMPORT BNMath AS M\nPRINT 1",
+        "/* heading */ IMPORT BNMath AS M\nPRINT 1",
+        "/* heading\n*/ IMPORT BNMath AS M\nPRINT 1",
+    ] {
+        let output = bn()
+            .args(["eval", "--format", "json", source])
+            .output()
+            .expect("run eval with leading block comment");
+        assert_eq!(output.status.code(), Some(0));
+        let envelope: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("one JSON envelope");
+        assert_eq!(envelope["stdout"], "1\n");
+    }
+}
+
+#[test]
+fn eval_stdin_source_is_consumed_before_runtime_input() {
+    let mut child = bn()
+        .args(["eval", "--stdin", "--format", "json"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn eval stdin");
+    child
+        .stdin
+        .take()
+        .expect("stdin pipe")
+        .write_all(
+            b"LET value AS STRING OR EOF = INPUT()\nIF value IS EOF THEN\n PRINT \"EOF\"\nEND IF\n",
+        )
+        .expect("write source");
+    let output = child.wait_with_output().expect("wait eval stdin");
+    assert_eq!(output.status.code(), Some(0));
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("one JSON envelope");
+    assert_eq!(envelope["stdout"], "EOF\n");
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn eval_preserves_host_args_after_separator() {
+    let output = bn()
+        .args([
+            "eval",
+            "--format",
+            "json",
+            "PRINT HOST.Args[1]",
+            "--",
+            "payload",
+        ])
+        .output()
+        .expect("run eval with program arguments");
+    assert_eq!(output.status.code(), Some(0));
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("one JSON envelope");
+    assert_eq!(envelope["stdout"], "payload\n");
+}
+
+#[test]
+fn eval_warning_policy_controls_promotion_execution() {
+    let source = "FUNCTION Start() AS VOID\n    PRINT 1\nEND FUNCTION\n";
+    let denied = bn()
+        .args([
+            "eval",
+            "--format",
+            "json",
+            "--deny",
+            "EVAL_START_PROMOTED",
+            source,
+        ])
+        .output()
+        .expect("deny promotion");
+    assert_eq!(denied.status.code(), Some(1));
+    let denied_envelope: serde_json::Value =
+        serde_json::from_slice(&denied.stdout).expect("one JSON envelope");
+    assert_eq!(denied_envelope["stdout"], "");
+    assert_eq!(denied_envelope["diagnostics"][0]["severity"], "error");
+
+    let allowed = bn()
+        .args([
+            "eval",
+            "--format",
+            "json",
+            "--allow",
+            "EVAL_START_PROMOTED",
+            source,
+        ])
+        .output()
+        .expect("allow promotion");
+    assert_eq!(allowed.status.code(), Some(0));
+    let allowed_envelope: serde_json::Value =
+        serde_json::from_slice(&allowed.stdout).expect("one JSON envelope");
+    assert_eq!(
+        allowed_envelope["diagnostics"].as_array().map(Vec::len),
+        Some(0)
+    );
+}
+
+#[test]
+fn eval_rejects_conflicting_source_forms_in_json() {
+    for args in [
+        vec!["eval", "--format", "json"],
+        vec!["eval", "--format", "json", "--stdin", "PRINT 1"],
+        vec!["eval", "--format", "json", "--session", "PRINT 1"],
+    ] {
+        let output = bn().args(args).output().expect("run invalid eval form");
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stderr.is_empty());
+        let envelope: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("one JSON envelope");
+        assert_eq!(envelope["ok"], false);
+        assert_eq!(envelope["diagnostics"][0]["code"], "CONFIG_INVALID");
+    }
+}
+
+#[test]
+fn eval_supports_scalar_values_and_stop_status_without_protocol_leakage() {
+    for source in ["PRINT TRUE", "PRINT \"á\"", "PRINT [1,2,3]"] {
+        let output = bn()
+            .args(["eval", "--format", "json", source])
+            .output()
+            .expect("eval scalar");
+        assert_eq!(output.status.code(), Some(0));
+        let envelope: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("one JSON envelope");
+        assert!(
+            envelope["stdout"]
+                .as_str()
+                .is_some_and(|text| !text.is_empty())
+        );
+        assert!(output.stderr.is_empty());
+    }
+    let stopped = bn()
+        .args(["eval", "--format", "json", "PRINT 1\nPRINT 2\nSTOP 7"])
+        .output()
+        .expect("eval stop");
+    assert_eq!(stopped.status.code(), Some(7));
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&stopped.stdout).expect("one JSON envelope");
+    assert_eq!(envelope["ok"], false);
+    assert_eq!(envelope["stdout"], "1\n2\n");
+}
+
+#[test]
+fn eval_preserves_partial_output_before_an_unhandled_runtime_error() {
+    let output = bn()
+        .args(["eval", "--format", "json", "PRINT 1\nPRINT 1 DIV 0"])
+        .output()
+        .expect("eval runtime failure");
+    assert_eq!(output.status.code(), Some(1));
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("JSON envelope");
+    assert_eq!(envelope["ok"], false);
+    assert_eq!(envelope["stdout"], "1\n");
+    assert_eq!(envelope["diagnostics"][0]["code"], "DIVISION_BY_ZERO");
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn eval_treats_a_source_starting_with_dash_as_source_text() {
+    let output = bn()
+        .args(["eval", "--format", "json", "-1"])
+        .output()
+        .expect("eval negative expression");
+    assert_eq!(output.status.code(), Some(0));
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("JSON envelope");
+    assert_eq!(envelope["stdout"], "-1\n");
+}
+
+#[test]
+fn eval_reports_unknown_import_and_import_cycle_with_stable_codes() {
+    let missing = bn()
+        .args(["eval", "--format", "json", "IMPORT Missing AS M\nPRINT 1"])
+        .output()
+        .expect("unknown import");
+    assert_eq!(missing.status.code(), Some(1));
+    let missing_json: serde_json::Value =
+        serde_json::from_slice(&missing.stdout).expect("JSON envelope");
+    assert_eq!(missing_json["diagnostics"][0]["code"], "MODULE_NOT_FOUND");
+
+    let root = std::env::temp_dir().join(format!("bn-eval-cycle-{}", std::process::id()));
+    fs::create_dir_all(&root).expect("cycle directory");
+    fs::write(root.join("A.bn"), "IMPORT B AS B\n").expect("module A");
+    fs::write(root.join("B.bn"), "IMPORT A AS A\n").expect("module B");
+    let entry = root.join("main.bn");
+    fs::write(
+        &entry,
+        "IMPORT A AS A\nFUNCTION Start() AS VOID\nEND FUNCTION\n",
+    )
+    .expect("cycle entry");
+    let cycle = bn()
+        .args(["run", entry.to_str().expect("entry path")])
+        .output()
+        .expect("import cycle");
+    assert_eq!(cycle.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&cycle.stderr).contains("IMPORT_CYCLE"));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn eval_json_preserves_crlf_diagnostic_coordinates() {
+    let mut child = bn()
+        .args(["eval", "--stdin", "--format", "json"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn CRLF eval");
+    child
+        .stdin
+        .take()
+        .expect("stdin pipe")
+        .write_all(b"PRINT @\r\nPRINT 2\r\n")
+        .expect("write CRLF source");
+    let output = child.wait_with_output().expect("wait CRLF eval");
+    assert_eq!(output.status.code(), Some(1));
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("one JSON envelope");
+    let label = &envelope["diagnostics"][0]["labels"][0];
+    assert_eq!(label["start"]["line"], 1);
+    assert_eq!(label["start"]["offset"], 6);
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+#[allow(clippy::too_many_lines)]
+fn module_path_is_repeatable_and_first_directory_wins_for_check() {
+    let base = std::env::temp_dir().join(format!("bn-module-path-{}", std::process::id()));
+    let first = base.join("first");
+    let second = base.join("second");
+    fs::create_dir_all(&first).expect("first module path");
+    fs::create_dir_all(&second).expect("second module path");
+    let entry = base.join("main.bn");
+    fs::write(
+        first.join("Greeting.bn"),
+        "EXPORT FUNCTION Value() AS INTEGER\n    RETURN 1\nEND FUNCTION\n",
+    )
+    .expect("first module");
+    fs::write(
+        second.join("Greeting.bn"),
+        "EXPORT FUNCTION Value() AS INTEGER\n    RETURN 2\nEND FUNCTION\n",
+    )
+    .expect("second module");
+    fs::write(
+        &entry,
+        "IMPORT Greeting AS G\nFUNCTION Start() AS VOID\n    PRINT G.Value()\nEND FUNCTION\n",
+    )
+    .expect("entry source");
+    let output = bn()
+        .args([
+            "check",
+            "--module-path",
+            first.to_str().expect("first path"),
+            "--module-path",
+            second.to_str().expect("second path"),
+            entry.to_str().expect("entry path"),
+        ])
+        .output()
+        .expect("check with module paths");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let run_output = bn()
+        .args([
+            "run",
+            "--module-path",
+            first.to_str().expect("first path"),
+            "--module-path",
+            second.to_str().expect("second path"),
+            entry.to_str().expect("entry path"),
+        ])
+        .output()
+        .expect("run with module paths");
+    assert_eq!(run_output.status.code(), Some(0));
+    assert_eq!(run_output.stdout, b"1\n");
+    let reversed = bn()
+        .args([
+            "run",
+            "--module-path",
+            second.to_str().expect("second path"),
+            "--module-path",
+            first.to_str().expect("first path"),
+            entry.to_str().expect("entry path"),
+        ])
+        .output()
+        .expect("run with reversed module paths");
+    assert_eq!(reversed.status.code(), Some(0));
+    assert_eq!(reversed.stdout, b"2\n");
+    let artifact = base.join("main");
+    let build_output = bn()
+        .args([
+            "build",
+            "--module-path",
+            first.to_str().expect("first path"),
+            "--module-path",
+            second.to_str().expect("second path"),
+            entry.to_str().expect("entry path"),
+            "-o",
+            artifact.to_str().expect("artifact path"),
+            "--log-file",
+            base.join("main.log").to_str().expect("log path"),
+            "--log-level",
+            "debug",
+        ])
+        .output()
+        .expect("build with module paths");
+    assert_eq!(
+        build_output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&build_output.stderr)
+    );
+    let built = std::process::Command::new(&artifact)
+        .output()
+        .expect("run built module-path artifact");
+    assert_eq!(built.status.code(), Some(0));
+    assert_eq!(built.stdout, b"1\n");
+    let log = fs::read_to_string(base.join("main.log")).expect("module-path process log");
+    let expected_roots = [
+        fs::canonicalize(&base).expect("canonical base"),
+        fs::canonicalize(&base)
+            .expect("canonical base")
+            .join("modules"),
+        std::env::current_dir()
+            .expect("repository directory")
+            .join("modules/bn"),
+        fs::canonicalize(&first).expect("canonical first"),
+        fs::canonicalize(&second).expect("canonical second"),
+    ];
+    let snapshot = log
+        .split("module_paths=[")
+        .nth(1)
+        .and_then(|tail| tail.split(']').next())
+        .expect("module_paths snapshot");
+    let actual: Vec<_> = snapshot
+        .split(",\\s")
+        .map(|item| item.trim().trim_matches('"').to_string())
+        .collect();
+    let expected: Vec<_> = expected_roots
+        .iter()
+        .map(|root| root.display().to_string())
+        .collect();
+    assert_eq!(actual, expected, "effective module-path snapshot");
+    fs::write(
+        base.join("config.toml"),
+        format!("module-path = [\"{}\"]\n", first.display()),
+    )
+    .expect("module-path config");
+    let configured = bn()
+        .args([
+            "check",
+            "--config",
+            base.join("config.toml").to_str().expect("config path"),
+            entry.to_str().expect("entry path"),
+        ])
+        .output()
+        .expect("check with configured module path");
+    assert_eq!(configured.status.code(), Some(0));
+    let merged = bn()
+        .args([
+            "run",
+            "--config",
+            base.join("config.toml").to_str().expect("config path"),
+            "--module-path",
+            second.to_str().expect("second path"),
+            entry.to_str().expect("entry path"),
+        ])
+        .output()
+        .expect("run with config and CLI module paths");
+    assert_eq!(merged.status.code(), Some(0));
+    assert_eq!(merged.stdout, b"1\n");
+    let _ = fs::remove_dir_all(base);
+}
+
+#[test]
+fn selected_config_applies_relative_diagnostic_overlay() {
+    let root = std::env::temp_dir().join(format!("bn-diag-cli-{}", std::process::id()));
+    let messages = root.join("messages");
+    fs::create_dir_all(&messages).expect("diagnostic overlay directory");
+    fs::write(
+        root.join("config.toml"),
+        "[diagnostics]\ndir = \"messages\"\n",
+    )
+    .expect("diagnostic config");
+    fs::write(
+        messages.join("parse.ftl"),
+        "parse-error = Expected {$expected} in {$context}.\n    .title = Custom syntax title\n    .code = E0100\n",
+    )
+    .expect("diagnostic overlay");
+    let output = bn()
+        .args([
+            "check",
+            "--config",
+            root.join("config.toml").to_str().expect("config path"),
+            "tests/grammar/invalid/untyped-let.bn",
+        ])
+        .output()
+        .expect("check with overlay");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Custom syntax title"));
+    fs::remove_dir_all(root).expect("remove diagnostic fixture");
+}
+
+#[test]
+fn malformed_diagnostic_overlay_is_an_eager_stable_tool_error() {
+    let root = std::env::temp_dir().join(format!("bn-diag-invalid-{}", std::process::id()));
+    let messages = root.join("messages");
+    fs::create_dir_all(&messages).expect("diagnostic overlay directory");
+    fs::write(
+        root.join("config.toml"),
+        "[diagnostics]\ndir = \"messages\"\n",
+    )
+    .expect("diagnostic config");
+    fs::write(messages.join("parse.ftl"), "not valid Fluent\n")
+        .expect("invalid diagnostic overlay");
+    let output = bn()
+        .args([
+            "check",
+            "--config",
+            root.join("config.toml").to_str().expect("config path"),
+            "examples/hello.bn",
+        ])
+        .output()
+        .expect("check with invalid overlay");
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("error[CONFIG_INVALID]"));
+    assert!(stderr.contains("cannot load diagnostic catalog"));
+    fs::remove_dir_all(root).expect("remove invalid diagnostic fixture");
+}
+
+#[test]
+fn missing_diagnostic_overlay_is_an_eager_stable_tool_error() {
+    let root = std::env::temp_dir().join(format!("bn-diag-missing-{}", std::process::id()));
+    fs::create_dir_all(&root).expect("diagnostic config directory");
+    fs::write(
+        root.join("config.toml"),
+        "[diagnostics]\ndir = \"missing\"\n",
+    )
+    .expect("diagnostic config");
+    let output = bn()
+        .args([
+            "check",
+            "--config",
+            root.join("config.toml").to_str().expect("config path"),
+            "examples/hello.bn",
+        ])
+        .output()
+        .expect("check with missing overlay");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("error[CONFIG_INVALID]"));
+    fs::remove_dir_all(root).expect("remove missing diagnostic fixture");
 }
 
 #[test]
@@ -494,6 +1058,87 @@ fn warning_policy_controls_unreachable_diagnostic_end_to_end() {
 }
 
 #[test]
+fn warning_flags_cannot_demote_hard_type_errors() {
+    let path = std::env::temp_dir().join(format!(
+        "basicnext-hard-error-policy-{}.bn",
+        std::process::id()
+    ));
+    fs::write(
+        &path,
+        "FUNCTION Start() AS VOID\nDIM value AS INTEGER\nvalue = \"bad\"\nEND FUNCTION\n",
+    )
+    .expect("write hard-error fixture");
+    let output = bn()
+        .args(["check", "--allow", "TYPE_MISMATCH"])
+        .arg(&path)
+        .output()
+        .expect("run hard-error warning policy check");
+    let _ = fs::remove_file(&path);
+    assert_ne!(output.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("TYPE_MISMATCH"));
+}
+
+#[test]
+fn cli_warning_policy_overrides_config_per_code() {
+    let config_path = std::env::temp_dir().join(format!(
+        "basicnext-warning-policy-{}.toml",
+        std::process::id()
+    ));
+    fs::write(
+        &config_path,
+        "[warnings]\ndefault = \"warn\"\n[warnings.levels]\nUNUSED_BINDING = \"error\"\n",
+    )
+    .expect("write warning policy config");
+
+    let config_deny = bn()
+        .args([
+            "check",
+            "--config",
+            config_path.to_str().expect("config path"),
+            "tests/grammar/valid/unused-binding-warning.bn",
+        ])
+        .output()
+        .expect("run config warning policy");
+    assert_eq!(
+        config_deny.status.code(),
+        Some(1),
+        "stderr: {}",
+        String::from_utf8_lossy(&config_deny.stderr)
+    );
+    assert!(String::from_utf8_lossy(&config_deny.stderr).contains("error[UNUSED_BINDING]"));
+
+    let cli_allow = bn()
+        .args([
+            "check",
+            "--config",
+            config_path.to_str().expect("config path"),
+            "--allow",
+            "UNUSED_BINDING",
+            "tests/grammar/valid/unused-binding-warning.bn",
+        ])
+        .output()
+        .expect("run CLI-overridden warning policy");
+    let _ = fs::remove_file(&config_path);
+    assert_eq!(cli_allow.status.code(), Some(0));
+    assert!(!String::from_utf8_lossy(&cli_allow.stderr).contains("UNUSED_BINDING"));
+}
+
+#[test]
+fn eval_help_and_manpage_advertise_the_same_entrypoints() {
+    let help = bn().arg("--help").output().expect("run bn help");
+    assert_eq!(help.status.code(), Some(0));
+    let help = String::from_utf8_lossy(&help.stdout);
+    let man = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/man/bn.1"))
+        .expect("read bn man page");
+    for command in ["eval", "run", "build"] {
+        assert!(help.contains(command), "help missing {command}");
+        assert!(man.contains(command), "man page missing {command}");
+    }
+    assert!(help.contains("--module-path"));
+    assert!(man.contains("--module-path"));
+}
+
+#[test]
 fn warning_analysis_emits_unused_binding() {
     let output = bn()
         .args(["check", "tests/grammar/valid/unused-binding-warning.bn"])
@@ -734,10 +1379,12 @@ fn cli_help_and_version_advertise_0_4_7() {
     let help = bn().arg("--help").output().expect("run bn help");
     assert_eq!(help.status.code(), Some(0));
     let help = String::from_utf8_lossy(&help.stdout);
+    assert!(help.contains("eval") && help.contains("run") && help.contains("build"));
+    assert!(help.contains("--module-path"));
     assert!(help.contains("lsp") && help.contains("dap"));
     let version = bn().arg("--version").output().expect("run bn version");
     assert_eq!(version.status.code(), Some(0));
-    assert_eq!(String::from_utf8_lossy(&version.stdout).trim(), "bn 0.5.0");
+    assert_eq!(String::from_utf8_lossy(&version.stdout).trim(), "bn 0.5.1");
 }
 
 #[test]
@@ -910,11 +1557,6 @@ fn build_kmp_compiles_through_native_backend() {
 }
 
 #[test]
-fn build_executes_multidimensional_vector_like_interpreter() {
-    native_matches_interpreter("tests/grammar/valid/multidimensional-vectors.bn");
-}
-
-#[test]
 fn build_reports_the_type_for_unsupported_allocation_lowering() {
     let output = bn()
         .args(["build", "tests/grammar/valid/pointer-void.bn"])
@@ -1047,17 +1689,14 @@ fn native_matches_interpreter_with_input(path: &str, input: &str) {
 
 #[test]
 fn build_lowers_euclidean_div_and_remainder_matching_interpreter() {
-    native_matches_interpreter("tests/grammar/valid/build-euclidean-div.bn");
-    native_matches_interpreter("tests/grammar/valid/build-euclidean-rem.bn");
-    native_matches_interpreter("tests/grammar/valid/build-euclidean-runtime.bn");
+    // Overlapping smoke (div/rem/runtime) lives in tests/test_compiler_parity.py.
     native_matches_interpreter("tests/grammar/valid/build-euclidean-overflow.bn");
     native_matches_interpreter("tests/grammar/valid/build-divide-zero.bn");
 }
 
 #[test]
 fn build_lowers_power_shift_not_and_string_concat_matching_interpreter() {
-    native_matches_interpreter("tests/grammar/valid/build-power-shift.bn");
-    native_matches_interpreter("tests/grammar/valid/build-power-shift-runtime.bn");
+    // Overlapping smoke (power-shift*) lives in tests/test_compiler_parity.py.
     native_matches_interpreter("tests/grammar/valid/build-invalid-exponent.bn");
     native_matches_interpreter("tests/grammar/valid/build-invalid-shift.bn");
 }
@@ -1124,15 +1763,14 @@ fn build_executes_dispatch_examples_with_equivalent_results() {
 
 #[test]
 fn build_lowers_all_numeric_widths_and_checked_casts() {
-    native_matches_interpreter("tests/grammar/valid/build-widths.bn");
+    // Overlapping smoke (build-widths) lives in tests/test_compiler_parity.py.
     native_matches_interpreter("tests/grammar/valid/build-cast-overflow.bn");
     native_matches_interpreter("tests/grammar/valid/integer-narrowing-conversion.bn");
 }
 
 #[test]
 fn build_lowers_host_clock_and_console_through_bn_rt() {
-    native_matches_interpreter("tests/grammar/valid/build-clock.bn");
-    native_matches_interpreter("tests/grammar/valid/cls-and-beep.bn");
+    // Overlapping smoke (build-clock, cls-and-beep) lives in tests/test_compiler_parity.py.
     native_matches_interpreter("tests/grammar/valid/console-size.bn");
     native_matches_interpreter("tests/grammar/valid/console-print-at.bn");
 }
@@ -1461,68 +2099,6 @@ fn build_keeps_distinct_input_values_alive_across_later_reads() {
 }
 
 #[test]
-fn build_emits_seeded_random_with_interpreter_sequence() {
-    let output_path = std::env::temp_dir().join(format!("basicnext-random-{}", std::process::id()));
-    let _ = std::fs::remove_file(&output_path);
-    let output = bn()
-        .args([
-            "build",
-            "tests/grammar/valid/host-random.bn",
-            "-o",
-            output_path.to_str().expect("temporary path"),
-        ])
-        .output()
-        .expect("run random build");
-    assert_eq!(
-        output.status.code(),
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let compiled = Command::new(&output_path)
-        .output()
-        .expect("run random artifact");
-    let interpreted = bn()
-        .args(["run", "tests/grammar/valid/host-random.bn"])
-        .output()
-        .expect("run random interpreter");
-    assert_eq!(compiled.status.code(), interpreted.status.code());
-    assert_eq!(compiled.stdout, interpreted.stdout);
-    let _ = std::fs::remove_file(output_path);
-}
-
-#[test]
-fn build_emits_two_seeded_random_values_in_sequence() {
-    let output_path =
-        std::env::temp_dir().join(format!("basicnext-random-two-{}", std::process::id()));
-    let _ = std::fs::remove_file(&output_path);
-    let output = bn()
-        .args([
-            "build",
-            "tests/grammar/valid/host-random-twice.bn",
-            "-o",
-            output_path.to_str().expect("temporary path"),
-        ])
-        .output()
-        .expect("run two-random build");
-    assert_eq!(
-        output.status.code(),
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let compiled = Command::new(&output_path)
-        .output()
-        .expect("run two-random artifact");
-    let interpreted = bn()
-        .args(["run", "tests/grammar/valid/host-random-twice.bn"])
-        .output()
-        .expect("run two-random interpreter");
-    assert_eq!(compiled.stdout, interpreted.stdout);
-    let _ = std::fs::remove_file(output_path);
-}
-
-#[test]
 fn build_emits_host_args_length() {
     let output = bn()
         .args(["build", "tests/grammar/valid/print-args-length.bn"])
@@ -1581,28 +2157,8 @@ fn build_folds_relational_print() {
 }
 
 #[test]
-fn build_folds_pure_constant_function_call() {
-    native_matches_interpreter("tests/grammar/valid/print-call.bn");
-}
-
-#[test]
-fn build_folds_boolean_function_call() {
-    native_matches_interpreter("tests/grammar/valid/print-predicate-call.bn");
-}
-
-#[test]
 fn build_folds_pure_function_local_binding() {
     native_matches_interpreter("tests/grammar/valid/print-call-local.bn");
-}
-
-#[test]
-fn build_folds_string_function_call() {
-    native_matches_interpreter("tests/grammar/valid/print-string-call.bn");
-}
-
-#[test]
-fn build_folds_nested_pure_function_calls() {
-    native_matches_interpreter("tests/grammar/valid/print-call-nested.bn");
 }
 
 #[test]
@@ -1775,6 +2331,517 @@ fn wasm_build_allows_host_capability_names_in_strings() {
         .output()
         .expect("run wasm build");
     assert_eq!(output.status.code(), Some(0));
+}
+
+#[test]
+fn native_build_executes_host_exec_result_accessors() {
+    let output_path =
+        std::env::temp_dir().join(format!("basicnext-host-exec-{}", std::process::id()));
+    let output = bn()
+        .args([
+            "build",
+            "-o",
+            output_path.to_str().expect("UTF-8 output path"),
+            "tests/grammar/valid/build-host-exec.bn",
+        ])
+        .output()
+        .expect("run native HOST.Exec build");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let run = std::process::Command::new(&output_path)
+        .output()
+        .expect("run native HOST.Exec executable");
+    assert_eq!(run.status.code(), Some(0));
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "0\n\n\n\n");
+    let _ = fs::remove_file(output_path);
+}
+
+#[test]
+fn native_build_executes_host_exec_helper_streams_and_status() {
+    let base =
+        std::env::temp_dir().join(format!("basicnext-host-exec-matrix-{}", std::process::id()));
+    fs::create_dir_all(&base).expect("create native exec matrix directory");
+    let helper = base.join("helper");
+    let source = base.join("program.bn");
+    let binary = base.join("program");
+    let status = std::process::Command::new("rustc")
+        .args(["--edition=2021", "tests/fixtures/host_exec_helper.rs", "-o"])
+        .arg(&helper)
+        .status()
+        .expect("compile host exec helper");
+    assert!(status.success());
+    let helper_text = helper
+        .to_str()
+        .expect("UTF-8 helper path")
+        .replace('"', "\\\"");
+    fs::write(
+        &source,
+        format!(
+            "IMPORT HOST.Exec AS Exec\nFUNCTION Start() AS VOID\nLET args AS STRING[2]\nargs[0] = \"stdout\"\nargs[1] = \"native-out\"\nLET r AS Exec.Result OR Error = Exec.Run(\"{helper_text}\", args)\nIF r IS Error THEN\nPRINT \"error\", r.Code\nELSE\nPRINT r.ReturnCode, r.Stdout, r.Stderr\nEND IF\nLET fail AS Exec.Result OR Error = Exec.Run(\"{helper_text}\", [\"status\", \"7\"])\nIF fail IS Error THEN\nPRINT \"fail-error\", fail.Code\nELSE\nPRINT \"status\", fail.ReturnCode\nEND IF\nEND FUNCTION\n"
+        ),
+    )
+    .expect("write native exec matrix program");
+    let output = bn()
+        .args(["build", "-o", binary.to_str().expect("UTF-8 binary path")])
+        .arg(&source)
+        .output()
+        .expect("build native exec matrix program");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let run = std::process::Command::new(&binary)
+        .output()
+        .expect("run native exec matrix program");
+    assert_eq!(run.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "0 native-out \nstatus 7\n"
+    );
+    let _ = fs::remove_dir_all(base);
+}
+
+#[test]
+fn native_build_reports_host_exec_argument_and_spawn_errors() {
+    let output_path =
+        std::env::temp_dir().join(format!("basicnext-host-exec-errors-{}", std::process::id()));
+    let output = bn()
+        .args([
+            "build",
+            "-o",
+            output_path.to_str().expect("UTF-8 output path"),
+            "tests/grammar/valid/build-host-exec-errors.bn",
+        ])
+        .output()
+        .expect("build native HOST.Exec errors fixture");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let run = std::process::Command::new(&output_path)
+        .output()
+        .expect("run native HOST.Exec errors fixture");
+    assert_eq!(run.status.code(), Some(0));
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "empty 1\nmissing 2\n");
+    let _ = fs::remove_file(output_path);
+}
+
+#[test]
+fn native_host_exec_policy_denial_happens_before_spawn() {
+    let output_path =
+        std::env::temp_dir().join(format!("basicnext-host-exec-policy-{}", std::process::id()));
+    let output = bn()
+        .args([
+            "build",
+            "-o",
+            output_path.to_str().expect("UTF-8 output path"),
+            "tests/grammar/valid/build-host-exec-policy.bn",
+        ])
+        .output()
+        .expect("build native HOST.Exec policy fixture");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let run = std::process::Command::new(&output_path)
+        .env("BN_EXEC_POLICY", "deny")
+        .output()
+        .expect("run native HOST.Exec policy fixture");
+    assert_eq!(run.status.code(), Some(0));
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "denied 11\n");
+    let _ = fs::remove_file(output_path);
+}
+
+#[test]
+fn native_host_exec_rejects_invalid_utf8_capture() {
+    let base =
+        std::env::temp_dir().join(format!("basicnext-host-exec-utf8-{}", std::process::id()));
+    fs::create_dir_all(&base).expect("create UTF-8 fixture directory");
+    let helper = base.join("helper");
+    let source = base.join("program.bn");
+    let binary = base.join("program");
+    let status = std::process::Command::new("rustc")
+        .args(["--edition=2021", "tests/fixtures/host_exec_helper.rs", "-o"])
+        .arg(&helper)
+        .status()
+        .expect("compile host exec helper");
+    assert!(status.success());
+    fs::write(
+        &source,
+        format!(
+            r#"IMPORT HOST.Exec AS Exec
+FUNCTION Start() AS VOID
+LET r AS Exec.Result OR Error = Exec.Run("{helper}", ["invalid-utf8"])
+IF r IS Error THEN
+PRINT "invalid", r.Code
+END IF
+END FUNCTION
+"#,
+            helper = helper.to_str().expect("UTF-8 helper path")
+        ),
+    )
+    .expect("write UTF-8 fixture program");
+    let output = bn()
+        .args(["build", "-o", binary.to_str().expect("UTF-8 binary path")])
+        .arg(&source)
+        .output()
+        .expect("build invalid UTF-8 fixture");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let run = std::process::Command::new(&binary)
+        .output()
+        .expect("run invalid UTF-8 fixture");
+    assert_eq!(run.status.code(), Some(0));
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "invalid 7\n");
+    let _ = fs::remove_dir_all(base);
+}
+
+/// Compiles the deterministic exec helper, substitutes its path into `body`
+/// (placeholder `{HELPER}`), builds the BN program natively, runs it under
+/// `env`, and returns the child stdout. Real `rustc` + real `bn build` + real
+/// child process: the native HOST.Exec seam is exercised without mocks (4.3).
+fn native_exec_program(label: &str, body: &str, env: &[(&str, &str)]) -> String {
+    let base = std::env::temp_dir().join(format!("basicnext-nexec-{label}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&base);
+    fs::create_dir_all(&base).expect("create native exec dir");
+    let helper = base.join("helper");
+    let status = Command::new("rustc")
+        .args(["--edition=2021", "tests/fixtures/host_exec_helper.rs", "-o"])
+        .arg(&helper)
+        .status()
+        .expect("compile host exec helper");
+    assert!(status.success(), "rustc must build host_exec_helper");
+    let source = base.join("program.bn");
+    let binary = base.join("program");
+    let helper_bn = helper.to_string_lossy().replace('\\', "\\\\");
+    fs::write(&source, body.replace("{HELPER}", &helper_bn)).expect("write native exec program");
+    let build = bn()
+        .args(["build", "-o", binary.to_str().expect("UTF-8 binary path")])
+        .arg(&source)
+        .output()
+        .expect("native build");
+    assert_eq!(
+        build.status.code(),
+        Some(0),
+        "build: {}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let mut command = Command::new(&binary);
+    for (key, value) in env {
+        command.env(key, value);
+    }
+    let run = command.output().expect("run native exec program");
+    assert_eq!(
+        run.status.code(),
+        Some(0),
+        "run: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let stdout = String::from_utf8(run.stdout).expect("UTF-8 program stdout");
+    let _ = fs::remove_dir_all(&base);
+    stdout
+}
+
+/// E06 (native) — spaces, empty args, quotes, Unicode and shell metacharacters
+/// stay literal argv elements; there is no shell between BN and the child.
+#[test]
+fn native_host_exec_e06_literal_argv_elements() {
+    let body = r#"IMPORT HOST.Exec AS Exec
+FUNCTION Start() AS VOID
+LET r AS Exec.Result OR Error = Exec.Run("{HELPER}", ["argv", "hello world", "", "café", "; rm -rf /", "\"quoted\"", "$HOME"])
+IF r IS Error THEN
+PRINT "err", r.Code
+ELSE
+PRINT r.Stdout
+END IF
+END FUNCTION
+"#;
+    assert_eq!(
+        native_exec_program("e06", body, &[]),
+        "0=hello world\n1=\n2=café\n3=; rm -rf /\n4=\"quoted\"\n5=$HOME\n\n"
+    );
+}
+
+/// E08 (native) — child stdin is immediately EOF (closed / null device).
+#[test]
+fn native_host_exec_e08_child_stdin_is_eof() {
+    let body = r#"IMPORT HOST.Exec AS Exec
+FUNCTION Start() AS VOID
+LET r AS Exec.Result OR Error = Exec.Run("{HELPER}", ["echo-stdin"])
+IF r IS Error THEN
+PRINT "err", r.Code
+ELSE
+PRINT "eof", r.Stdout, r.ReturnCode
+END IF
+END FUNCTION
+"#;
+    assert_eq!(native_exec_program("e08", body, &[]), "eof  0\n");
+}
+
+/// E10 (native) — concurrent stdout/stderr beyond pipe capacity drain without
+/// deadlock; a reduced policy capture ceiling returns `CAPTURE_LIMIT`=8.
+#[test]
+fn native_host_exec_e10_concurrent_streams_and_capture_limit() {
+    let concurrent = r#"IMPORT HOST.Exec AS Exec
+FUNCTION Start() AS VOID
+LET r AS Exec.Result OR Error = Exec.Run("{HELPER}", ["both", "262144"])
+IF r IS Error THEN
+PRINT "err", r.Code
+ELSE
+PRINT "ok", LEN(r.Stdout), LEN(r.Stderr), r.ReturnCode
+END IF
+END FUNCTION
+"#;
+    assert_eq!(
+        native_exec_program("e10a", concurrent, &[]),
+        "ok 262144 262144 0\n"
+    );
+
+    let limited = r#"IMPORT HOST.Exec AS Exec
+FUNCTION Start() AS VOID
+LET r AS Exec.Result OR Error = Exec.Run("{HELPER}", ["stdout-bytes", "4096"])
+IF r IS Error THEN
+PRINT "limit", r.Code
+ELSE
+PRINT "unexpected", LEN(r.Stdout)
+END IF
+END FUNCTION
+"#;
+    assert_eq!(
+        native_exec_program("e10b", limited, &[("BN_EXEC_CAPTURE_LIMIT", "1024")]),
+        "limit 8\n"
+    );
+}
+
+/// E11 (native) — POSIX signal termination yields `ReturnCode` = -signal (D-H1-01).
+#[cfg(unix)]
+#[test]
+fn native_host_exec_e11_signal_termination_negative_return_code() {
+    let body = r#"IMPORT HOST.Exec AS Exec
+FUNCTION Start() AS VOID
+LET r AS Exec.Result OR Error = Exec.Run("{HELPER}", ["signal"])
+IF r IS Error THEN
+PRINT "err", r.Code
+ELSE
+PRINT "sig", r.ReturnCode
+END IF
+END FUNCTION
+"#;
+    assert_eq!(native_exec_program("e11", body, &[]), "sig -15\n");
+}
+
+/// E12 (native) — cwd inheritance, environment inheritance and spaces in the
+/// executable path. The helper lives under a spaced directory and the child
+/// inherits the parent's controlled working directory and marker variable.
+#[test]
+fn native_host_exec_e12_cwd_env_and_spaced_path() {
+    let base = std::env::temp_dir().join(format!("basicnext-nexec-e12-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&base);
+    let spaced_dir = base.join("host exec dir");
+    fs::create_dir_all(&spaced_dir).expect("create spaced dir");
+    let helper = spaced_dir.join("helper bin");
+    let status = Command::new("rustc")
+        .args(["--edition=2021", "tests/fixtures/host_exec_helper.rs", "-o"])
+        .arg(&helper)
+        .status()
+        .expect("compile host exec helper");
+    assert!(status.success(), "rustc must build host_exec_helper");
+    let helper_bn = helper.to_string_lossy().replace('\\', "\\\\");
+    let source = base.join("program.bn");
+    let binary = base.join("program");
+    let body = format!(
+        r#"IMPORT HOST.Exec AS Exec
+FUNCTION Start() AS VOID
+LET cwd AS Exec.Result OR Error = Exec.Run("{helper}", ["cwd"])
+IF cwd IS Error THEN
+PRINT "cwd-err", cwd.Code
+ELSE
+PRINT "cwd", cwd.Stdout
+END IF
+LET env AS Exec.Result OR Error = Exec.Run("{helper}", ["env", "BN_E12_MARKER"])
+IF env IS Error THEN
+PRINT "env-err", env.Code
+ELSE
+PRINT "env", env.Stdout
+END IF
+END FUNCTION
+"#,
+        helper = helper_bn
+    );
+    fs::write(&source, body).expect("write E12 program");
+    let build = bn()
+        .args(["build", "-o", binary.to_str().expect("UTF-8 binary path")])
+        .arg(&source)
+        .output()
+        .expect("build E12 program");
+    assert_eq!(
+        build.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let run = Command::new(&binary)
+        .current_dir(&base)
+        .env("BN_E12_MARKER", "inherited-value")
+        .output()
+        .expect("run E12 program");
+    assert_eq!(
+        run.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    // getcwd() in the child resolves symlinks (e.g. macOS /var -> /private/var),
+    // so compare against the canonicalized controlled working directory.
+    let cwd_expected = base.canonicalize().unwrap_or_else(|_| base.clone());
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        format!("cwd {}\nenv inherited-value\n", cwd_expected.display())
+    );
+    let _ = fs::remove_dir_all(&base);
+}
+
+/// E13 (native) — repeated calls reclaim child resources without leak or hang;
+/// Result copies observe the captured value (ARC-managed heap handle on native).
+#[test]
+fn native_host_exec_e13_repeated_calls_and_release() {
+    let body = r#"IMPORT HOST.Exec AS Exec
+FUNCTION Start() AS VOID
+LET last AS INT64 = 0
+FOR i AS INTEGER = 1 TO 8
+LET r AS Exec.Result OR Error = Exec.Run("{HELPER}", ["stdout", "x"])
+IF r IS Error THEN
+PRINT "err", r.Code
+STOP 1
+END IF
+IF r.ReturnCode <> 0 THEN
+PRINT "bad", r.ReturnCode
+STOP 1
+END IF
+last = r.ReturnCode
+LET copy AS Exec.Result OR Error = r
+IF copy IS Exec.Result THEN
+IF copy.Stdout <> "x" THEN
+PRINT "copy-bad"
+STOP 1
+END IF
+END IF
+END FOR
+PRINT "done", last
+END FUNCTION
+"#;
+    assert_eq!(native_exec_program("e13", body, &[]), "done 0\n");
+}
+
+/// E14 (native) — a reduced policy timeout returns TIMEOUT=9 and the child is
+/// reaped (the test completing rather than hanging is the watchdog evidence).
+#[test]
+fn native_host_exec_e14_timeout_returns_error() {
+    let body = r#"IMPORT HOST.Exec AS Exec
+FUNCTION Start() AS VOID
+LET r AS Exec.Result OR Error = Exec.Run("{HELPER}", ["block"])
+IF r IS Error THEN
+PRINT "timeout", r.Code
+ELSE
+PRINT "unexpected", r.ReturnCode
+END IF
+END FUNCTION
+"#;
+    assert_eq!(
+        native_exec_program("e14", body, &[("BN_EXEC_TIMEOUT_MS", "200")]),
+        "timeout 9\n"
+    );
+}
+
+/// Compiles the deterministic exec helper into `dir` and returns its path.
+fn compile_exec_helper(dir: &std::path::Path) -> std::path::PathBuf {
+    let helper = dir.join("helper");
+    let status = Command::new("rustc")
+        .args(["--edition=2021", "tests/fixtures/host_exec_helper.rs", "-o"])
+        .arg(&helper)
+        .status()
+        .expect("compile host exec helper");
+    assert!(status.success(), "rustc must build host_exec_helper");
+    helper
+}
+
+/// 4.4 — `bn eval` runs a HOST.Exec program and captures the child's stdout in
+/// the JSON envelope's program-stdout field. The captured stream must not leak
+/// onto the process channels or corrupt the single JSON object (D-T1-03).
+#[test]
+fn eval_host_exec_produces_structured_json_without_channel_corruption() {
+    let base = std::env::temp_dir().join(format!("basicnext-eval-exec-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&base);
+    fs::create_dir_all(&base).expect("create eval exec dir");
+    let helper = compile_exec_helper(&base);
+    let helper_bn = helper.to_string_lossy().replace('\\', "\\\\");
+    let program = format!(
+        "IMPORT HOST.Exec AS Exec\nFUNCTION Start() AS VOID\nLET r AS Exec.Result OR Error = Exec.Run(\"{helper_bn}\", [\"stdout\", \"hi-from-child\"])\nIF r IS Error THEN\nPRINT \"error\", r.Code\nELSE\nPRINT r.Stdout\nEND IF\nEND FUNCTION\n"
+    );
+    // Explicit program mode: no promotion warning (D-T1-02), so the envelope's
+    // diagnostics stay empty and the test isolates the exec-capture concern.
+    let output = bn()
+        .args(["eval", "--format", "json", "--mode", "program", &program])
+        .output()
+        .expect("run bn eval HOST.Exec");
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        output.stderr.is_empty(),
+        "process stderr leaked: {:?}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("exactly one JSON envelope");
+    assert_eq!(envelope["ok"], true);
+    assert_eq!(envelope["exit_code"], 0);
+    assert_eq!(envelope["stdout"], "hi-from-child\n");
+    assert_eq!(envelope["diagnostics"].as_array().map(Vec::len), Some(0));
+    let _ = fs::remove_dir_all(&base);
+}
+
+/// 4.4 — a restricted profile denies HOST.Exec in eval exactly as in `bn run`
+/// and native artifacts: the call returns Error 11 and the child side-effect
+/// marker is never produced (GC-POL: denial is observed, not just reported).
+#[test]
+fn eval_host_exec_restricted_profile_denies_execution_and_side_effect() {
+    let base = std::env::temp_dir().join(format!("basicnext-eval-deny-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&base);
+    fs::create_dir_all(&base).expect("create eval deny dir");
+    let helper = compile_exec_helper(&base);
+    let helper_bn = helper.to_string_lossy().replace('\\', "\\\\");
+    let marker = base.join("marker");
+    let marker_bn = marker.to_string_lossy().replace('\\', "\\\\");
+    let program = format!(
+        "IMPORT HOST.Exec AS Exec\nFUNCTION Start() AS VOID\nLET r AS Exec.Result OR Error = Exec.Run(\"{helper_bn}\", [\"touch\", \"{marker_bn}\"])\nIF r IS Error THEN\nPRINT \"denied\", r.Code\nELSE\nPRINT \"ran\", r.ReturnCode\nEND IF\nEND FUNCTION\n"
+    );
+    let output = bn()
+        .args(["eval", "--format", "json", &program])
+        .env("BN_EXEC_POLICY", "deny")
+        .output()
+        .expect("run bn eval denied HOST.Exec");
+    assert_eq!(output.status.code(), Some(0));
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("exactly one JSON envelope");
+    assert_eq!(envelope["stdout"], "denied 11\n");
+    assert!(
+        !marker.exists(),
+        "denied HOST.Exec must not spawn the child or create its side-effect marker"
+    );
+    let _ = fs::remove_dir_all(&base);
 }
 
 #[cfg(unix)]

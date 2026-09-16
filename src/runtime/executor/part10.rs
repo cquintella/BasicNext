@@ -10,11 +10,7 @@ impl Executor<'_, '_> {
     ) -> Result<Value, Diagnostic> {
         require_arity("FS.File.ReadBytes", arguments, 2, span)?;
         let Value::Pointer { handle } = arguments[1] else {
-            return Err(runtime_error(
-                "TYPE_MISMATCH",
-                "ReadBytes expects BYTE buffer",
-                span,
-            ));
+            return Err(super::type_mismatch("BYTE buffer", "non-pointer value", "FS.File.ReadBytes buffer", span));
         };
         let (bytes, eof) = {
             let resource = self
@@ -68,11 +64,7 @@ impl Executor<'_, '_> {
     ) -> Result<Value, Diagnostic> {
         require_arity("FS.File.WriteBytes", arguments, 3, span)?;
         let Value::Pointer { handle } = arguments[1] else {
-            return Err(runtime_error(
-                "TYPE_MISMATCH",
-                "WriteBytes expects BYTE buffer",
-                span,
-            ));
+            return Err(super::type_mismatch("BYTE buffer", "non-pointer value", "FS.File.WriteBytes buffer", span));
         };
         let (count, _) = integer(&arguments[2], span)?;
         let len = self.memory.len(handle, span)?;
@@ -80,18 +72,14 @@ impl Executor<'_, '_> {
             .ok()
             .filter(|count| *count <= len)
             .ok_or_else(|| {
-                runtime_error(
-                    "INDEX_OUT_OF_BOUNDS",
-                    "byte count exceeds buffer length",
-                    span,
-                )
+                super::index_out_of_bounds(count, len, "BYTE buffer", span)
             })?;
         let bytes = (0..count)
             .map(|index| {
                 let value = self.memory.get(handle, index, span)?;
                 let (value, _) = integer(value, span)?;
                 u8::try_from(value)
-                    .map_err(|_| runtime_error("TYPE_MISMATCH", "buffer is not BYTE", span))
+                    .map_err(|_| super::type_mismatch("BYTE", "non-BYTE value", "FS.File.WriteBytes buffer element", span))
             })
             .collect::<Result<Vec<_>, _>>()?;
         let resource = self
@@ -200,11 +188,7 @@ impl Executor<'_, '_> {
             1
         };
         let element_size = pointer_element_size(element).ok_or_else(|| {
-            runtime_error(
-                "TYPE_MISMATCH",
-                "pointer element is not a numeric type",
-                span,
-            )
+            super::type_mismatch("numeric pointer element", "non-numeric type", "pointer allocation", span)
         })?;
         let bytes = u64::try_from(count)
             .ok()
@@ -238,11 +222,7 @@ impl Executor<'_, '_> {
                 span,
             )),
             Value::Vector(vector) => vector.get(index).cloned().ok_or_else(|| {
-                runtime_error(
-                    "INDEX_OUT_OF_BOUNDS",
-                    format!("index {index} is outside vector length {}", vector.len()),
-                    span,
-                )
+                super::index_out_of_bounds(index, vector.len(), "vector", span)
             }),
             Value::Pointer { handle } => self.memory.get(*handle, index, span).cloned(),
             Value::String(text) => text
@@ -250,14 +230,7 @@ impl Executor<'_, '_> {
                 .nth(index)
                 .map(|character| Value::String(character.into()))
                 .ok_or_else(|| {
-                    runtime_error(
-                        "INDEX_OUT_OF_BOUNDS",
-                        format!(
-                            "index {index} is outside string length {}",
-                            text.chars().count()
-                        ),
-                        span,
-                    )
+                    super::index_out_of_bounds(index, text.chars().count(), "string", span)
                 }),
             Value::HostArgs => self
                 .host
@@ -266,20 +239,9 @@ impl Executor<'_, '_> {
                 .cloned()
                 .map(Value::String)
                 .ok_or_else(|| {
-                    runtime_error(
-                        "INDEX_OUT_OF_BOUNDS",
-                        format!(
-                            "index {index} is outside argument count {}",
-                            self.host.arguments.len()
-                        ),
-                        span,
-                    )
+                    super::index_out_of_bounds(index, self.host.arguments.len(), "HOST.Args", span)
                 }),
-            _ => Err(runtime_error(
-                "TYPE_MISMATCH",
-                "value is not indexable",
-                span,
-            )),
+            _ => Err(super::type_mismatch("indexable value", "non-indexable value", "index operation", span)),
         }
     }
 
@@ -302,9 +264,10 @@ impl Executor<'_, '_> {
             )),
             Value::Pointer { handle } => {
                 if !remaining.is_empty() {
-                    return Err(runtime_error(
-                        "INDEX_OUT_OF_BOUNDS",
-                        "pointer indexing requires one index",
+                    return Err(super::index_out_of_bounds(
+                        remaining.len() + 1,
+                        1,
+                        "pointer indexing",
                         span,
                     ));
                 }
@@ -314,19 +277,11 @@ impl Executor<'_, '_> {
             Value::Vector(vector) => {
                 let length = vector.len();
                 let element = vector.get_mut(index).ok_or_else(|| {
-                    runtime_error(
-                        "INDEX_OUT_OF_BOUNDS",
-                        format!("index {index} is outside vector length {length}"),
-                        span,
-                    )
+                    super::index_out_of_bounds(index, length, "vector", span)
                 })?;
                 self.set_index(element, remaining, stored, span)
             }
-            _ => Err(runtime_error(
-                "TYPE_MISMATCH",
-                "value is not indexable",
-                span,
-            )),
+            _ => Err(super::type_mismatch("indexable value", "non-indexable value", "assignment index operation", span)),
         }
     }
 
@@ -341,14 +296,10 @@ pub(crate) fn indexed_value<'a>(
         return Ok(value);
     };
     let Value::Vector(values) = value else {
-        return Err(runtime_error("TYPE_MISMATCH", "value is not indexable", span));
+        return Err(super::type_mismatch("indexable value", "non-indexable value", "nested index operation", span));
     };
     let element = values.get(index).ok_or_else(|| {
-        runtime_error(
-            "INDEX_OUT_OF_BOUNDS",
-            format!("index {index} is outside vector length {}", values.len()),
-            span,
-        )
+        super::index_out_of_bounds(index, values.len(), "vector", span)
     })?;
     indexed_value(element, remaining, span)
 }

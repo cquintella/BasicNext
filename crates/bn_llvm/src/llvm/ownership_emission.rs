@@ -149,6 +149,26 @@ pub(crate) fn lower_ownership_emission(
                 );
                 let _ = writeln!(text, "  br label %{continuation}");
                 state.control_flow.label(text, continuation);
+            } else if llvm_type(ty) == Some("{ i1, ptr, i64 }")
+                && matches!(
+                    ty,
+                    Type::Alternative(alternatives)
+                        if alternatives.iter().any(|item| matches!(
+                            item,
+                            Type::Named(name) if name == "HOST.Exec.Result"
+                        ))
+                )
+            {
+                let _ = writeln!(
+                    text,
+                    "  %execdelhandle{} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                    value.0, value.0
+                );
+                let _ = writeln!(
+                    text,
+                    "  call i32 @bn_rt_exec_result_close(i64 %execdelhandle{})",
+                    value.0
+                );
             } else if llvm_type(ty) == Some("{ i1, ptr, i64 }") {
                 let _ = writeln!(
                     text,

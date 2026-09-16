@@ -85,7 +85,12 @@ impl<'a> Parser<'a> {
             self.take();
             Ok(())
         } else {
-            Err(self.error(format!("expected {word}")))
+            Err(Diagnostic::parse_facts(
+                word,
+                "the current declaration or statement",
+                self.peek().span,
+            )
+            .expect("parser diagnostic schema"))
         }
     }
     pub(crate) fn expect_symbol(&mut self, symbol: Symbol) -> Result<(), Diagnostic> {
@@ -124,10 +129,14 @@ impl<'a> Parser<'a> {
         &self.tokens[self.index - 1]
     }
     pub(crate) fn error(&self, message: impl Into<String>) -> Diagnostic {
-        Diagnostic {
-            code: "E0100",
-            message: message.into(),
-            span: self.peek().span,
-        }
+        let message = message.into();
+        Diagnostic::parse_facts(message, "source parser", self.peek().span).unwrap_or_else(|_| {
+            Diagnostic {
+                code: "E0100",
+                message: "parser error".into(),
+                span: self.peek().span,
+                structured: None,
+            }
+        })
     }
 }

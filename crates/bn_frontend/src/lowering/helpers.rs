@@ -57,11 +57,16 @@ pub(crate) fn assignment_operator(operator: &str) -> Result<&'static str, Diagno
 }
 
 pub(crate) fn ir_error(message: impl Into<String>, span: Span) -> Diagnostic {
-    Diagnostic {
-        code: "IR_LOWERING",
-        message: message.into(),
-        span,
-    }
+    Diagnostic::structured(
+        bn_diag::DiagId::IrLowering,
+        vec![("detail".into(), message.into().into())],
+        vec![bn_diag::Label {
+            span,
+            style: bn_diag::LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("IR lowering diagnostic schema is registered")
 }
 
 pub(crate) fn type_test_name(atom: &TypeAtom) -> String {
@@ -126,6 +131,7 @@ pub(crate) fn is_namespace_type(ty: &Type) -> bool {
             | Type::HostConsole
             | Type::HostFileSystem
             | Type::HostNet
+            | Type::HostExec
             | Type::Module(_)
     )
 }
@@ -214,6 +220,17 @@ pub(crate) fn network_import_span(program: &Program) -> Option<Span> {
     })
 }
 
+pub(crate) fn exec_import_span(program: &Program) -> Option<Span> {
+    program.items.iter().find_map(|item| match item {
+        Item::Import { path, span, .. }
+            if path.len() == 2 && path[0] == "HOST" && path[1] == "Exec" =>
+        {
+            Some(*span)
+        }
+        _ => None,
+    })
+}
+
 pub(crate) fn standard_import_span(program: &Program, name: &str) -> Option<Span> {
     program.items.iter().find_map(|item| match item {
         Item::Import { path, span, .. } if path.len() == 1 && path[0] == name => Some(*span),
@@ -249,6 +266,7 @@ pub(crate) fn namespace_function(object_type: &Type, name: &str, prefix: &str) -
         Type::HostConsole => Some(format!("HOST.Console.{name}")),
         Type::HostFileSystem => Some(format!("HOST.FileSystem.{name}")),
         Type::HostNet => Some(format!("HOST.Net.{name}")),
+        Type::HostExec => Some(format!("HOST.Exec.{name}")),
         _ => None,
     }
 }

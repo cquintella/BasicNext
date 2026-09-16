@@ -5,25 +5,13 @@ impl Executor<'_, '_> {
     pub(crate) fn dataframe_join(&mut self, name: &str, id: u64, arguments: &[Value], span: Span, kind: DataFrameJoin) -> Result<Value, Diagnostic> {
             require_arity(name, arguments, 4, span)?;
             let Value::DataFrame(other_id) = arguments[1] else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "join expects DataFrame",
-                    span,
-                ));
+                return Err(super::super::type_mismatch("DataFrame", "non-DataFrame value", "join", span));
             };
             let Value::String(left_label) = &arguments[2] else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "left key must be STRING",
-                    span,
-                ));
+                return Err(super::super::type_mismatch("STRING", "non-STRING value", "join left key", span));
             };
             let Value::String(right_label) = &arguments[3] else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "right key must be STRING",
-                    span,
-                ));
+                return Err(super::super::type_mismatch("STRING", "non-STRING value", "join right key", span));
             };
             let left = self.dataframes.get(&id).ok_or_else(|| {
                 runtime_error("USE_AFTER_RELEASE", "DataFrame handle is invalid", span)
@@ -56,11 +44,7 @@ impl Executor<'_, '_> {
     pub(crate) fn dataframe_append(&mut self, name: &str, method: &str, id: u64, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
             require_arity(name, arguments, 2, span)?;
             let Value::DataFrame(other_id) = arguments[1] else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "AppendRows/AppendColumns expects DataFrame",
-                    span,
-                ));
+                return Err(super::super::type_mismatch("DataFrame", "non-DataFrame value", method, span));
             };
             let left = self.dataframes.get(&id).ok_or_else(|| {
                 runtime_error("USE_AFTER_RELEASE", "DataFrame handle is invalid", span)

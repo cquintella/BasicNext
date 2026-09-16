@@ -138,9 +138,12 @@ END IF
 ```
 
 
-### `HOST.Exec` (proposed for 0.5.1 — not shipped)
+### `HOST.Exec` (0.5.1)
 
-> **Status:** Contract accepted for planning under [`todo/proposals/host-exec-0.5.1.md`](../../todo/proposals/host-exec-0.5.1.md) and `ongoing/bucket-0.5.1.md`. Do **not** treat this section as available in a released toolchain until fixtures E1–E7 are green on interpret and native and Quorra has gated the capability.
+> **Status:** Shipped in 0.5.1. The capability is available on both the
+> interpreter and the native (LLVM) path, with the E01–E14 acceptance matrix
+> green on both. Execution is governed by the execution policy (restricted
+> profiles deny it by default). Contract: [`todo/proposals/host-exec-0.5.1.md`](../../todo/proposals/host-exec-0.5.1.md).
 
 `HOST.Exec` runs an **external program** and captures its output, in the style of a language-level `exec()`: the host **spawns** a child, **waits** until it finishes, and returns a structured result. It does **not** replace the Basic Next process image (that would be POSIX `execve`, which is out of 0.5.1).
 
@@ -164,10 +167,12 @@ END FUNCTION
 | --- | --- |
 | Import | `IMPORT HOST.Exec AS Exec` — no new reserved word |
 | Primary API | `Run(program AS STRING, args AS STRING[]) AS Exec.Result OR Error` |
-| `Exec.Result` | `ReturnCode AS INTEGER` (child return code), `Stdout AS STRING`, `Stderr AS STRING` |
+| `Exec.Result` | `ReturnCode AS INT64` (child return code), `Stdout AS STRING`, `Stderr AS STRING` |
 | Child stdin | Closed (no input blob in 0.5.1) |
 | Shell | Forbidden as the implementation of `Run` (no `sh -c` / `cmd /c` default) |
 | Non-zero child code | Still a `Result` — inspect `ReturnCode`; `Error` is for Host/OS launch or capture failure |
+| Signal termination (POSIX) | `ReturnCode = -signal` (e.g. `-15` for SIGTERM); the completed spawn stays a `Result` |
+| Capture limits | 16 MiB per stream and a 60 s wall-clock ceiling by default; policy may lower them. Overflow/timeout returns a stable `Error`, never truncated output |
 | Restricted profiles | Deny `HOST.Exec` by default (for example Jupyter-style hosts) |
 
 Do not confuse `HOST.Exec` with `HOST.SQLite` / `Db.Exec(sql)` (SQL execution), which is a different capability.

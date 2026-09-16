@@ -86,7 +86,12 @@ impl<'a> Lexer<'a> {
         }
     }
     fn error(&self, message: impl Into<String>) -> Diagnostic {
-        Diagnostic::lexical(message, self.span(self.position()))
+        Diagnostic::lexical_facts(
+            message,
+            "valid BN character sequence",
+            self.span(self.position()),
+        )
+        .unwrap_or_else(|_| Diagnostic::lexical("lexical error", self.span(self.position())))
     }
     fn peek(&self) -> Option<char> {
         self.source.text[self.offset..].chars().next()
@@ -286,9 +291,23 @@ impl<'a> Lexer<'a> {
                 Some(':') => (Symbol::Colon, 1),
                 Some('.') => (Symbol::Dot, 1),
                 Some('^') => {
-                    return Err(self.error("'^' is not an operator; use '**' for exponentiation"));
+                    self.advance();
+                    return Err(Diagnostic::lexical_facts(
+                        "^",
+                        "** for exponentiation",
+                        self.span(start),
+                    )
+                    .expect("lexical diagnostic schema"));
                 }
-                Some(value) => return Err(self.error(format!("unexpected character '{value}'"))),
+                Some(value) => {
+                    self.advance();
+                    return Err(Diagnostic::lexical_facts(
+                        value.to_string(),
+                        "a Basic Next token",
+                        self.span(start),
+                    )
+                    .expect("lexical diagnostic schema"));
+                }
                 None => unreachable!(),
             }
         };

@@ -319,7 +319,7 @@ fn execute_program(
         &crate::runtime::HostEnv::system(vec![path.to_owned()]),
         &mut control,
     )
-    .map_err(|error| error.message)
+    .map_err(|error| error.message.to_string())
 }
 
 fn resume_session(session: &SharedSession, step: Option<StepMode>) {

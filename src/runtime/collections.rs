@@ -8,7 +8,7 @@ use crate::{
     source::Span,
 };
 
-use super::{Value, integer, runtime_error};
+use super::{Value, integer, type_mismatch};
 
 pub(super) fn dataframe_index_error() -> Value {
     Value::Error {
@@ -35,9 +35,10 @@ pub(super) fn collect_indices(
             .map(|index| memory.get(*handle, index, span).cloned())
             .collect::<Result<Vec<_>, _>>()?,
         _ => {
-            return Err(runtime_error(
-                "TYPE_MISMATCH",
-                "indices must be an INTEGER vector",
+            return Err(type_mismatch(
+                "INTEGER vector",
+                "non-vector value",
+                "index collection",
                 span,
             ));
         }

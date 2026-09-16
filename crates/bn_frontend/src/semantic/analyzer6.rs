@@ -75,9 +75,18 @@ impl Analyzer {
                 )
             })?;
             if member.is_static != static_access {
-                return Err(error(
-                    "TYPE_MISMATCH",
-                    "imported member has the wrong instance/static access form",
+                return Err(type_mismatch(
+                    if static_access {
+                        "STATIC member"
+                    } else {
+                        "instance member"
+                    },
+                    if static_access {
+                        "instance access"
+                    } else {
+                        "type-name access"
+                    },
+                    "imported member access",
                     span,
                 ));
             }
@@ -90,6 +99,7 @@ impl Analyzer {
             Type::HostConsole => ("HOST.Console", false),
             Type::HostFileSystem => ("HOST.FileSystem", false),
             Type::HostNet => ("HOST.Net", false),
+            Type::HostExec => ("HOST.Exec", false),
             Type::Named(owner) => (owner.as_str(), false),
             Type::TypeName(owner) => (owner.as_str(), true),
             Type::Alternative(alternatives) => {
@@ -103,26 +113,29 @@ impl Analyzer {
                     }
                     let ty = self.member_type(alternative, name, span)?;
                     if found.as_ref().is_some_and(|found| found != &ty) {
-                        return Err(error(
-                            "TYPE_MISMATCH",
-                            format!("member '{name}' has incompatible alternative types"),
+                        return Err(type_mismatch(
+                            "one compatible member type",
+                            "conflicting alternative member types",
+                            format!("member '{name}'"),
                             span,
                         ));
                     }
                     found = Some(ty);
                 }
                 return found.ok_or_else(|| {
-                    error(
-                        "TYPE_MISMATCH",
-                        format!("member '{name}' is unavailable on {}", display(object)),
+                    type_mismatch(
+                        "available member",
+                        format!("{} without '{name}'", display(object)),
+                        "alternative member access",
                         span,
                     )
                 });
             }
             _ => {
-                return Err(error(
-                    "TYPE_MISMATCH",
-                    format!("{} has no member '{name}'", display(object)),
+                return Err(type_mismatch(
+                    "type with requested member",
+                    format!("{} without '{name}'", display(object)),
+                    "member access",
                     span,
                 ));
             }
@@ -139,13 +152,18 @@ impl Analyzer {
                 )
             })?;
         if member.is_static != static_access {
-            return Err(error(
-                "TYPE_MISMATCH",
+            return Err(type_mismatch(
                 if static_access {
-                    format!("instance member '{owner}.{name}' requires an object")
+                    "STATIC member"
                 } else {
-                    format!("STATIC member '{owner}.{name}' requires the type name")
+                    "instance member"
                 },
+                if static_access {
+                    "instance access"
+                } else {
+                    "type-name access"
+                },
+                format!("member '{owner}.{name}' access"),
                 span,
             ));
         }
@@ -332,26 +350,20 @@ impl Analyzer {
             .get(&base)
             .map_or_else(Vec::new, |constructor| constructor.parameters.clone());
         if arguments.len() != parameters.len() {
-            return Err(error(
-                "TYPE_MISMATCH",
-                format!(
-                    "SUPER expects {} argument(s), found {}",
-                    parameters.len(),
-                    arguments.len()
-                ),
+            return Err(type_mismatch(
+                format!("{} argument(s)", parameters.len()),
+                format!("{} argument(s)", arguments.len()),
+                "SUPER constructor call",
                 span,
             ));
         }
         for (argument, parameter) in arguments.iter().zip(parameters) {
             let actual = self.expression_as(argument, &parameter, locals)?;
             if !self.compatible(&parameter, &actual) {
-                return Err(error(
-                    "TYPE_MISMATCH",
-                    format!(
-                        "cannot pass {} to SUPER parameter {}",
-                        display(&actual),
-                        display(&parameter)
-                    ),
+                return Err(type_mismatch(
+                    display(&parameter),
+                    display(&actual),
+                    "SUPER constructor parameter",
                     argument.span,
                 ));
             }
@@ -371,9 +383,10 @@ impl Analyzer {
             && name == "TYPEOF"
         {
             if arguments.len() != 1 {
-                return Err(error(
-                    "TYPE_MISMATCH",
-                    format!("TYPEOF expects 1 argument, found {}", arguments.len()),
+                return Err(type_mismatch(
+                    "1 argument",
+                    format!("{} arguments", arguments.len()),
+                    "TYPEOF",
                     span,
                 ));
             }
@@ -394,45 +407,46 @@ impl Analyzer {
         if let ExpressionKind::Member { name, .. } = &callee.kind {
             if name == "Async" {
                 let Some((target, rest)) = arguments.split_first() else {
-                    return Err(error(
-                        "TYPE_MISMATCH",
-                        "Async requires a function target",
+                    return Err(type_mismatch(
+                        "FUNCTION target",
+                        "missing target",
+                        "Async",
                         span,
                     ));
                 };
                 let target_type = self.expression(target, locals)?;
                 let Type::Function { parameters, .. } = target_type else {
-                    return Err(error(
-                        "TYPE_MISMATCH",
-                        "Async target must be a function",
+                    return Err(type_mismatch(
+                        "FUNCTION",
+                        display(&target_type),
+                        "Async target",
                         target.span,
                     ));
                 };
                 if rest.len() != parameters.len() {
-                    return Err(error(
-                        "TYPE_MISMATCH",
-                        format!(
-                            "Async expects {} argument(s), found {}",
-                            parameters.len(),
-                            rest.len()
-                        ),
+                    return Err(type_mismatch(
+                        format!("{} worker argument(s)", parameters.len()),
+                        format!("{} argument(s)", rest.len()),
+                        "Async call",
                         span,
                     ));
                 }
                 for (argument, parameter) in rest.iter().zip(parameters) {
                     let actual = self.expression_as(argument, &parameter, locals)?;
                     if !self.compatible(&parameter, &actual) {
-                        return Err(error(
-                            "TYPE_MISMATCH",
-                            "Async argument type does not match worker parameter",
+                        return Err(type_mismatch(
+                            display(&parameter),
+                            display(&actual),
+                            "Async worker argument",
                             argument.span,
                         ));
                     }
                 }
                 let Type::Function { return_type, .. } = callee_type.clone() else {
-                    return Err(error(
-                        "TYPE_MISMATCH",
-                        "Async provider is not callable",
+                    return Err(type_mismatch(
+                        "callable Async provider",
+                        display(&callee_type),
+                        "Async provider",
                         span,
                     ));
                 };
@@ -440,9 +454,10 @@ impl Analyzer {
             }
             if name == "Wait" {
                 if arguments.len() != 1 {
-                    return Err(error(
-                        "TYPE_MISMATCH",
-                        "AWAIT expects one timeout argument",
+                    return Err(type_mismatch(
+                        "1 timeout argument",
+                        format!("{} arguments", arguments.len()),
+                        "AWAIT",
                         span,
                     ));
                 }
@@ -474,26 +489,20 @@ impl Analyzer {
             ));
         };
         if arguments.len() != parameters.len() {
-            return Err(error(
-                "TYPE_MISMATCH",
-                format!(
-                    "call expects {} argument(s), found {}",
-                    parameters.len(),
-                    arguments.len()
-                ),
+            return Err(type_mismatch(
+                format!("{} argument(s)", parameters.len()),
+                format!("{} argument(s)", arguments.len()),
+                "function call",
                 span,
             ));
         }
         for (argument, parameter) in arguments.iter().zip(parameters) {
             let actual = self.expression_as(argument, &parameter, locals)?;
             if !self.compatible(&parameter, &actual) {
-                return Err(error(
-                    "TYPE_MISMATCH",
-                    format!(
-                        "cannot pass {} to parameter of type {}",
-                        display(&actual),
-                        display(&parameter)
-                    ),
+                return Err(type_mismatch(
+                    display(&parameter),
+                    display(&actual),
+                    "function parameter",
                     argument.span,
                 ));
             }

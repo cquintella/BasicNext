@@ -63,9 +63,10 @@ pub(super) fn require_console(value: &Value, span: Span) -> Result<(), Diagnosti
     if matches!(value, Value::HostConsole) {
         Ok(())
     } else {
-        Err(runtime_error(
-            "TYPE_MISMATCH",
-            "CLS and BEEP require HOST.Console",
+        Err(super::super::type_mismatch(
+            "HOST.Console",
+            "non-console value",
+            "console operation",
             span,
         ))
     }
@@ -91,13 +92,41 @@ pub(super) fn integer_from_u64(count: u64, span: Span) -> Result<Value, Diagnost
 }
 
 pub(super) fn integer_overflow(span: Span) -> Diagnostic {
-    runtime_error("NUMERIC_OVERFLOW", "result does not fit INTEGER", span)
+    numeric_overflow("converting a value to INTEGER", span)
+}
+
+pub(super) fn numeric_overflow(operation: impl Into<String>, span: Span) -> Diagnostic {
+    Diagnostic::structured(
+        crate::diagnostic::DiagId::NumericOverflow,
+        vec![("operation".into(), operation.into().into())],
+        vec![crate::diagnostic::Label {
+            span,
+            style: crate::diagnostic::LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("numeric-overflow diagnostic schema")
 }
 
 pub(super) fn runtime_error(code: &'static str, message: impl Into<String>, span: Span) -> Diagnostic {
-    Diagnostic {
-        code,
-        message: message.into(),
-        span,
-    }
+    let message = message.into();
+    let id = crate::diagnostic::DiagId::from_code(code)
+        .unwrap_or(crate::diagnostic::DiagId::Runtime(code));
+    let argument = if matches!(id, crate::diagnostic::DiagId::NumericOverflow) {
+        ("operation", message.into())
+    } else if matches!(id, crate::diagnostic::DiagId::DoubleRelease | crate::diagnostic::DiagId::UseAfterRelease | crate::diagnostic::DiagId::Runtime("ALLOCATION_SIZE_INVALID" | "ALLOCATION_SIZE_OVERFLOW" | "HOST_CAPABILITY_UNAVAILABLE" | "EXECUTION_POLICY_DENIED" | "INVALID_EXIT_CODE" | "INVALID_EXPONENT" | "INVALID_SHIFT_COUNT" | "INVALID_VALUE" | "INVALID_INPUT" | "INPUT_ERROR" | "DISPATCH" | "INVALID_JSON" | "INVALID_EGRESS_POLICY")) {
+        ("detail", message.into())
+    } else {
+        ("message", message.into())
+    };
+    Diagnostic::structured(
+        id,
+        vec![(argument.0.into(), argument.1)],
+        vec![crate::diagnostic::Label {
+            span,
+            style: crate::diagnostic::LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("runtime compatibility diagnostic schema")
 }

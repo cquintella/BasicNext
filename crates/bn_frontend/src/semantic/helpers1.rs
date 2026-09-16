@@ -171,6 +171,7 @@ pub(crate) fn host_capability_type(name: &str, span: Span) -> Result<Type, Diagn
         Some(crate::host_spec::Capability::Random) => Ok(Type::HostRandom),
         Some(crate::host_spec::Capability::FileSystem) => Ok(Type::HostFileSystem),
         Some(crate::host_spec::Capability::Net) => Ok(Type::HostNet),
+        Some(crate::host_spec::Capability::Exec) => Ok(Type::HostExec),
         Some(crate::host_spec::Capability::NumProcs) => Ok(Type::Function {
             parameters: Vec::new(),
             return_type: Box::new(Type::Alternative(vec![
@@ -178,14 +179,14 @@ pub(crate) fn host_capability_type(name: &str, span: Span) -> Result<Type, Diagn
                 Type::Named("Error".into()),
             ])),
         }),
-        None if name == "Main" => Err(error(
-            "NAME_NOT_FOUND",
-            "HOST.Main was withdrawn in 0.2; use HOST.Args",
+        None if name == "Main" => Err(undefined_name(
+            "HOST.Main",
+            "withdrawn host capability; use HOST.Args",
             span,
         )),
-        None => Err(error(
-            "NAME_NOT_FOUND",
-            format!("HOST.{name} is not a Basic Next 0.2 capability"),
+        None => Err(undefined_name(
+            format!("HOST.{name}"),
+            "host capability lookup",
             span,
         )),
     }
@@ -215,9 +216,10 @@ pub(crate) fn length_type(ty: &Type, span: Span) -> Result<Type, Diagnostic> {
             require_integer_fit(Some(*length), span)?;
             Ok(Type::Integer(IntegerType::Int32))
         }
-        _ => Err(error(
-            "TYPE_MISMATCH",
-            "LEN requires a numeric value, STRING, vector, or pointer region",
+        _ => Err(super::type_mismatch(
+            "numeric, STRING, vector or pointer",
+            display(ty),
+            "LEN",
             span,
         )),
     }
@@ -395,6 +397,7 @@ pub fn display(ty: &Type) -> String {
         Type::HostConsole => "HOST.Console".into(),
         Type::HostFileSystem => "HOST.FileSystem".into(),
         Type::HostNet => "HOST.Net".into(),
+        Type::HostExec => "HOST.Exec".into(),
         Type::Module(id) => format!("MODULE {}", id.0),
         Type::Alternative(alternatives) => alternatives
             .iter()

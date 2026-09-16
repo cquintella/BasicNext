@@ -7,22 +7,14 @@ pub(crate) fn web_response_call(&mut self, name: &str, arguments: &[Value], span
         if name.contains(".Response.") {
             if method == "CONSTRUCTOR" {
                 let Some(Value::Object { handle, .. }) = arguments.first() else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "BNWeb.Response receiver must be an object",
-                        span,
-                    ));
+                    return Err(super::type_mismatch("BNWeb.Response", "non-object value", "BNWeb.Response constructor receiver", span));
                 };
                 self.web_responses
                     .insert(*handle, crate::web::Response::new());
                 return Ok(Value::Null);
             }
             let Some(Value::Object { handle, .. }) = arguments.first() else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "BNWeb.Response receiver must be an object",
-                    span,
-                ));
+                return Err(super::type_mismatch("BNWeb.Response", "non-object value", "BNWeb.Response operation receiver", span));
             };
             let response = self.web_responses.get_mut(handle).ok_or_else(|| {
                 runtime_error("STALE_HANDLE", "BNWeb.Response handle is not live", span)
@@ -56,11 +48,7 @@ pub(crate) fn web_response_call(&mut self, name: &str, arguments: &[Value], span
                     require_arity(name, arguments, 3, span)?;
                     let (Value::String(key), Value::String(value)) = (&arguments[1], &arguments[2])
                     else {
-                        return Err(runtime_error(
-                            "TYPE_MISMATCH",
-                            "response header name and value must be STRING",
-                            span,
-                        ));
+                        return Err(super::type_mismatch("STRING, STRING", "non-STRING header name/value", "BNWeb.Response.SetHeader", span));
                     };
                     Ok(response.set_header(key, value).map_or_else(
                         |message| Value::Error {
@@ -73,11 +61,7 @@ pub(crate) fn web_response_call(&mut self, name: &str, arguments: &[Value], span
                 "Header" => {
                     require_arity(name, arguments, 2, span)?;
                     let Value::String(key) = &arguments[1] else {
-                        return Err(runtime_error(
-                            "TYPE_MISMATCH",
-                            "response header name must be STRING",
-                            span,
-                        ));
+                        return Err(super::type_mismatch("STRING", "non-STRING value", "BNWeb.Response.Header name", span));
                     };
                     response
                         .headers
@@ -89,11 +73,7 @@ pub(crate) fn web_response_call(&mut self, name: &str, arguments: &[Value], span
                 "Write" => {
                     require_arity(name, arguments, 2, span)?;
                     let Value::String(body) = &arguments[1] else {
-                        return Err(runtime_error(
-                            "TYPE_MISMATCH",
-                            "response body must be STRING",
-                            span,
-                        ));
+                        return Err(super::type_mismatch("STRING", "non-STRING value", "BNWeb.Response.Write body", span));
                     };
                     Ok(response.write(body).map_or_else(
                         |message| Value::Error {

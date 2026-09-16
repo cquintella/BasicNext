@@ -101,6 +101,13 @@ impl Builder<'_> {
                         ty,
                         span: expression.span,
                     }
+                } else if ty == Type::HostExec {
+                    Instruction::Constant {
+                        destination,
+                        value: Constant::Type("HOST.Exec".into()),
+                        ty,
+                        span: expression.span,
+                    }
                 } else if matches!(ty, Type::TypeName(_) | Type::Module(_)) {
                     Instruction::Constant {
                         destination,

@@ -14,12 +14,14 @@ pub const POLICY_FILESYSTEM: u64 = 1 << 2;
 pub const POLICY_NET: u64 = 1 << 3;
 pub const POLICY_DISPATCH: u64 = 1 << 4;
 pub const POLICY_RANDOM: u64 = 1 << 5;
+pub const POLICY_EXEC: u64 = 1 << 6;
 pub const POLICY_ALL: u64 = POLICY_CLOCK
     | POLICY_CONSOLE
     | POLICY_FILESYSTEM
     | POLICY_NET
     | POLICY_DISPATCH
-    | POLICY_RANDOM;
+    | POLICY_RANDOM
+    | POLICY_EXEC;
 pub const POLICY_VERSION: u32 = 1;
 pub const POLICY_OK: i32 = 0;
 pub const POLICY_INVALID: i32 = 2;
@@ -58,6 +60,14 @@ impl PolicyState {
 
 static CEILING: AtomicU64 = AtomicU64::new(POLICY_ALL);
 static EFFECTIVE: AtomicU64 = AtomicU64::new(POLICY_ALL);
+
+/// Compiled HOST.Exec ceilings (D-H1-02). Policy may reduce these at runtime but
+/// never widen them beyond the compiled defaults.
+const EXEC_CAPTURE_DEFAULT: u64 = 16 * 1024 * 1024;
+const EXEC_TIMEOUT_DEFAULT_MS: u64 = 60_000;
+static EXEC_CAPTURE_LIMIT: AtomicU64 = AtomicU64::new(EXEC_CAPTURE_DEFAULT);
+static EXEC_TIMEOUT_MS: AtomicU64 = AtomicU64::new(EXEC_TIMEOUT_DEFAULT_MS);
+
 static FILESYSTEM_SANDBOXED: AtomicBool = AtomicBool::new(false);
 static FILESYSTEM_READ_ROOTS: OnceLock<Mutex<Vec<super::secure_fs::RootedDir>>> = OnceLock::new();
 static FILESYSTEM_WRITE_ROOTS: OnceLock<Mutex<Vec<super::secure_fs::RootedDir>>> = OnceLock::new();
@@ -66,6 +76,8 @@ static FILESYSTEM_WRITE_ROOTS: OnceLock<Mutex<Vec<super::secure_fs::RootedDir>>>
 pub(crate) fn reset_for_tests() {
     CEILING.store(POLICY_ALL, Ordering::Release);
     EFFECTIVE.store(POLICY_ALL, Ordering::Release);
+    EXEC_CAPTURE_LIMIT.store(EXEC_CAPTURE_DEFAULT, Ordering::Release);
+    EXEC_TIMEOUT_MS.store(EXEC_TIMEOUT_DEFAULT_MS, Ordering::Release);
     FILESYSTEM_SANDBOXED.store(false, Ordering::Release);
     FILESYSTEM_READ_ONLY.store(false, Ordering::Release);
     if let Some(roots) = FILESYSTEM_READ_ROOTS.get() {
@@ -87,6 +99,16 @@ pub(crate) fn allows(capability: u64) -> bool {
     EFFECTIVE.load(Ordering::Acquire) & capability == capability
 }
 
+/// Effective per-stream HOST.Exec capture ceiling in bytes.
+pub(crate) fn exec_capture_limit() -> usize {
+    usize::try_from(EXEC_CAPTURE_LIMIT.load(Ordering::Acquire)).unwrap_or(usize::MAX)
+}
+
+/// Effective HOST.Exec wall-clock ceiling.
+pub(crate) fn exec_timeout() -> std::time::Duration {
+    std::time::Duration::from_millis(EXEC_TIMEOUT_MS.load(Ordering::Acquire))
+}
+
 /// Installs or narrows the artifact ceiling. Repeated calls can never widen it.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_policy_init(version: u32, ceiling: u64) -> i32 {
@@ -106,7 +128,31 @@ pub extern "C" fn bn_rt_policy_init(version: u32, ceiling: u64) -> i32 {
         Ok("") | Err(_) => {}
         Ok(_) => return POLICY_INVALID,
     }
+    if matches!(std::env::var("BN_EXEC_POLICY").as_deref(), Ok("deny")) {
+        EFFECTIVE.fetch_and(!POLICY_EXEC, Ordering::AcqRel);
+    }
+    // Runtime ceilings may only tighten (fetch_min), never exceed the compiled default.
+    if reduce_ceiling_from_env("BN_EXEC_CAPTURE_LIMIT", &EXEC_CAPTURE_LIMIT).is_err()
+        || reduce_ceiling_from_env("BN_EXEC_TIMEOUT_MS", &EXEC_TIMEOUT_MS).is_err()
+    {
+        return POLICY_INVALID;
+    }
     POLICY_OK
+}
+
+/// Applies a runtime reduction of a compiled ceiling from `name`. A present but
+/// unparseable value is a hard policy error; an absent value leaves the ceiling.
+fn reduce_ceiling_from_env(name: &str, ceiling: &AtomicU64) -> Result<(), ()> {
+    match std::env::var(name) {
+        Ok(raw) => match raw.parse::<u64>() {
+            Ok(value) => {
+                ceiling.fetch_min(value, Ordering::AcqRel);
+                Ok(())
+            }
+            Err(_) => Err(()),
+        },
+        Err(_) => Ok(()),
+    }
 }
 
 static FILESYSTEM_READ_ONLY: AtomicBool = AtomicBool::new(false);

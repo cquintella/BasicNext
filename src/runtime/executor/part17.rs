@@ -27,11 +27,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                 return Ok(object);
             }
             let Some(Value::Object { handle, .. }) = arguments.first() else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "SessionStore receiver must be an object",
-                    span,
-                ));
+                return Err(super::super::type_mismatch("SessionStore object", "non-object value", "SessionStore receiver", span));
             };
             if method == "CONSTRUCTOR" {
                 require_arity(name, arguments, 3, span)?;
@@ -58,11 +54,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                 "Create" => {
                     require_arity(name, arguments, 2, span)?;
                     let Value::String(value) = &arguments[1] else {
-                        return Err(runtime_error(
-                            "TYPE_MISMATCH",
-                            "session value must be STRING",
-                            span,
-                        ));
+                        return Err(super::super::type_mismatch("STRING", "non-STRING value", "SessionStore.Create", span));
                     };
                     Ok(store
                         .create(value)
@@ -71,11 +63,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                 "Get" => {
                     require_arity(name, arguments, 2, span)?;
                     let Value::String(id) = &arguments[1] else {
-                        return Err(runtime_error(
-                            "TYPE_MISMATCH",
-                            "session id must be STRING",
-                            span,
-                        ));
+                        return Err(super::super::type_mismatch("STRING", "non-STRING value", "SessionStore.Get", span));
                     };
                     Ok(store.get(id).map_or(
                         Value::Error {
@@ -88,11 +76,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                 "Delete" => {
                     require_arity(name, arguments, 2, span)?;
                     let Value::String(id) = &arguments[1] else {
-                        return Err(runtime_error(
-                            "TYPE_MISMATCH",
-                            "session id must be STRING",
-                            span,
-                        ));
+                        return Err(super::super::type_mismatch("STRING", "non-STRING value", "SessionStore.Delete", span));
                     };
                     Ok(store.delete(id).map_or_else(
                         |message| Value::Error { code: 1, message },
@@ -103,11 +87,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                     require_arity(name, arguments, 3, span)?;
                     let (Value::String(id), Value::String(value)) = (&arguments[1], &arguments[2])
                     else {
-                        return Err(runtime_error(
-                            "TYPE_MISMATCH",
-                            "session id/value must be STRING",
-                            span,
-                        ));
+                        return Err(super::super::type_mismatch("STRING, STRING", "non-STRING argument", "SessionStore.Set", span));
                     };
                     Ok(store
                         .set(id, value)
@@ -117,11 +97,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                     require_arity(name, arguments, 3, span)?;
                     let (Value::String(id), Value::String(value)) = (&arguments[1], &arguments[2])
                     else {
-                        return Err(runtime_error(
-                            "TYPE_MISMATCH",
-                            "session id/value must be STRING",
-                            span,
-                        ));
+                        return Err(super::super::type_mismatch("STRING, STRING", "non-STRING argument", "SessionStore.Rotate", span));
                     };
                     Ok(store
                         .rotate(id, value)
@@ -136,7 +112,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
             if method == "Parse" {
                 require_arity(name, arguments, 1, span)?;
                 let Value::String(html) = &arguments[0] else {
-                    return Err(runtime_error("TYPE_MISMATCH", "HTML must be STRING", span));
+                    return Err(super::super::type_mismatch("STRING", "non-STRING value", "Scraper.Parse HTML", span));
                 };
                 let scraper = match crate::web_state::Scraper::parse(html) {
                     Ok(value) => value,
@@ -149,16 +125,12 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                 return Ok(object);
             }
             let Some(Value::Object { handle, .. }) = arguments.first() else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "Scraper receiver must be an object",
-                    span,
-                ));
+                return Err(super::super::type_mismatch("Scraper object", "non-object value", "Scraper receiver", span));
             };
             if method == "CONSTRUCTOR" {
                 require_arity(name, arguments, 2, span)?;
                 let Value::String(html) = &arguments[1] else {
-                    return Err(runtime_error("TYPE_MISMATCH", "HTML must be STRING", span));
+                    return Err(super::super::type_mismatch("STRING", "non-STRING value", "Scraper constructor HTML", span));
                 };
                 let scraper = crate::web_state::Scraper::parse(html)
                     .map_err(|message| runtime_error("SCRAPER_INPUT", message, span))?;
@@ -172,11 +144,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
             if method == "Text" {
                 require_arity(name, arguments, 2, span)?;
                 let Value::String(selector) = &arguments[1] else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "selector must be STRING",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING", "non-STRING value", "Scraper.Text selector", span));
                 };
                 return Ok(scraper
                     .text(selector)
@@ -188,11 +156,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
             })
         } else if name.contains(".ACL.") {
             let Some(Value::Object { handle, .. }) = arguments.first() else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "ACL receiver must be an object",
-                    span,
-                ));
+                return Err(super::super::type_mismatch("ACL object", "non-object value", "ACL receiver", span));
             };
             if method == "CONSTRUCTOR" {
                 self.web_acls.insert(*handle, crate::web_state::Acl::new());
@@ -206,21 +170,17 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                 "Allow" | "Deny" => {
                     require_arity(name, arguments, 2, span)?;
                     let Value::Record { fields, .. } = &arguments[1] else {
-                        return Err(runtime_error(
-                            "TYPE_MISMATCH",
-                            "CIDR must be HOST.Net.CIDR",
-                            span,
-                        ));
+                        return Err(super::super::type_mismatch("HOST.Net.CIDR", "non-record value", "ACL.Allow/Deny", span));
                     };
                     let (Value::String(network), Value::Integer(prefix, _)) = (
                         fields
                             .get("network")
-                            .ok_or_else(|| runtime_error("TYPE_MISMATCH", "invalid CIDR", span))?,
+                            .ok_or_else(|| super::super::type_mismatch("STRING", "missing network", "ACL CIDR", span))?,
                         fields
                             .get("prefix")
-                            .ok_or_else(|| runtime_error("TYPE_MISMATCH", "invalid CIDR", span))?,
+                            .ok_or_else(|| super::super::type_mismatch("INTEGER", "missing prefix", "ACL CIDR", span))?,
                     ) else {
-                        return Err(runtime_error("TYPE_MISMATCH", "invalid CIDR", span));
+                        return Err(super::super::type_mismatch("STRING, INTEGER", "invalid CIDR fields", "ACL CIDR", span));
                     };
                     let cidr = format!("{network}/{prefix}");
                     let result = if method == "Allow" {
@@ -236,25 +196,17 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                 "Check" => {
                     require_arity(name, arguments, 2, span)?;
                     let Value::Record { fields, .. } = &arguments[1] else {
-                        return Err(runtime_error(
-                            "TYPE_MISMATCH",
-                            "ACL.Check expects a HOST.Net address",
-                            span,
-                        ));
+                        return Err(super::super::type_mismatch("HOST.Net.Address", "non-record value", "ACL.Check", span));
                     };
                     let Value::String(text) = fields.get("value").ok_or_else(|| {
-                        runtime_error("TYPE_MISMATCH", "invalid address record", span)
+                        super::super::type_mismatch("value: STRING", "missing field", "ACL.Check address", span)
                     })?
                     else {
-                        return Err(runtime_error(
-                            "TYPE_MISMATCH",
-                            "invalid address record",
-                            span,
-                        ));
+                        return Err(super::super::type_mismatch("value: STRING", "non-STRING field", "ACL.Check address", span));
                     };
                     let address = text
                         .parse()
-                        .map_err(|_| runtime_error("TYPE_MISMATCH", "invalid address", span))?;
+                        .map_err(|_| super::super::type_mismatch("valid IP address", "invalid address text", "ACL.Check address", span))?;
                     Ok(Value::Boolean(acl.check(address)))
                 }
                 _ => Ok(Value::Error {
@@ -264,11 +216,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
             }
         } else if name.contains(".CookieJar.") {
             let Some(Value::Object { handle, .. }) = arguments.first() else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "CookieJar receiver must be an object",
-                    span,
-                ));
+                return Err(super::super::type_mismatch("CookieJar object", "non-object value", "CookieJar receiver", span));
             };
             if method == "CONSTRUCTOR" {
                 self.web_cookie_jars
@@ -284,11 +232,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                     let (Value::String(n), Value::String(v), Value::String(d), Value::String(p)) =
                         (&arguments[1], &arguments[2], &arguments[3], &arguments[4])
                     else {
-                        return Err(runtime_error(
-                            "TYPE_MISMATCH",
-                            "cookie arguments must be STRING",
-                            span,
-                        ));
+                        return Err(super::super::type_mismatch("STRING, STRING, STRING, STRING", "non-STRING argument", "CookieJar.Set", span));
                     };
                     let age = integer(&arguments[5], span)?.0;
                     if age < 0 {
@@ -315,7 +259,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                     let (Value::String(n), Value::String(v), Value::String(d), Value::String(p), Value::Boolean(secure), Value::Boolean(http_only), Value::String(same_site)) =
                         (&arguments[1], &arguments[2], &arguments[3], &arguments[4], &arguments[6], &arguments[7], &arguments[8])
                     else {
-                        return Err(runtime_error("TYPE_MISMATCH", "cookie policy arguments have invalid types", span));
+                        return Err(super::super::type_mismatch("cookie policy types", "incompatible argument", "CookieJar.SetWithPolicy", span));
                     };
                     let age = integer(&arguments[5], span)?.0;
                     if age < 0 {
@@ -341,11 +285,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                     let (Value::String(n), Value::String(d), Value::String(p)) =
                         (&arguments[1], &arguments[2], &arguments[3])
                     else {
-                        return Err(runtime_error(
-                            "TYPE_MISMATCH",
-                            "cookie lookup expects STRING",
-                            span,
-                        ));
+                        return Err(super::super::type_mismatch("STRING, STRING, STRING", "non-STRING argument", "CookieJar.Get", span));
                     };
                     Ok(jar.get(n, d, p).map_or(
                         Value::Error {
@@ -360,11 +300,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                     let (Value::String(n), Value::String(d), Value::String(p)) =
                         (&arguments[1], &arguments[2], &arguments[3])
                     else {
-                        return Err(runtime_error(
-                            "TYPE_MISMATCH",
-                            "cookie delete expects STRING",
-                            span,
-                        ));
+                        return Err(super::super::type_mismatch("STRING, STRING, STRING", "non-STRING argument", "CookieJar.Delete", span));
                     };
                     jar.delete(n, d, p);
                     Ok(Value::Null)
@@ -381,11 +317,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                 let (Value::String(schemes), Value::String(cidrs), Value::String(ports)) =
                     (&arguments[0], &arguments[1], &arguments[2])
                 else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "EgressPolicy lists must be STRING",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING, STRING, STRING", "non-STRING argument", "EgressPolicy.New", span));
                 };
                 let max_redirects = usize::try_from(integer(&arguments[3], span)?.0)
                     .map_err(|_| runtime_error("INVALID_EGRESS_POLICY", "invalid redirect limit", span))?;
@@ -469,7 +401,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                 Ok(object)
             } else {
                 let Some(Value::Object { handle, .. }) = arguments.first() else {
-                    return Err(runtime_error("TYPE_MISMATCH", "ServerOptions receiver must be an object", span));
+                    return Err(super::super::type_mismatch("ServerOptions object", "non-object value", "ServerOptions receiver", span));
                 };
                 if method == "CONSTRUCTOR" {
                     require_arity(name, arguments, 20, span)?;
@@ -486,11 +418,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                 require_arity(name, arguments, 2, span)?;
                 let (Value::String(cert), Value::String(key)) = (&arguments[0], &arguments[1])
                 else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "TLS material must be STRING",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING, STRING", "non-STRING argument", "TLSConfig.FromPEM", span));
                 };
                 let config = match crate::tls::server_config_from_pem(cert, key) {
                     Ok(config) => config,
@@ -504,21 +432,13 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                 return Ok(object);
             }
             let Some(Value::Object { handle, .. }) = arguments.first() else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "TLSConfig receiver must be an object",
-                    span,
-                ));
+                return Err(super::super::type_mismatch("TLSConfig object", "non-object value", "TLSConfig receiver", span));
             };
             if method == "CONSTRUCTOR" {
                 require_arity(name, arguments, 3, span)?;
                 let (Value::String(cert), Value::String(key)) = (&arguments[1], &arguments[2])
                 else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "TLS material must be STRING",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING, STRING", "non-STRING argument", "TLSConfig constructor", span));
                 };
                 let config = match crate::tls::server_config_from_pem(cert, key) {
                     Ok(config) => config,
@@ -532,11 +452,7 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
                 require_arity(name, arguments, 3, span)?;
                 let (Value::String(cert), Value::String(key)) = (&arguments[1], &arguments[2])
                 else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "TLS material must be STRING",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("STRING, STRING", "non-STRING argument", "TLSConfig.FromPEM", span));
                 };
                 let config = match crate::tls::server_config_from_pem(cert, key) {
                     Ok(config) => config,
@@ -556,21 +472,13 @@ pub(crate) fn web_state_call(&mut self, name: &str, arguments: &[Value], span: S
         } else if name.contains(".HeaderValues.") || name.contains(".QueryValues.") {
             if method == "CONSTRUCTOR" {
                 let Some(Value::Object { handle, .. }) = arguments.first() else {
-                    return Err(runtime_error(
-                        "TYPE_MISMATCH",
-                        "BNWeb values receiver must be an object",
-                        span,
-                    ));
+                    return Err(super::super::type_mismatch("BNWeb values object", "non-object value", "values constructor", span));
                 };
                 self.web_values.insert(*handle, Vec::new());
                 return Ok(Value::Null);
             }
             let Some(Value::Object { handle, .. }) = arguments.first() else {
-                return Err(runtime_error(
-                    "TYPE_MISMATCH",
-                    "BNWeb values receiver must be an object",
-                    span,
-                ));
+                return Err(super::super::type_mismatch("BNWeb values object", "non-object value", "values method", span));
             };
             let values = self.web_values.get(handle).ok_or_else(|| {
                 runtime_error("STALE_HANDLE", "BNWeb values handle is not live", span)

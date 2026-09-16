@@ -215,6 +215,16 @@ process, subject to ordinary OS permissions.
 
 ## Availability
 
+## HOST.Exec (0.5.1)
+
+`HOST.Exec` is an explicitly imported capability for launching an operating
+system executable. `Run(program, args)` resolves an explicit path or `PATH`,
+starts the child without a shell, closes child stdin, and waits while the BN
+process continues running. It does not interpret BN source and does not replace
+the BN process. The result and limits are defined in
+[`host-exec.md`](host-exec.md); LLVM/native support is not claimed until its
+ABI and parity gates are accepted.
+
 An imported host capability is required. Execution fails before `Start` with
 `HOST_CAPABILITY_UNAVAILABLE` when the selected host cannot provide it.
 

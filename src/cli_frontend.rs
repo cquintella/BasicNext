@@ -1,18 +1,50 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
+fn emit_frontend_error(
+    diagnostic: &Diagnostic,
+    source: &SourceFile,
+    options: &Options,
+    phase: &str,
+) {
+    if options.output_format == OutputFormat::Json {
+        let envelope = serde_json::json!({
+            "schema_version": 1,
+            "ok": false,
+            "exit_code": 1,
+            "stdout": "",
+            "stderr": "",
+            "diagnostics": [diagnostic_json(diagnostic, source, options, phase)],
+        });
+        println!("{envelope}");
+    } else {
+        eprintln!("{}", render_diagnostic(diagnostic, source, options));
+    }
+}
+
 pub(crate) fn load_frontend(
     source: &SourceFile,
     _tokens: &[Token],
     options: &Options,
 ) -> Result<Frontend, ExitCode> {
+    load_frontend_with_overlays(source, options, &std::collections::BTreeMap::new())
+}
+
+pub(crate) fn load_frontend_with_overlays(
+    source: &SourceFile,
+    options: &Options,
+    overlays: &std::collections::BTreeMap<std::path::PathBuf, String>,
+) -> Result<Frontend, ExitCode> {
     log(options.verbosity, 1, "loading module graph");
     let mut session = bn::frontend_session::FrontendSession::default();
-    let graph = load_with_session(&options.path, &mut session).map_err(|error| {
-        eprintln!(
-            "{}",
-            render_diagnostic(&error.diagnostic, &error.source, &options.warning_policy)
-        );
+    let graph = bn::module_graph::load_with_overlays_and_paths(
+        &options.path,
+        &mut session,
+        overlays,
+        &options.module_paths,
+    )
+    .map_err(|error| {
+        emit_frontend_error(&error.diagnostic, &error.source, options, "parse");
         language_error()
     })?;
     log(
@@ -25,12 +57,18 @@ pub(crate) fn load_frontend(
         Ok(analysis) => analysis,
         Err(error) => {
             let rendered = graph.modules.get(module_index(error.module.0)).map_or_else(
-                || render_diagnostic(&error.diagnostic, source, &options.warning_policy),
-                |module| {
-                    render_diagnostic(&error.diagnostic, &module.source, &options.warning_policy)
-                },
+                || render_diagnostic(&error.diagnostic, source, options),
+                |module| render_diagnostic(&error.diagnostic, &module.source, options),
             );
-            eprintln!("{rendered}");
+            if options.output_format == OutputFormat::Json {
+                if let Some(module) = graph.modules.get(module_index(error.module.0)) {
+                    emit_frontend_error(&error.diagnostic, &module.source, options, "semantic");
+                } else {
+                    emit_frontend_error(&error.diagnostic, source, options, "semantic");
+                }
+            } else {
+                eprintln!("{rendered}");
+            }
             return Err(language_error());
         }
     };
@@ -38,10 +76,7 @@ pub(crate) fn load_frontend(
     let warnings = analysis.warnings;
     log(options.verbosity, 1, "lowering and validating IR");
     let validated = bn::ir::lower_graph_validated(&graph, &models).map_err(|diagnostic| {
-        eprintln!(
-            "{}",
-            render_diagnostic(&diagnostic, source, &options.warning_policy)
-        );
+        emit_frontend_error(&diagnostic, source, options, "lower");
         language_error()
     })?;
     log(
@@ -64,13 +99,21 @@ pub(crate) fn load_frontend(
 pub(crate) fn parse_options(arguments: impl Iterator<Item = String>) -> Result<Options, String> {
     let arguments = arguments.collect::<Vec<_>>();
     let config_path = config_path_from_arguments(&arguments)?;
-    let (mut warning_policy, configured_log_level, configured_log_file, configured_no_log) =
-        configured_settings(config_path.as_deref())?;
+    let configured = configured_settings(config_path.as_deref())?;
+    let mut warning_policy = configured.warning_policy;
+    let configured_log_level = configured.log_level;
+    let configured_log_file = configured.log_file;
+    let configured_no_log = configured.no_log;
+    let configured_diagnostics_dir = configured.diagnostics_dir;
+    let configured_module_paths = configured.module_paths;
+    let diagnostic_catalog = Catalog::selected(configured_diagnostics_dir.as_deref())
+        .map_err(|error| format!("CONFIG_INVALID: cannot load diagnostic catalog: {error}"))?;
     let mut arguments = arguments.into_iter();
     let mut path = None;
     let mut verbosity = 0u8;
     let mut emit = None;
     let mut output = None;
+    let mut output_format = OutputFormat::Text;
     let mut trace = false;
     let mut color = Color::Auto;
     let mut target = Target::Native;
@@ -85,6 +128,7 @@ pub(crate) fn parse_options(arguments: impl Iterator<Item = String>) -> Result<O
     let mut log_file = configured_log_file;
     let mut log_file_from_cli = false;
     let mut no_log = configured_no_log;
+    let mut module_paths = configured_module_paths;
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--" => {
@@ -110,6 +154,12 @@ pub(crate) fn parse_options(arguments: impl Iterator<Item = String>) -> Result<O
                     .ok_or("--write-root expects a directory".to_string())?,
             )),
             "--jupyter-stdin" => jupyter_stdin = true,
+            "--module-path" => module_paths.push(PathBuf::from(
+                arguments
+                    .next()
+                    .filter(|value| !value.starts_with('-'))
+                    .ok_or_else(|| "--module-path expects a directory".to_string())?,
+            )),
             "--config" => {
                 let _ = arguments
                     .next()
@@ -197,6 +247,13 @@ pub(crate) fn parse_options(arguments: impl Iterator<Item = String>) -> Result<O
                         .ok_or_else(|| "-o expects an output file path".to_string())?,
                 );
             }
+            "--format" => {
+                output_format = match arguments.next().as_deref() {
+                    Some("text") => OutputFormat::Text,
+                    Some("json") => OutputFormat::Json,
+                    _ => return Err("--format expects text or json".into()),
+                };
+            }
             "--color" => {
                 color = match arguments.next().as_deref() {
                     Some("auto") => Color::Auto,
@@ -220,6 +277,11 @@ pub(crate) fn parse_options(arguments: impl Iterator<Item = String>) -> Result<O
         verbosity,
         emit,
         output,
+        output_format,
+        eval_mapping: None,
+        eval_source_text: None,
+        eval_promotion_warning: false,
+        eval_promotion_span: None,
         trace,
         color,
         target,
@@ -227,10 +289,12 @@ pub(crate) fn parse_options(arguments: impl Iterator<Item = String>) -> Result<O
         sandbox,
         read_roots,
         write_roots,
+        module_paths,
         jupyter_stdin,
         program_arguments,
         optimization,
         warning_policy,
+        diagnostic_catalog,
         log_level,
         log_file,
         no_log,
@@ -279,15 +343,31 @@ fn config_path_from_context(
     }))
 }
 
-fn configured_settings(
-    path: Option<&Path>,
-) -> Result<(WarningPolicy, LogLevel, Option<String>, bool), String> {
+struct ConfiguredSettings {
+    warning_policy: WarningPolicy,
+    log_level: LogLevel,
+    log_file: Option<String>,
+    no_log: bool,
+    diagnostics_dir: Option<PathBuf>,
+    module_paths: Vec<PathBuf>,
+}
+
+fn configured_settings(path: Option<&Path>) -> Result<ConfiguredSettings, String> {
     let Some(path) = path else {
-        return Ok((WarningPolicy::default(), LogLevel::Info, None, false));
+        return Ok(ConfiguredSettings {
+            warning_policy: WarningPolicy::default(),
+            log_level: LogLevel::Info,
+            log_file: None,
+            no_log: false,
+            diagnostics_dir: None,
+            module_paths: Vec::new(),
+        });
     };
     let text = fs::read_to_string(path)
         .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
     let warning_policy = WarningPolicy::from_config(&text)?;
+    let diagnostics_dir = bn::diagnostic::diagnostic_directory_from_config(&text, path)?;
+    let module_paths = parse_module_paths(&text, path)?;
     let mut section = "";
     let mut log_level = LogLevel::Info;
     let mut log_file = None;
@@ -325,13 +405,191 @@ fn configured_settings(
             _ => {}
         }
     }
-    Ok((warning_policy, log_level, log_file, no_log))
+    Ok(ConfiguredSettings {
+        warning_policy,
+        log_level,
+        log_file,
+        no_log,
+        diagnostics_dir,
+        module_paths,
+    })
+}
+
+fn parse_module_paths(text: &str, config_path: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut value = None;
+    let mut seen = false;
+    let mut section = String::new();
+    let mut collecting = false;
+    for raw in text.lines() {
+        let line = strip_toml_comment(raw);
+        let trimmed = line.trim();
+        if !collecting && trimmed.starts_with('[') {
+            section = trimmed.trim_matches(['[', ']']).trim().to_string();
+            continue;
+        }
+        if !collecting && trimmed.starts_with("module-path") {
+            if !section.is_empty() {
+                return Err("module-path must be declared at the top level".into());
+            }
+            let Some((key, rhs)) = trimmed.split_once('=') else {
+                return Err("module-path expects an array of paths".into());
+            };
+            if key.trim() != "module-path" || seen {
+                return Err("module-path must be declared once at the top level".into());
+            }
+            seen = true;
+            collecting = true;
+            value = Some(rhs.trim().to_string());
+        } else if collecting {
+            value.as_mut().expect("value initialized").push('\n');
+            value.as_mut().expect("value initialized").push_str(&line);
+        } else {
+            continue;
+        }
+        let current = value.as_deref().unwrap_or_default();
+        let mut quote = false;
+        let mut escaped = false;
+        let mut depth = 0_i32;
+        for ch in current.chars() {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            if ch == '\\' && quote {
+                escaped = true;
+                continue;
+            }
+            if ch == '"' {
+                quote = !quote;
+            }
+            if !quote {
+                if ch == '[' {
+                    depth += 1;
+                } else if ch == ']' {
+                    depth -= 1;
+                }
+            }
+        }
+        if collecting && depth == 0 {
+            collecting = false;
+        }
+    }
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let value = value.trim();
+    if !(value.starts_with('[') && value.ends_with(']')) {
+        return Err("module-path expects an array of paths".into());
+    }
+    let mut paths = Vec::new();
+    let mut item = String::new();
+    let mut quoted = false;
+    let mut escaped = false;
+    for ch in value[1..value.len() - 1].chars() {
+        if escaped {
+            item.push(match ch {
+                'n' => '\n',
+                'r' => '\r',
+                't' => '\t',
+                other => other,
+            });
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' && quoted {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' {
+            quoted = !quoted;
+            item.push(ch);
+            continue;
+        }
+        if ch == ',' && !quoted {
+            paths.push(parse_module_path_item(&item, config_path)?);
+            item.clear();
+        } else {
+            item.push(ch);
+        }
+    }
+    if !item.trim().is_empty() {
+        paths.push(parse_module_path_item(&item, config_path)?);
+    }
+    Ok(paths)
+}
+
+fn strip_toml_comment(line: &str) -> String {
+    let mut quoted = false;
+    let mut escaped = false;
+    for (index, ch) in line.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' && quoted {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' {
+            quoted = !quoted;
+        }
+        if ch == '#' && !quoted {
+            return line[..index].to_string();
+        }
+    }
+    line.to_string()
+}
+
+fn parse_module_path_item(item: &str, config_path: &Path) -> Result<PathBuf, String> {
+    let item = item.trim();
+    let Some(path) = item.strip_prefix('"').and_then(|s| s.strip_suffix('"')) else {
+        return Err("module-path entries must be quoted strings".into());
+    };
+    let path = PathBuf::from(path);
+    Ok(if path.is_absolute() {
+        path
+    } else {
+        config_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(path)
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{config_path_from_context, configured_settings, parse_options};
+    use super::{config_path_from_context, configured_settings, parse_module_paths, parse_options};
     use crate::{DiagId, Level, Optimization, Target};
+
+    #[test]
+    fn module_path_parser_accepts_toml_quotes_comments_and_multiline_arrays() {
+        let config = std::path::Path::new("/tmp/project/config.toml");
+        let paths = parse_module_paths(
+            "module-path = [\n  \"mods#one\", # comment\n  \"mods,two\",\n  \"escaped\\\"name\"\n]\n",
+            config,
+        )
+        .expect("valid module-path array");
+        assert_eq!(paths[0], config.parent().unwrap().join("mods#one"));
+        assert_eq!(paths[1], config.parent().unwrap().join("mods,two"));
+        assert_eq!(paths[2], config.parent().unwrap().join("escaped\"name"));
+        let with_section = parse_module_paths(
+            "module-path = [\"vendor\\\"name\"]\n[logging]\nlevel = \"debug\"\n",
+            config,
+        )
+        .expect("escaped quote before another section");
+        assert_eq!(
+            with_section[0],
+            config.parent().unwrap().join("vendor\"name")
+        );
+    }
+
+    #[test]
+    fn module_path_parser_rejects_duplicates_sections_and_non_strings() {
+        let config = std::path::Path::new("/tmp/project/config.toml");
+        assert!(parse_module_paths("module-path=[]\nmodule-path=[]", config).is_err());
+        assert!(parse_module_paths("[logging]\nmodule-path=[]", config).is_err());
+        assert!(parse_module_paths("module-path=[true]", config).is_err());
+    }
 
     #[test]
     fn optimization_option_has_explicit_levels_and_default() {
@@ -402,14 +660,21 @@ mod tests {
         ));
         std::fs::write(
             &path,
-            "[warnings]\ndefault = \"error\"\n[logging]\nlevel = \"debug\"\nfile = \"build.log\"\nenabled = true\n",
+            "[warnings]\ndefault = \"error\"\n[logging]\nlevel = \"debug\"\nfile = \"build.log\"\nenabled = true\n[diagnostics]\ndir = \"messages/en-US\"\n",
         )
         .expect("write config fixture");
-        let (policy, level, file, no_log) = configured_settings(Some(&path)).expect("config");
-        assert_eq!(policy.level(DiagId::UnusedImport), Level::Error);
-        assert_eq!(format!("{level:?}"), "Debug");
-        assert_eq!(file.as_deref(), Some("build.log"));
-        assert!(!no_log);
+        let configured = configured_settings(Some(&path)).expect("config");
+        assert_eq!(
+            configured.warning_policy.level(DiagId::UnusedImport),
+            Level::Error
+        );
+        assert_eq!(format!("{:?}", configured.log_level), "Debug");
+        assert_eq!(configured.log_file.as_deref(), Some("build.log"));
+        assert!(!configured.no_log);
+        assert_eq!(
+            configured.diagnostics_dir,
+            Some(path.parent().expect("parent").join("messages/en-US"))
+        );
         std::fs::remove_file(path).expect("remove config fixture");
     }
 

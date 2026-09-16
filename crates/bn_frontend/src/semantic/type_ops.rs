@@ -8,13 +8,10 @@ pub(crate) fn binary_type(
     expression: &Expression,
 ) -> Result<Type, Diagnostic> {
     let invalid = || {
-        error(
-            "TYPE_MISMATCH",
-            format!(
-                "operator {operator} cannot combine {} and {}",
-                display(left),
-                display(right)
-            ),
+        type_mismatch(
+            format!("operands accepted by {operator}"),
+            format!("{} and {}", display(left), display(right)),
+            format!("binary operator {operator}"),
             expression.span,
         )
     };

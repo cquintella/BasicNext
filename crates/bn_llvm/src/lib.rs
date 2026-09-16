@@ -13,7 +13,7 @@ use std::{
     fmt::Write as _,
 };
 
-use bn_diag::Diagnostic;
+use bn_diag::{DiagId, Diagnostic, Label, LabelStyle};
 use bn_ir::{
     BlockId, Constant, Function, Instruction, Module, SymbolId, Terminator, ValidatedModule,
     ValueId, validate_module,
@@ -131,6 +131,7 @@ pub(crate) fn bnlog_resource_kind(module: &Module, ty: &Type) -> Option<&'static
 }
 
 const POLICY_CLOCK: u64 = 1;
+const POLICY_EXEC: u64 = 1 << 6;
 const POLICY_CONSOLE: u64 = 1 << 1;
 const POLICY_FILESYSTEM: u64 = 1 << 2;
 const POLICY_NET: u64 = 1 << 3;
@@ -310,51 +311,75 @@ pub fn validate_for(validated: &ValidatedModule, target: Target) -> Result<(), D
         .iter()
         .find(|function| function.name == "Start")
     else {
-        return Err(Diagnostic {
-            code: "TARGET_UNSUPPORTED_ENTRYPOINT",
-            message: "LLVM target requires an executable Start function".into(),
-            span: default_span(),
-        });
+        return Err(support_fact(
+            DiagId::TargetUnsupportedEntrypoint,
+            target,
+            "LLVM target requires an executable Start function",
+            default_span(),
+        ));
     };
     if !start.parameters.is_empty() {
-        return Err(Diagnostic {
-            code: "TARGET_UNSUPPORTED_ENTRYPOINT",
-            message: format!(
+        return Err(support_fact(
+            DiagId::TargetUnsupportedEntrypoint,
+            target,
+            &format!(
                 "LLVM entry point requires FUNCTION Start(), found {} parameter(s)",
                 start.parameters.len()
             ),
-            span: start.span,
-        });
+            start.span,
+        ));
     }
     if !matches!(&start.return_type, Type::Named(name) if name == "VOID")
         && !matches!(&start.return_type, Type::Integer(_))
         && !matches!(&start.return_type, Type::Alternative(alternatives) if void_or_error(alternatives))
     {
-        return Err(Diagnostic {
-            code: "TARGET_UNSUPPORTED_ENTRYPOINT",
-            message: format!(
+        return Err(support_fact(
+            DiagId::TargetUnsupportedEntrypoint,
+            target,
+            &format!(
                 "Start return type '{}' is unsupported; LLVM entry point supports VOID, VOID OR Error, or INTEGER",
                 render_start_type(&start.return_type)
             ),
-            span: start.span,
-        });
+            start.span,
+        ));
     }
     if target == Target::Wasm32 && requires_unavailable_wasm_capability(module) {
-        return Err(Diagnostic {
-            code: "TARGET_UNSUPPORTED_HOST",
-            message: "target wasm32 does not provide HOST.FileSystem, HOST.Net, BNLog, or BNWeb; HOST.Console is supported".into(),
-            span: start.span,
-        });
+        return Err(support_fact(
+            DiagId::TargetUnsupportedHost,
+            target,
+            "HOST.FileSystem, HOST.Net, BNLog and BNWeb are unavailable; HOST.Console is supported",
+            start.span,
+        ));
     }
     analyze_reachable(module, start).map_err(|message| {
         let (code, message) = support_diagnostic(&message);
-        Diagnostic {
-            code,
-            message: message.into(),
-            span: start.span,
-        }
+        let id = DiagId::from_code(code).unwrap_or(DiagId::TargetUnsupportedLlvm);
+        support_fact(id, target, message, start.span)
     })?;
     Ok(())
+}
+
+fn support_fact(id: DiagId, target: Target, detail: &str, span: Span) -> Diagnostic {
+    Diagnostic::structured(
+        id,
+        vec![
+            ("target".into(), target_name(target).into()),
+            ("detail".into(), detail.to_string().into()),
+        ],
+        vec![Label {
+            span,
+            style: LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("target support diagnostic schema is registered")
+}
+
+fn target_name(target: Target) -> &'static str {
+    match target {
+        Target::Native => "native",
+        Target::Wasm32 => "wasm32",
+    }
 }
 
 fn support_diagnostic(message: &str) -> (&'static str, &str) {
@@ -381,6 +406,9 @@ pub(crate) fn policy_ceiling(module: &Module) -> u64 {
     }
     if module.random_import.is_some() {
         ceiling |= POLICY_RANDOM;
+    }
+    if module.exec_import.is_some() {
+        ceiling |= POLICY_EXEC;
     }
     if module.console_import.is_some() {
         ceiling |= POLICY_CONSOLE;

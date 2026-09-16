@@ -9,17 +9,13 @@ use crate::{
     source::Span,
 };
 
-use super::{Value, integer_overflow, runtime_error};
+use super::{Value, integer_overflow, type_mismatch};
 
 pub(super) fn pointer_element_default(element: &Type, span: Span) -> Result<Value, Diagnostic> {
     match element {
         Type::Integer(kind) => Ok(Value::Integer(0, *kind)),
         Type::Float(kind) => Ok(Value::Float(0.0, *kind)),
-        _ => Err(runtime_error(
-            "TYPE_MISMATCH",
-            "pointer element is not a numeric type",
-            span,
-        )),
+        _ => Err(type_mismatch("numeric pointer element", "non-numeric type", "pointer allocation", span)),
     }
 }
 
@@ -42,11 +38,7 @@ pub(super) fn display_element(element: &Type) -> String {
 
 pub(super) fn add_sizes(total: u64, size: &Value, span: Span) -> Result<u64, Diagnostic> {
     let Value::Integer(size, _) = size else {
-        return Err(runtime_error(
-            "TYPE_MISMATCH",
-            "value has no byte size",
-            span,
-        ));
+        return Err(type_mismatch("INTEGER size", "non-integer value", "allocation size", span));
     };
     let size = u64::try_from(*size).map_err(|_| integer_overflow(span))?;
     total

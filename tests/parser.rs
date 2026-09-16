@@ -18,7 +18,7 @@ fn parse_path(path: &str) -> Result<(), String> {
     let tokens = lex(&source).map_err(|diagnostic| diagnostic.message)?;
     parse(&tokens)
         .map(|_| ())
-        .map_err(|diagnostic| diagnostic.message)
+        .map_err(|diagnostic| diagnostic.message.to_string())
 }
 
 #[test]

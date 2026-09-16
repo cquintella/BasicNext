@@ -10,6 +10,11 @@ pub(crate) const BN_RT_DECLS: &str = "\
 declare i32 @bn_rt_policy_init(i32, i64)
 declare i32 @bn_rt_policy_filesystem_sandboxed()
 declare i32 @bn_rt_policy_filesystem_root(i32, ptr)
+declare i32 @bn_rt_exec_run(ptr, ptr, i32, ptr)
+declare i64 @bn_rt_exec_result_return_code(i64)
+declare ptr @bn_rt_exec_result_stdout(i64)
+declare ptr @bn_rt_exec_result_stderr(i64)
+declare i32 @bn_rt_exec_result_close(i64)
 declare i32 @bn_rt_dataframe_create(ptr, i32, ptr)
 declare i32 @bn_rt_dataframe_row_count(i64, ptr)
 declare i32 @bn_rt_dataframe_column_count(i64, ptr)
@@ -122,6 +127,11 @@ pub(crate) fn is_bn_rt_host_call(name: &str) -> bool {
             | "HOST.Console.PrintAt"
             | "HOST.Console.NumCols"
             | "HOST.Console.NumRows"
+            | "HOST.Exec.Run"
+            | "HOST.Exec.Result.ReturnCode"
+            | "HOST.Exec.Result.Stdout"
+            | "HOST.Exec.Result.Stderr"
+            | "HOST.Exec.Result.Close"
             | "HOST.FileSystem.Open"
             | "FS.File.Close"
             | "HOST.Net.Address.Parse"
@@ -309,6 +319,19 @@ pub(crate) fn bn_rt_call_supported(
         | "HOST.Console.Beep"
         | "HOST.Console.NumCols"
         | "HOST.Console.NumRows" => arguments.is_empty(),
+        "HOST.Exec.Run" => {
+            arguments.len() == 2
+                && values.get(&arguments[0]) == Some(&Type::String)
+                && values.get(&arguments[1]).and_then(llvm_type) == Some("{ ptr, i32 }")
+        }
+        "HOST.Exec.Result.ReturnCode" | "HOST.Exec.Result.Stdout" | "HOST.Exec.Result.Stderr" => {
+            arguments.len() == 1
+                && values.get(&arguments[0]).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+        }
+        "HOST.Exec.Result.Close" => {
+            arguments.len() == 1
+                && values.get(&arguments[0]).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+        }
         "HOST.Console.PrintAt" => {
             arguments.len() == 3
                 && arguments.first().is_some_and(|value| {
@@ -588,6 +611,86 @@ pub(crate) fn lower_bn_rt_call(
     state: &mut EmissionState,
 ) {
     match name {
+        "HOST.Exec.Run" => {
+            let dest = destination.0;
+            let _ = writeln!(
+                text,
+                "  %execargs{dest} = extractvalue {{ ptr, i32 }} %v{}, 0",
+                arguments[1].0
+            );
+            let _ = writeln!(
+                text,
+                "  %execargc{dest} = extractvalue {{ ptr, i32 }} %v{}, 1",
+                arguments[1].0
+            );
+            let _ = writeln!(text, "  %execout{dest} = alloca i64");
+            let _ = writeln!(text, "  store i64 0, ptr %execout{dest}");
+            let _ = writeln!(
+                text,
+                "  %execrc{dest} = call i32 @bn_rt_exec_run(ptr %v{}, ptr %execargs{dest}, i32 %execargc{dest}, ptr %execout{dest})",
+                arguments[0].0
+            );
+            let _ = writeln!(text, "  %execresult{dest} = load i64, ptr %execout{dest}");
+            let _ = writeln!(text, "  %execerr{dest} = icmp ne i32 %execrc{dest}, 0");
+            let _ = writeln!(text, "  %execerrcode{dest} = sext i32 %execrc{dest} to i64");
+            let _ = writeln!(
+                text,
+                "  %execpayload{dest} = select i1 %execerr{dest}, i64 %execerrcode{dest}, i64 %execresult{dest}"
+            );
+            let _ = writeln!(
+                text,
+                "  %execagg{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %execerr{dest}, 0"
+            );
+            let _ = writeln!(
+                text,
+                "  %execaggp{dest} = insertvalue {{ i1, ptr, i64 }} %execagg{dest}, ptr null, 1"
+            );
+            let _ = writeln!(
+                text,
+                "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %execaggp{dest}, i64 %execpayload{dest}, 2"
+            );
+        }
+        "HOST.Exec.Result.ReturnCode" => {
+            let _ = writeln!(
+                text,
+                "  %execpayload{} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                arguments[0].0, arguments[0].0
+            );
+            let _ = writeln!(
+                text,
+                "  %v{} = call i64 @bn_rt_exec_result_return_code(i64 %execpayload{})",
+                destination.0, arguments[0].0
+            );
+        }
+        "HOST.Exec.Result.Stdout" | "HOST.Exec.Result.Stderr" => {
+            let suffix = if name.ends_with("Stdout") {
+                "stdout"
+            } else {
+                "stderr"
+            };
+            let _ = writeln!(
+                text,
+                "  %execpayload{} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                arguments[0].0, arguments[0].0
+            );
+            let _ = writeln!(
+                text,
+                "  %v{} = call ptr @bn_rt_exec_result_{}(i64 %execpayload{})",
+                destination.0, suffix, arguments[0].0
+            );
+        }
+        "HOST.Exec.Result.Close" => {
+            let _ = writeln!(
+                text,
+                "  %execpayload{} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                arguments[0].0, arguments[0].0
+            );
+            let _ = writeln!(
+                text,
+                "  %v{} = call i32 @bn_rt_exec_result_close(i64 %execpayload{})",
+                destination.0, arguments[0].0
+            );
+        }
         "HOST.FileSystem.Open" => {
             let dest = destination.0;
             let mode = extend_to_i32(

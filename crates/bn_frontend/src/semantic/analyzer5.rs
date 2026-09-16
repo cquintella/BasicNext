@@ -78,18 +78,13 @@ impl Analyzer {
             ExpressionKind::Name { name } => self
                 .lookup(name, locals)
                 .map(|symbol| symbol.ty.clone())
-                .ok_or_else(|| {
-                    error(
-                        "NAME_NOT_FOUND",
-                        format!("name '{name}' is not declared"),
-                        expression.span,
-                    )
-                }),
+                .ok_or_else(|| undefined_name(name, "expression lookup", expression.span)),
             ExpressionKind::Vector { values } => {
                 if vector_shape(expression).is_none() {
-                    return Err(error(
-                        "TYPE_MISMATCH",
-                        "vector literal has inconsistent nested dimensions",
+                    return Err(type_mismatch(
+                        "rectangular vector",
+                        "inconsistent dimensions",
+                        "vector literal",
                         expression.span,
                     ));
                 }
@@ -99,17 +94,19 @@ impl Analyzer {
                     if element_type == Type::Unknown {
                         element_type = actual;
                     } else if !comparable(&element_type, &actual) {
-                        return Err(error(
-                            "TYPE_MISMATCH",
-                            "vector literal elements must have one compatible type",
+                        return Err(type_mismatch(
+                            display(&element_type),
+                            display(&actual),
+                            "vector literal element",
                             value.span,
                         ));
                     }
                 }
                 if element_type == Type::Unknown {
-                    return Err(error(
-                        "TYPE_MISMATCH",
-                        "empty vector literal has no inferable element type",
+                    return Err(type_mismatch(
+                        "inferable element type",
+                        "empty vector",
+                        "vector literal",
                         expression.span,
                     ));
                 }
@@ -294,12 +291,10 @@ impl Analyzer {
                     }
                     "NOT" if operand_type == Type::Boolean => Ok(Type::Boolean),
                     "NOT" if is_integer(&operand_type) => Ok(default_literal_type(operand_type)),
-                    _ => Err(error(
-                        "TYPE_MISMATCH",
-                        format!(
-                            "operator {operator} cannot be applied to {}",
-                            display(&operand_type)
-                        ),
+                    _ => Err(type_mismatch(
+                        "operand accepted by operator",
+                        display(&operand_type),
+                        format!("unary operator {operator}"),
                         expression.span,
                     )),
                 }
@@ -352,9 +347,10 @@ impl Analyzer {
                 };
                 let index_type = self.expression(index, locals)?;
                 if !is_integer(&index_type) {
-                    return Err(error(
-                        "TYPE_MISMATCH",
-                        "index must have an integral type",
+                    return Err(type_mismatch(
+                        "INTEGER",
+                        display(&index_type),
+                        "index expression",
                         index.span,
                     ));
                 }
@@ -374,9 +370,10 @@ impl Analyzer {
                         }
                     }
                     Type::Pointer { element, .. } if !is_void(&element) => Ok(*element),
-                    Type::Pointer { .. } => Err(error(
-                        "TYPE_MISMATCH",
-                        "POINTER TO VOID must be converted to a typed pointer before indexing",
+                    Type::Pointer { .. } => Err(type_mismatch(
+                        "typed pointer",
+                        "POINTER TO VOID",
+                        "pointer indexing",
                         object.span,
                     )),
                     Type::String | Type::HostArgs => Ok(Type::String),
@@ -389,9 +386,10 @@ impl Analyzer {
                             _ => None,
                         })
                         .ok_or_else(|| {
-                            error(
-                                "TYPE_MISMATCH",
-                                format!("cannot index {}", display(&Type::Alternative(types))),
+                            type_mismatch(
+                                "indexable alternative",
+                                display(&Type::Alternative(types)),
+                                "index operation",
                                 object.span,
                             )
                         }),
@@ -400,9 +398,10 @@ impl Analyzer {
                         "indexed expression has no resolved type",
                         object.span,
                     )),
-                    other => Err(error(
-                        "TYPE_MISMATCH",
-                        format!("cannot index {}", display(&other)),
+                    other => Err(type_mismatch(
+                        "indexable value",
+                        display(&other),
+                        "index operation",
                         object.span,
                     )),
                 }
@@ -411,13 +410,10 @@ impl Analyzer {
                 let source = self.expression(value, locals)?;
                 let target = self.resolve_reference(type_ref);
                 if !conversion_allowed(&source, &target) {
-                    return Err(error(
-                        "TYPE_MISMATCH",
-                        format!(
-                            "cannot convert {} AS {}",
-                            display(&source),
-                            display(&target)
-                        ),
+                    return Err(type_mismatch(
+                        display(&target),
+                        display(&source),
+                        "type conversion",
                         expression.span,
                     ));
                 }
