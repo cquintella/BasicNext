@@ -134,6 +134,12 @@ pub(crate) fn lower_program(
                     functions.push(lower_callable(
                         model,
                         &format!("{prefix}{type_name}.{name}"),
+                        match name.as_str() {
+                            "CONSTRUCTOR" => FunctionKind::Constructor,
+                            "DESTRUCTOR" => FunctionKind::Destructor,
+                            _ => FunctionKind::User,
+                        },
+                        Some(format!("{prefix}{type_name}")),
                         false,
                         signature.as_ref(),
                         parameters,
@@ -215,6 +221,12 @@ pub(crate) fn lower_program(
         functions.push(lower_callable(
             model,
             &format!("{prefix}{name}"),
+            if prefix.is_empty() && name == "Start" {
+                FunctionKind::Entry
+            } else {
+                FunctionKind::User
+            },
+            None,
             *asynchronous,
             Some(signature),
             &signature.parameters,
@@ -285,6 +297,8 @@ pub(crate) fn lower_static_init(
     }
     Ok(Some(Function {
         name: format!("{class}.$init"),
+        kind: FunctionKind::Init,
+        owner: Some(class.clone()),
         asynchronous: false,
         parameters: Vec::new(),
         weak_symbols: HashSet::new(),
@@ -323,6 +337,8 @@ pub(crate) fn lower_instance_fields(
     }
     Ok(Function {
         name: format!("{prefix}{class_name}.$fields"),
+        kind: FunctionKind::FieldInit,
+        owner: Some(format!("{prefix}{class_name}")),
         asynchronous: false,
         parameters: vec![SYNTHETIC_SELF],
         weak_symbols: HashSet::new(),
@@ -356,6 +372,8 @@ pub(crate) fn lower_inherited_constructor(
     builder.terminate(Terminator::Return { value: None });
     Ok(Function {
         name: format!("{prefix}{class_name}.CONSTRUCTOR"),
+        kind: FunctionKind::Constructor,
+        owner: Some(format!("{prefix}{class_name}")),
         asynchronous: false,
         parameters: vec![SYNTHETIC_SELF],
         weak_symbols: HashSet::new(),
@@ -401,6 +419,8 @@ pub(crate) fn lower_inherited_destructor(
     builder.terminate(Terminator::Return { value: None });
     Ok(Function {
         name: format!("{prefix}{class_name}.DESTRUCTOR"),
+        kind: FunctionKind::Destructor,
+        owner: Some(format!("{prefix}{class_name}")),
         asynchronous: false,
         parameters: vec![SYNTHETIC_SELF],
         weak_symbols: HashSet::new(),
@@ -443,6 +463,8 @@ pub(crate) fn lower_struct_default(
     }
     Ok(Function {
         name: format!("{prefix}{struct_name}.$default"),
+        kind: FunctionKind::Default,
+        owner: Some(format!("{prefix}{struct_name}")),
         asynchronous: false,
         parameters: Vec::new(),
         weak_symbols: HashSet::new(),

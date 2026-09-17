@@ -232,6 +232,8 @@ fn validate_rejects_a_dangling_block_target() {
         source_name: None,
         functions: vec![Function {
             name: "Broken".into(),
+            kind: bn::ir::FunctionKind::User,
+            owner: None,
             asynchronous: false,
             parameters: Vec::new(),
             return_type: bn::types::Type::Named("VOID".into()),

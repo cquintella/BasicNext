@@ -222,49 +222,76 @@ Before claiming “well-formed IR to both backends” for a release slice:
 - [x] Document which merge/`φ` form the IR uses — **explicit `Phi`** (AQ-20 locked)
 - [x] Implement `Instruction::Phi` + validate/lowering emission where needed for the scalar LLVM subset; target-specific unsupported cases remain matrix-owned.
 
-## Emitted names (normative — bucket 0.5.1c §3.1, 2026-09-16)
+## Function kinds (normative — bucket 0.5.1c §3.2, 2026-09-16)
 
-Lowering encodes what a function *is* in its **name**, and both backends decode
-it by string. Until structured `FunctionKind` metadata exists (§3.2, gated),
-this table is the contract. The machine-readable copy is
-`bn_ir::names` (`crates/bn_ir/src/names.rs`); two tests hold both sides to it:
+`bn_ir::Function` carries `kind: FunctionKind` and `owner: Option<String>`.
+Lowering sets both **explicitly** at every synthesis site; backends read
+them; the function **name** is informative (diagnostics, LLVM symbols).
 
-- `tests/ir_names.rs::every_emitted_function_name_follows_a_documented_shape`
-  lowers every `tests/grammar/valid/**/*.bn` and `examples/*.bn` and asserts
-  each `Function.name` classifies, and each `Constant::Function` callee that
-  starts with `$` is a documented intrinsic.
-- `tests/ir_names.rs::backends_only_decode_documented_name_shapes` scans
-  `crates/bn_llvm/src`, `src/runtime`, `src/runtime_impl.rs` for
-  `ends_with("…")` / `strip_prefix("…")` / `== "…"` / `Some("…")` literals that
-  look like synthesised shapes and asserts each is in the table.
+```rust
+pub enum FunctionKind { User, Entry, Constructor, Destructor, FieldInit, Init, Default }
+```
 
-| Shape | Kind | Producer (lowering) | Load-bearing consumers |
-| --- | --- | --- | --- |
-| `Start` | Entry | user source; `lowering.rs` | both backends select it as the process entry |
-| `<Class>.CONSTRUCTOR` | Constructor | `lowering.rs` (`{prefix}{class}.CONSTRUCTOR`) | `NEW` sequencing; dispatch-during-construction rule; `bn_llvm` layout |
-| `<Class>.DESTRUCTOR` | Destructor | `lowering.rs` | ARC zero-count chain (`emit_destroy_if_last`, `release_owned_value`) |
-| `<Class>.$fields` | FieldInit | `lowering.rs`; `builder.rs` derived-fields chain | `NEW` field-initialiser prologue; `is_class_type` uses its presence as "is a class" |
-| `<Class>.$init` | Init | `lowering.rs` | construction helper (allocate → `$fields` → `CONSTRUCTOR`) |
-| `<Struct>.$default` | Default | `lowering.rs`, `builder.rs` | struct default construction (`bn_llvm` `.$default` path) |
-| `<Owner>.<Name>` / `<Name>` | User | user source; `class_method_name` | ordinary call/dispatch |
-| `#<ModuleId>.<…>` | (prefix) | `helpers.rs` for imported names | module-qualified resolution; stripped before classification |
-| `@super:<Class>.<Method>` | (prefix) | `builder.rs`, `lowering_callable.rs` | static call to the base implementation; never dynamic dispatch |
-| `$for_condition` | **intrinsic callee** | `control_flow.rs` (`function_constant`) | no `Function` body; implemented natively by both backends (`builtin` / `lower_for_condition`) |
+| Kind | Owner | `validate` rule (`INVALID_IR`, detail names the rule) |
+| --- | --- | --- |
+| `Entry` | none | at most one per module; no parameters |
+| `Constructor` | class | owner required; ≥ 1 parameter (`SELF`) |
+| `Destructor` | class | owner required; ≥ 1 parameter; returns `VOID` |
+| `FieldInit` | class | owner required; ≥ 1 parameter |
+| `Init` | class | owner required (allocates and returns the object; no `SELF`) |
+| `Default` | struct | owner required; no parameters |
+| `User` | class for methods, none for free functions | — |
+
+Lookups: `Module::entry()`, `Module::function_of_kind(kind, owner)`,
+`Module::kind_of(name)`. Negatives: `crates/bn_ir/src/validate.rs::kind_tests`
+(two entries; entry with parameters; missing owner per kind; missing `SELF`;
+non-`VOID` destructor; `Default` with parameters).
+
+## Emitted names (informative since §3.2; tested)
+
+Lowering still spells synthesised functions by convention. The shapes are
+listed in `bn_ir::names` and checked both ways by `tests/ir_names.rs`:
+
+- `every_emitted_function_name_follows_a_documented_shape` lowers every
+  `tests/grammar/valid/**/*.bn` and `examples/*.bn`; each `Function.name`
+  classifies **and agrees with its `kind`/`owner`**, and each `$` callee is a
+  documented intrinsic.
+- `backends_only_decode_documented_name_shapes` scans `crates/bn_llvm/src`,
+  `src/runtime`, `src/runtime_impl.rs`: a backend may string-match **only**
+  `SUPER_PREFIX` and `INTRINSICS`; any `.CONSTRUCTOR` / `.DESTRUCTOR` /
+  `$fields` / `$init` / `$default` literal fails the test.
+
+| Shape | Kind | Producer (lowering) |
+| --- | --- | --- |
+| `Start` | Entry | user source (name fixed by the language: `FUNCTION Start`; shared as `names::ENTRY`) |
+| `<Class>.CONSTRUCTOR` | Constructor | `lowering.rs` |
+| `<Class>.DESTRUCTOR` | Destructor | `lowering.rs` |
+| `<Class>.$fields` | FieldInit | `lowering.rs`, `builder.rs` |
+| `<Class>.$init` | Init | `lowering.rs` |
+| `<Struct>.$default` | Default | `lowering.rs`, `builder.rs` |
+| `<Owner>.<Name>` / `<Name>` | User | user source |
+| `#<ModuleId>.<…>` | (prefix) | imported names; stripped before classification |
+| `@super:<Class>.<Method>` | (callee prefix) | static call to the base implementation — **string protocol, kept** |
+| `$for_condition` | (intrinsic callee) | no body; both backends implement it — **string protocol, kept** |
 
 Rules:
 
-1. A backend may match a function name **only** against the shapes above
-   (`bn_ir::names::SYNTHESISED_SUFFIXES`, `ENTRY`, `SUPER_PREFIX`,
-   `MODULE_PREFIX`, `INTRINSICS`). A new shape is a contract change: table row
-   here, entry in `bn_ir::names`, both tests green — in one change.
+1. Backends identify functions by `kind` / `owner` (`Module::function_of_kind`,
+   `Module::entry`, `Module::kind_of`). Only `SUPER_PREFIX` and `INTRINSICS`
+   may be string-matched.
 2. The frontend must not emit a function name that does not classify, nor a
-   `$`-callee outside `INTRINSICS`.
-3. Library/HOST **member** names decoded by backends (`BNDispatch.Queue.*`,
-   `HOST.Exec.Result`, `BNLog.Fields`, …) are a different contract — the host
-   and library specifications — and are outside this table (see
-   `host-traits.md`, `support-matrix.md`).
-4. §3.2 (gated): when `FunctionKind` lands on `bn_ir::Function`, every row
-   above becomes *informative* and rule 1 becomes "backends read the kind".
+   `$` callee outside `INTRINSICS`; `kind`/`owner` must agree with the name
+   while both exist.
+3. **Provider callees** (`#<id>.DataFrame.CONSTRUCTOR`, `#<id>.Logger.CONSTRUCTOR`,
+   …): standard modules are **not lowered**, so these callees have no `Function`
+   and no `kind`. Like intrinsics they are identified by their documented name
+   shape through `bn_ir::names::classify` — never by an ad-hoc literal. The
+   remaining library/HOST **member** names (`BNDispatch.Queue.*`,
+   `HOST.Exec.Result`, `BNLog.Fields.SetString`, …) are the host/library
+   contract (`host-traits.md`, `support-matrix.md`), outside this table.
+4. A new shape or kind is a contract change: enum/table row here,
+   `bn_ir::names` / `FunctionKind`, `validate` rule, both tests green — in one
+   change.
 
 ## Release-slice operation inventory
 

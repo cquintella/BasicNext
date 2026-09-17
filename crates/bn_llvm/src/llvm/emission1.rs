@@ -162,11 +162,11 @@ pub(crate) fn lower_scalar_instruction(
                 let _ = writeln!(text, "  %v{} = fadd double 0.0, 0.0", destination.0);
             }
             "ptr" => {
-                if function.name.ends_with(".$default") {
+                if function.kind == FunctionKind::Default {
                     let owner = function
-                        .name
-                        .strip_suffix(".$default")
-                        .expect("validated struct default function name");
+                        .owner
+                        .as_deref()
+                        .expect("validated default constructor owner");
                     let bytes = class_instance_bytes(module, owner);
                     let _ = writeln!(
                         text,

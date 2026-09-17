@@ -207,9 +207,10 @@ pub(crate) fn lower_user_call(
     let args_joined = args.join(", ");
     let method = resolved.rsplit('.').next().unwrap_or(resolved);
     let virtualish = !is_super
-        && !resolved.ends_with(".CONSTRUCTOR")
-        && !resolved.ends_with(".$fields")
-        && !resolved.ends_with(".$init")
+        && !matches!(
+            module.kind_of(resolved),
+            Some(FunctionKind::Constructor | FunctionKind::FieldInit | FunctionKind::Init)
+        )
         && !arguments.is_empty()
         && analysis
             .values

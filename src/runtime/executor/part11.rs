@@ -41,13 +41,11 @@ impl Executor<'_, '_> {
                     handle,
                     class: class.clone(),
                 };
-                let destructor = format!("{class}.DESTRUCTOR");
-                let result = if self
+                let destructor = self
                     .module
-                    .functions
-                    .iter()
-                    .any(|function| function.name == destructor)
-                {
+                    .function_of_kind(crate::ir::FunctionKind::Destructor, &class)
+                    .map(|function| function.name.clone());
+                let result = if let Some(destructor) = destructor {
                     self.call_named(&destructor, vec![target], span).map(|_| ())
                 } else {
                     Ok(())
@@ -521,14 +519,12 @@ impl Executor<'_, '_> {
     }
 
     pub(crate) fn default_named(&mut self, ir_name: &str, span: Span) -> Result<Value, Diagnostic> {
-        let function_name = format!("{ir_name}.$default");
-        if self
+        if let Some(default) = self
             .module
-            .functions
-            .iter()
-            .any(|function| function.name == function_name)
+            .function_of_kind(crate::ir::FunctionKind::Default, ir_name)
+            .map(|function| function.name.clone())
         {
-            self.call_named(&function_name, Vec::new(), span)
+            self.call_named(&default, Vec::new(), span)
         } else {
             Ok(empty_named(ir_name))
         }

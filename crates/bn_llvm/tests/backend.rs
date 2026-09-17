@@ -22,6 +22,8 @@ fn llvm_crate_emits_a_validated_start_function() {
     let module = Module {
         functions: vec![Function {
             name: "Start".into(),
+            kind: bn_ir::FunctionKind::Entry,
+            owner: None,
             asynchronous: false,
             parameters: Vec::new(),
             return_type: Type::Integer(IntegerType::Int32),

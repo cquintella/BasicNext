@@ -6,9 +6,8 @@ pub(crate) fn is_class_type(module: &Module, ty: &Type) -> bool {
     };
     !is_struct_type(module, ty)
         && module
-            .functions
-            .iter()
-            .any(|function| function.name == format!("{name}.$fields"))
+            .function_of_kind(FunctionKind::FieldInit, &name)
+            .is_some()
 }
 
 /// A `NEW T[n]` region: reference-counted like a class instance (0.5). The
@@ -58,12 +57,9 @@ pub(crate) fn class_name(ty: &Type) -> Option<String> {
 }
 
 pub(crate) fn destructor_symbol(module: &Module, ty: &Type) -> Option<String> {
-    let destructor = format!("{}.DESTRUCTOR", class_name(ty)?);
     module
-        .functions
-        .iter()
-        .any(|function| function.name == destructor)
-        .then(|| llvm_function_symbol(&destructor))
+        .function_of_kind(FunctionKind::Destructor, &class_name(ty)?)
+        .map(|destructor| llvm_function_symbol(&destructor.name))
 }
 
 pub(crate) fn runtime_ir() -> &'static str {

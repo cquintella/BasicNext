@@ -4,11 +4,12 @@
 
 //! The function-name protocol of the IR.
 //!
-//! Lowering encodes what a function *is* in its name, and both backends
-//! decode it. Until `FunctionKind` metadata exists (bucket 0.5.1c §3.2) this
-//! table is the single normative source: every emitted name must classify,
-//! and backends may only match the suffixes and prefixes listed here.
-//! Documented in `docs/architecture/ir-contract.md` § "Emitted names".
+//! Lowering spells synthesised functions by convention; since bucket 0.5.1c
+//! §3.2 what a function *is* lives in `Function::kind` / `owner`, and this
+//! table is informative for lowered functions. It stays load-bearing for
+//! callees that have no body in the module — intrinsics and provider-backed
+//! stubs (standard modules are not lowered) — which backends classify through
+//! [`classify`]. Documented in `docs/architecture/ir-contract.md`.
 
 /// What a function name says about the function.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

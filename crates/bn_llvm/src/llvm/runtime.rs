@@ -236,10 +236,18 @@ pub(crate) fn bnlog_method(module: &Module, name: &str) -> Option<&'static str> 
     if !module.bnlog_providers.contains(&module_id) {
         return None;
     }
+    // Provider-backed stubs have no lowered body, so the constructor callee
+    // is identified by its documented name shape (`bn_ir::names`); the
+    // remaining members are library names (host/library contract).
+    if bn_ir::names::classify(name) == Some(bn_ir::names::EmittedNameKind::Constructor) {
+        return match rest.split_once('.')?.0 {
+            "Fields" => Some("fields_constructor"),
+            "Logger" => Some("logger_constructor"),
+            _ => None,
+        };
+    }
     match rest {
-        "Fields.CONSTRUCTOR" => Some("fields_constructor"),
         "Fields.SetString" => Some("fields_set_string"),
-        "Logger.CONSTRUCTOR" => Some("logger_constructor"),
         "Logger.AddFile" => Some("logger_add_file"),
         "Logger.Log" => Some("logger_log"),
         "Logger.Flush" => Some("logger_flush"),

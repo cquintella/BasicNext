@@ -742,9 +742,7 @@ fn execute_with_host_inner<'debug>(
         ));
     }
     let start = module
-        .functions
-        .iter()
-        .find(|function| function.name == "Start")
+        .entry()
         .ok_or_else(|| {
             runtime_error(crate::diagnostic::DiagId::START_NOT_FOUND,
                 "executable module requires FUNCTION Start",

@@ -36,6 +36,8 @@ fn start_module(blocks: Vec<BasicBlock>) -> Module {
         source_name: Some("tests/codegen/manual.bn".into()),
         functions: vec![Function {
             name: "Start".into(),
+            kind: bn::ir::FunctionKind::Entry,
+            owner: None,
             asynchronous: false,
             parameters: Vec::new(),
             return_type: Type::Named("VOID".into()),

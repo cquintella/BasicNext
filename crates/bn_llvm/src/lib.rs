@@ -15,8 +15,8 @@ use std::{
 
 use bn_diag::{DiagId, Diagnostic, Label, LabelStyle};
 use bn_ir::{
-    BlockId, Constant, Function, Instruction, Module, SymbolId, Terminator, ValidatedModule,
-    ValueId, validate_module,
+    BlockId, Constant, Function, FunctionKind, Instruction, Module, SymbolId, Terminator,
+    ValidatedModule, ValueId, validate_module,
 };
 use bn_source::{Position, Span};
 use bn_types::{FloatType, IntegerType, Type};
@@ -261,11 +261,7 @@ pub fn lower_validated_module_for_target_with_policy(
     )
     .map_err(|error| format!("{}: {}", error.code, error.message))?;
     let module = validated.as_module();
-    let start = module
-        .functions
-        .iter()
-        .find(|function| function.name == "Start")
-        .expect("validated entry point");
+    let start = module.entry().expect("validated entry point");
     let functions = analyze_reachable(module, start)?;
     let mut text = String::from(
         "; Basic Next 0.2\n@.bn_fmt_int = private unnamed_addr constant [5 x i8] c\"%lld\\00\"\n@.bn_fmt_uint = private unnamed_addr constant [5 x i8] c\"%llu\\00\"\n@.bn_fmt_float = private unnamed_addr constant [6 x i8] c\"%.17g\\00\"\n@.bn_fmt_str = private unnamed_addr constant [3 x i8] c\"%s\\00\"\n@.bn_fmt_error = private unnamed_addr constant [16 x i8] c\"Error(%lld, %s)\\00\"\n@.bn_asc_error = private unnamed_addr constant [32 x i8] c\"ASC requires a non-empty STRING\\00\"\n@.bn_char_error = private unnamed_addr constant [34 x i8] c\"CHAR code is not a Unicode scalar\\00\"\n@.bn_dataframe_error = private unnamed_addr constant [25 x i8] c\"DataFrame column failure\\00\"\n@.bn_dataframe_duplicate = private unnamed_addr constant [22 x i8] c\"duplicate column name\\00\"\n@.bn_dataframe_length = private unnamed_addr constant [23 x i8] c\"column length mismatch\\00\"\n@.bn_dataframe_index = private unnamed_addr constant [27 x i8] c\"column index out of bounds\\00\"\n@.bn_true = private unnamed_addr constant [5 x i8] c\"TRUE\\00\"\n@.bn_false = private unnamed_addr constant [6 x i8] c\"FALSE\\00\"\n@.bn_empty = private unnamed_addr constant [1 x i8] c\"\\00\"\n@.bn_eof = private constant [4 x i8] c\"EOF\\00\"\n",
@@ -306,11 +302,7 @@ pub fn lower_validated_module_for_target_with_policy(
 /// lower the already validated module.
 pub fn validate_for(validated: &ValidatedModule, target: Target) -> Result<(), Diagnostic> {
     let module = validated.as_module();
-    let Some(start) = module
-        .functions
-        .iter()
-        .find(|function| function.name == "Start")
-    else {
+    let Some(start) = module.entry() else {
         return Err(support_fact(
             DiagId::TARGET_UNSUPPORTED_ENTRYPOINT,
             target,

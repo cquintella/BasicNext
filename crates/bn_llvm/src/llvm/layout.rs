@@ -1,4 +1,4 @@
-use super::{HashSet, Instruction, Module, Type, llvm_type};
+use super::{FunctionKind, HashSet, Instruction, Module, Type, llvm_type};
 
 pub(crate) const OBJECT_HEADER_BYTES: u32 = 16;
 
@@ -50,11 +50,9 @@ pub(crate) fn is_struct_type(module: &Module, ty: &Type) -> bool {
     let Type::Named(name) = ty else {
         return false;
     };
-    let default_function = format!("{name}.$default");
     module
-        .functions
-        .iter()
-        .any(|function| function.name == default_function)
+        .function_of_kind(FunctionKind::Default, name)
+        .is_some()
 }
 
 pub(crate) fn struct_copy_supported(module: &Module, ty: &Type) -> bool {
@@ -86,12 +84,9 @@ pub(crate) fn class_layout_fields(module: &Module, class: &str) -> Vec<(String, 
         if let Some(base) = module.class_bases.get(class) {
             append(module, base, visiting, fields);
         }
-        let fields_function = format!("{class}.$fields");
-        let default_function = format!("{class}.$default");
         if let Some(function) = module
-            .functions
-            .iter()
-            .find(|function| function.name == fields_function || function.name == default_function)
+            .function_of_kind(FunctionKind::FieldInit, class)
+            .or_else(|| module.function_of_kind(FunctionKind::Default, class))
         {
             for block in &function.blocks {
                 for instruction in &block.instructions {

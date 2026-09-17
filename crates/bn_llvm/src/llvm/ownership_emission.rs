@@ -83,9 +83,8 @@ pub(crate) fn lower_ownership_emission(
                 && dimensions.len() == 1
                 && let Type::Named(class) = element.as_ref()
                 && module
-                    .functions
-                    .iter()
-                    .any(|candidate| candidate.name == format!("{class}.$fields"))
+                    .function_of_kind(FunctionKind::FieldInit, class)
+                    .is_some()
             {
                 let data = format!("%vectorreleaseptr{}", value.0);
                 let _ = writeln!(
@@ -256,7 +255,6 @@ pub(crate) fn lower_ownership_emission(
         }
         Instruction::EnsureClass { class, .. } => {
             let flag = class_init_flag(class);
-            let init_name = format!("{class}.$init");
             let n = state.continuation_count;
             state.continuation_count += 1;
             let tag = format!("{}{n}", sanitize_symbol(class));
@@ -267,12 +265,8 @@ pub(crate) fn lower_ownership_emission(
             );
             state.control_flow.label(text, format!("initrun{tag}"));
             let _ = writeln!(text, "  store i1 true, ptr {flag}");
-            if module
-                .functions
-                .iter()
-                .any(|function| function.name == init_name)
-            {
-                let init = llvm_function_symbol(&init_name);
+            if let Some(init) = module.function_of_kind(FunctionKind::Init, class) {
+                let init = llvm_function_symbol(&init.name);
                 let _ = writeln!(text, "  call void @{init}()");
             }
             let _ = writeln!(text, "  br label %initdone{tag}");

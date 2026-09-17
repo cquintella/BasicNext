@@ -5,6 +5,8 @@ use super::*;
 pub(crate) fn lower_callable(
     model: &SemanticModel,
     name: &str,
+    kind: FunctionKind,
+    owner: Option<String>,
     asynchronous: bool,
     signature: Option<&FunctionSignature>,
     parameters: &[crate::ast::Parameter],
@@ -17,7 +19,7 @@ pub(crate) fn lower_callable(
     prefix: &str,
 ) -> Result<Function, Diagnostic> {
     let mut builder = Builder::new(model, methods, prefix);
-    if name.ends_with(".CONSTRUCTOR") {
+    if kind == FunctionKind::Constructor {
         builder.derived_fields = Some(format!(
             "{}{}",
             name.trim_end_matches("CONSTRUCTOR"),
@@ -85,6 +87,8 @@ pub(crate) fn lower_callable(
     };
     Ok(Function {
         name: name.into(),
+        kind,
+        owner,
         asynchronous,
         parameters: parameter_ids,
         weak_symbols: collect_weak_symbols(model, statements),

@@ -29,6 +29,8 @@ fn malformed_module() -> Module {
     Module {
         functions: vec![Function {
             name: "Start".into(),
+            kind: bn::ir::FunctionKind::Entry,
+            owner: None,
             asynchronous: false,
             parameters: Vec::new(),
             return_type: bn::types::Type::Named("VOID".into()),
@@ -544,6 +546,8 @@ fn function_with_blocks(blocks: Vec<BasicBlock>) -> Module {
     Module {
         functions: vec![Function {
             name: "Start".into(),
+            kind: bn::ir::FunctionKind::Entry,
+            owner: None,
             asynchronous: false,
             parameters: Vec::new(),
             return_type: bn::types::Type::Named("VOID".into()),

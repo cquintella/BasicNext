@@ -9,7 +9,11 @@
 
 use std::{fs, path::Path};
 
-use bn::{ir::names, lowering::lower_graph, module_graph::load};
+use bn::{
+    ir::{FunctionKind, names},
+    lowering::lower_graph,
+    module_graph::load,
+};
 use bn_frontend::semantic::analyze_modules;
 
 fn bn_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
@@ -46,8 +50,45 @@ fn every_emitted_function_name_follows_a_documented_shape() {
         };
         lowered += 1;
         for function in &module.functions {
-            if names::classify(&function.name).is_none() {
+            let Some(shape) = names::classify(&function.name) else {
                 undocumented.push(format!("{}: {}", path.display(), function.name));
+                continue;
+            };
+            // While the name protocol and `FunctionKind` both exist they must
+            // agree: the name is informative, the kind is what backends read.
+            let expected = match shape {
+                names::EmittedNameKind::Entry => FunctionKind::Entry,
+                names::EmittedNameKind::Constructor => FunctionKind::Constructor,
+                names::EmittedNameKind::Destructor => FunctionKind::Destructor,
+                names::EmittedNameKind::FieldInit => FunctionKind::FieldInit,
+                names::EmittedNameKind::Init => FunctionKind::Init,
+                names::EmittedNameKind::Default => FunctionKind::Default,
+                names::EmittedNameKind::User => FunctionKind::User,
+            };
+            if function.kind != expected {
+                undocumented.push(format!(
+                    "{}: {} is {:?} but its name says {expected:?}",
+                    path.display(),
+                    function.name,
+                    function.kind
+                ));
+            }
+            if function.kind != FunctionKind::User
+                && function.kind != FunctionKind::Entry
+                && function.owner.as_deref()
+                    != function
+                        .name
+                        .strip_prefix(names::SUPER_PREFIX)
+                        .unwrap_or(&function.name)
+                        .rsplit_once('.')
+                        .map(|(owner, _)| owner)
+            {
+                undocumented.push(format!(
+                    "{}: {} owner {:?} disagrees with its name",
+                    path.display(),
+                    function.name,
+                    function.owner
+                ));
             }
             for block in &function.blocks {
                 for instruction in &block.instructions {
@@ -77,21 +118,13 @@ fn every_emitted_function_name_follows_a_documented_shape() {
     );
 }
 
-/// String literals a backend may compare a function name against. Anything
-/// else that looks like a name suffix/prefix must be added to `bn_ir::names`
-/// (and to ir-contract.md) first.
+/// String literals a backend may still compare a callee name against. Since
+/// `FunctionKind` (bucket 0.5.1c §3.2) function identity is read from the
+/// IR; only the super-call prefix and the intrinsic callees remain a string
+/// protocol. Synthesised suffixes (`.CONSTRUCTOR`, `.$fields`, …) are
+/// informative and must not be matched by a backend.
 fn documented_literals() -> Vec<String> {
-    let mut literals: Vec<String> = names::SYNTHESISED_SUFFIXES
-        .iter()
-        .map(|(suffix, _)| format!(".{suffix}"))
-        .collect();
-    literals.extend(
-        names::SYNTHESISED_SUFFIXES
-            .iter()
-            .map(|(suffix, _)| (*suffix).to_string()),
-    );
-    literals.push(names::ENTRY.to_string());
-    literals.push(names::SUPER_PREFIX.to_string());
+    let mut literals = vec![names::SUPER_PREFIX.to_string()];
     literals.extend(names::INTRINSICS.iter().map(|name| (*name).to_string()));
     literals
 }
@@ -140,9 +173,11 @@ fn backends_only_decode_documented_name_shapes() {
                     // the entry name, or the super prefix. Library member names
                     // (`.Queue.Concurrent`, `HOST.Exec.Result`) are a different
                     // contract and are not judged here.
+                    // The entry name is language surface (FUNCTION Start),
+                    // shared through `names::ENTRY`; a bare "Start" literal
+                    // here is a library member (BNWeb.Server.Start), not judged.
                     let looks_synthesised = literal.contains('$')
                         || literal.starts_with('@')
-                        || literal == names::ENTRY
                         || literal.rsplit('.').next().is_some_and(|tail| {
                             tail.len() > 3
                                 && tail.bytes().all(|b| b.is_ascii_uppercase() || b == b'_')

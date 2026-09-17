@@ -43,9 +43,7 @@ impl Executor<'_, '_> {
         if is_host_file_method(name) {
             return self.file_call(name, &arguments, span);
         }
-        if self.is_bndata_provider(name)
-            && (name.ends_with(".CONSTRUCTOR") || name.ends_with(".$fields"))
-        {
+        if self.is_bndata_provider(name) && self.is_lifecycle_stub(name) {
             return Ok(Value::Null);
         }
         if self.is_bndata_provider(name) && name.contains(".DataFrame.") {
@@ -74,7 +72,7 @@ impl Executor<'_, '_> {
             if name.contains(".Logger.") {
                 return self.log_logger_call(name, &arguments, span);
             }
-            if name.ends_with(".CONSTRUCTOR") || name.ends_with(".$fields") {
+            if self.is_lifecycle_stub(name) {
                 return Ok(Value::Null);
             }
             return Ok(Value::Error {
@@ -141,13 +139,17 @@ impl Executor<'_, '_> {
             .ok_or_else(|| {
                 super::super::name_not_found(&resolved, "function dispatch", span)
             })?;
-        let constructed = (name.ends_with(".CONSTRUCTOR") || name.ends_with(".$fields"))
-            .then(|| match arguments.first() {
-                Some(Value::Object { handle, .. }) => Some(*handle),
-                _ => None,
-            })
-            .flatten();
-        let pinned = lifecycle_dispatch(&resolved, &arguments);
+        let callee = &self.module.functions[index];
+        let constructed = matches!(
+            callee.kind,
+            crate::ir::FunctionKind::Constructor | crate::ir::FunctionKind::FieldInit
+        )
+        .then(|| match arguments.first() {
+            Some(Value::Object { handle, .. }) => Some(*handle),
+            _ => None,
+        })
+        .flatten();
+        let pinned = lifecycle_dispatch(callee, &arguments);
         if let Some(pinned) = pinned.clone() {
             self.pinned_dispatch.push(pinned);
         }
@@ -279,17 +281,12 @@ impl Executor<'_, '_> {
                 let worker_module = self.module.clone();
                 let worker_host = self.host.fork_for_task();
                 let ticket = queue.submit_with(task_name.clone(), move |ticket| {
-                    let mut worker_module = worker_module;
-                    for function in &mut worker_module.functions {
-                        if function.name == task_name { function.name = "Start".into(); }
-                        else if function.name == "Start" { function.name = "__dispatch_start".into(); }
-                    }
                     let mut input = std::io::Cursor::new(Vec::<u8>::new());
                     let mut output = BoundedTaskOutput {
                         bytes: Vec::new(),
                         maximum: crate::config::dispatch_limits().output_max_bytes,
                     };
-                    match crate::runtime::execute_named_with_host(&worker_module, "Start", task_arguments, &mut input, &mut output, &worker_host) {
+                    match crate::runtime::execute_named_with_host(&worker_module, &task_name, task_arguments, &mut input, &mut output, &worker_host) {
                         Ok(result) => {
                             let output = String::from_utf8_lossy(&output.bytes).into_owned();
                             if ticket.set_output(output).is_ok() {

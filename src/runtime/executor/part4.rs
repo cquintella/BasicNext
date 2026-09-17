@@ -143,7 +143,7 @@ impl Executor<'_, '_> {
                     }
                     self.allocate_object("BNWeb.Client", span)
                 }
-                "CONSTRUCTOR" | "$fields" => Ok(Value::Null),
+                _ if self.is_lifecycle_stub(name) => Ok(Value::Null),
                 "Request" | "RequestWithPolicy" => {
                     let with_policy = method == "RequestWithPolicy";
                     require_arity(name, arguments, if with_policy { 5 } else { 4 }, span)?;
@@ -750,13 +750,13 @@ impl Executor<'_, '_> {
                         |()| Value::Null,
                     ))
                 }
-                "$fields" => Ok(Value::Null),
+                _ if self.is_lifecycle_stub(name) => Ok(Value::Null),
                 _ => Ok(Value::Error {
                     code: 1,
                     message: "BNWeb provider unavailable".into(),
                 }),
             }
-        } else if method == "CONSTRUCTOR" || method == "$fields" {
+        } else if self.is_lifecycle_stub(name) {
             Ok(Value::Null)
         } else {
             Ok(Value::Error {

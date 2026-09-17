@@ -157,12 +157,13 @@ impl Executor<'_, '_> {
         }
         self.class_init
             .insert(class.to_string(), ClassInit::Running);
-        let init_name = format!("{class}.$init");
         if let Some(index) = self
             .module
             .functions
             .iter()
-            .position(|function| function.name == init_name)
+            .position(|function| {
+                function.kind == crate::ir::FunctionKind::Init && function.owner.as_deref() == Some(class)
+            })
         {
             let function = &self.module.functions[index];
             match self.function(function, Vec::new())? {

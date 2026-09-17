@@ -14,7 +14,7 @@ interpreter (`src/runtime/**`, `src/runtime_impl.rs`) is still welded to the
 | `scripts/forbidden-deps.allowlist` | **0 records**; checker fails on stale records | `bash scripts/check-forbidden-deps.sh` |
 | Backend paths → any frontend module (`bn_frontend::`, `ast::`, `module_graph::`, `token::`, `frontend_session::`, `lowering::`, `keyword_registry::`, `semantic::`, `parser::`, `lexer::`, `ir::lower*`) | 0 | same checker; negatives in `tests/check-forbidden-deps.sh` (run by `tests/cli.rs::forbidden_dependency_gate_and_its_negatives_hold`) |
 | `bn` public surface | `semantic` no longer re-exported; `crate::ir` = IR model only, `crate::lowering` = frontend | `cargo doc -p bn --no-deps`; `rg 'bn::semantic|ir::lower' src tests crates` → 0 |
-| IR name protocol | documented in `ir-contract.md` § Emitted names; enforced by `tests/ir_names.rs` (both directions) | `cargo test --test ir_names` |
+| IR function identity | `Function::kind` / `owner` (structured, validated); name shapes informative; backends string-match only `@super:` and intrinsics — enforced by `tests/ir_names.rs` | `cargo test --test ir_names -p bn_ir` |
 
 ## What the interpreter still reaches inside the god-crate
 

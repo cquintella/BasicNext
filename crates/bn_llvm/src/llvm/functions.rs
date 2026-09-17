@@ -6,8 +6,11 @@
 use super::*;
 use std::collections::HashSet;
 
+/// LLVM symbol for a BN function name. The entry name is fixed by the
+/// language (`FUNCTION Start`), so mapping it to `main` is spec, not a
+/// lowering convention.
 pub(crate) fn llvm_function_symbol(name: &str) -> String {
-    if name == "Start" {
+    if name == bn_ir::names::ENTRY {
         return "main".into();
     }
     let mut symbol = String::from("bn_");
@@ -26,7 +29,7 @@ pub(crate) fn dispatch_trampoline_symbol(name: &str) -> String {
 }
 
 pub(crate) fn string_global(function_name: &str, value: u32) -> String {
-    if function_name == "Start" {
+    if function_name == bn_ir::names::ENTRY {
         format!("@.bn_str{value}")
     } else {
         format!("@.bn_str_{}_{value}", llvm_function_symbol(function_name))
@@ -60,7 +63,7 @@ pub(crate) fn analyze_reachable<'a>(
         if analyzed.contains_key(function.name.as_str()) {
             continue;
         }
-        if function.name != "Start" {
+        if function.kind != FunctionKind::Entry {
             validate_user_function(function)?;
         }
         let analysis = analyze_function(module, function, &module_functions)?;
@@ -124,22 +127,14 @@ pub(crate) fn analyze_reachable<'a>(
                         }
                     }
                     Instruction::Allocate { type_name, .. } => {
-                        let destructor = format!("{type_name}.DESTRUCTOR");
-                        if let Some(destructor_fn) = module
-                            .functions
-                            .iter()
-                            .find(|candidate| candidate.name == destructor)
+                        if let Some(destructor_fn) =
+                            module.function_of_kind(FunctionKind::Destructor, type_name)
                         {
                             stack.push(destructor_fn);
                         }
                     }
                     Instruction::EnsureClass { class, .. } => {
-                        let init_name = format!("{class}.$init");
-                        if let Some(init_fn) = module
-                            .functions
-                            .iter()
-                            .find(|candidate| candidate.name == init_name)
-                        {
+                        if let Some(init_fn) = module.function_of_kind(FunctionKind::Init, class) {
                             stack.push(init_fn);
                         }
                     }
@@ -177,7 +172,7 @@ pub(crate) fn emit_function(
     synchronize_prints: bool,
     policy: &crate::CompiledPolicy,
 ) -> Result<(), String> {
-    let is_start = function.name == "Start";
+    let is_start = function.kind == FunctionKind::Entry;
     let symbol_names = analysis
         .symbols
         .keys()

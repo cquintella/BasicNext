@@ -108,11 +108,33 @@ impl Executor<'_, '_> {
         Ok(Value::Null)
     }
 
+    /// A provider-backed class's constructor / field initialiser. Standard
+    /// modules are not lowered, so such a callee has no `Function` (and no
+    /// `kind`) in the module; like an intrinsic it is identified by its
+    /// documented name shape through the contract's classifier.
+    pub(crate) fn is_lifecycle_stub(&self, name: &str) -> bool {
+        use crate::ir::names::{EmittedNameKind, classify};
+        match self.module.kind_of(name) {
+            Some(kind) => matches!(
+                kind,
+                crate::ir::FunctionKind::Constructor | crate::ir::FunctionKind::FieldInit
+            ),
+            None => matches!(
+                classify(name),
+                Some(EmittedNameKind::Constructor | EmittedNameKind::FieldInit)
+            ),
+        }
+    }
+
     pub(crate) fn dispatch_name(&self, name: &str, arguments: &[Value]) -> String {
-        if name.ends_with(".$fields")
-            || name.ends_with(".CONSTRUCTOR")
-            || name.ends_with(".DESTRUCTOR")
-        {
+        if matches!(
+            self.module.kind_of(name),
+            Some(
+                crate::ir::FunctionKind::FieldInit
+                    | crate::ir::FunctionKind::Constructor
+                    | crate::ir::FunctionKind::Destructor
+            )
+        ) {
             return name.to_string();
         }
         let Some(Value::Object { class, .. }) = arguments.first() else {

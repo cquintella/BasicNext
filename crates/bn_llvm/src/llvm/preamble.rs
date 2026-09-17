@@ -23,15 +23,13 @@ pub(crate) fn emit_preamble(
         uses_bn_rt |= analysis.uses_bn_rt;
         uses_input |= analysis.input_count > 0;
         uses_string_sizeof |= analysis.uses_string_sizeof;
-        uses_exit |= function.name != "Start"
+        uses_exit |= function.kind != FunctionKind::Entry
             && (analysis.uses_bn_rt
                 || function.blocks.iter().any(|block| {
-                    matches!(block.terminator, Terminator::Stop { .. })
-                        || matches!(
-                            block.terminator,
-                            Terminator::Return { .. }
-                                if function.name != "Start"
-                        )
+                    matches!(
+                        block.terminator,
+                        Terminator::Stop { .. } | Terminator::Return { .. }
+                    )
                 }));
         for (value, string) in &analysis.strings {
             let global = string_global(&function.name, value.0);

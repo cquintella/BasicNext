@@ -12,8 +12,8 @@ pub mod names;
 mod validate;
 
 pub use model::{
-    BasicBlock, BlockId, Constant, Function, Instruction, Module, ModuleId, SymbolId, Terminator,
-    ValueId,
+    BasicBlock, BlockId, Constant, Function, FunctionKind, Instruction, Module, ModuleId, SymbolId,
+    Terminator, ValueId,
 };
 pub use validate::{instruction_uses, validate};
 

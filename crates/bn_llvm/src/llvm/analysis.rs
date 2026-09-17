@@ -108,7 +108,7 @@ pub(crate) fn analyze_function<'a>(
                         && dimensions.len() == 1
                         && dynamic_dimensions.is_empty() =>
                 {
-                    if function.name.ends_with(".$default") && llvm_type(ty) == Some("ptr") {
+                    if function.kind == FunctionKind::Default && llvm_type(ty) == Some("ptr") {
                         uses_heap = true;
                     }
                     values.insert(*destination, ty.clone());
@@ -198,9 +198,11 @@ pub(crate) fn analyze_function<'a>(
                 } => {
                     if functions
                         .get(callee)
-                        .is_some_and(|name| name.ends_with(".$default"))
+                        .is_some_and(|name| module.kind_of(name) == Some(FunctionKind::Default))
                     {
-                        if function.name != "Start" || block_is_cyclic(function, block.id) {
+                        if function.kind != FunctionKind::Entry
+                            || block_is_cyclic(function, block.id)
+                        {
                             return Err(unsupported_instruction(
                                 module,
                                 function,

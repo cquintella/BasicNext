@@ -138,6 +138,7 @@ pub fn instruction_uses(instruction: &super::Instruction) -> Vec<super::ValueId>
 /// definite-assignment invariant.
 pub fn validate(module: &Module) -> Result<(), Diagnostic> {
     validate_class_bases(module)?;
+    validate_function_kinds(module)?;
     for function in &module.functions {
         let block_count = u32::try_from(function.blocks.len())
             .map_err(|_| invalid_ir("function has too many basic blocks", function.span))?;
@@ -1169,4 +1170,240 @@ fn reachable_blocks(entry: usize, successors: &[Vec<u32>]) -> Vec<bool> {
         );
     }
     reachable
+}
+
+/// Structural rules for `FunctionKind` (bucket 0.5.1c §3.2). Backends select
+/// entry points, constructors and destructors by kind, so a mislabelled
+/// function is invalid IR, not a backend surprise.
+fn validate_function_kinds(module: &Module) -> Result<(), Diagnostic> {
+    use super::FunctionKind::{Constructor, Default, Destructor, Entry, FieldInit, Init, User};
+    let mut entries = 0usize;
+    for function in &module.functions {
+        match function.kind {
+            Entry => {
+                entries += 1;
+                if entries > 1 {
+                    return Err(invalid_ir(
+                        "module declares more than one entry function",
+                        function.span,
+                    ));
+                }
+                if !function.parameters.is_empty() {
+                    return Err(invalid_ir(
+                        "entry function must not take parameters",
+                        function.span,
+                    ));
+                }
+            }
+            Constructor | Destructor | FieldInit | Init => {
+                if function.owner.is_none() {
+                    return Err(invalid_ir(
+                        "constructor, destructor, field-init and init functions need an owner class",
+                        function.span,
+                    ));
+                }
+                // `Init` allocates and returns the object, so it has no SELF.
+                if function.kind != Init && function.parameters.is_empty() {
+                    return Err(invalid_ir(
+                        "constructor, destructor and field-init functions take SELF first",
+                        function.span,
+                    ));
+                }
+                if function.kind == Destructor
+                    && !matches!(&function.return_type, Type::Named(name) if name == "VOID")
+                {
+                    return Err(invalid_ir("destructor must return VOID", function.span));
+                }
+            }
+            Default => {
+                if function.owner.is_none() {
+                    return Err(invalid_ir(
+                        "default constructor needs an owner struct",
+                        function.span,
+                    ));
+                }
+                if !function.parameters.is_empty() {
+                    return Err(invalid_ir(
+                        "default constructor must not take parameters",
+                        function.span,
+                    ));
+                }
+            }
+            User => {}
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod kind_tests {
+    use std::collections::HashSet;
+
+    use bn_source::{Position, Revision, SourceId, Span};
+    use bn_types::Type;
+
+    use super::super::{BasicBlock, BlockId, Function, FunctionKind, Module, SymbolId, Terminator};
+
+    fn span() -> Span {
+        let position = Position {
+            source_id: SourceId(1),
+            revision: Revision(1),
+            offset: 0,
+            line: 1,
+            column: 1,
+        };
+        Span {
+            start: position,
+            end: position,
+        }
+    }
+
+    fn function(
+        name: &str,
+        kind: FunctionKind,
+        owner: Option<&str>,
+        params: usize,
+        ret: &str,
+    ) -> Function {
+        Function {
+            name: name.into(),
+            kind,
+            owner: owner.map(str::to_string),
+            asynchronous: false,
+            parameters: (0..params)
+                .map(|i| SymbolId(u32::try_from(i).expect("small")))
+                .collect(),
+            weak_symbols: HashSet::new(),
+            return_type: Type::Named(ret.into()),
+            entry: BlockId(0),
+            blocks: vec![BasicBlock {
+                id: BlockId(0),
+                instructions: Vec::new(),
+                terminator: Terminator::Return { value: None },
+            }],
+            span: span(),
+        }
+    }
+
+    fn module(functions: Vec<Function>) -> Module {
+        Module {
+            functions,
+            ..Module::default()
+        }
+    }
+
+    fn detail(result: Result<(), bn_diag::Diagnostic>) -> String {
+        result.expect_err("must be invalid IR").message.to_string()
+    }
+
+    #[test]
+    fn well_formed_kinds_validate() {
+        let m = module(vec![
+            function("Start", FunctionKind::Entry, None, 0, "VOID"),
+            function(
+                "C.CONSTRUCTOR",
+                FunctionKind::Constructor,
+                Some("C"),
+                1,
+                "VOID",
+            ),
+            function(
+                "C.DESTRUCTOR",
+                FunctionKind::Destructor,
+                Some("C"),
+                1,
+                "VOID",
+            ),
+            function("C.$fields", FunctionKind::FieldInit, Some("C"), 1, "VOID"),
+            function("C.$init", FunctionKind::Init, Some("C"), 0, "VOID"),
+            function("P.$default", FunctionKind::Default, Some("P"), 0, "VOID"),
+            function("C.Method", FunctionKind::User, Some("C"), 1, "VOID"),
+            function("Free", FunctionKind::User, None, 0, "VOID"),
+        ]);
+        super::validate(&m).expect("well-formed kinds");
+    }
+
+    #[test]
+    fn two_entries_are_invalid() {
+        let m = module(vec![
+            function("Start", FunctionKind::Entry, None, 0, "VOID"),
+            function("Start2", FunctionKind::Entry, None, 0, "VOID"),
+        ]);
+        assert!(detail(super::validate(&m)).contains("more than one entry"));
+    }
+
+    #[test]
+    fn entry_with_parameters_is_invalid() {
+        let m = module(vec![function(
+            "Start",
+            FunctionKind::Entry,
+            None,
+            1,
+            "VOID",
+        )]);
+        assert!(detail(super::validate(&m)).contains("entry function must not take parameters"));
+    }
+
+    #[test]
+    fn synthesised_kinds_need_an_owner() {
+        for kind in [
+            FunctionKind::Constructor,
+            FunctionKind::Destructor,
+            FunctionKind::FieldInit,
+            FunctionKind::Init,
+        ] {
+            let m = module(vec![function("X.f", kind, None, 1, "VOID")]);
+            assert!(
+                detail(super::validate(&m)).contains("need an owner class"),
+                "{kind:?}"
+            );
+        }
+        let m = module(vec![function(
+            "P.$default",
+            FunctionKind::Default,
+            None,
+            0,
+            "VOID",
+        )]);
+        assert!(detail(super::validate(&m)).contains("needs an owner struct"));
+    }
+
+    #[test]
+    fn self_taking_kinds_need_a_parameter() {
+        for kind in [
+            FunctionKind::Constructor,
+            FunctionKind::Destructor,
+            FunctionKind::FieldInit,
+        ] {
+            let m = module(vec![function("C.f", kind, Some("C"), 0, "VOID")]);
+            assert!(
+                detail(super::validate(&m)).contains("take SELF first"),
+                "{kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn destructor_must_return_void() {
+        let m = module(vec![function(
+            "C.DESTRUCTOR",
+            FunctionKind::Destructor,
+            Some("C"),
+            1,
+            "INTEGER",
+        )]);
+        assert!(detail(super::validate(&m)).contains("destructor must return VOID"));
+    }
+
+    #[test]
+    fn default_constructor_takes_no_parameters() {
+        let m = module(vec![function(
+            "P.$default",
+            FunctionKind::Default,
+            Some("P"),
+            1,
+            "VOID",
+        )]);
+        assert!(detail(super::validate(&m)).contains("must not take parameters"));
+    }
 }

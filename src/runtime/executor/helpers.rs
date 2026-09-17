@@ -48,15 +48,20 @@ fn is_value_legacy(value: &Value, test: &str) -> bool {
     }
 }
 
-pub(super) fn lifecycle_dispatch(name: &str, arguments: &[Value]) -> Option<(Handle, String)> {
-    let class = name
-        .strip_suffix(".CONSTRUCTOR")
-        .or_else(|| name.strip_suffix(".DESTRUCTOR"))
-        .or_else(|| name.strip_suffix(".$fields"))?;
+/// While a constructor, destructor or field initialiser of `function` runs on
+/// its receiver, dispatch on that object is pinned to the declaring class.
+pub(super) fn lifecycle_dispatch(
+    function: &crate::ir::Function,
+    arguments: &[Value],
+) -> Option<(Handle, String)> {
+    use crate::ir::FunctionKind::{Constructor, Destructor, FieldInit};
+    if !matches!(function.kind, Constructor | Destructor | FieldInit) {
+        return None;
+    }
     let Value::Object { handle, .. } = arguments.first()? else {
         return None;
     };
-    Some((*handle, class.into()))
+    Some((*handle, function.owner.clone()?))
 }
 
 pub(super) fn require_console(value: &Value, span: Span) -> Result<(), Diagnostic> {

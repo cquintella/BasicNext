@@ -21,8 +21,8 @@ pub use crate::types::{FloatType, IntegerType, PointerLength, Type};
 #[path = "lowering/builder.rs"]
 mod builder;
 pub use bn_ir::{
-    BasicBlock, BlockId, Constant, Function, Instruction, Module, ModuleId, SymbolId, Terminator,
-    ValidatedModule, ValueId, validate, validate_module,
+    BasicBlock, BlockId, Constant, Function, FunctionKind, Instruction, Module, ModuleId, SymbolId,
+    Terminator, ValidatedModule, ValueId, validate, validate_module,
 };
 
 pub(crate) fn ir_symbol_id(value: FrontendSymbolId) -> SymbolId {

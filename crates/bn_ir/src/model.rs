@@ -70,9 +70,35 @@ pub struct Module {
     pub bnweb_import: Option<Span>,
 }
 
+/// Role of a function in the module (bucket 0.5.1c §3.2). The name of a
+/// synthesised function still follows `crate::names`, but that spelling is
+/// informative; `validate` and both backends rely on this field.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum FunctionKind {
+    /// A user-declared function or method.
+    User,
+    /// The program entry point (`Start`).
+    Entry,
+    /// Class constructor body.
+    Constructor,
+    /// Class destructor body, run by ARC when the strong count reaches zero.
+    Destructor,
+    /// Field-initialiser prologue run by `NEW` before the constructor.
+    FieldInit,
+    /// Construction helper: allocate, run `FieldInit`, then `Constructor`.
+    Init,
+    /// Value-type (struct) default constructor.
+    Default,
+}
+
 #[derive(Clone, Debug)]
 pub struct Function {
     pub name: String,
+    /// What this function is. Backends read this, never the name.
+    pub kind: FunctionKind,
+    /// Class / struct / module that owns the function, spelled as in the IR
+    /// (`Counter`, `#3.Box`); `None` for free functions and the entry point.
+    pub owner: Option<String>,
     pub asynchronous: bool,
     pub parameters: Vec<SymbolId>,
     /// Local bindings declared with `AS WEAK`.
@@ -379,4 +405,34 @@ pub enum Constant {
     Type(String),
     HostConsole,
     HostArgs,
+}
+
+impl Module {
+    /// The program entry point, if the module has one.
+    #[must_use]
+    pub fn entry(&self) -> Option<&Function> {
+        self.functions
+            .iter()
+            .find(|function| function.kind == FunctionKind::Entry)
+    }
+
+    /// The function of a synthesised `kind` owned by `owner` (a class or
+    /// struct name as spelled in the IR). Backends select constructors,
+    /// destructors, field initialisers and defaults through this, never by
+    /// decoding the name.
+    #[must_use]
+    pub fn function_of_kind(&self, kind: FunctionKind, owner: &str) -> Option<&Function> {
+        self.functions
+            .iter()
+            .find(|function| function.kind == kind && function.owner.as_deref() == Some(owner))
+    }
+
+    /// Kind of the function named `name`, if it exists in this module.
+    #[must_use]
+    pub fn kind_of(&self, name: &str) -> Option<FunctionKind> {
+        self.functions
+            .iter()
+            .find(|function| function.name == name)
+            .map(|function| function.kind)
+    }
 }
