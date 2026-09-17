@@ -21,12 +21,14 @@ use bn_diag::Diagnostic;
 use bn_source::Span;
 use bn_value::Value;
 
+use super::net_values::{
+    address_value, endpoint_value, net_address, net_addresses, net_endpoint, ping_reply_value,
+};
 use crate::runtime::provider::{CoreContext, Provider};
 use crate::runtime::{
-    address_value, endpoint_value, index_out_of_bounds_pub as index_out_of_bounds,
-    integer_from_i128_count_pub as integer_from_i128_count, integer_pub as integer, net_address,
-    net_addresses, net_endpoint, ping_reply_value, require_arity_pub as require_arity,
-    runtime_error_pub as runtime_error, type_mismatch,
+    index_out_of_bounds_pub as index_out_of_bounds,
+    integer_from_i128_count_pub as integer_from_i128_count, integer_pub as integer,
+    require_arity_pub as require_arity, runtime_error_pub as runtime_error, type_mismatch,
 };
 use crate::types::IntegerType;
 

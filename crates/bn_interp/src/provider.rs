@@ -17,8 +17,8 @@ use bn_value::Value;
 
 use bn_ir::Module;
 
-use crate::heap::{Handle, Heap};
-use crate::runtime::HostEnv;
+use crate::HostEnv;
+use bn_runtime::{Handle, Heap};
 
 /// What a provider may ask of the core while serving a call. Grows only when
 /// a migrated provider needs it (`docs/architecture/interp-extraction.md`).

@@ -5,11 +5,7 @@ impl Executor<'_, '_> {
     /// `HOST` members that are language surface rather than a capability
     /// (`HOST.NumProcs`); every `HOST.<capability>.*` goes through the
     /// `hosts` registry.
-    pub(crate) fn host_call(
-        name: &str,
-        arguments: &[Value],
-        span: Span,
-    ) -> Result<Value, Diagnostic> {
+    pub fn host_call(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
         match name {
             "HOST.NumProcs" => {
                 require_arity(name, arguments, 0, span)?;
@@ -27,7 +23,8 @@ impl Executor<'_, '_> {
                     }),
                 }
             }
-            _ => Err(runtime_error(crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE,
+            _ => Err(runtime_error(
+                bn_diag::DiagId::HOST_CAPABILITY_UNAVAILABLE,
                 format!("host function '{name}' is not available"),
                 span,
             )),

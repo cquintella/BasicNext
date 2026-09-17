@@ -2,11 +2,7 @@
 use super::*;
 
 impl Executor<'_, '_> {
-    pub(crate) fn retain_owned_value(
-        &mut self,
-        value: &Value,
-        span: Span,
-    ) -> Result<(), Diagnostic> {
+    pub fn retain_owned_value(&mut self, value: &Value, span: Span) -> Result<(), Diagnostic> {
         match value {
             Value::Object { handle, .. } => self.objects.retain(*handle, span),
             Value::Pointer { handle } => self.memory.retain(*handle, span),
@@ -26,11 +22,7 @@ impl Executor<'_, '_> {
         }
     }
 
-    pub(crate) fn release_owned_value(
-        &mut self,
-        value: Value,
-        span: Span,
-    ) -> Result<(), Diagnostic> {
+    pub fn release_owned_value(&mut self, value: Value, span: Span) -> Result<(), Diagnostic> {
         match value {
             Value::Object { handle, class } => {
                 if !self.objects.release(handle, span)? {
@@ -43,7 +35,7 @@ impl Executor<'_, '_> {
                 };
                 let destructor = self
                     .module
-                    .function_of_kind(crate::ir::FunctionKind::Destructor, &class)
+                    .function_of_kind(bn_ir::FunctionKind::Destructor, &class)
                     .map(|function| function.name.clone());
                 let result = if let Some(destructor) = destructor {
                     self.call_named(&destructor, vec![target], span).map(|_| ())
@@ -94,10 +86,7 @@ impl Executor<'_, '_> {
         }
     }
 
-    pub(crate) fn refresh_weak_symbols(
-        &self,
-        symbols: &mut HashMap<SymbolId, Value>,
-    ) {
+    pub fn refresh_weak_symbols(&self, symbols: &mut HashMap<SymbolId, Value>) {
         let Some(frame) = self.ownership_frames.last() else {
             return;
         };
@@ -109,7 +98,7 @@ impl Executor<'_, '_> {
         }
     }
 
-    pub(crate) fn finish_ownership_frame(
+    pub fn finish_ownership_frame(
         &mut self,
         symbols: &mut HashMap<SymbolId, Value>,
         returned: Option<ValueId>,
@@ -142,7 +131,7 @@ impl Executor<'_, '_> {
         Ok(())
     }
 
-    pub(crate) fn delete_value(
+    pub fn delete_value(
         &mut self,
         target: Value,
         _destructor: Option<&str>,
@@ -152,7 +141,8 @@ impl Executor<'_, '_> {
             return released;
         }
         match target {
-            Value::Null => Err(runtime_error(crate::diagnostic::DiagId::NULL_POINTER_ACCESS,
+            Value::Null => Err(runtime_error(
+                bn_diag::DiagId::NULL_POINTER_ACCESS,
                 "cannot RELEASE NULL",
                 span,
             )),
@@ -166,7 +156,7 @@ impl Executor<'_, '_> {
         }
     }
 
-    pub(crate) fn coerce_to(&self, value: Value, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
+    pub fn coerce_to(&self, value: Value, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
         if matches!(ty, Type::Unknown) {
             return Ok(value);
         }
@@ -179,13 +169,15 @@ impl Executor<'_, '_> {
         ) = (&value, ty)
         {
             let actual = u64::try_from(self.memory.len(*handle, span)?).map_err(|_| {
-                runtime_error(crate::diagnostic::DiagId::POINTER_LENGTH_MISMATCH,
+                runtime_error(
+                    bn_diag::DiagId::POINTER_LENGTH_MISMATCH,
                     "pointer length does not fit INTEGER",
                     span,
                 )
             })?;
             if actual != *expected {
-                return Err(runtime_error(crate::diagnostic::DiagId::POINTER_LENGTH_MISMATCH,
+                return Err(runtime_error(
+                    bn_diag::DiagId::POINTER_LENGTH_MISMATCH,
                     format!("pointer length {actual} does not match {expected}"),
                     span,
                 ));
@@ -194,26 +186,29 @@ impl Executor<'_, '_> {
         coerce(value, ty, span)
     }
 
-    pub(crate) fn member_of(&self, object: &Value, name: &str, span: Span) -> Result<Value, Diagnostic> {
+    pub fn member_of(&self, object: &Value, name: &str, span: Span) -> Result<Value, Diagnostic> {
         match (object, name) {
             (Value::Error { code, .. }, "Code") => {
                 Ok(Value::Integer(i128::from(*code), IntegerType::Int32))
             }
             (Value::Error { message, .. }, "Message") => Ok(Value::String(message.clone())),
-            (Value::Record { fields, .. }, _) => fields.get(name).cloned().ok_or_else(|| {
-                super::name_not_found(name, "record member", span)
-            }),
+            (Value::Record { fields, .. }, _) => fields
+                .get(name)
+                .cloned()
+                .ok_or_else(|| super::name_not_found(name, "record member", span)),
             (Value::Object { handle, .. }, _) => {
                 let instance = self.objects.get(*handle, 0, span)?;
-                instance.fields.get(name).cloned().ok_or_else(|| {
-                    super::name_not_found(name, "object member", span)
-                })
+                instance
+                    .fields
+                    .get(name)
+                    .cloned()
+                    .ok_or_else(|| super::name_not_found(name, "object member", span))
             }
             _ => Err(super::name_not_found(name, "member lookup", span)),
         }
     }
 
-    pub(crate) fn set_member_value(
+    pub fn set_member_value(
         &mut self,
         values: &mut HashMap<ValueId, Value>,
         object: ValueId,
@@ -232,7 +227,8 @@ impl Executor<'_, '_> {
             }
             Some(Value::Record { .. }) => {
                 let Some(Value::Record { fields, .. }) = values.get_mut(&object) else {
-                    return Err(runtime_error(crate::diagnostic::DiagId::INVALID_IR,
+                    return Err(runtime_error(
+                        bn_diag::DiagId::INVALID_IR,
                         "record value disappeared",
                         span,
                     ));
@@ -244,7 +240,7 @@ impl Executor<'_, '_> {
         }
     }
 
-    pub(crate) fn set_member_index_value(
+    pub fn set_member_index_value(
         &mut self,
         values: &mut HashMap<ValueId, Value>,
         object: ValueId,
@@ -269,15 +265,20 @@ impl Executor<'_, '_> {
                     .insert(name.to_string(), target);
                 Ok(())
             }
-            Some(Value::Record { .. }) => Err(runtime_error(crate::diagnostic::DiagId::INVALID_IR,
+            Some(Value::Record { .. }) => Err(runtime_error(
+                bn_diag::DiagId::INVALID_IR,
                 "indexed value-type fields require a binding-rooted field store",
                 span,
             )),
-            _ => Err(super::name_not_found(name, "indexed member assignment", span)),
+            _ => Err(super::name_not_found(
+                name,
+                "indexed member assignment",
+                span,
+            )),
         }
     }
 
-    pub(crate) fn set_field_index_path(
+    pub fn set_field_index_path(
         &mut self,
         target: &mut Value,
         path: &[String],
@@ -290,9 +291,10 @@ impl Executor<'_, '_> {
         };
         match target {
             Value::Record { fields, .. } => {
-                let mut nested = fields.get(name).cloned().ok_or_else(|| {
-                    super::name_not_found(name, "nested record member", span)
-                })?;
+                let mut nested = fields
+                    .get(name)
+                    .cloned()
+                    .ok_or_else(|| super::name_not_found(name, "nested record member", span))?;
                 self.set_field_index_path(&mut nested, rest, indices, stored, span)?;
                 fields.insert(name.clone(), nested);
                 Ok(())
@@ -305,9 +307,7 @@ impl Executor<'_, '_> {
                     .fields
                     .get(name)
                     .cloned()
-                    .ok_or_else(|| {
-                        super::name_not_found(name, "nested object member", span)
-                    })?;
+                    .ok_or_else(|| super::name_not_found(name, "nested object member", span))?;
                 self.set_field_index_path(&mut nested, rest, indices, stored, span)?;
                 self.objects
                     .get_mut(handle, 0, span)?
@@ -315,11 +315,16 @@ impl Executor<'_, '_> {
                     .insert(name.clone(), nested);
                 Ok(())
             }
-            _ => Err(super::type_mismatch("record or object", "value without fields", "field index assignment", span)),
+            _ => Err(super::type_mismatch(
+                "record or object",
+                "value without fields",
+                "field index assignment",
+                span,
+            )),
         }
     }
 
-    pub(crate) fn set_field_path(
+    pub fn set_field_path(
         &mut self,
         target: &mut Value,
         path: &[String],
@@ -336,9 +341,10 @@ impl Executor<'_, '_> {
                     fields.insert(name.clone(), stored);
                     return Ok(());
                 }
-                let mut nested = fields.get(name).cloned().ok_or_else(|| {
-                    super::name_not_found(name, "nested record member", span)
-                })?;
+                let mut nested = fields
+                    .get(name)
+                    .cloned()
+                    .ok_or_else(|| super::name_not_found(name, "nested record member", span))?;
                 self.set_field_path(&mut nested, rest, stored, span)?;
                 fields.insert(name.clone(), nested);
                 Ok(())
@@ -358,9 +364,7 @@ impl Executor<'_, '_> {
                     .fields
                     .get(name)
                     .cloned()
-                    .ok_or_else(|| {
-                        super::name_not_found(name, "nested object member", span)
-                    })?;
+                    .ok_or_else(|| super::name_not_found(name, "nested object member", span))?;
                 self.set_field_path(&mut nested, rest, stored, span)?;
                 self.objects
                     .get_mut(handle, 0, span)?
@@ -368,11 +372,16 @@ impl Executor<'_, '_> {
                     .insert(name.clone(), nested);
                 Ok(())
             }
-            _ => Err(super::type_mismatch("record or object", "value without fields", "field assignment", span)),
+            _ => Err(super::type_mismatch(
+                "record or object",
+                "value without fields",
+                "field assignment",
+                span,
+            )),
         }
     }
 
-    pub(crate) fn default_value(
+    pub fn default_value(
         &mut self,
         ty: &Type,
         dimensions: &[usize],
@@ -394,14 +403,19 @@ impl Executor<'_, '_> {
                         .map(|dimension| usize::try_from(*dimension))
                         .collect::<Result<Vec<_>, _>>()
                         .map_err(|_| {
-                            runtime_error(crate::diagnostic::DiagId::INVALID_IR, "vector dimension is too large", span)
+                            runtime_error(
+                                bn_diag::DiagId::INVALID_IR,
+                                "vector dimension is too large",
+                                span,
+                            )
                         })?;
                     &owned_dimensions
                 } else {
                     dimensions
                 };
                 let Some(_) = dimensions.first() else {
-                    return Err(runtime_error(crate::diagnostic::DiagId::INVALID_IR,
+                    return Err(runtime_error(
+                        bn_diag::DiagId::INVALID_IR,
                         "vector default is missing its dimension",
                         span,
                     ));
@@ -411,7 +425,8 @@ impl Executor<'_, '_> {
                     size.checked_mul(u64::try_from(*length).ok()?)
                 });
                 if total.is_none_or(|size| size > isize::MAX as u64) {
-                    return Err(runtime_error(crate::diagnostic::DiagId::NUMERIC_OVERFLOW,
+                    return Err(runtime_error(
+                        bn_diag::DiagId::NUMERIC_OVERFLOW,
                         "vector allocation size overflowed",
                         span,
                     ));
@@ -427,9 +442,9 @@ impl Executor<'_, '_> {
                 Ok(value)
             }
             Type::Alternative(types) => self.default_value(
-                types
-                    .first()
-                    .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::INVALID_IR, "empty alternative type", span))?,
+                types.first().ok_or_else(|| {
+                    runtime_error(bn_diag::DiagId::INVALID_IR, "empty alternative type", span)
+                })?,
                 dimensions,
                 span,
             ),
@@ -443,17 +458,18 @@ impl Executor<'_, '_> {
             Type::HostFileSystem => Ok(Value::Type("HOST.FileSystem".into())),
             Type::HostNet => Ok(Value::Type("HOST.Net".into())),
             Type::HostExec => Ok(Value::Type("HOST.Exec".into())),
-            _ => Err(runtime_error(crate::diagnostic::DiagId::UNINITIALIZED_VALUE,
+            _ => Err(runtime_error(
+                bn_diag::DiagId::UNINITIALIZED_VALUE,
                 "type has no default value",
                 span,
             )),
         }
     }
 
-    pub(crate) fn default_named(&mut self, ir_name: &str, span: Span) -> Result<Value, Diagnostic> {
+    pub fn default_named(&mut self, ir_name: &str, span: Span) -> Result<Value, Diagnostic> {
         if let Some(default) = self
             .module
-            .function_of_kind(crate::ir::FunctionKind::Default, ir_name)
+            .function_of_kind(bn_ir::FunctionKind::Default, ir_name)
             .map(|function| function.name.clone())
         {
             self.call_named(&default, Vec::new(), span)
@@ -462,7 +478,7 @@ impl Executor<'_, '_> {
         }
     }
 
-    pub(crate) fn size_of_value(&self, value: &Value, span: Span) -> Result<Value, Diagnostic> {
+    pub fn size_of_value(&self, value: &Value, span: Span) -> Result<Value, Diagnostic> {
         let size = match value {
             Value::Integer(_, kind) => integer_byte_size(*kind),
             Value::Float(_, FloatType::Float32) | Value::Date(_) | Value::Time(_) => 4,
@@ -492,7 +508,12 @@ impl Executor<'_, '_> {
                 total
             }
             _ => {
-                return Err(super::type_mismatch("sized value", "unsized value", "SIZE operation", span));
+                return Err(super::type_mismatch(
+                    "sized value",
+                    "unsized value",
+                    "SIZE operation",
+                    span,
+                ));
             }
         };
         integer_from_u64(size, span)

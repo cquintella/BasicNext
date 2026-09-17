@@ -3,11 +3,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::{
-    diagnostic::Diagnostic,
-    types::{integer_byte_size, FloatType, Type},
-    source::Span,
-};
+use bn_diag::Diagnostic;
+use bn_source::Span;
+use bn_types::{FloatType, Type, integer_byte_size};
 
 use super::{Value, integer_overflow, type_mismatch};
 
@@ -15,7 +13,12 @@ pub(super) fn pointer_element_default(element: &Type, span: Span) -> Result<Valu
     match element {
         Type::Integer(kind) => Ok(Value::Integer(0, *kind)),
         Type::Float(kind) => Ok(Value::Float(0.0, *kind)),
-        _ => Err(type_mismatch("numeric pointer element", "non-numeric type", "pointer allocation", span)),
+        _ => Err(type_mismatch(
+            "numeric pointer element",
+            "non-numeric type",
+            "pointer allocation",
+            span,
+        )),
     }
 }
 
@@ -38,7 +41,12 @@ pub(super) fn display_element(element: &Type) -> String {
 
 pub(super) fn add_sizes(total: u64, size: &Value, span: Span) -> Result<u64, Diagnostic> {
     let Value::Integer(size, _) = size else {
-        return Err(type_mismatch("INTEGER size", "non-integer value", "allocation size", span));
+        return Err(type_mismatch(
+            "INTEGER size",
+            "non-integer value",
+            "allocation size",
+            span,
+        ));
     };
     let size = u64::try_from(*size).map_err(|_| integer_overflow(span))?;
     total

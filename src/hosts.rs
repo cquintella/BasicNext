@@ -13,6 +13,7 @@ pub mod console;
 pub mod exec;
 pub mod fs;
 pub mod net;
+pub(crate) mod net_values;
 pub mod random;
 
 use std::sync::Arc;

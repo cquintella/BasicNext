@@ -7,7 +7,7 @@ use bn::{
     llvm::{Target, lower_validated_module_for_target, validate_for},
     lowering::lower_graph_validated,
     module_graph::load,
-    runtime::{HostEnv, execute_validated_with_host},
+    runtime::{HostEnv, HostEnvDefaults, execute_validated_with_host},
 };
 use bn_frontend::semantic::analyze_modules;
 
@@ -68,7 +68,7 @@ fn both_backends_accept_the_same_validated_artifact() {
         &validated,
         &mut input,
         &mut output,
-        &HostEnv::system(vec!["hello.bn".into()]),
+        &HostEnv::system(vec!["hello.bn".into()]).with_default_providers(),
     )
     .expect("interpret validated IR");
     assert_eq!(code, 0);

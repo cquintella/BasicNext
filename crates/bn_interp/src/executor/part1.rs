@@ -2,7 +2,11 @@
 use super::*;
 
 impl Executor<'_, '_> {
-    pub(crate) fn function(&mut self, function: &Function, arguments: Vec<Value>) -> Result<Flow, Diagnostic> {
+    pub fn function(
+        &mut self,
+        function: &Function,
+        arguments: Vec<Value>,
+    ) -> Result<Flow, Diagnostic> {
         if arguments.len() != function.parameters.len() {
             return Err(super::super::type_mismatch(
                 format!("{} argument(s)", function.parameters.len()),
@@ -74,7 +78,8 @@ impl Executor<'_, '_> {
                         &debug_variables(&symbols, &values),
                     ) == DebugDecision::Terminate
                 {
-                    return Err(runtime_error(crate::diagnostic::DiagId::DEBUG_TERMINATED,
+                    return Err(runtime_error(
+                        bn_diag::DiagId::DEBUG_TERMINATED,
                         "execution terminated by debugger",
                         instruction.span(),
                     ));
@@ -87,7 +92,8 @@ impl Executor<'_, '_> {
                 } = instruction
                 {
                     let predecessor = previous_block.ok_or_else(|| {
-                        runtime_error(crate::diagnostic::DiagId::INVALID_IR,
+                        runtime_error(
+                            bn_diag::DiagId::INVALID_IR,
                             "Phi cannot execute in the function entry block",
                             *span,
                         )
@@ -97,7 +103,8 @@ impl Executor<'_, '_> {
                         .find(|(candidate, _)| *candidate == predecessor)
                         .map(|(_, source)| *source)
                         .ok_or_else(|| {
-                            runtime_error(crate::diagnostic::DiagId::INVALID_IR,
+                            runtime_error(
+                                bn_diag::DiagId::INVALID_IR,
                                 "Phi has no incoming value for the predecessor block",
                                 *span,
                             )
@@ -144,11 +151,12 @@ impl Executor<'_, '_> {
         }
     }
 
-    pub(crate) fn ensure_class(&mut self, class: &str, span: Span) -> Result<(), Diagnostic> {
+    pub fn ensure_class(&mut self, class: &str, span: Span) -> Result<(), Diagnostic> {
         match self.class_init.get(class).copied() {
             Some(ClassInit::Ready) => return Ok(()),
             Some(ClassInit::Running) => {
-                return Err(runtime_error(crate::diagnostic::DiagId::STATIC_INITIALIZATION_CYCLE,
+                return Err(runtime_error(
+                    bn_diag::DiagId::STATIC_INITIALIZATION_CYCLE,
                     format!("STATIC initialization of {class} reentered"),
                     span,
                 ));
@@ -157,14 +165,9 @@ impl Executor<'_, '_> {
         }
         self.class_init
             .insert(class.to_string(), ClassInit::Running);
-        if let Some(index) = self
-            .module
-            .functions
-            .iter()
-            .position(|function| {
-                function.kind == crate::ir::FunctionKind::Init && function.owner.as_deref() == Some(class)
-            })
-        {
+        if let Some(index) = self.module.functions.iter().position(|function| {
+            function.kind == bn_ir::FunctionKind::Init && function.owner.as_deref() == Some(class)
+        }) {
             let function = &self.module.functions[index];
             match self.function(function, Vec::new())? {
                 Flow::Stop(code) => self.stop_code = Some(code),
@@ -174,5 +177,4 @@ impl Executor<'_, '_> {
         self.class_init.insert(class.to_string(), ClassInit::Ready);
         Ok(())
     }
-
 }

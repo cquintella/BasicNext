@@ -27,7 +27,7 @@ use bn::{
         validate_for,
     },
     module_graph::ModuleGraph,
-    runtime::{HostEnv, execute_validated_with_host},
+    runtime::{HostEnv, HostEnvDefaults, execute_validated_with_host},
     source::SourceFile,
     token::Token,
 };
@@ -1337,6 +1337,7 @@ fn run_loaded(
     }
     let mut host = if options.sandbox {
         match HostEnv::system(arguments.clone())
+            .with_default_providers()
             .with_filesystem_roots(options.read_roots.clone(), options.write_roots.clone())
         {
             Ok(host) => host,
@@ -1349,9 +1350,11 @@ fn run_loaded(
             }
         }
     } else if options.filesystem {
-        HostEnv::system(arguments)
+        HostEnv::system(arguments).with_default_providers()
     } else {
-        HostEnv::system(arguments).without_filesystem()
+        HostEnv::system(arguments)
+            .with_default_providers()
+            .without_filesystem()
     };
     match env::var("BN_FS_POLICY").as_deref() {
         Ok("deny") => host = host.without_filesystem(),

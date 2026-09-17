@@ -2,13 +2,13 @@
 use super::*;
 
 impl Executor<'_, '_> {
-    pub(crate) fn dispatch_name(&self, name: &str, arguments: &[Value]) -> String {
+    pub fn dispatch_name(&self, name: &str, arguments: &[Value]) -> String {
         if matches!(
             self.module.kind_of(name),
             Some(
-                crate::ir::FunctionKind::FieldInit
-                    | crate::ir::FunctionKind::Constructor
-                    | crate::ir::FunctionKind::Destructor
+                bn_ir::FunctionKind::FieldInit
+                    | bn_ir::FunctionKind::Constructor
+                    | bn_ir::FunctionKind::Destructor
             )
         ) {
             return name.to_string();
@@ -43,7 +43,7 @@ impl Executor<'_, '_> {
         }
     }
 
-    pub(crate) fn allocate_object(&mut self, class: &str, span: Span) -> Result<Value, Diagnostic> {
+    pub fn allocate_object(&mut self, class: &str, span: Span) -> Result<Value, Diagnostic> {
         let handle = self.objects.allocate(
             class,
             1,
@@ -59,7 +59,7 @@ impl Executor<'_, '_> {
         })
     }
 
-    pub(crate) fn allocate_region(
+    pub fn allocate_region(
         &mut self,
         element: &Type,
         arguments: &[ValueId],
@@ -69,13 +69,15 @@ impl Executor<'_, '_> {
         let count = if let Some(argument) = arguments.first() {
             let (count, _) = integer(value(values, *argument, span)?, span)?;
             if count < 0 {
-                return Err(runtime_error(crate::diagnostic::DiagId::ALLOCATION_SIZE_INVALID,
+                return Err(runtime_error(
+                    bn_diag::DiagId::ALLOCATION_SIZE_INVALID,
                     "numeric NEW length cannot be negative",
                     span,
                 ));
             }
             usize::try_from(count).map_err(|_| {
-                runtime_error(crate::diagnostic::DiagId::ALLOCATION_SIZE_OVERFLOW,
+                runtime_error(
+                    bn_diag::DiagId::ALLOCATION_SIZE_OVERFLOW,
                     "allocation length does not fit the host",
                     span,
                 )
@@ -84,19 +86,26 @@ impl Executor<'_, '_> {
             1
         };
         let element_size = pointer_element_size(element).ok_or_else(|| {
-            super::type_mismatch("numeric pointer element", "non-numeric type", "pointer allocation", span)
+            super::type_mismatch(
+                "numeric pointer element",
+                "non-numeric type",
+                "pointer allocation",
+                span,
+            )
         })?;
         let bytes = u64::try_from(count)
             .ok()
             .and_then(|count| count.checked_mul(element_size))
             .ok_or_else(|| {
-                runtime_error(crate::diagnostic::DiagId::ALLOCATION_SIZE_OVERFLOW,
+                runtime_error(
+                    bn_diag::DiagId::ALLOCATION_SIZE_OVERFLOW,
                     "allocation byte size overflowed",
                     span,
                 )
             })?;
         if bytes > isize::MAX as u64 {
-            return Err(runtime_error(crate::diagnostic::DiagId::ALLOCATION_TOO_LARGE,
+            return Err(runtime_error(
+                bn_diag::DiagId::ALLOCATION_TOO_LARGE,
                 "allocation exceeds the host limit",
                 span,
             ));
@@ -108,15 +117,22 @@ impl Executor<'_, '_> {
         Ok(Value::Pointer { handle })
     }
 
-    pub(crate) fn index_value(&self, object: &Value, index: usize, span: Span) -> Result<Value, Diagnostic> {
+    pub fn index_value(
+        &self,
+        object: &Value,
+        index: usize,
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
         match object {
-            Value::Null => Err(runtime_error(crate::diagnostic::DiagId::NULL_POINTER_ACCESS,
+            Value::Null => Err(runtime_error(
+                bn_diag::DiagId::NULL_POINTER_ACCESS,
                 "cannot index a NULL pointer",
                 span,
             )),
-            Value::Vector(vector) => vector.get(index).cloned().ok_or_else(|| {
-                super::index_out_of_bounds(index, vector.len(), "vector", span)
-            }),
+            Value::Vector(vector) => vector
+                .get(index)
+                .cloned()
+                .ok_or_else(|| super::index_out_of_bounds(index, vector.len(), "vector", span)),
             Value::Pointer { handle } => self.memory.get(*handle, index, span).cloned(),
             Value::String(text) => text
                 .chars()
@@ -134,11 +150,16 @@ impl Executor<'_, '_> {
                 .ok_or_else(|| {
                     super::index_out_of_bounds(index, self.host.arguments.len(), "HOST.Args", span)
                 }),
-            _ => Err(super::type_mismatch("indexable value", "non-indexable value", "index operation", span)),
+            _ => Err(super::type_mismatch(
+                "indexable value",
+                "non-indexable value",
+                "index operation",
+                span,
+            )),
         }
     }
 
-    pub(crate) fn set_index(
+    pub fn set_index(
         &mut self,
         target: &mut Value,
         indices: &[usize],
@@ -150,7 +171,8 @@ impl Executor<'_, '_> {
             return Ok(());
         };
         match target {
-            Value::Null => Err(runtime_error(crate::diagnostic::DiagId::NULL_POINTER_ACCESS,
+            Value::Null => Err(runtime_error(
+                bn_diag::DiagId::NULL_POINTER_ACCESS,
                 "cannot index a NULL pointer",
                 span,
             )),
@@ -168,18 +190,22 @@ impl Executor<'_, '_> {
             }
             Value::Vector(vector) => {
                 let length = vector.len();
-                let element = vector.get_mut(index).ok_or_else(|| {
-                    super::index_out_of_bounds(index, length, "vector", span)
-                })?;
+                let element = vector
+                    .get_mut(index)
+                    .ok_or_else(|| super::index_out_of_bounds(index, length, "vector", span))?;
                 self.set_index(element, remaining, stored, span)
             }
-            _ => Err(super::type_mismatch("indexable value", "non-indexable value", "assignment index operation", span)),
+            _ => Err(super::type_mismatch(
+                "indexable value",
+                "non-indexable value",
+                "assignment index operation",
+                span,
+            )),
         }
     }
-
 }
 
-pub(crate) fn indexed_value<'a>(
+pub fn indexed_value<'a>(
     value: &'a Value,
     indices: &[usize],
     span: Span,
@@ -188,10 +214,15 @@ pub(crate) fn indexed_value<'a>(
         return Ok(value);
     };
     let Value::Vector(values) = value else {
-        return Err(super::type_mismatch("indexable value", "non-indexable value", "nested index operation", span));
+        return Err(super::type_mismatch(
+            "indexable value",
+            "non-indexable value",
+            "nested index operation",
+            span,
+        ));
     };
-    let element = values.get(index).ok_or_else(|| {
-        super::index_out_of_bounds(index, values.len(), "vector", span)
-    })?;
+    let element = values
+        .get(index)
+        .ok_or_else(|| super::index_out_of_bounds(index, values.len(), "vector", span))?;
     indexed_value(element, remaining, span)
 }

@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/bn_rt", "crates/bn_source", "crates/bn_types", "crates/bn_diag", "crates/bn_ir", "crates/bn_frontend", "crates/bn_runtime", "crates/bn_value", "crates/bn_llvm"]
+members = ["crates/bn_rt", "crates/bn_source", "crates/bn_types", "crates/bn_diag", "crates/bn_ir", "crates/bn_frontend", "crates/bn_runtime", "crates/bn_value", "crates/bn_llvm", "crates/bn_interp"]
 resolver = "3"
 
 [package]
@@ -37,6 +37,7 @@ bn_rt = { path = "crates/bn_rt" }
 bn_diag = { path = "crates/bn_diag" }
 bn_ir = { path = "crates/bn_ir" }
 bn_frontend = { path = "crates/bn_frontend" }
+bn_interp = { path = "crates/bn_interp" }
 bn_runtime = { path = "crates/bn_runtime" }
 bn_value = { path = "crates/bn_value" }
 bn_llvm = { path = "crates/bn_llvm" }

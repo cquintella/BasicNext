@@ -46,6 +46,19 @@ RS
 done
 echo "frontend-module spelling and re-lowering negatives passed"
 
+mkdir -p "$fixture/crates/bn_interp/src"
+for probe in 'use crate::libraries::web::execute_callback;' 'let s = crate::web::ServerState::new();' 'use tokio::net::TcpListener;' 'use crate::hosts::net::NetProvider;'; do
+  cat > "$fixture/crates/bn_interp/src/illegal.rs" <<RS
+$probe
+RS
+  if "$checker" --root "$fixture" --allowlist "$fixture/allowlist" >/dev/null 2>&1; then
+    echo "checker accepted a seeded bn_interp→capability edge: $probe" >&2
+    exit 1
+  fi
+done
+rm -rf "$fixture/crates"
+echo "bn_interp→capability negatives passed"
+
 rm -f "$fixture/src/runtime/illegal.rs"
 printf 'src/runtime/gone.rs:1:use crate::semantic::Type;\n' > "$fixture/allowlist"
 if "$checker" --root "$fixture" --allowlist "$fixture/allowlist" >/dev/null 2>&1; then

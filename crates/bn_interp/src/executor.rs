@@ -1,29 +1,19 @@
 #![allow(clippy::wildcard_imports, clippy::too_many_lines)]
 use super::*;
 
-#[path = "executor/helpers.rs"]
 mod helpers;
+pub use self::helpers::integer_from_count as integer_from_count_pub;
+pub use self::helpers::numeric_overflow;
 #[allow(unused_imports)]
-use self::helpers::{
-    integer_from_count, integer_from_u64, lifecycle_dispatch, require_console,
-};
-pub(crate) use self::helpers::numeric_overflow;
-pub(crate) use self::helpers::integer_from_count as integer_from_count_pub;
+use self::helpers::{integer_from_count, integer_from_u64, lifecycle_dispatch, require_console};
 
-#[path = "executor/part1.rs"]
 mod part1;
-#[path = "executor/part2.rs"]
-mod part2;
-#[path = "executor/part3.rs"]
-mod part3;
-#[path = "executor/part5.rs"]
-mod part5;
-#[path = "executor/part7.rs"]
-mod part7;
-#[path = "executor/part10.rs"]
 mod part10;
-#[path = "executor/part11.rs"]
 mod part11;
+mod part2;
+mod part3;
+mod part5;
+mod part7;
 
 fn unary(operator: &str, operand: &Value, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
     match (operator, operand) {
@@ -31,7 +21,12 @@ fn unary(operator: &str, operand: &Value, ty: &Type, span: Span) -> Result<Value
         ("Minus", Value::Float(value, _)) => Ok(float_value(-value, float_kind(ty))),
         ("NOT", Value::Boolean(value)) => Ok(Value::Boolean(!value)),
         ("NOT", Value::Integer(value, _)) => checked_integer(Some(!value), ty, span),
-        _ => Err(super::type_mismatch("numeric or BOOLEAN operand", "incompatible value", format!("unary {operator}"), span)),
+        _ => Err(super::type_mismatch(
+            "numeric or BOOLEAN operand",
+            "incompatible value",
+            format!("unary {operator}"),
+            span,
+        )),
     }
 }
 
@@ -45,7 +40,8 @@ fn binary(
 ) -> Result<Value, Diagnostic> {
     if operator == "IS" {
         let Value::Type(test) = right else {
-            return Err(runtime_error(crate::diagnostic::DiagId::INVALID_IR,
+            return Err(runtime_error(
+                bn_diag::DiagId::INVALID_IR,
                 "IS requires a type operand",
                 span,
             ));
@@ -65,13 +61,23 @@ fn binary(
             "AND" => Ok(Value::Boolean(*left && *right)),
             "OR" => Ok(Value::Boolean(*left || *right)),
             "XOR" => Ok(Value::Boolean(*left ^ *right)),
-            _ => Err(super::type_mismatch("AND, OR or XOR", operator, "BOOLEAN operation", span)),
+            _ => Err(super::type_mismatch(
+                "AND, OR or XOR",
+                operator,
+                "BOOLEAN operation",
+                span,
+            )),
         };
     }
     if let (Value::String(left), Value::String(right)) = (left, right) {
         return match operator {
             "Plus" => Ok(Value::String(format!("{left}{right}"))),
-            _ => Err(super::type_mismatch("Plus", operator, "STRING operation", span)),
+            _ => Err(super::type_mismatch(
+                "Plus",
+                operator,
+                "STRING operation",
+                span,
+            )),
         };
     }
     if let (Value::Date(left), Value::Date(right)) = (left, right) {
@@ -93,7 +99,12 @@ fn binary(
             "LessEqual" => Ok(Value::Boolean(left <= right)),
             "Greater" => Ok(Value::Boolean(left > right)),
             "GreaterEqual" => Ok(Value::Boolean(left >= right)),
-            _ => Err(super::type_mismatch("numeric operator", operator, "floating operation", span)),
+            _ => Err(super::type_mismatch(
+                "numeric operator",
+                operator,
+                "floating operation",
+                span,
+            )),
         };
     }
     let (left, _) = integer(left, span)?;
@@ -107,12 +118,17 @@ fn binary(
         "DIV" | "Percent" => Err(division_by_zero(operator, span)),
         "Power" if right >= 0 => checked_integer(
             left.checked_pow(u32::try_from(right).map_err(|_| {
-                runtime_error(crate::diagnostic::DiagId::INVALID_EXPONENT, "integer exponent is too large", span)
+                runtime_error(
+                    bn_diag::DiagId::INVALID_EXPONENT,
+                    "integer exponent is too large",
+                    span,
+                )
             })?),
             ty,
             span,
         ),
-        "Power" => Err(runtime_error(crate::diagnostic::DiagId::INVALID_EXPONENT,
+        "Power" => Err(runtime_error(
+            bn_diag::DiagId::INVALID_EXPONENT,
             "integer exponent cannot be negative",
             span,
         )),
@@ -125,17 +141,22 @@ fn binary(
         "LessEqual" => Ok(Value::Boolean(left <= right)),
         "Greater" => Ok(Value::Boolean(left > right)),
         "GreaterEqual" => Ok(Value::Boolean(left >= right)),
-        _ => Err(super::type_mismatch("integer operator", operator, "integer operation", span)),
+        _ => Err(super::type_mismatch(
+            "integer operator",
+            operator,
+            "integer operation",
+            span,
+        )),
     }
 }
 
 fn division_by_zero(operator: &str, span: Span) -> Diagnostic {
     Diagnostic::structured(
-        crate::diagnostic::DiagId::DIVISION_BY_ZERO,
+        bn_diag::DiagId::DIVISION_BY_ZERO,
         vec![("operation".into(), operator.into())],
-        vec![crate::diagnostic::Label {
+        vec![bn_diag::Label {
             span,
-            style: crate::diagnostic::LabelStyle::Primary,
+            style: bn_diag::LabelStyle::Primary,
             text: None,
         }],
     )
@@ -174,7 +195,8 @@ mod diagnostic_tests {
 fn shift(value: i128, count: i128, ty: &Type, left: bool, span: Span) -> Result<Value, Diagnostic> {
     let width = integer_width(integer_kind(ty).unwrap_or(IntegerType::Int32));
     if count < 0 || count >= i128::from(width) {
-        return Err(runtime_error(crate::diagnostic::DiagId::INVALID_SHIFT_COUNT,
+        return Err(runtime_error(
+            bn_diag::DiagId::INVALID_SHIFT_COUNT,
             format!("shift count must be in 0..{width}"),
             span,
         ));
@@ -209,20 +231,36 @@ fn cast(value: Value, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
             Value::Float(value, _) if value.is_finite() => {
                 checked_integer(Some(value.trunc() as i128), ty, span)
             }
-            Value::Float(_, _) => Err(runtime_error(crate::diagnostic::DiagId::INVALID_NUMERIC_CONVERSION,
+            Value::Float(_, _) => Err(runtime_error(
+                bn_diag::DiagId::INVALID_NUMERIC_CONVERSION,
                 "NAN and infinity cannot convert to an integer",
                 span,
             )),
-            _ => Err(super::type_mismatch("INTEGER", "non-integer-compatible value", "integer conversion", span)),
+            _ => Err(super::type_mismatch(
+                "INTEGER",
+                "non-integer-compatible value",
+                "integer conversion",
+                span,
+            )),
         },
         Type::Float(_) => Ok(float_value(number_as_float(&value, span)?, float_kind(ty))),
         Type::Named(_) | Type::ImportedNamed { .. } => match value {
             Value::Object { .. } | Value::Record { .. } | Value::Handle { .. } | Value::Null => {
                 Ok(value)
             }
-            _ => Err(super::type_mismatch("named value", "incompatible value", "named conversion", span)),
+            _ => Err(super::type_mismatch(
+                "named value",
+                "incompatible value",
+                "named conversion",
+                span,
+            )),
         },
-        _ => Err(super::type_mismatch("supported conversion target", "incompatible value or type", "value conversion", span)),
+        _ => Err(super::type_mismatch(
+            "supported conversion target",
+            "incompatible value or type",
+            "value conversion",
+            span,
+        )),
     }
 }
 
@@ -253,7 +291,10 @@ pub(super) fn coerce(value: Value, ty: &Type, span: Span) -> Result<Value, Diagn
             | Value::LogEntry(_)
             | Value::LogLogger(_)
             | Value::Json(_),
-            Type::Named(_) | Type::TypeName(_) | Type::ImportedNamed { .. } | Type::ImportedTypeName { .. },
+            Type::Named(_)
+            | Type::TypeName(_)
+            | Type::ImportedNamed { .. }
+            | Type::ImportedTypeName { .. },
         )
         | (
             Value::DispatchQueue(_)
@@ -292,31 +333,39 @@ pub(super) fn coerce(value: Value, ty: &Type, span: Span) -> Result<Value, Diagn
         (Value::TimeZone(_), Type::Named(name)) if name == "TIMEZONE" => Ok(value),
         (Value::Null, Type::Named(name)) if name == "VOID" => Ok(value),
         (Value::Error { .. }, Type::Named(name)) if name == "Error" => Ok(value),
-        _ => Err(super::type_mismatch("IR destination type", "runtime value", "IR coercion", span)),
+        _ => Err(super::type_mismatch(
+            "IR destination type",
+            "runtime value",
+            "IR coercion",
+            span,
+        )),
     }
 }
 
 fn checked_integer(value: Option<i128>, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
-    let value = value
-        .ok_or_else(|| numeric_overflow("performing an integer operation", span))?;
+    let value = value.ok_or_else(|| numeric_overflow("performing an integer operation", span))?;
     let kind = integer_kind(ty).unwrap_or(IntegerType::Int32);
     let (minimum, maximum) = integer_range(kind);
     if !(minimum..=maximum).contains(&value) {
-        return Err(numeric_overflow(format!("converting {value} to {kind:?}"), span));
+        return Err(numeric_overflow(
+            format!("converting {value} to {kind:?}"),
+            span,
+        ));
     }
     Ok(Value::Integer(value, kind))
 }
 
 /// Language globals (`ASC`, `CHAR`, `TOLOWER`, `TOUPPER`) and the
 /// `$for_condition` intrinsic. Library functions live behind the provider
-/// seam (`crate::libraries`), never here.
+/// seam (the `bn` crate's `libraries`), never here.
 fn builtin(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
     if name == "$for_condition" {
         let current = integer(&arguments[0], span)?.0;
         let end = integer(&arguments[1], span)?.0;
         let step = integer(&arguments[2], span)?.0;
         if step == 0 {
-            return Err(runtime_error(crate::diagnostic::DiagId::INVALID_FOR_STEP,
+            return Err(runtime_error(
+                bn_diag::DiagId::INVALID_FOR_STEP,
                 "FOR STEP cannot be zero",
                 span,
             ));
@@ -329,7 +378,12 @@ fn builtin(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnos
     }
     if name == "ASC" {
         let Value::String(text) = &arguments[0] else {
-            return Err(super::type_mismatch("STRING", "non-STRING value", "ASC", span));
+            return Err(super::type_mismatch(
+                "STRING",
+                "non-STRING value",
+                "ASC",
+                span,
+            ));
         };
         return Ok(text.chars().next().map_or_else(
             || Value::Error {
@@ -354,14 +408,24 @@ fn builtin(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnos
     }
     if name == "TOLOWER" {
         let Value::String(text) = &arguments[0] else {
-            return Err(super::type_mismatch("STRING", "non-STRING value", "TOLOWER", span));
+            return Err(super::type_mismatch(
+                "STRING",
+                "non-STRING value",
+                "TOLOWER",
+                span,
+            ));
         };
         // Unicode case mapping (same as bn_rt_str_to_lower / Rust to_lowercase).
         return Ok(Value::String(text.to_lowercase()));
     }
     if name == "TOUPPER" {
         let Value::String(text) = &arguments[0] else {
-            return Err(super::type_mismatch("STRING", "non-STRING value", "TOUPPER", span));
+            return Err(super::type_mismatch(
+                "STRING",
+                "non-STRING value",
+                "TOUPPER",
+                span,
+            ));
         };
         // Unicode case mapping (same as bn_rt_str_to_upper / Rust to_uppercase).
         return Ok(Value::String(text.to_uppercase()));

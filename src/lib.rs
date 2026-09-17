@@ -20,8 +20,8 @@ pub mod lowering;
 pub mod lsp;
 pub mod net;
 pub mod runtime;
+pub use bn_interp::temporal;
 pub use bn_source as source;
-pub mod temporal;
 #[cfg(test)]
 pub(crate) mod test_support;
 pub(crate) mod tls;

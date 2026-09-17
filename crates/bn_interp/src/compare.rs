@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::types::{FloatType, IntegerType, Type};
+use bn_types::{FloatType, IntegerType, Type};
 
 use super::Value;
 
@@ -12,7 +12,8 @@ use super::Value;
     clippy::float_cmp,
     clippy::match_same_arms
 )]
-pub(crate) fn equals(left: &Value, right: &Value) -> bool {
+#[must_use]
+pub fn equals(left: &Value, right: &Value) -> bool {
     match (left, right) {
         (Value::Integer(left, _), Value::Integer(right, _)) => left == right,
         (Value::Float(left, _), Value::Float(right, _)) => left == right,
@@ -116,6 +117,7 @@ pub(super) fn is_value(value: &Value, test: &str) -> bool {
     }
 }
 
+#[allow(clippy::too_many_lines)] // One arm per value/type pair.
 pub(super) fn value_matches_type(value: &Value, ty: &Type) -> bool {
     match (value, ty) {
         (Value::Integer(_, _), Type::Integer(_))
@@ -126,7 +128,13 @@ pub(super) fn value_matches_type(value: &Value, ty: &Type) -> bool {
         | (Value::Null, Type::Null)
         | (Value::NotAvailable, Type::NotAvailable)
         | (Value::EndOfFile, Type::EndOfFile)
-        | (Value::Object { .. }, Type::Named(_) | Type::TypeName(_) | Type::ImportedNamed { .. } | Type::ImportedTypeName { .. })
+        | (
+            Value::Object { .. },
+            Type::Named(_)
+            | Type::TypeName(_)
+            | Type::ImportedNamed { .. }
+            | Type::ImportedTypeName { .. },
+        )
         | (Value::Pointer { .. }, Type::Pointer { .. }) => true,
         (Value::Date(_), Type::Named(name)) if name == "DATE" => true,
         (Value::Time(_), Type::Named(name)) if name == "TIME" => true,
@@ -145,7 +153,10 @@ pub(super) fn value_matches_type(value: &Value, ty: &Type) -> bool {
         (Value::Null, Type::Named(name)) => name == "VOID",
         (
             Value::Record { type_name, .. },
-            Type::Named(name) | Type::TypeName(name) | Type::ImportedNamed { name, .. } | Type::ImportedTypeName { name, .. },
+            Type::Named(name)
+            | Type::TypeName(name)
+            | Type::ImportedNamed { name, .. }
+            | Type::ImportedTypeName { name, .. },
         ) => {
             type_name == name
                 || type_name.rsplit('.').next() == Some(name.as_str())
@@ -187,10 +198,30 @@ pub(super) fn value_matches_type(value: &Value, ty: &Type) -> bool {
             | Type::ImportedNamed { name, .. }
             | Type::ImportedTypeName { name, .. },
         ) => name == "BNDispatch.Ticket" || name == "Ticket" || name.ends_with(".Ticket"),
-        (Value::DispatchGroup(_), Type::Named(name) | Type::ImportedNamed { name, .. } | Type::ImportedTypeName { name, .. }) => name == "BNDispatch.Group" || name == "Group" || name.ends_with(".Group"),
-        (Value::DispatchBarrier(_), Type::Named(name) | Type::ImportedNamed { name, .. } | Type::ImportedTypeName { name, .. }) => name == "BNDispatch.Barrier" || name == "Barrier" || name.ends_with(".Barrier"),
-        (Value::DispatchSemaphore(_), Type::Named(name) | Type::ImportedNamed { name, .. } | Type::ImportedTypeName { name, .. }) => name == "BNDispatch.Semaphore" || name == "Semaphore" || name.ends_with(".Semaphore"),
-        (Value::DispatchMutex(_), Type::Named(name) | Type::ImportedNamed { name, .. } | Type::ImportedTypeName { name, .. }) => name == "BNDispatch.Mutex" || name == "Mutex" || name.ends_with(".Mutex"),
+        (
+            Value::DispatchGroup(_),
+            Type::Named(name)
+            | Type::ImportedNamed { name, .. }
+            | Type::ImportedTypeName { name, .. },
+        ) => name == "BNDispatch.Group" || name == "Group" || name.ends_with(".Group"),
+        (
+            Value::DispatchBarrier(_),
+            Type::Named(name)
+            | Type::ImportedNamed { name, .. }
+            | Type::ImportedTypeName { name, .. },
+        ) => name == "BNDispatch.Barrier" || name == "Barrier" || name.ends_with(".Barrier"),
+        (
+            Value::DispatchSemaphore(_),
+            Type::Named(name)
+            | Type::ImportedNamed { name, .. }
+            | Type::ImportedTypeName { name, .. },
+        ) => name == "BNDispatch.Semaphore" || name == "Semaphore" || name.ends_with(".Semaphore"),
+        (
+            Value::DispatchMutex(_),
+            Type::Named(name)
+            | Type::ImportedNamed { name, .. }
+            | Type::ImportedTypeName { name, .. },
+        ) => name == "BNDispatch.Mutex" || name == "Mutex" || name.ends_with(".Mutex"),
         _ => false,
     }
 }

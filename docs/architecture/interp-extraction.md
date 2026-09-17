@@ -3,7 +3,7 @@
 **Measured:** 2026-09-16 on `main` after bucket 0.5.1c sprints 1–3.1.
 Every number below is reproducible with the command shown next to it. This
 document does not decide anything; it tells the Fragilidade 2 bucket where the
-interpreter (`src/runtime/**`, `src/runtime_impl.rs`) is still welded to the
+interpreter (then `src/runtime/**`, `src/runtime_impl.rs`; now `crates/bn_interp`) was welded to the
 `bn` god-crate.
 
 ## Layer gate status (Fragilidade 1)
@@ -74,6 +74,19 @@ Still in the core: `HOST.Exec`, `HOST.Clock`, `HOST.Args`, `HOST.FileSystem`
 (`executor/part7.rs`, `part8.rs`) — SPRINT 3 moves them per capability, Exec
 first. `rg 'crate::(web|web_state|net|dispatch|json|log|http|tls)::' src/runtime`
 → 0 outside `net_values.rs` (value projections) and one unit test.
+
+## Status after bucket 0.5.1d SPRINT 2 (2026-09-17)
+
+`crates/bn_interp` exists: the language core (`Executor`, `HostEnv`, the
+provider seam, `temporal`) over validated BN IR, depending on `bn_diag bn_ir
+bn_runtime bn_source bn_types bn_value` and `bn_rt` (policy types, clock; std-
+only). `bn::runtime` is a facade (`pub use bn_interp::*`) plus
+`HostEnvDefaults`, the one place that names the providers `bn` ships
+(`src/libraries/*`, `src/hosts/*`). Every HOST capability and `BN*` library is
+a provider; `HOST.NumProcs`/`HOST.Args` remain language surface in the core.
+Gate: `scripts/check-forbidden-deps.sh` rule **bn_interp→capability**. What is
+left for SPRINT 3 is moving each provider module into its own crate
+(`bn_host_*` / `bn_lib_*`) and unifying `HOST.Exec` with `bn_rt::exec`.
 
 ## Not blockers (already clean)
 

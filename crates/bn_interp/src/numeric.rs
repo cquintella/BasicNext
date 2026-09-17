@@ -3,41 +3,60 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::{
-    diagnostic::Diagnostic,
-    types::{FloatType, IntegerType, Type},
-    source::Span,
-};
+use bn_diag::Diagnostic;
+use bn_source::Span;
+use bn_types::{FloatType, IntegerType, Type};
 
 use super::{Value, runtime_error, type_mismatch};
 
-pub(crate) fn integer(value: &Value, span: Span) -> Result<(i128, IntegerType), Diagnostic> {
+/// # Errors
+///
+/// Returns `TYPE_MISMATCH` when the value is not an integer.
+pub fn integer(value: &Value, span: Span) -> Result<(i128, IntegerType), Diagnostic> {
     let Value::Integer(value, kind) = value else {
-        return Err(super::type_mismatch("integral value", "non-integral value", "integer operation", span));
+        return Err(super::type_mismatch(
+            "integral value",
+            "non-integral value",
+            "integer operation",
+            span,
+        ));
     };
     Ok((*value, *kind))
 }
 
 pub(super) fn boolean(value: &Value, span: Span) -> Result<bool, Diagnostic> {
     let Value::Boolean(value) = value else {
-        return Err(super::type_mismatch("BOOLEAN", "non-BOOLEAN value", "boolean operation", span));
+        return Err(super::type_mismatch(
+            "BOOLEAN",
+            "non-BOOLEAN value",
+            "boolean operation",
+            span,
+        ));
     };
     Ok(*value)
 }
 
+/// # Errors
+///
+/// Returns `TYPE_MISMATCH` when the value is not numeric.
 #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-pub(crate) fn number_as_float(value: &Value, span: Span) -> Result<f64, Diagnostic> {
+pub fn number_as_float(value: &Value, span: Span) -> Result<f64, Diagnostic> {
     match value {
         Value::Integer(value, _) => Ok(*value as f64),
         Value::Float(value, kind) => Ok(match kind {
             FloatType::Float32 => f64::from(*value as f32),
             FloatType::Float64 => *value,
         }),
-        _ => Err(super::type_mismatch("numeric value", "non-numeric value", "numeric operation", span)),
+        _ => Err(super::type_mismatch(
+            "numeric value",
+            "non-numeric value",
+            "numeric operation",
+            span,
+        )),
     }
 }
 
-pub(crate) fn parse_val(text: &str) -> f64 {
+pub fn parse_val(text: &str) -> f64 {
     let text = text.trim_start();
     let bytes = text.as_bytes();
     let mut end = usize::from(bytes.first().is_some_and(|b| matches!(b, b'+' | b'-')));
@@ -128,8 +147,13 @@ pub(super) fn parse_float(value: &str) -> f64 {
 }
 
 pub(super) fn exit_code(code: i128, span: Span) -> Result<u8, Diagnostic> {
-    u8::try_from(code)
-        .map_err(|_| runtime_error(crate::diagnostic::DiagId::INVALID_EXIT_CODE, "exit code must be in 0..255", span))
+    u8::try_from(code).map_err(|_| {
+        runtime_error(
+            bn_diag::DiagId::INVALID_EXIT_CODE,
+            "exit code must be in 0..255",
+            span,
+        )
+    })
 }
 
 pub(super) fn ordered<T: Ord>(
@@ -143,6 +167,11 @@ pub(super) fn ordered<T: Ord>(
         "LessEqual" => Ok(Value::Boolean(left <= right)),
         "Greater" => Ok(Value::Boolean(left > right)),
         "GreaterEqual" => Ok(Value::Boolean(left >= right)),
-        _ => Err(type_mismatch("ordered comparison operator", operator, "numeric ordered comparison", span)),
+        _ => Err(type_mismatch(
+            "ordered comparison operator",
+            operator,
+            "numeric ordered comparison",
+            span,
+        )),
     }
 }

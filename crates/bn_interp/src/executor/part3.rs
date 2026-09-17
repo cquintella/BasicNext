@@ -8,7 +8,7 @@
 use super::*;
 
 impl Executor<'_, '_> {
-    pub(crate) fn call_named(
+    pub fn call_named(
         &mut self,
         name: &str,
         arguments: Vec<Value>,
@@ -49,13 +49,11 @@ impl Executor<'_, '_> {
             .functions
             .iter()
             .position(|function| function.name == resolved)
-            .ok_or_else(|| {
-                super::super::name_not_found(&resolved, "function dispatch", span)
-            })?;
+            .ok_or_else(|| super::super::name_not_found(&resolved, "function dispatch", span))?;
         let callee = &self.module.functions[index];
         let constructed = matches!(
             callee.kind,
-            crate::ir::FunctionKind::Constructor | crate::ir::FunctionKind::FieldInit
+            bn_ir::FunctionKind::Constructor | bn_ir::FunctionKind::FieldInit
         )
         .then(|| match arguments.first() {
             Some(Value::Object { handle, .. }) => Some(*handle),
@@ -89,14 +87,16 @@ impl Executor<'_, '_> {
 
     /// Splits a library callee into (library name, member): `#3.MEAN` →
     /// (`"BNMath"`, `"MEAN"`) when the IR says module 3 provides `BNMath`.
-    pub(crate) fn library_callee<'n>(&self, name: &'n str) -> Option<(&'static str, &'n str)> {
+    pub fn library_callee<'n>(&self, name: &'n str) -> Option<(&'static str, &'n str)> {
         let rest = name.strip_prefix('#')?;
         let (module, member) = rest.split_once('.')?;
-        let library = self.module.standard_library_of(ModuleId(module.parse().ok()?))?;
+        let library = self
+            .module
+            .standard_library_of(ModuleId(module.parse().ok()?))?;
         Some((library, member))
     }
 
-    pub(crate) fn library_call(
+    pub fn library_call(
         &mut self,
         library: &'static str,
         member: &str,
@@ -106,7 +106,7 @@ impl Executor<'_, '_> {
         // Take the provider out so it can borrow the core mutably during the call.
         let Some(mut provider) = self.libraries.remove(library) else {
             return Err(runtime_error(
-                crate::diagnostic::DiagId::LIBRARY_PROVIDER_UNAVAILABLE,
+                bn_diag::DiagId::LIBRARY_PROVIDER_UNAVAILABLE,
                 format!("{library} provider unavailable"),
                 span,
             ));
@@ -133,7 +133,7 @@ impl Executor<'_, '_> {
     }
 
     /// `NEW <class>()` owned by a HOST capability (`FS.File`).
-    pub(crate) fn host_allocate(
+    pub fn host_allocate(
         &mut self,
         capability: &'static str,
         class: &str,
@@ -148,7 +148,7 @@ impl Executor<'_, '_> {
     }
 
     /// `RELEASE` of a handle owned by a HOST capability.
-    pub(crate) fn host_release(&mut self, value: &Value, span: Span) -> Result<(), Diagnostic> {
+    pub fn host_release(&mut self, value: &Value, span: Span) -> Result<(), Diagnostic> {
         let capabilities: Vec<&'static str> = self.hosts.keys().copied().collect();
         for capability in capabilities {
             let mut provider = self.hosts.remove(capability).expect("key just listed");
@@ -159,14 +159,14 @@ impl Executor<'_, '_> {
             }
         }
         Err(runtime_error(
-            crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE,
+            bn_diag::DiagId::HOST_CAPABILITY_UNAVAILABLE,
             "no HOST capability owns this handle",
             span,
         ))
     }
 
     /// `NEW #N.Class()` served by a seam library, if `type_name` names one.
-    pub(crate) fn library_allocate(
+    pub fn library_allocate(
         &mut self,
         type_name: &str,
         span: Span,
@@ -177,7 +177,7 @@ impl Executor<'_, '_> {
 
     /// `NEW <class>()` on a named seam library (cross-library use, e.g. `BNWeb`
     /// creating `BNLog` `Fields` for its access log).
-    pub(crate) fn library_allocate_in(
+    pub fn library_allocate_in(
         &mut self,
         library: &'static str,
         class: &str,
@@ -190,11 +190,7 @@ impl Executor<'_, '_> {
     }
 
     /// `RELEASE` of a handle owned by a seam library, if any claims it.
-    pub(crate) fn library_release(
-        &mut self,
-        value: &Value,
-        span: Span,
-    ) -> Option<Result<(), Diagnostic>> {
+    pub fn library_release(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
         let libraries: Vec<&'static str> = self.libraries.keys().copied().collect();
         for library in libraries {
             let mut provider = self.libraries.remove(library).expect("key just listed");
@@ -208,24 +204,22 @@ impl Executor<'_, '_> {
     }
 
     /// Tells every library the core destroyed the object at `handle`.
-    pub(crate) fn notify_object_destroyed(&mut self, handle: Handle) {
+    pub fn notify_object_destroyed(&mut self, handle: Handle) {
         for provider in self.libraries.values_mut() {
             provider.object_destroyed(handle);
         }
     }
-
-
 }
 
 fn host_unavailable(capability: &str, span: Span) -> Diagnostic {
     runtime_error(
-        crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE,
+        bn_diag::DiagId::HOST_CAPABILITY_UNAVAILABLE,
         format!("HOST.{capability} is not provided by this host"),
         span,
     )
 }
 
-impl crate::runtime::provider::CoreContext for Executor<'_, '_> {
+impl crate::provider::CoreContext for Executor<'_, '_> {
     fn memory(&self) -> &Heap<Value> {
         &self.memory
     }

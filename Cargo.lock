@@ -20,6 +20,7 @@ version = "0.5.1"
 dependencies = [
  "bn_diag",
  "bn_frontend",
+ "bn_interp",
  "bn_ir",
  "bn_llvm",
  "bn_rt",
@@ -57,6 +58,19 @@ dependencies = [
  "bn_ir",
  "bn_source",
  "bn_types",
+]
+
+[[package]]
+name = "bn_interp"
+version = "0.5.1"
+dependencies = [
+ "bn_diag",
+ "bn_ir",
+ "bn_rt",
+ "bn_runtime",
+ "bn_source",
+ "bn_types",
+ "bn_value",
 ]
 
 [[package]]

@@ -3,76 +3,94 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::{diagnostic::Diagnostic, source::Span};
+use bn_diag::Diagnostic;
+use bn_source::Span;
 
 const DAY_MS: i128 = 86_400_000;
 const MIN_YEAR: i32 = 1;
 const MAX_YEAR: i32 = 9999;
 
-pub(crate) struct CivilDate {
+pub struct CivilDate {
     pub year: i32,
     pub month: u32,
     pub day: u32,
 }
 
-pub(crate) fn default_date() -> i32 {
+#[must_use]
+pub fn default_date() -> i32 {
     0
 }
 
-pub(crate) fn default_time() -> u32 {
+#[must_use]
+pub fn default_time() -> u32 {
     0
 }
 
-pub(crate) fn parse_date(text: &str, span: Span) -> Result<i32, Diagnostic> {
+/// # Errors
+///
+/// Returns the language diagnostic for a malformed value.
+pub fn parse_date(text: &str, span: Span) -> Result<i32, Diagnostic> {
     let (year, month, day) = parse_ymd(text).ok_or_else(|| {
         temporal_error(
-            crate::diagnostic::DiagId::INVALID_DATE,
+            bn_diag::DiagId::INVALID_DATE,
             "DATE must be YYYY-MM-DD",
             span,
         )
     })?;
     days_from_civil(year, month, day).ok_or_else(|| {
         temporal_error(
-            crate::diagnostic::DiagId::INVALID_DATE,
+            bn_diag::DiagId::INVALID_DATE,
             format!("{text} is not a valid DATE"),
             span,
         )
     })
 }
 
-pub(crate) fn parse_time(text: &str, span: Span) -> Result<u32, Diagnostic> {
+/// # Errors
+///
+/// Returns the language diagnostic for a malformed value.
+pub fn parse_time(text: &str, span: Span) -> Result<u32, Diagnostic> {
     parse_hms(text, true).ok_or_else(|| {
         temporal_error(
-            crate::diagnostic::DiagId::INVALID_TIME,
+            bn_diag::DiagId::INVALID_TIME,
             "TIME must be HH:MM:SS.mmm",
             span,
         )
     })
 }
 
-pub(crate) fn parse_timezone(text: &str, span: Span) -> Result<String, Diagnostic> {
+/// # Errors
+///
+/// Returns the language diagnostic for a malformed value.
+pub fn parse_timezone(text: &str, span: Span) -> Result<String, Diagnostic> {
     if is_iana_identifier(text) {
         Ok(text.to_string())
     } else {
         Err(temporal_error(
-            crate::diagnostic::DiagId::INVALID_TIMEZONE,
+            bn_diag::DiagId::INVALID_TIMEZONE,
             format!("'{text}' is not a canonical IANA time-zone identifier"),
             span,
         ))
     }
 }
 
-pub(crate) fn parse_rfc3339(text: &str, span: Span) -> Result<i64, Diagnostic> {
+/// # Errors
+///
+/// Returns the language diagnostic for a malformed value.
+pub fn parse_rfc3339(text: &str, span: Span) -> Result<i64, Diagnostic> {
     parse_rfc3339_text(text).ok_or_else(|| {
         temporal_error(
-            crate::diagnostic::DiagId::PARSE_ERROR,
+            bn_diag::DiagId::PARSE_ERROR,
             format!("'{text}' is not an RFC 3339 TIMESTAMP"),
             span,
         )
     })
 }
 
-pub(crate) fn format_rfc3339(timestamp: i64, span: Span) -> Result<String, Diagnostic> {
+/// # Errors
+///
+/// Returns `FORMAT_OUT_OF_RANGE` outside 0001-01-01..9999-12-31.
+pub fn format_rfc3339(timestamp: i64, span: Span) -> Result<String, Diagnostic> {
     let (date, time) = split_timestamp(timestamp, span)?;
     let CivilDate { year, month, day } = civil_from_days(date);
     let (hour, minute, second, millis) = civil_time(time);
@@ -81,33 +99,40 @@ pub(crate) fn format_rfc3339(timestamp: i64, span: Span) -> Result<String, Diagn
     ))
 }
 
-pub(crate) fn format_date(days: i32) -> String {
+#[must_use]
+pub fn format_date(days: i32) -> String {
     let CivilDate { year, month, day } = civil_from_days(days);
     format!("{year:04}-{month:02}-{day:02}")
 }
 
-pub(crate) fn format_time(millis: u32) -> String {
+#[must_use]
+pub fn format_time(millis: u32) -> String {
     let (hour, minute, second, millis) = civil_time(millis);
     format!("{hour:02}:{minute:02}:{second:02}.{millis:03}")
 }
 
-pub(crate) fn date_from_timestamp(timestamp: i64, span: Span) -> Result<i32, Diagnostic> {
+/// # Errors
+///
+/// Returns `FORMAT_OUT_OF_RANGE` outside the representable range.
+pub fn date_from_timestamp(timestamp: i64, span: Span) -> Result<i32, Diagnostic> {
     Ok(split_timestamp(timestamp, span)?.0)
 }
 
-pub(crate) fn time_from_timestamp(timestamp: i64, span: Span) -> Result<u32, Diagnostic> {
+/// # Errors
+///
+/// Returns `FORMAT_OUT_OF_RANGE` outside the representable range.
+pub fn time_from_timestamp(timestamp: i64, span: Span) -> Result<u32, Diagnostic> {
     Ok(split_timestamp(timestamp, span)?.1)
 }
 
-pub(crate) fn timestamp_from_date_time(
-    days: i32,
-    millis: u32,
-    span: Span,
-) -> Result<i64, Diagnostic> {
+/// # Errors
+///
+/// Returns `FORMAT_OUT_OF_RANGE` outside the representable range.
+pub fn timestamp_from_date_time(days: i32, millis: u32, span: Span) -> Result<i64, Diagnostic> {
     require_civil_date(days, span)?;
     if millis > 86_399_999 {
         return Err(temporal_error(
-            crate::diagnostic::DiagId::INVALID_TIME,
+            bn_diag::DiagId::INVALID_TIME,
             "TIME must be in 00:00:00.000..23:59:59.999",
             span,
         ));
@@ -117,7 +142,7 @@ pub(crate) fn timestamp_from_date_time(
         .and_then(|value| i64::try_from(value).ok())
         .ok_or_else(|| {
             temporal_error(
-                crate::diagnostic::DiagId::FORMAT_OUT_OF_RANGE,
+                bn_diag::DiagId::FORMAT_OUT_OF_RANGE,
                 "TIMESTAMP is outside 0001-01-01..9999-12-31",
                 span,
             )
@@ -147,7 +172,7 @@ fn require_civil_date(days: i32, span: Span) -> Result<(), Diagnostic> {
 
 fn out_of_range(span: Span) -> Diagnostic {
     temporal_error(
-        crate::diagnostic::DiagId::FORMAT_OUT_OF_RANGE,
+        bn_diag::DiagId::FORMAT_OUT_OF_RANGE,
         "civil time must be in years 0001 through 9999",
         span,
     )
@@ -336,17 +361,10 @@ fn civil_time(millis: u32) -> (u32, u32, u32, u32) {
     (hour, minute, second, millis)
 }
 
-fn temporal_error(
-    id: crate::diagnostic::DiagId,
-    message: impl Into<String>,
-    span: Span,
-) -> Diagnostic {
+fn temporal_error(id: bn_diag::DiagId, message: impl Into<String>, span: Span) -> Diagnostic {
     let message = message.into();
     let arguments = match id.argument_schema() {
-        [only] => vec![(
-            only.name.into(),
-            crate::diagnostic::DiagnosticValue::Text(message),
-        )],
+        [only] => vec![(only.name.into(), bn_diag::DiagnosticValue::Text(message))],
         schema => unreachable!(
             "{} needs an explicit argument mapping ({} arguments)",
             id.code(),
@@ -356,9 +374,9 @@ fn temporal_error(
     Diagnostic::structured(
         id,
         arguments,
-        vec![crate::diagnostic::Label {
+        vec![bn_diag::Label {
             span,
-            style: crate::diagnostic::LabelStyle::Primary,
+            style: bn_diag::LabelStyle::Primary,
             text: None,
         }],
     )

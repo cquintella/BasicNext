@@ -29,15 +29,16 @@ use crate::dataframe::{
 };
 use crate::runtime::provider::{CoreContext, Provider};
 use crate::runtime::{
-    DataFrameResource, collect_indices_pub as collect_indices,
-    dataframe_index_error_pub as dataframe_index_error, equals_pub as equals,
-    integer_from_count_pub as integer_from_count, integer_pub as integer,
+    collect_indices_pub as collect_indices, dataframe_index_error_pub as dataframe_index_error,
+    equals_pub as equals, integer_from_count_pub as integer_from_count, integer_pub as integer,
     is_not_available_pub as is_not_available, name_not_found, parse_val_pub as parse_val,
     render_pub as render, require_arity_pub as require_arity, runtime_error_pub as runtime_error,
     type_mismatch, unsigned_indices_pub as unsigned_indices,
 };
 use crate::types::{FloatType, IntegerType};
 use bn_rt::Reduction;
+
+type DataFrameResource = crate::dataframe::DataFrameResource<Value>;
 
 pub const NAME: &str = "BNData";
 

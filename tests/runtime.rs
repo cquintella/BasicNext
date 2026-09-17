@@ -78,18 +78,19 @@ use bn::{
     lowering::lower_graph,
     module_graph::load,
     runtime::{
-        DebugDecision, HostEnv, execute_with_host, execute_with_host_debug,
+        DebugDecision, HostEnv, HostEnvDefaults, execute_with_host, execute_with_host_debug,
         execute_with_host_debug_control,
     },
 };
 use bn_frontend::semantic::analyze_modules;
 
+/// A fixed-clock host with the providers `bn` ships.
+fn fixed(arguments: Vec<String>, timestamp_ms: i64, monotonic_ns: i64) -> HostEnv {
+    HostEnv::fixed(arguments, timestamp_ms, monotonic_ns).with_default_providers()
+}
+
 fn run(source_text: &str, input: &str) -> Result<(u8, String), bn::diagnostic::Diagnostic> {
-    run_with_host(
-        source_text,
-        input,
-        &HostEnv::fixed(vec!["runtime.bn".into()], 0, 0),
-    )
+    run_with_host(source_text, input, &fixed(vec!["runtime.bn".into()], 0, 0))
 }
 
 fn run_with_host(
@@ -110,7 +111,7 @@ fn run_with_host(
 }
 
 fn run_path(path: &str) -> Result<(u8, String), bn::diagnostic::Diagnostic> {
-    run_loaded(path, "", &HostEnv::fixed(vec![path.into()], 0, 0))
+    run_loaded(path, "", &fixed(vec![path.into()], 0, 0))
 }
 
 fn unique_temp(suffix: &str) -> PathBuf {
@@ -190,7 +191,7 @@ fn debug_hook_reports_instruction_spans_through_interpreter_pipeline() {
     let mut events = Vec::new();
     run_loaded_debug(
         path.to_str().expect("utf-8 path"),
-        &HostEnv::fixed(vec!["debug.bn".into()], 0, 0),
+        &fixed(vec!["debug.bn".into()], 0, 0),
         &mut events,
     )
     .expect("execute with debug hook");
@@ -224,7 +225,7 @@ fn debug_control_can_terminate_before_user_instruction() {
         &module,
         &mut input,
         &mut output,
-        &HostEnv::fixed(Vec::new(), 0, 0),
+        &fixed(Vec::new(), 0, 0),
         &mut control,
     )
     .expect_err("debugger termination");
@@ -1508,7 +1509,7 @@ fn filesystem_import_without_use_still_requires_the_capability() {
     let error = run_with_host(
         source,
         "",
-        &HostEnv::fixed(vec!["runtime.bn".into()], 0, 0).without_filesystem(),
+        &fixed(vec!["runtime.bn".into()], 0, 0).without_filesystem(),
     )
     .expect_err("import-only FileSystem must fail before Start");
     assert_eq!(error.code, "HOST_CAPABILITY_UNAVAILABLE");
@@ -1567,7 +1568,7 @@ fn filesystem_capability_is_checked_before_start() {
     let error = run_with_host(
         source,
         "",
-        &HostEnv::fixed(vec!["runtime.bn".into()], 0, 0).without_filesystem(),
+        &fixed(vec!["runtime.bn".into()], 0, 0).without_filesystem(),
     )
     .expect_err("missing filesystem capability must fail before Start");
     assert_eq!(error.code, "HOST_CAPABILITY_UNAVAILABLE");
@@ -1659,8 +1660,8 @@ fn bndata_read_csv_uses_the_injected_data_provider() {
         "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"{}\", FS.READ)\nIF file IS Error THEN\nRETURN\nEND IF\nLET table AS Data.DataFrame OR Error = Data.ReadCSV(file, FALSE, \",\")\nIF table IS Error THEN\nRETURN\nEND IF\nPRINT table.GetString(0, \"Column1\")\nRELEASE table\nfile.Close()\nRELEASE file\nEND FUNCTION\n",
         path.display()
     );
-    let host = HostEnv::fixed(vec!["provider.bn".into()], 0, 0)
-        .with_data_provider(Arc::new(InjectedDataProvider));
+    let host =
+        fixed(vec!["provider.bn".into()], 0, 0).with_data_provider(Arc::new(InjectedDataProvider));
     let result = run_with_host(&source, "", &host);
     let _ = fs::remove_file(path);
     let (_, output) = result.expect("injected data provider");
@@ -2184,14 +2185,14 @@ fn library_provider_seam_routes_calls_and_reenters_the_core() {
     }
     let mut libraries = Providers::default();
     libraries.register("BNMath", Arc::new(|| Box::new(Fake)));
-    let host = HostEnv::fixed(vec!["runtime.bn".into()], 0, 0).with_libraries(libraries);
+    let host = fixed(vec!["runtime.bn".into()], 0, 0).with_libraries(libraries);
     let source = "IMPORT BNMath AS M\nFUNCTION Helper() AS INTEGER\n    RETURN 7\nEND FUNCTION\nFUNCTION Start() AS VOID\n    PRINT M.ABS(-1)\nEND FUNCTION\n";
     let (code, output) = run_with_host(source, "", &host).expect("fake provider answers");
     assert_eq!(code, 0);
     assert_eq!(output, "42\n");
 
     // No provider registered under the library: unavailable, never a language error.
-    let bare = HostEnv::fixed(vec!["runtime.bn".into()], 0, 0).with_libraries(Providers::default());
+    let bare = fixed(vec!["runtime.bn".into()], 0, 0).with_libraries(Providers::default());
     let source = "IMPORT BNMath AS M\nFUNCTION Start() AS VOID\n    LET v AS FLOAT = M.SQRT(4.0)\n    PRINT v\nEND FUNCTION\n";
     let error = run_with_host(source, "", &bare).expect_err("unregistered library is an error");
     assert_eq!(error.code, "LIBRARY_PROVIDER_UNAVAILABLE");
@@ -2296,7 +2297,7 @@ FUNCTION Start() AS VOID
     PRINT HOST.Args[1]
 END FUNCTION
 ";
-    let host = HostEnv::fixed(vec!["prog.bn".into(), "ação".into()], 0, 0);
+    let host = fixed(vec!["prog.bn".into(), "ação".into()], 0, 0);
     let (code, output) = run_with_host(source, "", &host).expect("execute HOST.Args");
     assert_eq!(code, 0);
     assert_eq!(output, "2\nprog.bn\nação\n");
@@ -2311,7 +2312,7 @@ FUNCTION Start() AS VOID
     PRINT HOST.Args[1]
 END FUNCTION
 ";
-    let host = HostEnv::fixed(vec!["/tmp/program.bn".into(), "ação".into()], 0, 0);
+    let host = fixed(vec!["/tmp/program.bn".into(), "ação".into()], 0, 0);
     let (code, output) = run_with_host(source, "", &host).expect("execute HOST.Args");
     assert_eq!(code, 0);
     assert_eq!(output, "2\n/tmp/program.bn\nação\n");
@@ -2327,7 +2328,7 @@ FUNCTION Start() AS VOID
     PRINT Clock.Timer()
 END FUNCTION
 ";
-    let host = HostEnv::fixed(vec!["runtime.bn".into()], 1_000, 42);
+    let host = fixed(vec!["runtime.bn".into()], 1_000, 42);
     let (code, output) = run_with_host(source, "", &host).expect("execute HOST.Clock");
     assert_eq!(code, 0);
     assert_eq!(output, "1000\n42\n");
@@ -2710,7 +2711,7 @@ END FUNCTION
             &module,
             &mut input,
             &mut output,
-            &HostEnv::fixed(vec!["bridge.bn".into()], 0, 0),
+            &fixed(vec!["bridge.bn".into()], 0, 0),
         )
         .map(|code| (code, output))
     });
@@ -3233,7 +3234,7 @@ END FUNCTION
         helper = helper_path,
         marker = marker_path
     );
-    let host = HostEnv::fixed(vec!["runtime.bn".into()], 0, 0).without_exec();
+    let host = fixed(vec!["runtime.bn".into()], 0, 0).without_exec();
     let (_, output) = run_with_host(&denied_source, "", &host).expect("E05 denied");
     assert_eq!(output, "denied 11\n");
     assert!(
@@ -3384,7 +3385,7 @@ END FUNCTION
 "#,
         helper = helper_path
     );
-    let host = HostEnv::fixed(vec!["runtime.bn".into()], 0, 0).with_exec_capture_limit(1024);
+    let host = fixed(vec!["runtime.bn".into()], 0, 0).with_exec_capture_limit(1024);
     let (_, output) = run_with_host(&limit_source, "", &host).expect("E10 limit");
     assert_eq!(output, "limit 8\n");
     // shared helper retained for suite
@@ -3524,7 +3525,7 @@ END FUNCTION
 "#,
         helper = helper_path
     );
-    let host = HostEnv::fixed(vec!["runtime.bn".into()], 0, 0).with_exec_timeout_secs(1);
+    let host = fixed(vec!["runtime.bn".into()], 0, 0).with_exec_timeout_secs(1);
     let (_, output) = run_with_host(&source, "", &host).expect("execute HOST.Exec E14");
     assert_eq!(output, "timeout 9\n");
     // shared helper retained for suite

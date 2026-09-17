@@ -60,10 +60,11 @@ if ! command -v rg >/dev/null 2>&1; then
 fi
 
 declare -a backend_paths=(
-  src/runtime_impl.rs src/runtime src/heap.rs src/dispatch.rs src/dispatch
+  src/runtime_impl.rs src/runtime src/runtime.rs src/hosts.rs src/hosts
+  src/libraries.rs src/libraries src/heap.rs src/dispatch.rs src/dispatch
   src/net.rs src/net src/http.rs src/web.rs src/web src/web_state.rs
   src/dataframe.rs src/llvm.rs src/llvm crates/bn_rt/src crates/bn_runtime/src
-  crates/bn_value/src crates/bn_llvm/src
+  crates/bn_value/src crates/bn_llvm/src crates/bn_interp/src
 )
 
 check_matches() {
@@ -130,6 +131,26 @@ if ((${#frontend_paths[@]} > 0)); then
     -e '(^|[^[:alnum:]_])(crate::|use[[:space:]]+)(net|http|web|web_state|tls|dispatch)::' \
     -e 'use[[:space:]]+(crate|super)::\{[^}]*\b(net|http|web|web_state|tls|dispatch)\b' \
     "${frontend_paths[@]}" || true)
+fi
+
+# Interpreter core (bucket 0.5.1d): `bn_interp` is the language alone. It
+# never names a HOST capability or `BN*` library implementation, nor the
+# god-crate modules that host them, nor a transport/crypto crate.
+interp_src="$repo_root/crates/bn_interp/src"
+if [[ -d "$interp_src" ]]; then
+  while IFS=: read -r path line text; do
+    [[ -n "$path" ]] || continue
+    rel=${path#"$repo_root/"}
+    record="$rel:$line:$text"
+    if ! grep -Fqx -- "$record" "$allowlist"; then
+      printf 'forbidden dependency (bn_interp→capability): %s\n' "$record" >&2
+      found=1
+    fi
+  done < <(rg -n --with-filename --no-heading --glob '*.rs' \
+    -e '(^|[^[:alnum:]_])(crate::|use[[:space:]]+)(net|http|web|web_state|tls|dispatch|json|log|config|dataframe|libraries|hosts)::' \
+    -e 'use[[:space:]]+(crate|super)::\{[^}]*\b(net|http|web|web_state|tls|dispatch|json|log|config|dataframe|libraries|hosts)\b' \
+    -e '(^|[^[:alnum:]_])(tokio|hyper|rustls|ring|serde_json)(::|[[:space:]]*;)' \
+    "$interp_src" || true)
 fi
 
 # W5 freeze: inspect the current extracted public IR model (and retain the

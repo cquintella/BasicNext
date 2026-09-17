@@ -5,7 +5,7 @@
 
 use super::Value;
 
-pub(crate) fn render(value: &Value) -> String {
+pub fn render(value: &Value) -> String {
     match value {
         Value::Integer(value, _) => value.to_string(),
         Value::Float(value, _) if value.is_nan() => "NAN".into(),

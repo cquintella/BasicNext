@@ -7,57 +7,46 @@
 use std::{
     collections::{HashMap, HashSet},
     io::{BufRead, Read, Write},
+    path::{Path, PathBuf},
     sync::{Arc, atomic::AtomicU64},
     time::{SystemTime, UNIX_EPOCH},
-    path::{Path, PathBuf},
 };
 
 use bn_value::Value;
 
-#[path = "runtime/allocation.rs"]
-mod allocation;
-#[path = "runtime/collections.rs"]
-mod collections;
-#[path = "runtime/compare.rs"]
-mod compare;
-#[path = "runtime/helpers.rs"]
-mod helpers;
-#[path = "runtime/net_values.rs"]
-mod net_values;
-#[path = "runtime/numeric.rs"]
-mod numeric;
-#[path = "runtime/render.rs"]
-mod render;
-#[path = "runtime/temporal_ops.rs"]
-mod temporal_ops;
-#[path = "runtime/provider.rs"]
-pub mod provider;
+pub mod temporal;
 
-// Helpers a library provider (`crate::libraries::*`) may use. They are the
+mod allocation;
+mod collections;
+mod compare;
+mod helpers;
+mod numeric;
+pub mod provider;
+mod render;
+mod temporal_ops;
+
+// Helpers a provider (the `bn` crate's `libraries`/`hosts`) may use. They are the
 // core's value/diagnostic vocabulary, not language semantics.
-pub(crate) use executor::numeric_overflow;
-pub(crate) use helpers::require_arity as require_arity_pub;
-pub(crate) use integer_from_i128_count as integer_from_i128_count_pub;
-pub(crate) use collections::{
+pub use collections::{
     collect_indices as collect_indices_pub, dataframe_index_error as dataframe_index_error_pub,
     unsigned_indices as unsigned_indices_pub,
 };
-pub(crate) use executor::integer_from_count_pub;
-pub(crate) use render::render as render_pub;
-pub(crate) use compare::equals as equals_pub;
-pub(crate) use is_not_available as is_not_available_pub;
-pub(crate) use numeric::{
+pub use compare::equals as equals_pub;
+pub use executor::integer_from_count_pub;
+pub use executor::numeric_overflow;
+pub use helpers::require_arity as require_arity_pub;
+pub use integer_from_i128_count as integer_from_i128_count_pub;
+pub use is_not_available as is_not_available_pub;
+pub use numeric::{
     integer as integer_pub, number_as_float as number_as_float_pub, parse_val as parse_val_pub,
 };
-pub(crate) use {index_out_of_bounds as index_out_of_bounds_pub, runtime_error as runtime_error_pub};
+pub use render::render as render_pub;
+pub use {index_out_of_bounds as index_out_of_bounds_pub, runtime_error as runtime_error_pub};
 
 use allocation::{add_sizes, display_element, pointer_element_default, pointer_element_size};
 use compare::{equals, is_host_file_method, is_host_file_type, is_value, value_matches_type};
 use helpers::{
     constant_value, default_function_owner, empty_named, find_block, require_arity, set, value,
-};
-pub(crate) use net_values::{
-    address_value, endpoint_value, net_address, net_addresses, net_endpoint, ping_reply_value,
 };
 use numeric::{
     boolean, exit_code, float_kind, float_value, integer, integer_kind, integer_range,
@@ -68,28 +57,17 @@ use temporal_ops::{is_temporal_builtin, temporal_call};
 
 pub use bn_rt::{DataProvider, StandardDataProvider};
 
-#[allow(unused_imports)]
-use crate::{
-    dataframe::{
-        DataFrameJoin, DataFrameJoinConfig,
-        DataFrameResource as GenericDataFrameResource, add_dataframe_column,
-        append_columns, append_rows, column_name, convert_dataframe_column,
-        copy_dataframe_column, dataframe_reduce_column, duplicate_column_names,
-        get_dataframe_cell, join_dataframes, select_dataframe, set_column_label,
-        transpose_dataframe, zscore_column,
-    },
-    diagnostic::Diagnostic,
-    heap::{Handle, Heap},
-    ir::{Function, Instruction, Module, ModuleId, SymbolId, Terminator, ValidatedModule, ValueId, validate_module},
-    source::Span,
-    types::{
-        FloatType, IntegerType, PointerLength, Type, integer_byte_size, static_size_of,
-    },
+use bn_diag::Diagnostic;
+use bn_ir::{
+    Function, Instruction, Module, ModuleId, SymbolId, Terminator, ValidatedModule, ValueId,
+    validate_module,
 };
+use bn_runtime::{Handle, Heap};
+use bn_source::Span;
+use bn_types::{FloatType, IntegerType, PointerLength, Type, integer_byte_size, static_size_of};
 
-pub(crate) type DataFrameResource = GenericDataFrameResource<Value>;
-
-pub(crate) fn is_not_available(value: &Value) -> bool {
+#[must_use]
+pub fn is_not_available(value: &Value) -> bool {
     matches!(value, Value::NotAvailable)
 }
 
@@ -130,15 +108,19 @@ impl FilesystemPolicy {
         }
     }
 
-    pub(crate) fn allows_capability(&self) -> bool {
-        self.read_roots.as_ref().is_none_or(|roots| !roots.is_empty())
+    #[must_use]
+    pub fn allows_capability(&self) -> bool {
+        self.read_roots
+            .as_ref()
+            .is_none_or(|roots| !roots.is_empty())
             || self
                 .write_roots
                 .as_ref()
                 .is_none_or(|roots| !roots.is_empty())
     }
 
-    pub(crate) fn allows_path(&self, path: &Path, write: bool) -> bool {
+    #[must_use]
+    pub fn allows_path(&self, path: &Path, write: bool) -> bool {
         let roots = if write {
             &self.write_roots
         } else {
@@ -150,7 +132,14 @@ impl FilesystemPolicy {
         roots.iter().any(|root| root.contains_resolved(path))
     }
 
-    pub(crate) fn open(&self, path: &Path, mode: bn_rt::secure_fs::OpenMode) -> std::io::Result<std::fs::File> {
+    /// # Errors
+    ///
+    /// Propagates the I/O error; `PermissionDenied` when the path is outside the policy roots.
+    pub fn open(
+        &self,
+        path: &Path,
+        mode: bn_rt::secure_fs::OpenMode,
+    ) -> std::io::Result<std::fs::File> {
         let roots = if mode == bn_rt::secure_fs::OpenMode::Read {
             &self.read_roots
         } else {
@@ -184,7 +173,10 @@ impl FilesystemPolicy {
             .open(path, mode)
     }
 
-    pub(crate) fn remove_file(&self, path: &Path) -> std::io::Result<()> {
+    /// # Errors
+    ///
+    /// Propagates the I/O error; `PermissionDenied` when the path is outside the policy roots.
+    pub fn remove_file(&self, path: &Path) -> std::io::Result<()> {
         let Some(roots) = &self.write_roots else {
             return std::fs::remove_file(path);
         };
@@ -208,8 +200,7 @@ impl Clone for HostEnv {
             arguments: self.arguments.clone(),
             clock: self.clock.clone(),
             random_state: AtomicU64::new(
-                self.random_state
-                    .load(std::sync::atomic::Ordering::Relaxed),
+                self.random_state.load(std::sync::atomic::Ordering::Relaxed),
             ),
             filesystem: self.filesystem.clone(),
             exec_allowed: self.exec_allowed,
@@ -243,8 +234,8 @@ impl HostEnv {
             exec_timeout: std::time::Duration::from_secs(60),
             exec_capture_limit: 16 * 1024 * 1024,
             data_provider: Arc::new(StandardDataProvider),
-            libraries: crate::libraries::default_libraries(),
-            hosts: crate::hosts::default_hosts(),
+            libraries: provider::Providers::default(),
+            hosts: provider::Providers::default(),
         }
     }
 
@@ -262,8 +253,8 @@ impl HostEnv {
             exec_timeout: std::time::Duration::from_secs(60),
             exec_capture_limit: 16 * 1024 * 1024,
             data_provider: Arc::new(StandardDataProvider),
-            libraries: crate::libraries::default_libraries(),
-            hosts: crate::hosts::default_hosts(),
+            libraries: provider::Providers::default(),
+            hosts: provider::Providers::default(),
         }
     }
 
@@ -280,8 +271,8 @@ impl HostEnv {
             exec_timeout: std::time::Duration::from_secs(60),
             exec_capture_limit: 16 * 1024 * 1024,
             data_provider: Arc::new(StandardDataProvider),
-            libraries: crate::libraries::default_libraries(),
-            hosts: crate::hosts::default_hosts(),
+            libraries: provider::Providers::default(),
+            hosts: provider::Providers::default(),
         }
     }
 
@@ -359,14 +350,14 @@ impl HostEnv {
         Ok(self)
     }
 
-    pub(crate) fn timestamp_ms(&self) -> i64 {
+    pub fn timestamp_ms(&self) -> i64 {
         match self.clock {
             ClockKind::Fixed { timestamp_ms, .. } => timestamp_ms,
             ClockKind::System => bn_rt::timestamp_ms(),
         }
     }
 
-    pub(crate) fn monotonic_ns(&self) -> i64 {
+    pub fn monotonic_ns(&self) -> i64 {
         match self.clock {
             ClockKind::Fixed { monotonic_ns, .. } => monotonic_ns,
             ClockKind::System => bn_rt::monotonic_ns(),
@@ -375,13 +366,13 @@ impl HostEnv {
 
     /// CSV/data provider bound to this host.
     #[must_use]
-    pub(crate) fn data_provider(&self) -> &Arc<dyn DataProvider> {
+    pub fn data_provider(&self) -> &Arc<dyn DataProvider> {
         &self.data_provider
     }
 
     /// Filesystem policy in force for this host.
     #[must_use]
-    pub(crate) fn filesystem(&self) -> &FilesystemPolicy {
+    pub fn filesystem(&self) -> &FilesystemPolicy {
         &self.filesystem
     }
 
@@ -392,19 +383,19 @@ impl HostEnv {
         self
     }
 
-    pub(crate) fn exec_allowed(&self) -> bool {
+    pub fn exec_allowed(&self) -> bool {
         self.exec_allowed
     }
 
-    pub(crate) fn exec_timeout(&self) -> std::time::Duration {
+    pub fn exec_timeout(&self) -> std::time::Duration {
         self.exec_timeout
     }
 
-    pub(crate) fn exec_capture_limit(&self) -> usize {
+    pub fn exec_capture_limit(&self) -> usize {
         self.exec_capture_limit
     }
 
-    pub(crate) fn random_state(&self) -> &AtomicU64 {
+    pub fn random_state(&self) -> &AtomicU64 {
         &self.random_state
     }
 
@@ -415,7 +406,8 @@ impl HostEnv {
         self
     }
 
-    pub(crate) fn fork_for_task(&self) -> Self {
+    #[must_use]
+    pub fn fork_for_task(&self) -> Self {
         let seed = self
             .random_state
             .fetch_add(0x9E37_79B9_7F4A_7C15, std::sync::atomic::Ordering::Relaxed)
@@ -435,12 +427,10 @@ impl HostEnv {
     }
 }
 
-#[path = "runtime/support.rs"]
 mod support;
 use support::{debug_variables, host_random_seed};
 
 #[cfg(test)]
-#[path = "runtime/tests.rs"]
 mod tests;
 
 #[derive(Clone)]
@@ -510,7 +500,7 @@ impl<'a, 'debug> Executor<'a, 'debug> {
 }
 
 /// Read-only interpreter event emitted at an executable instruction boundary.
-pub type DebugHook<'a> = &'a mut dyn FnMut(&str, crate::source::Span);
+pub type DebugHook<'a> = &'a mut dyn FnMut(&str, bn_source::Span);
 
 /// Decision returned by an interactive debugger at an instruction boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -529,7 +519,7 @@ pub struct DebugVariable {
 /// Interactive debugger callback. It is invoked before each executable
 /// instruction and may block while the client is paused.
 pub type DebugControl<'a> =
-    &'a mut dyn FnMut(&str, usize, crate::source::Span, &[DebugVariable]) -> DebugDecision;
+    &'a mut dyn FnMut(&str, usize, bn_source::Span, &[DebugVariable]) -> DebugDecision;
 
 #[derive(Clone, Copy)]
 enum ClassInit {
@@ -588,7 +578,13 @@ pub fn execute_named_with_host(
         .functions
         .iter()
         .find(|function| function.name == name)
-        .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::FUNCTION_NOT_FOUND, format!("function '{name}' was not found"), default_span()))?;
+        .ok_or_else(|| {
+            runtime_error(
+                bn_diag::DiagId::FUNCTION_NOT_FOUND,
+                format!("function '{name}' was not found"),
+                default_span(),
+            )
+        })?;
     let mut executor = Executor::new(validated.as_module(), input, output, host, None, None);
     match executor.function(function, arguments)? {
         Flow::Return(Some(value)) => Ok(value),
@@ -708,21 +704,22 @@ fn execute_with_host_inner<'debug>(
     if !host.filesystem.allows_capability()
         && let Some(span) = module.filesystem_import
     {
-        return Err(runtime_error(crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE,
+        return Err(runtime_error(
+            bn_diag::DiagId::HOST_CAPABILITY_UNAVAILABLE,
             "HOST.FileSystem is not provided by this host",
             span,
         ));
     }
-    let start = module
-        .entry()
-        .ok_or_else(|| {
-            runtime_error(crate::diagnostic::DiagId::START_NOT_FOUND,
-                "executable module requires FUNCTION Start",
-                default_span(),
-            )
-        })?;
+    let start = module.entry().ok_or_else(|| {
+        runtime_error(
+            bn_diag::DiagId::START_NOT_FOUND,
+            "executable module requires FUNCTION Start",
+            default_span(),
+        )
+    })?;
     if !start.parameters.is_empty() {
-        return Err(runtime_error(crate::diagnostic::DiagId::INVALID_START,
+        return Err(runtime_error(
+            bn_diag::DiagId::INVALID_START,
             "FUNCTION Start cannot declare parameters",
             start.span,
         ));
@@ -733,10 +730,13 @@ fn execute_with_host_inner<'debug>(
         Flow::Return(Some(Value::Integer(code, _))) | Flow::Stop(code) => {
             exit_code(code, start.span)
         }
-        Flow::Return(Some(Value::Error { code, message })) => {
-            Err(runtime_error(crate::diagnostic::DiagId::DISPATCH, format!("{code}: {message}"), start.span))
-        }
-        Flow::Return(Some(_)) => Err(runtime_error(crate::diagnostic::DiagId::INVALID_START,
+        Flow::Return(Some(Value::Error { code, message })) => Err(runtime_error(
+            bn_diag::DiagId::DISPATCH,
+            format!("{code}: {message}"),
+            start.span,
+        )),
+        Flow::Return(Some(_)) => Err(runtime_error(
+            bn_diag::DiagId::INVALID_START,
             "FUNCTION Start must return VOID or INTEGER",
             start.span,
         )),
@@ -761,39 +761,40 @@ enum Flow {
     Return(Option<Value>),
     Stop(i128),
 }
-#[path = "runtime/executor.rs"]
 mod executor;
 
 #[allow(dead_code)]
 fn coerce(value: Value, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
-    crate::runtime::executor::coerce(value, ty, span)
+    crate::executor::coerce(value, ty, span)
 }
 
+/// # Errors
+///
+/// Returns `NUMERIC_OVERFLOW` when the count does not fit the integer type.
 #[allow(dead_code)]
-pub(crate) fn integer_from_i128_count(count: i128, span: Span) -> Result<Value, Diagnostic> {
+pub fn integer_from_i128_count(count: i128, span: Span) -> Result<Value, Diagnostic> {
     if !(0..=i128::from(i32::MAX)).contains(&count) {
         return Err(integer_overflow(span));
     }
     Ok(Value::Integer(count, IntegerType::Int32))
 }
 
-pub(crate) fn runtime_error(
-    id: crate::diagnostic::DiagId,
-    message: impl Into<String>,
-    span: Span,
-) -> Diagnostic {
+/// # Panics
+///
+/// Only if the diagnostic registry schema for this identity is inconsistent (a build error, never a runtime state).
+pub fn runtime_error(id: bn_diag::DiagId, message: impl Into<String>, span: Span) -> Diagnostic {
     let message = message.into();
     let arguments = match id {
-        crate::diagnostic::DiagId::NAME_NOT_FOUND => vec![
+        bn_diag::DiagId::NAME_NOT_FOUND => vec![
             ("name".into(), message.clone().into()),
             ("context".into(), "runtime lookup".into()),
         ],
-        crate::diagnostic::DiagId::INDEX_OUT_OF_BOUNDS => vec![
+        bn_diag::DiagId::INDEX_OUT_OF_BOUNDS => vec![
             ("index".into(), "unknown".into()),
             ("bound".into(), "unknown".into()),
             ("context".into(), message.into()),
         ],
-        crate::diagnostic::DiagId::TYPE_MISMATCH => vec![
+        bn_diag::DiagId::TYPE_MISMATCH => vec![
             ("expected".into(), "a value matching the operation".into()),
             ("actual".into(), "an incompatible value".into()),
             ("context".into(), message.into()),
@@ -812,69 +813,82 @@ pub(crate) fn runtime_error(
     Diagnostic::structured(
         id,
         arguments,
-        vec![crate::diagnostic::Label {
+        vec![bn_diag::Label {
             span,
-            style: crate::diagnostic::LabelStyle::Primary,
+            style: bn_diag::LabelStyle::Primary,
             text: None,
         }],
     )
     .expect("runtime compatibility diagnostic schema")
 }
 
-pub(crate) fn name_not_found(name: impl Into<String>, context: impl Into<String>, span: Span) -> Diagnostic {
+/// # Panics
+///
+/// Only if the diagnostic registry schema for this identity is inconsistent (a build error, never a runtime state).
+pub fn name_not_found(
+    name: impl Into<String>,
+    context: impl Into<String>,
+    span: Span,
+) -> Diagnostic {
     Diagnostic::structured(
-        crate::diagnostic::DiagId::NAME_NOT_FOUND,
+        bn_diag::DiagId::NAME_NOT_FOUND,
         vec![
             ("name".into(), name.into().into()),
             ("context".into(), context.into().into()),
         ],
-        vec![crate::diagnostic::Label {
+        vec![bn_diag::Label {
             span,
-            style: crate::diagnostic::LabelStyle::Primary,
+            style: bn_diag::LabelStyle::Primary,
             text: None,
         }],
     )
     .expect("name-not-found diagnostic schema")
 }
 
-pub(crate) fn index_out_of_bounds(
+/// # Panics
+///
+/// Only if the diagnostic registry schema for this identity is inconsistent (a build error, never a runtime state).
+pub fn index_out_of_bounds(
     index: impl std::fmt::Display,
     bound: impl std::fmt::Display,
     context: impl std::fmt::Display,
     span: Span,
 ) -> Diagnostic {
     Diagnostic::structured(
-        crate::diagnostic::DiagId::INDEX_OUT_OF_BOUNDS,
+        bn_diag::DiagId::INDEX_OUT_OF_BOUNDS,
         vec![
             ("index".into(), index.to_string().into()),
             ("bound".into(), bound.to_string().into()),
             ("context".into(), context.to_string().into()),
         ],
-        vec![crate::diagnostic::Label {
+        vec![bn_diag::Label {
             span,
-            style: crate::diagnostic::LabelStyle::Primary,
+            style: bn_diag::LabelStyle::Primary,
             text: None,
         }],
     )
     .expect("index-out-of-bounds diagnostic schema")
 }
 
-pub(crate) fn type_mismatch(
+/// # Panics
+///
+/// Only if the diagnostic registry schema for this identity is inconsistent (a build error, never a runtime state).
+pub fn type_mismatch(
     expected: impl std::fmt::Display,
     actual: impl std::fmt::Display,
     context: impl std::fmt::Display,
     span: Span,
 ) -> Diagnostic {
     Diagnostic::structured(
-        crate::diagnostic::DiagId::TYPE_MISMATCH,
+        bn_diag::DiagId::TYPE_MISMATCH,
         vec![
             ("expected".into(), expected.to_string().into()),
             ("actual".into(), actual.to_string().into()),
             ("context".into(), context.to_string().into()),
         ],
-        vec![crate::diagnostic::Label {
+        vec![bn_diag::Label {
             span,
-            style: crate::diagnostic::LabelStyle::Primary,
+            style: bn_diag::LabelStyle::Primary,
             text: None,
         }],
     )
@@ -883,31 +897,29 @@ pub(crate) fn type_mismatch(
 
 fn integer_overflow(span: Span) -> Diagnostic {
     Diagnostic::structured(
-        crate::diagnostic::DiagId::NUMERIC_OVERFLOW,
-        vec![(
-            "operation".into(),
-            "converting a value to INTEGER".into(),
-        )],
-        vec![crate::diagnostic::Label {
+        bn_diag::DiagId::NUMERIC_OVERFLOW,
+        vec![("operation".into(), "converting a value to INTEGER".into())],
+        vec![bn_diag::Label {
             span,
-            style: crate::diagnostic::LabelStyle::Primary,
+            style: bn_diag::LabelStyle::Primary,
             text: None,
         }],
     )
     .expect("numeric-overflow diagnostic schema")
 }
-pub(crate) fn default_span() -> Span {
+#[must_use]
+pub fn default_span() -> Span {
     Span {
-        start: crate::source::Position {
-            source_id: crate::source::Position::UNKNOWN_SOURCE,
-            revision: crate::source::Position::UNKNOWN_REVISION,
+        start: bn_source::Position {
+            source_id: bn_source::Position::UNKNOWN_SOURCE,
+            revision: bn_source::Position::UNKNOWN_REVISION,
             offset: 0,
             line: 1,
             column: 1,
         },
-        end: crate::source::Position {
-            source_id: crate::source::Position::UNKNOWN_SOURCE,
-            revision: crate::source::Position::UNKNOWN_REVISION,
+        end: bn_source::Position {
+            source_id: bn_source::Position::UNKNOWN_SOURCE,
+            revision: bn_source::Position::UNKNOWN_REVISION,
             offset: 0,
             line: 1,
             column: 1,

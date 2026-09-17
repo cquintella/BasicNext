@@ -1,0 +1,27 @@
+[package]
+name = "bn_interp"
+version = "0.5.1"
+edition = "2024"
+rust-version = "1.97"
+description = "Basic Next interpreter: the language core over validated BN IR, with the provider seam"
+license = "MPL-2.0"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+
+[dependencies]
+bn_diag = { path = "../bn_diag" }
+bn_ir = { path = "../bn_ir" }
+bn_rt = { path = "../bn_rt" }
+bn_runtime = { path = "../bn_runtime" }
+bn_source = { path = "../bn_source" }
+bn_types = { path = "../bn_types" }
+bn_value = { path = "../bn_value" }

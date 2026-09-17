@@ -3,28 +3,32 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::{
-    diagnostic::Diagnostic, heap::Heap,
-    source::Span,
-};
+use bn_diag::Diagnostic;
+use bn_runtime::Heap;
+use bn_source::Span;
 
 use super::{Value, integer, type_mismatch};
 
-pub(crate) fn dataframe_index_error() -> Value {
+#[must_use]
+pub fn dataframe_index_error() -> Value {
     Value::Error {
         code: 1,
         message: "DataFrame index out of bounds".into(),
     }
 }
 
-pub(crate) fn unsigned_indices(values: Vec<i128>) -> Option<Vec<usize>> {
+#[must_use]
+pub fn unsigned_indices(values: Vec<i128>) -> Option<Vec<usize>> {
     values
         .into_iter()
         .map(|value| usize::try_from(value).ok())
         .collect()
 }
 
-pub(crate) fn collect_indices(
+/// # Errors
+///
+/// Returns the runtime diagnostic for a value that is not an index or index vector.
+pub fn collect_indices(
     value: &Value,
     memory: &Heap<Value>,
     span: Span,

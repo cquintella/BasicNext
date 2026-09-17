@@ -19,11 +19,12 @@ use bn_source::Span;
 use bn_value::Value;
 
 use crate::heap::Handle;
+use crate::hosts::net_values::{address_value, net_endpoint};
 use crate::runtime::provider::{CoreContext, Provider};
 use crate::runtime::{
-    HostEnv, address_value, integer_from_count_pub as integer_from_count, integer_pub as integer,
-    net_endpoint, require_arity_pub as require_arity, run_isolated,
-    runtime_error_pub as runtime_error, type_mismatch,
+    HostEnv, integer_from_count_pub as integer_from_count, integer_pub as integer,
+    require_arity_pub as require_arity, run_isolated, runtime_error_pub as runtime_error,
+    type_mismatch,
 };
 use crate::types::IntegerType;
 
@@ -2290,6 +2291,51 @@ impl WebProvider {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::sync::atomic::AtomicU64;
+
+    #[test]
+    fn web_callback_uses_a_fresh_executor_and_projects_response() {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "basicnext-web-callback-{}-{}.bn",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let source = r#"IMPORT BNWeb AS Web
+FUNCTION Handler(request AS Web.Request, response AS Web.Response) AS VOID
+response.SetStatus(207)
+response.Write("isolated")
+END FUNCTION
+FUNCTION Start() AS VOID
+END FUNCTION
+"#;
+        fs::write(&path, source).expect("write callback fixture");
+        let module = crate::test_support::lower_fixture(&path);
+        let request = crate::web::Request::new(
+            "GET",
+            "/callback",
+            Vec::new(),
+            "",
+            "127.0.0.1".parse().expect("peer address"),
+        )
+        .expect("construct callback request");
+        let response = super::execute_callback(
+            &module,
+            &crate::runtime::HostEnvDefaults::with_default_providers(
+                crate::runtime::HostEnv::fixed(vec!["callback.bn".into()], 0, 0),
+            ),
+            "Handler",
+            request,
+            crate::web::Response::new(),
+        )
+        .expect("execute callback");
+        let _ = fs::remove_file(path);
+        assert_eq!(response.status, 207);
+        assert_eq!(response.body, "isolated");
+    }
+
+    #[cfg(unix)]
     use super::drain_server;
     use crate::web::ServerState;
     use std::sync::atomic::{AtomicBool, Ordering};

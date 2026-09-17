@@ -5,13 +5,11 @@
 
 use std::collections::HashMap;
 
-use crate::{
-    diagnostic::Diagnostic,
-    ir::{BasicBlock, BlockId, Constant, Function, ValueId},
-    types::{IntegerType, Type},
-    source::Span,
-    temporal,
-};
+use crate::temporal;
+use bn_diag::Diagnostic;
+use bn_ir::{BasicBlock, BlockId, Constant, Function, ValueId};
+use bn_source::Span;
+use bn_types::{IntegerType, Type};
 
 use super::{
     Value, float_kind, float_value, integer_kind, parse_float, parse_integer, runtime_error,
@@ -23,7 +21,13 @@ pub(super) fn find_block(function: &Function, id: BlockId) -> Result<&BasicBlock
         .blocks
         .get(id.0 as usize)
         .filter(|block| block.id == id)
-        .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::INVALID_IR, "basic block does not exist", function.span))
+        .ok_or_else(|| {
+            runtime_error(
+                bn_diag::DiagId::INVALID_IR,
+                "basic block does not exist",
+                function.span,
+            )
+        })
 }
 
 pub(super) fn set(values: &mut HashMap<ValueId, Value>, destination: ValueId, value: Value) {
@@ -35,9 +39,13 @@ pub(super) fn value(
     id: ValueId,
     span: Span,
 ) -> Result<&Value, Diagnostic> {
-    values
-        .get(&id)
-        .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::INVALID_IR, format!("value %{} is undefined", id.0), span))
+    values.get(&id).ok_or_else(|| {
+        runtime_error(
+            bn_diag::DiagId::INVALID_IR,
+            format!("value %{} is undefined", id.0),
+            span,
+        )
+    })
 }
 
 pub(super) fn constant_value(
@@ -47,8 +55,13 @@ pub(super) fn constant_value(
 ) -> Result<Value, Diagnostic> {
     match constant {
         Constant::Integer(value) => Ok(Value::Integer(
-            parse_integer(value)
-                .ok_or_else(|| runtime_error(crate::diagnostic::DiagId::INVALID_IR, "invalid integer constant", span))?,
+            parse_integer(value).ok_or_else(|| {
+                runtime_error(
+                    bn_diag::DiagId::INVALID_IR,
+                    "invalid integer constant",
+                    span,
+                )
+            })?,
             integer_kind(ty).unwrap_or(IntegerType::Int32),
         )),
         Constant::Float(value) => Ok(float_value(parse_float(value), float_kind(ty))),
@@ -83,7 +96,10 @@ pub(super) fn empty_named(name: &str) -> Value {
     }
 }
 
-pub(crate) fn require_arity(
+/// # Errors
+///
+/// Returns `ARITY_MISMATCH` when `arguments.len() != expected`.
+pub fn require_arity(
     name: &str,
     arguments: &[Value],
     expected: usize,

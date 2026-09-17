@@ -316,7 +316,9 @@ fn execute_program(
         &module,
         &mut input,
         &mut output,
-        &crate::runtime::HostEnv::system(vec![path.to_owned()]),
+        &crate::runtime::HostEnvDefaults::with_default_providers(crate::runtime::HostEnv::system(
+            vec![path.to_owned()],
+        )),
         &mut control,
     )
     .map_err(|error| error.message.to_string())
