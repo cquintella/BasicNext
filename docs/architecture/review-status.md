@@ -32,6 +32,19 @@
 
 Bucket [`../../ongoing/bucket-0.4.5.md`](../../ongoing/bucket-0.4.5.md) §C records divergences **D1–D10** and corrective actions **C-P0/C-P1/C-P2**. Major progress already in tree (crates, `validate_for`, Phi, Fluent, DataProvider, policy). Remaining P0: fake `.bn` stubs, mid-emit support inventory, physical `#[path]` elimination.
 
+## Layer isolation — measured (2026-09-16, bucket 0.5.1c)
+
+The advisory of 2026-09-16 (Fragilidade 1) counted "~40 backend→frontend
+edges" from `scripts/forbidden-deps.allowlist`. Measured on the code: no
+backend crate depends on `bn_frontend`; the allowlist held 38 stale records
+and 1 real edge (a test fixture). After 0.5.1c: allowlist **0**, checker fails
+on stale records, every frontend module spelling is forbidden in backend
+paths, `semantic` is off the `bn` public API, `crate::ir` no longer carries
+lowering, and the IR name protocol is normative and tested
+([ir-contract.md § Emitted names](ir-contract.md#emitted-names-normative--bucket-051c-31-2026-09-16)).
+Remaining coupling is interpreter → god-crate host implementations, measured
+in [interp-extraction.md](interp-extraction.md).
+
 ## Checklist to close
 
 Executable checkbox list: **[to-close.md](to-close.md)**.

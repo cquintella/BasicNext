@@ -75,14 +75,14 @@ impl BufRead for ChannelReader {
 }
 
 use bn::{
-    ir::lower_graph,
+    lowering::lower_graph,
     module_graph::load,
     runtime::{
         DebugDecision, HostEnv, execute_with_host, execute_with_host_debug,
         execute_with_host_debug_control,
     },
-    semantic::analyze_modules,
 };
+use bn_frontend::semantic::analyze_modules;
 
 fn run(source_text: &str, input: &str) -> Result<(u8, String), bn::diagnostic::Diagnostic> {
     run_with_host(

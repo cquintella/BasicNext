@@ -19,7 +19,7 @@ fi
 fixture=$(mktemp -d "${TMPDIR:-/tmp}/bn-forbidden-deps.XXXXXX")
 trap 'rm -rf "$fixture"' EXIT
 mkdir -p "$fixture/src/runtime"
-cp "$repo_root/scripts/forbidden-deps.allowlist" "$fixture/allowlist"
+: > "$fixture/allowlist"
 cat > "$fixture/src/runtime/illegal.rs" <<'RS'
 use crate::{semantic::Type};
 
@@ -34,6 +34,32 @@ if "$checker" --root "$fixture" --allowlist "$fixture/allowlist" >/dev/null 2>&1
 fi
 
 echo "forbidden dependency checker baseline and negative fixture passed"
+
+for probe in 'use bn_frontend::ast::Program;' 'use crate::ast::Program;' 'use crate::module_graph::load;' 'let m = crate::ir::lower_graph(&g, &models);'; do
+  cat > "$fixture/src/runtime/illegal.rs" <<RS
+$probe
+RS
+  if "$checker" --root "$fixture" --allowlist "$fixture/allowlist" >/dev/null 2>&1; then
+    echo "checker accepted a seeded frontend edge: $probe" >&2
+    exit 1
+  fi
+done
+echo "frontend-module spelling and re-lowering negatives passed"
+
+rm -f "$fixture/src/runtime/illegal.rs"
+printf 'src/runtime/gone.rs:1:use crate::semantic::Type;\n' > "$fixture/allowlist"
+if "$checker" --root "$fixture" --allowlist "$fixture/allowlist" >/dev/null 2>&1; then
+  echo "checker accepted a stale allowlist record (missing file)" >&2
+  exit 1
+fi
+mkdir -p "$fixture/src/runtime" && printf 'fn drifted() {}\n' > "$fixture/src/runtime/drift.rs"
+printf 'src/runtime/drift.rs:1:use crate::semantic::Type;\n' > "$fixture/allowlist"
+if "$checker" --root "$fixture" --allowlist "$fixture/allowlist" >/dev/null 2>&1; then
+  echo "checker accepted a stale allowlist record (line changed)" >&2
+  exit 1
+fi
+: > "$fixture/allowlist"
+echo "allowlist rot-detection negatives passed"
 
 mkdir -p "$fixture/src/semantic"
 cat > "$fixture/src/semantic/illegal.rs" <<'RS'

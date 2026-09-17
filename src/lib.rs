@@ -14,6 +14,7 @@ pub mod ir;
 pub(crate) mod json;
 pub mod llvm;
 pub(crate) mod log;
+pub mod lowering;
 pub mod lsp;
 pub mod net;
 pub mod runtime;
@@ -26,5 +27,5 @@ pub use bn_types as types;
 pub(crate) mod web;
 pub(crate) mod web_state;
 pub use bn_frontend::{
-    ast, frontend_session, keyword_registry, lexer, module_graph, parser, semantic, token,
+    ast, frontend_session, keyword_registry, lexer, module_graph, parser, token,
 };

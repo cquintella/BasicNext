@@ -339,7 +339,7 @@ fn lsp_problems_equivalent_to_cli_check_on_shared_fixture() {
     let mut cli_session = crate::frontend_session::FrontendSession::default();
     let graph =
         crate::module_graph::load_with_session(&path, &mut cli_session).expect("module graph");
-    let analysis_err = crate::semantic::analyze_modules_with_warnings(&graph)
+    let analysis_err = bn_frontend::semantic::analyze_modules_with_warnings(&graph)
         .expect_err("semantic analysis must fail");
     assert_eq!(analysis_err.diagnostic.code, "TYPE_MISMATCH");
     assert_eq!(

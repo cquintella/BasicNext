@@ -8,6 +8,7 @@ use bn_diag::{DiagId, Diagnostic, Label, LabelStyle};
 use bn_source::Span;
 
 mod model;
+pub mod names;
 mod validate;
 
 pub use model::{

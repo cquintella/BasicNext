@@ -5,7 +5,8 @@
 
 use std::path::Path;
 
-use bn::{module_graph::load, semantic::analyze_modules};
+use bn::module_graph::load;
+use bn_frontend::semantic::analyze_modules;
 
 #[test]
 fn loads_dependencies_before_the_executable_module() {
@@ -168,7 +169,7 @@ fn imported_class_identity_constructor_and_members_are_resolved() {
     let root = &models[usize::try_from(graph.root.0).expect("root index")];
     assert!(root.symbols.iter().any(|symbol| matches!(
         symbol.ty,
-        bn::semantic::Type::ImportedNamed { ref name, .. } if name == "Box"
+        bn::types::Type::ImportedNamed { ref name, .. } if name == "Box"
     )));
     assert!(root.expressions.iter().any(|expression| {
         expression

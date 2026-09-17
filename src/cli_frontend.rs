@@ -75,7 +75,7 @@ pub(crate) fn load_frontend_with_overlays(
     let models = analysis.models;
     let warnings = analysis.warnings;
     log(options.verbosity, 1, "lowering and validating IR");
-    let validated = bn::ir::lower_graph_validated(&graph, &models).map_err(|diagnostic| {
+    let validated = bn::lowering::lower_graph_validated(&graph, &models).map_err(|diagnostic| {
         emit_frontend_error(&diagnostic, source, options, "lower");
         language_error()
     })?;

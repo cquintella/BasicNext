@@ -79,10 +79,7 @@ FUNCTION Start() AS VOID
 END FUNCTION
 "#;
         fs::write(&path, source).expect("write callback fixture");
-        let graph = crate::module_graph::load(path.to_str().expect("fixture path"))
-            .expect("load callback fixture");
-        let models = crate::semantic::analyze_modules(&graph).expect("analyze callback fixture");
-        let module = crate::ir::lower_graph(&graph, &models).expect("lower callback fixture");
+        let module = crate::test_support::lower_fixture(&path);
         let request = crate::web::Request::new(
             "GET",
             "/callback",

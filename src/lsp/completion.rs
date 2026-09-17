@@ -137,7 +137,7 @@ fn add_analyze_symbols(
         return;
     };
     for symbol in model.symbols {
-        let kind = if matches!(symbol.ty, crate::semantic::Type::Function { .. }) {
+        let kind = if matches!(symbol.ty, crate::types::Type::Function { .. }) {
             CompletionItemKind::FUNCTION
         } else {
             CompletionItemKind::VARIABLE

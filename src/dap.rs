@@ -238,13 +238,13 @@ fn validate_launch(message: &Value) -> Result<(), String> {
     if graph.modules.len() > 256 {
         return Err("launch module graph exceeds 256 modules".into());
     }
-    let models = crate::semantic::analyze_modules(&graph).map_err(|error| {
+    let models = bn_frontend::semantic::analyze_modules(&graph).map_err(|error| {
         format!(
             "launch semantic analysis failed: {}",
             error.diagnostic.message
         )
     })?;
-    crate::ir::lower_graph_validated(&graph, &models)
+    crate::lowering::lower_graph_validated(&graph, &models)
         .map_err(|error| format!("launch lowering failed: {}", error.message))?;
     Ok(())
 }
@@ -256,10 +256,10 @@ fn execute_program(
 ) -> Result<u8, String> {
     let graph =
         crate::module_graph::load(path).map_err(|error| error.diagnostic.message.clone())?;
-    let models = crate::semantic::analyze_modules(&graph)
+    let models = bn_frontend::semantic::analyze_modules(&graph)
         .map_err(|error| error.diagnostic.message.clone())?;
-    let module =
-        crate::ir::lower_graph_validated(&graph, &models).map_err(|error| error.message.clone())?;
+    let module = crate::lowering::lower_graph_validated(&graph, &models)
+        .map_err(|error| error.message.clone())?;
     let mut input = io::Cursor::new(Vec::<u8>::new());
     let mut output = Vec::new();
     let session_for_hook = Arc::clone(session);

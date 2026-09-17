@@ -3,17 +3,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use bn::{
-    lexer::lex,
-    module_graph::load,
-    parser::parse,
-    semantic::{IntegerType, PointerLength, Type, analyze, analyze_modules, analyze_with_warnings},
-    source::SourceFile,
-};
+use bn::types::{IntegerType, PointerLength, Type};
+use bn::{lexer::lex, module_graph::load, parser::parse, source::SourceFile};
+use bn_frontend::semantic::{analyze, analyze_modules, analyze_with_warnings};
 use std::fs;
 use std::path::Path;
 
-fn analyze_path(path: &str) -> bn::semantic::SemanticModel {
+fn analyze_path(path: &str) -> bn_frontend::semantic::SemanticModel {
     let graph = load(Path::new(path)).expect("load source");
     let models = analyze_modules(&graph).expect("analyze source");
     let index = usize::try_from(graph.root.0).expect("root index");
@@ -462,7 +458,9 @@ fn arithmetic_operator_rules_are_checked() {
     );
 }
 
-fn analyze_text(text: &str) -> Result<bn::semantic::SemanticModel, bn::diagnostic::Diagnostic> {
+fn analyze_text(
+    text: &str,
+) -> Result<bn_frontend::semantic::SemanticModel, bn::diagnostic::Diagnostic> {
     let source = SourceFile::new("semantic-test.bn", text);
     let tokens = lex(&source).expect("lex source");
     let program = parse(&tokens).expect("parse source");
@@ -701,7 +699,7 @@ fn interface_implementation_requires_the_exact_signature() {
     );
 }
 
-fn symbol_type<'a>(model: &'a bn::semantic::SemanticModel, name: &str) -> &'a Type {
+fn symbol_type<'a>(model: &'a bn_frontend::semantic::SemanticModel, name: &str) -> &'a Type {
     &model
         .symbols
         .iter()

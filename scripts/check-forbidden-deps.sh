@@ -35,6 +35,24 @@ if [[ -z "$allowlist" ]]; then
 fi
 [[ -f "$allowlist" ]] || { echo "missing allowlist: $allowlist" >&2; exit 2; }
 
+# Rot detection: every allowlist record must still point at the exact line it
+# quarantines. A stale record would let the list grow while measuring nothing.
+found=0
+while IFS= read -r record; do
+  [[ -n "$record" && "$record" != \#* ]] || continue
+  rec_path=${record%%:*}
+  rest=${record#*:}
+  rec_line=${rest%%:*}
+  rec_text=${rest#*:}
+  if [[ ! -f "$repo_root/$rec_path" ]]; then
+    printf 'stale allowlist record (file missing): %s\n' "$record" >&2
+    found=1
+  elif [[ "$(sed -n "${rec_line}p" "$repo_root/$rec_path")" != "$rec_text" ]]; then
+    printf 'stale allowlist record (line changed): %s\n' "$record" >&2
+    found=1
+  fi
+done < "$allowlist"
+
 # Fail closed: without ripgrep the scans are empty and look like a clean tree.
 if ! command -v rg >/dev/null 2>&1; then
   echo "ripgrep (rg) is required for forbidden-dependency checks" >&2
@@ -48,7 +66,6 @@ declare -a backend_paths=(
   crates/bn_value/src crates/bn_llvm/src
 )
 
-found=0
 check_matches() {
   local rule=$1
   shift
@@ -62,10 +79,12 @@ check_matches() {
       found=1
     fi
   done < <(rg -n --with-filename --no-heading --glob '*.rs' \
-    -e '(^|[^[:alnum:]_])(crate::|use[[:space:]]+)(parser|lexer|semantic)::' \
-    -e '(^|[^[:alnum:]_])semantic::' \
-    -e '(^|[^[:alnum:]_])super::(parser|lexer|semantic)::' \
-    -e 'use[[:space:]]+(crate|super)::\{[^}]*\b(parser|lexer|semantic)\b' \
+    -e '(^|[^[:alnum:]_])(crate::|use[[:space:]]+)(parser|lexer|semantic|ast|module_graph|token|frontend_session|lowering|keyword_registry)::' \
+    -e '(^|[^[:alnum:]_])(semantic|ast|module_graph|frontend_session|lowering|keyword_registry)::' \
+    -e '(^|[^[:alnum:]_])super::(parser|lexer|semantic|ast|module_graph|token|frontend_session|lowering|keyword_registry)::' \
+    -e 'use[[:space:]]+(crate|super)::\{[^}]*\b(parser|lexer|semantic|ast|module_graph|token|frontend_session|lowering|keyword_registry)\b' \
+    -e '(^|[^[:alnum:]_])bn_frontend(::|[[:space:]]*;)' \
+    -e '(^|[^[:alnum:]_])ir::lower(_graph|_validated|_graph_validated)?\b' \
     "$@" || true)
 }
 

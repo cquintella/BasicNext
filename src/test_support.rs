@@ -197,6 +197,16 @@ impl ManualClock {
     }
 }
 
+/// Loads, analyzes and lowers one `.bn` file for backend unit tests. The
+/// frontend is spelled here, outside the backend paths, so `src/runtime/**`
+/// never imports it (forbidden-deps gate, bucket 0.5.1c).
+pub(crate) fn lower_fixture(path: &std::path::Path) -> crate::ir::Module {
+    let graph =
+        crate::module_graph::load(path.to_str().expect("fixture path")).expect("load fixture");
+    let models = bn_frontend::semantic::analyze_modules(&graph).expect("analyze fixture");
+    crate::lowering::lower_graph(&graph, &models).expect("lower fixture")
+}
+
 #[cfg(test)]
 mod tests {
     use super::{BoundedKeyTable, FakeResolver, ManualClock, TestDeadline};

@@ -2384,6 +2384,21 @@ fn build_arc_and_dispatch_counterexamples_match_interpreter() {
 }
 
 #[test]
+fn forbidden_dependency_gate_and_its_negatives_hold() {
+    // Fails closed: the harness needs ripgrep and must never be skipped.
+    let output = Command::new("bash")
+        .arg("tests/check-forbidden-deps.sh")
+        .output()
+        .expect("run forbidden-deps harness");
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn build_arc_pointer_alias_release_matches_interpreter() {
     native_matches_interpreter("tests/grammar/valid/arc-pointer-alias-release.bn");
 }

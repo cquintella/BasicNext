@@ -2,14 +2,14 @@ use std::io::Cursor;
 
 use bn::{
     ir::{
-        BasicBlock, BlockId, Constant, Function, Instruction, Module, Terminator,
-        lower_graph_validated, validate_module,
+        BasicBlock, BlockId, Constant, Function, Instruction, Module, Terminator, validate_module,
     },
     llvm::{Target, lower_validated_module_for_target, validate_for},
+    lowering::lower_graph_validated,
     module_graph::load,
     runtime::{HostEnv, execute_validated_with_host},
-    semantic::analyze_modules,
 };
+use bn_frontend::semantic::analyze_modules;
 
 fn span() -> bn::source::Span {
     let position = bn::source::Position {
@@ -31,7 +31,7 @@ fn malformed_module() -> Module {
             name: "Start".into(),
             asynchronous: false,
             parameters: Vec::new(),
-            return_type: bn::semantic::Type::Named("VOID".into()),
+            return_type: bn::types::Type::Named("VOID".into()),
             entry: BlockId(0),
             blocks: vec![BasicBlock {
                 id: BlockId(0),
@@ -79,10 +79,8 @@ fn target_support_is_checked_after_language_validation() {
         id: BlockId(0),
         instructions: vec![Instruction::Default {
             destination: bn::ir::ValueId(0),
-            ty: bn::semantic::Type::Vector {
-                element: Box::new(bn::semantic::Type::Integer(
-                    bn::semantic::IntegerType::Int32,
-                )),
+            ty: bn::types::Type::Vector {
+                element: Box::new(bn::types::Type::Integer(bn::types::IntegerType::Int32)),
                 dimensions: vec![2, 3],
             },
             dimensions: vec![2, 3],
@@ -102,8 +100,8 @@ fn vector_default_with_string_element_is_supported_before_emit() {
         id: BlockId(0),
         instructions: vec![Instruction::Default {
             destination: bn::ir::ValueId(0),
-            ty: bn::semantic::Type::Vector {
-                element: Box::new(bn::semantic::Type::String),
+            ty: bn::types::Type::Vector {
+                element: Box::new(bn::types::Type::String),
                 dimensions: vec![2],
             },
             dimensions: vec![2],
@@ -125,10 +123,8 @@ fn vector_default_with_oversized_dimension_is_rejected_before_emit() {
         id: BlockId(0),
         instructions: vec![Instruction::Default {
             destination: bn::ir::ValueId(0),
-            ty: bn::semantic::Type::Vector {
-                element: Box::new(bn::semantic::Type::Integer(
-                    bn::semantic::IntegerType::Int32,
-                )),
+            ty: bn::types::Type::Vector {
+                element: Box::new(bn::types::Type::Integer(bn::types::IntegerType::Int32)),
                 dimensions: vec![type_dimension],
             },
             dimensions: vec![oversized],
@@ -151,20 +147,20 @@ fn index_of_non_indexable_value_is_rejected_by_language_validation() {
             Instruction::Constant {
                 destination: bn::ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             },
             Instruction::Constant {
                 destination: bn::ir::ValueId(1),
                 value: Constant::Integer("0".into()),
-                ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
                 span: span(),
             },
             Instruction::Index {
                 destination: bn::ir::ValueId(2),
                 object: bn::ir::ValueId(0),
                 index: bn::ir::ValueId(1),
-                ty: bn::semantic::Type::String,
+                ty: bn::types::Type::String,
                 span: span(),
             },
         ],
@@ -182,16 +178,14 @@ fn index_result_must_match_the_indexed_element_type() {
             Instruction::Constant {
                 destination: bn::ir::ValueId(0),
                 value: Constant::Integer("1".into()),
-                ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
                 span: span(),
             },
             Instruction::Vector {
                 destination: bn::ir::ValueId(1),
                 values: vec![bn::ir::ValueId(0)],
-                ty: bn::semantic::Type::Vector {
-                    element: Box::new(bn::semantic::Type::Integer(
-                        bn::semantic::IntegerType::Int32,
-                    )),
+                ty: bn::types::Type::Vector {
+                    element: Box::new(bn::types::Type::Integer(bn::types::IntegerType::Int32)),
                     dimensions: vec![1],
                 },
                 span: span(),
@@ -200,7 +194,7 @@ fn index_result_must_match_the_indexed_element_type() {
                 destination: bn::ir::ValueId(2),
                 object: bn::ir::ValueId(1),
                 index: bn::ir::ValueId(0),
-                ty: bn::semantic::Type::String,
+                ty: bn::types::Type::String,
                 span: span(),
             },
         ],
@@ -363,13 +357,13 @@ fn dispatch_submit_requires_a_queue_and_function_task() {
             Instruction::Constant {
                 destination: bn::ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             },
             Instruction::Constant {
                 destination: bn::ir::ValueId(1),
                 value: Constant::Boolean(false),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             },
             Instruction::DispatchSubmit {
@@ -378,7 +372,7 @@ fn dispatch_submit_requires_a_queue_and_function_task() {
                 queue: bn::ir::ValueId(0),
                 task: bn::ir::ValueId(1),
                 arguments: Vec::new(),
-                ty: bn::semantic::Type::Unknown,
+                ty: bn::types::Type::Unknown,
                 span: span(),
             },
         ],
@@ -396,13 +390,13 @@ fn dispatch_await_requires_a_ticket_and_integer_timeout() {
             Instruction::Constant {
                 destination: bn::ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             },
             Instruction::Constant {
                 destination: bn::ir::ValueId(1),
                 value: Constant::Boolean(false),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             },
             Instruction::DispatchAwait {
@@ -410,7 +404,7 @@ fn dispatch_await_requires_a_ticket_and_integer_timeout() {
                 callee: bn::ir::ValueId(0),
                 ticket: bn::ir::ValueId(0),
                 timeout: bn::ir::ValueId(1),
-                ty: bn::semantic::Type::Unknown,
+                ty: bn::types::Type::Unknown,
                 span: span(),
             },
         ],
@@ -427,7 +421,7 @@ fn valid_eof_constant_is_rejected_as_target_support_not_language_error() {
         instructions: vec![Instruction::Constant {
             destination: bn::ir::ValueId(0),
             value: Constant::EndOfFile,
-            ty: bn::semantic::Type::EndOfFile,
+            ty: bn::types::Type::EndOfFile,
             span: span(),
         }],
         terminator: Terminator::Return { value: None },
@@ -444,7 +438,7 @@ fn valid_numeric_constant_with_invalid_llvm_literal_is_rejected_before_emit() {
         instructions: vec![Instruction::Constant {
             destination: bn::ir::ValueId(0),
             value: Constant::Integer("not-an-integer".into()),
-            ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+            ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
             span: span(),
         }],
         terminator: Terminator::Return { value: None },
@@ -471,13 +465,13 @@ fn validator_rejects_indexed_member_store_without_an_object_receiver() {
             Instruction::Constant {
                 destination: bn::ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             },
             Instruction::Constant {
                 destination: bn::ir::ValueId(1),
                 value: Constant::Integer("0".into()),
-                ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
                 span: span(),
             },
             Instruction::SetMemberIndex {
@@ -486,7 +480,7 @@ fn validator_rejects_indexed_member_store_without_an_object_receiver() {
                 owner: "Fake".into(),
                 indices: vec![bn::ir::ValueId(1)],
                 value: bn::ir::ValueId(0),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             },
         ],
@@ -504,13 +498,13 @@ fn validator_rejects_an_indexed_store_without_indices() {
             Instruction::Load {
                 destination: bn::ir::ValueId(0),
                 symbol: bn::ir::SymbolId::from_raw(0),
-                ty: bn::semantic::Type::Named("Box".into()),
+                ty: bn::types::Type::Named("Box".into()),
                 span: span(),
             },
             Instruction::Constant {
                 destination: bn::ir::ValueId(1),
                 value: Constant::Integer("1".into()),
-                ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
                 span: span(),
             },
             Instruction::SetMemberIndex {
@@ -519,7 +513,7 @@ fn validator_rejects_an_indexed_store_without_indices() {
                 owner: "Box".into(),
                 indices: Vec::new(),
                 value: bn::ir::ValueId(1),
-                ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
                 span: span(),
             },
         ],
@@ -552,7 +546,7 @@ fn function_with_blocks(blocks: Vec<BasicBlock>) -> Module {
             name: "Start".into(),
             asynchronous: false,
             parameters: Vec::new(),
-            return_type: bn::semantic::Type::Named("VOID".into()),
+            return_type: bn::types::Type::Named("VOID".into()),
             entry: BlockId(0),
             blocks,
             weak_symbols: std::collections::HashSet::default(),
@@ -570,7 +564,7 @@ fn validator_rejects_value_defined_on_only_one_branch() {
             instructions: vec![Instruction::Constant {
                 destination: bn::ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             }],
             terminator: Terminator::Branch {
@@ -584,7 +578,7 @@ fn validator_rejects_value_defined_on_only_one_branch() {
             instructions: vec![Instruction::Constant {
                 destination: bn::ir::ValueId(1),
                 value: Constant::Integer("1".into()),
-                ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
                 span: span(),
             }],
             terminator: Terminator::Jump { target: BlockId(3) },
@@ -615,7 +609,7 @@ fn validator_rejects_phi_without_every_reachable_predecessor() {
             instructions: vec![Instruction::Constant {
                 destination: bn::ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             }],
             terminator: Terminator::Branch {
@@ -629,7 +623,7 @@ fn validator_rejects_phi_without_every_reachable_predecessor() {
             instructions: vec![Instruction::Constant {
                 destination: bn::ir::ValueId(1),
                 value: Constant::Integer("1".into()),
-                ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
                 span: span(),
             }],
             terminator: Terminator::Jump { target: BlockId(3) },
@@ -639,7 +633,7 @@ fn validator_rejects_phi_without_every_reachable_predecessor() {
             instructions: vec![Instruction::Constant {
                 destination: bn::ir::ValueId(2),
                 value: Constant::Integer("2".into()),
-                ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
                 span: span(),
             }],
             terminator: Terminator::Jump { target: BlockId(3) },
@@ -649,7 +643,7 @@ fn validator_rejects_phi_without_every_reachable_predecessor() {
             instructions: vec![Instruction::Phi {
                 destination: bn::ir::ValueId(3),
                 incoming: vec![(BlockId(1), bn::ir::ValueId(1))],
-                ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
                 span: span(),
             }],
             terminator: Terminator::Return { value: None },
@@ -666,7 +660,7 @@ fn validator_rejects_undefined_input_prompt() {
         instructions: vec![Instruction::Input {
             destination: bn::ir::ValueId(0),
             prompt: Some(bn::ir::ValueId(9)),
-            ty: bn::semantic::Type::String,
+            ty: bn::types::Type::String,
             span: span(),
         }],
         terminator: Terminator::Return { value: None },
@@ -681,7 +675,7 @@ fn validator_rejects_undefined_dynamic_dimension() {
         id: BlockId(0),
         instructions: vec![Instruction::Default {
             destination: bn::ir::ValueId(0),
-            ty: bn::semantic::Type::String,
+            ty: bn::types::Type::String,
             dimensions: Vec::new(),
             dynamic_dimensions: vec![bn::ir::ValueId(9)],
             span: span(),
@@ -700,13 +694,13 @@ fn validator_rejects_a_copy_with_an_incompatible_value_type() {
             Instruction::Constant {
                 destination: bn::ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             },
             Instruction::Copy {
                 destination: bn::ir::ValueId(1),
                 source: bn::ir::ValueId(0),
-                ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
                 span: span(),
             },
         ],
@@ -724,13 +718,13 @@ fn validator_rejects_an_operator_with_incompatible_types() {
             Instruction::Constant {
                 destination: bn::ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             },
             Instruction::Constant {
                 destination: bn::ir::ValueId(1),
                 value: Constant::Boolean(false),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             },
             Instruction::Binary {
@@ -738,7 +732,7 @@ fn validator_rejects_an_operator_with_incompatible_types() {
                 operator: "Plus".into(),
                 left: bn::ir::ValueId(0),
                 right: bn::ir::ValueId(1),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             },
         ],
@@ -756,13 +750,13 @@ fn validator_rejects_an_invalid_cast() {
             Instruction::Constant {
                 destination: bn::ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             },
             Instruction::Cast {
                 destination: bn::ir::ValueId(1),
                 value: bn::ir::ValueId(0),
-                ty: bn::semantic::Type::String,
+                ty: bn::types::Type::String,
                 span: span(),
             },
         ],
@@ -780,14 +774,14 @@ fn validator_rejects_a_call_through_a_non_function_value() {
             Instruction::Constant {
                 destination: bn::ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             },
             Instruction::Call {
                 destination: bn::ir::ValueId(1),
                 callee: bn::ir::ValueId(0),
                 arguments: Vec::new(),
-                ty: bn::semantic::Type::Named("VOID".into()),
+                ty: bn::types::Type::Named("VOID".into()),
                 span: span(),
             },
         ],
@@ -805,7 +799,7 @@ fn validator_rejects_console_control_with_a_non_console_value() {
             Instruction::Constant {
                 destination: bn::ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             },
             Instruction::Beep {
@@ -826,7 +820,7 @@ fn validator_rejects_a_constant_with_an_incompatible_value_type() {
         instructions: vec![Instruction::Constant {
             destination: bn::ir::ValueId(0),
             value: Constant::Boolean(true),
-            ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+            ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
             span: span(),
         }],
         terminator: Terminator::Return { value: None },
@@ -843,13 +837,13 @@ fn validator_rejects_incompatible_store_values() {
             Instruction::Constant {
                 destination: bn::ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             },
             Instruction::Store {
                 symbol: bn::ir::SymbolId::from_raw(0),
                 value: bn::ir::ValueId(0),
-                ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
                 span: span(),
             },
         ],
@@ -864,7 +858,7 @@ fn validator_rejects_incompatible_member_and_field_values() {
     let boolean_constant = || Instruction::Constant {
         destination: bn::ir::ValueId(0),
         value: Constant::Boolean(true),
-        ty: bn::semantic::Type::Boolean,
+        ty: bn::types::Type::Boolean,
         span: span(),
     };
     let cases = [
@@ -873,21 +867,21 @@ fn validator_rejects_incompatible_member_and_field_values() {
             name: "value".into(),
             owner: "Example".into(),
             value: bn::ir::ValueId(0),
-            ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+            ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
             span: span(),
         },
         Instruction::SetField {
             symbol: bn::ir::SymbolId::from_raw(0),
             path: vec!["value".into()],
             value: bn::ir::ValueId(0),
-            ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+            ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
             span: span(),
         },
         Instruction::StoreStatic {
             class: "Example".into(),
             field: "value".into(),
             value: bn::ir::ValueId(0),
-            ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+            ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
             span: span(),
         },
     ];
@@ -910,20 +904,20 @@ fn validator_rejects_non_integer_indices_and_mismatched_vector_elements() {
             Instruction::Constant {
                 destination: bn::ir::ValueId(0),
                 value: Constant::String("text".into()),
-                ty: bn::semantic::Type::String,
+                ty: bn::types::Type::String,
                 span: span(),
             },
             Instruction::Constant {
                 destination: bn::ir::ValueId(1),
                 value: Constant::Boolean(false),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             },
             Instruction::Index {
                 destination: bn::ir::ValueId(2),
                 object: bn::ir::ValueId(0),
                 index: bn::ir::ValueId(1),
-                ty: bn::semantic::Type::String,
+                ty: bn::types::Type::String,
                 span: span(),
             },
         ],
@@ -938,16 +932,14 @@ fn validator_rejects_non_integer_indices_and_mismatched_vector_elements() {
             Instruction::Constant {
                 destination: bn::ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             },
             Instruction::Vector {
                 destination: bn::ir::ValueId(1),
                 values: vec![bn::ir::ValueId(0)],
-                ty: bn::semantic::Type::Vector {
-                    element: Box::new(bn::semantic::Type::Integer(
-                        bn::semantic::IntegerType::Int32,
-                    )),
+                ty: bn::types::Type::Vector {
+                    element: Box::new(bn::types::Type::Integer(bn::types::IntegerType::Int32)),
                     dimensions: vec![1],
                 },
                 span: span(),
@@ -967,16 +959,14 @@ fn validator_rejects_a_vector_with_the_wrong_shape() {
             Instruction::Constant {
                 destination: bn::ir::ValueId(0),
                 value: Constant::Integer("1".into()),
-                ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
                 span: span(),
             },
             Instruction::Vector {
                 destination: bn::ir::ValueId(1),
                 values: vec![bn::ir::ValueId(0)],
-                ty: bn::semantic::Type::Vector {
-                    element: Box::new(bn::semantic::Type::Integer(
-                        bn::semantic::IntegerType::Int32,
-                    )),
+                ty: bn::types::Type::Vector {
+                    element: Box::new(bn::types::Type::Integer(bn::types::IntegerType::Int32)),
                     dimensions: vec![2],
                 },
                 span: span(),
@@ -996,7 +986,7 @@ fn validator_rejects_non_boolean_branch_condition() {
             instructions: vec![Instruction::Constant {
                 destination: bn::ir::ValueId(0),
                 value: Constant::Integer("1".into()),
-                ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
                 span: span(),
             }],
             terminator: Terminator::Branch {
@@ -1027,7 +1017,7 @@ fn validator_rejects_return_value_for_void_function() {
         instructions: vec![Instruction::Constant {
             destination: bn::ir::ValueId(0),
             value: Constant::Integer("1".into()),
-            ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+            ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
             span: span(),
         }],
         terminator: Terminator::Return {
@@ -1046,13 +1036,13 @@ fn validator_rejects_duplicate_value_definitions() {
             Instruction::Constant {
                 destination: bn::ir::ValueId(0),
                 value: Constant::Integer("1".into()),
-                ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
                 span: span(),
             },
             Instruction::Constant {
                 destination: bn::ir::ValueId(0),
                 value: Constant::Integer("2".into()),
-                ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
                 span: span(),
             },
         ],
@@ -1070,13 +1060,13 @@ fn validator_rejects_phi_after_a_non_phi_instruction() {
             Instruction::Constant {
                 destination: bn::ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             },
             Instruction::Phi {
                 destination: bn::ir::ValueId(1),
                 incoming: Vec::new(),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             },
         ],
@@ -1094,7 +1084,7 @@ fn validator_accepts_all_path_definitions_and_loop_reuse() {
             instructions: vec![Instruction::Constant {
                 destination: bn::ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::semantic::Type::Boolean,
+                ty: bn::types::Type::Boolean,
                 span: span(),
             }],
             terminator: Terminator::Branch {
@@ -1108,7 +1098,7 @@ fn validator_accepts_all_path_definitions_and_loop_reuse() {
             instructions: vec![Instruction::Constant {
                 destination: bn::ir::ValueId(1),
                 value: Constant::Integer("1".into()),
-                ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
                 span: span(),
             }],
             terminator: Terminator::Jump { target: BlockId(3) },
@@ -1118,7 +1108,7 @@ fn validator_accepts_all_path_definitions_and_loop_reuse() {
             instructions: vec![Instruction::Constant {
                 destination: bn::ir::ValueId(2),
                 value: Constant::Integer("2".into()),
-                ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
                 span: span(),
             }],
             terminator: Terminator::Jump { target: BlockId(3) },
@@ -1133,7 +1123,7 @@ fn validator_accepts_all_path_definitions_and_loop_reuse() {
                         (BlockId(2), bn::ir::ValueId(2)),
                         (BlockId(3), bn::ir::ValueId(3)),
                     ],
-                    ty: bn::semantic::Type::Integer(bn::semantic::IntegerType::Int32),
+                    ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
                     span: span(),
                 },
                 Instruction::Print {

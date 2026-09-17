@@ -28,10 +28,10 @@ use bn::{
     },
     module_graph::ModuleGraph,
     runtime::{HostEnv, execute_validated_with_host},
-    semantic::{ModuleAnalysisError, SemanticModel, analyze_modules_with_warnings},
     source::SourceFile,
     token::Token,
 };
+use bn_frontend::semantic::{ModuleAnalysisError, SemanticModel, analyze_modules_with_warnings};
 use process_log::{LogLevel, ProcessLog};
 const VERSION: &str = concat!("bn ", env!("CARGO_PKG_VERSION"));
 

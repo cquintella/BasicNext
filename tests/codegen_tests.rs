@@ -5,10 +5,10 @@
 
 use std::fs;
 
+use bn::types::{FloatType, IntegerType, Type};
 use bn::{
     ir::{BasicBlock, BlockId, Constant, Function, Instruction, Module, Terminator, ValueId},
     llvm::lower_module,
-    semantic::{FloatType, IntegerType, Type},
     source::{Position, Span},
 };
 

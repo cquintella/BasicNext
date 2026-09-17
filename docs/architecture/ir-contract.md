@@ -222,6 +222,50 @@ Before claiming “well-formed IR to both backends” for a release slice:
 - [x] Document which merge/`φ` form the IR uses — **explicit `Phi`** (AQ-20 locked)
 - [x] Implement `Instruction::Phi` + validate/lowering emission where needed for the scalar LLVM subset; target-specific unsupported cases remain matrix-owned.
 
+## Emitted names (normative — bucket 0.5.1c §3.1, 2026-09-16)
+
+Lowering encodes what a function *is* in its **name**, and both backends decode
+it by string. Until structured `FunctionKind` metadata exists (§3.2, gated),
+this table is the contract. The machine-readable copy is
+`bn_ir::names` (`crates/bn_ir/src/names.rs`); two tests hold both sides to it:
+
+- `tests/ir_names.rs::every_emitted_function_name_follows_a_documented_shape`
+  lowers every `tests/grammar/valid/**/*.bn` and `examples/*.bn` and asserts
+  each `Function.name` classifies, and each `Constant::Function` callee that
+  starts with `$` is a documented intrinsic.
+- `tests/ir_names.rs::backends_only_decode_documented_name_shapes` scans
+  `crates/bn_llvm/src`, `src/runtime`, `src/runtime_impl.rs` for
+  `ends_with("…")` / `strip_prefix("…")` / `== "…"` / `Some("…")` literals that
+  look like synthesised shapes and asserts each is in the table.
+
+| Shape | Kind | Producer (lowering) | Load-bearing consumers |
+| --- | --- | --- | --- |
+| `Start` | Entry | user source; `lowering.rs` | both backends select it as the process entry |
+| `<Class>.CONSTRUCTOR` | Constructor | `lowering.rs` (`{prefix}{class}.CONSTRUCTOR`) | `NEW` sequencing; dispatch-during-construction rule; `bn_llvm` layout |
+| `<Class>.DESTRUCTOR` | Destructor | `lowering.rs` | ARC zero-count chain (`emit_destroy_if_last`, `release_owned_value`) |
+| `<Class>.$fields` | FieldInit | `lowering.rs`; `builder.rs` derived-fields chain | `NEW` field-initialiser prologue; `is_class_type` uses its presence as "is a class" |
+| `<Class>.$init` | Init | `lowering.rs` | construction helper (allocate → `$fields` → `CONSTRUCTOR`) |
+| `<Struct>.$default` | Default | `lowering.rs`, `builder.rs` | struct default construction (`bn_llvm` `.$default` path) |
+| `<Owner>.<Name>` / `<Name>` | User | user source; `class_method_name` | ordinary call/dispatch |
+| `#<ModuleId>.<…>` | (prefix) | `helpers.rs` for imported names | module-qualified resolution; stripped before classification |
+| `@super:<Class>.<Method>` | (prefix) | `builder.rs`, `lowering_callable.rs` | static call to the base implementation; never dynamic dispatch |
+| `$for_condition` | **intrinsic callee** | `control_flow.rs` (`function_constant`) | no `Function` body; implemented natively by both backends (`builtin` / `lower_for_condition`) |
+
+Rules:
+
+1. A backend may match a function name **only** against the shapes above
+   (`bn_ir::names::SYNTHESISED_SUFFIXES`, `ENTRY`, `SUPER_PREFIX`,
+   `MODULE_PREFIX`, `INTRINSICS`). A new shape is a contract change: table row
+   here, entry in `bn_ir::names`, both tests green — in one change.
+2. The frontend must not emit a function name that does not classify, nor a
+   `$`-callee outside `INTRINSICS`.
+3. Library/HOST **member** names decoded by backends (`BNDispatch.Queue.*`,
+   `HOST.Exec.Result`, `BNLog.Fields`, …) are a different contract — the host
+   and library specifications — and are outside this table (see
+   `host-traits.md`, `support-matrix.md`).
+4. §3.2 (gated): when `FunctionKind` lands on `bn_ir::Function`, every row
+   above becomes *informative* and rule 1 becomes "backends read the kind".
+
 ## Release-slice operation inventory
 
 This table is normative for the current in-tree IR shape. `result` identifies

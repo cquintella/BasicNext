@@ -15,7 +15,8 @@ Standing agent/contributor brief (authority + acceptance, including well-formed 
 | [dfd/dfd-1-to-be.md](dfd/dfd-1-to-be.md) | DFD-1 named flows |
 | [dfd/dfd-2/README.md](dfd/dfd-2/README.md) | DFD-2 index (one file per process) |
 | [dfd/data-dictionary.md](dfd/data-dictionary.md) | Data dictionary (flows, elements, stores) |
-| [ir-contract.md](ir-contract.md) | BN IR contract (to-be) — stub |
+| [ir-contract.md](ir-contract.md) | BN IR contract — validate vs support, definite assignment, **emitted-name protocol** (normative, tested) |
+| [interp-extraction.md](interp-extraction.md) | Measured layer-gate status and interpreter extraction blockers (input to the Fragilidade 2 bucket) |
 | [module-path.md](module-path.md) | Ordered **module-path** (dirs to search for `.bn` imports) |
 | [semantic-analysis.md](semantic-analysis.md) | **2.5** contract: definitions, operands, booleans, calls/returns, references |
 | [conformance.md](conformance.md) | Spec → reference interpret → compile; two CI comparisons |

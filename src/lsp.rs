@@ -17,13 +17,13 @@ use lsp_types::{
 use crate::{
     diagnostic::{Catalog, Diagnostic, Severity},
     frontend_session::FrontendSession,
-    ir::lower_graph_validated,
     lexer::lex,
+    lowering::lower_graph_validated,
     module_graph::load_with_overlays,
     parser::parse_named,
-    semantic::analyze,
     source::{SourceFile, SourceId},
 };
+use bn_frontend::semantic::analyze;
 
 #[path = "lsp/completion.rs"]
 mod completion;
@@ -688,7 +688,7 @@ pub fn diagnostics_for_documents<S: std::hash::BuildHasher>(
             return result;
         }
     };
-    let analysis = match crate::semantic::analyze_modules_with_warnings(&graph) {
+    let analysis = match bn_frontend::semantic::analyze_modules_with_warnings(&graph) {
         Ok(analysis) => analysis,
         Err(error) => {
             add(&error.diagnostic, &mut result);

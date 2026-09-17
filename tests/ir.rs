@@ -4,13 +4,11 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use bn::{
-    ir::{
-        BlockId, Constant, Function, Instruction, Module, ModuleId, Terminator, lower_graph,
-        validate,
-    },
+    ir::{BlockId, Constant, Function, Instruction, Module, ModuleId, Terminator, validate},
+    lowering::lower_graph,
     module_graph::load,
-    semantic::analyze_modules,
 };
+use bn_frontend::semantic::analyze_modules;
 
 fn lower_path(path: &str) -> bn::ir::Module {
     let graph = load(std::path::Path::new(path)).expect("load source");
@@ -236,7 +234,7 @@ fn validate_rejects_a_dangling_block_target() {
             name: "Broken".into(),
             asynchronous: false,
             parameters: Vec::new(),
-            return_type: bn::semantic::Type::Named("VOID".into()),
+            return_type: bn::types::Type::Named("VOID".into()),
             entry: BlockId(0),
             blocks: vec![bn::ir::BasicBlock {
                 id: BlockId(0),
