@@ -1,0 +1,18 @@
+[package]
+name = "bn_host_exec"
+version = "0.5.1"
+edition = "2024"
+rust-version = "1.97"
+description = "Basic Next HOST.Exec core: one process-execution implementation shared by the interpreter and the native runtime"
+license = "MPL-2.0"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"

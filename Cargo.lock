@@ -20,6 +20,7 @@ version = "0.5.1"
 dependencies = [
  "bn_diag",
  "bn_frontend",
+ "bn_host_exec",
  "bn_interp",
  "bn_ir",
  "bn_llvm",
@@ -61,6 +62,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bn_host_exec"
+version = "0.5.1"
+
+[[package]]
 name = "bn_interp"
 version = "0.5.1"
 dependencies = [
@@ -96,6 +101,7 @@ dependencies = [
 name = "bn_rt"
 version = "0.4.5"
 dependencies = [
+ "bn_host_exec",
  "dns-lookup",
  "libc",
  "socket2",

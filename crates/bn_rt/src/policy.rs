@@ -99,14 +99,14 @@ pub(crate) fn allows(capability: u64) -> bool {
     EFFECTIVE.load(Ordering::Acquire) & capability == capability
 }
 
-/// Effective per-stream HOST.Exec capture ceiling in bytes.
-pub(crate) fn exec_capture_limit() -> usize {
-    usize::try_from(EXEC_CAPTURE_LIMIT.load(Ordering::Acquire)).unwrap_or(usize::MAX)
-}
-
-/// Effective HOST.Exec wall-clock ceiling.
-pub(crate) fn exec_timeout() -> std::time::Duration {
-    std::time::Duration::from_millis(EXEC_TIMEOUT_MS.load(Ordering::Acquire))
+/// The effective HOST.Exec policy, read once per call.
+pub(crate) fn exec_policy() -> bn_host_exec::Policy {
+    bn_host_exec::Policy {
+        allowed: allows(POLICY_EXEC),
+        timeout: std::time::Duration::from_millis(EXEC_TIMEOUT_MS.load(Ordering::Acquire)),
+        capture_limit: usize::try_from(EXEC_CAPTURE_LIMIT.load(Ordering::Acquire))
+            .unwrap_or(usize::MAX),
+    }
 }
 
 /// Installs or narrows the artifact ceiling. Repeated calls can never widen it.

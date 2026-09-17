@@ -18,6 +18,7 @@ all = "warn"
 pedantic = "warn"
 
 [dependencies]
+bn_host_exec = { path = "../bn_host_exec" }
 dns-lookup = "2"
 libc = "0.2"
 socket2 = "0.6"

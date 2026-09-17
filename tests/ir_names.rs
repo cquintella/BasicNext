@@ -148,8 +148,10 @@ fn backends_only_decode_documented_name_shapes() {
     let documented = documented_literals();
     let mut sources = Vec::new();
     rust_files(Path::new("crates/bn_llvm/src"), &mut sources);
-    rust_files(Path::new("src/runtime"), &mut sources);
-    sources.push("src/runtime_impl.rs".into());
+    rust_files(Path::new("crates/bn_interp/src"), &mut sources);
+    rust_files(Path::new("src/hosts"), &mut sources);
+    rust_files(Path::new("src/libraries"), &mut sources);
+    sources.push("src/runtime.rs".into());
     let mut offenders = Vec::new();
     for path in &sources {
         let text = fs::read_to_string(path).expect("read backend source");
