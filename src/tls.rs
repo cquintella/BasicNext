@@ -122,13 +122,20 @@ fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
-/// Installs the approved Rustls `ring` provider exactly once.
+/// Installs the approved Rustls `ring` provider exactly once. A provider
+/// that rustls already auto-installed in this process (the first TLS config
+/// built before any `BNWeb` call, e.g. in tests) is accepted only if it is
+/// `ring`.
 pub(crate) fn install_ring_provider() -> Result<(), &'static str> {
     static RESULT: OnceLock<Result<(), &'static str>> = OnceLock::new();
     *RESULT.get_or_init(|| {
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .map_err(|_| "a Rustls crypto provider is already installed")
+        let ring = rustls::crypto::ring::default_provider();
+        let suites = ring.cipher_suites.clone();
+        match ring.install_default() {
+            Ok(()) => Ok(()),
+            Err(installed) if installed.cipher_suites == suites => Ok(()),
+            Err(_) => Err("a non-ring Rustls crypto provider is already installed"),
+        }
     })
 }
 

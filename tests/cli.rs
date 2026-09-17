@@ -1581,7 +1581,9 @@ fn socket_examples_exchange_tcp_and_udp_messages() {
                 .stdout(Stdio::piped())
                 .spawn()
                 .expect("start server example");
-            thread::sleep(Duration::from_millis(100));
+            // A debug `bn run` takes ~85 ms to reach the listen call; 100 ms
+            // raced it and failed under load. UDP has nothing to probe, so wait.
+            thread::sleep(Duration::from_millis(1000));
             let client = client_command.output().expect("run client example");
             let server = server_process
                 .wait_with_output()

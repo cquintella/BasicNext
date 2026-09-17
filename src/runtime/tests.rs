@@ -88,7 +88,7 @@ END FUNCTION
             "127.0.0.1".parse().expect("peer address"),
         )
         .expect("construct callback request");
-        let response = super::execute_web_callback(
+        let response = crate::libraries::web::execute_callback(
             &module,
             &super::HostEnv::fixed(vec!["callback.bn".into()], 0, 0),
             "Handler",

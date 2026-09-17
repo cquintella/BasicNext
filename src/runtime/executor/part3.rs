@@ -7,34 +7,6 @@
 )]
 use super::*;
 
-struct BoundedTaskOutput {
-    bytes: Vec<u8>,
-    maximum: usize,
-}
-
-impl std::io::Write for BoundedTaskOutput {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        let remaining = self.maximum.saturating_sub(self.bytes.len());
-        if bytes.len() > remaining {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::WriteZero,
-                "async task output exceeds configured bound",
-            ));
-        }
-        self.bytes.extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-/// Libraries served through the provider seam (`crate::runtime::provider`).
-/// A library not listed here still uses its legacy in-core path; the list
-/// shrinks to nothing as bucket 0.5.1d migrates them one by one.
-const SEAM_LIBRARIES: &[&str] = &["BNMath", "BNJson", "BNLog", "BNData"];
-
 impl Executor<'_, '_> {
     pub(crate) fn call_named(
         &mut self,
@@ -42,49 +14,19 @@ impl Executor<'_, '_> {
         arguments: Vec<Value>,
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        if name.starts_with("HOST.") {
+        if let Some(rest) = name.strip_prefix("HOST.") {
+            if let Some((capability, member)) = rest.split_once('.')
+                && self.hosts.contains_key(capability)
+            {
+                return self.host_provider_call(capability, member, arguments, span);
+            }
             return self.host_call(name, &arguments, span);
         }
         if is_host_file_method(name) {
             return self.file_call(name, &arguments, span);
         }
-        if let Some((library, member)) = self.library_callee(name)
-            && SEAM_LIBRARIES.contains(&library)
-        {
+        if let Some((library, member)) = self.library_callee(name) {
             return self.library_call(library, member, arguments, span);
-        }
-        if self.is_bnweb_provider(name)
-            && (name.contains(".Server.")
-                || name.contains(".Response.")
-                || name.contains(".Client.")
-                || name.contains(".TLSConfig.")
-                || name.contains(".ServerOptions.")
-                || name.contains(".EgressPolicy.")
-                || name.contains(".CookieJar.")
-                || name.contains(".SessionStore.")
-                || name.contains(".Scraper.")
-                || name.contains(".ACL.")
-                || (name.contains(".Request.")
-                    && matches!(
-                        name.rsplit('.').next(),
-                        Some(
-                            "CONSTRUCTOR"
-                                | "Method"
-                                | "Target"
-                                | "Headers"
-                                | "Query"
-                                | "Body"
-                                | "PeerAddress"
-                                | "EffectiveClientAddress",
-                        )
-                    ))
-                || name.contains(".HeaderValues.")
-                || name.contains(".QueryValues."))
-        {
-            return self.web_call(name, &arguments, span);
-        }
-        if self.is_bndispatch_provider(name) {
-            return self.dispatch_call(name, &arguments, span);
         }
         if is_temporal_builtin(name) {
             return temporal_call(name, &arguments, span);
@@ -172,6 +114,23 @@ impl Executor<'_, '_> {
         result
     }
 
+    /// `HOST.<capability>.<member>` served by a registered HOST provider.
+    fn host_provider_call(
+        &mut self,
+        capability: &str,
+        member: &str,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        let (key, mut provider) = self
+            .hosts
+            .remove_entry(capability)
+            .expect("caller checked the capability is registered");
+        let result = provider.call(self, member, arguments, span);
+        self.hosts.insert(key, provider);
+        result
+    }
+
     /// `NEW #N.Class()` served by a seam library, if `type_name` names one.
     pub(crate) fn library_allocate(
         &mut self,
@@ -179,9 +138,6 @@ impl Executor<'_, '_> {
         span: Span,
     ) -> Option<Result<Value, Diagnostic>> {
         let (library, class) = self.library_callee(type_name)?;
-        if !SEAM_LIBRARIES.contains(&library) {
-            return None;
-        }
         self.library_allocate_in(library, class, span)
     }
 
@@ -205,10 +161,9 @@ impl Executor<'_, '_> {
         value: &Value,
         span: Span,
     ) -> Option<Result<(), Diagnostic>> {
-        for library in SEAM_LIBRARIES {
-            let Some(mut provider) = self.libraries.remove(library) else {
-                continue;
-            };
+        let libraries: Vec<&'static str> = self.libraries.keys().copied().collect();
+        for library in libraries {
+            let mut provider = self.libraries.remove(library).expect("key just listed");
             let result = provider.release(value, span);
             self.libraries.insert(library, provider);
             if result.is_some() {
@@ -218,199 +173,14 @@ impl Executor<'_, '_> {
         None
     }
 
-    pub(crate) fn is_bnweb_provider(&self, name: &str) -> bool {
-        Self::standard_provider(name, &self.module.bnweb_providers)
-    }
-
-    pub(crate) fn is_bndispatch_provider(&self, name: &str) -> bool {
-        Self::standard_provider(name, &self.module.bndispatch_providers)
-    }
-
-    pub(crate) fn dispatch_call(
-        &mut self,
-        name: &str,
-        arguments: &[Value],
-        span: Span,
-    ) -> Result<Value, Diagnostic> {
-        let method = name.rsplit('.').next().unwrap_or_default();
-        match method {
-            "New" | "Create" if name.contains(".Group.") => {
-                require_arity(name, arguments, 0, span)?;
-                let id = self.next_dispatch_sync; self.next_dispatch_sync = self.next_dispatch_sync.saturating_add(1);
-                self.dispatch_groups.insert(id, crate::dispatch::DispatchGroup::new());
-                Ok(Value::DispatchGroup(id))
-            }
-            "Enter" | "Leave" | "Wait" if name.contains(".Group.") => {
-                let Value::DispatchGroup(id) = arguments.first().cloned().unwrap_or(Value::Null) else { return Err(super::super::type_mismatch("Group", "non-Group value", "dispatch group", span)); };
-                let group = self.dispatch_groups.get(&id).ok_or_else(|| runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "group is invalid", span))?;
-                match method { "Enter" => { require_arity(name, arguments, 1, span)?; group.enter(); Ok(Value::Null) }, "Leave" => { require_arity(name, arguments, 1, span)?; Ok(group.leave().map_or_else(dispatch_error, |_| Value::Null)) }, _ => { require_arity(name, arguments, 2, span)?; Ok(group.wait(integer(&arguments[1], span)?.0).map_or_else(dispatch_error, |_| Value::Null)) } }
-            }
-            "New" | "Create" if name.contains(".Barrier.") => {
-                require_arity(name, arguments, 1, span)?;
-                let parties = integer(&arguments[0], span)?.0;
-                let barrier = crate::dispatch::Barrier::new(parties).ok_or_else(|| runtime_error(crate::diagnostic::DiagId::DISPATCH, "barrier parties must be in 1..64", span))?;
-                let id = self.next_dispatch_sync; self.next_dispatch_sync = self.next_dispatch_sync.saturating_add(1); self.dispatch_barriers.insert(id, barrier); Ok(Value::DispatchBarrier(id))
-            }
-            "Wait" if name.contains(".Barrier.") => {
-                require_arity(name, arguments, 2, span)?;
-                let Value::DispatchBarrier(id) = arguments[0] else { return Err(super::super::type_mismatch("Barrier", "non-Barrier value", "dispatch barrier", span)); };
-                let barrier = self.dispatch_barriers.get(&id).ok_or_else(|| runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "barrier is invalid", span))?;
-                Ok(barrier.wait(integer(&arguments[1], span)?.0).map_or_else(dispatch_error, Value::Boolean))
-            }
-            "New" | "Create" if name.contains(".Semaphore.") => {
-                require_arity(name, arguments, 1, span)?;
-                let semaphore = crate::dispatch::DispatchSemaphore::new(integer(&arguments[0], span)?.0).ok_or_else(|| runtime_error(crate::diagnostic::DiagId::DISPATCH, "semaphore permits must be in 1..1024", span))?;
-                let id = self.next_dispatch_sync; self.next_dispatch_sync = self.next_dispatch_sync.saturating_add(1); self.dispatch_semaphores.insert(id, semaphore); Ok(Value::DispatchSemaphore(id))
-            }
-            "Acquire" | "Release" if name.contains(".Semaphore.") => {
-                let Value::DispatchSemaphore(id) = arguments[0] else { return Err(super::super::type_mismatch("Semaphore", "non-Semaphore value", "dispatch semaphore", span)); };
-                let semaphore = self.dispatch_semaphores.get(&id).ok_or_else(|| runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "semaphore is invalid", span))?;
-                if method == "Acquire" { require_arity(name, arguments, 2, span)?; Ok(semaphore.acquire(integer(&arguments[1], span)?.0).map_or_else(dispatch_error, |_| Value::Null)) } else { require_arity(name, arguments, 1, span)?; Ok(semaphore.release().map_or_else(dispatch_error, |_| Value::Null)) }
-            }
-            "New" | "Create" if name.contains(".Mutex.") => {
-                require_arity(name, arguments, 0, span)?; let id = self.next_dispatch_sync; self.next_dispatch_sync = self.next_dispatch_sync.saturating_add(1); self.dispatch_mutexes.insert(id, crate::dispatch::DispatchMutex::new()); Ok(Value::DispatchMutex(id))
-            }
-            "Lock" | "Unlock" if name.contains(".Mutex.") => {
-                let Value::DispatchMutex(id) = arguments[0] else { return Err(super::super::type_mismatch("Mutex", "non-Mutex value", "dispatch mutex", span)); };
-                let mutex = self.dispatch_mutexes.get(&id).ok_or_else(|| runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "mutex is invalid", span))?;
-                if method == "Lock" { require_arity(name, arguments, 2, span)?; Ok(mutex.lock(integer(&arguments[1], span)?.0).map_or_else(dispatch_error, |_| Value::Null)) } else { require_arity(name, arguments, 1, span)?; Ok(mutex.unlock().map_or_else(dispatch_error, |_| Value::Null)) }
-            }
-            "Serial" => {
-                require_arity(name, arguments, 0, span)?;
-                Ok(self.dispatch_queue(1))
-            }
-            "Concurrent" => {
-                require_arity(name, arguments, 1, span)?;
-                let (workers, _) = integer(&arguments[0], span)?;
-                Ok(self.dispatch_queue(workers))
-            }
-            "Auto" => {
-                require_arity(name, arguments, 0, span)?;
-                let workers = std::thread::available_parallelism()
-                    .map(|count| count.get().min(crate::config::dispatch_limits().worker_count_max))
-                    .map_err(|error| {
-                        runtime_error(crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE, error.to_string(), span)
-                    })?;
-                Ok(self.dispatch_queue(i128::try_from(workers).expect("usize fits i128")))
-            }
-            "Async" => {
-                if arguments.len() < 2 {
-                    return Err(super::super::type_mismatch("Queue, FUNCTION", "insufficient arguments", "Async", span));
-                }
-                let Value::DispatchQueue(id) = arguments[0] else {
-                    return Err(super::super::type_mismatch("Queue", "non-Queue value", "Async", span));
-                };
-                let Value::Function(task) = &arguments[1] else {
-                    return Ok(Value::Error { code: 1, message: "Async expects a named function".into() });
-                };
-                let queue = self.dispatch_queues.get(&id).ok_or_else(|| runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "queue is invalid", span))?.clone();
-                let task_name = task.clone();
-                let task_arguments = arguments[2..].to_vec();
-                let worker_module = self.module.clone();
-                let worker_host = self.host.fork_for_task();
-                let ticket = queue.submit_with(task_name.clone(), move |ticket| {
-                    let mut input = std::io::Cursor::new(Vec::<u8>::new());
-                    let mut output = BoundedTaskOutput {
-                        bytes: Vec::new(),
-                        maximum: crate::config::dispatch_limits().output_max_bytes,
-                    };
-                    match crate::runtime::execute_named_with_host(&worker_module, &task_name, task_arguments, &mut input, &mut output, &worker_host) {
-                        Ok(result) => {
-                            let output = String::from_utf8_lossy(&output.bytes).into_owned();
-                            if ticket.set_output(output).is_ok() {
-                                ticket.set_result(result);
-                                ticket.mark_completed();
-                            } else {
-                                ticket.mark_failed(1, "async task output exceeds configured bound".into());
-                            }
-                        }
-                        Err(error) => ticket.mark_failed(1, error.message.to_string()),
-                    }
-                }).map_err(|error| runtime_error(crate::diagnostic::DiagId::DISPATCH, format!("{error:?}"), span))?;
-                let ticket_id = self.next_dispatch_ticket;
-                self.next_dispatch_ticket = self.next_dispatch_ticket.saturating_add(1);
-                self.dispatch_tickets.insert(ticket_id, ticket);
-                Ok(Value::DispatchTicket(ticket_id))
-            }
-            "Join" if name.contains(".Queue.") => {
-                require_arity(name, arguments, 2, span)?;
-                let Value::DispatchQueue(id) = arguments[0] else {
-                    return Err(super::super::type_mismatch("Queue", "non-Queue value", "dispatch operation", span));
-                };
-                let timeout = integer(&arguments[1], span)?.0;
-                let queue = self.dispatch_queues.get(&id).ok_or_else(|| runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "queue is invalid", span))?.clone();
-                let tickets = queue.tickets();
-                let result = if method == "Join" { queue.join(timeout) } else { queue.close(timeout) };
-                for ticket in tickets {
-                    let output = ticket.take_output();
-                    self.output.write_all(output.as_bytes()).map_err(|error| runtime_error(crate::diagnostic::DiagId::IO, error.to_string(), span))?;
-                }
-                return Ok(result.map_or_else(|error| dispatch_error(error), |_| Value::Null));
-            }
-            "Close" if name.contains(".Queue.") => {
-                require_arity(name, arguments, 2, span)?;
-                let Value::DispatchQueue(id) = arguments[0] else {
-                    return Err(super::super::type_mismatch("Queue", "non-Queue value", "dispatch operation", span));
-                };
-                let timeout = integer(&arguments[1], span)?.0;
-                let queue = self.dispatch_queues.get(&id).ok_or_else(|| runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "queue is invalid", span))?;
-                Ok(queue.close(timeout).map_or_else(dispatch_error, |_| Value::Null))
-            }
-            "Id" | "Status" | "Wait" | "Cancel" | "Error" | "IsDone" | "Close"
-                if name.contains(".Ticket.") => {
-                let Value::DispatchTicket(id) = arguments.first().cloned().unwrap_or(Value::Null) else {
-                    return Err(super::super::type_mismatch("Ticket", "non-Ticket value", "dispatch ticket", span));
-                };
-                let ticket = self.dispatch_tickets.get(&id).ok_or_else(|| runtime_error(crate::diagnostic::DiagId::STALE_HANDLE, "ticket is invalid", span))?.clone();
-                return match method {
-                    "Id" => { require_arity(name, arguments, 1, span)?; Ok(Value::Integer(i128::from(ticket.id()), crate::types::IntegerType::Int32)) }
-                    "Status" => { require_arity(name, arguments, 1, span)?; Ok(Value::Integer(i128::from(ticket.status()), crate::types::IntegerType::Int32)) }
-                    "Wait" => {
-                        require_arity(name, arguments, 2, span)?;
-                        let timeout = integer(&arguments[1], span)?.0;
-                        let result = ticket.wait(timeout).map_or_else(dispatch_error, |_| ticket.result().unwrap_or(Value::Null));
-                        let output = ticket.take_output();
-                        self.output.write_all(output.as_bytes()).map_err(|error| runtime_error(crate::diagnostic::DiagId::IO, error.to_string(), span))?;
-                        Ok(result)
-                    }
-                    "Cancel" => { require_arity(name, arguments, 1, span)?; Ok(ticket.cancel().map_or_else(dispatch_error, Value::Boolean)) }
-                    "Error" => { require_arity(name, arguments, 1, span)?; Ok(ticket.error().map_or(Value::NotAvailable, |(code, message)| Value::Error { code, message })) }
-                    "IsDone" => { require_arity(name, arguments, 1, span)?; Ok(Value::Boolean(ticket.is_done())) }
-                    "Close" => { require_arity(name, arguments, 1, span)?; ticket.close(); Ok(Value::Null) }
-                    _ => unreachable!(),
-                };
-            }
-            _ => Ok(Value::Error {
-                code: 1,
-                message: "BNDispatch operation unavailable".into(),
-            }),
+    /// Tells every library the core destroyed the object at `handle`.
+    pub(crate) fn notify_object_destroyed(&mut self, handle: Handle) {
+        for provider in self.libraries.values_mut() {
+            provider.object_destroyed(handle);
         }
     }
 
-    pub(crate) fn dispatch_queue(&mut self, workers: i128) -> Value {
-        let Some(queue) = crate::dispatch::Queue::new(workers) else {
-            return Value::Error {
-                code: 1,
-                message: "worker count must be in 1..64".into(),
-            };
-        };
-        debug_assert!(
-            (1..=crate::config::dispatch_limits().worker_count_max).contains(&queue.workers())
-        );
-        let id = self.next_dispatch_queue;
-        self.next_dispatch_queue += 1;
-        self.dispatch_queues.insert(id, queue);
-        Value::DispatchQueue(id)
-    }
 
-}
-
-fn dispatch_error(error: crate::dispatch::DispatchError) -> Value {
-    let message = match error {
-        crate::dispatch::DispatchError::TaskFailed(Some((_, message))) => message,
-        other => format!("{other:?}"),
-    };
-    Value::Error { code: 1, message }
 }
 
 impl crate::runtime::provider::CoreContext for Executor<'_, '_> {
@@ -452,24 +222,29 @@ impl crate::runtime::provider::CoreContext for Executor<'_, '_> {
     fn host(&self) -> &HostEnv {
         self.host
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::BoundedTaskOutput;
-    use std::io::Write;
+    fn allocate_object(&mut self, class: &str, span: Span) -> Result<Value, Diagnostic> {
+        Executor::allocate_object(self, class, span)
+    }
 
-    #[test]
-    fn task_output_writer_rejects_bytes_after_registry_bound() {
-        let maximum = crate::config::dispatch_limits().output_max_bytes;
-        let mut output = BoundedTaskOutput {
-            bytes: Vec::new(),
-            maximum,
-        };
+    fn library_allocate(
+        &mut self,
+        library: &'static str,
+        class: &str,
+        span: Span,
+    ) -> Option<Result<Value, Diagnostic>> {
+        self.library_allocate_in(library, class, span)
+    }
 
-        output.write_all(&vec![b'x'; maximum]).expect("bound fits");
-        let error = output.write_all(b"overflow").expect_err("overflow must fail");
-        assert_eq!(error.kind(), std::io::ErrorKind::WriteZero);
-        assert_eq!(output.bytes.len(), maximum);
+    fn library_release(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
+        Executor::library_release(self, value, span)
+    }
+
+    fn library_take(&mut self, library: &'static str) -> Option<Box<dyn provider::Provider>> {
+        self.libraries.remove(library)
+    }
+
+    fn library_insert(&mut self, library: &'static str, provider: Box<dyn provider::Provider>) {
+        self.libraries.insert(library, provider);
     }
 }

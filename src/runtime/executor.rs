@@ -16,12 +16,8 @@ mod part1;
 mod part2;
 #[path = "executor/part3.rs"]
 mod part3;
-#[path = "executor/part4.rs"]
-mod part4;
 #[path = "executor/part5.rs"]
 mod part5;
-#[path = "executor/part6.rs"]
-mod part6;
 #[path = "executor/part7.rs"]
 mod part7;
 #[path = "executor/part8.rs"]
@@ -30,18 +26,6 @@ mod part8;
 mod part10;
 #[path = "executor/part11.rs"]
 mod part11;
-#[path = "executor/part14.rs"]
-mod part14;
-#[path = "executor/part15.rs"]
-mod part15;
-#[path = "executor/part16.rs"]
-mod part16;
-#[path = "executor/part17.rs"]
-mod part17;
-#[path = "executor/part18.rs"]
-mod part18;
-#[path = "executor/part19.rs"]
-mod part19;
 
 fn unary(operator: &str, operand: &Value, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
     match (operator, operand) {

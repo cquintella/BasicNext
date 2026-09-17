@@ -9,7 +9,7 @@ use crate::{diagnostic::Diagnostic, source::Span, types::IntegerType};
 
 use super::{Value, runtime_error, type_mismatch};
 
-pub(super) fn net_addresses(value: &Value, span: Span) -> Result<&Vec<Value>, Diagnostic> {
+pub(crate) fn net_addresses(value: &Value, span: Span) -> Result<&Vec<Value>, Diagnostic> {
     let Value::Record { type_name, fields } = value else {
         return Err(type_mismatch("HOST.Net.Addresses", "non-record value", "HOST.Net", span));
     };
@@ -22,7 +22,7 @@ pub(super) fn net_addresses(value: &Value, span: Span) -> Result<&Vec<Value>, Di
     Ok(values)
 }
 
-pub(super) fn net_address(value: &Value, span: Span) -> Result<crate::net::Address, Diagnostic> {
+pub(crate) fn net_address(value: &Value, span: Span) -> Result<crate::net::Address, Diagnostic> {
     let Value::Record { type_name, fields } = value else {
         return Err(type_mismatch("HOST.Net.Address", "non-record value", "HOST.Net", span));
     };
@@ -36,7 +36,7 @@ pub(super) fn net_address(value: &Value, span: Span) -> Result<crate::net::Addre
         .map_err(|_| runtime_error(crate::diagnostic::DiagId::INVALID_INPUT, "invalid Net.Address value", span))
 }
 
-pub(super) fn net_endpoint(value: &Value, span: Span) -> Result<crate::net::Endpoint, Diagnostic> {
+pub(crate) fn net_endpoint(value: &Value, span: Span) -> Result<crate::net::Endpoint, Diagnostic> {
     let Value::Record { type_name, fields } = value else {
         return Err(type_mismatch("HOST.Net.Endpoint", "non-record value", "HOST.Net", span));
     };
@@ -66,7 +66,7 @@ pub(super) fn net_endpoint(value: &Value, span: Span) -> Result<crate::net::Endp
     Ok(crate::net::Endpoint::new(address, port))
 }
 
-pub(super) fn endpoint_value(endpoint: crate::net::Endpoint) -> Value {
+pub(crate) fn endpoint_value(endpoint: crate::net::Endpoint) -> Value {
     Value::Record {
         type_name: "HOST.Net.Endpoint".into(),
         fields: HashMap::from([
@@ -88,14 +88,14 @@ pub(super) fn endpoint_value(endpoint: crate::net::Endpoint) -> Value {
     }
 }
 
-pub(super) fn address_value(address: std::net::IpAddr) -> Value {
+pub(crate) fn address_value(address: std::net::IpAddr) -> Value {
     Value::Record {
         type_name: "HOST.Net.Address".into(),
         fields: HashMap::from([("value".into(), Value::String(address.to_string()))]),
     }
 }
 
-pub(super) fn ping_reply_value(reply: crate::net::PingReply) -> Value {
+pub(crate) fn ping_reply_value(reply: crate::net::PingReply) -> Value {
     Value::Record {
         type_name: "HOST.Net.PingReply".into(),
         fields: HashMap::from([

@@ -6,8 +6,12 @@
 [![Version](https://img.shields.io/badge/version-v0.5.1-blue)](#)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE.md)
 
+---
+
 An object-oriented, general-purpose programming language designed to reduce
 cognitive load and turn ideas into clear, cross-platform software.
+
+---
 
 Basic Next combines BASIC-inspired readability, explicit types, and host
 capabilities without prescribing a framework or architecture. It is designed
@@ -15,25 +19,26 @@ to make programming pleasurable: clear, predictable code should help
 programmers sustain attention and enter a state of flow while reading and
 writing software.
 
-This repository starts with the specification: an implementation is introduced
-only after the corresponding semantics have been defined and reviewed.
-
 ## Name
 
-**Basic Next** (also written **BasicNext**) is not [NextBASIC](https://wiki.specnext.dev/NextBASIC),
-the extended Sinclair BASIC interpreter that ships with the
-[ZX Spectrum Next](https://www.specnext.com/). NextBASIC belongs to that retro
-hardware and firmware ecosystem (NextZXOS / SpecNext). This project is a
-separate, modern language with explicit types, a typed intermediate
-representation, an interpreter (`bn run`), and an LLVM-backed compiler
-(`bn build`). Please use the forms *Basic Next* / *BasicNext*; avoid the
-compound spelling *NextBASIC* when referring to this repository.
+**Basic Next**  (written as two words)
+
+`BasicNext` is the repository and
+package identifier.
+
+_Important Information:This is not [NextBASIC](https://wiki.specnext.dev/NextBASIC), the extended Sinclair BASIC interpreter that ships with the [ZX Spectrum Next](https://www.specnext.com/)._
+
+
+`bn` is a compiler and interpreter to a Basic Next
+program, the compiler generates IR for LLVM-backed compiler.
+- To compile use `bn build`.
+- To run interpreted code use `bn run`.
 
 ## Design goals
 
 - Readability before abbreviation.
 - Low cognitive load, flow by clarity, and explicit contracts.
-- KISS: complexity must solve a concrete problem.
+- KISS principle: complexity must solve a concrete problem.
 - Every `LET` and `CONST` declaration states its type explicitly.
 - Clean Code and Clean Architecture should be natural, never mandatory.
 - Cross-platform software through `HOST` capabilities rather than vendor APIs.
@@ -146,11 +151,29 @@ locations, and exit-code model.
 
 ### Quick Installation
 
-**1. Install script (recommended)**
-The install scripts build `bn` and `bnc` from source and place the binaries plus
-the runtime files they need (standard-library `.bn` modules, diagnostics catalog,
-and the Unix man page) in a single prefix. `bn` then discovers its modules and
-catalog by walking upward from its own location — zero configuration afterwards.
+**1. One-line install (Linux / macOS)**
+No checkout and no Rust required. The command downloads `scripts/install.sh`,
+which resolves the latest release, fetches the prebuilt `bn`/`bnc` for your
+OS/architecture (verified against the release's `SHA256SUMS`) together with the
+standard-library modules, diagnostics catalog and man page from the same tag,
+and installs everything under one prefix. If the release has no binary for your
+platform, it builds from that tag's sources with `cargo` instead.
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.sh | bash
+# user-local, no sudo:
+curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.sh | PREFIX="$HOME/.local" bash
+# custom prefix, or a pinned version:
+curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.sh | bash -s -- --prefix /opt/basicnext
+curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.sh | BN_VERSION=v0.5.0 bash
+```
+
+**2. Install script from a checkout**
+Inside a clone, the same scripts build `bn` and `bnc` from source and place the
+binaries plus the runtime files they need (standard-library `.bn` modules,
+diagnostics catalog, and the Unix man page) in a single prefix. `bn` then
+discovers its modules and catalog by walking upward from its own location —
+zero configuration afterwards.
 
 Linux / macOS (installs to `/usr/local`, uses `sudo` only if that prefix is not
 writable):
@@ -183,11 +206,11 @@ Each script verifies the install by running `bn --version` and resolving a
 standard-library module from a clean directory. Pass `--no-build` (Bash) or
 `-NoBuild` (PowerShell) to install already-built `target/release` binaries.
 
-**2. For Users (Direct Download)**
+**3. For Users (Direct Download)**
 Alternatively, download the pre-compiled binary for your operating system (Linux, macOS, Windows) directly from [GitHub Releases](https://github.com/cquintella/BasicNext/releases/latest).
 The asset names and checksums are listed in [`binaries/README.md`](binaries/README.md).
 
-**3. For Developers (Build from Source)**
+**4. For Developers (Build from Source)**
 If you prefer building from source and have Rust (1.97+) installed, you can install the CLI from this repository:
 ```shell
 cargo install --path .

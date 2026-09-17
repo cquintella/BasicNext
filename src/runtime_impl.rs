@@ -56,7 +56,7 @@ use compare::{equals, is_host_file_method, is_host_file_type, is_value, value_ma
 use helpers::{
     constant_value, default_function_owner, empty_named, find_block, require_arity, set, value,
 };
-use net_values::{
+pub(crate) use net_values::{
     address_value, endpoint_value, net_address, net_addresses, net_endpoint, ping_reply_value,
 };
 use numeric::{
@@ -105,7 +105,8 @@ pub struct HostEnv {
     /// Per-stream capture ceiling in bytes (D-H1-02). Policy may reduce; never exceeds 16 MiB.
     exec_capture_limit: usize,
     data_provider: Arc<dyn DataProvider>,
-    libraries: provider::Libraries,
+    libraries: provider::Providers,
+    hosts: provider::Providers,
 }
 
 #[derive(Clone, Debug)]
@@ -216,6 +217,7 @@ impl Clone for HostEnv {
             exec_capture_limit: self.exec_capture_limit,
             data_provider: Arc::clone(&self.data_provider),
             libraries: self.libraries.clone(),
+            hosts: self.hosts.clone(),
         }
     }
 }
@@ -242,6 +244,7 @@ impl HostEnv {
             exec_capture_limit: 16 * 1024 * 1024,
             data_provider: Arc::new(StandardDataProvider),
             libraries: crate::libraries::default_libraries(),
+            hosts: crate::hosts::default_hosts(),
         }
     }
 
@@ -260,6 +263,7 @@ impl HostEnv {
             exec_capture_limit: 16 * 1024 * 1024,
             data_provider: Arc::new(StandardDataProvider),
             libraries: crate::libraries::default_libraries(),
+            hosts: crate::hosts::default_hosts(),
         }
     }
 
@@ -277,6 +281,7 @@ impl HostEnv {
             exec_capture_limit: 16 * 1024 * 1024,
             data_provider: Arc::new(StandardDataProvider),
             libraries: crate::libraries::default_libraries(),
+            hosts: crate::hosts::default_hosts(),
         }
     }
 
@@ -382,8 +387,15 @@ impl HostEnv {
 
     /// Replaces the library providers this host offers (CLI features, tests).
     #[must_use]
-    pub fn with_libraries(mut self, libraries: provider::Libraries) -> Self {
+    pub fn with_libraries(mut self, libraries: provider::Providers) -> Self {
         self.libraries = libraries;
+        self
+    }
+
+    /// Replaces the HOST capability providers this host offers.
+    #[must_use]
+    pub fn with_hosts(mut self, hosts: provider::Providers) -> Self {
+        self.hosts = hosts;
         self
     }
 
@@ -402,6 +414,7 @@ impl HostEnv {
             exec_capture_limit: self.exec_capture_limit,
             data_provider: Arc::clone(&self.data_provider),
             libraries: self.libraries.clone(),
+            hosts: self.hosts.clone(),
         }
     }
 }
@@ -443,37 +456,9 @@ struct Executor<'a, 'debug> {
     pinned_dispatch: Vec<(Handle, String)>,
     /// Library providers for this execution, keyed by standard-module name.
     libraries: HashMap<&'static str, Box<dyn provider::Provider>>,
+    hosts: HashMap<&'static str, Box<dyn provider::Provider>>,
     files: HashMap<u64, FileResource>,
     next_file: u64,
-    tcp_streams: HashMap<u64, crate::net::TcpStream>,
-    next_tcp_stream: u64,
-    tcp_listeners: HashMap<u64, Vec<crate::net::TcpListener>>,
-    next_tcp_listener: u64,
-    udp_sockets: HashMap<u64, crate::net::UdpSocket>,
-    next_udp_socket: u64,
-    dispatch_queues: HashMap<u64, crate::dispatch::Queue>,
-    next_dispatch_queue: u64,
-    dispatch_tickets: HashMap<u64, crate::dispatch::Ticket>,
-    next_dispatch_ticket: u64,
-    dispatch_groups: HashMap<u64, crate::dispatch::DispatchGroup>,
-    dispatch_barriers: HashMap<u64, crate::dispatch::Barrier>,
-    dispatch_semaphores: HashMap<u64, crate::dispatch::DispatchSemaphore>,
-    dispatch_mutexes: HashMap<u64, crate::dispatch::DispatchMutex>,
-    next_dispatch_sync: u64,
-    web_servers: HashMap<Handle, std::sync::Arc<std::sync::Mutex<crate::web::ServerState>>>,
-    web_loggers: HashMap<Handle, u64>,
-    web_tls_configs: HashMap<Handle, std::sync::Arc<rustls::ServerConfig>>,
-    web_server_options: HashMap<Handle, crate::web::ServerOptions>,
-    web_egress_policies: HashMap<Handle, crate::web::EgressPolicy>,
-    web_cookie_jars: HashMap<Handle, crate::web_state::CookieJar>,
-    web_session_stores: HashMap<Handle, crate::web_state::SessionStore>,
-    web_acls: HashMap<Handle, crate::web_state::Acl>,
-    web_scrapers: HashMap<Handle, crate::web_state::Scraper>,
-    web_handlers: HashMap<Handle, HashMap<String, String>>,
-    web_filters: HashMap<Handle, Vec<String>>,
-    web_responses: HashMap<Handle, crate::web::Response>,
-    web_requests: HashMap<Handle, crate::web::Request>,
-    web_values: HashMap<Handle, Vec<String>>,
     debug_hook: Option<DebugHook<'debug>>,
     debug_control: Option<DebugControl<'debug>>,
     call_depth: usize,
@@ -501,37 +486,9 @@ impl<'a, 'debug> Executor<'a, 'debug> {
             memory: Heap::default(),
             pinned_dispatch: Vec::new(),
             libraries: host.libraries.instantiate(),
+            hosts: host.hosts.instantiate(),
             files: HashMap::new(),
             next_file: 1,
-            tcp_streams: HashMap::new(),
-            next_tcp_stream: 1,
-            tcp_listeners: HashMap::new(),
-            next_tcp_listener: 1,
-            udp_sockets: HashMap::new(),
-            next_udp_socket: 1,
-            dispatch_queues: HashMap::new(),
-            next_dispatch_queue: 1,
-            dispatch_tickets: HashMap::new(),
-            next_dispatch_ticket: 1,
-            dispatch_groups: HashMap::new(),
-            dispatch_barriers: HashMap::new(),
-            dispatch_semaphores: HashMap::new(),
-            dispatch_mutexes: HashMap::new(),
-            next_dispatch_sync: 1,
-            web_servers: HashMap::new(),
-            web_loggers: HashMap::new(),
-            web_tls_configs: HashMap::new(),
-            web_server_options: HashMap::new(),
-            web_egress_policies: HashMap::new(),
-            web_cookie_jars: HashMap::new(),
-            web_session_stores: HashMap::new(),
-            web_acls: HashMap::new(),
-            web_scrapers: HashMap::new(),
-            web_handlers: HashMap::new(),
-            web_filters: HashMap::new(),
-            web_responses: HashMap::new(),
-            web_requests: HashMap::new(),
-            web_values: HashMap::new(),
             debug_hook,
             debug_control,
             call_depth: 0,
@@ -606,7 +563,11 @@ pub fn execute_with_host(
 
 /// Executes a named function for an isolated dispatch worker and preserves its
 /// returned BN value for the ticket.
-pub(crate) fn execute_named_with_host(
+///
+/// # Errors
+///
+/// Returns the runtime diagnostic the function raises.
+pub fn execute_named_with_host(
     module: &Module,
     name: &str,
     arguments: Vec<Value>,
@@ -737,8 +698,6 @@ fn execute_with_host_inner<'debug>(
     debug_hook: Option<DebugHook<'debug>>,
     debug_control: Option<DebugControl<'debug>>,
 ) -> Result<u8, Diagnostic> {
-    crate::tls::install_ring_provider()
-        .map_err(|message| runtime_error(crate::diagnostic::DiagId::TLS_PROVIDER_UNAVAILABLE, message, default_span()))?;
     if !host.filesystem.allows_capability()
         && let Some(span) = module.filesystem_import
     {
@@ -777,60 +736,18 @@ fn execute_with_host_inner<'debug>(
     }
 }
 
-/// Executes one `BNWeb` callback in a fresh interpreter instance.
-///
-/// A network request must not borrow the `Executor` that registered the
-/// server: that executor may be running user code, and its heap is not
-/// thread-safe. The callback receives copies of the request/response state
-/// and returns the response projection to the transport layer.
-pub(crate) fn execute_web_callback(
+/// Runs `f` against a fresh executor for `module` and `host`, with no input
+/// and discarded output. Libraries use it to run BN code off the main
+/// executor (`BNWeb` request callbacks).
+pub fn run_isolated<R>(
     module: &Module,
     host: &HostEnv,
-    function_name: &str,
-    request: crate::web::Request,
-    response: crate::web::Response,
-) -> Result<crate::web::Response, String> {
-    crate::tls::install_ring_provider().map_err(std::borrow::ToOwned::to_owned)?;
-    if !host.filesystem.allows_capability() && let Some(span) = module.filesystem_import {
-        return Err(runtime_error(crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE,
-            "HOST.FileSystem is not provided by this host",
-            span,
-        )
-        .message.to_string());
-    }
+    f: impl FnOnce(&mut dyn provider::CoreContext) -> R,
+) -> R {
     let mut input = std::io::Cursor::new(Vec::<u8>::new());
     let mut output = Vec::<u8>::new();
     let mut executor = Executor::new(module, &mut input, &mut output, host, None, None);
-    let request_value = executor
-        .allocate_object("BNWeb.Request", default_span())
-        .map_err(|error| error.message)?;
-    let response_value = executor
-        .allocate_object("BNWeb.Response", default_span())
-        .map_err(|error| error.message)?;
-    let request_handle = match &request_value {
-        Value::Object { handle, .. } => *handle,
-        _ => return Err("BNWeb callback object allocation failed".into()),
-    };
-    let response_handle = match &response_value {
-        Value::Object { handle, .. } => *handle,
-        _ => return Err("BNWeb callback object allocation failed".into()),
-    };
-    executor.web_requests.insert(request_handle, request);
-    executor.web_responses.insert(response_handle, response);
-    let result = executor
-        .call_named(
-            function_name,
-            vec![request_value, response_value],
-            default_span(),
-        )
-        .map_err(|error| error.message)?;
-    if let Value::Error { message, .. } = result {
-        return Err(message);
-    }
-    executor
-        .web_responses
-        .remove(&response_handle)
-        .ok_or_else(|| "BNWeb callback did not retain its response".into())
+    f(&mut executor)
 }
 
 enum Flow {
@@ -985,7 +902,7 @@ fn integer_overflow(span: Span) -> Diagnostic {
     )
     .expect("numeric-overflow diagnostic schema")
 }
-fn default_span() -> Span {
+pub(crate) fn default_span() -> Span {
     Span {
         start: crate::source::Position {
             source_id: crate::source::Position::UNKNOWN_SOURCE,

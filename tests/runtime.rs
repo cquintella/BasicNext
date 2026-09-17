@@ -2162,7 +2162,7 @@ fn arc_weak_reference_survives_unrelated_allocation_then_expires() {
 /// answers a library callee and re-enters the core through `CoreContext`.
 #[test]
 fn library_provider_seam_routes_calls_and_reenters_the_core() {
-    use bn::runtime::provider::{CoreContext, Libraries, Provider};
+    use bn::runtime::provider::{CoreContext, Provider, Providers};
     use std::sync::Arc;
 
     struct Fake;
@@ -2182,7 +2182,7 @@ fn library_provider_seam_routes_calls_and_reenters_the_core() {
             Ok(bn_value::Value::Integer(seven * 6, kind))
         }
     }
-    let mut libraries = Libraries::default();
+    let mut libraries = Providers::default();
     libraries.register("BNMath", Arc::new(|| Box::new(Fake)));
     let host = HostEnv::fixed(vec!["runtime.bn".into()], 0, 0).with_libraries(libraries);
     let source = "IMPORT BNMath AS M\nFUNCTION Helper() AS INTEGER\n    RETURN 7\nEND FUNCTION\nFUNCTION Start() AS VOID\n    PRINT M.ABS(-1)\nEND FUNCTION\n";
@@ -2191,7 +2191,7 @@ fn library_provider_seam_routes_calls_and_reenters_the_core() {
     assert_eq!(output, "42\n");
 
     // No provider registered under the library: unavailable, never a language error.
-    let bare = HostEnv::fixed(vec!["runtime.bn".into()], 0, 0).with_libraries(Libraries::default());
+    let bare = HostEnv::fixed(vec!["runtime.bn".into()], 0, 0).with_libraries(Providers::default());
     let source = "IMPORT BNMath AS M\nFUNCTION Start() AS VOID\n    LET v AS FLOAT = M.SQRT(4.0)\n    PRINT v\nEND FUNCTION\n";
     let error = run_with_host(source, "", &bare).expect_err("unregistered library is an error");
     assert_eq!(error.code, "LIBRARY_PROVIDER_UNAVAILABLE");

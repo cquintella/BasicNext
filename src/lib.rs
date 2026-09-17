@@ -9,6 +9,7 @@ pub mod dataframe;
 pub use bn_diag as diagnostic;
 mod dispatch;
 pub mod heap;
+pub mod hosts;
 pub(crate) mod http;
 pub mod ir;
 pub(crate) mod json;

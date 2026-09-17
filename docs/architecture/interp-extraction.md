@@ -60,6 +60,21 @@ The advisory's roadmap (step 3 then 4, "unify exec as the shared-core pilot")
 matches shape 1 with `HOST.Exec` (already in `bn_rt`, E01–E14 on both backends)
 as the template.
 
+## Status after bucket 0.5.1d SPRINT 1 (2026-09-17)
+
+Shape 2 was taken first, in place (D-F2-02): `src/runtime/provider.rs`
+defines `Provider` (`call`, `allocate`, `release`, `close_all`,
+`object_destroyed`, `as_any_mut`) and `CoreContext` (regions, object
+allocation, `call_function`, `library_call`/`library_allocate`/`library_release`/
+`library_mut`, output, module, host). Two `Providers` registries on `HostEnv`:
+`libraries` (`BN*`, keyed by standard-module name, `src/libraries/`) and `hosts`
+(HOST capabilities, keyed by the segment after `HOST.`, `src/hosts/`). Migrated:
+`BNMath`, `BNJson`, `BNLog`, `BNData`, `BNDispatch`, `BNWeb`, `HOST.Net`.
+Still in the core: `HOST.Exec`, `HOST.Clock`, `HOST.Args`, `HOST.FileSystem`
+(`executor/part7.rs`, `part8.rs`) — SPRINT 3 moves them per capability, Exec
+first. `rg 'crate::(web|web_state|net|dispatch|json|log|http|tls)::' src/runtime`
+→ 0 outside `net_values.rs` (value projections) and one unit test.
+
 ## Not blockers (already clean)
 
 - Value model: `bn_value::Value`; heap: `bn_runtime::Heap` (facade `src/heap.rs`).

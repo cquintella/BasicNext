@@ -17,7 +17,7 @@ use bn_value::Value;
 
 use bn_ir::Module;
 
-use crate::heap::Heap;
+use crate::heap::{Handle, Heap};
 use crate::runtime::HostEnv;
 
 /// What a provider may ask of the core while serving a call. Grows only when
@@ -65,6 +65,39 @@ pub trait CoreContext {
 
     /// The host environment (policy view).
     fn host(&self) -> &HostEnv;
+
+    /// Allocates an ordinary object of `class` in the core heap, for
+    /// libraries whose classes are core objects with provider-side state
+    /// (`BNWeb`).
+    ///
+    /// # Errors
+    ///
+    /// Propagates the heap's allocation diagnostic.
+    fn allocate_object(&mut self, class: &str, span: Span) -> Result<Value, Diagnostic>;
+
+    /// `NEW <class>()` on another library (`BNWeb` creating `BNLog` `Fields`
+    /// for its access log). `None` = no such provider or class.
+    fn library_allocate(
+        &mut self,
+        library: &'static str,
+        class: &str,
+        span: Span,
+    ) -> Option<Result<Value, Diagnostic>>;
+
+    /// `RELEASE` of a handle owned by any library. `None` = no library claims
+    /// the value.
+    fn library_release(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>>;
+
+    /// Removes a library's provider from the registry (`None` = absent or
+    /// currently executing). Paired with [`CoreContext::library_insert`]: a
+    /// provider that must stay reachable while BN code it invoked runs in this
+    /// same executor (`BNWeb` `Server.Dispatch`) parks its state here first,
+    /// and a library seeding an isolated executor (`BNWeb` callbacks) edits it
+    /// through this pair.
+    fn library_take(&mut self, library: &'static str) -> Option<Box<dyn Provider>>;
+
+    /// Puts a provider (back) into the registry under `library`.
+    fn library_insert(&mut self, library: &'static str, provider: Box<dyn Provider>);
 }
 
 /// One HOST capability or one `BN*` library, as seen by the core.
@@ -106,6 +139,16 @@ pub trait Provider: Send {
 
     /// Releases every resource still held (program end, worker teardown).
     fn close_all(&mut self) {}
+
+    /// The core destroyed the object at `handle`; a provider keyed by object
+    /// handle drops its side state here.
+    fn object_destroyed(&mut self, _handle: Handle) {}
+
+    /// Downcast hook for a library that must reach its own concrete state
+    /// through [`CoreContext::library_mut`]. `None` = not offered.
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        None
+    }
 }
 
 /// Builds a fresh provider for one execution. Every `Executor` (including a
@@ -113,17 +156,18 @@ pub trait Provider: Send {
 /// shared between executions.
 pub type ProviderFactory = Arc<dyn Fn() -> Box<dyn Provider> + Send + Sync>;
 
-/// Library providers registered on a `HostEnv`, keyed by standard-module
-/// name (`"BNMath"`). Absent = "provider unavailable" `Error` at call time,
-/// never a language error.
+/// Providers registered on a `HostEnv`: one registry for `BN*` libraries,
+/// keyed by standard-module name (`"BNMath"`), and a separate one for `HOST`
+/// capabilities, keyed by the segment after `HOST.` (`"Net"`). Absent =
+/// "provider unavailable" `Error` at call time, never a language error.
 #[derive(Clone, Default)]
-pub struct Libraries {
+pub struct Providers {
     factories: HashMap<&'static str, ProviderFactory>,
 }
 
-impl Libraries {
-    pub fn register(&mut self, library: &'static str, factory: ProviderFactory) {
-        self.factories.insert(library, factory);
+impl Providers {
+    pub fn register(&mut self, name: &'static str, factory: ProviderFactory) {
+        self.factories.insert(name, factory);
     }
 
     #[must_use]

@@ -63,20 +63,7 @@ impl Executor<'_, '_> {
                         }
                     }
                 });
-                self.web_servers.remove(&handle);
-                self.web_loggers.remove(&handle);
-                self.web_tls_configs.remove(&handle);
-                self.web_server_options.remove(&handle);
-                self.web_egress_policies.remove(&handle);
-                self.web_cookie_jars.remove(&handle);
-                self.web_session_stores.remove(&handle);
-                self.web_acls.remove(&handle);
-                self.web_scrapers.remove(&handle);
-                self.web_handlers.remove(&handle);
-                self.web_filters.remove(&handle);
-                self.web_responses.remove(&handle);
-                self.web_requests.remove(&handle);
-                self.web_values.remove(&handle);
+                self.notify_object_destroyed(handle);
                 self.objects.finish_delete(handle, span)?;
                 for (name, field) in instance.fields {
                     if !self.module.weak_fields.contains(&(class.clone(), name)) {

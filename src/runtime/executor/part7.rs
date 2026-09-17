@@ -43,9 +43,6 @@ impl Executor<'_, '_> {
         arguments: &[Value],
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        if name.starts_with("HOST.Net.") {
-            return self.host_net_call(name, arguments, span);
-        }
         match name {
             "HOST.Exec.Run" => self.exec_run(arguments, span),
             "HOST.Clock.Now" => {
