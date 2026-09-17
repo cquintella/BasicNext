@@ -8,20 +8,34 @@
 //! provider so a build can ship the language without, say, networking.
 //! `BN*` libraries live under `crate::libraries` and never mix with these.
 
+pub mod clock;
+pub mod console;
+pub mod exec;
+pub mod fs;
 pub mod net;
+pub mod random;
 
 use std::sync::Arc;
 
 use crate::runtime::provider::Providers;
 
 /// The HOST capabilities this build of `bn` ships, keyed by the segment after
-/// `HOST.` (`"Net"`).
+/// `HOST.` (`"Net"`, `"FileSystem"`, …). `HOST.NumProcs`/`HOST.Args` are
+/// language surface and stay in the core.
 #[must_use]
 pub fn default_hosts() -> Providers {
     let mut hosts = Providers::default();
     hosts.register(
         net::NAME,
         Arc::new(|| Box::new(net::NetProvider::default())),
+    );
+    hosts.register(fs::NAME, Arc::new(|| Box::new(fs::FsProvider::default())));
+    hosts.register(exec::NAME, Arc::new(|| Box::new(exec::ExecProvider)));
+    hosts.register(clock::NAME, Arc::new(|| Box::new(clock::ClockProvider)));
+    hosts.register(random::NAME, Arc::new(|| Box::new(random::RandomProvider)));
+    hosts.register(
+        console::NAME,
+        Arc::new(|| Box::new(console::ConsoleProvider)),
     );
     hosts
 }

@@ -184,7 +184,7 @@ impl FilesystemPolicy {
             .open(path, mode)
     }
 
-    fn remove_file(&self, path: &Path) -> std::io::Result<()> {
+    pub(crate) fn remove_file(&self, path: &Path) -> std::io::Result<()> {
         let Some(roots) = &self.write_roots else {
             return std::fs::remove_file(path);
         };
@@ -359,14 +359,14 @@ impl HostEnv {
         Ok(self)
     }
 
-    fn timestamp_ms(&self) -> i64 {
+    pub(crate) fn timestamp_ms(&self) -> i64 {
         match self.clock {
             ClockKind::Fixed { timestamp_ms, .. } => timestamp_ms,
             ClockKind::System => bn_rt::timestamp_ms(),
         }
     }
 
-    fn monotonic_ns(&self) -> i64 {
+    pub(crate) fn monotonic_ns(&self) -> i64 {
         match self.clock {
             ClockKind::Fixed { monotonic_ns, .. } => monotonic_ns,
             ClockKind::System => bn_rt::monotonic_ns(),
@@ -390,6 +390,22 @@ impl HostEnv {
     pub fn with_libraries(mut self, libraries: provider::Providers) -> Self {
         self.libraries = libraries;
         self
+    }
+
+    pub(crate) fn exec_allowed(&self) -> bool {
+        self.exec_allowed
+    }
+
+    pub(crate) fn exec_timeout(&self) -> std::time::Duration {
+        self.exec_timeout
+    }
+
+    pub(crate) fn exec_capture_limit(&self) -> usize {
+        self.exec_capture_limit
+    }
+
+    pub(crate) fn random_state(&self) -> &AtomicU64 {
+        &self.random_state
     }
 
     /// Replaces the HOST capability providers this host offers.
@@ -457,8 +473,6 @@ struct Executor<'a, 'debug> {
     /// Library providers for this execution, keyed by standard-module name.
     libraries: HashMap<&'static str, Box<dyn provider::Provider>>,
     hosts: HashMap<&'static str, Box<dyn provider::Provider>>,
-    files: HashMap<u64, FileResource>,
-    next_file: u64,
     debug_hook: Option<DebugHook<'debug>>,
     debug_control: Option<DebugControl<'debug>>,
     call_depth: usize,
@@ -487,8 +501,6 @@ impl<'a, 'debug> Executor<'a, 'debug> {
             pinned_dispatch: Vec::new(),
             libraries: host.libraries.instantiate(),
             hosts: host.hosts.instantiate(),
-            files: HashMap::new(),
-            next_file: 1,
             debug_hook,
             debug_control,
             call_depth: 0,
@@ -518,11 +530,6 @@ pub struct DebugVariable {
 /// instruction and may block while the client is paused.
 pub type DebugControl<'a> =
     &'a mut dyn FnMut(&str, usize, crate::source::Span, &[DebugVariable]) -> DebugDecision;
-
-struct FileResource {
-    file: Option<std::fs::File>,
-    family: Option<bool>, // ponytail: one bit for text/binary; expand only if modes grow.
-}
 
 #[derive(Clone, Copy)]
 enum ClassInit {
@@ -872,19 +879,6 @@ pub(crate) fn type_mismatch(
         }],
     )
     .expect("type-mismatch diagnostic schema")
-}
-
-fn console_runtime_error(error: &bn_rt::ConsoleError, span: Span) -> Diagnostic {
-    // `bn_rt` reports codes as strings (C ABI boundary); the interpreter owns
-    // the mapping onto registry identities.
-    let id = match error {
-        bn_rt::ConsoleError::Unavailable(_) => crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE,
-        bn_rt::ConsoleError::OutOfBounds => crate::diagnostic::DiagId::INDEX_OUT_OF_BOUNDS,
-        bn_rt::ConsoleError::Output(_) => crate::diagnostic::DiagId::OUTPUT_ERROR,
-        bn_rt::ConsoleError::Overflow => crate::diagnostic::DiagId::NUMERIC_OVERFLOW,
-    };
-    debug_assert_eq!(id.code(), error.code());
-    runtime_error(id, error.message(), span)
 }
 
 fn integer_overflow(span: Span) -> Diagnostic {

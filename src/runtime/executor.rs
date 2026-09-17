@@ -20,8 +20,6 @@ mod part3;
 mod part5;
 #[path = "executor/part7.rs"]
 mod part7;
-#[path = "executor/part8.rs"]
-mod part8;
 #[path = "executor/part10.rs"]
 mod part10;
 #[path = "executor/part11.rs"]

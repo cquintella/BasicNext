@@ -20,10 +20,12 @@ impl Executor<'_, '_> {
             {
                 return self.host_provider_call(capability, member, arguments, span);
             }
-            return self.host_call(name, &arguments, span);
+            return Self::host_call(name, &arguments, span);
         }
         if is_host_file_method(name) {
-            return self.file_call(name, &arguments, span);
+            // `<alias>.File.<method>` on a `Value::File` receiver.
+            let member = format!("File.{}", name.rsplit('.').next().unwrap_or_default());
+            return self.host_provider_call("FileSystem", &member, arguments, span);
         }
         if let Some((library, member)) = self.library_callee(name) {
             return self.library_call(library, member, arguments, span);
@@ -122,13 +124,45 @@ impl Executor<'_, '_> {
         arguments: Vec<Value>,
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        let (key, mut provider) = self
-            .hosts
-            .remove_entry(capability)
-            .expect("caller checked the capability is registered");
+        let Some((key, mut provider)) = self.hosts.remove_entry(capability) else {
+            return Err(host_unavailable(capability, span));
+        };
         let result = provider.call(self, member, arguments, span);
         self.hosts.insert(key, provider);
         result
+    }
+
+    /// `NEW <class>()` owned by a HOST capability (`FS.File`).
+    pub(crate) fn host_allocate(
+        &mut self,
+        capability: &'static str,
+        class: &str,
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        let Some(mut provider) = self.hosts.remove(capability) else {
+            return Err(host_unavailable(capability, span));
+        };
+        let result = provider.allocate(class, span);
+        self.hosts.insert(capability, provider);
+        result.unwrap_or_else(|| Err(host_unavailable(capability, span)))
+    }
+
+    /// `RELEASE` of a handle owned by a HOST capability.
+    pub(crate) fn host_release(&mut self, value: &Value, span: Span) -> Result<(), Diagnostic> {
+        let capabilities: Vec<&'static str> = self.hosts.keys().copied().collect();
+        for capability in capabilities {
+            let mut provider = self.hosts.remove(capability).expect("key just listed");
+            let result = provider.release(value, span);
+            self.hosts.insert(capability, provider);
+            if let Some(result) = result {
+                return result;
+            }
+        }
+        Err(runtime_error(
+            crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE,
+            "no HOST capability owns this handle",
+            span,
+        ))
     }
 
     /// `NEW #N.Class()` served by a seam library, if `type_name` names one.
@@ -181,6 +215,14 @@ impl Executor<'_, '_> {
     }
 
 
+}
+
+fn host_unavailable(capability: &str, span: Span) -> Diagnostic {
+    runtime_error(
+        crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE,
+        format!("HOST.{capability} is not provided by this host"),
+        span,
+    )
 }
 
 impl crate::runtime::provider::CoreContext for Executor<'_, '_> {

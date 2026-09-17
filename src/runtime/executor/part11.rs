@@ -160,16 +160,7 @@ impl Executor<'_, '_> {
             Value::Object { .. } | Value::Vector(_) | Value::Record { .. } => {
                 self.release_owned_value(target, span)
             }
-            Value::File(id) => {
-                if self.files.remove(&id).is_some() {
-                    Ok(())
-                } else {
-                    Err(runtime_error(crate::diagnostic::DiagId::DOUBLE_RELEASE,
-                        "file handle was already deleted",
-                        span,
-                    ))
-                }
-            }
+            Value::File(_) => self.host_release(&target, span),
 
             _ => Ok(()),
         }

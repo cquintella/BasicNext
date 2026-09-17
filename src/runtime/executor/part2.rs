@@ -507,16 +507,7 @@ impl Executor<'_, '_> {
                         self.allocate_region(element, arguments, values, *span)?
                     }
                     _ if is_host_file_type(type_name) => {
-                        let id = self.next_file;
-                        self.next_file += 1;
-                        self.files.insert(
-                            id,
-                            FileResource {
-                                file: None,
-                                family: None,
-                            },
-                        );
-                        Value::File(id)
+                        self.host_allocate("FileSystem", "File", *span)?
                     }
                     _ => match self.library_allocate(type_name, *span) {
                         Some(allocated) => allocated?,
