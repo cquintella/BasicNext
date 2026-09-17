@@ -30,6 +30,11 @@ impl std::io::Write for BoundedTaskOutput {
     }
 }
 
+/// Libraries served through the provider seam (`crate::runtime::provider`).
+/// A library not listed here still uses its legacy in-core path; the list
+/// shrinks to nothing as bucket 0.5.1d migrates them one by one.
+const SEAM_LIBRARIES: &[&str] = &["BNMath", "BNJson", "BNLog", "BNData"];
+
 impl Executor<'_, '_> {
     pub(crate) fn call_named(
         &mut self,
@@ -43,45 +48,10 @@ impl Executor<'_, '_> {
         if is_host_file_method(name) {
             return self.file_call(name, &arguments, span);
         }
-        if self.is_bndata_provider(name) && self.is_lifecycle_stub(name) {
-            return Ok(Value::Null);
-        }
-        if self.is_bndata_provider(name) && name.contains(".DataFrame.") {
-            return self.dataframe_call(name, &arguments, span);
-        }
-        if self.is_bndata_provider(name)
-            && (name.ends_with(".ReadCSV") || name.ends_with(".WriteCSV"))
+        if let Some((library, member)) = self.library_callee(name)
+            && SEAM_LIBRARIES.contains(&library)
         {
-            return self.data_call(name, &arguments, span);
-        }
-        if self.is_bnmath_provider(name) {
-            let math_name = name.rsplit('.').next().unwrap_or(name);
-            let builtin_name = format!("BNMath.{math_name}");
-            if is_temporal_builtin(&builtin_name) {
-                return temporal_call(&builtin_name, &arguments, span);
-            }
-            return builtin(&builtin_name, &arguments, span, &self.memory);
-        }
-        if self.is_bnlog_provider(name) {
-            if name.contains(".Fields.") {
-                return self.log_fields_call(name, &arguments, span);
-            }
-            if name.contains(".Entry.") {
-                return self.log_entry_call(name, &arguments, span);
-            }
-            if name.contains(".Logger.") {
-                return self.log_logger_call(name, &arguments, span);
-            }
-            if self.is_lifecycle_stub(name) {
-                return Ok(Value::Null);
-            }
-            return Ok(Value::Error {
-                code: 1,
-                message: "BNLog provider unavailable".into(),
-            });
-        }
-        if self.is_bnjson_provider(name) {
-            return self.json_call(name, &arguments, span);
+            return self.library_call(library, member, arguments, span);
         }
         if self.is_bnweb_provider(name)
             && (name.contains(".Server.")
@@ -119,9 +89,8 @@ impl Executor<'_, '_> {
         if is_temporal_builtin(name) {
             return temporal_call(name, &arguments, span);
         }
-        if name.starts_with("BNMath.") || matches!(name, "ASC" | "CHAR" | "TOLOWER" | "TOUPPER") || name == "$for_condition"
-        {
-            return builtin(name, &arguments, span, &self.memory);
+        if matches!(name, "ASC" | "CHAR" | "TOLOWER" | "TOUPPER") || name == "$for_condition" {
+            return builtin(name, &arguments, span);
         }
         let (name, super_call) = name
             .strip_prefix("@super:")
@@ -174,20 +143,79 @@ impl Executor<'_, '_> {
         }
     }
 
-    pub(crate) fn is_bndata_provider(&self, name: &str) -> bool {
-        Self::standard_provider(name, &self.module.bndata_providers)
+    /// Splits a library callee into (library name, member): `#3.MEAN` →
+    /// (`"BNMath"`, `"MEAN"`) when the IR says module 3 provides `BNMath`.
+    pub(crate) fn library_callee<'n>(&self, name: &'n str) -> Option<(&'static str, &'n str)> {
+        let rest = name.strip_prefix('#')?;
+        let (module, member) = rest.split_once('.')?;
+        let library = self.module.standard_library_of(ModuleId(module.parse().ok()?))?;
+        Some((library, member))
     }
 
-    pub(crate) fn is_bnmath_provider(&self, name: &str) -> bool {
-        Self::standard_provider(name, &self.module.bnmath_providers)
+    pub(crate) fn library_call(
+        &mut self,
+        library: &'static str,
+        member: &str,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        // Take the provider out so it can borrow the core mutably during the call.
+        let Some(mut provider) = self.libraries.remove(library) else {
+            return Err(runtime_error(
+                crate::diagnostic::DiagId::LIBRARY_PROVIDER_UNAVAILABLE,
+                format!("{library} provider unavailable"),
+                span,
+            ));
+        };
+        let result = provider.call(self, member, arguments, span);
+        self.libraries.insert(library, provider);
+        result
     }
 
-    pub(crate) fn is_bnlog_provider(&self, name: &str) -> bool {
-        Self::standard_provider(name, &self.module.bnlog_providers)
+    /// `NEW #N.Class()` served by a seam library, if `type_name` names one.
+    pub(crate) fn library_allocate(
+        &mut self,
+        type_name: &str,
+        span: Span,
+    ) -> Option<Result<Value, Diagnostic>> {
+        let (library, class) = self.library_callee(type_name)?;
+        if !SEAM_LIBRARIES.contains(&library) {
+            return None;
+        }
+        self.library_allocate_in(library, class, span)
     }
 
-    pub(crate) fn is_bnjson_provider(&self, name: &str) -> bool {
-        Self::standard_provider(name, &self.module.bnjson_providers)
+    /// `NEW <class>()` on a named seam library (cross-library use, e.g. `BNWeb`
+    /// creating `BNLog` `Fields` for its access log).
+    pub(crate) fn library_allocate_in(
+        &mut self,
+        library: &'static str,
+        class: &str,
+        span: Span,
+    ) -> Option<Result<Value, Diagnostic>> {
+        let mut provider = self.libraries.remove(library)?;
+        let result = provider.allocate(class, span);
+        self.libraries.insert(library, provider);
+        result
+    }
+
+    /// `RELEASE` of a handle owned by a seam library, if any claims it.
+    pub(crate) fn library_release(
+        &mut self,
+        value: &Value,
+        span: Span,
+    ) -> Option<Result<(), Diagnostic>> {
+        for library in SEAM_LIBRARIES {
+            let Some(mut provider) = self.libraries.remove(library) else {
+                continue;
+            };
+            let result = provider.release(value, span);
+            self.libraries.insert(library, provider);
+            if result.is_some() {
+                return result;
+            }
+        }
+        None
     }
 
     pub(crate) fn is_bnweb_provider(&self, name: &str) -> bool {
@@ -383,6 +411,47 @@ fn dispatch_error(error: crate::dispatch::DispatchError) -> Value {
         other => format!("{other:?}"),
     };
     Value::Error { code: 1, message }
+}
+
+impl crate::runtime::provider::CoreContext for Executor<'_, '_> {
+    fn memory(&self) -> &Heap<Value> {
+        &self.memory
+    }
+
+    fn memory_mut(&mut self) -> &mut Heap<Value> {
+        &mut self.memory
+    }
+
+    fn call_function(
+        &mut self,
+        name: &str,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        self.call_named(name, arguments, span)
+    }
+
+    fn library_call(
+        &mut self,
+        library: &'static str,
+        member: &str,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        Executor::library_call(self, library, member, arguments, span)
+    }
+
+    fn output(&mut self) -> &mut dyn std::io::Write {
+        self.output
+    }
+
+    fn module(&self) -> &Module {
+        self.module
+    }
+
+    fn host(&self) -> &HostEnv {
+        self.host
+    }
 }
 
 #[cfg(test)]

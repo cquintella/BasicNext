@@ -77,7 +77,7 @@ pub(super) fn require_console(value: &Value, span: Span) -> Result<(), Diagnosti
     }
 }
 
-pub(super) fn integer_from_count(count: usize, span: Span) -> Result<Value, Diagnostic> {
+pub(crate) fn integer_from_count(count: usize, span: Span) -> Result<Value, Diagnostic> {
     let count = i128::try_from(count).map_err(|_| integer_overflow(span))?;
     integer_from_i128_count(count, span)
 }
@@ -100,7 +100,7 @@ pub(super) fn integer_overflow(span: Span) -> Diagnostic {
     numeric_overflow("converting a value to INTEGER", span)
 }
 
-pub(super) fn numeric_overflow(operation: impl Into<String>, span: Span) -> Diagnostic {
+pub(crate) fn numeric_overflow(operation: impl Into<String>, span: Span) -> Diagnostic {
     Diagnostic::structured(
         crate::diagnostic::DiagId::NUMERIC_OVERFLOW,
         vec![("operation".into(), operation.into().into())],

@@ -12,6 +12,7 @@ pub mod heap;
 pub(crate) mod http;
 pub mod ir;
 pub(crate) mod json;
+pub mod libraries;
 pub mod llvm;
 pub(crate) mod log;
 pub mod lowering;

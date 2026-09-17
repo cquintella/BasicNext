@@ -5,8 +5,10 @@ use super::*;
 mod helpers;
 #[allow(unused_imports)]
 use self::helpers::{
-    integer_from_count, integer_from_u64, lifecycle_dispatch, numeric_overflow, require_console,
+    integer_from_count, integer_from_u64, lifecycle_dispatch, require_console,
 };
+pub(crate) use self::helpers::numeric_overflow;
+pub(crate) use self::helpers::integer_from_count as integer_from_count_pub;
 
 #[path = "executor/part1.rs"]
 mod part1;
@@ -24,16 +26,10 @@ mod part6;
 mod part7;
 #[path = "executor/part8.rs"]
 mod part8;
-#[path = "executor/part9.rs"]
-mod part9;
 #[path = "executor/part10.rs"]
 mod part10;
 #[path = "executor/part11.rs"]
 mod part11;
-#[path = "executor/part12.rs"]
-mod part12;
-#[path = "executor/part13.rs"]
-mod part13;
 #[path = "executor/part14.rs"]
 mod part14;
 #[path = "executor/part15.rs"]
@@ -329,13 +325,10 @@ fn checked_integer(value: Option<i128>, ty: &Type, span: Span) -> Result<Value, 
     Ok(Value::Integer(value, kind))
 }
 
-#[allow(clippy::too_many_lines)] // Standard numeric functions share argument decoding and errors.
-fn builtin(
-    name: &str,
-    arguments: &[Value],
-    span: Span,
-    memory: &Heap<Value>,
-) -> Result<Value, Diagnostic> {
+/// Language globals (`ASC`, `CHAR`, `TOLOWER`, `TOUPPER`) and the
+/// `$for_condition` intrinsic. Library functions live behind the provider
+/// seam (`crate::libraries`), never here.
+fn builtin(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
     if name == "$for_condition" {
         let current = integer(&arguments[0], span)?.0;
         let end = integer(&arguments[1], span)?.0;
@@ -391,87 +384,5 @@ fn builtin(
         // Unicode case mapping (same as bn_rt_str_to_upper / Rust to_uppercase).
         return Ok(Value::String(text.to_uppercase()));
     }
-    let math_name = name
-        .strip_prefix("BNMath.")
-        .ok_or_else(|| super::name_not_found(name, "builtin dispatch", span))?;
-    if matches!(math_name, "TOHOUR" | "TOWEEKDAY") {
-        let milliseconds = integer(&arguments[0], span)?.0;
-        let days = milliseconds.div_euclid(86_400_000);
-        let result = if math_name == "TOHOUR" {
-            milliseconds.div_euclid(3_600_000).rem_euclid(24)
-        } else {
-            // 1970-01-01 was Thursday (ISO weekday 4).
-            (days + 3).rem_euclid(7) + 1
-        };
-        return Ok(Value::Integer(result, IntegerType::Int32));
-    }
-    if math_name == "VAL" {
-        let Value::String(text) = &arguments[0] else {
-            return Err(super::type_mismatch("STRING", "non-STRING value", "BNMath.VAL", span));
-        };
-        return Ok(Value::Float(parse_val(text), FloatType::Float64));
-    }
-    if matches!(
-        math_name,
-        "MEAN" | "MEDIAN" | "QUARTILE1" | "QUARTILE3" | "MODE" | "STDEV" | "VARIANCE" | "RANGE"
-    ) || (matches!(math_name, "MIN" | "MAX") && arguments.len() == 1)
-    {
-        return reduce_vector(math_name, &arguments[0], span, memory);
-    }
-    if matches!(math_name, "ABS" | "MIN" | "MAX" | "SIGN")
-        && arguments
-            .iter()
-            .all(|argument| matches!(argument, Value::Integer(_, _)))
-    {
-        let integers = arguments
-            .iter()
-            .map(|argument| integer(argument, span).map(|(value, _)| value))
-            .collect::<Result<Vec<_>, _>>()?;
-        let kind = integer(&arguments[0], span)?.1;
-        let result = match math_name {
-            "ABS" => integers[0]
-                .checked_abs()
-                .ok_or_else(|| numeric_overflow("evaluating BNMath.ABS", span))?,
-            "MIN" => integers[0].min(integers[1]),
-            "MAX" => integers[0].max(integers[1]),
-            "SIGN" => integers[0].signum(),
-            _ => unreachable!(),
-        };
-        return Ok(Value::Integer(result, kind));
-    }
-    let numbers = arguments
-        .iter()
-        .map(|value| number_as_float(value, span))
-        .collect::<Result<Vec<_>, _>>()?;
-    let result = match math_name {
-        "ABS" => bn_rt::bn_rt_math_fabs(numbers[0]),
-        "MIN" => {
-            bn_rt::bn_rt_math_fmin(numbers[0], numbers[1])
-        }
-        "MAX" => bn_rt::bn_rt_math_fmax(numbers[0], numbers[1]),
-        "SIGN" => bn_rt::bn_rt_math_fsign(numbers[0]),
-        "FLOOR" => bn_rt::bn_rt_math_floor(numbers[0]),
-        "CEIL" => bn_rt::bn_rt_math_ceil(numbers[0]),
-        "TRUNC" => bn_rt::bn_rt_math_trunc(numbers[0]),
-        "ROUND" => bn_rt::bn_rt_math_round(numbers[0], numbers[1]),
-        "EXP" => bn_rt::bn_rt_math_exp(numbers[0]),
-        "LOG" => bn_rt::bn_rt_math_log(numbers[0]),
-        "LOG10" => bn_rt::bn_rt_math_log10(numbers[0]),
-        "LOG2" => bn_rt::bn_rt_math_log2(numbers[0]),
-        "POW" => bn_rt::bn_rt_math_pow(numbers[0], numbers[1]),
-        "SIN" => bn_rt::bn_rt_math_sin(numbers[0]),
-        "COS" => bn_rt::bn_rt_math_cos(numbers[0]),
-        "TAN" => bn_rt::bn_rt_math_tan(numbers[0]),
-        "ASIN" => bn_rt::bn_rt_math_asin(numbers[0]),
-        "ACOS" => bn_rt::bn_rt_math_acos(numbers[0]),
-        "ATAN" => bn_rt::bn_rt_math_atan(numbers[0]),
-        "ATAN2" => bn_rt::bn_rt_math_atan2(numbers[0], numbers[1]),
-        "SQRT" => bn_rt::bn_rt_math_sqrt(numbers[0]),
-        "HYPOT" => bn_rt::bn_rt_math_hypot(numbers[0], numbers[1]),
-        "FMA" => bn_rt::bn_rt_math_fma(numbers[0], numbers[1], numbers[2]),
-        _ => {
-            return Err(super::name_not_found(math_name, "BNMath function", span));
-        }
-    };
-    Ok(Value::Float(result, FloatType::Float64))
+    Err(super::name_not_found(name, "builtin dispatch", span))
 }

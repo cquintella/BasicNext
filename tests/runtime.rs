@@ -2158,6 +2158,50 @@ fn arc_weak_reference_survives_unrelated_allocation_then_expires() {
     assert_eq!(output, "LIVE 7\nEXPIRED\n");
 }
 
+/// Bucket 0.5.1d §1.1: a library provider registered from outside the crate
+/// answers a library callee and re-enters the core through `CoreContext`.
+#[test]
+fn library_provider_seam_routes_calls_and_reenters_the_core() {
+    use bn::runtime::provider::{CoreContext, Libraries, Provider};
+    use std::sync::Arc;
+
+    struct Fake;
+    impl Provider for Fake {
+        fn call(
+            &mut self,
+            core: &mut dyn CoreContext,
+            member: &str,
+            _arguments: Vec<bn_value::Value>,
+            span: bn::source::Span,
+        ) -> Result<bn_value::Value, bn::diagnostic::Diagnostic> {
+            assert_eq!(member, "ABS");
+            let helper = core.call_function("Helper", Vec::new(), span)?;
+            let bn_value::Value::Integer(seven, kind) = helper else {
+                panic!("Helper returns INTEGER");
+            };
+            Ok(bn_value::Value::Integer(seven * 6, kind))
+        }
+    }
+    let mut libraries = Libraries::default();
+    libraries.register("BNMath", Arc::new(|| Box::new(Fake)));
+    let host = HostEnv::fixed(vec!["runtime.bn".into()], 0, 0).with_libraries(libraries);
+    let source = "IMPORT BNMath AS M\nFUNCTION Helper() AS INTEGER\n    RETURN 7\nEND FUNCTION\nFUNCTION Start() AS VOID\n    PRINT M.ABS(-1)\nEND FUNCTION\n";
+    let (code, output) = run_with_host(source, "", &host).expect("fake provider answers");
+    assert_eq!(code, 0);
+    assert_eq!(output, "42\n");
+
+    // No provider registered under the library: unavailable, never a language error.
+    let bare = HostEnv::fixed(vec!["runtime.bn".into()], 0, 0).with_libraries(Libraries::default());
+    let source = "IMPORT BNMath AS M\nFUNCTION Start() AS VOID\n    LET v AS FLOAT = M.SQRT(4.0)\n    PRINT v\nEND FUNCTION\n";
+    let error = run_with_host(source, "", &bare).expect_err("unregistered library is an error");
+    assert_eq!(error.code, "LIBRARY_PROVIDER_UNAVAILABLE");
+    assert!(
+        error.message.contains("BNMath provider unavailable"),
+        "{}",
+        error.message
+    );
+}
+
 #[test]
 fn arc_pointer_alias_survives_release_of_one_binding() {
     let source = include_str!("grammar/valid/arc-pointer-alias-release.bn");

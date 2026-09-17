@@ -22,8 +22,6 @@ mod collections;
 mod compare;
 #[path = "runtime/helpers.rs"]
 mod helpers;
-#[path = "runtime/math.rs"]
-mod math;
 #[path = "runtime/net_values.rs"]
 mod net_values;
 #[path = "runtime/numeric.rs"]
@@ -32,22 +30,38 @@ mod numeric;
 mod render;
 #[path = "runtime/temporal_ops.rs"]
 mod temporal_ops;
+#[path = "runtime/provider.rs"]
+pub mod provider;
+
+// Helpers a library provider (`crate::libraries::*`) may use. They are the
+// core's value/diagnostic vocabulary, not language semantics.
+pub(crate) use executor::numeric_overflow;
+pub(crate) use helpers::require_arity as require_arity_pub;
+pub(crate) use integer_from_i128_count as integer_from_i128_count_pub;
+pub(crate) use collections::{
+    collect_indices as collect_indices_pub, dataframe_index_error as dataframe_index_error_pub,
+    unsigned_indices as unsigned_indices_pub,
+};
+pub(crate) use executor::integer_from_count_pub;
+pub(crate) use render::render as render_pub;
+pub(crate) use compare::equals as equals_pub;
+pub(crate) use is_not_available as is_not_available_pub;
+pub(crate) use numeric::{
+    integer as integer_pub, number_as_float as number_as_float_pub, parse_val as parse_val_pub,
+};
+pub(crate) use {index_out_of_bounds as index_out_of_bounds_pub, runtime_error as runtime_error_pub};
 
 use allocation::{add_sizes, display_element, pointer_element_default, pointer_element_size};
-use collections::{
-    collect_indices, dataframe_index_error, unsigned_indices,
-};
 use compare::{equals, is_host_file_method, is_host_file_type, is_value, value_matches_type};
 use helpers::{
     constant_value, default_function_owner, empty_named, find_block, require_arity, set, value,
 };
-use math::reduce_vector;
 use net_values::{
     address_value, endpoint_value, net_address, net_addresses, net_endpoint, ping_reply_value,
 };
 use numeric::{
     boolean, exit_code, float_kind, float_value, integer, integer_kind, integer_range,
-    integer_width, is_float_value, number_as_float, ordered, parse_float, parse_integer, parse_val,
+    integer_width, is_float_value, number_as_float, ordered, parse_float, parse_integer,
 };
 use render::render;
 use temporal_ops::{is_temporal_builtin, temporal_call};
@@ -73,9 +87,9 @@ use crate::{
     },
 };
 
-type DataFrameResource = GenericDataFrameResource<Value>;
+pub(crate) type DataFrameResource = GenericDataFrameResource<Value>;
 
-fn is_not_available(value: &Value) -> bool {
+pub(crate) fn is_not_available(value: &Value) -> bool {
     matches!(value, Value::NotAvailable)
 }
 
@@ -91,6 +105,7 @@ pub struct HostEnv {
     /// Per-stream capture ceiling in bytes (D-H1-02). Policy may reduce; never exceeds 16 MiB.
     exec_capture_limit: usize,
     data_provider: Arc<dyn DataProvider>,
+    libraries: provider::Libraries,
 }
 
 #[derive(Clone, Debug)]
@@ -114,7 +129,7 @@ impl FilesystemPolicy {
         }
     }
 
-    fn allows_capability(&self) -> bool {
+    pub(crate) fn allows_capability(&self) -> bool {
         self.read_roots.as_ref().is_none_or(|roots| !roots.is_empty())
             || self
                 .write_roots
@@ -122,7 +137,7 @@ impl FilesystemPolicy {
                 .is_none_or(|roots| !roots.is_empty())
     }
 
-    fn allows_path(&self, path: &Path, write: bool) -> bool {
+    pub(crate) fn allows_path(&self, path: &Path, write: bool) -> bool {
         let roots = if write {
             &self.write_roots
         } else {
@@ -134,7 +149,7 @@ impl FilesystemPolicy {
         roots.iter().any(|root| root.contains_resolved(path))
     }
 
-    fn open(&self, path: &Path, mode: bn_rt::secure_fs::OpenMode) -> std::io::Result<std::fs::File> {
+    pub(crate) fn open(&self, path: &Path, mode: bn_rt::secure_fs::OpenMode) -> std::io::Result<std::fs::File> {
         let roots = if mode == bn_rt::secure_fs::OpenMode::Read {
             &self.read_roots
         } else {
@@ -200,6 +215,7 @@ impl Clone for HostEnv {
             exec_timeout: self.exec_timeout,
             exec_capture_limit: self.exec_capture_limit,
             data_provider: Arc::clone(&self.data_provider),
+            libraries: self.libraries.clone(),
         }
     }
 }
@@ -225,6 +241,7 @@ impl HostEnv {
             exec_timeout: std::time::Duration::from_secs(60),
             exec_capture_limit: 16 * 1024 * 1024,
             data_provider: Arc::new(StandardDataProvider),
+            libraries: crate::libraries::default_libraries(),
         }
     }
 
@@ -242,6 +259,7 @@ impl HostEnv {
             exec_timeout: std::time::Duration::from_secs(60),
             exec_capture_limit: 16 * 1024 * 1024,
             data_provider: Arc::new(StandardDataProvider),
+            libraries: crate::libraries::default_libraries(),
         }
     }
 
@@ -258,6 +276,7 @@ impl HostEnv {
             exec_timeout: std::time::Duration::from_secs(60),
             exec_capture_limit: 16 * 1024 * 1024,
             data_provider: Arc::new(StandardDataProvider),
+            libraries: crate::libraries::default_libraries(),
         }
     }
 
@@ -349,6 +368,25 @@ impl HostEnv {
         }
     }
 
+    /// CSV/data provider bound to this host.
+    #[must_use]
+    pub(crate) fn data_provider(&self) -> &Arc<dyn DataProvider> {
+        &self.data_provider
+    }
+
+    /// Filesystem policy in force for this host.
+    #[must_use]
+    pub(crate) fn filesystem(&self) -> &FilesystemPolicy {
+        &self.filesystem
+    }
+
+    /// Replaces the library providers this host offers (CLI features, tests).
+    #[must_use]
+    pub fn with_libraries(mut self, libraries: provider::Libraries) -> Self {
+        self.libraries = libraries;
+        self
+    }
+
     pub(crate) fn fork_for_task(&self) -> Self {
         let seed = self
             .random_state
@@ -363,6 +401,7 @@ impl HostEnv {
             exec_timeout: self.exec_timeout,
             exec_capture_limit: self.exec_capture_limit,
             data_provider: Arc::clone(&self.data_provider),
+            libraries: self.libraries.clone(),
         }
     }
 }
@@ -402,6 +441,8 @@ struct Executor<'a, 'debug> {
     objects: Heap<Instance>,
     memory: Heap<Value>,
     pinned_dispatch: Vec<(Handle, String)>,
+    /// Library providers for this execution, keyed by standard-module name.
+    libraries: HashMap<&'static str, Box<dyn provider::Provider>>,
     files: HashMap<u64, FileResource>,
     next_file: u64,
     tcp_streams: HashMap<u64, crate::net::TcpStream>,
@@ -410,14 +451,6 @@ struct Executor<'a, 'debug> {
     next_tcp_listener: u64,
     udp_sockets: HashMap<u64, crate::net::UdpSocket>,
     next_udp_socket: u64,
-    log_fields: HashMap<u64, HashMap<String, String>>,
-    next_log_fields: u64,
-    log_entries: HashMap<u64, HashMap<String, String>>,
-    next_log_entry: u64,
-    log_loggers: HashMap<u64, LogLoggerResource>,
-    next_log_logger: u64,
-    json_values: HashMap<u64, crate::json::Value>,
-    next_json_value: u64,
     dispatch_queues: HashMap<u64, crate::dispatch::Queue>,
     next_dispatch_queue: u64,
     dispatch_tickets: HashMap<u64, crate::dispatch::Ticket>,
@@ -427,8 +460,6 @@ struct Executor<'a, 'debug> {
     dispatch_semaphores: HashMap<u64, crate::dispatch::DispatchSemaphore>,
     dispatch_mutexes: HashMap<u64, crate::dispatch::DispatchMutex>,
     next_dispatch_sync: u64,
-    dataframes: HashMap<u64, DataFrameResource>,
-    next_dataframe: u64,
     web_servers: HashMap<Handle, std::sync::Arc<std::sync::Mutex<crate::web::ServerState>>>,
     web_loggers: HashMap<Handle, u64>,
     web_tls_configs: HashMap<Handle, std::sync::Arc<rustls::ServerConfig>>,
@@ -469,6 +500,7 @@ impl<'a, 'debug> Executor<'a, 'debug> {
             objects: Heap::default(),
             memory: Heap::default(),
             pinned_dispatch: Vec::new(),
+            libraries: host.libraries.instantiate(),
             files: HashMap::new(),
             next_file: 1,
             tcp_streams: HashMap::new(),
@@ -477,14 +509,6 @@ impl<'a, 'debug> Executor<'a, 'debug> {
             next_tcp_listener: 1,
             udp_sockets: HashMap::new(),
             next_udp_socket: 1,
-            log_fields: HashMap::new(),
-            next_log_fields: 1,
-            log_entries: HashMap::new(),
-            next_log_entry: 1,
-            log_loggers: HashMap::new(),
-            next_log_logger: 1,
-            json_values: HashMap::new(),
-            next_json_value: 1,
             dispatch_queues: HashMap::new(),
             next_dispatch_queue: 1,
             dispatch_tickets: HashMap::new(),
@@ -494,8 +518,6 @@ impl<'a, 'debug> Executor<'a, 'debug> {
             dispatch_semaphores: HashMap::new(),
             dispatch_mutexes: HashMap::new(),
             next_dispatch_sync: 1,
-            dataframes: HashMap::new(),
-            next_dataframe: 1,
             web_servers: HashMap::new(),
             web_loggers: HashMap::new(),
             web_tls_configs: HashMap::new(),
@@ -543,22 +565,6 @@ pub type DebugControl<'a> =
 struct FileResource {
     file: Option<std::fs::File>,
     family: Option<bool>, // ponytail: one bit for text/binary; expand only if modes grow.
-}
-
-#[derive(Clone)]
-struct LogLoggerResource {
-    label: String,
-    context: std::collections::BTreeMap<String, String>,
-    null_transports: Vec<i128>,
-    console_transports: Vec<i128>,
-    file_transports: Vec<LogFileTransport>,
-    closed: bool,
-}
-
-#[derive(Clone)]
-struct LogFileTransport {
-    path: String,
-    minimum: i128,
 }
 
 #[derive(Clone, Copy)]
@@ -840,14 +846,14 @@ fn coerce(value: Value, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
 }
 
 #[allow(dead_code)]
-fn integer_from_i128_count(count: i128, span: Span) -> Result<Value, Diagnostic> {
+pub(crate) fn integer_from_i128_count(count: i128, span: Span) -> Result<Value, Diagnostic> {
     if !(0..=i128::from(i32::MAX)).contains(&count) {
         return Err(integer_overflow(span));
     }
     Ok(Value::Integer(count, IntegerType::Int32))
 }
 
-fn runtime_error(
+pub(crate) fn runtime_error(
     id: crate::diagnostic::DiagId,
     message: impl Into<String>,
     span: Span,
@@ -891,7 +897,7 @@ fn runtime_error(
     .expect("runtime compatibility diagnostic schema")
 }
 
-fn name_not_found(name: impl Into<String>, context: impl Into<String>, span: Span) -> Diagnostic {
+pub(crate) fn name_not_found(name: impl Into<String>, context: impl Into<String>, span: Span) -> Diagnostic {
     Diagnostic::structured(
         crate::diagnostic::DiagId::NAME_NOT_FOUND,
         vec![
@@ -907,7 +913,7 @@ fn name_not_found(name: impl Into<String>, context: impl Into<String>, span: Spa
     .expect("name-not-found diagnostic schema")
 }
 
-fn index_out_of_bounds(
+pub(crate) fn index_out_of_bounds(
     index: impl std::fmt::Display,
     bound: impl std::fmt::Display,
     context: impl std::fmt::Display,
@@ -929,7 +935,7 @@ fn index_out_of_bounds(
     .expect("index-out-of-bounds diagnostic schema")
 }
 
-fn type_mismatch(
+pub(crate) fn type_mismatch(
     expected: impl std::fmt::Display,
     actual: impl std::fmt::Display,
     context: impl std::fmt::Display,

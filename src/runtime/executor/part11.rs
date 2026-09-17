@@ -161,6 +161,9 @@ impl Executor<'_, '_> {
         _destructor: Option<&str>,
         span: Span,
     ) -> Result<(), Diagnostic> {
+        if let Some(released) = self.library_release(&target, span) {
+            return released;
+        }
         match target {
             Value::Null => Err(runtime_error(crate::diagnostic::DiagId::NULL_POINTER_ACCESS,
                 "cannot RELEASE NULL",
@@ -180,56 +183,7 @@ impl Executor<'_, '_> {
                     ))
                 }
             }
-            Value::DataFrame(id) => {
-                if self.dataframes.remove(&id).is_some() {
-                    Ok(())
-                } else {
-                    Err(runtime_error(crate::diagnostic::DiagId::DOUBLE_RELEASE,
-                        "DataFrame handle was already deleted",
-                        span,
-                    ))
-                }
-            }
-            Value::LogFields(id) => {
-                if self.log_fields.remove(&id).is_some() {
-                    Ok(())
-                } else {
-                    Err(runtime_error(crate::diagnostic::DiagId::DOUBLE_RELEASE,
-                        "BNLog.Fields was already deleted",
-                        span,
-                    ))
-                }
-            }
-            Value::LogEntry(id) => {
-                if self.log_entries.remove(&id).is_some() {
-                    Ok(())
-                } else {
-                    Err(runtime_error(crate::diagnostic::DiagId::DOUBLE_RELEASE,
-                        "BNLog.Entry was already deleted",
-                        span,
-                    ))
-                }
-            }
-            Value::LogLogger(id) => {
-                if self.log_loggers.remove(&id).is_some() {
-                    Ok(())
-                } else {
-                    Err(runtime_error(crate::diagnostic::DiagId::DOUBLE_RELEASE,
-                        "BNLog.Logger was already deleted",
-                        span,
-                    ))
-                }
-            }
-            Value::Json(id) => {
-                if self.json_values.remove(&id).is_some() {
-                    Ok(())
-                } else {
-                    Err(runtime_error(crate::diagnostic::DiagId::DOUBLE_RELEASE,
-                        "BNJson.Json was already deleted",
-                        span,
-                    ))
-                }
-            }
+
             _ => Ok(()),
         }
     }

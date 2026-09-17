@@ -118,6 +118,56 @@ fn drain_server(
 }
 
 impl Executor<'_, '_> {
+    /// Access-log record for a served request, written through `BNLog`'s
+    /// public contract (`Fields` + `Logger.Log`) exactly as a BN program would.
+    pub(crate) fn log_web_dispatch(
+        &mut self,
+        server_handle: Handle,
+        method: &str,
+        path: &str,
+        status: i128,
+        request_id: Option<&str>,
+        span: Span,
+    ) -> Result<(), Diagnostic> {
+        let Some(&logger_id) = self.web_loggers.get(&server_handle) else {
+            return Ok(());
+        };
+        let log = crate::libraries::log::NAME;
+        let Some(fields) = self.library_allocate_in(log, "Fields", span) else {
+            return Ok(());
+        };
+        let fields = fields?;
+        let mut entries = vec![
+            ("http.method", method.to_string()),
+            ("http.path", path.to_string()),
+            ("http.status", status.to_string()),
+        ];
+        if let Some(request_id) = request_id {
+            entries.push(("request_id", request_id.to_string()));
+        }
+        for (key, value) in entries {
+            self.library_call(
+                log,
+                "Fields.SetString",
+                vec![fields.clone(), Value::String(key.into()), Value::String(value)],
+                span,
+            )?;
+        }
+        let result = self.library_call(
+            log,
+            "Logger.Log",
+            vec![
+                Value::LogLogger(logger_id),
+                Value::Integer(3, IntegerType::Int32),
+                Value::String("web dispatch".into()),
+                fields.clone(),
+            ],
+            span,
+        );
+        let _ = self.library_release(&fields, span);
+        result.map(|_| ())
+    }
+
     pub(crate) fn web_call(
         &mut self,
         name: &str,
@@ -708,28 +758,14 @@ impl Executor<'_, '_> {
                                 .web_responses
                                 .get(response_handle)
                                 .map_or(500, |response| i128::from(response.status));
-                            self.log_web_dispatch(
-                                *handle,
-                                &method_name,
-                                &path,
-                                status,
-                                request_id.as_deref(),
-                                span,
-                            )?;
+                            self.log_web_dispatch(*handle, &method_name, &path, status, request_id.as_deref(), span)?;
                             result
                         }
                         Err(status) if status == 404 || status == 405 => {
                             if let Some(response) = self.web_responses.get_mut(response_handle) {
                                 let _ = response.set_status(u16::try_from(status).unwrap_or(500));
                             }
-                            self.log_web_dispatch(
-                                *handle,
-                                &method_name,
-                                &path,
-                                i128::from(status),
-                                None,
-                                span,
-                            )?;
+                            self.log_web_dispatch(*handle, &method_name, &path, i128::from(status), None, span)?;
                             Ok(Value::Null)
                         }
                         Err(_) => Ok(Value::Error {

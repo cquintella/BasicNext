@@ -83,7 +83,7 @@ pub(super) fn empty_named(name: &str) -> Value {
     }
 }
 
-pub(super) fn require_arity(
+pub(crate) fn require_arity(
     name: &str,
     arguments: &[Value],
     expected: usize,

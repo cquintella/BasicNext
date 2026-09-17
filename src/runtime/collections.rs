@@ -10,21 +10,21 @@ use crate::{
 
 use super::{Value, integer, type_mismatch};
 
-pub(super) fn dataframe_index_error() -> Value {
+pub(crate) fn dataframe_index_error() -> Value {
     Value::Error {
         code: 1,
         message: "DataFrame index out of bounds".into(),
     }
 }
 
-pub(super) fn unsigned_indices(values: Vec<i128>) -> Option<Vec<usize>> {
+pub(crate) fn unsigned_indices(values: Vec<i128>) -> Option<Vec<usize>> {
     values
         .into_iter()
         .map(|value| usize::try_from(value).ok())
         .collect()
 }
 
-pub(super) fn collect_indices(
+pub(crate) fn collect_indices(
     value: &Value,
     memory: &Heap<Value>,
     span: Span,

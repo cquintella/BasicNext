@@ -5,7 +5,12 @@
 
 use crate::{diagnostic::Diagnostic, heap::Heap, source::Span, types::FloatType};
 
-use super::{Value, integer, number_as_float, runtime_error};
+use bn_value::Value;
+
+use crate::runtime::{
+    index_out_of_bounds_pub as index_out_of_bounds, integer_pub as integer,
+    number_as_float_pub as number_as_float, runtime_error_pub as runtime_error, type_mismatch,
+};
 #[allow(
     clippy::cast_precision_loss,
     clippy::float_cmp,
@@ -29,7 +34,12 @@ pub(super) fn reduce_vector(
             &owned
         }
         _ => {
-            return Err(super::type_mismatch("vector", "non-vector value", "BNMath reduction", span));
+            return Err(type_mismatch(
+                "vector",
+                "non-vector value",
+                "BNMath reduction",
+                span,
+            ));
         }
     };
     let mut numbers = values
@@ -38,11 +48,11 @@ pub(super) fn reduce_vector(
         .collect::<Result<Vec<_>, _>>()?;
     if matches!(name, "MIN" | "MAX") {
         if numbers.is_empty() {
-            return Err(super::index_out_of_bounds("none", 0, "BNMath reduction", span));
+            return Err(index_out_of_bounds("none", 0, "BNMath reduction", span));
         }
-        let first = values.first().ok_or_else(|| {
-            super::index_out_of_bounds("none", 0, "BNMath reduction", span)
-        })?;
+        let first = values
+            .first()
+            .ok_or_else(|| index_out_of_bounds("none", 0, "BNMath reduction", span))?;
         if let Value::Integer(_, kind) = first {
             let integers = values
                 .iter()
@@ -53,16 +63,20 @@ pub(super) fn reduce_vector(
             } else {
                 integers.iter().copied().reduce(i128::max)
             }
-            .ok_or_else(|| {
-                super::index_out_of_bounds("none", 0, "BNMath reduction", span)
-            })?;
+            .ok_or_else(|| index_out_of_bounds("none", 0, "BNMath reduction", span))?;
             return Ok(Value::Integer(result, *kind));
         }
         let Value::Float(_, kind) = first else {
-            return Err(super::type_mismatch("numeric value", "non-numeric value", "BNMath reduction", span));
+            return Err(type_mismatch(
+                "numeric value",
+                "non-numeric value",
+                "BNMath reduction",
+                span,
+            ));
         };
         let length = i32::try_from(numbers.len()).map_err(|_| {
-            runtime_error(crate::diagnostic::DiagId::RESOURCE_LIMIT,
+            runtime_error(
+                crate::diagnostic::DiagId::RESOURCE_LIMIT,
                 "BNMath reduction vector is too large",
                 span,
             )
@@ -86,7 +100,8 @@ pub(super) fn reduce_vector(
             })
             .expect("FLOAT reduction has a FLOAT first value");
         let length = i32::try_from(numbers.len()).map_err(|_| {
-            runtime_error(crate::diagnostic::DiagId::RESOURCE_LIMIT,
+            runtime_error(
+                crate::diagnostic::DiagId::RESOURCE_LIMIT,
                 "BNMath reduction vector is too large",
                 span,
             )

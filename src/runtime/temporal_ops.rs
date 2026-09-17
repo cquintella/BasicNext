@@ -7,7 +7,7 @@ use crate::{diagnostic::Diagnostic, source::Span, temporal, types::IntegerType};
 
 use super::{Value, integer, require_arity, runtime_error, type_mismatch};
 
-pub(super) fn is_temporal_builtin(name: &str) -> bool {
+pub(crate) fn is_temporal_builtin(name: &str) -> bool {
     matches!(
         name,
         "Date.Parse"
@@ -15,14 +15,11 @@ pub(super) fn is_temporal_builtin(name: &str) -> bool {
             | "TimeZone.Parse"
             | "Timestamp.Parse"
             | "Timestamp.Format"
-            | "BNMath.TODATE"
-            | "BNMath.TOTIME"
-            | "BNMath.TOTIMESTAMP"
     )
 }
 
 #[allow(clippy::too_many_lines)]
-pub(super) fn temporal_call(
+pub(crate) fn temporal_call(
     name: &str,
     arguments: &[Value],
     span: Span,
@@ -59,33 +56,17 @@ pub(super) fn temporal_call(
                 IntegerType::Int64,
             ))
         }
-        "Timestamp.Format" | "BNMath.TODATE" | "BNMath.TOTIME" => {
+        "Timestamp.Format" => {
             require_arity(name, arguments, 1, span)?;
             let (timestamp, _) = integer(&arguments[0], span)?;
             let timestamp = i64::try_from(timestamp).map_err(|_| {
-                runtime_error(crate::diagnostic::DiagId::FORMAT_OUT_OF_RANGE,
+                runtime_error(
+                    crate::diagnostic::DiagId::FORMAT_OUT_OF_RANGE,
                     "TIMESTAMP is outside 0001-01-01..9999-12-31",
                     span,
                 )
             })?;
-            match name {
-                "Timestamp.Format" => Ok(Value::String(temporal::format_rfc3339(timestamp, span)?)),
-                "BNMath.TODATE" => Ok(Value::Date(temporal::date_from_timestamp(timestamp, span)?)),
-                _ => Ok(Value::Time(temporal::time_from_timestamp(timestamp, span)?)),
-            }
-        }
-        "BNMath.TOTIMESTAMP" => {
-            require_arity(name, arguments, 2, span)?;
-            let Value::Date(days) = arguments[0] else {
-                return Err(type_mismatch("DATE", "non-DATE value", "BNMath.TOTIMESTAMP date", span));
-            };
-            let Value::Time(millis) = arguments[1] else {
-                return Err(type_mismatch("TIME", "non-TIME value", "BNMath.TOTIMESTAMP time", span));
-            };
-            Ok(Value::Integer(
-                i128::from(temporal::timestamp_from_date_time(days, millis, span)?),
-                IntegerType::Int64,
-            ))
+            Ok(Value::String(temporal::format_rfc3339(timestamp, span)?))
         }
         _ => Err(super::name_not_found(name, "temporal function", span)),
     }

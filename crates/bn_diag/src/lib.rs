@@ -124,6 +124,7 @@ diagnostic_registry! {
     HEADER_NOT_FOUND { code: "HEADER_NOT_FOUND", fluent: "HEADER_NOT_FOUND", severity: Error, schema: LEGACY_MESSAGE },
     HOST_ARGS_SCOPE { code: "HOST_ARGS_SCOPE", fluent: "HOST_ARGS_SCOPE", severity: Error, schema: LEGACY_MESSAGE },
     HOST_CAPABILITY_UNAVAILABLE { code: "HOST_CAPABILITY_UNAVAILABLE", fluent: "HOST_CAPABILITY_UNAVAILABLE", severity: Error, schema: DETAIL },
+    LIBRARY_PROVIDER_UNAVAILABLE { code: "LIBRARY_PROVIDER_UNAVAILABLE", fluent: "LIBRARY_PROVIDER_UNAVAILABLE", severity: Error, schema: DETAIL },
     HOST_IMPORT_SCOPE { code: "HOST_IMPORT_SCOPE", fluent: "HOST_IMPORT_SCOPE", severity: Error, schema: LEGACY_MESSAGE },
     IMPORTED_START { code: "IMPORTED_START", fluent: "IMPORTED_START", severity: Error, schema: LEGACY_MESSAGE },
     IMPORT_CYCLE { code: "IMPORT_CYCLE", fluent: "IMPORT_CYCLE", severity: Error, schema: DETAIL },

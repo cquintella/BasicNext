@@ -12,7 +12,7 @@ use super::Value;
     clippy::float_cmp,
     clippy::match_same_arms
 )]
-pub(super) fn equals(left: &Value, right: &Value) -> bool {
+pub(crate) fn equals(left: &Value, right: &Value) -> bool {
     match (left, right) {
         (Value::Integer(left, _), Value::Integer(right, _)) => left == right,
         (Value::Float(left, _), Value::Float(right, _)) => left == right,

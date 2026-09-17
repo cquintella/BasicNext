@@ -427,6 +427,24 @@ impl Module {
             .find(|function| function.kind == kind && function.owner.as_deref() == Some(owner))
     }
 
+    /// The standard library (`"BNMath"`, `"BNData"`, …) that module `id`
+    /// provides, if any. The interpreter routes `#<id>.<member>` callees to the
+    /// library provider registered under this name.
+    #[must_use]
+    pub fn standard_library_of(&self, id: ModuleId) -> Option<&'static str> {
+        [
+            (&self.bnmath_providers, "BNMath"),
+            (&self.bndata_providers, "BNData"),
+            (&self.bnlog_providers, "BNLog"),
+            (&self.bnjson_providers, "BNJson"),
+            (&self.bnweb_providers, "BNWeb"),
+            (&self.bndispatch_providers, "BNDispatch"),
+        ]
+        .into_iter()
+        .find(|(providers, _)| providers.contains(&id))
+        .map(|(_, name)| name)
+    }
+
     /// Kind of the function named `name`, if it exists in this module.
     #[must_use]
     pub fn kind_of(&self, name: &str) -> Option<FunctionKind> {

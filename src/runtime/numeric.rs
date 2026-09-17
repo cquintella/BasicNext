@@ -11,7 +11,7 @@ use crate::{
 
 use super::{Value, runtime_error, type_mismatch};
 
-pub(super) fn integer(value: &Value, span: Span) -> Result<(i128, IntegerType), Diagnostic> {
+pub(crate) fn integer(value: &Value, span: Span) -> Result<(i128, IntegerType), Diagnostic> {
     let Value::Integer(value, kind) = value else {
         return Err(super::type_mismatch("integral value", "non-integral value", "integer operation", span));
     };
@@ -26,7 +26,7 @@ pub(super) fn boolean(value: &Value, span: Span) -> Result<bool, Diagnostic> {
 }
 
 #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-pub(super) fn number_as_float(value: &Value, span: Span) -> Result<f64, Diagnostic> {
+pub(crate) fn number_as_float(value: &Value, span: Span) -> Result<f64, Diagnostic> {
     match value {
         Value::Integer(value, _) => Ok(*value as f64),
         Value::Float(value, kind) => Ok(match kind {
@@ -37,7 +37,7 @@ pub(super) fn number_as_float(value: &Value, span: Span) -> Result<f64, Diagnost
     }
 }
 
-pub(super) fn parse_val(text: &str) -> f64 {
+pub(crate) fn parse_val(text: &str) -> f64 {
     let text = text.trim_start();
     let bytes = text.as_bytes();
     let mut end = usize::from(bytes.first().is_some_and(|b| matches!(b, b'+' | b'-')));

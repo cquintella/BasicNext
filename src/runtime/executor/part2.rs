@@ -518,65 +518,10 @@ impl Executor<'_, '_> {
                         );
                         Value::File(id)
                     }
-                    _ if self.is_bndata_provider(type_name)
-                        && type_name.rsplit('.').next() == Some("DataFrame") =>
-                    {
-                        let id = self.next_dataframe;
-                        self.next_dataframe += 1;
-                        self.dataframes.insert(
-                            id,
-                            DataFrameResource {
-                                columns: Vec::new(),
-                            },
-                        );
-                        Value::DataFrame(id)
-                    }
-                    _ if type_name.rsplit('.').next() == Some("Fields")
-                        && (self.is_bnlog_provider(type_name)
-                            || type_name.ends_with("BNLog.Fields")) =>
-                    {
-                        let id = self.next_log_fields;
-                        self.next_log_fields += 1;
-                        self.log_fields.insert(id, HashMap::new());
-                        Value::LogFields(id)
-                    }
-                    _ if type_name.rsplit('.').next() == Some("Entry")
-                        && (self.is_bnlog_provider(type_name)
-                            || type_name.ends_with("BNLog.Entry")) =>
-                    {
-                        let id = self.next_log_entry;
-                        self.next_log_entry += 1;
-                        self.log_entries.insert(id, HashMap::new());
-                        Value::LogEntry(id)
-                    }
-                    _ if type_name.rsplit('.').next() == Some("Logger")
-                        && (self.is_bnlog_provider(type_name)
-                            || type_name.ends_with("BNLog.Logger")) =>
-                    {
-                        let id = self.next_log_logger;
-                        self.next_log_logger += 1;
-                        self.log_loggers.insert(
-                            id,
-                            LogLoggerResource {
-                                label: String::new(),
-                                context: std::collections::BTreeMap::new(),
-                                null_transports: Vec::new(),
-                                console_transports: Vec::new(),
-                                file_transports: Vec::new(),
-                                closed: false,
-                            },
-                        );
-                        Value::LogLogger(id)
-                    }
-                    _ if type_name.rsplit('.').next() == Some("Json")
-                        && self.is_bnjson_provider(type_name) =>
-                    {
-                        let id = self.next_json_value;
-                        self.next_json_value += 1;
-                        self.json_values.insert(id, crate::json::Value::Null);
-                        Value::Json(id)
-                    }
-                    _ => self.allocate_object(type_name, *span)?,
+                    _ => match self.library_allocate(type_name, *span) {
+                        Some(allocated) => allocated?,
+                        None => self.allocate_object(type_name, *span)?,
+                    },
                 };
                 set(values, *destination, allocated);
                 self.ownership_frames
