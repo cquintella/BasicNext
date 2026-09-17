@@ -21,27 +21,26 @@ dependencies = [
  "bn_diag",
  "bn_frontend",
  "bn_host_exec",
+ "bn_host_fs",
+ "bn_host_net",
  "bn_interp",
  "bn_ir",
+ "bn_lib_data",
+ "bn_lib_dispatch",
+ "bn_lib_json",
+ "bn_lib_log",
+ "bn_lib_math",
+ "bn_lib_web",
  "bn_llvm",
  "bn_rt",
  "bn_runtime",
  "bn_source",
  "bn_types",
  "bn_value",
- "dns-lookup",
- "http-body-util",
- "hyper",
- "hyper-util",
  "lsp-server",
  "lsp-types",
- "ring",
- "rustls",
  "serde",
  "serde_json",
- "socket2",
- "tokio",
- "tokio-rustls",
 ]
 
 [[package]]
@@ -66,6 +65,33 @@ name = "bn_host_exec"
 version = "0.5.1"
 
 [[package]]
+name = "bn_host_fs"
+version = "0.5.1"
+dependencies = [
+ "bn_diag",
+ "bn_interp",
+ "bn_rt",
+ "bn_source",
+ "bn_types",
+ "bn_value",
+]
+
+[[package]]
+name = "bn_host_net"
+version = "0.5.1"
+dependencies = [
+ "bn_diag",
+ "bn_interp",
+ "bn_limits",
+ "bn_source",
+ "bn_types",
+ "bn_value",
+ "dns-lookup",
+ "socket2",
+ "tokio",
+]
+
+[[package]]
 name = "bn_interp"
 version = "0.5.1"
 dependencies = [
@@ -86,6 +112,91 @@ dependencies = [
  "bn_source",
  "bn_types",
 ]
+
+[[package]]
+name = "bn_lib_data"
+version = "0.5.1"
+dependencies = [
+ "bn_diag",
+ "bn_interp",
+ "bn_rt",
+ "bn_source",
+ "bn_types",
+ "bn_value",
+]
+
+[[package]]
+name = "bn_lib_dispatch"
+version = "0.5.1"
+dependencies = [
+ "bn_diag",
+ "bn_interp",
+ "bn_limits",
+ "bn_source",
+ "bn_types",
+ "bn_value",
+ "ring",
+]
+
+[[package]]
+name = "bn_lib_json"
+version = "0.5.1"
+dependencies = [
+ "bn_diag",
+ "bn_interp",
+ "bn_source",
+ "bn_value",
+]
+
+[[package]]
+name = "bn_lib_log"
+version = "0.5.1"
+dependencies = [
+ "bn_diag",
+ "bn_interp",
+ "bn_rt",
+ "bn_source",
+ "bn_value",
+]
+
+[[package]]
+name = "bn_lib_math"
+version = "0.5.1"
+dependencies = [
+ "bn_diag",
+ "bn_interp",
+ "bn_rt",
+ "bn_runtime",
+ "bn_source",
+ "bn_types",
+ "bn_value",
+]
+
+[[package]]
+name = "bn_lib_web"
+version = "0.5.1"
+dependencies = [
+ "bn_diag",
+ "bn_host_net",
+ "bn_interp",
+ "bn_ir",
+ "bn_limits",
+ "bn_runtime",
+ "bn_source",
+ "bn_types",
+ "bn_value",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "ring",
+ "rustls",
+ "tokio",
+ "tokio-rustls",
+]
+
+[[package]]
+name = "bn_limits"
+version = "0.5.1"
 
 [[package]]
 name = "bn_llvm"

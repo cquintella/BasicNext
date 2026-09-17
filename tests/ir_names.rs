@@ -149,8 +149,14 @@ fn backends_only_decode_documented_name_shapes() {
     let mut sources = Vec::new();
     rust_files(Path::new("crates/bn_llvm/src"), &mut sources);
     rust_files(Path::new("crates/bn_interp/src"), &mut sources);
+    for entry in fs::read_dir("crates").expect("list crates").flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("bn_host_") || name.starts_with("bn_lib_") {
+            rust_files(&entry.path().join("src"), &mut sources);
+        }
+    }
     rust_files(Path::new("src/hosts"), &mut sources);
-    rust_files(Path::new("src/libraries"), &mut sources);
     sources.push("src/runtime.rs".into());
     let mut offenders = Vec::new();
     for path in &sources {

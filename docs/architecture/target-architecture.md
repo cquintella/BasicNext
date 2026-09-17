@@ -269,6 +269,95 @@ flowchart BT
 >
 > **`bn_source` leaf (locked 2026-09-05):** `SourceId` / `Revision` / `Span` are **not** frontend-private. `bn_source` sits **below** `bn_frontend`, `bn_diag`, and `bn_ir` so IR/diagnostics never import the frontend for locations — [frontend-session.md](frontend-session.md).
 
+### As built (bucket 0.5.1d, 2026-09-17)
+
+The DAG above was the plan; this is the workspace after the split. The
+direction held with two measured deviations: the runtime never depends on a
+host or library crate (they depend on **it**, through the provider seam —
+inversion of the planned `RT --> NET/HTTP/WEB` edges), and `bn_rt` (std-only)
+is a dependency of the interpreter for policy types.
+
+```mermaid
+flowchart BT
+  SRC[bn_source]
+  DIAG[bn_diag]
+  TYPES[bn_types]
+  VAL[bn_value]
+  IR[bn_ir]
+  FE[bn_frontend]
+  HEAP[bn_runtime]
+  BNRT["bn_rt (native runtime, C ABI)"]
+  EXECC["bn_host_exec (Exec core)"]
+  INTERP["bn_interp (language core + provider seam + HostEnv)"]
+  LIM[bn_limits]
+  HNET[bn_host_net]
+  HFS[bn_host_fs]
+  LMATH[bn_lib_math]
+  LJSON[bn_lib_json]
+  LLOG[bn_lib_log]
+  LDATA[bn_lib_data]
+  LDISP[bn_lib_dispatch]
+  LWEB[bn_lib_web]
+  LLVM[bn_llvm]
+  CLI["bn (CLI, LSP, DAP; registries; Exec/Clock/Random/Console shells)"]
+
+  DIAG --> SRC
+  IR --> DIAG
+  IR --> TYPES
+  FE --> IR
+  HEAP --> VAL
+  BNRT --> EXECC
+  INTERP --> IR
+  INTERP --> VAL
+  INTERP --> HEAP
+  INTERP --> DIAG
+  INTERP --> BNRT
+  HNET --> INTERP
+  HNET --> LIM
+  HFS --> INTERP
+  HFS --> BNRT
+  LMATH --> INTERP
+  LMATH --> BNRT
+  LJSON --> INTERP
+  LLOG --> INTERP
+  LLOG --> BNRT
+  LDATA --> INTERP
+  LDATA --> BNRT
+  LDISP --> INTERP
+  LDISP --> LIM
+  LWEB --> INTERP
+  LWEB --> HNET
+  LWEB --> LIM
+  LLVM --> IR
+  CLI --> FE
+  CLI --> INTERP
+  CLI --> LLVM
+  CLI --> HNET
+  CLI --> HFS
+  CLI --> EXECC
+  CLI -.->|feature lib-*| LMATH
+  CLI -.->|feature lib-*| LJSON
+  CLI -.->|feature lib-*| LLOG
+  CLI -.->|feature lib-*| LDATA
+  CLI -.->|feature lib-*| LDISP
+  CLI -.->|feature lib-*| LWEB
+```
+
+- **Two families, two registries.** `HostEnv.hosts` (HOST capabilities: language,
+  always built) and `HostEnv.libraries` (`BN*`: one crate each behind a `bn`
+  feature `lib-<name>`, all on by default). `bn --no-default-features` builds
+  the language with every HOST capability and no library.
+- **The seam** is `bn_interp::provider::{Provider, CoreContext}`; the core
+  routes `HOST.<cap>.*` and `#<module>.*` callees by name, never links a
+  provider. Details: `interp-extraction.md`, `host-traits.md`.
+- **`bn_host_spec`** from the plan does not exist as a crate: the frontend's
+  HOST catalog stayed inside `bn_frontend` (semantic tables); the runtime side
+  of "what HOST looks like" is the provider registry. Left as-is; revisit if
+  the LSP needs the catalog without the frontend.
+- **`bn_host_http`/`bn_host_web`** collapsed into `bn_lib_web` (BNWeb is a
+  library, not a HOST capability — AGENTS.md § Language & HOST surface).
+- Binaries (`bn`, `bnc`, LSP, DAP) still share the root crate (D-F2-05).
+
 ### Ownership table
 
 | Crate / binary | Owns | Depends on | Split justification |

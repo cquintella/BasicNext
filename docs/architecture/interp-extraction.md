@@ -88,6 +88,18 @@ Gate: `scripts/check-forbidden-deps.sh` rule **bn_interp→capability**. What is
 left for SPRINT 3 is moving each provider module into its own crate
 (`bn_host_*` / `bn_lib_*`) and unifying `HOST.Exec` with `bn_rt::exec`.
 
+## Closed (bucket 0.5.1d SPRINT 3, 2026-09-17)
+
+Every provider is a crate: `bn_host_net`, `bn_host_fs` (language; always
+built), `bn_lib_math`, `bn_lib_json`, `bn_lib_log`, `bn_lib_data`,
+`bn_lib_dispatch`, `bn_lib_web` (libraries; `bn` features `lib-*`, default
+on); `bn_limits` holds the embedded limits registry they share; `bn_host_exec`
+is the Exec core shared with `bn_rt`. The small HOST shells (`clock`,
+`random`, `console`, `exec`) and both registries stay in `bn` (`src/hosts/`,
+`src/libraries.rs`). `cargo build -p bn --no-default-features` = language +
+HOST only. This document is now history; the live picture is
+`target-architecture.md` § As built.
+
 ## Not blockers (already clean)
 
 - Value model: `bn_value::Value`; heap: `bn_runtime::Heap` (facade `src/heap.rs`).

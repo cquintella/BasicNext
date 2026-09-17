@@ -65,6 +65,10 @@ declare -a backend_paths=(
   src/net.rs src/net src/http.rs src/web.rs src/web src/web_state.rs
   src/dataframe.rs src/llvm.rs src/llvm crates/bn_rt/src crates/bn_runtime/src
   crates/bn_value/src crates/bn_llvm/src crates/bn_interp/src
+  crates/bn_host_exec/src crates/bn_host_fs/src crates/bn_host_net/src
+  crates/bn_lib_math/src crates/bn_lib_json/src crates/bn_lib_log/src
+  crates/bn_lib_data/src crates/bn_lib_dispatch/src crates/bn_lib_web/src
+  crates/bn_limits/src
 )
 
 check_matches() {

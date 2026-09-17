@@ -1,0 +1,27 @@
+[package]
+name = "bn_lib_dispatch"
+version = "0.5.1"
+edition = "2024"
+rust-version = "1.97"
+description = "Basic Next BNDispatch library provider: queues, tickets, sync primitives"
+license = "MPL-2.0"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+
+[dependencies]
+bn_diag = { path = "../bn_diag" }
+bn_interp = { path = "../bn_interp" }
+bn_source = { path = "../bn_source" }
+bn_types = { path = "../bn_types" }
+bn_value = { path = "../bn_value" }
+bn_limits = { path = "../bn_limits" }
+ring = "0.17.14"

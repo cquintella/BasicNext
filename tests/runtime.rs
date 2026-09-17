@@ -3530,3 +3530,44 @@ END FUNCTION
     assert_eq!(output, "timeout 9\n");
     // shared helper retained for suite
 }
+
+#[test]
+fn web_callback_uses_a_fresh_executor_and_projects_response() {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let path = std::env::temp_dir().join(format!(
+        "basicnext-web-callback-{}-{}.bn",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    let source = r#"IMPORT BNWeb AS Web
+FUNCTION Handler(request AS Web.Request, response AS Web.Response) AS VOID
+response.SetStatus(207)
+response.Write("isolated")
+END FUNCTION
+FUNCTION Start() AS VOID
+END FUNCTION
+"#;
+    fs::write(&path, source).expect("write callback fixture");
+    let graph = load(path.to_str().expect("fixture path")).expect("load fixture");
+    let models = analyze_modules(&graph).expect("analyze fixture");
+    let module = lower_graph(&graph, &models).expect("lower fixture");
+    let request = bn_lib_web::web::Request::new(
+        "GET",
+        "/callback",
+        Vec::new(),
+        "",
+        "127.0.0.1".parse().expect("peer address"),
+    )
+    .expect("construct callback request");
+    let response = bn_lib_web::execute_callback(
+        &module,
+        &fixed(vec!["callback.bn".into()], 0, 0),
+        "Handler",
+        request,
+        bn_lib_web::web::Response::new(),
+    )
+    .expect("execute callback");
+    let _ = fs::remove_file(path);
+    assert_eq!(response.status, 207);
+    assert_eq!(response.body, "isolated");
+}

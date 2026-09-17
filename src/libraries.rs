@@ -1,43 +1,49 @@
-//! `BN*` library modules served through the provider seam. Each library is a
-//! separate concern from the language; `default_libraries` is what the CLI
-//! registers on a `HostEnv`.
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-pub mod data;
-pub mod dispatch;
-pub mod json;
-pub mod log;
-pub mod math;
-pub mod web;
+//! Registry of the `BN*` library providers this build of `bn` ships. Each
+//! library is its own crate (`bn_lib_*`) behind a Cargo feature; a build
+//! without a feature simply does not register that library, and a program
+//! importing it gets `LIBRARY_PROVIDER_UNAVAILABLE` at the first call.
 
-use std::sync::Arc;
+use bn_interp::provider::Providers;
 
-use crate::runtime::provider::Providers;
-
-/// The libraries this build of `bn` ships. Feature-gated per library once the
-/// crates split (bucket 0.5.1d SPRINT 3).
+/// The libraries this build of `bn` ships (bucket 0.5.1d, D-F2-07).
 #[must_use]
 pub fn default_libraries() -> Providers {
+    #[allow(unused_mut)] // With no library feature the registry stays empty.
     let mut libraries = Providers::default();
-    libraries.register(math::NAME, Arc::new(|| Box::new(math::MathProvider)));
+    #[cfg(feature = "lib-math")]
     libraries.register(
-        json::NAME,
-        Arc::new(|| Box::new(json::JsonProvider::default())),
+        bn_lib_math::NAME,
+        std::sync::Arc::new(|| Box::new(bn_lib_math::MathProvider)),
     );
+    #[cfg(feature = "lib-json")]
     libraries.register(
-        log::NAME,
-        Arc::new(|| Box::new(log::LogProvider::default())),
+        bn_lib_json::NAME,
+        std::sync::Arc::new(|| Box::new(bn_lib_json::JsonProvider::default())),
     );
+    #[cfg(feature = "lib-log")]
     libraries.register(
-        data::NAME,
-        Arc::new(|| Box::new(data::DataProvider::default())),
+        bn_lib_log::NAME,
+        std::sync::Arc::new(|| Box::new(bn_lib_log::LogProvider::default())),
     );
+    #[cfg(feature = "lib-data")]
     libraries.register(
-        dispatch::NAME,
-        Arc::new(|| Box::new(dispatch::DispatchProvider::default())),
+        bn_lib_data::NAME,
+        std::sync::Arc::new(|| Box::new(bn_lib_data::DataProvider::default())),
     );
+    #[cfg(feature = "lib-dispatch")]
     libraries.register(
-        web::NAME,
-        Arc::new(|| Box::new(web::WebProvider::default())),
+        bn_lib_dispatch::NAME,
+        std::sync::Arc::new(|| Box::new(bn_lib_dispatch::DispatchProvider::default())),
+    );
+    #[cfg(feature = "lib-web")]
+    libraries.register(
+        bn_lib_web::NAME,
+        std::sync::Arc::new(|| Box::new(bn_lib_web::WebProvider::default())),
     );
     libraries
 }

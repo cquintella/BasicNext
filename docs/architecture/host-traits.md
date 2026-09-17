@@ -42,6 +42,14 @@ architecture § Breaking the two cycles).
 
 ---
 
+**As built (bucket 0.5.1d):** the provider trait is `bn_interp::provider::Provider`
+(`call`, `allocate`, `release`, `close_all`, `object_destroyed`, `as_any_mut`)
+with `CoreContext` as the inverted dependency; concrete crates are
+`bn_host_net`, `bn_host_fs`, `bn_host_exec` (core shared with `bn_rt`) and the
+libraries `bn_lib_*`. `bn_host_spec` was not cut (see `target-architecture.md`
+§ As built). The DAG rule holds: no host or library crate imports the frontend
+(`scripts/check-forbidden-deps.sh`), and the core imports none of them.
+
 ## Three dimensions (do not collapse into one “Capabilities” blob)
 
 The word **Capabilities** in earlier drafts mixed three different questions.
