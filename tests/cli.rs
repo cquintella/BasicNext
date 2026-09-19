@@ -3100,10 +3100,8 @@ fn run_without_filesystem_rejects_an_unused_import() {
 /// `arp`/`ndp` resolution, so the typed result matches `tests/runtime.rs`.
 #[test]
 fn native_host_net_neighbor_loopback_is_a_typed_result() {
-    let base = std::env::temp_dir().join(format!(
-        "basicnext-native-neighbor-{}",
-        std::process::id()
-    ));
+    let base =
+        std::env::temp_dir().join(format!("basicnext-native-neighbor-{}", std::process::id()));
     let _ = fs::remove_dir_all(&base);
     fs::create_dir_all(&base).expect("create native neighbor directory");
     let source = base.join("program.bn");
@@ -3133,5 +3131,148 @@ fn native_host_net_neighbor_loopback_is_a_typed_result() {
         "stderr: {}",
         String::from_utf8_lossy(&run.stderr)
     );
+    let _ = fs::remove_dir_all(&base);
+}
+
+/// Bucket 0.5.2a (2.5) — `bn run` honours `BN_EXEC_CAPTURE_LIMIT` and
+/// `BN_EXEC_TIMEOUT_MS` with the same observables as the native E10b/E14
+/// fixtures: one policy parser on both backends.
+#[test]
+fn interpreter_honours_exec_ceiling_env_inputs_like_native() {
+    let base = std::env::temp_dir().join(format!(
+        "basicnext-interp-exec-policy-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&base);
+    fs::create_dir_all(&base).expect("create directory");
+    let helper = compile_exec_helper(&base);
+    let helper_bn = helper.to_string_lossy().replace('\\', "\\\\");
+    let limited = base.join("limited.bn");
+    fs::write(
+        &limited,
+        format!(
+            "IMPORT HOST.Exec AS Exec\nFUNCTION Start() AS VOID\nLET r AS Exec.Result OR Error = Exec.Run(\"{helper_bn}\", [\"stdout-bytes\", \"4096\"])\nIF r IS Error THEN\nPRINT \"limit\", r.Code\nELSE\nPRINT \"unexpected\", LEN(r.Stdout)\nEND IF\nEND FUNCTION\n"
+        ),
+    )
+    .expect("write limited program");
+    let run = bn()
+        .args(["run"])
+        .arg(&limited)
+        .env("BN_EXEC_CAPTURE_LIMIT", "1024")
+        .output()
+        .expect("run limited program");
+    assert_eq!(
+        run.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "limit 8\n");
+
+    let slow = base.join("slow.bn");
+    fs::write(
+        &slow,
+        format!(
+            "IMPORT HOST.Exec AS Exec\nFUNCTION Start() AS VOID\nLET r AS Exec.Result OR Error = Exec.Run(\"{helper_bn}\", [\"block\"])\nIF r IS Error THEN\nPRINT \"timeout\", r.Code\nELSE\nPRINT \"unexpected\", r.ReturnCode\nEND IF\nEND FUNCTION\n"
+        ),
+    )
+    .expect("write slow program");
+    let run = bn()
+        .args(["run"])
+        .arg(&slow)
+        .env("BN_EXEC_TIMEOUT_MS", "200")
+        .output()
+        .expect("run slow program");
+    assert_eq!(
+        run.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "timeout 9\n");
+    let _ = fs::remove_dir_all(&base);
+}
+
+/// Bucket 0.5.2a (2.3 / 2.5, D-P-04) — a malformed policy input stops the
+/// process before `Start` on both backends: `CONFIG_INVALID`, exit 2, no
+/// program output, never a silent fallback to the defaults.
+#[test]
+fn malformed_policy_input_is_fail_closed_on_both_backends() {
+    let base =
+        std::env::temp_dir().join(format!("basicnext-malformed-policy-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&base);
+    fs::create_dir_all(&base).expect("create directory");
+    let source = base.join("program.bn");
+    fs::write(
+        &source,
+        "FUNCTION Start() AS VOID\nPRINT \"ran\"\nEND FUNCTION\n",
+    )
+    .expect("write program");
+    let cases = [
+        ("BN_EXEC_TIMEOUT_MS", "abc"),
+        ("BN_EXEC_CAPTURE_LIMIT", "-5"),
+        ("BN_EXEC_POLICY", "allow"),
+        ("BN_FS_POLICY", "bogus"),
+    ];
+    for (variable, value) in cases {
+        let run = bn()
+            .args(["run"])
+            .arg(&source)
+            .env(variable, value)
+            .output()
+            .expect("run with malformed policy");
+        assert_eq!(run.status.code(), Some(2), "{variable}={value}");
+        assert!(run.stdout.is_empty(), "{variable}={value}");
+        let stderr = String::from_utf8_lossy(&run.stderr);
+        assert!(stderr.contains(variable), "{variable}={value}: {stderr}");
+
+        let json = bn()
+            .args(["eval", "--format", "json", "PRINT 1"])
+            .env(variable, value)
+            .output()
+            .expect("run json with malformed policy");
+        assert_eq!(json.status.code(), Some(2), "{variable}={value}");
+        let envelope: serde_json::Value =
+            serde_json::from_slice(&json.stdout).expect("one JSON envelope");
+        assert_eq!(envelope["diagnostics"][0]["code"], "CONFIG_INVALID");
+    }
+
+    // Native: the emitted Start checks bn_rt_policy_init and stops. A program
+    // that imports a HOST capability is required for the policy prologue.
+    let native_source = base.join("native.bn");
+    fs::write(
+        &native_source,
+        "IMPORT HOST.Clock AS Clock\nFUNCTION Start() AS VOID\nIF Clock.Now() > 0 THEN\nPRINT \"ran\"\nEND IF\nEND FUNCTION\n",
+    )
+    .expect("write native program");
+    let binary = base.join("native");
+    let build = bn()
+        .args(["build", "-o", binary.to_str().expect("UTF-8 binary path")])
+        .arg(&native_source)
+        .output()
+        .expect("build native program");
+    assert_eq!(
+        build.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    for (variable, value) in cases {
+        let run = std::process::Command::new(&binary)
+            .env(variable, value)
+            .output()
+            .expect("run native with malformed policy");
+        assert_eq!(run.status.code(), Some(2), "native {variable}={value}");
+        assert!(run.stdout.is_empty(), "native {variable}={value}");
+        let stderr = String::from_utf8_lossy(&run.stderr);
+        assert!(
+            stderr.contains("CONFIG_INVALID") && stderr.contains(variable),
+            "native {variable}={value}: {stderr}"
+        );
+    }
+    let ok = std::process::Command::new(&binary)
+        .output()
+        .expect("run native without policy");
+    assert_eq!(String::from_utf8_lossy(&ok.stdout), "ran\n");
     let _ = fs::remove_dir_all(&base);
 }

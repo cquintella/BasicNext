@@ -107,10 +107,16 @@ A check or compile-time gate **alone** does not control operations the binary pe
    sensitive call; recheck operation and scope at every call boundary.
 5. **Complete before acceptance:** specify scope intersection, configuration
    precedence, missing/invalid policy behavior, CLI defaults and compatibility,
-   native/wasm encoding, embedding and diagnostic taxonomy. TODO: finish and
-   test these details in bucket 2b.3. Default-deny remains the direction for
-   powerful surfaces without policy; existing local CLI behavior requires an
-   explicit migration contract, not an assumed default change.
+   native/wasm encoding, embedding and diagnostic taxonomy. **Decided
+   (bucket 0.5.2a, D-P-03/04):** the environment inputs are `BN_FS_POLICY`,
+   `BN_EXEC_POLICY`, `BN_EXEC_CAPTURE_LIMIT`, `BN_EXEC_TIMEOUT_MS`; an absent
+   or empty value leaves the policy; a malformed value is `CONFIG_INVALID` and
+   the process does not start — `bn run` exits 2, the compiled `Start` checks
+   `bn_rt_policy_init`'s result and aborts before user code. Never fall back to
+   defaults. Scope encoding for network (CIDR/port) remains open. Default-deny
+   remains the direction for powerful surfaces without policy; existing local
+   CLI behavior requires an explicit migration contract, not an assumed
+   default change.
 
 Acceptance includes attempted external privilege widening, scope combinations,
 initialization ordering and absent/malformed policy tests. This contract governs
@@ -122,6 +128,14 @@ Interpret **4.1 Bind HostEnv** and compile-linked **`bn_rt` init** are two faces
 ---
 
 ## HostEnv, providers, and the three dimensions
+
+**One policy type (0.5.2a).** `bn_rt::policy::Policy` is the execution-policy
+value on both faces: `HostEnv` holds one and the native image keeps one behind
+a single `RwLock` static installed by `bn_rt_policy_init`. The filesystem
+decision (`allows_path`, `open`, `remove_file`) and the environment parser
+(`Policy::narrow_from_env`) have exactly one implementation, in `bn_rt`;
+interpreter and compiled artifact differ only in how the value is delivered
+(CLI flags + one env read vs. artifact ceiling + one env read).
 
 At interpret start, subprocess **4.1 Bind HostEnv** installs:
 

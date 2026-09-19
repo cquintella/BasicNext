@@ -76,122 +76,19 @@ pub struct HostEnv {
     arguments: Vec<String>,
     clock: ClockKind,
     random_state: AtomicU64,
-    filesystem: FilesystemPolicy,
-    exec_allowed: bool,
-    /// Wall-clock ceiling for HOST.Exec.Run (D-H1-02). Policy may reduce; never exceeds 60s.
-    exec_timeout: std::time::Duration,
-    /// Per-stream capture ceiling in bytes (D-H1-02). Policy may reduce; never exceeds 16 MiB.
-    exec_capture_limit: usize,
+    /// Execution policy: capability bits, HOST.Exec ceilings (D-H1-02) and the
+    /// filesystem scope — the one type shared with the native runtime (0.5.2a).
+    policy: bn_rt::Policy,
     data_provider: Arc<dyn DataProvider>,
     libraries: provider::Providers,
     hosts: provider::Providers,
 }
 
-#[derive(Clone, Debug)]
-pub struct FilesystemPolicy {
-    read_roots: Option<Vec<bn_rt::secure_fs::RootedDir>>,
-    write_roots: Option<Vec<bn_rt::secure_fs::RootedDir>>,
-}
-
-impl FilesystemPolicy {
-    fn unrestricted() -> Self {
-        Self {
-            read_roots: None,
-            write_roots: None,
-        }
-    }
-
-    fn denied() -> Self {
-        Self {
-            read_roots: Some(Vec::new()),
-            write_roots: Some(Vec::new()),
-        }
-    }
-
-    #[must_use]
-    pub fn allows_capability(&self) -> bool {
-        self.read_roots
-            .as_ref()
-            .is_none_or(|roots| !roots.is_empty())
-            || self
-                .write_roots
-                .as_ref()
-                .is_none_or(|roots| !roots.is_empty())
-    }
-
-    #[must_use]
-    pub fn allows_path(&self, path: &Path, write: bool) -> bool {
-        let roots = if write {
-            &self.write_roots
-        } else {
-            &self.read_roots
-        };
-        let Some(roots) = roots else {
-            return true;
-        };
-        roots.iter().any(|root| root.contains_resolved(path))
-    }
-
-    /// # Errors
-    ///
-    /// Propagates the I/O error; `PermissionDenied` when the path is outside the policy roots.
-    pub fn open(
-        &self,
-        path: &Path,
-        mode: bn_rt::secure_fs::OpenMode,
-    ) -> std::io::Result<std::fs::File> {
-        let roots = if mode == bn_rt::secure_fs::OpenMode::Read {
-            &self.read_roots
-        } else {
-            &self.write_roots
-        };
-        let Some(roots) = roots else {
-            let mut options = std::fs::OpenOptions::new();
-            match mode {
-                bn_rt::secure_fs::OpenMode::Read => {
-                    options.read(true);
-                }
-                bn_rt::secure_fs::OpenMode::Write => {
-                    options.write(true).create(true).truncate(true);
-                }
-                bn_rt::secure_fs::OpenMode::Append => {
-                    options.append(true).create(true);
-                }
-            }
-            return options.open(path);
-        };
-        roots
-            .iter()
-            .filter(|root| root.contains(path))
-            .max_by_key(|root| root.path().components().count())
-            .ok_or_else(|| {
-                std::io::Error::new(
-                    std::io::ErrorKind::PermissionDenied,
-                    "filesystem path is outside the execution policy",
-                )
-            })?
-            .open(path, mode)
-    }
-
-    /// # Errors
-    ///
-    /// Propagates the I/O error; `PermissionDenied` when the path is outside the policy roots.
-    pub fn remove_file(&self, path: &Path) -> std::io::Result<()> {
-        let Some(roots) = &self.write_roots else {
-            return std::fs::remove_file(path);
-        };
-        roots
-            .iter()
-            .filter(|root| root.contains(path))
-            .max_by_key(|root| root.path().components().count())
-            .ok_or_else(|| {
-                std::io::Error::new(
-                    std::io::ErrorKind::PermissionDenied,
-                    "filesystem path is outside the execution policy",
-                )
-            })?
-            .remove_file(path)
-    }
+fn sandbox_policy() -> bn_rt::Policy {
+    let mut policy = bn_rt::Policy::unrestricted();
+    policy.deny_filesystem();
+    policy.deny_exec();
+    policy
 }
 
 impl Clone for HostEnv {
@@ -202,10 +99,7 @@ impl Clone for HostEnv {
             random_state: AtomicU64::new(
                 self.random_state.load(std::sync::atomic::Ordering::Relaxed),
             ),
-            filesystem: self.filesystem.clone(),
-            exec_allowed: self.exec_allowed,
-            exec_timeout: self.exec_timeout,
-            exec_capture_limit: self.exec_capture_limit,
+            policy: self.policy.clone(),
             data_provider: Arc::clone(&self.data_provider),
             libraries: self.libraries.clone(),
             hosts: self.hosts.clone(),
@@ -229,10 +123,7 @@ impl HostEnv {
             arguments,
             clock: ClockKind::System,
             random_state: AtomicU64::new(host_random_seed()),
-            filesystem: FilesystemPolicy::unrestricted(),
-            exec_allowed: true,
-            exec_timeout: std::time::Duration::from_secs(60),
-            exec_capture_limit: 16 * 1024 * 1024,
+            policy: bn_rt::Policy::unrestricted(),
             data_provider: Arc::new(StandardDataProvider),
             libraries: provider::Providers::default(),
             hosts: provider::Providers::default(),
@@ -248,10 +139,7 @@ impl HostEnv {
                 monotonic_ns,
             },
             random_state: AtomicU64::new(1),
-            filesystem: FilesystemPolicy::unrestricted(),
-            exec_allowed: true,
-            exec_timeout: std::time::Duration::from_secs(60),
-            exec_capture_limit: 16 * 1024 * 1024,
+            policy: bn_rt::Policy::unrestricted(),
             data_provider: Arc::new(StandardDataProvider),
             libraries: provider::Providers::default(),
             hosts: provider::Providers::default(),
@@ -266,10 +154,7 @@ impl HostEnv {
             arguments,
             clock: ClockKind::System,
             random_state: AtomicU64::new(host_random_seed()),
-            filesystem: FilesystemPolicy::denied(),
-            exec_allowed: false,
-            exec_timeout: std::time::Duration::from_secs(60),
-            exec_capture_limit: 16 * 1024 * 1024,
+            policy: sandbox_policy(),
             data_provider: Arc::new(StandardDataProvider),
             libraries: provider::Providers::default(),
             hosts: provider::Providers::default(),
@@ -279,14 +164,14 @@ impl HostEnv {
     /// Creates an environment that denies filesystem capability imports.
     #[must_use]
     pub fn without_filesystem(mut self) -> Self {
-        self.filesystem = FilesystemPolicy::denied();
+        self.policy.deny_filesystem();
         self
     }
 
     /// Denies HOST.Exec capability for this execution.
     #[must_use]
     pub fn without_exec(mut self) -> Self {
-        self.exec_allowed = false;
+        self.policy.deny_exec();
         self
     }
 
@@ -294,7 +179,8 @@ impl HostEnv {
     /// to the compiled default (D-H1-02: policy may reduce, never exceed).
     #[must_use]
     pub fn with_exec_timeout_secs(mut self, seconds: u64) -> Self {
-        self.exec_timeout = std::time::Duration::from_secs(seconds.min(60));
+        self.policy
+            .reduce_exec_timeout(std::time::Duration::from_secs(seconds));
         self
     }
 
@@ -302,14 +188,14 @@ impl HostEnv {
     /// clamped to the compiled default (D-H1-02).
     #[must_use]
     pub fn with_exec_capture_limit(mut self, bytes: usize) -> Self {
-        self.exec_capture_limit = bytes.min(16 * 1024 * 1024);
+        self.policy.reduce_exec_capture_limit(bytes);
         self
     }
 
     /// Restricts writes while preserving the default read capability.
     #[must_use]
     pub fn without_filesystem_writes(mut self) -> Self {
-        self.filesystem.write_roots = Some(Vec::new());
+        self.policy.fs_mut().set_read_only();
         self
     }
 
@@ -343,10 +229,10 @@ impl HostEnv {
                 })
                 .collect::<Result<Vec<_>, _>>()
         };
-        self.filesystem = FilesystemPolicy {
-            read_roots: Some(canonicalize_roots(read_roots)?),
-            write_roots: Some(canonicalize_roots(write_roots)?),
-        };
+        *self.policy.fs_mut() = bn_rt::FsPolicy::rooted(
+            canonicalize_roots(read_roots)?,
+            canonicalize_roots(write_roots)?,
+        );
         Ok(self)
     }
 
@@ -372,8 +258,29 @@ impl HostEnv {
 
     /// Filesystem policy in force for this host.
     #[must_use]
-    pub fn filesystem(&self) -> &FilesystemPolicy {
-        &self.filesystem
+    pub fn filesystem(&self) -> &bn_rt::FsPolicy {
+        self.policy.fs()
+    }
+
+    /// The execution policy in force for this host.
+    #[must_use]
+    pub fn policy(&self) -> &bn_rt::Policy {
+        &self.policy
+    }
+
+    /// Narrows the policy from the environment inputs (`BN_FS_POLICY`,
+    /// `BN_EXEC_POLICY`, `BN_EXEC_CAPTURE_LIMIT`, `BN_EXEC_TIMEOUT_MS`) through
+    /// `get`, read once by the caller; the same parser a compiled artifact runs.
+    ///
+    /// # Errors
+    ///
+    /// Returns the malformed input; nothing was applied.
+    pub fn narrowed_by_env(
+        mut self,
+        get: impl Fn(&str) -> Option<String>,
+    ) -> Result<Self, bn_rt::PolicyError> {
+        self.policy.narrow_from_env(get)?;
+        Ok(self)
     }
 
     /// Replaces the library providers this host offers (CLI features, tests).
@@ -384,15 +291,15 @@ impl HostEnv {
     }
 
     pub fn exec_allowed(&self) -> bool {
-        self.exec_allowed
+        self.policy.exec().allowed
     }
 
     pub fn exec_timeout(&self) -> std::time::Duration {
-        self.exec_timeout
+        self.policy.exec().timeout
     }
 
     pub fn exec_capture_limit(&self) -> usize {
-        self.exec_capture_limit
+        self.policy.exec().capture_limit
     }
 
     pub fn random_state(&self) -> &AtomicU64 {
@@ -416,10 +323,7 @@ impl HostEnv {
             arguments: self.arguments.clone(),
             clock: self.clock.clone(),
             random_state: AtomicU64::new(seed),
-            filesystem: self.filesystem.clone(),
-            exec_allowed: self.exec_allowed,
-            exec_timeout: self.exec_timeout,
-            exec_capture_limit: self.exec_capture_limit,
+            policy: self.policy.clone(),
             data_provider: Arc::clone(&self.data_provider),
             libraries: self.libraries.clone(),
             hosts: self.hosts.clone(),
@@ -701,7 +605,7 @@ fn execute_with_host_inner<'debug>(
     debug_hook: Option<DebugHook<'debug>>,
     debug_control: Option<DebugControl<'debug>>,
 ) -> Result<u8, Diagnostic> {
-    if !host.filesystem.allows_capability()
+    if !host.filesystem().allows_capability()
         && let Some(span) = module.filesystem_import
     {
         return Err(runtime_error(

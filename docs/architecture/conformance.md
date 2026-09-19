@@ -40,6 +40,15 @@ Static diagnostics from the shared Frontend (2.0–3.0) are one place where both
 
 [`../../tests/test_compiler_parity.py`](../../tests/test_compiler_parity.py) (CI) already diffs interpret vs compile on **return code + stdout** for a fixture list. Keep and grow it; **do not** treat it as complete conformance.
 
+Cross-backend fixtures added by bucket 0.5.2a (`tests/cli.rs`):
+`native_host_net_neighbor_loopback_is_a_typed_result` (mirrors the
+interpreter's loopback Neighbor test), `interpreter_honours_exec_ceiling_env_inputs_like_native`
+(`bn run` under `BN_EXEC_CAPTURE_LIMIT` / `BN_EXEC_TIMEOUT_MS` prints exactly what
+the native E10b / E14 fixtures print) and `malformed_policy_input_is_fail_closed_on_both_backends`
+(`CONFIG_INVALID`, exit 2, no program output, on `bn run`, `bn eval --format json`
+and a compiled artifact). These verify the *shells*; the cores are single by
+construction (`tests/check-shared-cores.sh`).
+
 ### Required gate expansion (matrix-linked)
 
 | Family | Evidence beyond happy-path stdout |

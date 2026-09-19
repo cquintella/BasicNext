@@ -8,6 +8,7 @@ use super::*;
 pub(crate) const BN_RT_DECLS: &str = "\
 @.bn_log_error = private constant [23 x i8] c\"BNLog operation failed\\00\"
 declare i32 @bn_rt_policy_init(i32, i64)
+declare void @bn_rt_policy_check(i32)
 declare i32 @bn_rt_policy_filesystem_sandboxed()
 declare i32 @bn_rt_policy_filesystem_root(i32, ptr)
 declare i32 @bn_rt_exec_run(ptr, ptr, i32, ptr)

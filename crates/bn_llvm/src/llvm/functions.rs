@@ -210,7 +210,14 @@ pub(crate) fn emit_function(
             if is_start {
                 let ceiling = super::policy_ceiling(module);
                 if ceiling != 0 {
-                    let _ = writeln!(text, "  call i32 @bn_rt_policy_init(i32 1, i64 {ceiling})");
+                    let _ = writeln!(
+                        text,
+                        "  %bn_policy_status = call i32 @bn_rt_policy_init(i32 1, i64 {ceiling})"
+                    );
+                    let _ = writeln!(
+                        text,
+                        "  call void @bn_rt_policy_check(i32 %bn_policy_status)"
+                    );
                     if policy.sandboxed {
                         let _ = writeln!(text, "  call i32 @bn_rt_policy_filesystem_sandboxed()");
                         for (index, _) in policy.read_roots.iter().enumerate() {

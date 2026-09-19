@@ -56,12 +56,7 @@ fn exec_run(
     span: Span,
 ) -> Result<Value, Diagnostic> {
     require_arity("HOST.Exec.Run", arguments, 2, span)?;
-    let host = core.host();
-    let policy = bn_host_exec::Policy {
-        allowed: host.exec_allowed(),
-        timeout: host.exec_timeout(),
-        capture_limit: host.exec_capture_limit(),
-    };
+    let policy = core.host().policy().exec();
     let Value::String(program) = &arguments[0] else {
         return Err(type_mismatch(
             "STRING",

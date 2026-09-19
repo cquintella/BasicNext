@@ -70,9 +70,15 @@ BN_FS_POLICY=deny ./app
 BN_FS_POLICY=read-only ./app
 ```
 
+BN_EXEC_POLICY=deny ./app
+BN_EXEC_CAPTURE_LIMIT=1048576 BN_EXEC_TIMEOUT_MS=5000 ./app
 Environment configuration is therefore a narrowing mechanism. It is not a
 replacement for the artifact ceiling, and `BN_FS_POLICY=unrestricted` cannot
-remove restrictions from a sandboxed binary.
+remove restrictions from a sandboxed binary. A value the runtime does not
+recognise (for example `BN_FS_POLICY=bogus` or `BN_EXEC_TIMEOUT_MS=abc`) is a
+configuration error: the process stops before `Start` with `CONFIG_INVALID`
+and exit status 2, on `bn run` and in a compiled artifact alike. Policy is
+never silently replaced by the defaults.
 
 The same policy model applies to `bn run` so that interpretation and native
 compilation have the same observable authorization behavior:

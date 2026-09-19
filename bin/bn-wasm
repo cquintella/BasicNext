@@ -65,6 +65,13 @@ const imports = {
         bn_rt_policy_init() {
             return 0;
         },
+        // Mirrors bn_rt::policy::bn_rt_policy_check: a rejected policy stops
+        // the program before Start's user code (exit status 2).
+        bn_rt_policy_check(status) {
+            if (status !== 0) {
+                process.exit(2);
+            }
+        },
         bn_rt_random_seed(seed) {
             randomState = BigInt.asUintN(64, BigInt(seed)) || 1n;
             return 0;

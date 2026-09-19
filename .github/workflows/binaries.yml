@@ -41,6 +41,7 @@ jobs:
       - name: Rust quality gate
         run: |
           tests/check-forbidden-deps.sh
+          tests/check-shared-cores.sh
           cargo fmt --check
           # Native `bn build` links the bn_rt staticlib; cargo test alone may not emit it.
           cargo build -p bn_rt --locked
@@ -89,15 +90,24 @@ jobs:
           toolchain: "1.98"
           targets: ${{ matrix.target }}
       - name: Build
-        run: cargo build --release --locked --target ${{ matrix.target }} --bin bn --bin bnc
+        run: |
+          cargo build --release --locked --target ${{ matrix.target }} --bin bn --bin bnc
+          cargo build --release --locked --target ${{ matrix.target }} -p bn_rt
       - name: Stage binaries
         shell: bash
         run: |
           mkdir -p dist
           exe=""
-          if [[ "${{ matrix.target }}" == *-windows-* ]]; then exe=".exe"; fi
+          rt_src="libbn_rt.a"
+          rt_dst="libbn_rt-${{ matrix.platform }}.a"
+          if [[ "${{ matrix.target }}" == *-windows-* ]]; then
+            exe=".exe"
+            rt_src="bn_rt.lib"
+            rt_dst="bn_rt-${{ matrix.platform }}.lib"
+          fi
           cp "target/${{ matrix.target }}/release/bn${exe}" "dist/bn-${{ matrix.platform }}${exe}"
           cp "target/${{ matrix.target }}/release/bnc${exe}" "dist/bnc-${{ matrix.platform }}${exe}"
+          cp "target/${{ matrix.target }}/release/${rt_src}" "dist/${rt_dst}"
           chmod +x "dist/bn-${{ matrix.platform }}${exe}" "dist/bnc-${{ matrix.platform }}${exe}" || true
       - uses: actions/upload-artifact@v4
         with:

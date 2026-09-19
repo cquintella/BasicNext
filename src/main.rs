@@ -1356,33 +1356,19 @@ fn run_loaded(
             .with_default_providers()
             .without_filesystem()
     };
-    match env::var("BN_FS_POLICY").as_deref() {
-        Ok("deny") => host = host.without_filesystem(),
-        Ok("read-only") => host = host.without_filesystem_writes(),
-        Ok("") | Err(_) => {}
-        Ok(value) => {
-            let message = format!("invalid BN_FS_POLICY '{value}' (expected deny or read-only)");
+    // One environment read, one parser (`bn_rt::Policy::narrow_from_env`):
+    // the same four inputs a compiled artifact honours in `bn_rt_policy_init`.
+    host = match host.narrowed_by_env(|name| env::var(name).ok()) {
+        Ok(host) => host,
+        Err(error) => {
+            let message = error.to_string();
             if options.output_format == OutputFormat::Json {
                 return eval_json_error("CONFIG_INVALID", message, "config", 2);
             }
             eprintln!("error: {message}");
             return tool_error();
         }
-    }
-    // Restricted profiles deny HOST.Exec through the same env var the compiled
-    // artifact honors in bn_rt, so interpret and native share one policy switch.
-    match env::var("BN_EXEC_POLICY").as_deref() {
-        Ok("deny") => host = host.without_exec(),
-        Ok("") | Err(_) => {}
-        Ok(value) => {
-            let message = format!("invalid BN_EXEC_POLICY '{value}' (expected deny)");
-            if options.output_format == OutputFormat::Json {
-                return eval_json_error("CONFIG_INVALID", message, "config", 2);
-            }
-            eprintln!("error: {message}");
-            return tool_error();
-        }
-    }
+    };
     let stdin = io::stdin();
     if options.output_format == OutputFormat::Json {
         let mut output = Vec::new();

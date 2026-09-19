@@ -314,6 +314,7 @@ flowchart BT
   INTERP --> BNRT
   HNET --> INTERP
   HNET --> LIM
+  HNET --> BNRT
   HFS --> INTERP
   HFS --> BNRT
   LMATH --> INTERP
@@ -368,7 +369,7 @@ flowchart BT
 | **`bn_host_spec`** | HOST member/capability schema consumed by semantic & docs | `bn_diag` | Lifecycle + clear API + reduces FE↔HOST churn (3) |
 | **`bn_frontend`** | lexer, parser, AST, tokens, module_graph, semantic, **lowering to BN IR**, `FrontendSession` | **`bn_source`**, diag, host_spec, **`bn_ir`** (writes IR) | Lifecycle (IDE+CLI) + API + coupling (3) |
 | **`bn_ir`** | **own** IR types/ids, instructions, module model, **validation** (incl. CFG definite assignment), support-matrix types | **`bn_source`**, diag (**not** frontend/semantic) | Semver lifecycle + API + coupling (3); **consumable without the analyzer** |
-| **`bn_host_net`** | sockets/TLS primitives, CIDR, low-level net | diag | Deploy + API + lifecycle + coupling (4) |
+| **`bn_host_net`** | interpreter `HOST.Net` provider: tokio listener/stream wrappers, CIDR; **re-exports** the shared core (`bn_rt::net`: addresses, resolve/reverse, ping, trusted-path neighbor) | diag, interp, **bn_rt** (0.5.2a) | Deploy + API + lifecycle + coupling (4) |
 | **`bn_host_web`** | Request/Response/EgressPolicy models, web limits | net, diag | Deploy + API + lifecycle (4) |
 | **`bn_host_http`** | client/server transport; **`Handler` trait** (no runtime import) | web, diag | Deploy + API + **breaks callback cycle** (4) |
 | **`bn_runtime`** | Executor scheduler, HostEnv, provider facades, heap, dispatch, dataframe *ops*, debug hooks | ir, value, host_*, spec, diag | Reference runtime lifecycle + deploy + API (4) |

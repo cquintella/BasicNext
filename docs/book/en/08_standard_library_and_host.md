@@ -176,6 +176,7 @@ END FUNCTION
 | Restricted profiles | Deny `HOST.Exec` by default (for example Jupyter-style hosts) |
 
 Do not confuse `HOST.Exec` with `HOST.SQLite` / `Db.Exec(sql)` (SQL execution), which is a different capability.
+| Policy inputs | `BN_EXEC_POLICY=deny`, `BN_EXEC_CAPTURE_LIMIT=<bytes>`, `BN_EXEC_TIMEOUT_MS=<ms>` narrow the call on `bn run` and in compiled artifacts alike; they can only reduce the ceilings. A malformed value stops the process before `Start` (`CONFIG_INVALID`, exit 2) on both backends |
 
 ### `HOST.Net`
 

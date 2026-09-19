@@ -12,17 +12,17 @@ fn filesystem_policy_separates_read_and_write_roots() {
         .expect("current directory is a valid policy root");
     assert!(
         policy
-            .filesystem
+            .filesystem()
             .allows_path(&root.join("Cargo.toml"), false)
     );
     assert!(
         !policy
-            .filesystem
+            .filesystem()
             .allows_path(&root.join("Cargo.toml"), true)
     );
     assert!(
         !policy
-            .filesystem
+            .filesystem()
             .allows_path(std::path::Path::new("/etc/hosts"), false)
     );
 }
@@ -30,27 +30,30 @@ fn filesystem_policy_separates_read_and_write_roots() {
 #[test]
 fn host_env_sandbox_defaults_to_fail_closed_filesystem() {
     let env = super::HostEnv::sandbox(Vec::new());
-    assert!(!env.filesystem.allows_capability());
-    assert!(!env.filesystem.allows_path(std::path::Path::new("/"), false));
+    assert!(!env.filesystem().allows_capability());
     assert!(
-        !env.filesystem
+        !env.filesystem()
+            .allows_path(std::path::Path::new("/"), false)
+    );
+    assert!(
+        !env.filesystem()
             .allows_path(std::path::Path::new("/etc/hosts"), false)
     );
     assert!(
-        !env.filesystem
+        !env.filesystem()
             .allows_path(std::path::Path::new("Cargo.toml"), true)
     );
 }
 
 #[test]
 fn host_env_exec_policy_can_be_denied_independently() {
-    assert!(super::HostEnv::system(Vec::new()).exec_allowed);
+    assert!(super::HostEnv::system(Vec::new()).exec_allowed());
     assert!(
         !super::HostEnv::system(Vec::new())
             .without_exec()
-            .exec_allowed
+            .exec_allowed()
     );
-    assert!(!super::HostEnv::sandbox(Vec::new()).exec_allowed);
+    assert!(!super::HostEnv::sandbox(Vec::new()).exec_allowed());
 }
 
 #[test]
@@ -73,7 +76,7 @@ fn filesystem_policy_mitigates_symlink_escape() {
             .unwrap();
 
         // Canonicalization resolves the link to outside.txt, which is outside sandbox_dir -> must be denied!
-        assert!(!policy.filesystem.allows_path(&symlink_path, false));
+        assert!(!policy.filesystem().allows_path(&symlink_path, false));
     }
 
     let _ = std::fs::remove_dir_all(&temp_dir);
@@ -101,7 +104,7 @@ fn filesystem_policy_open_cannot_be_redirected_after_root_configuration() {
 
     let mut text = String::new();
     policy
-        .filesystem
+        .filesystem()
         .open(&root.join("value.txt"), bn_rt::secure_fs::OpenMode::Read)
         .unwrap()
         .read_to_string(&mut text)

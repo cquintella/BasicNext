@@ -58,9 +58,9 @@ pub use net::{
     join_resolver_tasks, neighbor, ping, reverse_timeout,
 };
 pub use policy::{
-    POLICY_ALL, POLICY_CLOCK, POLICY_CONSOLE, POLICY_DISPATCH, POLICY_EXEC, POLICY_FILESYSTEM,
-    POLICY_INVALID, POLICY_NET, POLICY_OK, POLICY_RANDOM, POLICY_VERSION, bn_rt_policy_init,
-    bn_rt_policy_restrict,
+    FsPolicy, POLICY_ALL, POLICY_CLOCK, POLICY_CONSOLE, POLICY_DISPATCH, POLICY_EXEC,
+    POLICY_FILESYSTEM, POLICY_INVALID, POLICY_NET, POLICY_OK, POLICY_RANDOM, POLICY_VERSION,
+    Policy, PolicyError, bn_rt_policy_check, bn_rt_policy_init, bn_rt_policy_restrict,
 };
 pub use terminal::terminal_dimensions;
 
@@ -1889,7 +1889,7 @@ mod tests {
 
     #[test]
     fn console_c_abi_rechecks_execution_policy_at_call_boundary() {
-        super::policy::reset_for_tests();
+        let _policy = super::policy::reset_for_tests();
         assert_eq!(
             super::bn_rt_policy_init(POLICY_VERSION, POLICY_ALL),
             POLICY_OK
@@ -1904,7 +1904,6 @@ mod tests {
             super::bn_rt_net_addresses_get(std::ptr::null(), 0, std::ptr::null_mut()),
             2
         );
-        super::policy::reset_for_tests();
     }
 
     #[test]
@@ -2167,7 +2166,7 @@ mod tests {
 
     #[test]
     fn clock_functions_respect_policy_clock() {
-        super::policy::reset_for_tests();
+        let _policy = super::policy::reset_for_tests();
         assert!(super::bn_rt_clock_now() > 0);
         assert!(super::bn_rt_clock_timer() >= 0);
 
@@ -2175,8 +2174,6 @@ mod tests {
         super::policy::bn_rt_policy_restrict(super::policy::POLICY_CONSOLE);
         assert_eq!(super::bn_rt_clock_now(), -1);
         assert_eq!(super::bn_rt_clock_timer(), -1);
-
-        super::policy::reset_for_tests();
     }
 
     #[test]
