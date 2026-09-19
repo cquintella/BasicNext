@@ -1,30 +1,41 @@
+// A value type (STRUCT) next to a reference type (CLASS).
 
-
-STRUCT 	Location
-    X AS INTEGER
-    Y AS INTEGER
-END STRUCT
-
+STRUCT Location
+    X AS INTEGER = 0
+    Y AS INTEGER = 0
 END STRUCT
 
 CLASS Alien
+    PRIVATE id AS INTEGER
+    PRIVATE x AS INTEGER
+    PRIVATE y AS INTEGER
 
-    LET id AS NUMBER
-    LET pos AS Location
-    FUNCTION CONSTRUCTOR()
-
-
-    END FUNCTION
-    FUNCTION Funck(ind AS INTEGER) AS INTEGER
-
-    RETURN ind++
+    PUBLIC FUNCTION CONSTRUCTOR(id AS INTEGER, at AS Location)
+        SELF.id = id
+        SELF.x = at.X
+        SELF.y = at.Y
     END FUNCTION
 
+    PUBLIC FUNCTION MoveRight(steps AS INTEGER) AS INTEGER
+        SELF.x += steps
+        RETURN SELF.x
+    END FUNCTION
 
+    PUBLIC FUNCTION Describe() AS VOID
+        PRINT "Alien", SELF.id, "at", SELF.x, SELF.y
+    END FUNCTION
 END CLASS
 
 FUNCTION Start() AS VOID
-    LET xeta AS Object = NEW(Alien)
-    LET minus AS Alien = NEW(Alien)
-    PRINT xeta.Funck(10)
-    minus.Funck(3)
+    LET spawn AS Location
+    spawn.X = 10
+    spawn.Y = 3
+
+    LET zeta AS Alien = NEW Alien(1, spawn)
+    LET minus AS Alien = NEW Alien(2, spawn)
+
+    zeta.Describe()
+    PRINT zeta.MoveRight(10)
+    PRINT minus.MoveRight(3)
+    minus.Describe()
+END FUNCTION
