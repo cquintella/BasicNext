@@ -66,7 +66,7 @@ WHILE counter < 5
 END WHILE
 ```
 
-> **Proposed for 0.5.2 — not shipped.** `counter++` / `counter--` as **statements** (never expressions) will be exact sugar for `+= 1` / `-= 1`. Spec: `0.5.md` § 0.5.2 additions (S1). Today `bn check` rejects `counter++`.
+Since 0.5.2, `counter++` and `counter--` are accepted as **statements** — exact sugar for `counter += 1` / `counter -= 1`, with the same typing and overflow checks. They are not expressions: `PRINT counter++` is a syntax error.
 
 ### The `REPEAT` Loop
 

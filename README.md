@@ -21,18 +21,20 @@ writing software.
 
 ## Name
 
-**Basic Next**  (written as two words)
+**Basic Next** (two words) is the language name. **BasicNext** is the repository
+and package identifier.
 
-`BasicNext` is the repository and
-package identifier.
+This project is **not** [NextBASIC](https://wiki.specnext.dev/NextBASIC), the
+extended Sinclair BASIC that ships with the
+[ZX Spectrum Next](https://www.specnext.com/).
 
-_Important Information:This is not [NextBASIC](https://wiki.specnext.dev/NextBASIC), the extended Sinclair BASIC interpreter that ships with the [ZX Spectrum Next](https://www.specnext.com/)._
+The `bn` tool is both an interpreter and an LLVM-backed compiler for Basic Next
+programs:
 
-
-`bn` is a compiler and interpreter to a Basic Next
-program, the compiler generates IR for LLVM-backed compiler.
-- To compile use `bn build`.
-- To run interpreted code use `bn run`.
+- `bn run` — validate, lower to BN IR, and interpret
+- `bn build` — compile the supported IR subset to a native or Wasm artifact
+- `bn eval` — evaluate a source fragment (argument or `--stdin`) without a temp file
+- `bn check` / `bn lex` / `bn lsp` / `bn dap` — check, lex, language server, debugger
 
 ## Design goals
 
@@ -48,10 +50,16 @@ of design principles.
 
 ## 🚀 Status: Version 0.5.1
 
-Basic Next 0.5.1 builds on 0.5.0 with an evaluation subcommand (`bn eval`),
-expressive structured diagnostics, an ordered module search path, and the
-`HOST.Exec` capability with interpreter↔native parity. See
-[What's New — 0.5.1](#whats-new--051) below.
+**Latest release:** [v0.5.1](https://github.com/cquintella/BasicNext/releases/tag/v0.5.1)
+(tag on `main`). Basic Next 0.5.1 builds on 0.5.0 with `bn eval`, expressive
+structured diagnostics, an ordered module search path, and `HOST.Exec` with
+interpreter↔native parity. See [What's New — 0.5.1](#whats-new--051) below.
+
+Language work toward **0.5.2** (qualified import, `PROTECTED` / `OVERRIDE`,
+`++` / `--` statements, static construction factories) is tracked in
+`ongoing/bucket-0.5.2.md` and the consolidated
+[`docs/language/0.5/`](docs/language/0.5/0.5.md) specification. The tutorial book
+under `docs/book/en/` is being aligned to that line.
 
 The Basic Next reference implementation includes the Rust frontend, typed IR
 interpreter, HOST capabilities, external BN modules, HTTP hardening, bounded
@@ -137,7 +145,7 @@ The Basic Next reference implementation is a source-spanned lexer, handwritten r
 - `bn run file.bn [-- args...]` — Validates and immediately executes the accepted interpreter surface.
 - `bn build [--target native|wasm32] file.bn` — Emits LLVM IR, or an artifact with `-o`, for the supported compiler subset.
 
-See the [0.5.0 contract](docs/0.5.0/language-0.5.0.md) for delivery status and accepted semantics.
+See the consolidated [0.5 language specification](docs/language/0.5/0.5.md) (and the historical [0.5.0 tree](docs/0.5.0/language-0.5.0.md)) for accepted semantics.
 
 To see under the hood, try:
 - `bn check -v file.bn` (reports completed stages)
@@ -165,7 +173,7 @@ curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/i
 curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.sh | PREFIX="$HOME/.local" bash
 # custom prefix, or a pinned version:
 curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.sh | bash -s -- --prefix /opt/basicnext
-curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.sh | BN_VERSION=v0.5.0 bash
+curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.sh | BN_VERSION=v0.5.1 bash
 ```
 
 **2. Install script from a checkout**
@@ -211,7 +219,7 @@ Alternatively, download the pre-compiled binary for your operating system (Linux
 The asset names and checksums are listed in [`binaries/README.md`](binaries/README.md).
 
 **4. For Developers (Build from Source)**
-If you prefer building from source and have Rust (1.97+) installed, you can install the CLI from this repository:
+If you prefer building from source and have Rust **1.98** installed (see `rust-toolchain.toml`), you can install the CLI from this repository:
 ```shell
 cargo install --path .
 ```
@@ -225,10 +233,13 @@ The trivial case is zero-config: `bn run hello.bn` does not require a project
 file or manifest. While developing from this repository, use:
 
 ```shell
-cargo run -- run examples/hello.bn
-cargo run -- run examples/language-tour.bn
-cargo run -- check --emit ir examples/factorial.bn
-cargo run -- --help
+cargo run --bin bn -- run examples/hello.bn
+cargo run --bin bn -- run examples/language-tour.bn
+cargo run --bin bn -- run examples/filesystem_tour.bn
+cargo run --bin bn -- run examples/bnlog_tour.bn
+cargo run --bin bn -- eval 'PRINT 1 + 1'
+cargo run --bin bn -- check --emit ir examples/factorial.bn
+cargo run --bin bn -- --help
 ```
 
 Release check from a clean tree:
@@ -237,7 +248,7 @@ Release check from a clean tree:
 cargo fmt --check && cargo test && cargo clippy --all-targets -- -D warnings && git diff --check
 ```
 
-Requires Rust 1.97. Current limitations include partial LLVM lowering;
+Requires Rust **1.98** (`rust-toolchain.toml`). Current limitations include partial LLVM lowering;
 `TIMEZONE` does not apply zone rules. Linked wasm32 modules run through
 `node bin/bn-wasm`.
 
@@ -247,16 +258,18 @@ Requires Rust 1.97. Current limitations include partial LLVM lowering;
 ## 📂 Repository layout
 
 - `docs/book/en/` — English language tutorial ([toc](docs/book/en/toc.md)).
-- `docs/language/0.2/` — accepted 0.2 language contract; `0.1/` is frozen.
+- `docs/language/0.5/` — **normative** 0.5.x language contract ([`0.5.md`](docs/language/0.5/0.5.md), EBNF, keywords). Older `0.2/`–`0.4/` trees remain historical.
 - `todo/proposals/` — proposals not yet fully accepted.
-- `done/proposals/` — accepted proposals kept for history.
+- `done/` — closed buckets and accepted proposal history (often local / gitignored).
 - `docs/man/bn.1` — Unix man page for the `bn` tool.
 - `docs/project/` — delivery planning, [usage](docs/project/usage.md), and the
   [experience contract](docs/project/experience-contract.md).
 - `binaries/` — download index for prebuilt `bn` (binaries live on Releases).
-- `examples/` — programs that guide the specification.
+- `examples/` — programs that guide the specification (see below).
 - [`examples/parallel-examples.md`](examples/parallel-examples.md) — bounded
   `BNDispatch` examples, including a parallel Leibniz-series pi calculation.
+- Editor support: [basicnext-vscode](https://github.com/cquintella/basicnext-vscode)
+  (standalone VS Code extension; Jupyter kernel is also a separate repository).
 - Jupyter kernel — separate repository: [cquintella/basicnext-jupyter](https://github.com/cquintella/basicnext-jupyter).
 - VS Code extension — separate repository: [cquintella/basicnext-vscode](https://github.com/cquintella/basicnext-vscode).
 - `PHILOSOPHY.md` — design principles.
@@ -288,7 +301,21 @@ END FUNCTION
 - `counter += 1`: Safe, standard arithmetic mutation.
 - `END WHILE` and `END FUNCTION`: Blocks are explicitly closed with named `END` statements, avoiding ambiguity and dangling braces.
 
-*Check out `examples/language-tour.bn` for a complete demonstration of the language capabilities!*
+### Examples worth running
+
+| Program | Focus |
+| --- | --- |
+| [`examples/hello.bn`](examples/hello.bn) | Minimal `Start` |
+| [`examples/language-tour.bn`](examples/language-tour.bn) | Broad language surface |
+| [`examples/filesystem_tour.bn`](examples/filesystem_tour.bn) | `HOST.FileSystem` write / read / close |
+| [`examples/bnlog_tour.bn`](examples/bnlog_tour.bn) | `BNLog` console + file transports |
+| [`examples/bnstring_tour.bn`](examples/bnstring_tour.bn) | `BNString` |
+| [`examples/bndata_tour.bn`](examples/bndata_tour.bn) | `BNData` + CSV via FileSystem |
+| [`examples/exec-demo.bn`](examples/exec-demo.bn) | `HOST.Exec` (when present in tree) |
+| [`examples/socket.bn`](examples/socket.bn) | `HOST.Net` TCP/UDP |
+
+Prefer `cargo run --bin bn -- run …` from a checkout so you use this tree’s
+toolchain (a globally installed `bn` may lag behind `main`).
 
 ---
 

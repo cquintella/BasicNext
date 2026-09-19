@@ -120,9 +120,9 @@ NAN
 `IMPORT HOST.Exec AS <alias>`; `Exec`, `Run`, `Result`, `ReturnCode`, `Stdout`
 and `Stderr` are identifiers on host types, not keywords.
 
-## 0.5.2 changes (proposed — not shipped)
+## 0.5.2 changes
 
-Intended surface recorded by bucket `ongoing/bucket-0.5.2.md` SPRINT 0. Since
+Surface shipped by bucket `ongoing/bucket-0.5.2.md`. Since
 2026-09-19 (SPRINT 3) the lexer registry is generated from **this** file and
 `0.5.ebnf` (`crates/bn_frontend/build.rs`), so `PROTECTED` and `OVERRIDE` are
 reserved words in the shipped lexer from that build on; `PROTECTED` semantics
@@ -130,10 +130,10 @@ ship with O3, `OVERRIDE` semantics with O2.
 
 | Change | Detail |
 |---|---|
-| **Added (pending O3)** | `PROTECTED` — third `visibility`: same class and `EXTENDS` subclasses only. |
-| **Added (pending O2)** | `OVERRIDE` — required marker on a method that overrides an inherited instance method. |
-| **Operators (pending S1)** | `++` / `--` — statement-only postfix tokens, sugar for `+= 1` / `-= 1`. Tokens, not reserved words. |
-| **No keyword** | I1 qualified import, O1 downcast (candidate A reuses `AS`; candidate B `TRYCAST` would add a word — TODO normative gap §2.1), O4 factories. |
+| **Added (O3)** | `PROTECTED` — third `visibility`: same class and `EXTENDS` subclasses only. |
+| **Added (O2)** | `OVERRIDE` — required marker on a method that overrides an inherited instance method. |
+| **Operators (S1)** | `++` / `--` — statement-only postfix tokens, sugar for `+= 1` / `-= 1`. Tokens, not reserved words. |
+| **No keyword** | I1 qualified import, O4 factories. O1 downcast is deferred (its surface, `AS` vs `TRYCAST`, is decided with it). |
 
 Toolchain note: until 2026-09-19 `build.rs` read the historical
 `docs/0.5.0/` tree; it now reads the active 0.5 tree (bucket 0.5.2 SPRINT 3).

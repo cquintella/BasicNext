@@ -20,7 +20,7 @@ By default, all fields and methods within a class are `PRIVATE`. Private members
 
 To make a member available to external code, you must explicitly mark it as `PUBLIC`.
 
-> **Proposed for 0.5.2 — not shipped.** A third level, `PROTECTED`, will make a member visible to the declaring class and its `EXTENDS` subclasses only. Spec: `0.5.md` § 0.5.2 additions (O3).
+A third level, `PROTECTED` (0.5.2), makes a member visible to the declaring class and to classes that `EXTENDS` it — including subclasses in other modules — and to nothing else; reaching it from outside is `PROTECTED_ACCESS`.
 
 Inside a class method, you cannot access instance fields or methods using an unqualified name. You must always explicitly qualify instance access using the `SELF` keyword.
 
@@ -74,7 +74,7 @@ LET id AS INTEGER = Session.NextId()
 
 Re-entering the initialization of static fields raises a `STATIC_INITIALIZATION_CYCLE` error at runtime, ensuring partially initialized state is never observable.
 
-> **Proposed for 0.5.2 — not shipped.** Multiple ways to construct a class are expressed with `PUBLIC STATIC FUNCTION` factories that return `NEW` (for example `Temperature.FromFahrenheit(f)`); a second `CONSTRUCTOR` signature stays a static error. Spec: `0.5.md` § 0.5.2 additions (O4).
+Multiple ways to construct a class are expressed with `PUBLIC STATIC FUNCTION` factories that return `NEW` (for example `Temperature.FromFahrenheit(f)`, see `examples/temperature-factories.bn`); a second `CONSTRUCTOR` signature is a static error.
 
 ## Inheritance
 
@@ -108,7 +108,7 @@ LET myAnimal AS Animal = myDog // Upcast
 myAnimal.Speak() // Prints "Woof"
 ```
 
-> **Proposed for 0.5.2 — not shipped.** (1) A method that overrides an inherited one will have to carry `OVERRIDE` (`PUBLIC OVERRIDE FUNCTION Speak() AS STRING`); `bn check` will fail when the marker is missing or when no ancestor declares the method. (2) Narrowing a base-typed reference will be written `LET d AS Dog OR Error = pet AS Dog` and tested with `IS Error` — no exceptions. Spec: `0.5.md` § 0.5.2 additions (O2, O1). Today `bn check` rejects both forms.
+Since 0.5.2 a method that overrides an inherited one must carry `OVERRIDE`, written `PUBLIC OVERRIDE FUNCTION Speak() AS STRING`: `bn check` reports `OVERRIDE_REQUIRED` when the marker is missing and `OVERRIDE_WITHOUT_BASE` when no ancestor declares an overridable method. `STATIC` methods are not virtual. Narrowing a base-typed reference back to a subclass (`pet AS Dog` → `Dog OR Error`) is specified but not yet available.
 
 ## Contracts (`INTERFACE` and `IMPLEMENTS`)
 

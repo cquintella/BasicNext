@@ -50,7 +50,23 @@ while (($# > 0)); do
 done
 
 # --- bootstrap: not running from a checkout (curl | bash) ----------------------
-if [[ ! -f "$0" || ! -f "$(dirname "$0")/../Cargo.toml" ]]; then
+# When piped (`curl | bash`), $0 is often "bash" and BASH_SOURCE[0] is empty or a
+# /dev/fd path — never treat that as a repo checkout. Only skip bootstrap when
+# this file lives next to ../Cargo.toml (./scripts/install.sh from a clone).
+_self="${BASH_SOURCE[0]:-}"
+_bootstrap=0
+case "$_self" in
+  "" | /dev/fd/* | /proc/self/fd/*) _bootstrap=1 ;;
+  *)
+    if [[ ! -f "$_self" ]]; then
+      _bootstrap=1
+    else
+      _dir=$(cd "$(dirname "$_self")" && pwd -P)
+      [[ -f "$_dir/../Cargo.toml" ]] || _bootstrap=1
+    fi
+    ;;
+esac
+if ((_bootstrap)); then
   for tool in curl tar; do
     command -v "$tool" >/dev/null 2>&1 || { echo "error: $tool is required" >&2; exit 1; }
   done
@@ -112,8 +128,9 @@ if [[ ! -f "$0" || ! -f "$(dirname "$0")/../Cargo.toml" ]]; then
   fi
   repo_root="$src"   # the rest of this script installs from the downloaded tree
 else
-  repo_root=$(cd "$(dirname "$0")/.." && pwd -P)
+  repo_root=$(cd "$(dirname "$_self")/.." && pwd -P)
 fi
+
 # ------------------------------------------------------------------------------
 
 cd "$repo_root"

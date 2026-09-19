@@ -1,4 +1,5 @@
-// A value type (STRUCT) next to a reference type (CLASS).
+// Value type (STRUCT) next to reference types (CLASS).
+// 0.5.2 OO: PROTECTED members, OVERRIDE, and polymorphic dispatch.
 
 STRUCT Location
     X AS INTEGER = 0
@@ -7,8 +8,8 @@ END STRUCT
 
 CLASS Alien
     PRIVATE id AS INTEGER
-    PRIVATE x AS INTEGER
-    PRIVATE y AS INTEGER
+    PROTECTED x AS INTEGER
+    PROTECTED y AS INTEGER
 
     PUBLIC FUNCTION CONSTRUCTOR(id AS INTEGER, at AS Location)
         SELF.id = id
@@ -21,8 +22,29 @@ CLASS Alien
         RETURN SELF.x
     END FUNCTION
 
+    // Subclasses may call this; the outside world may not.
+    PROTECTED FUNCTION Label() AS STRING
+        RETURN "Alien"
+    END FUNCTION
+
     PUBLIC FUNCTION Describe() AS VOID
-        PRINT "Alien", SELF.id, "at", SELF.x, SELF.y
+        PRINT SELF.Label(), SELF.id, "at", SELF.x, SELF.y
+    END FUNCTION
+END CLASS
+
+CLASS Scout EXTENDS Alien
+    PUBLIC FUNCTION CONSTRUCTOR(id AS INTEGER, at AS Location)
+        SUPER(id, at)
+    END FUNCTION
+
+    PROTECTED OVERRIDE FUNCTION Label() AS STRING
+        RETURN "Scout"
+    END FUNCTION
+
+    // Uses PROTECTED coordinates from the base class.
+    PUBLIC FUNCTION Advance(steps AS INTEGER) AS VOID
+        SELF.x += steps
+        SELF.y += 1
     END FUNCTION
 END CLASS
 
@@ -32,10 +54,16 @@ FUNCTION Start() AS VOID
     spawn.Y = 3
 
     LET zeta AS Alien = NEW Alien(1, spawn)
-    LET minus AS Alien = NEW Alien(2, spawn)
+    LET scout AS Alien = NEW Scout(2, spawn)
 
     zeta.Describe()
     PRINT zeta.MoveRight(10)
-    PRINT minus.MoveRight(3)
-    minus.Describe()
+
+    // Polymorphic call: Scout.Label via OVERRIDE while typed as Alien.
+    scout.Describe()
+    PRINT scout.MoveRight(3)
+
+    LET unit AS Scout = NEW Scout(3, spawn)
+    unit.Advance(5)
+    unit.Describe()
 END FUNCTION

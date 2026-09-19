@@ -4,7 +4,7 @@ resolver = "3"
 
 [package]
 name = "bn"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 rust-version = "1.98"
 description = "Basic Next reference implementation"

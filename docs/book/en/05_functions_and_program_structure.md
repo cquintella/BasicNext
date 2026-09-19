@@ -83,4 +83,4 @@ Module resolution happens relative to the project root (the directory of the exe
 
 Basic Next checks for import cycles and will reject the program if a circular dependency is detected.
 
-> **Proposed for 0.5.2 — not shipped.** `IMPORT BNString.String AS Str` will bind the alias to a single `EXPORT` of `BNString` (sibling exports stay invisible); a dotted path falls back to today's nested-module meaning only when the last segment is not an export. Spec: `docs/language/0.5/0.5.md` § 0.5.2 additions (I1). Until then `bn check` reports `MODULE_NOT_FOUND` for this form.
+Since 0.5.2 a dotted path can name **one exported type**: `IMPORT BNString.String AS Str` binds `Str` to the `String` class only (sibling exports stay invisible), and `NEW Str("x")` / `LET s AS Str` work as with the module form. A dotted path falls back to the nested-module meaning only when the last segment is not an export; naming something that is neither is `IMPORT_EXPORT_NOT_FOUND`. Exported functions and constants still require the whole-module import.

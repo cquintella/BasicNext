@@ -18,18 +18,16 @@
     No new keyword, statement, or expression form; the capability is reached
     through ordinary import and member-call syntax.
 
-  0.5.2 amendments (PROPOSED — not shipped until bucket 0.5.2 §11 reconciles
-  this grammar to the toolchain; until then the toolchain rejecting these
-  forms is correct; see 0.5.md § "0.5.2 additions"):
-  - I1: module-import-path unchanged; a multi-segment path now means
+  0.5.2 amendments (shipped; see 0.5.md § "0.5.2 additions"):
+  - I1: module-import-path unchanged; a multi-segment path means
     module + export first, nested module second (semantic, 0.5.md).
   - S1: increment-statement (target "++" | "--"), statement only.
   - O3: visibility gains "PROTECTED" (reserved word).
   - O2: method-declaration = [ "OVERRIDE" ] function-declaration inside a
-    class ("OVERRIDE" reserved). Keyword order is a TODO (normative gap).
-  - O1: cast-suffix accepts a class named-type (downcast to T OR Error).
-    Candidate A; candidate B (TRYCAST) is a TODO (normative gap).
+    class ("OVERRIDE" reserved), written PUBLIC OVERRIDE FUNCTION.
   - O4: no grammar change (STATIC factories are a documented pattern).
+  - O1 (class downcast via cast-suffix named-type) is DEFERRED: not in this
+    grammar until Error is constructible (0.5.md § 0.5.2 additions, O1).
 
   Dialect: ISO 14977-style EBNF. Quoted text is a terminal; {} repeats zero
   or more times; [] is optional; () groups alternatives; and ?...? is a lexer
@@ -49,9 +47,9 @@ host-import-path     = "HOST" "." importable-host-capability-name { "." identifi
 importable-host-capability-name = "Clock" | "Console" | "Exec" | "FileSystem" | "Net" | "Random" ;
 host-capability-name = "Args" | "Clock" | "Console" | "FileSystem" | "Net" | "Random" ;
 module-import-path   = identifier { "." identifier } ;
-                       (* 0.5.2 proposed (I1): with two or more segments the last
-                          segment names an EXPORT of the preceding module when one
-                          exists; nested-module resolution is the fallback. *)
+                       (* 0.5.2 (I1): with two or more segments the last segment
+                          names an EXPORT of the preceding module when one exists;
+                          nested-module resolution is the fallback. *)
 declaration          = [ "EXPORT" ] ( function-declaration | class-declaration
                        | struct-declaration | interface-declaration ) ;
 
@@ -78,10 +76,10 @@ class-member         = [ visibility ] ( static-member | field-declaration
                        | method-declaration | constructor-declaration
                        | destructor-declaration ) ;
 method-declaration   = [ "OVERRIDE" ] function-declaration ;
-                       (* 0.5.2 proposed (O2). TODO (normative gap, bucket §2.2):
-                          keyword order; proposed PUBLIC OVERRIDE FUNCTION. *)
+                       (* 0.5.2 (O2): "OVERRIDE" stands immediately before
+                          "FUNCTION" (PUBLIC OVERRIDE FUNCTION Name). *)
 visibility           = "PUBLIC" | "PRIVATE" | "PROTECTED" ;
-                       (* "PROTECTED": 0.5.2 proposed (O3). *)
+                       (* "PROTECTED": 0.5.2 (O3). *)
 static-member        = "STATIC" ( static-field-declaration | function-declaration ) ;
 field-declaration    = identifier "AS" variable-type [ "=" expression ] NEWLINE ;
 static-field-declaration = identifier "AS" variable-type [ "=" expression ] NEWLINE ;
@@ -151,11 +149,10 @@ assignment-target    = identifier { member-suffix | index-suffix }
                        | "SELF" member-suffix { member-suffix | index-suffix } ;
 assignment-operator  = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "**=" ;
 increment-statement  = assignment-target ( "++" | "--" ) ;
-                       (* 0.5.2 proposed (S1): statement only; exact sugar for
-                          += 1 / -= 1. TODO (normative gap, bucket §2.6): the
-                          "--" token is produced only for adjacent characters and
-                          accepted only after an assignment target at statement
-                          start, so a--b is a syntax error. *)
+                       (* 0.5.2 (S1): statement only; exact sugar for += 1 / -= 1.
+                          The "++" / "--" tokens are produced only for adjacent
+                          characters and accepted only after an assignment target
+                          at statement start, so a--b is a syntax error. *)
 call-statement       = call-expression ;
 print-statement      = "PRINT" [ expression-list ] ;
 input-statement      = "INPUT" assignment-target
@@ -207,10 +204,9 @@ call-expression      = primary { member-suffix | index-suffix | cast-suffix }
 call-suffix          = "(" [ expression-list ] ")" ;
 member-suffix        = "." identifier ;
 index-suffix         = "[" expression "]" ;
-cast-suffix          = "AS" ( numeric-type | "BOOLEAN" | named-type ) ;
-                       (* named-type: 0.5.2 proposed (O1) class downcast, type
-                          T OR Error. TODO (normative gap, bucket §2.1): candidate
-                          A (this form) vs candidate B ("TRYCAST" expr "AS" T). *)
+cast-suffix          = "AS" ( numeric-type | "BOOLEAN" ) ;
+                       (* Class downcast ("AS" named-type → T OR Error, O1) is
+                          deferred past 0.5.2; see 0.5.md. *)
 primary              = literal | identifier | "SELF" | "SUPER" | input-expression | len-expression
                        | sizeof-expression | host-capability-expression | new-expression
                        | vector-literal | async-submit-expression | await-expression
