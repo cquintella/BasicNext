@@ -533,7 +533,7 @@ impl<'a> Parser<'a> {
     pub(crate) fn function_member_start(&self) -> bool {
         let mut offset = 0;
         while matches!(self.tokens.get(self.index + offset).map(|token| &token.kind),
-            Some(TokenKind::Keyword(word)) if matches!(word.as_str(), "PUBLIC" | "PRIVATE" | "PROTECTED" | "STATIC"))
+            Some(TokenKind::Keyword(word)) if matches!(word.as_str(), "PUBLIC" | "PRIVATE" | "PROTECTED" | "STATIC" | "OVERRIDE"))
         {
             offset += 1;
         }

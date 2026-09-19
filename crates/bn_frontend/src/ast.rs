@@ -132,6 +132,8 @@ pub enum Statement {
         name: String,
         visibility: Option<Visibility>,
         is_static: bool,
+        /// `OVERRIDE` marker (0.5.2 O2): the method replaces an inherited one.
+        is_override: bool,
         parameters: Vec<Parameter>,
         signature: Option<FunctionSignature>,
         body: Option<Block>,

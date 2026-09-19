@@ -239,6 +239,8 @@ fn semantic_fixtures_are_rejected() {
         "tests/grammar/invalid/filesystem-directory-api.bn",
         "tests/grammar/invalid/local-vector-negative-dimension.bn",
         "tests/grammar/invalid/protected-outside-hierarchy.bn",
+        "tests/grammar/invalid/override-required.bn",
+        "tests/grammar/invalid/override-without-base.bn",
     ] {
         let source = SourceFile::new(path, fs::read_to_string(path).expect("read fixture"));
         let tokens = lex(&source).expect("lex fixture");
@@ -814,4 +816,24 @@ fn hexadecimal_pointer_length_is_a_fixed_length() {
             length: PointerLength::Fixed(16),
         }
     );
+}
+
+#[test]
+fn override_diagnostics_name_the_rule() {
+    for (path, code) in [
+        (
+            "tests/grammar/invalid/override-required.bn",
+            "OVERRIDE_REQUIRED",
+        ),
+        (
+            "tests/grammar/invalid/override-without-base.bn",
+            "OVERRIDE_WITHOUT_BASE",
+        ),
+    ] {
+        let source = SourceFile::new(path, fs::read_to_string(path).expect("read fixture"));
+        let tokens = lex(&source).expect("lex fixture");
+        let program = parse(&tokens).expect("parse fixture");
+        let diagnostic = analyze(&program).expect_err("fixture must fail");
+        assert_eq!(diagnostic.code, code, "{path}");
+    }
 }

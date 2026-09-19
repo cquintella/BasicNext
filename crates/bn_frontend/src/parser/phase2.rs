@@ -55,31 +55,17 @@ impl Parser<'_> {
                 continue;
             }
             if outer_end == "CLASS" && self.function_member_start() {
-                let start = self.peek().span.start;
-                let name = self.member_function_name()?;
-                let (visibility, is_static) = self.member_modifiers();
-                let parameters = self.member_function_parameters()?;
-                let signature = self.member_function_signature()?;
-                self.consume_to_newline()?;
-                let (end, body) = self.block("FUNCTION")?;
-                let span = Span { start, end };
-                statements.push(crate::ast::Statement::MemberFunction {
-                    name,
-                    visibility,
-                    is_static,
-                    parameters,
-                    signature,
-                    body: Some(crate::ast::Block {
-                        statements: body,
-                        span,
-                    }),
-                    span: Span { start, end },
-                });
+                statements.push(self.class_method()?);
                 continue;
             }
             if outer_end == "INTERFACE" && self.keyword("FUNCTION") {
                 let name = self.member_function_name()?;
                 let (visibility, is_static) = self.member_modifiers();
+                if self.override_modifier()? {
+                    return Err(self.error(
+                        "no OVERRIDE on INTERFACE functions (they are implemented, not overridden)",
+                    ));
+                }
                 let parameters = self.member_function_parameters()?;
                 let signature = self.member_function_signature()?;
                 let start = self.take().span.start;
@@ -92,6 +78,7 @@ impl Parser<'_> {
                     name,
                     visibility,
                     is_static,
+                    is_override: false,
                     parameters,
                     signature,
                     body: None,
@@ -102,6 +89,31 @@ impl Parser<'_> {
             statements.push(self.statement_node()?);
             self.consume_to_newline()?;
         }
+    }
+
+    fn class_method(&mut self) -> Result<crate::ast::Statement, Diagnostic> {
+        let start = self.peek().span.start;
+        let name = self.member_function_name()?;
+        let (visibility, is_static) = self.member_modifiers();
+        let is_override = self.override_modifier()?;
+        let parameters = self.member_function_parameters()?;
+        let signature = self.member_function_signature()?;
+        self.consume_to_newline()?;
+        let (end, body) = self.block("FUNCTION")?;
+        let span = Span { start, end };
+        Ok(crate::ast::Statement::MemberFunction {
+            name,
+            visibility,
+            is_static,
+            is_override,
+            parameters,
+            signature,
+            body: Some(crate::ast::Block {
+                statements: body,
+                span,
+            }),
+            span,
+        })
     }
 
     pub(crate) fn loop_statement(

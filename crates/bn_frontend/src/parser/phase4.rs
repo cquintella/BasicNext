@@ -2,6 +2,26 @@
 use super::*;
 
 impl<'a> Parser<'a> {
+    /// `OVERRIDE` is accepted only immediately before `FUNCTION`
+    /// (`PUBLIC OVERRIDE FUNCTION Name…`, lock §2.2 of bucket 0.5.2).
+    pub(crate) fn override_modifier(&self) -> Result<bool, Diagnostic> {
+        let line = self.line_tokens();
+        let Some(position) = line.iter().position(
+            |token| matches!(&token.kind, TokenKind::Keyword(word) if word == "OVERRIDE"),
+        ) else {
+            return Ok(false);
+        };
+        let before_function = matches!(
+            line.get(position + 1).map(|token| &token.kind),
+            Some(TokenKind::Keyword(word)) if word == "FUNCTION"
+        );
+        if before_function {
+            Ok(true)
+        } else {
+            Err(self.error("OVERRIDE immediately before FUNCTION (PUBLIC OVERRIDE FUNCTION Name)"))
+        }
+    }
+
     pub(crate) fn member_modifiers(&self) -> (Option<crate::ast::Visibility>, bool) {
         let line = self.line_tokens();
         let visibility = line.iter().find_map(|token| match &token.kind {

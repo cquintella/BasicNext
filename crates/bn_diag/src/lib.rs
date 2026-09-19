@@ -168,6 +168,8 @@ diagnostic_registry! {
     NOT_CALLABLE { code: "NOT_CALLABLE", fluent: "NOT_CALLABLE", severity: Error, schema: LEGACY_MESSAGE },
     NOT_FOUND { code: "NOT_FOUND", fluent: "NOT_FOUND", severity: Error, schema: LEGACY_MESSAGE },
     NULL_POINTER_ACCESS { code: "NULL_POINTER_ACCESS", fluent: "NULL_POINTER_ACCESS", severity: Error, schema: LEGACY_MESSAGE },
+    OVERRIDE_REQUIRED { code: "OVERRIDE_REQUIRED", fluent: "OVERRIDE_REQUIRED", severity: Error, schema: LEGACY_MESSAGE },
+    OVERRIDE_WITHOUT_BASE { code: "OVERRIDE_WITHOUT_BASE", fluent: "OVERRIDE_WITHOUT_BASE", severity: Error, schema: LEGACY_MESSAGE },
     OUTPUT_ERROR { code: "OUTPUT_ERROR", fluent: "OUTPUT_ERROR", severity: Error, schema: LEGACY_MESSAGE },
     PARSE_ERROR { code: "PARSE_ERROR", fluent: "PARSE_ERROR", severity: Error, schema: LEGACY_MESSAGE },
     POINTER_LENGTH_MISMATCH { code: "POINTER_LENGTH_MISMATCH", fluent: "POINTER_LENGTH_MISMATCH", severity: Error, schema: LEGACY_MESSAGE },

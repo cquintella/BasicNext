@@ -455,6 +455,8 @@ pub(crate) fn imported_type_catalog(
                                 ),
                                 is_static: *is_static,
                                 visibility: MemberVisibility::of(*kind, *visibility),
+                                overrides: false,
+                                span: default_span(),
                                 mutable: !*constant,
                             },
                         );
@@ -483,6 +485,8 @@ pub(crate) fn imported_type_catalog(
                                 ),
                                 is_static: *is_static,
                                 visibility: MemberVisibility::of(*kind, *visibility),
+                                overrides: false,
+                                span: default_span(),
                                 mutable: false,
                             },
                         );

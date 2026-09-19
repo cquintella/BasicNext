@@ -106,6 +106,21 @@ impl Analyzer {
     }
 
     pub(crate) fn inherit_members(&mut self) -> Result<(), Diagnostic> {
+        // A class without EXTENDS has nothing to override (0.5.2 O2).
+        for (class, members) in &self.members {
+            if self.base_classes.contains_key(class) {
+                continue;
+            }
+            if let Some((name, member)) = members.iter().find(|(_, member)| member.overrides) {
+                return Err(error(
+                    DiagId::OVERRIDE_WITHOUT_BASE,
+                    format!(
+                        "'{class}.{name}' is marked OVERRIDE but '{class}' does not EXTEND a class"
+                    ),
+                    member.span,
+                ));
+            }
+        }
         let mut pending = self.base_classes.keys().cloned().collect::<Vec<_>>();
         while !pending.is_empty() {
             let pending_classes = pending
@@ -135,22 +150,7 @@ impl Analyzer {
                     .filter(|(_, member)| member.visibility != MemberVisibility::Private)
                     .collect::<HashMap<_, _>>();
                 for (name, member) in own {
-                    if let Some(base_member) = inherited.get(&name) {
-                        let methods = matches!(member.ty, Type::Function { .. })
-                            && matches!(base_member.ty, Type::Function { .. });
-                        let valid_override = methods
-                            && !member.is_static
-                            && !base_member.is_static
-                            && member.visibility != MemberVisibility::Private
-                            && member.ty == base_member.ty;
-                        if !valid_override {
-                            return Err(error(
-                                DiagId::INVALID_OVERRIDE,
-                                format!("member '{class}.{name}' conflicts with inherited member"),
-                                default_span(),
-                            ));
-                        }
-                    }
+                    Self::check_override(&class, &name, &member, inherited.get(&name))?;
                     inherited.insert(name, member);
                 }
                 self.members.insert(class, inherited);
@@ -166,6 +166,59 @@ impl Analyzer {
             pending = next;
         }
         Ok(())
+    }
+
+    /// O2 (0.5.2): an inherited method is replaced only with `OVERRIDE`, and
+    /// `OVERRIDE` needs an overridable ancestor method with the same signature.
+    fn check_override(
+        class: &str,
+        name: &str,
+        member: &Member,
+        base_member: Option<&Member>,
+    ) -> Result<(), Diagnostic> {
+        if member.overrides && member.is_static {
+            return Err(error(
+                DiagId::INVALID_OVERRIDE,
+                format!("'{class}.{name}': STATIC methods are not virtual and take no OVERRIDE"),
+                member.span,
+            ));
+        }
+        match base_member {
+            Some(base_member) => {
+                let methods = matches!(member.ty, Type::Function { .. })
+                    && matches!(base_member.ty, Type::Function { .. });
+                let valid_override = methods
+                    && !member.is_static
+                    && !base_member.is_static
+                    && member.visibility != MemberVisibility::Private
+                    && member.ty == base_member.ty;
+                if !valid_override {
+                    return Err(error(
+                        DiagId::INVALID_OVERRIDE,
+                        format!("member '{class}.{name}' conflicts with inherited member"),
+                        member.span,
+                    ));
+                }
+                if !member.overrides {
+                    return Err(error(
+                        DiagId::OVERRIDE_REQUIRED,
+                        format!(
+                            "'{class}.{name}' overrides an inherited method: mark it OVERRIDE (PUBLIC OVERRIDE FUNCTION {name})"
+                        ),
+                        member.span,
+                    ));
+                }
+                Ok(())
+            }
+            None if member.overrides => Err(error(
+                DiagId::OVERRIDE_WITHOUT_BASE,
+                format!(
+                    "'{class}.{name}' is marked OVERRIDE but no ancestor declares an overridable method '{name}'"
+                ),
+                member.span,
+            )),
+            None => Ok(()),
+        }
     }
 
     pub(crate) fn validate_super_constructors(&self, program: &Program) -> Result<(), Diagnostic> {

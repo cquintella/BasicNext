@@ -194,6 +194,7 @@ impl Analyzer {
                         is_static,
                         visibility,
                         constant,
+                        span,
                         ..
                     } => Some((
                         name,
@@ -202,13 +203,17 @@ impl Analyzer {
                             is_static: *is_static,
                             visibility: MemberVisibility::of(*kind, *visibility),
                             mutable: !*constant,
+                            overrides: false,
+                            span: *span,
                         },
                     )),
                     Statement::MemberFunction {
                         name,
                         signature: Some(signature),
                         is_static,
+                        is_override,
                         visibility,
+                        span,
                         ..
                     } => Some((
                         name,
@@ -217,6 +222,8 @@ impl Analyzer {
                             is_static: *is_static,
                             visibility: MemberVisibility::of(*kind, *visibility),
                             mutable: false,
+                            overrides: *is_override,
+                            span: *span,
                         },
                     )),
                     _ => None,

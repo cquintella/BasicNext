@@ -243,6 +243,10 @@ pub(crate) struct Member {
     is_static: bool,
     visibility: MemberVisibility,
     mutable: bool,
+    /// Declared with `OVERRIDE` (0.5.2 O2); only meaningful for local class methods.
+    overrides: bool,
+    /// Declaration span for override diagnostics; `default_span()` for host and imported members.
+    span: Span,
 }
 
 /// Static visibility of a class member (0.5.2 O3 adds `Protected`).
@@ -277,6 +281,8 @@ impl From<crate::host_spec::SpecMember> for Member {
             } else {
                 MemberVisibility::Public
             },
+            overrides: false,
+            span: default_span(),
             mutable: value.mutable,
         }
     }
