@@ -69,10 +69,12 @@ NEW
 NOT
 NULL
 OR
+OVERRIDE
 PARALLEL
 POINTER
 PRINT
 PRIVATE
+PROTECTED
 PUBLIC
 RELEASE
 REPEAT
@@ -120,11 +122,11 @@ and `Stderr` are identifiers on host types, not keywords.
 
 ## 0.5.2 changes (proposed — not shipped)
 
-Intended surface recorded by bucket `ongoing/bucket-0.5.2.md` SPRINT 0. The
-marked reserved-word list above still describes the **shipped** lexer; the
-two words below enter it in the sprint that ships them (O3 → `PROTECTED`,
-O2 → `OVERRIDE`), together with `0.5.ebnf` `reserved-word`, which already
-lists them as proposed.
+Intended surface recorded by bucket `ongoing/bucket-0.5.2.md` SPRINT 0. Since
+2026-09-19 (SPRINT 3) the lexer registry is generated from **this** file and
+`0.5.ebnf` (`crates/bn_frontend/build.rs`), so `PROTECTED` and `OVERRIDE` are
+reserved words in the shipped lexer from that build on; `PROTECTED` semantics
+ship with O3, `OVERRIDE` semantics with O2.
 
 | Change | Detail |
 |---|---|
@@ -133,8 +135,5 @@ lists them as proposed.
 | **Operators (pending S1)** | `++` / `--` — statement-only postfix tokens, sugar for `+= 1` / `-= 1`. Tokens, not reserved words. |
 | **No keyword** | I1 qualified import, O1 downcast (candidate A reuses `AS`; candidate B `TRYCAST` would add a word — TODO normative gap §2.1), O4 factories. |
 
-Toolchain note (2026-09-19): `crates/bn_frontend/build.rs` generates the
-lexer's registry from `docs/0.5.0/keywords.md` + `docs/0.5.0/0.5.0.ebnf`,
-not from this tree. Shipping `PROTECTED` / `OVERRIDE` requires either
-repointing `build.rs` to `docs/language/0.5/` or mirroring the words into
-the 0.5.0 files — decided in SPRINT 3 (bucket 0.5.2).
+Toolchain note: until 2026-09-19 `build.rs` read the historical
+`docs/0.5.0/` tree; it now reads the active 0.5 tree (bucket 0.5.2 SPRINT 3).

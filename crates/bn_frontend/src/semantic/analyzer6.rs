@@ -90,6 +90,19 @@ impl Analyzer {
                     span,
                 ));
             }
+            if member.visibility == MemberVisibility::Protected {
+                let owner = format!("#{}.{imported_name}", module.0);
+                if !self.within_hierarchy_of(&owner) {
+                    return Err(error(
+                        DiagId::PROTECTED_ACCESS,
+                        format!(
+                            "member '{}.{name}' is PROTECTED: accessible only from the body of the declaring class or of a class that EXTENDS it",
+                            display(object)
+                        ),
+                        span,
+                    ));
+                }
+            }
             return Ok(member.ty.clone());
         }
         let (owner, static_access) = match object {
@@ -167,10 +180,21 @@ impl Analyzer {
                 span,
             ));
         }
-        if member.private && self.current_class.as_deref() != Some(owner) {
+        if member.visibility == MemberVisibility::Private
+            && self.current_class.as_deref() != Some(owner)
+        {
             return Err(error(
                 DiagId::PRIVATE_ACCESS,
                 format!("member '{owner}.{name}' is PRIVATE"),
+                span,
+            ));
+        }
+        if member.visibility == MemberVisibility::Protected && !self.within_hierarchy_of(owner) {
+            return Err(error(
+                DiagId::PROTECTED_ACCESS,
+                format!(
+                    "member '{owner}.{name}' is PROTECTED: accessible only from the body of the declaring class or of a class that EXTENDS it"
+                ),
                 span,
             ));
         }
@@ -543,5 +567,25 @@ impl Analyzer {
             ));
         }
         Ok(*return_type)
+    }
+}
+
+impl Analyzer {
+    /// True when the code being analysed is the body of `owner` or of a class
+    /// that (transitively) `EXTENDS` it — the `PROTECTED` access set (0.5.2 O3).
+    pub(crate) fn within_hierarchy_of(&self, owner: &str) -> bool {
+        let Some(current) = self.current_class.as_deref() else {
+            return false;
+        };
+        let mut class = current;
+        loop {
+            if class == owner {
+                return true;
+            }
+            match self.base_classes.get(class) {
+                Some(base) => class = base,
+                None => return false,
+            }
+        }
     }
 }

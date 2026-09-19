@@ -3,8 +3,8 @@ use std::{env, fmt::Write as _, fs, path::PathBuf};
 #[path = "src/keyword_registry.rs"]
 mod keyword_registry;
 
-const REGISTRY: &str = "../../docs/0.5.0/keywords.md";
-const EBNF: &str = "../../docs/0.5.0/0.5.0.ebnf";
+const REGISTRY: &str = "../../docs/language/0.5/keywords.md";
+const EBNF: &str = "../../docs/language/0.5/0.5.ebnf";
 
 fn main() {
     println!("cargo:rerun-if-changed={REGISTRY}");

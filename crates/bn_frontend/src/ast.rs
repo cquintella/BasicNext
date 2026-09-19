@@ -143,6 +143,7 @@ pub enum Statement {
 pub enum Visibility {
     Public,
     Private,
+    Protected,
 }
 
 #[allow(clippy::large_enum_variant)] // Counted and foreach headers have distinct grammar data.

@@ -12,7 +12,7 @@ impl Analyzer {
                     Member {
                         ty: Type::Integer(IntegerType::Int32),
                         is_static: false,
-                        private: false,
+                        visibility: MemberVisibility::Public,
                         mutable: false,
                     },
                 ),
@@ -21,7 +21,7 @@ impl Analyzer {
                     Member {
                         ty: Type::String,
                         is_static: false,
-                        private: false,
+                        visibility: MemberVisibility::Public,
                         mutable: false,
                     },
                 ),
@@ -43,7 +43,7 @@ impl Analyzer {
                             return_type: Box::new(result),
                         },
                         is_static: true,
-                        private: false,
+                        visibility: MemberVisibility::Public,
                         mutable: false,
                     },
                 )]),
@@ -60,7 +60,7 @@ impl Analyzer {
                         return_type: Box::new(Type::String),
                     },
                     is_static: true,
-                    private: false,
+                    visibility: MemberVisibility::Public,
                     mutable: false,
                 },
             );

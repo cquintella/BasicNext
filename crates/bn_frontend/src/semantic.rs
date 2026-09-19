@@ -241,8 +241,30 @@ struct Symbol {
 pub(crate) struct Member {
     ty: Type,
     is_static: bool,
-    private: bool,
+    visibility: MemberVisibility,
     mutable: bool,
+}
+
+/// Static visibility of a class member (0.5.2 O3 adds `Protected`).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum MemberVisibility {
+    Public,
+    /// The declaring class and classes that `EXTENDS` it.
+    Protected,
+    Private,
+}
+
+impl MemberVisibility {
+    fn of(kind: DeclarationKind, visibility: Option<crate::ast::Visibility>) -> Self {
+        if kind != DeclarationKind::Class {
+            return Self::Public;
+        }
+        match visibility {
+            Some(crate::ast::Visibility::Public) => Self::Public,
+            Some(crate::ast::Visibility::Protected) => Self::Protected,
+            Some(crate::ast::Visibility::Private) | None => Self::Private,
+        }
+    }
 }
 
 impl From<crate::host_spec::SpecMember> for Member {
@@ -250,7 +272,11 @@ impl From<crate::host_spec::SpecMember> for Member {
         Self {
             ty: value.ty.into(),
             is_static: value.is_static,
-            private: value.private,
+            visibility: if value.private {
+                MemberVisibility::Private
+            } else {
+                MemberVisibility::Public
+            },
             mutable: value.mutable,
         }
     }

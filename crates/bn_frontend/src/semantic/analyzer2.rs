@@ -132,7 +132,7 @@ impl Analyzer {
                     .expect("class members exist");
                 let mut inherited = base_members
                     .into_iter()
-                    .filter(|(_, member)| !member.private)
+                    .filter(|(_, member)| member.visibility != MemberVisibility::Private)
                     .collect::<HashMap<_, _>>();
                 for (name, member) in own {
                     if let Some(base_member) = inherited.get(&name) {
@@ -141,7 +141,7 @@ impl Analyzer {
                         let valid_override = methods
                             && !member.is_static
                             && !base_member.is_static
-                            && !member.private
+                            && member.visibility != MemberVisibility::Private
                             && member.ty == base_member.ty;
                         if !valid_override {
                             return Err(error(

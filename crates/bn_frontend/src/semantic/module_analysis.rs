@@ -239,7 +239,12 @@ fn class_binding_candidates(
                 visibility,
                 span,
                 ..
-            } if !(exported && *visibility == Some(crate::ast::Visibility::Public)) => {
+            } if !(exported
+                && matches!(
+                    *visibility,
+                    Some(crate::ast::Visibility::Public | crate::ast::Visibility::Protected)
+                )) =>
+            {
                 candidates.push(BindingCandidate {
                     name: name.clone(),
                     span: *span,
@@ -433,7 +438,12 @@ pub(crate) fn imported_type_catalog(
                         visibility,
                         ..
                     } if *kind != DeclarationKind::Class
-                        || *visibility == Some(crate::ast::Visibility::Public) =>
+                        || matches!(
+                            *visibility,
+                            Some(
+                                crate::ast::Visibility::Public | crate::ast::Visibility::Protected
+                            )
+                        ) =>
                     {
                         members.insert(
                             member_name.clone(),
@@ -444,7 +454,7 @@ pub(crate) fn imported_type_catalog(
                                     type_from_reference(type_ref),
                                 ),
                                 is_static: *is_static,
-                                private: false,
+                                visibility: MemberVisibility::of(*kind, *visibility),
                                 mutable: !*constant,
                             },
                         );
@@ -456,7 +466,12 @@ pub(crate) fn imported_type_catalog(
                         visibility,
                         ..
                     } if *kind != DeclarationKind::Class
-                        || *visibility == Some(crate::ast::Visibility::Public) =>
+                        || matches!(
+                            *visibility,
+                            Some(
+                                crate::ast::Visibility::Public | crate::ast::Visibility::Protected
+                            )
+                        ) =>
                     {
                         members.insert(
                             member_name.clone(),
@@ -467,7 +482,7 @@ pub(crate) fn imported_type_catalog(
                                     function_type(signature),
                                 ),
                                 is_static: *is_static,
-                                private: false,
+                                visibility: MemberVisibility::of(*kind, *visibility),
                                 mutable: false,
                             },
                         );
@@ -674,7 +689,9 @@ pub(crate) fn validate_implemented_interfaces(
                     .get(name)
                     .and_then(|members| members.get(&method));
                 if implementation.is_none_or(|member| {
-                    member.private || member.is_static || member.ty != required_signature
+                    member.visibility == MemberVisibility::Private
+                        || member.is_static
+                        || member.ty != required_signature
                 }) {
                     return Err(type_mismatch(
                         format!("PUBLIC instance FUNCTION {method} matching {interface}"),

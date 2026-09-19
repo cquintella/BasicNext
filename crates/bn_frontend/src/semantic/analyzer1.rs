@@ -200,8 +200,7 @@ impl Analyzer {
                         Member {
                             ty: self.resolve_reference(type_ref),
                             is_static: *is_static,
-                            private: *kind == DeclarationKind::Class
-                                && *visibility != Some(crate::ast::Visibility::Public),
+                            visibility: MemberVisibility::of(*kind, *visibility),
                             mutable: !*constant,
                         },
                     )),
@@ -216,8 +215,7 @@ impl Analyzer {
                         Member {
                             ty: function_type(signature),
                             is_static: *is_static,
-                            private: *kind == DeclarationKind::Class
-                                && *visibility != Some(crate::ast::Visibility::Public),
+                            visibility: MemberVisibility::of(*kind, *visibility),
                             mutable: false,
                         },
                     )),

@@ -238,6 +238,7 @@ fn semantic_fixtures_are_rejected() {
         "tests/grammar/invalid/filesystem-seek.bn",
         "tests/grammar/invalid/filesystem-directory-api.bn",
         "tests/grammar/invalid/local-vector-negative-dimension.bn",
+        "tests/grammar/invalid/protected-outside-hierarchy.bn",
     ] {
         let source = SourceFile::new(path, fs::read_to_string(path).expect("read fixture"));
         let tokens = lex(&source).expect("lex fixture");

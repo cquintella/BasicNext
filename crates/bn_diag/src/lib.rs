@@ -172,6 +172,7 @@ diagnostic_registry! {
     PARSE_ERROR { code: "PARSE_ERROR", fluent: "PARSE_ERROR", severity: Error, schema: LEGACY_MESSAGE },
     POINTER_LENGTH_MISMATCH { code: "POINTER_LENGTH_MISMATCH", fluent: "POINTER_LENGTH_MISMATCH", severity: Error, schema: LEGACY_MESSAGE },
     PRIVATE_ACCESS { code: "PRIVATE_ACCESS", fluent: "PRIVATE_ACCESS", severity: Error, schema: LEGACY_MESSAGE },
+    PROTECTED_ACCESS { code: "PROTECTED_ACCESS", fluent: "PROTECTED_ACCESS", severity: Error, schema: LEGACY_MESSAGE },
     PROCESS_LOG_WRITE { code: "PROCESS_LOG_WRITE", fluent: "PROCESS_LOG_WRITE", severity: Error, schema: LEGACY_MESSAGE },
     REQUEST_INVALID { code: "REQUEST_INVALID", fluent: "REQUEST_INVALID", severity: Error, schema: LEGACY_MESSAGE },
     RESOURCE_LIMIT { code: "RESOURCE_LIMIT", fluent: "RESOURCE_LIMIT", severity: Error, schema: LEGACY_MESSAGE },

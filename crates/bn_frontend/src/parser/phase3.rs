@@ -61,7 +61,7 @@ impl<'a> Parser<'a> {
             });
         }
         let mut field_start = 0;
-        while matches!(line.get(field_start).map(|token| &token.kind), Some(TokenKind::Keyword(word)) if matches!(word.as_str(), "PUBLIC" | "PRIVATE" | "STATIC"))
+        while matches!(line.get(field_start).map(|token| &token.kind), Some(TokenKind::Keyword(word)) if matches!(word.as_str(), "PUBLIC" | "PRIVATE" | "PROTECTED" | "STATIC"))
         {
             field_start += 1;
         }
@@ -91,6 +91,9 @@ impl<'a> Parser<'a> {
                         }
                         TokenKind::Keyword(word) if word == "PRIVATE" => {
                             Some(crate::ast::Visibility::Private)
+                        }
+                        TokenKind::Keyword(word) if word == "PROTECTED" => {
+                            Some(crate::ast::Visibility::Protected)
                         }
                         _ => None,
                     }),
@@ -530,7 +533,7 @@ impl<'a> Parser<'a> {
     pub(crate) fn function_member_start(&self) -> bool {
         let mut offset = 0;
         while matches!(self.tokens.get(self.index + offset).map(|token| &token.kind),
-            Some(TokenKind::Keyword(word)) if matches!(word.as_str(), "PUBLIC" | "PRIVATE" | "STATIC"))
+            Some(TokenKind::Keyword(word)) if matches!(word.as_str(), "PUBLIC" | "PRIVATE" | "PROTECTED" | "STATIC"))
         {
             offset += 1;
         }

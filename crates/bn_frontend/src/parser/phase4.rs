@@ -7,6 +7,9 @@ impl<'a> Parser<'a> {
         let visibility = line.iter().find_map(|token| match &token.kind {
             TokenKind::Keyword(word) if word == "PUBLIC" => Some(crate::ast::Visibility::Public),
             TokenKind::Keyword(word) if word == "PRIVATE" => Some(crate::ast::Visibility::Private),
+            TokenKind::Keyword(word) if word == "PROTECTED" => {
+                Some(crate::ast::Visibility::Protected)
+            }
             _ => None,
         });
         let is_static = line

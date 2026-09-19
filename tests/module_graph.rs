@@ -251,3 +251,16 @@ fn qualified_import_binds_exported_types_only_in_this_release() {
     let error = analyze_modules(&graph).expect_err("a function export is not bindable by name");
     assert_eq!(error.diagnostic.code, "IMPORT_EXPORT_NOT_FOUND");
 }
+
+#[test]
+fn protected_members_reach_subclasses_in_other_modules_only() {
+    let graph = load(Path::new("tests/modules/protected-cross-module/main.bn"))
+        .expect("load subclass module");
+    analyze_modules(&graph).expect("a subclass in another module may use PROTECTED members");
+    let graph = load(Path::new(
+        "tests/modules/protected-cross-module/outside/main.bn",
+    ))
+    .expect("load outside module");
+    let error = analyze_modules(&graph).expect_err("Start is outside the hierarchy");
+    assert_eq!(error.diagnostic.code, "PROTECTED_ACCESS");
+}
