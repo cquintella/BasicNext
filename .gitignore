@@ -31,6 +31,9 @@ ongoing/*
 done/*
 .aider*
 
+# LLVM golden snapshots of `bn build` output (local reference, 1.4 MB)
+goldies/
+
 # Architecture audit working papers and reports (local)
 audit/
 docs/.obsidian/
