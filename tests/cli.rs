@@ -3094,3 +3094,44 @@ fn run_without_filesystem_rejects_an_unused_import() {
     );
     assert!(!String::from_utf8_lossy(&output.stdout).contains("ran"));
 }
+
+/// Native `HOST.Net.Neighbor` on loopback: the compiled runtime shares the
+/// interpreter's core (bucket 0.5.2a, SPRINT 1), including trusted-path
+/// `arp`/`ndp` resolution, so the typed result matches `tests/runtime.rs`.
+#[test]
+fn native_host_net_neighbor_loopback_is_a_typed_result() {
+    let base = std::env::temp_dir().join(format!(
+        "basicnext-native-neighbor-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&base);
+    fs::create_dir_all(&base).expect("create native neighbor directory");
+    let source = base.join("program.bn");
+    let binary = base.join("program");
+    fs::write(
+        &source,
+        "IMPORT HOST.Net AS Net\nFUNCTION Start() AS VOID\nLET address AS Net.Address OR Error = Net.Address.Parse(\"127.0.0.1\")\nIF address IS Error THEN\nPRINT \"parse-error\"\nELSE\nLET neighbor AS Net.Address OR Error = Net.Neighbor(address)\nPRINT neighbor IS Error\nEND IF\nEND FUNCTION\n",
+    )
+    .expect("write native neighbor program");
+    let build = bn()
+        .args(["build", "-o", binary.to_str().expect("UTF-8 binary path")])
+        .arg(&source)
+        .output()
+        .expect("build native neighbor program");
+    assert_eq!(
+        build.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let run = std::process::Command::new(&binary)
+        .output()
+        .expect("run native neighbor program");
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "FALSE\n",
+        "stderr: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let _ = fs::remove_dir_all(&base);
+}

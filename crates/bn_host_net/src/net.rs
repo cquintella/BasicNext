@@ -1,74 +1,17 @@
+//! Interpreter-side `HOST.Net` primitives: the shared core (addresses,
+//! endpoints, resolve/reverse, ping, neighbor) is `bn_rt::net` and is
+//! re-exported here; this file adds the tokio-backed listener/stream/socket
+//! wrappers and CIDR the interpreter provider uses.
+
 use std::{
-    collections::HashSet,
-    fmt,
     io::{Read, Write},
-    net::{IpAddr, ToSocketAddrs},
-    str::FromStr,
+    net::IpAddr,
 };
 
-fn resolver_tasks() -> &'static std::sync::Mutex<Vec<std::thread::JoinHandle<()>>> {
-    static TASKS: std::sync::OnceLock<std::sync::Mutex<Vec<std::thread::JoinHandle<()>>>> =
-        std::sync::OnceLock::new();
-    TASKS.get_or_init(|| std::sync::Mutex::new(Vec::new()))
-}
-
-fn reap_resolver_tasks() {
-    let tasks = resolver_tasks();
-    let mut tasks = tasks.lock().expect("resolver task registry poisoned");
-    let mut index = 0;
-    while index < tasks.len() {
-        if tasks[index].is_finished() {
-            let task = tasks.swap_remove(index);
-            let _ = task.join();
-        } else {
-            index += 1;
-        }
-    }
-}
-
-fn retain_resolver_task(task: std::thread::JoinHandle<()>) {
-    resolver_tasks()
-        .lock()
-        .expect("resolver task registry poisoned")
-        .push(task);
-}
-
-/// Joins every retained resolver/reverse worker. Safe to call more than once.
-///
-/// # Panics
-///
-/// Panics if the resolver task registry mutex is poisoned.
-pub fn join_resolver_tasks() {
-    let tasks = resolver_tasks();
-    let mut tasks = tasks.lock().expect("resolver task registry poisoned");
-    while let Some(task) = tasks.pop() {
-        let _ = task.join();
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-pub struct Address(IpAddr);
-
-impl Address {
-    /// Parses a strict IPv4 or IPv6 address.
-    ///
-    /// # Errors
-    ///
-    /// Returns the standard parser error when `text` is not an address.
-    pub fn parse(text: &str) -> Result<Self, std::net::AddrParseError> {
-        text.parse().map(Self)
-    }
-
-    #[must_use]
-    pub const fn from_ip(address: IpAddr) -> Self {
-        Self(address)
-    }
-
-    #[must_use]
-    pub const fn as_std(self) -> IpAddr {
-        self.0
-    }
-}
+pub use bn_rt::net::{
+    Address, Endpoint, NeighborError, PingError, PingReply, ReverseError, neighbor, ping, resolve,
+    resolve_timeout, reverse_timeout,
+};
 
 #[derive(Debug)]
 pub struct TcpStream {
@@ -119,7 +62,7 @@ impl UdpSocket {
         let (count, source) = self.inner.recv_from(&mut bytes)?;
         bytes.truncate(count);
         Ok(UdpPacket {
-            source: Endpoint::new(Address(source.ip()), source.port()),
+            source: Endpoint::new(Address::from_ip(source.ip()), source.port()),
             truncated: count == maximum,
             bytes,
         })
@@ -133,7 +76,10 @@ impl UdpSocket {
     #[allow(clippy::missing_errors_doc)]
     pub fn local_endpoint(&self) -> std::io::Result<Endpoint> {
         let address = self.inner.local_addr()?;
-        Ok(Endpoint::new(Address(address.ip()), address.port()))
+        Ok(Endpoint::new(
+            Address::from_ip(address.ip()),
+            address.port(),
+        ))
     }
 }
 
@@ -231,7 +177,10 @@ impl TcpListener {
 
     pub fn local_endpoint(&self) -> std::io::Result<Endpoint> {
         let address = self.inner.local_addr()?;
-        Ok(Endpoint::new(Address(address.ip()), address.port()))
+        Ok(Endpoint::new(
+            Address::from_ip(address.ip()),
+            address.port(),
+        ))
     }
 }
 
@@ -283,12 +232,18 @@ impl TcpStream {
 
     pub fn local_endpoint(&self) -> std::io::Result<Endpoint> {
         let address = self.inner.local_addr()?;
-        Ok(Endpoint::new(Address(address.ip()), address.port()))
+        Ok(Endpoint::new(
+            Address::from_ip(address.ip()),
+            address.port(),
+        ))
     }
 
     pub fn remote_endpoint(&self) -> std::io::Result<Endpoint> {
         let address = self.inner.peer_addr()?;
-        Ok(Endpoint::new(Address(address.ip()), address.port()))
+        Ok(Endpoint::new(
+            Address::from_ip(address.ip()),
+            address.port(),
+        ))
     }
 
     pub fn shutdown(&self, direction: std::net::Shutdown) -> std::io::Result<()> {
@@ -296,39 +251,10 @@ impl TcpStream {
     }
 }
 
-impl fmt::Display for Address {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(formatter)
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Cidr {
     network: IpAddr,
     prefix: u8,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-pub struct Endpoint {
-    address: Address,
-    port: u16,
-}
-
-impl Endpoint {
-    #[must_use]
-    pub const fn new(address: Address, port: u16) -> Self {
-        Self { address, port }
-    }
-
-    #[must_use]
-    pub const fn address(self) -> Address {
-        self.address
-    }
-
-    #[must_use]
-    pub const fn port(self) -> u16 {
-        self.port
-    }
 }
 
 impl Cidr {
@@ -339,7 +265,9 @@ impl Cidr {
     /// Returns an error when the separator, address, or prefix is invalid.
     pub fn parse(text: &str) -> Result<Self, &'static str> {
         let (address, prefix) = text.split_once('/').ok_or("CIDR requires '/'")?;
-        let address = Address::parse(address).map_err(|_| "invalid address")?.0;
+        let address = Address::parse(address)
+            .map_err(|_| "invalid address")?
+            .as_std();
         let prefix = prefix.parse::<u8>().map_err(|_| "invalid prefix")?;
         let maximum = match address {
             IpAddr::V4(_) => 32,
@@ -366,7 +294,7 @@ impl Cidr {
 
     #[must_use]
     pub fn contains(self, address: Address) -> bool {
-        self.network == mask(address.0, self.prefix)
+        self.network == mask(address.as_std(), self.prefix)
     }
 }
 
@@ -390,78 +318,6 @@ fn mask(address: IpAddr, prefix: u8) -> IpAddr {
         )),
     }
 }
-
-impl FromStr for Address {
-    type Err = std::net::AddrParseError;
-
-    fn from_str(text: &str) -> Result<Self, Self::Err> {
-        Self::parse(text)
-    }
-}
-
-/// Resolves a host through the operating system and returns bounded unique addresses.
-///
-/// # Errors
-///
-/// Returns the operating-system resolution error when no address can be resolved.
-pub fn resolve(host: &str, port: u16, maximum: usize) -> std::io::Result<Vec<Address>> {
-    if maximum == 0 {
-        return Ok(Vec::new());
-    }
-    let mut seen = HashSet::new();
-    let mut addresses = Vec::new();
-    for endpoint in (host, port).to_socket_addrs()? {
-        let address = Address(endpoint.ip());
-        if seen.insert(address) {
-            addresses.push(address);
-            if addresses.len() == maximum {
-                break;
-            }
-        }
-    }
-    Ok(addresses)
-}
-
-/// Resolves with a bounded wait. The OS resolver thread may finish after a timeout.
-///
-/// # Errors
-///
-/// Returns resolver/provider errors reported by the operating system.
-pub fn resolve_timeout(
-    host: &str,
-    port: u16,
-    maximum: usize,
-    timeout: std::time::Duration,
-) -> std::io::Result<Option<Vec<Address>>> {
-    reap_resolver_tasks();
-    let host = host.to_owned();
-    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
-    let task = std::thread::spawn(move || {
-        let _ = sender.send(resolve(&host, port, maximum));
-    });
-    match receiver.recv_timeout(timeout) {
-        Ok(result) => {
-            let _ = task.join();
-            result.map(Some)
-        }
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            retain_resolver_task(task);
-            Ok(None)
-        }
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            let _ = task.join();
-            Err(std::io::Error::other("resolver provider stopped"))
-        }
-    }
-}
-
-mod icmp;
-mod neighbor;
-mod reverse;
-
-pub use icmp::{PingError, PingReply, ping};
-pub use neighbor::{NeighborError, neighbor};
-pub use reverse::{ReverseError, reverse_timeout};
 
 #[cfg(test)]
 mod tests;

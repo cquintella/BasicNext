@@ -1,6 +1,3 @@
-#![allow(clippy::similar_names)] // reply identifiers pair packet id and source IP.
-#![allow(clippy::cast_possible_truncation)] // checksum folds to the wire's 16-bit value.
-
 //! Bounded ICMP Echo Request/Reply for HOST.Net.Ping.
 
 #![allow(unsafe_code)] // recv_from fills MaybeUninit; only the returned length is read.
@@ -109,19 +106,19 @@ fn ping_v4(dest: std::net::Ipv4Addr, timeout: Duration) -> Result<PingReply, Pin
         if icmp[0] != 0 {
             continue;
         }
-        let reply_id = u16::from_be_bytes([icmp[4], icmp[5]]);
+        let identifier = u16::from_be_bytes([icmp[4], icmp[5]]);
         let reply_seq = u16::from_be_bytes([icmp[6], icmp[7]]);
-        if reply_id != id || reply_seq != seq {
+        if identifier != id || reply_seq != seq {
             continue;
         }
         let micros = i64::try_from(start.elapsed().as_micros()).unwrap_or(i64::MAX);
-        let reply_ip = from
+        let address_ip = from
             .as_socket_ipv4()
             .map(|addr| IpAddr::V4(*addr.ip()))
             .or_else(|| from.as_socket().map(|addr| addr.ip()))
             .unwrap_or(IpAddr::V4(dest));
         return Ok(PingReply {
-            address: Address::from_ip(reply_ip),
+            address: Address::from_ip(address_ip),
             round_trip_microseconds: micros,
         });
     }
@@ -170,19 +167,19 @@ fn ping_v6(dest: std::net::Ipv6Addr, timeout: Duration) -> Result<PingReply, Pin
         if received < 8 || icmp[0] != 129 {
             continue;
         }
-        let reply_id = u16::from_be_bytes([icmp[4], icmp[5]]);
+        let identifier = u16::from_be_bytes([icmp[4], icmp[5]]);
         let reply_seq = u16::from_be_bytes([icmp[6], icmp[7]]);
-        if reply_id != id || reply_seq != seq {
+        if identifier != id || reply_seq != seq {
             continue;
         }
         let micros = i64::try_from(start.elapsed().as_micros()).unwrap_or(i64::MAX);
-        let reply_ip = from
+        let address_ip = from
             .as_socket_ipv6()
             .map(|addr| IpAddr::V6(*addr.ip()))
             .or_else(|| from.as_socket().map(|addr| addr.ip()))
             .unwrap_or(IpAddr::V6(dest));
         return Ok(PingReply {
-            address: Address::from_ip(reply_ip),
+            address: Address::from_ip(address_ip),
             round_trip_microseconds: micros,
         });
     }
@@ -215,7 +212,7 @@ fn icmp_checksum(packet: &[u8]) -> u16 {
     while sum >> 16 != 0 {
         sum = (sum & 0xffff) + (sum >> 16);
     }
-    !(sum as u16)
+    !u16::try_from(sum).expect("Internet checksum folding keeps the sum within u16")
 }
 
 fn map_open(error: io::Error) -> PingError {

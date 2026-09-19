@@ -1,6 +1,8 @@
 #![allow(dead_code)] // TCP/UDP providers are consumed by the C ABI next.
 
-//! HOST.Net providers shared by the interpreter and compiled binaries.
+//! HOST.Net core shared by the interpreter (`bn_host_net` re-exports it) and
+//! compiled binaries (C ABI in `lib.rs`): address/endpoint types, bounded
+//! resolve/reverse, ICMP ping, trusted-path ARP/NDP neighbor lookup, sockets.
 
 pub(crate) mod handles;
 mod icmp;
@@ -9,7 +11,7 @@ mod reverse;
 mod socket;
 
 #[allow(unused_imports)]
-pub use socket::{TcpListener, TcpStream, UdpPacket, UdpSocket};
+pub(crate) use socket::{TcpListener, TcpStream, UdpPacket, UdpSocket};
 
 use std::{
     net::{IpAddr, ToSocketAddrs},
@@ -54,6 +56,20 @@ fn resolver_tasks() -> &'static std::sync::Mutex<Vec<std::thread::JoinHandle<()>
     static TASKS: std::sync::OnceLock<std::sync::Mutex<Vec<std::thread::JoinHandle<()>>>> =
         std::sync::OnceLock::new();
     TASKS.get_or_init(|| std::sync::Mutex::new(Vec::new()))
+}
+
+fn reap_resolver_tasks() {
+    let tasks = resolver_tasks();
+    let mut tasks = tasks.lock().expect("resolver task registry poisoned");
+    let mut index = 0;
+    while index < tasks.len() {
+        if tasks[index].is_finished() {
+            let task = tasks.swap_remove(index);
+            let _ = task.join();
+        } else {
+            index += 1;
+        }
+    }
 }
 
 pub(crate) fn retain_resolver_task(task: std::thread::JoinHandle<()>) {
@@ -138,13 +154,19 @@ pub fn resolve(host: &str, port: u16, maximum: usize) -> std::io::Result<Vec<Add
     Ok(addresses)
 }
 
-/// Resolves with a bounded worker and timeout.
+/// Resolves with a bounded worker and timeout; `Ok(None)` means the timeout
+/// elapsed and the worker was retained for a later join.
+///
+/// # Errors
+///
+/// Returns the OS resolution error.
 pub fn resolve_timeout(
     host: &str,
     port: u16,
     maximum: usize,
     timeout: std::time::Duration,
 ) -> std::io::Result<Option<Vec<Address>>> {
+    reap_resolver_tasks();
     let host = host.to_owned();
     let (sender, receiver) = std::sync::mpsc::sync_channel(1);
     let task = std::thread::spawn(move || {

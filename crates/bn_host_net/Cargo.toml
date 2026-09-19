@@ -24,6 +24,5 @@ bn_source = { path = "../bn_source" }
 bn_types = { path = "../bn_types" }
 bn_value = { path = "../bn_value" }
 bn_limits = { path = "../bn_limits" }
-dns-lookup = "2"
-socket2 = "0.6"
+bn_rt = { path = "../bn_rt" }
 tokio = { version = "1.53.1", default-features = false, features = ["net", "rt", "rt-multi-thread", "sync", "time"] }

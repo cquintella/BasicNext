@@ -31,7 +31,7 @@ mod file_abi;
 mod log;
 mod log_abi;
 mod math;
-mod net;
+pub mod net;
 mod policy;
 pub mod secure_fs;
 mod stats;
