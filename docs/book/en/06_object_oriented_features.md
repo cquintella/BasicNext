@@ -20,6 +20,8 @@ By default, all fields and methods within a class are `PRIVATE`. Private members
 
 To make a member available to external code, you must explicitly mark it as `PUBLIC`.
 
+> **Proposed for 0.5.2 — not shipped.** A third level, `PROTECTED`, will make a member visible to the declaring class and its `EXTENDS` subclasses only. Spec: `0.5.md` § 0.5.2 additions (O3).
+
 Inside a class method, you cannot access instance fields or methods using an unqualified name. You must always explicitly qualify instance access using the `SELF` keyword.
 
 ```basic
@@ -72,6 +74,8 @@ LET id AS INTEGER = Session.NextId()
 
 Re-entering the initialization of static fields raises a `STATIC_INITIALIZATION_CYCLE` error at runtime, ensuring partially initialized state is never observable.
 
+> **Proposed for 0.5.2 — not shipped.** Multiple ways to construct a class are expressed with `PUBLIC STATIC FUNCTION` factories that return `NEW` (for example `Temperature.FromFahrenheit(f)`); a second `CONSTRUCTOR` signature stays a static error. Spec: `0.5.md` § 0.5.2 additions (O4).
+
 ## Inheritance
 
 Basic Next supports single class inheritance using the `EXTENDS` keyword. A subclass inherits the methods and fields of its base class. 
@@ -103,6 +107,8 @@ LET myDog AS Dog = NEW Dog()
 LET myAnimal AS Animal = myDog // Upcast
 myAnimal.Speak() // Prints "Woof"
 ```
+
+> **Proposed for 0.5.2 — not shipped.** (1) A method that overrides an inherited one will have to carry `OVERRIDE` (`PUBLIC OVERRIDE FUNCTION Speak() AS STRING`); `bn check` will fail when the marker is missing or when no ancestor declares the method. (2) Narrowing a base-typed reference will be written `LET d AS Dog OR Error = pet AS Dog` and tested with `IS Error` — no exceptions. Spec: `0.5.md` § 0.5.2 additions (O2, O1). Today `bn check` rejects both forms.
 
 ## Contracts (`INTERFACE` and `IMPLEMENTS`)
 

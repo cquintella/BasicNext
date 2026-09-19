@@ -82,3 +82,5 @@ Imported members are only accessible through their alias (e.g., `Math.Square`). 
 Module resolution happens relative to the project root (the directory of the executable module), typically under a `modules/` directory. Language standard-library modules resolve from `modules/bn/`. For example, `IMPORT BNData AS Data` resolves to `modules/bn/BNData.bn`. Host capabilities use the `HOST` root, such as `IMPORT HOST.Random AS R`. `BNMath` is a standard-library module and requires `IMPORT BNMath AS Math`.
 
 Basic Next checks for import cycles and will reject the program if a circular dependency is detected.
+
+> **Proposed for 0.5.2 — not shipped.** `IMPORT BNString.String AS Str` will bind the alias to a single `EXPORT` of `BNString` (sibling exports stay invisible); a dotted path falls back to today's nested-module meaning only when the last segment is not an export. Spec: `docs/language/0.5/0.5.md` § 0.5.2 additions (I1). Until then `bn check` reports `MODULE_NOT_FOUND` for this form.

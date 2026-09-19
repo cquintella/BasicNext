@@ -117,3 +117,24 @@ NAN
 0.5.1 adds **no reserved word**. `HOST.Exec` is a capability reached through
 `IMPORT HOST.Exec AS <alias>`; `Exec`, `Run`, `Result`, `ReturnCode`, `Stdout`
 and `Stderr` are identifiers on host types, not keywords.
+
+## 0.5.2 changes (proposed — not shipped)
+
+Intended surface recorded by bucket `ongoing/bucket-0.5.2.md` SPRINT 0. The
+marked reserved-word list above still describes the **shipped** lexer; the
+two words below enter it in the sprint that ships them (O3 → `PROTECTED`,
+O2 → `OVERRIDE`), together with `0.5.ebnf` `reserved-word`, which already
+lists them as proposed.
+
+| Change | Detail |
+|---|---|
+| **Added (pending O3)** | `PROTECTED` — third `visibility`: same class and `EXTENDS` subclasses only. |
+| **Added (pending O2)** | `OVERRIDE` — required marker on a method that overrides an inherited instance method. |
+| **Operators (pending S1)** | `++` / `--` — statement-only postfix tokens, sugar for `+= 1` / `-= 1`. Tokens, not reserved words. |
+| **No keyword** | I1 qualified import, O1 downcast (candidate A reuses `AS`; candidate B `TRYCAST` would add a word — TODO normative gap §2.1), O4 factories. |
+
+Toolchain note (2026-09-19): `crates/bn_frontend/build.rs` generates the
+lexer's registry from `docs/0.5.0/keywords.md` + `docs/0.5.0/0.5.0.ebnf`,
+not from this tree. Shipping `PROTECTED` / `OVERRIDE` requires either
+repointing `build.rs` to `docs/language/0.5/` or mirroring the words into
+the 0.5.0 files — decided in SPRINT 3 (bucket 0.5.2).

@@ -66,6 +66,8 @@ WHILE counter < 5
 END WHILE
 ```
 
+> **Proposed for 0.5.2 — not shipped.** `counter++` / `counter--` as **statements** (never expressions) will be exact sugar for `+= 1` / `-= 1`. Spec: `0.5.md` § 0.5.2 additions (S1). Today `bn check` rejects `counter++`.
+
 ### The `REPEAT` Loop
 
 A `REPEAT` loop executes its body at least once. It evaluates a post-condition with `UNTIL`, repeating as long as the condition remains `FALSE`:
