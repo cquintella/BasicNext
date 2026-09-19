@@ -43,6 +43,8 @@ pub enum Symbol {
     Percent,
     PlusAssign,
     MinusAssign,
+    Increment,
+    Decrement,
     StarAssign,
     PowerAssign,
     SlashAssign,

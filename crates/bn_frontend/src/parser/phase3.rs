@@ -19,6 +19,47 @@ impl<'a> Parser<'a> {
                 .start,
             end,
         };
+        if let Some(position) = line.iter().position(|token| {
+            matches!(
+                token.kind,
+                TokenKind::Symbol(Symbol::Increment | Symbol::Decrement)
+            )
+        }) {
+            // increment-statement: `target++` / `target--` is a statement, never an
+            // expression, and desugars to the compound assignment `+= 1` / `-= 1`.
+            let starts_with_keyword =
+                matches!(&line[0].kind, TokenKind::Keyword(word) if word != "SELF");
+            if position == 0 || position + 1 != line.len() || starts_with_keyword {
+                return Err(self.error(
+                    "`target++` or `target--` as a statement on its own line (++ and -- are not expressions)",
+                ));
+            }
+            let target = self.expression_in(&line[..position])?;
+            if !matches!(
+                target.kind,
+                ExpressionKind::Name { .. }
+                    | ExpressionKind::Member { .. }
+                    | ExpressionKind::Index { .. }
+            ) {
+                return Err(
+                    self.error("an assignment target must be an identifier, member, or index")
+                );
+            }
+            let operator = if matches!(line[position].kind, TokenKind::Symbol(Symbol::Increment)) {
+                "PlusAssign"
+            } else {
+                "MinusAssign"
+            };
+            return Ok(Statement::Assignment {
+                target,
+                operator: operator.into(),
+                value: Expression {
+                    kind: ExpressionKind::Literal(crate::ast::Literal::Integer("1".into())),
+                    span: line[position].span,
+                },
+                span,
+            });
+        }
         let mut field_start = 0;
         while matches!(line.get(field_start).map(|token| &token.kind), Some(TokenKind::Keyword(word)) if matches!(word.as_str(), "PUBLIC" | "PRIVATE" | "STATIC"))
         {

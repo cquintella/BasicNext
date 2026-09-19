@@ -1,0 +1,4 @@
+FUNCTION Start() AS VOID
+    LET i AS INTEGER = 0
+    PRINT i++
+END FUNCTION

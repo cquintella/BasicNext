@@ -1,0 +1,41 @@
+// Multiple ways to construct a class: one CONSTRUCTOR, several PUBLIC STATIC
+// factories that return NEW. This is the 0.5.2 pattern for alternate
+// construction (constructor overload is not part of the language).
+
+CLASS Temperature
+    PRIVATE celsius AS FLOAT
+
+    PUBLIC FUNCTION CONSTRUCTOR(celsius AS FLOAT)
+        SELF.celsius = celsius
+    END FUNCTION
+
+    PUBLIC STATIC FUNCTION FromCelsius(c AS FLOAT) AS Temperature
+        RETURN NEW Temperature(c)
+    END FUNCTION
+
+    PUBLIC STATIC FUNCTION FromFahrenheit(f AS FLOAT) AS Temperature
+        RETURN NEW Temperature((f - 32.0) * 5.0 / 9.0)
+    END FUNCTION
+
+    PUBLIC STATIC FUNCTION FromKelvin(k AS FLOAT) AS Temperature
+        RETURN NEW Temperature(k - 273.15)
+    END FUNCTION
+
+    PUBLIC FUNCTION Celsius() AS FLOAT
+        RETURN SELF.celsius
+    END FUNCTION
+
+    PUBLIC FUNCTION DESTRUCTOR()
+        PRINT "released", SELF.celsius
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET boiling AS Temperature = Temperature.FromCelsius(100.0)
+    LET body AS Temperature = Temperature.FromFahrenheit(98.6)
+    LET zero AS Temperature = Temperature.FromKelvin(273.15)
+
+    PRINT boiling.Celsius()
+    PRINT body.Celsius()
+    PRINT zero.Celsius()
+END FUNCTION

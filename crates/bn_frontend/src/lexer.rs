@@ -261,6 +261,10 @@ impl<'a> Lexer<'a> {
             (Symbol::PlusAssign, 2)
         } else if self.starts("-=") {
             (Symbol::MinusAssign, 2)
+        } else if self.starts("++") {
+            (Symbol::Increment, 2)
+        } else if self.starts("--") {
+            (Symbol::Decrement, 2)
         } else if self.starts("*=") {
             (Symbol::StarAssign, 2)
         } else if self.starts("/=") {

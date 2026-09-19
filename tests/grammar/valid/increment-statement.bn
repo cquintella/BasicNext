@@ -1,0 +1,28 @@
+CLASS Counter
+    PUBLIC count AS INTEGER = 0
+
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION Bump() AS VOID
+        SELF.count++
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET i AS INTEGER = 5
+    i++
+    i++
+    i--
+    PRINT i
+
+    LET c AS Counter = NEW Counter()
+    c.Bump()
+    c.Bump()
+    PRINT c.count
+
+    LET a AS INTEGER[3] = [10, 20, 30]
+    a[2]++
+    a[0]--
+    PRINT a[0], a[2]
+END FUNCTION

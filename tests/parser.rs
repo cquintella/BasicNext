@@ -55,9 +55,42 @@ fn syntax_error_fixtures_are_rejected_by_the_parser() {
         "tests/grammar/invalid/let-missing-initializer.bn",
         "tests/grammar/invalid/field-missing-initializer.bn",
         "tests/grammar/invalid/for-markers-out-of-order.bn",
+        "tests/grammar/invalid/increment-as-expression.bn",
+        "tests/grammar/invalid/increment-adjacent-minus.bn",
     ] {
         assert!(parse_path(path).is_err(), "{path} must fail parsing");
     }
+}
+
+#[test]
+fn increment_statement_desugars_to_compound_assignment() {
+    let source = SourceFile::new(
+        "increment.bn",
+        "FUNCTION Start() AS VOID\nLET i AS INTEGER = 0\ni++\nSELF.count--\nEND FUNCTION\n",
+    );
+    let tokens = lex(&source).expect("lex increment statements");
+    let program = parse(&tokens).expect("parse increment statements");
+    let Item::Declaration {
+        kind: DeclarationKind::Function,
+        statements,
+        ..
+    } = &program.items[0]
+    else {
+        panic!("expected Start");
+    };
+    let operators: Vec<(&str, bool)> = statements
+        .iter()
+        .filter_map(|statement| match statement {
+            Statement::Assignment {
+                operator, value, ..
+            } => Some((
+                operator.as_str(),
+                matches!(&value.kind, ExpressionKind::Literal(bn::ast::Literal::Integer(one)) if one == "1"),
+            )),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(operators, vec![("PlusAssign", true), ("MinusAssign", true)]);
 }
 
 #[test]
