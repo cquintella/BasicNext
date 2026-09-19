@@ -128,6 +128,7 @@ diagnostic_registry! {
     HOST_IMPORT_SCOPE { code: "HOST_IMPORT_SCOPE", fluent: "HOST_IMPORT_SCOPE", severity: Error, schema: LEGACY_MESSAGE },
     IMPORTED_START { code: "IMPORTED_START", fluent: "IMPORTED_START", severity: Error, schema: LEGACY_MESSAGE },
     IMPORT_CYCLE { code: "IMPORT_CYCLE", fluent: "IMPORT_CYCLE", severity: Error, schema: DETAIL },
+    IMPORT_EXPORT_NOT_FOUND { code: "IMPORT_EXPORT_NOT_FOUND", fluent: "IMPORT_EXPORT_NOT_FOUND", severity: Error, schema: DETAIL },
     INDEX_OUT_OF_BOUNDS { code: "INDEX_OUT_OF_BOUNDS", fluent: "INDEX_OUT_OF_BOUNDS", severity: Error, schema: INDEX_OUT_OF_BOUNDS },
     INHERITANCE_CYCLE { code: "INHERITANCE_CYCLE", fluent: "INHERITANCE_CYCLE", severity: Error, schema: LEGACY_MESSAGE },
     INPUT_ERROR { code: "INPUT_ERROR", fluent: "INPUT_ERROR", severity: Error, schema: DETAIL },

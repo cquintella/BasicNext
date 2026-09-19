@@ -218,3 +218,36 @@ fn host_args_is_restricted_to_the_executable_module() {
     assert_eq!(error.diagnostic.code, "HOST_ARGS_SCOPE");
     assert_ne!(error.module, graph.root);
 }
+
+#[test]
+fn qualified_import_prefers_the_export_over_a_nested_module() {
+    let graph = load(Path::new("tests/modules/qualified-export/main.bn"))
+        .expect("Shapes.Circle resolves to the export of Shapes");
+    let root = &graph.modules[usize::try_from(graph.root.0).expect("root index")];
+    assert_eq!(root.export_selectors, vec![Some("Circle".to_string())]);
+    let imported = &graph.modules[usize::try_from(root.imports[0].0).expect("import index")];
+    assert!(
+        imported.path.ends_with("Shapes.bn"),
+        "{}",
+        imported.path.display()
+    );
+    analyze_modules(&graph).expect("alias C denotes the exported class");
+}
+
+#[test]
+fn qualified_import_of_a_missing_export_is_a_static_error() {
+    let error = load(Path::new("tests/modules/qualified-export/missing/main.bn"))
+        .expect_err("NoSuch is neither an export nor a nested module");
+    assert_eq!(error.diagnostic.code, "IMPORT_EXPORT_NOT_FOUND");
+    assert!(error.source.name.ends_with("missing/main.bn"));
+}
+
+#[test]
+fn qualified_import_binds_exported_types_only_in_this_release() {
+    let graph = load(Path::new(
+        "tests/modules/qualified-export/not-a-type/main.bn",
+    ))
+    .expect("Area is an export, so loading succeeds");
+    let error = analyze_modules(&graph).expect_err("a function export is not bindable by name");
+    assert_eq!(error.diagnostic.code, "IMPORT_EXPORT_NOT_FOUND");
+}

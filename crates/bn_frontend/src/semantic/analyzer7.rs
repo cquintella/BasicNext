@@ -447,6 +447,15 @@ impl Analyzer {
             {
                 continue;
             }
+            // `IMPORT M.E AS A` binds `A` to one exported type (0.5.2 I1).
+            if !name.contains('.')
+                && self
+                    .globals
+                    .get(&name)
+                    .is_some_and(|symbol| matches!(symbol.ty, Type::ImportedTypeName { .. }))
+            {
+                continue;
+            }
             return Err(error(
                 DiagId::UNKNOWN_TYPE,
                 format!("type '{name}' is not declared or imported"),

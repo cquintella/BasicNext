@@ -17,6 +17,7 @@ pub(crate) fn analyze_with_modules(
         program,
         module_exports,
         module_imports,
+        HashMap::new(),
         imported_types,
         module_constants,
         bnmath_modules,
@@ -45,6 +46,7 @@ pub(crate) fn analyze_with_modules_collecting(
         program,
         module_exports,
         module_imports,
+        HashMap::new(),
         imported_types,
         module_constants,
         bnmath_modules,
@@ -61,6 +63,7 @@ pub(crate) fn analyze_with_modules_mode(
     program: &Program,
     module_exports: HashMap<ModuleId, HashMap<String, Type>>,
     module_imports: HashMap<String, ModuleId>,
+    export_selectors: HashMap<String, String>,
     imported_types: HashMap<(ModuleId, String), ImportedTypeInfo>,
     module_constants: HashMap<(ModuleId, String), ConstantValue>,
     bnmath_modules: HashSet<ModuleId>,
@@ -75,6 +78,7 @@ pub(crate) fn analyze_with_modules_mode(
         members: HashMap::new(),
         module_exports,
         module_imports,
+        export_selectors,
         current_class: None,
         declaration_kinds: HashMap::new(),
         constructors: HashMap::new(),
@@ -543,6 +547,28 @@ pub(crate) fn qualify_local_type(module: ModuleId, program: &Program, ty: Type) 
         },
         ty => ty,
     }
+}
+
+/// Alias → exported name for `IMPORT M.E AS A` imports (0.5.2 I1).
+pub(crate) fn export_selectors(
+    module: &crate::module_graph::LoadedModule,
+) -> HashMap<String, String> {
+    let mut selectors = module.export_selectors.iter();
+    module
+        .program
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Import { path, alias, .. } if path.first().is_some_and(|part| part != "HOST") => {
+                selectors
+                    .next()
+                    .expect("module graph selector order")
+                    .as_ref()
+                    .map(|export| (alias.clone(), export.clone()))
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 pub(crate) fn module_imports(

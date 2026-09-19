@@ -1,0 +1,6 @@
+IMPORT Shapes.Circle AS C
+
+FUNCTION Start() AS VOID
+    LET c AS C = NEW C()
+    PRINT c.Origin()
+END FUNCTION

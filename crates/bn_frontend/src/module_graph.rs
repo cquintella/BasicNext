@@ -82,6 +82,9 @@ pub struct LoadedModule {
     pub source: SourceFile,
     pub program: Program,
     pub imports: Vec<ModuleId>,
+    /// Parallel to `imports`: `Some(E)` when `IMPORT M.E AS A` resolved to
+    /// export `E` of module `M` (0.5.2 I1) instead of a nested module.
+    pub export_selectors: Vec<Option<String>>,
     pub standard_module: Option<StandardModule>,
     /// The import root that resolved this module; `None` for the entry file
     /// and for an unresolved import that fell back to the entry directory.
@@ -326,6 +329,7 @@ impl Loader<'_> {
         self.states.insert(path.clone(), State::Visiting);
 
         let mut imports = Vec::new();
+        let mut export_selectors = Vec::new();
         for item in &program.items {
             let Item::Import {
                 path: import, span, ..
@@ -336,8 +340,10 @@ impl Loader<'_> {
             if import.first().is_some_and(|part| part == "HOST") {
                 continue;
             }
-            let (imported_path, winning_root) = self.import_path(import);
+            let (imported_path, winning_root, selector) =
+                self.resolve_import(import, &source, *span)?;
             imports.push(self.visit(&imported_path, Some((&source, *span)), winning_root)?);
+            export_selectors.push(selector);
         }
 
         let id = ModuleId(u32::try_from(self.modules.len()).map_err(|_| {
@@ -356,10 +362,62 @@ impl Loader<'_> {
             source,
             program,
             imports,
+            export_selectors,
             standard_module,
             root,
         });
         Ok(id)
+    }
+
+    /// Resolves an import path. With two or more segments, an `EXPORT` named
+    /// by the last segment in the module named by the preceding segments wins
+    /// over a nested module file (0.5.2 I1); the nested file is the fallback.
+    fn resolve_import(
+        &mut self,
+        parts: &[String],
+        importer: &SourceFile,
+        span: Span,
+    ) -> Result<(PathBuf, Option<ModuleRoot>, Option<String>), ModuleError> {
+        let (nested_path, nested_root) = self.import_path(parts);
+        let Some((export, module_parts)) = parts.split_last().filter(|_| parts.len() >= 2) else {
+            return Ok((nested_path, nested_root, None));
+        };
+        let (parent_path, parent_root) = self.import_path(module_parts);
+        if !exact_file_exists(&parent_path) {
+            return Ok((nested_path, nested_root, None));
+        }
+        let parent = read_source(
+            &normalize(&parent_path),
+            Some((importer, span)),
+            self.session,
+            self.overlays,
+        )?;
+        let exports_name = lex(&parent)
+            .ok()
+            .and_then(|tokens| parse_named(&tokens, &parent.name).ok())
+            .is_some_and(|program| {
+                program.items.iter().any(|item| match item {
+                    Item::Declaration { exported, name, .. }
+                    | Item::Constant { exported, name, .. } => *exported && name == export,
+                    Item::Import { .. } => false,
+                })
+            });
+        if exports_name {
+            return Ok((parent_path, parent_root, Some(export.clone())));
+        }
+        if exact_file_exists(&nested_path) {
+            return Ok((nested_path, nested_root, None));
+        }
+        Err(module_error(
+            importer,
+            "IMPORT_EXPORT_NOT_FOUND",
+            format!(
+                "'{export}' is not an EXPORT of module '{}' and no nested module '{}' exists",
+                module_parts.join("."),
+                parts.join(".")
+            ),
+            span,
+        ))
     }
 
     fn import_path(&self, parts: &[String]) -> (PathBuf, Option<ModuleRoot>) {

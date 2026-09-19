@@ -65,13 +65,21 @@ impl Analyzer {
                         [host, capability] if host == "HOST" => {
                             host_capability_type(capability, *span)?
                         }
-                        _ => Type::Module(*self.module_imports.get(alias).ok_or_else(|| {
-                            error(
-                                DiagId::MODULE_NOT_RESOLVED,
-                                format!("module alias '{alias}' has no resolved ModuleId"),
-                                *span,
-                            )
-                        })?),
+                        _ => {
+                            let module = *self.module_imports.get(alias).ok_or_else(|| {
+                                error(
+                                    DiagId::MODULE_NOT_RESOLVED,
+                                    format!("module alias '{alias}' has no resolved ModuleId"),
+                                    *span,
+                                )
+                            })?;
+                            match self.export_selectors.get(alias) {
+                                None => Type::Module(module),
+                                Some(export) => {
+                                    self.qualified_export_type(module, export, *span)?
+                                }
+                            }
+                        }
                     };
                     self.declare_global(alias, ty, false, *span)?;
                 }
@@ -235,5 +243,37 @@ impl Analyzer {
         self.inherit_members()?;
         self.compute_layouts();
         Ok(())
+    }
+}
+
+impl Analyzer {
+    /// `IMPORT M.E AS A` (0.5.2 I1): the alias denotes export `E` alone. This
+    /// release binds exported types (CLASS / STRUCT / INTERFACE); a function or
+    /// constant export is reported, not silently bound as a module.
+    fn qualified_export_type(
+        &self,
+        module: ModuleId,
+        export: &str,
+        span: Span,
+    ) -> Result<Type, Diagnostic> {
+        match self
+            .module_exports
+            .get(&module)
+            .and_then(|exports| exports.get(export))
+        {
+            Some(ty @ Type::ImportedTypeName { .. }) => Ok(ty.clone()),
+            Some(_) => Err(error(
+                DiagId::IMPORT_EXPORT_NOT_FOUND,
+                format!(
+                    "'{export}' is exported but is not a type; 0.5.2 qualified import binds exported CLASS, STRUCT or INTERFACE only (import the whole module for functions and constants)"
+                ),
+                span,
+            )),
+            None => Err(error(
+                DiagId::IMPORT_EXPORT_NOT_FOUND,
+                format!("'{export}' is not an export of the imported module"),
+                span,
+            )),
+        }
     }
 }

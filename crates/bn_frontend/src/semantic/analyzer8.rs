@@ -45,6 +45,16 @@ impl Analyzer {
                         name: exported_name.into(),
                     };
                 }
+                if let Some(Type::ImportedTypeName {
+                    module,
+                    name: exported_name,
+                }) = self.globals.get(&name).map(|symbol| &symbol.ty)
+                {
+                    return Type::ImportedNamed {
+                        module: *module,
+                        name: exported_name.clone(),
+                    };
+                }
                 Type::Named(name)
             }
             Type::Alternative(types) => {
