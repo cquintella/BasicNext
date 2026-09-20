@@ -4,16 +4,19 @@
 
 .DESCRIPTION
     Installs the bn.exe and bnc.exe binaries plus the runtime files they discover
-    (stdlib .bn modules and the diagnostics catalog) under a prefix:
+    (stdlib .bn modules, diagnostics catalog, and native runtime lib) under a prefix:
 
         <Prefix>\bin\bn.exe
         <Prefix>\bin\bnc.exe
+        <Prefix>\lib\bn_rt.lib                    native runtime for `bn build`
         <Prefix>\share\bn\modules\bn\*.bn         standard library modules
         <Prefix>\share\bn\diagnostics\en-US\*.ftl diagnostics catalog (optional;
                                                   an identical catalog is embedded)
 
     bn finds modules\bn and the catalog by walking upward from its own location,
-    so this layout is zero-config after install. The prefix's bin directory is
+    and finds bn_rt.lib next to the binary, in <Prefix>\, or in <Prefix>\lib\
+    (override with BN_RT_LIB). Do not point BN_RT_LIB at a source-tree
+    target\ directory for a normal install. The prefix's bin directory is
     added to the current user's PATH.
 
 .PARAMETER Prefix
@@ -44,29 +47,46 @@ if (-not $NoBuild) {
     Write-Host "==> Building release binaries (cargo build --release --bins)"
     cargo build --release --bins
     if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
+    Write-Host "==> Building native runtime (cargo build -p bn_rt --release)"
+    cargo build -p bn_rt --release
+    if ($LASTEXITCODE -ne 0) { throw "cargo build -p bn_rt failed" }
 }
 
 $bnBin  = Join-Path $repoRoot 'target\release\bn.exe'
 $bncBin = Join-Path $repoRoot 'target\release\bnc.exe'
+$bnRtLib = Join-Path $repoRoot 'target\release\bn_rt.lib'
 foreach ($bin in @($bnBin, $bncBin)) {
     if (-not (Test-Path $bin)) { throw "missing binary '$bin' (build first, or drop -NoBuild)" }
 }
+if (-not (Test-Path $bnRtLib)) {
+    if (Get-Command cargo -ErrorAction SilentlyContinue) {
+        Write-Host "==> bn_rt.lib missing; building cargo -p bn_rt --release"
+        cargo build -p bn_rt --release
+        if ($LASTEXITCODE -ne 0) { throw "cargo build -p bn_rt failed" }
+    }
+}
+if (-not (Test-Path $bnRtLib)) {
+    throw "missing '$bnRtLib' (needed for bn build). Build with cargo -p bn_rt --release."
+}
 
 $binDir  = Join-Path $Prefix 'bin'
+$libDir  = Join-Path $Prefix 'lib'
 $modDir  = Join-Path $Prefix 'share\bn\modules\bn'
 $diagDir = Join-Path $Prefix 'share\bn\diagnostics'
 
 Write-Host "==> Installing to $Prefix"
-foreach ($dir in @($binDir, $modDir, $diagDir)) {
+foreach ($dir in @($binDir, $libDir, $modDir, $diagDir)) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
 }
 Copy-Item $bnBin  (Join-Path $binDir 'bn.exe')  -Force
 Copy-Item $bncBin (Join-Path $binDir 'bnc.exe') -Force
+Copy-Item $bnRtLib (Join-Path $libDir 'bn_rt.lib') -Force
 Copy-Item (Join-Path $repoRoot 'modules\bn\*.bn') $modDir -Force
 Copy-Item (Join-Path $repoRoot 'share\bn\diagnostics\*') $diagDir -Recurse -Force
 
 Write-Host "==> Installed:"
 Write-Host "    $binDir\bn.exe, $binDir\bnc.exe"
+Write-Host "    $libDir\bn_rt.lib"
 Write-Host "    $modDir\, $diagDir\"
 
 # Add the bin directory to the user's PATH (idempotent).

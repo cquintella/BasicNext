@@ -1,0 +1,34 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// HOST.Exec demonstration: launch an external program, capture its result,
+// and handle the not-found error case.
+// Run with:  bn run examples/exec-demo.bn
+
+IMPORT HOST.Exec AS Exec
+
+FUNCTION Start() AS VOID
+    // Success path: run `echo` with two literal argv elements. There is no
+    // shell between BN and the child, so each element stays literal.
+    LET args AS STRING[2]
+    args[0] = "Hello from"
+    args[1] = "HOST.Exec"
+    LET result AS Exec.Result OR Error = Exec.Run("/bin/echo", args)
+    IF result IS Error THEN
+        PRINT "echo failed, error code:", result.Code
+    ELSE
+        PRINT "echo return code:", result.ReturnCode
+        PRINT "echo stdout:", result.Stdout
+    END IF
+
+    // Error path: a missing executable returns PROGRAM_NOT_FOUND (code 2),
+    // as an Error value rather than a crash.
+    LET missing AS Exec.Result OR Error = Exec.Run("no-such-program-xyz", ["x"])
+    IF missing IS Error THEN
+        PRINT "missing program, error code:", missing.Code
+    ELSE
+        PRINT "unexpected success for a missing program"
+    END IF
+END FUNCTION

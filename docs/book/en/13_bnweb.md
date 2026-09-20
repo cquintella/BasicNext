@@ -1,5 +1,7 @@
 # Appendix G: BNWeb
 
+[← Previous: Appendix F: BNLog](12_bnlog.md) · [Contents](toc.md)
+
 `BNWeb` is the external standard module for web communication. It provides HTTP client and server adapters, routing, filtering, and a shared request/response pipeline.
 
 Because `BNWeb` is an external module, you must import it explicitly:
@@ -38,3 +40,7 @@ To manage expectations and scope, the following advanced features are explicitly
 * **Concurrent Transport Callbacks:** `BNWeb` transport-to-BN threading relies on sequential bounds for now; concurrent dispatch integration is scheduled for 0.4.
 * **HTTPS Client Trust-Root Management:** Advanced client-side certificate authority configurations.
 * **Transport Access-Log Integration:** Deeply integrated native transport logging.
+
+---
+
+[Next: Appendix H: BNData →](14_bndata.md)

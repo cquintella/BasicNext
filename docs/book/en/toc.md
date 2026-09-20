@@ -1,27 +1,42 @@
 # The Basic Next Programming Language
 
-- [Preface — Reclaiming the Joy of Programming](00_preface.md)
+## [Preface](00_preface.md)
+- The problem the language addresses
+- The design decisions and what each one costs
+- What was borrowed, and what the language does not have
+- How this book is organized
 
 ## 1. [Introduction](01_introduction.md)
-- What is Basic Next?
-- Installation and the `bn` CLI (`bn run`, `bn check`, `bn build`, `bn lex`, `bn eval`)
-- Hello, World!
-- Modules and the `Start` Function
-- Ecosystem Tools (Jupyter, VS Code)
+- What Basic Next is, and who it is for
+- Design principles
+- Installing the toolchain
+- The `bn` commands (`check`, `run`, `build`, `eval`, `lex`, `lsp`, `dap`)
+- A first program, interpreted and compiled
+- Modules and the entry point (`Start`, `EXPORT`, `IMPORT`, `STATIC` state)
+- Reading a diagnostic
+- Editor and notebook integration
 
 ## 2. [Common Programming Concepts](02_common_programming_concepts.md)
-- Variables and Constants (`LET`, `CONST`)
-- Type Inspection (`TYPEOF`)
-- Primitive Types (Integers, Floats, Boolean, String, Temporal)
-- Operators and Expressions
-- Explicit Type Conversion (`AS`)
-- Basic Console I/O (`PRINT`, `INPUT`)
+- Comments
+- Variables (`LET`), defaults, and alternative-typed bindings
+- Constants (`CONST`) and literal inference
+- Type inspection (`TYPEOF`)
+- Primitive types: numeric widths and overflow, `BOOLEAN`, `STRING`, temporal
+- Operators: arithmetic, the three divisions, comparison, logical and bitwise
+- Explicit conversion (`AS`) and numeric limits (`BNMath`)
+- Console input and output (`PRINT`, `INPUT`, `HOST.Console`)
+- Choosing types deliberately
 
 ## 3. [Control Flow](03_control_flow.md)
-- Conditional Branching (`IF`, `ELSE`, single-line `IF`)
-- Pre-condition and Post-condition Loops (`WHILE`, `REPEAT ... UNTIL`)
-- Counted and Collection Iteration (`FOR`, `FOR EACH`)
-- Loop Control and Termination (`EXIT`, `CONTINUE`, `STOP`)
+- Boolean-only conditions
+- Block `IF`, chained alternatives, and the single-line form
+- Guard clauses instead of nesting
+- Narrowing an alternative type (`IS`)
+- Pre-condition and post-condition loops (`WHILE`, `REPEAT ... UNTIL`)
+- Counted and collection iteration (`FOR`, `FOR EACH`)
+- Leaving and skipping iterations (`EXIT`, `CONTINUE`)
+- Loops and return analysis
+- Halting the program (`STOP`) and a worked example
 
 ## 4. [Compound Data and Error Handling](04_compound_data.md)
 - Fixed-Size Vectors
@@ -76,3 +91,7 @@
 - Appendix H: [`BNData`](14_bndata.md)
 - Appendix I: [External module conventions](15_external_modules.md)
 - Appendix J: [`BNDispatch`](16_bndispatch.md)
+
+---
+
+[Start reading: Preface →](00_preface.md)

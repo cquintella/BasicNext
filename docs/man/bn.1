@@ -1,5 +1,5 @@
 .\" groff man page for the Basic Next reference tool.
-.TH BN 1 "September 15, 2026" "bn 0.5.1" "Basic Next"
+.TH BN 1 "September 19, 2026" "bn 0.5.1" "Basic Next"
 .SH NAME
 bn \- Basic Next reference checker, interpreter, and compiler
 .SH SYNOPSIS
@@ -106,10 +106,32 @@ option is repeatable; earlier directories win. Configuration entries are
 applied before command-line entries.
 .TP
 .BI --opt " none|1|2|3|s"
-Select the Clang/WebAssembly linker optimization level. The default is
-.BR 2 ;
+Select the Clang optimization level applied when compiling the generated
+LLVM IR for
+.B build
+(native or
+.BR wasm32 ).
+Mapped values:
+.BR none
+→
+.BR -O0 ;
+.BR 1
+→
+.BR -O1 ;
+.BR 2
+→
+.BR -O2
+(default when omitted);
+.BR 3
+→
+.BR -O3 ;
 .B s
-optimizes for size.
+→
+.BR -Os
+(optimize for size).
+Does not change
+.B bn run
+semantics; compiled output must match the interpreter on the supported subset.
 .TP
 .B --no-filesystem
 With
@@ -119,6 +141,25 @@ reject a
 import before
 .BR Start .
 The Jupyter kernel uses this boundary.
+.TP
+.B --sandbox
+Opt into filesystem root restrictions for
+.BR run
+(and other commands that honour the sandbox). Without explicit roots, policy
+is restrictive; combine with
+.B --read-root
+and
+.BR --write-root .
+.TP
+.BI --read-root " dir"
+Allow reads under
+.I dir
+when the sandbox is active. Repeatable.
+.TP
+.BI --write-root " dir"
+Allow writes under
+.I dir
+when the sandbox is active. Repeatable.
 .TP
 .B --trace
 Report the interpreter entry point.
@@ -249,6 +290,27 @@ resolving to another
 .B modules/bn
 higher in the tree.
 .TP
+.B BN_RT_LIB
+Absolute path to the native runtime static library used by
+.B bn build
+(
+.I libbn_rt.a
+on Unix,
+.I bn_rt.lib
+on Windows). When unset,
+.B bn
+searches next to the executable, then
+.IR $PREFIX/lib/
+when the binary lives in
+.IR $PREFIX/bin/
+(for example
+.IR /usr/local/lib/libbn_rt.a ).
+Do not point this at a development
+.I target/
+tree for a normal install; reinstall with
+.I scripts/install.sh
+so the library lands in the prefix.
+.TP
 .B BN_WASM_LD
 Command or path used as the WebAssembly linker.
 .PP
@@ -256,13 +318,13 @@ Command or path used as the WebAssembly linker.
 does not read environment variables for language behaviour.
 .SH FILES
 .TP
-.I docs/language/0.4/0.4.ebnf
-Highest-priority accepted grammar planning surface.
+.I docs/language/0.5/0.5.ebnf
+Accepted grammar for the 0.5 line.
 .TP
-.I docs/language/0.4/0.4.md
-Active 0.4 language specification draft.
+.I docs/language/0.5/0.5.md
+Consolidated 0.5 language specification.
 .TP
-.I docs/language/0.4/keywords.md
+.I docs/language/0.5/keywords.md
 Keyword and reserved-form contract.
 .TP
 .I docs/project/usage.md
@@ -270,10 +332,18 @@ Installation, examples, limits, and troubleshooting.
 .TP
 .I docs/project/kernel.md
 Jupyter host contract.
+.TP
+.I docs/releases/
+In-repo release notes for tagged versions.
 .SH LIMITATIONS
-LLVM lowering covers a typed scalar and vector subset and rejects unsupported IR
-explicitly. Time-zone values do not apply TZDB zone rules. The VS Code adapter
-is launch-only and has no breakpoints or stepping.
+LLVM lowering covers a typed IR subset and rejects unsupported operations
+explicitly (
+.BR BUILD_LOWERING_UNAVAILABLE ).
+Use
+.B bn run
+for the full interpreter surface. Time-zone values do not apply TZDB zone rules.
+The VS Code extension and DAP adapter coverage grow with releases; do not assume
+full breakpoint/step parity from this page alone.
 .SH EXAMPLES
 .nf
 .RS
@@ -284,14 +354,16 @@ bn run examples/language-tour.bn
 bn run examples/hello.bn -- extra-argument
 bn check --emit ir examples/factorial.bn
 bn build examples/hello.bn -o hello
-bn build --target wasm32 examples/hello.bn -o hello.wasm
+bn build --opt 3 examples/hello.bn -o hello
+bn build --opt s --target wasm32 examples/hello.bn -o hello.wasm
+bn run --sandbox --read-root . --write-root /tmp examples/hello.bn
 .RE
 .fi
 .SH SEE ALSO
 .IR docs/book/en/toc.md ,
 .IR docs/project/usage.md ,
 .IR docs/project/kernel.md ,
-.IR docs/language/0.4/0.4.md ,
+.IR docs/language/0.5/0.5.md ,
 .IR docs/library/host.md ,
 .IR docs/library/math.md
 .SH AUTHOR

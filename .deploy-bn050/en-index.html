@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Basic Next — programming language 0.5.2</title>
+<meta name="description" content="In the age of AI, Basic Next is a language for humans: low cognitive friction, vibe coding that stays readable. The visible version is now 0.5.2. Still experimentation — version 0.">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<meta name="author" content="Carlos Alvaro Quintela">
+<meta name="theme-color" content="#09090b">
+<link rel="canonical" href="https://www.intelliurb.com/basicnext/en/">
+<link rel="alternate" hreflang="pt-BR" href="https://www.intelliurb.com/basicnext/">
+<link rel="alternate" hreflang="en" href="https://www.intelliurb.com/basicnext/en/">
+<link rel="alternate" hreflang="x-default" href="https://www.intelliurb.com/basicnext/">
+<link rel="icon" type="image/png" href="https://www.intelliurb.com/basicnext/logo.png?v=050">
+<link rel="apple-touch-icon" href="https://www.intelliurb.com/basicnext/og-logo.png?v=050">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="en_US">
+<meta property="og:site_name" content="Basic Next">
+<meta property="og:url" content="https://www.intelliurb.com/basicnext/en/">
+<meta property="og:title" content="Basic Next — programming language 0.5.2">
+<meta property="og:description" content="A language for humans, with low cognitive friction. The visible version is now 0.5.2. Still experimentation — version 0.">
+<meta property="og:image" content="https://www.intelliurb.com/basicnext/og-logo.png?v=050">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Periodic-table element Bn, atomic weight 0.5">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Basic Next — programming language 0.5.2">
+<meta name="twitter:description" content="Basic Next 0.5.2: current line. Still experimentation — version 0.">
+<meta name="twitter:image" content="https://www.intelliurb.com/basicnext/og-logo.png?v=050">
+<link rel="stylesheet" href="/basicnext/style.css?v=059">
+<script src="/basicnext/lang.js?v=059"></script>
+<script src="/font-scale.js"></script>
+<script>const saved=localStorage.getItem('basicnext-theme');if(saved==='light'||(!saved&&matchMedia('(prefers-color-scheme:light)').matches))document.documentElement.classList.remove('dark')</script>
+</head>
+<body>
+<a class="skip" href="#conteudo">Skip to content</a>
+<header>
+<nav class="nav" aria-label="Primary">
+  <div class="shell nav-inner">
+    <a class="brand" href="/basicnext/en/" aria-label="Basic Next, home">
+      <img src="/basicnext/logo.png?v=050" width="40" height="40" alt="Bn, atomic weight 0.5">
+      <span class="brand-name">Basic Next</span>
+    </a>
+    <div class="nav-actions">
+      <a class="nav-link" href="#comecar">Start</a>
+      <a class="nav-link" href="#exemplos">Examples</a>
+      <a class="nav-link" href="#por-que">Why</a>
+      <a class="btn btn-outline lang-switch" href="/basicnext/" hreflang="pt-BR" lang="pt-BR" title="Português" aria-label="Mudar para português" onclick="localStorage.setItem('basicnext-lang','pt')"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15 15 0 0 1 0 20"/><path d="M12 2a15 15 0 0 0 0 20"/></svg><span>PT</span></a>
+      <div class="font-ctrl" role="group" aria-label="Font size">
+        <button type="button" class="font-ctrl-btn" data-font-delta="-0.1" title="Decrease font size" aria-label="Decrease font size"><span class="font-ctrl-face" aria-hidden="true"><span class="font-ctrl-br">[</span><span class="font-ctrl-op">−</span><span class="font-ctrl-br">]</span></span></button>
+        <button type="button" class="font-ctrl-btn" data-font-delta="0.1" title="Increase font size" aria-label="Increase font size"><span class="font-ctrl-face" aria-hidden="true"><span class="font-ctrl-br">[</span><span class="font-ctrl-op">+</span><span class="font-ctrl-br">]</span></span></button>
+      </div>
+      <button class="btn btn-outline btn-icon" id="theme" type="button" aria-label="Toggle theme"><span aria-hidden="true">◐</span></button>
+      <a class="btn btn-primary" href="https://github.com/cquintella/BasicNext" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+    </div>
+  </div>
+</nav>
+</header>
+<main id="conteudo">
+
+<section class="hero shell">
+  <img class="hero-logo" src="/basicnext/logo.png?v=050" width="180" height="180" alt="Element Bn, atomic weight 0.5">
+  <h1>Basic Next reduces the cognitive friction of the language.<br>Your focus becomes your idea.</h1>
+  <p class="lead">Basic Next (or, as we fondly call it, BN) is a programming language for anyone who wants less cognitive friction in the programming process. Its focus is programming logic and building solutions. Welcome to version 0.5.2.</p>
+  <div class="actions">
+    <a class="btn btn-primary" href="https://github.com/cquintella/BasicNext" target="_blank" rel="noopener noreferrer">Try it ↗</a>
+    <a class="btn btn-outline" href="https://github.com/cquintella/BasicNext/blob/main/docs/book/en/BasicNext_Book.md" target="_blank" rel="noopener noreferrer">Learn it ↗</a>
+  </div>
+</section>
+
+<section class="shell hero-follow">
+  <aside class="card notice-board" role="note">
+    <p class="notice-kicker"><i></i> Current line · 0.5.2</p>
+    <p>The visible version is now <b>0.5.2</b>.</p>
+    <p>Basic Next is still experimentation — version 0, pre-alpha. It must not run business processes.</p>
+  </aside>
+  <div class="code-wrap pitch-wrap">
+    <article class="code-copy">
+      <p class="pitch">In the age of Artificial Intelligence, Basic Next is a language for humans. It was built as a low-friction interface between people and the machine. You can vibe-code applications without making them hard for humans to read. It follows object-oriented principles, and it was designed to be extensible and powerful.</p>
+      <p class="pitch-actions"><a class="btn btn-outline" href="#depoimento">Read the author’s note</a></p>
+    </article>
+    <div class="code">
+      <div class="code-bar"><i></i><i></i><i></i><span style="margin-left:auto">hello.bn</span></div>
+      <pre><code><span class="kw">FUNCTION</span> Start() <span class="kw">AS VOID</span>
+  <span class="host">PRINT</span> <span class="str">"Welcome to Basic Next"</span>
+  <span class="kw">LET</span> counter <span class="kw">AS INTEGER</span> = 0
+
+  <span class="kw">WHILE</span> counter &lt; 10
+    <span class="host">PRINT</span> <span class="str">"Basic Next: "</span>, counter
+    counter += 1
+  <span class="kw">END WHILE</span>
+<span class="kw">END FUNCTION</span></code></pre>
+    </div>
+  </div>
+</section>
+
+<section class="section shell" id="comecar">
+  <div class="section-head">
+    <p class="eyebrow">How to start quickly</p>
+    <h2>Install bn. Write. Run.</h2>
+    <p class="section-copy">Linux and macOS: one command installs <b>0.5.2</b> under <code>/opt/basicnext</code>. Windows: clone + <code>install.ps1</code> (default <code>%LOCALAPPDATA%\Programs\BasicNext</code>). Then: <code>bn run</code>.</p>
+  </div>
+  <div class="grid grid-2">
+    <article class="card">
+      <p class="eyebrow">1 · Linux / macOS</p>
+      <h3>Install to <code>/opt/basicnext</code></h3>
+      <p>Fetches <code>install.sh</code> from GitHub, downloads the <code>v0.5.2</code> release, and installs into that prefix. Uses <code>sudo</code> when <code>/opt</code> is not writable.</p>
+      <pre class="shell-cmd" aria-label="Install Basic Next with curl"><code>curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.sh | BN_VERSION=v0.5.2 bash -s -- --prefix /opt/basicnext</code></pre>
+      <pre class="shell-cmd" aria-label="Put bn on PATH"><code>export PATH="/opt/basicnext/bin:$PATH"</code></pre>
+    </article>
+    <article class="card">
+      <p class="eyebrow">2 · Windows</p>
+      <h3>PowerShell + <code>install.ps1</code></h3>
+      <p>With <a href="https://www.rust-lang.org/tools/install">Rust</a> and Git, clone the repo and run the installer. Default prefix is <code>%LOCALAPPDATA%\Programs\BasicNext</code> (no admin) and <code>bin</code> is added to the user PATH.</p>
+      <pre class="shell-cmd" aria-label="Install Basic Next on Windows"><code>git clone https://github.com/cquintella/BasicNext.git
+cd BasicNext
+powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1</code></pre>
+      <p style="margin-top:12px">Custom prefix: <code>-Prefix C:\Tools\BasicNext</code>. Ready-made assets also on <a href="https://github.com/cquintella/BasicNext/releases/tag/v0.5.2">GitHub Releases</a>.</p>
+    </article>
+  </div>
+  <div class="code-wrap" style="margin-top:22px">
+    <div class="code-copy">
+      <p class="eyebrow">3 · Hello</p>
+      <h2>First program</h2>
+      <p class="section-copy">Save as <code>hello.bn</code> and run it. There is also a <a href="https://github.com/cquintella/BasicNext/tree/main/plugins/vscode">VS Code plugin in alpha</a>.</p>
+    </div>
+    <div class="code">
+      <div class="code-bar"><i></i><i></i><i></i><span style="margin-left:auto">hello.bn</span></div>
+      <pre><code><span class="kw">FUNCTION</span> Start() <span class="kw">AS VOID</span>
+  <span class="host">PRINT</span> <span class="str">"Hello, Basic Next"</span>
+<span class="kw">END FUNCTION</span></code></pre>
+    </div>
+  </div>
+  <pre class="shell-cmd" aria-label="Command to run the example"><code>bn run hello.bn</code></pre>
+</section>
+
+<section class="section shell" id="exemplos">
+  <div class="section-head">
+    <p class="eyebrow">Useful examples</p>
+    <h2>Code you can read out loud.</h2>
+    <p class="section-copy">Short BN-style snippets: <code>FUNCTION Start</code>, <code>LET … AS TYPE</code>, <code>PRINT</code>. Copy, adapt, run.</p>
+  </div>
+  <div class="grid grid-2">
+    <article class="card">
+      <p class="eyebrow">Conversion</p>
+      <h3>Fahrenheit → Celsius</h3>
+      <p>Explicit types and clear arithmetic.</p>
+      <div class="code snippet">
+        <div class="code-bar"><i></i><i></i><i></i><span style="margin-left:auto">fahrenheit.bn</span></div>
+        <pre><code><span class="kw">FUNCTION</span> Start() <span class="kw">AS VOID</span>
+  <span class="kw">LET</span> fahrenheit <span class="kw">AS FLOAT</span> = 98.6
+  <span class="kw">LET</span> celsius <span class="kw">AS FLOAT</span> = (fahrenheit - 32.0) * 5.0 / 9.0
+  <span class="host">PRINT</span> <span class="str">"Celsius: "</span>, celsius
+<span class="kw">END FUNCTION</span></code></pre>
+      </div>
+    </article>
+    <article class="card">
+      <p class="eyebrow">Text</p>
+      <h3>Word counter</h3>
+      <p>Walk the string; count words with no hidden magic.</p>
+      <div class="code snippet">
+        <div class="code-bar"><i></i><i></i><i></i><span style="margin-left:auto">words.bn</span></div>
+        <pre><code><span class="kw">FUNCTION</span> CountWords(text <span class="kw">AS STRING</span>) <span class="kw">AS INTEGER</span>
+  <span class="kw">LET</span> words <span class="kw">AS INTEGER</span> = 0
+  <span class="kw">LET</span> inWord <span class="kw">AS BOOLEAN</span> = <span class="kw">FALSE</span>
+  <span class="kw">LET</span> i <span class="kw">AS INTEGER</span> = 0
+  <span class="kw">WHILE</span> i &lt; <span class="host">LEN</span>(text)
+    <span class="kw">LET</span> ch <span class="kw">AS STRING</span> = text[i]
+    <span class="kw">IF</span> ch = <span class="str">" "</span> <span class="kw">THEN</span>
+      inWord = <span class="kw">FALSE</span>
+    <span class="kw">ELSE IF</span> <span class="kw">NOT</span> inWord <span class="kw">THEN</span>
+      inWord = <span class="kw">TRUE</span>
+      words += 1
+    <span class="kw">END IF</span>
+    i += 1
+  <span class="kw">END WHILE</span>
+  <span class="kw">RETURN</span> words
+<span class="kw">END FUNCTION</span>
+
+<span class="kw">FUNCTION</span> Start() <span class="kw">AS VOID</span>
+  <span class="kw">LET</span> phrase <span class="kw">AS STRING</span> = <span class="str">"Basic Next lowers friction"</span>
+  <span class="host">PRINT</span> <span class="str">"Words: "</span>, CountWords(phrase)
+<span class="kw">END FUNCTION</span></code></pre>
+      </div>
+    </article>
+    <article class="card">
+      <p class="eyebrow">Recursion</p>
+      <h3>Factorial</h3>
+      <p>The classic example from the repository.</p>
+      <div class="code snippet">
+        <div class="code-bar"><i></i><i></i><i></i><span style="margin-left:auto">factorial.bn</span></div>
+        <pre><code><span class="kw">FUNCTION</span> Factorial(value <span class="kw">AS INTEGER</span>) <span class="kw">AS INTEGER</span>
+  <span class="kw">IF</span> value = 0 <span class="kw">THEN</span>
+    <span class="kw">RETURN</span> 1
+  <span class="kw">ELSE</span>
+    <span class="kw">RETURN</span> value * Factorial(value - 1)
+  <span class="kw">END IF</span>
+<span class="kw">END FUNCTION</span>
+
+<span class="kw">FUNCTION</span> Start() <span class="kw">AS INTEGER</span>
+  <span class="kw">LET</span> value <span class="kw">AS INTEGER</span> = 10
+  <span class="kw">LET</span> result <span class="kw">AS INTEGER</span> = Factorial(value)
+  <span class="host">PRINT</span> <span class="str">"Factorial of "</span>, value, <span class="str">" is "</span>, result
+  <span class="kw">RETURN</span> 0
+<span class="kw">END FUNCTION</span></code></pre>
+      </div>
+    </article>
+    <article class="card">
+      <p class="eyebrow">Loop</p>
+      <h3>Sum 1 through N</h3>
+      <p>Explicit accumulator, visible intent.</p>
+      <div class="code snippet">
+        <div class="code-bar"><i></i><i></i><i></i><span style="margin-left:auto">sum.bn</span></div>
+        <pre><code><span class="kw">FUNCTION</span> SumTo(n <span class="kw">AS INTEGER</span>) <span class="kw">AS INTEGER</span>
+  <span class="kw">LET</span> total <span class="kw">AS INTEGER</span> = 0
+  <span class="kw">LET</span> i <span class="kw">AS INTEGER</span> = 1
+  <span class="kw">WHILE</span> i &lt;= n
+    total += i
+    i += 1
+  <span class="kw">END WHILE</span>
+  <span class="kw">RETURN</span> total
+<span class="kw">END FUNCTION</span>
+
+<span class="kw">FUNCTION</span> Start() <span class="kw">AS VOID</span>
+  <span class="host">PRINT</span> <span class="str">"Sum 1..100 = "</span>, SumTo(100)
+<span class="kw">END FUNCTION</span></code></pre>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section class="section shell" id="por-que">
+  <div class="section-head">
+    <p class="eyebrow">Why use it</p>
+    <h2>Concrete benefits — no empty marketing.</h2>
+    <p class="section-copy">BN exists to cut friction between idea and program — and to teach with visible contracts.</p>
+  </div>
+    <div class="grid grid-4">
+    <article class="card card-spectrum">
+      <h3>Small Core</h3>
+      <p>Reserved words cover only the fundamentals. Everything else comes through imported modules.</p>
+    </article>
+    <article class="card card-spectrum">
+      <h3>Explicit Typing</h3>
+      <p>Every declaration states its type. No magic, no runtime surprises.</p>
+    </article>
+    <article class="card card-spectrum">
+      <h3>Host by Capability</h3>
+      <p>Programs target console, files, network — not Windows or Linux.</p>
+    </article>
+    <article class="card card-spectrum">
+      <h3>Built to Teach</h3>
+      <p>Types, memory, and control flow stay visible. Real learning without cryptic syntax.</p>
+    </article>
+  </div>
+  <p class="section-copy" style="margin-top:22px">Read the <a href="https://github.com/cquintella/BasicNext/blob/main/PHILOSOPHY.md">philosophy document</a> and the <a href="https://github.com/cquintella/BasicNext/tree/main/docs/book/en">book</a>.</p>
+</section>
+
+<section class="section shell" id="depoimento">
+  <div class="section-head">
+    <p class="eyebrow">Author’s note</p>
+    <h2>Why I created Basic Next</h2>
+    <p class="section-copy">Carlos Alvaro Quintela, from the book preface.</p>
+  </div>
+  <article class="card notice-board" aria-label="Note from Carlos Alvaro Quintela">
+    <p class="notice-kicker"><i></i> Words from the builder</p>
+    <p>Hello everyone. My name is <b>Carlos Alvaro Quintela</b>, and I want to introduce you to <b>Basic Next</b>—a programming language I created to solve a deeply personal pain point that I know affects many developers: the loss of intuition, fluidity, and genuine joy in turning ideas into software.</p>
+    <p>Programming used to be fun. For me, building a system or creating a game wasn’t an exercise in mental exhaustion, nor a battle against complex frameworks, endless configurations, and unnecessary verbosity.</p>
+    <p>When we program at our best, we enter what psychology calls the <b>State of Flow</b>—that moment of absolute focus where the tool vanishes, the mind connects directly with the system, and hours pass without us noticing. Idea → zero syntactic friction → program.</p>
+    <p>Throughout my career I’ve worked with dozens of languages and paradigms. With the rise of <i>vibe coding</i> we generate massive volumes of code—but staying trapped almost exclusively in Python, the language AI models tend to favor, doesn’t feel like the most rewarding experience for those who lived through the golden era of <b>BASIC</b> and <b>Pascal</b>. And while <b>C</b> remains one of my favorites, its cognitive load is extremely high: pointers and function pointers break Flow and drain energy away from creation.</p>
+    <p><b>Basic Next</b> was born to eliminate that energy loss. It is engineered to be simple, powerful, intuitive, and to have an extremely low learning curve.</p>
+    <p><b>Core pillars:</b> KISS (a small, predictable core); direct, frictionless writing; absolute transparency (mandatory types, explicit paths, no magic); modularity and extensibility; and a hardware isolation layer so you can port without rewriting the application.</p>
+    <p>It distills the best of several traditions—BASIC (clarity and excitement), Pascal (elegance and explicit declarations), C (minimalist core), C++ (practical OO), R (vectorized math)—and leaves behind Python’s implicit typing and historical friction, and Java’s bureaucracy of endless abstractions.</p>
+    <p>Beyond reclaiming Flow for experienced developers, the primary commitment is to be an <b>exceptional educational tool</b>: allocation, types, control flow, and memory stay understandable without cryptic syntax. Strict semantic analysis catches errors early and keeps learning as discovery rather than frustration.</p>
+    <p>Basic Next bridges rigorous software engineering, ease of learning, and pure creative freedom. It was built for those who want to create deterministic systems, teach the essence of computer science, and, above all, <b>enter the Flow state and have fun programming again</b>.</p>
+    <p>Thank you!</p>
+    <p class="pitch-actions"><a class="btn btn-outline" href="https://github.com/cquintella/BasicNext/blob/main/docs/book/en/00_preface.md">Full preface in the book ↗</a></p>
+  </article>
+</section>
+
+<section class="section shell">
+  <div class="cta">
+    <p class="eyebrow">Open source · MPL 2.0</p>
+    <h2>0.5.2 to follow today.</h2>
+    <p>Read our <a href="https://github.com/cquintella/BasicNext/blob/main/PHILOSOPHY.md">philosophy document</a>, run the examples, and get the free version on GitHub.</p>
+    <div class="actions" style="justify-content:center">
+      <a class="btn btn-primary" href="https://github.com/cquintella/BasicNext">See 0.5.2 on GitHub ↗</a>
+      <a class="btn btn-outline" href="https://github.com/cquintella/BasicNext/releases" target="_blank" rel="noopener noreferrer">Releases ↗</a>
+    </div>
+  </div>
+</section>
+
+<section class="section shell" id="follow">
+  <div class="cta follow-us">
+    <p class="eyebrow">Social</p>
+    <h2>Follow us</h2>
+    <p>GitHub, Instagram, and X (Twitter).</p>
+    <div class="actions follow-links" style="justify-content:center">
+      <a class="btn btn-primary" href="https://github.com/cquintella/BasicNext" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+      <a class="btn btn-outline" href="https://instagram.com/intelliurb" target="_blank" rel="noopener noreferrer">Instagram @intelliurb ↗</a>
+      <a class="btn btn-outline" href="https://x.com/intelliurbLab" target="_blank" rel="noopener noreferrer">X @intelliurbLab ↗</a>
+    </div>
+  </div>
+</section>
+</main>
+<footer class="footer">
+  <div class="shell footer-inner">
+    <span>© 2026 Basic Next · MPL 2.0 · An <a href="/">Intelliurb</a> project</span>
+    <span><a href="/blog/">Blog</a> · <a href="https://github.com/cquintella/BasicNext">GitHub</a> · <a href="https://github.com/cquintella/BasicNext/blob/main/PHILOSOPHY.md">Philosophy</a> · by Carlos Alvaro Quintela</span>
+  </div>
+</footer>
+<script>
+document.querySelector('#theme').onclick=()=>{document.documentElement.classList.toggle('dark');localStorage.setItem('basicnext-theme',document.documentElement.classList.contains('dark')?'dark':'light')};
+</script>
+</body>
+</html>

@@ -1,5 +1,7 @@
 # Functions and Program Structure
 
+[← Previous: Compound Data and Error Handling](04_compound_data.md) · [Contents](toc.md)
+
 Basic Next programs are composed of functions organized into files called modules. The language requires explicit signatures, strictly verifies return paths, and uses a disciplined import system to prevent namespace pollution.
 
 ## Function Declarations
@@ -84,3 +86,7 @@ Module resolution happens relative to the project root (the directory of the exe
 Basic Next checks for import cycles and will reject the program if a circular dependency is detected.
 
 Since 0.5.2 a dotted path can name **one exported type**: `IMPORT BNString.String AS Str` binds `Str` to the `String` class only (sibling exports stay invisible), and `NEW Str("x")` / `LET s AS Str` work as with the module form. A dotted path falls back to the nested-module meaning only when the last segment is not an export; naming something that is neither is `IMPORT_EXPORT_NOT_FOUND`. Exported functions and constants still require the whole-module import.
+
+---
+
+[Next: Object-Oriented Features →](06_object_oriented_features.md)

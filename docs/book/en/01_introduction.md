@@ -1,117 +1,144 @@
 # Introduction
-**Author:** Carlos Quintella  
-**Date:** August 29, 2026  
+
+[← Previous: Preface](00_preface.md) · [Contents](toc.md)
+
+**Author:** Carlos Quintella
 **License:** Mozilla Public License 2.0 (MPL-2.0)
 
 ![Basic Next Book Cover](../cover.jpg)
 
-This document is the introductory tutorial for the Basic Next (BN) programming language.
+> **Note:** This book is the tutorial for the **0.5 line** of Basic Next, written against toolchain 0.5.2. It is not the normative language contract. When a chapter and the specification disagree, the specification governs: [`docs/language/0.5/0.5.md`](../../language/0.5/0.5.md), with the grammar in [`0.5.ebnf`](../../language/0.5/0.5.ebnf) and the reserved words in [`keywords.md`](../../language/0.5/keywords.md). Toolchain behaviour that is not part of the language — `bn eval`, the module search path, diagnostic configuration — is documented in [`usage.md`](../../project/usage.md).
 
-> **Note:** This book is the **Version 0.5.1** tutorial. It is not the normative
-> language contract. When a chapter and the specification disagree, follow
-> the 0.5 language specification, [`docs/language/0.5/0.5.md`](../../language/0.5/0.5.md)
-> (consolidated 0.5.0 ARC + 0.5.1 `HOST.Exec`). Toolchain features of 0.5.1
-> that are not language (`bn eval`, expressive diagnostics, ordered module
-> search path) are documented in [`usage.md`](../../project/usage.md).
+This chapter installs the toolchain, runs a first program, and establishes the vocabulary the rest of the book uses: module, entry point, declaration, diagnostic. By the end of it you will have compiled and executed a Basic Next program in two different ways and will know what the tool reports when a program is wrong.
 
+## What Basic Next Is
 
-## What is Basic Next?
+Basic Next is an explicitly typed, object-oriented language with a reference interpreter and an ahead-of-time compiler, both built on the same validated intermediate representation. A program states the type of every binding, parameter, and return value; the compiler checks those statements before the program runs; and the behaviour of the program at runtime is the behaviour its source describes, without implicit numeric conversion, without silent integer wraparound, and without values that are treated as conditions because they happen to be non-zero.
 
-Basic Next is an explicitly typed, object-oriented programming language designed for clarity, safety, and predictable execution. It bridges low-level memory control with modern object-oriented paradigms to provide a fully transparent development experience. By eliminating implicit conversions and hidden behaviors, Basic Next ensures that programs behave exactly as written.
+Three properties follow from that position and are worth stating concretely, because they shape how the language is used.
 
-### Predictability and Total Developer Control
+The first is that errors are reported by position in the source. A type mismatch, a missing return, a loop exit that names the wrong loop — each is a compile-time diagnostic carrying a stable code, a file, a line, and a column. The feedback loop for a beginner is therefore the compiler rather than a debugger, and the feedback loop for a maintainer is the same tool that builds the program.
 
-Explicit code is easier to reason about than implicit conventions. Basic Next removes hidden runtime magic, automatic type coercion, and unexpected fallbacks. Variable types are stated clearly, memory management is transparent, and every function execution path is guaranteed to return a value.
+The second is that the same source is both interpreted and compiled. `bn run` executes a program through the typed-IR interpreter, which is the executable reference for the language. `bn build` compiles the supported subset of that same validated IR to a native executable or a WebAssembly module. A program is not first written for one and then ported to the other, and where the compiler cannot express a valid program for a chosen target, it rejects it with a diagnostic naming the unsupported operation rather than emitting code that behaves differently.
 
-### Shift-Left Safety
+The third is that the language surface is small on purpose. `HOST` is the only built-in interface to the operating system. Everything else — mathematics, JSON, logging, HTTP, tabular data, concurrency — is a module that a program imports by name. Nothing reaches a program's scope without a line of source that asks for it.
 
-By catching potential issues before code ever runs, Basic Next helps you resolve design flaws early during compilation. The strict type system and mandatory return checks prevent common vulnerabilities such as invalid null references, unexpected type mismatches, and untracked resource leaks.
+## Who the Language Is For
 
-### Dual Execution Model
+Two audiences, with one requirement in common.
 
-Basic Next provides both an interactive reference interpreter and ahead-of-time (AOT) compilation. Developers can use the interpreter for rapid experimentation and learning, then compile directly to native binaries or WebAssembly artifacts for efficient production deployment.
+Students meeting types, allocation, control flow, and memory for the first time need a language that makes the machine visible without making it cryptic, and that fails early enough for the failure to be connected to the decision that caused it. Practitioners building small deterministic tools need the same properties for a different reason: a program whose behaviour is determined by its source is a program that can be reasoned about six months later.
 
-Isso implica numa funcionalidade total
+The book is written for both. It assumes no previous exposure to Basic Next and no specific prior language, and it explains each construct from its purpose rather than by analogy to another language's version of it.
 
-### Decoupled Modular Architecture
+## Design Principles
 
-Under the hood, the Basic Next toolchain uses a modular pipeline: a Lexer, a Parser producing an Abstract Syntax Tree (AST), a Semantic Analyzer, an Intermediate Representation (BN IR), and dedicated backends. This structure keeps language rules clean, predictable, and maintainable.
+The principles below are stated as constraints, because that is what they are in practice. Each is enforced by the compiler or by the shape of the grammar rather than left to convention.
 
-For more information on the usage of bn and other Basic Next tools, check the [Architecture chapter](17_architecture.md).
+*Low cognitive load.* The meaning of a statement is determined by that statement and the declarations it names, not by a configuration file, a runtime setting, or a convention that must be known in advance.
 
-### Systems and Engine Architecture
+*Readability before brevity.* Where a shorter form and a clearer form conflict, the language takes the clearer one. Blocks are closed by an explicit `END`, and imported names are reachable only through their local alias.
 
-Combining an approachable syntax with deterministic low-level control, Basic Next gives programmers a clear view of how software interacts with computer memory and hardware resources. It serves as both a solid platform for systems development and an effective environment for learning software engineering.
+*Explicit contracts.* A function's signature states its parameter types, its return type, and, through alternative types such as `INTEGER OR NA`, whether it can fail to produce a value.
 
->"Programming used to be fun for me. What I want with Basic Next is to go back in time—back to an era when making programs and creating games was genuinely fun. I want to write without having to overthink, turning ideas into programs with as little friction as possible. Basic Next takes the best elements from every language I've known and combines them into something as powerful as it is flexible, with an extremely low learning curve."
->
->— Carlos Alvaro Quintella
+*Complexity must be justified.* A construct enters the language when a concrete problem requires it. The consequences are listed in the preface under what the language does not have.
 
-## Target Audience
+*Small core, modular reach.* Capability grows by adding modules, not by adding keywords.
 
-Basic Next is built for learners and makers who value explicit contracts, low cognitive load, and clean architecture without unnecessary boilerplate. It is well suited for beginners learning fundamental computer science concepts—thanks to readable syntax and helpful diagnostic messages—as well as experienced developers crafting predictable tools and applications.
+## Installing the Toolchain
 
-## Philosophy
+Basic Next source files use the `.bn` extension and are UTF-8 encoded. The toolchain is a single command-line program named `bn`.
 
-The design of Basic Next is guided by clarity, restraint, and deliberate choices:
-
-- **Low cognitive load**: Code should be easy to follow, and the meaning of a statement should be obvious from its local context.
-- **Readability first**: Source code is communication between humans, not just instructions for a machine.
-- **Explicit contracts**: Types, function boundaries, and side effects should never be surprising.
-- **Keep It Simple (KISS)**: Complexity must be justified by a real problem, not speculative requirements.
-- **Object-oriented by default**: Related state and behavior belong together in cohesive structures with clear dependencies.
-- **Small core, modular reach**: Core syntax stays compact, while rich functionality is provided through external modules and host capabilities.
-
----
-
-Basic Next was created to restore fluidity, intuition, and enjoyment to programming, blending the clarity of classical languages with the rigor required for modern software:
-
-- **Frictionless Writing**: Turning an idea into working code should be a smooth, continuous process with minimal syntactic obstacles.
-- **Natural Structure**: System structure should grow organically with your program rather than requiring complex scaffolding up front.
-- **Simplicity by Design**: A small, cohesive language core that fits comfortably in your head.
-- **Modular Extensibility**: Capabilities expand cleanly through modules without bloating the core language specification.
-
----
-
-## Installation and the `bn` CLI
-
-Basic Next source files use the `.bn` extension and are UTF-8 encoded. The language comes with a command-line tool named `bn`.
-
-You can download prebuilt binaries from GitHub or compile the toolchain directly from source using Rust:
+Prebuilt binaries are published on the [GitHub releases page](https://github.com/cquintella/BasicNext/releases/latest). To build from source, with a Rust toolchain installed, run the following in a clone of the repository:
 
 ```sh
 cargo install --path .
 ```
 
-The Unix manual page is available under `docs/man/bn.1`.
+Building from source requires Rust 1.97 or later. Compiling Basic Next programs to native code or to WebAssembly additionally requires Clang and LLVM 22; the WebAssembly target needs a Clang with a `wasm32` backend and `wasm-ld`, which Apple's Clang does not provide. Checking and running programs — everything in the first nine chapters of this book — needs neither.
 
-Basic commands:
-- `bn check <file.bn>`: Checks syntax and semantic rules. Exits with code `0` on success, `1` on language errors, or `2` on tool usage errors.
-- `bn run <file.bn> [-- args...]`: Validates, lowers to BN IR, and executes the program starting from `Start`.
-- `bn build <file.bn>`: Compiles the source file into a native executable or WebAssembly artifact using the LLVM backend.
-- `bn lex <file.bn>`: Prints the token stream produced by the lexer.
-- `bn eval` (**0.5.1**): evaluate a source string or stdin fragment without inventing an ad hoc temp file (`bn eval SOURCE` / `bn eval --stdin`). A top-level `FUNCTION Start` auto-promotes to program semantics with one structured warning; `--format json` emits a single JSON v1 envelope. There is **no** global `-e` / `--expr` entry. See [`usage.md`](../../project/usage.md).
+Confirm the installation:
 
-Basic Next diagnostics reject invalid code before execution starts, providing clear feedback on errors.
+```sh
+$ bn --version
+bn 0.5.2
+```
 
-## Writing a Hello, World!
+The Unix manual page is [`bn(1)`](../../man/bn.1), and installation troubleshooting is in [`usage.md`](../../project/usage.md).
 
-Every runnable Basic Next program requires an entry point. The simplest valid program consists of a `Start` function that writes text to the screen:
+## The `bn` Commands
+
+The tool exposes one pipeline through several entry points. All of them run the same lexer, parser, semantic analysis, and IR validation; they differ in what they do afterwards.
+
+| Command | What it does |
+| --- | --- |
+| `bn check <file.bn>` | Runs the full frontend and reports diagnostics without executing anything. |
+| `bn run <file.bn> [-- args]` | Checks, lowers to BN IR, and executes `Start` in the interpreter. |
+| `bn build <file.bn> [-o out]` | Compiles the supported IR subset. Without `-o` it writes LLVM IR to standard output; with `-o` it produces a native executable, or a WebAssembly module under `--target wasm32`. |
+| `bn eval <source>` | Evaluates one source fragment, or a complete program with `--stdin`, without creating a file. |
+| `bn lex <file.bn>` | Prints the token stream, which is useful when a syntax error is not obvious. |
+| `bn lsp`, `bn dap` | Serve the Language Server and Debug Adapter protocols over standard input and output, for editor integration. |
+
+Exit codes are stable and suitable for scripting: `0` on success, `1` when the program has language diagnostics, and `2` for invalid command-line use or unavailable build tooling.
+
+`bn check` is the command to run most often. It is the fastest way to ask whether a program is well formed, and it is what an editor runs on save.
+
+## A First Program
+
+Create a file named `hello.bn`:
 
 ```basic
-// A minimal Basic Next Program
+// A minimal Basic Next program.
 FUNCTION Start() AS VOID
     PRINT "Hello, World!"
 END FUNCTION
 ```
 
-`PRINT` is a built-in statement that writes text to standard output, followed by a new line.
+Check it, then run it:
 
-## Modules and the `Start` Function
+```sh
+$ bn check hello.bn
+hello.bn: lexical, syntax, and semantic checks passed
+$ bn run hello.bn
+Hello, World!
+```
 
-Every source file in Basic Next represents a module. The main module executed by `bn run` must contain a function named `Start` that takes no arguments.
+Four things in three lines of source are worth naming now, because every later program repeats them.
 
-The `Start` function can return `VOID` or an `INTEGER`:
+`FUNCTION Start() AS VOID` declares the entry point. The name is fixed, the parameter list is empty, and the return type is stated like every other return type in the language. `PRINT` is a statement, not a function call; it writes its arguments to standard output followed by a newline. `END FUNCTION` closes the declaration, because block structure is written rather than indented. And the `//` comment runs to the end of the line; `/* ... */` spans several.
+
+To compile the same file to a native executable:
+
+```sh
+$ bn build hello.bn -o hello
+$ ./hello
+Hello, World!
+```
+
+Without `-o`, `bn build` writes the LLVM intermediate representation to standard output, which is occasionally useful for inspection and is not otherwise part of the workflow.
+
+For a fragment too small to justify a file, `bn eval` accepts source directly:
+
+```sh
+$ bn eval 'PRINT 2 + 3'
+5
+```
+
+## Modules and the Entry Point
+
+Every `.bn` file is a module. A module contains declarations — functions, classes, structs, interfaces, and constants — and nothing else; statements do not appear at the top level of a file. Writing one there is a syntax error:
+
+```
+error[E0100]: Syntax error: Expected expected IMPORT or a top-level declaration in source parser.
+```
+
+The module named on the `bn run` command line is the executable module, and it must declare a function named `Start` that takes no parameters. A module without one is rejected before execution:
+
+```
+error[START_NOT_FOUND]: Runtime or toolchain diagnostic: executable module requires FUNCTION Start
+```
+
+`Start` may return `VOID` or `INTEGER`. Returning `VOID` means the process exits with status `0` when the function completes. Returning `INTEGER` delivers the value, which must lie between `0` and `255`, to the operating system as the exit status:
 
 ```basic
 FUNCTION Start() AS INTEGER
@@ -120,11 +147,42 @@ FUNCTION Start() AS INTEGER
 END FUNCTION
 ```
 
-When `Start` returns an `INTEGER`, the returned value (from 0 to 255) is delivered to the host operating system as the process exit status code. When declared as `VOID`, the runtime automatically exits with code 0 on completion.
+The exit status is how a Basic Next program reports success or failure to a shell script, a build system, or a supervisor. Chapter three covers the related `STOP` statement, which terminates immediately and is reserved for failures from which there is nothing to return to.
 
-All executable statements in Basic Next must reside inside a function, class, or method. Statements are not allowed directly at the top level of a file.
+### Splitting a Program Across Modules
 
-Basic Next does not provide mutable global variables. Shared state should be passed explicitly as function arguments or stored in static class fields:
+A declaration is private to its module unless it is marked `EXPORT`, and another module reaches it by importing under a local alias. User modules resolve beneath a `modules/` directory next to the executable module. Given this layout:
+
+```
+project/
+    main.bn
+    modules/
+        MathUtils.bn
+```
+
+with `modules/MathUtils.bn` containing
+
+```basic
+EXPORT FUNCTION Square(n AS INTEGER) AS INTEGER
+    RETURN n * n
+END FUNCTION
+```
+
+and `main.bn` containing
+
+```basic
+IMPORT MathUtils AS Math
+
+FUNCTION Start() AS VOID
+    PRINT Math.Square(5)
+END FUNCTION
+```
+
+running `bn run main.bn` prints `25`. The alias is mandatory and is the only way to reach the imported names: `Square(5)` on its own does not resolve, because Basic Next never injects imported names into the importing module's scope. Two modules may therefore export functions of the same name without colliding. Chapter five covers module resolution, the standard-library path under `modules/bn/`, and the rejection of import cycles in full.
+
+### Shared State
+
+Basic Next has no mutable global variables. State that several functions need is passed as an argument, or held in a `STATIC` field of a class when it genuinely belongs to a type rather than to a call:
 
 ```basic
 CLASS Library
@@ -132,31 +190,76 @@ CLASS Library
     PUBLIC STATIC note AS STRING = "Ready"
 END CLASS
 
-FUNCTION lesser(num1 AS INTEGER, num2 AS INTEGER) AS BOOLEAN
-    IF num1 < num2 THEN RETURN TRUE ELSE RETURN FALSE
+FUNCTION IsLess(left AS INTEGER, right AS INTEGER) AS BOOLEAN
+    RETURN left < right
 END FUNCTION
 
 FUNCTION Start() AS VOID
     Library.shared = 10
-    PRINT lesser(Library.shared, 20)
+    PRINT IsLess(Library.shared, 20)
     PRINT Library.note
 END FUNCTION
 ```
 
-## Ecosystem Tools
+This program prints `TRUE` and then `Ready`. The absence of module-level mutable state is a deliberate constraint rather than an omission: it means that a function's effect on the rest of the program is bounded by its parameters, its return value, and the static fields it names explicitly.
 
-Basic Next provides integrations for standard development workflows:
+## Reading a Diagnostic
 
-- **Jupyter Kernel (`bn-kernel`)**: A kernel allowing interactive execution of Basic Next cells inside Jupyter notebooks. It lives in its own repository: [cquintella/basicnext-jupyter](https://github.com/cquintella/basicnext-jupyter).
-- **VS Code Extension**: Syntax highlighting and automatic diagnostic checks on save, in its own repository: [cquintella/basicnext-vscode](https://github.com/cquintella/basicnext-vscode).
+Diagnostics are the primary teaching instrument of the language, so it is worth reading one closely before meeting them throughout the book. Consider a program that assigns an `INTEGER` to a `FLOAT` binding:
 
-### Installing the VS Code Extension
+```basic
+FUNCTION Start() AS VOID
+    LET a AS INTEGER = 1
+    LET b AS FLOAT = a
+    PRINT b
+END FUNCTION
+```
 
-To install the official extension for Visual Studio Code:
+```
+error[TYPE_MISMATCH]: Type mismatch: Expected FLOAT(FLOAT64), but found INTEGER(INT32) in binding initializer.
+ --> program.bn:3:22
+  |
+  3 |     LET b AS FLOAT = a
+  |                      ^ incompatible value
+```
 
-- Clone [cquintella/basicnext-vscode](https://github.com/cquintella/basicnext-vscode) and open a terminal in it.
-- Package the extension into a `.vsix` file using `vsce`:
-  `npx --yes @vscode/vsce package --allow-missing-repository`
-- Install the file into VS Code:
-  `code --install-extension basicnext-0.5.1.vsix`
-- Restart VS Code to initialize language features.
+The message has four parts. `error` is the severity. `TYPE_MISMATCH` is a stable code, which means it can be searched for, configured, and relied on across versions. The prose names both types and the context in which they met. The caret marks the column of the offending expression, not merely the line.
+
+The fix is to state the conversion, using the `AS` operator covered in the next chapter:
+
+```basic
+LET b AS FLOAT = a AS FLOAT
+```
+
+Some diagnostics are warnings rather than errors. An unused binding or an unused import is reported while the program still runs:
+
+```
+warning[UNUSED_BINDING]: Unused binding: Binding 'unused' is never read.
+```
+
+Warnings can be configured per code with `--allow`, `--warn`, and `--deny`, and `--warnings errors` promotes all of them to errors, which is the setting to use in continuous integration.
+
+## Editor and Notebook Integration
+
+Two integrations are maintained alongside the language, each in its own repository.
+
+The Jupyter kernel, [cquintella/basicnext-jupyter](https://github.com/cquintella/basicnext-jupyter), runs Basic Next cells in a notebook. A cell is a complete program with its own `FUNCTION Start`, not a fragment: there are no top-level statements and no state carried between cells, and the diagnostics are those of `bn run`. The kernel denies filesystem access, so a cell that imports `HOST.FileSystem` reports `HOST_CAPABILITY_UNAVAILABLE`.
+
+The Visual Studio Code extension, [cquintella/basicnext-vscode](https://github.com/cquintella/basicnext-vscode), provides syntax highlighting and runs the checker on save, so the diagnostics described above appear in the editor's Problems panel with the same codes and positions. It also connects to `bn dap` for breakpoints, stepping, and inspection of variables. To install it from source:
+
+```sh
+git clone https://github.com/cquintella/basicnext-vscode
+cd basicnext-vscode
+npx --yes @vscode/vsce package --allow-missing-repository
+code --install-extension basicnext-0.5.1.vsix
+```
+
+Restart the editor afterwards so the language features initialize.
+
+## What Comes Next
+
+The next chapter covers what a program is made of before it does anything: comments, variables and constants, the primitive types and their guarantees, operators, explicit conversion, and console input and output. From there the book proceeds to control flow, compound data and error handling, and functions and program structure — the four chapters that together cover everything needed to write a complete program.
+
+---
+
+[Next: Common Programming Concepts →](02_common_programming_concepts.md)

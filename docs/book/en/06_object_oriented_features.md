@@ -1,5 +1,7 @@
 # Object-Oriented Features
 
+[← Previous: Functions and Program Structure](05_functions_and_program_structure.md) · [Contents](toc.md)
+
 While Basic Next provides `STRUCT` for simple value types, it uses `CLASS` and `INTERFACE` for reference types, encapsulation, and polymorphism. 
 
 ## Reference Types (`CLASS`)
@@ -131,3 +133,7 @@ END CLASS
 ```
 
 An interface name acts as a type. A class reference can be assigned to a variable typed as an interface it implements. This implicit upcast preserves the object reference but restricts access to only the interface's members. In version 0.3, you cannot downcast an interface value back to a concrete class.
+
+---
+
+[Next: Memory Management →](07_memory_management.md)

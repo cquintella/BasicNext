@@ -1,5 +1,7 @@
 # I/O and Concurrency
 
+[← Previous: The Standard Library and Host](08_standard_library_and_host.md) · [Contents](toc.md)
+
 Basic Next version 0.3 handles input/output (I/O) and concurrency through explicit capabilities and external modules. This design ensures that the core language remains deterministic and predictable, while providing powerful tools for building network services, processing files, and coordinating concurrent tasks.
 
 ## Synchronous, Bounded I/O
@@ -187,3 +189,7 @@ To prevent resource exhaustion and ensure determinism:
 - Synchronization operations (such as acquiring a mutex or waiting on a barrier) return an `Error` on timeout or if invalid bounds are supplied.
 
 This explicit error handling forces applications to handle resource pressure and concurrency limits cleanly, rather than crashing or hanging indefinitely.
+
+---
+
+[Next: Architecture →](17_architecture.md)

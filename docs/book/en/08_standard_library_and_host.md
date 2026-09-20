@@ -1,5 +1,7 @@
 # The Standard Library and Host
 
+[← Previous: Memory Management](07_memory_management.md) · [Contents](toc.md)
+
 Basic Next decouples the core language from the operating system. `HOST` is
 the only built-in interface object. All `BN*` facilities are external modules
 and must be imported explicitly; their detailed contracts live in separate
@@ -174,9 +176,9 @@ END FUNCTION
 | Signal termination (POSIX) | `ReturnCode = -signal` (e.g. `-15` for SIGTERM); the completed spawn stays a `Result` |
 | Capture limits | 16 MiB per stream and a 60 s wall-clock ceiling by default; policy may lower them. Overflow/timeout returns a stable `Error`, never truncated output |
 | Restricted profiles | Deny `HOST.Exec` by default (for example Jupyter-style hosts) |
+| Policy inputs | `BN_EXEC_POLICY=deny`, `BN_EXEC_CAPTURE_LIMIT=<bytes>`, `BN_EXEC_TIMEOUT_MS=<ms>` narrow the call on `bn run` and in compiled artifacts alike; they can only reduce the ceilings. A malformed value stops the process before `Start` (`CONFIG_INVALID`, exit 2) on both backends |
 
 Do not confuse `HOST.Exec` with `HOST.SQLite` / `Db.Exec(sql)` (SQL execution), which is a different capability.
-| Policy inputs | `BN_EXEC_POLICY=deny`, `BN_EXEC_CAPTURE_LIMIT=<bytes>`, `BN_EXEC_TIMEOUT_MS=<ms>` narrow the call on `bn run` and in compiled artifacts alike; they can only reduce the ceilings. A malformed value stops the process before `Start` (`CONFIG_INVALID`, exit 2) on both backends |
 
 ### `HOST.Net`
 
@@ -227,3 +229,7 @@ Returns the portable byte size of the value's representation, with no padding.
 - Vectors and structs return the sum of their elements' sizes.
 
 `SIZEOF` is a static error for pointers, interfaces, alternative types, and structs containing dynamically sized strings.
+
+---
+
+[Next: I/O and Concurrency →](09_io_and_concurrency.md)

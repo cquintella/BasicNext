@@ -1,5 +1,7 @@
 # Architecture
 
+[← Previous: I/O and Concurrency](09_io_and_concurrency.md) · [Contents](toc.md)
+
 ## Compiler Architecture
 
 
@@ -68,10 +70,10 @@ Execution restrictions may be supplied by the launcher or environment:
 ```text
 BN_FS_POLICY=deny ./app
 BN_FS_POLICY=read-only ./app
-```
-
 BN_EXEC_POLICY=deny ./app
 BN_EXEC_CAPTURE_LIMIT=1048576 BN_EXEC_TIMEOUT_MS=5000 ./app
+```
+
 Environment configuration is therefore a narrowing mechanism. It is not a
 replacement for the artifact ceiling, and `BN_FS_POLICY=unrestricted` cannot
 remove restrictions from a sandboxed binary. A value the runtime does not
@@ -151,3 +153,7 @@ The following outcomes are expected:
 | sandboxed: `input`/`output` | another root | Cannot enlarge the artifact ceiling |
 
 This design keeps the compatibility default simple while making stronger filesystem isolation explicit, reviewable, and impossible to enable or disable accidentally through an environment override.
+
+---
+
+[Next: Appendices →](10_appendices.md)

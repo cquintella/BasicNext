@@ -48,108 +48,15 @@ programs:
 Read [PHILOSOPHY.md](PHILOSOPHY.md) for the mission, vision, and complete set
 of design principles.
 
-## 🚀 Status: Version 0.5.1
+## 🚀 Status: Version 0.5.1 (0.5.2 closed in-tree)
 
-**Latest release:** [v0.5.1](https://github.com/cquintella/BasicNext/releases/tag/v0.5.1)
-(tag on `main`). Basic Next 0.5.1 builds on 0.5.0 with `bn eval`, expressive
-structured diagnostics, an ordered module search path, and `HOST.Exec` with
-interpreter↔native parity. See [What's New — 0.5.1](#whats-new--051) below.
+**Latest GitHub release:** [v0.5.1](https://github.com/cquintella/BasicNext/releases/tag/v0.5.1).
+Bucket **0.5.2** is closed in-tree (qualified import, `PROTECTED` / `OVERRIDE`,
+static factories, `++` / `--`); GitHub tag/binaries for 0.5.2 follow when cut.
+Release notes: [`docs/releases/`](docs/releases/README.md).
 
-Language work toward **0.5.2** (qualified import, `PROTECTED` / `OVERRIDE`,
-`++` / `--` statements, static construction factories) is tracked in
-`ongoing/bucket-0.5.2.md` and the consolidated
-[`docs/language/0.5/`](docs/language/0.5/0.5.md) specification. The tutorial book
-under `docs/book/en/` is being aligned to that line.
+The tutorial book under `docs/book/en/` tracks the 0.5 line.
 
-The Basic Next reference implementation includes the Rust frontend, typed IR
-interpreter, HOST capabilities, external BN modules, HTTP hardening, bounded
-async runtime, debugger bridge, and notebook tooling. BNDispatch
-native-provider conformance includes lifecycle, synchronization, isolation, and
-networking corrections.
-
-> **Note:** `bn build` is available for its supported typed-IR subset. The
-> interpreter remains the reference implementation for language surfaces
-> outside that subset.
-
-## What's New — 0.5.1
-
-- **`bn eval` subcommand.** Evaluate a source fragment from an argument or
-  `--stdin` in one shot: `bn eval 'PRINT 1 + 1'`. A top-level `FUNCTION Start`
-  auto-promotes to program semantics with one structured warning. `--format json`
-  emits a single JSON v1 envelope (program stdout/stderr and structured
-  `diagnostics[]`) with an otherwise-empty process stderr.
-- **Expressive diagnostics.** Every user-visible toolchain diagnostic now carries
-  structured facts (codes, typed arguments, primary/secondary spans, causes and
-  help) from an external Fluent catalog under `share/bn/diagnostics/`, shared by
-  the CLI, the `bn eval` JSON channel, and the LSP.
-- **Ordered module search path.** Repeatable `--module-path <dir>` and a config
-  `module-path = [...]` array; first hit wins, with the entry-file directory and
-  the discovered stdlib `modules/bn` as defaults, applied identically to
-  `check` / `run` / `build` / `eval`.
-- **`HOST.Exec` capability.** `IMPORT HOST.Exec` exposes `Run(program, args)`:
-  launch an OS executable without a shell, closed child stdin, concurrent bounded
-  stdout/stderr capture, a wall-clock timeout, and a portable `Exec.Result OR
-  Error` with signal-aware return codes — enforced by execution policy and
-  available on both the interpreter and the native (LLVM) path.
-
-## What's New — 0.5.0
-
-Basic Next 0.5.0 makes automatic reference counting (ARC) the class lifetime
-model. Strong assignments retain references, the last strong reference runs the
-destructor, and `AS WEAK` references become `NULL` after destruction. `RELEASE`
-can end a binding early; the `DELETE` keyword is not part of the 0.5.0 surface.
-
-The external `BNString` module provides an object wrapper around primary
-`STRING`, with Unicode case conversion, trimming, substring search, and a
-separator tokenizer:
-
-```basic
-IMPORT BNString AS S
-LET text AS S.String = NEW S.String("  Olá,BN  ")
-LET clean AS S.String = text.Trim()
-PRINT clean.LowCaps().ToString()
-```
-
-See [`docs/library/bnstring.md`](docs/library/bnstring.md) and
-[`examples/bnstring_tour.bn`](examples/bnstring_tour.bn).
-
-The 0.5.0 delivery train strengthens the native LLVM path while keeping the
-typed BN IR validation boundary shared by `bn run` and `bn build`.
-
-- The compiler capability catalog now covers the complete `examples/*.bn`
-  roster. Supported fixtures are built and exercised as native artifacts; any
-  remaining target limitation must use a stable `TARGET_UNSUPPORTED_*`
-  diagnostic rather than masquerading as a language error.
-- Native lowering and parity coverage expanded across calls and returns,
-  counted loops, collections, nullable integers, object layout and inheritance,
-  indexed assignment, input/EOF behavior, and selected HOST and standard-module
-  surfaces.
-- Compiled filesystem policy now carries sandbox roots into `bn_rt`, where it
-  is re-checked at the file boundary. `BN_FS_POLICY=deny` and `read-only` can
-  only narrow interpreter or compiled-artifact access.
-- Rooted filesystem access is hardened against symlink replacement races on
-  Unix through pinned directory descriptors with `openat`/`O_NOFOLLOW` and
-  `unlinkat`; platforms without that primitive deny rooted access.
-- The ABI index now checks that every LLVM-declared `bn_rt` function is both
-  exported by the runtime archive and documented in the value/memory contract.
-
-See the [capability catalog](tests/compiler-capabilities.json) for the machine
-inventory of the supported compiler surface. The release tag remains subject to
-the formal closeout commit and BDFL release acceptance.
-
-## 🎯 Active implementation
-
-The Basic Next reference implementation is a source-spanned lexer, handwritten recursive-descent/Pratt parser, syntax AST, semantic analyzer, typed BN IR, deterministic IR interpreter, and initial LLVM emitter. It provides:
-
-- `bn check file.bn` — Accepts valid fixtures and reports precise, source-spanned diagnostics for errors.
-- `bn run file.bn [-- args...]` — Validates and immediately executes the accepted interpreter surface.
-- `bn build [--target native|wasm32] file.bn` — Emits LLVM IR, or an artifact with `-o`, for the supported compiler subset.
-
-See the consolidated [0.5 language specification](docs/language/0.5/0.5.md) (and the historical [0.5.0 tree](docs/0.5.0/language-0.5.0.md)) for accepted semantics.
-
-To see under the hood, try:
-- `bn check -v file.bn` (reports completed stages)
-- `--emit ast`, `--emit typed-ast`, or `--emit ir` (emits frontend artifacts)
 
 ## 🛠️ Getting Started
 

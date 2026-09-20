@@ -1,5 +1,7 @@
 # Memory Management
 
+[← Previous: Object-Oriented Features](06_object_oriented_features.md) · [Contents](toc.md)
+
 Basic Next 0.5.0 uses automatic reference counting (ARC) for class objects.
 The runtime tracks strong references, releases them when bindings leave scope, and
 runs a class destructor exactly once when the last strong reference disappears.
@@ -104,3 +106,7 @@ both `bn run` and `bn build` artifacts.
 The normative ownership and ABI contract is in
 [`0.5.md`](../../language/0.5/0.5.md#memory-model-arc). The implementation evidence
 and conformance fixtures are tracked with the 0.5.0 release bucket.
+
+---
+
+[Next: The Standard Library and Host →](08_standard_library_and_host.md)

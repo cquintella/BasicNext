@@ -1,5 +1,7 @@
 # Appendices
 
+[← Previous: Architecture](17_architecture.md) · [Contents](toc.md)
+
 Because Basic Next specifies behavior transparently, the exact language specifications and technical lists are maintained in their respective normative files within the repository.
 
 ## Appendix A: Keywords Reference
@@ -44,3 +46,7 @@ External provider-backed modules are documented in separate appendices:
 - [`BNData`](14_bndata.md)
 - [External module conventions](15_external_modules.md)
 - [`BNDispatch`](16_bndispatch.md)
+
+---
+
+[Next: Appendix E: BNJson →](11_bnjson.md)

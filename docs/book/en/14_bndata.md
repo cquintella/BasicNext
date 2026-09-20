@@ -1,5 +1,7 @@
 # Appendix H: BNData
 
+[← Previous: Appendix G: BNWeb](13_bnweb.md) · [Contents](toc.md)
+
 `BNData` is the standard data-provider module for tabular datasets and CSV operations in Basic Next. It is not built into the core language; use an explicit import:
 
 ```basic
@@ -79,3 +81,7 @@ END IF
 ```
 
 Every `Data.DataFrame` instance must be released with `RELEASE df` when no longer needed.
+
+---
+
+[Next: Appendix I: External module conventions →](15_external_modules.md)

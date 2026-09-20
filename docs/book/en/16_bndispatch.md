@@ -1,5 +1,7 @@
 # Appendix J: BNDispatch
 
+[← Previous: Appendix I: External module conventions](15_external_modules.md) · [Contents](toc.md)
+
 `BNDispatch` is a host-backed external module providing concurrency primitives and job orchestration. It is explicitly separated from the core language to ensure safety and determinism.
 
 ```basic
@@ -49,3 +51,7 @@ LET cores AS INTEGER OR Error = HOST.NumProcs()
 ## Forward to 0.4
 
 While `BNDispatch` introduces powerful concurrency, full integration of concurrent threading with `BNWeb` transport callbacks remains deferred to version 0.4.
+
+---
+
+[Contents →](toc.md)

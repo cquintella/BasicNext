@@ -1,5 +1,7 @@
 # Appendix I: External module conventions
 
+[← Previous: Appendix H: BNData](14_bndata.md) · [Contents](toc.md)
+
 Every `BN*` facility is an external module backed by a host/provider
 interface. External modules:
 
@@ -35,3 +37,7 @@ stdlib by walking upward from its own executable, accepting (first match wins):
 
 So a system install places the modules at, for example,
 `/usr/local/share/bn/modules/bn`, and no configuration is required afterwards.
+
+---
+
+[Next: Appendix J: BNDispatch →](16_bndispatch.md)

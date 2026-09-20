@@ -1,5 +1,7 @@
 # Compound Data and Error Handling
 
+[← Previous: Control Flow](03_control_flow.md) · [Contents](toc.md)
+
 Basic Next provides mechanisms to group data together and explicitly manage missing or erroneous values. It heavily favors explicit structures over hidden state or implicit nullability.
 
 ## Fixed-Size Vectors
@@ -119,3 +121,7 @@ END IF
 ```
 
 By returning `Error` as an alternative type, Basic Next forces the caller to explicitly check for and handle the error before accessing the underlying value, eliminating unhandled exceptions at runtime.
+
+---
+
+[Next: Functions and Program Structure →](05_functions_and_program_structure.md)

@@ -1,0 +1,87 @@
+// FileSystem tour: write a small text file, read it back, close handles.
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT HOST.FileSystem AS FS
+
+FUNCTION Fail(step AS STRING, err AS Error) AS VOID
+    PRINT "FAIL  ", step, " code=", err.Code, " message=", err.Message
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET path AS STRING = "/tmp/basicnext-filesystem-tour.txt"
+
+    PRINT "=== FileSystem tour: WRITE ==="
+    LET out AS FS.File OR Error = FS.Open(path, FS.WRITE)
+    IF out IS Error THEN
+        Fail("Open WRITE", out)
+        RETURN
+    END IF
+
+    LET w1 AS VOID OR Error = out.WriteLine("line-one")
+    IF w1 IS Error THEN
+        Fail("WriteLine", w1)
+        out.Close()
+        RELEASE out
+        RETURN
+    END IF
+
+    LET w2 AS VOID OR Error = out.Write("line-two-no-nl")
+    IF w2 IS Error THEN
+        Fail("Write", w2)
+        out.Close()
+        RELEASE out
+        RETURN
+    END IF
+
+    LET closedOut AS VOID OR Error = out.Close()
+    IF closedOut IS Error THEN
+        Fail("Close WRITE", closedOut)
+        RELEASE out
+        RETURN
+    END IF
+    RELEASE out
+    PRINT "PASS  wrote ", path
+
+    PRINT "=== FileSystem tour: READ ==="
+    LET inn AS FS.File OR Error = FS.Open(path, FS.READ)
+    IF inn IS Error THEN
+        Fail("Open READ", inn)
+        RETURN
+    END IF
+
+    LET line AS STRING OR EOF OR Error = inn.ReadLine()
+    IF line IS Error THEN
+        Fail("ReadLine", line)
+        inn.Close()
+        RELEASE inn
+        RETURN
+    ELSE IF line IS EOF THEN
+        PRINT "FAIL  ReadLine unexpected EOF"
+        inn.Close()
+        RELEASE inn
+        RETURN
+    ELSE
+        PRINT "PASS  ReadLine  ", line
+    END IF
+
+    LET rest AS STRING OR Error = inn.ReadAll()
+    IF rest IS Error THEN
+        Fail("ReadAll", rest)
+        inn.Close()
+        RELEASE inn
+        RETURN
+    END IF
+    PRINT "PASS  ReadAll   ", rest
+
+    LET closedIn AS VOID OR Error = inn.Close()
+    IF closedIn IS Error THEN
+        Fail("Close READ", closedIn)
+        RELEASE inn
+        RETURN
+    END IF
+    RELEASE inn
+    PRINT "PASS  FileSystem tour complete"
+END FUNCTION
