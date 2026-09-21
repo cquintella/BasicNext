@@ -16,9 +16,9 @@ use bn_diag::Diagnostic;
 use bn_source::Span;
 use bn_value::Value;
 
-use crate::runtime::provider::{CoreContext, Provider};
-use crate::runtime::{require_arity_pub as require_arity, runtime_error_pub as runtime_error};
-use crate::types::IntegerType;
+use bn_interp::provider::{CoreContext, Provider};
+use bn_interp::{require_arity_pub as require_arity, runtime_error_pub as runtime_error};
+use bn_types::IntegerType;
 
 pub const NAME: &str = "Clock";
 
@@ -51,7 +51,7 @@ impl Provider for ClockProvider {
                 ))
             }
             _ => Err(runtime_error(
-                crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE,
+                bn_diag::DiagId::HOST_CAPABILITY_UNAVAILABLE,
                 format!("host function '{name}' is not available"),
                 span,
             )),

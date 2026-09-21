@@ -16,11 +16,11 @@ use bn_diag::Diagnostic;
 use bn_source::Span;
 use bn_value::Value;
 
-use crate::runtime::provider::{CoreContext, Provider};
-use crate::runtime::{
+use bn_interp::provider::{CoreContext, Provider};
+use bn_interp::{
     integer_pub as integer, require_arity_pub as require_arity, runtime_error_pub as runtime_error,
 };
-use crate::types::FloatType;
+use bn_types::FloatType;
 
 pub const NAME: &str = "Random";
 
@@ -66,7 +66,7 @@ impl Provider for RandomProvider {
                 Ok(Value::Null)
             }
             _ => Err(runtime_error(
-                crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE,
+                bn_diag::DiagId::HOST_CAPABILITY_UNAVAILABLE,
                 format!("host function '{name}' is not available"),
                 span,
             )),

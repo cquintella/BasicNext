@@ -21,16 +21,9 @@ dependencies = [
  "bn_cli",
  "bn_diag",
  "bn_frontend",
- "bn_host_exec",
- "bn_host_fs",
- "bn_host_net",
  "bn_interp",
+ "bn_interpret_driver",
  "bn_ir",
- "bn_lib_data",
- "bn_lib_dispatch",
- "bn_lib_json",
- "bn_lib_log",
- "bn_lib_math",
  "bn_lib_web",
  "bn_llvm",
  "bn_rt",
@@ -112,6 +105,30 @@ dependencies = [
  "bn_source",
  "bn_types",
  "bn_value",
+]
+
+[[package]]
+name = "bn_interpret_driver"
+version = "0.5.2"
+dependencies = [
+ "bn_cli",
+ "bn_diag",
+ "bn_frontend",
+ "bn_host_exec",
+ "bn_host_fs",
+ "bn_host_net",
+ "bn_interp",
+ "bn_lib_data",
+ "bn_lib_dispatch",
+ "bn_lib_json",
+ "bn_lib_log",
+ "bn_lib_math",
+ "bn_lib_web",
+ "bn_rt",
+ "bn_source",
+ "bn_types",
+ "bn_value",
+ "serde_json",
 ]
 
 [[package]]

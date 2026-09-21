@@ -6,9 +6,7 @@
 pub mod dap;
 pub use bn_diag as diagnostic;
 pub mod heap;
-pub mod hosts;
 pub mod ir;
-pub mod libraries;
 pub mod llvm;
 pub mod lowering;
 pub mod lsp;
@@ -17,5 +15,6 @@ pub use bn_frontend::{
     ast, frontend_session, keyword_registry, lexer, module_graph, parser, token,
 };
 pub use bn_interp::temporal;
+pub use bn_interpret_driver::{hosts, libraries};
 pub use bn_source as source;
 pub use bn_types as types;

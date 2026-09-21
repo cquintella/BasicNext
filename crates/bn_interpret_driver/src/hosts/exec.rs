@@ -18,11 +18,11 @@ use bn_diag::Diagnostic;
 use bn_source::Span;
 use bn_value::{RecordValue, Value, shared_string};
 
-use crate::runtime::provider::{CoreContext, Provider};
-use crate::runtime::{
+use bn_interp::provider::{CoreContext, Provider};
+use bn_interp::{
     require_arity_pub as require_arity, runtime_error_pub as runtime_error, type_mismatch,
 };
-use crate::types::IntegerType;
+use bn_types::IntegerType;
 
 pub const NAME: &str = "Exec";
 
@@ -47,7 +47,7 @@ impl Provider for ExecProvider {
         match member {
             "Run" => exec_run(core, &arguments, span),
             _ => Err(runtime_error(
-                crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE,
+                bn_diag::DiagId::HOST_CAPABILITY_UNAVAILABLE,
                 format!("host function '{name}' is not available"),
                 span,
             )),

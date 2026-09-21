@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/bn_rt", "crates/bn_source", "crates/bn_types", "crates/bn_diag", "crates/bn_ir", "crates/bn_frontend", "crates/bn_runtime", "crates/bn_value", "crates/bn_llvm", "crates/bn_interp", "crates/bn_host_exec", "crates/bn_limits", "crates/bn_lib_math", "crates/bn_lib_json", "crates/bn_lib_log", "crates/bn_lib_data", "crates/bn_host_fs", "crates/bn_host_net", "crates/bn_lib_dispatch", "crates/bn_lib_web", "crates/bn_cli"]
+members = ["crates/bn_rt", "crates/bn_source", "crates/bn_types", "crates/bn_diag", "crates/bn_ir", "crates/bn_frontend", "crates/bn_runtime", "crates/bn_value", "crates/bn_llvm", "crates/bn_interp", "crates/bn_host_exec", "crates/bn_limits", "crates/bn_lib_math", "crates/bn_lib_json", "crates/bn_lib_log", "crates/bn_lib_data", "crates/bn_host_fs", "crates/bn_host_net", "crates/bn_lib_dispatch", "crates/bn_lib_web", "crates/bn_cli", "crates/bn_interpret_driver"]
 resolver = "3"
 
 [package]
@@ -14,12 +14,12 @@ default-run = "bn"
 [features]
 default = ["lib-math", "lib-json", "lib-log", "lib-data", "lib-dispatch", "lib-web"]
 frontend-host-spec-path = []
-lib-math = ["dep:bn_lib_math"]
-lib-json = ["dep:bn_lib_json"]
-lib-log = ["dep:bn_lib_log"]
-lib-data = ["dep:bn_lib_data"]
-lib-dispatch = ["dep:bn_lib_dispatch"]
-lib-web = ["dep:bn_lib_web"]
+lib-math = ["bn_interpret_driver/lib-math"]
+lib-json = ["bn_interpret_driver/lib-json"]
+lib-log = ["bn_interpret_driver/lib-log"]
+lib-data = ["bn_interpret_driver/lib-data"]
+lib-dispatch = ["bn_interpret_driver/lib-dispatch"]
+lib-web = ["bn_interpret_driver/lib-web"]
 
 [lib]
 path = "src/lib.rs"
@@ -41,20 +41,12 @@ pedantic = "warn"
 
 [dependencies]
 bn_cli = { path = "crates/bn_cli" }
+bn_interpret_driver = { path = "crates/bn_interpret_driver" }
 bn_rt = { path = "crates/bn_rt" }
 bn_diag = { path = "crates/bn_diag" }
 bn_ir = { path = "crates/bn_ir" }
 bn_frontend = { path = "crates/bn_frontend" }
 bn_interp = { path = "crates/bn_interp" }
-bn_host_exec = { path = "crates/bn_host_exec" }
-bn_host_fs = { path = "crates/bn_host_fs" }
-bn_host_net = { path = "crates/bn_host_net" }
-bn_lib_math = { path = "crates/bn_lib_math", optional = true }
-bn_lib_json = { path = "crates/bn_lib_json", optional = true }
-bn_lib_log = { path = "crates/bn_lib_log", optional = true }
-bn_lib_data = { path = "crates/bn_lib_data", optional = true }
-bn_lib_dispatch = { path = "crates/bn_lib_dispatch", optional = true }
-bn_lib_web = { path = "crates/bn_lib_web", optional = true }
 bn_runtime = { path = "crates/bn_runtime" }
 bn_value = { path = "crates/bn_value" }
 bn_llvm = { path = "crates/bn_llvm" }
@@ -64,3 +56,6 @@ lsp-server = "0.10.0"
 lsp-types = "0.97.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+
+[dev-dependencies]
+bn_lib_web = { path = "crates/bn_lib_web" } # tests/runtime.rs drives the web callback directly

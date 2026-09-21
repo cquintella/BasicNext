@@ -8,7 +8,7 @@
 //! large ones are crates (`bn_host_net`, `bn_host_fs`, and `bn_host_exec`
 //! behind the `exec` shell here), the small shells (`clock`, `random`,
 //! `console`, `exec`) live in this directory. `BN*` libraries are registered
-//! in `crate::libraries` and never mix with these.
+//! in `crate::libraries` (same crate) and never mix with these.
 
 pub mod clock;
 pub mod console;

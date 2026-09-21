@@ -16,12 +16,12 @@ use bn_diag::Diagnostic;
 use bn_source::Span;
 use bn_value::Value;
 
-use crate::runtime::provider::{CoreContext, Provider};
-use crate::runtime::{
+use bn_interp::provider::{CoreContext, Provider};
+use bn_interp::{
     integer_pub as integer, require_arity_pub as require_arity, runtime_error_pub as runtime_error,
     type_mismatch,
 };
-use crate::types::IntegerType;
+use bn_types::IntegerType;
 
 pub const NAME: &str = "Console";
 
@@ -80,7 +80,7 @@ impl Provider for ConsoleProvider {
                 }
             }
             _ => Err(runtime_error(
-                crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE,
+                bn_diag::DiagId::HOST_CAPABILITY_UNAVAILABLE,
                 format!("host function '{name}' is not available"),
                 span,
             )),
@@ -92,12 +92,10 @@ fn console_runtime_error(error: &bn_rt::ConsoleError, span: Span) -> Diagnostic 
     // `bn_rt` reports codes as strings (C ABI boundary); the interpreter owns
     // the mapping onto registry identities.
     let id = match error {
-        bn_rt::ConsoleError::Unavailable(_) => {
-            crate::diagnostic::DiagId::HOST_CAPABILITY_UNAVAILABLE
-        }
-        bn_rt::ConsoleError::OutOfBounds => crate::diagnostic::DiagId::INDEX_OUT_OF_BOUNDS,
-        bn_rt::ConsoleError::Output(_) => crate::diagnostic::DiagId::OUTPUT_ERROR,
-        bn_rt::ConsoleError::Overflow => crate::diagnostic::DiagId::NUMERIC_OVERFLOW,
+        bn_rt::ConsoleError::Unavailable(_) => bn_diag::DiagId::HOST_CAPABILITY_UNAVAILABLE,
+        bn_rt::ConsoleError::OutOfBounds => bn_diag::DiagId::INDEX_OUT_OF_BOUNDS,
+        bn_rt::ConsoleError::Output(_) => bn_diag::DiagId::OUTPUT_ERROR,
+        bn_rt::ConsoleError::Overflow => bn_diag::DiagId::NUMERIC_OVERFLOW,
     };
     debug_assert_eq!(id.code(), error.code());
     runtime_error(id, error.message(), span)
