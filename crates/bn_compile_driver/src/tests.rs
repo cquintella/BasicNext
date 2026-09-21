@@ -1,8 +1,8 @@
 //! Unit tests of the compilation driver: build-only option extension
-//! (`--opt`, `--target`), clang/wasm toolchain selection and native link
-//! arguments.
+//! (`--opt`, `--target`), clang default, wasm32 compiler selection (Homebrew
+//! LLVM on macOS, never Apple clang) and native link arguments.
 use crate::options::{BuildOptions, Optimization, Target};
-use crate::toolchain::{clang_has_wasm32, configured_clang};
+use crate::toolchain::{clang_has_wasm32, configured_clang, configured_wasm_clang};
 
 fn build_options(arguments: &[&str]) -> Result<BuildOptions, String> {
     let mut build = BuildOptions::default();
@@ -42,20 +42,44 @@ fn compiler_configuration_selects_clang() {
     assert_eq!(configured_clang().expect("read configuration"), "clang");
 }
 
+/// First line of `<clang> --version` (empty when the command cannot run).
+fn clang_version_banner(clang: &str) -> String {
+    std::process::Command::new(clang)
+        .arg("--version")
+        .output()
+        .map(|output| {
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .to_string()
+        })
+        .unwrap_or_default()
+}
+
+/// The wasm32 compiler the driver selects must really target wasm32 and,
+/// on macOS, must be Homebrew's LLVM clang: Apple clang has no wasm32
+/// backend, so falling back to it would only fail later inside `bn build`.
 #[test]
-fn apple_clang_is_not_a_wasm32_compiler() {
-    if configured_clang().ok().as_deref() == Some("clang") {
-        assert!(
-            !clang_has_wasm32("clang")
-                || std::process::Command::new("clang")
-                    .arg("--version")
-                    .output()
-                    .is_ok_and(
-                        |output| !String::from_utf8_lossy(&output.stdout).contains("Apple clang")
-                    ),
-            "PATH clang is Apple clang and must not be used for wasm32"
-        );
+fn wasm32_compiler_is_selected_from_homebrew_llvm_not_apple_clang() {
+    if std::env::var_os("BN_WASM_CLANG").is_some() {
+        return; // explicit override: the operator owns the choice
     }
+    let clang = configured_wasm_clang().expect("read toolchain configuration");
+    let banner = clang_version_banner(&clang);
+    assert!(
+        !banner.contains("Apple clang"),
+        "wasm32 compiler resolved to Apple clang ({clang}: {banner})"
+    );
+    assert!(
+        clang_has_wasm32(&clang),
+        "selected wasm32 compiler has no wasm32 target ({clang}: {banner})"
+    );
+    #[cfg(target_os = "macos")]
+    assert!(
+        banner.contains("Homebrew clang"),
+        "on macOS the wasm32 compiler must be Homebrew LLVM (brew install llvm); got {clang}: {banner}"
+    );
 }
 
 #[test]

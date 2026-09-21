@@ -81,9 +81,10 @@ pub(crate) fn configured_bn_rt_lib() -> Result<PathBuf, String> {
             candidates.push(parent.join("share").join("bn").join("lib").join(file_name));
         }
     }
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    // Workspace target directory (this crate lives two levels below the root).
+    let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     for profile in ["debug", "release"] {
-        candidates.push(manifest.join("target").join(profile).join(file_name));
+        candidates.push(workspace.join("target").join(profile).join(file_name));
     }
     if let Ok(dir) = env::var("CARGO_TARGET_DIR") {
         for profile in ["debug", "release"] {

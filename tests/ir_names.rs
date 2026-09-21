@@ -154,8 +154,8 @@ fn backends_only_decode_documented_name_shapes() {
             rust_files(&entry.path().join("src"), &mut sources);
         }
     }
-    rust_files(Path::new("src/hosts"), &mut sources);
-    sources.push("src/runtime.rs".into());
+    // The shipped HOST shells and environment composition (bucket 0.6.0 1.2a).
+    rust_files(Path::new("crates/bn_interpret_driver/src"), &mut sources);
     let mut offenders = Vec::new();
     for path in &sources {
         let text = fs::read_to_string(path).expect("read backend source");
