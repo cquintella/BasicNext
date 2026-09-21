@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use bn::module_graph::load;
+use bn_frontend::module_graph::load;
 use bn_frontend::semantic::analyze_modules;
 
 #[test]
@@ -83,10 +83,8 @@ fn bnmath_exports_come_from_the_module_file() {
     let graph = load(Path::new("tests/grammar/valid/bnmath-02.bn")).expect("load BNMath");
     let models = analyze_modules(&graph).expect("analyze BNMath import");
     assert!(
-        graph
-            .modules
-            .iter()
-            .any(|module| module.standard_module == Some(bn::module_graph::StandardModule::BNMath))
+        graph.modules.iter().any(|module| module.standard_module
+            == Some(bn_frontend::module_graph::StandardModule::BNMath))
     );
     let _ = models;
 }
@@ -120,21 +118,17 @@ fn host_net_and_external_web_logging_identities_resolve() {
     let graph =
         load(Path::new("tests/modules/bn-identities/main.bn")).expect("load 0.3 identities");
     analyze_modules(&graph).expect("identities must analyze");
-    assert!(
-        graph.modules.iter().any(|module| {
-            module.standard_module == Some(bn::module_graph::StandardModule::BNLog)
-        })
-    );
-    assert!(
-        graph.modules.iter().any(|module| {
-            module.standard_module == Some(bn::module_graph::StandardModule::BNWeb)
-        })
-    );
     assert!(graph.modules.iter().any(|module| {
-        module.standard_module == Some(bn::module_graph::StandardModule::BNJson)
+        module.standard_module == Some(bn_frontend::module_graph::StandardModule::BNLog)
     }));
     assert!(graph.modules.iter().any(|module| {
-        module.standard_module == Some(bn::module_graph::StandardModule::BNDispatch)
+        module.standard_module == Some(bn_frontend::module_graph::StandardModule::BNWeb)
+    }));
+    assert!(graph.modules.iter().any(|module| {
+        module.standard_module == Some(bn_frontend::module_graph::StandardModule::BNJson)
+    }));
+    assert!(graph.modules.iter().any(|module| {
+        module.standard_module == Some(bn_frontend::module_graph::StandardModule::BNDispatch)
     }));
 }
 
@@ -169,7 +163,7 @@ fn imported_class_identity_constructor_and_members_are_resolved() {
     let root = &models[usize::try_from(graph.root.0).expect("root index")];
     assert!(root.symbols.iter().any(|symbol| matches!(
         symbol.ty,
-        bn::types::Type::ImportedNamed { ref name, .. } if name == "Box"
+        bn_types::Type::ImportedNamed { ref name, .. } if name == "Box"
     )));
     assert!(root.expressions.iter().any(|expression| {
         expression

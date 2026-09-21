@@ -9,12 +9,10 @@
 
 use std::{fs, path::Path};
 
-use bn::{
-    ir::{FunctionKind, names},
-    lowering::lower_graph,
-    module_graph::load,
-};
+use bn_frontend::lowering::lower_graph;
+use bn_frontend::module_graph::load;
 use bn_frontend::semantic::analyze_modules;
+use bn_ir::{FunctionKind, names};
 
 fn bn_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
     let Ok(entries) = fs::read_dir(dir) else {
@@ -92,8 +90,8 @@ fn every_emitted_function_name_follows_a_documented_shape() {
             }
             for block in &function.blocks {
                 for instruction in &block.instructions {
-                    let bn::ir::Instruction::Constant {
-                        value: bn::ir::Constant::Function(callee),
+                    let bn_ir::Instruction::Constant {
+                        value: bn_ir::Constant::Function(callee),
                         ..
                     } = instruction
                     else {

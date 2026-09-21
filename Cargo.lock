@@ -29,13 +29,11 @@ dependencies = [
  "bn_lib_web",
  "bn_llvm",
  "bn_lsp",
- "bn_rt",
  "bn_runtime",
  "bn_source",
  "bn_types",
  "bn_value",
  "lsp-types",
- "serde",
  "serde_json",
 ]
 

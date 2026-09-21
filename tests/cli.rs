@@ -1143,15 +1143,15 @@ fn check_and_lsp_report_the_same_multi_file_diagnostic_owner() {
     let documents = HashMap::from([
         (
             main_uri,
-            bn::source::SourceFile::new(format!("file://{}", main_path.display()), main_text),
+            bn_source::SourceFile::new(format!("file://{}", main_path.display()), main_text),
         ),
         (
             module_uri.clone(),
-            bn::source::SourceFile::new(format!("file://{}", module_path.display()), module_text),
+            bn_source::SourceFile::new(format!("file://{}", module_path.display()), module_text),
         ),
     ]);
-    let mut session = bn::frontend_session::FrontendSession::default();
-    let diagnostics = bn::lsp::diagnostics_for_documents(&main_path, &documents, &mut session);
+    let mut session = bn_frontend::frontend_session::FrontendSession::default();
+    let diagnostics = bn_lsp::diagnostics_for_documents(&main_path, &documents, &mut session);
     let module_diagnostics = diagnostics.get(&module_uri).expect("module diagnostics");
     assert_eq!(module_diagnostics.len(), 1);
     assert_eq!(

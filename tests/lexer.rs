@@ -5,11 +5,9 @@
 
 use std::{fs, path::Path};
 
-use bn::{
-    lexer::lex,
-    source::SourceFile,
-    token::{Symbol, TokenKind},
-};
+use bn_frontend::lexer::lex;
+use bn_frontend::token::{Symbol, TokenKind};
+use bn_source::SourceFile;
 
 fn lex_path(path: &str) -> Result<(), String> {
     let text = fs::read_to_string(path).map_err(|error| error.to_string())?;

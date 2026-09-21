@@ -5,12 +5,10 @@
 
 use std::fs;
 
-use bn::types::{FloatType, IntegerType, Type};
-use bn::{
-    ir::{BasicBlock, BlockId, Constant, Function, Instruction, Module, Terminator, ValueId},
-    llvm::lower_module,
-    source::{Position, Span},
-};
+use bn_ir::{BasicBlock, BlockId, Constant, Function, Instruction, Module, Terminator, ValueId};
+use bn_llvm::lower_module;
+use bn_source::{Position, Span};
+use bn_types::{FloatType, IntegerType, Type};
 
 fn span() -> Span {
     Span {
@@ -36,7 +34,7 @@ fn start_module(blocks: Vec<BasicBlock>) -> Module {
         source_name: Some("tests/codegen/manual.bn".into()),
         functions: vec![Function {
             name: "Start".into(),
-            kind: bn::ir::FunctionKind::Entry,
+            kind: bn_ir::FunctionKind::Entry,
             owner: None,
             asynchronous: false,
             parameters: Vec::new(),

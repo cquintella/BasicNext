@@ -1,25 +1,24 @@
 use std::io::Cursor;
 
-use bn::{
-    ir::{
-        BasicBlock, BlockId, Constant, Function, Instruction, Module, Terminator, validate_module,
-    },
-    llvm::{Target, lower_validated_module_for_target, validate_for},
-    lowering::lower_graph_validated,
-    module_graph::load,
-    runtime::{HostEnv, HostEnvDefaults, execute_validated_with_host},
-};
+use bn_frontend::lowering::lower_graph_validated;
+use bn_frontend::module_graph::load;
 use bn_frontend::semantic::analyze_modules;
+use bn_interp::{HostEnv, execute_validated_with_host};
+use bn_interpret_driver::environment::HostEnvDefaults;
+use bn_ir::{
+    BasicBlock, BlockId, Constant, Function, Instruction, Module, Terminator, validate_module,
+};
+use bn_llvm::{Target, lower_validated_module_for_target, validate_for};
 
-fn span() -> bn::source::Span {
-    let position = bn::source::Position {
-        source_id: bn::source::Position::UNKNOWN_SOURCE,
-        revision: bn::source::Position::UNKNOWN_REVISION,
+fn span() -> bn_source::Span {
+    let position = bn_source::Position {
+        source_id: bn_source::Position::UNKNOWN_SOURCE,
+        revision: bn_source::Position::UNKNOWN_REVISION,
         offset: 0,
         line: 1,
         column: 1,
     };
-    bn::source::Span {
+    bn_source::Span {
         start: position,
         end: position,
     }
@@ -29,11 +28,11 @@ fn malformed_module() -> Module {
     Module {
         functions: vec![Function {
             name: "Start".into(),
-            kind: bn::ir::FunctionKind::Entry,
+            kind: bn_ir::FunctionKind::Entry,
             owner: None,
             asynchronous: false,
             parameters: Vec::new(),
-            return_type: bn::types::Type::Named("VOID".into()),
+            return_type: bn_types::Type::Named("VOID".into()),
             entry: BlockId(0),
             blocks: vec![BasicBlock {
                 id: BlockId(0),
@@ -80,9 +79,9 @@ fn target_support_is_checked_after_language_validation() {
     let module = function_with_blocks(vec![BasicBlock {
         id: BlockId(0),
         instructions: vec![Instruction::Default {
-            destination: bn::ir::ValueId(0),
-            ty: bn::types::Type::Vector {
-                element: Box::new(bn::types::Type::Integer(bn::types::IntegerType::Int32)),
+            destination: bn_ir::ValueId(0),
+            ty: bn_types::Type::Vector {
+                element: Box::new(bn_types::Type::Integer(bn_types::IntegerType::Int32)),
                 dimensions: vec![2, 3],
             },
             dimensions: vec![2, 3],
@@ -101,9 +100,9 @@ fn vector_default_with_string_element_is_supported_before_emit() {
     let module = function_with_blocks(vec![BasicBlock {
         id: BlockId(0),
         instructions: vec![Instruction::Default {
-            destination: bn::ir::ValueId(0),
-            ty: bn::types::Type::Vector {
-                element: Box::new(bn::types::Type::String),
+            destination: bn_ir::ValueId(0),
+            ty: bn_types::Type::Vector {
+                element: Box::new(bn_types::Type::String),
                 dimensions: vec![2],
             },
             dimensions: vec![2],
@@ -124,9 +123,9 @@ fn vector_default_with_oversized_dimension_is_rejected_before_emit() {
     let module = function_with_blocks(vec![BasicBlock {
         id: BlockId(0),
         instructions: vec![Instruction::Default {
-            destination: bn::ir::ValueId(0),
-            ty: bn::types::Type::Vector {
-                element: Box::new(bn::types::Type::Integer(bn::types::IntegerType::Int32)),
+            destination: bn_ir::ValueId(0),
+            ty: bn_types::Type::Vector {
+                element: Box::new(bn_types::Type::Integer(bn_types::IntegerType::Int32)),
                 dimensions: vec![type_dimension],
             },
             dimensions: vec![oversized],
@@ -147,22 +146,22 @@ fn index_of_non_indexable_value_is_rejected_by_language_validation() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::types::Type::Boolean,
+                ty: bn_types::Type::Boolean,
                 span: span(),
             },
             Instruction::Constant {
-                destination: bn::ir::ValueId(1),
+                destination: bn_ir::ValueId(1),
                 value: Constant::Integer("0".into()),
-                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             },
             Instruction::Index {
-                destination: bn::ir::ValueId(2),
-                object: bn::ir::ValueId(0),
-                index: bn::ir::ValueId(1),
-                ty: bn::types::Type::String,
+                destination: bn_ir::ValueId(2),
+                object: bn_ir::ValueId(0),
+                index: bn_ir::ValueId(1),
+                ty: bn_types::Type::String,
                 span: span(),
             },
         ],
@@ -178,25 +177,25 @@ fn index_result_must_match_the_indexed_element_type() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Integer("1".into()),
-                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             },
             Instruction::Vector {
-                destination: bn::ir::ValueId(1),
-                values: vec![bn::ir::ValueId(0)],
-                ty: bn::types::Type::Vector {
-                    element: Box::new(bn::types::Type::Integer(bn::types::IntegerType::Int32)),
+                destination: bn_ir::ValueId(1),
+                values: vec![bn_ir::ValueId(0)],
+                ty: bn_types::Type::Vector {
+                    element: Box::new(bn_types::Type::Integer(bn_types::IntegerType::Int32)),
                     dimensions: vec![1],
                 },
                 span: span(),
             },
             Instruction::Index {
-                destination: bn::ir::ValueId(2),
-                object: bn::ir::ValueId(1),
-                index: bn::ir::ValueId(0),
-                ty: bn::types::Type::String,
+                destination: bn_ir::ValueId(2),
+                object: bn_ir::ValueId(1),
+                index: bn_ir::ValueId(0),
+                ty: bn_types::Type::String,
                 span: span(),
             },
         ],
@@ -225,18 +224,18 @@ fn member_and_class_identity_names_cannot_be_empty() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Integer("0".to_string()),
-                ty: bn::ir::Type::Integer(bn::ir::IntegerType::Int32),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             },
             Instruction::Member {
-                destination: bn::ir::ValueId(1),
-                object: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(1),
+                object: bn_ir::ValueId(0),
                 field: None,
                 name: "field".to_string(),
                 owner: String::new(),
-                ty: bn::ir::Type::Integer(bn::ir::IntegerType::Int32),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             },
         ],
@@ -250,18 +249,18 @@ fn member_and_class_identity_names_cannot_be_empty() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Integer("0".to_string()),
-                ty: bn::ir::Type::Integer(bn::ir::IntegerType::Int32),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             },
             Instruction::SetMember {
-                object: bn::ir::ValueId(0),
+                object: bn_ir::ValueId(0),
                 field: None,
                 name: "field".to_string(),
                 owner: String::new(),
-                value: bn::ir::ValueId(0),
-                ty: bn::ir::Type::Integer(bn::ir::IntegerType::Int32),
+                value: bn_ir::ValueId(0),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             },
         ],
@@ -275,16 +274,16 @@ fn member_and_class_identity_names_cannot_be_empty() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Integer("0".to_string()),
-                ty: bn::ir::Type::Integer(bn::ir::IntegerType::Int32),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             },
             Instruction::StoreStatic {
                 class: String::new(),
                 field: "f".to_string(),
-                value: bn::ir::ValueId(0),
-                ty: bn::ir::Type::Integer(bn::ir::IntegerType::Int32),
+                value: bn_ir::ValueId(0),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             },
         ],
@@ -297,10 +296,10 @@ fn member_and_class_identity_names_cannot_be_empty() {
     let module = function_with_blocks(vec![BasicBlock {
         id: BlockId(0),
         instructions: vec![Instruction::Allocate {
-            destination: bn::ir::ValueId(0),
+            destination: bn_ir::ValueId(0),
             type_name: String::new(),
             arguments: Vec::new(),
-            ty: bn::ir::Type::Unknown,
+            ty: bn_types::Type::Unknown,
             span: span(),
         }],
         terminator: Terminator::Return { value: None },
@@ -313,13 +312,13 @@ fn member_and_class_identity_names_cannot_be_empty() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Integer("0".to_string()),
-                ty: bn::ir::Type::Integer(bn::ir::IntegerType::Int32),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             },
             Instruction::Release {
-                value: bn::ir::ValueId(0),
+                value: bn_ir::ValueId(0),
                 destructor: Some(String::new()),
                 span: span(),
             },
@@ -334,18 +333,18 @@ fn member_and_class_identity_names_cannot_be_empty() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Integer("0".to_string()),
-                ty: bn::ir::Type::Integer(bn::ir::IntegerType::Int32),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             },
             Instruction::SetField {
-                symbol: bn::ir::SymbolId(0),
+                symbol: bn_ir::SymbolId(0),
                 root_owner: String::new(),
                 path: vec![],
                 fields: None,
-                value: bn::ir::ValueId(0),
-                ty: bn::ir::Type::Integer(bn::ir::IntegerType::Int32),
+                value: bn_ir::ValueId(0),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             },
         ],
@@ -361,24 +360,24 @@ fn dispatch_submit_requires_a_queue_and_function_task() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::types::Type::Boolean,
+                ty: bn_types::Type::Boolean,
                 span: span(),
             },
             Instruction::Constant {
-                destination: bn::ir::ValueId(1),
+                destination: bn_ir::ValueId(1),
                 value: Constant::Boolean(false),
-                ty: bn::types::Type::Boolean,
+                ty: bn_types::Type::Boolean,
                 span: span(),
             },
             Instruction::DispatchSubmit {
-                destination: bn::ir::ValueId(2),
-                callee: bn::ir::ValueId(0),
-                queue: bn::ir::ValueId(0),
-                task: bn::ir::ValueId(1),
+                destination: bn_ir::ValueId(2),
+                callee: bn_ir::ValueId(0),
+                queue: bn_ir::ValueId(0),
+                task: bn_ir::ValueId(1),
                 arguments: Vec::new(),
-                ty: bn::types::Type::Unknown,
+                ty: bn_types::Type::Unknown,
                 span: span(),
             },
         ],
@@ -394,23 +393,23 @@ fn dispatch_await_requires_a_ticket_and_integer_timeout() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::types::Type::Boolean,
+                ty: bn_types::Type::Boolean,
                 span: span(),
             },
             Instruction::Constant {
-                destination: bn::ir::ValueId(1),
+                destination: bn_ir::ValueId(1),
                 value: Constant::Boolean(false),
-                ty: bn::types::Type::Boolean,
+                ty: bn_types::Type::Boolean,
                 span: span(),
             },
             Instruction::DispatchAwait {
-                destination: bn::ir::ValueId(2),
-                callee: bn::ir::ValueId(0),
-                ticket: bn::ir::ValueId(0),
-                timeout: bn::ir::ValueId(1),
-                ty: bn::types::Type::Unknown,
+                destination: bn_ir::ValueId(2),
+                callee: bn_ir::ValueId(0),
+                ticket: bn_ir::ValueId(0),
+                timeout: bn_ir::ValueId(1),
+                ty: bn_types::Type::Unknown,
                 span: span(),
             },
         ],
@@ -425,9 +424,9 @@ fn valid_eof_constant_is_rejected_as_target_support_not_language_error() {
     let module = function_with_blocks(vec![BasicBlock {
         id: BlockId(0),
         instructions: vec![Instruction::Constant {
-            destination: bn::ir::ValueId(0),
+            destination: bn_ir::ValueId(0),
             value: Constant::EndOfFile,
-            ty: bn::types::Type::EndOfFile,
+            ty: bn_types::Type::EndOfFile,
             span: span(),
         }],
         terminator: Terminator::Return { value: None },
@@ -442,9 +441,9 @@ fn valid_numeric_constant_with_invalid_llvm_literal_is_rejected_before_emit() {
     let module = function_with_blocks(vec![BasicBlock {
         id: BlockId(0),
         instructions: vec![Instruction::Constant {
-            destination: bn::ir::ValueId(0),
+            destination: bn_ir::ValueId(0),
             value: Constant::Integer("not-an-integer".into()),
-            ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+            ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
             span: span(),
         }],
         terminator: Terminator::Return { value: None },
@@ -469,25 +468,25 @@ fn validator_rejects_indexed_member_store_without_an_object_receiver() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::types::Type::Boolean,
+                ty: bn_types::Type::Boolean,
                 span: span(),
             },
             Instruction::Constant {
-                destination: bn::ir::ValueId(1),
+                destination: bn_ir::ValueId(1),
                 value: Constant::Integer("0".into()),
-                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             },
             Instruction::SetMemberIndex {
-                object: bn::ir::ValueId(0),
+                object: bn_ir::ValueId(0),
                 field: None,
                 name: "data".into(),
                 owner: "Fake".into(),
-                indices: vec![bn::ir::ValueId(1)],
-                value: bn::ir::ValueId(0),
-                ty: bn::types::Type::Boolean,
+                indices: vec![bn_ir::ValueId(1)],
+                value: bn_ir::ValueId(0),
+                ty: bn_types::Type::Boolean,
                 span: span(),
             },
         ],
@@ -503,25 +502,25 @@ fn validator_rejects_an_indexed_store_without_indices() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Load {
-                destination: bn::ir::ValueId(0),
-                symbol: bn::ir::SymbolId::from_raw(0),
-                ty: bn::types::Type::Named("Box".into()),
+                destination: bn_ir::ValueId(0),
+                symbol: bn_ir::SymbolId::from_raw(0),
+                ty: bn_types::Type::Named("Box".into()),
                 span: span(),
             },
             Instruction::Constant {
-                destination: bn::ir::ValueId(1),
+                destination: bn_ir::ValueId(1),
                 value: Constant::Integer("1".into()),
-                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             },
             Instruction::SetMemberIndex {
-                object: bn::ir::ValueId(0),
+                object: bn_ir::ValueId(0),
                 field: None,
                 name: "data".into(),
                 owner: "Box".into(),
                 indices: Vec::new(),
-                value: bn::ir::ValueId(1),
-                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+                value: bn_ir::ValueId(1),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             },
         ],
@@ -552,11 +551,11 @@ fn function_with_blocks(blocks: Vec<BasicBlock>) -> Module {
     Module {
         functions: vec![Function {
             name: "Start".into(),
-            kind: bn::ir::FunctionKind::Entry,
+            kind: bn_ir::FunctionKind::Entry,
             owner: None,
             asynchronous: false,
             parameters: Vec::new(),
-            return_type: bn::types::Type::Named("VOID".into()),
+            return_type: bn_types::Type::Named("VOID".into()),
             entry: BlockId(0),
             blocks,
             weak_symbols: std::collections::HashSet::default(),
@@ -572,13 +571,13 @@ fn validator_rejects_value_defined_on_only_one_branch() {
         BasicBlock {
             id: BlockId(0),
             instructions: vec![Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::types::Type::Boolean,
+                ty: bn_types::Type::Boolean,
                 span: span(),
             }],
             terminator: Terminator::Branch {
-                condition: bn::ir::ValueId(0),
+                condition: bn_ir::ValueId(0),
                 then_block: BlockId(1),
                 else_block: BlockId(2),
             },
@@ -586,9 +585,9 @@ fn validator_rejects_value_defined_on_only_one_branch() {
         BasicBlock {
             id: BlockId(1),
             instructions: vec![Instruction::Constant {
-                destination: bn::ir::ValueId(1),
+                destination: bn_ir::ValueId(1),
                 value: Constant::Integer("1".into()),
-                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             }],
             terminator: Terminator::Jump { target: BlockId(3) },
@@ -601,7 +600,7 @@ fn validator_rejects_value_defined_on_only_one_branch() {
         BasicBlock {
             id: BlockId(3),
             instructions: vec![Instruction::Print {
-                values: vec![bn::ir::ValueId(1)],
+                values: vec![bn_ir::ValueId(1)],
                 span: span(),
             }],
             terminator: Terminator::Return { value: None },
@@ -617,13 +616,13 @@ fn validator_rejects_phi_without_every_reachable_predecessor() {
         BasicBlock {
             id: BlockId(0),
             instructions: vec![Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::types::Type::Boolean,
+                ty: bn_types::Type::Boolean,
                 span: span(),
             }],
             terminator: Terminator::Branch {
-                condition: bn::ir::ValueId(0),
+                condition: bn_ir::ValueId(0),
                 then_block: BlockId(1),
                 else_block: BlockId(2),
             },
@@ -631,9 +630,9 @@ fn validator_rejects_phi_without_every_reachable_predecessor() {
         BasicBlock {
             id: BlockId(1),
             instructions: vec![Instruction::Constant {
-                destination: bn::ir::ValueId(1),
+                destination: bn_ir::ValueId(1),
                 value: Constant::Integer("1".into()),
-                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             }],
             terminator: Terminator::Jump { target: BlockId(3) },
@@ -641,9 +640,9 @@ fn validator_rejects_phi_without_every_reachable_predecessor() {
         BasicBlock {
             id: BlockId(2),
             instructions: vec![Instruction::Constant {
-                destination: bn::ir::ValueId(2),
+                destination: bn_ir::ValueId(2),
                 value: Constant::Integer("2".into()),
-                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             }],
             terminator: Terminator::Jump { target: BlockId(3) },
@@ -651,9 +650,9 @@ fn validator_rejects_phi_without_every_reachable_predecessor() {
         BasicBlock {
             id: BlockId(3),
             instructions: vec![Instruction::Phi {
-                destination: bn::ir::ValueId(3),
-                incoming: vec![(BlockId(1), bn::ir::ValueId(1))],
-                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+                destination: bn_ir::ValueId(3),
+                incoming: vec![(BlockId(1), bn_ir::ValueId(1))],
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             }],
             terminator: Terminator::Return { value: None },
@@ -668,9 +667,9 @@ fn validator_rejects_undefined_input_prompt() {
     let module = function_with_blocks(vec![BasicBlock {
         id: BlockId(0),
         instructions: vec![Instruction::Input {
-            destination: bn::ir::ValueId(0),
-            prompt: Some(bn::ir::ValueId(9)),
-            ty: bn::types::Type::String,
+            destination: bn_ir::ValueId(0),
+            prompt: Some(bn_ir::ValueId(9)),
+            ty: bn_types::Type::String,
             span: span(),
         }],
         terminator: Terminator::Return { value: None },
@@ -684,10 +683,10 @@ fn validator_rejects_undefined_dynamic_dimension() {
     let module = function_with_blocks(vec![BasicBlock {
         id: BlockId(0),
         instructions: vec![Instruction::Default {
-            destination: bn::ir::ValueId(0),
-            ty: bn::types::Type::String,
+            destination: bn_ir::ValueId(0),
+            ty: bn_types::Type::String,
             dimensions: Vec::new(),
-            dynamic_dimensions: vec![bn::ir::ValueId(9)],
+            dynamic_dimensions: vec![bn_ir::ValueId(9)],
             span: span(),
         }],
         terminator: Terminator::Return { value: None },
@@ -702,15 +701,15 @@ fn validator_rejects_a_copy_with_an_incompatible_value_type() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::types::Type::Boolean,
+                ty: bn_types::Type::Boolean,
                 span: span(),
             },
             Instruction::Copy {
-                destination: bn::ir::ValueId(1),
-                source: bn::ir::ValueId(0),
-                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+                destination: bn_ir::ValueId(1),
+                source: bn_ir::ValueId(0),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             },
         ],
@@ -726,23 +725,23 @@ fn validator_rejects_an_operator_with_incompatible_types() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::types::Type::Boolean,
+                ty: bn_types::Type::Boolean,
                 span: span(),
             },
             Instruction::Constant {
-                destination: bn::ir::ValueId(1),
+                destination: bn_ir::ValueId(1),
                 value: Constant::Boolean(false),
-                ty: bn::types::Type::Boolean,
+                ty: bn_types::Type::Boolean,
                 span: span(),
             },
             Instruction::Binary {
-                destination: bn::ir::ValueId(2),
+                destination: bn_ir::ValueId(2),
                 operator: "Plus".into(),
-                left: bn::ir::ValueId(0),
-                right: bn::ir::ValueId(1),
-                ty: bn::types::Type::Boolean,
+                left: bn_ir::ValueId(0),
+                right: bn_ir::ValueId(1),
+                ty: bn_types::Type::Boolean,
                 span: span(),
             },
         ],
@@ -758,15 +757,15 @@ fn validator_rejects_an_invalid_cast() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::types::Type::Boolean,
+                ty: bn_types::Type::Boolean,
                 span: span(),
             },
             Instruction::Cast {
-                destination: bn::ir::ValueId(1),
-                value: bn::ir::ValueId(0),
-                ty: bn::types::Type::String,
+                destination: bn_ir::ValueId(1),
+                value: bn_ir::ValueId(0),
+                ty: bn_types::Type::String,
                 span: span(),
             },
         ],
@@ -782,16 +781,16 @@ fn validator_rejects_a_call_through_a_non_function_value() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::types::Type::Boolean,
+                ty: bn_types::Type::Boolean,
                 span: span(),
             },
             Instruction::Call {
-                destination: bn::ir::ValueId(1),
-                callee: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(1),
+                callee: bn_ir::ValueId(0),
                 arguments: Vec::new(),
-                ty: bn::types::Type::Named("VOID".into()),
+                ty: bn_types::Type::Named("VOID".into()),
                 span: span(),
             },
         ],
@@ -807,13 +806,13 @@ fn validator_rejects_console_control_with_a_non_console_value() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::types::Type::Boolean,
+                ty: bn_types::Type::Boolean,
                 span: span(),
             },
             Instruction::Beep {
-                console: bn::ir::ValueId(0),
+                console: bn_ir::ValueId(0),
                 span: span(),
             },
         ],
@@ -828,9 +827,9 @@ fn validator_rejects_a_constant_with_an_incompatible_value_type() {
     let module = function_with_blocks(vec![BasicBlock {
         id: BlockId(0),
         instructions: vec![Instruction::Constant {
-            destination: bn::ir::ValueId(0),
+            destination: bn_ir::ValueId(0),
             value: Constant::Boolean(true),
-            ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+            ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
             span: span(),
         }],
         terminator: Terminator::Return { value: None },
@@ -845,15 +844,15 @@ fn validator_rejects_incompatible_store_values() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::types::Type::Boolean,
+                ty: bn_types::Type::Boolean,
                 span: span(),
             },
             Instruction::Store {
-                symbol: bn::ir::SymbolId::from_raw(0),
-                value: bn::ir::ValueId(0),
-                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+                symbol: bn_ir::SymbolId::from_raw(0),
+                value: bn_ir::ValueId(0),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             },
         ],
@@ -866,35 +865,35 @@ fn validator_rejects_incompatible_store_values() {
 #[test]
 fn validator_rejects_incompatible_member_and_field_values() {
     let boolean_constant = || Instruction::Constant {
-        destination: bn::ir::ValueId(0),
+        destination: bn_ir::ValueId(0),
         value: Constant::Boolean(true),
-        ty: bn::types::Type::Boolean,
+        ty: bn_types::Type::Boolean,
         span: span(),
     };
     let cases = [
         Instruction::SetMember {
-            object: bn::ir::ValueId(0),
+            object: bn_ir::ValueId(0),
             field: None,
             name: "value".into(),
             owner: "Example".into(),
-            value: bn::ir::ValueId(0),
-            ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+            value: bn_ir::ValueId(0),
+            ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
             span: span(),
         },
         Instruction::SetField {
-            symbol: bn::ir::SymbolId::from_raw(0),
+            symbol: bn_ir::SymbolId::from_raw(0),
             root_owner: "Example".into(),
             path: vec!["value".into()],
             fields: None,
-            value: bn::ir::ValueId(0),
-            ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+            value: bn_ir::ValueId(0),
+            ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
             span: span(),
         },
         Instruction::StoreStatic {
             class: "Example".into(),
             field: "value".into(),
-            value: bn::ir::ValueId(0),
-            ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+            value: bn_ir::ValueId(0),
+            ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
             span: span(),
         },
     ];
@@ -915,22 +914,22 @@ fn validator_rejects_non_integer_indices_and_mismatched_vector_elements() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::String("text".into()),
-                ty: bn::types::Type::String,
+                ty: bn_types::Type::String,
                 span: span(),
             },
             Instruction::Constant {
-                destination: bn::ir::ValueId(1),
+                destination: bn_ir::ValueId(1),
                 value: Constant::Boolean(false),
-                ty: bn::types::Type::Boolean,
+                ty: bn_types::Type::Boolean,
                 span: span(),
             },
             Instruction::Index {
-                destination: bn::ir::ValueId(2),
-                object: bn::ir::ValueId(0),
-                index: bn::ir::ValueId(1),
-                ty: bn::types::Type::String,
+                destination: bn_ir::ValueId(2),
+                object: bn_ir::ValueId(0),
+                index: bn_ir::ValueId(1),
+                ty: bn_types::Type::String,
                 span: span(),
             },
         ],
@@ -943,16 +942,16 @@ fn validator_rejects_non_integer_indices_and_mismatched_vector_elements() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::types::Type::Boolean,
+                ty: bn_types::Type::Boolean,
                 span: span(),
             },
             Instruction::Vector {
-                destination: bn::ir::ValueId(1),
-                values: vec![bn::ir::ValueId(0)],
-                ty: bn::types::Type::Vector {
-                    element: Box::new(bn::types::Type::Integer(bn::types::IntegerType::Int32)),
+                destination: bn_ir::ValueId(1),
+                values: vec![bn_ir::ValueId(0)],
+                ty: bn_types::Type::Vector {
+                    element: Box::new(bn_types::Type::Integer(bn_types::IntegerType::Int32)),
                     dimensions: vec![1],
                 },
                 span: span(),
@@ -970,16 +969,16 @@ fn validator_rejects_a_vector_with_the_wrong_shape() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Integer("1".into()),
-                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             },
             Instruction::Vector {
-                destination: bn::ir::ValueId(1),
-                values: vec![bn::ir::ValueId(0)],
-                ty: bn::types::Type::Vector {
-                    element: Box::new(bn::types::Type::Integer(bn::types::IntegerType::Int32)),
+                destination: bn_ir::ValueId(1),
+                values: vec![bn_ir::ValueId(0)],
+                ty: bn_types::Type::Vector {
+                    element: Box::new(bn_types::Type::Integer(bn_types::IntegerType::Int32)),
                     dimensions: vec![2],
                 },
                 span: span(),
@@ -997,13 +996,13 @@ fn validator_rejects_non_boolean_branch_condition() {
         BasicBlock {
             id: BlockId(0),
             instructions: vec![Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Integer("1".into()),
-                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             }],
             terminator: Terminator::Branch {
-                condition: bn::ir::ValueId(0),
+                condition: bn_ir::ValueId(0),
                 then_block: BlockId(1),
                 else_block: BlockId(2),
             },
@@ -1028,13 +1027,13 @@ fn validator_rejects_return_value_for_void_function() {
     let module = function_with_blocks(vec![BasicBlock {
         id: BlockId(0),
         instructions: vec![Instruction::Constant {
-            destination: bn::ir::ValueId(0),
+            destination: bn_ir::ValueId(0),
             value: Constant::Integer("1".into()),
-            ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+            ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
             span: span(),
         }],
         terminator: Terminator::Return {
-            value: Some(bn::ir::ValueId(0)),
+            value: Some(bn_ir::ValueId(0)),
         },
     }]);
     let error = validate_module(module).expect_err("VOID function cannot return a value");
@@ -1047,15 +1046,15 @@ fn validator_rejects_duplicate_value_definitions() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Integer("1".into()),
-                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             },
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Integer("2".into()),
-                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             },
         ],
@@ -1071,15 +1070,15 @@ fn validator_rejects_phi_after_a_non_phi_instruction() {
         id: BlockId(0),
         instructions: vec![
             Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::types::Type::Boolean,
+                ty: bn_types::Type::Boolean,
                 span: span(),
             },
             Instruction::Phi {
-                destination: bn::ir::ValueId(1),
+                destination: bn_ir::ValueId(1),
                 incoming: Vec::new(),
-                ty: bn::types::Type::Boolean,
+                ty: bn_types::Type::Boolean,
                 span: span(),
             },
         ],
@@ -1095,13 +1094,13 @@ fn validator_accepts_all_path_definitions_and_loop_reuse() {
         BasicBlock {
             id: BlockId(0),
             instructions: vec![Instruction::Constant {
-                destination: bn::ir::ValueId(0),
+                destination: bn_ir::ValueId(0),
                 value: Constant::Boolean(true),
-                ty: bn::types::Type::Boolean,
+                ty: bn_types::Type::Boolean,
                 span: span(),
             }],
             terminator: Terminator::Branch {
-                condition: bn::ir::ValueId(0),
+                condition: bn_ir::ValueId(0),
                 then_block: BlockId(1),
                 else_block: BlockId(2),
             },
@@ -1109,9 +1108,9 @@ fn validator_accepts_all_path_definitions_and_loop_reuse() {
         BasicBlock {
             id: BlockId(1),
             instructions: vec![Instruction::Constant {
-                destination: bn::ir::ValueId(1),
+                destination: bn_ir::ValueId(1),
                 value: Constant::Integer("1".into()),
-                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             }],
             terminator: Terminator::Jump { target: BlockId(3) },
@@ -1119,9 +1118,9 @@ fn validator_accepts_all_path_definitions_and_loop_reuse() {
         BasicBlock {
             id: BlockId(2),
             instructions: vec![Instruction::Constant {
-                destination: bn::ir::ValueId(2),
+                destination: bn_ir::ValueId(2),
                 value: Constant::Integer("2".into()),
-                ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             }],
             terminator: Terminator::Jump { target: BlockId(3) },
@@ -1130,22 +1129,22 @@ fn validator_accepts_all_path_definitions_and_loop_reuse() {
             id: BlockId(3),
             instructions: vec![
                 Instruction::Phi {
-                    destination: bn::ir::ValueId(3),
+                    destination: bn_ir::ValueId(3),
                     incoming: vec![
-                        (BlockId(1), bn::ir::ValueId(1)),
-                        (BlockId(2), bn::ir::ValueId(2)),
-                        (BlockId(3), bn::ir::ValueId(3)),
+                        (BlockId(1), bn_ir::ValueId(1)),
+                        (BlockId(2), bn_ir::ValueId(2)),
+                        (BlockId(3), bn_ir::ValueId(3)),
                     ],
-                    ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
+                    ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                     span: span(),
                 },
                 Instruction::Print {
-                    values: vec![bn::ir::ValueId(3)],
+                    values: vec![bn_ir::ValueId(3)],
                     span: span(),
                 },
             ],
             terminator: Terminator::Branch {
-                condition: bn::ir::ValueId(0),
+                condition: bn_ir::ValueId(0),
                 then_block: BlockId(3),
                 else_block: BlockId(4),
             },

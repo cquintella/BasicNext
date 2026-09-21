@@ -8,7 +8,6 @@
 //! `bn_compile_driver`, `bn_lsp` or `bn_dap` (bucket 0.6.0, SPRINT 1).
 use std::{env, fs, process::ExitCode};
 
-use bn::{lexer::lex, source::SourceFile};
 use bn_cli::{
     check::check,
     diagnostics::render_diagnostic,
@@ -17,7 +16,9 @@ use bn_cli::{
     output::{emit_output, language_error, log, tokens_text, tool_error},
 };
 use bn_compile_driver::{build::build, options::BuildOptions};
+use bn_frontend::lexer::lex;
 use bn_interpret_driver::{eval::eval, run::run};
+use bn_source::SourceFile;
 const VERSION: &str = concat!("bn ", env!("CARGO_PKG_VERSION"));
 
 fn help() -> ExitCode {
@@ -74,7 +75,7 @@ fn main() -> ExitCode {
 
     if command == "lsp" {
         // Language Server Protocol
-        return match bn::lsp::run_stdio() {
+        return match bn_lsp::run_stdio() {
             Ok(()) => ExitCode::SUCCESS,
             Err(message) => {
                 eprintln!("error[LSP]: {message}");
@@ -85,7 +86,7 @@ fn main() -> ExitCode {
 
     if command == "dap" {
         // Debug Adapter Protocol
-        return match bn::dap::run_stdio() {
+        return match bn_dap::run_stdio() {
             Ok(()) => ExitCode::SUCCESS,
             Err(message) => {
                 eprintln!("error[DAP]: {message}");

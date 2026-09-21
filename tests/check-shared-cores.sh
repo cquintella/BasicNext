@@ -23,9 +23,10 @@ fail() {
 }
 
 # (a) Process spawning: HOST.Exec core, trusted-path neighbor lookup, the
-# compiler driver (clang / wasm-ld / brew), the bnc wrapper, and test helpers
-# that re-execute the test binary. Nothing else may spawn.
-allowed_spawn='^(crates/bn_host_exec/src/lib\.rs|crates/bn_rt/src/net/neighbor\.rs|src/cli_toolchain\.rs|src/main\.rs|src/bnc\.rs|src/cli_tests\.rs|.*_tests\.rs)$'
+# compilation driver (clang / wasm-ld / brew, bucket 0.6.0 1.3), the bnc
+# wrapper, and test helpers that re-execute the test binary. Nothing else
+# may spawn.
+allowed_spawn='^(crates/bn_host_exec/src/lib\.rs|crates/bn_rt/src/net/neighbor\.rs|crates/bn_compile_driver/src/(toolchain|artifact|tests)\.rs|src/bnc\.rs|.*_tests\.rs)$'
 while IFS= read -r file; do
   [[ $file =~ $allowed_spawn ]] || fail "process spawn outside the shared cores: $file"
 done < <(rg -l 'process::Command|Command::new\(' src crates --type rust \
@@ -42,8 +43,9 @@ count=$(rg -c '^(pub(\(crate\))?\s+)?static\s' crates/bn_rt/src/policy.rs || tru
 [[ ${count:-0} == 1 ]] || fail "expected exactly 1 static in crates/bn_rt/src/policy.rs, found ${count:-0}"
 
 # (d) The policy environment (BN_FS_POLICY, BN_EXEC_*) is read by the parser
-# in bn_rt::policy and handed to it from the CLI; no other reader.
-allowed_env='^(crates/bn_rt/src/policy\.rs|src/main\.rs|src/cli_frontend\.rs)$'
+# in bn_rt::policy; the drivers hand it a closure over `env::var` and never
+# name the variables. No other reader.
+allowed_env='^(crates/bn_rt/src/policy\.rs)$'
 while IFS= read -r file; do
   [[ $file =~ $allowed_env ]] || fail "policy environment read outside the parser: $file"
 done < <(rg -l '^\s*[^/]*"BN_(FS_POLICY|EXEC_POLICY|EXEC_CAPTURE_LIMIT|EXEC_TIMEOUT_MS)"' src crates --type rust -g '!*_tests.rs' -g '!**/tests.rs')

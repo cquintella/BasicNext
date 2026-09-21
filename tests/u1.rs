@@ -5,15 +5,12 @@
 
 use std::{fs, process::Command};
 
-use bn::{
-    keyword_registry::{
-        SPECIAL_BEGIN, SPECIAL_END, parse_ebnf_quoted_production, parse_keywords_md,
-        parse_marked_list,
-    },
-    lexer::lex,
-    source::SourceFile,
-    token::{TokenKind, reserved_words, special_float_literals},
+use bn_frontend::keyword_registry::{
+    SPECIAL_BEGIN, SPECIAL_END, parse_ebnf_quoted_production, parse_keywords_md, parse_marked_list,
 };
+use bn_frontend::lexer::lex;
+use bn_frontend::token::{TokenKind, reserved_words, special_float_literals};
+use bn_source::SourceFile;
 
 fn read(path: &str) -> String {
     fs::read_to_string(path).unwrap_or_else(|error| panic!("read {path}: {error}"))
@@ -165,7 +162,7 @@ fn lexer_classifies_every_generated_entry() {
         &kinds[..4],
         &[
             TokenKind::Special("NAN"),
-            TokenKind::Symbol(bn::token::Symbol::Minus),
+            TokenKind::Symbol(bn_frontend::token::Symbol::Minus),
             TokenKind::Special("INF"),
             TokenKind::Newline,
         ]

@@ -5,12 +5,10 @@
 
 use std::{fs, path::Path};
 
-use bn::{
-    ast::{DeclarationKind, ExpressionKind, Item, Statement, VectorDimension},
-    lexer::lex,
-    parser::{parse, parse_expression},
-    source::SourceFile,
-};
+use bn_frontend::ast::{DeclarationKind, ExpressionKind, Item, Statement, VectorDimension};
+use bn_frontend::lexer::lex;
+use bn_frontend::parser::{parse, parse_expression};
+use bn_source::SourceFile;
 
 fn parse_path(path: &str) -> Result<(), String> {
     let text = fs::read_to_string(path).map_err(|error| error.to_string())?;
@@ -86,7 +84,7 @@ fn increment_statement_desugars_to_compound_assignment() {
                 operator, value, ..
             } => Some((
                 operator.as_str(),
-                matches!(&value.kind, ExpressionKind::Literal(bn::ast::Literal::Integer(one)) if one == "1"),
+                matches!(&value.kind, ExpressionKind::Literal(bn_frontend::ast::Literal::Integer(one)) if one == "1"),
             )),
             _ => None,
         })

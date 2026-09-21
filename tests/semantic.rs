@@ -3,9 +3,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use bn::types::{IntegerType, PointerLength, Type};
-use bn::{lexer::lex, module_graph::load, parser::parse, source::SourceFile};
+use bn_frontend::lexer::lex;
+use bn_frontend::module_graph::load;
+use bn_frontend::parser::parse;
 use bn_frontend::semantic::{analyze, analyze_modules, analyze_with_warnings};
+use bn_source::SourceFile;
+use bn_types::{IntegerType, PointerLength, Type};
 use std::fs;
 use std::path::Path;
 
@@ -461,9 +464,7 @@ fn arithmetic_operator_rules_are_checked() {
     );
 }
 
-fn analyze_text(
-    text: &str,
-) -> Result<bn_frontend::semantic::SemanticModel, bn::diagnostic::Diagnostic> {
+fn analyze_text(text: &str) -> Result<bn_frontend::semantic::SemanticModel, bn_diag::Diagnostic> {
     let source = SourceFile::new("semantic-test.bn", text);
     let tokens = lex(&source).expect("lex source");
     let program = parse(&tokens).expect("parse source");

@@ -21,9 +21,6 @@ lib-data = ["bn_interpret_driver/lib-data"]
 lib-dispatch = ["bn_interpret_driver/lib-dispatch"]
 lib-web = ["bn_interpret_driver/lib-web"]
 
-[lib]
-path = "src/lib.rs"
-
 [[bin]]
 name = "bn"
 path = "src/main.rs"
@@ -41,23 +38,22 @@ pedantic = "warn"
 
 [dependencies]
 bn_cli = { path = "crates/bn_cli" }
-bn_interpret_driver = { path = "crates/bn_interpret_driver" }
 bn_compile_driver = { path = "crates/bn_compile_driver" }
-bn_lsp = { path = "crates/bn_lsp" }
 bn_dap = { path = "crates/bn_dap" }
-bn_rt = { path = "crates/bn_rt" }
 bn_diag = { path = "crates/bn_diag" }
-bn_ir = { path = "crates/bn_ir" }
 bn_frontend = { path = "crates/bn_frontend" }
-bn_interp = { path = "crates/bn_interp" }
-bn_runtime = { path = "crates/bn_runtime" }
-bn_value = { path = "crates/bn_value" }
-bn_llvm = { path = "crates/bn_llvm" }
+bn_interpret_driver = { path = "crates/bn_interpret_driver" }
+bn_lsp = { path = "crates/bn_lsp" }
 bn_source = { path = "crates/bn_source" }
-bn_types = { path = "crates/bn_types" }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
 
+# Integration tests under tests/ exercise the owning crates directly.
 [dev-dependencies]
+bn_interp = { path = "crates/bn_interp" }
+bn_ir = { path = "crates/bn_ir" }
 bn_lib_web = { path = "crates/bn_lib_web" } # tests/runtime.rs drives the web callback directly
+bn_llvm = { path = "crates/bn_llvm" }
+bn_runtime = { path = "crates/bn_runtime" }
+bn_types = { path = "crates/bn_types" }
+bn_value = { path = "crates/bn_value" }
 lsp-types = "0.97.0" # tests/cli.rs decodes LSP diagnostics
+serde_json = "1.0"

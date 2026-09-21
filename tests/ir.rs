@@ -3,14 +3,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use bn::{
-    ir::{BlockId, Constant, Function, Instruction, Module, ModuleId, Terminator, validate},
-    lowering::lower_graph,
-    module_graph::load,
-};
+use bn_frontend::lowering::lower_graph;
+use bn_frontend::module_graph::load;
 use bn_frontend::semantic::analyze_modules;
+use bn_ir::{BlockId, Constant, Function, Instruction, Module, ModuleId, Terminator, validate};
 
-fn lower_path(path: &str) -> bn::ir::Module {
+fn lower_path(path: &str) -> bn_ir::Module {
     let graph = load(std::path::Path::new(path)).expect("load source");
     let models = analyze_modules(&graph).expect("analyze source");
     lower_graph(&graph, &models).expect("lower source")
@@ -232,29 +230,29 @@ fn validate_rejects_a_dangling_block_target() {
         source_name: None,
         functions: vec![Function {
             name: "Broken".into(),
-            kind: bn::ir::FunctionKind::User,
+            kind: bn_ir::FunctionKind::User,
             owner: None,
             asynchronous: false,
             parameters: Vec::new(),
-            return_type: bn::types::Type::Named("VOID".into()),
+            return_type: bn_types::Type::Named("VOID".into()),
             entry: BlockId(0),
-            blocks: vec![bn::ir::BasicBlock {
+            blocks: vec![bn_ir::BasicBlock {
                 id: BlockId(0),
                 instructions: Vec::new(),
                 terminator: Terminator::Jump { target: BlockId(9) },
             }],
             weak_symbols: std::collections::HashSet::default(),
-            span: bn::source::Span {
-                start: bn::source::Position {
-                    source_id: bn::source::Position::UNKNOWN_SOURCE,
-                    revision: bn::source::Position::UNKNOWN_REVISION,
+            span: bn_source::Span {
+                start: bn_source::Position {
+                    source_id: bn_source::Position::UNKNOWN_SOURCE,
+                    revision: bn_source::Position::UNKNOWN_REVISION,
                     offset: 0,
                     line: 1,
                     column: 1,
                 },
-                end: bn::source::Position {
-                    source_id: bn::source::Position::UNKNOWN_SOURCE,
-                    revision: bn::source::Position::UNKNOWN_REVISION,
+                end: bn_source::Position {
+                    source_id: bn_source::Position::UNKNOWN_SOURCE,
+                    revision: bn_source::Position::UNKNOWN_REVISION,
                     offset: 0,
                     line: 1,
                     column: 1,

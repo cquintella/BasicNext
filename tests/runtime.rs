@@ -74,22 +74,21 @@ impl BufRead for ChannelReader {
     }
 }
 
-use bn::{
-    lowering::lower_graph,
-    module_graph::load,
-    runtime::{
-        DebugDecision, HostEnv, HostEnvDefaults, execute_with_host, execute_with_host_debug,
-        execute_with_host_debug_control,
-    },
-};
+use bn_frontend::lowering::lower_graph;
+use bn_frontend::module_graph::load;
 use bn_frontend::semantic::analyze_modules;
+use bn_interp::{
+    DebugDecision, HostEnv, execute_with_host, execute_with_host_debug,
+    execute_with_host_debug_control,
+};
+use bn_interpret_driver::environment::HostEnvDefaults;
 
 /// A fixed-clock host with the providers `bn` ships.
 fn fixed(arguments: Vec<String>, timestamp_ms: i64, monotonic_ns: i64) -> HostEnv {
     HostEnv::fixed(arguments, timestamp_ms, monotonic_ns).with_default_providers()
 }
 
-fn run(source_text: &str, input: &str) -> Result<(u8, String), bn::diagnostic::Diagnostic> {
+fn run(source_text: &str, input: &str) -> Result<(u8, String), bn_diag::Diagnostic> {
     run_with_host(source_text, input, &fixed(vec!["runtime.bn".into()], 0, 0))
 }
 
@@ -97,7 +96,7 @@ fn run_with_host(
     source_text: &str,
     input: &str,
     host: &HostEnv,
-) -> Result<(u8, String), bn::diagnostic::Diagnostic> {
+) -> Result<(u8, String), bn_diag::Diagnostic> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let path = std::env::temp_dir().join(format!(
         "basicnext-runtime-{}-{}.bn",
@@ -110,7 +109,7 @@ fn run_with_host(
     result
 }
 
-fn run_path(path: &str) -> Result<(u8, String), bn::diagnostic::Diagnostic> {
+fn run_path(path: &str) -> Result<(u8, String), bn_diag::Diagnostic> {
     run_loaded(path, "", &fixed(vec![path.into()], 0, 0))
 }
 
@@ -132,7 +131,7 @@ fn run_loaded(
     path: &str,
     input: &str,
     host: &HostEnv,
-) -> Result<(u8, String), bn::diagnostic::Diagnostic> {
+) -> Result<(u8, String), bn_diag::Diagnostic> {
     let graph = load(path).map_err(|error| *error.diagnostic)?;
     let models = analyze_modules(&graph).map_err(|error| *error.diagnostic)?;
     let module = lower_graph(&graph, &models)?;
@@ -146,13 +145,13 @@ fn run_loaded_debug(
     path: &str,
     host: &HostEnv,
     events: &mut Vec<(String, usize)>,
-) -> Result<(), bn::diagnostic::Diagnostic> {
+) -> Result<(), bn_diag::Diagnostic> {
     let graph = load(path).map_err(|error| *error.diagnostic)?;
     let models = analyze_modules(&graph).map_err(|error| *error.diagnostic)?;
     let module = lower_graph(&graph, &models)?;
     let mut input = Cursor::new(Vec::<u8>::new());
     let mut output = Vec::new();
-    let mut hook = |function: &str, span: bn::source::Span| {
+    let mut hook = |function: &str, span: bn_source::Span| {
         events.push((function.to_owned(), span.start.line));
     };
     execute_with_host_debug(&module, &mut input, &mut output, host, &mut hook)?;
@@ -219,8 +218,8 @@ fn debug_control_can_terminate_before_user_instruction() {
     let mut control =
         |_function: &str,
          _depth: usize,
-         _span: bn::source::Span,
-         _variables: &[bn::runtime::DebugVariable]| { DebugDecision::Terminate };
+         _span: bn_source::Span,
+         _variables: &[bn_interp::DebugVariable]| { DebugDecision::Terminate };
     let error = execute_with_host_debug_control(
         &module,
         &mut input,
@@ -1642,7 +1641,7 @@ fn bndata_read_csv_builds_string_columns() {
 struct InjectedDataProvider;
 static NEXT_PROVIDER: AtomicU64 = AtomicU64::new(0);
 
-impl bn::runtime::DataProvider for InjectedDataProvider {
+impl bn_interp::DataProvider for InjectedDataProvider {
     fn read_csv(&self, _text: &str, _separator: char) -> Result<Vec<Vec<String>>, String> {
         Ok(vec![vec![String::from("provided")]])
     }
@@ -2171,7 +2170,7 @@ fn arc_weak_reference_survives_unrelated_allocation_then_expires() {
 /// answers a library callee and re-enters the core through `CoreContext`.
 #[test]
 fn library_provider_seam_routes_calls_and_reenters_the_core() {
-    use bn::runtime::provider::{CoreContext, Provider, Providers};
+    use bn_interp::provider::{CoreContext, Provider, Providers};
     use std::sync::Arc;
 
     struct Fake;
@@ -2181,8 +2180,8 @@ fn library_provider_seam_routes_calls_and_reenters_the_core() {
             core: &mut dyn CoreContext,
             member: &str,
             _arguments: Vec<bn_value::Value>,
-            span: bn::source::Span,
-        ) -> Result<bn_value::Value, bn::diagnostic::Diagnostic> {
+            span: bn_source::Span,
+        ) -> Result<bn_value::Value, bn_diag::Diagnostic> {
             assert_eq!(member, "ABS");
             let helper = core.call_function("Helper", Vec::new(), span)?;
             let bn_value::Value::Integer(seven, kind) = helper else {

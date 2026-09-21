@@ -55,15 +55,12 @@ fn tool_error() -> ExitCode {
     ExitCode::from(2)
 }
 
-fn source_less_diagnostic(code: bn::diagnostic::DiagId, detail: impl Into<String>) -> String {
-    bn::diagnostic::Diagnostic::structured_source_less(
-        code,
-        vec![("detail".into(), detail.into().into())],
-    )
-    .map_or_else(
-        |_| "toolchain diagnostic".to_owned(),
-        |diagnostic| diagnostic.message.to_string(),
-    )
+fn source_less_diagnostic(code: bn_diag::DiagId, detail: impl Into<String>) -> String {
+    bn_diag::Diagnostic::structured_source_less(code, vec![("detail".into(), detail.into().into())])
+        .map_or_else(
+            |_| "toolchain diagnostic".to_owned(),
+            |diagnostic| diagnostic.message.to_string(),
+        )
 }
 
 fn help() -> ExitCode {
@@ -490,7 +487,7 @@ fn main() -> ExitCode {
         Err(err) => {
             eprintln!(
                 "error[BNC]: {}",
-                source_less_diagnostic(bn::diagnostic::DiagId::BNC, err)
+                source_less_diagnostic(bn_diag::DiagId::BNC, err)
             );
             return usage();
         }
@@ -509,7 +506,7 @@ fn main() -> ExitCode {
             eprintln!(
                 "error[BNC_ENGINE]: {}",
                 source_less_diagnostic(
-                    bn::diagnostic::DiagId::BNC_ENGINE,
+                    bn_diag::DiagId::BNC_ENGINE,
                     format!("failed to execute bn engine: {err}")
                 )
             );
