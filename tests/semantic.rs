@@ -31,6 +31,30 @@ fn duplicate_top_level_declaration_is_rejected() {
 }
 
 #[test]
+fn increment_expression_has_the_target_type_and_rejects_non_numeric_or_const_targets() {
+    let accepted = SourceFile::new(
+        "increment.bn",
+        "FUNCTION Start() AS VOID\nLET i AS INTEGER = 0\nLET x AS INTEGER = i++ + ++i\nPRINT x\nEND FUNCTION\n",
+    );
+    let tokens = lex(&accepted).expect("lex source");
+    let program = parse(&tokens).expect("parse source");
+    assert!(analyze(&program).is_ok());
+    for (name, body) in [
+        ("string", "LET s AS STRING = \"a\"\nPRINT s++\n"),
+        ("const", "CONST k AS INTEGER = 1\nPRINT ++k\n"),
+        ("boolean", "LET b AS BOOLEAN = TRUE\nPRINT b--\n"),
+    ] {
+        let source = SourceFile::new(
+            format!("{name}.bn"),
+            format!("FUNCTION Start() AS VOID\n{body}END FUNCTION\n"),
+        );
+        let tokens = lex(&source).expect("lex source");
+        let program = parse(&tokens).expect("parse source");
+        assert!(analyze(&program).is_err(), "{name} target must be rejected");
+    }
+}
+
+#[test]
 fn duplicate_local_binding_is_rejected() {
     let source = SourceFile::new(
         "duplicate-local.bn",

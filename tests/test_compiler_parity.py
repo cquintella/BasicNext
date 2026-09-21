@@ -69,6 +69,8 @@ class CompilerParityTests(unittest.TestCase):
             "print-predicate-call.bn",
             "print-string-call.bn",
             "build-integer-error-compare.bn",
+            "increment-statement.bn",
+            "increment-expression.bn",
         )
         for fixture in fixtures:
             path = ROOT / fixture if fixture.startswith("examples/") else ROOT / "tests" / "grammar" / "valid" / fixture

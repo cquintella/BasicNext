@@ -75,114 +75,7 @@ impl Builder<'_> {
                     });
                     result = destination;
                 }
-                match self.assignment_place(target)? {
-                    AssignPlace::Binding { symbol, indices } if indices.is_empty() => {
-                        self.emit(Instruction::Store {
-                            symbol,
-                            value: result,
-                            ty: type_at(self.model, target.span)?,
-                            span: *span,
-                        });
-                    }
-                    AssignPlace::Binding { symbol, indices } => {
-                        self.emit(Instruction::SetIndex {
-                            symbol,
-                            indices,
-                            value: result,
-                            ty: type_at(self.model, target.span)?,
-                            span: *span,
-                        });
-                    }
-                    AssignPlace::Member {
-                        object,
-                        name,
-                        owner,
-                    } => {
-                        self.emit(Instruction::SetMember {
-                            object,
-                            field: None,
-                            name,
-                            owner,
-                            value: result,
-                            ty: type_at(self.model, target.span)?,
-                            span: *span,
-                        });
-                    }
-                    AssignPlace::MemberIndex {
-                        object,
-                        name,
-                        owner,
-                        indices,
-                    } => {
-                        self.emit(Instruction::SetMemberIndex {
-                            object,
-                            field: None,
-                            name,
-                            owner,
-                            indices,
-                            value: result,
-                            ty: type_at(self.model, target.span)?,
-                            span: *span,
-                        });
-                    }
-                    AssignPlace::Field {
-                        symbol,
-                        root_owner,
-                        path,
-                    } => {
-                        self.emit(Instruction::SetField {
-                            symbol,
-                            root_owner,
-                            path,
-                            fields: None,
-                            value: result,
-                            ty: type_at(self.model, target.span)?,
-                            span: *span,
-                        });
-                    }
-                    AssignPlace::FieldIndex {
-                        symbol,
-                        root_owner,
-                        path,
-                        indices,
-                    } => {
-                        self.emit(Instruction::SetFieldIndex {
-                            symbol,
-                            root_owner,
-                            path,
-                            fields: None,
-                            indices,
-                            value: result,
-                            ty: type_at(self.model, target.span)?,
-                            span: *span,
-                        });
-                    }
-                    AssignPlace::Static { class, field } => {
-                        self.ensure_class(&class, *span);
-                        self.emit(Instruction::StoreStatic {
-                            class,
-                            field,
-                            value: result,
-                            ty: type_at(self.model, target.span)?,
-                            span: *span,
-                        });
-                    }
-                    AssignPlace::StaticIndex {
-                        class,
-                        field,
-                        indices,
-                    } => {
-                        self.ensure_class(&class, *span);
-                        self.emit(Instruction::SetStaticIndex {
-                            class,
-                            field,
-                            indices,
-                            value: result,
-                            ty: type_at(self.model, target.span)?,
-                            span: *span,
-                        });
-                    }
-                }
+                self.store_to_target(target, result, *span)?;
             }
             Statement::Print { values, span } => {
                 let values = values
@@ -261,6 +154,127 @@ impl Builder<'_> {
                 });
             }
             Statement::MemberFunction { .. } => {}
+        }
+        Ok(())
+    }
+
+    /// Stores `value` into the assignment target `target` (binding, element,
+    /// member, field or static). Shared by compound assignment statements
+    /// and increment-expressions (0.6.1 S1').
+    #[allow(clippy::too_many_lines)] // One arm per assignable place; moved verbatim from the statement.
+    pub(crate) fn store_to_target(
+        &mut self,
+        target: &Expression,
+        value: ValueId,
+        span: Span,
+    ) -> Result<(), Diagnostic> {
+        match self.assignment_place(target)? {
+            AssignPlace::Binding { symbol, indices } if indices.is_empty() => {
+                self.emit(Instruction::Store {
+                    symbol,
+                    value,
+                    ty: type_at(self.model, target.span)?,
+                    span,
+                });
+            }
+            AssignPlace::Binding { symbol, indices } => {
+                self.emit(Instruction::SetIndex {
+                    symbol,
+                    indices,
+                    value,
+                    ty: type_at(self.model, target.span)?,
+                    span,
+                });
+            }
+            AssignPlace::Member {
+                object,
+                name,
+                owner,
+            } => {
+                self.emit(Instruction::SetMember {
+                    object,
+                    field: None,
+                    name,
+                    owner,
+                    value,
+                    ty: type_at(self.model, target.span)?,
+                    span,
+                });
+            }
+            AssignPlace::MemberIndex {
+                object,
+                name,
+                owner,
+                indices,
+            } => {
+                self.emit(Instruction::SetMemberIndex {
+                    object,
+                    field: None,
+                    name,
+                    owner,
+                    indices,
+                    value,
+                    ty: type_at(self.model, target.span)?,
+                    span,
+                });
+            }
+            AssignPlace::Field {
+                symbol,
+                root_owner,
+                path,
+            } => {
+                self.emit(Instruction::SetField {
+                    symbol,
+                    root_owner,
+                    path,
+                    fields: None,
+                    value,
+                    ty: type_at(self.model, target.span)?,
+                    span,
+                });
+            }
+            AssignPlace::FieldIndex {
+                symbol,
+                root_owner,
+                path,
+                indices,
+            } => {
+                self.emit(Instruction::SetFieldIndex {
+                    symbol,
+                    root_owner,
+                    path,
+                    fields: None,
+                    indices,
+                    value,
+                    ty: type_at(self.model, target.span)?,
+                    span,
+                });
+            }
+            AssignPlace::Static { class, field } => {
+                self.ensure_class(&class, span);
+                self.emit(Instruction::StoreStatic {
+                    class,
+                    field,
+                    value,
+                    ty: type_at(self.model, target.span)?,
+                    span,
+                });
+            }
+            AssignPlace::StaticIndex {
+                class,
+                field,
+                indices,
+            } => {
+                self.ensure_class(&class, span);
+                self.emit(Instruction::SetStaticIndex {
+                    class,
+                    field,
+                    indices,
+                    value,
+                    ty: type_at(self.model, target.span)?,
+                    span,
+                });
+            }
         }
         Ok(())
     }

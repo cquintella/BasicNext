@@ -16,9 +16,18 @@ impl Builder<'_> {
         {
             return self.allocate(type_name, arguments, ty, expression.span);
         }
+        if let ExpressionKind::Increment {
+            target,
+            delta,
+            prefix,
+        } = &expression.kind
+        {
+            return self.increment(target, *delta, *prefix, expression.span);
+        }
         let destination = self.value();
         let instruction = match &expression.kind {
             ExpressionKind::Super => unreachable!("semantic analysis rejects bare SUPER"),
+            ExpressionKind::Increment { .. } => unreachable!("handled above"),
             ExpressionKind::Literal(literal) => Instruction::Constant {
                 destination,
                 value: constant(literal),
@@ -465,5 +474,42 @@ impl Builder<'_> {
         };
         self.emit(instruction);
         Ok(destination)
+    }
+
+    /// `++t` / `t++` / `--t` / `t--` (0.6.1 S1'): the compound-assignment
+    /// sequence of `t += 1` (checked `Plus`/`Minus`, then a store to the
+    /// target) followed by the yield: prefix yields the new value, postfix
+    /// the value read before the store. No IR instruction is added.
+    fn increment(
+        &mut self,
+        target: &Expression,
+        delta: i8,
+        prefix: bool,
+        span: Span,
+    ) -> Result<ValueId, Diagnostic> {
+        let ty = type_at(self.model, target.span)?;
+        let old = self.expression(target)?;
+        let one = self.value();
+        self.emit(Instruction::Constant {
+            destination: one,
+            value: if matches!(ty, Type::Float(_)) {
+                Constant::Float("1.0".into())
+            } else {
+                Constant::Integer("1".into())
+            },
+            ty: ty.clone(),
+            span,
+        });
+        let new = self.value();
+        self.emit(Instruction::Binary {
+            destination: new,
+            operator: if delta > 0 { "Plus" } else { "Minus" }.into(),
+            left: old,
+            right: one,
+            ty,
+            span,
+        });
+        self.store_to_target(target, new, span)?;
+        Ok(if prefix { new } else { old })
     }
 }

@@ -19,33 +19,34 @@ impl<'a> Parser<'a> {
                 .start,
             end,
         };
-        if let Some(position) = line.iter().position(|token| {
+        // increment-statement: a line that is exactly `target++` / `target--`
+        // or `++target` / `--target` desugars to the compound assignment
+        // `+= 1` / `-= 1` (0.5.2 S1; its value is discarded). Any other use
+        // of ++/-- is an increment-expression handled by the expression
+        // parser (0.6.1 S1'), e.g. `PRINT i++` or `x = ++i`.
+        let is_increment_token = |token: &Token| {
             matches!(
                 token.kind,
                 TokenKind::Symbol(Symbol::Increment | Symbol::Decrement)
             )
-        }) {
-            // increment-statement: `target++` / `target--` is a statement, never an
-            // expression, and desugars to the compound assignment `+= 1` / `-= 1`.
-            let starts_with_keyword =
-                matches!(&line[0].kind, TokenKind::Keyword(word) if word != "SELF");
-            if position == 0 || position + 1 != line.len() || starts_with_keyword {
-                return Err(self.error(
-                    "`target++` or `target--` as a statement on its own line (++ and -- are not expressions)",
-                ));
-            }
-            let target = self.expression_in(&line[..position])?;
-            if !matches!(
+        };
+        let bare_increment = if line.len() >= 2 && is_increment_token(&line[line.len() - 1]) {
+            Some((&line[..line.len() - 1], &line[line.len() - 1]))
+        } else if line.len() >= 2 && is_increment_token(&line[0]) {
+            Some((&line[1..], &line[0]))
+        } else {
+            None
+        };
+        if let Some((target_tokens, operator_token)) = bare_increment
+            && let Ok(target) = self.expression_in(target_tokens)
+            && matches!(
                 target.kind,
                 ExpressionKind::Name { .. }
                     | ExpressionKind::Member { .. }
                     | ExpressionKind::Index { .. }
-            ) {
-                return Err(
-                    self.error("an assignment target must be an identifier, member, or index")
-                );
-            }
-            let operator = if matches!(line[position].kind, TokenKind::Symbol(Symbol::Increment)) {
+            )
+        {
+            let operator = if matches!(operator_token.kind, TokenKind::Symbol(Symbol::Increment)) {
                 "PlusAssign"
             } else {
                 "MinusAssign"
@@ -55,7 +56,7 @@ impl<'a> Parser<'a> {
                 operator: operator.into(),
                 value: Expression {
                     kind: ExpressionKind::Literal(crate::ast::Literal::Integer("1".into())),
-                    span: line[position].span,
+                    span: operator_token.span,
                 },
                 span,
             });

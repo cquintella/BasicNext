@@ -6,6 +6,9 @@ pub(crate) fn expression_uses_super(expression: &Expression) -> bool {
         ExpressionKind::Super => true,
         ExpressionKind::Unary { operand, .. }
         | ExpressionKind::Cast { value: operand, .. }
+        | ExpressionKind::Increment {
+            target: operand, ..
+        }
         | ExpressionKind::Length { operand }
         | ExpressionKind::SizeOf { operand } => expression_uses_super(operand),
         ExpressionKind::Binary { left, right, .. } => {
@@ -43,6 +46,9 @@ pub(crate) fn expression_has_invalid_super(expression: &Expression) -> bool {
         }
         ExpressionKind::Unary { operand, .. }
         | ExpressionKind::Cast { value: operand, .. }
+        | ExpressionKind::Increment {
+            target: operand, ..
+        }
         | ExpressionKind::Length { operand }
         | ExpressionKind::SizeOf { operand } => expression_has_invalid_super(operand),
         ExpressionKind::Binary { left, right, .. } => {

@@ -158,7 +158,18 @@ END WHILE
 PRINT sum          // 15
 ```
 
-Since 0.5.2, `remaining--` and `remaining++` are accepted as statements, exactly equivalent to `remaining -= 1` and `remaining += 1`, with the same typing and the same overflow check. They are statements and not expressions, so `PRINT i++` is a syntax error. The restriction removes the question of whether the increment is applied before or after the surrounding expression is evaluated.
+Since 0.5.2, `remaining--` and `remaining++` are accepted as statements, exactly equivalent to `remaining -= 1` and `remaining += 1`, with the same typing and the same overflow check.
+
+Since 0.6.1 the same forms are also expressions, with the convention of C: the prefix form `++i` / `--i` changes `i` and yields the **new** value, the postfix form `i++` / `i--` changes `i` and yields the **old** value. The operand must be something that can be assigned to — a variable, a field such as `SELF.count`, or an element such as `a[i]` — never a literal or a call result, and the forms do not chain (`i++++` is a syntax error). The check for overflow is the one of `+= 1`, and it is raised before any value is produced.
+
+```basic
+LET i AS INTEGER = 100
+PRINT ++i        // 101, and i is 101
+PRINT i++        // 101, and i is now 102
+PRINT i--, i     // 102 101 — the postfix value is read before the change
+```
+
+As a statement on its own line the value is discarded, so `i++` and `++i` are the same statement. Prefer the statement form when the value is not needed; use the expression form when the old or the new value is part of a larger expression, and keep one increment per expression so the order of the side effect stays obvious.
 
 Every `WHILE` loop needs an answer to one question: which quantity mentioned in the condition is changed by the body, and in which direction. In the example the answer is `remaining`, which decreases by one per iteration and is bounded below by the condition. When no such quantity exists the loop does not terminate, and a loop whose termination argument cannot be stated in one sentence should be rewritten rather than tested until it appears to work.
 
@@ -380,7 +391,7 @@ Two details are worth noting. The mean is a `FLOAT` because `/` always performs 
 | `TYPE_MISMATCH` | A condition is not `BOOLEAN`; `STEP` is zero; a `FOR EACH` element is assigned. |
 | `INVALID_LOOP_CONTROL` | `EXIT` or `CONTINUE` names a loop kind that does not enclose it. |
 | `MISSING_RETURN` | A non-`VOID` function has a path that reaches `END FUNCTION` without returning. |
-| `E0100` | A single-line `IF` is closed with `END IF`; `++` or `--` is used inside an expression. |
+| `E0100` | A single-line `IF` is closed with `END IF`; `++` or `--` is applied to a literal or a call result, or chained (`i++++`). |
 
 ## Summary
 

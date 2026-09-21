@@ -406,6 +406,25 @@ impl Analyzer {
                     )),
                 }
             }
+            ExpressionKind::Increment { target, delta, .. } => {
+                // 0.6.1 S1': typed exactly as `target += 1` / `-= 1`; the
+                // expression has the target's type (prefix: new value,
+                // postfix: old value — a lowering concern).
+                // Same target rules as a compound assignment. `assignment_target`
+                // also resets narrowing facts on the local, which a numeric
+                // target never carries, so a scratch copy keeps `locals` shared.
+                let mut scratch = locals.clone();
+                let target_type = self.assignment_target(target, &mut scratch)?;
+                if numeric_result(&target_type, &target_type).is_none() {
+                    return Err(type_mismatch(
+                        "numeric assignment target",
+                        display(&target_type),
+                        if *delta > 0 { "++" } else { "--" },
+                        expression.span,
+                    ));
+                }
+                Ok(target_type)
+            }
             ExpressionKind::Cast { type_ref, value } => {
                 let source = self.expression(value, locals)?;
                 let target = self.resolve_reference(type_ref);

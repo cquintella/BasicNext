@@ -13,6 +13,14 @@ impl<'a> ExpressionParser<'a> {
             if self.at_end() {
                 break;
             }
+            if self.symbol(Symbol::Increment) || self.symbol(Symbol::Decrement) {
+                // increment-expression (postfix): binds before every binary
+                // operator; the operand must be an assignment target and the
+                // suffix is not chainable (`i++++`).
+                let token = self.take();
+                left = Self::increment(left, token, false)?;
+                continue;
+            }
             if self.symbol(Symbol::LeftParen) {
                 left = self.call(left)?;
                 continue;
@@ -57,8 +65,64 @@ impl<'a> ExpressionParser<'a> {
         Ok(left)
     }
 
+    /// Wraps `target` in an increment-expression after `++`/`--` was seen
+    /// (prefix: the token precedes the target; postfix: it follows).
+    fn increment(
+        target: Expression,
+        token: &Token,
+        prefix: bool,
+    ) -> Result<Expression, Diagnostic> {
+        if matches!(target.kind, ExpressionKind::Increment { .. }) {
+            return Err(syntax_error("++ and -- cannot be chained", token.span));
+        }
+        if !matches!(
+            target.kind,
+            ExpressionKind::Name { .. }
+                | ExpressionKind::Member { .. }
+                | ExpressionKind::Index { .. }
+        ) {
+            return Err(syntax_error(
+                "++ and -- require an assignment target (an identifier, member, or index)",
+                token.span,
+            ));
+        }
+        let delta = if matches!(token.kind, TokenKind::Symbol(Symbol::Increment)) {
+            1
+        } else {
+            -1
+        };
+        let span = if prefix {
+            Span {
+                start: token.span.start,
+                end: target.span.end,
+            }
+        } else {
+            Span {
+                start: target.span.start,
+                end: token.span.end,
+            }
+        };
+        Ok(Expression {
+            kind: ExpressionKind::Increment {
+                target: Box::new(target),
+                delta,
+                prefix,
+            },
+            span,
+        })
+    }
+
     #[allow(clippy::too_many_lines)] // Primary-expression alternatives mirror the grammar.
     fn prefix(&mut self) -> Result<Expression, Diagnostic> {
+        if self.symbol(Symbol::Increment) || self.symbol(Symbol::Decrement) {
+            // increment-expression (prefix): `++target`. The operand is parsed
+            // as a postfix expression only (no binary operators), so `++a * 2`
+            // is `(++a) * 2`; a postfix `++` on the operand is rejected as
+            // chaining.
+            let token = self.take();
+            let operand = self.expression(u8::MAX)?;
+            return Self::increment(operand, token, true);
+        }
         if self.keyword("ASYNC") {
             return self.async_submit();
         }
@@ -553,14 +617,16 @@ impl<'a> ExpressionParser<'a> {
         token
     }
     pub(crate) fn error(&self, message: impl Into<String>) -> Diagnostic {
-        let message = message.into();
-        Diagnostic::parse_facts(message, "expression parser", self.peek().span).unwrap_or_else(
-            |_| Diagnostic {
-                code: "E0100",
-                message: "parser error".into(),
-                span: self.peek().span,
-                structured: None,
-            },
-        )
+        syntax_error(message, self.peek().span)
     }
+}
+
+fn syntax_error(message: impl Into<String>, span: Span) -> Diagnostic {
+    let message = message.into();
+    Diagnostic::parse_facts(message, "expression parser", span).unwrap_or_else(|_| Diagnostic {
+        code: "E0100",
+        message: "parser error".into(),
+        span,
+        structured: None,
+    })
 }

@@ -20,6 +20,31 @@ fn bn() -> Command {
     Command::new(env!("CARGO_BIN_EXE_bn"))
 }
 
+/// 0.6.1 S1': prefix yields the new value, postfix the old value; the
+/// expected lines are the ones fixed in `docs/language/0.6/0.6.md`.
+#[test]
+fn increment_expressions_yield_new_value_prefix_and_old_value_postfix() {
+    let output = bn()
+        .args(["run", "tests/grammar/valid/increment-expression.bn"])
+        .output()
+        .expect("run increment fixture");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "101\n101\n102\n101\n101\n100\n200 101\n204 102\n0 2\n20 18 18\n"
+    );
+    let overflow = bn()
+        .args(["eval", "LET x AS INT8 = 127\nPRINT x++"])
+        .output()
+        .expect("run overflow eval");
+    assert_eq!(overflow.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&overflow.stderr).contains("NUMERIC_OVERFLOW"));
+    assert!(
+        overflow.stdout.is_empty(),
+        "postfix overflow must not yield the old value"
+    );
+}
+
 #[test]
 fn eval_json_owns_both_process_channels_even_with_verbosity() {
     let output = bn()

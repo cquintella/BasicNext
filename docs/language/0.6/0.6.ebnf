@@ -208,8 +208,8 @@ increment-expression = ( "++" | "--" ) assignment-target        (* prefix: new v
                      | assignment-target ( "++" | "--" ) ;      (* postfix: old value *)
                        (* 0.6.1 (S1'): the operand is an assignment-target (a
                           binding, member or element), never a literal, call
-                          result or parenthesised expression; not chainable
-                          (i++++, ++i++ and ++++i are syntax errors). *)
+                          result or cast; parentheses are transparent; not
+                          chainable (i++++, ++i++ and ++++i are syntax errors). *)
 call-expression      = primary { member-suffix | index-suffix | cast-suffix }
                        call-suffix { postfix-suffix } ;
 call-suffix          = "(" [ expression-list ] ")" ;

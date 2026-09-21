@@ -534,6 +534,9 @@ pub(crate) fn expression_uses_self(expression: &Expression) -> bool {
         ExpressionKind::Name { name } => name == "SELF",
         ExpressionKind::Unary { operand, .. }
         | ExpressionKind::Cast { value: operand, .. }
+        | ExpressionKind::Increment {
+            target: operand, ..
+        }
         | ExpressionKind::Length { operand }
         | ExpressionKind::SizeOf { operand } => expression_uses_self(operand),
         ExpressionKind::Binary { left, right, .. } => {

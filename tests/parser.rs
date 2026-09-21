@@ -94,6 +94,46 @@ fn increment_statement_desugars_to_compound_assignment() {
 }
 
 #[test]
+fn increment_expressions_parse_prefix_and_postfix_before_binary_operators() {
+    let source = SourceFile::new("expression.bn", "++a * b--\n");
+    let tokens = lex(&source).expect("lex expression");
+    let expression = parse_expression(&tokens).expect("parse expression");
+    let ExpressionKind::Binary {
+        operator,
+        left,
+        right,
+    } = expression.kind
+    else {
+        panic!("expected `(++a) * (b--)`");
+    };
+    assert_eq!(operator, "Star");
+    assert!(matches!(
+        left.kind,
+        ExpressionKind::Increment {
+            delta: 1,
+            prefix: true,
+            ..
+        }
+    ));
+    assert!(matches!(
+        right.kind,
+        ExpressionKind::Increment {
+            delta: -1,
+            prefix: false,
+            ..
+        }
+    ));
+    for rejected in ["100++", "f()++", "a++++", "++a++", "a AS INTEGER ++"] {
+        let source = SourceFile::new("rejected.bn", format!("{rejected}\n"));
+        let tokens = lex(&source).expect("lex rejected expression");
+        assert!(
+            parse_expression(&tokens).is_err(),
+            "{rejected} must be a syntax error"
+        );
+    }
+}
+
+#[test]
 fn power_is_right_associative() {
     let source = SourceFile::new("expression.bn", "2 ** 3 ** 4\n");
     let tokens = lex(&source).expect("lex expression");

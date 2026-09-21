@@ -266,6 +266,13 @@ pub enum ExpressionKind {
         value: Box<Expression>,
         type_ref: TypeReference,
     },
+    /// `++t` / `--t` (prefix, yields the new value) and `t++` / `t--`
+    /// (postfix, yields the old value); `delta` is `+1` or `-1` (0.6.1 S1').
+    Increment {
+        target: Box<Expression>,
+        delta: i8,
+        prefix: bool,
+    },
 }
 
 #[derive(Debug)]
