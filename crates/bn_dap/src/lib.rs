@@ -1,5 +1,8 @@
+//! Debug Adapter Protocol adapter: stdio framing, launch validation,
+//! breakpoints/stepping over the interpreter's debug control hook, and the
+//! HOST environment composed by `bn_interpret_driver`.
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     io::{self, BufRead, Write},
     sync::{
         Arc, Condvar, Mutex,
@@ -8,6 +11,10 @@ use std::{
     thread,
 };
 
+use bn_frontend::{
+    frontend_session::FrontendSession,
+    prepare::{PrepareError, Prepared, prepare},
+};
 use serde_json::{Value, json};
 
 const MAX_MESSAGE_BYTES: usize = 1024 * 1024;
@@ -17,7 +24,7 @@ struct DebugFrame {
     function: String,
     depth: usize,
     line: u64,
-    variables: Vec<crate::runtime::DebugVariable>,
+    variables: Vec<bn_interp::DebugVariable>,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -233,20 +240,28 @@ fn validate_launch(message: &Value) -> Result<(), String> {
     if metadata.len() > 8 * 1024 * 1024 {
         return Err("launch program exceeds 8 MiB".into());
     }
-    let graph = crate::module_graph::load(program)
-        .map_err(|error| format!("cannot load launch program: {}", error.diagnostic.message))?;
-    if graph.modules.len() > 256 {
-        return Err("launch module graph exceeds 256 modules".into());
-    }
-    let models = bn_frontend::semantic::analyze_modules(&graph).map_err(|error| {
-        format!(
+    let prepared = prepare_program(program).map_err(|error| match error {
+        PrepareError::Load(error) => {
+            format!("cannot load launch program: {}", error.diagnostic.message)
+        }
+        PrepareError::Semantic { error, .. } => format!(
             "launch semantic analysis failed: {}",
             error.diagnostic.message
-        )
+        ),
+        PrepareError::Lower { diagnostic, .. } => {
+            format!("launch lowering failed: {}", diagnostic.message)
+        }
     })?;
-    crate::lowering::lower_graph_validated(&graph, &models)
-        .map_err(|error| format!("launch lowering failed: {}", error.message))?;
+    if prepared.graph.modules.len() > 256 {
+        return Err("launch module graph exceeds 256 modules".into());
+    }
     Ok(())
+}
+
+/// The DAP has no options: the entry file alone names the program.
+fn prepare_program(path: &str) -> Result<Prepared, PrepareError> {
+    let mut session = FrontendSession::default();
+    prepare(path, &mut session, &BTreeMap::new(), &[])
 }
 
 fn execute_program(
@@ -254,22 +269,18 @@ fn execute_program(
     session: &SharedSession,
     breakpoints: &Arc<Mutex<HashMap<String, BTreeSet<u64>>>>,
 ) -> Result<u8, String> {
-    let graph =
-        crate::module_graph::load(path).map_err(|error| error.diagnostic.message.clone())?;
-    let models = bn_frontend::semantic::analyze_modules(&graph)
-        .map_err(|error| error.diagnostic.message.clone())?;
-    let module = crate::lowering::lower_graph_validated(&graph, &models)
-        .map_err(|error| error.message.clone())?;
+    let prepared = prepare_program(path).map_err(|error| error.diagnostic().message.clone())?;
+    let module = &prepared.validated;
     let mut input = io::Cursor::new(Vec::<u8>::new());
     let mut output = Vec::new();
     let session_for_hook = Arc::clone(session);
     let mut control = move |function: &str,
                             depth: usize,
-                            span: crate::source::Span,
-                            variables: &[crate::runtime::DebugVariable]| {
+                            span: bn_source::Span,
+                            variables: &[bn_interp::DebugVariable]| {
         let (lock, condvar) = &*session_for_hook;
         let Ok(mut state) = lock.lock() else {
-            return crate::runtime::DebugDecision::Terminate;
+            return bn_interp::DebugDecision::Terminate;
         };
         state.frame = Some(DebugFrame {
             function: function.to_owned(),
@@ -303,22 +314,22 @@ fn execute_program(
         while state.paused && !state.terminate {
             state = match condvar.wait(state) {
                 Ok(guard) => guard,
-                Err(_) => return crate::runtime::DebugDecision::Terminate,
+                Err(_) => return bn_interp::DebugDecision::Terminate,
             };
         }
         if state.terminate {
-            crate::runtime::DebugDecision::Terminate
+            bn_interp::DebugDecision::Terminate
         } else {
-            crate::runtime::DebugDecision::Continue
+            bn_interp::DebugDecision::Continue
         }
     };
-    crate::runtime::execute_validated_with_host_debug_control(
-        &module,
+    bn_interp::execute_validated_with_host_debug_control(
+        module,
         &mut input,
         &mut output,
-        &crate::runtime::HostEnvDefaults::with_default_providers(crate::runtime::HostEnv::system(
-            vec![path.to_owned()],
-        )),
+        &bn_interpret_driver::environment::HostEnvDefaults::with_default_providers(
+            bn_interp::HostEnv::system(vec![path.to_owned()]),
+        ),
         &mut control,
     )
     .map_err(|error| error.message.to_string())
@@ -464,22 +475,22 @@ fn executable_lines_from_source(source: &str, name: String) -> Result<BTreeSet<u
     if source.len() > 8 * 1024 * 1024 {
         return Err("source exceeds 8 MiB".into());
     }
-    let tokens = crate::lexer::lex(&crate::source::SourceFile::new(name.clone(), source))
+    let tokens = bn_frontend::lexer::lex(&bn_source::SourceFile::new(name.clone(), source))
         .map_err(|error| error.message)?;
-    let program = crate::parser::parse_named(&tokens, name).map_err(|error| error.message)?;
+    let program = bn_frontend::parser::parse_named(&tokens, name).map_err(|error| error.message)?;
     let mut lines = BTreeSet::new();
     for item in program.items {
-        if let crate::ast::Item::Declaration { statements, .. } = item {
+        if let bn_frontend::ast::Item::Declaration { statements, .. } = item {
             collect_statement_lines(&statements, &mut lines);
         }
     }
     Ok(lines)
 }
 
-fn collect_statement_lines(statements: &[crate::ast::Statement], lines: &mut BTreeSet<u64>) {
+fn collect_statement_lines(statements: &[bn_frontend::ast::Statement], lines: &mut BTreeSet<u64>) {
     for statement in statements {
         let span = match statement {
-            crate::ast::Statement::If {
+            bn_frontend::ast::Statement::If {
                 span,
                 branches,
                 otherwise,
@@ -492,28 +503,28 @@ fn collect_statement_lines(statements: &[crate::ast::Statement], lines: &mut BTr
                 }
                 *span
             }
-            crate::ast::Statement::While { span, body, .. }
-            | crate::ast::Statement::Repeat { span, body, .. }
-            | crate::ast::Statement::For { span, body, .. } => {
+            bn_frontend::ast::Statement::While { span, body, .. }
+            | bn_frontend::ast::Statement::Repeat { span, body, .. }
+            | bn_frontend::ast::Statement::For { span, body, .. } => {
                 collect_statement_lines(&body.statements, lines);
                 *span
             }
-            crate::ast::Statement::MemberFunction { span, body, .. } => {
+            bn_frontend::ast::Statement::MemberFunction { span, body, .. } => {
                 if let Some(block) = body {
                     collect_statement_lines(&block.statements, lines);
                 }
                 *span
             }
-            crate::ast::Statement::Binding { span, .. }
-            | crate::ast::Statement::Assignment { span, .. }
-            | crate::ast::Statement::Return { span, .. }
-            | crate::ast::Statement::Print { span, .. }
-            | crate::ast::Statement::ClearScreen { span, .. }
-            | crate::ast::Statement::Beep { span, .. }
-            | crate::ast::Statement::Release { span, .. }
-            | crate::ast::Statement::Stop { span, .. }
-            | crate::ast::Statement::Control { span, .. }
-            | crate::ast::Statement::Call { span, .. } => *span,
+            bn_frontend::ast::Statement::Binding { span, .. }
+            | bn_frontend::ast::Statement::Assignment { span, .. }
+            | bn_frontend::ast::Statement::Return { span, .. }
+            | bn_frontend::ast::Statement::Print { span, .. }
+            | bn_frontend::ast::Statement::ClearScreen { span, .. }
+            | bn_frontend::ast::Statement::Beep { span, .. }
+            | bn_frontend::ast::Statement::Release { span, .. }
+            | bn_frontend::ast::Statement::Stop { span, .. }
+            | bn_frontend::ast::Statement::Control { span, .. }
+            | bn_frontend::ast::Statement::Call { span, .. } => *span,
         };
         if let Ok(line) = u64::try_from(span.start.line) {
             lines.insert(line);
@@ -572,4 +583,5 @@ fn write_message(output: &mut impl Write, value: &Value) -> Result<(), String> {
 }
 
 #[cfg(test)]
+#[path = "dap/tests.rs"]
 mod tests;

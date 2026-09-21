@@ -3,10 +3,12 @@ use std::collections::HashMap;
 use super::{
     completion::completion_items, find_definition, find_locations, lsp_range, word_prefix,
 };
-use crate::{
-    diagnostic::Diagnostic,
-    source::{Position, Revision, SourceFile, SourceId, Span},
-};
+use bn_diag::Diagnostic;
+use bn_source::{Position, Revision, SourceFile, SourceId, Span};
+
+/// Unit tests run with the crate directory as cwd; fixtures and the stdlib
+/// live at the workspace root.
+const WORKSPACE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
 #[test]
 fn spans_are_zero_based_at_the_protocol_boundary() {
@@ -68,14 +70,14 @@ fn warning_diagnostics_reach_lsp_with_warning_severity() {
         },
     };
     let diagnostic = Diagnostic::structured(
-        crate::diagnostic::DiagId::UNREACHABLE_CODE,
+        bn_diag::DiagId::UNREACHABLE_CODE,
         vec![(
             "context".into(),
             "statement follows a terminating path".into(),
         )],
-        vec![crate::diagnostic::Label {
+        vec![bn_diag::Label {
             span,
-            style: crate::diagnostic::LabelStyle::Primary,
+            style: bn_diag::LabelStyle::Primary,
             text: None,
         }],
     )
@@ -148,8 +150,21 @@ fn completion_lists_local_functions() {
 
 #[test]
 fn completion_lists_bnmath_exports_on_alias() {
+    // The stdlib is found by walking the document's ancestors for
+    // `modules/bn`; place the document inside the workspace.
+    let uri = format!("file://{WORKSPACE}/test.bn");
     let source = "IMPORT BNMath AS Math\nFUNCTION Start() AS VOID\nMath.AB\nEND FUNCTION\n";
-    let items = labels(source, 2, 7);
+    let file = SourceFile::new(uri.clone(), source);
+    let documents = HashMap::from([(uri.clone(), file)]);
+    let items = completion_items(
+        documents.get(&uri).expect("fixture"),
+        super::Position::new(2, 7),
+        &documents,
+        None,
+    )
+    .into_iter()
+    .map(|item| item.label)
+    .collect::<Vec<_>>();
     assert!(items.contains(&"ABS".into()), "{items:?}");
 }
 
@@ -279,7 +294,7 @@ fn diagnostics_use_unsaved_imported_sources_and_the_shared_validated_pipeline() 
             ),
         ),
     ]);
-    let mut session = crate::frontend_session::FrontendSession::default();
+    let mut session = bn_frontend::frontend_session::FrontendSession::default();
     let diagnostics = super::graph_diagnostics(&main_uri, &documents, &mut session);
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(
@@ -311,7 +326,8 @@ fn diagnostics_use_unsaved_imported_sources_and_the_shared_validated_pipeline() 
 
 #[test]
 fn lsp_problems_equivalent_to_cli_check_on_shared_fixture() {
-    let path = std::path::PathBuf::from("tests/grammar/invalid/cross-type-equality.bn")
+    let path = std::path::PathBuf::from(WORKSPACE)
+        .join("tests/grammar/invalid/cross-type-equality.bn")
         .canonicalize()
         .expect("canonical path for fixture");
     let text = std::fs::read_to_string(&path).expect("read fixture text");
@@ -322,7 +338,7 @@ fn lsp_problems_equivalent_to_cli_check_on_shared_fixture() {
         uri.to_string(),
         SourceFile::new(uri.to_string(), text.clone()),
     )]);
-    let mut session = crate::frontend_session::FrontendSession::default();
+    let mut session = bn_frontend::frontend_session::FrontendSession::default();
     let lsp_diags = super::graph_diagnostics(&uri, &documents, &mut session);
     assert_eq!(
         lsp_diags.len(),
@@ -336,9 +352,9 @@ fn lsp_problems_equivalent_to_cli_check_on_shared_fixture() {
     assert_eq!(lsp_code, "TYPE_MISMATCH");
 
     // Verify against the CLI pipeline (load_with_session -> analyze_modules_with_warnings -> lower_graph_validated)
-    let mut cli_session = crate::frontend_session::FrontendSession::default();
-    let graph =
-        crate::module_graph::load_with_session(&path, &mut cli_session).expect("module graph");
+    let mut cli_session = bn_frontend::frontend_session::FrontendSession::default();
+    let graph = bn_frontend::module_graph::load_with_session(&path, &mut cli_session)
+        .expect("module graph");
     let analysis_err = bn_frontend::semantic::analyze_modules_with_warnings(&graph)
         .expect_err("semantic analysis must fail");
     assert_eq!(analysis_err.diagnostic.code, "TYPE_MISMATCH");

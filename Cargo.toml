@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/bn_rt", "crates/bn_source", "crates/bn_types", "crates/bn_diag", "crates/bn_ir", "crates/bn_frontend", "crates/bn_runtime", "crates/bn_value", "crates/bn_llvm", "crates/bn_interp", "crates/bn_host_exec", "crates/bn_limits", "crates/bn_lib_math", "crates/bn_lib_json", "crates/bn_lib_log", "crates/bn_lib_data", "crates/bn_host_fs", "crates/bn_host_net", "crates/bn_lib_dispatch", "crates/bn_lib_web", "crates/bn_cli", "crates/bn_interpret_driver"]
+members = ["crates/bn_rt", "crates/bn_source", "crates/bn_types", "crates/bn_diag", "crates/bn_ir", "crates/bn_frontend", "crates/bn_runtime", "crates/bn_value", "crates/bn_llvm", "crates/bn_interp", "crates/bn_host_exec", "crates/bn_limits", "crates/bn_lib_math", "crates/bn_lib_json", "crates/bn_lib_log", "crates/bn_lib_data", "crates/bn_host_fs", "crates/bn_host_net", "crates/bn_lib_dispatch", "crates/bn_lib_web", "crates/bn_cli", "crates/bn_interpret_driver", "crates/bn_lsp", "crates/bn_dap"]
 resolver = "3"
 
 [package]
@@ -42,6 +42,8 @@ pedantic = "warn"
 [dependencies]
 bn_cli = { path = "crates/bn_cli" }
 bn_interpret_driver = { path = "crates/bn_interpret_driver" }
+bn_lsp = { path = "crates/bn_lsp" }
+bn_dap = { path = "crates/bn_dap" }
 bn_rt = { path = "crates/bn_rt" }
 bn_diag = { path = "crates/bn_diag" }
 bn_ir = { path = "crates/bn_ir" }
@@ -52,10 +54,9 @@ bn_value = { path = "crates/bn_value" }
 bn_llvm = { path = "crates/bn_llvm" }
 bn_source = { path = "crates/bn_source" }
 bn_types = { path = "crates/bn_types" }
-lsp-server = "0.10.0"
-lsp-types = "0.97.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 [dev-dependencies]
 bn_lib_web = { path = "crates/bn_lib_web" } # tests/runtime.rs drives the web callback directly
+lsp-types = "0.97.0" # tests/cli.rs decodes LSP diagnostics

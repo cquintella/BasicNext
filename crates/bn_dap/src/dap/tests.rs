@@ -55,9 +55,13 @@ fn launch_requires_a_bounded_bn_file() {
     assert!(validate_launch(&json!({"arguments": {"program": "missing.bn"}})).is_err());
 }
 
+// Unit tests run with the crate directory as cwd; the fixture lives at the
+// workspace root.
+const HELLO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/hello.bn");
+
 #[test]
 fn launch_accepts_a_valid_frontend_program() {
-    assert!(validate_launch(&json!({"arguments": {"program": "examples/hello.bn"}})).is_ok());
+    assert!(validate_launch(&json!({"arguments": {"program": HELLO}})).is_ok());
 }
 
 #[test]
@@ -66,9 +70,8 @@ fn execution_session_pauses_then_resumes() {
     let breakpoints = Arc::new(Mutex::new(HashMap::new()));
     let worker_session = Arc::clone(&session);
     let worker_breakpoints = Arc::clone(&breakpoints);
-    let worker = std::thread::spawn(move || {
-        execute_program("examples/hello.bn", &worker_session, &worker_breakpoints)
-    });
+    let worker =
+        std::thread::spawn(move || execute_program(HELLO, &worker_session, &worker_breakpoints));
     let (lock, condvar) = &*session;
     let mut state = lock.lock().unwrap();
     while !state.paused {

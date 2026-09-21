@@ -19,6 +19,7 @@ name = "bn"
 version = "0.5.2"
 dependencies = [
  "bn_cli",
+ "bn_dap",
  "bn_diag",
  "bn_frontend",
  "bn_interp",
@@ -26,12 +27,12 @@ dependencies = [
  "bn_ir",
  "bn_lib_web",
  "bn_llvm",
+ "bn_lsp",
  "bn_rt",
  "bn_runtime",
  "bn_source",
  "bn_types",
  "bn_value",
- "lsp-server",
  "lsp-types",
  "serde",
  "serde_json",
@@ -43,6 +44,17 @@ version = "0.5.2"
 dependencies = [
  "bn_diag",
  "bn_frontend",
+ "bn_source",
+ "serde_json",
+]
+
+[[package]]
+name = "bn_dap"
+version = "0.5.2"
+dependencies = [
+ "bn_frontend",
+ "bn_interp",
+ "bn_interpret_driver",
  "bn_source",
  "serde_json",
 ]
@@ -235,6 +247,20 @@ dependencies = [
  "bn_ir",
  "bn_source",
  "bn_types",
+]
+
+[[package]]
+name = "bn_lsp"
+version = "0.5.2"
+dependencies = [
+ "bn_diag",
+ "bn_frontend",
+ "bn_source",
+ "bn_types",
+ "lsp-server",
+ "lsp-types",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

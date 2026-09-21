@@ -4,7 +4,7 @@ use std::{collections::BTreeMap, path::Path};
 
 use lsp_types::CompletionItemKind;
 
-use crate::token::{TokenKind, reserved_words};
+use bn_frontend::token::{TokenKind, reserved_words};
 
 const STANDARD_MODULES: &[&str] = &["BNData", "BNDispatch", "BNJson", "BNLog", "BNMath", "BNWeb"];
 
@@ -137,7 +137,7 @@ fn add_analyze_symbols(
         return;
     };
     for symbol in model.symbols {
-        let kind = if matches!(symbol.ty, crate::types::Type::Function { .. }) {
+        let kind = if matches!(symbol.ty, bn_types::Type::Function { .. }) {
             CompletionItemKind::FUNCTION
         } else {
             CompletionItemKind::VARIABLE
@@ -205,7 +205,7 @@ fn document_index(source: &SourceFile) -> DocumentIndex {
                     i += 1;
                     if matches!(
                         kinds.get(i),
-                        Some(TokenKind::Symbol(crate::token::Symbol::Dot))
+                        Some(TokenKind::Symbol(bn_frontend::token::Symbol::Dot))
                     ) {
                         i += 1;
                     } else {

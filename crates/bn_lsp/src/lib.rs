@@ -1,3 +1,6 @@
+//! Language Server Protocol adapter over the shared frontend: document
+//! snapshots, diagnostics (≡ `check`), completion, definition and references.
+//! Frontend-only; no backend crate is reachable from here.
 use std::{
     collections::{BTreeMap, HashMap},
     fs,
@@ -14,16 +17,12 @@ use lsp_types::{
     TextDocumentSyncCapability, TextDocumentSyncKind, Uri,
 };
 
-use crate::{
-    diagnostic::{Catalog, Diagnostic, Severity},
-    frontend_session::FrontendSession,
-    lexer::lex,
-    lowering::lower_graph_validated,
-    module_graph::load_with_overlays,
-    parser::parse_named,
-    source::{SourceFile, SourceId},
+use bn_diag::{Catalog, Diagnostic, Severity};
+use bn_frontend::{
+    frontend_session::FrontendSession, lexer::lex, lowering::lower_graph_validated,
+    module_graph::load_with_overlays, parser::parse_named, semantic::analyze,
 };
-use bn_frontend::semantic::analyze;
+use bn_source::{SourceFile, SourceId};
 
 #[path = "lsp/completion.rs"]
 mod completion;
@@ -256,18 +255,18 @@ fn respond_document_symbols(
         let tokens = lex(source).map_err(|error| error.message)?;
         let program = parse_named(&tokens, source.name.clone()).map_err(|error| error.message)?;
         program.items.into_iter().filter_map(|item| match item {
-                crate::ast::Item::Declaration { kind, name, span, .. } => Some(serde_json::json!({
+                bn_frontend::ast::Item::Declaration { kind, name, span, .. } => Some(serde_json::json!({
                     "name": name,
                     "kind": match kind {
-                        crate::ast::DeclarationKind::Function => 12,
-                        crate::ast::DeclarationKind::Class => 5,
-                        crate::ast::DeclarationKind::Struct => 23,
-                        crate::ast::DeclarationKind::Interface => 11,
+                        bn_frontend::ast::DeclarationKind::Function => 12,
+                        bn_frontend::ast::DeclarationKind::Class => 5,
+                        bn_frontend::ast::DeclarationKind::Struct => 23,
+                        bn_frontend::ast::DeclarationKind::Interface => 11,
                     },
                     "range": lsp_range(span.start.line, span.start.column, span.end.line, span.end.column),
                     "selectionRange": lsp_range(span.start.line, span.start.column, span.end.line, span.end.column)
                 })),
-                crate::ast::Item::Import { .. } | crate::ast::Item::Constant { .. } => None,
+                bn_frontend::ast::Item::Import { .. } | bn_frontend::ast::Item::Constant { .. } => None,
             }).collect::<Vec<_>>()
     } else {
         Vec::new()
@@ -319,15 +318,18 @@ fn find_definition(
         .items
         .iter()
         .filter_map(|item| match item {
-            crate::ast::Item::Import { path, alias, .. } => Some((path.clone(), alias.clone())),
-            crate::ast::Item::Declaration { .. } | crate::ast::Item::Constant { .. } => None,
+            bn_frontend::ast::Item::Import { path, alias, .. } => {
+                Some((path.clone(), alias.clone()))
+            }
+            bn_frontend::ast::Item::Declaration { .. }
+            | bn_frontend::ast::Item::Constant { .. } => None,
         })
         .collect::<Vec<_>>();
     let local = program
         .items
         .into_iter()
         .filter_map(|item| match item {
-            crate::ast::Item::Declaration { name, span, .. } if name == prefix => {
+            bn_frontend::ast::Item::Declaration { name, span, .. } if name == prefix => {
                 Some(Location::new(
                     uri.clone(),
                     lsp_range(
@@ -360,7 +362,7 @@ fn find_definition(
             continue;
         };
         if let Some(location) = other_program.items.into_iter().find_map(|item| match item {
-            crate::ast::Item::Declaration { name, span, .. } if name == prefix => {
+            bn_frontend::ast::Item::Declaration { name, span, .. } if name == prefix => {
                 Some(Location::new(
                     document_uri.parse().unwrap_or_else(|_| uri.clone()),
                     lsp_range(
@@ -385,7 +387,7 @@ fn find_definition(
             continue;
         };
         if let Some(location) = other_program.items.into_iter().find_map(|item| match item {
-            crate::ast::Item::Declaration { name, span, .. } if name == prefix => {
+            bn_frontend::ast::Item::Declaration { name, span, .. } if name == prefix => {
                 Some(Location::new(
                     document_uri.parse().unwrap_or_else(|_| uri.clone()),
                     lsp_range(
@@ -488,17 +490,17 @@ fn find_locations(
         .iter()
         .enumerate()
         .filter_map(|(index, token)| {
-            let crate::token::TokenKind::Identifier(name) = &token.kind else {
+            let bn_frontend::token::TokenKind::Identifier(name) = &token.kind else {
                 return None;
             };
             let declaration = tokens[..index]
                 .iter()
                 .rev()
-                .find(|previous| !matches!(previous.kind, crate::token::TokenKind::Newline))
+                .find(|previous| !matches!(previous.kind, bn_frontend::token::TokenKind::Newline))
                 .is_some_and(|previous| {
                     matches!(
                         &previous.kind,
-                        crate::token::TokenKind::Keyword(keyword)
+                        bn_frontend::token::TokenKind::Keyword(keyword)
                             if matches!(keyword.as_str(), "LET" | "FUNCTION" | "CLASS" | "STRUCT" | "INTERFACE" | "IMPORT")
                     )
                 });
@@ -705,7 +707,7 @@ pub fn diagnostics_for_documents<S: std::hash::BuildHasher>(
     result
 }
 
-fn diagnostic_source(diagnostic: &Diagnostic) -> crate::source::SourceId {
+fn diagnostic_source(diagnostic: &Diagnostic) -> bn_source::SourceId {
     diagnostic.span.start.source_id
 }
 
@@ -725,7 +727,7 @@ fn to_lsp(error: &Diagnostic, uri: &Uri) -> LspDiagnostic {
         rendered
             .labels
             .iter()
-            .filter(|label| label.style == crate::diagnostic::LabelStyle::Secondary)
+            .filter(|label| label.style == bn_diag::LabelStyle::Secondary)
             .map(|label| DiagnosticRelatedInformation {
                 location: Location {
                     uri: uri.clone(),
@@ -823,4 +825,5 @@ fn publish_diagnostics(
 }
 
 #[cfg(test)]
+#[path = "lsp/tests.rs"]
 mod tests;
