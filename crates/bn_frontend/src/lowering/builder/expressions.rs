@@ -447,6 +447,7 @@ impl Builder<'_> {
                         Instruction::Member {
                             destination,
                             object: self.expression(object)?,
+                            field: None,
                             name: name.clone(),
                             owner,
                             ty,

@@ -71,8 +71,13 @@ Object fields use the target ABI size and natural alignment of their LLVM
 representation. In particular, the vector/pointer fat value `{ ptr, i32 }`
 occupies 16 bytes at 8-byte alignment on the supported native ABI; a following
 field cannot overlap its pointer, length, or padding. Class allocation follows
-the validated `Module.class_bases` chain in base-to-derived order and rounds
-the complete instance size to its maximum field alignment.
+the validated `Module.field_layouts` base-first field sequence and rounds the
+complete instance size to its maximum field alignment. `FieldSlot` is a
+language-IR positional address, not an ABI byte offset: LLVM derives byte
+offsets from the slot's declared type and target alignment, while the
+interpreter uses the same validated slot to address its private positional
+record storage. `FieldId` and its interned spelling are IR/diagnostic metadata;
+they never cross a native ABI boundary or appear in an interpreter record.
 
 ### Complete `bn_rt` Symbol Ownership for LLVM-Emitted Symbols
 

@@ -114,7 +114,7 @@ de auditar.
 parâmetro/campo. No interpretador, zero globals: `HostEnv` já é o veículo certo, falta
 os env vars serem lidos **uma vez** no CLI e traduzidos para o tipo.
 
-## Fragilidade 6 — Modelo de valores do interpretador
+## Fragilidade 6 — Modelo de valores do interpretador — ✅ CORRIGIDA (escopo localizado a–d em 0.5.2.1b)
 
 **Evidência:** `bn_value::Value::Integer(i128, IntegerType)` — 16 bytes + tag para todo
 inteiro, com checked-ops reimplementadas por largura no executor;
@@ -132,6 +132,13 @@ define um `enum Value` *paralelo* com `serde_json` já disponível no crate.
 
 Para um interpretador de referência isso não é prematuro — é a diferença entre
 "referência" e "inutilizável para programas reais".
+
+**Fechamento (2026-09-20):** `done/bucket-0.5.2.1b.md` entregou as quatro
+correções localizadas. O IR usa `FieldId` próprio (não o `SymbolId` de binding),
+layouts e referências posicionais validados; records usam `Box<[Value]>`;
+strings imutáveis usam `Arc<str>`; e BNJson usa `serde_json::Value` mantendo os
+limites e rejeições existentes. A especialização de `Integer` e um eventual
+redesign público de `Error` permaneceram fora desse escopo.
 
 ## Fragilidade 7 — Higiene de workspace e código
 

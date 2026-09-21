@@ -43,21 +43,13 @@ pub fn equals(left: &Value, right: &Value) -> bool {
         (Value::Date(left), Value::Date(right)) => left == right,
         (Value::Time(left), Value::Time(right)) => left == right,
         (Value::TimeZone(left), Value::TimeZone(right)) => left == right,
-        (
-            Value::Record {
-                type_name: left_name,
-                fields: left,
-            },
-            Value::Record {
-                type_name: right_name,
-                fields: right,
-            },
-        ) => {
-            left_name == right_name
+        (Value::Record { record: left }, Value::Record { record: right }) => {
+            left.type_name() == right.type_name()
                 && left.len() == right.len()
                 && left
                     .iter()
-                    .all(|(name, value)| right.get(name).is_some_and(|other| equals(value, other)))
+                    .zip(right.iter())
+                    .all(|(left, right)| equals(left, right))
         }
         (Value::Vector(left), Value::Vector(right)) => {
             left.len() == right.len()
@@ -110,8 +102,10 @@ pub(super) fn is_value(value: &Value, test: &str) -> bool {
             Value::DispatchBarrier(_) => test == "BNDispatch.Barrier" || test == "Barrier",
             Value::DispatchSemaphore(_) => test == "BNDispatch.Semaphore" || test == "Semaphore",
             Value::DispatchMutex(_) => test == "BNDispatch.Mutex" || test == "Mutex",
-            Value::Object { class, .. } => class == test || class.rsplit('.').next() == Some(test),
-            Value::Record { type_name, .. } => type_name == test,
+            Value::Object { class, .. } => {
+                class.as_ref() == test || class.rsplit('.').next() == Some(test)
+            }
+            Value::Record { record } => record.type_name().as_ref() == test,
             _ => false,
         },
     }
@@ -152,15 +146,16 @@ pub(super) fn value_matches_type(value: &Value, ty: &Type) -> bool {
         ) => name == "DataFrame",
         (Value::Null, Type::Named(name)) => name == "VOID",
         (
-            Value::Record { type_name, .. },
+            Value::Record { record },
             Type::Named(name)
             | Type::TypeName(name)
             | Type::ImportedNamed { name, .. }
             | Type::ImportedTypeName { name, .. },
         ) => {
-            type_name == name
-                || type_name.rsplit('.').next() == Some(name.as_str())
-                || (name.starts_with("Net.") && type_name == &format!("HOST.{name}"))
+            record.type_name().as_ref() == name
+                || record.type_name().rsplit('.').next() == Some(name.as_str())
+                || (name.starts_with("Net.")
+                    && record.type_name().as_ref() == format!("HOST.{name}"))
         }
         (
             Value::LogFields(_),

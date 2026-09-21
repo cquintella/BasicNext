@@ -18,7 +18,7 @@ use std::collections::HashMap;
 
 use bn_diag::Diagnostic;
 use bn_source::Span;
-use bn_value::Value;
+use bn_value::{Value, shared_string};
 
 use bn_interp::provider::{CoreContext, Provider};
 use std::io::{Read, Write};
@@ -75,11 +75,10 @@ impl Provider for FsProvider {
                         span,
                     ));
                 };
-                match core
-                    .host()
-                    .filesystem()
-                    .open(std::path::Path::new(path), bn_rt::secure_fs::OpenMode::Read)
-                {
+                match core.host().filesystem().open(
+                    std::path::Path::new(path.as_ref()),
+                    bn_rt::secure_fs::OpenMode::Read,
+                ) {
                     Ok(file) => Ok(Value::Boolean(
                         file.metadata().is_ok_and(|meta| meta.is_file()),
                     )),
@@ -95,7 +94,7 @@ impl Provider for FsProvider {
                     }
                     Err(error) => Ok(Value::Error {
                         code: 1,
-                        message: error.to_string(),
+                        message: shared_string(error.to_string()),
                     }),
                 }
             }
@@ -124,7 +123,7 @@ impl Provider for FsProvider {
                 let result = core
                     .host()
                     .filesystem()
-                    .open(std::path::Path::new(path), open_mode);
+                    .open(std::path::Path::new(path.as_ref()), open_mode);
                 match result {
                     Ok(file) => {
                         if file.metadata().is_ok_and(|meta| meta.is_dir()) {
@@ -153,7 +152,7 @@ impl Provider for FsProvider {
                     }
                     Err(error) => Ok(Value::Error {
                         code: 1,
-                        message: error.to_string(),
+                        message: shared_string(error.to_string()),
                     }),
                 }
             }
@@ -170,7 +169,7 @@ impl Provider for FsProvider {
                 match core
                     .host()
                     .filesystem()
-                    .remove_file(std::path::Path::new(path))
+                    .remove_file(std::path::Path::new(path.as_ref()))
                 {
                     Ok(()) => Ok(Value::Null),
                     Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
@@ -182,7 +181,7 @@ impl Provider for FsProvider {
                     }
                     Err(error) => Ok(Value::Error {
                         code: 1,
-                        message: error.to_string(),
+                        message: shared_string(error.to_string()),
                     }),
                 }
             }
@@ -269,7 +268,7 @@ impl FsProvider {
                     Ok(()) => Ok(Value::Null),
                     Err(error) => Ok(Value::Error {
                         code: 1,
-                        message: error.to_string(),
+                        message: shared_string(error.to_string()),
                     }),
                 }
             }
@@ -291,11 +290,11 @@ impl FsProvider {
                 match file.read_to_string(&mut text) {
                     Ok(_) => {
                         resource.family = Some(true);
-                        Ok(Value::String(text))
+                        Ok(Value::String(shared_string(text)))
                     }
                     Err(error) => Ok(Value::Error {
                         code: 1,
-                        message: error.to_string(),
+                        message: shared_string(error.to_string()),
                     }),
                 }
             }
@@ -330,7 +329,7 @@ impl FsProvider {
                         Err(error) => {
                             return Ok(Value::Error {
                                 code: 1,
-                                message: error.to_string(),
+                                message: shared_string(error.to_string()),
                             });
                         }
                     }
@@ -345,11 +344,11 @@ impl FsProvider {
                 Ok(String::from_utf8(bytes).map_or_else(
                     |error| Value::Error {
                         code: 1,
-                        message: format!("INVALID_UTF8: {error}"),
+                        message: shared_string(format!("INVALID_UTF8: {error}")),
                     },
                     |text| {
                         resource.family = Some(true);
-                        Value::String(text)
+                        Value::String(shared_string(text))
                     },
                 ))
             }
@@ -378,7 +377,7 @@ impl FsProvider {
                 let text = if name.ends_with("WriteLine") {
                     format!("{text}\n")
                 } else {
-                    text.clone()
+                    text.to_string()
                 };
                 match file.write_all(text.as_bytes()) {
                     Ok(()) => {
@@ -387,7 +386,7 @@ impl FsProvider {
                     }
                     Err(error) => Ok(Value::Error {
                         code: 1,
-                        message: error.to_string(),
+                        message: shared_string(error.to_string()),
                     }),
                 }
             }
@@ -438,7 +437,7 @@ impl FsProvider {
                 Err(error) => {
                     return Ok(Value::Error {
                         code: 1,
-                        message: error.to_string(),
+                        message: shared_string(error.to_string()),
                     });
                 }
             };
@@ -516,7 +515,7 @@ impl FsProvider {
         if let Err(error) = file.write_all(&bytes) {
             return Ok(Value::Error {
                 code: 1,
-                message: error.to_string(),
+                message: shared_string(error.to_string()),
             });
         }
         resource.family = Some(false);

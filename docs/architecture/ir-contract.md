@@ -335,9 +335,32 @@ operation can be valid BN IR while remaining unsupported by a backend.
 | `LoadStatic` | `destination` | — | Reads a static class field; class/field/type must resolve. |
 | `StoreStatic` | — | `value` | Writes a static class field; class/field/type must resolve. |
 
+### Record and class field layouts (bucket 0.5.2.1b)
+
+`Module` owns the canonical field metadata for every lowered record/class:
+
+- `field_names: Vec<String>` is the module-local intern table; `FieldId(u32)`
+  indexes it and is distinct from binding `SymbolId`.
+- `field_layouts: BTreeMap<String, FieldLayout>` is keyed by qualified owner.
+  A layout is base-first; every `FieldLayoutEntry` carries its `FieldId`, dense
+  `FieldSlot(u32)`, declared BN type, declaring owner, weak marker, and span.
+- `FieldRef { owner, id, slot }` is the resolved record address. Non-method
+  `Member`, `SetMember`, and `SetMemberIndex` instructions carry it; `SetField`
+  and `SetFieldIndex` carry a same-length resolved `Vec<FieldRef>` for their
+  spelling path. Spellings remain diagnostic metadata, never a backend lookup
+  mechanism.
+
+Language `validate` rejects empty/duplicate field names, missing IDs, non-dense
+slots, foreign declaring owners, broken inherited prefixes, unresolved member
+references, and unresolved/mismatched nested paths with `INVALID_IR`. This is
+not a target-support decision. The frontend creates this metadata after semantic
+analysis; interpreter and LLVM consume the same validated module. LLVM derives
+offsets, alignment, vector traversal, and ARC traversal from the layout rather
+than scanning `FieldInit` or `Default` instructions.
+
 `Module.class_bases` carries fully qualified direct-base identities. It is
 language IR metadata, has no frontend type dependency, must be acyclic, and
-allows backends to lay out inherited fields in base-to-derived order.
+is used to validate the base-first layout prefix and dispatch relations.
 
 The control-flow terminators are `Jump { target }`, `Branch { condition,
 then_block, else_block }`, `Return { value }`, and `Stop { code }`. `Jump` and

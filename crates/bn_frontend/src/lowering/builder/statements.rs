@@ -100,6 +100,7 @@ impl Builder<'_> {
                     } => {
                         self.emit(Instruction::SetMember {
                             object,
+                            field: None,
                             name,
                             owner,
                             value: result,
@@ -115,6 +116,7 @@ impl Builder<'_> {
                     } => {
                         self.emit(Instruction::SetMemberIndex {
                             object,
+                            field: None,
                             name,
                             owner,
                             indices,
@@ -123,10 +125,16 @@ impl Builder<'_> {
                             span: *span,
                         });
                     }
-                    AssignPlace::Field { symbol, path } => {
+                    AssignPlace::Field {
+                        symbol,
+                        root_owner,
+                        path,
+                    } => {
                         self.emit(Instruction::SetField {
                             symbol,
+                            root_owner,
                             path,
+                            fields: None,
                             value: result,
                             ty: type_at(self.model, target.span)?,
                             span: *span,
@@ -134,12 +142,15 @@ impl Builder<'_> {
                     }
                     AssignPlace::FieldIndex {
                         symbol,
+                        root_owner,
                         path,
                         indices,
                     } => {
                         self.emit(Instruction::SetFieldIndex {
                             symbol,
+                            root_owner,
                             path,
+                            fields: None,
                             indices,
                             value: result,
                             ty: type_at(self.model, target.span)?,

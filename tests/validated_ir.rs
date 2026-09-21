@@ -233,6 +233,7 @@ fn member_and_class_identity_names_cannot_be_empty() {
             Instruction::Member {
                 destination: bn::ir::ValueId(1),
                 object: bn::ir::ValueId(0),
+                field: None,
                 name: "field".to_string(),
                 owner: String::new(),
                 ty: bn::ir::Type::Integer(bn::ir::IntegerType::Int32),
@@ -256,6 +257,7 @@ fn member_and_class_identity_names_cannot_be_empty() {
             },
             Instruction::SetMember {
                 object: bn::ir::ValueId(0),
+                field: None,
                 name: "field".to_string(),
                 owner: String::new(),
                 value: bn::ir::ValueId(0),
@@ -339,7 +341,9 @@ fn member_and_class_identity_names_cannot_be_empty() {
             },
             Instruction::SetField {
                 symbol: bn::ir::SymbolId(0),
+                root_owner: String::new(),
                 path: vec![],
+                fields: None,
                 value: bn::ir::ValueId(0),
                 ty: bn::ir::Type::Integer(bn::ir::IntegerType::Int32),
                 span: span(),
@@ -478,6 +482,7 @@ fn validator_rejects_indexed_member_store_without_an_object_receiver() {
             },
             Instruction::SetMemberIndex {
                 object: bn::ir::ValueId(0),
+                field: None,
                 name: "data".into(),
                 owner: "Fake".into(),
                 indices: vec![bn::ir::ValueId(1)],
@@ -511,6 +516,7 @@ fn validator_rejects_an_indexed_store_without_indices() {
             },
             Instruction::SetMemberIndex {
                 object: bn::ir::ValueId(0),
+                field: None,
                 name: "data".into(),
                 owner: "Box".into(),
                 indices: Vec::new(),
@@ -868,6 +874,7 @@ fn validator_rejects_incompatible_member_and_field_values() {
     let cases = [
         Instruction::SetMember {
             object: bn::ir::ValueId(0),
+            field: None,
             name: "value".into(),
             owner: "Example".into(),
             value: bn::ir::ValueId(0),
@@ -876,7 +883,9 @@ fn validator_rejects_incompatible_member_and_field_values() {
         },
         Instruction::SetField {
             symbol: bn::ir::SymbolId::from_raw(0),
+            root_owner: "Example".into(),
             path: vec!["value".into()],
+            fields: None,
             value: bn::ir::ValueId(0),
             ty: bn::types::Type::Integer(bn::types::IntegerType::Int32),
             span: span(),

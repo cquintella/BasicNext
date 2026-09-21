@@ -2,7 +2,7 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use bn_source::Span;
 use bn_types::Type;
@@ -28,6 +28,68 @@ impl SymbolId {
     }
 }
 
+/// Module-local identity of one interned record or class field name.
+///
+/// This is deliberately distinct from [`SymbolId`], which identifies a
+/// binding rather than a field declaration.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct FieldId(pub u32);
+
+impl FieldId {
+    #[must_use]
+    pub const fn from_raw(id: u32) -> Self {
+        Self(id)
+    }
+
+    #[must_use]
+    pub const fn value(self) -> u32 {
+        self.0
+    }
+}
+
+/// Checked positional address of a field in its owner's complete layout.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct FieldSlot(pub u32);
+
+impl FieldSlot {
+    #[must_use]
+    pub const fn from_raw(slot: u32) -> Self {
+        Self(slot)
+    }
+
+    #[must_use]
+    pub const fn value(self) -> u32 {
+        self.0
+    }
+}
+
+/// Resolved field access carried by lowered IR instructions.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FieldRef {
+    pub owner: String,
+    pub id: FieldId,
+    pub slot: FieldSlot,
+}
+
+/// One field in an ordered record/class layout.
+#[derive(Clone, Debug)]
+pub struct FieldLayoutEntry {
+    pub id: FieldId,
+    pub slot: FieldSlot,
+    pub ty: Type,
+    pub declaring_owner: String,
+    pub weak: bool,
+    pub span: Span,
+}
+
+/// Complete, base-first positional layout for one record/class owner.
+#[derive(Clone, Debug)]
+pub struct FieldLayout {
+    pub owner: String,
+    pub fields: Vec<FieldLayoutEntry>,
+    pub span: Span,
+}
+
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ModuleId(pub u32);
 
@@ -48,12 +110,16 @@ impl ValueId {
 pub struct Module {
     pub source_name: Option<String>,
     pub functions: Vec<Function>,
+    /// Interned field spellings, indexed by [`FieldId`]. Runtime values never
+    /// carry these names; they only consume validated [`FieldSlot`] values.
+    pub field_names: Vec<String>,
+    /// Complete record/class layouts keyed by fully-qualified owner. The
+    /// ordered map makes metadata construction deterministic.
+    pub field_layouts: BTreeMap<String, FieldLayout>,
     /// Fully qualified class identity to its fully qualified direct base.
-    /// Backends use this language-level relation to compute inherited layout
+    /// The relation validates inherited field-layout prefixes and dispatch
     /// without depending on frontend semantic types.
     pub class_bases: HashMap<String, String>,
-    /// Fully qualified class field identities declared with `AS WEAK`.
-    pub weak_fields: HashSet<(String, String)>,
     pub bndata_providers: HashSet<ModuleId>,
     pub bnmath_providers: HashSet<ModuleId>,
     pub bnlog_providers: HashSet<ModuleId>,
@@ -222,6 +288,9 @@ pub enum Instruction {
     Member {
         destination: ValueId,
         object: ValueId,
+        /// Resolved positional reference for record data. Function members do
+        /// not use record storage and therefore retain `None` here.
+        field: Option<FieldRef>,
         name: String,
         owner: String,
         ty: Type,
@@ -239,6 +308,7 @@ pub enum Instruction {
     /// such as vectors and pointer regions.
     SetMemberIndex {
         object: ValueId,
+        field: Option<FieldRef>,
         name: String,
         owner: String,
         indices: Vec<ValueId>,
@@ -250,7 +320,9 @@ pub enum Instruction {
     /// preserves value semantics for nested structs as well as object handles.
     SetFieldIndex {
         symbol: SymbolId,
+        root_owner: String,
         path: Vec<String>,
+        fields: Option<Vec<FieldRef>>,
         indices: Vec<ValueId>,
         value: ValueId,
         ty: Type,
@@ -301,6 +373,7 @@ pub enum Instruction {
     },
     SetMember {
         object: ValueId,
+        field: Option<FieldRef>,
         name: String,
         owner: String,
         value: ValueId,
@@ -309,7 +382,9 @@ pub enum Instruction {
     },
     SetField {
         symbol: SymbolId,
+        root_owner: String,
         path: Vec<String>,
+        fields: Option<Vec<FieldRef>>,
         value: ValueId,
         ty: Type,
         span: Span,
@@ -408,6 +483,29 @@ pub enum Constant {
 }
 
 impl Module {
+    /// Resolves an interned field spelling to its checked positional address.
+    #[must_use]
+    pub fn field_ref(&self, owner: &str, name: &str) -> Option<FieldRef> {
+        let layout = self.field_layouts.get(owner)?;
+        layout.fields.iter().find_map(|entry| {
+            let index = usize::try_from(entry.id.0).ok()?;
+            (self.field_names.get(index)?.as_str() == name).then(|| FieldRef {
+                owner: owner.into(),
+                id: entry.id,
+                slot: entry.slot,
+            })
+        })
+    }
+
+    /// Returns whether a resolved field slot has weak ownership.
+    #[must_use]
+    pub fn field_is_weak(&self, field: &FieldRef) -> bool {
+        self.field_layouts
+            .get(&field.owner)
+            .and_then(|layout| layout.fields.get(usize::try_from(field.slot.value()).ok()?))
+            .is_some_and(|entry| entry.weak && entry.id == field.id)
+    }
+
     /// The program entry point, if the module has one.
     #[must_use]
     pub fn entry(&self) -> Option<&Function> {

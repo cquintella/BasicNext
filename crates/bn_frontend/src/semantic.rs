@@ -103,6 +103,17 @@ pub struct SemanticModel {
     pub base_classes: HashMap<String, String>,
     pub bnmath_modules: HashSet<ModuleId>,
     pub module_constants: HashMap<(ModuleId, String), ConstantValue>,
+    /// Instance data members known to semantic analysis for imported and HOST
+    /// record-like types. Lowering projects these into IR layouts without
+    /// leaking semantic identities into `bn_ir`.
+    pub record_members: HashMap<String, Vec<RecordMember>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct RecordMember {
+    pub name: String,
+    pub ty: Type,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

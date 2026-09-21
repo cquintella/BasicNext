@@ -110,6 +110,7 @@ impl Executor<'_, '_> {
                 value: source,
                 ty,
                 span,
+                ..
             } => {
                 let stored = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
                 if let (Some(Value::Vector(previous)), Value::Vector(next)) =
@@ -312,7 +313,7 @@ impl Executor<'_, '_> {
                     while matches!(line.as_bytes().last(), Some(b'\n' | b'\r')) {
                         line.pop();
                     }
-                    Value::String(line)
+                    Value::String(shared_string(line))
                 };
                 set(values, *destination, result);
             }
@@ -345,11 +346,13 @@ impl Executor<'_, '_> {
             Instruction::Member {
                 destination,
                 object,
+                field,
                 name,
                 span,
                 ..
             } => {
-                let member = self.member_of(value(values, *object, *span)?, name, *span)?;
+                let member =
+                    self.member_of(value(values, *object, *span)?, name, field.as_ref(), *span)?;
                 set(values, *destination, member);
             }
             Instruction::SetIndex {
@@ -403,6 +406,7 @@ impl Executor<'_, '_> {
             }
             Instruction::SetMemberIndex {
                 object,
+                field,
                 name,
                 indices,
                 value: source,
@@ -419,15 +423,25 @@ impl Executor<'_, '_> {
                     })
                     .collect::<Result<Vec<_>, _>>()?;
                 let source = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
-                self.set_member_index_value(values, *object, name, &indices, source, *span)?;
+                self.set_member_index_value(
+                    values,
+                    *object,
+                    name,
+                    field.as_ref(),
+                    &indices,
+                    source,
+                    *span,
+                )?;
             }
             Instruction::SetFieldIndex {
                 symbol,
                 path,
+                fields,
                 indices,
                 value: source,
                 ty,
                 span,
+                ..
             } => {
                 let indices = indices
                     .iter()
@@ -445,7 +459,20 @@ impl Executor<'_, '_> {
                         *span,
                     )
                 })?;
-                self.set_field_index_path(target, path, &indices, source, *span)?;
+                self.set_field_index_path(
+                    target,
+                    path,
+                    fields.as_deref().ok_or_else(|| {
+                        runtime_error(
+                            bn_diag::DiagId::INVALID_IR,
+                            "field path store lacks resolved fields",
+                            *span,
+                        )
+                    })?,
+                    &indices,
+                    source,
+                    *span,
+                )?;
             }
             Instruction::Length {
                 destination,
@@ -622,17 +649,17 @@ impl Executor<'_, '_> {
             }
             Instruction::SetMember {
                 object,
+                field,
                 name,
-                owner,
                 value: source,
                 ty,
                 span,
+                ..
             } => {
                 let stored = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
-                let weak = self
-                    .module
-                    .weak_fields
-                    .contains(&(owner.clone(), name.clone()));
+                let weak = field
+                    .as_ref()
+                    .is_some_and(|field| self.module.field_is_weak(field));
                 let transferred = self
                     .ownership_frames
                     .last_mut()
@@ -647,11 +674,22 @@ impl Executor<'_, '_> {
                         .objects
                         .get(*handle, 0, *span)?
                         .fields
-                        .get(name)
+                        .get(
+                            field
+                                .as_ref()
+                                .map_or(usize::MAX, |field| field.slot.value() as usize),
+                        )
+                        .cloned(),
+                    Some(Value::Record { record }) => record
+                        .get(
+                            field
+                                .as_ref()
+                                .map_or(usize::MAX, |field| field.slot.value() as usize),
+                        )
                         .cloned(),
                     _ => None,
                 };
-                self.set_member_value(values, *object, name, stored, *span)?;
+                self.set_member_value(values, *object, name, field.as_ref(), stored, *span)?;
                 if !weak && let Some(previous) = previous {
                     self.release_owned_value(previous, *span)?;
                 }
@@ -659,9 +697,11 @@ impl Executor<'_, '_> {
             Instruction::SetField {
                 symbol,
                 path,
+                fields,
                 value: source,
                 ty,
                 span,
+                ..
             } => {
                 let stored = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
                 let target = symbols.get_mut(symbol).ok_or_else(|| {
@@ -671,7 +711,19 @@ impl Executor<'_, '_> {
                         *span,
                     )
                 })?;
-                self.set_field_path(target, path, stored, *span)?;
+                self.set_field_path(
+                    target,
+                    path,
+                    fields.as_deref().ok_or_else(|| {
+                        runtime_error(
+                            bn_diag::DiagId::INVALID_IR,
+                            "field path store lacks resolved fields",
+                            *span,
+                        )
+                    })?,
+                    stored,
+                    *span,
+                )?;
             }
             Instruction::EnsureClass { class, span } => self.ensure_class(class, *span)?,
             Instruction::LoadStatic {

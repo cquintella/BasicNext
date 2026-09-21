@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::{
     ast::{
@@ -20,10 +20,14 @@ pub use crate::types::{FloatType, IntegerType, PointerLength, Type};
 
 #[path = "lowering/builder.rs"]
 mod builder;
+#[path = "lowering/field_layouts.rs"]
+mod field_layouts;
 pub use bn_ir::{
-    BasicBlock, BlockId, Constant, Function, FunctionKind, Instruction, Module, ModuleId, SymbolId,
-    Terminator, ValidatedModule, ValueId, validate, validate_module,
+    BasicBlock, BlockId, Constant, FieldId, FieldLayout, FieldLayoutEntry, FieldRef, FieldSlot,
+    Function, FunctionKind, Instruction, Module, ModuleId, SymbolId, Terminator, ValidatedModule,
+    ValueId, validate, validate_module,
 };
+use field_layouts::{lower_field_layout, record_owner, resolve_member_fields};
 
 pub(crate) fn ir_symbol_id(value: FrontendSymbolId) -> SymbolId {
     SymbolId::from_raw(value.value())
@@ -67,36 +71,121 @@ fn lowered_class_bases(
         .collect()
 }
 
-fn lowered_weak_fields(program: &Program, prefix: &str) -> HashSet<(String, String)> {
-    let mut fields = HashSet::new();
+#[derive(Clone)]
+struct PendingField {
+    name: String,
+    ty: Type,
+    weak: bool,
+    span: Span,
+}
+
+#[derive(Clone)]
+struct PendingLayout {
+    owner: String,
+    span: Span,
+    fields: Vec<PendingField>,
+}
+
+fn collect_layouts(
+    program: &Program,
+    model: &SemanticModel,
+    prefix: &str,
+    layouts: &mut HashMap<String, PendingLayout>,
+) {
     for item in &program.items {
         let Item::Declaration {
-            kind: DeclarationKind::Class,
+            kind: DeclarationKind::Class | DeclarationKind::Struct,
             name,
             statements,
+            span,
             ..
         } = item
         else {
             continue;
         };
-        let class = qualified_class_name(prefix, name);
-        for statement in statements {
-            if let Statement::Binding {
-                name: field,
-                type_ref,
-                is_static: false,
-                ..
-            } = statement
-                && type_ref
-                    .alternatives
-                    .first()
-                    .is_some_and(|atom| atom.name == "WEAK")
-            {
-                fields.insert((class.clone(), field.clone()));
-            }
-        }
+        let owner = qualified_class_name(prefix, name);
+        let fields = statements
+            .iter()
+            .filter_map(|statement| {
+                let Statement::Binding {
+                    name,
+                    type_ref,
+                    is_static: false,
+                    span,
+                    ..
+                } = statement
+                else {
+                    return None;
+                };
+                Some(PendingField {
+                    name: name.clone(),
+                    ty: type_at(model, *span).unwrap_or_else(|_| named_or_void(type_ref)),
+                    weak: type_ref
+                        .alternatives
+                        .first()
+                        .is_some_and(|atom| atom.name == "WEAK"),
+                    span: *span,
+                })
+            })
+            .collect();
+        layouts.insert(
+            owner.clone(),
+            PendingLayout {
+                owner,
+                span: *span,
+                fields,
+            },
+        );
     }
-    fields
+}
+
+fn collect_semantic_record_layouts(
+    model: &SemanticModel,
+    prefix: &str,
+    layouts: &mut HashMap<String, PendingLayout>,
+) {
+    for (owner, members) in &model.record_members {
+        let owner = qualified_class_name(prefix, owner);
+        layouts
+            .entry(owner.clone())
+            .or_insert_with(|| PendingLayout {
+                owner,
+                span: default_span(),
+                fields: members
+                    .iter()
+                    .map(|member| PendingField {
+                        name: member.name.clone(),
+                        ty: member.ty.clone(),
+                        weak: false,
+                        span: member.span,
+                    })
+                    .collect(),
+            });
+    }
+}
+
+fn lowered_field_metadata(
+    pending: &HashMap<String, PendingLayout>,
+    class_bases: &HashMap<String, String>,
+) -> Result<(Vec<String>, BTreeMap<String, FieldLayout>), Diagnostic> {
+    let mut names = Vec::new();
+    let mut ids = HashMap::new();
+    let mut layouts = BTreeMap::new();
+    let mut visiting = HashSet::new();
+    let mut owners = pending.keys().cloned().collect::<Vec<_>>();
+    owners.sort();
+    for owner in owners {
+        lower_field_layout(
+            &owner,
+            pending,
+            class_bases,
+            &mut names,
+            &mut ids,
+            &mut layouts,
+            &mut visiting,
+        )?;
+    }
+    Ok((names, layouts))
 }
 
 struct OpenBlock {
@@ -128,11 +217,13 @@ enum AssignPlace {
     },
     FieldIndex {
         symbol: SymbolId,
+        root_owner: String,
         path: Vec<String>,
         indices: Vec<ValueId>,
     },
     Field {
         symbol: SymbolId,
+        root_owner: String,
         path: Vec<String>,
     },
     Static {
@@ -166,11 +257,17 @@ struct Builder<'a> {
 /// Returns a diagnostic when semantic information is missing or lowering encounters an unsupported construct.
 fn lower_unvalidated(program: &Program, model: &SemanticModel) -> Result<Module, Diagnostic> {
     let functions = lower_program(program, model, "", &collect_methods(program, ""))?;
-    let module = Module {
+    let class_bases = lowered_class_bases(program, model, "");
+    let mut pending_layouts = HashMap::new();
+    collect_layouts(program, model, "", &mut pending_layouts);
+    collect_semantic_record_layouts(model, "", &mut pending_layouts);
+    let (field_names, field_layouts) = lowered_field_metadata(&pending_layouts, &class_bases)?;
+    let mut module = Module {
         source_name: program.source_name.clone(),
         functions,
-        class_bases: lowered_class_bases(program, model, ""),
-        weak_fields: lowered_weak_fields(program, ""),
+        field_names,
+        field_layouts,
+        class_bases,
         bndata_providers: HashSet::new(),
         bnmath_providers: HashSet::new(),
         bnlog_providers: HashSet::new(),
@@ -186,6 +283,7 @@ fn lower_unvalidated(program: &Program, model: &SemanticModel) -> Result<Module,
         bnlog_import: standard_import_span(program, "BNLog"),
         bnweb_import: standard_import_span(program, "BNWeb"),
     };
+    resolve_member_fields(&mut module)?;
     Ok(module)
 }
 
@@ -226,6 +324,7 @@ pub fn lower(program: &Program, model: &SemanticModel) -> Result<Module, Diagnos
 /// # Errors
 ///
 /// Returns a source-spanned diagnostic if any module cannot be lowered.
+#[allow(clippy::too_many_lines)] // Module graph lowering preserves one deterministic construction path.
 fn lower_graph_unvalidated(
     graph: &ModuleGraph,
     models: &[SemanticModel],
@@ -237,7 +336,7 @@ fn lower_graph_unvalidated(
     }
     let mut functions = Vec::new();
     let mut class_bases = HashMap::new();
-    let mut weak_fields = HashSet::new();
+    let mut pending_layouts = HashMap::new();
     for loaded in &graph.modules {
         if loaded.standard_module.is_some() {
             continue;
@@ -249,7 +348,8 @@ fn lower_graph_unvalidated(
             .ok_or_else(|| ir_error("missing semantic model for module", default_span()))?;
         let prefix = module_prefix(ir_module_id(graph.root), ir_module_id(loaded.id));
         class_bases.extend(lowered_class_bases(&loaded.program, model, &prefix));
-        weak_fields.extend(lowered_weak_fields(&loaded.program, &prefix));
+        collect_layouts(&loaded.program, model, &prefix, &mut pending_layouts);
+        collect_semantic_record_layouts(model, &prefix, &mut pending_layouts);
         functions.extend(lower_program(
             &loaded.program,
             model,
@@ -267,11 +367,13 @@ fn lower_graph_unvalidated(
     let exec_import = root.and_then(|module| exec_import_span(&module.program));
     let bnlog_import = root.and_then(|module| standard_import_span(&module.program, "BNLog"));
     let bnweb_import = root.and_then(|module| standard_import_span(&module.program, "BNWeb"));
-    let module = Module {
+    let (field_names, field_layouts) = lowered_field_metadata(&pending_layouts, &class_bases)?;
+    let mut module = Module {
         source_name,
         functions,
+        field_names,
+        field_layouts,
         class_bases,
-        weak_fields,
         bndata_providers: graph
             .modules
             .iter()
@@ -329,6 +431,7 @@ fn lower_graph_unvalidated(
         bnlog_import,
         bnweb_import,
     };
+    resolve_member_fields(&mut module)?;
     Ok(module)
 }
 

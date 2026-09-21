@@ -12,8 +12,8 @@ use bn_source::Span;
 use bn_types::{IntegerType, Type};
 
 use super::{
-    Value, float_kind, float_value, integer_kind, parse_float, parse_integer, runtime_error,
-    type_mismatch,
+    RecordValue, Value, float_kind, float_value, integer_kind, parse_float, parse_integer,
+    runtime_error, shared_string, type_mismatch,
 };
 
 pub(super) fn find_block(function: &Function, id: BlockId) -> Result<&BasicBlock, Diagnostic> {
@@ -65,13 +65,13 @@ pub(super) fn constant_value(
             integer_kind(ty).unwrap_or(IntegerType::Int32),
         )),
         Constant::Float(value) => Ok(float_value(parse_float(value), float_kind(ty))),
-        Constant::String(value) => Ok(Value::String(value.clone())),
+        Constant::String(value) => Ok(Value::String(shared_string(value.as_str()))),
         Constant::Boolean(value) => Ok(Value::Boolean(*value)),
         Constant::Null => Ok(Value::Null),
         Constant::NotAvailable => Ok(Value::NotAvailable),
         Constant::EndOfFile => Ok(Value::EndOfFile),
-        Constant::Function(value) => Ok(Value::Function(value.clone())),
-        Constant::Type(value) => Ok(Value::Type(value.clone())),
+        Constant::Function(value) => Ok(Value::Function(shared_string(value.as_str()))),
+        Constant::Type(value) => Ok(Value::Type(shared_string(value.as_str()))),
         Constant::HostConsole => Ok(Value::HostConsole),
         Constant::HostArgs => Ok(Value::HostArgs),
     }
@@ -87,11 +87,10 @@ pub(super) fn empty_named(name: &str) -> Value {
         },
         "Error" => Value::Error {
             code: 0,
-            message: String::new(),
+            message: shared_string(""),
         },
         _ => Value::Record {
-            type_name: name.into(),
-            fields: HashMap::new(),
+            record: RecordValue::new(name, Vec::new()),
         },
     }
 }

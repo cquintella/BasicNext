@@ -12,8 +12,8 @@ impl Executor<'_, '_> {
                 }
                 Ok(())
             }
-            Value::Record { fields, .. } => {
-                for value in fields.values() {
+            Value::Record { record } => {
+                for value in record.iter() {
                     self.retain_owned_value(value, span)?;
                 }
                 Ok(())
@@ -44,11 +44,13 @@ impl Executor<'_, '_> {
                 };
                 let instance = self.objects.get(handle, 0, span)?.clone();
                 self.objects.for_each_live_mut(|candidate| {
-                    for (name, field) in &mut candidate.fields {
+                    for (slot, field) in candidate.fields.iter_mut().enumerate() {
                         if self
                             .module
-                            .weak_fields
-                            .contains(&(candidate.class.clone(), name.clone()))
+                            .field_layouts
+                            .get(&candidate.class)
+                            .and_then(|layout| layout.fields.get(slot))
+                            .is_some_and(|entry| entry.weak)
                             && matches!(field, Value::Object { handle: other, .. } if *other == handle)
                         {
                             *field = Value::Null;
@@ -57,8 +59,14 @@ impl Executor<'_, '_> {
                 });
                 self.notify_object_destroyed(handle);
                 self.objects.finish_delete(handle, span)?;
-                for (name, field) in instance.fields {
-                    if !self.module.weak_fields.contains(&(class.clone(), name)) {
+                for (slot, field) in instance.fields.into_vec().into_iter().enumerate() {
+                    if !self
+                        .module
+                        .field_layouts
+                        .get(class.as_ref())
+                        .and_then(|layout| layout.fields.get(slot))
+                        .is_some_and(|entry| entry.weak)
+                    {
                         self.release_owned_value(field, span)?;
                     }
                 }
@@ -70,8 +78,8 @@ impl Executor<'_, '_> {
                 }
                 Ok(())
             }
-            Value::Record { fields, .. } => {
-                for value in fields.into_values() {
+            Value::Record { record } => {
+                for value in record.into_fields() {
                     self.release_owned_value(value, span)?;
                 }
                 Ok(())
@@ -186,21 +194,38 @@ impl Executor<'_, '_> {
         coerce(value, ty, span)
     }
 
-    pub fn member_of(&self, object: &Value, name: &str, span: Span) -> Result<Value, Diagnostic> {
+    pub fn member_of(
+        &self,
+        object: &Value,
+        name: &str,
+        field: Option<&bn_ir::FieldRef>,
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
         match (object, name) {
             (Value::Error { code, .. }, "Code") => {
                 Ok(Value::Integer(i128::from(*code), IntegerType::Int32))
             }
             (Value::Error { message, .. }, "Message") => Ok(Value::String(message.clone())),
-            (Value::Record { fields, .. }, _) => fields
-                .get(name)
+            (Value::Record { record }, _) => record
+                .get(
+                    field
+                        .ok_or_else(|| {
+                            runtime_error(
+                                bn_diag::DiagId::INVALID_IR,
+                                "record member lacks a field slot",
+                                span,
+                            )
+                        })?
+                        .slot
+                        .value() as usize,
+                )
                 .cloned()
                 .ok_or_else(|| super::name_not_found(name, "record member", span)),
             (Value::Object { handle, .. }, _) => {
                 let instance = self.objects.get(*handle, 0, span)?;
                 instance
                     .fields
-                    .get(name)
+                    .get(field_slot(field, span)?)
                     .cloned()
                     .ok_or_else(|| super::name_not_found(name, "object member", span))
             }
@@ -213,63 +238,104 @@ impl Executor<'_, '_> {
         values: &mut HashMap<ValueId, Value>,
         object: ValueId,
         name: &str,
+        field: Option<&bn_ir::FieldRef>,
         stored: Value,
         span: Span,
     ) -> Result<(), Diagnostic> {
-        match values.get(&object) {
+        match values.get_mut(&object) {
             Some(Value::Object { handle, .. }) => {
                 let handle = *handle;
                 self.objects
                     .get_mut(handle, 0, span)?
                     .fields
-                    .insert(name.to_string(), stored);
+                    .get_mut(field_slot(field, span)?)
+                    .map(|destination| *destination = stored)
+                    .ok_or_else(|| super::name_not_found(name, "object member", span))?;
                 Ok(())
             }
             Some(Value::Record { .. }) => {
-                let Some(Value::Record { fields, .. }) = values.get_mut(&object) else {
+                let Some(Value::Record { record }) = values.get_mut(&object) else {
                     return Err(runtime_error(
                         bn_diag::DiagId::INVALID_IR,
                         "record value disappeared",
                         span,
                     ));
                 };
-                fields.insert(name.to_string(), stored);
+                record
+                    .replace(
+                        field
+                            .ok_or_else(|| {
+                                runtime_error(
+                                    bn_diag::DiagId::INVALID_IR,
+                                    "record member store lacks a field slot",
+                                    span,
+                                )
+                            })?
+                            .slot
+                            .value() as usize,
+                        stored,
+                    )
+                    .ok_or_else(|| super::name_not_found(name, "record member", span))?;
                 Ok(())
             }
             _ => Err(super::name_not_found(name, "member assignment", span)),
         }
     }
 
+    #[allow(clippy::too_many_arguments)] // Carries the resolved field and index operation without allocating a command object.
     pub fn set_member_index_value(
         &mut self,
         values: &mut HashMap<ValueId, Value>,
         object: ValueId,
         name: &str,
+        field: Option<&bn_ir::FieldRef>,
         indices: &[usize],
         stored: Value,
         span: Span,
     ) -> Result<(), Diagnostic> {
-        match values.get(&object) {
+        match values.get_mut(&object) {
             Some(Value::Object { handle, .. }) => {
                 let mut target = self
                     .objects
                     .get(*handle, 0, span)?
                     .fields
-                    .get(name)
+                    .get(field_slot(field, span)?)
                     .cloned()
                     .ok_or_else(|| super::name_not_found(name, "object member", span))?;
                 self.set_index(&mut target, indices, stored, span)?;
                 self.objects
                     .get_mut(*handle, 0, span)?
                     .fields
-                    .insert(name.to_string(), target);
+                    .get_mut(field_slot(field, span)?)
+                    .map(|destination| *destination = target)
+                    .ok_or_else(|| super::name_not_found(name, "object member", span))?;
                 Ok(())
             }
-            Some(Value::Record { .. }) => Err(runtime_error(
-                bn_diag::DiagId::INVALID_IR,
-                "indexed value-type fields require a binding-rooted field store",
-                span,
-            )),
+            Some(Value::Record { record }) => {
+                let slot = field
+                    .ok_or_else(|| {
+                        runtime_error(
+                            bn_diag::DiagId::INVALID_IR,
+                            "record member store lacks a field slot",
+                            span,
+                        )
+                    })?
+                    .slot
+                    .value() as usize;
+                let mut target = record
+                    .get(slot)
+                    .cloned()
+                    .ok_or_else(|| super::name_not_found(name, "record member", span))?;
+                self.set_index(&mut target, indices, stored, span)?;
+                record.replace(slot, target).ok_or_else(|| {
+                    runtime_error(
+                        bn_diag::DiagId::INVALID_IR,
+                        "record field slot is absent",
+                        span,
+                    )
+                })?;
+                Ok(())
+            }
             _ => Err(super::name_not_found(
                 name,
                 "indexed member assignment",
@@ -282,6 +348,7 @@ impl Executor<'_, '_> {
         &mut self,
         target: &mut Value,
         path: &[String],
+        fields: &[bn_ir::FieldRef],
         indices: &[usize],
         stored: Value,
         span: Span,
@@ -289,14 +356,35 @@ impl Executor<'_, '_> {
         let Some((name, rest)) = path.split_first() else {
             return self.set_index(target, indices, stored, span);
         };
+        let Some((field, remaining_fields)) = fields.split_first() else {
+            return Err(runtime_error(
+                bn_diag::DiagId::INVALID_IR,
+                "field path lacks a resolved slot",
+                span,
+            ));
+        };
         match target {
-            Value::Record { fields, .. } => {
-                let mut nested = fields
-                    .get(name)
+            Value::Record { record } => {
+                let slot = field.slot.value() as usize;
+                let mut nested = record
+                    .get(slot)
                     .cloned()
                     .ok_or_else(|| super::name_not_found(name, "nested record member", span))?;
-                self.set_field_index_path(&mut nested, rest, indices, stored, span)?;
-                fields.insert(name.clone(), nested);
+                self.set_field_index_path(
+                    &mut nested,
+                    rest,
+                    remaining_fields,
+                    indices,
+                    stored,
+                    span,
+                )?;
+                record.replace(slot, nested).ok_or_else(|| {
+                    runtime_error(
+                        bn_diag::DiagId::INVALID_IR,
+                        "record field slot is absent",
+                        span,
+                    )
+                })?;
                 Ok(())
             }
             Value::Object { handle, .. } => {
@@ -305,14 +393,23 @@ impl Executor<'_, '_> {
                     .objects
                     .get(handle, 0, span)?
                     .fields
-                    .get(name)
+                    .get(field.slot.value() as usize)
                     .cloned()
                     .ok_or_else(|| super::name_not_found(name, "nested object member", span))?;
-                self.set_field_index_path(&mut nested, rest, indices, stored, span)?;
+                self.set_field_index_path(
+                    &mut nested,
+                    rest,
+                    remaining_fields,
+                    indices,
+                    stored,
+                    span,
+                )?;
                 self.objects
                     .get_mut(handle, 0, span)?
                     .fields
-                    .insert(name.clone(), nested);
+                    .get_mut(field.slot.value() as usize)
+                    .map(|destination| *destination = nested)
+                    .ok_or_else(|| super::name_not_found(name, "nested object member", span))?;
                 Ok(())
             }
             _ => Err(super::type_mismatch(
@@ -328,6 +425,7 @@ impl Executor<'_, '_> {
         &mut self,
         target: &mut Value,
         path: &[String],
+        fields: &[bn_ir::FieldRef],
         stored: Value,
         span: Span,
     ) -> Result<(), Diagnostic> {
@@ -335,18 +433,38 @@ impl Executor<'_, '_> {
             *target = stored;
             return Ok(());
         };
+        let Some((field, remaining_fields)) = fields.split_first() else {
+            return Err(runtime_error(
+                bn_diag::DiagId::INVALID_IR,
+                "field path lacks a resolved slot",
+                span,
+            ));
+        };
         match target {
-            Value::Record { fields, .. } => {
+            Value::Record { record } => {
+                let slot = field.slot.value() as usize;
                 if rest.is_empty() {
-                    fields.insert(name.clone(), stored);
+                    record.replace(slot, stored).ok_or_else(|| {
+                        runtime_error(
+                            bn_diag::DiagId::INVALID_IR,
+                            "record field slot is absent",
+                            span,
+                        )
+                    })?;
                     return Ok(());
                 }
-                let mut nested = fields
-                    .get(name)
+                let mut nested = record
+                    .get(slot)
                     .cloned()
                     .ok_or_else(|| super::name_not_found(name, "nested record member", span))?;
-                self.set_field_path(&mut nested, rest, stored, span)?;
-                fields.insert(name.clone(), nested);
+                self.set_field_path(&mut nested, rest, remaining_fields, stored, span)?;
+                record.replace(slot, nested).ok_or_else(|| {
+                    runtime_error(
+                        bn_diag::DiagId::INVALID_IR,
+                        "record field slot is absent",
+                        span,
+                    )
+                })?;
                 Ok(())
             }
             Value::Object { handle, .. } => {
@@ -355,21 +473,25 @@ impl Executor<'_, '_> {
                     self.objects
                         .get_mut(handle, 0, span)?
                         .fields
-                        .insert(name.clone(), stored);
+                        .get_mut(field.slot.value() as usize)
+                        .map(|destination| *destination = stored)
+                        .ok_or_else(|| super::name_not_found(name, "object member", span))?;
                     return Ok(());
                 }
                 let mut nested = self
                     .objects
                     .get(handle, 0, span)?
                     .fields
-                    .get(name)
+                    .get(field.slot.value() as usize)
                     .cloned()
                     .ok_or_else(|| super::name_not_found(name, "nested object member", span))?;
-                self.set_field_path(&mut nested, rest, stored, span)?;
+                self.set_field_path(&mut nested, rest, remaining_fields, stored, span)?;
                 self.objects
                     .get_mut(handle, 0, span)?
                     .fields
-                    .insert(name.clone(), nested);
+                    .get_mut(field.slot.value() as usize)
+                    .map(|destination| *destination = nested)
+                    .ok_or_else(|| super::name_not_found(name, "nested object member", span))?;
                 Ok(())
             }
             _ => Err(super::type_mismatch(
@@ -391,7 +513,7 @@ impl Executor<'_, '_> {
             Type::Boolean => Ok(Value::Boolean(false)),
             Type::Integer(kind) => Ok(Value::Integer(0, *kind)),
             Type::Float(kind) => Ok(Value::Float(0.0, *kind)),
-            Type::String => Ok(Value::String(String::new())),
+            Type::String => Ok(Value::String(shared_string(""))),
             Type::Vector {
                 element,
                 dimensions: declared_dimensions,
@@ -448,9 +570,9 @@ impl Executor<'_, '_> {
                 dimensions,
                 span,
             ),
-            Type::Named(name) | Type::TypeName(name) => Ok(empty_named(name)),
+            Type::Named(name) | Type::TypeName(name) => Ok(self.empty_named_value(name)),
             Type::ImportedNamed { module, name } | Type::ImportedTypeName { module, name } => {
-                Ok(empty_named(&format!("#{}.{name}", module.0)))
+                Ok(self.empty_named_value(&format!("#{}.{name}", module.0)))
             }
             Type::System => Ok(Value::Type("SYSTEM".into())),
             Type::HostClock => Ok(Value::Type("HOST.Clock".into())),
@@ -474,7 +596,22 @@ impl Executor<'_, '_> {
         {
             self.call_named(&default, Vec::new(), span)
         } else {
-            Ok(empty_named(ir_name))
+            Ok(self.empty_named_value(ir_name))
+        }
+    }
+
+    fn empty_named_value(&self, ir_name: &str) -> Value {
+        // These language values have a scalar runtime representation even
+        // though semantic analysis exposes their readable members in a field
+        // layout.  Their defaults must not be materialized as records.
+        if matches!(ir_name, "DATE" | "TIME" | "TIMEZONE" | "VOID" | "Error") {
+            return empty_named(ir_name);
+        }
+        let Some(layout) = self.module.field_layouts.get(ir_name) else {
+            return empty_named(ir_name);
+        };
+        Value::Record {
+            record: RecordValue::new(ir_name, vec![Value::Null; layout.fields.len()]),
         }
     }
 
@@ -492,9 +629,9 @@ impl Executor<'_, '_> {
                 }
                 total
             }
-            Value::Record { fields, .. } => {
+            Value::Record { record } => {
                 let mut total = 0u64;
-                for field in fields.values() {
+                for field in record.iter() {
                     total = add_sizes(total, &self.size_of_value(field, span)?, span)?;
                 }
                 total
@@ -502,7 +639,7 @@ impl Executor<'_, '_> {
             Value::Object { handle, .. } => {
                 let instance = self.objects.get(*handle, 0, span)?;
                 let mut total = 0u64;
-                for field in instance.fields.values() {
+                for field in &instance.fields {
                     total = add_sizes(total, &self.size_of_value(field, span)?, span)?;
                 }
                 total
@@ -518,4 +655,16 @@ impl Executor<'_, '_> {
         };
         integer_from_u64(size, span)
     }
+}
+
+fn field_slot(field: Option<&bn_ir::FieldRef>, span: Span) -> Result<usize, Diagnostic> {
+    field
+        .map(|field| field.slot.value() as usize)
+        .ok_or_else(|| {
+            runtime_error(
+                bn_diag::DiagId::INVALID_IR,
+                "record/object member lacks a resolved field slot",
+                span,
+            )
+        })
 }

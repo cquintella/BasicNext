@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 use bn_diag::Diagnostic;
 use bn_source::Span;
-use bn_value::Value;
+use bn_value::{Value, shared_string};
 
 use bn_interp::provider::{CoreContext, Provider};
 use bn_interp::{
@@ -23,7 +23,7 @@ use bn_interp::{
 pub const NAME: &str = "BNJson";
 
 pub struct JsonProvider {
-    values: HashMap<u64, crate::json::Value>,
+    values: HashMap<u64, serde_json::Value>,
     next: u64,
 }
 
@@ -37,7 +37,7 @@ impl Default for JsonProvider {
 }
 
 impl JsonProvider {
-    fn insert(&mut self, value: crate::json::Value) -> Value {
+    fn insert(&mut self, value: serde_json::Value) -> Value {
         let id = self.next;
         self.next += 1;
         self.values.insert(id, value);
@@ -90,7 +90,7 @@ impl Provider for JsonProvider {
                 let text = crate::json::stringify(value).map_err(|message| {
                     runtime_error(bn_diag::DiagId::INVALID_JSON, message, span)
                 })?;
-                Ok(Value::String(text))
+                Ok(Value::String(shared_string(text)))
             }
             "CONSTRUCTOR" => Ok(Value::Null),
             _ => Ok(Value::Error {
@@ -101,8 +101,7 @@ impl Provider for JsonProvider {
     }
 
     fn allocate(&mut self, class: &str, _span: Span) -> Option<Result<Value, Diagnostic>> {
-        (class.rsplit('.').next() == Some("Json"))
-            .then(|| Ok(self.insert(crate::json::Value::Null)))
+        (class.rsplit('.').next() == Some("Json")).then(|| Ok(self.insert(serde_json::Value::Null)))
     }
 
     fn release(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {

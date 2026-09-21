@@ -22,10 +22,15 @@ use std::collections::HashMap;
 
 use bn_diag::Diagnostic;
 use bn_source::Span;
-use bn_value::Value;
+use bn_value::{RecordValue, Value, shared_string};
 
 use crate::net_values::{
     address_value, endpoint_value, net_address, net_addresses, net_endpoint, ping_reply_value,
+    slots::{
+        ADDRESS_VALUE, CIDR_NETWORK, CIDR_PREFIX, ENDPOINT_ADDRESS, ENDPOINT_PORT,
+        PING_REPLY_ADDRESS, PING_REPLY_ROUND_TRIP_MICROSECONDS, UDP_PACKET_BYTES,
+        UDP_PACKET_SOURCE, UDP_PACKET_TRUNCATED,
+    },
 };
 use bn_interp::provider::{CoreContext, Provider};
 use bn_interp::{
@@ -36,6 +41,29 @@ use bn_interp::{
 use bn_types::IntegerType;
 
 pub const NAME: &str = "Net";
+
+fn record<'a>(
+    value: &'a Value,
+    expected: &str,
+    operation: &str,
+    span: Span,
+) -> Result<&'a RecordValue, Diagnostic> {
+    let Value::Record { record } = value else {
+        return Err(type_mismatch(expected, "non-record value", operation, span));
+    };
+    if record.type_name().as_ref() != expected {
+        return Err(type_mismatch(expected, record.type_name(), operation, span));
+    }
+    if crate::net_values::slots::field_count(expected).is_some_and(|count| record.len() != count) {
+        return Err(type_mismatch(
+            format!("{expected} with its canonical field count"),
+            "malformed record shape",
+            operation,
+            span,
+        ));
+    }
+    Ok(record)
+}
 
 pub struct NetProvider {
     tcp_streams: HashMap<u64, crate::net::TcpStream>,
@@ -117,7 +145,7 @@ impl NetProvider {
                     }
                     Err(error) => Ok(Value::Error {
                         code: 1,
-                        message: error.to_string(),
+                        message: shared_string(error.to_string()),
                     }),
                 }
             }
@@ -224,11 +252,10 @@ impl NetProvider {
                     .map_err(|error| runtime_error(bn_diag::DiagId::IO, error.to_string(), span))?;
                 match socket.receive(maximum) {
                     Ok(packet) => Ok(Value::Record {
-                        type_name: "HOST.Net.UDPPacket".into(),
-                        fields: HashMap::from([
-                            ("source".into(), endpoint_value(packet.source())),
-                            (
-                                "bytes".into(),
+                        record: RecordValue::new(
+                            "HOST.Net.UDPPacket",
+                            vec![
+                                endpoint_value(packet.source()),
                                 Value::Vector(
                                     packet
                                         .bytes()
@@ -238,35 +265,27 @@ impl NetProvider {
                                         })
                                         .collect(),
                                 ),
-                            ),
-                            ("truncated".into(), Value::Boolean(packet.truncated())),
-                        ]),
+                                Value::Boolean(packet.truncated()),
+                            ],
+                        ),
                     }),
                     Err(error) => Ok(Value::Error {
                         code: 1,
-                        message: error.to_string(),
+                        message: shared_string(error.to_string()),
                     }),
                 }
             }
             "HOST.Net.UDPPacket.Source" => {
                 require_arity(name, arguments, 1, span)?;
-                let Value::Record { type_name, fields } = &arguments[0] else {
-                    return Err(type_mismatch(
-                        "UDPPacket",
-                        "non-UDPPacket value",
-                        "HOST.Net.UDPPacket.Source",
-                        span,
-                    ));
-                };
-                if type_name != "HOST.Net.UDPPacket" {
-                    return Err(type_mismatch(
-                        "UDPPacket",
-                        type_name,
-                        "HOST.Net.UDPPacket.Source",
-                        span,
-                    ));
-                }
-                fields.get("source").cloned().ok_or_else(|| {
+                record(
+                    &arguments[0],
+                    "HOST.Net.UDPPacket",
+                    "HOST.Net.UDPPacket.Source",
+                    span,
+                )?
+                .get(UDP_PACKET_SOURCE)
+                .cloned()
+                .ok_or_else(|| {
                     type_mismatch(
                         "UDPPacket.source field",
                         "missing field",
@@ -277,15 +296,13 @@ impl NetProvider {
             }
             "HOST.Net.UDPPacket.Size" => {
                 require_arity(name, arguments, 1, span)?;
-                let Value::Record { fields, .. } = &arguments[0] else {
-                    return Err(type_mismatch(
-                        "UDPPacket",
-                        "non-UDPPacket value",
-                        "HOST.Net.UDPPacket.Size",
-                        span,
-                    ));
-                };
-                let Some(Value::Vector(bytes)) = fields.get("bytes") else {
+                let packet = record(
+                    &arguments[0],
+                    "HOST.Net.UDPPacket",
+                    "HOST.Net.UDPPacket.Size",
+                    span,
+                )?;
+                let Some(Value::Vector(bytes)) = packet.get(UDP_PACKET_BYTES) else {
                     return Err(type_mismatch(
                         "UDPPacket.bytes vector",
                         "missing or invalid field",
@@ -297,15 +314,15 @@ impl NetProvider {
             }
             "HOST.Net.UDPPacket.Truncated" | "HOST.Net.UDPPacket.WasTruncated" => {
                 require_arity(name, arguments, 1, span)?;
-                let Value::Record { fields, .. } = &arguments[0] else {
-                    return Err(type_mismatch(
-                        "UDPPacket",
-                        "non-UDPPacket value",
-                        "HOST.Net.UDPPacket.Truncated",
-                        span,
-                    ));
-                };
-                fields.get("truncated").cloned().ok_or_else(|| {
+                record(
+                    &arguments[0],
+                    "HOST.Net.UDPPacket",
+                    "HOST.Net.UDPPacket.Truncated",
+                    span,
+                )?
+                .get(UDP_PACKET_TRUNCATED)
+                .cloned()
+                .ok_or_else(|| {
                     type_mismatch(
                         "UDPPacket.truncated field",
                         "missing field",
@@ -316,22 +333,12 @@ impl NetProvider {
             }
             "HOST.Net.UDPPacket.CopyTo" => {
                 require_arity(name, arguments, 3, span)?;
-                let Value::Record { type_name, fields } = &arguments[0] else {
-                    return Err(type_mismatch(
-                        "UDPPacket",
-                        "non-UDPPacket value",
-                        "HOST.Net.UDPPacket.CopyTo",
-                        span,
-                    ));
-                };
-                if type_name != "HOST.Net.UDPPacket" {
-                    return Err(type_mismatch(
-                        "UDPPacket",
-                        type_name,
-                        "HOST.Net.UDPPacket.CopyTo",
-                        span,
-                    ));
-                }
+                let packet = record(
+                    &arguments[0],
+                    "HOST.Net.UDPPacket",
+                    "HOST.Net.UDPPacket.CopyTo",
+                    span,
+                )?;
                 let Value::Pointer { handle } = arguments[1] else {
                     return Err(type_mismatch(
                         "BYTE buffer",
@@ -341,7 +348,7 @@ impl NetProvider {
                     ));
                 };
                 let (maximum, _) = integer(&arguments[2], span)?;
-                let Some(Value::Vector(bytes)) = fields.get("bytes") else {
+                let Some(Value::Vector(bytes)) = packet.get(UDP_PACKET_BYTES) else {
                     return Err(type_mismatch(
                         "UDPPacket.bytes vector",
                         "missing or invalid field",
@@ -447,11 +454,10 @@ impl NetProvider {
                 };
                 match crate::net::Address::parse(text) {
                     Ok(address) => Ok(Value::Record {
-                        type_name: "HOST.Net.Address".into(),
-                        fields: HashMap::from([(
-                            "value".into(),
-                            Value::String(address.to_string()),
-                        )]),
+                        record: RecordValue::new(
+                            "HOST.Net.Address",
+                            vec![Value::String(shared_string(address.to_string()))],
+                        ),
                     }),
                     Err(_) => Ok(Value::Error {
                         code: 1,
@@ -461,15 +467,13 @@ impl NetProvider {
             }
             "HOST.Net.Address.ToString" => {
                 require_arity(name, arguments, 1, span)?;
-                let Value::Record { fields, .. } = &arguments[0] else {
-                    return Err(type_mismatch(
-                        "HOST.Net.Address",
-                        "non-address value",
-                        "HOST.Net.Address.ToString",
-                        span,
-                    ));
-                };
-                let Some(Value::String(value)) = fields.get("value") else {
+                let address = record(
+                    &arguments[0],
+                    "HOST.Net.Address",
+                    "HOST.Net.Address.ToString",
+                    span,
+                )?;
+                let Some(Value::String(value)) = address.get(ADDRESS_VALUE) else {
                     return Err(type_mismatch(
                         "Address.value STRING",
                         "missing or invalid field",
@@ -519,22 +523,12 @@ impl NetProvider {
             }
             "HOST.Net.Endpoint.Create" => {
                 require_arity(name, arguments, 2, span)?;
-                let Value::Record { type_name, .. } = &arguments[0] else {
-                    return Err(type_mismatch(
-                        "HOST.Net.Address",
-                        "non-address value",
-                        "HOST.Net.Endpoint.Create",
-                        span,
-                    ));
-                };
-                if type_name != "HOST.Net.Address" {
-                    return Err(type_mismatch(
-                        "HOST.Net.Address",
-                        type_name,
-                        "HOST.Net.Endpoint.Create",
-                        span,
-                    ));
-                }
+                record(
+                    &arguments[0],
+                    "HOST.Net.Address",
+                    "HOST.Net.Endpoint.Create",
+                    span,
+                )?;
                 let (port, _) = integer(&arguments[1], span)?;
                 let port = u16::try_from(port).map_err(|_| {
                     runtime_error(
@@ -544,35 +538,26 @@ impl NetProvider {
                     )
                 })?;
                 Ok(Value::Record {
-                    type_name: "HOST.Net.Endpoint".into(),
-                    fields: HashMap::from([
-                        ("address".into(), arguments[0].clone()),
-                        (
-                            "port".into(),
+                    record: RecordValue::new(
+                        "HOST.Net.Endpoint",
+                        vec![
+                            arguments[0].clone(),
                             Value::Integer(i128::from(port), IntegerType::UInt16),
-                        ),
-                    ]),
+                        ],
+                    ),
                 })
             }
             "HOST.Net.Endpoint.Address" => {
                 require_arity(name, arguments, 1, span)?;
-                let Value::Record { type_name, fields } = &arguments[0] else {
-                    return Err(type_mismatch(
-                        "HOST.Net.Endpoint",
-                        "non-endpoint value",
-                        "HOST.Net.Endpoint.Address",
-                        span,
-                    ));
-                };
-                if type_name != "HOST.Net.Endpoint" {
-                    return Err(type_mismatch(
-                        "HOST.Net.Endpoint",
-                        type_name,
-                        "HOST.Net.Endpoint.Address",
-                        span,
-                    ));
-                }
-                fields.get("address").cloned().ok_or_else(|| {
+                record(
+                    &arguments[0],
+                    "HOST.Net.Endpoint",
+                    "HOST.Net.Endpoint.Address",
+                    span,
+                )?
+                .get(ENDPOINT_ADDRESS)
+                .cloned()
+                .ok_or_else(|| {
                     type_mismatch(
                         "Endpoint.address field",
                         "missing field",
@@ -583,23 +568,15 @@ impl NetProvider {
             }
             "HOST.Net.Endpoint.Port" => {
                 require_arity(name, arguments, 1, span)?;
-                let Value::Record { type_name, fields } = &arguments[0] else {
-                    return Err(type_mismatch(
-                        "HOST.Net.Endpoint",
-                        "non-endpoint value",
-                        "HOST.Net.Endpoint.Port",
-                        span,
-                    ));
-                };
-                if type_name != "HOST.Net.Endpoint" {
-                    return Err(type_mismatch(
-                        "HOST.Net.Endpoint",
-                        type_name,
-                        "HOST.Net.Endpoint.Port",
-                        span,
-                    ));
-                }
-                fields.get("port").cloned().ok_or_else(|| {
+                record(
+                    &arguments[0],
+                    "HOST.Net.Endpoint",
+                    "HOST.Net.Endpoint.Port",
+                    span,
+                )?
+                .get(ENDPOINT_PORT)
+                .cloned()
+                .ok_or_else(|| {
                     type_mismatch(
                         "Endpoint.port field",
                         "missing field",
@@ -620,17 +597,16 @@ impl NetProvider {
                 };
                 match crate::net::Cidr::parse(text) {
                     Ok(cidr) => Ok(Value::Record {
-                        type_name: "HOST.Net.CIDR".into(),
-                        fields: HashMap::from([
-                            ("network".into(), Value::String(cidr.network().to_string())),
-                            (
-                                "prefix".into(),
+                        record: RecordValue::new(
+                            "HOST.Net.CIDR",
+                            vec![
+                                Value::String(shared_string(cidr.network().to_string())),
                                 Value::Integer(
                                     i128::from(cidr.prefix_length()),
                                     IntegerType::Int32,
                                 ),
-                            ),
-                        ]),
+                            ],
+                        ),
                     }),
                     Err(message) => Ok(Value::Error {
                         code: 1,
@@ -640,23 +616,13 @@ impl NetProvider {
             }
             "HOST.Net.CIDR.Contains" => {
                 require_arity(name, arguments, 2, span)?;
-                let Value::Record { type_name, fields } = &arguments[0] else {
-                    return Err(type_mismatch(
-                        "HOST.Net.CIDR",
-                        "non-CIDR value",
-                        "HOST.Net.CIDR.Contains",
-                        span,
-                    ));
-                };
-                if type_name != "HOST.Net.CIDR" {
-                    return Err(type_mismatch(
-                        "HOST.Net.CIDR",
-                        type_name,
-                        "HOST.Net.CIDR.Contains",
-                        span,
-                    ));
-                }
-                let Some(Value::String(network)) = fields.get("network") else {
+                let cidr = record(
+                    &arguments[0],
+                    "HOST.Net.CIDR",
+                    "HOST.Net.CIDR.Contains",
+                    span,
+                )?;
+                let Some(Value::String(network)) = cidr.get(CIDR_NETWORK) else {
                     return Err(type_mismatch(
                         "CIDR.network STRING",
                         "missing or invalid field",
@@ -664,7 +630,7 @@ impl NetProvider {
                         span,
                     ));
                 };
-                let Some(Value::Integer(prefix, _)) = fields.get("prefix") else {
+                let Some(Value::Integer(prefix, _)) = cidr.get(CIDR_PREFIX) else {
                     return Err(type_mismatch(
                         "CIDR.prefix INTEGER",
                         "missing or invalid field",
@@ -672,27 +638,13 @@ impl NetProvider {
                         span,
                     ));
                 };
-                let Value::Record {
-                    type_name: address_type,
-                    fields: address_fields,
-                } = &arguments[1]
-                else {
-                    return Err(type_mismatch(
-                        "HOST.Net.Address",
-                        "non-address value",
-                        "HOST.Net.CIDR.Contains",
-                        span,
-                    ));
-                };
-                if address_type != "HOST.Net.Address" {
-                    return Err(type_mismatch(
-                        "HOST.Net.Address",
-                        address_type,
-                        "HOST.Net.CIDR.Contains",
-                        span,
-                    ));
-                }
-                let Some(Value::String(address)) = address_fields.get("value") else {
+                let address_record = record(
+                    &arguments[1],
+                    "HOST.Net.Address",
+                    "HOST.Net.CIDR.Contains",
+                    span,
+                )?;
+                let Some(Value::String(address)) = address_record.get(ADDRESS_VALUE) else {
                     return Err(type_mismatch(
                         "Address.value STRING",
                         "missing or invalid field",
@@ -715,24 +667,14 @@ impl NetProvider {
             }
             "HOST.Net.CIDR.Network" | "HOST.Net.CIDR.PrefixLength" => {
                 require_arity(name, arguments, 1, span)?;
-                let Value::Record { type_name, fields } = &arguments[0] else {
-                    return Err(type_mismatch(
-                        "HOST.Net.CIDR",
-                        "non-CIDR value",
-                        "HOST.Net.CIDR accessor",
-                        span,
-                    ));
-                };
-                if type_name != "HOST.Net.CIDR" {
-                    return Err(type_mismatch(
-                        "HOST.Net.CIDR",
-                        type_name,
-                        "HOST.Net.CIDR accessor",
-                        span,
-                    ));
-                }
+                let cidr = record(
+                    &arguments[0],
+                    "HOST.Net.CIDR",
+                    "HOST.Net.CIDR accessor",
+                    span,
+                )?;
                 if name.ends_with(".Network") {
-                    let Some(Value::String(network)) = fields.get("network") else {
+                    let Some(Value::String(network)) = cidr.get(CIDR_NETWORK) else {
                         return Err(type_mismatch(
                             "CIDR.network STRING",
                             "missing or invalid field",
@@ -741,11 +683,13 @@ impl NetProvider {
                         ));
                     };
                     Ok(Value::Record {
-                        type_name: "HOST.Net.Address".into(),
-                        fields: HashMap::from([("value".into(), Value::String(network.clone()))]),
+                        record: RecordValue::new(
+                            "HOST.Net.Address",
+                            vec![Value::String(network.clone())],
+                        ),
                     })
                 } else {
-                    fields.get("prefix").cloned().ok_or_else(|| {
+                    cidr.get(CIDR_PREFIX).cloned().ok_or_else(|| {
                         type_mismatch(
                             "CIDR.prefix INTEGER",
                             "missing or invalid field",
@@ -769,7 +713,7 @@ impl NetProvider {
                     Ok(reply) => Ok(ping_reply_value(reply)),
                     Err(error) => Ok(Value::Error {
                         code: 1,
-                        message: error.message(),
+                        message: shared_string(error.message()),
                     }),
                 }
             }
@@ -780,7 +724,7 @@ impl NetProvider {
                     Ok(neighbor) => Ok(address_value(neighbor.as_std())),
                     Err(error) => Ok(Value::Error {
                         code: 1,
-                        message: error.message(),
+                        message: shared_string(error.message()),
                     }),
                 }
             }
@@ -798,32 +742,24 @@ impl NetProvider {
                     address,
                     std::time::Duration::from_millis(timeout as u64),
                 ) {
-                    Ok(name) => Ok(Value::String(name)),
+                    Ok(name) => Ok(Value::String(shared_string(name))),
                     Err(error) => Ok(Value::Error {
                         code: 1,
-                        message: error.message(),
+                        message: shared_string(error.message()),
                     }),
                 }
             }
             "HOST.Net.PingReply.Address" => {
                 require_arity(name, arguments, 1, span)?;
-                let Value::Record { type_name, fields } = &arguments[0] else {
-                    return Err(type_mismatch(
-                        "HOST.Net.PingReply",
-                        "non-PingReply value",
-                        "HOST.Net.PingReply.Address",
-                        span,
-                    ));
-                };
-                if type_name != "HOST.Net.PingReply" {
-                    return Err(type_mismatch(
-                        "HOST.Net.PingReply",
-                        type_name,
-                        "HOST.Net.PingReply.Address",
-                        span,
-                    ));
-                }
-                fields.get("address").cloned().ok_or_else(|| {
+                record(
+                    &arguments[0],
+                    "HOST.Net.PingReply",
+                    "HOST.Net.PingReply.Address",
+                    span,
+                )?
+                .get(PING_REPLY_ADDRESS)
+                .cloned()
+                .ok_or_else(|| {
                     type_mismatch(
                         "PingReply.address field",
                         "missing field",
@@ -834,23 +770,15 @@ impl NetProvider {
             }
             "HOST.Net.PingReply.RoundTripMicroseconds" => {
                 require_arity(name, arguments, 1, span)?;
-                let Value::Record { type_name, fields } = &arguments[0] else {
-                    return Err(type_mismatch(
-                        "HOST.Net.PingReply",
-                        "non-PingReply value",
-                        "HOST.Net.PingReply.RoundTripMicroseconds",
-                        span,
-                    ));
-                };
-                if type_name != "HOST.Net.PingReply" {
-                    return Err(type_mismatch(
-                        "HOST.Net.PingReply",
-                        type_name,
-                        "HOST.Net.PingReply.RoundTripMicroseconds",
-                        span,
-                    ));
-                }
-                fields.get("roundTripMicroseconds").cloned().ok_or_else(|| {
+                record(
+                    &arguments[0],
+                    "HOST.Net.PingReply",
+                    "HOST.Net.PingReply.RoundTripMicroseconds",
+                    span,
+                )?
+                .get(PING_REPLY_ROUND_TRIP_MICROSECONDS)
+                .cloned()
+                .ok_or_else(|| {
                     type_mismatch(
                         "PingReply.roundTripMicroseconds field",
                         "missing field",
@@ -911,7 +839,7 @@ impl NetProvider {
                         Err(error) => {
                             return Ok(Value::Error {
                                 code: 1,
-                                message: error.to_string(),
+                                message: shared_string(error.to_string()),
                             });
                         }
                     }
@@ -945,22 +873,20 @@ impl NetProvider {
                     std::time::Duration::from_millis(timeout as u64),
                 ) {
                     Ok(Some(addresses)) => Ok(Value::Record {
-                        type_name: "HOST.Net.Addresses".into(),
-                        fields: HashMap::from([(
-                            "values".into(),
-                            Value::Vector(
+                        record: RecordValue::new(
+                            "HOST.Net.Addresses",
+                            vec![Value::Vector(
                                 addresses
                                     .into_iter()
                                     .map(|address| Value::Record {
-                                        type_name: "HOST.Net.Address".into(),
-                                        fields: HashMap::from([(
-                                            "value".into(),
-                                            Value::String(address.to_string()),
-                                        )]),
+                                        record: RecordValue::new(
+                                            "HOST.Net.Address",
+                                            vec![Value::String(shared_string(address.to_string()))],
+                                        ),
                                     })
                                     .collect(),
-                            ),
-                        )]),
+                            )],
+                        ),
                     }),
                     Ok(None) => Ok(Value::Error {
                         code: 1,
@@ -968,7 +894,7 @@ impl NetProvider {
                     }),
                     Err(error) => Ok(Value::Error {
                         code: 1,
-                        message: error.to_string(),
+                        message: shared_string(error.to_string()),
                     }),
                 }
             }
@@ -1012,7 +938,7 @@ impl NetProvider {
                     }
                     Err(error) => Ok(Value::Error {
                         code: 1,
-                        message: error.to_string(),
+                        message: shared_string(error.to_string()),
                     }),
                 }
             }

@@ -42,6 +42,7 @@ jobs:
         run: |
           tests/check-forbidden-deps.sh
           tests/check-shared-cores.sh
+          bash tests/check-value-layout.sh
           cargo fmt --check
           # Native `bn build` links the bn_rt staticlib; cargo test alone may not emit it.
           cargo build -p bn_rt --locked

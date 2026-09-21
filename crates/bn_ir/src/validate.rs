@@ -5,6 +5,13 @@ use bn_types::{IntegerType, Type};
 
 use super::{Diagnostic, Module, Terminator, invalid_ir};
 
+#[path = "validate/fields.rs"]
+mod fields;
+use fields::{
+    receiver_matches_owner, validate_field_layouts, validate_field_reference,
+    validate_resolved_field_path,
+};
+
 fn instruction_defines(instruction: &super::Instruction) -> Option<super::ValueId> {
     match instruction {
         super::Instruction::Constant { destination, .. }
@@ -138,6 +145,7 @@ pub fn instruction_uses(instruction: &super::Instruction) -> Vec<super::ValueId>
 /// definite-assignment invariant.
 pub fn validate(module: &Module) -> Result<(), Diagnostic> {
     validate_class_bases(module)?;
+    validate_field_layouts(module)?;
     validate_function_kinds(module)?;
     for function in &module.functions {
         let block_count = u32::try_from(function.blocks.len())
@@ -301,7 +309,7 @@ pub fn validate(module: &Module) -> Result<(), Diagnostic> {
                         ));
                     }
                 }
-                validate_instruction_types(instruction, &value_types)?;
+                validate_instruction_types(module, instruction, &value_types)?;
                 if let Some(destination) = instruction_defines(instruction) {
                     defined.insert(destination);
                 }
@@ -339,23 +347,25 @@ pub fn validate(module: &Module) -> Result<(), Diagnostic> {
     Ok(())
 }
 
+fn default_module_span() -> Span {
+    let position = Position {
+        source_id: SourceId::UNKNOWN,
+        revision: Revision::UNKNOWN,
+        offset: 0,
+        line: 1,
+        column: 1,
+    };
+    Span {
+        start: position,
+        end: position,
+    }
+}
+
 fn validate_class_bases(module: &Module) -> Result<(), Diagnostic> {
-    let span = module.functions.first().map_or_else(
-        || {
-            let position = Position {
-                source_id: SourceId::UNKNOWN,
-                revision: Revision::UNKNOWN,
-                offset: 0,
-                line: 1,
-                column: 1,
-            };
-            Span {
-                start: position,
-                end: position,
-            }
-        },
-        |function| function.span,
-    );
+    let span = module
+        .functions
+        .first()
+        .map_or_else(default_module_span, |function| function.span);
     for (class, base) in &module.class_bases {
         if class.is_empty() || base.is_empty() {
             return Err(invalid_ir(
@@ -476,6 +486,7 @@ fn instruction_type(instruction: &super::Instruction) -> Option<&Type> {
 
 #[allow(clippy::too_many_lines)] // The instruction contract remains exhaustive in one match.
 fn validate_instruction_types(
+    module: &Module,
     instruction: &super::Instruction,
     value_types: &HashMap<super::ValueId, Type>,
 ) -> Result<(), Diagnostic> {
@@ -713,16 +724,106 @@ fn validate_instruction_types(
                 span,
             ));
         }
-        super::Instruction::SetMemberIndex { object, .. }
-            if !matches!(
-                value_types.get(object),
-                Some(Type::Named(_) | Type::ImportedNamed { .. })
-            ) =>
-        {
+        super::Instruction::Member {
+            field: None, ty, ..
+        } if !matches!(ty, Type::Function { .. }) => {
             return Err(invalid_ir(
-                "indexed member store receiver must be an object identity",
+                "record member access must carry a resolved field",
                 span,
             ));
+        }
+        super::Instruction::SetMember { field: None, .. }
+        | super::Instruction::SetMemberIndex { field: None, .. } => {
+            return Err(invalid_ir(
+                "record member store must carry a resolved field",
+                span,
+            ));
+        }
+        super::Instruction::Member {
+            field: Some(field),
+            name,
+            owner,
+            object,
+            ty,
+            ..
+        } if !matches!(ty, Type::Function { .. }) => {
+            let field_ty = validate_field_reference(module, owner, name, field, span)?;
+            if value_types
+                .get(object)
+                .is_none_or(|receiver| !receiver_matches_owner(module, receiver, owner))
+            {
+                return Err(invalid_ir(
+                    "member receiver does not match its owner layout",
+                    span,
+                ));
+            }
+            if !types_compatible(field_ty, ty) {
+                return Err(invalid_ir(
+                    "member result type does not match its field layout",
+                    span,
+                ));
+            }
+        }
+        super::Instruction::SetMember {
+            field: Some(field),
+            name,
+            owner,
+            object,
+            ty,
+            ..
+        } => {
+            let field_ty = validate_field_reference(module, owner, name, field, span)?;
+            if value_types
+                .get(object)
+                .is_none_or(|receiver| !receiver_matches_owner(module, receiver, owner))
+            {
+                return Err(invalid_ir(
+                    "member receiver does not match its owner layout",
+                    span,
+                ));
+            }
+            if !types_compatible(ty, field_ty) {
+                return Err(invalid_ir(
+                    "member store type does not match its field layout",
+                    span,
+                ));
+            }
+        }
+        super::Instruction::SetMemberIndex {
+            field: Some(field),
+            name,
+            owner,
+            object,
+            indices,
+            ty,
+            ..
+        } => {
+            let field_ty = validate_field_reference(module, owner, name, field, span)?;
+            if value_types
+                .get(object)
+                .is_none_or(|receiver| !receiver_matches_owner(module, receiver, owner))
+            {
+                return Err(invalid_ir(
+                    "indexed member store receiver does not match its owner layout",
+                    span,
+                ));
+            }
+            if !index_result_matches(field_ty, ty) {
+                return Err(invalid_ir(
+                    "indexed member store type does not match its field layout",
+                    span,
+                ));
+            }
+            if indices.is_empty()
+                || indices
+                    .iter()
+                    .any(|index| !is_integer(value_types.get(index)))
+            {
+                return Err(invalid_ir(
+                    "indexed store requires at least one integer index",
+                    span,
+                ));
+            }
         }
         super::Instruction::LoadStatic { class, field, .. }
         | super::Instruction::StoreStatic { class, field, .. }
@@ -746,11 +847,45 @@ fn validate_instruction_types(
         } if destructor.is_empty() => {
             return Err(invalid_ir("destructor name cannot be empty", span));
         }
-        super::Instruction::SetField { path, .. }
-        | super::Instruction::SetFieldIndex { path, .. }
-            if path.is_empty() || path.iter().any(String::is_empty) =>
-        {
-            return Err(invalid_ir("field path cannot be empty", span));
+        super::Instruction::SetField {
+            root_owner,
+            path,
+            fields,
+            ty,
+            ..
+        } => {
+            let field_ty =
+                validate_resolved_field_path(module, root_owner, path, fields.as_deref(), span)?;
+            if !types_compatible(ty, &field_ty) {
+                return Err(invalid_ir(
+                    "field store type does not match its field layout",
+                    span,
+                ));
+            }
+        }
+        super::Instruction::SetFieldIndex {
+            root_owner,
+            path,
+            fields,
+            indices,
+            ty,
+            ..
+        } => {
+            let field_ty =
+                validate_resolved_field_path(module, root_owner, path, fields.as_deref(), span)?;
+            if !index_result_matches(&field_ty, ty) {
+                return Err(invalid_ir(
+                    "indexed field store type does not match its field layout",
+                    span,
+                ));
+            }
+            if indices.is_empty()
+                || indices
+                    .iter()
+                    .any(|index| !is_integer(value_types.get(index)))
+            {
+                return Err(invalid_ir("indices must be non-empty integers", span));
+            }
         }
         super::Instruction::Index {
             object, index, ty, ..
@@ -768,8 +903,6 @@ fn validate_instruction_types(
             }
         }
         super::Instruction::SetIndex { indices, .. }
-        | super::Instruction::SetMemberIndex { indices, .. }
-        | super::Instruction::SetFieldIndex { indices, .. }
         | super::Instruction::SetStaticIndex { indices, .. }
             if indices.is_empty()
                 || indices
@@ -1237,12 +1370,15 @@ fn validate_function_kinds(module: &Module) -> Result<(), Diagnostic> {
 
 #[cfg(test)]
 mod kind_tests {
-    use std::collections::HashSet;
+    use std::collections::{BTreeMap, HashMap, HashSet};
 
     use bn_source::{Position, Revision, SourceId, Span};
     use bn_types::Type;
 
-    use super::super::{BasicBlock, BlockId, Function, FunctionKind, Module, SymbolId, Terminator};
+    use super::super::{
+        BasicBlock, BlockId, Constant, FieldId, FieldLayout, FieldLayoutEntry, FieldRef, FieldSlot,
+        Function, FunctionKind, Instruction, Module, SymbolId, Terminator, ValueId,
+    };
 
     fn span() -> Span {
         let position = Position {
@@ -1294,6 +1430,287 @@ mod kind_tests {
 
     fn detail(result: Result<(), bn_diag::Diagnostic>) -> String {
         result.expect_err("must be invalid IR").message.to_string()
+    }
+
+    #[test]
+    fn field_layout_slots_must_be_dense_and_ordered() {
+        let layout = FieldLayout {
+            owner: "Point".into(),
+            fields: vec![FieldLayoutEntry {
+                id: FieldId::from_raw(0),
+                slot: FieldSlot::from_raw(1),
+                ty: Type::Named("INTEGER".into()),
+                declaring_owner: "Point".into(),
+                weak: false,
+                span: span(),
+            }],
+            span: span(),
+        };
+        let mut module = module(Vec::new());
+        module.field_names = vec!["x".into()];
+        module.field_layouts = BTreeMap::from([("Point".into(), layout)]);
+
+        assert!(detail(super::validate(&module)).contains("slots must be dense"));
+    }
+
+    #[test]
+    fn field_layout_ids_must_exist_in_the_interned_name_table() {
+        let layout = FieldLayout {
+            owner: "Point".into(),
+            fields: vec![FieldLayoutEntry {
+                id: FieldId::from_raw(1),
+                slot: FieldSlot::from_raw(0),
+                ty: Type::Named("INTEGER".into()),
+                declaring_owner: "Point".into(),
+                weak: false,
+                span: span(),
+            }],
+            span: span(),
+        };
+        let mut module = module(Vec::new());
+        module.field_names = vec!["x".into()];
+        module.field_layouts = BTreeMap::from([("Point".into(), layout)]);
+
+        assert!(detail(super::validate(&module)).contains("absent from the name table"));
+    }
+
+    #[test]
+    fn member_receiver_and_result_must_match_the_field_layout() {
+        let layout = FieldLayout {
+            owner: "Point".into(),
+            fields: vec![FieldLayoutEntry {
+                id: FieldId::from_raw(0),
+                slot: FieldSlot::from_raw(0),
+                ty: Type::Integer(bn_types::IntegerType::Int32),
+                declaring_owner: "Point".into(),
+                weak: false,
+                span: span(),
+            }],
+            span: span(),
+        };
+        let mut module = module(vec![function(
+            "Start",
+            FunctionKind::Entry,
+            None,
+            0,
+            "VOID",
+        )]);
+        module.field_names = vec!["x".into()];
+        module.field_layouts = BTreeMap::from([("Point".into(), layout)]);
+        module.functions[0].blocks[0].instructions = vec![
+            Instruction::Default {
+                destination: ValueId(0),
+                ty: Type::Named("Point".into()),
+                dimensions: Vec::new(),
+                dynamic_dimensions: Vec::new(),
+                span: span(),
+            },
+            Instruction::Member {
+                destination: ValueId(1),
+                object: ValueId(0),
+                field: Some(FieldRef {
+                    owner: "Point".into(),
+                    id: FieldId::from_raw(0),
+                    slot: FieldSlot::from_raw(0),
+                }),
+                name: "x".into(),
+                owner: "Point".into(),
+                ty: Type::String,
+                span: span(),
+            },
+        ];
+
+        assert!(detail(super::validate(&module)).contains("result type"));
+        let Instruction::Default { ty, .. } = &mut module.functions[0].blocks[0].instructions[0]
+        else {
+            unreachable!("default");
+        };
+        *ty = Type::Boolean;
+        let Instruction::Member { ty, .. } = &mut module.functions[0].blocks[0].instructions[1]
+        else {
+            unreachable!("member");
+        };
+        *ty = Type::Integer(bn_types::IntegerType::Int32);
+        assert!(detail(super::validate(&module)).contains("receiver"));
+    }
+
+    #[test]
+    fn derived_receiver_may_access_a_base_layout_field() {
+        let base_layout = FieldLayout {
+            owner: "Animal".into(),
+            fields: vec![FieldLayoutEntry {
+                id: FieldId::from_raw(0),
+                slot: FieldSlot::from_raw(0),
+                ty: Type::String,
+                declaring_owner: "Animal".into(),
+                weak: false,
+                span: span(),
+            }],
+            span: span(),
+        };
+        let derived_layout = FieldLayout {
+            owner: "Dog".into(),
+            fields: base_layout.fields.clone(),
+            span: span(),
+        };
+        let mut module = module(vec![
+            function(
+                "Animal.$fields",
+                FunctionKind::FieldInit,
+                Some("Animal"),
+                1,
+                "VOID",
+            ),
+            function(
+                "Dog.$fields",
+                FunctionKind::FieldInit,
+                Some("Dog"),
+                1,
+                "VOID",
+            ),
+            function("Start", FunctionKind::Entry, None, 0, "VOID"),
+        ]);
+        module.field_names = vec!["name".into()];
+        module.class_bases = HashMap::from([("Dog".into(), "Animal".into())]);
+        module.field_layouts = BTreeMap::from([
+            ("Animal".into(), base_layout),
+            ("Dog".into(), derived_layout),
+        ]);
+        module.functions[2].blocks[0].instructions = vec![
+            Instruction::Default {
+                destination: ValueId(0),
+                ty: Type::Named("Dog".into()),
+                dimensions: Vec::new(),
+                dynamic_dimensions: Vec::new(),
+                span: span(),
+            },
+            Instruction::Member {
+                destination: ValueId(1),
+                object: ValueId(0),
+                field: Some(FieldRef {
+                    owner: "Animal".into(),
+                    id: FieldId::from_raw(0),
+                    slot: FieldSlot::from_raw(0),
+                }),
+                name: "name".into(),
+                owner: "Animal".into(),
+                ty: Type::String,
+                span: span(),
+            },
+        ];
+
+        super::validate(&module).expect("derived receiver may access inherited base field");
+    }
+
+    #[test]
+    fn field_name_table_must_not_duplicate_spellings() {
+        let mut module = module(Vec::new());
+        module.field_names = vec!["x".into(), "x".into()];
+
+        assert!(detail(super::validate(&module)).contains("field names must be unique"));
+    }
+
+    #[test]
+    fn derived_layout_must_preserve_the_base_prefix() {
+        let base = FieldLayout {
+            owner: "Parent".into(),
+            fields: vec![FieldLayoutEntry {
+                id: FieldId::from_raw(0),
+                slot: FieldSlot::from_raw(0),
+                ty: Type::Named("INTEGER".into()),
+                declaring_owner: "Parent".into(),
+                weak: false,
+                span: span(),
+            }],
+            span: span(),
+        };
+        let child = FieldLayout {
+            owner: "Child".into(),
+            fields: vec![FieldLayoutEntry {
+                id: FieldId::from_raw(1),
+                slot: FieldSlot::from_raw(0),
+                ty: Type::Named("INTEGER".into()),
+                declaring_owner: "Child".into(),
+                weak: false,
+                span: span(),
+            }],
+            span: span(),
+        };
+        let mut module = module(vec![function(
+            "Parent.$fields",
+            FunctionKind::FieldInit,
+            Some("Parent"),
+            1,
+            "VOID",
+        )]);
+        module.functions.push(function(
+            "Child.$fields",
+            FunctionKind::FieldInit,
+            Some("Child"),
+            1,
+            "VOID",
+        ));
+        module.field_names = vec!["first".into(), "second".into()];
+        module.class_bases = HashMap::from([("Child".into(), "Parent".into())]);
+        module.field_layouts = BTreeMap::from([("Parent".into(), base), ("Child".into(), child)]);
+
+        assert!(detail(super::validate(&module)).contains("base layout prefix"));
+    }
+
+    #[test]
+    fn field_path_stores_require_matching_resolved_fields() {
+        let layout = FieldLayout {
+            owner: "Point".into(),
+            fields: vec![FieldLayoutEntry {
+                id: FieldId::from_raw(0),
+                slot: FieldSlot::from_raw(0),
+                ty: Type::Integer(bn_types::IntegerType::Int32),
+                declaring_owner: "Point".into(),
+                weak: false,
+                span: span(),
+            }],
+            span: span(),
+        };
+        let mut module = module(vec![function(
+            "Start",
+            FunctionKind::Entry,
+            None,
+            0,
+            "VOID",
+        )]);
+        module.field_names = vec!["x".into()];
+        module.field_layouts = BTreeMap::from([("Point".into(), layout)]);
+        module.functions[0].blocks[0].instructions = vec![
+            Instruction::Constant {
+                destination: ValueId(0),
+                value: Constant::Integer("1".into()),
+                ty: Type::Integer(bn_types::IntegerType::Int32),
+                span: span(),
+            },
+            Instruction::SetField {
+                symbol: SymbolId(0),
+                root_owner: "Point".into(),
+                path: vec!["x".into()],
+                fields: None,
+                value: ValueId(0),
+                ty: Type::Integer(bn_types::IntegerType::Int32),
+                span: span(),
+            },
+        ];
+
+        assert!(detail(super::validate(&module)).contains("must carry resolved fields"));
+
+        let Instruction::SetField { fields, .. } =
+            &mut module.functions[0].blocks[0].instructions[1]
+        else {
+            unreachable!("field store");
+        };
+        *fields = Some(vec![FieldRef {
+            owner: "Point".into(),
+            id: FieldId::from_raw(0),
+            slot: FieldSlot::from_raw(1),
+        }]);
+        assert!(detail(super::validate(&module)).contains("does not match"));
     }
 
     #[test]

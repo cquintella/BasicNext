@@ -19,7 +19,7 @@ pub fn render(value: &Value) -> String {
             text
         }
         Value::Boolean(value) => if *value { "TRUE" } else { "FALSE" }.into(),
-        Value::String(value) => value.clone(),
+        Value::String(value) => value.to_string(),
         Value::Null => "NULL".into(),
         Value::NotAvailable => "NA".into(),
         Value::EndOfFile => "EOF".into(),
@@ -27,7 +27,7 @@ pub fn render(value: &Value) -> String {
             "[{}]",
             values.iter().map(render).collect::<Vec<_>>().join(", ")
         ),
-        Value::Function(name) | Value::Type(name) | Value::TimeZone(name) => name.clone(),
+        Value::Function(name) | Value::Type(name) | Value::TimeZone(name) => name.to_string(),
         Value::HostConsole => "HOST.Console".into(),
         Value::HostArgs => "HOST.Args".into(),
         Value::TcpStream(_) => "HOST.Net.TCPStream".into(),
@@ -46,8 +46,13 @@ pub fn render(value: &Value) -> String {
         Value::DispatchBarrier(id) => format!("BNDispatch.Barrier#{id}"),
         Value::DispatchSemaphore(id) => format!("BNDispatch.Semaphore#{id}"),
         Value::DispatchMutex(id) => format!("BNDispatch.Mutex#{id}"),
-        Value::Handle { type_name } | Value::Record { type_name, .. } => type_name.clone(),
-        Value::Object { class, .. } => class.rsplit('.').next().unwrap_or(class).to_string(),
+        Value::Handle { type_name } => type_name.to_string(),
+        Value::Record { record } => record.type_name().to_string(),
+        Value::Object { class, .. } => class
+            .rsplit('.')
+            .next()
+            .unwrap_or(class.as_ref())
+            .to_string(),
         Value::Pointer { .. } => "POINTER".into(),
         Value::File(_) => "FS.File".into(),
         Value::DataFrame(_) => "DataFrame".into(),

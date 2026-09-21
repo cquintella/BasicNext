@@ -9,7 +9,7 @@ use bn_types::IntegerType;
 
 use crate::temporal;
 
-use super::{Value, integer, require_arity, runtime_error, type_mismatch};
+use super::{Value, integer, require_arity, runtime_error, shared_string, type_mismatch};
 
 pub fn is_temporal_builtin(name: &str) -> bool {
     matches!(
@@ -55,7 +55,9 @@ pub fn temporal_call(name: &str, arguments: &[Value], span: Span) -> Result<Valu
                     span,
                 ));
             };
-            Ok(Value::TimeZone(temporal::parse_timezone(text, span)?))
+            Ok(Value::TimeZone(shared_string(temporal::parse_timezone(
+                text, span,
+            )?)))
         }
         "Timestamp.Parse" => {
             require_arity(name, arguments, 1, span)?;
@@ -82,7 +84,9 @@ pub fn temporal_call(name: &str, arguments: &[Value], span: Span) -> Result<Valu
                     span,
                 )
             })?;
-            Ok(Value::String(temporal::format_rfc3339(timestamp, span)?))
+            Ok(Value::String(shared_string(temporal::format_rfc3339(
+                timestamp, span,
+            )?)))
         }
         _ => Err(super::name_not_found(name, "temporal function", span)),
     }

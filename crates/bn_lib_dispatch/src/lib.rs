@@ -19,7 +19,7 @@ use std::collections::HashMap;
 
 use bn_diag::Diagnostic;
 use bn_source::Span;
-use bn_value::Value;
+use bn_value::{Value, shared_string};
 
 use bn_interp::provider::{CoreContext, Provider};
 use bn_interp::{
@@ -300,7 +300,7 @@ impl DispatchProvider {
                 let worker_module = core.module().clone();
                 let worker_host = core.host().fork_for_task();
                 let ticket = queue
-                    .submit_with(task_name.clone(), move |ticket| {
+                    .submit_with(task_name.to_string(), move |ticket| {
                         let mut input = std::io::Cursor::new(Vec::<u8>::new());
                         let mut output = BoundedTaskOutput {
                             bytes: Vec::new(),
@@ -447,7 +447,7 @@ impl DispatchProvider {
                             .error()
                             .map_or(Value::NotAvailable, |(code, message)| Value::Error {
                                 code,
-                                message,
+                                message: shared_string(message),
                             }))
                     }
                     "IsDone" => {
@@ -491,7 +491,10 @@ fn dispatch_error(error: crate::dispatch::DispatchError) -> Value {
         crate::dispatch::DispatchError::TaskFailed(Some((_, message))) => message,
         other => format!("{other:?}"),
     };
-    Value::Error { code: 1, message }
+    Value::Error {
+        code: 1,
+        message: shared_string(message),
+    }
 }
 
 #[cfg(test)]

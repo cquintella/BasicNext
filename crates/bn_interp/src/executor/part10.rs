@@ -44,18 +44,23 @@ impl Executor<'_, '_> {
     }
 
     pub fn allocate_object(&mut self, class: &str, span: Span) -> Result<Value, Diagnostic> {
+        let field_count = self
+            .module
+            .field_layouts
+            .get(class)
+            .map_or(0, |layout| layout.fields.len());
         let handle = self.objects.allocate(
             class,
             1,
             Instance {
                 class: class.to_string(),
-                fields: HashMap::new(),
+                fields: vec![Value::Null; field_count].into_boxed_slice(),
             },
             span,
         )?;
         Ok(Value::Object {
             handle,
-            class: class.to_string(),
+            class: shared_string(class),
         })
     }
 
@@ -137,7 +142,7 @@ impl Executor<'_, '_> {
             Value::String(text) => text
                 .chars()
                 .nth(index)
-                .map(|character| Value::String(character.into()))
+                .map(|character| Value::String(shared_string(character.to_string())))
                 .ok_or_else(|| {
                     super::index_out_of_bounds(index, text.chars().count(), "string", span)
                 }),
@@ -146,7 +151,7 @@ impl Executor<'_, '_> {
                 .arguments
                 .get(index)
                 .cloned()
-                .map(Value::String)
+                .map(|argument| Value::String(shared_string(argument)))
                 .ok_or_else(|| {
                     super::index_out_of_bounds(index, self.host.arguments.len(), "HOST.Args", span)
                 }),

@@ -54,15 +54,13 @@ pub(crate) fn lower_ownership_emission(
                 let Type::Named(owner) = ty else {
                     unreachable!("validated struct release type");
                 };
-                for (declaring, name, field_ty) in class_layout_fields(module, owner) {
-                    if !is_class_type(module, &field_ty)
-                        || module
-                            .weak_fields
-                            .contains(&(declaring.clone(), name.clone()))
-                    {
+                for field in class_layout_fields(module, owner) {
+                    let weak = module.field_is_weak(&field.reference);
+                    if !is_class_type(module, &field.ty) || weak {
                         continue;
                     }
-                    let offset = field_byte_offset(module, &declaring, &name);
+                    let offset = field_byte_offset(module, &field.reference)
+                        .expect("validated release field slot");
                     let field_ptr = format!("%structreleasefield{}_{}", value.0, offset);
                     let object = format!("%structreleaseobj{}_{}", value.0, offset);
                     let _ = writeln!(
@@ -72,7 +70,7 @@ pub(crate) fn lower_ownership_emission(
                     );
                     let _ = writeln!(text, "  {object} = load ptr, ptr {field_ptr}");
                     emit_destroy_if_last(
-                        text, module, function, &object, &field_ty, symbols, state,
+                        text, module, function, &object, &field.ty, symbols, state,
                     );
                     let _ = writeln!(text, "  store ptr null, ptr {field_ptr}");
                 }
@@ -302,19 +300,26 @@ pub(crate) fn lower_ownership_emission(
         }
         Instruction::SetMember {
             object,
-            name,
-            owner,
+            field,
+            name: _,
+            owner: _,
             value,
             ty,
             ..
         } => {
-            let offset = field_byte_offset(module, owner, name);
+            let offset = field_byte_offset(
+                module,
+                field.as_ref().expect("validated member field reference"),
+            )
+            .expect("validated member field slot");
             let value_ty = analysis
                 .values
                 .get(value)
                 .expect("validated member value type");
             let strong_object_field = is_class_type(module, ty)
-                && !module.weak_fields.contains(&(owner.clone(), name.clone()));
+                && !field
+                    .as_ref()
+                    .is_some_and(|field| module.field_is_weak(field));
             emit_set_member(
                 text,
                 module,
@@ -332,17 +337,16 @@ pub(crate) fn lower_ownership_emission(
         }
         Instruction::SetField {
             symbol,
-            path,
+            path: _,
+            fields,
             value,
             ty,
             ..
         } => {
-            let owner = match analysis.symbols.get(symbol) {
-                Some(Type::Named(name) | Type::ImportedNamed { name, .. }) => name.as_str(),
-                _ => "Box",
-            };
-            let field = path.first().map_or("value", String::as_str);
-            let offset = field_byte_offset(module, owner, field);
+            let resolved = fields.as_ref().and_then(|fields| fields.first());
+            let offset =
+                field_byte_offset(module, resolved.expect("validated field path reference"))
+                    .expect("validated field path slot");
             let value_ty = analysis
                 .values
                 .get(value)
@@ -361,9 +365,7 @@ pub(crate) fn lower_ownership_emission(
                 value.0, value.0
             );
             let strong_object_field = is_class_type(module, ty)
-                && !module
-                    .weak_fields
-                    .contains(&(owner.to_string(), field.to_string()));
+                && !resolved.is_some_and(|field| module.field_is_weak(field));
             if strong_object_field {
                 let old = format!("%fieldsetold{}", value.0);
                 let _ = writeln!(text, "  {old} = load ptr, ptr %fieldptr{}", value.0);
@@ -382,23 +384,19 @@ pub(crate) fn lower_ownership_emission(
         }
         Instruction::SetFieldIndex {
             symbol,
-            path,
+            path: _,
+            fields,
             indices,
             value,
             ty,
             ..
         } => {
-            let owner = match analysis.symbols.get(symbol) {
-                Some(Type::Named(name) | Type::ImportedNamed { name, .. }) => name.as_str(),
-                _ if function.parameters.first() == Some(symbol) => function
-                    .name
-                    .rsplit_once('.')
-                    .map(|(class, _)| class)
-                    .expect("validated method owner"),
-                _ => unreachable!("validated indexed field owner"),
-            };
-            let field = path.first().expect("validated indexed field path");
-            let offset = field_byte_offset(module, owner, field);
+            let resolved = fields
+                .as_ref()
+                .and_then(|fields| fields.first())
+                .expect("validated indexed field path reference");
+            let offset =
+                field_byte_offset(module, resolved).expect("validated indexed field path slot");
             let index = indices[0];
             let transfers_object =
                 is_class_type(module, ty) && analysis.owned_object_results.contains_key(value);

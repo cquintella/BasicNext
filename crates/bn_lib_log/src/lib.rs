@@ -14,7 +14,7 @@ use std::collections::HashMap;
 
 use bn_diag::Diagnostic;
 use bn_source::Span;
-use bn_value::Value;
+use bn_value::{Value, shared_string};
 
 use bn_interp::provider::{CoreContext, Provider};
 use bn_interp::{
@@ -194,13 +194,13 @@ impl LogProvider {
                         message: "field key exceeds 128 bytes".into(),
                     });
                 }
-                if fields.contains_key(key) {
+                if fields.contains_key(key.as_ref()) {
                     return Ok(Value::Error {
                         code: 1,
                         message: "field key already exists".into(),
                     });
                 }
-                if !fields.contains_key(key) && fields.len() >= 64 {
+                if !fields.contains_key(key.as_ref()) && fields.len() >= 64 {
                     return Ok(Value::Error {
                         code: 1,
                         message: "field limit exceeded".into(),
@@ -216,7 +216,7 @@ impl LogProvider {
                                 span,
                             ));
                         };
-                        value.clone()
+                        value.to_string()
                     }
                     "SetInteger" => integer(&arguments[2], span)?.0.to_string(),
                     "SetBoolean" => match arguments[2] {
@@ -232,7 +232,7 @@ impl LogProvider {
                     },
                     _ => unreachable!(),
                 };
-                fields.insert(key.clone(), value);
+                fields.insert(key.to_string(), value);
                 Ok(Value::Null)
             }
             "Get" => {
@@ -245,9 +245,13 @@ impl LogProvider {
                         span,
                     ));
                 };
-                fields.get(key).cloned().map(Value::String).ok_or_else(|| {
-                    runtime_error(bn_diag::DiagId::NOT_FOUND, "field key was not found", span)
-                })
+                fields
+                    .get(key.as_ref())
+                    .cloned()
+                    .map(|value| Value::String(shared_string(value)))
+                    .ok_or_else(|| {
+                        runtime_error(bn_diag::DiagId::NOT_FOUND, "field key was not found", span)
+                    })
             }
             _ => Ok(Value::Error {
                 code: 1,
@@ -313,7 +317,7 @@ impl LogProvider {
                         message: "entry field exceeds bounds".into(),
                     });
                 }
-                if fields.contains_key(key) {
+                if fields.contains_key(key.as_ref()) {
                     return Ok(Value::Error {
                         code: 1,
                         message: "entry field already exists".into(),
@@ -326,7 +330,7 @@ impl LogProvider {
                         message: "entry field limit exceeded".into(),
                     });
                 }
-                next.insert(key.clone(), value.clone());
+                next.insert(key.to_string(), value.to_string());
                 let next_id = self.next_entry;
                 self.next_entry += 1;
                 self.entries.insert(next_id, next);
@@ -368,7 +372,7 @@ impl LogProvider {
             self.loggers.insert(
                 id,
                 LogLoggerResource {
-                    label: label.clone(),
+                    label: label.to_string(),
                     context: std::collections::BTreeMap::new(),
                     null_transports: Vec::new(),
                     console_transports: Vec::new(),
@@ -532,7 +536,7 @@ impl LogProvider {
                 if !core
                     .host()
                     .filesystem()
-                    .allows_path(std::path::Path::new(path), true)
+                    .allows_path(std::path::Path::new(path.as_ref()), true)
                 {
                     return Err(runtime_error(
                         bn_diag::DiagId::EXECUTION_POLICY_DENIED,
@@ -562,7 +566,7 @@ impl LogProvider {
                     .expect("logger was checked above")
                     .file_transports
                     .push(LogFileTransport {
-                        path: path.clone(),
+                        path: path.to_string(),
                         minimum,
                     });
                 Ok(Value::Null)
@@ -617,7 +621,7 @@ impl LogProvider {
                     timestamp: format!("{:?}", std::time::SystemTime::now()),
                     label: logger.label.clone(),
                     level,
-                    message: message.clone(),
+                    message: message.to_string(),
                     fields,
                 };
                 let json_line = match record.json_line() {
@@ -670,7 +674,7 @@ impl LogProvider {
                 if let Some(error) = first_error {
                     return Ok(Value::Error {
                         code: 1,
-                        message: format!("log transport failed: {error}"),
+                        message: shared_string(format!("log transport failed: {error}")),
                     });
                 }
                 Ok(Value::Null)
@@ -716,7 +720,7 @@ impl LogProvider {
                 if let Some(error) = first_error {
                     return Ok(Value::Error {
                         code: 1,
-                        message: format!("log flush failed: {error}"),
+                        message: shared_string(format!("log flush failed: {error}")),
                     });
                 }
                 if method == "Close" {

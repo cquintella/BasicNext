@@ -71,7 +71,7 @@ fn binary(
     }
     if let (Value::String(left), Value::String(right)) = (left, right) {
         return match operator {
-            "Plus" => Ok(Value::String(format!("{left}{right}"))),
+            "Plus" => Ok(Value::String(shared_string(format!("{left}{right}")))),
             _ => Err(super::type_mismatch(
                 "Plus",
                 operator,
@@ -403,7 +403,7 @@ fn builtin(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnos
                     code: 1,
                     message: "CHAR code is not a Unicode scalar".into(),
                 },
-                |c| Value::String(c.into()),
+                |c| Value::String(shared_string(c.to_string())),
             ));
     }
     if name == "TOLOWER" {
@@ -416,7 +416,7 @@ fn builtin(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnos
             ));
         };
         // Unicode case mapping (same as bn_rt_str_to_lower / Rust to_lowercase).
-        return Ok(Value::String(text.to_lowercase()));
+        return Ok(Value::String(shared_string(text.to_lowercase())));
     }
     if name == "TOUPPER" {
         let Value::String(text) = &arguments[0] else {
@@ -428,7 +428,7 @@ fn builtin(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnos
             ));
         };
         // Unicode case mapping (same as bn_rt_str_to_upper / Rust to_uppercase).
-        return Ok(Value::String(text.to_uppercase()));
+        return Ok(Value::String(shared_string(text.to_uppercase())));
     }
     Err(super::name_not_found(name, "builtin dispatch", span))
 }

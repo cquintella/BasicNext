@@ -1,27 +1,37 @@
-use super::{FunctionKind, HashSet, Instruction, Module, Type, llvm_type};
+//! LLVM object-layout calculations derived exclusively from validated BN IR metadata.
+
+use bn_ir::FieldRef;
+
+use super::{FunctionKind, Module, Type, llvm_type};
 
 pub(crate) const OBJECT_HEADER_BYTES: u32 = 16;
 
-pub(crate) fn field_byte_offset(module: &Module, owner: &str, field: &str) -> u32 {
+#[derive(Clone, Debug)]
+pub(crate) struct LayoutField {
+    pub reference: FieldRef,
+    pub ty: Type,
+}
+
+pub(crate) fn field_byte_offset(module: &Module, field: &FieldRef) -> Option<u32> {
     let mut offset = OBJECT_HEADER_BYTES;
-    for (declaring_class, name, ty) in class_layout_fields(module, owner) {
-        let (size, alignment) =
-            llvm_storage_layout(&ty).expect("target validation accepted member field type");
+    for candidate in class_layout_fields(module, &field.owner) {
+        let (size, alignment) = llvm_storage_layout(&candidate.ty)
+            .expect("target validation accepted member field type");
         offset = align_to(offset, alignment);
-        if class_names_match(&declaring_class, owner) && name == field {
-            return offset;
+        if candidate.reference == *field {
+            return Some(offset);
         }
         offset = offset.saturating_add(size);
     }
-    offset
+    None
 }
 
 pub(crate) fn class_instance_bytes(module: &Module, type_name: &str) -> u64 {
     let mut total = OBJECT_HEADER_BYTES;
     let mut object_alignment = OBJECT_HEADER_BYTES;
-    for (_, _, ty) in class_layout_fields(module, type_name) {
+    for field in class_layout_fields(module, type_name) {
         let (size, alignment) =
-            llvm_storage_layout(&ty).expect("target validation accepted member field type");
+            llvm_storage_layout(&field.ty).expect("target validation accepted member field type");
         total = align_to(total, alignment).saturating_add(size);
         object_alignment = object_alignment.max(alignment);
     }
@@ -29,19 +39,20 @@ pub(crate) fn class_instance_bytes(module: &Module, type_name: &str) -> u64 {
 }
 
 pub(crate) fn field_type(module: &Module, owner: &str, field: &str) -> Option<Type> {
-    class_layout_fields(module, owner)
-        .into_iter()
-        .find_map(|(declaring_class, name, ty)| {
-            (class_names_match(&declaring_class, owner) && name == field).then_some(ty)
-        })
+    module.field_ref(owner, field).and_then(|reference| {
+        class_layout_fields(module, owner)
+            .into_iter()
+            .find_map(|candidate| (candidate.reference == reference).then_some(candidate.ty))
+    })
 }
 
 pub(crate) fn vector_field_offsets(module: &Module, owner: &str) -> Vec<u32> {
     class_layout_fields(module, owner)
         .into_iter()
-        .filter_map(|(declaring_class, name, ty)| {
-            matches!(ty, Type::Vector { .. })
-                .then(|| field_byte_offset(module, &declaring_class, &name))
+        .filter_map(|field| {
+            matches!(field.ty, Type::Vector { .. })
+                .then(|| field_byte_offset(module, &field.reference))
+                .flatten()
         })
         .collect()
 }
@@ -64,44 +75,25 @@ pub(crate) fn struct_copy_supported(module: &Module, ty: &Type) -> bool {
     }
     class_layout_fields(module, name)
         .into_iter()
-        .all(|(_, _, field_ty)| !matches!(field_ty, Type::Vector { .. } | Type::Pointer { .. }))
+        .all(|field| !matches!(field.ty, Type::Vector { .. } | Type::Pointer { .. }))
 }
 
-fn class_names_match(left: &str, right: &str) -> bool {
-    left == right || left.rsplit('.').next() == right.rsplit('.').next()
-}
-
-pub(crate) fn class_layout_fields(module: &Module, class: &str) -> Vec<(String, String, Type)> {
-    fn append(
-        module: &Module,
-        class: &str,
-        visiting: &mut HashSet<String>,
-        fields: &mut Vec<(String, String, Type)>,
-    ) {
-        if !visiting.insert(class.to_string()) {
-            return;
-        }
-        if let Some(base) = module.class_bases.get(class) {
-            append(module, base, visiting, fields);
-        }
-        if let Some(function) = module
-            .function_of_kind(FunctionKind::FieldInit, class)
-            .or_else(|| module.function_of_kind(FunctionKind::Default, class))
-        {
-            for block in &function.blocks {
-                for instruction in &block.instructions {
-                    if let Instruction::SetMember { name, ty, .. } = instruction {
-                        fields.push((class.to_string(), name.clone(), ty.clone()));
-                    }
-                }
-            }
-        }
-        visiting.remove(class);
-    }
-
-    let mut fields = Vec::new();
-    append(module, class, &mut HashSet::new(), &mut fields);
-    fields
+pub(crate) fn class_layout_fields(module: &Module, class: &str) -> Vec<LayoutField> {
+    let layout = module.field_layouts.get(class);
+    layout.map_or_else(Vec::new, |layout| {
+        layout
+            .fields
+            .iter()
+            .map(|entry| LayoutField {
+                reference: FieldRef {
+                    owner: class.to_string(),
+                    id: entry.id,
+                    slot: entry.slot,
+                },
+                ty: entry.ty.clone(),
+            })
+            .collect()
+    })
 }
 
 fn align_to(offset: u32, alignment: u32) -> u32 {
@@ -123,5 +115,123 @@ fn llvm_storage_layout(ty: &Type) -> Option<(u32, u32)> {
         "{ i1, i32 }" => Some((8, 4)),
         "{ i1, ptr, i32 }" | "{ i1, ptr, i64 }" => Some((24, 8)),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use bn_ir::{FieldId, FieldLayout, FieldLayoutEntry, FieldRef, FieldSlot};
+    use bn_source::{Position, Revision, SourceId, Span};
+
+    use super::{Type, class_layout_fields};
+
+    fn span() -> Span {
+        let position = Position {
+            source_id: SourceId(1),
+            revision: Revision(1),
+            offset: 0,
+            line: 1,
+            column: 1,
+        };
+        Span {
+            start: position,
+            end: position,
+        }
+    }
+
+    #[test]
+    fn class_layout_uses_validated_metadata_without_initializer_instructions() {
+        let module = bn_ir::Module {
+            field_names: vec!["first".into(), "second".into()],
+            field_layouts: BTreeMap::from([(
+                "Point".into(),
+                FieldLayout {
+                    owner: "Point".into(),
+                    fields: vec![
+                        FieldLayoutEntry {
+                            id: FieldId::from_raw(0),
+                            slot: FieldSlot::from_raw(0),
+                            ty: Type::Integer(bn_types::IntegerType::Int32),
+                            declaring_owner: "Point".into(),
+                            weak: false,
+                            span: span(),
+                        },
+                        FieldLayoutEntry {
+                            id: FieldId::from_raw(1),
+                            slot: FieldSlot::from_raw(1),
+                            ty: Type::Boolean,
+                            declaring_owner: "Point".into(),
+                            weak: false,
+                            span: span(),
+                        },
+                    ],
+                    span: span(),
+                },
+            )]),
+            ..bn_ir::Module::default()
+        };
+
+        let fields = class_layout_fields(&module, "Point");
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[0].reference.slot.value(), 0);
+        assert_eq!(fields[0].ty, Type::Integer(bn_types::IntegerType::Int32));
+        assert_eq!(fields[1].reference.slot.value(), 1);
+        assert_eq!(fields[1].ty, Type::Boolean);
+    }
+
+    #[test]
+    fn qualified_layout_lookup_never_falls_back_to_a_last_segment() {
+        let layout = |owner: &str, id: u32, ty: Type| FieldLayout {
+            owner: owner.into(),
+            fields: vec![FieldLayoutEntry {
+                id: FieldId::from_raw(id),
+                slot: FieldSlot::from_raw(0),
+                ty,
+                declaring_owner: owner.into(),
+                weak: false,
+                span: span(),
+            }],
+            span: span(),
+        };
+        let module = bn_ir::Module {
+            field_names: vec!["left".into(), "right".into()],
+            field_layouts: BTreeMap::from([
+                (
+                    "#0.Point".into(),
+                    layout("#0.Point", 0, Type::Integer(bn_types::IntegerType::Int32)),
+                ),
+                ("#1.Point".into(), layout("#1.Point", 1, Type::Boolean)),
+            ]),
+            ..bn_ir::Module::default()
+        };
+
+        assert!(class_layout_fields(&module, "Point").is_empty());
+        assert_eq!(
+            class_layout_fields(&module, "#0.Point")[0]
+                .reference
+                .id
+                .value(),
+            0
+        );
+        assert_eq!(
+            class_layout_fields(&module, "#1.Point")[0]
+                .reference
+                .id
+                .value(),
+            1
+        );
+        assert!(
+            super::field_byte_offset(
+                &module,
+                &FieldRef {
+                    owner: "#0.Point".into(),
+                    id: FieldId::from_raw(1),
+                    slot: FieldSlot::from_raw(0),
+                }
+            )
+            .is_none()
+        );
     }
 }

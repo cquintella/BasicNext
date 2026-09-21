@@ -114,6 +114,25 @@ pub(crate) fn analyze_with_modules_mode(
         base_classes: analyzer.base_classes,
         bnmath_modules: analyzer.bnmath_modules,
         module_constants,
+        record_members: analyzer
+            .members
+            .iter()
+            .map(|(owner, members)| {
+                let mut fields = members
+                    .iter()
+                    .filter(|(_, member)| {
+                        !member.is_static && !matches!(member.ty, Type::Function { .. })
+                    })
+                    .map(|(name, member)| RecordMember {
+                        name: name.clone(),
+                        ty: member.ty.clone(),
+                        span: member.span,
+                    })
+                    .collect::<Vec<_>>();
+                fields.sort_by(|left, right| left.name.cmp(&right.name));
+                (owner.clone(), fields)
+            })
+            .collect(),
     };
     let mut warnings = analyzer.warnings;
     if collect_warnings {

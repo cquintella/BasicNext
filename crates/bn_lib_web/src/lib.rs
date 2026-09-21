@@ -23,9 +23,9 @@ use std::collections::HashMap;
 use bn_diag::Diagnostic;
 use bn_ir::Module;
 use bn_source::Span;
-use bn_value::Value;
+use bn_value::{Value, shared_string};
 
-use bn_host_net::net_values::{address_value, net_endpoint};
+use bn_host_net::net_values::{address_value, net_endpoint, slots};
 use bn_interp::provider::{CoreContext, Provider};
 use bn_interp::{
     HostEnv, integer_from_count_pub as integer_from_count, integer_pub as integer,
@@ -147,10 +147,10 @@ pub fn execute_callback(
         let span = bn_interp::default_span();
         let request_value = core
             .allocate_object("BNWeb.Request", span)
-            .map_err(|error| error.message)?;
+            .map_err(|error| error.message.to_string())?;
         let response_value = core
             .allocate_object("BNWeb.Response", span)
-            .map_err(|error| error.message)?;
+            .map_err(|error| error.message.to_string())?;
         let request_handle = match &request_value {
             Value::Object { handle, .. } => *handle,
             _ => return Err("BNWeb callback object allocation failed".into()),
@@ -165,9 +165,9 @@ pub fn execute_callback(
         })?;
         let result = core
             .call_function(function_name, vec![request_value, response_value], span)
-            .map_err(|error| error.message)?;
+            .map_err(|error| error.message.to_string())?;
         if let Value::Error { message, .. } = result {
-            return Err(message);
+            return Err(message.to_string());
         }
         with_web_provider(core, |web| web.responses.remove(&response_handle))?
             .ok_or_else(|| "BNWeb callback did not retain its response".into())
@@ -353,7 +353,7 @@ impl WebProvider {
                 vec![
                     fields.clone(),
                     Value::String(key.into()),
-                    Value::String(value),
+                    Value::String(shared_string(value)),
                 ],
                 span,
             )?;
@@ -428,7 +428,7 @@ impl WebProvider {
                         ));
                     };
                     if !matches!(
-                        method.as_str(),
+                        method.as_ref(),
                         "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD"
                     ) {
                         return Ok(Value::Error {
@@ -484,7 +484,10 @@ impl WebProvider {
                         match crate::http::client_request_with_policy(method, url, body, policy) {
                             Ok(response) => response,
                             Err(message) => {
-                                return Ok(Value::Error { code: 1, message });
+                                return Ok(Value::Error {
+                                    code: 1,
+                                    message: shared_string(message),
+                                });
                             }
                         };
                     let object = core.allocate_object("BNWeb.Response", span)?;
@@ -583,7 +586,7 @@ impl WebProvider {
                             message: "filter limit exceeded".into(),
                         });
                     }
-                    filters.push(filter.clone());
+                    filters.push(filter.to_string());
                     Ok(Value::Null)
                 }
                 "Route" => {
@@ -611,7 +614,7 @@ impl WebProvider {
                             span,
                         )
                     })?;
-                    let result = state.add_route(method.clone(), pattern.clone());
+                    let result = state.add_route(method.to_string(), pattern.to_string());
                     drop(state);
                     if let Err(message) = result {
                         return Ok(Value::Error {
@@ -625,7 +628,7 @@ impl WebProvider {
                     self.handlers
                         .entry(*handle)
                         .or_default()
-                        .insert(format!("{method}\n{pattern}"), handler.clone());
+                        .insert(format!("{method}\n{pattern}"), handler.to_string());
                     Ok(Value::Null)
                 }
                 "Status" => {
@@ -1301,9 +1304,13 @@ impl WebProvider {
                             span,
                         ));
                     };
-                    Ok(store
-                        .create(value)
-                        .map_or_else(|message| Value::Error { code: 1, message }, Value::String))
+                    Ok(store.create(value).map_or_else(
+                        |message| Value::Error {
+                            code: 1,
+                            message: shared_string(message),
+                        },
+                        |value| Value::String(shared_string(value)),
+                    ))
                 }
                 "Get" => {
                     require_arity(name, arguments, 2, span)?;
@@ -1320,7 +1327,7 @@ impl WebProvider {
                             code: 1,
                             message: "session not found".into(),
                         },
-                        Value::String,
+                        |value| Value::String(shared_string(value)),
                     ))
                 }
                 "Delete" => {
@@ -1334,7 +1341,10 @@ impl WebProvider {
                         ));
                     };
                     Ok(store.delete(id).map_or_else(
-                        |message| Value::Error { code: 1, message },
+                        |message| Value::Error {
+                            code: 1,
+                            message: shared_string(message),
+                        },
                         |()| Value::Null,
                     ))
                 }
@@ -1350,7 +1360,10 @@ impl WebProvider {
                         ));
                     };
                     Ok(store.set(id, value).map_or_else(
-                        |message| Value::Error { code: 1, message },
+                        |message| Value::Error {
+                            code: 1,
+                            message: shared_string(message),
+                        },
                         |()| Value::Null,
                     ))
                 }
@@ -1365,9 +1378,13 @@ impl WebProvider {
                             span,
                         ));
                     };
-                    Ok(store
-                        .rotate(id, value)
-                        .map_or_else(|message| Value::Error { code: 1, message }, Value::String))
+                    Ok(store.rotate(id, value).map_or_else(
+                        |message| Value::Error {
+                            code: 1,
+                            message: shared_string(message),
+                        },
+                        |value| Value::String(shared_string(value)),
+                    ))
                 }
                 _ => Ok(Value::Error {
                     code: 1,
@@ -1387,7 +1404,12 @@ impl WebProvider {
                 };
                 let scraper = match crate::web_state::Scraper::parse(html) {
                     Ok(value) => value,
-                    Err(message) => return Ok(Value::Error { code: 1, message }),
+                    Err(message) => {
+                        return Ok(Value::Error {
+                            code: 1,
+                            message: shared_string(message),
+                        });
+                    }
                 };
                 let object = core.allocate_object("BNWeb.Scraper", span)?;
                 if let Value::Object { handle, .. } = object {
@@ -1436,9 +1458,13 @@ impl WebProvider {
                         span,
                     ));
                 };
-                return Ok(scraper
-                    .text(selector)
-                    .map_or_else(|message| Value::Error { code: 1, message }, Value::String));
+                return Ok(scraper.text(selector).map_or_else(
+                    |message| Value::Error {
+                        code: 1,
+                        message: shared_string(message),
+                    },
+                    |value| Value::String(shared_string(value)),
+                ));
             }
             Ok(Value::Error {
                 code: 1,
@@ -1467,7 +1493,7 @@ impl WebProvider {
             match method {
                 "Allow" | "Deny" => {
                     require_arity(name, arguments, 2, span)?;
-                    let Value::Record { fields, .. } = &arguments[1] else {
+                    let Value::Record { record } = &arguments[1] else {
                         return Err(type_mismatch(
                             "HOST.Net.CIDR",
                             "non-record value",
@@ -1475,11 +1501,21 @@ impl WebProvider {
                             span,
                         ));
                     };
+                    if record.type_name().as_ref() != "HOST.Net.CIDR"
+                        || record.len() != slots::CIDR_FIELDS
+                    {
+                        return Err(type_mismatch(
+                            "well-formed HOST.Net.CIDR",
+                            "malformed record shape",
+                            "ACL.Allow/Deny",
+                            span,
+                        ));
+                    }
                     let (Value::String(network), Value::Integer(prefix, _)) = (
-                        fields.get("network").ok_or_else(|| {
+                        record.get(slots::CIDR_NETWORK).ok_or_else(|| {
                             type_mismatch("STRING", "missing network", "ACL CIDR", span)
                         })?,
-                        fields.get("prefix").ok_or_else(|| {
+                        record.get(slots::CIDR_PREFIX).ok_or_else(|| {
                             type_mismatch("INTEGER", "missing prefix", "ACL CIDR", span)
                         })?,
                     ) else {
@@ -1497,13 +1533,16 @@ impl WebProvider {
                         acl.deny(&cidr)
                     };
                     Ok(result.map_or_else(
-                        |message| Value::Error { code: 1, message },
+                        |message| Value::Error {
+                            code: 1,
+                            message: shared_string(message),
+                        },
                         |()| Value::Null,
                     ))
                 }
                 "Check" => {
                     require_arity(name, arguments, 2, span)?;
-                    let Value::Record { fields, .. } = &arguments[1] else {
+                    let Value::Record { record } = &arguments[1] else {
                         return Err(type_mismatch(
                             "HOST.Net.Address",
                             "non-record value",
@@ -1511,9 +1550,25 @@ impl WebProvider {
                             span,
                         ));
                     };
-                    let Value::String(text) = fields.get("value").ok_or_else(|| {
-                        type_mismatch("value: STRING", "missing field", "ACL.Check address", span)
-                    })?
+                    if record.type_name().as_ref() != "HOST.Net.Address"
+                        || record.len() != slots::ADDRESS_FIELDS
+                    {
+                        return Err(type_mismatch(
+                            "well-formed HOST.Net.Address",
+                            "malformed record shape",
+                            "ACL.Check",
+                            span,
+                        ));
+                    }
+                    let Value::String(text) =
+                        record.get(slots::ADDRESS_VALUE).ok_or_else(|| {
+                            type_mismatch(
+                                "value: STRING",
+                                "missing field",
+                                "ACL.Check address",
+                                span,
+                            )
+                        })?
                     else {
                         return Err(type_mismatch(
                             "value: STRING",
@@ -1587,7 +1642,10 @@ impl WebProvider {
                             std::time::Duration::from_millis(u64::try_from(age).unwrap_or(0)),
                         )
                         .map_or_else(
-                            |message| Value::Error { code: 1, message },
+                            |message| Value::Error {
+                                code: 1,
+                                message: shared_string(message),
+                            },
                             |()| Value::Null,
                         ))
                 }
@@ -1625,7 +1683,7 @@ impl WebProvider {
                             message: "negative cookie age".into(),
                         });
                     }
-                    let same_site = match same_site.as_str() {
+                    let same_site = match same_site.as_ref() {
                         "Strict" => crate::web_state::SameSite::Strict,
                         "Lax" => crate::web_state::SameSite::Lax,
                         "None" => crate::web_state::SameSite::None,
@@ -1656,7 +1714,10 @@ impl WebProvider {
                             },
                         )
                         .map_or_else(
-                            |message| Value::Error { code: 1, message },
+                            |message| Value::Error {
+                                code: 1,
+                                message: shared_string(message),
+                            },
                             |()| Value::Null,
                         ))
                 }
@@ -1677,7 +1738,7 @@ impl WebProvider {
                             code: 1,
                             message: "cookie not found".into(),
                         },
-                        Value::String,
+                        |value| Value::String(shared_string(value)),
                     ))
                 }
                 "Delete" => {
@@ -1861,7 +1922,12 @@ impl WebProvider {
                 };
                 let config = match crate::tls::server_config_from_pem(cert, key) {
                     Ok(config) => config,
-                    Err(message) => return Ok(Value::Error { code: 1, message }),
+                    Err(message) => {
+                        return Ok(Value::Error {
+                            code: 1,
+                            message: shared_string(message),
+                        });
+                    }
                 };
                 let object = core.allocate_object("BNWeb.TLSConfig", span)?;
                 if let Value::Object { handle, .. } = object {
@@ -1890,7 +1956,12 @@ impl WebProvider {
                 };
                 let config = match crate::tls::server_config_from_pem(cert, key) {
                     Ok(config) => config,
-                    Err(message) => return Ok(Value::Error { code: 1, message }),
+                    Err(message) => {
+                        return Ok(Value::Error {
+                            code: 1,
+                            message: shared_string(message),
+                        });
+                    }
                 };
                 self.tls_configs
                     .insert(*handle, std::sync::Arc::new(config));
@@ -1909,7 +1980,12 @@ impl WebProvider {
                 };
                 let config = match crate::tls::server_config_from_pem(cert, key) {
                     Ok(config) => config,
-                    Err(message) => return Ok(Value::Error { code: 1, message }),
+                    Err(message) => {
+                        return Ok(Value::Error {
+                            code: 1,
+                            message: shared_string(message),
+                        });
+                    }
                 };
                 self.tls_configs
                     .insert(*handle, std::sync::Arc::new(config));
@@ -1969,7 +2045,7 @@ impl WebProvider {
                             code: 1,
                             message: "index is outside collection".into(),
                         },
-                        |value| Value::String(value.clone()),
+                        |value| Value::String(shared_string(value.as_str())),
                     ))
                 }
                 _ => Ok(Value::Error {
@@ -2215,7 +2291,7 @@ impl WebProvider {
                         .headers
                         .iter()
                         .find(|(name, _)| name.eq_ignore_ascii_case(key))
-                        .map(|(_, value)| Value::String(value.clone()))
+                        .map(|(_, value)| Value::String(shared_string(value.as_str())))
                         .ok_or_else(|| {
                             runtime_error(
                                 bn_diag::DiagId::HEADER_NOT_FOUND,

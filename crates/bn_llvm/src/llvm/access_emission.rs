@@ -17,6 +17,7 @@ pub(crate) fn lower_access_emission(
         Instruction::Member {
             destination,
             object,
+            field,
             name,
             owner,
             ty,
@@ -72,7 +73,11 @@ pub(crate) fn lower_access_emission(
                     destination.0
                 );
             } else {
-                let offset = field_byte_offset(module, owner, name);
+                let offset = field_byte_offset(
+                    module,
+                    field.as_ref().expect("validated member field reference"),
+                )
+                .expect("validated member field slot");
                 emit_member(text, *destination, *object, offset, ty);
             }
         }

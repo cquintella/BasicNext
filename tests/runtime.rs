@@ -1975,6 +1975,14 @@ fn executes_imported_class_constructor_and_methods() {
 }
 
 #[test]
+fn executes_nested_record_store_inside_imported_module() {
+    let (code, output) = run_path("tests/modules/imported-nested-record/main.bn")
+        .expect("execute imported nested record store");
+    assert_eq!(code, 0);
+    assert_eq!(output, "7\n");
+}
+
+#[test]
 fn executes_a_qualified_imported_interface() {
     let (code, output) = run_path("tests/modules/qualified-interface/main.bn")
         .expect("execute qualified imported interface");

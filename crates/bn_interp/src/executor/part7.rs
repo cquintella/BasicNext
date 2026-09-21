@@ -19,7 +19,9 @@ impl Executor<'_, '_> {
                     },
                     Err(error) => Ok(Value::Error {
                         code: 1,
-                        message: format!("available processor count is unavailable: {error}"),
+                        message: shared_string(format!(
+                            "available processor count is unavailable: {error}"
+                        )),
                     }),
                 }
             }

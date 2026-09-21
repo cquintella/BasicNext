@@ -21,7 +21,7 @@ use std::collections::HashMap;
 
 use bn_diag::Diagnostic;
 use bn_source::Span;
-use bn_value::Value;
+use bn_value::{Value, shared_string};
 
 use crate::dataframe::{
     DataFrameJoin, DataFrameJoinConfig, add_dataframe_column, append_columns, append_rows,
@@ -151,7 +151,10 @@ impl DataProvider {
                     match core.call_function("FS.File.ReadAll", arguments[..1].to_vec(), span)? {
                         Value::String(text) => text,
                         Value::Error { message, .. } => {
-                            return Ok(Value::Error { code: 1, message });
+                            return Ok(Value::Error {
+                                code: 1,
+                                message: shared_string(message),
+                            });
                         }
                         _ => {
                             return Ok(Value::Error {
@@ -163,12 +166,22 @@ impl DataProvider {
                 let rows = match core.host().data_provider().read_csv(&text, separator[0]) {
                     Ok(rows) => rows,
                     Err(message) => {
-                        return Ok(Value::Error { code: 1, message });
+                        return Ok(Value::Error {
+                            code: 1,
+                            message: shared_string(message),
+                        });
                     }
                 };
-                let frame = match bn_rt::frame_from_csv_rows(rows, has_header, Value::String) {
+                let frame = match bn_rt::frame_from_csv_rows(rows, has_header, |value| {
+                    Value::String(shared_string(value))
+                }) {
                     Ok(frame) => frame,
-                    Err(message) => return Ok(Value::Error { code: 1, message }),
+                    Err(message) => {
+                        return Ok(Value::Error {
+                            code: 1,
+                            message: shared_string(message),
+                        });
+                    }
                 };
                 let id = self.next;
                 self.next += 1;
@@ -242,7 +255,9 @@ impl DataProvider {
                             frame
                                 .columns
                                 .iter()
-                                .map(|column| quote(&Value::String(column.name.clone())))
+                                .map(|column| {
+                                    quote(&Value::String(shared_string(column.name.as_str())))
+                                })
                                 .collect::<Vec<_>>()
                                 .join(&separator[0].to_string()),
                         );
@@ -270,7 +285,7 @@ impl DataProvider {
                 };
                 match core.call_function(
                     "FS.File.Write",
-                    vec![arguments[0].clone(), Value::String(body)],
+                    vec![arguments[0].clone(), Value::String(shared_string(body))],
                     span,
                 )? {
                     Value::Error { code, message } => Ok(Value::Error { code, message }),
@@ -339,8 +354,11 @@ impl DataProvider {
                     });
                 };
                 match column_name(frame, index) {
-                    Ok(name) => Ok(Value::String(name.to_string())),
-                    Err(message) => Ok(Value::Error { code: 1, message }),
+                    Ok(name) => Ok(Value::String(shared_string(name))),
+                    Err(message) => Ok(Value::Error {
+                        code: 1,
+                        message: shared_string(message),
+                    }),
                 }
             }
             "SetLabel" => {
@@ -363,12 +381,16 @@ impl DataProvider {
                 };
                 match set_column_label(frame, old_label, new_label) {
                     Ok(()) => Ok(Value::Null),
-                    Err(message) => Ok(Value::Error { code: 1, message }),
+                    Err(message) => Ok(Value::Error {
+                        code: 1,
+                        message: shared_string(message),
+                    }),
                 }
             }
             "Transpose" => {
                 require_arity(name, arguments, 1, span)?;
-                let transposed = transpose_dataframe(frame, render, Value::String);
+                let transposed =
+                    transpose_dataframe(frame, render, |value| Value::String(shared_string(value)));
                 let new_id = self.next;
                 self.next += 1;
                 self.frames.insert(new_id, transposed);
@@ -393,7 +415,12 @@ impl DataProvider {
                 };
                 let value = match get_dataframe_cell(frame, column_name, row) {
                     Ok(value) => value.clone(),
-                    Err(message) => return Ok(Value::Error { code: 1, message }),
+                    Err(message) => {
+                        return Ok(Value::Error {
+                            code: 1,
+                            message: shared_string(message),
+                        });
+                    }
                 };
                 match method {
                     "GetString" if matches!(value, Value::String(_) | Value::NotAvailable) => {
@@ -482,7 +509,12 @@ impl DataProvider {
                     match zscore_column(frame, column_name, to_f64, from_f64, &Value::NotAvailable)
                     {
                         Ok(frame) => frame,
-                        Err(message) => return Ok(Value::Error { code: 1, message }),
+                        Err(message) => {
+                            return Ok(Value::Error {
+                                code: 1,
+                                message: shared_string(message),
+                            });
+                        }
                     };
                 let new_id = self.next;
                 self.next += 1;
@@ -625,7 +657,12 @@ impl DataProvider {
             Err(message) if message == "DataFrame index out of bounds" => {
                 return Ok(dataframe_index_error());
             }
-            Err(message) => return Ok(Value::Error { code: 1, message }),
+            Err(message) => {
+                return Ok(Value::Error {
+                    code: 1,
+                    message: shared_string(message),
+                });
+            }
         };
         let new_id = self.next;
         self.next += 1;
@@ -695,7 +732,12 @@ impl DataProvider {
             },
         ) {
             Ok(frame) => frame,
-            Err(message) => return Ok(Value::Error { code: 1, message }),
+            Err(message) => {
+                return Ok(Value::Error {
+                    code: 1,
+                    message: shared_string(message),
+                });
+            }
         };
         let new_id = self.next;
         self.next += 1;
@@ -740,7 +782,12 @@ impl DataProvider {
                 std::mem::discriminant(left) == std::mem::discriminant(right)
             }) {
                 Ok(frame) => frame,
-                Err(message) => return Ok(Value::Error { code: 1, message }),
+                Err(message) => {
+                    return Ok(Value::Error {
+                        code: 1,
+                        message: shared_string(message),
+                    });
+                }
             };
             let new_id = self.next;
             self.next += 1;
@@ -749,7 +796,12 @@ impl DataProvider {
         }
         let columns = match append_columns(left, right) {
             Ok(frame) => frame,
-            Err(message) => return Ok(Value::Error { code: 1, message }),
+            Err(message) => {
+                return Ok(Value::Error {
+                    code: 1,
+                    message: shared_string(message),
+                });
+            }
         };
         let new_id = self.next;
         self.next += 1;
@@ -810,9 +862,12 @@ impl DataProvider {
                 message: "column type mismatch".into(),
             });
         }
-        match add_dataframe_column(frame, column_name.clone(), values) {
+        match add_dataframe_column(frame, column_name.to_string(), values) {
             Ok(()) => Ok(Value::Null),
-            Err(message) => Ok(Value::Error { code: 1, message }),
+            Err(message) => Ok(Value::Error {
+                code: 1,
+                message: shared_string(message),
+            }),
         }
     }
 

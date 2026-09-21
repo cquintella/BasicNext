@@ -17,22 +17,32 @@ mod statements;
 
 impl<'a> Builder<'a> {
     fn emitted_member_owner(&self, owner: String) -> String {
-        if self
-            .methods
-            .contains(&class_method_name(&self.prefix, &owner, "$fields"))
-        {
-            qualified_class_name(&self.prefix, &owner)
+        let qualified = qualified_class_name(&self.prefix, &owner);
+        if self.methods.iter().any(|method| {
+            method
+                .strip_prefix(&qualified)
+                .is_some_and(|suffix| suffix.starts_with('.'))
+        }) {
+            qualified
         } else {
             owner
         }
     }
 
     fn resolved_member_owner(&self, expression: &Expression) -> String {
-        let owner = self
+        let target = self
             .model
             .expression(expression.span)
-            .and_then(|resolved| resolved.member_target.as_ref())
-            .and_then(|target| target.owner.clone())
+            .and_then(|resolved| resolved.member_target.as_ref());
+        let owner = target
+            .and_then(|target| {
+                target.owner.as_ref().map(|owner| {
+                    target.module.map_or_else(
+                        || owner.clone(),
+                        |module| format!("#{}.{}", module.0, owner),
+                    )
+                })
+            })
             .unwrap_or_default();
         self.emitted_member_owner(owner)
     }
@@ -196,6 +206,7 @@ impl<'a> Builder<'a> {
             .ok_or_else(|| ir_error("expression has no resolved SymbolId", expression.span))
     }
 
+    #[allow(clippy::too_many_lines)] // Keeps binding, record-path, and static stores explicit.
     pub(super) fn assignment_place(
         &mut self,
         expression: &Expression,
@@ -248,11 +259,19 @@ impl<'a> Builder<'a> {
                         };
                     }
                     let symbol = self.expression_symbol(base)?;
+                    let root_owner = record_owner(&object_type, &self.prefix).ok_or_else(|| {
+                        ir_error("nested field path root is not a record type", base.span)
+                    })?;
                     return if indices.is_empty() {
-                        Ok(AssignPlace::Field { symbol, path })
+                        Ok(AssignPlace::Field {
+                            symbol,
+                            root_owner,
+                            path,
+                        })
                     } else {
                         Ok(AssignPlace::FieldIndex {
                             symbol,
+                            root_owner,
                             path,
                             indices,
                         })

@@ -14,11 +14,9 @@
     clippy::cast_precision_loss
 )] // Moved verbatim from the core (bucket 0.5.1d 1.5).
 
-use std::collections::HashMap;
-
 use bn_diag::Diagnostic;
 use bn_source::Span;
-use bn_value::Value;
+use bn_value::{RecordValue, Value, shared_string};
 
 use crate::runtime::provider::{CoreContext, Provider};
 use crate::runtime::{
@@ -27,6 +25,12 @@ use crate::runtime::{
 use crate::types::IntegerType;
 
 pub const NAME: &str = "Exec";
+
+// HOST provider record layouts are canonicalized by member spelling during
+// semantic lowering: ReturnCode, Stderr, Stdout.
+const RESULT_RETURN_CODE: usize = 0;
+const RESULT_STDERR: usize = 1;
+const RESULT_STDOUT: usize = 2;
 
 pub struct ExecProvider;
 
@@ -101,23 +105,22 @@ fn exec_run(
                 message: "arguments must not contain NUL".into(),
             });
         }
-        values.push(value.as_str());
+        values.push(value.as_ref());
     }
     match bn_host_exec::run(program, &values, &policy) {
-        Ok(output) => Ok(Value::Record {
-            type_name: "HOST.Exec.Result".into(),
-            fields: HashMap::from([
-                (
-                    "ReturnCode".into(),
-                    Value::Integer(i128::from(output.return_code), IntegerType::Int64),
-                ),
-                ("Stdout".into(), Value::String(output.stdout)),
-                ("Stderr".into(), Value::String(output.stderr)),
-            ]),
-        }),
+        Ok(output) => {
+            let mut fields = vec![Value::Null; 3];
+            fields[RESULT_RETURN_CODE] =
+                Value::Integer(i128::from(output.return_code), IntegerType::Int64);
+            fields[RESULT_STDERR] = Value::String(shared_string(output.stderr));
+            fields[RESULT_STDOUT] = Value::String(shared_string(output.stdout));
+            Ok(Value::Record {
+                record: RecordValue::new("HOST.Exec.Result", fields),
+            })
+        }
         Err(failure) => Ok(Value::Error {
             code: failure.code,
-            message: failure.message,
+            message: shared_string(failure.message),
         }),
     }
 }

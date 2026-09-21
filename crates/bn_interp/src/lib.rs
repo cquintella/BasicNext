@@ -12,7 +12,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use bn_value::Value;
+use bn_value::{RecordValue, Value, shared_string};
 
 pub mod temporal;
 
@@ -340,7 +340,7 @@ mod tests;
 #[derive(Clone)]
 struct Instance {
     class: String,
-    fields: HashMap<String, Value>,
+    fields: Box<[Value]>,
 }
 
 #[derive(Default)]

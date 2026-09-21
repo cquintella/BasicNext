@@ -363,6 +363,7 @@ pub(crate) fn lower_inherited_constructor(
         base_classes: std::collections::HashMap::new(),
         bnmath_modules: HashSet::new(),
         module_constants: std::collections::HashMap::new(),
+        record_members: std::collections::HashMap::new(),
     };
     let mut builder = Builder::new(&empty_model, methods.clone(), prefix);
     builder.derived_fields = Some(format!("{prefix}{class_name}.$fields"));
@@ -398,6 +399,7 @@ pub(crate) fn lower_inherited_destructor(
         base_classes: std::collections::HashMap::new(),
         bnmath_modules: HashSet::new(),
         module_constants: std::collections::HashMap::new(),
+        record_members: std::collections::HashMap::new(),
     };
     let mut builder = Builder::new(&empty_model, methods.clone(), prefix);
     let receiver = builder.load(SYNTHETIC_SELF, Type::Named(class_name.into()), span);
@@ -440,11 +442,11 @@ pub(crate) fn lower_struct_default(
     method_names: &HashSet<String>,
 ) -> Result<Function, Diagnostic> {
     let mut builder = Builder::new(model, method_names.clone(), prefix);
-    let ty = Type::Named(struct_name.into());
+    let storage_ty = Type::Named(qualified_class_name(prefix, struct_name));
     let record = builder.value();
     builder.emit(Instruction::Default {
         destination: record,
-        ty: ty.clone(),
+        ty: storage_ty.clone(),
         dimensions: Vec::new(),
         dynamic_dimensions: Vec::new(),
         span,
@@ -468,7 +470,7 @@ pub(crate) fn lower_struct_default(
         asynchronous: false,
         parameters: Vec::new(),
         weak_symbols: HashSet::new(),
-        return_type: ty,
+        return_type: storage_ty,
         entry: BlockId(0),
         blocks: builder.finish()?,
         span,
@@ -502,6 +504,7 @@ pub(crate) fn emit_field_inits(
         };
         builder.emit(Instruction::SetMember {
             object,
+            field: None,
             name: name.clone(),
             owner: owner.into(),
             value,

@@ -41,8 +41,10 @@ fn is_value_legacy(value: &Value, test: &str) -> bool {
             Value::DispatchBarrier(_) => test == "BNDispatch.Barrier" || test == "Barrier",
             Value::DispatchSemaphore(_) => test == "BNDispatch.Semaphore" || test == "Semaphore",
             Value::DispatchMutex(_) => test == "BNDispatch.Mutex" || test == "Mutex",
-            Value::Object { class, .. } => class == test || class.rsplit('.').next() == Some(test),
-            Value::Record { type_name, .. } => type_name == test,
+            Value::Object { class, .. } => {
+                class.as_ref() == test || class.rsplit('.').next() == Some(test)
+            }
+            Value::Record { record } => record.type_name().as_ref() == test,
             _ => false,
         },
     }

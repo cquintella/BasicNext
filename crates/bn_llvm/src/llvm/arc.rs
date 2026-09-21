@@ -227,15 +227,13 @@ pub(crate) fn emit_destroy_if_last(
         let _ = writeln!(text, "  call void @{destructor}(ptr {object})");
     }
     if let Some(owner) = class_name(ty) {
-        for (declaring, name, field_ty) in class_layout_fields(module, &owner) {
-            if !is_class_type(module, &field_ty)
-                || module
-                    .weak_fields
-                    .contains(&(declaring.clone(), name.clone()))
-            {
+        for field in class_layout_fields(module, &owner) {
+            let weak = module.field_is_weak(&field.reference);
+            if !is_class_type(module, &field.ty) || weak {
                 continue;
             }
-            let offset = field_byte_offset(module, &declaring, &name);
+            let offset =
+                field_byte_offset(module, &field.reference).expect("validated ARC field slot");
             let field_ptr = format!("%arcfieldptr{n}_{offset}");
             let field_object = format!("%arcfieldobj{n}_{offset}");
             let _ = writeln!(
@@ -248,7 +246,7 @@ pub(crate) fn emit_destroy_if_last(
                 module,
                 function,
                 &field_object,
-                &field_ty,
+                &field.ty,
                 symbols,
                 state,
             );
