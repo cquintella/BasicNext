@@ -1,4 +1,8 @@
-# Current ownership inventory
+# Historical ownership inventory (0.4.4)
+
+**2026-09-21:** see [library-first-drivers.md](library-first-drivers.md) for
+existing owners, source-to-library mapping and proposed driver destinations.
+Single-package paths and deviations below describe 0.4.4, not today's checkout.
 
 This is the 0.4.4 soft-preparation inventory for the current single-package
 tree. It records present ownership against the approved target split; it does

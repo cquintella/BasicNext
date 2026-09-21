@@ -1,5 +1,10 @@
 # DFD-0 — TO-BE (target architecture)
 
+**2026-09-21 deployment update:** the toolchain has two target entrypoints,
+bni and bnc, over shared libraries. Older "bnc + engine" labels below denote
+the toolchain boundary, not a required controller subprocess. See
+[library-first drivers](../library-first-drivers.md).
+
 > **Canonical location:** `docs/architecture/dfd/dfd-0-to-be.md`
 > Lives under **`docs/architecture/`**. As-is audit DFDs stay under `audit/` (local). Implementation: `done/bucket-0.4.4.md` / `bucket-0.4.5.md`.
 

@@ -1,4 +1,10 @@
-# Current driver sequence (0.4.4)
+# Historical driver sequence (0.4.4)
+
+**2026-09-21:** [Library-first drivers](library-first-drivers.md) defines current
+ownership and migration. In the inspected pre-0.6.0 checkout, CLI preparation
+uses lower_graph_validated, compilation uses validate_for, and LSP has graph
+diagnostics. Old limitations below are historical. DAP still prepares in both
+validate_launch and execute_program; reuse must respect source revisions.
 
 This is an as-is inventory for the 0.4.4 soft-preparation bucket. It records
 the code that runs today; the approved target remains one shared

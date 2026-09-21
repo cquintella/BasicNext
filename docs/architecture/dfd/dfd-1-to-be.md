@@ -1,5 +1,10 @@
 # DFD-1 — TO-BE
 
+**2026-09-21 ownership update:** Control is implemented in shared CLI and
+backend-driver libraries, reached through bni or bnc. Process/flow IDs remain
+unchanged; older bnc controller labels are historical deployment names.
+See [library-first drivers](../library-first-drivers.md).
+
 > Canonical: `docs/architecture/dfd/dfd-1-to-be.md`  
 > Parent: [dfd-0-to-be.md](dfd-0-to-be.md)
 

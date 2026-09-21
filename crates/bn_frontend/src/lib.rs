@@ -9,6 +9,7 @@ pub mod keyword_registry;
 pub mod lexer;
 pub mod module_graph;
 pub mod parser;
+pub mod prepare;
 pub mod semantic;
 pub mod token;
 

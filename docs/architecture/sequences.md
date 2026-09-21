@@ -1,5 +1,11 @@
 # Pipeline sequence diagrams (architecture companion)
 
+**2026-09-21 ownership update:** under [library-first drivers](library-first-drivers.md),
+interpret/eval enters through bni, compile through bnc, and check uses one
+shared operation. Control is library-owned. Older default-interpret and -c
+spellings below are historical, not approved aliases for the new binaries.
+The stage flows remain applicable; extract libraries before changing entrypoints.
+
 > Canonical: `docs/architecture/sequences.md`  
 > Status: companion to DFD-1 / DFD-2 — **2026-09-05**  
 > Spelling: American English (**Analyze**, not Analyze).

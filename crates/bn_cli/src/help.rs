@@ -1,34 +1,19 @@
+//! Shared help text for the common options; each executable prepends its own
+//! command list and appends its command-specific flags.
+
 use std::process::ExitCode;
 
-use super::{VERSION, tool_error};
+use crate::output::tool_error;
 
-pub(crate) fn help() -> ExitCode {
-    println!(
-        "\
-{VERSION}
-usage: bn <eval|check|lex|run|build|lsp|dap> [options] <file.bn> [-- program-args]
-
-commands:
-  eval    evaluate one source fragment (SOURCE or --stdin) through the interpreter
-  check   validate lexer, parser, and semantics
-  lex     print the token stream
-  run     execute FUNCTION Start through typed BN IR
-  build   compile the supported typed BN IR subset with LLVM
-  lsp     serve Language Server Protocol over stdio
-  dap     serve Debug Adapter Protocol over stdio
-
-options:
-  --mode snippet|program       select eval fragment mode (eval only)
-  --format text|json           select eval result format (eval only)
+/// Help lines for every flag `parse_options` understands without an extension.
+pub const COMMON_OPTIONS: &str = "\
   -v, --verbose              show pipeline stages (repeat for tokens: -v -v)
   -vv                        show stages and tokens
   --emit tokens|ast|typed-ast|ir
                              print a frontend artifact (use with check or lex)
   -o, --output <file>        write an emitted artifact to <file>
-  --trace                    report the bn run execution entry point
-  --target native|wasm32     select the build target (build only)
+  --trace                    report the execution entry point
   --module-path <dir>        add an ordered import search directory (repeatable)
-  --opt none|1|2|3|s         optimization level for native/Wasm builds (default 2)
   --no-filesystem            deny HOST.FileSystem imports (run only)
   --sandbox                  opt into filesystem root restrictions
   --read-root <dir>          allow reads below a sandbox root (repeatable)
@@ -45,16 +30,11 @@ options:
   --config <file>            load warning/logging configuration
   -V, --version              print version
   -h, --help                 print this help
+";
 
- `bn eval` accepts SOURCE or --stdin; extra program arguments follow --.
- For file-oriented commands, HOST.Args[0] is the source path. Extra program arguments follow --.
-See also: man bn
-"
-    );
-    ExitCode::SUCCESS
-}
-
-pub(crate) fn usage() -> ExitCode {
-    eprintln!("usage: bn <eval|check|lex|run|build|lsp|dap> [options] <file.bn>\ntry: bn --help");
+/// Prints the one-line usage to stderr and returns the tool-error exit code.
+#[must_use]
+pub fn usage(line: &str) -> ExitCode {
+    eprintln!("{line}");
     tool_error()
 }

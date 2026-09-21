@@ -1,10 +1,39 @@
+// Unit tests of the `bn` driver: build-only option extension (`--opt`,
+// `--target`), clang/wasm toolchain selection and native link arguments.
 use super::cli_toolchain::{clang_has_wasm32, configured_clang};
-use super::{Color, colorize};
+use super::{BuildOptions, Optimization, Target};
+
+fn build_options(arguments: &[&str]) -> Result<BuildOptions, String> {
+    let mut build = BuildOptions::default();
+    bn_cli::options::parse_options(arguments.iter().map(ToString::to_string), &mut build)?;
+    Ok(build)
+}
 
 #[test]
-fn success_color_can_be_disabled() {
-    assert_eq!(colorize("ok", Color::Never), "ok");
-    assert!(colorize("ok", Color::Always).contains("ok"));
+fn optimization_option_has_explicit_levels_and_default() {
+    assert_eq!(
+        build_options(&["file.bn"]).expect("default").optimization,
+        Optimization::Level(2)
+    );
+    assert_eq!(
+        build_options(&["--opt", "none", "file.bn"])
+            .expect("none")
+            .optimization,
+        Optimization::None
+    );
+    assert_eq!(
+        build_options(&["--opt", "s", "file.bn"])
+            .expect("size")
+            .optimization,
+        Optimization::Size
+    );
+    assert_eq!(
+        build_options(&["--target", "wasm32", "file.bn"])
+            .expect("target")
+            .target,
+        Target::Wasm32
+    );
+    assert!(build_options(&["--opt", "4", "file.bn"]).is_err());
 }
 
 #[test]

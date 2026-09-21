@@ -1,7 +1,9 @@
 # Architecture (target)
 
 Target toolchain architecture for BasicNext: minimalist language,
-frontend → IR → interpret(IR) | compile(IR), optional `bnc`, external LLVM.
+frontend → IR → interpret(IR) | compile(IR), two thin executables (`bni` and
+`bnc`) over reusable libraries, external LLVM. Extract libraries first,
+then change `bnc`, then create `bni` (Carlos, 2026-09-21).
 
 Standing agent/contributor brief (authority + acceptance, including well-formed IR handoff **W1–W5**): [`../../AGENTS.md`](../../AGENTS.md).
 
@@ -9,6 +11,7 @@ Standing agent/contributor brief (authority + acceptance, including well-formed 
 
 | Path | Role |
 |------|------|
+| [library-first-drivers.md](library-first-drivers.md) | Approved 0.6.0 direction: ownership, code origins, dependency boundaries and library-first migration |
 | [target-architecture.md](target-architecture.md) | Target design (DAG, principles, split, migration **XM***) |
 | [milestones-map.md](milestones-map.md) | Crosswalk **SM*** / **XM*** / release buckets |
 | [dfd/dfd-0-to-be.md](dfd/dfd-0-to-be.md) | DFD-0 context |
@@ -69,7 +72,7 @@ DFD **2.0 Analyze Sources**: lex/parse must match the EBNF; **2.5** must satisfy
 | Minimalist language posture | **Locked** |
 | One IR; interpret = **executable reference** subordinate to the **spec** (not `lli`); LLVM equivalent on support subset; conformance = spec fixtures + cross-backend | **Locked** |
 | Same Frontend→IR for CLI and IDE | **Locked** |
-| `bnc` UX: default interpret / `-c` / `--target` / `--check` | **Locked** |
+| Two library-based entrypoints: bni interprets/evaluates/checks; bnc compiles with Clang-like flags; libraries extracted first | **Locked direction, 2026-09-21**; bn dispatches through 0.6 and retires in 0.7 |
 | Companion process log + `--log-level`; plugins-dir reserved | **Locked (MVP)** |
 | **Module search path** = ordered list (`--module-path` repeatable) | **Locked (direction 2026-09-05)** |
 | **Semantic analysis** must cover definitions-by-path, operand compatibility, boolean conditions, call/return signatures, valid references | **Locked (2026-09-05)** |

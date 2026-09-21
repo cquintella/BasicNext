@@ -10,7 +10,7 @@
 
 1. **Specification above implementations** — The **language specification** (`docs/language/…`, especially `0.4.md`) defines language+HOST **behaviour**. `bn_runtime` (interpret) is the **executable reference implementation** of that behaviour — not a second law. A bug in the interpreter must be fixed to match the spec; it must **not** become mandatory behaviour for the compiler. LLVM/`bn_llvm` must be **equivalent** on the **documented supported subset** ([support-matrix.md](support-matrix.md)). Validation uses **two** comparisons: (a) each backend against **expected results derived from the specification**, and (b) backends **against each other** on the shared subset. Because Frontend and lowering are shared, both backends can agree on the **same static error** — that agreement is necessary but **not sufficient** if both inherit a Frontend bug; expected results must still be grounded in the spec.
 2. **Shared frontend → IR** — one `FrontendSession` / graph+analyze+**lower** path for CLI, LSP, DAP. No shadow ASTs; no single-file LSP fork. Session must handle **snapshots** (incl. unsaved), **revisions**, invalidation, cancel, and revision-scoped diagnostics; spans carry **SourceId** through lowering ([frontend-session.md](frontend-session.md)). Backends start from **validated `bn_ir`**, never from AST/semantic crates.
-3. **Thin CLI** — `bn` binary owns flags, toolchain discovery, and orchestration only. It does not own parse/semantic/HOST catalogs.
+3. **Library-first CLI** — `bni` and `bnc` are minimal entrypoints. Common configuration, diagnostics and check live in libraries; backend-specific driver libraries own orchestration and toolchain integration. Extract libraries under existing executables before changing `bnc` and creating `bni`; see [ownership and migration](library-first-drivers.md).
 4. **HOST behind traits** — network/http/web/dispatch/fs/console are provider interfaces. Semantic and docs consume **`bn_host_spec`** (ABI tables), never http/net implementations.
 5. **Diagnostics sink** — all engines emit into a shared `bn_diag` taxonomy (codes + spans). Render path targets **Fluent** `.ftl` catalogs (see [`../../todo/proposals/expressive-diagnostics.md`](../../todo/proposals/expressive-diagnostics.md); bucket 0.4.5). Build/llvm must not bypass with bare `String`.
 6. **DAG crates** — dependency arrows point downward only. Forbidden: runtime↔dataframe on Value, runtime↔http on callbacks, semantic→HOST impl, lsp inventing a parallel frontend.
@@ -208,6 +208,11 @@ flowchart LR
 
 
 ## Proposed crate / binary split
+
+**2026-09-21 update:** [Library-first drivers](library-first-drivers.md) is the
+current executable/driver decomposition. The older DAG and ownership table
+below record the original extraction proposal. They do not override the new
+driver and provider ownership. As built remains an implementation snapshot.
 
 ### Dependency DAG (to-be)
 
@@ -525,7 +530,15 @@ Do **not** invent a second frontend/runtime. Move code, then delete the old path
 
 ---
 
-## `bnc` — BN Controller (proposed)
+## Historical `bnc` controller — superseded target
+
+**Superseded by Carlos on 2026-09-21:** two minimal executables over reusable
+libraries, extracted before changing bnc and creating bni. The following
+2026-09-04 decisions document the old wrapper contract only. Default
+interpretation and spawning bn are not requirements of the new bnc.
+See [library-first-drivers.md](library-first-drivers.md). The replacement is
+Clang-like `bnc [options] <entry.bn>`; bni owns check; bn dispatches through
+0.6 and retires in 0.7.
 
 **CLI UX (locked 2026-09-04):** flag-shaped, not chatty subcommands —
 
@@ -558,8 +571,8 @@ flowchart LR
 
 | Piece | Status |
 | --- | --- |
-| `bnc` role = manager + process log; not god-object | **Locked** ([`bnc-decisions.md`](../../audit/workpapers/09-synthesis/bnc-decisions.md)) |
-| CLI UX default / `-c` / `--target` / `--check` | **Locked** |
+| Pipeline orchestration and process log | **Library-owned**, per [2026-09-21 direction](library-first-drivers.md) |
+| Old bnc default-interpret / -c controller UX | **Superseded** by Clang-like bnc input/flag syntax; bni owns check |
 | Companion process log + `--log-level` + programs/plugins dirs (plugins reserved) | **Locked for MVP** (may land on `bn` first, then `bnc`) |
 | IDE/LSP subscription to pipeline events | **Future** (not MVP) |
 | Broader critique items still open | See [`pipeline-observability-critique.md`](../../audit/workpapers/09-synthesis/pipeline-observability-critique.md) — do not block MVP log |

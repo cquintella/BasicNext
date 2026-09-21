@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/bn_rt", "crates/bn_source", "crates/bn_types", "crates/bn_diag", "crates/bn_ir", "crates/bn_frontend", "crates/bn_runtime", "crates/bn_value", "crates/bn_llvm", "crates/bn_interp", "crates/bn_host_exec", "crates/bn_limits", "crates/bn_lib_math", "crates/bn_lib_json", "crates/bn_lib_log", "crates/bn_lib_data", "crates/bn_host_fs", "crates/bn_host_net", "crates/bn_lib_dispatch", "crates/bn_lib_web"]
+members = ["crates/bn_rt", "crates/bn_source", "crates/bn_types", "crates/bn_diag", "crates/bn_ir", "crates/bn_frontend", "crates/bn_runtime", "crates/bn_value", "crates/bn_llvm", "crates/bn_interp", "crates/bn_host_exec", "crates/bn_limits", "crates/bn_lib_math", "crates/bn_lib_json", "crates/bn_lib_log", "crates/bn_lib_data", "crates/bn_host_fs", "crates/bn_host_net", "crates/bn_lib_dispatch", "crates/bn_lib_web", "crates/bn_cli"]
 resolver = "3"
 
 [package]
@@ -40,6 +40,7 @@ all = "warn"
 pedantic = "warn"
 
 [dependencies]
+bn_cli = { path = "crates/bn_cli" }
 bn_rt = { path = "crates/bn_rt" }
 bn_diag = { path = "crates/bn_diag" }
 bn_ir = { path = "crates/bn_ir" }

@@ -1,5 +1,11 @@
 # Milestone crosswalk — BasicNext architecture
 
+**0.6.0 direction (Carlos, 2026-09-21):** extract shared CLI and backend-driver
+libraries under existing commands, then change bnc to compile in-process,
+then create bni. See [ownership, origins and gates](library-first-drivers.md).
+Older SM/XM references to optional bnc and standalone IDE binaries are
+historical milestones, not the current executable delivery plan.
+
 > Canonical: `docs/architecture/milestones-map.md`  
 > Prevents colliding **M0…** labels across docs.
 

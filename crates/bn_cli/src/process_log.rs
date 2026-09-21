@@ -1,12 +1,9 @@
-// Author: Carlos Quintella
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//! Structured companion process logs shared by Basic Next command-line tools.
 
 use std::{fs, io, path::Path};
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub(crate) enum LogLevel {
+pub enum LogLevel {
     Error,
     Warn,
     Info,
@@ -14,7 +11,12 @@ pub(crate) enum LogLevel {
 }
 
 impl LogLevel {
-    pub(crate) fn parse(value: &str) -> Result<Self, String> {
+    /// Parses a configured process-log level.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `value` is not an accepted level spelling.
+    pub fn parse(value: &str) -> Result<Self, String> {
         match value {
             "error" => Ok(Self::Error),
             "warn" | "warning" => Ok(Self::Warn),
@@ -26,7 +28,7 @@ impl LogLevel {
         }
     }
 
-    fn as_str(self) -> &'static str {
+    const fn as_str(self) -> &'static str {
         match self {
             Self::Error => "error",
             Self::Warn => "warn",
@@ -37,14 +39,15 @@ impl LogLevel {
 }
 
 #[derive(Debug)]
-pub(crate) struct ProcessLog {
+pub struct ProcessLog {
     level: LogLevel,
     lines: Vec<String>,
     warning_count: usize,
 }
 
 impl ProcessLog {
-    pub(crate) fn new(level: LogLevel) -> Self {
+    #[must_use]
+    pub const fn new(level: LogLevel) -> Self {
         Self {
             level,
             lines: Vec::new(),
@@ -52,21 +55,16 @@ impl ProcessLog {
         }
     }
 
-    pub(crate) fn record_warning(&mut self) {
+    pub fn record_warning(&mut self) {
         self.warning_count = self.warning_count.saturating_add(1);
     }
 
-    pub(crate) fn warning_count(&self) -> usize {
+    #[must_use]
+    pub const fn warning_count(&self) -> usize {
         self.warning_count
     }
 
-    pub(crate) fn event(
-        &mut self,
-        level: LogLevel,
-        phase: &str,
-        event: &str,
-        detail: impl AsRef<str>,
-    ) {
+    pub fn event(&mut self, level: LogLevel, phase: &str, event: &str, detail: impl AsRef<str>) {
         if level > self.level {
             return;
         }
@@ -79,7 +77,13 @@ impl ProcessLog {
         ));
     }
 
-    pub(crate) fn write_to(&self, path: &Path) -> io::Result<()> {
+    /// Writes the filtered events to a companion log file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error when the parent directory cannot be created or
+    /// the log file cannot be written.
+    pub fn write_to(&self, path: &Path) -> io::Result<()> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -87,6 +91,42 @@ impl ProcessLog {
             path,
             self.lines.join("\n") + if self.lines.is_empty() { "" } else { "\n" },
         )
+    }
+
+    /// Writes the log to `path` when one is configured, reporting a failure
+    /// on stderr. Returns `true` when the write failed.
+    #[must_use]
+    pub fn finish(&self, path: Option<&Path>) -> bool {
+        let Some(path) = path else {
+            return false;
+        };
+        if let Err(error) = self.write_to(path) {
+            eprintln!(
+                "error[PROCESS_LOG_WRITE]: cannot write process log {}: {error}",
+                path.display()
+            );
+            return true;
+        }
+        false
+    }
+
+    /// Mirrors every frontend warning as a `diagnostic emit` event.
+    pub fn mirror_frontend_diagnostics(&mut self, frontend: &bn_frontend::prepare::Prepared) {
+        for diagnostic in &frontend.warnings {
+            self.record_warning();
+            self.event(
+                LogLevel::Warn,
+                "diagnostic",
+                "emit",
+                format!(
+                    "code={} source={} line={} column={}",
+                    diagnostic.diagnostic.code,
+                    diagnostic.module.0,
+                    diagnostic.diagnostic.span.start.line,
+                    diagnostic.diagnostic.span.start.column
+                ),
+            );
+        }
     }
 
     #[cfg(test)]

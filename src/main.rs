@@ -2,11 +2,10 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
-mod cli_help;
-mod process_log;
-use cli_help::{help, usage};
-// would this file load configurations if there is any?
-
+//! `bn`: the combined driver (eval | check | lex | run | build | lsp | dap).
+//! Common CLI services come from `bn_cli`; this file keeps eval/run
+//! (interpretation) and build (compilation) until their drivers are extracted
+//! (bucket 0.6.0, activities 1.2a and 1.3).
 use std::{
     collections::BTreeMap,
     env, fs,
@@ -15,25 +14,111 @@ use std::{
     process::ExitCode,
 };
 
-#[allow(unused_imports)]
 use bn::diagnostic::{DiagId, Level};
 use bn::{
-    ast::{DeclarationKind, Item, Program},
-    diagnostic::{Catalog, Diagnostic, DiagnosticValue, Label, LabelStyle, WarningPolicy},
-    ir::ValidatedModule,
+    ast::{DeclarationKind, Item},
+    diagnostic::{Diagnostic, DiagnosticValue, Label, LabelStyle},
     lexer::lex,
     llvm::{
         CompiledPolicy, Target as LlvmTarget, lower_validated_module_for_target_with_policy,
         validate_for,
     },
-    module_graph::ModuleGraph,
     runtime::{HostEnv, HostEnvDefaults, execute_validated_with_host},
     source::SourceFile,
     token::Token,
 };
-use bn_frontend::semantic::{ModuleAnalysisError, SemanticModel, analyze_modules_with_warnings};
-use process_log::{LogLevel, ProcessLog};
+use bn_cli::{
+    check::check,
+    diagnostics::{diagnostic_json, emit_frontend_warnings, render_diagnostic},
+    frontend::{Frontend, load_frontend, load_frontend_with_overlays},
+    help::COMMON_OPTIONS,
+    options::{EvalMapping, OptionExtension, Options, OutputFormat, parse_options},
+    output::{emit_output, language_error, log, module_index, tokens_text, tool_error},
+    process_log::{LogLevel, ProcessLog},
+};
 const VERSION: &str = concat!("bn ", env!("CARGO_PKG_VERSION"));
+
+/// Compile-only flags (`--target`, `--opt`); accepted by every `bn` command
+/// for compatibility, consumed by `build`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct BuildOptions {
+    target: Target,
+    optimization: Optimization,
+}
+
+impl Default for BuildOptions {
+    fn default() -> Self {
+        Self {
+            target: Target::Native,
+            optimization: Optimization::Level(2),
+        }
+    }
+}
+
+impl OptionExtension for BuildOptions {
+    fn accept(
+        &mut self,
+        argument: &str,
+        rest: &mut dyn Iterator<Item = String>,
+    ) -> Result<bool, String> {
+        match argument {
+            "--opt" => {
+                self.optimization = match rest.next().as_deref() {
+                    Some("none") => Optimization::None,
+                    Some("1") => Optimization::Level(1),
+                    Some("2") => Optimization::Level(2),
+                    Some("3") => Optimization::Level(3),
+                    Some("s") => Optimization::Size,
+                    _ => return Err("--opt expects none, 1, 2, 3, or s".into()),
+                };
+            }
+            "--target" => {
+                self.target = match rest.next().as_deref() {
+                    Some("native") => Target::Native,
+                    Some("wasm32") => Target::Wasm32,
+                    _ => return Err("--target expects native or wasm32".into()),
+                };
+            }
+            _ => return Ok(false),
+        }
+        Ok(true)
+    }
+}
+
+fn help() -> ExitCode {
+    println!(
+        "\
+{VERSION}
+usage: bn <eval|check|lex|run|build|lsp|dap> [options] <file.bn> [-- program-args]
+
+commands:
+  eval    evaluate one source fragment (SOURCE or --stdin) through the interpreter
+  check   validate lexer, parser, and semantics
+  lex     print the token stream
+  run     execute FUNCTION Start through typed BN IR
+  build   compile the supported typed BN IR subset with LLVM
+  lsp     serve Language Server Protocol over stdio
+  dap     serve Debug Adapter Protocol over stdio
+
+options:
+  --mode snippet|program       select eval fragment mode (eval only)
+  --format text|json           select eval result format (eval only)
+  --target native|wasm32     select the build target (build only)
+  --opt none|1|2|3|s         optimization level for native/Wasm builds (default 2)
+{COMMON_OPTIONS}
+ `bn eval` accepts SOURCE or --stdin; extra program arguments follow --.
+ For file-oriented commands, HOST.Args[0] is the source path. Extra program arguments follow --.
+See also: man bn
+"
+    );
+    ExitCode::SUCCESS
+}
+
+fn usage() -> ExitCode {
+    bn_cli::help::usage(
+        "usage: bn <eval|check|lex|run|build|lsp|dap> [options] <file.bn>\ntry: bn --help",
+    )
+}
 
 fn native_runtime_link_args() -> &'static [&'static str] {
     #[cfg(target_os = "linux")]
@@ -45,16 +130,6 @@ fn native_runtime_link_args() -> &'static [&'static str] {
     {
         &[]
     }
-}
-
-#[must_use]
-fn language_error() -> ExitCode {
-    ExitCode::from(1)
-}
-
-#[must_use]
-fn tool_error() -> ExitCode {
-    ExitCode::from(2)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -322,7 +397,7 @@ fn eval(command_arguments: Vec<String>) -> ExitCode {
     } else {
         arguments.push(virtual_path.display().to_string());
     }
-    let mut options = match parse_options(arguments.into_iter()) {
+    let mut options = match parse_options(arguments.into_iter(), &mut BuildOptions::default()) {
         Ok(options) => options,
         Err(message) => {
             if json_requested {
@@ -458,234 +533,10 @@ fn eval(command_arguments: Vec<String>) -> ExitCode {
     run_loaded(&source, &tokens, &options, &frontend)
 }
 
-fn render_diagnostic(diagnostic: &Diagnostic, source: &SourceFile, options: &Options) -> String {
-    let diagnostic = remap_eval_diagnostic(diagnostic, options);
-    let display_source = options
-        .eval_source_text
-        .as_ref()
-        .map_or_else(|| source.clone(), |text| SourceFile::new("<eval>", text));
-    diagnostic.render_with_catalog_and_policy(
-        &display_source,
-        &options.diagnostic_catalog,
-        &options.warning_policy,
-    )
-}
-
-fn remap_eval_diagnostic(diagnostic: &Diagnostic, options: &Options) -> Diagnostic {
-    let Some(mapping) = options.eval_mapping.as_ref() else {
-        return Diagnostic {
-            code: diagnostic.code,
-            message: diagnostic.message.clone(),
-            span: diagnostic.span,
-            structured: diagnostic
-                .structured
-                .as_ref()
-                .map(|spec| Box::new((**spec).clone())),
-        };
-    };
-    let map_position = |mut position: bn::source::Position| {
-        let original_offset = position.offset;
-        if mapping.inserted_length > 0 {
-            if position.line > mapping.insertion_line {
-                position.line = position.line.saturating_sub(1);
-            }
-            let inserted_end = mapping.insertion_offset + mapping.inserted_length;
-            if position.offset >= inserted_end {
-                position.offset = position.offset.saturating_sub(mapping.inserted_length);
-            }
-        }
-        if let Some((prefix_offset, prefix_length)) = mapping.expression_prefix
-            && original_offset >= prefix_offset + prefix_length
-        {
-            position.offset = position.offset.saturating_sub(prefix_length);
-            position.column = position.column.saturating_sub(prefix_length);
-        }
-        position.source_id = bn::source::Position::UNKNOWN_SOURCE;
-        position.revision = bn::source::Position::UNKNOWN_REVISION;
-        position
-    };
-    let mut mapped = Diagnostic {
-        code: diagnostic.code,
-        message: diagnostic.message.clone(),
-        span: diagnostic.span,
-        structured: diagnostic
-            .structured
-            .as_ref()
-            .map(|spec| Box::new((**spec).clone())),
-    };
-    mapped.span.start = map_position(mapped.span.start);
-    mapped.span.end = map_position(mapped.span.end);
-    if let Some(spec) = mapped.structured.as_mut() {
-        for label in &mut spec.labels {
-            label.span.start = map_position(label.span.start);
-            label.span.end = map_position(label.span.end);
-        }
-    }
-    mapped
-}
-
-fn diagnostic_json(
-    diagnostic: &Diagnostic,
-    source: &SourceFile,
-    options: &Options,
-    phase: &str,
-) -> serde_json::Value {
-    let mapping = options.eval_mapping.as_ref();
-    let identity_source = options
-        .eval_source_text
-        .as_ref()
-        .map(|text| SourceFile::new("<eval>", text));
-    let rendered = diagnostic
-        .spec()
-        .and_then(|spec| options.diagnostic_catalog.render(&spec).ok());
-    let labels = rendered
-        .as_ref()
-        .map(|value| {
-            value
-                .labels
-                .iter()
-                .map(|label| {
-                    let mut start_line = label.span.start.line;
-                    let mut end_line = label.span.end.line;
-                    let mut start_offset = label.span.start.offset;
-                    let mut end_offset = label.span.end.offset;
-                    let mut start_column = label.span.start.column;
-                    let mut end_column = label.span.end.column;
-                    let original_start_offset = label.span.start.offset;
-                    let original_end_offset = label.span.end.offset;
-                    if let Some(mapping) = mapping {
-                        if mapping.inserted_length > 0 && start_line > mapping.insertion_line {
-                            start_line = start_line.saturating_sub(1);
-                        }
-                        if mapping.inserted_length > 0 && end_line > mapping.insertion_line {
-                            end_line = end_line.saturating_sub(1);
-                        }
-                        let inserted_end = mapping.insertion_offset + mapping.inserted_length;
-                        if start_offset >= inserted_end {
-                            start_offset = start_offset.saturating_sub(mapping.inserted_length);
-                        }
-                        if end_offset >= inserted_end {
-                            end_offset = end_offset.saturating_sub(mapping.inserted_length);
-                        }
-                        if let Some((prefix_offset, prefix_length)) = mapping.expression_prefix {
-                            if original_start_offset >= prefix_offset + prefix_length {
-                                start_offset = start_offset.saturating_sub(prefix_length);
-                            }
-                            if original_end_offset >= prefix_offset + prefix_length {
-                                end_offset = end_offset.saturating_sub(prefix_length);
-                            }
-                            if original_start_offset >= prefix_offset + prefix_length {
-                                start_column = start_column.saturating_sub(prefix_length);
-                            }
-                            if original_end_offset >= prefix_offset + prefix_length {
-                                end_column = end_column.saturating_sub(prefix_length);
-                            }
-                        }
-                    }
-                    serde_json::json!({
-                        "source_id": identity_source.as_ref().map_or(label.span.start.source_id.0, |value| value.source_id.0),
-                        "revision": identity_source.as_ref().map_or(label.span.start.revision.0, |value| value.revision.0),
-                        "source_name": mapping.map_or_else(|| source.name.clone(), |mapping| mapping.source_name.clone()),
-                        "style": format!("{:?}", label.style).to_lowercase(),
-                        "text": label.text.clone(),
-                        "start": {"offset": start_offset, "line": start_line, "column": start_column},
-                        "end": {"offset": end_offset, "line": end_line, "column": end_column},
-                    })
-                })
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    let severity = DiagId::from_code(diagnostic.code)
-        .filter(|id| id.warnings_allowed())
-        .map(|id| match options.warning_policy.level(id) {
-            Level::Error => "error",
-            Level::Allow | Level::Warn => "warning",
-        })
-        .map(str::to_string)
-        .or_else(|| {
-            rendered
-                .as_ref()
-                .map(|value| format!("{:?}", value.severity).to_lowercase())
-        })
-        .unwrap_or_else(|| "error".into());
-    serde_json::json!({
-        "code": diagnostic.code,
-        "severity": severity,
-        "phase": phase,
-        "title": rendered.as_ref().map_or_else(|| diagnostic.code.to_string(), |value| value.title.clone()),
-        "message": rendered.as_ref().map_or_else(|| diagnostic.message.to_string(), |value| value.message.clone()),
-        "labels": labels,
-        "causes": rendered.as_ref().map_or_else(Vec::new, |value| value.causes.clone()),
-        "help": rendered.as_ref().and_then(|value| value.help.clone()),
-    })
-}
-
-// can enum and structs be in another file?
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Emit {
-    Tokens,
-    Ast,
-    TypedAst,
-    Ir,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum OutputFormat {
-    Text,
-    Json,
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct EvalMapping {
-    pub source_name: String,
-    pub insertion_offset: usize,
-    pub inserted_length: usize,
-    pub insertion_line: usize,
-    pub expression_prefix: Option<(usize, usize)>,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum Color {
-    Auto,
-    Always,
-    Never,
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Target {
     Native,
     Wasm32,
-}
-
-#[derive(Debug)]
-#[allow(clippy::struct_excessive_bools)] // CLI flags map directly to independent policies.
-struct Options {
-    path: String,
-    verbosity: u8,
-    emit: Option<Emit>,
-    output: Option<String>,
-    output_format: OutputFormat,
-    eval_mapping: Option<EvalMapping>,
-    eval_source_text: Option<String>,
-    eval_promotion_warning: bool,
-    eval_promotion_span: Option<bn::source::Span>,
-    trace: bool,
-    color: Color,
-    target: Target,
-    filesystem: bool,
-    sandbox: bool,
-    module_paths: Vec<bn::module_graph::ModuleRoot>,
-    read_roots: Vec<PathBuf>,
-    write_roots: Vec<PathBuf>,
-    jupyter_stdin: bool,
-    program_arguments: Vec<String>,
-    optimization: Optimization,
-    warning_policy: WarningPolicy,
-    diagnostic_catalog: Catalog,
-    log_level: LogLevel,
-    log_file: Option<String>,
-    no_log: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -721,49 +572,6 @@ impl Optimization {
     }
 }
 
-struct Frontend {
-    graph: ModuleGraph,
-    models: Vec<SemanticModel>,
-    warnings: Vec<ModuleAnalysisError>,
-    validated: ValidatedModule,
-}
-
-fn emit_frontend_warnings(frontend: &Frontend, source: &SourceFile, options: &Options) -> bool {
-    let mut fatal = false;
-    for warning in &frontend.warnings {
-        if options.output_format == OutputFormat::Json {
-            // JSON aggregation is emitted by the eval boundary; never leak
-            // human-readable warning text onto process stderr.
-            let Some(id) = DiagId::from_code(warning.diagnostic.code) else {
-                fatal = true;
-                continue;
-            };
-            fatal |= options.warning_policy.level(id) == Level::Error;
-            continue;
-        }
-        let Some(id) = DiagId::from_code(warning.diagnostic.code) else {
-            eprintln!(
-                "{}",
-                render_diagnostic(&warning.diagnostic, source, options)
-            );
-            fatal = true;
-            continue;
-        };
-        let level = options.warning_policy.level(id);
-        let Some(module) = frontend.graph.modules.get(module_index(warning.module.0)) else {
-            eprintln!("error: warning refers to a missing module");
-            fatal = true;
-            continue;
-        };
-        let rendered = render_diagnostic(&warning.diagnostic, &module.source, options);
-        if !rendered.is_empty() {
-            eprintln!("{rendered}");
-        }
-        fatal |= level == Level::Error;
-    }
-    fatal
-}
-
 fn process_log_path(options: &Options) -> Option<PathBuf> {
     if options.no_log {
         return None;
@@ -777,38 +585,6 @@ fn process_log_path(options: &Options) -> Option<PathBuf> {
         },
         |path| Some(PathBuf::from(path)),
     )
-}
-
-fn finish_process_log(log: &ProcessLog, options: &Options) -> bool {
-    let Some(path) = process_log_path(options) else {
-        return false;
-    };
-    if let Err(error) = log.write_to(&path) {
-        eprintln!(
-            "error[PROCESS_LOG_WRITE]: cannot write process log {}: {error}",
-            path.display()
-        );
-        return true;
-    }
-    false
-}
-
-fn mirror_frontend_diagnostics(frontend: &Frontend, log: &mut ProcessLog) {
-    for diagnostic in &frontend.warnings {
-        log.record_warning();
-        log.event(
-            LogLevel::Warn,
-            "diagnostic",
-            "emit",
-            format!(
-                "code={} source={} line={} column={}",
-                diagnostic.diagnostic.code,
-                diagnostic.module.0,
-                diagnostic.diagnostic.span.start.line,
-                diagnostic.diagnostic.span.start.column
-            ),
-        );
-    }
 }
 
 fn main() -> ExitCode {
@@ -849,7 +625,8 @@ fn main() -> ExitCode {
             }
         };
     }
-    let options = match parse_options(arguments) {
+    let mut build_options = BuildOptions::default();
+    let options = match parse_options(arguments, &mut build_options) {
         Ok(options) => options,
         Err(message) => {
             if let Some(message) = message.strip_prefix("CONFIG_INVALID: ") {
@@ -891,20 +668,23 @@ fn main() -> ExitCode {
         "lex" => emit_output(tokens_text(&tokens), options.output.as_deref()),
         "check" => check(&source, &tokens, &options),
         "run" => run(&source, &tokens, &options),
-        "build" => build(&source, &tokens, &options),
+        "build" => build(&source, &options, build_options),
         _ => usage(),
     }
 }
 
-fn build(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
+fn build(source: &SourceFile, options: &Options, build_options: BuildOptions) -> ExitCode {
     let mut process_log = ProcessLog::new(options.log_level);
     process_log.event(
         LogLevel::Info,
         "pipeline",
         "start",
-        format!("target={:?} output={:?}", options.target, options.output),
+        format!(
+            "target={:?} output={:?}",
+            build_options.target, options.output
+        ),
     );
-    let result = build_inner(source, tokens, options, &mut process_log);
+    let result = build_inner(source, options, build_options, &mut process_log);
     process_log.event(
         if result == ExitCode::SUCCESS {
             LogLevel::Warn
@@ -929,7 +709,7 @@ fn build(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
         "end",
         format!("exit={result:?}"),
     );
-    if finish_process_log(&process_log, options) {
+    if process_log.finish(process_log_path(options).as_deref()) {
         return tool_error();
     }
     result
@@ -938,8 +718,8 @@ fn build(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
 #[allow(clippy::too_many_lines)] // Build stage events stay adjacent to their real transitions.
 fn build_inner(
     source: &SourceFile,
-    tokens: &[Token],
     options: &Options,
+    build_options: BuildOptions,
     process_log: &mut ProcessLog,
 ) -> ExitCode {
     process_log.event(
@@ -948,7 +728,7 @@ fn build_inner(
         "start",
         "load and analyze modules",
     );
-    let frontend = match load_frontend(source, tokens, options) {
+    let frontend = match load_frontend(source, options) {
         Ok(frontend) => frontend,
         Err(code) => {
             process_log.event(
@@ -966,7 +746,7 @@ fn build_inner(
         "success",
         "semantic analysis complete",
     );
-    mirror_frontend_diagnostics(&frontend, process_log);
+    process_log.mirror_frontend_diagnostics(&frontend);
     let roots = frontend
         .graph
         .roots
@@ -979,8 +759,8 @@ fn build_inner(
         "snapshot",
         format!(
             "target={:?} opt={:?} log_level={:?} no_log={} bn_home={} module_roots={roots:?}",
-            options.target,
-            options.optimization,
+            build_options.target,
+            build_options.optimization,
             options.log_level,
             options.no_log,
             std::env::var_os("BN_HOME").is_some(),
@@ -1032,7 +812,7 @@ fn build_inner(
     process_log.event(LogLevel::Info, "lower", "start", "lower and validate IR");
     let module = &frontend.validated;
     process_log.event(LogLevel::Info, "lower", "success", "validated IR ready");
-    let llvm_target = if options.target == Target::Wasm32 {
+    let llvm_target = if build_options.target == Target::Wasm32 {
         LlvmTarget::Wasm32
     } else {
         LlvmTarget::Native
@@ -1075,13 +855,13 @@ fn build_inner(
     };
     let result = match lower_validated_module_for_target_with_policy(
         module,
-        options.target == Target::Wasm32,
+        build_options.target == Target::Wasm32,
         &policy,
     ) {
         Ok(llvm) => {
             process_log.event(LogLevel::Info, "llvm_emit", "success", "LLVM emitted");
             process_log.event(LogLevel::Info, "link", "start", "write artifact");
-            emit_build_output(llvm, options, process_log)
+            emit_build_output(llvm, options, build_options, process_log)
         }
         Err(message) => {
             process_log.event(
@@ -1112,7 +892,12 @@ fn build_inner(
 }
 
 #[allow(clippy::too_many_lines)] // External tool command construction stays auditable here.
-fn emit_build_output(llvm: String, options: &Options, process_log: &mut ProcessLog) -> ExitCode {
+fn emit_build_output(
+    llvm: String,
+    options: &Options,
+    build_options: BuildOptions,
+    process_log: &mut ProcessLog,
+) -> ExitCode {
     let Some(output) = options.output.as_deref() else {
         return emit_output(llvm, None);
     };
@@ -1121,7 +906,7 @@ fn emit_build_output(llvm: String, options: &Options, process_log: &mut ProcessL
         eprintln!("error: cannot write temporary LLVM IR: {error}");
         return tool_error();
     }
-    let clang = match if options.target == Target::Wasm32 {
+    let clang = match if build_options.target == Target::Wasm32 {
         configured_wasm_clang()
     } else {
         configured_clang()
@@ -1134,7 +919,7 @@ fn emit_build_output(llvm: String, options: &Options, process_log: &mut ProcessL
     };
     let object = temporary.with_extension("o");
     let mut failed_tool = "clang";
-    let result = if options.target == Target::Wasm32 {
+    let result = if build_options.target == Target::Wasm32 {
         process_log.event(
             LogLevel::Debug,
             "external",
@@ -1142,7 +927,7 @@ fn emit_build_output(llvm: String, options: &Options, process_log: &mut ProcessL
             format!(
                 "tool=clang argv={:?}",
                 [
-                    options.optimization.clang_flag(),
+                    build_options.optimization.clang_flag(),
                     "--target=wasm32-unknown-unknown",
                     "-Wno-override-module",
                     "-c",
@@ -1154,7 +939,7 @@ fn emit_build_output(llvm: String, options: &Options, process_log: &mut ProcessL
         );
         let compiled = std::process::Command::new(clang)
             .args([
-                options.optimization.clang_flag(),
+                build_options.optimization.clang_flag(),
                 "--target=wasm32-unknown-unknown",
                 "-Wno-override-module",
                 "-c",
@@ -1173,7 +958,7 @@ fn emit_build_output(llvm: String, options: &Options, process_log: &mut ProcessL
                     format!(
                         "tool=wasm-ld argv={:?}",
                         [
-                            options.optimization.linker_flag(),
+                            build_options.optimization.linker_flag(),
                             "--no-entry",
                             "--export=main",
                             "--export=__heap_base",
@@ -1186,7 +971,7 @@ fn emit_build_output(llvm: String, options: &Options, process_log: &mut ProcessL
                 );
                 std::process::Command::new(configured_wasm_ld())
                     .args([
-                        options.optimization.linker_flag(),
+                        build_options.optimization.linker_flag(),
                         "--no-entry",
                         "--export=main",
                         "--export=__heap_base",
@@ -1202,7 +987,7 @@ fn emit_build_output(llvm: String, options: &Options, process_log: &mut ProcessL
     } else {
         let mut command = std::process::Command::new(clang);
         let mut command_args = vec![
-            options.optimization.clang_flag().to_string(),
+            build_options.optimization.clang_flag().to_string(),
             temporary.to_string_lossy().into_owned(),
         ];
         if llvm.contains("@bn_rt_") {
@@ -1249,7 +1034,7 @@ use cli_toolchain::{
 };
 
 fn run(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
-    let frontend = match load_frontend(source, tokens, options) {
+    let frontend = match load_frontend(source, options) {
         Ok(frontend) => frontend,
         Err(code) => return code,
     };
@@ -1476,102 +1261,6 @@ impl<R: BufRead> BufRead for JupyterInput<R> {
         self.input.read_line(line)
     }
 }
-
-fn check(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
-    if options.output.is_some() && options.emit.is_none() {
-        eprintln!("error: -o requires --emit with bn check");
-        return tool_error();
-    }
-    let frontend = match load_frontend(source, tokens, options) {
-        Ok(frontend) => frontend,
-        Err(code) => return code,
-    };
-    if emit_frontend_warnings(&frontend, source, options) {
-        return language_error();
-    }
-    if options.verbosity > 1 {
-        print!("{}", tokens_text(tokens));
-    }
-    if let Some(emit) = options.emit {
-        let Some(semantic_model) = frontend.models.get(module_index(frontend.graph.root.0)) else {
-            eprintln!("error: missing semantic model for the executable module");
-            return tool_error();
-        };
-        let output = match emit {
-            Emit::Tokens => tokens_text(tokens),
-            Emit::Ast => format!("{:#?}\n", root_program(&frontend.graph)),
-            Emit::TypedAst => format!(
-                "{:#?}\n{semantic_model:#?}\n",
-                root_program(&frontend.graph)
-            ),
-            Emit::Ir => format!("{:#?}\n", frontend.validated.as_module()),
-        };
-        if emit_output(output, options.output.as_deref()) != ExitCode::SUCCESS {
-            return tool_error();
-        }
-    }
-    if options.trace {
-        log(
-            options.verbosity.max(1),
-            1,
-            "check has no execution to trace",
-        );
-    }
-    println!(
-        "{}",
-        colorize(
-            &format!(
-                "{}: lexical, syntax, and semantic checks passed",
-                source.name
-            ),
-            options.color
-        )
-    );
-    ExitCode::SUCCESS
-}
-
-fn root_program(graph: &ModuleGraph) -> &Program {
-    graph
-        .modules
-        .iter()
-        .find(|module| module.id == graph.root)
-        .map(|module| &module.program)
-        .expect("module graph always contains its root")
-}
-
-mod cli_frontend;
-use cli_frontend::{load_frontend, load_frontend_with_overlays, parse_options};
-
-fn tokens_text(tokens: &[Token]) -> String {
-    tokens
-        .iter()
-        .map(|token| {
-            format!(
-                "{}:{}:{} {:?}",
-                token.span.start.line, token.span.start.column, token.span.end.column, token.kind
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-        + "\n"
-}
-
-fn emit_output(output: String, path: Option<&str>) -> ExitCode {
-    if let Some(path) = path {
-        return match fs::write(path, output) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(error) => {
-                eprintln!("error: cannot write {path}: {error}");
-                tool_error()
-            }
-        };
-    }
-    print!("{output}");
-    ExitCode::SUCCESS
-}
-
-mod cli_output;
-use cli_output::{colorize, log, module_index};
 
 #[cfg(test)]
 #[path = "cli_tests.rs"]
