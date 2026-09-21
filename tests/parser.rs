@@ -54,7 +54,6 @@ fn syntax_error_fixtures_are_rejected_by_the_parser() {
         "tests/grammar/invalid/field-missing-initializer.bn",
         "tests/grammar/invalid/for-markers-out-of-order.bn",
         "tests/grammar/invalid/increment-on-literal.bn",
-        "tests/grammar/invalid/increment-prefix.bn",
         "tests/grammar/invalid/increment-chained.bn",
         "tests/grammar/invalid/increment-adjacent-minus.bn",
         "tests/grammar/invalid/override-keyword-order.bn",

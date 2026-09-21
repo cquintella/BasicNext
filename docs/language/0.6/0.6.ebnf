@@ -22,8 +22,9 @@
   - I1: module-import-path unchanged; a multi-segment path means
     module + export first, nested module second (semantic, 0.6.md).
   - S1: increment-statement (target "++" | "--"), statement only.
-    0.6.1 (S1'): also an expression — increment-expression yields the
-    target's NEW value; see 0.6.md § "0.6.1 additions".
+    0.6.1 (S1'): also expressions, prefix and postfix — ++t / --t yield
+    the NEW value, t++ / t-- the OLD value (C convention); see 0.6.md
+    § "0.6.1 additions".
   - O3: visibility gains "PROTECTED" (reserved word).
   - O2: method-declaration = [ "OVERRIDE" ] function-declaration inside a
     class ("OVERRIDE" reserved), written PUBLIC OVERRIDE FUNCTION.
@@ -152,10 +153,10 @@ assignment-target    = identifier { member-suffix | index-suffix }
 assignment-operator  = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "**=" ;
 increment-statement  = increment-expression ;
                        (* 0.5.2 (S1): exact sugar for += 1 / -= 1.
-                          0.6.1 (S1'): the same form is also an expression whose
-                          value is the target's new value; as a statement the
-                          value is discarded. The "++" / "--" tokens are produced
-                          only for adjacent characters and accepted only right
+                          0.6.1 (S1'): prefix and postfix forms are also
+                          expressions; as a statement the value is discarded.
+                          The "++" / "--" tokens are produced only for adjacent
+                          characters and accepted only immediately before or
                           after an assignment target, so a--b is a syntax error. *)
 call-statement       = call-expression ;
 print-statement      = "PRINT" [ expression-list ] ;
@@ -203,11 +204,12 @@ unary-expression     = ( "NOT" | "-" ) unary-expression | power-expression ;
 power-expression     = postfix-expression [ "**" unary-expression ] ;
 postfix-expression   = primary { postfix-suffix } | increment-expression ;
 postfix-suffix       = call-suffix | member-suffix | index-suffix | cast-suffix ;
-increment-expression = assignment-target ( "++" | "--" ) ;
+increment-expression = ( "++" | "--" ) assignment-target        (* prefix: new value *)
+                     | assignment-target ( "++" | "--" ) ;      (* postfix: old value *)
                        (* 0.6.1 (S1'): the operand is an assignment-target (a
                           binding, member or element), never a literal, call
-                          result or parenthesised expression; no prefix form;
-                          not chainable (i++++ is a syntax error). *)
+                          result or parenthesised expression; not chainable
+                          (i++++, ++i++ and ++++i are syntax errors). *)
 call-expression      = primary { member-suffix | index-suffix | cast-suffix }
                        call-suffix { postfix-suffix } ;
 call-suffix          = "(" [ expression-list ] ")" ;
