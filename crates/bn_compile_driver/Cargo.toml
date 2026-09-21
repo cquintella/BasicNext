@@ -1,0 +1,20 @@
+[package]
+name = "bn_compile_driver"
+version = "0.5.2"
+edition = "2024"
+rust-version = "1.98"
+description = "Basic Next compilation driver: build orchestration, toolchain discovery and artifact linking"
+license = "MPL-2.0"
+publish = false
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+
+[dependencies]
+bn_cli = { path = "../bn_cli" }
+bn_llvm = { path = "../bn_llvm" }
+bn_source = { path = "../bn_source" }

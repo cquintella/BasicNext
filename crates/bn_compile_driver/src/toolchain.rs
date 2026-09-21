@@ -1,3 +1,7 @@
+//! Discovery of the external compiler toolchain: clang (native and wasm32),
+//! wasm-ld and `libbn_rt.a`, from `BN_*` environment variables, the
+//! toolchain configuration file, PATH and Homebrew locations.
+
 use std::{
     env, fs,
     path::{Path, PathBuf},

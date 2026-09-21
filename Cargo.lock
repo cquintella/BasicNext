@@ -19,6 +19,7 @@ name = "bn"
 version = "0.5.2"
 dependencies = [
  "bn_cli",
+ "bn_compile_driver",
  "bn_dap",
  "bn_diag",
  "bn_frontend",
@@ -46,6 +47,15 @@ dependencies = [
  "bn_frontend",
  "bn_source",
  "serde_json",
+]
+
+[[package]]
+name = "bn_compile_driver"
+version = "0.5.2"
+dependencies = [
+ "bn_cli",
+ "bn_llvm",
+ "bn_source",
 ]
 
 [[package]]

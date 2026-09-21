@@ -1,7 +1,8 @@
-// Unit tests of the `bn` driver: build-only option extension (`--opt`,
-// `--target`), clang/wasm toolchain selection and native link arguments.
-use super::cli_toolchain::{clang_has_wasm32, configured_clang};
-use super::{BuildOptions, Optimization, Target};
+//! Unit tests of the compilation driver: build-only option extension
+//! (`--opt`, `--target`), clang/wasm toolchain selection and native link
+//! arguments.
+use crate::options::{BuildOptions, Optimization, Target};
+use crate::toolchain::{clang_has_wasm32, configured_clang};
 
 fn build_options(arguments: &[&str]) -> Result<BuildOptions, String> {
     let mut build = BuildOptions::default();
@@ -60,8 +61,8 @@ fn apple_clang_is_not_a_wasm32_compiler() {
 #[test]
 fn native_runtime_linking_adds_libm_only_on_linux() {
     #[cfg(target_os = "linux")]
-    assert_eq!(super::native_runtime_link_args(), ["-lm"]);
+    assert_eq!(crate::artifact::native_runtime_link_args(), ["-lm"]);
 
     #[cfg(not(target_os = "linux"))]
-    assert!(super::native_runtime_link_args().is_empty());
+    assert!(crate::artifact::native_runtime_link_args().is_empty());
 }
