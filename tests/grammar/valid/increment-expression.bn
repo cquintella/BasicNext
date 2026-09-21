@@ -1,0 +1,23 @@
+CLASS Counter
+    PUBLIC count AS INTEGER = 0
+
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET peta AS INTEGER = 100
+    PRINT peta++
+    PRINT peta--
+    PRINT peta
+
+    LET x AS INTEGER = peta++ * 2
+    PRINT x, peta
+
+    LET c AS Counter = NEW Counter()
+    PRINT c.count++
+    PRINT c.count
+
+    LET a AS INTEGER[2] = [10, 20]
+    PRINT a[1]--, a[1]
+END FUNCTION

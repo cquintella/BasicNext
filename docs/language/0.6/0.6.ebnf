@@ -22,6 +22,8 @@
   - I1: module-import-path unchanged; a multi-segment path means
     module + export first, nested module second (semantic, 0.6.md).
   - S1: increment-statement (target "++" | "--"), statement only.
+    0.6.1 (S1'): also an expression — increment-expression yields the
+    target's NEW value; see 0.6.md § "0.6.1 additions".
   - O3: visibility gains "PROTECTED" (reserved word).
   - O2: method-declaration = [ "OVERRIDE" ] function-declaration inside a
     class ("OVERRIDE" reserved), written PUBLIC OVERRIDE FUNCTION.
@@ -148,11 +150,13 @@ assignment-statement = assignment-target assignment-operator expression ;
 assignment-target    = identifier { member-suffix | index-suffix }
                        | "SELF" member-suffix { member-suffix | index-suffix } ;
 assignment-operator  = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "**=" ;
-increment-statement  = assignment-target ( "++" | "--" ) ;
-                       (* 0.5.2 (S1): statement only; exact sugar for += 1 / -= 1.
-                          The "++" / "--" tokens are produced only for adjacent
-                          characters and accepted only after an assignment target
-                          at statement start, so a--b is a syntax error. *)
+increment-statement  = increment-expression ;
+                       (* 0.5.2 (S1): exact sugar for += 1 / -= 1.
+                          0.6.1 (S1'): the same form is also an expression whose
+                          value is the target's new value; as a statement the
+                          value is discarded. The "++" / "--" tokens are produced
+                          only for adjacent characters and accepted only right
+                          after an assignment target, so a--b is a syntax error. *)
 call-statement       = call-expression ;
 print-statement      = "PRINT" [ expression-list ] ;
 input-statement      = "INPUT" assignment-target
@@ -197,8 +201,13 @@ additive-expression  = multiplicative-expression { ( "+" | "-" ) multiplicative-
 multiplicative-expression = unary-expression { ( "*" | "/" | "DIV" | "%" ) unary-expression } ;
 unary-expression     = ( "NOT" | "-" ) unary-expression | power-expression ;
 power-expression     = postfix-expression [ "**" unary-expression ] ;
-postfix-expression   = primary { postfix-suffix } ;
+postfix-expression   = primary { postfix-suffix } | increment-expression ;
 postfix-suffix       = call-suffix | member-suffix | index-suffix | cast-suffix ;
+increment-expression = assignment-target ( "++" | "--" ) ;
+                       (* 0.6.1 (S1'): the operand is an assignment-target (a
+                          binding, member or element), never a literal, call
+                          result or parenthesised expression; no prefix form;
+                          not chainable (i++++ is a syntax error). *)
 call-expression      = primary { member-suffix | index-suffix | cast-suffix }
                        call-suffix { postfix-suffix } ;
 call-suffix          = "(" [ expression-list ] ")" ;
