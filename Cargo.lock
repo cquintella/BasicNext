@@ -315,6 +315,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "bni"
+version = "0.5.2"
+dependencies = [
+ "bn_cli",
+ "bn_dap",
+ "bn_interpret_driver",
+ "bn_lsp",
+ "serde_json",
+]
+
+[[package]]
 name = "bytes"
 version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

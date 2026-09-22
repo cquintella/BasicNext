@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/bn_rt", "crates/bn_source", "crates/bn_types", "crates/bn_diag", "crates/bn_ir", "crates/bn_frontend", "crates/bn_runtime", "crates/bn_value", "crates/bn_llvm", "crates/bn_interp", "crates/bn_host_exec", "crates/bn_limits", "crates/bn_lib_math", "crates/bn_lib_json", "crates/bn_lib_log", "crates/bn_lib_data", "crates/bn_host_fs", "crates/bn_host_net", "crates/bn_lib_dispatch", "crates/bn_lib_web", "crates/bn_cli", "crates/bn_interpret_driver", "crates/bn_lsp", "crates/bn_dap", "crates/bn_compile_driver", "crates/bnc"]
+members = ["crates/bn_rt", "crates/bn_source", "crates/bn_types", "crates/bn_diag", "crates/bn_ir", "crates/bn_frontend", "crates/bn_runtime", "crates/bn_value", "crates/bn_llvm", "crates/bn_interp", "crates/bn_host_exec", "crates/bn_limits", "crates/bn_lib_math", "crates/bn_lib_json", "crates/bn_lib_log", "crates/bn_lib_data", "crates/bn_host_fs", "crates/bn_host_net", "crates/bn_lib_dispatch", "crates/bn_lib_web", "crates/bn_cli", "crates/bn_interpret_driver", "crates/bn_lsp", "crates/bn_dap", "crates/bn_compile_driver", "crates/bnc", "crates/bni"]
 resolver = "3"
 
 [package]
