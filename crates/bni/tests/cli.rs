@@ -1010,3 +1010,19 @@ fn bncrypto_bytes_round_trip_and_reject_malformed_hex() {
         "3\n616263\n3\n000fff\nodd-length-rejected\n"
     );
 }
+
+/// The `BNCrypto.Bytes` subset both backends support, interpreted. The compiled
+/// half of this pair lives in the `bnc` suite; the two must print the same.
+#[test]
+fn bncrypto_bytes_portable_subset_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-bytes-portable/main.bn"])
+        .output()
+        .expect("run the portable BNCrypto bytes fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "3\n616263\n");
+}

@@ -534,12 +534,32 @@ pub(crate) fn provider_name(module: &Module, name: &str) -> Option<&'static str>
     }
 }
 
-/// The `BNCrypto` digest `name` selects, if this module imports `BNCrypto` and
-/// the callee is one of the supported digests.
+/// True when `ty` is `BNCrypto.Bytes` from a module this program imports.
+pub(crate) fn is_bncrypto_bytes_type(module: &Module, ty: &Type) -> bool {
+    matches!(
+        ty,
+        Type::ImportedNamed {
+            module: module_id,
+            name
+        } if name == "Bytes"
+            && module
+                .bncrypto_providers
+                .contains(&bn_ir::ModuleId::from(*module_id))
+    )
+}
+
+/// The `BNCrypto` member `name` selects, if this module imports `BNCrypto` and
+/// the callee is part of the supported surface.
 pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a str> {
     let method = name.rsplit('.').next()?;
-    (!module.bncrypto_providers.is_empty() && matches!(method, "SHA256" | "SHA512"))
-        .then_some(method)
+    (!module.bncrypto_providers.is_empty()
+        && matches!(
+            method,
+            // FromHex needs `Bytes OR Error` narrowing, which this backend does
+            // not emit yet; it stays a clean TARGET_UNSUPPORTED_OP.
+            "SHA256" | "SHA512" | "FromText" | "Length" | "ToHex"
+        ))
+    .then_some(method)
 }
 
 pub(crate) fn unsupported_instruction(

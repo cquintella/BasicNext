@@ -322,17 +322,45 @@ pub(crate) fn lower_call_instruction(
         }
         name if bncrypto_method(module, name).is_some() => {
             let dest = destination.0;
-            let digest = bncrypto_method(module, name).expect("validated BNCrypto digest");
-            let symbol = if digest == "SHA256" {
-                "bn_rt_crypto_sha256"
-            } else {
-                "bn_rt_crypto_sha512"
-            };
-            let _ = writeln!(
-                text,
-                "  %v{dest} = call ptr @{symbol}(ptr %v{})",
-                arguments[0].0
-            );
+            let argument = arguments[0].0;
+            match bncrypto_method(module, name).expect("validated BNCrypto member") {
+                "SHA256" => {
+                    let _ = writeln!(
+                        text,
+                        "  %v{dest} = call ptr @bn_rt_crypto_sha256(ptr %v{argument})"
+                    );
+                }
+                "SHA512" => {
+                    let _ = writeln!(
+                        text,
+                        "  %v{dest} = call ptr @bn_rt_crypto_sha512(ptr %v{argument})"
+                    );
+                }
+                // The handle travels as a ptr, as BNLog resources do.
+                "FromText" => {
+                    let _ = writeln!(
+                        text,
+                        "  %cryh{dest} = call i64 @bn_rt_crypto_bytes_from_text(ptr %v{argument})"
+                    );
+                    let _ = writeln!(text, "  %v{dest} = inttoptr i64 %cryh{dest} to ptr");
+                }
+                "Length" => {
+                    let _ = writeln!(text, "  %cryh{dest} = ptrtoint ptr %v{argument} to i64");
+                    let _ = writeln!(
+                        text,
+                        "  %cryl{dest} = call i64 @bn_rt_crypto_bytes_length(i64 %cryh{dest})"
+                    );
+                    let _ = writeln!(text, "  %v{dest} = trunc i64 %cryl{dest} to i32");
+                }
+                "ToHex" => {
+                    let _ = writeln!(text, "  %cryh{dest} = ptrtoint ptr %v{argument} to i64");
+                    let _ = writeln!(
+                        text,
+                        "  %v{dest} = call ptr @bn_rt_crypto_bytes_to_hex(i64 %cryh{dest})"
+                    );
+                }
+                other => unreachable!("unsupported BNCrypto member reached emission: {other}"),
+            }
         }
         "TOLOWER" => {
             let dest = destination.0;

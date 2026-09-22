@@ -87,6 +87,19 @@ the *same* code, and the test suite asserts that a compiled program prints
 byte-for-byte what the interpreted one prints. A backend that drifted would fail
 that test rather than quietly disagree.
 
+`Bytes` works the same way: the handle travels as a pointer into a `bn_rt`
+table, so a compiled program creates, measures, renders and releases the buffer
+through the same code the interpreter uses.
+
+One member is an exception, and it is worth knowing why. `FromHex` returns
+`Bytes OR Error`, and the compiler does not yet emit the narrowing for that
+kind of result. So `FromHex` runs under `bni` but a program that calls it will
+not compile — and that refusal is deliberate. Basic Next distinguishes *"this
+program is wrong"* from *"this target cannot do it yet"*: you get
+`TARGET_UNSUPPORTED_OP`, a support diagnostic, instead of a binary that
+silently does the wrong thing. A test pins that refusal, so the day the
+narrowing lands, the boundary moves on purpose rather than by accident.
+
 ## What is not here yet
 
 Authenticated encryption, message authentication, password hashing, signatures,

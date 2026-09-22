@@ -50,9 +50,13 @@ pub(crate) fn call_instruction_supported(
             arguments,
             values,
         ),
-        // Digests take one STRING and yield one STRING, like TOLOWER/TOUPPER.
         Some(name) if bncrypto_method(module, name).is_some() => {
-            arguments.len() == 1 && values.get(&arguments[0]) == Some(&Type::String)
+            let method = bncrypto_method(module, name).unwrap_or(name);
+            arguments.len() == 1
+                && values.get(&arguments[0]).is_some_and(|ty| match method {
+                    "Length" | "ToHex" => is_bncrypto_bytes_type(module, ty),
+                    _ => *ty == Type::String,
+                })
         }
         Some(name) if is_bndata_dataframe_call(module, name) => {
             matches!(

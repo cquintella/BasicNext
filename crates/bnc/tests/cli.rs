@@ -1372,3 +1372,54 @@ fn compiled_bncrypto_digests_match_the_interpreter() {
          2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f\n"
     );
 }
+
+/// `BNCrypto.Bytes` handles survive compilation: the buffer is created, measured,
+/// rendered and released through `bn_rt`, and the native binary prints exactly
+/// what the interpreter prints (see `bncrypto_bytes_portable_subset_interprets`).
+#[test]
+fn compiled_bncrypto_bytes_match_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!("bn-crypto-bytes-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("crypto bytes directory");
+    let artifact = directory.join("bytes");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-bytes-portable/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the portable BNCrypto bytes fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled bytes fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "3\n616263\n");
+}
+
+/// `FromHex` is interpret-only for now: it needs `Bytes OR Error` narrowing the
+/// backend does not emit yet. The boundary must surface as a target-support
+/// diagnostic, never as a language error and never as a silent miscompile.
+#[test]
+fn compiled_bncrypto_from_hex_is_a_target_support_error() {
+    let directory = std::env::temp_dir().join(format!("bn-crypto-fromhex-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("crypto fromhex directory");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-bytes/main.bn", "-o"])
+        .arg(directory.join("fromhex"))
+        .output()
+        .expect("compile the FromHex fixture");
+    assert!(!built.status.success(), "FromHex unexpectedly compiled");
+    let stderr = String::from_utf8_lossy(&built.stderr);
+    assert!(
+        stderr.contains("TARGET_UNSUPPORTED_OP"),
+        "expected a target-support diagnostic, got: {stderr}"
+    );
+}
