@@ -79,6 +79,60 @@ This is the same fail-closed posture the rest of the module takes: when an input
 cannot be interpreted, you get an `Error` you must handle, never a partial
 result that looks plausible.
 
+## Encrypting something
+
+Encryption in `BNCrypto` is always *authenticated*: you do not get a mode that
+encrypts without also proving the message was not altered. `Seal` produces a
+ciphertext with a tag appended; `Open` verifies that tag before giving you
+anything back.
+
+```basic
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Start() AS VOID
+    LET key AS Crypto.Bytes = Crypto.FromText("0123456789abcdef0123456789abcdef")
+    LET nonce AS Crypto.Bytes = Crypto.FromText("0123456789ab")
+    LET plain AS Crypto.Bytes = Crypto.FromText("abc")
+    LET aad AS Crypto.Bytes = Crypto.FromText("hdr")
+
+    LET sealed AS Crypto.Bytes OR Error = Crypto.SealAesGcm(key, nonce, plain, aad)
+    IF sealed IS Error THEN
+        PRINT "seal failed"
+    ELSE
+        PRINT sealed.ToHex()
+    END IF
+END FUNCTION
+```
+
+The key is 32 bytes and the nonce is 12. Those are not suggestions: a wrong
+length gives you an `Error`, not a padded guess.
+
+The `aad` — additional authenticated data — is covered by the tag but is *not*
+encrypted. It is for the parts of a message that must travel in the clear yet
+must not be swapped, such as a header or a record id.
+
+### The failure you want
+
+Change one byte of the ciphertext, or open with a different `aad`, and `Open`
+returns `Error`. Not a shorter plaintext, not garbage — nothing. This is the
+whole point of authenticated encryption, and it is why `Open` returns
+`Bytes OR Error` and forces you to write the `IF`:
+
+```basic
+LET opened AS Crypto.Bytes OR Error = Crypto.OpenAesGcm(key, nonce, sealed, wrongAad)
+IF opened IS Error THEN
+    PRINT "rejected"        // this is the branch that runs
+END IF
+```
+
+### One rule the language cannot enforce
+
+Never use the same nonce twice with the same key. With AES-GCM in particular,
+repeating a nonce does not merely weaken the message — it can expose the
+authentication key itself. `BNCrypto` cannot check this for you, because it
+never sees your other messages. Derive nonces from `HOST.Random`, or from a
+counter you are certain never repeats.
+
 ## One implementation, two backends
 
 The digests do not live in the interpreter. They live in `bn_rt` behind the C

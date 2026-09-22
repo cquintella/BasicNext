@@ -13,7 +13,7 @@ use std::ffi::c_char;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock, PoisonError};
 
-use crate::crypto::{decode_hex, encode_hex};
+use crate::crypto::{Aead, decode_hex, encode_hex, open, seal};
 use crate::{c_str, c_string};
 
 /// Returned by fallible entry points; `0` is success, mirroring the other
@@ -105,6 +105,89 @@ pub extern "C" fn bn_rt_crypto_bytes_release(handle: u64) -> i32 {
             BN_CRYPTO_INVALID_HANDLE
         }
     })
+}
+
+/// Algorithm selector shared with the backends: `0` is AES-256-GCM, `1` is
+/// ChaCha20-Poly1305. Anything else is rejected.
+fn algorithm(selector: i32) -> Option<Aead> {
+    match selector {
+        0 => Some(Aead::Aes256Gcm),
+        1 => Some(Aead::ChaCha20Poly1305),
+        _ => None,
+    }
+}
+
+/// The four buffers an AEAD call needs: key, nonce, message and AAD.
+type AeadOperands = (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>);
+
+fn borrow4(a: u64, b: u64, c: u64, d: u64) -> Option<AeadOperands> {
+    with_buffers(|buffers| {
+        Some((
+            buffers.get(&a)?.clone(),
+            buffers.get(&b)?.clone(),
+            buffers.get(&c)?.clone(),
+            buffers.get(&d)?.clone(),
+        ))
+    })
+}
+
+/// Seals `plaintext` under `key`/`nonce` with `aad`, storing the ciphertext and
+/// its tag in a new buffer whose handle is written through `out`.
+#[allow(unsafe_code)] // C ABI: opaque handles in, opaque handle out through `out`.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_seal(
+    selector: i32,
+    key: u64,
+    nonce: u64,
+    plaintext: u64,
+    aad: u64,
+    out: *mut u64,
+) -> i32 {
+    if out.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    let Some(algorithm) = algorithm(selector) else {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    };
+    let Some((key, nonce, plaintext, aad)) = borrow4(key, nonce, plaintext, aad) else {
+        return BN_CRYPTO_INVALID_HANDLE;
+    };
+    let Some(sealed) = seal(algorithm, &key, &nonce, &plaintext, &aad) else {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    };
+    let handle = store(sealed);
+    unsafe { *out = handle };
+    BN_CRYPTO_OK
+}
+
+/// Verifies and opens `ciphertext`. A tag that does not verify returns
+/// [`BN_CRYPTO_INVALID_ARGUMENT`] and writes nothing: there is no partial or
+/// unauthenticated plaintext.
+#[allow(unsafe_code)] // C ABI: opaque handles in, opaque handle out through `out`.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_open(
+    selector: i32,
+    key: u64,
+    nonce: u64,
+    ciphertext: u64,
+    aad: u64,
+    out: *mut u64,
+) -> i32 {
+    if out.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    let Some(algorithm) = algorithm(selector) else {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    };
+    let Some((key, nonce, ciphertext, aad)) = borrow4(key, nonce, ciphertext, aad) else {
+        return BN_CRYPTO_INVALID_HANDLE;
+    };
+    let Some(plain) = open(algorithm, &key, &nonce, &ciphertext, &aad) else {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    };
+    let handle = store(plain);
+    unsafe { *out = handle };
+    BN_CRYPTO_OK
 }
 
 #[cfg(test)]

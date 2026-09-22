@@ -567,7 +567,16 @@ pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a 
     (!module.bncrypto_providers.is_empty()
         && matches!(
             method,
-            "SHA256" | "SHA512" | "FromText" | "FromHex" | "Length" | "ToHex"
+            "SHA256"
+                | "SHA512"
+                | "FromText"
+                | "FromHex"
+                | "Length"
+                | "ToHex"
+                | "SealAesGcm"
+                | "OpenAesGcm"
+                | "SealChaCha20"
+                | "OpenChaCha20"
         ))
     .then_some(method)
 }

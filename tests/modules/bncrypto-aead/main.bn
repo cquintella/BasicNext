@@ -1,0 +1,57 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// AEAD round-trip for both ciphers, then a tamper check. The ciphertexts are
+// mirrored in tests/fixtures/crypto/aead-vectors.json and were produced by an
+// implementation independent of the crates under test.
+
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Start() AS VOID
+    LET key AS Crypto.Bytes = Crypto.FromText("0123456789abcdef0123456789abcdef")
+    LET nonce AS Crypto.Bytes = Crypto.FromText("0123456789ab")
+    LET plain AS Crypto.Bytes = Crypto.FromText("abc")
+    LET aad AS Crypto.Bytes = Crypto.FromText("hdr")
+
+    LET sealedA AS Crypto.Bytes OR Error = Crypto.SealAesGcm(key, nonce, plain, aad)
+    IF sealedA IS Error THEN
+        PRINT "aes-seal-failed"
+    ELSE
+        PRINT sealedA.ToHex()
+        LET openedA AS Crypto.Bytes OR Error = Crypto.OpenAesGcm(key, nonce, sealedA, aad)
+        IF openedA IS Error THEN
+            PRINT "aes-open-failed"
+        ELSE
+            PRINT openedA.ToHex()
+        END IF
+    END IF
+
+    LET sealedC AS Crypto.Bytes OR Error = Crypto.SealChaCha20(key, nonce, plain, aad)
+    IF sealedC IS Error THEN
+        PRINT "chacha-seal-failed"
+    ELSE
+        PRINT sealedC.ToHex()
+        LET openedC AS Crypto.Bytes OR Error = Crypto.OpenChaCha20(key, nonce, sealedC, aad)
+        IF openedC IS Error THEN
+            PRINT "chacha-open-failed"
+        ELSE
+            PRINT openedC.ToHex()
+        END IF
+    END IF
+
+    // Opening with a different AAD must fail closed.
+    LET wrong AS Crypto.Bytes = Crypto.FromText("xxx")
+    LET resealed AS Crypto.Bytes OR Error = Crypto.SealAesGcm(key, nonce, plain, aad)
+    IF resealed IS Error THEN
+        PRINT "reseal-failed"
+    ELSE
+        LET tampered AS Crypto.Bytes OR Error = Crypto.OpenAesGcm(key, nonce, resealed, wrong)
+        IF tampered IS Error THEN
+            PRINT "tamper-rejected"
+        ELSE
+            PRINT "tamper-accepted"
+        END IF
+    END IF
+END FUNCTION

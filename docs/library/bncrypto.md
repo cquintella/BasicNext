@@ -8,8 +8,8 @@ come from `bn_rt::crypto` over the C ABI, so the interpreter (`bni`, through the
 `bn_lib_crypto` provider) and compiled binaries (`bnc`, through the LLVM backend)
 execute one implementation and cannot drift.
 
-This document covers what has landed: the digests and the opaque `Bytes` buffer.
-Authenticated encryption, message authentication, key derivation, signatures, and
+This document covers what has landed: the digests, the opaque `Bytes` buffer, and
+authenticated encryption. Message authentication, key derivation, signatures, and
 the post-quantum primitives named in the bucket are **not** part of this cut and
 are not yet importable.
 
@@ -64,6 +64,28 @@ not depend on input length. Output is always lowercase hexadecimal.
 `FromHex` rejects odd-length input instead of truncating: an odd number of hex
 characters is not a byte sequence.
 
+## Authenticated encryption
+
+| Function | Signature |
+| --- | --- |
+| `SealAesGcm` | `SealAesGcm(key, nonce, plaintext, aad AS Bytes) AS Bytes OR Error` |
+| `OpenAesGcm` | `OpenAesGcm(key, nonce, ciphertext, aad AS Bytes) AS Bytes OR Error` |
+| `SealChaCha20` | `SealChaCha20(key, nonce, plaintext, aad AS Bytes) AS Bytes OR Error` |
+| `OpenChaCha20` | `OpenChaCha20(key, nonce, ciphertext, aad AS Bytes) AS Bytes OR Error` |
+
+AES-256-GCM follows **NIST SP 800-38D**; ChaCha20-Poly1305 follows **RFC 7539**.
+Both take a **32-byte key** and a **12-byte nonce**, and both append a **16-byte
+authentication tag** to the ciphertext. The additional authenticated data may be
+empty, but it is authenticated, not encrypted.
+
+`Open` **fails closed**. A tampered ciphertext, a changed AAD, a wrong key or a
+truncated tag all yield `Error` and no plaintext whatsoever — never a partial or
+unauthenticated result. `Seal` yields `Error` when the key or nonce length is
+wrong rather than padding or truncating it.
+
+A nonce must never be reused with the same key. The module does not and cannot
+enforce that for you; derive nonces from `HOST.Random` or a counter you control.
+
 ## Target support
 
 Every member listed above is supported by **both** backends. Digests route
@@ -88,10 +110,13 @@ A call whose argument has the wrong type fails the target support check with
 | Compiled digests equal interpreted digests | `cargo test -p bnc --test cli compiled_bncrypto_digests` |
 | Compiled `Bytes` equals interpreted `Bytes` | `cargo test -p bnc --test cli compiled_bncrypto_bytes` |
 | Compiled `FromHex` and narrowed-value methods match | `cargo test -p bnc --test cli compiled_bncrypto_bytes_full_surface` |
+| AEAD matches an independent implementation | `cargo test -p bn_rt crypto` |
+| AEAD fails closed on tamper, AAD change and wrong key | `cargo test -p bn_rt crypto` |
+| AEAD interprets and compiles identically | `cargo test -p bnc --test cli compiled_bncrypto_aead` |
 
 ## Not here
 
-AEAD (`AES-256-GCM`, `ChaCha20-Poly1305`), `HMAC-SHA-256`, `Argon2id`, `Ed25519`,
+`HMAC-SHA-256`, `Argon2id`, `Ed25519`,
 `ECDSA P-256`, `ML-KEM-768`, and `ML-DSA-65`. Those follow in later activities of
 bucket 0.6.1b or a successor bucket; none of them is importable today. They all
 build on `Crypto.Bytes`, which is why the handle landed before any cipher.

@@ -345,7 +345,7 @@ pub(crate) fn lower_call_instruction(
                     let _ = writeln!(text, "  %v{dest} = inttoptr i64 %cryh{dest} to ptr");
                 }
                 "Length" => {
-                    emit_bncrypto_handle(text, analysis, dest, arguments[0]);
+                    emit_bncrypto_handle(text, analysis, &format!("%cryh{dest}"), arguments[0]);
                     let _ = writeln!(
                         text,
                         "  %cryl{dest} = call i64 @bn_rt_crypto_bytes_length(i64 %cryh{dest})"
@@ -353,10 +353,38 @@ pub(crate) fn lower_call_instruction(
                     let _ = writeln!(text, "  %v{dest} = trunc i64 %cryl{dest} to i32");
                 }
                 "ToHex" => {
-                    emit_bncrypto_handle(text, analysis, dest, arguments[0]);
+                    emit_bncrypto_handle(text, analysis, &format!("%cryh{dest}"), arguments[0]);
                     let _ = writeln!(
                         text,
                         "  %v{dest} = call ptr @bn_rt_crypto_bytes_to_hex(i64 %cryh{dest})"
+                    );
+                }
+                member @ ("SealAesGcm" | "OpenAesGcm" | "SealChaCha20" | "OpenChaCha20") => {
+                    let selector = i32::from(member.ends_with("ChaCha20"));
+                    let symbol = if member.starts_with("Seal") {
+                        "bn_rt_crypto_seal"
+                    } else {
+                        "bn_rt_crypto_open"
+                    };
+                    for (index, operand) in arguments.iter().enumerate() {
+                        emit_bncrypto_handle(
+                            text,
+                            analysis,
+                            &format!("%cryarg{dest}_{index}"),
+                            *operand,
+                        );
+                    }
+                    let _ = writeln!(text, "  %cryout{dest} = alloca i64");
+                    let _ = writeln!(
+                        text,
+                        "  %cryrc{dest} = call i32 @{symbol}(i32 {selector}, i64 %cryarg{dest}_0, i64 %cryarg{dest}_1, i64 %cryarg{dest}_2, i64 %cryarg{dest}_3, ptr %cryout{dest})"
+                    );
+                    let _ = writeln!(text, "  %cryhandle{dest} = load i64, ptr %cryout{dest}");
+                    emit_handle_result(
+                        text,
+                        *destination,
+                        format!("%cryrc{dest}"),
+                        format!("%cryhandle{dest}"),
                     );
                 }
                 "FromHex" => {
@@ -509,16 +537,16 @@ pub(crate) fn lower_call_instruction(
 fn emit_bncrypto_handle(
     text: &mut String,
     analysis: &LoweringAnalysis<'_>,
-    dest: u32,
+    slot: &str,
     operand: ValueId,
 ) {
     let source = operand.0;
     if matches!(analysis.values.get(&operand), Some(Type::Alternative(_))) {
         let _ = writeln!(
             text,
-            "  %cryh{dest} = extractvalue {{ i1, ptr, i64 }} %v{source}, 2"
+            "  {slot} = extractvalue {{ i1, ptr, i64 }} %v{source}, 2"
         );
     } else {
-        let _ = writeln!(text, "  %cryh{dest} = ptrtoint ptr %v{source} to i64");
+        let _ = writeln!(text, "  {slot} = ptrtoint ptr %v{source} to i64");
     }
 }

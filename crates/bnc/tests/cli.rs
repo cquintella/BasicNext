@@ -1435,3 +1435,35 @@ fn compiled_bncrypto_bytes_full_surface_matches_the_interpreter() {
         "3\n616263\n3\n000fff\nodd-length-rejected\n"
     );
 }
+
+/// AEAD survives compilation: a native binary seals and opens with both ciphers
+/// and rejects a changed AAD, printing exactly what the interpreter prints.
+#[test]
+fn compiled_bncrypto_aead_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!("bn-crypto-aead-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("crypto aead directory");
+    let artifact = directory.join("aead");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-aead/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the BNCrypto AEAD fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled AEAD fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "f8cb8441c9b57bd8fd62663940f843f4e3cf1f\n616263\n25a94560bf99e02777736ea20551c7a02d3f86\n616263\ntamper-rejected\n"
+    );
+}

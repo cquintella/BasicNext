@@ -51,12 +51,23 @@ pub(crate) fn call_instruction_supported(
             values,
         ),
         Some(name) if bncrypto_method(module, name).is_some() => {
-            let method = bncrypto_method(module, name).unwrap_or(name);
-            arguments.len() == 1
-                && values.get(&arguments[0]).is_some_and(|ty| match method {
-                    "Length" | "ToHex" => carries_bncrypto_bytes(module, ty),
-                    _ => *ty == Type::String,
-                })
+            match bncrypto_method(module, name).unwrap_or(name) {
+                "SealAesGcm" | "OpenAesGcm" | "SealChaCha20" | "OpenChaCha20" => {
+                    arguments.len() == 4
+                        && arguments.iter().all(|argument| {
+                            values
+                                .get(argument)
+                                .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                        })
+                }
+                method => {
+                    arguments.len() == 1
+                        && values.get(&arguments[0]).is_some_and(|ty| match method {
+                            "Length" | "ToHex" => carries_bncrypto_bytes(module, ty),
+                            _ => *ty == Type::String,
+                        })
+                }
+            }
         }
         Some(name) if is_bndata_dataframe_call(module, name) => {
             matches!(

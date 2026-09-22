@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! SHA-256 and SHA-512 digests behind the C ABI, so the interpreter
+//! Digests, hex codecs and AEAD behind the C ABI, so the interpreter
 //! (`bn_lib_crypto`) and compiled binaries (`bn_llvm`) share one
 //! implementation rather than two that can drift.
 
@@ -76,9 +76,78 @@ pub extern "C" fn bn_rt_crypto_sha512(text: *const c_char) -> *mut c_char {
     c_string(&sha512_hex(text.as_bytes()))
 }
 
+/// AEAD algorithms `BNCrypto` exposes. Both take a 32-byte key and a 12-byte
+/// nonce and append a 16-byte authentication tag to the ciphertext.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Aead {
+    Aes256Gcm,
+    ChaCha20Poly1305,
+}
+
+/// Encrypts and authenticates. `None` when the key or nonce has the wrong
+/// length; there is no partial result.
+#[must_use]
+pub fn seal(
+    algorithm: Aead,
+    key: &[u8],
+    nonce: &[u8],
+    plaintext: &[u8],
+    aad: &[u8],
+) -> Option<Vec<u8>> {
+    use aes_gcm::aead::{Aead as _, KeyInit as _, Payload};
+    if key.len() != 32 || nonce.len() != 12 {
+        return None;
+    }
+    let payload = Payload {
+        msg: plaintext,
+        aad,
+    };
+    match algorithm {
+        Aead::Aes256Gcm => aes_gcm::Aes256Gcm::new_from_slice(key)
+            .ok()?
+            .encrypt(aes_gcm::Nonce::from_slice(nonce), payload)
+            .ok(),
+        Aead::ChaCha20Poly1305 => chacha20poly1305::ChaCha20Poly1305::new_from_slice(key)
+            .ok()?
+            .encrypt(chacha20poly1305::Nonce::from_slice(nonce), payload)
+            .ok(),
+    }
+}
+
+/// Verifies and decrypts. `None` when the key or nonce has the wrong length or
+/// the tag does not verify — a tampered message yields no plaintext at all,
+/// never a partial or unauthenticated one.
+#[must_use]
+pub fn open(
+    algorithm: Aead,
+    key: &[u8],
+    nonce: &[u8],
+    ciphertext: &[u8],
+    aad: &[u8],
+) -> Option<Vec<u8>> {
+    use aes_gcm::aead::{Aead as _, KeyInit as _, Payload};
+    if key.len() != 32 || nonce.len() != 12 {
+        return None;
+    }
+    let payload = Payload {
+        msg: ciphertext,
+        aad,
+    };
+    match algorithm {
+        Aead::Aes256Gcm => aes_gcm::Aes256Gcm::new_from_slice(key)
+            .ok()?
+            .decrypt(aes_gcm::Nonce::from_slice(nonce), payload)
+            .ok(),
+        Aead::ChaCha20Poly1305 => chacha20poly1305::ChaCha20Poly1305::new_from_slice(key)
+            .ok()?
+            .decrypt(chacha20poly1305::Nonce::from_slice(nonce), payload)
+            .ok(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{sha256_hex, sha512_hex};
+    use super::{encode_hex, sha256_hex, sha512_hex};
 
     // Inputs are the published FIPS 180-4 example messages; the expected
     // digests were computed by Python hashlib — an implementation independent
@@ -124,7 +193,7 @@ mod tests {
 
     #[test]
     fn hex_round_trips_and_rejects_malformed_input() {
-        use super::{decode_hex, encode_hex};
+        use super::decode_hex;
         assert_eq!(encode_hex(&[0x00, 0x0f, 0xff]), "000fff");
         assert_eq!(decode_hex("000fff"), Some(vec![0x00, 0x0f, 0xff]));
         assert_eq!(decode_hex("000FFF"), Some(vec![0x00, 0x0f, 0xff]));
@@ -133,6 +202,85 @@ mod tests {
         // first attempt's fabricated fixtures detectable.
         assert_eq!(decode_hex("abc"), None);
         assert_eq!(decode_hex("zz"), None);
+    }
+
+    // Key 00..1f and nonce 00..0b; ciphertexts produced by python-cryptography
+    // (OpenSSL), independent of the crates under test, and mirrored in
+    // tests/fixtures/crypto/aead-vectors.json.
+    fn aead_key() -> Vec<u8> {
+        (0..32).collect()
+    }
+
+    fn aead_nonce() -> Vec<u8> {
+        (0..12).collect()
+    }
+
+    #[test]
+    fn aes_gcm_matches_independent_vectors() {
+        use super::{Aead, seal};
+        let (key, nonce) = (aead_key(), aead_nonce());
+        assert_eq!(
+            encode_hex(&seal(Aead::Aes256Gcm, &key, &nonce, b"", b"").expect("seal empty")),
+            "f4c2db1dc38805a37b92171c5d0a81cc"
+        );
+        assert_eq!(
+            encode_hex(&seal(Aead::Aes256Gcm, &key, &nonce, b"abc", b"").expect("seal abc")),
+            "2660b5539677125a571f571ada456e85769a43"
+        );
+        assert_eq!(
+            encode_hex(&seal(Aead::Aes256Gcm, &key, &nonce, b"abc", b"hdr").expect("seal aad")),
+            "2660b569dff070e184bce4347ab72c6ec46088"
+        );
+    }
+
+    #[test]
+    fn chacha20_poly1305_matches_independent_vectors() {
+        use super::{Aead, seal};
+        let (key, nonce) = (aead_key(), aead_nonce());
+        assert_eq!(
+            encode_hex(&seal(Aead::ChaCha20Poly1305, &key, &nonce, b"", b"").expect("seal empty")),
+            "295a498b8841a1c5f55d4d606f731159"
+        );
+        assert_eq!(
+            encode_hex(&seal(Aead::ChaCha20Poly1305, &key, &nonce, b"abc", b"").expect("seal abc")),
+            "e8996bdbe97d036a9b815bccbdf1a8e87ec37f"
+        );
+        assert_eq!(
+            encode_hex(
+                &seal(Aead::ChaCha20Poly1305, &key, &nonce, b"abc", b"hdr").expect("seal aad")
+            ),
+            "e8996b3a03c9656f5001909f4819e887d5daa2"
+        );
+    }
+
+    #[test]
+    fn open_round_trips_and_fails_closed() {
+        use super::{Aead, open, seal};
+        let (key, nonce) = (aead_key(), aead_nonce());
+        for algorithm in [Aead::Aes256Gcm, Aead::ChaCha20Poly1305] {
+            let sealed = seal(algorithm, &key, &nonce, b"abc", b"hdr").expect("seal");
+            assert_eq!(
+                open(algorithm, &key, &nonce, &sealed, b"hdr").as_deref(),
+                Some(&b"abc"[..])
+            );
+            // A tampered byte, a changed AAD, or a different key must yield no
+            // plaintext at all — never a partial or unauthenticated one.
+            let mut tampered = sealed.clone();
+            tampered[0] ^= 1;
+            assert_eq!(open(algorithm, &key, &nonce, &tampered, b"hdr"), None);
+            assert_eq!(open(algorithm, &key, &nonce, &sealed, b"other"), None);
+            let mut other_key = key.clone();
+            other_key[0] ^= 1;
+            assert_eq!(open(algorithm, &other_key, &nonce, &sealed, b"hdr"), None);
+        }
+    }
+
+    #[test]
+    fn aead_rejects_wrong_key_and_nonce_lengths() {
+        use super::{Aead, seal};
+        let (key, nonce) = (aead_key(), aead_nonce());
+        assert_eq!(seal(Aead::Aes256Gcm, &key[..16], &nonce, b"abc", b""), None);
+        assert_eq!(seal(Aead::Aes256Gcm, &key, &nonce[..8], b"abc", b""), None);
     }
 
     #[test]

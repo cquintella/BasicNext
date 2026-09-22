@@ -41,6 +41,65 @@ impl CryptoProvider {
         Value::CryptoBytes(handle)
     }
 
+    /// Seals or opens under one of the two AEAD algorithms. Every operand is a
+    /// `Bytes` handle; a rejected key, nonce or tag becomes an `Error` value the
+    /// caller must handle, never a partial or unauthenticated buffer.
+    fn aead(
+        &mut self,
+        method: &str,
+        member: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        require_arity(member, arguments, 4, span)?;
+        let mut operands = Vec::with_capacity(4);
+        for argument in arguments {
+            let Value::CryptoBytes(handle) = argument else {
+                return Err(type_mismatch(
+                    "BNCrypto.Bytes",
+                    "non-BNCrypto.Bytes value",
+                    member,
+                    span,
+                ));
+            };
+            operands.push(self.buffer(*handle, span)?.clone());
+        }
+        let algorithm = if method.ends_with("AesGcm") {
+            bn_rt::crypto::Aead::Aes256Gcm
+        } else {
+            bn_rt::crypto::Aead::ChaCha20Poly1305
+        };
+        let sealing = method.starts_with("Seal");
+        let result = if sealing {
+            bn_rt::crypto::seal(
+                algorithm,
+                &operands[0],
+                &operands[1],
+                &operands[2],
+                &operands[3],
+            )
+        } else {
+            bn_rt::crypto::open(
+                algorithm,
+                &operands[0],
+                &operands[1],
+                &operands[2],
+                &operands[3],
+            )
+        };
+        match result {
+            Some(bytes) => Ok(self.insert(bytes)),
+            None => Ok(Value::Error {
+                code: 1,
+                message: if sealing {
+                    "BNCrypto seal rejected the key or nonce length".into()
+                } else {
+                    "BNCrypto open failed: authentication tag did not verify".into()
+                },
+            }),
+        }
+    }
+
     fn buffer(&self, handle: u64, span: Span) -> Result<&Vec<u8>, Diagnostic> {
         self.buffers.get(&handle).ok_or_else(|| {
             runtime_error(
@@ -123,6 +182,9 @@ impl Provider for CryptoProvider {
                 };
                 let hex = bn_rt::crypto::encode_hex(self.buffer(handle, span)?);
                 Ok(Value::String(shared_string(hex.as_str())))
+            }
+            "SealAesGcm" | "SealChaCha20" | "OpenAesGcm" | "OpenChaCha20" => {
+                self.aead(method, member, &arguments, span)
             }
             "CONSTRUCTOR" => Ok(Value::Null),
             _ => Err(name_not_found(method, "BNCrypto function", span)),

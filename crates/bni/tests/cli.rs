@@ -1026,3 +1026,24 @@ fn bncrypto_bytes_portable_subset_interprets() {
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "3\n616263\n");
 }
+
+/// AEAD round-trips under the interpreter and fails closed on a changed AAD.
+/// The ciphertexts come from python-cryptography (OpenSSL), independent of the
+/// Rust crates under test, and are mirrored in
+/// `tests/fixtures/crypto/aead-vectors.json`.
+#[test]
+fn bncrypto_aead_round_trips_and_rejects_tampering() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-aead/main.bn"])
+        .output()
+        .expect("run the BNCrypto AEAD fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "f8cb8441c9b57bd8fd62663940f843f4e3cf1f\n616263\n25a94560bf99e02777736ea20551c7a02d3f86\n616263\ntamper-rejected\n"
+    );
+}
