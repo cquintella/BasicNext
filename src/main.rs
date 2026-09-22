@@ -2,56 +2,71 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
-//! `bn`: the combined driver (eval | check | lex | run | build | lsp | dap).
-//! Argument acquisition, command selection and exit status only; every
-//! command is implemented by `bn_cli`, `bn_interpret_driver`,
-//! `bn_compile_driver`, `bn_lsp` or `bn_dap` (bucket 0.6.0, SPRINT 1).
-use std::{env, process::ExitCode};
-
-use bn_cli::{
-    check::check,
-    frontend::read_source,
-    help::COMMON_OPTIONS,
-    options::{OutputFormat, parse_options},
-    output::{emit_output, tokens_text, tool_error},
+//! `bn`: compatibility dispatcher for the 0.6 line (D-060-01). Routes
+//! `run|eval|check|lex|lsp|dap` to the sibling `bni` and `build` to the
+//! sibling `bnc`, translating the 0.5 argument shapes, forwarding stdio and
+//! the exit status byte-for-byte. Retires in 0.7. No language library is
+//! linked here.
+use std::{
+    env,
+    io::IsTerminal,
+    path::PathBuf,
+    process::{Command, ExitCode},
 };
-use bn_compile_driver::{build::build, options::BuildOptions};
-use bn_interpret_driver::{eval::eval, run::run};
+
 const VERSION: &str = concat!("bn ", env!("CARGO_PKG_VERSION"));
+const INTERPRETER_COMMANDS: [&str; 6] = ["run", "eval", "check", "lex", "lsp", "dap"];
 
 fn help() -> ExitCode {
     println!(
         "\
-{VERSION}
+{VERSION} (compatibility dispatcher; retires in 0.7)
 usage: bn <eval|check|lex|run|build|lsp|dap> [options] <file.bn> [-- program-args]
 
-commands:
-  eval    evaluate one source fragment (SOURCE or --stdin) through the interpreter
-  check   validate lexer, parser, and semantics
-  lex     print the token stream
-  run     execute FUNCTION Start through typed BN IR
-  build   compile the supported typed BN IR subset with LLVM
-  lsp     serve Language Server Protocol over stdio
-  dap     serve Debug Adapter Protocol over stdio
+  bn run|eval|check|lex|lsp|dap …   forwards to:  bni <command> …
+  bn build [options] <file.bn>      forwards to:  bnc [options] <file.bn>
 
-options:
-  --mode snippet|program       select eval fragment mode (eval only)
-  --format text|json           select eval result format (eval only)
-  --target native|wasm32     select the build target (build only)
-  --opt none|1|2|3|s         optimization level for native/Wasm builds (default 2)
-{COMMON_OPTIONS}
- `bn eval` accepts SOURCE or --stdin; extra program arguments follow --.
- For file-oriented commands, HOST.Args[0] is the source path. Extra program arguments follow --.
-See also: man bn
+Use `bni --help` and `bnc --help` for the options of each executable.
+See also: man bni, man bnc
 "
     );
     ExitCode::SUCCESS
 }
 
 fn usage() -> ExitCode {
-    bn_cli::help::usage(
-        "usage: bn <eval|check|lex|run|build|lsp|dap> [options] <file.bn>\ntry: bn --help",
-    )
+    eprintln!("usage: bn <eval|check|lex|run|build|lsp|dap> [options] <file.bn>\ntry: bn --help");
+    ExitCode::from(2)
+}
+
+/// The executable next to this one, or the bare name for `PATH` lookup.
+fn sibling(name: &str) -> PathBuf {
+    let file = format!("{name}{}", env::consts::EXE_SUFFIX);
+    env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join(&file)))
+        .filter(|path| path.is_file())
+        .unwrap_or_else(|| PathBuf::from(file))
+}
+
+/// `bn run|eval|…` accepted the compiler flags `--target`/`--opt` and
+/// ignored them; `bni` rejects them, so they are dropped here.
+fn strip_compiler_flags(arguments: Vec<String>) -> Vec<String> {
+    let mut kept = Vec::with_capacity(arguments.len());
+    let mut arguments = arguments.into_iter();
+    while let Some(argument) = arguments.next() {
+        match argument.as_str() {
+            "--" => {
+                kept.push(argument);
+                kept.extend(arguments);
+                break;
+            }
+            "--target" | "--opt" => {
+                let _ = arguments.next();
+            }
+            _ => kept.push(argument),
+        }
+    }
+    kept
 }
 
 fn main() -> ExitCode {
@@ -59,65 +74,32 @@ fn main() -> ExitCode {
     let Some(command) = arguments.next() else {
         return usage();
     };
-    if command == "eval" {
-        return eval(arguments.collect(), &mut BuildOptions::default());
-    }
-    match command.as_str() {
+    let rest = arguments.collect::<Vec<_>>();
+    let (target, forwarded) = match command.as_str() {
         "-h" | "--help" => return help(),
         "-V" | "--version" => {
             println!("{VERSION}");
             return ExitCode::SUCCESS;
         }
-        _ => {} // if there is any extra arg, do nothing
-    }
-
-    if command == "lsp" {
-        // Language Server Protocol
-        return match bn_lsp::run_stdio() {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(message) => {
-                eprintln!("error[LSP]: {message}");
-                tool_error()
-            }
-        };
-    }
-
-    if command == "dap" {
-        // Debug Adapter Protocol
-        return match bn_dap::run_stdio() {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(message) => {
-                eprintln!("error[DAP]: {message}");
-                tool_error()
-            }
-        };
-    }
-    let mut build_options = BuildOptions::default();
-    let options = match parse_options(arguments, &mut build_options) {
-        Ok(options) => options,
-        Err(message) => {
-            if let Some(message) = message.strip_prefix("CONFIG_INVALID: ") {
-                eprintln!("error[CONFIG_INVALID]: {message}");
-            } else {
-                eprintln!("error: {message}");
-            }
-            return usage();
+        "build" => ("bnc", rest),
+        name if INTERPRETER_COMMANDS.contains(&name) => {
+            let mut forwarded = vec![command.clone()];
+            forwarded.extend(strip_compiler_flags(rest));
+            ("bni", forwarded)
         }
+        _ => return usage(),
     };
-    if options.output_format != OutputFormat::Text {
-        eprintln!("error: --format is available only with bn eval");
-        return tool_error();
+    if std::io::stderr().is_terminal() {
+        // Never on a pipe: `bn eval --format json` keeps both channels pure.
+        eprintln!("bn: deprecated dispatcher, use `{target}` directly (bn retires in 0.7)");
     }
-
-    let (source, tokens) = match read_source(&options) {
-        Ok(read) => read,
-        Err(code) => return code,
-    };
-    match command.as_str() {
-        "lex" => emit_output(tokens_text(&tokens), options.output.as_deref()),
-        "check" => check(&source, &tokens, &options),
-        "run" => run(&source, &tokens, &options),
-        "build" => build(&source, &options, build_options),
-        _ => usage(),
+    match Command::new(sibling(target)).args(&forwarded).status() {
+        Ok(status) => status.code().map_or(ExitCode::from(2), |code| {
+            ExitCode::from(u8::try_from(code).unwrap_or(2))
+        }),
+        Err(error) => {
+            eprintln!("error[BN_DISPATCH]: cannot execute {target}: {error}");
+            ExitCode::from(2)
+        }
     }
 }

@@ -7,19 +7,8 @@ name = "bn"
 version = "0.5.2"
 edition = "2024"
 rust-version = "1.98"
-description = "Basic Next reference implementation"
+description = "Basic Next compatibility dispatcher (bn -> bni | bnc); retires in 0.7"
 license = "MPL-2.0"
-default-run = "bn"
-
-[features]
-default = ["lib-math", "lib-json", "lib-log", "lib-data", "lib-dispatch", "lib-web"]
-frontend-host-spec-path = []
-lib-math = ["bn_interpret_driver/lib-math"]
-lib-json = ["bn_interpret_driver/lib-json"]
-lib-log = ["bn_interpret_driver/lib-log"]
-lib-data = ["bn_interpret_driver/lib-data"]
-lib-dispatch = ["bn_interpret_driver/lib-dispatch"]
-lib-web = ["bn_interpret_driver/lib-web"]
 
 [[bin]]
 name = "bn"
@@ -33,22 +22,20 @@ all = "warn"
 pedantic = "warn"
 
 [dependencies]
-bn_cli = { path = "crates/bn_cli" }
-bn_compile_driver = { path = "crates/bn_compile_driver" }
-bn_dap = { path = "crates/bn_dap" }
-bn_diag = { path = "crates/bn_diag" }
-bn_frontend = { path = "crates/bn_frontend" }
-bn_interpret_driver = { path = "crates/bn_interpret_driver" }
-bn_lsp = { path = "crates/bn_lsp" }
-bn_source = { path = "crates/bn_source" }
+# None: the dispatcher only spawns the sibling executables.
 
 # Integration tests under tests/ exercise the owning crates directly.
 [dev-dependencies]
+bn_diag = { path = "crates/bn_diag" }
+bn_frontend = { path = "crates/bn_frontend" }
 bn_interp = { path = "crates/bn_interp" }
+bn_interpret_driver = { path = "crates/bn_interpret_driver" }
 bn_ir = { path = "crates/bn_ir" }
 bn_lib_web = { path = "crates/bn_lib_web" } # tests/runtime.rs drives the web callback directly
 bn_llvm = { path = "crates/bn_llvm" }
+bn_lsp = { path = "crates/bn_lsp" }
 bn_runtime = { path = "crates/bn_runtime" }
+bn_source = { path = "crates/bn_source" }
 bn_types = { path = "crates/bn_types" }
 bn_value = { path = "crates/bn_value" }
 lsp-types = "0.97.0" # tests/cli.rs decodes LSP diagnostics
