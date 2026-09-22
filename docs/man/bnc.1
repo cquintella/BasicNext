@@ -1,0 +1,200 @@
+.\" groff man page for the Basic Next compiler executable (0.6 line).
+.TH BNC 1 "September 22, 2026" "bnc 0.6" "Basic Next"
+.SH NAME
+bnc \- Basic Next compiler (native executables and WebAssembly modules)
+.SH SYNOPSIS
+.B bnc
+.RI [ compile-options ]
+.I entry.bn
+.SH DESCRIPTION
+.B bnc
+validates
+.I entry.bn
+and its imports exactly as
+.BR bni (1)
+does (lexer, parser/AST, semantic analysis, typed BN IR, language
+validation), checks the program against the selected target's support
+matrix, and lowers the validated IR to LLVM IR. Without
+.B -o
+the LLVM IR is written to standard output. With
+.B -o
+it invokes Clang to create a native executable, or Clang and
+.B wasm-ld
+to create a linked WebAssembly module, linking the native runtime
+.I libbn_rt.a
+when the program uses
+.BR HOST .
+There are no subcommands: the entry file and the flags are the whole
+command line, as with a C compiler.
+.PP
+The executable module must define
+.BR "FUNCTION Start" .
+The interpreter is the reference semantics: compiled output must match
+.B bni run
+on the supported subset.
+.SH COMPILE OPTIONS
+.TP
+.BR -o , " --output " file
+Write the artifact (or the artifact selected by
+.BR --emit )
+to
+.IR file .
+Without it, LLVM IR goes to standard output.
+.TP
+.BI --target " native|wasm32"
+Select the target. The default is
+.BR native .
+Programs importing capabilities the target does not provide are rejected
+with a
+.B TARGET_UNSUPPORTED_*
+diagnostic before anything is emitted.
+.TP
+.BI --opt " none|1|2|3|s"
+Select the Clang optimization level applied to the generated LLVM IR:
+.BR none " → " -O0 ,
+.BR 1 " → " -O1 ,
+.BR 2 " → " -O2
+(default),
+.BR 3 " → " -O3 ,
+.BR s " → " -Os .
+It never changes program semantics.
+.TP
+.BI --emit " tokens|ast|typed-ast|ir"
+Print a frontend artifact instead of compiling.
+.B ir
+is the validated BN IR (not LLVM IR).
+.SH COMMON OPTIONS
+Shared with
+.BR bni (1)
+and read from the same
+.IR config.toml :
+.TP
+.BR -v , " --verbose" ", " -vv
+Print pipeline stages (and tokens).
+.TP
+.BI --module-path " dir"
+Append an ordered directory used to resolve imported source modules.
+Repeatable; earlier directories win; configuration entries come first.
+.TP
+.BR --sandbox ", " "--read-root " dir ", " "--write-root " dir
+Record the filesystem policy in the artifact. The compiled program applies it
+at start (through
+.BR bn_rt_policy_init )
+and re-checks every HOST call; the process environment can only narrow it.
+.TP
+.BI --warnings " errors" ", " "--allow " CODE ", " "--warn " CODE ", " "--deny " CODE
+Warning policy, as in
+.BR bni (1).
+.TP
+.BI --log-level " error|warn|info|debug"
+Companion process log verbosity.
+.TP
+.BI --log-file " file" ", " --no-log
+Companion process log path (default: the artifact path with a
+.I .log
+extension) or disable it. The log records the frontend stages, module roots,
+target support check, emission and every external tool invocation.
+.TP
+.BI --config " file"
+Load warning, logging and toolchain configuration from
+.IR file .
+.TP
+.BI --color " auto|always|never"
+Control ANSI colour on status messages.
+.TP
+.BR -V , " --version" ", " -h ", " --help
+Print the version or the help.
+.SH WEBASSEMBLY
+A WebAssembly artifact produced by
+.B "bnc --target wasm32 -o program.wasm entry.bn"
+runs in the reference Node.js host:
+.PP
+.nf
+.RS
+node bin/bn-wasm program.wasm [args...]
+.RE
+.fi
+.PP
+The host supplies stream input/output, arguments, allocation, and seeded
+random. Filesystem and positioned-console capabilities are unavailable.
+.SH DIAGNOSTICS
+A Basic Next diagnostic exits 1. Invalid command use, missing files,
+unavailable toolchains
+.RB ( BUILD_TOOLCHAIN_UNAVAILABLE ),
+failed external tools
+.RB ( BUILD_EMISSION_FAILED )
+and unsupported lowering exit 2.
+.PP
+.B BUILD_LOWERING_UNAVAILABLE
+and
+.B TARGET_UNSUPPORTED_*
+mean the program is valid but outside the current compiler subset or the
+selected target; run it with
+.BR bni (1).
+.SH ENVIRONMENT
+.TP
+.B BN_HOME
+Explicit Basic Next home for the standard-library modules (see
+.BR bni (1)).
+.TP
+.B BN_RT_LIB
+Absolute path to the native runtime static library
+.RI ( libbn_rt.a
+on Unix,
+.I bn_rt.lib
+on Windows). When unset,
+.B bnc
+searches next to the executable, then
+.I $PREFIX/lib/
+when the binary lives in
+.IR $PREFIX/bin/ ,
+then a development
+.I target/
+tree.
+.TP
+.BR BN_WASM_CLANG ", " BN_WASM_LD
+Commands used as the wasm32 compiler and linker. Without them
+.B bnc
+uses the
+.I [toolchain]
+section of
+.IR config.toml ,
+then a Clang with a wasm32 target on
+.B PATH
+or from Homebrew's
+.BR llvm .
+Apple's Clang has no wasm32 backend.
+.SH FILES
+.TP
+.I config.toml
+.RI [ toolchain ]
+.BR clang ", " wasm-clang ", " wasm-ld
+commands; warning and logging sections shared with
+.BR bni (1).
+.TP
+.I docs/architecture/support-matrix.md
+What each target supports.
+.TP
+.I docs/architecture/value-memory-abi.md
+Native value layout and the
+.I bn_rt
+ABI.
+.SH EXAMPLES
+.nf
+.RS
+bnc examples/hello.bn                       # LLVM IR on stdout
+bnc examples/hello.bn -o hello
+bnc --opt 3 examples/hello.bn -o hello
+bnc --opt s --target wasm32 examples/hello.bn -o hello.wasm
+bnc --emit ir examples/factorial.bn
+bnc --sandbox --read-root ./input examples/app.bn -o app
+.RE
+.fi
+.SH SEE ALSO
+.BR bni (1),
+.BR bn (1),
+.IR docs/book/en/toc.md ,
+.IR docs/project/usage.md ,
+.IR docs/language/0.6/0.6.md
+.SH AUTHOR
+Carlos Quintella, Basic Next BDFL.

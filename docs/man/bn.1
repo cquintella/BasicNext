@@ -1,7 +1,7 @@
-.\" groff man page for the Basic Next reference tool.
-.TH BN 1 "September 19, 2026" "bn 0.5.1" "Basic Next"
+.\" groff man page for the retiring bn compatibility dispatcher (0.6 line).
+.TH BN 1 "September 22, 2026" "bn 0.6" "Basic Next"
 .SH NAME
-bn \- Basic Next reference checker, interpreter, and compiler
+bn \- compatibility dispatcher for bni and bnc (retires in 0.7)
 .SH SYNOPSIS
 .B bn
 .I command
@@ -9,362 +9,56 @@ bn \- Basic Next reference checker, interpreter, and compiler
 .I source-or-file
 .RI [ "-- program-args" ]
 .SH DESCRIPTION
-.B bn
-processes UTF-8 Basic Next source through a source-spanned pipeline:
-lexer, parser/AST, semantic analysis, typed BN IR, and either the reference
-interpreter or the LLVM backend.
-.PP
-The executable module must define
-.BR "FUNCTION Start" .
-No project file is required for a single program.
-.SH COMMANDS
-.TP
-.B eval
-Evaluate one source fragment or complete program through the typed BN IR
-interpreter. Pass the source as one argument, or use
-.BR --stdin
-to consume the complete source from standard input. Arguments after
-.B --
-are exposed through
-.BR HOST.Args .
-The
-.BR --format
-.B json
-form emits one JSON v1 result envelope and owns both process channels. This
-command is distinct from the file-oriented
-.BR run
-and
-.BR build
-commands.
-.TP
-.B check
-Validate lexical, syntactic, and semantic rules. With
-.BR --emit ,
-print a selected frontend artifact.
-.TP
-.B lex
-Print the token stream.
-.TP
-.B run
-Validate, lower to typed BN IR, and execute
-.BR Start .
-The successful process status is the program result.
-.TP
-.B build
-Lower the supported typed BN IR subset to LLVM IR. Without
-.BR -o ,
-print LLVM IR. With
-.BR -o ,
-invoke Clang to create a native executable or Clang and
-.B wasm-ld
-to create a linked WebAssembly module.
-.TP
-.B lsp
-Serve the Language Server Protocol over standard input and output.
-.TP
-.B dap
-Serve the Debug Adapter Protocol over standard input and output.
-.SH OPTIONS
-.TP
-.BR -v , " --verbose"
-Print pipeline stages. Repeat it, or use
-.BR -vv ,
-to also print tokens.
-.TP
-.BI --emit " tokens|ast|typed-ast|ir"
-Select the frontend artifact printed by
-.BR check .
-.TP
-.BR -o , " --output " file
-Write the selected artifact or compiled program to
-.IR file .
-.TP
-.BI --mode " snippet|program"
-Select
-.B eval
-fragment or complete-program semantics. The default is
-.BR snippet .
-.TP
-.BI --format " text|json"
-Select the
-.B eval
-result format. JSON emits exactly one versioned envelope on standard output;
-it is not available for
+Basic Next 0.6 ships two executables:
+.BR bni (1),
+the interpreter (with
 .BR check ,
-.BR run , or
-.BR build .
-.TP
-.BI --target " native|wasm32"
-Select the
-.B build
-target. The default is
-.BR native .
-.TP
-.BI --module-path " dir"
-Append an ordered directory used to resolve imported source modules. The
-option is repeatable; earlier directories win. Configuration entries are
-applied before command-line entries.
-.TP
-.BI --opt " none|1|2|3|s"
-Select the Clang optimization level applied when compiling the generated
-LLVM IR for
-.B build
-(native or
-.BR wasm32 ).
-Mapped values:
-.BR none
-→
-.BR -O0 ;
-.BR 1
-→
-.BR -O1 ;
-.BR 2
-→
-.BR -O2
-(default when omitted);
-.BR 3
-→
-.BR -O3 ;
-.B s
-→
-.BR -Os
-(optimize for size).
-Does not change
-.B bn run
-semantics; compiled output must match the interpreter on the supported subset.
-.TP
-.B --no-filesystem
-With
-.BR run ,
-reject a
-.B HOST.FileSystem
-import before
-.BR Start .
-The Jupyter kernel uses this boundary.
-.TP
-.B --sandbox
-Opt into filesystem root restrictions for
-.BR run
-(and other commands that honour the sandbox). Without explicit roots, policy
-is restrictive; combine with
-.B --read-root
+.BR lex ,
+.BR eval ,
+.B lsp
 and
-.BR --write-root .
-.TP
-.BI --read-root " dir"
-Allow reads under
-.I dir
-when the sandbox is active. Repeatable.
-.TP
-.BI --write-root " dir"
-Allow writes under
-.I dir
-when the sandbox is active. Repeatable.
-.TP
-.B --trace
-Report the interpreter entry point.
-.TP
-.BI --warnings " errors"
-Promote all warning diagnostics to errors.
-.TP
-.BI --allow " CODE"
-Suppress one warning diagnostic (repeatable).
-.TP
-.BI --warn " CODE"
-Keep one warning diagnostic at warning level.
-.TP
-.BI --deny " CODE"
-Promote one warning diagnostic to an error.
-.TP
-.BI --log-level " error|warn|info|debug"
-Process log verbosity during build.
-.TP
-.BI --log-file " file"
-Companion process log file path during build.
-.TP
-.B --no-log
-Disable companion process logging.
-.TP
-.BI --config " file"
-Load warning and process logging configuration from
-.IR file .
-.TP
-.BI --color " auto|always|never"
-Control ANSI colour on status messages.
-.TP
-.BR -V , " --version"
-Print the tool version.
-.TP
-.BR -h , " --help"
-Print command help.
-.TP
-.B --
-End tool options. Remaining values become program arguments.
-.SH ARGUMENTS
-.B HOST.Args
-is available only in the executable module and requires no import.
-.B HOST.Args[0]
-is the absolute source path under
-.BR "bn run" ;
-later entries are values after
-.BR -- .
-.B LEN(HOST.Args)
-returns the full count.
-.PP
-.B HOST.Main ,
-.BR SYSTEM ,
-.BR ArgumentCount() ,
+.BR dap ),
 and
-.B Argument(index)
-were withdrawn in 0.2.
-.SH MODULES
-Every import declares an alias. Imported declarations are referenced as
-.IR alias.member .
-User modules belong beneath
-.BR modules/ .
-Standard modules such as
-.BR BNMath ,
-.BR BNData ,
-.BR BNLog ,
-.BR BNWeb ,
-and
-.B BNJson
-belong beneath
-.B modules/bn/
-and require explicit imports.
-.PP
-The standard-library directory is located, in order: from
-.BR BN_HOME
-when set (see ENVIRONMENT); otherwise the nearest
-.B modules/bn
-above the entry file, then above the working directory, then relative to the
+.BR bnc (1),
+the compiler.
 .B bn
-executable (installed layout). The effective import roots and the origin of
-each one, plus the root that resolved every imported module, are recorded in
-the process log at debug level (
-.BR "--log-level debug" ).
-.PP
-.B HOST
-is the only built-in interface object. Facilities provided include
-.BR HOST.Args ,
-.BR HOST.Clock ,
-.BR HOST.Console ,
-.BR HOST.Random ,
-.BR HOST.FileSystem ,
-.BR HOST.Net ,
+keeps the 0.5 command line working for one minor release by forwarding to
+the executable installed next to it:
+.TP
+.BI "bn " run|eval|check|lex|lsp|dap " ..."
+runs
+.BI "bni " command " ..."
+unchanged, except that the 0.5 compiler flags
+.B --target
 and
-.BR HOST.Exec .
-.SH WEBASSEMBLY
-A WebAssembly artifact produced by
-.B "bn build --target wasm32 -o program.wasm"
-runs in the reference Node.js host:
+.BR --opt ,
+which
+.B bn
+accepted and ignored on these commands, are dropped.
+.TP
+.BI "bn build " "[options] file"
+runs
+.BI "bnc " "[options] file"
+unchanged.
 .PP
-.nf
-.RS
-node bin/bn-wasm program.wasm [args...]
-.RE
-.fi
-.PP
-The host supplies stream input/output, arguments, allocation, and seeded
-random. Filesystem and positioned-console capabilities are unavailable.
+Standard input, output and error are passed through, and the exit status is
+the forwarded program's. When standard error is a terminal,
+.B bn
+prints one deprecation line there first; on a pipe it prints nothing, so
+.B "bn eval --format json"
+still owns both channels.
 .SH DIAGNOSTICS
-A Basic Next diagnostic exits 1. Invalid command use, missing files, unavailable
-toolchains, and unsupported compiler lowering exit 2. Diagnostics include a
-stable code and source span when applicable.
-.PP
-.B BUILD_LOWERING_UNAVAILABLE
-means the program is valid but outside the current compiler subset; use
-.B bn run
-for the reference semantics.
-.SH ENVIRONMENT
-.TP
-.B BN_HOME
-Explicit Basic Next home. When set, the standard-library modules are taken from
-.I $BN_HOME/share/bn/modules/bn
-or
-.IR $BN_HOME/modules/bn ,
-and the ancestor-directory search is skipped entirely: a
-.B BN_HOME
-without a standard library makes standard imports fail rather than silently
-resolving to another
-.B modules/bn
-higher in the tree.
-.TP
-.B BN_RT_LIB
-Absolute path to the native runtime static library used by
-.B bn build
-(
-.I libbn_rt.a
-on Unix,
-.I bn_rt.lib
-on Windows). When unset,
-.B bn
-searches next to the executable, then
-.IR $PREFIX/lib/
-when the binary lives in
-.IR $PREFIX/bin/
-(for example
-.IR /usr/local/lib/libbn_rt.a ).
-Do not point this at a development
-.I target/
-tree for a normal install; reinstall with
-.I scripts/install.sh
-so the library lands in the prefix.
-.TP
-.B BN_WASM_LD
-Command or path used as the WebAssembly linker.
-.PP
-.B bn
-does not read environment variables for language behaviour.
-.SH FILES
-.TP
-.I docs/language/0.5/0.5.ebnf
-Accepted grammar for the 0.5 line.
-.TP
-.I docs/language/0.5/0.5.md
-Consolidated 0.5 language specification.
-.TP
-.I docs/language/0.5/keywords.md
-Keyword and reserved-form contract.
-.TP
-.I docs/project/usage.md
-Installation, examples, limits, and troubleshooting.
-.TP
-.I docs/project/kernel.md
-Jupyter host contract.
-.TP
-.I docs/releases/
-In-repo release notes for tagged versions.
-.SH LIMITATIONS
-LLVM lowering covers a typed IR subset and rejects unsupported operations
-explicitly (
-.BR BUILD_LOWERING_UNAVAILABLE ).
-Use
-.B bn run
-for the full interpreter surface. Time-zone values do not apply TZDB zone rules.
-The VS Code extension and DAP adapter coverage grow with releases; do not assume
-full breakpoint/step parity from this page alone.
-.SH EXAMPLES
-.nf
-.RS
-bn check examples/hello.bn
-bn eval 'PRINT 1 + 1'
-printf 'PRINT 2\n' | bn eval --stdin
-bn run examples/language-tour.bn
-bn run examples/hello.bn -- extra-argument
-bn check --emit ir examples/factorial.bn
-bn build examples/hello.bn -o hello
-bn build --opt 3 examples/hello.bn -o hello
-bn build --opt s --target wasm32 examples/hello.bn -o hello.wasm
-bn run --sandbox --read-root . --write-root /tmp examples/hello.bn
-.RE
-.fi
+.B BN_DISPATCH
+(exit 2): the sibling executable could not be started. Install
+.B bni
+and
+.B bnc
+next to
+.BR bn ,
+or on
+.BR PATH .
 .SH SEE ALSO
-.IR docs/book/en/toc.md ,
-.IR docs/project/usage.md ,
-.IR docs/project/kernel.md ,
-.IR docs/language/0.5/0.5.md ,
-.IR docs/library/host.md ,
-.IR docs/library/math.md
+.BR bni (1),
+.BR bnc (1)
 .SH AUTHOR
 Carlos Quintella, Basic Next BDFL.

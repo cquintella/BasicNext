@@ -110,7 +110,7 @@ LET myAnimal AS Animal = myDog // Upcast
 myAnimal.Speak() // Prints "Woof"
 ```
 
-Since 0.5.2 a method that overrides an inherited one must carry `OVERRIDE`, written `PUBLIC OVERRIDE FUNCTION Speak() AS STRING`: `bn check` reports `OVERRIDE_REQUIRED` when the marker is missing and `OVERRIDE_WITHOUT_BASE` when no ancestor declares an overridable method. `STATIC` methods are not virtual. Narrowing a base-typed reference back to a subclass (`pet AS Dog` → `Dog OR Error`) is specified but not yet available.
+Since 0.5.2 a method that overrides an inherited one must carry `OVERRIDE`, written `PUBLIC OVERRIDE FUNCTION Speak() AS STRING`: `bni check` reports `OVERRIDE_REQUIRED` when the marker is missing and `OVERRIDE_WITHOUT_BASE` when no ancestor declares an overridable method. `STATIC` methods are not virtual. Narrowing a base-typed reference back to a subclass (`pet AS Dog` → `Dog OR Error`) is specified but not yet available.
 
 ## Contracts (`INTERFACE` and `IMPLEMENTS`)
 

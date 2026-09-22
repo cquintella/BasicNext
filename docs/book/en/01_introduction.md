@@ -7,7 +7,7 @@
 
 ![Basic Next Book Cover](../cover.jpg)
 
-> **Note:** This book is the tutorial for the **0.5 line** of Basic Next, written against toolchain 0.5.2. It is not the normative language contract. When a chapter and the specification disagree, the specification governs: [`docs/language/0.5/0.5.md`](../../language/0.5/0.5.md), with the grammar in [`0.5.ebnf`](../../language/0.5/0.5.ebnf) and the reserved words in [`keywords.md`](../../language/0.5/keywords.md). Toolchain behaviour that is not part of the language — `bn eval`, the module search path, diagnostic configuration — is documented in [`usage.md`](../../project/usage.md).
+> **Note:** This book is the tutorial for the **0.6 line** of Basic Next, written against toolchain 0.6.0 (two executables, `bni` and `bnc`; the language is the 0.5.2 contract plus the 0.6.1 `++`/`--` expressions). It is not the normative language contract. When a chapter and the specification disagree, the specification governs: [`docs/language/0.6/0.6.md`](../../language/0.6/0.6.md), with the grammar in [`0.6.ebnf`](../../language/0.6/0.6.ebnf) and the reserved words in [`keywords.md`](../../language/0.6/keywords.md). Toolchain behaviour that is not part of the language — `bni eval`, the module search path, diagnostic configuration — is documented in [`usage.md`](../../project/usage.md).
 
 This chapter installs the toolchain, runs a first program, and establishes the vocabulary the rest of the book uses: module, entry point, declaration, diagnostic. By the end of it you will have compiled and executed a Basic Next program in two different ways and will know what the tool reports when a program is wrong.
 
@@ -19,7 +19,7 @@ Three properties follow from that position and are worth stating concretely, bec
 
 The first is that errors are reported by position in the source. A type mismatch, a missing return, a loop exit that names the wrong loop — each is a compile-time diagnostic carrying a stable code, a file, a line, and a column. The feedback loop for a beginner is therefore the compiler rather than a debugger, and the feedback loop for a maintainer is the same tool that builds the program.
 
-The second is that the same source is both interpreted and compiled. `bn run` executes a program through the typed-IR interpreter, which is the executable reference for the language. `bn build` compiles the supported subset of that same validated IR to a native executable or a WebAssembly module. A program is not first written for one and then ported to the other, and where the compiler cannot express a valid program for a chosen target, it rejects it with a diagnostic naming the unsupported operation rather than emitting code that behaves differently.
+The second is that the same source is both interpreted and compiled. `bni run` executes a program through the typed-IR interpreter, which is the executable reference for the language. `bnc` compiles the supported subset of that same validated IR to a native executable or a WebAssembly module. A program is not first written for one and then ported to the other, and where the compiler cannot express a valid program for a chosen target, it rejects it with a diagnostic naming the unsupported operation rather than emitting code that behaves differently.
 
 The third is that the language surface is small on purpose. `HOST` is the only built-in interface to the operating system. Everything else — mathematics, JSON, logging, HTTP, tabular data, concurrency — is a module that a program imports by name. Nothing reaches a program's scope without a line of source that asks for it.
 
@@ -64,24 +64,24 @@ $ bn --version
 bn 0.5.2
 ```
 
-The Unix manual page is [`bn(1)`](../../man/bn.1), and installation troubleshooting is in [`usage.md`](../../project/usage.md).
+The Unix manual pages are [`bni(1)`](../../man/bni.1) and [`bnc(1)`](../../man/bnc.1) (the retiring [`bn(1)`](../../man/bn.1) dispatcher keeps `bn run`/`bn build` working through 0.6), and installation troubleshooting is in [`usage.md`](../../project/usage.md).
 
-## The `bn` Commands
+## The `bni` and `bnc` Commands
 
-The tool exposes one pipeline through several entry points. All of them run the same lexer, parser, semantic analysis, and IR validation; they differ in what they do afterwards.
+The toolchain exposes one pipeline through two executables: `bni`, the interpreter with the checking and editor commands, and `bnc`, the compiler. All of them run the same lexer, parser, semantic analysis, and IR validation; they differ in what they do afterwards.
 
 | Command | What it does |
 | --- | --- |
-| `bn check <file.bn>` | Runs the full frontend and reports diagnostics without executing anything. |
-| `bn run <file.bn> [-- args]` | Checks, lowers to BN IR, and executes `Start` in the interpreter. |
-| `bn build <file.bn> [-o out]` | Compiles the supported IR subset. Without `-o` it writes LLVM IR to standard output; with `-o` it produces a native executable, or a WebAssembly module under `--target wasm32`. |
-| `bn eval <source>` | Evaluates one source fragment, or a complete program with `--stdin`, without creating a file. |
-| `bn lex <file.bn>` | Prints the token stream, which is useful when a syntax error is not obvious. |
-| `bn lsp`, `bn dap` | Serve the Language Server and Debug Adapter protocols over standard input and output, for editor integration. |
+| `bni check <file.bn>` | Runs the full frontend and reports diagnostics without executing anything. |
+| `bni run <file.bn> [-- args]` | Checks, lowers to BN IR, and executes `Start` in the interpreter. |
+| `bnc <file.bn> [-o out]` | Compiles the supported IR subset. Without `-o` it writes LLVM IR to standard output; with `-o` it produces a native executable, or a WebAssembly module under `--target wasm32`. |
+| `bni eval <source>` | Evaluates one source fragment, or a complete program with `--stdin`, without creating a file. |
+| `bni lex <file.bn>` | Prints the token stream, which is useful when a syntax error is not obvious. |
+| `bni lsp`, `bni dap` | Serve the Language Server and Debug Adapter protocols over standard input and output, for editor integration. |
 
 Exit codes are stable and suitable for scripting: `0` on success, `1` when the program has language diagnostics, and `2` for invalid command-line use or unavailable build tooling.
 
-`bn check` is the command to run most often. It is the fastest way to ask whether a program is well formed, and it is what an editor runs on save.
+`bni check` is the command to run most often. It is the fastest way to ask whether a program is well formed, and it is what an editor runs on save.
 
 ## A First Program
 
@@ -97,9 +97,9 @@ END FUNCTION
 Check it, then run it:
 
 ```sh
-$ bn check hello.bn
+$ bni check hello.bn
 hello.bn: lexical, syntax, and semantic checks passed
-$ bn run hello.bn
+$ bni run hello.bn
 Hello, World!
 ```
 
@@ -110,17 +110,17 @@ Four things in three lines of source are worth naming now, because every later p
 To compile the same file to a native executable:
 
 ```sh
-$ bn build hello.bn -o hello
+$ bnc hello.bn -o hello
 $ ./hello
 Hello, World!
 ```
 
-Without `-o`, `bn build` writes the LLVM intermediate representation to standard output, which is occasionally useful for inspection and is not otherwise part of the workflow.
+Without `-o`, `bnc` writes the LLVM intermediate representation to standard output, which is occasionally useful for inspection and is not otherwise part of the workflow.
 
-For a fragment too small to justify a file, `bn eval` accepts source directly:
+For a fragment too small to justify a file, `bni eval` accepts source directly:
 
 ```sh
-$ bn eval 'PRINT 2 + 3'
+$ bni eval 'PRINT 2 + 3'
 5
 ```
 
@@ -132,7 +132,7 @@ Every `.bn` file is a module. A module contains declarations — functions, clas
 error[E0100]: Syntax error: Expected expected IMPORT or a top-level declaration in source parser.
 ```
 
-The module named on the `bn run` command line is the executable module, and it must declare a function named `Start` that takes no parameters. A module without one is rejected before execution:
+The module named on the `bni run` command line is the executable module, and it must declare a function named `Start` that takes no parameters. A module without one is rejected before execution:
 
 ```
 error[START_NOT_FOUND]: Runtime or toolchain diagnostic: executable module requires FUNCTION Start
@@ -178,7 +178,7 @@ FUNCTION Start() AS VOID
 END FUNCTION
 ```
 
-running `bn run main.bn` prints `25`. The alias is mandatory and is the only way to reach the imported names: `Square(5)` on its own does not resolve, because Basic Next never injects imported names into the importing module's scope. Two modules may therefore export functions of the same name without colliding. Chapter five covers module resolution, the standard-library path under `modules/bn/`, and the rejection of import cycles in full.
+running `bni run main.bn` prints `25`. The alias is mandatory and is the only way to reach the imported names: `Square(5)` on its own does not resolve, because Basic Next never injects imported names into the importing module's scope. Two modules may therefore export functions of the same name without colliding. Chapter five covers module resolution, the standard-library path under `modules/bn/`, and the rejection of import cycles in full.
 
 ### Shared State
 
@@ -243,9 +243,9 @@ Warnings can be configured per code with `--allow`, `--warn`, and `--deny`, and 
 
 Two integrations are maintained alongside the language, each in its own repository.
 
-The Jupyter kernel, [cquintella/basicnext-jupyter](https://github.com/cquintella/basicnext-jupyter), runs Basic Next cells in a notebook. A cell is a complete program with its own `FUNCTION Start`, not a fragment: there are no top-level statements and no state carried between cells, and the diagnostics are those of `bn run`. The kernel denies filesystem access, so a cell that imports `HOST.FileSystem` reports `HOST_CAPABILITY_UNAVAILABLE`.
+The Jupyter kernel, [cquintella/basicnext-jupyter](https://github.com/cquintella/basicnext-jupyter), runs Basic Next cells in a notebook. A cell is a complete program with its own `FUNCTION Start`, not a fragment: there are no top-level statements and no state carried between cells, and the diagnostics are those of `bni run`. The kernel denies filesystem access, so a cell that imports `HOST.FileSystem` reports `HOST_CAPABILITY_UNAVAILABLE`.
 
-The Visual Studio Code extension, [cquintella/basicnext-vscode](https://github.com/cquintella/basicnext-vscode), provides syntax highlighting and runs the checker on save, so the diagnostics described above appear in the editor's Problems panel with the same codes and positions. It also connects to `bn dap` for breakpoints, stepping, and inspection of variables. To install it from source:
+The Visual Studio Code extension, [cquintella/basicnext-vscode](https://github.com/cquintella/basicnext-vscode), provides syntax highlighting and runs the checker on save, so the diagnostics described above appear in the editor's Problems panel with the same codes and positions. It also connects to `bni dap` for breakpoints, stepping, and inspection of variables. To install it from source:
 
 ```sh
 git clone https://github.com/cquintella/basicnext-vscode

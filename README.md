@@ -28,13 +28,14 @@ This project is **not** [NextBASIC](https://wiki.specnext.dev/NextBASIC), the
 extended Sinclair BASIC that ships with the
 [ZX Spectrum Next](https://www.specnext.com/).
 
-The `bn` tool is both an interpreter and an LLVM-backed compiler for Basic Next
-programs:
+Basic Next 0.6 ships two executables over one shared frontend — `bni`, the
+interpreter, and `bnc`, the LLVM-backed compiler — plus `bn`, a compatibility
+dispatcher that forwards the 0.5 command line to them (retires in 0.7):
 
-- `bn run` — validate, lower to BN IR, and interpret
-- `bn build` — compile the supported IR subset to a native or Wasm artifact
-- `bn eval` — evaluate a source fragment (argument or `--stdin`) without a temp file
-- `bn check` / `bn lex` / `bn lsp` / `bn dap` — check, lex, language server, debugger
+- `bni run` — validate, lower to BN IR, and interpret
+- `bnc` — compile the supported IR subset to a native or Wasm artifact
+- `bni eval` — evaluate a source fragment (argument or `--stdin`) without a temp file
+- `bni check` / `bni lex` / `bni lsp` / `bni dap` — check, lex, language server, debugger
 
 ## Design goals
 
@@ -60,15 +61,16 @@ The tutorial book under `docs/book/en/` tracks the 0.5 line.
 
 ## 🛠️ Getting Started
 
-`BN` is the official Basic Next tool, invoked as `bn`. It provides `bn check`,
-`bn run`, and `bn build`; the commands share one diagnostic format, source
-locations, and exit-code model.
+The toolchain is two executables: `bni` (`check`, `run`, `eval`, `lex`, `lsp`,
+`dap`) and `bnc` (`bnc [compile-options] <entry.bn>`). They share one
+frontend, one diagnostic format, source locations, and exit-code model.
+`bn run …` / `bn build …` still work through the `bn` dispatcher.
 
 ### Quick Installation
 
 **1. One-line install (Linux / macOS)**
 No checkout and no Rust required. The command downloads `scripts/install.sh`,
-which resolves the latest release, fetches the prebuilt `bn`/`bnc` for your
+which resolves the latest release, fetches the prebuilt `bni`/`bnc` (and the `bn` dispatcher) for your
 OS/architecture (verified against the release's `SHA256SUMS`) together with the
 standard-library modules, diagnostics catalog and man page from the same tag,
 and installs everything under one prefix. If the release has no binary for your
@@ -84,9 +86,9 @@ curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/i
 ```
 
 **2. Install script from a checkout**
-Inside a clone, the same scripts build `bn` and `bnc` from source and place the
-binaries plus the runtime files they need (standard-library `.bn` modules,
-diagnostics catalog, and the Unix man page) in a single prefix. `bn` then
+Inside a clone, the same scripts build `bni`, `bnc` and `bn` from source and
+place the binaries plus the runtime files they need (standard-library `.bn`
+modules, diagnostics catalog, and the Unix man pages) in a single prefix. `bni` then
 discovers its modules and catalog by walking upward from its own location —
 zero configuration afterwards.
 
@@ -112,12 +114,12 @@ Installed layout (FHS):
 
 | Path | Contents |
 | --- | --- |
-| `<prefix>/bin/bn`, `<prefix>/bin/bnc` | executables |
+| `<prefix>/bin/bni`, `<prefix>/bin/bnc`, `<prefix>/bin/bn` | executables (interpreter, compiler, dispatcher) |
 | `<prefix>/share/bn/modules/bn/*.bn` | standard-library modules |
 | `<prefix>/share/bn/diagnostics/en-US/*.ftl` | diagnostics catalog (optional — an identical catalog is embedded) |
-| `<prefix>/share/man/man1/bn.1` | Unix manual page (Linux/macOS) |
+| `<prefix>/share/man/man1/{bni,bnc,bn}.1` | Unix manual pages (Linux/macOS) |
 
-Each script verifies the install by running `bn --version` and resolving a
+Each script verifies the install by running `bni --version` and resolving a
 standard-library module from a clean directory. Pass `--no-build` (Bash) or
 `-NoBuild` (PowerShell) to install already-built `target/release` binaries.
 
@@ -136,7 +138,7 @@ script above if you also want the stdlib modules and catalog on disk.
 Usage, limits, and troubleshooting: [`docs/project/usage.md`](docs/project/usage.md).
 Unix manual: [`bn(1)`](docs/man/bn.1) (`man docs/man/bn.1`).
 
-The trivial case is zero-config: `bn run hello.bn` does not require a project
+The trivial case is zero-config: `bni run hello.bn` does not require a project
 file or manifest. While developing from this repository, use:
 
 ```shell
@@ -160,18 +162,18 @@ Requires Rust **1.98** (`rust-toolchain.toml`). Current limitations include part
 `node bin/bn-wasm`.
 
 `config.toml` contains local tool configuration. Currently it selects the
-`clang` command used by `bn build`; it does not alter language semantics.
+`clang` command used by `bnc`; it does not alter language semantics.
 
 ## 📂 Repository layout
 
 - `docs/book/en/` — English language tutorial ([toc](docs/book/en/toc.md)).
-- `docs/language/0.5/` — **normative** 0.5.x language contract ([`0.5.md`](docs/language/0.5/0.5.md), EBNF, keywords). Older `0.2/`–`0.4/` trees remain historical.
+- `docs/language/0.6/` — **normative** 0.6.x language contract ([`0.6.md`](docs/language/0.6/0.6.md), EBNF, keywords). Older `0.2/`–`0.5/` trees remain historical.
 - `todo/proposals/` — proposals not yet fully accepted.
 - `done/` — closed buckets and accepted proposal history (often local / gitignored).
-- `docs/man/bn.1` — Unix man page for the `bn` tool.
+- `docs/man/bni.1`, `docs/man/bnc.1`, `docs/man/bn.1` — Unix man pages.
 - `docs/project/` — delivery planning, [usage](docs/project/usage.md), and the
   [experience contract](docs/project/experience-contract.md).
-- `binaries/` — download index for prebuilt `bn` (binaries live on Releases).
+- `binaries/` — download index for prebuilt `bni`/`bnc`/`bn` (binaries live on Releases).
 - `examples/` — programs that guide the specification (see below).
 - [`examples/parallel-examples.md`](examples/parallel-examples.md) — bounded
   `BNDispatch` examples, including a parallel Leibniz-series pi calculation.

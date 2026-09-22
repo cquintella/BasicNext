@@ -21,15 +21,15 @@ END FUNCTION
 ```
 
 `HOST.Args[0]` is the absolute path of the executed file (`.bn` source under
-`bn run`; the produced binary after `bn build`). The path is rooted: `/...`
+`bni run`; the produced binary after `bnc`). The path is rooted: `/...`
 on Unix, `C:\...` (or another drive root) on Windows. `HOST.Args[1]` and
-later are the program arguments (`bn run file.bn -- ...`). `LEN(HOST.Args)`
+later are the program arguments (`bni run file.bn -- ...`). `LEN(HOST.Args)`
 includes entry `0`. An out-of-range index raises `INDEX_OUT_OF_BOUNDS`.
 
 `HOST.Args` is not a value: only `LEN(HOST.Args)` and `HOST.Args[index]`
 are valid. Indexing is read-only.
 
-The reference `bn run` command always provides `HOST.Args` to the executable
+The reference `bni run` command always provides `HOST.Args` to the executable
 module.
 
 ## Console
@@ -62,7 +62,7 @@ stdout is not a TTY, that call raises `HOST_CAPABILITY_UNAVAILABLE`. A
 call that does not run does not fail. The method contract is
 [console.md](console.md).
 
-The reference `bn run` command provides `HOST.Console`.
+The reference `bni run` command provides `HOST.Console`.
 
 ## Clocks
 
@@ -82,7 +82,7 @@ of nanoseconds from an unspecified origin. A monotonic value measures elapsed
 time only; it is not a timestamp and cannot be converted to a calendar date.
 
 The observable clock resolution may be coarser than its return unit. The
-reference `bn run` command provides both clocks.
+reference `bni run` command provides both clocks.
 
 ## Random (0.2)
 
@@ -106,7 +106,7 @@ Tests inject a provider, the same idea as `HOST.Clock`. `RND` is not a
 `BNMath` name.
 
 After `Seed(n)`, the sequence is deterministic and is the same in the
-reference interpreter and in `bn build`. The generator is **xorshift64\***
+reference interpreter and in `bnc`. The generator is **xorshift64\***
 with a 64-bit state:
 
 1. Let `state` be `n` converted to `INT64` (0.1 conversion) and then
@@ -120,7 +120,7 @@ with a 64-bit state:
 3. The return value is the top 53 bits of that product, divided by `2^53`,
    as `FLOAT` in `[0, 1)`.
 
-Shifts are logical. The reference `bn run` command provides `HOST.Random`.
+Shifts are logical. The reference `bni run` command provides `HOST.Random`.
 
 ## File system (0.2)
 
@@ -210,7 +210,7 @@ Outside 0.2: `ChangeDirectory`, directory create/list/delete, `Move`,
 
 The Jupyter 0.2 kernel and a `wasm32` host that does not grant files fail
 before `Start` with `HOST_CAPABILITY_UNAVAILABLE` when a module imports
-`HOST.FileSystem`. The reference `bn run` command provides it for the local
+`HOST.FileSystem`. The reference `bni run` command provides it for the local
 process, subject to ordinary OS permissions.
 
 ## Availability

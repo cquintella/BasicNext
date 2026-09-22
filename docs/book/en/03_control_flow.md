@@ -371,7 +371,7 @@ FUNCTION Start() AS VOID
 END FUNCTION
 ```
 
-Running it with `bn run readings.bn` produces:
+Running it with `bni run readings.bn` produces:
 
 ```
 72 normal
@@ -395,7 +395,7 @@ Two details are worth noting. The mean is a `FLOAT` because `/` always performs 
 
 ## Summary
 
-Basic Next restricts conditions to `BOOLEAN`, closes every block with an explicit `END`, requires loop jumps to name the loop they control, and checks that every path of a non-`VOID` function returns. Each rule converts a category of runtime defect into a message from `bn check`, and each one is satisfied by writing the intent that was there anyway.
+Basic Next restricts conditions to `BOOLEAN`, closes every block with an explicit `END`, requires loop jumps to name the loop they control, and checks that every path of a non-`VOID` function returns. Each rule converts a category of runtime defect into a message from `bni check`, and each one is satisfied by writing the intent that was there anyway.
 
 The structural advice is independent of the language and holds wherever these constructs exist. Reject invalid input at the top of a function and leave the main path unindented. Give a condition that expresses a domain rule its own name and its own function. Choose the loop whose shape matches the problem: `WHILE` when the continuation condition is known before the first iteration, `REPEAT` when the data has to be obtained first, `FOR` when the number of iterations is fixed, and `FOR EACH` when the position of an element does not matter. When a loop needs a flag to control a loop outside it, extract the inner loop into a function and return from it instead.
 

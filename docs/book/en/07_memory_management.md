@@ -101,10 +101,10 @@ its parameter without affecting the caller's binding.
 Never touch a binding after releasing it. The validator and runtime diagnose
 `USE_AFTER_RELEASE` (`p[i]`, `LEN(p)`, passing `p`), `DOUBLE_RELEASE`,
 `NULL_POINTER_ACCESS`, and invalid bounds instead of silently continuing — on
-both `bn run` and `bn build` artifacts.
+both `bni run` and `bnc` artifacts.
 
 The normative ownership and ABI contract is in
-[`0.5.md`](../../language/0.5/0.5.md#memory-model-arc). The implementation evidence
+[`0.6.md`](../../language/0.6/0.6.md#memory-model-arc). The implementation evidence
 and conformance fixtures are tracked with the 0.5.0 release bucket.
 
 ---

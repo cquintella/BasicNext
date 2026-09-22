@@ -63,4 +63,4 @@ precompiled module artifacts alongside source. Until then, distribute
 
 ## Tour
 
-`examples/bnstring_tour.bn` — `IMPORT BNString` smoke test (`bn run`).
+`examples/bnstring_tour.bn` — `IMPORT BNString` smoke test (`bni run`).

@@ -27,7 +27,7 @@ Bein so, the default build remains compatible with ordinary operating-system per
 Without a sandbox option, the program uses the normal filesystem permissions of the process that launches it:
 
 ```text
-bn build app.bn
+bnc app.bn
 ```
 
 This is the `unrestricted` profile. It does not mean that the process has superuser access. The operating system, **user account, container, and service manager still apply** their ordinary permissions. Basic Next simply does not add
@@ -37,7 +37,7 @@ The optional `sandboxed` profile records a filesystem policy in the compiled
 artifact:
 
 ```text
-bn build app.bn --sandbox \
+bnc app.bn --sandbox \
     --read-root ./input \
     --write-root ./output
 ```
@@ -79,14 +79,14 @@ replacement for the artifact ceiling, and `BN_FS_POLICY=unrestricted` cannot
 remove restrictions from a sandboxed binary. A value the runtime does not
 recognise (for example `BN_FS_POLICY=bogus` or `BN_EXEC_TIMEOUT_MS=abc`) is a
 configuration error: the process stops before `Start` with `CONFIG_INVALID`
-and exit status 2, on `bn run` and in a compiled artifact alike. Policy is
+and exit status 2, on `bni run` and in a compiled artifact alike. Policy is
 never silently replaced by the defaults.
 
-The same policy model applies to `bn run` so that interpretation and native
+The same policy model applies to `bni run` so that interpretation and native
 compilation have the same observable authorization behavior:
 
 ```text
-bn run app.bn --sandbox --read-root ./input --write-root ./output
+bni run app.bn --sandbox --read-root ./input --write-root ./output
 ```
 
 ### What “unrestricted” means

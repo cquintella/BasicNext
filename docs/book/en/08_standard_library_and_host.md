@@ -145,7 +145,7 @@ END IF
 > **Status:** Shipped in 0.5.1. The capability is available on both the
 > interpreter and the native (LLVM) path, with the E01–E14 acceptance matrix
 > green on both. Execution is governed by the execution policy (restricted
-> profiles deny it by default). Contract: [0.5 language specification — `HOST.Exec`](../../language/0.5/0.5.md#hostexec-051) and [`host-exec.md`](../../library/host-exec.md).
+> profiles deny it by default). Contract: [0.6 language specification — `HOST.Exec`](../../language/0.6/0.6.md#hostexec-051) and [`host-exec.md`](../../library/host-exec.md).
 
 `HOST.Exec` runs an **external program** and captures its output, in the style of a language-level `exec()`: the host **spawns** a child, **waits** until it finishes, and returns a structured result. It does **not** replace the Basic Next process image (that would be POSIX `execve`, which is out of 0.5.1).
 
@@ -176,7 +176,7 @@ END FUNCTION
 | Signal termination (POSIX) | `ReturnCode = -signal` (e.g. `-15` for SIGTERM); the completed spawn stays a `Result` |
 | Capture limits | 16 MiB per stream and a 60 s wall-clock ceiling by default; policy may lower them. Overflow/timeout returns a stable `Error`, never truncated output |
 | Restricted profiles | Deny `HOST.Exec` by default (for example Jupyter-style hosts) |
-| Policy inputs | `BN_EXEC_POLICY=deny`, `BN_EXEC_CAPTURE_LIMIT=<bytes>`, `BN_EXEC_TIMEOUT_MS=<ms>` narrow the call on `bn run` and in compiled artifacts alike; they can only reduce the ceilings. A malformed value stops the process before `Start` (`CONFIG_INVALID`, exit 2) on both backends |
+| Policy inputs | `BN_EXEC_POLICY=deny`, `BN_EXEC_CAPTURE_LIMIT=<bytes>`, `BN_EXEC_TIMEOUT_MS=<ms>` narrow the call on `bni run` and in compiled artifacts alike; they can only reduce the ceilings. A malformed value stops the process before `Start` (`CONFIG_INVALID`, exit 2) on both backends |
 
 Do not confuse `HOST.Exec` with `HOST.SQLite` / `Db.Exec(sql)` (SQL execution), which is a different capability.
 

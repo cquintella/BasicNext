@@ -36,7 +36,7 @@ language promise: reduce cognitive load without reducing expressive power.
 Write plainly and confidently. Describe current facts separately from future
 direction. Avoid hype, benchmark claims, vendor hostility, and claims that BN
 is already production-ready. 0.1 ships a reference interpreter; its strength
-today is a deliberate language design, an open specification, and `bn run`.
+today is a deliberate language design, an open specification, and `bni run`.
 
 ## Signature line
 

@@ -76,9 +76,9 @@ activation syntax.
 The official tool is branded `BN` and invoked as `bn`:
 
 ```text
-bn check file.bn
-bn run file.bn
-bn build file.bn
+bni check file.bn
+bni run file.bn
+bnc file.bn
 ```
 
 Every command uses the same diagnostic shape, source locations, terminology,
@@ -87,7 +87,7 @@ relevant source, explain the likely cause in plain language, and suggest the
 smallest useful correction. They must be understandable without requiring the
 programmer to leave the current tool and search a numeric error-code catalogue.
 
-The trivial path is zero-config: `bn run hello.bn` must work without a project
+The trivial path is zero-config: `bni run hello.bn` must work without a project
 file or manifest. A manifest is introduced only when a program needs declared
 dependencies, package metadata, or non-default build configuration.
 

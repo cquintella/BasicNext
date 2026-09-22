@@ -19,15 +19,15 @@ also require Clang/LLVM 22; the WebAssembly target requires a Clang with a
 ## Commands
 
 ```shell
-bn check examples/hello.bn
-bn lex examples/hello.bn
-bn run examples/hello.bn -- extra-argument
-bn eval 'PRINT 1 + 1'
-printf 'PRINT 2\n' | bn eval --stdin
-bn build examples/hello.bn
-bn build examples/hello.bn -o hello
-bn build --target wasm32 examples/hello.bn -o hello.wasm
-bn check --module-path vendor/bn examples/hello.bn
+bni check examples/hello.bn
+bni lex examples/hello.bn
+bni run examples/hello.bn -- extra-argument
+bni eval 'PRINT 1 + 1'
+printf 'PRINT 2\n' | bni eval --stdin
+bnc examples/hello.bn
+bnc examples/hello.bn -o hello
+bnc --target wasm32 examples/hello.bn -o hello.wasm
+bni check --module-path vendor/bn examples/hello.bn
 node bin/bn-wasm hello.wasm
 ```
 
@@ -83,7 +83,7 @@ clang /tmp/rabin-karp.ll target/debug/libbn_rt.a -o /tmp/rabin-karp -lm
 /tmp/rabin-karp
 ```
 
-The normal product path is `bn build ... -o <artifact>`; it locates and links
+The normal product path is `bnc ... -o <artifact>`; it locates and links
 `libbn_rt.a` automatically. Set `BN_RT_LIB` when the archive is outside the
 standard `target/debug` or `target/release` location.
 
@@ -91,7 +91,7 @@ BN diagnostics exit `1`; invalid CLI use or unavailable build tooling exits
 `2`. `-v` prints pipeline stages, and `-vv` also prints tokens.
 
 `HOST.Args` belongs to the executable module and needs no import.
-`HOST.Args[0]` is the absolute source path under `bn run`; later entries are
+`HOST.Args[0]` is the absolute source path under `bni run`; later entries are
 the values after `--`. Use `LEN(HOST.Args)` for the count.
 
 `--no-filesystem` denies a `HOST.FileSystem` import before `Start`. The
@@ -101,7 +101,7 @@ protocol flag, not a normal user option.
 The `wasm32` target currently supports `HOST.Args`, `HOST.Random`, `HOST.Clock`,
 `HOST.Console`, string operations, and scalar `BNMath`. `HOST.FileSystem`,
 `HOST.Net`, `BNLog`, and `BNWeb` are not in the WASI capability matrix yet;
-`bn build --target wasm32` rejects those imports with
+`bnc --target wasm32` rejects those imports with
 `BUILD_CAPABILITY_UNAVAILABLE` instead of emitting a non-functional socket
 stub. WASI socket support is a follow-up provider contract.
 
@@ -130,7 +130,7 @@ Filesystem and positioned-console operations are rejected for that target.
   `TARGET_UNSUPPORTED_HOST` diagnostic instead of changing semantics.
 - `TIMEZONE` stores an IANA identifier; UTC conversions do not apply zone
   rules.
-- The VS Code adapter uses the native `bn dap` service for breakpoints, pause,
+- The VS Code adapter uses the native `bni dap` service for breakpoints, pause,
   continue, stack/scopes/variables, and step commands. Stepping is over IR
   instructions carrying source spans; it is not a REPL or arbitrary-expression
   evaluator.
@@ -146,5 +146,5 @@ Full command reference: [`bn(1)`](../man/bn.1). Tutorial:
 | `NAME_NOT_FOUND` on an imported member | Call it through the declared alias: `alias.member`. |
 | `HOST_CAPABILITY_UNAVAILABLE` in Jupyter | The kernel intentionally denies filesystem and has no TTY. |
 | `BUILD_TOOLCHAIN_UNAVAILABLE` | Install LLVM/Clang 22 and `wasm-ld`, or set `BN_WASM_CLANG` / `BN_WASM_LD` (Homebrew: `llvm` + `lld@20`). Apple Clang cannot emit `wasm32`. |
-| `TARGET_UNSUPPORTED_*` | The valid program is outside the selected compiler target subset; use `bn run` or adjust the target/capabilities. |
+| `TARGET_UNSUPPORTED_*` | The valid program is outside the selected compiler target subset; use `bni run` or adjust the target/capabilities. |
 | `INPUT()` returns `EOF` | Standard input ended before a line was available. |

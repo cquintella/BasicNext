@@ -10,24 +10,24 @@ This is an as-is inventory for the 0.4.4 soft-preparation bucket. It records
 the code that runs today; the approved target remains one shared
 frontend → IR → `validate` → interpret/compile pipeline.
 
-## CLI (`bn run` and `bn build`)
+## CLI (`bni run` and `bnc`)
 
-The root dispatcher is `src/main.rs`; frontend loading is in
-`src/cli_frontend.rs`.
+Since bucket 0.6.0 the executables are `crates/bni/src/main.rs` and
+`crates/bnc/src/main.rs`; both are dispatch only. The shared phases are in
+`bn_cli` and `bn_frontend`; the backend phases in the two driver crates.
 
-| Phase | Current implementation | `run` | `build` |
+| Phase | Implementation (0.6.0) | `bni run` | `bnc` |
 | --- | --- | :---: | :---: |
-| Read source | `fs::read_to_string` + `SourceFile::new` in `main` | yes | yes |
-| Lex | `lexer::lex` in `main` | yes | yes |
-| Load module graph | `cli_frontend::load_frontend` → `module_graph::load` | yes | yes |
-| Parse root | `parse_named` in `load_frontend` | yes | yes |
-| Semantic analysis | `analyze_modules` in `load_frontend` | yes | yes |
-| Lower and language validate | `ir::lower_graph` (which calls `ir::validate`) | yes | yes |
-| Backend | `runtime::execute_with_host` | interpret | `llvm::lower_module_for_target`, then clang/wasm-ld |
+| Read source + lex | `bn_cli::frontend::read_source` | yes | yes |
+| Load module graph, parse, analyze, lower, **language validate** | `bn_frontend::prepare::prepare` (one call, structured errors), adapted by `bn_cli::frontend::load_frontend` | yes | yes |
+| Warning policy | `bn_cli::diagnostics::emit_frontend_warnings` | yes | yes |
+| Target support | — | — | `bn_llvm::validate_for` in `bn_compile_driver::build` |
+| Backend | `bn_interp::execute_validated_with_host` over `bn_interpret_driver::environment::host_env` | interpret | `bn_llvm::lower_validated_module_for_target_with_policy`, then clang/wasm-ld (`bn_compile_driver::artifact`) |
 
-Both commands call `lower_graph` once for their backend path. `bn check`
-performs lexical, syntax, and semantic checks; it lowers only when
-`--emit ir` is requested, so it is not currently a full IR-validation check.
+Both executables consume the same `Prepared` artifact (W1/W3); `bni check`
+runs the full preparation including language validation and emits an
+artifact only on `--emit`. The `bn` dispatcher spawns these executables and
+adds no phase.
 That is tracked for S1.1 and is not changed by S0.3.
 
 ## LSP

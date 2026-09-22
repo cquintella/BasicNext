@@ -25,7 +25,7 @@ first hit wins**. The effective list is built as `defaults → config → CLI`:
 - **Config:** a `module-path = ["dir", ...]` array in the selected `config.toml`.
 - **CLI:** repeatable `--module-path <dir>` flags (added last, highest priority).
 
-The same resolution applies to `bn check`, `bn run`, `bn build`, and `bn eval`.
+The same resolution applies to `bni check`, `bni run`, `bnc`, and `bni eval`.
 
 The standard library ships as `.bn` source. When `bn` is installed, it finds the
 stdlib by walking upward from its own executable, accepting (first match wins):

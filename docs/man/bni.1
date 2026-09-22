@@ -1,0 +1,284 @@
+.\" groff man page for the Basic Next interpreter executable (0.6 line).
+.TH BNI 1 "September 22, 2026" "bni 0.6" "Basic Next"
+.SH NAME
+bni \- Basic Next checker, interpreter, and editor protocols
+.SH SYNOPSIS
+.B bni
+.I command
+.RI [ options ]
+.I source-or-file
+.RI [ "-- program-args" ]
+.SH DESCRIPTION
+.B bni
+processes UTF-8 Basic Next source through a source-spanned pipeline:
+lexer, parser/AST, semantic analysis, typed BN IR, and the reference
+interpreter. Compilation is
+.BR bnc (1),
+which consumes the same validated IR. The retiring
+.BR bn (1)
+dispatcher forwards to both.
+.PP
+The executable module must define
+.BR "FUNCTION Start" .
+No project file is required for a single program.
+.SH COMMANDS
+.TP
+.B eval
+Evaluate one source fragment or complete program through the typed BN IR
+interpreter. Pass the source as one argument, or use
+.BR --stdin
+to consume the complete source from standard input. Arguments after
+.B --
+are exposed through
+.BR HOST.Args .
+The
+.BR --format
+.B json
+form emits one JSON v1 result envelope and owns both process channels. This
+command is distinct from the file-oriented
+.BR run
+command.
+.TP
+.B check
+Validate lexical, syntactic, and semantic rules. With
+.BR --emit ,
+print a selected frontend artifact.
+.TP
+.B lex
+Print the token stream.
+.TP
+.B run
+Validate, lower to typed BN IR, and execute
+.BR Start .
+The successful process status is the program result.
+.TP
+.B lsp
+Serve the Language Server Protocol over standard input and output.
+.TP
+.B dap
+Serve the Debug Adapter Protocol over standard input and output.
+.SH OPTIONS
+.TP
+.BR -v , " --verbose"
+Print pipeline stages. Repeat it, or use
+.BR -vv ,
+to also print tokens.
+.TP
+.BI --emit " tokens|ast|typed-ast|ir"
+Select the frontend artifact printed by
+.BR check .
+.TP
+.BR -o , " --output " file
+Write the artifact selected by
+.B --emit
+to
+.IR file .
+.TP
+.BI --mode " snippet|program"
+Select
+.B eval
+fragment or complete-program semantics. The default is
+.BR snippet .
+.TP
+.BI --format " text|json"
+Select the
+.B eval
+result format. JSON emits exactly one versioned envelope on standard output;
+it is not available for
+.BR check " or " run .
+.TP
+.BI --module-path " dir"
+Append an ordered directory used to resolve imported source modules. The
+option is repeatable; earlier directories win. Configuration entries are
+applied before command-line entries.
+.TP
+.B --no-filesystem
+With
+.BR run ,
+reject a
+.B HOST.FileSystem
+import before
+.BR Start .
+The Jupyter kernel uses this boundary.
+.TP
+.B --sandbox
+Opt into filesystem root restrictions for
+.BR run
+(and other commands that honour the sandbox). Without explicit roots, policy
+is restrictive; combine with
+.B --read-root
+and
+.BR --write-root .
+.TP
+.BI --read-root " dir"
+Allow reads under
+.I dir
+when the sandbox is active. Repeatable.
+.TP
+.BI --write-root " dir"
+Allow writes under
+.I dir
+when the sandbox is active. Repeatable.
+.TP
+.B --trace
+Report the interpreter entry point.
+.TP
+.BI --warnings " errors"
+Promote all warning diagnostics to errors.
+.TP
+.BI --allow " CODE"
+Suppress one warning diagnostic (repeatable).
+.TP
+.BI --warn " CODE"
+Keep one warning diagnostic at warning level.
+.TP
+.BI --deny " CODE"
+Promote one warning diagnostic to an error.
+.TP
+.BI --log-level " error|warn|info|debug"
+Process log verbosity (the companion log is written by
+.BR bnc (1);
+the option is accepted here for a shared configuration).
+.TP
+.BI --log-file " file"
+Companion process log file path (see
+.BR bnc (1)).
+.TP
+.B --no-log
+Disable companion process logging.
+.TP
+.BI --config " file"
+Load warning and process logging configuration from
+.IR file .
+.TP
+.BI --color " auto|always|never"
+Control ANSI colour on status messages.
+.TP
+.BR -V , " --version"
+Print the tool version.
+.TP
+.BR -h , " --help"
+Print command help.
+.TP
+.B --
+End tool options. Remaining values become program arguments.
+.SH ARGUMENTS
+.B HOST.Args
+is available only in the executable module and requires no import.
+.B HOST.Args[0]
+is the absolute source path under
+.BR "bni run" ;
+later entries are values after
+.BR -- .
+.B LEN(HOST.Args)
+returns the full count.
+.PP
+.B HOST.Main ,
+.BR SYSTEM ,
+.BR ArgumentCount() ,
+and
+.B Argument(index)
+were withdrawn in 0.2.
+.SH MODULES
+Every import declares an alias. Imported declarations are referenced as
+.IR alias.member .
+User modules belong beneath
+.BR modules/ .
+Standard modules such as
+.BR BNMath ,
+.BR BNData ,
+.BR BNLog ,
+.BR BNWeb ,
+and
+.B BNJson
+belong beneath
+.B modules/bn/
+and require explicit imports.
+.PP
+The standard-library directory is located, in order: from
+.BR BN_HOME
+when set (see ENVIRONMENT); otherwise the nearest
+.B modules/bn
+above the entry file, then above the working directory, then relative to the
+.B bni
+executable (installed layout). The effective import roots and the origin of
+each one, plus the root that resolved every imported module, are recorded in
+the process log at debug level (
+.BR "--log-level debug" ).
+.PP
+.B HOST
+is the only built-in interface object. Facilities provided include
+.BR HOST.Args ,
+.BR HOST.Clock ,
+.BR HOST.Console ,
+.BR HOST.Random ,
+.BR HOST.FileSystem ,
+.BR HOST.Net ,
+and
+.BR HOST.Exec .
+.SH DIAGNOSTICS
+A Basic Next diagnostic exits 1. Invalid command use, missing files, and a
+denied execution policy exit 2. Diagnostics include a stable code and source
+span when applicable. The interpreter is the reference semantics: a program
+that
+.BR bnc (1)
+rejects as outside the compiler subset still runs here.
+.SH ENVIRONMENT
+.TP
+.B BN_HOME
+Explicit Basic Next home. When set, the standard-library modules are taken from
+.I $BN_HOME/share/bn/modules/bn
+or
+.IR $BN_HOME/modules/bn ,
+and the ancestor-directory search is skipped entirely: a
+.B BN_HOME
+without a standard library makes standard imports fail rather than silently
+resolving to another
+.B modules/bn
+higher in the tree.
+.SH FILES
+.TP
+.I docs/language/0.6/0.6.ebnf
+Accepted grammar for the 0.6 line.
+.TP
+.I docs/language/0.6/0.6.md
+Consolidated 0.6 language specification.
+.TP
+.I docs/language/0.6/keywords.md
+Keyword and reserved-form contract.
+.TP
+.I docs/project/usage.md
+Installation, examples, limits, and troubleshooting.
+.TP
+.I docs/project/kernel.md
+Jupyter host contract.
+.TP
+.I docs/releases/
+In-repo release notes for tagged versions.
+.SH LIMITATIONS
+Time-zone values do not apply TZDB zone rules.
+The VS Code extension and DAP adapter coverage grow with releases; do not assume
+full breakpoint/step parity from this page alone.
+.SH EXAMPLES
+.nf
+.RS
+bni check examples/hello.bn
+bni eval 'PRINT 1 + 1'
+printf 'PRINT 2\n' | bni eval --stdin
+bni run examples/language-tour.bn
+bni run examples/hello.bn -- extra-argument
+bni check --emit ir examples/factorial.bn
+bni run --sandbox --read-root . --write-root /tmp examples/hello.bn
+.RE
+.fi
+.SH SEE ALSO
+.BR bnc (1),
+.BR bn (1),
+.IR docs/book/en/toc.md ,
+.IR docs/project/usage.md ,
+.IR docs/project/kernel.md ,
+.IR docs/language/0.6/0.6.md ,
+.IR docs/library/host.md ,
+.IR docs/library/math.md
+.SH AUTHOR
+Carlos Quintella, Basic Next BDFL.

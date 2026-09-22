@@ -274,7 +274,19 @@ flowchart BT
 >
 > **`bn_source` leaf (locked 2026-09-05):** `SourceId` / `Revision` / `Span` are **not** frontend-private. `bn_source` sits **below** `bn_frontend`, `bn_diag`, and `bn_ir` so IR/diagnostics never import the frontend for locations — [frontend-session.md](frontend-session.md).
 
-### As built (bucket 0.5.1d, 2026-09-17)
+### As built (bucket 0.5.1d, 2026-09-17; executables updated by bucket 0.6.0, 2026-09-22)
+
+**Executables (0.6.0).** `crates/bni` (`run|eval|check|lex|lsp|dap`) links
+`bn_cli` + `bn_interpret_driver` + `bn_lsp` + `bn_dap`; `crates/bnc`
+(`bnc [compile-options] <entry.bn>`) links `bn_cli` + `bn_compile_driver`;
+the root `bn` is a std-only dispatcher that spawns the sibling `bni`/`bnc`
+(retires in 0.7). Shared application logic lives in `bn_cli` (options,
+config, `read_source`, frontend adapter over `bn_frontend::prepare`, `check`,
+diagnostics, output, help, process log), `bn_interpret_driver` (run/eval,
+HostEnv composition, provider registries, `lib-*` features) and
+`bn_compile_driver` (build, toolchain discovery, artifact linking). Gates:
+`bnc` has no `bn_interp`/`tokio`; `bni` has no `bn_llvm`; `bn` has no
+`bn_*` dependency. See `library-first-drivers.md`.
 
 The DAG above was the plan; this is the workspace after the split. The
 direction held with two measured deviations: the runtime never depends on a
@@ -524,8 +536,8 @@ Do **not** invent a second frontend/runtime. Move code, then delete the old path
 | `http` | `bn_host_http` |
 | `json`, `log`, `temporal` | runtime or small host support modules |
 | `diagnostic` | `bn_diag` |
-| `lsp`, `dap` | `bn_lsp` / `bn_dap` |
-| `main`, `cli_*`, `cli_toolchain` | `bn` binary |
+| `lsp`, `dap` | `bn_lsp` / `bn_dap` (done, 0.6.0) |
+| `main`, `cli_*`, `cli_toolchain` | `bn_cli`, `bn_interpret_driver`, `bn_compile_driver`; executables `bni`, `bnc`, dispatcher `bn` (done, 0.6.0) |
 | `crates/bn_rt` | unchanged role |
 
 ---

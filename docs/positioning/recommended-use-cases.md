@@ -22,7 +22,7 @@ for me": file transformations, reports, data cleanup, command-line tools,
 teaching utilities, and workflow automation.
 
 ```text
-bn run report.bn
+bni run report.bn
 ```
 
 No project manifest. No framework bootstrap. No ceremony before a useful run.
@@ -42,7 +42,7 @@ import model, not a different mental model for every platform.
 
 ## Where BN should not pretend to be ready
 
-BN 0.1 has a reference interpreter (`bn check` / `bn run`). It is not yet the
+BN 0.1 has a reference interpreter (`bni check` / `bni run`). It is not yet the
 right choice for a production system that needs a package ecosystem, GPU
 stack, kernel interface, or hard real-time profile. Those are future
 engineering targets, not present promises.

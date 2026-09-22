@@ -2,13 +2,13 @@
 
 > The kernel package now lives in its own repository:
 > [cquintella/basicnext-jupyter](https://github.com/cquintella/basicnext-jupyter).
-> This document records the `bn`-side contract (`bn run --jupyter-stdin`) it
+> This document records the `bn`-side contract (`bni run --jupyter-stdin`) it
 > depends on.
 
 `bn-kernel` keeps the Rust crate dependency-free. The installable Python
 package uses `pyzmq` for the Jupyter v5 wire transport. Each request writes
 one complete Basic Next program to a fresh temporary `.bn` file and invokes
-`bn run --no-filesystem --jupyter-stdin`; no declarations or process state
+`bni run --no-filesystem --jupyter-stdin`; no declarations or process state
 survive between cells.
 
 The package API is `bn_kernel.execute_cell`. Without a connection file, the
@@ -32,7 +32,7 @@ The kernel answers:
 - `INPUT()` → Jupyter `input_request` / `input_reply` on the stdin
   channel. The kernel does **not** read `execute_request.content.stdin`.
   `--jupyter-stdin` is the private marker contract between the kernel and
-  `bn`; it is not a user-facing `bn run` flag.
+  `bn`; it is not a user-facing `bni run` flag.
 - Child stdout and stderr are read concurrently so a large `PRINT` cannot
   fill a pipe and deadlock the kernel.
 
