@@ -92,7 +92,7 @@ jobs:
           targets: ${{ matrix.target }}
       - name: Build
         run: |
-          cargo build --release --locked --target ${{ matrix.target }} --bin bn --bin bnc
+          cargo build --release --locked --target ${{ matrix.target }} -p bn -p bnc --bin bn --bin bnc
           cargo build --release --locked --target ${{ matrix.target }} -p bn_rt
       - name: Stage binaries
         shell: bash

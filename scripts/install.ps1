@@ -44,8 +44,8 @@ if (-not $NoBuild) {
     if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
         throw "cargo (Rust 1.97+) is required to build; pass -NoBuild to install prebuilt binaries."
     }
-    Write-Host "==> Building release binaries (cargo build --release --bins)"
-    cargo build --release --bins
+    Write-Host "==> Building release binaries (cargo build --release --workspace --bins)"
+    cargo build --release --workspace --bins
     if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
     Write-Host "==> Building native runtime (cargo build -p bn_rt --release)"
     cargo build -p bn_rt --release

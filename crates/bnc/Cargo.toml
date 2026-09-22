@@ -1,0 +1,23 @@
+[package]
+name = "bnc"
+version = "0.5.2"
+edition = "2024"
+rust-version = "1.98"
+description = "Basic Next compiler: bnc [compile-options] <entry.bn>"
+license = "MPL-2.0"
+publish = false
+
+[[bin]]
+name = "bnc"
+path = "src/main.rs"
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+
+[dependencies]
+bn_cli = { path = "../bn_cli" }
+bn_compile_driver = { path = "../bn_compile_driver" }

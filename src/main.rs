@@ -6,19 +6,17 @@
 //! Argument acquisition, command selection and exit status only; every
 //! command is implemented by `bn_cli`, `bn_interpret_driver`,
 //! `bn_compile_driver`, `bn_lsp` or `bn_dap` (bucket 0.6.0, SPRINT 1).
-use std::{env, fs, process::ExitCode};
+use std::{env, process::ExitCode};
 
 use bn_cli::{
     check::check,
-    diagnostics::render_diagnostic,
+    frontend::read_source,
     help::COMMON_OPTIONS,
     options::{OutputFormat, parse_options},
-    output::{emit_output, language_error, log, tokens_text, tool_error},
+    output::{emit_output, tokens_text, tool_error},
 };
 use bn_compile_driver::{build::build, options::BuildOptions};
-use bn_frontend::lexer::lex;
 use bn_interpret_driver::{eval::eval, run::run};
-use bn_source::SourceFile;
 const VERSION: &str = concat!("bn ", env!("CARGO_PKG_VERSION"));
 
 fn help() -> ExitCode {
@@ -111,28 +109,10 @@ fn main() -> ExitCode {
         return tool_error();
     }
 
-    log(options.verbosity, 1, format!("reading {}", options.path));
-    let text = match fs::read_to_string(&options.path) {
-        Ok(text) => text,
-        Err(error) => {
-            eprintln!("error: cannot read {}: {error}", options.path);
-            return tool_error();
-        }
+    let (source, tokens) = match read_source(&options) {
+        Ok(read) => read,
+        Err(code) => return code,
     };
-    let source = SourceFile::new(&options.path, text);
-    log(options.verbosity, 1, "lexical analysis");
-    let tokens = match lex(&source) {
-        Ok(tokens) => tokens,
-        Err(diagnostic) => {
-            eprintln!("{}", render_diagnostic(&diagnostic, &source, &options));
-            return language_error();
-        }
-    };
-    log(
-        options.verbosity,
-        1,
-        format!("lexer completed: {} tokens", tokens.len()),
-    );
     match command.as_str() {
         "lex" => emit_output(tokens_text(&tokens), options.output.as_deref()),
         "check" => check(&source, &tokens, &options),

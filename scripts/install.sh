@@ -154,8 +154,8 @@ cd "$repo_root"
 
 if ((BUILD)); then
   command -v cargo >/dev/null 2>&1 || { echo "error: cargo (Rust 1.97+) is required to build; use --no-build to install prebuilt binaries" >&2; exit 1; }
-  echo "==> Building release binaries (cargo build --release --bins)"
-  cargo build --release --bins
+  echo "==> Building release binaries (cargo build --release --workspace --bins)"
+  cargo build --release --workspace --bins
   echo "==> Building native runtime (cargo build -p bn_rt --release)"
   cargo build -p bn_rt --release
 fi
@@ -164,7 +164,7 @@ bn_bin="$repo_root/target/release/bn"
 bnc_bin="$repo_root/target/release/bnc"
 bn_rt_lib="$repo_root/target/release/libbn_rt.a"
 for bin in "$bn_bin" "$bnc_bin"; do
-  [[ -x "$bin" ]] || { echo "error: missing binary '$bin' (run without --no-build, or 'cargo build --release --bins' first)" >&2; exit 1; }
+  [[ -x "$bin" ]] || { echo "error: missing binary '$bin' (run without --no-build, or 'cargo build --release --workspace --bins' first)" >&2; exit 1; }
 done
 if [[ ! -f "$bn_rt_lib" ]]; then
   if command -v cargo >/dev/null 2>&1; then
