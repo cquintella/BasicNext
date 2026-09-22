@@ -548,6 +548,18 @@ pub(crate) fn is_bncrypto_bytes_type(module: &Module, ty: &Type) -> bool {
     )
 }
 
+/// True when `ty` carries a `BNCrypto.Bytes`, either directly or inside an
+/// `OR Error` alternative. A narrowed value keeps the aggregate type, exactly as
+/// `FS.File` does, so both shapes reach method calls.
+pub(crate) fn carries_bncrypto_bytes(module: &Module, ty: &Type) -> bool {
+    match ty {
+        Type::Alternative(alternatives) => alternatives
+            .iter()
+            .any(|alternative| is_bncrypto_bytes_type(module, alternative)),
+        other => is_bncrypto_bytes_type(module, other),
+    }
+}
+
 /// The `BNCrypto` member `name` selects, if this module imports `BNCrypto` and
 /// the callee is part of the supported surface.
 pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a str> {
@@ -555,9 +567,7 @@ pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a 
     (!module.bncrypto_providers.is_empty()
         && matches!(
             method,
-            // FromHex needs `Bytes OR Error` narrowing, which this backend does
-            // not emit yet; it stays a clean TARGET_UNSUPPORTED_OP.
-            "SHA256" | "SHA512" | "FromText" | "Length" | "ToHex"
+            "SHA256" | "SHA512" | "FromText" | "FromHex" | "Length" | "ToHex"
         ))
     .then_some(method)
 }

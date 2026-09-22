@@ -1067,12 +1067,12 @@ use arc::{
     is_region_type,
 };
 use helpers::{
-    bncrypto_method, class_init_flag, coerce_return_operand, coerce_to_type, escape_llvm,
-    extend_to_i64, fold_binary, fold_cast, fold_unary, input_runtime_ir, instruction_name,
-    integer_kind, is_bncrypto_bytes_type, is_canonical_timezone, is_unsigned, parse_float_constant,
-    parse_integer, render_float, render_llvm_integer, sanitize_symbol, static_global_name,
-    string_byte_length_ir, unsupported_call_detail, unsupported_instruction,
-    unsupported_instruction_detail,
+    bncrypto_method, carries_bncrypto_bytes, class_init_flag, coerce_return_operand,
+    coerce_to_type, escape_llvm, extend_to_i64, fold_binary, fold_cast, fold_unary,
+    input_runtime_ir, instruction_name, integer_kind, is_bncrypto_bytes_type,
+    is_canonical_timezone, is_unsigned, parse_float_constant, parse_integer, render_float,
+    render_llvm_integer, sanitize_symbol, static_global_name, string_byte_length_ir,
+    unsupported_call_detail, unsupported_instruction, unsupported_instruction_detail,
 };
 use layout::{
     OBJECT_HEADER_BYTES, class_instance_bytes, class_layout_fields, field_byte_offset, field_type,

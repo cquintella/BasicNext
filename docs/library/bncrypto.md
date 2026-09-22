@@ -66,22 +66,16 @@ characters is not a byte sequence.
 
 ## Target support
 
-| Member | `bni` | `bnc` |
-| --- | --- | --- |
-| `SHA256`, `SHA512` | yes | yes |
-| `FromText`, `Length`, `ToHex`, `RELEASE` | yes | yes |
-| `FromHex` | yes | **no** — `TARGET_UNSUPPORTED_OP` |
+Every member listed above is supported by **both** backends. Digests route
+through `bn_rt_crypto_sha256` / `bn_rt_crypto_sha512`, which return an owned
+NUL-terminated UTF-8 string under the same ownership convention as
+`bn_rt_str_to_lower`. A `Bytes` handle travels as a pointer carrying the `bn_rt`
+table index, as `BNLog` resources do; a value narrowed out of `Bytes OR Error`
+keeps the `{ i1, ptr, i64 }` aggregate and the handle is extracted from it,
+exactly as `FS.File` does.
 
-The compiled path routes digests through `bn_rt_crypto_sha256` /
-`bn_rt_crypto_sha512`, which return an owned NUL-terminated UTF-8 string under
-the same ownership convention as `bn_rt_str_to_lower`. A `Bytes` handle travels
-as a pointer carrying the `bn_rt` table index, as `BNLog` resources do.
-
-`FromHex` is interpret-only because it returns `Bytes OR Error`, and the backend
-does not yet emit the narrowing for that aggregate. This is a **support** gap,
-not a language one: compiling a program that calls it fails with
-`TARGET_UNSUPPORTED_OP` rather than miscompiling, and a test pins that
-behaviour so the boundary cannot rot into a silent wrong answer.
+A call whose argument has the wrong type fails the target support check with
+`TARGET_UNSUPPORTED_OP`, which is a support diagnostic, not a language error.
 
 ## Evidence
 
@@ -93,7 +87,7 @@ behaviour so the boundary cannot rot into a silent wrong answer.
 | Interpreter serves `IMPORT BNCrypto` | `cargo test -p bni --test cli bncrypto` |
 | Compiled digests equal interpreted digests | `cargo test -p bnc --test cli compiled_bncrypto_digests` |
 | Compiled `Bytes` equals interpreted `Bytes` | `cargo test -p bnc --test cli compiled_bncrypto_bytes` |
-| `FromHex` fails as *support*, not as a language error | `cargo test -p bnc --test cli compiled_bncrypto_from_hex` |
+| Compiled `FromHex` and narrowed-value methods match | `cargo test -p bnc --test cli compiled_bncrypto_bytes_full_surface` |
 
 ## Not here
 

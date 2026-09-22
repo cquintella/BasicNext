@@ -91,14 +91,12 @@ that test rather than quietly disagree.
 table, so a compiled program creates, measures, renders and releases the buffer
 through the same code the interpreter uses.
 
-One member is an exception, and it is worth knowing why. `FromHex` returns
-`Bytes OR Error`, and the compiler does not yet emit the narrowing for that
-kind of result. So `FromHex` runs under `bni` but a program that calls it will
-not compile — and that refusal is deliberate. Basic Next distinguishes *"this
-program is wrong"* from *"this target cannot do it yet"*: you get
-`TARGET_UNSUPPORTED_OP`, a support diagnostic, instead of a binary that
-silently does the wrong thing. A test pins that refusal, so the day the
-narrowing lands, the boundary moves on purpose rather than by accident.
+That includes the parts that can fail. `FromHex` returns `Bytes OR Error`, and
+when you narrow it with `IF raw IS Error … ELSE`, the buffer you get in the
+`ELSE` branch works the same compiled as interpreted — the handle is simply
+read out of the result value. Basic Next keeps the distinction between *"this
+program is wrong"* and *"this target cannot do it yet"*, and here there is no
+gap to report: both backends run the whole surface.
 
 ## What is not here yet
 

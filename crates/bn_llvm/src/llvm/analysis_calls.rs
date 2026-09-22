@@ -54,7 +54,7 @@ pub(crate) fn call_instruction_supported(
             let method = bncrypto_method(module, name).unwrap_or(name);
             arguments.len() == 1
                 && values.get(&arguments[0]).is_some_and(|ty| match method {
-                    "Length" | "ToHex" => is_bncrypto_bytes_type(module, ty),
+                    "Length" | "ToHex" => carries_bncrypto_bytes(module, ty),
                     _ => *ty == Type::String,
                 })
         }

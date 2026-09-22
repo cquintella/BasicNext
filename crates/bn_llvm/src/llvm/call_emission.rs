@@ -345,7 +345,7 @@ pub(crate) fn lower_call_instruction(
                     let _ = writeln!(text, "  %v{dest} = inttoptr i64 %cryh{dest} to ptr");
                 }
                 "Length" => {
-                    let _ = writeln!(text, "  %cryh{dest} = ptrtoint ptr %v{argument} to i64");
+                    emit_bncrypto_handle(text, analysis, dest, arguments[0]);
                     let _ = writeln!(
                         text,
                         "  %cryl{dest} = call i64 @bn_rt_crypto_bytes_length(i64 %cryh{dest})"
@@ -353,10 +353,24 @@ pub(crate) fn lower_call_instruction(
                     let _ = writeln!(text, "  %v{dest} = trunc i64 %cryl{dest} to i32");
                 }
                 "ToHex" => {
-                    let _ = writeln!(text, "  %cryh{dest} = ptrtoint ptr %v{argument} to i64");
+                    emit_bncrypto_handle(text, analysis, dest, arguments[0]);
                     let _ = writeln!(
                         text,
                         "  %v{dest} = call ptr @bn_rt_crypto_bytes_to_hex(i64 %cryh{dest})"
+                    );
+                }
+                "FromHex" => {
+                    let _ = writeln!(text, "  %cryout{dest} = alloca i64");
+                    let _ = writeln!(
+                        text,
+                        "  %cryrc{dest} = call i32 @bn_rt_crypto_bytes_from_hex(ptr %v{argument}, ptr %cryout{dest})"
+                    );
+                    let _ = writeln!(text, "  %cryhandle{dest} = load i64, ptr %cryout{dest}");
+                    emit_handle_result(
+                        text,
+                        *destination,
+                        format!("%cryrc{dest}"),
+                        format!("%cryhandle{dest}"),
                     );
                 }
                 other => unreachable!("unsupported BNCrypto member reached emission: {other}"),
@@ -486,4 +500,25 @@ pub(crate) fn lower_call_instruction(
         _ => unreachable!("validated call target"),
     }
     Ok(())
+}
+
+/// Materialises `%cryh{dest}`, the `bn_rt` table index behind a `BNCrypto.Bytes`
+/// operand. A plain handle arrives as a pointer; a value narrowed out of
+/// `Bytes OR Error` arrives as the `{ i1, ptr, i64 }` aggregate, as `FS.File`
+/// does.
+fn emit_bncrypto_handle(
+    text: &mut String,
+    analysis: &LoweringAnalysis<'_>,
+    dest: u32,
+    operand: ValueId,
+) {
+    let source = operand.0;
+    if matches!(analysis.values.get(&operand), Some(Type::Alternative(_))) {
+        let _ = writeln!(
+            text,
+            "  %cryh{dest} = extractvalue {{ i1, ptr, i64 }} %v{source}, 2"
+        );
+    } else {
+        let _ = writeln!(text, "  %cryh{dest} = ptrtoint ptr %v{source} to i64");
+    }
 }

@@ -1403,23 +1403,35 @@ fn compiled_bncrypto_bytes_match_the_interpreter() {
     assert_eq!(String::from_utf8_lossy(&run.stdout), "3\n616263\n");
 }
 
-/// `FromHex` is interpret-only for now: it needs `Bytes OR Error` narrowing the
-/// backend does not emit yet. The boundary must surface as a target-support
-/// diagnostic, never as a language error and never as a silent miscompile.
+/// The whole `BNCrypto.Bytes` surface compiles, including `FromHex` and method
+/// calls on a value narrowed out of `Bytes OR Error`. The native binary must
+/// print exactly what the interpreter prints.
 #[test]
-fn compiled_bncrypto_from_hex_is_a_target_support_error() {
-    let directory = std::env::temp_dir().join(format!("bn-crypto-fromhex-{}", std::process::id()));
+fn compiled_bncrypto_bytes_full_surface_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!("bn-crypto-full-{}", std::process::id()));
     let _ = fs::remove_dir_all(&directory);
-    fs::create_dir_all(&directory).expect("crypto fromhex directory");
+    fs::create_dir_all(&directory).expect("crypto full directory");
+    let artifact = directory.join("full");
     let built = bnc()
         .args(["tests/modules/bncrypto-bytes/main.bn", "-o"])
-        .arg(directory.join("fromhex"))
+        .arg(&artifact)
         .output()
-        .expect("compile the FromHex fixture");
-    assert!(!built.status.success(), "FromHex unexpectedly compiled");
-    let stderr = String::from_utf8_lossy(&built.stderr);
+        .expect("compile the full BNCrypto bytes fixture");
     assert!(
-        stderr.contains("TARGET_UNSUPPORTED_OP"),
-        "expected a target-support diagnostic, got: {stderr}"
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled full bytes fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "3\n616263\n3\n000fff\nodd-length-rejected\n"
     );
 }
