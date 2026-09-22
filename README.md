@@ -30,8 +30,7 @@ extended Sinclair BASIC that ships with the
 
 Basic Next 0.6 ships two executables over one shared frontend — `bni`, the
 interpreter, and `bnc`, the LLVM-backed compiler. The 0.5 `bn` command is
-**deprecated**: it remains as a dispatcher that forwards `bn run …` /
-`bn build …` to `bni`/`bnc` and is removed in 0.7.
+gone: `bn run …` is `bni run …` and `bn build …` is `bnc …`.
 
 - `bni run` — validate, lower to BN IR, and interpret
 - `bnc` — compile the supported IR subset to a native or Wasm artifact
@@ -65,15 +64,12 @@ The tutorial book under `docs/book/en/` tracks the 0.5 line.
 The toolchain is two executables: `bni` (`check`, `run`, `eval`, `lex`, `lsp`,
 `dap`) and `bnc` (`bnc [compile-options] <entry.bn>`). They share one
 frontend, one diagnostic format, source locations, and exit-code model.
-`bn run …` / `bn build …` still work through the deprecated `bn` dispatcher
-(prints a deprecation notice when stderr is a terminal; removed in 0.7).
 
 ### Quick Installation
 
 **1. One-line install (Linux / macOS)**
 No checkout and no Rust required. The command downloads `scripts/install.sh`,
-which resolves the latest release, fetches the prebuilt `bni`/`bnc` (and the
-deprecated `bn` dispatcher) for your OS/architecture (verified against the
+which resolves the latest release, fetches the prebuilt `bni`/`bnc` for your OS/architecture (verified against the
 release's `SHA256SUMS`) together with the standard-library modules, diagnostics
 catalog and man pages from the same tag, and installs everything under one
 prefix. If the release has no binary for your platform, it builds from that
@@ -90,7 +86,7 @@ curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/i
 ```
 
 **2. Install script from a checkout**
-Inside a clone, the same scripts build `bni`, `bnc` and `bn` from source and
+Inside a clone, the same scripts build `bni` and `bnc` from source and
 place the binaries plus the runtime files they need (standard-library `.bn`
 modules, diagnostics catalog, and the Unix man pages) in a single prefix. `bni` then
 discovers its modules and catalog by walking upward from its own location —
@@ -118,10 +114,10 @@ Installed layout (FHS):
 
 | Path | Contents |
 | --- | --- |
-| `<prefix>/bin/bni`, `<prefix>/bin/bnc`, `<prefix>/bin/bn` | executables (interpreter, compiler, deprecated dispatcher) |
+| `<prefix>/bin/bni`, `<prefix>/bin/bnc` | executables (interpreter, compiler) |
 | `<prefix>/share/bn/modules/bn/*.bn` | standard-library modules |
 | `<prefix>/share/bn/diagnostics/en-US/*.ftl` | diagnostics catalog (optional — an identical catalog is embedded) |
-| `<prefix>/share/man/man1/{bni,bnc,bn}.1` | Unix manual pages (Linux/macOS) |
+| `<prefix>/share/man/man1/{bni,bnc}.1` | Unix manual pages (Linux/macOS) |
 
 Each script verifies the install by running `bni --version` and resolving a
 standard-library module from a clean directory. Pass `--no-build` (Bash) or
@@ -140,19 +136,20 @@ Note that `cargo install` places only the binary on your `PATH`; use the install
 script above if you also want the stdlib modules and catalog on disk.
 
 Usage, limits, and troubleshooting: [`docs/project/usage.md`](docs/project/usage.md).
-Unix manual: [`bn(1)`](docs/man/bn.1) (`man docs/man/bn.1`).
+Unix manuals: [`bni(1)`](docs/man/bni.1) and [`bnc(1)`](docs/man/bnc.1) (`man docs/man/bni.1`).
 
 The trivial case is zero-config: `bni run hello.bn` does not require a project
 file or manifest. While developing from this repository, use:
 
 ```shell
-cargo run --bin bn -- run examples/hello.bn
-cargo run --bin bn -- run examples/language-tour.bn
-cargo run --bin bn -- run examples/filesystem_tour.bn
-cargo run --bin bn -- run examples/bnlog_tour.bn
-cargo run --bin bn -- eval 'PRINT 1 + 1'
-cargo run --bin bn -- check --emit ir examples/factorial.bn
-cargo run --bin bn -- --help
+cargo run -p bni -- run examples/hello.bn
+cargo run -p bni -- run examples/language-tour.bn
+cargo run -p bni -- run examples/filesystem_tour.bn
+cargo run -p bni -- run examples/bnlog_tour.bn
+cargo run -p bni -- eval 'PRINT 1 + 1'
+cargo run -p bni -- check --emit ir examples/factorial.bn
+cargo run -p bnc -- examples/hello.bn -o hello
+cargo run -p bni -- --help
 ```
 
 Release check from a clean tree:
@@ -174,10 +171,10 @@ Requires Rust **1.98** (`rust-toolchain.toml`). Current limitations include part
 - `docs/language/0.6/` — **normative** 0.6.x language contract ([`0.6.md`](docs/language/0.6/0.6.md), EBNF, keywords). Older `0.2/`–`0.5/` trees remain historical.
 - `todo/proposals/` — proposals not yet fully accepted.
 - `done/` — closed buckets and accepted proposal history (often local / gitignored).
-- `docs/man/bni.1`, `docs/man/bnc.1`, `docs/man/bn.1` — Unix man pages.
+- `docs/man/bni.1`, `docs/man/bnc.1` — Unix man pages.
 - `docs/project/` — delivery planning, [usage](docs/project/usage.md), and the
   [experience contract](docs/project/experience-contract.md).
-- `binaries/` — download index for prebuilt `bni`/`bnc`/`bn` (binaries live on Releases).
+- `binaries/` — download index for prebuilt `bni`/`bnc` (binaries live on Releases).
 - `examples/` — programs that guide the specification (see below).
 - [`examples/parallel-examples.md`](examples/parallel-examples.md) — bounded
   `BNDispatch` examples, including a parallel Leibniz-series pi calculation.
@@ -227,8 +224,8 @@ END FUNCTION
 | [`examples/exec-demo.bn`](examples/exec-demo.bn) | `HOST.Exec` (when present in tree) |
 | [`examples/socket.bn`](examples/socket.bn) | `HOST.Net` TCP/UDP |
 
-Prefer `cargo run --bin bn -- run …` from a checkout so you use this tree’s
-toolchain (a globally installed `bn` may lag behind `main`).
+Prefer `cargo run -p bni -- run …` from a checkout so you use this tree’s
+toolchain (a globally installed `bni` may lag behind `main`).
 
 ---
 

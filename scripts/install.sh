@@ -1,19 +1,18 @@
 #!/usr/bin/env bash
 # Basic Next installer for Linux and macOS.
 #
-# Installs the `bni` (interpreter), `bnc` (compiler) and `bn` (compatibility
-# dispatcher, retires in 0.7) binaries plus the runtime files they discover
+# Installs the `bni` (interpreter) and `bnc` (compiler) binaries plus the
+# runtime files they discover
 # (stdlib .bn modules, diagnostics catalog, man pages, native runtime lib)
 # under a FHS prefix:
 #
 #   $PREFIX/bin/bni                             interpreter, check, lsp, dap
 #   $PREFIX/bin/bnc                             compiler
-#   $PREFIX/bin/bn                              deprecated dispatcher (bn run|build … → bni/bnc; removed in 0.7)
 #   $PREFIX/lib/libbn_rt.a                      native runtime for `bnc`
 #   $PREFIX/share/bn/modules/bn/*.bn            standard library modules
 #   $PREFIX/share/bn/diagnostics/en-US/*.ftl    diagnostics catalog (optional;
 #                                               an identical catalog is embedded)
-#   $PREFIX/share/man/man1/{bni,bnc,bn}.1       Unix manual pages
+#   $PREFIX/share/man/man1/{bni,bnc}.1          Unix manual pages
 #
 # `bni` finds modules/bn and the catalog by walking upward from its own location,
 # and finds libbn_rt.a next to the binary, in $PREFIX/, or in $PREFIX/lib/
@@ -28,7 +27,7 @@
 #
 # Outside a checkout (curl | bash) the script bootstraps itself: it resolves the
 # latest release (or $BN_VERSION, e.g. v0.6.0; a 0.5 tag installs bn + bnc), downloads that tag's source
-# tarball for the modules/catalog/man pages, then the prebuilt bni/bnc/bn for this
+# tarball for the modules/catalog/man pages, then the prebuilt bni/bnc for this
 # OS/arch verified against the release's SHA256SUMS; if the release has no
 # asset for this platform it builds from the tarball with cargo instead.
 #
@@ -105,9 +104,9 @@ if ((_bootstrap)); then
   if [[ -n "$os" && -n "$arch" ]]; then
     echo "==> Downloading prebuilt executables for $os-$arch"
     mkdir -p "$src/target/release"
-    # 0.6 releases ship bni + bnc + bn; 0.5 releases ship bn + bnc only. Probe
-    # for bni and fall back to the legacy set so pinned old tags keep working.
-    binaries="bni bnc bn"
+    # 0.6 releases ship bni + bnc; 0.5 releases ship bn + bnc (bn was the
+    # interpreter). Probe for bni and fall back so pinned old tags keep working.
+    binaries="bni bnc"
     if ! curl -fsSL -o "$src/target/release/bni" "$base/bni-$os-$arch"; then
       rm -f "$src/target/release/bni"
       binaries="bn bnc"
@@ -178,10 +177,10 @@ bni_bin="$repo_root/target/release/bni"
 bnc_bin="$repo_root/target/release/bnc"
 bn_bin="$repo_root/target/release/bn"
 bn_rt_lib="$repo_root/target/release/libbn_rt.a"
-# 0.6 layout: bni + bnc + bn. 0.5 layout (older tags): bn + bnc, bn is the
+# 0.6 layout: bni + bnc. 0.5 layout (older tags): bn + bnc, bn being the
 # interpreter itself.
 if [[ -x "$bni_bin" ]]; then
-  layout=0.6; interpreter="bni"; binaries="bni bnc bn"
+  layout=0.6; interpreter="bni"; binaries="bni bnc"
 else
   layout=0.5; interpreter="bn"; binaries="bn bnc"
 fi
@@ -234,7 +233,7 @@ $SUDO install -m 0644 "$repo_root/modules/bn/"*.bn "$moddir/"
 # Diagnostics catalog (optional at runtime — an identical copy is embedded).
 $SUDO cp -R "$repo_root/share/bn/diagnostics/." "$diagdir/"
 
-# Man pages (whichever this tree has: bni.1/bnc.1/bn.1 in 0.6, bn.1 in 0.5).
+# Man pages (whichever this tree has: bni.1/bnc.1 in 0.6, bn.1 in 0.5).
 for page in bni bnc bn; do
   [[ -f "$repo_root/docs/man/$page.1" ]] && $SUDO install -m 0644 "$repo_root/docs/man/$page.1" "$mandir/$page.1"
 done

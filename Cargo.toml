@@ -7,12 +7,11 @@ name = "bn"
 version = "0.5.2"
 edition = "2024"
 rust-version = "1.98"
-description = "Basic Next compatibility dispatcher (bn -> bni | bnc); retires in 0.7"
+description = "Basic Next workspace root: cross-crate integration tests only (no executable)"
 license = "MPL-2.0"
 
-[[bin]]
-name = "bn"
-path = "src/main.rs"
+[lib]
+path = "src/lib.rs"
 
 [lints.rust]
 unsafe_code = "deny"
@@ -22,7 +21,7 @@ all = "warn"
 pedantic = "warn"
 
 [dependencies]
-# None: the dispatcher only spawns the sibling executables.
+# None: this package only hosts the workspace-level integration tests.
 
 # Integration tests under tests/ exercise the owning crates directly.
 [dev-dependencies]

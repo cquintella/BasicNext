@@ -17,9 +17,8 @@ acceptance gates and the remaining CLI, compatibility and release decisions.
 
 The command surface is `bni run|eval|check|lex|lsp|dap` and Clang-like
 `bnc [compile-options] <entry.bn>` (`-o`, `--target`, `--opt`, `--emit ir`).
-`bnc` has no build subcommand or `-c` alias. `bn` remains a compatibility
-dispatcher through 0.6 and retires in 0.7. Release asset details remain
-pending. No language, HOST catalog or IR extension is authorized by the
+`bnc` has no build subcommand or `-c` alias. The 0.5 `bn` executable is
+removed in 0.6.0 (Carlos, 2026-09-22; earlier plan: dispatcher through 0.6). No language, HOST catalog or IR extension is authorized by the
 executable split.
 
 ## Ownership and dependencies

@@ -26,8 +26,7 @@ Since bucket 0.6.0 the executables are `crates/bni/src/main.rs` and
 
 Both executables consume the same `Prepared` artifact (W1/W3); `bni check`
 runs the full preparation including language validation and emits an
-artifact only on `--emit`. The `bn` dispatcher spawns these executables and
-adds no phase.
+artifact only on `--emit`.
 That is tracked for S1.1 and is not changed by S0.3.
 
 ## LSP

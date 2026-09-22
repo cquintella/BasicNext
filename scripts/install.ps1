@@ -3,13 +3,12 @@
     Basic Next installer for Windows.
 
 .DESCRIPTION
-    Installs the bni.exe (interpreter), bnc.exe (compiler) and bn.exe (dispatcher)
-    binaries plus the runtime files they discover
+    Installs the bni.exe (interpreter) and bnc.exe (compiler) binaries plus the
+    runtime files they discover
     (stdlib .bn modules, diagnostics catalog, and native runtime lib) under a prefix:
 
         <Prefix>\bin\bni.exe
         <Prefix>\bin\bnc.exe
-        <Prefix>\bin\bn.exe
         <Prefix>\lib\bn_rt.lib                    native runtime for `bnc`
         <Prefix>\share\bn\modules\bn\*.bn         standard library modules
         <Prefix>\share\bn\diagnostics\en-US\*.ftl diagnostics catalog (optional;
@@ -56,9 +55,8 @@ if (-not $NoBuild) {
 
 $bniBin = Join-Path $repoRoot 'target\release\bni.exe'
 $bncBin = Join-Path $repoRoot 'target\release\bnc.exe'
-$bnBin  = Join-Path $repoRoot 'target\release\bn.exe'
 $bnRtLib = Join-Path $repoRoot 'target\release\bn_rt.lib'
-foreach ($bin in @($bniBin, $bncBin, $bnBin)) {
+foreach ($bin in @($bniBin, $bncBin)) {
     if (-not (Test-Path $bin)) { throw "missing binary '$bin' (build first, or drop -NoBuild)" }
 }
 if (-not (Test-Path $bnRtLib)) {
@@ -83,13 +81,12 @@ foreach ($dir in @($binDir, $libDir, $modDir, $diagDir)) {
 }
 Copy-Item $bniBin (Join-Path $binDir 'bni.exe') -Force
 Copy-Item $bncBin (Join-Path $binDir 'bnc.exe') -Force
-Copy-Item $bnBin  (Join-Path $binDir 'bn.exe')  -Force
 Copy-Item $bnRtLib (Join-Path $libDir 'bn_rt.lib') -Force
 Copy-Item (Join-Path $repoRoot 'modules\bn\*.bn') $modDir -Force
 Copy-Item (Join-Path $repoRoot 'share\bn\diagnostics\*') $diagDir -Recurse -Force
 
 Write-Host "==> Installed:"
-Write-Host "    $binDir\bni.exe, $binDir\bnc.exe, $binDir\bn.exe"
+Write-Host "    $binDir\bni.exe, $binDir\bnc.exe"
 Write-Host "    $libDir\bn_rt.lib"
 Write-Host "    $modDir\, $diagDir\"
 

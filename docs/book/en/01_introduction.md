@@ -7,7 +7,7 @@
 
 ![Basic Next Book Cover](../cover.jpg)
 
-> **Note:** This book is the tutorial for the **0.6 line** of Basic Next, written against toolchain 0.6.0 (two executables, `bni` and `bnc`; the language is the 0.5.2 contract plus the 0.6.1 `++`/`--` expressions). It is not the normative language contract. When a chapter and the specification disagree, the specification governs: [`docs/language/0.6/0.6.md`](../../language/0.6/0.6.md), with the grammar in [`0.6.ebnf`](../../language/0.6/0.6.ebnf) and the reserved words in [`keywords.md`](../../language/0.6/keywords.md). Toolchain behaviour that is not part of the language — `bni eval`, the module search path, diagnostic configuration — is documented in [`usage.md`](../../project/usage.md).
+> **Note:** This book is the tutorial for the **0.6 line** of Basic Next, written against toolchain 0.6.0 (two executables, `bni` and `bnc`, replacing the 0.5 `bn`; the language is the 0.5.2 contract plus the 0.6.1 `++`/`--` expressions). It is not the normative language contract. When a chapter and the specification disagree, the specification governs: [`docs/language/0.6/0.6.md`](../../language/0.6/0.6.md), with the grammar in [`0.6.ebnf`](../../language/0.6/0.6.ebnf) and the reserved words in [`keywords.md`](../../language/0.6/keywords.md). Toolchain behaviour that is not part of the language — `bni eval`, the module search path, diagnostic configuration — is documented in [`usage.md`](../../project/usage.md).
 
 This chapter installs the toolchain, runs a first program, and establishes the vocabulary the rest of the book uses: module, entry point, declaration, diagnostic. By the end of it you will have compiled and executed a Basic Next program in two different ways and will know what the tool reports when a program is wrong.
 
@@ -64,7 +64,7 @@ $ bn --version
 bn 0.5.2
 ```
 
-The Unix manual pages are [`bni(1)`](../../man/bni.1) and [`bnc(1)`](../../man/bnc.1) (the retiring [`bn(1)`](../../man/bn.1) dispatcher keeps `bn run`/`bn build` working through 0.6), and installation troubleshooting is in [`usage.md`](../../project/usage.md).
+The Unix manual pages are [`bni(1)`](../../man/bni.1) and [`bnc(1)`](../../man/bnc.1) and installation troubleshooting is in [`usage.md`](../../project/usage.md).
 
 ## The `bni` and `bnc` Commands
 

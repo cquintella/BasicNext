@@ -14,9 +14,15 @@ processes UTF-8 Basic Next source through a source-spanned pipeline:
 lexer, parser/AST, semantic analysis, typed BN IR, and the reference
 interpreter. Compilation is
 .BR bnc (1),
-which consumes the same validated IR. The retiring
-.BR bn (1)
-dispatcher forwards to both.
+which consumes the same validated IR. The 0.5
+.B bn
+executable is gone:
+.B "bn run"
+is
+.BR "bni run" ,
+.B "bn build"
+is
+.BR bnc .
 .PP
 The executable module must define
 .BR "FUNCTION Start" .
@@ -273,7 +279,6 @@ bni run --sandbox --read-root . --write-root /tmp examples/hello.bn
 .fi
 .SH SEE ALSO
 .BR bnc (1),
-.BR bn (1),
 .IR docs/book/en/toc.md ,
 .IR docs/project/usage.md ,
 .IR docs/project/kernel.md ,

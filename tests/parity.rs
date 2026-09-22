@@ -4,10 +4,9 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! Cross-backend tests that need both executables (interpreter and
-//! compiler parity, shared-fixture matrices, help/man consistency) plus the
-//! dispatcher-only checks. They drive `bn`, which forwards to the sibling
-//! `bni`/`bnc` (bucket 0.6.0, 2.4). When `bn` retires (0.7) the helper
-//! below becomes two helpers over the siblings; the tests stay verbatim.
+//! compiler parity, shared-fixture matrices, help/man consistency). They
+//! drive `bni` and `bnc` from the workspace target directory (bucket 0.6.0,
+//! 2.4; the `bn` dispatcher was removed in 0.6.0 by Carlos's decision).
 
 // Multi-line raw-string BN program templates read more clearly with named
 // placeholders than with inlined path expressions.
@@ -19,13 +18,30 @@ use std::{
     process::{Command, Stdio},
 };
 
-fn bn() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_bn"))
+/// The executables under test live in the workspace `target/<profile>/`;
+/// this package has no binary of its own, so build them first
+/// (`cargo build -p bni -p bnc`; `scripts/test-battery.sh` does).
+fn executable(name: &str) -> Command {
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target");
+    path.push(if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    });
+    path.push(format!("{name}{}", std::env::consts::EXE_SUFFIX));
+    assert!(
+        path.is_file(),
+        "{name} must be built first: cargo build -p bni -p bnc"
+    );
+    Command::new(path)
 }
 
-/// One of the executables the dispatcher forwards to, built next to `bn`.
-fn sibling(name: &str) -> Command {
-    Command::new(std::path::Path::new(env!("CARGO_BIN_EXE_bn")).with_file_name(name))
+fn bni() -> Command {
+    executable("bni")
+}
+
+fn bnc() -> Command {
+    executable("bnc")
 }
 
 fn module_roots_snapshot(log: &str) -> Vec<String> {
@@ -48,13 +64,8 @@ fn native_matches_interpreter(path: &str) {
         path.replace(['/', '.'], "_")
     ));
     let _ = fs::remove_file(&output_path);
-    let built = bn()
-        .args([
-            "build",
-            path,
-            "-o",
-            output_path.to_str().expect("temporary path"),
-        ])
+    let built = bnc()
+        .args([path, "-o", output_path.to_str().expect("temporary path")])
         .output()
         .expect("run bn build");
     assert_eq!(
@@ -66,7 +77,7 @@ fn native_matches_interpreter(path: &str) {
     let compiled = Command::new(&output_path)
         .output()
         .expect("run compiled artifact");
-    let interpreted = bn().args(["run", path]).output().expect("run interpreter");
+    let interpreted = bni().args(["run", path]).output().expect("run interpreter");
     assert_eq!(compiled.status.code(), interpreted.status.code(), "{path}");
     assert_eq!(compiled.stdout, interpreted.stdout, "{path}");
     let _ = fs::remove_file(output_path);
@@ -79,13 +90,8 @@ fn native_matches_interpreter_with_input(path: &str, input: &str) {
         path.replace(['/', '.'], "_")
     ));
     let _ = fs::remove_file(&output_path);
-    let built = bn()
-        .args([
-            "build",
-            path,
-            "-o",
-            output_path.to_str().expect("temporary path"),
-        ])
+    let built = bnc()
+        .args([path, "-o", output_path.to_str().expect("temporary path")])
         .output()
         .expect("run bn build");
     assert_eq!(
@@ -110,7 +116,7 @@ fn native_matches_interpreter_with_input(path: &str, input: &str) {
         .wait_with_output()
         .expect("wait for native artifact");
 
-    let mut interpreted = bn()
+    let mut interpreted = bni()
         .args(["run", path])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -155,7 +161,7 @@ fn module_path_is_repeatable_and_first_directory_wins_for_check() {
         "IMPORT Greeting AS G\nFUNCTION Start() AS VOID\n    PRINT G.Value()\nEND FUNCTION\n",
     )
     .expect("entry source");
-    let output = bn()
+    let output = bni()
         .args([
             "check",
             "--module-path",
@@ -172,7 +178,7 @@ fn module_path_is_repeatable_and_first_directory_wins_for_check() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let run_output = bn()
+    let run_output = bni()
         .args([
             "run",
             "--module-path",
@@ -185,7 +191,7 @@ fn module_path_is_repeatable_and_first_directory_wins_for_check() {
         .expect("run with module paths");
     assert_eq!(run_output.status.code(), Some(0));
     assert_eq!(run_output.stdout, b"1\n");
-    let reversed = bn()
+    let reversed = bni()
         .args([
             "run",
             "--module-path",
@@ -199,9 +205,8 @@ fn module_path_is_repeatable_and_first_directory_wins_for_check() {
     assert_eq!(reversed.status.code(), Some(0));
     assert_eq!(reversed.stdout, b"2\n");
     let artifact = base.join("main");
-    let build_output = bn()
+    let build_output = bnc()
         .args([
-            "build",
             "--module-path",
             first.to_str().expect("first path"),
             "--module-path",
@@ -268,7 +273,7 @@ fn module_path_is_repeatable_and_first_directory_wins_for_check() {
         format!("module-path = [\"{}\"]\n", first.display()),
     )
     .expect("module-path config");
-    let configured = bn()
+    let configured = bni()
         .args([
             "check",
             "--config",
@@ -278,7 +283,7 @@ fn module_path_is_repeatable_and_first_directory_wins_for_check() {
         .output()
         .expect("check with configured module path");
     assert_eq!(configured.status.code(), Some(0));
-    let merged = bn()
+    let merged = bni()
         .args([
             "run",
             "--config",
@@ -327,14 +332,13 @@ fn bn_home_overrides_ancestor_stdlib_and_is_logged() {
     // `run` shows which module won; `build` writes the process-log snapshot.
     let build_log = |label: &str, home: Option<&std::path::Path>| -> String {
         let log_path = base.join(format!("{label}.log"));
-        let mut command = bn();
+        let mut command = bnc();
         match home {
             Some(home) => command.env("BN_HOME", home),
             None => command.env_remove("BN_HOME"),
         };
         let output = command
             .args([
-                "build",
                 entry_arg,
                 "-o",
                 base.join(format!("{label}.bin"))
@@ -359,7 +363,7 @@ fn bn_home_overrides_ancestor_stdlib_and_is_logged() {
     };
 
     // Without BN_HOME the ancestor modules/bn wins and the log says so.
-    let output = bn()
+    let output = bni()
         .env_remove("BN_HOME")
         .args(["run", entry_arg])
         .output()
@@ -379,7 +383,7 @@ fn bn_home_overrides_ancestor_stdlib_and_is_logged() {
 
     // With BN_HOME the explicit home wins over the ancestor.
     let home = base.join("home");
-    let output = bn()
+    let output = bni()
         .env("BN_HOME", &home)
         .args(["run", entry_arg])
         .output()
@@ -399,7 +403,7 @@ fn bn_home_overrides_ancestor_stdlib_and_is_logged() {
     assert!(!log.contains("(entry-ancestor)"), "{log}");
 
     // BN_HOME pointing nowhere never falls through to the ancestor stdlib.
-    let output = bn()
+    let output = bni()
         .env("BN_HOME", base.join("nowhere"))
         .args(["check", entry_arg])
         .output()
@@ -413,7 +417,7 @@ fn bn_home_overrides_ancestor_stdlib_and_is_logged() {
 }
 #[test]
 fn build_executes_nullable_integer_collection_results_like_interpret() {
-    let interpreted = bn()
+    let interpreted = bni()
         .args(["run", "examples/linear_collections.bn"])
         .output()
         .expect("interpret linear collections");
@@ -421,9 +425,8 @@ fn build_executes_nullable_integer_collection_results_like_interpret() {
 
     let artifact =
         std::env::temp_dir().join(format!("bn-linear-collections-{}", std::process::id()));
-    let built = bn()
+    let built = bnc()
         .args([
-            "build",
             "examples/linear_collections.bn",
             "-o",
             artifact.to_str().expect("artifact path"),
@@ -492,7 +495,7 @@ END FUNCTION\n",
     )
     .expect("write filesystem policy fixture");
 
-    let interpreted_deny = bn()
+    let interpreted_deny = bni()
         .env("BN_FS_POLICY", "deny")
         .args([
             "run",
@@ -514,7 +517,7 @@ END FUNCTION\n",
         String::from_utf8_lossy(&interpreted_deny.stderr).contains("HOST_CAPABILITY_UNAVAILABLE")
     );
 
-    let interpreted_read_only = bn()
+    let interpreted_read_only = bni()
         .env("BN_FS_POLICY", "read-only")
         .args([
             "run",
@@ -538,9 +541,8 @@ END FUNCTION\n",
     assert!(!writable.exists());
 
     let artifact = base.join("filesystem-policy");
-    let built = bn()
+    let built = bnc()
         .args([
-            "build",
             fixture.to_str().expect("fixture path"),
             "-o",
             artifact.to_str().expect("artifact path"),
@@ -572,9 +574,8 @@ END FUNCTION\n",
     assert!(!writable.exists());
 
     let sandbox_artifact = base.join("filesystem-policy-sandbox");
-    let sandbox_build = bn()
+    let sandbox_build = bnc()
         .args([
-            "build",
             "--sandbox",
             fixture.to_str().expect("fixture path"),
             "-o",
@@ -601,60 +602,70 @@ END FUNCTION\n",
 
 #[test]
 fn eval_help_and_manpage_advertise_the_same_entrypoints() {
-    // The dispatcher advertises the entrypoints; the option surface lives
-    // in `bni --help` (bucket 0.6.0, 2.3). The man page split is 3.1.
-    let help = bn().arg("--help").output().expect("run bn help");
-    assert_eq!(help.status.code(), Some(0));
-    let help = String::from_utf8_lossy(&help.stdout);
-    let bni_help = sibling("bni").arg("--help").output().expect("run bni help");
-    let bni_help = String::from_utf8_lossy(&bni_help.stdout);
-    let man = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/man/bn.1"))
-        .expect("read bn man page");
-    for command in ["eval", "run", "build"] {
-        assert!(help.contains(command), "help missing {command}");
-        assert!(man.contains(command), "man page missing {command}");
+    // Each executable's help and its man page name the same entrypoints.
+    let interpreter_help = bni().arg("--help").output().expect("run bni help");
+    assert_eq!(interpreter_help.status.code(), Some(0));
+    let interpreter_help = String::from_utf8_lossy(&interpreter_help.stdout);
+    let interpreter_man =
+        fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/man/bni.1"))
+            .expect("read bni man page");
+    for command in ["eval", "run", "check", "lex", "lsp", "dap"] {
+        assert!(
+            interpreter_help.contains(command),
+            "bni help missing {command}"
+        );
+        assert!(
+            interpreter_man.contains(command),
+            "bni man page missing {command}"
+        );
     }
-    assert!(bni_help.contains("--module-path"));
-    assert!(man.contains("--module-path"));
+    assert!(
+        interpreter_help.contains("--module-path") && interpreter_man.contains("--module-path")
+    );
+    let compiler_help = bnc().arg("--help").output().expect("run bnc help");
+    assert_eq!(compiler_help.status.code(), Some(0));
+    let compiler_help = String::from_utf8_lossy(&compiler_help.stdout);
+    let compiler_man = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/man/bnc.1"))
+        .expect("read bnc man page");
+    for flag in ["--target", "--opt", "-o", "--emit"] {
+        assert!(compiler_help.contains(flag), "bnc help missing {flag}");
+        assert!(compiler_man.contains(flag), "bnc man page missing {flag}");
+    }
 }
 
 #[test]
 fn cli_help_and_version_advertise_0_4_7() {
-    let help = bn().arg("--help").output().expect("run bn help");
-    assert_eq!(help.status.code(), Some(0));
-    let help = String::from_utf8_lossy(&help.stdout);
-    assert!(help.contains("eval") && help.contains("run") && help.contains("build"));
-    assert!(
-        help.contains("bni") && help.contains("bnc"),
-        "dispatcher names its targets"
-    );
-    assert!(help.contains("lsp") && help.contains("dap"));
-    let version = bn().arg("--version").output().expect("run bn version");
-    assert_eq!(version.status.code(), Some(0));
-    assert_eq!(String::from_utf8_lossy(&version.stdout).trim(), "bn 0.5.2");
+    for (mut command, name) in [(bni(), "bni"), (bnc(), "bnc")] {
+        let version = command.arg("--version").output().expect("run --version");
+        assert_eq!(version.status.code(), Some(0));
+        assert_eq!(
+            String::from_utf8_lossy(&version.stdout).trim(),
+            format!("{name} {}", env!("CARGO_PKG_VERSION"))
+        );
+    }
 }
 
 #[test]
 fn missing_command_exits_two() {
-    let status = bn().status().expect("run bn");
-    assert_eq!(status.code(), Some(2));
+    assert_eq!(bni().status().expect("run bni").code(), Some(2));
+    assert_eq!(bnc().status().expect("run bnc").code(), Some(2));
 }
 
 #[test]
 fn build_kmp_compiles_through_native_backend() {
-    let check = bn()
+    let check = bni()
         .args(["check", "examples/kmp.bn"])
         .output()
         .expect("check KMP");
     assert_eq!(check.status.code(), Some(0));
-    let run = bn()
+    let run = bni()
         .args(["run", "examples/kmp.bn"])
         .output()
         .expect("run KMP");
     assert_eq!(run.status.code(), Some(0));
     assert!(String::from_utf8_lossy(&run.stdout).contains("Encontrado padrao no indice  10"));
-    let output = bn()
-        .args(["build", "examples/kmp.bn"])
+    let output = bnc()
+        .args(["examples/kmp.bn"])
         .output()
         .expect("run bn build for KMP");
     assert_eq!(
@@ -694,7 +705,7 @@ fn build_executes_dispatch_examples_with_equivalent_results() {
         "examples/dispatch_cellular_automaton.bn",
         "examples/dispatch_reliability_simulation.bn",
     ] {
-        let interpreted = bn()
+        let interpreted = bni()
             .args(["run", path])
             .output()
             .expect("run dispatch example");
@@ -705,8 +716,8 @@ fn build_executes_dispatch_examples_with_equivalent_results() {
             path.replace(['/', '.'], "_")
         ));
         let _ = fs::remove_file(&artifact);
-        let built = bn()
-            .args(["build", path, "-o", artifact.to_str().expect("UTF-8 path")])
+        let built = bnc()
+            .args([path, "-o", artifact.to_str().expect("UTF-8 path")])
             .output()
             .expect("build dispatch example");
         assert_eq!(
@@ -781,7 +792,7 @@ fn build_lowers_host_net_resolve_through_bn_rt() {
 #[test]
 fn compiled_console_tty_errors_match_interpreter() {
     let path = "tests/grammar/valid/console-size.bn";
-    let interpreted = bn().args(["run", path]).output().expect("run interpreter");
+    let interpreted = bni().args(["run", path]).output().expect("run interpreter");
     assert_eq!(interpreted.status.code(), Some(1));
     let interpreted_err = String::from_utf8_lossy(&interpreted.stderr);
     assert!(
@@ -796,8 +807,8 @@ fn compiled_console_tty_errors_match_interpreter() {
     let output_path =
         std::env::temp_dir().join(format!("basicnext-console-tty-{}", std::process::id()));
     let _ = fs::remove_file(&output_path);
-    let built = bn()
-        .args(["build", path, "-o", output_path.to_str().expect("path")])
+    let built = bnc()
+        .args([path, "-o", output_path.to_str().expect("path")])
         .output()
         .expect("build console-size");
     assert_eq!(
@@ -949,7 +960,7 @@ fn build_typed_dispatch_supports_all_mvp_scalar_arguments() {
 fn console_size_uses_stdout_when_stdin_is_piped() {
     let output = Command::new("python3")
         .arg("tests/console_stdout_tty.py")
-        .env("BN", env!("CARGO_BIN_EXE_bn"))
+        .env("BN", bni().get_program())
         .env("BN_PROGRAM", "tests/grammar/valid/console-size.bn")
         .output()
         .expect("run PTY console-size helper");
@@ -985,7 +996,7 @@ fn malformed_policy_input_is_fail_closed_on_both_backends() {
         ("BN_FS_POLICY", "bogus"),
     ];
     for (variable, value) in cases {
-        let run = bn()
+        let run = bni()
             .args(["run"])
             .arg(&source)
             .env(variable, value)
@@ -996,7 +1007,7 @@ fn malformed_policy_input_is_fail_closed_on_both_backends() {
         let stderr = String::from_utf8_lossy(&run.stderr);
         assert!(stderr.contains(variable), "{variable}={value}: {stderr}");
 
-        let json = bn()
+        let json = bni()
             .args(["eval", "--format", "json", "PRINT 1"])
             .env(variable, value)
             .output()
@@ -1016,8 +1027,8 @@ fn malformed_policy_input_is_fail_closed_on_both_backends() {
     )
     .expect("write native program");
     let binary = base.join("native");
-    let build = bn()
-        .args(["build", "-o", binary.to_str().expect("UTF-8 binary path")])
+    let build = bnc()
+        .args(["-o", binary.to_str().expect("UTF-8 binary path")])
         .arg(&native_source)
         .output()
         .expect("build native program");
