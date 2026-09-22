@@ -83,6 +83,9 @@ pub(crate) fn analyze_function<'a>(
                         if bnmath_method(module, name).is_some() {
                             uses_bn_rt_math = true;
                         }
+                        if bncrypto_method(module, name).is_some() {
+                            uses_bn_rt = true;
+                        }
                         functions.insert(*destination, name.as_str());
                         values.insert(*destination, ty.clone());
                     }

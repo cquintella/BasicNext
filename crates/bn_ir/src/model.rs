@@ -126,6 +126,7 @@ pub struct Module {
     pub bnjson_providers: HashSet<ModuleId>,
     pub bnweb_providers: HashSet<ModuleId>,
     pub bndispatch_providers: HashSet<ModuleId>,
+    pub bncrypto_providers: HashSet<ModuleId>,
     pub filesystem_import: Option<Span>,
     pub clock_import: Option<Span>,
     pub random_import: Option<Span>,
@@ -537,6 +538,7 @@ impl Module {
             (&self.bnjson_providers, "BNJson"),
             (&self.bnweb_providers, "BNWeb"),
             (&self.bndispatch_providers, "BNDispatch"),
+            (&self.bncrypto_providers, "BNCrypto"),
         ]
         .into_iter()
         .find(|(providers, _)| providers.contains(&id))

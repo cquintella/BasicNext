@@ -23,6 +23,8 @@ use std::{
 
 mod civil;
 mod console;
+pub mod crypto;
+mod crypto_abi;
 mod dataframe;
 mod dataframe_abi;
 mod dispatch_abi;

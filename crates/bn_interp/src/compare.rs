@@ -96,6 +96,7 @@ pub(super) fn is_value(value: &Value, test: &str) -> bool {
             Value::LogEntry(_) => test == "BNLog.Entry" || test == "Entry",
             Value::LogLogger(_) => test == "BNLog.Logger" || test == "Logger",
             Value::Json(_) => test == "BNJson.Json" || test == "Json",
+            Value::CryptoBytes(_) => test == "BNCrypto.Bytes" || test == "Bytes",
             Value::DispatchQueue(_) => test == "BNDispatch.Queue" || test == "Queue",
             Value::DispatchTicket(_) => test == "BNDispatch.Ticket" || test == "Ticket",
             Value::DispatchGroup(_) => test == "BNDispatch.Group" || test == "Group",
@@ -181,6 +182,12 @@ pub(super) fn value_matches_type(value: &Value, ty: &Type) -> bool {
             | Type::ImportedNamed { name, .. }
             | Type::ImportedTypeName { name, .. },
         ) => name == "BNJson.Json" || name == "Json" || name.ends_with(".Json"),
+        (
+            Value::CryptoBytes(_),
+            Type::Named(name)
+            | Type::ImportedNamed { name, .. }
+            | Type::ImportedTypeName { name, .. },
+        ) => name == "BNCrypto.Bytes" || name == "Bytes" || name.ends_with(".Bytes"),
         (
             Value::DispatchQueue(_),
             Type::Named(name)

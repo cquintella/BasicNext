@@ -320,6 +320,20 @@ pub(crate) fn lower_call_instruction(
                 destination.0, argument.0
             );
         }
+        name if bncrypto_method(module, name).is_some() => {
+            let dest = destination.0;
+            let digest = bncrypto_method(module, name).expect("validated BNCrypto digest");
+            let symbol = if digest == "SHA256" {
+                "bn_rt_crypto_sha256"
+            } else {
+                "bn_rt_crypto_sha512"
+            };
+            let _ = writeln!(
+                text,
+                "  %v{dest} = call ptr @{symbol}(ptr %v{})",
+                arguments[0].0
+            );
+        }
         "TOLOWER" => {
             let dest = destination.0;
             let argument = arguments[0];

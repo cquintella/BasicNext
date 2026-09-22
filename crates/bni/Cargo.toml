@@ -12,13 +12,14 @@ name = "bni"
 path = "src/main.rs"
 
 [features]
-default = ["lib-math", "lib-json", "lib-log", "lib-data", "lib-dispatch", "lib-web"]
+default = ["lib-math", "lib-json", "lib-log", "lib-data", "lib-dispatch", "lib-web", "lib-crypto"]
 lib-math = ["bn_interpret_driver/lib-math"]
 lib-json = ["bn_interpret_driver/lib-json"]
 lib-log = ["bn_interpret_driver/lib-log"]
 lib-data = ["bn_interpret_driver/lib-data"]
 lib-dispatch = ["bn_interpret_driver/lib-dispatch"]
 lib-web = ["bn_interpret_driver/lib-web"]
+lib-crypto = ["bn_interpret_driver/lib-crypto"]
 
 [lints.rust]
 unsafe_code = "deny"

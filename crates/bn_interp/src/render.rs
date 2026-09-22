@@ -37,6 +37,7 @@ pub fn render(value: &Value) -> String {
         Value::LogEntry(_) => "BNLog.Entry".into(),
         Value::LogLogger(_) => "BNLog.Logger".into(),
         Value::Json(_) => "BNJson.Json".into(),
+        Value::CryptoBytes(_) => "BNCrypto.Bytes".into(),
         Value::DispatchQueue(id) => {
             debug_assert_ne!(*id, 0);
             "BNDispatch.Queue".into()

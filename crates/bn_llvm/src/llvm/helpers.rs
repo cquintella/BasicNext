@@ -523,9 +523,23 @@ pub(crate) fn provider_name(module: &Module, name: &str) -> Option<&'static str>
         .any(|provider| provider.0 == module_id)
     {
         Some("BNMath")
+    } else if module
+        .bncrypto_providers
+        .iter()
+        .any(|provider| provider.0 == module_id)
+    {
+        Some("BNCrypto")
     } else {
         None
     }
+}
+
+/// The `BNCrypto` digest `name` selects, if this module imports `BNCrypto` and
+/// the callee is one of the supported digests.
+pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a str> {
+    let method = name.rsplit('.').next()?;
+    (!module.bncrypto_providers.is_empty() && matches!(method, "SHA256" | "SHA512"))
+        .then_some(method)
 }
 
 pub(crate) fn unsupported_instruction(

@@ -1067,10 +1067,10 @@ use arc::{
     is_region_type,
 };
 use helpers::{
-    class_init_flag, coerce_return_operand, coerce_to_type, escape_llvm, extend_to_i64,
-    fold_binary, fold_cast, fold_unary, input_runtime_ir, instruction_name, integer_kind,
-    is_canonical_timezone, is_unsigned, parse_float_constant, parse_integer, render_float,
-    render_llvm_integer, sanitize_symbol, static_global_name, string_byte_length_ir,
+    bncrypto_method, class_init_flag, coerce_return_operand, coerce_to_type, escape_llvm,
+    extend_to_i64, fold_binary, fold_cast, fold_unary, input_runtime_ir, instruction_name,
+    integer_kind, is_canonical_timezone, is_unsigned, parse_float_constant, parse_integer,
+    render_float, render_llvm_integer, sanitize_symbol, static_global_name, string_byte_length_ir,
     unsupported_call_detail, unsupported_instruction, unsupported_instruction_detail,
 };
 use layout::{

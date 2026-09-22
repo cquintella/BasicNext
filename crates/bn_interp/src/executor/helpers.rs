@@ -35,6 +35,7 @@ fn is_value_legacy(value: &Value, test: &str) -> bool {
             Value::LogEntry(_) => test == "BNLog.Entry" || test == "Entry",
             Value::LogLogger(_) => test == "BNLog.Logger" || test == "Logger",
             Value::Json(_) => test == "BNJson.Json" || test == "Json",
+            Value::CryptoBytes(_) => test == "BNCrypto.Bytes" || test == "Bytes",
             Value::DispatchQueue(_) => test == "BNDispatch.Queue" || test == "Queue",
             Value::DispatchTicket(_) => test == "BNDispatch.Ticket" || test == "Ticket",
             Value::DispatchGroup(_) => test == "BNDispatch.Group" || test == "Group",

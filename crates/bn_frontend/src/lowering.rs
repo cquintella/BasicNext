@@ -274,6 +274,7 @@ fn lower_unvalidated(program: &Program, model: &SemanticModel) -> Result<Module,
         bnjson_providers: HashSet::new(),
         bnweb_providers: HashSet::new(),
         bndispatch_providers: HashSet::new(),
+        bncrypto_providers: HashSet::new(),
         filesystem_import: filesystem_import_span(program),
         clock_import: clock_import_span(program),
         random_import: random_import_span(program),
@@ -419,6 +420,14 @@ fn lower_graph_unvalidated(
             .iter()
             .filter_map(|loaded| {
                 (loaded.standard_module == Some(StandardModule::BNDispatch))
+                    .then_some(ir_module_id(loaded.id))
+            })
+            .collect(),
+        bncrypto_providers: graph
+            .modules
+            .iter()
+            .filter_map(|loaded| {
+                (loaded.standard_module == Some(StandardModule::BNCrypto))
                     .then_some(ir_module_id(loaded.id))
             })
             .collect(),

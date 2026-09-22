@@ -964,3 +964,49 @@ fn interpreter_honours_exec_ceiling_env_inputs_like_native() {
     assert_eq!(String::from_utf8_lossy(&run.stdout), "timeout 9\n");
     let _ = fs::remove_dir_all(&base);
 }
+
+/// `BNCrypto` digests reach the interpreter through the provider seam and match
+/// the FIPS 180-4 example vectors mirrored in
+/// `tests/fixtures/crypto/sha-vectors.json`. A failure here is an implementation
+/// bug; the expectation is sourced and must not be edited to match output.
+#[test]
+fn bncrypto_digests_match_fips_vectors() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-digests/main.bn"])
+        .output()
+        .expect("run the BNCrypto digest fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n\
+         ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\n\
+         cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce\
+         47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e\n\
+         ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a\
+         2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f\n"
+    );
+}
+
+/// `BNCrypto.Bytes` is an opaque buffer: it round-trips through text and hex,
+/// reports its length, is freed by `RELEASE`, and rejects odd-length hex with
+/// an `Error` instead of a truncated buffer.
+#[test]
+fn bncrypto_bytes_round_trip_and_reject_malformed_hex() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-bytes/main.bn"])
+        .output()
+        .expect("run the BNCrypto bytes fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "3\n616263\n3\n000fff\nodd-length-rejected\n"
+    );
+}

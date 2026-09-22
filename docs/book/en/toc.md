@@ -91,6 +91,7 @@
 - Appendix H: [`BNData`](14_bndata.md)
 - Appendix I: [External module conventions](15_external_modules.md)
 - Appendix J: [`BNDispatch`](16_bndispatch.md)
+- Appendix K: [`BNCrypto`](18_bncrypto.md)
 
 ---
 

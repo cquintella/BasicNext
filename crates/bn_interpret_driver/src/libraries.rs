@@ -45,5 +45,10 @@ pub fn default_libraries() -> Providers {
         bn_lib_web::NAME,
         std::sync::Arc::new(|| Box::new(bn_lib_web::WebProvider::default())),
     );
+    #[cfg(feature = "lib-crypto")]
+    libraries.register(
+        bn_lib_crypto::NAME,
+        std::sync::Arc::new(|| Box::new(bn_lib_crypto::CryptoProvider::default())),
+    );
     libraries
 }

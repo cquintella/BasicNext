@@ -15,6 +15,7 @@ lib-log = ["dep:bn_lib_log"]
 lib-data = ["dep:bn_lib_data"]
 lib-dispatch = ["dep:bn_lib_dispatch"]
 lib-web = ["dep:bn_lib_web"]
+lib-crypto = ["dep:bn_lib_crypto"]
 
 [lints.rust]
 unsafe_code = "deny"
@@ -32,6 +33,7 @@ bn_host_fs = { path = "../bn_host_fs" }
 bn_host_net = { path = "../bn_host_net" }
 bn_interp = { path = "../bn_interp" }
 bn_rt = { path = "../bn_rt" }
+bn_lib_crypto = { path = "../bn_lib_crypto", optional = true }
 bn_lib_data = { path = "../bn_lib_data", optional = true }
 bn_lib_dispatch = { path = "../bn_lib_dispatch", optional = true }
 bn_lib_json = { path = "../bn_lib_json", optional = true }

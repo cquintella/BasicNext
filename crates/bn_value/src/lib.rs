@@ -120,6 +120,7 @@ pub enum Value {
     LogEntry(u64),
     LogLogger(u64),
     Json(u64),
+    CryptoBytes(u64),
     DispatchQueue(u64),
     DispatchTicket(u64),
     DispatchGroup(u64),

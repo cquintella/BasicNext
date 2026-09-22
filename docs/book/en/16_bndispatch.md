@@ -54,4 +54,4 @@ While `BNDispatch` introduces powerful concurrency, full integration of concurre
 
 ---
 
-[Contents →](toc.md)
+[Next: Appendix K: `BNCrypto` →](18_bncrypto.md)

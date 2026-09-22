@@ -1332,3 +1332,43 @@ fn native_host_net_neighbor_loopback_is_a_typed_result() {
     );
     let _ = fs::remove_dir_all(&base);
 }
+
+/// The compiled path produces the same `BNCrypto` digests as the interpreter:
+/// both backends route to the single `bn_rt::crypto` implementation, so any
+/// drift between them fails here. Mirrors `bncrypto_digests_match_fips_vectors`
+/// in the `bni` suite; the expectations are sourced FIPS 180-4 vectors and must
+/// not be edited to match output.
+#[test]
+fn compiled_bncrypto_digests_match_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!("bn-crypto-parity-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("crypto parity directory");
+    let artifact = directory.join("digests");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-digests/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the BNCrypto digest fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled digest fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n\
+         ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\n\
+         cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce\
+         47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e\n\
+         ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a\
+         2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f\n"
+    );
+}

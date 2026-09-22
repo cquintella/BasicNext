@@ -1,0 +1,41 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNCrypto is a standard-library module.
+//
+// [NATIVE BINDING BOUNDARY]
+// Digest and byte-buffer evaluation is supplied by bn_rt (bn_rt_crypto_* C ABI),
+// so the interpreter and compiled binaries share one implementation. No
+// cryptographic implementation is embedded in the language core. The signatures
+// below define the verified semantic API.
+//
+// Digests take the UTF-8 bytes of the argument and return lowercase hex:
+// SHA256 returns 64 characters, SHA512 returns 128.
+//
+// Bytes is an opaque buffer. Key material never becomes a STRING implicitly, so
+// it cannot be printed, concatenated or logged by accident. RELEASE frees it.
+
+EXPORT CLASS Bytes
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Length() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION ToHex() AS STRING
+        RETURN ""
+    END FUNCTION
+END CLASS
+
+EXPORT FUNCTION SHA256(data AS STRING) AS STRING
+END FUNCTION
+
+EXPORT FUNCTION SHA512(data AS STRING) AS STRING
+END FUNCTION
+
+EXPORT FUNCTION FromHex(text AS STRING) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION FromText(text AS STRING) AS Bytes
+END FUNCTION

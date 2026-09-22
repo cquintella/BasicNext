@@ -21,4 +21,5 @@ pedantic = "warn"
 bn_host_exec = { path = "../bn_host_exec" }
 dns-lookup = "2"
 libc = "0.2"
+sha2 = "0.10"
 socket2 = "0.6"

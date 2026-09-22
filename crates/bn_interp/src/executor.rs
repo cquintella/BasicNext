@@ -290,7 +290,8 @@ pub(super) fn coerce(value: Value, ty: &Type, span: Span) -> Result<Value, Diagn
             | Value::LogFields(_)
             | Value::LogEntry(_)
             | Value::LogLogger(_)
-            | Value::Json(_),
+            | Value::Json(_)
+            | Value::CryptoBytes(_),
             Type::Named(_)
             | Type::TypeName(_)
             | Type::ImportedNamed { .. }
