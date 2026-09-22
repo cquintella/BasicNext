@@ -45,3 +45,6 @@ docs/.obsidian/
 fuzz/target/
 fuzz/corpus/
 fuzz/artifacts/
+
+# Plugins live in sibling repos ../basicnext-vscode and ../basicnext-jupyter
+/plugins/
