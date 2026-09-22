@@ -1,10 +1,10 @@
 [package]
 name = "bn_host_exec"
-version = "0.5.1"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 rust-version = "1.97"
 description = "Basic Next HOST.Exec core: one process-execution implementation shared by the interpreter and the native runtime"
-license = "MPL-2.0"
+license.workspace = true
 publish = false
 
 [lib]

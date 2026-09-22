@@ -50,7 +50,7 @@ fn eval_source(args: Vec<String>) -> Result<(String, Vec<String>, EvalMode), Str
             }
             stdin_source = true;
         } else if argument == "--session" {
-            return Err("--session is not available in 0.5.1".into());
+            return Err("--session is not available".into());
         } else if argument == "--format" {
             options.push(argument);
             options.push(

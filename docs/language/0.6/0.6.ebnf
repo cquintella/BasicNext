@@ -22,9 +22,9 @@
   - I1: module-import-path unchanged; a multi-segment path means
     module + export first, nested module second (semantic, 0.6.md).
   - S1: increment-statement (target "++" | "--"), statement only.
-    0.6.1 (S1'): also expressions, prefix and postfix — ++t / --t yield
+    0.6.0 (S1', bucket 0.6.1): also expressions, prefix and postfix — ++t / --t yield
     the NEW value, t++ / t-- the OLD value (C convention); see 0.6.md
-    § "0.6.1 additions".
+    § "0.6.0 language additions".
   - O3: visibility gains "PROTECTED" (reserved word).
   - O2: method-declaration = [ "OVERRIDE" ] function-declaration inside a
     class ("OVERRIDE" reserved), written PUBLIC OVERRIDE FUNCTION.
@@ -153,7 +153,7 @@ assignment-target    = identifier { member-suffix | index-suffix }
 assignment-operator  = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "**=" ;
 increment-statement  = increment-expression ;
                        (* 0.5.2 (S1): exact sugar for += 1 / -= 1.
-                          0.6.1 (S1'): prefix and postfix forms are also
+                          0.6.0 (S1', bucket 0.6.1): prefix and postfix forms are also
                           expressions; as a statement the value is discarded.
                           The "++" / "--" tokens are produced only for adjacent
                           characters and accepted only immediately before or
@@ -206,7 +206,7 @@ postfix-expression   = primary { postfix-suffix } | increment-expression ;
 postfix-suffix       = call-suffix | member-suffix | index-suffix | cast-suffix ;
 increment-expression = ( "++" | "--" ) assignment-target        (* prefix: new value *)
                      | assignment-target ( "++" | "--" ) ;      (* postfix: old value *)
-                       (* 0.6.1 (S1'): the operand is an assignment-target (a
+                       (* 0.6.0 (S1', bucket 0.6.1): the operand is an assignment-target (a
                           binding, member or element), never a literal, call
                           result or cast; parentheses are transparent; not
                           chainable (i++++, ++i++ and ++++i are syntax errors). *)

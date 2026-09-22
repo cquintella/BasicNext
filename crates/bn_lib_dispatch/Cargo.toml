@@ -1,10 +1,10 @@
 [package]
 name = "bn_lib_dispatch"
-version = "0.5.1"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 rust-version = "1.97"
 description = "Basic Next BNDispatch library provider: queues, tickets, sync primitives"
-license = "MPL-2.0"
+license.workspace = true
 publish = false
 
 [lib]

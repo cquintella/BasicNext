@@ -1,10 +1,10 @@
 [package]
 name = "bnc"
-version = "0.5.2"
-edition = "2024"
-rust-version = "1.98"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
 description = "Basic Next compiler: bnc [compile-options] <entry.bn>"
-license = "MPL-2.0"
+license.workspace = true
 publish = false
 
 [[bin]]

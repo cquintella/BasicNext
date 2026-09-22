@@ -160,7 +160,7 @@ PRINT sum          // 15
 
 Since 0.5.2, `remaining--` and `remaining++` are accepted as statements, exactly equivalent to `remaining -= 1` and `remaining += 1`, with the same typing and the same overflow check.
 
-Since 0.6.1 the same forms are also expressions, with the convention of C: the prefix form `++i` / `--i` changes `i` and yields the **new** value, the postfix form `i++` / `i--` changes `i` and yields the **old** value. The operand must be something that can be assigned to — a variable, a field such as `SELF.count`, or an element such as `a[i]` — never a literal or a call result, and the forms do not chain (`i++++` is a syntax error). The check for overflow is the one of `+= 1`, and it is raised before any value is produced.
+Since 0.6.0 the same forms are also expressions, with the convention of C: the prefix form `++i` / `--i` changes `i` and yields the **new** value, the postfix form `i++` / `i--` changes `i` and yields the **old** value. The operand must be something that can be assigned to — a variable, a field such as `SELF.count`, or an element such as `a[i]` — never a literal or a call result, and the forms do not chain (`i++++` is a syntax error). The check for overflow is the one of `+= 1`, and it is raised before any value is produced.
 
 ```basic
 LET i AS INTEGER = 100

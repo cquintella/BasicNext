@@ -1,10 +1,10 @@
 [package]
 name = "bn_compile_driver"
-version = "0.5.2"
-edition = "2024"
-rust-version = "1.98"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
 description = "Basic Next compilation driver: build orchestration, toolchain discovery and artifact linking"
-license = "MPL-2.0"
+license.workspace = true
 publish = false
 
 [lints.rust]
