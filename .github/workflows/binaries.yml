@@ -44,23 +44,26 @@ jobs:
           tests/check-shared-cores.sh
           bash tests/check-value-layout.sh
           cargo fmt --check
-          # Native `bn build` links the bn_rt staticlib; cargo test alone may not emit it.
+          # Native `bnc` links the bn_rt staticlib; cargo test alone may not emit it.
           cargo build -p bn_rt --locked
-          cargo test --locked --all-targets -- --test-threads=1
-          cargo clippy --locked --all-targets -- -D warnings
+          # The bn dispatcher tests and the parity suite spawn the sibling bni/bnc.
+          cargo build --locked --workspace --bins
+          cargo test --locked --workspace --all-targets -- --test-threads=1
+          cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Native capability gate
         run: |
           if ! command -v clang >/dev/null 2>&1; then
             echo "::error::clang/LLVM is unavailable; install the repository-required LLVM toolchain before running native capability tests."
             exit 1
           fi
-          cargo run --locked --bin bn -- build examples/hello.bn -o "$RUNNER_TEMP/bn-hello"
+          cargo run --locked -p bnc -- examples/hello.bn -o "$RUNNER_TEMP/bn-hello"
           "$RUNNER_TEMP/bn-hello"
-          python -m unittest tests/test_capabilities.py
+          PYTHONPATH=. python -m unittest tests/test_capabilities.py
       - name: Diagnostic and backend parity gates
         run: |
           python -m unittest tests/test_compiler_parity.py tests/test_wasm_parity.py
-          cargo test --locked --test cli --test codegen_tests -- --test-threads=1
+          cargo test --locked -p bn --test parity --test codegen_tests -- --test-threads=1
+          cargo test --locked -p bni -p bnc --test cli -- --test-threads=1
 
   build:
     needs: quality
@@ -92,7 +95,7 @@ jobs:
           targets: ${{ matrix.target }}
       - name: Build
         run: |
-          cargo build --release --locked --target ${{ matrix.target }} -p bn -p bnc --bin bn --bin bnc
+          cargo build --release --locked --target ${{ matrix.target }} -p bni -p bnc -p bn --bin bni --bin bnc --bin bn
           cargo build --release --locked --target ${{ matrix.target }} -p bn_rt
       - name: Stage binaries
         shell: bash
@@ -106,10 +109,11 @@ jobs:
             rt_src="bn_rt.lib"
             rt_dst="bn_rt-${{ matrix.platform }}.lib"
           fi
-          cp "target/${{ matrix.target }}/release/bn${exe}" "dist/bn-${{ matrix.platform }}${exe}"
-          cp "target/${{ matrix.target }}/release/bnc${exe}" "dist/bnc-${{ matrix.platform }}${exe}"
+          for name in bni bnc bn; do
+            cp "target/${{ matrix.target }}/release/${name}${exe}" "dist/${name}-${{ matrix.platform }}${exe}"
+            chmod +x "dist/${name}-${{ matrix.platform }}${exe}" || true
+          done
           cp "target/${{ matrix.target }}/release/${rt_src}" "dist/${rt_dst}"
-          chmod +x "dist/bn-${{ matrix.platform }}${exe}" "dist/bnc-${{ matrix.platform }}${exe}" || true
       - uses: actions/upload-artifact@v4
         with:
           name: binaries-${{ matrix.platform }}
@@ -128,10 +132,10 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - name: Stage man page
+      - name: Stage man pages
         run: |
           mkdir -p dist
-          cp docs/man/bn.1 dist/bn.1
+          cp docs/man/bni.1 docs/man/bnc.1 docs/man/bn.1 dist/
       - name: Checksums
         working-directory: dist
         run: sha256sum * | tee SHA256SUMS
@@ -140,7 +144,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          notes="Compiled \`bn\` and \`bnc\` from \`${GITHUB_SHA:0:7}\` for Basic Next 0.4.7."
+          notes="Compiled \`bni\` (interpreter), \`bnc\` (compiler) and the \`bn\` compatibility dispatcher from \`${GITHUB_SHA:0:7}\`. Release notes: docs/releases/${GITHUB_REF_NAME#v}.md."
           tag="${GITHUB_REF_NAME}"
           if gh release view "${tag}" >/dev/null 2>&1; then
             gh release upload "${tag}" dist/* --clobber

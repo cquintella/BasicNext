@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
 # Basic Next installer for Linux and macOS.
 #
-# Installs the `bn` and `bnc` binaries plus the runtime files they discover
-# (stdlib .bn modules, diagnostics catalog, man page, native runtime lib) under
-# a FHS prefix:
+# Installs the `bni` (interpreter), `bnc` (compiler) and `bn` (compatibility
+# dispatcher, retires in 0.7) binaries plus the runtime files they discover
+# (stdlib .bn modules, diagnostics catalog, man pages, native runtime lib)
+# under a FHS prefix:
 #
-#   $PREFIX/bin/bn                              executable
-#   $PREFIX/bin/bnc                             compiler front-door
-#   $PREFIX/lib/libbn_rt.a                      native runtime for `bn build`
+#   $PREFIX/bin/bni                             interpreter, check, lsp, dap
+#   $PREFIX/bin/bnc                             compiler
+#   $PREFIX/bin/bn                              dispatcher (bn run|build … → bni/bnc)
+#   $PREFIX/lib/libbn_rt.a                      native runtime for `bnc`
 #   $PREFIX/share/bn/modules/bn/*.bn            standard library modules
 #   $PREFIX/share/bn/diagnostics/en-US/*.ftl    diagnostics catalog (optional;
 #                                               an identical catalog is embedded)
-#   $PREFIX/share/man/man1/bn.1                 Unix manual page
+#   $PREFIX/share/man/man1/{bni,bnc,bn}.1       Unix manual pages
 #
-# `bn` finds modules/bn and the catalog by walking upward from its own location,
+# `bni` finds modules/bn and the catalog by walking upward from its own location,
 # and finds libbn_rt.a next to the binary, in $PREFIX/, or in $PREFIX/lib/
 # (override with BN_RT_LIB). Do not point BN_RT_LIB at a source-tree
 # target/ directory for a normal install — use the prefix lib.
@@ -26,7 +28,7 @@
 #
 # Outside a checkout (curl | bash) the script bootstraps itself: it resolves the
 # latest release (or $BN_VERSION, e.g. v0.5.0), downloads that tag's source
-# tarball for the modules/catalog/man page, then the prebuilt bn/bnc for this
+# tarball for the modules/catalog/man pages, then the prebuilt bni/bnc/bn for this
 # OS/arch verified against the release's SHA256SUMS; if the release has no
 # asset for this platform it builds from the tarball with cargo instead.
 #
@@ -101,21 +103,22 @@ if ((_bootstrap)); then
   base="https://github.com/$REPO/releases/download/$tag"
   prebuilt=0
   if [[ -n "$os" && -n "$arch" ]]; then
-    echo "==> Downloading prebuilt bn/bnc for $os-$arch"
+    echo "==> Downloading prebuilt bni/bnc/bn for $os-$arch"
     mkdir -p "$src/target/release"
-    if curl -fsSL -o "$src/target/release/bn" "$base/bn-$os-$arch" \
+    if curl -fsSL -o "$src/target/release/bni" "$base/bni-$os-$arch" \
       && curl -fsSL -o "$src/target/release/bnc" "$base/bnc-$os-$arch" \
+      && curl -fsSL -o "$src/target/release/bn" "$base/bn-$os-$arch" \
       && curl -fsSL -o "$work/SHA256SUMS" "$base/SHA256SUMS"; then
       if command -v sha256sum >/dev/null 2>&1; then sum() { sha256sum "$1" | cut -d' ' -f1; }
       else sum() { shasum -a 256 "$1" | cut -d' ' -f1; }; fi
-      for name in "bn-$os-$arch" "bnc-$os-$arch"; do
+      for name in "bni-$os-$arch" "bnc-$os-$arch" "bn-$os-$arch"; do
         expected=$(awk -v n="$name" '$2 == n { print $1 }' "$work/SHA256SUMS")
         actual=$(sum "$src/target/release/${name%%-*}")
         [[ -n "$expected" && "$expected" == "$actual" ]] \
           || { echo "error: SHA256 mismatch for $name (expected ${expected:-<absent>}, got $actual)" >&2; exit 1; }
       done
-      chmod +x "$src/target/release/bn" "$src/target/release/bnc"
-      # Native `bn build` needs libbn_rt.a in the install prefix (arch-specific).
+      chmod +x "$src/target/release/bni" "$src/target/release/bnc" "$src/target/release/bn"
+      # Native `bnc` needs libbn_rt.a in the install prefix (arch-specific).
       if curl -fsSL -o "$src/target/release/libbn_rt.a" "$base/libbn_rt-$os-$arch.a"; then
         expected=$(awk -v n="libbn_rt-$os-$arch.a" '$2 == n { print $1 }' "$work/SHA256SUMS")
         actual=$(sum "$src/target/release/libbn_rt.a")
@@ -160,10 +163,11 @@ if ((BUILD)); then
   cargo build -p bn_rt --release
 fi
 
-bn_bin="$repo_root/target/release/bn"
+bni_bin="$repo_root/target/release/bni"
 bnc_bin="$repo_root/target/release/bnc"
+bn_bin="$repo_root/target/release/bn"
 bn_rt_lib="$repo_root/target/release/libbn_rt.a"
-for bin in "$bn_bin" "$bnc_bin"; do
+for bin in "$bni_bin" "$bnc_bin" "$bn_bin"; do
   [[ -x "$bin" ]] || { echo "error: missing binary '$bin' (run without --no-build, or 'cargo build --release --workspace --bins' first)" >&2; exit 1; }
 done
 if [[ ! -f "$bn_rt_lib" ]]; then
@@ -173,7 +177,7 @@ if [[ ! -f "$bn_rt_lib" ]]; then
   fi
 fi
 [[ -f "$bn_rt_lib" ]] || {
-  echo "error: missing '$bn_rt_lib' (needed for bn build). Build with cargo -p bn_rt --release, or install a release that ships libbn_rt-*.a" >&2
+  echo "error: missing '$bn_rt_lib' (needed for bnc). Build with cargo -p bn_rt --release, or install a release that ships libbn_rt-*.a" >&2
   exit 1
 }
 
@@ -198,11 +202,12 @@ mandir="$PREFIX/share/man/man1"
 
 echo "==> Installing to $PREFIX"
 $SUDO install -d "$bindir" "$libdir" "$moddir" "$diagdir" "$mandir"
-$SUDO install -m 0755 "$bn_bin" "$bindir/bn"
+$SUDO install -m 0755 "$bni_bin" "$bindir/bni"
 $SUDO install -m 0755 "$bnc_bin" "$bindir/bnc"
+$SUDO install -m 0755 "$bn_bin" "$bindir/bn"
 
-# Native runtime for `bn build` (arch-specific staticlib). Discovered as
-# $PREFIX/lib/libbn_rt.a when bn lives in $PREFIX/bin (see cli_toolchain).
+# Native runtime for `bnc` (arch-specific staticlib). Discovered as
+# $PREFIX/lib/libbn_rt.a when bnc lives in $PREFIX/bin (bn_compile_driver::toolchain).
 $SUDO install -m 0644 "$bn_rt_lib" "$libdir/libbn_rt.a"
 
 # Standard library modules (arch-independent .bn source).
@@ -211,21 +216,24 @@ $SUDO install -m 0644 "$repo_root/modules/bn/"*.bn "$moddir/"
 # Diagnostics catalog (optional at runtime — an identical copy is embedded).
 $SUDO cp -R "$repo_root/share/bn/diagnostics/." "$diagdir/"
 
-# Man page.
-$SUDO install -m 0644 "$repo_root/docs/man/bn.1" "$mandir/bn.1"
+# Man pages.
+for page in bni bnc bn; do
+  $SUDO install -m 0644 "$repo_root/docs/man/$page.1" "$mandir/$page.1"
+done
 
 echo "==> Installed:"
-echo "    $bindir/bn, $bindir/bnc"
+echo "    $bindir/bni, $bindir/bnc, $bindir/bn"
 echo "    $libdir/libbn_rt.a"
 echo "    $moddir/ ($(ls "$repo_root/modules/bn/"*.bn | wc -l | tr -d ' ') modules)"
-echo "    $diagdir/, $mandir/bn.1"
+echo "    $diagdir/, $mandir/{bni,bnc,bn}.1"
 
 # Verify against the installed copy (not the build tree).
 echo "==> Verifying"
-"$bindir/bn" --version
+"$bindir/bni" --version
+"$bindir/bnc" --version
 tmp=$(mktemp -d)
 printf 'IMPORT BNMath AS M\nFUNCTION Start() AS VOID\nPRINT M.ABS(-7.0)\nEND FUNCTION\n' > "$tmp/check.bn"
-if out=$(cd "$tmp" && "$bindir/bn" run check.bn 2>&1) && [[ "$out" == "7.0" ]]; then
+if out=$(cd "$tmp" && "$bindir/bni" run check.bn 2>&1) && [[ "$out" == "7.0" ]]; then
   echo "    stdlib module resolution OK (BNMath.ABS(-7.0) = 7.0)"
 else
   echo "    warning: stdlib check did not return the expected value; output was: $out" >&2
