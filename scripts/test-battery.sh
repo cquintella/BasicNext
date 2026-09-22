@@ -4,11 +4,17 @@
 # by the doc-tests. Never overlaps two `cargo test` processes (the
 # 2026-09-17 low-memory incident); the only concurrency is between already
 # compiled test executables. Timings are recorded per binary so the next
-# run orders by measured duration. Note: on macOS a freshly built executable
-# can stall 1–2 min in the loader on its first run (Gatekeeper scan); that
-# run's timing is inflated, later runs are not.
+# run orders by measured duration.
 #
-#   scripts/test-battery.sh            # pool of 3, --test-threads=4 each
+# Concurrency (JOBS): the executable suites (bni/bnc `cli`, `parity`,
+# `runtime`) compile helpers with rustc/clang and run them at once. On macOS
+# every freshly built executable goes through a Gatekeeper scan before its
+# first exec; with two such suites overlapping the scan queue stalls
+# children for minutes and HOST.Exec tests fail with EXEC_TIMEOUT (code 9).
+# Measured 2026-09-22: JOBS=3 → parity 1413 s, JOBS=2 → runtime 164 s and
+# one timeout, JOBS=1 → clean. Keep JOBS=1 unless the suites stop spawning.
+#
+#   scripts/test-battery.sh            # sequential binaries, --test-threads=4 each
 #   JOBS=2 THREADS=2 scripts/test-battery.sh
 #   DOCTESTS=1 scripts/test-battery.sh # also run `cargo test --doc` (rustdoc
 #                                      # recompiles every crate: ~9 min for a
@@ -18,7 +24,7 @@
 set -u
 cd "$(dirname "$0")/.."
 
-JOBS=${JOBS:-3}
+JOBS=${JOBS:-1}   # see the note on concurrency below
 THREADS=${THREADS:-4}
 out=$PWD/target/test-battery      # absolute: binaries run from their package dir
 timings=$PWD/target/test-timings.txt
@@ -36,7 +42,7 @@ manifest=$(cargo test --workspace --no-run --message-format=json 2>"$out/build.l
 # name<TAB>executable<TAB>cwd (cargo runs a test binary from its package dir)
 binaries=$(printf '%s\n' "$manifest" | jq -r '
   select(.reason=="compiler-artifact" and .profile.test==true and .executable!=null)
-  | "\(.target.name)-\(.target.kind[0])\t\(.executable)\t\(.manifest_path|sub("/Cargo.toml$";""))"')
+  | "\(.manifest_path|sub("/Cargo.toml$";"")|sub("^.*/";""))-\(.target.name)-\(.target.kind[0])\t\(.executable)\t\(.manifest_path|sub("/Cargo.toml$";""))"')
 
 # 2. Order: measured duration descending; never-measured binaries first
 #    (unknown cost is treated as expensive).

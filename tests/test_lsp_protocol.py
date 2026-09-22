@@ -1,4 +1,5 @@
 import json
+import os
 import pathlib
 import subprocess
 import tempfile
@@ -6,12 +7,15 @@ import unittest
 
 
 ROOT = pathlib.Path(__file__).parents[1]
-BN = ROOT / "target" / "debug" / "bn"
+# Bucket 0.6.0 (D-060-05): the interpreter and the compiler are separate
+# executables; override with BN_INTERPRETER / BN_COMPILER.
+BNI = pathlib.Path(os.environ.get("BN_INTERPRETER", ROOT / "target" / "debug" / "bni"))
+BNC = pathlib.Path(os.environ.get("BN_COMPILER", ROOT / "target" / "debug" / "bnc"))
 
 
 class LspProtocolTests(unittest.TestCase):
     def test_advertised_requests_and_full_sync_change(self):
-        process = subprocess.Popen([BN, "lsp"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        process = subprocess.Popen([BNI, "lsp"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
         def send(message):
             payload = json.dumps(message).encode()
@@ -96,7 +100,7 @@ class LspProtocolTests(unittest.TestCase):
             main_path.write_text(main_text)
             module_path.write_text(module_text)
             process = subprocess.Popen(
-                [BN, "lsp"], stdin=subprocess.PIPE, stdout=subprocess.PIPE
+                [BNI, "lsp"], stdin=subprocess.PIPE, stdout=subprocess.PIPE
             )
 
             def send(message):

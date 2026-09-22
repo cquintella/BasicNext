@@ -1,5 +1,6 @@
 import datetime
 import json
+import os
 import pathlib
 import re
 import shutil
@@ -11,7 +12,10 @@ from scripts.differential_runner import run
 
 
 ROOT = pathlib.Path(__file__).parents[1]
-BN = ROOT / "target" / "debug" / "bn"
+# Bucket 0.6.0 (D-060-05): the interpreter and the compiler are separate
+# executables; override with BN_INTERPRETER / BN_COMPILER.
+BNI = pathlib.Path(os.environ.get("BN_INTERPRETER", ROOT / "target" / "debug" / "bni"))
+BNC = pathlib.Path(os.environ.get("BN_COMPILER", ROOT / "target" / "debug" / "bnc"))
 MANIFEST = ROOT / "tests" / "compiler-capabilities.json"
 LLVM_RUNTIME_DECLARATIONS = (
     ROOT / "crates" / "bn_llvm" / "src" / "llvm" / "runtime.rs",
@@ -111,11 +115,11 @@ class CompilerCapabilityTests(unittest.TestCase):
         for program in self.manifest["programs"]:
             with self.subTest(program=program["path"]):
                 path = ROOT / program["path"]
-                checked = run([BN, "check", path])
+                checked = run([BNI, "check", path])
                 self.assertEqual(checked.returncode, 0, checked.stderr.decode())
                 started = datetime.datetime.now(datetime.timezone.utc)
                 arguments = program.get("args", [])
-                interpreted = run([BN, "run", path, "--", *arguments], input=program.get("stdin", "").encode())
+                interpreted = run([BNI, "run", path, "--", *arguments], input=program.get("stdin", "").encode())
                 finished = datetime.datetime.now(datetime.timezone.utc)
                 expected_exit_code = program.get("exit_code", 0)
                 self.assertIn(
@@ -130,7 +134,7 @@ class CompilerCapabilityTests(unittest.TestCase):
 
                 with tempfile.TemporaryDirectory() as directory:
                     artifact = pathlib.Path(directory) / "program"
-                    built = run([BN, "build", path, "-o", artifact])
+                    built = run([BNC, path, "-o", artifact])
                     if program["support"] == "llvm-supported":
                         self.assertEqual(built.returncode, 0, built.stderr.decode())
                         native_started = datetime.datetime.now(datetime.timezone.utc)
@@ -206,7 +210,7 @@ class CompilerCapabilityTests(unittest.TestCase):
         instruction_pattern = re.compile(r"^\s{24}([A-Z][A-Za-z0-9]*) \{", re.MULTILINE)
         for program in self.manifest["programs"]:
             with self.subTest(program=program["path"]):
-                emitted = run([BN, "check", "--emit", "ir", ROOT / program["path"]])
+                emitted = run([BNI, "check", "--emit", "ir", ROOT / program["path"]])
                 self.assertEqual(emitted.returncode, 0, emitted.stderr.decode())
                 actual = sorted(set(instruction_pattern.findall(emitted.stdout.decode())))
                 self.assertEqual(actual, program["ir_instructions"], program["path"])

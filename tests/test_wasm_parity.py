@@ -1,3 +1,4 @@
+import os
 import pathlib
 import subprocess
 import tempfile
@@ -5,7 +6,10 @@ import unittest
 
 
 ROOT = pathlib.Path(__file__).parents[1]
-BN = ROOT / "target" / "debug" / "bn"
+# Bucket 0.6.0 (D-060-05): the interpreter and the compiler are separate
+# executables; override with BN_INTERPRETER / BN_COMPILER.
+BNI = pathlib.Path(os.environ.get("BN_INTERPRETER", ROOT / "target" / "debug" / "bni"))
+BNC = pathlib.Path(os.environ.get("BN_COMPILER", ROOT / "target" / "debug" / "bnc"))
 HOST = ROOT / "bin" / "bn-wasm"
 FIXTURES = ROOT / "tests" / "grammar" / "valid"
 
@@ -14,12 +18,12 @@ class WasmParityTests(unittest.TestCase):
     def assert_parity(self, fixture, input_data=b""):
         source = FIXTURES / fixture
         interpreted = subprocess.run(
-            [BN, "run", source], input=input_data, capture_output=True, check=False
+            [BNI, "run", source], input=input_data, capture_output=True, check=False
         )
         with tempfile.TemporaryDirectory() as directory:
             artifact = pathlib.Path(directory) / "program.wasm"
             built = subprocess.run(
-                [BN, "build", "--target", "wasm32", source, "-o", artifact],
+                [BNC, "--target", "wasm32", source, "-o", artifact],
                 capture_output=True,
                 check=False,
             )

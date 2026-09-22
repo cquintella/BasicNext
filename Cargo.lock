@@ -317,8 +317,11 @@ version = "0.5.2"
 dependencies = [
  "bn_cli",
  "bn_dap",
+ "bn_frontend",
  "bn_interpret_driver",
  "bn_lsp",
+ "bn_source",
+ "lsp-types",
  "serde_json",
 ]
 

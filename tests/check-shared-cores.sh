@@ -23,13 +23,14 @@ fail() {
 }
 
 # (a) Process spawning: HOST.Exec core, trusted-path neighbor lookup, the
-# compilation driver (clang / wasm-ld / brew, bucket 0.6.0 1.3), the bnc
-# wrapper, and test helpers that re-execute the test binary. Nothing else
-# may spawn.
-allowed_spawn='^(crates/bn_host_exec/src/lib\.rs|crates/bn_rt/src/net/neighbor\.rs|crates/bn_compile_driver/src/(toolchain|artifact|tests)\.rs|src/bnc\.rs|.*_tests\.rs)$'
+# compilation driver (clang / wasm-ld / brew, bucket 0.6.0 1.3), the bn
+# dispatcher (spawns the sibling bni/bnc, 0.6.0 2.3), and test helpers that
+# re-execute the test binary. Integration tests under crates/*/tests drive
+# the executables and are not scanned. Nothing else may spawn.
+allowed_spawn='^(crates/bn_host_exec/src/lib\.rs|crates/bn_rt/src/net/neighbor\.rs|crates/bn_compile_driver/src/(toolchain|artifact|tests)\.rs|src/main\.rs|.*_tests\.rs)$'
 while IFS= read -r file; do
   [[ $file =~ $allowed_spawn ]] || fail "process spawn outside the shared cores: $file"
-done < <(rg -l 'process::Command|Command::new\(' src crates --type rust \
+done < <(rg -l 'process::Command|Command::new\(' src crates --type rust -g '!crates/*/tests/**' \
   | while IFS= read -r f; do rg -q 'current_exe\(\)' "$f" && [[ $f == crates/bn_rt/src/*_abi.rs ]] || echo "$f"; done)
 
 # (b) The Net core is not duplicated in the interpreter provider crate.
@@ -48,7 +49,7 @@ count=$(rg -c '^(pub(\(crate\))?\s+)?static\s' crates/bn_rt/src/policy.rs || tru
 allowed_env='^(crates/bn_rt/src/policy\.rs)$'
 while IFS= read -r file; do
   [[ $file =~ $allowed_env ]] || fail "policy environment read outside the parser: $file"
-done < <(rg -l '^\s*[^/]*"BN_(FS_POLICY|EXEC_POLICY|EXEC_CAPTURE_LIMIT|EXEC_TIMEOUT_MS)"' src crates --type rust -g '!*_tests.rs' -g '!**/tests.rs')
+done < <(rg -l '^\s*[^/]*"BN_(FS_POLICY|EXEC_POLICY|EXEC_CAPTURE_LIMIT|EXEC_TIMEOUT_MS)"' src crates --type rust -g '!*_tests.rs' -g '!**/tests.rs' -g '!crates/*/tests/**')
 
 # (e) The filesystem decision has one implementation: no OpenOptions in the
 # interpreter core or its providers.

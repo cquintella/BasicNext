@@ -85,7 +85,7 @@ The table below catalogs ownership and lifetime for all symbols declared in `BN_
 
 | Symbol Group | Symbols | Parameter Ownership | Return / Out-Parameter Ownership | Invalidation / Lifetime |
 | --- | --- | --- | --- | --- |
-| **Execution Policy** | `bn_rt_policy_init(version, ceiling)`, `bn_rt_policy_filesystem_sandboxed()`, `bn_rt_policy_filesystem_root(write, path)` | `version`, `ceiling`, and `write` scalars copied; `path` is a NUL-terminated borrowed UTF-8 pointer for the call | Return code `i32` (0 = OK) | Process-wide policy can only narrow. Sandboxing clears prior roots; each accepted root is pinned by the runtime and remains owned until process exit. |
+| **Execution Policy** | `bn_rt_policy_init(version, ceiling)`, `bn_rt_policy_check(status)` (emitted `Start` stops the process on a non-zero init status, 0.5.2a), `bn_rt_policy_filesystem_sandboxed()`, `bn_rt_policy_filesystem_root(write, path)` | `version`, `ceiling`, and `write` scalars copied; `path` is a NUL-terminated borrowed UTF-8 pointer for the call | Return code `i32` (0 = OK) | Process-wide policy can only narrow. Sandboxing clears prior roots; each accepted root is pinned by the runtime and remains owned until process exit. |
 | **DataFrame Lifecycle** | `bn_rt_dataframe_create`, `bn_rt_dataframe_row_count`, `bn_rt_dataframe_column_count`, `bn_rt_dataframe_close` | `ptr` views borrowed for duration of call; handle `i64`/`u64` copied | Out pointer receives owned `u64` handle or count scalar | `bn_rt_dataframe_close` destroys frame in registry; subsequent calls fail with invalid handle status |
 | **Console & Clock** | `bn_rt_clock_now`, `bn_rt_clock_timer`, `bn_rt_console_cls`, `bn_rt_console_beep`, `bn_rt_console_print_at`, `bn_rt_console_num_cols`, `bn_rt_console_num_rows` | Scalars copied; string `ptr` in `print_at` borrowed | Timestamp `i64` or status `i32` | No retained state; ephemeral duration of call |
 | **Network Endpoints & Handles** | `bn_rt_net_address_parse`, `bn_rt_net_ping`, `bn_rt_net_reverse`, `bn_rt_net_neighbor`, `bn_rt_net_resolve`, `bn_rt_net_addresses_*`, `bn_rt_net_handle_close` | String `ptr` borrowed; out pointers caller-allocated | Out pointer populated; handles returned by value | Address lists freed by `bn_rt_net_addresses_free`; socket handles closed by `bn_rt_net_handle_close` |
@@ -385,6 +385,7 @@ bn_rt_net_udp_packet_source
 bn_rt_net_udp_packet_truncated
 bn_rt_net_udp_receive_handle
 bn_rt_net_udp_send_to
+bn_rt_policy_check
 bn_rt_policy_init
 bn_rt_policy_filesystem_root
 bn_rt_policy_filesystem_sandboxed
