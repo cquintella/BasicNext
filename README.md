@@ -29,8 +29,9 @@ extended Sinclair BASIC that ships with the
 [ZX Spectrum Next](https://www.specnext.com/).
 
 Basic Next 0.6 ships two executables over one shared frontend — `bni`, the
-interpreter, and `bnc`, the LLVM-backed compiler — plus `bn`, a compatibility
-dispatcher that forwards the 0.5 command line to them (retires in 0.7):
+interpreter, and `bnc`, the LLVM-backed compiler. The 0.5 `bn` command is
+**deprecated**: it remains as a dispatcher that forwards `bn run …` /
+`bn build …` to `bni`/`bnc` and is removed in 0.7.
 
 - `bni run` — validate, lower to BN IR, and interpret
 - `bnc` — compile the supported IR subset to a native or Wasm artifact
@@ -64,17 +65,20 @@ The tutorial book under `docs/book/en/` tracks the 0.5 line.
 The toolchain is two executables: `bni` (`check`, `run`, `eval`, `lex`, `lsp`,
 `dap`) and `bnc` (`bnc [compile-options] <entry.bn>`). They share one
 frontend, one diagnostic format, source locations, and exit-code model.
-`bn run …` / `bn build …` still work through the `bn` dispatcher.
+`bn run …` / `bn build …` still work through the deprecated `bn` dispatcher
+(prints a deprecation notice when stderr is a terminal; removed in 0.7).
 
 ### Quick Installation
 
 **1. One-line install (Linux / macOS)**
 No checkout and no Rust required. The command downloads `scripts/install.sh`,
-which resolves the latest release, fetches the prebuilt `bni`/`bnc` (and the `bn` dispatcher) for your
-OS/architecture (verified against the release's `SHA256SUMS`) together with the
-standard-library modules, diagnostics catalog and man page from the same tag,
-and installs everything under one prefix. If the release has no binary for your
-platform, it builds from that tag's sources with `cargo` instead.
+which resolves the latest release, fetches the prebuilt `bni`/`bnc` (and the
+deprecated `bn` dispatcher) for your OS/architecture (verified against the
+release's `SHA256SUMS`) together with the standard-library modules, diagnostics
+catalog and man pages from the same tag, and installs everything under one
+prefix. If the release has no binary for your platform, it builds from that
+tag's sources with `cargo` instead. A pinned 0.5 tag (`BN_VERSION=v0.5.2`)
+installs that release's layout (`bn` + `bnc`).
 
 ```shell
 curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.sh | bash
@@ -82,7 +86,7 @@ curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/i
 curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.sh | PREFIX="$HOME/.local" bash
 # custom prefix, or a pinned version:
 curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.sh | bash -s -- --prefix /opt/basicnext
-curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.sh | BN_VERSION=v0.5.1 bash
+curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.sh | BN_VERSION=v0.6.0 bash
 ```
 
 **2. Install script from a checkout**
@@ -114,7 +118,7 @@ Installed layout (FHS):
 
 | Path | Contents |
 | --- | --- |
-| `<prefix>/bin/bni`, `<prefix>/bin/bnc`, `<prefix>/bin/bn` | executables (interpreter, compiler, dispatcher) |
+| `<prefix>/bin/bni`, `<prefix>/bin/bnc`, `<prefix>/bin/bn` | executables (interpreter, compiler, deprecated dispatcher) |
 | `<prefix>/share/bn/modules/bn/*.bn` | standard-library modules |
 | `<prefix>/share/bn/diagnostics/en-US/*.ftl` | diagnostics catalog (optional — an identical catalog is embedded) |
 | `<prefix>/share/man/man1/{bni,bnc,bn}.1` | Unix manual pages (Linux/macOS) |
