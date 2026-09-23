@@ -1,0 +1,25 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Domain type for the companion-codec example (bucket 0.6.1c / S-3).
+// Deliberately imports no BNJson — serialization lives in BirdJson.
+
+EXPORT CLASS Bird
+    PRIVATE name AS STRING = ""
+    PRIVATE wings AS INT64 = 0
+
+    PUBLIC FUNCTION CONSTRUCTOR(name AS STRING, wings AS INT64)
+        SELF.name = name
+        SELF.wings = wings
+    END FUNCTION
+
+    PUBLIC FUNCTION Name() AS STRING
+        RETURN SELF.name
+    END FUNCTION
+
+    PUBLIC FUNCTION Wings() AS INT64
+        RETURN SELF.wings
+    END FUNCTION
+END CLASS

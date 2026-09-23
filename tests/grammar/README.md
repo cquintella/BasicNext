@@ -1,6 +1,6 @@
 # Basic Next 0.3 grammar fixtures
 
-These are source-level conformance fixtures for `docs/language/0.3/0.3.ebnf`.
+These are source-level conformance fixtures for `language/0.3/0.3.ebnf`.
 They are intentionally framework-free: Sprint 2 and Sprint 3 must make `bn
 check` accept every file under `valid/` and reject every file under `invalid/`
 with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.

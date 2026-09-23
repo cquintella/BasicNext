@@ -26,8 +26,8 @@ fn lex_kinds(text: &str) -> Vec<TokenKind> {
 
 #[test]
 fn registry_matches_ebnf_and_generated_tables() {
-    let registry = parse_keywords_md(&read("docs/language/0.5/keywords.md")).expect("registry");
-    let ebnf = read("docs/language/0.5/0.5.ebnf");
+    let registry = parse_keywords_md(&read("language/0.5/keywords.md")).expect("registry");
+    let ebnf = read("language/0.5/0.5.ebnf");
     let reserved =
         parse_ebnf_quoted_production(&ebnf, "reserved-word").expect("EBNF reserved-word");
     let special = parse_ebnf_quoted_production(&ebnf, "special-float-literal")
@@ -117,7 +117,7 @@ fn registry_parser_rejects_invalid_lists() {
         );
     }
 
-    let duplicate_special = read("docs/language/0.2/keywords.md")
+    let duplicate_special = read("language/0.2/keywords.md")
         .replace(SPECIAL_BEGIN, &format!("{SPECIAL_BEGIN}\n{SPECIAL_BEGIN}"));
     assert!(parse_keywords_md(&duplicate_special).is_err());
     let _ = SPECIAL_END;
@@ -212,13 +212,13 @@ fn cargo_package_lists_build_script_and_keyword_registry() {
     );
     assert!(
         list.lines()
-            .any(|line| line.ends_with("docs/language/0.2/keywords.md")),
-        "package list must contain docs/language/0.2/keywords.md\n{list}"
+            .any(|line| line.ends_with("language/0.2/keywords.md")),
+        "package list must contain language/0.2/keywords.md\n{list}"
     );
     assert!(
         !list
             .lines()
-            .any(|line| line.ends_with("docs/language/keywords.md")),
-        "package list must not use the removed docs/language/keywords.md path\n{list}"
+            .any(|line| line.ends_with("language/keywords.md")),
+        "package list must not use the removed language/keywords.md path\n{list}"
     );
 }

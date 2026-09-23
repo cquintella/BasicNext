@@ -21,6 +21,8 @@ pedantic = "warn"
 bn_host_exec = { path = "../bn_host_exec" }
 dns-lookup = "2"
 libc = "0.2"
+serde = "1.0"
+serde_json = "1.0"
 ml-dsa = "0.1"
 ml-kem = { version = "0.3", features = ["getrandom"] }
 p256 = { version = "0.13", features = ["ecdsa"] }

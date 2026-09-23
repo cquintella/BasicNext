@@ -83,7 +83,7 @@
 ## [Appendices](10_appendices.md)
 - Appendix A: Keywords Reference
 - Appendix B: Language Diagnostics
-- Appendix C: Accepted Syntax — see the normative [0.6 EBNF](../../language/0.6/0.6.ebnf)
+- Appendix C: Accepted Syntax — see the normative [0.6 EBNF](../../../language/0.6/0.6.ebnf)
 - Appendix D: The `bn` Tool (`bn(1)`)
 - Appendix E: [`BNJson`](11_bnjson.md)
 - Appendix F: [`BNLog`](12_bnlog.md)

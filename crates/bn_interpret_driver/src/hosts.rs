@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! Registry of the `HOST` capability providers. `HOST` is part of the language
-//! (`docs/language/0.5/0.5.md`), so every capability is always built: the
+//! (`language/0.5/0.5.md`), so every capability is always built: the
 //! large ones are crates (`bn_host_net`, `bn_host_fs`, and `bn_host_exec`
 //! behind the `exec` shell here), the small shells (`clock`, `random`,
 //! `console`, `exec`) live in this directory. `BN*` libraries are registered

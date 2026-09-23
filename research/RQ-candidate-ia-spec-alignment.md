@@ -32,9 +32,9 @@
 
 ### Especificação Normativa
 - `AGENTS.md` — brief autoritário para agentes e contribuidores
-- `docs/language/0.5/0.5.ebnf`, `0.5.md` — gramática e semântica
+- `language/0.5/0.5.ebnf`, `0.5.md` — gramática e semântica
 - `docs/architecture/` — decisões arquiteturais (IR contract, conformance, support matrix)
-- `GOVERNANCE.md` — autoridade final (Carlos como BDFL)
+- `docs/governance.md` — autoridade final (Carlos como BDFL)
 
 ### Critérios de Validação (Existentes)
 - `completion-gates.md` — GC-IR, GC-SUP, GC-DEP (e outros)

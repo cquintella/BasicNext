@@ -19,7 +19,7 @@
 
 ## Language baseline acceptance
 
-[`../language/0.4/0.4.md`](../language/0.4/0.4.md) remains an **active 0.4 draft**: 0.4 amendments over an incorporated **0.3** baseline; G0 → accepted only after public contracts complete; G4 after executable conformance evidence. [`../../AGENTS.md`](../../AGENTS.md) correctly points agents at 0.4 as the *active planning* surface — that does **not** mean 0.4.md is “accepted final.”
+[`../../language/0.4/0.4.md`](../../language/0.4/0.4.md) remains an **active 0.4 draft**: 0.4 amendments over an incorporated **0.3** baseline; G0 → accepted only after public contracts complete; G4 after executable conformance evidence. [`../../AGENTS.md`](../../AGENTS.md) correctly points agents at 0.4 as the *active planning* surface — that does **not** mean 0.4.md is “accepted final.”
 
 ## Four architecture corrections (this pass)
 

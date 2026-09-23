@@ -10,12 +10,12 @@
 dá para pegar o retorno, não faz sentido ter.*
 
 **Related (do not conflate):**
-- [`docs/language/0.3/bndispatch.md`](../../docs/language/0.3/bndispatch.md) — current 0.3 VOID ticket surface
+- [`language/0.3/bndispatch.md`](../../language/0.3/bndispatch.md) — current 0.3 VOID ticket surface
 - [`docs/superpowers/specs/2026-09-01-async-await-0.4-design.md`](../../docs/superpowers/specs/2026-09-01-async-await-0.4-design.md) — locked initial slice: `VOID OR Error`
 - [`docs/superpowers/specs/2026-09-05-bndispatch-abi-design.md`](../../docs/superpowers/specs/2026-09-05-bndispatch-abi-design.md) — **`bn_rt_dispatch_await(..., BNValue *result, ...)` already exists**
 - Module today: `Queue.Async(FUNCTION() AS VOID OR Error)`; `Ticket` has no `Result`/`Value`
 
-Nothing here is normative until accepted into `docs/language/` + `modules/bn/BNDispatch.bn`.
+Nothing here is normative until accepted into `language/` + `modules/bn/BNDispatch.bn`.
 
 ---
 

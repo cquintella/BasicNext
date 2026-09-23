@@ -19,40 +19,124 @@
 # (override with BN_RT_LIB). Do not point BN_RT_LIB at a source-tree
 # target/ directory for a normal install — use the prefix lib.
 #
+# After a successful install this script also writes, under the invoking
+# user's home (override with BN_STATE_DIR):
+#
+#   $HOME/.basicnext/install.log     append-only log of operations performed
+#   $HOME/.basicnext/uninstall.sh    script that removes the files this run installed
+#
 # Usage:
-#   ./scripts/install.sh                  # build from source, install to /usr/local (sudo if needed)
-#   PREFIX="$HOME/.local" ./scripts/install.sh   # user-local, no sudo
-#   ./scripts/install.sh --prefix /opt/basicnext
+#   ./scripts/install.sh                  # asks where to install (menu 1–4)
+#   ./scripts/install.sh --prefix DIR     # non-interactive prefix
+#   PREFIX=DIR ./scripts/install.sh       # same (skips the menu)
 #   ./scripts/install.sh --no-build       # install already-built target/release binaries
 #
+# Install-location menu (when PREFIX / --prefix are unset):
+#   1) $HOME/basicnext
+#   2) /opt/basicnext
+#   3) /usr/local
+#   4) Other path…
+# The prompt reads /dev/tty so `curl | bash` still works.
+#
 # Outside a checkout (curl | bash) the script bootstraps itself: it resolves the
-# latest release (or $BN_VERSION, e.g. v0.6.0; a 0.5 tag installs bn + bnc), downloads that tag's source
+# latest release (or $BN_VERSION, e.g. v0.6.1; a 0.5 tag installs bn + bnc), downloads that tag's source
 # tarball for the modules/catalog/man pages, then the prebuilt bni/bnc for this
 # OS/arch verified against the release's SHA256SUMS; if the release has no
 # asset for this platform it builds from the tarball with cargo instead.
 #
 #   curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.sh | bash
-#   curl -fsSL .../install.sh | PREFIX="$HOME/.local" bash
-#   curl -fsSL .../install.sh | bash -s -- --prefix /opt/basicnext
 set -euo pipefail
 
-PREFIX="${PREFIX:-/usr/local}"
+# PREFIX left unset until --prefix / PREFIX= / the install-location menu resolves it.
+PREFIX_SET=0
+if [[ -n "${PREFIX:-}" ]]; then
+  PREFIX_SET=1
+else
+  PREFIX=""
+fi
 BUILD=1
 REPO="cquintella/BasicNext"
+BN_STATE_DIR="${BN_STATE_DIR:-$HOME/.basicnext}"
+INSTALL_LOG="$BN_STATE_DIR/install.log"
+UNINSTALL_SCRIPT="$BN_STATE_DIR/uninstall.sh"
+MANIFEST=$(mktemp)
+trap 'rm -f "$MANIFEST"' EXIT
+
+mkdir -p "$BN_STATE_DIR"
+
+log() {
+  echo "$*"
+  echo "$*" >>"$INSTALL_LOG"
+}
+
+record() {
+  printf '%s\n' "$1" >>"$MANIFEST"
+  echo "    installed: $1" >>"$INSTALL_LOG"
+}
+
+ask_prefix() {
+  local choice custom
+  if [[ ! -r /dev/tty || ! -w /dev/tty ]]; then
+    echo "error: no TTY for the install-location menu; pass --prefix DIR or PREFIX=DIR" >&2
+    exit 2
+  fi
+  {
+    echo
+    echo "Where should Basic Next be installed?"
+    echo "  1) $HOME/basicnext"
+    echo "  2) /opt/basicnext"
+    echo "  3) /usr/local"
+    echo "  4) Other path…"
+  } > /dev/tty
+  while true; do
+    printf 'Choose [1-4]: ' > /dev/tty
+    IFS= read -r choice < /dev/tty || true
+    case "$choice" in
+      1) PREFIX="$HOME/basicnext"; break ;;
+      2) PREFIX="/opt/basicnext"; break ;;
+      3) PREFIX="/usr/local"; break ;;
+      4)
+        printf 'Prefix path: ' > /dev/tty
+        IFS= read -r custom < /dev/tty || true
+        custom="${custom/#\~/$HOME}"
+        custom="${custom%%/}"
+        if [[ -z "$custom" ]]; then
+          echo "error: empty path" > /dev/tty
+          continue
+        fi
+        PREFIX="$custom"
+        break
+        ;;
+      *) echo "Please enter 1, 2, 3, or 4." > /dev/tty ;;
+    esac
+  done
+  echo "Installing to $PREFIX" > /dev/tty
+}
 
 while (($# > 0)); do
   case "$1" in
     --prefix)
       [[ $# -ge 2 ]] || { echo "error: --prefix needs a path" >&2; exit 2; }
-      PREFIX="$2"; shift 2 ;;
+      PREFIX="$2"; PREFIX_SET=1; shift 2 ;;
     --no-build) BUILD=0; shift ;;
     -h|--help)
-      if [[ -f "$0" ]]; then sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'
-      else echo "usage: install.sh [--prefix DIR] [--no-build]  (PREFIX and BN_VERSION env also honoured)"; fi
+      if [[ -f "$0" ]]; then sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//'
+      else echo "usage: install.sh [--prefix DIR] [--no-build]  (PREFIX, BN_VERSION, BN_STATE_DIR env also honoured)"; fi
       exit 0 ;;
     *) echo "error: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
+
+if ((PREFIX_SET == 0)); then
+  ask_prefix
+fi
+[[ -n "$PREFIX" ]] || { echo "error: empty PREFIX" >&2; exit 2; }
+
+{
+  echo "===== Basic Next install $(date '+%Y-%m-%d %H:%M:%S %z') ====="
+  echo "user=$(id -un) host=$(uname -n) os=$(uname -s) arch=$(uname -m)"
+  echo "PREFIX=$PREFIX BN_STATE_DIR=$BN_STATE_DIR BUILD=$BUILD BN_VERSION=${BN_VERSION:-}"
+} >>"$INSTALL_LOG"
 
 # --- bootstrap: not running from a checkout (curl | bash) ----------------------
 # When piped (`curl | bash`), $0 is often "bash" and BASH_SOURCE[0] is empty or a
@@ -82,9 +166,9 @@ if ((_bootstrap)); then
     [[ -n "$tag" ]] || { echo "error: could not resolve the latest release of $REPO" >&2; exit 1; }
   fi
   work=$(mktemp -d)
-  trap 'rm -rf "$work"' EXIT
-  echo "==> Basic Next $tag"
-  echo "==> Downloading source tree (modules, catalog, man page)"
+  trap 'rm -rf "$work"; rm -f "$MANIFEST"' EXIT
+  log "==> Basic Next $tag"
+  log "==> Downloading source tree (modules, catalog, man page)"
   curl -fsSL "https://github.com/$REPO/archive/refs/tags/$tag.tar.gz" | tar -xzf - -C "$work"
   src=$(find "$work" -mindepth 1 -maxdepth 1 -type d | head -n1)
   [[ -f "$src/Cargo.toml" ]] || { echo "error: unexpected source tarball layout" >&2; exit 1; }
@@ -102,7 +186,7 @@ if ((_bootstrap)); then
   base="https://github.com/$REPO/releases/download/$tag"
   prebuilt=0
   if [[ -n "$os" && -n "$arch" ]]; then
-    echo "==> Downloading prebuilt executables for $os-$arch"
+    log "==> Downloading prebuilt executables for $os-$arch"
     mkdir -p "$src/target/release"
     # 0.6 releases ship bni + bnc; 0.5 releases ship bn + bnc (bn was the
     # interpreter). Probe for bni and fall back so pinned old tags keep working.
@@ -110,7 +194,7 @@ if ((_bootstrap)); then
     if ! curl -fsSL -o "$src/target/release/bni" "$base/bni-$os-$arch"; then
       rm -f "$src/target/release/bni"
       binaries="bn bnc"
-      echo "    no bni asset in $tag: installing the 0.5 layout (bn + bnc)"
+      log "    no bni asset in $tag: installing the 0.5 layout (bn + bnc)"
     fi
     downloaded=1
     for name in $binaries; do
@@ -133,24 +217,24 @@ if ((_bootstrap)); then
         expected=$(awk -v n="libbn_rt-$os-$arch.a" '$2 == n { print $1 }' "$work/SHA256SUMS")
         actual=$(sum "$src/target/release/libbn_rt.a")
         if [[ -n "$expected" && "$expected" == "$actual" ]]; then
-          echo "    libbn_rt.a checksum OK"
+          log "    libbn_rt.a checksum OK"
         else
-          echo "    warning: libbn_rt.a SHA256 mismatch or missing from SHA256SUMS; will try cargo -p bn_rt" >&2
+          log "    warning: libbn_rt.a SHA256 mismatch or missing from SHA256SUMS; will try cargo -p bn_rt"
           rm -f "$src/target/release/libbn_rt.a"
         fi
       else
-        echo "    note: no libbn_rt-$os-$arch.a asset in $tag (will try cargo -p bn_rt if available)"
+        log "    note: no libbn_rt-$os-$arch.a asset in $tag (will try cargo -p bn_rt if available)"
       fi
-      echo "    checksums OK"
+      log "    checksums OK"
       prebuilt=1
     else
-      echo "    no prebuilt asset for $os-$arch in $tag"
+      log "    no prebuilt asset for $os-$arch in $tag"
     fi
   fi
   if ((prebuilt)); then
     BUILD=0
   elif command -v cargo >/dev/null 2>&1; then
-    echo "==> Falling back to a source build (cargo)"
+    log "==> Falling back to a source build (cargo)"
     BUILD=1
   else
     echo "error: no prebuilt binaries for this platform and cargo is not installed (install Rust 1.97+ and retry)" >&2
@@ -167,9 +251,9 @@ cd "$repo_root"
 
 if ((BUILD)); then
   command -v cargo >/dev/null 2>&1 || { echo "error: cargo (Rust 1.97+) is required to build; use --no-build to install prebuilt binaries" >&2; exit 1; }
-  echo "==> Building release binaries (cargo build --release --workspace --bins)"
+  log "==> Building release binaries (cargo build --release --workspace --bins)"
   cargo build --release --workspace --bins
-  echo "==> Building native runtime (cargo build -p bn_rt --release)"
+  log "==> Building native runtime (cargo build -p bn_rt --release)"
   cargo build -p bn_rt --release
 fi
 
@@ -189,7 +273,7 @@ for name in $binaries; do
 done
 if [[ ! -f "$bn_rt_lib" ]]; then
   if command -v cargo >/dev/null 2>&1; then
-    echo "==> libbn_rt.a missing; building cargo -p bn_rt --release"
+    log "==> libbn_rt.a missing; building cargo -p bn_rt --release"
     cargo build -p bn_rt --release
   fi
 fi
@@ -204,7 +288,7 @@ parent_of_prefix=$(dirname "$PREFIX")
 if [[ -e "$PREFIX" && ! -w "$PREFIX" ]] || [[ ! -e "$PREFIX" && ! -w "$parent_of_prefix" ]]; then
   if command -v sudo >/dev/null 2>&1; then
     SUDO="sudo"
-    echo "==> $PREFIX is not writable; using sudo"
+    log "==> $PREFIX is not writable; using sudo"
   else
     echo "error: $PREFIX is not writable and sudo is unavailable; set PREFIX to a writable path" >&2
     exit 1
@@ -217,48 +301,112 @@ moddir="$PREFIX/share/bn/modules/bn"
 diagdir="$PREFIX/share/bn/diagnostics"
 mandir="$PREFIX/share/man/man1"
 
-echo "==> Installing to $PREFIX"
+log "==> Installing to $PREFIX"
 $SUDO install -d "$bindir" "$libdir" "$moddir" "$diagdir" "$mandir"
+echo "    ensured dirs: $bindir $libdir $moddir $diagdir $mandir" >>"$INSTALL_LOG"
 for name in $binaries; do
   $SUDO install -m 0755 "$repo_root/target/release/$name" "$bindir/$name"
+  record "$bindir/$name"
 done
 
 # Native runtime for `bnc` (arch-specific staticlib). Discovered as
 # $PREFIX/lib/libbn_rt.a when bnc lives in $PREFIX/bin (bn_compile_driver::toolchain).
 $SUDO install -m 0644 "$bn_rt_lib" "$libdir/libbn_rt.a"
+record "$libdir/libbn_rt.a"
 
 # Standard library modules (arch-independent .bn source).
-$SUDO install -m 0644 "$repo_root/modules/bn/"*.bn "$moddir/"
+for mod in "$repo_root/modules/bn/"*.bn; do
+  base=$(basename "$mod")
+  $SUDO install -m 0644 "$mod" "$moddir/$base"
+  record "$moddir/$base"
+done
 
 # Diagnostics catalog (optional at runtime — an identical copy is embedded).
-$SUDO cp -R "$repo_root/share/bn/diagnostics/." "$diagdir/"
+# Record every file copied so uninstall removes only what this run wrote.
+while IFS= read -r -d '' f; do
+  rel="${f#"$repo_root/share/bn/diagnostics/"}"
+  dest="$diagdir/$rel"
+  $SUDO mkdir -p "$(dirname "$dest")"
+  $SUDO install -m 0644 "$f" "$dest"
+  record "$dest"
+done < <(find "$repo_root/share/bn/diagnostics" -type f -print0 2>/dev/null)
 
 # Man pages (whichever this tree has: bni.1/bnc.1 in 0.6, bn.1 in 0.5).
 for page in bni bnc bn; do
-  [[ -f "$repo_root/docs/man/$page.1" ]] && $SUDO install -m 0644 "$repo_root/docs/man/$page.1" "$mandir/$page.1"
+  if [[ -f "$repo_root/docs/man/$page.1" ]]; then
+    $SUDO install -m 0644 "$repo_root/docs/man/$page.1" "$mandir/$page.1"
+    record "$mandir/$page.1"
+  fi
 done
 
-echo "==> Installed:"
-echo "    $(for name in $binaries; do printf '%s ' "$bindir/$name"; done)($layout layout)"
-echo "    $libdir/libbn_rt.a"
-echo "    $moddir/ ($(ls "$repo_root/modules/bn/"*.bn | wc -l | tr -d ' ') modules)"
-echo "    $diagdir/, $mandir/"
+log "==> Installed:"
+log "    $(for name in $binaries; do printf '%s ' "$bindir/$name"; done)($layout layout)"
+log "    $libdir/libbn_rt.a"
+log "    $moddir/ ($(ls "$repo_root/modules/bn/"*.bn | wc -l | tr -d ' ') modules)"
+log "    $diagdir/, $mandir/"
 
 # Verify against the installed copy (not the build tree).
-echo "==> Verifying"
-"$bindir/$interpreter" --version
-"$bindir/bnc" --version
+log "==> Verifying"
+"$bindir/$interpreter" --version | tee -a "$INSTALL_LOG"
+"$bindir/bnc" --version | tee -a "$INSTALL_LOG"
 tmp=$(mktemp -d)
 printf 'IMPORT BNMath AS M\nFUNCTION Start() AS VOID\nPRINT M.ABS(-7.0)\nEND FUNCTION\n' > "$tmp/check.bn"
 if out=$(cd "$tmp" && "$bindir/$interpreter" run check.bn 2>&1) && [[ "$out" == "7.0" ]]; then
-  echo "    stdlib module resolution OK (BNMath.ABS(-7.0) = 7.0)"
+  log "    stdlib module resolution OK (BNMath.ABS(-7.0) = 7.0)"
 else
-  echo "    warning: stdlib check did not return the expected value; output was: $out" >&2
+  log "    warning: stdlib check did not return the expected value; output was: $out"
 fi
 rm -rf "$tmp"
 
+# --- uninstall script for this install (home of the invoking user) ------------
+{
+  echo '#!/usr/bin/env bash'
+  echo "# Generated by Basic Next install.sh on $(date '+%Y-%m-%d %H:%M:%S %z')"
+  echo "# Removes only the files recorded for PREFIX=$PREFIX"
+  echo "# Matching install log: $INSTALL_LOG"
+  echo 'set -euo pipefail'
+  printf 'PREFIX=%q\n' "$PREFIX"
+  cat <<'EOS'
+SUDO=""
+parent=$(dirname "$PREFIX")
+if [[ -e "$PREFIX" && ! -w "$PREFIX" ]] || [[ ! -e "$PREFIX" && ! -w "$parent" ]]; then
+  if command -v sudo >/dev/null 2>&1; then SUDO="sudo"
+  else
+    echo "error: $PREFIX is not writable and sudo is unavailable" >&2
+    exit 1
+  fi
+fi
+echo "==> Uninstalling Basic Next files under $PREFIX"
+EOS
+  if command -v tac >/dev/null 2>&1; then
+    rev_list=$(tac "$MANIFEST")
+  else
+    rev_list=$(tail -r "$MANIFEST")
+  fi
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    printf 'if [[ -e %q || -L %q ]]; then $SUDO rm -f %q; echo "    removed %s"; fi\n' \
+      "$path" "$path" "$path" "$path"
+  done <<<"$rev_list"
+  printf 'for d in %q %q %q %q %q; do\n' \
+    "$moddir" "$PREFIX/share/bn/modules" "$diagdir" "$PREFIX/share/bn" "$mandir"
+  cat <<'EOS'
+  [[ -d "$d" ]] || continue
+  if [[ -z "$(ls -A "$d" 2>/dev/null || true)" ]]; then
+    $SUDO rmdir "$d" 2>/dev/null && echo "    removed empty $d" || true
+  fi
+done
+echo "==> Uninstall finished."
+echo "note: install.log under BN_STATE_DIR was kept; delete it manually if you want."
+EOS
+} >"$UNINSTALL_SCRIPT"
+chmod +x "$UNINSTALL_SCRIPT"
+log "==> Wrote uninstall script: $UNINSTALL_SCRIPT"
+log "==> Install log: $INSTALL_LOG"
+
 case ":$PATH:" in
   *":$bindir:"*) ;;
-  *) echo "note: $bindir is not on your PATH; add it, e.g.: export PATH=\"$bindir:\$PATH\"" ;;
+  *) log "note: $bindir is not on your PATH; add it, e.g.: export PATH=\"$bindir:\$PATH\"" ;;
 esac
-echo "==> Done."
+log "==> Done."
+echo "===== end install $(date '+%Y-%m-%d %H:%M:%S %z') =====" >>"$INSTALL_LOG"

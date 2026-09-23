@@ -529,9 +529,80 @@ pub(crate) fn provider_name(module: &Module, name: &str) -> Option<&'static str>
         .any(|provider| provider.0 == module_id)
     {
         Some("BNCrypto")
+    } else if module
+        .bnjson_providers
+        .iter()
+        .any(|provider| provider.0 == module_id)
+    {
+        Some("BNJson")
     } else {
         None
     }
+}
+
+/// True when `ty` carries a `BNJson.Json`, directly or inside an `OR Error`
+/// alternative (a narrowed value keeps the aggregate, as `FS.File` does).
+pub(crate) fn carries_bnjson(module: &Module, ty: &Type) -> bool {
+    let named = |ty: &Type| {
+        matches!(
+            ty,
+            Type::ImportedNamed { module: module_id, name }
+                if name == "Json"
+                    && module
+                        .bnjson_providers
+                        .contains(&bn_ir::ModuleId::from(*module_id))
+        )
+    };
+    match ty {
+        Type::Alternative(alternatives) => alternatives.iter().any(named),
+        other => named(other),
+    }
+}
+
+/// The `BNJson` member `name` selects, if this module imports `BNJson`.
+pub(crate) fn bnjson_member<'a>(module: &Module, name: &'a str) -> Option<&'a str> {
+    let method = name.rsplit('.').next()?;
+    (!module.bnjson_providers.is_empty()
+        && matches!(
+            method,
+            "Parse"
+                | "Stringify"
+                | "Object"
+                | "Array"
+                | "Kind"
+                | "Has"
+                | "Length"
+                | "Clone"
+                | "SetString"
+                | "SetInteger"
+                | "SetFloat"
+                | "SetBoolean"
+                | "SetNull"
+                | "SetJson"
+                | "GetString"
+                | "GetInteger"
+                | "GetFloat"
+                | "GetBoolean"
+                | "GetJson"
+                | "AppendString"
+                | "AppendInteger"
+                | "AppendFloat"
+                | "AppendBoolean"
+                | "AppendNull"
+                | "AppendJson"
+                | "GetStringAt"
+                | "GetIntegerAt"
+                | "GetFloatAt"
+                | "GetBooleanAt"
+                | "GetJsonAt"
+                | "SetStringAt"
+                | "SetIntegerAt"
+                | "SetFloatAt"
+                | "SetBooleanAt"
+                | "SetNullAt"
+                | "SetJsonAt"
+        ))
+    .then_some(method)
 }
 
 /// True when `ty` is `BNCrypto.Bytes` from a module this program imports.

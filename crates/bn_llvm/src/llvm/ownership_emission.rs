@@ -192,6 +192,14 @@ pub(crate) fn lower_ownership_emission(
                     "  call i32 @bn_rt_file_close(i64 %filedelhandle{})",
                     value.0
                 );
+            } else if carries_bnjson(module, ty) {
+                let handle = format!("%jsondelhandle{}", value.0);
+                let _ = writeln!(text, "  {handle} = ptrtoint ptr %v{} to i64", value.0);
+                let _ = writeln!(
+                    text,
+                    "  %jsondelrc{} = call i32 @bn_rt_json_release(i64 {handle})",
+                    value.0
+                );
             } else if is_bncrypto_bytes_type(module, ty) {
                 let handle = format!("%crydelhandle{}", value.0);
                 let _ = writeln!(text, "  {handle} = ptrtoint ptr %v{} to i64", value.0);

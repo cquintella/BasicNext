@@ -18,7 +18,7 @@
 - [host-ui-bnui-v0.md](host-ui-bnui-v0.md) - sibling capability slice (UI)
 - [docs/library/bndata.md](../../docs/library/bndata.md) - Data.DataFrame / DataFrame OR Error patterns
 
-Nothing here is normative until accepted into docs/language/ / docs/library/host.md (or successor) and fixtures.
+Nothing here is normative until accepted into language/ / docs/library/host.md (or successor) and fixtures.
 
 ---
 

@@ -6,7 +6,7 @@
 ## Hierarchy
 
 ```text
-Language specification (docs/language/…)
+Language specification (language/…)
         │  defines behaviour
         ▼
 Interpreter / bn_runtime   ← executable REFERENCE (subordinate to the spec)

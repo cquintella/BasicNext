@@ -913,6 +913,21 @@ fn build_lowers_bndata_empty_frame_lifecycle_matching_interpreter() {
 }
 
 #[test]
+fn build_lowers_bnjson_parse_stringify_matching_interpreter() {
+    native_matches_interpreter("tests/grammar/valid/bnjson-parse-stringify.bn");
+}
+
+#[test]
+fn build_lowers_bnjson_dom_object_matching_interpreter() {
+    native_matches_interpreter("tests/grammar/valid/bnjson-dom-object.bn");
+}
+
+#[test]
+fn build_lowers_bnjson_companion_matching_interpreter() {
+    native_matches_interpreter("tests/modules/bnjson-companion/main.bn");
+}
+
+#[test]
 fn build_arc_and_dispatch_counterexamples_match_interpreter() {
     for path in [
         "tests/grammar/valid/arc-returned-object.bn",

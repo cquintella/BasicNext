@@ -49,9 +49,9 @@ Toolchain architecture **consumes** the language; it does not replace the gramma
 
 | Path | Role |
 |------|------|
-| [../language/0.5/0.5.ebnf](../language/0.5/0.5.ebnf) | Normative **EBNF** syntax (0.5.x) |
-| [../language/0.5/0.5.md](../language/0.5/0.5.md) | Static semantics, runtime behaviour, diagnostics — consolidated 0.5 contract (0.4 incorporated inline; 0.5.0 ARC + 0.5.1 `HOST.Exec`) |
-| [../language/0.5/keywords.md](../language/0.5/keywords.md) | Keywords |
+| [../../language/0.5/0.5.ebnf](../../language/0.5/0.5.ebnf) | Normative **EBNF** syntax (0.5.x) |
+| [../../language/0.5/0.5.md](../../language/0.5/0.5.md) | Static semantics, runtime behaviour, diagnostics — consolidated 0.5 contract (0.4 incorporated inline; 0.5.0 ARC + 0.5.1 `HOST.Exec`) |
+| [../../language/0.5/keywords.md](../../language/0.5/keywords.md) | Keywords |
 
 DFD **2.0 Analyze Sources**: lex/parse must match the EBNF; **2.5** must satisfy [semantic-analysis.md](semantic-analysis.md).
 

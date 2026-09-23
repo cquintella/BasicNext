@@ -8,7 +8,7 @@
 
 ## Principles
 
-1. **Specification above implementations** — The **language specification** (`docs/language/…`, especially `0.4.md`) defines language+HOST **behaviour**. `bn_runtime` (interpret) is the **executable reference implementation** of that behaviour — not a second law. A bug in the interpreter must be fixed to match the spec; it must **not** become mandatory behaviour for the compiler. LLVM/`bn_llvm` must be **equivalent** on the **documented supported subset** ([support-matrix.md](support-matrix.md)). Validation uses **two** comparisons: (a) each backend against **expected results derived from the specification**, and (b) backends **against each other** on the shared subset. Because Frontend and lowering are shared, both backends can agree on the **same static error** — that agreement is necessary but **not sufficient** if both inherit a Frontend bug; expected results must still be grounded in the spec.
+1. **Specification above implementations** — The **language specification** (`language/…`, especially `0.4.md`) defines language+HOST **behaviour**. `bn_runtime` (interpret) is the **executable reference implementation** of that behaviour — not a second law. A bug in the interpreter must be fixed to match the spec; it must **not** become mandatory behaviour for the compiler. LLVM/`bn_llvm` must be **equivalent** on the **documented supported subset** ([support-matrix.md](support-matrix.md)). Validation uses **two** comparisons: (a) each backend against **expected results derived from the specification**, and (b) backends **against each other** on the shared subset. Because Frontend and lowering are shared, both backends can agree on the **same static error** — that agreement is necessary but **not sufficient** if both inherit a Frontend bug; expected results must still be grounded in the spec.
 2. **Shared frontend → IR** — one `FrontendSession` / graph+analyze+**lower** path for CLI, LSP, DAP. No shadow ASTs; no single-file LSP fork. Session must handle **snapshots** (incl. unsaved), **revisions**, invalidation, cancel, and revision-scoped diagnostics; spans carry **SourceId** through lowering ([frontend-session.md](frontend-session.md)). Backends start from **validated `bn_ir`**, never from AST/semantic crates.
 3. **Library-first CLI** — `bni` and `bnc` are minimal entrypoints. Common configuration, diagnostics and check live in libraries; backend-specific driver libraries own orchestration and toolchain integration. Extract libraries under existing executables before changing `bnc` and creating `bni`; see [ownership and migration](library-first-drivers.md).
 4. **HOST behind traits** — network/http/web/dispatch/fs/console are provider interfaces. Semantic and docs consume **`bn_host_spec`** (ABI tables), never http/net implementations.
@@ -48,7 +48,7 @@ Crosswalk with this document’s crate-extraction roadmap (**XM0–XM11**) and r
 - **Data dictionary:** [`dfd/data-dictionary.md`](dfd/data-dictionary.md)
 - **As-is audit DFDs** (local/gitignored): `audit/workpapers/09-synthesis/dfd-*-as-is.md`
 
-**Language syntax (not toolchain DFD):** normative EBNF [`../language/0.4/0.4.ebnf`](../language/0.4/0.4.ebnf) + semantics [`../language/0.4/0.4.md`](../language/0.4/0.4.md).
+**Language syntax (not toolchain DFD):** normative EBNF [`../../language/0.4/0.4.ebnf`](../../language/0.4/0.4.ebnf) + semantics [`../../language/0.4/0.4.md`](../../language/0.4/0.4.md).
 
 
 > Audience: leadership and engineers. Acronyms expanded on first use in this section when the diagram caption needs them.

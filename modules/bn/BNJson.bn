@@ -1,6 +1,14 @@
 // BNJson 0.3 external-module interface. The Rust provider supplies parsing and
 // bounded serialization; no JSON implementation is embedded in the language core.
 
+// DOM (bucket 0.6.1c). Accessors are typed so the result type is visible at the
+// call site and a scalar read allocates no handle to release. Bounds are
+// enforced where they are breached, not deferred to Stringify.
+//
+// Ownership: SetJson / SetJsonAt / AppendJson **move** the child handle into the
+// parent and invalidate it. Duplicate only via Clone. GetJson / GetJsonAt return
+// a fresh handle the caller must RELEASE; they do not consume the parent.
+
 EXPORT CLASS Json
     PUBLIC STATIC FUNCTION Parse(text AS STRING) AS Json OR Error
         RETURN NEW Json()
@@ -8,6 +16,119 @@ EXPORT CLASS Json
     PUBLIC STATIC FUNCTION Stringify(value AS Json) AS STRING OR Error
         RETURN ""
     END FUNCTION
+    PUBLIC STATIC FUNCTION Object() AS Json
+        RETURN NEW Json()
+    END FUNCTION
+    PUBLIC STATIC FUNCTION Array() AS Json
+        RETURN NEW Json()
+    END FUNCTION
+    PUBLIC STATIC FUNCTION Kind(doc AS Json) AS STRING
+        RETURN ""
+    END FUNCTION
+    PUBLIC STATIC FUNCTION Has(doc AS Json, key AS STRING) AS BOOLEAN
+        RETURN FALSE
+    END FUNCTION
+    PUBLIC STATIC FUNCTION Length(doc AS Json) AS INTEGER OR Error
+        RETURN 0
+    END FUNCTION
+    PUBLIC STATIC FUNCTION Clone(doc AS Json) AS Json OR Error
+        RETURN NEW Json()
+    END FUNCTION
+
+    PUBLIC STATIC FUNCTION SetString(doc AS Json, key AS STRING, value AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC STATIC FUNCTION SetInteger(doc AS Json, key AS STRING, value AS INT64) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC STATIC FUNCTION SetFloat(doc AS Json, key AS STRING, value AS FLOAT) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC STATIC FUNCTION SetBoolean(doc AS Json, key AS STRING, value AS BOOLEAN) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC STATIC FUNCTION SetNull(doc AS Json, key AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    // Moves `child` into `doc` under `key` and invalidates `child`.
+    PUBLIC STATIC FUNCTION SetJson(doc AS Json, key AS STRING, child AS Json) AS VOID OR Error
+        RETURN
+    END FUNCTION
+
+    PUBLIC STATIC FUNCTION GetString(doc AS Json, key AS STRING) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC STATIC FUNCTION GetInteger(doc AS Json, key AS STRING) AS INT64 OR Error
+        RETURN 0
+    END FUNCTION
+    PUBLIC STATIC FUNCTION GetFloat(doc AS Json, key AS STRING) AS FLOAT OR Error
+        RETURN 0.0
+    END FUNCTION
+    PUBLIC STATIC FUNCTION GetBoolean(doc AS Json, key AS STRING) AS BOOLEAN OR Error
+        RETURN FALSE
+    END FUNCTION
+    // Fresh handle to the nested value; caller RELEASE. Does not consume `doc`.
+    PUBLIC STATIC FUNCTION GetJson(doc AS Json, key AS STRING) AS Json OR Error
+        RETURN NEW Json()
+    END FUNCTION
+
+    PUBLIC STATIC FUNCTION AppendString(arr AS Json, value AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC STATIC FUNCTION AppendInteger(arr AS Json, value AS INT64) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC STATIC FUNCTION AppendFloat(arr AS Json, value AS FLOAT) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC STATIC FUNCTION AppendBoolean(arr AS Json, value AS BOOLEAN) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC STATIC FUNCTION AppendNull(arr AS Json) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    // Moves `child` onto the array and invalidates `child`.
+    PUBLIC STATIC FUNCTION AppendJson(arr AS Json, child AS Json) AS VOID OR Error
+        RETURN
+    END FUNCTION
+
+    PUBLIC STATIC FUNCTION GetStringAt(arr AS Json, index AS INTEGER) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC STATIC FUNCTION GetIntegerAt(arr AS Json, index AS INTEGER) AS INT64 OR Error
+        RETURN 0
+    END FUNCTION
+    PUBLIC STATIC FUNCTION GetFloatAt(arr AS Json, index AS INTEGER) AS FLOAT OR Error
+        RETURN 0.0
+    END FUNCTION
+    PUBLIC STATIC FUNCTION GetBooleanAt(arr AS Json, index AS INTEGER) AS BOOLEAN OR Error
+        RETURN FALSE
+    END FUNCTION
+    // Fresh handle to the element; caller RELEASE. Does not consume `arr`.
+    PUBLIC STATIC FUNCTION GetJsonAt(arr AS Json, index AS INTEGER) AS Json OR Error
+        RETURN NEW Json()
+    END FUNCTION
+
+    PUBLIC STATIC FUNCTION SetStringAt(arr AS Json, index AS INTEGER, value AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC STATIC FUNCTION SetIntegerAt(arr AS Json, index AS INTEGER, value AS INT64) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC STATIC FUNCTION SetFloatAt(arr AS Json, index AS INTEGER, value AS FLOAT) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC STATIC FUNCTION SetBooleanAt(arr AS Json, index AS INTEGER, value AS BOOLEAN) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC STATIC FUNCTION SetNullAt(arr AS Json, index AS INTEGER) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    // Moves `child` into the array at `index` and invalidates `child`.
+    PUBLIC STATIC FUNCTION SetJsonAt(arr AS Json, index AS INTEGER, child AS Json) AS VOID OR Error
+        RETURN
+    END FUNCTION
+
     PUBLIC FUNCTION CONSTRUCTOR()
     END FUNCTION
 END CLASS

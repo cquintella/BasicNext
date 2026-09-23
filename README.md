@@ -1,9 +1,11 @@
 # Basic Next
 
-![Basic Next Logo](docs/logo.png)
+<p align="center">
+  <img src="docs/logo.png" alt="Basic Next Logo" width="320" />
+</p>
 
 [![Rust CI](https://img.shields.io/badge/Rust_CI-passing-brightgreen)](#)
-[![Version](https://img.shields.io/badge/version-v0.5.1-blue)](#)
+[![Version](https://img.shields.io/badge/version-v0.6.0-blue)](#)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE.md)
 
 ---
@@ -49,14 +51,15 @@ gone: `bn run …` is `bni run …` and `bn build …` is `bnc …`.
 Read [PHILOSOPHY.md](PHILOSOPHY.md) for the mission, vision, and complete set
 of design principles.
 
-## 🚀 Status: Version 0.5.1 (0.5.2 closed in-tree)
+## 🚀 Status: Version 0.6.0
 
-**Latest GitHub release:** [v0.5.1](https://github.com/cquintella/BasicNext/releases/tag/v0.5.1).
-Bucket **0.5.2** is closed in-tree (qualified import, `PROTECTED` / `OVERRIDE`,
-static factories, `++` / `--`); GitHub tag/binaries for 0.5.2 follow when cut.
-Release notes: [`docs/releases/`](docs/releases/README.md).
+**Latest GitHub release:** [v0.6.0](https://github.com/cquintella/BasicNext/releases/tag/v0.6.0).
+The 0.6 line ships `bni` and `bnc` (the 0.5 `bn` executable is gone). Normative
+language contract: [`language/0.6/`](language/0.6/0.6.md). Release notes:
+[`docs/releases/`](docs/releases/README.md).
 
-The tutorial book under `docs/book/en/` tracks the 0.5 line.
+The tutorial book under `docs/book/en/` still uses some 0.5 command names in
+places; prefer `bni` / `bnc` and the 0.6 language docs when they disagree.
 
 
 ## 🛠️ Getting Started
@@ -67,46 +70,36 @@ frontend, one diagnostic format, source locations, and exit-code model.
 
 ### Quick Installation
 
-**1. One-line install (Linux / macOS)**
-No checkout and no Rust required. The command downloads `scripts/install.sh`,
-which resolves the latest release, fetches the prebuilt `bni`/`bnc` for your OS/architecture (verified against the
-release's `SHA256SUMS`) together with the standard-library modules, diagnostics
-catalog and man pages from the same tag, and installs everything under one
-prefix. If the release has no binary for your platform, it builds from that
-tag's sources with `cargo` instead. A pinned 0.5 tag (`BN_VERSION=v0.5.2`)
-installs that release's layout (`bn` + `bnc`).
+**Linux / macOS — one command**
 
 ```shell
 curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.sh | bash
-# user-local, no sudo:
-curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.sh | PREFIX="$HOME/.local" bash
-# custom prefix, or a pinned version:
-curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.sh | bash -s -- --prefix /opt/basicnext
-curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.sh | BN_VERSION=v0.6.0 bash
 ```
 
-**2. Install script from a checkout**
-Inside a clone, the same scripts build `bni` and `bnc` from source and
-place the binaries plus the runtime files they need (standard-library `.bn`
-modules, diagnostics catalog, and the Unix man pages) in a single prefix. `bni` then
-discovers its modules and catalog by walking upward from its own location —
-zero configuration afterwards.
+The script asks where to install:
 
-Linux / macOS (installs to `/usr/local`, uses `sudo` only if that prefix is not
-writable):
-```shell
-./scripts/install.sh
-# user-local, no sudo:
-PREFIX="$HOME/.local" ./scripts/install.sh
-# custom prefix:
-./scripts/install.sh --prefix /opt/basicnext
-```
+1. `$HOME/basicnext`
+2. `/opt/basicnext`
+3. `/usr/local`
+4. Other path…
 
-Windows (PowerShell; installs to `%LOCALAPPDATA%\Programs\BasicNext` and adds it
-to your user `PATH`, no admin needed):
+It then installs the latest release's `bni`/`bnc` (checksum-verified), standard-library
+modules, diagnostics catalog, and man pages under that prefix. If the release has no
+binary for your platform, it builds from that tag with `cargo`. Paths under your home
+need no `sudo`; `/usr/local` and `/opt/basicnext` use `sudo` when the directory is not
+writable.
+
+From a clone, the same menu applies (`./scripts/install.sh` builds from source). Skip
+the menu with `--prefix DIR` or `PREFIX=DIR`. Pin a release with `BN_VERSION=v0.6.0`.
+Tags before 0.6 install that era's layout (`bn` + `bnc`).
+
+A successful install also writes `$HOME/.basicnext/install.log` and
+`$HOME/.basicnext/uninstall.sh` (override with `BN_STATE_DIR`).
+
+**Windows (PowerShell)** — default prefix `%LOCALAPPDATA%\Programs\BasicNext` (no admin):
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\install.ps1
-# custom prefix:
 powershell -ExecutionPolicy Bypass -File scripts\install.ps1 -Prefix C:\Tools\BasicNext
 ```
 
@@ -123,11 +116,11 @@ Each script verifies the install by running `bni --version` and resolving a
 standard-library module from a clean directory. Pass `--no-build` (Bash) or
 `-NoBuild` (PowerShell) to install already-built `target/release` binaries.
 
-**3. For Users (Direct Download)**
+**Direct download**
 Alternatively, download the pre-compiled binary for your operating system (Linux, macOS, Windows) directly from [GitHub Releases](https://github.com/cquintella/BasicNext/releases/latest).
 The asset names and checksums are listed in [`binaries/README.md`](binaries/README.md).
 
-**4. For Developers (Build from Source)**
+**Build from source**
 If you prefer building from source and have Rust **1.98** installed (see `rust-toolchain.toml`), you can install the CLI from this repository:
 ```shell
 cargo install --path .
@@ -165,10 +158,11 @@ Requires Rust **1.98** (`rust-toolchain.toml`). Current limitations include part
 `config.toml` contains local tool configuration. Currently it selects the
 `clang` command used by `bnc`; it does not alter language semantics.
 
+
 ## 📂 Repository layout
 
 - `docs/book/en/` — English language tutorial ([toc](docs/book/en/toc.md)).
-- `docs/language/0.6/` — **normative** 0.6.x language contract ([`0.6.md`](docs/language/0.6/0.6.md), EBNF, keywords). Older `0.2/`–`0.5/` trees remain historical.
+- `language/0.6/` — **normative** 0.6.x language contract ([`0.6.md`](language/0.6/0.6.md), EBNF, keywords). Older `0.2/`–`0.5/` trees remain historical.
 - `todo/proposals/` — proposals not yet fully accepted.
 - `done/` — closed buckets and accepted proposal history (often local / gitignored).
 - `docs/man/bni.1`, `docs/man/bnc.1` — Unix man pages.
@@ -183,8 +177,8 @@ Requires Rust **1.98** (`rust-toolchain.toml`). Current limitations include part
 - Jupyter kernel — separate repository: [cquintella/basicnext-jupyter](https://github.com/cquintella/basicnext-jupyter).
 - VS Code extension — separate repository: [cquintella/basicnext-vscode](https://github.com/cquintella/basicnext-vscode).
 - `PHILOSOPHY.md` — design principles.
-- `GOVERNANCE.md` — how decisions are made.
-- `TRADEMARK.md` — use of the project name.
+- [`docs/governance.md`](docs/governance.md) — how decisions are made.
+- [`docs/trademark.md`](docs/trademark.md) — use of the project name.
 
 ## ✨ Example (Hello World)
 
@@ -234,11 +228,11 @@ toolchain (a globally installed `bni` may lag behind `main`).
 
 
 ## 🤝 Contributing
-Read [CONTRIBUTING.md](CONTRIBUTING.md). Language evolution begins as proposals
+Read [docs/contributing.md](docs/contributing.md). Language evolution begins as proposals
 in `todo/proposals/`; specification changes require examples.
 
 ## ❤️ Support
-See [SPONSORSHIP.md](SPONSORSHIP.md) to support Basic Next maintenance without
+See [docs/sponsorship.md](docs/sponsorship.md) to support Basic Next maintenance without
 interfering with its technical governance.
 
 ## 📄 License

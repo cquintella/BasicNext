@@ -40,6 +40,8 @@ language with explicit types and a short path from idea to working program.
    language without imposing a framework or a prescribed application
    architecture.
 
+10. **Compilers are lovely teachers** - Compiling errors should not only help you to fix programs, but to help you learn the language.
+
 ## Anti-goals
 
 Basic Next does not aim to be:

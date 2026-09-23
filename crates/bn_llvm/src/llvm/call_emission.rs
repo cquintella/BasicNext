@@ -320,6 +320,423 @@ pub(crate) fn lower_call_instruction(
                 destination.0, argument.0
             );
         }
+        name if bnjson_member(module, name).is_some() => {
+            let dest = destination.0;
+            match bnjson_member(module, name).expect("validated BNJson member") {
+                "Array" => {
+                    let _ = writeln!(text, "  %jsonnew{dest} = call i64 @bn_rt_json_array()");
+                    let _ = writeln!(text, "  %v{dest} = inttoptr i64 %jsonnew{dest} to ptr");
+                }
+                "Object" => {
+                    let _ = writeln!(text, "  %jsonnew{dest} = call i64 @bn_rt_json_object()");
+                    let _ = writeln!(text, "  %v{dest} = inttoptr i64 %jsonnew{dest} to ptr");
+                }
+                "Kind" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let _ = writeln!(
+                        text,
+                        "  %v{dest} = call ptr @bn_rt_json_kind(i64 %jsonh{dest})"
+                    );
+                }
+                "Has" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_has(i64 %jsonh{dest}, ptr %v{})",
+                        arguments[1].0
+                    );
+                    let _ = writeln!(text, "  %v{dest} = icmp eq i32 %jsonrc{dest}, 1");
+                }
+                "Length" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let _ = writeln!(
+                        text,
+                        "  %jsonlen{dest} = call i64 @bn_rt_json_length(i64 %jsonh{dest})"
+                    );
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp slt i64 %jsonlen{dest}, 0");
+                    emit_bnjson_scalar_result(text, dest, "%jsonlen{dest}");
+                }
+                "Clone" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let _ = writeln!(text, "  %jsonout{dest} = alloca i64");
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_clone(i64 %jsonh{dest}, ptr %jsonout{dest})"
+                    );
+                    let _ = writeln!(text, "  %jsonhandle{dest} = load i64, ptr %jsonout{dest}");
+                    emit_handle_result(
+                        text,
+                        *destination,
+                        format!("%jsonrc{dest}"),
+                        format!("%jsonhandle{dest}"),
+                    );
+                }
+                "Parse" => {
+                    let _ = writeln!(text, "  %jsonout{dest} = alloca i64");
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_parse(ptr %v{}, ptr %jsonout{dest})",
+                        arguments[0].0
+                    );
+                    let _ = writeln!(text, "  %jsonhandle{dest} = load i64, ptr %jsonout{dest}");
+                    emit_handle_result(
+                        text,
+                        *destination,
+                        format!("%jsonrc{dest}"),
+                        format!("%jsonhandle{dest}"),
+                    );
+                }
+                "Stringify" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let _ = writeln!(text, "  %jsonst{dest} = alloca i32");
+                    let _ = writeln!(
+                        text,
+                        "  %jsontext{dest} = call ptr @bn_rt_json_stringify(i64 %jsonh{dest}, ptr %jsonst{dest})"
+                    );
+                    let _ = writeln!(text, "  %jsonrc{dest} = load i32, ptr %jsonst{dest}");
+                    emit_bnjson_string_result(text, dest);
+                }
+                "SetString" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_string(i64 %jsonh{dest}, ptr %v{}, ptr %v{})",
+                        arguments[1].0, arguments[2].0
+                    );
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    emit_bnjson_scalar_result(text, dest, "0");
+                }
+                "SetInteger" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let number = emit_bnjson_i64_arg(text, analysis, dest, arguments[2]);
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_integer(i64 %jsonh{dest}, ptr %v{}, i64 {number})",
+                        arguments[1].0
+                    );
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    emit_bnjson_scalar_result(text, dest, "0");
+                }
+                "SetFloat" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let number = emit_bnjson_f64_arg(text, analysis, dest, arguments[2]);
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_float(i64 %jsonh{dest}, ptr %v{}, double {number})",
+                        arguments[1].0
+                    );
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    emit_bnjson_scalar_result(text, dest, "0");
+                }
+                "SetBoolean" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let _ = writeln!(
+                        text,
+                        "  %jsonflag{dest} = zext i1 %v{} to i32",
+                        arguments[2].0
+                    );
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_boolean(i64 %jsonh{dest}, ptr %v{}, i32 %jsonflag{dest})",
+                        arguments[1].0
+                    );
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    emit_bnjson_scalar_result(text, dest, "0");
+                }
+                "SetNull" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_null(i64 %jsonh{dest}, ptr %v{})",
+                        arguments[1].0
+                    );
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    emit_bnjson_scalar_result(text, dest, "0");
+                }
+                "SetJson" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    emit_bnjson_handle_named(text, analysis, dest, "child", arguments[2]);
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_json(i64 %jsonh{dest}, ptr %v{}, i64 %jsonhchild{dest})",
+                        arguments[1].0
+                    );
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    emit_bnjson_scalar_result(text, dest, "0");
+                }
+                "GetString" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let _ = writeln!(text, "  %jsonst{dest} = alloca i32");
+                    let _ = writeln!(
+                        text,
+                        "  %jsontext{dest} = call ptr @bn_rt_json_get_string(i64 %jsonh{dest}, ptr %v{}, ptr %jsonst{dest})",
+                        arguments[1].0
+                    );
+                    let _ = writeln!(text, "  %jsonrc{dest} = load i32, ptr %jsonst{dest}");
+                    emit_bnjson_string_result(text, dest);
+                }
+                "GetInteger" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let _ = writeln!(text, "  %jsonst{dest} = alloca i32");
+                    let _ = writeln!(
+                        text,
+                        "  %jsonval{dest} = call i64 @bn_rt_json_get_integer(i64 %jsonh{dest}, ptr %v{}, ptr %jsonst{dest})",
+                        arguments[1].0
+                    );
+                    let _ = writeln!(text, "  %jsonrc{dest} = load i32, ptr %jsonst{dest}");
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    emit_bnjson_scalar_result(text, dest, "%jsonval{dest}");
+                }
+                "GetFloat" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let _ = writeln!(text, "  %jsonst{dest} = alloca i32");
+                    let _ = writeln!(
+                        text,
+                        "  %jsonf{dest} = call double @bn_rt_json_get_float(i64 %jsonh{dest}, ptr %v{}, ptr %jsonst{dest})",
+                        arguments[1].0
+                    );
+                    let _ = writeln!(text, "  %jsonrc{dest} = load i32, ptr %jsonst{dest}");
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    let _ = writeln!(
+                        text,
+                        "  %jsonval{dest} = bitcast double %jsonf{dest} to i64"
+                    );
+                    emit_bnjson_scalar_result(text, dest, "%jsonval{dest}");
+                }
+                "GetBoolean" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let _ = writeln!(text, "  %jsonst{dest} = alloca i32");
+                    let _ = writeln!(
+                        text,
+                        "  %jsonbool{dest} = call i32 @bn_rt_json_get_boolean(i64 %jsonh{dest}, ptr %v{}, ptr %jsonst{dest})",
+                        arguments[1].0
+                    );
+                    let _ = writeln!(text, "  %jsonrc{dest} = load i32, ptr %jsonst{dest}");
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    let _ = writeln!(text, "  %jsonwide{dest} = zext i32 %jsonbool{dest} to i64");
+                    emit_bnjson_scalar_result(text, dest, "%jsonwide{dest}");
+                }
+                "GetJson" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let _ = writeln!(text, "  %jsonout{dest} = alloca i64");
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_get_json(i64 %jsonh{dest}, ptr %v{}, ptr %jsonout{dest})",
+                        arguments[1].0
+                    );
+                    let _ = writeln!(text, "  %jsonhandle{dest} = load i64, ptr %jsonout{dest}");
+                    emit_handle_result(
+                        text,
+                        *destination,
+                        format!("%jsonrc{dest}"),
+                        format!("%jsonhandle{dest}"),
+                    );
+                }
+                "AppendString" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_append_string(i64 %jsonh{dest}, ptr %v{})",
+                        arguments[1].0
+                    );
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    emit_bnjson_scalar_result(text, dest, "0");
+                }
+                "AppendInteger" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let number = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_append_integer(i64 %jsonh{dest}, i64 {number})"
+                    );
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    emit_bnjson_scalar_result(text, dest, "0");
+                }
+                "AppendFloat" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let number = emit_bnjson_f64_arg(text, analysis, dest, arguments[1]);
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_append_float(i64 %jsonh{dest}, double {number})"
+                    );
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    emit_bnjson_scalar_result(text, dest, "0");
+                }
+                "AppendBoolean" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let _ = writeln!(
+                        text,
+                        "  %jsonflag{dest} = zext i1 %v{} to i32",
+                        arguments[1].0
+                    );
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_append_boolean(i64 %jsonh{dest}, i32 %jsonflag{dest})"
+                    );
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    emit_bnjson_scalar_result(text, dest, "0");
+                }
+                "AppendNull" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_append_null(i64 %jsonh{dest})"
+                    );
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    emit_bnjson_scalar_result(text, dest, "0");
+                }
+                "AppendJson" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    emit_bnjson_handle_named(text, analysis, dest, "child", arguments[1]);
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_append_json(i64 %jsonh{dest}, i64 %jsonhchild{dest})"
+                    );
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    emit_bnjson_scalar_result(text, dest, "0");
+                }
+                "GetStringAt" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
+                    let _ = writeln!(text, "  %jsonst{dest} = alloca i32");
+                    let _ = writeln!(
+                        text,
+                        "  %jsontext{dest} = call ptr @bn_rt_json_get_string_at(i64 %jsonh{dest}, i64 {index}, ptr %jsonst{dest})"
+                    );
+                    let _ = writeln!(text, "  %jsonrc{dest} = load i32, ptr %jsonst{dest}");
+                    emit_bnjson_string_result(text, dest);
+                }
+                "GetIntegerAt" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
+                    let _ = writeln!(text, "  %jsonst{dest} = alloca i32");
+                    let _ = writeln!(
+                        text,
+                        "  %jsonval{dest} = call i64 @bn_rt_json_get_integer_at(i64 %jsonh{dest}, i64 {index}, ptr %jsonst{dest})"
+                    );
+                    let _ = writeln!(text, "  %jsonrc{dest} = load i32, ptr %jsonst{dest}");
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    emit_bnjson_scalar_result(text, dest, "%jsonval{dest}");
+                }
+                "GetFloatAt" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
+                    let _ = writeln!(text, "  %jsonst{dest} = alloca i32");
+                    let _ = writeln!(
+                        text,
+                        "  %jsonf{dest} = call double @bn_rt_json_get_float_at(i64 %jsonh{dest}, i64 {index}, ptr %jsonst{dest})"
+                    );
+                    let _ = writeln!(text, "  %jsonrc{dest} = load i32, ptr %jsonst{dest}");
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    let _ = writeln!(
+                        text,
+                        "  %jsonval{dest} = bitcast double %jsonf{dest} to i64"
+                    );
+                    emit_bnjson_scalar_result(text, dest, "%jsonval{dest}");
+                }
+                "GetBooleanAt" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
+                    let _ = writeln!(text, "  %jsonst{dest} = alloca i32");
+                    let _ = writeln!(
+                        text,
+                        "  %jsonbool{dest} = call i32 @bn_rt_json_get_boolean_at(i64 %jsonh{dest}, i64 {index}, ptr %jsonst{dest})"
+                    );
+                    let _ = writeln!(text, "  %jsonrc{dest} = load i32, ptr %jsonst{dest}");
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    let _ = writeln!(text, "  %jsonwide{dest} = zext i32 %jsonbool{dest} to i64");
+                    emit_bnjson_scalar_result(text, dest, "%jsonwide{dest}");
+                }
+                "GetJsonAt" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
+                    let _ = writeln!(text, "  %jsonout{dest} = alloca i64");
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_get_json_at(i64 %jsonh{dest}, i64 {index}, ptr %jsonout{dest})"
+                    );
+                    let _ = writeln!(text, "  %jsonhandle{dest} = load i64, ptr %jsonout{dest}");
+                    emit_handle_result(
+                        text,
+                        *destination,
+                        format!("%jsonrc{dest}"),
+                        format!("%jsonhandle{dest}"),
+                    );
+                }
+                "SetStringAt" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_string_at(i64 %jsonh{dest}, i64 {index}, ptr %v{})",
+                        arguments[2].0
+                    );
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    emit_bnjson_scalar_result(text, dest, "0");
+                }
+                "SetIntegerAt" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
+                    let number =
+                        emit_bnjson_i64_arg_named(text, analysis, dest, "val", arguments[2]);
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_integer_at(i64 %jsonh{dest}, i64 {index}, i64 {number})"
+                    );
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    emit_bnjson_scalar_result(text, dest, "0");
+                }
+                "SetFloatAt" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
+                    let number =
+                        emit_bnjson_f64_arg_named(text, analysis, dest, "val", arguments[2]);
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_float_at(i64 %jsonh{dest}, i64 {index}, double {number})"
+                    );
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    emit_bnjson_scalar_result(text, dest, "0");
+                }
+                "SetBooleanAt" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
+                    let _ = writeln!(
+                        text,
+                        "  %jsonflag{dest} = zext i1 %v{} to i32",
+                        arguments[2].0
+                    );
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_boolean_at(i64 %jsonh{dest}, i64 {index}, i32 %jsonflag{dest})"
+                    );
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    emit_bnjson_scalar_result(text, dest, "0");
+                }
+                "SetNullAt" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_null_at(i64 %jsonh{dest}, i64 {index})"
+                    );
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    emit_bnjson_scalar_result(text, dest, "0");
+                }
+                "SetJsonAt" => {
+                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
+                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
+                    emit_bnjson_handle_named(text, analysis, dest, "child", arguments[2]);
+                    let _ = writeln!(
+                        text,
+                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_json_at(i64 %jsonh{dest}, i64 {index}, i64 %jsonhchild{dest})"
+                    );
+                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+                    emit_bnjson_scalar_result(text, dest, "0");
+                }
+                other => panic!("unhandled BNJson member in emission: {other}"),
+            }
+        }
         name if bncrypto_method(module, name).is_some() => {
             let dest = destination.0;
             let argument = arguments[0].0;
@@ -728,5 +1145,149 @@ fn emit_bncrypto_handle(
         );
     } else {
         let _ = writeln!(text, "  {slot} = ptrtoint ptr %v{source} to i64");
+    }
+}
+
+/// Widen an integer operand to `i64` for a `bn_rt_json_*` call.
+fn emit_bnjson_i64_arg(
+    text: &mut String,
+    analysis: &LoweringAnalysis<'_>,
+    dest: u32,
+    operand: ValueId,
+) -> String {
+    emit_bnjson_i64_arg_named(text, analysis, dest, "", operand)
+}
+
+fn emit_bnjson_i64_arg_named(
+    text: &mut String,
+    analysis: &LoweringAnalysis<'_>,
+    dest: u32,
+    tag: &str,
+    operand: ValueId,
+) -> String {
+    let ty = analysis
+        .values
+        .get(&operand)
+        .and_then(llvm_type)
+        .unwrap_or("i64");
+    if ty == "i64" {
+        format!("%v{}", operand.0)
+    } else {
+        let slot = format!("%jsoni64{tag}{dest}");
+        let _ = writeln!(text, "  {slot} = sext {ty} %v{} to i64", operand.0);
+        slot
+    }
+}
+
+/// Coerce a float operand to `double` for a `bn_rt_json_*` call.
+fn emit_bnjson_f64_arg(
+    text: &mut String,
+    analysis: &LoweringAnalysis<'_>,
+    dest: u32,
+    operand: ValueId,
+) -> String {
+    emit_bnjson_f64_arg_named(text, analysis, dest, "", operand)
+}
+
+fn emit_bnjson_f64_arg_named(
+    text: &mut String,
+    analysis: &LoweringAnalysis<'_>,
+    dest: u32,
+    tag: &str,
+    operand: ValueId,
+) -> String {
+    let ty = analysis
+        .values
+        .get(&operand)
+        .and_then(llvm_type)
+        .unwrap_or("double");
+    if ty == "double" {
+        format!("%v{}", operand.0)
+    } else if ty == "float" {
+        let slot = format!("%jsonf64{tag}{dest}");
+        let _ = writeln!(text, "  {slot} = fpext float %v{} to double", operand.0);
+        slot
+    } else {
+        // Integer literal coerced at the call site.
+        let slot = format!("%jsonf64{tag}{dest}");
+        let _ = writeln!(text, "  {slot} = sitofp {ty} %v{} to double", operand.0);
+        slot
+    }
+}
+
+/// Like [`emit_bnjson_handle`], but names the slot `%jsonh{tag}{dest}` so a
+/// call can materialise two handles (parent and child) without colliding.
+fn emit_bnjson_handle_named(
+    text: &mut String,
+    analysis: &LoweringAnalysis<'_>,
+    dest: u32,
+    tag: &str,
+    operand: ValueId,
+) {
+    let source = operand.0;
+    if matches!(analysis.values.get(&operand), Some(Type::Alternative(_))) {
+        let _ = writeln!(
+            text,
+            "  %jsonh{tag}{dest} = extractvalue {{ i1, ptr, i64 }} %v{source}, 2"
+        );
+    } else {
+        let _ = writeln!(text, "  %jsonh{tag}{dest} = ptrtoint ptr %v{source} to i64");
+    }
+}
+
+/// Packs a scalar payload and `%jsonerr{dest}` into the `{ i1, ptr, i64 }`
+/// aggregate a `<scalar> OR Error` result uses. The payload sits in slot 2; the
+/// caller branches on the flag, never on the payload.
+fn emit_bnjson_scalar_result(text: &mut String, dest: u32, payload: &str) {
+    let payload = payload.replace("{dest}", &dest.to_string());
+    let _ = writeln!(
+        text,
+        "  %jsonagg{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %jsonerr{dest}, 0"
+    );
+    let _ = writeln!(
+        text,
+        "  %jsonaggp{dest} = insertvalue {{ i1, ptr, i64 }} %jsonagg{dest}, ptr null, 1"
+    );
+    let _ = writeln!(
+        text,
+        "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %jsonaggp{dest}, i64 {payload}, 2"
+    );
+}
+
+/// Packs `%jsontext{dest}` and `%jsonrc{dest}` into the `{ i1, ptr, i64 }`
+/// aggregate a `STRING OR Error` result uses. The caller branches on the flag,
+/// never on the string.
+fn emit_bnjson_string_result(text: &mut String, dest: u32) {
+    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
+    let _ = writeln!(
+        text,
+        "  %jsonagg{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %jsonerr{dest}, 0"
+    );
+    let _ = writeln!(
+        text,
+        "  %jsonaggp{dest} = insertvalue {{ i1, ptr, i64 }} %jsonagg{dest}, ptr %jsontext{dest}, 1"
+    );
+    let _ = writeln!(
+        text,
+        "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %jsonaggp{dest}, i64 0, 2"
+    );
+}
+
+/// Materialises `%jsonh{dest}`, the `bn_rt` table index behind a `BNJson.Json`
+/// operand. A narrowed value arrives as the `{ i1, ptr, i64 }` aggregate.
+fn emit_bnjson_handle(
+    text: &mut String,
+    analysis: &LoweringAnalysis<'_>,
+    dest: u32,
+    operand: ValueId,
+) {
+    let source = operand.0;
+    if matches!(analysis.values.get(&operand), Some(Type::Alternative(_))) {
+        let _ = writeln!(
+            text,
+            "  %jsonh{dest} = extractvalue {{ i1, ptr, i64 }} %v{source}, 2"
+        );
+    } else {
+        let _ = writeln!(text, "  %jsonh{dest} = ptrtoint ptr %v{source} to i64");
     }
 }

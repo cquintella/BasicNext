@@ -20,6 +20,12 @@
     target\ directory for a normal install. The prefix's bin directory is
     added to the current user's PATH.
 
+    After a successful install the script also writes, under the invoking
+    user's profile (override with BN_STATE_DIR):
+
+        %USERPROFILE%\.basicnext\install.log      append-only log of operations
+        %USERPROFILE%\.basicnext\uninstall.ps1    removes the files this run installed
+
 .PARAMETER Prefix
     Install root. Default: $env:LOCALAPPDATA\Programs\BasicNext (no admin needed).
 
@@ -38,6 +44,27 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
+$BnStateDir = if ($env:BN_STATE_DIR) { $env:BN_STATE_DIR } else { Join-Path $env:USERPROFILE '.basicnext' }
+$InstallLog = Join-Path $BnStateDir 'install.log'
+$UninstallScript = Join-Path $BnStateDir 'uninstall.ps1'
+$script:Manifest = New-Object System.Collections.Generic.List[string]
+New-Item -ItemType Directory -Force -Path $BnStateDir | Out-Null
+@(
+    "===== Basic Next install $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz') ====="
+    "user=$env:USERNAME host=$env:COMPUTERNAME"
+    "Prefix=$Prefix BnStateDir=$BnStateDir NoBuild=$NoBuild"
+) | Add-Content -Path $InstallLog
+
+function Write-Log([string]$Message) {
+    Write-Host $Message
+    Add-Content -Path $InstallLog -Value $Message
+}
+
+function Record-Installed([string]$Path) {
+    [void]$script:Manifest.Add($Path)
+    Add-Content -Path $InstallLog -Value "    installed: $Path"
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Set-Location $repoRoot
 
@@ -45,10 +72,10 @@ if (-not $NoBuild) {
     if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
         throw "cargo (Rust 1.97+) is required to build; pass -NoBuild to install prebuilt binaries."
     }
-    Write-Host "==> Building release binaries (cargo build --release --workspace --bins)"
+    Write-Log "==> Building release binaries (cargo build --release --workspace --bins)"
     cargo build --release --workspace --bins
     if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
-    Write-Host "==> Building native runtime (cargo build -p bn_rt --release)"
+    Write-Log "==> Building native runtime (cargo build -p bn_rt --release)"
     cargo build -p bn_rt --release
     if ($LASTEXITCODE -ne 0) { throw "cargo build -p bn_rt failed" }
 }
@@ -61,7 +88,7 @@ foreach ($bin in @($bniBin, $bncBin)) {
 }
 if (-not (Test-Path $bnRtLib)) {
     if (Get-Command cargo -ErrorAction SilentlyContinue) {
-        Write-Host "==> bn_rt.lib missing; building cargo -p bn_rt --release"
+        Write-Log "==> bn_rt.lib missing; building cargo -p bn_rt --release"
         cargo build -p bn_rt --release
         if ($LASTEXITCODE -ne 0) { throw "cargo build -p bn_rt failed" }
     }
@@ -75,31 +102,49 @@ $libDir  = Join-Path $Prefix 'lib'
 $modDir  = Join-Path $Prefix 'share\bn\modules\bn'
 $diagDir = Join-Path $Prefix 'share\bn\diagnostics'
 
-Write-Host "==> Installing to $Prefix"
+Write-Log "==> Installing to $Prefix"
 foreach ($dir in @($binDir, $libDir, $modDir, $diagDir)) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
 }
-Copy-Item $bniBin (Join-Path $binDir 'bni.exe') -Force
-Copy-Item $bncBin (Join-Path $binDir 'bnc.exe') -Force
-Copy-Item $bnRtLib (Join-Path $libDir 'bn_rt.lib') -Force
-Copy-Item (Join-Path $repoRoot 'modules\bn\*.bn') $modDir -Force
-Copy-Item (Join-Path $repoRoot 'share\bn\diagnostics\*') $diagDir -Recurse -Force
+Add-Content -Path $InstallLog -Value "    ensured dirs: $binDir $libDir $modDir $diagDir"
 
-Write-Host "==> Installed:"
-Write-Host "    $binDir\bni.exe, $binDir\bnc.exe"
-Write-Host "    $libDir\bn_rt.lib"
-Write-Host "    $modDir\, $diagDir\"
+$bniDest = Join-Path $binDir 'bni.exe'
+$bncDest = Join-Path $binDir 'bnc.exe'
+$rtDest = Join-Path $libDir 'bn_rt.lib'
+Copy-Item $bniBin $bniDest -Force; Record-Installed $bniDest
+Copy-Item $bncBin $bncDest -Force; Record-Installed $bncDest
+Copy-Item $bnRtLib $rtDest -Force; Record-Installed $rtDest
+
+Get-ChildItem (Join-Path $repoRoot 'modules\bn\*.bn') | ForEach-Object {
+    $dest = Join-Path $modDir $_.Name
+    Copy-Item $_.FullName $dest -Force
+    Record-Installed $dest
+}
+
+$diagSrc = Join-Path $repoRoot 'share\bn\diagnostics'
+Get-ChildItem $diagSrc -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+    $rel = $_.FullName.Substring($diagSrc.Length).TrimStart('\')
+    $dest = Join-Path $diagDir $rel
+    New-Item -ItemType Directory -Force -Path (Split-Path $dest -Parent) | Out-Null
+    Copy-Item $_.FullName $dest -Force
+    Record-Installed $dest
+}
+
+Write-Log "==> Installed:"
+Write-Log "    $bniDest, $bncDest"
+Write-Log "    $rtDest"
+Write-Log "    $modDir\, $diagDir\"
 
 # Add the bin directory to the user's PATH (idempotent).
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 if (($userPath -split ';') -notcontains $binDir) {
     $newPath = if ([string]::IsNullOrEmpty($userPath)) { $binDir } else { "$userPath;$binDir" }
     [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
-    Write-Host "==> Added $binDir to your user PATH (restart the shell to pick it up)."
+    Write-Log "==> Added $binDir to your user PATH (restart the shell to pick it up)."
 }
 
 # Verify against the installed copy, from a clean working directory.
-Write-Host "==> Verifying"
+Write-Log "==> Verifying"
 & (Join-Path $binDir 'bni.exe') --version
 & (Join-Path $binDir 'bnc.exe') --version
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("bn-check-" + [System.Guid]::NewGuid().ToString('N'))
@@ -110,12 +155,46 @@ Push-Location $tmp
 try {
     $out = (& (Join-Path $binDir 'bni.exe') run check.bn) 2>&1
     if ("$out".Trim() -eq '7.0') {
-        Write-Host "    stdlib module resolution OK (BNMath.ABS(-7.0) = 7.0)"
+        Write-Log "    stdlib module resolution OK (BNMath.ABS(-7.0) = 7.0)"
     } else {
         Write-Warning "stdlib check did not return the expected value; output was: $out"
+        Add-Content -Path $InstallLog -Value "    warning: stdlib check output: $out"
     }
 } finally {
     Pop-Location
     Remove-Item -Recurse -Force $tmp
 }
-Write-Host "==> Done."
+
+# --- uninstall script for this install (user profile) -------------------------
+$nl = [Environment]::NewLine
+$lines = New-Object System.Collections.Generic.List[string]
+[void]$lines.Add("# Generated by Basic Next install.ps1 on $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz')")
+[void]$lines.Add("# Removes only the files recorded for Prefix=$Prefix")
+[void]$lines.Add("# Matching install log: $InstallLog")
+[void]$lines.Add('$ErrorActionPreference = ''Stop''')
+[void]$lines.Add("Write-Host '==> Uninstalling Basic Next files under $Prefix'")
+for ($i = $script:Manifest.Count - 1; $i -ge 0; $i--) {
+    $p = $script:Manifest[$i]
+    $q = $p.Replace("'", "''")
+    [void]$lines.Add("if (Test-Path -LiteralPath '$q') { Remove-Item -LiteralPath '$q' -Force; Write-Host \"    removed $q\" }")
+}
+foreach ($d in @(
+        $modDir,
+        (Join-Path $Prefix 'share\bn\modules'),
+        $diagDir,
+        (Join-Path $Prefix 'share\bn')
+    )) {
+    $qd = $d.Replace("'", "''")
+    [void]$lines.Add("if ((Test-Path -LiteralPath '$qd') -and -not (Get-ChildItem -LiteralPath '$qd' -Force -ErrorAction SilentlyContinue | Select-Object -First 1)) {")
+    [void]$lines.Add("  Remove-Item -LiteralPath '$qd' -Force -ErrorAction SilentlyContinue")
+    [void]$lines.Add("  Write-Host \"    removed empty $qd\"")
+    [void]$lines.Add('}')
+}
+[void]$lines.Add("Write-Host '==> Uninstall finished.'")
+[void]$lines.Add("Write-Host 'note: install.log under BN_STATE_DIR was kept; delete it manually if you want.'")
+Set-Content -Path $UninstallScript -Value ($lines -join $nl) -Encoding UTF8
+
+Write-Log "==> Wrote uninstall script: $UninstallScript"
+Write-Log "==> Install log: $InstallLog"
+Write-Log "==> Done."
+Add-Content -Path $InstallLog -Value ("===== end install $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz') =====")

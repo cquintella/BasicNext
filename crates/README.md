@@ -19,6 +19,6 @@ The architecture enforces a single pipeline:
 
 ## Architectural Rules
 
-- **Specification Above Implementations**: Crates adhere to `docs/architecture/` contracts and active language specifications (`docs/language/0.4/`).
+- **Specification Above Implementations**: Crates adhere to `docs/architecture/` contracts and active language specifications (`language/0.4/`).
 - **Single Validated IR**: Both the interpreter (`bn_runtime`) and compiler (`bn_llvm`) consume the exact same validated IR produced by `bn_ir::validate`.
 - **No Cyclic Dependencies**: Dependencies between crates follow a strict acyclic directed graph governed by `scripts/check-forbidden-deps.sh`.

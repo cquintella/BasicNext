@@ -1570,3 +1570,161 @@ fn compiled_bncrypto_post_quantum_matches_the_interpreter() {
         "1248\nkem-agree\n1984\n3309\nTRUE\nFALSE\n"
     );
 }
+
+/// `BNJson` survives compilation: the DOM slice links against the `bn_rt`
+/// document table and the native binary prints what the interpreter prints.
+/// Before bucket 0.6.1c the backend had no `BNJson` support at all.
+#[test]
+fn compiled_bnjson_dom_slice_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!("bn-json-slice-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("json slice directory");
+    let artifact = directory.join("slice");
+    let built = bnc()
+        .args(["tests/modules/bnjson-dom-slice/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the BNJson DOM slice");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled DOM slice");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "pardal\nmissing-key-rejected\n{\"name\":\"pardal\"}\n"
+    );
+}
+
+/// The scalar and inspection surface compiles and matches the interpreter,
+/// including the fail-closed reads.
+#[test]
+fn compiled_bnjson_dom_scalars_match_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!("bn-json-scalars-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("json scalars directory");
+    let artifact = directory.join("scalars");
+    let built = bnc()
+        .args(["tests/modules/bnjson-dom-scalars/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the BNJson scalar fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled scalar fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "object\nTRUE\nFALSE\n4\n3\nTRUE\n3.5\nwrong-kind-rejected\nfloat-wrong-kind-rejected\nTRUE\n"
+    );
+}
+
+/// Array Append* / Get*At / Set*At compile and match the interpreter.
+#[test]
+fn compiled_bnjson_dom_array_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!("bn-json-array-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("json array directory");
+    let artifact = directory.join("array");
+    let built = bnc()
+        .args(["tests/modules/bnjson-dom-array/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the BNJson array fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled array fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "array\n5\nalpha\n7\nTRUE\n1.25\n9\noob-rejected\noob-set-rejected\narray-wrong-kind-rejected\n"
+    );
+}
+
+/// Nested `SetJson` / `GetJson` / Clone compile and match the interpreter.
+#[test]
+fn compiled_bnjson_dom_nested_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!("bn-json-nested-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("json nested directory");
+    let artifact = directory.join("nested");
+    let built = bnc()
+        .args(["tests/modules/bnjson-dom-nested/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the BNJson nested fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled nested fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "pardal\nparent-intact\npardal\nmissing-nested-rejected\nv\n"
+    );
+}
+
+/// Companion Encode/Decode compiles and matches the interpreter (A8 / A4).
+#[test]
+fn compiled_bnjson_companion_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!("bn-json-companion-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("json companion directory");
+    let artifact = directory.join("companion");
+    let built = bnc()
+        .args(["tests/modules/bnjson-companion/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the BNJson companion fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled companion fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "{\"name\":\"eagle\",\"wings\":2}\neagle\n2\ndecode-error TRUE\n"
+    );
+}

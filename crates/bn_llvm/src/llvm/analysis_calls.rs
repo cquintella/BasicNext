@@ -50,6 +50,112 @@ pub(crate) fn call_instruction_supported(
             arguments,
             values,
         ),
+        Some(name) if bnjson_member(module, name).is_some() => {
+            let doc = |argument: &ValueId| {
+                values
+                    .get(argument)
+                    .is_some_and(|ty| carries_bnjson(module, ty))
+            };
+            let string = |argument: &ValueId| values.get(argument) == Some(&Type::String);
+            let integer = |argument: &ValueId| {
+                values
+                    .get(argument)
+                    .and_then(llvm_type)
+                    .is_some_and(integer_llvm)
+            };
+            let float = |argument: &ValueId| {
+                matches!(
+                    values.get(argument),
+                    Some(Type::Float(_) | Type::FloatLiteral)
+                )
+            };
+            let boolean = |argument: &ValueId| values.get(argument) == Some(&Type::Boolean);
+            match bnjson_member(module, name).unwrap_or(name) {
+                "Object" | "Array" => arguments.is_empty(),
+                "Kind" | "Length" | "Clone" | "AppendNull" | "Stringify" => {
+                    arguments.len() == 1 && doc(&arguments[0])
+                }
+                "Parse" => arguments.len() == 1 && string(&arguments[0]),
+                "Has" | "GetString" | "GetInteger" | "GetFloat" | "GetBoolean" | "GetJson"
+                | "SetNull" => arguments.len() == 2 && doc(&arguments[0]) && string(&arguments[1]),
+                "SetString" => {
+                    arguments.len() == 3
+                        && doc(&arguments[0])
+                        && string(&arguments[1])
+                        && string(&arguments[2])
+                }
+                "SetInteger" => {
+                    arguments.len() == 3
+                        && doc(&arguments[0])
+                        && string(&arguments[1])
+                        && integer(&arguments[2])
+                }
+                "SetFloat" => {
+                    arguments.len() == 3
+                        && doc(&arguments[0])
+                        && string(&arguments[1])
+                        && float(&arguments[2])
+                }
+                "SetBoolean" => {
+                    arguments.len() == 3
+                        && doc(&arguments[0])
+                        && string(&arguments[1])
+                        && boolean(&arguments[2])
+                }
+                "SetJson" => {
+                    arguments.len() == 3
+                        && doc(&arguments[0])
+                        && string(&arguments[1])
+                        && doc(&arguments[2])
+                }
+                "AppendString" => {
+                    arguments.len() == 2 && doc(&arguments[0]) && string(&arguments[1])
+                }
+                "AppendInteger" => {
+                    arguments.len() == 2 && doc(&arguments[0]) && integer(&arguments[1])
+                }
+                "AppendFloat" => arguments.len() == 2 && doc(&arguments[0]) && float(&arguments[1]),
+                "AppendBoolean" => {
+                    arguments.len() == 2 && doc(&arguments[0]) && boolean(&arguments[1])
+                }
+                "AppendJson" => arguments.len() == 2 && doc(&arguments[0]) && doc(&arguments[1]),
+                "GetStringAt" | "GetIntegerAt" | "GetFloatAt" | "GetBooleanAt" | "GetJsonAt"
+                | "SetNullAt" => {
+                    arguments.len() == 2 && doc(&arguments[0]) && integer(&arguments[1])
+                }
+                "SetStringAt" => {
+                    arguments.len() == 3
+                        && doc(&arguments[0])
+                        && integer(&arguments[1])
+                        && string(&arguments[2])
+                }
+                "SetIntegerAt" => {
+                    arguments.len() == 3
+                        && doc(&arguments[0])
+                        && integer(&arguments[1])
+                        && integer(&arguments[2])
+                }
+                "SetFloatAt" => {
+                    arguments.len() == 3
+                        && doc(&arguments[0])
+                        && integer(&arguments[1])
+                        && float(&arguments[2])
+                }
+                "SetBooleanAt" => {
+                    arguments.len() == 3
+                        && doc(&arguments[0])
+                        && integer(&arguments[1])
+                        && boolean(&arguments[2])
+                }
+                "SetJsonAt" => {
+                    arguments.len() == 3
+                        && doc(&arguments[0])
+                        && integer(&arguments[1])
+                        && doc(&arguments[2])
+                }
+                _ => false,
+            }
+        }
         Some(name) if bncrypto_method(module, name).is_some() => {
             match bncrypto_method(module, name).unwrap_or(name) {
                 "SealAesGcm" | "OpenAesGcm" | "SealChaCha20" | "OpenChaCha20" => {

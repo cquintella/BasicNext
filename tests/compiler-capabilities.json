@@ -1671,6 +1671,115 @@
       "observation": "unordered-prefix-lines",
       "provider": "bn_rt",
       "evidence": "fixture-exact"
+    },
+    {
+      "path": "tests/grammar/valid/bnjson-parse-stringify.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "stdout": "{\"ok\":true}\n",
+      "id": "cap.bnjson-parse-stringify",
+      "target": "llvm-native",
+      "op": "bnjson.parse-stringify-lifecycle",
+      "ir_instructions": [
+        "Binary",
+        "Call",
+        "Constant",
+        "EnsureClass",
+        "Load",
+        "Print",
+        "Release",
+        "Store"
+      ],
+      "type_constraints": [
+        "BNJson.Json"
+      ],
+      "conditions": [
+        "BNJson import",
+        "Parse then Stringify",
+        "shared bn_rt document table",
+        "llvm-supported after 0.6.1c"
+      ],
+      "tests": [
+        "tests/grammar/valid/bnjson-parse-stringify.bn"
+      ],
+      "reject_diag": null,
+      "provider": "bn_rt",
+      "evidence": "fixture-exact"
+    },
+    {
+      "path": "tests/grammar/valid/bnjson-dom-object.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "stdout": "pardal\n{\"name\":\"pardal\"}\n",
+      "id": "cap.bnjson-dom-lifecycle",
+      "target": "llvm-native",
+      "op": "bnjson.dom-object-lifecycle",
+      "ir_instructions": [
+        "Binary",
+        "Call",
+        "Constant",
+        "EnsureClass",
+        "Load",
+        "Print",
+        "Release",
+        "Store"
+      ],
+      "type_constraints": [
+        "BNJson.Json"
+      ],
+      "conditions": [
+        "BNJson import",
+        "Object SetString GetString Stringify",
+        "shared bn_rt document table",
+        "llvm-supported after 0.6.1c"
+      ],
+      "tests": [
+        "tests/grammar/valid/bnjson-dom-object.bn",
+        "tests/modules/bnjson-dom-slice/main.bn"
+      ],
+      "reject_diag": null,
+      "provider": "bn_rt",
+      "evidence": "fixture-exact"
+    },
+    {
+      "path": "tests/modules/bnjson-companion/main.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "stdout": "{\"name\":\"eagle\",\"wings\":2}\neagle\n2\ndecode-error TRUE\n",
+      "id": "cap.bnjson-companion",
+      "target": "llvm-native",
+      "op": "bnjson.companion-encode-decode",
+      "ir_instructions": [
+        "Allocate",
+        "Binary",
+        "Call",
+        "Constant",
+        "EnsureClass",
+        "Load",
+        "Member",
+        "Print",
+        "Release",
+        "SetField",
+        "SetMember",
+        "Store"
+      ],
+      "type_constraints": [
+        "BNJson.Json",
+        "Bird.Bird"
+      ],
+      "conditions": [
+        "companion BirdJson Encode/Decode",
+        "domain Bird has no IMPORT BNJson",
+        "shared bn_rt document table",
+        "llvm-supported after 0.6.1c"
+      ],
+      "tests": [
+        "tests/modules/bnjson-companion/main.bn",
+        "examples/serialization/main.bn"
+      ],
+      "reject_diag": null,
+      "provider": "bn_rt",
+      "evidence": "fixture-exact"
     }
   ]
 }

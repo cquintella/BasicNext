@@ -222,7 +222,7 @@ system executable. `Run(program, args)` resolves an explicit path or `PATH`,
 starts the child without a shell, closes child stdin, and waits while the BN
 process continues running. It does not interpret BN source and does not replace
 the BN process. The result and limits are defined in
-[`host-exec.md`](host-exec.md) and the [0.5 language specification](../language/0.5/0.5.md#hostexec-051);
+[`host-exec.md`](host-exec.md) and the [0.5 language specification](../../language/0.5/0.5.md#hostexec-051);
 the interpreter and the native (LLVM) backend implement it with the same
 observables.
 
@@ -234,7 +234,7 @@ use `NEW TYPE[count]`. Shared memory, memory-mapped I/O, device buffers, and
 FFI memory require a later capability contract.
 
 Networking in later releases is the capability **`HOST.Net`** (see
-`docs/language/0.3/host-net.md` and language 0.4). The name **`HOST.Network`
+`language/0.3/host-net.md` and language 0.4). The name **`HOST.Network`
 must not be used** — it is not a capability. Time zones, concurrency, GPU
 devices, DOM access, and other optional capabilities remain outside 0.2 in
 this document's historical scope.

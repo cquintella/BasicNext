@@ -11,7 +11,7 @@
 - [c-ffi.md](c-ffi.md) — another HOST capability precedent (`HOST.c`); UI is not FFI
 - Architecture host traits / execution policy — deny ≠ unimplemented; a missing UI host fails closed as unsupported capability, not as “language invalid”
 
-Nothing here is normative until accepted into `docs/language/`, `docs/library/host.md` (or successor), and `modules/bn/` as appropriate.
+Nothing here is normative until accepted into `language/`, `docs/library/host.md` (or successor), and `modules/bn/` as appropriate.
 
 ---
 

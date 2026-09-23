@@ -30,6 +30,8 @@ mod dataframe_abi;
 mod dispatch_abi;
 mod exec;
 mod file_abi;
+pub mod json;
+pub mod json_abi;
 mod log;
 mod log_abi;
 mod math;

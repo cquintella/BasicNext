@@ -78,7 +78,7 @@ RQ2: Como a carga cognitiva de BasicNext compara com Python?
 - [ ] Propor **critérios operacionais** de alinhamento
   - Ex: "commit deve estar dentro scope de bucket X"
   - Ex: "código não deve quebrar gates GC-*, W1–W5"
-  - Ex: "aderência a `docs/language/0.5/` (não ad-hoc)"
+  - Ex: "aderência a `language/0.5/` (não ad-hoc)"
 
 ### Fase 2: Protocolo (Mês 2–3)
 - [ ] Desenhar **checklist de audit**

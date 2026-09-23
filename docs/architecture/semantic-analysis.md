@@ -1,7 +1,7 @@
 # Semantic analysis contract (Frontend 2.5) — to-be
 
 > Canonical: `docs/architecture/semantic-analysis.md`  
-> Status: **architecture requirements locked 2026-09-05** for *what* static analysis must cover. Detailed rules remain in [`../language/0.4/0.4.md`](../language/0.4/0.4.md); this file is the toolchain contract checklist for process **2.5 Semantic analysis**.
+> Status: **architecture requirements locked 2026-09-05** for *what* static analysis must cover. Detailed rules remain in [`../../language/0.4/0.4.md`](../../language/0.4/0.4.md); this file is the toolchain contract checklist for process **2.5 Semantic analysis**.
 
 ## Purpose
 
@@ -90,7 +90,7 @@ On failure, Control / check must surface diagnostics; Backend must not run as if
 
 | Item | DFD | Stores | Language |
 | --- | --- | --- | --- |
-| §1–§5 | [dfd-2/2.0 Analyze Sources.md](dfd/dfd-2/2.0 Analyze Sources.md) process **2.5** | **D_sym**, **D3**; reads **D_ast**, **D_graph** | [`0.4.md`](../language/0.4/0.4.md) static rules |
+| §1–§5 | [dfd-2/2.0 Analyze Sources.md](dfd/dfd-2/2.0 Analyze Sources.md) process **2.5** | **D_sym**, **D3**; reads **D_ast**, **D_graph** | [`0.4.md`](../../language/0.4/0.4.md) static rules |
 | Module load paths | 2.1 / 2.4 | **D1**, **D_graph** | + [module-path.md](module-path.md) |
 
 ## See also
@@ -98,4 +98,4 @@ On failure, Control / check must surface diagnostics; Backend must not run as if
 - [dfd/dfd-2/2.0 Analyze Sources.md](dfd/dfd-2/2.0 Analyze Sources.md)
 - [ir-contract.md](ir-contract.md)
 - [module-path.md](module-path.md)
-- [`../language/0.4/0.4.ebnf`](../language/0.4/0.4.ebnf) (syntax only)
+- [`../../language/0.4/0.4.ebnf`](../../language/0.4/0.4.ebnf) (syntax only)

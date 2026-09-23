@@ -1098,6 +1098,20 @@ fn validate_return_type(
     }
 }
 
+fn alternative_sets_compatible(actual: &[Type], expected: &[Type]) -> bool {
+    actual.len() == expected.len()
+        && actual.iter().all(|actual_option| {
+            expected
+                .iter()
+                .any(|expected_option| types_compatible(actual_option, expected_option))
+        })
+        && expected.iter().all(|expected_option| {
+            actual
+                .iter()
+                .any(|actual_option| types_compatible(actual_option, expected_option))
+        })
+}
+
 fn types_compatible(actual: &Type, expected: &Type) -> bool {
     actual == expected
         || matches!(
@@ -1105,6 +1119,25 @@ fn types_compatible(actual: &Type, expected: &Type) -> bool {
             (Type::ImportedNamed { name: actual, .. }, Type::Named(expected))
                 | (Type::Named(expected), Type::ImportedNamed { name: actual, .. })
                 if expected.rsplit('.').next() == Some(actual.as_str())
+        )
+        // The same exported class imported through two module graphs carries
+        // distinct ModuleIds. Compatibility is by the class name: a companion
+        // returning `Json.Json OR Error` must type-check against the caller's
+        // `Json.Json OR Error` even when each file imported BNJson separately.
+        || matches!(
+            (actual, expected),
+            (
+                Type::ImportedNamed { name: actual_name, .. },
+                Type::ImportedNamed {
+                    name: expected_name,
+                    ..
+                }
+            ) if actual_name == expected_name
+        )
+        || matches!(
+            (actual, expected),
+            (Type::Alternative(actual_options), Type::Alternative(expected_options))
+                if alternative_sets_compatible(actual_options, expected_options)
         )
         || matches!(
             (actual, expected),

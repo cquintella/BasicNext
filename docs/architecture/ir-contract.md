@@ -78,7 +78,7 @@ name does not satisfy GC-DEP.
 | Lower / validate (DFD-2 3.0) | [dfd/dfd-2/3.0 Lower and Validate IR.md](dfd/dfd-2/3.0 Lower and Validate IR.md) |
 | Interpret (DFD-2 4.0) | [dfd/dfd-2/4.0 Interpret IR.md](dfd/dfd-2/4.0 Interpret IR.md) |
 | Compile (DFD-2 5.0) | [dfd/dfd-2/5.0 Compile IR.md](dfd/dfd-2/5.0 Compile IR.md) |
-| Language static semantics / runtime (0.4) | [../language/0.4/0.4.md](../language/0.4/0.4.md) |
+| Language static semantics / runtime (0.4) | [../../language/0.4/0.4.md](../../language/0.4/0.4.md) |
 | **Semantic analysis contract (2.5)** | [semantic-analysis.md](semantic-analysis.md) — required *before* advertising validated IR |
 | Data dictionary (D2, L/I/G flows) | [dfd/data-dictionary.md](dfd/data-dictionary.md) |
 | Split milestones (**SM5** / IR contract minimum — see [milestones-map.md](milestones-map.md)) | [`../../audit/workpapers/09-synthesis/fe-be-split-milestones.md`](../../audit/workpapers/09-synthesis/fe-be-split-milestones.md) |

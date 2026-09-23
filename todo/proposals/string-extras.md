@@ -7,7 +7,7 @@ Docs: [`docs/library/bnstring.md`](../../docs/library/bnstring.md). Tour: `examp
 **Bucket link:** Track B helpers → [`ongoing/bucket-0.4.7.md`](../../ongoing/bucket-0.4.7.md) §7.5 / **G7.5-string** (G7.5 closed deferred; this proposal tracks the post-defer preferred API).  
 **Interpolation** (`$"..."`) is **language DNA** and is **not** in the 0.4.7 critical path (Appendix E / Defer-until post-0.4.7 language bucket).
 
-Nothing here is normative until accepted into `docs/library/` (and, for interpolation, `docs/language/`).
+Nothing here is normative until accepted into `docs/library/` (and, for interpolation, `language/`).
 
 ---
 

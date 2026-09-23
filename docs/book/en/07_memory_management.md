@@ -104,7 +104,7 @@ Never touch a binding after releasing it. The validator and runtime diagnose
 both `bni run` and `bnc` artifacts.
 
 The normative ownership and ABI contract is in
-[`0.6.md`](../../language/0.6/0.6.md#memory-model-arc). The implementation evidence
+[`0.6.md`](../../../language/0.6/0.6.md#memory-model-arc). The implementation evidence
 and conformance fixtures are tracked with the 0.5.0 release bucket.
 
 ---

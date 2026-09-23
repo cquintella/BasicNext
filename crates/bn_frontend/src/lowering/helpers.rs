@@ -90,7 +90,13 @@ pub(crate) fn named_or_void(reference: &TypeReference) -> Type {
     let alternatives = reference
         .alternatives
         .iter()
-        .map(|atom| named_type(&atom.name))
+        .map(|atom| {
+            if atom.parts.iter().any(|part| part == "." || part == "Dot") {
+                named_type(&type_test_name(atom))
+            } else {
+                named_type(&atom.name)
+            }
+        })
         .collect::<Vec<_>>();
     match alternatives.as_slice() {
         [] => Type::Named("VOID".into()),

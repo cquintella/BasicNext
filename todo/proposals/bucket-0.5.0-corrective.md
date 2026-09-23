@@ -8,13 +8,13 @@
 
 **Related:**
 - Philosophy: [PHILOSOPHY.md](../../PHILOSOPHY.md)
-- Memory today: [docs/book/en/07_memory_management.md](../../docs/book/en/07_memory_management.md), [docs/language/0.4/0.4.md](../../docs/language/0.4/0.4.md) (NEW/DELETE/DESTRUCTOR)
+- Memory today: [docs/book/en/07_memory_management.md](../../docs/book/en/07_memory_management.md), [language/0.4/0.4.md](../../language/0.4/0.4.md) (NEW/DELETE/DESTRUCTOR)
 - ABI checklist (PARTIAL): [docs/architecture/value-memory-abi.md](../../docs/architecture/value-memory-abi.md)
 - Runtime ARC stub: [crates/bn_runtime/src/bn_arc.rs](../../crates/bn_runtime/src/bn_arc.rs)
 - Dispatch returns: [dispatch-typed-return.md](dispatch-typed-return.md) (updated by this train)
 - Swift ARC overview (external reference Carlos cited): https://www.w3schools.com/swift/swift_memory_management.asp
 
-Nothing here is normative until accepted into `docs/language/`, architecture contracts, and fixtures. **No code in this document.**
+Nothing here is normative until accepted into `language/`, architecture contracts, and fixtures. **No code in this document.**
 
 ---
 
@@ -24,7 +24,7 @@ Nothing here is normative until accepted into `docs/language/`, architecture con
 
 | Layer | What exists today | Evidence |
 | --- | --- | --- |
-| Language / book | **Manual** allocation: `NEW` / `DELETE` / `DESTRUCTOR`; aliases copy the handle without transferring ownership; `USE_AFTER_DELETE` / `DOUBLE_DELETE`; process exit may reclaim leaked memory **without** running destructors | `docs/book/en/07_memory_management.md`; `docs/language/0.4/0.4.md` Construction and destruction |
+| Language / book | **Manual** allocation: `NEW` / `DELETE` / `DESTRUCTOR`; aliases copy the handle without transferring ownership; `USE_AFTER_DELETE` / `DOUBLE_DELETE`; process exit may reclaim leaked memory **without** running destructors | `docs/book/en/07_memory_management.md`; `language/0.4/0.4.md` Construction and destruction |
 | Interpreter heap | Generation-tagged slots + `live`/`destroying` — not language-visible retain counts | `crates/bn_runtime/src/heap.rs` |
 | Internal ARC | `BnArc<T>` = strong-only, read-only Rust `Arc` wrapper; tests only; **not** a BN surface | `crates/bn_runtime/src/bn_arc.rs`, `crates/bn_runtime/tests/bn_arc.rs` |
 | Compiled / HOST objects | Opaque handles + explicit `*_close` / `DELETE` (File, DataFrame, net, tickets) | `value-memory-abi.md` release-slice rows; library host/bndata docs |
@@ -38,7 +38,7 @@ Nothing here is normative until accepted into `docs/language/`, architecture con
 
 | Layer | Today | Evidence |
 | --- | --- | --- |
-| Language / BNDispatch | Task body `VOID OR Error`; `AWAIT` / Wait = completion only | `docs/language/0.3/bndispatch.md`; async-await 0.4 design slice |
+| Language / BNDispatch | Task body `VOID OR Error`; `AWAIT` / Wait = completion only | `language/0.3/bndispatch.md`; async-await 0.4 design slice |
 | Ticket API | Status/Error/Close — **no** typed result | Module surface; proposal problem table |
 | `bn_rt` | **`bn_rt_dispatch_await(ticket, timeout_ms, out_result: *mut BNValue, out_error)`** copies `state.result` | `crates/bn_rt/src/dispatch_abi.rs`; test `queue_submit_and_await_return_a_scalar_result` |
 | ABI doc | BNValue result storage is caller-owned | `value-memory-abi.md` BNValue / Dispatch rows |

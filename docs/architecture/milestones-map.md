@@ -80,5 +80,5 @@ Bucket **0.4.5** gates G2/G3 were strengthened accordingly.
 ## Related product locks (not milestone numbers)
 
 - Language posture minimalist — `target-architecture.md`
-- Normative syntax — [`../language/0.4/0.4.ebnf`](../language/0.4/0.4.ebnf)
+- Normative syntax — [`../../language/0.4/0.4.ebnf`](../../language/0.4/0.4.ebnf)
 - `bnc` UX + log MVP — `bnc-decisions.md` / DFDs

@@ -44,7 +44,7 @@ fn compile_exec_helper(dir: &std::path::Path) -> std::path::PathBuf {
 }
 
 /// 0.6.1 S1': prefix yields the new value, postfix the old value; the
-/// expected lines are the ones fixed in `docs/language/0.6/0.6.md`.
+/// expected lines are the ones fixed in `language/0.6/0.6.md`.
 #[test]
 fn increment_expressions_yield_new_value_prefix_and_old_value_postfix() {
     let output = bni()
@@ -1105,5 +1105,100 @@ fn bncrypto_post_quantum_interprets() {
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
         "1248\nkem-agree\n1984\n3309\nTRUE\nFALSE\n"
+    );
+}
+
+/// The `BNJson` DOM slice: build an object, write and read a member, and reject
+/// a missing key instead of yielding an empty STRING. The compiled twin is in
+/// the `bnc` suite; the two must print the same.
+#[test]
+fn bnjson_dom_slice_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bnjson-dom-slice/main.bn"])
+        .output()
+        .expect("run the BNJson DOM slice");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "pardal\nmissing-key-rejected\n{\"name\":\"pardal\"}\n"
+    );
+}
+
+/// Typed scalars and inspection. Every read is fail-closed: `GetInteger` over a
+/// BOOLEAN member is an `Error`, not a zero, and present-and-null is distinct
+/// from absent.
+#[test]
+fn bnjson_dom_scalars_interpret() {
+    let output = bni()
+        .args(["run", "tests/modules/bnjson-dom-scalars/main.bn"])
+        .output()
+        .expect("run the BNJson scalar fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "object\nTRUE\nFALSE\n4\n3\nTRUE\n3.5\nwrong-kind-rejected\nfloat-wrong-kind-rejected\nTRUE\n"
+    );
+}
+
+/// Array Append* / Get*At / Set*At with OOB and wrong-kind fail-closed.
+#[test]
+fn bnjson_dom_array_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bnjson-dom-array/main.bn"])
+        .output()
+        .expect("run the BNJson array fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "array\n5\nalpha\n7\nTRUE\n1.25\n9\noob-rejected\noob-set-rejected\narray-wrong-kind-rejected\n"
+    );
+}
+
+/// Nested `SetJson` (move) / `GetJson` / Clone / `AppendJson`.
+#[test]
+fn bnjson_dom_nested_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bnjson-dom-nested/main.bn"])
+        .output()
+        .expect("run the BNJson nested fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "pardal\nparent-intact\npardal\nmissing-nested-rejected\nv\n"
+    );
+}
+
+/// Companion Encode/Decode round-trip (Bird + `BirdJson`). Domain module has no
+/// `IMPORT BNJson`; the codec lives in the sibling companion (S-3).
+#[test]
+fn bnjson_companion_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bnjson-companion/main.bn"])
+        .output()
+        .expect("run the BNJson companion fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "{\"name\":\"eagle\",\"wings\":2}\neagle\n2\ndecode-error TRUE\n"
     );
 }

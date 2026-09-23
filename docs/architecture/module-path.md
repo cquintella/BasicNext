@@ -83,4 +83,4 @@ entry dir, `entry/modules`, stdlib, config extras, CLI extras.
 - [dfd/dfd-2/1.0 Control.md](dfd/dfd-2/1.0 Control.md) (1.3)
 - [dfd/dfd-2/2.0 Analyze Sources.md](dfd/dfd-2/2.0 Analyze Sources.md) (2.1)
 - [`../../audit/workpapers/09-synthesis/bnc-options.md`](../../audit/workpapers/09-synthesis/bnc-options.md)
-- Language modules layout: [`../language/0.4/0.4.md`](../language/0.4/0.4.md) (`modules/` vs `modules/bn/`)
+- Language modules layout: [`../../language/0.4/0.4.md`](../../language/0.4/0.4.md) (`modules/` vs `modules/bn/`)

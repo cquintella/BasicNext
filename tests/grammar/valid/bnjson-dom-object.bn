@@ -1,0 +1,29 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT BNJson AS Json
+
+FUNCTION Start() AS VOID
+    LET doc AS Json.Json = Json.Json.Object()
+    LET w AS VOID OR Error = Json.Json.SetString(doc, "name", "pardal")
+    IF w IS Error THEN
+        PRINT "set-failed"
+        RELEASE doc
+        RETURN
+    END IF
+    LET name AS STRING OR Error = Json.Json.GetString(doc, "name")
+    IF name IS Error THEN
+        PRINT "get-failed"
+    ELSE
+        PRINT name
+    END IF
+    LET text AS STRING OR Error = Json.Json.Stringify(doc)
+    IF text IS Error THEN
+        PRINT "stringify-failed"
+    ELSE
+        PRINT text
+    END IF
+    RELEASE doc
+END FUNCTION

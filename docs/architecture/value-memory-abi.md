@@ -225,6 +225,16 @@ Policy denials (unauthorized HOST op) are **not** language `Error` values unless
 - [target-architecture.md](target-architecture.md) (contracts table)
 - [LLVM LangRef — `add`](https://llvm.org/docs/LangRef.html#add-instruction)
 
+## Json document handles (0.6.1c)
+
+| Group | Symbols (representative) | Ownership | Fail-closed |
+| --- | --- | --- | --- |
+| Lifecycle | `bn_rt_json_object`, `bn_rt_json_array`, `bn_rt_json_parse`, `bn_rt_json_stringify`, `bn_rt_json_release`, `bn_rt_json_clone` | handle `i64`/`u64` in the single `bn_rt` table; `release` invalidates exactly one handle | invalid handle / bounds → status / null sentinel per entry point |
+| Object DOM | `bn_rt_json_set_*`, `bn_rt_json_get_*`, `bn_rt_json_has`, `bn_rt_json_kind`, `bn_rt_json_length`, `bn_rt_json_set_json`, `bn_rt_json_get_json` | `set_json` **moves** child; `get_json` allocates a fresh handle | missing key / wrong kind / depth → error status |
+| Array DOM | `bn_rt_json_append_*`, `bn_rt_json_*_at` | `append_json` / `set_json_at` **move** | OOB / wrong kind / depth → error status |
+
+Full llvm-declared list is in the index below (every `bn_rt_json_*` declared in `crates/bn_llvm/src/llvm/runtime.rs`).
+
 ## LLVM-declared runtime symbol index (0.4.7 audit)
 
 The exact declaration index below complements the ownership groups above.
@@ -396,4 +406,64 @@ bn_rt_str_char_utf8
 bn_rt_str_index_utf8
 bn_rt_str_to_lower
 bn_rt_str_to_upper
+bn_rt_json_append_boolean
+bn_rt_json_append_float
+bn_rt_json_append_integer
+bn_rt_json_append_json
+bn_rt_json_append_null
+bn_rt_json_append_string
+bn_rt_json_array
+bn_rt_json_clone
+bn_rt_json_get_boolean
+bn_rt_json_get_boolean_at
+bn_rt_json_get_float
+bn_rt_json_get_float_at
+bn_rt_json_get_integer
+bn_rt_json_get_integer_at
+bn_rt_json_get_json
+bn_rt_json_get_json_at
+bn_rt_json_get_string
+bn_rt_json_get_string_at
+bn_rt_json_has
+bn_rt_json_kind
+bn_rt_json_length
+bn_rt_json_object
+bn_rt_json_parse
+bn_rt_json_release
+bn_rt_json_set_boolean
+bn_rt_json_set_boolean_at
+bn_rt_json_set_float
+bn_rt_json_set_float_at
+bn_rt_json_set_integer
+bn_rt_json_set_integer_at
+bn_rt_json_set_json
+bn_rt_json_set_json_at
+bn_rt_json_set_null
+bn_rt_json_set_null_at
+bn_rt_json_set_string
+bn_rt_json_set_string_at
+bn_rt_json_stringify
+bn_rt_crypto_argon2id
+bn_rt_crypto_bytes_from_hex
+bn_rt_crypto_bytes_from_text
+bn_rt_crypto_bytes_length
+bn_rt_crypto_bytes_release
+bn_rt_crypto_bytes_to_hex
+bn_rt_crypto_dsa_keypair
+bn_rt_crypto_dsa_sign
+bn_rt_crypto_dsa_verify
+bn_rt_crypto_hmac
+bn_rt_crypto_hmac_verify
+bn_rt_crypto_kem_decapsulate
+bn_rt_crypto_kem_encapsulate
+bn_rt_crypto_kem_keypair
+bn_rt_crypto_open
+bn_rt_crypto_public_key
+bn_rt_crypto_seal
+bn_rt_crypto_sha256
+bn_rt_crypto_sha512
+bn_rt_crypto_sign
+bn_rt_crypto_slice
+bn_rt_crypto_verify
+
 ```

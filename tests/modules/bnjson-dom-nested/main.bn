@@ -1,0 +1,112 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// SPRINT 2 — Clone, SetJson (move), GetJson (fresh handle). Use-after-move is a
+// USE_AFTER_RELEASE diagnostic under bni (not an Error value), so invalidation
+// is pinned by the json_abi unit test; this fixture proves the happy path and
+// that GetJson does not consume the parent.
+
+IMPORT BNJson AS Json
+
+FUNCTION Start() AS VOID
+    LET parent AS Json.Json = Json.Json.Object()
+    LET child AS Json.Json = Json.Json.Object()
+
+    LET w AS VOID OR Error = Json.Json.SetString(child, "name", "pardal")
+    IF w IS Error THEN
+        PRINT "child-write-failed"
+        RELEASE child
+        RELEASE parent
+        RETURN
+    END IF
+
+    // Move child into parent. child is consumed — do not RELEASE it afterwards.
+    LET moved AS VOID OR Error = Json.Json.SetJson(parent, "nest", child)
+    IF moved IS Error THEN
+        PRINT "setjson-failed"
+        RELEASE child
+        RELEASE parent
+        RETURN
+    END IF
+
+    // GetJson returns a fresh handle; parent is not consumed.
+    LET nested AS Json.Json OR Error = Json.Json.GetJson(parent, "nest")
+    IF nested IS Error THEN
+        PRINT "getjson-failed"
+        RELEASE parent
+        RETURN
+    END IF
+
+    LET name AS STRING OR Error = Json.Json.GetString(nested, "name")
+    IF name IS Error THEN
+        PRINT "nested-name-failed"
+    ELSE
+        PRINT name
+    END IF
+
+    // Parent still owns the nested value after GetJson.
+    LET again AS Json.Json OR Error = Json.Json.GetJson(parent, "nest")
+    IF again IS Error THEN
+        PRINT "parent-consumed"
+    ELSE
+        PRINT "parent-intact"
+        RELEASE again
+    END IF
+
+    // Clone is the explicit duplicate; independent of the original.
+    LET copy AS Json.Json OR Error = Json.Json.Clone(parent)
+    IF copy IS Error THEN
+        PRINT "clone-failed"
+    ELSE
+        LET cn AS Json.Json OR Error = Json.Json.GetJson(copy, "nest")
+        IF cn IS Error THEN
+            PRINT "clone-get-failed"
+        ELSE
+            LET cname AS STRING OR Error = Json.Json.GetString(cn, "name")
+            IF cname IS Error THEN
+                PRINT "clone-name-failed"
+            ELSE
+                PRINT cname
+            END IF
+            RELEASE cn
+        END IF
+        RELEASE copy
+    END IF
+
+    // Missing nested key is Error.
+    LET missing AS Json.Json OR Error = Json.Json.GetJson(parent, "absent")
+    IF missing IS Error THEN
+        PRINT "missing-nested-rejected"
+    ELSE
+        PRINT "missing-nested-accepted"
+        RELEASE missing
+    END IF
+
+    // AppendJson also moves.
+    LET arr AS Json.Json = Json.Json.Array()
+    LET item AS Json.Json = Json.Json.Object()
+    LET iw AS VOID OR Error = Json.Json.SetString(item, "k", "v")
+    LET ap AS VOID OR Error = Json.Json.AppendJson(arr, item)
+    IF iw IS Error OR ap IS Error THEN
+        PRINT "append-json-failed"
+    ELSE
+        LET got AS Json.Json OR Error = Json.Json.GetJsonAt(arr, 0)
+        IF got IS Error THEN
+            PRINT "get-json-at-failed"
+        ELSE
+            LET kv AS STRING OR Error = Json.Json.GetString(got, "k")
+            IF kv IS Error THEN
+                PRINT "append-json-read-failed"
+            ELSE
+                PRINT kv
+            END IF
+            RELEASE got
+        END IF
+    END IF
+
+    RELEASE arr
+    RELEASE nested
+    RELEASE parent
+END FUNCTION

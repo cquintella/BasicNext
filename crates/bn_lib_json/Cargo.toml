@@ -20,7 +20,9 @@ pedantic = "warn"
 [dependencies]
 bn_diag = { path = "../bn_diag" }
 bn_interp = { path = "../bn_interp" }
+bn_rt = { path = "../bn_rt" }
 bn_source = { path = "../bn_source" }
+bn_types = { path = "../bn_types" }
 bn_value = { path = "../bn_value" }
 serde = "1.0"
 serde_json = "1.0"

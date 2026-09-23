@@ -3,7 +3,7 @@
 **Status:** 0.1 language rules accepted and present in the interpreter.
 Audit 2026-09-03 against `src/semantic/type_ops.rs`, `src/runtime/executor.rs`,
 `src/heap.rs`, `examples/type_test.bn`, and `tests/runtime.rs`. `[X]` is in
-the tree. `[ ]` is not. The historical `docs/language/0.1/0.1.md` path is gone;
+the tree. `[ ]` is not. The historical `language/0.1/0.1.md` path is gone;
 keywords and the runtime are the live contract.
 
 It changes semantics only; the grammar is unchanged (`^` is not exponentiation).

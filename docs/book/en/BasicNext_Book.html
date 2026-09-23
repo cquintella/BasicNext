@@ -254,11 +254,11 @@ programming language.</p>
 <p><strong>Note:</strong> This book is the <strong>Version 0.3</strong>
 tutorial. It is not the normative language contract. When a chapter and
 the specification disagree, follow <a
-href="../../language/0.3/0.3.md"><code>docs/language/0.3/0.3.md</code></a>,
+href="../../../language/0.3/0.3.md"><code>language/0.3/0.3.md</code></a>,
 <a
-href="../../language/0.3/0.3.ebnf"><code>docs/language/0.3/0.3.ebnf</code></a>,
+href="../../../language/0.3/0.3.ebnf"><code>language/0.3/0.3.ebnf</code></a>,
 and <a
-href="../../language/0.3/keywords.md"><code>docs/language/0.3/keywords.md</code></a>.
+href="../../../language/0.3/keywords.md"><code>language/0.3/keywords.md</code></a>.
 Features planned for later versions (packages, <code>MATCH</code>,
 generic classes, advanced concurrency) are excluded.</p>
 </blockquote>
@@ -1310,7 +1310,7 @@ backward compatibility. A word is only reserved in its exact uppercase
 spelling.</p>
 <p>For the complete list of keywords, their semantic meanings, and
 decision statuses, see the normative document: - <a
-href="../../language/0.3/keywords.md">0.3 Keyword Registry</a></p>
+href="../../../language/0.3/keywords.md">0.3 Keyword Registry</a></p>
 <h2 id="appendix-b-language-diagnostics">Appendix B: Language
 Diagnostics</h2>
 <p>Basic Next is designed with a zero-warning policy. Diagnostics either
@@ -1318,7 +1318,7 @@ reject the source entirely or report a clear runtime failure.</p>
 <p>Diagnostic behavior follows the accepted language contract and
 command reference:</p>
 <ul>
-<li><a href="../../language/0.3/0.3.md">Version 0.3 language
+<li><a href="../../../language/0.3/0.3.md">Version 0.3 language
 contract</a></li>
 <li><a href="../../man/bn.1"><code>bn(1)</code></a></li>
 </ul>
@@ -1330,7 +1330,7 @@ parsing valid syntax, while semantic rules (such as return analysis) are
 enforced by the compiler.</p>
 <p>For the definitive structural grammar of version 0.3, see:</p>
 <ul>
-<li><a href="../../language/0.3/0.3.ebnf">Version 0.3 EBNF</a></li>
+<li><a href="../../../language/0.3/0.3.ebnf">Version 0.3 EBNF</a></li>
 </ul>
 <h2 id="appendix-d-the-bn-tool">Appendix D: The <code>bn</code>
 Tool</h2>
@@ -1339,7 +1339,7 @@ href="../../man/bn.1"><code>bn(1)</code></a>. Installation and
 troubleshooting are in <a
 href="../../project/usage.md"><code>docs/project/usage.md</code></a>.
 The normative language text is <a
-href="../../language/0.3/0.3.md"><code>0.3.md</code></a>.</p>
+href="../../../language/0.3/0.3.md"><code>0.3.md</code></a>.</p>
 <p>External provider-backed modules are documented in separate
 appendices:</p>
 <ul>
@@ -1361,7 +1361,7 @@ explicitly:</p>
 <pre class="basic"><code>IMPORT BNJson AS Json</code></pre>
 <p>The accepted 0.3 contract, ownership rules, limits, and errors are
 defined in <a
-href="../../language/0.3/bnjson.md"><code>docs/language/0.3/bnjson.md</code></a>.
+href="../../../language/0.3/bnjson.md"><code>language/0.3/bnjson.md</code></a>.
 Providers may use Rust implementations, but must preserve the documented
 behavior.</p>
 <div style="page-break-after: always;">
@@ -1373,7 +1373,7 @@ language primitive. Import it explicitly:</p>
 <pre class="basic"><code>IMPORT BNLog AS Log</code></pre>
 <p>The 0.3 API, JSON Lines format, bounded fields, escaping, and
 transport policy are specified in <a
-href="../../language/0.3/bnlog.md"><code>docs/language/0.3/bnlog.md</code></a>.</p>
+href="../../../language/0.3/bnlog.md"><code>language/0.3/bnlog.md</code></a>.</p>
 <div style="page-break-after: always;">
 
 </div>
@@ -1427,7 +1427,7 @@ built into the core; use an explicit import:</p>
 <pre class="basic"><code>IMPORT BNData AS Data</code></pre>
 <p>Its accepted 0.3 surface and provider requirements are maintained in
 the module contract and conformance fixtures under
-<code>docs/language/0.3/</code> and <code>tests/modules/</code>.</p>
+<code>language/0.3/</code> and <code>tests/modules/</code>.</p>
 <div style="page-break-after: always;">
 
 </div>

@@ -1,0 +1,98 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// SPRINT 2 — array Append* / Get*At / Set*At with OOB fail-closed.
+
+IMPORT BNJson AS Json
+
+FUNCTION Start() AS VOID
+    LET arr AS Json.Json = Json.Json.Array()
+
+    LET a AS VOID OR Error = Json.Json.AppendString(arr, "alpha")
+    LET b AS VOID OR Error = Json.Json.AppendInteger(arr, 7)
+    LET c AS VOID OR Error = Json.Json.AppendBoolean(arr, TRUE)
+    LET d AS VOID OR Error = Json.Json.AppendFloat(arr, 1.25)
+    LET e AS VOID OR Error = Json.Json.AppendNull(arr)
+    IF a IS Error OR b IS Error OR c IS Error OR d IS Error OR e IS Error THEN
+        PRINT "append-failed"
+        RELEASE arr
+        RETURN
+    END IF
+
+    PRINT Json.Json.Kind(arr)
+
+    LET len AS INTEGER OR Error = Json.Json.Length(arr)
+    IF len IS Error THEN
+        PRINT "length-failed"
+    ELSE
+        PRINT len
+    END IF
+
+    LET s AS STRING OR Error = Json.Json.GetStringAt(arr, 0)
+    IF s IS Error THEN
+        PRINT "get-string-failed"
+    ELSE
+        PRINT s
+    END IF
+
+    LET n AS INT64 OR Error = Json.Json.GetIntegerAt(arr, 1)
+    IF n IS Error THEN
+        PRINT "get-integer-failed"
+    ELSE
+        PRINT n
+    END IF
+
+    LET flag AS BOOLEAN OR Error = Json.Json.GetBooleanAt(arr, 2)
+    IF flag IS Error THEN
+        PRINT "get-boolean-failed"
+    ELSE
+        PRINT flag
+    END IF
+
+    LET f AS FLOAT OR Error = Json.Json.GetFloatAt(arr, 3)
+    IF f IS Error THEN
+        PRINT "get-float-failed"
+    ELSE
+        PRINT f
+    END IF
+
+    // Replace index 1, then read it back.
+    LET set AS VOID OR Error = Json.Json.SetIntegerAt(arr, 1, 9)
+    IF set IS Error THEN
+        PRINT "set-at-failed"
+    ELSE
+        LET n2 AS INT64 OR Error = Json.Json.GetIntegerAt(arr, 1)
+        IF n2 IS Error THEN
+            PRINT "get-after-set-failed"
+        ELSE
+            PRINT n2
+        END IF
+    END IF
+
+    // OOB is Error, never a default.
+    LET oob AS STRING OR Error = Json.Json.GetStringAt(arr, 99)
+    IF oob IS Error THEN
+        PRINT "oob-rejected"
+    ELSE
+        PRINT "oob-accepted"
+    END IF
+
+    LET oobset AS VOID OR Error = Json.Json.SetStringAt(arr, 99, "nope")
+    IF oobset IS Error THEN
+        PRINT "oob-set-rejected"
+    ELSE
+        PRINT "oob-set-accepted"
+    END IF
+
+    // Wrong-kind at index is fail-closed.
+    LET wrong AS INT64 OR Error = Json.Json.GetIntegerAt(arr, 0)
+    IF wrong IS Error THEN
+        PRINT "array-wrong-kind-rejected"
+    ELSE
+        PRINT "array-wrong-kind-accepted"
+    END IF
+
+    RELEASE arr
+END FUNCTION

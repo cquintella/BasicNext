@@ -81,6 +81,10 @@ pub(crate) fn lower_terminator(
                     && matches!(value_ty, Type::Boolean)
                 {
                     boolean_error_union_return_operand(text, *value)
+                } else if state.return_llvm == "{ i1, ptr, i64 }"
+                    && llvm_type(value_ty) == Some("ptr")
+                {
+                    pointer_error_union_return_operand(text, *value)
                 } else if state.return_llvm == "{ i1, i32 }" {
                     optional_integer_return_operand(text, *value, value_ty)
                 } else if llvm_type(value_ty) == Some(state.return_llvm) {
@@ -206,6 +210,30 @@ fn boolean_error_union_return_operand(text: &mut String, value: ValueId) -> Stri
     let _ = writeln!(
         text,
         "  %retunion{} = insertvalue {{ i1, ptr, i64 }} %retunionmessage{}, i64 %retunionbool{}, 2",
+        value.0, value.0, value.0
+    );
+    format!("%retunion{}", value.0)
+}
+
+fn pointer_error_union_return_operand(text: &mut String, value: ValueId) -> String {
+    let _ = writeln!(
+        text,
+        "  %retunionbits{} = ptrtoint ptr %v{} to i64",
+        value.0, value.0
+    );
+    let _ = writeln!(
+        text,
+        "  %retuniontag{} = insertvalue {{ i1, ptr, i64 }} undef, i1 false, 0",
+        value.0
+    );
+    let _ = writeln!(
+        text,
+        "  %retunionmessage{} = insertvalue {{ i1, ptr, i64 }} %retuniontag{}, ptr null, 1",
+        value.0, value.0
+    );
+    let _ = writeln!(
+        text,
+        "  %retunion{} = insertvalue {{ i1, ptr, i64 }} %retunionmessage{}, i64 %retunionbits{}, 2",
         value.0, value.0, value.0
     );
     format!("%retunion{}", value.0)

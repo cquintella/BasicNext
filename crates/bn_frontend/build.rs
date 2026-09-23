@@ -3,17 +3,17 @@ use std::{env, fmt::Write as _, fs, path::PathBuf};
 #[path = "src/keyword_registry.rs"]
 mod keyword_registry;
 
-const REGISTRY: &str = "../../docs/language/0.5/keywords.md";
-const EBNF: &str = "../../docs/language/0.5/0.5.ebnf";
+const REGISTRY: &str = "../../language/0.6/keywords.md";
+const EBNF: &str = "../../language/0.6/0.6.ebnf";
 
 fn main() {
     println!("cargo:rerun-if-changed={REGISTRY}");
     println!("cargo:rerun-if-changed={EBNF}");
     let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("manifest directory"));
     let registry = fs::read_to_string(manifest.join(REGISTRY)).expect("read keyword registry");
-    let ebnf = fs::read_to_string(manifest.join(EBNF)).expect("read 0.5.0 EBNF");
+    let ebnf = fs::read_to_string(manifest.join(EBNF)).expect("read 0.6 EBNF");
     let parsed = keyword_registry::parse_keywords_md(&registry)
-        .unwrap_or_else(|error| panic!("0.5.0 keyword registry: {error}"));
+        .unwrap_or_else(|error| panic!("0.6 keyword registry: {error}"));
     let ebnf_reserved = keyword_registry::parse_ebnf_quoted_production(&ebnf, "reserved-word")
         .unwrap_or_else(|error| panic!("EBNF reserved-word: {error}"));
     let ebnf_special =

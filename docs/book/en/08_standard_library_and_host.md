@@ -145,7 +145,7 @@ END IF
 > **Status:** Shipped in 0.5.1. The capability is available on both the
 > interpreter and the native (LLVM) path, with the E01–E14 acceptance matrix
 > green on both. Execution is governed by the execution policy (restricted
-> profiles deny it by default). Contract: [0.6 language specification — `HOST.Exec`](../../language/0.6/0.6.md#hostexec-051) and [`host-exec.md`](../../library/host-exec.md).
+> profiles deny it by default). Contract: [0.6 language specification — `HOST.Exec`](../../../language/0.6/0.6.md#hostexec-051) and [`host-exec.md`](../../library/host-exec.md).
 
 `HOST.Exec` runs an **external program** and captures its output, in the style of a language-level `exec()`: the host **spawns** a child, **waits** until it finishes, and returns a structured result. It does **not** replace the Basic Next process image (that would be POSIX `execve`, which is out of 0.5.1).
 

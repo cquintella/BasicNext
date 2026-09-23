@@ -23,7 +23,7 @@ pub fn default_libraries() -> Providers {
     #[cfg(feature = "lib-json")]
     libraries.register(
         bn_lib_json::NAME,
-        std::sync::Arc::new(|| Box::new(bn_lib_json::JsonProvider::default())),
+        std::sync::Arc::new(|| Box::new(bn_lib_json::JsonProvider)),
     );
     #[cfg(feature = "lib-log")]
     libraries.register(
