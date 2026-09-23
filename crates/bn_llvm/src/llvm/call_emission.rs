@@ -387,6 +387,186 @@ pub(crate) fn lower_call_instruction(
                         format!("%cryhandle{dest}"),
                     );
                 }
+                "Slice" => {
+                    emit_bncrypto_handle(text, analysis, &format!("%cryh{dest}"), arguments[0]);
+                    let mut bounds = Vec::with_capacity(2);
+                    for (index, operand) in arguments[1..].iter().enumerate() {
+                        let slot = format!("%crybound{dest}_{index}");
+                        let ty = analysis
+                            .values
+                            .get(operand)
+                            .and_then(llvm_type)
+                            .unwrap_or("i64");
+                        if ty == "i64" {
+                            bounds.push(format!("%v{}", operand.0));
+                        } else {
+                            let _ = writeln!(text, "  {slot} = sext {ty} %v{} to i64", operand.0);
+                            bounds.push(slot);
+                        }
+                    }
+                    let _ = writeln!(text, "  %cryout{dest} = alloca i64");
+                    let _ = writeln!(
+                        text,
+                        "  %cryrc{dest} = call i32 @bn_rt_crypto_slice(i64 %cryh{dest}, i64 {}, i64 {}, ptr %cryout{dest})",
+                        bounds[0], bounds[1]
+                    );
+                    let _ = writeln!(text, "  %cryhandle{dest} = load i64, ptr %cryout{dest}");
+                    emit_handle_result(
+                        text,
+                        *destination,
+                        format!("%cryrc{dest}"),
+                        format!("%cryhandle{dest}"),
+                    );
+                }
+                member @ ("MlKemKeypair" | "MlKemEncapsulate" | "MlKemDecapsulate"
+                | "MlDsaKeypair" | "MlDsaSign" | "MlDsaVerify") => {
+                    for (index, operand) in arguments.iter().enumerate() {
+                        emit_bncrypto_handle(
+                            text,
+                            analysis,
+                            &format!("%cryarg{dest}_{index}"),
+                            *operand,
+                        );
+                    }
+                    let symbol = match member {
+                        "MlKemKeypair" => "bn_rt_crypto_kem_keypair",
+                        "MlKemEncapsulate" => "bn_rt_crypto_kem_encapsulate",
+                        "MlKemDecapsulate" => "bn_rt_crypto_kem_decapsulate",
+                        "MlDsaKeypair" => "bn_rt_crypto_dsa_keypair",
+                        "MlDsaSign" => "bn_rt_crypto_dsa_sign",
+                        _ => "bn_rt_crypto_dsa_verify",
+                    };
+                    let operands = (0..arguments.len())
+                        .map(|index| format!("i64 %cryarg{dest}_{index}"))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    if member == "MlDsaVerify" {
+                        let _ = writeln!(text, "  %cryrc{dest} = call i32 @{symbol}({operands})");
+                        let _ = writeln!(text, "  %v{dest} = icmp eq i32 %cryrc{dest}, 1");
+                    } else {
+                        let _ = writeln!(text, "  %cryout{dest} = alloca i64");
+                        let _ = writeln!(
+                            text,
+                            "  %cryrc{dest} = call i32 @{symbol}({operands}, ptr %cryout{dest})"
+                        );
+                        let _ = writeln!(text, "  %cryhandle{dest} = load i64, ptr %cryout{dest}");
+                        emit_handle_result(
+                            text,
+                            *destination,
+                            format!("%cryrc{dest}"),
+                            format!("%cryhandle{dest}"),
+                        );
+                    }
+                }
+                member @ ("Ed25519PublicKey" | "EcdsaP256PublicKey" | "Ed25519Sign"
+                | "EcdsaP256Sign" | "Ed25519Verify" | "EcdsaP256Verify") => {
+                    let selector = i32::from(member.starts_with("Ecdsa"));
+                    for (index, operand) in arguments.iter().enumerate() {
+                        emit_bncrypto_handle(
+                            text,
+                            analysis,
+                            &format!("%cryarg{dest}_{index}"),
+                            *operand,
+                        );
+                    }
+                    if member.ends_with("Verify") {
+                        let _ = writeln!(
+                            text,
+                            "  %cryrc{dest} = call i32 @bn_rt_crypto_verify(i32 {selector}, i64 %cryarg{dest}_0, i64 %cryarg{dest}_1, i64 %cryarg{dest}_2)"
+                        );
+                        let _ = writeln!(text, "  %v{dest} = icmp eq i32 %cryrc{dest}, 1");
+                    } else {
+                        let _ = writeln!(text, "  %cryout{dest} = alloca i64");
+                        if member.ends_with("PublicKey") {
+                            let _ = writeln!(
+                                text,
+                                "  %cryrc{dest} = call i32 @bn_rt_crypto_public_key(i32 {selector}, i64 %cryarg{dest}_0, ptr %cryout{dest})"
+                            );
+                        } else {
+                            let _ = writeln!(
+                                text,
+                                "  %cryrc{dest} = call i32 @bn_rt_crypto_sign(i32 {selector}, i64 %cryarg{dest}_0, i64 %cryarg{dest}_1, ptr %cryout{dest})"
+                            );
+                        }
+                        let _ = writeln!(text, "  %cryhandle{dest} = load i64, ptr %cryout{dest}");
+                        emit_handle_result(
+                            text,
+                            *destination,
+                            format!("%cryrc{dest}"),
+                            format!("%cryhandle{dest}"),
+                        );
+                    }
+                }
+                "HmacSha256" => {
+                    for (index, operand) in arguments.iter().enumerate() {
+                        emit_bncrypto_handle(
+                            text,
+                            analysis,
+                            &format!("%cryarg{dest}_{index}"),
+                            *operand,
+                        );
+                    }
+                    let _ = writeln!(text, "  %cryout{dest} = alloca i64");
+                    let _ = writeln!(
+                        text,
+                        "  %cryrc{dest} = call i32 @bn_rt_crypto_hmac(i64 %cryarg{dest}_0, i64 %cryarg{dest}_1, ptr %cryout{dest})"
+                    );
+                    let _ = writeln!(text, "  %cryhandle{dest} = load i64, ptr %cryout{dest}");
+                    let _ = writeln!(text, "  %v{dest} = inttoptr i64 %cryhandle{dest} to ptr");
+                }
+                "VerifyHmacSha256" => {
+                    for (index, operand) in arguments.iter().enumerate() {
+                        emit_bncrypto_handle(
+                            text,
+                            analysis,
+                            &format!("%cryarg{dest}_{index}"),
+                            *operand,
+                        );
+                    }
+                    let _ = writeln!(
+                        text,
+                        "  %cryrc{dest} = call i32 @bn_rt_crypto_hmac_verify(i64 %cryarg{dest}_0, i64 %cryarg{dest}_1, i64 %cryarg{dest}_2)"
+                    );
+                    let _ = writeln!(text, "  %v{dest} = icmp eq i32 %cryrc{dest}, 1");
+                }
+                "Argon2id" => {
+                    for (index, operand) in arguments[..2].iter().enumerate() {
+                        emit_bncrypto_handle(
+                            text,
+                            analysis,
+                            &format!("%cryarg{dest}_{index}"),
+                            *operand,
+                        );
+                    }
+                    let mut costs = Vec::with_capacity(3);
+                    for (index, operand) in arguments[2..].iter().enumerate() {
+                        let slot = format!("%crycost{dest}_{index}");
+                        let ty = analysis
+                            .values
+                            .get(operand)
+                            .and_then(llvm_type)
+                            .unwrap_or("i64");
+                        if ty == "i64" {
+                            costs.push(format!("%v{}", operand.0));
+                        } else {
+                            let _ = writeln!(text, "  {slot} = sext {ty} %v{} to i64", operand.0);
+                            costs.push(slot);
+                        }
+                    }
+                    let _ = writeln!(text, "  %cryout{dest} = alloca i64");
+                    let _ = writeln!(
+                        text,
+                        "  %cryrc{dest} = call i32 @bn_rt_crypto_argon2id(i64 %cryarg{dest}_0, i64 %cryarg{dest}_1, i64 {}, i64 {}, i64 {}, ptr %cryout{dest})",
+                        costs[0], costs[1], costs[2]
+                    );
+                    let _ = writeln!(text, "  %cryhandle{dest} = load i64, ptr %cryout{dest}");
+                    emit_handle_result(
+                        text,
+                        *destination,
+                        format!("%cryrc{dest}"),
+                        format!("%cryhandle{dest}"),
+                    );
+                }
                 "FromHex" => {
                     let _ = writeln!(text, "  %cryout{dest} = alloca i64");
                     let _ = writeln!(

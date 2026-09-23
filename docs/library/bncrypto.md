@@ -8,10 +8,9 @@ come from `bn_rt::crypto` over the C ABI, so the interpreter (`bni`, through the
 `bn_lib_crypto` provider) and compiled binaries (`bnc`, through the LLVM backend)
 execute one implementation and cannot drift.
 
-This document covers what has landed: the digests, the opaque `Bytes` buffer, and
-authenticated encryption. Message authentication, key derivation, signatures, and
-the post-quantum primitives named in the bucket are **not** part of this cut and
-are not yet importable.
+This document covers the whole module: digests, the opaque `Bytes` buffer,
+authenticated encryption, message authentication, password hashing, signatures,
+and the post-quantum primitives. Every member runs on both backends.
 
 ## Access
 
@@ -86,6 +85,84 @@ wrong rather than padding or truncating it.
 A nonce must never be reused with the same key. The module does not and cannot
 enforce that for you; derive nonces from `HOST.Random` or a counter you control.
 
+## Message authentication and password hashing
+
+| Function | Signature |
+| --- | --- |
+| `HmacSha256` | `HmacSha256(key, data AS Bytes) AS Bytes` |
+| `VerifyHmacSha256` | `VerifyHmacSha256(key, data, tag AS Bytes) AS BOOLEAN` |
+| `Argon2id` | `Argon2id(password, salt AS Bytes, memoryKiB, iterations, parallelism AS INTEGER) AS Bytes OR Error` |
+
+HMAC-SHA-256 follows RFC 2104. **`VerifyHmacSha256` compares in constant time**: it
+never short-circuits on the first differing byte, which would leak the tag to a
+timing attack.
+
+Argon2id follows RFC 9106 and returns a 32-byte tag. Cost parameters outside the
+algorithm's accepted range are **rejected**, never clamped to something weaker.
+
+## Signatures
+
+| Function | Signature |
+| --- | --- |
+| `Ed25519PublicKey` | `Ed25519PublicKey(seed AS Bytes) AS Bytes OR Error` |
+| `Ed25519Sign` | `Ed25519Sign(seed, message AS Bytes) AS Bytes OR Error` |
+| `Ed25519Verify` | `Ed25519Verify(publicKey, message, signature AS Bytes) AS BOOLEAN` |
+| `EcdsaP256PublicKey` | `EcdsaP256PublicKey(privateKey AS Bytes) AS Bytes OR Error` |
+| `EcdsaP256Sign` | `EcdsaP256Sign(privateKey, message AS Bytes) AS Bytes OR Error` |
+| `EcdsaP256Verify` | `EcdsaP256Verify(publicKey, message, signature AS Bytes) AS BOOLEAN` |
+
+Ed25519 keys are a 32-byte seed (RFC 8032). ECDSA P-256 keys are a 32-byte scalar;
+the public key is SEC1 uncompressed (65 bytes) and signatures are raw `r || s`
+(64 bytes) over SHA-256, with the nonce derived per RFC 6979.
+
+Both schemes sign **deterministically**: the same key and message always produce
+the same signature. `Verify` returns `FALSE` for a malformed key, a tampered
+message or a signature from another key — never an error resembling success.
+
+## Post-quantum
+
+| Function | Signature |
+| --- | --- |
+| `MlKemKeypair` | `MlKemKeypair(seed AS Bytes) AS Bytes OR Error` — `publicKey \|\| privateKey` |
+| `MlKemEncapsulate` | `MlKemEncapsulate(publicKey AS Bytes) AS Bytes OR Error` — `ciphertext \|\| sharedSecret` |
+| `MlKemDecapsulate` | `MlKemDecapsulate(privateKey, ciphertext AS Bytes) AS Bytes OR Error` |
+| `MlDsaKeypair` | `MlDsaKeypair(seed AS Bytes) AS Bytes OR Error` — `verifyingKey \|\| seed` |
+| `MlDsaSign` | `MlDsaSign(privateKey, message AS Bytes) AS Bytes OR Error` |
+| `MlDsaVerify` | `MlDsaVerify(publicKey, message, signature AS Bytes) AS BOOLEAN` |
+| `Slice` | `Slice(data AS Bytes, start, length AS INTEGER) AS Bytes OR Error` |
+
+ML-KEM-768 follows **FIPS 203** and ML-DSA-65 follows **FIPS 204**. BN has no
+tuple, so the members that produce two values concatenate them and `Slice` splits
+them; the sizes are fixed by the standard:
+
+| Object | Bytes |
+| --- | --- |
+| ML-KEM-768 public key | 1184 |
+| ML-KEM-768 private key (seed) | 64 |
+| ML-KEM-768 ciphertext | 1088 |
+| Shared secret | 32 |
+| ML-DSA-65 verifying key | 1952 |
+| ML-DSA-65 seed | 32 |
+| ML-DSA-65 signature | 3309 |
+
+`Slice` rejects an out-of-range window instead of clamping it, so a bad offset can
+never yield a short buffer that looks like a key.
+
+Key generation is deterministic from its seed. **Encapsulation is not, and
+deliberately offers no deterministic variant**: reusing its randomness even once
+is a catastrophic failure, so the choice is not exposed to BN at all.
+
+### A weaker verification basis, stated plainly
+
+Every other family in this module is checked byte-for-byte against an independent
+implementation. The post-quantum primitives are not, because no independent
+ML-KEM / ML-DSA implementation was available to check against. What is verified
+here: round-trip agreement, key-generation determinism, encapsulation
+non-determinism, tamper rejection, and object sizes equal to the FIPS parameters.
+The algorithms themselves rest on the upstream crates' Wycheproof suites
+(`ml-kem`, `ml-dsa`, both RustCrypto). Treat this as integration-verified rather
+than KAT-verified locally.
+
 ## Target support
 
 Every member listed above is supported by **both** backends. Digests route
@@ -113,10 +190,15 @@ A call whose argument has the wrong type fails the target support check with
 | AEAD matches an independent implementation | `cargo test -p bn_rt crypto` |
 | AEAD fails closed on tamper, AAD change and wrong key | `cargo test -p bn_rt crypto` |
 | AEAD interprets and compiles identically | `cargo test -p bnc --test cli compiled_bncrypto_aead` |
+| HMAC matches an independent tag; verify is constant-time | `cargo test -p bn_rt crypto` |
+| Argon2id reproduces the RFC 9106 test vector | `cargo test -p bn_rt crypto` |
+| Ed25519 matches an independent implementation byte-for-byte | `cargo test -p bn_rt crypto` |
+| P-256 accepts an OpenSSL-produced signature | `cargo test -p bn_rt crypto` |
+| PQC round-trips, rejects tampering, matches FIPS sizes | `cargo test -p bn_rt crypto` |
+| Signatures and PQC compile and match the interpreter | `cargo test -p bnc --test cli bncrypto` |
 
 ## Not here
 
-`HMAC-SHA-256`, `Argon2id`, `Ed25519`,
-`ECDSA P-256`, `ML-KEM-768`, and `ML-DSA-65`. Those follow in later activities of
-bucket 0.6.1b or a successor bucket; none of them is importable today. They all
-build on `Crypto.Bytes`, which is why the handle landed before any cipher.
+OAuth / BNWeb Auth, ORM field encryption, `HOST.Ui`, full TLS / X.509, and
+RSA-RS256 are outside this module by decision, not by omission; see the bucket
+that scoped it.

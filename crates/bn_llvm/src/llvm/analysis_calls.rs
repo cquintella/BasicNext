@@ -60,6 +60,92 @@ pub(crate) fn call_instruction_supported(
                                 .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
                         })
                 }
+                "Slice" => {
+                    arguments.len() == 3
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                        && arguments[1..].iter().all(|argument| {
+                            values
+                                .get(argument)
+                                .and_then(llvm_type)
+                                .is_some_and(integer_llvm)
+                        })
+                }
+                "MlKemKeypair" | "MlKemEncapsulate" | "MlDsaKeypair" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "MlKemDecapsulate" | "MlDsaSign" => {
+                    arguments.len() == 2
+                        && arguments.iter().all(|argument| {
+                            values
+                                .get(argument)
+                                .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                        })
+                }
+                "MlDsaVerify" => {
+                    arguments.len() == 3
+                        && arguments.iter().all(|argument| {
+                            values
+                                .get(argument)
+                                .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                        })
+                }
+                "Ed25519PublicKey" | "EcdsaP256PublicKey" => {
+                    arguments.len() == 1
+                        && values
+                            .get(&arguments[0])
+                            .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                }
+                "Ed25519Sign" | "EcdsaP256Sign" => {
+                    arguments.len() == 2
+                        && arguments.iter().all(|argument| {
+                            values
+                                .get(argument)
+                                .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                        })
+                }
+                "Ed25519Verify" | "EcdsaP256Verify" => {
+                    arguments.len() == 3
+                        && arguments.iter().all(|argument| {
+                            values
+                                .get(argument)
+                                .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                        })
+                }
+                "HmacSha256" => {
+                    arguments.len() == 2
+                        && arguments.iter().all(|argument| {
+                            values
+                                .get(argument)
+                                .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                        })
+                }
+                "VerifyHmacSha256" => {
+                    arguments.len() == 3
+                        && arguments.iter().all(|argument| {
+                            values
+                                .get(argument)
+                                .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                        })
+                }
+                "Argon2id" => {
+                    arguments.len() == 5
+                        && arguments[..2].iter().all(|argument| {
+                            values
+                                .get(argument)
+                                .is_some_and(|ty| carries_bncrypto_bytes(module, ty))
+                        })
+                        && arguments[2..].iter().all(|argument| {
+                            values
+                                .get(argument)
+                                .and_then(llvm_type)
+                                .is_some_and(integer_llvm)
+                        })
+                }
                 method => {
                     arguments.len() == 1
                         && values.get(&arguments[0]).is_some_and(|ty| match method {

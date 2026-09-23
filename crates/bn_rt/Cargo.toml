@@ -21,7 +21,14 @@ pedantic = "warn"
 bn_host_exec = { path = "../bn_host_exec" }
 dns-lookup = "2"
 libc = "0.2"
+ml-dsa = "0.1"
+ml-kem = { version = "0.3", features = ["getrandom"] }
+p256 = { version = "0.13", features = ["ecdsa"] }
 aes-gcm = "0.10"
+argon2 = "0.5"
 chacha20poly1305 = "0.10"
+ed25519-dalek = "2.1"
+hmac = "0.12"
 sha2 = "0.10"
+subtle = "2.6"
 socket2 = "0.6"

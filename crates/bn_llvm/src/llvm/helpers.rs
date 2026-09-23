@@ -577,6 +577,22 @@ pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a 
                 | "OpenAesGcm"
                 | "SealChaCha20"
                 | "OpenChaCha20"
+                | "HmacSha256"
+                | "VerifyHmacSha256"
+                | "Argon2id"
+                | "Ed25519PublicKey"
+                | "Ed25519Sign"
+                | "Ed25519Verify"
+                | "EcdsaP256PublicKey"
+                | "EcdsaP256Sign"
+                | "EcdsaP256Verify"
+                | "Slice"
+                | "MlKemKeypair"
+                | "MlKemEncapsulate"
+                | "MlKemDecapsulate"
+                | "MlDsaKeypair"
+                | "MlDsaSign"
+                | "MlDsaVerify"
         ))
     .then_some(method)
 }

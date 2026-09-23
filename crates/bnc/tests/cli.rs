@@ -1467,3 +1467,106 @@ fn compiled_bncrypto_aead_matches_the_interpreter() {
         "f8cb8441c9b57bd8fd62663940f843f4e3cf1f\n616263\n25a94560bf99e02777736ea20551c7a02d3f86\n616263\ntamper-rejected\n"
     );
 }
+
+/// HMAC-SHA-256 and Argon2id survive compilation, including the mixed
+/// handle-and-integer argument list Argon2id needs. The native binary prints
+/// exactly what the interpreter prints.
+#[test]
+fn compiled_bncrypto_mac_and_kdf_match_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!("bn-crypto-mac-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("crypto mac directory");
+    let artifact = directory.join("mac");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-mac-kdf/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the BNCrypto MAC/KDF fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled MAC/KDF fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "a60c859a6827c5ea576a48d8d368672fbfe4667c6a927428284a0cb3859cc1d6\nTRUE\nFALSE\n32\nargon-params-rejected\n"
+    );
+}
+
+/// Ed25519 and ECDSA P-256 survive compilation and print what the
+/// interpreter prints.
+#[test]
+fn compiled_bncrypto_signatures_match_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_signatures_match_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-signatures/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "23bc54912c1e6e92c4a86825c867e27ffdc555bffbd4244f17a26abfffee965d\ndb2b1ee48bbbb9af4a2e038310db3cd4e36e081b5537c348adfc95447fa8de2a7a971a889fd4c8d562a3a474db1e89f4f082cc3bc19f019951206f0b99aa8103\nTRUE\nFALSE\n65\nTRUE\nFALSE\n"
+    );
+}
+
+/// ML-KEM-768 and ML-DSA-65 survive compilation, including the concatenated
+/// pair returns that `Slice` splits.
+#[test]
+fn compiled_bncrypto_post_quantum_matches_the_interpreter() {
+    let directory = std::env::temp_dir().join(format!(
+        "bn-compiled_bncrypto_post_quantum_matches_the_interpreter-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("fixture directory");
+    let artifact = directory.join("artifact");
+    let built = bnc()
+        .args(["tests/modules/bncrypto-pqc/main.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("compile the fixture");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(&artifact)
+        .output()
+        .expect("run the compiled fixture");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "1248\nkem-agree\n1984\n3309\nTRUE\nFALSE\n"
+    );
+}

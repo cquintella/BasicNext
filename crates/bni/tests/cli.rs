@@ -1047,3 +1047,63 @@ fn bncrypto_aead_round_trips_and_rejects_tampering() {
         "f8cb8441c9b57bd8fd62663940f843f4e3cf1f\n616263\n25a94560bf99e02777736ea20551c7a02d3f86\n616263\ntamper-rejected\n"
     );
 }
+
+/// HMAC-SHA-256 matches an independently produced tag, verification
+/// distinguishes a tampered message, and Argon2id yields a 32-byte tag while
+/// refusing cost parameters below the algorithm's range.
+#[test]
+fn bncrypto_mac_and_kdf_interpret() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-mac-kdf/main.bn"])
+        .output()
+        .expect("run the BNCrypto MAC/KDF fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "a60c859a6827c5ea576a48d8d368672fbfe4667c6a927428284a0cb3859cc1d6\nTRUE\nFALSE\n32\nargon-params-rejected\n"
+    );
+}
+
+/// Ed25519 is deterministic, so the key and signature are byte-exact against
+/// python-cryptography. P-256 is asserted by verification, since ECDSA nonces
+/// differ between implementations.
+#[test]
+fn bncrypto_signatures_interpret() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-signatures/main.bn"])
+        .output()
+        .expect("run the BNCrypto signature fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "23bc54912c1e6e92c4a86825c867e27ffdc555bffbd4244f17a26abfffee965d\ndb2b1ee48bbbb9af4a2e038310db3cd4e36e081b5537c348adfc95447fa8de2a7a971a889fd4c8d562a3a474db1e89f4f082cc3bc19f019951206f0b99aa8103\nTRUE\nFALSE\n65\nTRUE\nFALSE\n"
+    );
+}
+
+/// ML-KEM-768 and ML-DSA-65. Encapsulation uses fresh randomness, so the
+/// fixture compares the two sides internally and prints a stable verdict; the
+/// object sizes are the FIPS 203 / FIPS 204 published parameters.
+#[test]
+fn bncrypto_post_quantum_interprets() {
+    let output = bni()
+        .args(["run", "tests/modules/bncrypto-pqc/main.bn"])
+        .output()
+        .expect("run the BNCrypto post-quantum fixture");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "1248\nkem-agree\n1984\n3309\nTRUE\nFALSE\n"
+    );
+}

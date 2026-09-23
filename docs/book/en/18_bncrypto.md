@@ -152,12 +152,87 @@ read out of the result value. Basic Next keeps the distinction between *"this
 program is wrong"* and *"this target cannot do it yet"*, and here there is no
 gap to report: both backends run the whole surface.
 
+## Proving a message came from you
+
+A signature answers a different question from a MAC. A MAC proves *someone who
+knows the shared key* produced the message; a signature proves *the holder of one
+particular private key* did, and anyone with the public key can check it without
+being able to forge it.
+
+```basic
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Start() AS VOID
+    LET seed AS Crypto.Bytes = Crypto.FromText("0123456789abcdef0123456789abcdef")
+    LET message AS Crypto.Bytes = Crypto.FromText("abc")
+
+    LET publicKey AS Crypto.Bytes OR Error = Crypto.Ed25519PublicKey(seed)
+    IF publicKey IS Error THEN
+        PRINT "bad seed"
+    ELSE
+        LET signature AS Crypto.Bytes OR Error = Crypto.Ed25519Sign(seed, message)
+        IF signature IS Error THEN
+            PRINT "sign failed"
+        ELSE
+            PRINT Crypto.Ed25519Verify(publicKey, message, signature)
+        END IF
+    END IF
+END FUNCTION
+```
+
+Both schemes sign deterministically, so the same key and message always give the
+same signature. That is a testing convenience, not a security property you should
+rely on for anything else.
+
+`Ed25519Verify` returns `FALSE` rather than an error. An invalid signature is an
+*answer*, not a malfunction — the caller is supposed to handle it as a normal
+outcome.
+
+## Preparing for a quantum adversary
+
+`MlKem` and `MlDsa` are the NIST post-quantum standards: FIPS 203 for key
+encapsulation and FIPS 204 for signatures. They exist because an adversary can
+record encrypted traffic today and decrypt it years from now, once a large enough
+quantum computer exists. Anything whose confidentiality must outlive that horizon
+should be protected with them now.
+
+BN has no tuple, so the members that produce two values hand back one buffer with
+the parts concatenated, and `Slice` splits it:
+
+```basic
+LET pair AS Crypto.Bytes OR Error = Crypto.MlKemKeypair(seed)   // publicKey || privateKey
+LET publicKey AS Crypto.Bytes OR Error = Crypto.Slice(pair, 0, 1184)
+LET privateKey AS Crypto.Bytes OR Error = Crypto.Slice(pair, 1184, 64)
+```
+
+The sizes are fixed by the standard, so the split is unambiguous. `Slice` refuses
+a window that runs past the end rather than returning a short buffer that might be
+mistaken for a key.
+
+### The one thing you must not do
+
+`MlKemEncapsulate` uses fresh randomness every call, and there is deliberately no
+deterministic variant. The underlying library offers one, marked hidden and
+hazardous, and `BNCrypto` does not expose it: reusing encapsulation randomness even
+once is a catastrophic failure, so the language does not offer you the rope.
+
+The same caution applies to AEAD nonces, and for the same reason.
+
 ## What is not here yet
 
-Authenticated encryption, message authentication, password hashing, signatures,
-and the post-quantum primitives are named in the module's roadmap but are **not**
-importable today. `BNCrypto` currently exposes digests and `Bytes`. The contract
-document lists the full intended surface and marks what has landed.
+`BNCrypto` covers digests, `Bytes`, authenticated encryption, HMAC, Argon2id,
+Ed25519, ECDSA P-256, ML-KEM-768 and ML-DSA-65. What it does not do is decide
+policy for you: it has no opinion about where keys live, how long they last, or
+who may use them. Key storage, rotation and access control are the program's job,
+and the next buckets — OAuth and encrypted ORM fields — build on this one rather
+than extending it.
+
+One honest caveat on the post-quantum pair: every other algorithm here is checked
+byte-for-byte against a second, independent implementation. The post-quantum ones
+are not, because no independent implementation was available to check against.
+They are verified by round-trip, by tamper rejection, by the standard's object
+sizes, and by the upstream crates' own Wycheproof test suites. The contract
+document says so too; you should know which guarantees rest on what.
 
 ---
 

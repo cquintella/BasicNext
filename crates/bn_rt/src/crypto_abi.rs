@@ -13,7 +13,12 @@ use std::ffi::c_char;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock, PoisonError};
 
-use crate::crypto::{Aead, decode_hex, encode_hex, open, seal};
+use crate::crypto::{
+    Aead, Argon2Params, argon2id, decode_hex, ed25519_public_key, ed25519_sign, ed25519_verify,
+    encode_hex, hmac_sha256, hmac_verify, ml_dsa_keypair, ml_dsa_sign, ml_dsa_verify,
+    ml_kem_decapsulate, ml_kem_encapsulate, ml_kem_keypair, open, p256_public_key, p256_sign,
+    p256_verify, seal,
+};
 use crate::{c_str, c_string};
 
 /// Returned by fallible entry points; `0` is success, mirroring the other
@@ -186,6 +191,332 @@ pub extern "C" fn bn_rt_crypto_open(
         return BN_CRYPTO_INVALID_ARGUMENT;
     };
     let handle = store(plain);
+    unsafe { *out = handle };
+    BN_CRYPTO_OK
+}
+
+/// HMAC-SHA-256 over two buffers, storing the tag in a new buffer.
+#[allow(unsafe_code)] // C ABI: opaque handles in, opaque handle out through `out`.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_hmac(key: u64, data: u64, out: *mut u64) -> i32 {
+    if out.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    let Some((key, data)) =
+        with_buffers(|buffers| Some((buffers.get(&key)?.clone(), buffers.get(&data)?.clone())))
+    else {
+        return BN_CRYPTO_INVALID_HANDLE;
+    };
+    let handle = store(hmac_sha256(&key, &data));
+    unsafe { *out = handle };
+    BN_CRYPTO_OK
+}
+
+/// Constant-time MAC verification. Returns `1` for a match, `0` otherwise, and
+/// [`BN_CRYPTO_INVALID_HANDLE`] when a handle is unknown.
+#[unsafe(no_mangle)]
+#[allow(unsafe_code)] // C ABI: opaque handles in, boolean out.
+pub extern "C" fn bn_rt_crypto_hmac_verify(key: u64, data: u64, tag: u64) -> i32 {
+    let Some((key, data, tag)) = with_buffers(|buffers| {
+        Some((
+            buffers.get(&key)?.clone(),
+            buffers.get(&data)?.clone(),
+            buffers.get(&tag)?.clone(),
+        ))
+    }) else {
+        return BN_CRYPTO_INVALID_HANDLE;
+    };
+    i32::from(hmac_verify(&key, &data, &tag))
+}
+
+/// Argon2id over a password and salt with the three cost parameters, producing
+/// a 32-byte tag. Parameters outside the algorithm's range are rejected rather
+/// than clamped to something weaker.
+#[allow(unsafe_code)] // C ABI: opaque handles in, opaque handle out through `out`.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_argon2id(
+    password: u64,
+    salt: u64,
+    memory_kib: i64,
+    iterations: i64,
+    parallelism: i64,
+    out: *mut u64,
+) -> i32 {
+    if out.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    let (Ok(memory_kib), Ok(iterations), Ok(parallelism)) = (
+        u32::try_from(memory_kib),
+        u32::try_from(iterations),
+        u32::try_from(parallelism),
+    ) else {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    };
+    let Some((password, salt)) = with_buffers(|buffers| {
+        Some((buffers.get(&password)?.clone(), buffers.get(&salt)?.clone()))
+    }) else {
+        return BN_CRYPTO_INVALID_HANDLE;
+    };
+    let Some(tag) = argon2id(
+        &password,
+        &salt,
+        Argon2Params {
+            secret: &[],
+            associated_data: &[],
+            memory_kib,
+            iterations,
+            parallelism,
+            tag_length: 32,
+        },
+    ) else {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    };
+    let handle = store(tag);
+    unsafe { *out = handle };
+    BN_CRYPTO_OK
+}
+
+/// Signature scheme selector: `0` is Ed25519, `1` is ECDSA P-256.
+fn scheme(selector: i32) -> Option<bool> {
+    match selector {
+        0 => Some(true),
+        1 => Some(false),
+        _ => None,
+    }
+}
+
+/// Public key for a private key handle, under the selected scheme.
+#[allow(unsafe_code)] // C ABI: opaque handle in, opaque handle out through `out`.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_public_key(selector: i32, private_key: u64, out: *mut u64) -> i32 {
+    if out.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    let Some(ed25519) = scheme(selector) else {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    };
+    let Some(private_key) = with_buffers(|buffers| buffers.get(&private_key).cloned()) else {
+        return BN_CRYPTO_INVALID_HANDLE;
+    };
+    let derived = if ed25519 {
+        ed25519_public_key(&private_key)
+    } else {
+        p256_public_key(&private_key)
+    };
+    let Some(public_key) = derived else {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    };
+    let handle = store(public_key);
+    unsafe { *out = handle };
+    BN_CRYPTO_OK
+}
+
+/// Signs `message` under the selected scheme. Both schemes are deterministic.
+#[allow(unsafe_code)] // C ABI: opaque handles in, opaque handle out through `out`.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_sign(
+    selector: i32,
+    private_key: u64,
+    message: u64,
+    out: *mut u64,
+) -> i32 {
+    if out.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    let Some(ed25519) = scheme(selector) else {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    };
+    let Some((private_key, message)) = with_buffers(|buffers| {
+        Some((
+            buffers.get(&private_key)?.clone(),
+            buffers.get(&message)?.clone(),
+        ))
+    }) else {
+        return BN_CRYPTO_INVALID_HANDLE;
+    };
+    let signed = if ed25519 {
+        ed25519_sign(&private_key, &message)
+    } else {
+        p256_sign(&private_key, &message)
+    };
+    let Some(signature) = signed else {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    };
+    let handle = store(signature);
+    unsafe { *out = handle };
+    BN_CRYPTO_OK
+}
+
+/// Verifies a signature. Returns `1` for a valid signature and `0` for anything
+/// else — a malformed key, a tampered message, or a signature from another key.
+#[allow(unsafe_code)] // C ABI: opaque handles in, boolean out.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_verify(
+    selector: i32,
+    public_key: u64,
+    message: u64,
+    signature: u64,
+) -> i32 {
+    let Some(ed25519) = scheme(selector) else {
+        return 0;
+    };
+    let Some((public_key, message, signature)) = with_buffers(|buffers| {
+        Some((
+            buffers.get(&public_key)?.clone(),
+            buffers.get(&message)?.clone(),
+            buffers.get(&signature)?.clone(),
+        ))
+    }) else {
+        return 0;
+    };
+    i32::from(if ed25519 {
+        ed25519_verify(&public_key, &message, &signature)
+    } else {
+        p256_verify(&public_key, &message, &signature)
+    })
+}
+
+/// ML-KEM-768 key pair from a 64-byte seed handle, as `publicKey || seed`.
+#[allow(unsafe_code)] // C ABI: opaque handle in, two opaque handles out.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_kem_keypair(seed: u64, out: *mut u64) -> i32 {
+    if out.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    let Some(seed) = with_buffers(|buffers| buffers.get(&seed).cloned()) else {
+        return BN_CRYPTO_INVALID_HANDLE;
+    };
+    let Some((mut public_key, private_key)) = ml_kem_keypair(&seed) else {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    };
+    public_key.extend_from_slice(&private_key);
+    let handle = store(public_key);
+    unsafe { *out = handle };
+    BN_CRYPTO_OK
+}
+
+/// Encapsulates with fresh randomness, as `ciphertext || sharedSecret`.
+#[allow(unsafe_code)] // C ABI: opaque handle in, two opaque handles out.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_kem_encapsulate(public_key: u64, out: *mut u64) -> i32 {
+    if out.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    let Some(public_key) = with_buffers(|buffers| buffers.get(&public_key).cloned()) else {
+        return BN_CRYPTO_INVALID_HANDLE;
+    };
+    let Some((mut ciphertext, secret)) = ml_kem_encapsulate(&public_key) else {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    };
+    ciphertext.extend_from_slice(&secret);
+    let handle = store(ciphertext);
+    unsafe { *out = handle };
+    BN_CRYPTO_OK
+}
+
+/// Recovers the shared secret from a ciphertext.
+#[allow(unsafe_code)] // C ABI: opaque handles in, opaque handle out through `out`.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_kem_decapsulate(
+    private_key: u64,
+    ciphertext: u64,
+    out: *mut u64,
+) -> i32 {
+    if out.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    let Some((private_key, ciphertext)) = with_buffers(|buffers| {
+        Some((
+            buffers.get(&private_key)?.clone(),
+            buffers.get(&ciphertext)?.clone(),
+        ))
+    }) else {
+        return BN_CRYPTO_INVALID_HANDLE;
+    };
+    let Some(secret) = ml_kem_decapsulate(&private_key, &ciphertext) else {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    };
+    let handle = store(secret);
+    unsafe { *out = handle };
+    BN_CRYPTO_OK
+}
+
+/// ML-DSA-65 key pair from a 32-byte seed handle, as `verifyingKey || seed`.
+#[allow(unsafe_code)] // C ABI: opaque handle in, two opaque handles out.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_dsa_keypair(seed: u64, out: *mut u64) -> i32 {
+    if out.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    let Some(seed) = with_buffers(|buffers| buffers.get(&seed).cloned()) else {
+        return BN_CRYPTO_INVALID_HANDLE;
+    };
+    let Some((mut public_key, private_key)) = ml_dsa_keypair(&seed) else {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    };
+    public_key.extend_from_slice(&private_key);
+    let handle = store(public_key);
+    unsafe { *out = handle };
+    BN_CRYPTO_OK
+}
+
+/// ML-DSA-65 signature.
+#[allow(unsafe_code)] // C ABI: opaque handles in, opaque handle out through `out`.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_dsa_sign(private_key: u64, message: u64, out: *mut u64) -> i32 {
+    if out.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    let Some((private_key, message)) = with_buffers(|buffers| {
+        Some((
+            buffers.get(&private_key)?.clone(),
+            buffers.get(&message)?.clone(),
+        ))
+    }) else {
+        return BN_CRYPTO_INVALID_HANDLE;
+    };
+    let Some(signature) = ml_dsa_sign(&private_key, &message) else {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    };
+    let handle = store(signature);
+    unsafe { *out = handle };
+    BN_CRYPTO_OK
+}
+
+/// Verifies an ML-DSA-65 signature. `1` for valid, `0` for anything else.
+#[allow(unsafe_code)] // C ABI: opaque handles in, boolean out.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_dsa_verify(public_key: u64, message: u64, signature: u64) -> i32 {
+    let Some((public_key, message, signature)) = with_buffers(|buffers| {
+        Some((
+            buffers.get(&public_key)?.clone(),
+            buffers.get(&message)?.clone(),
+            buffers.get(&signature)?.clone(),
+        ))
+    }) else {
+        return 0;
+    };
+    i32::from(ml_dsa_verify(&public_key, &message, &signature))
+}
+
+/// A sub-range of a buffer. Out-of-range is rejected rather than clamped, so a
+/// bad offset can never yield a short buffer that looks like a key.
+#[allow(unsafe_code)] // C ABI: opaque handle in, opaque handle out through `out`.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_slice(data: u64, start: i64, length: i64, out: *mut u64) -> i32 {
+    if out.is_null() {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    }
+    let (Ok(start), Ok(length)) = (usize::try_from(start), usize::try_from(length)) else {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    };
+    let Some(data) = with_buffers(|buffers| buffers.get(&data).cloned()) else {
+        return BN_CRYPTO_INVALID_HANDLE;
+    };
+    let Some(end) = start.checked_add(length).filter(|end| *end <= data.len()) else {
+        return BN_CRYPTO_INVALID_ARGUMENT;
+    };
+    let handle = store(data[start..end].to_vec());
     unsafe { *out = handle };
     BN_CRYPTO_OK
 }
