@@ -36,15 +36,17 @@
 #   2) /opt/basicnext
 #   3) /usr/local
 #   4) Other path…
-# The prompt reads /dev/tty so `curl | bash` still works.
+# The prompt reads /dev/tty so a verified downloaded release asset remains
+# interactive even when standard input is redirected.
 #
-# Outside a checkout (curl | bash) the script bootstraps itself: it resolves the
-# latest release (or $BN_VERSION, e.g. v0.6.1; a 0.5 tag installs bn + bnc), downloads that tag's source
-# tarball for the modules/catalog/man pages, then the prebuilt bni/bnc for this
-# OS/arch verified against the release's SHA256SUMS; if the release has no
-# asset for this platform it builds from the tarball with cargo instead.
+# Outside a checkout (a verified release asset) the script bootstraps itself: it resolves the
+# latest release (or $BN_VERSION, e.g. v0.6.1), downloads the release's
+# checksummed source payload for modules/catalog/man pages, then the prebuilt
+# bni/bnc for this OS/arch. Every downloaded asset is checked against the
+# release's SHA256SUMS; if the release has no binary for this platform, the
+# installer builds from the verified source payload with cargo instead.
 #
-#   curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.sh | bash
+# Download this script and the release's SHA256SUMS, verify it, then run it.
 set -euo pipefail
 
 # PREFIX left unset until --prefix / PREFIX= / the install-location menu resolves it.
@@ -72,6 +74,26 @@ log() {
 record() {
   printf '%s\n' "$1" >>"$MANIFEST"
   echo "    installed: $1" >>"$INSTALL_LOG"
+}
+
+file_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | cut -d' ' -f1
+  else
+    echo "error: sha256sum or shasum is required" >&2
+    return 1
+  fi
+}
+
+verify_release_asset() {
+  local checksums=$1 asset=$2 name=${3:-} expected actual
+  [[ -n "$name" ]] || name=$(basename "$asset")
+  expected=$(awk -v n="$name" '$2 == n { print $1 }' "$checksums")
+  actual=$(file_sha256 "$asset")
+  [[ -n "$expected" && "$expected" == "$actual" ]] \
+    || { echo "error: SHA256 mismatch for $name (expected ${expected:-<absent>}, got $actual)" >&2; return 1; }
 }
 
 ask_prefix() {
@@ -138,9 +160,8 @@ fi
   echo "PREFIX=$PREFIX BN_STATE_DIR=$BN_STATE_DIR BUILD=$BUILD BN_VERSION=${BN_VERSION:-}"
 } >>"$INSTALL_LOG"
 
-# --- bootstrap: not running from a checkout (curl | bash) ----------------------
-# When piped (`curl | bash`), $0 is often "bash" and BASH_SOURCE[0] is empty or a
-# /dev/fd path — never treat that as a repo checkout. Only skip bootstrap when
+# --- bootstrap: not running from a checkout -----------------------------------
+# Only skip bootstrap when
 # this file lives next to ../Cargo.toml (./scripts/install.sh from a clone).
 _self="${BASH_SOURCE[0]:-}"
 _bootstrap=0
@@ -167,9 +188,15 @@ if ((_bootstrap)); then
   fi
   work=$(mktemp -d)
   trap 'rm -rf "$work"; rm -f "$MANIFEST"' EXIT
+  base="https://github.com/$REPO/releases/download/$tag"
+  checksums="$work/SHA256SUMS"
+  source_archive="$work/basicnext-source-$tag.tar.gz"
   log "==> Basic Next $tag"
-  log "==> Downloading source tree (modules, catalog, man page)"
-  curl -fsSL "https://github.com/$REPO/archive/refs/tags/$tag.tar.gz" | tar -xzf - -C "$work"
+  log "==> Downloading verified source payload (modules, catalog, man pages)"
+  curl -fsSL -o "$checksums" "$base/SHA256SUMS"
+  curl -fsSL -o "$source_archive" "$base/basicnext-source-$tag.tar.gz"
+  verify_release_asset "$checksums" "$source_archive"
+  tar -xzf "$source_archive" -C "$work"
   src=$(find "$work" -mindepth 1 -maxdepth 1 -type d | head -n1)
   [[ -f "$src/Cargo.toml" ]] || { echo "error: unexpected source tarball layout" >&2; exit 1; }
 
@@ -183,7 +210,6 @@ if ((_bootstrap)); then
     arm64|aarch64) arch=aarch64 ;;
     *) arch="" ;;
   esac
-  base="https://github.com/$REPO/releases/download/$tag"
   prebuilt=0
   if [[ -n "$os" && -n "$arch" ]]; then
     log "==> Downloading prebuilt executables for $os-$arch"
@@ -201,21 +227,15 @@ if ((_bootstrap)); then
       [[ $name == bni ]] && continue
       curl -fsSL -o "$src/target/release/$name" "$base/$name-$os-$arch" || downloaded=0
     done
-    curl -fsSL -o "$work/SHA256SUMS" "$base/SHA256SUMS" || downloaded=0
     if ((downloaded)); then
-      if command -v sha256sum >/dev/null 2>&1; then sum() { sha256sum "$1" | cut -d' ' -f1; }
-      else sum() { shasum -a 256 "$1" | cut -d' ' -f1; }; fi
       for name in $binaries; do
-        expected=$(awk -v n="$name-$os-$arch" '$2 == n { print $1 }' "$work/SHA256SUMS")
-        actual=$(sum "$src/target/release/$name")
-        [[ -n "$expected" && "$expected" == "$actual" ]] \
-          || { echo "error: SHA256 mismatch for $name-$os-$arch (expected ${expected:-<absent>}, got $actual)" >&2; exit 1; }
+        verify_release_asset "$checksums" "$src/target/release/$name" "$name-$os-$arch"
         chmod +x "$src/target/release/$name"
       done
       # Native `bnc` needs libbn_rt.a in the install prefix (arch-specific).
       if curl -fsSL -o "$src/target/release/libbn_rt.a" "$base/libbn_rt-$os-$arch.a"; then
-        expected=$(awk -v n="libbn_rt-$os-$arch.a" '$2 == n { print $1 }' "$work/SHA256SUMS")
-        actual=$(sum "$src/target/release/libbn_rt.a")
+        expected=$(awk -v n="libbn_rt-$os-$arch.a" '$2 == n { print $1 }' "$checksums")
+        actual=$(file_sha256 "$src/target/release/libbn_rt.a")
         if [[ -n "$expected" && "$expected" == "$actual" ]]; then
           log "    libbn_rt.a checksum OK"
         else

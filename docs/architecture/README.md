@@ -23,6 +23,7 @@ Standing agent/contributor brief (authority + acceptance, including well-formed 
 | [module-path.md](module-path.md) | Ordered **module-path** (dirs to search for `.bn` imports) |
 | [semantic-analysis.md](semantic-analysis.md) | **2.5** contract: definitions, operands, booleans, calls/returns, references |
 | [conformance.md](conformance.md) | Spec → reference interpret → compile; two CI comparisons |
+| [rust-test-harness.md](rust-test-harness.md) | Rust-only active test harness, black-box ownership, migration and acceptance gates |
 | [value-memory-abi.md](value-memory-abi.md) | Value/memory/ABI + numeric lowering (`nsw` ≠ BN overflow) |
 | [native-stdlib-binding.md](native-stdlib-binding.md) | Stdlib native ABI: shared `bn_rt`, honest modules, HostEnv providers; plugins deferred |
 | [frontend-session.md](frontend-session.md) | `FrontendSession`: snapshots, SourceId/Revision, check≡LSP diagnostics |

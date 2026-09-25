@@ -4,8 +4,8 @@
   <img src="docs/logo.png" alt="Basic Next Logo" width="320" />
 </p>
 
-[![Rust CI](https://img.shields.io/badge/Rust_CI-passing-brightgreen)](#)
-[![Version](https://img.shields.io/badge/version-v0.6.0-blue)](#)
+[![CI](https://github.com/cquintella/BasicNext/actions/workflows/binaries.yml/badge.svg)](https://github.com/cquintella/BasicNext/actions/workflows/binaries.yml)
+[![Latest release](https://img.shields.io/github/v/release/cquintella/BasicNext)](https://github.com/cquintella/BasicNext/releases/latest)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE.md)
 
 ---
@@ -51,15 +51,15 @@ gone: `bn run …` is `bni run …` and `bn build …` is `bnc …`.
 Read [PHILOSOPHY.md](PHILOSOPHY.md) for the mission, vision, and complete set
 of design principles.
 
-## 🚀 Status: Version 0.6.0
+## 🚀 Status: 0.6.1 released; 0.6.2 in development
 
-**Latest GitHub release:** [v0.6.0](https://github.com/cquintella/BasicNext/releases/tag/v0.6.0).
+**Latest GitHub release:** [v0.6.1](https://github.com/cquintella/BasicNext/releases/tag/v0.6.1).
 The 0.6 line ships `bni` and `bnc` (the 0.5 `bn` executable is gone). Normative
 language contract: [`language/0.6/`](language/0.6/0.6.md). Release notes:
 [`docs/releases/`](docs/releases/README.md).
 
-The tutorial book under `docs/book/en/` still uses some 0.5 command names in
-places; prefer `bni` / `bnc` and the 0.6 language docs when they disagree.
+The tutorial source under `docs/book/en/` and the normative language contract
+both track the 0.6 command and language surface.
 
 
 ## 🛠️ Getting Started
@@ -70,38 +70,78 @@ frontend, one diagnostic format, source locations, and exit-code model.
 
 ### Quick Installation
 
-**Linux / macOS — one command**
+**Linux / macOS — verified release installer (from v0.6.1)**
+
+The commands below become available when `v0.6.1` is published. Until then,
+use the source-checkout instructions below; the `v0.6.0` release did not ship
+the versioned installer and source payload.
 
 ```shell
-curl -fsSL https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.sh | bash
+version=v0.6.1
+base="https://github.com/cquintella/BasicNext/releases/download/$version"
+curl --proto '=https' --tlsv1.2 -fSLO "$base/install.sh"
+curl --proto '=https' --tlsv1.2 -fSLO "$base/SHA256SUMS"
+if command -v sha256sum >/dev/null 2>&1; then
+    grep ' install.sh$' SHA256SUMS | sha256sum -c -
+else
+    grep ' install.sh$' SHA256SUMS | shasum -a 256 -c -
+fi
+bash install.sh
 ```
 
-The script asks where to install:
+Downloading, verifying, and executing are separate steps so the script is never
+executed directly from a mutable branch. The script asks where to install:
 
 1. `$HOME/basicnext`
 2. `/opt/basicnext`
 3. `/usr/local`
 4. Other path…
 
-It then installs the latest release's `bni`/`bnc` (checksum-verified), standard-library
-modules, diagnostics catalog, and man pages under that prefix. If the release has no
-binary for your platform, it builds from that tag with `cargo`. Paths under your home
-need no `sudo`; `/usr/local` and `/opt/basicnext` use `sudo` when the directory is not
-writable.
+It then installs the release's `bni`/`bnc`, standard-library modules,
+diagnostics catalog, and man pages under that prefix. The binaries and source
+payload are checked against the release's `SHA256SUMS`. If the release has no
+binary for your platform, it builds from that verified source payload with
+`cargo`. Paths under your home need no `sudo`; `/usr/local` and
+`/opt/basicnext` use `sudo` when the directory is not writable.
 
 From a clone, the same menu applies (`./scripts/install.sh` builds from source). Skip
-the menu with `--prefix DIR` or `PREFIX=DIR`. Pin a release with `BN_VERSION=v0.6.0`.
-Tags before 0.6 install that era's layout (`bn` + `bnc`).
+the menu with `--prefix DIR` or `PREFIX=DIR`. Pin a release that publishes the
+verified installer payload with `BN_VERSION=v0.6.1`.
 
 A successful install also writes `$HOME/.basicnext/install.log` and
 `$HOME/.basicnext/uninstall.sh` (override with `BN_STATE_DIR`).
 
-**Windows (PowerShell)** — default prefix `%LOCALAPPDATA%\Programs\BasicNext` (no admin):
+**Windows (PowerShell, from v0.6.2)** — default prefix
+`%LOCALAPPDATA%\Programs\BasicNext` (no admin):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\install.ps1
-powershell -ExecutionPolicy Bypass -File scripts\install.ps1 -Prefix C:\Tools\BasicNext
+$Release = Invoke-RestMethod -UseBasicParsing `
+    -Uri 'https://api.github.com/repos/cquintella/BasicNext/releases/latest'
+$Version = $Release.tag_name
+$Base = "https://github.com/cquintella/BasicNext/releases/download/$Version"
+$Work = Join-Path ([System.IO.Path]::GetTempPath()) `
+    ("basicnext-bootstrap-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Force -Path $Work | Out-Null
+$PreviousVersion = $env:BN_VERSION
+try {
+    $Installer = Join-Path $Work 'install.ps1'
+    $Checksums = Join-Path $Work 'SHA256SUMS'
+    Invoke-WebRequest -UseBasicParsing -Uri "$Base/install.ps1" -OutFile $Installer
+    Invoke-WebRequest -UseBasicParsing -Uri "$Base/SHA256SUMS" -OutFile $Checksums
+    $Expected = ((Select-String -Path $Checksums -Pattern ' install.ps1$').Line -split '\s+')[0]
+    $Actual = (Get-FileHash $Installer -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($Actual -ne $Expected) { throw 'install.ps1 checksum mismatch' }
+    $env:BN_VERSION = $Version
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Installer
+    if ($LASTEXITCODE -ne 0) { throw "install.ps1 exited with $LASTEXITCODE" }
+} finally {
+    $env:BN_VERSION = $PreviousVersion
+    Remove-Item -LiteralPath $Work -Recurse -Force -ErrorAction SilentlyContinue
+}
 ```
+
+The bootstrap and installer use PowerShell-native networking, hashing, and ZIP
+extraction; `curl.exe` and `tar.exe` are not required.
 
 Installed layout (FHS):
 
@@ -175,7 +215,6 @@ Requires Rust **1.98** (`rust-toolchain.toml`). Current limitations include part
 - Editor support: [basicnext-vscode](https://github.com/cquintella/basicnext-vscode)
   (standalone VS Code extension; Jupyter kernel is also a separate repository).
 - Jupyter kernel — separate repository: [cquintella/basicnext-jupyter](https://github.com/cquintella/basicnext-jupyter).
-- VS Code extension — separate repository: [cquintella/basicnext-vscode](https://github.com/cquintella/basicnext-vscode).
 - `PHILOSOPHY.md` — design principles.
 - [`docs/governance.md`](docs/governance.md) — how decisions are made.
 - [`docs/trademark.md`](docs/trademark.md) — use of the project name.
@@ -230,6 +269,9 @@ toolchain (a globally installed `bni` may lag behind `main`).
 ## 🤝 Contributing
 Read [docs/contributing.md](docs/contributing.md). Language evolution begins as proposals
 in `todo/proposals/`; specification changes require examples.
+
+Security vulnerabilities should be reported privately according to
+[SECURITY.md](SECURITY.md), not through a public issue.
 
 ## ❤️ Support
 See [docs/sponsorship.md](docs/sponsorship.md) to support Basic Next maintenance without

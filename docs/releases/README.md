@@ -5,10 +5,11 @@ for that tag (and a ready body for the GitHub Release page).
 
 | Version | Notes | GitHub |
 | --- | --- | --- |
-| **0.6.1** | [0.6.1.md](0.6.1.md) | `BNCrypto` + BNJson DOM/AOT/companion codecs; tag pending |
+| **0.6.2** | [0.6.2.md](0.6.2.md) | Rust-only active test harness; verified release installers; supply-chain hardening; tag pending |
+| **0.6.1** | [0.6.1.md](0.6.1.md) | [v0.6.1](https://github.com/cquintella/BasicNext/releases/tag/v0.6.1) |
 | **0.6.1c** | [0.6.1c.md](0.6.1c.md) | BNJson delivery lane, incorporated into 0.6.1 |
 | **0.6.1b** | [0.6.1b.md](0.6.1b.md) | `BNCrypto` delivery lane, incorporated into 0.6.1 |
-| **0.6.0** | [0.6.0.md](0.6.0.md) | Two executables (`bni`, `bnc`) replace `bn`; `++`/`--` expressions; tag pending |
+| **0.6.0** | [0.6.0.md](0.6.0.md) | [v0.6.0](https://github.com/cquintella/BasicNext/releases/tag/v0.6.0) |
 | **0.5.2.1** | [0.5.2.1.md](0.5.2.1.md) | Runtime security, policy, and value-model corrections; tag pending |
 | **0.5.2** | [0.5.2.md](0.5.2.md) | Tag when binaries publish |
 | **0.5.1** | [0.5.1.md](0.5.1.md) | [v0.5.1](https://github.com/cquintella/BasicNext/releases/tag/v0.5.1) |

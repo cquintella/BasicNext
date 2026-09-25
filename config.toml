@@ -3,3 +3,6 @@
 
 [toolchain]
 clang = "clang"
+
+[mcp_servers.github]
+bearer_token_env_var = "GH_TOKEN"

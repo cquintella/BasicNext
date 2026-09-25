@@ -32,6 +32,9 @@
 .PARAMETER NoBuild
     Install already-built target\release binaries instead of rebuilding.
 
+.PARAMETER NoPathUpdate
+    Do not add the installed bin directory to the current user's PATH.
+
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File scripts\install.ps1
 
@@ -40,7 +43,8 @@
 #>
 param(
     [string]$Prefix = "$env:LOCALAPPDATA\Programs\BasicNext",
-    [switch]$NoBuild
+    [switch]$NoBuild,
+    [switch]$NoPathUpdate
 )
 $ErrorActionPreference = 'Stop'
 
@@ -65,7 +69,95 @@ function Record-Installed([string]$Path) {
     Add-Content -Path $InstallLog -Value "    installed: $Path"
 }
 
+function Assert-ReleaseAsset(
+    [string]$ChecksumsPath,
+    [string]$AssetPath,
+    [string]$AssetName = ''
+) {
+    if ([string]::IsNullOrEmpty($AssetName)) {
+        $AssetName = Split-Path $AssetPath -Leaf
+    }
+    $pattern = '\s' + [regex]::Escape($AssetName) + '$'
+    $checksumLine = Get-Content $ChecksumsPath | Where-Object { $_ -match $pattern } | Select-Object -First 1
+    if (-not $checksumLine) { throw "$AssetName is absent from SHA256SUMS" }
+    $expected = ($checksumLine -split '\s+')[0].ToLowerInvariant()
+    $actual = (Get-FileHash $AssetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actual -ne $expected) {
+        throw "SHA256 mismatch for $AssetName (expected $expected, got $actual)"
+    }
+}
+
+function Receive-ReleaseAsset(
+    [string]$Base,
+    [string]$AssetName,
+    [string]$Destination
+) {
+    if (Test-Path -LiteralPath $Base -PathType Container) {
+        Copy-Item (Join-Path $Base $AssetName) $Destination
+        return
+    }
+
+    $Uri = "$($Base.TrimEnd('/'))/$AssetName"
+    Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $Destination
+}
+
+$InitialLocation = Get-Location
+$BootstrapDir = $null
+try {
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+if (-not (Test-Path (Join-Path $repoRoot 'Cargo.toml'))) {
+    $Tag = $env:BN_VERSION
+    if ([string]::IsNullOrEmpty($Tag)) {
+        $Latest = Invoke-RestMethod -UseBasicParsing `
+            -Uri 'https://api.github.com/repos/cquintella/BasicNext/releases/latest'
+        $Tag = [string]$Latest.tag_name
+        if ([string]::IsNullOrEmpty($Tag)) {
+            throw 'could not resolve the latest Basic Next release'
+        }
+    }
+    if ($env:PROCESSOR_ARCHITECTURE -notin @('AMD64', 'x86_64')) {
+        throw "no verified prebuilt Windows asset for architecture '$env:PROCESSOR_ARCHITECTURE'"
+    }
+
+    $BootstrapDir = Join-Path ([System.IO.Path]::GetTempPath()) ("basicnext-install-" + [System.Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Force -Path $BootstrapDir | Out-Null
+    $Base = if ($env:BN_RELEASE_BASE) {
+        $env:BN_RELEASE_BASE
+    } else {
+        "https://github.com/cquintella/BasicNext/releases/download/$Tag"
+    }
+    $Checksums = Join-Path $BootstrapDir 'SHA256SUMS'
+    Receive-ReleaseAsset $Base 'SHA256SUMS' $Checksums
+
+    $SourceName = "basicnext-source-$Tag.zip"
+    $SourceArchive = Join-Path $BootstrapDir $SourceName
+    Receive-ReleaseAsset $Base $SourceName $SourceArchive
+    Assert-ReleaseAsset $Checksums $SourceArchive $SourceName
+
+    foreach ($AssetName in @(
+            'bni-windows-x86_64.exe',
+            'bnc-windows-x86_64.exe',
+            'bn_rt-windows-x86_64.lib'
+        )) {
+        $AssetPath = Join-Path $BootstrapDir $AssetName
+        Receive-ReleaseAsset $Base $AssetName $AssetPath
+        Assert-ReleaseAsset $Checksums $AssetPath $AssetName
+    }
+
+    Expand-Archive -LiteralPath $SourceArchive -DestinationPath $BootstrapDir -Force
+    $SourceRoot = Get-ChildItem $BootstrapDir -Directory |
+        Where-Object { Test-Path (Join-Path $_.FullName 'Cargo.toml') } |
+        Select-Object -First 1
+    if (-not $SourceRoot) { throw 'unexpected source payload layout' }
+    $repoRoot = $SourceRoot.FullName
+
+    $TargetRelease = Join-Path $repoRoot 'target\release'
+    New-Item -ItemType Directory -Force -Path $TargetRelease | Out-Null
+    Copy-Item (Join-Path $BootstrapDir 'bni-windows-x86_64.exe') (Join-Path $TargetRelease 'bni.exe')
+    Copy-Item (Join-Path $BootstrapDir 'bnc-windows-x86_64.exe') (Join-Path $TargetRelease 'bnc.exe')
+    Copy-Item (Join-Path $BootstrapDir 'bn_rt-windows-x86_64.lib') (Join-Path $TargetRelease 'bn_rt.lib')
+    $NoBuild = $true
+}
 Set-Location $repoRoot
 
 if (-not $NoBuild) {
@@ -136,11 +228,13 @@ Write-Log "    $rtDest"
 Write-Log "    $modDir\, $diagDir\"
 
 # Add the bin directory to the user's PATH (idempotent).
-$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-if (($userPath -split ';') -notcontains $binDir) {
-    $newPath = if ([string]::IsNullOrEmpty($userPath)) { $binDir } else { "$userPath;$binDir" }
-    [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
-    Write-Log "==> Added $binDir to your user PATH (restart the shell to pick it up)."
+if (-not $NoPathUpdate) {
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    if (($userPath -split ';') -notcontains $binDir) {
+        $newPath = if ([string]::IsNullOrEmpty($userPath)) { $binDir } else { "$userPath;$binDir" }
+        [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+        Write-Log "==> Added $binDir to your user PATH (restart the shell to pick it up)."
+    }
 }
 
 # Verify against the installed copy, from a clean working directory.
@@ -198,3 +292,9 @@ Write-Log "==> Wrote uninstall script: $UninstallScript"
 Write-Log "==> Install log: $InstallLog"
 Write-Log "==> Done."
 Add-Content -Path $InstallLog -Value ("===== end install $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz') =====")
+} finally {
+    Set-Location $InitialLocation
+    if ($BootstrapDir -and (Test-Path $BootstrapDir)) {
+        Remove-Item -LiteralPath $BootstrapDir -Recurse -Force
+    }
+}

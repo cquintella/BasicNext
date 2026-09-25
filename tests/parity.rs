@@ -18,6 +18,17 @@ use std::{
     process::{Command, Stdio},
 };
 
+#[cfg(unix)]
+use std::{fs::File, io::Read, os::unix::ffi::OsStrExt, path::Path, thread, time::Duration};
+
+#[cfg(unix)]
+use rustix::{
+    pty::{OpenptFlags, grantpt, openpt, ptsname, unlockpt},
+    termios::{Winsize, tcsetwinsize},
+};
+#[cfg(unix)]
+use wait_timeout::ChildExt;
+
 /// The executables under test live in the workspace `target/<profile>/`;
 /// this package has no binary of its own, so build them first
 /// (`cargo build -p bni -p bnc`; `scripts/test-battery.sh` does).
@@ -679,14 +690,14 @@ fn build_kmp_compiles_through_native_backend() {
 
 #[test]
 fn build_lowers_euclidean_div_and_remainder_matching_interpreter() {
-    // Overlapping smoke (div/rem/runtime) lives in tests/test_compiler_parity.py.
+    // Overlapping smoke (div/rem/runtime) lives in tests/compiler_parity.rs.
     native_matches_interpreter("tests/grammar/valid/build-euclidean-overflow.bn");
     native_matches_interpreter("tests/grammar/valid/build-divide-zero.bn");
 }
 
 #[test]
 fn build_lowers_power_shift_not_and_string_concat_matching_interpreter() {
-    // Overlapping smoke (power-shift*) lives in tests/test_compiler_parity.py.
+    // Overlapping smoke (power-shift*) lives in tests/compiler_parity.rs.
     native_matches_interpreter("tests/grammar/valid/build-invalid-exponent.bn");
     native_matches_interpreter("tests/grammar/valid/build-invalid-shift.bn");
 }
@@ -753,14 +764,14 @@ fn build_executes_dispatch_examples_with_equivalent_results() {
 
 #[test]
 fn build_lowers_all_numeric_widths_and_checked_casts() {
-    // Overlapping smoke (build-widths) lives in tests/test_compiler_parity.py.
+    // Overlapping smoke (build-widths) lives in tests/compiler_parity.rs.
     native_matches_interpreter("tests/grammar/valid/build-cast-overflow.bn");
     native_matches_interpreter("tests/grammar/valid/integer-narrowing-conversion.bn");
 }
 
 #[test]
 fn build_lowers_host_clock_and_console_through_bn_rt() {
-    // Overlapping smoke (build-clock, cls-and-beep) lives in tests/test_compiler_parity.py.
+    // Overlapping smoke (build-clock, cls-and-beep) lives in tests/compiler_parity.rs.
     native_matches_interpreter("tests/grammar/valid/console-size.bn");
     native_matches_interpreter("tests/grammar/valid/console-print-at.bn");
 }
@@ -973,19 +984,79 @@ fn build_typed_dispatch_supports_all_mvp_scalar_arguments() {
 #[cfg(unix)]
 #[test]
 fn console_size_uses_stdout_when_stdin_is_piped() {
-    let output = Command::new("python3")
-        .arg("tests/console_stdout_tty.py")
-        .env("BN", bni().get_program())
-        .env("BN_PROGRAM", "tests/grammar/valid/console-size.bn")
-        .output()
-        .expect("run PTY console-size helper");
+    let winsize = Winsize {
+        ws_row: 24,
+        ws_col: 80,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    let master =
+        openpt(OpenptFlags::RDWR | OpenptFlags::NOCTTY).expect("open pseudo-terminal master");
+    grantpt(&master).expect("grant pseudo-terminal slave");
+    unlockpt(&master).expect("unlock pseudo-terminal slave");
+    let slave_name = ptsname(&master, Vec::new()).expect("resolve pseudo-terminal slave");
+    let slave_path = Path::new(std::ffi::OsStr::from_bytes(slave_name.to_bytes()));
+    let slave = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(slave_path)
+        .expect("open pseudo-terminal slave");
+    tcsetwinsize(&slave, winsize).expect("set pseudo-terminal to 80x24");
+    let mut master = File::from(master);
+
+    let mut child = bni()
+        .args(["run", "tests/grammar/valid/console-size.bn"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::from(slave))
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("run console-size with stdout attached to a PTY");
+    drop(child.stdin.take());
+
+    let stdout_reader = thread::spawn(move || {
+        let mut output = Vec::new();
+        let mut buffer = [0_u8; 256];
+        loop {
+            match master.read(&mut buffer) {
+                // PTY masters commonly report EIO after the slave closes.
+                Ok(0) | Err(_) => break,
+                Ok(read) => {
+                    output.extend_from_slice(&buffer[..read]);
+                    if output.contains(&b'\n') {
+                        break;
+                    }
+                }
+            }
+        }
+        output
+    });
+    let mut stderr = child.stderr.take().expect("capture bni stderr");
+    let stderr_reader = thread::spawn(move || {
+        let mut output = Vec::new();
+        stderr
+            .read_to_end(&mut output)
+            .expect("read bni stderr to EOF");
+        output
+    });
+
+    let Some(status) = child
+        .wait_timeout(Duration::from_secs(5))
+        .expect("wait for console-size")
+    else {
+        child.kill().expect("kill timed-out console-size process");
+        let _ = child.wait();
+        panic!("console-size timed out after 5 seconds");
+    };
+    let stdout = stdout_reader.join().expect("join PTY reader");
+    let stderr = stderr_reader.join().expect("join stderr reader");
+
     assert_eq!(
-        output.status.code(),
+        status.code(),
         Some(0),
         "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
+        String::from_utf8_lossy(&stderr)
     );
-    let stdout = String::from_utf8_lossy(&output.stdout).replace('\r', "");
+    let stdout = String::from_utf8_lossy(&stdout).replace('\r', "");
     assert_eq!(stdout, "80 24\n");
 }
 

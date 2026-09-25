@@ -66,7 +66,7 @@ conditions = ["overflow = checked"]  # must match language + lowering contract
 target = "llvm-native"
 support = "partial"
 reject_diag = "TARGET_UNSUPPORTED_OP"   # support rejection — NOT a language TYPE_MISMATCH
-tests = ["tests/test_compiler_parity.py::…", "tests/…/overflow_checked.bn"]
+tests = ["tests/compiler_parity.rs::…", "tests/…/overflow_checked.bn"]
 notes = "Must not lower checked overflow as bare add nsw (poison ≠ BN Error)"
 ```
 
@@ -102,7 +102,7 @@ support. Full opcode/type/condition coverage and gap reporting remain open.
 
 ## Conformance / parity gates (expand beyond stdout)
 
-Existing differential tests ([`../../tests/test_compiler_parity.py`](../../tests/test_compiler_parity.py), already in CI) mostly compare **return code + stdout** on supported constant-ish programs. That is necessary and should grow, but it is **not** sufficient evidence of interpret↔compile consistency.
+Existing differential tests ([`../../tests/compiler_parity.rs`](../../tests/compiler_parity.rs), already in CI) compare **return code + stdout** and selected diagnostics/IR fragments on supported programs. That is necessary and should grow, but it is **not** sufficient evidence of interpret↔compile consistency.
 
 **Expand gates** (matrix-linked) to cover at least:
 

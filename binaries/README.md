@@ -4,9 +4,10 @@ Binaries are not stored in Git. They are published on
 [GitHub Releases](https://github.com/cquintella/BasicNext/releases).
 
 Each release ships `bni` (interpreter) and `bnc` (compiler) per platform,
-plus `libbn_rt` (native runtime for `bnc`), man pages `bni.1` / `bnc.1`, and
-`SHA256SUMS`. Prefer `scripts/install.sh` / `scripts/install.ps1` when you want
-a full prefix install.
+plus `libbn_rt` (native runtime for `bnc`), man pages `bni.1` / `bnc.1`, the
+versioned installers, a source/support payload, and `SHA256SUMS`. Prefer the
+checksummed release installer when you want a full prefix install. Do not pipe
+an installer directly from a mutable branch into a shell.
 
 | Platform | Interpreter | Compiler |
 | --- | --- | --- |

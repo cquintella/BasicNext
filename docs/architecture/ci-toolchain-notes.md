@@ -24,6 +24,18 @@ symbol is `__stdoutp` on Darwin/FreeBSD and `stdout` elsewhere
 (`bn_llvm::helpers::stdout_file_symbol`). Do not hardcode Darwin-only
 `__stdoutp` in emission.
 
+## Supply-chain inputs fail closed
+
+Every third-party `uses:` entry is pinned to a reviewed full commit SHA. The
+human-readable release stays in an adjacent comment. `tests/check-supply-chain.sh`
+rejects floating refs.
+
+LLVM packages come from the signed `apt.llvm.org` repository. CI verifies the
+published signing-key fingerprint before installing the keyring and never
+executes the remote convenience script. Release installers are assets covered
+by the release's `SHA256SUMS`; documentation keeps download, verification, and
+execution as separate steps.
+
 ## Related
 
 - Workflow: `.github/workflows/binaries.yml`

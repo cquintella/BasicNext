@@ -238,7 +238,7 @@ Full llvm-declared list is in the index below (every `bn_rt_json_*` declared in 
 ## LLVM-declared runtime symbol index (0.4.7 audit)
 
 The exact declaration index below complements the ownership groups above.
-`tests.test_capabilities` verifies each symbol against the built static archive
+`tests/compiler_capabilities.rs` verifies each symbol against the built static archive
 (including macro-generated exports), rather than treating source text as proof
 of an exported ABI. This index does not expand the advertised language subset.
 

@@ -38,7 +38,7 @@ Static diagnostics from the shared Frontend (2.0–3.0) are one place where both
 
 ### Existing parity tests
 
-[`../../tests/test_compiler_parity.py`](../../tests/test_compiler_parity.py) (CI) already diffs interpret vs compile on **return code + stdout** for a fixture list. Keep and grow it; **do not** treat it as complete conformance.
+[`../../tests/compiler_parity.rs`](../../tests/compiler_parity.rs) (CI) diffs interpret vs compile on **return code + stdout** and checks selected diagnostics/IR fragments for a fixture list. Keep and grow it; **do not** treat it as complete conformance.
 
 Cross-backend fixtures added by bucket 0.5.2a (`tests/cli.rs`):
 `native_host_net_neighbor_loopback_is_a_typed_result` (mirrors the

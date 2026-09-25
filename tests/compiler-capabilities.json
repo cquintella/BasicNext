@@ -1073,7 +1073,7 @@
       ],
       "tests": [
         "examples/edit_distance.bn",
-        "tests/test_compiler_parity.py::CompilerParityTests::test_distance_examples_cover_input_and_eof"
+        "tests/compiler_parity.rs::distance_examples_cover_input_and_eof"
       ],
       "reject_diag": null,
       "provider": "language",
@@ -1114,7 +1114,7 @@
       ],
       "tests": [
         "examples/levenshtein.bn",
-        "tests/test_compiler_parity.py::CompilerParityTests::test_distance_examples_cover_input_and_eof"
+        "tests/compiler_parity.rs::distance_examples_cover_input_and_eof"
       ],
       "reject_diag": null,
       "provider": "language",
