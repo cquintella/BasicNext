@@ -1,0 +1,8 @@
+# Check out text with LF on every platform: golden files, fixtures, and
+# expected outputs are compared byte for byte.
+* text=auto eol=lf
+
+*.png binary
+*.pdf binary
+*.lib binary
+*.a binary
