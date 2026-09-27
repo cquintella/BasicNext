@@ -17,13 +17,48 @@ use crate::{
     },
 };
 
+/// Flags for every native executable. On Windows the emitted IR carries no
+/// target triple (clang would warn), links against the dynamic CRT that
+/// `bn_rt.lib` is built for, and gets `printf` from
+/// `legacy_stdio_definitions` (the UCRT defines it inline in its headers).
+pub(crate) fn native_program_link_args() -> &'static [&'static str] {
+    #[cfg(windows)]
+    {
+        &[
+            "-Wno-override-module",
+            "-fms-runtime-lib=dll",
+            "-llegacy_stdio_definitions",
+        ]
+    }
+
+    #[cfg(not(windows))]
+    {
+        &[]
+    }
+}
+
+/// System libraries the `bn_rt` static library needs, as reported by
+/// `rustc --print native-static-libs` for each target.
 pub(crate) fn native_runtime_link_args() -> &'static [&'static str] {
     #[cfg(target_os = "linux")]
     {
         &["-lm"]
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(windows)]
+    {
+        &[
+            "-lbcrypt",
+            "-ladvapi32",
+            "-lkernel32",
+            "-lntdll",
+            "-luserenv",
+            "-lws2_32",
+            "-ldbghelp",
+        ]
+    }
+
+    #[cfg(not(any(target_os = "linux", windows)))]
     {
         &[]
     }
@@ -128,6 +163,7 @@ pub fn emit_build_output(
             build_options.optimization.clang_flag().to_string(),
             temporary.to_string_lossy().into_owned(),
         ];
+        command_args.extend(native_program_link_args().iter().map(ToString::to_string));
         if llvm.contains("@bn_rt_") {
             let bn_rt = match configured_bn_rt_lib() {
                 Ok(path) => path,

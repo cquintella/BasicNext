@@ -123,7 +123,8 @@ jobs:
 
       - name: Test
         shell: bash
-        run: cargo test --locked --workspace --all-targets -- --test-threads=1
+        # --no-fail-fast: report every failing test binary, not only the first.
+        run: cargo test --locked --workspace --all-targets --no-fail-fast -- --test-threads=1
 
   build:
     needs: [quality, test]

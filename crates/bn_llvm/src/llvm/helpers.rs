@@ -894,8 +894,9 @@ pub(crate) fn unsupported_instruction_detail(instruction: &Instruction) -> Strin
     }
 }
 
-/// Libc `FILE *stdout` symbol name for native PRINT synchronization.
-pub(crate) fn stdout_file_symbol() -> &'static str {
+/// Libc `FILE *stdout` symbol name for native PRINT synchronization on
+/// POSIX C libraries (the Microsoft UCRT has no such global).
+fn stdout_file_symbol() -> &'static str {
     if cfg!(any(
         target_os = "macos",
         target_os = "ios",
@@ -906,5 +907,38 @@ pub(crate) fn stdout_file_symbol() -> &'static str {
         "__stdoutp"
     } else {
         "stdout"
+    }
+}
+
+/// Declarations used by native PRINT synchronization: the C `stdout` stream
+/// and the functions that lock and unlock it.
+pub(crate) fn stdout_lock_decls() -> String {
+    if cfg!(windows) {
+        "declare ptr @__acrt_iob_func(i32)\ndeclare void @_lock_file(ptr)\ndeclare void @_unlock_file(ptr)\n"
+            .into()
+    } else {
+        format!(
+            "@{} = external global ptr\ndeclare void @flockfile(ptr)\ndeclare void @funlockfile(ptr)\n",
+            stdout_file_symbol()
+        )
+    }
+}
+
+/// IR that stores the C `stdout` stream in `dest`: a global on POSIX C
+/// libraries, `__acrt_iob_func(1)` in the Microsoft UCRT.
+pub(crate) fn stdout_stream_ir(dest: &str) -> String {
+    if cfg!(windows) {
+        format!("  {dest} = call ptr @__acrt_iob_func(i32 1)")
+    } else {
+        format!("  {dest} = load ptr, ptr @{}", stdout_file_symbol())
+    }
+}
+
+/// The C functions that lock and unlock a `FILE *`.
+pub(crate) fn stdout_lock_functions() -> (&'static str, &'static str) {
+    if cfg!(windows) {
+        ("_lock_file", "_unlock_file")
+    } else {
+        ("flockfile", "funlockfile")
     }
 }

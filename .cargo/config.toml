@@ -1,0 +1,5 @@
+# Windows/MSVC: embed Win32 imports in the object files (windows-targets
+# raw-dylib mode) so bn_rt.lib links against system libraries only, instead of
+# the windows.*.lib import library that exists only inside the cargo registry.
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["--cfg", "windows_raw_dylib"]

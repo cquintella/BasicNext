@@ -250,22 +250,31 @@ mod tests {
 
     #[test]
     fn barrier_timeout_breaks_generation_for_concurrent_waiters() {
-        let barrier = std::sync::Arc::new(Barrier::new(2).expect("valid barrier"));
-        let ready = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        // Three parties, two waiters: the barrier cannot complete, so the only
+        // way the long-waiting worker returns early is the broken generation.
+        let barrier = std::sync::Arc::new(Barrier::new(3).expect("valid barrier"));
         let worker_barrier = std::sync::Arc::clone(&barrier);
-        let worker_ready = std::sync::Arc::clone(&ready);
         let worker = std::thread::spawn(move || {
-            worker_ready.store(true, std::sync::atomic::Ordering::Release);
-            worker_barrier.wait(5)
+            let started = std::time::Instant::now();
+            (worker_barrier.wait(5_000), started.elapsed())
         });
-        while !ready.load(std::sync::atomic::Ordering::Acquire) {
+        // Wait on the barrier's own state, not on scheduler timing, until the
+        // worker has arrived in the current generation.
+        while barrier
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .arrived
+            == 0
+        {
             std::thread::yield_now();
         }
-        std::thread::sleep(Duration::from_millis(10));
-        assert_eq!(barrier.wait(100), Err(DispatchError::Timeout));
-        assert_eq!(
-            worker.join().expect("barrier worker").unwrap_err(),
-            DispatchError::Timeout
+        assert_eq!(barrier.wait(50), Err(DispatchError::Timeout));
+        let (outcome, elapsed) = worker.join().expect("barrier worker");
+        assert_eq!(outcome, Err(DispatchError::Timeout));
+        assert!(
+            elapsed < Duration::from_secs(4),
+            "worker must be released by the broken generation, not its own timeout: {elapsed:?}"
         );
     }
 

@@ -13,10 +13,10 @@ pub(crate) fn lower_print_emission(
             values: printed, ..
         } => {
             let stdout = format!("%stdout{}", state.print_count);
+            let (lock, unlock) = crate::helpers::stdout_lock_functions();
             if state.synchronize_prints {
-                let stdout_sym = crate::helpers::stdout_file_symbol();
-                let _ = writeln!(text, "  {stdout} = load ptr, ptr @{stdout_sym}");
-                let _ = writeln!(text, "  call void @flockfile(ptr {stdout})");
+                let _ = writeln!(text, "{}", crate::helpers::stdout_stream_ir(&stdout));
+                let _ = writeln!(text, "  call void @{lock}(ptr {stdout})");
             }
             for (index, value) in printed.iter().enumerate() {
                 if index > 0 {
@@ -68,7 +68,7 @@ pub(crate) fn lower_print_emission(
             );
             state.print_count += 1;
             if state.synchronize_prints {
-                let _ = writeln!(text, "  call void @funlockfile(ptr {stdout})");
+                let _ = writeln!(text, "  call void @{unlock}(ptr {stdout})");
             }
         }
         _ => return false,

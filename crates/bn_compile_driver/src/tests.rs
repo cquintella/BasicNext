@@ -83,10 +83,25 @@ fn wasm32_compiler_is_selected_from_homebrew_llvm_not_apple_clang() {
 }
 
 #[test]
-fn native_runtime_linking_adds_libm_only_on_linux() {
+fn native_runtime_linking_adds_platform_system_libraries() {
     #[cfg(target_os = "linux")]
     assert_eq!(crate::artifact::native_runtime_link_args(), ["-lm"]);
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(windows)]
+    assert!(
+        crate::artifact::native_runtime_link_args().contains(&"-lntdll"),
+        "bn_rt.lib needs the Windows system libraries rustc reports"
+    );
+
+    #[cfg(not(any(target_os = "linux", windows)))]
     assert!(crate::artifact::native_runtime_link_args().is_empty());
+}
+
+#[test]
+fn native_programs_use_the_dynamic_crt_and_legacy_stdio_only_on_windows() {
+    #[cfg(windows)]
+    assert!(crate::artifact::native_program_link_args().contains(&"-llegacy_stdio_definitions"));
+
+    #[cfg(not(windows))]
+    assert!(crate::artifact::native_program_link_args().is_empty());
 }
