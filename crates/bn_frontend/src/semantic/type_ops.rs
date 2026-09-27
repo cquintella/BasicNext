@@ -70,6 +70,8 @@ pub(crate) fn conversion_allowed(source: &Type, target: &Type) -> bool {
         )
     };
     numeric(source) && (numeric(target) || *target == Type::Boolean)
+        // 0.6.2 C3: numbers and BOOLEAN to their PRINT text.
+        || (numeric(source) || *source == Type::Boolean) && *target == Type::String
         || *source == Type::String && *target == Type::Boolean
         || matches!(source, Type::Null | Type::NotAvailable | Type::EndOfFile)
             && *target == Type::Boolean

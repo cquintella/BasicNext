@@ -983,6 +983,7 @@ fn valid_cast_types(source: &Type, target: &Type) -> bool {
     let numeric = |ty: &Type| is_numeric_type(ty);
     numeric(source) && (numeric(target) || is_boolean_type(target))
         || is_string_type(source) && is_boolean_type(target)
+        || (numeric(source) || is_boolean_type(source)) && is_string_type(target)
         || matches!(source, Type::Null | Type::NotAvailable | Type::EndOfFile)
             && is_boolean_type(target)
 }

@@ -1,0 +1,26 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// 0.6.2 C3: AS STRING yields exactly the text PRINT shows.
+FUNCTION Start() AS VOID
+    LET count AS INTEGER = -42
+    LET wide AS INT64 = 9000000000
+    LET small AS BYTE = 200
+    LET big AS UINT64 = 18446744073709551615
+    LET ratio AS FLOAT = 1 / 4
+    LET whole AS FLOAT = 2.0
+    LET single AS FLOAT32 = 0.5
+    LET flag AS BOOLEAN = TRUE
+    PRINT "[" + (count AS STRING) + "]"
+    PRINT "[" + (wide AS STRING) + "] [" + (small AS STRING) + "] [" + (big AS STRING) + "]"
+    PRINT "[" + (ratio AS STRING) + "] [" + (whole AS STRING) + "] [" + (single AS STRING) + "]"
+    PRINT "[" + ((0.1 + 0.2) AS STRING) + "] [" + (7 AS STRING) + "] [" + (flag AS STRING) + "]"
+    LET zero AS FLOAT = 0.0
+    PRINT "[" + ((1.0 / zero) AS STRING) + "] [" + ((-1.0 / zero) AS STRING) + "] [" + ((0.0 / zero) AS STRING) + "]"
+    LET tenth AS FLOAT32 = 0.1
+    LET tiny AS INT8 = -128
+    PRINT "[" + (tenth AS STRING) + "] [" + (tiny AS STRING) + "] [" + ((count > 0) AS STRING) + "]"
+    PRINT count, wide, small, big, ratio, whole, single, 0.1 + 0.2, flag, tenth, tiny
+END FUNCTION

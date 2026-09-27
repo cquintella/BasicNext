@@ -11,6 +11,10 @@ pub(crate) fn lower_cast(
     target_ty: &Type,
     state: &mut EmissionState,
 ) {
+    if *target_ty == Type::String && *source_ty != Type::String {
+        emit_to_string(text, destination, value, source_ty);
+        return;
+    }
     match (llvm_type(source_ty), llvm_type(target_ty)) {
         (Some(source), Some("i1")) => emit_to_boolean(text, destination, value, source),
         (Some(source), Some(target)) if integer_llvm(source) && integer_llvm(target) => {
@@ -71,6 +75,54 @@ pub(crate) fn lower_cast(
         }
         _ => unreachable!("validated cast shape"),
     }
+}
+
+/// `AS STRING` (C3): `bn_rt` formats with the same code the interpreter uses.
+fn emit_to_string(text: &mut String, destination: ValueId, value: ValueId, source_ty: &Type) {
+    let dest = destination.0;
+    let source = llvm_type(source_ty).expect("validated text cast source");
+    let (symbol, argument) = match source {
+        "i1" => {
+            let _ = writeln!(
+                text,
+                "  %v{dest} = select i1 %v{}, ptr @.bn_true, ptr @.bn_false",
+                value.0
+            );
+            return;
+        }
+        "i64" => (
+            if is_unsigned(source_ty) {
+                "bn_rt_text_uint"
+            } else {
+                "bn_rt_text_int"
+            },
+            format!("i64 %v{}", value.0),
+        ),
+        "i8" | "i16" | "i32" => {
+            let (symbol, extend) = if is_unsigned(source_ty) {
+                ("bn_rt_text_uint", "zext")
+            } else {
+                ("bn_rt_text_int", "sext")
+            };
+            let _ = writeln!(
+                text,
+                "  %textwide{dest} = {extend} {source} %v{} to i64",
+                value.0
+            );
+            (symbol, format!("i64 %textwide{dest}"))
+        }
+        "float" => {
+            let _ = writeln!(
+                text,
+                "  %textwide{dest} = fpext float %v{} to double",
+                value.0
+            );
+            ("bn_rt_text_float32", format!("double %textwide{dest}"))
+        }
+        "double" => ("bn_rt_text_float", format!("double %v{}", value.0)),
+        _ => unreachable!("validated text cast source"),
+    };
+    let _ = writeln!(text, "  %v{dest} = call ptr @{symbol}({argument})");
 }
 
 fn emit_same_type_copy(text: &mut String, destination: ValueId, value: ValueId, ty: &Type) {

@@ -765,13 +765,13 @@ fn validator_rejects_an_invalid_cast() {
             Instruction::Cast {
                 destination: bn_ir::ValueId(1),
                 value: bn_ir::ValueId(0),
-                ty: bn_types::Type::String,
+                ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
                 span: span(),
             },
         ],
         terminator: Terminator::Return { value: None },
     }]);
-    let error = validate_module(module).expect_err("boolean-to-string is invalid IR");
+    let error = validate_module(module).expect_err("boolean-to-integer is invalid IR");
     assert_eq!(error.code, "INVALID_IR");
 }
 

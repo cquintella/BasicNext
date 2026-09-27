@@ -93,7 +93,8 @@ The table below catalogs ownership and lifetime for all symbols declared in `BN_
 | **Dispatch & Concurrency** | `bn_rt_dispatch_queue_*`, `bn_rt_dispatch_submit`, `bn_rt_dispatch_await`, `bn_rt_dispatch_cancel`, `bn_rt_dispatch_ticket_close`, `bn_rt_dispatch_group_*`, `bn_rt_dispatch_barrier_*`, `bn_rt_dispatch_semaphore_*`, `bn_rt_dispatch_mutex_*` | Function pointer and context `ptr` borrowed; queue/ticket handles copied | Ticket handle or completion status returned | Tickets closed by `bn_rt_dispatch_ticket_close`; synchronization primitives closed by matching `*_close` |
 | **BNMath Scalars & Temporal** | `bn_rt_math_iabs`, `bn_rt_math_isign`, `bn_rt_math_imin`, `bn_rt_math_imax`, `bn_rt_math_fabs`, `bn_rt_math_fsign`, `bn_rt_math_floor`, `bn_rt_math_ceil`, `bn_rt_math_trunc`, `bn_rt_math_exp`, `bn_rt_math_log*`, `bn_rt_math_sin`, `bn_rt_math_cos`, `bn_rt_math_tan`, `bn_rt_math_asin`, `bn_rt_math_acos`, `bn_rt_math_atan*`, `bn_rt_math_sqrt`, `bn_rt_math_pow`, `bn_rt_math_hypot`, `bn_rt_math_fmin`, `bn_rt_math_fmax`, `bn_rt_math_round`, `bn_rt_math_fma`, `bn_rt_math_todate`, `bn_rt_math_totime`, `bn_rt_math_totimestamp` | Scalars copied by value | Return value computed and returned by value | Pure mathematical functions; no heap or persistent lifetime |
 | **BNMath Vector Reductions** | `bn_rt_math_vmin_*`, `bn_rt_math_vmax_*`, `bn_rt_math_mean_*`, `bn_rt_math_median_*`, `bn_rt_math_quartile1_*`, `bn_rt_math_quartile3_*`, `bn_rt_math_range_*`, `bn_rt_math_stdev_*`, `bn_rt_math_variance_*`, `bn_rt_math_mode_*` | Array `ptr` borrowed for call; length `i32` copied | Scalar reduction value returned; mode writes into caller-owned buffer | Read-only slice access; callee neither mutates nor frees the buffer |
-| **String Operations** | `bn_rt_str_len`, `bn_rt_str_index_utf8`, `bn_rt_str_eq`, `bn_rt_str_to_lower`, `bn_rt_str_to_upper`, `bn_rt_print_date`, `bn_rt_print_time`, `bn_rt_print_float` | `ptr` borrowed for call duration | Scalar result; `bn_rt_str_index_utf8` packs one NUL-terminated scalar in native byte order | Pure operations on immutable string buffers; the LLVM caller materializes indexed characters in function-local storage |
+| **String Operations** | `bn_rt_str_len`, `bn_rt_str_index_utf8`, `bn_rt_str_eq`, `bn_rt_str_to_lower`, `bn_rt_str_to_upper`, `bn_rt_print_date`, `bn_rt_print_time`, `bn_rt_print_float`, `bn_rt_print_float32` | `ptr` borrowed for call duration | Scalar result; `bn_rt_str_index_utf8` packs one NUL-terminated scalar in native byte order | Pure operations on immutable string buffers; the LLVM caller materializes indexed characters in function-local storage |
+| **Scalar Text (`AS STRING`)** | `bn_rt_text_int(i64)`, `bn_rt_text_uint(i64)`, `bn_rt_text_float(double)`, `bn_rt_text_float32(double)` | Scalars copied; narrower integers sign- or zero-extended to 64 bits; `FLOAT32` widened to `double` | Owned NUL-terminated UTF-8 string, same allocation as `bn_rt_str_to_upper` | Text is `bn_types::text`, shared with the interpreter and `PRINT`; `BOOLEAN` selects the `TRUE`/`FALSE` constants without a call |
 
 The layout assertions cover the release slice on every supported target by
 checking field offsets and alignment rather than baking a host pointer width
@@ -406,6 +407,10 @@ bn_rt_str_char_utf8
 bn_rt_str_index_utf8
 bn_rt_str_to_lower
 bn_rt_str_to_upper
+bn_rt_text_float
+bn_rt_text_float32
+bn_rt_text_int
+bn_rt_text_uint
 bn_rt_json_append_boolean
 bn_rt_json_append_float
 bn_rt_json_append_integer

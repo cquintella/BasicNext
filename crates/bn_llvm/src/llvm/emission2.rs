@@ -239,6 +239,15 @@ fn pointer_error_union_return_operand(text: &mut String, value: ValueId) -> Stri
     format!("%retunion{}", value.0)
 }
 
+/// Floats reach `bn_rt` widened to `double`; the symbol keeps the BN type so
+/// the text round-trips to it (console.md).
+const fn float_print_symbol(kind: FloatType) -> &'static str {
+    match kind {
+        FloatType::Float32 => "bn_rt_print_float32",
+        FloatType::Float64 => "bn_rt_print_float",
+    }
+}
+
 fn lower_print_language_error_union(
     text: &mut String,
     value: ValueId,
@@ -298,14 +307,15 @@ fn lower_print_language_error_union(
             .control_flow
             .label(text, format!("unionpresent{count}"));
     }
-    if matches!(scalar, Some(Type::Float(_))) {
+    if let Some(Type::Float(kind)) = scalar {
         let _ = writeln!(
             text,
             "  %unionfloat{count} = bitcast i64 %unionpayload{count} to double"
         );
         let _ = writeln!(
             text,
-            "  call void @bn_rt_print_float(double %unionfloat{count})"
+            "  call void @{}(double %unionfloat{count})",
+            float_print_symbol(*kind)
         );
     } else if matches!(scalar, Some(Type::Boolean)) {
         let _ = writeln!(
@@ -643,7 +653,7 @@ pub(crate) fn lower_print_value(
             );
             let _ = writeln!(
                 text,
-                "  call void @bn_rt_print_float(double %printfloat{})",
+                "  call void @bn_rt_print_float32(double %printfloat{})",
                 state.print_count
             );
         }

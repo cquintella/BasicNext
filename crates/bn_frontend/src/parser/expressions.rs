@@ -438,9 +438,9 @@ impl<'a> ExpressionParser<'a> {
     }
     fn cast(&mut self, value: Expression) -> Result<Expression, Diagnostic> {
         self.take();
-        if !matches!(self.peek_kind(), TokenKind::Keyword(word) if matches!(word.as_str(), "BYTE" | "INT8" | "INT16" | "INT32" | "INT64" | "UINT16" | "UINT32" | "UINT64" | "FLOAT32" | "FLOAT64" | "INTEGER" | "FLOAT" | "TIMESTAMP" | "BOOLEAN"))
+        if !matches!(self.peek_kind(), TokenKind::Keyword(word) if matches!(word.as_str(), "BYTE" | "INT8" | "INT16" | "INT32" | "INT64" | "UINT16" | "UINT32" | "UINT64" | "FLOAT32" | "FLOAT64" | "INTEGER" | "FLOAT" | "TIMESTAMP" | "BOOLEAN" | "STRING"))
         {
-            return Err(self.error("expected numeric type or BOOLEAN after AS"));
+            return Err(self.error("expected numeric type, BOOLEAN, or STRING after AS"));
         }
         let type_token = self.take();
         let end = type_token.span.end;

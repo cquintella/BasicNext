@@ -244,6 +244,18 @@ fn cast(value: Value, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
             )),
         },
         Type::Float(_) => Ok(float_value(number_as_float(&value, span)?, float_kind(ty))),
+        // C3: the text is exactly what PRINT writes for the value.
+        Type::String => match value {
+            Value::Integer(..) | Value::Float(..) | Value::Boolean(_) => {
+                Ok(Value::String(shared_string(render(&value))))
+            }
+            _ => Err(super::type_mismatch(
+                "number or BOOLEAN",
+                "incompatible value",
+                "text conversion",
+                span,
+            )),
+        },
         Type::Named(_) | Type::ImportedNamed { .. } => match value {
             Value::Object { .. } | Value::Record { .. } | Value::Handle { .. } | Value::Null => {
                 Ok(value)

@@ -429,8 +429,14 @@ impl Analyzer {
                 let source = self.expression(value, locals)?;
                 let target = self.resolve_reference(type_ref);
                 if !conversion_allowed(&source, &target) {
+                    // C3: name what AS STRING accepts, not its target.
+                    let expected = if target == Type::String {
+                        "number or BOOLEAN".to_string()
+                    } else {
+                        display(&target)
+                    };
                     return Err(type_mismatch(
-                        display(&target),
+                        expected,
                         display(&source),
                         "type conversion",
                         expression.span,

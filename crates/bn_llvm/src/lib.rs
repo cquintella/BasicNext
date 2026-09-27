@@ -934,6 +934,13 @@ fn cast_supported(source: Option<&Type>, target: &Type) -> bool {
         ) | (
             Type::Float(_) | Type::FloatLiteral,
             Type::Float(_) | Type::Integer(_) | Type::Boolean
+        ) | (
+            Type::Integer(_)
+                | Type::IntegerLiteral(_)
+                | Type::Float(_)
+                | Type::FloatLiteral
+                | Type::Boolean,
+            Type::String
         ) | (Type::Boolean, Type::Boolean)
             | (Type::String, Type::Boolean | Type::String)
     )

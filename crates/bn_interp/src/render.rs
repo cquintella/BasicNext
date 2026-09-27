@@ -7,18 +7,9 @@ use super::Value;
 
 pub fn render(value: &Value) -> String {
     match value {
-        Value::Integer(value, _) => value.to_string(),
-        Value::Float(value, _) if value.is_nan() => "NAN".into(),
-        Value::Float(value, _) if *value == f64::INFINITY => "INF".into(),
-        Value::Float(value, _) if *value == f64::NEG_INFINITY => "-INF".into(),
-        Value::Float(value, _) => {
-            let mut text = value.to_string();
-            if !text.contains(['.', 'e', 'E']) {
-                text.push_str(".0");
-            }
-            text
-        }
-        Value::Boolean(value) => if *value { "TRUE" } else { "FALSE" }.into(),
+        Value::Integer(value, _) => bn_types::text::integer(*value),
+        Value::Float(value, ty) => bn_types::text::float(*value, *ty),
+        Value::Boolean(value) => bn_types::text::boolean(*value).into(),
         Value::String(value) => value.to_string(),
         Value::Null => "NULL".into(),
         Value::NotAvailable => "NA".into(),

@@ -221,7 +221,9 @@ call-expression      = primary { member-suffix | index-suffix | cast-suffix }
 call-suffix          = "(" [ expression-list ] ")" ;
 member-suffix        = "." identifier ;
 index-suffix         = "[" expression "]" ;
-cast-suffix          = "AS" ( numeric-type | "BOOLEAN" ) ;
+cast-suffix          = "AS" ( numeric-type | "BOOLEAN" | "STRING" ) ;
+                       (* 0.6.2 C3: "AS" "STRING" converts a numeric or BOOLEAN
+                          value to the text PRINT shows; see 0.6.md. *)
                        (* Class downcast ("AS" named-type → T OR Error, O1) is
                           deferred past 0.5.2; see 0.6.md. *)
 primary              = literal | identifier | "SELF" | "SUPER" | input-expression | len-expression

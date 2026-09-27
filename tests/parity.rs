@@ -701,6 +701,22 @@ fn is_on_host_types_matches_across_backends() {
     native_matches_interpreter(path);
 }
 
+/// 0.6.2 C3: `AS STRING` yields the `PRINT` text on both backends, and
+/// `FLOAT32` text round-trips to `FLOAT32` (console.md).
+#[test]
+fn as_string_matches_print_text_across_backends() {
+    let path = "tests/grammar/valid/as-string.bn";
+    let output = bni().args(["run", path]).output().expect("run fixture");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "[-42]\n[9000000000] [200] [18446744073709551615]\n[0.25] [2.0] [0.5]\n\
+         [0.30000000000000004] [7] [TRUE]\n[INF] [-INF] [NAN]\n[0.1] [-128] [FALSE]\n\
+         -42 9000000000 200 18446744073709551615 0.25 2.0 0.5 0.30000000000000004 TRUE 0.1 -128\n"
+    );
+    native_matches_interpreter(path);
+}
+
 /// 0.6.2 C1/C2: negative constant literals and integer literals for FLOAT
 /// bindings; expected lines are fixed in `language/0.6/0.6.md`.
 #[test]

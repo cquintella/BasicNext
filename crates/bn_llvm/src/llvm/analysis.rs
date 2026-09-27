@@ -162,10 +162,14 @@ pub(crate) fn analyze_function<'a>(
                 }
                 | Instruction::Unary {
                     destination, ty, ..
+                } => {
+                    values.insert(*destination, ty.clone());
                 }
-                | Instruction::Cast {
+                Instruction::Cast {
                     destination, ty, ..
                 } => {
+                    // Casts to STRING call the bn_rt text ABI (C3).
+                    uses_bn_rt |= *ty == Type::String;
                     values.insert(*destination, ty.clone());
                 }
                 Instruction::Index {

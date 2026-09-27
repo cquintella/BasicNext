@@ -83,7 +83,9 @@ pub(crate) fn emit_preamble(
         .iter()
         .any(|(_, analysis)| analysis.uses_float_print)
     {
-        text.push_str("declare void @bn_rt_print_float(double)\n");
+        text.push_str(
+            "declare void @bn_rt_print_float(double)\ndeclare void @bn_rt_print_float32(double)\n",
+        );
     }
     if functions
         .iter()

@@ -272,6 +272,8 @@ fn semantic_fixtures_are_rejected() {
         "tests/grammar/invalid/module-constant-negative-unsigned.bn",
         "tests/grammar/invalid/float-binding-inexact-integer.bn",
         "tests/grammar/invalid/float-binding-integer-variable.bn",
+        "tests/grammar/invalid/as-string-from-string.bn",
+        "tests/grammar/invalid/as-string-from-alternative.bn",
     ] {
         let source = SourceFile::new(path, fs::read_to_string(path).expect("read fixture"));
         let tokens = lex(&source).expect("lex fixture");

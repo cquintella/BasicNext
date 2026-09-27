@@ -21,6 +21,7 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `valid/exported-constants.bn` | Accept | Module `EXPORT CONST` with inferred scalar types (`PI`, `EULER`, `STRING`, `BOOLEAN`) and explicit `AS FLOAT` / `AS UINT32`. |
 | `valid/integer-literal-float-binding.bn` | Accept and run | 0.6.2 C2: decimal, hexadecimal, binary and negative integer literals initialize `FLOAT` / `FLOAT32` bindings. |
 | `valid/negative-local-constants.bn` | Accept and run | 0.6.2 C1: inferred local `CONST` from `-1`, `-2.5`, `-0xFF`. |
+| `valid/as-string.bn` | Accept and run | 0.6.2 C3: `AS STRING` on integer, float, and `BOOLEAN` values yields the `PRINT` text on both backends. |
 | `valid/is-host-types.bn` | Accept and run | `IS` on `HOST.Net` types, through two import aliases, on both backends. |
 | `valid/filesystem.bn` | Accept and run | `HOST.FileSystem` import, `FS.Open`, `FS.File.ReadLine`, `Close`, and `RELEASE`. |
 | `valid/filesystem-import-only.bn` | Accept; `bni run --no-filesystem` rejects | Capability is required from the `IMPORT`, even if `Start` does not use `FS`. |
@@ -36,6 +37,8 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `valid/len-and-sizeof.bn` | Accept and run | `LEN` counts numeric values, strings, vectors, and pointer regions; `SIZEOF` reports portable byte sizes. |
 | `valid/pointer-named-type.bn` | Accept | Declared named pointer elements in bindings, signatures, and `IS` tests. |
 | `valid/pointer-void.bn` | Accept and run | C-style typed-pointer round trip through opaque `POINTER TO VOID`. |
+| `invalid/as-string-from-string.bn` | Reject (semantic) | `AS STRING` does not accept a `STRING` source. |
+| `invalid/as-string-from-alternative.bn` | Reject (semantic) | `AS STRING` needs a narrowed value, not `INTEGER OR Error`. |
 | `invalid/len-on-boolean.bn` | Reject (semantic) | `LEN` does not accept `BOOLEAN`. |
 | `invalid/len-on-single-pointer.bn` | Reject (semantic) | `LEN` accepts pointer regions, not a single-value pointer. |
 | `invalid/sizeof-function-value.bn` | Reject (semantic) | `SIZEOF` does not accept a function value. |
