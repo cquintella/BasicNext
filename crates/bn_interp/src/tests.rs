@@ -66,10 +66,10 @@ fn filesystem_policy_mitigates_symlink_escape() {
 
     let sandbox_dir = temp_dir.join("sandbox");
     std::fs::create_dir_all(&sandbox_dir).unwrap();
-    let symlink_path = sandbox_dir.join("leak_link.txt");
 
     #[cfg(unix)]
     {
+        let symlink_path = sandbox_dir.join("leak_link.txt");
         let _ = std::os::unix::fs::symlink(&target_file, &symlink_path);
         let policy = super::HostEnv::fixed(Vec::new(), 0, 0)
             .with_filesystem_roots(vec![sandbox_dir.clone()], Vec::new())
@@ -82,6 +82,9 @@ fn filesystem_policy_mitigates_symlink_escape() {
     let _ = std::fs::remove_dir_all(&temp_dir);
 }
 
+// The guarantee comes from the Unix `openat`/`O_NOFOLLOW` implementation in
+// bn_rt::secure_fs; creating the symlink also needs privileges on Windows.
+#[cfg(unix)]
 #[test]
 fn filesystem_policy_open_cannot_be_redirected_after_root_configuration() {
     use std::io::Read as _;

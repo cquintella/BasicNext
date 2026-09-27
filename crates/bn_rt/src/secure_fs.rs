@@ -272,7 +272,8 @@ fn c_name(name: &std::ffi::OsStr) -> io::Result<std::ffi::CString> {
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "filesystem path contains NUL"))
 }
 
-#[cfg(test)]
+// Every test here exercises the Unix `openat`/`O_NOFOLLOW` implementation.
+#[cfg(all(test, unix))]
 mod tests {
     use super::{OpenMode, RootedDir};
     use std::io::{Read, Write};
