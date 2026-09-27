@@ -2354,7 +2354,6 @@ impl WebProvider {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(unix)]
     use super::drain_server;
     use crate::web::ServerState;
     use std::sync::atomic::{AtomicBool, Ordering};

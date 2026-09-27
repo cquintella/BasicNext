@@ -18,6 +18,8 @@ pub enum OpenMode {
 pub struct RootedDir {
     path: PathBuf,
     canonical_path: PathBuf,
+    // Held open to pin the root; only the Unix `openat` paths read it.
+    #[cfg_attr(not(unix), allow(dead_code))]
     directory: Arc<File>,
 }
 
