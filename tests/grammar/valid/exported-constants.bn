@@ -1,0 +1,14 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+EXPORT CONST PI = 3.141592653589793
+EXPORT CONST EULER = 2.718281828459045
+EXPORT CONST TAU AS FLOAT = 6.283185307179586
+EXPORT CONST Label = "BN"
+EXPORT CONST Enabled = TRUE
+EXPORT CONST Mask AS UINT32 = 0xFF
+
+FUNCTION Start() AS VOID
+END FUNCTION

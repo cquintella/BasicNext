@@ -1,0 +1,9 @@
+// 0.5.2 I1: import one export from a module under its own alias.
+// Whole-module IMPORT BNString AS S remains valid; this form binds String only.
+
+IMPORT BNString.String AS Str
+
+FUNCTION Start() AS VOID
+    LET s AS Str = NEW Str("hello")
+    PRINT s.Length()
+END FUNCTION

@@ -1,0 +1,469 @@
+# Value, memory, and ABI contract (to-be)
+
+> Canonical: `docs/architecture/value-memory-abi.md`  
+> Status: **0.5.0 object contract specified; implementation evidence remains per-wave.** The rows below are the normative ownership/lifetime invariants for ARC objects; they do not claim that M2 or M4 is complete.
+
+## Why this exists
+
+Extracting **`bn_value`** fixes *Rust* coupling (e.g. dataframe ↔ runtime), but it does **not** by itself establish **equivalence** between objects in the interpreter and objects in a native/wasm image linked with **`bn_rt`**.
+
+Today the architecture largely treats `bn_rt` as “Keep” with an interface that looks like a bag of extern calls ([target-architecture.md](target-architecture.md) contracts table). That is necessary but insufficient: without an explicit **value / memory / ABI** contract, interpret and compile can drift on identity, lifetime, dispatch, layout, and error taxonomy while still “sharing IR.”
+
+## Hierarchy (same as conformance)
+
+1. **Language specification** defines observable behaviour (including `Error`, traps, ARC lifetime, static init, and numeric rules).
+2. **Executable reference** (`bn_runtime` + interpreter `Value`/`bn_value`) implements that behaviour for tests.
+3. **Compiled path** (`bn_llvm` + **`bn_rt`** + layout) must match the specification on the [support-matrix.md](support-matrix.md) subset — see [conformance.md](conformance.md).
+
+Internal representations **may differ** between interpret and native (tagged heap vs structs/pointers). **Observable** identity, aliasing, lifetime, dispatch, and ABI results must not.
+
+## Sharing `bn_rt` with the interpreter
+
+There is already useful sharing of **`bn_rt`** helpers from the interpreter (e.g. clock and console). That pattern should be **expanded when it clarifies a single HOST/ABI truth**, without forcing identical in-memory layouts:
+
+| Prefer shared `bn_rt` (or thin wrappers) when… | Prefer distinct internals when… |
+| --- | --- |
+| Behaviour is a HOST/native boundary (time, console I/O, math that must match linked binaries) | Representation is an interpreter optimization (tagged `Value`, GC/arena details) |
+| Conformance tests would otherwise fork two copies of the same syscall story | Layout is only meaningful after LLVM emission |
+
+Sharing helpers ≠ claiming that interpreter `Value` bits equal native object bits.
+
+**Stdlib native modules** (BNData/DataFrame, …): direction locked in
+[native-stdlib-binding.md](native-stdlib-binding.md) — move Executor special-cases
+into `bn_rt` (or one-way modules exporting C ABI), catalog each symbol here
+(AQ-16), and stop shipping empty `.bn` stubs for claimed APIs.
+
+---
+
+## Release-slice ABI rows (0.5.0)
+
+The following rows are the concrete ABI slice currently exercised by compiled
+programs. Fields marked “borrowed” are valid only for the duration stated by
+the call; a callee must not retain them. A returned handle is opaque and is
+closed by its owning `*_close` operation.
+
+| Boundary | Representation | Ownership / lifetime | Failure class | Evidence |
+| --- | --- | --- | --- | --- |
+| BN integer `BYTE`/`INT8`/`INT16`/`INT32`/`INT64` and unsigned widths | LLVM `i8`/`i16`/`i32`/`i64`; signedness is an operation rule, not a different bit layout | Value copied; no pointer ownership | Checked language overflow/trap path, never LLVM poison | `src/llvm.rs`; `tests/codegen_tests.rs` numeric fixtures |
+| BN `FLOAT32` / `FLOAT64` | LLVM `float` / `double` | Value copied | BN floating semantics; no `nsw`/`nuw` flags | `src/llvm.rs`; `tests/codegen_tests.rs` |
+| BN `STRING` passed to `bn_rt` | NUL-terminated borrowed `ptr` for the call; compiler-owned literal storage or temporary buffer | `bn_rt` does not retain or free the pointer | Non-zero status is converted to a runtime diagnostic | `src/llvm/runtime.rs`; `crates/bn_rt/src/console.rs` |
+| `INPUT()` result stored in a local variable | NUL-terminated heap `ptr`, or the unique static `EOF` sentinel | The destination variable owns a non-EOF buffer. A later `INPUT()` assignment may resize and reuse that buffer; replacing the value releases it, and function exit releases every remaining owned input buffer. Distinct live variables retain distinct buffers. | EOF releases any reusable buffer before returning the sentinel; ownership tags keep the static sentinel outside allocator calls | `crates/bn_llvm/src/llvm/helpers.rs`; `tests/grammar/valid/build-input-lifetime.bn`; `tests/cli.rs` |
+| `BNValue` dispatch argument/result | `#[repr(C)] { kind: u32, flags: u32, payload: union }`; byte payload is `(const u8*, u32)` | Task copies the value; pointer payload is borrowed for task duration; result storage is caller-owned | `BNDispatchStatus`, distinct from language `Error` | `crates/bn_rt/src/dispatch_abi.rs` layout tests |
+| `BNDispatchError` | `#[repr(C)] { code: u32, message: char*, message_length: u32 }` | Runtime owns allocated message until `bn_rt_dispatch_error_free`; null is accepted | Dispatch/tool failure, not a BN `Error` value | `crates/bn_rt/src/dispatch_abi.rs` |
+| Opaque network/dispatch handles | LLVM/C `i64` handle | Owning close operation invalidates the handle; use-after-close returns status/diagnostic | Runtime handle failure, never undefined behaviour | `src/llvm/runtime.rs`; `tests/runtime.rs` handle fixtures |
+| BNData structural frame handles | `BNDataFrameHandle = u64`; borrowed `BNDataFrameColumnView` inputs are copied into the runtime registry | `create` copies names/values; `append_*`/`select` return new owning handles; `bn_rt_dataframe_close` invalidates exactly one handle; input views are never retained | `BNDataFrameStatus`: invalid argument, invalid handle, or contract error; no undefined behavior for rejected bounds/layout | `crates/bn_rt/src/dataframe_abi.rs` ABI test; empty-frame lifecycle lowered in `crates/bn_llvm/src/llvm/vectors.rs` |
+| BNMath scalar and reduction ops | Scalar: `i64`/`double` values passed and returned by value; Vector reduction: borrowed buffer `ptr` + element count `i32` | Callee borrows array slice for duration of reduction call; does not retain or free buffer | Return status/NaN on empty or domain errors | `crates/bn_rt/src/stats.rs`; `crates/bn_llvm/src/llvm/math.rs` |
+| Temporal and string helpers (`bn_rt_print_*`, `bn_rt_str_*`) | Dates/times passed as scalar `i32`/`i64`; strings passed as borrowed C `ptr` | Callee borrows pointer for duration of query/print; does not free or mutate | Status or fallback representation | `crates/bn_llvm/src/llvm/functions.rs`; `crates/bn_rt/src/lib.rs` |
+| `INTEGER OR NULL` | LLVM `{ i1, i32 }`: field 0 is `true` exactly for `NULL`; field 1 holds the integer payload and is zero when null | Passed and returned by value; no owned storage | `PRINT` emits `NULL` for a set tag and the signed integer otherwise | `examples/linear_collections.bn`; `tests/cli.rs` |
+
+### ARC object ownership rows
+
+| Boundary | Representation | Ownership / lifetime invariant | Invalid operation | Evidence required |
+| --- | --- | --- | --- | --- |
+| Strong class binding | Interpreter `Value::Object { handle, class }`; native opaque object handle | Assignment, parameter passing, and return retain one strong reference. Scope exit and reassignment release exactly that binding. The object is destroyed only when the strong count reaches zero. | Use after the binding has been released is a language diagnostic; no force-dispose. | F1–F3, F10 on interpret and native support rows where implemented |
+| Weak class binding | `AS WEAK ClassName [OR NULL]`; native weak handle or nullable object pointer | Creating a weak binding never increments the strong count. When the last strong reference is released, reads produce `NULL`; weak storage is cleared without running the destructor twice. | Dereferencing a dead weak value is `NULL`, not undefined memory. | F4 |
+| Explicit `RELEASE` | Binding identity, never an element removal operation | `RELEASE x` releases one strong binding (or ends a primary/aggregate binding). It never invalidates aliases that still hold a strong reference. `RELEASE a[i]` is invalid for fixed vectors. | Releasing an already released binding reports `DOUBLE_RELEASE`; using it reports `USE_AFTER_RELEASE`. | F5–F10 |
+| Struct/vector aggregate | Inline aggregate containing nested values | Releasing the aggregate releases nested strong fields/elements in language order. The aggregate storage remains structurally valid until its binding ends; fixed-vector indices are never punched into holes. | Element release as removal is rejected. | F7–F9 |
+| Destructor boundary | Private interpreter callback / native destructor entry | Destructor runs exactly once at strong count zero, before storage is reclaimed. Reentrant release observes a destroying state and cannot run the destructor again. | Reentrant or repeated destruction reports a stable double-release diagnostic. | F2, F3, F10, M4 matrix |
+| ABI object handle | Opaque `u64`/pointer plus runtime type metadata; layout is target-owned | ABI calls borrow object pointers for the duration of the call unless the symbol explicitly says retain/transfer. Returned handles are owned by the caller and must be closed/released exactly once. | Stale or wrong-generation handles return a runtime status/diagnostic, never UB. | `bn_rt` layout tests and support-matrix fixtures |
+
+Object fields use the target ABI size and natural alignment of their LLVM
+representation. In particular, the vector/pointer fat value `{ ptr, i32 }`
+occupies 16 bytes at 8-byte alignment on the supported native ABI; a following
+field cannot overlap its pointer, length, or padding. Class allocation follows
+the validated `Module.field_layouts` base-first field sequence and rounds the
+complete instance size to its maximum field alignment. `FieldSlot` is a
+language-IR positional address, not an ABI byte offset: LLVM derives byte
+offsets from the slot's declared type and target alignment, while the
+interpreter uses the same validated slot to address its private positional
+record storage. `FieldId` and its interned spelling are IR/diagnostic metadata;
+they never cross a native ABI boundary or appear in an interpreter record.
+
+### Complete `bn_rt` Symbol Ownership for LLVM-Emitted Symbols
+
+The table below catalogs ownership and lifetime for all symbols declared in `BN_RT_DECLS` and `BN_RT_MATH_DECLS`:
+
+| Symbol Group | Symbols | Parameter Ownership | Return / Out-Parameter Ownership | Invalidation / Lifetime |
+| --- | --- | --- | --- | --- |
+| **Execution Policy** | `bn_rt_policy_init(version, ceiling)`, `bn_rt_policy_check(status)` (emitted `Start` stops the process on a non-zero init status, 0.5.2a), `bn_rt_policy_filesystem_sandboxed()`, `bn_rt_policy_filesystem_root(write, path)` | `version`, `ceiling`, and `write` scalars copied; `path` is a NUL-terminated borrowed UTF-8 pointer for the call | Return code `i32` (0 = OK) | Process-wide policy can only narrow. Sandboxing clears prior roots; each accepted root is pinned by the runtime and remains owned until process exit. |
+| **DataFrame Lifecycle** | `bn_rt_dataframe_create`, `bn_rt_dataframe_row_count`, `bn_rt_dataframe_column_count`, `bn_rt_dataframe_close` | `ptr` views borrowed for duration of call; handle `i64`/`u64` copied | Out pointer receives owned `u64` handle or count scalar | `bn_rt_dataframe_close` destroys frame in registry; subsequent calls fail with invalid handle status |
+| **Console & Clock** | `bn_rt_clock_now`, `bn_rt_clock_timer`, `bn_rt_console_cls`, `bn_rt_console_beep`, `bn_rt_console_print_at`, `bn_rt_console_num_cols`, `bn_rt_console_num_rows` | Scalars copied; string `ptr` in `print_at` borrowed | Timestamp `i64` or status `i32` | No retained state; ephemeral duration of call |
+| **Network Endpoints & Handles** | `bn_rt_net_address_parse`, `bn_rt_net_ping`, `bn_rt_net_reverse`, `bn_rt_net_neighbor`, `bn_rt_net_resolve`, `bn_rt_net_addresses_*`, `bn_rt_net_handle_close` | String `ptr` borrowed; out pointers caller-allocated | Out pointer populated; handles returned by value | Address lists freed by `bn_rt_net_addresses_free`; socket handles closed by `bn_rt_net_handle_close` |
+| **TCP / UDP Streams** | `bn_rt_net_tcp_*`, `bn_rt_net_udp_*` | Buffer `ptr` borrowed for call duration; handles copied | Out pointer receives bytes transferred or new stream handle | Streams/listeners invalidated by `bn_rt_net_handle_close`; UDP packets borrowed/copied |
+| **Dispatch & Concurrency** | `bn_rt_dispatch_queue_*`, `bn_rt_dispatch_submit`, `bn_rt_dispatch_await`, `bn_rt_dispatch_cancel`, `bn_rt_dispatch_ticket_close`, `bn_rt_dispatch_group_*`, `bn_rt_dispatch_barrier_*`, `bn_rt_dispatch_semaphore_*`, `bn_rt_dispatch_mutex_*` | Function pointer and context `ptr` borrowed; queue/ticket handles copied | Ticket handle or completion status returned | Tickets closed by `bn_rt_dispatch_ticket_close`; synchronization primitives closed by matching `*_close` |
+| **BNMath Scalars & Temporal** | `bn_rt_math_iabs`, `bn_rt_math_isign`, `bn_rt_math_imin`, `bn_rt_math_imax`, `bn_rt_math_fabs`, `bn_rt_math_fsign`, `bn_rt_math_floor`, `bn_rt_math_ceil`, `bn_rt_math_trunc`, `bn_rt_math_exp`, `bn_rt_math_log*`, `bn_rt_math_sin`, `bn_rt_math_cos`, `bn_rt_math_tan`, `bn_rt_math_asin`, `bn_rt_math_acos`, `bn_rt_math_atan*`, `bn_rt_math_sqrt`, `bn_rt_math_pow`, `bn_rt_math_hypot`, `bn_rt_math_fmin`, `bn_rt_math_fmax`, `bn_rt_math_round`, `bn_rt_math_fma`, `bn_rt_math_todate`, `bn_rt_math_totime`, `bn_rt_math_totimestamp` | Scalars copied by value | Return value computed and returned by value | Pure mathematical functions; no heap or persistent lifetime |
+| **BNMath Vector Reductions** | `bn_rt_math_vmin_*`, `bn_rt_math_vmax_*`, `bn_rt_math_mean_*`, `bn_rt_math_median_*`, `bn_rt_math_quartile1_*`, `bn_rt_math_quartile3_*`, `bn_rt_math_range_*`, `bn_rt_math_stdev_*`, `bn_rt_math_variance_*`, `bn_rt_math_mode_*` | Array `ptr` borrowed for call; length `i32` copied | Scalar reduction value returned; mode writes into caller-owned buffer | Read-only slice access; callee neither mutates nor frees the buffer |
+| **String Operations** | `bn_rt_str_len`, `bn_rt_str_index_utf8`, `bn_rt_str_eq`, `bn_rt_str_to_lower`, `bn_rt_str_to_upper`, `bn_rt_print_date`, `bn_rt_print_time`, `bn_rt_print_float` | `ptr` borrowed for call duration | Scalar result; `bn_rt_str_index_utf8` packs one NUL-terminated scalar in native byte order | Pure operations on immutable string buffers; the LLVM caller materializes indexed characters in function-local storage |
+
+The layout assertions cover the release slice on every supported target by
+checking field offsets and alignment rather than baking a host pointer width
+into the language contract. Interpreter `Value` remains a private tagged
+representation; it is not ABI-visible.
+
+## Not a closed ABI manual
+
+The rows above close only the listed 0.4.5 slice. The structural DataFrame
+row is an ABI foundation and has tested ownership/handle semantics, but is not
+yet a claimed compiled-language feature until LLVM lowering and parity fixtures
+are present. Execution policy bit coverage for compiled targets is currently
+enforced across active `bn_rt` entry points for `POLICY_CLOCK`, `POLICY_CONSOLE`,
+`POLICY_FILESYSTEM`, `POLICY_NET`, `POLICY_DISPATCH`, and `POLICY_RANDOM`.
+Native filesystem HOST calls receive the artifact ceiling and rooted policy through
+the policy ABI and re-check it at the `bn_rt` call boundary. Unlisted
+BNData/DataFrame native symbols, full network ownership tables, and the final
+extracted-crate ABI remain open; do not treat this document as a complete ABI
+manual.
+
+## Required contract areas (normative checklist)
+
+The toolchain **must** document and test the following. Gaps here are architecture defects, not “implementation detail.”
+
+### 1. Identity, copy, and aliasing
+
+For objects, vectors, strings, and other language values:
+
+- When two names / handles refer to the **same** object (aliasing) vs a **copy**.
+- What assignment, parameter passing, and return do (share vs copy) per `0.4.md`.
+- How vectors/strings behave under index update, concatenation, and slice-like operations the language defines.
+- Equality vs identity where the language distinguishes them.
+
+Interpret and compile must agree on these observables for the support subset.
+
+### 2. Construction, destruction, `RELEASE`, and handle validity
+
+- How values are **constructed** (defaults, constructors, static fields).
+- How **`RELEASE`** (and scope/reassignment) affects binding and handle validity.
+- When using a handle after delete / move is a **language trap** vs undefined/internal failure.
+- Interaction with HOST resources (files, sockets) if a handle wraps them — deny/use-after-close rules.
+
+### 3. Method dispatch, interfaces, and static initialization
+
+- How method / interface dispatch selects the implementation (vtable, dictionary, IR-level call targets).
+- Obligations of `IMPLEMENTS` / interface conformance at runtime for both backends.
+- **Static initialization** order, cycles (`STATIC_INITIALIZATION_CYCLE` and related), and when init runs relative to `Start` / module load — same story for interpret and linked binaries.
+
+### 4. Layout, alignment, and representation at native boundaries
+
+For the compile path (and any FFI/`bn_rt` surface):
+
+- Documented **layout and alignment** of BN values that cross into native code (structs, vectors headers, string representation, fat pointers, etc.).
+- Which IR types map to which C/LLVM types in `bn_rt`.
+- What is **ABI-visible** vs private to the interpreter heap.
+
+Interpret need not use the same layout *internally*, but any value that is defined to be ABI-visible must round-trip / observe consistently when both paths exercise the same HOST/ABI helper.
+
+### 5. Ownership of ABI arguments and results
+
+For every `bn_rt` / extern entry used by lowering:
+
+- Who **owns** pointer arguments (borrow vs transfer).
+- Who frees results; aliasing with callee-stored pointers.
+- Thread-/reentrancy constraints where relevant.
+- No silent double-free or leak that the language model would forbid.
+
+The “known extern call set” in the LLVM ↔ `bn_rt` row is the **index**; each entry needs these ownership rules, not only a symbol name.
+
+### 6. `Error` vs language trap vs internal runtime failure
+
+Three distinct classes (names may map to diagnostic codes / exit paths):
+
+| Class | Meaning | Typical handling |
+| --- | --- | --- |
+| **`Error` (language)** | First-class / documented error value or `OR Error` result | Program-visible; may be returned/propagated per language rules |
+| **Language trap** | Violation of a language dynamic rule (e.g. invalid handle use, banned operation) | Abort or documented trap semantics — **not** silently turned into `poison` or UB |
+| **Internal runtime / toolchain failure** | Bug or invariant break inside interpreter, `bn_rt`, or linker glue | Toolchain diagnostic / abort; must not be confused with a normal `Error` value |
+
+Compile must not map language traps to LLVM undefined behaviour without an explicit, tested lowering that preserves the language meaning.
+
+---
+
+## Numeric lowering obligations (interpret ↔ LLVM)
+
+Numeric behaviour is part of the language contract ([numeric-semantics.md](../../todo/proposals/numeric-semantics.md), `0.4.md`). Lowering to LLVM must state, for each op:
+
+- Whether overflow/underflow is a **language error/trap**, wrapping, saturating, or unspecified — **as the BN spec says**.
+- How that maps to LLVM instructions and flags.
+
+### Example (non-negotiable warning): `add nsw` ≠ BN overflow error
+
+LLVM’s `add` with the **`nsw`** (no signed wrap) flag means: if signed overflow occurs, the result is **poison** — not a structured BN `Error`, and not a defined trap by itself. See the official LangRef:
+
+- [LLVM Language Reference — `add` instruction](https://llvm.org/docs/LangRef.html#add-instruction)
+
+Therefore:
+
+- Emitting `add nsw` (or `nuw`) **does not** automatically implement “BN integer overflow → language error.”
+- If BN requires a checked overflow, lowering must emit an **explicit** check / intrinsic / `bn_rt` helper whose failure path matches the language (`Error` or trap), and conformance tests must cover it on **both** backends.
+- If BN defines wrapping, lowering must use ops that match wrapping — not `nsw` “and hope.”
+
+Poison, `undef`, and similar LLVM concepts are **toolchain hazards**; they are not synonyms for BN `Error`.
+
+---
+
+## Relation to crates
+
+| Crate | Role under this contract |
+| --- | --- |
+| **`bn_value`** | Interpreter-facing value/handle payloads; extract breaks Rust cycles — **not** a substitute for ABI equivalence docs |
+| **`bn_runtime`** | Executable reference heap/dispatch; may call shared `bn_rt` helpers |
+| **`bn_rt`** | Native helpers / ABI surface for linked images; documented ownership + layout |
+| **`bn_llvm`** | Must lower IR respecting this contract and the numeric obligations above |
+| **`bn_ir`** | IR ops that imply value semantics must be interpretable under this contract |
+
+## Conformance expectation
+
+Per [conformance.md](conformance.md): fixtures for identity/aliasing, `DELETE`/handles, dispatch/static init, ABI round-trips, and numeric overflow must run on **interpret** and on **compile** (support-matrix filtered), plus cross-backend comparison where both apply.
+
+Policy denials (unauthorized HOST op) are **not** language `Error` values unless the language defines them that way; they are execution-policy failures — see [host-traits.md](host-traits.md).
+
+## See also
+
+- [conformance.md](conformance.md)
+- [support-matrix.md](support-matrix.md)
+- [ir-contract.md](ir-contract.md)
+- [host-traits.md](host-traits.md)
+- [target-architecture.md](target-architecture.md) (contracts table)
+- [LLVM LangRef — `add`](https://llvm.org/docs/LangRef.html#add-instruction)
+
+## Json document handles (0.6.1c)
+
+| Group | Symbols (representative) | Ownership | Fail-closed |
+| --- | --- | --- | --- |
+| Lifecycle | `bn_rt_json_object`, `bn_rt_json_array`, `bn_rt_json_parse`, `bn_rt_json_stringify`, `bn_rt_json_release`, `bn_rt_json_clone` | handle `i64`/`u64` in the single `bn_rt` table; `release` invalidates exactly one handle | invalid handle / bounds → status / null sentinel per entry point |
+| Object DOM | `bn_rt_json_set_*`, `bn_rt_json_get_*`, `bn_rt_json_has`, `bn_rt_json_kind`, `bn_rt_json_length`, `bn_rt_json_set_json`, `bn_rt_json_get_json` | `set_json` **moves** child; `get_json` allocates a fresh handle | missing key / wrong kind / depth → error status |
+| Array DOM | `bn_rt_json_append_*`, `bn_rt_json_*_at` | `append_json` / `set_json_at` **move** | OOB / wrong kind / depth → error status |
+
+Full llvm-declared list is in the index below (every `bn_rt_json_*` declared in `crates/bn_llvm/src/llvm/runtime.rs`).
+
+## LLVM-declared runtime symbol index (0.4.7 audit)
+
+The exact declaration index below complements the ownership groups above.
+`tests/compiler_capabilities.rs` verifies each symbol against the built static archive
+(including macro-generated exports), rather than treating source text as proof
+of an exported ABI. This index does not expand the advertised language subset.
+
+```text llvm-emitted-bn-rt-symbols
+bn_rt_dataframe_add_boolean
+bn_rt_dataframe_add_float
+bn_rt_dataframe_add_string
+bn_rt_dataframe_append_columns
+bn_rt_dataframe_append_rows
+bn_rt_dataframe_convert_float
+bn_rt_dataframe_convert_integer
+bn_rt_dataframe_copy_float
+bn_rt_dataframe_copy_integer
+bn_rt_dataframe_get_boolean
+bn_rt_dataframe_get_float
+bn_rt_dataframe_get_integer
+bn_rt_dataframe_get_string
+bn_rt_dataframe_join
+bn_rt_dataframe_read_csv
+bn_rt_dataframe_reduce
+bn_rt_dataframe_select
+bn_rt_dataframe_set_label
+bn_rt_dataframe_slice
+bn_rt_dataframe_transpose
+bn_rt_dataframe_write_csv
+bn_rt_dataframe_zscore
+bn_rt_exec_result_close
+bn_rt_exec_result_return_code
+bn_rt_exec_result_stderr
+bn_rt_exec_result_stdout
+bn_rt_exec_run
+bn_rt_file_close
+bn_rt_file_open
+bn_rt_log_fields_close
+bn_rt_log_fields_create
+bn_rt_log_fields_set_string
+bn_rt_log_logger_add_file
+bn_rt_log_logger_close
+bn_rt_log_logger_create
+bn_rt_log_logger_delete
+bn_rt_log_logger_flush
+bn_rt_log_logger_log
+bn_rt_clock_now
+bn_rt_clock_timer
+bn_rt_console_beep
+bn_rt_console_cls
+bn_rt_console_num_cols
+bn_rt_console_num_rows
+bn_rt_console_print_at
+bn_rt_dataframe_close
+bn_rt_dataframe_column_count
+bn_rt_dataframe_create
+bn_rt_dataframe_row_count
+bn_rt_dispatch_await
+bn_rt_dispatch_barrier_close
+bn_rt_dispatch_barrier_create
+bn_rt_dispatch_barrier_wait
+bn_rt_dispatch_cancel
+bn_rt_dispatch_group_add
+bn_rt_dispatch_group_close
+bn_rt_dispatch_group_create
+bn_rt_dispatch_group_wait
+bn_rt_dispatch_mutex_close
+bn_rt_dispatch_mutex_create
+bn_rt_dispatch_mutex_lock
+bn_rt_dispatch_mutex_unlock
+bn_rt_dispatch_queue_close
+bn_rt_dispatch_queue_create
+bn_rt_dispatch_queue_join
+bn_rt_dispatch_semaphore_acquire
+bn_rt_dispatch_semaphore_close
+bn_rt_dispatch_semaphore_create
+bn_rt_dispatch_semaphore_release
+bn_rt_dispatch_submit
+bn_rt_dispatch_ticket_close
+bn_rt_math_acos
+bn_rt_math_asin
+bn_rt_math_atan
+bn_rt_math_atan2
+bn_rt_math_ceil
+bn_rt_math_cos
+bn_rt_math_exp
+bn_rt_math_fabs
+bn_rt_math_floor
+bn_rt_math_fma
+bn_rt_math_fmax
+bn_rt_math_fmin
+bn_rt_math_fsign
+bn_rt_math_hypot
+bn_rt_math_iabs
+bn_rt_math_imax
+bn_rt_math_imin
+bn_rt_math_isign
+bn_rt_math_log
+bn_rt_math_log10
+bn_rt_math_log2
+bn_rt_math_mean_f64
+bn_rt_math_mean_i32
+bn_rt_math_median_f64
+bn_rt_math_median_i32
+bn_rt_math_mode_f64
+bn_rt_math_mode_i32
+bn_rt_math_pow
+bn_rt_math_quartile1_f64
+bn_rt_math_quartile1_i32
+bn_rt_math_quartile3_f64
+bn_rt_math_quartile3_i32
+bn_rt_math_range_f64
+bn_rt_math_range_i32
+bn_rt_math_round
+bn_rt_math_sin
+bn_rt_math_sqrt
+bn_rt_math_stdev_f64
+bn_rt_math_stdev_i32
+bn_rt_math_tan
+bn_rt_math_todate
+bn_rt_math_tohour
+bn_rt_math_totime
+bn_rt_math_totimestamp
+bn_rt_math_toweekday
+bn_rt_math_trunc
+bn_rt_math_val
+bn_rt_math_variance_f64
+bn_rt_math_variance_i32
+bn_rt_math_vmax_f64
+bn_rt_math_vmax_i32
+bn_rt_math_vmin_f64
+bn_rt_math_vmin_i32
+bn_rt_dataframe_add_integer_start
+bn_rt_dataframe_column_name_owned
+bn_rt_dataframe_set_integer_cell
+bn_rt_net_address_parse
+bn_rt_net_addresses_count
+bn_rt_net_addresses_free
+bn_rt_net_addresses_get
+bn_rt_net_handle_close
+bn_rt_net_neighbor
+bn_rt_net_ping
+bn_rt_net_resolve
+bn_rt_net_reverse
+bn_rt_net_tcp_accept
+bn_rt_net_tcp_connect
+bn_rt_net_tcp_listen
+bn_rt_net_tcp_listen_with_backlog
+bn_rt_net_tcp_listener_local_endpoint
+bn_rt_net_tcp_read
+bn_rt_net_tcp_stream_local_endpoint
+bn_rt_net_tcp_stream_remote_endpoint
+bn_rt_net_tcp_write
+bn_rt_net_udp_bind
+bn_rt_net_udp_packet_copy_to
+bn_rt_net_udp_packet_size
+bn_rt_net_udp_packet_source
+bn_rt_net_udp_packet_truncated
+bn_rt_net_udp_receive_handle
+bn_rt_net_udp_send_to
+bn_rt_policy_check
+bn_rt_policy_init
+bn_rt_policy_filesystem_root
+bn_rt_policy_filesystem_sandboxed
+bn_rt_random_next
+bn_rt_random_seed
+bn_rt_str_asc
+bn_rt_str_char_utf8
+bn_rt_str_index_utf8
+bn_rt_str_to_lower
+bn_rt_str_to_upper
+bn_rt_json_append_boolean
+bn_rt_json_append_float
+bn_rt_json_append_integer
+bn_rt_json_append_json
+bn_rt_json_append_null
+bn_rt_json_append_string
+bn_rt_json_array
+bn_rt_json_clone
+bn_rt_json_get_boolean
+bn_rt_json_get_boolean_at
+bn_rt_json_get_float
+bn_rt_json_get_float_at
+bn_rt_json_get_integer
+bn_rt_json_get_integer_at
+bn_rt_json_get_json
+bn_rt_json_get_json_at
+bn_rt_json_get_string
+bn_rt_json_get_string_at
+bn_rt_json_has
+bn_rt_json_kind
+bn_rt_json_length
+bn_rt_json_object
+bn_rt_json_parse
+bn_rt_json_release
+bn_rt_json_set_boolean
+bn_rt_json_set_boolean_at
+bn_rt_json_set_float
+bn_rt_json_set_float_at
+bn_rt_json_set_integer
+bn_rt_json_set_integer_at
+bn_rt_json_set_json
+bn_rt_json_set_json_at
+bn_rt_json_set_null
+bn_rt_json_set_null_at
+bn_rt_json_set_string
+bn_rt_json_set_string_at
+bn_rt_json_stringify
+bn_rt_crypto_argon2id
+bn_rt_crypto_bytes_from_hex
+bn_rt_crypto_bytes_from_text
+bn_rt_crypto_bytes_length
+bn_rt_crypto_bytes_release
+bn_rt_crypto_bytes_to_hex
+bn_rt_crypto_dsa_keypair
+bn_rt_crypto_dsa_sign
+bn_rt_crypto_dsa_verify
+bn_rt_crypto_hmac
+bn_rt_crypto_hmac_verify
+bn_rt_crypto_kem_decapsulate
+bn_rt_crypto_kem_encapsulate
+bn_rt_crypto_kem_keypair
+bn_rt_crypto_open
+bn_rt_crypto_public_key
+bn_rt_crypto_seal
+bn_rt_crypto_sha256
+bn_rt_crypto_sha512
+bn_rt_crypto_sign
+bn_rt_crypto_slice
+bn_rt_crypto_verify
+
+```

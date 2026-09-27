@@ -1,0 +1,90 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// SPRINT 2 — typed scalars and inspection. Every read is fail-closed: a key of
+// the wrong kind is an Error, never a zero or FALSE that reads like data.
+
+IMPORT BNJson AS Json
+
+FUNCTION Write(doc AS Json.Json) AS BOOLEAN
+    LET a AS VOID OR Error = Json.Json.SetInteger(doc, "age", 3)
+    IF a IS Error THEN
+        RETURN FALSE
+    END IF
+    LET b AS VOID OR Error = Json.Json.SetBoolean(doc, "ok", TRUE)
+    IF b IS Error THEN
+        RETURN FALSE
+    END IF
+    LET c AS VOID OR Error = Json.Json.SetNull(doc, "note")
+    IF c IS Error THEN
+        RETURN FALSE
+    END IF
+    LET d AS VOID OR Error = Json.Json.SetFloat(doc, "pi", 3.5)
+    IF d IS Error THEN
+        RETURN FALSE
+    END IF
+    RETURN TRUE
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET doc AS Json.Json = Json.Json.Object()
+
+    IF Write(doc) THEN
+        PRINT Json.Json.Kind(doc)
+        PRINT Json.Json.Has(doc, "age")
+        PRINT Json.Json.Has(doc, "absent")
+
+        LET count AS INTEGER OR Error = Json.Json.Length(doc)
+        IF count IS Error THEN
+            PRINT "length-failed"
+        ELSE
+            PRINT count
+        END IF
+
+        LET age AS INT64 OR Error = Json.Json.GetInteger(doc, "age")
+        IF age IS Error THEN
+            PRINT "age-failed"
+        ELSE
+            PRINT age
+        END IF
+
+        LET flag AS BOOLEAN OR Error = Json.Json.GetBoolean(doc, "ok")
+        IF flag IS Error THEN
+            PRINT "flag-failed"
+        ELSE
+            PRINT flag
+        END IF
+
+        LET pi AS FLOAT OR Error = Json.Json.GetFloat(doc, "pi")
+        IF pi IS Error THEN
+            PRINT "pi-failed"
+        ELSE
+            PRINT pi
+        END IF
+
+        // A key of the wrong kind must be Error, not 0.
+        LET wrong AS INT64 OR Error = Json.Json.GetInteger(doc, "ok")
+        IF wrong IS Error THEN
+            PRINT "wrong-kind-rejected"
+        ELSE
+            PRINT "wrong-kind-accepted"
+        END IF
+
+        // Float over a BOOLEAN is likewise fail-closed.
+        LET wrongf AS FLOAT OR Error = Json.Json.GetFloat(doc, "ok")
+        IF wrongf IS Error THEN
+            PRINT "float-wrong-kind-rejected"
+        ELSE
+            PRINT "float-wrong-kind-accepted"
+        END IF
+
+        // Present-and-null is distinct from absent.
+        PRINT Json.Json.Has(doc, "note")
+    ELSE
+        PRINT "write-failed"
+    END IF
+
+    RELEASE doc
+END FUNCTION

@@ -1,0 +1,21 @@
+[package]
+name = "bn_limits"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.97"
+description = "Basic Next resource limits registry (BNWeb/BNDispatch ceilings) embedded from config/"
+license.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+
+[dependencies]
+

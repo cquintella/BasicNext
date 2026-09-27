@@ -1,0 +1,23 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+// F14: RELEASE on a pointer binding drops one strong; other bindings to the
+// same region keep reading it. Same observables on interpret and compile.
+FUNCTION Take(p AS POINTER TO INTEGER[]) AS INTEGER
+    LET first AS INTEGER = p[0]
+    RELEASE p
+    RETURN first
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET a AS POINTER TO INTEGER[] = NEW INTEGER[3]
+    a[0] = 7
+    LET b AS POINTER TO INTEGER[] = a
+    RELEASE a
+    PRINT b[0]
+    PRINT LEN(b)
+    PRINT Take(b)
+    PRINT b[0]
+    PRINT "DONE"
+END FUNCTION

@@ -1,0 +1,5 @@
+IMPORT Shapes.Area AS Area
+
+FUNCTION Start() AS VOID
+    PRINT Area(1.0)
+END FUNCTION

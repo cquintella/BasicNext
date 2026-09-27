@@ -1,0 +1,22 @@
+[package]
+name = "bn_ir"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.97"
+description = "Basic Next language IR model and validator"
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+bn_diag = { path = "../bn_diag" }
+bn_source = { path = "../bn_source" }
+bn_types = { path = "../bn_types" }
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"

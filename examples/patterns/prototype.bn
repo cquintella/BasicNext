@@ -1,0 +1,5 @@
+// UNSUPPORTED: Prototype requires a polymorphic Clone operation that copies
+// arbitrary object fields. Basic Next has no general object-copy primitive.
+FUNCTION Start() AS VOID
+    PRINT "UNSUPPORTED: polymorphic object cloning is not available"
+END FUNCTION

@@ -1,0 +1,11 @@
+STRUCT Pair
+    Left AS INTEGER = 0
+    Right AS INTEGER = 0
+END STRUCT
+
+FUNCTION Start() AS VOID
+    LET pair AS Pair
+    pair.Left = 17
+    pair.Right = 23
+    PRINT pair.Left, pair.Right
+END FUNCTION

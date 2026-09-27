@@ -1,0 +1,18 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+CLASS Counter
+    PUBLIC STATIC instances AS INTEGER = 0
+
+    PUBLIC STATIC FUNCTION Tick() AS INTEGER
+        Counter.instances += 1
+        RETURN Counter.instances
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    PRINT Counter.Tick()
+    PRINT Counter.Tick()
+END FUNCTION

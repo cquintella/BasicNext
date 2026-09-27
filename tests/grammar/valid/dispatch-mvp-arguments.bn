@@ -1,0 +1,70 @@
+IMPORT BNDispatch AS Dispatch
+
+ASYNC FUNCTION Add(left AS INTEGER, right AS INTEGER) AS INTEGER OR Error
+    RETURN left + right
+END FUNCTION
+
+ASYNC FUNCTION EchoFloat(value AS FLOAT) AS FLOAT OR Error
+    RETURN value
+END FUNCTION
+
+ASYNC FUNCTION EchoString(value AS STRING) AS STRING OR Error
+    RETURN value
+END FUNCTION
+
+ASYNC FUNCTION EchoBoolean(value AS BOOLEAN) AS BOOLEAN OR Error
+    RETURN value
+END FUNCTION
+
+FUNCTION Start() AS VOID OR Error
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
+    IF queue IS Error THEN
+        RETURN queue
+    END IF
+
+    LET integerTicket AS Dispatch.Ticket OR Error = ASYNC queue Add(4, 5)
+    IF integerTicket IS Error THEN
+        RETURN integerTicket
+    END IF
+    LET integerResult AS INTEGER OR Error = AWAIT integerTicket(1000)
+    IF integerResult IS Error THEN
+        RETURN integerResult
+    END IF
+    PRINT "INTEGER", integerResult
+    integerTicket.Close()
+
+    LET floatTicket AS Dispatch.Ticket OR Error = ASYNC queue EchoFloat(2.5)
+    IF floatTicket IS Error THEN
+        RETURN floatTicket
+    END IF
+    LET floatResult AS FLOAT OR Error = AWAIT floatTicket(1000)
+    IF floatResult IS Error THEN
+        RETURN floatResult
+    END IF
+    PRINT "FLOAT", floatResult
+    floatTicket.Close()
+
+    LET stringTicket AS Dispatch.Ticket OR Error = ASYNC queue EchoString("ready")
+    IF stringTicket IS Error THEN
+        RETURN stringTicket
+    END IF
+    LET stringResult AS STRING OR Error = AWAIT stringTicket(1000)
+    IF stringResult IS Error THEN
+        RETURN stringResult
+    END IF
+    PRINT "STRING", stringResult
+    stringTicket.Close()
+
+    LET booleanTicket AS Dispatch.Ticket OR Error = ASYNC queue EchoBoolean(TRUE)
+    IF booleanTicket IS Error THEN
+        RETURN booleanTicket
+    END IF
+    LET booleanResult AS BOOLEAN OR Error = AWAIT booleanTicket(1000)
+    IF booleanResult IS Error THEN
+        RETURN booleanResult
+    END IF
+    PRINT "BOOLEAN", booleanResult
+    booleanTicket.Close()
+
+    RETURN queue.Close(1000)
+END FUNCTION

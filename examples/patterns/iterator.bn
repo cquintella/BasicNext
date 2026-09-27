@@ -1,0 +1,5 @@
+// UNSUPPORTED: Iterator requires a first-class iterator protocol and generic
+// collection traversal. The current language exposes indexed vectors only.
+FUNCTION Start() AS VOID
+    PRINT "UNSUPPORTED: Iterator protocol is not available"
+END FUNCTION

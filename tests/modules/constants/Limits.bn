@@ -1,0 +1,16 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// 0.6.2 C1 and C2: negative constant literals, range-checked, and integer
+// literals for floating-point constants.
+EXPORT CONST MinI = -1
+EXPORT CONST Hex = -0xFF
+EXPORT CONST Low = -2.5
+EXPORT CONST Big AS INT64 = -9000000000
+EXPORT CONST Max AS UINT32 = 0xFFFFFFFF
+EXPORT CONST Mask AS FLOAT = 0xFF
+EXPORT CONST Neg AS FLOAT = -0x10
+EXPORT CONST PI = 3.141592653589793
+EXPORT CONST TAU AS FLOAT = 6.283185307179586

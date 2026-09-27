@@ -1,0 +1,17 @@
+[package]
+name = "bn_source"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.97"
+description = "Shared source identity and span types for Basic Next"
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"

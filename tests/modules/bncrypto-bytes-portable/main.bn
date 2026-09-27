@@ -1,0 +1,17 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// The BNCrypto.Bytes subset both backends support: construct from text, read
+// the length, render hex, and RELEASE. FromHex is interpret-only for now and
+// is exercised by tests/modules/bncrypto-bytes.
+
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Start() AS VOID
+    LET raw AS Crypto.Bytes = Crypto.FromText("abc")
+    PRINT raw.Length()
+    PRINT raw.ToHex()
+    RELEASE raw
+END FUNCTION

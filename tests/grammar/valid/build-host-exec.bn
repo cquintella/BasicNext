@@ -1,0 +1,14 @@
+IMPORT HOST.Exec AS Exec
+
+FUNCTION Start() AS VOID
+    LET args AS STRING[1]
+    args[0] = ""
+    LET result AS Exec.Result OR Error = Exec.Run("/bin/echo", args)
+    IF result IS Error THEN
+        PRINT "error"
+    ELSE
+        PRINT result.ReturnCode
+        PRINT result.Stdout
+        PRINT result.Stderr
+    END IF
+END FUNCTION

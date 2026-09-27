@@ -1,0 +1,17 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT Limits AS L
+
+FUNCTION Start() AS VOID
+    PRINT L.MinI, " ", TYPEOF(L.MinI)
+    PRINT L.Hex, " ", TYPEOF(L.Hex)
+    PRINT L.Low, " ", TYPEOF(L.Low)
+    PRINT L.Big, " ", TYPEOF(L.Big)
+    PRINT L.Max, " ", TYPEOF(L.Max)
+    PRINT L.Mask, " ", TYPEOF(L.Mask)
+    PRINT L.Neg, " ", TYPEOF(L.Neg)
+    PRINT L.PI, " ", L.TAU
+END FUNCTION

@@ -1,0 +1,88 @@
+// Basic Next 0.5.0 BNDispatch example: typed parallel approximation of pi.
+IMPORT BNDispatch AS Dispatch
+
+ASYNC FUNCTION PiPart0() AS FLOAT OR Error
+    LET sum AS FLOAT = 0.0
+    LET index AS INTEGER = 0
+    WHILE index < 100
+        LET denominator AS FLOAT = (4 * index + 1) AS FLOAT
+        sum += 1.0 / denominator
+        index += 1
+    END WHILE
+    RETURN 4.0 * sum
+END FUNCTION
+
+ASYNC FUNCTION PiPart1() AS FLOAT OR Error
+    LET sum AS FLOAT = 0.0
+    LET index AS INTEGER = 0
+    WHILE index < 100
+        LET denominator AS FLOAT = (4 * index + 3) AS FLOAT
+        sum -= 1.0 / denominator
+        index += 1
+    END WHILE
+    RETURN 4.0 * sum
+END FUNCTION
+
+ASYNC FUNCTION PiPart2() AS FLOAT OR Error
+    LET sum AS FLOAT = 0.0
+    LET index AS INTEGER = 0
+    WHILE index < 100
+        LET denominator AS FLOAT = (4 * index + 5) AS FLOAT
+        sum += 1.0 / denominator
+        index += 1
+    END WHILE
+    RETURN 4.0 * sum
+END FUNCTION
+
+ASYNC FUNCTION PiPart3() AS FLOAT OR Error
+    LET sum AS FLOAT = 0.0
+    LET index AS INTEGER = 0
+    WHILE index < 100
+        LET denominator AS FLOAT = (4 * index + 7) AS FLOAT
+        sum -= 1.0 / denominator
+        index += 1
+    END WHILE
+    RETURN 4.0 * sum
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Concurrent(4)
+    IF queue IS Error THEN
+        PRINT "queue error"
+        RETURN
+    END IF
+    LET first AS Dispatch.Ticket OR Error = queue.Async(PiPart0)
+    LET second AS Dispatch.Ticket OR Error = queue.Async(PiPart1)
+    LET third AS Dispatch.Ticket OR Error = queue.Async(PiPart2)
+    LET fourth AS Dispatch.Ticket OR Error = queue.Async(PiPart3)
+    IF first IS Error THEN
+        RETURN
+    END IF
+    IF second IS Error THEN
+        RETURN
+    END IF
+    IF third IS Error THEN
+        RETURN
+    END IF
+    IF fourth IS Error THEN
+        RETURN
+    END IF
+    LET p0 AS FLOAT OR Error = AWAIT first(60000)
+    LET p1 AS FLOAT OR Error = AWAIT second(60000)
+    LET p2 AS FLOAT OR Error = AWAIT third(60000)
+    LET p3 AS FLOAT OR Error = AWAIT fourth(60000)
+    IF p0 IS Error THEN
+        RETURN
+    END IF
+    IF p1 IS Error THEN
+        RETURN
+    END IF
+    IF p2 IS Error THEN
+        RETURN
+    END IF
+    IF p3 IS Error THEN
+        RETURN
+    END IF
+    PRINT "pi ~= ", p0 + p1 + p2 + p3
+    queue.Close(60000)
+END FUNCTION

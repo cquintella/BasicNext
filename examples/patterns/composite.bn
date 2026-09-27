@@ -1,0 +1,34 @@
+// GoF Composite: a leaf and a composite expose the same operation shape.
+CLASS Node
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC value AS INTEGER = 0
+
+    PUBLIC FUNCTION Total() AS INTEGER
+        RETURN SELF.value
+    END FUNCTION
+END CLASS
+
+CLASS Composite
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PRIVATE left AS INTEGER = 0
+    PRIVATE right AS INTEGER = 0
+
+    PUBLIC FUNCTION Add(first AS INTEGER, second AS INTEGER) AS VOID
+        SELF.left = first
+        SELF.right = second
+    END FUNCTION
+
+    PUBLIC FUNCTION Total() AS INTEGER
+        RETURN SELF.left + SELF.right
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET leaf AS Node = NEW Node()
+    leaf.value = 3
+    LET group AS Composite = NEW Composite()
+    group.Add(leaf.Total(), 4)
+    PRINT group.Total()
+END FUNCTION

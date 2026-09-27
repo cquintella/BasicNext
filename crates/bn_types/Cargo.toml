@@ -1,0 +1,17 @@
+[package]
+name = "bn_types"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.97"
+description = "Shared Basic Next language and IR type identities"
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"

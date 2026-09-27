@@ -1,0 +1,20 @@
+CLASS Box
+    PUBLIC value AS INTEGER = 7
+
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    FUNCTION DESTRUCTOR()
+        PRINT "DEINIT"
+    END FUNCTION
+END CLASS
+
+FUNCTION Make() AS Box
+    LET box AS Box = NEW Box()
+    RETURN box
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET box AS Box = Make()
+    PRINT "VALUE", box.value
+END FUNCTION

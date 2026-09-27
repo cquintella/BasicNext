@@ -1,0 +1,3 @@
+EXPORT FUNCTION Origin() AS STRING
+    RETURN "nested module Shapes/Circle.bn"
+END FUNCTION

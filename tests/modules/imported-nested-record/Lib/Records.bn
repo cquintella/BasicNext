@@ -1,0 +1,13 @@
+STRUCT Inner
+    n AS INTEGER
+END STRUCT
+
+STRUCT Outer
+    inner AS Inner
+END STRUCT
+
+EXPORT FUNCTION Exercise() AS VOID
+    LET outer AS Outer
+    outer.inner.n = 7
+    PRINT outer.inner.n
+END FUNCTION

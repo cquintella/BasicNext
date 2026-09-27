@@ -1,0 +1,92 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Rabin-Karp string matching algorithm
+// Demonstrates loops, modulo arithmetic, and string indexing.
+// Since Basic Next 0.2 doesn't have a native ASC() function to get character codes yet,
+// we use a simple CharCode lookup function to simulate it.
+
+FUNCTION CharCode(c AS STRING) AS INTEGER
+    LET alphabet AS STRING = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 "
+    LET len AS INTEGER = LEN(alphabet)
+    LET i AS INTEGER = 0
+    WHILE i < len
+        IF alphabet[i] = c THEN
+            RETURN i
+        END IF
+        i += 1
+    END WHILE
+    RETURN 0
+END FUNCTION
+
+FUNCTION RabinKarp(pattern AS STRING, text AS STRING) AS VOID
+    LET d AS INTEGER = 63 // Base do alfabeto
+    LET q AS INTEGER = 101 // Numero primo
+    
+    LET M AS INTEGER = LEN(pattern)
+    LET N AS INTEGER = LEN(text)
+    
+    IF M = 0 OR N = 0 OR M > N THEN
+        RETURN
+    END IF
+
+    LET i AS INTEGER = 0
+    LET j AS INTEGER = 0
+    LET p AS INTEGER = 0
+    LET t AS INTEGER = 0
+    LET h AS INTEGER = 1
+
+    WHILE i < M - 1
+        h = (h * d) % q
+        i += 1
+    END WHILE
+
+    i = 0
+    WHILE i < M
+        p = (d * p + CharCode(pattern[i])) % q
+        t = (d * t + CharCode(text[i])) % q
+        i += 1
+    END WHILE
+
+    i = 0
+    WHILE i <= N - M
+        IF p = t THEN
+            LET matchFound AS BOOLEAN = TRUE
+            j = 0
+            WHILE j < M
+                IF text[i + j] <> pattern[j] THEN
+                    matchFound = FALSE
+                    EXIT WHILE
+                END IF
+                j += 1
+            END WHILE
+            
+            IF matchFound THEN
+                PRINT "Encontrado padrao no indice ", i
+            END IF
+        END IF
+
+        IF i < N - M THEN
+            t = (d * (t - CharCode(text[i]) * h) + CharCode(text[i + M])) % q
+            
+            IF t < 0 THEN
+                t = t + q
+            END IF
+        END IF
+        i += 1
+    END WHILE
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    LET text AS STRING = "ABABDABACDABABCABAB"
+    LET pattern AS STRING = "ABABCABAB"
+    
+    PRINT "Texto: ", text
+    PRINT "Padrao a buscar: ", pattern
+    
+    RabinKarp(pattern, text)
+    
+    RETURN 0
+END FUNCTION

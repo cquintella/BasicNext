@@ -1,0 +1,4 @@
+FUNCTION Start() AS VOID
+    LET unused AS INTEGER = 1
+    PRINT 1
+END FUNCTION

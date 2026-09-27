@@ -1,0 +1,17 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// 0.6.2 C2: an integer literal initializing a FLOAT binding is a float value.
+FUNCTION Start() AS VOID
+    LET decimal AS FLOAT = 255
+    LET hexadecimal AS FLOAT = 0xFF
+    LET binary AS FLOAT = -0b101
+    LET single AS FLOAT32 = 3
+    LET a, b AS FLOAT = 1, 0x2
+    CONST limit AS FLOAT = 16777216
+    PRINT decimal, " ", hexadecimal, " ", binary
+    PRINT single, " ", TYPEOF(single)
+    PRINT a + b, " ", limit
+END FUNCTION

@@ -1,0 +1,22 @@
+// GoF Adapter: the adapter translates the client operation to a legacy API.
+CLASS LegacyMeter
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION ReadRaw() AS INTEGER
+        RETURN 250
+    END FUNCTION
+END CLASS
+
+CLASS MeterAdapter
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Read(meter AS LegacyMeter) AS INTEGER
+        RETURN meter.ReadRaw() DIV 10
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET meter AS LegacyMeter = NEW LegacyMeter()
+    LET adapter AS MeterAdapter = NEW MeterAdapter()
+    PRINT adapter.Read(meter)
+END FUNCTION

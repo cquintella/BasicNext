@@ -1,0 +1,682 @@
+#![allow(clippy::wildcard_imports)]
+use super::*;
+#[path = "emission_tail.rs"]
+mod emission_tail;
+use emission_tail::lower_scalar_instruction_tail;
+
+pub(crate) fn lower_scalar_instruction(
+    text: &mut String,
+    module: &Module,
+    function: &Function,
+    block_id: BlockId,
+    instruction: &Instruction,
+    analysis: &LoweringAnalysis<'_>,
+    symbols: &HashMap<SymbolId, usize>,
+    block_state: &mut BlockState,
+    state: &mut EmissionState,
+) -> Result<(), String> {
+    match instruction {
+        Instruction::Constant {
+            destination,
+            value,
+            ty,
+            ..
+        } => match value {
+            Constant::Integer(value) => {
+                let parsed = parse_integer(value).expect("validated integer constant");
+                block_state.constants.insert(
+                    *destination,
+                    ConstantValue::Integer(parsed, integer_kind(ty)),
+                );
+                emit_constant_assignment(text, *destination, ty, value);
+            }
+            Constant::Float(value) => {
+                let parsed = parse_float_constant(value).expect("validated float constant");
+                block_state
+                    .constants
+                    .insert(*destination, ConstantValue::Float(parsed));
+                emit_constant_assignment(text, *destination, ty, &render_float(parsed, ty));
+            }
+            Constant::Boolean(value) => {
+                block_state
+                    .constants
+                    .insert(*destination, ConstantValue::Boolean(*value));
+                define_boolean(text, analysis, *destination, *value);
+            }
+            Constant::String(value) => {
+                block_state
+                    .constants
+                    .insert(*destination, ConstantValue::String(value.clone()));
+                let _ = writeln!(
+                    text,
+                    "  %v{} = getelementptr i8, ptr {}, i64 0",
+                    destination.0,
+                    string_global(&function.name, destination.0)
+                );
+            }
+            Constant::Function(name) => {
+                if module
+                    .functions
+                    .iter()
+                    .any(|function| function.name == *name)
+                {
+                    let symbol = llvm_function_symbol(name);
+                    let _ = writeln!(
+                        text,
+                        "  %v{} = select i1 true, ptr @{symbol}, ptr null",
+                        destination.0
+                    );
+                }
+            }
+            Constant::HostArgs | Constant::Type(_) | Constant::HostConsole => {}
+            Constant::NotAvailable => {
+                let dest = destination.0;
+                let _ = writeln!(
+                    text,
+                    "  %na{dest} = insertvalue {{ i1, double }} undef, i1 true, 0"
+                );
+                let _ = writeln!(
+                    text,
+                    "  %v{dest} = insertvalue {{ i1, double }} %na{dest}, double 0.0, 1"
+                );
+            }
+            Constant::Null => {
+                let _ = writeln!(text, "  %v{} = inttoptr i64 0 to ptr", destination.0);
+            }
+            Constant::EndOfFile => {
+                unreachable!("EndOfFile must be rejected during target validation");
+            }
+        },
+        Instruction::Phi {
+            destination,
+            incoming,
+            ty,
+            ..
+        } => {
+            let llvm_ty = llvm_type(ty).expect("validated Phi type");
+            state
+                .control_flow
+                .defer_phi(text.len(), *destination, llvm_ty, incoming);
+        }
+        Instruction::Default {
+            destination,
+            ty,
+            dimensions,
+            ..
+        } if !dimensions.is_empty() => {
+            let Type::Vector { element, .. } = ty else {
+                unreachable!("validated multidimensional default type");
+            };
+            let element_llvm = llvm_type(element).expect("validated vector element type");
+            let len = dimensions[0];
+            let dest = destination.0;
+            let _ = writeln!(
+                text,
+                "  %vecdefault{dest} = alloca [{len} x {element_llvm}]"
+            );
+            for index in 0..len {
+                let _ = writeln!(
+                    text,
+                    "  %vecdefaultslot{dest}_{index} = getelementptr [{len} x {element_llvm}], ptr %vecdefault{dest}, i32 0, i32 {index}"
+                );
+                let zero = match element_llvm {
+                    "i1" | "i8" | "i16" | "i32" | "i64" => format!("{element_llvm} 0"),
+                    "float" => "float 0.0".into(),
+                    "double" => "double 0.0".into(),
+                    "ptr" => "ptr null".into(),
+                    "{ i1, ptr, i64 }" => "{ i1, ptr, i64 } zeroinitializer".into(),
+                    "{ i1, ptr }" => "{ i1, ptr } zeroinitializer".into(),
+                    _ => unreachable!("validated vector element type"),
+                };
+                let _ = writeln!(text, "  store {zero}, ptr %vecdefaultslot{dest}_{index}");
+            }
+            let _ = writeln!(
+                text,
+                "  %vecdefaultptr{dest} = getelementptr [{len} x {element_llvm}], ptr %vecdefault{dest}, i32 0, i32 0"
+            );
+            let _ = writeln!(
+                text,
+                "  %vecdefaultfat{dest} = insertvalue {{ ptr, i32 }} undef, ptr %vecdefaultptr{dest}, 0"
+            );
+            let _ = writeln!(
+                text,
+                "  %v{dest} = insertvalue {{ ptr, i32 }} %vecdefaultfat{dest}, i32 {len}, 1"
+            );
+        }
+        Instruction::Default {
+            destination, ty, ..
+        } => match llvm_type(ty).expect("validated default type") {
+            "i1" => define_boolean(text, analysis, *destination, false),
+            "i8" | "i16" | "i32" | "i64" => {
+                let _ = writeln!(
+                    text,
+                    "  %v{} = add {} 0, 0",
+                    destination.0,
+                    llvm_type(ty).expect("validated integer default type")
+                );
+            }
+            "float" => {
+                let _ = writeln!(text, "  %v{} = fadd float 0.0, 0.0", destination.0);
+            }
+            "double" => {
+                let _ = writeln!(text, "  %v{} = fadd double 0.0, 0.0", destination.0);
+            }
+            "ptr" => {
+                if function.kind == FunctionKind::Default {
+                    let owner = function
+                        .owner
+                        .as_deref()
+                        .expect("validated default constructor owner");
+                    let bytes = class_instance_bytes(module, owner);
+                    let _ = writeln!(
+                        text,
+                        "  %v{} = call ptr @calloc(i64 1, i64 {bytes})",
+                        destination.0
+                    );
+                } else {
+                    let _ = writeln!(
+                        text,
+                        "  %v{} = getelementptr i8, ptr @.bn_empty, i64 0",
+                        destination.0
+                    );
+                }
+            }
+            "{ i1, double }" => emit_optional_float_default(text, *destination),
+            "{ ptr, i32 }" => {
+                let dest = destination.0;
+                let _ = writeln!(
+                    text,
+                    "  %vec{dest} = insertvalue {{ ptr, i32 }} undef, ptr null, 0"
+                );
+                let _ = writeln!(
+                    text,
+                    "  %v{dest} = insertvalue {{ ptr, i32 }} %vec{dest}, i32 0, 1"
+                );
+            }
+            _ => unreachable!("validated scalar default type"),
+        },
+        Instruction::Store { symbol, value, .. } => {
+            let value_ty = analysis
+                .values
+                .get(value)
+                .expect("validated stored value type");
+            let slot_ty = analysis.symbols.get(symbol).unwrap_or(value_ty);
+            let value_llvm = llvm_type(value_ty).expect("validated store LLVM type");
+            let slot_llvm = llvm_type(slot_ty).expect("validated slot LLVM type");
+            let operand = if is_struct_type(module, slot_ty) {
+                let Type::Named(owner) = slot_ty else {
+                    unreachable!("validated struct type");
+                };
+                let bytes = class_instance_bytes(module, owner);
+                let tag = value.0;
+                let _ = writeln!(text, "  %structcopy{tag} = alloca [{bytes} x i8]");
+                let _ = writeln!(
+                    text,
+                    "  call void @llvm.memcpy.p0.p0.i64(ptr %structcopy{tag}, ptr %v{tag}, i64 {bytes}, i1 false)"
+                );
+                format!("%structcopy{tag}")
+            } else if slot_llvm == "{ i1, double }" && matches!(value_llvm, "float" | "double") {
+                let optional_value =
+                    coerce_to_type(text, *value, value_ty, &Type::Float(FloatType::Float64));
+                let _ = writeln!(
+                    text,
+                    "  %optstoretag{} = insertvalue {{ i1, double }} undef, i1 false, 0",
+                    value.0
+                );
+                let _ = writeln!(
+                    text,
+                    "  %optstore{} = insertvalue {{ i1, double }} %optstoretag{}, double {optional_value}, 1",
+                    value.0, value.0
+                );
+                format!("%optstore{}", value.0)
+            } else if slot_llvm == "i1" {
+                i1_operand(text, analysis, state, *value)
+            } else if value_llvm != slot_llvm
+                && (matches!(value_llvm, "i8" | "i16" | "i32" | "i64")
+                    && matches!(slot_llvm, "i8" | "i16" | "i32" | "i64")
+                    || matches!(
+                        (value_llvm, slot_llvm),
+                        ("float", "double") | ("double", "float")
+                    ))
+            {
+                coerce_to_type(text, *value, value_ty, slot_ty)
+            } else {
+                format!("%v{}", value.0)
+            };
+            if analysis.input_symbols.contains(symbol)
+                && !analysis.input_targets.contains_key(value)
+            {
+                let slot = symbols[symbol];
+                let tag = value.0;
+                let _ = writeln!(
+                    text,
+                    "  %inputreplaceowned{tag} = load i1, ptr %inputowned{slot}"
+                );
+                let _ = writeln!(text, "  %inputreplaceold{tag} = load ptr, ptr %s{slot}");
+                let _ = writeln!(
+                    text,
+                    "  %inputreplacefree{tag} = select i1 %inputreplaceowned{tag}, ptr %inputreplaceold{tag}, ptr null"
+                );
+                let _ = writeln!(text, "  call void @free(ptr %inputreplacefree{tag})");
+            }
+            if is_class_type(module, slot_ty) && !function.weak_symbols.contains(symbol) {
+                let slot = symbols[symbol];
+                let old = format!("%arcstoreold{}_{}", value.0, slot);
+                let _ = writeln!(text, "  {old} = load ptr, ptr %s{slot}");
+                emit_destroy_if_last(text, module, function, &old, slot_ty, symbols, state);
+                if analysis.owned_object_results.contains_key(value) {
+                    let _ = writeln!(text, "  store ptr null, ptr %objectowned{}", value.0);
+                } else {
+                    let _ = writeln!(text, "  call void @bn_arc_retain(ptr {operand})");
+                }
+            } else if is_region_type(slot_ty) {
+                let slot = symbols[symbol];
+                let old_fat = format!("%regstoreold{}_{}", value.0, slot);
+                let _ = writeln!(text, "  {old_fat} = load {{ ptr, i32 }}, ptr %s{slot}");
+                let old_base = emit_region_base(text, &old_fat, state);
+                emit_destroy_if_last(text, module, function, &old_base, slot_ty, symbols, state);
+                if analysis.owned_object_results.contains_key(value) {
+                    let _ = writeln!(text, "  store ptr null, ptr %objectowned{}", value.0);
+                } else {
+                    let new_base = emit_region_base(text, &operand, state);
+                    let _ = writeln!(text, "  call void @bn_arc_retain(ptr {new_base})");
+                }
+            }
+            let _ = writeln!(
+                text,
+                "  store {slot_llvm} {operand}, ptr %s{}",
+                symbols[symbol]
+            );
+            if is_class_type(module, slot_ty) && function.weak_symbols.contains(symbol) {
+                let _ = writeln!(
+                    text,
+                    "  call void @bn_arc_weak_register(ptr {operand}, ptr %s{})",
+                    symbols[symbol]
+                );
+            }
+            if analysis.released_symbols.contains(symbol) {
+                let _ = writeln!(text, "  store i1 true, ptr %slive{}", symbols[symbol]);
+            }
+            if analysis.input_symbols.contains(symbol) {
+                let slot = symbols[symbol];
+                if analysis.input_targets.contains_key(value) {
+                    let _ = writeln!(
+                        text,
+                        "  %inputisvalue{} = icmp ne ptr %v{}, @.bn_eof",
+                        value.0, value.0
+                    );
+                    let _ = writeln!(
+                        text,
+                        "  store i1 %inputisvalue{}, ptr %inputowned{slot}",
+                        value.0
+                    );
+                } else {
+                    let _ = writeln!(text, "  store i1 false, ptr %inputowned{slot}");
+                }
+            }
+            if let Some(value) = block_state.constants.get(value).cloned() {
+                block_state.bindings.insert(*symbol, value);
+            } else {
+                block_state.bindings.remove(symbol);
+            }
+        }
+        Instruction::Load {
+            destination,
+            symbol,
+            ..
+        } => {
+            let dest_ty = analysis
+                .values
+                .get(destination)
+                .expect("validated loaded type");
+            let slot_ty = analysis.symbols.get(symbol).unwrap_or(dest_ty);
+            let dest_llvm = llvm_type(dest_ty).expect("validated load LLVM type");
+            let slot_llvm = llvm_type(slot_ty).expect("validated slot LLVM type");
+            if analysis.released_symbols.contains(symbol) {
+                let tag = destination.0;
+                let diagnostic = if function
+                    .blocks
+                    .iter()
+                    .flat_map(|block| &block.instructions)
+                    .any(|instruction| matches!(instruction, Instruction::Release { value, .. } if value == destination))
+                {
+                    "@.bn_double_release"
+                } else {
+                    "@.bn_use_after_release"
+                };
+                let _ = writeln!(
+                    text,
+                    "  %loadlive{tag} = load i1, ptr %slive{}",
+                    symbols[symbol]
+                );
+                let _ = writeln!(
+                    text,
+                    "  br i1 %loadlive{tag}, label %load_live_{tag}, label %load_released_{tag}\nload_released_{tag}:\n  call i32 (ptr, ...) @printf(ptr {diagnostic})\n  call void @exit(i32 1)\n  unreachable\nload_live_{tag}:"
+                );
+            }
+            if slot_llvm == "{ i1, double }" && matches!(dest_llvm, "float" | "double") {
+                let _ = writeln!(
+                    text,
+                    "  %optload{} = load {{ i1, double }}, ptr %s{}",
+                    destination.0, symbols[symbol]
+                );
+                if dest_llvm == "float" {
+                    let _ = writeln!(
+                        text,
+                        "  %optdbl{} = extractvalue {{ i1, double }} %optload{}, 1",
+                        destination.0, destination.0
+                    );
+                    let _ = writeln!(
+                        text,
+                        "  %v{} = fptrunc double %optdbl{} to float",
+                        destination.0, destination.0
+                    );
+                } else {
+                    let _ = writeln!(
+                        text,
+                        "  %v{} = extractvalue {{ i1, double }} %optload{}, 1",
+                        destination.0, destination.0
+                    );
+                }
+            } else if slot_llvm != dest_llvm
+                && slot_llvm == "{ i1, ptr, i32 }"
+                && dest_llvm == "{ ptr, i32 }"
+            {
+                let dest = destination.0;
+                let _ = writeln!(
+                    text,
+                    "  %netload{dest} = load {{ i1, ptr, i32 }}, ptr %s{}",
+                    symbols[symbol]
+                );
+                let _ = writeln!(
+                    text,
+                    "  %netloadp{dest} = extractvalue {{ i1, ptr, i32 }} %netload{dest}, 1"
+                );
+                let _ = writeln!(
+                    text,
+                    "  %netloadport{dest} = extractvalue {{ i1, ptr, i32 }} %netload{dest}, 2"
+                );
+                let _ = writeln!(
+                    text,
+                    "  %netloadagg{dest} = insertvalue {{ ptr, i32 }} undef, ptr %netloadp{dest}, 0"
+                );
+                let _ = writeln!(
+                    text,
+                    "  %v{dest} = insertvalue {{ ptr, i32 }} %netloadagg{dest}, i32 %netloadport{dest}, 1"
+                );
+            } else if slot_llvm != dest_llvm
+                && matches!(slot_llvm, "i8" | "i16" | "i32" | "i64")
+                && matches!(dest_llvm, "i8" | "i16" | "i32" | "i64")
+            {
+                let _ = writeln!(
+                    text,
+                    "  %slotload{} = load {slot_llvm}, ptr %s{}",
+                    destination.0, symbols[symbol]
+                );
+                let slot_w = match slot_llvm {
+                    "i8" => 8u8,
+                    "i16" => 16,
+                    "i32" => 32,
+                    _ => 64,
+                };
+                let dest_w = match dest_llvm {
+                    "i8" => 8u8,
+                    "i16" => 16,
+                    "i32" => 32,
+                    _ => 64,
+                };
+                let opcode = if slot_w < dest_w {
+                    if is_unsigned(slot_ty) { "zext" } else { "sext" }
+                } else {
+                    "trunc"
+                };
+                let _ = writeln!(
+                    text,
+                    "  %v{} = {opcode} {slot_llvm} %slotload{} to {dest_llvm}",
+                    destination.0, destination.0
+                );
+            } else {
+                let _ = writeln!(
+                    text,
+                    "  %v{} = load {dest_llvm}, ptr %s{}",
+                    destination.0, symbols[symbol]
+                );
+            }
+            if let Some(value) = block_state.bindings.get(symbol).cloned() {
+                block_state.constants.insert(*destination, value);
+            } else {
+                block_state.constants.remove(destination);
+            }
+        }
+        Instruction::Copy {
+            destination,
+            source,
+            ty,
+            ..
+        } => {
+            if let Some(value) = block_state.constants.get(source).cloned() {
+                block_state.constants.insert(*destination, value.clone());
+                emit_constant_value_analyzed(text, analysis, *destination, ty, &value);
+            } else {
+                block_state.constants.remove(destination);
+                match llvm_type(ty).expect("validated copy type") {
+                    "i1" => define_boolean_from(text, analysis, state, *destination, *source),
+                    "i8" | "i16" | "i32" | "i64" => {
+                        let _ = writeln!(
+                            text,
+                            "  %v{} = add {} 0, %v{}",
+                            destination.0,
+                            llvm_type(ty).expect("validated integer copy type"),
+                            source.0
+                        );
+                    }
+                    "float" => {
+                        let _ = writeln!(
+                            text,
+                            "  %v{} = fadd float 0.0, %v{}",
+                            destination.0, source.0
+                        );
+                    }
+                    "double" => {
+                        let _ = writeln!(
+                            text,
+                            "  %v{} = fadd double 0.0, %v{}",
+                            destination.0, source.0
+                        );
+                    }
+                    "ptr" => {
+                        let _ = writeln!(
+                            text,
+                            "  %v{} = getelementptr i8, ptr %v{}, i64 0",
+                            destination.0, source.0
+                        );
+                    }
+                    "{ i1, ptr, i64 }" => {
+                        let dest = destination.0;
+                        let src = source.0;
+                        let _ = writeln!(
+                            text,
+                            "  %netc0{dest} = extractvalue {{ i1, ptr, i64 }} %v{src}, 0"
+                        );
+                        let _ = writeln!(
+                            text,
+                            "  %netc1{dest} = extractvalue {{ i1, ptr, i64 }} %v{src}, 1"
+                        );
+                        let _ = writeln!(
+                            text,
+                            "  %netc2{dest} = extractvalue {{ i1, ptr, i64 }} %v{src}, 2"
+                        );
+                        let _ = writeln!(
+                            text,
+                            "  %netca{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %netc0{dest}, 0"
+                        );
+                        let _ = writeln!(
+                            text,
+                            "  %netcb{dest} = insertvalue {{ i1, ptr, i64 }} %netca{dest}, ptr %netc1{dest}, 1"
+                        );
+                        let _ = writeln!(
+                            text,
+                            "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %netcb{dest}, i64 %netc2{dest}, 2"
+                        );
+                    }
+                    _ => unreachable!("validated copy type"),
+                }
+            }
+        }
+        Instruction::Unary {
+            destination,
+            operator,
+            operand,
+            ty,
+            ..
+        } => {
+            if let Some(result) = fold_unary(operator, block_state.constants.get(operand), ty) {
+                block_state.constants.insert(*destination, result.clone());
+                emit_constant_value(text, *destination, ty, &result);
+                return Ok(());
+            }
+            block_state.constants.remove(destination);
+            match (
+                operator.as_str(),
+                llvm_type(ty).expect("validated unary LLVM type"),
+            ) {
+                ("Plus", "i8" | "i16" | "i32" | "i64") => {
+                    let operand_ty = analysis.values.get(operand).unwrap_or(ty);
+                    let operand_op = coerce_to_type(text, *operand, operand_ty, ty);
+                    let _ = writeln!(
+                        text,
+                        "  %v{} = add {} 0, {operand_op}",
+                        destination.0,
+                        llvm_type(ty).expect("validated integer unary type")
+                    );
+                }
+                ("Minus", "i8" | "i16" | "i32" | "i64") => {
+                    let operand_ty = analysis.values.get(operand).unwrap_or(ty);
+                    emit_checked_integer_op(
+                        text,
+                        block_id,
+                        *destination,
+                        "Minus",
+                        *operand,
+                        None,
+                        operand_ty,
+                        ty,
+                        ty,
+                        state,
+                    );
+                }
+                ("Plus", "float") => {
+                    let _ = writeln!(
+                        text,
+                        "  %v{} = fadd float 0.0, %v{}",
+                        destination.0, operand.0
+                    );
+                }
+                ("Minus", "float") => {
+                    let _ = writeln!(
+                        text,
+                        "  %v{} = fsub float 0.0, %v{}",
+                        destination.0, operand.0
+                    );
+                }
+                ("Plus", "double") => {
+                    let _ = writeln!(
+                        text,
+                        "  %v{} = fadd double 0.0, %v{}",
+                        destination.0, operand.0
+                    );
+                }
+                ("Minus", "double") => {
+                    let _ = writeln!(
+                        text,
+                        "  %v{} = fsub double 0.0, %v{}",
+                        destination.0, operand.0
+                    );
+                }
+                ("NOT", "i1") => {
+                    let _ = writeln!(text, "  %v{} = xor i1 1, %v{}", destination.0, operand.0);
+                }
+                ("NOT", "i8" | "i16" | "i32" | "i64") => {
+                    emit_integer_not(text, *destination, *operand, ty, state);
+                }
+                _ => unreachable!("validated unary operator"),
+            }
+        }
+        Instruction::Binary {
+            destination,
+            operator,
+            left,
+            right,
+            ty,
+            ..
+        } => {
+            if let Some(result) = fold_binary(
+                operator,
+                block_state.constants.get(left),
+                block_state.constants.get(right),
+                ty,
+            ) {
+                block_state.constants.insert(*destination, result.clone());
+                emit_constant_value(text, *destination, ty, &result);
+                return Ok(());
+            }
+            block_state.constants.remove(destination);
+            let left_ty = analysis.values.get(left).expect("validated left type");
+            let right_ty = analysis.values.get(right).expect("validated right type");
+            if operator == "IS" {
+                emit_is(text, *destination, *left, left_ty, right_ty);
+            } else {
+                emit_runtime_binary(
+                    text,
+                    block_id,
+                    *destination,
+                    operator,
+                    *left,
+                    *right,
+                    left_ty,
+                    right_ty,
+                    ty,
+                    state,
+                );
+            }
+        }
+        Instruction::Cast {
+            destination,
+            value,
+            ty,
+            ..
+        } => {
+            if let Some(result) = fold_cast(block_state.constants.get(value), ty) {
+                block_state.constants.insert(*destination, result.clone());
+                emit_constant_value(text, *destination, ty, &result);
+                return Ok(());
+            }
+            block_state.constants.remove(destination);
+            let source_ty = analysis
+                .values
+                .get(value)
+                .expect("validated cast source type");
+            if llvm_type(source_ty) == Some("{ i1, double }")
+                && matches!(ty, Type::Float(_) | Type::FloatLiteral)
+            {
+                extract_optional_float(text, *destination, *value);
+            } else {
+                lower_cast(text, block_id, *destination, *value, source_ty, ty, state);
+            }
+        }
+        _ => {
+            return lower_scalar_instruction_tail(
+                text,
+                module,
+                function,
+                block_id,
+                instruction,
+                analysis,
+                symbols,
+                block_state,
+                state,
+            );
+        }
+    }
+    Ok(())
+}

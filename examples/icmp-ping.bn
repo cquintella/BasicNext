@@ -1,0 +1,25 @@
+// Manual ICMP Echo diagnostic for the configured public host.
+IMPORT HOST.Net AS Net
+
+FUNCTION Start() AS INTEGER
+    LET host AS STRING = "www.intelliurb.com"
+    LET timeoutMilliseconds AS INTEGER = 5000
+    LET addresses AS Net.Addresses OR Error = Net.Resolve(host, timeoutMilliseconds)
+    IF addresses IS Error THEN
+        PRINT "resolution failed: ", addresses.Message
+        RETURN 1
+    END IF
+    LET address AS Net.Address OR Error = addresses.Get(0)
+    IF address IS Error THEN
+        PRINT "no address returned for ", host
+        RETURN 1
+    END IF
+    PRINT "pinging ", host, " (", address.ToString(), ")"
+    LET reply AS Net.PingReply OR Error = Net.Ping(address, timeoutMilliseconds)
+    IF reply IS Error THEN
+        PRINT "ping unavailable or failed: ", reply.Message
+        RETURN 1
+    END IF
+    PRINT "reply from ", reply.Address().ToString(), " in ", reply.RoundTripMicroseconds(), " us"
+    RETURN 0
+END FUNCTION

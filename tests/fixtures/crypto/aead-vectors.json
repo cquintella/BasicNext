@@ -1,0 +1,60 @@
+{
+  "_provenance": "Ciphertexts were produced by python-cryptography (OpenSSL), an implementation independent of the aes-gcm / chacha20poly1305 Rust crates under test. They are never to be edited to match implementation output; a mismatch is a defect. Both algorithms are deterministic given key+nonce+aad, so these are stable.",
+  "standards": {
+    "AES-256-GCM": "NIST SP 800-38D",
+    "ChaCha20-Poly1305": "RFC 7539"
+  },
+  "note": "ciphertext_and_tag is the ciphertext with the 16-byte tag appended.",
+  "aes_256_gcm": [
+    {
+      "id": "empty",
+      "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "nonce": "000102030405060708090a0b",
+      "plaintext": "",
+      "aad": "",
+      "ciphertext_and_tag": "f4c2db1dc38805a37b92171c5d0a81cc"
+    },
+    {
+      "id": "abc",
+      "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "nonce": "000102030405060708090a0b",
+      "plaintext": "616263",
+      "aad": "",
+      "ciphertext_and_tag": "2660b5539677125a571f571ada456e85769a43"
+    },
+    {
+      "id": "aad",
+      "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "nonce": "000102030405060708090a0b",
+      "plaintext": "616263",
+      "aad": "686472",
+      "ciphertext_and_tag": "2660b569dff070e184bce4347ab72c6ec46088"
+    }
+  ],
+  "chacha20_poly1305": [
+    {
+      "id": "empty",
+      "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "nonce": "000102030405060708090a0b",
+      "plaintext": "",
+      "aad": "",
+      "ciphertext_and_tag": "295a498b8841a1c5f55d4d606f731159"
+    },
+    {
+      "id": "abc",
+      "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "nonce": "000102030405060708090a0b",
+      "plaintext": "616263",
+      "aad": "",
+      "ciphertext_and_tag": "e8996bdbe97d036a9b815bccbdf1a8e87ec37f"
+    },
+    {
+      "id": "aad",
+      "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "nonce": "000102030405060708090a0b",
+      "plaintext": "616263",
+      "aad": "686472",
+      "ciphertext_and_tag": "e8996b3a03c9656f5001909f4819e887d5daa2"
+    }
+  ]
+}

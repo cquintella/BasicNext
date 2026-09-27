@@ -1,0 +1,6 @@
+FUNCTION Start() AS VOID
+    LET n AS INTEGER = 2
+    LET values AS INTEGER[n]
+    values[0] = 1
+    values[1] = 2
+END FUNCTION

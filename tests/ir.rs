@@ -1,0 +1,284 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+use bn_frontend::lowering::lower_graph;
+use bn_frontend::module_graph::load;
+use bn_frontend::semantic::analyze_modules;
+use bn_ir::{BlockId, Constant, Function, Instruction, Module, ModuleId, Terminator, validate};
+
+fn lower_path(path: &str) -> bn_ir::Module {
+    let graph = load(std::path::Path::new(path)).expect("load source");
+    let models = analyze_modules(&graph).expect("analyze source");
+    lower_graph(&graph, &models).expect("lower source")
+}
+
+#[test]
+fn factorial_lowers_to_typed_control_flow() {
+    let module = lower_path("examples/factorial.bn");
+    assert_eq!(module.functions.len(), 2);
+    let factorial = &module.functions[0];
+    assert_eq!(factorial.name, "Factorial");
+    assert_eq!(factorial.parameters.len(), 1);
+    assert!(factorial.blocks.len() > 1);
+    assert!(factorial.blocks.iter().all(|block| matches!(
+        block.terminator,
+        Terminator::Jump { .. }
+            | Terminator::Branch { .. }
+            | Terminator::Return { .. }
+            | Terminator::Stop { .. }
+    )));
+    assert!(factorial.blocks.iter().any(|block| block.instructions.iter().any(
+        |instruction| matches!(instruction, Instruction::Binary { operator, .. } if operator == "Assign")
+    )));
+}
+
+#[test]
+fn async_function_metadata_survives_into_ir() {
+    let module = lower_path("tests/grammar/valid/async-function.bn");
+    let work = module
+        .functions
+        .iter()
+        .find(|function| function.name == "Work")
+        .expect("async function");
+    assert!(work.asynchronous);
+    assert!(
+        !module
+            .functions
+            .iter()
+            .find(|function| function.name == "Start")
+            .expect("Start")
+            .asynchronous
+    );
+}
+
+#[test]
+fn async_submit_and_await_lower_to_explicit_ir_operations() {
+    let module = lower_path("tests/grammar/valid/async-submit.bn");
+    let instructions = module
+        .functions
+        .iter()
+        .flat_map(|function| function.blocks.iter())
+        .flat_map(|block| block.instructions.iter())
+        .collect::<Vec<_>>();
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::DispatchSubmit { .. }))
+    );
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::DispatchAwait { .. }))
+    );
+}
+
+#[test]
+fn len_and_sizeof_lower_static_values_to_constants() {
+    let module = lower_path("tests/grammar/valid/len-and-sizeof.bn");
+    let start = module
+        .functions
+        .iter()
+        .find(|function| function.name == "Start")
+        .expect("Start");
+    let instructions: Vec<_> = start
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .collect();
+    assert!(instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::Constant {
+            value: Constant::Integer(value),
+            ..
+        } if value == "1"
+    )));
+    assert!(instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::Constant {
+            value: Constant::Integer(value),
+            ..
+        } if value == "4"
+    )));
+    assert!(instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::Constant {
+            value: Constant::Integer(value),
+            ..
+        } if value == "24"
+    )));
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Length { .. }))
+    );
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::SizeOf { .. }))
+    );
+}
+
+#[test]
+fn language_tour_lowers_to_extended_ir() {
+    let module = lower_path("examples/language-tour.bn");
+    assert!(
+        module
+            .functions
+            .iter()
+            .any(|function| function.name == "Start")
+    );
+    assert!(
+        module
+            .functions
+            .iter()
+            .any(|function| function.name == "Counter.CONSTRUCTOR")
+    );
+    assert!(
+        module
+            .functions
+            .iter()
+            .any(|function| function.name == "Counter.DESTRUCTOR")
+    );
+    assert!(
+        module
+            .functions
+            .iter()
+            .any(|function| function.name == "Counter.Increment")
+    );
+    assert!(
+        module
+            .functions
+            .iter()
+            .any(|function| function.name == "Counter.$fields")
+    );
+    assert!(
+        module
+            .functions
+            .iter()
+            .any(|function| function.name == "Point.$default")
+    );
+    let instructions: Vec<_> = module
+        .functions
+        .iter()
+        .flat_map(|function| &function.blocks)
+        .flat_map(|block| &block.instructions)
+        .collect();
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Allocate { .. }))
+    );
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Release { .. }))
+    );
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::SetMember { .. }))
+    );
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::SetField { .. }))
+    );
+}
+
+#[test]
+fn imported_class_constructor_uses_the_module_id() {
+    let graph = load(std::path::Path::new("tests/modules/objects/main.bn")).expect("load objects");
+    let models = analyze_modules(&graph).expect("analyze objects");
+    let module = lower_graph(&graph, &models).expect("lower objects");
+    assert!(module.functions.iter().any(|function| {
+        function.name.ends_with("Box.CONSTRUCTOR") && function.name.starts_with('#')
+    }));
+    assert!(module.functions.iter().any(|function| {
+        function.name.ends_with("Box.$fields") && function.name.starts_with('#')
+    }));
+}
+
+#[test]
+fn bndata_provider_is_not_lowered_as_executable_bn() {
+    let graph =
+        load(std::path::Path::new("tests/grammar/valid/bndata-import.bn")).expect("load BNData");
+    let provider = graph
+        .modules
+        .iter()
+        .find(|module| module.standard_module.is_some())
+        .expect("BNData provider");
+    let models = analyze_modules(&graph).expect("analyze BNData");
+    let module = lower_graph(&graph, &models).expect("lower BNData user program");
+    assert!(
+        module
+            .bndata_providers
+            .contains(&ModuleId::from(provider.id))
+    );
+    assert!(
+        !module
+            .functions
+            .iter()
+            .any(|function| function.name.starts_with(&format!("#{}.", provider.id.0)))
+    );
+}
+
+#[test]
+fn validate_rejects_a_dangling_block_target() {
+    let module = Module {
+        source_name: None,
+        functions: vec![Function {
+            name: "Broken".into(),
+            kind: bn_ir::FunctionKind::User,
+            owner: None,
+            asynchronous: false,
+            parameters: Vec::new(),
+            return_type: bn_types::Type::Named("VOID".into()),
+            entry: BlockId(0),
+            blocks: vec![bn_ir::BasicBlock {
+                id: BlockId(0),
+                instructions: Vec::new(),
+                terminator: Terminator::Jump { target: BlockId(9) },
+            }],
+            weak_symbols: std::collections::HashSet::default(),
+            span: bn_source::Span {
+                start: bn_source::Position {
+                    source_id: bn_source::Position::UNKNOWN_SOURCE,
+                    revision: bn_source::Position::UNKNOWN_REVISION,
+                    offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+                end: bn_source::Position {
+                    source_id: bn_source::Position::UNKNOWN_SOURCE,
+                    revision: bn_source::Position::UNKNOWN_REVISION,
+                    offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+            },
+        }],
+        ..Module::default()
+    };
+    let error = validate(&module).expect_err("dangling terminator must fail");
+    assert_eq!(error.code, "INVALID_IR");
+}
+
+#[test]
+fn loops_and_function_values_lower_without_ast_names() {
+    let module = lower_path("tests/grammar/valid/function-values-and-control-flow.bn");
+    assert!(
+        module
+            .functions
+            .iter()
+            .any(|function| function.name == "Start")
+    );
+    assert!(
+        module
+            .functions
+            .iter()
+            .flat_map(|function| &function.blocks)
+            .any(|block| matches!(block.terminator, Terminator::Branch { .. }))
+    );
+}

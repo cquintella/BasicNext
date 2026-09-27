@@ -1,0 +1,23 @@
+[package]
+name = "bn_runtime"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.97"
+description = "Basic Next runtime memory and execution boundary"
+license.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+
+[dependencies]
+bn_diag = { path = "../bn_diag" }
+bn_source = { path = "../bn_source" }
+bn_value = { path = "../bn_value" }

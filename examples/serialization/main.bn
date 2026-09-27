@@ -1,0 +1,47 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Companion round-trip (A8): domain stays free of BNJson; BirdJson owns the
+// codec; BNJson supplies the DOM and text boundary via Stringify.
+// Parse of a narrowed STRING OR Error is covered by the grammar Parse/Stringify
+// fixture; this driver keeps Decode on the Encode handle so both backends run.
+
+IMPORT Bird AS Birds
+IMPORT BirdJson AS BirdJson
+IMPORT BNJson AS Json
+
+FUNCTION Start() AS VOID
+    LET eagle AS Birds.Bird = NEW Birds.Bird("eagle", 2)
+
+    LET doc AS Json.Json OR Error = BirdJson.Encode(eagle)
+    IF doc IS Error THEN
+        PRINT "encode-failed"
+        RETURN
+    END IF
+
+    LET text AS STRING OR Error = Json.Json.Stringify(doc)
+    IF text IS Error THEN
+        PRINT "stringify-failed"
+        RELEASE doc
+        RETURN
+    END IF
+    PRINT text
+
+    LET again AS Birds.Bird OR Error = BirdJson.Decode(doc)
+    IF again IS Error THEN
+        PRINT "decode-failed"
+        RELEASE doc
+        RETURN
+    END IF
+    PRINT again.Name()
+    PRINT again.Wings()
+
+    RELEASE doc
+
+    LET empty AS Json.Json = Json.Json.Object()
+    LET invalid AS Birds.Bird OR Error = BirdJson.Decode(empty)
+    PRINT "decode-error", invalid IS Error
+    RELEASE empty
+END FUNCTION

@@ -1,0 +1,45 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Bucket 0.6.1c SPRINT 1 — the thin vertical slice: build an object, write one
+// string, read it back, and prove the fail-closed reads. Deliberately one
+// member of each kind; the rest of the DOM follows once this path is proven on
+// both backends.
+
+IMPORT BNJson AS Json
+
+FUNCTION Start() AS VOID
+    LET doc AS Json.Json = Json.Json.Object()
+
+    LET written AS VOID OR Error = Json.Json.SetString(doc, "name", "pardal")
+    IF written IS Error THEN
+        PRINT "set-failed"
+    ELSE
+        LET read AS STRING OR Error = Json.Json.GetString(doc, "name")
+        IF read IS Error THEN
+            PRINT "get-failed"
+        ELSE
+            PRINT read
+        END IF
+    END IF
+
+    // Missing key must be an Error, never an empty string.
+    LET missing AS STRING OR Error = Json.Json.GetString(doc, "absent")
+    IF missing IS Error THEN
+        PRINT "missing-key-rejected"
+    ELSE
+        PRINT "missing-key-accepted"
+    END IF
+
+    // Stringify still works over a DOM-built document.
+    LET text AS STRING OR Error = Json.Json.Stringify(doc)
+    IF text IS Error THEN
+        PRINT "stringify-failed"
+    ELSE
+        PRINT text
+    END IF
+
+    RELEASE doc
+END FUNCTION

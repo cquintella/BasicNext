@@ -1,0 +1,15 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+EXPORT CLASS Animal
+    PUBLIC name AS STRING = "animal"
+
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION Speak() AS STRING
+        RETURN "animal"
+    END FUNCTION
+END CLASS

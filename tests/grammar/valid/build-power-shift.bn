@@ -1,0 +1,13 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+FUNCTION Start() AS VOID
+    PRINT 2 ** 3
+    PRINT 1 SHL 3
+    PRINT 16 SHR 2
+    PRINT NOT 0
+    PRINT "ab" + "cd"
+    PRINT 2.0 ** -1.0
+END FUNCTION

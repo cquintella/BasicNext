@@ -1,0 +1,9 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+// Fuzz-minimized: an unbalanced '(' inside a vector dimension must be a
+// syntax error, not unbounded recursion.
+FUNCTION Start() AS VOID
+    LET g AS INTEGER[(] = 1
+END FUNCTION

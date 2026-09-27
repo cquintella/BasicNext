@@ -1,0 +1,40 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Companion codec for Bird (option E / S-3). Typed DOM setters and getters
+// only — no generic Get/Set. EncodeText/DecodeText are deferred (S-4).
+//
+// Encode and Decode preserve provider failures as Error values. They never
+// manufacture a partial domain value when a typed DOM operation fails.
+
+IMPORT Bird AS Birds
+IMPORT BNJson AS Json
+
+EXPORT FUNCTION Encode(value AS Birds.Bird) AS Json.Json OR Error
+    LET doc AS Json.Json = Json.Json.Object()
+    LET name_write AS VOID OR Error = Json.Json.SetString(doc, "name", value.Name())
+    IF name_write IS Error THEN
+        RELEASE doc
+        RETURN name_write
+    END IF
+    LET wings_write AS VOID OR Error = Json.Json.SetInteger(doc, "wings", value.Wings())
+    IF wings_write IS Error THEN
+        RELEASE doc
+        RETURN wings_write
+    END IF
+    RETURN doc
+END FUNCTION
+
+EXPORT FUNCTION Decode(doc AS Json.Json) AS Birds.Bird OR Error
+    LET name AS STRING OR Error = Json.Json.GetString(doc, "name")
+    IF name IS Error THEN
+        RETURN name
+    END IF
+    LET wings AS INT64 OR Error = Json.Json.GetInteger(doc, "wings")
+    IF wings IS Error THEN
+        RETURN wings
+    END IF
+    RETURN NEW Birds.Bird(name, wings)
+END FUNCTION

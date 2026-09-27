@@ -1,0 +1,300 @@
+# Basic Next CI.
+#
+#   quality  Linux: formatting, Clippy, and the repository shell gates.
+#   test     Linux, macOS, Windows: the whole workspace test suite with LLVM 22.
+#   build    Release executables and runtime for the five published platforms.
+#   install  Runs install.sh (Linux) and install.ps1 (Windows PowerShell 5.1
+#            and PowerShell 7) against the assets built in this run.
+#   publish  On a v* tag: SHA256SUMS, man pages, and the GitHub Release.
+#
+# Asset names are the contract of scripts/install.sh and scripts/install.ps1:
+# bni-<platform>[.exe], bnc-<platform>[.exe], libbn_rt-<platform>.a,
+# bn_rt-windows-x86_64.lib, SHA256SUMS, bni.1, bnc.1.
+#
+# Third-party actions are pinned by commit SHA; the comment names the release.
+# LLVM is pinned to 22.1.8 on every OS (docs/project/usage.md requires 22).
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - name: Formatting
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Repository gates
+        run: |
+          tests/check-forbidden-deps.sh
+          tests/check-shared-cores.sh
+          bash tests/check-value-layout.sh
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install LLVM 22 and ripgrep (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key -o "$RUNNER_TEMP/llvm.key"
+          fpr=$(gpg --show-keys --with-colons "$RUNNER_TEMP/llvm.key" | awk -F: '/^fpr/ { print $10; exit }')
+          [[ "$fpr" == 6084F3CF814B57C1CF12EFD515CF4D18AF4F7421 ]] \
+            || { echo "::error::unexpected apt.llvm.org key fingerprint: $fpr"; exit 1; }
+          sudo gpg --dearmor -o /usr/share/keyrings/apt-llvm.gpg "$RUNNER_TEMP/llvm.key"
+          echo "deb [signed-by=/usr/share/keyrings/apt-llvm.gpg] https://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" \
+            | sudo tee /etc/apt/sources.list.d/llvm-22.list
+          sudo apt-get update
+          sudo apt-get install -y clang-22 lld-22 ripgrep
+          mkdir -p "$RUNNER_TEMP/llvm-22"
+          ln -s "$(command -v clang-22)" "$RUNNER_TEMP/llvm-22/clang"
+          ln -s "$(command -v wasm-ld-22)" "$RUNNER_TEMP/llvm-22/wasm-ld"
+          echo "$RUNNER_TEMP/llvm-22" >> "$GITHUB_PATH"
+
+      - name: Install LLVM 22 and ripgrep (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          brew install llvm@22 lld@22 ripgrep
+          echo "$(brew --prefix llvm@22)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix lld@22)/bin" >> "$GITHUB_PATH"
+
+      - name: Install LLVM 22 and ripgrep (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          $installer = Join-Path $env:RUNNER_TEMP 'LLVM-22.1.8-win64.exe'
+          Invoke-WebRequest -Uri 'https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/LLVM-22.1.8-win64.exe' -OutFile $installer
+          # SHA256 from the release's sigstore attestation (LLVM-22.1.8-win64.exe.jsonl).
+          $expected = '16e5709785fef73c854646241c4a92c5cd574318d1b33c63330dd7721903e55c'
+          $actual = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "LLVM installer SHA256 mismatch: $actual" }
+          $llvm = 'C:\llvm-22'
+          Start-Process -FilePath $installer -ArgumentList '/S', "/D=$llvm" -Wait
+          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $llvm 'bin')
+          choco install ripgrep -y --no-progress
+
+      - name: Toolchain versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo --version
+          clang --version
+          wasm-ld --version
+          rg --version
+          # Wasm parity runs modules under Node; the ABI gate reads bn_rt with nm.
+          node --version
+          command -v llvm-nm || command -v nm
+
+      - name: Build runtime and executables
+        shell: bash
+        run: |
+          # Native bnc links the bn_rt staticlib; cargo test alone may not emit it.
+          cargo build --locked -p bn_rt
+          cargo build --locked --workspace --bins
+
+      - name: Test
+        shell: bash
+        run: cargo test --locked --workspace --all-targets -- --test-threads=1
+
+  build:
+    needs: [quality, test]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-gnu, platform: linux-x86_64 }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, platform: linux-aarch64 }
+          - { os: macos-latest, target: aarch64-apple-darwin, platform: macos-aarch64 }
+          - { os: macos-latest, target: x86_64-apple-darwin, platform: macos-x86_64 }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, platform: windows-x86_64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup target add ${{ matrix.target }}
+          cargo build --release --locked --target ${{ matrix.target }} -p bni -p bnc --bin bni --bin bnc
+          cargo build --release --locked --target ${{ matrix.target }} -p bn_rt
+      - name: Stage assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="target/${{ matrix.target }}/release"
+          mkdir -p dist
+          if [[ "${{ matrix.target }}" == *-windows-* ]]; then
+            cp "$out/bni.exe" "dist/bni-${{ matrix.platform }}.exe"
+            cp "$out/bnc.exe" "dist/bnc-${{ matrix.platform }}.exe"
+            cp "$out/bn_rt.lib" "dist/bn_rt-${{ matrix.platform }}.lib"
+          else
+            cp "$out/bni" "dist/bni-${{ matrix.platform }}"
+            cp "$out/bnc" "dist/bnc-${{ matrix.platform }}"
+            cp "$out/libbn_rt.a" "dist/libbn_rt-${{ matrix.platform }}.a"
+            chmod +x dist/bni-* dist/bnc-*
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: assets-${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error
+
+  install:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Fetch assets (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: assets-linux-x86_64
+          path: dist
+
+      - name: install.sh from the checkout
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          mkdir -p target/release
+          cp dist/bni-linux-x86_64 target/release/bni
+          cp dist/bnc-linux-x86_64 target/release/bnc
+          cp dist/libbn_rt-linux-x86_64.a target/release/libbn_rt.a
+          chmod +x target/release/bni target/release/bnc
+          prefix="$RUNNER_TEMP/bn"
+          BN_STATE_DIR="$RUNNER_TEMP/bn-state" scripts/install.sh --no-build --prefix "$prefix"
+          test -f "$prefix/share/man/man1/bni.1"
+          test -f "$prefix/share/man/man1/bnc.1"
+          printf 'IMPORT BNMath AS M\nFUNCTION Start() AS VOID\nPRINT M.ABS(-7.0)\nEND FUNCTION\n' > "$RUNNER_TEMP/check.bn"
+          out=$("$prefix/bin/bni" run "$RUNNER_TEMP/check.bn")
+          [[ "$out" == "7.0" ]] || { echo "::error::installed bni printed '$out'"; exit 1; }
+          "$RUNNER_TEMP/bn-state/uninstall.sh"
+          [[ -z "$(find "$prefix" -type f)" ]] || { echo "::error::uninstall left files"; find "$prefix" -type f; exit 1; }
+
+      - name: Fetch assets (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: assets-windows-x86_64
+          path: dist
+
+      - name: Stage a local release (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # SHA256SUMS in the published "<hash>  <name>" format.
+          Get-ChildItem dist -File | ForEach-Object {
+              '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name
+          } | Set-Content -Path dist\SHA256SUMS -Encoding ascii
+          git archive --format=zip --prefix=BasicNext-ci/ -o "$env:RUNNER_TEMP\source.zip" HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'git archive failed' }
+          # Outside a checkout, so the installer takes its bootstrap path.
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\installer" | Out-Null
+          Copy-Item scripts\install.ps1 "$env:RUNNER_TEMP\installer\install.ps1"
+
+      - name: install.ps1 under Windows PowerShell 5.1
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:BN_VERSION = 'ci'
+          $env:BN_RELEASE_BASE = (Resolve-Path dist).Path
+          $env:BN_SOURCE_ZIP = "$env:RUNNER_TEMP\source.zip"
+          $env:BN_STATE_DIR = "$env:RUNNER_TEMP\bn-state-51"
+          $prefix = "$env:RUNNER_TEMP\bn-51"
+          powershell -NoProfile -ExecutionPolicy Bypass -File "$env:RUNNER_TEMP\installer\install.ps1" -Prefix $prefix -NoPathUpdate
+          if ($LASTEXITCODE -ne 0) { throw "install.ps1 exited with $LASTEXITCODE" }
+          $check = "$env:RUNNER_TEMP\check.bn"
+          "IMPORT BNMath AS M`nFUNCTION Start() AS VOID`nPRINT M.ABS(-7.0)`nEND FUNCTION" | Set-Content -NoNewline -Path $check
+          $out = & "$prefix\bin\bni.exe" run $check
+          if ("$out".Trim() -ne '7.0') { throw "installed bni printed '$out'" }
+          powershell -NoProfile -ExecutionPolicy Bypass -File "$env:BN_STATE_DIR\uninstall.ps1"
+          if ($LASTEXITCODE -ne 0) { throw "uninstall.ps1 exited with $LASTEXITCODE" }
+          if (Get-ChildItem $prefix -Recurse -File) { throw 'uninstall left files' }
+
+      - name: install.ps1 under PowerShell 7
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:BN_VERSION = 'ci'
+          $env:BN_RELEASE_BASE = (Resolve-Path dist).Path
+          $env:BN_SOURCE_ZIP = "$env:RUNNER_TEMP\source.zip"
+          $env:BN_STATE_DIR = "$env:RUNNER_TEMP\bn-state-7"
+          $prefix = "$env:RUNNER_TEMP\bn-7"
+          pwsh -NoProfile -ExecutionPolicy Bypass -File "$env:RUNNER_TEMP\installer\install.ps1" -Prefix $prefix -NoPathUpdate
+          if ($LASTEXITCODE -ne 0) { throw "install.ps1 exited with $LASTEXITCODE" }
+          $check = "$env:RUNNER_TEMP\check.bn"
+          "IMPORT BNMath AS M`nFUNCTION Start() AS VOID`nPRINT M.ABS(-7.0)`nEND FUNCTION" | Set-Content -NoNewline -Path $check
+          $out = & "$prefix\bin\bni.exe" run $check
+          if ("$out".Trim() -ne '7.0') { throw "installed bni printed '$out'" }
+          powershell -NoProfile -ExecutionPolicy Bypass -File "$env:BN_STATE_DIR\uninstall.ps1"
+          if ($LASTEXITCODE -ne 0) { throw "uninstall.ps1 exited with $LASTEXITCODE" }
+          if (Get-ChildItem $prefix -Recurse -File) { throw 'uninstall left files' }
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, install]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: assets-*
+          path: dist
+          merge-multiple: true
+      - name: Man pages and checksums
+        run: |
+          set -euo pipefail
+          cp man/bni.1 man/bnc.1 dist/
+          cd dist
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          gh release create "$tag" dist/* --verify-tag \
+            --title "Basic Next $tag" \
+            --notes "Prebuilt bni (interpreter) and bnc (compiler) from ${GITHUB_SHA:0:7}."

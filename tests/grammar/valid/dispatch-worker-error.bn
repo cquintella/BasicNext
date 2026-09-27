@@ -1,0 +1,25 @@
+IMPORT BNDispatch AS Dispatch
+
+ASYNC FUNCTION Work() AS INTEGER OR Error
+    RETURN ASC("")
+END FUNCTION
+
+FUNCTION Start() AS VOID OR Error
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
+    IF queue IS Error THEN
+        RETURN queue
+    END IF
+    LET ticket AS Dispatch.Ticket OR Error = ASYNC queue Work()
+    IF ticket IS Error THEN
+        RETURN ticket
+    END IF
+    LET result AS INTEGER OR Error = AWAIT ticket(1000)
+    IF result IS Error THEN
+        PRINT "ERROR"
+    ELSE
+        PRINT "VALUE", result
+        STOP 1
+    END IF
+    ticket.Close()
+    RETURN queue.Close(1000)
+END FUNCTION

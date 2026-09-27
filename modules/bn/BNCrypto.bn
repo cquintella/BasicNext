@@ -1,0 +1,125 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNCrypto is a standard-library module.
+//
+// [NATIVE BINDING BOUNDARY]
+// Digest and byte-buffer evaluation is supplied by bn_rt (bn_rt_crypto_* C ABI),
+// so the interpreter and compiled binaries share one implementation. No
+// cryptographic implementation is embedded in the language core. The signatures
+// below define the verified semantic API.
+//
+// Digests take the UTF-8 bytes of the argument and return lowercase hex:
+// SHA256 returns 64 characters, SHA512 returns 128.
+//
+// AEAD seal/open take a 32-byte key and a 12-byte nonce and append a 16-byte
+// authentication tag. Open fails closed: a tag that does not verify yields
+// Error, never a partial or unauthenticated plaintext.
+//
+// VerifyHmacSha256 compares in constant time: it never short-circuits on the
+// first differing byte, which would leak the tag to a timing attack.
+//
+// Argon2id returns a 32-byte tag. Parameters outside the algorithm's range are
+// rejected, never clamped to something weaker.
+//
+// Signatures are deterministic: Ed25519 per RFC 8032, ECDSA P-256 per RFC 6979.
+// Ed25519 keys are a 32-byte seed; P-256 keys are a 32-byte scalar, and the
+// public key is SEC1 uncompressed (65 bytes). Verify returns FALSE for anything
+// that is not a valid signature, never an error resembling success.
+//
+// Post-quantum (FIPS 203 / FIPS 204). Key generation is deterministic from a
+// seed; MlKemEncapsulate deliberately is not, because reusing its randomness
+// even once is a catastrophic failure. The pair-returning members hand back a
+// concatenation, since BN has no tuple: publicKey || privateKey for key
+// generation and ciphertext || sharedSecret for encapsulation. Both parts have
+// sizes fixed by the standard, so Slice splits them unambiguously:
+// ML-KEM-768 publicKey 1184, privateKey 64, ciphertext 1088, secret 32;
+// ML-DSA-65 verifyingKey 1952, seed 32, signature 3309.
+//
+// Bytes is an opaque buffer. Key material never becomes a STRING implicitly, so
+// it cannot be printed, concatenated or logged by accident. RELEASE frees it.
+
+EXPORT CLASS Bytes
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Length() AS INTEGER
+        RETURN 0
+    END FUNCTION
+    PUBLIC FUNCTION ToHex() AS STRING
+        RETURN ""
+    END FUNCTION
+END CLASS
+
+EXPORT FUNCTION SHA256(data AS STRING) AS STRING
+END FUNCTION
+
+EXPORT FUNCTION SHA512(data AS STRING) AS STRING
+END FUNCTION
+
+EXPORT FUNCTION FromHex(text AS STRING) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION FromText(text AS STRING) AS Bytes
+END FUNCTION
+
+EXPORT FUNCTION Slice(data AS Bytes, start AS INTEGER, length AS INTEGER) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION SealAesGcm(key AS Bytes, nonce AS Bytes, plaintext AS Bytes, aad AS Bytes) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION OpenAesGcm(key AS Bytes, nonce AS Bytes, ciphertext AS Bytes, aad AS Bytes) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION SealChaCha20(key AS Bytes, nonce AS Bytes, plaintext AS Bytes, aad AS Bytes) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION OpenChaCha20(key AS Bytes, nonce AS Bytes, ciphertext AS Bytes, aad AS Bytes) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION HmacSha256(key AS Bytes, data AS Bytes) AS Bytes
+END FUNCTION
+
+EXPORT FUNCTION VerifyHmacSha256(key AS Bytes, data AS Bytes, tag AS Bytes) AS BOOLEAN
+END FUNCTION
+
+EXPORT FUNCTION Argon2id(password AS Bytes, salt AS Bytes, memoryKiB AS INTEGER, iterations AS INTEGER, parallelism AS INTEGER) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION Ed25519PublicKey(seed AS Bytes) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION Ed25519Sign(seed AS Bytes, message AS Bytes) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION Ed25519Verify(publicKey AS Bytes, message AS Bytes, signature AS Bytes) AS BOOLEAN
+END FUNCTION
+
+EXPORT FUNCTION EcdsaP256PublicKey(privateKey AS Bytes) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION EcdsaP256Sign(privateKey AS Bytes, message AS Bytes) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION EcdsaP256Verify(publicKey AS Bytes, message AS Bytes, signature AS Bytes) AS BOOLEAN
+END FUNCTION
+
+EXPORT FUNCTION MlKemKeypair(seed AS Bytes) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION MlKemEncapsulate(publicKey AS Bytes) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION MlKemDecapsulate(privateKey AS Bytes, ciphertext AS Bytes) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION MlDsaKeypair(seed AS Bytes) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION MlDsaSign(privateKey AS Bytes, message AS Bytes) AS Bytes OR Error
+END FUNCTION
+
+EXPORT FUNCTION MlDsaVerify(publicKey AS Bytes, message AS Bytes, signature AS Bytes) AS BOOLEAN
+END FUNCTION

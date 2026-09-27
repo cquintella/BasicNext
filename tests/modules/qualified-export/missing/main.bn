@@ -1,0 +1,4 @@
+IMPORT Shapes.NoSuch AS X
+
+FUNCTION Start() AS VOID
+END FUNCTION

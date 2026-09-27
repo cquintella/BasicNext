@@ -1,0 +1,18 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+CLASS Library
+    PUBLIC STATIC shared AS INTEGER
+    PUBLIC STATIC anotherShared AS STRING
+END CLASS
+
+FUNCTION lesser(num1 AS INTEGER, num2 AS INTEGER) AS BOOLEAN
+    RETURN num1 < num2
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    Library.shared = 10
+    PRINT lesser(Library.shared, 20)
+END FUNCTION

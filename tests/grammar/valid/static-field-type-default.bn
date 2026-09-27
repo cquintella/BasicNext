@@ -1,0 +1,18 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+CLASS Library
+    PUBLIC STATIC shared AS INTEGER
+    PUBLIC STATIC anotherShared AS STRING
+    PUBLIC STATIC flag AS BOOLEAN
+END CLASS
+
+FUNCTION Start() AS VOID
+    PRINT Library.shared
+    PRINT Library.anotherShared
+    PRINT Library.flag
+    Library.shared = 10
+    PRINT Library.shared
+END FUNCTION

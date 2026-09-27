@@ -1,0 +1,95 @@
+// BNLog tour: console + file transports, structured fields, flush/close.
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT BNLog AS Log
+IMPORT HOST.Console AS CON
+IMPORT HOST.FileSystem AS FS
+
+FUNCTION Fail(step AS STRING, err AS Error) AS VOID
+    PRINT "FAIL  ", step, " code=", err.Code, " message=", err.Message
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET path AS STRING = "/tmp/basicnext-bnlog-tour.jsonl"
+
+    PRINT "=== BNLog tour: console transport ==="
+    LET logger AS Log.Logger = NEW Log.Logger()
+    LET addedConsole AS VOID OR Error = logger.AddConsole(2)
+    IF addedConsole IS Error THEN
+        Fail("AddConsole", addedConsole)
+        RETURN
+    END IF
+
+    LET fields AS Log.Fields = NEW Log.Fields()
+    LET setTour AS VOID OR Error = fields.SetString("tour", "bnlog")
+    IF setTour IS Error THEN
+        Fail("SetString tour", setTour)
+        RETURN
+    END IF
+    LET setOk AS VOID OR Error = fields.SetBoolean("ok", TRUE)
+    IF setOk IS Error THEN
+        Fail("SetBoolean ok", setOk)
+        RETURN
+    END IF
+
+    LET wroteConsole AS VOID OR Error = logger.Log(2, "hello-console", fields)
+    IF wroteConsole IS Error THEN
+        Fail("Log console", wroteConsole)
+        RETURN
+    END IF
+    PRINT "PASS  console Log"
+
+    PRINT "=== BNLog tour: file transport ==="
+    LET addedFile AS VOID OR Error = logger.AddFile(path, 2)
+    IF addedFile IS Error THEN
+        Fail("AddFile", addedFile)
+        RETURN
+    END IF
+
+    LET wroteFile AS VOID OR Error = logger.Log(2, "hello-file", fields)
+    IF wroteFile IS Error THEN
+        Fail("Log file", wroteFile)
+        RETURN
+    END IF
+    PRINT "PASS  file Log  path=", path
+
+    LET flushed AS VOID OR Error = logger.Flush(1000)
+    IF flushed IS Error THEN
+        Fail("Flush", flushed)
+        RETURN
+    END IF
+
+    LET closed AS VOID OR Error = logger.Close(1000)
+    IF closed IS Error THEN
+        Fail("Close", closed)
+        RETURN
+    END IF
+    PRINT "PASS  Flush + Close"
+
+    PRINT "=== BNLog tour: read back JSON line ==="
+    LET inn AS FS.File OR Error = FS.Open(path, FS.READ)
+    IF inn IS Error THEN
+        Fail("Open log file", inn)
+        RETURN
+    END IF
+    LET line AS STRING OR EOF OR Error = inn.ReadLine()
+    IF line IS Error THEN
+        Fail("ReadLine log", line)
+        inn.Close()
+        RELEASE inn
+        RETURN
+    ELSE IF line IS EOF THEN
+        PRINT "FAIL  expected at least one JSON line"
+        inn.Close()
+        RELEASE inn
+        RETURN
+    ELSE
+        PRINT "PASS  log line  ", line
+    END IF
+    inn.Close()
+    RELEASE inn
+    PRINT "PASS  BNLog tour complete"
+END FUNCTION

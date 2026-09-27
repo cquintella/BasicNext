@@ -1,0 +1,21 @@
+// GoF Command: a command object captures an operation for later execution.
+CLASS AddCommand
+    PRIVATE amount AS INTEGER = 0
+
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION SetAmount(value AS INTEGER) AS VOID
+        SELF.amount = value
+    END FUNCTION
+
+    PUBLIC FUNCTION Execute() AS INTEGER
+        RETURN SELF.amount + SELF.amount
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET command AS AddCommand = NEW AddCommand()
+    command.SetAmount(6)
+    PRINT command.Execute()
+END FUNCTION

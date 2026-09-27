@@ -1,0 +1,6 @@
+IMPORT Zoo AS Z
+
+FUNCTION Start() AS VOID
+    LET a AS Z.Animal = NEW Z.Animal()
+    PRINT a.Breath()
+END FUNCTION

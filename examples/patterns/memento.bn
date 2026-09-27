@@ -1,0 +1,5 @@
+// UNSUPPORTED: Memento requires copying and restoring arbitrary object state;
+// Basic Next has no reflection or general object-copy operation.
+FUNCTION Start() AS VOID
+    PRINT "UNSUPPORTED: arbitrary object snapshots are not available"
+END FUNCTION

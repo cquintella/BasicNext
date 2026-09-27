@@ -1,0 +1,17 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNCrypto digest fixture: the FIPS 180-4 example messages routed through the
+// provider seam. The expected digests are asserted in tests/runtime.rs and
+// mirrored in tests/fixtures/crypto/sha-vectors.json.
+
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Start() AS VOID
+    PRINT Crypto.SHA256("")
+    PRINT Crypto.SHA256("abc")
+    PRINT Crypto.SHA512("")
+    PRINT Crypto.SHA512("abc")
+END FUNCTION

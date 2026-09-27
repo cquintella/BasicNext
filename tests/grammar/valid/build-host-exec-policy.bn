@@ -1,0 +1,12 @@
+IMPORT HOST.Exec AS Exec
+
+FUNCTION Start() AS VOID
+    LET args AS STRING[1]
+    args[0] = "policy-marker"
+    LET result AS Exec.Result OR Error = Exec.Run("/bin/echo", args)
+    IF result IS Error THEN
+        PRINT "denied", result.Code
+    ELSE
+        PRINT "ran", result.ReturnCode
+    END IF
+END FUNCTION

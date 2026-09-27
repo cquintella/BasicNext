@@ -1,0 +1,45 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Ed25519 and ECDSA P-256. Both sign deterministically, so the Ed25519 key and
+// signature below are byte-exact against python-cryptography. P-256 signatures
+// are compared by verification rather than by bytes.
+
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Start() AS VOID
+    LET seed AS Crypto.Bytes = Crypto.FromText("0123456789abcdef0123456789abcdef")
+    LET message AS Crypto.Bytes = Crypto.FromText("abc")
+    LET other AS Crypto.Bytes = Crypto.FromText("abd")
+
+    LET publicKey AS Crypto.Bytes OR Error = Crypto.Ed25519PublicKey(seed)
+    IF publicKey IS Error THEN
+        PRINT "ed-key-failed"
+    ELSE
+        PRINT publicKey.ToHex()
+        LET signature AS Crypto.Bytes OR Error = Crypto.Ed25519Sign(seed, message)
+        IF signature IS Error THEN
+            PRINT "ed-sign-failed"
+        ELSE
+            PRINT signature.ToHex()
+            PRINT Crypto.Ed25519Verify(publicKey, message, signature)
+            PRINT Crypto.Ed25519Verify(publicKey, other, signature)
+        END IF
+    END IF
+
+    LET p256Public AS Crypto.Bytes OR Error = Crypto.EcdsaP256PublicKey(seed)
+    IF p256Public IS Error THEN
+        PRINT "p256-key-failed"
+    ELSE
+        PRINT p256Public.Length()
+        LET p256Signature AS Crypto.Bytes OR Error = Crypto.EcdsaP256Sign(seed, message)
+        IF p256Signature IS Error THEN
+            PRINT "p256-sign-failed"
+        ELSE
+            PRINT Crypto.EcdsaP256Verify(p256Public, message, p256Signature)
+            PRINT Crypto.EcdsaP256Verify(p256Public, other, p256Signature)
+        END IF
+    END IF
+END FUNCTION

@@ -1,0 +1,78 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// ML-KEM-768 and ML-DSA-65 (FIPS 203 / FIPS 204). Encapsulation uses fresh
+// randomness, so the shared secret differs per run; the fixture compares the
+// two sides inside the program and prints a stable verdict instead.
+
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Start() AS VOID
+    LET kemSeed AS Crypto.Bytes = Crypto.FromText("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+    LET kemPair AS Crypto.Bytes OR Error = Crypto.MlKemKeypair(kemSeed)
+    IF kemPair IS Error THEN
+        PRINT "kem-keygen-failed"
+    ELSE
+        PRINT kemPair.Length()
+        LET kemPublic AS Crypto.Bytes OR Error = Crypto.Slice(kemPair, 0, 1184)
+        LET kemPrivate AS Crypto.Bytes OR Error = Crypto.Slice(kemPair, 1184, 64)
+        IF kemPublic IS Error THEN
+            PRINT "kem-slice-failed"
+        ELSE
+            IF kemPrivate IS Error THEN
+                PRINT "kem-slice-failed"
+            ELSE
+                LET sealed AS Crypto.Bytes OR Error = Crypto.MlKemEncapsulate(kemPublic)
+                IF sealed IS Error THEN
+                    PRINT "kem-encapsulate-failed"
+                ELSE
+                    LET ciphertext AS Crypto.Bytes OR Error = Crypto.Slice(sealed, 0, 1088)
+                    LET sentSecret AS Crypto.Bytes OR Error = Crypto.Slice(sealed, 1088, 32)
+                    IF ciphertext IS Error THEN
+                        PRINT "kem-slice-failed"
+                    ELSE
+                        IF sentSecret IS Error THEN
+                            PRINT "kem-slice-failed"
+                        ELSE
+                            LET received AS Crypto.Bytes OR Error = Crypto.MlKemDecapsulate(kemPrivate, ciphertext)
+                            IF received IS Error THEN
+                                PRINT "kem-decapsulate-failed"
+                            ELSE
+                                IF sentSecret.ToHex() = received.ToHex() THEN
+                                    PRINT "kem-agree"
+                                ELSE
+                                    PRINT "kem-disagree"
+                                END IF
+                            END IF
+                        END IF
+                    END IF
+                END IF
+            END IF
+        END IF
+    END IF
+
+    LET dsaSeed AS Crypto.Bytes = Crypto.FromText("0123456789abcdef0123456789abcdef")
+    LET dsaPair AS Crypto.Bytes OR Error = Crypto.MlDsaKeypair(dsaSeed)
+    IF dsaPair IS Error THEN
+        PRINT "dsa-keygen-failed"
+    ELSE
+        PRINT dsaPair.Length()
+        LET verifying AS Crypto.Bytes OR Error = Crypto.Slice(dsaPair, 0, 1952)
+        IF verifying IS Error THEN
+            PRINT "dsa-slice-failed"
+        ELSE
+            LET message AS Crypto.Bytes = Crypto.FromText("abc")
+            LET other AS Crypto.Bytes = Crypto.FromText("abd")
+            LET signature AS Crypto.Bytes OR Error = Crypto.MlDsaSign(dsaSeed, message)
+            IF signature IS Error THEN
+                PRINT "dsa-sign-failed"
+            ELSE
+                PRINT signature.Length()
+                PRINT Crypto.MlDsaVerify(verifying, message, signature)
+                PRINT Crypto.MlDsaVerify(verifying, other, signature)
+            END IF
+        END IF
+    END IF
+END FUNCTION

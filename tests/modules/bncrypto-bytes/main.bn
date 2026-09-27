@@ -1,0 +1,33 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNCrypto.Bytes fixture: opaque buffers round-trip through hex and text, keep
+// their length, and are freed by RELEASE. Malformed hex yields Error rather
+// than a partial buffer.
+
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Start() AS VOID
+    LET text AS Crypto.Bytes = Crypto.FromText("abc")
+    PRINT text.Length()
+    PRINT text.ToHex()
+    RELEASE text
+
+    LET raw AS Crypto.Bytes OR Error = Crypto.FromHex("000fff")
+    IF raw IS Error THEN
+        PRINT "unexpected-error"
+    ELSE
+        PRINT raw.Length()
+        PRINT raw.ToHex()
+        RELEASE raw
+    END IF
+
+    LET bad AS Crypto.Bytes OR Error = Crypto.FromHex("abc")
+    IF bad IS Error THEN
+        PRINT "odd-length-rejected"
+    ELSE
+        PRINT "odd-length-accepted"
+    END IF
+END FUNCTION

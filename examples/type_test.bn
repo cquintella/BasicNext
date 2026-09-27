@@ -1,0 +1,352 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// type_test.bn — expected vs got for primitives, arithmetic, bitwise/logical,
+// and every BNMath export. Run: bn run examples/type_test.bn
+//
+// Integer overflow is a fatal NUMERIC_OVERFLOW (it does not become Error).
+// Leave OVERFLOW_PROBE at 0 to finish cleanly. Set it to 1..5 at the bottom
+// of Start() to probe one overflow case after the report.
+
+IMPORT BNMath AS Math
+
+FUNCTION CheckInteger(label AS STRING, expected AS INTEGER, got AS INTEGER) AS VOID
+    IF expected = got THEN
+        PRINT "PASS  ", label, "  expected=", expected, "  got=", got
+    ELSE
+        PRINT "FAIL  ", label, "  expected=", expected, "  got=", got
+    END IF
+END FUNCTION
+
+FUNCTION CheckInt64(label AS STRING, expected AS INT64, got AS INT64) AS VOID
+    IF expected = got THEN
+        PRINT "PASS  ", label, "  expected=", expected, "  got=", got
+    ELSE
+        PRINT "FAIL  ", label, "  expected=", expected, "  got=", got
+    END IF
+END FUNCTION
+
+FUNCTION CheckByte(label AS STRING, expected AS BYTE, got AS BYTE) AS VOID
+    IF expected = got THEN
+        PRINT "PASS  ", label, "  expected=", expected, "  got=", got
+    ELSE
+        PRINT "FAIL  ", label, "  expected=", expected, "  got=", got
+    END IF
+END FUNCTION
+
+FUNCTION CheckU32(label AS STRING, expected AS UINT32, got AS UINT32) AS VOID
+    IF expected = got THEN
+        PRINT "PASS  ", label, "  expected=", expected, "  got=", got
+    ELSE
+        PRINT "FAIL  ", label, "  expected=", expected, "  got=", got
+    END IF
+END FUNCTION
+
+FUNCTION CheckU64(label AS STRING, expected AS UINT64, got AS UINT64) AS VOID
+    IF expected = got THEN
+        PRINT "PASS  ", label, "  expected=", expected, "  got=", got
+    ELSE
+        PRINT "FAIL  ", label, "  expected=", expected, "  got=", got
+    END IF
+END FUNCTION
+
+FUNCTION CheckFloat(label AS STRING, expected AS FLOAT, got AS FLOAT) AS VOID
+    IF expected IS NAN AND got IS NAN THEN
+        PRINT "PASS  ", label, "  expected=NAN  got=NAN"
+    ELSE IF expected = got THEN
+        PRINT "PASS  ", label, "  expected=", expected, "  got=", got
+    ELSE
+        PRINT "FAIL  ", label, "  expected=", expected, "  got=", got
+    END IF
+END FUNCTION
+
+FUNCTION CheckBoolean(label AS STRING, expected AS BOOLEAN, got AS BOOLEAN) AS VOID
+    IF expected = got THEN
+        PRINT "PASS  ", label, "  expected=", expected, "  got=", got
+    ELSE
+        PRINT "FAIL  ", label, "  expected=", expected, "  got=", got
+    END IF
+END FUNCTION
+
+FUNCTION CheckString(label AS STRING, expected AS STRING, got AS STRING) AS VOID
+    IF expected = got THEN
+        PRINT "PASS  ", label, "  expected=", expected, "  got=", got
+    ELSE
+        PRINT "FAIL  ", label, "  expected=", expected, "  got=", got
+    END IF
+END FUNCTION
+
+FUNCTION Unexpected() AS BOOLEAN
+    PRINT "FAIL  short-circuit: Unexpected() ran"
+    RETURN TRUE
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    PRINT "=== defaults ==="
+    LET dInt AS INTEGER
+    LET dBool AS BOOLEAN
+    LET dStr AS STRING
+    LET dFloat AS FLOAT
+    CheckInteger("INTEGER default", 0, dInt)
+    CheckBoolean("BOOLEAN default", FALSE, dBool)
+    CheckString("STRING default", "", dStr)
+    CheckFloat("FLOAT default", 0.0, dFloat)
+
+    PRINT "=== declare and assign each numeric type ==="
+    LET i8 AS INT8 = -8
+    LET i16 AS INT16 = -300
+    LET i32 AS INTEGER = 10
+    LET i64 AS INT64 = 4294967296
+    LET b AS BYTE = 15
+    LET u16 AS UINT16 = 1024
+    LET u32 AS UINT32 = 4000000000
+    LET u64 AS UINT64 = 0xFFFFFFFFFFFFFFFF
+    LET f32 AS FLOAT32 = 0.5
+    LET f64 AS FLOAT = 2.0
+    LET flag AS BOOLEAN = TRUE
+    LET text AS STRING = "café"
+    LET stamp AS TIMESTAMP = 0
+    LET day AS DATE
+    LET clock AS TIME
+    i8 = 42
+    i16 = 1000
+    i32 = 99
+    i64 = 100
+    b = 7
+    u16 = 9
+    u32 = 11
+    u64 = 13
+    f32 = 1.5
+    f64 = 3.25
+    flag = FALSE
+    text = "ok"
+    CheckInteger("INT8 assign", 42, i8 AS INTEGER)
+    CheckInteger("INT16 assign", 1000, i16 AS INTEGER)
+    CheckInteger("INTEGER assign", 99, i32)
+    CheckInt64("INT64 assign", 100, i64)
+    CheckByte("BYTE assign", 7, b)
+    CheckInteger("UINT16 assign", 9, u16 AS INTEGER)
+    CheckU32("UINT32 assign", 11, u32)
+    CheckU64("UINT64 assign", 13, u64)
+    CheckFloat("FLOAT32 assign", 1.5, f32 AS FLOAT)
+    CheckFloat("FLOAT assign", 3.25, f64)
+    CheckBoolean("BOOLEAN assign", FALSE, flag)
+    CheckString("STRING assign", "ok", text)
+    CheckString("STRING index[0] of café", "c", "café"[0])
+    CheckInteger("LEN(café)", 4, LEN("café"))
+    CheckString("STRING concat", "ab", "a" + "b")
+
+    PRINT "=== BNMath range constants ==="
+    CheckInteger("MAX_INT8", 127, Math.MAX_INT8 AS INTEGER)
+    CheckInteger("MIN_INT8", -128, Math.MIN_INT8 AS INTEGER)
+    CheckInteger("MAX_INT16", 32767, Math.MAX_INT16 AS INTEGER)
+    CheckInteger("MIN_INT16", -32768, Math.MIN_INT16 AS INTEGER)
+    CheckInteger("MAX_INTEGER", 2147483647, Math.MAX_INTEGER)
+    CheckInteger("MIN_INTEGER", -2147483648, Math.MIN_INTEGER)
+    CheckInteger("MAX_INT32 alias", Math.MAX_INTEGER, Math.MAX_INT32)
+    CheckInteger("MIN_INT32 alias", Math.MIN_INTEGER, Math.MIN_INT32)
+    CheckInt64("MAX_INT64", 9223372036854775807, Math.MAX_INT64)
+    CheckInt64("MIN_INT64", (0 AS INT64) - Math.MAX_INT64 - (1 AS INT64), Math.MIN_INT64)
+    CheckInt64("MAX_TIMESTAMP alias", Math.MAX_INT64, Math.MAX_TIMESTAMP)
+    CheckByte("MAX_BYTE", 255, Math.MAX_BYTE)
+    CheckByte("MIN_BYTE", 0, Math.MIN_BYTE)
+    CheckInteger("MAX_UINT16", 65535, Math.MAX_UINT16 AS INTEGER)
+    CheckU32("MAX_UINT32", 4294967295, Math.MAX_UINT32)
+    CheckU32("MIN_UINT32", 0, Math.MIN_UINT32)
+    CheckU64("MAX_UINT64", Math.MAX_UINT64, Math.MAX_UINT64)
+    CheckBoolean("MAX_UINT64 > 0", TRUE, Math.MAX_UINT64 > (0 AS UINT64))
+    CheckU64("MIN_UINT64", 0, Math.MIN_UINT64)
+    CheckFloat("MAX_FLOAT32 alias of itself", Math.MAX_FLOAT32 AS FLOAT, Math.MAX_FLOAT32 AS FLOAT)
+    CheckFloat("MIN_FLOAT32 is negative of MAX", 0.0 - (Math.MAX_FLOAT32 AS FLOAT), Math.MIN_FLOAT32 AS FLOAT)
+    CheckFloat("MAX_FLOAT alias MAX_FLOAT64", Math.MAX_FLOAT, Math.MAX_FLOAT64)
+    CheckFloat("MIN_FLOAT alias MIN_FLOAT64", Math.MIN_FLOAT, Math.MIN_FLOAT64)
+    CheckFloat("MIN_POSITIVE_FLOAT alias", Math.MIN_POSITIVE_FLOAT, Math.MIN_POSITIVE_FLOAT64)
+    PRINT "INFO  MAX_FLOAT32=", Math.MAX_FLOAT32, "  MIN_POSITIVE_FLOAT32=", Math.MIN_POSITIVE_FLOAT32
+    PRINT "INFO  MAX_FLOAT=", Math.MAX_FLOAT, "  MIN_POSITIVE_FLOAT=", Math.MIN_POSITIVE_FLOAT
+
+    PRINT "=== four arithmetic ops, DIV, %, ** ==="
+    LET x AS INTEGER = 10
+    LET y AS INTEGER = 3
+    CheckInteger("10 + 3", 13, x + y)
+    CheckInteger("10 - 3", 7, x - y)
+    CheckInteger("10 * 3", 30, x * y)
+    CheckFloat("10 / 3", 10.0 / 3.0, x / y)
+    CheckInteger("10 DIV 3", 3, x DIV y)
+    CheckInteger("10 % 3", 1, x % y)
+    CheckInteger("2 ** 3", 8, 2 ** 3)
+    CheckInteger("(-5) DIV 2 Euclidean", -3, (-5) DIV 2)
+    CheckInteger("(-5) % 2 Euclidean", 1, (-5) % 2)
+    CheckFloat("5 / 2 is FLOAT 2.5", 2.5, 5 / 2)
+    CheckFloat("1 / 0 -> INF", INF, 1 / 0)
+    CheckFloat("0 / 0 -> NAN", NAN, 0 / 0)
+    x += 1
+    CheckInteger("x += 1 from 10", 11, x)
+    x -= 2
+    CheckInteger("x -= 2", 9, x)
+    x *= 2
+    CheckInteger("x *= 2", 18, x)
+    LET p AS INTEGER = 2
+    p **= 3
+    CheckInteger("p **= 3 from 2", 8, p)
+
+    PRINT "=== bitwise (integer AND/OR/XOR/NOT/SHL/SHR) ==="
+    CheckInteger("5 AND 3", 1, 5 AND 3)
+    CheckInteger("5 OR 3", 7, 5 OR 3)
+    CheckInteger("5 XOR 3", 6, 5 XOR 3)
+    CheckInteger("NOT 0", -1, NOT 0)
+    CheckInteger("1 SHL 3", 8, 1 SHL 3)
+    CheckInteger("16 SHR 2", 4, 16 SHR 2)
+    CheckInteger("(4 XOR 2) SHR 1", 3, (4 XOR 2) SHR 1)
+
+    PRINT "=== logical BOOLEAN (short-circuit AND/OR) ==="
+    CheckBoolean("TRUE AND FALSE", FALSE, TRUE AND FALSE)
+    CheckBoolean("TRUE OR FALSE", TRUE, TRUE OR FALSE)
+    CheckBoolean("NOT TRUE", FALSE, NOT TRUE)
+    CheckBoolean("TRUE XOR TRUE", FALSE, TRUE XOR TRUE)
+    CheckBoolean("FALSE XOR TRUE", TRUE, FALSE XOR TRUE)
+    IF FALSE AND Unexpected() THEN
+        PRINT "FAIL  AND did not short-circuit"
+    ELSE
+        PRINT "PASS  FALSE AND Unexpected()  expected=short-circuit  got=short-circuit"
+    END IF
+    IF TRUE OR Unexpected() THEN
+        PRINT "PASS  TRUE OR Unexpected()  expected=short-circuit  got=short-circuit"
+    ELSE
+        PRINT "FAIL  OR did not short-circuit"
+    END IF
+    CheckBoolean("0 AS BOOLEAN", FALSE, 0 AS BOOLEAN)
+    CheckBoolean("7 AS BOOLEAN", TRUE, 7 AS BOOLEAN)
+    CheckBoolean("empty string AS BOOLEAN", FALSE, "" AS BOOLEAN)
+    CheckBoolean("nonempty string AS BOOLEAN", TRUE, "x" AS BOOLEAN)
+
+    PRINT "=== comparison ==="
+    CheckBoolean("99 = 99", TRUE, i32 = 99)
+    CheckBoolean("99 <> 100", TRUE, i32 <> 100)
+    CheckBoolean("99 < 100", TRUE, 99 < 100)
+    CheckBoolean("99 > 100", FALSE, 99 > 100)
+    CheckBoolean("99 <= 99", TRUE, 99 <= 99)
+    CheckBoolean("99 >= 100", FALSE, 99 >= 100)
+
+    PRINT "=== BNMath scalar ==="
+    CheckInteger("ABS(-5)", 5, Math.ABS(-5))
+    CheckInteger("ABS(5)", 5, Math.ABS(5))
+    CheckInteger("MIN(2, 9)", 2, Math.MIN(2, 9))
+    CheckInteger("MAX(2, 9)", 9, Math.MAX(2, 9))
+    CheckInteger("SIGN(-3)", -1, Math.SIGN(-3))
+    CheckInteger("SIGN(0)", 0, Math.SIGN(0))
+    CheckInteger("SIGN(5)", 1, Math.SIGN(5))
+    CheckFloat("ABS(-INF)", INF, Math.ABS(-INF))
+    CheckFloat("SIGN(NAN)", NAN, Math.SIGN(NAN))
+    CheckFloat("FLOOR(1.9)", 1.0, Math.FLOOR(1.9))
+    CheckFloat("FLOOR(-1.2)", -2.0, Math.FLOOR(-1.2))
+    CheckFloat("CEIL(1.1)", 2.0, Math.CEIL(1.1))
+    CheckFloat("CEIL(-1.2)", -1.0, Math.CEIL(-1.2))
+    CheckFloat("TRUNC(1.9)", 1.0, Math.TRUNC(1.9))
+    CheckFloat("TRUNC(-1.2)", -1.0, Math.TRUNC(-1.2))
+    CheckFloat("ROUND(2.5, 0) ties-to-even", 2.0, Math.ROUND(2.5, 0))
+    CheckFloat("ROUND(1.5, 0) ties-to-even", 2.0, Math.ROUND(1.5, 0))
+    CheckFloat("ROUND(3.14159, 2)", 3.14, Math.ROUND(3.14159, 2))
+    CheckFloat("EXP(0)", 1.0, Math.EXP(0.0))
+    CheckFloat("EXP(-INF)", 0.0, Math.EXP(-INF))
+    CheckFloat("EXP(INF)", INF, Math.EXP(INF))
+    CheckFloat("LOG(1)", 0.0, Math.LOG(1.0))
+    CheckFloat("LOG(0)", -INF, Math.LOG(0.0))
+    CheckFloat("LOG(-1)", NAN, Math.LOG(-1.0))
+    CheckFloat("LOG10(1000)", 3.0, Math.LOG10(1000.0))
+    CheckFloat("LOG2(8)", 3.0, Math.LOG2(8.0))
+    CheckFloat("POW(2, 3)", 8.0, Math.POW(2.0, 3.0))
+    CheckFloat("POW(-2, 0.5) undefined", NAN, Math.POW(-2.0, 0.5))
+    CheckFloat("SIN(0)", 0.0, Math.SIN(0.0))
+    CheckFloat("COS(0)", 1.0, Math.COS(0.0))
+    CheckFloat("TAN(0)", 0.0, Math.TAN(0.0))
+    CheckFloat("SIN(INF)", NAN, Math.SIN(INF))
+    CheckFloat("ASIN(0)", 0.0, Math.ASIN(0.0))
+    CheckFloat("ACOS(1)", 0.0, Math.ACOS(1.0))
+    CheckFloat("ATAN(0)", 0.0, Math.ATAN(0.0))
+    CheckFloat("ASIN(2)", NAN, Math.ASIN(2.0))
+    CheckFloat("ATAN2(0, 1)", 0.0, Math.ATAN2(0.0, 1.0))
+    CheckFloat("SQRT(9)", 3.0, Math.SQRT(9.0))
+    CheckFloat("SQRT(-1)", NAN, Math.SQRT(-1.0))
+    CheckFloat("HYPOT(3, 4)", 5.0, Math.HYPOT(3.0, 4.0))
+    CheckFloat("FMA(2, 3, 4)", 10.0, Math.FMA(2.0, 3.0, 4.0))
+    CheckFloat("VAL(\"  12abc\")", 12.0, Math.VAL("  12abc"))
+    CheckFloat("VAL(\"3,14\")", 3.0, Math.VAL("3,14"))
+    CheckFloat("VAL(\"1e10\")", 1.0, Math.VAL("1e10"))
+    CheckFloat("VAL(\"INF\")", 0.0, Math.VAL("INF"))
+    CheckFloat("VAL(\"\")", 0.0, Math.VAL(""))
+    CheckFloat("VAL(\"-2.5\")", -2.5, Math.VAL("-2.5"))
+
+    PRINT "=== BNMath statistics ==="
+    LET samples AS INTEGER[4] = [1, 2, 2, 5]
+    LET triple AS INTEGER[3] = [1, 2, 3]
+    CheckInteger("MIN(vector)", 1, Math.MIN(samples))
+    CheckInteger("MAX(vector)", 5, Math.MAX(samples))
+    CheckFloat("MEAN([1,2,2,5])", 2.5, Math.MEAN(samples))
+    CheckFloat("MEDIAN([1,2,2,5])", 2.0, Math.MEDIAN(samples))
+    CheckFloat("QUARTILE1([1,2,2,5]) Tukey", 1.5, Math.QUARTILE1(samples))
+    CheckFloat("QUARTILE3([1,2,2,5]) Tukey", 3.5, Math.QUARTILE3(samples))
+    CheckFloat("RANGE([1,2,2,5])", 4.0, Math.RANGE(samples))
+    CheckFloat("STDEV([1,2,3]) sample", 1.0, Math.STDEV(triple))
+    CheckFloat("VARIANCE([1,2,3]) sample", 1.0, Math.VARIANCE(triple))
+    LET mode AS FLOAT OR NA = Math.MODE(samples)
+    IF mode IS NA THEN
+        PRINT "FAIL  MODE([1,2,2,5])  expected=2.0  got=NA"
+    ELSE
+        CheckFloat("MODE([1,2,2,5])", 2.0, mode)
+    END IF
+    LET tied AS INTEGER[2] = [1, 2]
+    LET tiedMode AS FLOAT OR NA = Math.MODE(tied)
+    IF tiedMode IS NA THEN
+        PRINT "PASS  MODE tie [1,2]  expected=NA  got=NA"
+    ELSE
+        PRINT "FAIL  MODE tie [1,2]  expected=NA  got=", tiedMode
+    END IF
+
+    PRINT "=== BNMath temporal (UTC) ==="
+    CheckInteger("TOHOUR(0)", 0, Math.TOHOUR(0 AS TIMESTAMP))
+    CheckInteger("TOWEEKDAY(0) Thursday=4", 4, Math.TOWEEKDAY(0 AS TIMESTAMP))
+    CheckInteger("TOHOUR(-1) previous day 23", 23, Math.TOHOUR(-1 AS TIMESTAMP))
+    CheckInteger("TOWEEKDAY(-1) Wednesday=3", 3, Math.TOWEEKDAY(-1 AS TIMESTAMP))
+    LET epochDate AS DATE = Math.TODATE(0 AS TIMESTAMP)
+    LET epochTime AS TIME = Math.TOTIME(0 AS TIMESTAMP)
+    CheckInt64("TOTIMESTAMP round-trip 0", 0, Math.TOTIMESTAMP(epochDate, epochTime))
+    PRINT "INFO  TODATE(0)=", epochDate, "  TOTIME(0)=", epochTime
+    CheckInt64("TIMESTAMP default/zero", 0, stamp)
+    PRINT "INFO  DATE default=", day, "  TIME default=", clock
+
+    PRINT "=== overflow probe ==="
+    PRINT "INFO  integer max+1 / min-1 abort the process with NUMERIC_OVERFLOW"
+    PRINT "INFO  set OVERFLOW_PROBE to 1=INT8 max+1  2=INT8 min-1  3=INTEGER max+1  4=BYTE min-1  5=ABS(MIN_INT8)"
+    CONST OVERFLOW_PROBE AS INTEGER = 0
+    IF OVERFLOW_PROBE = 1 THEN
+        LET overflow AS INT8 = Math.MAX_INT8
+        PRINT "INFO  about to do INT8 max+1, expected=NUMERIC_OVERFLOW"
+        overflow += 1
+        PRINT "FAIL  INT8 max+1 wrapped or continued  got=", overflow
+    ELSE IF OVERFLOW_PROBE = 2 THEN
+        LET overflow AS INT8 = Math.MIN_INT8
+        PRINT "INFO  about to do INT8 min-1, expected=NUMERIC_OVERFLOW"
+        overflow -= 1
+        PRINT "FAIL  INT8 min-1 wrapped or continued  got=", overflow
+    ELSE IF OVERFLOW_PROBE = 3 THEN
+        LET overflow AS INTEGER = Math.MAX_INTEGER
+        PRINT "INFO  about to do INTEGER max+1, expected=NUMERIC_OVERFLOW"
+        overflow += 1
+        PRINT "FAIL  INTEGER max+1 wrapped or continued  got=", overflow
+    ELSE IF OVERFLOW_PROBE = 4 THEN
+        LET overflow AS BYTE = Math.MIN_BYTE
+        PRINT "INFO  about to do BYTE min-1, expected=NUMERIC_OVERFLOW"
+        overflow -= 1
+        PRINT "FAIL  BYTE min-1 wrapped or continued  got=", overflow
+    ELSE IF OVERFLOW_PROBE = 5 THEN
+        PRINT "INFO  about to do ABS(MIN_INT8), expected=NUMERIC_OVERFLOW"
+        PRINT Math.ABS(Math.MIN_INT8)
+        PRINT "FAIL  ABS(MIN_INT8) did not abort"
+    ELSE
+        PRINT "PASS  overflow probe skipped (OVERFLOW_PROBE=0)"
+    END IF
+
+    PRINT "=== type_test complete ==="
+END FUNCTION

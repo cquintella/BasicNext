@@ -1,0 +1,4 @@
+# Quarantined layer violations. Format: path:line:exact source line.
+# Empty since bucket 0.5.1c (2026-09-16). A record is only valid while the
+# named line still exists verbatim; the checker fails on stale records, so
+# this list can grow only with a reviewed, current edge — never by inertia.

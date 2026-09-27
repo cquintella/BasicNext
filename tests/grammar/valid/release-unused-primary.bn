@@ -1,0 +1,5 @@
+FUNCTION Start() AS VOID
+    LET value AS INTEGER = 7
+    RELEASE value
+    PRINT "OK"
+END FUNCTION

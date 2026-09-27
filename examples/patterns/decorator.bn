@@ -1,0 +1,22 @@
+// GoF Decorator: behavior is added by wrapping the component.
+CLASS Component
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Value() AS INTEGER
+        RETURN 10
+    END FUNCTION
+END CLASS
+
+CLASS LoggingDecorator
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Value(component AS Component) AS INTEGER
+        RETURN component.Value() + 1
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET component AS Component = NEW Component()
+    LET decorator AS LoggingDecorator = NEW LoggingDecorator()
+    PRINT decorator.Value(component)
+END FUNCTION

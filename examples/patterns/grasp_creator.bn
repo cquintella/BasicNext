@@ -1,0 +1,29 @@
+// GRASP Creator: the Order creates its own LineItem objects.
+CLASS LineItem
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC quantity AS INTEGER = 0
+END CLASS
+
+CLASS Order
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PRIVATE total AS INTEGER = 0
+
+    PUBLIC FUNCTION Add(quantity AS INTEGER) AS VOID
+        LET item AS LineItem = NEW LineItem()
+        item.quantity = quantity
+        SELF.total += item.quantity
+    END FUNCTION
+
+    PUBLIC FUNCTION Total() AS INTEGER
+        RETURN SELF.total
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET order AS Order = NEW Order()
+    order.Add(2)
+    order.Add(3)
+    PRINT order.Total()
+END FUNCTION

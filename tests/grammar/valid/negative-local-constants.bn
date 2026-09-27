@@ -1,0 +1,15 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// 0.6.2 C1: a minus sign on one numeric literal is a literal, so an inferred
+// local CONST may be negative.
+FUNCTION Start() AS VOID
+    CONST minimum = -1
+    CONST low = -2.5
+    CONST mask = -0xFF
+    PRINT minimum, " ", TYPEOF(minimum)
+    PRINT low, " ", TYPEOF(low)
+    PRINT mask, " ", minimum + mask
+END FUNCTION

@@ -1,0 +1,21 @@
+// GoF Builder: construction is split into named steps on a builder object.
+CLASS DocumentBuilder
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PRIVATE pages AS INTEGER = 0
+
+    PUBLIC FUNCTION AddPage() AS VOID
+        SELF.pages += 1
+    END FUNCTION
+
+    PUBLIC FUNCTION Build() AS INTEGER
+        RETURN SELF.pages
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET builder AS DocumentBuilder = NEW DocumentBuilder()
+    builder.AddPage()
+    builder.AddPage()
+    PRINT builder.Build()
+END FUNCTION

@@ -1,0 +1,24 @@
+// GoF Bridge: abstraction and implementation vary independently.
+CLASS ConsoleRenderer
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION Render(value AS INTEGER) AS INTEGER
+        RETURN value
+    END FUNCTION
+END CLASS
+
+CLASS Screen
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION Show(renderer AS ConsoleRenderer, value AS INTEGER) AS INTEGER
+        RETURN renderer.Render(value)
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET renderer AS ConsoleRenderer = NEW ConsoleRenderer()
+    LET screen AS Screen = NEW Screen()
+    PRINT screen.Show(renderer, 7)
+END FUNCTION

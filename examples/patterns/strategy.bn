@@ -1,0 +1,34 @@
+// GoF Strategy: the context receives a replaceable algorithm object.
+INTERFACE Discount
+    FUNCTION Apply(amount AS INTEGER) AS INTEGER
+END INTERFACE
+
+CLASS NoDiscount IMPLEMENTS Discount
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Apply(amount AS INTEGER) AS INTEGER
+        RETURN amount
+    END FUNCTION
+END CLASS
+
+CLASS TenPercentDiscount IMPLEMENTS Discount
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Apply(amount AS INTEGER) AS INTEGER
+        RETURN amount - amount DIV 10
+    END FUNCTION
+END CLASS
+
+CLASS Pricing
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Total(discount AS TenPercentDiscount, amount AS INTEGER) AS INTEGER
+        RETURN discount.Apply(amount)
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET pricing AS Pricing = NEW Pricing()
+    LET discount AS TenPercentDiscount = NEW TenPercentDiscount()
+    PRINT pricing.Total(discount, 100)
+END FUNCTION

@@ -1,0 +1,49 @@
+# Build output
+/target/
+*.o
+*.obj
+*.exe
+*.bnbuild.log
+
+# cargo-fuzz build output and generated corpus (fuzz/ crate itself is tracked)
+fuzz/target/
+fuzz/corpus/
+fuzz/artifacts/
+
+# Python tooling
+__pycache__/
+.venv/
+.venv-kernel/
+*.egg-info/
+
+# Superseded language trees kept on disk only (history: tags v0.6.0/v0.6.1)
+/language/tobediscarded/
+
+# Local planning and research (not versioned)
+/todo/
+/ongoing/
+/done/
+/research/
+/report-15-09-26.md
+/analise.md
+/audit/
+/goldies/
+
+# Agent briefs and tool state
+AGENTS.md
+CLAUDE.md
+.agents/
+.aider*
+.superpowers/
+superpowers/
+.understand-anything/
+.ua/
+
+# Editor and OS
+.DS_Store
+.vscode/
+.obsidian/
+.env
+
+# Plugins live in sibling repos ../basicnext-vscode and ../basicnext-jupyter
+/plugins/
