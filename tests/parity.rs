@@ -687,6 +687,20 @@ fn build_kmp_compiles_through_native_backend() {
     native_matches_interpreter("examples/kmp.bn");
 }
 
+/// `IS` on HOST types through an import alias: the frontend resolves the
+/// canonical name once, and both backends test it.
+#[test]
+fn is_on_host_types_matches_across_backends() {
+    let path = "tests/grammar/valid/is-host-types.bn";
+    let output = bni().args(["run", path]).output().expect("run fixture");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "TRUE FALSE\nFALSE TRUE\nTRUE\n"
+    );
+    native_matches_interpreter(path);
+}
+
 /// 0.6.2 C1/C2: negative constant literals and integer literals for FLOAT
 /// bindings; expected lines are fixed in `language/0.6/0.6.md`.
 #[test]

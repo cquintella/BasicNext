@@ -1,0 +1,32 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT HOST.Net AS Net
+
+FUNCTION Start() AS INTEGER
+    LET found AS Net.Addresses OR Error = Net.Resolve("localhost", 2000)
+    IF found IS Error THEN
+        PRINT "resolve failed:", found.Message
+        RETURN 1
+    END IF
+    LET loopback AS BOOLEAN = FALSE
+    FOR i AS INTEGER = 0 TO found.Count() - 1
+        LET item AS Net.Address OR Error = found.Get(i)
+        IF item IS Net.Address THEN
+            IF item.IsLoopback() THEN
+                loopback = TRUE
+            END IF
+        END IF
+    END FOR
+    PRINT found IS Net.Addresses, found.Count() > 0, loopback
+    LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    IF address IS Error THEN
+        RETURN 1
+    END IF
+    // The reverse name depends on the host; only the outcome kind is stable.
+    LET name AS STRING OR Error = Net.Reverse(address, 2000)
+    PRINT "reverse answered:", name IS STRING OR name IS Error
+    RETURN 0
+END FUNCTION

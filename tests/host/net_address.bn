@@ -1,0 +1,34 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT HOST.Net AS Net
+
+FUNCTION Start() AS INTEGER
+    LET loopback AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    LET lan AS Net.Address OR Error = Net.Address.Parse("192.168.10.7")
+    LET link AS Net.Address OR Error = Net.Address.Parse("fe80::1")
+    LET group AS Net.Address OR Error = Net.Address.Parse("224.0.0.1")
+    LET name AS Net.Address OR Error = Net.Address.Parse("example.com")
+    IF loopback IS Error OR lan IS Error OR link IS Error OR group IS Error THEN
+        RETURN 1
+    END IF
+    PRINT loopback IS Net.Address, name IS Error
+    PRINT loopback.ToString(), loopback.IsLoopback(), lan.IsPrivate(), link.IsLinkLocal(), group.IsMulticast()
+    LET net AS Net.CIDR OR Error = Net.CIDR.Parse("192.168.10.0/24")
+    IF net IS Error THEN
+        RETURN 1
+    END IF
+    PRINT net IS Net.CIDR, net.Network().ToString(), net.PrefixLength(), net.Contains(lan), net.Contains(loopback)
+    LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(loopback, 8080)
+    IF endpoint IS Error THEN
+        RETURN 1
+    END IF
+    PRINT endpoint IS Net.Endpoint, endpoint.Address().ToString(), endpoint.Port()
+    LET six AS Net.Address OR Error = Net.Address.Parse("::1")
+    IF six IS Net.Address THEN
+        PRINT loopback.IsIPv4(), loopback.IsIPv6(), six.IsIPv4(), six.IsIPv6()
+    END IF
+    RETURN 0
+END FUNCTION

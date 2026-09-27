@@ -1,0 +1,45 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT HOST.FileSystem AS FS
+
+FUNCTION Start() AS INTEGER
+    LET path AS STRING = "conformance.txt"
+    LET output AS FS.File OR Error = FS.Open(path, FS.WRITE)
+    IF output IS Error THEN
+        RETURN 1
+    END IF
+    PRINT output IS FS.File, FS.READ, FS.WRITE, FS.APPEND
+    output.WriteLine("one")
+    output.Write("tw")
+    output.WriteLine("o")
+    output.Close()
+    LET more AS FS.File OR Error = FS.Open(path, FS.APPEND)
+    IF more IS Error THEN
+        RETURN 1
+    END IF
+    more.WriteLine("three")
+    more.Close()
+    LET lines AS FS.File OR Error = FS.Open(path, FS.READ)
+    IF lines IS Error THEN
+        RETURN 1
+    END IF
+    LET first AS STRING OR EOF OR Error = lines.ReadLine()
+    IF first IS STRING THEN
+        PRINT "line:", first
+    END IF
+    LET rest AS STRING OR Error = lines.ReadAll()
+    IF rest IS STRING THEN
+        PRINT "rest:", LEN(rest)
+    END IF
+    LET closed AS VOID OR Error = lines.Close()
+    PRINT "closed error:", closed IS Error
+    PRINT "exists:", FS.Exists(path)
+    LET removed AS VOID OR Error = FS.DeleteFile(path)
+    PRINT "removed error:", removed IS Error, "exists:", FS.Exists(path)
+    LET missing AS FS.File OR Error = FS.Open("no-such-file.txt", FS.READ)
+    PRINT "missing is error:", missing IS Error
+    RETURN 0
+END FUNCTION

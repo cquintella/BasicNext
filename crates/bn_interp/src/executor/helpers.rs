@@ -1,56 +1,6 @@
 #![allow(clippy::wildcard_imports, dead_code)]
 use super::*;
 
-fn is_value_legacy(value: &Value, test: &str) -> bool {
-    match test {
-        "INTEGER" | "INT32" => matches!(value, Value::Integer(_, IntegerType::Int32)),
-        "BYTE" => matches!(value, Value::Integer(_, IntegerType::Byte)),
-        "INT8" => matches!(value, Value::Integer(_, IntegerType::Int8)),
-        "INT16" => matches!(value, Value::Integer(_, IntegerType::Int16)),
-        "INT64" | "TIMESTAMP" => matches!(value, Value::Integer(_, IntegerType::Int64)),
-        "UINT16" => matches!(value, Value::Integer(_, IntegerType::UInt16)),
-        "UINT32" => matches!(value, Value::Integer(_, IntegerType::UInt32)),
-        "UINT64" => matches!(value, Value::Integer(_, IntegerType::UInt64)),
-        "FLOAT" | "FLOAT64" => matches!(value, Value::Float(_, FloatType::Float64)),
-        "FLOAT32" => matches!(value, Value::Float(_, FloatType::Float32)),
-        "BOOLEAN" => matches!(value, Value::Boolean(_)),
-        "STRING" => matches!(value, Value::String(_)),
-        "NAN" => matches!(value, Value::Float(value, _) if value.is_nan()),
-        "INF" => matches!(value, Value::Float(value, _) if *value == f64::INFINITY),
-        "-INF" => matches!(value, Value::Float(value, _) if *value == f64::NEG_INFINITY),
-        "NULL" => matches!(value, Value::Null),
-        "NA" => matches!(value, Value::NotAvailable),
-        "EOF" => matches!(value, Value::EndOfFile),
-        "Error" => matches!(value, Value::Error { .. }),
-        "DATE" => matches!(value, Value::Date(_)),
-        "TIME" => matches!(value, Value::Time(_)),
-        "TIMEZONE" => matches!(value, Value::TimeZone(_)),
-        test if test.starts_with("POINTER TO ") => matches!(value, Value::Pointer { .. }),
-        _ => match value {
-            Value::File(_) => is_host_file_type(test),
-            Value::DataFrame(_) => {
-                test == "DataFrame" || (test.ends_with(".DataFrame") && !test.starts_with('#'))
-            }
-            Value::LogFields(_) => test == "BNLog.Fields" || test == "Fields",
-            Value::LogEntry(_) => test == "BNLog.Entry" || test == "Entry",
-            Value::LogLogger(_) => test == "BNLog.Logger" || test == "Logger",
-            Value::Json(_) => test == "BNJson.Json" || test == "Json",
-            Value::CryptoBytes(_) => test == "BNCrypto.Bytes" || test == "Bytes",
-            Value::DispatchQueue(_) => test == "BNDispatch.Queue" || test == "Queue",
-            Value::DispatchTicket(_) => test == "BNDispatch.Ticket" || test == "Ticket",
-            Value::DispatchGroup(_) => test == "BNDispatch.Group" || test == "Group",
-            Value::DispatchBarrier(_) => test == "BNDispatch.Barrier" || test == "Barrier",
-            Value::DispatchSemaphore(_) => test == "BNDispatch.Semaphore" || test == "Semaphore",
-            Value::DispatchMutex(_) => test == "BNDispatch.Mutex" || test == "Mutex",
-            Value::Object { class, .. } => {
-                class.as_ref() == test || class.rsplit('.').next() == Some(test)
-            }
-            Value::Record { record } => record.type_name().as_ref() == test,
-            _ => false,
-        },
-    }
-}
-
 /// While a constructor, destructor or field initialiser of `function` runs on
 /// its receiver, dispatch on that object is pinned to the declaring class.
 pub(super) fn lifecycle_dispatch(

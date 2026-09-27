@@ -103,6 +103,10 @@ pub(super) fn is_value(value: &Value, test: &str) -> bool {
             Value::DispatchBarrier(_) => test == "BNDispatch.Barrier" || test == "Barrier",
             Value::DispatchSemaphore(_) => test == "BNDispatch.Semaphore" || test == "Semaphore",
             Value::DispatchMutex(_) => test == "BNDispatch.Mutex" || test == "Mutex",
+            // HOST type tests arrive under their canonical names (lowering).
+            Value::TcpStream(_) => test == "HOST.Net.TCPStream",
+            Value::TcpListener(_) => test == "HOST.Net.TCPListener",
+            Value::UdpSocket(_) => test == "HOST.Net.UDPSocket",
             Value::Object { class, .. } => {
                 class.as_ref() == test || class.rsplit('.').next() == Some(test)
             }

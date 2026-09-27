@@ -1,0 +1,58 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT HOST.Net AS Net
+
+// Server and client in one program on the loopback interface.
+FUNCTION Start() AS INTEGER
+    LET loopback AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    IF loopback IS Error THEN
+        RETURN 1
+    END IF
+    LET wanted AS Net.Endpoint OR Error = Net.Endpoint.Create(loopback, 0)
+    IF wanted IS Error THEN
+        RETURN 1
+    END IF
+    LET endpoints AS Net.Endpoint[1] = [wanted]
+    LET listener AS Net.TCPListener OR Error = Net.TCPListen(endpoints, 8)
+    IF listener IS Error THEN
+        PRINT "listen failed:", listener.Message
+        RETURN 1
+    END IF
+    LET bound AS Net.Endpoint OR Error = listener.LocalEndpoint()
+    IF bound IS Error THEN
+        RETURN 1
+    END IF
+    LET client AS Net.TCPStream OR Error = Net.TCPConnect(bound, 2000)
+    LET server AS Net.TCPStream OR Error = listener.Accept(2000)
+    IF client IS Error OR server IS Error THEN
+        PRINT "connection failed"
+        RETURN 1
+    END IF
+    PRINT listener IS Net.TCPListener, client IS Net.TCPStream, bound.Port() > 0
+    LET timeouts AS VOID OR Error = client.SetTimeouts(2000, 2000)
+    // The client never reads, so closing its read side succeeds on every OS.
+    LET closedRead AS VOID OR Error = client.ShutdownRead()
+    LET local AS Net.Endpoint OR Error = client.LocalEndpoint()
+    LET remote AS Net.Endpoint OR Error = client.RemoteEndpoint()
+    IF local IS Net.Endpoint AND remote IS Net.Endpoint THEN
+        PRINT timeouts IS Error, remote.Port() = bound.Port(), local.Address().IsLoopback()
+    END IF
+    LET message AS POINTER TO BYTE[] = NEW BYTE[2]
+    message[0] = 72
+    message[1] = 105
+    LET sent AS INTEGER OR Error = client.Write(message, 2)
+    LET closedWrite AS VOID OR Error = client.ShutdownWrite()
+    LET received AS POINTER TO BYTE[] = NEW BYTE[4]
+    LET count AS INTEGER OR EOF OR Error = server.Read(received, 4)
+    LET rest AS INTEGER OR EOF OR Error = server.Read(received, 4)
+    PRINT sent, count, received[0], received[1], rest IS EOF, closedWrite IS Error, closedRead IS Error
+    client.Close()
+    server.Close()
+    listener.Close()
+    RELEASE message
+    RELEASE received
+    RETURN 0
+END FUNCTION

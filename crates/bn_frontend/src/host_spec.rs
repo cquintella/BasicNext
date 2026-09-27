@@ -145,6 +145,27 @@ pub(crate) fn capability(name: &str) -> Option<Capability> {
     }
 }
 
+/// Every HOST operation the frontend type-checks, as `Owner.Member`
+/// (`HOST.Net.Address.Parse`, `FS.File.ReadLine`, …), plus the two
+/// capabilities that are not member tables (`HOST.Args`, `HOST.NumProcs`).
+/// Conformance tests use it so a new HOST member cannot ship untested.
+#[must_use]
+pub fn host_operation_names() -> Vec<String> {
+    let mut names: Vec<String> = catalog()
+        .members
+        .into_iter()
+        .filter(|(owner, _)| owner.starts_with("HOST.") || owner == "FS.File")
+        .flat_map(|(owner, members)| {
+            members
+                .into_keys()
+                .map(move |member| format!("{owner}.{member}"))
+        })
+        .collect();
+    names.extend(["HOST.Args".into(), "HOST.NumProcs".into()]);
+    names.sort();
+    names
+}
+
 pub(crate) fn catalog() -> Catalog {
     let mut catalog = Catalog::default();
     members1::declare_1(&mut catalog);

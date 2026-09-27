@@ -1,0 +1,25 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT HOST.Net AS Net
+
+// ICMP permission and neighbor tables vary by host; the checks print only
+// whether each call produced one of its declared outcomes.
+FUNCTION Start() AS INTEGER
+    LET loopback AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    IF loopback IS Error THEN
+        RETURN 1
+    END IF
+    LET reply AS Net.PingReply OR Error = Net.Ping(loopback, 1000)
+    IF reply IS Net.PingReply THEN
+        LET from AS Net.Address = reply.Address()
+        PRINT "ping:", from.IsLoopback(), reply.RoundTripMicroseconds() >= 0
+    ELSE
+        PRINT "ping:", reply IS Error, TRUE
+    END IF
+    LET neighbor AS Net.Address OR Error = Net.Neighbor(loopback)
+    PRINT "neighbor answered:", neighbor IS Net.Address OR neighbor IS Error
+    RETURN 0
+END FUNCTION

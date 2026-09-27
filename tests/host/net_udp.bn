@@ -1,0 +1,51 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT HOST.Net AS Net
+
+FUNCTION Start() AS INTEGER
+    LET loopback AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    IF loopback IS Error THEN
+        RETURN 1
+    END IF
+    LET any AS Net.Endpoint OR Error = Net.Endpoint.Create(loopback, 0)
+    IF any IS Error THEN
+        RETURN 1
+    END IF
+    LET receiver AS Net.UDPSocket OR Error = Net.UDPBind(any)
+    LET sender AS Net.UDPSocket OR Error = Net.UDPBind(any)
+    IF receiver IS Error OR sender IS Error THEN
+        RETURN 1
+    END IF
+    LET target AS Net.Endpoint OR Error = receiver.LocalEndpoint()
+    IF target IS Error THEN
+        RETURN 1
+    END IF
+    LET datagram AS POINTER TO BYTE[] = NEW BYTE[4]
+    datagram[0] = 1
+    datagram[1] = 2
+    datagram[2] = 3
+    datagram[3] = 4
+    LET sent AS INTEGER OR Error = sender.SendTo(target, datagram, 4)
+    // A 2-byte receive truncates the 4-byte datagram.
+    LET packet AS Net.UDPPacket OR Error = receiver.Receive(2, 2000)
+    IF packet IS Error THEN
+        PRINT "receive failed:", packet.Message
+        RETURN 1
+    END IF
+    LET copy AS POINTER TO BYTE[] = NEW BYTE[4]
+    LET copied AS INTEGER OR Error = packet.CopyTo(copy, 4)
+    PRINT receiver IS Net.UDPSocket, packet IS Net.UDPPacket, sent
+    PRINT packet.Size(), packet.Truncated(), packet.WasTruncated(), copied, copy[0], copy[1]
+    LET source AS Net.Endpoint OR Error = packet.Source()
+    IF source IS Net.Endpoint THEN
+        PRINT "from loopback:", source.Address().IsLoopback()
+    END IF
+    sender.Close()
+    receiver.Close()
+    RELEASE datagram
+    RELEASE copy
+    RETURN 0
+END FUNCTION

@@ -544,6 +544,35 @@ pub(crate) fn emit_is(
             _ => {}
         }
     }
+    // `T OR Error` in an error-flag aggregate: `IS T` means "not an error".
+    if let Type::Alternative(alternatives) = left_ty
+        && let [first, second] = alternatives.as_slice()
+        && let Some(aggregate) = llvm_type(left_ty)
+            .filter(|ty| matches!(*ty, "{ i1, ptr }" | "{ i1, ptr, i32 }" | "{ i1, ptr, i64 }"))
+    {
+        let value_ty = if is_error_type(first) {
+            Some(second)
+        } else if is_error_type(second) {
+            Some(first)
+        } else {
+            None
+        };
+        if let Some(Type::Named(name)) = value_ty
+            && name == test_name
+        {
+            let _ = writeln!(
+                text,
+                "  %iserror{} = extractvalue {aggregate} %v{}, 0",
+                destination.0, left.0
+            );
+            let _ = writeln!(
+                text,
+                "  %v{} = xor i1 %iserror{}, true",
+                destination.0, destination.0
+            );
+            return;
+        }
+    }
     let is_na = test_name == "NA";
     let _ = writeln!(
         text,

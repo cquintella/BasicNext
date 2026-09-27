@@ -208,7 +208,7 @@ pub(crate) fn emit_function(
         state.control_flow.label(text, format!("b{}", block.id.0));
         if block.id == function.entry {
             if is_start {
-                text.push_str(crate::helpers::windows_binary_stdio_ir());
+                text.push_str(crate::helpers::windows_binary_stdio_ir(synchronize_prints));
                 let ceiling = super::policy_ceiling(module);
                 if ceiling != 0 {
                     let _ = writeln!(

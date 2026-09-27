@@ -95,6 +95,7 @@ pub(super) fn declare_12(catalog: &mut Catalog) {
     );
 }
 
+#[allow(clippy::too_many_lines)] // One catalog table per HOST type; data, not logic.
 pub(super) fn declare_13(catalog: &mut Catalog) {
     catalog.members.insert(
         "HOST.Net.TCPStream".into(),
@@ -179,6 +180,54 @@ pub(super) fn declare_13(catalog: &mut Catalog) {
                         parameters: Vec::new(),
                         return_type: Box::new(SpecType::Alternative(vec![
                             SpecType::Named("HOST.Net.Endpoint".into()),
+                            SpecType::Named("Error".into()),
+                        ])),
+                    },
+                    is_static: false,
+                    private: false,
+                    mutable: false,
+                },
+            ),
+            (
+                "SetTimeouts".into(),
+                SpecMember {
+                    ty: SpecType::Function {
+                        parameters: vec![
+                            SpecType::Integer(SpecIntegerType::Int32),
+                            SpecType::Integer(SpecIntegerType::Int32),
+                        ],
+                        return_type: Box::new(SpecType::Alternative(vec![
+                            SpecType::Named("VOID".into()),
+                            SpecType::Named("Error".into()),
+                        ])),
+                    },
+                    is_static: false,
+                    private: false,
+                    mutable: false,
+                },
+            ),
+            (
+                "ShutdownRead".into(),
+                SpecMember {
+                    ty: SpecType::Function {
+                        parameters: Vec::new(),
+                        return_type: Box::new(SpecType::Alternative(vec![
+                            SpecType::Named("VOID".into()),
+                            SpecType::Named("Error".into()),
+                        ])),
+                    },
+                    is_static: false,
+                    private: false,
+                    mutable: false,
+                },
+            ),
+            (
+                "ShutdownWrite".into(),
+                SpecMember {
+                    ty: SpecType::Function {
+                        parameters: Vec::new(),
+                        return_type: Box::new(SpecType::Alternative(vec![
+                            SpecType::Named("VOID".into()),
                             SpecType::Named("Error".into()),
                         ])),
                     },

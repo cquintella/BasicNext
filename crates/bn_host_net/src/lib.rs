@@ -96,7 +96,20 @@ impl Provider for NetProvider {
         span: Span,
     ) -> Result<Value, Diagnostic> {
         let name = format!("HOST.Net.{member}");
-        self.host_net_call(core, &name, &arguments, span)
+        // Every fallible HOST.Net operation returns `T OR Error`, and no
+        // network failure may bypass BN control flow (host-net.md): an
+        // operating-system I/O failure becomes an `Error` value here, once,
+        // instead of a fatal diagnostic at each call site. Misuse such as a
+        // released handle stays a diagnostic.
+        match self.host_net_call(core, &name, &arguments, span) {
+            Err(diagnostic) if diagnostic.code == bn_diag::DiagId::IO.desc().code => {
+                Ok(Value::Error {
+                    code: 1,
+                    message: shared_string(&*diagnostic.message),
+                })
+            }
+            result => result,
+        }
     }
 }
 

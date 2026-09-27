@@ -183,7 +183,7 @@ pub(super) fn declare_4(catalog: &mut Catalog) {
     );
 }
 
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines)] // One catalog table per HOST type; data, not logic.
 pub(super) fn declare_5(catalog: &mut Catalog) {
     catalog.members.insert(
         "FS.File".into(),
@@ -296,84 +296,6 @@ pub(super) fn declare_5(catalog: &mut Catalog) {
                         parameters: vec![SpecType::String],
                         return_type: Box::new(SpecType::Alternative(vec![
                             SpecType::Named("VOID".into()),
-                            SpecType::Named("Error".into()),
-                        ])),
-                    },
-                    is_static: false,
-                    private: false,
-                    mutable: false,
-                },
-            ),
-            (
-                "SetTimeouts".into(),
-                SpecMember {
-                    ty: SpecType::Function {
-                        parameters: vec![
-                            SpecType::Integer(SpecIntegerType::Int32),
-                            SpecType::Integer(SpecIntegerType::Int32),
-                        ],
-                        return_type: Box::new(SpecType::Alternative(vec![
-                            SpecType::Named("VOID".into()),
-                            SpecType::Named("Error".into()),
-                        ])),
-                    },
-                    is_static: false,
-                    private: false,
-                    mutable: false,
-                },
-            ),
-            (
-                "ShutdownRead".into(),
-                SpecMember {
-                    ty: SpecType::Function {
-                        parameters: Vec::new(),
-                        return_type: Box::new(SpecType::Alternative(vec![
-                            SpecType::Named("VOID".into()),
-                            SpecType::Named("Error".into()),
-                        ])),
-                    },
-                    is_static: false,
-                    private: false,
-                    mutable: false,
-                },
-            ),
-            (
-                "ShutdownWrite".into(),
-                SpecMember {
-                    ty: SpecType::Function {
-                        parameters: Vec::new(),
-                        return_type: Box::new(SpecType::Alternative(vec![
-                            SpecType::Named("VOID".into()),
-                            SpecType::Named("Error".into()),
-                        ])),
-                    },
-                    is_static: false,
-                    private: false,
-                    mutable: false,
-                },
-            ),
-            (
-                "LocalEndpoint".into(),
-                SpecMember {
-                    ty: SpecType::Function {
-                        parameters: Vec::new(),
-                        return_type: Box::new(SpecType::Alternative(vec![
-                            SpecType::Named("HOST.Net.Endpoint".into()),
-                            SpecType::Named("Error".into()),
-                        ])),
-                    },
-                    is_static: false,
-                    private: false,
-                    mutable: false,
-                },
-            ),
-            (
-                "RemoteEndpoint".into(),
-                SpecMember {
-                    ty: SpecType::Function {
-                        parameters: Vec::new(),
-                        return_type: Box::new(SpecType::Alternative(vec![
-                            SpecType::Named("HOST.Net.Endpoint".into()),
                             SpecType::Named("Error".into()),
                         ])),
                     },

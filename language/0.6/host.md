@@ -139,7 +139,6 @@ LET closed AS VOID OR Error = file.Close()
 IF closed IS Error THEN
     PRINT closed.Message
 END IF
-DELETE file
 ```
 
 Mode constants are `INTEGER` members of the capability object:
@@ -160,16 +159,19 @@ file (no operating-system handle, no path). Methods other than `Close` on a
 closed file return `Error`. `FS.Open` constructs and returns a different,
 open instance.
 
-Every `FS.File` instance must be released with `DELETE`, including instances
-returned by `Open` and instances created with `NEW`. `DELETE` runs the
-destructor described below. Process exit does not close leftover handles.
-A second `DELETE` raises `DOUBLE_DELETE`, as for any class.
+A file is released with `Close()`. `DELETE` was removed in 0.5 and is not
+sugar over `Close`: HOST resources close through their capability methods
+(see "HOST: `Close` / `*_close` only" in [`0.6.md`](0.6.md)).
+
+TODO (normative gap): what happens to an open `FS.File` that becomes
+unreachable without `Close` (closed automatically, or leaked until process
+exit) is not specified; unifying HOST handles with ARC classes is a later
+proposal. Programs must call `Close`.
 
 A user class must not `EXTENDS FS.File`. Hold a `File` in a field instead.
 
 `FS.Open` is a factory on the capability. It does not store the result into
-an existing closed instance; it allocates a new object. Replacing a
-variable that already holds a `File` without `DELETE` leaks that object.
+an existing closed instance; it allocates a new object.
 
 `FS.File` methods:
 
@@ -190,10 +192,7 @@ from the other family returns `Error`. `EOF` from `ReadLine` or
 `ReadBytes` is a successful family method. Unused and closed files have no
 family.
 
-`FUNCTION DESTRUCTOR` of `FS.File` closes the operating-system handle if it
-is still open. If that close fails, `DELETE` still finishes (the object is
-released); the failure is not an `Error` value on `DELETE`. Call `Close`
-explicitly when the program must observe flush failure.
+A flush failure is observable only as the `Error` returned by `Close`.
 
 Paths are `STRING`. Text is UTF-8. Invalid UTF-8 on a text read returns
 `Error`.
@@ -234,7 +233,7 @@ use `NEW TYPE[count]`. Shared memory, memory-mapped I/O, device buffers, and
 FFI memory require a later capability contract.
 
 Networking in later releases is the capability **`HOST.Net`** (see
-`language/0.3/host-net.md` and language 0.4). The name **`HOST.Network`
+[`host-net.md`](host-net.md)). The name **`HOST.Network`
 must not be used** — it is not a capability. Time zones, concurrency, GPU
 devices, DOM access, and other optional capabilities remain outside 0.2 in
 this document's historical scope.

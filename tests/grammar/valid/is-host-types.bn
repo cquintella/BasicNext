@@ -1,0 +1,17 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// IS on HOST types, through the import alias and a second alias.
+IMPORT HOST.Net AS Net
+IMPORT HOST.Net AS N
+
+FUNCTION Start() AS VOID
+    LET good AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    LET bad AS Net.Address OR Error = Net.Address.Parse("not-an-address")
+    PRINT good IS Net.Address, good IS Error
+    PRINT bad IS Net.Address, bad IS Error
+    LET other AS N.Address OR Error = N.Address.Parse("::1")
+    PRINT other IS N.Address
+END FUNCTION

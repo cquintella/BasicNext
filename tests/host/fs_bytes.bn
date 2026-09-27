@@ -1,0 +1,33 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT HOST.FileSystem AS FS
+
+FUNCTION Start() AS INTEGER
+    LET path AS STRING = "conformance.bin"
+    LET data AS POINTER TO BYTE[] = NEW BYTE[3]
+    data[0] = 1
+    data[1] = 128
+    data[2] = 255
+    LET output AS FS.File OR Error = FS.Open(path, FS.WRITE)
+    IF output IS Error THEN
+        RETURN 1
+    END IF
+    LET written AS VOID OR Error = output.WriteBytes(data, 3)
+    output.Close()
+    LET input AS FS.File OR Error = FS.Open(path, FS.READ)
+    IF input IS Error THEN
+        RETURN 1
+    END IF
+    LET buffer AS POINTER TO BYTE[] = NEW BYTE[8]
+    LET count AS INTEGER OR EOF OR Error = input.ReadBytes(buffer)
+    LET again AS INTEGER OR EOF OR Error = input.ReadBytes(buffer)
+    input.Close()
+    PRINT written IS Error, count, buffer[0], buffer[1], buffer[2], again IS EOF
+    RELEASE data
+    RELEASE buffer
+    FS.DeleteFile(path)
+    RETURN 0
+END FUNCTION

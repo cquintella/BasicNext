@@ -60,11 +60,21 @@ impl Builder<'_> {
 
     pub(super) fn type_test(&mut self, expression: &Expression) -> Result<ValueId, Diagnostic> {
         let value = match &expression.kind {
-            ExpressionKind::TypeTest { type_ref } => type_ref
-                .alternatives
-                .first()
-                .map(type_test_name)
-                .ok_or_else(|| ir_error("invalid IS type test", expression.span))?,
+            ExpressionKind::TypeTest { type_ref } => {
+                let written = type_ref
+                    .alternatives
+                    .first()
+                    .map(type_test_name)
+                    .ok_or_else(|| ir_error("invalid IS type test", expression.span))?;
+                // HOST types are tested under the canonical name semantic
+                // analysis resolved (`HOST.Net.Address` for `N.Address`).
+                match self.model.expression(expression.span) {
+                    Some(resolved) if resolved.type_name.starts_with("HOST.") => {
+                        resolved.type_name.clone()
+                    }
+                    _ => written,
+                }
+            }
             ExpressionKind::Name { name } | ExpressionKind::Literal(Literal::TypeName(name)) => {
                 name.clone()
             }

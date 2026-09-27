@@ -201,7 +201,7 @@ impl Analyzer {
         Ok(member.ty.clone())
     }
     pub(crate) fn validate_is_test(
-        &self,
+        &mut self,
         subject: &Type,
         test: &Expression,
         span: Span,
@@ -214,6 +214,10 @@ impl Analyzer {
             )
         })?;
         let test_type = self.resolve_type(test_type);
+        // Lowering reads the resolved test type, so an alias-qualified HOST
+        // type (`Net.Address`, `N.Address`) reaches the IR under its canonical
+        // name (`HOST.Net.Address`), the name runtime values carry.
+        self.record_expression(test.span, &test_type, None);
         if is_float(&test_type)
             && matches!(&test.kind, ExpressionKind::Literal(Literal::Special(_)))
             && is_float(subject)

@@ -1,0 +1,25 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT HOST.Exec AS Exec
+
+// HOST.Args[1] is the path of an executable to run (the test passes bni).
+FUNCTION Start() AS INTEGER
+    LET version AS STRING[1] = ["--version"]
+    LET ok AS Exec.Result OR Error = Exec.Run(HOST.Args[1], version)
+    IF ok IS Error THEN
+        PRINT "run failed:", ok.Message
+        RETURN 1
+    END IF
+    PRINT ok IS Exec.Result, ok.ReturnCode, LEN(ok.Stdout) > 0, LEN(ok.Stderr)
+    LET bad AS STRING[1] = ["--no-such-option"]
+    LET failed AS Exec.Result OR Error = Exec.Run(HOST.Args[1], bad)
+    IF failed IS Exec.Result THEN
+        PRINT failed.ReturnCode <> 0, LEN(failed.Stderr) > 0
+    END IF
+    LET missing AS Exec.Result OR Error = Exec.Run("bn-no-such-program", version)
+    PRINT missing IS Error
+    RETURN 0
+END FUNCTION
