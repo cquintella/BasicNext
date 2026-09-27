@@ -49,6 +49,7 @@ pub(crate) fn emit_preamble(
         text.push_str(string_byte_length_ir());
     }
     text.push_str("\ndeclare i32 @printf(ptr, ...)\ndeclare i32 @putchar(i32)\n");
+    text.push_str(crate::helpers::windows_binary_stdio_decl());
     if functions.iter().any(|(function, analysis)| {
         !analysis.released_symbols.is_empty()
             || function.blocks.iter().any(|block| {

@@ -934,6 +934,26 @@ pub(crate) fn stdout_stream_ir(dest: &str) -> String {
     }
 }
 
+/// Entry-block IR that puts stdin, stdout, and stderr in binary mode on
+/// Windows (`_setmode(fd, _O_BINARY)`), so `\n` is not rewritten as `\r\n`
+/// and native output matches the interpreter byte for byte. Empty elsewhere.
+pub(crate) fn windows_binary_stdio_ir() -> &'static str {
+    if cfg!(windows) {
+        "  %winstdin = call i32 @_setmode(i32 0, i32 32768)\n  %winstdout = call i32 @_setmode(i32 1, i32 32768)\n  %winstderr = call i32 @_setmode(i32 2, i32 32768)\n"
+    } else {
+        ""
+    }
+}
+
+/// Module-level declaration for [`windows_binary_stdio_ir`]. Empty elsewhere.
+pub(crate) fn windows_binary_stdio_decl() -> &'static str {
+    if cfg!(windows) {
+        "declare i32 @_setmode(i32, i32)\n"
+    } else {
+        ""
+    }
+}
+
 /// The C functions that lock and unlock a `FILE *`.
 pub(crate) fn stdout_lock_functions() -> (&'static str, &'static str) {
     if cfg!(windows) {
