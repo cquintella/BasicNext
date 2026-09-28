@@ -1,0 +1,19 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Runtime trap: member access after RELEASE. bni and the native binary print the same
+// diagnostic and exit with status 1 (bucket 0.6.2b R6).
+CLASS Box
+    PUBLIC size AS INTEGER = 3
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS INTEGER
+    LET box AS Box = NEW Box()
+    RELEASE box
+    PRINT box.size
+    RETURN 0
+END FUNCTION

@@ -101,7 +101,7 @@ pub(crate) fn lower_access_emission(
                     field.as_ref().expect("validated member field reference"),
                 )
                 .expect("validated member field slot");
-                emit_member(text, *destination, *object, offset, ty);
+                emit_member(text, block_id, *destination, *object, offset, ty, state);
             }
         }
         Instruction::SetIndex {
@@ -139,6 +139,11 @@ pub(crate) fn lower_access_emission(
                     value_ty,
                     ty,
                     transfers_object,
+                    if analysis.symbols.get(symbol).is_some_and(is_native_pointer) {
+                        "region"
+                    } else {
+                        "vector"
+                    },
                     state,
                 );
             } else {
@@ -171,6 +176,11 @@ pub(crate) fn lower_access_emission(
                 .values
                 .get(index)
                 .expect("validated vector index type");
+            let context = if analysis.values.get(object).is_some_and(is_native_pointer) {
+                "region"
+            } else {
+                "vector"
+            };
             emit_vector_index(
                 text,
                 block_id,
@@ -179,6 +189,7 @@ pub(crate) fn lower_access_emission(
                 *index,
                 index_ty,
                 ty,
+                context,
                 state,
             );
         }

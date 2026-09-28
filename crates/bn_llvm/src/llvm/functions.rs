@@ -199,6 +199,7 @@ pub(crate) fn emit_function(
         md_temp: 0,
         needs_numeric_overflow_trap: false,
         needs_bn_rt_trap: false,
+        span: traps::unknown_span(),
         is_start,
         synchronize_prints,
         return_llvm: if is_start {
@@ -335,6 +336,7 @@ pub(crate) fn emit_function(
             bindings: HashMap::new(),
         };
         for instruction in &block.instructions {
+            state.span = instruction.span();
             lower_scalar_instruction(
                 text,
                 module,

@@ -358,3 +358,44 @@ fn region_fields_are_strong_bindings() {
     );
     assert_native_parity(&path, None);
 }
+
+/// Bucket 0.6.2b R6: a native runtime trap prints the diagnostic `bni`
+/// prints (title, excerpt, cause, help; `bnc` renders it from the shared
+/// catalog at compile time) and exits with the same status. One program per
+/// trap kind lives in `tests/runtime-traps/`.
+#[test]
+fn native_runtime_traps_print_the_interpreter_diagnostic() {
+    let directory = workspace_root().join("tests/runtime-traps");
+    let mut paths = fs::read_dir(&directory)
+        .expect("runtime trap fixtures")
+        .map(|entry| entry.expect("fixture entry").path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "bn"))
+        .collect::<Vec<_>>();
+    paths.sort();
+    assert!(
+        paths.len() >= 19,
+        "fixtures missing from {}",
+        directory.display()
+    );
+    let build = TestDir::new("runtime-traps").expect("create trap directory");
+    for path in paths {
+        let artifact = compile_native(&path, &build);
+        let interpreted = interpret(&path, None);
+        let compiled = execute_artifact(&artifact, &[], None);
+        let name = path.display();
+        assert_eq!(interpreted.status.code(), Some(1), "{name}: bni status");
+        assert_eq!(compiled.status.code(), Some(1), "{name}: native status");
+        assert_eq!(compiled.stdout, interpreted.stdout, "{name}: stdout");
+        // `bni run` also prints frontend warnings; `bnc` printed them when
+        // building, so compare from the runtime error on.
+        let interpreted_error = String::from_utf8_lossy(&interpreted.stderr);
+        let runtime_error = interpreted_error
+            .find("error[")
+            .map_or("", |start| &interpreted_error[start..]);
+        assert_eq!(
+            String::from_utf8_lossy(&compiled.stderr),
+            runtime_error,
+            "{name}: stderr"
+        );
+    }
+}

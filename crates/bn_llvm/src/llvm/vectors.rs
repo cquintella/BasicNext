@@ -297,17 +297,29 @@ pub(crate) fn emit_set_member(
 
 pub(crate) fn emit_member(
     text: &mut String,
+    block_id: BlockId,
     destination: ValueId,
     object: ValueId,
     field_offset: u32,
     field_ty: &Type,
+    state: &mut EmissionState,
 ) {
     let llvm_ty = llvm_type(field_ty).expect("validated member type");
     let dest = destination.0;
     let _ = writeln!(
         text,
-        "  %membernull{dest} = icmp eq ptr %v{}, null\n  br i1 %membernull{dest}, label %trap_use_after_release_{dest}, label %member_load_{dest}\ntrap_use_after_release_{dest}:\n  call i32 (ptr, ...) @printf(ptr @.bn_use_after_release)\n  call void @exit(i32 1)\n  unreachable\nmember_load_{dest}:",
+        "  %membernull{dest} = icmp eq ptr %v{}, null",
         object.0
+    );
+    let live = take_continuation(block_id, state);
+    emit_trap(
+        text,
+        block_id,
+        state,
+        &format!("%membernull{dest}"),
+        live,
+        bn_diag::DiagId::USE_AFTER_RELEASE,
+        vec![("detail", Fact::Text("binding was released".into()))],
     );
     let _ = writeln!(
         text,
@@ -371,6 +383,7 @@ pub(crate) fn emit_vector_index(
     index: ValueId,
     index_ty: &Type,
     ty: &Type,
+    context: &'static str,
     state: &mut EmissionState,
 ) {
     let elem_ty = llvm_type(ty).expect("validated index element");
@@ -393,11 +406,16 @@ pub(crate) fn emit_vector_index(
         "  %vecoob{dest} = icmp uge i32 {index_op}, %veclen{dest}"
     );
     let _ = writeln!(text, "  %vecbad{dest} = or i1 %vecneg{dest}, %vecoob{dest}");
-    let _ = writeln!(
+    emit_index_trap(
         text,
-        "  br i1 %vecbad{dest}, label %trap_numeric_overflow, label %{ok}"
+        block_id,
+        state,
+        &format!("%vecbad{dest}"),
+        ok,
+        &index_op,
+        &format!("%veclen{dest}"),
+        context,
     );
-    state.control_flow.label(text, ok.clone());
     let _ = writeln!(
         text,
         "  %vecslot{dest} = getelementptr {elem_ty}, ptr %vecptr{dest}, i32 {index_op}"

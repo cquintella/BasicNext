@@ -720,15 +720,29 @@ pub(crate) fn emit_checked_integer_op(
         "  %ovf{} = extractvalue {{ {llvm_ty}, i1 }} %ov{}, 1",
         destination.0, destination.0
     );
-    let continuation = format!("b{}.cont{}", block_id.0, state.continuation_count);
-    state.continuation_count += 1;
+    // The exact result, as the interpreter reports it: BN integers are at
+    // most 64 bits, so +, - and * of two of them fit i128.
+    let dest = destination.0;
+    let extend = if is_unsigned(ty) { "zext" } else { "sext" };
+    let exact_op = match operator {
+        "Plus" => "add",
+        "Minus" => "sub",
+        _ => "mul",
+    };
     let _ = writeln!(
         text,
-        "  br i1 %ovf{}, label %trap_numeric_overflow, label %{continuation}",
-        destination.0
+        "  %ovl{dest} = {extend} {llvm_ty} {left_operand} to i128\n  %ovr{dest} = {extend} {llvm_ty} {right_operand} to i128\n  %ovexact{dest} = {exact_op} i128 %ovl{dest}, %ovr{dest}"
     );
-    state.control_flow.label(text, continuation.clone());
-    state.needs_numeric_overflow_trap = true;
+    let ok = take_continuation(block_id, state);
+    emit_overflow_trap(
+        text,
+        block_id,
+        state,
+        &format!("%ovf{dest}"),
+        ok,
+        &format!("%ovexact{dest}"),
+        ty,
+    );
 }
 
 pub(crate) fn checked_intrinsic_name(ty: &Type, operator: &str) -> Option<&'static str> {

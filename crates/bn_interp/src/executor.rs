@@ -153,7 +153,10 @@ fn binary(
 fn division_by_zero(operator: &str, span: Span) -> Diagnostic {
     Diagnostic::structured(
         bn_diag::DiagId::DIVISION_BY_ZERO,
-        vec![("operation".into(), operator.into())],
+        vec![(
+            "operation".into(),
+            bn_types::operator_spelling(operator).into(),
+        )],
         vec![bn_diag::Label {
             span,
             style: bn_diag::LabelStyle::Primary,
@@ -176,7 +179,8 @@ mod diagnostic_tests {
             .expect("division-by-zero must use the structured catalog");
         assert_eq!(spec.id.code(), "DIVISION_BY_ZERO");
         assert_eq!(spec.args[0].0, "operation");
-        assert_eq!(spec.args[0].1.to_string(), "Percent");
+        // The source spelling, not the IR operator name.
+        assert_eq!(spec.args[0].1.to_string(), "%");
     }
 
     #[test]
@@ -361,7 +365,10 @@ fn checked_integer(value: Option<i128>, ty: &Type, span: Span) -> Result<Value, 
     let (minimum, maximum) = integer_range(kind);
     if !(minimum..=maximum).contains(&value) {
         return Err(numeric_overflow(
-            format!("converting {value} to {kind:?}"),
+            format!(
+                "converting {value} to {}",
+                bn_types::integer_type_name(kind)
+            ),
             span,
         ));
     }

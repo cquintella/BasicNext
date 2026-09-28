@@ -133,6 +133,7 @@ pub(crate) fn emit_buffer_bound(
     destination: ValueId,
     buffer: ValueId,
     length: &str,
+    message: &'static str,
     state: &mut EmissionState,
 ) {
     let dest = destination.0;
@@ -151,12 +152,15 @@ pub(crate) fn emit_buffer_bound(
         "  %bufbad{dest} = or i1 %bufneg{dest}, %bufover{dest}"
     );
     let ok = take_continuation(block_id, state);
-    let _ = writeln!(
+    emit_trap(
         text,
-        "  br i1 %bufbad{dest}, label %trap_numeric_overflow, label %{ok}"
+        block_id,
+        state,
+        &format!("%bufbad{dest}"),
+        ok,
+        bn_diag::DiagId::LIMIT,
+        vec![("message", Fact::Text(message.into()))],
     );
-    state.control_flow.label(text, ok);
-    state.needs_numeric_overflow_trap = true;
 }
 
 /// Builds an `Endpoint OR Error` (`{ i1, ptr, i32 }`) from a `bn_rt` status:

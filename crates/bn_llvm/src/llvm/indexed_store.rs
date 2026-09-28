@@ -14,6 +14,7 @@ pub(crate) fn emit_pointer_set_index(
     value_ty: &Type,
     elem_ty: &Type,
     transfers_object: bool,
+    context: &'static str,
     state: &mut EmissionState,
 ) {
     let tag = state.continuation_count;
@@ -28,6 +29,7 @@ pub(crate) fn emit_pointer_set_index(
     emit_fat_pointer_store(
         text,
         block_id,
+        context,
         tag,
         &format!("%setfat{tag}"),
         &index_op,
@@ -90,11 +92,16 @@ pub(crate) fn emit_vector_set_indices(
             text,
             "  %mdsetbad{tag} = or i1 %mdsetneg{tag}, %mdsetoob{tag}"
         );
-        let _ = writeln!(
+        emit_index_trap(
             text,
-            "  br i1 %mdsetbad{tag}, label %trap_numeric_overflow, label %{continuation}"
+            block_id,
+            state,
+            &format!("%mdsetbad{tag}"),
+            continuation,
+            &index_op,
+            &format!("%mdsetlen{tag}"),
+            "vector",
         );
-        state.control_flow.label(text, continuation);
 
         if depth + 1 == indices.len() {
             let _ = writeln!(
@@ -149,6 +156,7 @@ pub(crate) fn emit_field_set_index(
     emit_fat_pointer_store(
         text,
         block_id,
+        "vector",
         tag,
         &format!("%fieldsetfat{tag}"),
         &index_op,
@@ -168,7 +176,8 @@ pub(crate) fn emit_field_set_index(
 #[allow(clippy::too_many_arguments)]
 fn emit_fat_pointer_store(
     text: &mut String,
-    _block_id: BlockId,
+    block_id: BlockId,
+    context: &'static str,
     tag: usize,
     fat_pointer: &str,
     index: &str,
@@ -194,11 +203,16 @@ fn emit_fat_pointer_store(
     let _ = writeln!(text, "  %setneg{tag} = icmp slt i32 {index}, 0");
     let _ = writeln!(text, "  %setoob{tag} = icmp uge i32 {index}, %setlen{tag}");
     let _ = writeln!(text, "  %setbad{tag} = or i1 %setneg{tag}, %setoob{tag}");
-    let _ = writeln!(
+    emit_index_trap(
         text,
-        "  br i1 %setbad{tag}, label %trap_numeric_overflow, label %{continuation}"
+        block_id,
+        state,
+        &format!("%setbad{tag}"),
+        continuation,
+        index,
+        &format!("%setlen{tag}"),
+        context,
     );
-    state.control_flow.label(text, continuation);
     let _ = writeln!(
         text,
         "  %setslot{tag} = getelementptr {llvm_elem}, ptr %setptr{tag}, i32 {index}"

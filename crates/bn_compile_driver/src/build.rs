@@ -15,8 +15,7 @@ use bn_cli::{
     process_log::{LogLevel, ProcessLog},
 };
 use bn_llvm::{
-    CompiledPolicy, Target as LlvmTarget, lower_validated_module_for_target_with_policy,
-    validate_for,
+    CompiledPolicy, Target as LlvmTarget, lower_validated_module_with_diagnostics, validate_for,
 };
 use bn_source::SourceFile;
 
@@ -222,10 +221,13 @@ fn build_inner(
             .map(|path| path.display().to_string())
             .collect(),
     };
-    let result = match lower_validated_module_for_target_with_policy(
+    // Runtime traps print what `bni` prints: the same renderer, catalog,
+    // and source (R6); the text is rendered here, not in the program.
+    let result = match lower_validated_module_with_diagnostics(
         module,
         build_options.target == Target::Wasm32,
         &policy,
+        &|diagnostic| bn_cli::diagnostics::render_diagnostic(diagnostic, source, options),
     ) {
         Ok(llvm) => {
             process_log.event(LogLevel::Info, "llvm_emit", "success", "LLVM emitted");

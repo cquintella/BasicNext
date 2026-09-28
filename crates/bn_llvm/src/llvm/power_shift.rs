@@ -3,6 +3,7 @@ use super::*;
 
 pub(crate) fn emit_integer_not(
     text: &mut String,
+    block_id: BlockId,
     destination: ValueId,
     operand: ValueId,
     ty: &Type,
@@ -10,14 +11,25 @@ pub(crate) fn emit_integer_not(
 ) {
     let llvm_ty = llvm_type(ty).expect("validated integer type");
     if is_unsigned(ty) {
-        let cont = format!("bnot{}.dead", destination.0);
+        // NOT u is -u - 1, never representable unsigned (the interpreter
+        // reports that exact value).
+        let dest = destination.0;
         let _ = writeln!(
             text,
-            "  br i1 true, label %trap_numeric_overflow, label %{cont}"
+            "  %notwide{dest} = zext {llvm_ty} %v{} to i128\n  %notexact{dest} = sub i128 -1, %notwide{dest}",
+            operand.0
         );
-        state.control_flow.label(text, cont.clone());
-        let _ = writeln!(text, "  %v{} = add {llvm_ty} 0, 0", destination.0);
-        state.needs_numeric_overflow_trap = true;
+        let cont = format!("bnot{dest}.dead");
+        emit_overflow_trap(
+            text,
+            block_id,
+            state,
+            "true",
+            cont,
+            &format!("%notexact{dest}"),
+            ty,
+        );
+        let _ = writeln!(text, "  %v{dest} = add {llvm_ty} 0, 0");
         return;
     }
     let _ = writeln!(
@@ -61,12 +73,18 @@ pub(crate) fn emit_shift(
     let _ = writeln!(text, "  %shwide{dest} = icmp uge i64 %shcnt{dest}, {width}");
     let _ = writeln!(text, "  %shbad{dest} = or i1 %shneg{dest}, %shwide{dest}");
     let ok = take_continuation(block_id, state);
-    let _ = writeln!(
+    emit_trap(
         text,
-        "  br i1 %shbad{dest}, label %trap_numeric_overflow, label %{ok}"
+        block_id,
+        state,
+        &format!("%shbad{dest}"),
+        ok,
+        bn_diag::DiagId::INVALID_SHIFT_COUNT,
+        vec![(
+            "detail",
+            Fact::Text(format!("shift count must be in 0..{width}")),
+        )],
     );
-    state.control_flow.label(text, ok.clone());
-    state.needs_numeric_overflow_trap = true;
     let _ = writeln!(text, "  %shamt{dest} = zext i64 %shcnt{dest} to i128");
     if operator == "SHR" {
         let shift_left = if left_llvm == llvm_ty {
@@ -144,14 +162,29 @@ pub(crate) fn emit_integer_power(
         text,
         "  %pbig{dest} = icmp ugt i128 %pexp{dest}, 4294967295"
     );
-    let _ = writeln!(text, "  %pbad{dest} = or i1 %pneg{dest}, %pbig{dest}");
-    let setup = take_continuation(block_id, state);
-    let _ = writeln!(
+    let positive = take_continuation(block_id, state);
+    emit_trap(
         text,
-        "  br i1 %pbad{dest}, label %trap_numeric_overflow, label %{setup}"
+        block_id,
+        state,
+        &format!("%pneg{dest}"),
+        positive,
+        bn_diag::DiagId::INVALID_EXPONENT,
+        vec![(
+            "detail",
+            Fact::Text("integer exponent cannot be negative".into()),
+        )],
     );
-    state.control_flow.label(text, setup.clone());
-    state.needs_numeric_overflow_trap = true;
+    let setup = take_continuation(block_id, state);
+    emit_trap(
+        text,
+        block_id,
+        state,
+        &format!("%pbig{dest}"),
+        setup.clone(),
+        bn_diag::DiagId::INVALID_EXPONENT,
+        vec![("detail", Fact::Text("integer exponent is too large".into()))],
+    );
     let loop_h = format!("b{}.pow{dest}.loop", block_id.0);
     let work = format!("b{}.pow{dest}.work", block_id.0);
     let mulr = format!("b{}.pow{dest}.mulr", block_id.0);
@@ -180,7 +213,7 @@ pub(crate) fn emit_integer_power(
     let _ = writeln!(text, "  %podd{dest} = trunc i128 %pe{dest} to i1");
     let _ = writeln!(text, "  br i1 %podd{dest}, label %{mulr}, label %{after}");
     state.control_flow.label(text, mulr.clone());
-    emit_checked_i128_mul(text, dest, "pr", "pb", "prm", &mulr);
+    emit_checked_i128_mul(text, block_id, state, dest, "pr", "pb", "prm", &mulr);
     let _ = writeln!(text, "  br label %{after}");
     state.control_flow.label(text, after.clone());
     let _ = writeln!(
@@ -191,7 +224,7 @@ pub(crate) fn emit_integer_power(
     let _ = writeln!(text, "  %pmore{dest} = icmp ne i128 %pe1{dest}, 0");
     let _ = writeln!(text, "  br i1 %pmore{dest}, label %{square}, label %{done}");
     state.control_flow.label(text, square.clone());
-    emit_checked_i128_mul(text, dest, "pb", "pb", "pb2", &square);
+    emit_checked_i128_mul(text, block_id, state, dest, "pb", "pb", "pb2", &square);
     let _ = writeln!(text, "  br label %{loop_h}");
     state.control_flow.label(text, done.clone());
     let _ = writeln!(
@@ -271,8 +304,11 @@ declare ptr @malloc(i64)
 declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)
 ";
 
+#[allow(clippy::too_many_arguments)]
 fn emit_checked_i128_mul(
     text: &mut String,
+    block_id: BlockId,
+    state: &mut EmissionState,
     dest: u32,
     left: &str,
     right: &str,
@@ -291,12 +327,20 @@ fn emit_checked_i128_mul(
         text,
         "  %{out}f{dest} = extractvalue {{ i128, i1 }} %{out}ov{dest}, 1"
     );
-    let ok = format!("{from}.ok");
-    let _ = writeln!(
+    // The power's magnitude passed i128: the interpreter's checked_pow
+    // reports it without a value.
+    emit_trap(
         text,
-        "  br i1 %{out}f{dest}, label %trap_numeric_overflow, label %{ok}"
+        block_id,
+        state,
+        &format!("%{out}f{dest}"),
+        format!("{from}.ok"),
+        bn_diag::DiagId::NUMERIC_OVERFLOW,
+        vec![(
+            "operation",
+            Fact::Text("performing an integer operation".into()),
+        )],
     );
-    let _ = writeln!(text, "{ok}:");
 }
 
 fn emit_i128_range_trunc(
@@ -312,13 +356,16 @@ fn emit_i128_range_trunc(
     let _ = writeln!(text, "  %shhi{dest} = icmp sgt i128 %shraw{dest}, {max}");
     let _ = writeln!(text, "  %shov{dest} = or i1 %shlo{dest}, %shhi{dest}");
     let ok = take_continuation(block_id, state);
-    let _ = writeln!(
+    emit_overflow_trap(
         text,
-        "  br i1 %shov{dest}, label %trap_numeric_overflow, label %{ok}"
+        block_id,
+        state,
+        &format!("%shov{dest}"),
+        ok,
+        &format!("%shraw{dest}"),
+        ty,
     );
-    state.control_flow.label(text, ok.clone());
     let _ = writeln!(text, "  %v{dest} = trunc i128 %shraw{dest} to {llvm_ty}");
-    state.needs_numeric_overflow_trap = true;
 }
 
 fn take_continuation(block_id: BlockId, state: &mut EmissionState) -> String {

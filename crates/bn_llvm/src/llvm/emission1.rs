@@ -335,6 +335,7 @@ pub(crate) fn lower_scalar_instruction(
             ..
         } => lower_load(
             text,
+            block_id,
             function,
             analysis,
             symbols,
@@ -342,6 +343,7 @@ pub(crate) fn lower_scalar_instruction(
             *destination,
             *symbol,
             ty,
+            state,
         ),
         Instruction::Copy {
             destination,
@@ -493,7 +495,7 @@ pub(crate) fn lower_scalar_instruction(
                     let _ = writeln!(text, "  %v{} = xor i1 1, %v{}", destination.0, operand.0);
                 }
                 ("NOT", "i8" | "i16" | "i32" | "i64") => {
-                    emit_integer_not(text, *destination, *operand, ty, state);
+                    emit_integer_not(text, block_id, *destination, *operand, ty, state);
                 }
                 _ => unreachable!("validated unary operator"),
             }

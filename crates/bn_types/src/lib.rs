@@ -90,6 +90,36 @@ pub fn scalar_test_type(test: &str) -> Option<Type> {
     })
 }
 
+/// The source spelling of an IR operator name (`Percent` is `%`), for
+/// diagnostics on both backends.
+#[must_use]
+pub fn operator_spelling(operator: &str) -> &str {
+    match operator {
+        "Percent" => "%",
+        "Slash" => "/",
+        "Plus" => "+",
+        "Minus" => "-",
+        "Times" => "*",
+        other => other,
+    }
+}
+
+/// The BN spelling of an integer type (`INT32`), for diagnostics on both
+/// backends.
+#[must_use]
+pub const fn integer_type_name(kind: IntegerType) -> &'static str {
+    match kind {
+        IntegerType::Byte => "BYTE",
+        IntegerType::Int8 => "INT8",
+        IntegerType::Int16 => "INT16",
+        IntegerType::Int32 => "INT32",
+        IntegerType::Int64 => "INT64",
+        IntegerType::UInt16 => "UINT16",
+        IntegerType::UInt32 => "UINT32",
+        IntegerType::UInt64 => "UINT64",
+    }
+}
+
 #[must_use]
 pub const fn integer_byte_size(kind: IntegerType) -> u64 {
     match kind {

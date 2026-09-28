@@ -13,6 +13,7 @@ use super::*;
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub(crate) fn lower_load(
     text: &mut String,
+    block_id: BlockId,
     function: &Function,
     analysis: &LoweringAnalysis<'_>,
     symbols: &HashMap<SymbolId, usize>,
@@ -20,6 +21,7 @@ pub(crate) fn lower_load(
     destination: ValueId,
     symbol: SymbolId,
     ty: &Type,
+    state: &mut EmissionState,
 ) {
     let destination = &destination;
     let symbol = &symbol;
@@ -32,24 +34,31 @@ pub(crate) fn lower_load(
     let slot_llvm = llvm_type(slot_ty).expect("validated slot LLVM type");
     if analysis.released_symbols.contains(symbol) {
         let tag = destination.0;
-        let diagnostic = if function
+        // A load that feeds RELEASE is the second RELEASE; any other is a use.
+        let (id, detail) = if function
             .blocks
             .iter()
             .flat_map(|block| &block.instructions)
             .any(|instruction| matches!(instruction, Instruction::Release { value, .. } if value == destination))
         {
-            "@.bn_double_release"
+            (bn_diag::DiagId::DOUBLE_RELEASE, "binding was already released")
         } else {
-            "@.bn_use_after_release"
+            (bn_diag::DiagId::USE_AFTER_RELEASE, "binding was released")
         };
         let _ = writeln!(
             text,
-            "  %loadlive{tag} = load i1, ptr %slive{}",
+            "  %loadlive{tag} = load i1, ptr %slive{}\n  %loadreleased{tag} = xor i1 %loadlive{tag}, true",
             symbols[symbol]
         );
-        let _ = writeln!(
+        let live = take_continuation(block_id, state);
+        emit_trap(
             text,
-            "  br i1 %loadlive{tag}, label %load_live_{tag}, label %load_released_{tag}\nload_released_{tag}:\n  call i32 (ptr, ...) @printf(ptr {diagnostic})\n  call void @exit(i32 1)\n  unreachable\nload_live_{tag}:"
+            block_id,
+            state,
+            &format!("%loadreleased{tag}"),
+            live,
+            id,
+            vec![("detail", Fact::Text(detail.into()))],
         );
     }
     if slot_llvm == "{ i1, double }" && matches!(dest_llvm, "float" | "double") {

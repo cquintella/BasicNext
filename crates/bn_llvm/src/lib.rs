@@ -186,6 +186,8 @@ struct EmissionState {
     md_temp: usize,
     needs_numeric_overflow_trap: bool,
     needs_bn_rt_trap: bool,
+    /// The span of the instruction being lowered, for trap diagnostics.
+    span: bn_source::Span,
     is_start: bool,
     synchronize_prints: bool,
     return_llvm: &'static str,
@@ -251,6 +253,29 @@ pub fn lower_validated_module_for_target_with_policy(
     wasm32: bool,
     policy: &CompiledPolicy,
 ) -> Result<String, String> {
+    lower_validated_module_with_diagnostics(validated, wasm32, policy, &|diagnostic| {
+        let rendered = diagnostic.render(&bn_source::SourceFile::new("", ""));
+        rendered.lines().next().unwrap_or_default().to_owned()
+    })
+}
+
+/// Lowers a validated module whose runtime traps print the diagnostic
+/// `render` gives (bucket 0.6.2b R6): `bnc` passes the renderer `bni` uses,
+/// with the program's source, so a native trap prints the same text.
+///
+/// # Errors
+///
+/// Returns a diagnostic when the validated module is outside target support.
+///
+/// # Panics
+///
+/// Panics if the validated module has no `Start` entry point.
+pub fn lower_validated_module_with_diagnostics(
+    validated: &ValidatedModule,
+    wasm32: bool,
+    policy: &CompiledPolicy,
+    render: &dyn Fn(&bn_diag::Diagnostic) -> String,
+) -> Result<String, String> {
     validate_for(
         validated,
         if wasm32 {
@@ -291,6 +316,7 @@ pub fn lower_validated_module_for_target_with_policy(
     }
     declare_error_abi(&mut text);
     define_type_name_globals(&mut text);
+    define_trap_globals(&mut text, render, wasm32);
     Ok(text)
 }
 
@@ -1028,6 +1054,9 @@ use runtime::{
 #[path = "llvm/fs_emission.rs"]
 mod fs_emission;
 use fs_emission::{FS_CALLS, fs_call_supported, lower_fs_call};
+#[path = "llvm/traps.rs"]
+mod traps;
+use traps::{Fact, define_trap_globals, emit_index_trap, emit_overflow_trap, emit_trap};
 #[path = "llvm/host_results.rs"]
 mod host_results;
 use host_results::{

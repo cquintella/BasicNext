@@ -45,6 +45,7 @@ pub mod secure_fs;
 mod stats;
 mod terminal;
 mod text_abi;
+mod trap_abi;
 
 pub use log::{Level as LogLevel, Record as LogRecord};
 pub use log_abi::*;
@@ -78,6 +79,7 @@ pub use policy::{
 };
 pub use terminal::terminal_dimensions;
 pub use text_abi::*;
+pub use trap_abi::*;
 
 pub use civil::format_rfc3339;
 

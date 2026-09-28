@@ -26,9 +26,19 @@ b0:
   %ov2 = call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %v0, i32 %v1)
   %v2 = extractvalue { i32, i1 } %ov2, 0
   %ovf2 = extractvalue { i32, i1 } %ov2, 1
-  br i1 %ovf2, label %trap_numeric_overflow, label %b0.cont0
+  %ovl2 = sext i32 %v0 to i128
+  %ovr2 = sext i32 %v1 to i128
+  %ovexact2 = add i128 %ovl2, %ovr2
+  br i1 %ovf2, label %b0.cont1, label %b0.cont0
+b0.cont1:
+  call void @bn_rt_trap_report(ptr @.bn_trap_4e554d455249435f4f564552464c4f571f301f301f301f311f311f301f301f301f311f311f6f7065726174696f6e1e636f6e76657274696e6720013020746f20494e543332, i128 %ovexact2, i128 0)
+  br label %trap_numeric_overflow
 b0.cont0:
   ret i32 %v2
 trap_numeric_overflow:
   ret i32 1
+}
+@.bn_trap_4e554d455249435f4f564552464c4f571f301f301f301f311f311f301f301f301f311f311f6f7065726174696f6e1e636f6e76657274696e6720013020746f20494e543332 = private unnamed_addr constant [48 x i8] c"error[NUMERIC_OVERFLOW]: converting \010 to INT32\00"
+define void @bn_rt_trap_report(ptr %text, i128 %first, i128 %second) {
+  ret void
 }

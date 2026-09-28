@@ -62,18 +62,6 @@ pub(crate) fn emit_preamble(
     text.push_str(crate::platform_stdio::windows_binary_stdio_decl(
         synchronize_prints,
     ));
-    if functions.iter().any(|(function, analysis)| {
-        !analysis.released_symbols.is_empty()
-            || function.blocks.iter().any(|block| {
-                block.instructions.iter().any(|instruction| {
-                    matches!(instruction, Instruction::Member { owner, .. } if owner != "Error")
-                })
-            })
-    }) {
-        text.push_str(
-            "@.bn_use_after_release = private constant [41 x i8] c\"USE_AFTER_RELEASE: binding was released\\0A\\00\"\n@.bn_double_release = private constant [46 x i8] c\"DOUBLE_RELEASE: binding was already released\\0A\\00\"\n",
-        );
-    }
     if synchronize_prints {
         text.push_str(&crate::platform_stdio::stdout_lock_decls());
     }

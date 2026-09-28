@@ -265,10 +265,21 @@ pub(crate) fn lower_fs_call(
             let ok = take_continuation(block_id, state);
             let _ = writeln!(
                 text,
-                "  br i1 %filewbbad{dest}, label %trap_numeric_overflow, label %{ok}"
+                "  %filewbidx{dest} = sext i64 {count} to i128\n  %filewblen{dest} = sext i32 %filewbcap{dest} to i128"
             );
-            state.control_flow.label(text, ok);
-            state.needs_numeric_overflow_trap = true;
+            emit_trap(
+                text,
+                block_id,
+                state,
+                &format!("%filewbbad{dest}"),
+                ok,
+                bn_diag::DiagId::INDEX_OUT_OF_BOUNDS,
+                vec![
+                    ("index", Fact::Runtime("{}", format!("%filewbidx{dest}"))),
+                    ("bound", Fact::Runtime("{}", format!("%filewblen{dest}"))),
+                    ("context", Fact::Text("BYTE buffer".into())),
+                ],
+            );
             emit_void_result(
                 text,
                 destination,

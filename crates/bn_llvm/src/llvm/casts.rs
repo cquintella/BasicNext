@@ -299,12 +299,18 @@ fn emit_float_to_integer(
         "  %castbad{dest} = or i1 %castnan{dest}, %castinf{dest}"
     );
     let finite = take_continuation(block_id, state);
-    let _ = writeln!(
+    emit_trap(
         text,
-        "  br i1 %castbad{dest}, label %trap_numeric_overflow, label %{finite}"
+        block_id,
+        state,
+        &format!("%castbad{dest}"),
+        finite,
+        bn_diag::DiagId::INVALID_NUMERIC_CONVERSION,
+        vec![(
+            "message",
+            Fact::Text("NAN and infinity cannot convert to an integer".into()),
+        )],
     );
-    state.control_flow.label(text, finite.clone());
-    state.needs_numeric_overflow_trap = true;
     let _ = writeln!(
         text,
         "  %castw{dest} = fptosi {source} %v{} to i128",
@@ -326,13 +332,16 @@ fn emit_i128_fit_trunc(
     let _ = writeln!(text, "  %casthi{dest} = icmp sgt i128 %castw{dest}, {max}");
     let _ = writeln!(text, "  %castov{dest} = or i1 %castlo{dest}, %casthi{dest}");
     let ok = take_continuation(block_id, state);
-    let _ = writeln!(
+    emit_overflow_trap(
         text,
-        "  br i1 %castov{dest}, label %trap_numeric_overflow, label %{ok}"
+        block_id,
+        state,
+        &format!("%castov{dest}"),
+        ok,
+        &format!("%castw{dest}"),
+        target_ty,
     );
-    state.control_flow.label(text, ok.clone());
     let _ = writeln!(text, "  %v{dest} = trunc i128 %castw{dest} to {target}");
-    state.needs_numeric_overflow_trap = true;
 }
 
 fn take_continuation(block_id: BlockId, state: &mut EmissionState) -> String {

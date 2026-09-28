@@ -80,15 +80,21 @@ pub(crate) fn lower_value_emission(
             );
             let _ = writeln!(
                 text,
-                "  %sizeofok{dest} = icmp ule i64 %sizeofbytes{dest}, 2147483647"
+                "  %sizeofbig{dest} = icmp ugt i64 %sizeofbytes{dest}, 2147483647"
             );
-            let _ = writeln!(
+            emit_trap(
                 text,
-                "  br i1 %sizeofok{dest}, label %{continuation}, label %trap_numeric_overflow"
+                block_id,
+                state,
+                &format!("%sizeofbig{dest}"),
+                continuation,
+                bn_diag::DiagId::NUMERIC_OVERFLOW,
+                vec![(
+                    "operation",
+                    Fact::Text("converting a value to INTEGER".into()),
+                )],
             );
-            state.control_flow.label(text, continuation);
             let _ = writeln!(text, "  %v{dest} = trunc i64 %sizeofbytes{dest} to i32");
-            state.needs_numeric_overflow_trap = true;
         }
         Instruction::Length {
             destination,

@@ -1,0 +1,13 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Runtime trap: multidimensional write out of bounds. bni and the native binary print the same
+// diagnostic and exit with status 1 (bucket 0.6.2b R6).
+FUNCTION Start() AS INTEGER
+    LET grid AS INTEGER[2][2] = [[1, 2], [3, 4]]
+    LET at AS INTEGER = 3
+    grid[0][at] = 1
+    RETURN 0
+END FUNCTION

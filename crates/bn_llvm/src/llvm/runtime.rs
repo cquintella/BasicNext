@@ -821,7 +821,15 @@ pub(crate) fn lower_bn_rt_call(
             );
             let _ = writeln!(text, "  {length} = add i32 {len}, 0");
             let _ = writeln!(text, "  %netwritten{dest} = alloca i32");
-            emit_buffer_bound(text, block_id, destination, arguments[2], &length, state);
+            emit_buffer_bound(
+                text,
+                block_id,
+                destination,
+                arguments[2],
+                &length,
+                "datagram exceeds the buffer",
+                state,
+            );
             let _ = writeln!(
                 text,
                 "  %netrc{dest} = call i32 @bn_rt_net_udp_send_to(i64 %nethandle{dest}, ptr {address}, i32 {port}, ptr {bytes}, i32 {length}, ptr %netwritten{dest})"
@@ -862,7 +870,15 @@ pub(crate) fn lower_bn_rt_call(
                     .expect("validated length"),
             );
             let _ = writeln!(text, "  %netout{dest} = alloca i32");
-            emit_buffer_bound(text, block_id, destination, arguments[1], &length, state);
+            emit_buffer_bound(
+                text,
+                block_id,
+                destination,
+                arguments[1],
+                &length,
+                "read exceeds buffer or 1 MiB",
+                state,
+            );
             let _ = writeln!(
                 text,
                 "  %netrc{dest} = call i32 @bn_rt_net_tcp_read(i64 %nethandle{dest}, ptr %netbuffer{dest}, i32 {length}, ptr %netout{dest})"
@@ -992,7 +1008,15 @@ pub(crate) fn lower_bn_rt_call(
                     .expect("validated maximum"),
             );
             let _ = writeln!(text, "  %netcopied{dest} = alloca i32");
-            emit_buffer_bound(text, block_id, destination, arguments[1], &maximum, state);
+            emit_buffer_bound(
+                text,
+                block_id,
+                destination,
+                arguments[1],
+                &maximum,
+                "copy exceeds buffer or 1 MiB",
+                state,
+            );
             let _ = writeln!(
                 text,
                 "  %netrc{dest} = call i32 @bn_rt_net_udp_packet_copy_to(i64 %nethandle{dest}, ptr %netbuffer{dest}, i32 {maximum}, ptr %netcopied{dest})"
@@ -1053,7 +1077,15 @@ pub(crate) fn lower_bn_rt_call(
                     .expect("validated length"),
             );
             let _ = writeln!(text, "  %netout{dest} = alloca i32");
-            emit_buffer_bound(text, block_id, destination, arguments[1], &length, state);
+            emit_buffer_bound(
+                text,
+                block_id,
+                destination,
+                arguments[1],
+                &length,
+                "write exceeds buffer or 1 MiB",
+                state,
+            );
             let _ = writeln!(
                 text,
                 "  %netrc{dest} = call i32 @bn_rt_net_tcp_write(i64 %nethandle{dest}, ptr %netbuffer{dest}, i32 {length}, ptr %netout{dest})"

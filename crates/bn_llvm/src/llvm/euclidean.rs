@@ -20,12 +20,18 @@ pub(crate) fn emit_euclidean_integer_op(
     let right_op = coerce_to_type(text, right, right_ty, ty);
     let zero_ok = take_continuation(block_id, state);
     let _ = writeln!(text, "  %divz{dest} = icmp eq {llvm_ty} {right_op}, 0");
-    let _ = writeln!(
+    emit_trap(
         text,
-        "  br i1 %divz{dest}, label %trap_numeric_overflow, label %{zero_ok}"
+        block_id,
+        state,
+        &format!("%divz{dest}"),
+        zero_ok,
+        bn_diag::DiagId::DIVISION_BY_ZERO,
+        vec![(
+            "operation",
+            Fact::Text(bn_types::operator_spelling(operator).into()),
+        )],
     );
-    state.control_flow.label(text, zero_ok.clone());
-    state.needs_numeric_overflow_trap = true;
     if is_unsigned(ty) {
         let opcode = match operator {
             "DIV" => "udiv",
@@ -47,12 +53,21 @@ pub(crate) fn emit_euclidean_integer_op(
     );
     match operator {
         "DIV" => {
+            // MIN DIV -1: the exact quotient is -MIN, as the interpreter reports.
             let ok = take_continuation(block_id, state);
             let _ = writeln!(
                 text,
-                "  br i1 %divovf{dest}, label %trap_numeric_overflow, label %{ok}"
+                "  %divexact{dest} = sext {llvm_ty} {left_op} to i128\n  %divneg128{dest} = sub i128 0, %divexact{dest}"
             );
-            state.control_flow.label(text, ok.clone());
+            emit_overflow_trap(
+                text,
+                block_id,
+                state,
+                &format!("%divovf{dest}"),
+                ok,
+                &format!("%divneg128{dest}"),
+                ty,
+            );
             emit_signed_div(text, dest, llvm_ty, &left_op, &right_op);
         }
         "Percent" => {

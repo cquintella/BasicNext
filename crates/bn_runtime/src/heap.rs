@@ -66,17 +66,10 @@ impl<T: Clone> Heap<T> {
     /// Diagnoses stale handles and out-of-bounds indices.
     pub fn get(&self, handle: Handle, index: usize, span: Span) -> Result<&T, Diagnostic> {
         let allocation = self.live(handle, span)?;
-        allocation.payload.get(index).ok_or_else(|| {
-            heap_error(
-                bn_diag::DiagId::INDEX_OUT_OF_BOUNDS,
-                format!(
-                    "index {index} is outside {} region length {}",
-                    allocation.declared_type,
-                    allocation.payload.len()
-                ),
-                span,
-            )
-        })
+        allocation
+            .payload
+            .get(index)
+            .ok_or_else(|| region_index_error(index, allocation.payload.len(), span))
     }
 
     /// Mutably accesses one element through a checked handle.
@@ -92,13 +85,10 @@ impl<T: Clone> Heap<T> {
     ) -> Result<&mut T, Diagnostic> {
         let allocation = self.live_mut(handle, span)?;
         let length = allocation.payload.len();
-        allocation.payload.get_mut(index).ok_or_else(|| {
-            heap_error(
-                bn_diag::DiagId::INDEX_OUT_OF_BOUNDS,
-                format!("index {index} is outside region length {length}"),
-                span,
-            )
-        })
+        allocation
+            .payload
+            .get_mut(index)
+            .ok_or_else(|| region_index_error(index, length, span))
     }
 
     /// Returns the number of live elements in an allocation.
@@ -359,21 +349,28 @@ fn too_large(span: Span) -> Diagnostic {
     )
 }
 
+/// `INDEX_OUT_OF_BOUNDS` for a region access, with its typed facts (the
+/// native trap builds the same arguments).
+fn region_index_error(index: usize, length: usize, span: Span) -> Diagnostic {
+    Diagnostic::structured(
+        bn_diag::DiagId::INDEX_OUT_OF_BOUNDS,
+        vec![
+            ("index".into(), index.to_string().into()),
+            ("bound".into(), length.to_string().into()),
+            ("context".into(), "region".into()),
+        ],
+        vec![bn_diag::Label {
+            span,
+            style: bn_diag::LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("index-out-of-bounds diagnostic schema")
+}
+
 fn heap_error(id: bn_diag::DiagId, message: impl Into<String>, span: Span) -> Diagnostic {
     let message = message.into();
-    let arguments = if id == bn_diag::DiagId::INDEX_OUT_OF_BOUNDS {
-        vec![
-            (
-                "index".into(),
-                bn_diag::DiagnosticValue::Text("unknown".into()),
-            ),
-            (
-                "bound".into(),
-                bn_diag::DiagnosticValue::Text("unknown".into()),
-            ),
-            ("context".into(), bn_diag::DiagnosticValue::Text(message)),
-        ]
-    } else {
+    let arguments = {
         match id.argument_schema() {
             [only] => vec![(only.name.into(), bn_diag::DiagnosticValue::Text(message))],
             schema => unreachable!(
