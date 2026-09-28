@@ -18,6 +18,7 @@ pub use udp::*;
 use super::*;
 
 use super::net::error::{Failure, NetError};
+use super::net::handles::{self, Handle};
 
 /// Records `error` for the `Error` the emitted code builds; the status: 2
 /// for a policy denial (the call-boundary re-check, host-traits.md), else 1.
@@ -57,6 +58,41 @@ fn text_argument<'a>(
             Failure::InvalidArgument("the text is not valid UTF-8".into()),
         )
     })
+}
+
+/// Stores a new socket or packet; `Net.LIMIT` past the quota.
+fn store(value: Handle, operation: &'static str, action: &str) -> Result<i64, NetError> {
+    let index = handles::insert(value).map_err(|_| net::quota_exceeded(operation, action))?;
+    Ok(i64::try_from(index).unwrap_or(i64::MAX))
+}
+
+/// An endpoint argument from emitted code, after the policy re-check.
+fn endpoint_argument(
+    address: *const c_char,
+    port: i32,
+    operation: &'static str,
+    action: &str,
+) -> Result<net::Endpoint, NetError> {
+    authorized(operation, action)?;
+    let address = net::parse_address(text_argument(address, operation, action)?)?;
+    let port = u16::try_from(port).map_err(|_| {
+        NetError::new(
+            operation,
+            action,
+            Failure::InvalidArgument(format!("the port must be within 0..65535; got {port}")),
+        )
+    })?;
+    Ok(net::Endpoint::new(address, port))
+}
+
+/// The C status of `result`: 0, or the recorded failure's status.
+fn status(result: Result<(), NetError>) -> i32 {
+    result.map_or_else(|error| failed(&error), |()| 0)
+}
+
+fn write_endpoint(endpoint: net::Endpoint, out_address: *mut *mut c_char, out_port: *mut i32) {
+    write_out(out_address, c_string(&endpoint.address().to_string()));
+    write_out(out_port, i32::from(endpoint.port()));
 }
 
 /// Writes `value` to `out` when the caller supplied a slot.

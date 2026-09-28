@@ -122,3 +122,71 @@ pub(crate) fn declare_error_abi(text: &mut String) {
         }
     }
 }
+
+/// Traps (as an index out of bounds does) when `length` is negative or
+/// larger than the BN buffer `buffer` (`{ ptr, i32 }`): the runtime writes
+/// or reads `length` bytes through the buffer's pointer, and the
+/// interpreter rejects the same call before any I/O.
+pub(crate) fn emit_buffer_bound(
+    text: &mut String,
+    block_id: BlockId,
+    destination: ValueId,
+    buffer: ValueId,
+    length: &str,
+    state: &mut EmissionState,
+) {
+    let dest = destination.0;
+    let _ = writeln!(
+        text,
+        "  %bufcap{dest} = extractvalue {{ ptr, i32 }} %v{}, 1",
+        buffer.0
+    );
+    let _ = writeln!(text, "  %bufneg{dest} = icmp slt i32 {length}, 0");
+    let _ = writeln!(
+        text,
+        "  %bufover{dest} = icmp sgt i32 {length}, %bufcap{dest}"
+    );
+    let _ = writeln!(
+        text,
+        "  %bufbad{dest} = or i1 %bufneg{dest}, %bufover{dest}"
+    );
+    let ok = take_continuation(block_id, state);
+    let _ = writeln!(
+        text,
+        "  br i1 %bufbad{dest}, label %trap_numeric_overflow, label %{ok}"
+    );
+    state.control_flow.label(text, ok);
+    state.needs_numeric_overflow_trap = true;
+}
+
+/// Builds an `Endpoint OR Error` (`{ i1, ptr, i32 }`) from a `bn_rt` status:
+/// status 0 is the endpoint (`address`, `port`); any other status is an
+/// `Error` whose pointer is the recorded report (`bn_rt_error_take`) and
+/// whose payload is its code, as `emit_status_result` builds for handles.
+pub(crate) fn emit_endpoint_result(
+    text: &mut String,
+    destination: ValueId,
+    rc: &str,
+    address: &str,
+    port: &str,
+) {
+    let dest = destination.0;
+    let _ = writeln!(text, "  %eperr{dest} = icmp ne i32 {rc}, 0");
+    let _ = writeln!(text, "  %eperrint{dest} = zext i1 %eperr{dest} to i32");
+    let _ = writeln!(
+        text,
+        "  %epmsg{dest} = call ptr @bn_rt_error_take(i32 %eperrint{dest}, ptr null)"
+    );
+    let _ = writeln!(
+        text,
+        "  %epptr{dest} = select i1 %eperr{dest}, ptr %epmsg{dest}, ptr {address}"
+    );
+    let _ = writeln!(
+        text,
+        "  %epcode{dest} = call i64 @bn_rt_error_code(ptr %epmsg{dest})\n  %epcode32{dest} = trunc i64 %epcode{dest} to i32\n  %epport{dest} = select i1 %eperr{dest}, i32 %epcode32{dest}, i32 {port}"
+    );
+    let _ = writeln!(
+        text,
+        "  %epagg0{dest} = insertvalue {{ i1, ptr, i32 }} undef, i1 %eperr{dest}, 0\n  %epagg1{dest} = insertvalue {{ i1, ptr, i32 }} %epagg0{dest}, ptr %epptr{dest}, 1\n  %v{dest} = insertvalue {{ i1, ptr, i32 }} %epagg1{dest}, i32 %epport{dest}, 2"
+    );
+}

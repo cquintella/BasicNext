@@ -40,7 +40,7 @@ pub extern "C" fn bn_rt_exec_run(
     let Some(program) = input(program) else {
         return EXEC_INVALID_ARGUMENT;
     };
-    if program.is_empty() || (arg_count > 0 && args.is_null()) {
+    if arg_count > 0 && args.is_null() {
         return EXEC_INVALID_ARGUMENT;
     }
     let mut arguments = Vec::with_capacity(arg_count as usize);
@@ -55,7 +55,15 @@ pub extern "C" fn bn_rt_exec_run(
     }
     let output = match bn_host_exec::run(program, &arguments, &crate::policy::exec_policy()) {
         Ok(output) => output,
-        Err(failure) => return failure.code,
+        Err(failure) => {
+            crate::set_error_report(
+                failure.code,
+                failure.operation(),
+                failure.message(),
+                failure.cause(),
+            );
+            return failure.code;
+        }
     };
     // C strings cannot carry NUL; the interpreter side keeps such output.
     let (Ok(stdout), Ok(stderr)) = (CString::new(output.stdout), CString::new(output.stderr))

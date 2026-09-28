@@ -3,88 +3,112 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! C ABI for `HOST.Net` UDP sockets and packets, and handle close.
+//! C ABI for `HOST.Net` UDP sockets and packets, and handle close. The
+//! operations are the shared core (`net::udp`); a failure records its
+//! `Error` (status 1, or 2 for a policy denial) for the emitted code to read.
 
 use super::*;
 
-/// Binds an UDP socket and returns its opaque runtime handle in `out`.
-#[allow(unsafe_code)]
+/// Runs `f` on a clone of the socket behind `handle`, outside the
+/// handle-table lock (a blocking Receive must not stall other sockets); a
+/// closed or unknown handle is `None` (`Net.CLOSED` in the core).
+fn with_socket<T>(
+    handle: i64,
+    f: impl FnOnce(Option<&net::UdpSocket>) -> Result<T, NetError>,
+) -> Result<T, NetError> {
+    let socket = usize::try_from(handle).ok().and_then(|index| {
+        handles::with(index, |value| match value {
+            Handle::UdpSocket(socket) => socket.try_clone().ok(),
+            _ => None,
+        })
+        .ok()
+        .flatten()
+        .flatten()
+    });
+    f(socket.as_ref())
+}
+
+/// Runs `f` on the packet behind `handle` (packets do no I/O).
+fn with_packet<T>(handle: i64, f: impl FnOnce(&net::UdpPacket) -> T) -> Option<T> {
+    let index = usize::try_from(handle).ok()?;
+    handles::with(index, |value| match value {
+        Handle::UdpPacket(packet) => Some(f(packet)),
+        _ => None,
+    })
+    .ok()
+    .flatten()
+    .flatten()
+}
+
+/// A byte count from emitted code, within the datagram bound.
+fn datagram_bytes<'a>(
+    bytes: *const u8,
+    length: i32,
+    operation: &'static str,
+    action: &str,
+) -> Result<&'a [u8], NetError> {
+    let maximum = net::datagram_max();
+    let length = usize::try_from(length)
+        .ok()
+        .filter(|length| *length <= maximum)
+        .ok_or_else(|| {
+            NetError::new(
+                operation,
+                action,
+                Failure::InvalidArgument(format!(
+                    "a datagram holds 0..{maximum} bytes; got {length}"
+                )),
+            )
+        })?;
+    if length == 0 || bytes.is_null() {
+        return Ok(&[]);
+    }
+    // SAFETY: emitted code passes a live buffer of `length` bytes (the BYTE
+    // vector's fat pointer).
+    #[allow(unsafe_code)]
+    Ok(unsafe { std::slice::from_raw_parts(bytes, length) })
+}
+
+/// `HOST.Net.UDPBind`: `out` receives the socket handle.
+#[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_udp_bind(address: *const c_char, port: i32, out: *mut i64) -> i32 {
-    if !policy::allows(policy::POLICY_NET) {
-        fail(
-            "EXECUTION_POLICY_DENIED",
-            "HOST.Net is denied by execution policy",
-        );
-        return 2;
-    }
-    let Some(address) = c_str(address) else {
-        return 1;
-    };
-    let Ok(address) = net::Address::parse(address) else {
-        return 1;
-    };
-    let Ok(port) = u16::try_from(port) else {
-        return 1;
-    };
-    let Ok(socket) = net::UdpSocket::bind(net::Endpoint::new(address, port)) else {
-        return 1;
-    };
-    let Ok(handle) = net::handles::insert(net::handles::Handle::UdpSocket(socket)) else {
-        return 1;
-    };
-    unsafe {
-        if !out.is_null() {
-            *out = i64::try_from(handle).unwrap_or(i64::MAX);
-        }
+    const OPERATION: &str = "HOST.Net.UDPBind";
+    status(
+        endpoint_argument(address, port, OPERATION, "bind")
+            .and_then(net::udp_bind)
+            .and_then(|socket| store(Handle::UdpSocket(socket), OPERATION, "bind"))
+            .map(|handle| write_out(out, handle)),
+    )
+}
+
+/// `Close` of a stream, listener, or socket. Idempotent (host-net.md): a
+/// handle that is already closed is not an error.
+#[allow(unsafe_code)] // C ABI export.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_net_handle_close(handle: i64) -> i32 {
+    if let Ok(handle) = usize::try_from(handle) {
+        let _ = handles::remove(handle);
     }
     0
 }
 
-/// Closes an opaque network handle. Returns 0 when a live handle was removed.
-#[allow(unsafe_code)]
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_net_handle_close(handle: i64) -> i32 {
-    let Ok(handle) = usize::try_from(handle) else {
-        return 1;
-    };
-    match net::handles::remove(handle) {
-        Ok(Some(_)) => 0,
-        Ok(None) | Err(_) => 1,
-    }
-}
-
-/// Returns the local endpoint of an UDP handle.
-#[allow(unsafe_code)]
+/// `HOST.Net.UDPSocket.LocalEndpoint`.
+#[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_udp_local_endpoint(
     handle: i64,
     out_address: *mut *mut c_char,
     out_port: *mut i32,
 ) -> i32 {
-    let Ok(handle) = usize::try_from(handle) else {
-        return 1;
-    };
-    let result = net::handles::with(handle, |value| match value {
-        net::handles::Handle::UdpSocket(socket) => socket.local_endpoint(),
-        _ => Err(std::io::Error::other("handle is not an UDP socket")),
-    });
-    let Ok(Some(Ok(endpoint))) = result else {
-        return 1;
-    };
-    unsafe {
-        if !out_address.is_null() {
-            *out_address = c_string(&endpoint.address().to_string());
-        }
-        if !out_port.is_null() {
-            *out_port = i32::from(endpoint.port());
-        }
-    }
-    0
+    status(
+        with_socket(handle, net::udp_local_endpoint)
+            .map(|endpoint| write_endpoint(endpoint, out_address, out_port)),
+    )
 }
 
-/// Sends one bounded UDP datagram to an address and port.
-#[allow(unsafe_code)]
+/// `HOST.Net.UDPSocket.SendTo`: `out_written` receives the bytes sent.
+#[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_udp_send_to(
     handle: i64,
@@ -94,52 +118,30 @@ pub extern "C" fn bn_rt_net_udp_send_to(
     length: i32,
     out_written: *mut i32,
 ) -> i32 {
-    if !policy::allows(policy::POLICY_NET) {
-        fail(
-            "EXECUTION_POLICY_DENIED",
-            "HOST.Net is denied by execution policy",
-        );
-        return 2;
-    }
-    let Ok(handle) = usize::try_from(handle) else {
-        return 1;
-    };
-    let Some(address) = c_str(address) else {
-        return 1;
-    };
-    let Ok(address) = net::Address::parse(address) else {
-        return 1;
-    };
-    let Ok(port) = u16::try_from(port) else {
-        return 1;
-    };
-    let Ok(length) = usize::try_from(length) else {
-        return 1;
-    };
-    if length > 65_507 || (length != 0 && bytes.is_null()) {
-        return 1;
-    }
-    let data = unsafe { std::slice::from_raw_parts(bytes, length) };
-    let result = net::handles::with(handle, |value| match value {
-        net::handles::Handle::UdpSocket(socket) => {
-            socket.send_to(net::Endpoint::new(address, port), data)
-        }
-        _ => Err(std::io::Error::other("handle is not an UDP socket")),
-    });
-    let Ok(Some(Ok(written))) = result else {
-        return 1;
-    };
-    unsafe {
-        if !out_written.is_null() {
-            *out_written = i32::try_from(written).unwrap_or(i32::MAX);
-        }
-    }
-    0
+    const OPERATION: &str = "HOST.Net.UDPSocket.SendTo";
+    write_out(out_written, 0);
+    status(
+        endpoint_argument(address, port, OPERATION, "send a datagram")
+            .and_then(|endpoint| {
+                let data = datagram_bytes(bytes, length, OPERATION, "send a datagram")?;
+                with_socket(handle, |socket| net::udp_send_to(socket, endpoint, data))
+            })
+            .map(|written| write_out(out_written, i32::try_from(written).unwrap_or(i32::MAX))),
+    )
 }
 
-/// Receives one bounded UDP datagram. The returned buffer is freed with
+fn receive(handle: i64, maximum: i32, timeout_ms: i32) -> Result<net::UdpPacket, NetError> {
+    const OPERATION: &str = "HOST.Net.UDPSocket.Receive";
+    authorized(OPERATION, "receive a datagram")?;
+    with_socket(handle, |socket| {
+        net::udp_receive(socket, maximum.into(), timeout_ms.into())
+    })
+}
+
+/// Receives one datagram into a new buffer, freed with
 /// `bn_rt_net_buffer_free`.
-#[allow(unsafe_code)]
+#[allow(unsafe_code)] // C ABI export.
+#[allow(clippy::too_many_arguments)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_udp_receive(
     handle: i64,
@@ -151,61 +153,19 @@ pub extern "C" fn bn_rt_net_udp_receive(
     out_port: *mut i32,
     out_truncated: *mut i32,
 ) -> i32 {
-    if !policy::allows(policy::POLICY_NET) {
-        fail(
-            "EXECUTION_POLICY_DENIED",
-            "HOST.Net is denied by execution policy",
-        );
-        return 2;
-    }
-    let Ok(handle) = usize::try_from(handle) else {
-        return 1;
-    };
-    let Ok(maximum) = usize::try_from(maximum) else {
-        return 1;
-    };
-    if maximum == 0 || maximum > 65_507 {
-        return 1;
-    }
-    let timeout = std::time::Duration::from_millis(u64::try_from(timeout_ms.max(0)).unwrap_or(0));
-    let result = net::handles::with(handle, |value| match value {
-        net::handles::Handle::UdpSocket(socket) => {
-            socket.set_read_timeout(Some(timeout))?;
-            socket.receive(maximum)
-        }
-        _ => Err(std::io::Error::other("handle is not an UDP socket")),
-    });
-    let Ok(Some(Ok(packet))) = result else {
-        return 1;
-    };
-    let mut data = packet.bytes().to_vec().into_boxed_slice();
-    let data_ptr = data.as_mut_ptr();
-    let data_len = i32::try_from(data.len()).unwrap_or(i32::MAX);
-    std::mem::forget(data);
-    let source = packet.source();
-    unsafe {
-        if !out_data.is_null() {
-            *out_data = data_ptr;
-        }
-        if !out_length.is_null() {
-            *out_length = data_len;
-        }
-        if !out_address.is_null() {
-            *out_address = c_string(&source.address().to_string());
-        }
-        if !out_port.is_null() {
-            *out_port = i32::from(source.port());
-        }
-        if !out_truncated.is_null() {
-            *out_truncated = i32::from(packet.truncated());
-        }
-    }
-    0
+    status(receive(handle, maximum, timeout_ms).map(|packet| {
+        let mut data = packet.bytes().to_vec().into_boxed_slice();
+        write_out(out_length, i32::try_from(data.len()).unwrap_or(i32::MAX));
+        write_out(out_data, data.as_mut_ptr());
+        std::mem::forget(data);
+        write_endpoint(packet.source(), out_address, out_port);
+        write_out(out_truncated, i32::from(packet.truncated()));
+    }))
 }
 
-/// Receives one UDP packet and returns an opaque packet handle in `out`.
-/// The handle is released with `bn_rt_net_handle_close`.
-#[allow(unsafe_code)]
+/// `HOST.Net.UDPSocket.Receive`: `out` receives a packet handle, released
+/// with `bn_rt_net_handle_close`.
+#[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_udp_receive_handle(
     handle: i64,
@@ -213,80 +173,39 @@ pub extern "C" fn bn_rt_net_udp_receive_handle(
     timeout_ms: i32,
     out: *mut i64,
 ) -> i32 {
-    if !policy::allows(policy::POLICY_NET) {
-        fail(
-            "EXECUTION_POLICY_DENIED",
-            "HOST.Net is denied by execution policy",
-        );
-        return 2;
-    }
-    let Ok(handle) = usize::try_from(handle) else {
-        return 1;
-    };
-    let Ok(maximum) = usize::try_from(maximum) else {
-        return 1;
-    };
-    if maximum == 0 || maximum > 65_507 {
-        return 1;
-    }
-    let timeout = std::time::Duration::from_millis(u64::try_from(timeout_ms.max(0)).unwrap_or(0));
-    let result = net::handles::with(handle, |value| match value {
-        net::handles::Handle::UdpSocket(socket) => {
-            socket.set_read_timeout(Some(timeout))?;
-            socket.receive(maximum)
-        }
-        _ => Err(std::io::Error::other("handle is not an UDP socket")),
-    });
-    let Ok(Some(Ok(packet))) = result else {
-        return 1;
-    };
-    let Ok(packet_handle) = net::handles::insert(net::handles::Handle::UdpPacket(packet)) else {
-        return 1;
-    };
-    unsafe {
-        if !out.is_null() {
-            *out = i64::try_from(packet_handle).unwrap_or(i64::MAX);
-        }
-    }
-    0
+    status(
+        receive(handle, maximum, timeout_ms)
+            .and_then(|packet| {
+                store(
+                    Handle::UdpPacket(packet),
+                    "HOST.Net.UDPSocket.Receive",
+                    "keep the datagram",
+                )
+            })
+            .map(|packet| write_out(out, packet)),
+    )
 }
 
-/// Returns packet payload size.
-#[allow(unsafe_code)]
+/// `HOST.Net.UDPPacket.Size` (-1 for an unknown packet handle).
+#[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_udp_packet_size(handle: i64) -> i32 {
-    let Ok(handle) = usize::try_from(handle) else {
-        return -1;
-    };
-    match net::handles::with(handle, |value| match value {
-        net::handles::Handle::UdpPacket(packet) => {
-            i32::try_from(packet.bytes().len()).unwrap_or(i32::MAX)
-        }
-        _ => -1,
-    }) {
-        Ok(Some(size)) => size,
-        _ => -1,
-    }
+    with_packet(handle, |packet| {
+        i32::try_from(packet.bytes().len()).unwrap_or(i32::MAX)
+    })
+    .unwrap_or(-1)
 }
 
-/// Returns whether a packet was truncated at the requested receive bound.
-#[allow(unsafe_code)]
+/// `HOST.Net.UDPPacket.Truncated` (-1 for an unknown packet handle).
+#[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_udp_packet_truncated(handle: i64) -> i32 {
-    let Ok(handle) = usize::try_from(handle) else {
-        return -1;
-    };
-    match net::handles::with(handle, |value| match value {
-        net::handles::Handle::UdpPacket(packet) => i32::from(packet.truncated()),
-        _ => -1,
-    }) {
-        Ok(Some(value)) => value,
-        _ => -1,
-    }
+    with_packet(handle, |packet| i32::from(packet.truncated())).unwrap_or(-1)
 }
 
-/// Copies packet bytes into a caller-provided buffer.
-#[allow(unsafe_code)]
+/// `HOST.Net.UDPPacket.CopyTo`: copies at most `length` bytes, as the
+/// interpreter does; `out_copied` receives the count.
+#[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_udp_packet_copy_to(
     handle: i64,
@@ -294,62 +213,39 @@ pub extern "C" fn bn_rt_net_udp_packet_copy_to(
     length: i32,
     out_copied: *mut i32,
 ) -> i32 {
-    let Ok(handle) = usize::try_from(handle) else {
-        return 1;
-    };
-    let Ok(length) = usize::try_from(length) else {
-        return 1;
-    };
-    if length > 65_507 || (length != 0 && buffer.is_null()) {
-        return 1;
-    }
-    let target = unsafe { std::slice::from_raw_parts_mut(buffer, length) };
-    let result = net::handles::with(handle, |value| match value {
-        net::handles::Handle::UdpPacket(packet) => {
-            if length < packet.bytes().len() {
-                return Err(std::io::Error::other("buffer is too small"));
-            }
-            target[..packet.bytes().len()].copy_from_slice(packet.bytes());
-            Ok(packet.bytes().len())
+    const OPERATION: &str = "HOST.Net.UDPPacket.CopyTo";
+    write_out(out_copied, 0);
+    let result = with_packet(handle, |packet| {
+        let count = packet
+            .bytes()
+            .len()
+            .min(usize::try_from(length).unwrap_or(0));
+        if count > 0 && !buffer.is_null() {
+            // SAFETY: emitted code passes a live buffer of at least `length`
+            // bytes, and `count <= length`.
+            unsafe { std::slice::from_raw_parts_mut(buffer, count) }
+                .copy_from_slice(&packet.bytes()[..count]);
         }
-        _ => Err(std::io::Error::other("handle is not an UDP packet")),
-    });
-    let Ok(Some(Ok(copied))) = result else {
-        return 1;
-    };
-    unsafe {
-        if !out_copied.is_null() {
-            *out_copied = i32::try_from(copied).unwrap_or(i32::MAX);
-        }
-    }
-    0
+        count
+    })
+    .ok_or_else(|| NetError::new(OPERATION, "copy the datagram", Failure::Closed));
+    status(result.map(|count| write_out(out_copied, i32::try_from(count).unwrap_or(i32::MAX))))
 }
 
-/// Returns the source endpoint of a received packet.
-#[allow(unsafe_code)]
+/// `HOST.Net.UDPPacket.Source`.
+#[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_udp_packet_source(
     handle: i64,
     out_address: *mut *mut c_char,
     out_port: *mut i32,
 ) -> i32 {
-    let Ok(handle) = usize::try_from(handle) else {
-        return 1;
-    };
-    let result = net::handles::with(handle, |value| match value {
-        net::handles::Handle::UdpPacket(packet) => Ok(packet.source()),
-        _ => Err(std::io::Error::other("handle is not an UDP packet")),
+    let result = with_packet(handle, net::UdpPacket::source).ok_or_else(|| {
+        NetError::new(
+            "HOST.Net.UDPPacket.Source",
+            "read the datagram's source",
+            Failure::Closed,
+        )
     });
-    let Ok(Some(Ok(endpoint))) = result else {
-        return 1;
-    };
-    unsafe {
-        if !out_address.is_null() {
-            *out_address = c_string(&endpoint.address().to_string());
-        }
-        if !out_port.is_null() {
-            *out_port = i32::from(endpoint.port());
-        }
-    }
-    0
+    status(result.map(|endpoint| write_endpoint(endpoint, out_address, out_port)))
 }

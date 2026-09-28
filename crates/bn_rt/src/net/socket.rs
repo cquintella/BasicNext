@@ -176,6 +176,12 @@ pub struct UdpPacket {
 }
 
 impl UdpSocket {
+    pub fn try_clone(&self) -> io::Result<Self> {
+        Ok(Self {
+            inner: self.inner.try_clone()?,
+        })
+    }
+
     pub fn bind(endpoint: Endpoint) -> io::Result<Self> {
         Ok(Self {
             inner: std::net::UdpSocket::bind(SocketAddr::new(

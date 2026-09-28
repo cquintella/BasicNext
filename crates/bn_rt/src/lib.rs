@@ -916,7 +916,8 @@ mod tests {
         assert_eq!(bn_rt_net_udp_bind(address.as_ptr(), 0, &raw mut handle), 0);
         assert!(handle >= 0);
         assert_eq!(bn_rt_net_handle_close(handle), 0);
-        assert_eq!(bn_rt_net_handle_close(handle), 1);
+        // Close is idempotent (host-net.md): a second Close is not an error.
+        assert_eq!(bn_rt_net_handle_close(handle), 0);
     }
 
     #[test]

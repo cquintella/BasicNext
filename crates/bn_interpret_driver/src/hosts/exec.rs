@@ -77,18 +77,8 @@ fn exec_run(
             span,
         ));
     };
-    if !policy.allowed {
-        return Ok(Value::error(
-            bn_host_exec::EXEC_POLICY_DENIED,
-            "HOST.Exec is denied by execution policy".into(),
-        ));
-    }
-    if program.is_empty() || program.as_bytes().contains(&0) {
-        return Ok(Value::error(
-            bn_host_exec::EXEC_INVALID_ARGUMENT,
-            "program must be non-empty and contain no NUL".into(),
-        ));
-    }
+    // Policy and argument rules live in `bn_host_exec::run`, shared with
+    // the native runtime.
     let mut values = Vec::with_capacity(args.len());
     for arg in args {
         let Value::String(value) = arg else {
@@ -99,12 +89,6 @@ fn exec_run(
                 span,
             ));
         };
-        if value.as_bytes().contains(&0) {
-            return Ok(Value::error(
-                bn_host_exec::EXEC_INVALID_ARGUMENT,
-                "arguments must not contain NUL".into(),
-            ));
-        }
         values.push(value.as_ref());
     }
     match bn_host_exec::run(program, &values, &policy) {
@@ -118,6 +102,11 @@ fn exec_run(
                 record: RecordValue::new("HOST.Exec.Result", fields),
             })
         }
-        Err(failure) => Ok(Value::error(failure.code, shared_string(failure.message))),
+        Err(failure) => Ok(Value::error_report(
+            failure.code,
+            failure.operation(),
+            failure.message(),
+            failure.cause().to_owned(),
+        )),
     }
 }

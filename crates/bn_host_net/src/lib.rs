@@ -105,18 +105,10 @@ impl Provider for NetProvider {
         arguments: Vec<Value>,
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        let name = format!("HOST.Net.{member}");
-        // Every fallible HOST.Net operation returns `T OR Error`, and no
-        // network failure may bypass BN control flow (host-net.md): an
-        // operating-system I/O failure becomes an `Error` value here, once,
-        // instead of a fatal diagnostic at each call site. Misuse such as a
-        // released handle stays a diagnostic.
-        match self.host_net_call(core, &name, &arguments, span) {
-            Err(diagnostic) if diagnostic.code == bn_diag::DiagId::IO.desc().code => {
-                Ok(Value::error(1, shared_string(&*diagnostic.message)))
-            }
-            result => result,
-        }
+        // Every fallible HOST.Net operation returns `T OR Error` built by
+        // the shared core (`bn_rt::net`); no network failure bypasses BN
+        // control flow (host-net.md). Buffer misuse stays a diagnostic.
+        self.host_net_call(core, &format!("HOST.Net.{member}"), &arguments, span)
     }
 }
 
@@ -151,16 +143,19 @@ impl NetProvider {
                     + self.tcp_listeners.values().map(Vec::len).sum::<usize>()
                     >= bn_limits::web_limits().socket_handles_max
                 {
-                    return Ok(Value::error(1, "socket handle quota exceeded".into()));
+                    return Ok(net_error(&bn_rt::net::quota_exceeded(
+                        "HOST.Net.UDPBind",
+                        format!("bind {endpoint}"),
+                    )));
                 }
-                match crate::net::UdpSocket::bind(endpoint) {
+                match bn_rt::net::udp_bind(endpoint) {
                     Ok(socket) => {
                         let id = self.next_udp_socket;
                         self.next_udp_socket += 1;
                         self.udp_sockets.insert(id, socket);
                         Ok(Value::UdpSocket(id))
                     }
-                    Err(error) => Ok(Value::error(1, shared_string(error.to_string()))),
+                    Err(error) => Ok(net_error(&error)),
                 }
             }
             "HOST.Net.UDPSocket.SendTo" => {
@@ -184,17 +179,13 @@ impl NetProvider {
                 };
                 let (count, _) = integer(&arguments[3], span)?;
                 let capacity = core.memory().len(handle, span)?;
+                // Past the BN buffer is a memory error (trap); past the
+                // datagram bound is the core's Net.INVALID_ARGUMENT.
                 let count = usize::try_from(count)
                     .ok()
-                    .filter(|value| {
-                        *value <= capacity && *value <= bn_limits::web_limits().datagram_max_bytes
-                    })
+                    .filter(|value| *value <= capacity)
                     .ok_or_else(|| {
-                        runtime_error(
-                            bn_diag::DiagId::LIMIT,
-                            "datagram exceeds buffer or configured limit",
-                            span,
-                        )
+                        runtime_error(bn_diag::DiagId::LIMIT, "datagram exceeds the buffer", span)
                     })?;
                 let bytes = (0..count)
                     .map(|index| {
@@ -209,22 +200,13 @@ impl NetProvider {
                         })
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                let sent = self
-                    .udp_sockets
-                    .get(&id)
-                    .ok_or_else(|| {
-                        runtime_error(
-                            bn_diag::DiagId::USE_AFTER_RELEASE,
-                            "UDP socket is invalid",
-                            span,
-                        )
-                    })?
-                    .send_to(endpoint, &bytes)
-                    .map_err(|error| runtime_error(bn_diag::DiagId::IO, error.to_string(), span))?;
-                Ok(Value::Integer(
-                    i128::try_from(sent).unwrap_or(i128::MAX),
-                    IntegerType::Int32,
-                ))
+                match bn_rt::net::udp_send_to(self.udp_sockets.get(&id), endpoint, &bytes) {
+                    Ok(sent) => Ok(Value::Integer(
+                        i128::try_from(sent).unwrap_or(i128::MAX),
+                        IntegerType::Int32,
+                    )),
+                    Err(error) => Ok(net_error(&error)),
+                }
             }
             "HOST.Net.UDPSocket.Receive" => {
                 require_arity(name, arguments, 3, span)?;
@@ -238,33 +220,7 @@ impl NetProvider {
                 };
                 let (maximum, _) = integer(&arguments[1], span)?;
                 let (timeout, _) = integer(&arguments[2], span)?;
-                let maximum = usize::try_from(maximum)
-                    .ok()
-                    .filter(|value| *value <= bn_limits::web_limits().datagram_max_bytes)
-                    .ok_or_else(|| {
-                        runtime_error(
-                            bn_diag::DiagId::LIMIT,
-                            "receive exceeds configured limit",
-                            span,
-                        )
-                    })?;
-                if !(1..=60_000).contains(&timeout) {
-                    return Ok(Value::error(
-                        1,
-                        "receive timeout is outside 1..60000 ms".into(),
-                    ));
-                }
-                let socket = self.udp_sockets.get(&id).ok_or_else(|| {
-                    runtime_error(
-                        bn_diag::DiagId::USE_AFTER_RELEASE,
-                        "UDP socket is invalid",
-                        span,
-                    )
-                })?;
-                socket
-                    .set_read_timeout(Some(std::time::Duration::from_millis(timeout as u64)))
-                    .map_err(|error| runtime_error(bn_diag::DiagId::IO, error.to_string(), span))?;
-                match socket.receive(maximum) {
+                match bn_rt::net::udp_receive(self.udp_sockets.get(&id), maximum, timeout) {
                     Ok(packet) => Ok(Value::Record {
                         record: RecordValue::new(
                             "HOST.Net.UDPPacket",
@@ -283,7 +239,7 @@ impl NetProvider {
                             ],
                         ),
                     }),
-                    Err(error) => Ok(Value::error(1, shared_string(error.to_string()))),
+                    Err(error) => Ok(net_error(&error)),
                 }
             }
             "HOST.Net.UDPPacket.Source" => {
@@ -406,19 +362,10 @@ impl NetProvider {
                         span,
                     ));
                 };
-                let endpoint = self
-                    .udp_sockets
-                    .get(&id)
-                    .ok_or_else(|| {
-                        runtime_error(
-                            bn_diag::DiagId::USE_AFTER_RELEASE,
-                            "UDP socket is invalid",
-                            span,
-                        )
-                    })?
-                    .local_endpoint()
-                    .map_err(|error| runtime_error(bn_diag::DiagId::IO, error.to_string(), span))?;
-                Ok(endpoint_value(endpoint))
+                match bn_rt::net::udp_local_endpoint(self.udp_sockets.get(&id)) {
+                    Ok(endpoint) => Ok(endpoint_value(endpoint)),
+                    Err(error) => Ok(net_error(&error)),
+                }
             }
             "HOST.Net.Addresses.Count" => {
                 require_arity(name, arguments, 1, span)?;

@@ -738,7 +738,7 @@ pub(crate) fn lower_bn_rt_call(
             );
             let _ = writeln!(
                 text,
-                "  %execaggpwrap{dest} = call ptr @bn_rt_error_wrap(i1 %execerr{dest}, ptr null, ptr null)\n  %execaggp{dest} = insertvalue {{ i1, ptr, i64 }} %execagg{dest}, ptr %execaggpwrap{dest}, 1"
+                "  %execerrint{dest} = zext i1 %execerr{dest} to i32\n  %execaggpwrap{dest} = call ptr @bn_rt_error_take(i32 %execerrint{dest}, ptr null)\n  %execaggp{dest} = insertvalue {{ i1, ptr, i64 }} %execagg{dest}, ptr %execaggpwrap{dest}, 1"
             );
             let _ = writeln!(
                 text,
@@ -821,6 +821,7 @@ pub(crate) fn lower_bn_rt_call(
             );
             let _ = writeln!(text, "  {length} = add i32 {len}, 0");
             let _ = writeln!(text, "  %netwritten{dest} = alloca i32");
+            emit_buffer_bound(text, block_id, destination, arguments[2], &length, state);
             let _ = writeln!(
                 text,
                 "  %netrc{dest} = call i32 @bn_rt_net_udp_send_to(i64 %nethandle{dest}, ptr {address}, i32 {port}, ptr {bytes}, i32 {length}, ptr %netwritten{dest})"
@@ -861,6 +862,7 @@ pub(crate) fn lower_bn_rt_call(
                     .expect("validated length"),
             );
             let _ = writeln!(text, "  %netout{dest} = alloca i32");
+            emit_buffer_bound(text, block_id, destination, arguments[1], &length, state);
             let _ = writeln!(
                 text,
                 "  %netrc{dest} = call i32 @bn_rt_net_tcp_read(i64 %nethandle{dest}, ptr %netbuffer{dest}, i32 {length}, ptr %netout{dest})"
@@ -901,18 +903,12 @@ pub(crate) fn lower_bn_rt_call(
             );
             let _ = writeln!(text, "  %netaddrv{dest} = load ptr, ptr %netaddress{dest}");
             let _ = writeln!(text, "  %netportv{dest} = load i32, ptr %netport{dest}");
-            let _ = writeln!(text, "  %neterr{dest} = icmp ne i32 %netrc{dest}, 0");
-            let _ = writeln!(
+            emit_endpoint_result(
                 text,
-                "  %netep0{dest} = insertvalue {{ i1, ptr, i32 }} undef, i1 %neterr{dest}, 0"
-            );
-            let _ = writeln!(
-                text,
-                "  %netep1{dest} = insertvalue {{ i1, ptr, i32 }} %netep0{dest}, ptr %netaddrv{dest}, 1"
-            );
-            let _ = writeln!(
-                text,
-                "  %v{dest} = insertvalue {{ i1, ptr, i32 }} %netep1{dest}, i32 %netportv{dest}, 2"
+                destination,
+                &format!("%netrc{dest}"),
+                &format!("%netaddrv{dest}"),
+                &format!("%netportv{dest}"),
             );
         }
         "HOST.Net.UDPSocket.Receive" => {
@@ -996,6 +992,7 @@ pub(crate) fn lower_bn_rt_call(
                     .expect("validated maximum"),
             );
             let _ = writeln!(text, "  %netcopied{dest} = alloca i32");
+            emit_buffer_bound(text, block_id, destination, arguments[1], &maximum, state);
             let _ = writeln!(
                 text,
                 "  %netrc{dest} = call i32 @bn_rt_net_udp_packet_copy_to(i64 %nethandle{dest}, ptr %netbuffer{dest}, i32 {maximum}, ptr %netcopied{dest})"
@@ -1027,18 +1024,12 @@ pub(crate) fn lower_bn_rt_call(
             );
             let _ = writeln!(text, "  %netaddrv{dest} = load ptr, ptr %netaddr{dest}");
             let _ = writeln!(text, "  %netportv{dest} = load i32, ptr %netport{dest}");
-            let _ = writeln!(text, "  %neterr{dest} = icmp ne i32 %netrc{dest}, 0");
-            let _ = writeln!(
+            emit_endpoint_result(
                 text,
-                "  %netep0{dest} = insertvalue {{ i1, ptr, i32 }} undef, i1 %neterr{dest}, 0"
-            );
-            let _ = writeln!(
-                text,
-                "  %netep1{dest} = insertvalue {{ i1, ptr, i32 }} %netep0{dest}, ptr %netaddrv{dest}, 1"
-            );
-            let _ = writeln!(
-                text,
-                "  %v{dest} = insertvalue {{ i1, ptr, i32 }} %netep1{dest}, i32 %netportv{dest}, 2"
+                destination,
+                &format!("%netrc{dest}"),
+                &format!("%netaddrv{dest}"),
+                &format!("%netportv{dest}"),
             );
         }
         "HOST.Net.TCPStream.Write" => {
@@ -1062,6 +1053,7 @@ pub(crate) fn lower_bn_rt_call(
                     .expect("validated length"),
             );
             let _ = writeln!(text, "  %netout{dest} = alloca i32");
+            emit_buffer_bound(text, block_id, destination, arguments[1], &length, state);
             let _ = writeln!(
                 text,
                 "  %netrc{dest} = call i32 @bn_rt_net_tcp_write(i64 %nethandle{dest}, ptr %netbuffer{dest}, i32 {length}, ptr %netout{dest})"
@@ -1310,18 +1302,12 @@ pub(crate) fn lower_bn_rt_call(
             );
             let _ = writeln!(text, "  %netaddrv{dest} = load ptr, ptr %netaddress{dest}");
             let _ = writeln!(text, "  %netportv{dest} = load i32, ptr %netport{dest}");
-            let _ = writeln!(text, "  %neterr{dest} = icmp ne i32 %netrc{dest}, 0");
-            let _ = writeln!(
+            emit_endpoint_result(
                 text,
-                "  %netep0{dest} = insertvalue {{ i1, ptr, i32 }} undef, i1 %neterr{dest}, 0"
-            );
-            let _ = writeln!(
-                text,
-                "  %netep1{dest} = insertvalue {{ i1, ptr, i32 }} %netep0{dest}, ptr %netaddrv{dest}, 1"
-            );
-            let _ = writeln!(
-                text,
-                "  %v{dest} = insertvalue {{ i1, ptr, i32 }} %netep1{dest}, i32 %netportv{dest}, 2"
+                destination,
+                &format!("%netrc{dest}"),
+                &format!("%netaddrv{dest}"),
+                &format!("%netportv{dest}"),
             );
         }
         "HOST.Net.TCPStream.Close" | "HOST.Net.TCPListener.Close" | "HOST.Net.UDPSocket.Close" => {

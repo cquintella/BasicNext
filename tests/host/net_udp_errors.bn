@@ -1,0 +1,87 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// HOST.Net UDP results on the loopback interface (host-net.md "UDP" and
+// "Errors"): an endpoint in use, a receive that times out, arguments out of
+// range, a broadcast destination, a truncated datagram, and operations
+// after Close. Close itself is idempotent.
+IMPORT HOST.Net AS Net
+
+FUNCTION Start() AS INTEGER
+    LET loopback AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    IF loopback IS Error THEN
+        RETURN 1
+    END IF
+    LET here AS Net.Endpoint OR Error = Net.Endpoint.Create(loopback, 39111)
+    IF here IS Error THEN
+        RETURN 1
+    END IF
+    LET socket AS Net.UDPSocket OR Error = Net.UDPBind(here)
+    IF socket IS Error THEN
+        PRINT socket
+        RETURN 1
+    END IF
+    LET again AS Net.UDPSocket OR Error = Net.UDPBind(here)
+    IF again IS Error THEN
+        PRINT again.Code = Net.ADDRESS_IN_USE, again.Operation
+    END IF
+    LET quiet AS Net.UDPPacket OR Error = socket.Receive(16, 1)
+    IF quiet IS Error THEN
+        PRINT quiet.Code = Net.TIMEOUT, quiet.Cause
+    END IF
+    LET empty AS Net.UDPPacket OR Error = socket.Receive(0, 100)
+    IF empty IS Error THEN
+        PRINT empty.Code = Net.INVALID_ARGUMENT, empty.Cause
+    END IF
+    LET bytes AS POINTER TO BYTE[] = NEW BYTE[5]
+    bytes[0] = 104
+    bytes[1] = 101
+    bytes[2] = 108
+    bytes[3] = 108
+    bytes[4] = 111
+    LET everyone AS Net.Address OR Error = Net.Address.Parse("255.255.255.255")
+    IF everyone IS Error THEN
+        RETURN 1
+    END IF
+    LET broadcast AS Net.Endpoint OR Error = Net.Endpoint.Create(everyone, 9)
+    IF broadcast IS Error THEN
+        RETURN 1
+    END IF
+    LET denied AS INTEGER OR Error = socket.SendTo(broadcast, bytes, 5)
+    IF denied IS Error THEN
+        PRINT denied.Code = Net.PERMISSION_DENIED, denied.Operation
+    END IF
+    LET sent AS INTEGER OR Error = socket.SendTo(here, bytes, 5)
+    IF sent IS Error THEN
+        PRINT sent
+        RETURN 1
+    END IF
+    LET packet AS Net.UDPPacket OR Error = socket.Receive(3, 2000)
+    IF packet IS Error THEN
+        PRINT packet
+        RETURN 1
+    END IF
+    LET copy AS POINTER TO BYTE[] = NEW BYTE[3]
+    LET copied AS INTEGER OR Error = packet.CopyTo(copy, 3)
+    IF copied IS INTEGER THEN
+        PRINT "received", packet.Size(), packet.Truncated(), copied, copy[0], copy[2]
+    END IF
+    socket.Close()
+    LET closed AS VOID OR Error = socket.Close()
+    IF closed IS Error THEN
+        PRINT "second Close failed"
+    END IF
+    LET late AS Net.UDPPacket OR Error = socket.Receive(16, 100)
+    IF late IS Error THEN
+        PRINT late.Code = Net.CLOSED, late.Operation, late.Cause
+    END IF
+    LET lateSend AS INTEGER OR Error = socket.SendTo(here, bytes, 5)
+    IF lateSend IS Error THEN
+        PRINT lateSend.Code = Net.CLOSED, lateSend.Operation
+    END IF
+    RELEASE bytes
+    RELEASE copy
+    RETURN 0
+END FUNCTION

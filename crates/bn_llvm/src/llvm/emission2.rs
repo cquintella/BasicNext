@@ -439,6 +439,17 @@ pub(crate) fn lower_print_value(
     if lower_print_handle_error_union(text, value, ty, state) {
         return;
     }
+    if is_error_type(ty) && llvm_type(ty) == Some("{ i1, ptr, i64 }") {
+        // An `Error` (a narrowed union too): its pointer is the runtime
+        // record, not text; print it as the unions do.
+        let count = state.print_count;
+        let _ = writeln!(
+            text,
+            "  %errprintptr{count} = extractvalue {{ i1, ptr, i64 }} %v{}, 1\n  %errprintcode{count} = extractvalue {{ i1, ptr, i64 }} %v{}, 2\n  call void @bn_rt_error_print(i64 %errprintcode{count}, ptr %errprintptr{count})",
+            value.0, value.0
+        );
+        return;
+    }
     if let Type::Vector {
         element,
         dimensions,

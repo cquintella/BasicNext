@@ -1030,7 +1030,10 @@ mod fs_emission;
 use fs_emission::{FS_CALLS, fs_call_supported, lower_fs_call};
 #[path = "llvm/host_results.rs"]
 mod host_results;
-use host_results::{declare_error_abi, emit_handle_result, emit_status_result, emit_void_result};
+use host_results::{
+    declare_error_abi, emit_buffer_bound, emit_endpoint_result, emit_handle_result,
+    emit_status_result, emit_void_result,
+};
 #[path = "llvm/math.rs"]
 mod math;
 use math::{BN_RT_MATH_DECLS, bnmath_call_supported, bnmath_method, lower_bnmath_call};

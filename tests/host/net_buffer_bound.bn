@@ -1,0 +1,29 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A byte count past the BN buffer is a memory error, not a network one:
+// both backends stop before any I/O (the native runtime would otherwise
+// read past the vector).
+IMPORT HOST.Net AS Net
+
+FUNCTION Start() AS INTEGER
+    LET loopback AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    IF loopback IS Error THEN
+        RETURN 1
+    END IF
+    LET here AS Net.Endpoint OR Error = Net.Endpoint.Create(loopback, 39112)
+    IF here IS Error THEN
+        RETURN 1
+    END IF
+    LET socket AS Net.UDPSocket OR Error = Net.UDPBind(here)
+    IF socket IS Error THEN
+        RETURN 1
+    END IF
+    LET bytes AS POINTER TO BYTE[] = NEW BYTE[3]
+    PRINT "before"
+    LET sent AS INTEGER OR Error = socket.SendTo(here, bytes, 10)
+    PRINT "not reached", sent
+    RETURN 0
+END FUNCTION

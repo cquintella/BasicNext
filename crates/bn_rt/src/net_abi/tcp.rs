@@ -9,8 +9,6 @@
 
 use super::*;
 
-use net::handles::{self, Handle};
-
 /// Runs `f` on the stream behind `handle`; a closed or unknown handle is
 /// `None` (`Net.CLOSED` in the core). `f` runs on a clone, outside the
 /// handle-table lock: a blocking read in one thread must not stall every
@@ -66,34 +64,6 @@ fn with_listener<T>(
         return result;
     }
     f.take().expect("listener operation not yet run")(None)
-}
-
-/// Stores a new socket; `Net.LIMIT` past the quota.
-fn store(value: Handle, operation: &'static str, action: &str) -> Result<i64, NetError> {
-    let index = handles::insert(value).map_err(|_| net::quota_exceeded(operation, action))?;
-    Ok(i64::try_from(index).unwrap_or(i64::MAX))
-}
-
-fn endpoint_argument(
-    address: *const c_char,
-    port: i32,
-    operation: &'static str,
-    action: &str,
-) -> Result<net::Endpoint, NetError> {
-    authorized(operation, action)?;
-    let address = net::parse_address(text_argument(address, operation, action)?)?;
-    let port = u16::try_from(port).map_err(|_| {
-        NetError::new(
-            operation,
-            action,
-            Failure::InvalidArgument(format!("the port must be within 0..65535; got {port}")),
-        )
-    })?;
-    Ok(net::Endpoint::new(address, port))
-}
-
-fn status(result: Result<(), NetError>) -> i32 {
-    result.map_or_else(|error| failed(&error), |()| 0)
 }
 
 /// `HOST.Net.TCPConnect`: `out` receives the stream handle.
@@ -156,11 +126,6 @@ pub extern "C" fn bn_rt_net_tcp_accept(handle: i64, timeout_ms: i32, out: *mut i
             .and_then(|stream| store(Handle::TcpStream(stream), OPERATION, "accept a connection"))
             .map(|handle| write_out(out, handle)),
     )
-}
-
-fn write_endpoint(endpoint: net::Endpoint, out_address: *mut *mut c_char, out_port: *mut i32) {
-    write_out(out_address, c_string(&endpoint.address().to_string()));
-    write_out(out_port, i32::from(endpoint.port()));
 }
 
 /// `HOST.Net.TCPListener.LocalEndpoint`.

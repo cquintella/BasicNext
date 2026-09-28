@@ -857,6 +857,55 @@ fn tcp_errors_match_across_backends() {
     native_matches_interpreter(path);
 }
 
+/// UDP results on loopback (address in use, timeout, invalid arguments, a
+/// broadcast destination, a truncated datagram, use after Close, idempotent
+/// Close) are the same on both backends (host-net.md "UDP", "Errors").
+#[test]
+fn udp_results_match_across_backends() {
+    let path = "tests/host/net_udp_errors.bn";
+    let output = bni().args(["run", path]).output().expect("run fixture");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "TRUE HOST.Net.UDPBind\n\
+         TRUE no answer within 1 ms\n\
+         TRUE a receive takes at least 1 byte; got 0\n\
+         TRUE HOST.Net.UDPSocket.SendTo\n\
+         received 3 TRUE 3 104 108\n\
+         TRUE HOST.Net.UDPSocket.Receive it was closed by Close\n\
+         TRUE HOST.Net.UDPSocket.SendTo\n"
+    );
+    native_matches_interpreter(path);
+}
+
+/// HOST.Exec failures carry the shared `bn_host_exec` report (Code,
+/// Operation, Message naming the program, Cause) on both backends, and
+/// `PRINT` of an `Error` narrowed out of `Exec.Result OR Error` prints the
+/// report natively too (it printed the record pointer as text).
+#[test]
+fn exec_errors_match_across_backends() {
+    let path = "tests/host/exec_errors.bn";
+    let output = bni().args(["run", path]).output().expect("run fixture");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "2 HOST.Exec.Run cannot run \"bn-exec-errors-no-such-program\"\n\
+         Error 1 in HOST.Exec.Run: cannot run \"\" (cause: the program must be non-empty and contain no NUL)\n"
+    );
+    native_matches_interpreter(path);
+}
+
+/// A byte count past the BN buffer stops both backends before any I/O; the
+/// native runtime would otherwise read past the vector.
+#[test]
+fn network_byte_counts_past_the_buffer_stop_both_backends() {
+    let path = "tests/host/net_buffer_bound.bn";
+    let output = bni().args(["run", path]).output().expect("run fixture");
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "before\n");
+    native_matches_interpreter(path);
+}
+
 /// `examples/conversions.bn`: every `AS` conversion and the `PRINT` text of
 /// each type. `tenth AS FLOAT64` also guards native constant folding, which
 /// must keep a `FLOAT32` constant at f32 precision.

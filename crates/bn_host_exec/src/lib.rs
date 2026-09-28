@@ -51,19 +51,40 @@ pub struct Output {
     pub stderr: String,
 }
 
-/// Why a call produced `Error` rather than a result.
+/// Why a call produced `Error` rather than a result: the fields of the BN
+/// `Error` (error.md) both backends build from it unchanged.
 #[derive(Debug)]
 pub struct Failure {
     pub code: i32,
-    pub message: String,
+    program: String,
+    cause: String,
 }
 
 impl Failure {
-    fn new(code: i32, message: impl Into<String>) -> Self {
+    fn new(code: i32, cause: impl Into<String>) -> Self {
         Self {
             code,
-            message: message.into(),
+            program: String::new(),
+            cause: cause.into(),
         }
+    }
+
+    /// `Error.Operation`.
+    #[must_use]
+    pub const fn operation(&self) -> &'static str {
+        "HOST.Exec.Run"
+    }
+
+    /// `Error.Message`: the program that could not run.
+    #[must_use]
+    pub fn message(&self) -> String {
+        format!("cannot run \"{}\"", self.program)
+    }
+
+    /// `Error.Cause`: the rule, policy, or operating-system error.
+    #[must_use]
+    pub fn cause(&self) -> &str {
+        &self.cause
     }
 }
 
@@ -110,18 +131,37 @@ fn read_pipe<R: Read>(mut pipe: R, capture_limit: usize) -> Vec<u8> {
 /// an empty program (1), spawn failures (2–4), wait failure (5), invalid
 /// UTF-8 (7), capture overflow (8) or timeout (9).
 pub fn run(program: &str, args: &[&str], policy: &Policy) -> Result<Output, Failure> {
+    run_checked(program, args, policy).map_err(|failure| Failure {
+        program: program.to_owned(),
+        ..failure
+    })
+}
+
+/// Policy and argument rules, before any process exists.
+fn check(program: &str, args: &[&str], policy: &Policy) -> Result<(), Failure> {
     if !policy.allowed {
         return Err(Failure::new(
             EXEC_POLICY_DENIED,
-            "HOST.Exec is denied by execution policy",
+            "the execution policy denies HOST.Exec",
         ));
     }
-    if program.is_empty() {
+    if program.is_empty() || program.contains('\0') {
         return Err(Failure::new(
             EXEC_INVALID_ARGUMENT,
-            "program must be non-empty and contain no NUL",
+            "the program must be non-empty and contain no NUL",
         ));
     }
+    if args.iter().any(|argument| argument.contains('\0')) {
+        return Err(Failure::new(
+            EXEC_INVALID_ARGUMENT,
+            "an argument contains NUL",
+        ));
+    }
+    Ok(())
+}
+
+fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, Failure> {
+    check(program, args, policy)?;
     let mut command = Command::new(program);
     command
         .args(args)
@@ -131,7 +171,10 @@ pub fn run(program: &str, args: &[&str], policy: &Policy) -> Result<Output, Fail
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Err(Failure::new(EXEC_PROGRAM_NOT_FOUND, error.to_string()));
+            return Err(Failure::new(
+                EXEC_PROGRAM_NOT_FOUND,
+                format!("no such program at that path or on PATH ({error})"),
+            ));
         }
         Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
             return Err(Failure::new(EXEC_PERMISSION_DENIED, error.to_string()));
@@ -154,7 +197,10 @@ pub fn run(program: &str, args: &[&str], policy: &Policy) -> Result<Output, Fail
                 let _ = err_thread.join();
                 return Err(Failure::new(
                     EXEC_TIMEOUT,
-                    "process exceeded execution timeout",
+                    format!(
+                        "the process ran past the {} ms execution timeout and was killed",
+                        policy.timeout.as_millis()
+                    ),
                 ));
             }
             Ok(None) => thread::sleep(Duration::from_millis(2)),
@@ -167,14 +213,20 @@ pub fn run(program: &str, args: &[&str], policy: &Policy) -> Result<Output, Fail
     if stdout.len() > capture_limit || stderr.len() > capture_limit {
         return Err(Failure::new(
             EXEC_CAPTURE_LIMIT,
-            "captured output exceeded per-stream capture limit",
+            format!("a stream wrote more than the {capture_limit} bytes captured per stream"),
         ));
     }
     let Ok(stdout) = String::from_utf8(stdout) else {
-        return Err(Failure::new(EXEC_INVALID_UTF8, "stdout is not valid UTF-8"));
+        return Err(Failure::new(
+            EXEC_INVALID_UTF8,
+            "the program's stdout is not valid UTF-8",
+        ));
     };
     let Ok(stderr) = String::from_utf8(stderr) else {
-        return Err(Failure::new(EXEC_INVALID_UTF8, "stderr is not valid UTF-8"));
+        return Err(Failure::new(
+            EXEC_INVALID_UTF8,
+            "the program's stderr is not valid UTF-8",
+        ));
     };
     let return_code = {
         #[cfg(unix)]
@@ -235,6 +287,16 @@ mod tests {
     fn missing_program_is_code_2() {
         let failure = run("bn-host-exec-no-such-program", &[], &policy()).unwrap_err();
         assert_eq!(failure.code, EXEC_PROGRAM_NOT_FOUND);
+        assert_eq!(failure.operation(), "HOST.Exec.Run");
+        assert_eq!(
+            failure.message(),
+            "cannot run \"bn-host-exec-no-such-program\""
+        );
+        assert!(
+            failure
+                .cause()
+                .starts_with("no such program at that path or on PATH")
+        );
     }
 
     #[cfg(unix)]
