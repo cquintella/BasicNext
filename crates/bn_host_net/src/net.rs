@@ -9,8 +9,8 @@ use std::{
 };
 
 pub use bn_rt::net::{
-    Address, Endpoint, NeighborError, PingError, PingReply, ReverseError, neighbor, ping, resolve,
-    resolve_timeout, reverse_timeout,
+    Address, Cidr, Endpoint, NeighborError, PingError, PingReply, ReverseError, neighbor, ping,
+    resolve, resolve_timeout, reverse_timeout,
 };
 
 #[derive(Debug)]
@@ -248,74 +248,6 @@ impl TcpStream {
 
     pub fn shutdown(&self, direction: std::net::Shutdown) -> std::io::Result<()> {
         self.inner.shutdown(direction)
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Cidr {
-    network: IpAddr,
-    prefix: u8,
-}
-
-impl Cidr {
-    /// Parses and canonicalizes an address/prefix pair.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the separator, address, or prefix is invalid.
-    pub fn parse(text: &str) -> Result<Self, &'static str> {
-        let (address, prefix) = text.split_once('/').ok_or("CIDR requires '/'")?;
-        let address = Address::parse(address)
-            .map_err(|_| "invalid address")?
-            .as_std();
-        let prefix = prefix.parse::<u8>().map_err(|_| "invalid prefix")?;
-        let maximum = match address {
-            IpAddr::V4(_) => 32,
-            IpAddr::V6(_) => 128,
-        };
-        if prefix > maximum {
-            return Err("prefix is wider than address family");
-        }
-        Ok(Self {
-            network: mask(address, prefix),
-            prefix,
-        })
-    }
-
-    #[must_use]
-    pub const fn network(self) -> IpAddr {
-        self.network
-    }
-
-    #[must_use]
-    pub const fn prefix_length(self) -> u8 {
-        self.prefix
-    }
-
-    #[must_use]
-    pub fn contains(self, address: Address) -> bool {
-        self.network == mask(address.as_std(), self.prefix)
-    }
-}
-
-fn mask(address: IpAddr, prefix: u8) -> IpAddr {
-    match address {
-        IpAddr::V4(value) => IpAddr::V4(std::net::Ipv4Addr::from(
-            u32::from(value)
-                & if prefix == 0 {
-                    0
-                } else {
-                    !0u32 << (32 - u32::from(prefix))
-                },
-        )),
-        IpAddr::V6(value) => IpAddr::V6(std::net::Ipv6Addr::from(
-            u128::from(value)
-                & if prefix == 0 {
-                    0
-                } else {
-                    !0u128 << (128 - u32::from(prefix))
-                },
-        )),
     }
 }
 

@@ -4,6 +4,7 @@
 //! compiled binaries (C ABI in `lib.rs`): address/endpoint types, bounded
 //! resolve/reverse, ICMP ping, trusted-path ARP/NDP neighbor lookup, sockets.
 
+mod cidr;
 pub mod error;
 pub(crate) mod handles;
 mod icmp;
@@ -19,6 +20,7 @@ use std::{
     str::FromStr,
 };
 
+pub use cidr::Cidr;
 pub use icmp::{PingError, PingReply, ping};
 pub use neighbor::{NeighborError, neighbor};
 pub use reverse::{ReverseError, reverse_timeout};

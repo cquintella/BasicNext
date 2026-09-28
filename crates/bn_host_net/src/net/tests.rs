@@ -1,19 +1,4 @@
-use super::{Address, Cidr, Endpoint, TcpListener, TcpStream, UdpSocket};
-
-#[test]
-fn canonicalizes_and_contains_ipv4() {
-    let cidr = Cidr::parse("192.168.1.9/24").expect("CIDR");
-    assert_eq!(cidr.network().to_string(), "192.168.1.0");
-    assert!(cidr.contains(Address::parse("192.168.1.200").expect("address")));
-    assert!(!cidr.contains(Address::parse("192.168.2.1").expect("address")));
-}
-
-#[test]
-fn canonicalizes_ipv6_and_rejects_invalid_prefix() {
-    let cidr = Cidr::parse("2001:db8::1/64").expect("CIDR");
-    assert_eq!(cidr.network().to_string(), "2001:db8::");
-    assert!(Cidr::parse("10.0.0.1/33").is_err());
-}
+use super::{Address, Endpoint, TcpListener, TcpStream, UdpSocket};
 
 #[test]
 fn resolves_unique_localhost_addresses_with_a_bound() {
