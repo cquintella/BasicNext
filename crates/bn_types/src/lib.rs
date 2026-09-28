@@ -169,3 +169,16 @@ pub enum PointerLength {
     Fixed(u64),
     Dynamic,
 }
+
+#[cfg(test)]
+mod spelling_tests {
+    use super::{IntegerType, integer_type_name, operator_spelling};
+
+    #[test]
+    fn diagnostics_spell_operators_and_types_as_source_does() {
+        assert_eq!(operator_spelling("Percent"), "%");
+        assert_eq!(operator_spelling("DIV"), "DIV");
+        assert_eq!(integer_type_name(IntegerType::Int32), "INT32");
+        assert_eq!(integer_type_name(IntegerType::UInt64), "UINT64");
+    }
+}

@@ -54,8 +54,14 @@ pub extern "C" fn bn_rt_trap_report_failure(set: *const c_char) {
             .to_string_lossy()
             .into_owned()
     };
-    let text = set
-        .split(ENTRY)
+    let mut stderr = std::io::stderr().lock();
+    let _ = writeln!(stderr, "{}", failure_text(&set, &failure));
+}
+
+/// The text for `failure`: the set's entry for its code with the facts in
+/// its slots, or `error[CODE]: facts` when the set has no such entry.
+fn failure_text(set: &str, failure: &RuntimeFailure) -> String {
+    set.split(ENTRY)
         .find_map(|entry| {
             let (code, text) = entry.split_once(CODE_END)?;
             (code == failure.code).then(|| fill_named(text, &failure.facts))
@@ -68,9 +74,7 @@ pub extern "C" fn bn_rt_trap_report_failure(set: *const c_char) {
                 .collect::<Vec<_>>()
                 .join("; ");
             format!("error[{}]: {facts}", failure.code)
-        });
-    let mut stderr = std::io::stderr().lock();
-    let _ = writeln!(stderr, "{text}");
+        })
 }
 
 /// `text` with each named slot replaced by its fact.
@@ -132,7 +136,33 @@ pub extern "C" fn bn_rt_trap_report(text: *const c_char, first: i128, second: i1
 
 #[cfg(test)]
 mod tests {
-    use super::fill;
+    use super::{RuntimeFailure, failure_text, fill};
+
+    fn unavailable() -> RuntimeFailure {
+        RuntimeFailure {
+            code: "HOST_CAPABILITY_UNAVAILABLE",
+            facts: vec![("detail", "PrintAt requires a TTY".into())],
+        }
+    }
+
+    #[test]
+    fn the_entry_for_the_recorded_code_is_printed() {
+        let set = "OUTPUT_ERROR\u{1e}output: \u{1}message\u{2}\u{1d}HOST_CAPABILITY_UNAVAILABLE\u{1e}unavailable: \u{1}detail\u{2}";
+        assert_eq!(
+            failure_text(set, &unavailable()),
+            "unavailable: PrintAt requires a TTY"
+        );
+    }
+
+    #[test]
+    fn a_code_outside_the_set_falls_back_to_the_code_and_facts() {
+        let expected = "error[HOST_CAPABILITY_UNAVAILABLE]: PrintAt requires a TTY";
+        assert_eq!(
+            failure_text("OUTPUT_ERROR\u{1e}output", &unavailable()),
+            expected
+        );
+        assert_eq!(failure_text("", &unavailable()), expected);
+    }
 
     #[test]
     fn named_slots_take_the_recorded_facts() {

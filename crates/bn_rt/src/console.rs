@@ -158,3 +158,54 @@ fn dimensions() -> Result<(i128, i128), ConsoleError> {
         "terminal dimensions are unavailable",
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ConsoleError;
+
+    /// Each failure names its identity's schema arguments, which the
+    /// interpreter and the native site both render (`bn_diag` schemas:
+    /// `DETAIL`, `INDEX_OUT_OF_BOUNDS`, `LEGACY_MESSAGE`, `OPERATION`).
+    #[test]
+    fn failures_carry_the_facts_of_their_identity() {
+        let failure = ConsoleError::OutOfBounds {
+            column: 0,
+            row: 1,
+            columns: 80,
+            rows: 24,
+        }
+        .failure();
+        assert_eq!(failure.code, "INDEX_OUT_OF_BOUNDS");
+        assert_eq!(
+            failure.facts,
+            vec![
+                ("index", "(0, 1)".to_owned()),
+                ("bound", "80 columns by 24 rows".to_owned()),
+                ("context", "the console window".to_owned()),
+            ]
+        );
+        let names = |error: ConsoleError| {
+            let failure = error.failure();
+            (
+                failure.code,
+                failure
+                    .facts
+                    .into_iter()
+                    .map(|(name, _)| name)
+                    .collect::<Vec<_>>(),
+            )
+        };
+        assert_eq!(
+            names(ConsoleError::Unavailable("PrintAt requires a TTY")),
+            ("HOST_CAPABILITY_UNAVAILABLE", vec!["detail"])
+        );
+        assert_eq!(
+            names(ConsoleError::Output(std::io::Error::other("closed"))),
+            ("OUTPUT_ERROR", vec!["message"])
+        );
+        assert_eq!(
+            names(ConsoleError::Overflow),
+            ("NUMERIC_OVERFLOW", vec!["operation"])
+        );
+    }
+}

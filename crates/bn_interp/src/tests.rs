@@ -207,3 +207,17 @@ fn primitive_type_tests_match_their_runtime_values() {
     assert!(is_value(&Value::Boolean(true), "BOOLEAN"));
     assert!(is_value(&Value::String("BN".into()), "STRING"));
 }
+
+/// `BN_FS_POLICY=deny` keeps the provider (operations return an Error);
+/// only `without_filesystem` removes it (0.6.md).
+#[test]
+fn a_denying_filesystem_policy_still_provides_the_capability() {
+    let host = super::HostEnv::fixed(Vec::new(), 0, 0);
+    assert!(host.provides_filesystem());
+    assert!(!host.clone().without_filesystem().provides_filesystem());
+    let denied = host
+        .narrowed_by_env(|name| (name == "BN_FS_POLICY").then(|| "deny".to_owned()))
+        .expect("valid policy input");
+    assert!(denied.provides_filesystem());
+    assert!(!denied.filesystem().allows_capability());
+}

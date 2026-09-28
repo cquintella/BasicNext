@@ -244,3 +244,26 @@ pub fn indexed_value<'a>(
     let index = checked_index(index, values.len(), "vector", span)?;
     indexed_value(&values[index], remaining, span)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::checked_index;
+
+    /// An index outside `0..length` reports the index as written, negative
+    /// ones included, and the length (the native trap's facts).
+    #[test]
+    fn checked_index_reports_the_index_and_length() {
+        let span = crate::default_span();
+        assert_eq!(checked_index(2, 3, "vector", span).ok(), Some(2));
+        for (index, text) in [
+            (3, "Index 3 is outside vector (bound: 3)."),
+            (-1, "Index -1 is outside vector (bound: 3)."),
+        ] {
+            let diagnostic = checked_index(index, 3, "vector", span).expect_err("outside");
+            let rendered = bn_diag::Catalog::embedded_global()
+                .render(diagnostic.structured.as_ref().expect("structured"))
+                .expect("renders");
+            assert_eq!(rendered.message, text);
+        }
+    }
+}

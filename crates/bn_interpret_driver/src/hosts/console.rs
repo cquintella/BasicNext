@@ -108,3 +108,30 @@ fn console_runtime_error(error: &bn_rt::ConsoleError, span: Span) -> Diagnostic 
     )
     .expect("console failure facts match the identity schema")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::console_runtime_error;
+
+    /// The seam between `bn_rt`'s console failure record and the registry:
+    /// every variant's facts fit its identity's schema (a mismatch would
+    /// panic in `Diagnostic::structured`), and the code is kept.
+    #[test]
+    fn every_console_failure_builds_its_registry_diagnostic() {
+        let span = bn_interp::default_span();
+        for error in [
+            bn_rt::ConsoleError::Unavailable("PrintAt requires a TTY"),
+            bn_rt::ConsoleError::OutOfBounds {
+                column: 0,
+                row: 1,
+                columns: 80,
+                rows: 24,
+            },
+            bn_rt::ConsoleError::Output(std::io::Error::other("closed")),
+            bn_rt::ConsoleError::Overflow,
+        ] {
+            let diagnostic = console_runtime_error(&error, span);
+            assert_eq!(diagnostic.code, error.code());
+        }
+    }
+}
