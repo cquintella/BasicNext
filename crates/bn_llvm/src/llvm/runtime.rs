@@ -1474,13 +1474,18 @@ pub(crate) fn lower_bn_rt_call(
             );
             let _ = writeln!(text, "  %neterr{dest} = icmp ne i32 %netrc{dest}, 0");
             let _ = writeln!(text, "  %netdata{dest} = load ptr, ptr %netout{dest}");
+            // An error is the runtime's record (code, message, cause).
+            let _ = writeln!(
+                text,
+                "  %neterrint{dest} = zext i1 %neterr{dest} to i32\n  %netrecord{dest} = call ptr @bn_rt_error_take(i32 %neterrint{dest}, ptr null)\n  %netptr{dest} = select i1 %neterr{dest}, ptr %netrecord{dest}, ptr %netdata{dest}"
+            );
             let _ = writeln!(
                 text,
                 "  %netagg{dest} = insertvalue {{ i1, ptr }} undef, i1 %neterr{dest}, 0"
             );
             let _ = writeln!(
                 text,
-                "  %v{dest} = insertvalue {{ i1, ptr }} %netagg{dest}, ptr %netdata{dest}, 1"
+                "  %v{dest} = insertvalue {{ i1, ptr }} %netagg{dest}, ptr %netptr{dest}, 1"
             );
         }
         "HOST.Net.Addresses.Count" => {
@@ -1754,30 +1759,29 @@ fn endpoint_parts(
     }
 }
 
+/// A `HOST.Net` result whose success value is in `out_slot`: the value, or
+/// the `Error` the runtime recorded (`emit_status_result`); `payload` is the
+/// success `i64` (a round-trip time).
 fn emit_net_result(
     text: &mut String,
     destination: ValueId,
     rc: impl AsRef<str>,
     out_slot: impl AsRef<str>,
-    rtt: impl AsRef<str>,
+    payload: impl AsRef<str>,
 ) {
     let dest = destination.0;
-    let rc = rc.as_ref();
-    let out_slot = out_slot.as_ref();
-    let rtt = rtt.as_ref();
-    let _ = writeln!(text, "  %neterr{dest} = icmp ne i32 {rc}, 0");
-    let _ = writeln!(text, "  %netdata{dest} = load ptr, ptr {out_slot}");
     let _ = writeln!(
         text,
-        "  %netagg0{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %neterr{dest}, 0"
+        "  %netdata{dest} = load ptr, ptr {}",
+        out_slot.as_ref()
     );
-    let _ = writeln!(
+    emit_status_result(
         text,
-        "  %netagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %neterr{dest}, ptr %netdata{dest}, ptr null)\n  %netagg1{dest} = insertvalue {{ i1, ptr, i64 }} %netagg0{dest}, ptr %netagg1wrap{dest}, 1"
-    );
-    let _ = writeln!(
-        text,
-        "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %netagg1{dest}, i64 {rtt}, 2"
+        destination,
+        rc.as_ref(),
+        None,
+        &format!("%netdata{dest}"),
+        payload.as_ref(),
     );
 }
 

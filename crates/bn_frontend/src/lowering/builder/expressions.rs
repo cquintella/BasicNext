@@ -376,9 +376,11 @@ impl Builder<'_> {
                         ty,
                         span: expression.span,
                     }
-                } else if matches!(object_type, Type::HostFileSystem)
-                    && let Some(value) = filesystem_constant(name)
-                {
+                } else if let Some(value) = match object_type {
+                    Type::HostFileSystem => filesystem_constant(name),
+                    Type::HostNet => net_constant(name),
+                    _ => None,
+                } {
                     let _ = self.expression(object)?;
                     Instruction::Constant {
                         destination,

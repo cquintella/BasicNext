@@ -793,6 +793,25 @@ fn filesystem_errors_report_code_operation_message_and_cause() {
     let _ = fs::remove_dir_all(directory);
 }
 
+/// HOST.Net errors that need no network (argument checks before any socket
+/// or resolver call) report the same code, operation, message, and cause on
+/// both backends (host-net.md "Errors"; error.md).
+#[test]
+fn net_argument_errors_match_across_backends() {
+    let path = "tests/host/net_errors.bn";
+    let output = bni().args(["run", path]).output().expect("run fixture");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Error 1 in HOST.Net.Address.Parse: cannot parse \"10.0.0.300\" as an IP address (cause: an address is IPv4 (four decimal octets, 192.0.2.1) or IPv6 (hexadecimal groups, 2001:db8::1), without a port or a name)\n\
+         Error 1 in HOST.Net.Ping: cannot ping 127.0.0.1 (cause: the timeout must be within 1..60000 ms; got 0)\n\
+         Error 1 in HOST.Net.Reverse: cannot find the name of 127.0.0.1 (cause: the timeout must be within 1..60000 ms; got 60001)\n\
+         TRUE HOST.Net.Resolve\n\
+         cannot resolve \"localhost\" | the timeout must be within 1..60000 ms; got -5\n"
+    );
+    native_matches_interpreter(path);
+}
+
 /// `examples/conversions.bn`: every `AS` conversion and the `PRINT` text of
 /// each type. `tenth AS FLOAT64` also guards native constant folding, which
 /// must keep a `FLOAT32` constant at f32 precision.

@@ -1,0 +1,13 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// The portable HOST.Net error codes (language/0.6/host-net.md, "Errors").
+IMPORT HOST.Net AS Net
+
+FUNCTION Start() AS VOID
+    PRINT Net.INVALID_ARGUMENT, Net.TIMEOUT, Net.UNREACHABLE, Net.CONNECTION_REFUSED
+    PRINT Net.CONNECTION_CLOSED, Net.ADDRESS_IN_USE, Net.PERMISSION_DENIED, Net.NOT_FOUND
+    PRINT Net.UNAVAILABLE, Net.LIMIT, Net.CLOSED, Net.IO_FAILED, Net.POLICY_DENIED
+END FUNCTION

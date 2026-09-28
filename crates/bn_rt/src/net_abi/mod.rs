@@ -17,6 +17,57 @@ pub use udp::*;
 
 use super::*;
 
+use super::net::error::{Failure, NetError};
+
+/// Records `error` for the `Error` the emitted code builds; the status: 2
+/// for a policy denial (the call-boundary re-check, host-traits.md), else 1.
+fn failed(error: &NetError) -> i32 {
+    super::set_error_report(
+        error.code(),
+        error.operation(),
+        error.message(),
+        error.cause(),
+    );
+    if error.code() == bn_types::error_codes::net::POLICY_DENIED {
+        2
+    } else {
+        1
+    }
+}
+
+/// `Net.POLICY_DENIED` unless the execution policy allows `HOST.Net`.
+fn authorized(operation: &'static str, action: &str) -> Result<(), NetError> {
+    if policy::allows(policy::POLICY_NET) {
+        Ok(())
+    } else {
+        Err(NetError::new(operation, action, Failure::PolicyDenied))
+    }
+}
+
+/// A text argument from emitted code (always valid UTF-8 from BN strings).
+fn text_argument<'a>(
+    pointer: *const c_char,
+    operation: &'static str,
+    action: &str,
+) -> Result<&'a str, NetError> {
+    c_str(pointer).ok_or_else(|| {
+        NetError::new(
+            operation,
+            action,
+            Failure::InvalidArgument("the text is not valid UTF-8".into()),
+        )
+    })
+}
+
+/// Writes `value` to `out` when the caller supplied a slot.
+#[allow(unsafe_code)] // C ABI out-parameter.
+fn write_out<T>(out: *mut T, value: T) {
+    if !out.is_null() {
+        // SAFETY: emitted code passes a writable slot for `T` or null.
+        unsafe { out.write(value) };
+    }
+}
+
 /// Frees a byte buffer returned by `bn_rt_net_udp_receive`.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]

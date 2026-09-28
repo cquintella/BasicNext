@@ -48,16 +48,27 @@ pub(crate) fn lower_access_emission(
                     "  %v{dest} = call ptr @bn_rt_error_field(ptr %errorptr{dest}, i32 {field})"
                 );
             } else if owner == "Error" && name == "Code" {
-                let _ = writeln!(
-                    text,
-                    "  %errorcode{} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-                    destination.0, object.0
-                );
-                let _ = writeln!(
-                    text,
-                    "  %v{} = trunc i64 %errorcode{} to i32",
-                    destination.0, destination.0
-                );
+                let dest = destination.0;
+                let aggregate = analysis
+                    .values
+                    .get(object)
+                    .and_then(llvm_type)
+                    .expect("validated error aggregate");
+                if aggregate == "{ i1, ptr, i64 }" {
+                    let _ = writeln!(
+                        text,
+                        "  %errorcode{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                        object.0
+                    );
+                } else {
+                    // No code field: the runtime record carries the code.
+                    let _ = writeln!(
+                        text,
+                        "  %errorrecord{dest} = extractvalue {aggregate} %v{}, 1\n  %errorcode{dest} = call i64 @bn_rt_error_code(ptr %errorrecord{dest})",
+                        object.0
+                    );
+                }
+                let _ = writeln!(text, "  %v{dest} = trunc i64 %errorcode{dest} to i32");
             } else if owner == "HOST.Exec.Result"
                 && matches!(name.as_str(), "ReturnCode" | "Stdout" | "Stderr")
             {

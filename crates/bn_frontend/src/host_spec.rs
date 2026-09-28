@@ -178,6 +178,32 @@ pub fn host_member_names(owner: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// The portable `Error` codes of each capability, as `INTEGER` members
+/// (`FS.NOT_FOUND`, `Net.TIMEOUT`; language/0.6/host.md and host-net.md),
+/// from the one table in `bn_types::error_codes`.
+fn declare_error_codes(catalog: &mut Catalog) {
+    for (owner, codes) in [
+        ("HOST.FileSystem", &bn_types::error_codes::fs::ALL[..]),
+        ("HOST.Net", &bn_types::error_codes::net::ALL[..]),
+    ] {
+        let members = catalog
+            .members
+            .get_mut(owner)
+            .expect("capability declared before its codes");
+        for (name, _) in codes {
+            members.insert(
+                (*name).into(),
+                SpecMember {
+                    ty: SpecType::Integer(SpecIntegerType::Int32),
+                    is_static: false,
+                    private: false,
+                    mutable: false,
+                },
+            );
+        }
+    }
+}
+
 pub(crate) fn catalog() -> Catalog {
     let mut catalog = Catalog::default();
     members1::declare_1(&mut catalog);
@@ -198,6 +224,7 @@ pub(crate) fn catalog() -> Catalog {
     members3::declare_16(&mut catalog);
     members4::declare_17(&mut catalog);
     members5::declare_exec(&mut catalog);
+    declare_error_codes(&mut catalog);
     catalog
 }
 

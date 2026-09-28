@@ -1,0 +1,26 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// HOST.Net errors that need no network: argument checks happen before any
+// socket or resolver call (language/0.6/host-net.md, "Errors"; error.md).
+IMPORT HOST.Net AS Net
+
+FUNCTION Start() AS VOID
+    LET address AS Net.Address OR Error = Net.Address.Parse("10.0.0.300")
+    PRINT address
+    LET loopback AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    IF loopback IS Error THEN
+        RETURN
+    END IF
+    LET reply AS Net.PingReply OR Error = Net.Ping(loopback, 0)
+    PRINT reply
+    LET name AS STRING OR Error = Net.Reverse(loopback, 60001)
+    PRINT name
+    LET addresses AS Net.Addresses OR Error = Net.Resolve("localhost", -5)
+    IF addresses IS Error THEN
+        PRINT addresses.Code = Net.INVALID_ARGUMENT, addresses.Operation
+        PRINT addresses.Message, "|", addresses.Cause
+    END IF
+END FUNCTION

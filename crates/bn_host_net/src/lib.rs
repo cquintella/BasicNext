@@ -65,6 +65,16 @@ fn record<'a>(
     Ok(record)
 }
 
+/// The BN `Error` of a failed `HOST.Net` operation: the core's report.
+fn net_error(error: &bn_rt::net::error::NetError) -> Value {
+    Value::error_report(
+        error.code(),
+        error.operation(),
+        error.message(),
+        error.cause(),
+    )
+}
+
 pub struct NetProvider {
     tcp_streams: HashMap<u64, crate::net::TcpStream>,
     next_tcp_stream: u64,
@@ -453,14 +463,14 @@ impl NetProvider {
                         span,
                     ));
                 };
-                match crate::net::Address::parse(text) {
+                match bn_rt::net::parse_address(text) {
                     Ok(address) => Ok(Value::Record {
                         record: RecordValue::new(
                             "HOST.Net.Address",
                             vec![Value::String(shared_string(address.to_string()))],
                         ),
                     }),
-                    Err(_) => Ok(Value::error(1, "invalid IP address".into())),
+                    Err(error) => Ok(net_error(&error)),
                 }
             }
             "HOST.Net.Address.ToString" => {
@@ -490,31 +500,12 @@ impl NetProvider {
                 require_arity(name, arguments, 1, span)?;
                 let address = net_address(&arguments[0], span)?;
                 let value = match name.rsplit('.').next().unwrap_or_default() {
-                    "IsIPv4" => address.as_std().is_ipv4(),
-                    "IsIPv6" => address.as_std().is_ipv6(),
-                    "IsLoopback" => match address.as_std() {
-                        std::net::IpAddr::V4(value) => value.is_loopback(),
-                        std::net::IpAddr::V6(value) => {
-                            value.is_loopback()
-                                || value
-                                    .to_ipv4_mapped()
-                                    .is_some_and(|mapped| mapped.is_loopback())
-                        }
-                    },
-                    "IsPrivate" => match address.as_std() {
-                        std::net::IpAddr::V4(value) => value.is_private(),
-                        std::net::IpAddr::V6(value) => {
-                            value.is_unique_local()
-                                || value
-                                    .to_ipv4_mapped()
-                                    .is_some_and(|mapped| mapped.is_private())
-                        }
-                    },
-                    "IsLinkLocal" => match address.as_std() {
-                        std::net::IpAddr::V4(value) => value.is_link_local(),
-                        std::net::IpAddr::V6(value) => value.is_unicast_link_local(),
-                    },
-                    "IsMulticast" => address.as_std().is_multicast(),
+                    "IsIPv4" => address.is_ipv4(),
+                    "IsIPv6" => address.is_ipv6(),
+                    "IsLoopback" => address.is_loopback(),
+                    "IsPrivate" => address.is_private(),
+                    "IsLinkLocal" => address.is_link_local(),
+                    "IsMulticast" => address.is_multicast(),
                     _ => unreachable!("matched address predicate"),
                 };
                 Ok(Value::Boolean(value))
@@ -593,7 +584,7 @@ impl NetProvider {
                         span,
                     ));
                 };
-                match crate::net::Cidr::parse(text) {
+                match bn_rt::net::parse_cidr(text) {
                     Ok(cidr) => Ok(Value::Record {
                         record: RecordValue::new(
                             "HOST.Net.CIDR",
@@ -606,7 +597,7 @@ impl NetProvider {
                             ],
                         ),
                     }),
-                    Err(message) => Ok(Value::error(1, message.into())),
+                    Err(error) => Ok(net_error(&error)),
                 }
             }
             "HOST.Net.CIDR.Contains" => {
@@ -698,41 +689,26 @@ impl NetProvider {
                 require_arity(name, arguments, 2, span)?;
                 let address = net_address(&arguments[0], span)?;
                 let (timeout, _) = integer(&arguments[1], span)?;
-                if !(1..=60_000).contains(&timeout) {
-                    return Ok(Value::error(
-                        1,
-                        "ping timeout is outside 1..60000 ms".into(),
-                    ));
-                }
-                match crate::net::ping(address, std::time::Duration::from_millis(timeout as u64)) {
+                match bn_rt::net::ping_address(address, timeout) {
                     Ok(reply) => Ok(ping_reply_value(reply)),
-                    Err(error) => Ok(Value::error(1, shared_string(error.message()))),
+                    Err(error) => Ok(net_error(&error)),
                 }
             }
             "HOST.Net.Neighbor" => {
                 require_arity(name, arguments, 1, span)?;
                 let address = net_address(&arguments[0], span)?;
-                match crate::net::neighbor(address) {
+                match bn_rt::net::neighbor_of(address) {
                     Ok(neighbor) => Ok(address_value(neighbor.as_std())),
-                    Err(error) => Ok(Value::error(1, shared_string(error.message()))),
+                    Err(error) => Ok(net_error(&error)),
                 }
             }
             "HOST.Net.Reverse" => {
                 require_arity(name, arguments, 2, span)?;
                 let address = net_address(&arguments[0], span)?;
                 let (timeout, _) = integer(&arguments[1], span)?;
-                if !(1..=60_000).contains(&timeout) {
-                    return Ok(Value::error(
-                        1,
-                        "reverse timeout is outside 1..60000 ms".into(),
-                    ));
-                }
-                match crate::net::reverse_timeout(
-                    address,
-                    std::time::Duration::from_millis(timeout as u64),
-                ) {
+                match bn_rt::net::reverse_lookup(address, timeout) {
                     Ok(name) => Ok(Value::String(shared_string(name))),
-                    Err(error) => Ok(Value::error(1, shared_string(error.message()))),
+                    Err(error) => Ok(net_error(&error)),
                 }
             }
             "HOST.Net.PingReply.Address" => {
@@ -840,19 +816,12 @@ impl NetProvider {
                     ));
                 };
                 let (timeout, _) = integer(&arguments[1], span)?;
-                if !(1..=60_000).contains(&timeout) {
-                    return Ok(Value::error(
-                        1,
-                        "resolver timeout is outside 1..60000 ms".into(),
-                    ));
-                }
-                match crate::net::resolve_timeout(
+                match bn_rt::net::resolve_host(
                     host,
-                    0,
+                    timeout,
                     bn_limits::web_limits().resolved_addresses_max,
-                    std::time::Duration::from_millis(timeout as u64),
                 ) {
-                    Ok(Some(addresses)) => Ok(Value::Record {
+                    Ok(addresses) => Ok(Value::Record {
                         record: RecordValue::new(
                             "HOST.Net.Addresses",
                             vec![Value::Vector(
@@ -868,8 +837,7 @@ impl NetProvider {
                             )],
                         ),
                     }),
-                    Ok(None) => Ok(Value::error(1, "resolver timeout".into())),
-                    Err(error) => Ok(Value::error(1, shared_string(error.to_string()))),
+                    Err(error) => Ok(net_error(&error)),
                 }
             }
             "HOST.Net.TCPConnect" => {

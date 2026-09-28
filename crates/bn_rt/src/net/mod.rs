@@ -4,10 +4,12 @@
 //! compiled binaries (C ABI in `lib.rs`): address/endpoint types, bounded
 //! resolve/reverse, ICMP ping, trusted-path ARP/NDP neighbor lookup, sockets.
 
+mod addressing;
 mod cidr;
 pub mod error;
 pub(crate) mod handles;
 mod icmp;
+mod lookup;
 mod neighbor;
 mod reverse;
 mod socket;
@@ -19,8 +21,10 @@ use std::{
     str::FromStr,
 };
 
+pub use addressing::{parse_address, parse_cidr};
 pub use cidr::Cidr;
 pub use icmp::{PingError, PingReply, ping};
+pub use lookup::{neighbor_of, ping_address, resolve_host, reverse_lookup};
 pub use neighbor::{NeighborError, neighbor};
 pub use reverse::{ReverseError, reverse_timeout};
 
@@ -214,6 +218,12 @@ impl AddressesHandle {
         timeout: std::time::Duration,
     ) -> std::io::Result<Option<Self>> {
         Ok(resolve_timeout(host, port, maximum, timeout)?.map(|values| Self { values }))
+    }
+
+    /// A collection of already resolved addresses.
+    #[must_use]
+    pub const fn from_addresses(values: Vec<Address>) -> Self {
+        Self { values }
     }
 
     #[must_use]

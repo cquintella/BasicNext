@@ -28,6 +28,10 @@ pub enum Failure {
     NotFound(String),
     /// The operation is not available on this host; the text says why.
     Unavailable(String),
+    /// The destination cannot be reached; the text says why.
+    Unreachable(String),
+    /// The operating system refuses the operation; the text says why.
+    PermissionDenied(String),
     /// The execution policy denies `HOST.Net`.
     PolicyDenied,
     /// An operating-system failure, classified by its kind.
@@ -76,6 +80,8 @@ impl NetError {
             Failure::Closed => net::CLOSED,
             Failure::NotFound(_) => net::NOT_FOUND,
             Failure::Unavailable(_) => net::UNAVAILABLE,
+            Failure::Unreachable(_) => net::UNREACHABLE,
+            Failure::PermissionDenied(_) => net::PERMISSION_DENIED,
             Failure::PolicyDenied => net::POLICY_DENIED,
             Failure::Io(error) => io_code(error),
         }
@@ -100,13 +106,41 @@ impl NetError {
             Failure::InvalidArgument(rule)
             | Failure::Limit(rule)
             | Failure::NotFound(rule)
-            | Failure::Unavailable(rule) => rule.clone(),
+            | Failure::Unavailable(rule)
+            | Failure::Unreachable(rule)
+            | Failure::PermissionDenied(rule) => rule.clone(),
             Failure::Timeout(milliseconds) => format!("no answer within {milliseconds} ms"),
             Failure::Closed => "it was closed by Close".into(),
             Failure::PolicyDenied => "the execution policy denies HOST.Net".into(),
             Failure::Io(error) => error.to_string(),
         }
     }
+}
+
+/// A bounded wait of `timeout_ms` for `operation`, which `host-net.md`
+/// bounds to 1..60000 ms.
+///
+/// # Errors
+///
+/// `Net.INVALID_ARGUMENT` outside that range.
+pub fn checked_timeout(
+    operation: &'static str,
+    action: &str,
+    timeout_ms: i128,
+) -> Result<std::time::Duration, NetError> {
+    u64::try_from(timeout_ms)
+        .ok()
+        .filter(|milliseconds| (1..=60_000).contains(milliseconds))
+        .map(std::time::Duration::from_millis)
+        .ok_or_else(|| {
+            NetError::new(
+                operation,
+                action,
+                Failure::InvalidArgument(format!(
+                    "the timeout must be within 1..60000 ms; got {timeout_ms}"
+                )),
+            )
+        })
 }
 
 /// The portable code of an operating-system failure.

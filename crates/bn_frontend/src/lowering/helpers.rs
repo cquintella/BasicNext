@@ -244,6 +244,15 @@ pub(crate) fn standard_import_span(program: &Program, name: &str) -> Option<Span
     })
 }
 
+/// The value of an `INTEGER` member of `HOST.Net`: a portable error code.
+pub(crate) fn net_constant(name: &str) -> Option<Constant> {
+    let value = bn_types::error_codes::net::ALL
+        .iter()
+        .find(|(code, _)| *code == name)?
+        .1;
+    Some(Constant::Integer(value.to_string()))
+}
+
 /// The value of an `INTEGER` member of `HOST.FileSystem`: an open mode or a
 /// portable error code.
 pub(crate) fn filesystem_constant(name: &str) -> Option<Constant> {
