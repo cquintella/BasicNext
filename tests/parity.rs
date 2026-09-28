@@ -539,16 +539,16 @@ END FUNCTION\n",
         ])
         .output()
         .expect("run interpreted read-only fixture");
+    // 0.6.md "`HOST.FileSystem` execution policy": a denied operation returns
+    // `Error` on both backends.
     assert_eq!(
         interpreted_read_only.status.code(),
-        Some(2),
+        Some(0),
         "stdout: {}\nstderr: {}",
         String::from_utf8_lossy(&interpreted_read_only.stdout),
         String::from_utf8_lossy(&interpreted_read_only.stderr)
     );
-    assert!(
-        String::from_utf8_lossy(&interpreted_read_only.stderr).contains("EXECUTION_POLICY_DENIED")
-    );
+    assert!(String::from_utf8_lossy(&interpreted_read_only.stdout).contains("denied"));
     assert!(!writable.exists());
 
     let artifact = base.join("filesystem-policy");
@@ -715,6 +715,74 @@ fn as_string_matches_print_text_across_backends() {
          -42 9000000000 200 18446744073709551615 0.25 2.0 0.5 0.30000000000000004 TRUE 0.1 -128\n"
     );
     native_matches_interpreter(path);
+}
+
+/// `IS T` on `STRING`/`BOOLEAN`/`FLOAT OR Error`, and a narrowed STRING used
+/// as a STRING: `bnc` answered FALSE for every such test before.
+#[test]
+fn is_on_error_alternatives_matches_across_backends() {
+    let path = "tests/grammar/valid/is-error-alternatives.bn";
+    let output = bni().args(["run", path]).output().expect("run fixture");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "FALSE FALSE FALSE\nTRUE TRUE TRUE FALSE\npardal! 6\nFALSE TRUE\n"
+    );
+    native_matches_interpreter(path);
+}
+
+/// HOST.FileSystem failures are `Error` values with Code 1 and a message on
+/// both backends, including policy denials (0.6.md: "A denied operation
+/// returns `Error`"). The OS text of the first failure is platform-specific,
+/// so only its equality across backends is asserted.
+#[test]
+fn filesystem_errors_carry_code_and_message_on_both_backends() {
+    let fixture = std::path::absolute("tests/host/fs_errors.bn").expect("fixture path");
+    let directory =
+        std::env::temp_dir().join(format!("basicnext-fs-errors-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("create directory");
+    let artifact = directory.join(format!("fs-errors{}", std::env::consts::EXE_SUFFIX));
+    let built = bnc()
+        .arg(&fixture)
+        .arg("-o")
+        .arg(&artifact)
+        .output()
+        .expect("run bnc");
+    assert_eq!(
+        built.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let interpreted = bni()
+        .arg("run")
+        .arg(&fixture)
+        .current_dir(&directory)
+        .env("BN_FS_POLICY", "read-only")
+        .output()
+        .expect("run bni");
+    let compiled = Command::new(&artifact)
+        .current_dir(&directory)
+        .env("BN_FS_POLICY", "read-only")
+        .output()
+        .expect("run artifact");
+    assert_eq!(interpreted.status.code(), Some(0));
+    assert_eq!(compiled.status.code(), Some(0));
+    assert_eq!(compiled.stdout, interpreted.stdout);
+    let stdout = String::from_utf8_lossy(&interpreted.stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines.len(), 5, "{stdout}");
+    assert_eq!(lines[0], "1 TRUE");
+    assert_eq!(
+        lines[2..],
+        [
+            "1 filesystem path is outside the execution policy",
+            "1 filesystem deletion is outside the execution policy",
+            "FALSE",
+        ]
+    );
+    let _ = fs::remove_dir_all(directory);
 }
 
 /// `examples/conversions.bn`: every `AS` conversion and the `PRINT` text of

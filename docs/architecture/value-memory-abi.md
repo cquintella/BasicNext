@@ -95,6 +95,8 @@ The table below catalogs ownership and lifetime for all symbols declared in `BN_
 | **BNMath Vector Reductions** | `bn_rt_math_vmin_*`, `bn_rt_math_vmax_*`, `bn_rt_math_mean_*`, `bn_rt_math_median_*`, `bn_rt_math_quartile1_*`, `bn_rt_math_quartile3_*`, `bn_rt_math_range_*`, `bn_rt_math_stdev_*`, `bn_rt_math_variance_*`, `bn_rt_math_mode_*` | Array `ptr` borrowed for call; length `i32` copied | Scalar reduction value returned; mode writes into caller-owned buffer | Read-only slice access; callee neither mutates nor frees the buffer |
 | **String Operations** | `bn_rt_str_len`, `bn_rt_str_index_utf8`, `bn_rt_str_eq`, `bn_rt_str_to_lower`, `bn_rt_str_to_upper`, `bn_rt_print_date`, `bn_rt_print_time`, `bn_rt_print_float`, `bn_rt_print_float32` | `ptr` borrowed for call duration | Scalar result; `bn_rt_str_index_utf8` packs one NUL-terminated scalar in native byte order | Pure operations on immutable string buffers; the LLVM caller materializes indexed characters in function-local storage |
 | **Scalar Text (`AS STRING`)** | `bn_rt_text_int(i64)`, `bn_rt_text_uint(i64)`, `bn_rt_text_float(double)`, `bn_rt_text_float32(double)` | Scalars copied; narrower integers sign- or zero-extended to 64 bits; `FLOAT32` widened to `double` | Owned NUL-terminated UTF-8 string, same allocation as `bn_rt_str_to_upper` | Text is `bn_types::text`, shared with the interpreter and `PRINT`; `BOOLEAN` selects the `TRUE`/`FALSE` constants without a call |
+| **File System** | `bn_rt_file_open`, `bn_rt_file_close`, `bn_rt_file_release`, `bn_rt_file_read_all`, `bn_rt_file_read_line`, `bn_rt_file_write`, `bn_rt_file_write_line`, `bn_rt_file_read_bytes`, `bn_rt_file_write_bytes`, `bn_rt_fs_exists`, `bn_rt_fs_delete_file`, `bn_rt_file_string_free` | Path/text `ptr` borrowed for the call; byte buffers borrowed with an explicit length; handles `u64` copied | Status `u32` (0 OK, 1 invalid, 2 error, 3 capability denied, 4 `EOF`); out pointers receive the handle, an owned string, a byte count, or a flag | Semantics are `bn_rt::file`, shared with the interpreter. `Close` keeps the handle as a closed file; `RELEASE` calls `bn_rt_file_release` |
+| **HOST `Error` message** | `bn_rt_error_message(status)` | Status `i32` copied | Null for status 0 (no allocation); otherwise the owned message the failing call recorded on this thread, empty if none | Emitted HOST results build `Error(Code 1, Message)` from it, as the interpreter does |
 
 The layout assertions cover the release slice on every supported target by
 checking field offsets and alignment rather than baking a host pointer width
@@ -272,6 +274,15 @@ bn_rt_exec_result_stderr
 bn_rt_exec_result_stdout
 bn_rt_exec_run
 bn_rt_file_close
+bn_rt_file_release
+bn_rt_file_read_all
+bn_rt_file_read_line
+bn_rt_file_write
+bn_rt_file_write_line
+bn_rt_file_read_bytes
+bn_rt_file_write_bytes
+bn_rt_fs_exists
+bn_rt_fs_delete_file
 bn_rt_file_open
 bn_rt_log_fields_close
 bn_rt_log_fields_create
@@ -470,5 +481,5 @@ bn_rt_crypto_sha512
 bn_rt_crypto_sign
 bn_rt_crypto_slice
 bn_rt_crypto_verify
-
+bn_rt_error_message
 ```

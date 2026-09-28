@@ -134,8 +134,12 @@ pub(crate) fn analyze_function<'a>(
                         .get(symbol)
                         .cloned()
                         .filter(|stored| llvm_type(stored).is_some());
+                    // A slot narrowed to STRING by `IS` loads the string
+                    // itself; other narrowings keep the stored alternative.
                     let load_ty = stored_ty
-                        .filter(|stored| llvm_type(stored) != llvm_type(ty))
+                        .filter(|stored| {
+                            llvm_type(stored) != llvm_type(ty) && !narrows_to_string(stored, ty)
+                        })
                         .unwrap_or_else(|| ty.clone());
                     values.insert(*destination, load_ty.clone());
                     symbols.entry(*symbol).or_insert(load_ty);
@@ -497,4 +501,12 @@ pub(crate) fn analyze_function<'a>(
             .collect(),
         intrinsics,
     })
+}
+
+/// A `{ i1, ptr, i64 }` alternative holding STRING, loaded as STRING after an
+/// `IS` narrowing: the string is the aggregate's pointer field.
+pub(crate) fn narrows_to_string(stored: &Type, loaded: &Type) -> bool {
+    *loaded == Type::String
+        && llvm_type(stored) == Some("{ i1, ptr, i64 }")
+        && matches!(stored, Type::Alternative(alternatives) if alternatives.contains(&Type::String))
 }

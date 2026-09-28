@@ -411,6 +411,11 @@ pub(crate) fn allows_path(path: &Path, write: bool) -> bool {
     current().fs().allows_path(path, write)
 }
 
+/// Runs `f` against the effective filesystem policy.
+pub(crate) fn with_fs<T>(f: impl FnOnce(&FsPolicy) -> T) -> T {
+    f(current().fs())
+}
+
 pub(crate) fn open_path(path: &Path, mode: OpenMode) -> io::Result<File> {
     current().fs().open(path, mode)
 }

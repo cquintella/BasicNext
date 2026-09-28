@@ -248,12 +248,39 @@ const fn float_print_symbol(kind: FloatType) -> &'static str {
     }
 }
 
+/// The pointer a `{ i1, ptr, i64 }` alternative stores for a value that is
+/// neither the payload nor an `Error`: `NA` or `EOF`.
+#[derive(Clone, Copy)]
+pub(crate) enum Sentinel {
+    NotAvailable,
+    EndOfFile,
+}
+
+impl Sentinel {
+    pub(crate) fn of(alternatives: &[Type]) -> Option<Self> {
+        if string_na_or_error(alternatives) || scalar_na_or_error(alternatives) {
+            Some(Self::NotAvailable)
+        } else if string_eof_or_error(alternatives) || integer_eof_or_error(alternatives) {
+            Some(Self::EndOfFile)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) const fn global(self) -> (&'static str, &'static str) {
+        match self {
+            Self::NotAvailable => ("@.bn_na", "[3 x i8]"),
+            Self::EndOfFile => ("@.bn_eof", "[4 x i8]"),
+        }
+    }
+}
+
 fn lower_print_language_error_union(
     text: &mut String,
     value: ValueId,
     integer_value: bool,
     void_value: bool,
-    has_na: bool,
+    sentinel: Option<Sentinel>,
     scalar: Option<&Type>,
     state: &mut EmissionState,
 ) {
@@ -284,10 +311,11 @@ fn lower_print_language_error_union(
     );
     let _ = writeln!(text, "  br label %unionjoin{count}");
     state.control_flow.label(text, format!("unionvalue{count}"));
-    if has_na {
+    if let Some(sentinel) = sentinel {
+        let (global, array) = sentinel.global();
         let _ = writeln!(
             text,
-            "  %unionnaptr{count} = getelementptr [3 x i8], ptr @.bn_na, i64 0, i64 0"
+            "  %unionnaptr{count} = getelementptr {array}, ptr {global}, i64 0, i64 0"
         );
         let _ = writeln!(
             text,
@@ -512,17 +540,20 @@ pub(crate) fn lower_print_value(
             || string_or_error(alternatives)
             || void_or_error(alternatives)
             || string_na_or_error(alternatives)
+            || string_eof_or_error(alternatives)
+            || integer_eof_or_error(alternatives)
             || scalar_na_or_error(alternatives))
     {
         lower_print_language_error_union(
             text,
             value,
-            integer_or_error(alternatives),
+            integer_or_error(alternatives) || integer_eof_or_error(alternatives),
             void_or_error(alternatives),
-            string_na_or_error(alternatives) || scalar_na_or_error(alternatives),
+            Sentinel::of(alternatives),
             if float_or_error(alternatives)
                 || boolean_or_error(alternatives)
                 || string_na_or_error(alternatives)
+                || string_eof_or_error(alternatives)
                 || scalar_na_or_error(alternatives)
             {
                 alternatives.iter().find(|ty| {

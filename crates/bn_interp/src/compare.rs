@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use bn_types::{FloatType, IntegerType, Type};
+use bn_types::Type;
 
 use super::Value;
 
@@ -63,19 +63,17 @@ pub fn equals(left: &Value, right: &Value) -> bool {
 }
 
 pub(super) fn is_value(value: &Value, test: &str) -> bool {
+    if let Some(ty) = bn_types::scalar_test_type(test) {
+        let actual = match value {
+            Value::Integer(_, kind) => Type::Integer(*kind),
+            Value::Float(_, kind) => Type::Float(*kind),
+            Value::Boolean(_) => Type::Boolean,
+            Value::String(_) => Type::String,
+            _ => return false,
+        };
+        return actual == ty;
+    }
     match test {
-        "INTEGER" | "INT32" => matches!(value, Value::Integer(_, IntegerType::Int32)),
-        "BYTE" => matches!(value, Value::Integer(_, IntegerType::Byte)),
-        "INT8" => matches!(value, Value::Integer(_, IntegerType::Int8)),
-        "INT16" => matches!(value, Value::Integer(_, IntegerType::Int16)),
-        "INT64" | "TIMESTAMP" => matches!(value, Value::Integer(_, IntegerType::Int64)),
-        "UINT16" => matches!(value, Value::Integer(_, IntegerType::UInt16)),
-        "UINT32" => matches!(value, Value::Integer(_, IntegerType::UInt32)),
-        "UINT64" => matches!(value, Value::Integer(_, IntegerType::UInt64)),
-        "FLOAT" | "FLOAT64" => matches!(value, Value::Float(_, FloatType::Float64)),
-        "FLOAT32" => matches!(value, Value::Float(_, FloatType::Float32)),
-        "BOOLEAN" => matches!(value, Value::Boolean(_)),
-        "STRING" => matches!(value, Value::String(_)),
         "NAN" => matches!(value, Value::Float(value, _) if value.is_nan()),
         "INF" => matches!(value, Value::Float(value, _) if *value == f64::INFINITY),
         "-INF" => matches!(value, Value::Float(value, _) if *value == f64::NEG_INFINITY),

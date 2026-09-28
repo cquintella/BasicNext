@@ -1,0 +1,26 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Run with BN_FS_POLICY=read-only: an OS failure and a policy denial are both
+// `Error` values with Code 1 and a message (0.6.md, "`HOST.FileSystem`
+// execution policy": "A denied operation returns `Error`").
+IMPORT HOST.FileSystem AS FS
+
+FUNCTION Start() AS VOID
+    LET missing AS FS.File OR Error = FS.Open("no-such-file.txt", FS.READ)
+    IF missing IS Error THEN
+        PRINT missing.Code, LEN(missing.Message) > 0
+        PRINT missing.Message
+    END IF
+    LET denied AS FS.File OR Error = FS.Open("fs-errors.txt", FS.WRITE)
+    IF denied IS Error THEN
+        PRINT denied.Code, denied.Message
+    END IF
+    LET removed AS VOID OR Error = FS.DeleteFile("fs-errors.txt")
+    IF removed IS Error THEN
+        PRINT removed.Code, removed.Message
+    END IF
+    PRINT FS.Exists("fs-errors.txt")
+END FUNCTION

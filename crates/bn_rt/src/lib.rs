@@ -839,6 +839,28 @@ fn c_string(text: &str) -> *mut c_char {
     ptr
 }
 
+thread_local! {
+    /// Message of the last failed ABI call on this thread: the `Message` of
+    /// the `Error` the emitted code builds from that call's status.
+    static LAST_ERROR: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+}
+
+pub(crate) fn set_error(message: impl Into<String>) {
+    LAST_ERROR.with(|slot| *slot.borrow_mut() = message.into());
+}
+
+/// `Error.Message` for a HOST call that returned `status`: null on success
+/// (no allocation), else the recorded message, empty when the call recorded
+/// none. Owned like other runtime strings.
+#[allow(unsafe_code)] // C ABI: owned UTF-8 STRING.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_error_message(status: i32) -> *mut c_char {
+    if status == 0 {
+        return std::ptr::null_mut();
+    }
+    c_string(&LAST_ERROR.with(|slot| std::mem::take(&mut *slot.borrow_mut())))
+}
+
 /// Parses an IP address. Writes a malloc'd IP or error message to `out`.
 ///
 /// Returns 0 on success and 1 on error.

@@ -45,6 +45,15 @@ declare ptr @bn_rt_dataframe_column_name_owned(i64, i32)
 declare i32 @bn_rt_dataframe_close(i64)
 declare i32 @bn_rt_file_open(ptr, i32, ptr)
 declare i32 @bn_rt_file_close(i64)
+declare i32 @bn_rt_file_release(i64)
+declare i32 @bn_rt_file_read_all(i64, ptr)
+declare i32 @bn_rt_file_read_line(i64, ptr)
+declare i32 @bn_rt_file_write(i64, ptr)
+declare i32 @bn_rt_file_write_line(i64, ptr)
+declare i32 @bn_rt_file_read_bytes(i64, ptr, i64, ptr)
+declare i32 @bn_rt_file_write_bytes(i64, ptr, i64)
+declare i32 @bn_rt_fs_exists(ptr, ptr)
+declare i32 @bn_rt_fs_delete_file(ptr)
 declare i32 @bn_rt_dataframe_read_csv(i64, i8, ptr, ptr)
 declare i32 @bn_rt_dataframe_write_csv(i64, i64, i8, ptr)
 declare i64 @bn_rt_log_fields_create()
@@ -68,6 +77,7 @@ declare i32 @bn_rt_console_num_rows()
 declare i64 @bn_rt_str_asc(ptr)
 declare ptr @bn_rt_str_to_lower(ptr)
 declare ptr @bn_rt_str_to_upper(ptr)
+declare ptr @bn_rt_error_message(i32)
 declare ptr @bn_rt_text_int(i64)
 declare ptr @bn_rt_text_uint(i64)
 declare ptr @bn_rt_text_float(double)
@@ -197,7 +207,15 @@ pub(crate) fn is_bn_rt_host_call(name: &str) -> bool {
             | "HOST.Exec.Result.Stderr"
             | "HOST.Exec.Result.Close"
             | "HOST.FileSystem.Open"
+            | "HOST.FileSystem.Exists"
+            | "HOST.FileSystem.DeleteFile"
             | "FS.File.Close"
+            | "FS.File.ReadAll"
+            | "FS.File.ReadLine"
+            | "FS.File.Write"
+            | "FS.File.WriteLine"
+            | "FS.File.ReadBytes"
+            | "FS.File.WriteBytes"
             | "HOST.Net.Address.Parse"
             | "HOST.Net.Address.ToString"
             | "HOST.Net.Endpoint.Create"
@@ -384,7 +402,25 @@ pub(crate) fn bn_rt_call_supported(
         "HOST.FileSystem.Open" => arguments.len() == 2
             && values.get(&arguments[0]) == Some(&Type::String)
             && values.get(&arguments[1]).and_then(llvm_type).is_some_and(integer_llvm),
-        "FS.File.Close" => arguments.len() == 1,
+        "FS.File.Close" | "FS.File.ReadAll" | "FS.File.ReadLine" => arguments.len() == 1,
+        "HOST.FileSystem.Exists" | "HOST.FileSystem.DeleteFile" => {
+            arguments.len() == 1 && values.get(&arguments[0]) == Some(&Type::String)
+        }
+        "FS.File.Write" | "FS.File.WriteLine" => {
+            arguments.len() == 2 && values.get(&arguments[1]) == Some(&Type::String)
+        }
+        "FS.File.ReadBytes" => {
+            arguments.len() == 2
+                && values.get(&arguments[1]).and_then(llvm_type) == Some("{ ptr, i32 }")
+        }
+        "FS.File.WriteBytes" => {
+            arguments.len() == 3
+                && values.get(&arguments[1]).and_then(llvm_type) == Some("{ ptr, i32 }")
+                && values
+                    .get(&arguments[2])
+                    .and_then(llvm_type)
+                    .is_some_and(integer_llvm)
+        }
         "HOST.Clock.Now"
         | "HOST.Clock.Timer"
         | "HOST.Console.Cls"
@@ -798,6 +834,173 @@ pub(crate) fn lower_bn_rt_call(
                 text,
                 destination,
                 format!("call i32 @bn_rt_file_close(i64 %fileclosehandle{dest})"),
+            );
+        }
+        "HOST.FileSystem.Exists" => {
+            let dest = destination.0;
+            let _ = writeln!(text, "  %fsexout{dest} = alloca i32");
+            let _ = writeln!(
+                text,
+                "  %fsexrc{dest} = call i32 @bn_rt_fs_exists(ptr %v{}, ptr %fsexout{dest})",
+                arguments[0].0
+            );
+            let _ = writeln!(text, "  %fsexval{dest} = load i32, ptr %fsexout{dest}");
+            let _ = writeln!(text, "  %fsexpay{dest} = zext i32 %fsexval{dest} to i64");
+            emit_status_result(
+                text,
+                destination,
+                &format!("%fsexrc{dest}"),
+                None,
+                "null",
+                &format!("%fsexpay{dest}"),
+            );
+        }
+        "HOST.FileSystem.DeleteFile" => {
+            emit_void_result(
+                text,
+                destination,
+                format!("call i32 @bn_rt_fs_delete_file(ptr %v{})", arguments[0].0),
+            );
+        }
+        "FS.File.Write" | "FS.File.WriteLine" => {
+            let dest = destination.0;
+            let symbol = if name == "FS.File.Write" {
+                "bn_rt_file_write"
+            } else {
+                "bn_rt_file_write_line"
+            };
+            let _ = writeln!(
+                text,
+                "  %filewhandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                arguments[0].0
+            );
+            emit_void_result(
+                text,
+                destination,
+                format!(
+                    "call i32 @{symbol}(i64 %filewhandle{dest}, ptr %v{})",
+                    arguments[1].0
+                ),
+            );
+        }
+        "FS.File.ReadAll" | "FS.File.ReadLine" => {
+            let dest = destination.0;
+            let (symbol, eof) = if name == "FS.File.ReadAll" {
+                ("bn_rt_file_read_all", None)
+            } else {
+                ("bn_rt_file_read_line", Some(4))
+            };
+            let _ = writeln!(
+                text,
+                "  %filerhandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                arguments[0].0
+            );
+            let _ = writeln!(text, "  %filerout{dest} = alloca ptr");
+            let _ = writeln!(
+                text,
+                "  %filerrc{dest} = call i32 @{symbol}(i64 %filerhandle{dest}, ptr %filerout{dest})"
+            );
+            let _ = writeln!(text, "  %filerdata{dest} = load ptr, ptr %filerout{dest}");
+            emit_status_result(
+                text,
+                destination,
+                &format!("%filerrc{dest}"),
+                eof,
+                &format!("%filerdata{dest}"),
+                "0",
+            );
+        }
+        "FS.File.ReadBytes" => {
+            let dest = destination.0;
+            let _ = writeln!(
+                text,
+                "  %filebhandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                arguments[0].0
+            );
+            let _ = writeln!(
+                text,
+                "  %filebptr{dest} = extractvalue {{ ptr, i32 }} %v{}, 0",
+                arguments[1].0
+            );
+            let _ = writeln!(
+                text,
+                "  %filebcap{dest} = extractvalue {{ ptr, i32 }} %v{}, 1",
+                arguments[1].0
+            );
+            let _ = writeln!(
+                text,
+                "  %filebcap64{dest} = sext i32 %filebcap{dest} to i64"
+            );
+            let _ = writeln!(text, "  %filebout{dest} = alloca i64");
+            let _ = writeln!(
+                text,
+                "  %filebrc{dest} = call i32 @bn_rt_file_read_bytes(i64 %filebhandle{dest}, ptr %filebptr{dest}, i64 %filebcap64{dest}, ptr %filebout{dest})"
+            );
+            let _ = writeln!(text, "  %filebcount{dest} = load i64, ptr %filebout{dest}");
+            emit_status_result(
+                text,
+                destination,
+                &format!("%filebrc{dest}"),
+                Some(4),
+                "null",
+                &format!("%filebcount{dest}"),
+            );
+        }
+        "FS.File.WriteBytes" => {
+            let dest = destination.0;
+            let count_ty = analysis
+                .values
+                .get(&arguments[2])
+                .expect("validated byte count");
+            let count = coerce_to_type(
+                text,
+                arguments[2],
+                count_ty,
+                &Type::Integer(IntegerType::Int64),
+            );
+            let _ = writeln!(
+                text,
+                "  %filewbhandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
+                arguments[0].0
+            );
+            let _ = writeln!(
+                text,
+                "  %filewbptr{dest} = extractvalue {{ ptr, i32 }} %v{}, 0",
+                arguments[1].0
+            );
+            let _ = writeln!(
+                text,
+                "  %filewbcap{dest} = extractvalue {{ ptr, i32 }} %v{}, 1",
+                arguments[1].0
+            );
+            let _ = writeln!(
+                text,
+                "  %filewbcap64{dest} = sext i32 %filewbcap{dest} to i64"
+            );
+            // host.md: `count` outside 0..=LEN(buffer) is INDEX_OUT_OF_BOUNDS,
+            // the same trap as vector indexing.
+            let _ = writeln!(text, "  %filewbneg{dest} = icmp slt i64 {count}, 0");
+            let _ = writeln!(
+                text,
+                "  %filewbover{dest} = icmp sgt i64 {count}, %filewbcap64{dest}"
+            );
+            let _ = writeln!(
+                text,
+                "  %filewbbad{dest} = or i1 %filewbneg{dest}, %filewbover{dest}"
+            );
+            let ok = take_continuation(block_id, state);
+            let _ = writeln!(
+                text,
+                "  br i1 %filewbbad{dest}, label %trap_numeric_overflow, label %{ok}"
+            );
+            state.control_flow.label(text, ok);
+            state.needs_numeric_overflow_trap = true;
+            emit_void_result(
+                text,
+                destination,
+                format!(
+                    "call i32 @bn_rt_file_write_bytes(i64 %filewbhandle{dest}, ptr %filewbptr{dest}, i64 {count})"
+                ),
             );
         }
         "HOST.Clock.Now" => {
@@ -1766,48 +1969,91 @@ fn endpoint_parts(
     }
 }
 
+/// Builds a HOST `{ i1, ptr, i64 }` result from a `bn_rt` status `rc`:
+/// status 0 is the value (`value_ptr`, `payload`); `eof_status`, when given,
+/// is a successful `EOF` (the `@.bn_eof` sentinel); any other status is an
+/// `Error` with `Code` 1 and the message the runtime recorded for the call
+/// (`bn_rt_error_message`), as in the interpreter.
+pub(crate) fn emit_status_result(
+    text: &mut String,
+    destination: ValueId,
+    rc: &str,
+    eof_status: Option<u32>,
+    value_ptr: &str,
+    payload: &str,
+) {
+    let dest = destination.0;
+    let _ = writeln!(text, "  %stfail{dest} = icmp ne i32 {rc}, 0");
+    let (error, pointer) = if let Some(eof) = eof_status {
+        let _ = writeln!(text, "  %steof{dest} = icmp eq i32 {rc}, {eof}");
+        let _ = writeln!(text, "  %stnoteof{dest} = xor i1 %steof{dest}, true");
+        let _ = writeln!(
+            text,
+            "  %sterr{dest} = and i1 %stfail{dest}, %stnoteof{dest}"
+        );
+        let _ = writeln!(
+            text,
+            "  %stvalue{dest} = select i1 %steof{dest}, ptr @.bn_eof, ptr {value_ptr}"
+        );
+        (format!("%sterr{dest}"), format!("%stvalue{dest}"))
+    } else {
+        (format!("%stfail{dest}"), value_ptr.to_string())
+    };
+    let _ = writeln!(text, "  %sterrint{dest} = zext i1 {error} to i32");
+    let _ = writeln!(
+        text,
+        "  %stmsg{dest} = call ptr @bn_rt_error_message(i32 %sterrint{dest})"
+    );
+    let _ = writeln!(
+        text,
+        "  %stptr{dest} = select i1 {error}, ptr %stmsg{dest}, ptr {pointer}"
+    );
+    let _ = writeln!(
+        text,
+        "  %stpayload{dest} = select i1 {error}, i64 1, i64 {payload}"
+    );
+    let _ = writeln!(
+        text,
+        "  %stagg0{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 {error}, 0"
+    );
+    let _ = writeln!(
+        text,
+        "  %stagg1{dest} = insertvalue {{ i1, ptr, i64 }} %stagg0{dest}, ptr %stptr{dest}, 1"
+    );
+    let _ = writeln!(
+        text,
+        "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %stagg1{dest}, i64 %stpayload{dest}, 2"
+    );
+}
+
 pub(crate) fn emit_handle_result(
     text: &mut String,
     destination: ValueId,
     rc: impl AsRef<str>,
     handle: impl AsRef<str>,
 ) {
-    let dest = destination.0;
-    let rc = rc.as_ref();
-    let handle = handle.as_ref();
-    let _ = writeln!(text, "  %neterr{dest} = icmp ne i32 {rc}, 0");
-    let _ = writeln!(
+    emit_status_result(
         text,
-        "  %netagg{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %neterr{dest}, 0"
-    );
-    let _ = writeln!(
-        text,
-        "  %netaggp{dest} = insertvalue {{ i1, ptr, i64 }} %netagg{dest}, ptr null, 1"
-    );
-    let _ = writeln!(
-        text,
-        "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %netaggp{dest}, i64 {handle}, 2"
+        destination,
+        rc.as_ref(),
+        None,
+        "null",
+        handle.as_ref(),
     );
 }
 
 pub(crate) fn emit_void_result(text: &mut String, destination: ValueId, rc: impl AsRef<str>) {
     let dest = destination.0;
     let _ = writeln!(text, "  %netrc{dest} = {}", rc.as_ref());
-    let _ = writeln!(text, "  %neterr{dest} = icmp ne i32 %netrc{dest}, 0");
-    let _ = writeln!(
+    emit_status_result(
         text,
-        "  %netagg0{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %neterr{dest}, 0"
-    );
-    let _ = writeln!(
-        text,
-        "  %netagg1{dest} = insertvalue {{ i1, ptr, i64 }} %netagg0{dest}, ptr null, 1"
-    );
-    let _ = writeln!(
-        text,
-        "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %netagg1{dest}, i64 0, 2"
+        destination,
+        &format!("%netrc{dest}"),
+        None,
+        "null",
+        "0",
     );
 }
-
 fn emit_net_result(
     text: &mut String,
     destination: ValueId,

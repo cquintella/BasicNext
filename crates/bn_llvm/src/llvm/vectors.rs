@@ -396,9 +396,14 @@ pub(crate) fn emit_is(
 ) {
     let test_name = is_test_name(right_ty);
     if let Type::Alternative(alternatives) = left_ty
-        && (string_na_or_error(alternatives) || scalar_na_or_error(alternatives))
+        && let Some(sentinel) = Sentinel::of(alternatives)
     {
         let id = destination.0;
+        let (global, array) = sentinel.global();
+        let sentinel_name = match sentinel {
+            Sentinel::NotAvailable => "NA",
+            Sentinel::EndOfFile => "EOF",
+        };
         let _ = writeln!(
             text,
             "  %cellerror{id} = extractvalue {{ i1, ptr, i64 }} %v{}, 0",
@@ -411,7 +416,7 @@ pub(crate) fn emit_is(
         );
         let _ = writeln!(
             text,
-            "  %cellnaptr{id} = getelementptr [3 x i8], ptr @.bn_na, i64 0, i64 0"
+            "  %cellnaptr{id} = getelementptr {array}, ptr {global}, i64 0, i64 0"
         );
         let _ = writeln!(
             text,
@@ -419,11 +424,15 @@ pub(crate) fn emit_is(
         );
         if test_name == "Error" {
             let _ = writeln!(text, "  %v{id} = or i1 false, %cellerror{id}");
-        } else if test_name == "NA" {
+        } else if test_name == sentinel_name
+            || matches!(right_ty, Type::EndOfFile | Type::NotAvailable)
+        {
             let _ = writeln!(text, "  %cellok{id} = xor i1 %cellerror{id}, true");
             let _ = writeln!(text, "  %v{id} = and i1 %cellok{id}, %cellna{id}");
         } else {
-            let matches = alternatives.iter().any(|ty| ty == right_ty);
+            let matches = alternatives
+                .iter()
+                .any(|ty| ty == right_ty || alternative_is(ty, test_name));
             let _ = writeln!(
                 text,
                 "  %cellabsent{id} = or i1 %cellerror{id}, %cellna{id}"
@@ -557,9 +566,7 @@ pub(crate) fn emit_is(
         } else {
             None
         };
-        if let Some(Type::Named(name)) = value_ty
-            && name == test_name
-        {
+        if value_ty.is_some_and(|value_ty| alternative_is(value_ty, test_name)) {
             let _ = writeln!(
                 text,
                 "  %iserror{} = extractvalue {aggregate} %v{}, 0",
@@ -634,6 +641,14 @@ fn emit_integer_error_union_is(
         let _ = writeln!(text, "  %v{dest} = or i1 false, %unionnoterror{dest}");
     }
     true
+}
+
+/// Whether `IS test` names `value_ty`, the non-`Error` side of `T OR Error`.
+fn alternative_is(value_ty: &Type, test: &str) -> bool {
+    match value_ty {
+        Type::Named(name) => name == test,
+        _ => bn_types::scalar_test_type(test).as_ref() == Some(value_ty),
+    }
 }
 
 fn is_test_name(ty: &Type) -> &str {

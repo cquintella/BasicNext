@@ -68,6 +68,27 @@ pub enum IntegerType {
     UInt64,
 }
 
+/// The scalar type an `IS` test name denotes (`x IS INTEGER`), for both
+/// backends: `INTEGER` is `INT32` and `TIMESTAMP` is `INT64`.
+#[must_use]
+pub fn scalar_test_type(test: &str) -> Option<Type> {
+    Some(match test {
+        "INTEGER" | "INT32" => Type::Integer(IntegerType::Int32),
+        "BYTE" => Type::Integer(IntegerType::Byte),
+        "INT8" => Type::Integer(IntegerType::Int8),
+        "INT16" => Type::Integer(IntegerType::Int16),
+        "INT64" | "TIMESTAMP" => Type::Integer(IntegerType::Int64),
+        "UINT16" => Type::Integer(IntegerType::UInt16),
+        "UINT32" => Type::Integer(IntegerType::UInt32),
+        "UINT64" => Type::Integer(IntegerType::UInt64),
+        "FLOAT" | "FLOAT64" => Type::Float(FloatType::Float64),
+        "FLOAT32" => Type::Float(FloatType::Float32),
+        "BOOLEAN" => Type::Boolean,
+        "STRING" => Type::String,
+        _ => return None,
+    })
+}
+
 #[must_use]
 pub const fn integer_byte_size(kind: IntegerType) -> u64 {
     match kind {

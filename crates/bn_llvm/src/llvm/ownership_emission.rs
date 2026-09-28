@@ -189,7 +189,7 @@ pub(crate) fn lower_ownership_emission(
                 );
                 let _ = writeln!(
                     text,
-                    "  call i32 @bn_rt_file_close(i64 %filedelhandle{})",
+                    "  call i32 @bn_rt_file_release(i64 %filedelhandle{})",
                     value.0
                 );
             } else if carries_bnjson(module, ty) {

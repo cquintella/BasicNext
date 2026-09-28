@@ -458,7 +458,7 @@ fn render_start_type(ty: &Type) -> &'static str {
 #[allow(clippy::too_many_lines)]
 #[path = "llvm/analysis.rs"]
 mod analysis;
-use analysis::analyze_function;
+use analysis::{analyze_function, narrows_to_string};
 #[path = "llvm/analysis_calls.rs"]
 mod analysis_calls;
 use analysis_calls::call_instruction_supported;
@@ -496,7 +496,9 @@ fn llvm_type(ty: &Type) -> Option<&'static str> {
         {
             Some("ptr")
         }
-        Type::Alternative(alternatives) if string_na_or_error(alternatives) => {
+        Type::Alternative(alternatives)
+            if string_na_or_error(alternatives) || string_eof_or_error(alternatives) =>
+        {
             Some("{ i1, ptr, i64 }")
         }
         Type::Alternative(alternatives) if scalar_na_or_error(alternatives) => {
@@ -701,6 +703,14 @@ fn string_na_or_error(alternatives: &[Type]) -> bool {
         && alternatives
             .iter()
             .any(|ty| matches!(ty, Type::NotAvailable))
+        && alternatives.iter().any(is_error_type)
+}
+
+/// `FS.File.ReadLine`: the string, the `@.bn_eof` sentinel, or an `Error`.
+fn string_eof_or_error(alternatives: &[Type]) -> bool {
+    alternatives.len() == 3
+        && alternatives.iter().any(|ty| matches!(ty, Type::String))
+        && alternatives.iter().any(|ty| matches!(ty, Type::EndOfFile))
         && alternatives.iter().any(is_error_type)
 }
 
@@ -962,7 +972,7 @@ use emission1::lower_scalar_instruction;
 #[path = "llvm/emission2.rs"]
 mod emission2;
 use emission2::{
-    checked_intrinsic_declaration, cleanup_owned_memory, emit_checked_integer_op,
+    Sentinel, checked_intrinsic_declaration, cleanup_owned_memory, emit_checked_integer_op,
     float_compare_opcode, integer_compare_opcode, lower_print_value, lower_terminator,
 };
 #[path = "llvm/dispatch_results.rs"]

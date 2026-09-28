@@ -1,0 +1,27 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// `IS T` on `T OR Error` for STRING, BOOLEAN, and FLOAT, and a STRING
+// narrowed by `IS` used as a STRING, on both backends. `bnc` used to answer
+// FALSE for every such test and reject the narrowed use.
+IMPORT BNJson AS Json
+
+FUNCTION Start() AS VOID
+    LET doc AS Json.Json = Json.Json.Object()
+    LET a AS VOID OR Error = Json.Json.SetString(doc, "name", "pardal")
+    LET b AS VOID OR Error = Json.Json.SetBoolean(doc, "ready", FALSE)
+    LET c AS VOID OR Error = Json.Json.SetFloat(doc, "ratio", 0.25)
+    PRINT a IS Error, b IS Error, c IS Error
+    LET name AS STRING OR Error = Json.Json.GetString(doc, "name")
+    LET ready AS BOOLEAN OR Error = Json.Json.GetBoolean(doc, "ready")
+    LET ratio AS FLOAT OR Error = Json.Json.GetFloat(doc, "ratio")
+    PRINT name IS STRING, ready IS BOOLEAN, ratio IS FLOAT, name IS Error
+    IF name IS STRING THEN
+        PRINT name + "!", LEN(name)
+    END IF
+    LET missing AS STRING OR Error = Json.Json.GetString(doc, "absent")
+    PRINT missing IS STRING, missing IS Error
+    RELEASE doc
+END FUNCTION

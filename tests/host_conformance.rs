@@ -132,7 +132,7 @@ const CASES: &[Case] = &[
                  removed error: FALSE exists: FALSE\nmissing is error: TRUE\n",
         exit: 0,
         stderr: None,
-        native: Native::Unsupported("FS.File.WriteLine"),
+        native: Native::Same,
     },
     Case {
         fixture: "fs_bytes.bn",
@@ -141,7 +141,7 @@ const CASES: &[Case] = &[
         stdout: "FALSE 3 1 128 255 TRUE\n",
         exit: 0,
         stderr: None,
-        native: Native::Unsupported("FS.File.WriteBytes"),
+        native: Native::Same,
     },
     Case {
         fixture: "exec.bn",

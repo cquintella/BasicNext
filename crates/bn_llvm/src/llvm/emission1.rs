@@ -380,6 +380,17 @@ pub(crate) fn lower_scalar_instruction(
                         destination.0, destination.0
                     );
                 }
+            } else if narrows_to_string(slot_ty, dest_ty) {
+                let dest = destination.0;
+                let _ = writeln!(
+                    text,
+                    "  %strload{dest} = load {{ i1, ptr, i64 }}, ptr %s{}",
+                    symbols[symbol]
+                );
+                let _ = writeln!(
+                    text,
+                    "  %v{dest} = extractvalue {{ i1, ptr, i64 }} %strload{dest}, 1"
+                );
             } else if slot_llvm != dest_llvm
                 && slot_llvm == "{ i1, ptr, i32 }"
                 && dest_llvm == "{ ptr, i32 }"

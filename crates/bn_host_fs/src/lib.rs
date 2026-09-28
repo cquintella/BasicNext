@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use bn_diag::Diagnostic;
-use bn_rt::file::{FsError, OpenFile};
+use bn_rt::file::OpenFile;
 use bn_rt::secure_fs::OpenMode;
 use bn_source::Span;
 use bn_value::{Value, shared_string};
@@ -49,25 +49,8 @@ fn error(message: impl Into<String>) -> Value {
     }
 }
 
-/// A capability result: policy denial is a runtime diagnostic, any other
-/// failure a BN `Error`.
-fn capability_result(
-    result: Result<Value, FsError>,
-    denied: &str,
-    span: Span,
-) -> Result<Value, Diagnostic> {
-    match result {
-        Ok(value) => Ok(value),
-        Err(FsError::Denied) => Err(runtime_error(
-            bn_diag::DiagId::EXECUTION_POLICY_DENIED,
-            denied,
-            span,
-        )),
-        Err(FsError::Failed(message)) => Ok(error(message)),
-    }
-}
-
-/// A method result: `Ok` maps to the BN value, `Err` to a BN `Error`.
+/// `Ok` maps to the BN value; `Err` (including a policy denial, 0.6.md
+/// "`HOST.FileSystem` execution policy") to a BN `Error` with that message.
 fn method_result<T>(result: Result<T, String>, value: impl FnOnce(T) -> Value) -> Value {
     result.map_or_else(error, value)
 }
@@ -101,11 +84,10 @@ impl Provider for FsProvider {
             "Exists" => {
                 require_arity(name, arguments, 1, span)?;
                 let path = path_argument(arguments, "HOST.FileSystem.Exists path", span)?;
-                capability_result(
-                    bn_rt::file::exists(core.host().filesystem(), path).map(Value::Boolean),
-                    "filesystem read is outside the execution policy",
-                    span,
-                )
+                Ok(method_result(
+                    bn_rt::file::exists(core.host().filesystem(), path),
+                    Value::Boolean,
+                ))
             }
             "Open" => {
                 require_arity(name, arguments, 2, span)?;
@@ -123,20 +105,15 @@ impl Provider for FsProvider {
                     self.files.insert(id, file);
                     Value::File(id)
                 });
-                capability_result(
-                    opened,
-                    "filesystem path is outside the execution policy",
-                    span,
-                )
+                Ok(method_result(opened, |value| value))
             }
             "DeleteFile" => {
                 require_arity(name, arguments, 1, span)?;
                 let path = path_argument(arguments, "HOST.FileSystem.DeleteFile path", span)?;
-                capability_result(
-                    bn_rt::file::delete_file(core.host().filesystem(), path).map(|()| Value::Null),
-                    "filesystem deletion is outside the execution policy",
-                    span,
-                )
+                Ok(method_result(
+                    bn_rt::file::delete_file(core.host().filesystem(), path),
+                    |()| Value::Null,
+                ))
             }
             _ => Err(runtime_error(
                 bn_diag::DiagId::HOST_CAPABILITY_UNAVAILABLE,
