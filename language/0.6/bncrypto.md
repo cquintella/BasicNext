@@ -163,6 +163,20 @@ The algorithms themselves rest on the upstream crates' Wycheproof suites
 (`ml-kem`, `ml-dsa`, both RustCrypto). Treat this as integration-verified rather
 than KAT-verified locally.
 
+## Errors (0.6.2)
+
+`Code` of a BNCrypto `Error` ([error.md](error.md)) is one of these `INTEGER`
+constants of the module (`Crypto.AUTHENTICATION_FAILED` under
+`IMPORT BNCrypto AS Crypto`):
+
+| Constant | Value | When |
+| --- | ---: | --- |
+| `INVALID_ARGUMENT` | 1 | A key, nonce, or seed of the wrong length or not valid for the algorithm; Argon2id cost parameters out of range; `FromHex` of odd-length or non-hex text; a `Slice` range outside the buffer |
+| `AUTHENTICATION_FAILED` | 2 | `Open*` rejects the ciphertext (tampered data, AAD, key, nonce, or tag); `MlKemDecapsulate` rejects the ciphertext |
+| `UNAVAILABLE` | 3 | The build provides no implementation of the algorithm |
+
+`Verify*` return `FALSE` for any rejected input; they never return `Error`.
+
 ## Target support
 
 Every member listed above is supported by **both** backends. Digests route

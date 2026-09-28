@@ -25,6 +25,7 @@ pub mod civil;
 mod console;
 pub mod crypto;
 mod crypto_abi;
+pub mod crypto_error;
 mod dataframe;
 mod dataframe_abi;
 mod dispatch_abi;

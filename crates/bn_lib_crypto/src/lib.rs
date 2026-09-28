@@ -12,6 +12,7 @@
 use std::collections::HashMap;
 
 use bn_diag::Diagnostic;
+use bn_rt::crypto_error::CryptoFailure;
 use bn_source::Span;
 use bn_types::IntegerType;
 use bn_value::{Value, shared_string};
@@ -75,12 +76,6 @@ impl CryptoProvider {
         arguments: &[Value],
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        let rejected = |what: &str| {
-            Ok(Value::error(
-                1,
-                format!("BNCrypto rejected the {what}").into(),
-            ))
-        };
         match method {
             "MlKemKeypair" | "MlDsaKeypair" => {
                 require_arity(member, arguments, 1, span)?;
@@ -95,7 +90,11 @@ impl CryptoProvider {
                         public_key.extend_from_slice(&private_key);
                         Ok(self.insert(public_key))
                     }
-                    None => rejected("seed length"),
+                    None => failure(&CryptoFailure::Seed(if method.starts_with("MlKem") {
+                        "BNCrypto.MlKemKeypair"
+                    } else {
+                        "BNCrypto.MlDsaKeypair"
+                    })),
                 }
             }
             "MlKemEncapsulate" => {
@@ -106,7 +105,7 @@ impl CryptoProvider {
                         ciphertext.extend_from_slice(&secret);
                         Ok(self.insert(ciphertext))
                     }
-                    None => rejected("encapsulation key"),
+                    None => failure(&CryptoFailure::EncapsulationKey),
                 }
             }
             _ => self.post_quantum_use(method, member, arguments, span),
@@ -136,20 +135,20 @@ impl CryptoProvider {
         require_arity(member, arguments, 2, span)?;
         let key = self.bytes_at(arguments, 0, member, span)?;
         let payload = self.bytes_at(arguments, 1, member, span)?;
-        let (produced, what) = if method == "MlKemDecapsulate" {
+        let (produced, rejected) = if method == "MlKemDecapsulate" {
             (
                 bn_rt::crypto::ml_kem_decapsulate(&key, &payload),
-                "ciphertext",
+                CryptoFailure::Decapsulate,
             )
         } else {
-            (bn_rt::crypto::ml_dsa_sign(&key, &payload), "signing key")
+            (
+                bn_rt::crypto::ml_dsa_sign(&key, &payload),
+                CryptoFailure::SigningKey,
+            )
         };
         match produced {
             Some(bytes) => Ok(self.insert(bytes)),
-            None => Ok(Value::error(
-                1,
-                format!("BNCrypto rejected the {what}").into(),
-            )),
+            None => failure(&rejected),
         }
     }
 
@@ -194,7 +193,14 @@ impl CryptoProvider {
         };
         match produced {
             Some(bytes) => Ok(self.insert(bytes)),
-            None => Ok(Value::error(1, "BNCrypto rejected the key material".into())),
+            None => failure(&CryptoFailure::Key(
+                match (ed25519, method.ends_with("Sign")) {
+                    (true, true) => "BNCrypto.Ed25519Sign",
+                    (true, false) => "BNCrypto.Ed25519PublicKey",
+                    (false, true) => "BNCrypto.EcdsaP256Sign",
+                    (false, false) => "BNCrypto.EcdsaP256PublicKey",
+                },
+            )),
         }
     }
 
@@ -255,10 +261,7 @@ impl CryptoProvider {
                     },
                 ) {
                     Some(tag) => Ok(self.insert(tag)),
-                    None => Ok(Value::error(
-                        1,
-                        "BNCrypto.Argon2id rejected the cost parameters".into(),
-                    )),
+                    None => failure(&CryptoFailure::Argon2id),
                 }
             }
         }
@@ -300,10 +303,7 @@ impl CryptoProvider {
                 };
                 match bn_rt::crypto::decode_hex(text.as_ref()) {
                     Some(bytes) => Ok(self.insert(bytes)),
-                    None => Ok(Value::error(
-                        1,
-                        "BNCrypto.FromHex expects an even-length hexadecimal string".into(),
-                    )),
+                    None => failure(&CryptoFailure::Hex(text.to_string())),
                 }
             }
             "Length" => {
@@ -338,32 +338,32 @@ impl CryptoProvider {
             _ => {
                 require_arity(member, arguments, 3, span)?;
                 let bytes = self.bytes_at(arguments, 0, member, span)?;
-                let mut bounds = [0_usize; 2];
+                let mut bounds = [0_i64; 2];
                 for (slot, argument) in bounds.iter_mut().zip(&arguments[1..3]) {
                     let Value::Integer(value, _) = argument else {
                         return Err(type_mismatch("INTEGER", "non-INTEGER value", member, span));
                     };
-                    let Ok(value) = usize::try_from(*value) else {
-                        return Err(type_mismatch(
-                            "a non-negative INTEGER",
-                            "out-of-range value",
-                            member,
-                            span,
-                        ));
-                    };
-                    *slot = value;
+                    *slot = i64::try_from(*value).unwrap_or(if *value < 0 {
+                        i64::MIN
+                    } else {
+                        i64::MAX
+                    });
                 }
-                match bounds[0]
-                    .checked_add(bounds[1])
-                    .filter(|end| *end <= bytes.len())
-                {
-                    Some(end) => Ok(self.insert(bytes[bounds[0]..end].to_vec())),
+                let [start, length] = bounds;
+                let range = usize::try_from(start)
+                    .ok()
+                    .zip(usize::try_from(length).ok())
+                    .and_then(|(from, count)| Some((from, from.checked_add(count)?)))
+                    .filter(|(_, end)| *end <= bytes.len());
+                match range {
+                    Some((from, end)) => Ok(self.insert(bytes[from..end].to_vec())),
                     // Out of range is an Error, never a short buffer that could
                     // pass for a key.
-                    None => Ok(Value::error(
-                        1,
-                        "BNCrypto.Slice range is outside the buffer".into(),
-                    )),
+                    None => failure(&CryptoFailure::Slice {
+                        start,
+                        length,
+                        size: bytes.len(),
+                    }),
                 }
             }
         }
@@ -417,14 +417,11 @@ impl CryptoProvider {
         };
         match result {
             Some(bytes) => Ok(self.insert(bytes)),
-            None => Ok(Value::error(
-                1,
-                if sealing {
-                    "BNCrypto seal rejected the key or nonce length".into()
-                } else {
-                    "BNCrypto open failed: authentication tag did not verify".into()
-                },
-            )),
+            None => failure(&if sealing {
+                CryptoFailure::Seal(algorithm)
+            } else {
+                CryptoFailure::Open(algorithm)
+            }),
         }
     }
 
@@ -486,5 +483,30 @@ impl Provider for CryptoProvider {
                 span,
             ))
         })
+    }
+}
+
+/// A `BNCrypto` `Error` value, as the native ABI records it.
+#[allow(clippy::unnecessary_wraps)] // Every call site returns it as its result.
+fn failure(failure: &CryptoFailure) -> Result<Value, Diagnostic> {
+    Ok(Value::error_report(
+        failure.code(),
+        failure.operation(),
+        failure.message(),
+        failure.cause(),
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    /// `Crypto.*` codes in `modules/bn/BNCrypto.bn` are the ones both
+    /// backends put in `Error.Code`.
+    #[test]
+    fn module_constants_match_the_runtime_codes() {
+        let module = include_str!("../../../modules/bn/BNCrypto.bn");
+        for (name, value) in bn_types::error_codes::crypto::ALL {
+            let line = format!("EXPORT CONST {name} AS INTEGER = {value}");
+            assert!(module.contains(&line), "BNCrypto.bn lacks `{line}`");
+        }
     }
 }

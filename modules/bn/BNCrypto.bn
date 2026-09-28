@@ -41,6 +41,11 @@
 // Bytes is an opaque buffer. Key material never becomes a STRING implicitly, so
 // it cannot be printed, concatenated or logged by accident. RELEASE frees it.
 
+// Error codes (language/0.6/bncrypto.md "Errors").
+EXPORT CONST INVALID_ARGUMENT AS INTEGER = 1
+EXPORT CONST AUTHENTICATION_FAILED AS INTEGER = 2
+EXPORT CONST UNAVAILABLE AS INTEGER = 3
+
 EXPORT CLASS Bytes
     PUBLIC FUNCTION CONSTRUCTOR()
     END FUNCTION

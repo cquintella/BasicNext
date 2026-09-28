@@ -1,0 +1,42 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNCrypto results (bncrypto.md "Errors"): odd-length hex, a seal with a
+// short key, an open whose AAD differs, a slice outside the buffer, and a
+// negative slice start.
+IMPORT BNCrypto AS Crypto
+
+FUNCTION Start() AS INTEGER
+    LET odd AS Crypto.Bytes OR Error = Crypto.FromHex("abc")
+    IF odd IS Error THEN
+        PRINT odd.Code = Crypto.INVALID_ARGUMENT, odd.Operation, odd.Message
+    END IF
+    LET key AS Crypto.Bytes = Crypto.FromText("0123456789abcdef0123456789abcdef")
+    LET nonce AS Crypto.Bytes = Crypto.FromText("0123456789ab")
+    LET plain AS Crypto.Bytes = Crypto.FromText("abc")
+    LET aad AS Crypto.Bytes = Crypto.FromText("hdr")
+    LET shortKey AS Crypto.Bytes = Crypto.FromText("short")
+    LET unsealed AS Crypto.Bytes OR Error = Crypto.SealChaCha20(shortKey, nonce, plain, aad)
+    IF unsealed IS Error THEN
+        PRINT unsealed.Code = Crypto.INVALID_ARGUMENT, unsealed.Operation, unsealed.Cause
+    END IF
+    LET sealed AS Crypto.Bytes OR Error = Crypto.SealAesGcm(key, nonce, plain, aad)
+    IF sealed IS Error THEN
+        RETURN 1
+    END IF
+    LET tampered AS Crypto.Bytes OR Error = Crypto.OpenAesGcm(key, nonce, sealed, plain)
+    IF tampered IS Error THEN
+        PRINT tampered.Code = Crypto.AUTHENTICATION_FAILED, tampered.Operation, tampered.Message
+    END IF
+    LET wide AS Crypto.Bytes OR Error = Crypto.Slice(plain, 2, 5)
+    IF wide IS Error THEN
+        PRINT wide.Code = Crypto.INVALID_ARGUMENT, wide.Cause
+    END IF
+    LET negative AS Crypto.Bytes OR Error = Crypto.Slice(plain, -1, 2)
+    IF negative IS Error THEN
+        PRINT negative.Code = Crypto.INVALID_ARGUMENT, negative.Cause
+    END IF
+    RETURN 0
+END FUNCTION

@@ -150,6 +150,7 @@ name = "bn_compile_driver"
 version = "0.6.2"
 dependencies = [
  "bn_cli",
+ "bn_diag",
  "bn_llvm",
  "bn_source",
 ]

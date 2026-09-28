@@ -66,3 +66,17 @@ pub mod net {
         ("POLICY_DENIED", POLICY_DENIED),
     ];
 }
+
+/// `BNCrypto` `Error.Code` (`language/0.6/bncrypto.md` "Errors").
+pub mod crypto {
+    pub const INVALID_ARGUMENT: i32 = 1;
+    pub const AUTHENTICATION_FAILED: i32 = 2;
+    pub const UNAVAILABLE: i32 = 3;
+
+    /// Name and value of each constant, as `modules/bn/BNCrypto.bn` exports them.
+    pub const ALL: &[(&str, i32)] = &[
+        ("INVALID_ARGUMENT", INVALID_ARGUMENT),
+        ("AUTHENTICATION_FAILED", AUTHENTICATION_FAILED),
+        ("UNAVAILABLE", UNAVAILABLE),
+    ];
+}

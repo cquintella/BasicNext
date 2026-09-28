@@ -69,8 +69,9 @@ pub extern "C" fn bn_rt_crypto_bytes_from_hex(text: *const c_char, out: *mut u64
     if out.is_null() {
         return BN_CRYPTO_INVALID_ARGUMENT;
     }
-    let Some(bytes) = c_str(text).and_then(decode_hex) else {
-        return BN_CRYPTO_INVALID_ARGUMENT;
+    let text = c_str(text).unwrap_or_default();
+    let Some(bytes) = decode_hex(text) else {
+        return failed(&crate::crypto_error::CryptoFailure::Hex(text.to_owned()));
     };
     let handle = store(bytes);
     unsafe { *out = handle };
@@ -114,6 +115,17 @@ pub extern "C" fn bn_rt_crypto_bytes_release(handle: u64) -> i32 {
 
 /// Algorithm selector shared with the backends: `0` is AES-256-GCM, `1` is
 /// ChaCha20-Poly1305. Anything else is rejected.
+/// Records `failure` for the emitted code's `Error` and returns the status.
+fn failed(failure: &crate::crypto_error::CryptoFailure) -> i32 {
+    crate::set_error_report(
+        failure.code(),
+        failure.operation(),
+        failure.message(),
+        failure.cause(),
+    );
+    BN_CRYPTO_INVALID_ARGUMENT
+}
+
 fn algorithm(selector: i32) -> Option<Aead> {
     match selector {
         0 => Some(Aead::Aes256Gcm),
@@ -158,7 +170,7 @@ pub extern "C" fn bn_rt_crypto_seal(
         return BN_CRYPTO_INVALID_HANDLE;
     };
     let Some(sealed) = seal(algorithm, &key, &nonce, &plaintext, &aad) else {
-        return BN_CRYPTO_INVALID_ARGUMENT;
+        return failed(&crate::crypto_error::CryptoFailure::Seal(algorithm));
     };
     let handle = store(sealed);
     unsafe { *out = handle };
@@ -188,7 +200,7 @@ pub extern "C" fn bn_rt_crypto_open(
         return BN_CRYPTO_INVALID_HANDLE;
     };
     let Some(plain) = open(algorithm, &key, &nonce, &ciphertext, &aad) else {
-        return BN_CRYPTO_INVALID_ARGUMENT;
+        return failed(&crate::crypto_error::CryptoFailure::Open(algorithm));
     };
     let handle = store(plain);
     unsafe { *out = handle };
@@ -250,7 +262,7 @@ pub extern "C" fn bn_rt_crypto_argon2id(
         u32::try_from(iterations),
         u32::try_from(parallelism),
     ) else {
-        return BN_CRYPTO_INVALID_ARGUMENT;
+        return failed(&crate::crypto_error::CryptoFailure::Argon2id);
     };
     let Some((password, salt)) = with_buffers(|buffers| {
         Some((buffers.get(&password)?.clone(), buffers.get(&salt)?.clone()))
@@ -269,7 +281,7 @@ pub extern "C" fn bn_rt_crypto_argon2id(
             tag_length: 32,
         },
     ) else {
-        return BN_CRYPTO_INVALID_ARGUMENT;
+        return failed(&crate::crypto_error::CryptoFailure::Argon2id);
     };
     let handle = store(tag);
     unsafe { *out = handle };
@@ -304,7 +316,11 @@ pub extern "C" fn bn_rt_crypto_public_key(selector: i32, private_key: u64, out: 
         p256_public_key(&private_key)
     };
     let Some(public_key) = derived else {
-        return BN_CRYPTO_INVALID_ARGUMENT;
+        return failed(&crate::crypto_error::CryptoFailure::Key(if ed25519 {
+            "BNCrypto.Ed25519PublicKey"
+        } else {
+            "BNCrypto.EcdsaP256PublicKey"
+        }));
     };
     let handle = store(public_key);
     unsafe { *out = handle };
@@ -340,7 +356,11 @@ pub extern "C" fn bn_rt_crypto_sign(
         p256_sign(&private_key, &message)
     };
     let Some(signature) = signed else {
-        return BN_CRYPTO_INVALID_ARGUMENT;
+        return failed(&crate::crypto_error::CryptoFailure::Key(if ed25519 {
+            "BNCrypto.Ed25519Sign"
+        } else {
+            "BNCrypto.EcdsaP256Sign"
+        }));
     };
     let handle = store(signature);
     unsafe { *out = handle };
@@ -387,7 +407,9 @@ pub extern "C" fn bn_rt_crypto_kem_keypair(seed: u64, out: *mut u64) -> i32 {
         return BN_CRYPTO_INVALID_HANDLE;
     };
     let Some((mut public_key, private_key)) = ml_kem_keypair(&seed) else {
-        return BN_CRYPTO_INVALID_ARGUMENT;
+        return failed(&crate::crypto_error::CryptoFailure::Seed(
+            "BNCrypto.MlKemKeypair",
+        ));
     };
     public_key.extend_from_slice(&private_key);
     let handle = store(public_key);
@@ -406,7 +428,7 @@ pub extern "C" fn bn_rt_crypto_kem_encapsulate(public_key: u64, out: *mut u64) -
         return BN_CRYPTO_INVALID_HANDLE;
     };
     let Some((mut ciphertext, secret)) = ml_kem_encapsulate(&public_key) else {
-        return BN_CRYPTO_INVALID_ARGUMENT;
+        return failed(&crate::crypto_error::CryptoFailure::EncapsulationKey);
     };
     ciphertext.extend_from_slice(&secret);
     let handle = store(ciphertext);
@@ -434,7 +456,7 @@ pub extern "C" fn bn_rt_crypto_kem_decapsulate(
         return BN_CRYPTO_INVALID_HANDLE;
     };
     let Some(secret) = ml_kem_decapsulate(&private_key, &ciphertext) else {
-        return BN_CRYPTO_INVALID_ARGUMENT;
+        return failed(&crate::crypto_error::CryptoFailure::Decapsulate);
     };
     let handle = store(secret);
     unsafe { *out = handle };
@@ -452,7 +474,9 @@ pub extern "C" fn bn_rt_crypto_dsa_keypair(seed: u64, out: *mut u64) -> i32 {
         return BN_CRYPTO_INVALID_HANDLE;
     };
     let Some((mut public_key, private_key)) = ml_dsa_keypair(&seed) else {
-        return BN_CRYPTO_INVALID_ARGUMENT;
+        return failed(&crate::crypto_error::CryptoFailure::Seed(
+            "BNCrypto.MlDsaKeypair",
+        ));
     };
     public_key.extend_from_slice(&private_key);
     let handle = store(public_key);
@@ -476,7 +500,7 @@ pub extern "C" fn bn_rt_crypto_dsa_sign(private_key: u64, message: u64, out: *mu
         return BN_CRYPTO_INVALID_HANDLE;
     };
     let Some(signature) = ml_dsa_sign(&private_key, &message) else {
-        return BN_CRYPTO_INVALID_ARGUMENT;
+        return failed(&crate::crypto_error::CryptoFailure::SigningKey);
     };
     let handle = store(signature);
     unsafe { *out = handle };
@@ -507,14 +531,20 @@ pub extern "C" fn bn_rt_crypto_slice(data: u64, start: i64, length: i64, out: *m
     if out.is_null() {
         return BN_CRYPTO_INVALID_ARGUMENT;
     }
-    let (Ok(start), Ok(length)) = (usize::try_from(start), usize::try_from(length)) else {
-        return BN_CRYPTO_INVALID_ARGUMENT;
-    };
     let Some(data) = with_buffers(|buffers| buffers.get(&data).cloned()) else {
         return BN_CRYPTO_INVALID_HANDLE;
     };
-    let Some(end) = start.checked_add(length).filter(|end| *end <= data.len()) else {
-        return BN_CRYPTO_INVALID_ARGUMENT;
+    let range = usize::try_from(start)
+        .ok()
+        .zip(usize::try_from(length).ok())
+        .and_then(|(from, count)| Some((from, from.checked_add(count)?)))
+        .filter(|(_, end)| *end <= data.len());
+    let Some((start, end)) = range else {
+        return failed(&crate::crypto_error::CryptoFailure::Slice {
+            start,
+            length,
+            size: data.len(),
+        });
     };
     let handle = store(data[start..end].to_vec());
     unsafe { *out = handle };

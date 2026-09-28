@@ -880,6 +880,24 @@ fn udp_results_match_across_backends() {
     native_matches_interpreter(path);
 }
 
+/// BNCrypto failures carry the shared `bn_rt::crypto_error` report (Code,
+/// Operation, Message, Cause) on both backends (bncrypto.md "Errors").
+#[test]
+fn crypto_errors_match_across_backends() {
+    let path = "tests/host/crypto_errors.bn";
+    let output = bni().args(["run", path]).output().expect("run fixture");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "TRUE BNCrypto.FromHex cannot decode \"abc\" as hexadecimal\n\
+         TRUE BNCrypto.SealChaCha20 the key must be 32 bytes and the nonce 12 bytes\n\
+         TRUE BNCrypto.OpenAesGcm cannot open the ciphertext\n\
+         TRUE the range 2..7 is outside the 3 bytes of the buffer\n\
+         TRUE the start and length must not be negative; got -1 and 2\n"
+    );
+    native_matches_interpreter(path);
+}
+
 /// HOST.Exec failures carry the shared `bn_host_exec` report (Code,
 /// Operation, Message naming the program, Cause) on both backends, and
 /// `PRINT` of an `Error` narrowed out of `Exec.Result OR Error` prints the
