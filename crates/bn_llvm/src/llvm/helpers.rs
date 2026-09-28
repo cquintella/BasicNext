@@ -5,6 +5,19 @@
 )]
 use super::*;
 
+/// A folded value takes the precision of the type it is bound to: a `FLOAT32`
+/// constant must hold the f32 value, or folding would outrun the program
+/// (`0.1 AS FLOAT32 AS FLOAT64` is `0.10000000149011612`, not `0.1`).
+/// Rounding one f64 `+ - * /` result to f32 equals computing it in f32.
+pub(crate) fn typed_constant(value: ConstantValue, ty: &Type) -> ConstantValue {
+    match (value, ty) {
+        (ConstantValue::Float(value), Type::Float(FloatType::Float32)) => {
+            ConstantValue::Float(f64::from(value as f32))
+        }
+        (value, _) => value,
+    }
+}
+
 pub(crate) fn fold_unary(
     operator: &str,
     operand: Option<&ConstantValue>,

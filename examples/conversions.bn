@@ -1,0 +1,43 @@
+// Type conversions with AS, and what PRINT writes for each type.
+// Basic Next converts nothing implicitly: every conversion is spelled AS.
+// Spec: language/0.6/0.6.md (casts, "AS STRING" C3); console.md (PRINT).
+
+FUNCTION Start() AS VOID
+    // PRINT separates its expressions with one space; no expression is a
+    // blank line.
+    PRINT "PRINT", 1, 2.5, TRUE, "text"
+    PRINT
+
+    // Integer to integer: widening always fits; narrowing is checked at run
+    // time (out of range stops with INVALID_NUMERIC_CONVERSION).
+    LET small AS BYTE = 200
+    LET wide AS INT64 = small AS INT64
+    LET big AS INT32 = 1000
+    LET narrow AS INT16 = big AS INT16
+    PRINT "widen", wide, "narrow", narrow
+
+    // Integer to float is exact here; float to integer truncates toward zero.
+    LET count AS INTEGER = 7
+    PRINT "to float", count AS FLOAT
+    PRINT "truncate", 3.9 AS INTEGER, -3.9 AS INTEGER
+
+    // Floats print the shortest text that reads back as the same value of
+    // their own type, always with a decimal point.
+    LET tenth AS FLOAT32 = 0.1
+    PRINT "float", 2.0, 0.1 + 0.2, tenth, tenth AS FLOAT64
+
+    // Special values print as NAN, INF, -INF.
+    LET zero AS FLOAT = 0.0
+    PRINT "special", 0.0 / zero, 1.0 / zero, -1.0 / zero
+
+    // To BOOLEAN: numeric zero and the empty string are FALSE.
+    PRINT "boolean", 0 AS BOOLEAN, 42 AS BOOLEAN, 0.0 AS BOOLEAN
+    PRINT "boolean", "" AS BOOLEAN, "no" AS BOOLEAN
+
+    // AS STRING yields exactly the PRINT text; it is how a number joins a
+    // string with +.
+    LET ratio AS FLOAT = 1 / 4
+    LET label AS STRING = "items: " + (count AS STRING) + ", ratio: " + (ratio AS STRING)
+    PRINT label
+    PRINT "[" + (tenth AS STRING) + "] [" + ((count > 5) AS STRING) + "]"
+END FUNCTION

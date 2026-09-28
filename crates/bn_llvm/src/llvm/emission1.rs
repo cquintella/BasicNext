@@ -32,9 +32,10 @@ pub(crate) fn lower_scalar_instruction(
             }
             Constant::Float(value) => {
                 let parsed = parse_float_constant(value).expect("validated float constant");
-                block_state
-                    .constants
-                    .insert(*destination, ConstantValue::Float(parsed));
+                block_state.constants.insert(
+                    *destination,
+                    typed_constant(ConstantValue::Float(parsed), ty),
+                );
                 emit_constant_assignment(text, *destination, ty, &render_float(parsed, ty));
             }
             Constant::Boolean(value) => {
@@ -323,6 +324,7 @@ pub(crate) fn lower_scalar_instruction(
         Instruction::Load {
             destination,
             symbol,
+            ty,
             ..
         } => {
             let dest_ty = analysis
@@ -443,7 +445,9 @@ pub(crate) fn lower_scalar_instruction(
                 );
             }
             if let Some(value) = block_state.bindings.get(symbol).cloned() {
-                block_state.constants.insert(*destination, value);
+                block_state
+                    .constants
+                    .insert(*destination, typed_constant(value, ty));
             } else {
                 block_state.constants.remove(destination);
             }
@@ -455,6 +459,7 @@ pub(crate) fn lower_scalar_instruction(
             ..
         } => {
             if let Some(value) = block_state.constants.get(source).cloned() {
+                let value = typed_constant(value, ty);
                 block_state.constants.insert(*destination, value.clone());
                 emit_constant_value_analyzed(text, analysis, *destination, ty, &value);
             } else {
@@ -530,7 +535,9 @@ pub(crate) fn lower_scalar_instruction(
             ty,
             ..
         } => {
-            if let Some(result) = fold_unary(operator, block_state.constants.get(operand), ty) {
+            if let Some(result) = fold_unary(operator, block_state.constants.get(operand), ty)
+                .map(|result| typed_constant(result, ty))
+            {
                 block_state.constants.insert(*destination, result.clone());
                 emit_constant_value(text, *destination, ty, &result);
                 return Ok(());
@@ -615,7 +622,9 @@ pub(crate) fn lower_scalar_instruction(
                 block_state.constants.get(left),
                 block_state.constants.get(right),
                 ty,
-            ) {
+            )
+            .map(|result| typed_constant(result, ty))
+            {
                 block_state.constants.insert(*destination, result.clone());
                 emit_constant_value(text, *destination, ty, &result);
                 return Ok(());

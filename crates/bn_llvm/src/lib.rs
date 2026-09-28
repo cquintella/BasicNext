@@ -1079,7 +1079,8 @@ use helpers::{
     fold_unary, input_runtime_ir, instruction_name, integer_kind, is_bncrypto_bytes_type,
     is_canonical_timezone, is_unsigned, parse_float_constant, parse_integer, render_float,
     render_llvm_integer, sanitize_symbol, static_global_name, string_byte_length_ir,
-    unsupported_call_detail, unsupported_instruction, unsupported_instruction_detail,
+    typed_constant, unsupported_call_detail, unsupported_instruction,
+    unsupported_instruction_detail,
 };
 use layout::{
     OBJECT_HEADER_BYTES, class_instance_bytes, class_layout_fields, field_byte_offset, field_type,

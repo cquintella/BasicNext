@@ -717,6 +717,23 @@ fn as_string_matches_print_text_across_backends() {
     native_matches_interpreter(path);
 }
 
+/// `examples/conversions.bn`: every `AS` conversion and the `PRINT` text of
+/// each type. `tenth AS FLOAT64` also guards native constant folding, which
+/// must keep a `FLOAT32` constant at f32 precision.
+#[test]
+fn conversions_example_matches_spec_and_native() {
+    let path = "examples/conversions.bn";
+    let output = bni().args(["run", path]).output().expect("run example");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "PRINT 1 2.5 TRUE text\n\nwiden 200 narrow 1000\nto float 7.0\ntruncate 3 -3\n\
+         float 2.0 0.30000000000000004 0.1 0.10000000149011612\nspecial NAN INF -INF\n\
+         boolean FALSE TRUE FALSE\nboolean FALSE TRUE\nitems: 7, ratio: 0.25\n[0.1] [TRUE]\n"
+    );
+    native_matches_interpreter(path);
+}
+
 /// 0.6.2 C1/C2: negative constant literals and integer literals for FLOAT
 /// bindings; expected lines are fixed in `language/0.6/0.6.md`.
 #[test]
