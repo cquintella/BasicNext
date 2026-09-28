@@ -1,0 +1,27 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// NEW FS.File() is a file that was never opened (host.md): its methods,
+// Close aside, return Error(FS.CLOSED). A plain FS.File binding or parameter
+// works natively too (both emitted invalid LLVM; bucket 0.6.2b D9).
+IMPORT HOST.FileSystem AS FS
+
+FUNCTION Describe(file AS FS.File) AS VOID
+    LET line AS STRING OR EOF OR Error = file.ReadLine()
+    IF line IS Error THEN
+        PRINT line.Code = FS.CLOSED, line
+    END IF
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    LET file AS FS.File = NEW FS.File()
+    Describe(file)
+    LET wrote AS VOID OR Error = file.Write("x")
+    IF wrote IS Error THEN
+        PRINT wrote.Code = FS.CLOSED, wrote.Operation
+    END IF
+    file.Close()
+    RETURN 0
+END FUNCTION

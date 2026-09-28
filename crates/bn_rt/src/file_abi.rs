@@ -132,6 +132,27 @@ fn path_argument(path: *const c_char) -> Result<String, u32> {
     })
 }
 
+/// `NEW FS.File()`: a file that was never opened (host.md); its methods,
+/// `Close` aside, return `Error(FS.CLOSED)` naming that cause.
+#[allow(unsafe_code)] // C ABI export.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_file_new(out: *mut BNFileHandle) -> u32 {
+    if out.is_null() {
+        return BN_FILE_INVALID;
+    }
+    let mut guard = files()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let id = match guard.reserve() {
+        Ok(id) => id,
+        Err(status) => return status,
+    };
+    guard.files.insert(id, super::file::OpenFile::default());
+    // SAFETY: emitted code passes a writable handle slot.
+    unsafe { out.write(id) };
+    BN_FILE_OK
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_file_open(path: *const c_char, mode: i32, out: *mut BNFileHandle) -> u32 {
     if out.is_null() {

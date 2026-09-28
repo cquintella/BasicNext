@@ -103,6 +103,15 @@ pub(crate) fn emit_allocate(
     object_bytes: u64,
 ) {
     let dest = destination.0;
+    if matches!(ty, Type::Named(name) if name == "FS.File") {
+        // `NEW FS.File()` is a file that was never opened (host.md): a runtime
+        // handle whose methods, Close aside, return `Error(FS.CLOSED)`.
+        let _ = writeln!(
+            text,
+            "  %fsnewout{dest} = alloca i64\n  store i64 0, ptr %fsnewout{dest}\n  %fsnewrc{dest} = call i32 @bn_rt_file_new(ptr %fsnewout{dest})\n  %fsnewhandle{dest} = load i64, ptr %fsnewout{dest}\n  %fsnew0{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 false, 0\n  %fsnew1{dest} = insertvalue {{ i1, ptr, i64 }} %fsnew0{dest}, ptr null, 1\n  %v{dest} = insertvalue {{ i1, ptr, i64 }} %fsnew1{dest}, i64 %fsnewhandle{dest}, 2"
+        );
+        return;
+    }
     if is_bndata_dataframe_type(module, ty) {
         let _ = writeln!(text, "  %dfout{dest} = alloca i64");
         let _ = writeln!(
@@ -569,6 +578,12 @@ pub(crate) fn emit_is(
             );
             return;
         }
+    }
+    // A value that is not an alternative has its static type: `IS` of that
+    // type holds (a narrowed `FS.File` IS FS.File).
+    if !matches!(left_ty, Type::Alternative(_)) && alternative_is(left_ty, test_name) {
+        let _ = writeln!(text, "  %v{} = or i1 false, true", destination.0);
+        return;
     }
     let is_na = test_name == "NA";
     let _ = writeln!(

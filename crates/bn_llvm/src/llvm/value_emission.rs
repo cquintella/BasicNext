@@ -135,14 +135,18 @@ pub(crate) fn lower_value_emission(
                 analysis,
                 object_bytes,
             );
+            // A `FS.File` is a runtime handle, not an object: no class
+            // header, no ARC ownership.
+            let file_handle = matches!(ty, Type::Named(name) if name == "FS.File");
             if !matches!(ty, Type::Pointer { .. })
                 && !is_bndata_dataframe_type(module, ty)
                 && bnlog_resource_kind(module, ty).is_none()
+                && !file_handle
             {
                 let class_global = format!("@.bn_cls_{}", sanitize_symbol(type_name));
                 emit_store_object_class(text, *destination, &class_global);
             }
-            if analysis.owned_object_results.contains_key(destination) {
+            if analysis.owned_object_results.contains_key(destination) && !file_handle {
                 if is_region_type(ty) {
                     let _ = writeln!(
                         text,

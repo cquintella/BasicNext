@@ -572,6 +572,9 @@ fn llvm_type(ty: &Type) -> Option<&'static str> {
         }
         Type::Named(name) if name == "HOST.Net.Addresses" => Some("{ i1, ptr }"),
         Type::Named(name) if name == "HOST.Net.Endpoint" => Some("{ ptr, i32 }"),
+        // A file handle alone has the layout of `FS.File OR Error`, whose
+        // methods read the handle from the payload.
+        Type::Named(name) if name == "FS.File" => Some("{ i1, ptr, i64 }"),
         Type::Named(name)
             if matches!(
                 name.as_str(),

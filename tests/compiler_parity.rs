@@ -474,3 +474,18 @@ fn scalars_stored_into_alternatives_match_the_interpreter() {
     );
     assert_native_parity(&path, None);
 }
+
+/// D9: `NEW FS.File()` and a plain `FS.File` binding or parameter compile
+/// natively and behave as in the interpreter (a never-opened file).
+#[test]
+fn never_opened_files_match_the_interpreter() {
+    let path = workspace_root().join("tests/host/fs_new_file.bn");
+    let output = interpret(&path, None);
+    assert_success(&output, "bni run");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "TRUE Error 5 in HOST.FileSystem.File.ReadLine: cannot read a line from a file (cause: the file was never opened (NEW FS.File() makes a closed file))\n\
+         TRUE HOST.FileSystem.File.Write\n"
+    );
+    assert_native_parity(&path, None);
+}
