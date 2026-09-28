@@ -313,6 +313,9 @@ pub(crate) struct ImportedTypeInfo {
 }
 #[allow(clippy::struct_excessive_bools)]
 struct Analyzer {
+    /// Import aliases named in a type (`FS.File`, `Json.Json`): uses that no
+    /// expression records, so the unused-import warning must see them too.
+    type_alias_uses: std::cell::RefCell<HashSet<String>>,
     globals: HashMap<String, Symbol>,
     members: HashMap<String, HashMap<String, Member>>,
     module_exports: HashMap<ModuleId, HashMap<String, Type>>,

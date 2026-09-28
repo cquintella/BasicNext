@@ -715,6 +715,28 @@ fn warning_analysis_emits_unused_import() {
     assert!(String::from_utf8_lossy(&output.stderr).contains("warning[UNUSED_IMPORT]"));
 }
 
+/// An import used only in types is used: qualified (`NEW FS.File()`,
+/// `AS Net.Address`, `AS Json.Json`) or an imported class by its alias
+/// (`IMPORT Shapes.Circle AS C` … `AS C = NEW C()`).
+#[test]
+fn imports_used_only_in_types_are_not_reported_unused() {
+    for path in [
+        "tests/grammar/valid/import-used-in-types.bn",
+        "tests/modules/qualified-export/main.bn",
+    ] {
+        let output = bni()
+            .args(["check", path])
+            .output()
+            .expect("run import check");
+        assert_eq!(output.status.code(), Some(0), "{path}");
+        assert!(
+            !String::from_utf8_lossy(&output.stderr).contains("UNUSED_IMPORT"),
+            "{path}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
 #[test]
 fn check_network_client_server_examples_exit_zero() {
     let status = bni()

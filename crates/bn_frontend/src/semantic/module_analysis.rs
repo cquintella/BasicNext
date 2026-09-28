@@ -98,6 +98,7 @@ pub(crate) fn analyze_with_modules_mode(
         allow_variable_vectors,
         collect_warnings,
         warnings: Vec::new(),
+        type_alias_uses: std::cell::RefCell::default(),
     };
     analyzer.declare_globals(program)?;
     validate_implemented_interfaces(
@@ -107,6 +108,7 @@ pub(crate) fn analyze_with_modules_mode(
         &analyzer.members,
     )?;
     analyzer.analyze_declarations(program)?;
+    let type_alias_uses = analyzer.type_alias_uses.take();
     let model = SemanticModel {
         symbols: analyzer.symbols,
         expressions: analyzer.expressions,
@@ -137,12 +139,16 @@ pub(crate) fn analyze_with_modules_mode(
     let mut warnings = analyzer.warnings;
     if collect_warnings {
         warnings.extend(unused_binding_warnings(program, &model));
-        warnings.extend(unused_import_warnings(program, &model));
+        warnings.extend(unused_import_warnings(program, &model, &type_alias_uses));
     }
     Ok(SemanticAnalysis { model, warnings })
 }
 
-fn unused_import_warnings(program: &Program, model: &SemanticModel) -> Vec<Diagnostic> {
+fn unused_import_warnings(
+    program: &Program,
+    model: &SemanticModel,
+    type_alias_uses: &HashSet<String>,
+) -> Vec<Diagnostic> {
     let used_symbols = model
         .expressions
         .iter()
@@ -155,6 +161,9 @@ fn unused_import_warnings(program: &Program, model: &SemanticModel) -> Vec<Diagn
             let Item::Import { alias, span, .. } = item else {
                 return None;
             };
+            if type_alias_uses.contains(alias) {
+                return None;
+            }
             let symbol = model
                 .symbols
                 .iter()

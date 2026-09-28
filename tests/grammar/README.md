@@ -22,6 +22,7 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `valid/integer-literal-float-binding.bn` | Accept and run | 0.6.2 C2: decimal, hexadecimal, binary and negative integer literals initialize `FLOAT` / `FLOAT32` bindings. |
 | `valid/negative-local-constants.bn` | Accept and run | 0.6.2 C1: inferred local `CONST` from `-1`, `-2.5`, `-0xFF`. |
 | `valid/as-string.bn` | Accept and run | 0.6.2 C3: `AS STRING` on integer, float, and `BOOLEAN` values yields the `PRINT` text on both backends. |
+| `valid/import-used-in-types.bn` | Accept, no warning | Imports used only in types (`NEW`, parameter and return types) are used: no `UNUSED_IMPORT`. |
 | `valid/is-host-types.bn` | Accept and run | `IS` on `HOST.Net` types, through two import aliases, on both backends. |
 | `valid/filesystem.bn` | Accept and run | `HOST.FileSystem` import, `FS.Open`, `FS.File.ReadLine`, `Close`, and `RELEASE`. |
 | `valid/filesystem-import-only.bn` | Accept; `bni run --no-filesystem` rejects | Capability is required from the `IMPORT`, even if `Start` does not use `FS`. |

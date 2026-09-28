@@ -5,6 +5,14 @@ impl Analyzer {
     pub(crate) fn resolve_type(&self, ty: Type) -> Type {
         match ty {
             Type::Named(name) => {
+                // `FS.File` names the alias `FS`; `C` (IMPORT Shapes.Circle
+                // AS C) names the alias itself.
+                let alias = name
+                    .split_once('.')
+                    .map_or(name.as_str(), |(alias, _)| alias);
+                if self.globals.contains_key(alias) {
+                    self.type_alias_uses.borrow_mut().insert(alias.to_owned());
+                }
                 if let Some((alias, exported_name)) = name.split_once('.')
                     && self
                         .globals

@@ -1,0 +1,22 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Imports used only in type positions are used: no UNUSED_IMPORT warning.
+IMPORT HOST.FileSystem AS FS
+IMPORT HOST.Net AS Net
+IMPORT BNJson AS Json
+
+FUNCTION Describe(address AS Net.Address) AS STRING
+    RETURN "address"
+END FUNCTION
+
+FUNCTION Keep(doc AS Json.Json) AS Json.Json
+    RETURN doc
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET file AS FS.File = NEW FS.File()
+    RELEASE file
+END FUNCTION
