@@ -88,6 +88,12 @@ pub struct TcpListener {
 }
 
 impl TcpListener {
+    pub fn try_clone(&self) -> io::Result<Self> {
+        Ok(Self {
+            inner: self.inner.try_clone()?,
+        })
+    }
+
     pub fn bind(endpoint: Endpoint) -> io::Result<Self> {
         Ok(Self {
             inner: std::net::TcpListener::bind(SocketAddr::new(

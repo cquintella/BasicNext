@@ -12,11 +12,22 @@ use super::*;
 use net::handles::{self, Handle};
 
 /// Runs `f` on the stream behind `handle`; a closed or unknown handle is
-/// `None` (`Net.CLOSED` in the core).
+/// `None` (`Net.CLOSED` in the core). `f` runs on a clone, outside the
+/// handle-table lock: a blocking read in one thread must not stall every
+/// other socket (dispatch workers share the table).
 fn with_stream<T>(
     handle: i64,
     f: impl FnOnce(Option<&mut net::TcpStream>) -> Result<T, NetError>,
 ) -> Result<T, NetError> {
+    if let Ok(index) = usize::try_from(handle)
+        && let Ok(Some(Some(Ok(mut stream)))) = handles::with(index, |value| match value {
+            Handle::TcpStream(stream) => Some(stream.try_clone()),
+            _ => None,
+        })
+    {
+        return f(Some(&mut stream));
+    }
+    // No clone (unknown handle, or the clone failed): run under the lock.
     let mut f = Some(f);
     if let Ok(index) = usize::try_from(handle)
         && let Ok(Some(Some(result))) = handles::with_mut(index, |value| match value {
@@ -29,11 +40,20 @@ fn with_stream<T>(
     f.take().expect("stream operation not yet run")(None)
 }
 
-/// Runs `f` on the listener behind `handle`, as a one-listener set.
+/// Runs `f` on the listener behind `handle`, as a one-listener set, on a
+/// clone outside the handle-table lock (see `with_stream`).
 fn with_listener<T>(
     handle: i64,
     f: impl FnOnce(Option<&[net::TcpListener]>) -> Result<T, NetError>,
 ) -> Result<T, NetError> {
+    if let Ok(index) = usize::try_from(handle)
+        && let Ok(Some(Some(Ok(listener)))) = handles::with(index, |value| match value {
+            Handle::TcpListener(listener) => Some(listener.try_clone()),
+            _ => None,
+        })
+    {
+        return f(Some(std::slice::from_ref(&listener)));
+    }
     let mut f = Some(f);
     if let Ok(index) = usize::try_from(handle)
         && let Ok(Some(Some(result))) = handles::with(index, |value| match value {

@@ -465,8 +465,8 @@ use analysis::analyze_function;
 #[path = "llvm/alternatives.rs"]
 mod alternatives;
 use alternatives::{
-    Sentinel, alternative_is, emit_narrowed_string_load, emit_sentinel_is, loaded_type,
-    narrows_to_string, string_eof_or_error,
+    Sentinel, alternative_is, emit_narrowed_load, emit_sentinel_is, loaded_type, narrows,
+    string_eof_or_error,
 };
 #[path = "llvm/analysis_calls.rs"]
 mod analysis_calls;

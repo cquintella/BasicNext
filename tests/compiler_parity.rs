@@ -313,3 +313,20 @@ fn seeded_random_sequence_matches_interpreter() {
 fn seeded_random_branch_matches_interpreter() {
     assert_native_parity(&valid_fixture("build-random-branch.bn"), None);
 }
+
+/// `examples/dispatch_net_echo.bn`: two dispatch workers talk to one
+/// listener at once. Natively a blocking read must not hold the socket-table
+/// lock (the other client's write and the server's read would stall until
+/// the 5 s timeouts).
+#[test]
+fn dispatch_net_echo_matches_native_and_interpreter() {
+    let path = workspace_root().join("examples/dispatch_net_echo.bn");
+    let output = interpret(&path, None);
+    assert_success(&output, "bni run");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "client 1 got: hello from client 1\nclient 2 got: hello from client 2\n\
+         bytes echoed: 38\n"
+    );
+    assert_native_parity(&path, None);
+}

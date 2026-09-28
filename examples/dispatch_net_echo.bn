@@ -1,0 +1,132 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// TCP echo over loopback with parallel clients. Start opens a listener on an
+// ephemeral port; two clients run at the same time on a concurrent BNDispatch
+// queue, each connecting, sending its message, and reading the echo; Start
+// accepts both connections and writes every byte back. Messages are ASCII
+// (ASC and CHAR convert text and bytes).
+IMPORT HOST.Net AS Net
+IMPORT BNDispatch AS Dispatch
+
+// The byte of one ASCII character ('?' for anything else).
+FUNCTION ByteOf(character AS STRING) AS BYTE
+    LET code AS INTEGER OR Error = ASC(character)
+    IF code IS INTEGER THEN
+        IF code < 128 THEN
+            RETURN code AS BYTE
+        END IF
+    END IF
+    RETURN 63
+END FUNCTION
+
+// The character of one byte ("?" when it has none).
+FUNCTION TextOf(byte AS BYTE) AS STRING
+    LET character AS STRING OR Error = CHAR(byte AS INTEGER)
+    IF character IS STRING THEN
+        RETURN character
+    END IF
+    RETURN "?"
+END FUNCTION
+
+// One client: connect to 127.0.0.1:port, send `message`, return the echo.
+ASYNC FUNCTION Client(port AS INTEGER, message AS STRING) AS STRING OR Error
+    LET loopback AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    IF loopback IS Error THEN
+        RETURN loopback
+    END IF
+    LET server AS Net.Endpoint OR Error = Net.Endpoint.Create(loopback, port AS UINT16)
+    IF server IS Error THEN
+        RETURN server
+    END IF
+    LET stream AS Net.TCPStream OR Error = Net.TCPConnect(server, 5000)
+    IF stream IS Error THEN
+        RETURN stream
+    END IF
+    LET size AS INTEGER = LEN(message)
+    LET outgoing AS POINTER TO BYTE[] = NEW BYTE[size]
+    FOR index AS INTEGER = 0 TO size - 1
+        outgoing[index] = ByteOf(message[index])
+    END FOR
+    LET sent AS INTEGER OR Error = stream.Write(outgoing, size)
+    IF sent IS Error THEN
+        RETURN sent
+    END IF
+    LET incoming AS POINTER TO BYTE[] = NEW BYTE[size]
+    LET count AS INTEGER OR EOF OR Error = stream.Read(incoming, size)
+    LET echo AS STRING = ""
+    IF count IS INTEGER THEN
+        FOR position AS INTEGER = 0 TO count - 1
+            echo = echo + TextOf(incoming[position])
+        END FOR
+    END IF
+    stream.Close()
+    RELEASE outgoing
+    RELEASE incoming
+    RETURN echo
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    LET loopback AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    IF loopback IS Error THEN
+        PRINT loopback
+        RETURN 1
+    END IF
+    LET any AS Net.Endpoint OR Error = Net.Endpoint.Create(loopback, 0)
+    IF any IS Error THEN
+        RETURN 1
+    END IF
+    LET endpoints AS Net.Endpoint[1] = [any]
+    LET listener AS Net.TCPListener OR Error = Net.TCPListen(endpoints, 8)
+    IF listener IS Error THEN
+        PRINT listener
+        RETURN 1
+    END IF
+    LET bound AS Net.Endpoint OR Error = listener.LocalEndpoint()
+    IF bound IS Error THEN
+        RETURN 1
+    END IF
+    LET port AS INTEGER = bound.Port() AS INTEGER
+
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Concurrent(2)
+    IF queue IS Error THEN
+        PRINT queue
+        RETURN 1
+    END IF
+    LET first AS Dispatch.Ticket OR Error = ASYNC queue Client(port, "hello from client 1")
+    LET second AS Dispatch.Ticket OR Error = ASYNC queue Client(port, "hello from client 2")
+    IF first IS Error OR second IS Error THEN
+        PRINT "submit failed"
+        RETURN 1
+    END IF
+
+    // Echo server: accept each client and write back what it sent.
+    LET total AS INTEGER = 0
+    LET buffer AS POINTER TO BYTE[] = NEW BYTE[64]
+    FOR served AS INTEGER = 1 TO 2
+        LET connection AS Net.TCPStream OR Error = listener.Accept(5000)
+        IF connection IS Net.TCPStream THEN
+            LET count AS INTEGER OR EOF OR Error = connection.Read(buffer, 64)
+            IF count IS INTEGER THEN
+                LET written AS INTEGER OR Error = connection.Write(buffer, count)
+                IF written IS INTEGER THEN
+                    total += written
+                END IF
+            END IF
+            connection.Close()
+        ELSE
+            PRINT connection
+        END IF
+    END FOR
+    RELEASE buffer
+    LET one AS STRING OR Error = AWAIT first(10000)
+    LET two AS STRING OR Error = AWAIT second(10000)
+    PRINT "client 1 got:", one
+    PRINT "client 2 got:", two
+    PRINT "bytes echoed:", total
+    listener.Close()
+    queue.Close(10000)
+    RETURN 0
+END FUNCTION

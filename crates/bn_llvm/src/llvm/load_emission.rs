@@ -76,8 +76,8 @@ pub(crate) fn lower_load(
                 destination.0, destination.0
             );
         }
-    } else if narrows_to_string(slot_ty, dest_ty) {
-        emit_narrowed_string_load(text, *destination, symbols[symbol]);
+    } else if narrows(slot_ty, dest_ty) {
+        emit_narrowed_load(text, *destination, symbols[symbol], Some(slot_ty), dest_ty);
     } else if slot_llvm != dest_llvm
         && slot_llvm == "{ i1, ptr, i32 }"
         && dest_llvm == "{ ptr, i32 }"
