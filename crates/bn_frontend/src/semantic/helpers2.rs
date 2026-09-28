@@ -89,9 +89,9 @@ pub(crate) fn validate_type_reference(reference: &TypeReference) -> Result<(), D
         }
         let ty = type_from_atom(alternative);
         if matches!(ty, Type::System) {
-            return Err(error(
-                DiagId::NAME_NOT_FOUND,
-                "SYSTEM was withdrawn in 0.2; use HOST.Args",
+            return Err(name_not_found(
+                "SYSTEM",
+                "Basic Next 0.6 (withdrawn in 0.2; use HOST.Args)",
                 alternative.span,
             ));
         }
@@ -129,47 +129,30 @@ pub(crate) fn valid_pointer_parts(parts: &[String]) -> bool {
         _ => false,
     }
 }
+/// `NAME_NOT_FOUND` with its facts: the name, and where it was looked up.
+pub(crate) fn name_not_found(
+    name: impl Into<String>,
+    context: impl Into<String>,
+    span: Span,
+) -> Diagnostic {
+    Diagnostic::structured(
+        DiagId::NAME_NOT_FOUND,
+        vec![
+            ("name".into(), DiagnosticValue::Text(name.into())),
+            ("context".into(), DiagnosticValue::Text(context.into())),
+        ],
+        vec![Label {
+            span,
+            style: LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("name-not-found diagnostic schema")
+}
+
+/// A diagnostic whose identity takes one free-text fact (`LEGACY_MESSAGE`
+/// or `DETAIL`); identities with typed facts have their own constructor.
 pub(crate) fn error(id: DiagId, message: impl Into<String>, span: Span) -> Diagnostic {
-    if matches!(id, DiagId::NAME_NOT_FOUND) {
-        return Diagnostic::structured(
-            id,
-            vec![
-                ("name".into(), DiagnosticValue::Text(message.into())),
-                (
-                    "context".into(),
-                    DiagnosticValue::Text("semantic analysis".into()),
-                ),
-            ],
-            vec![Label {
-                span,
-                style: LabelStyle::Primary,
-                text: None,
-            }],
-        )
-        .expect("name-not-found compatibility schema");
-    }
-    if matches!(id, DiagId::TYPE_MISMATCH) {
-        return Diagnostic::structured(
-            id,
-            vec![
-                (
-                    "expected".into(),
-                    DiagnosticValue::Text("the operation's expected type".into()),
-                ),
-                (
-                    "actual".into(),
-                    DiagnosticValue::Text("an incompatible value".into()),
-                ),
-                ("context".into(), DiagnosticValue::Text(message.into())),
-            ],
-            vec![Label {
-                span,
-                style: LabelStyle::Primary,
-                text: None,
-            }],
-        )
-        .expect("type-mismatch compatibility schema");
-    }
     let argument_name = match id.argument_schema() {
         [only] => only.name,
         schema => unreachable!(

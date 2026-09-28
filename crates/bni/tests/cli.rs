@@ -1260,3 +1260,21 @@ fn syntax_errors_state_the_expectation_or_the_rule() {
         "{stderr}"
     );
 }
+
+/// `NAME_NOT_FOUND` carries the name and the place it was looked up as
+/// separate facts.
+#[test]
+fn unknown_member_names_the_member_and_its_owner() {
+    let output = bni()
+        .args(["check", "tests/grammar/invalid/unknown-host-member.bn"])
+        .output()
+        .expect("run check");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains(
+            "error[NAME_NOT_FOUND]: Undefined name: Name 'CLS' was not found in the members of type 'HOST.Console'."
+        ),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

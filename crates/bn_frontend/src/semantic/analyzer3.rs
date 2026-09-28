@@ -320,9 +320,9 @@ impl Analyzer {
                     }
                 }
                 Statement::ClearScreen { span, .. } | Statement::Beep { span, .. } => {
-                    return Err(error(
-                        DiagId::NAME_NOT_FOUND,
-                        "CLS and BEEP statements were withdrawn in 0.2; use HOST.Console methods",
+                    return Err(name_not_found(
+                        "the CLS or BEEP statement",
+                        "Basic Next 0.6 (withdrawn in 0.2; use HOST.Console.Cls or Beep)",
                         *span,
                     ));
                 }

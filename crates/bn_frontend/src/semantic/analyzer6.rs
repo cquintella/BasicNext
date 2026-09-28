@@ -42,13 +42,7 @@ impl Analyzer {
                 .get(module)
                 .and_then(|exports| exports.get(name))
                 .cloned()
-                .ok_or_else(|| {
-                    error(
-                        DiagId::NAME_NOT_FOUND,
-                        format!("imported module does not export '{name}'"),
-                        span,
-                    )
-                });
+                .ok_or_else(|| name_not_found(name, "the exports of the imported module", span));
         }
         if let Type::ImportedNamed {
             module,
@@ -65,10 +59,10 @@ impl Analyzer {
                 .get(&(*module, imported_name.clone()))
                 .and_then(|info| info.members.get(name));
             let member = member.ok_or_else(|| {
-                error(
-                    DiagId::NAME_NOT_FOUND,
+                name_not_found(
+                    name,
                     format!(
-                        "imported type '{}' has no exported member '{name}'",
+                        "the exported members of imported type '{}'",
                         display(object)
                     ),
                     span,
@@ -157,13 +151,7 @@ impl Analyzer {
             .members
             .get(owner)
             .and_then(|members| members.get(name))
-            .ok_or_else(|| {
-                error(
-                    DiagId::NAME_NOT_FOUND,
-                    format!("type '{owner}' has no member '{name}'"),
-                    span,
-                )
-            })?;
+            .ok_or_else(|| name_not_found(name, format!("the members of type '{owner}'"), span))?;
         if member.is_static != static_access {
             return Err(type_mismatch(
                 if static_access {
@@ -295,13 +283,9 @@ impl Analyzer {
             test_type
         };
         let mut narrowed = locals.clone();
-        let symbol = narrowed.get_mut(name).ok_or_else(|| {
-            error(
-                DiagId::NAME_NOT_FOUND,
-                format!("name '{name}' is not declared"),
-                left.span,
-            )
-        })?;
+        let symbol = narrowed
+            .get_mut(name)
+            .ok_or_else(|| name_not_found(name, "this scope", left.span))?;
         let Type::Alternative(alternatives) = &symbol.ty else {
             return Ok(narrowed);
         };

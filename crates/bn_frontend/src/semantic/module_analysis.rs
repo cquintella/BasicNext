@@ -699,20 +699,12 @@ pub(crate) fn validate_implemented_interfaces(
                     })
                     .collect::<Vec<_>>()
             } else if let Some((alias, name)) = interface.split_once('.') {
-                let module = module_imports.get(alias).ok_or_else(|| {
-                    error(
-                        DiagId::NAME_NOT_FOUND,
-                        format!("interface module '{alias}' is not imported"),
-                        *span,
-                    )
-                })?;
-                let info = imported_types.get(&(*module, name.into())).ok_or_else(|| {
-                    error(
-                        DiagId::NAME_NOT_FOUND,
-                        format!("interface '{interface}' is not declared"),
-                        *span,
-                    )
-                })?;
+                let module = module_imports
+                    .get(alias)
+                    .ok_or_else(|| name_not_found(alias, "the imports of this module", *span))?;
+                let info = imported_types
+                    .get(&(*module, name.into()))
+                    .ok_or_else(|| name_not_found(interface, "the declared interfaces", *span))?;
                 if info.kind != DeclarationKind::Interface {
                     return Err(type_mismatch(
                         "INTERFACE",
@@ -727,11 +719,7 @@ pub(crate) fn validate_implemented_interfaces(
                     .map(|(name, member)| (name.clone(), member.ty.clone()))
                     .collect::<Vec<_>>()
             } else {
-                return Err(error(
-                    DiagId::NAME_NOT_FOUND,
-                    format!("interface '{interface}' is not declared"),
-                    *span,
-                ));
+                return Err(name_not_found(interface, "the declared interfaces", *span));
             };
             for (method, required_signature) in required {
                 let implementation = class_members

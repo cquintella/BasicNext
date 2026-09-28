@@ -56,9 +56,9 @@ impl Analyzer {
                 Item::Import { path, alias, span } => {
                     let ty = match path.as_slice() {
                         [host, capability] if host == "HOST" && capability == "Main" => {
-                            return Err(error(
-                                DiagId::NAME_NOT_FOUND,
-                                "HOST.Main was withdrawn in 0.2; use HOST.Args",
+                            return Err(name_not_found(
+                                "HOST.Main",
+                                "Basic Next 0.6 (withdrawn in 0.2; use HOST.Args)",
                                 *span,
                             ));
                         }
