@@ -326,9 +326,9 @@ impl NetProvider {
                 let capacity = core.memory().len(handle, span)?;
                 let maximum = usize::try_from(maximum)
                     .ok()
-                    .filter(|value| *value <= capacity && *value <= 1_048_576)
+                    .filter(|value| *value <= capacity)
                     .ok_or_else(|| {
-                        runtime_error(bn_diag::DiagId::LIMIT, "copy exceeds buffer or 1 MiB", span)
+                        runtime_error(bn_diag::DiagId::LIMIT, "copy exceeds the buffer", span)
                     })?;
                 let count = bytes.len().min(maximum);
                 for (index, byte) in bytes.iter().take(count).enumerate() {
@@ -843,9 +843,9 @@ impl NetProvider {
                 let capacity = core.memory().len(handle, span)?;
                 let maximum = usize::try_from(maximum)
                     .ok()
-                    .filter(|value| *value <= capacity && *value <= bn_rt::net::TRANSFER_MAX)
+                    .filter(|value| *value <= capacity)
                     .ok_or_else(|| {
-                        runtime_error(bn_diag::DiagId::LIMIT, "read exceeds buffer or 1 MiB", span)
+                        runtime_error(bn_diag::DiagId::LIMIT, "read exceeds the buffer", span)
                     })?;
                 let mut bytes = vec![0; maximum];
                 let count = match bn_rt::net::tcp_read(self.tcp_streams.get_mut(&id), &mut bytes) {
@@ -884,13 +884,9 @@ impl NetProvider {
                 let capacity = core.memory().len(handle, span)?;
                 let count = usize::try_from(count)
                     .ok()
-                    .filter(|value| *value <= capacity && *value <= bn_rt::net::TRANSFER_MAX)
+                    .filter(|value| *value <= capacity)
                     .ok_or_else(|| {
-                        runtime_error(
-                            bn_diag::DiagId::LIMIT,
-                            "write exceeds buffer or 1 MiB",
-                            span,
-                        )
+                        runtime_error(bn_diag::DiagId::LIMIT, "write exceeds the buffer", span)
                     })?;
                 let bytes = (0..count)
                     .map(|index| {

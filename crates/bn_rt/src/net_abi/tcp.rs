@@ -174,24 +174,6 @@ pub extern "C" fn bn_rt_net_tcp_stream_remote_endpoint(
     )
 }
 
-/// A byte buffer from emitted code of `length` bytes, within the transfer
-/// bound.
-fn transfer_length(length: i32, operation: &'static str, action: &str) -> Result<usize, NetError> {
-    usize::try_from(length)
-        .ok()
-        .filter(|length| *length <= net::TRANSFER_MAX)
-        .ok_or_else(|| {
-            NetError::new(
-                operation,
-                action,
-                Failure::InvalidArgument(format!(
-                    "the byte count must be within 0..{}; got {length}",
-                    net::TRANSFER_MAX
-                )),
-            )
-        })
-}
-
 /// `HOST.Net.TCPStream.Read`: `out_read` receives the byte count (0 is EOF).
 #[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
@@ -205,8 +187,10 @@ pub extern "C" fn bn_rt_net_tcp_read(
     write_out(out_read, 0);
     status(
         authorized(OPERATION, "read from the TCP stream")
-            .and_then(|()| transfer_length(length, OPERATION, "read from the TCP stream"))
-            .and_then(|length| {
+            .and_then(|()| {
+                // The emitted code checked `length` against the buffer; the
+                // core checks the per-call bound.
+                let length = usize::try_from(length).unwrap_or(0);
                 let slice: &mut [u8] = if length == 0 || buffer.is_null() {
                     &mut []
                 } else {
@@ -233,8 +217,8 @@ pub extern "C" fn bn_rt_net_tcp_write(
     write_out(out_written, 0);
     status(
         authorized(OPERATION, "write to the TCP stream")
-            .and_then(|()| transfer_length(length, OPERATION, "write to the TCP stream"))
-            .and_then(|length| {
+            .and_then(|()| {
+                let length = usize::try_from(length).unwrap_or(0);
                 let slice: &[u8] = if length == 0 || buffer.is_null() {
                     &[]
                 } else {

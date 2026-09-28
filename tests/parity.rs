@@ -852,6 +852,7 @@ fn tcp_errors_match_across_backends() {
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
         "TRUE HOST.Net.TCPListen\n\
+         TRUE the byte count must be within 0..1048576; got 1100000\n\
          TRUE HOST.Net.TCPStream.Read it was closed by Close\n\
          TRUE HOST.Net.TCPConnect\n"
     );

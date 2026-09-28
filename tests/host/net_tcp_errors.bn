@@ -35,6 +35,14 @@ FUNCTION Start() AS INTEGER
     IF client IS Error THEN
         RETURN 1
     END IF
+    // More than the per-call bound (1 MiB) inside the buffer: an Error on
+    // both backends, not a trap (a trap is only for a count past the buffer).
+    LET big AS POINTER TO BYTE[] = NEW BYTE[1100000]
+    LET sent AS INTEGER OR Error = client.Write(big, 1100000)
+    IF sent IS Error THEN
+        PRINT sent.Code = Net.INVALID_ARGUMENT, sent.Cause
+    END IF
+    RELEASE big
     client.Close()
     LET buffer AS POINTER TO BYTE[] = NEW BYTE[4]
     LET read AS INTEGER OR EOF OR Error = client.Read(buffer, 4)

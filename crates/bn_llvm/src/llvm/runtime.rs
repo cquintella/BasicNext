@@ -877,7 +877,7 @@ pub(crate) fn lower_bn_rt_call(
                 destination,
                 arguments[1],
                 &length,
-                "read exceeds buffer or 1 MiB",
+                "read exceeds the buffer",
                 state,
             );
             let _ = writeln!(
@@ -1015,7 +1015,7 @@ pub(crate) fn lower_bn_rt_call(
                 destination,
                 arguments[1],
                 &maximum,
-                "copy exceeds buffer or 1 MiB",
+                "copy exceeds the buffer",
                 state,
             );
             let _ = writeln!(
@@ -1084,7 +1084,7 @@ pub(crate) fn lower_bn_rt_call(
                 destination,
                 arguments[1],
                 &length,
-                "write exceeds buffer or 1 MiB",
+                "write exceeds the buffer",
                 state,
             );
             let _ = writeln!(

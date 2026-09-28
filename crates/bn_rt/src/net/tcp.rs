@@ -28,6 +28,22 @@ pub fn quota_exceeded(operation: &'static str, action: impl Into<String>) -> Net
     )
 }
 
+/// A `Read` or `Write` moves at most [`TRANSFER_MAX`] bytes per call; more
+/// is `Net.INVALID_ARGUMENT` (an argument out of its domain, not a trap).
+fn within_transfer(length: usize, operation: &'static str, action: &str) -> Result<(), NetError> {
+    if length <= TRANSFER_MAX {
+        Ok(())
+    } else {
+        Err(NetError::new(
+            operation,
+            action,
+            Failure::InvalidArgument(format!(
+                "the byte count must be within 0..{TRANSFER_MAX}; got {length}"
+            )),
+        ))
+    }
+}
+
 fn closed(operation: &'static str, action: &str) -> NetError {
     NetError::new(operation, action, Failure::Closed)
 }
@@ -150,6 +166,7 @@ fn peer(stream: &TcpStream) -> String {
 /// operating-system failure.
 pub fn tcp_read(stream: Option<&mut TcpStream>, buffer: &mut [u8]) -> Result<usize, NetError> {
     const OPERATION: &str = "HOST.Net.TCPStream.Read";
+    within_transfer(buffer.len(), OPERATION, "read from the TCP stream")?;
     let stream = stream.ok_or_else(|| closed(OPERATION, "read from the TCP stream"))?;
     let action = format!("read from {}", peer(stream));
     stream
@@ -165,6 +182,7 @@ pub fn tcp_read(stream: Option<&mut TcpStream>, buffer: &mut [u8]) -> Result<usi
 /// operating-system failure.
 pub fn tcp_write(stream: Option<&mut TcpStream>, bytes: &[u8]) -> Result<usize, NetError> {
     const OPERATION: &str = "HOST.Net.TCPStream.Write";
+    within_transfer(bytes.len(), OPERATION, "write to the TCP stream")?;
     let stream = stream.ok_or_else(|| closed(OPERATION, "write to the TCP stream"))?;
     let action = format!("write to {}", peer(stream));
     stream
