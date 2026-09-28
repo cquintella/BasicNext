@@ -32,10 +32,10 @@ declare double @bn_rt_math_fmin(double, double)
 declare double @bn_rt_math_fmax(double, double)
 declare double @bn_rt_math_round(double, double)
 declare double @bn_rt_math_fma(double, double, double)
-declare i32 @bn_rt_math_vmin_i32(ptr, i32)
-declare i32 @bn_rt_math_vmax_i32(ptr, i32)
-declare double @bn_rt_math_vmin_f64(ptr, i32)
-declare double @bn_rt_math_vmax_f64(ptr, i32)
+declare i32 @bn_rt_math_vmin_i32(ptr, i32, ptr)
+declare i32 @bn_rt_math_vmax_i32(ptr, i32, ptr)
+declare double @bn_rt_math_vmin_f64(ptr, i32, ptr)
+declare double @bn_rt_math_vmax_f64(ptr, i32, ptr)
 declare double @bn_rt_math_mean_i32(ptr, i32)
 declare double @bn_rt_math_median_i32(ptr, i32)
 declare double @bn_rt_math_quartile1_i32(ptr, i32)
@@ -52,8 +52,8 @@ declare double @bn_rt_math_range_f64(ptr, i32)
 declare double @bn_rt_math_stdev_f64(ptr, i32)
 declare double @bn_rt_math_variance_f64(ptr, i32)
 declare i32 @bn_rt_math_mode_f64(ptr, i32, ptr)
-declare i32 @bn_rt_math_todate(i64)
-declare i32 @bn_rt_math_totime(i64)
+declare i32 @bn_rt_math_todate(i64, ptr)
+declare i32 @bn_rt_math_totime(i64, ptr)
 declare i64 @bn_rt_math_totimestamp(i32, i32)
 ";
 
@@ -164,10 +164,12 @@ fn numeric_arg(ty: &Type) -> bool {
 
 pub(crate) fn lower_bnmath_call(
     text: &mut String,
+    block_id: BlockId,
     destination: ValueId,
     method: &str,
     arguments: &[ValueId],
     analysis: &LoweringAnalysis<'_>,
+    state: &mut EmissionState,
 ) {
     let types = arguments
         .iter()
@@ -189,15 +191,33 @@ pub(crate) fn lower_bnmath_call(
         }
         "TOHOUR" | "TOWEEKDAY" | "TODATE" | "TOTIME" => {
             let value = extend_to_i64(text, arguments[0], types[0]);
-            let intrinsic = match method {
-                "TOHOUR" => "bn_rt_math_tohour",
-                "TOWEEKDAY" => "bn_rt_math_toweekday",
-                "TODATE" => "bn_rt_math_todate",
-                _ => "bn_rt_math_totime",
+            let (intrinsic, trap) = match method {
+                "TOHOUR" => ("bn_rt_math_tohour", String::new()),
+                "TOWEEKDAY" => ("bn_rt_math_toweekday", String::new()),
+                // Outside 0001..9999 `bn_rt` prints this site's diagnostic.
+                other => (
+                    if other == "TODATE" {
+                        "bn_rt_math_todate"
+                    } else {
+                        "bn_rt_math_totime"
+                    },
+                    format!(
+                        ", ptr {}",
+                        trap_symbol(
+                            state,
+                            bn_diag::DiagId::FORMAT_OUT_OF_RANGE,
+                            vec![(
+                                "message",
+                                Fact::Text("civil time must be in years 0001 through 9999".into()),
+                            )],
+                        )
+                        .0
+                    ),
+                ),
             };
             let _ = writeln!(
                 text,
-                "  %v{} = call i32 @{intrinsic}(i64 {value})",
+                "  %v{} = call i32 @{intrinsic}(i64 {value}{trap})",
                 destination.0
             );
         }
@@ -215,7 +235,7 @@ pub(crate) fn lower_bnmath_call(
                     .first()
                     .is_some_and(|ty| is_supported_numeric_vector(ty)) =>
         {
-            lower_vector_math(text, destination, method, arguments[0], types[0]);
+            lower_vector_math(text, destination, method, arguments[0], types[0], state);
         }
         "ABS" | "SIGN" | "MIN" | "MAX" if integer_op => {
             let result_ty = analysis
@@ -224,11 +244,13 @@ pub(crate) fn lower_bnmath_call(
                 .expect("validated BNMath result type");
             lower_integer_math(
                 text,
+                block_id,
                 destination,
                 method,
                 arguments,
                 types.as_slice(),
                 result_ty,
+                state,
             );
         }
         _ => lower_float_math(text, destination, method, arguments, types.as_slice()),
@@ -241,6 +263,7 @@ fn lower_vector_math(
     method: &str,
     vector: ValueId,
     vector_ty: &Type,
+    state: &EmissionState,
 ) {
     let dest = destination.0;
     let float_vector = match vector_ty {
@@ -260,17 +283,35 @@ fn lower_vector_math(
         vector.0
     );
     let length = format!("%statlen{dest}");
+    // MIN and MAX of an empty vector: `bn_rt` prints this site's diagnostic.
+    let empty = || {
+        trap_symbol(
+            state,
+            bn_diag::DiagId::INDEX_OUT_OF_BOUNDS,
+            vec![
+                ("index", Fact::Text("0".into())),
+                ("bound", Fact::Text("0".into())),
+                (
+                    "context",
+                    Fact::Text(format!("the input of BNMath.{method}")),
+                ),
+            ],
+        )
+        .0
+    };
     match method {
         "MIN" => {
             if float_vector {
                 let _ = writeln!(
                     text,
-                    "  %v{dest} = call double @bn_rt_math_vmin_f64(ptr %statptr{dest}, i32 {length})"
+                    "  %v{dest} = call double @bn_rt_math_vmin_f64(ptr %statptr{dest}, i32 {length}, ptr {})",
+                    empty()
                 );
             } else {
                 let _ = writeln!(
                     text,
-                    "  %v{dest} = call i32 @bn_rt_math_vmin_i32(ptr %statptr{dest}, i32 {length})"
+                    "  %v{dest} = call i32 @bn_rt_math_vmin_i32(ptr %statptr{dest}, i32 {length}, ptr {})",
+                    empty()
                 );
             }
         }
@@ -278,12 +319,14 @@ fn lower_vector_math(
             if float_vector {
                 let _ = writeln!(
                     text,
-                    "  %v{dest} = call double @bn_rt_math_vmax_f64(ptr %statptr{dest}, i32 {length})"
+                    "  %v{dest} = call double @bn_rt_math_vmax_f64(ptr %statptr{dest}, i32 {length}, ptr {})",
+                    empty()
                 );
             } else {
                 let _ = writeln!(
                     text,
-                    "  %v{dest} = call i32 @bn_rt_math_vmax_i32(ptr %statptr{dest}, i32 {length})"
+                    "  %v{dest} = call i32 @bn_rt_math_vmax_i32(ptr %statptr{dest}, i32 {length}, ptr {})",
+                    empty()
                 );
             }
         }
@@ -335,18 +378,45 @@ fn lower_vector_math(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn lower_integer_math(
     text: &mut String,
+    block_id: BlockId,
     destination: ValueId,
     method: &str,
     arguments: &[ValueId],
     types: &[&Type],
     result_type: &Type,
+    state: &mut EmissionState,
 ) {
     let left = extend_to_i64(text, arguments[0], types[0]);
     let result_ty = llvm_type(result_type).expect("validated integer math result type");
+    if method == "ABS" {
+        // |x| of the most negative value does not fit its type; the exact
+        // magnitude is reported as the interpreter does (i128 holds it).
+        let dest = destination.0;
+        let (low, high) = i128_bounds(result_type);
+        let _ = writeln!(
+            text,
+            "  %absw{dest} = sext i64 {left} to i128\n  %absneg{dest} = icmp slt i128 %absw{dest}, 0\n  %absflip{dest} = sub i128 0, %absw{dest}\n  %absexact{dest} = select i1 %absneg{dest}, i128 %absflip{dest}, i128 %absw{dest}\n  %abslo{dest} = icmp slt i128 %absexact{dest}, {low}\n  %abshi{dest} = icmp sgt i128 %absexact{dest}, {high}\n  %absbad{dest} = or i1 %abslo{dest}, %abshi{dest}"
+        );
+        let ok = take_continuation(block_id, state);
+        emit_overflow_trap(
+            text,
+            block_id,
+            state,
+            &format!("%absbad{dest}"),
+            ok,
+            &format!("%absexact{dest}"),
+            result_type,
+        );
+        let _ = writeln!(
+            text,
+            "  %v{dest} = trunc i128 %absexact{dest} to {result_ty}"
+        );
+        return;
+    }
     let call = match method {
-        "ABS" => format!("call i64 @bn_rt_math_iabs(i64 {left})"),
         "SIGN" => format!("call i64 @bn_rt_math_isign(i64 {left})"),
         "MIN" => {
             let right = extend_to_i64(text, arguments[1], types[1]);

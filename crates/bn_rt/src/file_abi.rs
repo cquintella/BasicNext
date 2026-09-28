@@ -24,10 +24,7 @@ fn authorize() -> Result<(), u32> {
     if super::policy::allows(super::policy::POLICY_FILESYSTEM) {
         Ok(())
     } else {
-        super::fail(
-            "EXECUTION_POLICY_DENIED",
-            "HOST.FileSystem is denied by execution policy",
-        );
+        // The Error carries the denial; nothing is printed (as in `bni`).
         super::set_error("HOST.FileSystem is denied by execution policy");
         Err(BN_FILE_POLICY_DENIED)
     }

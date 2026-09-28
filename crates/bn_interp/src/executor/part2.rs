@@ -336,10 +336,7 @@ impl Executor<'_, '_> {
                 span,
                 ..
             } => {
-                let index = usize::try_from(integer(value(values, *index, *span)?, *span)?.0)
-                    .map_err(|_| {
-                        super::super::index_out_of_bounds("negative", "0", "index", *span)
-                    })?;
+                let index = integer(value(values, *index, *span)?, *span)?.0;
                 let element = self.index_value(value(values, *object, *span)?, index, *span)?;
                 set(values, *destination, element);
             }
@@ -364,11 +361,7 @@ impl Executor<'_, '_> {
             } => {
                 let indices = indices
                     .iter()
-                    .map(|index| {
-                        usize::try_from(integer(value(values, *index, *span)?, *span)?.0).map_err(
-                            |_| super::super::index_out_of_bounds("negative", "0", "index", *span),
-                        )
-                    })
+                    .map(|index| Ok(integer(value(values, *index, *span)?, *span)?.0))
                     .collect::<Result<Vec<_>, _>>()?;
                 let stored = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
                 let target_snapshot = symbols.get(symbol).cloned().ok_or_else(|| {
@@ -416,11 +409,7 @@ impl Executor<'_, '_> {
             } => {
                 let indices = indices
                     .iter()
-                    .map(|index| {
-                        usize::try_from(integer(value(values, *index, *span)?, *span)?.0).map_err(
-                            |_| super::super::index_out_of_bounds("negative", "0", "index", *span),
-                        )
-                    })
+                    .map(|index| Ok(integer(value(values, *index, *span)?, *span)?.0))
                     .collect::<Result<Vec<_>, _>>()?;
                 let source = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
                 self.set_member_index_value(
@@ -445,11 +434,7 @@ impl Executor<'_, '_> {
             } => {
                 let indices = indices
                     .iter()
-                    .map(|index| {
-                        usize::try_from(integer(value(values, *index, *span)?, *span)?.0).map_err(
-                            |_| super::super::index_out_of_bounds("negative", "0", "index", *span),
-                        )
-                    })
+                    .map(|index| Ok(integer(value(values, *index, *span)?, *span)?.0))
                     .collect::<Result<Vec<_>, _>>()?;
                 let source = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
                 let target = symbols.get_mut(symbol).ok_or_else(|| {
@@ -763,11 +748,7 @@ impl Executor<'_, '_> {
             } => {
                 let indices = indices
                     .iter()
-                    .map(|index| {
-                        usize::try_from(integer(value(values, *index, *span)?, *span)?.0).map_err(
-                            |_| super::super::index_out_of_bounds("negative", "0", "index", *span),
-                        )
-                    })
+                    .map(|index| Ok(integer(value(values, *index, *span)?, *span)?.0))
                     .collect::<Result<Vec<_>, _>>()?;
                 let source = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
                 let key = (class.clone(), field.clone());

@@ -1,0 +1,21 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Run with BN_FS_POLICY=deny: the capability stays bound and each operation
+// returns Error(FS.POLICY_DENIED) on both backends (0.6.md "HOST.FileSystem
+// execution policy"); only a host without the provider fails before Start.
+IMPORT HOST.FileSystem AS FS
+
+FUNCTION Start() AS INTEGER
+    LET found AS BOOLEAN OR Error = FS.Exists("policy-deny.txt")
+    IF found IS Error THEN
+        PRINT found.Code = FS.POLICY_DENIED, found
+    END IF
+    LET file AS FS.File OR Error = FS.Open("policy-deny.txt", FS.WRITE)
+    IF file IS Error THEN
+        PRINT file.Code = FS.POLICY_DENIED, file.Operation
+    END IF
+    RETURN 0
+END FUNCTION

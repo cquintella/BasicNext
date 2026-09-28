@@ -219,8 +219,11 @@ pub(crate) fn emit_function(
                 text.push_str(crate::platform_stdio::windows_binary_stdio_ir(
                     synchronize_prints,
                 ));
+                // Every native program applies the environment policy, so a
+                // malformed input stops it (CONFIG_INVALID, exit 2) as it
+                // stops `bni`, imports or not (0.6.md).
                 let ceiling = super::policy_ceiling(module);
-                if ceiling != 0 {
+                if ceiling != 0 || synchronize_prints {
                     let _ = writeln!(
                         text,
                         "  %bn_policy_status = call i32 @bn_rt_policy_init(i32 1, i64 {ceiling})"

@@ -273,7 +273,7 @@ pub fn eval(command_arguments: Vec<String>, extension: &mut dyn OptionExtension)
                     })
                 );
             } else {
-                eprintln!("error: {message}");
+                eprintln!("error[CONFIG_INVALID]: {message}");
             }
             return tool_error();
         }
@@ -320,7 +320,7 @@ pub fn eval(command_arguments: Vec<String>, extension: &mut dyn OptionExtension)
                     })
                 );
             } else {
-                eprintln!("error: {message}");
+                eprintln!("error[CONFIG_INVALID]: {message}");
             }
             return tool_error();
         }

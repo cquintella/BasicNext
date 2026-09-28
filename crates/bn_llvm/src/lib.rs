@@ -309,7 +309,7 @@ pub fn lower_validated_module_with_diagnostics(
         &functions,
         !wasm32,
         !module.bndata_providers.is_empty(),
-        policy_ceiling(module) != 0,
+        policy_ceiling(module) != 0 || !wasm32,
     );
     for (function, analysis) in &functions {
         emit_function(&mut text, module, function, analysis, !wasm32, policy)?;
@@ -1031,7 +1031,7 @@ use print_emission::{
 };
 #[path = "llvm/casts.rs"]
 mod casts;
-use casts::{cast_supported, is_text_cast, lower_cast};
+use casts::{cast_supported, i128_bounds, is_text_cast, lower_cast};
 #[path = "llvm/euclidean.rs"]
 mod euclidean;
 use euclidean::emit_euclidean_integer_op;
@@ -1056,7 +1056,10 @@ mod fs_emission;
 use fs_emission::{FS_CALLS, fs_call_supported, lower_fs_call};
 #[path = "llvm/traps.rs"]
 mod traps;
-use traps::{Fact, define_trap_globals, emit_index_trap, emit_overflow_trap, emit_trap};
+use traps::{
+    Fact, define_trap_globals, emit_failure_trap, emit_index_trap, emit_overflow_trap, emit_trap,
+    trap_symbol,
+};
 #[path = "llvm/host_results.rs"]
 mod host_results;
 use host_results::{

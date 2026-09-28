@@ -1115,6 +1115,7 @@ pub(crate) fn lower_bn_rt_call(
                 block_id,
                 destination,
                 "call i32 @bn_rt_console_cls()",
+                CONSOLE_FAILURES,
                 state,
             );
         }
@@ -1124,6 +1125,7 @@ pub(crate) fn lower_bn_rt_call(
                 block_id,
                 destination,
                 "call i32 @bn_rt_console_beep()",
+                CONSOLE_FAILURES,
                 state,
             );
         }
@@ -1145,7 +1147,7 @@ pub(crate) fn lower_bn_rt_call(
                 "call i32 @bn_rt_console_print_at(i32 {column}, i32 {row}, ptr %v{})",
                 arguments[2].0
             );
-            emit_checked_i32_eq_zero(text, block_id, destination, &call, state);
+            emit_checked_i32_eq_zero(text, block_id, destination, &call, CONSOLE_FAILURES, state);
         }
         "HOST.Console.NumCols" => {
             emit_checked_i32_sge_zero(
@@ -1153,6 +1155,7 @@ pub(crate) fn lower_bn_rt_call(
                 block_id,
                 destination,
                 "call i32 @bn_rt_console_num_cols()",
+                CONSOLE_FAILURES,
                 state,
             );
         }
@@ -1162,6 +1165,7 @@ pub(crate) fn lower_bn_rt_call(
                 block_id,
                 destination,
                 "call i32 @bn_rt_console_num_rows()",
+                CONSOLE_FAILURES,
                 state,
             );
         }
@@ -1792,50 +1796,66 @@ fn emit_net_result(
     );
 }
 
+/// The identities a `HOST.Console` runtime call can record
+/// (`ConsoleError::failure`, plus the call-boundary policy re-check).
+pub(crate) const CONSOLE_FAILURES: &[bn_diag::DiagId] = &[
+    bn_diag::DiagId::HOST_CAPABILITY_UNAVAILABLE,
+    bn_diag::DiagId::INDEX_OUT_OF_BOUNDS,
+    bn_diag::DiagId::OUTPUT_ERROR,
+    bn_diag::DiagId::NUMERIC_OVERFLOW,
+    bn_diag::DiagId::EXECUTION_POLICY_DENIED,
+];
+
+/// A `bn_rt` call whose status 0 is success; otherwise the failure it
+/// recorded is printed with this site's texts for `failures`, and the
+/// program leaves through `trap_bn_rt`.
 pub(crate) fn emit_checked_i32_eq_zero(
     text: &mut String,
     block_id: BlockId,
     destination: ValueId,
     call: &str,
+    failures: &[bn_diag::DiagId],
     state: &mut EmissionState,
 ) {
+    let dest = destination.0;
+    let _ = writeln!(
+        text,
+        "  %bnrtrc{dest} = {call}\n  %bnrtfail{dest} = icmp ne i32 %bnrtrc{dest}, 0"
+    );
     let ok = take_continuation(block_id, state);
-    let _ = writeln!(text, "  %bnrtrc{} = {call}", destination.0);
-    let _ = writeln!(
+    emit_failure_trap(
         text,
-        "  %bnrtok{} = icmp eq i32 %bnrtrc{}, 0",
-        destination.0, destination.0
+        block_id,
+        state,
+        &format!("%bnrtfail{dest}"),
+        ok,
+        failures,
     );
-    let _ = writeln!(
-        text,
-        "  br i1 %bnrtok{}, label %{ok}, label %trap_bn_rt",
-        destination.0
-    );
-    state.control_flow.label(text, ok.clone());
-    state.needs_bn_rt_trap = true;
 }
 
+/// As `emit_checked_i32_eq_zero` for a call whose negative result fails.
 fn emit_checked_i32_sge_zero(
     text: &mut String,
     block_id: BlockId,
     destination: ValueId,
     call: &str,
+    failures: &[bn_diag::DiagId],
     state: &mut EmissionState,
 ) {
+    let dest = destination.0;
+    let _ = writeln!(
+        text,
+        "  %v{dest} = {call}\n  %bnrtfail{dest} = icmp slt i32 %v{dest}, 0"
+    );
     let ok = take_continuation(block_id, state);
-    let _ = writeln!(text, "  %v{} = {call}", destination.0);
-    let _ = writeln!(
+    emit_failure_trap(
         text,
-        "  %bnrtok{} = icmp sge i32 %v{}, 0",
-        destination.0, destination.0
+        block_id,
+        state,
+        &format!("%bnrtfail{dest}"),
+        ok,
+        failures,
     );
-    let _ = writeln!(
-        text,
-        "  br i1 %bnrtok{}, label %{ok}, label %trap_bn_rt",
-        destination.0
-    );
-    state.control_flow.label(text, ok.clone());
-    state.needs_bn_rt_trap = true;
 }
 
 pub(crate) fn extend_to_i32(text: &mut String, value: ValueId, ty: &Type) -> String {

@@ -125,7 +125,7 @@ impl Executor<'_, '_> {
     pub fn index_value(
         &self,
         object: &Value,
-        index: usize,
+        index: i128,
         span: Span,
     ) -> Result<Value, Diagnostic> {
         match object {
@@ -134,27 +134,28 @@ impl Executor<'_, '_> {
                 "cannot index a NULL pointer",
                 span,
             )),
-            Value::Vector(vector) => vector
-                .get(index)
-                .cloned()
-                .ok_or_else(|| super::index_out_of_bounds(index, vector.len(), "vector", span)),
-            Value::Pointer { handle } => self.memory.get(*handle, index, span).cloned(),
-            Value::String(text) => text
-                .chars()
-                .nth(index)
-                .map(|character| Value::String(shared_string(character.to_string())))
-                .ok_or_else(|| {
-                    super::index_out_of_bounds(index, text.chars().count(), "string", span)
-                }),
-            Value::HostArgs => self
-                .host
-                .arguments
-                .get(index)
-                .cloned()
-                .map(|argument| Value::String(shared_string(argument)))
-                .ok_or_else(|| {
-                    super::index_out_of_bounds(index, self.host.arguments.len(), "HOST.Args", span)
-                }),
+            Value::Vector(vector) => {
+                let index = checked_index(index, vector.len(), "vector", span)?;
+                Ok(vector[index].clone())
+            }
+            Value::Pointer { handle } => {
+                let length = self.memory.len(*handle, span)?;
+                let index = checked_index(index, length, "region", span)?;
+                self.memory.get(*handle, index, span).cloned()
+            }
+            Value::String(text) => {
+                let index = checked_index(index, text.chars().count(), "string", span)?;
+                Ok(text
+                    .chars()
+                    .nth(index)
+                    .map(|character| Value::String(shared_string(character.to_string())))
+                    .expect("checked string index"))
+            }
+            Value::HostArgs => {
+                let arguments = &self.host.arguments;
+                let index = checked_index(index, arguments.len(), "HOST.Args", span)?;
+                Ok(Value::String(shared_string(arguments[index].as_str())))
+            }
             _ => Err(super::type_mismatch(
                 "indexable value",
                 "non-indexable value",
@@ -167,7 +168,7 @@ impl Executor<'_, '_> {
     pub fn set_index(
         &mut self,
         target: &mut Value,
-        indices: &[usize],
+        indices: &[i128],
         stored: Value,
         span: Span,
     ) -> Result<(), Diagnostic> {
@@ -190,15 +191,14 @@ impl Executor<'_, '_> {
                         span,
                     ));
                 }
+                let length = self.memory.len(*handle, span)?;
+                let index = checked_index(index, length, "region", span)?;
                 *self.memory.get_mut(*handle, index, span)? = stored;
                 Ok(())
             }
             Value::Vector(vector) => {
-                let length = vector.len();
-                let element = vector
-                    .get_mut(index)
-                    .ok_or_else(|| super::index_out_of_bounds(index, length, "vector", span))?;
-                self.set_index(element, remaining, stored, span)
+                let index = checked_index(index, vector.len(), "vector", span)?;
+                self.set_index(&mut vector[index], remaining, stored, span)
             }
             _ => Err(super::type_mismatch(
                 "indexable value",
@@ -210,9 +210,24 @@ impl Executor<'_, '_> {
     }
 }
 
+/// `index` as a position in a sequence of `length` elements, or
+/// `INDEX_OUT_OF_BOUNDS` naming the index as written (negative ones too) and
+/// the length; the native trap reports the same facts.
+fn checked_index(
+    index: i128,
+    length: usize,
+    context: &str,
+    span: Span,
+) -> Result<usize, Diagnostic> {
+    usize::try_from(index)
+        .ok()
+        .filter(|index| *index < length)
+        .ok_or_else(|| super::index_out_of_bounds(index, length, context, span))
+}
+
 pub fn indexed_value<'a>(
     value: &'a Value,
-    indices: &[usize],
+    indices: &[i128],
     span: Span,
 ) -> Result<&'a Value, Diagnostic> {
     let Some((&index, remaining)) = indices.split_first() else {
@@ -226,8 +241,6 @@ pub fn indexed_value<'a>(
             span,
         ));
     };
-    let element = values
-        .get(index)
-        .ok_or_else(|| super::index_out_of_bounds(index, values.len(), "vector", span))?;
-    indexed_value(element, remaining, span)
+    let index = checked_index(index, values.len(), "vector", span)?;
+    indexed_value(&values[index], remaining, span)
 }

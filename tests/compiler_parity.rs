@@ -399,3 +399,63 @@ fn native_runtime_traps_print_the_interpreter_diagnostic() {
         );
     }
 }
+
+/// `BN_FS_POLICY=deny` narrows both backends the same way: the capability
+/// stays bound and every operation returns `Error(FS.POLICY_DENIED)`. The
+/// interpreter used to fail before Start as if the host had no filesystem,
+/// and the native runtime printed an extra line and returned Code 1.
+#[test]
+fn filesystem_policy_deny_returns_policy_denied_on_both_backends() {
+    let path = workspace_root().join("tests/host/fs_policy_deny.bn");
+    let build = TestDir::new("fs-policy-deny").expect("create directory");
+    let artifact = compile_native(&path, &build);
+    let interpreted = execute(
+        bni().arg("run").arg(&path).env("BN_FS_POLICY", "deny"),
+        None,
+    );
+    let compiled = execute(Command::new(&artifact).env("BN_FS_POLICY", "deny"), None);
+    let expected = "TRUE Error 9 in HOST.FileSystem.Exists: cannot check whether \"policy-deny.txt\" exists (cause: the execution policy denies file access)\n\
+                    TRUE HOST.FileSystem.Open\n";
+    for (backend, output) in [("bni", &interpreted), ("native", &compiled)] {
+        assert_eq!(output.status.code(), Some(0), "{backend}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+        assert!(
+            output.stderr.is_empty(),
+            "{backend}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+/// A malformed policy input stops every program before Start on both
+/// backends (0.6.md: CONFIG_INVALID, exit 2) with the same text; natively the
+/// check ran only when the program imported a HOST capability.
+#[test]
+fn malformed_policy_stops_programs_without_host_imports() {
+    let directory = TestDir::new("policy-no-imports").expect("create directory");
+    let source = directory.join("plain.bn");
+    fs::write(
+        &source,
+        "FUNCTION Start() AS VOID\nPRINT \"ran\"\nEND FUNCTION\n",
+    )
+    .expect("write program");
+    let artifact = compile_native(&source, &directory);
+    let interpreted = execute(
+        bni().arg("run").arg(&source).env("BN_EXEC_POLICY", "allow"),
+        None,
+    );
+    let compiled = execute(Command::new(&artifact).env("BN_EXEC_POLICY", "allow"), None);
+    for (backend, output) in [("bni", &interpreted), ("native", &compiled)] {
+        assert_eq!(output.status.code(), Some(2), "{backend}");
+        assert!(output.stdout.is_empty(), "{backend}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "error[CONFIG_INVALID]: invalid BN_EXEC_POLICY 'allow' (expected deny)\n",
+            "{backend}"
+        );
+    }
+}

@@ -51,11 +51,16 @@ pub(super) fn reduce_vector(
         .collect::<Result<Vec<_>, _>>()?;
     if matches!(name, "MIN" | "MAX") {
         if numbers.is_empty() {
-            return Err(index_out_of_bounds("none", 0, "BNMath reduction", span));
+            return Err(index_out_of_bounds(
+                0,
+                0,
+                format!("the input of BNMath.{name}"),
+                span,
+            ));
         }
-        let first = values
-            .first()
-            .ok_or_else(|| index_out_of_bounds("none", 0, "BNMath reduction", span))?;
+        let first = values.first().ok_or_else(|| {
+            index_out_of_bounds(0, 0, format!("the input of BNMath.{name}"), span)
+        })?;
         if let Value::Integer(_, kind) = first {
             let integers = values
                 .iter()
@@ -66,7 +71,9 @@ pub(super) fn reduce_vector(
             } else {
                 integers.iter().copied().reduce(i128::max)
             }
-            .ok_or_else(|| index_out_of_bounds("none", 0, "BNMath reduction", span))?;
+            .ok_or_else(|| {
+                index_out_of_bounds(0, 0, format!("the input of BNMath.{name}"), span)
+            })?;
             return Ok(Value::Integer(result, *kind));
         }
         let Value::Float(_, kind) = first else {
@@ -85,9 +92,9 @@ pub(super) fn reduce_vector(
             )
         })?;
         let result = if name == "MIN" {
-            bn_rt::bn_rt_math_vmin_f64(numbers.as_ptr(), length)
+            bn_rt::bn_rt_math_vmin_f64(numbers.as_ptr(), length, std::ptr::null())
         } else {
-            bn_rt::bn_rt_math_vmax_f64(numbers.as_ptr(), length)
+            bn_rt::bn_rt_math_vmax_f64(numbers.as_ptr(), length, std::ptr::null())
         };
         return Ok(Value::Float(result, *kind));
     }

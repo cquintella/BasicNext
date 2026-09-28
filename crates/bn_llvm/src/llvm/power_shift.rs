@@ -414,16 +414,3 @@ fn bit_width(ty: &Type) -> u32 {
 fn extend_op(ty: &Type) -> &'static str {
     if is_unsigned(ty) { "zext" } else { "sext" }
 }
-
-fn i128_bounds(ty: &Type) -> (&'static str, &'static str) {
-    match integer_kind(ty) {
-        IntegerType::Byte => ("0", "255"),
-        IntegerType::Int8 => ("-128", "127"),
-        IntegerType::Int16 => ("-32768", "32767"),
-        IntegerType::Int32 => ("-2147483648", "2147483647"),
-        IntegerType::Int64 => ("-9223372036854775808", "9223372036854775807"),
-        IntegerType::UInt16 => ("0", "65535"),
-        IntegerType::UInt32 => ("0", "4294967295"),
-        IntegerType::UInt64 => ("0", "18446744073709551615"),
-    }
-}

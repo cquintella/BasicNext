@@ -10,6 +10,17 @@ pub(crate) fn fail(code: &str, message: &str) -> ! {
     process::exit(1);
 }
 
+/// Ends the program with the diagnostic `bnc` rendered for the calling site
+/// (`trap`, all facts known when compiling), as `bni` reports the failure;
+/// `code` and `message` only serve a caller that passed no site.
+pub(crate) fn fail_at(trap: *const std::ffi::c_char, code: &str, message: &str) -> ! {
+    if trap.is_null() {
+        fail(code, message);
+    }
+    super::bn_rt_trap_report(trap, 0, 0);
+    process::exit(1);
+}
+
 fn format_failure(code: &str, message: &str) -> String {
     format!("error[{code}]: {message}")
 }

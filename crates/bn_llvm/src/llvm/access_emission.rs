@@ -206,9 +206,20 @@ pub(crate) fn lower_access_emission(
                 analysis.values.get(index).expect("validated index type"),
             );
             let dest = destination.0;
+            // `bn_rt` checks the index against the character count and, when
+            // it is outside, prints this site's diagnostic with both facts.
+            let (trap, _) = trap_symbol(
+                state,
+                bn_diag::DiagId::INDEX_OUT_OF_BOUNDS,
+                vec![
+                    ("index", Fact::Runtime("{}", String::new())),
+                    ("bound", Fact::Runtime("{}", String::new())),
+                    ("context", Fact::Text("string".into())),
+                ],
+            );
             let _ = writeln!(
                 text,
-                "  %strindexpacked{dest} = call i64 @bn_rt_str_index_utf8(ptr %v{}, i32 {idx})",
+                "  %strindexpacked{dest} = call i64 @bn_rt_str_index_utf8(ptr %v{}, i32 {idx}, ptr {trap})",
                 object.0
             );
             let _ = writeln!(text, "  %strindexbuffer{dest} = alloca i64");

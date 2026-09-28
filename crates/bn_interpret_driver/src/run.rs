@@ -123,7 +123,7 @@ pub fn run_loaded(
             if options.output_format == OutputFormat::Json {
                 return eval_json_error("CONFIG_INVALID", message, "config", 2);
             }
-            eprintln!("error: {message}");
+            eprintln!("error[CONFIG_INVALID]: {message}");
             return tool_error();
         }
     };

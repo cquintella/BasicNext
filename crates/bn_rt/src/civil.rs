@@ -42,14 +42,6 @@ pub fn format_rfc3339(timestamp: i64) -> String {
     )
 }
 
-pub fn todate(timestamp: i64) -> i32 {
-    split(timestamp).0
-}
-
-pub fn totime(timestamp: i64) -> i32 {
-    i32::try_from(split(timestamp).1).unwrap_or(0)
-}
-
 pub fn totimestamp(days: i32, millis: i32) -> i64 {
     let millis = u32::try_from(millis).unwrap_or(0);
     (i128::from(days) * DAY_MS + i128::from(millis))
@@ -58,12 +50,19 @@ pub fn totimestamp(days: i32, millis: i32) -> i64 {
 }
 
 fn split(timestamp: i64) -> (i32, u32) {
+    split_at(timestamp, std::ptr::null())
+}
+
+/// Days and milliseconds of `timestamp`; outside the civil range the program
+/// ends with the calling site's diagnostic (`trap`, rendered by `bnc`).
+pub(crate) fn split_at(timestamp: i64, trap: *const std::ffi::c_char) -> (i32, u32) {
     let timestamp = i128::from(timestamp);
     let days = i32::try_from(timestamp.div_euclid(DAY_MS)).unwrap_or(0);
     let millis = u32::try_from(timestamp.rem_euclid(DAY_MS)).unwrap_or(0);
     let year = civil_from_days(days).year;
     if !(MIN_YEAR..=MAX_YEAR).contains(&year) {
-        super::math::fail(
+        super::math::fail_at(
+            trap,
             "FORMAT_OUT_OF_RANGE",
             "civil time must be in years 0001 through 9999",
         );

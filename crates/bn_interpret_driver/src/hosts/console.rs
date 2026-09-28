@@ -88,15 +88,23 @@ impl Provider for ConsoleProvider {
     }
 }
 
+/// The diagnostic of a console failure, from the record the native runtime
+/// prints too (`ConsoleError::failure`), so both backends show one text.
 fn console_runtime_error(error: &bn_rt::ConsoleError, span: Span) -> Diagnostic {
-    // `bn_rt` reports codes as strings (C ABI boundary); the interpreter owns
-    // the mapping onto registry identities.
-    let id = match error {
-        bn_rt::ConsoleError::Unavailable(_) => bn_diag::DiagId::HOST_CAPABILITY_UNAVAILABLE,
-        bn_rt::ConsoleError::OutOfBounds => bn_diag::DiagId::INDEX_OUT_OF_BOUNDS,
-        bn_rt::ConsoleError::Output(_) => bn_diag::DiagId::OUTPUT_ERROR,
-        bn_rt::ConsoleError::Overflow => bn_diag::DiagId::NUMERIC_OVERFLOW,
-    };
-    debug_assert_eq!(id.code(), error.code());
-    runtime_error(id, error.message(), span)
+    let failure = error.failure();
+    let id = bn_diag::DiagId::from_code(failure.code).expect("console failure code is registered");
+    Diagnostic::structured(
+        id,
+        failure
+            .facts
+            .into_iter()
+            .map(|(name, value)| (name.to_owned(), value.into()))
+            .collect(),
+        vec![bn_diag::Label {
+            span,
+            style: bn_diag::LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    .expect("console failure facts match the identity schema")
 }

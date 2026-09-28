@@ -36,6 +36,13 @@ const SLOT: char = '\u{1}';
 const FIELD: char = '\u{1f}';
 const PAIR: char = '\u{1e}';
 const PREFIX: &str = "@.bn_trap_";
+/// A site whose runtime function records its failure (`RuntimeFailure`):
+/// one rendered text per identity the call can raise, every fact a named
+/// slot `\u{1}name\u{2}` the runtime fills from the record.
+const SET_PREFIX: &str = "@.bn_trapset_";
+const NAMED_END: char = '\u{2}';
+const ENTRY: char = '\u{1d}';
+const CODE_END: char = '\u{1e}';
 
 /// Branches to a trap block when `condition` holds, else to `ok`: the block
 /// reports `id` with `facts` at the current instruction's span, then joins
@@ -49,31 +56,7 @@ pub(crate) fn emit_trap(
     id: DiagId,
     facts: Vec<(&'static str, Fact)>,
 ) {
-    let mut runtime = Vec::new();
-    let mut payload = id.code().to_owned();
-    for position in [state.span.start, state.span.end] {
-        for value in [
-            position.source_id.0,
-            position.revision.0,
-            position.offset as u64,
-            position.line as u64,
-            position.column as u64,
-        ] {
-            let _ = write!(payload, "{FIELD}{value}");
-        }
-    }
-    for (name, fact) in facts {
-        let value = match fact {
-            Fact::Text(text) => text,
-            Fact::Runtime(template, operand) => {
-                let slot = format!("{SLOT}{}", runtime.len());
-                runtime.push(operand);
-                template.replacen("{}", &slot, 1)
-            }
-        };
-        let _ = write!(payload, "{FIELD}{name}{PAIR}{value}");
-    }
-    let symbol = format!("{PREFIX}{}", hex(&payload));
+    let (symbol, runtime) = trap_symbol(state, id, facts);
     let mut operands = runtime.into_iter();
     let first = operands.next().unwrap_or_else(|| "0".into());
     let second = operands.next().unwrap_or_else(|| "0".into());
@@ -86,6 +69,31 @@ pub(crate) fn emit_trap(
     );
     state.control_flow.label(text, ok);
     state.needs_numeric_overflow_trap = true;
+}
+
+/// The constant symbol carrying `id` with `facts` at the current span, and
+/// the runtime operands in slot order. A `bn_rt` function that fails inside
+/// takes the symbol as an argument and supplies the runtime facts itself.
+pub(crate) fn trap_symbol(
+    state: &EmissionState,
+    id: DiagId,
+    facts: Vec<(&'static str, Fact)>,
+) -> (String, Vec<String>) {
+    let mut runtime = Vec::new();
+    let mut payload = id.code().to_owned();
+    payload.push_str(&span_payload(state));
+    for (name, fact) in facts {
+        let value = match fact {
+            Fact::Text(text) => text,
+            Fact::Runtime(template, operand) => {
+                let slot = format!("{SLOT}{}", runtime.len());
+                runtime.push(operand);
+                template.replacen("{}", &slot, 1)
+            }
+        };
+        let _ = write!(payload, "{FIELD}{name}{PAIR}{value}");
+    }
+    (format!("{PREFIX}{}", hex(&payload)), runtime)
 }
 
 /// `INDEX_OUT_OF_BOUNDS` when `condition` holds, with the `i32` index and
@@ -172,6 +180,55 @@ pub(crate) const fn unknown_span() -> Span {
     }
 }
 
+/// The symbol of a failure set at the current span: the diagnostic of each
+/// identity in `ids`, rendered with named slots for all its arguments.
+pub(crate) fn trap_set_symbol(state: &EmissionState, ids: &[DiagId]) -> String {
+    let mut payload = span_payload(state);
+    for id in ids {
+        let _ = write!(payload, "{FIELD}{}", id.code());
+    }
+    format!("{SET_PREFIX}{}", hex(&payload))
+}
+
+/// The ten span numbers, each preceded by `FIELD`.
+fn span_payload(state: &EmissionState) -> String {
+    let mut payload = String::new();
+    for position in [state.span.start, state.span.end] {
+        for value in [
+            position.source_id.0,
+            position.revision.0,
+            position.offset as u64,
+            position.line as u64,
+            position.column as u64,
+        ] {
+            let _ = write!(payload, "{FIELD}{value}");
+        }
+    }
+    payload
+}
+
+/// Branches to `trap_bn_rt` when `failed` holds, printing the failure the
+/// runtime recorded with this site's texts for `ids` first.
+pub(crate) fn emit_failure_trap(
+    text: &mut String,
+    block_id: BlockId,
+    state: &mut EmissionState,
+    failed: &str,
+    ok: String,
+    ids: &[DiagId],
+) {
+    let set = trap_set_symbol(state, ids);
+    let site = take_continuation(block_id, state);
+    let _ = writeln!(text, "  br i1 {failed}, label %{site}, label %{ok}");
+    state.control_flow.label(text, site);
+    let _ = writeln!(
+        text,
+        "  call void @bn_rt_trap_report_failure(ptr {set})\n  br label %trap_bn_rt"
+    );
+    state.control_flow.label(text, ok);
+    state.needs_bn_rt_trap = true;
+}
+
 fn hex(text: &str) -> String {
     text.bytes().fold(String::new(), |mut hex, byte| {
         let _ = write!(hex, "{byte:02x}");
@@ -187,10 +244,8 @@ fn unhex(hex: &str) -> Option<String> {
     String::from_utf8(bytes).ok()
 }
 
-/// The diagnostic a trap symbol carries.
-fn decode(payload: &str) -> Option<Diagnostic> {
-    let mut fields = payload.split(FIELD);
-    let id = DiagId::from_code(fields.next()?)?;
+/// The span encoded by `span_payload`, read from `fields`.
+fn decode_span<'a>(fields: &mut impl Iterator<Item = &'a str>) -> Option<Span> {
     let mut number = || fields.next()?.parse::<u64>().ok();
     let mut position = || {
         Some(Position {
@@ -201,26 +256,56 @@ fn decode(payload: &str) -> Option<Diagnostic> {
             column: usize::try_from(number()?).ok()?,
         })
     };
-    let span = Span {
+    Some(Span {
         start: position()?,
         end: position()?,
-    };
+    })
+}
+
+fn primary(span: Span) -> Vec<Label> {
+    vec![Label {
+        span,
+        style: LabelStyle::Primary,
+        text: None,
+    }]
+}
+
+/// The diagnostic a trap symbol carries.
+fn decode(payload: &str) -> Option<Diagnostic> {
+    let mut fields = payload.split(FIELD);
+    let id = DiagId::from_code(fields.next()?)?;
+    let span = decode_span(&mut fields)?;
     let arguments = fields
         .map(|field| {
             let (name, value) = field.split_once(PAIR)?;
             Some((name.to_owned(), DiagnosticValue::Text(value.to_owned())))
         })
         .collect::<Option<Vec<_>>>()?;
-    Diagnostic::structured(
-        id,
-        arguments,
-        vec![Label {
-            span,
-            style: LabelStyle::Primary,
-            text: None,
-        }],
-    )
-    .ok()
+    Diagnostic::structured(id, arguments, primary(span)).ok()
+}
+
+/// The entries of a failure set: `CODE\u{1e}text` joined by `\u{1d}`.
+fn render_set(payload: &str, render: &dyn Fn(&Diagnostic) -> String) -> Option<String> {
+    let mut fields = payload.split(FIELD).skip(1);
+    let span = decode_span(&mut fields)?;
+    let entries = fields
+        .map(|code| {
+            let id = DiagId::from_code(code)?;
+            let arguments = id
+                .argument_schema()
+                .iter()
+                .map(|argument| {
+                    (
+                        argument.name.to_owned(),
+                        DiagnosticValue::Text(format!("{SLOT}{}{NAMED_END}", argument.name)),
+                    )
+                })
+                .collect();
+            let diagnostic = Diagnostic::structured(id, arguments, primary(span)).ok()?;
+            Some(format!("{code}{CODE_END}{}", render(&diagnostic)))
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(entries.join(&ENTRY.to_string()))
 }
 
 /// Defines every `@.bn_trap_<hex>` the module references with the text
@@ -231,18 +316,40 @@ pub(crate) fn define_trap_globals(
     render: &dyn Fn(&Diagnostic) -> String,
     wasm32: bool,
 ) {
-    let mut symbols = std::collections::BTreeSet::new();
-    for (index, _) in text.match_indices(PREFIX) {
-        let hex: String = text[index + PREFIX.len()..]
-            .chars()
-            .take_while(char::is_ascii_hexdigit)
-            .collect();
-        symbols.insert(hex);
+    let referenced = |prefix: &str| {
+        text.match_indices(prefix)
+            .map(|(index, _)| {
+                text[index + prefix.len()..]
+                    .chars()
+                    .take_while(char::is_ascii_hexdigit)
+                    .collect::<String>()
+            })
+            .collect::<std::collections::BTreeSet<_>>()
+    };
+    let symbols = referenced(PREFIX);
+    let sets = referenced(SET_PREFIX);
+    let mut definitions = String::new();
+    for hex in &sets {
+        let rendered = unhex(hex)
+            .and_then(|payload| render_set(&payload, render))
+            .unwrap_or_default();
+        let (literal, length) = c_literal(&rendered);
+        let _ = writeln!(
+            definitions,
+            "{SET_PREFIX}{hex} = private unnamed_addr constant [{length} x i8] c\"{literal}\""
+        );
+    }
+    if !sets.is_empty() {
+        definitions.push_str(if wasm32 {
+            "define void @bn_rt_trap_report_failure(ptr %set) {\n  ret void\n}\n"
+        } else {
+            "declare void @bn_rt_trap_report_failure(ptr)\n"
+        });
     }
     if symbols.is_empty() {
+        text.push_str(&definitions);
         return;
     }
-    let mut definitions = String::new();
     for hex in symbols {
         let rendered = unhex(&hex)
             .and_then(|payload| decode(&payload))

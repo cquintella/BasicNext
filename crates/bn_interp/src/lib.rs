@@ -161,6 +161,14 @@ impl HostEnv {
         }
     }
 
+    /// Whether the host provides `HOST.FileSystem` at all. A policy that
+    /// denies every path still provides it (each operation returns an
+    /// `Error`); `without_filesystem` (a notebook kernel) does not.
+    #[must_use]
+    pub fn provides_filesystem(&self) -> bool {
+        self.policy.allows(bn_rt::POLICY_FILESYSTEM)
+    }
+
     /// Creates an environment that denies filesystem capability imports.
     #[must_use]
     pub fn without_filesystem(mut self) -> Self {
@@ -605,7 +613,10 @@ fn execute_with_host_inner<'debug>(
     debug_hook: Option<DebugHook<'debug>>,
     debug_control: Option<DebugControl<'debug>>,
 ) -> Result<u8, Diagnostic> {
-    if !host.filesystem().allows_capability()
+    // Only a host without the provider (`--no-filesystem`, a notebook
+    // kernel) fails before Start; a policy that denies every path still
+    // binds the capability and each operation returns an Error.
+    if !host.provides_filesystem()
         && let Some(span) = module.filesystem_import
     {
         return Err(runtime_error(

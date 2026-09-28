@@ -14,7 +14,13 @@ const BEEP: &str = "\x07";
 #[derive(Debug)]
 pub enum ConsoleError {
     Unavailable(&'static str),
-    OutOfBounds,
+    /// `PrintAt` outside the window (1-based position; window size).
+    OutOfBounds {
+        column: i128,
+        row: i128,
+        columns: i128,
+        rows: i128,
+    },
     Output(io::Error),
     Overflow,
 }
@@ -24,7 +30,7 @@ impl ConsoleError {
     pub fn code(&self) -> &'static str {
         match self {
             Self::Unavailable(_) => "HOST_CAPABILITY_UNAVAILABLE",
-            Self::OutOfBounds => "INDEX_OUT_OF_BOUNDS",
+            Self::OutOfBounds { .. } => "INDEX_OUT_OF_BOUNDS",
             Self::Output(_) => "OUTPUT_ERROR",
             Self::Overflow => "NUMERIC_OVERFLOW",
         }
@@ -34,9 +40,39 @@ impl ConsoleError {
     pub fn message(&self) -> String {
         match self {
             Self::Unavailable(message) => (*message).into(),
-            Self::OutOfBounds => "console coordinate is outside the window".into(),
+            Self::OutOfBounds { .. } => "console coordinate is outside the window".into(),
             Self::Output(error) => error.to_string(),
             Self::Overflow => "result does not fit INTEGER".into(),
+        }
+    }
+}
+
+impl ConsoleError {
+    /// The failure with its identity's facts, for both backends (`bni`
+    /// builds its diagnostic from it; natively the call site prints it).
+    #[must_use]
+    pub fn failure(&self) -> crate::RuntimeFailure {
+        let facts = match self {
+            Self::Unavailable(detail) => vec![("detail", (*detail).to_owned())],
+            Self::OutOfBounds {
+                column,
+                row,
+                columns,
+                rows,
+            } => vec![
+                ("index", format!("({column}, {row})")),
+                ("bound", format!("{columns} columns by {rows} rows")),
+                ("context", "the console window".to_owned()),
+            ],
+            Self::Output(error) => vec![("message", format!("cannot write output: {error}"))],
+            Self::Overflow => vec![(
+                "operation",
+                "converting the window size to INTEGER".to_owned(),
+            )],
+        };
+        crate::RuntimeFailure {
+            code: self.code(),
+            facts,
         }
     }
 }
@@ -76,7 +112,12 @@ pub fn print_at(
     let (cols, rows) = dimensions()?;
     let width = i128::try_from(text.chars().count()).unwrap_or(i128::MAX);
     if column < 1 || row < 1 || row > rows || column > cols || width > cols - column + 1 {
-        return Err(ConsoleError::OutOfBounds);
+        return Err(ConsoleError::OutOfBounds {
+            column,
+            row,
+            columns: cols,
+            rows,
+        });
     }
     write!(out, "\x1b[{row};{column}H{text}").map_err(ConsoleError::Output)?;
     out.flush().map_err(ConsoleError::Output)

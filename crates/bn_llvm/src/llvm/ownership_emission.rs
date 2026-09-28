@@ -133,6 +133,7 @@ pub(crate) fn lower_ownership_emission(
                     block_id,
                     *value,
                     &format!("call i32 @bn_rt_dataframe_close(i64 {handle})"),
+                    &[],
                     state,
                 );
             } else if llvm_type(ty) == Some("{ i1, ptr, i64 }")
@@ -164,6 +165,7 @@ pub(crate) fn lower_ownership_emission(
                         "call i32 @bn_rt_dataframe_close(i64 %dfalthandle{})",
                         value.0
                     ),
+                    &[],
                     state,
                 );
                 let _ = writeln!(text, "  br label %{continuation}");

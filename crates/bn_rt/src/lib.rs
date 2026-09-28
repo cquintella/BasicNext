@@ -106,16 +106,19 @@ pub fn monotonic_ns() -> i64 {
     i64::try_from(origin.elapsed().as_nanos()).unwrap_or(i64::MAX)
 }
 
-fn fail(code: &str, message: &str) {
-    eprintln!("{}", format_failure(code, message));
-}
-
-fn format_failure(code: &str, message: &str) -> String {
-    format!("error[{code}]: {message}")
+/// The call-boundary policy re-check denied `capability` (host-traits.md).
+fn denied(capability: &str) {
+    trap_abi::record_failure(RuntimeFailure {
+        code: "EXECUTION_POLICY_DENIED",
+        facts: vec![(
+            "detail",
+            format!("{capability} is denied by execution policy"),
+        )],
+    });
 }
 
 fn emit_console_error(error: &ConsoleError) {
-    fail(error.code(), &error.message());
+    trap_abi::record_failure(error.failure());
 }
 
 struct LibcStdout;
@@ -192,10 +195,7 @@ fn c_str<'a>(ptr: *const c_char) -> Option<&'a str> {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_clock_now() -> i64 {
     if !policy::allows(policy::POLICY_CLOCK) {
-        fail(
-            "EXECUTION_POLICY_DENIED",
-            "HOST.Clock is denied by execution policy",
-        );
+        denied("HOST.Clock");
         return -1;
     }
     timestamp_ms()
@@ -205,10 +205,7 @@ pub extern "C" fn bn_rt_clock_now() -> i64 {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_clock_timer() -> i64 {
     if !policy::allows(policy::POLICY_CLOCK) {
-        fail(
-            "EXECUTION_POLICY_DENIED",
-            "HOST.Clock is denied by execution policy",
-        );
+        denied("HOST.Clock");
         return -1;
     }
     monotonic_ns()
@@ -220,10 +217,7 @@ static COMPILED_RANDOM_STATE: AtomicU64 = AtomicU64::new(1);
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_random_seed(seed: i64) -> i32 {
     if !policy::allows(policy::POLICY_RANDOM) {
-        fail(
-            "EXECUTION_POLICY_DENIED",
-            "HOST.Random is denied by execution policy",
-        );
+        denied("HOST.Random");
         return 2;
     }
     COMPILED_RANDOM_STATE.store(seed.cast_unsigned().max(1), Ordering::Relaxed);
@@ -234,10 +228,7 @@ pub extern "C" fn bn_rt_random_seed(seed: i64) -> i32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_random_next() -> f64 {
     if !policy::allows(policy::POLICY_RANDOM) {
-        fail(
-            "EXECUTION_POLICY_DENIED",
-            "HOST.Random is denied by execution policy",
-        );
+        denied("HOST.Random");
         return f64::NAN;
     }
     let mut current = COMPILED_RANDOM_STATE.load(Ordering::Relaxed);
@@ -263,10 +254,7 @@ pub extern "C" fn bn_rt_random_next() -> f64 {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_console_cls() -> i32 {
     if !policy::allows(policy::POLICY_CONSOLE) {
-        fail(
-            "EXECUTION_POLICY_DENIED",
-            "HOST.Console is denied by execution policy",
-        );
+        denied("HOST.Console");
         return 2;
     }
     match cls(&mut LibcStdout) {
@@ -282,10 +270,7 @@ pub extern "C" fn bn_rt_console_cls() -> i32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_console_beep() -> i32 {
     if !policy::allows(policy::POLICY_CONSOLE) {
-        fail(
-            "EXECUTION_POLICY_DENIED",
-            "HOST.Console is denied by execution policy",
-        );
+        denied("HOST.Console");
         return 2;
     }
     match beep(&mut LibcStdout) {
@@ -301,14 +286,18 @@ pub extern "C" fn bn_rt_console_beep() -> i32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_console_print_at(column: i32, row: i32, text: *const c_char) -> i32 {
     if !policy::allows(policy::POLICY_CONSOLE) {
-        fail(
-            "EXECUTION_POLICY_DENIED",
-            "HOST.Console is denied by execution policy",
-        );
+        denied("HOST.Console");
         return 2;
     }
     let Some(text) = c_str(text) else {
-        fail("TYPE_MISMATCH", "PrintAt expects STRING");
+        trap_abi::record_failure(RuntimeFailure {
+            code: "TYPE_MISMATCH",
+            facts: vec![
+                ("expected", "STRING".into()),
+                ("actual", "text that is not UTF-8".into()),
+                ("context", "HOST.Console.PrintAt".into()),
+            ],
+        });
         return 1;
     };
     match print_at(&mut LibcStdout, i128::from(column), i128::from(row), text) {
@@ -324,10 +313,7 @@ pub extern "C" fn bn_rt_console_print_at(column: i32, row: i32, text: *const c_c
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_console_num_cols() -> i32 {
     if !policy::allows(policy::POLICY_CONSOLE) {
-        fail(
-            "EXECUTION_POLICY_DENIED",
-            "HOST.Console is denied by execution policy",
-        );
+        denied("HOST.Console");
         return -2;
     }
     match num_cols() {
@@ -433,13 +419,15 @@ pub extern "C" fn bn_rt_math_fma(x: f64, y: f64, z: f64) -> f64 {
 
 #[allow(unsafe_code)] // C ABI: INTEGER[] MIN.
 #[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_math_vmin_i32(ptr: *const i32, len: i32) -> i32 {
+pub extern "C" fn bn_rt_math_vmin_i32(ptr: *const i32, len: i32, trap: *const c_char) -> i32 {
+    empty_reduction(len, trap);
     stats::vmin_i32(stats::i32_slice(ptr, len))
 }
 
 #[allow(unsafe_code)] // C ABI: FLOAT[] MIN.
 #[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_math_vmin_f64(ptr: *const f64, len: i32) -> f64 {
+pub extern "C" fn bn_rt_math_vmin_f64(ptr: *const f64, len: i32, trap: *const c_char) -> f64 {
+    empty_reduction(len, trap);
     float_slice(ptr, len)
         .iter()
         .copied()
@@ -460,13 +448,15 @@ pub extern "C" fn bn_rt_math_vmin_f64(ptr: *const f64, len: i32) -> f64 {
 
 #[allow(unsafe_code)] // C ABI: INTEGER[] MAX.
 #[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_math_vmax_i32(ptr: *const i32, len: i32) -> i32 {
+pub extern "C" fn bn_rt_math_vmax_i32(ptr: *const i32, len: i32, trap: *const c_char) -> i32 {
+    empty_reduction(len, trap);
     stats::vmax_i32(stats::i32_slice(ptr, len))
 }
 
 #[allow(unsafe_code)] // C ABI: FLOAT[] MAX.
 #[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_math_vmax_f64(ptr: *const f64, len: i32) -> f64 {
+pub extern "C" fn bn_rt_math_vmax_f64(ptr: *const f64, len: i32, trap: *const c_char) -> f64 {
+    empty_reduction(len, trap);
     float_slice(ptr, len)
         .iter()
         .copied()
@@ -483,6 +473,18 @@ pub extern "C" fn bn_rt_math_vmax_f64(ptr: *const f64, len: i32) -> f64 {
                 "BNMath reduction received an empty vector",
             )
         })
+}
+
+/// MIN and MAX of an empty vector end the program with the calling site's
+/// diagnostic (`bnc` rendered it; `bni` reports the same).
+fn empty_reduction(len: i32, trap: *const c_char) {
+    if len <= 0 {
+        math::fail_at(
+            trap,
+            "INDEX_OUT_OF_BOUNDS",
+            "BNMath reduction received an empty vector",
+        );
+    }
 }
 
 fn reduce_i32(name: &str, ptr: *const i32, len: i32) -> f64 {
@@ -597,14 +599,14 @@ pub extern "C" fn bn_rt_math_mode_f64(ptr: *const f64, len: i32, out: *mut f64) 
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_math_todate(timestamp: i64) -> i32 {
-    civil::todate(timestamp)
+pub extern "C" fn bn_rt_math_todate(timestamp: i64, trap: *const c_char) -> i32 {
+    civil::split_at(timestamp, trap).0
 }
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_math_totime(timestamp: i64) -> i32 {
-    civil::totime(timestamp)
+pub extern "C" fn bn_rt_math_totime(timestamp: i64, trap: *const c_char) -> i32 {
+    i32::try_from(civil::split_at(timestamp, trap).1).unwrap_or(0)
 }
 
 #[allow(unsafe_code)]
@@ -732,53 +734,24 @@ pub extern "C" fn bn_rt_dataframe_column_name_owned(frame: u64, index: u32) -> *
         .map_or(std::ptr::null_mut(), |name| c_string(&name))
 }
 
-#[allow(unsafe_code)] // C ABI: STRING[index] as a freshly allocated 1-char string.
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_str_index(text: *const c_char, index: i32) -> *mut c_char {
-    let Some(text) = c_str(text) else {
-        fail("INDEX_OUT_OF_BOUNDS", "index 0 is outside string length 0");
-        std::process::exit(1);
-    };
-    let Ok(index_usize) = usize::try_from(index) else {
-        fail("INDEX_OUT_OF_BOUNDS", "index cannot be negative");
-        std::process::exit(1);
-    };
-    let len = text.chars().count();
-    let Some(ch) = text.chars().nth(index_usize) else {
-        fail(
-            "INDEX_OUT_OF_BOUNDS",
-            &format!("index {index_usize} is outside string length {len}"),
-        );
-        std::process::exit(1);
-    };
-    let mut bytes = ch.to_string().into_bytes();
-    bytes.push(0);
-    let mut boxed = bytes.into_boxed_slice();
-    let ptr = boxed.as_mut_ptr().cast::<c_char>();
-    std::mem::forget(boxed);
-    ptr
-}
-
 /// Returns `STRING[index]` as one NUL-terminated UTF-8 scalar packed in native
 /// byte order. This ABI lets the LLVM caller materialize function-local
 /// storage, so indexing does not create heap ownership.
 #[allow(unsafe_code)] // C ABI: STRING[index] from a borrowed UTF-8 string.
 #[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_str_index_utf8(text: *const c_char, index: i32) -> u64 {
-    let Some(text) = c_str(text) else {
-        fail("INDEX_OUT_OF_BOUNDS", "index 0 is outside string length 0");
-        std::process::exit(1);
-    };
-    let Ok(index_usize) = usize::try_from(index) else {
-        fail("INDEX_OUT_OF_BOUNDS", "index cannot be negative");
-        std::process::exit(1);
-    };
-    let len = text.chars().count();
-    let Some(character) = text.chars().nth(index_usize) else {
-        fail(
-            "INDEX_OUT_OF_BOUNDS",
-            &format!("index {index_usize} is outside string length {len}"),
-        );
+pub extern "C" fn bn_rt_str_index_utf8(
+    text: *const c_char,
+    index: i32,
+    trap: *const c_char,
+) -> u64 {
+    let text = c_str(text).unwrap_or_default();
+    let character = usize::try_from(index)
+        .ok()
+        .and_then(|position| text.chars().nth(position));
+    let Some(character) = character else {
+        // The site's diagnostic (`bnc` rendered it): the index and the length.
+        let length = i128::try_from(text.chars().count()).unwrap_or(i128::MAX);
+        bn_rt_trap_report(trap, index.into(), length);
         std::process::exit(1);
     };
     pack_utf8(character)
@@ -788,10 +761,7 @@ pub extern "C" fn bn_rt_str_index_utf8(text: *const c_char, index: i32) -> u64 {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_console_num_rows() -> i32 {
     if !policy::allows(policy::POLICY_CONSOLE) {
-        fail(
-            "EXECUTION_POLICY_DENIED",
-            "HOST.Console is denied by execution policy",
-        );
+        denied("HOST.Console");
         return -2;
     }
     match num_rows() {
@@ -849,6 +819,7 @@ mod tests {
             let packed = super::bn_rt_str_index_utf8(
                 text.as_ptr(),
                 i32::try_from(index).expect("small index"),
+                std::ptr::null(),
             );
             let bytes = packed.to_ne_bytes();
             let nul = bytes.iter().position(|byte| *byte == 0).expect("NUL");
@@ -861,7 +832,7 @@ mod tests {
         let text = CString::new("é").expect("literal has no NUL");
         assert_eq!(
             super::bn_rt_str_char_utf8(i64::from(u32::from('é'))),
-            super::bn_rt_str_index_utf8(text.as_ptr(), 0)
+            super::bn_rt_str_index_utf8(text.as_ptr(), 0, std::ptr::null())
         );
     }
 
@@ -1153,13 +1124,5 @@ mod tests {
         super::policy::bn_rt_policy_restrict(super::policy::POLICY_CONSOLE);
         assert_eq!(super::bn_rt_clock_now(), -1);
         assert_eq!(super::bn_rt_clock_timer(), -1);
-    }
-
-    #[test]
-    fn native_failure_bridge_has_stable_machine_prefix() {
-        assert_eq!(
-            super::format_failure("INVALID_JSON", "bad token"),
-            "error[INVALID_JSON]: bad token"
-        );
     }
 }

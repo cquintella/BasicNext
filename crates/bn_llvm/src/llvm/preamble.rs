@@ -113,7 +113,7 @@ pub(crate) fn emit_preamble(
         .any(|(_, analysis)| analysis.uses_string_ops)
     {
         text.push_str(
-            "declare i32 @bn_rt_str_len(ptr)\ndeclare i64 @bn_rt_str_index_utf8(ptr, i32)\ndeclare i32 @bn_rt_str_eq(ptr, ptr)\n",
+            "declare i32 @bn_rt_str_len(ptr)\ndeclare i64 @bn_rt_str_index_utf8(ptr, i32, ptr)\ndeclare i32 @bn_rt_str_eq(ptr, ptr)\n",
         );
     }
     if functions.iter().any(|(_, analysis)| analysis.uses_heap) {

@@ -132,7 +132,10 @@ pub fn execute_callback(
     response: crate::web::Response,
 ) -> Result<crate::web::Response, String> {
     crate::tls::install_ring_provider().map_err(std::borrow::ToOwned::to_owned)?;
-    if !host.filesystem().allows_capability()
+    // Only a host without the provider (`--no-filesystem`, a notebook
+    // kernel) fails before Start; a policy that denies every path still
+    // binds the capability and each operation returns an Error.
+    if !host.provides_filesystem()
         && let Some(span) = module.filesystem_import
     {
         return Err(runtime_error(

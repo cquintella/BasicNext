@@ -292,7 +292,7 @@ impl Executor<'_, '_> {
         object: ValueId,
         name: &str,
         field: Option<&bn_ir::FieldRef>,
-        indices: &[usize],
+        indices: &[i128],
         stored: Value,
         span: Span,
     ) -> Result<(), Diagnostic> {
@@ -352,7 +352,7 @@ impl Executor<'_, '_> {
         target: &mut Value,
         path: &[String],
         fields: &[bn_ir::FieldRef],
-        indices: &[usize],
+        indices: &[i128],
         stored: Value,
         span: Span,
     ) -> Result<(), Diagnostic> {

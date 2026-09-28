@@ -545,16 +545,17 @@ END FUNCTION\n",
         ])
         .output()
         .expect("run interpreted deny fixture");
+    // `deny` narrows both backends the same way (0.6.md): the capability
+    // stays bound and the operation returns `Error(FS.POLICY_DENIED)`; only
+    // a host without the provider fails before Start.
     assert_eq!(
         interpreted_deny.status.code(),
-        Some(1),
+        Some(0),
         "stdout: {}\nstderr: {}",
         String::from_utf8_lossy(&interpreted_deny.stdout),
         String::from_utf8_lossy(&interpreted_deny.stderr)
     );
-    assert!(
-        String::from_utf8_lossy(&interpreted_deny.stderr).contains("HOST_CAPABILITY_UNAVAILABLE")
-    );
+    assert!(String::from_utf8_lossy(&interpreted_deny.stdout).contains("denied"));
 
     let interpreted_read_only = bni()
         .env("BN_FS_POLICY", "read-only")
@@ -1369,8 +1370,9 @@ fn malformed_policy_input_is_fail_closed_on_both_backends() {
         assert_eq!(envelope["diagnostics"][0]["code"], "CONFIG_INVALID");
     }
 
-    // Native: the emitted Start checks bn_rt_policy_init and stops. A program
-    // that imports a HOST capability is required for the policy prologue.
+    // Native: the emitted Start checks bn_rt_policy_init and stops (every
+    // native program; `malformed_policy_stops_programs_without_host_imports`
+    // covers one without imports).
     let native_source = base.join("native.bn");
     fs::write(
         &native_source,

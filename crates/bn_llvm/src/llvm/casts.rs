@@ -350,7 +350,8 @@ fn take_continuation(block_id: BlockId, state: &mut EmissionState) -> String {
     name
 }
 
-fn i128_bounds(ty: &Type) -> (&'static str, &'static str) {
+/// The inclusive range of an integer type as `i128` literals.
+pub(crate) fn i128_bounds(ty: &Type) -> (&'static str, &'static str) {
     match integer_kind(ty) {
         IntegerType::Byte => ("0", "255"),
         IntegerType::Int8 => ("-128", "127"),

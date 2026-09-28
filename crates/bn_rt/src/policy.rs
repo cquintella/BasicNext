@@ -359,8 +359,11 @@ impl Policy {
         };
         let capture_limit = integer("BN_EXEC_CAPTURE_LIMIT")?;
         let timeout_ms = integer("BN_EXEC_TIMEOUT_MS")?;
+        // `deny` denies every path; the capability stays bound, so each
+        // operation returns `Error(FS.POLICY_DENIED)` (0.6.md: a denied
+        // operation returns Error; deny is not unavailability).
         match fs {
-            Some(true) => self.deny_filesystem(),
+            Some(true) => self.fs = FsPolicy::denied(),
             Some(false) => self.fs.set_read_only(),
             None => {}
         }
@@ -441,16 +444,16 @@ pub(crate) fn open_path(path: &Path, mode: OpenMode) -> io::Result<File> {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_policy_init(version: u32, ceiling: u64) -> i32 {
     if version != POLICY_VERSION || ceiling & !POLICY_ALL != 0 {
-        super::fail(
-            "CONFIG_INVALID",
-            "execution policy ceiling is not a version 1 capability mask",
+        eprintln!(
+            "error[CONFIG_INVALID]: execution policy ceiling is not a version 1 capability mask"
         );
         return POLICY_INVALID;
     }
     let mut next = current().clone();
     next.install_ceiling(ceiling);
     if let Err(error) = next.narrow_from_env(|name| std::env::var(name).ok()) {
-        super::fail("CONFIG_INVALID", &error.to_string());
+        // The text `bni` prints for the same input.
+        eprintln!("error[CONFIG_INVALID]: {error}");
         return POLICY_INVALID;
     }
     *current_mut() = next;
@@ -631,7 +634,10 @@ mod tests {
         policy
             .narrow_from_env(env(&[("BN_FS_POLICY", "deny")]))
             .expect("deny");
-        assert!(!policy.allows(POLICY_FILESYSTEM));
+        assert!(
+            policy.allows(POLICY_FILESYSTEM),
+            "deny keeps the capability"
+        );
         assert!(!policy.fs().allows_capability());
         assert!(!policy.fs().allows_path(Path::new("/"), false));
     }

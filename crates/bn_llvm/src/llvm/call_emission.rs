@@ -274,10 +274,12 @@ pub(crate) fn lower_call_instruction(
         name if bnmath_method(module, name).is_some() => {
             lower_bnmath_call(
                 text,
+                block_id,
                 *destination,
                 bnmath_method(module, name).expect("validated BNMath"),
                 arguments,
                 analysis,
+                state,
             );
         }
         name if is_bn_rt_host_call(name) => {
@@ -1112,6 +1114,7 @@ pub(crate) fn lower_call_instruction(
                 block_id,
                 *destination,
                 &format!("call i32 @bn_rt_random_seed(i64 {seed})"),
+                &[bn_diag::DiagId::EXECUTION_POLICY_DENIED],
                 state,
             );
         }
