@@ -390,6 +390,7 @@ dependencies = [
  "aes-gcm",
  "argon2",
  "bn_host_exec",
+ "bn_limits",
  "bn_types",
  "chacha20poly1305",
  "dns-lookup",
