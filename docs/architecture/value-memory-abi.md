@@ -393,7 +393,6 @@ bn_rt_net_resolve
 bn_rt_net_reverse
 bn_rt_net_tcp_accept
 bn_rt_net_tcp_connect
-bn_rt_net_tcp_listen
 bn_rt_net_tcp_listen_with_backlog
 bn_rt_net_tcp_listener_local_endpoint
 bn_rt_net_tcp_read

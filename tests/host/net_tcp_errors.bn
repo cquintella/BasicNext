@@ -1,0 +1,51 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// HOST.Net TCP errors provoked on the loopback interface: an address in
+// use, a refused connection, and a read after Close (host-net.md "Errors").
+// Ports are ephemeral, so only codes, operations, and causes print.
+IMPORT HOST.Net AS Net
+
+FUNCTION Start() AS INTEGER
+    LET loopback AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    IF loopback IS Error THEN
+        RETURN 1
+    END IF
+    LET wanted AS Net.Endpoint OR Error = Net.Endpoint.Create(loopback, 0)
+    IF wanted IS Error THEN
+        RETURN 1
+    END IF
+    LET first AS Net.Endpoint[1] = [wanted]
+    LET listener AS Net.TCPListener OR Error = Net.TCPListen(first, 8)
+    IF listener IS Error THEN
+        RETURN 1
+    END IF
+    LET bound AS Net.Endpoint OR Error = listener.LocalEndpoint()
+    IF bound IS Error THEN
+        RETURN 1
+    END IF
+    LET same AS Net.Endpoint[1] = [bound]
+    LET again AS Net.TCPListener OR Error = Net.TCPListen(same, 8)
+    IF again IS Error THEN
+        PRINT again.Code = Net.ADDRESS_IN_USE, again.Operation
+    END IF
+    LET client AS Net.TCPStream OR Error = Net.TCPConnect(bound, 2000)
+    IF client IS Error THEN
+        RETURN 1
+    END IF
+    client.Close()
+    LET buffer AS POINTER TO BYTE[] = NEW BYTE[4]
+    LET read AS INTEGER OR EOF OR Error = client.Read(buffer, 4)
+    IF read IS Error THEN
+        PRINT read.Code = Net.CLOSED, read.Operation, read.Cause
+    END IF
+    listener.Close()
+    LET refused AS Net.TCPStream OR Error = Net.TCPConnect(bound, 2000)
+    IF refused IS Error THEN
+        PRINT refused.Code = Net.CONNECTION_REFUSED, refused.Operation
+    END IF
+    RELEASE buffer
+    RETURN 0
+END FUNCTION

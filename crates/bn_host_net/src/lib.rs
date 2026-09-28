@@ -777,33 +777,30 @@ impl NetProvider {
                     ));
                 };
                 let (backlog, _) = integer(&arguments[1], span)?;
-                if !(1..=128).contains(&backlog) || endpoints.is_empty() || endpoints.len() > 16 {
-                    return Ok(Value::error(
-                        1,
-                        "invalid listener endpoints or backlog".into(),
-                    ));
+                let endpoints = endpoints
+                    .iter()
+                    .map(|endpoint| net_endpoint(endpoint, span))
+                    .collect::<Result<Vec<_>, _>>()?;
+                if self.tcp_streams.len()
+                    + self.udp_sockets.len()
+                    + self.tcp_listeners.values().map(Vec::len).sum::<usize>()
+                    + endpoints.len()
+                    > bn_limits::web_limits().socket_handles_max
+                {
+                    return Ok(net_error(&bn_rt::net::quota_exceeded(
+                        "HOST.Net.TCPListen",
+                        "listen",
+                    )));
                 }
-                let mut listeners = Vec::with_capacity(endpoints.len());
-                for endpoint in endpoints {
-                    if self.tcp_listeners.values().map(Vec::len).sum::<usize>() + listeners.len()
-                        >= bn_limits::web_limits().socket_handles_max
-                    {
-                        return Ok(Value::error(1, "socket handle quota exceeded".into()));
+                match bn_rt::net::tcp_listen(&endpoints, backlog) {
+                    Ok(listeners) => {
+                        let id = self.next_tcp_listener;
+                        self.next_tcp_listener += 1;
+                        self.tcp_listeners.insert(id, listeners);
+                        Ok(Value::TcpListener(id))
                     }
-                    match crate::net::TcpListener::bind_with_backlog(
-                        net_endpoint(endpoint, span)?,
-                        usize::try_from(backlog).expect("validated backlog is positive"),
-                    ) {
-                        Ok(listener) => listeners.push(listener),
-                        Err(error) => {
-                            return Ok(Value::error(1, shared_string(error.to_string())));
-                        }
-                    }
+                    Err(error) => Ok(net_error(&error)),
                 }
-                let id = self.next_tcp_listener;
-                self.next_tcp_listener += 1;
-                self.tcp_listeners.insert(id, listeners);
-                Ok(Value::TcpListener(id))
             }
             "HOST.Net.Resolve" => {
                 require_arity(name, arguments, 2, span)?;
@@ -844,38 +841,24 @@ impl NetProvider {
                 require_arity(name, arguments, 2, span)?;
                 let endpoint = net_endpoint(&arguments[0], span)?;
                 let (timeout, _) = integer(&arguments[1], span)?;
-                if !(1..=60_000).contains(&timeout) {
-                    return Ok(Value::error(
-                        1,
-                        "connect timeout is outside 1..60000 ms".into(),
-                    ));
+                if self.tcp_streams.len()
+                    + self.udp_sockets.len()
+                    + self.tcp_listeners.values().map(Vec::len).sum::<usize>()
+                    >= bn_limits::web_limits().socket_handles_max
+                {
+                    return Ok(net_error(&bn_rt::net::quota_exceeded(
+                        "HOST.Net.TCPConnect",
+                        format!("connect to {endpoint}"),
+                    )));
                 }
-                match crate::net::TcpStream::connect(
-                    endpoint,
-                    std::time::Duration::from_millis(timeout as u64),
-                ) {
+                match bn_rt::net::tcp_connect(endpoint, timeout) {
                     Ok(stream) => {
-                        if self.tcp_streams.len()
-                            + self.udp_sockets.len()
-                            + self.tcp_listeners.values().map(Vec::len).sum::<usize>()
-                            >= bn_limits::web_limits().socket_handles_max
-                        {
-                            return Ok(Value::error(1, "socket handle quota exceeded".into()));
-                        }
-                        stream
-                            .set_timeouts(
-                                Some(std::time::Duration::from_millis(timeout as u64)),
-                                Some(std::time::Duration::from_millis(timeout as u64)),
-                            )
-                            .map_err(|error| {
-                                runtime_error(bn_diag::DiagId::IO, error.to_string(), span)
-                            })?;
                         let id = self.next_tcp_stream;
                         self.next_tcp_stream += 1;
                         self.tcp_streams.insert(id, stream);
                         Ok(Value::TcpStream(id))
                     }
-                    Err(error) => Ok(Value::error(1, shared_string(error.to_string()))),
+                    Err(error) => Ok(net_error(&error)),
                 }
             }
             "HOST.Net.TCPStream.Close" => {
@@ -913,26 +896,16 @@ impl NetProvider {
                 let capacity = core.memory().len(handle, span)?;
                 let maximum = usize::try_from(maximum)
                     .ok()
-                    .filter(|value| *value <= capacity && *value <= 1_048_576)
+                    .filter(|value| *value <= capacity && *value <= bn_rt::net::TRANSFER_MAX)
                     .ok_or_else(|| {
                         runtime_error(bn_diag::DiagId::LIMIT, "read exceeds buffer or 1 MiB", span)
                     })?;
                 let mut bytes = vec![0; maximum];
-                let count = self
-                    .tcp_streams
-                    .get_mut(&id)
-                    .ok_or_else(|| {
-                        runtime_error(
-                            bn_diag::DiagId::USE_AFTER_RELEASE,
-                            "TCP stream is invalid",
-                            span,
-                        )
-                    })?
-                    .read_bounded(&mut bytes)
-                    .map_err(|error| runtime_error(bn_diag::DiagId::IO, error.to_string(), span))?;
-                if count == 0 {
-                    return Ok(Value::EndOfFile);
-                }
+                let count = match bn_rt::net::tcp_read(self.tcp_streams.get_mut(&id), &mut bytes) {
+                    Ok(0) => return Ok(Value::EndOfFile),
+                    Ok(count) => count,
+                    Err(error) => return Ok(net_error(&error)),
+                };
                 for (index, byte) in bytes.into_iter().take(count).enumerate() {
                     *core.memory_mut().get_mut(handle, index, span)? =
                         Value::Integer(i128::from(byte), IntegerType::Byte);
@@ -964,7 +937,7 @@ impl NetProvider {
                 let capacity = core.memory().len(handle, span)?;
                 let count = usize::try_from(count)
                     .ok()
-                    .filter(|value| *value <= capacity && *value <= 1_048_576)
+                    .filter(|value| *value <= capacity && *value <= bn_rt::net::TRANSFER_MAX)
                     .ok_or_else(|| {
                         runtime_error(
                             bn_diag::DiagId::LIMIT,
@@ -981,22 +954,13 @@ impl NetProvider {
                         })
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                let written = self
-                    .tcp_streams
-                    .get_mut(&id)
-                    .ok_or_else(|| {
-                        runtime_error(
-                            bn_diag::DiagId::USE_AFTER_RELEASE,
-                            "TCP stream is invalid",
-                            span,
-                        )
-                    })?
-                    .write_bounded(&bytes)
-                    .map_err(|error| runtime_error(bn_diag::DiagId::IO, error.to_string(), span))?;
-                Ok(Value::Integer(
-                    i128::try_from(written).unwrap_or(i128::MAX),
-                    IntegerType::Int32,
-                ))
+                match bn_rt::net::tcp_write(self.tcp_streams.get_mut(&id), &bytes) {
+                    Ok(written) => Ok(Value::Integer(
+                        i128::try_from(written).unwrap_or(i128::MAX),
+                        IntegerType::Int32,
+                    )),
+                    Err(error) => Ok(net_error(&error)),
+                }
             }
             "HOST.Net.TCPStream.LocalEndpoint" | "HOST.Net.TCPStream.RemoteEndpoint" => {
                 require_arity(name, arguments, 1, span)?;
@@ -1008,20 +972,11 @@ impl NetProvider {
                         span,
                     ));
                 };
-                let stream = self.tcp_streams.get(&id).ok_or_else(|| {
-                    runtime_error(
-                        bn_diag::DiagId::USE_AFTER_RELEASE,
-                        "TCP stream is invalid",
-                        span,
-                    )
-                })?;
-                let endpoint = if name.ends_with("LocalEndpoint") {
-                    stream.local_endpoint()
-                } else {
-                    stream.remote_endpoint()
+                let remote = name.ends_with("RemoteEndpoint");
+                match bn_rt::net::tcp_endpoint(self.tcp_streams.get(&id), remote) {
+                    Ok(endpoint) => Ok(endpoint_value(endpoint)),
+                    Err(error) => Ok(net_error(&error)),
                 }
-                .map_err(|error| runtime_error(bn_diag::DiagId::IO, error.to_string(), span))?;
-                Ok(endpoint_value(endpoint))
             }
             "HOST.Net.TCPStream.SetTimeouts" => {
                 require_arity(name, arguments, 3, span)?;
@@ -1035,27 +990,10 @@ impl NetProvider {
                 };
                 let (read_ms, _) = integer(&arguments[1], span)?;
                 let (write_ms, _) = integer(&arguments[2], span)?;
-                if !(1..=60_000).contains(&read_ms) || !(1..=60_000).contains(&write_ms) {
-                    return Ok(Value::error(
-                        1,
-                        "socket timeout is outside 1..60000 ms".into(),
-                    ));
+                match bn_rt::net::tcp_set_timeouts(self.tcp_streams.get(&id), read_ms, write_ms) {
+                    Ok(()) => Ok(Value::Null),
+                    Err(error) => Ok(net_error(&error)),
                 }
-                self.tcp_streams
-                    .get(&id)
-                    .ok_or_else(|| {
-                        runtime_error(
-                            bn_diag::DiagId::USE_AFTER_RELEASE,
-                            "TCP stream is invalid",
-                            span,
-                        )
-                    })?
-                    .set_timeouts(
-                        Some(std::time::Duration::from_millis(read_ms as u64)),
-                        Some(std::time::Duration::from_millis(write_ms as u64)),
-                    )
-                    .map_err(|error| runtime_error(bn_diag::DiagId::IO, error.to_string(), span))?;
-                Ok(Value::Null)
             }
             "HOST.Net.TCPListener.LocalEndpoint" => {
                 require_arity(name, arguments, 1, span)?;
@@ -1067,21 +1005,11 @@ impl NetProvider {
                         span,
                     ));
                 };
-                let listener = self.tcp_listeners.get(&id).ok_or_else(|| {
-                    runtime_error(
-                        bn_diag::DiagId::USE_AFTER_RELEASE,
-                        "TCP listener is invalid",
-                        span,
-                    )
-                })?;
-                let endpoint = listener
-                    .first()
-                    .ok_or_else(|| {
-                        runtime_error(bn_diag::DiagId::IO, "listener has no endpoints", span)
-                    })?
-                    .local_endpoint()
-                    .map_err(|error| runtime_error(bn_diag::DiagId::IO, error.to_string(), span))?;
-                Ok(endpoint_value(endpoint))
+                match bn_rt::net::listener_endpoint(self.tcp_listeners.get(&id).map(Vec::as_slice))
+                {
+                    Ok(endpoint) => Ok(endpoint_value(endpoint)),
+                    Err(error) => Ok(net_error(&error)),
+                }
             }
             "HOST.Net.TCPStream.ShutdownRead" | "HOST.Net.TCPStream.ShutdownWrite" => {
                 require_arity(name, arguments, 1, span)?;
@@ -1093,23 +1021,11 @@ impl NetProvider {
                         span,
                     ));
                 };
-                let direction = if name.ends_with("ShutdownRead") {
-                    std::net::Shutdown::Read
-                } else {
-                    std::net::Shutdown::Write
-                };
-                self.tcp_streams
-                    .get(&id)
-                    .ok_or_else(|| {
-                        runtime_error(
-                            bn_diag::DiagId::USE_AFTER_RELEASE,
-                            "TCP stream is invalid",
-                            span,
-                        )
-                    })?
-                    .shutdown(direction)
-                    .map_err(|error| runtime_error(bn_diag::DiagId::IO, error.to_string(), span))?;
-                Ok(Value::Null)
+                let reading = name.ends_with("ShutdownRead");
+                match bn_rt::net::tcp_shutdown(self.tcp_streams.get(&id), reading) {
+                    Ok(()) => Ok(Value::Null),
+                    Err(error) => Ok(net_error(&error)),
+                }
             }
             "HOST.Net.TCPListener.Accept" => {
                 require_arity(name, arguments, 2, span)?;
@@ -1122,50 +1038,28 @@ impl NetProvider {
                     ));
                 };
                 let (timeout, _) = integer(&arguments[1], span)?;
-                if !(1..=60_000).contains(&timeout) {
-                    return Ok(Value::error(
-                        1,
-                        "accept timeout is outside 1..60000 ms".into(),
-                    ));
-                }
-                let listeners = self
-                    .tcp_listeners
-                    .get(&id)
-                    .ok_or_else(|| {
-                        runtime_error(
-                            bn_diag::DiagId::USE_AFTER_RELEASE,
-                            "TCP listener is invalid",
-                            span,
-                        )
-                    })?
-                    .as_slice();
-                let mut stream = None;
-                let accept_timeout = std::time::Duration::from_millis(timeout as u64);
-                for listener in listeners {
-                    if let Some(accepted) =
-                        listener.accept_timeout(accept_timeout).map_err(|error| {
-                            runtime_error(bn_diag::DiagId::IO, error.to_string(), span)
-                        })?
-                    {
-                        stream = Some(accepted);
-                        break;
-                    }
-                }
-                let Some(stream) = stream else {
-                    return Ok(Value::error(1, "accept timeout".into()));
-                };
                 if self.tcp_streams.len()
                     + self.udp_sockets.len()
                     + self.tcp_listeners.values().map(Vec::len).sum::<usize>()
                     >= bn_limits::web_limits().socket_handles_max
                 {
-                    return Ok(Value::error(1, "socket handle quota exceeded".into()));
+                    return Ok(net_error(&bn_rt::net::quota_exceeded(
+                        "HOST.Net.TCPListener.Accept",
+                        "accept a connection",
+                    )));
                 }
-                let _ = stream.set_timeouts(Some(accept_timeout), Some(accept_timeout));
-                let stream_id = self.next_tcp_stream;
-                self.next_tcp_stream += 1;
-                self.tcp_streams.insert(stream_id, stream);
-                Ok(Value::TcpStream(stream_id))
+                match bn_rt::net::tcp_accept(
+                    self.tcp_listeners.get(&id).map(Vec::as_slice),
+                    timeout,
+                ) {
+                    Ok(stream) => {
+                        let stream_id = self.next_tcp_stream;
+                        self.next_tcp_stream += 1;
+                        self.tcp_streams.insert(stream_id, stream);
+                        Ok(Value::TcpStream(stream_id))
+                    }
+                    Err(error) => Ok(net_error(&error)),
+                }
             }
             "HOST.Net.TCPListener.Close" => {
                 require_arity(name, arguments, 1, span)?;

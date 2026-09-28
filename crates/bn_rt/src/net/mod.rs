@@ -13,8 +13,13 @@ mod lookup;
 mod neighbor;
 mod reverse;
 mod socket;
+mod tcp;
 
 pub use socket::{TcpListener, TcpStream, UdpPacket, UdpSocket};
+pub use tcp::{
+    TRANSFER_MAX, listener_endpoint, quota_exceeded, tcp_accept, tcp_connect, tcp_endpoint,
+    tcp_listen, tcp_read, tcp_set_timeouts, tcp_shutdown, tcp_write,
+};
 
 use std::{
     net::{IpAddr, ToSocketAddrs},
@@ -32,6 +37,13 @@ pub use reverse::{ReverseError, reverse_timeout};
 pub struct Endpoint {
     address: Address,
     port: u16,
+}
+
+impl std::fmt::Display for Endpoint {
+    /// `127.0.0.1:80`, `[::1]:80`.
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::net::SocketAddr::new(self.address.as_std(), self.port).fmt(formatter)
+    }
 }
 
 impl Endpoint {

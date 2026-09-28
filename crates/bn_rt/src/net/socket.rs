@@ -82,6 +82,7 @@ impl TcpStream {
     }
 }
 
+#[derive(Debug)]
 pub struct TcpListener {
     inner: std::net::TcpListener,
 }
@@ -149,10 +150,12 @@ impl TcpListener {
     }
 }
 
+#[derive(Debug)]
 pub struct UdpSocket {
     inner: std::net::UdpSocket,
 }
 
+#[derive(Debug)]
 pub struct UdpPacket {
     source: Endpoint,
     bytes: Vec<u8>,

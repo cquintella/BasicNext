@@ -158,7 +158,6 @@ declare i32 @bn_rt_net_addresses_get(ptr, i32, ptr)
 declare void @bn_rt_net_addresses_free(ptr)
 declare i32 @bn_rt_net_udp_bind(ptr, i32, ptr)
 declare i32 @bn_rt_net_tcp_connect(ptr, i32, i32, ptr)
-declare i32 @bn_rt_net_tcp_listen(ptr, i32, ptr)
 declare i32 @bn_rt_net_tcp_listen_with_backlog(ptr, i32, i32, ptr)
 declare i32 @bn_rt_net_tcp_accept(i64, i32, ptr)
 declare i32 @bn_rt_net_tcp_listener_local_endpoint(i64, ptr, ptr)
@@ -485,12 +484,11 @@ pub(crate) fn bn_rt_call_supported(
         "HOST.Net.UDPBind" => endpoint_net_call_supported(arguments, values, 1),
         "HOST.Net.TCPConnect" => endpoint_net_call_supported(arguments, values, 2),
         "HOST.Net.TCPListen" => {
+            // Native listeners hold one socket: a set of one endpoint.
             arguments.len() == 2
-                && arguments
-                    .first()
-                    .and_then(|value| values.get(value))
-                    .and_then(llvm_type)
-                    == Some("{ ptr, i32 }")
+                && arguments.first().and_then(|value| values.get(value)).is_some_and(
+                    |ty| matches!(ty, Type::Vector { dimensions, .. } if dimensions.as_slice() == [1]),
+                )
                 && arguments
                     .get(1)
                     .and_then(|value| values.get(value))
@@ -869,27 +867,18 @@ pub(crate) fn lower_bn_rt_call(
             );
             let _ = writeln!(text, "  %netread{dest} = load i32, ptr %netout{dest}");
             let _ = writeln!(text, "  %netread64{dest} = sext i32 %netread{dest} to i64");
-            let _ = writeln!(text, "  %neterr{dest} = icmp ne i32 %netrc{dest}, 0");
-            let _ = writeln!(text, "  %neteof{dest} = icmp eq i32 %netread{dest}, 0");
+            // Zero bytes on success is EOF: status 4 for the shared builder.
             let _ = writeln!(
                 text,
-                "  %neteofptr{dest} = getelementptr [4 x i8], ptr @.bn_eof, i64 0, i64 0"
+                "  %netok{dest} = icmp eq i32 %netrc{dest}, 0\n  %netnone{dest} = icmp eq i32 %netread{dest}, 0\n  %neteof{dest} = and i1 %netok{dest}, %netnone{dest}\n  %netstatus{dest} = select i1 %neteof{dest}, i32 4, i32 %netrc{dest}"
             );
-            let _ = writeln!(
+            emit_status_result(
                 text,
-                "  %nettagptr{dest} = select i1 %neteof{dest}, ptr %neteofptr{dest}, ptr null"
-            );
-            let _ = writeln!(
-                text,
-                "  %netagg{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %neterr{dest}, 0"
-            );
-            let _ = writeln!(
-                text,
-                "  %netaggpwrap{dest} = call ptr @bn_rt_error_wrap(i1 %neterr{dest}, ptr %nettagptr{dest}, ptr null)\n  %netaggp{dest} = insertvalue {{ i1, ptr, i64 }} %netagg{dest}, ptr %netaggpwrap{dest}, 1"
-            );
-            let _ = writeln!(
-                text,
-                "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %netaggp{dest}, i64 %netread64{dest}, 2"
+                destination,
+                &format!("%netstatus{dest}"),
+                Some(4),
+                "null",
+                &format!("%netread64{dest}"),
             );
         }
         "HOST.Net.TCPStream.LocalEndpoint" | "HOST.Net.TCPStream.RemoteEndpoint" => {

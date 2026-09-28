@@ -1,8 +1,6 @@
 use super::{TcpListener, TcpStream, UdpPacket, UdpSocket};
 use std::sync::{Mutex, OnceLock};
 
-const MAX_HANDLES: usize = 256;
-
 pub enum Handle {
     TcpStream(TcpStream),
     TcpListener(TcpListener),
@@ -27,7 +25,8 @@ pub fn insert(handle: Handle) -> Result<usize, &'static str> {
         *slot = Some(handle);
         return Ok(index);
     }
-    if table.len() == MAX_HANDLES {
+    // The quota the interpreter applies too (`bn_limits`).
+    if table.len() >= bn_limits::web_limits().socket_handles_max {
         return Err("socket handle quota exceeded");
     }
     table.push(Some(handle));

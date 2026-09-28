@@ -812,6 +812,23 @@ fn net_argument_errors_match_across_backends() {
     native_matches_interpreter(path);
 }
 
+/// TCP errors provoked on loopback (address in use, read after Close,
+/// refused connection) carry the same codes, operations, and causes on both
+/// backends.
+#[test]
+fn tcp_errors_match_across_backends() {
+    let path = "tests/host/net_tcp_errors.bn";
+    let output = bni().args(["run", path]).output().expect("run fixture");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "TRUE HOST.Net.TCPListen\n\
+         TRUE HOST.Net.TCPStream.Read it was closed by Close\n\
+         TRUE HOST.Net.TCPConnect\n"
+    );
+    native_matches_interpreter(path);
+}
+
 /// `examples/conversions.bn`: every `AS` conversion and the `PRINT` text of
 /// each type. `tenth AS FLOAT64` also guards native constant folding, which
 /// must keep a `FLOAT32` constant at f32 precision.

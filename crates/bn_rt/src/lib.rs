@@ -828,8 +828,8 @@ mod tests {
         bn_rt_net_udp_local_endpoint, bn_rt_net_udp_receive, bn_rt_net_udp_send_to,
     };
     use super::{
-        bn_rt_net_tcp_accept, bn_rt_net_tcp_connect, bn_rt_net_tcp_listen, bn_rt_net_tcp_read,
-        bn_rt_net_tcp_write,
+        bn_rt_net_tcp_accept, bn_rt_net_tcp_connect, bn_rt_net_tcp_listen_with_backlog,
+        bn_rt_net_tcp_read, bn_rt_net_tcp_write,
     };
     use super::{monotonic_ns, timestamp_ms, timestamp_ms_from};
     use std::ffi::CString;
@@ -1069,7 +1069,7 @@ mod tests {
         let address = CString::new("127.0.0.1").expect("literal has no NUL");
         let mut listener = -1;
         assert_eq!(
-            bn_rt_net_tcp_listen(address.as_ptr(), 0, &raw mut listener),
+            bn_rt_net_tcp_listen_with_backlog(address.as_ptr(), 0, 8, &raw mut listener),
             0
         );
         let mut rendered = std::ptr::null_mut();
@@ -1102,7 +1102,7 @@ mod tests {
         let address = CString::new("127.0.0.1").expect("literal has no NUL");
         let mut listener = -1;
         assert_eq!(
-            bn_rt_net_tcp_listen(address.as_ptr(), 0, &raw mut listener),
+            bn_rt_net_tcp_listen_with_backlog(address.as_ptr(), 0, 8, &raw mut listener),
             0
         );
         let mut rendered = std::ptr::null_mut();

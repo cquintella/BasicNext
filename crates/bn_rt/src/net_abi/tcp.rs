@@ -3,12 +3,81 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! C ABI for `HOST.Net` TCP streams and listeners.
+//! C ABI for `HOST.Net` TCP streams and listeners. The operations are the
+//! shared core (`net::tcp`); a failure records its `Error` (status 1, or 2
+//! for a policy denial) for the emitted code to read.
 
 use super::*;
 
-/// Connects a bounded TCP stream and returns an opaque handle in `out`.
-#[allow(unsafe_code)]
+use net::handles::{self, Handle};
+
+/// Runs `f` on the stream behind `handle`; a closed or unknown handle is
+/// `None` (`Net.CLOSED` in the core).
+fn with_stream<T>(
+    handle: i64,
+    f: impl FnOnce(Option<&mut net::TcpStream>) -> Result<T, NetError>,
+) -> Result<T, NetError> {
+    let mut f = Some(f);
+    if let Ok(index) = usize::try_from(handle)
+        && let Ok(Some(Some(result))) = handles::with_mut(index, |value| match value {
+            Handle::TcpStream(stream) => f.take().map(|f| f(Some(stream))),
+            _ => None,
+        })
+    {
+        return result;
+    }
+    f.take().expect("stream operation not yet run")(None)
+}
+
+/// Runs `f` on the listener behind `handle`, as a one-listener set.
+fn with_listener<T>(
+    handle: i64,
+    f: impl FnOnce(Option<&[net::TcpListener]>) -> Result<T, NetError>,
+) -> Result<T, NetError> {
+    let mut f = Some(f);
+    if let Ok(index) = usize::try_from(handle)
+        && let Ok(Some(Some(result))) = handles::with(index, |value| match value {
+            Handle::TcpListener(listener) => {
+                f.take().map(|f| f(Some(std::slice::from_ref(listener))))
+            }
+            _ => None,
+        })
+    {
+        return result;
+    }
+    f.take().expect("listener operation not yet run")(None)
+}
+
+/// Stores a new socket; `Net.LIMIT` past the quota.
+fn store(value: Handle, operation: &'static str, action: &str) -> Result<i64, NetError> {
+    let index = handles::insert(value).map_err(|_| net::quota_exceeded(operation, action))?;
+    Ok(i64::try_from(index).unwrap_or(i64::MAX))
+}
+
+fn endpoint_argument(
+    address: *const c_char,
+    port: i32,
+    operation: &'static str,
+    action: &str,
+) -> Result<net::Endpoint, NetError> {
+    authorized(operation, action)?;
+    let address = net::parse_address(text_argument(address, operation, action)?)?;
+    let port = u16::try_from(port).map_err(|_| {
+        NetError::new(
+            operation,
+            action,
+            Failure::InvalidArgument(format!("the port must be within 0..65535; got {port}")),
+        )
+    })?;
+    Ok(net::Endpoint::new(address, port))
+}
+
+fn status(result: Result<(), NetError>) -> i32 {
+    result.map_or_else(|error| failed(&error), |()| 0)
+}
+
+/// `HOST.Net.TCPConnect`: `out` receives the stream handle.
+#[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_tcp_connect(
     address: *const c_char,
@@ -16,73 +85,17 @@ pub extern "C" fn bn_rt_net_tcp_connect(
     timeout_ms: i32,
     out: *mut i64,
 ) -> i32 {
-    if !policy::allows(policy::POLICY_NET) {
-        fail(
-            "EXECUTION_POLICY_DENIED",
-            "HOST.Net is denied by execution policy",
-        );
-        return 2;
-    }
-    let Some(address) = c_str(address) else {
-        return 1;
-    };
-    let Ok(address) = net::Address::parse(address) else {
-        return 1;
-    };
-    let Ok(port) = u16::try_from(port) else {
-        return 1;
-    };
-    let timeout = std::time::Duration::from_millis(u64::try_from(timeout_ms.max(0)).unwrap_or(0));
-    let Ok(stream) = net::TcpStream::connect(net::Endpoint::new(address, port), timeout) else {
-        return 1;
-    };
-    let Ok(handle) = net::handles::insert(net::handles::Handle::TcpStream(stream)) else {
-        return 1;
-    };
-    unsafe {
-        if !out.is_null() {
-            *out = i64::try_from(handle).unwrap_or(i64::MAX);
-        }
-    }
-    0
+    const OPERATION: &str = "HOST.Net.TCPConnect";
+    status(
+        endpoint_argument(address, port, OPERATION, "connect")
+            .and_then(|endpoint| net::tcp_connect(endpoint, timeout_ms.into()))
+            .and_then(|stream| store(Handle::TcpStream(stream), OPERATION, "connect"))
+            .map(|handle| write_out(out, handle)),
+    )
 }
 
-/// Binds a TCP listener and returns an opaque runtime handle in `out`.
-#[allow(unsafe_code)]
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_net_tcp_listen(address: *const c_char, port: i32, out: *mut i64) -> i32 {
-    if !policy::allows(policy::POLICY_NET) {
-        fail(
-            "EXECUTION_POLICY_DENIED",
-            "HOST.Net is denied by execution policy",
-        );
-        return 2;
-    }
-    let Some(address) = c_str(address) else {
-        return 1;
-    };
-    let Ok(address) = net::Address::parse(address) else {
-        return 1;
-    };
-    let Ok(port) = u16::try_from(port) else {
-        return 1;
-    };
-    let Ok(listener) = net::TcpListener::bind(net::Endpoint::new(address, port)) else {
-        return 1;
-    };
-    let Ok(handle) = net::handles::insert(net::handles::Handle::TcpListener(listener)) else {
-        return 1;
-    };
-    unsafe {
-        if !out.is_null() {
-            *out = i64::try_from(handle).unwrap_or(i64::MAX);
-        }
-    }
-    0
-}
-
-/// Binds a TCP listener with an explicit bounded backlog.
-#[allow(unsafe_code)]
+/// `HOST.Net.TCPListen` on one endpoint: `out` receives the listener handle.
+#[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_tcp_listen_with_backlog(
     address: *const c_char,
@@ -90,162 +103,112 @@ pub extern "C" fn bn_rt_net_tcp_listen_with_backlog(
     backlog: i32,
     out: *mut i64,
 ) -> i32 {
-    if !policy::allows(policy::POLICY_NET) {
-        fail(
-            "EXECUTION_POLICY_DENIED",
-            "HOST.Net is denied by execution policy",
-        );
-        return 2;
-    }
-    let Some(address) = c_str(address) else {
-        return 1;
-    };
-    let Ok(address) = net::Address::parse(address) else {
-        return 1;
-    };
-    let Ok(port) = u16::try_from(port) else {
-        return 1;
-    };
-    let Ok(backlog) = usize::try_from(backlog) else {
-        return 1;
-    };
-    if !(1..=128).contains(&backlog) {
-        return 1;
-    }
-    let Ok(listener) =
-        net::TcpListener::bind_with_backlog(net::Endpoint::new(address, port), backlog)
-    else {
-        return 1;
-    };
-    let Ok(handle) = net::handles::insert(net::handles::Handle::TcpListener(listener)) else {
-        return 1;
-    };
-    unsafe {
-        if !out.is_null() {
-            *out = i64::try_from(handle).unwrap_or(i64::MAX);
-        }
-    }
-    0
+    const OPERATION: &str = "HOST.Net.TCPListen";
+    status(
+        endpoint_argument(address, port, OPERATION, "listen")
+            .and_then(|endpoint| net::tcp_listen(&[endpoint], backlog.into()))
+            .and_then(|listeners| {
+                let listener = listeners.into_iter().next().ok_or_else(|| {
+                    NetError::new(
+                        OPERATION,
+                        "listen",
+                        Failure::InvalidArgument("the listener set is empty".into()),
+                    )
+                })?;
+                store(Handle::TcpListener(listener), OPERATION, "listen")
+            })
+            .map(|handle| write_out(out, handle)),
+    )
 }
 
-/// Accepts one TCP connection, returning a stream handle in `out`; timeout is success with no stream.
-#[allow(unsafe_code)]
+/// `HOST.Net.TCPListener.Accept`: `out` receives the stream handle.
+#[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_tcp_accept(handle: i64, timeout_ms: i32, out: *mut i64) -> i32 {
-    if !policy::allows(policy::POLICY_NET) {
-        fail(
-            "EXECUTION_POLICY_DENIED",
-            "HOST.Net is denied by execution policy",
-        );
-        return 2;
-    }
-    let Ok(handle) = usize::try_from(handle) else {
-        return 1;
-    };
-    let timeout = std::time::Duration::from_millis(u64::try_from(timeout_ms.max(0)).unwrap_or(0));
-    let result = net::handles::with(handle, |value| match value {
-        net::handles::Handle::TcpListener(listener) => listener.accept_timeout(timeout),
-        _ => Err(std::io::Error::other("handle is not a TCP listener")),
-    });
-    let Ok(Some(Ok(Some(stream)))) = result else {
-        return 1;
-    };
-    let Ok(stream_handle) = net::handles::insert(net::handles::Handle::TcpStream(stream)) else {
-        return 1;
-    };
-    unsafe {
-        if !out.is_null() {
-            *out = i64::try_from(stream_handle).unwrap_or(i64::MAX);
-        }
-    }
-    0
+    const OPERATION: &str = "HOST.Net.TCPListener.Accept";
+    status(
+        authorized(OPERATION, "accept a connection")
+            .and_then(|()| {
+                with_listener(handle, |listeners| {
+                    net::tcp_accept(listeners, timeout_ms.into())
+                })
+            })
+            .and_then(|stream| store(Handle::TcpStream(stream), OPERATION, "accept a connection"))
+            .map(|handle| write_out(out, handle)),
+    )
 }
 
-/// Returns the local endpoint of a TCP listener.
-#[allow(unsafe_code)]
+fn write_endpoint(endpoint: net::Endpoint, out_address: *mut *mut c_char, out_port: *mut i32) {
+    write_out(out_address, c_string(&endpoint.address().to_string()));
+    write_out(out_port, i32::from(endpoint.port()));
+}
+
+/// `HOST.Net.TCPListener.LocalEndpoint`.
+#[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_tcp_listener_local_endpoint(
     handle: i64,
     out_address: *mut *mut c_char,
     out_port: *mut i32,
 ) -> i32 {
-    let Ok(handle) = usize::try_from(handle) else {
-        return 1;
-    };
-    let result = net::handles::with(handle, |value| match value {
-        net::handles::Handle::TcpListener(listener) => listener.local_endpoint(),
-        _ => Err(std::io::Error::other("handle is not a TCP listener")),
-    });
-    let Ok(Some(Ok(endpoint))) = result else {
-        return 1;
-    };
-    unsafe {
-        if !out_address.is_null() {
-            *out_address = c_string(&endpoint.address().to_string());
-        }
-        if !out_port.is_null() {
-            *out_port = i32::from(endpoint.port());
-        }
-    }
-    0
+    status(
+        with_listener(handle, net::listener_endpoint)
+            .map(|endpoint| write_endpoint(endpoint, out_address, out_port)),
+    )
 }
 
-#[allow(unsafe_code)]
+/// `HOST.Net.TCPStream.LocalEndpoint`.
+#[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_tcp_stream_local_endpoint(
     handle: i64,
     out_address: *mut *mut c_char,
     out_port: *mut i32,
 ) -> i32 {
-    tcp_stream_endpoint(handle, out_address, out_port, false)
+    status(
+        with_stream(handle, |stream| {
+            net::tcp_endpoint(stream.map(|stream| &*stream), false)
+        })
+        .map(|endpoint| write_endpoint(endpoint, out_address, out_port)),
+    )
 }
 
-#[allow(unsafe_code)]
+/// `HOST.Net.TCPStream.RemoteEndpoint`.
+#[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_tcp_stream_remote_endpoint(
     handle: i64,
     out_address: *mut *mut c_char,
     out_port: *mut i32,
 ) -> i32 {
-    tcp_stream_endpoint(handle, out_address, out_port, true)
+    status(
+        with_stream(handle, |stream| {
+            net::tcp_endpoint(stream.map(|stream| &*stream), true)
+        })
+        .map(|endpoint| write_endpoint(endpoint, out_address, out_port)),
+    )
 }
 
-#[allow(unsafe_code)]
-fn tcp_stream_endpoint(
-    handle: i64,
-    out_address: *mut *mut c_char,
-    out_port: *mut i32,
-    remote: bool,
-) -> i32 {
-    let Ok(handle) = usize::try_from(handle) else {
-        return 1;
-    };
-    let result = net::handles::with(handle, |value| match value {
-        net::handles::Handle::TcpStream(stream) => {
-            if remote {
-                stream.remote_endpoint()
-            } else {
-                stream.local_endpoint()
-            }
-        }
-        _ => Err(std::io::Error::other("handle is not a TCP stream")),
-    });
-    let Ok(Some(Ok(endpoint))) = result else {
-        return 1;
-    };
-    unsafe {
-        if !out_address.is_null() {
-            *out_address = c_string(&endpoint.address().to_string());
-        }
-        if !out_port.is_null() {
-            *out_port = i32::from(endpoint.port());
-        }
-    }
-    0
+/// A byte buffer from emitted code of `length` bytes, within the transfer
+/// bound.
+fn transfer_length(length: i32, operation: &'static str, action: &str) -> Result<usize, NetError> {
+    usize::try_from(length)
+        .ok()
+        .filter(|length| *length <= net::TRANSFER_MAX)
+        .ok_or_else(|| {
+            NetError::new(
+                operation,
+                action,
+                Failure::InvalidArgument(format!(
+                    "the byte count must be within 0..{}; got {length}",
+                    net::TRANSFER_MAX
+                )),
+            )
+        })
 }
 
-/// Reads up to `length` bytes from a TCP handle into `buffer`.
-#[allow(unsafe_code)]
+/// `HOST.Net.TCPStream.Read`: `out_read` receives the byte count (0 is EOF).
+#[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_tcp_read(
     handle: i64,
@@ -253,38 +216,27 @@ pub extern "C" fn bn_rt_net_tcp_read(
     length: i32,
     out_read: *mut i32,
 ) -> i32 {
-    if !policy::allows(policy::POLICY_NET) {
-        fail(
-            "EXECUTION_POLICY_DENIED",
-            "HOST.Net is denied by execution policy",
-        );
-        return 2;
-    }
-    let Ok(handle) = usize::try_from(handle) else {
-        return 1;
-    };
-    let Ok(length) = usize::try_from(length) else {
-        return 1;
-    };
-    if length > 65_507 || (length != 0 && buffer.is_null()) {
-        return 1;
-    }
-    let slice = unsafe { std::slice::from_raw_parts_mut(buffer, length) };
-    let result = net::handles::with_mut(handle, |value| match value {
-        net::handles::Handle::TcpStream(stream) => stream.read_bounded(slice),
-        _ => Err(std::io::Error::other("handle is not a TCP stream")),
-    });
-    let Ok(Some(Ok(read))) = result else { return 1 };
-    unsafe {
-        if !out_read.is_null() {
-            *out_read = i32::try_from(read).unwrap_or(i32::MAX);
-        }
-    }
-    0
+    const OPERATION: &str = "HOST.Net.TCPStream.Read";
+    write_out(out_read, 0);
+    status(
+        authorized(OPERATION, "read from the TCP stream")
+            .and_then(|()| transfer_length(length, OPERATION, "read from the TCP stream"))
+            .and_then(|length| {
+                let slice: &mut [u8] = if length == 0 || buffer.is_null() {
+                    &mut []
+                } else {
+                    // SAFETY: emitted code passes a live buffer of `length`
+                    // bytes (the BYTE vector's fat pointer).
+                    unsafe { std::slice::from_raw_parts_mut(buffer, length) }
+                };
+                with_stream(handle, |stream| net::tcp_read(stream, slice))
+            })
+            .map(|read| write_out(out_read, i32::try_from(read).unwrap_or(i32::MAX))),
+    )
 }
 
-/// Writes up to `length` bytes to a TCP handle.
-#[allow(unsafe_code)]
+/// `HOST.Net.TCPStream.Write`: `out_written` receives the bytes written.
+#[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_tcp_write(
     handle: i64,
@@ -292,34 +244,21 @@ pub extern "C" fn bn_rt_net_tcp_write(
     length: i32,
     out_written: *mut i32,
 ) -> i32 {
-    if !policy::allows(policy::POLICY_NET) {
-        fail(
-            "EXECUTION_POLICY_DENIED",
-            "HOST.Net is denied by execution policy",
-        );
-        return 2;
-    }
-    let Ok(handle) = usize::try_from(handle) else {
-        return 1;
-    };
-    let Ok(length) = usize::try_from(length) else {
-        return 1;
-    };
-    if length > 65_507 || (length != 0 && buffer.is_null()) {
-        return 1;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(buffer, length) };
-    let result = net::handles::with_mut(handle, |value| match value {
-        net::handles::Handle::TcpStream(stream) => stream.write_bounded(slice),
-        _ => Err(std::io::Error::other("handle is not a TCP stream")),
-    });
-    let Ok(Some(Ok(written))) = result else {
-        return 1;
-    };
-    unsafe {
-        if !out_written.is_null() {
-            *out_written = i32::try_from(written).unwrap_or(i32::MAX);
-        }
-    }
-    0
+    const OPERATION: &str = "HOST.Net.TCPStream.Write";
+    write_out(out_written, 0);
+    status(
+        authorized(OPERATION, "write to the TCP stream")
+            .and_then(|()| transfer_length(length, OPERATION, "write to the TCP stream"))
+            .and_then(|length| {
+                let slice: &[u8] = if length == 0 || buffer.is_null() {
+                    &[]
+                } else {
+                    // SAFETY: emitted code passes a live buffer of `length`
+                    // bytes (the BYTE vector's fat pointer).
+                    unsafe { std::slice::from_raw_parts(buffer, length) }
+                };
+                with_stream(handle, |stream| net::tcp_write(stream, slice))
+            })
+            .map(|written| write_out(out_written, i32::try_from(written).unwrap_or(i32::MAX))),
+    )
 }
