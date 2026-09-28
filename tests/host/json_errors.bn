@@ -1,0 +1,68 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNJson results (bnjson.md "Errors"): Parse of invalid text, a missing key,
+// a member of another type, an index outside the array, Length of a scalar,
+// and writes into the wrong container. Reads that succeed keep their value.
+IMPORT BNJson AS Json
+
+FUNCTION Start() AS INTEGER
+    LET bad AS Json.Json OR Error = Json.Json.Parse("{oops")
+    IF bad IS Error THEN
+        PRINT bad.Code = Json.PARSE_FAILED, bad.Operation, bad.Message
+    END IF
+    LET doc AS Json.Json OR Error = Json.Json.Parse("{\"name\":\"pardal\",\"n\":3,\"items\":[1]}")
+    IF doc IS Error THEN
+        RETURN 1
+    END IF
+    LET name AS STRING OR Error = Json.Json.GetString(doc, "name")
+    IF name IS STRING THEN
+        PRINT name
+    END IF
+    LET absent AS STRING OR Error = Json.Json.GetString(doc, "age")
+    IF absent IS Error THEN
+        PRINT absent.Code = Json.NOT_FOUND, absent.Operation, absent.Message
+    END IF
+    LET wrong AS STRING OR Error = Json.Json.GetString(doc, "n")
+    IF wrong IS Error THEN
+        PRINT wrong.Code = Json.TYPE_MISMATCH, wrong.Message, wrong.Cause
+    END IF
+    LET items AS Json.Json OR Error = Json.Json.GetJson(doc, "items")
+    IF items IS Error THEN
+        RETURN 1
+    END IF
+    LET far AS INT64 OR Error = Json.Json.GetIntegerAt(items, 5)
+    IF far IS Error THEN
+        PRINT far.Code = Json.OUT_OF_RANGE, far.Operation, far.Cause
+    END IF
+    LET first AS INT64 OR Error = Json.Json.GetIntegerAt(items, 0)
+    IF first IS INT64 THEN
+        PRINT first
+    END IF
+    LET scalar AS Json.Json OR Error = Json.Json.GetJson(doc, "n")
+    IF scalar IS Error THEN
+        RETURN 1
+    END IF
+    LET size AS INTEGER OR Error = Json.Json.Length(scalar)
+    IF size IS Error THEN
+        PRINT size.Code = Json.TYPE_MISMATCH, size.Operation, size.Message
+    END IF
+    LET intoArray AS VOID OR Error = Json.Json.SetString(items, "k", "v")
+    IF intoArray IS Error THEN
+        PRINT intoArray.Code = Json.TYPE_MISMATCH, intoArray.Operation, intoArray.Cause
+    END IF
+    LET ontoObject AS VOID OR Error = Json.Json.AppendInteger(doc, 1)
+    IF ontoObject IS Error THEN
+        PRINT ontoObject.Code = Json.TYPE_MISMATCH, ontoObject.Message
+    END IF
+    LET text AS STRING OR Error = Json.Json.Stringify(items)
+    IF text IS STRING THEN
+        PRINT text
+    END IF
+    RELEASE scalar
+    RELEASE items
+    RELEASE doc
+    RETURN 0
+END FUNCTION

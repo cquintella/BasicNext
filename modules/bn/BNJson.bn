@@ -9,6 +9,15 @@
 // parent and invalidate it. Duplicate only via Clone. GetJson / GetJsonAt return
 // a fresh handle the caller must RELEASE; they do not consume the parent.
 
+// Error codes (language/0.6/bnjson.md "Errors").
+EXPORT CONST INVALID_ARGUMENT AS INTEGER = 1
+EXPORT CONST NOT_FOUND AS INTEGER = 2
+EXPORT CONST TYPE_MISMATCH AS INTEGER = 3
+EXPORT CONST OUT_OF_RANGE AS INTEGER = 4
+EXPORT CONST LIMIT AS INTEGER = 5
+EXPORT CONST UNAVAILABLE AS INTEGER = 6
+EXPORT CONST PARSE_FAILED AS INTEGER = 7
+
 EXPORT CLASS Json
     PUBLIC STATIC FUNCTION Parse(text AS STRING) AS Json OR Error
         RETURN NEW Json()

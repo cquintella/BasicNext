@@ -22,10 +22,11 @@ LET value AS Json.Json OR Error = Json.Json.Parse("{\"ok\":true}")
 The Rust provider supplies parsing and serialization through the bounded
 `Json.Json` type:
 
-- `Parse(text)` rejects malformed JSON, invalid UTF-8, trailing input, control
-  characters, invalid surrogate pairs, nesting deeper than 64 levels, and input
+- `Parse(text)` returns `Error` (`PARSE_FAILED`) for malformed JSON, invalid
+  UTF-8, trailing input, control characters, invalid surrogate pairs, nesting
+  deeper than 64 levels, and input larger than 8 MiB;
+- `Stringify(value)` emits valid JSON and returns `Error` (`LIMIT`) for output
   larger than 8 MiB;
-- `Stringify(value)` emits valid JSON and rejects output larger than 8 MiB;
 - all operations are synchronous and do not access the filesystem, network, or
   any implicit host capability.
 
@@ -71,6 +72,25 @@ Accessors are typed so the result type is visible at the call site. There is
 afterwards is `USE_AFTER_RELEASE` under `bni` (a diagnostic, not an `Error`
 value). Duplication is only via `Clone`. `GetJson` / `GetJsonAt` do **not**
 consume the parent.
+
+## Errors (0.6.2)
+
+`Parse`, `Stringify`, and the DOM members return `Error` rather than stopping
+the program. `Code` of a BNJson `Error` ([error.md](error.md)) is one of these
+`INTEGER` constants of the module (`Json.NOT_FOUND` under
+`IMPORT BNJson AS Json`):
+
+| Constant | Value | When |
+| --- | ---: | --- |
+| `INVALID_ARGUMENT` | 1 | A non-finite `FLOAT` written into a document; a document moved into itself |
+| `NOT_FOUND` | 2 | A missing key |
+| `TYPE_MISMATCH` | 3 | The value at the key or index is not the requested type; `Length` of a scalar; a write into a value that is not an object (key writes) or an array (index writes, appends) |
+| `OUT_OF_RANGE` | 4 | An array index outside the array |
+| `LIMIT` | 5 | A write past the depth limit; `Stringify` output past 8 MiB |
+| `UNAVAILABLE` | 6 | The operation is not provided |
+| `PARSE_FAILED` | 7 | `Parse` of text that is not valid JSON under the bounds above; `Cause` names the position |
+
+A released `Json` handle is not an `Error`: using it is `USE_AFTER_RELEASE`.
 
 ## Companion codecs (option E)
 

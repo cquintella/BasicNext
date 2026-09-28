@@ -36,6 +36,7 @@ mod file_abi;
 mod file_error;
 pub mod json;
 pub mod json_abi;
+pub mod json_error;
 mod log;
 mod log_abi;
 mod math;

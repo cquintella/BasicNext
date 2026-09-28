@@ -898,6 +898,30 @@ fn crypto_errors_match_across_backends() {
     native_matches_interpreter(path);
 }
 
+/// BNJson failures carry the shared `bn_rt::json_error` report on both
+/// backends (bnjson.md "Errors"); `Parse` of invalid text is an `Error`,
+/// not a stop, and reads that succeed keep their value.
+#[test]
+fn json_errors_match_across_backends() {
+    let path = "tests/host/json_errors.bn";
+    let output = bni().args(["run", path]).output().expect("run fixture");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "TRUE BNJson.Json.Parse cannot parse the text as JSON\n\
+         pardal\n\
+         TRUE BNJson.Json.GetString no member \"age\"\n\
+         TRUE member \"n\" is not of type STRING the value there is a number\n\
+         TRUE BNJson.Json.GetIntegerAt the index must be at least 0 and less than the array length 1\n\
+         1\n\
+         TRUE BNJson.Json.Length the document is a number, not an object or array\n\
+         TRUE BNJson.Json.SetString only an object accepts this operation\n\
+         TRUE the document is an object, not an array\n\
+         [1]\n"
+    );
+    native_matches_interpreter(path);
+}
+
 /// HOST.Exec failures carry the shared `bn_host_exec` report (Code,
 /// Operation, Message naming the program, Cause) on both backends, and
 /// `PRINT` of an `Error` narrowed out of `Exec.Result OR Error` prints the

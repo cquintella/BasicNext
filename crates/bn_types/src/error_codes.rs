@@ -80,3 +80,25 @@ pub mod crypto {
         ("UNAVAILABLE", UNAVAILABLE),
     ];
 }
+
+/// `BNJson` `Error.Code` (`language/0.6/bnjson.md` "Errors").
+pub mod json {
+    pub const INVALID_ARGUMENT: i32 = 1;
+    pub const NOT_FOUND: i32 = 2;
+    pub const TYPE_MISMATCH: i32 = 3;
+    pub const OUT_OF_RANGE: i32 = 4;
+    pub const LIMIT: i32 = 5;
+    pub const UNAVAILABLE: i32 = 6;
+    pub const PARSE_FAILED: i32 = 7;
+
+    /// Name and value of each constant, as `modules/bn/BNJson.bn` exports them.
+    pub const ALL: &[(&str, i32)] = &[
+        ("INVALID_ARGUMENT", INVALID_ARGUMENT),
+        ("NOT_FOUND", NOT_FOUND),
+        ("TYPE_MISMATCH", TYPE_MISMATCH),
+        ("OUT_OF_RANGE", OUT_OF_RANGE),
+        ("LIMIT", LIMIT),
+        ("UNAVAILABLE", UNAVAILABLE),
+        ("PARSE_FAILED", PARSE_FAILED),
+    ];
+}

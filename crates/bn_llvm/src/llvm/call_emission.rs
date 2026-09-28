@@ -1239,8 +1239,9 @@ fn emit_bnjson_handle_named(
 }
 
 /// Packs a scalar payload and `%jsonerr{dest}` into the `{ i1, ptr, i64 }`
-/// aggregate a `<scalar> OR Error` result uses. The payload sits in slot 2; the
-/// caller branches on the flag, never on the payload.
+/// aggregate a `<scalar> OR Error` result uses: on failure slot 1 is the
+/// recorded report and slot 2 its code, as `emit_status_result` builds them.
+/// The caller branches on the flag, never on the payload.
 fn emit_bnjson_scalar_result(text: &mut String, dest: u32, payload: &str) {
     let payload = payload.replace("{dest}", &dest.to_string());
     let _ = writeln!(
@@ -1249,11 +1250,15 @@ fn emit_bnjson_scalar_result(text: &mut String, dest: u32, payload: &str) {
     );
     let _ = writeln!(
         text,
-        "  %jsonaggpwrap{dest} = call ptr @bn_rt_error_wrap(i1 %jsonerr{dest}, ptr null, ptr null)\n  %jsonaggp{dest} = insertvalue {{ i1, ptr, i64 }} %jsonagg{dest}, ptr %jsonaggpwrap{dest}, 1"
+        "  %jsonerrint{dest} = zext i1 %jsonerr{dest} to i32\n  %jsonaggpwrap{dest} = call ptr @bn_rt_error_take(i32 %jsonerrint{dest}, ptr null)\n  %jsonaggp{dest} = insertvalue {{ i1, ptr, i64 }} %jsonagg{dest}, ptr %jsonaggpwrap{dest}, 1"
     );
     let _ = writeln!(
         text,
-        "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %jsonaggp{dest}, i64 {payload}, 2"
+        "  %jsoncode{dest} = call i64 @bn_rt_error_code(ptr %jsonaggpwrap{dest})\n  %jsonpay{dest} = select i1 %jsonerr{dest}, i64 %jsoncode{dest}, i64 {payload}"
+    );
+    let _ = writeln!(
+        text,
+        "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %jsonaggp{dest}, i64 %jsonpay{dest}, 2"
     );
 }
 
@@ -1268,11 +1273,15 @@ fn emit_bnjson_string_result(text: &mut String, dest: u32) {
     );
     let _ = writeln!(
         text,
-        "  %jsonaggpwrap{dest} = call ptr @bn_rt_error_wrap(i1 %jsonerr{dest}, ptr %jsontext{dest}, ptr null)\n  %jsonaggp{dest} = insertvalue {{ i1, ptr, i64 }} %jsonagg{dest}, ptr %jsonaggpwrap{dest}, 1"
+        "  %jsonerrint{dest} = zext i1 %jsonerr{dest} to i32\n  %jsonfail{dest} = call ptr @bn_rt_error_take(i32 %jsonerrint{dest}, ptr null)\n  %jsonaggpwrap{dest} = select i1 %jsonerr{dest}, ptr %jsonfail{dest}, ptr %jsontext{dest}\n  %jsonaggp{dest} = insertvalue {{ i1, ptr, i64 }} %jsonagg{dest}, ptr %jsonaggpwrap{dest}, 1"
     );
     let _ = writeln!(
         text,
-        "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %jsonaggp{dest}, i64 0, 2"
+        "  %jsoncode{dest} = call i64 @bn_rt_error_code(ptr %jsonaggpwrap{dest})\n  %jsonpay{dest} = select i1 %jsonerr{dest}, i64 %jsoncode{dest}, i64 0"
+    );
+    let _ = writeln!(
+        text,
+        "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %jsonaggp{dest}, i64 %jsonpay{dest}, 2"
     );
 }
 
