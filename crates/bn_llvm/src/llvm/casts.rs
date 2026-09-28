@@ -344,7 +344,6 @@ fn emit_i128_fit_trunc(
     let _ = writeln!(text, "  %v{dest} = trunc i128 %castw{dest} to {target}");
 }
 
-
 /// The inclusive range of an integer type as `i128` literals.
 pub(crate) fn i128_bounds(ty: &Type) -> (&'static str, &'static str) {
     match integer_kind(ty) {

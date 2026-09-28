@@ -741,7 +741,6 @@ pub(crate) fn extract_optional_float(text: &mut String, destination: ValueId, va
     );
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::emit_is;

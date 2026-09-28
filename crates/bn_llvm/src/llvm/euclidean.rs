@@ -128,7 +128,6 @@ fn emit_signed_rem(text: &mut String, dest: u32, llvm_ty: &str, left: &str, righ
     );
 }
 
-
 fn signed_minimum(llvm_ty: &str) -> &'static str {
     match llvm_ty {
         "i8" => "-128",

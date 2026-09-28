@@ -368,7 +368,6 @@ fn emit_i128_range_trunc(
     let _ = writeln!(text, "  %v{dest} = trunc i128 %shraw{dest} to {llvm_ty}");
 }
 
-
 fn emit_cast_integer(
     text: &mut String,
     result: &str,

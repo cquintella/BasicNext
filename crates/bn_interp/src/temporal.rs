@@ -277,11 +277,6 @@ fn is_iana_identifier(text: &str) -> bool {
     parts >= 2
 }
 
-
-
-
-
-
 fn temporal_error(id: bn_diag::DiagId, message: impl Into<String>, span: Span) -> Diagnostic {
     let message = message.into();
     let arguments = match id.argument_schema() {
