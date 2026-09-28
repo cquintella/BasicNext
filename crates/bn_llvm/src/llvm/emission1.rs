@@ -245,7 +245,8 @@ pub(crate) fn lower_scalar_instruction(
                     || matches!(
                         (value_llvm, slot_llvm),
                         ("float", "double") | ("double", "float")
-                    ))
+                    )
+                    || slot_llvm == "{ i1, ptr, i64 }" && value_llvm != slot_llvm)
             {
                 coerce_to_type(text, *value, value_ty, slot_ty)
             } else {

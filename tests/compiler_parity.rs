@@ -459,3 +459,18 @@ fn malformed_policy_stops_programs_without_host_imports() {
         );
     }
 }
+
+/// A scalar or STRING stored into an alternative binding, argument, or
+/// field is wrapped natively as `RETURN` wraps it (it stored the bare
+/// scalar, and clang rejected the LLVM).
+#[test]
+fn scalars_stored_into_alternatives_match_the_interpreter() {
+    let path = valid_fixture("scalar-into-alternative.bn");
+    let output = interpret(&path, None);
+    assert_success(&output, "bni run");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "count 3\nTRUE\nx\nint 5\nint 7\nfloat 2.5\n"
+    );
+    assert_native_parity(&path, None);
+}

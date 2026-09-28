@@ -1,0 +1,37 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A scalar or STRING stored into a T OR Error / T OR EOF OR Error binding,
+// argument, or field (natively it stored the bare scalar: invalid LLVM).
+CLASS Holder
+    PUBLIC value AS INTEGER OR Error = 0
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+FUNCTION Show(value AS INTEGER OR Error) AS VOID
+    IF value IS INTEGER THEN
+        PRINT "int", value
+    END IF
+END FUNCTION
+FUNCTION Start() AS INTEGER
+    LET count AS INTEGER OR EOF OR Error = 3
+    IF count IS INTEGER THEN
+        PRINT "count", count
+    END IF
+    LET flag AS BOOLEAN OR Error = TRUE
+    PRINT flag
+    LET text AS STRING OR Error = "x"
+    PRINT text
+    Show(5)
+    LET holder AS Holder = NEW Holder()
+    holder.value = 7
+    Show(holder.value)
+    LET ratio AS FLOAT OR Error = 2.5
+    IF ratio IS FLOAT THEN
+        PRINT "float", ratio
+    END IF
+    RETURN 0
+END FUNCTION

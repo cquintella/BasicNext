@@ -108,6 +108,15 @@ pub(crate) fn coerce_to_type(text: &mut String, value: ValueId, from: &Type, to:
         let _ = writeln!(text, "  %{ctag} = {opcode} i64 %{tag} to {to_llvm}");
         return format!("%{ctag}");
     }
+    if to_llvm == "{ i1, ptr, i64 }"
+        && matches!(to, Type::Alternative(_))
+        && (matches!(
+            from_llvm,
+            "i1" | "i8" | "i16" | "i32" | "i64" | "float" | "double"
+        ) || *from == Type::String)
+    {
+        return wrap_in_alternative(text, value, from, from_llvm);
+    }
     if from_llvm == "{ i1, ptr, i32 }" && to_llvm == "{ ptr, i32 }" {
         let tag = format!("endpointcoerce{}", value.0);
         let _ = writeln!(
@@ -159,6 +168,42 @@ pub(crate) fn coerce_to_type(text: &mut String, value: ValueId, from: &Type, to:
         return format!("%{temp}");
     }
     format!("%v{}", value.0)
+}
+
+/// A scalar or STRING as the success of a `T OR Error` / `T OR EOF OR …`
+/// value (`{ i1, ptr, i64 }`): a STRING in the pointer, any other scalar
+/// in the `i64` payload (floats as their `double` bits), as `RETURN` builds
+/// it. `LET x AS INTEGER OR Error = 3` stored the bare `i64` before.
+fn wrap_in_alternative(text: &mut String, value: ValueId, from: &Type, from_llvm: &str) -> String {
+    let v = value.0;
+    let (pointer, payload) = match from_llvm {
+        "ptr" => (format!("%v{v}"), "0".to_owned()),
+        "i1" => {
+            let _ = writeln!(text, "  %wrapbits{v} = zext i1 %v{v} to i64");
+            ("null".to_owned(), format!("%wrapbits{v}"))
+        }
+        "float" | "double" => {
+            let wide = if from_llvm == "float" {
+                let _ = writeln!(text, "  %wrapwide{v} = fpext float %v{v} to double");
+                format!("%wrapwide{v}")
+            } else {
+                format!("%v{v}")
+            };
+            let _ = writeln!(text, "  %wrapbits{v} = bitcast double {wide} to i64");
+            ("null".to_owned(), format!("%wrapbits{v}"))
+        }
+        "i64" => ("null".to_owned(), format!("%v{v}")),
+        narrow => {
+            let extend = if is_unsigned(from) { "zext" } else { "sext" };
+            let _ = writeln!(text, "  %wrapbits{v} = {extend} {narrow} %v{v} to i64");
+            ("null".to_owned(), format!("%wrapbits{v}"))
+        }
+    };
+    let _ = writeln!(
+        text,
+        "  %wraptag{v} = insertvalue {{ i1, ptr, i64 }} undef, i1 false, 0\n  %wrapptr{v} = insertvalue {{ i1, ptr, i64 }} %wraptag{v}, ptr {pointer}, 1\n  %wrap{v} = insertvalue {{ i1, ptr, i64 }} %wrapptr{v}, i64 {payload}, 2"
+    );
+    format!("%wrap{v}")
 }
 
 fn integer_llvm_width(llvm_ty: &str) -> u8 {
