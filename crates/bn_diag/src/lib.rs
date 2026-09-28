@@ -114,7 +114,6 @@ diagnostic_registry! {
     DEBUG_TERMINATED { code: "DEBUG_TERMINATED", fluent: "DEBUG_TERMINATED", severity: Error, schema: LEGACY_MESSAGE },
     DISPATCH { code: "DISPATCH", fluent: "DISPATCH", severity: Error, schema: DETAIL },
     DIVISION_BY_ZERO { code: "DIVISION_BY_ZERO", fluent: "DIVISION_BY_ZERO", severity: Error, schema: OPERATION },
-    DOUBLE_DELETE { code: "DOUBLE_DELETE", fluent: "DOUBLE_DELETE", severity: Error, schema: LEGACY_MESSAGE },
     DUPLICATE_INTERFACE { code: "DUPLICATE_INTERFACE", fluent: "DUPLICATE_INTERFACE", severity: Error, schema: LEGACY_MESSAGE },
     DUPLICATE_NAME { code: "DUPLICATE_NAME", fluent: "DUPLICATE_NAME", severity: Error, schema: NAME },
     EVAL_START_PROMOTED { code: "EVAL_START_PROMOTED", fluent: "EVAL_START_PROMOTED", severity: Warning, schema: LEGACY_MESSAGE },
@@ -190,7 +189,6 @@ diagnostic_registry! {
     UNINITIALIZED_VALUE { code: "UNINITIALIZED_VALUE", fluent: "UNINITIALIZED_VALUE", severity: Error, schema: LEGACY_MESSAGE },
     UNKNOWN_TYPE { code: "UNKNOWN_TYPE", fluent: "UNKNOWN_TYPE", severity: Error, schema: LEGACY_MESSAGE },
     UNRESOLVED_TYPE { code: "UNRESOLVED_TYPE", fluent: "UNRESOLVED_TYPE", severity: Error, schema: LEGACY_MESSAGE },
-    USE_AFTER_DELETE { code: "USE_AFTER_DELETE", fluent: "USE_AFTER_DELETE", severity: Error, schema: LEGACY_MESSAGE },
     VECTOR_LENGTH_MISMATCH { code: "VECTOR_LENGTH_MISMATCH", fluent: "VECTOR_LENGTH_MISMATCH", severity: Error, schema: LEGACY_MESSAGE },
     WEB_LISTEN { code: "WEB_LISTEN", fluent: "WEB_LISTEN", severity: Error, schema: LEGACY_MESSAGE },
 }
@@ -1540,6 +1538,48 @@ mod tests {
             registry_dump(),
         )
         .expect("write golden");
+    }
+
+    /// Gate (bucket 0.6.2b R7a): every runtime diagnostic explains itself —
+    /// a specific title, a cause, and a help line — so the rustc-style
+    /// renderer never prints a bare message.
+    #[test]
+    fn runtime_catalog_rows_have_title_cause_and_help() {
+        let shard = include_str!("../../../share/bn/diagnostics/en-US/runtime.ftl");
+        let mut failures = Vec::new();
+        let mut entry: Option<(String, Vec<&str>)> = None;
+        let mut check = |entry: Option<(String, Vec<&str>)>| {
+            let Some((id, attributes)) = entry else {
+                return;
+            };
+            let has = |name: &str| {
+                attributes
+                    .iter()
+                    .any(|line| line.starts_with(&format!(".{name} =")))
+            };
+            if !has("cause") || !has("help") {
+                failures.push(format!("{id}: missing .cause or .help"));
+            }
+            if attributes.contains(&".title = Runtime or toolchain diagnostic") {
+                failures.push(format!("{id}: generic title"));
+            }
+        };
+        for line in shard.lines() {
+            if line.starts_with('#') || line.trim().is_empty() {
+                continue;
+            }
+            if let Some(attribute) = line.strip_prefix("    ") {
+                if let Some((_, attributes)) = entry.as_mut() {
+                    attributes.push(attribute.trim());
+                }
+            } else {
+                check(entry.take());
+                let id = line.split(" =").next().unwrap_or(line).to_string();
+                entry = Some((id, Vec::new()));
+            }
+        }
+        check(entry);
+        assert!(failures.is_empty(), "{failures:#?}");
     }
 
     #[test]

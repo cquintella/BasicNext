@@ -12,7 +12,6 @@ CONFIG_INVALID	CONFIG_INVALID	Error	message:Text
 DEBUG_TERMINATED	DEBUG_TERMINATED	Error	message:Text
 DISPATCH	DISPATCH	Error	detail:Text
 DIVISION_BY_ZERO	DIVISION_BY_ZERO	Error	operation:Text
-DOUBLE_DELETE	DOUBLE_DELETE	Error	message:Text
 DOUBLE_RELEASE	double-release	Error	detail:Text
 DUPLICATE_INTERFACE	DUPLICATE_INTERFACE	Error	message:Text
 DUPLICATE_NAME	DUPLICATE_NAME	Error	name:Text
@@ -105,7 +104,6 @@ UNREACHABLE_CODE	unreachable-code	Warning	context:Text
 UNRESOLVED_TYPE	UNRESOLVED_TYPE	Error	message:Text
 UNUSED_BINDING	unused-binding	Warning	name:Text
 UNUSED_IMPORT	unused-import	Warning	module:Text
-USE_AFTER_DELETE	USE_AFTER_DELETE	Error	message:Text
 USE_AFTER_RELEASE	use-after-release	Error	detail:Text
 VECTOR_LENGTH_MISMATCH	VECTOR_LENGTH_MISMATCH	Error	message:Text
 WEB_LISTEN	WEB_LISTEN	Error	message:Text
