@@ -102,6 +102,27 @@ reads, writes, datagrams, resolver results, and concurrent pings are bounded.
 Fallible operations return an explicit success alternative or `Error`; no
 network exception bypasses BN control flow.
 
+## Errors (0.6.2)
+
+`Code` of a `HOST.Net` `Error` ([error.md](error.md)) is one of these
+`INTEGER` members of the capability object:
+
+| Constant | Value | When |
+| --- | ---: | --- |
+| `Net.INVALID_ARGUMENT` | 1 | Unparsable address or CIDR; port outside `0..65535`; timeout outside `1..60000` ms; prefix wider than the family |
+| `Net.TIMEOUT` | 2 | A bounded wait expires |
+| `Net.UNREACHABLE` | 3 | The host or network is unreachable |
+| `Net.CONNECTION_REFUSED` | 4 | The peer refuses the connection |
+| `Net.CONNECTION_CLOSED` | 5 | The peer reset or closed the connection |
+| `Net.ADDRESS_IN_USE` | 6 | Bind or listen on an endpoint in use |
+| `Net.PERMISSION_DENIED` | 7 | The operating system refuses the operation |
+| `Net.NOT_FOUND` | 8 | Resolution finds no record; no neighbor entry |
+| `Net.UNAVAILABLE` | 9 | The operation is not available on this host |
+| `Net.LIMIT` | 10 | A bounded resource is exhausted |
+| `Net.CLOSED` | 11 | An operation on a closed stream, listener, or socket |
+| `Net.IO_FAILED` | 12 | Any other network failure |
+| `Net.POLICY_DENIED` | 13 | The execution policy denies the operation |
+
 ## Verification boundary
 
 Conformance uses local IPv4/IPv6 services and injected providers. No test

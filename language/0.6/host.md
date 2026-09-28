@@ -204,6 +204,23 @@ Capability-level helpers, without a file object:
 | `Exists(path AS STRING) AS BOOLEAN OR Error` | `TRUE` if a regular file exists at `path`. Missing path or a directory at `path` is `FALSE`. Permission or other I/O failure is `Error`. |
 | `DeleteFile(path AS STRING) AS VOID OR Error` | Removes a file. A missing path is `Error`. |
 
+### File system errors (0.6.2)
+
+`Code` of a `HOST.FileSystem` `Error` ([error.md](error.md)) is one of these
+`INTEGER` members of the capability object:
+
+| Constant | Value | When |
+| --- | ---: | --- |
+| `FS.INVALID_ARGUMENT` | 1 | Computed unknown mode; path text the host cannot use |
+| `FS.NOT_FOUND` | 2 | `Open` for `READ` or `DeleteFile` of a missing path |
+| `FS.PERMISSION_DENIED` | 3 | The operating system refuses access |
+| `FS.IS_DIRECTORY` | 4 | `Open` or `DeleteFile` of a directory |
+| `FS.CLOSED` | 5 | A method other than `Close` on a closed file |
+| `FS.WRONG_FAMILY` | 6 | A text method in binary use, or a byte method in text use |
+| `FS.INVALID_UTF8` | 7 | A text read meets bytes that are not UTF-8 |
+| `FS.IO_FAILED` | 8 | Any other read, write, or flush failure |
+| `FS.POLICY_DENIED` | 9 | The execution policy denies the path or the operation |
+
 Outside 0.2: `ChangeDirectory`, directory create/list/delete, `Move`,
 `Copy`, `chmod` / `chown`, `Seek`, `Flush`, and a `Path` object.
 
