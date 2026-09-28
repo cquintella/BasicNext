@@ -85,10 +85,7 @@ pub(super) fn empty_named(name: &str) -> Value {
         "VOID" => Value::Handle {
             type_name: name.into(),
         },
-        "Error" => Value::Error {
-            code: 0,
-            message: shared_string(""),
-        },
+        "Error" => Value::error(0, shared_string("")),
         _ => Value::Record {
             record: RecordValue::new(name, Vec::new()),
         },

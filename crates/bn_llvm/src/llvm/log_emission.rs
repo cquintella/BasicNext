@@ -16,7 +16,7 @@ pub(crate) fn lower_bnlog_status(text: &mut String, destination: ValueId, call: 
     );
     let _ = writeln!(
         text,
-        "  %logagg1_{dest} = insertvalue {{ i1, ptr, i64 }} %logagg0_{dest}, ptr %logmsg{dest}, 1"
+        "  %logagg1_wrap{dest} = call ptr @bn_rt_error_wrap(i1 %logerr{dest}, ptr %logmsg{dest}, ptr null)\n  %logagg1_{dest} = insertvalue {{ i1, ptr, i64 }} %logagg0_{dest}, ptr %logagg1_wrap{dest}, 1"
     );
     let _ = writeln!(
         text,

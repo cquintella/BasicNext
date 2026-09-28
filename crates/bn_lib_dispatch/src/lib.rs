@@ -283,10 +283,7 @@ impl DispatchProvider {
                     return Err(type_mismatch("Queue", "non-Queue value", "Async", span));
                 };
                 let Value::Function(task) = &arguments[1] else {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "Async expects a named function".into(),
-                    });
+                    return Ok(Value::error(1, "Async expects a named function".into()));
                 };
                 let queue = self
                     .queues
@@ -445,9 +442,8 @@ impl DispatchProvider {
                         require_arity(name, arguments, 1, span)?;
                         Ok(ticket
                             .error()
-                            .map_or(Value::NotAvailable, |(code, message)| Value::Error {
-                                code,
-                                message: shared_string(message),
+                            .map_or(Value::NotAvailable, |(code, message)| {
+                                Value::error(code, shared_string(message))
                             }))
                     }
                     "IsDone" => {
@@ -462,19 +458,13 @@ impl DispatchProvider {
                     _ => unreachable!(),
                 };
             }
-            _ => Ok(Value::Error {
-                code: 1,
-                message: "BNDispatch operation unavailable".into(),
-            }),
+            _ => Ok(Value::error(1, "BNDispatch operation unavailable".into())),
         }
     }
 
     fn dispatch_queue(&mut self, workers: i128) -> Value {
         let Some(queue) = crate::dispatch::Queue::new(workers) else {
-            return Value::Error {
-                code: 1,
-                message: "worker count must be in 1..64".into(),
-            };
+            return Value::error(1, "worker count must be in 1..64".into());
         };
         debug_assert!(
             (1..=bn_limits::dispatch_limits().worker_count_max).contains(&queue.workers())
@@ -491,10 +481,7 @@ fn dispatch_error(error: crate::dispatch::DispatchError) -> Value {
         crate::dispatch::DispatchError::TaskFailed(Some((_, message))) => message,
         other => format!("{other:?}"),
     };
-    Value::Error {
-        code: 1,
-        message: shared_string(message),
-    }
+    Value::error(1, shared_string(message))
 }
 
 #[cfg(test)]

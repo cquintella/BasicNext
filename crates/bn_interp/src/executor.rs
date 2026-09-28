@@ -399,10 +399,7 @@ fn builtin(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnos
             ));
         };
         return Ok(text.chars().next().map_or_else(
-            || Value::Error {
-                code: 1,
-                message: "ASC requires a non-empty STRING".into(),
-            },
+            || Value::error(1, "ASC requires a non-empty STRING".into()),
             |c| Value::Integer(i128::from(u32::from(c)), IntegerType::Int32),
         ));
     }
@@ -412,10 +409,7 @@ fn builtin(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnos
             .ok()
             .and_then(char::from_u32)
             .map_or_else(
-                || Value::Error {
-                    code: 1,
-                    message: "CHAR code is not a Unicode scalar".into(),
-                },
+                || Value::error(1, "CHAR code is not a Unicode scalar".into()),
                 |c| Value::String(shared_string(c.to_string())),
             ));
     }

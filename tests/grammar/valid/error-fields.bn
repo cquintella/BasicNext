@@ -1,0 +1,17 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// The four `Error` fields (language/0.6/error.md) read the same on both
+// backends. Which values producers fill in is covered per domain.
+IMPORT HOST.FileSystem AS FS
+
+FUNCTION Start() AS VOID
+    LET file AS FS.File OR Error = FS.Open("no-such-file.txt", FS.READ)
+    IF file IS Error THEN
+        LET operation AS STRING = file.Operation
+        LET cause AS STRING = file.Cause
+        PRINT file.Code, LEN(file.Message) > 0, LEN(operation) >= 0, LEN(cause) >= 0
+    END IF
+END FUNCTION

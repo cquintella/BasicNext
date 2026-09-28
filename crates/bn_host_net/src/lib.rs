@@ -103,10 +103,7 @@ impl Provider for NetProvider {
         // released handle stays a diagnostic.
         match self.host_net_call(core, &name, &arguments, span) {
             Err(diagnostic) if diagnostic.code == bn_diag::DiagId::IO.desc().code => {
-                Ok(Value::Error {
-                    code: 1,
-                    message: shared_string(&*diagnostic.message),
-                })
+                Ok(Value::error(1, shared_string(&*diagnostic.message)))
             }
             result => result,
         }
@@ -144,10 +141,7 @@ impl NetProvider {
                     + self.tcp_listeners.values().map(Vec::len).sum::<usize>()
                     >= bn_limits::web_limits().socket_handles_max
                 {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "socket handle quota exceeded".into(),
-                    });
+                    return Ok(Value::error(1, "socket handle quota exceeded".into()));
                 }
                 match crate::net::UdpSocket::bind(endpoint) {
                     Ok(socket) => {
@@ -156,10 +150,7 @@ impl NetProvider {
                         self.udp_sockets.insert(id, socket);
                         Ok(Value::UdpSocket(id))
                     }
-                    Err(error) => Ok(Value::Error {
-                        code: 1,
-                        message: shared_string(error.to_string()),
-                    }),
+                    Err(error) => Ok(Value::error(1, shared_string(error.to_string()))),
                 }
             }
             "HOST.Net.UDPSocket.SendTo" => {
@@ -248,10 +239,10 @@ impl NetProvider {
                         )
                     })?;
                 if !(1..=60_000).contains(&timeout) {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "receive timeout is outside 1..60000 ms".into(),
-                    });
+                    return Ok(Value::error(
+                        1,
+                        "receive timeout is outside 1..60000 ms".into(),
+                    ));
                 }
                 let socket = self.udp_sockets.get(&id).ok_or_else(|| {
                     runtime_error(
@@ -282,10 +273,7 @@ impl NetProvider {
                             ],
                         ),
                     }),
-                    Err(error) => Ok(Value::Error {
-                        code: 1,
-                        message: shared_string(error.to_string()),
-                    }),
+                    Err(error) => Ok(Value::error(1, shared_string(error.to_string()))),
                 }
             }
             "HOST.Net.UDPPacket.Source" => {
@@ -472,10 +460,7 @@ impl NetProvider {
                             vec![Value::String(shared_string(address.to_string()))],
                         ),
                     }),
-                    Err(_) => Ok(Value::Error {
-                        code: 1,
-                        message: "invalid IP address".into(),
-                    }),
+                    Err(_) => Ok(Value::error(1, "invalid IP address".into())),
                 }
             }
             "HOST.Net.Address.ToString" => {
@@ -621,10 +606,7 @@ impl NetProvider {
                             ],
                         ),
                     }),
-                    Err(message) => Ok(Value::Error {
-                        code: 1,
-                        message: message.into(),
-                    }),
+                    Err(message) => Ok(Value::error(1, message.into())),
                 }
             }
             "HOST.Net.CIDR.Contains" => {
@@ -717,17 +699,14 @@ impl NetProvider {
                 let address = net_address(&arguments[0], span)?;
                 let (timeout, _) = integer(&arguments[1], span)?;
                 if !(1..=60_000).contains(&timeout) {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "ping timeout is outside 1..60000 ms".into(),
-                    });
+                    return Ok(Value::error(
+                        1,
+                        "ping timeout is outside 1..60000 ms".into(),
+                    ));
                 }
                 match crate::net::ping(address, std::time::Duration::from_millis(timeout as u64)) {
                     Ok(reply) => Ok(ping_reply_value(reply)),
-                    Err(error) => Ok(Value::Error {
-                        code: 1,
-                        message: shared_string(error.message()),
-                    }),
+                    Err(error) => Ok(Value::error(1, shared_string(error.message()))),
                 }
             }
             "HOST.Net.Neighbor" => {
@@ -735,10 +714,7 @@ impl NetProvider {
                 let address = net_address(&arguments[0], span)?;
                 match crate::net::neighbor(address) {
                     Ok(neighbor) => Ok(address_value(neighbor.as_std())),
-                    Err(error) => Ok(Value::Error {
-                        code: 1,
-                        message: shared_string(error.message()),
-                    }),
+                    Err(error) => Ok(Value::error(1, shared_string(error.message()))),
                 }
             }
             "HOST.Net.Reverse" => {
@@ -746,20 +722,17 @@ impl NetProvider {
                 let address = net_address(&arguments[0], span)?;
                 let (timeout, _) = integer(&arguments[1], span)?;
                 if !(1..=60_000).contains(&timeout) {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "reverse timeout is outside 1..60000 ms".into(),
-                    });
+                    return Ok(Value::error(
+                        1,
+                        "reverse timeout is outside 1..60000 ms".into(),
+                    ));
                 }
                 match crate::net::reverse_timeout(
                     address,
                     std::time::Duration::from_millis(timeout as u64),
                 ) {
                     Ok(name) => Ok(Value::String(shared_string(name))),
-                    Err(error) => Ok(Value::Error {
-                        code: 1,
-                        message: shared_string(error.message()),
-                    }),
+                    Err(error) => Ok(Value::error(1, shared_string(error.message()))),
                 }
             }
             "HOST.Net.PingReply.Address" => {
@@ -829,20 +802,17 @@ impl NetProvider {
                 };
                 let (backlog, _) = integer(&arguments[1], span)?;
                 if !(1..=128).contains(&backlog) || endpoints.is_empty() || endpoints.len() > 16 {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "invalid listener endpoints or backlog".into(),
-                    });
+                    return Ok(Value::error(
+                        1,
+                        "invalid listener endpoints or backlog".into(),
+                    ));
                 }
                 let mut listeners = Vec::with_capacity(endpoints.len());
                 for endpoint in endpoints {
                     if self.tcp_listeners.values().map(Vec::len).sum::<usize>() + listeners.len()
                         >= bn_limits::web_limits().socket_handles_max
                     {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: "socket handle quota exceeded".into(),
-                        });
+                        return Ok(Value::error(1, "socket handle quota exceeded".into()));
                     }
                     match crate::net::TcpListener::bind_with_backlog(
                         net_endpoint(endpoint, span)?,
@@ -850,10 +820,7 @@ impl NetProvider {
                     ) {
                         Ok(listener) => listeners.push(listener),
                         Err(error) => {
-                            return Ok(Value::Error {
-                                code: 1,
-                                message: shared_string(error.to_string()),
-                            });
+                            return Ok(Value::error(1, shared_string(error.to_string())));
                         }
                     }
                 }
@@ -874,10 +841,10 @@ impl NetProvider {
                 };
                 let (timeout, _) = integer(&arguments[1], span)?;
                 if !(1..=60_000).contains(&timeout) {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "resolver timeout is outside 1..60000 ms".into(),
-                    });
+                    return Ok(Value::error(
+                        1,
+                        "resolver timeout is outside 1..60000 ms".into(),
+                    ));
                 }
                 match crate::net::resolve_timeout(
                     host,
@@ -901,14 +868,8 @@ impl NetProvider {
                             )],
                         ),
                     }),
-                    Ok(None) => Ok(Value::Error {
-                        code: 1,
-                        message: "resolver timeout".into(),
-                    }),
-                    Err(error) => Ok(Value::Error {
-                        code: 1,
-                        message: shared_string(error.to_string()),
-                    }),
+                    Ok(None) => Ok(Value::error(1, "resolver timeout".into())),
+                    Err(error) => Ok(Value::error(1, shared_string(error.to_string()))),
                 }
             }
             "HOST.Net.TCPConnect" => {
@@ -916,10 +877,10 @@ impl NetProvider {
                 let endpoint = net_endpoint(&arguments[0], span)?;
                 let (timeout, _) = integer(&arguments[1], span)?;
                 if !(1..=60_000).contains(&timeout) {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "connect timeout is outside 1..60000 ms".into(),
-                    });
+                    return Ok(Value::error(
+                        1,
+                        "connect timeout is outside 1..60000 ms".into(),
+                    ));
                 }
                 match crate::net::TcpStream::connect(
                     endpoint,
@@ -931,10 +892,7 @@ impl NetProvider {
                             + self.tcp_listeners.values().map(Vec::len).sum::<usize>()
                             >= bn_limits::web_limits().socket_handles_max
                         {
-                            return Ok(Value::Error {
-                                code: 1,
-                                message: "socket handle quota exceeded".into(),
-                            });
+                            return Ok(Value::error(1, "socket handle quota exceeded".into()));
                         }
                         stream
                             .set_timeouts(
@@ -949,10 +907,7 @@ impl NetProvider {
                         self.tcp_streams.insert(id, stream);
                         Ok(Value::TcpStream(id))
                     }
-                    Err(error) => Ok(Value::Error {
-                        code: 1,
-                        message: shared_string(error.to_string()),
-                    }),
+                    Err(error) => Ok(Value::error(1, shared_string(error.to_string()))),
                 }
             }
             "HOST.Net.TCPStream.Close" => {
@@ -1113,10 +1068,10 @@ impl NetProvider {
                 let (read_ms, _) = integer(&arguments[1], span)?;
                 let (write_ms, _) = integer(&arguments[2], span)?;
                 if !(1..=60_000).contains(&read_ms) || !(1..=60_000).contains(&write_ms) {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "socket timeout is outside 1..60000 ms".into(),
-                    });
+                    return Ok(Value::error(
+                        1,
+                        "socket timeout is outside 1..60000 ms".into(),
+                    ));
                 }
                 self.tcp_streams
                     .get(&id)
@@ -1200,10 +1155,10 @@ impl NetProvider {
                 };
                 let (timeout, _) = integer(&arguments[1], span)?;
                 if !(1..=60_000).contains(&timeout) {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "accept timeout is outside 1..60000 ms".into(),
-                    });
+                    return Ok(Value::error(
+                        1,
+                        "accept timeout is outside 1..60000 ms".into(),
+                    ));
                 }
                 let listeners = self
                     .tcp_listeners
@@ -1229,20 +1184,14 @@ impl NetProvider {
                     }
                 }
                 let Some(stream) = stream else {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "accept timeout".into(),
-                    });
+                    return Ok(Value::error(1, "accept timeout".into()));
                 };
                 if self.tcp_streams.len()
                     + self.udp_sockets.len()
                     + self.tcp_listeners.values().map(Vec::len).sum::<usize>()
                     >= bn_limits::web_limits().socket_handles_max
                 {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "socket handle quota exceeded".into(),
-                    });
+                    return Ok(Value::error(1, "socket handle quota exceeded".into()));
                 }
                 let _ = stream.set_timeouts(Some(accept_timeout), Some(accept_timeout));
                 let stream_id = self.next_tcp_stream;

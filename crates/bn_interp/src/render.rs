@@ -50,6 +50,6 @@ pub fn render(value: &Value) -> String {
         Value::DataFrame(_) => "DataFrame".into(),
         Value::Date(days) => crate::temporal::format_date(*days),
         Value::Time(millis) => crate::temporal::format_time(*millis),
-        Value::Error { code, message } => format!("Error({code}, {message})"),
+        Value::Error { code, message, .. } => format!("Error({code}, {message})"),
     }
 }

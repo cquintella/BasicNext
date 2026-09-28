@@ -717,6 +717,13 @@ fn as_string_matches_print_text_across_backends() {
     native_matches_interpreter(path);
 }
 
+/// `Error.Operation` and `Error.Cause` exist on both backends and read alike
+/// (the native value is a `bn_rt` error record).
+#[test]
+fn error_fields_read_alike_across_backends() {
+    native_matches_interpreter("tests/grammar/valid/error-fields.bn");
+}
+
 /// `IS T` on `STRING`/`BOOLEAN`/`FLOAT OR Error`, and a narrowed STRING used
 /// as a STRING: `bnc` answered FALSE for every such test before.
 #[test]

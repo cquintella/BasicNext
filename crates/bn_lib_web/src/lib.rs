@@ -431,16 +431,10 @@ impl WebProvider {
                         method.as_ref(),
                         "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD"
                     ) {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: "unsupported HTTP method".into(),
-                        });
+                        return Ok(Value::error(1, "unsupported HTTP method".into()));
                     }
                     if let Err(message) = crate::web::validate_client_url(url) {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: message.into(),
-                        });
+                        return Ok(Value::error(1, message.into()));
                     }
                     let authority = url
                         .split_once("://")
@@ -450,16 +444,10 @@ impl WebProvider {
                         && let Err(message) =
                             crate::web::validate_ssrf_destinations(&[address], false)
                     {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: message.into(),
-                        });
+                        return Ok(Value::error(1, message.into()));
                     }
                     if let Err(message) = crate::web::bounded_body(body, 8 * 1024 * 1024) {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: message.into(),
-                        });
+                        return Ok(Value::error(1, message.into()));
                     }
                     let policy = if with_policy {
                         let Value::Object { handle, .. } = &arguments[4] else {
@@ -484,10 +472,7 @@ impl WebProvider {
                         match crate::http::client_request_with_policy(method, url, body, policy) {
                             Ok(response) => response,
                             Err(message) => {
-                                return Ok(Value::Error {
-                                    code: 1,
-                                    message: shared_string(message),
-                                });
+                                return Ok(Value::error(1, shared_string(message)));
                             }
                         };
                     let object = core.allocate_object("BNWeb.Response", span)?;
@@ -504,10 +489,7 @@ impl WebProvider {
                     require_arity(name, arguments, 1, span)?;
                     Ok(Value::Null)
                 }
-                _ => Ok(Value::Error {
-                    code: 1,
-                    message: "BNWeb provider unavailable".into(),
-                }),
+                _ => Ok(Value::error(1, "BNWeb provider unavailable".into())),
             }
         } else if name.contains(".Server.") {
             if method == "New" {
@@ -574,17 +556,11 @@ impl WebProvider {
                 "AddFilter" => {
                     require_arity(name, arguments, 2, span)?;
                     let Value::Function(filter) = &arguments[1] else {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: "filter must be a FUNCTION".into(),
-                        });
+                        return Ok(Value::error(1, "filter must be a FUNCTION".into()));
                     };
                     let filters = self.filters.entry(*handle).or_default();
                     if filters.len() >= 64 {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: "filter limit exceeded".into(),
-                        });
+                        return Ok(Value::error(1, "filter limit exceeded".into()));
                     }
                     filters.push(filter.to_string());
                     Ok(Value::Null)
@@ -602,10 +578,7 @@ impl WebProvider {
                         ));
                     };
                     if !matches!(arguments[3], Value::Function(_)) {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: "route handler must be a FUNCTION".into(),
-                        });
+                        return Ok(Value::error(1, "route handler must be a FUNCTION".into()));
                     }
                     let mut state = state.lock().map_err(|_| {
                         runtime_error(
@@ -617,10 +590,7 @@ impl WebProvider {
                     let result = state.add_route(method.to_string(), pattern.to_string());
                     drop(state);
                     if let Err(message) = result {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: message.into(),
-                        });
+                        return Ok(Value::error(1, message.into()));
                     }
                     let Value::Function(handler) = &arguments[3] else {
                         unreachable!("route handler was validated above")
@@ -779,10 +749,7 @@ impl WebProvider {
                     let started = state_guard.start_with_options(options);
                     drop(state_guard);
                     if let Err(message) = started {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: message.into(),
-                        });
+                        return Ok(Value::error(1, message.into()));
                     }
                     if let Err(message) = state
                         .lock()
@@ -795,10 +762,7 @@ impl WebProvider {
                         })?
                         .install_worker_pool()
                     {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: message.into(),
-                        });
+                        return Ok(Value::error(1, message.into()));
                     }
                     let request_handler = bn_server_handler(
                         core.module().clone(),
@@ -948,10 +912,7 @@ impl WebProvider {
                     let started = state_guard.start_with_options(options);
                     drop(state_guard);
                     if let Err(message) = started {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: message.into(),
-                        });
+                        return Ok(Value::error(1, message.into()));
                     }
                     if let Err(message) = state
                         .lock()
@@ -964,10 +925,7 @@ impl WebProvider {
                         })?
                         .install_worker_pool()
                     {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: message.into(),
-                        });
+                        return Ok(Value::error(1, message.into()));
                     }
                     let request_handler = bn_server_handler(
                         core.module().clone(),
@@ -1059,13 +1017,8 @@ impl WebProvider {
                     require_arity(name, arguments, 2, span)?;
                     let timeout = integer(&arguments[1], span)?.0;
                     let result = drain_server(&state, timeout, false);
-                    Ok(result.map_or_else(
-                        |message| Value::Error {
-                            code: 1,
-                            message: message.into(),
-                        },
-                        |()| Value::Null,
-                    ))
+                    Ok(result
+                        .map_or_else(|message| Value::error(1, message.into()), |()| Value::Null))
                 }
                 "Dispatch" => {
                     require_arity(name, arguments, 3, span)?;
@@ -1117,10 +1070,7 @@ impl WebProvider {
                             })
                             .is_err()
                         {
-                            return Ok(Value::Error {
-                                code: 1,
-                                message: "server is not accepting requests".into(),
-                            });
+                            return Ok(Value::error(1, "server is not accepting requests".into()));
                         }
                         selected.unwrap_or(Err(500))
                     };
@@ -1196,37 +1146,23 @@ impl WebProvider {
                             )?;
                             Ok(Value::Null)
                         }
-                        Err(_) => Ok(Value::Error {
-                            code: 1,
-                            message: "request dispatch failed".into(),
-                        }),
+                        Err(_) => Ok(Value::error(1, "request dispatch failed".into())),
                     }
                 }
                 "Close" => {
                     require_arity(name, arguments, 2, span)?;
                     let timeout = integer(&arguments[1], span)?.0;
                     let result = drain_server(&state, timeout, true);
-                    Ok(result.map_or_else(
-                        |message| Value::Error {
-                            code: 1,
-                            message: message.into(),
-                        },
-                        |()| Value::Null,
-                    ))
+                    Ok(result
+                        .map_or_else(|message| Value::error(1, message.into()), |()| Value::Null))
                 }
                 _ if is_lifecycle_stub(core.module(), name) => Ok(Value::Null),
-                _ => Ok(Value::Error {
-                    code: 1,
-                    message: "BNWeb provider unavailable".into(),
-                }),
+                _ => Ok(Value::error(1, "BNWeb provider unavailable".into())),
             }
         } else if is_lifecycle_stub(core.module(), name) {
             Ok(Value::Null)
         } else {
-            Ok(Value::Error {
-                code: 1,
-                message: "BNWeb provider unavailable".into(),
-            })
+            Ok(Value::error(1, "BNWeb provider unavailable".into()))
         }
     }
 
@@ -1244,10 +1180,7 @@ impl WebProvider {
                 let capacity = integer(&arguments[0], span)?.0;
                 let idle = integer(&arguments[1], span)?.0;
                 if idle < 1 {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "invalid session idle timeout".into(),
-                    });
+                    return Ok(Value::error(1, "invalid session idle timeout".into()));
                 }
                 let store = crate::web_state::SessionStore::new(
                     capacity,
@@ -1273,10 +1206,7 @@ impl WebProvider {
                 let capacity = integer(&arguments[1], span)?.0;
                 let idle = integer(&arguments[2], span)?.0;
                 if idle < 1 {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "invalid session idle timeout".into(),
-                    });
+                    return Ok(Value::error(1, "invalid session idle timeout".into()));
                 }
                 let store = crate::web_state::SessionStore::new(
                     capacity,
@@ -1305,10 +1235,7 @@ impl WebProvider {
                         ));
                     };
                     Ok(store.create(value).map_or_else(
-                        |message| Value::Error {
-                            code: 1,
-                            message: shared_string(message),
-                        },
+                        |message| Value::error(1, shared_string(message)),
                         |value| Value::String(shared_string(value)),
                     ))
                 }
@@ -1322,13 +1249,11 @@ impl WebProvider {
                             span,
                         ));
                     };
-                    Ok(store.get(id).map_or(
-                        Value::Error {
-                            code: 1,
-                            message: "session not found".into(),
-                        },
-                        |value| Value::String(shared_string(value)),
-                    ))
+                    Ok(store
+                        .get(id)
+                        .map_or(Value::error(1, "session not found".into()), |value| {
+                            Value::String(shared_string(value))
+                        }))
                 }
                 "Delete" => {
                     require_arity(name, arguments, 2, span)?;
@@ -1341,10 +1266,7 @@ impl WebProvider {
                         ));
                     };
                     Ok(store.delete(id).map_or_else(
-                        |message| Value::Error {
-                            code: 1,
-                            message: shared_string(message),
-                        },
+                        |message| Value::error(1, shared_string(message)),
                         |()| Value::Null,
                     ))
                 }
@@ -1360,10 +1282,7 @@ impl WebProvider {
                         ));
                     };
                     Ok(store.set(id, value).map_or_else(
-                        |message| Value::Error {
-                            code: 1,
-                            message: shared_string(message),
-                        },
+                        |message| Value::error(1, shared_string(message)),
                         |()| Value::Null,
                     ))
                 }
@@ -1379,17 +1298,11 @@ impl WebProvider {
                         ));
                     };
                     Ok(store.rotate(id, value).map_or_else(
-                        |message| Value::Error {
-                            code: 1,
-                            message: shared_string(message),
-                        },
+                        |message| Value::error(1, shared_string(message)),
                         |value| Value::String(shared_string(value)),
                     ))
                 }
-                _ => Ok(Value::Error {
-                    code: 1,
-                    message: "SessionStore provider unavailable".into(),
-                }),
+                _ => Ok(Value::error(1, "SessionStore provider unavailable".into())),
             }
         } else if name.contains(".Scraper.") {
             if method == "Parse" {
@@ -1405,10 +1318,7 @@ impl WebProvider {
                 let scraper = match crate::web_state::Scraper::parse(html) {
                     Ok(value) => value,
                     Err(message) => {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: shared_string(message),
-                        });
+                        return Ok(Value::error(1, shared_string(message)));
                     }
                 };
                 let object = core.allocate_object("BNWeb.Scraper", span)?;
@@ -1459,17 +1369,11 @@ impl WebProvider {
                     ));
                 };
                 return Ok(scraper.text(selector).map_or_else(
-                    |message| Value::Error {
-                        code: 1,
-                        message: shared_string(message),
-                    },
+                    |message| Value::error(1, shared_string(message)),
                     |value| Value::String(shared_string(value)),
                 ));
             }
-            Ok(Value::Error {
-                code: 1,
-                message: "Scraper provider unavailable".into(),
-            })
+            Ok(Value::error(1, "Scraper provider unavailable".into()))
         } else if name.contains(".ACL.") {
             let Some(Value::Object { handle, .. }) = arguments.first() else {
                 return Err(type_mismatch(
@@ -1533,10 +1437,7 @@ impl WebProvider {
                         acl.deny(&cidr)
                     };
                     Ok(result.map_or_else(
-                        |message| Value::Error {
-                            code: 1,
-                            message: shared_string(message),
-                        },
+                        |message| Value::error(1, shared_string(message)),
                         |()| Value::Null,
                     ))
                 }
@@ -1587,10 +1488,7 @@ impl WebProvider {
                     })?;
                     Ok(Value::Boolean(acl.check(address)))
                 }
-                _ => Ok(Value::Error {
-                    code: 1,
-                    message: "ACL provider unavailable".into(),
-                }),
+                _ => Ok(Value::error(1, "ACL provider unavailable".into())),
             }
         } else if name.contains(".CookieJar.") {
             let Some(Value::Object { handle, .. }) = arguments.first() else {
@@ -1628,10 +1526,7 @@ impl WebProvider {
                     };
                     let age = integer(&arguments[5], span)?.0;
                     if age < 0 {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: "negative cookie age".into(),
-                        });
+                        return Ok(Value::error(1, "negative cookie age".into()));
                     }
                     Ok(jar
                         .set(
@@ -1642,10 +1537,7 @@ impl WebProvider {
                             std::time::Duration::from_millis(u64::try_from(age).unwrap_or(0)),
                         )
                         .map_or_else(
-                            |message| Value::Error {
-                                code: 1,
-                                message: shared_string(message),
-                            },
+                            |message| Value::error(1, shared_string(message)),
                             |()| Value::Null,
                         ))
                 }
@@ -1678,27 +1570,18 @@ impl WebProvider {
                     };
                     let age = integer(&arguments[5], span)?.0;
                     if age < 0 {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: "negative cookie age".into(),
-                        });
+                        return Ok(Value::error(1, "negative cookie age".into()));
                     }
                     let same_site = match same_site.as_ref() {
                         "Strict" => crate::web_state::SameSite::Strict,
                         "Lax" => crate::web_state::SameSite::Lax,
                         "None" => crate::web_state::SameSite::None,
                         _ => {
-                            return Ok(Value::Error {
-                                code: 1,
-                                message: "invalid SameSite policy".into(),
-                            });
+                            return Ok(Value::error(1, "invalid SameSite policy".into()));
                         }
                     };
                     if same_site == crate::web_state::SameSite::None && !secure {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: "SameSite=None requires Secure".into(),
-                        });
+                        return Ok(Value::error(1, "SameSite=None requires Secure".into()));
                     }
                     Ok(jar
                         .set_with_options(
@@ -1714,10 +1597,7 @@ impl WebProvider {
                             },
                         )
                         .map_or_else(
-                            |message| Value::Error {
-                                code: 1,
-                                message: shared_string(message),
-                            },
+                            |message| Value::error(1, shared_string(message)),
                             |()| Value::Null,
                         ))
                 }
@@ -1733,13 +1613,11 @@ impl WebProvider {
                             span,
                         ));
                     };
-                    Ok(jar.get(n, d, p).map_or(
-                        Value::Error {
-                            code: 1,
-                            message: "cookie not found".into(),
-                        },
-                        |value| Value::String(shared_string(value)),
-                    ))
+                    Ok(jar
+                        .get(n, d, p)
+                        .map_or(Value::error(1, "cookie not found".into()), |value| {
+                            Value::String(shared_string(value))
+                        }))
                 }
                 "Delete" => {
                     require_arity(name, arguments, 4, span)?;
@@ -1757,10 +1635,7 @@ impl WebProvider {
                     Ok(Value::Null)
                 }
                 "Count" => Ok(Value::Integer(jar.len() as i128, IntegerType::Int32)),
-                _ => Ok(Value::Error {
-                    code: 1,
-                    message: "CookieJar provider unavailable".into(),
-                }),
+                _ => Ok(Value::error(1, "CookieJar provider unavailable".into())),
             }
         } else if name.contains(".EgressPolicy.") {
             if method == "New" {
@@ -1806,10 +1681,7 @@ impl WebProvider {
                 }
                 Ok(object)
             } else {
-                Ok(Value::Error {
-                    code: 1,
-                    message: "EgressPolicy provider unavailable".into(),
-                })
+                Ok(Value::error(1, "EgressPolicy provider unavailable".into()))
             }
         } else if name.contains(".ServerOptions.") {
             let make_options = |offset: usize| -> Result<crate::web::ServerOptions, Diagnostic> {
@@ -1902,10 +1774,7 @@ impl WebProvider {
                     self.server_options.insert(*handle, options);
                     Ok(Value::Null)
                 } else {
-                    Ok(Value::Error {
-                        code: 1,
-                        message: "ServerOptions provider unavailable".into(),
-                    })
+                    Ok(Value::error(1, "ServerOptions provider unavailable".into()))
                 }
             }
         } else if name.contains(".TLSConfig.") {
@@ -1923,10 +1792,7 @@ impl WebProvider {
                 let config = match crate::tls::server_config_from_pem(cert, key) {
                     Ok(config) => config,
                     Err(message) => {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: shared_string(message),
-                        });
+                        return Ok(Value::error(1, shared_string(message)));
                     }
                 };
                 let object = core.allocate_object("BNWeb.TLSConfig", span)?;
@@ -1957,10 +1823,7 @@ impl WebProvider {
                 let config = match crate::tls::server_config_from_pem(cert, key) {
                     Ok(config) => config,
                     Err(message) => {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: shared_string(message),
-                        });
+                        return Ok(Value::error(1, shared_string(message)));
                     }
                 };
                 self.tls_configs
@@ -1981,10 +1844,7 @@ impl WebProvider {
                 let config = match crate::tls::server_config_from_pem(cert, key) {
                     Ok(config) => config,
                     Err(message) => {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: shared_string(message),
-                        });
+                        return Ok(Value::error(1, shared_string(message)));
                     }
                 };
                 self.tls_configs
@@ -1994,10 +1854,10 @@ impl WebProvider {
                     class: "BNWeb.TLSConfig".into(),
                 });
             }
-            Ok(Value::Error {
-                code: 1,
-                message: "BNWeb.TLSConfig provider unavailable".into(),
-            })
+            Ok(Value::error(
+                1,
+                "BNWeb.TLSConfig provider unavailable".into(),
+            ))
         } else if name.contains(".HeaderValues.") || name.contains(".QueryValues.") {
             if method == "CONSTRUCTOR" {
                 let Some(Value::Object { handle, .. }) = arguments.first() else {
@@ -2035,23 +1895,14 @@ impl WebProvider {
                     require_arity(name, arguments, 2, span)?;
                     let index = integer(&arguments[1], span)?.0;
                     let Ok(index) = usize::try_from(index) else {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: "index is outside collection".into(),
-                        });
+                        return Ok(Value::error(1, "index is outside collection".into()));
                     };
                     Ok(values.get(index).map_or_else(
-                        || Value::Error {
-                            code: 1,
-                            message: "index is outside collection".into(),
-                        },
+                        || Value::error(1, "index is outside collection".into()),
                         |value| Value::String(shared_string(value.as_str())),
                     ))
                 }
-                _ => Ok(Value::Error {
-                    code: 1,
-                    message: "BNWeb provider unavailable".into(),
-                }),
+                _ => Ok(Value::error(1, "BNWeb provider unavailable".into())),
             }
         } else {
             Err(runtime_error(
@@ -2143,10 +1994,7 @@ impl WebProvider {
                     let values = match values {
                         Ok(values) => values,
                         Err(message) => {
-                            return Ok(Value::Error {
-                                code: 1,
-                                message: message.into(),
-                            });
+                            return Ok(Value::error(1, message.into()));
                         }
                     };
                     let class = if method == "Headers" {
@@ -2168,10 +2016,7 @@ impl WebProvider {
                     require_arity(name, arguments, 2, span)?;
                     let maximum = integer(&arguments[1], span)?.0;
                     Ok(request.body(maximum).map_or_else(
-                        |message| Value::Error {
-                            code: 1,
-                            message: message.into(),
-                        },
+                        |message| Value::error(1, message.into()),
                         |body| Value::String(body.into()),
                     ))
                 }
@@ -2183,10 +2028,7 @@ impl WebProvider {
                     require_arity(name, arguments, 1, span)?;
                     Ok(address_value(request.effective_client_address(false)))
                 }
-                _ => Ok(Value::Error {
-                    code: 1,
-                    message: "BNWeb provider unavailable".into(),
-                }),
+                _ => Ok(Value::error(1, "BNWeb provider unavailable".into())),
             }
         } else {
             Err(runtime_error(
@@ -2245,18 +2087,11 @@ impl WebProvider {
                     require_arity(name, arguments, 2, span)?;
                     let status = integer(&arguments[1], span)?.0;
                     let Ok(status) = u16::try_from(status) else {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: "status must be 100..599".into(),
-                        });
+                        return Ok(Value::error(1, "status must be 100..599".into()));
                     };
-                    Ok(response.set_status(status).map_or_else(
-                        |message| Value::Error {
-                            code: 1,
-                            message: message.into(),
-                        },
-                        |()| Value::Null,
-                    ))
+                    Ok(response
+                        .set_status(status)
+                        .map_or_else(|message| Value::error(1, message.into()), |()| Value::Null))
                 }
                 "SetHeader" => {
                     require_arity(name, arguments, 3, span)?;
@@ -2269,13 +2104,9 @@ impl WebProvider {
                             span,
                         ));
                     };
-                    Ok(response.set_header(key, value).map_or_else(
-                        |message| Value::Error {
-                            code: 1,
-                            message: message.into(),
-                        },
-                        |()| Value::Null,
-                    ))
+                    Ok(response
+                        .set_header(key, value)
+                        .map_or_else(|message| Value::error(1, message.into()), |()| Value::Null))
                 }
                 "Header" => {
                     require_arity(name, arguments, 2, span)?;
@@ -2310,23 +2141,15 @@ impl WebProvider {
                             span,
                         ));
                     };
-                    Ok(response.write(body).map_or_else(
-                        |message| Value::Error {
-                            code: 1,
-                            message: message.into(),
-                        },
-                        |()| Value::Null,
-                    ))
+                    Ok(response
+                        .write(body)
+                        .map_or_else(|message| Value::error(1, message.into()), |()| Value::Null))
                 }
                 "Commit" => {
                     require_arity(name, arguments, 1, span)?;
-                    Ok(response.commit().map_or_else(
-                        |message| Value::Error {
-                            code: 1,
-                            message: message.into(),
-                        },
-                        |()| Value::Null,
-                    ))
+                    Ok(response
+                        .commit()
+                        .map_or_else(|message| Value::error(1, message.into()), |()| Value::Null))
                 }
                 "IsCommitted" => {
                     require_arity(name, arguments, 1, span)?;
@@ -2337,10 +2160,7 @@ impl WebProvider {
                     response.close();
                     Ok(Value::Null)
                 }
-                _ => Ok(Value::Error {
-                    code: 1,
-                    message: "BNWeb provider unavailable".into(),
-                }),
+                _ => Ok(Value::error(1, "BNWeb provider unavailable".into())),
             }
         } else {
             Err(runtime_error(

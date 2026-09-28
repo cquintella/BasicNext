@@ -166,6 +166,18 @@ pub fn host_operation_names() -> Vec<String> {
     names
 }
 
+/// The members the frontend declares on `owner` (`Error`, `HOST.Net`,
+/// `FS.File`, …), sorted; empty for an owner outside the catalog. Editors use
+/// it so completion lists what type checking accepts.
+#[must_use]
+pub fn host_member_names(owner: &str) -> Vec<String> {
+    catalog()
+        .members
+        .remove(owner)
+        .map(|members| members.into_keys().collect())
+        .unwrap_or_default()
+}
+
 pub(crate) fn catalog() -> Catalog {
     let mut catalog = Catalog::default();
     members1::declare_1(&mut catalog);

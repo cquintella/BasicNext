@@ -206,6 +206,9 @@ impl Executor<'_, '_> {
                 Ok(Value::Integer(i128::from(*code), IntegerType::Int32))
             }
             (Value::Error { message, .. }, "Message") => Ok(Value::String(message.clone())),
+            (Value::Error { detail, .. }, "Operation" | "Cause") => Ok(Value::String(
+                bn_value::error_detail_field(detail.as_deref(), name == "Cause"),
+            )),
             (Value::Record { record }, _) => record
                 .get(
                     field

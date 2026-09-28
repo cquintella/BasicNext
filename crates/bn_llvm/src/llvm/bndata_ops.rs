@@ -31,7 +31,7 @@ pub(crate) fn lower_bndata_set_label(
     );
     let _ = writeln!(
         text,
-        "  %dflabelagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dflabelagg0{dest}, ptr %dflabelmsg{dest}, 1"
+        "  %dflabelagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %dflabelerr{dest}, ptr %dflabelmsg{dest}, ptr null)\n  %dflabelagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dflabelagg0{dest}, ptr %dflabelagg1wrap{dest}, 1"
     );
     let _ = writeln!(
         text,
@@ -86,7 +86,7 @@ pub(crate) fn lower_bndata_reduce(
     );
     let _ = writeln!(
         text,
-        "  %dfredagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfredagg0{dest}, ptr %dfredmsg{dest}, 1"
+        "  %dfredagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %dfrederr{dest}, ptr %dfredmsg{dest}, ptr null)\n  %dfredagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfredagg0{dest}, ptr %dfredagg1wrap{dest}, 1"
     );
     let _ = writeln!(
         text,
@@ -147,7 +147,7 @@ pub(crate) fn lower_bndata_zscore(
     );
     let _ = writeln!(
         text,
-        "  %dfzagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfzagg0{dest}, ptr %dfzmsg{dest}, 1"
+        "  %dfzagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %dfzerr{dest}, ptr %dfzmsg{dest}, ptr null)\n  %dfzagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfzagg0{dest}, ptr %dfzagg1wrap{dest}, 1"
     );
     let _ = writeln!(
         text,
@@ -231,7 +231,7 @@ pub(crate) fn lower_bndata_copy(
     );
     let _ = writeln!(
         text,
-        "  %dfcopyagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfcopyagg0{dest}, ptr %dfcopymsg{dest}, 1"
+        "  %dfcopyagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %dfcopyerr{dest}, ptr %dfcopymsg{dest}, ptr null)\n  %dfcopyagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfcopyagg0{dest}, ptr %dfcopyagg1wrap{dest}, 1"
     );
     let _ = writeln!(
         text,
@@ -287,7 +287,7 @@ pub(crate) fn lower_bndata_select(text: &mut String, destination: ValueId, argum
     );
     let _ = writeln!(
         text,
-        "  %dfselagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfselagg0{dest}, ptr %dfselmsg{dest}, 1"
+        "  %dfselagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %dfselerr{dest}, ptr %dfselmsg{dest}, ptr null)\n  %dfselagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfselagg0{dest}, ptr %dfselagg1wrap{dest}, 1"
     );
     let _ = writeln!(
         text,
@@ -328,7 +328,7 @@ pub(crate) fn lower_bndata_transform(
     );
     let _ = writeln!(
         text,
-        "  %dftragg1{dest} = insertvalue {{ i1, ptr, i64 }} %dftragg0{dest}, ptr %dftrmsg{dest}, 1"
+        "  %dftragg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %dftrerr{dest}, ptr %dftrmsg{dest}, ptr null)\n  %dftragg1{dest} = insertvalue {{ i1, ptr, i64 }} %dftragg0{dest}, ptr %dftragg1wrap{dest}, 1"
     );
     let _ = writeln!(
         text,
@@ -374,7 +374,7 @@ pub(crate) fn lower_bndata_binary_transform(
     );
     let _ = writeln!(
         text,
-        "  %dfbinagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfbinagg0{dest}, ptr %dfbinmsg{dest}, 1"
+        "  %dfbinagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %dfbinerr{dest}, ptr %dfbinmsg{dest}, ptr null)\n  %dfbinagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfbinagg0{dest}, ptr %dfbinagg1wrap{dest}, 1"
     );
     let _ = writeln!(
         text,
@@ -424,7 +424,7 @@ pub(crate) fn lower_bndata_join(
     );
     let _ = writeln!(
         text,
-        "  %dfjoinagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfjoinagg0{dest}, ptr %dfjoinmsg{dest}, 1"
+        "  %dfjoinagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %dfjoinerr{dest}, ptr %dfjoinmsg{dest}, ptr null)\n  %dfjoinagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfjoinagg0{dest}, ptr %dfjoinagg1wrap{dest}, 1"
     );
     let _ = writeln!(
         text,

@@ -84,7 +84,13 @@ pub(super) fn completion_items(
                 &prefix,
             );
         } else {
-            add_filtered(&mut items, catalog.iter().copied(), kind, &path, &prefix);
+            add_filtered(
+                &mut items,
+                catalog.iter().map(String::as_str),
+                kind,
+                &path,
+                &prefix,
+            );
         }
     }
     items.into_values().collect()
@@ -275,8 +281,20 @@ fn resolve_chain(chain: &[String], imports: &[(Vec<String>, String)]) -> String 
     chain.join(".")
 }
 
-fn members_of(path: &str) -> &'static [&'static str] {
-    match path {
+/// Completion members for `path`: the frontend's HOST catalog for catalog
+/// owners (`Error`, `HOST.Net`, `FS.File`, …), and the few namespaces that are
+/// not catalog tables.
+fn members_of(path: &str) -> Vec<String> {
+    let owner = if path == "HOST.FileSystem.File" {
+        "FS.File"
+    } else {
+        path
+    };
+    let members = bn_frontend::host_member_names(owner);
+    if !members.is_empty() {
+        return members;
+    }
+    let local: &[&str] = match path {
         "HOST" => &[
             "Args",
             "Clock",
@@ -287,59 +305,11 @@ fn members_of(path: &str) -> &'static [&'static str] {
             "NumProcs",
             "Random",
         ],
-        "HOST.Clock" => &["Now", "Timer"],
-        "HOST.Console" => &["Beep", "Cls", "NumCols", "NumRows", "PrintAt"],
-        "HOST.Exec" => &["Run", "Result"],
-        "HOST.Random" => &["Random", "Seed"],
-        "HOST.FileSystem" => &[
-            "APPEND",
-            "DeleteFile",
-            "Exists",
-            "File",
-            "Open",
-            "READ",
-            "WRITE",
-        ],
-        "HOST.FileSystem.File" | "FS.File" => &[
-            "Close",
-            "ReadAll",
-            "ReadBytes",
-            "ReadLine",
-            "Write",
-            "WriteBytes",
-            "WriteLine",
-        ],
-        "HOST.Net" => &[
-            "Address",
-            "Addresses",
-            "CIDR",
-            "Endpoint",
-            "Neighbor",
-            "Ping",
-            "Resolve",
-            "Reverse",
-            "TCPConnect",
-            "TCPListen",
-            "TCPListener",
-            "TCPStream",
-            "UDPBind",
-        ],
-        "HOST.Net.Address" => &[
-            "IsIPv4",
-            "IsIPv6",
-            "IsLinkLocal",
-            "IsLoopback",
-            "IsMulticast",
-            "IsPrivate",
-            "Parse",
-            "ToString",
-        ],
-        "HOST.Net.CIDR" => &["Contains", "Network", "Parse", "PrefixLength"],
-        "Error" => &["Code", "Message"],
         "Date" | "Time" | "TimeZone" => &["Parse"],
         "Timestamp" => &["Format", "Parse"],
         _ => &[],
-    }
+    };
+    local.iter().map(|member| (*member).to_string()).collect()
 }
 
 fn module_exports(

@@ -288,6 +288,7 @@ pub fn lower_validated_module_for_target_with_policy(
     for (function, analysis) in &functions {
         emit_function(&mut text, module, function, analysis, !wasm32, policy)?;
     }
+    declare_error_abi(&mut text);
     Ok(text)
 }
 
@@ -1024,7 +1025,7 @@ mod fs_emission;
 use fs_emission::{FS_CALLS, fs_call_supported, lower_fs_call};
 #[path = "llvm/host_results.rs"]
 mod host_results;
-use host_results::{emit_handle_result, emit_status_result, emit_void_result};
+use host_results::{declare_error_abi, emit_handle_result, emit_status_result, emit_void_result};
 #[path = "llvm/math.rs"]
 mod math;
 use math::{BN_RT_MATH_DECLS, bnmath_call_supported, bnmath_method, lower_bnmath_call};

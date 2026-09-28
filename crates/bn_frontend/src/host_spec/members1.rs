@@ -23,6 +23,24 @@ pub(super) fn declare_1(catalog: &mut Catalog) {
                     mutable: false,
                 },
             ),
+            (
+                "Operation".into(),
+                SpecMember {
+                    ty: SpecType::String,
+                    is_static: false,
+                    private: false,
+                    mutable: false,
+                },
+            ),
+            (
+                "Cause".into(),
+                SpecMember {
+                    ty: SpecType::String,
+                    is_static: false,
+                    private: false,
+                    mutable: false,
+                },
+            ),
         ]),
     );
 }

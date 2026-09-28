@@ -124,7 +124,7 @@ pub(crate) fn lower_print_language_error_union(
     state.control_flow.label(text, format!("unionerr{count}"));
     let _ = writeln!(
         text,
-        "  %unionerrprint{count} = call i32 (ptr, ...) @printf(ptr @.bn_fmt_error, i64 %unionpayload{count}, ptr %unionmessage{count})"
+        "  %unionerrtext{count} = call ptr @bn_rt_error_field(ptr %unionmessage{count}, i32 0)\n  %unionerrprint{count} = call i32 (ptr, ...) @printf(ptr @.bn_fmt_error, i64 %unionpayload{count}, ptr %unionerrtext{count})"
     );
     let _ = writeln!(text, "  br label %unionjoin{count}");
     state.control_flow.label(text, format!("unionvalue{count}"));

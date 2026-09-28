@@ -3,8 +3,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// HOST call results in native code: the `{ i1, ptr, i64 }` value or `Error`
-// built from a `bn_rt` status, with the runtime's recorded message.
+// Native `Error` values: HOST call results (`{ i1, ptr, i64 }` or `Error`
+// built from a `bn_rt` status and its recorded message) and the declarations
+// of the `bn_rt` error-record functions.
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
@@ -12,7 +13,7 @@ use super::*;
 /// status 0 is the value (`value_ptr`, `payload`); `eof_status`, when given,
 /// is a successful `EOF` (the `@.bn_eof` sentinel); any other status is an
 /// `Error` with `Code` 1 and the message the runtime recorded for the call
-/// (`bn_rt_error_message`), as in the interpreter.
+/// (`bn_rt_error_take`), as in the interpreter.
 pub(crate) fn emit_status_result(
     text: &mut String,
     destination: ValueId,
@@ -41,7 +42,7 @@ pub(crate) fn emit_status_result(
     let _ = writeln!(text, "  %sterrint{dest} = zext i1 {error} to i32");
     let _ = writeln!(
         text,
-        "  %stmsg{dest} = call ptr @bn_rt_error_message(i32 %sterrint{dest})"
+        "  %stmsg{dest} = call ptr @bn_rt_error_take(i32 %sterrint{dest}, ptr null)"
     );
     let _ = writeln!(
         text,
@@ -92,4 +93,27 @@ pub(crate) fn emit_void_result(text: &mut String, destination: ValueId, rc: impl
         "null",
         "0",
     );
+}
+
+/// Declares the `bn_rt` error-record functions (`error_abi`) the module
+/// calls; a module without `Error` values declares none.
+pub(crate) fn declare_error_abi(text: &mut String) {
+    for (symbol, declaration) in [
+        (
+            "@bn_rt_error_take(",
+            "declare ptr @bn_rt_error_take(i32, ptr)\n",
+        ),
+        (
+            "@bn_rt_error_wrap(",
+            "declare ptr @bn_rt_error_wrap(i1, ptr, ptr)\n",
+        ),
+        (
+            "@bn_rt_error_field(",
+            "declare ptr @bn_rt_error_field(ptr, i32)\n",
+        ),
+    ] {
+        if text.contains(symbol) {
+            text.push_str(declaration);
+        }
+    }
 }

@@ -32,10 +32,12 @@ pub fn equals(left: &Value, right: &Value) -> bool {
             Value::Error {
                 code: left_code,
                 message: left_message,
+                ..
             },
             Value::Error {
                 code: right_code,
                 message: right_message,
+                ..
             },
         ) => left_code == right_code && left_message == right_message,
         (Value::Object { handle: left, .. }, Value::Object { handle: right, .. }) => left == right,

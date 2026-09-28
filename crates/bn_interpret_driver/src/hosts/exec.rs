@@ -78,16 +78,16 @@ fn exec_run(
         ));
     };
     if !policy.allowed {
-        return Ok(Value::Error {
-            code: bn_host_exec::EXEC_POLICY_DENIED,
-            message: "HOST.Exec is denied by execution policy".into(),
-        });
+        return Ok(Value::error(
+            bn_host_exec::EXEC_POLICY_DENIED,
+            "HOST.Exec is denied by execution policy".into(),
+        ));
     }
     if program.is_empty() || program.as_bytes().contains(&0) {
-        return Ok(Value::Error {
-            code: bn_host_exec::EXEC_INVALID_ARGUMENT,
-            message: "program must be non-empty and contain no NUL".into(),
-        });
+        return Ok(Value::error(
+            bn_host_exec::EXEC_INVALID_ARGUMENT,
+            "program must be non-empty and contain no NUL".into(),
+        ));
     }
     let mut values = Vec::with_capacity(args.len());
     for arg in args {
@@ -100,10 +100,10 @@ fn exec_run(
             ));
         };
         if value.as_bytes().contains(&0) {
-            return Ok(Value::Error {
-                code: bn_host_exec::EXEC_INVALID_ARGUMENT,
-                message: "arguments must not contain NUL".into(),
-            });
+            return Ok(Value::error(
+                bn_host_exec::EXEC_INVALID_ARGUMENT,
+                "arguments must not contain NUL".into(),
+            ));
         }
         values.push(value.as_ref());
     }
@@ -118,9 +118,6 @@ fn exec_run(
                 record: RecordValue::new("HOST.Exec.Result", fields),
             })
         }
-        Err(failure) => Ok(Value::Error {
-            code: failure.code,
-            message: shared_string(failure.message),
-        }),
+        Err(failure) => Ok(Value::error(failure.code, shared_string(failure.message))),
     }
 }

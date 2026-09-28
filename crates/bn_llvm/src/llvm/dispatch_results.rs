@@ -32,7 +32,7 @@ pub(crate) fn emit_integer_dispatch_result(text: &mut String, destination: Value
     );
     let _ = writeln!(
         text,
-        "  %dispatchagg1{d} = insertvalue {{ i1, ptr, i64 }} %dispatchagg0{d}, ptr null, 1"
+        "  %dispatchagg1wrap{d} = call ptr @bn_rt_error_wrap(i1 %dispatcherrorflag{d}, ptr null, ptr null)\n  %dispatchagg1{d} = insertvalue {{ i1, ptr, i64 }} %dispatchagg0{d}, ptr %dispatchagg1wrap{d}, 1"
     );
     let _ = writeln!(
         text,
@@ -75,7 +75,7 @@ pub(crate) fn emit_float_dispatch_result(text: &mut String, destination: ValueId
     );
     let _ = writeln!(
         text,
-        "  %dispatchagg1{d} = insertvalue {{ i1, ptr, i64 }} %dispatchagg0{d}, ptr null, 1"
+        "  %dispatchagg1wrap{d} = call ptr @bn_rt_error_wrap(i1 %dispatcherrorflag{d}, ptr null, ptr null)\n  %dispatchagg1{d} = insertvalue {{ i1, ptr, i64 }} %dispatchagg0{d}, ptr %dispatchagg1wrap{d}, 1"
     );
     let _ = writeln!(
         text,
@@ -114,7 +114,7 @@ pub(crate) fn emit_string_dispatch_result(text: &mut String, destination: ValueI
     );
     let _ = writeln!(
         text,
-        "  %v{d} = insertvalue {{ i1, ptr, i64 }} %dispatchagg0{d}, ptr %dispatchvalue{d}, 1"
+        "  %vwrap{d} = call ptr @bn_rt_error_wrap(i1 %dispatcherrorflag{d}, ptr %dispatchvalue{d}, ptr null)\n  %v{d} = insertvalue {{ i1, ptr, i64 }} %dispatchagg0{d}, ptr %vwrap{d}, 1"
     );
 }
 
@@ -149,7 +149,7 @@ pub(crate) fn emit_boolean_dispatch_result(text: &mut String, destination: Value
     );
     let _ = writeln!(
         text,
-        "  %dispatchagg1{d} = insertvalue {{ i1, ptr, i64 }} %dispatchagg0{d}, ptr null, 1"
+        "  %dispatchagg1wrap{d} = call ptr @bn_rt_error_wrap(i1 %dispatcherrorflag{d}, ptr null, ptr null)\n  %dispatchagg1{d} = insertvalue {{ i1, ptr, i64 }} %dispatchagg0{d}, ptr %dispatchagg1wrap{d}, 1"
     );
     let _ = writeln!(
         text,

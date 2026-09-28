@@ -76,10 +76,10 @@ impl CryptoProvider {
         span: Span,
     ) -> Result<Value, Diagnostic> {
         let rejected = |what: &str| {
-            Ok(Value::Error {
-                code: 1,
-                message: format!("BNCrypto rejected the {what}").into(),
-            })
+            Ok(Value::error(
+                1,
+                format!("BNCrypto rejected the {what}").into(),
+            ))
         };
         match method {
             "MlKemKeypair" | "MlDsaKeypair" => {
@@ -146,10 +146,10 @@ impl CryptoProvider {
         };
         match produced {
             Some(bytes) => Ok(self.insert(bytes)),
-            None => Ok(Value::Error {
-                code: 1,
-                message: format!("BNCrypto rejected the {what}").into(),
-            }),
+            None => Ok(Value::error(
+                1,
+                format!("BNCrypto rejected the {what}").into(),
+            )),
         }
     }
 
@@ -194,10 +194,7 @@ impl CryptoProvider {
         };
         match produced {
             Some(bytes) => Ok(self.insert(bytes)),
-            None => Ok(Value::Error {
-                code: 1,
-                message: "BNCrypto rejected the key material".into(),
-            }),
+            None => Ok(Value::error(1, "BNCrypto rejected the key material".into())),
         }
     }
 
@@ -258,10 +255,10 @@ impl CryptoProvider {
                     },
                 ) {
                     Some(tag) => Ok(self.insert(tag)),
-                    None => Ok(Value::Error {
-                        code: 1,
-                        message: "BNCrypto.Argon2id rejected the cost parameters".into(),
-                    }),
+                    None => Ok(Value::error(
+                        1,
+                        "BNCrypto.Argon2id rejected the cost parameters".into(),
+                    )),
                 }
             }
         }
@@ -303,11 +300,10 @@ impl CryptoProvider {
                 };
                 match bn_rt::crypto::decode_hex(text.as_ref()) {
                     Some(bytes) => Ok(self.insert(bytes)),
-                    None => Ok(Value::Error {
-                        code: 1,
-                        message: "BNCrypto.FromHex expects an even-length hexadecimal string"
-                            .into(),
-                    }),
+                    None => Ok(Value::error(
+                        1,
+                        "BNCrypto.FromHex expects an even-length hexadecimal string".into(),
+                    )),
                 }
             }
             "Length" => {
@@ -364,10 +360,10 @@ impl CryptoProvider {
                     Some(end) => Ok(self.insert(bytes[bounds[0]..end].to_vec())),
                     // Out of range is an Error, never a short buffer that could
                     // pass for a key.
-                    None => Ok(Value::Error {
-                        code: 1,
-                        message: "BNCrypto.Slice range is outside the buffer".into(),
-                    }),
+                    None => Ok(Value::error(
+                        1,
+                        "BNCrypto.Slice range is outside the buffer".into(),
+                    )),
                 }
             }
         }
@@ -421,14 +417,14 @@ impl CryptoProvider {
         };
         match result {
             Some(bytes) => Ok(self.insert(bytes)),
-            None => Ok(Value::Error {
-                code: 1,
-                message: if sealing {
+            None => Ok(Value::error(
+                1,
+                if sealing {
                     "BNCrypto seal rejected the key or nonce length".into()
                 } else {
                     "BNCrypto open failed: authentication tag did not verify".into()
                 },
-            }),
+            )),
         }
     }
 

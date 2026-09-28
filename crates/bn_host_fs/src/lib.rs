@@ -42,10 +42,7 @@ impl Default for FsProvider {
 }
 
 fn error(message: impl Into<String>) -> Value {
-    Value::Error {
-        code: 1,
-        message: shared_string(message.into()),
-    }
+    Value::error(1, shared_string(message.into()))
 }
 
 /// `Ok` maps to the BN value; `Err` (including a policy denial, 0.6.md

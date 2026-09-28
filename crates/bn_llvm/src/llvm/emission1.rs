@@ -408,7 +408,7 @@ pub(crate) fn lower_scalar_instruction(
                         );
                         let _ = writeln!(
                             text,
-                            "  %netcb{dest} = insertvalue {{ i1, ptr, i64 }} %netca{dest}, ptr %netc1{dest}, 1"
+                            "  %netcbwrap{dest} = call ptr @bn_rt_error_wrap(i1 %netc0{dest}, ptr %netc1{dest}, ptr null)\n  %netcb{dest} = insertvalue {{ i1, ptr, i64 }} %netca{dest}, ptr %netcbwrap{dest}, 1"
                         );
                         let _ = writeln!(
                             text,

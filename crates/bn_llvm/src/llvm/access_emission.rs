@@ -24,16 +24,28 @@ pub(crate) fn lower_access_emission(
             ..
         } => {
             block_state.constants.remove(destination);
-            if owner == "Error" && name == "Message" {
+            if owner == "Error" && matches!(name.as_str(), "Message" | "Operation" | "Cause") {
                 let aggregate = analysis
                     .values
                     .get(object)
                     .and_then(llvm_type)
                     .expect("validated error aggregate");
+                // The pointer is an error record (or a plain message); the
+                // runtime reads the field (bn_rt error_abi).
+                let field = match name.as_str() {
+                    "Message" => 0,
+                    "Operation" => 1,
+                    _ => 2,
+                };
+                let dest = destination.0;
                 let _ = writeln!(
                     text,
-                    "  %v{} = extractvalue {aggregate} %v{}, 1",
-                    destination.0, object.0
+                    "  %errorptr{dest} = extractvalue {aggregate} %v{}, 1",
+                    object.0
+                );
+                let _ = writeln!(
+                    text,
+                    "  %v{dest} = call ptr @bn_rt_error_field(ptr %errorptr{dest}, i32 {field})"
                 );
             } else if owner == "Error" && name == "Code" {
                 let _ = writeln!(

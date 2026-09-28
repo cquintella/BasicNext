@@ -634,7 +634,7 @@ fn execute_with_host_inner<'debug>(
         Flow::Return(Some(Value::Integer(code, _))) | Flow::Stop(code) => {
             exit_code(code, start.span)
         }
-        Flow::Return(Some(Value::Error { code, message })) => Err(runtime_error(
+        Flow::Return(Some(Value::Error { code, message, .. })) => Err(runtime_error(
             bn_diag::DiagId::DISPATCH,
             format!("{code}: {message}"),
             start.span,

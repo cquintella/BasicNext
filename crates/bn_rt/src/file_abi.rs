@@ -3,7 +3,7 @@
 //! C ABI for `HOST.FileSystem`. The semantics are [`super::file`], shared
 //! with the interpreter; this layer keeps the handle table, converts C
 //! values, and records each failure's message for the emitted `Error`
-//! ([`super::set_error`], read back through `bn_rt_error_message`).
+//! ([`super::set_error`], read back through `bn_rt_error_take`).
 
 use std::collections::HashMap;
 use std::ffi::{CStr, c_char};

@@ -143,7 +143,7 @@ pub(crate) fn lower_bndata_add_integer_column(
     );
     let _ = writeln!(
         text,
-        "  %dfaddagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfaddagg0{dest}, ptr %dfaddmessage{dest}, 1"
+        "  %dfaddagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 {previous}, ptr %dfaddmessage{dest}, ptr null)\n  %dfaddagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfaddagg0{dest}, ptr %dfaddagg1wrap{dest}, 1"
     );
     let _ = writeln!(
         text,
@@ -200,7 +200,7 @@ pub(crate) fn lower_bndata_add_simple_column(
     );
     let _ = writeln!(
         text,
-        "  %dfsimpleagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfsimpleagg0{dest}, ptr %dfsimplemsg{dest}, 1"
+        "  %dfsimpleagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %dfsimpleerr{dest}, ptr %dfsimplemsg{dest}, ptr null)\n  %dfsimpleagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfsimpleagg0{dest}, ptr %dfsimpleagg1wrap{dest}, 1"
     );
     let _ = writeln!(
         text,
@@ -266,7 +266,7 @@ pub(crate) fn lower_bndata_column_name(
     );
     let _ = writeln!(
         text,
-        "  %dfnameagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfnameagg0{dest}, ptr %dfnamemessage{dest}, 1"
+        "  %dfnameagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %dfnameerror{dest}, ptr %dfnamemessage{dest}, ptr null)\n  %dfnameagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfnameagg0{dest}, ptr %dfnameagg1wrap{dest}, 1"
     );
     let _ = writeln!(
         text,
@@ -372,7 +372,7 @@ pub(crate) fn lower_bndata_status_call(
     );
     let _ = writeln!(
         text,
-        "  %dfgetagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfgetagg0{dest}, ptr %dfgetmsg{dest}, 1"
+        "  %dfgetagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %dfgeterr{dest}, ptr %dfgetmsg{dest}, ptr null)\n  %dfgetagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfgetagg0{dest}, ptr %dfgetagg1wrap{dest}, 1"
     );
     let _ = writeln!(
         text,

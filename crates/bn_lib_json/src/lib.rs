@@ -127,28 +127,25 @@ impl JsonProvider {
     fn status_void(code: i32, span: Span, expected: &str) -> Result<Value, Diagnostic> {
         match code {
             BN_JSON_OK => Ok(Value::Null),
-            BN_JSON_TOO_LARGE => Ok(Value::Error {
-                code: 1,
-                message: "BNJson write would exceed the depth limit".into(),
-            }),
+            BN_JSON_TOO_LARGE => Ok(Value::error(
+                1,
+                "BNJson write would exceed the depth limit".into(),
+            )),
             BN_JSON_INVALID_HANDLE => Err(Self::invalid_handle(span)),
-            BN_JSON_NOT_FOUND => Ok(Value::Error {
-                code: 1,
-                message: "BNJson: index out of range".into(),
-            }),
-            _ => Ok(Value::Error {
-                code: 1,
-                message: format!("BNJson write target is not an {expected}").into(),
-            }),
+            BN_JSON_NOT_FOUND => Ok(Value::error(1, "BNJson: index out of range".into())),
+            _ => Ok(Value::error(
+                1,
+                format!("BNJson write target is not an {expected}").into(),
+            )),
         }
     }
 
     /// A missing key, or a key holding another kind. Never a default value.
     fn not_found(expected: &str) -> Value {
-        Value::Error {
-            code: 1,
-            message: format!("BNJson: missing key or value is not a {expected}").into(),
-        }
+        Value::error(
+            1,
+            format!("BNJson: missing key or value is not a {expected}").into(),
+        )
     }
 
     fn invalid_handle(span: Span) -> Diagnostic {
@@ -162,10 +159,10 @@ impl JsonProvider {
     fn float_number(value: f64) -> Result<serde_json::Value, Value> {
         serde_json::Number::from_f64(value)
             .map(serde_json::Value::Number)
-            .ok_or(Value::Error {
-                code: 1,
-                message: "BNJson: non-finite FLOAT is not allowed".into(),
-            })
+            .ok_or(Value::error(
+                1,
+                "BNJson: non-finite FLOAT is not allowed".into(),
+            ))
     }
 }
 
@@ -225,10 +222,10 @@ impl Provider for JsonProvider {
                 require_arity(member, &arguments, 1, span)?;
                 let handle = Self::handle(&arguments[0], member, span)?;
                 match json_abi::length(handle) {
-                    -1 => Ok(Value::Error {
-                        code: 1,
-                        message: "BNJson.Length: document is not an object or array".into(),
-                    }),
+                    -1 => Ok(Value::error(
+                        1,
+                        "BNJson.Length: document is not an object or array".into(),
+                    )),
                     count => Ok(Value::Integer(i128::from(count), IntegerType::Int32)),
                 }
             }
@@ -514,10 +511,7 @@ impl Provider for JsonProvider {
                 Self::status_void(json_abi::move_into_at(parent, index, child), span, "array")
             }
             "CONSTRUCTOR" => Ok(Value::Null),
-            _ => Ok(Value::Error {
-                code: 1,
-                message: "BNJson operation unavailable".into(),
-            }),
+            _ => Ok(Value::error(1, "BNJson operation unavailable".into())),
         }
     }
 

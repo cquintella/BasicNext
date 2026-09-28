@@ -84,7 +84,6 @@ declare i32 @bn_rt_console_num_rows()
 declare i64 @bn_rt_str_asc(ptr)
 declare ptr @bn_rt_str_to_lower(ptr)
 declare ptr @bn_rt_str_to_upper(ptr)
-declare ptr @bn_rt_error_message(i32)
 declare ptr @bn_rt_text_int(i64)
 declare ptr @bn_rt_text_uint(i64)
 declare ptr @bn_rt_text_float(double)
@@ -741,7 +740,7 @@ pub(crate) fn lower_bn_rt_call(
             );
             let _ = writeln!(
                 text,
-                "  %execaggp{dest} = insertvalue {{ i1, ptr, i64 }} %execagg{dest}, ptr null, 1"
+                "  %execaggpwrap{dest} = call ptr @bn_rt_error_wrap(i1 %execerr{dest}, ptr null, ptr null)\n  %execaggp{dest} = insertvalue {{ i1, ptr, i64 }} %execagg{dest}, ptr %execaggpwrap{dest}, 1"
             );
             let _ = writeln!(
                 text,
@@ -886,7 +885,7 @@ pub(crate) fn lower_bn_rt_call(
             );
             let _ = writeln!(
                 text,
-                "  %netaggp{dest} = insertvalue {{ i1, ptr, i64 }} %netagg{dest}, ptr %nettagptr{dest}, 1"
+                "  %netaggpwrap{dest} = call ptr @bn_rt_error_wrap(i1 %neterr{dest}, ptr %nettagptr{dest}, ptr null)\n  %netaggp{dest} = insertvalue {{ i1, ptr, i64 }} %netagg{dest}, ptr %netaggpwrap{dest}, 1"
             );
             let _ = writeln!(
                 text,
@@ -1774,7 +1773,7 @@ fn emit_net_result(
     );
     let _ = writeln!(
         text,
-        "  %netagg1{dest} = insertvalue {{ i1, ptr, i64 }} %netagg0{dest}, ptr %netdata{dest}, 1"
+        "  %netagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %neterr{dest}, ptr %netdata{dest}, ptr null)\n  %netagg1{dest} = insertvalue {{ i1, ptr, i64 }} %netagg0{dest}, ptr %netagg1wrap{dest}, 1"
     );
     let _ = writeln!(
         text,

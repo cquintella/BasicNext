@@ -83,10 +83,7 @@ impl Provider for LogProvider {
         if matches!(member.rsplit('.').next(), Some("CONSTRUCTOR" | "$fields")) {
             return Ok(Value::Null);
         }
-        Ok(Value::Error {
-            code: 1,
-            message: "BNLog provider unavailable".into(),
-        })
+        Ok(Value::error(1, "BNLog provider unavailable".into()))
     }
 
     fn allocate(&mut self, class: &str, _span: Span) -> Option<Result<Value, Diagnostic>> {
@@ -189,22 +186,13 @@ impl LogProvider {
                     ));
                 };
                 if key.is_empty() || key.len() > 128 {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "field key exceeds 128 bytes".into(),
-                    });
+                    return Ok(Value::error(1, "field key exceeds 128 bytes".into()));
                 }
                 if fields.contains_key(key.as_ref()) {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "field key already exists".into(),
-                    });
+                    return Ok(Value::error(1, "field key already exists".into()));
                 }
                 if !fields.contains_key(key.as_ref()) && fields.len() >= 64 {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "field limit exceeded".into(),
-                    });
+                    return Ok(Value::error(1, "field limit exceeded".into()));
                 }
                 let value = match method {
                     "SetString" => {
@@ -253,10 +241,7 @@ impl LogProvider {
                         runtime_error(bn_diag::DiagId::NOT_FOUND, "field key was not found", span)
                     })
             }
-            _ => Ok(Value::Error {
-                code: 1,
-                message: "BNLog.Fields operation unavailable".into(),
-            }),
+            _ => Ok(Value::error(1, "BNLog.Fields operation unavailable".into())),
         }
     }
 
@@ -312,23 +297,14 @@ impl LogProvider {
                     ));
                 };
                 if key.is_empty() || key.len() > 128 || value.len() > 4096 {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "entry field exceeds bounds".into(),
-                    });
+                    return Ok(Value::error(1, "entry field exceeds bounds".into()));
                 }
                 if fields.contains_key(key.as_ref()) {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "entry field already exists".into(),
-                    });
+                    return Ok(Value::error(1, "entry field already exists".into()));
                 }
                 let mut next = fields.clone();
                 if next.len() >= 64 {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "entry field limit exceeded".into(),
-                    });
+                    return Ok(Value::error(1, "entry field limit exceeded".into()));
                 }
                 next.insert(key.to_string(), value.to_string());
                 let next_id = self.next_entry;
@@ -336,10 +312,7 @@ impl LogProvider {
                 self.entries.insert(next_id, next);
                 Ok(Value::LogEntry(next_id))
             }
-            _ => Ok(Value::Error {
-                code: 1,
-                message: "BNLog.Entry provider unavailable".into(),
-            }),
+            _ => Ok(Value::error(1, "BNLog.Entry provider unavailable".into())),
         }
     }
 
@@ -362,10 +335,7 @@ impl LogProvider {
                 ));
             };
             if label.is_empty() || label.len() > 128 {
-                return Ok(Value::Error {
-                    code: 1,
-                    message: "logger label exceeds bounds".into(),
-                });
+                return Ok(Value::error(1, "logger label exceeds bounds".into()));
             }
             let id = self.next_logger;
             self.next_logger += 1;
@@ -466,20 +436,14 @@ impl LogProvider {
             return Ok(Value::Null);
         }
         if logger.closed {
-            return Ok(Value::Error {
-                code: 1,
-                message: "logger is closed".into(),
-            });
+            return Ok(Value::error(1, "logger is closed".into()));
         }
         match method {
             "AddNull" => {
                 require_arity(name, arguments, 2, span)?;
                 let minimum = integer(&arguments[1], span)?.0;
                 if !(0..=6).contains(&minimum) || logger.null_transports.len() >= 8 {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "invalid logger transport".into(),
-                    });
+                    return Ok(Value::error(1, "invalid logger transport".into()));
                 }
                 self.loggers
                     .get_mut(id)
@@ -491,10 +455,10 @@ impl LogProvider {
             "AddConsole" => {
                 require_arity(name, arguments, 2, span)?;
                 if core.module().console_import.is_none() {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "HOST.Console capability is required for AddConsole".into(),
-                    });
+                    return Ok(Value::error(
+                        1,
+                        "HOST.Console capability is required for AddConsole".into(),
+                    ));
                 }
                 let minimum = integer(&arguments[1], span)?.0;
                 if !(0..=6).contains(&minimum)
@@ -503,10 +467,7 @@ impl LogProvider {
                         + logger.file_transports.len()
                         >= 8
                 {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "invalid logger console transport".into(),
-                    });
+                    return Ok(Value::error(1, "invalid logger console transport".into()));
                 }
                 self.loggers
                     .get_mut(id)
@@ -520,10 +481,10 @@ impl LogProvider {
                 if core.module().filesystem_import.is_none()
                     || !core.host().filesystem().allows_capability()
                 {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "HOST.FileSystem capability is required for AddFile".into(),
-                    });
+                    return Ok(Value::error(
+                        1,
+                        "HOST.FileSystem capability is required for AddFile".into(),
+                    ));
                 }
                 let Value::String(path) = &arguments[1] else {
                     return Err(type_mismatch(
@@ -546,20 +507,14 @@ impl LogProvider {
                 }
                 let minimum = integer(&arguments[2], span)?.0;
                 if path.is_empty() || path.len() > 4096 || !(0..=6).contains(&minimum) {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "invalid logger file transport".into(),
-                    });
+                    return Ok(Value::error(1, "invalid logger file transport".into()));
                 }
                 if logger.null_transports.len()
                     + logger.console_transports.len()
                     + logger.file_transports.len()
                     >= 8
                 {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "logger transport limit exceeded".into(),
-                    });
+                    return Ok(Value::error(1, "logger transport limit exceeded".into()));
                 }
                 self.loggers
                     .get_mut(id)
@@ -575,10 +530,7 @@ impl LogProvider {
                 require_arity(name, arguments, 4, span)?;
                 let level = integer(&arguments[1], span)?.0;
                 if !(0..=6).contains(&level) {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "invalid log level".into(),
-                    });
+                    return Ok(Value::error(1, "invalid log level".into()));
                 }
                 let Value::String(message) = &arguments[2] else {
                     return Err(type_mismatch(
@@ -589,10 +541,7 @@ impl LogProvider {
                     ));
                 };
                 if message.len() > 16 * 1024 {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "log message exceeds bounds".into(),
-                    });
+                    return Ok(Value::error(1, "log message exceeds bounds".into()));
                 }
                 if !matches!(arguments[3], Value::LogFields(_)) {
                     return Err(type_mismatch(
@@ -627,10 +576,7 @@ impl LogProvider {
                 let json_line = match record.json_line() {
                     Ok(line) => line,
                     Err(error) => {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: error.into(),
-                        });
+                        return Ok(Value::error(1, error.into()));
                     }
                 };
                 let mut first_error = None;
@@ -672,10 +618,10 @@ impl LogProvider {
                     }
                 }
                 if let Some(error) = first_error {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: shared_string(format!("log transport failed: {error}")),
-                    });
+                    return Ok(Value::error(
+                        1,
+                        shared_string(format!("log transport failed: {error}")),
+                    ));
                 }
                 Ok(Value::Null)
             }
@@ -683,10 +629,7 @@ impl LogProvider {
                 require_arity(name, arguments, 2, span)?;
                 let timeout = integer(&arguments[1], span)?.0;
                 if !(1..=60_000).contains(&timeout) {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "timeout exceeds bounds".into(),
-                    });
+                    return Ok(Value::error(1, "timeout exceeds bounds".into()));
                 }
                 let mut first_error = None;
                 for transport in &logger.file_transports {
@@ -718,10 +661,10 @@ impl LogProvider {
                     first_error.get_or_insert_with(|| error.to_string());
                 }
                 if let Some(error) = first_error {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: shared_string(format!("log flush failed: {error}")),
-                    });
+                    return Ok(Value::error(
+                        1,
+                        shared_string(format!("log flush failed: {error}")),
+                    ));
                 }
                 if method == "Close" {
                     self.loggers
@@ -731,10 +674,7 @@ impl LogProvider {
                 }
                 Ok(Value::Null)
             }
-            _ => Ok(Value::Error {
-                code: 1,
-                message: "BNLog.Logger operation unavailable".into(),
-            }),
+            _ => Ok(Value::error(1, "BNLog.Logger operation unavailable".into())),
         }
     }
 }

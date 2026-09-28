@@ -96,7 +96,7 @@ The table below catalogs ownership and lifetime for all symbols declared in `BN_
 | **String Operations** | `bn_rt_str_len`, `bn_rt_str_index_utf8`, `bn_rt_str_eq`, `bn_rt_str_to_lower`, `bn_rt_str_to_upper`, `bn_rt_print_date`, `bn_rt_print_time`, `bn_rt_print_float`, `bn_rt_print_float32` | `ptr` borrowed for call duration | Scalar result; `bn_rt_str_index_utf8` packs one NUL-terminated scalar in native byte order | Pure operations on immutable string buffers; the LLVM caller materializes indexed characters in function-local storage |
 | **Scalar Text (`AS STRING`)** | `bn_rt_text_int(i64)`, `bn_rt_text_uint(i64)`, `bn_rt_text_float(double)`, `bn_rt_text_float32(double)` | Scalars copied; narrower integers sign- or zero-extended to 64 bits; `FLOAT32` widened to `double` | Owned NUL-terminated UTF-8 string, same allocation as `bn_rt_str_to_upper` | Text is `bn_types::text`, shared with the interpreter and `PRINT`; `BOOLEAN` selects the `TRUE`/`FALSE` constants without a call |
 | **File System** | `bn_rt_file_open`, `bn_rt_file_close`, `bn_rt_file_release`, `bn_rt_file_read_all`, `bn_rt_file_read_line`, `bn_rt_file_write`, `bn_rt_file_write_line`, `bn_rt_file_read_bytes`, `bn_rt_file_write_bytes`, `bn_rt_fs_exists`, `bn_rt_fs_delete_file`, `bn_rt_file_string_free` | Path/text `ptr` borrowed for the call; byte buffers borrowed with an explicit length; handles `u64` copied | Status `u32` (0 OK, 1 invalid, 2 error, 3 capability denied, 4 `EOF`); out pointers receive the handle, an owned string, a byte count, or a flag | Semantics are `bn_rt::file`, shared with the interpreter. `Close` keeps the handle as a closed file; `RELEASE` calls `bn_rt_file_release` |
-| **HOST `Error` message** | `bn_rt_error_message(status)` | Status `i32` copied | Null for status 0 (no allocation); otherwise the owned message the failing call recorded on this thread, empty if none | Emitted HOST results build `Error(Code 1, Message)` from it, as the interpreter does |
+| **`Error` records** | `bn_rt_error_take(failed, operation)`, `bn_rt_error_wrap(failed, value, operation)`, `bn_rt_error_field(error, field)` | Status/flag copied; `operation` and `value` borrowed | A native `Error` is `{ i1 true, ptr, i64 code }` whose pointer is a runtime record (`Message`, `Operation`, `Cause`): `take` builds it from the failing call's recorded message and cause, `wrap` from a message the emitted code holds (a record passes through), and `field` reads 0 `Message`, 1 `Operation`, 2 `Cause`, treating a non-record pointer as a plain message | Records live until exit; `bn_rt` keeps their addresses so a field read never misreads a plain string |
 
 The layout assertions cover the release slice on every supported target by
 checking field offsets and alignment rather than baking a host pointer width
@@ -481,5 +481,7 @@ bn_rt_crypto_sha512
 bn_rt_crypto_sign
 bn_rt_crypto_slice
 bn_rt_crypto_verify
-bn_rt_error_message
+bn_rt_error_field
+bn_rt_error_take
+bn_rt_error_wrap
 ```

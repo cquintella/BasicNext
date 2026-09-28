@@ -58,8 +58,8 @@ pub use dataframe::{
 };
 pub use dataframe_abi::*;
 pub use dispatch_abi::*;
-pub use error_abi::bn_rt_error_message;
 pub(crate) use error_abi::set_error;
+pub use error_abi::{bn_rt_error_field, bn_rt_error_take, bn_rt_error_wrap};
 pub use exec::*;
 pub use file_abi::*;
 pub use net::{

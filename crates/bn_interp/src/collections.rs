@@ -11,10 +11,7 @@ use super::{Value, integer, type_mismatch};
 
 #[must_use]
 pub fn dataframe_index_error() -> Value {
-    Value::Error {
-        code: 1,
-        message: "DataFrame index out of bounds".into(),
-    }
+    Value::error(1, "DataFrame index out of bounds".into())
 }
 
 #[must_use]

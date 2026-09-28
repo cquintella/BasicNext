@@ -4,33 +4,7 @@ use super::*;
 impl Analyzer {
     #[allow(clippy::too_many_lines)]
     pub(crate) fn declare_standard_members(&mut self) {
-        self.members.insert(
-            "Error".into(),
-            HashMap::from([
-                (
-                    "Code".into(),
-                    Member {
-                        ty: Type::Integer(IntegerType::Int32),
-                        is_static: false,
-                        visibility: MemberVisibility::Public,
-                        overrides: false,
-                        span: default_span(),
-                        mutable: false,
-                    },
-                ),
-                (
-                    "Message".into(),
-                    Member {
-                        ty: Type::String,
-                        is_static: false,
-                        visibility: MemberVisibility::Public,
-                        overrides: false,
-                        span: default_span(),
-                        mutable: false,
-                    },
-                ),
-            ]),
-        );
+        // `Error` members come from the HOST catalog (`host_spec`) below.
         for (namespace, result) in [
             ("Date", Type::Named("DATE".into())),
             ("Time", Type::Named("TIME".into())),

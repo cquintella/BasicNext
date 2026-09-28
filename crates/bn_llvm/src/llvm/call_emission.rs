@@ -257,7 +257,7 @@ pub(crate) fn lower_call_instruction(
             );
             let _ = writeln!(
                 text,
-                "  %csvagg1{dest} = insertvalue {{ i1, ptr, i64 }} %csvagg0{dest}, ptr %csvmsg{dest}, 1"
+                "  %csvagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %csverr{dest}, ptr %csvmsg{dest}, ptr null)\n  %csvagg1{dest} = insertvalue {{ i1, ptr, i64 }} %csvagg0{dest}, ptr %csvagg1wrap{dest}, 1"
             );
             let _ = writeln!(
                 text,
@@ -1042,7 +1042,7 @@ pub(crate) fn lower_call_instruction(
             );
             let _ = writeln!(
                 text,
-                "  %ascagg1{dest} = insertvalue {{ i1, ptr, i64 }} %ascagg0{dest}, ptr %ascmessage{dest}, 1"
+                "  %ascagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %ascerror{dest}, ptr %ascmessage{dest}, ptr null)\n  %ascagg1{dest} = insertvalue {{ i1, ptr, i64 }} %ascagg0{dest}, ptr %ascagg1wrap{dest}, 1"
             );
             let _ = writeln!(
                 text,
@@ -1084,7 +1084,7 @@ pub(crate) fn lower_call_instruction(
             );
             let _ = writeln!(
                 text,
-                "  %charagg1{dest} = insertvalue {{ i1, ptr, i64 }} %charagg0{dest}, ptr %charvalue{dest}, 1"
+                "  %charagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %charerror{dest}, ptr %charvalue{dest}, ptr null)\n  %charagg1{dest} = insertvalue {{ i1, ptr, i64 }} %charagg0{dest}, ptr %charagg1wrap{dest}, 1"
             );
             let _ = writeln!(
                 text,
@@ -1246,7 +1246,7 @@ fn emit_bnjson_scalar_result(text: &mut String, dest: u32, payload: &str) {
     );
     let _ = writeln!(
         text,
-        "  %jsonaggp{dest} = insertvalue {{ i1, ptr, i64 }} %jsonagg{dest}, ptr null, 1"
+        "  %jsonaggpwrap{dest} = call ptr @bn_rt_error_wrap(i1 %jsonerr{dest}, ptr null, ptr null)\n  %jsonaggp{dest} = insertvalue {{ i1, ptr, i64 }} %jsonagg{dest}, ptr %jsonaggpwrap{dest}, 1"
     );
     let _ = writeln!(
         text,
@@ -1265,7 +1265,7 @@ fn emit_bnjson_string_result(text: &mut String, dest: u32) {
     );
     let _ = writeln!(
         text,
-        "  %jsonaggp{dest} = insertvalue {{ i1, ptr, i64 }} %jsonagg{dest}, ptr %jsontext{dest}, 1"
+        "  %jsonaggpwrap{dest} = call ptr @bn_rt_error_wrap(i1 %jsonerr{dest}, ptr %jsontext{dest}, ptr null)\n  %jsonaggp{dest} = insertvalue {{ i1, ptr, i64 }} %jsonagg{dest}, ptr %jsonaggpwrap{dest}, 1"
     );
     let _ = writeln!(
         text,

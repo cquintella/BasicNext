@@ -142,34 +142,22 @@ impl DataProvider {
                     || separator[0] == '\n'
                     || separator[0] == '\r'
                 {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "invalid CSV separator".into(),
-                    });
+                    return Ok(Value::error(1, "invalid CSV separator".into()));
                 }
                 let text =
                     match core.call_function("FS.File.ReadAll", arguments[..1].to_vec(), span)? {
                         Value::String(text) => text,
                         Value::Error { message, .. } => {
-                            return Ok(Value::Error {
-                                code: 1,
-                                message: shared_string(message),
-                            });
+                            return Ok(Value::error(1, shared_string(message)));
                         }
                         _ => {
-                            return Ok(Value::Error {
-                                code: 1,
-                                message: "CSV read failed".into(),
-                            });
+                            return Ok(Value::error(1, "CSV read failed".into()));
                         }
                     };
                 let rows = match core.host().data_provider().read_csv(&text, separator[0]) {
                     Ok(rows) => rows,
                     Err(message) => {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: shared_string(message),
-                        });
+                        return Ok(Value::error(1, shared_string(message)));
                     }
                 };
                 let frame = match bn_rt::frame_from_csv_rows(rows, has_header, |value| {
@@ -177,10 +165,7 @@ impl DataProvider {
                 }) {
                     Ok(frame) => frame,
                     Err(message) => {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: shared_string(message),
-                        });
+                        return Ok(Value::error(1, shared_string(message)));
                     }
                 };
                 let id = self.next;
@@ -228,10 +213,7 @@ impl DataProvider {
                     || separator[0] == '\n'
                     || separator[0] == '\r'
                 {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "invalid CSV separator".into(),
-                    });
+                    return Ok(Value::error(1, "invalid CSV separator".into()));
                 }
                 let quote = |value: &Value| {
                     let text = render(value);
@@ -288,7 +270,7 @@ impl DataProvider {
                     vec![arguments[0].clone(), Value::String(shared_string(body))],
                     span,
                 )? {
-                    Value::Error { code, message } => Ok(Value::Error { code, message }),
+                    error @ Value::Error { .. } => Ok(error),
                     _ => Ok(Value::Null),
                 }
             }
@@ -348,17 +330,11 @@ impl DataProvider {
                 require_arity(name, arguments, 2, span)?;
                 let (index, _) = integer(&arguments[1], span)?;
                 let Ok(index) = usize::try_from(index) else {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "column index out of bounds".into(),
-                    });
+                    return Ok(Value::error(1, "column index out of bounds".into()));
                 };
                 match column_name(frame, index) {
                     Ok(name) => Ok(Value::String(shared_string(name))),
-                    Err(message) => Ok(Value::Error {
-                        code: 1,
-                        message: shared_string(message),
-                    }),
+                    Err(message) => Ok(Value::error(1, shared_string(message))),
                 }
             }
             "SetLabel" => {
@@ -381,10 +357,7 @@ impl DataProvider {
                 };
                 match set_column_label(frame, old_label, new_label) {
                     Ok(()) => Ok(Value::Null),
-                    Err(message) => Ok(Value::Error {
-                        code: 1,
-                        message: shared_string(message),
-                    }),
+                    Err(message) => Ok(Value::error(1, shared_string(message))),
                 }
             }
             "Transpose" => {
@@ -408,18 +381,12 @@ impl DataProvider {
                     ));
                 };
                 let Ok(row) = usize::try_from(row) else {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: "row index out of bounds".into(),
-                    });
+                    return Ok(Value::error(1, "row index out of bounds".into()));
                 };
                 let value = match get_dataframe_cell(frame, column_name, row) {
                     Ok(value) => value.clone(),
                     Err(message) => {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: shared_string(message),
-                        });
+                        return Ok(Value::error(1, shared_string(message)));
                     }
                 };
                 match method {
@@ -435,10 +402,7 @@ impl DataProvider {
                     "GetBoolean" if matches!(value, Value::Boolean(_) | Value::NotAvailable) => {
                         Ok(value)
                     }
-                    _ => Ok(Value::Error {
-                        code: 1,
-                        message: "column type mismatch".into(),
-                    }),
+                    _ => Ok(Value::error(1, "column type mismatch".into())),
                 }
             }
             "ConvertToInteger" | "ConvertToFloat" => {
@@ -472,14 +436,8 @@ impl DataProvider {
                 };
                 match convert_dataframe_column(frame, column_name, converter) {
                     Ok(()) => Ok(Value::Null),
-                    Err("column not found") => Ok(Value::Error {
-                        code: 1,
-                        message: "column not found".into(),
-                    }),
-                    Err(_) => Ok(Value::Error {
-                        code: 1,
-                        message: "column conversion failed".into(),
-                    }),
+                    Err("column not found") => Ok(Value::error(1, "column not found".into())),
+                    Err(_) => Ok(Value::error(1, "column conversion failed".into())),
                 }
             }
             "ZScore" => {
@@ -510,10 +468,7 @@ impl DataProvider {
                     {
                         Ok(frame) => frame,
                         Err(message) => {
-                            return Ok(Value::Error {
-                                code: 1,
-                                message: shared_string(message),
-                            });
+                            return Ok(Value::error(1, shared_string(message)));
                         }
                     };
                 let new_id = self.next;
@@ -541,10 +496,7 @@ impl DataProvider {
                 match dataframe_reduce_column(frame, column_name, method, to_f64) {
                     Ok(Reduction::Float(val)) => Ok(Value::Float(val, FloatType::Float64)),
                     Ok(Reduction::Na) => Ok(Value::NotAvailable),
-                    Err(message) => Ok(Value::Error {
-                        code: 1,
-                        message: message.into(),
-                    }),
+                    Err(message) => Ok(Value::error(1, message.into())),
                 }
             }
             "CopyIntegerColumn" | "CopyFloatColumn" => {
@@ -578,22 +530,13 @@ impl DataProvider {
                 let values = match copy_dataframe_column(frame, column_name, target_len, adapter) {
                     Ok(values) => values,
                     Err("column not found") => {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: "column not found".into(),
-                        });
+                        return Ok(Value::error(1, "column not found".into()));
                     }
                     Err("destination length mismatch") => {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: "destination length mismatch".into(),
-                        });
+                        return Ok(Value::error(1, "destination length mismatch".into()));
                     }
                     Err(_) => {
-                        return Ok(Value::Error {
-                            code: 1,
-                            message: "column type or NA mismatch".into(),
-                        });
+                        return Ok(Value::error(1, "column type or NA mismatch".into()));
                     }
                 };
                 for (index, stored) in values.into_iter().enumerate() {
@@ -645,10 +588,7 @@ impl DataProvider {
                 .map(|value| usize::try_from(value).ok())
                 .collect::<Option<Vec<_>>>();
             let Some(values) = values else {
-                return Ok(Value::Error {
-                    code: 1,
-                    message: "negative slice bound".into(),
-                });
+                return Ok(Value::error(1, "negative slice bound".into()));
             };
             bn_rt::slice_dataframe(frame, values[0], values[1], values[2], values[3])
         };
@@ -658,10 +598,7 @@ impl DataProvider {
                 return Ok(dataframe_index_error());
             }
             Err(message) => {
-                return Ok(Value::Error {
-                    code: 1,
-                    message: shared_string(message),
-                });
+                return Ok(Value::error(1, shared_string(message)));
             }
         };
         let new_id = self.next;
@@ -733,10 +670,7 @@ impl DataProvider {
         ) {
             Ok(frame) => frame,
             Err(message) => {
-                return Ok(Value::Error {
-                    code: 1,
-                    message: shared_string(message),
-                });
+                return Ok(Value::error(1, shared_string(message)));
             }
         };
         let new_id = self.next;
@@ -783,10 +717,7 @@ impl DataProvider {
             }) {
                 Ok(frame) => frame,
                 Err(message) => {
-                    return Ok(Value::Error {
-                        code: 1,
-                        message: shared_string(message),
-                    });
+                    return Ok(Value::error(1, shared_string(message)));
                 }
             };
             let new_id = self.next;
@@ -797,10 +728,7 @@ impl DataProvider {
         let columns = match append_columns(left, right) {
             Ok(frame) => frame,
             Err(message) => {
-                return Ok(Value::Error {
-                    code: 1,
-                    message: shared_string(message),
-                });
+                return Ok(Value::error(1, shared_string(message)));
             }
         };
         let new_id = self.next;
@@ -857,17 +785,11 @@ impl DataProvider {
             _ => false,
         });
         if !type_ok {
-            return Ok(Value::Error {
-                code: 1,
-                message: "column type mismatch".into(),
-            });
+            return Ok(Value::error(1, "column type mismatch".into()));
         }
         match add_dataframe_column(frame, column_name.to_string(), values) {
             Ok(()) => Ok(Value::Null),
-            Err(message) => Ok(Value::Error {
-                code: 1,
-                message: shared_string(message),
-            }),
+            Err(message) => Ok(Value::error(1, shared_string(message))),
         }
     }
 

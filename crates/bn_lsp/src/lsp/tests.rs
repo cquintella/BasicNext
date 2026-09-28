@@ -141,6 +141,24 @@ fn completion_lists_console_members_on_an_import_alias() {
     assert!(!items.contains(&"Beep".into()), "{items:?}");
 }
 
+/// Member completion comes from the frontend's HOST catalog, so it lists what
+/// type checking accepts (`TCPStream` members were missing from the old
+/// hand-written table).
+#[test]
+fn completion_lists_host_members_from_the_frontend_catalog() {
+    let source =
+        "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nFS.File.Read\nEND FUNCTION\n";
+    let items = labels(source, 2, 12);
+    for member in ["ReadAll", "ReadBytes", "ReadLine"] {
+        assert!(items.contains(&member.into()), "{items:?}");
+    }
+    assert!(!items.contains(&"Write".into()), "{items:?}");
+    let source =
+        "IMPORT HOST.Net AS Net\nFUNCTION Start() AS VOID\nNet.TCPStream.Set\nEND FUNCTION\n";
+    let items = labels(source, 2, 17);
+    assert!(items.contains(&"SetTimeouts".into()), "{items:?}");
+}
+
 #[test]
 fn completion_lists_local_functions() {
     let source = "FUNCTION Add(a AS INTEGER, b AS INTEGER) AS INTEGER\nRETURN a + b\nEND FUNCTION\nFUNCTION Start() AS VOID\nAd\nEND FUNCTION\n";

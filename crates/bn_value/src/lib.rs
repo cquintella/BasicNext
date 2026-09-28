@@ -110,7 +110,14 @@ pub enum Value {
     Null,
     NotAvailable,
     EndOfFile,
-    Error { code: i32, message: SharedString },
+    /// A BN `Error` (language/0.6/error.md). Build with [`Value::error`].
+    /// `Operation` and `Cause` sit behind one pointer to keep `Value` within
+    /// its size budget.
+    Error {
+        code: i32,
+        message: SharedString,
+        detail: Option<Arc<ErrorDetail>>,
+    },
     HostConsole,
     HostArgs,
     TcpStream(u64),
@@ -129,11 +136,55 @@ pub enum Value {
     DispatchMutex(u64),
     File(u64),
     DataFrame(u64),
-    Handle { type_name: SharedString },
-    Record { record: RecordValue },
-    Object { handle: Handle, class: SharedString },
-    Pointer { handle: Handle },
+    Handle {
+        type_name: SharedString,
+    },
+    Record {
+        record: RecordValue,
+    },
+    Object {
+        handle: Handle,
+        class: SharedString,
+    },
+    Pointer {
+        handle: Handle,
+    },
     Date(i32),
     Time(u32),
     TimeZone(SharedString),
+}
+
+/// The `Operation` and `Cause` of an `Error`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ErrorDetail {
+    pub operation: SharedString,
+    pub cause: SharedString,
+}
+
+impl Value {
+    /// An `Error` with `code` and `message`. `Operation` and `Cause` stay
+    /// empty until the producer's domain supplies them (bucket 0.6.2b R4-R8).
+    #[must_use]
+    pub const fn error(code: i32, message: SharedString) -> Self {
+        Self::Error {
+            code,
+            message,
+            detail: None,
+        }
+    }
+}
+
+/// `Error.Operation` and `Error.Cause` of an error's detail (empty without).
+#[must_use]
+pub fn error_detail_field(detail: Option<&ErrorDetail>, cause: bool) -> SharedString {
+    detail.map_or_else(
+        || SharedString::from(""),
+        |detail| {
+            if cause {
+                detail.cause.clone()
+            } else {
+                detail.operation.clone()
+            }
+        },
+    )
 }

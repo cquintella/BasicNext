@@ -45,7 +45,7 @@ pub(crate) fn lower_bndata_convert(
     );
     let _ = writeln!(
         text,
-        "  %dfconvagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfconvagg0{dest}, ptr %dfconvmsg{dest}, 1"
+        "  %dfconvagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %dfconverr{dest}, ptr %dfconvmsg{dest}, ptr null)\n  %dfconvagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfconvagg0{dest}, ptr %dfconvagg1wrap{dest}, 1"
     );
     let _ = writeln!(
         text,
@@ -96,7 +96,7 @@ pub(crate) fn lower_bndata_slice(
     );
     let _ = writeln!(
         text,
-        "  %dfsliceagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfsliceagg0{dest}, ptr @.bn_dataframe_error, 1"
+        "  %dfsliceagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %dfslicerr{dest}, ptr @.bn_dataframe_error, ptr null)\n  %dfsliceagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfsliceagg0{dest}, ptr %dfsliceagg1wrap{dest}, 1"
     );
     let _ = writeln!(
         text,

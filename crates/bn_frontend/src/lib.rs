@@ -5,7 +5,7 @@ pub use bn_types as types;
 pub mod ast;
 pub mod frontend_session;
 mod host_spec;
-pub use host_spec::host_operation_names;
+pub use host_spec::{host_member_names, host_operation_names};
 pub mod keyword_registry;
 pub mod lexer;
 pub mod module_graph;
