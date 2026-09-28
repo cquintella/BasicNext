@@ -67,9 +67,13 @@ impl Builder<'_> {
                     .map(type_test_name)
                     .ok_or_else(|| ir_error("invalid IS type test", expression.span))?;
                 // HOST types are tested under the canonical name semantic
-                // analysis resolved (`HOST.Net.Address` for `N.Address`).
+                // analysis resolved (`HOST.Net.Address` for `N.Address`,
+                // `FS.File` for `Disk.File`).
                 match self.model.expression(expression.span) {
-                    Some(resolved) if resolved.type_name.starts_with("HOST.") => {
+                    Some(resolved)
+                        if resolved.type_name.starts_with("HOST.")
+                            || resolved.type_name == "FS.File" =>
+                    {
                         resolved.type_name.clone()
                     }
                     _ => written,

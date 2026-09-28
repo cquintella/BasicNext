@@ -1,0 +1,34 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// HOST.FileSystem under an alias other than FS: its file type is the same
+// type whatever the alias (`Disk.File` is what `Disk.Open` returns). The
+// file is created, read, and deleted in the working directory.
+IMPORT HOST.FileSystem AS Disk
+
+FUNCTION FirstLine(file AS Disk.File) AS STRING
+    LET line AS STRING OR EOF OR Error = file.ReadLine()
+    IF line IS STRING THEN
+        RETURN line
+    END IF
+    RETURN "?"
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    LET path AS STRING = "fs-alias-fixture.txt"
+    LET output AS Disk.File OR Error = Disk.Open(path, Disk.WRITE)
+    IF output IS Disk.File THEN
+        output.WriteLine("hello")
+        output.Close()
+    END IF
+    LET input AS Disk.File OR Error = Disk.Open(path, Disk.READ)
+    IF input IS Disk.File THEN
+        PRINT input IS Disk.File, FirstLine(input)
+        input.Close()
+    END IF
+    LET removed AS VOID OR Error = Disk.DeleteFile(path)
+    PRINT removed IS Error
+    RETURN 0
+END FUNCTION

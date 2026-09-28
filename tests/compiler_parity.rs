@@ -489,3 +489,18 @@ fn never_opened_files_match_the_interpreter() {
     );
     assert_native_parity(&path, None);
 }
+
+/// `IMPORT HOST.FileSystem AS Disk`: `Disk.File` is the type `Disk.Open`
+/// returns (it was "Expected Disk.File OR Error, but found FS.File OR Error"
+/// on both backends), in bindings, `IS` tests, and parameters.
+#[test]
+fn filesystem_types_do_not_depend_on_the_import_alias() {
+    let path = workspace_root().join("tests/host/fs_alias.bn");
+    let output = interpret(&path, None);
+    assert_success(&output, "bni run");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "TRUE hello\nFALSE\n"
+    );
+    assert_native_parity(&path, None);
+}

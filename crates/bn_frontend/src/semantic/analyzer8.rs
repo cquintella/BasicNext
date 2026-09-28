@@ -36,7 +36,9 @@ impl Analyzer {
                         .get(alias)
                         .is_some_and(|symbol| symbol.ty == Type::HostFileSystem)
                 {
-                    return Type::Named(name);
+                    // The canonical file type whatever the alias (`AS Disk`
+                    // → `Disk.File`), as HOST.Net types are canonical.
+                    return Type::Named("FS.File".into());
                 }
                 if let Some((alias, exported_name)) = name.split_once('.')
                     && let Some(Type::Module(module)) =
