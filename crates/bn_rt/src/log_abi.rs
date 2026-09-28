@@ -305,15 +305,7 @@ pub extern "C" fn bn_rt_log_logger_log(
     if logger.closed {
         return BN_LOG_CLOSED;
     }
-    let mut fields = logger.context;
-    fields.extend(provided);
-    let record = Record {
-        timestamp: crate::format_rfc3339(crate::timestamp_ms()),
-        label: logger.label,
-        level,
-        message,
-        fields,
-    };
+    let record = Record::now(&logger.label, level, &message, &logger.context, &provided);
     let Ok(line) = record.json_line() else {
         return BN_LOG_LIMIT_EXCEEDED;
     };

@@ -56,6 +56,32 @@ pub struct Record {
 }
 
 impl Record {
+    /// A record made now: the logger's context fields with the call's fields
+    /// over them, stamped with the wall clock in RFC 3339. Both backends
+    /// build `Logger.Log` records here.
+    #[must_use]
+    pub fn now<'a>(
+        label: &str,
+        level: Level,
+        message: &str,
+        context: &BTreeMap<String, String>,
+        provided: impl IntoIterator<Item = (&'a String, &'a String)>,
+    ) -> Self {
+        let mut fields = context.clone();
+        fields.extend(
+            provided
+                .into_iter()
+                .map(|(key, value)| (key.clone(), value.clone())),
+        );
+        Self {
+            timestamp: crate::format_rfc3339(crate::timestamp_ms()),
+            label: label.to_owned(),
+            level,
+            message: message.to_owned(),
+            fields,
+        }
+    }
+
     /// # Errors
     ///
     /// Returns an error when the bounded output exceeds the runtime limit.
@@ -218,6 +244,22 @@ fn strip_query(value: &str) -> String {
 mod tests {
     use super::{Level, Record};
     use std::collections::BTreeMap;
+
+    /// `Logger.Log` on both backends: the call's fields override the
+    /// logger's context, and the timestamp is RFC 3339 UTC.
+    #[test]
+    fn records_merge_call_fields_over_context() {
+        let context = BTreeMap::from([
+            ("service".to_owned(), "api".to_owned()),
+            ("route".to_owned(), "/".to_owned()),
+        ]);
+        let provided = BTreeMap::from([("route".to_owned(), "/users".to_owned())]);
+        let record = Record::now("web", Level::Info, "hit", &context, &provided);
+        assert_eq!(record.fields["service"], "api");
+        assert_eq!(record.fields["route"], "/users");
+        assert_eq!(record.label, "web");
+        assert!(record.timestamp.ends_with('Z') && record.timestamp.contains('T'));
+    }
 
     #[test]
     fn json_redacts_sensitive_fields_and_escapes_controls() {

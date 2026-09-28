@@ -554,7 +554,6 @@ impl LogProvider {
                 let Value::LogFields(fields_id) = arguments[3] else {
                     unreachable!("fields type was validated above")
                 };
-                let mut fields = logger.context.clone();
                 let provided = self.fields.get(&fields_id).ok_or_else(|| {
                     runtime_error(
                         bn_diag::DiagId::USE_AFTER_RELEASE,
@@ -562,17 +561,16 @@ impl LogProvider {
                         span,
                     )
                 })?;
-                fields.extend(provided.clone());
                 let Some(level) = crate::log::Level::from_i128(level) else {
                     unreachable!("level was validated above")
                 };
-                let record = crate::log::Record {
-                    timestamp: bn_rt::format_rfc3339(bn_rt::timestamp_ms()),
-                    label: logger.label.clone(),
+                let record = crate::log::Record::now(
+                    &logger.label,
                     level,
-                    message: message.to_string(),
-                    fields,
-                };
+                    message,
+                    &logger.context,
+                    provided,
+                );
                 let json_line = match record.json_line() {
                     Ok(line) => line,
                     Err(error) => {
