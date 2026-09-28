@@ -4,7 +4,7 @@ IMPORT BNLog AS Log
 IMPORT HOST.FileSystem AS FS
 
 FUNCTION Usage() AS VOID
-    PRINT "Usage: bn run examples/socket.bn -- --tcp|--udp --server|--client [--ipv6] [--log filename]"
+    PRINT "Usage: bni run examples/socket.bn -- --tcp|--udp --server|--client [--ipv6] [--log filename]"
 END FUNCTION
 
 FUNCTION LogConnection(path AS STRING, protocol AS STRING, peer AS Net.Endpoint) AS INTEGER
@@ -66,9 +66,10 @@ FUNCTION TCPServer(endpoint AS Net.Endpoint, logPath AS STRING) AS INTEGER
         PRINT "listen failed: ", listener.Message
         RETURN 1
     END IF
+    PRINT "listening"
     LET stream AS Net.TCPStream OR Error = listener.Accept(5000)
     IF stream IS Error THEN
-        PRINT "accept failed"
+        PRINT "accept failed:", stream
         listener.Close()
         RETURN 1
     END IF
@@ -100,7 +101,7 @@ END FUNCTION
 FUNCTION TCPClient(endpoint AS Net.Endpoint) AS INTEGER
     LET stream AS Net.TCPStream OR Error = Net.TCPConnect(endpoint, 5000)
     IF stream IS Error THEN
-        PRINT "connect failed"
+        PRINT "connect failed:", stream
         RETURN 1
     END IF
     LET written AS BOOLEAN = WritePing(stream, FALSE)
@@ -120,9 +121,10 @@ FUNCTION UDPServer(endpoint AS Net.Endpoint, logPath AS STRING) AS INTEGER
         PRINT "bind failed: ", socket.Message
         RETURN 1
     END IF
+    PRINT "listening"
     LET packet AS Net.UDPPacket OR Error = socket.Receive(4, 5000)
     IF packet IS Error THEN
-        PRINT "receive failed"
+        PRINT "receive failed:", packet
         socket.Close()
         RETURN 1
     END IF
@@ -155,7 +157,7 @@ END FUNCTION
 FUNCTION UDPClient(server AS Net.Endpoint, local AS Net.Endpoint) AS INTEGER
     LET socket AS Net.UDPSocket OR Error = Net.UDPBind(local)
     IF socket IS Error THEN
-        PRINT "bind failed"
+        PRINT "bind failed:", socket
         RETURN 1
     END IF
     LET request AS POINTER TO BYTE[] = NEW BYTE[4]
@@ -166,7 +168,7 @@ FUNCTION UDPClient(server AS Net.Endpoint, local AS Net.Endpoint) AS INTEGER
     LET sent AS INTEGER OR Error = socket.SendTo(server, request, 4)
     LET packet AS Net.UDPPacket OR Error = socket.Receive(4, 5000)
     IF packet IS Error THEN
-        PRINT "receive failed"
+        PRINT "receive failed:", packet
         RELEASE request
         socket.Close()
         RETURN 1

@@ -42,7 +42,9 @@ FUNCTION Start() AS INTEGER
         PRINT read.Code = Net.CLOSED, read.Operation, read.Cause
     END IF
     listener.Close()
-    LET refused AS Net.TCPStream OR Error = Net.TCPConnect(bound, 2000)
+    // Windows retries the SYN for ~2 s before reporting a refusal on
+    // loopback; a shorter timeout would report Net.TIMEOUT there.
+    LET refused AS Net.TCPStream OR Error = Net.TCPConnect(bound, 10000)
     IF refused IS Error THEN
         PRINT refused.Code = Net.CONNECTION_REFUSED, refused.Operation
     END IF

@@ -154,14 +154,21 @@ fn unused_import_warnings(
         .iter()
         .filter_map(|expression| expression.symbol_id)
         .collect::<HashSet<_>>();
+    let imports_bnlog = program
+        .items
+        .iter()
+        .any(|item| matches!(item, Item::Import { path, .. } if *path == ["BNLog"]));
     program
         .items
         .iter()
         .filter_map(|item| {
-            let Item::Import { alias, span, .. } = item else {
+            let Item::Import {
+                path, alias, span, ..
+            } = item
+            else {
                 return None;
             };
-            if type_alias_uses.contains(alias) {
+            if type_alias_uses.contains(alias) || (imports_bnlog && grants_bnlog(path)) {
                 return None;
             }
             let symbol = model
@@ -182,6 +189,16 @@ fn unused_import_warnings(
             })
         })
         .collect()
+}
+
+/// `BNLog` writes through capabilities the program imports (bnlog.md:
+/// "Programs import every module or host capability they use directly"):
+/// `AddFile` needs `HOST.FileSystem`, `AddConsole` needs `HOST.Console`
+/// (`bn_lib_log`). Such an import is used even with no member access, and
+/// removing it would break the program.
+fn grants_bnlog(path: &[String]) -> bool {
+    matches!(path, [host, capability] if host == "HOST"
+        && matches!(capability.as_str(), "FileSystem" | "Console"))
 }
 
 fn unused_binding_warnings(program: &Program, model: &SemanticModel) -> Vec<Diagnostic> {

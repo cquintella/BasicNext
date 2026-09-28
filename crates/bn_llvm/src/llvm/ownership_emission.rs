@@ -398,6 +398,19 @@ pub(crate) fn lower_ownership_emission(
                 } else {
                     let _ = writeln!(text, "  call void @bn_arc_retain(ptr {value_op})");
                 }
+            } else if is_region_type(ty) {
+                emit_region_field_assign(
+                    text,
+                    module,
+                    function,
+                    analysis,
+                    symbols,
+                    &format!("%fieldptr{}", value.0),
+                    *value,
+                    &value_op,
+                    ty,
+                    state,
+                );
             }
             let _ = writeln!(
                 text,

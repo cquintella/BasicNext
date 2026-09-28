@@ -1074,8 +1074,8 @@ mod helpers;
 #[path = "llvm/platform_stdio.rs"]
 mod platform_stdio;
 use arc::{
-    REGION_HEADER_BYTES, destructor_symbol, emit_destroy_if_last, emit_region_base, is_class_type,
-    is_region_type,
+    REGION_HEADER_BYTES, destructor_symbol, emit_destroy_if_last, emit_region_base,
+    emit_region_field_assign, is_class_type, is_region_type,
 };
 use helpers::{
     bncrypto_method, bnjson_member, carries_bncrypto_bytes, carries_bnjson, class_init_flag,

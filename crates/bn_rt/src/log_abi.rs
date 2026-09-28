@@ -308,7 +308,7 @@ pub extern "C" fn bn_rt_log_logger_log(
     let mut fields = logger.context;
     fields.extend(provided);
     let record = Record {
-        timestamp: format!("{:?}", std::time::SystemTime::now()),
+        timestamp: crate::format_rfc3339(crate::timestamp_ms()),
         label: logger.label,
         level,
         message,

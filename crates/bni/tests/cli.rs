@@ -14,10 +14,8 @@
 use std::{
     collections::HashMap,
     fs,
-    io::Write,
+    io::{BufRead, Read, Write},
     process::{Command, Stdio},
-    thread,
-    time::Duration,
 };
 
 const WORKSPACE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
@@ -716,12 +714,14 @@ fn warning_analysis_emits_unused_import() {
 }
 
 /// An import used only in types is used: qualified (`NEW FS.File()`,
-/// `AS Net.Address`, `AS Json.Json`) or an imported class by its alias
-/// (`IMPORT Shapes.Circle AS C` … `AS C = NEW C()`).
+/// `AS Net.Address`, `AS Json.Json`), an imported class by its alias
+/// (`IMPORT Shapes.Circle AS C` … `AS C = NEW C()`), or a capability `BNLog`
+/// writes through (removing it breaks `AddFile` / `AddConsole`).
 #[test]
 fn imports_used_only_in_types_are_not_reported_unused() {
     for path in [
         "tests/grammar/valid/import-used-in-types.bn",
+        "tests/grammar/valid/import-granted-to-bnlog.bn",
         "tests/modules/qualified-export/main.bn",
     ] {
         let output = bni()
@@ -769,7 +769,8 @@ fn socket_example_help_exits_zero() {
 fn socket_examples_exchange_tcp_and_udp_messages() {
     for protocol in ["--tcp", "--udp"] {
         for family in [None, Some("--ipv6")] {
-            let log = format!("socket-{protocol}-{family:?}.jsonl");
+            // `{family:?}` would put quotes in the name, invalid on Windows.
+            let log = format!("socket{protocol}{}.jsonl", family.unwrap_or("--ipv4"));
             let _ = fs::remove_file(&log);
             let mut server_command = bni();
             server_command.args([
@@ -787,17 +788,29 @@ fn socket_examples_exchange_tcp_and_udp_messages() {
                 server_command.arg(family);
                 client_command.arg(family);
             }
-            let server_process = server_command
+            let mut server_process = server_command
                 .stdout(Stdio::piped())
                 .spawn()
                 .expect("start server example");
-            // A debug `bn run` takes ~85 ms to reach the listen call; 100 ms
-            // raced it and failed under load. UDP has nothing to probe, so wait.
-            thread::sleep(Duration::from_millis(1000));
+            // The server prints "listening" once bound; a fixed sleep raced
+            // a slow start and the client was refused.
+            let mut server_stdout =
+                std::io::BufReader::new(server_process.stdout.take().expect("server stdout"));
+            let mut first_line = String::new();
+            server_stdout
+                .read_line(&mut first_line)
+                .expect("read server status");
             let client = client_command.output().expect("run client example");
-            let server = server_process
-                .wait_with_output()
-                .expect("wait for server example");
+            let mut rest = String::new();
+            server_stdout
+                .read_to_string(&mut rest)
+                .expect("read server output");
+            let status = server_process.wait().expect("wait for server example");
+            let server = std::process::Output {
+                status,
+                stdout: (first_line + &rest).into_bytes(),
+                stderr: Vec::new(),
+            };
             if String::from_utf8_lossy(&server.stdout).contains("Operation not permitted") {
                 let _ = fs::remove_file(&log);
                 return;

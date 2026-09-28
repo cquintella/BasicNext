@@ -170,7 +170,7 @@ fn completion_lists_local_functions() {
 fn completion_lists_bnmath_exports_on_alias() {
     // The stdlib is found by walking the document's ancestors for
     // `modules/bn`; place the document inside the workspace.
-    let uri = format!("file://{WORKSPACE}/test.bn");
+    let uri = super::file_uri::path_to_file_uri(&std::path::Path::new(WORKSPACE).join("test.bn"));
     let source = "IMPORT BNMath AS Math\nFUNCTION Start() AS VOID\nMath.AB\nEND FUNCTION\n";
     let file = SourceFile::new(uri.clone(), source);
     let documents = HashMap::from([(uri.clone(), file)]);
@@ -290,10 +290,10 @@ fn diagnostics_use_unsaved_imported_sources_and_the_shared_validated_pipeline() 
         "FUNCTION Value() AS INTEGER\nRETURN 1\nEND FUNCTION\n",
     )
     .expect("write module fixture");
-    let main_uri: super::Uri = format!("file://{}", main_path.display())
+    let main_uri: super::Uri = super::file_uri::path_to_file_uri(&main_path)
         .parse()
         .expect("main URI");
-    let module_uri: super::Uri = format!("file://{}", module_path.display())
+    let module_uri: super::Uri = super::file_uri::path_to_file_uri(&module_path)
         .parse()
         .expect("module URI");
     let mut documents = HashMap::from([
@@ -349,7 +349,7 @@ fn lsp_problems_equivalent_to_cli_check_on_shared_fixture() {
         .canonicalize()
         .expect("canonical path for fixture");
     let text = std::fs::read_to_string(&path).expect("read fixture text");
-    let uri: super::Uri = format!("file://{}", path.display())
+    let uri: super::Uri = super::file_uri::path_to_file_uri(&path)
         .parse()
         .expect("fixture URI");
     let documents = HashMap::from([(

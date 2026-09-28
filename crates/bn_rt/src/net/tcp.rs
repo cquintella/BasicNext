@@ -261,7 +261,8 @@ mod tests {
         let error = tcp_listen(&[taken], 0).unwrap_err();
         assert_eq!(error.cause(), "the backlog must be within 1..128; got 0");
         drop(listeners);
-        let error = tcp_connect(taken, 1_000).unwrap_err();
+        // Windows reports a loopback refusal only after ~2 s of SYN retries.
+        let error = tcp_connect(taken, 10_000).unwrap_err();
         assert_eq!(error.code(), net::CONNECTION_REFUSED);
         assert_eq!(error.operation(), "HOST.Net.TCPConnect");
         let error = tcp_read(None, &mut [0; 4]).unwrap_err();

@@ -330,3 +330,31 @@ fn dispatch_net_echo_matches_native_and_interpreter() {
     );
     assert_native_parity(&path, None);
 }
+
+/// A `NEW` region stored in a field is owned by the field: the constructor
+/// cancels the statement's release instead of freeing the region it just
+/// stored (a use-after-free that Windows reported as heap corruption in
+/// `examples/linear_collections.bn`). Both backends print the same values.
+#[test]
+fn region_fields_are_strong_bindings() {
+    let path = valid_fixture("arc-region-field.bn");
+    let llvm = execute(bnc().arg(&path), None);
+    assert_success(&llvm, "bnc emit LLVM");
+    let llvm = String::from_utf8_lossy(&llvm.stdout);
+    let constructor = llvm
+        .split("define void @bn_Buffer_2eCONSTRUCTOR")
+        .nth(1)
+        .and_then(|body| body.split("\n}\n").next())
+        .expect("constructor definition");
+    assert!(
+        constructor.contains("store ptr null, ptr %objectowned"),
+        "the field store must take ownership of the NEW region:\n{constructor}"
+    );
+    let output = interpret(&path, None);
+    assert_success(&output, "bni run");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "sum 33\ngrown 10 alias 33\nafter release 12\n"
+    );
+    assert_native_parity(&path, None);
+}

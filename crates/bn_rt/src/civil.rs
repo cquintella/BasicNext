@@ -29,6 +29,19 @@ pub fn format_time(millis: i32) -> String {
     format!("{hour:02}:{minute:02}:{second:02}.{millis:03}")
 }
 
+/// Canonical RFC 3339 text of a `TIMESTAMP` (milliseconds since the Unix
+/// epoch, UTC), as `Timestamp.Format` prints it: `2026-09-28T11:05:03.042Z`.
+/// Traps `FORMAT_OUT_OF_RANGE` outside years 0001..9999.
+#[must_use]
+pub fn format_rfc3339(timestamp: i64) -> String {
+    let (days, millis) = split(timestamp);
+    format!(
+        "{}T{}Z",
+        format_date(days),
+        format_time(i32::try_from(millis).unwrap_or(0))
+    )
+}
+
 pub fn todate(timestamp: i64) -> i32 {
     split(timestamp).0
 }
@@ -76,5 +89,21 @@ fn civil_from_days(days: i32) -> CivilDate {
         year: year + i32::from(month <= 2),
         month,
         day,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_rfc3339;
+
+    #[test]
+    fn rfc3339_is_canonical_utc_with_milliseconds() {
+        assert_eq!(format_rfc3339(0), "1970-01-01T00:00:00.000Z");
+        // 2026-09-28T11:05:03.042Z
+        assert_eq!(
+            format_rfc3339(1_790_593_503_042),
+            "2026-09-28T11:05:03.042Z"
+        );
+        assert_eq!(format_rfc3339(-1), "1969-12-31T23:59:59.999Z");
     }
 }

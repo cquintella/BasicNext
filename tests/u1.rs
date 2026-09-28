@@ -206,7 +206,10 @@ fn cargo_package_lists_build_script_and_keyword_registry() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let list = String::from_utf8(output.stdout).expect("utf-8 package list");
+    // Windows lists `language\0.6\keywords.md`; compare with '/'.
+    let list = String::from_utf8(output.stdout)
+        .expect("utf-8 package list")
+        .replace('\\', "/");
     assert!(
         list.lines().any(|line| line.ends_with("build.rs")),
         "package list must contain build.rs\n{list}"

@@ -15,6 +15,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// The largest UDP payload (IPv6 without jumbograms is 65 527 bytes).
+const UDP_PAYLOAD_MAX: usize = 65_536;
+
 #[derive(Debug)]
 pub struct TcpStream {
     inner: std::net::TcpStream,
@@ -108,6 +111,10 @@ impl TcpListener {
         let domain = socket2::Domain::for_address(address);
         let socket =
             socket2::Socket::new(domain, socket2::Type::STREAM, Some(socket2::Protocol::TCP))?;
+        // As `std::net::TcpListener::bind`: SO_REUSEADDR only on Unix, where
+        // it skips TIME_WAIT. On Windows it lets a second socket bind a port
+        // already in use, so `Net.ADDRESS_IN_USE` would never be reported.
+        #[cfg(not(windows))]
         socket.set_reuse_address(true)?;
         socket.bind(&socket2::SockAddr::from(address))?;
         socket.listen(i32::try_from(backlog).map_err(|_| io::Error::other("backlog overflow"))?)?;
@@ -199,14 +206,20 @@ impl UdpSocket {
         )
     }
 
+    /// One datagram, cut to `maximum` bytes. The buffer holds any UDP
+    /// payload, so truncation is exact on every platform: Unix would drop the
+    /// excess silently, and Windows fails the call (`WSAEMSGSIZE`) and loses
+    /// the source endpoint.
+    // ponytail: 64 KiB per receive; reuse a per-socket buffer if receive
+    // rates make the allocation show up.
     pub fn receive(&self, maximum: usize) -> io::Result<UdpPacket> {
-        let mut bytes = vec![0; maximum];
+        let mut bytes = vec![0; UDP_PAYLOAD_MAX.max(maximum)];
         let (count, source) = self.inner.recv_from(&mut bytes)?;
-        bytes.truncate(count);
+        bytes.truncate(count.min(maximum));
         Ok(UdpPacket {
             source: Endpoint::new(Address::from_ip(source.ip()), source.port()),
             bytes,
-            truncated: count == maximum,
+            truncated: count > maximum,
         })
     }
 

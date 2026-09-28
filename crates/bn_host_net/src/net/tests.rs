@@ -151,6 +151,14 @@ fn udp_loopback_reports_source_and_payload() {
     let packet = second.receive(16).expect("receive");
     assert_eq!(packet.bytes(), b"ok");
     assert!(!packet.truncated());
+    // A datagram that fits exactly is complete; a larger one is cut and
+    // flagged (on Windows too, where the OS fails the receive instead).
+    first.send_to(destination, b"ok").expect("send");
+    assert!(!second.receive(2).expect("exact fit").truncated());
+    first.send_to(destination, b"longer").expect("send");
+    let packet = second.receive(3).expect("truncated receive");
+    assert_eq!(packet.bytes(), b"lon");
+    assert!(packet.truncated());
 }
 
 #[test]

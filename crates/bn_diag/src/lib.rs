@@ -1986,7 +1986,11 @@ mod tests {
         let directory = std::env::temp_dir().join(format!(
             "bn-diag-overlay-{}-{}",
             std::process::id(),
-            std::thread::current().name().unwrap_or("test")
+            // `tests::name`: ':' is not valid in a Windows file name.
+            std::thread::current()
+                .name()
+                .unwrap_or("test")
+                .replace(':', "_")
         ));
         let _ = fs::remove_dir_all(&directory);
         fs::create_dir_all(&directory).expect("overlay directory");

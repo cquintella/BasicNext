@@ -278,6 +278,19 @@ pub(crate) fn emit_set_member(
         } else {
             let _ = writeln!(text, "  call void @bn_arc_retain(ptr {value_op})");
         }
+    } else if is_region_type(field_ty) {
+        emit_region_field_assign(
+            text,
+            module,
+            function,
+            analysis,
+            symbols,
+            &format!("%mbrptr{}", value.0),
+            value,
+            &value_op,
+            field_ty,
+            state,
+        );
     }
     let _ = writeln!(text, "  store {llvm_ty} {value_op}, ptr %mbrptr{}", value.0);
 }

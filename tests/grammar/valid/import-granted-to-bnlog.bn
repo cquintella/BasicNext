@@ -1,0 +1,21 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A capability import BNLog writes through is used with no member access:
+// AddFile needs HOST.FileSystem and AddConsole needs HOST.Console.
+IMPORT BNLog AS Log
+IMPORT HOST.FileSystem AS FS
+IMPORT HOST.Console AS Console
+
+FUNCTION Start() AS INTEGER
+    LET logger AS Log.Logger = NEW Log.Logger()
+    LET file AS VOID OR Error = logger.AddFile("app.jsonl", 2)
+    LET console AS VOID OR Error = logger.AddConsole(2)
+    IF file IS Error OR console IS Error THEN
+        RETURN 1
+    END IF
+    logger.Close(1000)
+    RETURN 0
+END FUNCTION

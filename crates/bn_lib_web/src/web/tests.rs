@@ -677,6 +677,8 @@ fn server_stop_drains_a_slow_http_worker() {
     let expected_cancellation = worker_result.as_ref().err().is_none_or(|error| {
         error.contains("IncompleteMessage")
             || error.contains("connection closed before message completed")
+            // Windows reports the cancelled socket as WSAECONNABORTED.
+            || error.contains("(os error 10053)")
     });
     assert!(
         expected_cancellation,

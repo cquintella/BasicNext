@@ -567,7 +567,7 @@ impl LogProvider {
                     unreachable!("level was validated above")
                 };
                 let record = crate::log::Record {
-                    timestamp: format!("{:?}", std::time::SystemTime::now()),
+                    timestamp: bn_rt::format_rfc3339(bn_rt::timestamp_ms()),
                     label: logger.label.clone(),
                     level,
                     message: message.to_string(),

@@ -204,6 +204,36 @@ done:
 "
 }
 
+/// Stores region `value_op` into the field at `field_ptr` under ARC (0.6.md
+/// "Pointer regions under ARC": a field is a strong binding). Releases the
+/// region the field held, then takes the new one: an owned `NEW` result is
+/// transferred (its end-of-statement release is cancelled), any other value
+/// is retained. The caller emits the store itself.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn emit_region_field_assign(
+    text: &mut String,
+    module: &Module,
+    function: &Function,
+    analysis: &LoweringAnalysis<'_>,
+    symbols: &HashMap<SymbolId, usize>,
+    field_ptr: &str,
+    value: ValueId,
+    value_op: &str,
+    ty: &Type,
+    state: &mut EmissionState,
+) {
+    let old_fat = format!("%fieldregold{}", value.0);
+    let _ = writeln!(text, "  {old_fat} = load {{ ptr, i32 }}, ptr {field_ptr}");
+    let old_base = emit_region_base(text, &old_fat, state);
+    emit_destroy_if_last(text, module, function, &old_base, ty, symbols, state);
+    if analysis.owned_object_results.contains_key(&value) {
+        let _ = writeln!(text, "  store ptr null, ptr %objectowned{}", value.0);
+    } else {
+        let new_base = emit_region_base(text, value_op, state);
+        let _ = writeln!(text, "  call void @bn_arc_retain(ptr {new_base})");
+    }
+}
+
 #[allow(clippy::only_used_in_recursion)]
 pub(crate) fn emit_destroy_if_last(
     text: &mut String,
@@ -229,18 +259,28 @@ pub(crate) fn emit_destroy_if_last(
     if let Some(owner) = class_name(ty) {
         for field in class_layout_fields(module, &owner) {
             let weak = module.field_is_weak(&field.reference);
-            if !is_class_type(module, &field.ty) || weak {
+            let region = is_region_type(&field.ty);
+            if !(is_class_type(module, &field.ty) || region) || weak {
                 continue;
             }
             let offset =
                 field_byte_offset(module, &field.reference).expect("validated ARC field slot");
             let field_ptr = format!("%arcfieldptr{n}_{offset}");
-            let field_object = format!("%arcfieldobj{n}_{offset}");
             let _ = writeln!(
                 text,
                 "  {field_ptr} = getelementptr i8, ptr {object}, i32 {offset}"
             );
-            let _ = writeln!(text, "  {field_object} = load ptr, ptr {field_ptr}");
+            let field_object = if region {
+                // A region field is a strong binding: its count drops with
+                // the object (0.6.md "Pointer regions under ARC").
+                let fat = format!("%arcfieldfat{n}_{offset}");
+                let _ = writeln!(text, "  {fat} = load {{ ptr, i32 }}, ptr {field_ptr}");
+                emit_region_base(text, &fat, state)
+            } else {
+                let field_object = format!("%arcfieldobj{n}_{offset}");
+                let _ = writeln!(text, "  {field_object} = load ptr, ptr {field_ptr}");
+                field_object
+            };
             emit_destroy_if_last(
                 text,
                 module,

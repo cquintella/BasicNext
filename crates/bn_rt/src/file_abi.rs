@@ -376,6 +376,8 @@ mod tests {
     #[test]
     #[allow(clippy::borrow_as_ptr)]
     fn closing_one_file_does_not_replace_another_handle() {
+        // Other tests restrict the process-wide policy; hold its lock.
+        let _policy = super::super::policy::reset_for_tests();
         let mut handles = [0; 3];
         let paths: Vec<_> = (0..3)
             .map(|i| std::env::temp_dir().join(format!("bn-handles-{}-{i}", std::process::id())))
@@ -406,6 +408,8 @@ mod tests {
     #[test]
     #[allow(clippy::borrow_as_ptr)]
     fn file_abi_round_trip_and_close() {
+        // Other tests restrict the process-wide policy; hold its lock.
+        let _policy = super::super::policy::reset_for_tests();
         let path = std::env::temp_dir().join(format!("bn-file-{}-{}.txt", std::process::id(), 1));
         let path_c = CString::new(path.to_string_lossy().as_bytes()).expect("path");
         let mut handle = 0;

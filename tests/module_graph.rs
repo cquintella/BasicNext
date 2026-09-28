@@ -17,7 +17,7 @@ fn loads_dependencies_before_the_executable_module() {
             .program
             .source_name
             .as_deref()
-            .is_some_and(|name| name.ends_with("tests/modules/graph/main.bn"))
+            .is_some_and(|name| Path::new(name).ends_with("tests/modules/graph/main.bn"))
     );
     assert_eq!(graph.modules[1].imports, vec![graph.modules[0].id]);
 }
@@ -38,7 +38,7 @@ fn user_modules_resolve_beneath_modules_directory() {
 fn import_cycles_are_source_spanned() {
     let error = load(Path::new("tests/modules/cycle/main.bn")).expect_err("cycle must fail");
     assert_eq!(error.diagnostic.code, "IMPORT_CYCLE");
-    assert!(error.source.name.ends_with("tests/modules/cycle/A/C.bn"));
+    assert!(Path::new(&error.source.name).ends_with("tests/modules/cycle/A/C.bn"));
 }
 
 #[test]
@@ -46,7 +46,7 @@ fn missing_module_reports_the_importing_source() {
     let error =
         load(Path::new("tests/modules/missing/main.bn")).expect_err("missing module must fail");
     assert_eq!(error.diagnostic.code, "MODULE_NOT_FOUND");
-    assert!(error.source.name.ends_with("tests/modules/missing/main.bn"));
+    assert!(Path::new(&error.source.name).ends_with("tests/modules/missing/main.bn"));
 }
 
 #[test]
@@ -233,7 +233,7 @@ fn qualified_import_of_a_missing_export_is_a_static_error() {
     let error = load(Path::new("tests/modules/qualified-export/missing/main.bn"))
         .expect_err("NoSuch is neither an export nor a nested module");
     assert_eq!(error.diagnostic.code, "IMPORT_EXPORT_NOT_FOUND");
-    assert!(error.source.name.ends_with("missing/main.bn"));
+    assert!(Path::new(&error.source.name).ends_with("missing/main.bn"));
 }
 
 #[test]

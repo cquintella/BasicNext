@@ -1,0 +1,56 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+// A POINTER TO T[] field is a strong binding (0.6.md "Pointer regions under
+// ARC"): a NEW region stored in a field outlives the statement, reassigning
+// the field releases the old region, and an alias keeps the region alive
+// past RELEASE of another binding. Same observables on interpret and compile.
+FUNCTION Write(region AS POINTER TO INTEGER[], index AS INTEGER, value AS INTEGER) AS VOID
+    region[index] = value
+END FUNCTION
+
+CLASS Buffer
+    PRIVATE storage AS POINTER TO INTEGER[] = NEW INTEGER[1]
+
+    PUBLIC FUNCTION CONSTRUCTOR(size AS INTEGER)
+        SELF.storage = NEW INTEGER[size]
+    END FUNCTION
+
+    PUBLIC FUNCTION Fill(first AS INTEGER) AS VOID
+        FOR index AS INTEGER = 0 TO LEN(SELF.storage) - 1
+            Write(SELF.storage, index, first + index)
+        END FOR
+    END FUNCTION
+
+    PUBLIC FUNCTION Grow(size AS INTEGER) AS VOID
+        SELF.storage = NEW INTEGER[size]
+    END FUNCTION
+
+    PUBLIC FUNCTION Storage() AS POINTER TO INTEGER[]
+        RETURN SELF.storage
+    END FUNCTION
+
+    PUBLIC FUNCTION Sum() AS INTEGER
+        LET total AS INTEGER = 0
+        FOR index AS INTEGER = 0 TO LEN(SELF.storage) - 1
+            total += SELF.storage[index]
+        END FOR
+        RETURN total
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS INTEGER
+    LET buffer AS Buffer = NEW Buffer(3)
+    buffer.Fill(10)
+    PRINT "sum", buffer.Sum()
+    LET alias AS POINTER TO INTEGER[] = buffer.Storage()
+    buffer.Grow(4)
+    buffer.Fill(1)
+    PRINT "grown", buffer.Sum(), "alias", alias[0] + alias[1] + alias[2]
+    LET again AS POINTER TO INTEGER[] = alias
+    RELEASE alias
+    PRINT "after release", again[2]
+    RELEASE buffer
+    RETURN 0
+END FUNCTION

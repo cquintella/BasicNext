@@ -38,6 +38,13 @@ fn uri_to_native(uri: &str, windows: bool) -> Option<String> {
 
 fn native_to_uri(path: &str, windows: bool) -> String {
     let path = if windows {
+        // `canonicalize` returns verbatim paths (`\\?\C:\x`, `\\?\UNC\h\s`);
+        // the prefix is Win32 API syntax, not part of the file's name.
+        let path = if let Some(unc) = path.strip_prefix(r"\\?\UNC\") {
+            format!(r"\\{unc}")
+        } else {
+            path.strip_prefix(r"\\?\").unwrap_or(path).to_owned()
+        };
         path.replace('\\', "/")
     } else {
         path.to_owned()
@@ -88,6 +95,19 @@ mod tests {
             uri_to_native("file://localhost/tmp/x.bn", false).as_deref(),
             Some("/tmp/x.bn")
         );
+    }
+
+    #[test]
+    fn windows_verbatim_paths_become_plain_file_uris() {
+        assert_eq!(
+            native_to_uri(r"\\?\C:\Users\a b\main.bn", true),
+            "file:///C:/Users/a%20b/main.bn"
+        );
+        assert_eq!(
+            native_to_uri(r"\\?\UNC\host\share\x.bn", true),
+            "file:////host/share/x.bn"
+        );
+        assert_eq!(native_to_uri(r"C:\x.bn", true), "file:///C:/x.bn");
     }
 
     #[test]

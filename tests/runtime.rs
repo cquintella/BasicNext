@@ -1669,7 +1669,7 @@ fn bndata_read_csv_uses_the_injected_data_provider() {
     fs::write(&path, "ignored\n").expect("write provider fixture");
     let source = format!(
         "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"{}\", FS.READ)\nIF file IS Error THEN\nRETURN\nEND IF\nLET table AS Data.DataFrame OR Error = Data.ReadCSV(file, FALSE, \",\")\nIF table IS Error THEN\nRETURN\nEND IF\nPRINT table.GetString(0, \"Column1\")\nRELEASE table\nfile.Close()\nRELEASE file\nEND FUNCTION\n",
-        path.display()
+        bn_path(&path)
     );
     let host =
         fixed(vec!["provider.bn".into()], 0, 0).with_data_provider(Arc::new(InjectedDataProvider));
@@ -3453,7 +3453,8 @@ fn host_exec_e12_cwd_env_and_spaced_path() {
         fs::set_permissions(&spaced_helper, perms).expect("chmod spaced");
     }
     let spaced_path = bn_path(&spaced_helper);
-    let cwd_expected = bn_path(&std::env::current_dir().expect("cwd"));
+    // Printed text, not a BN literal: no escaping.
+    let cwd_expected = std::env::current_dir().expect("cwd").display().to_string();
     // Prove inheritance without mutating process environment (crate forbids
     // unsafe set_var): HOME is present on supported developer hosts.
     let home = std::env::var("HOME").expect("HOME must be set for E12 inheritance evidence");

@@ -919,6 +919,9 @@ fn wasm_build_allows_host_capability_names_in_strings() {
     assert_eq!(output.status.code(), Some(0));
 }
 
+/// The fixture runs `/bin/echo`; Windows has none, and the helper-based
+/// test below covers the same accessors on every platform.
+#[cfg(unix)]
 #[test]
 fn native_build_executes_host_exec_result_accessors() {
     let output_path =
@@ -962,6 +965,7 @@ fn native_build_executes_host_exec_helper_streams_and_status() {
     let helper_text = helper
         .to_str()
         .expect("UTF-8 helper path")
+        .replace('\\', "\\\\")
         .replace('"', "\\\"");
     fs::write(
         &source,
@@ -1070,7 +1074,10 @@ PRINT "invalid", r.Code
 END IF
 END FUNCTION
 "#,
-            helper = helper.to_str().expect("UTF-8 helper path")
+            helper = helper
+                .to_str()
+                .expect("UTF-8 helper path")
+                .replace('\\', "\\\\")
         ),
     )
     .expect("write UTF-8 fixture program");
@@ -1243,8 +1250,14 @@ END FUNCTION
         String::from_utf8_lossy(&run.stderr)
     );
     // getcwd() in the child resolves symlinks (e.g. macOS /var -> /private/var),
-    // so compare against the canonicalized controlled working directory.
-    let cwd_expected = base.canonicalize().unwrap_or_else(|_| base.clone());
+    // so compare against the canonicalized controlled working directory. On
+    // Windows `canonicalize` adds the `\\?\` verbatim prefix that the child's
+    // working directory does not carry.
+    let cwd_expected = if cfg!(windows) {
+        base.clone()
+    } else {
+        base.canonicalize().unwrap_or_else(|_| base.clone())
+    };
     assert_eq!(
         String::from_utf8_lossy(&run.stdout),
         format!("cwd {}\nenv inherited-value\n", cwd_expected.display())

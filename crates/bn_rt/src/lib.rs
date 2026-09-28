@@ -79,6 +79,8 @@ pub use policy::{
 pub use terminal::terminal_dimensions;
 pub use text_abi::*;
 
+pub use civil::format_rfc3339;
+
 /// Milliseconds since Unix epoch for an arbitrary `SystemTime`.
 #[must_use]
 pub fn timestamp_ms_from(time: SystemTime) -> i64 {

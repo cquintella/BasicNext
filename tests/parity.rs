@@ -55,10 +55,40 @@ fn bnc() -> Command {
     executable("bnc")
 }
 
+/// The process log's text with its field escapes undone (`\\` is `\`, `\s`
+/// is a space) and every path separator written `/`: values may hold
+/// `Debug` text, which doubles a Windows `\` once more.
+fn log_text(log: &str) -> String {
+    let mut text = String::with_capacity(log.len());
+    let mut characters = log.chars();
+    while let Some(character) = characters.next() {
+        if character != '\\' {
+            text.push(character);
+            continue;
+        }
+        match characters.next() {
+            Some('s') => text.push(' '),
+            Some('n') => text.push('\n'),
+            Some('r') => text.push('\r'),
+            Some(other) => text.push(other),
+            None => text.push('\\'),
+        }
+    }
+    slashes(&text)
+}
+
+/// `text` with `\` separators as `/` and repeated separators collapsed, so a
+/// path compares equal whether it was printed with `Display` or `Debug`.
+fn slashes(text: &str) -> String {
+    let mut text = text.replace('\\', "/");
+    while text.contains("//") {
+        text = text.replace("//", "/");
+    }
+    text
+}
+
 fn module_roots_snapshot(log: &str) -> Vec<String> {
-    // The process log escapes whitespace as `\s` inside values.
-    let unescaped = log.replace("\\s", " ");
-    unescaped
+    log_text(log)
         .split("module_roots=[")
         .nth(1)
         .and_then(|tail| tail.split(']').next())
@@ -264,19 +294,19 @@ fn module_path_is_repeatable_and_first_directory_wins_for_check() {
         ),
     ]
     .iter()
-    .map(|(root, provenance)| format!("{} ({provenance})", root.display()))
+    .map(|(root, provenance)| slashes(&format!("{} ({provenance})", root.display())))
     .collect();
     assert_eq!(
         module_roots_snapshot(&log),
         expected,
         "effective module-root snapshot with provenance"
     );
-    let unescaped = log.replace("\\s", " ");
+    let unescaped = log_text(&log);
     assert!(
-        unescaped.contains(&format!(
+        unescaped.contains(&slashes(&format!(
             "Greeting.bn <- {} (cli-flag)",
             fs::canonicalize(&first).expect("canonical first").display()
-        )),
+        ))),
         "per-module winning root missing from log: {log}"
     );
     fs::write(
@@ -368,9 +398,7 @@ fn bn_home_overrides_ancestor_stdlib_and_is_logged() {
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
-        fs::read_to_string(&log_path)
-            .expect("process log")
-            .replace("\\s", " ")
+        log_text(&fs::read_to_string(&log_path).expect("process log"))
     };
 
     // Without BN_HOME the ancestor modules/bn wins and the log says so.
@@ -383,12 +411,12 @@ fn bn_home_overrides_ancestor_stdlib_and_is_logged() {
     assert_eq!(output.stdout, b"1\n");
     let log = build_log("ancestor", None);
     assert!(log.contains("bn_home=false"), "{log}");
-    let hijack_root = format!(
+    let hijack_root = slashes(&format!(
         "{} (entry-ancestor)",
         fs::canonicalize(&hijack_stdlib)
             .expect("canonical hijack")
             .display()
-    );
+    ));
     assert!(log.contains(&hijack_root), "{log}");
     assert!(log.contains(&format!("Shim.bn <- {hijack_root}")), "{log}");
 
@@ -403,12 +431,12 @@ fn bn_home_overrides_ancestor_stdlib_and_is_logged() {
     assert_eq!(output.stdout, b"2\n");
     let log = build_log("home", Some(&home));
     assert!(log.contains("bn_home=true"), "{log}");
-    let home_root = format!(
+    let home_root = slashes(&format!(
         "{} (BN_HOME)",
         fs::canonicalize(&home_stdlib)
             .expect("canonical home")
             .display()
-    );
+    ));
     assert!(log.contains(&home_root), "{log}");
     assert!(log.contains(&format!("Shim.bn <- {home_root}")), "{log}");
     assert!(!log.contains("(entry-ancestor)"), "{log}");
@@ -1139,7 +1167,10 @@ fn build_arc_and_dispatch_counterexamples_match_interpreter() {
 #[test]
 fn forbidden_dependency_gate_and_its_negatives_hold() {
     // Fails closed: the harness needs ripgrep and must never be skipped.
+    // An explicit PATH makes Windows search it before System32, whose
+    // `bash.exe` is the WSL launcher, not the Git Bash that runs CI.
     let output = Command::new("bash")
+        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
         .arg("tests/check-forbidden-deps.sh")
         .output()
         .expect("run forbidden-deps harness");

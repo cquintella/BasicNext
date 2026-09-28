@@ -63,7 +63,32 @@ fn protocol(name: &str, result: Result<(), String>) -> ExitCode {
     }
 }
 
+/// Stack for the command thread. The tree-walking interpreter recurses once
+/// per BN call; the main thread's default (1 MiB on Windows, 8 MiB on Unix)
+/// made the recursion depth platform-dependent, and a debug build overflowed
+/// on Windows at `Factorial(10)`.
+const COMMAND_STACK: usize = 64 * 1024 * 1024;
+
 fn main() -> ExitCode {
+    std::thread::Builder::new()
+        .name("bni".into())
+        .stack_size(COMMAND_STACK)
+        .spawn(command)
+        .map_or_else(
+            |error| {
+                eprintln!("error: cannot start the interpreter thread: {error}");
+                tool_error()
+            },
+            // A panic keeps its message and exit status, as on the main thread.
+            |thread| {
+                thread
+                    .join()
+                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+            },
+        )
+}
+
+fn command() -> ExitCode {
     let mut arguments = env::args().skip(1);
     let Some(command) = arguments.next() else {
         return usage();
