@@ -43,6 +43,7 @@ mod schema {
     pub(super) const NAME: &[ArgumentSpec] = &[text("name")];
     pub(super) const LEXICAL: &[ArgumentSpec] = &[text("found"), text("expected")];
     pub(super) const PARSE: &[ArgumentSpec] = &[text("expected"), text("context")];
+    pub(super) const PARSE_RULE: &[ArgumentSpec] = &[text("rule")];
     pub(super) const NAME_CONTEXT: &[ArgumentSpec] = &[text("name"), text("context")];
     pub(super) const OPERATION: &[ArgumentSpec] = &[text("operation")];
     pub(super) const INDEX_OUT_OF_BOUNDS: &[ArgumentSpec] =
@@ -84,6 +85,7 @@ macro_rules! diagnostic_registry {
 diagnostic_registry! {
     LEXICAL { code: "E0001", fluent: "lexical-error", severity: Error, schema: LEXICAL },
     PARSE { code: "E0100", fluent: "parse-error", severity: Error, schema: PARSE },
+    PARSE_RULE { code: "E0101", fluent: "parse-rule", severity: Error, schema: PARSE_RULE },
     TYPE_MISMATCH { code: "TYPE_MISMATCH", fluent: "type-mismatch", severity: Error, schema: TYPE_MISMATCH },
     NUMERIC_OVERFLOW { code: "NUMERIC_OVERFLOW", fluent: "numeric-overflow", severity: Error, schema: OPERATION },
     INVALID_IR { code: "INVALID_IR", fluent: "invalid-ir", severity: Error, schema: DETAIL },
@@ -878,9 +880,7 @@ fn render_structured_message(spec: &DiagnosticSpec) -> String {
                     DiagId::LEXICAL => {
                         format!("found '{}', expected {}", value("found"), value("expected"))
                     }
-                    DiagId::PARSE => {
-                        format!("expected {} in {}", value("expected"), value("context"))
-                    }
+                    DiagId::PARSE => format!("expected {}", value("expected")),
                     _ => spec
                         .args
                         .iter()
@@ -1297,6 +1297,37 @@ impl Diagnostic {
         )
     }
 
+    /// A syntax error that breaks a grammar rule rather than missing a token
+    /// (`CONST requires an initializer`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the registry schema changes.
+    pub fn parse_rule_facts(rule: impl Into<String>, span: Span) -> Result<Self, String> {
+        Self::structured(
+            DiagId::PARSE_RULE,
+            vec![("rule".into(), rule.into().into())],
+            vec![Label {
+                span,
+                style: LabelStyle::Primary,
+                text: None,
+            }],
+        )
+    }
+
+    /// A parser message as its diagnostic: `expected X` is `E0100` with `X`
+    /// as the expected fact; any other message states a rule (`E0101`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the registry schema changes.
+    pub fn parse_message(message: &str, span: Span) -> Result<Self, String> {
+        message.strip_prefix("expected ").map_or_else(
+            || Self::parse_rule_facts(message, span),
+            |expected| Self::parse_facts(expected, "the current declaration or statement", span),
+        )
+    }
+
     /// Creates a diagnostic from facts that are independent of presentation.
     ///
     /// # Errors
@@ -1540,12 +1571,20 @@ mod tests {
         .expect("write golden");
     }
 
-    /// Gate (bucket 0.6.2b R7a): every runtime diagnostic explains itself —
-    /// a specific title, a cause, and a help line — so the rustc-style
+    /// Gate (bucket 0.6.2b R7): every diagnostic explains itself — a
+    /// specific title, a cause, and a help line — so the rustc-style
     /// renderer never prints a bare message.
     #[test]
-    fn runtime_catalog_rows_have_title_cause_and_help() {
-        let shard = include_str!("../../../share/bn/diagnostics/en-US/runtime.ftl");
+    fn catalog_rows_have_title_cause_and_help() {
+        let shard = [
+            include_str!("../../../share/bn/diagnostics/en-US/lex.ftl"),
+            include_str!("../../../share/bn/diagnostics/en-US/parse.ftl"),
+            include_str!("../../../share/bn/diagnostics/en-US/sem.ftl"),
+            include_str!("../../../share/bn/diagnostics/en-US/runtime.ftl"),
+            include_str!("../../../share/bn/diagnostics/en-US/build.ftl"),
+            include_str!("../../../share/bn/diagnostics/en-US/lsp.ftl"),
+        ]
+        .join("\n");
         let mut failures = Vec::new();
         let mut entry: Option<(String, Vec<&str>)> = None;
         let mut check = |entry: Option<(String, Vec<&str>)>| {
@@ -2204,8 +2243,9 @@ mod tests {
 
         let parse =
             Diagnostic::parse_facts("AS", "a binding declaration", span(0)).expect("parser facts");
+        // The context is a fact for overlays; the message states only what
+        // was expected (bucket 0.6.2b D6).
         assert!(parse.message.contains("AS"));
-        assert!(parse.message.contains("binding declaration"));
     }
 
     #[test]

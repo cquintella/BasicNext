@@ -623,7 +623,7 @@ impl<'a> ExpressionParser<'a> {
 
 fn syntax_error(message: impl Into<String>, span: Span) -> Diagnostic {
     let message = message.into();
-    Diagnostic::parse_facts(message, "expression parser", span).unwrap_or_else(|_| Diagnostic {
+    Diagnostic::parse_message(&message, span).unwrap_or_else(|_| Diagnostic {
         code: "E0100",
         message: "parser error".into(),
         span,

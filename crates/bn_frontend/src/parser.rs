@@ -58,8 +58,8 @@ pub fn parse_expression(tokens: &[Token]) -> Result<Expression, Diagnostic> {
             column: 1,
         };
         return Err(Diagnostic::parse_facts(
-            "expected expression",
-            "expression parser",
+            "an expression",
+            "the current declaration or statement",
             Span {
                 start: unknown,
                 end: unknown,

@@ -162,13 +162,11 @@ impl<'a> Parser<'a> {
 
     pub(crate) fn error(&self, message: impl Into<String>) -> Diagnostic {
         let message = message.into();
-        Diagnostic::parse_facts(message, "source parser", self.peek().span).unwrap_or_else(|_| {
-            Diagnostic {
-                code: "E0100",
-                message: "parser error".into(),
-                span: self.peek().span,
-                structured: None,
-            }
+        Diagnostic::parse_message(&message, self.peek().span).unwrap_or_else(|_| Diagnostic {
+            code: "E0100",
+            message: "parser error".into(),
+            span: self.peek().span,
+            structured: None,
         })
     }
 }

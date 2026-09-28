@@ -17,6 +17,7 @@ DUPLICATE_INTERFACE	DUPLICATE_INTERFACE	Error	message:Text
 DUPLICATE_NAME	DUPLICATE_NAME	Error	name:Text
 E0001	lexical-error	Error	found:Text,expected:Text
 E0100	parse-error	Error	expected:Text,context:Text
+E0101	parse-rule	Error	rule:Text
 EVAL_START_PROMOTED	EVAL_START_PROMOTED	Warning	message:Text
 EXECUTION_POLICY_DENIED	EXECUTION_POLICY_DENIED	Error	detail:Text
 FORMAT_OUT_OF_RANGE	FORMAT_OUT_OF_RANGE	Error	message:Text

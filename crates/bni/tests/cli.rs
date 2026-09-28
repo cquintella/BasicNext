@@ -422,7 +422,9 @@ fn selected_config_applies_relative_diagnostic_overlay() {
             "check",
             "--config",
             root.join("config.toml").to_str().expect("config path"),
-            "tests/grammar/invalid/untyped-let.bn",
+            // An E0100 case; the overlay keeps the pre-0.6.2 template with
+            // {$context}, which the schema still accepts.
+            "tests/grammar/invalid/top-level-assignment.bn",
         ])
         .output()
         .expect("check with overlay");
@@ -1235,5 +1237,26 @@ fn bnjson_companion_interprets() {
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
         "{\"name\":\"eagle\",\"wings\":2}\neagle\n2\ndecode-error TRUE\n"
+    );
+}
+
+/// D6: a syntax error says what was expected once, and a rule violation is
+/// its own identity (E0101), both with cause and help.
+#[test]
+fn syntax_errors_state_the_expectation_or_the_rule() {
+    let output = bni()
+        .args(["check", "tests/grammar/invalid/top-level-assignment.bn"])
+        .output()
+        .expect("run check");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("error[E0100]: Syntax error: Expected IMPORT or a top-level declaration."),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("Expected expected"), "{stderr}");
+    assert!(
+        stderr.contains("= cause:") && stderr.contains("= help:"),
+        "{stderr}"
     );
 }
