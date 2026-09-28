@@ -1,4 +1,12 @@
-#![allow(dead_code)] // Provider methods are exposed through the pending C ABI.
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+//! `HOST.Net` sockets: TCP streams and listeners, UDP sockets and packets.
+//! One implementation for the interpreter provider, `BNWeb`, and the C ABI.
+//! Every fallible method returns the operating-system error unchanged.
+#![allow(clippy::missing_errors_doc)]
 
 use super::{Address, Endpoint};
 use std::{
@@ -7,6 +15,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[derive(Debug)]
 pub struct TcpStream {
     inner: std::net::TcpStream,
 }
@@ -20,9 +29,28 @@ impl TcpStream {
         Ok(Self { inner })
     }
 
-    pub fn set_timeouts(&self, read: Duration, write: Duration) -> io::Result<()> {
-        self.inner.set_read_timeout(Some(read))?;
-        self.inner.set_write_timeout(Some(write))
+    /// Wraps a connected standard stream (`BNWeb` hands streams back).
+    #[must_use]
+    pub const fn from_std(inner: std::net::TcpStream) -> Self {
+        Self { inner }
+    }
+
+    /// The standard stream, for `BNWeb`'s HTTP layer.
+    #[must_use]
+    pub fn into_std(self) -> std::net::TcpStream {
+        self.inner
+    }
+
+    pub fn try_clone(&self) -> io::Result<Self> {
+        Ok(Self {
+            inner: self.inner.try_clone()?,
+        })
+    }
+
+    /// Read and write timeouts; `None` waits without bound.
+    pub fn set_timeouts(&self, read: Option<Duration>, write: Option<Duration>) -> io::Result<()> {
+        self.inner.set_read_timeout(read)?;
+        self.inner.set_write_timeout(write)
     }
 
     pub fn read_bounded(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
@@ -81,23 +109,35 @@ impl TcpListener {
         })
     }
 
+    /// Waits for one connection without bound.
+    pub fn accept(&self) -> io::Result<TcpStream> {
+        let (inner, _) = self.inner.accept()?;
+        Ok(TcpStream { inner })
+    }
+
+    /// Waits at most `timeout` for one connection; `None` when none came.
+    /// Polls a non-blocking clone every millisecond (no `tokio` in the
+    /// native runtime, and no busy spin).
     pub fn accept_timeout(&self, timeout: Duration) -> io::Result<Option<TcpStream>> {
-        self.inner.set_nonblocking(true)?;
+        let listener = self.inner.try_clone()?;
+        listener.set_nonblocking(true)?;
         let deadline = Instant::now() + timeout;
-        let result = loop {
-            match self.inner.accept() {
-                Ok((stream, _)) => break Ok(Some(TcpStream { inner: stream })),
-                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                    if Instant::now() >= deadline {
-                        break Ok(None);
-                    }
-                    std::thread::yield_now();
+        loop {
+            match listener.accept() {
+                Ok((stream, _)) => {
+                    stream.set_nonblocking(false)?;
+                    return Ok(Some(TcpStream { inner: stream }));
                 }
-                Err(error) => break Err(error),
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                    let now = Instant::now();
+                    if now >= deadline {
+                        return Ok(None);
+                    }
+                    std::thread::sleep((deadline - now).min(Duration::from_millis(1)));
+                }
+                Err(error) => return Err(error),
             }
-        };
-        self.inner.set_nonblocking(false)?;
-        result
+        }
     }
 
     pub fn local_endpoint(&self) -> io::Result<Endpoint> {
@@ -129,8 +169,9 @@ impl UdpSocket {
         })
     }
 
-    pub fn set_read_timeout(&self, timeout: Duration) -> io::Result<()> {
-        self.inner.set_read_timeout(Some(timeout))
+    /// Receive timeout; `None` waits without bound.
+    pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        self.inner.set_read_timeout(timeout)
     }
 
     pub fn send_to(&self, endpoint: Endpoint, bytes: &[u8]) -> io::Result<usize> {

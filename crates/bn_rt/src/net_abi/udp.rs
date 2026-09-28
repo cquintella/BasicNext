@@ -170,7 +170,7 @@ pub extern "C" fn bn_rt_net_udp_receive(
     let timeout = std::time::Duration::from_millis(u64::try_from(timeout_ms.max(0)).unwrap_or(0));
     let result = net::handles::with(handle, |value| match value {
         net::handles::Handle::UdpSocket(socket) => {
-            socket.set_read_timeout(timeout)?;
+            socket.set_read_timeout(Some(timeout))?;
             socket.receive(maximum)
         }
         _ => Err(std::io::Error::other("handle is not an UDP socket")),
@@ -232,7 +232,7 @@ pub extern "C" fn bn_rt_net_udp_receive_handle(
     let timeout = std::time::Duration::from_millis(u64::try_from(timeout_ms.max(0)).unwrap_or(0));
     let result = net::handles::with(handle, |value| match value {
         net::handles::Handle::UdpSocket(socket) => {
-            socket.set_read_timeout(timeout)?;
+            socket.set_read_timeout(Some(timeout))?;
             socket.receive(maximum)
         }
         _ => Err(std::io::Error::other("handle is not an UDP socket")),

@@ -12,8 +12,7 @@ mod neighbor;
 mod reverse;
 mod socket;
 
-#[allow(unused_imports)]
-pub(crate) use socket::{TcpListener, TcpStream, UdpPacket, UdpSocket};
+pub use socket::{TcpListener, TcpStream, UdpPacket, UdpSocket};
 
 use std::{
     net::{IpAddr, ToSocketAddrs},

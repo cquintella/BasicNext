@@ -209,7 +209,6 @@ dependencies = [
  "bn_source",
  "bn_types",
  "bn_value",
- "tokio",
 ]
 
 [[package]]
