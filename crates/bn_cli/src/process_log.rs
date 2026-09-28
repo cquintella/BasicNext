@@ -102,8 +102,12 @@ impl ProcessLog {
         };
         if let Err(error) = self.write_to(path) {
             eprintln!(
-                "error[PROCESS_LOG_WRITE]: cannot write process log {}: {error}",
-                path.display()
+                "{}",
+                crate::diagnostics::tool_diagnostic(
+                    bn_diag::DiagId::PROCESS_LOG_WRITE,
+                    format!("cannot write process log {}: {error}", path.display()),
+                    bn_diag::Catalog::embedded_global(),
+                )
             );
             return true;
         }

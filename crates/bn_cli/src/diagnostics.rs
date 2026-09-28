@@ -246,3 +246,57 @@ pub fn emit_frontend_warnings(frontend: &Prepared, source: &SourceFile, options:
     }
     fatal
 }
+
+/// A diagnostic of the toolchain itself (no source position: a missing
+/// tool, an unwritable log) rendered through the catalog like any other:
+/// title, message, cause, and help. `message` is the identity's single
+/// free-text fact.
+#[must_use]
+pub fn tool_diagnostic(
+    id: DiagId,
+    message: impl Into<String>,
+    catalog: &bn_diag::Catalog,
+) -> String {
+    let message = message.into();
+    let rendered = match id.argument_schema() {
+        [only] => {
+            Diagnostic::structured_source_less(id, vec![(only.name.into(), message.clone().into())])
+                .ok()
+                .map(|diagnostic| diagnostic.render_with_catalog(&SourceFile::new("", ""), catalog))
+        }
+        _ => None,
+    };
+    rendered.unwrap_or_else(|| format!("error[{}]: {message}", id.code()))
+}
+
+#[cfg(test)]
+mod tool_tests {
+    use super::tool_diagnostic;
+
+    #[test]
+    fn tool_diagnostics_render_title_cause_and_help_without_excerpt() {
+        let text = tool_diagnostic(
+            bn_diag::DiagId::PROCESS_LOG_WRITE,
+            "cannot write process log /x: denied",
+            bn_diag::Catalog::embedded_global(),
+        );
+        let mut lines = text.lines();
+        assert_eq!(
+            lines.next(),
+            Some(
+                "error[PROCESS_LOG_WRITE]: Cannot write the process log: cannot write process log /x: denied"
+            )
+        );
+        assert!(
+            lines
+                .next()
+                .is_some_and(|line| line.starts_with("  = cause: "))
+        );
+        assert!(
+            lines
+                .next()
+                .is_some_and(|line| line.starts_with("  = help: "))
+        );
+        assert!(!text.contains("-->"), "{text}");
+    }
+}

@@ -4,7 +4,10 @@
 
 use std::{env, fs, process::ExitCode};
 
+use bn_diag::DiagId;
+
 use bn_cli::{
+    diagnostics::tool_diagnostic,
     options::Options,
     output::{emit_output, tool_error},
     process_log::{LogLevel, ProcessLog},
@@ -86,7 +89,10 @@ pub fn emit_build_output(
     } {
         Ok(clang) => clang,
         Err(message) => {
-            eprintln!("error[CONFIG_INVALID]: {message}");
+            eprintln!(
+                "{}",
+                tool_diagnostic(DiagId::CONFIG_INVALID, message, &options.diagnostic_catalog)
+            );
             return tool_error();
         }
     };
@@ -168,7 +174,14 @@ pub fn emit_build_output(
             let bn_rt = match configured_bn_rt_lib() {
                 Ok(path) => path,
                 Err(message) => {
-                    eprintln!("error[BUILD_TOOLCHAIN_UNAVAILABLE]: {message}");
+                    eprintln!(
+                        "{}",
+                        tool_diagnostic(
+                            DiagId::BUILD_TOOLCHAIN_UNAVAILABLE,
+                            message,
+                            &options.diagnostic_catalog,
+                        )
+                    );
                     return tool_error();
                 }
             };
@@ -190,13 +203,24 @@ pub fn emit_build_output(
         Ok(result) if result.status.success() => ExitCode::SUCCESS,
         Ok(result) => {
             eprintln!(
-                "error[BUILD_EMISSION_FAILED]: {}",
-                String::from_utf8_lossy(&result.stderr).trim()
+                "{}",
+                tool_diagnostic(
+                    DiagId::BUILD_EMISSION_FAILED,
+                    String::from_utf8_lossy(&result.stderr).trim(),
+                    &options.diagnostic_catalog,
+                )
             );
             tool_error()
         }
         Err(error) => {
-            eprintln!("error[BUILD_TOOLCHAIN_UNAVAILABLE]: cannot execute {failed_tool}: {error}");
+            eprintln!(
+                "{}",
+                tool_diagnostic(
+                    DiagId::BUILD_TOOLCHAIN_UNAVAILABLE,
+                    format!("cannot execute {failed_tool}: {error}"),
+                    &options.diagnostic_catalog,
+                )
+            );
             tool_error()
         }
     }

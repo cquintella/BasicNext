@@ -15,6 +15,7 @@ all = "warn"
 pedantic = "warn"
 
 [dependencies]
+bn_diag = { path = "../bn_diag" }
 bn_cli = { path = "../bn_cli" }
 bn_llvm = { path = "../bn_llvm" }
 bn_source = { path = "../bn_source" }

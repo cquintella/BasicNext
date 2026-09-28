@@ -1482,6 +1482,19 @@ impl Diagnostic {
 }
 
 fn render_catalog_diagnostic(source: &SourceFile, rendered: &RenderedDiagnostic) -> String {
+    if rendered.labels.is_empty() {
+        // A tool diagnostic (no source position): no excerpt.
+        return format!(
+            "{severity}[{code}]: {title}: {message}",
+            severity = match rendered.severity {
+                Severity::Error => "error",
+                Severity::Warning => "warning",
+            },
+            code = rendered.code,
+            title = rendered.title,
+            message = rendered.message,
+        ) + &explanation(rendered);
+    }
     let position = rendered.labels.first().map_or(
         Position {
             source_id: source.source_id,
