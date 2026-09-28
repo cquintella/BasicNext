@@ -880,7 +880,7 @@ fn udp_results_match_across_backends() {
     native_matches_interpreter(path);
 }
 
-/// BNCrypto failures carry the shared `bn_rt::crypto_error` report (Code,
+/// `BNCrypto` failures carry the shared `bn_rt::crypto_error` report (Code,
 /// Operation, Message, Cause) on both backends (bncrypto.md "Errors").
 #[test]
 fn crypto_errors_match_across_backends() {
@@ -898,7 +898,7 @@ fn crypto_errors_match_across_backends() {
     native_matches_interpreter(path);
 }
 
-/// BNJson failures carry the shared `bn_rt::json_error` report on both
+/// `BNJson` failures carry the shared `bn_rt::json_error` report on both
 /// backends (bnjson.md "Errors"); `Parse` of invalid text is an `Error`,
 /// not a stop, and reads that succeed keep their value.
 #[test]

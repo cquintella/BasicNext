@@ -432,7 +432,7 @@ fn filesystem_policy_deny_returns_policy_denied_on_both_backends() {
 }
 
 /// A malformed policy input stops every program before Start on both
-/// backends (0.6.md: CONFIG_INVALID, exit 2) with the same text; natively the
+/// backends (0.6.md: `CONFIG_INVALID`, exit 2) with the same text; natively the
 /// check ran only when the program imported a HOST capability.
 #[test]
 fn malformed_policy_stops_programs_without_host_imports() {
