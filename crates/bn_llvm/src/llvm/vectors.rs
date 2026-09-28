@@ -741,11 +741,6 @@ pub(crate) fn extract_optional_float(text: &mut String, destination: ValueId, va
     );
 }
 
-fn take_continuation(block_id: BlockId, state: &mut EmissionState) -> String {
-    let name = format!("b{}.cont{}", block_id.0, state.continuation_count);
-    state.continuation_count += 1;
-    name
-}
 
 #[cfg(test)]
 mod tests {

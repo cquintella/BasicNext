@@ -6,15 +6,7 @@
 use bn_diag::Diagnostic;
 use bn_source::Span;
 
-const DAY_MS: i128 = 86_400_000;
-const MIN_YEAR: i32 = 1;
-const MAX_YEAR: i32 = 9999;
-
-pub struct CivilDate {
-    pub year: i32,
-    pub month: u32,
-    pub day: u32,
-}
+use bn_rt::civil::{self, DAY_MS, days_from_civil};
 
 #[must_use]
 pub fn default_date() -> i32 {
@@ -91,24 +83,17 @@ pub fn parse_rfc3339(text: &str, span: Span) -> Result<i64, Diagnostic> {
 ///
 /// Returns `FORMAT_OUT_OF_RANGE` outside 0001-01-01..9999-12-31.
 pub fn format_rfc3339(timestamp: i64, span: Span) -> Result<String, Diagnostic> {
-    let (date, time) = split_timestamp(timestamp, span)?;
-    let CivilDate { year, month, day } = civil_from_days(date);
-    let (hour, minute, second, millis) = civil_time(time);
-    Ok(format!(
-        "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z"
-    ))
+    civil::rfc3339(timestamp).ok_or_else(|| out_of_range(span))
 }
 
 #[must_use]
 pub fn format_date(days: i32) -> String {
-    let CivilDate { year, month, day } = civil_from_days(days);
-    format!("{year:04}-{month:02}-{day:02}")
+    civil::format_date(days)
 }
 
 #[must_use]
 pub fn format_time(millis: u32) -> String {
-    let (hour, minute, second, millis) = civil_time(millis);
-    format!("{hour:02}:{minute:02}:{second:02}.{millis:03}")
+    civil::format_time(millis)
 }
 
 /// # Errors
@@ -150,20 +135,11 @@ pub fn timestamp_from_date_time(days: i32, millis: u32, span: Span) -> Result<i6
 }
 
 fn split_timestamp(timestamp: i64, span: Span) -> Result<(i32, u32), Diagnostic> {
-    let timestamp = i128::from(timestamp);
-    let days = timestamp.div_euclid(DAY_MS);
-    let millis = timestamp.rem_euclid(DAY_MS);
-    let days = i32::try_from(days).map_err(|_| out_of_range(span))?;
-    require_civil_date(days, span)?;
-    Ok((
-        days,
-        u32::try_from(millis).expect("millisecond remainder fits u32"),
-    ))
+    civil::split(timestamp).ok_or_else(|| out_of_range(span))
 }
 
 fn require_civil_date(days: i32, span: Span) -> Result<(), Diagnostic> {
-    let CivilDate { year, .. } = civil_from_days(days);
-    if (MIN_YEAR..=MAX_YEAR).contains(&year) {
+    if civil::in_range(days) {
         Ok(())
     } else {
         Err(out_of_range(span))
@@ -242,7 +218,7 @@ fn parse_rfc3339_text(text: &str) -> Option<i64> {
     let utc = i128::from(days) * DAY_MS + i128::from(millis) - i128::from(offset);
     let timestamp = i64::try_from(utc).ok()?;
     let utc_days = i32::try_from(i128::from(timestamp).div_euclid(DAY_MS)).ok()?;
-    if (MIN_YEAR..=MAX_YEAR).contains(&civil_from_days(utc_days).year) {
+    if civil::in_range(utc_days) {
         Some(timestamp)
     } else {
         None
@@ -301,65 +277,10 @@ fn is_iana_identifier(text: &str) -> bool {
     parts >= 2
 }
 
-fn days_from_civil(year: i32, month: u32, day: u32) -> Option<i32> {
-    if !(MIN_YEAR..=MAX_YEAR).contains(&year) || !(1..=12).contains(&month) || day == 0 {
-        return None;
-    }
-    let last = days_in_month(year, month)?;
-    if day > last {
-        return None;
-    }
-    let y = if month <= 2 { year - 1 } else { year };
-    let era = if y >= 0 { y } else { y - 399 }.div_euclid(400);
-    let yoe = u32::try_from(y - era * 400).ok()?;
-    let month_index = if month > 2 { month - 3 } else { month + 9 };
-    let doy = (153 * month_index + 2) / 5 + day - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    Some(era * 146_097 + i32::try_from(doe).ok()? - 719_468)
-}
 
-fn civil_from_days(days: i32) -> CivilDate {
-    let z = days + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 }.div_euclid(146_097);
-    let doe = u32::try_from(z - era * 146_097).unwrap_or(0);
-    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
-    let year = i32::try_from(yoe).unwrap_or(0) + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let month_prime = (5 * doy + 2) / 153;
-    let day = doy - (153 * month_prime + 2) / 5 + 1;
-    let month = if month_prime < 10 {
-        month_prime + 3
-    } else {
-        month_prime - 9
-    };
-    CivilDate {
-        year: year + i32::from(month <= 2),
-        month,
-        day,
-    }
-}
 
-fn days_in_month(year: i32, month: u32) -> Option<u32> {
-    Some(match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 if is_leap(year) => 29,
-        2 => 28,
-        _ => return None,
-    })
-}
 
-fn is_leap(year: i32) -> bool {
-    year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
-}
 
-fn civil_time(millis: u32) -> (u32, u32, u32, u32) {
-    let hour = millis / 3_600_000;
-    let minute = millis % 3_600_000 / 60_000;
-    let second = millis % 60_000 / 1_000;
-    let millis = millis % 1_000;
-    (hour, minute, second, millis)
-}
 
 fn temporal_error(id: bn_diag::DiagId, message: impl Into<String>, span: Span) -> Diagnostic {
     let message = message.into();

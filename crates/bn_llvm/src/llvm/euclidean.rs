@@ -128,11 +128,6 @@ fn emit_signed_rem(text: &mut String, dest: u32, llvm_ty: &str, left: &str, righ
     );
 }
 
-fn take_continuation(block_id: BlockId, state: &mut EmissionState) -> String {
-    let name = format!("b{}.cont{}", block_id.0, state.continuation_count);
-    state.continuation_count += 1;
-    name
-}
 
 fn signed_minimum(llvm_ty: &str) -> &'static str {
     match llvm_ty {

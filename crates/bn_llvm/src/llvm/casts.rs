@@ -344,11 +344,6 @@ fn emit_i128_fit_trunc(
     let _ = writeln!(text, "  %v{dest} = trunc i128 %castw{dest} to {target}");
 }
 
-fn take_continuation(block_id: BlockId, state: &mut EmissionState) -> String {
-    let name = format!("b{}.cont{}", block_id.0, state.continuation_count);
-    state.continuation_count += 1;
-    name
-}
 
 /// The inclusive range of an integer type as `i128` literals.
 pub(crate) fn i128_bounds(ty: &Type) -> (&'static str, &'static str) {

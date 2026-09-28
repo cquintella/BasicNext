@@ -368,11 +368,6 @@ fn emit_i128_range_trunc(
     let _ = writeln!(text, "  %v{dest} = trunc i128 %shraw{dest} to {llvm_ty}");
 }
 
-fn take_continuation(block_id: BlockId, state: &mut EmissionState) -> String {
-    let name = format!("b{}.cont{}", block_id.0, state.continuation_count);
-    state.continuation_count += 1;
-    name
-}
 
 fn emit_cast_integer(
     text: &mut String,

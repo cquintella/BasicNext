@@ -21,7 +21,7 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
-mod civil;
+pub mod civil;
 mod console;
 pub mod crypto;
 mod crypto_abi;
@@ -624,7 +624,7 @@ pub extern "C" fn bn_rt_print_date(days: i32) {
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_print_time(millis: i32) {
-    let _ = LibcStdout.write_all(civil::format_time(millis).as_bytes());
+    let _ = LibcStdout.write_all(civil::format_time(u32::try_from(millis).unwrap_or(0)).as_bytes());
 }
 
 #[allow(unsafe_code)] // C ABI: STRING equality.
