@@ -1,0 +1,13 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// The portable HOST.FileSystem error codes (language/0.6/host.md, "File
+// system errors").
+IMPORT HOST.FileSystem AS FS
+
+FUNCTION Start() AS VOID
+    PRINT FS.INVALID_ARGUMENT, FS.NOT_FOUND, FS.PERMISSION_DENIED, FS.IS_DIRECTORY, FS.CLOSED
+    PRINT FS.WRONG_FAMILY, FS.INVALID_UTF8, FS.IO_FAILED, FS.POLICY_DENIED
+END FUNCTION

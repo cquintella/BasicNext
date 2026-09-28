@@ -132,6 +132,20 @@ impl FsPolicy {
         !self.read.denies_everything() || !(self.read_only || self.write.denies_everything())
     }
 
+    /// Why the policy denies a `write` (or read) of a path it does not allow:
+    /// the `Cause` of the resulting BN `Error`.
+    #[must_use]
+    pub fn denial_reason(&self, write: bool) -> &'static str {
+        let scope = if write { &self.write } else { &self.read };
+        if write && self.read_only {
+            "the execution policy allows reads only"
+        } else if scope.denies_everything() {
+            "the execution policy denies file access"
+        } else {
+            "the path is outside the directories the execution policy allows"
+        }
+    }
+
     #[must_use]
     pub fn allows_path(&self, path: &Path, write: bool) -> bool {
         if write && self.read_only {

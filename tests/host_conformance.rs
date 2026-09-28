@@ -112,6 +112,25 @@ const CASES: &[Case] = &[
         native: Native::Same,
     },
     Case {
+        fixture: "fs_codes.bn",
+        args: &[],
+        covers: &[
+            "HOST.FileSystem.INVALID_ARGUMENT",
+            "HOST.FileSystem.NOT_FOUND",
+            "HOST.FileSystem.PERMISSION_DENIED",
+            "HOST.FileSystem.IS_DIRECTORY",
+            "HOST.FileSystem.CLOSED",
+            "HOST.FileSystem.WRONG_FAMILY",
+            "HOST.FileSystem.INVALID_UTF8",
+            "HOST.FileSystem.IO_FAILED",
+            "HOST.FileSystem.POLICY_DENIED",
+        ],
+        stdout: "1 2 3 4 5\n6 7 8 9\n",
+        exit: 0,
+        stderr: None,
+        native: Native::Same,
+    },
+    Case {
         fixture: "fs_text.bn",
         args: &[],
         covers: &[

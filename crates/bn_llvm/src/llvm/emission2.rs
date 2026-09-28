@@ -436,6 +436,9 @@ pub(crate) fn lower_print_value(
         );
         return;
     }
+    if lower_print_handle_error_union(text, value, ty, state) {
+        return;
+    }
     if let Type::Vector {
         element,
         dimensions,

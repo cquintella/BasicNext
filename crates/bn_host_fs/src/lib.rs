@@ -41,14 +41,20 @@ impl Default for FsProvider {
     }
 }
 
-fn error(message: impl Into<String>) -> Value {
-    Value::error(1, shared_string(message.into()))
-}
-
 /// `Ok` maps to the BN value; `Err` (including a policy denial, 0.6.md
 /// "`HOST.FileSystem` execution policy") to a BN `Error` with that message.
 fn method_result<T>(result: Result<T, FileError>, value: impl FnOnce(T) -> Value) -> Value {
-    result.map_or_else(|failure| error(failure.to_string()), value)
+    result.map_or_else(|failure| file_error(&failure), value)
+}
+
+/// The BN `Error` of a failed operation: the core's report, unchanged.
+fn file_error(failure: &FileError) -> Value {
+    Value::error_report(
+        failure.code(),
+        failure.operation(),
+        failure.message(),
+        failure.cause(),
+    )
 }
 
 fn path_argument<'a>(
@@ -89,9 +95,9 @@ impl Provider for FsProvider {
                 require_arity(name, arguments, 2, span)?;
                 let path = path_argument(arguments, "HOST.FileSystem.Open path", span)?;
                 let (mode, _) = integer(&arguments[1], span)?;
-                let mode = match bn_rt::file::open_mode(mode) {
+                let mode = match bn_rt::file::open_mode(path, mode) {
                     Ok(mode) => mode,
-                    Err(failure) => return Ok(error(failure.to_string())),
+                    Err(failure) => return Ok(file_error(&failure)),
                 };
                 let opened = bn_rt::file::open(core.host().filesystem(), path, mode).map(|file| {
                     let id = self.next_file;
@@ -223,7 +229,7 @@ impl FsProvider {
                 let count = match file.read_bytes(&mut buffer) {
                     Ok(Some(count)) => count,
                     Ok(None) => return Ok(Value::EndOfFile),
-                    Err(failure) => return Ok(error(failure.to_string())),
+                    Err(failure) => return Ok(file_error(&failure)),
                 };
                 for (index, byte) in buffer.into_iter().take(count).enumerate() {
                     *core.memory_mut().get_mut(handle, index, span)? =

@@ -32,6 +32,7 @@ mod error_abi;
 mod exec;
 pub mod file;
 mod file_abi;
+mod file_error;
 pub mod json;
 pub mod json_abi;
 mod log;
@@ -58,8 +59,10 @@ pub use dataframe::{
 };
 pub use dataframe_abi::*;
 pub use dispatch_abi::*;
-pub(crate) use error_abi::set_error;
-pub use error_abi::{bn_rt_error_field, bn_rt_error_take, bn_rt_error_wrap};
+pub use error_abi::{
+    bn_rt_error_code, bn_rt_error_field, bn_rt_error_print, bn_rt_error_take, bn_rt_error_wrap,
+};
+pub(crate) use error_abi::{set_error, set_error_report};
 pub use exec::*;
 pub use file_abi::*;
 pub use net::{

@@ -12,6 +12,7 @@ pub(crate) fn emit_preamble(
     functions: &[(&Function, LoweringAnalysis<'_>)],
     synchronize_prints: bool,
     needs_na: bool,
+    calls_policy: bool,
 ) {
     let uses_arc = functions
         .iter()
@@ -20,7 +21,9 @@ pub(crate) fn emit_preamble(
         text.push_str(super::arc::runtime_ir());
     }
     let mut uses_concat = false;
-    let mut uses_bn_rt = false;
+    // `Start` of a module that imports a capability calls the policy entry
+    // points (`functions.rs`), which live in bn_rt.
+    let mut uses_bn_rt = calls_policy;
     let mut uses_input = false;
     let mut uses_string_sizeof = false;
     let mut uses_exit = false;

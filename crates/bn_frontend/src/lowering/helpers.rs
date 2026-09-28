@@ -244,16 +244,21 @@ pub(crate) fn standard_import_span(program: &Program, name: &str) -> Option<Span
     })
 }
 
+/// The value of an `INTEGER` member of `HOST.FileSystem`: an open mode or a
+/// portable error code.
 pub(crate) fn filesystem_constant(name: &str) -> Option<Constant> {
-    Some(Constant::Integer(
-        match name {
-            "READ" => "0",
-            "WRITE" => "1",
-            "APPEND" => "2",
-            _ => return None,
+    let value = match name {
+        "READ" => 0,
+        "WRITE" => 1,
+        "APPEND" => 2,
+        _ => {
+            bn_types::error_codes::fs::ALL
+                .iter()
+                .find(|(code, _)| *code == name)?
+                .1
         }
-        .into(),
-    ))
+    };
+    Some(Constant::Integer(value.to_string()))
 }
 
 pub(crate) fn namespace_function(object_type: &Type, name: &str, prefix: &str) -> Option<String> {

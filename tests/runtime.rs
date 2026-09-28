@@ -1477,7 +1477,8 @@ fn filesystem_file_writes_bytes_round_trip() {
 fn filesystem_write_bytes_on_a_read_only_file_returns_error() {
     let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"Cargo.toml\", FS.READ)\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[1]\nbuffer[0] = 65\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET written AS VOID OR Error = file.WriteBytes(buffer, 1)\nIF written IS Error THEN\nPRINT written.Code\nEND IF\nRELEASE file\nEND IF\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("WriteBytes I/O failure is an Error value");
-    assert_eq!(output, "1\n");
+    // FS.IO_FAILED, detected from the open mode so every host agrees.
+    assert_eq!(output, "8\n");
 }
 
 #[test]
@@ -1494,7 +1495,7 @@ fn filesystem_file_reports_invalid_utf8_on_text_read() {
         .expect("create invalid UTF-8 fixture");
     let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"/tmp/basicnext-sprint5-utf8.bn\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET text AS STRING OR Error = file.ReadAll()\nIF text IS Error THEN\nPRINT text.Code\nEND IF\nRELEASE file\nEND IF\nFS.DeleteFile(\"/tmp/basicnext-sprint5-utf8.bn\")\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("invalid UTF-8 is an Error value");
-    assert!(output.contains('1'));
+    assert_eq!(output, "7\n"); // FS.INVALID_UTF8 (host.md)
     let _ = fs::remove_file("/tmp/basicnext-sprint5-utf8.bn");
 }
 
@@ -1509,7 +1510,7 @@ fn filesystem_failed_text_write_does_not_lock_out_binary_reads() {
 fn filesystem_rejects_directory_open_and_missing_delete() {
     let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\".\", FS.READ)\nIF file IS Error THEN\nPRINT \"open\", file.Code\nELSE\nPRINT \"opened\"\nRELEASE file\nEND IF\nLET removed AS VOID OR Error = FS.DeleteFile(\"/tmp/basicnext-sprint5-missing.bn\")\nIF removed IS Error THEN\nPRINT \"del\", removed.Code\nEND IF\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("unsupported paths return Error values");
-    assert_eq!(output, "open 1\ndel 1\n");
+    assert_eq!(output, "open 4\ndel 2\n"); // FS.IS_DIRECTORY, FS.NOT_FOUND
 }
 
 #[test]
@@ -1562,7 +1563,7 @@ fn filesystem_close_flushes_written_bytes_to_disk() {
 fn filesystem_new_file_starts_closed() {
     let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File = NEW FS.File()\nLET closed AS VOID OR Error = file.Close()\nIF closed IS Error THEN\nPRINT closed.Code\nEND IF\nLET text AS STRING OR Error = file.ReadAll()\nIF text IS Error THEN\nPRINT text.Code\nEND IF\nRELEASE file\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("NEW FS.File creates a closed handle");
-    assert_eq!(output, "1\n");
+    assert_eq!(output, "5\n"); // FS.CLOSED
 }
 
 #[test]
@@ -1712,7 +1713,7 @@ fn bndata_write_csv_on_a_closed_file_returns_error() {
         "IMPORT BNData AS Data\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"{path}\", FS.WRITE)\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET names AS STRING[1] = [\"Ana\"]\ntable.AddStringColumn(\"name\", names)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nfile.Close()\nLET written AS VOID OR Error = Data.WriteCSV(file, table, TRUE, \",\")\nIF written IS Error THEN\nPRINT written.Code\nEND IF\nRELEASE file\nEND IF\nRELEASE table\nFS.DeleteFile(\"{path}\")\nEND FUNCTION\n"
     );
     let (_, output) = run(&source, "").expect("WriteCSV on a closed file returns Error");
-    assert_eq!(output, "1\n");
+    assert_eq!(output, "5\n"); // FS.CLOSED from the closed file; BNData codes: bucket 0.6.2b R8
     let _ = fs::remove_file(csv);
 }
 

@@ -50,7 +50,7 @@ pub(crate) fn emit_status_result(
     );
     let _ = writeln!(
         text,
-        "  %stpayload{dest} = select i1 {error}, i64 1, i64 {payload}"
+        "  %stcode{dest} = call i64 @bn_rt_error_code(ptr %stmsg{dest})\n  %stpayload{dest} = select i1 {error}, i64 %stcode{dest}, i64 {payload}"
     );
     let _ = writeln!(
         text,
@@ -110,6 +110,11 @@ pub(crate) fn declare_error_abi(text: &mut String) {
         (
             "@bn_rt_error_field(",
             "declare ptr @bn_rt_error_field(ptr, i32)\n",
+        ),
+        ("@bn_rt_error_code(", "declare i64 @bn_rt_error_code(ptr)\n"),
+        (
+            "@bn_rt_error_print(",
+            "declare void @bn_rt_error_print(i64, ptr)\n",
         ),
     ] {
         if text.contains(symbol) {

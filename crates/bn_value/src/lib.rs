@@ -174,6 +174,21 @@ impl Value {
     }
 }
 
+impl Value {
+    /// An `Error` with all four fields (language/0.6/error.md).
+    #[must_use]
+    pub fn error_report(code: i32, operation: &str, message: String, cause: String) -> Self {
+        Self::Error {
+            code,
+            message: SharedString::from(message),
+            detail: Some(Arc::new(ErrorDetail {
+                operation: SharedString::from(operation),
+                cause: SharedString::from(cause),
+            })),
+        }
+    }
+}
+
 /// `Error.Operation` and `Error.Cause` of an error's detail (empty without).
 #[must_use]
 pub fn error_detail_field(detail: Option<&ErrorDetail>, cause: bool) -> SharedString {

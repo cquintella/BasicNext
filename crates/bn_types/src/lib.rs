@@ -5,6 +5,7 @@
 
 //! Shared language type identities used by semantic analysis and BN IR.
 
+pub mod error_codes;
 pub mod text;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]

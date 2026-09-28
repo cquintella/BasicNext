@@ -284,11 +284,13 @@ pub fn lower_validated_module_for_target_with_policy(
         &functions,
         !wasm32,
         !module.bndata_providers.is_empty(),
+        policy_ceiling(module) != 0,
     );
     for (function, analysis) in &functions {
         emit_function(&mut text, module, function, analysis, !wasm32, policy)?;
     }
     declare_error_abi(&mut text);
+    define_type_name_globals(&mut text);
     Ok(text)
 }
 
@@ -997,7 +999,10 @@ mod access_emission;
 use access_emission::lower_access_emission;
 #[path = "llvm/print_emission.rs"]
 mod print_emission;
-use print_emission::{lower_print_emission, lower_print_language_error_union};
+use print_emission::{
+    define_type_name_globals, lower_print_emission, lower_print_handle_error_union,
+    lower_print_language_error_union,
+};
 #[path = "llvm/casts.rs"]
 mod casts;
 use casts::{cast_supported, is_text_cast, lower_cast};

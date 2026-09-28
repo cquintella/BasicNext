@@ -3,24 +3,67 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// Run with BN_FS_POLICY=read-only: an OS failure and a policy denial are both
-// `Error` values with Code 1 and a message (0.6.md, "`HOST.FileSystem`
-// execution policy": "A denied operation returns `Error`").
+// Run with BN_FS_POLICY=read-only in a directory holding `bytes.bin` (bytes
+// 0x61 0xFF). Every HOST.FileSystem code a program can provoke portably, on
+// both backends (language/0.6/host.md, "File system errors"; error.md).
 IMPORT HOST.FileSystem AS FS
+
+FUNCTION Report(label AS STRING, error AS Error) AS VOID
+    PRINT label, error.Code, error.Operation
+    PRINT "  " + error.Message
+END FUNCTION
 
 FUNCTION Start() AS VOID
     LET missing AS FS.File OR Error = FS.Open("no-such-file.txt", FS.READ)
     IF missing IS Error THEN
-        PRINT missing.Code, LEN(missing.Message) > 0
-        PRINT missing.Message
+        Report("NOT_FOUND", missing)
+        PRINT missing.Code = FS.NOT_FOUND, LEN(missing.Cause) > 0
     END IF
     LET denied AS FS.File OR Error = FS.Open("fs-errors.txt", FS.WRITE)
     IF denied IS Error THEN
-        PRINT denied.Code, denied.Message
+        Report("POLICY_DENIED", denied)
+        PRINT "  " + denied.Cause
     END IF
+    LET directory AS FS.File OR Error = FS.Open(".", FS.READ)
+    IF directory IS Error THEN
+        Report("IS_DIRECTORY", directory)
+        PRINT "  " + directory.Cause
+    END IF
+    LET mode AS INTEGER = 7
+    LET bad AS FS.File OR Error = FS.Open("bytes.bin", mode)
+    IF bad IS Error THEN
+        Report("INVALID_ARGUMENT", bad)
+        PRINT "  " + bad.Cause
+    END IF
+    LET bytes AS FS.File OR Error = FS.Open("bytes.bin", FS.READ)
+    IF bytes IS Error THEN
+        RETURN
+    END IF
+    LET text AS STRING OR Error = bytes.ReadAll()
+    IF text IS Error THEN
+        PRINT "INVALID_UTF8", text.Code = FS.INVALID_UTF8, text.Operation
+        PRINT "  " + text.Message
+    END IF
+    bytes.Close()
+    LET again AS STRING OR Error = bytes.ReadAll()
+    IF again IS Error THEN
+        Report("CLOSED", again)
+        PRINT "  " + again.Cause
+    END IF
+    LET binary AS FS.File OR Error = FS.Open("bytes.bin", FS.READ)
+    IF binary IS Error THEN
+        RETURN
+    END IF
+    LET buffer AS POINTER TO BYTE[] = NEW BYTE[1]
+    LET count AS INTEGER OR EOF OR Error = binary.ReadBytes(buffer)
+    LET line AS STRING OR EOF OR Error = binary.ReadLine()
+    IF line IS Error THEN
+        Report("WRONG_FAMILY", line)
+        PRINT "  " + line.Cause
+    END IF
+    PRINT count
+    binary.Close()
+    RELEASE buffer
     LET removed AS VOID OR Error = FS.DeleteFile("fs-errors.txt")
-    IF removed IS Error THEN
-        PRINT removed.Code, removed.Message
-    END IF
-    PRINT FS.Exists("fs-errors.txt")
+    PRINT removed
 END FUNCTION

@@ -41,6 +41,26 @@ pub fn float(value: f64, ty: FloatType) -> String {
     text
 }
 
+/// `PRINT` of an `Error` (language/0.6/error.md):
+/// `Error <Code> in <Operation>: <Message> (cause: <Cause>)`. An empty
+/// `Operation` or `Cause`, from a producer not yet migrated, is left out.
+#[must_use]
+pub fn error(code: i64, operation: &str, message: &str, cause: &str) -> String {
+    let mut text = format!("Error {code}");
+    if !operation.is_empty() {
+        text.push_str(" in ");
+        text.push_str(operation);
+    }
+    text.push_str(": ");
+    text.push_str(message);
+    if !cause.is_empty() {
+        text.push_str(" (cause: ");
+        text.push_str(cause);
+        text.push(')');
+    }
+    text
+}
+
 /// `BOOLEAN`: `TRUE` or `FALSE`.
 #[must_use]
 pub const fn boolean(value: bool) -> &'static str {
@@ -49,7 +69,7 @@ pub const fn boolean(value: bool) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{boolean, float, integer};
+    use super::{boolean, error, float, integer};
     use crate::FloatType::{Float32, Float64};
 
     #[test]
@@ -63,5 +83,15 @@ mod tests {
         assert_eq!(float(f64::from(0.1_f32), Float32), "0.1");
         assert_eq!(float(f64::from(16_777_216_f32), Float32), "16777216.0");
         assert_eq!(boolean(true), "TRUE");
+        assert_eq!(
+            error(
+                2,
+                "HOST.FileSystem.Open",
+                "cannot open \"a\" for READ",
+                "not found"
+            ),
+            "Error 2 in HOST.FileSystem.Open: cannot open \"a\" for READ (cause: not found)"
+        );
+        assert_eq!(error(1, "", "failed", ""), "Error 1: failed");
     }
 }

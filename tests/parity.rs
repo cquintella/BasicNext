@@ -738,17 +738,18 @@ fn is_on_error_alternatives_matches_across_backends() {
     native_matches_interpreter(path);
 }
 
-/// HOST.FileSystem failures are `Error` values with Code 1 and a message on
-/// both backends, including policy denials (0.6.md: "A denied operation
-/// returns `Error`"). The OS text of the first failure is platform-specific,
-/// so only its equality across backends is asserted.
+/// Every HOST.FileSystem error code a program can provoke portably, with its
+/// operation, message, and cause, is identical on both backends
+/// (language/0.6/host.md, "File system errors"; error.md). A denied
+/// operation returns `Error` (0.6.md).
 #[test]
-fn filesystem_errors_carry_code_and_message_on_both_backends() {
+fn filesystem_errors_report_code_operation_message_and_cause() {
     let fixture = std::path::absolute("tests/host/fs_errors.bn").expect("fixture path");
     let directory =
         std::env::temp_dir().join(format!("basicnext-fs-errors-{}", std::process::id()));
     let _ = fs::remove_dir_all(&directory);
     fs::create_dir_all(&directory).expect("create directory");
+    fs::write(directory.join("bytes.bin"), [0x61, 0xff]).expect("write bytes");
     let artifact = directory.join(format!("fs-errors{}", std::env::consts::EXE_SUFFIX));
     let built = bnc()
         .arg(&fixture)
@@ -776,19 +777,19 @@ fn filesystem_errors_carry_code_and_message_on_both_backends() {
         .expect("run artifact");
     assert_eq!(interpreted.status.code(), Some(0));
     assert_eq!(compiled.status.code(), Some(0));
-    assert_eq!(compiled.stdout, interpreted.stdout);
-    let stdout = String::from_utf8_lossy(&interpreted.stdout);
-    let lines: Vec<&str> = stdout.lines().collect();
-    assert_eq!(lines.len(), 5, "{stdout}");
-    assert_eq!(lines[0], "1 TRUE");
     assert_eq!(
-        lines[2..],
-        [
-            "1 filesystem path is outside the execution policy",
-            "1 filesystem deletion is outside the execution policy",
-            "FALSE",
-        ]
+        String::from_utf8_lossy(&interpreted.stdout),
+        "NOT_FOUND 2 HOST.FileSystem.Open\n  cannot open \"no-such-file.txt\" for READ\nTRUE TRUE\n\
+         POLICY_DENIED 9 HOST.FileSystem.Open\n  cannot open \"fs-errors.txt\" for WRITE\n  the execution policy allows reads only\n\
+         IS_DIRECTORY 4 HOST.FileSystem.Open\n  cannot open \".\" for READ\n  the path is a directory, not a file\n\
+         INVALID_ARGUMENT 1 HOST.FileSystem.Open\n  cannot open \"bytes.bin\" in mode 7\n  the mode must be FS.READ (0), FS.WRITE (1), or FS.APPEND (2)\n\
+         INVALID_UTF8 TRUE HOST.FileSystem.File.ReadAll\n  cannot read \"bytes.bin\"\n\
+         CLOSED 5 HOST.FileSystem.File.ReadAll\n  cannot read \"bytes.bin\"\n  the file is closed\n\
+         WRONG_FAMILY 6 HOST.FileSystem.File.ReadLine\n  cannot read a line from \"bytes.bin\"\n  the file is in binary use; a file keeps the family of its first successful method until Close\n\
+         1\n\
+         Error 9 in HOST.FileSystem.DeleteFile: cannot delete \"fs-errors.txt\" (cause: the execution policy allows reads only)\n"
     );
+    assert_eq!(compiled.stdout, interpreted.stdout);
     let _ = fs::remove_dir_all(directory);
 }
 

@@ -67,9 +67,14 @@ fn text(ptr: *const c_char) -> Option<String> {
     }
 }
 
-/// A core failure: its text becomes the next `Error`'s `Message`.
+/// A core failure: its report becomes the next `Error`.
 fn failed(error: &FileError) -> u32 {
-    super::set_error(error.to_string());
+    super::set_error_report(
+        error.code(),
+        error.operation(),
+        error.message(),
+        error.cause(),
+    );
     BN_FILE_ERROR
 }
 
@@ -142,7 +147,7 @@ pub extern "C" fn bn_rt_file_open(path: *const c_char, mode: i32, out: *mut BNFi
         Ok(path) => path,
         Err(status) => return status,
     };
-    let mode = match super::file::open_mode(mode.into()) {
+    let mode = match super::file::open_mode(Path::new(&path), mode.into()) {
         Ok(mode) => mode,
         Err(error) => return failed(&error),
     };

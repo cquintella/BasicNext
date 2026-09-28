@@ -124,7 +124,7 @@ pub(crate) fn lower_print_language_error_union(
     state.control_flow.label(text, format!("unionerr{count}"));
     let _ = writeln!(
         text,
-        "  %unionerrtext{count} = call ptr @bn_rt_error_field(ptr %unionmessage{count}, i32 0)\n  %unionerrprint{count} = call i32 (ptr, ...) @printf(ptr @.bn_fmt_error, i64 %unionpayload{count}, ptr %unionerrtext{count})"
+        "  call void @bn_rt_error_print(i64 %unionpayload{count}, ptr %unionmessage{count})"
     );
     let _ = writeln!(text, "  br label %unionjoin{count}");
     state.control_flow.label(text, format!("unionvalue{count}"));
@@ -194,4 +194,86 @@ pub(crate) fn lower_print_language_error_union(
     let _ = writeln!(text, "  br label %unionjoin{count}");
     state.control_flow.label(text, format!("unionjoin{count}"));
     state.print_count += 1;
+}
+
+/// `PRINT` of a HOST handle `OR Error` (`FS.File OR Error`, `HOST.Net.TCPStream
+/// OR Error`): the `Error`, or the handle's type name as the interpreter
+/// prints it. False for any other type.
+pub(crate) fn lower_print_handle_error_union(
+    text: &mut String,
+    value: ValueId,
+    ty: &Type,
+    state: &mut EmissionState,
+) -> bool {
+    let Type::Alternative(alternatives) = ty else {
+        return false;
+    };
+    let [first, second] = alternatives.as_slice() else {
+        return false;
+    };
+    let name = match (first, second) {
+        (Type::Named(name), other) | (other, Type::Named(name))
+            if is_error_type(other) && name != "Error" && name != "VOID" =>
+        {
+            name
+        }
+        _ => return false,
+    };
+    if llvm_type(ty) != Some("{ i1, ptr, i64 }") {
+        return false;
+    }
+    let count = state.print_count;
+    let label = type_name_global(name);
+    let _ = writeln!(
+        text,
+        "  %handleerror{count} = extractvalue {{ i1, ptr, i64 }} %v{}, 0\n  %handleptr{count} = extractvalue {{ i1, ptr, i64 }} %v{}, 1\n  %handlecode{count} = extractvalue {{ i1, ptr, i64 }} %v{}, 2\n  br i1 %handleerror{count}, label %handleerr{count}, label %handleok{count}",
+        value.0, value.0, value.0
+    );
+    state.control_flow.label(text, format!("handleerr{count}"));
+    let _ = writeln!(
+        text,
+        "  call void @bn_rt_error_print(i64 %handlecode{count}, ptr %handleptr{count})\n  br label %handlejoin{count}"
+    );
+    state.control_flow.label(text, format!("handleok{count}"));
+    let _ = writeln!(
+        text,
+        "  %handlename{count} = call i32 (ptr, ...) @printf(ptr @.bn_fmt_str, ptr {label})\n  br label %handlejoin{count}"
+    );
+    state.control_flow.label(text, format!("handlejoin{count}"));
+    state.print_count += 1;
+    true
+}
+
+/// The global holding `name` as a C string, defined at the end of the module
+/// by [`define_type_name_globals`]: the symbol carries the name in hex.
+fn type_name_global(name: &str) -> String {
+    let hex = name.bytes().fold(String::new(), |mut hex, byte| {
+        let _ = write!(hex, "{byte:02x}");
+        hex
+    });
+    format!("@.bn_typename_{hex}")
+}
+
+/// Defines every `@.bn_typename_<hex>` the module references.
+pub(crate) fn define_type_name_globals(text: &mut String) {
+    let mut names = std::collections::BTreeSet::new();
+    for (index, _) in text.match_indices("@.bn_typename_") {
+        let hex: String = text[index + "@.bn_typename_".len()..]
+            .chars()
+            .take_while(char::is_ascii_hexdigit)
+            .collect();
+        names.insert(hex);
+    }
+    for hex in names {
+        let bytes: Vec<u8> = (0..hex.len())
+            .step_by(2)
+            .filter_map(|at| u8::from_str_radix(&hex[at..at + 2], 16).ok())
+            .collect();
+        let _ = writeln!(
+            text,
+            "@.bn_typename_{hex} = private unnamed_addr constant [{} x i8] c\"{}\\00\"",
+            bytes.len() + 1,
+            escape_llvm(&String::from_utf8_lossy(&bytes))
+        );
+    }
 }

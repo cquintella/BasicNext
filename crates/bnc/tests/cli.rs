@@ -94,7 +94,7 @@ FUNCTION Start() AS VOID\n\
     IF mode = \"read\" THEN\n\
         LET file AS FS.File OR Error = FS.Open(path, FS.READ)\n\
         IF file IS Error THEN\n\
-            PRINT \"open-error\", file.Message\n\
+            PRINT \"open-error\", file.Cause\n\
         ELSE\n\
             PRINT \"read-ok\"\n\
             file.Close()\n\
@@ -103,7 +103,7 @@ FUNCTION Start() AS VOID\n\
     ELSE\n\
         LET file AS FS.File OR Error = FS.Open(path, FS.WRITE)\n\
         IF file IS Error THEN\n\
-            PRINT \"open-error\", file.Message\n\
+            PRINT \"open-error\", file.Cause\n\
         ELSE\n\
             LET frame AS Data.DataFrame = NEW Data.DataFrame()\n\
             LET names AS STRING[1] = [\"sandbox\"]\n\
@@ -156,7 +156,7 @@ END FUNCTION\n",
     // A denied operation returns `Error` carrying the policy message.
     assert!(
         String::from_utf8_lossy(&denied_read.stdout)
-            .contains("open-error filesystem path is outside the execution policy")
+            .contains("open-error the path is outside the directories the execution policy allows")
     );
 
     let allowed_write = write_root.join("created.txt");
@@ -175,7 +175,7 @@ END FUNCTION\n",
     assert!(!denied_write.exists());
     assert!(
         String::from_utf8_lossy(&denied_write_result.stdout)
-            .contains("open-error filesystem path is outside the execution policy")
+            .contains("open-error the path is outside the directories the execution policy allows")
     );
 
     #[cfg(unix)]
@@ -184,10 +184,9 @@ END FUNCTION\n",
         std::os::unix::fs::symlink(outside_root.join("outside.txt"), &link)
             .expect("create symlink escape");
         let escaped = run("read", &link);
-        assert!(
-            String::from_utf8_lossy(&escaped.stdout)
-                .contains("open-error filesystem path is outside the execution policy")
-        );
+        assert!(String::from_utf8_lossy(&escaped.stdout).contains(
+            "open-error the path is outside the directories the execution policy allows"
+        ));
     }
 
     let deny_all_artifact = base.join("sandbox-deny-all");
@@ -218,7 +217,7 @@ END FUNCTION\n",
         .expect("run deny-all sandbox artifact");
     assert!(
         String::from_utf8_lossy(&deny_all.stdout)
-            .contains("open-error filesystem path is outside the execution policy")
+            .contains("open-error the execution policy denies file access")
     );
 
     let _ = fs::remove_dir_all(base);

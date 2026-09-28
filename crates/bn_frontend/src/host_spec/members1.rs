@@ -199,6 +199,7 @@ pub(super) fn declare_4(catalog: &mut Catalog) {
             ),
         ]),
     );
+    declare_filesystem_codes(catalog);
 }
 
 #[allow(clippy::too_many_lines)] // One catalog table per HOST type; data, not logic.
@@ -328,4 +329,24 @@ pub(super) fn declare_5(catalog: &mut Catalog) {
 
 pub(super) fn declare_6(catalog: &mut Catalog) {
     catalog.members.insert("Float".into(), BTreeMap::new());
+}
+
+/// `FS.NOT_FOUND` and the other portable `Error` codes of `HOST.FileSystem`
+/// (language/0.6/host.md, "File system errors").
+fn declare_filesystem_codes(catalog: &mut Catalog) {
+    let filesystem = catalog
+        .members
+        .get_mut("HOST.FileSystem")
+        .expect("HOST.FileSystem declared above");
+    for (name, _) in bn_types::error_codes::fs::ALL {
+        filesystem.insert(
+            name.into(),
+            SpecMember {
+                ty: SpecType::Integer(SpecIntegerType::Int32),
+                is_static: false,
+                private: false,
+                mutable: false,
+            },
+        );
+    }
 }
