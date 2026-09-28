@@ -1487,7 +1487,22 @@ fn render_catalog_diagnostic(source: &SourceFile, rendered: &RenderedDiagnostic)
         } else {
             format!(" {label}")
         },
-    )
+    ) + &explanation(rendered)
+}
+
+/// The catalog's causes and help after the source excerpt, one line each
+/// (docs/architecture/diagnostics.md, "Every diagnostic explains itself").
+fn explanation(rendered: &RenderedDiagnostic) -> String {
+    let mut text = String::new();
+    for cause in &rendered.causes {
+        text.push_str("\n  = cause: ");
+        text.push_str(cause);
+    }
+    if let Some(help) = &rendered.help {
+        text.push_str("\n  = help: ");
+        text.push_str(help);
+    }
+    text
 }
 
 #[cfg(test)]
@@ -2196,6 +2211,15 @@ mod tests {
         assert!(rendered.contains("PRINT α"));
         assert!(!rendered.contains("PRINT α\r"));
         assert!(rendered.contains("Expected INTEGER, but found STRING"));
+        // The catalog's cause and help follow the excerpt, in that order.
+        let tail: Vec<&str> = rendered.lines().rev().take(2).collect();
+        assert_eq!(
+            tail,
+            [
+                "  = help: convert the value or change the receiving declaration to the expected type",
+                "  = cause: the value does not satisfy the operation's type contract",
+            ]
+        );
     }
 
     #[test]
