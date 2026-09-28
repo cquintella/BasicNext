@@ -4,6 +4,7 @@
 //! compiled binaries (C ABI in `lib.rs`): address/endpoint types, bounded
 //! resolve/reverse, ICMP ping, trusted-path ARP/NDP neighbor lookup, sockets.
 
+pub mod error;
 pub(crate) mod handles;
 mod icmp;
 mod neighbor;
