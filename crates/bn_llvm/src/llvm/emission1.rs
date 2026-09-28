@@ -1,3 +1,10 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Lowering of scalar instructions (constants, stores, copies, unary and binary
+// operators, casts) with constant propagation through the block state.
 #![allow(clippy::wildcard_imports)]
 use super::*;
 #[path = "emission_tail.rs"]
@@ -326,143 +333,16 @@ pub(crate) fn lower_scalar_instruction(
             symbol,
             ty,
             ..
-        } => {
-            let dest_ty = analysis
-                .values
-                .get(destination)
-                .expect("validated loaded type");
-            let slot_ty = analysis.symbols.get(symbol).unwrap_or(dest_ty);
-            let dest_llvm = llvm_type(dest_ty).expect("validated load LLVM type");
-            let slot_llvm = llvm_type(slot_ty).expect("validated slot LLVM type");
-            if analysis.released_symbols.contains(symbol) {
-                let tag = destination.0;
-                let diagnostic = if function
-                    .blocks
-                    .iter()
-                    .flat_map(|block| &block.instructions)
-                    .any(|instruction| matches!(instruction, Instruction::Release { value, .. } if value == destination))
-                {
-                    "@.bn_double_release"
-                } else {
-                    "@.bn_use_after_release"
-                };
-                let _ = writeln!(
-                    text,
-                    "  %loadlive{tag} = load i1, ptr %slive{}",
-                    symbols[symbol]
-                );
-                let _ = writeln!(
-                    text,
-                    "  br i1 %loadlive{tag}, label %load_live_{tag}, label %load_released_{tag}\nload_released_{tag}:\n  call i32 (ptr, ...) @printf(ptr {diagnostic})\n  call void @exit(i32 1)\n  unreachable\nload_live_{tag}:"
-                );
-            }
-            if slot_llvm == "{ i1, double }" && matches!(dest_llvm, "float" | "double") {
-                let _ = writeln!(
-                    text,
-                    "  %optload{} = load {{ i1, double }}, ptr %s{}",
-                    destination.0, symbols[symbol]
-                );
-                if dest_llvm == "float" {
-                    let _ = writeln!(
-                        text,
-                        "  %optdbl{} = extractvalue {{ i1, double }} %optload{}, 1",
-                        destination.0, destination.0
-                    );
-                    let _ = writeln!(
-                        text,
-                        "  %v{} = fptrunc double %optdbl{} to float",
-                        destination.0, destination.0
-                    );
-                } else {
-                    let _ = writeln!(
-                        text,
-                        "  %v{} = extractvalue {{ i1, double }} %optload{}, 1",
-                        destination.0, destination.0
-                    );
-                }
-            } else if narrows_to_string(slot_ty, dest_ty) {
-                let dest = destination.0;
-                let _ = writeln!(
-                    text,
-                    "  %strload{dest} = load {{ i1, ptr, i64 }}, ptr %s{}",
-                    symbols[symbol]
-                );
-                let _ = writeln!(
-                    text,
-                    "  %v{dest} = extractvalue {{ i1, ptr, i64 }} %strload{dest}, 1"
-                );
-            } else if slot_llvm != dest_llvm
-                && slot_llvm == "{ i1, ptr, i32 }"
-                && dest_llvm == "{ ptr, i32 }"
-            {
-                let dest = destination.0;
-                let _ = writeln!(
-                    text,
-                    "  %netload{dest} = load {{ i1, ptr, i32 }}, ptr %s{}",
-                    symbols[symbol]
-                );
-                let _ = writeln!(
-                    text,
-                    "  %netloadp{dest} = extractvalue {{ i1, ptr, i32 }} %netload{dest}, 1"
-                );
-                let _ = writeln!(
-                    text,
-                    "  %netloadport{dest} = extractvalue {{ i1, ptr, i32 }} %netload{dest}, 2"
-                );
-                let _ = writeln!(
-                    text,
-                    "  %netloadagg{dest} = insertvalue {{ ptr, i32 }} undef, ptr %netloadp{dest}, 0"
-                );
-                let _ = writeln!(
-                    text,
-                    "  %v{dest} = insertvalue {{ ptr, i32 }} %netloadagg{dest}, i32 %netloadport{dest}, 1"
-                );
-            } else if slot_llvm != dest_llvm
-                && matches!(slot_llvm, "i8" | "i16" | "i32" | "i64")
-                && matches!(dest_llvm, "i8" | "i16" | "i32" | "i64")
-            {
-                let _ = writeln!(
-                    text,
-                    "  %slotload{} = load {slot_llvm}, ptr %s{}",
-                    destination.0, symbols[symbol]
-                );
-                let slot_w = match slot_llvm {
-                    "i8" => 8u8,
-                    "i16" => 16,
-                    "i32" => 32,
-                    _ => 64,
-                };
-                let dest_w = match dest_llvm {
-                    "i8" => 8u8,
-                    "i16" => 16,
-                    "i32" => 32,
-                    _ => 64,
-                };
-                let opcode = if slot_w < dest_w {
-                    if is_unsigned(slot_ty) { "zext" } else { "sext" }
-                } else {
-                    "trunc"
-                };
-                let _ = writeln!(
-                    text,
-                    "  %v{} = {opcode} {slot_llvm} %slotload{} to {dest_llvm}",
-                    destination.0, destination.0
-                );
-            } else {
-                let _ = writeln!(
-                    text,
-                    "  %v{} = load {dest_llvm}, ptr %s{}",
-                    destination.0, symbols[symbol]
-                );
-            }
-            if let Some(value) = block_state.bindings.get(symbol).cloned() {
-                block_state
-                    .constants
-                    .insert(*destination, typed_constant(value, ty));
-            } else {
-                block_state.constants.remove(destination);
-            }
-        }
+        } => lower_load(
+            text,
+            function,
+            analysis,
+            symbols,
+            block_state,
+            *destination,
+            *symbol,
+            ty,
+        ),
         Instruction::Copy {
             destination,
             source,
@@ -546,9 +426,7 @@ pub(crate) fn lower_scalar_instruction(
             ty,
             ..
         } => {
-            if let Some(result) = fold_unary(operator, block_state.constants.get(operand), ty)
-                .map(|result| typed_constant(result, ty))
-            {
+            if let Some(result) = fold_unary(operator, block_state.constants.get(operand), ty) {
                 block_state.constants.insert(*destination, result.clone());
                 emit_constant_value(text, *destination, ty, &result);
                 return Ok(());
@@ -633,9 +511,7 @@ pub(crate) fn lower_scalar_instruction(
                 block_state.constants.get(left),
                 block_state.constants.get(right),
                 ty,
-            )
-            .map(|result| typed_constant(result, ty))
-            {
+            ) {
                 block_state.constants.insert(*destination, result.clone());
                 emit_constant_value(text, *destination, ty, &result);
                 return Ok(());

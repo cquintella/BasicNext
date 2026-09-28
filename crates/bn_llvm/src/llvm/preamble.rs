@@ -1,3 +1,10 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// The module preamble: string globals, runtime declarations, and the
+// helper IR each emitted module needs.
 #![allow(clippy::wildcard_imports, clippy::too_many_lines)]
 use super::*;
 pub(crate) fn emit_preamble(
@@ -49,7 +56,7 @@ pub(crate) fn emit_preamble(
         text.push_str(string_byte_length_ir());
     }
     text.push_str("\ndeclare i32 @printf(ptr, ...)\ndeclare i32 @putchar(i32)\n");
-    text.push_str(crate::helpers::windows_binary_stdio_decl(
+    text.push_str(crate::platform_stdio::windows_binary_stdio_decl(
         synchronize_prints,
     ));
     if functions.iter().any(|(function, analysis)| {
@@ -65,7 +72,7 @@ pub(crate) fn emit_preamble(
         );
     }
     if synchronize_prints {
-        text.push_str(&crate::helpers::stdout_lock_decls());
+        text.push_str(&crate::platform_stdio::stdout_lock_decls());
     }
     if uses_concat {
         text.push_str(STRING_CONCAT_DECLS);

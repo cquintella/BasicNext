@@ -1,3 +1,10 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Per-function analysis before emission: the LLVM type of every value and
+// slot, and which runtime declarations, intrinsics, and traps the function needs.
 #![allow(clippy::wildcard_imports, clippy::match_same_arms)]
 use super::*;
 
@@ -130,17 +137,7 @@ pub(crate) fn analyze_function<'a>(
                     ty,
                     ..
                 } => {
-                    let stored_ty = symbols
-                        .get(symbol)
-                        .cloned()
-                        .filter(|stored| llvm_type(stored).is_some());
-                    // A slot narrowed to STRING by `IS` loads the string
-                    // itself; other narrowings keep the stored alternative.
-                    let load_ty = stored_ty
-                        .filter(|stored| {
-                            llvm_type(stored) != llvm_type(ty) && !narrows_to_string(stored, ty)
-                        })
-                        .unwrap_or_else(|| ty.clone());
+                    let load_ty = loaded_type(symbols.get(symbol), ty);
                     values.insert(*destination, load_ty.clone());
                     symbols.entry(*symbol).or_insert(load_ty);
                 }
@@ -166,14 +163,11 @@ pub(crate) fn analyze_function<'a>(
                 }
                 | Instruction::Unary {
                     destination, ty, ..
-                } => {
-                    values.insert(*destination, ty.clone());
                 }
-                Instruction::Cast {
+                | Instruction::Cast {
                     destination, ty, ..
                 } => {
-                    // Casts to STRING call the bn_rt text ABI (C3).
-                    uses_bn_rt |= *ty == Type::String;
+                    uses_bn_rt |= is_text_cast(instruction);
                     values.insert(*destination, ty.clone());
                 }
                 Instruction::Index {
@@ -501,12 +495,4 @@ pub(crate) fn analyze_function<'a>(
             .collect(),
         intrinsics,
     })
-}
-
-/// A `{ i1, ptr, i64 }` alternative holding STRING, loaded as STRING after an
-/// `IS` narrowing: the string is the aggregate's pointer field.
-pub(crate) fn narrows_to_string(stored: &Type, loaded: &Type) -> bool {
-    *loaded == Type::String
-        && llvm_type(stored) == Some("{ i1, ptr, i64 }")
-        && matches!(stored, Type::Alternative(alternatives) if alternatives.contains(&Type::String))
 }

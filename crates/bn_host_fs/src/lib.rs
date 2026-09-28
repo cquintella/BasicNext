@@ -13,8 +13,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use bn_diag::Diagnostic;
-use bn_rt::file::OpenFile;
-use bn_rt::secure_fs::OpenMode;
+use bn_rt::file::{FileError, OpenFile};
 use bn_source::Span;
 use bn_value::{Value, shared_string};
 
@@ -51,8 +50,8 @@ fn error(message: impl Into<String>) -> Value {
 
 /// `Ok` maps to the BN value; `Err` (including a policy denial, 0.6.md
 /// "`HOST.FileSystem` execution policy") to a BN `Error` with that message.
-fn method_result<T>(result: Result<T, String>, value: impl FnOnce(T) -> Value) -> Value {
-    result.map_or_else(error, value)
+fn method_result<T>(result: Result<T, FileError>, value: impl FnOnce(T) -> Value) -> Value {
+    result.map_or_else(|failure| error(failure.to_string()), value)
 }
 
 fn path_argument<'a>(
@@ -93,11 +92,9 @@ impl Provider for FsProvider {
                 require_arity(name, arguments, 2, span)?;
                 let path = path_argument(arguments, "HOST.FileSystem.Open path", span)?;
                 let (mode, _) = integer(&arguments[1], span)?;
-                let mode = match mode {
-                    0 => OpenMode::Read,
-                    1 => OpenMode::Write,
-                    2 => OpenMode::Append,
-                    _ => return Ok(error("unknown file mode")),
+                let mode = match bn_rt::file::open_mode(mode) {
+                    Ok(mode) => mode,
+                    Err(failure) => return Ok(error(failure.to_string())),
                 };
                 let opened = bn_rt::file::open(core.host().filesystem(), path, mode).map(|file| {
                     let id = self.next_file;
@@ -229,7 +226,7 @@ impl FsProvider {
                 let count = match file.read_bytes(&mut buffer) {
                     Ok(Some(count)) => count,
                     Ok(None) => return Ok(Value::EndOfFile),
-                    Err(message) => return Ok(error(message)),
+                    Err(failure) => return Ok(error(failure.to_string())),
                 };
                 for (index, byte) in buffer.into_iter().take(count).enumerate() {
                     *core.memory_mut().get_mut(handle, index, span)? =

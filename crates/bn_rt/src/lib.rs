@@ -28,6 +28,7 @@ mod crypto_abi;
 mod dataframe;
 mod dataframe_abi;
 mod dispatch_abi;
+mod error_abi;
 mod exec;
 pub mod file;
 mod file_abi;
@@ -41,6 +42,7 @@ mod policy;
 pub mod secure_fs;
 mod stats;
 mod terminal;
+mod text_abi;
 
 pub use log::{Level as LogLevel, Record as LogRecord};
 pub use log_abi::*;
@@ -56,6 +58,8 @@ pub use dataframe::{
 };
 pub use dataframe_abi::*;
 pub use dispatch_abi::*;
+pub use error_abi::bn_rt_error_message;
+pub(crate) use error_abi::set_error;
 pub use exec::*;
 pub use file_abi::*;
 pub use net::{
@@ -68,6 +72,7 @@ pub use policy::{
     Policy, PolicyError, bn_rt_policy_check, bn_rt_policy_init, bn_rt_policy_restrict,
 };
 pub use terminal::terminal_dimensions;
+pub use text_abi::*;
 
 /// Milliseconds since Unix epoch for an arbitrary `SystemTime`.
 #[must_use]
@@ -611,20 +616,6 @@ pub extern "C" fn bn_rt_print_time(millis: i32) {
     let _ = LibcStdout.write_all(civil::format_time(millis).as_bytes());
 }
 
-#[allow(unsafe_code)] // C ABI: PRINT FLOAT with interpreter formatting.
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_print_float(value: f64) {
-    let text = bn_types::text::float(value, bn_types::FloatType::Float64);
-    let _ = LibcStdout.write_all(text.as_bytes());
-}
-
-#[allow(unsafe_code)] // C ABI: PRINT FLOAT32; `value` is the widened f32.
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_print_float32(value: f64) {
-    let text = bn_types::text::float(value, bn_types::FloatType::Float32);
-    let _ = LibcStdout.write_all(text.as_bytes());
-}
-
 #[allow(unsafe_code)] // C ABI: STRING equality.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_str_eq(left: *const c_char, right: *const c_char) -> i32 {
@@ -673,32 +664,6 @@ pub extern "C" fn bn_rt_str_to_upper(text: *const c_char) -> *mut c_char {
         return c_string("");
     };
     c_string(&text.to_uppercase())
-}
-
-/// `AS STRING` (C3): the text `PRINT` writes, owned like other rt strings.
-/// Narrower integers arrive sign- or zero-extended to 64 bits.
-#[allow(unsafe_code)] // C ABI: owned UTF-8 STRING.
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_text_int(value: i64) -> *mut c_char {
-    c_string(&bn_types::text::integer(value.into()))
-}
-
-#[allow(unsafe_code)] // C ABI: owned UTF-8 STRING.
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_text_uint(value: u64) -> *mut c_char {
-    c_string(&bn_types::text::integer(value.into()))
-}
-
-#[allow(unsafe_code)] // C ABI: owned UTF-8 STRING.
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_text_float(value: f64) -> *mut c_char {
-    c_string(&bn_types::text::float(value, bn_types::FloatType::Float64))
-}
-
-#[allow(unsafe_code)] // C ABI: owned UTF-8 STRING; `value` is the widened f32.
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_text_float32(value: f64) -> *mut c_char {
-    c_string(&bn_types::text::float(value, bn_types::FloatType::Float32))
 }
 
 fn pack_utf8(character: char) -> u64 {
@@ -837,28 +802,6 @@ fn c_string(text: &str) -> *mut c_char {
     let ptr = boxed.as_mut_ptr().cast::<c_char>();
     std::mem::forget(boxed);
     ptr
-}
-
-thread_local! {
-    /// Message of the last failed ABI call on this thread: the `Message` of
-    /// the `Error` the emitted code builds from that call's status.
-    static LAST_ERROR: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
-}
-
-pub(crate) fn set_error(message: impl Into<String>) {
-    LAST_ERROR.with(|slot| *slot.borrow_mut() = message.into());
-}
-
-/// `Error.Message` for a HOST call that returned `status`: null on success
-/// (no allocation), else the recorded message, empty when the call recorded
-/// none. Owned like other runtime strings.
-#[allow(unsafe_code)] // C ABI: owned UTF-8 STRING.
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_error_message(status: i32) -> *mut c_char {
-    if status == 0 {
-        return std::ptr::null_mut();
-    }
-    c_string(&LAST_ERROR.with(|slot| std::mem::take(&mut *slot.borrow_mut())))
 }
 
 /// Parses an IP address. Writes a malloc'd IP or error message to `out`.

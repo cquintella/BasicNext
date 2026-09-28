@@ -10,8 +10,7 @@ use std::ffi::{CStr, c_char};
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
-use super::file::OpenFile;
-use super::secure_fs::OpenMode;
+use super::file::{FileError, OpenFile};
 
 pub type BNFileHandle = u64;
 pub const BN_FILE_OK: u32 = 0;
@@ -68,9 +67,9 @@ fn text(ptr: *const c_char) -> Option<String> {
     }
 }
 
-/// A core failure: its message becomes the next `Error`'s `Message`.
-fn failed(message: String) -> u32 {
-    super::set_error(message);
+/// A core failure: its text becomes the next `Error`'s `Message`.
+fn failed(error: &FileError) -> u32 {
+    super::set_error(error.to_string());
     BN_FILE_ERROR
 }
 
@@ -78,7 +77,7 @@ fn failed(message: String) -> u32 {
 /// handle is `INVALID`.
 fn with_file<T>(
     handle: BNFileHandle,
-    f: impl FnOnce(&mut OpenFile) -> Result<T, String>,
+    f: impl FnOnce(&mut OpenFile) -> Result<T, FileError>,
 ) -> Result<T, u32> {
     authorize()?;
     with_file_unchecked(handle, f)
@@ -87,7 +86,7 @@ fn with_file<T>(
 /// `Close` needs no capability: it only releases what `Open` granted.
 fn with_file_unchecked<T>(
     handle: BNFileHandle,
-    f: impl FnOnce(&mut OpenFile) -> Result<T, String>,
+    f: impl FnOnce(&mut OpenFile) -> Result<T, FileError>,
 ) -> Result<T, u32> {
     let mut guard = files()
         .lock()
@@ -96,7 +95,7 @@ fn with_file_unchecked<T>(
         super::set_error("file handle is invalid");
         return Err(BN_FILE_INVALID);
     };
-    f(file).map_err(failed)
+    f(file).map_err(|error| failed(&error))
 }
 
 pub(crate) fn read_handle(handle: BNFileHandle) -> Result<String, u32> {
@@ -113,7 +112,8 @@ fn write_owned(out: *mut *mut c_char, value: &str) -> u32 {
     let bytes = value.as_bytes();
     let ptr = unsafe { libc::malloc(bytes.len() + 1) }.cast::<u8>();
     if ptr.is_null() {
-        return failed("out of memory".into());
+        super::set_error("out of memory");
+        return BN_FILE_ERROR;
     }
     unsafe {
         std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
@@ -142,11 +142,9 @@ pub extern "C" fn bn_rt_file_open(path: *const c_char, mode: i32, out: *mut BNFi
         Ok(path) => path,
         Err(status) => return status,
     };
-    let mode = match mode {
-        0 => OpenMode::Read,
-        1 => OpenMode::Write,
-        2 => OpenMode::Append,
-        _ => return failed("unknown file mode".into()),
+    let mode = match super::file::open_mode(mode.into()) {
+        Ok(mode) => mode,
+        Err(error) => return failed(&error),
     };
     if let Err(status) = authorize() {
         return status;
@@ -168,7 +166,7 @@ pub extern "C" fn bn_rt_file_open(path: *const c_char, mode: i32, out: *mut BNFi
             unsafe { out.write(id) };
             BN_FILE_OK
         }
-        Err(message) => failed(message),
+        Err(error) => failed(&error),
     }
 }
 
@@ -291,7 +289,7 @@ pub extern "C" fn bn_rt_fs_exists(path: *const c_char, out: *mut i32) -> u32 {
             unsafe { out.write(i32::from(found)) };
             BN_FILE_OK
         }
-        Err(message) => failed(message),
+        Err(error) => failed(&error),
     }
 }
 
@@ -305,7 +303,7 @@ pub extern "C" fn bn_rt_fs_delete_file(path: *const c_char) -> u32 {
         return status;
     }
     super::policy::with_fs(|policy| super::file::delete_file(policy, Path::new(&path)))
-        .map_or_else(failed, |()| BN_FILE_OK)
+        .map_or_else(|error| failed(&error), |()| BN_FILE_OK)
 }
 
 #[unsafe(no_mangle)]

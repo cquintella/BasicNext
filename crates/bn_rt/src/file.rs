@@ -5,13 +5,15 @@
 
 //! `HOST.FileSystem` semantics (language/0.6/host.md, "File system"): one
 //! implementation for the interpreter provider and the native C ABI. Every
-//! failure is the message of a BN `Error`; that includes a path the execution
-//! policy denies (0.6.md, "`HOST.FileSystem` execution policy": "A denied
-//! operation returns `Error`").
+//! failure is a [`FileError`], which both callers turn into a BN `Error`;
+//! that includes a path the execution policy denies (0.6.md,
+//! "`HOST.FileSystem` execution policy": "A denied operation returns `Error`").
 
+use std::fmt;
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::Path;
+use std::string::FromUtf8Error;
 
 use super::policy::FsPolicy;
 use super::secure_fs::OpenMode;
@@ -23,6 +25,64 @@ enum Family {
     Binary,
 }
 
+/// What a policy denial refused.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Access {
+    Open,
+    Read,
+    Delete,
+}
+
+/// A failed `HOST.FileSystem` operation; its `Display` text is the BN
+/// `Error` message.
+#[derive(Debug)]
+pub enum FileError {
+    /// A computed mode that is not `FS.READ`, `FS.WRITE`, or `FS.APPEND`.
+    UnknownMode(i128),
+    PolicyDenied(Access),
+    Directory,
+    Closed,
+    /// A text method on a file in binary use, or a byte method in text use.
+    WrongFamily {
+        binary_in_use: bool,
+    },
+    InvalidUtf8(FromUtf8Error),
+    Io(io::Error),
+}
+
+impl fmt::Display for FileError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnknownMode(_) => formatter.write_str("unknown file mode"),
+            Self::PolicyDenied(Access::Open) => {
+                formatter.write_str("filesystem path is outside the execution policy")
+            }
+            Self::PolicyDenied(Access::Read) => {
+                formatter.write_str("filesystem read is outside the execution policy")
+            }
+            Self::PolicyDenied(Access::Delete) => {
+                formatter.write_str("filesystem deletion is outside the execution policy")
+            }
+            Self::Directory => formatter.write_str("path is a directory"),
+            Self::Closed => formatter.write_str("file is closed"),
+            Self::WrongFamily {
+                binary_in_use: true,
+            } => formatter.write_str("file is in binary mode"),
+            Self::WrongFamily {
+                binary_in_use: false,
+            } => formatter.write_str("file is in text mode"),
+            Self::InvalidUtf8(error) => write!(formatter, "INVALID_UTF8: {error}"),
+            Self::Io(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl From<io::Error> for FileError {
+    fn from(error: io::Error) -> Self {
+        Self::Io(error)
+    }
+}
+
 /// An `FS.File`: open, or closed (`NEW FS.File()`, or after `Close`).
 #[derive(Debug, Default)]
 pub struct OpenFile {
@@ -31,20 +91,38 @@ pub struct OpenFile {
     family: Option<Family>,
 }
 
-const DIRECTORY: &str = "path is a directory";
-
-/// The `Error` message of a failed open or remove. A path outside the policy
-/// gets `denied`; an allowed directory is "a directory" (Windows reports
+/// Classifies a failed open or remove. A path outside the policy is a
+/// denial; an allowed directory is [`FileError::Directory`] (Windows reports
 /// opening one as access denied); anything else is the OS error.
-fn failure(policy: &FsPolicy, path: &Path, write: bool, error: &io::Error, denied: &str) -> String {
+fn failure(
+    policy: &FsPolicy,
+    path: &Path,
+    write: bool,
+    error: io::Error,
+    access: Access,
+) -> FileError {
     if error.kind() != io::ErrorKind::PermissionDenied {
-        error.to_string()
+        FileError::Io(error)
     } else if !policy.allows_path(path, write) {
-        denied.into()
+        FileError::PolicyDenied(access)
     } else if path.is_dir() {
-        DIRECTORY.into()
+        FileError::Directory
     } else {
-        error.to_string()
+        FileError::Io(error)
+    }
+}
+
+/// The open mode for `FS.READ` (0), `FS.WRITE` (1), or `FS.APPEND` (2).
+///
+/// # Errors
+///
+/// [`FileError::UnknownMode`] for any other value.
+pub const fn open_mode(mode: i128) -> Result<OpenMode, FileError> {
+    match mode {
+        0 => Ok(OpenMode::Read),
+        1 => Ok(OpenMode::Write),
+        2 => Ok(OpenMode::Append),
+        _ => Err(FileError::UnknownMode(mode)),
     }
 }
 
@@ -52,20 +130,14 @@ fn failure(policy: &FsPolicy, path: &Path, write: bool, error: &io::Error, denie
 ///
 /// # Errors
 ///
-/// The `Error` message: policy denial, a directory, or the open failure.
-pub fn open(policy: &FsPolicy, path: &Path, mode: OpenMode) -> Result<OpenFile, String> {
+/// Policy denial, a directory, or the open failure.
+pub fn open(policy: &FsPolicy, path: &Path, mode: OpenMode) -> Result<OpenFile, FileError> {
     let write = mode != OpenMode::Read;
-    let file = policy.open(path, mode).map_err(|error| {
-        failure(
-            policy,
-            path,
-            write,
-            &error,
-            "filesystem path is outside the execution policy",
-        )
-    })?;
+    let file = policy
+        .open(path, mode)
+        .map_err(|error| failure(policy, path, write, error, Access::Open))?;
     if file.metadata().is_ok_and(|meta| meta.is_dir()) {
-        return Err(DIRECTORY.into());
+        return Err(FileError::Directory);
     }
     Ok(OpenFile {
         file: Some(file),
@@ -79,25 +151,15 @@ pub fn open(policy: &FsPolicy, path: &Path, mode: OpenMode) -> Result<OpenFile, 
 ///
 /// # Errors
 ///
-/// The `Error` message: policy denial or another I/O failure.
-pub fn exists(policy: &FsPolicy, path: &Path) -> Result<bool, String> {
+/// Policy denial or another I/O failure.
+pub fn exists(policy: &FsPolicy, path: &Path) -> Result<bool, FileError> {
     match policy.open(path, OpenMode::Read) {
         Ok(file) => Ok(file.metadata().is_ok_and(|meta| meta.is_file())),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
-        Err(error) => {
-            let message = failure(
-                policy,
-                path,
-                false,
-                &error,
-                "filesystem read is outside the execution policy",
-            );
-            if message == DIRECTORY {
-                Ok(false)
-            } else {
-                Err(message)
-            }
-        }
+        Err(error) => match failure(policy, path, false, error, Access::Read) {
+            FileError::Directory => Ok(false),
+            failure => Err(failure),
+        },
     }
 }
 
@@ -105,28 +167,23 @@ pub fn exists(policy: &FsPolicy, path: &Path) -> Result<bool, String> {
 ///
 /// # Errors
 ///
-/// The `Error` message: policy denial or the remove failure.
-pub fn delete_file(policy: &FsPolicy, path: &Path) -> Result<(), String> {
-    policy.remove_file(path).map_err(|error| {
-        failure(
-            policy,
-            path,
-            true,
-            &error,
-            "filesystem deletion is outside the execution policy",
-        )
-    })
+/// Policy denial or the remove failure.
+pub fn delete_file(policy: &FsPolicy, path: &Path) -> Result<(), FileError> {
+    policy
+        .remove_file(path)
+        .map_err(|error| failure(policy, path, true, error, Access::Delete))
 }
 
 impl OpenFile {
-    /// The file for `family` use, or the `Error` message.
-    fn file_for(&mut self, family: Family) -> Result<&mut File, String> {
+    /// The file for `family` use.
+    fn file_for(&mut self, family: Family) -> Result<&mut File, FileError> {
         let Some(file) = self.file.as_mut() else {
-            return Err("file is closed".into());
+            return Err(FileError::Closed);
         };
         match self.family {
-            Some(Family::Binary) if family == Family::Text => Err("file is in binary mode".into()),
-            Some(Family::Text) if family == Family::Binary => Err("file is in text mode".into()),
+            Some(current) if current != family => Err(FileError::WrongFamily {
+                binary_in_use: current == Family::Binary,
+            }),
             _ => Ok(file),
         }
     }
@@ -138,14 +195,14 @@ impl OpenFile {
     ///
     /// # Errors
     ///
-    /// The flush failure message.
-    pub fn close(&mut self) -> Result<(), String> {
+    /// The flush failure.
+    pub fn close(&mut self) -> Result<(), FileError> {
         self.family = None;
         let Some(file) = self.file.take() else {
             return Ok(());
         };
         if self.writable {
-            file.sync_all().map_err(|error| error.to_string())
+            Ok(file.sync_all()?)
         } else {
             Ok(())
         }
@@ -156,7 +213,7 @@ impl OpenFile {
     /// # Errors
     ///
     /// Closed, binary use, I/O failure, or invalid UTF-8.
-    pub fn read_line(&mut self) -> Result<Option<String>, String> {
+    pub fn read_line(&mut self) -> Result<Option<String>, FileError> {
         let file = self.file_for(Family::Text)?;
         let mut bytes = Vec::new();
         let mut read_any = false;
@@ -173,7 +230,7 @@ impl OpenFile {
                     }
                     bytes.push(one[0]);
                 }
-                Err(error) => return Err(error.to_string()),
+                Err(error) => return Err(error.into()),
             }
         }
         if !read_any {
@@ -183,7 +240,7 @@ impl OpenFile {
         if bytes.last() == Some(&b'\r') {
             bytes.pop();
         }
-        let line = String::from_utf8(bytes).map_err(|error| format!("INVALID_UTF8: {error}"))?;
+        let line = String::from_utf8(bytes).map_err(FileError::InvalidUtf8)?;
         self.family = Some(Family::Text);
         Ok(Some(line))
     }
@@ -193,11 +250,10 @@ impl OpenFile {
     /// # Errors
     ///
     /// Closed, binary use, I/O failure, or invalid UTF-8.
-    pub fn read_all(&mut self) -> Result<String, String> {
+    pub fn read_all(&mut self) -> Result<String, FileError> {
         let file = self.file_for(Family::Text)?;
         let mut text = String::new();
-        file.read_to_string(&mut text)
-            .map_err(|error| error.to_string())?;
+        file.read_to_string(&mut text)?;
         self.family = Some(Family::Text);
         Ok(text)
     }
@@ -207,11 +263,12 @@ impl OpenFile {
     /// # Errors
     ///
     /// Closed, binary use, or I/O failure.
-    pub fn write(&mut self, text: &str, line: bool) -> Result<(), String> {
+    pub fn write(&mut self, text: &str, line: bool) -> Result<(), FileError> {
         let file = self.file_for(Family::Text)?;
-        file.write_all(text.as_bytes())
-            .and_then(|()| if line { file.write_all(b"\n") } else { Ok(()) })
-            .map_err(|error| error.to_string())?;
+        file.write_all(text.as_bytes())?;
+        if line {
+            file.write_all(b"\n")?;
+        }
         self.family = Some(Family::Text);
         Ok(())
     }
@@ -221,9 +278,9 @@ impl OpenFile {
     /// # Errors
     ///
     /// Closed, text use, or I/O failure.
-    pub fn read_bytes(&mut self, buffer: &mut [u8]) -> Result<Option<usize>, String> {
+    pub fn read_bytes(&mut self, buffer: &mut [u8]) -> Result<Option<usize>, FileError> {
         let file = self.file_for(Family::Binary)?;
-        let count = file.read(buffer).map_err(|error| error.to_string())?;
+        let count = file.read(buffer)?;
         self.family = Some(Family::Binary);
         Ok((count > 0).then_some(count))
     }
@@ -233,9 +290,9 @@ impl OpenFile {
     /// # Errors
     ///
     /// Closed, text use, or I/O failure.
-    pub fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), String> {
+    pub fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), FileError> {
         let file = self.file_for(Family::Binary)?;
-        file.write_all(bytes).map_err(|error| error.to_string())?;
+        file.write_all(bytes)?;
         self.family = Some(Family::Binary);
         Ok(())
     }
@@ -258,7 +315,10 @@ mod tests {
         file.write("one", true).unwrap();
         file.write("tw\r", false).unwrap();
         file.write("", true).unwrap();
-        assert_eq!(file.write_bytes(b"x").unwrap_err(), "file is in text mode");
+        assert_eq!(
+            file.write_bytes(b"x").unwrap_err().to_string(),
+            "file is in text mode"
+        );
         file.close().unwrap();
         file.close().unwrap(); // idempotent
 
@@ -268,33 +328,40 @@ mod tests {
         assert_eq!(file.read_line().unwrap(), None);
         let mut buffer = [0_u8; 4];
         assert_eq!(
-            file.read_bytes(&mut buffer).unwrap_err(),
+            file.read_bytes(&mut buffer).unwrap_err().to_string(),
             "file is in text mode"
         );
         // Read-only handles close successfully on every platform.
         file.close().unwrap();
-        assert_eq!(file.read_all().unwrap_err(), "file is closed");
+        assert_eq!(file.read_all().unwrap_err().to_string(), "file is closed");
 
         let mut file = open(&policy, &path, OpenMode::Read).unwrap();
         assert_eq!(file.read_bytes(&mut buffer).unwrap(), Some(4));
-        assert_eq!(file.read_line().unwrap_err(), "file is in binary mode");
+        assert_eq!(
+            file.read_line().unwrap_err().to_string(),
+            "file is in binary mode"
+        );
         file.close().unwrap();
 
         assert_eq!(
-            OpenFile::default().read_all().unwrap_err(),
+            OpenFile::default().read_all().unwrap_err().to_string(),
             "file is closed"
         );
         assert!(exists(&policy, &path).unwrap());
         assert!(!exists(&policy, &directory).unwrap());
         assert_eq!(
-            open(&policy, &directory, OpenMode::Read).unwrap_err(),
+            open(&policy, &directory, OpenMode::Read)
+                .unwrap_err()
+                .to_string(),
             "path is a directory"
         );
         delete_file(&policy, &path).unwrap();
         assert!(!exists(&policy, &path).unwrap());
         assert!(delete_file(&policy, &path).is_err());
         assert_eq!(
-            open(&FsPolicy::denied(), &path, OpenMode::Read).unwrap_err(),
+            open(&FsPolicy::denied(), &path, OpenMode::Read)
+                .unwrap_err()
+                .to_string(),
             "filesystem path is outside the execution policy"
         );
         std::fs::remove_dir_all(directory).unwrap();

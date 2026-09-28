@@ -1,3 +1,10 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Lowering of `RELEASE` (heap values and HOST handles), static fields,
+// object field and member stores, and class initialization.
 #![allow(clippy::wildcard_imports, clippy::too_many_lines)]
 use super::*;
 

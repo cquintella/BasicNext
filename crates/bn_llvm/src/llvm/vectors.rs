@@ -1,3 +1,10 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Vectors, objects, and members: allocation, indexing with bounds checks,
+// member access, release of vectors and objects, and `IS` type tests.
 #![allow(
     clippy::wildcard_imports,
     clippy::match_same_arms,
@@ -395,55 +402,7 @@ pub(crate) fn emit_is(
     right_ty: &Type,
 ) {
     let test_name = is_test_name(right_ty);
-    if let Type::Alternative(alternatives) = left_ty
-        && let Some(sentinel) = Sentinel::of(alternatives)
-    {
-        let id = destination.0;
-        let (global, array) = sentinel.global();
-        let sentinel_name = match sentinel {
-            Sentinel::NotAvailable => "NA",
-            Sentinel::EndOfFile => "EOF",
-        };
-        let _ = writeln!(
-            text,
-            "  %cellerror{id} = extractvalue {{ i1, ptr, i64 }} %v{}, 0",
-            left.0
-        );
-        let _ = writeln!(
-            text,
-            "  %cellptr{id} = extractvalue {{ i1, ptr, i64 }} %v{}, 1",
-            left.0
-        );
-        let _ = writeln!(
-            text,
-            "  %cellnaptr{id} = getelementptr {array}, ptr {global}, i64 0, i64 0"
-        );
-        let _ = writeln!(
-            text,
-            "  %cellna{id} = icmp eq ptr %cellptr{id}, %cellnaptr{id}"
-        );
-        if test_name == "Error" {
-            let _ = writeln!(text, "  %v{id} = or i1 false, %cellerror{id}");
-        } else if test_name == sentinel_name
-            || matches!(right_ty, Type::EndOfFile | Type::NotAvailable)
-        {
-            let _ = writeln!(text, "  %cellok{id} = xor i1 %cellerror{id}, true");
-            let _ = writeln!(text, "  %v{id} = and i1 %cellok{id}, %cellna{id}");
-        } else {
-            let matches = alternatives
-                .iter()
-                .any(|ty| ty == right_ty || alternative_is(ty, test_name));
-            let _ = writeln!(
-                text,
-                "  %cellabsent{id} = or i1 %cellerror{id}, %cellna{id}"
-            );
-            let _ = writeln!(text, "  %cellpresent{id} = xor i1 %cellabsent{id}, true");
-            let _ = writeln!(
-                text,
-                "  %v{id} = and i1 %cellpresent{id}, {}",
-                u8::from(matches)
-            );
-        }
+    if emit_sentinel_is(text, destination, left, left_ty, right_ty, test_name) {
         return;
     }
     if emit_string_or_eof_is(text, destination, left, left_ty, test_name) {
@@ -641,14 +600,6 @@ fn emit_integer_error_union_is(
         let _ = writeln!(text, "  %v{dest} = or i1 false, %unionnoterror{dest}");
     }
     true
-}
-
-/// Whether `IS test` names `value_ty`, the non-`Error` side of `T OR Error`.
-fn alternative_is(value_ty: &Type, test: &str) -> bool {
-    match value_ty {
-        Type::Named(name) => name == test,
-        _ => bn_types::scalar_test_type(test).as_ref() == Some(value_ty),
-    }
 }
 
 fn is_test_name(ty: &Type) -> &str {

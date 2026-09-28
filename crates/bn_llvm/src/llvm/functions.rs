@@ -1,3 +1,10 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// One emitted LLVM function per BN function: symbols, reachability,
+// support validation, the function body, and its trap blocks.
 #![allow(
     clippy::wildcard_imports,
     clippy::match_same_arms,
@@ -208,7 +215,9 @@ pub(crate) fn emit_function(
         state.control_flow.label(text, format!("b{}", block.id.0));
         if block.id == function.entry {
             if is_start {
-                text.push_str(crate::helpers::windows_binary_stdio_ir(synchronize_prints));
+                text.push_str(crate::platform_stdio::windows_binary_stdio_ir(
+                    synchronize_prints,
+                ));
                 let ceiling = super::policy_ceiling(module);
                 if ceiling != 0 {
                     let _ = writeln!(

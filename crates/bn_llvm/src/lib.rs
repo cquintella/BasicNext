@@ -458,7 +458,13 @@ fn render_start_type(ty: &Type) -> &'static str {
 #[allow(clippy::too_many_lines)]
 #[path = "llvm/analysis.rs"]
 mod analysis;
-use analysis::{analyze_function, narrows_to_string};
+use analysis::analyze_function;
+#[path = "llvm/alternatives.rs"]
+mod alternatives;
+use alternatives::{
+    Sentinel, alternative_is, emit_narrowed_string_load, emit_sentinel_is, loaded_type,
+    narrows_to_string, string_eof_or_error,
+};
 #[path = "llvm/analysis_calls.rs"]
 mod analysis_calls;
 use analysis_calls::call_instruction_supported;
@@ -706,14 +712,6 @@ fn string_na_or_error(alternatives: &[Type]) -> bool {
         && alternatives.iter().any(is_error_type)
 }
 
-/// `FS.File.ReadLine`: the string, the `@.bn_eof` sentinel, or an `Error`.
-fn string_eof_or_error(alternatives: &[Type]) -> bool {
-    alternatives.len() == 3
-        && alternatives.iter().any(|ty| matches!(ty, Type::String))
-        && alternatives.iter().any(|ty| matches!(ty, Type::EndOfFile))
-        && alternatives.iter().any(is_error_type)
-}
-
 fn scalar_na_or_error(alternatives: &[Type]) -> bool {
     alternatives.len() == 3
         && alternatives
@@ -932,30 +930,6 @@ fn binary_supported(operator: &str, left: &Type, right: &Type, result: &Type) ->
     }
 }
 
-fn cast_supported(source: Option<&Type>, target: &Type) -> bool {
-    let Some(source) = source else {
-        return false;
-    };
-    matches!(
-        (source, target),
-        (
-            Type::Integer(_) | Type::IntegerLiteral(_),
-            Type::Integer(_) | Type::IntegerLiteral(_) | Type::Float(_) | Type::Boolean
-        ) | (
-            Type::Float(_) | Type::FloatLiteral,
-            Type::Float(_) | Type::Integer(_) | Type::Boolean
-        ) | (
-            Type::Integer(_)
-                | Type::IntegerLiteral(_)
-                | Type::Float(_)
-                | Type::FloatLiteral
-                | Type::Boolean,
-            Type::String
-        ) | (Type::Boolean, Type::Boolean)
-            | (Type::String, Type::Boolean | Type::String)
-    )
-}
-
 #[path = "llvm/control_flow.rs"]
 mod control_flow;
 
@@ -972,7 +946,7 @@ use emission1::lower_scalar_instruction;
 #[path = "llvm/emission2.rs"]
 mod emission2;
 use emission2::{
-    Sentinel, checked_intrinsic_declaration, cleanup_owned_memory, emit_checked_integer_op,
+    checked_intrinsic_declaration, cleanup_owned_memory, emit_checked_integer_op,
     float_compare_opcode, integer_compare_opcode, lower_print_value, lower_terminator,
 };
 #[path = "llvm/dispatch_results.rs"]
@@ -1022,10 +996,10 @@ mod access_emission;
 use access_emission::lower_access_emission;
 #[path = "llvm/print_emission.rs"]
 mod print_emission;
-use print_emission::lower_print_emission;
+use print_emission::{lower_print_emission, lower_print_language_error_union};
 #[path = "llvm/casts.rs"]
 mod casts;
-use casts::lower_cast;
+use casts::{cast_supported, is_text_cast, lower_cast};
 #[path = "llvm/euclidean.rs"]
 mod euclidean;
 use euclidean::emit_euclidean_integer_op;
@@ -1042,9 +1016,15 @@ use binary::emit_runtime_binary;
 mod runtime;
 use runtime::{
     BN_RT_DECLS, bn_rt_call_supported, bndata_dataframe_method, bnlog_method,
-    emit_checked_i32_eq_zero, emit_handle_result, emit_void_result, is_bn_rt_host_call,
-    is_bndata_dataframe_call, lower_bn_dispatch_call, lower_bn_rt_call, take_continuation,
+    emit_checked_i32_eq_zero, extend_to_i32, is_bn_rt_host_call, is_bndata_dataframe_call,
+    lower_bn_dispatch_call, lower_bn_rt_call, take_continuation,
 };
+#[path = "llvm/fs_emission.rs"]
+mod fs_emission;
+use fs_emission::{FS_CALLS, fs_call_supported, lower_fs_call};
+#[path = "llvm/host_results.rs"]
+mod host_results;
+use host_results::{emit_handle_result, emit_status_result, emit_void_result};
 #[path = "llvm/math.rs"]
 mod math;
 use math::{BN_RT_MATH_DECLS, bnmath_call_supported, bnmath_method, lower_bnmath_call};
@@ -1077,19 +1057,26 @@ use emission3::{
     emit_constant_value_analyzed, i1_operand,
 };
 
+#[path = "llvm/load_emission.rs"]
+mod load_emission;
+use load_emission::lower_load;
+#[path = "llvm/constant_fold.rs"]
+mod constant_fold;
+use constant_fold::{fold_binary, fold_cast, fold_unary, typed_constant};
 #[path = "llvm/helpers.rs"]
 mod helpers;
+#[path = "llvm/platform_stdio.rs"]
+mod platform_stdio;
 use arc::{
     REGION_HEADER_BYTES, destructor_symbol, emit_destroy_if_last, emit_region_base, is_class_type,
     is_region_type,
 };
 use helpers::{
     bncrypto_method, bnjson_member, carries_bncrypto_bytes, carries_bnjson, class_init_flag,
-    coerce_return_operand, coerce_to_type, escape_llvm, extend_to_i64, fold_binary, fold_cast,
-    fold_unary, input_runtime_ir, instruction_name, integer_kind, is_bncrypto_bytes_type,
-    is_canonical_timezone, is_unsigned, parse_float_constant, parse_integer, render_float,
-    render_llvm_integer, sanitize_symbol, static_global_name, string_byte_length_ir,
-    typed_constant, unsupported_call_detail, unsupported_instruction,
+    coerce_return_operand, coerce_to_type, escape_llvm, extend_to_i64, input_runtime_ir,
+    instruction_name, integer_kind, is_bncrypto_bytes_type, is_canonical_timezone, is_unsigned,
+    parse_float_constant, parse_integer, render_float, render_llvm_integer, sanitize_symbol,
+    static_global_name, string_byte_length_ir, unsupported_call_detail, unsupported_instruction,
     unsupported_instruction_detail,
 };
 use layout::{

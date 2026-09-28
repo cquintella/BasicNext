@@ -1,3 +1,10 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// `AS` conversions in native code: which casts `bnc` supports and their
+// lowering, including range-checked integer narrowing and `AS STRING` (C3).
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
@@ -75,6 +82,42 @@ pub(crate) fn lower_cast(
         }
         _ => unreachable!("validated cast shape"),
     }
+}
+
+/// Whether native code implements `source AS target`.
+pub(crate) fn cast_supported(source: Option<&Type>, target: &Type) -> bool {
+    let Some(source) = source else {
+        return false;
+    };
+    matches!(
+        (source, target),
+        (
+            Type::Integer(_) | Type::IntegerLiteral(_),
+            Type::Integer(_) | Type::IntegerLiteral(_) | Type::Float(_) | Type::Boolean
+        ) | (
+            Type::Float(_) | Type::FloatLiteral,
+            Type::Float(_) | Type::Integer(_) | Type::Boolean
+        ) | (
+            Type::Integer(_)
+                | Type::IntegerLiteral(_)
+                | Type::Float(_)
+                | Type::FloatLiteral
+                | Type::Boolean,
+            Type::String
+        ) | (Type::Boolean, Type::Boolean)
+            | (Type::String, Type::Boolean | Type::String)
+    )
+}
+
+/// A cast to STRING, which calls the `bn_rt` text ABI (C3).
+pub(crate) const fn is_text_cast(instruction: &Instruction) -> bool {
+    matches!(
+        instruction,
+        Instruction::Cast {
+            ty: Type::String,
+            ..
+        }
+    )
 }
 
 /// `AS STRING` (C3): `bn_rt` formats with the same code the interpreter uses.
