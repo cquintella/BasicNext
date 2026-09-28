@@ -699,31 +699,16 @@ pub fn integer_from_i128_count(count: i128, span: Span) -> Result<Value, Diagnos
 /// Only if the diagnostic registry schema for this identity is inconsistent (a build error, never a runtime state).
 pub fn runtime_error(id: bn_diag::DiagId, message: impl Into<String>, span: Span) -> Diagnostic {
     let message = message.into();
-    let arguments = match id {
-        bn_diag::DiagId::NAME_NOT_FOUND => vec![
-            ("name".into(), message.clone().into()),
-            ("context".into(), "runtime lookup".into()),
-        ],
-        bn_diag::DiagId::INDEX_OUT_OF_BOUNDS => vec![
-            ("index".into(), "unknown".into()),
-            ("bound".into(), "unknown".into()),
-            ("context".into(), message.into()),
-        ],
-        bn_diag::DiagId::TYPE_MISMATCH => vec![
-            ("expected".into(), "a value matching the operation".into()),
-            ("actual".into(), "an incompatible value".into()),
-            ("context".into(), message.into()),
-        ],
-        // Single-argument schemas (`message`, `detail`, `operation`, …) take
-        // the whole text under the registry's argument name.
-        _ => match id.argument_schema() {
-            [only] => vec![(only.name.into(), message.into())],
-            schema => unreachable!(
-                "{} needs an explicit argument mapping ({} arguments)",
-                id.code(),
-                schema.len()
-            ),
-        },
+    // Only identities with one free-text fact (`message`, `detail`,
+    // `operation`, …); typed identities have their own constructors
+    // (`name_not_found`, `index_out_of_bounds`, `type_mismatch`).
+    let arguments = match id.argument_schema() {
+        [only] => vec![(only.name.into(), message.into())],
+        schema => unreachable!(
+            "{} needs its typed constructor ({} arguments)",
+            id.code(),
+            schema.len()
+        ),
     };
     Diagnostic::structured(
         id,
