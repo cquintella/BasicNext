@@ -115,6 +115,7 @@ pub(crate) fn analyze_with_modules_mode(
         layouts: analyzer.layouts,
         base_classes: analyzer.base_classes,
         bnmath_modules: analyzer.bnmath_modules,
+        standard_modules: analyzer.standard_modules,
         module_constants,
         record_members: analyzer
             .members

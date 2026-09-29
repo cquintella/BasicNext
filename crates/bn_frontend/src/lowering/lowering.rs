@@ -362,6 +362,7 @@ pub(crate) fn lower_inherited_constructor(
         layouts: std::collections::HashMap::new(),
         base_classes: std::collections::HashMap::new(),
         bnmath_modules: HashSet::new(),
+        standard_modules: HashSet::new(),
         module_constants: std::collections::HashMap::new(),
         record_members: std::collections::HashMap::new(),
     };
@@ -398,6 +399,7 @@ pub(crate) fn lower_inherited_destructor(
         layouts: std::collections::HashMap::new(),
         base_classes: std::collections::HashMap::new(),
         bnmath_modules: HashSet::new(),
+        standard_modules: HashSet::new(),
         module_constants: std::collections::HashMap::new(),
         record_members: std::collections::HashMap::new(),
     };

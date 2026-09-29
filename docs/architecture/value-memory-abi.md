@@ -313,9 +313,10 @@ bn_rt_dispatch_barrier_close
 bn_rt_dispatch_barrier_create
 bn_rt_dispatch_barrier_wait
 bn_rt_dispatch_cancel
-bn_rt_dispatch_group_add
 bn_rt_dispatch_group_close
 bn_rt_dispatch_group_create
+bn_rt_dispatch_group_enter
+bn_rt_dispatch_group_leave
 bn_rt_dispatch_group_wait
 bn_rt_dispatch_mutex_close
 bn_rt_dispatch_mutex_create
@@ -323,6 +324,7 @@ bn_rt_dispatch_mutex_lock
 bn_rt_dispatch_mutex_unlock
 bn_rt_dispatch_queue_close
 bn_rt_dispatch_queue_create
+bn_rt_dispatch_queue_create_auto
 bn_rt_dispatch_queue_join
 bn_rt_dispatch_semaphore_acquire
 bn_rt_dispatch_semaphore_close

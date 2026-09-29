@@ -29,6 +29,7 @@ pub fn typeof_name(ty: &Type) -> String {
 
 #[path = "semantic/helpers1.rs"]
 mod helpers1;
+pub(crate) use helpers1::is_dispatch_class;
 #[allow(clippy::wildcard_imports)]
 use helpers1::*;
 #[path = "semantic/helpers2.rs"]
@@ -102,6 +103,8 @@ pub struct SemanticModel {
     pub layouts: HashMap<String, u64>,
     pub base_classes: HashMap<String, String>,
     pub bnmath_modules: HashSet<ModuleId>,
+    /// The standard (`modules/bn/`) modules this module imports.
+    pub standard_modules: HashSet<ModuleId>,
     pub module_constants: HashMap<(ModuleId, String), ConstantValue>,
     /// Instance data members known to semantic analysis for imported and HOST
     /// record-like types. Lowering projects these into IR layouts without

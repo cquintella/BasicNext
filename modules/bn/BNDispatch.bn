@@ -6,6 +6,16 @@
 // while the ticket remains opaque. AWAIT preserves the worker result type at
 // the call site and reports timeout, cancellation, and task failure as Error.
 
+// Error codes (language/0.6/bndispatch.md "Errors").
+EXPORT CONST INVALID_ARGUMENT AS INTEGER = 1
+EXPORT CONST TIMEOUT AS INTEGER = 2
+EXPORT CONST CLOSED AS INTEGER = 3
+EXPORT CONST SATURATED AS INTEGER = 4
+EXPORT CONST CANCELLED AS INTEGER = 5
+EXPORT CONST TASK_FAILED AS INTEGER = 6
+EXPORT CONST INVALID_STATE AS INTEGER = 7
+EXPORT CONST UNAVAILABLE AS INTEGER = 8
+
 EXPORT CLASS Ticket
     PUBLIC FUNCTION CONSTRUCTOR()
     END FUNCTION

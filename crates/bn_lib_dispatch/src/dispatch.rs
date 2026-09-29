@@ -4,13 +4,14 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex, Weak, mpsc};
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use bn_value::Value;
 use ring::rand::{SecureRandom, SystemRandom};
 
-pub(crate) mod sync;
-pub(crate) use sync::{Barrier, DispatchGroup, DispatchMutex, DispatchSemaphore};
+pub(crate) use bn_rt::dispatch_error::DispatchFailure as DispatchError;
+use bn_rt::dispatch_sync::deadline;
+pub(crate) use bn_rt::dispatch_sync::{Barrier, DispatchGroup, DispatchMutex, DispatchSemaphore};
 
 pub(crate) const PENDING: i32 = 0;
 pub(crate) const RUNNING: i32 = 1;
@@ -61,11 +62,8 @@ struct TicketState {
 }
 
 impl Queue {
-    pub(crate) fn new(workers: i128) -> Option<Self> {
-        let workers = usize::try_from(workers).ok()?;
-        if !(1..=bn_limits::dispatch_limits().worker_count_max).contains(&workers) {
-            return None;
-        }
+    pub(crate) fn new(workers: i128) -> Result<Self, DispatchError> {
+        let workers = bn_rt::dispatch_sync::worker_count(workers)?;
         let (sender, receiver) = mpsc::sync_channel::<Box<dyn FnOnce() + Send>>(
             bn_limits::dispatch_limits().pending_tickets_max,
         );
@@ -98,7 +96,7 @@ impl Queue {
             sender: Mutex::new(Some(sender)),
             worker_handles: Mutex::new(worker_handles),
         });
-        Some(Self { inner })
+        Ok(Self { inner })
     }
 
     pub(crate) fn workers(&self) -> usize {
@@ -131,11 +129,11 @@ impl Queue {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if state.closed {
-            return Err(DispatchError::Closed);
+            return Err(DispatchError::Closed("queue"));
         }
         state.tickets.retain(|_, ticket| !ticket.is_terminal());
         if state.tickets.len() >= bn_limits::dispatch_limits().pending_tickets_max {
-            return Err(DispatchError::Saturated);
+            return Err(saturated());
         }
         let id = next_ticket_id(&state.tickets)?;
         let ticket = Arc::new(TicketInner {
@@ -163,7 +161,7 @@ impl Queue {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_ref()
             .cloned()
-            .ok_or(DispatchError::Closed)?;
+            .ok_or(DispatchError::Closed("queue"))?;
         let queued = sender.try_send(Box::new(move || {
             if queued_ticket.mark_running().is_err() {
                 return;
@@ -179,7 +177,7 @@ impl Queue {
         }));
         if queued.is_err() {
             state.tickets.remove(&id);
-            return Err(DispatchError::Saturated);
+            return Err(saturated());
         }
         self.inner.wake.notify_all();
         Ok(public_ticket)
@@ -187,7 +185,7 @@ impl Queue {
 
     pub(crate) fn join(&self, timeout_ms: i128) -> Result<(), DispatchError> {
         if self.is_worker_thread() {
-            return Err(DispatchError::SelfJoin);
+            return Err(DispatchError::SelfWait);
         }
         let deadline = deadline(timeout_ms)?;
         let mut state = self
@@ -201,7 +199,7 @@ impl Queue {
             }
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
-                return Err(DispatchError::Timeout);
+                return Err(DispatchError::Timeout { ms: timeout_ms });
             }
             (state, _) = self
                 .inner
@@ -213,7 +211,7 @@ impl Queue {
 
     pub(crate) fn close(&self, timeout_ms: i128) -> Result<(), DispatchError> {
         if self.is_worker_thread() {
-            return Err(DispatchError::SelfJoin);
+            return Err(DispatchError::SelfWait);
         }
         let deadline = deadline(timeout_ms)?;
         {
@@ -243,11 +241,11 @@ impl Queue {
                 state.tickets.values().all(|ticket| ticket.is_terminal())
             };
             if all_terminal {
-                return self.join_workers_until(deadline);
+                return self.join_workers_until(deadline, timeout_ms);
             }
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
-                return Err(DispatchError::Timeout);
+                return Err(DispatchError::Timeout { ms: timeout_ms });
             }
             let state = self
                 .inner
@@ -262,7 +260,7 @@ impl Queue {
         }
     }
 
-    fn join_workers_until(&self, deadline: Instant) -> Result<(), DispatchError> {
+    fn join_workers_until(&self, deadline: Instant, timeout_ms: i128) -> Result<(), DispatchError> {
         loop {
             let all_finished = {
                 let workers = self
@@ -284,7 +282,7 @@ impl Queue {
                 return Ok(());
             }
             if deadline.saturating_duration_since(Instant::now()).is_zero() {
-                return Err(DispatchError::Timeout);
+                return Err(DispatchError::Timeout { ms: timeout_ms });
             }
             std::thread::yield_now();
         }
@@ -321,7 +319,7 @@ impl Ticket {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if state.closed {
-            return Err(DispatchError::Closed);
+            return Err(DispatchError::Closed("ticket"));
         }
         Ok(state.task.clone())
     }
@@ -342,17 +340,17 @@ impl Ticket {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         loop {
             if state.closed {
-                return Err(DispatchError::Closed);
+                return Err(DispatchError::Closed("ticket"));
             }
             match state.status {
                 COMPLETED => return Ok(()),
-                FAILED => return Err(DispatchError::TaskFailed(state.error.clone())),
+                FAILED => return Err(task_failed(state.error.clone())),
                 CANCELLED => return Err(DispatchError::Cancelled),
                 _ => {}
             }
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
-                return Err(DispatchError::Timeout);
+                return Err(DispatchError::Timeout { ms: timeout_ms });
             }
             (state, _) = self
                 .inner
@@ -368,7 +366,7 @@ impl Ticket {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if state.closed {
-            return Err(DispatchError::Closed);
+            return Err(DispatchError::Closed("ticket"));
         }
         if state.status == PENDING {
             state.status = CANCELLED;
@@ -406,7 +404,7 @@ impl Ticket {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if state.closed || state.status != PENDING {
-            return Err(DispatchError::Closed);
+            return Err(DispatchError::Closed("ticket"));
         }
         state.status = RUNNING;
         Ok(())
@@ -514,45 +512,35 @@ impl Drop for QueueInner {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum DispatchError {
-    Closed,
-    Saturated,
-    Timeout,
-    Cancelled,
-    TaskFailed(Option<(i32, String)>),
-    Entropy,
-    SelfJoin,
-    InvalidTimeout,
-    GroupUnderflow,
-    InvalidRelease,
-    NotOwner,
-}
-
 fn next_ticket_id(tickets: &HashMap<u64, Arc<TicketInner>>) -> Result<u64, DispatchError> {
     let random = SystemRandom::new();
     let mut bytes = [0_u8; std::mem::size_of::<u64>()];
     for _ in 0..8 {
-        random
-            .fill(&mut bytes)
-            .map_err(|_| DispatchError::Entropy)?;
+        random.fill(&mut bytes).map_err(|_| {
+            DispatchError::Unavailable("the system provides no entropy for ticket identifiers")
+        })?;
         let id = u64::from_ne_bytes(bytes);
         if id != 0 && !tickets.contains_key(&id) {
             return Ok(id);
         }
     }
-    Err(DispatchError::Saturated)
+    Err(saturated())
 }
 
-fn deadline(timeout_ms: i128) -> Result<Instant, DispatchError> {
-    let limits = bn_limits::dispatch_limits();
-    if !(limits.timeout_min_ms..=limits.timeout_max_ms).contains(&timeout_ms) {
-        return Err(DispatchError::InvalidTimeout);
+/// A failed ticket's `Error`, as the worker returned it.
+fn task_failed(error: Option<(i32, String)>) -> DispatchError {
+    let (code, message) = error.unwrap_or((1, "the task failed".into()));
+    DispatchError::TaskFailed {
+        code: code.into(),
+        message,
     }
-    Ok(Instant::now()
-        + Duration::from_millis(
-            u64::try_from(timeout_ms).expect("validated timeout is non-negative"),
-        ))
+}
+
+/// The queue's bounded backlog is full.
+fn saturated() -> DispatchError {
+    DispatchError::Saturated {
+        pending: bn_limits::dispatch_limits().pending_tickets_max,
+    }
 }
 
 #[cfg(test)]
@@ -560,7 +548,7 @@ mod tests {
     use super::*;
     #[test]
     fn queue_rejects_invalid_workers_and_tracks_ticket_lifecycle() {
-        assert!(Queue::new(0).is_none());
+        assert!(Queue::new(0).is_err());
         let queue = Queue::new(2).expect("valid queue");
         let ticket = queue.submit("Work".into()).expect("ticket");
         ticket.wait(1_000).expect("no-op task completes");
@@ -621,7 +609,7 @@ mod tests {
         }
         assert!(matches!(
             queue.submit("Overflow".into()),
-            Err(DispatchError::Saturated)
+            Err(DispatchError::Saturated { .. })
         ));
         release.store(true, std::sync::atomic::Ordering::Release);
         queue.close(1_000).expect("close saturated queue");
@@ -657,7 +645,7 @@ mod tests {
 
         assert!(matches!(
             failed.wait(1_000),
-            Err(DispatchError::TaskFailed(Some((1, message)))) if message.contains("panic")
+            Err(DispatchError::TaskFailed { code: 1, message }) if message.contains("panic")
         ));
         completed.wait(1_000).expect("later task survives panic");
         queue.close(1_000).expect("close after panic");
@@ -693,7 +681,7 @@ mod tests {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .take(),
-            Some(Err(DispatchError::SelfJoin))
+            Some(Err(DispatchError::SelfWait))
         );
         queue.close(1_000).expect("close after worker returns");
     }
@@ -725,7 +713,7 @@ mod tests {
             .expect("blocked task submission");
         started.wait();
 
-        assert_eq!(queue.close(1), Err(DispatchError::Timeout));
+        assert_eq!(queue.close(1), Err(DispatchError::Timeout { ms: 1 }));
         assert!(!queue.workers_joined_for_test());
         release.wait();
         queue.close(1_000).expect("close after running task exits");

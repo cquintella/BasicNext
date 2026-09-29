@@ -929,6 +929,45 @@ fn json_errors_match_across_backends() {
     native_matches_interpreter(path);
 }
 
+/// `BNDispatch` failures carry the shared `bn_rt::dispatch_error` report on
+/// both backends, and the synchronization classes are one implementation
+/// (`bn_rt::dispatch_sync`); bndispatch.md "Synchronization" and "Errors".
+#[test]
+fn dispatch_errors_match_across_backends() {
+    let path = "tests/host/dispatch_errors.bn";
+    let output = bni().args(["run", path]).output().expect("run fixture");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "TRUE BNDispatch.Queue.Concurrent the worker count must be from 1 through 64\n\
+         TRUE cannot use 65 as the number of barrier parties\n\
+         TRUE BNDispatch.Semaphore.New\n\
+         TRUE BNDispatch.Semaphore.Release its only permit is already available\n\
+         FALSE TRUE timed out after 10 ms\n\
+         TRUE BNDispatch.Mutex.Unlock\n\
+         TRUE the group count is already 0: each Leave needs an Enter\n\
+         group FALSE FALSE\n\
+         barrier last TRUE\n\
+         TRUE BNDispatch.Barrier.Wait\n\
+         TRUE the worker returned Error 1: ASC requires a non-empty STRING\n\
+         answer 42\n\
+         FALSE TRUE BNDispatch.Queue.Async\n"
+    );
+    native_matches_interpreter(path);
+}
+
+/// A user class's `Wait` and `Async` are ordinary methods: only BNDispatch
+/// `Ticket.Wait` and `Queue.Async` follow the `AWAIT`/`ASYNC` rules (any
+/// member named `Wait` was taken for `AWAIT`).
+#[test]
+fn methods_named_wait_and_async_are_ordinary_calls() {
+    let path = "tests/grammar/valid/ordinary-wait-async.bn";
+    let output = bni().args(["run", path]).output().expect("run fixture");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "0 20\nopen now!\n");
+    native_matches_interpreter(path);
+}
+
 /// HOST.Exec failures carry the shared `bn_host_exec` report (Code,
 /// Operation, Message naming the program, Cause) on both backends, and
 /// `PRINT` of an `Error` narrowed out of `Exec.Result OR Error` prints the

@@ -2,6 +2,7 @@
 #![allow(unsafe_code)]
 #![allow(clippy::too_many_lines)]
 
+use crate::dispatch_error::DispatchFailure;
 use std::collections::HashMap;
 use std::ffi::{c_char, c_void};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -113,33 +114,11 @@ struct Queue {
     tickets: Mutex<Vec<BNDispatchHandle>>,
 }
 
-struct Group {
-    tickets: Mutex<Vec<BNDispatchHandle>>,
-}
-
-struct BarrierHandle {
-    barrier: std::sync::Barrier,
-}
-
-struct SemaphoreHandle {
-    permits: Mutex<u32>,
-    wake: Condvar,
-}
-
-struct MutexHandle {
-    locked: Mutex<bool>,
-    wake: Condvar,
-}
-
 struct Registry {
     next: AtomicU64,
     queues: Mutex<HashMap<BNDispatchHandle, Arc<Queue>>>,
     tickets: Mutex<HashMap<BNDispatchHandle, Arc<Ticket>>>,
     closed_tickets: Mutex<std::collections::HashSet<BNDispatchHandle>>,
-    groups: Mutex<HashMap<BNDispatchHandle, Arc<Group>>>,
-    barriers: Mutex<HashMap<BNDispatchHandle, Arc<BarrierHandle>>>,
-    semaphores: Mutex<HashMap<BNDispatchHandle, Arc<SemaphoreHandle>>>,
-    mutexes: Mutex<HashMap<BNDispatchHandle, Arc<MutexHandle>>>,
 }
 
 fn registry() -> &'static Registry {
@@ -149,36 +128,66 @@ fn registry() -> &'static Registry {
         queues: Mutex::new(HashMap::new()),
         tickets: Mutex::new(HashMap::new()),
         closed_tickets: Mutex::new(std::collections::HashSet::new()),
-        groups: Mutex::new(HashMap::new()),
-        barriers: Mutex::new(HashMap::new()),
-        semaphores: Mutex::new(HashMap::new()),
-        mutexes: Mutex::new(HashMap::new()),
     })
 }
 
-fn next_handle() -> BNDispatchHandle {
+pub(crate) fn next_handle() -> BNDispatchHandle {
     registry().next.fetch_add(1, Ordering::Relaxed)
 }
 
-fn dispatch_limits() -> (u32, u32) {
-    (1, 64)
+/// Records `failure` of `operation` for the emitted code and returns its
+/// status (bndispatch.md "Errors").
+fn failed(operation: &str, failure: &DispatchFailure) -> BNDispatchStatus {
+    crate::set_error_report(
+        failure.code(),
+        operation,
+        failure.message(),
+        failure.cause(),
+    );
+    match failure {
+        DispatchFailure::Timeout { .. } => BN_DISPATCH_TIMEOUT,
+        DispatchFailure::Closed(_) => BN_DISPATCH_CLOSED,
+        DispatchFailure::Cancelled => BN_DISPATCH_CANCELLED,
+        _ => BN_DISPATCH_ERROR,
+    }
 }
 
+thread_local! {
+    /// The queue whose task this thread runs; 0 outside a worker.
+    static CURRENT_QUEUE: std::cell::Cell<BNDispatchHandle> = const { std::cell::Cell::new(0) };
+}
+
+/// `Queue.Serial()` and `Queue.Concurrent(workers)`.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_dispatch_queue_create(
-    workers: u32,
+    workers: i64,
     out_queue: *mut BNDispatchHandle,
 ) -> BNDispatchStatus {
+    match crate::dispatch_sync::worker_count(i128::from(workers)) {
+        Ok(workers) => new_queue(workers, out_queue),
+        Err(failure) => failed("BNDispatch.Queue.Concurrent", &failure),
+    }
+}
+
+/// `Queue.Auto()`: one worker per available processor.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_dispatch_queue_create_auto(
+    out_queue: *mut BNDispatchHandle,
+) -> BNDispatchStatus {
+    match crate::dispatch_sync::auto_worker_count() {
+        Ok(workers) => new_queue(workers, out_queue),
+        Err(failure) => failed("BNDispatch.Queue.Auto", &failure),
+    }
+}
+
+fn new_queue(workers: usize, out_queue: *mut BNDispatchHandle) -> BNDispatchStatus {
     if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
         return BN_DISPATCH_POLICY_DENIED;
     }
     if out_queue.is_null() {
         return BN_DISPATCH_ERROR;
     }
-    let (minimum, maximum) = dispatch_limits();
-    if !(minimum..=maximum).contains(&workers) {
-        return BN_DISPATCH_LIMIT;
-    }
+    let workers = u32::try_from(workers).unwrap_or(u32::MAX);
     let handle = next_handle();
     registry()
         .queues
@@ -226,7 +235,7 @@ pub extern "C" fn bn_rt_dispatch_submit(
         return BN_DISPATCH_INVALID_HANDLE;
     };
     if queue_ref.closed.load(Ordering::Acquire) {
-        return BN_DISPATCH_CLOSED;
+        return failed("BNDispatch.Queue.Async", &DispatchFailure::Closed("queue"));
     }
     let args = if argument_count == 0 {
         Vec::new()
@@ -262,6 +271,7 @@ pub extern "C" fn bn_rt_dispatch_submit(
     let context = context as usize;
     let workers = queue_ref.workers;
     thread::spawn(move || {
+        CURRENT_QUEUE.with(|current| current.set(queue));
         // A queue may create lightweight waiting threads, but only `workers`
         // callbacks execute at once. This keeps the ABI deterministic without
         // introducing a dependency on a particular executor implementation.
@@ -341,6 +351,8 @@ pub extern "C" fn bn_rt_dispatch_submit(
     BN_DISPATCH_OK
 }
 
+/// `AWAIT ticket(timeoutMs)`: the worker's result through `out_result`, or
+/// the recorded failure (bndispatch.md "Errors").
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_dispatch_await(
     ticket: BNDispatchHandle,
@@ -348,6 +360,7 @@ pub extern "C" fn bn_rt_dispatch_await(
     out_result: *mut BNValue,
     out_error: *mut BNDispatchError,
 ) -> BNDispatchStatus {
+    const OPERATION: &str = "BNDispatch.Ticket.Wait";
     if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
         return BN_DISPATCH_POLICY_DENIED;
     }
@@ -358,32 +371,39 @@ pub extern "C" fn bn_rt_dispatch_await(
         .get(&ticket)
         .cloned();
     let Some(ticket_ref) = ticket_ref else {
-        return BN_DISPATCH_INVALID_HANDLE;
+        let closed = registry()
+            .closed_tickets
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains(&ticket);
+        return if closed {
+            failed(OPERATION, &DispatchFailure::Closed("ticket"))
+        } else {
+            BN_DISPATCH_INVALID_HANDLE
+        };
+    };
+    let deadline = match crate::dispatch_sync::deadline(i128::from(timeout_ms)) {
+        Ok(deadline) => deadline,
+        Err(failure) => return failed(OPERATION, &failure),
     };
     let mut state = ticket_ref
         .state
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if !state.done {
-        if timeout_ms < 0 {
-            return BN_DISPATCH_TIMEOUT;
+    while !state.done {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return failed(
+                OPERATION,
+                &DispatchFailure::Timeout {
+                    ms: i128::from(timeout_ms),
+                },
+            );
         }
-        let timeout = Duration::from_millis(timeout_ms.cast_unsigned());
-        let started = Instant::now();
-        while !state.done {
-            let remaining = timeout.saturating_sub(started.elapsed());
-            if remaining.is_zero() {
-                return BN_DISPATCH_TIMEOUT;
-            }
-            let (next, timed) = ticket_ref
-                .wake
-                .wait_timeout(state, remaining)
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            state = next;
-            if timed.timed_out() && !state.done {
-                return BN_DISPATCH_TIMEOUT;
-            }
-        }
+        (state, _) = ticket_ref
+            .wake
+            .wait_timeout(state, remaining)
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
     }
     #[allow(unsafe_code)]
     unsafe {
@@ -394,11 +414,16 @@ pub extern "C" fn bn_rt_dispatch_await(
             *out_error = state.error;
         }
     }
-    if state.error.code != 0 {
-        BN_DISPATCH_ERROR
-    } else {
-        BN_DISPATCH_OK
+    if state.cancelled || state.error.code == BN_DISPATCH_CLOSED {
+        // `Cancel`, or the queue's `Close`, removed the task before it ran.
+        return failed(OPERATION, &DispatchFailure::Cancelled);
     }
+    if state.error.code != 0 {
+        let (code, message) =
+            crate::error_abi::code_and_message(state.error.message, i64::from(state.error.code));
+        return failed(OPERATION, &DispatchFailure::TaskFailed { code, message });
+    }
+    BN_DISPATCH_OK
 }
 
 #[unsafe(no_mangle)]
@@ -456,37 +481,34 @@ pub extern "C" fn bn_rt_dispatch_ticket_close(ticket: BNDispatchHandle) -> BNDis
     }
 }
 
+/// `queue.Close(timeoutMs)`: cancels pending tickets, then waits for the
+/// running ones.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_dispatch_queue_close(
     queue: BNDispatchHandle,
     timeout_ms: i64,
 ) -> BNDispatchStatus {
-    let queue_ref = registry()
-        .queues
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .get(&queue)
-        .cloned();
-    let Some(queue_ref) = queue_ref else {
-        return BN_DISPATCH_INVALID_HANDLE;
-    };
-    queue_ref.closed.store(true, Ordering::Release);
-    let joined = bn_rt_dispatch_queue_join(queue, timeout_ms);
-    if joined != BN_DISPATCH_OK {
-        return joined;
-    }
-    registry()
-        .queues
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .remove(&queue);
-    BN_DISPATCH_OK
+    // The closed queue stays registered, so a later submit reports `CLOSED`
+    // rather than an unknown handle.
+    wait_for_queue(queue, timeout_ms, "BNDispatch.Queue.Close", true)
 }
 
+/// `queue.Join(timeoutMs)`: waits until every ticket is done.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_dispatch_queue_join(
     queue: BNDispatchHandle,
     timeout_ms: i64,
+) -> BNDispatchStatus {
+    wait_for_queue(queue, timeout_ms, "BNDispatch.Queue.Join", false)
+}
+
+/// Waits until every ticket of `queue` is done, first closing it when
+/// `close` is set.
+fn wait_for_queue(
+    queue: BNDispatchHandle,
+    timeout_ms: i64,
+    operation: &str,
+    close: bool,
 ) -> BNDispatchStatus {
     let queue_ref = registry()
         .queues
@@ -497,9 +519,17 @@ pub extern "C" fn bn_rt_dispatch_queue_join(
     let Some(queue_ref) = queue_ref else {
         return BN_DISPATCH_INVALID_HANDLE;
     };
-    let deadline = timeout_ms
-        .checked_nonnegative_duration()
-        .map(|duration| Instant::now() + duration);
+    if CURRENT_QUEUE.with(std::cell::Cell::get) == queue {
+        return failed(operation, &DispatchFailure::SelfWait);
+    }
+    let deadline = match crate::dispatch_sync::deadline(i128::from(timeout_ms)) {
+        Ok(deadline) => deadline,
+        Err(failure) => return failed(operation, &failure),
+    };
+    if close {
+        queue_ref.closed.store(true, Ordering::Release);
+        queue_ref.idle.notify_all();
+    }
     loop {
         let handles = queue_ref
             .tickets
@@ -523,425 +553,24 @@ pub extern "C" fn bn_rt_dispatch_queue_join(
         if all_done {
             return BN_DISPATCH_OK;
         }
-        if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
-            return BN_DISPATCH_TIMEOUT;
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return failed(
+                operation,
+                &DispatchFailure::Timeout {
+                    ms: i128::from(timeout_ms),
+                },
+            );
         }
-        let wait = deadline.map_or(Duration::from_millis(1), |deadline| {
-            deadline.saturating_duration_since(Instant::now())
-        });
         let active = queue_ref
             .active
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = queue_ref
             .idle
-            .wait_timeout(active, wait)
+            .wait_timeout(active, remaining.min(Duration::from_millis(1)))
             .unwrap_or_else(std::sync::PoisonError::into_inner);
     }
-}
-
-trait NonnegativeDuration {
-    fn checked_nonnegative_duration(self) -> Option<Duration>;
-}
-
-impl NonnegativeDuration for i64 {
-    fn checked_nonnegative_duration(self) -> Option<Duration> {
-        (self >= 0).then(|| Duration::from_millis(self.cast_unsigned()))
-    }
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_dispatch_group_create(out: *mut BNDispatchHandle) -> BNDispatchStatus {
-    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
-        return BN_DISPATCH_POLICY_DENIED;
-    }
-    if out.is_null() {
-        return BN_DISPATCH_ERROR;
-    }
-    let handle = next_handle();
-    registry()
-        .groups
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .insert(
-            handle,
-            Arc::new(Group {
-                tickets: Mutex::new(Vec::new()),
-            }),
-        );
-    unsafe {
-        *out = handle;
-    }
-    BN_DISPATCH_OK
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_dispatch_group_add(
-    group: BNDispatchHandle,
-    ticket: BNDispatchHandle,
-) -> BNDispatchStatus {
-    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
-        return BN_DISPATCH_POLICY_DENIED;
-    }
-    let Some(group) = registry()
-        .groups
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .get(&group)
-        .cloned()
-    else {
-        return BN_DISPATCH_INVALID_HANDLE;
-    };
-    if !registry()
-        .tickets
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .contains_key(&ticket)
-    {
-        return BN_DISPATCH_INVALID_HANDLE;
-    }
-    group
-        .tickets
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .push(ticket);
-    BN_DISPATCH_OK
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_dispatch_group_wait(
-    group: BNDispatchHandle,
-    timeout_ms: i64,
-) -> BNDispatchStatus {
-    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
-        return BN_DISPATCH_POLICY_DENIED;
-    }
-    let Some(group) = registry()
-        .groups
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .get(&group)
-        .cloned()
-    else {
-        return BN_DISPATCH_INVALID_HANDLE;
-    };
-    let deadline = timeout_ms
-        .checked_nonnegative_duration()
-        .map(|d| Instant::now() + d);
-    loop {
-        let handles = group
-            .tickets
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
-        if handles.iter().all(|handle| {
-            registry()
-                .tickets
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .get(handle)
-                .is_none_or(|ticket| {
-                    ticket
-                        .state
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .done
-                })
-        }) {
-            return BN_DISPATCH_OK;
-        }
-        if deadline.is_some_and(|d| Instant::now() >= d) {
-            return BN_DISPATCH_TIMEOUT;
-        }
-        thread::yield_now();
-    }
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_dispatch_group_close(group: BNDispatchHandle) -> BNDispatchStatus {
-    registry()
-        .groups
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .remove(&group)
-        .map_or(BN_DISPATCH_INVALID_HANDLE, |_| BN_DISPATCH_OK)
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_dispatch_barrier_create(
-    parties: u32,
-    out: *mut BNDispatchHandle,
-) -> BNDispatchStatus {
-    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
-        return BN_DISPATCH_POLICY_DENIED;
-    }
-    if out.is_null() || parties == 0 {
-        return BN_DISPATCH_ERROR;
-    }
-    let handle = next_handle();
-    registry()
-        .barriers
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .insert(
-            handle,
-            Arc::new(BarrierHandle {
-                barrier: std::sync::Barrier::new(parties as usize),
-            }),
-        );
-    unsafe {
-        *out = handle;
-    }
-    BN_DISPATCH_OK
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_dispatch_barrier_wait(
-    barrier: BNDispatchHandle,
-    _timeout_ms: i64,
-) -> BNDispatchStatus {
-    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
-        return BN_DISPATCH_POLICY_DENIED;
-    }
-    let Some(barrier) = registry()
-        .barriers
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .get(&barrier)
-        .cloned()
-    else {
-        return BN_DISPATCH_INVALID_HANDLE;
-    };
-    barrier.barrier.wait();
-    BN_DISPATCH_OK
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_dispatch_barrier_close(barrier: BNDispatchHandle) -> BNDispatchStatus {
-    registry()
-        .barriers
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .remove(&barrier)
-        .map_or(BN_DISPATCH_INVALID_HANDLE, |_| BN_DISPATCH_OK)
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_dispatch_semaphore_create(
-    initial: u32,
-    out: *mut BNDispatchHandle,
-) -> BNDispatchStatus {
-    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
-        return BN_DISPATCH_POLICY_DENIED;
-    }
-    if out.is_null() {
-        return BN_DISPATCH_ERROR;
-    }
-    let handle = next_handle();
-    registry()
-        .semaphores
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .insert(
-            handle,
-            Arc::new(SemaphoreHandle {
-                permits: Mutex::new(initial),
-                wake: Condvar::new(),
-            }),
-        );
-    unsafe {
-        *out = handle;
-    }
-    BN_DISPATCH_OK
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_dispatch_semaphore_acquire(
-    semaphore: BNDispatchHandle,
-    timeout_ms: i64,
-) -> BNDispatchStatus {
-    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
-        return BN_DISPATCH_POLICY_DENIED;
-    }
-    let Some(semaphore) = registry()
-        .semaphores
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .get(&semaphore)
-        .cloned()
-    else {
-        return BN_DISPATCH_INVALID_HANDLE;
-    };
-    let mut permits = semaphore
-        .permits
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if timeout_ms < 0 {
-        while *permits == 0 {
-            permits = semaphore
-                .wake
-                .wait(permits)
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-        }
-    } else {
-        let (next, timed) = semaphore
-            .wake
-            .wait_timeout_while(
-                permits,
-                Duration::from_millis(timeout_ms.cast_unsigned()),
-                |count| *count == 0,
-            )
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        permits = next;
-        if timed.timed_out() && *permits == 0 {
-            return BN_DISPATCH_TIMEOUT;
-        }
-    }
-    *permits -= 1;
-    BN_DISPATCH_OK
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_dispatch_semaphore_release(
-    semaphore: BNDispatchHandle,
-) -> BNDispatchStatus {
-    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
-        return BN_DISPATCH_POLICY_DENIED;
-    }
-    let Some(semaphore) = registry()
-        .semaphores
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .get(&semaphore)
-        .cloned()
-    else {
-        return BN_DISPATCH_INVALID_HANDLE;
-    };
-    let mut permits = semaphore
-        .permits
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    *permits = permits.saturating_add(1);
-    semaphore.wake.notify_one();
-    BN_DISPATCH_OK
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_dispatch_semaphore_close(semaphore: BNDispatchHandle) -> BNDispatchStatus {
-    registry()
-        .semaphores
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .remove(&semaphore)
-        .map_or(BN_DISPATCH_INVALID_HANDLE, |_| BN_DISPATCH_OK)
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_dispatch_mutex_create(out: *mut BNDispatchHandle) -> BNDispatchStatus {
-    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
-        return BN_DISPATCH_POLICY_DENIED;
-    }
-    if out.is_null() {
-        return BN_DISPATCH_ERROR;
-    }
-    let handle = next_handle();
-    registry()
-        .mutexes
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .insert(
-            handle,
-            Arc::new(MutexHandle {
-                locked: Mutex::new(false),
-                wake: Condvar::new(),
-            }),
-        );
-    unsafe {
-        *out = handle;
-    }
-    BN_DISPATCH_OK
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_dispatch_mutex_lock(
-    mutex: BNDispatchHandle,
-    timeout_ms: i64,
-) -> BNDispatchStatus {
-    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
-        return BN_DISPATCH_POLICY_DENIED;
-    }
-    let Some(mutex) = registry()
-        .mutexes
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .get(&mutex)
-        .cloned()
-    else {
-        return BN_DISPATCH_INVALID_HANDLE;
-    };
-    let mut locked = mutex
-        .locked
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if timeout_ms < 0 {
-        while *locked {
-            locked = mutex
-                .wake
-                .wait(locked)
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-        }
-    } else {
-        let (next, timed) = mutex
-            .wake
-            .wait_timeout_while(
-                locked,
-                Duration::from_millis(timeout_ms.cast_unsigned()),
-                |value| *value,
-            )
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        locked = next;
-        if timed.timed_out() && *locked {
-            return BN_DISPATCH_TIMEOUT;
-        }
-    }
-    *locked = true;
-    BN_DISPATCH_OK
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_dispatch_mutex_unlock(mutex: BNDispatchHandle) -> BNDispatchStatus {
-    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
-        return BN_DISPATCH_POLICY_DENIED;
-    }
-    let Some(mutex) = registry()
-        .mutexes
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .get(&mutex)
-        .cloned()
-    else {
-        return BN_DISPATCH_INVALID_HANDLE;
-    };
-    let mut locked = mutex
-        .locked
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if !*locked {
-        return BN_DISPATCH_ERROR;
-    }
-    *locked = false;
-    mutex.wake.notify_one();
-    BN_DISPATCH_OK
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_dispatch_mutex_close(mutex: BNDispatchHandle) -> BNDispatchStatus {
-    registry()
-        .mutexes
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .remove(&mutex)
-        .map_or(BN_DISPATCH_INVALID_HANDLE, |_| BN_DISPATCH_OK)
 }
 
 impl BNDispatchError {
@@ -1108,35 +737,6 @@ mod tests {
     }
 
     #[test]
-    fn synchronization_handles_have_functional_lifecycle() {
-        let mut semaphore = 0;
-        assert_eq!(
-            bn_rt_dispatch_semaphore_create(1, &raw mut semaphore),
-            BN_DISPATCH_OK
-        );
-        assert_eq!(
-            bn_rt_dispatch_semaphore_acquire(semaphore, 0),
-            BN_DISPATCH_OK
-        );
-        assert_eq!(
-            bn_rt_dispatch_semaphore_acquire(semaphore, 1),
-            BN_DISPATCH_TIMEOUT
-        );
-        assert_eq!(bn_rt_dispatch_semaphore_release(semaphore), BN_DISPATCH_OK);
-        assert_eq!(
-            bn_rt_dispatch_semaphore_acquire(semaphore, 1),
-            BN_DISPATCH_OK
-        );
-        assert_eq!(bn_rt_dispatch_semaphore_close(semaphore), BN_DISPATCH_OK);
-
-        let mut mutex = 0;
-        assert_eq!(bn_rt_dispatch_mutex_create(&raw mut mutex), BN_DISPATCH_OK);
-        assert_eq!(bn_rt_dispatch_mutex_lock(mutex, 0), BN_DISPATCH_OK);
-        assert_eq!(bn_rt_dispatch_mutex_unlock(mutex), BN_DISPATCH_OK);
-        assert_eq!(bn_rt_dispatch_mutex_close(mutex), BN_DISPATCH_OK);
-    }
-
-    #[test]
     fn cancellation_before_start_is_reported_and_ticket_close_is_idempotent() {
         let mut queue = 0;
         assert_eq!(
@@ -1172,9 +772,15 @@ mod tests {
         let mut error = BNDispatchError::empty();
         assert_eq!(
             bn_rt_dispatch_await(second, 1_000, &raw mut result, &raw mut error),
-            BN_DISPATCH_ERROR
+            BN_DISPATCH_CANCELLED
         );
         assert_eq!(error.code, BN_DISPATCH_CANCELLED);
+        // The emitted code reads the recorded `Error` (bndispatch.md "Errors").
+        let record = crate::error_abi::bn_rt_error_take(1, std::ptr::null());
+        assert_eq!(
+            crate::error_abi::bn_rt_error_code(record),
+            i64::from(bn_types::error_codes::dispatch::CANCELLED)
+        );
         assert_eq!(bn_rt_dispatch_ticket_close(second), BN_DISPATCH_OK);
         assert_eq!(bn_rt_dispatch_ticket_close(second), BN_DISPATCH_OK);
         assert_eq!(bn_rt_dispatch_queue_close(queue, 1_000), BN_DISPATCH_OK);

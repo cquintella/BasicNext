@@ -267,8 +267,22 @@ impl Builder<'_> {
                         span: expression.span,
                     }
                 } else {
-                    let is_async = matches!(callee.kind, ExpressionKind::Member { ref name, .. } if name == "Async");
-                    let is_await = matches!(callee.kind, ExpressionKind::Member { ref name, .. } if name == "Wait");
+                    // Only a BNDispatch `Queue.Async` / `Ticket.Wait` is a dispatch
+                    // submission or `AWAIT`; any other `Async` or `Wait` is a call.
+                    let dispatch_member = |member: &str, class: &str| match &callee.kind {
+                        ExpressionKind::Member { object, name } if name == member => {
+                            type_at(self.model, object.span).is_ok_and(|ty| {
+                                crate::semantic::is_dispatch_class(
+                                    &ty,
+                                    &self.model.standard_modules,
+                                    class,
+                                )
+                            })
+                        }
+                        _ => false,
+                    };
+                    let is_async = dispatch_member("Async", "Queue");
+                    let is_await = dispatch_member("Wait", "Ticket");
                     if matches!(callee.kind, ExpressionKind::Name { ref name } if name == "TYPEOF")
                     {
                         let [argument] = arguments.as_slice() else {

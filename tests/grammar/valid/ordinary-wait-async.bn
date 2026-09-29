@@ -1,0 +1,25 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Methods named Wait and Async on a user class are ordinary calls: only
+// BNDispatch Ticket.Wait and Queue.Async follow the AWAIT and ASYNC rules
+// (two arguments and a zero timeout are fine here).
+CLASS Door
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Wait(seconds AS INTEGER, times AS INTEGER) AS INTEGER
+        RETURN seconds * times
+    END FUNCTION
+    PUBLIC FUNCTION Async(label AS STRING) AS STRING
+        RETURN label + "!"
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS INTEGER
+    LET door AS Door = NEW Door()
+    PRINT door.Wait(0, 3), door.Wait(4, 5)
+    PRINT door.Async("open " + "now")
+    RETURN 0
+END FUNCTION

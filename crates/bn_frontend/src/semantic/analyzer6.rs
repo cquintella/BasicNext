@@ -416,8 +416,20 @@ impl Analyzer {
         {
             return self.math_call(name, arguments, locals, span);
         }
+        let dispatch_receiver = |class: &str| match &callee.kind {
+            ExpressionKind::Member { object, .. } => self
+                .expressions
+                .iter()
+                .find(|expression| expression.span == object.span)
+                .is_some_and(|expression| {
+                    is_dispatch_class(&expression.ty, &self.standard_modules, class)
+                }),
+            _ => false,
+        };
+        let on_queue = dispatch_receiver("Queue");
+        let on_ticket = dispatch_receiver("Ticket");
         if let ExpressionKind::Member { name, .. } = &callee.kind {
-            if name == "Async" {
+            if name == "Async" && on_queue {
                 let Some((target, rest)) = arguments.split_first() else {
                     return Err(type_mismatch(
                         "FUNCTION target",
@@ -426,6 +438,13 @@ impl Analyzer {
                         span,
                     ));
                 };
+                if !matches!(target.kind, ExpressionKind::Name { .. }) {
+                    return Err(error(
+                        DiagId::ASYNC_TARGET,
+                        "ASYNC submission requires a named function target",
+                        span,
+                    ));
+                }
                 let target_type = self.expression(target, locals)?;
                 let Type::Function { parameters, .. } = target_type else {
                     return Err(type_mismatch(
@@ -464,7 +483,7 @@ impl Analyzer {
                 };
                 return Ok(*return_type);
             }
-            if name == "Wait" {
+            if name == "Wait" && on_ticket {
                 if arguments.len() != 1 {
                     return Err(type_mismatch(
                         "1 timeout argument",
@@ -516,30 +535,6 @@ impl Analyzer {
                     display(&actual),
                     "function parameter",
                     argument.span,
-                ));
-            }
-        }
-        if let ExpressionKind::Member { name, .. } = &callee.kind {
-            if name == "Wait"
-                && let Some(timeout) = arguments.first().and_then(constant_integer)
-                && !(1..=60_000).contains(&timeout)
-            {
-                return Err(error(
-                    DiagId::AWAIT_TIMEOUT,
-                    "AWAIT timeout must be between 1 and 60000 milliseconds",
-                    arguments[0].span,
-                ));
-            }
-            if name == "Async"
-                && !matches!(
-                    arguments.first().map(|argument| &argument.kind),
-                    Some(ExpressionKind::Name { .. })
-                )
-            {
-                return Err(error(
-                    DiagId::ASYNC_TARGET,
-                    "ASYNC submission requires a named function target",
-                    span,
                 ));
             }
         }

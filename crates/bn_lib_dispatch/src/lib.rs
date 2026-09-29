@@ -18,6 +18,7 @@ mod dispatch;
 use std::collections::HashMap;
 
 use bn_diag::Diagnostic;
+use bn_rt::dispatch_error::DispatchFailure;
 use bn_source::Span;
 use bn_value::{Value, shared_string};
 
@@ -132,26 +133,25 @@ impl DispatchProvider {
                     }
                     "Leave" => {
                         require_arity(name, arguments, 1, span)?;
-                        Ok(group.leave().map_or_else(dispatch_error, |_| Value::Null))
+                        Ok(group
+                            .leave()
+                            .map_or_else(|failure| failed(name, &failure), |_| Value::Null))
                     }
                     _ => {
                         require_arity(name, arguments, 2, span)?;
                         Ok(group
                             .wait(integer(&arguments[1], span)?.0)
-                            .map_or_else(dispatch_error, |_| Value::Null))
+                            .map_or_else(|failure| failed(name, &failure), |_| Value::Null))
                     }
                 }
             }
             "New" | "Create" if name.contains(".Barrier.") => {
                 require_arity(name, arguments, 1, span)?;
                 let parties = integer(&arguments[0], span)?.0;
-                let barrier = crate::dispatch::Barrier::new(parties).ok_or_else(|| {
-                    runtime_error(
-                        bn_diag::DiagId::DISPATCH,
-                        "barrier parties must be in 1..64",
-                        span,
-                    )
-                })?;
+                let barrier = match crate::dispatch::Barrier::new(parties) {
+                    Ok(barrier) => barrier,
+                    Err(failure) => return Ok(failed(name, &failure)),
+                };
                 let id = self.next_sync;
                 self.next_sync = self.next_sync.saturating_add(1);
                 self.barriers.insert(id, barrier);
@@ -172,19 +172,15 @@ impl DispatchProvider {
                 })?;
                 Ok(barrier
                     .wait(integer(&arguments[1], span)?.0)
-                    .map_or_else(dispatch_error, Value::Boolean))
+                    .map_or_else(|failure| failed(name, &failure), Value::Boolean))
             }
             "New" | "Create" if name.contains(".Semaphore.") => {
                 require_arity(name, arguments, 1, span)?;
-                let semaphore =
-                    crate::dispatch::DispatchSemaphore::new(integer(&arguments[0], span)?.0)
-                        .ok_or_else(|| {
-                            runtime_error(
-                                bn_diag::DiagId::DISPATCH,
-                                "semaphore permits must be in 1..1024",
-                                span,
-                            )
-                        })?;
+                let permits = integer(&arguments[0], span)?.0;
+                let semaphore = match crate::dispatch::DispatchSemaphore::new(permits) {
+                    Ok(semaphore) => semaphore,
+                    Err(failure) => return Ok(failed(name, &failure)),
+                };
                 let id = self.next_sync;
                 self.next_sync = self.next_sync.saturating_add(1);
                 self.semaphores.insert(id, semaphore);
@@ -206,12 +202,12 @@ impl DispatchProvider {
                     require_arity(name, arguments, 2, span)?;
                     Ok(semaphore
                         .acquire(integer(&arguments[1], span)?.0)
-                        .map_or_else(dispatch_error, |_| Value::Null))
+                        .map_or_else(|failure| failed(name, &failure), |_| Value::Null))
                 } else {
                     require_arity(name, arguments, 1, span)?;
                     Ok(semaphore
                         .release()
-                        .map_or_else(dispatch_error, |_| Value::Null))
+                        .map_or_else(|failure| failed(name, &failure), |_| Value::Null))
                 }
             }
             "New" | "Create" if name.contains(".Mutex.") => {
@@ -238,37 +234,31 @@ impl DispatchProvider {
                     require_arity(name, arguments, 2, span)?;
                     Ok(mutex
                         .lock(integer(&arguments[1], span)?.0)
-                        .map_or_else(dispatch_error, |_| Value::Null))
+                        .map_or_else(|failure| failed(name, &failure), |_| Value::Null))
                 } else {
                     require_arity(name, arguments, 1, span)?;
-                    Ok(mutex.unlock().map_or_else(dispatch_error, |_| Value::Null))
+                    Ok(mutex
+                        .unlock()
+                        .map_or_else(|failure| failed(name, &failure), |_| Value::Null))
                 }
             }
             "Serial" => {
                 require_arity(name, arguments, 0, span)?;
-                Ok(self.dispatch_queue(1))
+                Ok(self.dispatch_queue(name, 1))
             }
             "Concurrent" => {
                 require_arity(name, arguments, 1, span)?;
                 let (workers, _) = integer(&arguments[0], span)?;
-                Ok(self.dispatch_queue(workers))
+                Ok(self.dispatch_queue(name, workers))
             }
             "Auto" => {
                 require_arity(name, arguments, 0, span)?;
-                let workers = std::thread::available_parallelism()
-                    .map(|count| {
-                        count
-                            .get()
-                            .min(bn_limits::dispatch_limits().worker_count_max)
-                    })
-                    .map_err(|error| {
-                        runtime_error(
-                            bn_diag::DiagId::HOST_CAPABILITY_UNAVAILABLE,
-                            error.to_string(),
-                            span,
-                        )
-                    })?;
-                Ok(self.dispatch_queue(i128::try_from(workers).expect("usize fits i128")))
+                Ok(match bn_rt::dispatch_sync::auto_worker_count() {
+                    Ok(workers) => {
+                        self.dispatch_queue(name, i128::try_from(workers).expect("usize fits i128"))
+                    }
+                    Err(failure) => failed(name, &failure),
+                })
             }
             "Async" => {
                 if arguments.len() < 2 {
@@ -296,39 +286,44 @@ impl DispatchProvider {
                 let task_arguments = arguments[2..].to_vec();
                 let worker_module = core.module().clone();
                 let worker_host = core.host().fork_for_task();
-                let ticket = queue
-                    .submit_with(task_name.to_string(), move |ticket| {
-                        let mut input = std::io::Cursor::new(Vec::<u8>::new());
-                        let mut output = BoundedTaskOutput {
-                            bytes: Vec::new(),
-                            maximum: bn_limits::dispatch_limits().output_max_bytes,
-                        };
-                        match bn_interp::execute_named_with_host(
-                            &worker_module,
-                            &task_name,
-                            task_arguments,
-                            &mut input,
-                            &mut output,
-                            &worker_host,
-                        ) {
-                            Ok(result) => {
-                                let output = String::from_utf8_lossy(&output.bytes).into_owned();
-                                if ticket.set_output(output).is_ok() {
-                                    ticket.set_result(result);
-                                    ticket.mark_completed();
-                                } else {
-                                    ticket.mark_failed(
-                                        1,
-                                        "async task output exceeds configured bound".into(),
-                                    );
-                                }
+                let ticket = queue.submit_with(task_name.to_string(), move |ticket| {
+                    let mut input = std::io::Cursor::new(Vec::<u8>::new());
+                    let mut output = BoundedTaskOutput {
+                        bytes: Vec::new(),
+                        maximum: bn_limits::dispatch_limits().output_max_bytes,
+                    };
+                    match bn_interp::execute_named_with_host(
+                        &worker_module,
+                        &task_name,
+                        task_arguments,
+                        &mut input,
+                        &mut output,
+                        &worker_host,
+                    ) {
+                        Ok(result) => {
+                            let output = String::from_utf8_lossy(&output.bytes).into_owned();
+                            if ticket.set_output(output).is_err() {
+                                ticket.mark_failed(
+                                    1,
+                                    "async task output exceeds configured bound".into(),
+                                );
+                            } else if let Value::Error { code, message, .. } = &result {
+                                // TASK_FAILED; `ticket.Error()` keeps the worker's Error.
+                                let failure = (*code, message.to_string());
+                                ticket.set_result(result);
+                                ticket.mark_failed(failure.0, failure.1);
+                            } else {
+                                ticket.set_result(result);
+                                ticket.mark_completed();
                             }
-                            Err(error) => ticket.mark_failed(1, error.message.to_string()),
                         }
-                    })
-                    .map_err(|error| {
-                        runtime_error(bn_diag::DiagId::DISPATCH, format!("{error:?}"), span)
-                    })?;
+                        Err(error) => ticket.mark_failed(1, error.message.to_string()),
+                    }
+                });
+                let ticket = match ticket {
+                    Ok(ticket) => ticket,
+                    Err(failure) => return Ok(failed(name, &failure)),
+                };
                 let ticket_id = self.next_ticket;
                 self.next_ticket = self.next_ticket.saturating_add(1);
                 self.tickets.insert(ticket_id, ticket);
@@ -366,7 +361,7 @@ impl DispatchProvider {
                             runtime_error(bn_diag::DiagId::IO, error.to_string(), span)
                         })?;
                 }
-                return Ok(result.map_or_else(dispatch_error, |_| Value::Null));
+                return Ok(result.map_or_else(|failure| failed(name, &failure), |_| Value::Null));
             }
             "Close" if name.contains(".Queue.") => {
                 require_arity(name, arguments, 2, span)?;
@@ -384,7 +379,7 @@ impl DispatchProvider {
                 })?;
                 Ok(queue
                     .close(timeout)
-                    .map_or_else(dispatch_error, |_| Value::Null))
+                    .map_or_else(|failure| failed(name, &failure), |_| Value::Null))
             }
             "Id" | "Status" | "Wait" | "Cancel" | "Error" | "IsDone" | "Close"
                 if name.contains(".Ticket.") =>
@@ -423,9 +418,10 @@ impl DispatchProvider {
                     "Wait" => {
                         require_arity(name, arguments, 2, span)?;
                         let timeout = integer(&arguments[1], span)?.0;
-                        let result = ticket.wait(timeout).map_or_else(dispatch_error, |_| {
-                            ticket.result().unwrap_or(Value::Null)
-                        });
+                        let result = ticket.wait(timeout).map_or_else(
+                            |failure| failed(name, &failure),
+                            |_| ticket.result().unwrap_or(Value::Null),
+                        );
                         let output = ticket.take_output();
                         core.output()
                             .write_all(output.as_bytes())
@@ -436,15 +432,20 @@ impl DispatchProvider {
                     }
                     "Cancel" => {
                         require_arity(name, arguments, 1, span)?;
-                        Ok(ticket.cancel().map_or_else(dispatch_error, Value::Boolean))
+                        Ok(ticket
+                            .cancel()
+                            .map_or_else(|failure| failed(name, &failure), Value::Boolean))
                     }
                     "Error" => {
                         require_arity(name, arguments, 1, span)?;
-                        Ok(ticket
-                            .error()
-                            .map_or(Value::NotAvailable, |(code, message)| {
-                                Value::error(code, shared_string(message))
-                            }))
+                        Ok(match ticket.result() {
+                            Some(error @ Value::Error { .. }) => error,
+                            _ => ticket
+                                .error()
+                                .map_or(Value::NotAvailable, |(code, message)| {
+                                    Value::error(code, shared_string(message))
+                                }),
+                        })
                     }
                     "IsDone" => {
                         require_arity(name, arguments, 1, span)?;
@@ -458,13 +459,17 @@ impl DispatchProvider {
                     _ => unreachable!(),
                 };
             }
-            _ => Ok(Value::error(1, "BNDispatch operation unavailable".into())),
+            _ => Ok(failed(
+                name,
+                &DispatchFailure::Unavailable("this build does not provide the member"),
+            )),
         }
     }
 
-    fn dispatch_queue(&mut self, workers: i128) -> Value {
-        let Some(queue) = crate::dispatch::Queue::new(workers) else {
-            return Value::error(1, "worker count must be in 1..64".into());
+    fn dispatch_queue(&mut self, name: &str, workers: i128) -> Value {
+        let queue = match crate::dispatch::Queue::new(workers) {
+            Ok(queue) => queue,
+            Err(failure) => return failed(name, &failure),
         };
         debug_assert!(
             (1..=bn_limits::dispatch_limits().worker_count_max).contains(&queue.workers())
@@ -476,18 +481,35 @@ impl DispatchProvider {
     }
 }
 
-fn dispatch_error(error: crate::dispatch::DispatchError) -> Value {
-    let message = match error {
-        crate::dispatch::DispatchError::TaskFailed(Some((_, message))) => message,
-        other => format!("{other:?}"),
-    };
-    Value::error(1, shared_string(message))
+/// The `Error` of a failed member `name` (`Dispatch.Semaphore.Release`),
+/// with the report the native ABI records for the same failure.
+fn failed(name: &str, failure: &DispatchFailure) -> Value {
+    let mut parts = name.rsplit('.');
+    let method = parts.next().unwrap_or_default();
+    let class = parts.next().unwrap_or_default();
+    Value::error_report(
+        failure.code(),
+        &format!("BNDispatch.{class}.{method}"),
+        failure.message(),
+        failure.cause(),
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::BoundedTaskOutput;
     use std::io::Write;
+
+    /// `Dispatch.*` codes in `modules/bn/BNDispatch.bn` are the ones both
+    /// backends put in `Error.Code`.
+    #[test]
+    fn module_constants_match_the_runtime_codes() {
+        let module = include_str!("../../../modules/bn/BNDispatch.bn");
+        for (name, value) in bn_types::error_codes::dispatch::ALL {
+            let line = format!("EXPORT CONST {name} AS INTEGER = {value}");
+            assert!(module.contains(&line), "BNDispatch.bn lacks `{line}`");
+        }
+    }
 
     #[test]
     fn task_output_writer_rejects_bytes_after_registry_bound() {

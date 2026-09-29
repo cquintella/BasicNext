@@ -386,6 +386,28 @@ pub(crate) fn vector_shape(expression: &Expression) -> Option<Vec<usize>> {
     }
     Some(shape)
 }
+/// Whether `ty` is the `BNDispatch` class `class` (`Ticket`, `Queue`): a
+/// class of that name exported by a standard module. Only `AWAIT` on a
+/// ticket and `ASYNC` on a queue get the dispatch rules; any other `Wait` or
+/// `Async` is an ordinary method.
+// ponytail: matched by class name; BNDispatch is the only standard module
+// exporting `Ticket` or `Queue`. A standard module that adds one needs the
+// module identity instead.
+#[must_use]
+pub fn is_dispatch_class(
+    ty: &Type,
+    standard_modules: &std::collections::HashSet<ModuleId>,
+    class: &str,
+) -> bool {
+    match ty {
+        Type::ImportedNamed { module, name } => name == class && standard_modules.contains(module),
+        Type::Alternative(alternatives) => alternatives
+            .iter()
+            .any(|alternative| is_dispatch_class(alternative, standard_modules, class)),
+        _ => false,
+    }
+}
+
 pub fn display(ty: &Type) -> String {
     match ty {
         Type::Named(name) | Type::TypeName(name) => name.clone(),

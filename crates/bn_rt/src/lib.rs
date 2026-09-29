@@ -29,6 +29,9 @@ pub mod crypto_error;
 mod dataframe;
 mod dataframe_abi;
 mod dispatch_abi;
+pub mod dispatch_error;
+pub mod dispatch_sync;
+mod dispatch_sync_abi;
 mod error_abi;
 mod exec;
 pub mod file;
@@ -63,6 +66,7 @@ pub use dataframe::{
 };
 pub use dataframe_abi::*;
 pub use dispatch_abi::*;
+pub use dispatch_sync_abi::*;
 pub use error_abi::{
     bn_rt_error_code, bn_rt_error_field, bn_rt_error_print, bn_rt_error_take, bn_rt_error_wrap,
 };

@@ -174,7 +174,8 @@ declare i32 @bn_rt_net_udp_packet_size(i64)
 declare i32 @bn_rt_net_udp_packet_truncated(i64)
 declare i32 @bn_rt_net_udp_packet_copy_to(i64, ptr, i32, ptr)
 declare i32 @bn_rt_net_udp_packet_source(i64, ptr, ptr)
-declare i32 @bn_rt_dispatch_queue_create(i32, ptr)
+declare i32 @bn_rt_dispatch_queue_create(i64, ptr)
+declare i32 @bn_rt_dispatch_queue_create_auto(ptr)
 declare i32 @bn_rt_dispatch_submit(i64, ptr, ptr, ptr, i32, ptr)
 declare i32 @bn_rt_dispatch_await(i64, i64, ptr, ptr)
 declare i32 @bn_rt_dispatch_cancel(i64)
@@ -182,13 +183,14 @@ declare i32 @bn_rt_dispatch_ticket_close(i64)
 declare i32 @bn_rt_dispatch_queue_join(i64, i64)
 declare i32 @bn_rt_dispatch_queue_close(i64, i64)
 declare i32 @bn_rt_dispatch_group_create(ptr)
-declare i32 @bn_rt_dispatch_group_add(i64, i64)
+declare i32 @bn_rt_dispatch_group_enter(i64)
+declare i32 @bn_rt_dispatch_group_leave(i64)
 declare i32 @bn_rt_dispatch_group_wait(i64, i64)
 declare i32 @bn_rt_dispatch_group_close(i64)
-declare i32 @bn_rt_dispatch_barrier_create(i32, ptr)
-declare i32 @bn_rt_dispatch_barrier_wait(i64, i64)
+declare i32 @bn_rt_dispatch_barrier_create(i64, ptr)
+declare i32 @bn_rt_dispatch_barrier_wait(i64, i64, ptr)
 declare i32 @bn_rt_dispatch_barrier_close(i64)
-declare i32 @bn_rt_dispatch_semaphore_create(i32, ptr)
+declare i32 @bn_rt_dispatch_semaphore_create(i64, ptr)
 declare i32 @bn_rt_dispatch_semaphore_acquire(i64, i64)
 declare i32 @bn_rt_dispatch_semaphore_release(i64)
 declare i32 @bn_rt_dispatch_semaphore_close(i64)
@@ -1605,7 +1607,7 @@ pub(crate) fn lower_bn_dispatch_call(
         || name.ends_with(".Queue.Auto")
     {
         let workers = if name.ends_with(".Queue.Concurrent") {
-            extend_to_i32(
+            extend_to_i64(
                 text,
                 arguments.first().copied().expect("validated worker count"),
                 analysis
@@ -1617,10 +1619,17 @@ pub(crate) fn lower_bn_dispatch_call(
             "1".into()
         };
         let _ = writeln!(text, "  %dispatchqueue{dest} = alloca i64");
-        let _ = writeln!(
-            text,
-            "  %dispatchrc{dest} = call i32 @bn_rt_dispatch_queue_create(i32 {workers}, ptr %dispatchqueue{dest})"
-        );
+        if name.ends_with(".Queue.Auto") {
+            let _ = writeln!(
+                text,
+                "  %dispatchrc{dest} = call i32 @bn_rt_dispatch_queue_create_auto(ptr %dispatchqueue{dest})"
+            );
+        } else {
+            let _ = writeln!(
+                text,
+                "  %dispatchrc{dest} = call i32 @bn_rt_dispatch_queue_create(i64 {workers}, ptr %dispatchqueue{dest})"
+            );
+        }
         let _ = writeln!(
             text,
             "  %dispatchhandle{dest} = load i64, ptr %dispatchqueue{dest}"
@@ -1648,7 +1657,7 @@ pub(crate) fn lower_bn_dispatch_call(
         let out = format!("%dispatchout{dest}");
         let _ = writeln!(text, "  {out} = alloca i64");
         if has_argument {
-            let value = extend_to_i32(
+            let value = extend_to_i64(
                 text,
                 arguments[0],
                 analysis
@@ -1658,7 +1667,7 @@ pub(crate) fn lower_bn_dispatch_call(
             );
             let _ = writeln!(
                 text,
-                "  %dispatchrc{dest} = call i32 @{function}(i32 {value}, ptr {out})"
+                "  %dispatchrc{dest} = call i32 @{function}(i64 {value}, ptr {out})"
             );
         } else {
             let _ = writeln!(
@@ -1691,16 +1700,35 @@ pub(crate) fn lower_bn_dispatch_call(
             )
         },
     );
+    if name.ends_with(".Barrier.Wait") {
+        // `TRUE` for the last caller to arrive, through an out flag.
+        let _ = writeln!(text, "  %dispatchlast{dest} = alloca i32");
+        let _ = writeln!(
+            text,
+            "  %dispatchrc{dest} = call i32 @bn_rt_dispatch_barrier_wait(i64 {handle}, i64 {timeout}, ptr %dispatchlast{dest})"
+        );
+        let _ = writeln!(
+            text,
+            "  %dispatchlastv{dest} = load i32, ptr %dispatchlast{dest}\n  %dispatchlastw{dest} = zext i32 %dispatchlastv{dest} to i64"
+        );
+        emit_handle_result(
+            text,
+            destination,
+            format!("%dispatchrc{dest}"),
+            format!("%dispatchlastw{dest}"),
+        );
+        return;
+    }
     let function = if name.ends_with(".Queue.Join") {
         "bn_rt_dispatch_queue_join"
     } else if name.ends_with(".Queue.Close") {
         "bn_rt_dispatch_queue_close"
     } else if name.ends_with(".Group.Wait") {
         "bn_rt_dispatch_group_wait"
+    } else if name.ends_with(".Group.Enter") {
+        "bn_rt_dispatch_group_enter"
     } else if name.ends_with(".Group.Leave") {
-        "bn_rt_dispatch_group_close"
-    } else if name.ends_with(".Barrier.Wait") {
-        "bn_rt_dispatch_barrier_wait"
+        "bn_rt_dispatch_group_leave"
     } else if name.ends_with(".Semaphore.Acquire") {
         "bn_rt_dispatch_semaphore_acquire"
     } else if name.ends_with(".Semaphore.Release") {
@@ -1715,6 +1743,8 @@ pub(crate) fn lower_bn_dispatch_call(
     let call = if matches!(
         function,
         "bn_rt_dispatch_group_close"
+            | "bn_rt_dispatch_group_enter"
+            | "bn_rt_dispatch_group_leave"
             | "bn_rt_dispatch_barrier_close"
             | "bn_rt_dispatch_semaphore_close"
             | "bn_rt_dispatch_mutex_close"

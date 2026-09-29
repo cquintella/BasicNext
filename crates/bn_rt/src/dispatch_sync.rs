@@ -1,48 +1,110 @@
-// Implementação do dispatch (paralelismo)
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+#![allow(clippy::missing_errors_doc)] // Every failure is a `DispatchFailure` (dispatch_error.rs).
+
+//! `BNDispatch` synchronization (`language/0.6/bndispatch.md`
+//! "Synchronization"): the one implementation of `Group`, `Barrier`,
+//! `Semaphore`, and `Mutex`, used by the interpreter provider and the C ABI.
 
 use std::sync::{Condvar, Mutex};
 use std::thread::ThreadId;
 use std::time::{Duration, Instant};
 
-fn deadline(timeout_ms: i128) -> Result<Instant, super::DispatchError> {
+use crate::dispatch_error::DispatchFailure;
+
+/// The instant `timeout_ms` from now; the timeout must be within bounds.
+///
+/// # Errors
+///
+/// [`DispatchFailure::OutOfRange`] outside the timeout bounds.
+pub fn deadline(timeout_ms: i128) -> Result<Instant, DispatchFailure> {
     let limits = bn_limits::dispatch_limits();
-    if !(limits.timeout_min_ms..=limits.timeout_max_ms).contains(&timeout_ms) {
-        return Err(super::DispatchError::InvalidTimeout);
+    let (min, max) = (limits.timeout_min_ms, limits.timeout_max_ms);
+    if !(min..=max).contains(&timeout_ms) {
+        return Err(DispatchFailure::OutOfRange {
+            what: "timeout in milliseconds",
+            value: timeout_ms,
+            min,
+            max,
+        });
     }
-    Ok(Instant::now()
-        + Duration::from_millis(u64::try_from(timeout_ms).expect("validated timeout")))
+    // Validated above: `timeout_ms` is positive and fits a `u64`.
+    Ok(Instant::now() + Duration::from_millis(u64::try_from(timeout_ms).unwrap_or_default()))
 }
 
-pub(crate) struct DispatchGroup {
+/// `value` as a count within `1..=max`, or why it is not one.
+fn count(what: &'static str, value: i128, max: usize) -> Result<usize, DispatchFailure> {
+    usize::try_from(value)
+        .ok()
+        .filter(|count| (1..=max).contains(count))
+        .ok_or(DispatchFailure::OutOfRange {
+            what,
+            value,
+            min: 1,
+            max: i128::try_from(max).unwrap_or(i128::MAX),
+        })
+}
+
+/// `value` as a worker count for `Queue.Concurrent`.
+///
+/// # Errors
+///
+/// [`DispatchFailure::OutOfRange`] outside 1 through the worker maximum.
+pub fn worker_count(value: i128) -> Result<usize, DispatchFailure> {
+    count(
+        "worker count",
+        value,
+        bn_limits::dispatch_limits().worker_count_max,
+    )
+}
+
+/// The worker count of `Queue.Auto`: one per available processor.
+///
+/// # Errors
+///
+/// [`DispatchFailure::Unavailable`] when the system reports no count.
+pub fn auto_worker_count() -> Result<usize, DispatchFailure> {
+    std::thread::available_parallelism()
+        .map(|count| {
+            count
+                .get()
+                .min(bn_limits::dispatch_limits().worker_count_max)
+        })
+        .map_err(|_| DispatchFailure::Unavailable("the system reports no processor count"))
+}
+
+#[derive(Default)]
+pub struct DispatchGroup {
     state: Mutex<usize>,
     wake: Condvar,
 }
 impl DispatchGroup {
-    pub(crate) fn new() -> Self {
-        Self {
-            state: Mutex::new(0),
-            wake: Condvar::new(),
-        }
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
     }
-    pub(crate) fn enter(&self) {
+    pub fn enter(&self) {
         *self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) += 1;
     }
-    pub(crate) fn leave(&self) -> Result<(), super::DispatchError> {
+    pub fn leave(&self) -> Result<(), DispatchFailure> {
         let mut count = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if *count == 0 {
-            return Err(super::DispatchError::GroupUnderflow);
+            return Err(DispatchFailure::GroupUnderflow);
         }
         *count -= 1;
         self.wake.notify_all();
         Ok(())
     }
-    pub(crate) fn wait(&self, timeout_ms: i128) -> Result<(), super::DispatchError> {
+    pub fn wait(&self, timeout_ms: i128) -> Result<(), DispatchFailure> {
         let deadline = deadline(timeout_ms)?;
         let mut count = self
             .state
@@ -51,7 +113,7 @@ impl DispatchGroup {
         while *count != 0 {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
-                return Err(super::DispatchError::Timeout);
+                return Err(DispatchFailure::Timeout { ms: timeout_ms });
             }
             (count, _) = self
                 .wake
@@ -62,7 +124,7 @@ impl DispatchGroup {
     }
 }
 
-pub(crate) struct Barrier {
+pub struct Barrier {
     parties: usize,
     state: Mutex<BarrierState>,
     wake: Condvar,
@@ -74,21 +136,26 @@ struct BarrierState {
     broken_generation: Option<u64>,
 }
 impl Barrier {
-    pub(crate) fn new(parties: i128) -> Option<Self> {
-        let parties = usize::try_from(parties).ok()?;
-        (1..=bn_limits::dispatch_limits().worker_count_max)
-            .contains(&parties)
-            .then_some(Self {
-                parties,
-                state: Mutex::new(BarrierState {
-                    arrived: 0,
-                    generation: 0,
-                    broken_generation: None,
-                }),
-                wake: Condvar::new(),
-            })
+    /// # Errors
+    ///
+    /// [`DispatchFailure::OutOfRange`] outside 1 through the worker maximum.
+    pub fn new(parties: i128) -> Result<Self, DispatchFailure> {
+        let parties = count(
+            "number of barrier parties",
+            parties,
+            bn_limits::dispatch_limits().worker_count_max,
+        )?;
+        Ok(Self {
+            parties,
+            state: Mutex::new(BarrierState {
+                arrived: 0,
+                generation: 0,
+                broken_generation: None,
+            }),
+            wake: Condvar::new(),
+        })
     }
-    pub(crate) fn wait(&self, timeout_ms: i128) -> Result<bool, super::DispatchError> {
+    pub fn wait(&self, timeout_ms: i128) -> Result<bool, DispatchFailure> {
         let deadline = deadline(timeout_ms)?;
         let mut state = self
             .state
@@ -109,7 +176,7 @@ impl Barrier {
                 state.broken_generation = Some(generation);
                 state.generation += 1;
                 self.wake.notify_all();
-                return Err(super::DispatchError::Timeout);
+                return Err(DispatchFailure::Timeout { ms: timeout_ms });
             }
             (state, _) = self
                 .wake
@@ -117,14 +184,14 @@ impl Barrier {
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
         }
         if state.broken_generation == Some(generation) {
-            Err(super::DispatchError::Timeout)
+            Err(DispatchFailure::Timeout { ms: timeout_ms })
         } else {
             Ok(false)
         }
     }
 }
 
-pub(crate) struct DispatchSemaphore {
+pub struct DispatchSemaphore {
     state: Mutex<SemaphoreState>,
     wake: Condvar,
 }
@@ -134,19 +201,25 @@ struct SemaphoreState {
     available: usize,
 }
 impl DispatchSemaphore {
-    pub(crate) fn new(permits: i128) -> Option<Self> {
-        let permits = usize::try_from(permits).ok()?;
-        (1..=bn_limits::dispatch_limits().pending_tickets_max)
-            .contains(&permits)
-            .then_some(Self {
-                state: Mutex::new(SemaphoreState {
-                    initial: permits,
-                    available: permits,
-                }),
-                wake: Condvar::new(),
-            })
+    /// # Errors
+    ///
+    /// [`DispatchFailure::OutOfRange`] outside 1 through the pending-ticket
+    /// maximum.
+    pub fn new(permits: i128) -> Result<Self, DispatchFailure> {
+        let permits = count(
+            "number of semaphore permits",
+            permits,
+            bn_limits::dispatch_limits().pending_tickets_max,
+        )?;
+        Ok(Self {
+            state: Mutex::new(SemaphoreState {
+                initial: permits,
+                available: permits,
+            }),
+            wake: Condvar::new(),
+        })
     }
-    pub(crate) fn acquire(&self, timeout_ms: i128) -> Result<(), super::DispatchError> {
+    pub fn acquire(&self, timeout_ms: i128) -> Result<(), DispatchFailure> {
         let deadline = deadline(timeout_ms)?;
         let mut permits = self
             .state
@@ -155,7 +228,7 @@ impl DispatchSemaphore {
         while permits.available == 0 {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
-                return Err(super::DispatchError::Timeout);
+                return Err(DispatchFailure::Timeout { ms: timeout_ms });
             }
             (permits, _) = self
                 .wake
@@ -165,13 +238,15 @@ impl DispatchSemaphore {
         permits.available -= 1;
         Ok(())
     }
-    pub(crate) fn release(&self) -> Result<(), super::DispatchError> {
+    pub fn release(&self) -> Result<(), DispatchFailure> {
         let mut permits = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if permits.available == permits.initial {
-            return Err(super::DispatchError::InvalidRelease);
+            return Err(DispatchFailure::ReleaseWithEveryPermit {
+                permits: permits.initial,
+            });
         }
         permits.available += 1;
         self.wake.notify_one();
@@ -179,19 +254,18 @@ impl DispatchSemaphore {
     }
 }
 
-pub(crate) struct DispatchMutex {
+#[derive(Default)]
+pub struct DispatchMutex {
     state: Mutex<Option<ThreadId>>,
     wake: Condvar,
 }
 
 impl DispatchMutex {
-    pub(crate) fn new() -> Self {
-        Self {
-            state: Mutex::new(None),
-            wake: Condvar::new(),
-        }
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
     }
-    pub(crate) fn lock(&self, timeout_ms: i128) -> Result<(), super::DispatchError> {
+    pub fn lock(&self, timeout_ms: i128) -> Result<(), DispatchFailure> {
         let deadline = deadline(timeout_ms)?;
         let mut locked = self
             .state
@@ -200,7 +274,7 @@ impl DispatchMutex {
         while locked.is_some() {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
-                return Err(super::DispatchError::Timeout);
+                return Err(DispatchFailure::Timeout { ms: timeout_ms });
             }
             (locked, _) = self
                 .wake
@@ -210,13 +284,13 @@ impl DispatchMutex {
         *locked = Some(std::thread::current().id());
         Ok(())
     }
-    pub(crate) fn unlock(&self) -> Result<(), super::DispatchError> {
+    pub fn unlock(&self) -> Result<(), DispatchFailure> {
         let mut locked = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if *locked != Some(std::thread::current().id()) {
-            return Err(super::DispatchError::NotOwner);
+            return Err(DispatchFailure::NotOwner);
         }
         *locked = None;
         self.wake.notify_one();
@@ -227,24 +301,27 @@ impl DispatchMutex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dispatch::DispatchError;
+    use crate::dispatch_error::DispatchFailure;
 
     #[test]
     fn barrier_timeout_releases_the_next_generation() {
         let barrier = Barrier::new(2).expect("valid barrier");
-        assert_eq!(barrier.wait(1), Err(DispatchError::Timeout));
-        assert_eq!(barrier.wait(1), Err(DispatchError::Timeout));
+        assert_eq!(barrier.wait(1), Err(DispatchFailure::Timeout { ms: 1 }));
+        assert_eq!(barrier.wait(1), Err(DispatchFailure::Timeout { ms: 1 }));
     }
 
     #[test]
     fn semaphore_and_mutex_honor_timeout_bounds() {
         let semaphore = DispatchSemaphore::new(1).expect("valid semaphore");
         semaphore.acquire(1).expect("first permit");
-        assert_eq!(semaphore.acquire(1), Err(DispatchError::Timeout));
+        assert_eq!(
+            semaphore.acquire(1),
+            Err(DispatchFailure::Timeout { ms: 1 })
+        );
         semaphore.release().expect("release first permit");
         let mutex = DispatchMutex::new();
         mutex.lock(1).expect("first lock");
-        assert_eq!(mutex.lock(1), Err(DispatchError::Timeout));
+        assert_eq!(mutex.lock(1), Err(DispatchFailure::Timeout { ms: 1 }));
         mutex.unlock().expect("owner unlock");
     }
 
@@ -269,9 +346,9 @@ mod tests {
         {
             std::thread::yield_now();
         }
-        assert_eq!(barrier.wait(50), Err(DispatchError::Timeout));
+        assert_eq!(barrier.wait(50), Err(DispatchFailure::Timeout { ms: 50 }));
         let (outcome, elapsed) = worker.join().expect("barrier worker");
-        assert_eq!(outcome, Err(DispatchError::Timeout));
+        assert_eq!(outcome, Err(DispatchFailure::Timeout { ms: 5_000 }));
         assert!(
             elapsed < Duration::from_secs(4),
             "worker must be released by the broken generation, not its own timeout: {elapsed:?}"
@@ -283,7 +360,10 @@ mod tests {
         let semaphore = DispatchSemaphore::new(1).expect("valid semaphore");
         semaphore.acquire(1).expect("consume initial permit");
         semaphore.release().expect("first release");
-        assert_eq!(semaphore.release(), Err(DispatchError::InvalidRelease));
+        assert_eq!(
+            semaphore.release(),
+            Err(DispatchFailure::ReleaseWithEveryPermit { permits: 1 })
+        );
         semaphore
             .acquire(1)
             .expect("original permit remains available");
@@ -297,7 +377,7 @@ mod tests {
         let foreign = std::thread::spawn(move || foreign_mutex.unlock());
         assert_eq!(
             foreign.join().expect("foreign unlock thread"),
-            Err(DispatchError::NotOwner)
+            Err(DispatchFailure::NotOwner)
         );
         mutex.unlock().expect("owner unlock");
     }
@@ -305,7 +385,7 @@ mod tests {
     #[test]
     fn group_rejects_leave_without_a_matching_enter() {
         let group = DispatchGroup::new();
-        assert_eq!(group.leave(), Err(DispatchError::GroupUnderflow));
+        assert_eq!(group.leave(), Err(DispatchFailure::GroupUnderflow));
         group.enter();
         group.leave().expect("matching leave");
     }

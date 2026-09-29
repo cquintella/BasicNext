@@ -178,6 +178,17 @@ pub extern "C" fn bn_rt_error_field(error: *const c_char, field: i32) -> *const 
     }
 }
 
+/// The code and message of an `Error` a compiled worker returned: its record
+/// when `error` is one, else `fallback_code` and `error` as a plain message.
+pub(crate) fn code_and_message(error: *const c_char, fallback_code: i64) -> (i64, String) {
+    let code = if is_record(error) {
+        bn_rt_error_code(error)
+    } else {
+        fallback_code
+    };
+    (code, text(bn_rt_error_field(error, 0)).to_owned())
+}
+
 /// `PRINT` of an `Error` with `code` and pointer `error`, in the shared text
 /// (`bn_types::text::error`).
 #[allow(unsafe_code)] // C ABI export.

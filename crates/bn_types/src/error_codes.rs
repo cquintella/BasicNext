@@ -102,3 +102,27 @@ pub mod json {
         ("PARSE_FAILED", PARSE_FAILED),
     ];
 }
+
+/// `BNDispatch` `Error.Code` (`language/0.6/bndispatch.md` "Errors").
+pub mod dispatch {
+    pub const INVALID_ARGUMENT: i32 = 1;
+    pub const TIMEOUT: i32 = 2;
+    pub const CLOSED: i32 = 3;
+    pub const SATURATED: i32 = 4;
+    pub const CANCELLED: i32 = 5;
+    pub const TASK_FAILED: i32 = 6;
+    pub const INVALID_STATE: i32 = 7;
+    pub const UNAVAILABLE: i32 = 8;
+
+    /// Name and value of each constant, as `modules/bn/BNDispatch.bn` exports them.
+    pub const ALL: &[(&str, i32)] = &[
+        ("INVALID_ARGUMENT", INVALID_ARGUMENT),
+        ("TIMEOUT", TIMEOUT),
+        ("CLOSED", CLOSED),
+        ("SATURATED", SATURATED),
+        ("CANCELLED", CANCELLED),
+        ("TASK_FAILED", TASK_FAILED),
+        ("INVALID_STATE", INVALID_STATE),
+        ("UNAVAILABLE", UNAVAILABLE),
+    ];
+}

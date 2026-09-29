@@ -1,0 +1,108 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNDispatch results (bndispatch.md "Synchronization" and "Errors"): one
+// case per code reachable without timing races, and the synchronization
+// members that succeed.
+IMPORT BNDispatch AS Dispatch
+
+ASYNC FUNCTION Fails() AS INTEGER OR Error
+    RETURN ASC("")
+END FUNCTION
+
+ASYNC FUNCTION Answer() AS INTEGER OR Error
+    RETURN 42
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    LET none AS Dispatch.Queue OR Error = Dispatch.Queue.Concurrent(0)
+    IF none IS Error THEN
+        PRINT none.Code = Dispatch.INVALID_ARGUMENT, none.Operation, none.Cause
+    END IF
+    LET parties AS Dispatch.Barrier OR Error = Dispatch.Barrier.New(65)
+    IF parties IS Error THEN
+        PRINT parties.Code = Dispatch.INVALID_ARGUMENT, parties.Message
+    END IF
+    LET permits AS Dispatch.Semaphore OR Error = Dispatch.Semaphore.New(0)
+    IF permits IS Error THEN
+        PRINT permits.Code = Dispatch.INVALID_ARGUMENT, permits.Operation
+    END IF
+
+    LET one AS Dispatch.Semaphore OR Error = Dispatch.Semaphore.New(1)
+    IF one IS Error THEN
+        RETURN 1
+    END IF
+    LET extra AS VOID OR Error = one.Release()
+    IF extra IS Error THEN
+        PRINT extra.Code = Dispatch.INVALID_STATE, extra.Operation, extra.Cause
+    END IF
+    LET first AS VOID OR Error = one.Acquire(10)
+    LET second AS VOID OR Error = one.Acquire(10)
+    IF second IS Error THEN
+        PRINT first IS Error, second.Code = Dispatch.TIMEOUT, second.Message
+    END IF
+
+    LET lock AS Dispatch.Mutex OR Error = Dispatch.Mutex.New()
+    IF lock IS Error THEN
+        RETURN 1
+    END IF
+    LET unheld AS VOID OR Error = lock.Unlock()
+    IF unheld IS Error THEN
+        PRINT unheld.Code = Dispatch.INVALID_STATE, unheld.Operation
+    END IF
+
+    LET group AS Dispatch.Group OR Error = Dispatch.Group.New()
+    IF group IS Error THEN
+        RETURN 1
+    END IF
+    LET under AS VOID OR Error = group.Leave()
+    IF under IS Error THEN
+        PRINT under.Code = Dispatch.INVALID_STATE, under.Cause
+    END IF
+    group.Enter()
+    LET left AS VOID OR Error = group.Leave()
+    LET waited AS VOID OR Error = group.Wait(10)
+    PRINT "group", left IS Error, waited IS Error
+
+    LET solo AS Dispatch.Barrier OR Error = Dispatch.Barrier.New(1)
+    IF solo IS Error THEN
+        RETURN 1
+    END IF
+    LET last AS BOOLEAN OR Error = solo.Wait(10)
+    PRINT "barrier last", last
+    LET pair AS Dispatch.Barrier OR Error = Dispatch.Barrier.New(2)
+    IF pair IS Error THEN
+        RETURN 1
+    END IF
+    LET alone AS BOOLEAN OR Error = pair.Wait(10)
+    IF alone IS Error THEN
+        PRINT alone.Code = Dispatch.TIMEOUT, alone.Operation
+    END IF
+
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Auto()
+    IF queue IS Error THEN
+        RETURN 1
+    END IF
+    LET failing AS Dispatch.Ticket OR Error = ASYNC queue Fails()
+    IF failing IS Error THEN
+        RETURN 1
+    END IF
+    LET failed AS INTEGER OR Error = AWAIT failing(5000)
+    IF failed IS Error THEN
+        PRINT failed.Code = Dispatch.TASK_FAILED, failed.Cause
+    END IF
+    LET answering AS Dispatch.Ticket OR Error = ASYNC queue Answer()
+    IF answering IS Error THEN
+        RETURN 1
+    END IF
+    LET answer AS INTEGER OR Error = AWAIT answering(5000)
+    PRINT "answer", answer
+    LET closed AS VOID OR Error = queue.Close(1000)
+    LET late AS Dispatch.Ticket OR Error = ASYNC queue Answer()
+    IF late IS Error THEN
+        PRINT closed IS Error, late.Code = Dispatch.CLOSED, late.Operation
+    END IF
+    RETURN 0
+END FUNCTION

@@ -290,6 +290,7 @@ dependencies = [
  "bn_diag",
  "bn_interp",
  "bn_limits",
+ "bn_rt",
  "bn_source",
  "bn_types",
  "bn_value",
