@@ -87,9 +87,14 @@ fi
 echo "semantic host-implementation boundary check passed"
 
 
-if [[ -f "$repo_root/src/ir/model.rs" ]] && rg -n \
-  'module_graph::ModuleId|semantic::\{[^}]*\bSymbolId\b|semantic::SymbolId' \
-  "$repo_root/src/ir/model.rs" >/dev/null; then
+# W5 / GC-DEP: the public IR model names no frontend type. Fails closed if
+# the model moves, so the check cannot pass vacuously.
+ir_model="$repo_root/crates/bn_ir/src/model.rs"
+if [[ ! -f $ir_model ]]; then
+  echo "IR model not found at ${ir_model#"$repo_root/"}" >&2
+  exit 1
+fi
+if rg -n 'bn_frontend|module_graph::ModuleId|semantic::' "$ir_model" >/dev/null; then
   echo "IR model still depends on frontend identity definitions" >&2
   exit 1
 fi
