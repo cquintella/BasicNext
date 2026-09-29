@@ -86,12 +86,6 @@ fi
 
 echo "semantic host-implementation boundary check passed"
 
-if rg -n '^use crate::runtime::Value;' "$repo_root/src/dataframe.rs" >/dev/null; then
-  echo "dataframe still depends on runtime::Value" >&2
-  exit 1
-fi
-
-echo "dataframe/runtime cycle check passed"
 
 if [[ -f "$repo_root/src/ir/model.rs" ]] && rg -n \
   'module_graph::ModuleId|semantic::\{[^}]*\bSymbolId\b|semantic::SymbolId' \

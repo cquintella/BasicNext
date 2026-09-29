@@ -40,7 +40,8 @@ scan_root() {
     echo "check-value-layout: RecordValue no longer owns boxed positional fields" >&2
     return 1
   }
-  rg -q 'Record[[:space:]]*\{[[:space:]]*record:[[:space:]]*RecordValue[[:space:]]*\}' "$value" || {
+  # Multiline: rustfmt splits the variant across lines.
+  rg -qU 'Record[[:space:]]*\{[[:space:]]*record:[[:space:]]*RecordValue[[:space:]]*,?[[:space:]]*\}' "$value" || {
     echo "check-value-layout: Value::Record no longer uses RecordValue" >&2
     return 1
   }
