@@ -540,6 +540,14 @@ fn check_accepts_dispatch_task_returning_void() {
     );
 }
 
+/// `file:` URI of an absolute path with forward slashes (RFC 8089); the
+/// fixture paths need no percent-encoding.
+fn file_uri(path: &std::path::Path) -> String {
+    let path = path.to_string_lossy().replace('\\', "/");
+    let slash = if path.starts_with('/') { "" } else { "/" };
+    format!("file://{slash}{path}")
+}
+
 #[test]
 fn check_and_lsp_report_the_same_multi_file_diagnostic_owner() {
     let directory = std::env::temp_dir().join(format!("bn-cli-lsp-parity-{}", std::process::id()));
@@ -560,16 +568,17 @@ fn check_and_lsp_report_the_same_multi_file_diagnostic_owner() {
     assert!(cli_stderr.contains("TYPE_MISMATCH"));
     assert!(cli_stderr.contains("Module.bn:2"), "{cli_stderr}");
 
-    let main_uri = format!("file://{}", main_path.display());
-    let module_uri = format!("file://{}", module_path.display());
+    // As an editor sends them: `file:///C:/…` on Windows, not `file://C:\…`.
+    let main_uri = file_uri(&main_path);
+    let module_uri = file_uri(&module_path);
     let documents = HashMap::from([
         (
-            main_uri,
-            bn_source::SourceFile::new(format!("file://{}", main_path.display()), main_text),
+            main_uri.clone(),
+            bn_source::SourceFile::new(main_uri, main_text),
         ),
         (
             module_uri.clone(),
-            bn_source::SourceFile::new(format!("file://{}", module_path.display()), module_text),
+            bn_source::SourceFile::new(module_uri.clone(), module_text),
         ),
     ]);
     let mut session = bn_frontend::frontend_session::FrontendSession::default();

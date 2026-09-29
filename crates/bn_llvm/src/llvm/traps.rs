@@ -62,10 +62,21 @@ pub(crate) fn emit_trap(
     let second = operands.next().unwrap_or_else(|| "0".into());
     let site = take_continuation(block_id, state);
     let _ = writeln!(text, "  br i1 {condition}, label %{site}, label %{ok}");
-    state.control_flow.label(text, site);
+    state.control_flow.label(text, site.clone());
+    // Each fact crosses the ABI as two i64 halves (no portable i128 C ABI).
+    let mut halves = Vec::new();
+    for (index, operand) in [first, second].iter().enumerate() {
+        let name = format!("%{site}.fact{index}");
+        let _ = writeln!(
+            text,
+            "  {name}.lo = trunc i128 {operand} to i64\n  {name}.shr = lshr i128 {operand}, 64\n  {name}.hi = trunc i128 {name}.shr to i64"
+        );
+        halves.push(format!("i64 {name}.lo, i64 {name}.hi"));
+    }
     let _ = writeln!(
         text,
-        "  call void @bn_rt_trap_report(ptr {symbol}, i128 {first}, i128 {second})\n  br label %trap_numeric_overflow"
+        "  call void @bn_rt_trap_report(ptr {symbol}, {})\n  br label %trap_numeric_overflow",
+        halves.join(", ")
     );
     state.control_flow.label(text, ok);
     state.needs_numeric_overflow_trap = true;
@@ -365,10 +376,10 @@ pub(crate) fn define_trap_globals(
     }
     if wasm32 {
         definitions.push_str(
-            "define void @bn_rt_trap_report(ptr %text, i128 %first, i128 %second) {\n  ret void\n}\n",
+            "define void @bn_rt_trap_report(ptr %text, i64 %a, i64 %b, i64 %c, i64 %d) {\n  ret void\n}\n",
         );
     } else {
-        definitions.push_str("declare void @bn_rt_trap_report(ptr, i128, i128)\n");
+        definitions.push_str("declare void @bn_rt_trap_report(ptr, i64, i64, i64, i64)\n");
     }
     text.push_str(&definitions);
 }

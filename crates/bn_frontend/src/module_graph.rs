@@ -581,6 +581,9 @@ mod tests {
         let home = scratch.join("home");
         std::fs::create_dir_all(home.join("modules/bn")).expect("home stdlib");
         // Entry lives under a directory that has its own ancestor modules/bn.
+        // Created explicitly: Windows resolves `..` before creating, so the
+        // `modules/bn` inside the entry path would not exist there.
+        std::fs::create_dir_all(scratch.join("hijack/modules/bn")).expect("ancestor stdlib");
         let project = scratch.join("hijack/modules/bn/../../src");
         std::fs::create_dir_all(&project).expect("project dir");
         let root = discover_standard_root(&project, Some(home.clone().into_os_string()));

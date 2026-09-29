@@ -234,7 +234,9 @@ fn advertised_requests_and_full_sync_change() {
     let initialized = initialize(&mut client, 1);
     assert!(initialized["result"].get("completionProvider").is_some());
 
-    let uri = "file:///tmp/basic-next-lsp.bn";
+    // An unsaved buffer in a real directory, as an editor names it (a
+    // drive-less `file:///tmp/…` is not a Windows editor URI).
+    let uri = &file_uri(&test_directory().join("basic-next-lsp.bn"));
     let text = "FUNCTION Start() AS VOID\n    PRINT \"ok\"\nEND FUNCTION\n";
     client.send(&json!({
         "jsonrpc": "2.0",

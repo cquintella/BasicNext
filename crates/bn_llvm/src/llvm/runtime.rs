@@ -162,6 +162,7 @@ declare i32 @bn_rt_net_tcp_connect(ptr, i32, i32, ptr)
 declare i32 @bn_rt_net_tcp_listen_with_backlog(ptr, i32, i32, ptr)
 declare i32 @bn_rt_net_tcp_accept(i64, i32, ptr)
 declare i32 @bn_rt_net_tcp_listener_local_endpoint(i64, ptr, ptr)
+declare i32 @bn_rt_net_udp_local_endpoint(i64, ptr, ptr)
 declare i32 @bn_rt_net_tcp_stream_local_endpoint(i64, ptr, ptr)
 declare i32 @bn_rt_net_tcp_stream_remote_endpoint(i64, ptr, ptr)
 declare i32 @bn_rt_net_tcp_write(i64, ptr, i32, ptr)
@@ -230,6 +231,7 @@ pub(crate) fn is_bn_rt_host_call(name: &str) -> bool {
                 | "HOST.Net.TCPStream.Close"
                 | "HOST.Net.TCPListener.Close"
                 | "HOST.Net.UDPSocket.Close"
+                | "HOST.Net.UDPSocket.LocalEndpoint"
                 | "HOST.Net.UDPSocket.SendTo"
                 | "HOST.Net.UDPSocket.Receive"
                 | "HOST.Net.UDPPacket.Size"
@@ -509,7 +511,7 @@ pub(crate) fn bn_rt_call_supported(
                     .and_then(llvm_type)
                     .is_some_and(integer_llvm)
         }
-        "HOST.Net.TCPListener.LocalEndpoint" => {
+        "HOST.Net.TCPListener.LocalEndpoint" | "HOST.Net.UDPSocket.LocalEndpoint" => {
             arguments.len() == 1
                 && arguments
                     .first()
@@ -1324,8 +1326,13 @@ pub(crate) fn lower_bn_rt_call(
                 format!("%netdata{dest}"),
             );
         }
-        "HOST.Net.TCPListener.LocalEndpoint" => {
+        "HOST.Net.TCPListener.LocalEndpoint" | "HOST.Net.UDPSocket.LocalEndpoint" => {
             let dest = destination.0;
+            let function = if name.starts_with("HOST.Net.UDPSocket") {
+                "bn_rt_net_udp_local_endpoint"
+            } else {
+                "bn_rt_net_tcp_listener_local_endpoint"
+            };
             let _ = writeln!(
                 text,
                 "  %nethandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
@@ -1335,7 +1342,7 @@ pub(crate) fn lower_bn_rt_call(
             let _ = writeln!(text, "  %netport{dest} = alloca i32");
             let _ = writeln!(
                 text,
-                "  %netrc{dest} = call i32 @bn_rt_net_tcp_listener_local_endpoint(i64 %nethandle{dest}, ptr %netaddress{dest}, ptr %netport{dest})"
+                "  %netrc{dest} = call i32 @{function}(i64 %nethandle{dest}, ptr %netaddress{dest}, ptr %netport{dest})"
             );
             let _ = writeln!(text, "  %netaddrv{dest} = load ptr, ptr %netaddress{dest}");
             let _ = writeln!(text, "  %netportv{dest} = load i32, ptr %netport{dest}");

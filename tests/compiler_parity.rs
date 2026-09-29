@@ -337,19 +337,9 @@ fn dispatch_net_echo_matches_native_and_interpreter() {
 /// `examples/linear_collections.bn`). Both backends print the same values.
 #[test]
 fn region_fields_are_strong_bindings() {
+    // Parity is the check: with the bug, the native build printed
+    // `alias 6` and `after release 3` on macOS (verified 2026-09-28).
     let path = valid_fixture("arc-region-field.bn");
-    let llvm = execute(bnc().arg(&path), None);
-    assert_success(&llvm, "bnc emit LLVM");
-    let llvm = String::from_utf8_lossy(&llvm.stdout);
-    let constructor = llvm
-        .split("define void @bn_Buffer_2eCONSTRUCTOR")
-        .nth(1)
-        .and_then(|body| body.split("\n}\n").next())
-        .expect("constructor definition");
-    assert!(
-        constructor.contains("store ptr null, ptr %objectowned"),
-        "the field store must take ownership of the NEW region:\n{constructor}"
-    );
     let output = interpret(&path, None);
     assert_success(&output, "bni run");
     assert_eq!(
@@ -378,26 +368,38 @@ fn native_runtime_traps_print_the_interpreter_diagnostic() {
         directory.display()
     );
     let build = TestDir::new("runtime-traps").expect("create trap directory");
+    // Every program runs; the failures are reported together, so one broken
+    // trap kind does not hide the others.
+    let mut failures = Vec::new();
     for path in paths {
         let artifact = compile_native(&path, &build);
         let interpreted = interpret(&path, None);
         let compiled = execute_artifact(&artifact, &[], None);
-        let name = path.display();
-        assert_eq!(interpreted.status.code(), Some(1), "{name}: bni status");
-        assert_eq!(compiled.status.code(), Some(1), "{name}: native status");
-        assert_eq!(compiled.stdout, interpreted.stdout, "{name}: stdout");
         // `bni run` also prints frontend warnings; `bnc` printed them when
         // building, so compare from the runtime error on.
         let interpreted_error = String::from_utf8_lossy(&interpreted.stderr);
         let runtime_error = interpreted_error
             .find("error[")
             .map_or("", |start| &interpreted_error[start..]);
-        assert_eq!(
-            String::from_utf8_lossy(&compiled.stderr),
-            runtime_error,
-            "{name}: stderr"
-        );
+        let compiled_error = String::from_utf8_lossy(&compiled.stderr);
+        let checks = [
+            (interpreted.status.code() == Some(1), "bni status is not 1"),
+            (compiled.status.code() == Some(1), "native status is not 1"),
+            (compiled.stdout == interpreted.stdout, "stdout differs"),
+            (compiled_error == runtime_error, "stderr differs"),
+        ];
+        for (ok, what) in checks {
+            if !ok {
+                failures.push(format!(
+                    "{}: {what} (bni {:?}, native {:?})\n  bni: {runtime_error}\n  native: {compiled_error}",
+                    path.display(),
+                    interpreted.status.code(),
+                    compiled.status.code(),
+                ));
+            }
+        }
     }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
 /// `BN_FS_POLICY=deny` narrows both backends the same way: the capability

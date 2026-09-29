@@ -31,7 +31,13 @@ b0:
   %ovexact2 = add i128 %ovl2, %ovr2
   br i1 %ovf2, label %b0.cont1, label %b0.cont0
 b0.cont1:
-  call void @bn_rt_trap_report(ptr @.bn_trap_4e554d455249435f4f564552464c4f571f301f301f301f311f311f301f301f301f311f311f6f7065726174696f6e1e636f6e76657274696e6720013020746f20494e543332, i128 %ovexact2, i128 0)
+  %b0.cont1.fact0.lo = trunc i128 %ovexact2 to i64
+  %b0.cont1.fact0.shr = lshr i128 %ovexact2, 64
+  %b0.cont1.fact0.hi = trunc i128 %b0.cont1.fact0.shr to i64
+  %b0.cont1.fact1.lo = trunc i128 0 to i64
+  %b0.cont1.fact1.shr = lshr i128 0, 64
+  %b0.cont1.fact1.hi = trunc i128 %b0.cont1.fact1.shr to i64
+  call void @bn_rt_trap_report(ptr @.bn_trap_4e554d455249435f4f564552464c4f571f301f301f301f311f311f301f301f301f311f311f6f7065726174696f6e1e636f6e76657274696e6720013020746f20494e543332, i64 %b0.cont1.fact0.lo, i64 %b0.cont1.fact0.hi, i64 %b0.cont1.fact1.lo, i64 %b0.cont1.fact1.hi)
   br label %trap_numeric_overflow
 b0.cont0:
   ret i32 %v2
@@ -39,6 +45,6 @@ trap_numeric_overflow:
   ret i32 1
 }
 @.bn_trap_4e554d455249435f4f564552464c4f571f301f301f301f311f311f301f301f301f311f311f6f7065726174696f6e1e636f6e76657274696e6720013020746f20494e543332 = private unnamed_addr constant [48 x i8] c"error[NUMERIC_OVERFLOW]: converting \010 to INT32\00"
-define void @bn_rt_trap_report(ptr %text, i128 %first, i128 %second) {
+define void @bn_rt_trap_report(ptr %text, i64 %a, i64 %b, i64 %c, i64 %d) {
   ret void
 }

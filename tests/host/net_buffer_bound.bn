@@ -13,12 +13,17 @@ FUNCTION Start() AS INTEGER
     IF loopback IS Error THEN
         RETURN 1
     END IF
-    LET here AS Net.Endpoint OR Error = Net.Endpoint.Create(loopback, 39112)
-    IF here IS Error THEN
+    // Port 0: the system picks a free port; LocalEndpoint names it.
+    LET anyPort AS Net.Endpoint OR Error = Net.Endpoint.Create(loopback, 0)
+    IF anyPort IS Error THEN
         RETURN 1
     END IF
-    LET socket AS Net.UDPSocket OR Error = Net.UDPBind(here)
+    LET socket AS Net.UDPSocket OR Error = Net.UDPBind(anyPort)
     IF socket IS Error THEN
+        RETURN 1
+    END IF
+    LET here AS Net.Endpoint OR Error = socket.LocalEndpoint()
+    IF here IS Error THEN
         RETURN 1
     END IF
     LET bytes AS POINTER TO BYTE[] = NEW BYTE[3]

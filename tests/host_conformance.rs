@@ -286,7 +286,7 @@ const CASES: &[Case] = &[
         stdout: "TRUE TRUE 4\n2 TRUE TRUE 2 1 2\nfrom loopback: TRUE\n",
         exit: 0,
         stderr: None,
-        native: Native::Unsupported("HOST.Net.UDPSocket.LocalEndpoint"),
+        native: Native::Unsupported("HOST.Net.Address.IsLoopback"),
     },
     Case {
         fixture: "net_ping.bn",

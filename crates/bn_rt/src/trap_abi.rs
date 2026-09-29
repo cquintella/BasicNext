@@ -121,10 +121,32 @@ fn fill(text: &str, facts: [i128; 2]) -> String {
 }
 
 /// Prints the diagnostic of a trap site to standard error. The emitted code
-/// then leaves through its trap exit (status 1), as `bni` does.
+/// then leaves through its trap exit (status 1), as `bni` does. Each runtime
+/// fact arrives as two 64-bit halves: an `i128` argument has no common C ABI
+/// (Win64 LLVM and Rust disagree on it; the call crashed).
 #[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_trap_report(text: *const c_char, first: i128, second: i128) {
+pub extern "C" fn bn_rt_trap_report(
+    text: *const c_char,
+    first_low: u64,
+    first_high: i64,
+    second_low: u64,
+    second_high: i64,
+) {
+    report(
+        text,
+        [join(first_low, first_high), join(second_low, second_high)],
+    );
+}
+
+/// The `i128` whose low and high 64 bits are `low` and `high`.
+const fn join(low: u64, high: i64) -> i128 {
+    ((high as i128) << 64) | (low as i128)
+}
+
+/// [`bn_rt_trap_report`] for `bn_rt`'s own callers.
+#[allow(unsafe_code)] // Reads the site's NUL-terminated constant.
+pub(crate) fn report(text: *const c_char, [first, second]: [i128; 2]) {
     if text.is_null() {
         return;
     }

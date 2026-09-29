@@ -279,9 +279,12 @@ fn module_path_is_repeatable_and_first_directory_wins_for_check() {
         (canonical_base.clone(), "entry-dir"),
         (canonical_base.join("modules"), "entry-dir"),
         (
-            std::env::current_dir()
-                .expect("repository directory")
-                .join("modules/bn"),
+            fs::canonicalize(
+                std::env::current_dir()
+                    .expect("repository directory")
+                    .join("modules/bn"),
+            )
+            .expect("canonical cwd-ancestor root"),
             "cwd-ancestor",
         ),
         (
@@ -311,7 +314,11 @@ fn module_path_is_repeatable_and_first_directory_wins_for_check() {
     );
     fs::write(
         base.join("config.toml"),
-        format!("module-path = [\"{}\"]\n", first.display()),
+        // A TOML basic string: a Windows path's `\` is written `\\`.
+        format!(
+            "module-path = [\"{}\"]\n",
+            first.display().to_string().replace('\\', "\\\\")
+        ),
     )
     .expect("module-path config");
     let configured = bni()

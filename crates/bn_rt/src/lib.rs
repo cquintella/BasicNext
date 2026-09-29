@@ -753,7 +753,7 @@ pub extern "C" fn bn_rt_str_index_utf8(
     let Some(character) = character else {
         // The site's diagnostic (`bnc` rendered it): the index and the length.
         let length = i128::try_from(text.chars().count()).unwrap_or(i128::MAX);
-        bn_rt_trap_report(trap, index.into(), length);
+        trap_abi::report(trap, [index.into(), length]);
         std::process::exit(1);
     };
     pack_utf8(character)

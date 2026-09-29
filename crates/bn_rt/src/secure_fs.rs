@@ -18,7 +18,9 @@ pub enum OpenMode {
 pub struct RootedDir {
     path: PathBuf,
     canonical_path: PathBuf,
-    // Held open to pin the root; only the Unix `openat` paths read it.
+    // Held open to pin the root. Unix walks from it with `openat`; on
+    // Windows the open handle alone keeps the root and every ancestor from
+    // being renamed or replaced.
     #[cfg_attr(not(unix), allow(dead_code))]
     directory: Arc<File>,
 }
@@ -54,7 +56,9 @@ impl RootedDir {
             }
             directory
         };
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        let directory = windows::open_component(&canonical_path, windows::Kind::Directory)?;
+        #[cfg(not(any(unix, windows)))]
         let directory = File::open(&canonical_path)?;
         Ok(Self {
             path: configured_path,
@@ -97,7 +101,11 @@ impl RootedDir {
         {
             self.open_unix(&relative, mode)
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            windows::open(&self.canonical_path, &relative, mode)
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             let _ = (relative, mode);
             Err(denied(
@@ -118,7 +126,11 @@ impl RootedDir {
         {
             self.remove_unix(&relative)
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            windows::remove_file(&self.canonical_path, &relative)
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             let _ = relative;
             Err(denied(
@@ -250,6 +262,10 @@ impl RootedDir {
         Err(denied("filesystem path has no file component"))
     }
 }
+
+#[cfg(windows)]
+#[path = "secure_fs_windows.rs"]
+mod windows;
 
 fn denied(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::PermissionDenied, message)

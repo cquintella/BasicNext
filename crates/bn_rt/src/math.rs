@@ -17,7 +17,7 @@ pub(crate) fn fail_at(trap: *const std::ffi::c_char, code: &str, message: &str) 
     if trap.is_null() {
         fail(code, message);
     }
-    super::bn_rt_trap_report(trap, 0, 0);
+    super::trap_abi::report(trap, [0, 0]);
     process::exit(1);
 }
 

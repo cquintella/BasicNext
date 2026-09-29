@@ -228,24 +228,15 @@ fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, 
             "the program's stderr is not valid UTF-8",
         ));
     };
-    let return_code = {
-        #[cfg(unix)]
+    // A Unix signal death has no exit code: report the negated signal.
+    #[cfg(unix)]
+    let signal = {
         use std::os::unix::process::ExitStatusExt;
-        status
-            .code()
-            .map(i64::from)
-            .or_else(|| {
-                #[cfg(unix)]
-                {
-                    status.signal().map(|signal| -i64::from(signal))
-                }
-                #[cfg(not(unix))]
-                {
-                    None
-                }
-            })
-            .unwrap_or(-1)
+        status.signal().map(|signal| -i64::from(signal))
     };
+    #[cfg(not(unix))]
+    let signal = None;
+    let return_code = status.code().map(i64::from).or(signal).unwrap_or(-1);
     Ok(Output {
         return_code,
         stdout,

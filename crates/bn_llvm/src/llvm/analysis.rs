@@ -238,6 +238,7 @@ pub(crate) fn analyze_function<'a>(
                             matches!(
                                 *name,
                                 "HOST.Net.TCPListener.LocalEndpoint"
+                                    | "HOST.Net.UDPSocket.LocalEndpoint"
                                     | "HOST.Net.TCPStream.LocalEndpoint"
                                     | "HOST.Net.TCPStream.RemoteEndpoint"
                                     | "HOST.Net.UDPPacket.Source"
