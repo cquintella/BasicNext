@@ -1468,8 +1468,12 @@ fn filesystem_file_reads_lines_and_bytes() {
 
 #[test]
 fn filesystem_file_writes_bytes_round_trip() {
-    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET out AS FS.File OR Error = FS.Open(\"/tmp/basicnext-sprint5.bn\", FS.WRITE)\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[2]\nbuffer[0] = 65\nbuffer[1] = 66\nIF out IS Error THEN\nPRINT out.Code\nELSE\nLET result AS VOID OR Error = out.WriteBytes(buffer, 2)\nIF result IS Error THEN\nPRINT result.Code\nEND IF\nout.Close()\nEND IF\nLET input AS FS.File OR Error = FS.Open(\"/tmp/basicnext-sprint5.bn\", FS.READ)\nIF input IS Error THEN\nPRINT input.Code\nELSE\nLET read_buffer AS POINTER TO BYTE[] = NEW BYTE[2]\nPRINT input.ReadBytes(read_buffer), read_buffer[0], read_buffer[1]\nRELEASE input\nEND IF\nFS.DeleteFile(\"/tmp/basicnext-sprint5.bn\")\nEND FUNCTION\n";
-    let (_, output) = run(source, "").expect("execute byte write");
+    let file = unique_temp("sprint5.bn");
+    let path = bn_path(&file);
+    let source = format!(
+        "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET out AS FS.File OR Error = FS.Open(\"{path}\", FS.WRITE)\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[2]\nbuffer[0] = 65\nbuffer[1] = 66\nIF out IS Error THEN\nPRINT out.Code\nELSE\nLET result AS VOID OR Error = out.WriteBytes(buffer, 2)\nIF result IS Error THEN\nPRINT result.Code\nEND IF\nout.Close()\nEND IF\nLET input AS FS.File OR Error = FS.Open(\"{path}\", FS.READ)\nIF input IS Error THEN\nPRINT input.Code\nELSE\nLET read_buffer AS POINTER TO BYTE[] = NEW BYTE[2]\nPRINT input.ReadBytes(read_buffer), read_buffer[0], read_buffer[1]\nRELEASE input\nEND IF\nFS.DeleteFile(\"{path}\")\nEND FUNCTION\n"
+    );
+    let (_, output) = run(&source, "").expect("execute byte write");
     assert!(output.contains("2 65 66"));
 }
 
@@ -1483,20 +1487,27 @@ fn filesystem_write_bytes_on_a_read_only_file_returns_error() {
 
 #[test]
 fn filesystem_file_rejects_byte_count_outside_buffer() {
-    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET out AS FS.File OR Error = FS.Open(\"/tmp/basicnext-sprint5-count.bn\", FS.WRITE)\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[2]\nIF out IS Error THEN\nPRINT out.Code\nELSE\nout.WriteBytes(buffer, 3)\nEND IF\nEND FUNCTION\n";
-    let error = run(source, "").expect_err("invalid byte count must fail");
+    let file = unique_temp("sprint5-count.bn");
+    let path = bn_path(&file);
+    let source = format!(
+        "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET out AS FS.File OR Error = FS.Open(\"{path}\", FS.WRITE)\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[2]\nIF out IS Error THEN\nPRINT out.Code\nELSE\nout.WriteBytes(buffer, 3)\nEND IF\nEND FUNCTION\n"
+    );
+    let error = run(&source, "").expect_err("invalid byte count must fail");
     assert_eq!(error.code, "INDEX_OUT_OF_BOUNDS");
-    let _ = fs::remove_file("/tmp/basicnext-sprint5-count.bn");
+    let _ = fs::remove_file(&file);
 }
 
 #[test]
 fn filesystem_file_reports_invalid_utf8_on_text_read() {
-    fs::write("/tmp/basicnext-sprint5-utf8.bn", [0xff, 0xfe])
-        .expect("create invalid UTF-8 fixture");
-    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"/tmp/basicnext-sprint5-utf8.bn\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET text AS STRING OR Error = file.ReadAll()\nIF text IS Error THEN\nPRINT text.Code\nEND IF\nRELEASE file\nEND IF\nFS.DeleteFile(\"/tmp/basicnext-sprint5-utf8.bn\")\nEND FUNCTION\n";
-    let (_, output) = run(source, "").expect("invalid UTF-8 is an Error value");
+    let file = unique_temp("sprint5-utf8.bn");
+    let path = bn_path(&file);
+    fs::write(&file, [0xff, 0xfe]).expect("create invalid UTF-8 fixture");
+    let source = format!(
+        "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET file AS FS.File OR Error = FS.Open(\"{path}\", FS.READ)\nIF file IS Error THEN\nPRINT file.Code\nELSE\nLET text AS STRING OR Error = file.ReadAll()\nIF text IS Error THEN\nPRINT text.Code\nEND IF\nRELEASE file\nEND IF\nFS.DeleteFile(\"{path}\")\nEND FUNCTION\n"
+    );
+    let (_, output) = run(&source, "").expect("invalid UTF-8 is an Error value");
     assert_eq!(output, "7\n"); // FS.INVALID_UTF8 (host.md)
-    let _ = fs::remove_file("/tmp/basicnext-sprint5-utf8.bn");
+    let _ = fs::remove_file(&file);
 }
 
 #[test]
@@ -1528,8 +1539,9 @@ fn filesystem_import_without_use_still_requires_the_capability() {
 
 #[test]
 fn filesystem_eof_locks_the_text_family() {
-    let path = "/tmp/basicnext-r8-empty-text.bn";
-    let _ = fs::remove_file(path);
+    let file = unique_temp("r8-empty-text.bn");
+    let path = bn_path(&file);
+    let _ = fs::remove_file(&file);
     let source = format!(
         "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET out AS FS.File OR Error = FS.Open(\"{path}\", FS.WRITE)\nIF out IS Error THEN\nPRINT out.Code\nELSE\nout.Close()\nRELEASE out\nEND IF\nLET text AS FS.File OR Error = FS.Open(\"{path}\", FS.READ)\nIF text IS Error THEN\nPRINT text.Code\nELSE\nLET line AS STRING OR EOF OR Error = text.ReadLine()\nIF line IS EOF THEN\nPRINT \"eof\"\nEND IF\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[1]\nLET bytes AS INTEGER OR EOF OR Error = text.ReadBytes(buffer)\nIF bytes IS Error THEN\nPRINT \"blocked\"\nEND IF\nRELEASE buffer\nRELEASE text\nEND IF\nFS.DeleteFile(\"{path}\")\nEND FUNCTION\n"
     );
@@ -1539,8 +1551,9 @@ fn filesystem_eof_locks_the_text_family() {
 
 #[test]
 fn filesystem_eof_locks_the_binary_family() {
-    let path = "/tmp/basicnext-r8-empty-binary.bn";
-    let _ = fs::remove_file(path);
+    let file = unique_temp("r8-empty-binary.bn");
+    let path = bn_path(&file);
+    let _ = fs::remove_file(&file);
     let source = format!(
         "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET out AS FS.File OR Error = FS.Open(\"{path}\", FS.WRITE)\nIF out IS Error THEN\nPRINT out.Code\nELSE\nout.Close()\nRELEASE out\nEND IF\nLET binary AS FS.File OR Error = FS.Open(\"{path}\", FS.READ)\nIF binary IS Error THEN\nPRINT binary.Code\nELSE\nLET buffer AS POINTER TO BYTE[] = NEW BYTE[1]\nLET bytes AS INTEGER OR EOF OR Error = binary.ReadBytes(buffer)\nIF bytes IS EOF THEN\nPRINT \"eof\"\nEND IF\nLET line AS STRING OR EOF OR Error = binary.ReadLine()\nIF line IS Error THEN\nPRINT \"blocked\"\nEND IF\nRELEASE buffer\nRELEASE binary\nEND IF\nFS.DeleteFile(\"{path}\")\nEND FUNCTION\n"
     );
@@ -1550,8 +1563,9 @@ fn filesystem_eof_locks_the_binary_family() {
 
 #[test]
 fn filesystem_close_flushes_written_bytes_to_disk() {
-    let path = "/tmp/basicnext-r8-close-flush.bn";
-    let _ = fs::remove_file(path);
+    let file = unique_temp("r8-close-flush.bn");
+    let path = bn_path(&file);
+    let _ = fs::remove_file(&file);
     let source = format!(
         "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET out AS FS.File OR Error = FS.Open(\"{path}\", FS.WRITE)\nIF out IS Error THEN\nPRINT out.Code\nELSE\nLET written AS VOID OR Error = out.Write(\"flushed\")\nIF written IS Error THEN\nPRINT written.Code\nELSE\nLET closed AS VOID OR Error = out.Close()\nIF closed IS Error THEN\nPRINT closed.Code\nEND IF\nEND IF\nRELEASE out\nEND IF\nLET input AS FS.File OR Error = FS.Open(\"{path}\", FS.READ)\nIF input IS Error THEN\nPRINT input.Code\nELSE\nPRINT input.ReadAll()\nRELEASE input\nEND IF\nFS.DeleteFile(\"{path}\")\nEND FUNCTION\n"
     );
