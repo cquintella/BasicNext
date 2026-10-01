@@ -201,6 +201,21 @@ pub(crate) fn lower_scalar_instruction(
                     "  %v{dest} = insertvalue {{ ptr, i32 }} %vec{dest}, i32 0, 1"
                 );
             }
+            "{ i1, ptr, i64 }" => {
+                let dest = destination.0;
+                let _ = writeln!(
+                    text,
+                    "  %errdef0_{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 false, 0"
+                );
+                let _ = writeln!(
+                    text,
+                    "  %errdef1_{dest} = insertvalue {{ i1, ptr, i64 }} %errdef0_{dest}, ptr null, 1"
+                );
+                let _ = writeln!(
+                    text,
+                    "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %errdef1_{dest}, i64 0, 2"
+                );
+            }
             _ => unreachable!("validated scalar default type"),
         },
         Instruction::Store { symbol, value, .. } => {

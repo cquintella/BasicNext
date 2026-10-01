@@ -63,6 +63,8 @@ impl Analyzer {
                             ));
                         }
                         [host, capability] if host == "HOST" => {
+                            self.host_aliases
+                                .insert(alias.clone(), format!("HOST.{capability}"));
                             host_capability_type(capability, *span)?
                         }
                         _ => {

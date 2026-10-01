@@ -126,3 +126,73 @@ pub mod dispatch {
         ("UNAVAILABLE", UNAVAILABLE),
     ];
 }
+
+/// `BNLog` `Error.Code` (`language/0.6/bnlog.md` "Errors").
+pub mod log {
+    pub const INVALID_ARGUMENT: i32 = 1;
+    pub const DUPLICATE: i32 = 2;
+    pub const LIMIT: i32 = 3;
+    pub const CLOSED: i32 = 4;
+    pub const IO_FAILED: i32 = 5;
+    pub const CAPABILITY_REQUIRED: i32 = 6;
+    pub const TIMEOUT: i32 = 7;
+    pub const UNAVAILABLE: i32 = 8;
+
+    /// Name and value of each constant, as `modules/bn/BNLog.bn` exports them.
+    pub const ALL: &[(&str, i32)] = &[
+        ("INVALID_ARGUMENT", INVALID_ARGUMENT),
+        ("DUPLICATE", DUPLICATE),
+        ("LIMIT", LIMIT),
+        ("CLOSED", CLOSED),
+        ("IO_FAILED", IO_FAILED),
+        ("CAPABILITY_REQUIRED", CAPABILITY_REQUIRED),
+        ("TIMEOUT", TIMEOUT),
+        ("UNAVAILABLE", UNAVAILABLE),
+    ];
+}
+
+/// `BNData` `Error.Code` (`language/0.6/bndata.md` "Errors").
+pub mod data {
+    pub const INVALID_ARGUMENT: i32 = 1;
+    pub const NOT_FOUND: i32 = 2;
+    pub const TYPE_MISMATCH: i32 = 3;
+    pub const OUT_OF_RANGE: i32 = 4;
+    pub const IO_FAILED: i32 = 5;
+    pub const INVALID_FORMAT: i32 = 6;
+
+    /// Name and value of each constant, as `modules/bn/BNData.bn` exports them.
+    pub const ALL: &[(&str, i32)] = &[
+        ("INVALID_ARGUMENT", INVALID_ARGUMENT),
+        ("NOT_FOUND", NOT_FOUND),
+        ("TYPE_MISMATCH", TYPE_MISMATCH),
+        ("OUT_OF_RANGE", OUT_OF_RANGE),
+        ("IO_FAILED", IO_FAILED),
+        ("INVALID_FORMAT", INVALID_FORMAT),
+    ];
+}
+
+/// `BNWeb` `Error.Code` (`language/0.6/bnweb.md` "Errors").
+pub mod web {
+    pub const INVALID_ARGUMENT: i32 = 1;
+    pub const NOT_FOUND: i32 = 2;
+    pub const OUT_OF_RANGE: i32 = 3;
+    pub const LIMIT: i32 = 4;
+    pub const CLOSED: i32 = 5;
+    pub const TIMEOUT: i32 = 6;
+    pub const EGRESS_DENIED: i32 = 7;
+    pub const HTTP_FAILED: i32 = 8;
+    pub const UNAVAILABLE: i32 = 9;
+
+    /// Name and value of each constant, as `modules/bn/BNWeb.bn` exports them.
+    pub const ALL: &[(&str, i32)] = &[
+        ("INVALID_ARGUMENT", INVALID_ARGUMENT),
+        ("NOT_FOUND", NOT_FOUND),
+        ("OUT_OF_RANGE", OUT_OF_RANGE),
+        ("LIMIT", LIMIT),
+        ("CLOSED", CLOSED),
+        ("TIMEOUT", TIMEOUT),
+        ("EGRESS_DENIED", EGRESS_DENIED),
+        ("HTTP_FAILED", HTTP_FAILED),
+        ("UNAVAILABLE", UNAVAILABLE),
+    ];
+}

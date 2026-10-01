@@ -186,3 +186,18 @@ There is no operator overloading.
 | `Slice(startRow AS INTEGER, rowCount AS INTEGER, startCol AS INTEGER, colCount AS INTEGER) AS Data.DataFrame OR Error` | Contiguous block. |
 
 Out-of-range indices return `Error`.
+
+## Errors
+
+Every function and method in `BNData` that returns `T OR Error` yields an
+`Error` value on failure with `Code`, `Operation`, `Message`, and `Cause`.
+`Code` is one of:
+
+| Constant | Value | When |
+| --- | ---: | --- |
+| `Data.INVALID_ARGUMENT` | 1 | An invalid CSV separator; a negative slice bound; a destination of another length; column length mismatch; row counts differ; duplicate column name or label |
+| `Data.NOT_FOUND` | 2 | A column name that does not exist |
+| `Data.TYPE_MISMATCH` | 3 | A column of another type (or NA where none is allowed); a failed column conversion; column types differ |
+| `Data.OUT_OF_RANGE` | 4 | A row or column index outside the frame |
+| `Data.IO_FAILED` | 5 | Reading or writing the CSV file failed (the FS `Error` keeps its own code in `Cause`) |
+| `Data.INVALID_FORMAT` | 6 | Ragged rows or unparsable CSV |

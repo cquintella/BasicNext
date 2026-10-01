@@ -35,7 +35,26 @@ impl Builder<'_> {
                 span: expression.span,
             },
             ExpressionKind::Name { name } => {
-                if name == "SELF" {
+                let symbol_id = self
+                    .model
+                    .expression(expression.span)
+                    .and_then(|e| e.symbol_id);
+                let is_constant = symbol_id
+                    .is_some_and(|id| self.model.symbols.iter().any(|s| s.id == id && s.constant));
+                let current_module = module_id_from_prefix(&self.prefix);
+                if is_constant
+                    && let Some(value) = self
+                        .model
+                        .module_constants
+                        .get(&(current_module, name.clone()))
+                {
+                    Instruction::Constant {
+                        destination,
+                        value: module_constant(value),
+                        ty,
+                        span: expression.span,
+                    }
+                } else if name == "SELF" {
                     if let Some((symbol, receiver_type)) = self.receiver.clone() {
                         Instruction::Load {
                             destination,
@@ -53,7 +72,14 @@ impl Builder<'_> {
                     }
                 } else if matches!(ty, Type::Function { .. }) {
                     let qualified = format!("{}{name}", self.prefix);
-                    if self.methods.contains(&qualified) {
+                    if let Some(host_func) = self.model.host_aliases.get(name) {
+                        Instruction::Constant {
+                            destination,
+                            value: Constant::Function(host_func.clone()),
+                            ty,
+                            span: expression.span,
+                        }
+                    } else if self.methods.contains(&qualified) {
                         Instruction::Constant {
                             destination,
                             value: Constant::Function(qualified),

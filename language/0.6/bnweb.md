@@ -156,3 +156,21 @@ fixtures. Tests cover canonicalization, ambiguous URL rejection, routes,
 filters, response commit, HTTP/1.1/2 parity, TLS, limits, timeouts, SSRF,
 sessions, ACL, logging, static non-execution, stop, and cleanup without a public
 Internet dependency.
+
+## Errors
+
+Every function and method in `BNWeb` that returns `T OR Error` yields an
+`Error` value on failure with `Code`, `Operation`, `Message`, and `Cause`.
+`Code` is one of:
+
+| Constant | Value | When |
+| --- | ---: | --- |
+| `Web.INVALID_ARGUMENT` | 1 | A status outside 100..599; an unsupported method; a negative cookie age; an invalid SameSite policy or `SameSite=None` without `Secure`; an invalid session idle timeout; a route handler or filter that is not a FUNCTION |
+| `Web.NOT_FOUND` | 2 | A cookie, session, header, or route that does not exist |
+| `Web.OUT_OF_RANGE` | 3 | An index outside a collection |
+| `Web.LIMIT` | 4 | Too many filters, handlers, or connections |
+| `Web.CLOSED` | 5 | The server is not accepting requests (stopped or not started) |
+| `Web.TIMEOUT` | 6 | A request, response, or egress call ran past its deadline |
+| `Web.EGRESS_DENIED` | 7 | The egress policy denies the destination or the redirect |
+| `Web.HTTP_FAILED` | 8 | An outbound request failed (connection, TLS, protocol); `Cause` carries the Net or TLS reason |
+| `Web.UNAVAILABLE` | 9 | The provider (TLS, session store, scraper, …) is not in this build |

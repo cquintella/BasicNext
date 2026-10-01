@@ -84,7 +84,7 @@ The script asks for a prefix (`$HOME/basicnext`, `/opt/basicnext`,
 catalog, and the man pages. It uses `sudo` only when the prefix is not
 writable, and builds from source with `cargo` when the release has no binary
 for your platform. Skip the menu with `--prefix DIR`; pin a release with
-`BN_VERSION=v0.6.1`. The install writes `$HOME/.basicnext/uninstall.sh`.
+`BN_VERSION=v0.6.3`. The install writes `$HOME/.basicnext/uninstall.sh`.
 
 **Windows (PowerShell)**: installs to `%LOCALAPPDATA%\Programs\BasicNext`
 without administrator rights, or to `-Prefix DIR`:
@@ -129,9 +129,9 @@ From a checkout, `cargo run -p bni -- run <file>` uses this tree's toolchain.
 
 ## Known limitations
 
-- `bnc` does not yet compile `HOST.NumProcs`, the `Net.Address` predicates,
-  `Net.CIDR`, and `TCPStream.SetTimeouts`/`Shutdown*`; run those programs
-  with `bni`.
+- `bnc` does not yet compile `BNWeb`, the `Net.Address` predicates (`IsIPv4`,
+  `IsIPv6`, `IsLoopback`, `IsPrivate`, `IsLinkLocal`, `IsMulticast`), `Net.CIDR`,
+  and `TCPStream.SetTimeouts`/`Shutdown*`; run those programs with `bni`.
 - `TIMEZONE` holds an IANA identifier; zone conversion is not implemented.
 - A WebAssembly build from `bnc` runs under Node.js with
   [`bin/bn-wasm`](bin/bn-wasm).
@@ -144,7 +144,8 @@ From a checkout, `cargo run -p bni -- run <file>` uses this tree's toolchain.
 - [The Basic Next book](https://github.com/cquintella/basicnext-book): the
   tutorial.
 - [Runtime ABI contract](docs/architecture/value-memory-abi.md).
-- Editor support: [VS Code extension](https://github.com/cquintella/basicnext-vscode)
+- Editor support: [Vim / Neovim plugin](https://github.com/cquintella/basicnext-vim),
+  [VS Code extension](https://github.com/cquintella/basicnext-vscode),
   and [Jupyter kernel](https://github.com/cquintella/basicnext-jupyter).
 
 ## Contributing

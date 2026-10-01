@@ -34,23 +34,7 @@ pub(crate) fn lower_bndata_convert(
         "  %dfconvrc{dest} = call i32 @{symbol}(i64 %dfconvhandle{dest}, ptr %v{})",
         arguments[1].0
     );
-    let _ = writeln!(text, "  %dfconverr{dest} = icmp ne i32 %dfconvrc{dest}, 0");
-    let _ = writeln!(
-        text,
-        "  %dfconvmsg{dest} = select i1 %dfconverr{dest}, ptr @.bn_dataframe_error, ptr null"
-    );
-    let _ = writeln!(
-        text,
-        "  %dfconvagg0{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %dfconverr{dest}, 0"
-    );
-    let _ = writeln!(
-        text,
-        "  %dfconvagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %dfconverr{dest}, ptr %dfconvmsg{dest}, ptr null)\n  %dfconvagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfconvagg0{dest}, ptr %dfconvagg1wrap{dest}, 1"
-    );
-    let _ = writeln!(
-        text,
-        "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %dfconvagg1{dest}, i64 0, 2"
-    );
+    emit_void_result(text, destination, format!("%dfconvrc{dest}"));
 }
 
 pub(crate) fn lower_bndata_slice(
@@ -85,21 +69,14 @@ pub(crate) fn lower_bndata_slice(
         "  %dfsrc{dest} = call i32 @bn_rt_dataframe_slice(i64 %dfslicehandle{dest}, i32 {}, i32 {}, i32 {}, i32 {}, ptr %dfsliceout{dest})",
         operands[0], operands[1], operands[2], operands[3]
     );
-    let _ = writeln!(text, "  %dfslicerr{dest} = icmp ne i32 %dfsrc{dest}, 0");
     let _ = writeln!(
         text,
         "  %dfslicevalue{dest} = load i64, ptr %dfsliceout{dest}"
     );
-    let _ = writeln!(
+    emit_handle_result(
         text,
-        "  %dfsliceagg0{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %dfslicerr{dest}, 0"
-    );
-    let _ = writeln!(
-        text,
-        "  %dfsliceagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %dfslicerr{dest}, ptr @.bn_dataframe_error, ptr null)\n  %dfsliceagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfsliceagg0{dest}, ptr %dfsliceagg1wrap{dest}, 1"
-    );
-    let _ = writeln!(
-        text,
-        "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %dfsliceagg1{dest}, i64 %dfslicevalue{dest}, 2"
+        destination,
+        format!("%dfsrc{dest}"),
+        format!("%dfslicevalue{dest}"),
     );
 }

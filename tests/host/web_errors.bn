@@ -1,0 +1,94 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNWeb error codes (bnweb.md "Errors"): one case per code reachable
+// without external transport failures.
+IMPORT BNWeb AS Web
+
+FUNCTION Start() AS INTEGER
+    // 1. INVALID_ARGUMENT
+    LET res AS Web.Response = NEW Web.Response()
+    LET badStatus AS VOID OR Error = res.SetStatus(99)
+    IF badStatus IS Error THEN
+        PRINT badStatus.Code = Web.INVALID_ARGUMENT, badStatus.Operation
+    END IF
+
+    LET jar AS Web.CookieJar = NEW Web.CookieJar()
+    LET negAge AS VOID OR Error = jar.Set("sid", "123", "example.com", "/", -1)
+    IF negAge IS Error THEN
+        PRINT negAge.Code = Web.INVALID_ARGUMENT, negAge.Operation
+    END IF
+
+    LET insecureSameSite AS VOID OR Error = jar.SetWithPolicy("sid", "123", "example.com", "/", 1000, FALSE, FALSE, "None")
+    IF insecureSameSite IS Error THEN
+        PRINT insecureSameSite.Code = Web.INVALID_ARGUMENT, insecureSameSite.Operation
+    END IF
+
+    LET client AS Web.Client = NEW Web.Client()
+    LET badUrl AS Web.Response OR Error = client.Request("GET", "not-a-valid-url", "")
+    IF badUrl IS Error THEN
+        PRINT badUrl.Code = Web.INVALID_ARGUMENT, badUrl.Operation
+    END IF
+
+    // 2. NOT_FOUND
+    LET missingCookie AS STRING OR Error = jar.Get("missing", "example.com", "/")
+    IF missingCookie IS Error THEN
+        PRINT missingCookie.Code = Web.NOT_FOUND, missingCookie.Operation
+    END IF
+
+    LET store AS Web.SessionStore = NEW Web.SessionStore(10, 60000)
+    LET missingSession AS STRING OR Error = store.Get("missing-session-id")
+    IF missingSession IS Error THEN
+        PRINT missingSession.Code = Web.NOT_FOUND, missingSession.Operation
+    END IF
+
+    LET sc AS Web.Scraper OR Error = Web.Scraper.Parse("<p>hello</p>")
+    IF sc IS Error THEN
+        RETURN 1
+    END IF
+    LET missingSelector AS STRING OR Error = sc.Text("div")
+    IF missingSelector IS Error THEN
+        PRINT missingSelector.Code = Web.NOT_FOUND, missingSelector.Operation
+    END IF
+
+    // 3. OUT_OF_RANGE
+    LET qv AS Web.QueryValues = NEW Web.QueryValues()
+    LET outOfRange AS STRING OR Error = qv.Get(10)
+    IF outOfRange IS Error THEN
+        PRINT outOfRange.Code = Web.OUT_OF_RANGE, outOfRange.Operation
+    END IF
+
+    // 4. LIMIT
+    LET big AS STRING = "12345678"
+    FOR i AS INTEGER = 1 TO 11
+        big = big + big
+    END FOR
+    LET overLimit AS STRING OR Error = store.Create(big)
+    IF overLimit IS Error THEN
+        PRINT overLimit.Code = Web.LIMIT, overLimit.Operation
+    END IF
+
+    // 5. CLOSED
+    res.Commit()
+    LET afterCommit AS VOID OR Error = res.Write("data")
+    IF afterCommit IS Error THEN
+        PRINT afterCommit.Code = Web.CLOSED, afterCommit.Operation
+    END IF
+
+    LET res2 AS Web.Response = NEW Web.Response()
+    res2.Close()
+    LET afterClose AS VOID OR Error = res2.Write("data")
+    IF afterClose IS Error THEN
+        PRINT afterClose.Code = Web.CLOSED, afterClose.Operation
+    END IF
+
+    // 7. EGRESS_DENIED
+    LET egressDenied AS Web.Response OR Error = client.Request("GET", "http://127.0.0.1/", "")
+    IF egressDenied IS Error THEN
+        PRINT egressDenied.Code = Web.EGRESS_DENIED, egressDenied.Operation
+    END IF
+
+    RETURN 0
+END FUNCTION

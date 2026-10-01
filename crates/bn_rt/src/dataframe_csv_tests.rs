@@ -37,7 +37,7 @@ fn csv_rejects_ragged_rows_and_duplicate_headers() {
         let status = bn_rt_dataframe_read_csv(file, 1, c",".as_ptr(), &mut frame);
         assert_eq!(bn_rt_file_close(file), 0);
         std::fs::remove_file(path).unwrap();
-        assert_eq!(status, BN_DATAFRAME_CONTRACT_ERROR, "{content}");
+        assert_eq!(status, BN_DATAFRAME_INVALID_FORMAT, "{content}");
         assert_eq!(frame, 0);
     }
 }

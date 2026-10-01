@@ -10,6 +10,14 @@
 // bindings provided directly by bn_rt (DataProvider / bn_rt_dataframe_* C ABI)
 // and the execution runtime. The method signatures below define the verified semantic API.
 IMPORT HOST.FileSystem AS FS
+// Error codes (language/0.6/bndata.md "Errors").
+EXPORT CONST INVALID_ARGUMENT AS INTEGER = 1
+EXPORT CONST NOT_FOUND AS INTEGER = 2
+EXPORT CONST TYPE_MISMATCH AS INTEGER = 3
+EXPORT CONST OUT_OF_RANGE AS INTEGER = 4
+EXPORT CONST IO_FAILED AS INTEGER = 5
+EXPORT CONST INVALID_FORMAT AS INTEGER = 6
+
 EXPORT CLASS DataFrame
     PUBLIC FUNCTION CONSTRUCTOR()
     END FUNCTION

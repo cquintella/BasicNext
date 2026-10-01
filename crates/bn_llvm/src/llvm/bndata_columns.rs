@@ -113,29 +113,22 @@ pub(crate) fn lower_bndata_add_integer_column(
         );
         previous = format!("%dfadderror{}_{dest}", index + 1);
     }
+    let _ = writeln!(text, "  %dfadderrint{dest} = zext i1 {previous} to i32");
     let _ = writeln!(
         text,
-        "  %dfaddduplicate{dest} = icmp eq i32 %dfaddcolumn{dest}, -4"
+        "  %dfaddmsg{dest} = call ptr @bn_rt_error_take(i32 %dfadderrint{dest}, ptr null)"
     );
     let _ = writeln!(
         text,
-        "  %dfaddlength{dest} = icmp eq i32 %dfaddcolumn{dest}, -5"
+        "  %dfaddcode{dest} = call i64 @bn_rt_error_code(ptr %dfaddmsg{dest})"
     );
     let _ = writeln!(
         text,
-        "  %dfaddmessage0_{dest} = select i1 %dfaddduplicate{dest}, ptr @.bn_dataframe_duplicate, ptr @.bn_dataframe_error"
+        "  %dfaddptr{dest} = select i1 {previous}, ptr %dfaddmsg{dest}, ptr null"
     );
     let _ = writeln!(
         text,
-        "  %dfaddmessage1_{dest} = select i1 %dfaddlength{dest}, ptr @.bn_dataframe_length, ptr %dfaddmessage0_{dest}"
-    );
-    let _ = writeln!(
-        text,
-        "  %dfaddmessage{dest} = select i1 {previous}, ptr %dfaddmessage1_{dest}, ptr null"
-    );
-    let _ = writeln!(
-        text,
-        "  %dfaddpayload{dest} = select i1 {previous}, i64 1, i64 0"
+        "  %dfaddpayload{dest} = select i1 {previous}, i64 %dfaddcode{dest}, i64 0"
     );
     let _ = writeln!(
         text,
@@ -143,7 +136,7 @@ pub(crate) fn lower_bndata_add_integer_column(
     );
     let _ = writeln!(
         text,
-        "  %dfaddagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 {previous}, ptr %dfaddmessage{dest}, ptr null)\n  %dfaddagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfaddagg0{dest}, ptr %dfaddagg1wrap{dest}, 1"
+        "  %dfaddagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfaddagg0{dest}, ptr %dfaddptr{dest}, 1"
     );
     let _ = writeln!(
         text,
@@ -182,30 +175,7 @@ pub(crate) fn lower_bndata_add_simple_column(
         "  %dfsimplerc{dest} = call i32 @{symbol}(i64 %dfsimplehandle{dest}, ptr %v{}, ptr %dfsimpledata{dest}, i32 {length})",
         name.0
     );
-    let _ = writeln!(
-        text,
-        "  %dfsimpleerr{dest} = icmp ne i32 %dfsimplerc{dest}, 0"
-    );
-    let _ = writeln!(
-        text,
-        "  %dfsimplemsg{dest} = select i1 %dfsimpleerr{dest}, ptr @.bn_dataframe_error, ptr null"
-    );
-    let _ = writeln!(
-        text,
-        "  %dfsimplepayload{dest} = select i1 %dfsimpleerr{dest}, i64 1, i64 0"
-    );
-    let _ = writeln!(
-        text,
-        "  %dfsimpleagg0{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %dfsimpleerr{dest}, 0"
-    );
-    let _ = writeln!(
-        text,
-        "  %dfsimpleagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %dfsimpleerr{dest}, ptr %dfsimplemsg{dest}, ptr null)\n  %dfsimpleagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfsimpleagg0{dest}, ptr %dfsimpleagg1wrap{dest}, 1"
-    );
-    let _ = writeln!(
-        text,
-        "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %dfsimpleagg1{dest}, i64 %dfsimplepayload{dest}, 2"
-    );
+    emit_void_result(text, destination, format!("%dfsimplerc{dest}"));
 }
 
 pub(crate) fn lower_bndata_column_name(
@@ -254,11 +224,23 @@ pub(crate) fn lower_bndata_column_name(
     );
     let _ = writeln!(
         text,
-        "  %dfnamemessage{dest} = select i1 %dfnameerror{dest}, ptr @.bn_dataframe_index, ptr %dfnameptr{dest}"
+        "  %dfnameerrint{dest} = zext i1 %dfnameerror{dest} to i32"
     );
     let _ = writeln!(
         text,
-        "  %dfnamepayload{dest} = select i1 %dfnameerror{dest}, i64 1, i64 0"
+        "  %dfnamemsg{dest} = call ptr @bn_rt_error_take(i32 %dfnameerrint{dest}, ptr null)"
+    );
+    let _ = writeln!(
+        text,
+        "  %dfnamecode{dest} = call i64 @bn_rt_error_code(ptr %dfnamemsg{dest})"
+    );
+    let _ = writeln!(
+        text,
+        "  %dfnameptr_res{dest} = select i1 %dfnameerror{dest}, ptr %dfnamemsg{dest}, ptr %dfnameptr{dest}"
+    );
+    let _ = writeln!(
+        text,
+        "  %dfnamepayload{dest} = select i1 %dfnameerror{dest}, i64 %dfnamecode{dest}, i64 0"
     );
     let _ = writeln!(
         text,
@@ -266,7 +248,7 @@ pub(crate) fn lower_bndata_column_name(
     );
     let _ = writeln!(
         text,
-        "  %dfnameagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %dfnameerror{dest}, ptr %dfnamemessage{dest}, ptr null)\n  %dfnameagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfnameagg0{dest}, ptr %dfnameagg1wrap{dest}, 1"
+        "  %dfnameagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfnameagg0{dest}, ptr %dfnameptr_res{dest}, 1"
     );
     let _ = writeln!(
         text,
@@ -334,7 +316,6 @@ pub(crate) fn lower_bndata_status_call(
         text,
         "  %dfgetrc{dest} = call i32 @{symbol}(i64 %dfgethandle{dest}, i32 {first}, ptr {name_operand}, ptr %dfgetout{dest}, ptr %dfgetna{dest})"
     );
-    let _ = writeln!(text, "  %dfgeterr{dest} = icmp ne i32 %dfgetrc{dest}, 0");
     let _ = writeln!(
         text,
         "  %dfgetpayload{dest} = load i64, ptr %dfgetout{dest}"
@@ -358,24 +339,12 @@ pub(crate) fn lower_bndata_status_call(
         text,
         "  %dfgetvalueptr{dest} = select i1 %dfgetisna{dest}, ptr %dfgetnaptr{dest}, ptr {value_pointer}"
     );
-    let _ = writeln!(
+    emit_status_result(
         text,
-        "  %dfgetmsg{dest} = select i1 %dfgeterr{dest}, ptr @.bn_dataframe_error, ptr %dfgetvalueptr{dest}"
-    );
-    let _ = writeln!(
-        text,
-        "  %dfgetcode{dest} = select i1 %dfgeterr{dest}, i64 1, i64 %dfgetpayload{dest}"
-    );
-    let _ = writeln!(
-        text,
-        "  %dfgetagg0{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %dfgeterr{dest}, 0"
-    );
-    let _ = writeln!(
-        text,
-        "  %dfgetagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %dfgeterr{dest}, ptr %dfgetmsg{dest}, ptr null)\n  %dfgetagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dfgetagg0{dest}, ptr %dfgetagg1wrap{dest}, 1"
-    );
-    let _ = writeln!(
-        text,
-        "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %dfgetagg1{dest}, i64 %dfgetcode{dest}, 2"
+        destination,
+        &format!("%dfgetrc{dest}"),
+        None,
+        &format!("%dfgetvalueptr{dest}"),
+        &format!("%dfgetpayload{dest}"),
     );
 }

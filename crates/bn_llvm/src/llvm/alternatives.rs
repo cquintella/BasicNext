@@ -19,7 +19,10 @@ pub(crate) enum Sentinel {
 
 impl Sentinel {
     pub(crate) fn of(alternatives: &[Type]) -> Option<Self> {
-        if string_na_or_error(alternatives) || scalar_na_or_error(alternatives) {
+        if string_na_or_error(alternatives)
+            || scalar_na_or_error(alternatives)
+            || error_or_na(alternatives)
+        {
             Some(Self::NotAvailable)
         } else if string_eof_or_error(alternatives) || integer_eof_or_error(alternatives) {
             Some(Self::EndOfFile)

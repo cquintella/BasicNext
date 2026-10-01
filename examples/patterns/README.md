@@ -8,7 +8,7 @@ Patterns*.
 Every `.bn` file has a `Start` function and can be checked with:
 
 ```text
-bn check examples/patterns/<pattern>.bn
+bni check examples/patterns/<pattern>.bn
 ```
 
 Examples marked `UNSUPPORTED` are still valid Basic Next programs. Their

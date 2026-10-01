@@ -32,12 +32,15 @@ __pycache__/
 # Agent briefs and tool state
 AGENTS.md
 CLAUDE.md
+GEMINI.md
+.agents
 .agents/
 .aider*
 .superpowers/
 superpowers/
 .understand-anything/
 .ua/
+fix-*.md
 
 # Editor and OS
 .DS_Store

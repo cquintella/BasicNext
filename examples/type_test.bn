@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 // type_test.bn — expected vs got for primitives, arithmetic, bitwise/logical,
-// and every BNMath export. Run: bn run examples/type_test.bn
+// and every BNMath export. Run: bni run examples/type_test.bn
 //
 // Integer overflow is a fatal NUMERIC_OVERFLOW (it does not become Error).
 // Leave OVERFLOW_PROBE at 0 to finish cleanly. Set it to 1..5 at the bottom

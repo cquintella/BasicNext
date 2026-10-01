@@ -9,16 +9,20 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use super::log::{Level, Record};
+use super::log_error::LogFailure;
 use super::policy::{POLICY_CONSOLE, POLICY_FILESYSTEM, allows};
 
 pub const BN_LOG_OK: i32 = 0;
-pub const BN_LOG_INVALID_ARGUMENT: i32 = 1;
-pub const BN_LOG_INVALID_HANDLE: i32 = 2;
-pub const BN_LOG_CLOSED: i32 = 3;
-pub const BN_LOG_POLICY_DENIED: i32 = 4;
-pub const BN_LOG_TRANSPORT_ERROR: i32 = 5;
-pub const BN_LOG_LIMIT_EXCEEDED: i32 = 6;
-pub const BN_LOG_DUPLICATE_FIELD: i32 = 7;
+
+fn failed(operation: &str, failure: &LogFailure) -> i32 {
+    crate::set_error_report(
+        failure.code(),
+        operation,
+        failure.message(),
+        failure.cause(),
+    );
+    failure.code()
+}
 
 #[derive(Clone)]
 struct FileTransport {
@@ -65,8 +69,8 @@ fn text(pointer: *const c_char) -> Option<String> {
         .map(str::to_owned)
 }
 
-fn parse_level(value: i64) -> Result<Level, i32> {
-    Level::from_i64(value).ok_or(BN_LOG_INVALID_ARGUMENT)
+fn parse_level(value: i64) -> Result<Level, ()> {
+    Level::from_i64(value).ok_or(())
 }
 
 fn with_fields<T>(operation: impl FnOnce(&mut HashMap<u64, BTreeMap<String, String>>) -> T) -> T {
@@ -122,11 +126,29 @@ pub extern "C" fn bn_rt_log_logger_create() -> u64 {
 /// registry lock is held.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_log_logger_new(label: *const c_char, out: *mut u64) -> i32 {
+    let op = "BNLog.Logger.New";
     let Some(label) = text(label) else {
-        return BN_LOG_INVALID_ARGUMENT;
+        return failed(
+            op,
+            &LogFailure::InvalidString {
+                what: "logger label",
+                len: 0,
+                max: 128,
+            },
+        );
     };
-    if out.is_null() || label.is_empty() || label.len() > 128 {
-        return BN_LOG_INVALID_ARGUMENT;
+    if out.is_null() {
+        return failed(op, &LogFailure::InvalidHandle);
+    }
+    if label.is_empty() || label.len() > 128 {
+        return failed(
+            op,
+            &LogFailure::InvalidString {
+                what: "logger label",
+                len: label.len(),
+                max: 128,
+            },
+        );
     }
     let handle = bn_rt_log_logger_create();
     with_loggers(|loggers| loggers.get_mut(&handle).unwrap().label = label);
@@ -134,22 +156,43 @@ pub extern "C" fn bn_rt_log_logger_new(label: *const c_char, out: *mut u64) -> i
     BN_LOG_OK
 }
 
-fn set_field(handle: u64, key: *const c_char, value: String) -> i32 {
+fn set_field(op: &str, handle: u64, key: *const c_char, value: String) -> i32 {
     let Some(key) = text(key) else {
-        return BN_LOG_INVALID_ARGUMENT;
+        return failed(
+            op,
+            &LogFailure::InvalidString {
+                what: "field key",
+                len: 0,
+                max: 128,
+            },
+        );
     };
     if key.is_empty() || key.len() > 128 {
-        return BN_LOG_INVALID_ARGUMENT;
+        return failed(
+            op,
+            &LogFailure::InvalidString {
+                what: "field key",
+                len: key.len(),
+                max: 128,
+            },
+        );
     }
     with_fields(|fields| {
         let Some(fields) = fields.get_mut(&handle) else {
-            return BN_LOG_INVALID_HANDLE;
+            return failed(op, &LogFailure::InvalidHandle);
         };
         if fields.contains_key(&key) {
-            return BN_LOG_DUPLICATE_FIELD;
+            return failed(op, &LogFailure::DuplicateKey(key));
         }
         if fields.len() >= 64 {
-            return BN_LOG_LIMIT_EXCEEDED;
+            return failed(
+                op,
+                &LogFailure::LimitExceeded {
+                    what: "fields",
+                    count: fields.len(),
+                    max: 64,
+                },
+            );
         }
         fields.insert(key, value);
         BN_LOG_OK
@@ -162,19 +205,29 @@ pub extern "C" fn bn_rt_log_fields_set_string(
     key: *const c_char,
     value: *const c_char,
 ) -> i32 {
-    text(value).map_or(BN_LOG_INVALID_ARGUMENT, |value| {
-        set_field(handle, key, value)
-    })
+    let op = "BNLog.Fields.SetString";
+    let Some(val) = text(value) else {
+        return failed(
+            op,
+            &LogFailure::InvalidString {
+                what: "field value",
+                len: 0,
+                max: 4096,
+            },
+        );
+    };
+    set_field(op, handle, key, val)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_log_fields_set_integer(handle: u64, key: *const c_char, value: i64) -> i32 {
-    set_field(handle, key, value.to_string())
+    set_field("BNLog.Fields.SetInteger", handle, key, value.to_string())
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_log_fields_set_boolean(handle: u64, key: *const c_char, value: u8) -> i32 {
     set_field(
+        "BNLog.Fields.SetBoolean",
         handle,
         key,
         if value != 0 { "TRUE" } else { "FALSE" }.into(),
@@ -183,55 +236,92 @@ pub extern "C" fn bn_rt_log_fields_set_boolean(handle: u64, key: *const c_char, 
 
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_log_fields_count(handle: u64, out: *mut i32) -> i32 {
+    let op = "BNLog.Fields.Count";
     if out.is_null() {
-        return BN_LOG_INVALID_ARGUMENT;
+        return failed(op, &LogFailure::InvalidHandle);
     }
     with_fields(|fields| {
         let Some(fields) = fields.get(&handle) else {
-            return BN_LOG_INVALID_HANDLE;
+            return failed(op, &LogFailure::InvalidHandle);
         };
         let Ok(count) = i32::try_from(fields.len()) else {
-            return BN_LOG_LIMIT_EXCEEDED;
+            return failed(
+                op,
+                &LogFailure::LimitExceeded {
+                    what: "fields",
+                    count: fields.len(),
+                    max: 64,
+                },
+            );
         };
         unsafe { out.write(count) };
         BN_LOG_OK
     })
 }
 
-fn add_transport(handle: u64, minimum: i64, kind: &str, path: Option<String>) -> i32 {
-    let Ok(minimum) = parse_level(minimum) else {
-        return BN_LOG_INVALID_ARGUMENT;
+fn add_transport(op: &str, handle: u64, minimum: i64, kind: &str, path: Option<String>) -> i32 {
+    let Ok(minimum_level) = parse_level(minimum) else {
+        return failed(
+            op,
+            &LogFailure::OutOfRange {
+                what: "log level",
+                value: i128::from(minimum),
+                min: 0,
+                max: 6,
+            },
+        );
     };
     with_loggers(|loggers| {
         let Some(logger) = loggers.get_mut(&handle) else {
-            return BN_LOG_INVALID_HANDLE;
+            return failed(op, &LogFailure::InvalidHandle);
         };
         if logger.closed {
-            return BN_LOG_CLOSED;
+            return failed(op, &LogFailure::Closed);
         }
         if logger.null_transports.len()
             + logger.console_transports.len()
             + logger.file_transports.len()
             >= 8
         {
-            return BN_LOG_LIMIT_EXCEEDED;
+            return failed(
+                op,
+                &LogFailure::LimitExceeded {
+                    what: "transports",
+                    count: 8,
+                    max: 8,
+                },
+            );
         }
         match kind {
-            "null" => logger.null_transports.push(minimum),
-            "console" if allows(POLICY_CONSOLE) => logger.console_transports.push(minimum),
-            "file"
-                if allows(POLICY_FILESYSTEM)
-                    && path
-                        .as_deref()
-                        .is_some_and(|path| super::policy::allows_path(Path::new(path), true)) =>
-            {
+            "null" => logger.null_transports.push(minimum_level),
+            "console" if allows(POLICY_CONSOLE) => logger.console_transports.push(minimum_level),
+            "console" => return failed(op, &LogFailure::CapabilityRequired("HOST.Console")),
+            "file" if !allows(POLICY_FILESYSTEM) => {
+                return failed(op, &LogFailure::CapabilityRequired("HOST.FileSystem"));
+            }
+            "file" => {
+                let Some(path_str) = path else {
+                    return failed(
+                        op,
+                        &LogFailure::InvalidString {
+                            what: "file path",
+                            len: 0,
+                            max: 4096,
+                        },
+                    );
+                };
+                if !super::policy::allows_path(Path::new(&path_str), true) {
+                    return failed(
+                        op,
+                        &LogFailure::IoFailed("path is outside execution policy".into()),
+                    );
+                }
                 logger.file_transports.push(FileTransport {
-                    path: path.expect("file transport has path"),
-                    minimum,
+                    path: path_str,
+                    minimum: minimum_level,
                 });
             }
-            "console" | "file" => return BN_LOG_POLICY_DENIED,
-            _ => return BN_LOG_INVALID_ARGUMENT,
+            _ => return failed(op, &LogFailure::InvalidTransport("unknown transport")),
         }
         BN_LOG_OK
     })
@@ -239,39 +329,55 @@ fn add_transport(handle: u64, minimum: i64, kind: &str, path: Option<String>) ->
 
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_log_logger_add_null(handle: u64, minimum: i64) -> i32 {
-    add_transport(handle, minimum, "null", None)
+    add_transport("BNLog.Logger.AddNull", handle, minimum, "null", None)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_log_logger_add_console(handle: u64, minimum: i64) -> i32 {
-    add_transport(handle, minimum, "console", None)
+    add_transport("BNLog.Logger.AddConsole", handle, minimum, "console", None)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_log_logger_add_file(handle: u64, path: *const c_char, minimum: i64) -> i32 {
+    let op = "BNLog.Logger.AddFile";
     let Some(path) = text(path) else {
-        return BN_LOG_INVALID_ARGUMENT;
+        return failed(
+            op,
+            &LogFailure::InvalidString {
+                what: "file path",
+                len: 0,
+                max: 4096,
+            },
+        );
     };
     if path.is_empty() || path.len() > 4096 {
-        return BN_LOG_INVALID_ARGUMENT;
+        return failed(
+            op,
+            &LogFailure::InvalidString {
+                what: "file path",
+                len: path.len(),
+                max: 4096,
+            },
+        );
     }
-    add_transport(handle, minimum, "file", Some(path))
+    add_transport(op, handle, minimum, "file", Some(path))
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_log_logger_child(handle: u64, fields: u64, out: *mut u64) -> i32 {
+    let op = "BNLog.Logger.Child";
     if out.is_null() {
-        return BN_LOG_INVALID_ARGUMENT;
+        return failed(op, &LogFailure::InvalidHandle);
     }
     let Some(fields) = with_fields(|registry| registry.get(&fields).cloned()) else {
-        return BN_LOG_INVALID_HANDLE;
+        return failed(op, &LogFailure::InvalidHandle);
     };
     with_loggers(|loggers| {
         let Some(parent) = loggers.get(&handle).cloned() else {
-            return BN_LOG_INVALID_HANDLE;
+            return failed(op, &LogFailure::InvalidHandle);
         };
         if parent.closed {
-            return BN_LOG_CLOSED;
+            return failed(op, &LogFailure::Closed);
         }
         let child_handle = next_handle();
         let mut child = parent;
@@ -290,24 +396,53 @@ pub extern "C" fn bn_rt_log_logger_log(
     message: *const c_char,
     fields: u64,
 ) -> i32 {
-    let (Ok(level), Some(message)) = (parse_level(level), text(message)) else {
-        return BN_LOG_INVALID_ARGUMENT;
+    let op = "BNLog.Logger.Log";
+    let Ok(level) = parse_level(level) else {
+        return failed(
+            op,
+            &LogFailure::OutOfRange {
+                what: "log level",
+                value: i128::from(level),
+                min: 0,
+                max: 6,
+            },
+        );
+    };
+    let Some(message) = text(message) else {
+        return failed(
+            op,
+            &LogFailure::InvalidString {
+                what: "log message",
+                len: 0,
+                max: 16 * 1024,
+            },
+        );
     };
     if message.len() > 16 * 1024 {
-        return BN_LOG_LIMIT_EXCEEDED;
+        return failed(
+            op,
+            &LogFailure::InvalidString {
+                what: "log message",
+                len: message.len(),
+                max: 16 * 1024,
+            },
+        );
     }
     let Some(provided) = with_fields(|registry| registry.get(&fields).cloned()) else {
-        return BN_LOG_INVALID_HANDLE;
+        return failed(op, &LogFailure::InvalidHandle);
     };
     let Some(logger) = with_loggers(|loggers| loggers.get(&handle).cloned()) else {
-        return BN_LOG_INVALID_HANDLE;
+        return failed(op, &LogFailure::InvalidHandle);
     };
     if logger.closed {
-        return BN_LOG_CLOSED;
+        return failed(op, &LogFailure::Closed);
     }
     let record = Record::now(&logger.label, level, &message, &logger.context, &provided);
     let Ok(line) = record.json_line() else {
-        return BN_LOG_LIMIT_EXCEEDED;
+        return failed(
+            op,
+            &LogFailure::RecordSerialization("record exceeds maximum size".into()),
+        );
     };
     if logger
         .console_transports
@@ -316,7 +451,7 @@ pub extern "C" fn bn_rt_log_logger_log(
         && (super::libc_write_stdout(line.as_bytes()).is_err()
             || super::libc_write_stdout(b"\n").is_err())
     {
-        return BN_LOG_TRANSPORT_ERROR;
+        return failed(op, &LogFailure::IoFailed("cannot write to stdout".into()));
     }
     for transport in logger
         .file_transports
@@ -332,26 +467,35 @@ pub extern "C" fn bn_rt_log_logger_log(
             file.write_all(b"\n")
         });
         if let Err(error) = result {
-            return if error.kind() == std::io::ErrorKind::PermissionDenied {
-                BN_LOG_POLICY_DENIED
-            } else {
-                BN_LOG_TRANSPORT_ERROR
-            };
+            return failed(op, &LogFailure::IoFailed(error.to_string()));
         }
     }
     BN_LOG_OK
 }
 
 fn flush_or_close(handle: u64, timeout_ms: i64, close: bool) -> i32 {
+    let op = if close {
+        "BNLog.Logger.Close"
+    } else {
+        "BNLog.Logger.Flush"
+    };
     if !(1..=60_000).contains(&timeout_ms) {
-        return BN_LOG_INVALID_ARGUMENT;
+        return failed(
+            op,
+            &LogFailure::OutOfRange {
+                what: "timeout",
+                value: i128::from(timeout_ms),
+                min: 1,
+                max: 60_000,
+            },
+        );
     }
     with_loggers(|loggers| {
         let Some(logger) = loggers.get_mut(&handle) else {
-            return BN_LOG_INVALID_HANDLE;
+            return failed(op, &LogFailure::InvalidHandle);
         };
         if logger.closed {
-            return BN_LOG_CLOSED;
+            return failed(op, &LogFailure::Closed);
         }
         for transport in &logger.file_transports {
             let result = super::policy::open_path(
@@ -360,15 +504,11 @@ fn flush_or_close(handle: u64, timeout_ms: i64, close: bool) -> i32 {
             )
             .and_then(|file| file.sync_all());
             if let Err(error) = result {
-                return if error.kind() == std::io::ErrorKind::PermissionDenied {
-                    BN_LOG_POLICY_DENIED
-                } else {
-                    BN_LOG_TRANSPORT_ERROR
-                };
+                return failed(op, &LogFailure::IoFailed(error.to_string()));
             }
         }
         if !logger.console_transports.is_empty() && super::libc_fflush().is_err() {
-            return BN_LOG_TRANSPORT_ERROR;
+            return failed(op, &LogFailure::IoFailed("cannot flush stdout".into()));
         }
         logger.closed = close;
         BN_LOG_OK
@@ -391,7 +531,7 @@ pub extern "C" fn bn_rt_log_fields_close(handle: u64) -> i32 {
         if fields.remove(&handle).is_some() {
             BN_LOG_OK
         } else {
-            BN_LOG_INVALID_HANDLE
+            failed("BNLog.Fields.Close", &LogFailure::InvalidHandle)
         }
     })
 }
@@ -402,7 +542,7 @@ pub extern "C" fn bn_rt_log_logger_delete(handle: u64) -> i32 {
         if loggers.remove(&handle).is_some() {
             BN_LOG_OK
         } else {
-            BN_LOG_INVALID_HANDLE
+            failed("BNLog.Logger.Close", &LogFailure::InvalidHandle)
         }
     })
 }

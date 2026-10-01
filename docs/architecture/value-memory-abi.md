@@ -291,7 +291,9 @@ bn_rt_trap_report_failure
 bn_rt_log_fields_close
 bn_rt_log_fields_create
 bn_rt_log_fields_set_string
+bn_rt_log_logger_add_console
 bn_rt_log_logger_add_file
+bn_rt_log_logger_add_null
 bn_rt_log_logger_close
 bn_rt_log_logger_create
 bn_rt_log_logger_delete
@@ -304,6 +306,7 @@ bn_rt_console_cls
 bn_rt_console_num_cols
 bn_rt_console_num_rows
 bn_rt_console_print_at
+bn_rt_host_num_procs
 bn_rt_dataframe_close
 bn_rt_dataframe_column_count
 bn_rt_dataframe_create
@@ -331,7 +334,12 @@ bn_rt_dispatch_semaphore_close
 bn_rt_dispatch_semaphore_create
 bn_rt_dispatch_semaphore_release
 bn_rt_dispatch_submit
+bn_rt_dispatch_ticket_cancel
 bn_rt_dispatch_ticket_close
+bn_rt_dispatch_ticket_error
+bn_rt_dispatch_ticket_id
+bn_rt_dispatch_ticket_is_done
+bn_rt_dispatch_ticket_status
 bn_rt_math_acos
 bn_rt_math_asin
 bn_rt_math_atan

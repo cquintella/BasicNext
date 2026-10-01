@@ -7,15 +7,15 @@ through `BNLog` as JSON Lines.
 Run TCP in two terminals:
 
 ```sh
-bn run examples/socket.bn -- --tcp --server --log tcp-server.log.jsonl
-bn run examples/socket.bn -- --tcp --client
+bni run examples/socket.bn -- --tcp --server --log tcp-server.log.jsonl
+bni run examples/socket.bn -- --tcp --client
 ```
 
 Run UDP the same way:
 
 ```sh
-bn run examples/socket.bn -- --udp --server --log udp-server.log.jsonl
-bn run examples/socket.bn -- --udp --client
+bni run examples/socket.bn -- --udp --server --log udp-server.log.jsonl
+bni run examples/socket.bn -- --udp --client
 ```
 
 Add `--ipv6` to both commands to use `::1`. TCP uses port `39101`, UDP uses

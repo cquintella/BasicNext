@@ -53,7 +53,7 @@ END FUNCTION
 FUNCTION Start() AS INTEGER
     IF LEN(HOST.Args) > 1 THEN
         IF HOST.Args[1] = "--h" OR HOST.Args[1] = "-h" THEN
-            PRINT "Usage: bn run examples/levenshtein.bn"
+            PRINT "Usage: bni run examples/levenshtein.bn"
             PRINT "Enter word 1 and word 2, one per line."
             RETURN 0
         END IF

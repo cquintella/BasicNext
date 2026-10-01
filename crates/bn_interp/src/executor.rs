@@ -287,6 +287,14 @@ pub(super) fn coerce(value: Value, ty: &Type, span: Span) -> Result<Value, Diagn
         (_, Type::Alternative(types)) if types.iter().any(|ty| value_matches_type(&value, ty)) => {
             Ok(value)
         }
+        (val, Type::Alternative(types))
+            if !matches!(val, Value::Error { .. })
+                && types
+                    .iter()
+                    .any(|ty| matches!(ty, Type::Named(name) if name == "VOID")) =>
+        {
+            Ok(Value::Null)
+        }
         (Value::Boolean(_), Type::Boolean)
         | (Value::String(_), Type::String)
         | (Value::Vector(_), Type::Vector { .. })

@@ -289,7 +289,7 @@ pub fn lower_validated_module_with_diagnostics(
     let start = module.entry().expect("validated entry point");
     let functions = analyze_reachable(module, start)?;
     let mut text = String::from(
-        "; Basic Next 0.2\n@.bn_fmt_int = private unnamed_addr constant [5 x i8] c\"%lld\\00\"\n@.bn_fmt_uint = private unnamed_addr constant [5 x i8] c\"%llu\\00\"\n@.bn_fmt_float = private unnamed_addr constant [6 x i8] c\"%.17g\\00\"\n@.bn_fmt_str = private unnamed_addr constant [3 x i8] c\"%s\\00\"\n@.bn_fmt_error = private unnamed_addr constant [16 x i8] c\"Error(%lld, %s)\\00\"\n@.bn_asc_error = private unnamed_addr constant [32 x i8] c\"ASC requires a non-empty STRING\\00\"\n@.bn_char_error = private unnamed_addr constant [34 x i8] c\"CHAR code is not a Unicode scalar\\00\"\n@.bn_dataframe_error = private unnamed_addr constant [25 x i8] c\"DataFrame column failure\\00\"\n@.bn_dataframe_duplicate = private unnamed_addr constant [22 x i8] c\"duplicate column name\\00\"\n@.bn_dataframe_length = private unnamed_addr constant [23 x i8] c\"column length mismatch\\00\"\n@.bn_dataframe_index = private unnamed_addr constant [27 x i8] c\"column index out of bounds\\00\"\n@.bn_true = private unnamed_addr constant [5 x i8] c\"TRUE\\00\"\n@.bn_false = private unnamed_addr constant [6 x i8] c\"FALSE\\00\"\n@.bn_empty = private unnamed_addr constant [1 x i8] c\"\\00\"\n@.bn_eof = private constant [4 x i8] c\"EOF\\00\"\n",
+        "; Basic Next 0.2\n@.bn_fmt_int = private unnamed_addr constant [5 x i8] c\"%lld\\00\"\n@.bn_fmt_uint = private unnamed_addr constant [5 x i8] c\"%llu\\00\"\n@.bn_fmt_float = private unnamed_addr constant [6 x i8] c\"%.17g\\00\"\n@.bn_fmt_str = private unnamed_addr constant [3 x i8] c\"%s\\00\"\n@.bn_fmt_error = private unnamed_addr constant [16 x i8] c\"Error(%lld, %s)\\00\"\n@.bn_asc_error = private unnamed_addr constant [32 x i8] c\"ASC requires a non-empty STRING\\00\"\n@.bn_char_error = private unnamed_addr constant [34 x i8] c\"CHAR code is not a Unicode scalar\\00\"\n@.bn_true = private unnamed_addr constant [5 x i8] c\"TRUE\\00\"\n@.bn_false = private unnamed_addr constant [6 x i8] c\"FALSE\\00\"\n@.bn_empty = private unnamed_addr constant [1 x i8] c\"\\00\"\n@.bn_eof = private constant [4 x i8] c\"EOF\\00\"\n",
     );
     for (index, root) in policy
         .read_roots
@@ -539,6 +539,7 @@ fn llvm_type(ty: &Type) -> Option<&'static str> {
         Type::Alternative(alternatives) if scalar_na_or_error(alternatives) => {
             Some("{ i1, ptr, i64 }")
         }
+        Type::Alternative(alternatives) if error_or_na(alternatives) => Some("{ i1, ptr, i64 }"),
         Type::Alternative(alternatives) if float_or_error(alternatives) => Some("{ i1, ptr, i64 }"),
         Type::Alternative(alternatives) if boolean_or_error(alternatives) => {
             Some("{ i1, ptr, i64 }")
@@ -753,6 +754,14 @@ fn scalar_na_or_error(alternatives: &[Type]) -> bool {
             .iter()
             .any(|ty| matches!(ty, Type::NotAvailable))
         && alternatives.iter().any(is_error_type)
+}
+
+pub(crate) fn error_or_na(alternatives: &[Type]) -> bool {
+    alternatives.len() == 2
+        && alternatives.iter().any(is_error_type)
+        && alternatives
+            .iter()
+            .any(|ty| matches!(ty, Type::NotAvailable))
 }
 
 fn float_or_error(alternatives: &[Type]) -> bool {

@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 // bnmath_tour.bn — exercise every public BNMath API the runtime supports.
-// Run from repo root: bn run examples/bnmath_tour.bn
+// Run from repo root: bni run examples/bnmath_tour.bn
 
 IMPORT BNMath AS Math
 

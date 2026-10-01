@@ -428,6 +428,14 @@ impl Analyzer {
         };
         let on_queue = dispatch_receiver("Queue");
         let on_ticket = dispatch_receiver("Ticket");
+        let on_filesystem = match &callee.kind {
+            ExpressionKind::Member { object, .. } => self
+                .expressions
+                .iter()
+                .find(|expression| expression.span == object.span)
+                .is_some_and(|expression| expression.ty == Type::HostFileSystem),
+            _ => false,
+        };
         if let ExpressionKind::Member { name, .. } = &callee.kind {
             if name == "Async" && on_queue {
                 let Some((target, rest)) = arguments.split_first() else {
@@ -540,6 +548,7 @@ impl Analyzer {
         }
         if let ExpressionKind::Member { name, .. } = &callee.kind
             && name == "Open"
+            && on_filesystem
             && let Some(mode) = arguments.get(1).and_then(constant_integer)
             && !matches!(mode, 0..=2)
         {

@@ -1702,7 +1702,7 @@ fn bndata_read_csv_rejects_ragged_rows() {
         bn_path(&csv)
     );
     let (_, output) = run(&source, "").expect("ragged CSV returns Error");
-    assert_eq!(output, "1\n");
+    assert_eq!(output, "6\n");
     let _ = fs::remove_file(csv);
 }
 
@@ -1715,7 +1715,7 @@ fn bndata_read_csv_rejects_unterminated_quotes() {
         bn_path(&csv)
     );
     let (_, output) = run(&source, "").expect("unterminated CSV quotes return Error");
-    assert_eq!(output, "1\n");
+    assert_eq!(output, "6\n");
     let _ = fs::remove_file(csv);
 }
 
@@ -1762,28 +1762,28 @@ fn bndata_copy_failure_leaves_the_destination_unchanged() {
 fn bndata_zscore_standardizes_a_float_column() {
     let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET xs AS FLOAT[3] = [1.0, 2.0, 3.0]\ntable.AddFloatColumn(\"x\", xs)\nLET z AS Data.DataFrame OR Error = table.ZScore(\"x\")\nIF z IS Error THEN\nPRINT z.Code\nELSE\nPRINT z.GetFloat(0, \"x\")\nPRINT z.GetFloat(1, \"x\")\nPRINT z.GetFloat(2, \"x\")\nRELEASE z\nEND IF\nLET missing AS Data.DataFrame OR Error = table.ZScore(\"nope\")\nIF missing IS Error THEN\nPRINT missing.Code\nEND IF\nRELEASE table\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("run ZScore");
-    assert_eq!(output, "-1.0\n0.0\n1.0\n1\n");
+    assert_eq!(output, "-1.0\n0.0\n1.0\n2\n");
 }
 
 #[test]
 fn bndata_select_rejects_out_of_bounds_indices() {
     let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET values AS INTEGER[1] = [1]\ntable.AddIntegerColumn(\"Id\", values)\nLET result AS Data.DataFrame OR Error = table.Select([1], [0])\nIF result IS Error THEN\nPRINT result.Code\nEND IF\nRELEASE table\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("run bounds check");
-    assert_eq!(output, "1\n");
+    assert_eq!(output, "4\n");
 }
 
 #[test]
 fn bndata_select_rejects_negative_indices_as_error() {
     let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET values AS INTEGER[1] = [1]\ntable.AddIntegerColumn(\"Id\", values)\nLET rows AS INTEGER[1]\nrows[0] = -1\nLET result AS Data.DataFrame OR Error = table.Select(rows, [0])\nIF result IS Error THEN\nPRINT result.Code\nEND IF\nRELEASE table\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("negative Select is Error");
-    assert_eq!(output, "1\n");
+    assert_eq!(output, "4\n");
 }
 
 #[test]
 fn bndata_slice_rejects_row_range_on_empty_frame() {
     let source = "IMPORT BNData AS Data\nFUNCTION Start() AS VOID\nLET table AS Data.DataFrame = NEW Data.DataFrame()\nLET sliced AS Data.DataFrame OR Error = table.Slice(0, 1, 0, 0)\nIF sliced IS Error THEN\nPRINT sliced.Code\nEND IF\nRELEASE table\nEND FUNCTION\n";
     let (_, output) = run(source, "").expect("empty-frame Slice is Error");
-    assert_eq!(output, "1\n");
+    assert_eq!(output, "4\n");
 }
 
 #[test]

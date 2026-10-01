@@ -5,7 +5,7 @@
 
 // HOST.Exec demonstration: launch an external program, capture its result,
 // and handle the not-found error case.
-// Run with:  bn run examples/exec-demo.bn
+// Run with:  bni run examples/exec-demo.bn
 
 IMPORT HOST.Exec AS Exec
 

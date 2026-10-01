@@ -26,6 +26,12 @@ pub(crate) fn call_instruction_supported(
                 || name.ends_with(".Queue.Join")
                 || name.ends_with(".Queue.Close")
                 || name.ends_with(".Ticket.Close")
+                || name.ends_with(".Ticket.Id")
+                || name.ends_with(".Ticket.Status")
+                || name.ends_with(".Ticket.Wait")
+                || name.ends_with(".Ticket.Cancel")
+                || name.ends_with(".Ticket.Error")
+                || name.ends_with(".Ticket.IsDone")
                 || name.ends_with(".Group.New")
                 || name.ends_with(".Group.Enter")
                 || name.ends_with(".Group.Leave")
@@ -358,6 +364,14 @@ pub(crate) fn call_instruction_supported(
                     && bnlog_resource_kind(module, &values[&arguments[0]]) == Some("Fields")
                     && values.get(&arguments[1]) == Some(&Type::String)
                     && values.get(&arguments[2]) == Some(&Type::String)
+            }
+            Some("logger_add_null" | "logger_add_console") => {
+                arguments.len() == 2
+                    && bnlog_resource_kind(module, &values[&arguments[0]]) == Some("Logger")
+                    && values
+                        .get(&arguments[1])
+                        .and_then(llvm_type)
+                        .is_some_and(integer_llvm)
             }
             Some("logger_add_file") => {
                 arguments.len() == 3

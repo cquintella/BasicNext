@@ -84,15 +84,14 @@ pub(crate) fn emit_handle_result(
 
 pub(crate) fn emit_void_result(text: &mut String, destination: ValueId, rc: impl AsRef<str>) {
     let dest = destination.0;
-    let _ = writeln!(text, "  %netrc{dest} = {}", rc.as_ref());
-    emit_status_result(
-        text,
-        destination,
-        &format!("%netrc{dest}"),
-        None,
-        "null",
-        "0",
-    );
+    let rc_str = rc.as_ref();
+    let rc_reg = if rc_str.starts_with('%') {
+        rc_str.to_string()
+    } else {
+        let _ = writeln!(text, "  %netrc{dest} = {rc_str}");
+        format!("%netrc{dest}")
+    };
+    emit_status_result(text, destination, &rc_reg, None, "null", "0");
 }
 
 /// Declares the `bn_rt` error-record functions (`error_abi`) the module

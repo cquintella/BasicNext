@@ -31,13 +31,14 @@ use crate::dataframe::{
 };
 use bn_interp::provider::{CoreContext, Provider};
 use bn_interp::{
-    collect_indices_pub as collect_indices, dataframe_index_error_pub as dataframe_index_error,
-    equals_pub as equals, integer_from_count_pub as integer_from_count, integer_pub as integer,
+    collect_indices_pub as collect_indices, equals_pub as equals,
+    integer_from_count_pub as integer_from_count, integer_pub as integer,
     is_not_available_pub as is_not_available, name_not_found, parse_val_pub as parse_val,
     render_pub as render, require_arity_pub as require_arity, runtime_error_pub as runtime_error,
     type_mismatch, unsigned_indices_pub as unsigned_indices,
 };
 use bn_rt::Reduction;
+use bn_rt::data_error::DataFailure;
 use bn_types::{FloatType, IntegerType};
 
 type DataFrameResource = crate::dataframe::DataFrameResource<Value>;
@@ -142,22 +143,28 @@ impl DataProvider {
                     || separator[0] == '\n'
                     || separator[0] == '\r'
                 {
-                    return Ok(Value::error(1, "invalid CSV separator".into()));
+                    return Ok(failed(
+                        name,
+                        &DataFailure::InvalidSeparator(separator.into_iter().collect()),
+                    ));
                 }
                 let text =
                     match core.call_function("FS.File.ReadAll", arguments[..1].to_vec(), span)? {
                         Value::String(text) => text,
                         Value::Error { message, .. } => {
-                            return Ok(Value::error(1, shared_string(message)));
+                            return Ok(failed(name, &DataFailure::IoFailed(message.to_string())));
                         }
                         _ => {
-                            return Ok(Value::error(1, "CSV read failed".into()));
+                            return Ok(failed(
+                                name,
+                                &DataFailure::IoFailed("CSV read failed".into()),
+                            ));
                         }
                     };
                 let rows = match core.host().data_provider().read_csv(&text, separator[0]) {
                     Ok(rows) => rows,
                     Err(message) => {
-                        return Ok(Value::error(1, shared_string(message)));
+                        return Ok(failed(name, &DataFailure::from_message(&message)));
                     }
                 };
                 let frame = match bn_rt::frame_from_csv_rows(rows, has_header, |value| {
@@ -165,7 +172,7 @@ impl DataProvider {
                 }) {
                     Ok(frame) => frame,
                     Err(message) => {
-                        return Ok(Value::error(1, shared_string(message)));
+                        return Ok(failed(name, &DataFailure::from_message(&message)));
                     }
                 };
                 let id = self.next;
@@ -213,7 +220,10 @@ impl DataProvider {
                     || separator[0] == '\n'
                     || separator[0] == '\r'
                 {
-                    return Ok(Value::error(1, "invalid CSV separator".into()));
+                    return Ok(failed(
+                        name,
+                        &DataFailure::InvalidSeparator(separator.into_iter().collect()),
+                    ));
                 }
                 let quote = |value: &Value| {
                     let text = render(value);
@@ -270,7 +280,9 @@ impl DataProvider {
                     vec![arguments[0].clone(), Value::String(shared_string(body))],
                     span,
                 )? {
-                    error @ Value::Error { .. } => Ok(error),
+                    Value::Error { message, .. } => {
+                        Ok(failed(name, &DataFailure::IoFailed(message.to_string())))
+                    }
                     _ => Ok(Value::Null),
                 }
             }
@@ -329,12 +341,25 @@ impl DataProvider {
             "ColumnName" => {
                 require_arity(name, arguments, 2, span)?;
                 let (index, _) = integer(&arguments[1], span)?;
-                let Ok(index) = usize::try_from(index) else {
-                    return Ok(Value::error(1, "column index out of bounds".into()));
+                let column = i64::try_from(index).unwrap_or(i64::MAX);
+                let Ok(index_usize) = usize::try_from(index) else {
+                    return Ok(failed(
+                        name,
+                        &DataFailure::ColumnIndexOutOfRange {
+                            column,
+                            count: frame.columns.len(),
+                        },
+                    ));
                 };
-                match column_name(frame, index) {
-                    Ok(name) => Ok(Value::String(shared_string(name))),
-                    Err(message) => Ok(Value::error(1, shared_string(message))),
+                match column_name(frame, index_usize) {
+                    Ok(col_name) => Ok(Value::String(shared_string(col_name))),
+                    Err(_) => Ok(failed(
+                        name,
+                        &DataFailure::ColumnIndexOutOfRange {
+                            column,
+                            count: frame.columns.len(),
+                        },
+                    )),
                 }
             }
             "SetLabel" => {
@@ -357,7 +382,18 @@ impl DataProvider {
                 };
                 match set_column_label(frame, old_label, new_label) {
                     Ok(()) => Ok(Value::Null),
-                    Err(message) => Ok(Value::error(1, shared_string(message))),
+                    Err(message) => Ok(failed(
+                        name,
+                        &match message.as_str() {
+                            "column not found" => {
+                                DataFailure::ColumnNotFound(old_label.to_string())
+                            }
+                            "duplicate column name" => {
+                                DataFailure::DuplicateColumn(new_label.to_string())
+                            }
+                            _ => DataFailure::from_message(&message),
+                        },
+                    )),
                 }
             }
             "Transpose" => {
@@ -381,12 +417,30 @@ impl DataProvider {
                     ));
                 };
                 let Ok(row) = usize::try_from(row) else {
-                    return Ok(Value::error(1, "row index out of bounds".into()));
+                    return Ok(failed(
+                        name,
+                        &DataFailure::RowIndexOutOfRange {
+                            row: row as i64,
+                            count: frame.columns.first().map_or(0, |c| c.values.len()),
+                        },
+                    ));
                 };
                 let value = match get_dataframe_cell(frame, column_name, row) {
                     Ok(value) => value.clone(),
                     Err(message) => {
-                        return Ok(Value::error(1, shared_string(message)));
+                        let failure = match message.as_str() {
+                            "column not found" => {
+                                DataFailure::ColumnNotFound(column_name.to_string())
+                            }
+                            "DataFrame index out of bounds" | "row index out of bounds" => {
+                                DataFailure::RowIndexOutOfRange {
+                                    row: i64::try_from(row).unwrap_or(i64::MAX),
+                                    count: frame.columns.first().map_or(0, |c| c.values.len()),
+                                }
+                            }
+                            _ => DataFailure::from_message(&message),
+                        };
+                        return Ok(failed(name, &failure));
                     }
                 };
                 match method {
@@ -402,7 +456,18 @@ impl DataProvider {
                     "GetBoolean" if matches!(value, Value::Boolean(_) | Value::NotAvailable) => {
                         Ok(value)
                     }
-                    _ => Ok(Value::error(1, "column type mismatch".into())),
+                    _ => Ok(failed(
+                        name,
+                        &DataFailure::TypeMismatch {
+                            expected: match method {
+                                "GetString" => "STRING",
+                                "GetInteger" => "INTEGER",
+                                "GetFloat" => "FLOAT",
+                                _ => "BOOLEAN",
+                            },
+                            column: column_name.to_string(),
+                        },
+                    )),
                 }
             }
             "ConvertToInteger" | "ConvertToFloat" => {
@@ -436,8 +501,17 @@ impl DataProvider {
                 };
                 match convert_dataframe_column(frame, column_name, converter) {
                     Ok(()) => Ok(Value::Null),
-                    Err("column not found") => Ok(Value::error(1, "column not found".into())),
-                    Err(_) => Ok(Value::error(1, "column conversion failed".into())),
+                    Err("column not found") => Ok(failed(
+                        name,
+                        &DataFailure::ColumnNotFound(column_name.to_string()),
+                    )),
+                    Err(_) => Ok(failed(
+                        name,
+                        &DataFailure::ConversionFailed {
+                            column: column_name.to_string(),
+                            reason: "failed to convert column".into(),
+                        },
+                    )),
                 }
             }
             "ZScore" => {
@@ -468,7 +542,14 @@ impl DataProvider {
                     {
                         Ok(frame) => frame,
                         Err(message) => {
-                            return Ok(Value::error(1, shared_string(message)));
+                            let failure = match message.as_str() {
+                                "column not found" => {
+                                    DataFailure::ColumnNotFound(column_name.to_string())
+                                }
+                                "empty numeric column" => DataFailure::EmptyNumericColumn,
+                                _ => DataFailure::from_message(&message),
+                            };
+                            return Ok(failed(name, &failure));
                         }
                     };
                 let new_id = self.next;
@@ -496,7 +577,19 @@ impl DataProvider {
                 match dataframe_reduce_column(frame, column_name, method, to_f64) {
                     Ok(Reduction::Float(val)) => Ok(Value::Float(val, FloatType::Float64)),
                     Ok(Reduction::Na) => Ok(Value::NotAvailable),
-                    Err(message) => Ok(Value::error(1, message.into())),
+                    Err(message) => {
+                        let failure = match message {
+                            "column not found" => {
+                                DataFailure::ColumnNotFound(column_name.to_string())
+                            }
+                            "empty numeric column" => DataFailure::EmptyNumericColumn,
+                            "column is not numeric" => {
+                                DataFailure::NonNumericColumn(column_name.to_string())
+                            }
+                            _ => DataFailure::from_message(message),
+                        };
+                        Ok(failed(name, &failure))
+                    }
                 }
             }
             "CopyIntegerColumn" | "CopyFloatColumn" => {
@@ -530,13 +623,37 @@ impl DataProvider {
                 let values = match copy_dataframe_column(frame, column_name, target_len, adapter) {
                     Ok(values) => values,
                     Err("column not found") => {
-                        return Ok(Value::error(1, "column not found".into()));
+                        return Ok(failed(
+                            name,
+                            &DataFailure::ColumnNotFound(column_name.to_string()),
+                        ));
                     }
                     Err("destination length mismatch") => {
-                        return Ok(Value::error(1, "destination length mismatch".into()));
+                        let expected = frame
+                            .columns
+                            .iter()
+                            .find(|c| c.name == **column_name)
+                            .map_or(0, |c| c.values.len());
+                        return Ok(failed(
+                            name,
+                            &DataFailure::DestinationLengthMismatch {
+                                expected,
+                                got: target_len,
+                            },
+                        ));
                     }
                     Err(_) => {
-                        return Ok(Value::error(1, "column type or NA mismatch".into()));
+                        return Ok(failed(
+                            name,
+                            &DataFailure::TypeMismatch {
+                                expected: if method == "CopyIntegerColumn" {
+                                    "INTEGER"
+                                } else {
+                                    "FLOAT"
+                                },
+                                column: column_name.to_string(),
+                            },
+                        ));
                     }
                 };
                 for (index, stored) in values.into_iter().enumerate() {
@@ -569,12 +686,24 @@ impl DataProvider {
             let Some(row_indices) =
                 unsigned_indices(collect_indices(&arguments[1], core.memory(), span)?)
             else {
-                return Ok(dataframe_index_error());
+                return Ok(failed(
+                    &format!("BNData.DataFrame.{method}"),
+                    &DataFailure::RowIndexOutOfRange {
+                        row: -1,
+                        count: frame.columns.first().map_or(0, |c| c.values.len()),
+                    },
+                ));
             };
             let Some(column_indices) =
                 unsigned_indices(collect_indices(&arguments[2], core.memory(), span)?)
             else {
-                return Ok(dataframe_index_error());
+                return Ok(failed(
+                    &format!("BNData.DataFrame.{method}"),
+                    &DataFailure::ColumnIndexOutOfRange {
+                        column: -1,
+                        count: frame.columns.len(),
+                    },
+                ));
             };
             select_dataframe(frame, &row_indices, &column_indices)
         } else {
@@ -588,17 +717,30 @@ impl DataProvider {
                 .map(|value| usize::try_from(value).ok())
                 .collect::<Option<Vec<_>>>();
             let Some(values) = values else {
-                return Ok(Value::error(1, "negative slice bound".into()));
+                return Ok(failed(
+                    &format!("BNData.DataFrame.{method}"),
+                    &DataFailure::NegativeBound {
+                        bound: "slice bound",
+                        value: -1,
+                    },
+                ));
             };
             bn_rt::slice_dataframe(frame, values[0], values[1], values[2], values[3])
         };
         let selected = match selected {
             Ok(frame) => frame,
-            Err(message) if message == "DataFrame index out of bounds" => {
-                return Ok(dataframe_index_error());
-            }
             Err(message) => {
-                return Ok(Value::error(1, shared_string(message)));
+                let failure = match message.as_str() {
+                    "DataFrame index out of bounds" => DataFailure::RowIndexOutOfRange {
+                        row: -1,
+                        count: frame.columns.first().map_or(0, |c| c.values.len()),
+                    },
+                    "duplicate column name" => {
+                        DataFailure::DuplicateColumn("duplicate column name".into())
+                    }
+                    _ => DataFailure::from_message(&message),
+                };
+                return Ok(failed(&format!("BNData.DataFrame.{method}"), &failure));
             }
         };
         let new_id = self.next;
@@ -670,7 +812,18 @@ impl DataProvider {
         ) {
             Ok(frame) => frame,
             Err(message) => {
-                return Ok(Value::error(1, shared_string(message)));
+                let failure = match message.as_str() {
+                    "left key column not found" => DataFailure::KeyColumnNotFound {
+                        key: left_label.to_string(),
+                        side: "left",
+                    },
+                    "right key column not found" => DataFailure::KeyColumnNotFound {
+                        key: right_label.to_string(),
+                        side: "right",
+                    },
+                    _ => DataFailure::from_message(&message),
+                };
+                return Ok(failed(name, &failure));
             }
         };
         let new_id = self.next;
@@ -717,7 +870,7 @@ impl DataProvider {
             }) {
                 Ok(frame) => frame,
                 Err(message) => {
-                    return Ok(Value::error(1, shared_string(message)));
+                    return Ok(failed(name, &DataFailure::from_message(&message)));
                 }
             };
             let new_id = self.next;
@@ -728,7 +881,18 @@ impl DataProvider {
         let columns = match append_columns(left, right) {
             Ok(frame) => frame,
             Err(message) => {
-                return Ok(Value::error(1, shared_string(message)));
+                let failure = match message.as_str() {
+                    "row counts differ" => {
+                        let left_rows = left.columns.first().map_or(0, |c| c.values.len());
+                        let right_rows = right.columns.first().map_or(0, |c| c.values.len());
+                        DataFailure::RowCountsDiffer {
+                            left: left_rows,
+                            right: right_rows,
+                        }
+                    }
+                    _ => DataFailure::from_message(&message),
+                };
+                return Ok(failed(name, &failure));
             }
         };
         let new_id = self.next;
@@ -785,11 +949,38 @@ impl DataProvider {
             _ => false,
         });
         if !type_ok {
-            return Ok(Value::error(1, "column type mismatch".into()));
+            return Ok(failed(
+                name,
+                &DataFailure::TypeMismatch {
+                    expected: match method {
+                        "AddIntegerColumn" => "INTEGER",
+                        "AddFloatColumn" => "FLOAT",
+                        "AddStringColumn" => "STRING",
+                        _ => "BOOLEAN",
+                    },
+                    column: column_name.to_string(),
+                },
+            ));
         }
+        let values_len = values.len();
         match add_dataframe_column(frame, column_name.to_string(), values) {
             Ok(()) => Ok(Value::Null),
-            Err(message) => Ok(Value::error(1, shared_string(message))),
+            Err(message) => {
+                let failure = match message.as_str() {
+                    "duplicate column name" => {
+                        DataFailure::DuplicateColumn(column_name.to_string())
+                    }
+                    "column length mismatch" => {
+                        let expected = frame.columns.first().map_or(0, |c| c.values.len());
+                        DataFailure::ColumnLengthMismatch {
+                            expected,
+                            got: values_len,
+                        }
+                    }
+                    _ => DataFailure::from_message(&message),
+                };
+                Ok(failed(name, &failure))
+            }
         }
     }
 
@@ -820,6 +1011,32 @@ impl DataProvider {
             )
         } else {
             integer_from_count(frame.columns.len(), span)
+        }
+    }
+}
+
+/// The `Error` of a failed member `name` (`BNData.DataFrame.ZScore`),
+/// with the report the native ABI records for the same failure.
+fn failed(name: &str, failure: &DataFailure) -> Value {
+    let mut parts = name.rsplit('.');
+    let method = parts.next().unwrap_or_default();
+    let class = parts.next().unwrap_or_default();
+    let op_name = if class.is_empty() || class == "BNData" {
+        format!("BNData.{method}")
+    } else {
+        format!("BNData.{class}.{method}")
+    };
+    Value::error_report(failure.code(), &op_name, failure.message(), failure.cause())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn module_constants_match_the_runtime_codes() {
+        let module = include_str!("../../../modules/bn/BNData.bn");
+        for (name, value) in bn_types::error_codes::data::ALL {
+            let line = format!("EXPORT CONST {name} AS INTEGER = {value}");
+            assert!(module.contains(&line), "BNData.bn lacks `{line}`");
         }
     }
 }

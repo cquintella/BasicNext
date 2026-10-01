@@ -1,0 +1,81 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNData error codes (bndata.md "Errors"): one case per code reachable
+// without external transport failures.
+IMPORT BNData AS Data
+IMPORT HOST.FileSystem AS FS
+
+FUNCTION Start() AS INTEGER
+    LET df AS Data.DataFrame = NEW Data.DataFrame()
+
+    LET xs AS INTEGER[1] = [1]
+    LET okAdd AS VOID OR Error = df.AddIntegerColumn("x", xs)
+    IF okAdd IS Error THEN
+        RETURN 1
+    END IF
+
+    // 1. INVALID_ARGUMENT (duplicate column)
+    LET dup AS VOID OR Error = df.AddIntegerColumn("x", xs)
+    IF dup IS Error THEN
+        PRINT dup.Code = Data.INVALID_ARGUMENT, dup.Operation
+    END IF
+
+    // 2. NOT_FOUND (missing column)
+    LET notFound AS VOID OR Error = df.SetLabel("missing", "renamed")
+    IF notFound IS Error THEN
+        PRINT notFound.Code = Data.NOT_FOUND, notFound.Operation
+    END IF
+
+    // 3. TYPE_MISMATCH (reduction on string column)
+    LET names AS STRING[1] = ["hello"]
+    LET okStr AS VOID OR Error = df.AddStringColumn("name", names)
+    IF okStr IS Error THEN
+        RETURN 1
+    END IF
+    LET typeMismatch AS FLOAT OR Error = df.Mean("name")
+    IF typeMismatch IS Error THEN
+        PRINT typeMismatch.Code = Data.TYPE_MISMATCH, typeMismatch.Operation
+    END IF
+
+    // 4. OUT_OF_RANGE (row out of bounds)
+    LET outOfRange AS STRING OR NA OR Error = df.GetString(10, "name")
+    IF outOfRange IS Error THEN
+        PRINT outOfRange.Code = Data.OUT_OF_RANGE, outOfRange.Operation
+    END IF
+
+    // 5. IO_FAILED (WriteCSV on a closed file)
+    // 6. INVALID_FORMAT (ReadCSV on ragged CSV)
+    LET csvPath AS STRING = "target/data_errors_test.csv"
+    LET file AS FS.File OR Error = FS.Open(csvPath, FS.WRITE)
+    IF file IS Error THEN
+        RELEASE df
+        RETURN 1
+    END IF
+    file.WriteLine("a,b")
+    file.WriteLine("1,2,3")
+    file.Close()
+
+    // Closed file for IO_FAILED
+    LET ioFailed AS VOID OR Error = Data.WriteCSV(file, df, TRUE, ",")
+    IF ioFailed IS Error THEN
+        PRINT ioFailed.Code = Data.IO_FAILED, ioFailed.Operation
+    END IF
+
+    LET readFile AS FS.File OR Error = FS.Open(csvPath, FS.READ)
+    IF readFile IS Error THEN
+        RELEASE df
+        RETURN 1
+    END IF
+    LET invalidFormat AS Data.DataFrame OR Error = Data.ReadCSV(readFile, TRUE, ",")
+    IF invalidFormat IS Error THEN
+        PRINT invalidFormat.Code = Data.INVALID_FORMAT, invalidFormat.Operation
+    END IF
+    readFile.Close()
+    FS.DeleteFile(csvPath)
+
+    RELEASE df
+    RETURN 0
+END FUNCTION

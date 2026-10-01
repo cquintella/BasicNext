@@ -94,7 +94,7 @@ pub(crate) fn emit_preamble(
     if needs_na || functions.iter().any(|(_, analysis)| {
             analysis.values.values().any(|ty| {
                 llvm_type(ty) == Some("{ i1, double }")
-                    || matches!(ty, Type::Alternative(types) if string_na_or_error(types) || scalar_na_or_error(types))
+                    || matches!(ty, Type::Alternative(types) if string_na_or_error(types) || scalar_na_or_error(types) || error_or_na(types))
             })
         })
     {

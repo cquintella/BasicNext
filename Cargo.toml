@@ -3,7 +3,7 @@ members = ["crates/bn_rt", "crates/bn_source", "crates/bn_types", "crates/bn_dia
 resolver = "3"
 
 [workspace.package]
-version = "0.6.2"
+version = "0.6.3"
 edition = "2024"
 rust-version = "1.98"
 license = "MPL-2.0"
@@ -34,7 +34,7 @@ pedantic = "warn"
 bn_diag = { path = "crates/bn_diag" }
 bn_frontend = { path = "crates/bn_frontend" }
 bn_interp = { path = "crates/bn_interp" }
-bn_interpret_driver = { path = "crates/bn_interpret_driver" }
+bn_interpret_driver = { path = "crates/bn_interpret_driver", features = ["lib-math", "lib-json", "lib-log", "lib-data", "lib-dispatch", "lib-web", "lib-crypto"] }
 bn_ir = { path = "crates/bn_ir" }
 bn_lib_web = { path = "crates/bn_lib_web" } # tests/runtime.rs drives the web callback directly
 bn_llvm = { path = "crates/bn_llvm" }

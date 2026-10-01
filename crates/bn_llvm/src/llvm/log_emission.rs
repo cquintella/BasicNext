@@ -5,22 +5,30 @@ pub(crate) fn lower_bnlog_status(text: &mut String, destination: ValueId, call: 
     let dest = destination.0;
     let _ = writeln!(text, "  %logrc{dest} = {call}");
     let _ = writeln!(text, "  %logerr{dest} = icmp ne i32 %logrc{dest}, 0");
+    let _ = writeln!(text, "  %logerrint{dest} = zext i1 %logerr{dest} to i32");
     let _ = writeln!(
         text,
-        "  %logmsg{dest} = select i1 %logerr{dest}, ptr @.bn_log_error, ptr null"
+        "  %logfail{dest} = call ptr @bn_rt_error_take(i32 %logerrint{dest}, ptr null)"
     );
-    let _ = writeln!(text, "  %logcode{dest} = sext i32 %logrc{dest} to i64");
+    let _ = writeln!(
+        text,
+        "  %logcode{dest} = call i64 @bn_rt_error_code(ptr %logfail{dest})"
+    );
+    let _ = writeln!(
+        text,
+        "  %logpayload{dest} = select i1 %logerr{dest}, i64 %logcode{dest}, i64 0"
+    );
     let _ = writeln!(
         text,
         "  %logagg0_{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %logerr{dest}, 0"
     );
     let _ = writeln!(
         text,
-        "  %logagg1_wrap{dest} = call ptr @bn_rt_error_wrap(i1 %logerr{dest}, ptr %logmsg{dest}, ptr null)\n  %logagg1_{dest} = insertvalue {{ i1, ptr, i64 }} %logagg0_{dest}, ptr %logagg1_wrap{dest}, 1"
+        "  %logagg1_{dest} = insertvalue {{ i1, ptr, i64 }} %logagg0_{dest}, ptr %logfail{dest}, 1"
     );
     let _ = writeln!(
         text,
-        "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %logagg1_{dest}, i64 %logcode{dest}, 2"
+        "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %logagg1_{dest}, i64 %logpayload{dest}, 2"
     );
 }
 
@@ -56,6 +64,16 @@ pub(crate) fn lower_bnlog_call(
                 "call i32 @bn_rt_log_fields_set_string(i64 {receiver}, ptr %v{}, ptr %v{})",
                 arguments[1].0, arguments[2].0
             )
+        }
+        "logger_add_null" | "logger_add_console" => {
+            let receiver = handle(text, "receiver", arguments[0]);
+            let minimum = integer(text, arguments[1]);
+            let symbol = if method == "logger_add_console" {
+                "bn_rt_log_logger_add_console"
+            } else {
+                "bn_rt_log_logger_add_null"
+            };
+            format!("call i32 @{symbol}(i64 {receiver}, i64 {minimum})")
         }
         "logger_add_file" => {
             let receiver = handle(text, "receiver", arguments[0]);

@@ -519,8 +519,8 @@ fn next_ticket_id(tickets: &HashMap<u64, Arc<TicketInner>>) -> Result<u64, Dispa
         random.fill(&mut bytes).map_err(|_| {
             DispatchError::Unavailable("the system provides no entropy for ticket identifiers")
         })?;
-        let id = u64::from_ne_bytes(bytes);
-        if id != 0 && !tickets.contains_key(&id) {
+        let id = (u64::from_ne_bytes(bytes) & 0x7fff_ffff).max(1);
+        if !tickets.contains_key(&id) {
             return Ok(id);
         }
     }

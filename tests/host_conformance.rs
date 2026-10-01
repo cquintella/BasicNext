@@ -63,7 +63,7 @@ const CASES: &[Case] = &[
         stdout: "TRUE FALSE\nTRUE\n",
         exit: 0,
         stderr: None,
-        native: Native::Unsupported("HOST.NumProcs"),
+        native: Native::Same,
     },
     Case {
         fixture: "random.bn",

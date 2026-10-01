@@ -4,16 +4,16 @@ These examples demonstrate the bounded `BNDispatch` provider without network
 I/O:
 
 ```shell
-bn check examples/parallel_work.bn
-bn run examples/parallel_work.bn
-bn check examples/parallel_pi.bn
-bn run examples/parallel_pi.bn
-bn check examples/dispatch_game_tournament.bn
-bn run examples/dispatch_game_tournament.bn
-bn check examples/dispatch_reliability_simulation.bn
-bn run examples/dispatch_reliability_simulation.bn
-bn check examples/dispatch_cellular_automaton.bn
-bn run examples/dispatch_cellular_automaton.bn
+bni check examples/parallel_work.bn
+bni run examples/parallel_work.bn
+bni check examples/parallel_pi.bn
+bni run examples/parallel_pi.bn
+bni check examples/dispatch_game_tournament.bn
+bni run examples/dispatch_game_tournament.bn
+bni check examples/dispatch_reliability_simulation.bn
+bni run examples/dispatch_reliability_simulation.bn
+bni check examples/dispatch_cellular_automaton.bn
+bni run examples/dispatch_cellular_automaton.bn
 ```
 
 `parallel_work.bn` submits four independent range reductions to

@@ -868,3 +868,29 @@ fn override_diagnostics_name_the_rule() {
         assert_eq!(diagnostic.code, code, "{path}");
     }
 }
+
+#[test]
+fn user_class_method_named_open_is_not_treated_as_filesystem_open() {
+    let source = SourceFile::new(
+        "door_open.bn",
+        "CLASS Door\n    PUBLIC FUNCTION CONSTRUCTOR()\n    END FUNCTION\n    PUBLIC FUNCTION Open(name AS STRING, angle AS INTEGER) AS VOID\n        PRINT angle\n    END FUNCTION\nEND CLASS\nFUNCTION Start() AS VOID\n    LET d AS Door = NEW Door()\n    d.Open(\"front\", 90)\nEND FUNCTION\n",
+    );
+    let tokens = lex(&source).expect("lex source");
+    let program = parse(&tokens).expect("parse source");
+    assert!(
+        analyze(&program).is_ok(),
+        "user class method named Open must not trigger INVALID_FILE_MODE"
+    );
+}
+
+#[test]
+fn filesystem_open_rejects_invalid_file_mode() {
+    let source = SourceFile::new(
+        "invalid_fs_open.bn",
+        "IMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\n    LET f AS FS.File OR Error = FS.Open(\"file.txt\", 99)\nEND FUNCTION\n",
+    );
+    let tokens = lex(&source).expect("lex source");
+    let program = parse(&tokens).expect("parse source");
+    let diagnostic = analyze(&program).expect_err("FS.Open with invalid mode must fail");
+    assert_eq!(diagnostic.code, "INVALID_FILE_MODE");
+}

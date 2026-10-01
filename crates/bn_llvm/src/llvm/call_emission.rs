@@ -241,27 +241,12 @@ pub(crate) fn lower_call_instruction(
                 "  %csvrc{dest} = call i32 @bn_rt_dataframe_read_csv(i64 %csvfile{dest}, i8 %csvheader{dest}, ptr %v{}, ptr %csvout{dest})",
                 arguments[2].0
             );
-            let _ = writeln!(text, "  %csverr{dest} = icmp ne i32 %csvrc{dest}, 0");
             let _ = writeln!(text, "  %csvvalue{dest} = load i64, ptr %csvout{dest}");
-            let _ = writeln!(
+            emit_handle_result(
                 text,
-                "  %csvmsg{dest} = select i1 %csverr{dest}, ptr @.bn_dataframe_error, ptr null"
-            );
-            let _ = writeln!(
-                text,
-                "  %csvpayload{dest} = select i1 %csverr{dest}, i64 1, i64 %csvvalue{dest}"
-            );
-            let _ = writeln!(
-                text,
-                "  %csvagg0{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %csverr{dest}, 0"
-            );
-            let _ = writeln!(
-                text,
-                "  %csvagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %csverr{dest}, ptr %csvmsg{dest}, ptr null)\n  %csvagg1{dest} = insertvalue {{ i1, ptr, i64 }} %csvagg0{dest}, ptr %csvagg1wrap{dest}, 1"
-            );
-            let _ = writeln!(
-                text,
-                "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %csvagg1{dest}, i64 %csvpayload{dest}, 2"
+                *destination,
+                format!("%csvrc{dest}"),
+                format!("%csvvalue{dest}"),
             );
         }
         name if bnlog_method(module, name).is_some() => lower_bnlog_call(
@@ -299,6 +284,12 @@ pub(crate) fn lower_call_instruction(
             || name.ends_with(".Queue.Join")
             || name.ends_with(".Queue.Close")
             || name.ends_with(".Ticket.Close")
+            || name.ends_with(".Ticket.Id")
+            || name.ends_with(".Ticket.Status")
+            || name.ends_with(".Ticket.Wait")
+            || name.ends_with(".Ticket.Cancel")
+            || name.ends_with(".Ticket.Error")
+            || name.ends_with(".Ticket.IsDone")
             || name.ends_with(".Group.New")
             || name.ends_with(".Group.Enter")
             || name.ends_with(".Group.Leave")

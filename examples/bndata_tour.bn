@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 // bndata_tour.bn — exercise every public BNData API the runtime supports.
-// Run from repo root: bn run examples/bndata_tour.bn
+// Run from repo root: bni run examples/bndata_tour.bn
 
 IMPORT BNData AS Data
 IMPORT HOST.FileSystem AS FS

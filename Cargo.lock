@@ -114,7 +114,7 @@ dependencies = [
 
 [[package]]
 name = "bn"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_diag",
  "bn_frontend",
@@ -137,7 +137,7 @@ dependencies = [
 
 [[package]]
 name = "bn_cli"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_diag",
  "bn_frontend",
@@ -147,7 +147,7 @@ dependencies = [
 
 [[package]]
 name = "bn_compile_driver"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_cli",
  "bn_diag",
@@ -157,7 +157,7 @@ dependencies = [
 
 [[package]]
 name = "bn_dap"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_frontend",
  "bn_interp",
@@ -168,14 +168,14 @@ dependencies = [
 
 [[package]]
 name = "bn_diag"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_source",
 ]
 
 [[package]]
 name = "bn_frontend"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_diag",
  "bn_ir",
@@ -185,11 +185,11 @@ dependencies = [
 
 [[package]]
 name = "bn_host_exec"
-version = "0.6.2"
+version = "0.6.3"
 
 [[package]]
 name = "bn_host_fs"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_diag",
  "bn_interp",
@@ -201,7 +201,7 @@ dependencies = [
 
 [[package]]
 name = "bn_host_net"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_diag",
  "bn_interp",
@@ -214,7 +214,7 @@ dependencies = [
 
 [[package]]
 name = "bn_interp"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_diag",
  "bn_ir",
@@ -227,7 +227,7 @@ dependencies = [
 
 [[package]]
 name = "bn_interpret_driver"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_cli",
  "bn_diag",
@@ -252,7 +252,7 @@ dependencies = [
 
 [[package]]
 name = "bn_ir"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_diag",
  "bn_source",
@@ -261,7 +261,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_crypto"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_diag",
  "bn_interp",
@@ -273,7 +273,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_data"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_diag",
  "bn_interp",
@@ -285,7 +285,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_dispatch"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_diag",
  "bn_interp",
@@ -299,7 +299,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_json"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_diag",
  "bn_interp",
@@ -313,18 +313,19 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_log"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_diag",
  "bn_interp",
  "bn_rt",
  "bn_source",
+ "bn_types",
  "bn_value",
 ]
 
 [[package]]
 name = "bn_lib_math"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_diag",
  "bn_interp",
@@ -337,13 +338,14 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_web"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_diag",
  "bn_host_net",
  "bn_interp",
  "bn_ir",
  "bn_limits",
+ "bn_rt",
  "bn_runtime",
  "bn_source",
  "bn_types",
@@ -359,11 +361,11 @@ dependencies = [
 
 [[package]]
 name = "bn_limits"
-version = "0.6.2"
+version = "0.6.3"
 
 [[package]]
 name = "bn_llvm"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_diag",
  "bn_ir",
@@ -373,7 +375,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lsp"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_diag",
  "bn_frontend",
@@ -387,7 +389,7 @@ dependencies = [
 
 [[package]]
 name = "bn_rt"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -411,7 +413,7 @@ dependencies = [
 
 [[package]]
 name = "bn_runtime"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_diag",
  "bn_source",
@@ -420,15 +422,15 @@ dependencies = [
 
 [[package]]
 name = "bn_source"
-version = "0.6.2"
+version = "0.6.3"
 
 [[package]]
 name = "bn_types"
-version = "0.6.2"
+version = "0.6.3"
 
 [[package]]
 name = "bn_value"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_source",
  "bn_types",
@@ -436,7 +438,7 @@ dependencies = [
 
 [[package]]
 name = "bnc"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_cli",
  "bn_compile_driver",
@@ -444,7 +446,7 @@ dependencies = [
 
 [[package]]
 name = "bni"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "bn_cli",
  "bn_dap",

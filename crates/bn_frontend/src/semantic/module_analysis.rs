@@ -99,6 +99,7 @@ pub(crate) fn analyze_with_modules_mode(
         collect_warnings,
         warnings: Vec::new(),
         type_alias_uses: std::cell::RefCell::default(),
+        host_aliases: HashMap::new(),
     };
     analyzer.declare_globals(program)?;
     validate_implemented_interfaces(
@@ -136,6 +137,7 @@ pub(crate) fn analyze_with_modules_mode(
                 (owner.clone(), fields)
             })
             .collect(),
+        host_aliases: analyzer.host_aliases,
     };
     let mut warnings = analyzer.warnings;
     if collect_warnings {
@@ -422,10 +424,7 @@ pub(crate) fn exported_constants(
     for module in &graph.modules {
         for item in &module.program.items {
             let Item::Constant {
-                exported: true,
-                name,
-                initializer,
-                ..
+                name, initializer, ..
             } = item
             else {
                 continue;

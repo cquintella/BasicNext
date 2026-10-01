@@ -1,0 +1,14 @@
+IMPORT HOST.NumProcs AS N
+
+FUNCTION Start() AS VOID
+    LET p AS INTEGER OR Error = N()
+    IF p IS Error THEN
+        PRINT "ERROR"
+    ELSE
+        IF p > 0 THEN
+            PRINT "OK"
+        ELSE
+            PRINT "ZERO"
+        END IF
+    END IF
+END FUNCTION

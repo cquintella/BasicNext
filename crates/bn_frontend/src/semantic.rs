@@ -110,6 +110,7 @@ pub struct SemanticModel {
     /// record-like types. Lowering projects these into IR layouts without
     /// leaking semantic identities into `bn_ir`.
     pub record_members: HashMap<String, Vec<RecordMember>>,
+    pub host_aliases: HashMap<String, String>,
 }
 
 #[derive(Clone, Debug)]
@@ -343,6 +344,7 @@ struct Analyzer {
     allow_variable_vectors: bool,
     collect_warnings: bool,
     warnings: Vec<Diagnostic>,
+    host_aliases: HashMap<String, String>,
 }
 
 #[derive(Debug)]

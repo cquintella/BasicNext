@@ -13,7 +13,6 @@
 use super::*;
 
 pub(crate) const BN_RT_DECLS: &str = "\
-@.bn_log_error = private constant [23 x i8] c\"BNLog operation failed\\00\"
 declare i32 @bn_rt_policy_init(i32, i64)
 declare void @bn_rt_policy_check(i32)
 declare i32 @bn_rt_policy_filesystem_sandboxed()
@@ -67,6 +66,8 @@ declare i32 @bn_rt_dataframe_write_csv(i64, i64, i8, ptr)
 declare i64 @bn_rt_log_fields_create()
 declare i64 @bn_rt_log_logger_create()
 declare i32 @bn_rt_log_fields_set_string(i64, ptr, ptr)
+declare i32 @bn_rt_log_logger_add_null(i64, i64)
+declare i32 @bn_rt_log_logger_add_console(i64, i64)
 declare i32 @bn_rt_log_logger_add_file(i64, ptr, i64)
 declare i32 @bn_rt_log_logger_log(i64, i64, ptr, i64)
 declare i32 @bn_rt_log_logger_flush(i64, i64)
@@ -180,6 +181,11 @@ declare i32 @bn_rt_dispatch_submit(i64, ptr, ptr, ptr, i32, ptr)
 declare i32 @bn_rt_dispatch_await(i64, i64, ptr, ptr)
 declare i32 @bn_rt_dispatch_cancel(i64)
 declare i32 @bn_rt_dispatch_ticket_close(i64)
+declare i32 @bn_rt_dispatch_ticket_cancel(i64, ptr)
+declare i64 @bn_rt_dispatch_ticket_id(i64)
+declare i32 @bn_rt_dispatch_ticket_status(i64)
+declare i32 @bn_rt_dispatch_ticket_is_done(i64)
+declare i32 @bn_rt_dispatch_ticket_error(i64, ptr, ptr)
 declare i32 @bn_rt_dispatch_queue_join(i64, i64)
 declare i32 @bn_rt_dispatch_queue_close(i64, i64)
 declare i32 @bn_rt_dispatch_group_create(ptr)
@@ -198,13 +204,15 @@ declare i32 @bn_rt_dispatch_mutex_create(ptr)
 declare i32 @bn_rt_dispatch_mutex_lock(i64, i64)
 declare i32 @bn_rt_dispatch_mutex_unlock(i64)
 declare i32 @bn_rt_dispatch_mutex_close(i64)
+declare i32 @bn_rt_host_num_procs(ptr)
 ";
 
 pub(crate) fn is_bn_rt_host_call(name: &str) -> bool {
     FS_CALLS.contains(&name)
         || matches!(
             name,
-            "HOST.Clock.Now"
+            "HOST.NumProcs"
+                | "HOST.Clock.Now"
                 | "HOST.Clock.Timer"
                 | "HOST.Console.Cls"
                 | "HOST.Console.Beep"
@@ -331,6 +339,8 @@ pub(crate) fn bnlog_method(module: &Module, name: &str) -> Option<&'static str> 
     }
     match rest {
         "Fields.SetString" => Some("fields_set_string"),
+        "Logger.AddNull" => Some("logger_add_null"),
+        "Logger.AddConsole" => Some("logger_add_console"),
         "Logger.AddFile" => Some("logger_add_file"),
         "Logger.Log" => Some("logger_log"),
         "Logger.Flush" => Some("logger_flush"),
@@ -403,7 +413,8 @@ pub(crate) fn bn_rt_call_supported(
         return supported;
     }
     match name {
-        "HOST.Clock.Now"
+        "HOST.NumProcs"
+        | "HOST.Clock.Now"
         | "HOST.Clock.Timer"
         | "HOST.Console.Cls"
         | "HOST.Console.Beep"
@@ -711,6 +722,30 @@ pub(crate) fn lower_bn_rt_call(
         return;
     }
     match name {
+        "HOST.NumProcs" => {
+            let dest = destination.0;
+            let _ = writeln!(text, "  %numprocsout{dest} = alloca i32");
+            let _ = writeln!(
+                text,
+                "  %numprocsrc{dest} = call i32 @bn_rt_host_num_procs(ptr %numprocsout{dest})"
+            );
+            let _ = writeln!(
+                text,
+                "  %numprocsval{dest} = load i32, ptr %numprocsout{dest}"
+            );
+            let _ = writeln!(
+                text,
+                "  %numprocsext{dest} = sext i32 %numprocsval{dest} to i64"
+            );
+            emit_status_result(
+                text,
+                destination,
+                &format!("%numprocsrc{dest}"),
+                None,
+                "null",
+                &format!("%numprocsext{dest}"),
+            );
+        }
         "HOST.Exec.Run" => {
             let dest = destination.0;
             let _ = writeln!(
@@ -1700,6 +1735,99 @@ pub(crate) fn lower_bn_dispatch_call(
             )
         },
     );
+    if name.ends_with(".Ticket.Id") {
+        let _ = writeln!(
+            text,
+            "  %dispatchid{dest} = call i64 @bn_rt_dispatch_ticket_id(i64 {handle})\n  %v{dest} = trunc i64 %dispatchid{dest} to i32"
+        );
+        return;
+    }
+    if name.ends_with(".Ticket.Status") {
+        let _ = writeln!(
+            text,
+            "  %v{dest} = call i32 @bn_rt_dispatch_ticket_status(i64 {handle})"
+        );
+        return;
+    }
+    if name.ends_with(".Ticket.IsDone") {
+        let _ = writeln!(
+            text,
+            "  %dispatchdone{dest} = call i32 @bn_rt_dispatch_ticket_is_done(i64 {handle})\n  %v{dest} = icmp ne i32 %dispatchdone{dest}, 0"
+        );
+        return;
+    }
+    if name.ends_with(".Ticket.Cancel") {
+        let _ = writeln!(text, "  %dispatchcancelout{dest} = alloca i32");
+        let _ = writeln!(
+            text,
+            "  %dispatchcancelrc{dest} = call i32 @bn_rt_dispatch_ticket_cancel(i64 {handle}, ptr %dispatchcancelout{dest})"
+        );
+        let _ = writeln!(
+            text,
+            "  %dispatchcancelval{dest} = load i32, ptr %dispatchcancelout{dest}\n  %dispatchcancelsext{dest} = zext i32 %dispatchcancelval{dest} to i64"
+        );
+        emit_status_result(
+            text,
+            destination,
+            &format!("%dispatchcancelrc{dest}"),
+            None,
+            "null",
+            &format!("%dispatchcancelsext{dest}"),
+        );
+        return;
+    }
+    if name.ends_with(".Ticket.Error") {
+        let _ = writeln!(text, "  %dispatcherrmsg{dest} = alloca ptr");
+        let _ = writeln!(text, "  %dispatcherrcode{dest} = alloca i64");
+        let _ = writeln!(
+            text,
+            "  %dispatchhaserr{dest} = call i32 @bn_rt_dispatch_ticket_error(i64 {handle}, ptr %dispatcherrmsg{dest}, ptr %dispatcherrcode{dest})"
+        );
+        let _ = writeln!(
+            text,
+            "  %dispatchiserr{dest} = icmp ne i32 %dispatchhaserr{dest}, 0"
+        );
+        let _ = writeln!(
+            text,
+            "  %dispatcherrptr{dest} = load ptr, ptr %dispatcherrmsg{dest}"
+        );
+        let _ = writeln!(
+            text,
+            "  %dispatcherrc{dest} = load i64, ptr %dispatcherrcode{dest}"
+        );
+        let _ = writeln!(
+            text,
+            "  %dispatchnaptr{dest} = getelementptr [3 x i8], ptr @.bn_na, i64 0, i64 0"
+        );
+        let _ = writeln!(
+            text,
+            "  %dispatchfinalptr{dest} = select i1 %dispatchiserr{dest}, ptr %dispatcherrptr{dest}, ptr %dispatchnaptr{dest}"
+        );
+        let _ = writeln!(
+            text,
+            "  %dispatchfinalcode{dest} = select i1 %dispatchiserr{dest}, i64 %dispatcherrc{dest}, i64 0"
+        );
+        let _ = writeln!(
+            text,
+            "  %dispatchagg0{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %dispatchiserr{dest}, 0"
+        );
+        let _ = writeln!(
+            text,
+            "  %dispatchagg1{dest} = insertvalue {{ i1, ptr, i64 }} %dispatchagg0{dest}, ptr %dispatchfinalptr{dest}, 1"
+        );
+        let _ = writeln!(
+            text,
+            "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %dispatchagg1{dest}, i64 %dispatchfinalcode{dest}, 2"
+        );
+        return;
+    }
+    if name.ends_with(".Ticket.Wait") {
+        let call = format!(
+            "call i32 @bn_rt_dispatch_await(i64 {handle}, i64 {timeout}, ptr null, ptr null)"
+        );
+        emit_void_result(text, destination, call);
+        return;
+    }
     if name.ends_with(".Barrier.Wait") {
         // `TRUE` for the last caller to arrive, through an out flag.
         let _ = writeln!(text, "  %dispatchlast{dest} = alloca i32");

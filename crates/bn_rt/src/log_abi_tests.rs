@@ -139,7 +139,7 @@ fn file_transport_reports_policy_denial_after_intermediate_symlink_swap() {
     let fields = bn_rt_log_fields_create();
     assert_eq!(
         bn_rt_log_logger_log(logger, 2, message.as_ptr(), fields),
-        BN_LOG_POLICY_DENIED
+        bn_types::error_codes::log::IO_FAILED
     );
     assert!(!outside.join("events.jsonl").exists());
     std::fs::remove_file(live).unwrap();

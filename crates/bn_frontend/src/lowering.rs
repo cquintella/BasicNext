@@ -479,9 +479,9 @@ use helpers::{
     assignment_operator, class_ir_name, clock_import_span, console_import_span, constant,
     destructor_name, display_type, exec_import_span, filesystem_constant, filesystem_import_span,
     host_capability_constant, ir_error, is_namespace_type, is_numeric_type_name, math_constant,
-    module_constant, named_or_void, namespace_function, net_constant, network_import_span,
-    random_import_span, standard_import_span, static_class_name, type_at, type_test_name,
-    user_class_name,
+    module_constant, module_id_from_prefix, named_or_void, namespace_function, net_constant,
+    network_import_span, random_import_span, standard_import_span, static_class_name, type_at,
+    type_test_name, user_class_name,
 };
 fn default_span() -> Span {
     Span {

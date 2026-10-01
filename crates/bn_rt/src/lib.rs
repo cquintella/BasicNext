@@ -26,6 +26,7 @@ mod console;
 pub mod crypto;
 mod crypto_abi;
 pub mod crypto_error;
+pub mod data_error;
 mod dataframe;
 mod dataframe_abi;
 mod dispatch_abi;
@@ -42,6 +43,7 @@ pub mod json_abi;
 pub mod json_error;
 mod log;
 mod log_abi;
+pub mod log_error;
 mod math;
 pub mod net;
 mod net_abi;
@@ -51,6 +53,7 @@ mod stats;
 mod terminal;
 mod text_abi;
 mod trap_abi;
+pub mod web_error;
 
 pub use log::{Level as LogLevel, Record as LogRecord};
 pub use log_abi::*;
@@ -195,6 +198,17 @@ fn c_str<'a>(ptr: *const c_char) -> Option<&'a str> {
         return None;
     }
     unsafe { CStr::from_ptr(ptr) }.to_str().ok()
+}
+
+#[allow(unsafe_code)] // C ABI export for LLVM-emitted HOST.NumProcs.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_host_num_procs(out: *mut i32) -> i32 {
+    let count = std::thread::available_parallelism()
+        .map_or(1, |c| i32::try_from(c.get()).unwrap_or(i32::MAX));
+    if !out.is_null() {
+        unsafe { *out = count };
+    }
+    0
 }
 
 #[allow(unsafe_code)] // C ABI export for LLVM-emitted HOST.Clock.Now.
@@ -712,7 +726,7 @@ pub extern "C" fn bn_rt_dataframe_add_integer_start(
     let Some(name) = c_str(name) else {
         return -1;
     };
-    dataframe_abi::add_integer_column_storage(frame, name.to_owned(), length)
+    dataframe_abi::add_integer_column_storage(frame, name, length)
         .and_then(|index| {
             i32::try_from(index).map_err(|_| dataframe_abi::BN_DATAFRAME_CONTRACT_ERROR)
         })

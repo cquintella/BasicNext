@@ -121,6 +121,23 @@ The native `Fields` and `Entry` providers enforce the field boundary: at most
 4096 UTF-8 bytes. Duplicate keys are rejected without mutating the original
 value.
 
+## Errors
+
+`Code` of a BNLog `Error` ([error.md](error.md)) is one of these
+`INTEGER` constants of the module (`Log.INVALID_ARGUMENT` under
+`IMPORT BNLog AS Log`). `Operation` names the member (`BNLog.Logger.Log`).
+
+| Constant | Value | When |
+| --- | ---: | --- |
+| `INVALID_ARGUMENT` | 1 | An unknown level; an invalid transport; a label, message, field key, or field value past its bound |
+| `DUPLICATE` | 2 | A field or entry key that already exists |
+| `LIMIT` | 3 | Too many transports, fields, or entry fields |
+| `CLOSED` | 4 | An operation on a closed logger |
+| `IO_FAILED` | 5 | A transport could not write or flush |
+| `CAPABILITY_REQUIRED` | 6 | `AddFile` without `IMPORT HOST.FileSystem`, `AddConsole` without `IMPORT HOST.Console` (programs import every capability they use) |
+| `TIMEOUT` | 7 | `Flush` or `Close` ran past its timeout |
+| `UNAVAILABLE` | 8 | The operation or provider is not available |
+
 ## Required limits and verification
 
 Phase 0 defines maximum transports per logger, fields per entry, key/message

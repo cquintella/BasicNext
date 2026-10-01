@@ -1,6 +1,16 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
+pub(crate) fn module_id_from_prefix(prefix: &str) -> FrontendModuleId {
+    if prefix.starts_with('#') && prefix.ends_with('.') {
+        prefix[1..prefix.len() - 1]
+            .parse::<u32>()
+            .map_or(FrontendModuleId(0), FrontendModuleId)
+    } else {
+        FrontendModuleId(0)
+    }
+}
+
 pub(crate) fn type_at(model: &SemanticModel, span: Span) -> Result<Type, Diagnostic> {
     model
         .expression(span)

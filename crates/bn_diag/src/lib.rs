@@ -145,7 +145,6 @@ diagnostic_registry! {
     INVALID_FOR_STEP { code: "INVALID_FOR_STEP", fluent: "INVALID_FOR_STEP", severity: Error, schema: LEGACY_MESSAGE },
     INVALID_HOST_ARGS_USE { code: "INVALID_HOST_ARGS_USE", fluent: "INVALID_HOST_ARGS_USE", severity: Error, schema: LEGACY_MESSAGE },
     INVALID_INPUT { code: "INVALID_INPUT", fluent: "INVALID_INPUT", severity: Error, schema: DETAIL },
-    INVALID_JSON { code: "INVALID_JSON", fluent: "INVALID_JSON", severity: Error, schema: DETAIL },
     INVALID_LOOP_CONTROL { code: "INVALID_LOOP_CONTROL", fluent: "INVALID_LOOP_CONTROL", severity: Error, schema: LEGACY_MESSAGE },
     INVALID_NUMERIC_CONVERSION { code: "INVALID_NUMERIC_CONVERSION", fluent: "INVALID_NUMERIC_CONVERSION", severity: Error, schema: LEGACY_MESSAGE },
     INVALID_OPTIONS { code: "INVALID_OPTIONS", fluent: "INVALID_OPTIONS", severity: Error, schema: LEGACY_MESSAGE },

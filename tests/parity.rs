@@ -956,7 +956,83 @@ fn dispatch_errors_match_across_backends() {
     native_matches_interpreter(path);
 }
 
-/// A user class's `Wait` and `Async` are ordinary methods: only BNDispatch
+/// `BNLog` failures carry the shared `bn_rt::log_error` report on both
+/// backends; bnlog.md "Errors".
+#[test]
+fn log_errors_match_across_backends() {
+    let path = "tests/host/log_errors.bn";
+    let output = bni().args(["run", path]).output().expect("run fixture");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "TRUE BNLog.Fields.SetString\n\
+         FALSE TRUE BNLog.Fields.SetString\n\
+         TRUE BNLog.Logger.Log\n\
+         TRUE BNLog.Logger.Flush\n\
+         TRUE BNLog.Logger.AddNull\n\
+         FALSE TRUE BNLog.Logger.Log\n\
+         TRUE BNLog.Logger.AddFile\n\
+         TRUE BNLog.Logger.AddConsole\n"
+    );
+    native_matches_interpreter(path);
+}
+
+/// `BNData` failures carry the shared `bn_rt::data_error` report on both
+/// backends; bndata.md "Errors".
+#[test]
+fn data_errors_match_across_backends() {
+    let path = "tests/host/data_errors.bn";
+    let output = bni().args(["run", path]).output().expect("run fixture");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "TRUE BNData.DataFrame.AddIntegerColumn\n\
+         TRUE BNData.DataFrame.SetLabel\n\
+         TRUE BNData.DataFrame.Mean\n\
+         TRUE BNData.DataFrame.GetString\n\
+         TRUE BNData.WriteCSV\n\
+         TRUE BNData.ReadCSV\n"
+    );
+    native_matches_interpreter(path);
+}
+
+/// `BNWeb` failures carry the `bn_rt::web_error` report on the interpreter
+/// (bnweb.md "Errors"); `bnc` reports `TARGET_UNSUPPORTED_OP` because `BNWeb`
+/// calls are interpreter-provided in 0.6.
+#[test]
+fn web_errors_produce_specified_codes() {
+    let path = "tests/host/web_errors.bn";
+    let output = bni().args(["run", path]).output().expect("run fixture");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "TRUE BNWeb.Response.SetStatus\n\
+         TRUE BNWeb.CookieJar.Set\n\
+         TRUE BNWeb.CookieJar.SetWithPolicy\n\
+         TRUE BNWeb.Client.Request\n\
+         TRUE BNWeb.CookieJar.Get\n\
+         TRUE BNWeb.SessionStore.Get\n\
+         TRUE BNWeb.Scraper.Text\n\
+         TRUE BNWeb.QueryValues.Get\n\
+         TRUE BNWeb.SessionStore.Create\n\
+         TRUE BNWeb.Response.Write\n\
+         TRUE BNWeb.Response.Write\n\
+         TRUE BNWeb.Client.Request\n"
+    );
+    let compile = bnc().arg(path).output().expect("run bnc");
+    assert_eq!(compile.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&compile.stderr);
+    assert!(
+        stderr.contains("TARGET_UNSUPPORTED_OP"),
+        "expected TARGET_UNSUPPORTED_OP, got: {stderr}"
+    );
+    assert!(
+        stderr.contains("BNWeb calls"),
+        "expected 'BNWeb calls', got: {stderr}"
+    );
+}
+
+/// A user class's `Wait` and `Async` are ordinary methods: only `BNDispatch`
 /// `Ticket.Wait` and `Queue.Async` follow the `AWAIT`/`ASYNC` rules (any
 /// member named `Wait` was taken for `AWAIT`).
 #[test]
@@ -1498,4 +1574,58 @@ fn malformed_policy_input_is_fail_closed_on_both_backends() {
         .expect("run native without policy");
     assert_eq!(String::from_utf8_lossy(&ok.stdout), "ran\n");
     let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
+fn error_default_initialization_matches_across_backends() {
+    let path = "tests/host/error_default.bn";
+    let output = bni()
+        .args(["run", path])
+        .output()
+        .expect("run error default");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Code: 0\nMessage: \nCause: \n"
+    );
+    native_matches_interpreter(path);
+}
+
+#[test]
+fn export_const_direct_matches_across_backends() {
+    let path = "tests/host/export_const_direct.bn";
+    let output = bni()
+        .args(["run", path])
+        .output()
+        .expect("run export const direct");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "PI: 3\nMSG: hello\nFLAG: TRUE\nDouble PI: 6\n"
+    );
+    native_matches_interpreter(path);
+}
+
+#[test]
+fn host_alias_matches_across_backends() {
+    let path = "tests/host/host_alias.bn";
+    let output = bni().args(["run", path]).output().expect("run host alias");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "OK\n");
+    native_matches_interpreter(path);
+}
+
+#[test]
+fn dispatch_ticket_matches_across_backends() {
+    let path = "tests/host/dispatch_ticket.bn";
+    let output = bni()
+        .args(["run", path])
+        .output()
+        .expect("run dispatch ticket");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "ID OK\nDONE OK\nSTATUS OK\nERROR NA OK\nCANCEL FALSE OK\nCLOSED OK\n"
+    );
+    native_matches_interpreter(path);
 }

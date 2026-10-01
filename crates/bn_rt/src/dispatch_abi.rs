@@ -97,6 +97,7 @@ unsafe impl Sync for BNDispatchError {}
 struct TicketState {
     done: bool,
     cancelled: bool,
+    running: bool,
     result: BNValue,
     error: BNDispatchError,
 }
@@ -250,6 +251,7 @@ pub extern "C" fn bn_rt_dispatch_submit(
         state: Mutex::new(TicketState {
             done: false,
             cancelled: false,
+            running: false,
             result: BNValue::null(),
             error: BNDispatchError::empty(),
         }),
@@ -291,6 +293,7 @@ pub extern "C" fn bn_rt_dispatch_submit(
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             state.done = true;
+            state.running = false;
             state.error.code = BN_DISPATCH_CLOSED;
             ticket.wake.notify_all();
             return;
@@ -304,6 +307,7 @@ pub extern "C" fn bn_rt_dispatch_submit(
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if state.cancelled {
             state.done = true;
+            state.running = false;
             ticket.wake.notify_all();
             drop(state);
             let mut active = queue_ref
@@ -314,6 +318,7 @@ pub extern "C" fn bn_rt_dispatch_submit(
             queue_ref.idle.notify_all();
             return;
         }
+        state.running = true;
         drop(state);
         let mut result = BNValue::null();
         let mut error = BNDispatchError::empty();
@@ -329,6 +334,7 @@ pub extern "C" fn bn_rt_dispatch_submit(
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         state.done = true;
+        state.running = false;
         if !state.cancelled {
             state.result = result;
             state.error = error;
@@ -479,6 +485,188 @@ pub extern "C" fn bn_rt_dispatch_ticket_close(ticket: BNDispatchHandle) -> BNDis
     } else {
         BN_DISPATCH_INVALID_HANDLE
     }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_dispatch_ticket_cancel(
+    ticket: BNDispatchHandle,
+    out_cancelled: *mut i32,
+) -> BNDispatchStatus {
+    const OPERATION: &str = "BNDispatch.Ticket.Cancel";
+    if !crate::policy::allows(crate::policy::POLICY_DISPATCH) {
+        return BN_DISPATCH_POLICY_DENIED;
+    }
+    let ticket_ref = registry()
+        .tickets
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(&ticket)
+        .cloned();
+    let Some(ticket_ref) = ticket_ref else {
+        let closed = registry()
+            .closed_tickets
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains(&ticket);
+        return if closed {
+            failed(OPERATION, &DispatchFailure::Closed("ticket"))
+        } else {
+            BN_DISPATCH_INVALID_HANDLE
+        };
+    };
+    let mut state = ticket_ref
+        .state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if state.cancelled || state.done || state.running {
+        #[allow(unsafe_code)]
+        unsafe {
+            if !out_cancelled.is_null() {
+                *out_cancelled = 0;
+            }
+        }
+        return BN_DISPATCH_OK;
+    }
+    state.cancelled = true;
+    state.done = true;
+    state.error.code = BN_DISPATCH_CANCELLED;
+    ticket_ref.wake.notify_all();
+    #[allow(unsafe_code)]
+    unsafe {
+        if !out_cancelled.is_null() {
+            *out_cancelled = 1;
+        }
+    }
+    BN_DISPATCH_OK
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_dispatch_ticket_id(ticket: BNDispatchHandle) -> i64 {
+    ticket.cast_signed()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_dispatch_ticket_status(ticket: BNDispatchHandle) -> i32 {
+    let ticket_ref = registry()
+        .tickets
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(&ticket)
+        .cloned();
+    let Some(ticket_ref) = ticket_ref else {
+        return if registry()
+            .closed_tickets
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains(&ticket)
+        {
+            2 // COMPLETED
+        } else {
+            0 // PENDING
+        };
+    };
+    let state = ticket_ref
+        .state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if state.cancelled {
+        4 // CANCELLED
+    } else if state.done {
+        if state.error.code != 0 {
+            3 // FAILED
+        } else {
+            2 // COMPLETED
+        }
+    } else {
+        i32::from(state.running)
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_dispatch_ticket_is_done(ticket: BNDispatchHandle) -> i32 {
+    let ticket_ref = registry()
+        .tickets
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(&ticket)
+        .cloned();
+    let Some(ticket_ref) = ticket_ref else {
+        return i32::from(
+            registry()
+                .closed_tickets
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .contains(&ticket),
+        );
+    };
+    let state = ticket_ref
+        .state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    i32::from(state.done)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_dispatch_ticket_error(
+    ticket: BNDispatchHandle,
+    out_msg: *mut *const c_char,
+    out_code: *mut i64,
+) -> i32 {
+    let ticket_ref = registry()
+        .tickets
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(&ticket)
+        .cloned();
+    let Some(ticket_ref) = ticket_ref else {
+        return 0;
+    };
+    let state = ticket_ref
+        .state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if state.cancelled {
+        crate::set_error_report(
+            DispatchFailure::Cancelled.code(),
+            "BNDispatch.Ticket.Error",
+            DispatchFailure::Cancelled.message(),
+            DispatchFailure::Cancelled.cause(),
+        );
+        let record = crate::error_abi::bn_rt_error_take(1, std::ptr::null());
+        #[allow(unsafe_code)]
+        unsafe {
+            if !out_msg.is_null() {
+                *out_msg = record;
+            }
+            if !out_code.is_null() {
+                *out_code = crate::error_abi::bn_rt_error_code(record);
+            }
+        }
+        return 1;
+    }
+    if state.error.code != 0 {
+        let (code, message) =
+            crate::error_abi::code_and_message(state.error.message, i64::from(state.error.code));
+        let failure = DispatchFailure::TaskFailed { code, message };
+        crate::set_error_report(
+            failure.code(),
+            "BNDispatch.Ticket.Error",
+            failure.message(),
+            failure.cause(),
+        );
+        let record = crate::error_abi::bn_rt_error_take(1, std::ptr::null());
+        #[allow(unsafe_code)]
+        unsafe {
+            if !out_msg.is_null() {
+                *out_msg = record;
+            }
+            if !out_code.is_null() {
+                *out_code = crate::error_abi::bn_rt_error_code(record);
+            }
+        }
+        return 1;
+    }
+    0
 }
 
 /// `queue.Close(timeoutMs)`: cancels pending tickets, then waits for the

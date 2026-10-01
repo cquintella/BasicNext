@@ -1,0 +1,54 @@
+IMPORT BNDispatch AS Dispatch
+
+ASYNC FUNCTION Compute() AS INTEGER OR Error
+    RETURN 42
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
+    IF queue IS Error THEN
+        PRINT "QUEUE ERROR"
+        RETURN
+    END IF
+
+    LET ticket AS Dispatch.Ticket OR Error = ASYNC queue Compute()
+    IF ticket IS Error THEN
+        PRINT "TICKET ERROR"
+        RETURN
+    END IF
+
+    IF ticket.Id() > 0 THEN
+        PRINT "ID OK"
+    END IF
+
+    LET waitRes AS VOID OR Error = ticket.Wait(2000)
+    IF waitRes IS Error THEN
+        PRINT "WAIT ERROR"
+        RETURN
+    END IF
+
+    IF ticket.IsDone() THEN
+        PRINT "DONE OK"
+    END IF
+
+    IF ticket.Status() = 2 THEN
+        PRINT "STATUS OK"
+    END IF
+
+    LET err AS Error OR NA = ticket.Error()
+    IF err IS NA THEN
+        PRINT "ERROR NA OK"
+    END IF
+
+    LET cancelRes AS BOOLEAN OR Error = ticket.Cancel()
+    IF cancelRes IS Error THEN
+        PRINT "CANCEL ERROR"
+    ELSE
+        IF cancelRes = FALSE THEN
+            PRINT "CANCEL FALSE OK"
+        END IF
+    END IF
+
+    ticket.Close()
+    PRINT "CLOSED OK"
+END FUNCTION

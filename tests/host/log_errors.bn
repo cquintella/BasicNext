@@ -1,0 +1,65 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNLog error codes (bnlog.md "Errors"): one case per code reachable
+// without external transport failures.
+IMPORT BNLog AS Log
+
+FUNCTION Start() AS INTEGER
+    LET fields AS Log.Fields = NEW Log.Fields()
+
+    LET invalidKey AS VOID OR Error = fields.SetString("", "value")
+    IF invalidKey IS Error THEN
+        PRINT invalidKey.Code = Log.INVALID_ARGUMENT, invalidKey.Operation
+    END IF
+
+    LET dup1 AS VOID OR Error = fields.SetString("user", "alice")
+    LET dup2 AS VOID OR Error = fields.SetString("user", "bob")
+    IF dup2 IS Error THEN
+        PRINT dup1 IS Error, dup2.Code = Log.DUPLICATE, dup2.Operation
+    END IF
+
+    LET logger AS Log.Logger = NEW Log.Logger()
+
+    LET invalidLevel AS VOID OR Error = logger.Log(10, "bad level", fields)
+    IF invalidLevel IS Error THEN
+        PRINT invalidLevel.Code = Log.INVALID_ARGUMENT, invalidLevel.Operation
+    END IF
+
+    LET invalidTimeout AS VOID OR Error = logger.Flush(0)
+    IF invalidTimeout IS Error THEN
+        PRINT invalidTimeout.Code = Log.INVALID_ARGUMENT, invalidTimeout.Operation
+    END IF
+
+    FOR i AS INTEGER = 1 TO 8
+        LET ok AS VOID OR Error = logger.AddNull(2)
+        IF ok IS Error THEN
+            RETURN 1
+        END IF
+    END FOR
+    LET overLimit AS VOID OR Error = logger.AddNull(2)
+    IF overLimit IS Error THEN
+        PRINT overLimit.Code = Log.LIMIT, overLimit.Operation
+    END IF
+
+    LET closed AS VOID OR Error = logger.Close(1000)
+    LET afterClose AS VOID OR Error = logger.Log(2, "late", fields)
+    IF afterClose IS Error THEN
+        PRINT closed IS Error, afterClose.Code = Log.CLOSED, afterClose.Operation
+    END IF
+
+    LET freshLogger AS Log.Logger = NEW Log.Logger()
+    LET noFs AS VOID OR Error = freshLogger.AddFile("test.log", 2)
+    IF noFs IS Error THEN
+        PRINT noFs.Code = Log.CAPABILITY_REQUIRED, noFs.Operation
+    END IF
+
+    LET noConsole AS VOID OR Error = freshLogger.AddConsole(2)
+    IF noConsole IS Error THEN
+        PRINT noConsole.Code = Log.CAPABILITY_REQUIRED, noConsole.Operation
+    END IF
+
+    RETURN 0
+END FUNCTION
