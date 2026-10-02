@@ -1,10 +1,10 @@
 .\" groff man page for the Basic Next interpreter executable (0.6 line).
-.TH BNI 1 "September 22, 2026" "bni 0.6" "Basic Next"
+.TH BNI 1 "October 1, 2026" "bni 0.6.4" "Basic Next"
 .SH NAME
 bni \- Basic Next checker, interpreter, and editor protocols
 .SH SYNOPSIS
 .B bni
-.I command
+.RI [ command ]
 .RI [ options ]
 .I source-or-file
 .RI [ "-- program-args" ]
@@ -12,7 +12,11 @@ bni \- Basic Next checker, interpreter, and editor protocols
 .B bni
 processes UTF-8 Basic Next source through a source-spanned pipeline:
 lexer, parser/AST, semantic analysis, typed BN IR, and the reference
-interpreter. Compilation is
+interpreter. When
+.I command
+is omitted, it defaults to
+.BR run ,
+executing the specified file directly. Compilation is
 .BR bnc (1),
 which consumes the same validated IR. The 0.5
 .B bn
@@ -92,6 +96,11 @@ Select the
 result format. JSON emits exactly one versioned envelope on standard output;
 it is not available for
 .BR check " or " run .
+.TP
+.B --jupyter-stdin
+Announce INPUT requests on standard error (accepted by
+.BR run " and " eval
+for interactive Jupyter sessions).
 .TP
 .BI --module-path " dir"
 Append an ordered directory used to resolve imported source modules. The
@@ -195,8 +204,9 @@ Standard modules such as
 .BR BNData ,
 .BR BNLog ,
 .BR BNWeb ,
+.BR BNJson ,
 and
-.B BNJson
+.B BNSqlite
 belong beneath
 .B modules/bn/
 and require explicit imports.
@@ -268,6 +278,7 @@ full breakpoint/step parity from this page alone.
 .SH EXAMPLES
 .nf
 .RS
+bni examples/hello.bn
 bni check examples/hello.bn
 bni eval 'PRINT 1 + 1'
 printf 'PRINT 2\n' | bni eval --stdin
@@ -283,6 +294,7 @@ bni run --sandbox --read-root . --write-root /tmp examples/hello.bn
 .IR docs/project/usage.md ,
 .IR docs/project/kernel.md ,
 .IR language/0.6/0.6.md ,
+.IR language/0.6/bnsqlite.md ,
 .IR language/0.6/host.md ,
 .IR language/0.6/math.md
 .SH AUTHOR
