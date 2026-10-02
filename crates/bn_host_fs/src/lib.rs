@@ -27,6 +27,7 @@ use bn_types::IntegerType;
 
 pub const NAME: &str = "FileSystem";
 
+#[derive(Debug)]
 pub struct FsProvider {
     files: HashMap<u64, OpenFile>,
     next_file: u64,

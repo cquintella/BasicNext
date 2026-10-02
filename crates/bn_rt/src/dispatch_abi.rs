@@ -44,7 +44,7 @@ pub enum BNValueKind {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct BNValueBytes {
     pub data: *const u8,
     pub length: u32,
@@ -60,12 +60,35 @@ pub union BNValuePayload {
     pub handle: BNDispatchHandle,
 }
 
+impl std::fmt::Debug for BNValuePayload {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BNValuePayload").finish_non_exhaustive()
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct BNValue {
     pub kind: BNValueKind,
     pub flags: u32,
     pub payload: BNValuePayload,
+}
+
+impl std::fmt::Debug for BNValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut d = f.debug_struct("BNValue");
+        d.field("kind", &self.kind);
+        d.field("flags", &self.flags);
+        match self.kind {
+            BNValueKind::Integer => unsafe { d.field("integer", &self.payload.integer) },
+            BNValueKind::Float => unsafe { d.field("floating", &self.payload.floating) },
+            BNValueKind::Boolean => unsafe { d.field("boolean", &self.payload.boolean) },
+            BNValueKind::Bytes => unsafe { d.field("bytes_len", &self.payload.bytes.length) },
+            BNValueKind::Handle => unsafe { d.field("handle", &self.payload.handle) },
+            _ => &mut d,
+        };
+        d.finish()
+    }
 }
 
 impl BNValue {
@@ -80,7 +103,7 @@ impl BNValue {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct BNDispatchError {
     pub code: u32,
     pub message: *mut c_char,

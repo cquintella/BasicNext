@@ -1,0 +1,206 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// sqlite.bn — comprehensive demonstration of the BNSqlite embedded database driver.
+// Exercises: Open, OpenReadOnly, OpenExisting, Exec, Query, Begin, Commit,
+// Rollback, Changes, LastInsertRowId, Close, and structured Error handling.
+// Run: bni run examples/sqlite.bn
+
+IMPORT BNData AS Data
+IMPORT BNSqlite AS Sqlite
+IMPORT HOST.FileSystem AS FS
+
+FUNCTION Start() AS VOID
+    PRINT "=== Basic Next BNSqlite Driver Tour ==="
+
+    // 1. In-memory database lifecycle
+    PRINT "--- 1. In-memory database (:memory:) ---"
+    LET memDb AS Sqlite.Connection OR Error = Sqlite.Open(":memory:")
+    IF memDb IS Error THEN
+        PRINT "FAIL: unable to open in-memory db: ", memDb.Code, " ", memDb.Message
+        RETURN
+    END IF
+    PRINT "PASS: opened :memory: database"
+
+    // Create table schema
+    LET res AS VOID OR Error = memDb.Exec("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL, in_stock INT);")
+    IF res IS Error THEN
+        PRINT "FAIL: CREATE TABLE failed: ", res.Code, " ", res.Message
+        RETURN
+    END IF
+    PRINT "PASS: created products table"
+
+    // Insert records
+    res = memDb.Exec("INSERT INTO products VALUES (1, 'Notebook Pro', 1299.99, 10);")
+    IF res IS Error THEN
+        PRINT "FAIL: insert 1 failed"
+        RETURN
+    END IF
+    res = memDb.Exec("INSERT INTO products VALUES (2, 'Mechanical Keyboard', 149.50, 25);")
+    IF res IS Error THEN
+        PRINT "FAIL: insert 2 failed"
+        RETURN
+    END IF
+    res = memDb.Exec("INSERT INTO products VALUES (3, 'Wireless Mouse', 49.90, 0);")
+    IF res IS Error THEN
+        PRINT "FAIL: insert 3 failed"
+        RETURN
+    END IF
+    PRINT "PASS: inserted 3 records"
+    PRINT "Changes:", memDb.Changes(), "LastInsertRowId:", memDb.LastInsertRowId()
+
+    // Query data into a BNData.DataFrame
+    LET df AS Data.DataFrame OR Error = memDb.Query("SELECT id, name, price, in_stock FROM products ORDER BY id;")
+    IF df IS Error THEN
+        PRINT "FAIL: query failed: ", df.Code, " ", df.Message
+        RETURN
+    END IF
+    PRINT "PASS: queried products, row count:", df.RowCount(), "column count:", df.ColumnCount()
+
+    LET p1_id AS INTEGER OR NA OR Error = df.GetInteger(0, "id")
+    LET p1_name AS STRING OR NA OR Error = df.GetString(0, "name")
+    LET p1_price AS FLOAT OR NA OR Error = df.GetFloat(0, "price")
+    PRINT "Row 0:", p1_id, p1_name, p1_price
+
+    LET p2_id AS INTEGER OR NA OR Error = df.GetInteger(1, "id")
+    LET p2_name AS STRING OR NA OR Error = df.GetString(1, "name")
+    LET p2_price AS FLOAT OR NA OR Error = df.GetFloat(1, "price")
+    PRINT "Row 1:", p2_id, p2_name, p2_price
+
+    // 2. Transactions (Begin, Rollback, Commit)
+    PRINT "--- 2. Transactions (Atomic Commit & Rollback) ---"
+    res = memDb.Begin()
+    IF res IS Error THEN
+        PRINT "FAIL: begin failed"
+    END IF
+    res = memDb.Exec("INSERT INTO products VALUES (4, 'Temporary Item', 9.99, 1);")
+    IF res IS Error THEN
+        PRINT "FAIL: insert failed"
+    END IF
+    res = memDb.Rollback()
+    IF res IS Error THEN
+        PRINT "FAIL: rollback failed: ", res.Code
+    END IF
+
+    LET dfCheck1 AS Data.DataFrame OR Error = memDb.Query("SELECT COUNT(*) AS total FROM products WHERE id = 4;")
+    IF NOT (dfCheck1 IS Error) THEN
+        PRINT "PASS: rollback verified, count of id 4:", dfCheck1.GetInteger(0, "total")
+    END IF
+
+    res = memDb.Begin()
+    IF res IS Error THEN
+        PRINT "FAIL: begin failed"
+    END IF
+    res = memDb.Exec("INSERT INTO products VALUES (4, 'Committed Monitor', 399.00, 5);")
+    IF res IS Error THEN
+        PRINT "FAIL: insert failed"
+    END IF
+    res = memDb.Commit()
+    IF res IS Error THEN
+        PRINT "FAIL: commit failed: ", res.Code
+    END IF
+
+    LET dfCheck2 AS Data.DataFrame OR Error = memDb.Query("SELECT name, price FROM products WHERE id = 4;")
+    IF NOT (dfCheck2 IS Error) THEN
+        PRINT "PASS: commit verified, item:", dfCheck2.GetString(0, "name"), dfCheck2.GetFloat(0, "price")
+    END IF
+
+    // Close in-memory database
+    res = memDb.Close()
+    IF res IS Error THEN
+        PRINT "FAIL: close failed"
+    ELSE
+        PRINT "PASS: closed in-memory database"
+    END IF
+
+    // 3. File database modes (Open, OpenReadOnly, OpenExisting)
+    PRINT "--- 3. File Database Modes ---"
+    LET demoDbPath AS STRING = "sqlite_demo.db"
+
+    LET exists1 AS BOOLEAN OR Error = FS.Exists(demoDbPath)
+    IF NOT (exists1 IS Error) THEN
+        IF exists1 THEN
+            res = FS.DeleteFile(demoDbPath)
+        END IF
+    END IF
+
+    // OpenExisting on missing file should fail with FILE_NOT_FOUND (1)
+    LET missingDb AS Sqlite.Connection OR Error = Sqlite.OpenExisting(demoDbPath)
+    IF missingDb IS Error THEN
+        PRINT "PASS: OpenExisting on missing file returned error code:", missingDb.Code
+    END IF
+
+    // Open creates new file
+    LET fileDb AS Sqlite.Connection OR Error = Sqlite.Open(demoDbPath)
+    IF fileDb IS Error THEN
+        PRINT "FAIL: unable to create file db: ", fileDb.Code
+        RETURN
+    END IF
+    res = fileDb.Exec("CREATE TABLE logs (entry_id INT, msg TEXT);")
+    res = fileDb.Exec("INSERT INTO logs VALUES (101, 'system initialized');")
+    res = fileDb.Close()
+    PRINT "PASS: created and initialized file database"
+
+    // OpenReadOnly mode: read succeeds, write is rejected with READ_ONLY (7)
+    LET roDb AS Sqlite.Connection OR Error = Sqlite.OpenReadOnly(demoDbPath)
+    IF roDb IS Error THEN
+        PRINT "FAIL: unable to open readonly: ", roDb.Code
+        RETURN
+    END IF
+    LET roQuery AS Data.DataFrame OR Error = roDb.Query("SELECT entry_id, msg FROM logs;")
+    IF NOT (roQuery IS Error) THEN
+        PRINT "PASS: read-only query succeeded, entry:", roQuery.GetInteger(0, "entry_id"), roQuery.GetString(0, "msg")
+    END IF
+
+    LET roWrite AS VOID OR Error = roDb.Exec("INSERT INTO logs VALUES (102, 'should fail');")
+    IF roWrite IS Error THEN
+        PRINT "PASS: write on read-only connection rejected with code:", roWrite.Code
+    ELSE
+        PRINT "FAIL: write should have been rejected on read-only connection"
+    END IF
+    res = roDb.Close()
+
+    // 4. API Misuse and Error Handling
+    PRINT "--- 4. API Misuse Validation ---"
+    LET errDb AS Sqlite.Connection OR Error = Sqlite.Open(":memory:")
+    IF NOT (errDb IS Error) THEN
+        // Calling Exec with a SELECT statement -> MISUSE (12)
+        LET misuseExec AS VOID OR Error = errDb.Exec("SELECT 1;")
+        IF misuseExec IS Error THEN
+            PRINT "PASS: Exec(SELECT) rejected with code:", misuseExec.Code, "operation:", misuseExec.Operation
+        END IF
+
+        // Calling Query with a DDL statement -> MISUSE (12)
+        LET misuseQuery AS Data.DataFrame OR Error = errDb.Query("CREATE TABLE temp (v INT);")
+        IF misuseQuery IS Error THEN
+            PRINT "PASS: Query(CREATE TABLE) rejected with code:", misuseQuery.Code, "operation:", misuseQuery.Operation
+        END IF
+
+        res = errDb.Close()
+
+        // Calling method on closed connection -> CLOSED (13)
+        LET closedExec AS VOID OR Error = errDb.Exec("SELECT 1;")
+        IF closedExec IS Error THEN
+            PRINT "PASS: Exec on closed connection rejected with code:", closedExec.Code
+        END IF
+
+        // Double close -> CLOSED (13)
+        LET doubleClose AS VOID OR Error = errDb.Close()
+        IF doubleClose IS Error THEN
+            PRINT "PASS: double Close rejected with code:", doubleClose.Code
+        END IF
+    END IF
+
+    // Clean up temporary database file
+    LET exists2 AS BOOLEAN OR Error = FS.Exists(demoDbPath)
+    IF NOT (exists2 IS Error) THEN
+        IF exists2 THEN
+            res = FS.DeleteFile(demoDbPath)
+            PRINT "PASS: cleaned up demo database file"
+        END IF
+    END IF
+
+    PRINT "=== Tour completed successfully ==="
+END FUNCTION

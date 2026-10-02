@@ -65,6 +65,16 @@ pub struct DispatchProvider {
     next_sync: u64,
 }
 
+impl std::fmt::Debug for DispatchProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DispatchProvider")
+            .field("next_queue", &self.next_queue)
+            .field("next_ticket", &self.next_ticket)
+            .field("next_sync", &self.next_sync)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Default for DispatchProvider {
     fn default() -> Self {
         Self {

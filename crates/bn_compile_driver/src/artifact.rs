@@ -2,7 +2,7 @@
 //! wasm-ld to produce the native executable or Wasm module, linking
 //! `libbn_rt.a` and the platform runtime libraries when HOST is used.
 
-use std::{env, fs, process::ExitCode};
+use std::{env, fs, path::PathBuf, process::ExitCode};
 
 use bn_diag::DiagId;
 
@@ -67,6 +67,14 @@ pub(crate) fn native_runtime_link_args() -> &'static [&'static str] {
     }
 }
 
+pub(crate) struct TempFileGuard(pub(crate) PathBuf);
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
 #[allow(clippy::too_many_lines)] // External tool command construction stays auditable here.
 pub fn emit_build_output(
     llvm: String,
@@ -82,6 +90,7 @@ pub fn emit_build_output(
         eprintln!("error: cannot write temporary LLVM IR: {error}");
         return tool_error();
     }
+    let _temporary_guard = TempFileGuard(temporary.clone());
     let clang = match if build_options.target == Target::Wasm32 {
         configured_wasm_clang()
     } else {
@@ -97,6 +106,7 @@ pub fn emit_build_output(
         }
     };
     let object = temporary.with_extension("o");
+    let _object_guard = TempFileGuard(object.clone());
     let mut failed_tool = "clang";
     let result = if build_options.target == Target::Wasm32 {
         process_log.event(
@@ -197,8 +207,6 @@ pub fn emit_build_output(
         );
         command.args(&command_args).output()
     };
-    let _ = fs::remove_file(temporary);
-    let _ = fs::remove_file(object);
     match result {
         Ok(result) if result.status.success() => ExitCode::SUCCESS,
         Ok(result) => {

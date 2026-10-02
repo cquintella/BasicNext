@@ -146,7 +146,7 @@ pub fn parse_options(
                 program_arguments.extend(arguments);
                 break;
             }
-            "-h" | "--help" => return Err("help is available as bn --help".into()),
+            "-h" | "--help" => return Err("help is available via --help".into()),
             "-v" | "--verbose" => verbosity = verbosity.saturating_add(1).min(2),
             "-vv" => verbosity = 2,
             "--trace" => trace = true,

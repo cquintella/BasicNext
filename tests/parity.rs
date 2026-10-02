@@ -1629,3 +1629,104 @@ fn dispatch_ticket_matches_across_backends() {
     );
     native_matches_interpreter(path);
 }
+
+#[test]
+fn sqlite_example_tour_matches_across_backends() {
+    let path = "examples/sqlite.bn";
+    let output = bni()
+        .args(["run", path])
+        .output()
+        .expect("run sqlite example");
+    assert_eq!(output.status.code(), Some(0));
+    native_matches_interpreter(path);
+}
+
+#[test]
+fn sqlite_basic_matches_across_backends() {
+    let path = "tests/host/sqlite_basic.bn";
+    let output = bni()
+        .args(["run", path])
+        .output()
+        .expect("run sqlite basic");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "CHANGES: 1\nLAST_ID: 3\nROWS: 3\nCOLS: 3\nROW0: 1 Alpha 10.5\nROW2: 3 Gamma 35.75\nBASIC_COMPLETE\n"
+    );
+    native_matches_interpreter(path);
+}
+
+#[test]
+fn sqlite_modes_matches_across_backends() {
+    let path = "tests/host/sqlite_modes.bn";
+    let output = bni()
+        .args(["run", path])
+        .output()
+        .expect("run sqlite modes");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "OPEN_EXISTING_MISSING: 1 BNSqlite.OpenExisting\nOPEN_AND_POPULATED\nEXIST_ROWS: 1\nRO_QUERY_ROWS: 1\nRO_WRITE_REJECTED: 7 BNSqlite.Connection.Exec\nMODES_COMPLETE\n"
+    );
+    native_matches_interpreter(path);
+}
+
+#[test]
+fn sqlite_transactions_matches_across_backends() {
+    let path = "tests/host/sqlite_transactions.bn";
+    let output = bni()
+        .args(["run", path])
+        .output()
+        .expect("run sqlite transactions");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "AFTER_ROLLBACK_COUNT: 0\nAFTER_COMMIT: 2 Committed\nTX_COMPLETE\n"
+    );
+    native_matches_interpreter(path);
+}
+
+#[test]
+fn sqlite_memory_matches_across_backends() {
+    let path = "tests/host/sqlite_memory.bn";
+    let output = bni()
+        .args(["run", path])
+        .output()
+        .expect("run sqlite memory");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "MEM_VAL_1: 15\nISOLATION_VERIFIED: TRUE\nMEMORY_COMPLETE\n"
+    );
+    native_matches_interpreter(path);
+}
+
+#[test]
+fn sqlite_security_matches_across_backends() {
+    let path = "tests/host/sqlite_security.bn";
+    let output = bni()
+        .args(["run", path])
+        .output()
+        .expect("run sqlite security");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "PATH_TRAVERSAL_REJECTED: TRUE\nRO_TRAVERSAL_REJECTED: TRUE\nEX_TRAVERSAL_REJECTED: TRUE\nMULTI_EXEC_REJECTED: TRUE\nMULTI_QUERY_REJECTED: TRUE\nSECURITY_COMPLETE\n"
+    );
+    native_matches_interpreter(path);
+}
+
+#[test]
+fn sqlite_errors_matches_across_backends() {
+    let path = "tests/host/sqlite_errors.bn";
+    let output = bni()
+        .args(["run", path])
+        .output()
+        .expect("run sqlite errors");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "SYNTAX_ERROR_VERIFIED: TRUE\nSCHEMA_ERROR_VERIFIED: TRUE\nCONSTRAINT_VERIFIED: TRUE\nMISUSE_EXEC_VERIFIED: TRUE\nMISUSE_QUERY_VERIFIED: TRUE\nCLOSED_EXEC_VERIFIED: TRUE\nCLOSED_CLOSE_VERIFIED: TRUE\nERRORS_COMPLETE\n"
+    );
+    native_matches_interpreter(path);
+}

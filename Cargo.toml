@@ -1,9 +1,9 @@
 [workspace]
-members = ["crates/bn_rt", "crates/bn_source", "crates/bn_types", "crates/bn_diag", "crates/bn_ir", "crates/bn_frontend", "crates/bn_runtime", "crates/bn_value", "crates/bn_llvm", "crates/bn_interp", "crates/bn_host_exec", "crates/bn_limits", "crates/bn_lib_math", "crates/bn_lib_json", "crates/bn_lib_log", "crates/bn_lib_data", "crates/bn_host_fs", "crates/bn_host_net", "crates/bn_lib_dispatch", "crates/bn_lib_web", "crates/bn_lib_crypto", "crates/bn_cli", "crates/bn_interpret_driver", "crates/bn_lsp", "crates/bn_dap", "crates/bn_compile_driver", "crates/bnc", "crates/bni"]
+members = ["crates/bn_rt", "crates/bn_source", "crates/bn_types", "crates/bn_diag", "crates/bn_ir", "crates/bn_frontend", "crates/bn_runtime", "crates/bn_value", "crates/bn_llvm", "crates/bn_interp", "crates/bn_host_exec", "crates/bn_limits", "crates/bn_lib_math", "crates/bn_lib_json", "crates/bn_lib_log", "crates/bn_lib_data", "crates/bn_host_fs", "crates/bn_host_net", "crates/bn_lib_dispatch", "crates/bn_lib_web", "crates/bn_lib_crypto", "crates/bn_lib_sqlite", "crates/bn_cli", "crates/bn_interpret_driver", "crates/bn_lsp", "crates/bn_dap", "crates/bn_compile_driver", "crates/bnc", "crates/bni"]
 resolver = "3"
 
 [workspace.package]
-version = "0.6.3"
+version = "0.6.4"
 edition = "2024"
 rust-version = "1.98"
 license = "MPL-2.0"
@@ -19,12 +19,16 @@ license.workspace = true
 [lib]
 path = "src/lib.rs"
 
-[lints.rust]
+[workspace.lints.rust]
 unsafe_code = "deny"
+missing_debug_implementations = "warn"
 
-[lints.clippy]
+[workspace.lints.clippy]
 all = "warn"
 pedantic = "warn"
+
+[lints]
+workspace = true
 
 [dependencies]
 # None: this package only hosts the workspace-level integration tests.
@@ -34,7 +38,7 @@ pedantic = "warn"
 bn_diag = { path = "crates/bn_diag" }
 bn_frontend = { path = "crates/bn_frontend" }
 bn_interp = { path = "crates/bn_interp" }
-bn_interpret_driver = { path = "crates/bn_interpret_driver", features = ["lib-math", "lib-json", "lib-log", "lib-data", "lib-dispatch", "lib-web", "lib-crypto"] }
+bn_interpret_driver = { path = "crates/bn_interpret_driver", features = ["lib-math", "lib-json", "lib-log", "lib-data", "lib-dispatch", "lib-web", "lib-crypto", "lib-sqlite"] }
 bn_ir = { path = "crates/bn_ir" }
 bn_lib_web = { path = "crates/bn_lib_web" } # tests/runtime.rs drives the web callback directly
 bn_llvm = { path = "crates/bn_llvm" }

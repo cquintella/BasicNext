@@ -25,7 +25,7 @@ use bn_interp::{
 
 pub const NAME: &str = "BNLog";
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct LogLoggerResource {
     label: String,
     context: std::collections::BTreeMap<String, String>,
@@ -35,12 +35,13 @@ struct LogLoggerResource {
     closed: bool,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct LogFileTransport {
     path: String,
     minimum: i128,
 }
 
+#[derive(Debug)]
 pub struct LogProvider {
     fields: HashMap<u64, HashMap<String, String>>,
     next_fields: u64,

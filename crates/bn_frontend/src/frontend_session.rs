@@ -18,7 +18,7 @@ pub struct AnalysisRequest {
     pub revision: Revision,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct FrontendSession {
     next_source: u64,
     next_revision: BTreeMap<SourceId, u64>,

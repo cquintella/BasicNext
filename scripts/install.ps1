@@ -44,16 +44,18 @@
     PATH to use bnc. bni does not need it.
 
 .EXAMPLE
-    Invoke-WebRequest https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.ps1 -OutFile install.ps1
-    powershell -ExecutionPolicy Bypass -File install.ps1
+    irm https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.ps1 | iex
+
+.EXAMPLE
+    powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.ps1 | iex"
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File scripts\install.ps1 -Prefix C:\Tools\BasicNext
 #>
 param(
-    [string]$Prefix = "$env:LOCALAPPDATA\Programs\BasicNext",
-    [switch]$NoBuild,
-    [switch]$NoPathUpdate
+    [string]$Prefix = $(if ($env:BN_PREFIX) { $env:BN_PREFIX } elseif ($env:PREFIX) { $env:PREFIX } else { "$env:LOCALAPPDATA\Programs\BasicNext" }),
+    [switch]$NoBuild = [bool]($env:BN_NO_BUILD -eq '1' -or $env:NO_BUILD -eq '1'),
+    [switch]$NoPathUpdate = [bool]($env:BN_NO_PATH_UPDATE -eq '1')
 )
 $ErrorActionPreference = 'Stop'
 # Windows PowerShell 5.1 renders a progress bar per downloaded chunk, which
@@ -129,9 +131,23 @@ if ($PSScriptRoot) {
 if (-not $repoRoot) {
     $Tag = $env:BN_VERSION
     if ([string]::IsNullOrEmpty($Tag)) {
-        $Latest = Invoke-RestMethod -UseBasicParsing `
-            -Uri 'https://api.github.com/repos/cquintella/BasicNext/releases/latest'
-        $Tag = [string]$Latest.tag_name
+        try {
+            $Latest = Invoke-RestMethod -UseBasicParsing `
+                -Uri 'https://api.github.com/repos/cquintella/BasicNext/releases/latest'
+            $Tag = [string]$Latest.tag_name
+        } catch {
+            # Fallback if unauthenticated GitHub API rate-limited (HTTP 403)
+            try {
+                $req = [System.Net.HttpWebRequest]::Create('https://github.com/cquintella/BasicNext/releases/latest')
+                $req.AllowAutoRedirect = $false
+                $resp = $req.GetResponse()
+                $loc = $resp.GetResponseHeader('Location')
+                $resp.Close()
+                if ($loc -match '/releases/tag/([^/]+)$') {
+                    $Tag = $matches[1]
+                }
+            } catch {}
+        }
         if ([string]::IsNullOrEmpty($Tag)) {
             throw 'could not resolve the latest Basic Next release'
         }

@@ -32,6 +32,7 @@ const RESULT_RETURN_CODE: usize = 0;
 const RESULT_STDERR: usize = 1;
 const RESULT_STDOUT: usize = 2;
 
+#[derive(Debug, Default)]
 pub struct ExecProvider;
 
 impl Provider for ExecProvider {

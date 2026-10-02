@@ -84,10 +84,22 @@ The script asks for a prefix (`$HOME/basicnext`, `/opt/basicnext`,
 catalog, and the man pages. It uses `sudo` only when the prefix is not
 writable, and builds from source with `cargo` when the release has no binary
 for your platform. Skip the menu with `--prefix DIR`; pin a release with
-`BN_VERSION=v0.6.3`. The install writes `$HOME/.basicnext/uninstall.sh`.
+`BN_VERSION=v0.6.4`. The install writes `$HOME/.basicnext/uninstall.sh`.
 
-**Windows (PowerShell)**: installs to `%LOCALAPPDATA%\Programs\BasicNext`
-without administrator rights, or to `-Prefix DIR`:
+**Windows (PowerShell)**
+
+```powershell
+irm https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.ps1 | iex
+```
+
+The script installs to `%LOCALAPPDATA%\Programs\BasicNext` without administrator
+rights, or to `$env:BN_PREFIX`. It downloads the latest release's `bni.exe`,
+`bnc.exe`, and `bn_rt.lib` (checksum-verified against `SHA256SUMS`), the
+standard-library modules, and the diagnostics catalog, updates the user `PATH`,
+and writes `%USERPROFILE%\.basicnext\uninstall.ps1`. Pin a release with
+`$env:BN_VERSION = 'v0.6.4'`.
+
+Or from a local repository checkout:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\install.ps1
@@ -125,7 +137,20 @@ From a checkout, `cargo run -p bni -- run <file>` uses this tree's toolchain.
 | [`examples/bnlog_tour.bn`](examples/bnlog_tour.bn) | `BNLog` console and file transports |
 | [`examples/bnstring_tour.bn`](examples/bnstring_tour.bn) | `BNString` |
 | [`examples/bndata_tour.bn`](examples/bndata_tour.bn) | `BNData` and CSV |
+| [`examples/sqlite.bn`](examples/sqlite.bn) | `BNSqlite` database operations and transactions |
 | [`examples/parallel-examples.md`](examples/parallel-examples.md) | `BNDispatch`, including a parallel computation of pi |
+
+## Release notes
+
+### 0.6.4
+
+- **Implicit interpreter execution**: running `bni <file.bn>` directly defaults to `bni run`, preserving program arguments after `--`.
+- **One-line Windows PowerShell installation**: single-line installation via `irm https://raw.githubusercontent.com/cquintella/BasicNext/main/scripts/install.ps1 | iex` with automatic GitHub API rate-limit fallback and support for `$env:BN_PREFIX`.
+- **BNSqlite library driver**: complete SQLite 3 client integration with support for `:memory:` and file databases, atomic transactions (`Begin`, `Commit`, `Rollback`), parameterized execution, and row mapping into `DataFrame`.
+- **Concurrency & Mutex Poisoning Resilience**: asynchronous DNS resolver and connection registries in `bn_rt` recover gracefully from thread panics without crashing the main process or runtime shutdown.
+- **Memory Safety & FFI Cast Validation**: eliminated negative integer casts in `sqlite3_column_count`, preventing potential OOM crashes.
+- **RAII Resource Management**: intermediate LLVM IR (`.ll`) and object (`.o`) files are guaranteed to be cleaned up deterministically upon any early toolchain failure.
+- **CLI Diagnostics Normalization**: fixed help messages in `bnc` and strengthened LLVM backend lowering against unexpected scalar and vector types.
 
 ## Known limitations
 

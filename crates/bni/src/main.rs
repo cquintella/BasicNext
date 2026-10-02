@@ -89,23 +89,29 @@ fn main() -> ExitCode {
 }
 
 fn command() -> ExitCode {
-    let mut arguments = env::args().skip(1);
-    let Some(command) = arguments.next() else {
+    let mut raw_args = env::args().skip(1).collect::<Vec<_>>();
+    let Some(first) = raw_args.first().cloned() else {
         return usage();
     };
-    match command.as_str() {
+    match first.as_str() {
         "-h" | "--help" => return help(),
         "-V" | "--version" => {
             println!("{VERSION}");
             return ExitCode::SUCCESS;
         }
-        "eval" => return eval(arguments.collect(), &mut ()),
+        "eval" => return eval(raw_args[1..].to_vec(), &mut ()),
         "lsp" => return protocol("LSP", bn_lsp::run_stdio()),
         "dap" => return protocol("DAP", bn_dap::run_stdio()),
-        "check" | "lex" | "run" => {}
-        _ => return usage(),
+        _ => {}
     }
-    let options = match parse_options(arguments, &mut ()) {
+    let (subcommand, args) = match first.as_str() {
+        "check" | "lex" | "run" => {
+            raw_args.remove(0);
+            (first, raw_args)
+        }
+        _ => ("run".to_string(), raw_args),
+    };
+    let options = match parse_options(args.into_iter(), &mut ()) {
         Ok(options) => options,
         Err(message) => {
             if let Some(message) = message.strip_prefix("CONFIG_INVALID: ") {
@@ -124,7 +130,7 @@ fn command() -> ExitCode {
         Ok(read) => read,
         Err(code) => return code,
     };
-    match command.as_str() {
+    match subcommand.as_str() {
         "lex" => emit_output(tokens_text(&tokens), options.output.as_deref()),
         "check" => check(&source, &tokens, &options),
         _ => run(&source, &tokens, &options),

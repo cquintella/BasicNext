@@ -70,6 +70,16 @@ pub struct WebProvider {
     values: HashMap<Handle, Vec<String>>,
 }
 
+impl std::fmt::Debug for WebProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WebProvider")
+            .field("servers_count", &self.servers.len())
+            .field("responses_count", &self.responses.len())
+            .field("requests_count", &self.requests.len())
+            .finish_non_exhaustive()
+    }
+}
+
 impl Provider for WebProvider {
     fn call(
         &mut self,

@@ -68,6 +68,7 @@ impl Endpoint {
 /// Opaque compiled-runtime result for HOST.Net.Resolve.
 ///
 /// The LLVM ABI owns this allocation until `bn_rt_net_addresses_free` is called.
+#[derive(Debug)]
 pub struct AddressesHandle {
     values: Vec<Address>,
 }
@@ -80,7 +81,9 @@ fn resolver_tasks() -> &'static std::sync::Mutex<Vec<std::thread::JoinHandle<()>
 
 fn reap_resolver_tasks() {
     let tasks = resolver_tasks();
-    let mut tasks = tasks.lock().expect("resolver task registry poisoned");
+    let mut tasks = tasks
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut index = 0;
     while index < tasks.len() {
         if tasks[index].is_finished() {
@@ -95,18 +98,16 @@ fn reap_resolver_tasks() {
 pub(crate) fn retain_resolver_task(task: std::thread::JoinHandle<()>) {
     resolver_tasks()
         .lock()
-        .expect("resolver task registry poisoned")
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
         .push(task);
 }
 
 /// Joins retained reverse/resolve workers.
-///
-/// # Panics
-///
-/// Panics if the resolver-task registry mutex is poisoned.
 pub fn join_resolver_tasks() {
     let tasks = resolver_tasks();
-    let mut tasks = tasks.lock().expect("resolver task registry poisoned");
+    let mut tasks = tasks
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     while let Some(task) = tasks.pop() {
         let _ = task.join();
     }
@@ -258,7 +259,7 @@ impl AddressesHandle {
 
 #[cfg(test)]
 mod tests {
-    use super::AddressesHandle;
+    use super::{AddressesHandle, join_resolver_tasks, reap_resolver_tasks, retain_resolver_task};
 
     #[test]
     fn resolve_handle_honors_zero_bound_without_network_access() {
@@ -267,5 +268,23 @@ mod tests {
         assert!(handle.is_empty());
         assert_eq!(handle.len(), 0);
         assert_eq!(handle.get(0), None);
+    }
+
+    #[test]
+    fn resolver_tasks_mutex_poison_recovery() {
+        // Deliberately poison the resolver_tasks mutex
+        let _ = std::thread::spawn(|| {
+            let tasks = super::resolver_tasks();
+            let _guard = tasks.lock().unwrap();
+            panic!("intentional panic to poison resolver_tasks mutex");
+        })
+        .join();
+
+        assert!(super::resolver_tasks().is_poisoned());
+
+        // Operations must recover cleanly without panic
+        reap_resolver_tasks();
+        retain_resolver_task(std::thread::spawn(|| {}));
+        join_resolver_tasks();
     }
 }

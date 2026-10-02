@@ -18,7 +18,7 @@ pub trait DataProvider: Send + Sync {
 }
 
 /// Default statically linked CSV provider.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct StandardDataProvider;
 
 impl DataProvider for StandardDataProvider {
@@ -27,18 +27,18 @@ impl DataProvider for StandardDataProvider {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DataFrameResource<T> {
     pub columns: Vec<DataFrameColumn<T>>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DataFrameColumn<T> {
     pub name: String,
     pub values: Vec<T>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DataFrameJoin {
     Inner,
     Left,
@@ -46,6 +46,7 @@ pub enum DataFrameJoin {
     Full,
 }
 
+#[derive(Debug)]
 pub struct DataFrameJoinConfig<'a, T> {
     pub left_label: &'a str,
     pub right_label: &'a str,

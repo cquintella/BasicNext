@@ -105,3 +105,17 @@ fn native_programs_use_the_dynamic_crt_and_legacy_stdio_only_on_windows() {
     #[cfg(not(windows))]
     assert!(crate::artifact::native_program_link_args().is_empty());
 }
+
+#[test]
+fn temp_file_guard_removes_file_on_drop() {
+    let temp_path = std::env::temp_dir().join(format!("test-guard-{}.tmp", std::process::id()));
+    std::fs::write(&temp_path, b"test").unwrap();
+    assert!(temp_path.exists());
+    {
+        let _guard = crate::artifact::TempFileGuard(temp_path.clone());
+    }
+    assert!(
+        !temp_path.exists(),
+        "TempFileGuard must remove the file on drop"
+    );
+}

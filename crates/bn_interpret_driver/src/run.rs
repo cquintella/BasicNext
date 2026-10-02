@@ -207,6 +207,7 @@ pub fn run_loaded(
     }
 }
 
+#[derive(Debug)]
 pub struct JupyterInput<R> {
     input: R,
     notify: bool,

@@ -91,6 +91,18 @@ fn sandbox_policy() -> bn_rt::Policy {
     policy
 }
 
+impl std::fmt::Debug for HostEnv {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HostEnv")
+            .field("arguments", &self.arguments)
+            .field("clock", &self.clock)
+            .field("policy", &self.policy)
+            .field("libraries", &self.libraries)
+            .field("hosts", &self.hosts)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Clone for HostEnv {
     fn clone(&self) -> Self {
         Self {
@@ -107,7 +119,7 @@ impl Clone for HostEnv {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum ClockKind {
     System,
     Fixed {

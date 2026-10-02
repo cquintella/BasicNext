@@ -1,0 +1,56 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT BNData AS Data
+IMPORT BNSqlite AS Sqlite
+
+FUNCTION Start() AS INTEGER
+    LET conn AS Sqlite.Connection OR Error = Sqlite.Open(":memory:")
+    IF conn IS Error THEN
+        PRINT "OPEN_FAILED", conn.Code
+        RETURN 1
+    END IF
+
+    LET resExec AS VOID OR Error = conn.Exec("CREATE TABLE items (id INT, name TEXT, price FLOAT);")
+    IF resExec IS Error THEN
+        PRINT "EXEC_FAILED", resExec.Code
+        RETURN 1
+    END IF
+
+    resExec = conn.Exec("INSERT INTO items VALUES (1, 'Alpha', 10.5);")
+    resExec = conn.Exec("INSERT INTO items VALUES (2, 'Beta', 20.0);")
+    resExec = conn.Exec("INSERT INTO items VALUES (3, 'Gamma', 35.75);")
+
+    PRINT "CHANGES:", conn.Changes()
+    PRINT "LAST_ID:", conn.LastInsertRowId()
+
+    LET df AS Data.DataFrame OR Error = conn.Query("SELECT id, name, price FROM items ORDER BY id ASC;")
+    IF df IS Error THEN
+        PRINT "QUERY_FAILED", df.Code
+        RETURN 1
+    END IF
+
+    PRINT "ROWS:", df.RowCount()
+    PRINT "COLS:", df.ColumnCount()
+
+    LET id0 AS INTEGER OR NA OR Error = df.GetInteger(0, "id")
+    LET name0 AS STRING OR NA OR Error = df.GetString(0, "name")
+    LET price0 AS FLOAT OR NA OR Error = df.GetFloat(0, "price")
+    PRINT "ROW0:", id0, name0, price0
+
+    LET id2 AS INTEGER OR NA OR Error = df.GetInteger(2, "id")
+    LET name2 AS STRING OR NA OR Error = df.GetString(2, "name")
+    LET price2 AS FLOAT OR NA OR Error = df.GetFloat(2, "price")
+    PRINT "ROW2:", id2, name2, price2
+
+    LET resClose AS VOID OR Error = conn.Close()
+    IF resClose IS Error THEN
+        PRINT "CLOSE_FAILED", resClose.Code
+        RETURN 1
+    END IF
+
+    PRINT "BASIC_COMPLETE"
+    RETURN 0
+END FUNCTION

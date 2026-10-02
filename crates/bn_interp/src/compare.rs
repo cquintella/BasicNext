@@ -146,9 +146,10 @@ pub(super) fn value_matches_type(value: &Value, ty: &Type) -> bool {
         (
             Value::DataFrame(_),
             Type::Named(name)
+            | Type::TypeName(name)
             | Type::ImportedNamed { name, .. }
             | Type::ImportedTypeName { name, .. },
-        ) => name == "DataFrame",
+        ) => name == "DataFrame" || name.ends_with(".DataFrame"),
         (Value::Null, Type::Named(name)) => name == "VOID",
         (
             Value::Record { record },

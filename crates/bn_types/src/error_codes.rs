@@ -196,3 +196,43 @@ pub mod web {
         ("UNAVAILABLE", UNAVAILABLE),
     ];
 }
+
+/// `BNSqlite` `Error.Code` (`language/0.6/bnsqlite.md` "Errors").
+pub mod sqlite {
+    pub const FILE_NOT_FOUND: i32 = 1;
+    pub const ACCESS_DENIED: i32 = 2;
+    pub const POLICY_DENIED: i32 = 3;
+    pub const CORRUPT: i32 = 4;
+    pub const BUSY: i32 = 5;
+    pub const LOCKED: i32 = 6;
+    pub const READ_ONLY: i32 = 7;
+    pub const SYNTAX_ERROR: i32 = 8;
+    pub const SCHEMA_ERROR: i32 = 9;
+    pub const CONSTRAINT_VIOLATION: i32 = 10;
+    pub const TYPE_MISMATCH: i32 = 11;
+    pub const MISUSE: i32 = 12;
+    pub const CLOSED: i32 = 13;
+    pub const LIMIT_EXCEEDED: i32 = 14;
+    pub const IO_FAILED: i32 = 15;
+    pub const INTERNAL_ERROR: i32 = 16;
+
+    /// Name and value of each constant, as `modules/bn/BNSqlite.bn` exports them.
+    pub const ALL: &[(&str, i32)] = &[
+        ("FILE_NOT_FOUND", FILE_NOT_FOUND),
+        ("ACCESS_DENIED", ACCESS_DENIED),
+        ("POLICY_DENIED", POLICY_DENIED),
+        ("CORRUPT", CORRUPT),
+        ("BUSY", BUSY),
+        ("LOCKED", LOCKED),
+        ("READ_ONLY", READ_ONLY),
+        ("SYNTAX_ERROR", SYNTAX_ERROR),
+        ("SCHEMA_ERROR", SCHEMA_ERROR),
+        ("CONSTRAINT_VIOLATION", CONSTRAINT_VIOLATION),
+        ("TYPE_MISMATCH", TYPE_MISMATCH),
+        ("MISUSE", MISUSE),
+        ("CLOSED", CLOSED),
+        ("LIMIT_EXCEEDED", LIMIT_EXCEEDED),
+        ("IO_FAILED", IO_FAILED),
+        ("INTERNAL_ERROR", INTERNAL_ERROR),
+    ];
+}

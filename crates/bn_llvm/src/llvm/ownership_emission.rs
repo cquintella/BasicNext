@@ -217,6 +217,14 @@ pub(crate) fn lower_ownership_emission(
                     "  %crydelrc{} = call i32 @bn_rt_crypto_bytes_release(i64 {handle})",
                     value.0
                 );
+            } else if is_bnsqlite_connection_type(module, ty) {
+                let handle = format!("%sqlitedelhandle{}", value.0);
+                let _ = writeln!(text, "  {handle} = ptrtoint ptr %v{} to i64", value.0);
+                let _ = writeln!(
+                    text,
+                    "  %sqlitedelrc{} = call i32 @bn_rt_sqlite_close(i64 {handle})",
+                    value.0
+                );
             } else if let Some(kind) = bnlog_resource_kind(module, ty) {
                 let handle = format!("%logdelhandle{}", value.0);
                 let symbol = if kind == "Fields" {

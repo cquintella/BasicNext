@@ -12,7 +12,7 @@ name = "bni"
 path = "src/main.rs"
 
 [features]
-default = ["lib-math", "lib-json", "lib-log", "lib-data", "lib-dispatch", "lib-web", "lib-crypto"]
+default = ["lib-math", "lib-json", "lib-log", "lib-data", "lib-dispatch", "lib-web", "lib-crypto", "lib-sqlite"]
 lib-math = ["bn_interpret_driver/lib-math"]
 lib-json = ["bn_interpret_driver/lib-json"]
 lib-log = ["bn_interpret_driver/lib-log"]
@@ -20,13 +20,10 @@ lib-data = ["bn_interpret_driver/lib-data"]
 lib-dispatch = ["bn_interpret_driver/lib-dispatch"]
 lib-web = ["bn_interpret_driver/lib-web"]
 lib-crypto = ["bn_interpret_driver/lib-crypto"]
+lib-sqlite = ["bn_interpret_driver/lib-sqlite"]
 
-[lints.rust]
-unsafe_code = "deny"
-
-[lints.clippy]
-all = "warn"
-pedantic = "warn"
+[lints]
+workspace = true
 
 [dependencies]
 bn_cli = { path = "../bn_cli" }

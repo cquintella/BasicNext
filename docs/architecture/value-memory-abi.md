@@ -98,6 +98,7 @@ The table below catalogs ownership and lifetime for all symbols declared in `BN_
 | **File System** | `bn_rt_file_new` (`NEW FS.File()`, a never-opened file), `bn_rt_file_open`, `bn_rt_file_close`, `bn_rt_file_release`, `bn_rt_file_read_all`, `bn_rt_file_read_line`, `bn_rt_file_write`, `bn_rt_file_write_line`, `bn_rt_file_read_bytes`, `bn_rt_file_write_bytes`, `bn_rt_fs_exists`, `bn_rt_fs_delete_file`, `bn_rt_file_string_free` | Path/text `ptr` borrowed for the call; byte buffers borrowed with an explicit length; handles `u64` copied | Status `u32` (0 OK, 1 invalid, 2 error, 3 capability denied, 4 `EOF`); out pointers receive the handle, an owned string, a byte count, or a flag | Semantics are `bn_rt::file`, shared with the interpreter. `Close` keeps the handle as a closed file; `RELEASE` calls `bn_rt_file_release` |
 | **Runtime diagnostics** | `bn_rt_trap_report`, `bn_rt_trap_report_failure` | Text `ptr` to a constant `bnc` rendered at compile time (`@.bn_trap_*` / `@.bn_trapset_*`), borrowed; runtime facts as two `i128`, each passed as `i64` low and high halves (`i128` has no portable C ABI) | None; they print to stderr and the emitted code then leaves through its trap exit | The program embeds no catalog (bucket 0.6.2b R6): slots in the text take the runtime facts, or the named facts a runtime function recorded (`RuntimeFailure`) |
 | **`Error` records** | `bn_rt_error_take(failed, operation)`, `bn_rt_error_wrap(failed, value, operation)`, `bn_rt_error_field(error, field)` | Status/flag copied; `operation` and `value` borrowed | A native `Error` is `{ i1 true, ptr, i64 code }` whose pointer is a runtime record (`Message`, `Operation`, `Cause`): `take` builds it from the failing call's recorded message and cause, `wrap` from a message the emitted code holds (a record passes through), and `field` reads 0 `Message`, 1 `Operation`, 2 `Cause`, treating a non-record pointer as a plain message | Records live until exit; `bn_rt` keeps their addresses so a field read never misreads a plain string |
+| **BNSqlite Database Operations** | `bn_rt_sqlite_open`, `bn_rt_sqlite_open_read_only`, `bn_rt_sqlite_open_existing`, `bn_rt_sqlite_close`, `bn_rt_sqlite_exec`, `bn_rt_sqlite_query`, `bn_rt_sqlite_begin`, `bn_rt_sqlite_commit`, `bn_rt_sqlite_rollback`, `bn_rt_sqlite_changes`, `bn_rt_sqlite_last_insert_rowid` | Path/SQL `ptr` borrowed NUL-terminated UTF-8; connection handle `u64` copied | Status code `i32` (0 = OK); out pointer receives `u64` connection handle or `u64` DataFrame handle; `changes`/`last_insert_rowid` return `i64` | `bn_rt_sqlite_close` closes SQLite connection and releases file locks; operations on closed handles fail with `Sqlite.CLOSED`; query returns registered `BNDataFrameHandle` owned by caller |
 
 The layout assertions cover the release slice on every supported target by
 checking field offsets and alignment rather than baking a host pointer width
@@ -498,4 +499,15 @@ bn_rt_crypto_verify
 bn_rt_error_field
 bn_rt_error_take
 bn_rt_error_wrap
+bn_rt_sqlite_begin
+bn_rt_sqlite_changes
+bn_rt_sqlite_close
+bn_rt_sqlite_commit
+bn_rt_sqlite_exec
+bn_rt_sqlite_last_insert_rowid
+bn_rt_sqlite_open
+bn_rt_sqlite_open_existing
+bn_rt_sqlite_open_read_only
+bn_rt_sqlite_query
+bn_rt_sqlite_rollback
 ```

@@ -165,6 +165,14 @@ pub struct Providers {
     factories: HashMap<&'static str, ProviderFactory>,
 }
 
+impl std::fmt::Debug for Providers {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Providers")
+            .field("names", &self.factories.keys().collect::<Vec<_>>())
+            .finish()
+    }
+}
+
 impl Providers {
     pub fn register(&mut self, name: &'static str, factory: ProviderFactory) {
         self.factories.insert(name, factory);

@@ -275,6 +275,7 @@ fn lower_unvalidated(program: &Program, model: &SemanticModel) -> Result<Module,
         bnweb_providers: HashSet::new(),
         bndispatch_providers: HashSet::new(),
         bncrypto_providers: HashSet::new(),
+        bnsqlite_providers: HashSet::new(),
         filesystem_import: filesystem_import_span(program),
         clock_import: clock_import_span(program),
         random_import: random_import_span(program),
@@ -283,6 +284,7 @@ fn lower_unvalidated(program: &Program, model: &SemanticModel) -> Result<Module,
         exec_import: exec_import_span(program),
         bnlog_import: standard_import_span(program, "BNLog"),
         bnweb_import: standard_import_span(program, "BNWeb"),
+        bnsqlite_import: standard_import_span(program, "BNSqlite"),
     };
     resolve_member_fields(&mut module)?;
     Ok(module)
@@ -368,6 +370,7 @@ fn lower_graph_unvalidated(
     let exec_import = root.and_then(|module| exec_import_span(&module.program));
     let bnlog_import = root.and_then(|module| standard_import_span(&module.program, "BNLog"));
     let bnweb_import = root.and_then(|module| standard_import_span(&module.program, "BNWeb"));
+    let bnsqlite_import = root.and_then(|module| standard_import_span(&module.program, "BNSqlite"));
     let (field_names, field_layouts) = lowered_field_metadata(&pending_layouts, &class_bases)?;
     let mut module = Module {
         source_name,
@@ -431,6 +434,14 @@ fn lower_graph_unvalidated(
                     .then_some(ir_module_id(loaded.id))
             })
             .collect(),
+        bnsqlite_providers: graph
+            .modules
+            .iter()
+            .filter_map(|loaded| {
+                (loaded.standard_module == Some(StandardModule::BNSqlite))
+                    .then_some(ir_module_id(loaded.id))
+            })
+            .collect(),
         filesystem_import,
         clock_import,
         random_import,
@@ -439,6 +450,7 @@ fn lower_graph_unvalidated(
         exec_import,
         bnlog_import,
         bnweb_import,
+        bnsqlite_import,
     };
     resolve_member_fields(&mut module)?;
     Ok(module)

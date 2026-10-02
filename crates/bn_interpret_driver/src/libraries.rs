@@ -50,5 +50,10 @@ pub fn default_libraries() -> Providers {
         bn_lib_crypto::NAME,
         std::sync::Arc::new(|| Box::new(bn_lib_crypto::CryptoProvider::default())),
     );
+    #[cfg(feature = "lib-sqlite")]
+    libraries.register(
+        bn_lib_sqlite::NAME,
+        std::sync::Arc::new(|| Box::new(bn_lib_sqlite::SqliteProvider::default())),
+    );
     libraries
 }

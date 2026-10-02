@@ -114,7 +114,7 @@ dependencies = [
 
 [[package]]
 name = "bn"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_diag",
  "bn_frontend",
@@ -137,7 +137,7 @@ dependencies = [
 
 [[package]]
 name = "bn_cli"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_diag",
  "bn_frontend",
@@ -147,7 +147,7 @@ dependencies = [
 
 [[package]]
 name = "bn_compile_driver"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_cli",
  "bn_diag",
@@ -157,7 +157,7 @@ dependencies = [
 
 [[package]]
 name = "bn_dap"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_frontend",
  "bn_interp",
@@ -168,14 +168,14 @@ dependencies = [
 
 [[package]]
 name = "bn_diag"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_source",
 ]
 
 [[package]]
 name = "bn_frontend"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_diag",
  "bn_ir",
@@ -185,11 +185,11 @@ dependencies = [
 
 [[package]]
 name = "bn_host_exec"
-version = "0.6.3"
+version = "0.6.4"
 
 [[package]]
 name = "bn_host_fs"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_diag",
  "bn_interp",
@@ -201,7 +201,7 @@ dependencies = [
 
 [[package]]
 name = "bn_host_net"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_diag",
  "bn_interp",
@@ -214,7 +214,7 @@ dependencies = [
 
 [[package]]
 name = "bn_interp"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_diag",
  "bn_ir",
@@ -227,7 +227,7 @@ dependencies = [
 
 [[package]]
 name = "bn_interpret_driver"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_cli",
  "bn_diag",
@@ -242,6 +242,7 @@ dependencies = [
  "bn_lib_json",
  "bn_lib_log",
  "bn_lib_math",
+ "bn_lib_sqlite",
  "bn_lib_web",
  "bn_rt",
  "bn_source",
@@ -252,7 +253,7 @@ dependencies = [
 
 [[package]]
 name = "bn_ir"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_diag",
  "bn_source",
@@ -261,7 +262,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_crypto"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_diag",
  "bn_interp",
@@ -273,7 +274,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_data"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_diag",
  "bn_interp",
@@ -285,7 +286,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_dispatch"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_diag",
  "bn_interp",
@@ -299,7 +300,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_json"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_diag",
  "bn_interp",
@@ -313,7 +314,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_log"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_diag",
  "bn_interp",
@@ -325,7 +326,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_math"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_diag",
  "bn_interp",
@@ -337,8 +338,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "bn_lib_sqlite"
+version = "0.6.4"
+dependencies = [
+ "bn_diag",
+ "bn_interp",
+ "bn_lib_data",
+ "bn_rt",
+ "bn_runtime",
+ "bn_source",
+ "bn_types",
+ "bn_value",
+]
+
+[[package]]
 name = "bn_lib_web"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_diag",
  "bn_host_net",
@@ -361,11 +376,11 @@ dependencies = [
 
 [[package]]
 name = "bn_limits"
-version = "0.6.3"
+version = "0.6.4"
 
 [[package]]
 name = "bn_llvm"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_diag",
  "bn_ir",
@@ -375,7 +390,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lsp"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_diag",
  "bn_frontend",
@@ -389,7 +404,7 @@ dependencies = [
 
 [[package]]
 name = "bn_rt"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -404,6 +419,7 @@ dependencies = [
  "ml-dsa",
  "ml-kem",
  "p256",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2",
@@ -413,7 +429,7 @@ dependencies = [
 
 [[package]]
 name = "bn_runtime"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_diag",
  "bn_source",
@@ -422,15 +438,15 @@ dependencies = [
 
 [[package]]
 name = "bn_source"
-version = "0.6.3"
+version = "0.6.4"
 
 [[package]]
 name = "bn_types"
-version = "0.6.3"
+version = "0.6.4"
 
 [[package]]
 name = "bn_value"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_source",
  "bn_types",
@@ -438,7 +454,7 @@ dependencies = [
 
 [[package]]
 name = "bnc"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_cli",
  "bn_compile_driver",
@@ -446,7 +462,7 @@ dependencies = [
 
 [[package]]
 name = "bni"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bn_cli",
  "bn_dap",
@@ -775,6 +791,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "fallible-iterator"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
+
+[[package]]
+name = "fallible-streaming-iterator"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
+
+[[package]]
 name = "ff"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -810,6 +838,12 @@ name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
+
+[[package]]
+name = "foldhash"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 
 [[package]]
 name = "futures-channel"
@@ -908,9 +942,27 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
+version = "0.15.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
+dependencies = [
+ "foldhash",
+]
+
+[[package]]
+name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+
+[[package]]
+name = "hashlink"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7382cf6263419f2d8df38c55d7da83da5c18aef87fc7a7fc1fb1e344edfe14c1"
+dependencies = [
+ "hashbrown 0.15.5",
+]
 
 [[package]]
 name = "hmac"
@@ -1019,7 +1071,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc4e190f5d26ca7051642629da2c52fc03bde85a03197c99408dcd291734c855"
 dependencies = [
  "equivalent",
- "hashbrown",
+ "hashbrown 0.17.1",
 ]
 
 [[package]]
@@ -1062,6 +1114,17 @@ name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
+
+[[package]]
+name = "libsqlite3-sys"
+version = "0.31.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad8935b44e7c13394a179a438e0cebba0fe08fe01b54f152e29a93b5cf993fd4"
+dependencies = [
+ "cc",
+ "pkg-config",
+ "vcpkg",
+]
 
 [[package]]
 name = "linux-raw-sys"
@@ -1239,6 +1302,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "pkg-config"
+version = "0.3.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
+
+[[package]]
 name = "poly1305"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1331,6 +1400,20 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "rusqlite"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c6d5e5acb6f6129fe3f7ba0a7fc77bca1942cb568535e18e7bc40262baf3110"
+dependencies = [
+ "bitflags 2.13.2",
+ "fallible-iterator",
+ "fallible-streaming-iterator",
+ "hashlink",
+ "libsqlite3-sys",
+ "smallvec",
 ]
 
 [[package]]
@@ -1687,6 +1770,12 @@ name = "untrusted"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
+
+[[package]]
+name = "vcpkg"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "version_check"

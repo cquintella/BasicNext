@@ -994,6 +994,10 @@ pub(crate) fn lower_call_instruction(
                 other => unreachable!("unsupported BNCrypto member reached emission: {other}"),
             }
         }
+        name if bnsqlite_method(module, name).is_some() => {
+            let method = bnsqlite_method(module, name).expect("validated BNSqlite member");
+            lower_sqlite_call(text, *destination, method, arguments, analysis);
+        }
         "TOLOWER" => {
             let dest = destination.0;
             let argument = arguments[0];

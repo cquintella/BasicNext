@@ -11,12 +11,8 @@ build = "build.rs"
 default = ["frontend-host-spec-path"]
 frontend-host-spec-path = []
 
-[lints.rust]
-unsafe_code = "deny"
-
-[lints.clippy]
-all = "warn"
-pedantic = "warn"
+[lints]
+workspace = true
 
 [dependencies]
 bn_diag = { path = "../bn_diag" }

@@ -16,13 +16,10 @@ lib-data = ["dep:bn_lib_data"]
 lib-dispatch = ["dep:bn_lib_dispatch"]
 lib-web = ["dep:bn_lib_web"]
 lib-crypto = ["dep:bn_lib_crypto"]
+lib-sqlite = ["dep:bn_lib_sqlite"]
 
-[lints.rust]
-unsafe_code = "deny"
-
-[lints.clippy]
-all = "warn"
-pedantic = "warn"
+[lints]
+workspace = true
 
 [dependencies]
 bn_cli = { path = "../bn_cli" }
@@ -39,6 +36,7 @@ bn_lib_dispatch = { path = "../bn_lib_dispatch", optional = true }
 bn_lib_json = { path = "../bn_lib_json", optional = true }
 bn_lib_log = { path = "../bn_lib_log", optional = true }
 bn_lib_math = { path = "../bn_lib_math", optional = true }
+bn_lib_sqlite = { path = "../bn_lib_sqlite", optional = true }
 bn_lib_web = { path = "../bn_lib_web", optional = true }
 bn_source = { path = "../bn_source" }
 bn_types = { path = "../bn_types" }

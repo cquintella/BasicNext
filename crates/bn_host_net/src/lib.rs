@@ -75,6 +75,7 @@ fn net_error(error: &bn_rt::net::error::NetError) -> Value {
     )
 }
 
+#[derive(Debug)]
 pub struct NetProvider {
     tcp_streams: HashMap<u64, crate::net::TcpStream>,
     next_tcp_stream: u64,

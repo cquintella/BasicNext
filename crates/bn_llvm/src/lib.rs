@@ -451,6 +451,7 @@ fn requires_unavailable_wasm_capability(module: &Module) -> bool {
         || module.network_import.is_some()
         || module.bnlog_import.is_some()
         || module.bnweb_import.is_some()
+        || module.bnsqlite_import.is_some()
 }
 
 fn default_span() -> Span {
@@ -1017,6 +1018,9 @@ use bndata_convert::{lower_bndata_convert, lower_bndata_slice};
 #[path = "llvm/log_emission.rs"]
 mod log_emission;
 use log_emission::lower_bnlog_call;
+#[path = "llvm/sqlite_ops.rs"]
+mod sqlite_ops;
+use sqlite_ops::{lower_sqlite_call, sqlite_call_supported};
 #[path = "llvm/indirect_call.rs"]
 mod indirect_call;
 use indirect_call::lower_indirect_call;
@@ -1125,9 +1129,10 @@ use arc::{
     emit_region_field_assign, is_class_type, is_region_type,
 };
 use helpers::{
-    bncrypto_method, bnjson_member, carries_bncrypto_bytes, carries_bnjson, class_init_flag,
-    coerce_return_operand, coerce_to_type, escape_llvm, extend_to_i64, input_runtime_ir,
-    instruction_name, integer_kind, is_bncrypto_bytes_type, is_canonical_timezone, is_unsigned,
+    bncrypto_method, bnjson_member, bnsqlite_method, carries_bncrypto_bytes, carries_bnjson,
+    carries_bnsqlite_connection, class_init_flag, coerce_return_operand, coerce_to_type,
+    escape_llvm, extend_to_i64, input_runtime_ir, instruction_name, integer_kind,
+    is_bncrypto_bytes_type, is_bnsqlite_connection_type, is_canonical_timezone, is_unsigned,
     parse_float_constant, parse_integer, render_float, render_llvm_integer, sanitize_symbol,
     static_global_name, string_byte_length_ir, unsupported_call_detail, unsupported_instruction,
     unsupported_instruction_detail,

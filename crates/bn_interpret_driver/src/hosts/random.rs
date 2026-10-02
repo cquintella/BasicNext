@@ -24,6 +24,7 @@ use bn_types::FloatType;
 
 pub const NAME: &str = "Random";
 
+#[derive(Debug, Default)]
 pub struct RandomProvider;
 
 impl Provider for RandomProvider {

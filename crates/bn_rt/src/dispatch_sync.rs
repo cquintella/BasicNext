@@ -81,6 +81,12 @@ pub struct DispatchGroup {
     state: Mutex<usize>,
     wake: Condvar,
 }
+
+impl std::fmt::Debug for DispatchGroup {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DispatchGroup").finish_non_exhaustive()
+    }
+}
 impl DispatchGroup {
     #[must_use]
     pub fn new() -> Self {
@@ -134,6 +140,14 @@ struct BarrierState {
     arrived: usize,
     generation: u64,
     broken_generation: Option<u64>,
+}
+
+impl std::fmt::Debug for Barrier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Barrier")
+            .field("parties", &self.parties)
+            .finish_non_exhaustive()
+    }
 }
 impl Barrier {
     /// # Errors
@@ -200,6 +214,12 @@ struct SemaphoreState {
     initial: usize,
     available: usize,
 }
+
+impl std::fmt::Debug for DispatchSemaphore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DispatchSemaphore").finish_non_exhaustive()
+    }
+}
 impl DispatchSemaphore {
     /// # Errors
     ///
@@ -258,6 +278,12 @@ impl DispatchSemaphore {
 pub struct DispatchMutex {
     state: Mutex<Option<ThreadId>>,
     wake: Condvar,
+}
+
+impl std::fmt::Debug for DispatchMutex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DispatchMutex").finish_non_exhaustive()
+    }
 }
 
 impl DispatchMutex {

@@ -894,3 +894,29 @@ fn filesystem_open_rejects_invalid_file_mode() {
     let diagnostic = analyze(&program).expect_err("FS.Open with invalid mode must fail");
     assert_eq!(diagnostic.code, "INVALID_FILE_MODE");
 }
+
+#[test]
+fn bnsqlite_import_without_bndata_is_rejected_with_e0450() {
+    let source = SourceFile::new(
+        "sqlite_missing_bndata.bn",
+        "IMPORT BNSqlite AS Sqlite\nFUNCTION Start() AS VOID\nEND FUNCTION\n",
+    );
+    let tokens = lex(&source).expect("lex source");
+    let program = parse(&tokens).expect("parse source");
+    let diagnostic = analyze(&program).expect_err("BNSqlite without BNData must fail");
+    assert_eq!(diagnostic.code, "E0450");
+}
+
+#[test]
+fn bnsqlite_companion_fixtures_validate_semantic_rules() {
+    let missing_graph = load(Path::new(
+        "tests/modules/bnsqlite-missing-companion/main.bn",
+    ))
+    .expect("load missing companion");
+    let err = analyze_modules(&missing_graph).expect_err("must fail E0450");
+    assert_eq!(err.diagnostic.code, "E0450");
+
+    let ok_graph =
+        load(Path::new("tests/modules/bnsqlite-companion/main.bn")).expect("load valid companion");
+    assert!(analyze_modules(&ok_graph).is_ok());
+}

@@ -31,6 +31,7 @@ pub fn vmax_i32(values: &[i32]) -> i32 {
     })
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Reduction {
     Float(f64),
     Na,

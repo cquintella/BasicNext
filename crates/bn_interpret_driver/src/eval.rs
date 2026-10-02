@@ -107,7 +107,7 @@ fn eval_source(args: Vec<String>) -> Result<(String, Vec<String>, EvalMode), Str
         }
     }
     if stdin_source == source.is_some() {
-        return Err("bn eval requires exactly one source form: SOURCE or --stdin".into());
+        return Err("bni eval requires exactly one source form: SOURCE or --stdin".into());
     }
     let text = if stdin_source {
         let mut text = String::new();

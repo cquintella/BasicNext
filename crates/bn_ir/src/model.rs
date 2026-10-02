@@ -127,6 +127,7 @@ pub struct Module {
     pub bnweb_providers: HashSet<ModuleId>,
     pub bndispatch_providers: HashSet<ModuleId>,
     pub bncrypto_providers: HashSet<ModuleId>,
+    pub bnsqlite_providers: HashSet<ModuleId>,
     pub filesystem_import: Option<Span>,
     pub clock_import: Option<Span>,
     pub random_import: Option<Span>,
@@ -135,6 +136,7 @@ pub struct Module {
     pub exec_import: Option<Span>,
     pub bnlog_import: Option<Span>,
     pub bnweb_import: Option<Span>,
+    pub bnsqlite_import: Option<Span>,
 }
 
 /// Role of a function in the module (bucket 0.5.1c §3.2). The name of a
@@ -539,6 +541,7 @@ impl Module {
             (&self.bnweb_providers, "BNWeb"),
             (&self.bndispatch_providers, "BNDispatch"),
             (&self.bncrypto_providers, "BNCrypto"),
+            (&self.bnsqlite_providers, "BNSqlite"),
         ]
         .into_iter()
         .find(|(providers, _)| providers.contains(&id))

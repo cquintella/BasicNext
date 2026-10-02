@@ -7,12 +7,8 @@ description = "Basic Next runtime value representation"
 license.workspace = true
 publish = false
 
-[lints.rust]
-unsafe_code = "deny"
-
-[lints.clippy]
-all = "warn"
-pedantic = "warn"
+[lints]
+workspace = true
 
 [dependencies]
 bn_types = { path = "../bn_types" }

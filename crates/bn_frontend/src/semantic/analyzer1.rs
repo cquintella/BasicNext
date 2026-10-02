@@ -51,6 +51,27 @@ impl Analyzer {
                 default_span(),
             )?;
         }
+        let imports_bnsqlite = program.items.iter().find_map(|item| match item {
+            Item::Import { path, span, .. }
+                if path.first().is_some_and(|part| part == "BNSqlite") =>
+            {
+                Some(*span)
+            }
+            _ => None,
+        });
+        if let Some(sqlite_span) = imports_bnsqlite {
+            let imports_bndata = program.items.iter().any(|item| match item {
+                Item::Import { path, .. } => path.first().is_some_and(|part| part == "BNData"),
+                _ => false,
+            });
+            if !imports_bndata {
+                return Err(error(
+                    DiagId::BNSQLITE_REQUIRES_BNDATA,
+                    "BNSqlite requires BNData to represent query results",
+                    sqlite_span,
+                ));
+            }
+        }
         for item in &program.items {
             match item {
                 Item::Import { path, alias, span } => {

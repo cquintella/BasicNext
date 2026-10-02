@@ -361,7 +361,7 @@ pub(crate) fn unsupported_call_detail(module: &Module, name: &str) -> String {
     }
     format!(
         "calls to user-defined function '{name}' are unavailable in the LLVM backend; \
-         function calls are not supported by this build target yet (use 'bn run' \
+         function calls are not supported by this build target yet (use 'bni run' \
          or inline the call)"
     )
 }
@@ -530,6 +530,53 @@ pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a 
                 | "MlDsaKeypair"
                 | "MlDsaSign"
                 | "MlDsaVerify"
+        ))
+    .then_some(method)
+}
+
+/// True when `ty` is `BNSqlite.Connection` from a module this program imports.
+pub(crate) fn is_bnsqlite_connection_type(module: &Module, ty: &Type) -> bool {
+    matches!(
+        ty,
+        Type::ImportedNamed {
+            module: module_id,
+            name,
+        } if name == "Connection"
+            && module
+                .bnsqlite_providers
+                .contains(&bn_ir::ModuleId::from(*module_id))
+    )
+}
+
+/// True when `ty` carries a `BNSqlite.Connection`, either directly or inside an
+/// `OR Error` alternative.
+pub(crate) fn carries_bnsqlite_connection(module: &Module, ty: &Type) -> bool {
+    match ty {
+        Type::Alternative(alternatives) => alternatives
+            .iter()
+            .any(|alternative| is_bnsqlite_connection_type(module, alternative)),
+        other => is_bnsqlite_connection_type(module, other),
+    }
+}
+
+/// The `BNSqlite` member `name` selects, if this module imports `BNSqlite` and
+/// the callee is part of the supported surface.
+pub(crate) fn bnsqlite_method<'a>(module: &Module, name: &'a str) -> Option<&'a str> {
+    let method = name.rsplit('.').next()?;
+    (!module.bnsqlite_providers.is_empty()
+        && matches!(
+            method,
+            "Open"
+                | "OpenReadOnly"
+                | "OpenExisting"
+                | "Exec"
+                | "Query"
+                | "Begin"
+                | "Commit"
+                | "Rollback"
+                | "Changes"
+                | "LastInsertRowId"
+                | "Close"
         ))
     .then_some(method)
 }

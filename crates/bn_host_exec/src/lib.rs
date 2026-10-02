@@ -14,6 +14,7 @@
 use std::{
     io::Read,
     process::{Command, Stdio},
+    sync::mpsc,
     thread,
     time::{Duration, Instant},
 };
@@ -88,12 +89,16 @@ impl Failure {
     }
 }
 
+#[derive(Debug, Default)]
+struct StreamCapture {
+    bytes: Vec<u8>,
+    overflow: bool,
+}
+
 /// Drains a captured stream. Keeps reading past the ceiling so the child
 /// cannot block on a full pipe, but discards the bytes and reports overflow
-/// through a sentinel length (`capture_limit + 1`), which [`run`] maps to
-/// [`EXEC_CAPTURE_LIMIT`]. `Error` has no stream fields, so partial output is
-/// intentionally dropped (D-H1-02).
-fn read_pipe<R: Read>(mut pipe: R, capture_limit: usize) -> Vec<u8> {
+/// through [`StreamCapture::overflow`]. Partial output is dropped on overflow.
+fn read_pipe<R: Read>(mut pipe: R, capture_limit: usize) -> StreamCapture {
     let mut bytes = Vec::new();
     let mut chunk = [0_u8; 8192];
     let mut total = 0_usize;
@@ -116,11 +121,11 @@ fn read_pipe<R: Read>(mut pipe: R, capture_limit: usize) -> Vec<u8> {
             }
         }
     }
-    if exceeded || total > capture_limit {
+    let overflow = exceeded || total > capture_limit;
+    if overflow {
         bytes.clear();
-        bytes.resize(capture_limit.saturating_add(1), 0);
     }
-    bytes
+    StreamCapture { bytes, overflow }
 }
 
 /// Runs `program` with `args` under `policy`.
@@ -184,8 +189,28 @@ fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, 
     let capture_limit = policy.capture_limit;
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
-    let out_thread = thread::spawn(move || stdout.map(|pipe| read_pipe(pipe, capture_limit)));
-    let err_thread = thread::spawn(move || stderr.map(|pipe| read_pipe(pipe, capture_limit)));
+
+    let (out_tx, out_rx) = mpsc::channel();
+    let (err_tx, err_rx) = mpsc::channel();
+
+    if let Some(pipe) = stdout {
+        thread::spawn(move || {
+            let res = read_pipe(pipe, capture_limit);
+            let _ = out_tx.send(res);
+        });
+    } else {
+        let _ = out_tx.send(StreamCapture::default());
+    }
+
+    if let Some(pipe) = stderr {
+        thread::spawn(move || {
+            let res = read_pipe(pipe, capture_limit);
+            let _ = err_tx.send(res);
+        });
+    } else {
+        let _ = err_tx.send(StreamCapture::default());
+    }
+
     let deadline = Instant::now() + policy.timeout;
     let status = loop {
         match child.try_wait() {
@@ -193,8 +218,8 @@ fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, 
             Ok(None) if Instant::now() >= deadline => {
                 let _ = child.kill();
                 let _ = child.wait();
-                let _ = out_thread.join();
-                let _ = err_thread.join();
+                // Return immediately without waiting for reader threads to prevent deadlock
+                // if background grandchildren inherited pipe file descriptors.
                 return Err(Failure::new(
                     EXEC_TIMEOUT,
                     format!(
@@ -207,22 +232,29 @@ fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, 
             Err(error) => return Err(Failure::new(EXEC_WAIT_FAILED, error.to_string())),
         }
     };
-    let stdout = out_thread.join().ok().flatten().unwrap_or_default();
-    let stderr = err_thread.join().ok().flatten().unwrap_or_default();
+
+    // Bounded timeout for pipe drain in case background grandchildren hold descriptors open.
+    let stdout = out_rx
+        .recv_timeout(Duration::from_millis(500))
+        .unwrap_or_default();
+    let stderr = err_rx
+        .recv_timeout(Duration::from_millis(500))
+        .unwrap_or_default();
+
     // D-H1-02: count bytes before UTF-8 validation; overflow is a stable Error, not truncation.
-    if stdout.len() > capture_limit || stderr.len() > capture_limit {
+    if stdout.overflow || stderr.overflow {
         return Err(Failure::new(
             EXEC_CAPTURE_LIMIT,
             format!("a stream wrote more than the {capture_limit} bytes captured per stream"),
         ));
     }
-    let Ok(stdout) = String::from_utf8(stdout) else {
+    let Ok(stdout) = String::from_utf8(stdout.bytes) else {
         return Err(Failure::new(
             EXEC_INVALID_UTF8,
             "the program's stdout is not valid UTF-8",
         ));
     };
-    let Ok(stderr) = String::from_utf8(stderr) else {
+    let Ok(stderr) = String::from_utf8(stderr.bytes) else {
         return Err(Failure::new(
             EXEC_INVALID_UTF8,
             "the program's stderr is not valid UTF-8",
@@ -313,5 +345,23 @@ mod tests {
             run("/bin/sh", &["-c", "sleep 5"], &slow).unwrap_err().code,
             EXEC_TIMEOUT
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn background_grandchild_pipe_does_not_deadlock_execution() {
+        let fast = Policy {
+            timeout: Duration::from_secs(3),
+            ..policy()
+        };
+        let start = Instant::now();
+        let res = run(
+            "/bin/sh",
+            &["-c", "(sleep 5 >/dev/null 2>&1 &) && printf finished"],
+            &fast,
+        )
+        .unwrap();
+        assert_eq!(res.stdout, "finished");
+        assert!(start.elapsed() < Duration::from_secs(2));
     }
 }

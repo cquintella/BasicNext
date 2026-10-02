@@ -54,6 +54,14 @@ pub(crate) fn set_error_report(
     });
 }
 
+#[must_use]
+pub fn take_error_report() -> (i32, String, String, String) {
+    LAST_ERROR.with(|slot| {
+        let report = std::mem::take(&mut *slot.borrow_mut());
+        (report.code, report.operation, report.message, report.cause)
+    })
+}
+
 /// One native `Error`'s fields: its code and owned NUL-terminated texts.
 #[repr(C)]
 struct ErrorRecord {

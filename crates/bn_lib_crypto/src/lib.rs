@@ -28,7 +28,7 @@ pub const NAME: &str = "BNCrypto";
 /// Interpreter-side owner of `BNCrypto.Bytes` buffers. Compiled programs use
 /// the parallel table in `bn_rt::crypto`; neither observes the other, and both
 /// hand out opaque `u64` handles.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct CryptoProvider {
     buffers: HashMap<u64, Vec<u8>>,
     next: u64,

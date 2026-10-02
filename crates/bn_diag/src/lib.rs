@@ -86,6 +86,7 @@ diagnostic_registry! {
     LEXICAL { code: "E0001", fluent: "lexical-error", severity: Error, schema: LEXICAL },
     PARSE { code: "E0100", fluent: "parse-error", severity: Error, schema: PARSE },
     PARSE_RULE { code: "E0101", fluent: "parse-rule", severity: Error, schema: PARSE_RULE },
+    BNSQLITE_REQUIRES_BNDATA { code: "E0450", fluent: "bnsqlite-requires-bndata", severity: Error, schema: DETAIL },
     TYPE_MISMATCH { code: "TYPE_MISMATCH", fluent: "type-mismatch", severity: Error, schema: TYPE_MISMATCH },
     NUMERIC_OVERFLOW { code: "NUMERIC_OVERFLOW", fluent: "numeric-overflow", severity: Error, schema: OPERATION },
     INVALID_IR { code: "INVALID_IR", fluent: "invalid-ir", severity: Error, schema: DETAIL },
@@ -1082,7 +1083,7 @@ fn substitute(pattern: &str, args: &[(String, DiagnosticValue)]) -> Result<Strin
     Ok(output)
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct DiagnosticSink {
     specs: Vec<DiagnosticSpec>,
     levels: HashMap<DiagId, Level>,

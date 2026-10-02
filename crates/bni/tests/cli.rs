@@ -67,6 +67,36 @@ fn increment_expressions_yield_new_value_prefix_and_old_value_postfix() {
 }
 
 #[test]
+fn implicit_run_executes_file_directly() {
+    let explicit = bni()
+        .args(["run", "examples/hello.bn"])
+        .output()
+        .expect("run bni explicit");
+    let implicit = bni()
+        .args(["examples/hello.bn"])
+        .output()
+        .expect("run bni implicit");
+    assert_eq!(explicit.status.code(), Some(0));
+    assert_eq!(implicit.status.code(), Some(0));
+    assert_eq!(explicit.stdout, implicit.stdout);
+}
+
+#[test]
+fn implicit_run_passes_program_arguments() {
+    let explicit = bni()
+        .args(["run", "examples/hello.bn", "--", "alpha", "beta"])
+        .output()
+        .expect("run bni explicit with args");
+    let implicit = bni()
+        .args(["examples/hello.bn", "--", "alpha", "beta"])
+        .output()
+        .expect("run bni implicit with args");
+    assert_eq!(explicit.status.code(), Some(0));
+    assert_eq!(implicit.status.code(), Some(0));
+    assert_eq!(explicit.stdout, implicit.stdout);
+}
+
+#[test]
 fn eval_json_owns_both_process_channels_even_with_verbosity() {
     let output = bni()
         .args(["eval", "-vv", "--format", "json", "PRINT 1"])

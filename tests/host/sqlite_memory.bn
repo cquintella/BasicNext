@@ -1,0 +1,50 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT BNData AS Data
+IMPORT BNSqlite AS Sqlite
+
+FUNCTION Start() AS INTEGER
+    // In-memory connection retains schema and rows across separate statements
+    LET conn AS Sqlite.Connection OR Error = Sqlite.Open(":memory:")
+    IF conn IS Error THEN
+        PRINT "OPEN_FAILED:", conn.Code
+        RETURN 1
+    END IF
+
+    LET res AS VOID OR Error = conn.Exec("CREATE TABLE mem_kv (k TEXT PRIMARY KEY, v INT);")
+    IF res IS Error THEN
+        PRINT "EXEC_FAILED:", res.Code
+        RETURN 1
+    END IF
+
+    res = conn.Exec("INSERT INTO mem_kv VALUES ('counter', 10);")
+    res = conn.Exec("UPDATE mem_kv SET v = v + 5 WHERE k = 'counter';")
+
+    LET df1 AS Data.DataFrame OR Error = conn.Query("SELECT v FROM mem_kv WHERE k = 'counter';")
+    IF NOT (df1 IS Error) THEN
+        LET val1 AS INTEGER OR NA OR Error = df1.GetInteger(0, "v")
+        PRINT "MEM_VAL_1:", val1
+    END IF
+
+    // Second connection to :memory: is completely independent
+    LET conn2 AS Sqlite.Connection OR Error = Sqlite.Open(":memory:")
+    IF conn2 IS Error THEN
+        PRINT "OPEN2_FAILED:", conn2.Code
+        RETURN 1
+    END IF
+
+    // Table mem_kv does not exist in conn2 -> SCHEMA_ERROR (9)
+    LET df2 AS Data.DataFrame OR Error = conn2.Query("SELECT v FROM mem_kv WHERE k = 'counter';")
+    IF df2 IS Error THEN
+        PRINT "ISOLATION_VERIFIED:", df2.Code = Sqlite.SCHEMA_ERROR
+    END IF
+
+    res = conn2.Close()
+    res = conn.Close()
+
+    PRINT "MEMORY_COMPLETE"
+    RETURN 0
+END FUNCTION

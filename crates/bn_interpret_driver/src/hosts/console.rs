@@ -25,6 +25,7 @@ use bn_types::IntegerType;
 
 pub const NAME: &str = "Console";
 
+#[derive(Debug, Default)]
 pub struct ConsoleProvider;
 
 impl Provider for ConsoleProvider {

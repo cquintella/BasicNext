@@ -12,9 +12,5 @@ path = "src/lib.rs"
 [dependencies]
 bn_source = { path = "../bn_source" }
 
-[lints.rust]
-unsafe_code = "deny"
-
-[lints.clippy]
-all = "warn"
-pedantic = "warn"
+[lints]
+workspace = true

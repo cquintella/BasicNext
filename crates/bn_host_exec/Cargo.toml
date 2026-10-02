@@ -10,9 +10,5 @@ publish = false
 [lib]
 path = "src/lib.rs"
 
-[lints.rust]
-unsafe_code = "deny"
-
-[lints.clippy]
-all = "warn"
-pedantic = "warn"
+[lints]
+workspace = true

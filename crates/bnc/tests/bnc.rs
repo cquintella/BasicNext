@@ -26,6 +26,18 @@ fn bnc_help_succeeds() {
 }
 
 #[test]
+fn bnc_help_after_entry_reports_help() {
+    let output = bnc()
+        .args(["entry.bn", "--help"])
+        .output()
+        .expect("run bnc entry.bn --help");
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("help is available via --help"));
+    assert!(!stderr.contains("bni --help"));
+}
+
+#[test]
 fn bnc_version_advertises_package_version() {
     let output = bnc().arg("--version").output().expect("run bnc --version");
     assert!(output.status.success());

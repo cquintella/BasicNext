@@ -14,9 +14,5 @@ bn_diag = { path = "../bn_diag" }
 bn_source = { path = "../bn_source" }
 bn_types = { path = "../bn_types" }
 
-[lints.rust]
-unsafe_code = "deny"
-
-[lints.clippy]
-all = "warn"
-pedantic = "warn"
+[lints]
+workspace = true

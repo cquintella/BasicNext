@@ -24,7 +24,7 @@ use reduce::reduce_vector;
 
 pub const NAME: &str = "BNMath";
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct MathProvider;
 
 impl Provider for MathProvider {

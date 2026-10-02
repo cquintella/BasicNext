@@ -112,6 +112,17 @@ declare i32 @bn_rt_crypto_kem_decapsulate(i64, i64, ptr)
 declare i32 @bn_rt_crypto_dsa_keypair(i64, ptr)
 declare i32 @bn_rt_crypto_dsa_sign(i64, i64, ptr)
 declare i32 @bn_rt_crypto_dsa_verify(i64, i64, i64)
+declare i32 @bn_rt_sqlite_open(ptr, ptr)
+declare i32 @bn_rt_sqlite_open_read_only(ptr, ptr)
+declare i32 @bn_rt_sqlite_open_existing(ptr, ptr)
+declare i32 @bn_rt_sqlite_close(i64)
+declare i32 @bn_rt_sqlite_exec(i64, ptr)
+declare i32 @bn_rt_sqlite_query(i64, ptr, ptr)
+declare i32 @bn_rt_sqlite_begin(i64)
+declare i32 @bn_rt_sqlite_commit(i64)
+declare i32 @bn_rt_sqlite_rollback(i64)
+declare i32 @bn_rt_sqlite_changes(i64)
+declare i64 @bn_rt_sqlite_last_insert_rowid(i64)
 declare i64 @bn_rt_json_object()
 declare i32 @bn_rt_json_parse(ptr, ptr)
 declare ptr @bn_rt_json_stringify(i64, ptr)
@@ -2025,7 +2036,8 @@ fn emit_checked_i32_sge_zero(
 }
 
 pub(crate) fn extend_to_i32(text: &mut String, value: ValueId, ty: &Type) -> String {
-    match llvm_type(ty).expect("validated integer extension type") {
+    let llvm_ty = llvm_type(ty).unwrap_or("i32");
+    match llvm_ty {
         "i32" => format!("%v{}", value.0),
         "i64" => {
             let temp = format!("bnrti32{}", value.0);

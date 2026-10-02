@@ -53,15 +53,15 @@ pub const MAX_COLUMN_NAME_LENGTH: usize = 256;
 
 /// Borrowed input view. Names and values are copied during `create`.
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct BNDataFrameColumnView {
     pub name: *const c_char,
     pub values: *const BNValue,
     pub length: u32,
 }
 
-#[derive(Clone, PartialEq)]
-enum StoredValue {
+#[derive(Clone, Debug, PartialEq)]
+pub enum StoredValue {
     Boolean(bool),
     Integer(i64),
     Float(f64),
@@ -74,6 +74,21 @@ enum StoredValue {
 }
 
 type Frame = DataFrameResource<StoredValue>;
+
+pub(crate) fn register_frame_columns(
+    columns: Vec<DataFrameColumn<StoredValue>>,
+) -> BNDataFrameHandle {
+    let handle = next_handle();
+    with_frames(|frames| {
+        frames.insert(handle, DataFrameResource { columns });
+    });
+    handle
+}
+
+#[must_use]
+pub fn get_frame_columns(handle: BNDataFrameHandle) -> Option<Vec<DataFrameColumn<StoredValue>>> {
+    with_frames(|frames| frames.get(&handle).map(|f| f.columns.clone()))
+}
 
 fn render_value(value: &StoredValue) -> String {
     match value {

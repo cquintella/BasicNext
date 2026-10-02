@@ -49,6 +49,8 @@ pub mod net;
 mod net_abi;
 mod policy;
 pub mod secure_fs;
+pub mod sqlite_abi;
+pub mod sqlite_error;
 mod stats;
 mod terminal;
 mod text_abi;
@@ -72,6 +74,7 @@ pub use dispatch_abi::*;
 pub use dispatch_sync_abi::*;
 pub use error_abi::{
     bn_rt_error_code, bn_rt_error_field, bn_rt_error_print, bn_rt_error_take, bn_rt_error_wrap,
+    take_error_report,
 };
 pub(crate) use error_abi::{set_error, set_error_report};
 pub use exec::*;

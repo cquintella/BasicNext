@@ -27,7 +27,7 @@ use bn_rt::json_error::JsonFailure;
 
 pub const NAME: &str = "BNJson";
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct JsonProvider;
 
 impl JsonProvider {

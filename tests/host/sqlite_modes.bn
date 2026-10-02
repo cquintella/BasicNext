@@ -1,0 +1,79 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT BNData AS Data
+IMPORT BNSqlite AS Sqlite
+IMPORT HOST.FileSystem AS FS
+
+FUNCTION Start() AS INTEGER
+    LET testPath AS STRING = "sqlite_modes_test.db"
+
+    // 1. OpenExisting on missing file fails with FILE_NOT_FOUND (1)
+    LET ex1 AS BOOLEAN OR Error = FS.Exists(testPath)
+    IF NOT (ex1 IS Error) THEN
+        IF ex1 THEN
+            LET rm0 AS VOID OR Error = FS.DeleteFile(testPath)
+            IF rm0 IS Error THEN
+                PRINT "DELETE_FAILED"
+            END IF
+        END IF
+    END IF
+
+    LET missingConn AS Sqlite.Connection OR Error = Sqlite.OpenExisting(testPath)
+    IF missingConn IS Error THEN
+        PRINT "OPEN_EXISTING_MISSING:", missingConn.Code, missingConn.Operation
+    END IF
+
+    // 2. Open creates file
+    LET conn1 AS Sqlite.Connection OR Error = Sqlite.Open(testPath)
+    IF conn1 IS Error THEN
+        PRINT "OPEN_FAILED:", conn1.Code
+        RETURN 1
+    END IF
+
+    LET res AS VOID OR Error = conn1.Exec("CREATE TABLE config (k TEXT, v TEXT);")
+    res = conn1.Exec("INSERT INTO config VALUES ('version', '1.0');")
+    res = conn1.Close()
+    PRINT "OPEN_AND_POPULATED"
+
+    // 3. OpenExisting on existing file succeeds
+    LET existConn AS Sqlite.Connection OR Error = Sqlite.OpenExisting(testPath)
+    IF existConn IS Error THEN
+        PRINT "OPEN_EXISTING_FAILED:", existConn.Code
+        RETURN 1
+    END IF
+    LET qExist AS Data.DataFrame OR Error = existConn.Query("SELECT k, v FROM config;")
+    IF NOT (qExist IS Error) THEN
+        PRINT "EXIST_ROWS:", qExist.RowCount()
+    END IF
+    res = existConn.Close()
+
+    // 4. OpenReadOnly succeeds for query, fails for write
+    LET roConn AS Sqlite.Connection OR Error = Sqlite.OpenReadOnly(testPath)
+    IF roConn IS Error THEN
+        PRINT "OPEN_RO_FAILED:", roConn.Code
+        RETURN 1
+    END IF
+    LET qRo AS Data.DataFrame OR Error = roConn.Query("SELECT k, v FROM config;")
+    IF NOT (qRo IS Error) THEN
+        PRINT "RO_QUERY_ROWS:", qRo.RowCount()
+    END IF
+    LET wRo AS VOID OR Error = roConn.Exec("INSERT INTO config VALUES ('x', 'y');")
+    IF wRo IS Error THEN
+        PRINT "RO_WRITE_REJECTED:", wRo.Code, wRo.Operation
+    END IF
+    res = roConn.Close()
+
+    // Cleanup
+    LET ex2 AS BOOLEAN OR Error = FS.Exists(testPath)
+    IF NOT (ex2 IS Error) THEN
+        IF ex2 THEN
+            res = FS.DeleteFile(testPath)
+        END IF
+    END IF
+
+    PRINT "MODES_COMPLETE"
+    RETURN 0
+END FUNCTION

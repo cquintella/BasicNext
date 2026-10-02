@@ -267,6 +267,12 @@ pub(crate) fn call_instruction_supported(
                 }
             }
         }
+        Some(name) if bnsqlite_method(module, name).is_some() => sqlite_call_supported(
+            bnsqlite_method(module, name).unwrap_or(name),
+            arguments,
+            values,
+            module,
+        ),
         Some(name) if is_bndata_dataframe_call(module, name) => {
             matches!(
                 bndata_dataframe_method(name),

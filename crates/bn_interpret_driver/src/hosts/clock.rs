@@ -22,6 +22,7 @@ use bn_types::IntegerType;
 
 pub const NAME: &str = "Clock";
 
+#[derive(Debug, Default)]
 pub struct ClockProvider;
 
 impl Provider for ClockProvider {

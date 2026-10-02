@@ -1,0 +1,49 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT BNData AS Data
+IMPORT BNSqlite AS Sqlite
+
+FUNCTION Start() AS INTEGER
+    // 1. Path traversal rejection -> POLICY_DENIED (3)
+    LET escapeConn AS Sqlite.Connection OR Error = Sqlite.Open("../escape.db")
+    IF escapeConn IS Error THEN
+        PRINT "PATH_TRAVERSAL_REJECTED:", escapeConn.Code = Sqlite.POLICY_DENIED
+    END IF
+
+    LET escapeRo AS Sqlite.Connection OR Error = Sqlite.OpenReadOnly("../escape.db")
+    IF escapeRo IS Error THEN
+        PRINT "RO_TRAVERSAL_REJECTED:", escapeRo.Code = Sqlite.POLICY_DENIED
+    END IF
+
+    LET escapeEx AS Sqlite.Connection OR Error = Sqlite.OpenExisting("../escape.db")
+    IF escapeEx IS Error THEN
+        PRINT "EX_TRAVERSAL_REJECTED:", escapeEx.Code = Sqlite.POLICY_DENIED
+    END IF
+
+    // 2. Multi-statement injection rejection -> MISUSE (12)
+    LET conn AS Sqlite.Connection OR Error = Sqlite.Open(":memory:")
+    IF conn IS Error THEN
+        PRINT "OPEN_FAILED:", conn.Code
+        RETURN 1
+    END IF
+
+    LET multiExec AS VOID OR Error = conn.Exec("CREATE TABLE sec (id INT); DROP TABLE sec;")
+    IF multiExec IS Error THEN
+        PRINT "MULTI_EXEC_REJECTED:", multiExec.Code = Sqlite.MISUSE
+    END IF
+
+    LET multiQuery AS Data.DataFrame OR Error = conn.Query("SELECT 1; SELECT 2;")
+    IF multiQuery IS Error THEN
+        PRINT "MULTI_QUERY_REJECTED:", multiQuery.Code = Sqlite.MISUSE
+    END IF
+
+    LET res AS VOID OR Error = conn.Close()
+    IF res IS Error THEN
+        PRINT "CLOSE_FAILED"
+    END IF
+    PRINT "SECURITY_COMPLETE"
+    RETURN 0
+END FUNCTION

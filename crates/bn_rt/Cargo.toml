@@ -10,12 +10,8 @@ publish = false
 [lib]
 crate-type = ["rlib", "staticlib"]
 
-[lints.rust]
-unsafe_code = "deny"
-
-[lints.clippy]
-all = "warn"
-pedantic = "warn"
+[lints]
+workspace = true
 
 [dependencies]
 bn_host_exec = { path = "../bn_host_exec" }
@@ -36,3 +32,4 @@ hmac = "0.12"
 sha2 = "0.10"
 subtle = "2.6"
 socket2 = "0.6"
+rusqlite = { version = "0.33", features = ["bundled"] }

@@ -45,6 +45,7 @@ type DataFrameResource = crate::dataframe::DataFrameResource<Value>;
 
 pub const NAME: &str = "BNData";
 
+#[derive(Debug)]
 pub struct DataProvider {
     frames: HashMap<u64, DataFrameResource>,
     next: u64,
@@ -108,9 +109,20 @@ impl Provider for DataProvider {
             ))
         })
     }
+
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
 }
 
 impl DataProvider {
+    pub fn insert_frame(&mut self, frame: DataFrameResource) -> u64 {
+        let id = self.next;
+        self.next += 1;
+        self.frames.insert(id, frame);
+        id
+    }
+
     fn data_call(
         &mut self,
         core: &mut dyn CoreContext,

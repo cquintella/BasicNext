@@ -30,6 +30,7 @@ pub enum StandardModule {
     BNJson,
     BNDispatch,
     BNCrypto,
+    BNSqlite,
 }
 
 /// Where an effective import root came from. Logged per root and per resolved
@@ -464,6 +465,7 @@ fn standard_module(path: &Path) -> Option<StandardModule> {
         Some("BNJson.bn") if in_bn => Some(StandardModule::BNJson),
         Some("BNDispatch.bn") if in_bn => Some(StandardModule::BNDispatch),
         Some("BNCrypto.bn") if in_bn => Some(StandardModule::BNCrypto),
+        Some("BNSqlite.bn") if in_bn => Some(StandardModule::BNSqlite),
         _ => None,
     }
 }

@@ -60,11 +60,10 @@ pub(crate) fn lower_bndata_add_integer_column(
     let receiver = arguments[0];
     let name = arguments[1];
     let vector = arguments[2];
-    let Type::Vector { dimensions, .. } = analysis.values.get(&vector).expect("validated vector")
-    else {
-        unreachable!("validated integer vector");
+    let length = match analysis.values.get(&vector) {
+        Some(Type::Vector { dimensions, .. }) => dimensions.first().copied().unwrap_or(0),
+        _ => 0,
     };
-    let length = dimensions[0];
     let _ = writeln!(
         text,
         "  %dfaddhandle{dest} = ptrtoint ptr %v{} to i64",
@@ -155,11 +154,10 @@ pub(crate) fn lower_bndata_add_simple_column(
     let receiver = arguments[0];
     let name = arguments[1];
     let vector = arguments[2];
-    let Type::Vector { dimensions, .. } = analysis.values.get(&vector).expect("validated vector")
-    else {
-        unreachable!("validated DataFrame column vector");
+    let length = match analysis.values.get(&vector) {
+        Some(Type::Vector { dimensions, .. }) => dimensions.first().copied().unwrap_or(0),
+        _ => 0,
     };
-    let length = dimensions[0];
     let _ = writeln!(
         text,
         "  %dfsimplehandle{dest} = ptrtoint ptr %v{} to i64",

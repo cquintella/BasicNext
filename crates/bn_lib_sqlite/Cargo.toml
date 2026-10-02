@@ -1,0 +1,24 @@
+[package]
+name = "bn_lib_sqlite"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.97"
+description = "Basic Next BNSqlite library provider"
+license.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+bn_diag = { path = "../bn_diag" }
+bn_interp = { path = "../bn_interp" }
+bn_lib_data = { path = "../bn_lib_data" }
+bn_rt = { path = "../bn_rt" }
+bn_runtime = { path = "../bn_runtime" }
+bn_source = { path = "../bn_source" }
+bn_types = { path = "../bn_types" }
+bn_value = { path = "../bn_value" }

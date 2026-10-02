@@ -6,7 +6,16 @@ use lsp_types::CompletionItemKind;
 
 use bn_frontend::token::{TokenKind, reserved_words};
 
-const STANDARD_MODULES: &[&str] = &["BNData", "BNDispatch", "BNJson", "BNLog", "BNMath", "BNWeb"];
+const STANDARD_MODULES: &[&str] = &[
+    "BNCrypto",
+    "BNData",
+    "BNDispatch",
+    "BNJson",
+    "BNLog",
+    "BNMath",
+    "BNSqlite",
+    "BNWeb",
+];
 
 pub(super) fn completion_items(
     source: &SourceFile,

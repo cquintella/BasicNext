@@ -615,3 +615,28 @@ fn lower_module_emits_bn_rt_clock_and_console_calls() {
     assert!(llvm.contains("call i32 @bn_rt_console_cls()"), "{llvm}");
     assert!(llvm.contains("trap_bn_rt"), "{llvm}");
 }
+
+#[test]
+fn scalar_default_lowers_optional_scalar_tuples_without_panicking() {
+    let opt_int_ty = Type::Alternative(vec![Type::Integer(IntegerType::Int32), Type::Null]);
+    let module = start_module(vec![BasicBlock {
+        id: BlockId(0),
+        instructions: vec![Instruction::Default {
+            destination: ValueId(0),
+            ty: opt_int_ty,
+            dimensions: Vec::new(),
+            dynamic_dimensions: Vec::new(),
+            span: span(),
+        }],
+        terminator: Terminator::Return { value: None },
+    }]);
+    let llvm = lower_module(&module).expect("lower optional integer default");
+    assert!(
+        llvm.contains("insertvalue { i1, i32 } undef, i1 false, 0"),
+        "{llvm}"
+    );
+    assert!(
+        llvm.contains("insertvalue { i1, i32 } %optdef0_0, i32 0, 1"),
+        "{llvm}"
+    );
+}
