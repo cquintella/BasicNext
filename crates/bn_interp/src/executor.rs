@@ -7,6 +7,9 @@ pub use self::helpers::numeric_overflow;
 #[allow(unused_imports)]
 use self::helpers::{integer_from_count, integer_from_u64, lifecycle_dispatch, require_console};
 
+mod arc_verifier;
+mod debug_view;
+mod ownership;
 mod part1;
 mod part10;
 mod part11;
@@ -284,6 +287,16 @@ pub(super) fn coerce(value: Value, ty: &Type, span: Span) -> Result<Value, Diagn
     match (&value, ty) {
         (Value::Integer(number, _), Type::Integer(_)) => checked_integer(Some(*number), ty, span),
         (Value::Float(number, _), Type::Float(_)) => Ok(float_value(*number, float_kind(ty))),
+        // A number stored as `INT64 OR Error` becomes that alternative's
+        // width: `IS INT64` must hold (0.6.md, IS tests a declared
+        // alternative), as it does in compiled code. Only a single numeric
+        // alternative of the value's class is unambiguous; an exact width
+        // match stays as it is.
+        // TODO (normative gap): which width a literal takes in `FLOAT32 OR
+        // FLOAT64` is unspecified, and the backends differ.
+        (_, Type::Alternative(types)) if let Some(target) = widened_alternative(&value, types) => {
+            coerce(value.clone(), target, span)
+        }
         (_, Type::Alternative(types)) if types.iter().any(|ty| value_matches_type(&value, ty)) => {
             Ok(value)
         }
@@ -364,6 +377,35 @@ pub(super) fn coerce(value: Value, ty: &Type, span: Span) -> Result<Value, Diagn
             "IR coercion",
             span,
         )),
+    }
+}
+
+/// The numeric alternative a number must widen or narrow to: the only one of
+/// its class (`INT64` in `INT64 OR Error`), when none has its exact width.
+fn widened_alternative<'a>(value: &Value, types: &'a [Type]) -> Option<&'a Type> {
+    if !matches!(value, Value::Integer(..) | Value::Float(..))
+        || types.iter().any(|ty| same_numeric_kind(value, ty))
+    {
+        return None;
+    }
+    let mut numeric = types.iter().filter(|ty| {
+        matches!(
+            (value, ty),
+            (Value::Integer(..), Type::Integer(_)) | (Value::Float(..), Type::Float(_))
+        )
+    });
+    match (numeric.next(), numeric.next()) {
+        (Some(target), None) => Some(target),
+        _ => None,
+    }
+}
+
+/// Whether `value` already has exactly the numeric type `ty` (width included).
+fn same_numeric_kind(value: &Value, ty: &Type) -> bool {
+    match (value, ty) {
+        (Value::Integer(_, kind), Type::Integer(expected)) => kind == expected,
+        (Value::Float(_, kind), Type::Float(expected)) => kind == expected,
+        _ => false,
     }
 }
 

@@ -18,6 +18,7 @@ pub enum Emit {
     Ast,
     TypedAst,
     Ir,
+    Llvm,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -230,7 +231,8 @@ pub fn parse_options(
                     Some("ast") => Emit::Ast,
                     Some("typed-ast") => Emit::TypedAst,
                     Some("ir") => Emit::Ir,
-                    _ => return Err("--emit expects tokens, ast, typed-ast, or ir".into()),
+                    Some("llvm" | "llvm-ir") => Emit::Llvm,
+                    _ => return Err("--emit expects tokens, ast, typed-ast, ir, or llvm".into()),
                 });
             }
             "-o" | "--output" => {

@@ -1,29 +1,45 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// User function signatures, parameter spills, direct calls with argument
+// coercion, and virtual method dispatch by runtime class name.
 #![allow(clippy::wildcard_imports, clippy::too_many_lines)]
 use super::*;
+use crate::{
+    ir::{
+        CastOp, ICmpCond, InstSink, LlvmFunction, LlvmInst, LlvmOperand,
+        LlvmType::{self, I1, I32, I64, Ptr, Void},
+    },
+    layout::{handle_result_ty, typed_llvm, vector_ty},
+};
+use runtime_abi::STR_EQ;
+
+/// A call argument: its LLVM type and operand.
+type Argument = (LlvmType, LlvmOperand);
 
 pub(crate) fn emit_user_signature(
     text: &mut String,
     function: &Function,
     analysis: &LoweringAnalysis<'_>,
-) -> Result<(), String> {
+) {
     let ret = function_return_llvm(&function.return_type).expect("validated return type");
-    let mut params = Vec::new();
-    for (index, symbol) in function.parameters.iter().enumerate() {
-        let ty = parameter_type(function, *symbol, analysis).ok_or_else(|| {
-            format!(
-                "TARGET_UNSUPPORTED_TYPE: function '{}' parameter {index} has no LLVM type",
-                function.name
+    let params = (0..function.parameters.len())
+        .zip(&function.parameters)
+        .map(|(index, symbol)| {
+            (
+                typed_llvm(parameter_type(function, *symbol, analysis)),
+                format!("p{index}"),
             )
-        })?;
-        params.push(format!("{ty} %p{index}"));
-    }
-    let _ = writeln!(
-        text,
-        "\ndefine {ret} @{}({}) {{",
+        })
+        .collect();
+    let signature = LlvmFunction::new_definition(
         llvm_function_symbol(&function.name),
-        params.join(", ")
+        typed_llvm(ret),
+        params,
     );
-    Ok(())
+    let _ = writeln!(text, "\n{}", signature.header());
 }
 
 pub(crate) fn store_parameters(
@@ -36,39 +52,33 @@ pub(crate) fn store_parameters(
         let Some(&slot) = symbol_names.get(symbol) else {
             continue;
         };
-        let Some(ty) = parameter_type(function, *symbol, analysis) else {
-            continue;
-        };
-        let _ = writeln!(text, "  store {ty} %p{index}, ptr %s{slot}");
+        let incoming = format!("%p{index}");
+        // A vector argument is a copy: the callee owns its elements.
+        let storage = format!("%vstore{slot}");
+        let value = (analysis.symbols.get(symbol))
+            .and_then(|ty| vectors::emit_vector_copy(text, &storage, &incoming, ty));
+        text.emit(LlvmInst::store(
+            typed_llvm(parameter_type(function, *symbol, analysis)),
+            LlvmOperand::raw(value.unwrap_or(incoming)),
+            LlvmOperand::reg(format!("s{slot}")),
+        ));
     }
 }
 
+/// The LLVM type of a parameter: its symbol's type, else the type of a
+/// load or store of it, else `ptr` (object and `SELF` parameters may be
+/// unused in the body, e.g. `Animal.Speak`).
 fn parameter_type<'a>(
     function: &'a Function,
     symbol: SymbolId,
     analysis: &'a LoweringAnalysis<'a>,
-) -> Option<&'static str> {
+) -> &'static str {
     analysis
         .symbols
         .get(&symbol)
         .and_then(llvm_type)
-        .or_else(|| {
-            function
-                .blocks
-                .iter()
-                .flat_map(|block| &block.instructions)
-                .find_map(|instruction| match instruction {
-                    Instruction::Load {
-                        symbol: loaded, ty, ..
-                    } if *loaded == symbol => llvm_type(ty),
-                    Instruction::Store {
-                        symbol: stored, ty, ..
-                    } if *stored == symbol => llvm_type(ty),
-                    _ => None,
-                })
-        })
-        // Object/`SELF` parameters may be unused in the body (e.g. Animal.Speak).
-        .or(Some("ptr"))
+        .or_else(|| parameter_semantic_type(function, symbol).and_then(llvm_type))
+        .unwrap_or("ptr")
 }
 
 fn parameter_semantic_type(function: &Function, symbol: SymbolId) -> Option<&Type> {
@@ -87,6 +97,104 @@ fn parameter_semantic_type(function: &Function, symbol: SymbolId) -> Option<&Typ
         })
 }
 
+/// The operand passed for `argument` to a parameter of LLVM type
+/// `param_llvm`, converting the argument's representation where they differ.
+#[allow(clippy::too_many_arguments)]
+fn call_operand(
+    text: &mut String,
+    destination: ValueId,
+    argument: ValueId,
+    arg_ty: &Type,
+    param_ty: &Type,
+    param_llvm: &str,
+    analysis: &LoweringAnalysis<'_>,
+    state: &mut EmissionState,
+) -> LlvmOperand {
+    let reg = LlvmOperand::reg;
+    let arg_llvm = llvm_type(arg_ty);
+    let value = value_reg(argument);
+    // A union result carries the payload in field 2 and a message in field 1.
+    let union_payload = |text: &mut String, tag: &str| {
+        text.assign(
+            format!("{tag}raw"),
+            LlvmInst::extract(handle_result_ty(), value_reg(argument), 2),
+        );
+        reg(format!("{tag}raw"))
+    };
+    if param_llvm == "{ ptr, i32 }" && arg_llvm == Some("{ i1, ptr, i32 }") {
+        let tag = state.continuation_count;
+        state.continuation_count += 1;
+        let endpoint = LlvmType::struct_of([I1, Ptr, I32]);
+        text.assign(
+            format!("call_endpoint_ptr{tag}"),
+            LlvmInst::extract(endpoint.clone(), value.clone(), 1),
+        );
+        text.assign(
+            format!("call_endpoint_port{tag}"),
+            LlvmInst::extract(endpoint, value, 2),
+        );
+        text.assign(
+            format!("call_endpoint{tag}_0"),
+            LlvmInst::insert(
+                vector_ty(),
+                LlvmOperand::undef(),
+                Ptr,
+                reg(format!("call_endpoint_ptr{tag}")),
+                0,
+            ),
+        );
+        text.assign(
+            format!("call_endpoint{tag}"),
+            LlvmInst::insert(
+                vector_ty(),
+                reg(format!("call_endpoint{tag}_0")),
+                I32,
+                reg(format!("call_endpoint_port{tag}")),
+                1,
+            ),
+        );
+        return reg(format!("call_endpoint{tag}"));
+    }
+    if param_llvm == "i1" {
+        return LlvmOperand::raw(i1_operand(text, analysis, state, argument));
+    }
+    if param_llvm == "ptr" && arg_llvm == Some("ptr") {
+        return value;
+    }
+    if param_llvm == "ptr" && arg_llvm == Some("{ i1, ptr, i64 }") {
+        let tag = format!("callstr{}_{}", destination.0, argument.0);
+        text.assign(
+            format!("{tag}msg"),
+            LlvmInst::extract(handle_result_ty(), value, 1),
+        );
+        let raw = union_payload(text, &tag);
+        text.assign(
+            format!("{tag}payload"),
+            LlvmInst::cast(CastOp::IntToPtr, I64, raw, Ptr),
+        );
+        text.assign(
+            format!("{tag}hasmsg"),
+            LlvmInst::icmp(
+                ICmpCond::Ne,
+                Ptr,
+                reg(format!("{tag}msg")),
+                LlvmOperand::null(),
+            ),
+        );
+        text.assign(
+            tag.clone(),
+            LlvmInst::select(
+                reg(format!("{tag}hasmsg")),
+                Ptr,
+                reg(format!("{tag}msg")),
+                reg(format!("{tag}payload")),
+            ),
+        );
+        return reg(tag);
+    }
+    LlvmOperand::raw(coerce_to_type(text, argument, arg_ty, param_ty))
+}
+
 pub(crate) fn lower_user_call(
     text: &mut String,
     module: &Module,
@@ -103,108 +211,49 @@ pub(crate) fn lower_user_call(
         .iter()
         .find(|function| function.name == resolved)
         .unwrap_or_else(|| panic!("validated user function {resolved}"));
-    let ret = function_return_llvm(&callee.return_type).expect("validated user return type");
+    let ret =
+        typed_llvm(function_return_llvm(&callee.return_type).expect("validated user return type"));
     let mut args = Vec::with_capacity(arguments.len());
-    for (argument, param_symbol) in arguments.iter().zip(callee.parameters.iter()) {
+    for (index, (argument, param_symbol)) in arguments.iter().zip(&callee.parameters).enumerate() {
         let arg_ty = analysis
             .values
             .get(argument)
             .expect("validated call argument type");
-        let param_ty = parameter_semantic_type(callee, *param_symbol).unwrap_or(arg_ty);
+        // The type the signature declares (`emit_user_signature`): a parameter
+        // the callee never reads takes its declared type.
+        let declared = super::analysis::declared_parameter(module, resolved, index);
+        let param_ty = parameter_semantic_type(callee, *param_symbol)
+            .or(declared.as_ref())
+            .unwrap_or(arg_ty);
         if llvm_type(param_ty) == Some("{ i1, double }")
-            || llvm_type(arg_ty) == Some("{ i1, double }")
+            || (llvm_type(arg_ty) == Some("{ i1, double }")
+                && matches!(param_ty, Type::Float(_) | Type::FloatLiteral))
         {
             let temp = format!("callopt{}", argument.0);
-            let _ = writeln!(
-                text,
-                "  %{temp} = extractvalue {{ i1, double }} %v{}, 1",
-                argument.0
+            text.assign(
+                temp.clone(),
+                LlvmInst::extract(
+                    LlvmType::struct_of([I1, LlvmType::Double]),
+                    value_reg(*argument),
+                    1,
+                ),
             );
-            args.push(format!("double %{temp}"));
+            args.push((LlvmType::Double, LlvmOperand::reg(temp)));
             continue;
         }
         let param_llvm = llvm_type(param_ty).unwrap_or("ptr");
-        let operand = if param_llvm == "{ ptr, i32 }"
-            && llvm_type(arg_ty) == Some("{ i1, ptr, i32 }")
-        {
-            let tag = state.continuation_count;
-            state.continuation_count += 1;
-            let _ = writeln!(
-                text,
-                "  %call_endpoint_ptr{tag} = extractvalue {{ i1, ptr, i32 }} %v{}, 1",
-                argument.0
-            );
-            let _ = writeln!(
-                text,
-                "  %call_endpoint_port{tag} = extractvalue {{ i1, ptr, i32 }} %v{}, 2",
-                argument.0
-            );
-            let _ = writeln!(
-                text,
-                "  %call_endpoint{tag}_0 = insertvalue {{ ptr, i32 }} undef, ptr %call_endpoint_ptr{tag}, 0"
-            );
-            let _ = writeln!(
-                text,
-                "  %call_endpoint{tag} = insertvalue {{ ptr, i32 }} %call_endpoint{tag}_0, i32 %call_endpoint_port{tag}, 1"
-            );
-            format!("%call_endpoint{tag}")
-        } else if param_llvm == "i1" && llvm_type(arg_ty) == Some("{ i1, ptr, i64 }") {
-            let tag = format!("callbool{}_{}", destination.0, argument.0);
-            let _ = writeln!(
-                text,
-                "  %{tag}raw = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-                argument.0
-            );
-            let _ = writeln!(text, "  %{tag} = trunc i64 %{tag}raw to i1");
-            format!("%{tag}")
-        } else if param_llvm == "i1" {
-            i1_operand(text, analysis, state, *argument)
-        } else if param_llvm == "ptr" && llvm_type(arg_ty) == Some("ptr") {
-            format!("%v{}", argument.0)
-        } else if param_llvm == "ptr" && llvm_type(arg_ty) == Some("{ i1, ptr, i64 }") {
-            let tag = format!("callstr{}_{}", destination.0, argument.0);
-            let _ = writeln!(
-                text,
-                "  %{tag}msg = extractvalue {{ i1, ptr, i64 }} %v{}, 1",
-                argument.0
-            );
-            let _ = writeln!(
-                text,
-                "  %{tag}raw = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-                argument.0
-            );
-            let _ = writeln!(text, "  %{tag}payload = inttoptr i64 %{tag}raw to ptr");
-            let _ = writeln!(text, "  %{tag}hasmsg = icmp ne ptr %{tag}msg, null");
-            let _ = writeln!(
-                text,
-                "  %{tag} = select i1 %{tag}hasmsg, ptr %{tag}msg, ptr %{tag}payload"
-            );
-            format!("%{tag}")
-        } else if llvm_type(arg_ty) == Some("{ i1, ptr, i64 }")
-            && matches!(param_llvm, "i32" | "i64" | "i1" | "double")
-        {
-            let tag = format!("callunion{}_{}", destination.0, argument.0);
-            let _ = writeln!(
-                text,
-                "  %{tag}raw = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-                argument.0
-            );
-            if param_llvm == "double" {
-                let _ = writeln!(text, "  %{tag} = bitcast i64 %{tag}raw to double");
-            } else if param_llvm == "i1" {
-                let _ = writeln!(text, "  %{tag} = trunc i64 %{tag}raw to i1");
-            } else if param_llvm == "i32" {
-                let _ = writeln!(text, "  %{tag} = trunc i64 %{tag}raw to i32");
-            } else {
-                let _ = writeln!(text, "  %{tag} = add i64 %{tag}raw, 0");
-            }
-            format!("%{tag}")
-        } else {
-            coerce_to_type(text, *argument, arg_ty, param_ty)
-        };
-        args.push(format!("{param_llvm} {operand}"));
+        let operand = call_operand(
+            text,
+            destination,
+            *argument,
+            arg_ty,
+            param_ty,
+            param_llvm,
+            analysis,
+            state,
+        );
+        args.push((typed_llvm(param_llvm), operand));
     }
-    let args_joined = args.join(", ");
     let method = resolved.rsplit('.').next().unwrap_or(resolved);
     let virtualish = !is_super
         && !matches!(
@@ -232,37 +281,55 @@ pub(crate) fn lower_user_call(
                 destination,
                 resolved,
                 &overrides,
-                &args_joined,
-                ret,
+                &args,
+                &ret,
                 arguments[0],
             );
             return;
         }
     }
-    let symbol = llvm_function_symbol(resolved);
-    if ret == "void" {
-        let _ = writeln!(text, "  call void @{symbol}({args_joined})");
+    let call = LlvmInst::call(ret.clone(), &llvm_function_symbol(resolved), args);
+    if ret == Void {
+        text.emit(call);
     } else {
-        let _ = writeln!(
-            text,
-            "  %v{} = call {ret} @{symbol}({args_joined})",
-            destination.0
-        );
-        if analysis.owned_struct_results.contains(&destination) {
-            let _ = writeln!(
-                text,
-                "  store ptr %v{}, ptr %structowned{}",
-                destination.0, destination.0
+        // A vector result is copied out of the callee's buffer at once.
+        let relocated = vectors::returned_vector(&callee.return_type).is_some();
+        let raw = format!("v{}{}", if relocated { "raw" } else { "" }, destination.0);
+        text.assign(raw.clone(), call);
+        if relocated {
+            let (buffer, out) = (
+                format!("%vret{}", destination.0),
+                format!("%v{}", destination.0),
             );
+            vectors::emit_vector_relocate(
+                text,
+                &format!("%{raw}"),
+                &callee.return_type,
+                &buffer,
+                &out,
+            );
+        }
+        if analysis.owned_struct_results.contains(&destination) {
+            text.emit(LlvmInst::store(
+                Ptr,
+                value_reg(destination),
+                LlvmOperand::reg(format!("structowned{}", destination.0)),
+            ));
         }
     }
     for argument in arguments {
         if analysis.owned_string_results.contains(argument) {
-            let _ = writeln!(text, "  call void @free(ptr %v{})", argument.0);
+            text.emit(LlvmInst::call(
+                Void,
+                "free",
+                vec![(Ptr, value_reg(*argument))],
+            ));
         }
     }
 }
 
+/// Calls the override whose class name matches the receiver's runtime class,
+/// or `fallback` when none does.
 #[allow(clippy::too_many_arguments)]
 fn emit_virtual_method_call(
     text: &mut String,
@@ -270,15 +337,18 @@ fn emit_virtual_method_call(
     destination: ValueId,
     fallback: &str,
     overrides: &[&str],
-    args: &str,
-    ret: &str,
+    args: &[Argument],
+    ret: &LlvmType,
     receiver: ValueId,
 ) {
+    let reg = LlvmOperand::reg;
     let n = state.continuation_count;
     state.continuation_count += 1;
-    let _ = writeln!(text, "  %vcls{n} = load ptr, ptr %v{}", receiver.0);
+    text.assign(format!("vcls{n}"), LlvmInst::load(Ptr, value_reg(receiver)));
     let join = format!("vjoin{n}");
     let fallback_label = format!("vfallback{n}");
+    let call =
+        |symbol: &str| LlvmInst::call(ret.clone(), &llvm_function_symbol(symbol), args.to_vec());
     let mut incoming = Vec::new();
     for (index, candidate) in overrides.iter().enumerate() {
         let class = candidate
@@ -291,45 +361,53 @@ fn emit_virtual_method_call(
         } else {
             format!("vnext{n}_{index}")
         };
-        let class_global = format!("@.bn_cls_{}", sanitize_symbol(class_leaf));
-        let _ = writeln!(
-            text,
-            "  %veq{n}_{index} = call i32 @bn_rt_str_eq(ptr %vcls{n}, ptr {class_global})"
+        let class_global = LlvmOperand::global(format!(".bn_cls_{}", sanitize_symbol(class_leaf)));
+        text.assign(
+            format!("veq{n}_{index}"),
+            STR_EQ.call([reg(format!("vcls{n}")), class_global]),
         );
-        let _ = writeln!(text, "  %vhit{n}_{index} = icmp ne i32 %veq{n}_{index}, 0");
-        let _ = writeln!(
-            text,
-            "  br i1 %vhit{n}_{index}, label %{label}, label %{next}"
+        text.assign(
+            format!("vhit{n}_{index}"),
+            LlvmInst::icmp(
+                ICmpCond::Ne,
+                I32,
+                reg(format!("veq{n}_{index}")),
+                LlvmOperand::int(0),
+            ),
         );
+        text.emit(LlvmInst::CondBr {
+            cond: reg(format!("vhit{n}_{index}")),
+            true_dest: label.clone(),
+            false_dest: next.clone(),
+        });
         state.control_flow.label(text, label.clone());
-        let symbol = llvm_function_symbol(candidate);
-        if ret == "void" {
-            let _ = writeln!(text, "  call void @{symbol}({args})");
+        if *ret == Void {
+            text.emit(call(candidate));
         } else {
-            let _ = writeln!(text, "  %vtmp{n}_{index} = call {ret} @{symbol}({args})");
-            incoming.push(format!("[ %vtmp{n}_{index}, %{label} ]"));
+            text.assign(format!("vtmp{n}_{index}"), call(candidate));
+            incoming.push((reg(format!("vtmp{n}_{index}")), label));
         }
-        let _ = writeln!(text, "  br label %{join}");
+        text.emit(LlvmInst::Br { dest: join.clone() });
         if index + 1 != overrides.len() {
-            state.control_flow.label(text, next.clone());
+            state.control_flow.label(text, next);
         }
     }
     state.control_flow.label(text, fallback_label.clone());
-    let fallback_symbol = llvm_function_symbol(fallback);
-    if ret == "void" {
-        let _ = writeln!(text, "  call void @{fallback_symbol}({args})");
-        let _ = writeln!(text, "  br label %{join}");
-        state.control_flow.label(text, join.clone());
+    if *ret == Void {
+        text.emit(call(fallback));
+        text.emit(LlvmInst::Br { dest: join.clone() });
+        state.control_flow.label(text, join);
     } else {
-        let _ = writeln!(text, "  %vfb{n} = call {ret} @{fallback_symbol}({args})");
-        incoming.push(format!("[ %vfb{n}, %{fallback_label} ]"));
-        let _ = writeln!(text, "  br label %{join}");
-        state.control_flow.label(text, join.clone());
-        let _ = writeln!(
-            text,
-            "  %v{} = phi {ret} {}",
-            destination.0,
-            incoming.join(", ")
+        text.assign(format!("vfb{n}"), call(fallback));
+        incoming.push((reg(format!("vfb{n}")), fallback_label));
+        text.emit(LlvmInst::Br { dest: join.clone() });
+        state.control_flow.label(text, join);
+        text.assign(
+            format!("v{}", destination.0),
+            LlvmInst::Phi {
+                ty: ret.clone(),
+                incoming,
+            },
         );
     }
 }

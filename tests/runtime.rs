@@ -216,10 +216,9 @@ fn debug_control_can_terminate_before_user_instruction() {
     let mut input = Cursor::new(Vec::<u8>::new());
     let mut output = Vec::new();
     let mut control =
-        |_function: &str,
-         _depth: usize,
-         _span: bn_source::Span,
-         _variables: &[bn_interp::DebugVariable]| { DebugDecision::Terminate };
+        |_function: &str, _depth: usize, _span: bn_source::Span, _view: &bn_interp::DebugView| {
+            DebugDecision::Terminate
+        };
     let error = execute_with_host_debug_control(
         &module,
         &mut input,
@@ -1439,9 +1438,10 @@ fn filesystem_capability_reports_file_existence() {
 
 #[test]
 fn file_is_test_and_identity_equality() {
-    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Nop() AS VOID\nEND FUNCTION\nFUNCTION Start() AS VOID\nLET missing AS FS.File OR Error = FS.Open(\"no-such-basicnext-r5-file\", FS.READ)\nIF missing IS Error THEN\nPRINT \"err\"\nEND IF\nLET file AS FS.File OR Error = FS.Open(\"Cargo.toml\", FS.READ)\nIF file IS FS.File THEN\nPRINT \"file\"\nLET alias AS FS.File OR Error = file\nIF alias = file THEN\nPRINT \"same\"\nEND IF\nRELEASE file\nEND IF\nLET e AS Error\nIF e IS Error THEN\nPRINT e.Code\nEND IF\nLET v AS VOID OR Error = Nop()\nLET both AS VOID OR Error = e\nPRINT v = both\nEND FUNCTION\n";
+    let source = "IMPORT HOST.FileSystem AS FS\nFUNCTION Nop() AS VOID\nEND FUNCTION\nFUNCTION Start() AS VOID\nLET missing AS FS.File OR Error = FS.Open(\"no-such-basicnext-r5-file\", FS.READ)\nIF missing IS Error THEN\nPRINT \"err\"\nEND IF\nLET file AS FS.File OR Error = FS.Open(\"Cargo.toml\", FS.READ)\nIF file IS FS.File THEN\nPRINT \"file\"\nLET alias AS FS.File OR Error = file\nIF alias = file THEN\nPRINT \"same\"\nEND IF\nRELEASE file\nEND IF\nIF missing IS Error THEN\nLET e AS Error = missing\nPRINT e.Code = FS.NOT_FOUND\nLET v AS VOID OR Error = Nop()\nLET both AS VOID OR Error = e\nPRINT v = both\nEND IF\nEND FUNCTION\n";
+    // An `Error` has no default (error.md): the one compared is a real failure.
     let (_, output) = run(source, "").expect("IS FS.File and identity");
-    assert_eq!(output, "err\nfile\nsame\n0\nFALSE\n");
+    assert_eq!(output, "err\nfile\nsame\nTRUE\nFALSE\n");
 }
 
 #[test]
@@ -2301,13 +2301,17 @@ END FUNCTION
 }
 
 #[test]
-fn reentrant_delete_in_a_destructor_is_double_delete() {
-    let source = r"
+fn release_of_self_in_a_destructor_ends_only_the_binding() {
+    // SELF is the receiver parameter: RELEASE ends the binding and owns no
+    // reference (0.6.md, "`RELEASE`"), so the object is destroyed once; a
+    // second RELEASE SELF is a double release.
+    let source = r#"
 CLASS Box
     PUBLIC FUNCTION CONSTRUCTOR()
     END FUNCTION
 
     PUBLIC FUNCTION DESTRUCTOR()
+        PRINT "gone"
         RELEASE SELF
     END FUNCTION
 END CLASS
@@ -2315,9 +2319,16 @@ END CLASS
 FUNCTION Start() AS VOID
     LET box AS Box = NEW Box()
     RELEASE box
+    PRINT "end"
 END FUNCTION
-";
-    let error = run(source, "").expect_err("reentrant delete must fail");
+"#;
+    let (code, output) = run(source, "").expect("RELEASE SELF ends the binding");
+    assert_eq!((code, output.as_str()), (0, "gone\nend\n"));
+    let reused = source.replace(
+        "        RELEASE SELF\n",
+        "        RELEASE SELF\n        RELEASE SELF\n",
+    );
+    let error = run(&reused, "").expect_err("second RELEASE SELF must fail");
     assert_eq!(error.code, "DOUBLE_RELEASE");
 }
 
@@ -3760,4 +3771,112 @@ END FUNCTION
     let (_, output) = run(&source, "").expect("execute sqlite open modes");
     let _ = fs::remove_file(&temp_db);
     assert_eq!(output, "missing 1\nread ok 1 readonly-test\nwrite fail 7\n");
+}
+
+#[test]
+fn a_destroyed_object_runs_its_destructors_then_releases_fields_derived_first() {
+    // 0.6.md, "Zero strong → destructor": the destructor chain (most derived
+    // first), then the strong fields in reverse declaration order, derived
+    // fields before base fields (the generated `$release` functions).
+    let source = r#"
+CLASS Box
+    PUBLIC label AS STRING
+
+    PUBLIC FUNCTION CONSTRUCTOR(label AS STRING)
+        SELF.label = label
+    END FUNCTION
+
+    PUBLIC FUNCTION DESTRUCTOR()
+        PRINT "box " + SELF.label
+    END FUNCTION
+END CLASS
+
+CLASS Base
+    PUBLIC first AS Box = NEW Box("base first")
+    PUBLIC second AS Box = NEW Box("base second")
+
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION DESTRUCTOR()
+        PRINT "base destructor"
+    END FUNCTION
+END CLASS
+
+CLASS Derived EXTENDS Base
+    PUBLIC third AS Box = NEW Box("derived first")
+    PUBLIC fourth AS Box = NEW Box("derived second")
+
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION DESTRUCTOR()
+        PRINT "derived destructor"
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET d AS Derived = NEW Derived()
+    PRINT "end", d.first.label
+END FUNCTION
+"#;
+    let (code, output) = run(source, "").expect("destruction order");
+    assert_eq!(code, 0);
+    assert_eq!(
+        output,
+        "end base first
+derived destructor
+base destructor
+box derived second
+box derived first
+box base second
+box base first
+"
+    );
+}
+
+#[test]
+fn stop_releases_the_locals_of_every_running_function() {
+    // 0.6.md, "`STOP`" (BDFL rule A, 2026-10-06): the function that stops,
+    // then each caller; in each, temporaries, then scopes innermost first.
+    let source = r#"
+CLASS Tag
+    PUBLIC name AS STRING
+
+    PUBLIC FUNCTION CONSTRUCTOR(name AS STRING)
+        SELF.name = name
+    END FUNCTION
+
+    PUBLIC FUNCTION DESTRUCTOR()
+        PRINT "gone " + SELF.name
+    END FUNCTION
+END CLASS
+
+FUNCTION Check(tag AS Tag) AS INTEGER
+    LET inner AS Tag = NEW Tag("inner")
+    PRINT "checking " + tag.name
+    STOP 4
+END FUNCTION
+
+FUNCTION Use(tag AS Tag, n AS INTEGER) AS VOID
+    PRINT "not reached"
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET outer AS Tag = NEW Tag("outer")
+    IF outer.name = "outer" THEN
+        LET block AS Tag = NEW Tag("block")
+        Use(NEW Tag("temporary"), Check(outer))
+    END IF
+    PRINT "not reached"
+END FUNCTION
+"#;
+    let (code, output) = run(source, "").expect("STOP inside a callee");
+    assert_eq!(
+        (code, output.as_str()),
+        (
+            4,
+            "checking outer\ngone inner\ngone temporary\ngone block\ngone outer\n"
+        )
+    );
 }

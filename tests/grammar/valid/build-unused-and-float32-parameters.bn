@@ -1,0 +1,37 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A parameter the body never reads keeps its declared type, in a plain
+// call and in an ASYNC task; a FLOAT32 argument crosses ASYNC exactly.
+
+IMPORT BNDispatch AS Dispatch
+
+ASYNC FUNCTION Scale(x AS FLOAT32, unused AS INT16) AS FLOAT32 OR Error
+    RETURN x * 2.0
+END FUNCTION
+
+FUNCTION Ignore(flag AS BOOLEAN, n AS INT16) AS INTEGER
+    RETURN 7
+END FUNCTION
+
+FUNCTION Start() AS VOID OR Error
+    PRINT Ignore(TRUE, 4)
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
+    IF queue IS Error THEN
+        RETURN queue
+    END IF
+    LET a AS FLOAT32 = 1.5
+    LET b AS INT16 = 4
+    LET ticket AS Dispatch.Ticket OR Error = ASYNC queue Scale(a, b)
+    IF ticket IS Error THEN
+        RETURN ticket
+    END IF
+    LET scaled AS FLOAT32 OR Error = AWAIT ticket(1000)
+    IF scaled IS Error THEN
+        RETURN scaled
+    END IF
+    PRINT scaled
+    ticket.Close()
+END FUNCTION

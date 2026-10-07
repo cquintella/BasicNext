@@ -30,9 +30,19 @@ impl Builder<'_> {
     }
 
     pub(crate) fn emit(&mut self, instruction: Instruction) {
+        self.note_result(&instruction);
+        let stop_check = match &instruction {
+            Instruction::Call { callee, span, .. } if self.may_run_program_code(*callee) => {
+                Some(*span)
+            }
+            _ => None,
+        };
         self.blocks[self.current.0 as usize]
             .instructions
             .push(instruction);
+        if let Some(span) = stop_check {
+            self.stop_check(span);
+        }
     }
 
     pub(crate) fn patch_await_type(&mut self, value: ValueId, ty: Type) {
@@ -49,6 +59,15 @@ impl Builder<'_> {
     }
 
     pub(crate) fn terminate(&mut self, terminator: Terminator) {
+        if !self.terminated() {
+            // Temporaries of the statement that ends the block die here; a
+            // returned value goes to the caller.
+            let keep = match &terminator {
+                Terminator::Return { value } => *value,
+                _ => None,
+            };
+            self.release_temporaries(keep);
+        }
         self.blocks[self.current.0 as usize].terminator = Some(terminator);
     }
 

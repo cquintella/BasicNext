@@ -12,6 +12,8 @@ mod builder_state;
 mod control_flow;
 #[path = "builder/expressions.rs"]
 mod expressions;
+#[path = "builder/ownership.rs"]
+pub(crate) mod ownership;
 #[path = "builder/statements.rs"]
 mod statements;
 
@@ -61,6 +63,12 @@ impl<'a> Builder<'a> {
             loops: Vec::new(),
             receiver: None,
             derived_fields: None,
+            scopes: Vec::new(),
+            owned: Vec::new(),
+            value_types: HashMap::new(),
+            weak_locals: HashSet::new(),
+            parameters: HashSet::new(),
+            function_names: HashMap::new(),
         }
     }
 
@@ -86,16 +94,20 @@ impl<'a> Builder<'a> {
         constructor_arguments: Vec<ValueId>,
         span: Span,
     ) {
-        self.emit_void_call(
-            &class_method_name(&self.prefix, base, "$fields"),
-            vec![receiver],
-            span,
-        );
+        // A constructor runs its own class's field initializers first, so the
+        // base's `$fields` runs here only when the base has no constructor:
+        // each field is initialized once.
         let constructor = class_method_name(&self.prefix, base, "CONSTRUCTOR");
         if self.methods.contains(&constructor) {
             let mut arguments = vec![receiver];
             arguments.extend(constructor_arguments);
             self.emit_void_call(&constructor, arguments, span);
+        } else {
+            self.emit_void_call(
+                &class_method_name(&self.prefix, base, "$fields"),
+                vec![receiver],
+                span,
+            );
         }
     }
 
@@ -245,7 +257,13 @@ impl<'a> Builder<'a> {
                             .and_then(|target| target.owner.clone())
                             .map_or_else(
                                 || static_class_name(&object_type, &self.prefix),
-                                |owner| format!("{}{}", self.prefix, owner),
+                                |owner| {
+                                    if is_user_class_name(&owner) {
+                                        format!("{}{}", self.prefix, owner)
+                                    } else {
+                                        owner
+                                    }
+                                },
                             );
                         let field = path.last().cloned().unwrap_or_default();
                         return if indices.is_empty() {
@@ -294,7 +312,13 @@ impl<'a> Builder<'a> {
                         .and_then(|target| target.owner.clone())
                         .map_or_else(
                             || static_class_name(&object_type, &self.prefix),
-                            |owner| format!("{}{}", self.prefix, owner),
+                            |owner| {
+                                if is_user_class_name(&owner) {
+                                    format!("{}{}", self.prefix, owner)
+                                } else {
+                                    owner
+                                }
+                            },
                         );
                     Ok(AssignPlace::Static {
                         class,
@@ -380,6 +404,7 @@ impl<'a> Builder<'a> {
                         module,
                         name: class,
                     } => format!("#{}.{class}.{name}", module.0),
+                    _ if is_host_or_builtin_owner(&owner) => format!("{owner}.{name}"),
                     _ => format!("{}{owner}.{name}", self.prefix),
                 };
                 let callee = self.function_constant(&qualified, callee.span);

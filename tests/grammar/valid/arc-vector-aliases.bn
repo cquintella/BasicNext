@@ -11,9 +11,7 @@ END CLASS
 
 FUNCTION Start() AS VOID
     LET owner AS Box = NEW Box()
-    LET boxes AS Box[2]
-    boxes[0] = owner
-    boxes[1] = owner
+    LET boxes AS Box[2] = [owner, owner]
     RELEASE boxes
     PRINT "VALUE", owner.value
     RELEASE owner

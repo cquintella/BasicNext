@@ -144,13 +144,16 @@
         "Binary",
         "Call",
         "Constant",
+        "EndBinding",
         "Index",
         "Length",
         "Load",
         "Print",
         "Release",
+        "Retain",
         "SetIndex",
-        "Store"
+        "Store",
+        "Take"
       ],
       "type_constraints": [
         "STRING",
@@ -576,11 +579,13 @@
         "Allocate",
         "Call",
         "Constant",
+        "EndBinding",
         "EnsureClass",
         "Load",
         "Print",
         "Release",
-        "Store"
+        "Store",
+        "Take"
       ],
       "type_constraints": [
         "BNData.DataFrame"
@@ -708,6 +713,7 @@
         "Constant",
         "Copy",
         "Default",
+        "EndBinding",
         "EnsureClass",
         "Index",
         "Input",
@@ -719,7 +725,8 @@
         "SetField",
         "SetFieldIndex",
         "SetMember",
-        "Store"
+        "Store",
+        "Take"
       ],
       "type_constraints": [
         "FLOAT field vector",
@@ -902,16 +909,20 @@
         "Binary",
         "Call",
         "Constant",
+        "EndBinding",
         "EnsureClass",
         "Index",
         "Load",
         "Member",
         "Print",
         "Release",
+        "Retain",
         "SetField",
         "SetIndex",
         "SetMember",
-        "Store"
+        "Store",
+        "Take",
+        "TakeMember"
       ],
       "type_constraints": [
         "INTEGER"
@@ -978,6 +989,7 @@
         "Call",
         "Constant",
         "Copy",
+        "EndBinding",
         "Index",
         "Length",
         "Load",
@@ -986,6 +998,7 @@
         "Release",
         "SetIndex",
         "Store",
+        "Take",
         "Unary"
       ],
       "type_constraints": [
@@ -1053,6 +1066,7 @@
         "Call",
         "Constant",
         "Copy",
+        "EndBinding",
         "Index",
         "Input",
         "Length",
@@ -1061,7 +1075,8 @@
         "Print",
         "Release",
         "SetIndex",
-        "Store"
+        "Store",
+        "Take"
       ],
       "type_constraints": [
         "STRING",
@@ -1094,6 +1109,7 @@
         "Call",
         "Constant",
         "Copy",
+        "EndBinding",
         "Index",
         "Input",
         "Length",
@@ -1102,7 +1118,8 @@
         "Print",
         "Release",
         "SetIndex",
-        "Store"
+        "Store",
+        "Take"
       ],
       "type_constraints": [
         "STRING",
@@ -1135,6 +1152,7 @@
         "Call",
         "Constant",
         "Copy",
+        "EndBinding",
         "Index",
         "Length",
         "Load",
@@ -1143,6 +1161,7 @@
         "Release",
         "SetIndex",
         "Store",
+        "Take",
         "Unary"
       ],
       "type_constraints": [
@@ -1237,6 +1256,7 @@
         "Constant",
         "Copy",
         "Default",
+        "EndBinding",
         "EnsureClass",
         "Index",
         "Input",
@@ -1247,12 +1267,14 @@
         "Phi",
         "Print",
         "Release",
+        "Retain",
         "SetField",
         "SetIndex",
         "SetMember",
         "SizeOf",
         "Store",
         "StoreStatic",
+        "Take",
         "Unary",
         "Vector"
       ],
@@ -1354,6 +1376,7 @@
         "Call",
         "Constant",
         "Copy",
+        "EndBinding",
         "EnsureClass",
         "Index",
         "Length",
@@ -1364,6 +1387,7 @@
         "Release",
         "SetIndex",
         "Store",
+        "Take",
         "Unary",
         "Vector"
       ],
@@ -1466,6 +1490,7 @@
         "Call",
         "Constant",
         "Copy",
+        "EndBinding",
         "EnsureClass",
         "Index",
         "Load",
@@ -1474,6 +1499,7 @@
         "Print",
         "Release",
         "Store",
+        "Take",
         "Unary",
         "Vector"
       ],
@@ -1684,11 +1710,13 @@
         "Binary",
         "Call",
         "Constant",
+        "EndBinding",
         "EnsureClass",
         "Load",
         "Print",
         "Release",
-        "Store"
+        "Store",
+        "Take"
       ],
       "type_constraints": [
         "BNJson.Json"
@@ -1718,11 +1746,13 @@
         "Binary",
         "Call",
         "Constant",
+        "EndBinding",
         "EnsureClass",
         "Load",
         "Print",
         "Release",
-        "Store"
+        "Store",
+        "Take"
       ],
       "type_constraints": [
         "BNJson.Json"
@@ -1754,6 +1784,7 @@
         "Binary",
         "Call",
         "Constant",
+        "EndBinding",
         "EnsureClass",
         "Load",
         "Member",
@@ -1761,7 +1792,8 @@
         "Release",
         "SetField",
         "SetMember",
-        "Store"
+        "Store",
+        "Take"
       ],
       "type_constraints": [
         "BNJson.Json",

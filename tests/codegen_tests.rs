@@ -631,12 +631,14 @@ fn scalar_default_lowers_optional_scalar_tuples_without_panicking() {
         terminator: Terminator::Return { value: None },
     }]);
     let llvm = lower_module(&module).expect("lower optional integer default");
+    // The general alternative layout `{ tag, ptr, i64 }`: the default of the
+    // first member, INT32 zero (tag 4, `bn_types::alternatives::member_code`).
     assert!(
-        llvm.contains("insertvalue { i1, i32 } undef, i1 false, 0"),
+        llvm.contains("%v0_tag = insertvalue { i32, ptr, i64 } undef, i32 4, 0"),
         "{llvm}"
     );
     assert!(
-        llvm.contains("insertvalue { i1, i32 } %optdef0_0, i32 0, 1"),
+        llvm.contains("%v0 = insertvalue { i32, ptr, i64 } %v0_ptr, i64 0, 2"),
         "{llvm}"
     );
 }

@@ -1,0 +1,55 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// An object held by an alternative (`Box OR STRING`) follows ARC (0.6.md):
+// it is freed when its last strong binding ends, here by reassignment and
+// at the end of each function. Each flow runs in its own function so the
+// order of releases inside one block (not specified) is never observed.
+CLASS Box
+    PUBLIC name AS STRING = ""
+    PUBLIC FUNCTION CONSTRUCTOR(label AS STRING)
+        SELF.name = label
+    END FUNCTION
+    PUBLIC FUNCTION DESTRUCTOR()
+        PRINT "free", SELF.name
+    END FUNCTION
+END CLASS
+
+FUNCTION Pass(x AS Box OR STRING) AS VOID
+    PRINT "pass", x IS Box
+END FUNCTION
+
+FUNCTION Give() AS Box OR STRING
+    LET made AS Box OR STRING = NEW Box("returned")
+    RETURN made
+END FUNCTION
+
+FUNCTION Overwrite() AS VOID
+    LET a AS Box OR STRING = NEW Box("overwritten")
+    Pass(a)
+    a = "text"
+    PRINT "after overwrite"
+END FUNCTION
+
+FUNCTION Receive() AS VOID
+    LET b AS Box OR STRING = Give()
+    PRINT "got", b IS Box
+END FUNCTION
+
+FUNCTION Aliases() AS VOID
+    LET c AS Box OR STRING = NEW Box("aliased")
+    LET d AS Box OR STRING = c
+    c = "x"
+    PRINT "c dropped, d holds it"
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    Overwrite()
+    PRINT "-- 1"
+    Receive()
+    PRINT "-- 2"
+    Aliases()
+    PRINT "-- 3"
+END FUNCTION

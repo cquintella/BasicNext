@@ -1,5 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::ir::{InstSink as _, LlvmInst as I, LlvmOperand as O};
+use crate::layout::typed_llvm;
 
 pub(crate) fn lower_indirect_call(
     text: &mut String,
@@ -18,7 +20,7 @@ pub(crate) fn lower_indirect_call(
     else {
         unreachable!("validated indirect function type");
     };
-    let operands = arguments
+    let typed_args = arguments
         .iter()
         .zip(parameters)
         .map(|(argument, parameter)| {
@@ -29,22 +31,21 @@ pub(crate) fn lower_indirect_call(
                 analysis.values.get(argument).expect("validated argument"),
                 parameter,
             );
-            format!("{llvm_ty} {operand}")
+            (typed_llvm(llvm_ty), O::raw(operand))
         })
-        .collect::<Vec<_>>()
-        .join(", ");
+        .collect::<Vec<_>>();
+    let callee_op = O::reg(format!("v{}", callee.0));
     if is_void_type(return_type) {
-        emit_void_result(
-            text,
-            destination,
-            format!("call void %v{}({operands})", callee.0),
-        );
+        text.emit(I::call_operand(
+            crate::ir::LlvmType::Void,
+            callee_op,
+            typed_args,
+        ));
     } else {
         let return_llvm = llvm_type(return_type).expect("validated indirect return");
-        let _ = writeln!(
-            text,
-            "  %v{} = call {return_llvm} %v{}({operands})",
-            destination.0, callee.0
+        text.assign(
+            format!("v{}", destination.0),
+            I::call_operand(typed_llvm(return_llvm), callee_op, typed_args),
         );
     }
 }

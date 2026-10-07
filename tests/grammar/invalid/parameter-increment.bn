@@ -1,0 +1,15 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// `++` assigns to its operand, so it cannot target a parameter (0.6.md,
+// "Memory model (ARC)", "Parameter").
+FUNCTION Next(n AS INTEGER) AS INTEGER
+    n++
+    RETURN n
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    PRINT Next(3)
+END FUNCTION

@@ -17,6 +17,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
+use crate::ir::{BinaryOp, CastOp, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
 use bn_diag::{DiagId, Diagnostic, DiagnosticValue, Label, LabelStyle};
 use bn_source::{Position, Revision, SourceId, Span};
 
@@ -61,23 +62,28 @@ pub(crate) fn emit_trap(
     let first = operands.next().unwrap_or_else(|| "0".into());
     let second = operands.next().unwrap_or_else(|| "0".into());
     let site = take_continuation(block_id, state);
-    let _ = writeln!(text, "  br i1 {condition}, label %{site}, label %{ok}");
+    emit_branch_to_site(text, condition, &site, &ok);
     state.control_flow.label(text, site.clone());
     // Each fact crosses the ABI as two i64 halves (no portable i128 C ABI).
-    let mut halves = Vec::new();
-    for (index, operand) in [first, second].iter().enumerate() {
-        let name = format!("%{site}.fact{index}");
-        let _ = writeln!(
-            text,
-            "  {name}.lo = trunc i128 {operand} to i64\n  {name}.shr = lshr i128 {operand}, 64\n  {name}.hi = trunc i128 {name}.shr to i64"
+    let mut args = vec![(T::Ptr, O::raw(symbol))];
+    for (index, operand) in [first, second].into_iter().enumerate() {
+        let name = format!("{site}.fact{index}");
+        let r = |part: &str| O::reg(format!("{name}.{part}"));
+        let operand = O::raw(operand);
+        let low = I::cast(CastOp::Trunc, T::I128, operand.clone(), T::I64);
+        text.assign(format!("{name}.lo"), low);
+        let shifted = I::binary(BinaryOp::LShr, T::I128, operand, O::int(64));
+        text.assign(format!("{name}.shr"), shifted);
+        text.assign(
+            format!("{name}.hi"),
+            I::cast(CastOp::Trunc, T::I128, r("shr"), T::I64),
         );
-        halves.push(format!("i64 {name}.lo, i64 {name}.hi"));
+        args.extend([(T::I64, r("lo")), (T::I64, r("hi"))]);
     }
-    let _ = writeln!(
-        text,
-        "  call void @bn_rt_trap_report(ptr {symbol}, {})\n  br label %trap_numeric_overflow",
-        halves.join(", ")
-    );
+    text.emit(I::call(T::Void, "bn_rt_trap_report", args));
+    text.emit(I::Br {
+        dest: "trap_numeric_overflow".into(),
+    });
     state.control_flow.label(text, ok);
     state.needs_numeric_overflow_trap = true;
 }
@@ -122,10 +128,10 @@ pub(crate) fn emit_index_trap(
     context: &'static str,
 ) {
     let tag = state.continuation_count;
-    let _ = writeln!(
-        text,
-        "  %idxfact{tag} = sext i32 {index} to i128\n  %lenfact{tag} = sext i32 {length} to i128"
-    );
+    for (name, value) in [("idxfact", index), ("lenfact", length)] {
+        let wide = I::cast(CastOp::SExt, T::I32, O::raw(value), T::I128);
+        text.assign(format!("{name}{tag}"), wide);
+    }
     emit_trap(
         text,
         block_id,
@@ -230,12 +236,13 @@ pub(crate) fn emit_failure_trap(
 ) {
     let set = trap_set_symbol(state, ids);
     let site = take_continuation(block_id, state);
-    let _ = writeln!(text, "  br i1 {failed}, label %{site}, label %{ok}");
+    emit_branch_to_site(text, failed, &site, &ok);
     state.control_flow.label(text, site);
-    let _ = writeln!(
-        text,
-        "  call void @bn_rt_trap_report_failure(ptr {set})\n  br label %trap_bn_rt"
-    );
+    let args = vec![(T::Ptr, O::raw(set))];
+    text.emit(I::call(T::Void, "bn_rt_trap_report_failure", args));
+    text.emit(I::Br {
+        dest: "trap_bn_rt".into(),
+    });
     state.control_flow.label(text, ok);
     state.needs_bn_rt_trap = true;
 }
@@ -350,7 +357,8 @@ pub(crate) fn define_trap_globals(
             "{SET_PREFIX}{hex} = private unnamed_addr constant [{length} x i8] c\"{literal}\""
         );
     }
-    if !sets.is_empty() {
+    // The ARC glue reports a broken core invariant with the null set.
+    if !sets.is_empty() || text.contains("@bn_rt_trap_report_failure(ptr null)") {
         definitions.push_str(if wasm32 {
             "define void @bn_rt_trap_report_failure(ptr %set) {\n  ret void\n}\n"
         } else {
@@ -398,6 +406,14 @@ fn c_literal(text: &str) -> (String, usize) {
     (literal, text.len() + 1)
 }
 
+/// `br i1 condition, label %site, label %ok`.
+fn emit_branch_to_site(text: &mut String, condition: &str, site: &str, ok: &str) {
+    text.emit(I::CondBr {
+        cond: O::raw(condition),
+        true_dest: site.into(),
+        false_dest: ok.into(),
+    });
+}
 #[cfg(test)]
 mod tests {
     use super::{c_literal, decode, hex, unhex};

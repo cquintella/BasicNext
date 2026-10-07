@@ -6,7 +6,9 @@
 //! Native `BNSqlite` lowering onto the `bn_rt_sqlite_*` C ABI.
 
 #![allow(clippy::wildcard_imports)]
+use super::bndata_columns::emit_handle_operand;
 use super::*;
+use crate::ir::{CastOp, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
 
 pub(crate) fn sqlite_call_supported(
     method: &str,
@@ -30,34 +32,6 @@ pub(crate) fn sqlite_call_supported(
     }
 }
 
-fn extract_connection_handle(
-    text: &mut String,
-    receiver: ValueId,
-    dest: u32,
-    analysis: &LoweringAnalysis<'_>,
-) -> String {
-    if llvm_type(
-        analysis
-            .values
-            .get(&receiver)
-            .expect("validated connection receiver"),
-    ) == Some("{ i1, ptr, i64 }")
-    {
-        let _ = writeln!(
-            text,
-            "  %sqliteh{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-            receiver.0
-        );
-    } else {
-        let _ = writeln!(
-            text,
-            "  %sqliteh{dest} = ptrtoint ptr %v{} to i64",
-            receiver.0
-        );
-    }
-    format!("%sqliteh{dest}")
-}
-
 pub(crate) fn lower_sqlite_call(
     text: &mut String,
     destination: ValueId,
@@ -66,83 +40,67 @@ pub(crate) fn lower_sqlite_call(
     analysis: &LoweringAnalysis<'_>,
 ) {
     let dest = destination.0;
+    let r = |name: &str| O::reg(format!("sqlite{name}{dest}"));
+    let v = |index: usize| O::reg(format!("v{}", arguments[index].0));
+    let handle = |text: &mut String| {
+        emit_handle_operand(text, analysis, format!("sqliteh{dest}"), arguments[0]);
+        (T::I64, r("h"))
+    };
+    // A call whose status is the `VOID OR Error` result.
+    let status = |text: &mut String, symbol: &str, args| {
+        text.assign(format!("sqliterc{dest}"), I::call(T::I32, symbol, args));
+        emit_void_result(text, destination, format!("%sqliterc{dest}"));
+    };
+    // A call that writes a new handle through its last argument.
+    let new_handle = |text: &mut String, symbol: &str, mut args: Vec<(T, O)>, value: &str| {
+        text.assign(format!("sqliteout{dest}"), I::alloca(T::I64));
+        args.push((T::Ptr, r("out")));
+        text.assign(format!("sqliterc{dest}"), I::call(T::I32, symbol, args));
+        text.assign(format!("sqlite{value}{dest}"), I::load(T::I64, r("out")));
+        emit_handle_result(
+            text,
+            destination,
+            format!("%sqliterc{dest}"),
+            format!("%sqlite{value}{dest}"),
+        );
+    };
     match method {
         "Open" | "OpenReadOnly" | "OpenExisting" => {
-            let path_val = arguments[0].0;
             let symbol = match method {
                 "OpenReadOnly" => "bn_rt_sqlite_open_read_only",
                 "OpenExisting" => "bn_rt_sqlite_open_existing",
                 _ => "bn_rt_sqlite_open",
             };
-            let _ = writeln!(text, "  %sqliteout{dest} = alloca i64");
-            let _ = writeln!(
-                text,
-                "  %sqliterc{dest} = call i32 @{symbol}(ptr %v{path_val}, ptr %sqliteout{dest})"
-            );
-            let _ = writeln!(
-                text,
-                "  %sqlitehandle{dest} = load i64, ptr %sqliteout{dest}"
-            );
-            emit_handle_result(
-                text,
-                destination,
-                format!("%sqliterc{dest}"),
-                format!("%sqlitehandle{dest}"),
-            );
+            new_handle(text, symbol, vec![(T::Ptr, v(0))], "handle");
         }
         "Exec" => {
-            let handle = extract_connection_handle(text, arguments[0], dest, analysis);
-            let sql_val = arguments[1].0;
-            let _ = writeln!(
-                text,
-                "  %sqliterc{dest} = call i32 @bn_rt_sqlite_exec(i64 {handle}, ptr %v{sql_val})"
-            );
-            emit_void_result(text, destination, format!("%sqliterc{dest}"));
+            let args = vec![handle(text), (T::Ptr, v(1))];
+            status(text, "bn_rt_sqlite_exec", args);
         }
         "Query" => {
-            let handle = extract_connection_handle(text, arguments[0], dest, analysis);
-            let sql_val = arguments[1].0;
-            let _ = writeln!(text, "  %sqliteout{dest} = alloca i64");
-            let _ = writeln!(
-                text,
-                "  %sqliterc{dest} = call i32 @bn_rt_sqlite_query(i64 {handle}, ptr %v{sql_val}, ptr %sqliteout{dest})"
-            );
-            let _ = writeln!(
-                text,
-                "  %sqliteframe{dest} = load i64, ptr %sqliteout{dest}"
-            );
-            emit_handle_result(
-                text,
-                destination,
-                format!("%sqliterc{dest}"),
-                format!("%sqliteframe{dest}"),
-            );
+            let args = vec![handle(text), (T::Ptr, v(1))];
+            new_handle(text, "bn_rt_sqlite_query", args, "frame");
         }
         "Begin" | "Commit" | "Rollback" | "Close" => {
-            let handle = extract_connection_handle(text, arguments[0], dest, analysis);
-            let symbol = match method {
-                "Begin" => "bn_rt_sqlite_begin",
-                "Commit" => "bn_rt_sqlite_commit",
-                "Rollback" => "bn_rt_sqlite_rollback",
-                _ => "bn_rt_sqlite_close",
-            };
-            let _ = writeln!(text, "  %sqliterc{dest} = call i32 @{symbol}(i64 {handle})");
-            emit_void_result(text, destination, format!("%sqliterc{dest}"));
+            let symbol = format!("bn_rt_sqlite_{}", method.to_ascii_lowercase());
+            let args = vec![handle(text)];
+            status(text, &symbol, args);
         }
         "Changes" => {
-            let handle = extract_connection_handle(text, arguments[0], dest, analysis);
-            let _ = writeln!(
-                text,
-                "  %v{dest} = call i32 @bn_rt_sqlite_changes(i64 {handle})"
+            let args = vec![handle(text)];
+            text.assign(
+                format!("v{dest}"),
+                I::call(T::I32, "bn_rt_sqlite_changes", args),
             );
         }
         "LastInsertRowId" => {
-            let handle = extract_connection_handle(text, arguments[0], dest, analysis);
-            let _ = writeln!(
-                text,
-                "  %sqliterowid{dest} = call i64 @bn_rt_sqlite_last_insert_rowid(i64 {handle})"
+            let args = vec![handle(text)];
+            let rowid = I::call(T::I64, "bn_rt_sqlite_last_insert_rowid", args);
+            text.assign(format!("sqliterowid{dest}"), rowid);
+            text.assign(
+                format!("v{dest}"),
+                I::cast(CastOp::Trunc, T::I64, r("rowid"), T::I32),
             );
-            let _ = writeln!(text, "  %v{dest} = trunc i64 %sqliterowid{dest} to i32");
         }
         _ => panic!("unhandled BNSqlite member in emission: {method}"),
     }

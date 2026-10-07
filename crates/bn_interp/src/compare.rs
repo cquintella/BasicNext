@@ -87,6 +87,17 @@ pub(super) fn is_value(value: &Value, test: &str) -> bool {
         "TIME" => matches!(value, Value::Time(_)),
         "TIMEZONE" => matches!(value, Value::TimeZone(_)),
         test if test.starts_with("POINTER TO ") => matches!(value, Value::Pointer { .. }),
+        // `ELEMENT[n][m]`: a fixed vector of exactly `n` elements, each an
+        // `ELEMENT[m]`.
+        test if test.ends_with(']')
+            && let Some(open) = test.find('[') =>
+        {
+            let close = open + test[open..].find(']').expect("closing bracket");
+            let element = format!("{}{}", &test[..open], &test[close + 1..]);
+            matches!(value, Value::Vector(items)
+                if test[open + 1..close].parse::<usize>() == Ok(items.len())
+                    && items.iter().all(|item| is_value(item, &element)))
+        }
         _ => match value {
             Value::File(_) => is_host_file_type(test),
             Value::DataFrame(_) => {

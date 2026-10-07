@@ -1,6 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 use crate::diagnostic::DiagId;
+use bn_types::literals::{NumericClass, numeric_alternative};
 
 pub(crate) fn allocation_length(arguments: &[Expression]) -> PointerLength {
     arguments.first().map_or(PointerLength::One, |length| {
@@ -278,6 +279,13 @@ pub(crate) fn compatible(expected: &Type, actual: &Type) -> bool {
         (Type::Alternative(expected), Type::Alternative(actual)) => actual
             .iter()
             .all(|actual| expected.iter().any(|expected| compatible(expected, actual))),
+        // A numeric literal takes one alternative, which it must fit
+        // (0.6.md, "Numeric literals in alternative types").
+        (Type::Alternative(expected), actual @ (Type::IntegerLiteral(_) | Type::FloatLiteral)) => {
+            NumericClass::of_literal(actual)
+                .and_then(|class| numeric_alternative(expected, class))
+                .is_some_and(|alternative| compatible(alternative, actual))
+        }
         (Type::Alternative(expected), actual) => {
             expected.iter().any(|expected| compatible(expected, actual))
         }

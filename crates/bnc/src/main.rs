@@ -11,7 +11,7 @@ use std::{env, process::ExitCode};
 use bn_cli::{
     check::frontend_artifact,
     frontend::{load_frontend, read_source},
-    help::COMMON_OPTIONS,
+    help::{BOOK_URL, COMMON_OPTIONS},
     options::{OutputFormat, parse_options},
     output::{emit_output, tool_error},
 };
@@ -25,17 +25,19 @@ fn help() -> ExitCode {
 {VERSION}
 usage: bnc [compile-options] <entry.bn>
 
-Compiles the program to a native executable or a Wasm module. Without -o the
-LLVM IR is written to standard output.
+Compiles the program to a native executable or a Wasm module.
 
 compile options:
-  -o, --output <file>        write the artifact (or emitted IR) to <file>
+  -o, --output <file>        write the artifact to <file> (defaults to entry name)
   --target native|wasm32     select the target (default native)
   --opt none|1|2|3|s         optimization level (default 2)
+  -g, --debug                emit debug information (DWARF; PDB on Windows)
+  --emit llvm                print LLVM IR instead of compiling
   --emit ir                  print the validated BN IR instead of compiling
                              (tokens, ast and typed-ast are also accepted)
 {COMMON_OPTIONS}
 See also: man bnc
+More information: {BOOK_URL}
 "
     );
     ExitCode::SUCCESS
@@ -72,11 +74,22 @@ fn main() -> ExitCode {
         eprintln!("error: --format json is an interpreter option (bni eval)");
         return tool_error();
     }
+    // Accepted by the shared parser, honored only by the interpreter.
+    if options.trace {
+        eprintln!("error: --trace is an interpreter option (bni run)");
+        return tool_error();
+    }
+    if !options.filesystem {
+        eprintln!("error: --no-filesystem is an interpreter option (bni run)");
+        return tool_error();
+    }
     let (source, tokens) = match read_source(&options) {
         Ok(read) => read,
         Err(code) => return code,
     };
-    if let Some(emit) = options.emit {
+    if let Some(emit) = options.emit
+        && emit != bn_cli::options::Emit::Llvm
+    {
         // Frontend artifacts only; nothing is compiled.
         let frontend = match load_frontend(&source, &options) {
             Ok(frontend) => frontend,

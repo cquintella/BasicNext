@@ -352,24 +352,22 @@ impl HostEnv {
 }
 
 mod support;
-use support::{debug_variables, host_random_seed};
+use support::host_random_seed;
 
 #[cfg(test)]
 mod tests;
 
 #[derive(Clone)]
 struct Instance {
-    class: String,
     fields: Box<[Value]>,
 }
 
+/// The bindings of one call that ownership needs at run time.
 #[derive(Default)]
 struct OwnershipFrame {
-    owned_values: std::collections::HashSet<ValueId>,
-    loaded_values: HashMap<ValueId, SymbolId>,
+    /// Ended by `RELEASE` (`EndBinding`) and not stored again.
     released_symbols: std::collections::HashSet<SymbolId>,
-    release_values: std::collections::HashSet<ValueId>,
-    local_symbols: std::collections::HashSet<SymbolId>,
+    /// `AS WEAK` locals, which read `NULL` once their object is gone.
     weak_symbols: std::collections::HashSet<SymbolId>,
 }
 
@@ -379,8 +377,14 @@ struct Executor<'a, 'debug> {
     output: &'a mut dyn Write,
     host: &'a HostEnv,
     stop_code: Option<i128>,
+    /// A `STOP` this function's IR has seen (`$stopping`): its locals are
+    /// being released before it stops too (`$stop_code`).
+    unwinding: Option<i128>,
     statics: HashMap<(String, String), Value>,
     class_init: HashMap<String, ClassInit>,
+    /// Strong counts and liveness of every object and region (the one ARC
+    /// core shared with `bnc`); `objects` and `memory` hold their payloads.
+    arc: bn_rt::arc::ArcCore,
     objects: Heap<Instance>,
     memory: Heap<Value>,
     pinned_dispatch: Vec<(Handle, String)>,
@@ -408,8 +412,16 @@ impl<'a, 'debug> Executor<'a, 'debug> {
             output,
             host,
             stop_code: None,
+            unwinding: None,
             statics: HashMap::new(),
             class_init: HashMap::new(),
+            arc: {
+                let mut arc = bn_rt::arc::ArcCore::new();
+                arc.set_trace(bn_rt::arc::trace_enabled(
+                    std::env::var("BN_ARC_TRACE").ok().as_deref(),
+                ));
+                arc
+            },
             objects: Heap::default(),
             memory: Heap::default(),
             pinned_dispatch: Vec::new(),
@@ -433,17 +445,27 @@ pub enum DebugDecision {
     Terminate,
 }
 
-/// Read-only value visible to an interactive debugger.
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// Read-only value visible to an interactive debugger; an object has its
+/// fields and an `[arc]` child.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct DebugVariable {
     pub name: String,
     pub value: String,
+    pub children: Vec<DebugVariable>,
+}
+
+/// What a debugger sees at a pause: the frame's bindings and values, and
+/// every live object of the ARC core (`#id`, class and strong count).
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct DebugView {
+    pub variables: Vec<DebugVariable>,
+    pub arc: Vec<DebugVariable>,
 }
 
 /// Interactive debugger callback. It is invoked before each executable
 /// instruction and may block while the client is paused.
 pub type DebugControl<'a> =
-    &'a mut dyn FnMut(&str, usize, bn_source::Span, &[DebugVariable]) -> DebugDecision;
+    &'a mut dyn FnMut(&str, usize, bn_source::Span, &DebugView) -> DebugDecision;
 
 #[derive(Clone, Copy)]
 enum ClassInit {
@@ -652,7 +674,13 @@ fn execute_with_host_inner<'debug>(
         ));
     }
     let mut executor = Executor::new(module, input, output, host, debug_hook, debug_control);
-    match executor.function(start, Vec::new())? {
+    let flow = executor.function(start, Vec::new())?;
+    // Debug builds (the test suite): every count must match the references
+    // the program still holds when it ends.
+    if cfg!(debug_assertions) {
+        executor.verify_arc(start.span)?;
+    }
+    match flow {
         Flow::Return(None | Some(Value::Null)) => Ok(0),
         Flow::Return(Some(Value::Integer(code, _))) | Flow::Stop(code) => {
             exit_code(code, start.span)

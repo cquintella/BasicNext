@@ -517,9 +517,417 @@ struct Edge {
     counts: [usize; 3],
     names: BTreeSet<String>,
     guessed: BTreeSet<String>,
+    violation: Option<&'static str>,
 }
 
 type Deps = HashMap<String, BTreeSet<String>>;
+
+/// Checks whether a directed dependency from caller_crate to callee_crate violates
+/// workspace architectural boundaries.
+fn check_architecture_rule(caller_crate: &str, callee_crate: &str) -> Option<&'static str> {
+    if caller_crate == callee_crate {
+        return None;
+    }
+
+    // Rule 1: Backends & runtimes must not depend on frontend
+    const BACKEND_CRATES: &[&str] = &[
+        "bn_interp",
+        "bn_llvm",
+        "bn_rt",
+        "bn_runtime",
+        "bn_value",
+        "bn_host_exec",
+        "bn_host_fs",
+        "bn_host_net",
+        "bn_lib_math",
+        "bn_lib_json",
+        "bn_lib_log",
+        "bn_lib_data",
+        "bn_lib_dispatch",
+        "bn_lib_web",
+        "bn_lib_crypto",
+        "bn_lib_sqlite",
+        "bn_limits",
+    ];
+    if BACKEND_CRATES.contains(&caller_crate) && callee_crate == "bn_frontend" {
+        return Some("backend->frontend (compiler boundary violation)");
+    }
+
+    // Rule 2: W5 - bn_ir model is strictly independent of frontend and backends
+    if caller_crate == "bn_ir" && (callee_crate == "bn_frontend" || BACKEND_CRATES.contains(&callee_crate)) {
+        return Some("bn_ir->frontend/backend (W5 model violation)");
+    }
+
+    // Rule 3: bn_interp core must not link host/web/io implementations
+    const FORBIDDEN_FROM_INTERP: &[&str] = &[
+        "bn_host_exec",
+        "bn_host_fs",
+        "bn_host_net",
+        "bn_lib_web",
+        "bn_lib_crypto",
+        "bn_lib_sqlite",
+        "bn_lib_dispatch",
+    ];
+    if caller_crate == "bn_interp" && FORBIDDEN_FROM_INTERP.contains(&callee_crate) {
+        return Some("bn_interp->host/io (interpreter purity violation)");
+    }
+
+    // Rule 4: bnc and compile driver must never link interpreter
+    if (caller_crate == "bnc" || caller_crate == "bn_compile_driver")
+        && (callee_crate == "bn_interp" || callee_crate == "bn_interpret_driver")
+    {
+        return Some("compiler->interpreter (W3 pipeline violation)");
+    }
+
+    None
+}
+
+fn dot_escape(text: &str) -> String {
+    text.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn write_dot(
+    out: &Path,
+    files: &[FileInfo],
+    edges: &BTreeMap<(usize, usize), Edge>,
+) {
+    let mut dot = String::new();
+    dot.push_str("digraph bn_workspace {\n");
+    dot.push_str("  graph [rankdir=LR, splines=true, overlap=false, fontname=\"Helvetica\"];\n");
+    dot.push_str("  node [shape=box, style=filled, fillcolor=\"#f8f9fa\", color=\"#dee2e6\", fontname=\"Helvetica\", fontsize=10];\n");
+    dot.push_str("  edge [fontname=\"Helvetica\", fontsize=8];\n\n");
+
+    // Group files by crate into subgraphs
+    let mut by_crate: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    for (i, f) in files.iter().enumerate() {
+        by_crate.entry(f.krate.clone()).or_default().push(i);
+    }
+
+    for (krate, file_indices) in by_crate {
+        let _ = writeln!(dot, "  subgraph \"cluster_{krate}\" {{");
+        let _ = writeln!(dot, "    label = \"{krate}\";");
+        dot.push_str("    style = \"rounded,filled\";\n    fillcolor = \"#f1f3f5\";\n    color = \"#ced4da\";\n");
+        for idx in file_indices {
+            let label = &files[idx].rel;
+            let lines = files[idx].lines;
+            // Short filename for cleaner display inside cluster
+            let short_name = label.rsplit('/').next().unwrap_or(label);
+            let fill = if lines >= 1000 {
+                "#ffe3e3" // warning red
+            } else if lines >= 800 {
+                "#fff3bf" // warning yellow
+            } else {
+                "#ffffff"
+            };
+            let _ = writeln!(
+                dot,
+                "    n{idx} [label=\"{short_name}\\n({lines} lines)\", fillcolor=\"{fill}\", tooltip=\"{label}\"];"
+            );
+        }
+        dot.push_str("  }\n\n");
+    }
+
+    // Render edges
+    for ((src, tgt), edge) in edges {
+        let [calls, self_calls, guessed] = edge.counts;
+        let weight = calls + self_calls;
+        let confident = weight > 0;
+        let (color, style, penwidth) = if edge.violation.is_some() {
+            ("#e03131", "bold", 2.5) // Red violation
+        } else if confident {
+            ("#495057", "solid", 1.0)
+        } else {
+            ("#adb5bd", "dashed", 0.5) // Low confidence
+        };
+
+        let label = if let Some(rule) = edge.violation {
+            format!(" [VIOLATION: {rule}]")
+        } else if weight > 1 {
+            format!(" ({weight})")
+        } else {
+            String::new()
+        };
+
+        let tooltip = dot_escape(&format!("calls: {weight}, guessed: {guessed}{label}"));
+        let _ = writeln!(
+            dot,
+            "  n{src} -> n{tgt} [color=\"{color}\", style=\"{style}\", penwidth={penwidth}, tooltip=\"{tooltip}\"];"
+        );
+    }
+
+    dot.push_str("}\n");
+    std::fs::write(out, dot).expect("write dot");
+    eprintln!("wrote DOT graph to {}", out.display());
+}
+
+fn write_crates_dot(
+    out: &Path,
+    files: &[FileInfo],
+    edges: &BTreeMap<(usize, usize), Edge>,
+) {
+    let mut dot = String::new();
+    dot.push_str("digraph bn_crates {\n");
+    dot.push_str("  graph [rankdir=LR, splines=true, fontname=\"Helvetica\"];\n");
+    dot.push_str("  node [shape=box, style=\"rounded,filled\", fillcolor=\"#e7f5ff\", color=\"#339af0\", fontname=\"Helvetica\", fontsize=11];\n");
+    dot.push_str("  edge [fontname=\"Helvetica\", fontsize=9];\n\n");
+
+    // Aggregate edges between crates
+    let mut crate_edges: BTreeMap<(String, String), (usize, usize, Option<&'static str>)> = BTreeMap::new();
+    let mut crates = BTreeSet::new();
+
+    for f in files {
+        crates.insert(f.krate.clone());
+    }
+
+    for ((src, tgt), edge) in edges {
+        let caller = &files[*src].krate;
+        let callee = &files[*tgt].krate;
+        if caller == callee {
+            continue;
+        }
+        let [calls, self_calls, _] = edge.counts;
+        let weight = calls + self_calls;
+        let entry = crate_edges
+            .entry((caller.clone(), callee.clone()))
+            .or_insert((0, 0, edge.violation));
+        entry.0 += weight;
+        entry.1 += edge.counts[2];
+        if edge.violation.is_some() {
+            entry.2 = edge.violation;
+        }
+    }
+
+    for krate in &crates {
+        let _ = writeln!(dot, "  \"{krate}\";");
+    }
+
+    for ((caller, callee), (weight, _guessed, violation)) in crate_edges {
+        let (color, style, penwidth) = if violation.is_some() {
+            ("#e03131", "bold", 3.0)
+        } else if weight > 0 {
+            ("#343a40", "solid", 1.2)
+        } else {
+            ("#adb5bd", "dashed", 0.8)
+        };
+        let label = if let Some(rule) = violation {
+            format!("VIOLATION: {rule}")
+        } else {
+            format!("{weight}")
+        };
+        let _ = writeln!(
+            dot,
+            "  \"{caller}\" -> \"{callee}\" [label=\" {label}\", color=\"{color}\", style=\"{style}\", penwidth={penwidth}];"
+        );
+    }
+
+    dot.push_str("}\n");
+    std::fs::write(out, dot).expect("write crates dot");
+    eprintln!("wrote aggregated crates DOT graph to {}", out.display());
+}
+
+fn audit(
+    files: &[FileInfo],
+    edges: &BTreeMap<(usize, usize), Edge>,
+) -> bool {
+    let mut violations = Vec::new();
+    for ((src, tgt), edge) in edges {
+        if let Some(rule) = edge.violation {
+            let caller = &files[*src];
+            let callee = &files[*tgt];
+            violations.push((rule, &caller.rel, &callee.rel, &edge.names));
+        }
+    }
+
+    if violations.is_empty() {
+        println!("Architecture audit passed: 0 boundary violations across {} edges.", edges.len());
+        true
+    } else {
+        eprintln!("Architecture audit FAILED: {} boundary violation(s) detected:", violations.len());
+        for (rule, caller, callee, names) in &violations {
+            let called = names.iter().cloned().collect::<Vec<_>>().join(", ");
+            eprintln!("  - [{rule}]: {} -> {} (calling: {})", caller, callee, if called.is_empty() { "methods" } else { &called });
+        }
+        false
+    }
+}
+
+fn query_callers(files: &[FileInfo], edges: &BTreeMap<(usize, usize), Edge>, target_query: &str) {
+    let mut matches = Vec::new();
+    for (i, f) in files.iter().enumerate() {
+        if f.rel.contains(target_query) || f.components.iter().any(|c| c.contains(target_query)) {
+            matches.push(i);
+        }
+    }
+    if matches.is_empty() {
+        println!("No files or components matching: '{target_query}'");
+        return;
+    }
+
+    for target_idx in matches {
+        let target = &files[target_idx];
+        println!("Callers of {} (crate: {}):", target.rel, target.krate);
+        let mut count = 0;
+        for ((src, tgt), edge) in edges {
+            if *tgt == target_idx {
+                let caller = &files[*src];
+                let [calls, self_calls, guessed] = edge.counts;
+                let weight = calls + self_calls;
+                let conf = if weight > 0 { "high" } else { "low" };
+                let names = edge.names.iter().cloned().collect::<Vec<_>>().join(", ");
+                let details = if !names.is_empty() { format!(" ({names})") } else { String::new() };
+                println!("  <- {} [weight: {weight}, guessed: {guessed}, conf: {conf}]{details}", caller.rel);
+                count += 1;
+            }
+        }
+        if count == 0 {
+            println!("  (none)");
+        }
+        println!();
+    }
+}
+
+fn query_callees(files: &[FileInfo], edges: &BTreeMap<(usize, usize), Edge>, target_query: &str) {
+    let mut matches = Vec::new();
+    for (i, f) in files.iter().enumerate() {
+        if f.rel.contains(target_query) {
+            matches.push(i);
+        }
+    }
+    if matches.is_empty() {
+        println!("No files matching: '{target_query}'");
+        return;
+    }
+
+    for src_idx in matches {
+        let caller = &files[src_idx];
+        println!("Callees of {} (crate: {}):", caller.rel, caller.krate);
+        let mut count = 0;
+        for ((src, tgt), edge) in edges {
+            if *src == src_idx {
+                let target = &files[*tgt];
+                let [calls, self_calls, guessed] = edge.counts;
+                let weight = calls + self_calls;
+                let conf = if weight > 0 { "high" } else { "low" };
+                let names = edge.names.iter().cloned().collect::<Vec<_>>().join(", ");
+                let details = if !names.is_empty() { format!(" ({names})") } else { String::new() };
+                println!("  -> {} [weight: {weight}, guessed: {guessed}, conf: {conf}]{details}", target.rel);
+                count += 1;
+            }
+        }
+        if count == 0 {
+            println!("  (none)");
+        }
+        println!();
+    }
+}
+
+fn query_cycles(files: &[FileInfo], edges: &BTreeMap<(usize, usize), Edge>) {
+    // Detect cycles within the same crate using simple DFS
+    println!("Detecting dependency cycles within crates...");
+    let mut by_crate: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    for (i, f) in files.iter().enumerate() {
+        by_crate.entry(f.krate.clone()).or_default().push(i);
+    }
+
+    // Build adjacency list for confident calls
+    let mut adj: HashMap<usize, Vec<usize>> = HashMap::new();
+    for ((src, tgt), edge) in edges {
+        if edge.counts[0] + edge.counts[1] > 0 && files[*src].krate == files[*tgt].krate {
+            adj.entry(*src).or_default().push(*tgt);
+        }
+    }
+
+    let mut found_cycles = 0;
+    for (krate, file_indices) in by_crate {
+        for &start in &file_indices {
+            let mut visited = BTreeSet::new();
+            let mut path = Vec::new();
+
+            fn dfs(
+                curr: usize,
+                target: usize,
+                adj: &HashMap<usize, Vec<usize>>,
+                visited: &mut BTreeSet<usize>,
+                path: &mut Vec<usize>,
+            ) -> bool {
+                path.push(curr);
+                visited.insert(curr);
+                if let Some(neighbors) = adj.get(&curr) {
+                    for &next in neighbors {
+                        if next == target && path.len() > 1 {
+                            path.push(next);
+                            return true;
+                        }
+                        if !visited.contains(&next) {
+                            if dfs(next, target, adj, visited, path) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                path.pop();
+                false
+            }
+
+            if dfs(start, start, &adj, &mut visited, &mut path) {
+                // Ensure smallest index in cycle is at the start to avoid reporting duplicates
+                let cycle_nodes = &path[..path.len() - 1];
+                let min_node = *cycle_nodes.iter().min().unwrap();
+                if start == min_node {
+                    found_cycles += 1;
+                    println!("[Cycle #{found_cycles} in {krate}]");
+                    for (step, &node) in path.iter().enumerate() {
+                        let arrow = if step == path.len() - 1 { "" } else { " -> " };
+                        print!("{}{}", files[node].rel.rsplit('/').next().unwrap_or(&files[node].rel), arrow);
+                    }
+                    println!("\n");
+                }
+            }
+        }
+    }
+
+    if found_cycles == 0 {
+        println!("No internal cycles found within workspace crates.");
+    } else {
+        println!("Total cycles detected: {found_cycles}");
+    }
+}
+
+fn query_stats(files: &[FileInfo], edges: &BTreeMap<(usize, usize), Edge>) {
+    // Fan-in (in-degree) and Fan-out (out-degree) analysis
+    let mut fan_in = vec![0_usize; files.len()];
+    let mut fan_out = vec![0_usize; files.len()];
+
+    for ((src, tgt), edge) in edges {
+        let weight = edge.counts[0] + edge.counts[1];
+        if weight > 0 {
+            fan_out[*src] += 1;
+            fan_in[*tgt] += 1;
+        }
+    }
+
+    println!("=== Workspace Architecture & Coupling Metrics ===");
+    println!("Total files: {} | Total call edges: {}\n", files.len(), edges.len());
+
+    // Top 10 Fan-in (most depended upon files)
+    let mut by_in: Vec<(usize, usize)> = fan_in.iter().copied().enumerate().collect();
+    by_in.sort_by(|a, b| b.1.cmp(&a.1));
+    println!("Top 10 Depended-Upon Files (Highest Fan-In / In-Degree):");
+    for (idx, count) in by_in.iter().take(10) {
+        if *count == 0 { break; }
+        println!("  {:3} callers : {} ({})", count, files[*idx].rel, files[*idx].krate);
+    }
+    println!();
+
+    // Top 10 Fan-out (files with most outgoing dependencies)
+    let mut by_out: Vec<(usize, usize)> = fan_out.iter().copied().enumerate().collect();
+    by_out.sort_by(|a, b| b.1.cmp(&a.1));
+    println!("Top 10 Most Couplings (Highest Fan-Out / Out-Degree):");
+    for (idx, count) in by_out.iter().take(10) {
+        if *count == 0 { break; }
+        println!("  {:3} callees : {} ({})", count, files[*idx].rel, files[*idx].krate);
+    }
+}
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -529,8 +937,33 @@ fn main() {
         let root = root.canonicalize().unwrap();
         std::process::exit(i32::from(!check(&root, &graph)));
     }
-    let root = PathBuf::from(args.first().expect("workspace root"));
-    let out = PathBuf::from(args.get(1).expect("output .gml"));
+
+    let is_audit = args.iter().any(|a| a == "--audit");
+    let is_crates_only = args.iter().any(|a| a == "--crates");
+    let is_cycles = args.iter().any(|a| a == "--cycles");
+    let is_stats = args.iter().any(|a| a == "--stats");
+
+    let callers_arg = args.iter().position(|a| a == "--callers").and_then(|p| args.get(p + 1));
+    let callees_arg = args.iter().position(|a| a == "--callees").and_then(|p| args.get(p + 1));
+
+    let mut non_flags = Vec::new();
+    let mut skip_next = false;
+    for a in &args {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        if a == "--callers" || a == "--callees" {
+            skip_next = true;
+            continue;
+        }
+        if !a.starts_with("--") {
+            non_flags.push(a);
+        }
+    }
+
+    let root = PathBuf::from(non_flags.first().expect("workspace root"));
+    let out = non_flags.get(1).map(|s| PathBuf::from(*s));
     let root = root.canonicalize().unwrap();
     let packages = packages(&root);
     let deps: Deps = packages
@@ -539,8 +972,44 @@ fn main() {
         .collect();
     let (files, definitions) = collect(&root, &packages);
     let (edges, unresolved_methods) = link(&files, &definitions, &deps);
-    write_gml(&out, &files, &edges, &unresolved_methods);
+
+    if is_audit {
+        let ok = audit(&files, &edges);
+        if !ok && out.is_none() {
+            std::process::exit(1);
+        }
+    }
+
+    if is_cycles {
+        query_cycles(&files, &edges);
+    }
+
+    if is_stats {
+        query_stats(&files, &edges);
+    }
+
+    if let Some(target) = callers_arg {
+        query_callers(&files, &edges, target);
+    }
+
+    if let Some(target) = callees_arg {
+        query_callees(&files, &edges, target);
+    }
+
+    if let Some(out_path) = out {
+        let ext = out_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if ext == "dot" || ext == "gv" {
+            if is_crates_only {
+                write_crates_dot(&out_path, &files, &edges);
+            } else {
+                write_dot(&out_path, &files, &edges);
+            }
+        } else {
+            write_gml(&out_path, &files, &edges, &unresolved_methods);
+        }
+    }
 }
+
 
 /// Parses every source file and indexes its definitions.
 fn collect(root: &Path, packages: &[Package]) -> (Vec<FileInfo>, Defs) {
@@ -681,6 +1150,9 @@ fn link(
                 }
                 let entry = edges.entry((caller, callee)).or_default();
                 entry.counts[kind] += 1;
+                if entry.violation.is_none() {
+                    entry.violation = check_architecture_rule(&files[caller].krate, &files[callee].krate);
+                }
                 if kind == 2 {
                     entry.guessed.insert(name.clone());
                 } else {
@@ -757,7 +1229,7 @@ std/external calls, macros, and type uses are not edges. Self-edges are omitted.
         )
     };
     let (mut high, mut low) = (0, 0);
-    for ((source, target), edge) in edges {
+    for (edge_id, ((source, target), edge)) in edges.iter().enumerate() {
         let [calls, self_calls, guessed] = edge.counts;
         let confident = calls + self_calls > 0;
         if confident {
@@ -765,13 +1237,22 @@ std/external calls, macros, and type uses are not edges. Self-edges are omitted.
         } else {
             low += 1;
         }
+        // Gephi rejects weight = 0. Confident calls have higher weight; guessed have weight 1.
+        let gephi_weight = (calls + self_calls).max(1);
+        let edge_label = if !edge.names.is_empty() {
+            join(&edge.names)
+        } else {
+            join(&edge.guessed)
+        };
         let _ = writeln!(gml, "  edge [");
+        let _ = writeln!(gml, "    id {edge_id}");
         let _ = writeln!(gml, "    source {source}");
         let _ = writeln!(gml, "    target {target}");
+        let _ = writeln!(gml, "    label \"{edge_label}\"");
         let _ = writeln!(gml, "    calls {calls}");
         let _ = writeln!(gml, "    selfCalls {self_calls}");
         let _ = writeln!(gml, "    guessedCalls {guessed}");
-        let _ = writeln!(gml, "    weight {}", calls + self_calls);
+        let _ = writeln!(gml, "    weight {gephi_weight}");
         let _ = writeln!(
             gml,
             "    confidence \"{}\"",
@@ -779,6 +1260,9 @@ std/external calls, macros, and type uses are not edges. Self-edges are omitted.
         );
         let _ = writeln!(gml, "    names \"{}\"", join(&edge.names));
         let _ = writeln!(gml, "    guessedNames \"{}\"", join(&edge.guessed));
+        if let Some(rule) = edge.violation {
+            let _ = writeln!(gml, "    violation \"{rule}\"");
+        }
         let _ = writeln!(gml, "  ]");
     }
     gml.push_str("]\n");

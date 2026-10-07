@@ -1,0 +1,25 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// An Error is received from a fallible call, never constructed; once
+// narrowed it flows through LET, parameters, and returns (error.md,
+// "No default value").
+FUNCTION Describe(e AS Error) AS STRING
+    RETURN "code " + (e.Code AS STRING) + ": " + e.Message
+END FUNCTION
+
+FUNCTION Pass(e AS Error) AS Error
+    RETURN e
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET found AS INTEGER OR Error = ASC("")
+    IF found IS Error THEN
+        LET e AS Error = found
+        PRINT Describe(e)
+        LET again AS Error = Pass(e)
+        PRINT again.Code = e.Code
+    END IF
+END FUNCTION

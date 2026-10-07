@@ -7,19 +7,14 @@ use bn_diag::Diagnostic;
 use bn_source::Span;
 pub use bn_value::Handle;
 
-#[derive(Debug)]
-struct Allocation<T> {
-    generation: u32,
-    declared_type: String,
-    payload: Vec<T>,
-    live: bool,
-    destroying: bool,
-    strong_count: usize,
-}
-
+/// The payloads of live allocations, keyed by the handle the shared ARC core
+/// (`bn_rt::arc::ArcCore`) issued: the core decides identity, counts and
+/// liveness for both backends; the heap only stores what a handle names.
 #[derive(Debug)]
 pub struct Heap<T> {
-    allocations: Vec<Allocation<T>>,
+    /// Indexed by the handle's slot; each entry keeps the generation of the
+    /// handle that owns it, so a stale handle never reads a reused slot.
+    allocations: Vec<Option<(u32, Vec<T>)>>,
 }
 
 impl<T> Default for Heap<T> {
@@ -31,32 +26,49 @@ impl<T> Default for Heap<T> {
 }
 
 impl<T: Clone> Heap<T> {
-    /// Applies a mutation to every live allocation. Used by ARC bookkeeping
-    /// to invalidate weak references when an object is destroyed.
-    pub fn for_each_live_mut(&mut self, mut f: impl FnMut(&mut T)) {
-        for allocation in &mut self.allocations {
-            if allocation.live || allocation.destroying {
-                for value in &mut allocation.payload {
-                    f(value);
-                }
-            }
-        }
-    }
-
-    /// Creates a live checked allocation, including valid zero-length regions.
+    /// Stores the payload of the allocation `handle` names: `length` copies
+    /// of `initial` (a zero-length region is valid).
     ///
     /// # Errors
     ///
-    /// Returns `ALLOCATION_TOO_LARGE` if the slot index cannot be represented
-    /// by a BN handle or the payload cannot be reserved.
-    pub fn allocate(
+    /// Returns `ALLOCATION_TOO_LARGE` if the payload cannot be reserved.
+    ///
+    /// # Panics
+    ///
+    /// When `handle` already names a payload: the core never issues a live
+    /// handle twice.
+    pub fn insert(
         &mut self,
-        declared_type: impl Into<String>,
+        handle: Handle,
         length: usize,
         initial: T,
         span: Span,
-    ) -> Result<Handle, Diagnostic> {
-        self.allocate_region(declared_type, length, initial, span)
+    ) -> Result<(), Diagnostic> {
+        let payload = allocation_payload(length, initial, span)?;
+        let slot = handle.slot as usize;
+        if self.allocations.len() <= slot {
+            self.allocations.resize_with(slot + 1, || None);
+        }
+        assert!(
+            self.allocations[slot].is_none(),
+            "the ARC core issued a handle whose slot is still in use"
+        );
+        self.allocations[slot] = Some((handle.generation, payload));
+        Ok(())
+    }
+
+    /// Frees the payload of `handle`; returns it, or `None` when the handle
+    /// names no payload.
+    pub fn remove(&mut self, handle: Handle) -> Option<Vec<T>> {
+        let entry = self.allocations.get_mut(handle.slot as usize)?;
+        if entry
+            .as_ref()
+            .is_some_and(|(generation, _)| *generation == handle.generation)
+        {
+            entry.take().map(|(_, payload)| payload)
+        } else {
+            None
+        }
     }
 
     /// Reads one element through a checked handle.
@@ -65,11 +77,10 @@ impl<T: Clone> Heap<T> {
     ///
     /// Diagnoses stale handles and out-of-bounds indices.
     pub fn get(&self, handle: Handle, index: usize, span: Span) -> Result<&T, Diagnostic> {
-        let allocation = self.live(handle, span)?;
-        allocation
-            .payload
+        let payload = self.payload(handle, span)?;
+        payload
             .get(index)
-            .ok_or_else(|| region_index_error(index, allocation.payload.len(), span))
+            .ok_or_else(|| region_index_error(index, payload.len(), span))
     }
 
     /// Mutably accesses one element through a checked handle.
@@ -83,223 +94,44 @@ impl<T: Clone> Heap<T> {
         index: usize,
         span: Span,
     ) -> Result<&mut T, Diagnostic> {
-        let allocation = self.live_mut(handle, span)?;
-        let length = allocation.payload.len();
-        allocation
-            .payload
+        let payload = self
+            .allocations
+            .get_mut(handle.slot as usize)
+            .and_then(Option::as_mut)
+            .filter(|(generation, _)| *generation == handle.generation)
+            .map(|(_, payload)| payload)
+            .ok_or_else(|| stale(span))?;
+        let length = payload.len();
+        payload
             .get_mut(index)
             .ok_or_else(|| region_index_error(index, length, span))
     }
 
-    /// Returns the number of live elements in an allocation.
+    /// Returns the number of elements in an allocation.
     ///
     /// # Errors
     ///
     /// Diagnoses stale handles.
     pub fn len(&self, handle: Handle, span: Span) -> Result<usize, Diagnostic> {
-        Ok(self.live(handle, span)?.payload.len())
+        Ok(self.payload(handle, span)?.len())
     }
 
-    /// Deletes one live BN-owned allocation.
-    ///
-    /// # Errors
-    ///
-    /// Diagnoses stale handles and repeated deletion.
-    pub fn delete(&mut self, handle: Handle, span: Span) -> Result<(), Diagnostic> {
-        self.begin_delete(handle, span)?;
-        self.finish_delete(handle, span)
-    }
-
-    /// Marks an allocation deleted so a reentrant `DELETE` is `DOUBLE_RELEASE`
-    /// while a destructor may still read the payload.
-    ///
-    /// # Errors
-    ///
-    /// Diagnoses stale handles and repeated deletion.
-    pub fn begin_delete(&mut self, handle: Handle, span: Span) -> Result<(), Diagnostic> {
-        let allocation = self.slot_mut(handle, span)?;
-        if allocation.generation != handle.generation {
-            return Err(heap_error(
-                bn_diag::DiagId::USE_AFTER_RELEASE,
-                "allocation handle is stale",
-                span,
-            ));
-        }
-        if !allocation.live || allocation.destroying {
-            return Err(heap_error(
-                bn_diag::DiagId::DOUBLE_RELEASE,
-                "allocation was already deleted",
-                span,
-            ));
-        }
-        allocation.live = false;
-        allocation.destroying = true;
-        Ok(())
-    }
-
-    /// Clears a payload after its destructor has finished.
-    ///
-    /// # Errors
-    ///
-    /// Diagnoses stale handles.
-    pub fn finish_delete(&mut self, handle: Handle, span: Span) -> Result<(), Diagnostic> {
-        let allocation = self.slot_mut(handle, span)?;
-        if allocation.generation != handle.generation {
-            return Err(heap_error(
-                bn_diag::DiagId::USE_AFTER_RELEASE,
-                "allocation handle is stale",
-                span,
-            ));
-        }
-        allocation.payload.clear();
-        allocation.destroying = false;
-        allocation.live = false;
-        Ok(())
-    }
-
-    /// Increments the strong-reference count for a live allocation.
-    ///
-    /// # Errors
-    ///
-    /// Returns a stale-handle or retain-overflow diagnostic.
-    pub fn retain(&mut self, handle: Handle, span: Span) -> Result<(), Diagnostic> {
-        let allocation = self.live_mut(handle, span)?;
-        // While the destructor runs the count is frozen: a transient strong
-        // binding (the destructor's own SELF, a local alias) must neither
-        // resurrect the object nor free it a second time on exit.
-        if allocation.destroying {
-            return Ok(());
-        }
-        allocation.strong_count = allocation.strong_count.checked_add(1).ok_or_else(|| {
-            heap_error(
-                bn_diag::DiagId::RETAIN_OVERFLOW,
-                "strong-reference count overflowed",
-                span,
-            )
-        })?;
-        Ok(())
-    }
-
-    /// Decrements the strong-reference count and reports whether it reached zero.
-    ///
-    /// # Errors
-    ///
-    /// Returns a stale-handle or double-release diagnostic.
-    pub fn release(&mut self, handle: Handle, span: Span) -> Result<bool, Diagnostic> {
-        let allocation = self.live_mut(handle, span)?;
-        if allocation.destroying {
-            return Ok(false);
-        }
-        if allocation.strong_count == 0 {
-            return Err(heap_error(
-                bn_diag::DiagId::DOUBLE_RELEASE,
-                "allocation was already released",
-                span,
-            ));
-        }
-        allocation.strong_count -= 1;
-        Ok(allocation.strong_count == 0)
-    }
-
-    /// Returns the current strong-reference count.
-    ///
-    /// # Errors
-    ///
-    /// Returns a stale-handle diagnostic.
-    pub fn strong_count(&self, handle: Handle, span: Span) -> Result<usize, Diagnostic> {
-        Ok(self.live(handle, span)?.strong_count)
-    }
-
-    /// Reports whether the allocation is inside its destructor run.
-    #[must_use]
-    pub fn is_destroying(&self, handle: Handle) -> bool {
+    fn payload(&self, handle: Handle, span: Span) -> Result<&Vec<T>, Diagnostic> {
         self.allocations
             .get(handle.slot as usize)
-            .is_some_and(|allocation| {
-                allocation.generation == handle.generation && allocation.destroying
-            })
+            .and_then(Option::as_ref)
+            .filter(|(generation, _)| *generation == handle.generation)
+            .map(|(_, payload)| payload)
+            .ok_or_else(|| stale(span))
     }
+}
 
-    /// Reports whether a handle still names its live allocation.
-    #[must_use]
-    pub fn is_live(&self, handle: Handle) -> bool {
-        self.allocations
-            .get(handle.slot as usize)
-            .is_some_and(|allocation| allocation.generation == handle.generation && allocation.live)
-    }
-
-    fn allocate_region(
-        &mut self,
-        declared_type: impl Into<String>,
-        length: usize,
-        initial: T,
-        span: Span,
-    ) -> Result<Handle, Diagnostic> {
-        let declared_type = declared_type.into();
-        let payload = allocation_payload(length, initial, span)?;
-        if let Some((slot, allocation)) =
-            self.allocations
-                .iter_mut()
-                .enumerate()
-                .find(|(_, allocation)| {
-                    !allocation.live && !allocation.destroying && allocation.generation < u32::MAX
-                })
-        {
-            allocation.generation += 1;
-            allocation.declared_type = declared_type;
-            allocation.payload = payload;
-            allocation.live = true;
-            allocation.destroying = false;
-            allocation.strong_count = 1;
-            return Ok(Handle {
-                slot: u32::try_from(slot).map_err(|_| too_large(span))?,
-                generation: allocation.generation,
-            });
-        }
-        let slot = u32::try_from(self.allocations.len()).map_err(|_| too_large(span))?;
-        self.allocations.push(Allocation {
-            generation: 0,
-            declared_type,
-            payload,
-            live: true,
-            destroying: false,
-            strong_count: 1,
-        });
-        Ok(Handle {
-            slot,
-            generation: 0,
-        })
-    }
-
-    fn live(&self, handle: Handle, span: Span) -> Result<&Allocation<T>, Diagnostic> {
-        let allocation = self.allocations.get(handle.slot as usize).ok_or_else(|| {
-            heap_error(
-                bn_diag::DiagId::USE_AFTER_RELEASE,
-                "allocation handle is stale",
-                span,
-            )
-        })?;
-        validate_live(allocation, handle, span)?;
-        Ok(allocation)
-    }
-
-    fn live_mut(&mut self, handle: Handle, span: Span) -> Result<&mut Allocation<T>, Diagnostic> {
-        let allocation = self.slot_mut(handle, span)?;
-        validate_live(allocation, handle, span)?;
-        Ok(allocation)
-    }
-
-    fn slot_mut(&mut self, handle: Handle, span: Span) -> Result<&mut Allocation<T>, Diagnostic> {
-        self.allocations
-            .get_mut(handle.slot as usize)
-            .ok_or_else(|| {
-                heap_error(
-                    bn_diag::DiagId::USE_AFTER_RELEASE,
-                    "allocation handle is stale",
-                    span,
-                )
-            })
-    }
+fn stale(span: Span) -> Diagnostic {
+    heap_error(
+        bn_diag::DiagId::USE_AFTER_RELEASE,
+        "allocation handle refers to released memory",
+        span,
+    )
 }
 
 fn allocation_payload<T: Clone>(
@@ -317,36 +149,6 @@ fn allocation_payload<T: Clone>(
     })?;
     payload.resize(length, initial);
     Ok(payload)
-}
-
-fn validate_live<T>(
-    allocation: &Allocation<T>,
-    handle: Handle,
-    span: Span,
-) -> Result<(), Diagnostic> {
-    if allocation.generation != handle.generation {
-        Err(heap_error(
-            bn_diag::DiagId::USE_AFTER_RELEASE,
-            "allocation handle is stale",
-            span,
-        ))
-    } else if !allocation.live && !allocation.destroying {
-        Err(heap_error(
-            bn_diag::DiagId::USE_AFTER_RELEASE,
-            "allocation handle refers to deleted memory",
-            span,
-        ))
-    } else {
-        Ok(())
-    }
-}
-
-fn too_large(span: Span) -> Diagnostic {
-    heap_error(
-        bn_diag::DiagId::ALLOCATION_TOO_LARGE,
-        "allocation table exceeds the portable handle limit",
-        span,
-    )
 }
 
 /// `INDEX_OUT_OF_BOUNDS` for a region access, with its typed facts (the

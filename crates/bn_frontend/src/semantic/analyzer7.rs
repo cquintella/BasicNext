@@ -191,6 +191,20 @@ impl Analyzer {
         self.record_symbol(name, &record, span);
         Ok(())
     }
+    /// A parameter is a constant binding: the callee cannot assign to it,
+    /// so the caller's argument stays alive for the whole call (0.6.md,
+    /// "Memory model (ARC)", "Parameter"; Swift SE-0003).
+    pub(crate) fn declare_parameter(
+        &mut self,
+        locals: &mut HashMap<String, Symbol>,
+        name: &str,
+        ty: Type,
+        span: Span,
+    ) -> Result<(), Diagnostic> {
+        self.declare_local(locals, name, ty, true, span)?;
+        locals.get_mut(name).expect("declared parameter").parameter = true;
+        Ok(())
+    }
     pub(crate) fn symbol(&mut self, ty: Type, constant: bool) -> Symbol {
         let symbol = Symbol {
             id: SymbolId(self.next_symbol),
@@ -198,6 +212,7 @@ impl Analyzer {
             declared_ty: ty.clone(),
             ty,
             constant,
+            parameter: false,
         };
         self.next_symbol += 1;
         self.next_type += 1;
@@ -270,6 +285,9 @@ impl Analyzer {
                 .imported_types
                 .get(&(*class_module, class.clone()))
                 .is_some_and(|info| info.interfaces.contains(interface)),
+            // `compatible` above already applied the literal-alternative rule;
+            // retrying each alternative here would bypass it.
+            (Type::Alternative(_), Type::IntegerLiteral(_) | Type::FloatLiteral) => false,
             (Type::Alternative(expected), actual) => expected
                 .iter()
                 .any(|expected| self.compatible(expected, actual)),
@@ -317,35 +335,6 @@ impl Analyzer {
             .get(class)
             .and_then(|base| self.member_owner(base, name))
             .or_else(|| Some(class.into()))
-    }
-
-    pub(crate) fn deletable(&self, ty: &Type) -> bool {
-        match ty {
-            Type::Pointer { .. }
-            | Type::Null
-            | Type::Integer(_)
-            | Type::IntegerLiteral(_)
-            | Type::Float(_)
-            | Type::FloatLiteral
-            | Type::Boolean
-            | Type::String => true,
-            Type::Vector { element, .. } => self.deletable(element),
-            Type::Named(name) => {
-                name == "FS.File"
-                    || matches!(
-                        self.declaration_kinds.get(name),
-                        Some(&DeclarationKind::Class | &DeclarationKind::Struct)
-                    )
-            }
-            Type::ImportedNamed { module, name } => self
-                .imported_types
-                .get(&(*module, name.clone()))
-                .is_some_and(|info| info.kind == DeclarationKind::Class),
-            Type::Alternative(alternatives) => alternatives
-                .iter()
-                .all(|alternative| self.deletable(alternative)),
-            _ => false,
-        }
     }
 
     pub(crate) fn member_mutable(&self, object: &Type, name: &str) -> bool {

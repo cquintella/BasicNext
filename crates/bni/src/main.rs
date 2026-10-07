@@ -11,7 +11,7 @@ use std::{env, process::ExitCode};
 use bn_cli::{
     check::check,
     frontend::read_source,
-    help::COMMON_OPTIONS,
+    help::{BOOK_URL, COMMON_OPTIONS},
     options::{OutputFormat, parse_options},
     output::{emit_output, tokens_text, tool_error},
 };
@@ -34,14 +34,18 @@ commands:
   dap     serve Debug Adapter Protocol over stdio
 
 options:
-  --mode snippet|program       select eval fragment mode (eval only)
-  --format text|json           select eval result format (eval only)
-  --jupyter-stdin              announce INPUT requests on stderr (run/eval)
+  --mode snippet|program     select eval fragment mode (eval only)
+  --format text|json         select eval result format (eval only)
+  --jupyter-stdin            announce INPUT requests on stderr (run/eval)
+  -o, --output <file>        write the token stream of lex to <file>
+  --trace                    report the execution entry point
+  --no-filesystem            deny HOST.FileSystem imports (run only)
 {COMMON_OPTIONS}
  `bni eval` accepts SOURCE or --stdin; extra program arguments follow --.
  For file-oriented commands, HOST.Args[0] is the source path. Extra program arguments follow --.
  Compilation is `bnc [compile-options] <entry.bn>`.
 See also: man bni
+More information: {BOOK_URL}
 "
     );
     ExitCode::SUCCESS
@@ -124,6 +128,11 @@ fn command() -> ExitCode {
     };
     if options.output_format != OutputFormat::Text {
         eprintln!("error: --format is available only with bni eval");
+        return tool_error();
+    }
+    // Frontend artifacts are a compiler surface (BDFL, 2026-10-07).
+    if options.emit.is_some() {
+        eprintln!("error: --emit is a compiler option (bnc --emit tokens|ast|typed-ast|ir)");
         return tool_error();
     }
     let (source, tokens) = match read_source(&options) {

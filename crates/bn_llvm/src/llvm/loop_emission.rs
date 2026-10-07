@@ -1,5 +1,16 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// The counted `FOR` continuation test: ascending while `current <= end` for a
+// positive step, descending while `current >= end` otherwise.
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::ir::{
+    InstSink, LlvmInst, LlvmOperand,
+    LlvmType::{I1, I64},
+};
 
 pub(crate) fn lower_for_condition(
     text: &mut String,
@@ -15,42 +26,48 @@ pub(crate) fn lower_for_condition(
         .get(&current)
         .expect("validated FOR current type");
     let step_type = analysis.values.get(&step).expect("validated FOR step type");
-    let current_i64 = extend_to_i64(text, current, current_type);
-    let end_i64 = extend_to_i64(
+    let current_i64 = LlvmOperand::raw(extend_to_i64(text, current, current_type));
+    let end_i64 = LlvmOperand::raw(extend_to_i64(
         text,
         end,
         analysis.values.get(&end).expect("validated FOR end type"),
+    ));
+    let dest = destination.0;
+    let reg = LlvmOperand::reg;
+    text.assign(
+        format!("for_step_positive{dest}"),
+        LlvmInst::icmp(
+            integer_compare_cond("Greater", step_type),
+            crate::layout::typed_llvm(llvm_type(step_type).expect("validated FOR step type")),
+            value_reg(step),
+            LlvmOperand::int(0),
+        ),
     );
-    let positive_opcode = integer_compare_opcode("Greater", step_type);
-    let ascending_opcode = if is_unsigned(current_type) {
-        "icmp ule"
-    } else {
-        "icmp sle"
-    };
-    let descending_opcode = if is_unsigned(current_type) {
-        "icmp uge"
-    } else {
-        "icmp sge"
-    };
-    let step_llvm_ty = llvm_type(step_type).expect("validated FOR step type");
-    let _ = writeln!(
-        text,
-        "  %for_step_positive{} = {positive_opcode} {step_llvm_ty} %v{}, 0",
-        destination.0, step.0
+    text.assign(
+        format!("for_ascending{dest}"),
+        LlvmInst::icmp(
+            integer_compare_cond("LessEqual", current_type),
+            I64,
+            current_i64.clone(),
+            end_i64.clone(),
+        ),
     );
-    let _ = writeln!(
-        text,
-        "  %for_ascending{} = {ascending_opcode} i64 {current_i64}, {end_i64}",
-        destination.0
+    text.assign(
+        format!("for_descending{dest}"),
+        LlvmInst::icmp(
+            integer_compare_cond("GreaterEqual", current_type),
+            I64,
+            current_i64,
+            end_i64,
+        ),
     );
-    let _ = writeln!(
-        text,
-        "  %for_descending{} = {descending_opcode} i64 {current_i64}, {end_i64}",
-        destination.0
-    );
-    let _ = writeln!(
-        text,
-        "  %v{} = select i1 %for_step_positive{}, i1 %for_ascending{}, i1 %for_descending{}",
-        destination.0, destination.0, destination.0, destination.0
+    text.assign(
+        format!("v{dest}"),
+        LlvmInst::select(
+            reg(format!("for_step_positive{dest}")),
+            I1,
+            reg(format!("for_ascending{dest}")),
+            reg(format!("for_descending{dest}")),
+        ),
     );
 }

@@ -185,6 +185,12 @@ where
 {
     let mut builder = auto::Builder::new(TokioExecutor::new());
     let connection_timeout = std::time::Duration::from_millis(options.connection_total_ms);
+    // One instant bounds the connection and any handler it runs. A handler
+    // deadline measured from the handler start would always fall after the
+    // connection deadline, which then closed the connection with no response
+    // instead of the `408` below. With the same instant, `Timeout` polls the
+    // connection (and so the timed-out handler) before its own timer.
+    let deadline = tokio::time::Instant::now() + connection_timeout;
     let header_timeout = std::time::Duration::from_millis(options.header_read_ms);
     let idle_timeout = std::time::Duration::from_millis(options.idle_keep_alive_ms);
     let handler_slots = state
@@ -220,6 +226,7 @@ where
                 &state,
                 handler,
                 request_options,
+                deadline,
                 handler_slots,
                 active_handler_tasks,
             )
@@ -235,7 +242,7 @@ where
             Ok::<_, Infallible>(response)
         }
     });
-    tokio::time::timeout(connection_timeout, builder.serve_connection(io, service))
+    tokio::time::timeout_at(deadline, builder.serve_connection(io, service))
         .await
         .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "connection deadline exceeded"))?
         .map_err(io::Error::other)
@@ -586,6 +593,7 @@ async fn route_response(
     state: &Arc<Mutex<ServerState>>,
     handler: Option<Handler>,
     options: crate::web::ServerOptions,
+    deadline: tokio::time::Instant,
     handler_slots: std::sync::Arc<tokio::sync::Semaphore>,
     active_handler_tasks: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 ) -> Response<Full<Bytes>> {
@@ -716,8 +724,8 @@ async fn route_response(
         };
         active_handler_tasks.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
         let task_counter = std::sync::Arc::clone(&active_handler_tasks);
-        let handler_result = tokio::time::timeout(
-            std::time::Duration::from_millis(options.connection_total_ms),
+        let handler_result = tokio::time::timeout_at(
+            deadline,
             tokio::task::spawn_blocking(move || {
                 let _task_guard = HandlerTaskGuard(task_counter);
                 let mut application_response = crate::web::Response::new();
@@ -817,6 +825,8 @@ fn response_with_retry_after(
         .unwrap_or_else(|_| Response::new(Full::new(Bytes::new())))
 }
 
+#[cfg(test)]
+mod deadline_tests;
 #[allow(dead_code)]
 #[cfg(test)]
 mod tests;

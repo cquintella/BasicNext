@@ -55,7 +55,7 @@ pub fn parse_time(text: &str, span: Span) -> Result<u32, Diagnostic> {
 ///
 /// Returns the language diagnostic for a malformed value.
 pub fn parse_timezone(text: &str, span: Span) -> Result<String, Diagnostic> {
-    if is_iana_identifier(text) {
+    if bn_types::text::is_timezone_id(text) {
         Ok(text.to_string())
     } else {
         Err(temporal_error(
@@ -252,29 +252,6 @@ fn parse_digits(text: &str) -> Option<i64> {
         return None;
     }
     text.parse().ok()
-}
-
-fn is_iana_identifier(text: &str) -> bool {
-    if text == "UTC" {
-        return true;
-    }
-    let mut parts = 0;
-    for part in text.split('/') {
-        parts += 1;
-        let mut characters = part.chars();
-        let Some(first) = characters.next() else {
-            return false;
-        };
-        if !first.is_ascii_alphabetic() {
-            return false;
-        }
-        if !characters.all(|character| {
-            character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '+')
-        }) {
-            return false;
-        }
-    }
-    parts >= 2
 }
 
 fn temporal_error(id: bn_diag::DiagId, message: impl Into<String>, span: Span) -> Diagnostic {

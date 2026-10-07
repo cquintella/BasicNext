@@ -274,6 +274,16 @@ fn semantic_fixtures_are_rejected() {
         "tests/grammar/invalid/float-binding-integer-variable.bn",
         "tests/grammar/invalid/as-string-from-string.bn",
         "tests/grammar/invalid/as-string-from-alternative.bn",
+        "tests/grammar/invalid/literal-ambiguous-numeric-alternative.bn",
+        "tests/grammar/invalid/alternative-duplicate-member.bn",
+        "tests/grammar/invalid/alternative-narrowing-without-is.bn",
+        "tests/grammar/invalid/error-without-initializer.bn",
+        "tests/grammar/invalid/error-field-without-initializer.bn",
+        "tests/grammar/invalid/error-vector-without-initializer.bn",
+        "tests/grammar/invalid/parameter-assignment.bn",
+        "tests/grammar/invalid/parameter-increment.bn",
+        "tests/grammar/invalid/release-field.bn",
+        "tests/grammar/invalid/release-static.bn",
     ] {
         let source = SourceFile::new(path, fs::read_to_string(path).expect("read fixture"));
         let tokens = lex(&source).expect("lex fixture");
@@ -919,4 +929,40 @@ fn bnsqlite_companion_fixtures_validate_semantic_rules() {
     let ok_graph =
         load(Path::new("tests/modules/bnsqlite-companion/main.bn")).expect("load valid companion");
     assert!(analyze_modules(&ok_graph).is_ok());
+}
+
+/// Swift's ARC model (0.6.md, "Memory model (ARC)", "`RELEASE`"): a
+/// parameter is constant, and `RELEASE` takes a local binding or a parameter,
+/// never a field or a `STATIC`. Each fixture fails for that reason.
+#[test]
+fn constant_parameters_and_release_targets_follow_the_swift_model() {
+    for (path, code, detail) in [
+        (
+            "tests/grammar/invalid/parameter-assignment.bn",
+            "TYPE_MISMATCH",
+            "parameters are constant",
+        ),
+        (
+            "tests/grammar/invalid/parameter-increment.bn",
+            "TYPE_MISMATCH",
+            "parameters are constant",
+        ),
+        (
+            "tests/grammar/invalid/release-field.bn",
+            "INVALID_RELEASE_TARGET",
+            "local binding or a parameter",
+        ),
+        (
+            "tests/grammar/invalid/release-static.bn",
+            "INVALID_RELEASE_TARGET",
+            "local binding or a parameter",
+        ),
+    ] {
+        let source = SourceFile::new(path, fs::read_to_string(path).expect("read fixture"));
+        let tokens = lex(&source).expect("lex fixture");
+        let program = parse(&tokens).expect("parse fixture");
+        let error = analyze(&program).expect_err(path);
+        assert_eq!(error.code, code, "{path}");
+        assert!(error.message.contains(detail), "{path}: {}", error.message);
+    }
 }

@@ -1,5 +1,4 @@
 #![allow(clippy::wildcard_imports, clippy::too_many_lines)]
-use super::part10::indexed_value;
 use super::*;
 
 impl Executor<'_, '_> {
@@ -10,6 +9,65 @@ impl Executor<'_, '_> {
         values: &mut HashMap<ValueId, Value>,
     ) -> Result<(), Diagnostic> {
         match instruction {
+            Instruction::Retain {
+                destination,
+                value: source,
+                span,
+                ..
+            } => {
+                let retained = value(values, *source, *span)?.clone();
+                self.retain_owned_value(&retained, *span)?;
+                set(values, *destination, retained);
+            }
+            Instruction::Take {
+                destination,
+                symbol,
+                ..
+            } => {
+                // An emptied binding (taken by `RELEASE` earlier on this
+                // path) yields NULL, which holds no reference.
+                let taken = symbols.remove(symbol).unwrap_or(Value::Null);
+                set(values, *destination, taken);
+            }
+            Instruction::TakeMember {
+                destination,
+                object,
+                field,
+                name,
+                span,
+                ..
+            } => {
+                let Value::Object { handle, .. } = value(values, *object, *span)? else {
+                    return Err(runtime_error(
+                        bn_diag::DiagId::INVALID_IR,
+                        "TakeMember needs an object",
+                        *span,
+                    ));
+                };
+                let handle = *handle;
+                let slot = super::part11::field_slot(field.as_ref(), *span)?;
+                let taken = self
+                    .objects
+                    .get_mut(handle, 0, *span)?
+                    .fields
+                    .get_mut(slot)
+                    .map(|field| std::mem::replace(field, Value::Null))
+                    .ok_or_else(|| super::super::name_not_found(name, "object member", *span))?;
+                set(values, *destination, taken);
+            }
+            Instruction::EndBinding { symbol, span } => {
+                let frame = self
+                    .ownership_frames
+                    .last_mut()
+                    .expect("instruction executes in an ownership frame");
+                if !frame.released_symbols.insert(*symbol) {
+                    return Err(runtime_error(
+                        bn_diag::DiagId::DOUBLE_RELEASE,
+                        "binding was already released",
+                        *span,
+                    ));
+                }
+            }
             Instruction::Constant {
                 destination,
                 value: constant,
@@ -68,26 +126,19 @@ impl Executor<'_, '_> {
                 span,
                 ..
             } => {
-                if self
-                    .ownership_frames
-                    .last()
-                    .is_some_and(|frame| frame.released_symbols.contains(symbol))
-                {
-                    let releasing_again = self
-                        .ownership_frames
+                let (released, weak) =
+                    self.ownership_frames
                         .last()
-                        .is_some_and(|frame| frame.release_values.contains(destination));
+                        .map_or((false, false), |frame| {
+                            (
+                                frame.released_symbols.contains(symbol),
+                                frame.weak_symbols.contains(symbol),
+                            )
+                        });
+                if released {
                     return Err(runtime_error(
-                        if releasing_again {
-                            bn_diag::DiagId::DOUBLE_RELEASE
-                        } else {
-                            bn_diag::DiagId::USE_AFTER_RELEASE
-                        },
-                        if releasing_again {
-                            "binding was already released"
-                        } else {
-                            "binding was released"
-                        },
+                        bn_diag::DiagId::USE_AFTER_RELEASE,
+                        "binding was released",
                         *span,
                     ));
                 }
@@ -98,19 +149,15 @@ impl Executor<'_, '_> {
                         *span,
                     )
                 })?;
+                let loaded = if weak { self.weak_read(loaded) } else { loaded };
                 set(values, *destination, loaded);
-                self.ownership_frames
-                    .last_mut()
-                    .expect("instruction executes in an ownership frame")
-                    .loaded_values
-                    .insert(*destination, *symbol);
             }
             Instruction::Store {
                 symbol,
                 value: source,
+                previous,
                 ty,
                 span,
-                ..
             } => {
                 let stored = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
                 if let (Some(Value::Vector(previous)), Value::Vector(next)) =
@@ -123,29 +170,15 @@ impl Executor<'_, '_> {
                         *span,
                     ));
                 }
-                let (weak, transferred) = {
-                    let frame = self
-                        .ownership_frames
-                        .last_mut()
-                        .expect("instruction executes in an ownership frame");
-                    (
-                        frame.weak_symbols.contains(symbol),
-                        frame.owned_values.remove(source),
-                    )
-                };
-                if !weak && !transferred {
-                    self.retain_owned_value(&stored, *span)?;
+                let replaced = symbols.insert(*symbol, stored).unwrap_or(Value::Null);
+                if let Some(previous) = previous {
+                    set(values, *previous, replaced);
                 }
-                if !weak && let Some(previous) = symbols.remove(symbol) {
-                    self.release_owned_value(previous, *span)?;
-                }
-                symbols.insert(*symbol, stored);
                 self.ownership_frames
                     .last_mut()
                     .expect("instruction executes in an ownership frame")
                     .released_symbols
                     .remove(symbol);
-                self.refresh_weak_symbols(symbols);
             }
             Instruction::Copy {
                 destination,
@@ -154,13 +187,7 @@ impl Executor<'_, '_> {
                 span,
             } => {
                 let copied = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
-                self.retain_owned_value(&copied, *span)?;
                 set(values, *destination, copied);
-                self.ownership_frames
-                    .last_mut()
-                    .expect("instruction executes in an ownership frame")
-                    .owned_values
-                    .insert(*destination);
             }
             Instruction::Unary {
                 destination,
@@ -219,23 +246,14 @@ impl Executor<'_, '_> {
                     .map(|argument| value(values, *argument, *span).cloned())
                     .collect::<Result<Vec<_>, _>>()?;
                 let result = self.call_named(&name, arguments, *span)?;
-                set(values, *destination, self.coerce_to(result, ty, *span)?);
-                if matches!(
-                    values.get(destination),
-                    Some(
-                        Value::Object { .. }
-                            | Value::Vector(_)
-                            | Value::Record { .. }
-                            | Value::Pointer { .. }
-                    )
-                ) {
-                    self.ownership_frames
-                        .last_mut()
-                        .expect("instruction executes in an ownership frame")
-                        .owned_values
-                        .insert(*destination);
-                }
-                self.refresh_weak_symbols(symbols);
+                // A call that stopped returns nothing; only the STOP path of
+                // the IR sees its result (0.6.md, "`STOP`").
+                let result = if self.stop_code.is_some() {
+                    result
+                } else {
+                    self.coerce_to(result, ty, *span)?
+                };
+                set(values, *destination, result);
             }
             Instruction::DispatchSubmit {
                 destination,
@@ -353,6 +371,7 @@ impl Executor<'_, '_> {
                 set(values, *destination, member);
             }
             Instruction::SetIndex {
+                previous,
                 symbol,
                 indices,
                 value: source,
@@ -364,40 +383,25 @@ impl Executor<'_, '_> {
                     .map(|index| Ok(integer(value(values, *index, *span)?, *span)?.0))
                     .collect::<Result<Vec<_>, _>>()?;
                 let stored = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
-                let target_snapshot = symbols.get(symbol).cloned().ok_or_else(|| {
+                let target = symbols.get(symbol).ok_or_else(|| {
                     runtime_error(
                         bn_diag::DiagId::UNINITIALIZED_VALUE,
                         "binding has no value",
                         *span,
                     )
                 })?;
-                let previous = if matches!(target_snapshot, Value::Null) {
-                    Value::Null
-                } else if matches!(target_snapshot, Value::Pointer { .. }) && indices.len() == 1 {
-                    self.index_value(&target_snapshot, indices[0], *span)?
-                } else {
-                    indexed_value(&target_snapshot, &indices, *span)?.clone()
+                let replaced = match previous {
+                    Some(_) => Some(self.element_at(target, &indices, *span)?),
+                    None => None,
                 };
-                let transferred = self
-                    .ownership_frames
-                    .last_mut()
-                    .expect("instruction executes in an ownership frame")
-                    .owned_values
-                    .remove(source);
-                if !transferred {
-                    self.retain_owned_value(&stored, *span)?;
-                }
-                let target = symbols.get_mut(symbol).ok_or_else(|| {
-                    runtime_error(
-                        bn_diag::DiagId::UNINITIALIZED_VALUE,
-                        "binding has no value",
-                        *span,
-                    )
-                })?;
+                let target = symbols.get_mut(symbol).expect("binding was just read");
                 self.set_index(target, &indices, stored, *span)?;
-                self.release_owned_value(previous, *span)?;
+                if let (Some(previous), Some(replaced)) = (previous, replaced) {
+                    set(values, *previous, replaced);
+                }
             }
             Instruction::SetMemberIndex {
+                previous,
                 object,
                 field,
                 name,
@@ -412,6 +416,18 @@ impl Executor<'_, '_> {
                     .map(|index| Ok(integer(value(values, *index, *span)?, *span)?.0))
                     .collect::<Result<Vec<_>, _>>()?;
                 let source = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
+                let replaced = match previous {
+                    Some(_) => {
+                        let member = self.member_of(
+                            value(values, *object, *span)?,
+                            name,
+                            field.as_ref(),
+                            *span,
+                        )?;
+                        Some(self.element_at(&member, &indices, *span)?)
+                    }
+                    None => None,
+                };
                 self.set_member_index_value(
                     values,
                     *object,
@@ -421,8 +437,12 @@ impl Executor<'_, '_> {
                     source,
                     *span,
                 )?;
+                if let (Some(previous), Some(replaced)) = (previous, replaced) {
+                    set(values, *previous, replaced);
+                }
             }
             Instruction::SetFieldIndex {
+                previous,
                 symbol,
                 path,
                 fields,
@@ -437,27 +457,32 @@ impl Executor<'_, '_> {
                     .map(|index| Ok(integer(value(values, *index, *span)?, *span)?.0))
                     .collect::<Result<Vec<_>, _>>()?;
                 let source = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
-                let target = symbols.get_mut(symbol).ok_or_else(|| {
+                let fields = fields.as_deref().ok_or_else(|| {
+                    runtime_error(
+                        bn_diag::DiagId::INVALID_IR,
+                        "field path store lacks resolved fields",
+                        *span,
+                    )
+                })?;
+                let root = symbols.get(symbol).ok_or_else(|| {
                     runtime_error(
                         bn_diag::DiagId::UNINITIALIZED_VALUE,
                         "binding has no value",
                         *span,
                     )
                 })?;
-                self.set_field_index_path(
-                    target,
-                    path,
-                    fields.as_deref().ok_or_else(|| {
-                        runtime_error(
-                            bn_diag::DiagId::INVALID_IR,
-                            "field path store lacks resolved fields",
-                            *span,
-                        )
-                    })?,
-                    &indices,
-                    source,
-                    *span,
-                )?;
+                let replaced = match previous {
+                    Some(_) => {
+                        let field = self.field_at(root, fields, *span)?;
+                        Some(self.element_at(&field, &indices, *span)?)
+                    }
+                    None => None,
+                };
+                let target = symbols.get_mut(symbol).expect("binding was just read");
+                self.set_field_index_path(target, path, fields, &indices, source, *span)?;
+                if let (Some(previous), Some(replaced)) = (previous, replaced) {
+                    set(values, *previous, replaced);
+                }
             }
             Instruction::Length {
                 destination,
@@ -573,66 +598,17 @@ impl Executor<'_, '_> {
                     },
                 };
                 set(values, *destination, allocated);
-                self.ownership_frames
-                    .last_mut()
-                    .expect("instruction executes in an ownership frame")
-                    .owned_values
-                    .insert(*destination);
             }
             Instruction::Release {
-                value: deleted,
-                destructor,
+                value: released,
                 span,
+                ..
             } => {
-                let target = value(values, *deleted, *span)?.clone();
-                // An explicit RELEASE of an object whose destructor is running
-                // (e.g. RELEASE SELF inside DESTRUCTOR) is a reentrant release.
-                if let Value::Object { handle, .. } = &target
-                    && self.objects.is_destroying(*handle)
-                {
-                    return Err(runtime_error(
-                        bn_diag::DiagId::DOUBLE_RELEASE,
-                        "allocation was already deleted",
-                        *span,
-                    ));
-                }
-                let symbol = self
-                    .ownership_frames
-                    .last()
-                    .and_then(|frame| frame.loaded_values.get(deleted).copied());
-                if let Some(symbol) = symbol {
-                    let weak = self
-                        .ownership_frames
-                        .last()
-                        .is_some_and(|frame| frame.weak_symbols.contains(&symbol));
-                    let removed = symbols.remove(&symbol).unwrap_or(target);
-                    if weak {
-                        // A weak binding owns no reference; RELEASE only ends the binding.
-                    } else if matches!(
-                        &removed,
-                        Value::Object { .. }
-                            | Value::Vector(_)
-                            | Value::Record { .. }
-                            | Value::Pointer { .. }
-                            | Value::Null
-                    ) {
-                        // ARC kinds: drop this binding's strong only. A NULL
-                        // pointer binding holds no region; RELEASE ends the binding.
-                        self.release_owned_value(removed, *span)?;
-                    } else {
-                        self.delete_value(removed, destructor.as_deref(), *span)?;
-                    }
-                    self.ownership_frames
-                        .last_mut()
-                        .expect("instruction executes in an ownership frame")
-                        .released_symbols
-                        .insert(symbol);
-                    self.refresh_weak_symbols(symbols);
-                } else {
-                    self.delete_value(target, destructor.as_deref(), *span)?;
-                }
+                let target = value(values, *released, *span)?.clone();
+                self.release_value(target, *span)?;
             }
             Instruction::SetMember {
+                previous,
                 object,
                 field,
                 name,
@@ -642,44 +618,22 @@ impl Executor<'_, '_> {
                 ..
             } => {
                 let stored = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
-                let weak = field
-                    .as_ref()
-                    .is_some_and(|field| self.module.field_is_weak(field));
-                let transferred = self
-                    .ownership_frames
-                    .last_mut()
-                    .expect("instruction executes in an ownership frame")
-                    .owned_values
-                    .remove(source);
-                if !weak && !transferred {
-                    self.retain_owned_value(&stored, *span)?;
-                }
-                let previous = match values.get(object) {
-                    Some(Value::Object { handle, .. }) => self
-                        .objects
-                        .get(*handle, 0, *span)?
-                        .fields
-                        .get(
-                            field
-                                .as_ref()
-                                .map_or(usize::MAX, |field| field.slot.value() as usize),
-                        )
-                        .cloned(),
-                    Some(Value::Record { record }) => record
-                        .get(
-                            field
-                                .as_ref()
-                                .map_or(usize::MAX, |field| field.slot.value() as usize),
-                        )
-                        .cloned(),
-                    _ => None,
+                let replaced = match previous {
+                    Some(_) => Some(self.member_of(
+                        value(values, *object, *span)?,
+                        name,
+                        field.as_ref(),
+                        *span,
+                    )?),
+                    None => None,
                 };
                 self.set_member_value(values, *object, name, field.as_ref(), stored, *span)?;
-                if !weak && let Some(previous) = previous {
-                    self.release_owned_value(previous, *span)?;
+                if let (Some(previous), Some(replaced)) = (previous, replaced) {
+                    set(values, *previous, replaced);
                 }
             }
             Instruction::SetField {
+                previous,
                 symbol,
                 path,
                 fields,
@@ -689,26 +643,29 @@ impl Executor<'_, '_> {
                 ..
             } => {
                 let stored = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
-                let target = symbols.get_mut(symbol).ok_or_else(|| {
+                let fields = fields.as_deref().ok_or_else(|| {
+                    runtime_error(
+                        bn_diag::DiagId::INVALID_IR,
+                        "field path store lacks resolved fields",
+                        *span,
+                    )
+                })?;
+                let root = symbols.get(symbol).ok_or_else(|| {
                     runtime_error(
                         bn_diag::DiagId::UNINITIALIZED_VALUE,
                         "binding has no value",
                         *span,
                     )
                 })?;
-                self.set_field_path(
-                    target,
-                    path,
-                    fields.as_deref().ok_or_else(|| {
-                        runtime_error(
-                            bn_diag::DiagId::INVALID_IR,
-                            "field path store lacks resolved fields",
-                            *span,
-                        )
-                    })?,
-                    stored,
-                    *span,
-                )?;
+                let replaced = match previous {
+                    Some(_) => Some(self.field_at(root, fields, *span)?),
+                    None => None,
+                };
+                let target = symbols.get_mut(symbol).expect("binding was just read");
+                self.set_field_path(target, path, fields, stored, *span)?;
+                if let (Some(previous), Some(replaced)) = (previous, replaced) {
+                    set(values, *previous, replaced);
+                }
             }
             Instruction::EnsureClass { class, span } => self.ensure_class(class, *span)?,
             Instruction::LoadStatic {
@@ -729,6 +686,7 @@ impl Executor<'_, '_> {
                 set(values, *destination, loaded);
             }
             Instruction::StoreStatic {
+                previous,
                 class,
                 field,
                 value: source,
@@ -736,9 +694,16 @@ impl Executor<'_, '_> {
                 span,
             } => {
                 let stored = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
-                self.statics.insert((class.clone(), field.clone()), stored);
+                let replaced = self
+                    .statics
+                    .insert((class.clone(), field.clone()), stored)
+                    .unwrap_or(Value::Null);
+                if let Some(previous) = previous {
+                    set(values, *previous, replaced);
+                }
             }
             Instruction::SetStaticIndex {
+                previous,
                 class,
                 field,
                 indices,
@@ -759,6 +724,10 @@ impl Executor<'_, '_> {
                         *span,
                     )
                 })?;
+                if let Some(previous) = previous {
+                    let replaced = self.element_at(&target, &indices, *span)?;
+                    set(values, *previous, replaced);
+                }
                 self.set_index(&mut target, &indices, source, *span)?;
                 self.statics.insert(key, target);
             }

@@ -1,0 +1,19 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNMath on FLOAT32 returns FLOAT32: the native backend narrows the
+// runtime's double result back to float.
+IMPORT BNMath AS Math
+
+FUNCTION Start() AS VOID
+    LET a AS FLOAT32 = 2.25
+    LET b AS FLOAT32 = -1.5
+    LET c AS FLOAT32 = 0.5
+    PRINT Math.SQRT(a), Math.ABS(b), Math.SIGN(b), Math.FLOOR(b)
+    PRINT Math.MIN(a, b), Math.MAX(a, b), Math.POW(a, c), Math.HYPOT(a, b)
+    PRINT Math.FMA(a, b, c)
+    LET s AS FLOAT32 = Math.SQRT(a) + c
+    PRINT s
+END FUNCTION

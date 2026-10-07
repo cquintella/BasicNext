@@ -1,0 +1,44 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Widening an alternative keeps the alternative the value holds
+// (0.6.md, "Alternative types: identity and assignment", rule 3).
+CLASS Holder
+    PUBLIC value AS INT32 OR NULL OR Error = NULL
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+FUNCTION Describe(x AS INT32 OR NULL OR Error) AS STRING
+    IF x IS INT32 THEN
+        RETURN "INT32"
+    ELSE IF x IS NULL THEN
+        RETURN "NULL"
+    END IF
+    RETURN "Error"
+END FUNCTION
+
+FUNCTION Widen(x AS INT32 OR NULL) AS INT32 OR NULL OR Error
+    RETURN x
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET found AS INT32 OR NULL = 7
+    LET missing AS INT32 OR NULL = NULL
+    LET a AS INT32 OR NULL OR Error = found
+    LET b AS INT32 OR NULL OR Error = missing
+    PRINT Describe(a), Describe(b)
+    PRINT Describe(found), Describe(missing)
+    PRINT Describe(Widen(found)), Describe(Widen(missing))
+    LET holder AS Holder = NEW Holder()
+    holder.value = found
+    PRINT Describe(holder.value)
+    a = missing
+    PRINT Describe(a)
+    IF found IS INT32 THEN
+        LET n AS INT32 = found
+        PRINT n
+    END IF
+END FUNCTION

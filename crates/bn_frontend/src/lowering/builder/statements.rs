@@ -12,6 +12,9 @@ impl Builder<'_> {
                 break;
             }
             self.statement(statement)?;
+            if !self.terminated() {
+                self.release_temporaries(None);
+            }
         }
         Ok(())
     }
@@ -38,15 +41,27 @@ impl Builder<'_> {
                         binding_span,
                     )
                 }));
+                let weak = type_ref
+                    .alternatives
+                    .first()
+                    .is_some_and(|atom| atom.name == "WEAK");
                 for (symbol, initializer, binding_span) in bindings {
-                    let value = if let Some(initializer) = initializer {
+                    let mut value = if let Some(initializer) = initializer {
                         let value = self.expression(initializer)?;
                         self.patch_await_type(value, ty.clone());
                         value
                     } else {
                         self.default_value(ty.clone(), type_ref, binding_span)?
                     };
+                    if weak {
+                        // A weak binding owns nothing.
+                        self.weak_locals.insert(symbol);
+                    } else if self.is_arc(&ty) {
+                        value = self.owned_value(value, binding_span);
+                        self.declare_owner(symbol, ty.clone(), binding_span);
+                    }
                     self.emit(Instruction::Store {
+                        previous: None,
                         symbol,
                         value,
                         ty: ty.clone(),
@@ -104,15 +119,22 @@ impl Builder<'_> {
             Statement::Call { expression, .. } => {
                 self.expression(expression)?;
             }
-            Statement::Return { value, .. } => {
-                let value = value
+            Statement::Return { value, span } => {
+                let mut value = value
                     .as_ref()
                     .map(|value| self.expression(value))
                     .transpose()?;
+                // The caller receives an owned reference; then every open
+                // scope releases its locals.
+                value = value.map(|value| self.owned_value(value, *span));
+                self.release_scopes(0);
                 self.terminate(Terminator::Return { value });
             }
             Statement::Stop { code, .. } => {
                 let code = self.expression(code)?;
+                // 0.6.md, "`STOP`": this function's locals are released;
+                // each caller releases its own after the call (`stop_check`).
+                self.release_scopes(0);
                 self.terminate(Terminator::Stop { code });
             }
             Statement::If {
@@ -139,20 +161,12 @@ impl Builder<'_> {
                 } else {
                     targets.continue_at
                 };
+                self.release_scopes(targets.scope_depth);
                 self.terminate(Terminator::Jump {
                     target: destination,
                 });
             }
-            Statement::Release { value, span } => {
-                let deleted = self.expression(value)?;
-                let destructor =
-                    destructor_name(self.model, value.span, &self.methods, &self.prefix);
-                self.emit(Instruction::Release {
-                    value: deleted,
-                    destructor,
-                    span: *span,
-                });
-            }
+            Statement::Release { value, span } => self.release_statement(value, *span)?,
             Statement::MemberFunction { .. } => {}
         }
         Ok(())
@@ -168,21 +182,55 @@ impl Builder<'_> {
         value: ValueId,
         span: Span,
     ) -> Result<(), Diagnostic> {
-        match self.assignment_place(target)? {
+        let place = self.assignment_place(target)?;
+        let target_type = type_at(self.model, target.span)?;
+        let weak_target = matches!(&place, AssignPlace::Binding { symbol, .. } if self.weak_locals.contains(symbol))
+            || self.is_weak_field(target);
+        // Explicit ownership: the write takes an owned value and gives back
+        // the previous content, which is released right after.
+        let (value, previous) = if self.is_arc(&target_type) && !weak_target {
+            (self.owned_value(value, span), Some(self.value()))
+        } else {
+            (value, None)
+        };
+        self.write_place(place, value, previous, &target_type, span);
+        if let Some(previous) = previous {
+            self.emit(Instruction::Release {
+                value: previous,
+                destructor: None,
+                span,
+            });
+        }
+        Ok(())
+    }
+
+    /// Emits the write instruction for `place`.
+    #[allow(clippy::too_many_lines)] // One arm per assignable place.
+    fn write_place(
+        &mut self,
+        place: AssignPlace,
+        value: ValueId,
+        previous: Option<ValueId>,
+        ty: &Type,
+        span: Span,
+    ) {
+        match place {
             AssignPlace::Binding { symbol, indices } if indices.is_empty() => {
                 self.emit(Instruction::Store {
+                    previous,
                     symbol,
                     value,
-                    ty: type_at(self.model, target.span)?,
+                    ty: ty.clone(),
                     span,
                 });
             }
             AssignPlace::Binding { symbol, indices } => {
                 self.emit(Instruction::SetIndex {
+                    previous,
                     symbol,
                     indices,
                     value,
-                    ty: type_at(self.model, target.span)?,
+                    ty: ty.clone(),
                     span,
                 });
             }
@@ -192,12 +240,13 @@ impl Builder<'_> {
                 owner,
             } => {
                 self.emit(Instruction::SetMember {
+                    previous,
                     object,
                     field: None,
                     name,
                     owner,
                     value,
-                    ty: type_at(self.model, target.span)?,
+                    ty: ty.clone(),
                     span,
                 });
             }
@@ -208,13 +257,14 @@ impl Builder<'_> {
                 indices,
             } => {
                 self.emit(Instruction::SetMemberIndex {
+                    previous,
                     object,
                     field: None,
                     name,
                     owner,
                     indices,
                     value,
-                    ty: type_at(self.model, target.span)?,
+                    ty: ty.clone(),
                     span,
                 });
             }
@@ -224,12 +274,13 @@ impl Builder<'_> {
                 path,
             } => {
                 self.emit(Instruction::SetField {
+                    previous,
                     symbol,
                     root_owner,
                     path,
                     fields: None,
                     value,
-                    ty: type_at(self.model, target.span)?,
+                    ty: ty.clone(),
                     span,
                 });
             }
@@ -240,23 +291,25 @@ impl Builder<'_> {
                 indices,
             } => {
                 self.emit(Instruction::SetFieldIndex {
+                    previous,
                     symbol,
                     root_owner,
                     path,
                     fields: None,
                     indices,
                     value,
-                    ty: type_at(self.model, target.span)?,
+                    ty: ty.clone(),
                     span,
                 });
             }
             AssignPlace::Static { class, field } => {
                 self.ensure_class(&class, span);
                 self.emit(Instruction::StoreStatic {
+                    previous,
                     class,
                     field,
                     value,
-                    ty: type_at(self.model, target.span)?,
+                    ty: ty.clone(),
                     span,
                 });
             }
@@ -267,15 +320,60 @@ impl Builder<'_> {
             } => {
                 self.ensure_class(&class, span);
                 self.emit(Instruction::SetStaticIndex {
+                    previous,
                     class,
                     field,
                     indices,
                     value,
-                    ty: type_at(self.model, target.span)?,
+                    ty: ty.clone(),
                     span,
                 });
             }
         }
+    }
+
+    /// `RELEASE x` (0.6.md, "`RELEASE`"): the
+    /// binding ends (`EndBinding`); a local that owns a reference gives it up
+    /// (`Take` + `Release`); a parameter or a weak local owns none; a local
+    /// of another type hands its content to `Release`, which closes a native
+    /// handle and does nothing to a primary.
+    fn release_statement(&mut self, value: &Expression, span: Span) -> Result<(), Diagnostic> {
+        let AssignPlace::Binding { symbol, indices } = self.assignment_place(value)? else {
+            return Err(ir_error("RELEASE target is not a binding", span));
+        };
+        if !indices.is_empty() {
+            return Err(ir_error("RELEASE target is not a binding", span));
+        }
+        let ty = type_at(self.model, value.span)?;
+        // The diagnostics of a released binding point at its name.
+        self.emit(Instruction::EndBinding {
+            symbol,
+            span: value.span,
+        });
+        let owner = self
+            .scopes
+            .iter()
+            .flatten()
+            .any(|(local, _, _)| *local == symbol);
+        let borrowed = self.parameters.contains(&symbol)
+            || self.weak_locals.contains(&symbol)
+            || self.is_arc(&ty);
+        if !owner && borrowed {
+            return Ok(());
+        }
+        let destructor = destructor_name(self.model, value.span, &self.methods, &self.prefix);
+        let taken = self.value();
+        self.emit(Instruction::Take {
+            destination: taken,
+            symbol,
+            ty,
+            span,
+        });
+        self.emit(Instruction::Release {
+            value: taken,
+            destructor: if owner { None } else { destructor },
+            span,
+        });
         Ok(())
     }
 }

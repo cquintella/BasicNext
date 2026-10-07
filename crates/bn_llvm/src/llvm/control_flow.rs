@@ -1,4 +1,4 @@
-use super::*;
+use super::{BlockId, HashMap, ValueId};
 
 /// Physical exits and Phi relocations belong to one emitted function. A BN
 /// block may expand into several LLVM blocks; its successor's Phi must name
@@ -19,7 +19,7 @@ struct PendingPhi {
 
 impl EmittedControlFlow {
     pub(super) fn label(&mut self, text: &mut String, label: String) {
-        let _ = writeln!(text, "{label}:");
+        crate::ir::InstSink::label(text, &label);
         self.current_label = label;
     }
 

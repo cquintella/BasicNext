@@ -1,0 +1,86 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Fixed vectors are values (0.6.md, "value / copy semantics"): assignment,
+// argument, STATIC and RETURN copy the elements, and a vector of objects
+// releases the replaced elements. bucket typed-llvm-emitter, defect of
+// 2026-10-07 (the native backend shared storage or kept a dead frame).
+
+CLASS Box
+    PUBLIC n AS INTEGER
+    PUBLIC FUNCTION CONSTRUCTOR(k AS INTEGER)
+        SELF.n = k
+    END FUNCTION
+    FUNCTION DESTRUCTOR()
+        PRINT "drop", SELF.n
+    END FUNCTION
+END CLASS
+
+CLASS Shared
+    PUBLIC STATIC v AS INT32[2]
+END CLASS
+
+FUNCTION Touch(v AS INT32[2]) AS VOID
+    v[0] = 7
+END FUNCTION
+
+FUNCTION Keep() AS VOID
+    LET local AS INT32[2] = [5, 6]
+    Shared.v = local
+    local[0] = 50
+END FUNCTION
+
+FUNCTION Pair(a AS INT32, b AS INT32) AS INT32[2]
+    LET v AS INT32[2] = [a, b]
+    RETURN v
+END FUNCTION
+
+FUNCTION Sum(x AS INT32[2], y AS INT32[2]) AS INT32
+    RETURN x[0] + x[1] + y[0] + y[1]
+END FUNCTION
+
+FUNCTION Maybe(on AS BOOLEAN) AS INT32[2] OR NULL
+    IF on THEN
+        LET v AS INT32[2] = [7, 8]
+        RETURN v
+    END IF
+    RETURN NULL
+END FUNCTION
+
+FUNCTION Countdown(n AS INT32) AS INT32[2]
+    IF n = 0 THEN
+        RETURN Pair(0, 0)
+    END IF
+    LET inner AS INT32[2] = Countdown(n - 1)
+    RETURN Pair(n, inner[0] + n)
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    LET a AS INT32[2] = [1, 2]
+    LET b AS INT32[2] = a
+    b[0] = 9
+    PRINT a[0], b[0]
+    Touch(a)
+    PRINT a[0]
+    Keep()
+    PRINT Shared.v[0], Shared.v[1]
+    LET p AS INT32[2] = Pair(1, 2)
+    PRINT p[0], p[1]
+    PRINT Sum(Pair(1, 2), Pair(10, 20))
+    LET m AS INT32[2] OR NULL = Maybe(TRUE)
+    IF m IS INT32[2] THEN
+        PRINT m[0], m[1]
+    END IF
+    PRINT Maybe(FALSE) IS NULL
+    LET c AS INT32[2] = Countdown(3)
+    PRINT c[0], c[1]
+    LET boxes AS Box[2] = [NEW Box(1), NEW Box(2)]
+    LET copied AS Box[2] = boxes
+    copied[0] = NEW Box(3)
+    PRINT boxes[0].n, copied[0].n
+    copied = [NEW Box(4), NEW Box(5)]
+    PRINT "end"
+    RETURN 0
+END FUNCTION

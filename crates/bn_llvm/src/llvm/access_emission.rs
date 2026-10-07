@@ -1,11 +1,17 @@
 #![allow(clippy::wildcard_imports, clippy::too_many_lines)]
 use super::*;
+use crate::ir::{CastOp, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
+use crate::layout::{handle_result_ty, typed_llvm};
+
+fn v(id: ValueId) -> O {
+    O::reg(format!("v{}", id.0))
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn lower_access_emission(
     text: &mut String,
     module: &Module,
-    function: &Function,
+    _function: &Function,
     block_id: BlockId,
     instruction: &Instruction,
     analysis: &LoweringAnalysis<'_>,
@@ -38,14 +44,15 @@ pub(crate) fn lower_access_emission(
                     _ => 2,
                 };
                 let dest = destination.0;
-                let _ = writeln!(
-                    text,
-                    "  %errorptr{dest} = extractvalue {aggregate} %v{}, 1",
-                    object.0
-                );
-                let _ = writeln!(
-                    text,
-                    "  %v{dest} = call ptr @bn_rt_error_field(ptr %errorptr{dest}, i32 {field})"
+                let record = I::extract(typed_llvm(aggregate), v(*object), 1);
+                text.assign(format!("errorptr{dest}"), record);
+                let args = vec![
+                    (T::Ptr, O::reg(format!("errorptr{dest}"))),
+                    (T::I32, O::int(field)),
+                ];
+                text.assign(
+                    format!("v{dest}"),
+                    I::call(T::Ptr, "bn_rt_error_field", args),
                 );
             } else if owner == "Error" && name == "Code" {
                 let dest = destination.0;
@@ -54,21 +61,24 @@ pub(crate) fn lower_access_emission(
                     .get(object)
                     .and_then(llvm_type)
                     .expect("validated error aggregate");
+                let code = O::reg(format!("errorcode{dest}"));
                 if aggregate == "{ i1, ptr, i64 }" {
-                    let _ = writeln!(
-                        text,
-                        "  %errorcode{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-                        object.0
-                    );
+                    let field = I::extract(handle_result_ty(), v(*object), 2);
+                    text.assign(format!("errorcode{dest}"), field);
                 } else {
                     // No code field: the runtime record carries the code.
-                    let _ = writeln!(
-                        text,
-                        "  %errorrecord{dest} = extractvalue {aggregate} %v{}, 1\n  %errorcode{dest} = call i64 @bn_rt_error_code(ptr %errorrecord{dest})",
-                        object.0
+                    let record = I::extract(typed_llvm(aggregate), v(*object), 1);
+                    text.assign(format!("errorrecord{dest}"), record);
+                    let args = vec![(T::Ptr, O::reg(format!("errorrecord{dest}")))];
+                    text.assign(
+                        format!("errorcode{dest}"),
+                        I::call(T::I64, "bn_rt_error_code", args),
                     );
                 }
-                let _ = writeln!(text, "  %v{dest} = trunc i64 %errorcode{dest} to i32");
+                text.assign(
+                    format!("v{dest}"),
+                    I::cast(CastOp::Trunc, T::I64, code, T::I32),
+                );
             } else if owner == "HOST.Exec.Result"
                 && matches!(name.as_str(), "ReturnCode" | "Stdout" | "Stderr")
             {
@@ -78,36 +88,38 @@ pub(crate) fn lower_access_emission(
                     "Stderr" => "stderr",
                     _ => unreachable!(),
                 };
-                let _ = writeln!(
-                    text,
-                    "  %execmemberhandle{} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-                    destination.0, object.0
-                );
-                let _ = writeln!(
-                    text,
-                    "  %v{} = call {} @bn_rt_exec_result_{}(i64 %execmemberhandle{})",
-                    destination.0,
-                    if suffix == "return_code" {
-                        "i64"
-                    } else {
-                        "ptr"
-                    },
-                    suffix,
-                    destination.0
-                );
+                let dest = destination.0;
+                let handle = I::extract(handle_result_ty(), v(*object), 2);
+                text.assign(format!("execmemberhandle{dest}"), handle);
+                let ret = if suffix == "return_code" {
+                    T::I64
+                } else {
+                    T::Ptr
+                };
+                let args = vec![(T::I64, O::reg(format!("execmemberhandle{dest}")))];
+                let symbol = format!("bn_rt_exec_result_{suffix}");
+                text.assign(format!("v{dest}"), I::call(ret, &symbol, args));
             } else {
-                let offset = field_byte_offset(
-                    module,
-                    field.as_ref().expect("validated member field reference"),
-                )
-                .expect("validated member field slot");
-                emit_member(text, block_id, *destination, *object, offset, ty, state);
+                let field = field.as_ref().expect("validated member field reference");
+                let offset = field_byte_offset(module, field).expect("validated member field slot");
+                let weak = module.field_is_weak(field);
+                emit_member(
+                    text,
+                    block_id,
+                    *destination,
+                    *object,
+                    offset,
+                    ty,
+                    weak,
+                    state,
+                );
             }
         }
         Instruction::SetIndex {
             symbol,
             indices,
             value,
+            previous,
             ty,
             ..
         } => {
@@ -121,16 +133,8 @@ pub(crate) fn lower_access_emission(
                     .values
                     .get(&index)
                     .expect("validated setindex index type");
-                let transfers_object =
-                    is_class_type(module, ty) && analysis.owned_object_results.contains_key(value);
-                if transfers_object {
-                    let _ = writeln!(text, "  store ptr null, ptr %objectowned{}", value.0);
-                }
                 emit_pointer_set_index(
                     text,
-                    module,
-                    function,
-                    symbols,
                     block_id,
                     symbols[symbol],
                     index,
@@ -138,7 +142,7 @@ pub(crate) fn lower_access_emission(
                     *value,
                     value_ty,
                     ty,
-                    transfers_object,
+                    *previous,
                     if analysis.symbols.get(symbol).is_some_and(is_native_pointer) {
                         "region"
                     } else {
@@ -155,6 +159,7 @@ pub(crate) fn lower_access_emission(
                     *value,
                     value_ty,
                     ty,
+                    *previous,
                     analysis,
                     state,
                 );
@@ -217,20 +222,18 @@ pub(crate) fn lower_access_emission(
                     ("context", Fact::Text("string".into())),
                 ],
             );
-            let _ = writeln!(
-                text,
-                "  %strindexpacked{dest} = call i64 @bn_rt_str_index_utf8(ptr %v{}, i32 {idx}, ptr {trap})",
-                object.0
-            );
-            let _ = writeln!(text, "  %strindexbuffer{dest} = alloca i64");
-            let _ = writeln!(
-                text,
-                "  store i64 %strindexpacked{dest}, ptr %strindexbuffer{dest}"
-            );
-            let _ = writeln!(
-                text,
-                "  %v{dest} = getelementptr i8, ptr %strindexbuffer{dest}, i64 0"
-            );
+            let r = |name: &str| O::reg(format!("strindex{name}{dest}"));
+            let args = vec![
+                (T::Ptr, v(*object)),
+                (T::I32, O::raw(idx)),
+                (T::Ptr, O::raw(trap)),
+            ];
+            let packed = I::call(T::I64, "bn_rt_str_index_utf8", args);
+            text.assign(format!("strindexpacked{dest}"), packed);
+            text.assign(format!("strindexbuffer{dest}"), I::alloca(T::I64));
+            text.emit(I::store(T::I64, r("packed"), r("buffer")));
+            let start = vec![(T::I64, O::int(0))];
+            text.assign(format!("v{dest}"), I::gep(T::I8, r("buffer"), start));
         }
         Instruction::Index {
             destination,
@@ -242,15 +245,12 @@ pub(crate) fn lower_access_emission(
             let index_type = analysis.values.get(index).expect("validated index type");
             let index =
                 coerce_to_type(text, *index, index_type, &Type::Integer(IntegerType::Int32));
-            let _ = writeln!(
-                text,
-                "  %argptr{} = getelementptr ptr, ptr %argv, i32 {index}",
-                destination.0
-            );
-            let _ = writeln!(
-                text,
-                "  %v{} = load ptr, ptr %argptr{}",
-                destination.0, destination.0
+            let dest = destination.0;
+            let at = vec![(T::I32, O::raw(index))];
+            text.assign(format!("argptr{dest}"), I::gep(T::Ptr, O::reg("argv"), at));
+            text.assign(
+                format!("v{dest}"),
+                I::load(T::Ptr, O::reg(format!("argptr{dest}"))),
             );
         }
         _ => return false,
@@ -259,18 +259,14 @@ pub(crate) fn lower_access_emission(
 }
 
 fn extend_to_i32_index(text: &mut String, value: ValueId, ty: &Type) -> String {
-    match llvm_type(ty).expect("validated index type") {
-        "i32" => format!("%v{}", value.0),
-        "i64" => {
-            let temp = format!("stridx{}", value.0);
-            let _ = writeln!(text, "  %{temp} = trunc i64 %v{} to i32", value.0);
-            format!("%{temp}")
-        }
-        llvm_ty => {
-            let opcode = if is_unsigned(ty) { "zext" } else { "sext" };
-            let temp = format!("stridx{}", value.0);
-            let _ = writeln!(text, "  %{temp} = {opcode} {llvm_ty} %v{} to i32", value.0);
-            format!("%{temp}")
-        }
-    }
+    let llvm_ty = llvm_type(ty).expect("validated index type");
+    let op = match llvm_ty {
+        "i32" => return format!("%v{}", value.0),
+        "i64" => CastOp::Trunc,
+        _ if is_unsigned(ty) => CastOp::ZExt,
+        _ => CastOp::SExt,
+    };
+    let temp = format!("stridx{}", value.0);
+    text.assign(&temp, I::cast(op, typed_llvm(llvm_ty), v(value), T::I32));
+    format!("%{temp}")
 }

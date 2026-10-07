@@ -57,6 +57,15 @@ while IFS= read -r file; do
   fail "filesystem open bypasses bn_rt::FsPolicy: $file"
 done < <(rg -l 'OpenOptions::new\(\)' crates/bn_interp/src crates/bn_host_fs/src crates/bn_lib_log/src --type rust -g '!*_tests.rs' -g '!**/tests.rs' || true)
 
+# (f) ARC has one mechanism (proposal arc-shared-core-0.6.5): strong counts,
+# liveness, and weak references live in bn_rt::arc (C ABI in arc_abi). No
+# other source keeps a strong count, a weak-reference table, or a second
+# core; the backends only apply the IR's operations through it.
+allowed_arc='^crates/bn_rt/src/arc(_abi)?\.rs$'
+while IFS= read -r file; do
+  [[ $file =~ $allowed_arc ]] || fail "ARC mechanism outside bn_rt::arc: $file"
+done < <(rg -l 'strong_count|strong \+=|strong -=|weak_(register|unregister|invalidate)|bn_arc_weak_(objects|locations)|struct ArcCore|fn bn_rt_arc_' src crates --type rust || true)
+
 if ((status == 0)); then
   echo "shared-cores check passed"
 fi

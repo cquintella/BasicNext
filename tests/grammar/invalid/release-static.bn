@@ -1,0 +1,20 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// RELEASE takes a local binding or a parameter (0.6.md, "`RELEASE`"); a
+// STATIC lets go by assigning NULL.
+CLASS Item
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+CLASS Registry
+    PUBLIC STATIC shared AS Item OR NULL = NULL
+END CLASS
+
+FUNCTION Start() AS VOID
+    Registry.shared = NEW Item()
+    RELEASE Registry.shared
+END FUNCTION

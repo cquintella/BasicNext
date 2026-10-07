@@ -1,0 +1,15 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// HOST.Console, HOST.Args and HOST.NumProcs are used without IMPORT (0.6.md,
+// "Which capabilities need IMPORT"). A compiled program must grant them
+// without an IMPORT as the interpreter does.
+
+FUNCTION Start() AS VOID
+    HOST.Console.Beep()
+    PRINT LEN(HOST.Args) > 0
+    LET procs AS INTEGER OR Error = HOST.NumProcs()
+    PRINT procs IS INTEGER
+END FUNCTION

@@ -1,0 +1,51 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A derived object initializes each field once (base fields, then derived
+// fields), and on destruction runs its destructors, then releases its fields
+// in reverse declaration order, derived before base (0.6.md, "Zero strong ->
+// destructor").
+
+CLASS Box
+    PUBLIC label AS STRING
+
+    PUBLIC FUNCTION CONSTRUCTOR(label AS STRING)
+        SELF.label = label
+        PRINT "made " + label
+    END FUNCTION
+
+    PUBLIC FUNCTION DESTRUCTOR()
+        PRINT "box " + SELF.label
+    END FUNCTION
+END CLASS
+
+CLASS Base
+    PUBLIC first AS Box = NEW Box("base first")
+    PUBLIC second AS Box = NEW Box("base second")
+
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION DESTRUCTOR()
+        PRINT "base destructor"
+    END FUNCTION
+END CLASS
+
+CLASS Derived EXTENDS Base
+    PUBLIC third AS Box = NEW Box("derived first")
+    PUBLIC fourth AS Box = NEW Box("derived second")
+
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION DESTRUCTOR()
+        PRINT "derived destructor"
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET d AS Derived = NEW Derived()
+    PRINT "end", d.first.label
+END FUNCTION

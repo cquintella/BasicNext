@@ -15,13 +15,14 @@ use bn_cli::{
     process_log::{LogLevel, ProcessLog},
 };
 use bn_llvm::{
-    CompiledPolicy, Target as LlvmTarget, lower_validated_module_with_diagnostics, validate_for,
+    CompiledPolicy, DebugInfo, Target as LlvmTarget, lower_validated_module_with_diagnostics,
+    validate_for,
 };
 use bn_source::SourceFile;
 
 use crate::{
     artifact::emit_build_output,
-    options::{BuildOptions, Target},
+    options::{BuildOptions, Optimization, Target},
 };
 
 fn process_log_path(options: &Options) -> Option<PathBuf> {
@@ -221,6 +222,28 @@ fn build_inner(
             .map(|path| path.display().to_string())
             .collect(),
     };
+    // `-g`: every loaded source by the id its spans carry, as an absolute
+    // path so debuggers find it from any working directory.
+    let debug = build_options.debug.then(|| DebugInfo {
+        sources: frontend
+            .graph
+            .modules
+            .iter()
+            .map(|module| {
+                let path =
+                    std::fs::canonicalize(&module.path).unwrap_or_else(|_| module.path.clone());
+                (module.source.source_id, path)
+            })
+            .collect(),
+        entry: frontend
+            .graph
+            .modules
+            .iter()
+            .find(|module| module.id == frontend.graph.root)
+            .map_or(source.source_id, |module| module.source.source_id),
+        optimized: build_options.optimization != Optimization::None,
+        format: DebugInfo::format_for(build_options.target == Target::Wasm32),
+    });
     // Runtime traps print what `bni` prints: the same renderer, catalog,
     // and source (R6); the text is rendered here, not in the program.
     let result = match lower_validated_module_with_diagnostics(
@@ -228,10 +251,13 @@ fn build_inner(
         build_options.target == Target::Wasm32,
         &policy,
         &|diagnostic| bn_cli::diagnostics::render_diagnostic(diagnostic, source, options),
+        debug.as_ref(),
     ) {
         Ok(llvm) => {
             process_log.event(LogLevel::Info, "llvm_emit", "success", "LLVM emitted");
-            process_log.event(LogLevel::Info, "link", "start", "write artifact");
+            if options.emit != Some(bn_cli::options::Emit::Llvm) {
+                process_log.event(LogLevel::Info, "link", "start", "write artifact");
+            }
             emit_build_output(llvm, options, build_options, process_log)
         }
         Err(message) => {

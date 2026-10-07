@@ -1,0 +1,23 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// RELEASE takes a local binding or a parameter, as Swift `consume`
+// (0.6.md, "`RELEASE`"); a field lets go by assigning NULL.
+CLASS Item
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+CLASS Holder
+    PUBLIC slot AS Item OR NULL = NULL
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET h AS Holder = NEW Holder()
+    h.slot = NEW Item()
+    RELEASE h.slot
+END FUNCTION

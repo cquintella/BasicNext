@@ -11,6 +11,7 @@
     clippy::cast_possible_truncation
 )]
 use super::*;
+use crate::ir::InstSink as _;
 
 pub(crate) fn integer_kind(ty: &Type) -> IntegerType {
     match ty {
@@ -56,15 +57,23 @@ pub(crate) fn coerce_integer(
     let temp = format!("coer{}_{from_ty}_{to_ty}", value.0);
     let from_w = integer_llvm_width(from_ty);
     let to_w = integer_llvm_width(to_ty);
+    let own = crate::ir::LlvmOperand::reg(format!("v{}", value.0));
+    let (from, to) = (
+        crate::layout::typed_llvm(from_ty),
+        crate::layout::typed_llvm(to_ty),
+    );
     if from_w < to_w {
-        let opcode = if unsigned { "zext" } else { "sext" };
-        let _ = writeln!(
-            text,
-            "  %{temp} = {opcode} {from_ty} %v{} to {to_ty}",
-            value.0
-        );
+        let op = if unsigned {
+            crate::ir::CastOp::ZExt
+        } else {
+            crate::ir::CastOp::SExt
+        };
+        text.assign(temp.clone(), crate::ir::LlvmInst::cast(op, from, own, to));
     } else {
-        let _ = writeln!(text, "  %{temp} = trunc {from_ty} %v{} to {to_ty}", value.0);
+        text.assign(
+            temp.clone(),
+            crate::ir::LlvmInst::cast(crate::ir::CastOp::Trunc, from, own, to),
+        );
     }
     format!("%{temp}")
 }
@@ -79,17 +88,41 @@ pub(crate) fn coerce_to_type(text: &mut String, value: ValueId, from: &Type, to:
         && matches!(to_llvm, "i8" | "i16" | "i32" | "i64" | "float" | "double")
     {
         let tag = format!("unionpayload{}", value.0);
-        let _ = writeln!(
-            text,
-            "  %{tag} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-            value.0
+        let union_ty = crate::ir::LlvmType::struct_of([
+            crate::ir::LlvmType::I1,
+            crate::ir::LlvmType::Ptr,
+            crate::ir::LlvmType::I64,
+        ]);
+        text.assign(
+            tag.clone(),
+            crate::ir::LlvmInst::extract(
+                union_ty,
+                crate::ir::LlvmOperand::reg(format!("v{}", value.0)),
+                2,
+            ),
         );
         if matches!(to_llvm, "float" | "double") {
             let ftag = format!("{tag}f");
-            let _ = writeln!(text, "  %{ftag} = bitcast i64 %{tag} to double");
+            text.assign(
+                ftag.clone(),
+                crate::ir::LlvmInst::cast(
+                    crate::ir::CastOp::BitCast,
+                    crate::ir::LlvmType::I64,
+                    crate::ir::LlvmOperand::reg(&tag),
+                    crate::ir::LlvmType::Double,
+                ),
+            );
             if to_llvm == "float" {
                 let f32tag = format!("{tag}f32");
-                let _ = writeln!(text, "  %{f32tag} = fptrunc double %{ftag} to float");
+                text.assign(
+                    f32tag.clone(),
+                    crate::ir::LlvmInst::cast(
+                        crate::ir::CastOp::FPTrunc,
+                        crate::ir::LlvmType::Double,
+                        crate::ir::LlvmOperand::reg(ftag),
+                        crate::ir::LlvmType::Float,
+                    ),
+                );
                 return format!("%{f32tag}");
             }
             return format!("%{ftag}");
@@ -99,43 +132,65 @@ pub(crate) fn coerce_to_type(text: &mut String, value: ValueId, from: &Type, to:
         }
         let ctag = format!("{tag}c");
         let opcode = if integer_llvm_width(to_llvm) < 64 {
-            "trunc"
+            crate::ir::CastOp::Trunc
         } else if is_unsigned(to) {
-            "zext"
+            crate::ir::CastOp::ZExt
         } else {
-            "sext"
+            crate::ir::CastOp::SExt
         };
-        let _ = writeln!(text, "  %{ctag} = {opcode} i64 %{tag} to {to_llvm}");
+        text.assign(
+            ctag.clone(),
+            crate::ir::LlvmInst::cast(
+                opcode,
+                crate::ir::LlvmType::I64,
+                crate::ir::LlvmOperand::reg(tag),
+                crate::layout::typed_llvm(to_llvm),
+            ),
+        );
         return format!("%{ctag}");
     }
-    if to_llvm == "{ i1, ptr, i64 }"
-        && matches!(to, Type::Alternative(_))
-        && (matches!(
-            from_llvm,
-            "i1" | "i8" | "i16" | "i32" | "i64" | "float" | "double"
-        ) || *from == Type::String)
-    {
-        return wrap_in_alternative(text, value, from, from_llvm);
+    if let Some(constructed) = alternatives::construct(text, value, from, to) {
+        return constructed;
     }
     if from_llvm == "{ i1, ptr, i32 }" && to_llvm == "{ ptr, i32 }" {
         let tag = format!("endpointcoerce{}", value.0);
-        let _ = writeln!(
-            text,
-            "  %{tag}_ptr = extractvalue {{ i1, ptr, i32 }} %v{}, 1",
-            value.0
+        let ep_in = crate::ir::LlvmType::struct_of([
+            crate::ir::LlvmType::I1,
+            crate::ir::LlvmType::Ptr,
+            crate::ir::LlvmType::I32,
+        ]);
+        let ep_out =
+            crate::ir::LlvmType::struct_of([crate::ir::LlvmType::Ptr, crate::ir::LlvmType::I32]);
+        let r = |suffix: &str| crate::ir::LlvmOperand::reg(format!("{tag}_{suffix}"));
+        text.assign(
+            format!("{tag}_ptr"),
+            crate::ir::LlvmInst::extract(
+                ep_in.clone(),
+                crate::ir::LlvmOperand::reg(format!("v{}", value.0)),
+                1,
+            ),
         );
-        let _ = writeln!(
-            text,
-            "  %{tag}_port = extractvalue {{ i1, ptr, i32 }} %v{}, 2",
-            value.0
+        text.assign(
+            format!("{tag}_port"),
+            crate::ir::LlvmInst::extract(
+                ep_in,
+                crate::ir::LlvmOperand::reg(format!("v{}", value.0)),
+                2,
+            ),
         );
-        let _ = writeln!(
-            text,
-            "  %{tag}_0 = insertvalue {{ ptr, i32 }} undef, ptr %{tag}_ptr, 0"
+        text.assign(
+            format!("{tag}_0"),
+            crate::ir::LlvmInst::insert(
+                ep_out.clone(),
+                crate::ir::LlvmOperand::undef(),
+                crate::ir::LlvmType::Ptr,
+                r("ptr"),
+                0,
+            ),
         );
-        let _ = writeln!(
-            text,
-            "  %{tag} = insertvalue {{ ptr, i32 }} %{tag}_0, i32 %{tag}_port, 1"
+        text.assign(
+            tag.clone(),
+            crate::ir::LlvmInst::insert(ep_out, r("0"), crate::ir::LlvmType::I32, r("port"), 1),
         );
         return format!("%{tag}");
     }
@@ -155,57 +210,32 @@ pub(crate) fn coerce_to_type(text: &mut String, value: ValueId, from: &Type, to:
         ("float", "double") | ("double", "float")
     ) {
         let temp = format!("fcoer{}_{from_llvm}_{to_llvm}", value.0);
-        let opcode = if from_llvm == "float" {
-            "fpext"
+        let (opcode, from, to) = if from_llvm == "float" {
+            (
+                crate::ir::CastOp::FPExt,
+                crate::ir::LlvmType::Float,
+                crate::ir::LlvmType::Double,
+            )
         } else {
-            "fptrunc"
+            (
+                crate::ir::CastOp::FPTrunc,
+                crate::ir::LlvmType::Double,
+                crate::ir::LlvmType::Float,
+            )
         };
-        let _ = writeln!(
-            text,
-            "  %{temp} = {opcode} {from_llvm} %v{} to {to_llvm}",
-            value.0
+        text.assign(
+            temp.clone(),
+            crate::ir::LlvmInst::cast(
+                opcode,
+                from,
+                crate::ir::LlvmOperand::reg(format!("v{}", value.0)),
+                to,
+            ),
         );
         return format!("%{temp}");
     }
     format!("%v{}", value.0)
 }
-
-/// A scalar or STRING as the success of a `T OR Error` / `T OR EOF OR …`
-/// value (`{ i1, ptr, i64 }`): a STRING in the pointer, any other scalar
-/// in the `i64` payload (floats as their `double` bits), as `RETURN` builds
-/// it. `LET x AS INTEGER OR Error = 3` stored the bare `i64` before.
-fn wrap_in_alternative(text: &mut String, value: ValueId, from: &Type, from_llvm: &str) -> String {
-    let v = value.0;
-    let (pointer, payload) = match from_llvm {
-        "ptr" => (format!("%v{v}"), "0".to_owned()),
-        "i1" => {
-            let _ = writeln!(text, "  %wrapbits{v} = zext i1 %v{v} to i64");
-            ("null".to_owned(), format!("%wrapbits{v}"))
-        }
-        "float" | "double" => {
-            let wide = if from_llvm == "float" {
-                let _ = writeln!(text, "  %wrapwide{v} = fpext float %v{v} to double");
-                format!("%wrapwide{v}")
-            } else {
-                format!("%v{v}")
-            };
-            let _ = writeln!(text, "  %wrapbits{v} = bitcast double {wide} to i64");
-            ("null".to_owned(), format!("%wrapbits{v}"))
-        }
-        "i64" => ("null".to_owned(), format!("%v{v}")),
-        narrow => {
-            let extend = if is_unsigned(from) { "zext" } else { "sext" };
-            let _ = writeln!(text, "  %wrapbits{v} = {extend} {narrow} %v{v} to i64");
-            ("null".to_owned(), format!("%wrapbits{v}"))
-        }
-    };
-    let _ = writeln!(
-        text,
-        "  %wraptag{v} = insertvalue {{ i1, ptr, i64 }} undef, i1 false, 0\n  %wrapptr{v} = insertvalue {{ i1, ptr, i64 }} %wraptag{v}, ptr {pointer}, 1\n  %wrap{v} = insertvalue {{ i1, ptr, i64 }} %wrapptr{v}, i64 {payload}, 2"
-    );
-    format!("%wrap{v}")
-}
-
 fn integer_llvm_width(llvm_ty: &str) -> u8 {
     match llvm_ty {
         "i1" => 1,
@@ -244,8 +274,20 @@ pub(crate) fn extend_to_i64(text: &mut String, value: ValueId, ty: &Type) -> Str
         "i64" => format!("%v{}", value.0),
         llvm_ty => {
             let temp = format!("seedext{}", value.0);
-            let opcode = if is_unsigned(ty) { "zext" } else { "sext" };
-            let _ = writeln!(text, "  %{temp} = {opcode} {llvm_ty} %v{} to i64", value.0);
+            let opcode = if is_unsigned(ty) {
+                crate::ir::CastOp::ZExt
+            } else {
+                crate::ir::CastOp::SExt
+            };
+            text.assign(
+                temp.clone(),
+                crate::ir::LlvmInst::cast(
+                    opcode,
+                    crate::layout::typed_llvm(llvm_ty),
+                    crate::ir::LlvmOperand::reg(format!("v{}", value.0)),
+                    crate::ir::LlvmType::I64,
+                ),
+            );
             format!("%{temp}")
         }
     }
@@ -255,29 +297,61 @@ pub(crate) fn coerce_return_operand(text: &mut String, value: ValueId, ty: &Type
     match llvm_type(ty).expect("validated return LLVM type") {
         "i32" => format!("%v{}", value.0),
         "i8" | "i16" => {
-            let opcode = if is_unsigned(ty) { "zext" } else { "sext" };
+            let opcode = if is_unsigned(ty) {
+                crate::ir::CastOp::ZExt
+            } else {
+                crate::ir::CastOp::SExt
+            };
             let temp = format!("ret{}", value.0);
-            let _ = writeln!(
-                text,
-                "  %{temp} = {opcode} {} %v{} to i32",
-                llvm_type(ty).expect("validated integer return type"),
-                value.0
+            let llvm_ty = llvm_type(ty).expect("validated integer return type");
+            text.assign(
+                temp.clone(),
+                crate::ir::LlvmInst::cast(
+                    opcode,
+                    crate::layout::typed_llvm(llvm_ty),
+                    crate::ir::LlvmOperand::reg(format!("v{}", value.0)),
+                    crate::ir::LlvmType::I32,
+                ),
             );
             format!("%{temp}")
         }
         "i64" => {
             let temp = format!("ret{}", value.0);
-            let _ = writeln!(text, "  %{temp} = trunc i64 %v{} to i32", value.0);
+            text.assign(
+                temp.clone(),
+                crate::ir::LlvmInst::cast(
+                    crate::ir::CastOp::Trunc,
+                    crate::ir::LlvmType::I64,
+                    crate::ir::LlvmOperand::reg(format!("v{}", value.0)),
+                    crate::ir::LlvmType::I32,
+                ),
+            );
             format!("%{temp}")
         }
         "{ i1, ptr, i64 }" => {
             let temp = format!("ret{}", value.0);
-            let _ = writeln!(
-                text,
-                "  %{temp}flag = extractvalue {{ i1, ptr, i64 }} %v{}, 0",
-                value.0
+            let union_ty = crate::ir::LlvmType::struct_of([
+                crate::ir::LlvmType::I1,
+                crate::ir::LlvmType::Ptr,
+                crate::ir::LlvmType::I64,
+            ]);
+            text.assign(
+                format!("{temp}flag"),
+                crate::ir::LlvmInst::extract(
+                    union_ty,
+                    crate::ir::LlvmOperand::reg(format!("v{}", value.0)),
+                    0,
+                ),
             );
-            let _ = writeln!(text, "  %{temp} = zext i1 %{temp}flag to i32");
+            text.assign(
+                temp.clone(),
+                crate::ir::LlvmInst::cast(
+                    crate::ir::CastOp::ZExt,
+                    crate::ir::LlvmType::I1,
+                    crate::ir::LlvmOperand::reg(format!("{temp}flag")),
+                    crate::ir::LlvmType::I32,
+                ),
+            );
             format!("%{temp}")
         }
         _ => unreachable!("validated return type"),
@@ -696,44 +770,16 @@ length.out:
 "
 }
 
-pub(crate) fn is_canonical_timezone(text: &str) -> bool {
-    if text == "UTC" {
-        return true;
-    }
-    let mut parts = 0;
-    for part in text.split('/') {
-        parts += 1;
-        let mut characters = part.chars();
-        let Some(first) = characters.next() else {
-            return false;
-        };
-        if !first.is_ascii_alphabetic()
-            || !characters.all(|character| {
-                character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '+')
-            })
-        {
-            return false;
-        }
-    }
-    parts >= 2
-}
-
-pub(crate) fn escape_llvm(value: &str) -> String {
-    value
-        .bytes()
-        .map(|byte| match byte {
-            b' '..=b'!' | b'#'..=b'[' | b']'..=b'~' => (byte as char).to_string(),
-            _ => format!("\\{byte:02X}"),
-        })
-        .collect()
-}
-
 pub(crate) fn instruction_name(instruction: &Instruction) -> &'static str {
     match instruction {
         Instruction::Constant { .. } => "constants",
         Instruction::Default { .. } => "defaults",
         Instruction::Phi { .. } => "Phi merges",
         Instruction::Load { .. } => "loads",
+        Instruction::Retain { .. }
+        | Instruction::Take { .. }
+        | Instruction::TakeMember { .. }
+        | Instruction::EndBinding { .. } => "explicit ownership operations",
         Instruction::Store { .. } => "stores",
         Instruction::Copy { .. } => "copies",
         Instruction::Unary { .. } => "unary operations",

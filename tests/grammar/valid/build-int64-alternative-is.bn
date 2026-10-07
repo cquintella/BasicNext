@@ -1,0 +1,20 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A number stored as INT64 OR Error holds the INT64 alternative, whether it
+// comes from a literal, a return, or an INT64 binding.
+FUNCTION MakeL() AS INT64 OR Error
+    RETURN 9
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET l AS INT64 OR Error = MakeL()
+    PRINT l IS INT64, l IS Error
+    LET k AS INT64 OR Error = 9
+    PRINT k IS INT64
+    LET m AS INT64 = 9
+    LET n AS INT64 OR Error = m
+    PRINT n IS INT64
+END FUNCTION

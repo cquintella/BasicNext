@@ -9,6 +9,7 @@ impl Executor<'_, '_> {
                 bn_ir::FunctionKind::FieldInit
                     | bn_ir::FunctionKind::Constructor
                     | bn_ir::FunctionKind::Destructor
+                    | bn_ir::FunctionKind::ReleaseFields
             )
         ) {
             return name.to_string();
@@ -49,11 +50,11 @@ impl Executor<'_, '_> {
             .field_layouts
             .get(class)
             .map_or(0, |layout| layout.fields.len());
-        let handle = self.objects.allocate(
-            class,
+        let handle = self.register_allocation(class, span);
+        self.objects.insert(
+            handle,
             1,
             Instance {
-                class: class.to_string(),
                 fields: vec![Value::Null; field_count].into_boxed_slice(),
             },
             span,
@@ -116,9 +117,8 @@ impl Executor<'_, '_> {
             ));
         }
         let initial = pointer_element_default(element, span)?;
-        let handle = self
-            .memory
-            .allocate(display_element(element), count, initial, span)?;
+        let handle = self.register_allocation(&display_element(element), span);
+        self.memory.insert(handle, count, initial, span)?;
         Ok(Value::Pointer { handle })
     }
 

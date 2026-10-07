@@ -26,6 +26,8 @@ pub enum EmittedNameKind {
     Init,
     /// `<Struct>.$default` — value-type default constructor.
     Default,
+    /// `<Class>.$release` — field release run by ARC after the destructor.
+    ReleaseFields,
     /// `<Class>.<Method>` or `<Module>.<Function>` — a user function or method.
     User,
 }
@@ -38,6 +40,7 @@ pub const SYNTHESISED_SUFFIXES: &[(&str, EmittedNameKind)] = &[
     ("$fields", EmittedNameKind::FieldInit),
     ("$init", EmittedNameKind::Init),
     ("$default", EmittedNameKind::Default),
+    ("$release", EmittedNameKind::ReleaseFields),
 ];
 
 /// Name of the entry function.
@@ -53,7 +56,17 @@ pub const MODULE_PREFIX: char = '#';
 /// Intrinsic callees: names a `Call` may target that have **no** `Function`
 /// body in the module. Every backend must implement each one natively; the
 /// frontend must not emit a callee starting with `$` outside this list.
-pub const INTRINSICS: &[&str] = &["$for_condition"];
+pub const INTRINSICS: &[&str] = &[FOR_CONDITION, STOPPING, STOP_CODE];
+
+/// `FOR` loop test: `$for_condition(current, end, step)`.
+pub const FOR_CONDITION: &str = "$for_condition";
+
+/// `$stopping()` (`BOOLEAN`): a `STOP` ran in the call just made, so this
+/// function releases its locals and stops too (0.6.md, "`STOP`").
+pub const STOPPING: &str = "$stopping";
+
+/// `$stop_code()` (`INTEGER`): the code of that `STOP`.
+pub const STOP_CODE: &str = "$stop_code";
 
 /// Marker shared by synthesised suffixes and intrinsics.
 pub const SYNTHESISED_MARKER: char = '$';

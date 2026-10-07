@@ -11,6 +11,8 @@
     clippy::too_many_lines
 )]
 use super::*;
+use crate::ir::{InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
+use crate::layout::{typed_llvm, vector_ty};
 use std::collections::HashSet;
 
 /// LLVM symbol for a BN function name. The entry name is fixed by the
@@ -133,11 +135,13 @@ pub(crate) fn analyze_reachable<'a>(
                             stack.push(callee_fn);
                         }
                     }
+                    // The destruction of an allocated object runs its
+                    // destructor and its field release (`arc_runtime`).
                     Instruction::Allocate { type_name, .. } => {
-                        if let Some(destructor_fn) =
-                            module.function_of_kind(FunctionKind::Destructor, type_name)
-                        {
-                            stack.push(destructor_fn);
+                        for kind in [FunctionKind::Destructor, FunctionKind::ReleaseFields] {
+                            if let Some(function) = module.function_of_kind(kind, type_name) {
+                                stack.push(function);
+                            }
                         }
                     }
                     Instruction::EnsureClass { class, .. } => {
@@ -178,18 +182,27 @@ pub(crate) fn emit_function(
     analysis: &LoweringAnalysis<'_>,
     synchronize_prints: bool,
     policy: &crate::CompiledPolicy,
+    debug: bool,
 ) -> Result<(), String> {
     let is_start = function.kind == FunctionKind::Entry;
-    let symbol_names = analysis
-        .symbols
-        .keys()
+    // Hash maps iterate in a random order; slots, allocas and flags follow
+    // id order so the same program always lowers to the same LLVM text.
+    let mut symbols = analysis.symbols.iter().collect::<Vec<_>>();
+    symbols.sort_by_key(|(symbol, _)| symbol.0);
+    let symbol_names = symbols
+        .iter()
         .enumerate()
-        .map(|(index, symbol)| (*symbol, index))
+        .map(|(index, (symbol, _))| (**symbol, index))
         .collect::<HashMap<_, _>>();
+    if debug {
+        mark_function(text, function.span, &function.name);
+    }
     if is_start {
-        text.push_str("\ndefine i32 @main(i32 %argc, ptr %argv) {\n");
+        let params = vec![(T::I32, "argc".to_string()), (T::Ptr, "argv".to_string())];
+        let main = crate::ir::LlvmFunction::new_definition("main", T::I32, params);
+        let _ = writeln!(text, "\n{}", main.header());
     } else {
-        emit_user_signature(text, function, analysis)?;
+        emit_user_signature(text, function, analysis);
     }
     let mut state = EmissionState {
         print_count: 0,
@@ -216,71 +229,95 @@ pub(crate) fn emit_function(
         state.control_flow.label(text, format!("b{}", block.id.0));
         if block.id == function.entry {
             if is_start {
-                text.push_str(crate::platform_stdio::windows_binary_stdio_ir(
-                    synchronize_prints,
-                ));
+                crate::platform_stdio::emit_windows_binary_stdio(text, synchronize_prints);
                 // Every native program applies the environment policy, so a
                 // malformed input stops it (CONFIG_INVALID, exit 2) as it
                 // stops `bni`, imports or not (0.6.md).
                 let ceiling = super::policy_ceiling(module);
                 if ceiling != 0 || synchronize_prints {
-                    let _ = writeln!(
-                        text,
-                        "  %bn_policy_status = call i32 @bn_rt_policy_init(i32 1, i64 {ceiling})"
-                    );
-                    let _ = writeln!(
-                        text,
-                        "  call void @bn_rt_policy_check(i32 %bn_policy_status)"
-                    );
+                    let args = vec![(T::I32, O::int(1)), (T::I64, O::uint(ceiling))];
+                    let init = I::call(T::I32, "bn_rt_policy_init", args);
+                    text.assign("bn_policy_status", init);
+                    let status = vec![(T::I32, O::reg("bn_policy_status"))];
+                    text.emit(I::call(T::Void, "bn_rt_policy_check", status));
                     if policy.sandboxed {
-                        let _ = writeln!(text, "  call i32 @bn_rt_policy_filesystem_sandboxed()");
-                        for (index, _) in policy.read_roots.iter().enumerate() {
-                            let _ = writeln!(
-                                text,
-                                "  call i32 @bn_rt_policy_filesystem_root(i32 0, ptr @.bn_policy_root{index})"
-                            );
-                        }
-                        let offset = policy.read_roots.len();
-                        for (index, _) in policy.write_roots.iter().enumerate() {
-                            let _ = writeln!(
-                                text,
-                                "  call i32 @bn_rt_policy_filesystem_root(i32 1, ptr @.bn_policy_root{})",
-                                offset + index
-                            );
+                        let sandbox = I::call(T::I32, "bn_rt_policy_filesystem_sandboxed", vec![]);
+                        text.emit(sandbox);
+                        // Read roots (mode 0) come first, then write roots (mode 1).
+                        let modes = policy
+                            .read_roots
+                            .iter()
+                            .map(|_| 0)
+                            .chain(policy.write_roots.iter().map(|_| 1));
+                        for (index, mode) in modes.enumerate() {
+                            let root = O::global(format!(".bn_policy_root{index}"));
+                            let args = vec![(T::I32, O::int(mode)), (T::Ptr, root)];
+                            text.emit(I::call(T::I32, "bn_rt_policy_filesystem_root", args));
                         }
                     }
                 }
             }
-            for (symbol, ty) in &analysis.symbols {
+            // Each call site receives a vector result into storage of its own.
+            for instruction in function.blocks.iter().flat_map(|block| &block.instructions) {
+                if let Instruction::Call {
+                    destination, ty, ..
+                } = instruction
+                    && let Some((array, _)) =
+                        vectors::returned_vector(ty).and_then(vectors::fixed_vector_array)
+                {
+                    text.assign(
+                        format!("vret{}", destination.0),
+                        I::alloca(typed_llvm(&array)),
+                    );
+                }
+            }
+            for &(symbol, ty) in &symbols {
                 let llvm_ty = llvm_type(ty).expect("validated alloca type");
-                let _ = writeln!(text, "  %s{} = alloca {llvm_ty}", symbol_names[symbol]);
+                let slot = O::reg(format!("s{}", symbol_names[symbol]));
+                text.assign(slot.to_string(), I::alloca(typed_llvm(llvm_ty)));
+                vectors::emit_vector_storage(
+                    text,
+                    symbol_names[symbol],
+                    ty,
+                    arc_ops::holds_references(module, ty),
+                );
                 if (matches!(ty, Type::Alternative(types) if types.iter().any(|item| matches!(item, Type::Null)))
                     || is_class_type(module, ty))
                     && llvm_ty == "ptr"
                 {
-                    let _ = writeln!(text, "  store ptr null, ptr %s{}", symbol_names[symbol]);
+                    text.emit(I::store(T::Ptr, O::null(), slot.clone()));
+                }
+                if general_alternative(ty).is_some()
+                    && object_class(module, ty).is_some()
+                    && !function.parameters.contains(symbol)
+                {
+                    // Tag 0 holds no object, so the first Store releases nothing.
+                    let layout = typed_llvm(GENERAL_LAYOUT);
+                    text.emit(I::store(layout, O::zero_initializer(), slot.clone()));
                 }
                 if is_region_type(ty) && !function.parameters.contains(symbol) {
                     // The first Store releases the "previous" region; a zeroed
                     // slot makes that a no-op instead of a garbage pointer.
-                    let _ = writeln!(
-                        text,
-                        "  store {{ ptr, i32 }} zeroinitializer, ptr %s{}",
-                        symbol_names[symbol]
-                    );
-                }
-                if analysis.released_symbols.contains(symbol) {
-                    let slot = symbol_names[symbol];
-                    let _ = writeln!(text, "  %slive{slot} = alloca i1");
-                    let _ = writeln!(text, "  store i1 false, ptr %slive{slot}");
+                    text.emit(I::store(vector_ty(), O::zero_initializer(), slot.clone()));
                 }
             }
-            for symbol in &analysis.input_symbols {
+            // Whether each binding a RELEASE ends is live, by symbol (a
+            // parameter only released has no value slot).
+            let mut released = analysis.released_symbols.iter().collect::<Vec<_>>();
+            released.sort_by_key(|symbol| symbol.0);
+            for symbol in released {
+                let live = live_flag(*symbol);
+                let initial = function.parameters.contains(symbol) && !is_start;
+                emit_flag_slot(text, &live, T::I1, O::bool(initial));
+            }
+            let mut input_symbols = analysis.input_symbols.iter().collect::<Vec<_>>();
+            input_symbols.sort_by_key(|symbol| symbol.0);
+            for symbol in input_symbols {
                 let slot = symbol_names[symbol];
-                let _ = writeln!(
-                    text,
-                    "  %inputowned{slot} = alloca i1\n  store ptr null, ptr %s{slot}\n  store i1 false, ptr %inputowned{slot}"
-                );
+                let owned = format!("inputowned{slot}");
+                text.assign(&owned, I::alloca(T::I1));
+                text.emit(I::store(T::Ptr, O::null(), O::reg(format!("s{slot}"))));
+                text.emit(I::store(T::I1, O::bool(false), O::reg(owned)));
             }
             let mut owned_struct_results = analysis
                 .owned_struct_results
@@ -289,24 +326,7 @@ pub(crate) fn emit_function(
                 .collect::<Vec<_>>();
             owned_struct_results.sort_by_key(|value| value.0);
             for value in owned_struct_results {
-                let _ = writeln!(
-                    text,
-                    "  %structowned{} = alloca ptr\n  store ptr null, ptr %structowned{}",
-                    value.0, value.0
-                );
-            }
-            let mut owned_objects = analysis
-                .owned_object_results
-                .keys()
-                .copied()
-                .collect::<Vec<_>>();
-            owned_objects.sort_by_key(|value| value.0);
-            for value in owned_objects {
-                let _ = writeln!(
-                    text,
-                    "  %objectowned{} = alloca ptr\n  store ptr null, ptr %objectowned{}",
-                    value.0, value.0
-                );
+                emit_flag_slot(text, &format!("structowned{}", value.0), T::Ptr, O::null());
             }
             let mut owned_log_results = analysis
                 .owned_log_results
@@ -315,23 +335,15 @@ pub(crate) fn emit_function(
                 .collect::<Vec<_>>();
             owned_log_results.sort_by_key(|value| value.0);
             for value in owned_log_results {
-                let _ = writeln!(
-                    text,
-                    "  %logowned{} = alloca i64\n  store i64 0, ptr %logowned{}",
-                    value.0, value.0
-                );
+                emit_flag_slot(text, &format!("logowned{}", value.0), T::I64, O::int(0));
             }
-            for value in &analysis.multi_defs {
-                let _ = writeln!(text, "  %sc{} = alloca i1", value.0);
+            let mut multi_defs = analysis.multi_defs.iter().collect::<Vec<_>>();
+            multi_defs.sort_by_key(|value| value.0);
+            for value in multi_defs {
+                text.assign(format!("sc{}", value.0), I::alloca(T::I1));
             }
             if !is_start {
                 store_parameters(text, function, analysis, &symbol_names);
-                for symbol in &function.parameters {
-                    if analysis.released_symbols.contains(symbol) {
-                        let _ =
-                            writeln!(text, "  store i1 true, ptr %slive{}", symbol_names[symbol]);
-                    }
-                }
             }
         }
         let mut block_state = BlockState {
@@ -340,6 +352,9 @@ pub(crate) fn emit_function(
         };
         for instruction in &block.instructions {
             state.span = instruction.span();
+            if debug {
+                mark_location(text, state.span, function.span);
+            }
             lower_scalar_instruction(
                 text,
                 module,
@@ -364,7 +379,10 @@ pub(crate) fn emit_function(
             &mut state,
         );
     }
-    emit_traps(text, module, function, analysis, &symbol_names, &mut state);
+    if debug {
+        mark_location(text, function.span, function.span);
+    }
+    emit_traps(text, analysis, &symbol_names, &mut state);
     text.push_str("}\n");
     state.control_flow.resolve(text)
 }
@@ -402,28 +420,38 @@ fn reachable_block_ids(function: &Function) -> HashSet<u32> {
 
 fn emit_traps(
     text: &mut String,
-    module: &Module,
-    function: &Function,
     analysis: &LoweringAnalysis<'_>,
     symbols: &HashMap<SymbolId, usize>,
     state: &mut EmissionState,
 ) {
-    if state.needs_numeric_overflow_trap {
+    let exits = [
+        (state.needs_numeric_overflow_trap, "trap_numeric_overflow"),
+        (state.needs_bn_rt_trap, "trap_bn_rt"),
+    ];
+    for (needed, label) in exits {
+        if !needed {
+            continue;
+        }
+        text.label(label);
         if state.is_start {
-            text.push_str("trap_numeric_overflow:\n");
-            cleanup_owned_memory(text, module, function, analysis, symbols, None, state);
-            text.push_str("  ret i32 1\n");
+            cleanup_owned_memory(text, analysis, symbols, state);
+            text.emit(I::Ret {
+                val: Some((T::I32, O::int(1))),
+            });
         } else {
-            text.push_str("trap_numeric_overflow:\n  call void @exit(i32 1)\n  unreachable\n");
+            text.emit(I::call(T::Void, "exit", vec![(T::I32, O::int(1))]));
+            text.emit(I::Unreachable);
         }
     }
-    if state.needs_bn_rt_trap {
-        if state.is_start {
-            text.push_str("trap_bn_rt:\n");
-            cleanup_owned_memory(text, module, function, analysis, symbols, None, state);
-            text.push_str("  ret i32 1\n");
-        } else {
-            text.push_str("trap_bn_rt:\n  call void @exit(i32 1)\n  unreachable\n");
-        }
-    }
+}
+
+/// The flag that says the binding `symbol`, which a `RELEASE` ends, is live.
+pub(crate) fn live_flag(symbol: SymbolId) -> String {
+    format!("%slive.sym{}", symbol.0)
+}
+
+/// `%{name} = alloca ty` holding `initial`.
+fn emit_flag_slot(text: &mut String, name: &str, ty: T, initial: O) {
+    text.assign(name, I::alloca(ty.clone()));
+    text.emit(I::store(ty, initial, O::reg(name)));
 }

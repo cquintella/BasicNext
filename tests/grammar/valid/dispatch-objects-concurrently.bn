@@ -1,0 +1,53 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Four concurrent tasks each create and release 2,000 objects: the one ARC
+// core keeps every count exact, and each object is destroyed once.
+IMPORT BNDispatch AS Dispatch
+
+CLASS Cell
+    PUBLIC value AS INTEGER = 0
+
+    PUBLIC FUNCTION CONSTRUCTOR(value AS INTEGER)
+        SELF.value = value
+    END FUNCTION
+END CLASS
+
+ASYNC FUNCTION Churn() AS VOID OR Error
+    LET round AS INTEGER = 0
+    LET total AS INTEGER = 0
+    WHILE round < 2000
+        LET cell AS Cell = NEW Cell(round)
+        LET alias AS Cell = cell
+        total += alias.value
+        round += 1
+    END WHILE
+    IF total <> 1999000 THEN
+        PRINT "wrong total"
+    END IF
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Concurrent(4)
+    IF queue IS Error THEN
+        PRINT "queue error"
+        RETURN
+    END IF
+    LET a AS Dispatch.Ticket OR Error = ASYNC queue Churn()
+    LET b AS Dispatch.Ticket OR Error = ASYNC queue Churn()
+    LET c AS Dispatch.Ticket OR Error = ASYNC queue Churn()
+    LET d AS Dispatch.Ticket OR Error = ASYNC queue Churn()
+    IF a IS Error OR b IS Error OR c IS Error OR d IS Error THEN
+        PRINT "submission error"
+        queue.Close(1000)
+        RETURN
+    END IF
+    AWAIT a(10000)
+    AWAIT b(10000)
+    AWAIT c(10000)
+    AWAIT d(10000)
+    queue.Close(1000)
+    PRINT "done"
+END FUNCTION

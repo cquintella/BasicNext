@@ -7,6 +7,7 @@
 use bn_diag::{DiagId, Diagnostic, Label, LabelStyle};
 use bn_source::Span;
 
+pub mod escape;
 mod model;
 pub mod names;
 mod validate;
@@ -15,7 +16,7 @@ pub use model::{
     BasicBlock, BlockId, Constant, FieldId, FieldLayout, FieldLayoutEntry, FieldRef, FieldSlot,
     Function, FunctionKind, Instruction, Module, ModuleId, SymbolId, Terminator, ValueId,
 };
-pub use validate::{instruction_uses, validate};
+pub use validate::{instruction_result, instruction_uses, validate};
 
 pub use bn_types::{FloatType, IntegerType, PointerLength, Type};
 

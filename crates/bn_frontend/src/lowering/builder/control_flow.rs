@@ -120,41 +120,15 @@ impl Builder<'_> {
                 else_block: next,
             });
             self.current = body;
-            self.statements(&branch.body.statements)?;
-            self.release_block_bindings(&branch.body.statements)?;
+            self.scoped_statements(&branch.body.statements)?;
             self.jump_if_open(join);
             self.current = next;
         }
         if let Some(otherwise) = otherwise {
-            self.statements(&otherwise.statements)?;
-            self.release_block_bindings(&otherwise.statements)?;
+            self.scoped_statements(&otherwise.statements)?;
         }
         self.jump_if_open(join);
         self.current = join;
-        Ok(())
-    }
-
-    fn release_block_bindings(&mut self, statements: &[Statement]) -> Result<(), Diagnostic> {
-        for statement in statements {
-            if let Statement::Binding { span, .. } = statement {
-                let ty = type_at(self.model, *span)?;
-                if matches!(ty, Type::Named(_)) {
-                    let symbol = self.symbol(*span)?;
-                    let value = self.value();
-                    self.emit(Instruction::Load {
-                        destination: value,
-                        symbol,
-                        ty: ty.clone(),
-                        span: *span,
-                    });
-                    self.emit(Instruction::Release {
-                        value,
-                        destructor: destructor_name(self.model, *span, &self.methods, &self.prefix),
-                        span: *span,
-                    });
-                }
-            }
-        }
         Ok(())
     }
 
@@ -181,8 +155,9 @@ impl Builder<'_> {
             kind: "WHILE",
             exit,
             continue_at: condition_block,
+            scope_depth: self.scopes.len(),
         });
-        self.statements(&body.statements)?;
+        self.scoped_statements(&body.statements)?;
         self.loops.pop();
         self.jump_if_open(condition_block);
         self.current = exit;
@@ -203,8 +178,9 @@ impl Builder<'_> {
             kind: "REPEAT",
             exit,
             continue_at: condition_block,
+            scope_depth: self.scopes.len(),
         });
-        self.statements(&body.statements)?;
+        self.scoped_statements(&body.statements)?;
         self.loops.pop();
         self.jump_if_open(condition_block);
         self.current = condition_block;
@@ -242,6 +218,7 @@ impl Builder<'_> {
                     self.integer_one(type_at(self.model, type_ref.span)?, span)
                 };
                 self.emit(Instruction::Store {
+                    previous: None,
                     symbol,
                     value: start,
                     ty: type_at(self.model, type_ref.span)?,
@@ -275,8 +252,9 @@ impl Builder<'_> {
                     kind: "FOR",
                     exit,
                     continue_at: next_block,
+                    scope_depth: self.scopes.len(),
                 });
-                self.statements(&body.statements)?;
+                self.scoped_statements(&body.statements)?;
                 self.loops.pop();
                 self.jump_if_open(next_block);
                 self.current = next_block;
@@ -291,6 +269,7 @@ impl Builder<'_> {
                     span,
                 });
                 self.emit(Instruction::Store {
+                    previous: None,
                     symbol,
                     value: next,
                     ty: type_at(self.model, type_ref.span)?,
@@ -345,27 +324,46 @@ impl Builder<'_> {
                     else_block: exit,
                 });
                 self.current = body_block;
-                let element = self.value();
+                let element_type = type_at(self.model, type_ref.span)?;
+                let mut element = self.value();
                 self.emit(Instruction::Index {
                     destination: element,
                     object: vector,
                     index: loop_index,
-                    ty: type_at(self.model, type_ref.span)?,
+                    ty: element_type.clone(),
                     span,
                 });
+                // The loop variable owns its element for one iteration: it is
+                // a scope of its own, released before the next element (and
+                // by EXIT / CONTINUE, which release from `scope_depth`).
+                let scope_depth = self.scopes.len();
+                let owns_element = self.is_arc(&element_type);
+                if owns_element {
+                    element = self.owned_value(element, span);
+                    self.scopes.push(Vec::new());
+                    self.declare_owner(symbol, element_type.clone(), span);
+                }
                 self.emit(Instruction::Store {
+                    previous: None,
                     symbol,
                     value: element,
-                    ty: type_at(self.model, type_ref.span)?,
+                    ty: element_type,
                     span,
                 });
                 self.loops.push(LoopTargets {
                     kind: "FOR",
                     exit,
                     continue_at: next_block,
+                    scope_depth,
                 });
-                self.statements(&body.statements)?;
+                self.scoped_statements(&body.statements)?;
                 self.loops.pop();
+                if owns_element {
+                    if !self.terminated() {
+                        self.release_scopes(self.scopes.len() - 1);
+                    }
+                    self.scopes.pop();
+                }
                 let has_backedge = !self.terminated();
                 self.jump_if_open(next_block);
                 self.current = next_block;

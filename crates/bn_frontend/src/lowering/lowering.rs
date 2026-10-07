@@ -13,7 +13,7 @@ pub(crate) fn module_prefix(root: ModuleId, id: ModuleId) -> String {
 }
 
 pub(crate) fn class_method_name(prefix: &str, class: &str, method: &str) -> String {
-    if class.starts_with('#') {
+    if class.starts_with('#') || is_host_or_builtin_owner(class) {
         format!("{class}.{method}")
     } else {
         format!("{prefix}{class}.{method}")
@@ -36,12 +36,29 @@ pub(crate) fn collect_methods(program: &Program, prefix: &str) -> HashSet<String
         match kind {
             DeclarationKind::Class => {
                 for statement in statements {
-                    if let Statement::MemberFunction { name: method, .. } = statement {
-                        names.insert(format!("{prefix}{name}.{method}"));
+                    match statement {
+                        Statement::MemberFunction { name: method, .. } => {
+                            names.insert(format!("{prefix}{name}.{method}"));
+                        }
+                        // A weak field: a write neither retains nor releases.
+                        Statement::Binding {
+                            name: field,
+                            type_ref,
+                            is_static: false,
+                            ..
+                        } if type_ref
+                            .alternatives
+                            .first()
+                            .is_some_and(|atom| atom.name == "WEAK") =>
+                        {
+                            names.insert(format!("{prefix}{name}.{field}.$weak"));
+                        }
+                        _ => {}
                     }
                 }
                 names.insert(format!("{prefix}{name}.$init"));
                 names.insert(format!("{prefix}{name}.$fields"));
+                names.insert(format!("{prefix}{name}.$release"));
                 if base_class.is_some() {
                     names.insert(format!("{prefix}{name}.CONSTRUCTOR"));
                 }
@@ -52,7 +69,10 @@ pub(crate) fn collect_methods(program: &Program, prefix: &str) -> HashSet<String
             DeclarationKind::Function => {
                 names.insert(format!("{prefix}{name}"));
             }
-            DeclarationKind::Interface => {}
+            // A value of an interface type holds an object.
+            DeclarationKind::Interface => {
+                names.insert(format!("{prefix}{name}.$interface"));
+            }
         }
     }
     loop {
@@ -114,6 +134,15 @@ pub(crate) fn lower_program(
                     model,
                     prefix,
                     type_name,
+                    statements,
+                    *span,
+                    method_names,
+                )?);
+                functions.push(lower_field_release(
+                    model,
+                    prefix,
+                    type_name,
+                    resolved_base.as_deref(),
                     statements,
                     *span,
                     method_names,
@@ -279,12 +308,21 @@ pub(crate) fn lower_static_init(
             continue;
         };
         let ty = type_at(model, *span).unwrap_or_else(|_| named_or_void(type_ref));
-        let value = if let Some(initializer) = initializer {
+        let mut value = if let Some(initializer) = initializer {
             builder.expression(initializer)?
         } else {
             builder.default_value(ty.clone(), type_ref, *span)?
         };
+        // The initialized field owns its value (a weak field never does).
+        if type_ref
+            .alternatives
+            .first()
+            .is_none_or(|atom| atom.name != "WEAK")
+        {
+            value = builder.owned_value(value, *span);
+        }
         builder.emit(Instruction::StoreStatic {
+            previous: None,
             class: class.clone(),
             field: name.clone(),
             value,
@@ -339,6 +377,88 @@ pub(crate) fn lower_instance_fields(
         name: format!("{prefix}{class_name}.$fields"),
         kind: FunctionKind::FieldInit,
         owner: Some(format!("{prefix}{class_name}")),
+        asynchronous: false,
+        parameters: vec![SYNTHETIC_SELF],
+        weak_symbols: HashSet::new(),
+        return_type: Type::Named("VOID".into()),
+        entry: BlockId(0),
+        blocks: builder.finish()?,
+        span,
+    })
+}
+
+/// `Class.$release` (`FunctionKind::ReleaseFields`, proposal
+/// `arc-shared-core-0.6.5`, "Destruction sequence, generated once"): run by
+/// ARC after the destructor chain, it releases the class's own strong fields
+/// in reverse declaration order, then calls its base class's, so derived
+/// fields go before base fields (0.6.md, "Zero strong → destructor").
+pub(crate) fn lower_field_release(
+    model: &SemanticModel,
+    prefix: &str,
+    class_name: &str,
+    base_class: Option<&str>,
+    statements: &[Statement],
+    span: Span,
+    method_names: &HashSet<String>,
+) -> Result<Function, Diagnostic> {
+    let owner = qualified_class_name(prefix, class_name);
+    let self_type = Type::Named(class_name.into());
+    let mut builder = Builder::new(model, method_names.clone(), prefix);
+    let receiver = builder.load(SYNTHETIC_SELF, self_type, span);
+    for statement in statements.iter().rev() {
+        let Statement::Binding {
+            name,
+            type_ref,
+            is_static: false,
+            span: field_span,
+            ..
+        } = statement
+        else {
+            continue;
+        };
+        let ty = type_at(model, *field_span).unwrap_or_else(|_| named_or_void(type_ref));
+        let weak = type_ref
+            .alternatives
+            .first()
+            .is_some_and(|atom| atom.name == "WEAK");
+        if weak || !builder.is_arc(&ty) {
+            continue;
+        }
+        let taken = builder.value();
+        builder.emit(Instruction::TakeMember {
+            destination: taken,
+            object: receiver,
+            field: None,
+            name: name.clone(),
+            owner: owner.clone(),
+            ty,
+            span: *field_span,
+        });
+        builder.emit(Instruction::Release {
+            value: taken,
+            destructor: None,
+            span: *field_span,
+        });
+    }
+    if let Some(base) = base_class {
+        let callee = builder.function_constant(
+            &format!("@super:{}", class_method_name(prefix, base, "$release")),
+            span,
+        );
+        let unused = builder.value();
+        builder.emit(Instruction::Call {
+            destination: unused,
+            callee,
+            arguments: vec![receiver],
+            ty: Type::Named("VOID".into()),
+            span,
+        });
+    }
+    builder.terminate(Terminator::Return { value: None });
+    Ok(Function {
+        name: format!("{owner}.$release"),
+        kind: FunctionKind::ReleaseFields,
+        owner: Some(owner),
         asynchronous: false,
         parameters: vec![SYNTHETIC_SELF],
         weak_symbols: HashSet::new(),
@@ -501,12 +621,21 @@ pub(crate) fn emit_field_inits(
             continue;
         };
         let ty = type_at(model, *span).unwrap_or_else(|_| named_or_void(type_ref));
-        let value = if let Some(initializer) = initializer {
+        let mut value = if let Some(initializer) = initializer {
             builder.expression(initializer)?
         } else {
             builder.default_value(ty.clone(), type_ref, *span)?
         };
+        // The initialized field owns its value (a weak field never does).
+        if type_ref
+            .alternatives
+            .first()
+            .is_none_or(|atom| atom.name != "WEAK")
+        {
+            value = builder.owned_value(value, *span);
+        }
         builder.emit(Instruction::SetMember {
+            previous: None,
             object,
             field: None,
             name: name.clone(),

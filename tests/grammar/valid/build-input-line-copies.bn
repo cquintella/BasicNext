@@ -1,0 +1,55 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A line INPUT read keeps its text after the same variable reads again: a
+// copy in a vector, in another variable, returned by a function, or held by
+// a function parameter's caller. bucket typed-llvm-emitter, defect of
+// 2026-10-07 (the native copies read a freed, reused buffer).
+
+FUNCTION ReadLine() AS STRING
+    LET line AS STRING OR EOF = INPUT()
+    IF line IS EOF THEN
+        RETURN "none"
+    END IF
+    RETURN line
+END FUNCTION
+
+FUNCTION Keep(text AS STRING) AS STRING
+    RETURN "[" + text + "]"
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    LET lines AS STRING[2]
+    FOR i AS INTEGER = 0 TO 1
+        LET line AS STRING OR EOF = INPUT()
+        IF line IS STRING THEN
+            lines[i] = line
+        END IF
+    END FOR
+    PRINT lines[0]
+    PRINT lines[1]
+
+    LET kept AS STRING = ""
+    LET again AS STRING OR EOF = INPUT()
+    IF again IS STRING THEN
+        kept = again
+    END IF
+    again = INPUT()
+    PRINT kept
+
+    LET first AS STRING = ReadLine()
+    LET second AS STRING = ReadLine()
+    PRINT first
+    PRINT second
+
+    LET held AS STRING OR EOF = INPUT()
+    LET shown AS STRING = "none"
+    IF held IS STRING THEN
+        shown = Keep(held)
+    END IF
+    held = INPUT()
+    PRINT shown
+    RETURN 0
+END FUNCTION

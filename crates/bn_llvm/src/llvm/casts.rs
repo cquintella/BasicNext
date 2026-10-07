@@ -7,6 +7,15 @@
 // lowering, including range-checked integer narrowing and `AS STRING` (C3).
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::ir::{
+    BinaryOp, CastOp, FCmpCond, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O,
+    LlvmType as T,
+};
+use crate::layout::typed_llvm;
+
+fn v(id: ValueId) -> O {
+    O::reg(format!("v{}", id.0))
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn lower_cast(
@@ -22,31 +31,28 @@ pub(crate) fn lower_cast(
         emit_to_string(text, destination, value, source_ty);
         return;
     }
+    let own = format!("v{}", destination.0);
     match (llvm_type(source_ty), llvm_type(target_ty)) {
         (Some(source), Some("i1")) => emit_to_boolean(text, destination, value, source),
         (Some(source), Some(target)) if integer_llvm(source) && integer_llvm(target) => {
-            emit_integer_to_integer(
-                text,
-                block_id,
-                destination,
-                value,
-                source,
-                target,
-                source_ty,
-                target_ty,
-                state,
-            );
+            let ext = if is_unsigned(source_ty) {
+                CastOp::ZExt
+            } else {
+                CastOp::SExt
+            };
+            let wide = I::cast(ext, typed_llvm(source), v(value), T::I128);
+            text.assign(format!("castw{}", destination.0), wide);
+            emit_i128_fit_trunc(text, block_id, destination.0, target, target_ty, state);
         }
         (Some(source), Some(target)) if integer_llvm(source) && float_llvm(target) => {
-            let opcode = if is_unsigned(source_ty) {
-                "uitofp"
+            let op = if is_unsigned(source_ty) {
+                CastOp::UIToFP
             } else {
-                "sitofp"
+                CastOp::SIToFP
             };
-            let _ = writeln!(
-                text,
-                "  %v{} = {opcode} {source} %v{} to {target}",
-                destination.0, value.0
+            text.assign(
+                own,
+                I::cast(op, typed_llvm(source), v(value), typed_llvm(target)),
             );
         }
         (Some(source), Some(target)) if float_llvm(source) && integer_llvm(target) => {
@@ -62,18 +68,10 @@ pub(crate) fn lower_cast(
             );
         }
         (Some("float"), Some("double")) => {
-            let _ = writeln!(
-                text,
-                "  %v{} = fpext float %v{} to double",
-                destination.0, value.0
-            );
+            text.assign(own, I::cast(CastOp::FPExt, T::Float, v(value), T::Double));
         }
         (Some("double"), Some("float")) => {
-            let _ = writeln!(
-                text,
-                "  %v{} = fptrunc double %v{} to float",
-                destination.0, value.0
-            );
+            text.assign(own, I::cast(CastOp::FPTrunc, T::Double, v(value), T::Float));
         }
         (Some("ptr"), Some("ptr"))
         | (Some("float"), Some("float"))
@@ -124,141 +122,75 @@ pub(crate) const fn is_text_cast(instruction: &Instruction) -> bool {
 fn emit_to_string(text: &mut String, destination: ValueId, value: ValueId, source_ty: &Type) {
     let dest = destination.0;
     let source = llvm_type(source_ty).expect("validated text cast source");
+    let wide = O::reg(format!("textwide{dest}"));
+    let widen = |text: &mut String, op, to| {
+        let inst = I::cast(op, typed_llvm(source), v(value), to);
+        text.assign(format!("textwide{dest}"), inst);
+    };
+    let integer = if is_unsigned(source_ty) {
+        ("bn_rt_text_uint", CastOp::ZExt)
+    } else {
+        ("bn_rt_text_int", CastOp::SExt)
+    };
     let (symbol, argument) = match source {
         "i1" => {
-            let _ = writeln!(
-                text,
-                "  %v{dest} = select i1 %v{}, ptr @.bn_true, ptr @.bn_false",
-                value.0
+            let words = I::select(
+                v(value),
+                T::Ptr,
+                O::global(".bn_true"),
+                O::global(".bn_false"),
             );
+            text.assign(format!("v{dest}"), words);
             return;
         }
-        "i64" => (
-            if is_unsigned(source_ty) {
-                "bn_rt_text_uint"
-            } else {
-                "bn_rt_text_int"
-            },
-            format!("i64 %v{}", value.0),
-        ),
+        "i64" => (integer.0, (T::I64, v(value))),
         "i8" | "i16" | "i32" => {
-            let (symbol, extend) = if is_unsigned(source_ty) {
-                ("bn_rt_text_uint", "zext")
-            } else {
-                ("bn_rt_text_int", "sext")
-            };
-            let _ = writeln!(
-                text,
-                "  %textwide{dest} = {extend} {source} %v{} to i64",
-                value.0
-            );
-            (symbol, format!("i64 %textwide{dest}"))
+            widen(text, integer.1, T::I64);
+            (integer.0, (T::I64, wide))
         }
         "float" => {
-            let _ = writeln!(
-                text,
-                "  %textwide{dest} = fpext float %v{} to double",
-                value.0
-            );
-            ("bn_rt_text_float32", format!("double %textwide{dest}"))
+            widen(text, CastOp::FPExt, T::Double);
+            ("bn_rt_text_float32", (T::Double, wide))
         }
-        "double" => ("bn_rt_text_float", format!("double %v{}", value.0)),
+        "double" => ("bn_rt_text_float", (T::Double, v(value))),
         _ => unreachable!("validated text cast source"),
     };
-    let _ = writeln!(text, "  %v{dest} = call ptr @{symbol}({argument})");
+    text.assign(format!("v{dest}"), I::call(T::Ptr, symbol, vec![argument]));
 }
 
 fn emit_same_type_copy(text: &mut String, destination: ValueId, value: ValueId, ty: &Type) {
-    match llvm_type(ty).expect("validated copy type") {
-        "i1" => {
-            let _ = writeln!(text, "  %v{} = or i1 false, %v{}", destination.0, value.0);
+    let llvm_ty = llvm_type(ty).expect("validated copy type");
+    let inst = match llvm_ty {
+        "i1" => I::binary(BinaryOp::Or, T::I1, O::bool(false), v(value)),
+        "ptr" => I::gep(T::I8, v(value), vec![(T::I64, O::int(0))]),
+        "float" | "double" => {
+            I::binary(BinaryOp::FAdd, typed_llvm(llvm_ty), O::raw("0.0"), v(value))
         }
-        "ptr" => {
-            let _ = writeln!(
-                text,
-                "  %v{} = getelementptr i8, ptr %v{}, i64 0",
-                destination.0, value.0
-            );
-        }
-        "float" => {
-            let _ = writeln!(
-                text,
-                "  %v{} = fadd float 0.0, %v{}",
-                destination.0, value.0
-            );
-        }
-        "double" => {
-            let _ = writeln!(
-                text,
-                "  %v{} = fadd double 0.0, %v{}",
-                destination.0, value.0
-            );
-        }
-        other => {
-            let _ = writeln!(text, "  %v{} = add {other} 0, %v{}", destination.0, value.0);
-        }
-    }
+        other => I::binary(BinaryOp::Add, typed_llvm(other), O::int(0), v(value)),
+    };
+    text.assign(format!("v{}", destination.0), inst);
 }
 
 fn emit_to_boolean(text: &mut String, destination: ValueId, value: ValueId, source: &str) {
-    match source {
-        "i1" => {
-            let _ = writeln!(text, "  %v{} = or i1 false, %v{}", destination.0, value.0);
-        }
+    let dest = destination.0;
+    let inst = match source {
+        "i1" => I::binary(BinaryOp::Or, T::I1, O::bool(false), v(value)),
         "i8" | "i16" | "i32" | "i64" => {
-            let _ = writeln!(
-                text,
-                "  %v{} = icmp ne {source} %v{}, 0",
-                destination.0, value.0
-            );
+            I::icmp(ICmpCond::Ne, typed_llvm(source), v(value), O::int(0))
         }
-        "float" => {
-            let _ = writeln!(
-                text,
-                "  %v{} = fcmp une float %v{}, 0.0",
-                destination.0, value.0
-            );
-        }
-        "double" => {
-            let _ = writeln!(
-                text,
-                "  %v{} = fcmp une double %v{}, 0.0",
-                destination.0, value.0
-            );
-        }
+        "float" | "double" => I::fcmp(FCmpCond::Une, typed_llvm(source), v(value), O::raw("0.0")),
         "ptr" => {
-            let dest = destination.0;
-            let _ = writeln!(text, "  %boolch{dest} = load i8, ptr %v{}", value.0);
-            let _ = writeln!(text, "  %v{dest} = icmp ne i8 %boolch{dest}, 0");
+            text.assign(format!("boolch{dest}"), I::load(T::I8, v(value)));
+            I::icmp(
+                ICmpCond::Ne,
+                T::I8,
+                O::reg(format!("boolch{dest}")),
+                O::int(0),
+            )
         }
         _ => unreachable!("validated boolean cast source"),
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn emit_integer_to_integer(
-    text: &mut String,
-    block_id: BlockId,
-    destination: ValueId,
-    value: ValueId,
-    source: &str,
-    target: &str,
-    source_ty: &Type,
-    target_ty: &Type,
-    state: &mut EmissionState,
-) {
-    let dest = destination.0;
-    let ext = if is_unsigned(source_ty) {
-        "zext"
-    } else {
-        "sext"
     };
-    let _ = writeln!(
-        text,
-        "  %castw{dest} = {ext} {source} %v{} to i128",
-        value.0
-    );
-    emit_i128_fit_trunc(text, block_id, dest, target, target_ty, state);
+    text.assign(format!("v{dest}"), inst);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -273,30 +205,22 @@ fn emit_float_to_integer(
     state: &mut EmissionState,
 ) {
     let dest = destination.0;
-    let _ = writeln!(
-        text,
-        "  %castnan{dest} = fcmp uno {source} %v{}, 0.0",
-        value.0
+    let r = |name: &str| O::reg(format!("cast{name}{dest}"));
+    let source = typed_llvm(source);
+    let compare = |text: &mut String, name: &str, cond, constant: &str| {
+        let inst = I::fcmp(cond, source.clone(), v(value), O::raw(constant));
+        text.assign(format!("cast{name}{dest}"), inst);
+    };
+    compare(text, "nan", FCmpCond::Uno, "0.0");
+    compare(text, "pinf", FCmpCond::Oeq, "0x7FF0000000000000");
+    compare(text, "ninf", FCmpCond::Oeq, "0xFFF0000000000000");
+    text.assign(
+        format!("castinf{dest}"),
+        I::binary(BinaryOp::Or, T::I1, r("pinf"), r("ninf")),
     );
-    let inf = "0x7FF0000000000000";
-    let ninf = "0xFFF0000000000000";
-    let _ = writeln!(
-        text,
-        "  %castpinf{dest} = fcmp oeq {source} %v{}, {inf}",
-        value.0
-    );
-    let _ = writeln!(
-        text,
-        "  %castninf{dest} = fcmp oeq {source} %v{}, {ninf}",
-        value.0
-    );
-    let _ = writeln!(
-        text,
-        "  %castinf{dest} = or i1 %castpinf{dest}, %castninf{dest}"
-    );
-    let _ = writeln!(
-        text,
-        "  %castbad{dest} = or i1 %castnan{dest}, %castinf{dest}"
+    text.assign(
+        format!("castbad{dest}"),
+        I::binary(BinaryOp::Or, T::I1, r("nan"), r("inf")),
     );
     let finite = take_continuation(block_id, state);
     emit_trap(
@@ -311,11 +235,8 @@ fn emit_float_to_integer(
             Fact::Text("NAN and infinity cannot convert to an integer".into()),
         )],
     );
-    let _ = writeln!(
-        text,
-        "  %castw{dest} = fptosi {source} %v{} to i128",
-        value.0
-    );
+    let wide = I::cast(CastOp::FPToSI, source.clone(), v(value), T::I128);
+    text.assign(format!("castw{dest}"), wide);
     emit_i128_fit_trunc(text, block_id, dest, target, target_ty, state);
 }
 
@@ -327,10 +248,20 @@ fn emit_i128_fit_trunc(
     target_ty: &Type,
     state: &mut EmissionState,
 ) {
+    let r = |name: &str| O::reg(format!("cast{name}{dest}"));
     let (min, max) = i128_bounds(target_ty);
-    let _ = writeln!(text, "  %castlo{dest} = icmp slt i128 %castw{dest}, {min}");
-    let _ = writeln!(text, "  %casthi{dest} = icmp sgt i128 %castw{dest}, {max}");
-    let _ = writeln!(text, "  %castov{dest} = or i1 %castlo{dest}, %casthi{dest}");
+    text.assign(
+        format!("castlo{dest}"),
+        I::icmp(ICmpCond::Slt, T::I128, r("w"), O::raw(min)),
+    );
+    text.assign(
+        format!("casthi{dest}"),
+        I::icmp(ICmpCond::Sgt, T::I128, r("w"), O::raw(max)),
+    );
+    text.assign(
+        format!("castov{dest}"),
+        I::binary(BinaryOp::Or, T::I1, r("lo"), r("hi")),
+    );
     let ok = take_continuation(block_id, state);
     emit_overflow_trap(
         text,
@@ -341,7 +272,8 @@ fn emit_i128_fit_trunc(
         &format!("%castw{dest}"),
         target_ty,
     );
-    let _ = writeln!(text, "  %v{dest} = trunc i128 %castw{dest} to {target}");
+    let narrow = I::cast(CastOp::Trunc, T::I128, r("w"), typed_llvm(target));
+    text.assign(format!("v{dest}"), narrow);
 }
 
 /// The inclusive range of an integer type as `i128` literals.

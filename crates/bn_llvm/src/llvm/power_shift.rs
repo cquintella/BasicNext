@@ -1,5 +1,13 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::ir::{
+    BinaryOp, CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T,
+};
+use crate::layout::typed_llvm;
+
+fn v(id: ValueId) -> O {
+    O::reg(format!("v{}", id.0))
+}
 
 pub(crate) fn emit_integer_not(
     text: &mut String,
@@ -9,15 +17,17 @@ pub(crate) fn emit_integer_not(
     ty: &Type,
     state: &mut EmissionState,
 ) {
-    let llvm_ty = llvm_type(ty).expect("validated integer type");
+    let llvm_ty = typed_llvm(llvm_type(ty).expect("validated integer type"));
+    let dest = destination.0;
     if is_unsigned(ty) {
         // NOT u is -u - 1, never representable unsigned (the interpreter
         // reports that exact value).
-        let dest = destination.0;
-        let _ = writeln!(
-            text,
-            "  %notwide{dest} = zext {llvm_ty} %v{} to i128\n  %notexact{dest} = sub i128 -1, %notwide{dest}",
-            operand.0
+        let wide = I::cast(CastOp::ZExt, llvm_ty.clone(), v(operand), T::I128);
+        text.assign(format!("notwide{dest}"), wide);
+        let wide = O::reg(format!("notwide{dest}"));
+        text.assign(
+            format!("notexact{dest}"),
+            I::binary(BinaryOp::Sub, T::I128, O::int(-1), wide),
         );
         let cont = format!("bnot{dest}.dead");
         emit_overflow_trap(
@@ -29,13 +39,13 @@ pub(crate) fn emit_integer_not(
             &format!("%notexact{dest}"),
             ty,
         );
-        let _ = writeln!(text, "  %v{dest} = add {llvm_ty} 0, 0");
+        let zero = I::binary(BinaryOp::Add, llvm_ty, O::int(0), O::int(0));
+        text.assign(format!("v{dest}"), zero);
         return;
     }
-    let _ = writeln!(
-        text,
-        "  %v{} = xor {llvm_ty} %v{}, -1",
-        destination.0, operand.0
+    text.assign(
+        format!("v{dest}"),
+        I::binary(BinaryOp::Xor, llvm_ty, v(operand), O::int(-1)),
     );
 }
 
@@ -53,25 +63,32 @@ pub(crate) fn emit_shift(
     state: &mut EmissionState,
 ) {
     let dest = destination.0;
-    let llvm_ty = llvm_type(ty).expect("validated integer type");
-    let left_llvm = llvm_type(left_ty).expect("validated shift left type");
-    let right_llvm = llvm_type(right_ty).expect("validated shift count type");
+    let r = |name: &str| O::reg(format!("sh{name}{dest}"));
+    let llvm_ty = typed_llvm(llvm_type(ty).expect("validated integer type"));
+    let left_llvm = typed_llvm(llvm_type(left_ty).expect("validated shift left type"));
+    let right_llvm = typed_llvm(llvm_type(right_ty).expect("validated shift count type"));
     let width = bit_width(ty);
+    let count = format!("shcnt{dest}");
     emit_cast_integer(
         text,
-        &format!("shcnt{dest}"),
-        &format!("%v{}", right.0),
-        right_llvm,
-        "i64",
+        &count,
+        v(right),
+        &right_llvm,
+        &T::I64,
         extend_op(right_ty),
     );
-    if is_unsigned(right_ty) {
-        let _ = writeln!(text, "  %shneg{dest} = or i1 false, false");
+    let negative = if is_unsigned(right_ty) {
+        I::binary(BinaryOp::Or, T::I1, O::bool(false), O::bool(false))
     } else {
-        let _ = writeln!(text, "  %shneg{dest} = icmp slt i64 %shcnt{dest}, 0");
-    }
-    let _ = writeln!(text, "  %shwide{dest} = icmp uge i64 %shcnt{dest}, {width}");
-    let _ = writeln!(text, "  %shbad{dest} = or i1 %shneg{dest}, %shwide{dest}");
+        I::icmp(ICmpCond::Slt, T::I64, r("cnt"), O::int(0))
+    };
+    text.assign(format!("shneg{dest}"), negative);
+    let wide = I::icmp(ICmpCond::Uge, T::I64, r("cnt"), O::uint(u64::from(width)));
+    text.assign(format!("shwide{dest}"), wide);
+    text.assign(
+        format!("shbad{dest}"),
+        I::binary(BinaryOp::Or, T::I1, r("neg"), r("wide")),
+    );
     let ok = take_continuation(block_id, state);
     emit_trap(
         text,
@@ -85,43 +102,41 @@ pub(crate) fn emit_shift(
             Fact::Text(format!("shift count must be in 0..{width}")),
         )],
     );
-    let _ = writeln!(text, "  %shamt{dest} = zext i64 %shcnt{dest} to i128");
+    text.assign(
+        format!("shamt{dest}"),
+        I::cast(CastOp::ZExt, T::I64, r("cnt"), T::I128),
+    );
     if operator == "SHR" {
         let shift_left = if left_llvm == llvm_ty {
-            format!("%v{}", left.0)
+            v(left)
         } else {
-            let narrow = format!("shnarrow{dest}");
-            let _ = writeln!(
-                text,
-                "  %{narrow} = trunc {left_llvm} %v{} to {llvm_ty}",
-                left.0
-            );
-            format!("%{narrow}")
+            let narrow = I::cast(CastOp::Trunc, left_llvm, v(left), llvm_ty.clone());
+            text.assign(format!("shnarrow{dest}"), narrow);
+            r("narrow")
         };
-        emit_cast_integer(
-            text,
-            &format!("shbits{dest}"),
-            &shift_left,
-            llvm_ty,
-            "i128",
-            "zext",
+        let bits = format!("shbits{dest}");
+        emit_cast_integer(text, &bits, shift_left, &llvm_ty, &T::I128, CastOp::ZExt);
+        let raw = I::binary(BinaryOp::LShr, T::I128, r("bits"), r("amt"));
+        text.assign(format!("shraw{dest}"), raw);
+        text.assign(
+            format!("v{dest}"),
+            I::cast(CastOp::Trunc, T::I128, r("raw"), llvm_ty),
         );
-        let _ = writeln!(
-            text,
-            "  %shraw{dest} = lshr i128 %shbits{dest}, %shamt{dest}"
-        );
-        let _ = writeln!(text, "  %v{dest} = trunc i128 %shraw{dest} to {llvm_ty}");
         return;
     }
+    let value = format!("shval{dest}");
     emit_cast_integer(
         text,
-        &format!("shval{dest}"),
-        &format!("%v{}", left.0),
-        left_llvm,
-        "i128",
+        &value,
+        v(left),
+        &left_llvm,
+        &T::I128,
         extend_op(left_ty),
     );
-    let _ = writeln!(text, "  %shraw{dest} = shl i128 %shval{dest}, %shamt{dest}");
+    text.assign(
+        format!("shraw{dest}"),
+        I::binary(BinaryOp::Shl, T::I128, r("val"), r("amt")),
+    );
     emit_i128_range_trunc(text, block_id, dest, llvm_ty, ty, state);
 }
 
@@ -138,30 +153,39 @@ pub(crate) fn emit_integer_power(
     state: &mut EmissionState,
 ) {
     let dest = destination.0;
-    let llvm_ty = llvm_type(ty).expect("validated integer type");
-    let left_llvm = llvm_type(left_ty).expect("validated power base type");
-    let right_llvm = llvm_type(right_ty).expect("validated power exponent type");
+    let r = |name: &str| O::reg(format!("p{name}{dest}"));
+    let llvm_ty = typed_llvm(llvm_type(ty).expect("validated integer type"));
+    let left_llvm = typed_llvm(llvm_type(left_ty).expect("validated power base type"));
+    let right_llvm = typed_llvm(llvm_type(right_ty).expect("validated power exponent type"));
+    let base = format!("pbase{dest}");
     emit_cast_integer(
         text,
-        &format!("pbase{dest}"),
-        &format!("%v{}", left.0),
-        left_llvm,
-        "i128",
+        &base,
+        v(left),
+        &left_llvm,
+        &T::I128,
         extend_op(left_ty),
     );
+    let exponent = format!("pexp{dest}");
     emit_cast_integer(
         text,
-        &format!("pexp{dest}"),
-        &format!("%v{}", right.0),
-        right_llvm,
-        "i128",
+        &exponent,
+        v(right),
+        &right_llvm,
+        &T::I128,
         extend_op(right_ty),
     );
-    let _ = writeln!(text, "  %pneg{dest} = icmp slt i128 %pexp{dest}, 0");
-    let _ = writeln!(
-        text,
-        "  %pbig{dest} = icmp ugt i128 %pexp{dest}, 4294967295"
+    text.assign(
+        format!("pneg{dest}"),
+        I::icmp(ICmpCond::Slt, T::I128, r("exp"), O::int(0)),
     );
+    let big = I::icmp(
+        ICmpCond::Ugt,
+        T::I128,
+        r("exp"),
+        O::uint(u64::from(u32::MAX)),
+    );
+    text.assign(format!("pbig{dest}"), big);
     let positive = take_continuation(block_id, state);
     emit_trap(
         text,
@@ -185,51 +209,75 @@ pub(crate) fn emit_integer_power(
         bn_diag::DiagId::INVALID_EXPONENT,
         vec![("detail", Fact::Text("integer exponent is too large".into()))],
     );
-    let loop_h = format!("b{}.pow{dest}.loop", block_id.0);
-    let work = format!("b{}.pow{dest}.work", block_id.0);
-    let mulr = format!("b{}.pow{dest}.mulr", block_id.0);
-    let after = format!("b{}.pow{dest}.after", block_id.0);
-    let square = format!("b{}.pow{dest}.sq", block_id.0);
-    let done = format!("b{}.pow{dest}.done", block_id.0);
-    let _ = writeln!(text, "  br label %{loop_h}");
+    let label = |name: &str| format!("b{}.pow{dest}.{name}", block_id.0);
+    let (loop_h, work, mulr) = (label("loop"), label("work"), label("mulr"));
+    let (after, square, done) = (label("after"), label("sq"), label("done"));
+    let br = |text: &mut String, dest: &str| text.emit(I::Br { dest: dest.into() });
+    let cond_br = |text: &mut String, cond: O, yes: &str, no: &str| {
+        text.emit(I::CondBr {
+            cond,
+            true_dest: yes.into(),
+            false_dest: no.into(),
+        });
+    };
+    let phi = |incoming: Vec<(O, &String)>| I::Phi {
+        ty: T::I128,
+        incoming: incoming
+            .into_iter()
+            .map(|(value, from)| (value, from.clone()))
+            .collect(),
+    };
+    br(text, &loop_h);
     state.control_flow.label(text, loop_h.clone());
     let square_ok = format!("{square}.ok");
     let mulr_ok = format!("{mulr}.ok");
-    let _ = writeln!(
-        text,
-        "  %pb{dest} = phi i128 [ %pbase{dest}, %{setup} ], [ %pb2{dest}, %{square_ok} ]"
+    text.assign(
+        format!("pb{dest}"),
+        phi(vec![(r("base"), &setup), (r("b2"), &square_ok)]),
     );
-    let _ = writeln!(
-        text,
-        "  %pe{dest} = phi i128 [ %pexp{dest}, %{setup} ], [ %pe1{dest}, %{square_ok} ]"
+    text.assign(
+        format!("pe{dest}"),
+        phi(vec![(r("exp"), &setup), (r("e1"), &square_ok)]),
     );
-    let _ = writeln!(
-        text,
-        "  %pr{dest} = phi i128 [ 1, %{setup} ], [ %pr2{dest}, %{square_ok} ]"
+    text.assign(
+        format!("pr{dest}"),
+        phi(vec![(O::int(1), &setup), (r("r2"), &square_ok)]),
     );
-    let _ = writeln!(text, "  %pez{dest} = icmp eq i128 %pe{dest}, 0");
-    let _ = writeln!(text, "  br i1 %pez{dest}, label %{done}, label %{work}");
+    text.assign(
+        format!("pez{dest}"),
+        I::icmp(ICmpCond::Eq, T::I128, r("e"), O::int(0)),
+    );
+    cond_br(text, r("ez"), &done, &work);
     state.control_flow.label(text, work.clone());
-    let _ = writeln!(text, "  %podd{dest} = trunc i128 %pe{dest} to i1");
-    let _ = writeln!(text, "  br i1 %podd{dest}, label %{mulr}, label %{after}");
+    text.assign(
+        format!("podd{dest}"),
+        I::cast(CastOp::Trunc, T::I128, r("e"), T::I1),
+    );
+    cond_br(text, r("odd"), &mulr, &after);
     state.control_flow.label(text, mulr.clone());
     emit_checked_i128_mul(text, block_id, state, dest, "pr", "pb", "prm", &mulr);
-    let _ = writeln!(text, "  br label %{after}");
+    br(text, &after);
     state.control_flow.label(text, after.clone());
-    let _ = writeln!(
-        text,
-        "  %pr2{dest} = phi i128 [ %prm{dest}, %{mulr_ok} ], [ %pr{dest}, %{work} ]"
+    text.assign(
+        format!("pr2{dest}"),
+        phi(vec![(r("rm"), &mulr_ok), (r("r"), &work)]),
     );
-    let _ = writeln!(text, "  %pe1{dest} = lshr i128 %pe{dest}, 1");
-    let _ = writeln!(text, "  %pmore{dest} = icmp ne i128 %pe1{dest}, 0");
-    let _ = writeln!(text, "  br i1 %pmore{dest}, label %{square}, label %{done}");
+    text.assign(
+        format!("pe1{dest}"),
+        I::binary(BinaryOp::LShr, T::I128, r("e"), O::int(1)),
+    );
+    text.assign(
+        format!("pmore{dest}"),
+        I::icmp(ICmpCond::Ne, T::I128, r("e1"), O::int(0)),
+    );
+    cond_br(text, r("more"), &square, &done);
     state.control_flow.label(text, square.clone());
     emit_checked_i128_mul(text, block_id, state, dest, "pb", "pb", "pb2", &square);
-    let _ = writeln!(text, "  br label %{loop_h}");
+    br(text, &loop_h);
     state.control_flow.label(text, done.clone());
-    let _ = writeln!(
-        text,
-        "  %shraw{dest} = phi i128 [ %pr{dest}, %{loop_h} ], [ %pr2{dest}, %{after} ]"
+    text.assign(
+        format!("shraw{dest}"),
+        phi(vec![(r("r"), &loop_h), (r("r2"), &after)]),
     );
     emit_i128_range_trunc(text, block_id, dest, llvm_ty, ty, state);
 }
@@ -247,10 +295,11 @@ pub(crate) fn emit_float_power(
         "double" => "llvm.pow.f64",
         _ => unreachable!("validated float power type"),
     };
-    let _ = writeln!(
-        text,
-        "  %v{} = call {llvm_ty} @{intrinsic}({llvm_ty} %v{}, {llvm_ty} %v{})",
-        destination.0, left.0, right.0
+    let llvm_ty = typed_llvm(llvm_ty);
+    let args = vec![(llvm_ty.clone(), v(left)), (llvm_ty.clone(), v(right))];
+    text.assign(
+        format!("v{}", destination.0),
+        I::call(llvm_ty, intrinsic, args),
     );
 }
 
@@ -261,30 +310,43 @@ pub(crate) fn emit_string_concat(
     right: ValueId,
 ) {
     let dest = destination.0;
-    let _ = writeln!(text, "  %slenl{dest} = call i64 @strlen(ptr %v{})", left.0);
-    let _ = writeln!(text, "  %slenr{dest} = call i64 @strlen(ptr %v{})", right.0);
-    let _ = writeln!(text, "  %slens{dest} = add i64 %slenl{dest}, %slenr{dest}");
-    let _ = writeln!(text, "  %sbytes{dest} = add i64 %slens{dest}, 1");
-    let _ = writeln!(text, "  %v{dest} = call ptr @malloc(i64 %sbytes{dest})");
-    let _ = writeln!(
-        text,
-        "  call void @llvm.memcpy.p0.p0.i64(ptr %v{dest}, ptr %v{}, i64 %slenl{dest}, i1 false)",
-        left.0
+    let r = |name: &str| O::reg(format!("s{name}{dest}"));
+    let own = O::reg(format!("v{dest}"));
+    let strlen = |value: O| I::call(T::I64, "strlen", vec![(T::Ptr, value)]);
+    let memcpy = |text: &mut String, target: O, source: O, bytes: O| {
+        let args = vec![
+            (T::Ptr, target),
+            (T::Ptr, source),
+            (T::I64, bytes),
+            (T::I1, O::bool(false)),
+        ];
+        text.emit(I::call(T::Void, "llvm.memcpy.p0.p0.i64", args));
+    };
+    text.assign(format!("slenl{dest}"), strlen(v(left)));
+    text.assign(format!("slenr{dest}"), strlen(v(right)));
+    text.assign(
+        format!("slens{dest}"),
+        I::binary(BinaryOp::Add, T::I64, r("lenl"), r("lenr")),
     );
-    let _ = writeln!(
-        text,
-        "  %stail{dest} = getelementptr i8, ptr %v{dest}, i64 %slenl{dest}"
+    text.assign(
+        format!("sbytes{dest}"),
+        I::binary(BinaryOp::Add, T::I64, r("lens"), O::int(1)),
     );
-    let _ = writeln!(
-        text,
-        "  call void @llvm.memcpy.p0.p0.i64(ptr %stail{dest}, ptr %v{}, i64 %slenr{dest}, i1 false)",
-        right.0
+    text.assign(
+        format!("v{dest}"),
+        I::call(T::Ptr, "malloc", vec![(T::I64, r("bytes"))]),
     );
-    let _ = writeln!(
-        text,
-        "  %send{dest} = getelementptr i8, ptr %stail{dest}, i64 %slenr{dest}"
+    memcpy(text, own.clone(), v(left), r("lenl"));
+    text.assign(
+        format!("stail{dest}"),
+        I::gep(T::I8, own, vec![(T::I64, r("lenl"))]),
     );
-    let _ = writeln!(text, "  store i8 0, ptr %send{dest}");
+    memcpy(text, r("tail"), v(right), r("lenr"));
+    text.assign(
+        format!("send{dest}"),
+        I::gep(T::I8, r("tail"), vec![(T::I64, r("lenr"))]),
+    );
+    text.emit(I::store(T::I8, O::int(0), r("end")));
 }
 
 pub(crate) fn pow_intrinsic_declaration(ty: &Type) -> Option<&'static str> {
@@ -315,18 +377,19 @@ fn emit_checked_i128_mul(
     out: &str,
     from: &str,
 ) {
-    let _ = writeln!(
-        text,
-        "  %{out}ov{dest} = call {{ i128, i1 }} @llvm.smul.with.overflow.i128(i128 %{left}{dest}, i128 %{right}{dest})"
+    let pair = T::struct_of([T::I128, T::I1]);
+    let args = vec![
+        (T::I128, O::reg(format!("{left}{dest}"))),
+        (T::I128, O::reg(format!("{right}{dest}"))),
+    ];
+    let call = I::call(pair.clone(), "llvm.smul.with.overflow.i128", args);
+    text.assign(format!("{out}ov{dest}"), call);
+    let product = O::reg(format!("{out}ov{dest}"));
+    text.assign(
+        format!("{out}{dest}"),
+        I::extract(pair.clone(), product.clone(), 0),
     );
-    let _ = writeln!(
-        text,
-        "  %{out}{dest} = extractvalue {{ i128, i1 }} %{out}ov{dest}, 0"
-    );
-    let _ = writeln!(
-        text,
-        "  %{out}f{dest} = extractvalue {{ i128, i1 }} %{out}ov{dest}, 1"
-    );
+    text.assign(format!("{out}f{dest}"), I::extract(pair, product, 1));
     // The power's magnitude passed i128: the interpreter's checked_pow
     // reports it without a value.
     emit_trap(
@@ -347,14 +410,24 @@ fn emit_i128_range_trunc(
     text: &mut String,
     block_id: BlockId,
     dest: u32,
-    llvm_ty: &str,
+    llvm_ty: T,
     ty: &Type,
     state: &mut EmissionState,
 ) {
+    let r = |name: &str| O::reg(format!("sh{name}{dest}"));
     let (min, max) = i128_bounds(ty);
-    let _ = writeln!(text, "  %shlo{dest} = icmp slt i128 %shraw{dest}, {min}");
-    let _ = writeln!(text, "  %shhi{dest} = icmp sgt i128 %shraw{dest}, {max}");
-    let _ = writeln!(text, "  %shov{dest} = or i1 %shlo{dest}, %shhi{dest}");
+    text.assign(
+        format!("shlo{dest}"),
+        I::icmp(ICmpCond::Slt, T::I128, r("raw"), O::raw(min)),
+    );
+    text.assign(
+        format!("shhi{dest}"),
+        I::icmp(ICmpCond::Sgt, T::I128, r("raw"), O::raw(max)),
+    );
+    text.assign(
+        format!("shov{dest}"),
+        I::binary(BinaryOp::Or, T::I1, r("lo"), r("hi")),
+    );
     let ok = take_continuation(block_id, state);
     emit_overflow_trap(
         text,
@@ -365,33 +438,32 @@ fn emit_i128_range_trunc(
         &format!("%shraw{dest}"),
         ty,
     );
-    let _ = writeln!(text, "  %v{dest} = trunc i128 %shraw{dest} to {llvm_ty}");
+    text.assign(
+        format!("v{dest}"),
+        I::cast(CastOp::Trunc, T::I128, r("raw"), llvm_ty),
+    );
 }
 
-fn emit_cast_integer(
-    text: &mut String,
-    result: &str,
-    value: &str,
-    from: &str,
-    to: &str,
-    ext: &str,
-) {
-    if from == to {
-        let _ = writeln!(text, "  %{result} = add {from} 0, {value}");
+/// `%{result}` = `value` (of `from`) as `to`: `add 0` when the widths
+/// agree, `ext` to widen, `trunc` to narrow.
+fn emit_cast_integer(text: &mut String, result: &str, value: O, from: &T, to: &T, ext: CastOp) {
+    let inst = if from == to {
+        I::binary(BinaryOp::Add, from.clone(), O::int(0), value)
     } else if llvm_int_width(from) < llvm_int_width(to) {
-        let _ = writeln!(text, "  %{result} = {ext} {from} {value} to {to}");
+        I::cast(ext, from.clone(), value, to.clone())
     } else {
-        let _ = writeln!(text, "  %{result} = trunc {from} {value} to {to}");
-    }
+        I::cast(CastOp::Trunc, from.clone(), value, to.clone())
+    };
+    text.assign(result, inst);
 }
 
-fn llvm_int_width(llvm_ty: &str) -> u8 {
+fn llvm_int_width(llvm_ty: &T) -> u8 {
     match llvm_ty {
-        "i8" => 8,
-        "i16" => 16,
-        "i32" => 32,
-        "i64" => 64,
-        "i128" => 128,
+        T::I8 => 8,
+        T::I16 => 16,
+        T::I32 => 32,
+        T::I64 => 64,
+        T::I128 => 128,
         _ => unreachable!("integer LLVM type"),
     }
 }
@@ -405,6 +477,10 @@ fn bit_width(ty: &Type) -> u32 {
     }
 }
 
-fn extend_op(ty: &Type) -> &'static str {
-    if is_unsigned(ty) { "zext" } else { "sext" }
+fn extend_op(ty: &Type) -> CastOp {
+    if is_unsigned(ty) {
+        CastOp::ZExt
+    } else {
+        CastOp::SExt
+    }
 }

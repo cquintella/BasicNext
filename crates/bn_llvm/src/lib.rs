@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Dependency-free LLVM textual backend. Unsupported IR is rejected explicitly.
+//! Dependency-free LLVM backend and typed IR builder. Unsupported IR is rejected explicitly.
 
 #![allow(clippy::match_same_arms)]
 #![allow(clippy::too_many_lines)]
@@ -20,6 +20,9 @@ use bn_ir::{
 };
 use bn_source::{Position, Span};
 use bn_types::{FloatType, IntegerType, Type};
+
+pub mod ir;
+use ir::escape_llvm;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Target {
@@ -155,13 +158,15 @@ struct LoweringAnalysis<'a> {
     input_count: usize,
     input_targets: HashMap<ValueId, SymbolId>,
     input_symbols: HashSet<SymbolId>,
+    escaping_inputs: HashSet<SymbolId>,
     released_symbols: HashSet<SymbolId>,
     owned_string_results: HashSet<ValueId>,
     owned_struct_results: HashSet<ValueId>,
-    owned_object_results: HashMap<ValueId, String>,
     owned_log_results: HashMap<ValueId, &'static str>,
     uses_string_concat: bool,
     uses_bn_rt: bool,
+    /// The function counts references through the ARC core (`arc_runtime`).
+    uses_arc: bool,
     uses_bn_rt_math: bool,
     uses_float_print: bool,
     uses_string_ops: bool,
@@ -253,10 +258,16 @@ pub fn lower_validated_module_for_target_with_policy(
     wasm32: bool,
     policy: &CompiledPolicy,
 ) -> Result<String, String> {
-    lower_validated_module_with_diagnostics(validated, wasm32, policy, &|diagnostic| {
-        let rendered = diagnostic.render(&bn_source::SourceFile::new("", ""));
-        rendered.lines().next().unwrap_or_default().to_owned()
-    })
+    lower_validated_module_with_diagnostics(
+        validated,
+        wasm32,
+        policy,
+        &|diagnostic| {
+            let rendered = diagnostic.render(&bn_source::SourceFile::new("", ""));
+            rendered.lines().next().unwrap_or_default().to_owned()
+        },
+        None,
+    )
 }
 
 /// Lowers a validated module whose runtime traps print the diagnostic
@@ -275,6 +286,7 @@ pub fn lower_validated_module_with_diagnostics(
     wasm32: bool,
     policy: &CompiledPolicy,
     render: &dyn Fn(&bn_diag::Diagnostic) -> String,
+    debug: Option<&DebugInfo>,
 ) -> Result<String, String> {
     validate_for(
         validated,
@@ -306,18 +318,30 @@ pub fn lower_validated_module_with_diagnostics(
     }
     emit_preamble(
         &mut text,
+        module,
         &functions,
         !wasm32,
         !module.bndata_providers.is_empty(),
         policy_ceiling(module) != 0 || !wasm32,
     );
     for (function, analysis) in &functions {
-        emit_function(&mut text, module, function, analysis, !wasm32, policy)?;
+        emit_function(
+            &mut text,
+            module,
+            function,
+            analysis,
+            !wasm32,
+            policy,
+            debug.is_some(),
+        )?;
     }
     declare_error_abi(&mut text);
     define_type_name_globals(&mut text);
     define_trap_globals(&mut text, render, wasm32);
-    Ok(text)
+    Ok(match debug {
+        Some(info) => attach_debug_info(&text, info),
+        None => text,
+    })
 }
 
 /// Checks LLVM target support after language validation and before emission.
@@ -420,8 +444,28 @@ fn support_diagnostic(message: &str) -> (&'static str, &str) {
     ("TARGET_UNSUPPORTED_LLVM", message)
 }
 
+/// The capabilities the program requires (host-traits.md): those it imports
+/// and those it uses unqualified (`HOST.Console.Beep()`, `HOST.Clock.Now()`).
 pub(crate) fn policy_ceiling(module: &Module) -> u64 {
     let mut ceiling = 0;
+    for instruction in module
+        .functions
+        .iter()
+        .flat_map(|function| &function.blocks)
+        .flat_map(|block| &block.instructions)
+    {
+        match instruction {
+            Instruction::Constant {
+                value: bn_ir::Constant::HostConsole,
+                ..
+            } => ceiling |= POLICY_CONSOLE,
+            Instruction::Constant {
+                value: bn_ir::Constant::Type(name),
+                ..
+            } if name == "HOST.Clock" => ceiling |= POLICY_CLOCK,
+            _ => {}
+        }
+    }
     if module.clock_import.is_some() {
         ceiling |= POLICY_CLOCK;
     }
@@ -492,11 +536,18 @@ use analysis::analyze_function;
 #[path = "llvm/alternatives.rs"]
 mod alternatives;
 use alternatives::{
-    Sentinel, alternative_is, emit_narrowed_load, emit_sentinel_is, loaded_type, narrows,
-    string_eof_or_error,
+    Sentinel, alternative_is, emit_narrowed_load, emit_sentinel_is, imported_or_error, loaded_type,
+    narrows, opaque_or_error, string_eof_or_error,
+};
+#[path = "llvm/general_alternative.rs"]
+mod general_alternative;
+use general_alternative::{
+    GENERAL_LAYOUT, comparable_alternative, general_alternative, general_members,
 };
 #[path = "llvm/analysis_calls.rs"]
 mod analysis_calls;
+#[path = "llvm/general_alternative_equality.rs"]
+mod general_alternative_equality;
 use analysis_calls::call_instruction_supported;
 #[path = "llvm/analysis_helpers.rs"]
 mod analysis_helpers;
@@ -504,145 +555,6 @@ use analysis_helpers::{block_is_cyclic, instruction_destination, llvm_vector_dim
 #[path = "llvm/analysis_validate.rs"]
 mod analysis_validate;
 use analysis_validate::{for_condition_supported, validate_instruction};
-fn llvm_type(ty: &Type) -> Option<&'static str> {
-    match ty {
-        Type::Boolean => Some("i1"),
-        Type::Integer(IntegerType::Byte | IntegerType::Int8) => Some("i8"),
-        Type::Integer(IntegerType::Int16 | IntegerType::UInt16) => Some("i16"),
-        Type::Integer(IntegerType::Int32 | IntegerType::UInt32) => Some("i32"),
-        // Untyped integer literals lower as i64 so UINT64/INT64 initializers
-        // (including hex source text) stay in range; Store coerces to the slot.
-        Type::IntegerLiteral(_) | Type::Integer(IntegerType::Int64 | IntegerType::UInt64) => {
-            Some("i64")
-        }
-        Type::Float(FloatType::Float32) => Some("float"),
-        Type::Float(FloatType::Float64) | Type::FloatLiteral => Some("double"),
-        Type::String => Some("ptr"),
-        Type::Null => Some("ptr"),
-        Type::Function { .. } => Some("ptr"),
-        Type::Named(name) if name == "DATE" || name == "TIME" => Some("i32"),
-        Type::NotAvailable => Some("{ i1, double }"),
-        Type::Alternative(alternatives) if float_or_na(alternatives) => Some("{ i1, double }"),
-        Type::Alternative(alternatives) if integer_or_null(alternatives) => Some("{ i1, i32 }"),
-        Type::Alternative(alternatives) if string_or_null(alternatives) => Some("ptr"),
-        Type::Alternative(alternatives)
-            if alternatives.len() == 2
-                && alternatives.iter().any(|ty| matches!(ty, Type::Null))
-                && alternatives.iter().any(|ty| matches!(ty, Type::Named(_))) =>
-        {
-            Some("ptr")
-        }
-        Type::Alternative(alternatives)
-            if string_na_or_error(alternatives) || string_eof_or_error(alternatives) =>
-        {
-            Some("{ i1, ptr, i64 }")
-        }
-        Type::Alternative(alternatives) if scalar_na_or_error(alternatives) => {
-            Some("{ i1, ptr, i64 }")
-        }
-        Type::Alternative(alternatives) if error_or_na(alternatives) => Some("{ i1, ptr, i64 }"),
-        Type::Alternative(alternatives) if float_or_error(alternatives) => Some("{ i1, ptr, i64 }"),
-        Type::Alternative(alternatives) if boolean_or_error(alternatives) => {
-            Some("{ i1, ptr, i64 }")
-        }
-        // HOST.Net aggregate results OR Error, and narrowed network values.
-        Type::Alternative(alternatives) if net_or_error(alternatives) => {
-            if alternatives.iter().any(is_net_addresses_type) {
-                Some("{ i1, ptr }")
-            } else if alternatives.iter().any(is_net_endpoint_type) {
-                Some("{ i1, ptr, i32 }")
-            } else {
-                Some("{ i1, ptr, i64 }")
-            }
-        }
-        Type::Alternative(alternatives) if void_or_error(alternatives) => Some("{ i1, ptr, i64 }"),
-        Type::Alternative(alternatives) if integer_or_error(alternatives) => {
-            Some("{ i1, ptr, i64 }")
-        }
-        Type::Alternative(alternatives) if integer_eof_or_error(alternatives) => {
-            Some("{ i1, ptr, i64 }")
-        }
-        Type::Alternative(alternatives) if imported_or_error(alternatives) => {
-            Some("{ i1, ptr, i64 }")
-        }
-        Type::Alternative(alternatives) if opaque_or_error(alternatives) => {
-            Some("{ i1, ptr, i64 }")
-        }
-        Type::Named(name) if name == "Error" => Some("{ i1, ptr, i64 }"),
-        Type::Named(name) if name == "HOST.Net.Address" || name == "HOST.Net.PingReply" => {
-            Some("{ i1, ptr, i64 }")
-        }
-        Type::Named(name) if name == "HOST.Net.Addresses" => Some("{ i1, ptr }"),
-        Type::Named(name) if name == "HOST.Net.Endpoint" => Some("{ ptr, i32 }"),
-        // A file handle alone has the layout of `FS.File OR Error`, whose
-        // methods read the handle from the payload.
-        Type::Named(name) if name == "FS.File" => Some("{ i1, ptr, i64 }"),
-        Type::Named(name)
-            if matches!(
-                name.as_str(),
-                "HOST.Net.TCPStream"
-                    | "HOST.Net.TCPListener"
-                    | "HOST.Net.UDPSocket"
-                    | "HOST.Net.UDPPacket"
-            ) =>
-        {
-            Some("{ i1, ptr, i64 }")
-        }
-        Type::ImportedNamed { name, .. }
-            if name == "Address" || name == "PingReply" || name == "Error" =>
-        {
-            Some("{ i1, ptr, i64 }")
-        }
-        Type::ImportedNamed { name, .. } if name == "Addresses" => Some("{ i1, ptr }"),
-        Type::ImportedNamed { name, .. } if name == "Endpoint" => Some("{ ptr, i32 }"),
-        Type::ImportedNamed { name, .. }
-            if matches!(
-                name.as_str(),
-                "TCPStream" | "TCPListener" | "UDPSocket" | "UDPPacket"
-            ) =>
-        {
-            Some("{ i1, ptr, i64 }")
-        }
-        Type::ImportedNamed { name, .. } if dispatch_handle_name(name) => Some("{ i1, ptr, i64 }"),
-        Type::ImportedTypeName { name, .. } if dispatch_handle_name(name) => {
-            Some("{ i1, ptr, i64 }")
-        }
-        Type::ImportedNamed { .. } => Some("ptr"),
-        Type::ImportedTypeName { .. } => Some("ptr"),
-        Type::Vector {
-            element,
-            dimensions,
-        } if !dimensions.is_empty()
-            && dimensions.iter().all(|dimension| *dimension != u64::MAX)
-            && llvm_type(element).is_some() =>
-        {
-            Some("{ ptr, i32 }")
-        }
-        // Dynamic `NEW T[n]` / `POINTER TO T[]` share the vector fat pointer.
-        Type::Pointer { element, .. } if llvm_type(element).is_some() => Some("{ ptr, i32 }"),
-        Type::Named(name) if name == "POINTER" => Some("{ ptr, i32 }"),
-        // User class instances (NEW Box(...)) lower as opaque pointers.
-        Type::Named(name)
-            if !matches!(
-                name.as_str(),
-                "VOID" | "POINTER" | "DATE" | "TIME" | "Error"
-            ) =>
-        {
-            Some("ptr")
-        }
-        _ => None,
-    }
-}
-
-fn float_or_na(alternatives: &[Type]) -> bool {
-    alternatives.len() == 2
-        && alternatives
-            .iter()
-            .any(|ty| matches!(ty, Type::Float(_) | Type::FloatLiteral))
-        && alternatives
-            .iter()
-            .any(|ty| matches!(ty, Type::NotAvailable))
-}
 
 fn is_error_type(ty: &Type) -> bool {
     matches!(ty, Type::Named(name) if name == "Error")
@@ -771,51 +683,11 @@ fn float_or_error(alternatives: &[Type]) -> bool {
         && alternatives.iter().any(is_error_type)
 }
 
-fn string_or_null(alternatives: &[Type]) -> bool {
-    alternatives.len() == 2
-        && alternatives.iter().any(|ty| matches!(ty, Type::String))
-        && alternatives.iter().any(|ty| matches!(ty, Type::Null))
-}
-
-fn integer_or_null(alternatives: &[Type]) -> bool {
-    alternatives.len() == 2
-        && alternatives
-            .iter()
-            .any(|ty| matches!(ty, Type::Integer(IntegerType::Int32)))
-        && alternatives.iter().any(|ty| matches!(ty, Type::Null))
-}
-
 fn integer_eof_or_error(alternatives: &[Type]) -> bool {
     alternatives.len() == 3
         && alternatives.iter().any(|ty| matches!(ty, Type::Integer(_)))
         && alternatives.iter().any(|ty| matches!(ty, Type::EndOfFile))
         && alternatives.iter().any(is_error_type)
-}
-
-fn imported_or_error(alternatives: &[Type]) -> bool {
-    alternatives.len() == 2
-        && alternatives
-            .iter()
-            .any(|ty| matches!(ty, Type::Named(name) if name == "Error"))
-        && alternatives.iter().any(|ty| {
-            matches!(
-                ty,
-                Type::ImportedNamed { .. } | Type::ImportedTypeName { .. }
-            )
-        })
-}
-
-fn opaque_or_error(alternatives: &[Type]) -> bool {
-    alternatives.len() == 2
-        && alternatives
-            .iter()
-            .any(|ty| matches!(ty, Type::Named(name) if name == "Error"))
-        && alternatives.iter().any(|ty| {
-            matches!(
-                ty,
-                Type::Named(_) | Type::ImportedNamed { .. } | Type::ImportedTypeName { .. }
-            )
-        })
 }
 
 fn dispatch_handle_name(name: &str) -> bool {
@@ -865,6 +737,8 @@ fn printable_type(ty: &Type) -> bool {
             | Type::FloatLiteral
             | Type::Named(_)
             | Type::NotAvailable
+            | Type::EndOfFile
+            | Type::Null
             | Type::Alternative(_)
     ) && llvm_type(ty).is_some())
         || matches!(
@@ -909,6 +783,13 @@ fn binary_supported(operator: &str, left: &Type, right: &Type, result: &Type) ->
     let Some(result_llvm) = llvm_type(result) else {
         return false;
     };
+    // `=` / `<>` between a general alternative and a value of one of its
+    // members; two alternatives are not compared here.
+    if matches!(operator, "Assign" | "NotEqual")
+        && (comparable_alternative(left).is_some() != comparable_alternative(right).is_some())
+    {
+        return !matches!((left, right), (Type::Alternative(_), Type::Alternative(_)));
+    }
     match operator {
         "Plus" | "Minus" | "Star" | "Multiply" => {
             integer_llvm(left_llvm) && integer_llvm(right_llvm) && integer_llvm(result_llvm)
@@ -977,8 +858,13 @@ mod control_flow;
 
 #[path = "llvm/arc.rs"]
 mod arc;
+#[path = "llvm/arc_ops.rs"]
+mod arc_ops;
+#[path = "llvm/arc_runtime.rs"]
+mod arc_runtime;
 #[path = "llvm/layout.rs"]
 mod layout;
+use layout::llvm_type;
 
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::too_many_lines)]
@@ -989,13 +875,7 @@ use emission1::lower_scalar_instruction;
 mod emission2;
 use emission2::{
     checked_intrinsic_declaration, cleanup_owned_memory, emit_checked_integer_op,
-    float_compare_opcode, integer_compare_opcode, lower_print_value, lower_terminator,
-};
-#[path = "llvm/dispatch_results.rs"]
-mod dispatch_results;
-use dispatch_results::{
-    emit_boolean_dispatch_result, emit_float_dispatch_result, emit_integer_dispatch_result,
-    emit_string_dispatch_result,
+    float_compare_cond, integer_compare_cond, lower_print_value, lower_terminator,
 };
 #[path = "llvm/loop_emission.rs"]
 mod loop_emission;
@@ -1063,13 +943,28 @@ use binary::emit_runtime_binary;
 #[path = "llvm/runtime.rs"]
 mod runtime;
 use runtime::{
-    BN_RT_DECLS, bn_rt_call_supported, bndata_dataframe_method, bnlog_method,
+    BN_RT_DECLS, bn_rt_call_supported, bndata_dataframe_method, bnlog_method, emit_checked_i32,
     emit_checked_i32_eq_zero, extend_to_i32, is_bn_rt_host_call, is_bndata_dataframe_call,
-    lower_bn_dispatch_call, lower_bn_rt_call, take_continuation,
+    lower_bn_rt_call, take_continuation, value_reg,
 };
+#[path = "llvm/runtime_abi.rs"]
+mod runtime_abi;
+#[path = "llvm/runtime_net.rs"]
+mod runtime_net;
+use runtime_net::lower_net_call;
+#[path = "llvm/runtime_process.rs"]
+mod runtime_process;
+use runtime_process::lower_process_call;
+#[path = "llvm/runtime_dispatch.rs"]
+mod runtime_dispatch;
+use runtime_dispatch::lower_bn_dispatch_call;
 #[path = "llvm/fs_emission.rs"]
 mod fs_emission;
 use fs_emission::{FS_CALLS, fs_call_supported, lower_fs_call};
+#[path = "llvm/debug_info.rs"]
+mod debug_info;
+pub use debug_info::DebugInfo;
+use debug_info::{attach_debug_info, mark_function, mark_location};
 #[path = "llvm/traps.rs"]
 mod traps;
 use traps::{
@@ -1102,7 +997,7 @@ use calls::{emit_user_signature, lower_user_call, store_parameters};
 mod functions;
 use functions::{
     analyze_reachable, dispatch_trampoline_symbol, emit_function, function_return_llvm,
-    is_void_type, llvm_function_symbol, string_global,
+    is_void_type, live_flag, llvm_function_symbol, string_global,
 };
 #[path = "llvm/preamble.rs"]
 mod preamble;
@@ -1124,18 +1019,14 @@ use constant_fold::{fold_binary, fold_cast, fold_unary, typed_constant};
 mod helpers;
 #[path = "llvm/platform_stdio.rs"]
 mod platform_stdio;
-use arc::{
-    REGION_HEADER_BYTES, destructor_symbol, emit_destroy_if_last, emit_region_base,
-    emit_region_field_assign, is_class_type, is_region_type,
-};
+use arc::{REGION_HEADER_BYTES, held_object, is_class_type, is_region_type, object_class};
 use helpers::{
     bncrypto_method, bnjson_member, bnsqlite_method, carries_bncrypto_bytes, carries_bnjson,
     carries_bnsqlite_connection, class_init_flag, coerce_return_operand, coerce_to_type,
-    escape_llvm, extend_to_i64, input_runtime_ir, instruction_name, integer_kind,
-    is_bncrypto_bytes_type, is_bnsqlite_connection_type, is_canonical_timezone, is_unsigned,
-    parse_float_constant, parse_integer, render_float, render_llvm_integer, sanitize_symbol,
-    static_global_name, string_byte_length_ir, unsupported_call_detail, unsupported_instruction,
-    unsupported_instruction_detail,
+    extend_to_i64, input_runtime_ir, instruction_name, integer_kind, is_bncrypto_bytes_type,
+    is_bnsqlite_connection_type, is_unsigned, parse_float_constant, parse_integer, render_float,
+    render_llvm_integer, sanitize_symbol, static_global_name, string_byte_length_ir,
+    unsupported_call_detail, unsupported_instruction, unsupported_instruction_detail,
 };
 use layout::{
     OBJECT_HEADER_BYTES, class_instance_bytes, class_layout_fields, field_byte_offset, field_type,

@@ -21,6 +21,10 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `valid/exported-constants.bn` | Accept | Module `EXPORT CONST` with inferred scalar types (`PI`, `EULER`, `STRING`, `BOOLEAN`) and explicit `AS FLOAT` / `AS UINT32`. |
 | `valid/integer-literal-float-binding.bn` | Accept and run | 0.6.2 C2: decimal, hexadecimal, binary and negative integer literals initialize `FLOAT` / `FLOAT32` bindings. |
 | `valid/negative-local-constants.bn` | Accept and run | 0.6.2 C1: inferred local `CONST` from `-1`, `-2.5`, `-0xFF`. |
+| `valid/literal-into-numeric-alternative.bn` | Accept and run | A numeric literal in an alternative type takes its default type, else the only alternative of its class. |
+| `valid/build-float-compare-nan.bn` | Accept and run | IEEE 754 comparisons with `NAN` at run time on both backends (`<>` is `TRUE`). |
+| `valid/alternative-widening.bn` | Accept and run | An alternative widens to one that contains all its members (`LET`, argument, return, field, reassignment); `IS` keeps answering for the alternative held. |
+| `valid/error-from-fallible-call.bn` | Accept and run | An `Error` received from a fallible call flows through `LET`, parameters and returns. |
 | `valid/as-string.bn` | Accept and run | 0.6.2 C3: `AS STRING` on integer, float, and `BOOLEAN` values yields the `PRINT` text on both backends. |
 | `valid/import-used-in-types.bn` | Accept, no warning | Imports used only in types (`NEW`, parameter and return types) are used: no `UNUSED_IMPORT`. |
 | `valid/is-host-types.bn` | Accept and run | `IS` on `HOST.Net` types, through two import aliases, on both backends. |
@@ -40,6 +44,8 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `valid/pointer-void.bn` | Accept and run | C-style typed-pointer round trip through opaque `POINTER TO VOID`. |
 | `invalid/as-string-from-string.bn` | Reject (semantic) | `AS STRING` does not accept a `STRING` source. |
 | `invalid/as-string-from-alternative.bn` | Reject (semantic) | `AS STRING` needs a narrowed value, not `INTEGER OR Error`. |
+| `invalid/host-clock-without-import.bn` | Reject (semantic) | `HOST.Clock` without `IMPORT HOST.Clock` is `NAME_NOT_FOUND`; only `Console`, `Args`, `NumProcs` need no `IMPORT`. |
+| `invalid/class-vector-without-initializer.bn` | Reject (semantic) | A vector of a class has no default (`LET v AS Box[2]` needs `=`). |
 | `invalid/len-on-boolean.bn` | Reject (semantic) | `LEN` does not accept `BOOLEAN`. |
 | `invalid/len-on-single-pointer.bn` | Reject (semantic) | `LEN` accepts pointer regions, not a single-value pointer. |
 | `invalid/sizeof-function-value.bn` | Reject (semantic) | `SIZEOF` does not accept a function value. |
@@ -60,6 +66,17 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `invalid/module-constant-out-of-range.bn` | Reject (semantic) | Inferred `INT32` constant `0x80000000` is out of range. |
 | `invalid/module-constant-negative-unsigned.bn` | Reject (semantic) | `AS UINT32 = -1` is out of range. |
 | `invalid/float-binding-inexact-integer.bn` | Reject (semantic) | `16777217` is not exact in `FLOAT32`. |
+| `invalid/literal-ambiguous-numeric-alternative.bn` | Reject (semantic) | A literal in `INT8 OR INT16` has no default-type or single same-class alternative. |
+| `invalid/alternative-duplicate-member.bn` | Reject (semantic) | `INTEGER OR INT32` repeats a member after alias resolution. |
+| `invalid/alternative-narrowing-without-is.bn` | Reject (semantic) | `INT32 OR NULL OR Error` stored as `INT32 OR NULL` without an `IS` test. |
+| `invalid/error-without-initializer.bn` | Reject (semantic) | An `Error` binding has no default value. |
+| `invalid/parameter-assignment.bn` | Reject (semantic) | A parameter is constant (Swift ARC model): no assignment. |
+| `invalid/parameter-increment.bn` | Reject (semantic) | `++` assigns, so it cannot target a parameter. |
+| `invalid/release-field.bn` | Reject (semantic) | `RELEASE` takes a local or a parameter; a field lets go with `= NULL`. |
+| `invalid/release-static.bn` | Reject (semantic) | `RELEASE` takes a local or a parameter; a `STATIC` lets go with `= NULL`. |
+| `valid/release-local-and-parameter.bn` | Accept and run | `RELEASE` of locals of any type, and of a parameter (ends the callee binding only). |
+| `invalid/error-field-without-initializer.bn` | Reject (semantic) | An `Error` field has no default value. |
+| `invalid/error-vector-without-initializer.bn` | Reject (semantic) | A vector of `Error` has no default value. |
 | `invalid/float-binding-integer-variable.bn` | Reject (semantic) | Only literals convert; an `INTEGER` binding needs `AS FLOAT`. |
 | `invalid/import-host-bare.bn` | Reject (syntax) | `HOST` import requires a dotted capability name. |
 | `invalid/mismatched-end.bn` | Reject (syntax) | Exact `END <KEYWORD>` matching. |

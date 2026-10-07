@@ -1,7 +1,10 @@
 use std::sync::atomic::Ordering;
 use std::time::{Duration, UNIX_EPOCH};
 
-use super::{Value, coerce, default_span, host_random_seed, integer_from_i128_count, is_value};
+use super::{
+    Executor, HostEnv, Instance, Module, Value, coerce, default_span, host_random_seed,
+    integer_from_i128_count, is_value, shared_string,
+};
 use bn_types::{FloatType, IntegerType, Type};
 
 #[test]
@@ -220,4 +223,67 @@ fn a_denying_filesystem_policy_still_provides_the_capability() {
         .expect("valid policy input");
     assert!(denied.provides_filesystem());
     assert!(!denied.filesystem().allows_capability());
+}
+
+/// The ARC verifier (debug builds check every program end): a live object
+/// whose count is more than the references the program holds is a leak the
+/// toolchain caused, and fails the run; a held object passes.
+#[test]
+fn the_arc_verifier_reports_a_count_without_references() {
+    let mut module = Module::default();
+    module.field_layouts.insert(
+        "Box".into(),
+        bn_ir::FieldLayout {
+            owner: "Box".into(),
+            fields: Vec::new(),
+            span: default_span(),
+        },
+    );
+    let mut input = std::io::Cursor::new(Vec::<u8>::new());
+    let mut output = Vec::new();
+    let host = HostEnv::system(Vec::new());
+    let mut executor = Executor::new(&module, &mut input, &mut output, &host, None, None);
+    let held = executor.register_allocation("Box", default_span());
+    executor
+        .objects
+        .insert(
+            held,
+            1,
+            Instance {
+                fields: Box::new([]),
+            },
+            default_span(),
+        )
+        .expect("payload");
+    executor.statics.insert(
+        ("Holder".into(), "slot".into()),
+        Value::Object {
+            handle: held,
+            class: shared_string("Box"),
+        },
+    );
+    executor
+        .verify_arc(default_span())
+        .expect("a STATIC holds the object");
+    let leaked = executor.register_allocation("Box", default_span());
+    executor
+        .objects
+        .insert(
+            leaked,
+            1,
+            Instance {
+                fields: Box::new([]),
+            },
+            default_span(),
+        )
+        .expect("payload");
+    let error = executor
+        .verify_arc(default_span())
+        .expect_err("nothing holds the second object");
+    assert_eq!(error.code, "INVALID_IR");
+    assert!(
+        error.message.contains("Box#1 has strong count 1"),
+        "{}",
+        error.message
+    );
 }

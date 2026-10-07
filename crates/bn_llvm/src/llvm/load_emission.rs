@@ -8,8 +8,11 @@
 // propagation from the binding's known value.
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::ir::{BinaryOp, CastOp, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
+use crate::layout::{typed_llvm, vector_ty};
 
-/// Emits `%v<destination> = load` of `symbol` as `ty`.
+/// Emits `%v<destination> = load` of `symbol` as `ty`; `checked` traps a
+/// use of a binding a `RELEASE` ended (a `Take` reads it unchecked).
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub(crate) fn lower_load(
     text: &mut String,
@@ -21,6 +24,7 @@ pub(crate) fn lower_load(
     destination: ValueId,
     symbol: SymbolId,
     ty: &Type,
+    checked: bool,
     state: &mut EmissionState,
 ) {
     let destination = &destination;
@@ -32,58 +36,50 @@ pub(crate) fn lower_load(
     let slot_ty = analysis.symbols.get(symbol).unwrap_or(dest_ty);
     let dest_llvm = llvm_type(dest_ty).expect("validated load LLVM type");
     let slot_llvm = llvm_type(slot_ty).expect("validated slot LLVM type");
-    if analysis.released_symbols.contains(symbol) {
-        let tag = destination.0;
-        // A load that feeds RELEASE is the second RELEASE; any other is a use.
-        let (id, detail) = if function
-            .blocks
-            .iter()
-            .flat_map(|block| &block.instructions)
-            .any(|instruction| matches!(instruction, Instruction::Release { value, .. } if value == destination))
-        {
-            (bn_diag::DiagId::DOUBLE_RELEASE, "binding was already released")
-        } else {
-            (bn_diag::DiagId::USE_AFTER_RELEASE, "binding was released")
-        };
-        let _ = writeln!(
-            text,
-            "  %loadlive{tag} = load i1, ptr %slive{}\n  %loadreleased{tag} = xor i1 %loadlive{tag}, true",
-            symbols[symbol]
+    let dest = destination.0;
+    let slot = O::reg(format!("s{}", symbols[symbol]));
+    let r = |name: &str| O::reg(format!("{name}{dest}"));
+    if checked && analysis.released_symbols.contains(symbol) {
+        // A second RELEASE is diagnosed by its `EndBinding`; a load is a use.
+        let (id, detail) = (bn_diag::DiagId::USE_AFTER_RELEASE, "binding was released");
+        text.assign(
+            format!("loadlive{dest}"),
+            I::load(T::I1, O::raw(live_flag(*symbol))),
         );
+        let released = I::binary(BinaryOp::Xor, T::I1, r("loadlive"), O::bool(true));
+        text.assign(format!("loadreleased{dest}"), released);
         let live = take_continuation(block_id, state);
         emit_trap(
             text,
             block_id,
             state,
-            &format!("%loadreleased{tag}"),
+            &format!("%loadreleased{dest}"),
             live,
             id,
             vec![("detail", Fact::Text(detail.into()))],
         );
     }
+    if function.weak_symbols.contains(symbol) {
+        // A weak binding stores the core id; it reads the object while it
+        // lives, else NULL.
+        block_state.constants.remove(destination);
+        text.assign(format!("weakslot{dest}"), I::load(T::Ptr, slot));
+        arc_ops::weak_read(text, &format!("v{dest}"), &format!("%weakslot{dest}"));
+        return;
+    }
+    let own = format!("v{dest}");
     if slot_llvm == "{ i1, double }" && matches!(dest_llvm, "float" | "double") {
-        let _ = writeln!(
-            text,
-            "  %optload{} = load {{ i1, double }}, ptr %s{}",
-            destination.0, symbols[symbol]
-        );
+        let optional = T::struct_of([T::I1, T::Double]);
+        text.assign(format!("optload{dest}"), I::load(optional.clone(), slot));
+        let value = I::extract(optional, r("optload"), 1);
         if dest_llvm == "float" {
-            let _ = writeln!(
-                text,
-                "  %optdbl{} = extractvalue {{ i1, double }} %optload{}, 1",
-                destination.0, destination.0
-            );
-            let _ = writeln!(
-                text,
-                "  %v{} = fptrunc double %optdbl{} to float",
-                destination.0, destination.0
+            text.assign(format!("optdbl{dest}"), value);
+            text.assign(
+                own,
+                I::cast(CastOp::FPTrunc, T::Double, r("optdbl"), T::Float),
             );
         } else {
-            let _ = writeln!(
-                text,
-                "  %v{} = extractvalue {{ i1, double }} %optload{}, 1",
-                destination.0, destination.0
-            );
+            text.assign(own, value);
         }
     } else if narrows(slot_ty, dest_ty) {
         emit_narrowed_load(text, *destination, symbols[symbol], Some(slot_ty), dest_ty);
@@ -91,65 +87,42 @@ pub(crate) fn lower_load(
         && slot_llvm == "{ i1, ptr, i32 }"
         && dest_llvm == "{ ptr, i32 }"
     {
-        let dest = destination.0;
-        let _ = writeln!(
-            text,
-            "  %netload{dest} = load {{ i1, ptr, i32 }}, ptr %s{}",
-            symbols[symbol]
+        let endpoint = T::struct_of([T::I1, T::Ptr, T::I32]);
+        text.assign(format!("netload{dest}"), I::load(endpoint.clone(), slot));
+        text.assign(
+            format!("netloadp{dest}"),
+            I::extract(endpoint.clone(), r("netload"), 1),
         );
-        let _ = writeln!(
-            text,
-            "  %netloadp{dest} = extractvalue {{ i1, ptr, i32 }} %netload{dest}, 1"
+        text.assign(
+            format!("netloadport{dest}"),
+            I::extract(endpoint, r("netload"), 2),
         );
-        let _ = writeln!(
-            text,
-            "  %netloadport{dest} = extractvalue {{ i1, ptr, i32 }} %netload{dest}, 2"
-        );
-        let _ = writeln!(
-            text,
-            "  %netloadagg{dest} = insertvalue {{ ptr, i32 }} undef, ptr %netloadp{dest}, 0"
-        );
-        let _ = writeln!(
-            text,
-            "  %v{dest} = insertvalue {{ ptr, i32 }} %netloadagg{dest}, i32 %netloadport{dest}, 1"
-        );
+        let head = I::insert(vector_ty(), O::undef(), T::Ptr, r("netloadp"), 0);
+        text.assign(format!("netloadagg{dest}"), head);
+        let full = I::insert(vector_ty(), r("netloadagg"), T::I32, r("netloadport"), 1);
+        text.assign(own, full);
     } else if slot_llvm != dest_llvm
         && matches!(slot_llvm, "i8" | "i16" | "i32" | "i64")
         && matches!(dest_llvm, "i8" | "i16" | "i32" | "i64")
     {
-        let _ = writeln!(
-            text,
-            "  %slotload{} = load {slot_llvm}, ptr %s{}",
-            destination.0, symbols[symbol]
-        );
-        let slot_w = match slot_llvm {
+        let width = |llvm: &str| match llvm {
             "i8" => 8u8,
             "i16" => 16,
             "i32" => 32,
             _ => 64,
         };
-        let dest_w = match dest_llvm {
-            "i8" => 8u8,
-            "i16" => 16,
-            "i32" => 32,
-            _ => 64,
-        };
-        let opcode = if slot_w < dest_w {
-            if is_unsigned(slot_ty) { "zext" } else { "sext" }
+        let (from, to) = (typed_llvm(slot_llvm), typed_llvm(dest_llvm));
+        text.assign(format!("slotload{dest}"), I::load(from.clone(), slot));
+        let op = if width(slot_llvm) >= width(dest_llvm) {
+            CastOp::Trunc
+        } else if is_unsigned(slot_ty) {
+            CastOp::ZExt
         } else {
-            "trunc"
+            CastOp::SExt
         };
-        let _ = writeln!(
-            text,
-            "  %v{} = {opcode} {slot_llvm} %slotload{} to {dest_llvm}",
-            destination.0, destination.0
-        );
+        text.assign(own, I::cast(op, from, r("slotload"), to));
     } else {
-        let _ = writeln!(
-            text,
-            "  %v{} = load {dest_llvm}, ptr %s{}",
-            destination.0, symbols[symbol]
-        );
+        text.assign(own, I::load(typed_llvm(dest_llvm), slot));
     }
     if let Some(value) = block_state.bindings.get(symbol).cloned() {
         block_state

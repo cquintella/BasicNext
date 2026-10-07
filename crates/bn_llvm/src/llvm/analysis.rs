@@ -27,33 +27,21 @@ pub(crate) fn analyze_function<'a>(
     let mut uses_string_sizeof = false;
     let mut uses_temporal_print = false;
     let mut uses_heap = false;
+    let mut uses_arc = !function.weak_symbols.is_empty();
     let mut seeds_random = false;
     let mut intrinsics = BTreeSet::new();
     let mut def_counts = HashMap::<ValueId, usize>::new();
     let mut input_values = HashSet::new();
     let mut owned_string_results = HashSet::new();
     let mut owned_struct_results = HashSet::new();
-    let mut owned_object_results = HashMap::new();
     let mut owned_log_results = HashMap::new();
-    let loaded_symbols = function
-        .blocks
-        .iter()
-        .flat_map(|block| &block.instructions)
-        .filter_map(|instruction| match instruction {
-            Instruction::Load {
-                destination,
-                symbol,
-                ..
-            } => Some((*destination, *symbol)),
-            _ => None,
-        })
-        .collect::<HashMap<_, _>>();
+    // Bindings a `RELEASE` ends: a later use is checked at run time.
     let released_symbols = function
         .blocks
         .iter()
         .flat_map(|block| &block.instructions)
         .filter_map(|instruction| match instruction {
-            Instruction::Release { value, .. } => loaded_symbols.get(value).copied(),
+            Instruction::EndBinding { symbol, .. } => Some(*symbol),
             _ => None,
         })
         .collect::<HashSet<_>>();
@@ -63,7 +51,44 @@ pub(crate) fn analyze_function<'a>(
             if let Some(destination) = instruction_destination(instruction) {
                 *def_counts.entry(destination).or_insert(0) += 1;
             }
+            // A write's `previous` content has the written type.
+            // A type without its own native form (`POINTER TO VOID`) takes
+            // the form of the value it holds, as a `Store` does.
+            if instruction_destination(instruction).is_none()
+                && let Some((previous, ty)) = bn_ir::instruction_result(instruction)
+            {
+                let slot = match instruction {
+                    Instruction::Store { symbol, .. } => symbols.get(symbol),
+                    _ => None,
+                };
+                values.insert(previous, representable(ty, slot));
+            }
             match instruction {
+                Instruction::Retain {
+                    destination,
+                    value,
+                    ty,
+                    ..
+                } => {
+                    let held = values.get(value).cloned();
+                    values.insert(*destination, representable(ty, held.as_ref()));
+                }
+                Instruction::Take {
+                    destination,
+                    symbol,
+                    ty,
+                    ..
+                } => {
+                    // Read as a `Load` reads the binding (a native handle
+                    // keeps its alternative form).
+                    let taken = loaded_type(symbols.get(symbol), ty);
+                    values.insert(*destination, representable(&taken, symbols.get(symbol)));
+                }
+                Instruction::TakeMember {
+                    destination, ty, ..
+                } => {
+                    values.insert(*destination, ty.clone());
+                }
                 Instruction::Constant {
                     destination,
                     value,
@@ -141,19 +166,18 @@ pub(crate) fn analyze_function<'a>(
                     values.insert(*destination, load_ty.clone());
                     symbols.entry(*symbol).or_insert(load_ty);
                 }
-                Instruction::Store {
-                    symbol, value, ty, ..
-                } => {
-                    let stored = if llvm_type(ty).is_some() {
-                        ty.clone()
-                    } else {
-                        values
-                            .get(value)
-                            .cloned()
-                            .filter(|value_ty| llvm_type(value_ty).is_some())
-                            .unwrap_or_else(|| ty.clone())
-                    };
-                    symbols.insert(*symbol, stored);
+                Instruction::Store { symbol, ty, .. } => {
+                    // The slot always has the declared type: no fallback to the
+                    // stored value's type (bucket typed-llvm-emitter, Sprint 6).
+                    if llvm_type(ty).is_none() {
+                        return Err(unsupported_instruction(
+                            module,
+                            function,
+                            instruction,
+                            "stores of this type",
+                        ));
+                    }
+                    symbols.insert(*symbol, ty.clone());
                     if is_struct_type(module, ty) {
                         uses_heap = true;
                     }
@@ -185,6 +209,7 @@ pub(crate) fn analyze_function<'a>(
                     destination,
                     operator,
                     left,
+                    right,
                     ty,
                     ..
                 } => {
@@ -192,7 +217,13 @@ pub(crate) fn analyze_function<'a>(
                         uses_string_concat = true;
                     }
                     if matches!(operator.as_str(), "Equal" | "Assign" | "NotEqual")
-                        && values.get(left) == Some(&Type::String)
+                        && [left, right].into_iter().any(|side| {
+                            values.get(side).is_some_and(|ty| {
+                                *ty == Type::String
+                                    || general_alternative(ty)
+                                        .is_some_and(|members| members.contains(&Type::String))
+                            })
+                        })
                     {
                         uses_string_ops = true;
                     }
@@ -250,12 +281,6 @@ pub(crate) fn analyze_function<'a>(
                             ty.clone()
                         };
                         values.insert(*destination, value_ty);
-                    }
-                    if is_class_type(module, ty) {
-                        owned_object_results.insert(
-                            *destination,
-                            destructor_symbol(module, ty).unwrap_or_default(),
-                        );
                     }
                 }
                 Instruction::Input { destination, .. } => {
@@ -346,27 +371,30 @@ pub(crate) fn analyze_function<'a>(
                         uses_bn_rt = true;
                         owned_log_results.insert(*destination, kind);
                     }
-                    if is_class_type(module, ty) || is_region_type(ty) {
-                        owned_object_results.insert(
-                            *destination,
-                            destructor_symbol(module, ty).unwrap_or_default(),
-                        );
-                    }
                     values.insert(*destination, ty.clone());
                 }
                 Instruction::Release { .. } => {
                     uses_heap = true;
                 }
-                Instruction::EnsureClass { .. } => {}
+                Instruction::EnsureClass { .. } | Instruction::EndBinding { .. } => {}
                 Instruction::SetIndex { symbol, ty, .. } => {
                     // A parameter used only as an indexed assignment has no
                     // Load from which to recover its container type. The
                     // SetIndex `ty` is the element type, so retain the pointer
                     // shape instead of incorrectly recording the parameter as
                     // a scalar element.
-                    symbols.entry(*symbol).or_insert_with(|| Type::Pointer {
-                        element: Box::new(ty.clone()),
-                        length: bn_types::PointerLength::Dynamic,
+                    // The declared type comes from a call of the function: a
+                    // fixed vector parameter is a value, not a region.
+                    let declared = function
+                        .parameters
+                        .iter()
+                        .position(|parameter| parameter == symbol)
+                        .and_then(|index| declared_parameter(module, &function.name, index));
+                    symbols.entry(*symbol).or_insert_with(|| {
+                        declared.unwrap_or_else(|| Type::Pointer {
+                            element: Box::new(ty.clone()),
+                            length: bn_types::PointerLength::Dynamic,
+                        })
                     });
                 }
                 Instruction::SetField { symbol, .. }
@@ -394,12 +422,25 @@ pub(crate) fn analyze_function<'a>(
                 } => {
                     values.insert(*destination, ty.clone());
                 }
-                Instruction::StoreStatic { .. } => {}
+                Instruction::StoreStatic { ty, .. } => {
+                    if vectors::fixed_vector_array(ty).is_some() {
+                        intrinsics.insert(vectors::MEMMOVE);
+                    }
+                }
                 Instruction::Length { .. }
                 | Instruction::ClearScreen { .. }
                 | Instruction::Beep { .. }
                 | Instruction::Default { .. } => {}
             }
+        }
+    }
+    // A parameter the body never reads has no Load: its type comes from a
+    // call, so the signature, the callers and a dispatch trampoline agree.
+    for (index, parameter) in function.parameters.iter().enumerate() {
+        if !symbols.contains_key(parameter)
+            && let Some(ty) = declared_parameter(module, &function.name, index)
+        {
+            symbols.insert(*parameter, ty);
         }
     }
 
@@ -417,6 +458,32 @@ pub(crate) fn analyze_function<'a>(
                 &mut intrinsics,
             )?;
         }
+    }
+    // A general alternative with an object member: the member must be a
+    // class (an ARC object), not a `STRUCT` value (Sprint 6 stage 2).
+    let unsupported_object = |ty: &Type| {
+        general_alternative(ty).is_some_and(|members| {
+            members.iter().any(|member| {
+                general_alternative::pointer_member(member) && !is_class_type(module, member)
+            })
+        })
+    };
+    if let Some(instruction) = function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .find(|instruction| {
+            instruction_destination(instruction)
+                .and_then(|value| values.get(&value))
+                .is_some_and(unsupported_object)
+        })
+    {
+        return Err(unsupported_instruction(
+            module,
+            function,
+            instruction,
+            "an alternative with a STRUCT member",
+        ));
     }
     if uses_random && !seeds_random {
         let instruction = function
@@ -469,6 +536,33 @@ pub(crate) fn analyze_function<'a>(
             "INPUT result without a variable owner",
         ));
     }
+    // A slot whose line can outlive it never owns the buffer.
+    let escaping_inputs = bn_ir::escape::escaping_symbols(module, function, &input_symbols);
+    if symbols
+        .values()
+        .any(|ty| vectors::fixed_vector_array(ty).is_some())
+        || vectors::returned_vector(&function.return_type).is_some()
+    {
+        intrinsics.insert(vectors::MEMMOVE);
+    }
+    uses_arc |= function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .any(|instruction| match instruction {
+            Instruction::Retain { .. } | Instruction::TakeMember { .. } => true,
+            Instruction::Release { value, .. } => values
+                .get(value)
+                .is_some_and(|ty| arc_ops::holds_references(module, ty)),
+            Instruction::Allocate { ty, .. } => is_class_type(module, ty) || is_region_type(ty),
+            Instruction::Member {
+                field: Some(field), ..
+            }
+            | Instruction::SetMember {
+                field: Some(field), ..
+            } => module.field_is_weak(field),
+            _ => false,
+        });
     Ok(LoweringAnalysis {
         values,
         symbols,
@@ -477,10 +571,10 @@ pub(crate) fn analyze_function<'a>(
         input_count,
         input_targets,
         input_symbols,
+        escaping_inputs,
         released_symbols,
         owned_string_results,
         owned_struct_results,
-        owned_object_results,
         owned_log_results,
         uses_string_concat,
         uses_bn_rt,
@@ -489,11 +583,40 @@ pub(crate) fn analyze_function<'a>(
         uses_string_ops,
         uses_string_sizeof,
         uses_temporal_print,
-        uses_heap,
+        uses_heap: uses_heap || uses_arc,
+        uses_arc,
         multi_defs: def_counts
             .into_iter()
             .filter_map(|(value, count)| (count > 1).then_some(value))
             .collect(),
         intrinsics,
     })
+}
+
+/// The declared type of parameter `index` of `name`, from the function type a
+/// call of it carries (the IR keeps no parameter types of its own).
+pub(crate) fn declared_parameter(module: &Module, name: &str, index: usize) -> Option<Type> {
+    module
+        .functions
+        .iter()
+        .flat_map(|function| &function.blocks)
+        .flat_map(|block| &block.instructions)
+        .find_map(|instruction| match instruction {
+            Instruction::Constant {
+                value: Constant::Function(callee),
+                ty: Type::Function { parameters, .. },
+                ..
+            } if callee == name => parameters.get(index).cloned(),
+            _ => None,
+        })
+}
+
+/// `ty`, or `fallback` when `ty` has no native form of its own (`POINTER TO
+/// VOID` takes the form of the region it holds).
+fn representable(ty: &Type, fallback: Option<&Type>) -> Type {
+    if llvm_type(ty).is_some() {
+        ty.clone()
+    } else {
+        fallback.cloned().unwrap_or_else(|| ty.clone())
+    }
 }

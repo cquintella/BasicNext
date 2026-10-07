@@ -1,0 +1,17 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A vector of a class has no default: `LET v AS Box[2]` needs `=` (0.6.md,
+// defaults; BDFL, 2026-10-07).
+
+
+CLASS Box
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET v AS Box[2]
+END FUNCTION

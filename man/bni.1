@@ -50,9 +50,7 @@ command is distinct from the file-oriented
 command.
 .TP
 .B check
-Validate lexical, syntactic, and semantic rules. With
-.BR --emit ,
-print a selected frontend artifact.
+Validate lexical, syntactic, and semantic rules.
 .TP
 .B lex
 Print the token stream.
@@ -69,20 +67,18 @@ Serve the Language Server Protocol over standard input and output.
 Serve the Debug Adapter Protocol over standard input and output.
 .SH OPTIONS
 .TP
-.BR -v , " --verbose"
+.BR -v , " --verbose" ", " -vv
 Print pipeline stages. Repeat it, or use
 .BR -vv ,
 to also print tokens.
 .TP
-.BI --emit " tokens|ast|typed-ast|ir"
-Select the frontend artifact printed by
-.BR check .
-.TP
 .BR -o , " --output " file
-Write the artifact selected by
-.B --emit
+Write the token stream printed by
+.B lex
 to
 .IR file .
+Frontend artifacts (tokens, AST, typed AST, IR) are printed by
+.BR "bnc --emit" .
 .TP
 .BI --mode " snippet|program"
 Select
@@ -241,6 +237,22 @@ that
 rejects as outside the compiler subset still runs here.
 .SH ENVIRONMENT
 .TP
+.B BN_ARC_TRACE
+When set to a non-empty value other than
+.BR 0 ,
+every retain, release, and destruction of an object or region is written to
+standard error, one line each, for example
+.BR "arc release Box#3 strong=0 at 14:5"
+(event, class and object id, strong count after the operation, source line and
+column). The lines come from the one ARC core of
+.BR bn_rt ,
+so
+.B bni
+and a
+.B bnc
+executable print the same trace for the same program. Standard output is not
+affected.
+.TP
 .B BN_HOME
 Explicit Basic Next home. When set, the standard-library modules are taken from
 .I $BN_HOME/share/bn/modules/bn
@@ -284,13 +296,14 @@ bni eval 'PRINT 1 + 1'
 printf 'PRINT 2\n' | bni eval --stdin
 bni run examples/language-tour.bn
 bni run examples/hello.bn -- extra-argument
-bni check --emit ir examples/factorial.bn
+bni check examples/factorial.bn
 bni run --sandbox --read-root . --write-root /tmp examples/hello.bn
 .RE
 .fi
 .SH SEE ALSO
 .BR bnc (1),
-.IR docs/book/en/toc.md ,
+.IR docs/book/en/toc.md
+(online: https://github.com/cquintella/basicnext-book),
 .IR docs/project/usage.md ,
 .IR docs/project/kernel.md ,
 .IR language/0.6/0.6.md ,

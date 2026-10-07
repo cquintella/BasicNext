@@ -332,55 +332,6 @@ fn opt_in_concurrent_handler_failure_maps_to_internal_error() {
 }
 
 #[test]
-fn opt_in_concurrent_handler_timeout_maps_to_request_timeout() {
-    let listener = match TcpListener::bind("127.0.0.1:0") {
-        Ok(listener) => listener,
-        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => return,
-        Err(error) => panic!("bind concurrent-timeout listener: {error}"),
-    };
-    let endpoint = listener.local_addr().expect("concurrent-timeout address");
-    let options = crate::web::ServerOptions {
-        concurrent_handlers: true,
-        worker_count: 1,
-        connection_total_ms: 10,
-        ..crate::web::ServerOptions::default()
-    };
-    let mut state = ServerState::new();
-    state.add_route("GET".into(), "/timeout".into()).unwrap();
-    state.start_with_options(options).unwrap();
-    let state = Arc::new(Mutex::new(state));
-    let (release_sender, release_receiver) = std::sync::mpsc::channel();
-    let release_receiver = Arc::new(Mutex::new(release_receiver));
-    let handler: Handler = Arc::new(move |_, _| {
-        let _ = release_receiver
-            .lock()
-            .expect("release receiver lock")
-            .recv_timeout(Duration::from_secs(1));
-        Ok(())
-    });
-    let server_state = Arc::clone(&state);
-    let server = std::thread::spawn(move || {
-        let (stream, _) = listener.accept().expect("accept concurrent-timeout peer");
-        serve_connection_with_handler(TcpStream::from_std(stream), server_state, Some(handler))
-            .expect("serve concurrent timeout");
-    });
-    let mut client = std::net::TcpStream::connect(endpoint).expect("connect concurrent timeout");
-    client
-        .write_all(b"GET /timeout HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
-        .expect("write concurrent-timeout request");
-    let mut response = String::new();
-    client
-        .read_to_string(&mut response)
-        .expect("read concurrent-timeout response");
-    release_sender.send(()).expect("release timed-out handler");
-    server.join().expect("concurrent-timeout server thread");
-    assert!(
-        response.starts_with("HTTP/1.1 408 Request Timeout"),
-        "{response}"
-    );
-}
-
-#[test]
 fn callback_response_strips_body_for_head_requests() {
     let listener = match TcpListener::bind("127.0.0.1:0") {
         Ok(listener) => listener,

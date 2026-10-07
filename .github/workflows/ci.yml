@@ -59,7 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install LLVM 22 and ripgrep (Linux)
+      - name: Install LLVM 22, ripgrep and gdb (Linux)
         if: runner.os == 'Linux'
         run: |
           set -euo pipefail
@@ -71,7 +71,8 @@ jobs:
           echo "deb [signed-by=/usr/share/keyrings/apt-llvm.gpg] https://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" \
             | sudo tee /etc/apt/sources.list.d/llvm-22.list
           sudo apt-get update
-          sudo apt-get install -y clang-22 lld-22 ripgrep
+          # gdb: the ARC debugger test (`a_native_debugger_reads_the_arc_core`).
+          sudo apt-get install -y clang-22 lld-22 ripgrep gdb
           mkdir -p "$RUNNER_TEMP/llvm-22"
           ln -s "$(command -v clang-22)" "$RUNNER_TEMP/llvm-22/clang"
           ln -s "$(command -v wasm-ld-22)" "$RUNNER_TEMP/llvm-22/wasm-ld"
@@ -125,6 +126,19 @@ jobs:
         shell: bash
         # --no-fail-fast: report every failing test binary, not only the first.
         run: cargo test --locked --workspace --all-targets --no-fail-fast -- --test-threads=1
+
+      - name: Tests leave the source tree clean
+        shell: bash
+        # A test that writes an artifact into the checkout (instead of a
+        # temporary directory) leaves it behind when it fails mid-run.
+        run: |
+          set -euo pipefail
+          status=$(git status --porcelain --untracked-files=all)
+          if [[ -n "$status" ]]; then
+            echo "::error::tests modified or created files in the source tree"
+            echo "$status"
+            exit 1
+          fi
 
   build:
     needs: [quality, test]

@@ -35,11 +35,19 @@ pub fn frontend_artifact(
         Emit::Ast => format!("{:#?}\n", frontend.root_program()),
         Emit::TypedAst => format!("{:#?}\n{semantic_model:#?}\n", frontend.root_program()),
         Emit::Ir => format!("{:#?}\n", frontend.validated.as_module()),
+        Emit::Llvm => {
+            eprintln!("error: --emit llvm is a compiler option (bnc --emit llvm)");
+            return Err(tool_error());
+        }
     })
 }
 
 #[must_use]
 pub fn check(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
+    if options.emit == Some(Emit::Llvm) {
+        eprintln!("error: --emit llvm is a compiler option (bnc --emit llvm)");
+        return tool_error();
+    }
     if options.output.is_some() && options.emit.is_none() {
         eprintln!("error: -o requires --emit with bn check");
         return tool_error();

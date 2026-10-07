@@ -33,6 +33,15 @@ impl Executor<'_, '_> {
         if is_temporal_builtin(name) {
             return temporal_call(name, &arguments, span);
         }
+        if name == bn_ir::names::STOPPING {
+            let code = self.stop_code.take();
+            self.unwinding = code;
+            return Ok(Value::Boolean(code.is_some()));
+        }
+        if name == bn_ir::names::STOP_CODE {
+            let code = self.unwinding.take().unwrap_or(0);
+            return Ok(Value::Integer(code, IntegerType::Int32));
+        }
         if matches!(name, "ASC" | "CHAR" | "TOLOWER" | "TOUPPER") || name == "$for_condition" {
             return builtin(name, &arguments, span);
         }
@@ -51,15 +60,6 @@ impl Executor<'_, '_> {
             .position(|function| function.name == resolved)
             .ok_or_else(|| super::super::name_not_found(&resolved, "function dispatch", span))?;
         let callee = &self.module.functions[index];
-        let constructed = matches!(
-            callee.kind,
-            bn_ir::FunctionKind::Constructor | bn_ir::FunctionKind::FieldInit
-        )
-        .then(|| match arguments.first() {
-            Some(Value::Object { handle, .. }) => Some(*handle),
-            _ => None,
-        })
-        .flatten();
         let pinned = lifecycle_dispatch(callee, &arguments);
         if let Some(pinned) = pinned.clone() {
             self.pinned_dispatch.push(pinned);
@@ -76,12 +76,7 @@ impl Executor<'_, '_> {
                 self.stop_code = Some(code);
                 Ok(Value::Null)
             }
-            Err(error) => {
-                if let Some(handle) = constructed {
-                    let _ = self.objects.delete(handle, span);
-                }
-                Err(error)
-            }
+            Err(error) => Err(error),
         }
     }
 

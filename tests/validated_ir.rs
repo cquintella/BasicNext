@@ -255,6 +255,7 @@ fn member_and_class_identity_names_cannot_be_empty() {
                 span: span(),
             },
             Instruction::SetMember {
+                previous: None,
                 object: bn_ir::ValueId(0),
                 field: None,
                 name: "field".to_string(),
@@ -280,6 +281,7 @@ fn member_and_class_identity_names_cannot_be_empty() {
                 span: span(),
             },
             Instruction::StoreStatic {
+                previous: None,
                 class: String::new(),
                 field: "f".to_string(),
                 value: bn_ir::ValueId(0),
@@ -339,6 +341,7 @@ fn member_and_class_identity_names_cannot_be_empty() {
                 span: span(),
             },
             Instruction::SetField {
+                previous: None,
                 symbol: bn_ir::SymbolId(0),
                 root_owner: String::new(),
                 path: vec![],
@@ -480,6 +483,7 @@ fn validator_rejects_indexed_member_store_without_an_object_receiver() {
                 span: span(),
             },
             Instruction::SetMemberIndex {
+                previous: None,
                 object: bn_ir::ValueId(0),
                 field: None,
                 name: "data".into(),
@@ -514,6 +518,7 @@ fn validator_rejects_an_indexed_store_without_indices() {
                 span: span(),
             },
             Instruction::SetMemberIndex {
+                previous: None,
                 object: bn_ir::ValueId(0),
                 field: None,
                 name: "data".into(),
@@ -850,6 +855,7 @@ fn validator_rejects_incompatible_store_values() {
                 span: span(),
             },
             Instruction::Store {
+                previous: None,
                 symbol: bn_ir::SymbolId::from_raw(0),
                 value: bn_ir::ValueId(0),
                 ty: bn_types::Type::Integer(bn_types::IntegerType::Int32),
@@ -872,6 +878,7 @@ fn validator_rejects_incompatible_member_and_field_values() {
     };
     let cases = [
         Instruction::SetMember {
+            previous: None,
             object: bn_ir::ValueId(0),
             field: None,
             name: "value".into(),
@@ -881,6 +888,7 @@ fn validator_rejects_incompatible_member_and_field_values() {
             span: span(),
         },
         Instruction::SetField {
+            previous: None,
             symbol: bn_ir::SymbolId::from_raw(0),
             root_owner: "Example".into(),
             path: vec!["value".into()],
@@ -890,6 +898,7 @@ fn validator_rejects_incompatible_member_and_field_values() {
             span: span(),
         },
         Instruction::StoreStatic {
+            previous: None,
             class: "Example".into(),
             field: "value".into(),
             value: bn_ir::ValueId(0),
@@ -1156,4 +1165,79 @@ fn validator_accepts_all_path_definitions_and_loop_reuse() {
         },
     ]);
     validate_module(module).expect("all incoming paths define the reused value");
+}
+
+/// The internal default of an alternative (0.6.md, "Alternative types:
+/// identity and assignment", rule 5): the default of the first member, or
+/// that member itself when it is `NULL`, `NA`, or `EOF`. Source programs
+/// always write `=`, so the IR here is built by hand.
+#[test]
+fn alternative_default_is_the_first_members_default_on_both_backends() {
+    use bn_types::{FloatType, IntegerType, Type};
+    let cases = [
+        (
+            vec![Type::Integer(IntegerType::Int32), Type::Null],
+            "0",
+            "i32 4, 0",
+        ),
+        (
+            vec![Type::Null, Type::Integer(IntegerType::Int32)],
+            "NULL",
+            "i32 13, 0",
+        ),
+        (
+            vec![Type::NotAvailable, Type::Float(FloatType::Float64)],
+            "NA",
+            "i32 14, 0",
+        ),
+        // Not `EOF OR STRING`: that is the `INPUT` result form, still
+        // without a general layout in `bnc`.
+        (
+            vec![Type::EndOfFile, Type::Integer(IntegerType::Int32)],
+            "EOF",
+            "i32 15, 0",
+        ),
+    ];
+    for (members, printed, tag) in cases {
+        let module = function_with_blocks(vec![BasicBlock {
+            id: BlockId(0),
+            instructions: vec![
+                Instruction::Default {
+                    destination: bn_ir::ValueId(0),
+                    ty: Type::Alternative(members.clone()),
+                    dimensions: Vec::new(),
+                    dynamic_dimensions: Vec::new(),
+                    span: span(),
+                },
+                Instruction::Print {
+                    values: vec![bn_ir::ValueId(0)],
+                    span: span(),
+                },
+            ],
+            terminator: Terminator::Return { value: None },
+        }]);
+        let validated = validate_module(module).expect("valid alternative default");
+        let mut input = Cursor::new(Vec::<u8>::new());
+        let mut output = Vec::new();
+        let code = execute_validated_with_host(
+            &validated,
+            &mut input,
+            &mut output,
+            &HostEnv::system(vec!["default.bn".into()]).with_default_providers(),
+        )
+        .unwrap_or_else(|error| panic!("bni default of {members:?}: {error:?}"));
+        assert_eq!(code, 0);
+        assert_eq!(
+            String::from_utf8_lossy(&output),
+            format!("{printed}\n"),
+            "{members:?}"
+        );
+        let llvm = lower_validated_module_for_target(&validated, false).expect("emit LLVM");
+        assert!(
+            llvm.contains(&format!(
+                "%v0_tag = insertvalue {{ i32, ptr, i64 }} undef, {tag}"
+            )),
+            "bnc default of {members:?}:\n{llvm}"
+        );
+    }
 }

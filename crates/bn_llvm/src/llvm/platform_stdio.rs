@@ -7,6 +7,8 @@
 // C `stdout` stream (POSIX libc or the Microsoft UCRT), and the binary-mode
 // setup that keeps Windows output byte-identical to the interpreter.
 
+use crate::ir::{InstSink as _, LlvmInst, LlvmOperand, LlvmType};
+
 /// Libc `FILE *stdout` symbol name for native PRINT synchronization on
 /// POSIX C libraries (the Microsoft UCRT has no such global).
 fn stdout_file_symbol() -> &'static str {
@@ -37,29 +39,34 @@ pub(crate) fn stdout_lock_decls() -> String {
     }
 }
 
-/// IR that stores the C `stdout` stream in `dest`: a global on POSIX C
+/// The instruction that reads the C `stdout` stream: a global on POSIX C
 /// libraries, `__acrt_iob_func(1)` in the Microsoft UCRT.
-pub(crate) fn stdout_stream_ir(dest: &str) -> String {
+pub(crate) fn stdout_stream() -> LlvmInst {
     if cfg!(windows) {
-        format!("  {dest} = call ptr @__acrt_iob_func(i32 1)")
+        let args = vec![(LlvmType::I32, LlvmOperand::int(1))];
+        LlvmInst::call(LlvmType::Ptr, "__acrt_iob_func", args)
     } else {
-        format!("  {dest} = load ptr, ptr @{}", stdout_file_symbol())
+        LlvmInst::load(LlvmType::Ptr, LlvmOperand::global(stdout_file_symbol()))
     }
 }
 
-/// Entry-block IR that puts stdin, stdout, and stderr in binary mode on
-/// Windows (`_setmode(fd, _O_BINARY)`), so `\n` is not rewritten as `\r\n`
-/// and native output matches the interpreter byte for byte. Empty for Wasm
-/// and on other hosts.
-pub(crate) fn windows_binary_stdio_ir(native: bool) -> &'static str {
+/// Puts stdin, stdout, and stderr in binary mode on Windows (entry block,
+/// `_setmode(fd, _O_BINARY)`), so `\n` is not rewritten as `\r\n` and native
+/// output matches the interpreter byte for byte. Nothing for Wasm and on
+/// other hosts.
+pub(crate) fn emit_windows_binary_stdio(text: &mut String, native: bool) {
     if native && cfg!(windows) {
-        "  %winstdin = call i32 @_setmode(i32 0, i32 32768)\n  %winstdout = call i32 @_setmode(i32 1, i32 32768)\n  %winstderr = call i32 @_setmode(i32 2, i32 32768)\n"
-    } else {
-        ""
+        for (fd, name) in [(0, "winstdin"), (1, "winstdout"), (2, "winstderr")] {
+            let args = vec![
+                (LlvmType::I32, LlvmOperand::int(fd)),
+                (LlvmType::I32, LlvmOperand::int(32768)),
+            ];
+            text.assign(name, LlvmInst::call(LlvmType::I32, "_setmode", args));
+        }
     }
 }
 
-/// Module-level declaration for [`windows_binary_stdio_ir`]. Empty elsewhere.
+/// Module-level declaration for [`emit_windows_binary_stdio`]. Empty elsewhere.
 pub(crate) fn windows_binary_stdio_decl(native: bool) -> &'static str {
     if native && cfg!(windows) {
         "declare i32 @_setmode(i32, i32)\n"

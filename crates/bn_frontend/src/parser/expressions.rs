@@ -514,6 +514,27 @@ impl<'a> ExpressionParser<'a> {
                 tokens.push(self.identifier_token()?);
             }
         }
+        // `vector-type` in `is-test` (0.6.ebnf): `x IS INT32[2]` tests the
+        // vector type; it is not `(x IS INT32)[2]`.
+        let mut dimensions = Vec::new();
+        if !matches!(&first.kind, TokenKind::Keyword(word) if word == "POINTER") {
+            while let Some(group @ [open, size, close]) =
+                self.tokens.get(self.index..self.index + 3)
+                && matches!(open.kind, TokenKind::Symbol(Symbol::LeftBracket))
+                && matches!(close.kind, TokenKind::Symbol(Symbol::RightBracket))
+                && let TokenKind::Integer(value) = &size.kind
+            {
+                dimensions.push(crate::ast::VectorDimension::Literal {
+                    value: value.clone(),
+                    span: Span {
+                        start: open.span.start,
+                        end: close.span.end,
+                    },
+                });
+                tokens.extend(group);
+                self.index += 3;
+            }
+        }
         let span = Span {
             start: first.span.start,
             end: tokens.last().expect("type test token").span.end,
@@ -521,7 +542,7 @@ impl<'a> ExpressionParser<'a> {
         let atom = crate::ast::TypeAtom {
             name: text(first),
             parts: tokens.iter().skip(1).map(|token| text(token)).collect(),
-            dimensions: Vec::new(),
+            dimensions,
             span,
         };
         Ok(Expression {

@@ -665,17 +665,73 @@ fn eval_help_and_manpage_advertise_the_same_entrypoints() {
             "bni man page missing {command}"
         );
     }
-    assert!(
-        interpreter_help.contains("--module-path") && interpreter_man.contains("--module-path")
-    );
-    let compiler_help = bnc().arg("--help").output().expect("run bnc help");
-    assert_eq!(compiler_help.status.code(), Some(0));
-    let compiler_help = String::from_utf8_lossy(&compiler_help.stdout);
-    let compiler_man = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/man/bnc.1"))
-        .expect("read bnc man page");
-    for flag in ["--target", "--opt", "-o", "--emit"] {
-        assert!(compiler_help.contains(flag), "bnc help missing {flag}");
-        assert!(compiler_man.contains(flag), "bnc man page missing {flag}");
+}
+
+/// Option names a `--help` text lists: the leading `-x` / `--name` tokens
+/// of each line that starts with an option.
+fn help_options(help: &str) -> std::collections::BTreeSet<String> {
+    help.lines()
+        .map(str::trim_start)
+        .filter(|line| line.starts_with('-'))
+        .flat_map(|line| {
+            line.split(|c: char| c.is_whitespace() || c == ',')
+                .filter(|token| !token.is_empty())
+                .take_while(|token| token.starts_with('-'))
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// Option names a man page documents: the `-x` / `--name` tokens of each
+/// `.TP` entry line (`.B`, `.BR`, `.BI`). A bare `--` is the program-argument
+/// separator, not an option.
+fn man_options(man: &str) -> std::collections::BTreeSet<String> {
+    let lines = man.lines().collect::<Vec<_>>();
+    lines
+        .windows(2)
+        .filter(|pair| pair[0] == ".TP")
+        .flat_map(|pair| {
+            pair[1]
+                .split(|c: char| c.is_whitespace() || c == ',' || c == '"')
+                .filter(|token| token.starts_with('-') && *token != "--")
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+#[test]
+fn help_and_man_page_document_the_same_options() {
+    for (mut command, page) in [(bni(), "man/bni.1"), (bnc(), "man/bnc.1")] {
+        let help = command.arg("--help").output().expect("run --help");
+        assert_eq!(help.status.code(), Some(0), "{page}");
+        let help = help_options(&String::from_utf8_lossy(&help.stdout));
+        let man = fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(page))
+            .expect("read man page");
+        let man = man_options(&man);
+        let undocumented = help.difference(&man).collect::<Vec<_>>();
+        let unadvertised = man.difference(&help).collect::<Vec<_>>();
+        assert!(
+            undocumented.is_empty() && unadvertised.is_empty(),
+            "{page}: in --help only {undocumented:?}; in the man page only {unadvertised:?}"
+        );
+    }
+}
+
+#[test]
+fn help_and_man_page_point_to_the_book() {
+    const BOOK_URL: &str = "https://github.com/cquintella/basicnext-book";
+    for (mut command, page) in [(bni(), "man/bni.1"), (bnc(), "man/bnc.1")] {
+        let help = command.arg("--help").output().expect("run --help");
+        let help = String::from_utf8_lossy(&help.stdout);
+        assert!(
+            help.contains(&format!("More information: {BOOK_URL}")),
+            "{page}: --help lacks the book link"
+        );
+        let man = fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(page))
+            .expect("read man page");
+        assert!(man.contains(BOOK_URL), "{page} lacks the book link");
     }
 }
 
@@ -711,7 +767,7 @@ fn build_kmp_compiles_through_native_backend() {
     assert_eq!(run.status.code(), Some(0));
     assert!(String::from_utf8_lossy(&run.stdout).contains("Encontrado padrao no indice  10"));
     let output = bnc()
-        .args(["examples/kmp.bn"])
+        .args(["--emit", "llvm", "examples/kmp.bn"])
         .output()
         .expect("run bn build for KMP");
     assert_eq!(
@@ -1280,6 +1336,36 @@ fn build_keeps_distinct_input_values_alive_across_later_reads() {
     );
 }
 
+/// A copy of a line `INPUT` read survives the next read of the same variable
+/// and the end of the reading function (bucket typed-llvm-emitter, defect of
+/// 2026-10-07: the native copies read a freed, reused line buffer).
+#[test]
+fn build_keeps_copies_of_an_input_line_after_the_variable_reads_again() {
+    let path = "tests/grammar/valid/build-input-line-copies.bn";
+    let input = "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta\neta\ntheta\n";
+    let mut interpreted = bni()
+        .args(["run", path])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("run interpreter");
+    interpreted
+        .stdin
+        .take()
+        .expect("interpreter stdin")
+        .write_all(input.as_bytes())
+        .expect("write interpreter stdin");
+    let interpreted = interpreted
+        .wait_with_output()
+        .expect("wait for interpreter");
+    assert_eq!(interpreted.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&interpreted.stdout),
+        "alpha\nbeta\ngamma\nepsilon\nzeta\n[eta]\n"
+    );
+    native_matches_interpreter_with_input(path, input);
+}
+
 #[test]
 fn build_folds_pure_function_local_binding() {
     native_matches_interpreter("tests/grammar/valid/print-call-local.bn");
@@ -1577,16 +1663,17 @@ fn malformed_policy_input_is_fail_closed_on_both_backends() {
 }
 
 #[test]
-fn error_default_initialization_matches_across_backends() {
-    let path = "tests/host/error_default.bn";
+fn error_received_from_a_fallible_call_matches_across_backends() {
+    // Replaces the default-`Error` fixture: an `Error` has no default value.
+    let path = "tests/grammar/valid/error-from-fallible-call.bn";
     let output = bni()
         .args(["run", path])
         .output()
-        .expect("run error default");
+        .expect("run error fixture");
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "Code: 0\nMessage: \nCause: \n"
+        "code 1: ASC requires a non-empty STRING\nTRUE\n"
     );
     native_matches_interpreter(path);
 }
@@ -1727,6 +1814,196 @@ fn sqlite_errors_matches_across_backends() {
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
         "SYNTAX_ERROR_VERIFIED: TRUE\nSCHEMA_ERROR_VERIFIED: TRUE\nCONSTRAINT_VERIFIED: TRUE\nMISUSE_EXEC_VERIFIED: TRUE\nMISUSE_QUERY_VERIFIED: TRUE\nCLOSED_EXEC_VERIFIED: TRUE\nCLOSED_CLOSE_VERIFIED: TRUE\nERRORS_COMPLETE\n"
+    );
+    native_matches_interpreter(path);
+}
+
+/// `BNMath` calls on `FLOAT32` used to emit a `double` where LLVM expected
+/// `float`, so clang rejected the program; the result is now narrowed.
+#[test]
+fn bnmath_float32_results_match_the_interpreter() {
+    let path = "tests/grammar/valid/build-bnmath-float32-results.bn";
+    let interpreted = bni().args(["run", path]).output().expect("run interpreter");
+    assert_eq!(
+        String::from_utf8_lossy(&interpreted.stdout),
+        "1.5 1.5 -1.0 -2.0\n-1.5 2.25 1.5 2.7041636\n-2.875\n2.0\n"
+    );
+    native_matches_interpreter(path);
+}
+
+/// The interpreter kept a literal's `INT32` width when it was stored as
+/// `INT64 OR Error`, so `IS INT64` was false there and true in compiled code.
+#[test]
+fn integer_alternative_takes_its_declared_width() {
+    let path = "tests/grammar/valid/build-int64-alternative-is.bn";
+    let interpreted = bni().args(["run", path]).output().expect("run interpreter");
+    assert_eq!(
+        String::from_utf8_lossy(&interpreted.stdout),
+        "TRUE FALSE\nTRUE\nTRUE\n"
+    );
+    native_matches_interpreter(path);
+}
+
+/// `<>` between floats lowered to `fcmp one`, which is false when either
+/// side is `NAN`; IEEE 754 (and `bni`) make it true.
+#[test]
+fn float_comparisons_with_nan_follow_ieee_754() {
+    let path = "tests/grammar/valid/build-float-compare-nan.bn";
+    let interpreted = bni().args(["run", path]).output().expect("run interpreter");
+    assert_eq!(
+        String::from_utf8_lossy(&interpreted.stdout),
+        "FALSE TRUE FALSE FALSE FALSE FALSE\n\
+         FALSE TRUE FALSE FALSE FALSE FALSE\n\
+         FALSE TRUE FALSE FALSE FALSE FALSE\n\
+         TRUE FALSE FALSE TRUE FALSE TRUE\n\
+         FALSE TRUE TRUE TRUE FALSE FALSE\n"
+    );
+    native_matches_interpreter(path);
+}
+
+/// Widening `INT32 OR NULL` to `INT32 OR NULL OR Error` used to lower to IR
+/// the validator rejected (`INVALID_IR`) on both backends.
+#[test]
+fn alternative_widening_keeps_the_alternative_held() {
+    let path = "tests/grammar/valid/alternative-widening.bn";
+    let interpreted = bni().args(["run", path]).output().expect("run interpreter");
+    assert_eq!(interpreted.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&interpreted.stdout),
+        "INT32 NULL\nINT32 NULL\nINT32 NULL\nINT32\nNULL\n7\n"
+    );
+    native_matches_interpreter(path);
+}
+
+/// `FLOAT OR STRING` holding a float: `IS FLOAT` takes the `STOP 0` branch.
+/// The native backend used to exit `1` (the `IS` was wrong).
+#[test]
+fn type_test_on_a_general_alternative_matches_across_backends() {
+    let path = "tests/grammar/valid/type-tests-and-stop.bn";
+    let interpreted = bni().args(["run", path]).output().expect("run interpreter");
+    assert_eq!(interpreted.status.code(), Some(0));
+    native_matches_interpreter(path);
+}
+
+/// A numeric literal takes the member `numeric_alternative` picks (0.6.md,
+/// "Numeric literals in alternative types"), on both backends.
+#[test]
+fn literal_into_numeric_alternative_matches_across_backends() {
+    let path = "tests/grammar/valid/literal-into-numeric-alternative.bn";
+    let interpreted = bni().args(["run", path]).output().expect("run interpreter");
+    assert_eq!(interpreted.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&interpreted.stdout),
+        "TRUE FALSE\nTRUE FALSE\nTRUE\nTRUE FALSE\nTRUE FALSE\n"
+    );
+    native_matches_interpreter(path);
+}
+
+/// TODO (bucket typed-llvm-emitter, Sprint 6 phase C): add
+/// `native_matches_interpreter(path)` once `bnc` returns a vector by value.
+/// Until then `bnc` must refuse with a support diagnostic: its `{ ptr, len }`
+/// pointed into the returning function's frame.
+#[test]
+fn vector_returns_and_vector_type_tests_follow_the_grammar() {
+    let path = "tests/grammar/valid/vector-return-and-type-test.bn";
+    let interpreted = bni().args(["run", path]).output().expect("run interpreter");
+    assert_eq!(interpreted.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&interpreted.stdout),
+        "1 2\nTRUE FALSE\nFALSE TRUE\n"
+    );
+    native_matches_interpreter(path);
+}
+
+/// Fixed vectors are values (`0.6.md`, "value / copy semantics") on both
+/// backends: assignment, argument, `STATIC` and return copy the elements
+/// (bucket typed-llvm-emitter, defect of 2026-10-07: the native backend
+/// shared the storage, or pointed into a dead frame).
+#[test]
+fn fixed_vectors_are_copied_at_every_boundary() {
+    let path = "tests/grammar/valid/vector-value-semantics.bn";
+    let interpreted = bni().args(["run", path]).output().expect("run interpreter");
+    assert_eq!(interpreted.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&interpreted.stdout),
+        "1 9\n1\n5 6\n1 2\n33\n7 8\nTRUE\n3 5\n1 3\ndrop 3\nend\ndrop 4\ndrop 5\ndrop 1\ndrop 2\n"
+    );
+    native_matches_interpreter(path);
+}
+
+/// A parameter the body never reads takes its declared type in the native
+/// signature, its callers and an ASYNC trampoline, and a FLOAT32 argument
+/// crosses ASYNC widened (bucket typed-llvm-emitter, defects of 2026-10-07:
+/// `bnc` panicked on the unused ASYNC parameter, typed the plain one `ptr`,
+/// and stored the FLOAT32 as a `double` it was not).
+#[test]
+fn unused_and_float32_parameters_keep_their_declared_types() {
+    let path = "tests/grammar/valid/build-unused-and-float32-parameters.bn";
+    let interpreted = bni().args(["run", path]).output().expect("run interpreter");
+    assert_eq!(interpreted.status.code(), Some(0));
+    assert_eq!(String::from_utf8_lossy(&interpreted.stdout), "7\n3.0\n");
+    native_matches_interpreter(path);
+}
+
+/// A capability used without `IMPORT` (`HOST.Console.Beep()`,
+/// `HOST.Clock.Now()`) is part of the program's requirements: the native
+/// binary used to deny the console (`EXECUTION_POLICY_DENIED`) and read the
+/// clock as `0`.
+#[test]
+fn capability_used_without_import_is_granted_on_both_backends() {
+    let path = "tests/grammar/valid/host-capability-without-import.bn";
+    let interpreted = bni().args(["run", path]).output().expect("run interpreter");
+    assert_eq!(interpreted.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&interpreted.stdout),
+        "\u{7}TRUE\nTRUE\n"
+    );
+    native_matches_interpreter(path);
+}
+
+/// An object in a general alternative (`Box OR STRING`) is released exactly
+/// once, when its last strong binding ends: by reassignment, after a call
+/// that borrowed it, after a returned object's receiver ends, and through an
+/// alias. A leak drops a `free` line; a double free or early free moves it.
+#[test]
+fn object_in_a_general_alternative_is_released_once_on_both_backends() {
+    let path = "tests/grammar/valid/arc-object-in-alternative.bn";
+    let interpreted = bni().args(["run", path]).output().expect("run interpreter");
+    assert_eq!(interpreted.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&interpreted.stdout),
+        "pass TRUE\nfree overwritten\nafter overwrite\n-- 1\ngot TRUE\nfree returned\n-- 2\n\
+         c dropped, d holds it\nfree aliased\n-- 3\n"
+    );
+    native_matches_interpreter(path);
+}
+
+/// `RELEASE` of a local of any type (alternatives included) drops the object
+/// it holds; `RELEASE` of a parameter ends only the callee's binding, so the
+/// caller's object lives on (0.6.md, "`RELEASE`"). The native backend used
+/// to free the caller's object.
+#[test]
+fn inherited_fields_initialize_once_and_release_derived_first() {
+    let path = "tests/grammar/valid/inherited-fields-and-destruction.bn";
+    let interpreted = bni().args(["run", path]).output().expect("run interpreter");
+    assert_eq!(interpreted.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&interpreted.stdout),
+        "made base first\nmade base second\nmade derived first\nmade derived second\n\
+         end base first\nderived destructor\nbase destructor\nbox derived second\n\
+         box derived first\nbox base second\nbox base first\n"
+    );
+    native_matches_interpreter(path);
+}
+
+#[test]
+fn release_of_locals_and_parameters_matches_across_backends() {
+    let path = "tests/grammar/valid/release-local-and-parameter.bn";
+    let interpreted = bni().args(["run", path]).output().expect("run interpreter");
+    assert_eq!(interpreted.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&interpreted.stdout),
+        "free optional\nfree fallible\nfree mixed\ndropped in callee\nkept alive\nfree kept\n"
     );
     native_matches_interpreter(path);
 }

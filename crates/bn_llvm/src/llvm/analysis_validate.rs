@@ -14,6 +14,19 @@ pub(crate) fn validate_instruction(
     intrinsics: &mut BTreeSet<&'static str>,
 ) -> Result<(), String> {
     let supported = match instruction {
+        // Explicit ownership (proposal arc-shared-core-0.6.5) is lowered only
+        // once the native backend executes it.
+        // Explicit ownership (proposal arc-shared-core-0.6.5).
+        Instruction::Retain {
+            destination, ty, ..
+        }
+        | Instruction::Take {
+            destination, ty, ..
+        }
+        | Instruction::TakeMember {
+            destination, ty, ..
+        } => llvm_type(values.get(destination).unwrap_or(ty)).is_some(),
+        Instruction::EndBinding { .. } => true,
         Instruction::Constant { value, ty, .. } => match value {
             Constant::Integer(value) => llvm_type(ty).is_some() && parse_integer(value).is_some(),
             Constant::Float(value) => {
@@ -188,13 +201,17 @@ pub(crate) fn validate_instruction(
                     "RELEASE of an indexed element is unsupported",
                 ));
             }
-            values.get(value).is_some_and(|ty| {
+            values
+                .get(value)
+                .is_some_and(|ty| arc_ops::holds_references(module, ty))
+                || values.get(value).is_some_and(|ty| {
                 is_native_pointer(ty)
                     || matches!(ty, Type::Pointer { element, .. } if matches!(element.as_ref(), Type::Vector { .. }))
             })
                 || values.get(value).is_some_and(|ty| {
                     llvm_type(ty) == Some("{ ptr, i32 }") || llvm_type(ty) == Some("ptr")
                         || llvm_type(ty) == Some("{ i1, ptr, i64 }")
+                        || general_alternative(ty).is_some()
                 })
                 || values.get(value).is_some_and(|ty| {
                     matches!(ty, Type::Integer(_) | Type::IntegerLiteral(_) | Type::Float(_) | Type::FloatLiteral | Type::Boolean | Type::String)

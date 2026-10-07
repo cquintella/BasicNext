@@ -333,7 +333,7 @@ fn verify_deferred_capability(program: &Program, built: &mut ProcessOutput) {
 fn catalogued_ir_inventory_matches_lowered_fixture() {
     for program in manifest().programs {
         let path = workspace_root().join(&program.path);
-        let emitted = execute(bni().args(["check", "--emit", "ir"]).arg(path), None);
+        let emitted = execute(bnc().args(["--emit", "ir"]).arg(path), None);
         assert_success(&emitted, &format!("emit IR for {}", program.path));
         assert_eq!(
             ir_instruction_names(&String::from_utf8_lossy(&emitted.stdout)),

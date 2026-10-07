@@ -24,7 +24,7 @@ struct DebugFrame {
     function: String,
     depth: usize,
     line: u64,
-    variables: Vec<bn_interp::DebugVariable>,
+    view: bn_interp::DebugView,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -173,10 +173,13 @@ pub fn run_stdio() -> Result<(), String> {
             "stackTrace" => (true, stack_response(&session), None),
             "scopes" => (
                 true,
-                json!({"scopes": [{"name": "Locals", "variablesReference": 1, "expensive": false}]}),
+                json!({"scopes": [
+                    {"name": "Locals", "variablesReference": LOCALS, "expensive": false},
+                    {"name": "ARC", "variablesReference": ARC, "expensive": false}
+                ]}),
                 None,
             ),
-            "variables" => (true, variables_response(&session), None),
+            "variables" => (true, variables_response(&session, &message), None),
             "evaluate" => (true, evaluate_response(&session, &message), None),
             "disconnect" | "terminate" => {
                 terminate_session(&session);
@@ -274,55 +277,53 @@ fn execute_program(
     let mut input = io::Cursor::new(Vec::<u8>::new());
     let mut output = Vec::new();
     let session_for_hook = Arc::clone(session);
-    let mut control = move |function: &str,
-                            depth: usize,
-                            span: bn_source::Span,
-                            variables: &[bn_interp::DebugVariable]| {
-        let (lock, condvar) = &*session_for_hook;
-        let Ok(mut state) = lock.lock() else {
-            return bn_interp::DebugDecision::Terminate;
-        };
-        state.frame = Some(DebugFrame {
-            function: function.to_owned(),
-            depth,
-            line: u64::try_from(span.start.line).unwrap_or(u64::MAX),
-            variables: variables.to_vec(),
-        });
-        let at_breakpoint = breakpoints
-            .lock()
-            .ok()
-            .and_then(|registry| registry.get(path).cloned())
-            .is_some_and(|lines| {
-                lines.contains(&state.frame.as_ref().map_or(0, |frame| frame.line))
+    let mut control =
+        move |function: &str, depth: usize, span: bn_source::Span, view: &bn_interp::DebugView| {
+            let (lock, condvar) = &*session_for_hook;
+            let Ok(mut state) = lock.lock() else {
+                return bn_interp::DebugDecision::Terminate;
+            };
+            state.frame = Some(DebugFrame {
+                function: function.to_owned(),
+                depth,
+                line: u64::try_from(span.start.line).unwrap_or(u64::MAX),
+                view: view.clone(),
             });
-        let step_pause = match state.step {
-            Some(StepMode::Next(target)) => depth <= target,
-            Some(StepMode::In) => true,
-            Some(StepMode::Out(target)) => depth < target,
-            None => false,
-        };
-        if !state.started || step_pause || at_breakpoint {
-            state.started = true;
-            state.step = None;
-            state.paused = true;
-            state.events.push(json!({
+            let at_breakpoint = breakpoints
+                .lock()
+                .ok()
+                .and_then(|registry| registry.get(path).cloned())
+                .is_some_and(|lines| {
+                    lines.contains(&state.frame.as_ref().map_or(0, |frame| frame.line))
+                });
+            let step_pause = match state.step {
+                Some(StepMode::Next(target)) => depth <= target,
+                Some(StepMode::In) => true,
+                Some(StepMode::Out(target)) => depth < target,
+                None => false,
+            };
+            if !state.started || step_pause || at_breakpoint {
+                state.started = true;
+                state.step = None;
+                state.paused = true;
+                state.events.push(json!({
                 "type": "event", "event": "stopped",
                 "body": {"reason": if at_breakpoint { "breakpoint" } else { "step" }, "threadId": 1}
             }));
-            condvar.notify_all();
-        }
-        while state.paused && !state.terminate {
-            state = match condvar.wait(state) {
-                Ok(guard) => guard,
-                Err(_) => return bn_interp::DebugDecision::Terminate,
-            };
-        }
-        if state.terminate {
-            bn_interp::DebugDecision::Terminate
-        } else {
-            bn_interp::DebugDecision::Continue
-        }
-    };
+                condvar.notify_all();
+            }
+            while state.paused && !state.terminate {
+                state = match condvar.wait(state) {
+                    Ok(guard) => guard,
+                    Err(_) => return bn_interp::DebugDecision::Terminate,
+                };
+            }
+            if state.terminate {
+                bn_interp::DebugDecision::Terminate
+            } else {
+                bn_interp::DebugDecision::Continue
+            }
+        };
     bn_interp::execute_validated_with_host_debug_control(
         module,
         &mut input,
@@ -389,23 +390,70 @@ fn stack_response(session: &SharedSession) -> Value {
     json!({"stackFrames": frames, "totalFrames": frames.len()})
 }
 
-fn variables_response(session: &SharedSession) -> Value {
+/// `variablesReference` of the `Locals` scope.
+const LOCALS: u64 = 1;
+/// `variablesReference` of the `ARC` scope: every live object of the core.
+const ARC: u64 = 2;
+/// `variablesReference` of the children (fields and `[arc]`) of local `n`
+/// is `CHILDREN + n`.
+const CHILDREN: u64 = 1000;
+
+fn frame_view(session: &SharedSession) -> bn_interp::DebugView {
     let (lock, _) = &**session;
-    let variables = lock
-        .lock()
+    lock.lock()
         .ok()
         .and_then(|state| state.frame.clone())
-        .map(|frame| {
-            frame
-                .variables
-                .into_iter()
-                .map(|variable| json!({"name": variable.name, "value": variable.value, "variablesReference": 0}))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+        .map(|frame| frame.view)
+        .unwrap_or_default()
+}
+
+fn variable_json(variable: &bn_interp::DebugVariable, reference: u64) -> Value {
+    json!({"name": variable.name, "value": variable.value, "variablesReference": reference})
+}
+
+fn variables_response(session: &SharedSession, request: &Value) -> Value {
+    let reference = request
+        .get("arguments")
+        .and_then(|arguments| arguments.get("variablesReference"))
+        .and_then(Value::as_u64)
+        .unwrap_or(LOCALS);
+    let view = frame_view(session);
+    let variables = match reference {
+        LOCALS => view
+            .variables
+            .iter()
+            .zip(0_u64..)
+            .map(|(variable, index)| {
+                let children = if variable.children.is_empty() {
+                    0
+                } else {
+                    CHILDREN + index
+                };
+                variable_json(variable, children)
+            })
+            .collect::<Vec<_>>(),
+        ARC => view
+            .arc
+            .iter()
+            .map(|object| variable_json(object, 0))
+            .collect(),
+        reference => usize::try_from(reference.saturating_sub(CHILDREN))
+            .ok()
+            .and_then(|index| view.variables.get(index))
+            .map(|variable| {
+                variable
+                    .children
+                    .iter()
+                    .map(|child| variable_json(child, 0))
+                    .collect()
+            })
+            .unwrap_or_default(),
+    };
     json!({"variables": variables})
 }
 
+/// The debug console: a variable's value, `:arc` (every live object) or
+/// `:arc name` (the ARC record of the object a variable holds).
 fn evaluate_response(session: &SharedSession, request: &Value) -> Value {
     let expression = request
         .get("arguments")
@@ -413,18 +461,35 @@ fn evaluate_response(session: &SharedSession, request: &Value) -> Value {
         .and_then(Value::as_str)
         .unwrap_or_default()
         .trim();
-    let value = session
-        .0
-        .lock()
-        .ok()
-        .and_then(|state| state.frame.clone())
-        .and_then(|frame| {
-            frame
-                .variables
-                .into_iter()
-                .find(|variable| variable.name == expression)
-        })
-        .map_or_else(|| "<unavailable>".into(), |variable| variable.value);
+    let view = frame_view(session);
+    let find = |name: &str| view.variables.iter().find(|variable| variable.name == name);
+    let value = if expression == ":arc" {
+        let objects = view
+            .arc
+            .iter()
+            .map(|object| format!("{} {}", object.name, object.value))
+            .collect::<Vec<_>>();
+        if objects.is_empty() {
+            "no live object".into()
+        } else {
+            objects.join("\n")
+        }
+    } else if let Some(name) = expression.strip_prefix(":arc ") {
+        let name = name.trim();
+        match find(name) {
+            Some(variable) => variable
+                .children
+                .iter()
+                .find(|child| child.name == "[arc]")
+                .map_or_else(
+                    || format!("{name}: {} (no live object)", variable.value),
+                    |arc| format!("{name}: {}, {}", variable.value, arc.value),
+                ),
+            None => format!("{name}: no such variable"),
+        }
+    } else {
+        find(expression).map_or_else(|| "<unavailable>".into(), |variable| variable.value.clone())
+    };
     json!({"result": value, "variablesReference": 0})
 }
 

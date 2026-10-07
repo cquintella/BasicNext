@@ -247,3 +247,44 @@ fn record_owner_for_type(module: &Module, current_owner: &str, ty: &Type) -> Opt
         _ => None,
     }
 }
+
+/// Class inheritance metadata names real classes and has no cycle.
+pub(super) fn validate_class_bases(module: &Module) -> Result<(), Diagnostic> {
+    let span = module
+        .functions
+        .first()
+        .map_or_else(default_module_span, |function| function.span);
+    for (class, base) in &module.class_bases {
+        if class.is_empty() || base.is_empty() {
+            return Err(invalid_ir(
+                "class and base identities cannot be empty",
+                span,
+            ));
+        }
+        let mut seen = HashSet::new();
+        let mut current = class.as_str();
+        while let Some(parent) = module.class_bases.get(current) {
+            if !seen.insert(current) {
+                return Err(invalid_ir(
+                    "class inheritance metadata must be acyclic",
+                    span,
+                ));
+            }
+            current = parent;
+        }
+        for identity in [class, base] {
+            let fields = format!("{identity}.$fields");
+            if !module
+                .functions
+                .iter()
+                .any(|function| function.name == fields)
+            {
+                return Err(invalid_ir(
+                    format!("class layout metadata references missing class '{identity}'"),
+                    span,
+                ));
+            }
+        }
+    }
+    Ok(())
+}

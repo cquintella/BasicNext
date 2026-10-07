@@ -1,0 +1,37 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// RELEASE takes a local binding or a parameter of any type, alternatives
+// included, as Swift `consume` (0.6.md, "`RELEASE`"). Each object is freed
+// when its last strong binding ends; RELEASE of a parameter ends only the
+// callee binding.
+CLASS Item
+    PUBLIC name AS STRING = ""
+    PUBLIC FUNCTION CONSTRUCTOR(label AS STRING)
+        SELF.name = label
+    END FUNCTION
+    PUBLIC FUNCTION DESTRUCTOR()
+        PRINT "free", SELF.name
+    END FUNCTION
+END CLASS
+
+FUNCTION Drop(item AS Item) AS VOID
+    RELEASE item
+    PRINT "dropped in callee"
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET optional AS Item OR NULL = NEW Item("optional")
+    RELEASE optional
+    LET fallible AS Item OR Error = NEW Item("fallible")
+    RELEASE fallible
+    LET mixed AS Item OR STRING = NEW Item("mixed")
+    RELEASE mixed
+    LET number AS INTEGER OR STRING = 7
+    RELEASE number
+    LET kept AS Item = NEW Item("kept")
+    Drop(kept)
+    PRINT "kept alive"
+END FUNCTION

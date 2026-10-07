@@ -1,4 +1,4 @@
-//! Compiler-only option semantics: `--target` and `--opt`, parsed as a
+//! Compiler-only option semantics: `--target`, `--opt` and `-g`, parsed as a
 //! `bn_cli::options::OptionExtension` supplied by the executable.
 
 use bn_cli::options::OptionExtension;
@@ -44,12 +44,14 @@ impl Optimization {
     }
 }
 
-/// Compile-only flags (`--target`, `--opt`). The compiler executable
+/// Compile-only flags (`--target`, `--opt`, `-g`). The compiler executable
 /// parses them; `bn` also accepts them on every command for compatibility.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BuildOptions {
     pub target: Target,
     pub optimization: Optimization,
+    /// `-g`: emit source-level debug information.
+    pub debug: bool,
 }
 
 impl Default for BuildOptions {
@@ -57,6 +59,7 @@ impl Default for BuildOptions {
         Self {
             target: Target::Native,
             optimization: Optimization::Level(2),
+            debug: false,
         }
     }
 }
@@ -68,6 +71,7 @@ impl OptionExtension for BuildOptions {
         rest: &mut dyn Iterator<Item = String>,
     ) -> Result<bool, String> {
         match argument {
+            "-g" | "--debug" => self.debug = true,
             "--opt" => {
                 self.optimization = match rest.next().as_deref() {
                     Some("none") => Optimization::None,

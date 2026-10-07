@@ -346,11 +346,10 @@ impl Analyzer {
                 self.validate_type_reference(&signature.return_type)?;
                 for parameter in &signature.parameters {
                     self.validate_type_reference(&parameter.type_ref)?;
-                    self.declare_local(
+                    self.declare_parameter(
                         &mut locals,
                         &parameter.name,
                         self.resolve_reference(&parameter.type_ref),
-                        false,
                         parameter.span,
                     )?;
                 }

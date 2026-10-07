@@ -9,6 +9,10 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
+use crate::ir::{
+    BinaryOp, CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T,
+};
+
 /// Builds a HOST `{ i1, ptr, i64 }` result from a `bn_rt` status `rc`:
 /// status 0 is the value (`value_ptr`, `payload`); `eof_status`, when given,
 /// is a successful `EOF` (the `@.bn_eof` sentinel); any other status is an
@@ -23,46 +27,68 @@ pub(crate) fn emit_status_result(
     payload: &str,
 ) {
     let dest = destination.0;
-    let _ = writeln!(text, "  %stfail{dest} = icmp ne i32 {rc}, 0");
+    let r = |name: &str| O::reg(format!("{name}{dest}"));
+    text.assign(
+        format!("stfail{dest}"),
+        I::icmp(ICmpCond::Ne, T::I32, O::raw(rc), O::int(0)),
+    );
     let (error, pointer) = if let Some(eof) = eof_status {
-        let _ = writeln!(text, "  %steof{dest} = icmp eq i32 {rc}, {eof}");
-        let _ = writeln!(text, "  %stnoteof{dest} = xor i1 %steof{dest}, true");
-        let _ = writeln!(
-            text,
-            "  %sterr{dest} = and i1 %stfail{dest}, %stnoteof{dest}"
+        text.assign(
+            format!("steof{dest}"),
+            I::icmp(ICmpCond::Eq, T::I32, O::raw(rc), O::int(i64::from(eof))),
         );
-        let _ = writeln!(
-            text,
-            "  %stvalue{dest} = select i1 %steof{dest}, ptr @.bn_eof, ptr {value_ptr}"
+        text.assign(
+            format!("stnoteof{dest}"),
+            I::binary(BinaryOp::Xor, T::I1, r("steof"), O::bool(true)),
         );
-        (format!("%sterr{dest}"), format!("%stvalue{dest}"))
+        text.assign(
+            format!("sterr{dest}"),
+            I::binary(BinaryOp::And, T::I1, r("stfail"), r("stnoteof")),
+        );
+        text.assign(
+            format!("stvalue{dest}"),
+            I::select(r("steof"), T::Ptr, O::global(".bn_eof"), O::raw(value_ptr)),
+        );
+        (r("sterr"), r("stvalue"))
     } else {
-        (format!("%stfail{dest}"), value_ptr.to_string())
+        (r("stfail"), O::raw(value_ptr))
     };
-    let _ = writeln!(text, "  %sterrint{dest} = zext i1 {error} to i32");
-    let _ = writeln!(
-        text,
-        "  %stmsg{dest} = call ptr @bn_rt_error_take(i32 %sterrint{dest}, ptr null)"
+    text.assign(
+        format!("sterrint{dest}"),
+        I::cast(CastOp::ZExt, T::I1, error.clone(), T::I32),
     );
-    let _ = writeln!(
-        text,
-        "  %stptr{dest} = select i1 {error}, ptr %stmsg{dest}, ptr {pointer}"
+    text.assign(
+        format!("stmsg{dest}"),
+        I::call(
+            T::Ptr,
+            "bn_rt_error_take",
+            vec![(T::I32, r("sterrint")), (T::Ptr, O::null())],
+        ),
     );
-    let _ = writeln!(
-        text,
-        "  %stcode{dest} = call i64 @bn_rt_error_code(ptr %stmsg{dest})\n  %stpayload{dest} = select i1 {error}, i64 %stcode{dest}, i64 {payload}"
+    text.assign(
+        format!("stptr{dest}"),
+        I::select(error.clone(), T::Ptr, r("stmsg"), pointer),
     );
-    let _ = writeln!(
-        text,
-        "  %stagg0{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 {error}, 0"
+    text.assign(
+        format!("stcode{dest}"),
+        I::call(T::I64, "bn_rt_error_code", vec![(T::Ptr, r("stmsg"))]),
     );
-    let _ = writeln!(
-        text,
-        "  %stagg1{dest} = insertvalue {{ i1, ptr, i64 }} %stagg0{dest}, ptr %stptr{dest}, 1"
+    text.assign(
+        format!("stpayload{dest}"),
+        I::select(error.clone(), T::I64, r("stcode"), O::raw(payload)),
     );
-    let _ = writeln!(
-        text,
-        "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %stagg1{dest}, i64 %stpayload{dest}, 2"
+    let status_ty = T::struct_of([T::I1, T::Ptr, T::I64]);
+    text.assign(
+        format!("stagg0{dest}"),
+        I::insert(status_ty.clone(), O::undef(), T::I1, error, 0),
+    );
+    text.assign(
+        format!("stagg1{dest}"),
+        I::insert(status_ty.clone(), r("stagg0"), T::Ptr, r("stptr"), 1),
+    );
+    text.assign(
+        format!("v{dest}"),
+        I::insert(status_ty, r("stagg1"), T::I64, r("stpayload"), 2),
     );
 }
 
@@ -88,8 +114,9 @@ pub(crate) fn emit_void_result(text: &mut String, destination: ValueId, rc: impl
     let rc_reg = if rc_str.starts_with('%') {
         rc_str.to_string()
     } else {
-        let _ = writeln!(text, "  %netrc{dest} = {rc_str}");
-        format!("%netrc{dest}")
+        let tag = format!("netrc{dest}");
+        let _ = writeln!(text, "  %{tag} = {rc_str}");
+        format!("%{tag}")
     };
     emit_status_result(text, destination, &rc_reg, None, "null", "0");
 }
@@ -136,19 +163,23 @@ pub(crate) fn emit_buffer_bound(
     state: &mut EmissionState,
 ) {
     let dest = destination.0;
-    let _ = writeln!(
-        text,
-        "  %bufcap{dest} = extractvalue {{ ptr, i32 }} %v{}, 1",
-        buffer.0
+    let r = |name: &str| O::reg(format!("{name}{dest}"));
+    let buffer_ty = T::struct_of([T::Ptr, T::I32]);
+    text.assign(
+        format!("bufcap{dest}"),
+        I::extract(buffer_ty, O::reg(format!("v{}", buffer.0)), 1),
     );
-    let _ = writeln!(text, "  %bufneg{dest} = icmp slt i32 {length}, 0");
-    let _ = writeln!(
-        text,
-        "  %bufover{dest} = icmp sgt i32 {length}, %bufcap{dest}"
+    text.assign(
+        format!("bufneg{dest}"),
+        I::icmp(ICmpCond::Slt, T::I32, O::raw(length), O::int(0)),
     );
-    let _ = writeln!(
-        text,
-        "  %bufbad{dest} = or i1 %bufneg{dest}, %bufover{dest}"
+    text.assign(
+        format!("bufover{dest}"),
+        I::icmp(ICmpCond::Sgt, T::I32, O::raw(length), r("bufcap")),
+    );
+    text.assign(
+        format!("bufbad{dest}"),
+        I::binary(BinaryOp::Or, T::I1, r("bufneg"), r("bufover")),
     );
     let ok = take_continuation(block_id, state);
     emit_trap(
@@ -174,22 +205,50 @@ pub(crate) fn emit_endpoint_result(
     port: &str,
 ) {
     let dest = destination.0;
-    let _ = writeln!(text, "  %eperr{dest} = icmp ne i32 {rc}, 0");
-    let _ = writeln!(text, "  %eperrint{dest} = zext i1 %eperr{dest} to i32");
-    let _ = writeln!(
-        text,
-        "  %epmsg{dest} = call ptr @bn_rt_error_take(i32 %eperrint{dest}, ptr null)"
+    let r = |name: &str| O::reg(format!("{name}{dest}"));
+    text.assign(
+        format!("eperr{dest}"),
+        I::icmp(ICmpCond::Ne, T::I32, O::raw(rc), O::int(0)),
     );
-    let _ = writeln!(
-        text,
-        "  %epptr{dest} = select i1 %eperr{dest}, ptr %epmsg{dest}, ptr {address}"
+    text.assign(
+        format!("eperrint{dest}"),
+        I::cast(CastOp::ZExt, T::I1, r("eperr"), T::I32),
     );
-    let _ = writeln!(
-        text,
-        "  %epcode{dest} = call i64 @bn_rt_error_code(ptr %epmsg{dest})\n  %epcode32{dest} = trunc i64 %epcode{dest} to i32\n  %epport{dest} = select i1 %eperr{dest}, i32 %epcode32{dest}, i32 {port}"
+    text.assign(
+        format!("epmsg{dest}"),
+        I::call(
+            T::Ptr,
+            "bn_rt_error_take",
+            vec![(T::I32, r("eperrint")), (T::Ptr, O::null())],
+        ),
     );
-    let _ = writeln!(
-        text,
-        "  %epagg0{dest} = insertvalue {{ i1, ptr, i32 }} undef, i1 %eperr{dest}, 0\n  %epagg1{dest} = insertvalue {{ i1, ptr, i32 }} %epagg0{dest}, ptr %epptr{dest}, 1\n  %v{dest} = insertvalue {{ i1, ptr, i32 }} %epagg1{dest}, i32 %epport{dest}, 2"
+    text.assign(
+        format!("epptr{dest}"),
+        I::select(r("eperr"), T::Ptr, r("epmsg"), O::raw(address)),
+    );
+    text.assign(
+        format!("epcode{dest}"),
+        I::call(T::I64, "bn_rt_error_code", vec![(T::Ptr, r("epmsg"))]),
+    );
+    text.assign(
+        format!("epcode32{dest}"),
+        I::cast(CastOp::Trunc, T::I64, r("epcode"), T::I32),
+    );
+    text.assign(
+        format!("epport{dest}"),
+        I::select(r("eperr"), T::I32, r("epcode32"), O::raw(port)),
+    );
+    let ep_ty = T::struct_of([T::I1, T::Ptr, T::I32]);
+    text.assign(
+        format!("epagg0{dest}"),
+        I::insert(ep_ty.clone(), O::undef(), T::I1, r("eperr"), 0),
+    );
+    text.assign(
+        format!("epagg1{dest}"),
+        I::insert(ep_ty.clone(), r("epagg0"), T::Ptr, r("epptr"), 1),
+    );
+    text.assign(
+        format!("v{dest}"),
+        I::insert(ep_ty, r("epagg1"), T::I32, r("epport"), 2),
     );
 }

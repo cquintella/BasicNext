@@ -327,24 +327,19 @@ impl Analyzer {
                     ));
                 }
                 Statement::Release { value, .. } => {
-                    if !matches!(value.kind, ExpressionKind::Name { .. }) {
+                    // A local binding or a parameter, of any type, as Swift's
+                    // `consume` (0.6.md, "`RELEASE`"). A field (even unqualified
+                    // in a method), a STATIC, or an element is not one: assign
+                    // NULL to let a field or a STATIC go.
+                    let local = matches!(&value.kind, ExpressionKind::Name { name } if locals.contains_key(name));
+                    if !local {
                         return Err(error(
                             DiagId::INVALID_RELEASE_TARGET,
-                            "RELEASE requires a binding; indexed and member targets are not bindings",
+                            "RELEASE takes a local binding or a parameter; assign NULL to a field or a STATIC instead",
                             value.span,
                         ));
                     }
-                    let ty = self.expression(value, locals)?;
-                    if !self.deletable(&ty) {
-                        return Err(error(
-                            DiagId::INVALID_RELEASE_TARGET,
-                            format!(
-                                "RELEASE requires a pointer or CLASS reference, found {}",
-                                display(&ty)
-                            ),
-                            value.span,
-                        ));
-                    }
+                    self.expression(value, locals)?;
                 }
                 Statement::Stop { code, .. } => {
                     if !is_integer(&self.expression(code, locals)?) {
@@ -405,22 +400,20 @@ impl Analyzer {
                     if let Some(signature) = signature {
                         for parameter in &signature.parameters {
                             self.validate_type_reference(&parameter.type_ref)?;
-                            self.declare_local(
+                            self.declare_parameter(
                                 &mut member_locals,
                                 &parameter.name,
                                 self.resolve_reference(&parameter.type_ref),
-                                false,
                                 parameter.span,
                             )?;
                         }
                     } else {
                         for parameter in parameters {
                             self.validate_type_reference(&parameter.type_ref)?;
-                            self.declare_local(
+                            self.declare_parameter(
                                 &mut member_locals,
                                 &parameter.name,
                                 self.resolve_reference(&parameter.type_ref),
-                                false,
                                 parameter.span,
                             )?;
                         }

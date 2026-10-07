@@ -80,6 +80,17 @@ pub(crate) fn ir_error(message: impl Into<String>, span: Span) -> Diagnostic {
 }
 
 pub(crate) fn type_test_name(atom: &TypeAtom) -> String {
+    // A vector test is named `ELEMENT[n]...`, the spelling `bn_interp`'s
+    // `is_value` reads back.
+    if !atom.dimensions.is_empty() {
+        return atom
+            .dimensions
+            .iter()
+            .fold(atom.name.clone(), |name, dimension| match dimension {
+                crate::ast::VectorDimension::Literal { value, .. } => format!("{name}[{value}]"),
+                crate::ast::VectorDimension::Expression(_) => format!("{name}[]"),
+            });
+    }
     let dotted = atom.parts.iter().any(|part| part == "." || part == "Dot");
     let names: Vec<&str> = std::iter::once(atom.name.as_str())
         .chain(
@@ -97,43 +108,10 @@ pub(crate) fn type_test_name(atom: &TypeAtom) -> String {
 }
 
 pub(crate) fn named_or_void(reference: &TypeReference) -> Type {
-    let alternatives = reference
-        .alternatives
-        .iter()
-        .map(|atom| {
-            if atom.parts.iter().any(|part| part == "." || part == "Dot") {
-                named_type(&type_test_name(atom))
-            } else {
-                named_type(&atom.name)
-            }
-        })
-        .collect::<Vec<_>>();
-    match alternatives.as_slice() {
-        [] => Type::Named("VOID".into()),
-        [ty] => ty.clone(),
-        _ => Type::Alternative(alternatives),
-    }
-}
-
-fn named_type(name: &str) -> Type {
-    match name {
-        "INTEGER" | "INT32" => Type::Integer(IntegerType::Int32),
-        "INT8" => Type::Integer(IntegerType::Int8),
-        "INT16" => Type::Integer(IntegerType::Int16),
-        "INT64" | "TIMESTAMP" => Type::Integer(IntegerType::Int64),
-        "BYTE" => Type::Integer(IntegerType::Byte),
-        "UINT16" => Type::Integer(IntegerType::UInt16),
-        "UINT32" => Type::Integer(IntegerType::UInt32),
-        "UINT64" => Type::Integer(IntegerType::UInt64),
-        "FLOAT" | "FLOAT64" => Type::Float(crate::types::FloatType::Float64),
-        "FLOAT32" => Type::Float(crate::types::FloatType::Float32),
-        "BOOLEAN" => Type::Boolean,
-        "STRING" => Type::String,
-        "NULL" => Type::Null,
-        "NA" => Type::NotAvailable,
-        "EOF" => Type::EndOfFile,
-        "VOID" => Type::Named("VOID".into()),
-        other => Type::Named(other.into()),
+    if reference.alternatives.is_empty() {
+        Type::Named("VOID".into())
+    } else {
+        crate::semantic::type_from_reference(reference)
     }
 }
 
@@ -301,6 +279,20 @@ pub(crate) fn namespace_function(object_type: &Type, name: &str, prefix: &str) -
     }
 }
 
+pub(crate) fn is_host_or_builtin_owner(name: &str) -> bool {
+    name.starts_with("HOST.")
+        || name == "FS.File"
+        || name.ends_with(".File")
+        || matches!(
+            name,
+            "Error" | "SYSTEM" | "Float" | "Date" | "Time" | "TimeZone" | "Timestamp"
+        )
+}
+
+pub(crate) fn is_user_class_name(name: &str) -> bool {
+    !is_host_or_builtin_owner(name)
+}
+
 pub(crate) fn user_class_name(ty: &Type) -> Option<String> {
     match ty {
         Type::TypeName(name)
@@ -318,7 +310,8 @@ pub(crate) fn user_class_name(ty: &Type) -> Option<String> {
 
 pub(crate) fn static_class_name(ty: &Type, prefix: &str) -> String {
     match ty {
-        Type::TypeName(name) => format!("{prefix}{name}"),
+        Type::TypeName(name) if is_user_class_name(name) => format!("{prefix}{name}"),
+        Type::TypeName(name) => name.clone(),
         Type::ImportedTypeName { module, name } => format!("#{}.{name}", module.0),
         other => display_type(other),
     }
@@ -326,12 +319,18 @@ pub(crate) fn static_class_name(ty: &Type, prefix: &str) -> String {
 
 pub(crate) fn class_ir_name(ty: &Type, type_name: &str, prefix: &str) -> String {
     match ty {
-        Type::Named(name) | Type::TypeName(name) => format!("{prefix}{name}"),
+        Type::Named(name) | Type::TypeName(name) => {
+            if is_user_class_name(name) {
+                format!("{prefix}{name}")
+            } else {
+                name.clone()
+            }
+        }
         Type::ImportedNamed { module, name } | Type::ImportedTypeName { module, name } => {
             format!("#{}.{name}", module.0)
         }
         _ => {
-            if is_numeric_type_name(type_name) {
+            if is_numeric_type_name(type_name) || !is_user_class_name(type_name) {
                 type_name.into()
             } else {
                 format!("{prefix}{type_name}")

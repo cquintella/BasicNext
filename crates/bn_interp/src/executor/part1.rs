@@ -21,62 +21,28 @@ impl Executor<'_, '_> {
             .copied()
             .zip(arguments)
             .collect::<HashMap<_, _>>();
-        // A parameter is a strong binding of the callee (0.5 ARC): retain on
-        // entry, release with the other locals on exit unless it is returned.
-        for (symbol, argument) in &symbols {
-            if !function.weak_symbols.contains(symbol) {
-                self.retain_owned_value(argument, function.span)?;
-            }
-        }
+        // Parameters are borrowed: the lowering emits every ownership
+        // operation, so a call only tracks which bindings ended.
         let mut values = HashMap::new();
-        let local_symbols = function
-            .parameters
-            .iter()
-            .copied()
-            .chain(
-                function
-                    .blocks
-                    .iter()
-                    .flat_map(|block| &block.instructions)
-                    .filter_map(|instruction| match instruction {
-                        Instruction::Store { symbol, .. }
-                            if !function.parameters.contains(symbol) =>
-                        {
-                            Some(*symbol)
-                        }
-                        _ => None,
-                    }),
-            )
-            .collect();
         self.ownership_frames.push(OwnershipFrame {
-            local_symbols,
             weak_symbols: function.weak_symbols.clone(),
-            release_values: function
-                .blocks
-                .iter()
-                .flat_map(|block| &block.instructions)
-                .filter_map(|instruction| match instruction {
-                    Instruction::Release { value, .. } => Some(*value),
-                    _ => None,
-                })
-                .collect(),
             ..OwnershipFrame::default()
         });
         let mut block = function.entry;
         let mut previous_block = None;
         loop {
             let current = find_block(function, block)?;
-            for instruction in &current.instructions {
+            for (index, instruction) in current.instructions.iter().enumerate() {
                 if let Some(hook) = self.debug_hook.as_deref_mut() {
                     hook(&function.name, instruction.span());
                 }
-                if let Some(control) = self.debug_control.as_deref_mut()
-                    && control(
-                        &function.name,
-                        self.call_depth,
-                        instruction.span(),
-                        &debug_variables(&symbols, &values),
-                    ) == DebugDecision::Terminate
+                let view = self
+                    .debug_control
+                    .is_some()
+                    .then(|| self.debug_view(&symbols, &values));
+                if let (Some(control), Some(view)) = (self.debug_control.as_deref_mut(), view)
+                    && control(&function.name, self.call_depth, instruction.span(), &view)
+                        == DebugDecision::Terminate
                 {
                     return Err(runtime_error(
                         bn_diag::DiagId::DEBUG_TERMINATED,
@@ -114,7 +80,17 @@ impl Executor<'_, '_> {
                 } else {
                     self.instruction(instruction, &mut symbols, &mut values)?;
                 }
-                if let Some(code) = self.stop_code.take() {
+                // A STOP in a call the IR checks (`$stopping` follows) is
+                // handled by the IR, which releases this function's locals
+                // first (0.6.md, "`STOP`"); any other one stops at once.
+                if self.stop_code.is_some()
+                    && !is_stop_check(instruction)
+                    && !current
+                        .instructions
+                        .get(index + 1)
+                        .is_some_and(is_stop_check)
+                    && let Some(code) = self.stop_code.take()
+                {
                     return Ok(Flow::Stop(code));
                 }
             }
@@ -139,12 +115,12 @@ impl Executor<'_, '_> {
                     let returned = result
                         .map(|result| value(&values, result, function.span).cloned())
                         .transpose()?;
-                    self.finish_ownership_frame(&mut symbols, *result, function.span)?;
+                    self.ownership_frames.pop();
                     return Ok(Flow::Return(returned));
                 }
                 Terminator::Stop { code } => {
                     let code = integer(value(&values, *code, function.span)?, function.span)?.0;
-                    self.finish_ownership_frame(&mut symbols, None, function.span)?;
+                    self.ownership_frames.pop();
                     return Ok(Flow::Stop(code));
                 }
             }
@@ -177,4 +153,16 @@ impl Executor<'_, '_> {
         self.class_init.insert(class.to_string(), ClassInit::Ready);
         Ok(())
     }
+}
+
+/// The function constant of a `$stopping` check, which the lowering emits
+/// right after a call that may stop.
+fn is_stop_check(instruction: &Instruction) -> bool {
+    matches!(
+        instruction,
+        Instruction::Constant {
+            value: bn_ir::Constant::Function(name),
+            ..
+        } if name == bn_ir::names::STOPPING
+    )
 }

@@ -1,0 +1,20 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// IEEE 754 comparisons with NAN at run time: every ordered comparison is
+// FALSE and <> is TRUE (natively `fcmp une`, not `fcmp one`). The values
+// pass through parameters so neither backend can fold them.
+FUNCTION Compare(a AS FLOAT, b AS FLOAT) AS VOID
+    PRINT a = b, a <> b, a < b, a <= b, a > b, a >= b
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET n AS FLOAT = NAN
+    Compare(n, n)
+    Compare(n, 1.0)
+    Compare(1.0, n)
+    Compare(1.0, 1.0)
+    Compare(1.0, 2.0)
+END FUNCTION

@@ -7,132 +7,18 @@ use super::{Diagnostic, Module, Terminator, invalid_ir};
 
 #[path = "validate/fields.rs"]
 mod fields;
+#[path = "validate/kinds.rs"]
+mod kinds;
+#[path = "validate/operands.rs"]
+mod operands;
+#[path = "validate/ownership.rs"]
+mod ownership;
 use fields::{
-    receiver_matches_owner, validate_field_layouts, validate_field_reference,
+    receiver_matches_owner, validate_class_bases, validate_field_layouts, validate_field_reference,
     validate_resolved_field_path,
 };
-
-fn instruction_defines(instruction: &super::Instruction) -> Option<super::ValueId> {
-    match instruction {
-        super::Instruction::Constant { destination, .. }
-        | super::Instruction::Default { destination, .. }
-        | super::Instruction::Phi { destination, .. }
-        | super::Instruction::Load { destination, .. }
-        | super::Instruction::Copy { destination, .. }
-        | super::Instruction::Unary { destination, .. }
-        | super::Instruction::Binary { destination, .. }
-        | super::Instruction::Cast { destination, .. }
-        | super::Instruction::Call { destination, .. }
-        | super::Instruction::DispatchSubmit { destination, .. }
-        | super::Instruction::DispatchAwait { destination, .. }
-        | super::Instruction::Input { destination, .. }
-        | super::Instruction::Vector { destination, .. }
-        | super::Instruction::Index { destination, .. }
-        | super::Instruction::Member { destination, .. }
-        | super::Instruction::Length { destination, .. }
-        | super::Instruction::SizeOf { destination, .. }
-        | super::Instruction::Allocate { destination, .. }
-        | super::Instruction::LoadStatic { destination, .. } => Some(*destination),
-        super::Instruction::Store { .. }
-        | super::Instruction::SetIndex { .. }
-        | super::Instruction::SetMemberIndex { .. }
-        | super::Instruction::SetFieldIndex { .. }
-        | super::Instruction::SetStaticIndex { .. }
-        | super::Instruction::SetMember { .. }
-        | super::Instruction::SetField { .. }
-        | super::Instruction::Print { .. }
-        | super::Instruction::ClearScreen { .. }
-        | super::Instruction::Beep { .. }
-        | super::Instruction::Release { .. }
-        | super::Instruction::EnsureClass { .. }
-        | super::Instruction::StoreStatic { .. } => None,
-    }
-}
-
-/// Enumerates every SSA operand read by an instruction.
-#[must_use]
-pub fn instruction_uses(instruction: &super::Instruction) -> Vec<super::ValueId> {
-    match instruction {
-        super::Instruction::Copy { source, .. }
-        | super::Instruction::Unary {
-            operand: source, ..
-        }
-        | super::Instruction::Cast { value: source, .. }
-        | super::Instruction::Length { vector: source, .. }
-        | super::Instruction::SizeOf { value: source, .. }
-        | super::Instruction::Store { value: source, .. }
-        | super::Instruction::Release { value: source, .. } => vec![*source],
-        super::Instruction::Binary { left, right, .. } => vec![*left, *right],
-        super::Instruction::Call {
-            callee, arguments, ..
-        } => {
-            let mut used = vec![*callee];
-            used.extend(arguments.iter().copied());
-            used
-        }
-        super::Instruction::DispatchSubmit {
-            callee,
-            queue,
-            task,
-            arguments,
-            ..
-        } => {
-            let mut used = vec![*callee, *queue, *task];
-            used.extend(arguments.iter().copied());
-            used
-        }
-        super::Instruction::DispatchAwait {
-            callee,
-            ticket,
-            timeout,
-            ..
-        } => vec![*callee, *ticket, *timeout],
-        super::Instruction::Vector { values, .. } | super::Instruction::Print { values, .. } => {
-            values.clone()
-        }
-        super::Instruction::Index { object, index, .. } => vec![*object, *index],
-        super::Instruction::Member { object, .. }
-        | super::Instruction::ClearScreen {
-            console: object, ..
-        }
-        | super::Instruction::Beep {
-            console: object, ..
-        } => vec![*object],
-        super::Instruction::SetIndex { indices, value, .. }
-        | super::Instruction::SetFieldIndex { indices, value, .. }
-        | super::Instruction::SetStaticIndex { indices, value, .. } => {
-            let mut used = indices.clone();
-            used.push(*value);
-            used
-        }
-        super::Instruction::SetMemberIndex {
-            object,
-            indices,
-            value,
-            ..
-        } => {
-            let mut used = vec![*object];
-            used.extend(indices.iter().copied());
-            used.push(*value);
-            used
-        }
-        super::Instruction::SetMember { object, value, .. } => vec![*object, *value],
-        super::Instruction::SetField { value, .. }
-        | super::Instruction::StoreStatic { value, .. } => vec![*value],
-        super::Instruction::Allocate { arguments, .. } => arguments.clone(),
-        super::Instruction::Default {
-            dynamic_dimensions, ..
-        } => dynamic_dimensions.clone(),
-        super::Instruction::Phi { incoming, .. } => {
-            incoming.iter().map(|(_, value)| *value).collect()
-        }
-        super::Instruction::Input { prompt, .. } => prompt.iter().copied().collect(),
-        super::Instruction::EnsureClass { .. }
-        | super::Instruction::LoadStatic { .. }
-        | super::Instruction::Constant { .. }
-        | super::Instruction::Load { .. } => Vec::new(),
-    }
-}
+use operands::{instruction_defines, instruction_type};
+pub use operands::{instruction_result, instruction_uses};
 
 #[allow(clippy::too_many_lines)]
 /// Enforces language-level IR well-formedness. Backend capability gaps are
@@ -145,8 +31,9 @@ pub fn instruction_uses(instruction: &super::Instruction) -> Vec<super::ValueId>
 /// definite-assignment invariant.
 pub fn validate(module: &Module) -> Result<(), Diagnostic> {
     validate_class_bases(module)?;
+    ownership::validate_ownership(module)?;
     validate_field_layouts(module)?;
-    validate_function_kinds(module)?;
+    kinds::validate_function_kinds(module)?;
     for function in &module.functions {
         let block_count = u32::try_from(function.blocks.len())
             .map_err(|_| invalid_ir("function has too many basic blocks", function.span))?;
@@ -361,46 +248,6 @@ fn default_module_span() -> Span {
     }
 }
 
-fn validate_class_bases(module: &Module) -> Result<(), Diagnostic> {
-    let span = module
-        .functions
-        .first()
-        .map_or_else(default_module_span, |function| function.span);
-    for (class, base) in &module.class_bases {
-        if class.is_empty() || base.is_empty() {
-            return Err(invalid_ir(
-                "class and base identities cannot be empty",
-                span,
-            ));
-        }
-        let mut seen = HashSet::new();
-        let mut current = class.as_str();
-        while let Some(parent) = module.class_bases.get(current) {
-            if !seen.insert(current) {
-                return Err(invalid_ir(
-                    "class inheritance metadata must be acyclic",
-                    span,
-                ));
-            }
-            current = parent;
-        }
-        for identity in [class, base] {
-            let fields = format!("{identity}.$fields");
-            if !module
-                .functions
-                .iter()
-                .any(|function| function.name == fields)
-            {
-                return Err(invalid_ir(
-                    format!("class layout metadata references missing class '{identity}'"),
-                    span,
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
 struct PhiContext<'a> {
     predecessors: &'a [Vec<usize>],
     reachable: &'a [bool],
@@ -459,29 +306,6 @@ fn validate_phi(
         ));
     }
     Ok(())
-}
-
-fn instruction_type(instruction: &super::Instruction) -> Option<&Type> {
-    match instruction {
-        super::Instruction::Constant { ty, .. }
-        | super::Instruction::Default { ty, .. }
-        | super::Instruction::Phi { ty, .. }
-        | super::Instruction::Load { ty, .. }
-        | super::Instruction::Copy { ty, .. }
-        | super::Instruction::Unary { ty, .. }
-        | super::Instruction::Binary { ty, .. }
-        | super::Instruction::Cast { ty, .. }
-        | super::Instruction::Call { ty, .. }
-        | super::Instruction::DispatchSubmit { ty, .. }
-        | super::Instruction::DispatchAwait { ty, .. }
-        | super::Instruction::Input { ty, .. }
-        | super::Instruction::Vector { ty, .. }
-        | super::Instruction::Index { ty, .. }
-        | super::Instruction::Member { ty, .. }
-        | super::Instruction::Allocate { ty, .. }
-        | super::Instruction::LoadStatic { ty, .. } => Some(ty),
-        _ => None,
-    }
 }
 
 #[allow(clippy::too_many_lines)] // The instruction contract remains exhaustive in one match.
@@ -715,6 +539,7 @@ fn validate_instruction_types(
             ));
         }
         super::Instruction::Member { name, owner, .. }
+        | super::Instruction::TakeMember { name, owner, .. }
         | super::Instruction::SetMember { name, owner, .. }
         | super::Instruction::SetMemberIndex { name, owner, .. }
             if name.is_empty() || owner.is_empty() =>
@@ -733,6 +558,7 @@ fn validate_instruction_types(
             ));
         }
         super::Instruction::SetMember { field: None, .. }
+        | super::Instruction::TakeMember { field: None, .. }
         | super::Instruction::SetMemberIndex { field: None, .. } => {
             return Err(invalid_ir(
                 "record member store must carry a resolved field",
@@ -740,6 +566,14 @@ fn validate_instruction_types(
             ));
         }
         super::Instruction::Member {
+            field: Some(field),
+            name,
+            owner,
+            object,
+            ty,
+            ..
+        }
+        | super::Instruction::TakeMember {
             field: Some(field),
             name,
             owner,
@@ -1086,9 +920,10 @@ fn validate_return_type(
             function.span,
         )),
         (false, _, Some(value))
-            if value_types
-                .get(value)
-                .is_none_or(|value_type| !types_compatible(value_type, &function.return_type)) =>
+            if value_types.get(value).is_none_or(|value_type| {
+                !types_compatible(value_type, &function.return_type)
+                    && !alternative_widens(value_type, &function.return_type)
+            }) =>
         {
             Err(invalid_ir(
                 "return value does not match the function return type",
@@ -1206,6 +1041,7 @@ fn types_compatible(actual: &Type, expected: &Type) -> bool {
 fn assignment_types_compatible(actual: &Type, expected: &Type) -> bool {
     matches!(actual, Type::Unknown) || matches!(expected, Type::Unknown)
         || types_compatible(actual, expected)
+        || alternative_widens(actual, expected)
         || (is_named_value_type(actual) && is_named_value_type(expected))
         // Pointer length is a runtime invariant: allocation can produce a
         // dynamic length that a fixed destination checks when stored. The
@@ -1225,12 +1061,26 @@ fn assignment_types_compatible(actual: &Type, expected: &Type) -> bool {
         )
 }
 
+/// Widening (0.6.md, "Alternative types: identity and assignment", rule 3):
+/// a value of alternative type `actual` may be stored where the alternative
+/// `expected` contains every one of its members. Narrowing is not widening.
+fn alternative_widens(actual: &Type, expected: &Type) -> bool {
+    matches!(
+        (actual, expected),
+        (Type::Alternative(members), Type::Alternative(accepted))
+            if members
+                .iter()
+                .all(|member| accepted.iter().any(|option| types_compatible(member, option)))
+    )
+}
+
 fn is_named_value_type(ty: &Type) -> bool {
     matches!(ty, Type::Named(_) | Type::ImportedNamed { .. })
 }
 
 fn call_types_compatible(actual: &Type, expected: &Type) -> bool {
     types_compatible(actual, expected)
+        || alternative_widens(actual, expected)
         || (is_numeric_type(actual) && is_numeric_type(expected))
         // Standard-library reduction calls use a scalar declaration type for
         // the overloaded one-vector form. Semantic analysis has already
@@ -1339,522 +1189,6 @@ fn reachable_blocks(entry: usize, successors: &[Vec<u32>]) -> Vec<bool> {
     reachable
 }
 
-/// Structural rules for `FunctionKind` (bucket 0.5.1c §3.2). Backends select
-/// entry points, constructors and destructors by kind, so a mislabelled
-/// function is invalid IR, not a backend surprise.
-fn validate_function_kinds(module: &Module) -> Result<(), Diagnostic> {
-    use super::FunctionKind::{Constructor, Default, Destructor, Entry, FieldInit, Init, User};
-    let mut entries = 0usize;
-    for function in &module.functions {
-        match function.kind {
-            Entry => {
-                entries += 1;
-                if entries > 1 {
-                    return Err(invalid_ir(
-                        "module declares more than one entry function",
-                        function.span,
-                    ));
-                }
-                if !function.parameters.is_empty() {
-                    return Err(invalid_ir(
-                        "entry function must not take parameters",
-                        function.span,
-                    ));
-                }
-            }
-            Constructor | Destructor | FieldInit | Init => {
-                if function.owner.is_none() {
-                    return Err(invalid_ir(
-                        "constructor, destructor, field-init and init functions need an owner class",
-                        function.span,
-                    ));
-                }
-                // `Init` allocates and returns the object, so it has no SELF.
-                if function.kind != Init && function.parameters.is_empty() {
-                    return Err(invalid_ir(
-                        "constructor, destructor and field-init functions take SELF first",
-                        function.span,
-                    ));
-                }
-                if function.kind == Destructor
-                    && !matches!(&function.return_type, Type::Named(name) if name == "VOID")
-                {
-                    return Err(invalid_ir("destructor must return VOID", function.span));
-                }
-            }
-            Default => {
-                if function.owner.is_none() {
-                    return Err(invalid_ir(
-                        "default constructor needs an owner struct",
-                        function.span,
-                    ));
-                }
-                if !function.parameters.is_empty() {
-                    return Err(invalid_ir(
-                        "default constructor must not take parameters",
-                        function.span,
-                    ));
-                }
-            }
-            User => {}
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
-mod kind_tests {
-    use std::collections::{BTreeMap, HashMap, HashSet};
-
-    use bn_source::{Position, Revision, SourceId, Span};
-    use bn_types::Type;
-
-    use super::super::{
-        BasicBlock, BlockId, Constant, FieldId, FieldLayout, FieldLayoutEntry, FieldRef, FieldSlot,
-        Function, FunctionKind, Instruction, Module, SymbolId, Terminator, ValueId,
-    };
-
-    fn span() -> Span {
-        let position = Position {
-            source_id: SourceId(1),
-            revision: Revision(1),
-            offset: 0,
-            line: 1,
-            column: 1,
-        };
-        Span {
-            start: position,
-            end: position,
-        }
-    }
-
-    fn function(
-        name: &str,
-        kind: FunctionKind,
-        owner: Option<&str>,
-        params: usize,
-        ret: &str,
-    ) -> Function {
-        Function {
-            name: name.into(),
-            kind,
-            owner: owner.map(str::to_string),
-            asynchronous: false,
-            parameters: (0..params)
-                .map(|i| SymbolId(u32::try_from(i).expect("small")))
-                .collect(),
-            weak_symbols: HashSet::new(),
-            return_type: Type::Named(ret.into()),
-            entry: BlockId(0),
-            blocks: vec![BasicBlock {
-                id: BlockId(0),
-                instructions: Vec::new(),
-                terminator: Terminator::Return { value: None },
-            }],
-            span: span(),
-        }
-    }
-
-    fn module(functions: Vec<Function>) -> Module {
-        Module {
-            functions,
-            ..Module::default()
-        }
-    }
-
-    fn detail(result: Result<(), bn_diag::Diagnostic>) -> String {
-        result.expect_err("must be invalid IR").message.to_string()
-    }
-
-    #[test]
-    fn field_layout_slots_must_be_dense_and_ordered() {
-        let layout = FieldLayout {
-            owner: "Point".into(),
-            fields: vec![FieldLayoutEntry {
-                id: FieldId::from_raw(0),
-                slot: FieldSlot::from_raw(1),
-                ty: Type::Named("INTEGER".into()),
-                declaring_owner: "Point".into(),
-                weak: false,
-                span: span(),
-            }],
-            span: span(),
-        };
-        let mut module = module(Vec::new());
-        module.field_names = vec!["x".into()];
-        module.field_layouts = BTreeMap::from([("Point".into(), layout)]);
-
-        assert!(detail(super::validate(&module)).contains("slots must be dense"));
-    }
-
-    #[test]
-    fn field_layout_ids_must_exist_in_the_interned_name_table() {
-        let layout = FieldLayout {
-            owner: "Point".into(),
-            fields: vec![FieldLayoutEntry {
-                id: FieldId::from_raw(1),
-                slot: FieldSlot::from_raw(0),
-                ty: Type::Named("INTEGER".into()),
-                declaring_owner: "Point".into(),
-                weak: false,
-                span: span(),
-            }],
-            span: span(),
-        };
-        let mut module = module(Vec::new());
-        module.field_names = vec!["x".into()];
-        module.field_layouts = BTreeMap::from([("Point".into(), layout)]);
-
-        assert!(detail(super::validate(&module)).contains("absent from the name table"));
-    }
-
-    #[test]
-    fn member_receiver_and_result_must_match_the_field_layout() {
-        let layout = FieldLayout {
-            owner: "Point".into(),
-            fields: vec![FieldLayoutEntry {
-                id: FieldId::from_raw(0),
-                slot: FieldSlot::from_raw(0),
-                ty: Type::Integer(bn_types::IntegerType::Int32),
-                declaring_owner: "Point".into(),
-                weak: false,
-                span: span(),
-            }],
-            span: span(),
-        };
-        let mut module = module(vec![function(
-            "Start",
-            FunctionKind::Entry,
-            None,
-            0,
-            "VOID",
-        )]);
-        module.field_names = vec!["x".into()];
-        module.field_layouts = BTreeMap::from([("Point".into(), layout)]);
-        module.functions[0].blocks[0].instructions = vec![
-            Instruction::Default {
-                destination: ValueId(0),
-                ty: Type::Named("Point".into()),
-                dimensions: Vec::new(),
-                dynamic_dimensions: Vec::new(),
-                span: span(),
-            },
-            Instruction::Member {
-                destination: ValueId(1),
-                object: ValueId(0),
-                field: Some(FieldRef {
-                    owner: "Point".into(),
-                    id: FieldId::from_raw(0),
-                    slot: FieldSlot::from_raw(0),
-                }),
-                name: "x".into(),
-                owner: "Point".into(),
-                ty: Type::String,
-                span: span(),
-            },
-        ];
-
-        assert!(detail(super::validate(&module)).contains("result type"));
-        let Instruction::Default { ty, .. } = &mut module.functions[0].blocks[0].instructions[0]
-        else {
-            unreachable!("default");
-        };
-        *ty = Type::Boolean;
-        let Instruction::Member { ty, .. } = &mut module.functions[0].blocks[0].instructions[1]
-        else {
-            unreachable!("member");
-        };
-        *ty = Type::Integer(bn_types::IntegerType::Int32);
-        assert!(detail(super::validate(&module)).contains("receiver"));
-    }
-
-    #[test]
-    fn derived_receiver_may_access_a_base_layout_field() {
-        let base_layout = FieldLayout {
-            owner: "Animal".into(),
-            fields: vec![FieldLayoutEntry {
-                id: FieldId::from_raw(0),
-                slot: FieldSlot::from_raw(0),
-                ty: Type::String,
-                declaring_owner: "Animal".into(),
-                weak: false,
-                span: span(),
-            }],
-            span: span(),
-        };
-        let derived_layout = FieldLayout {
-            owner: "Dog".into(),
-            fields: base_layout.fields.clone(),
-            span: span(),
-        };
-        let mut module = module(vec![
-            function(
-                "Animal.$fields",
-                FunctionKind::FieldInit,
-                Some("Animal"),
-                1,
-                "VOID",
-            ),
-            function(
-                "Dog.$fields",
-                FunctionKind::FieldInit,
-                Some("Dog"),
-                1,
-                "VOID",
-            ),
-            function("Start", FunctionKind::Entry, None, 0, "VOID"),
-        ]);
-        module.field_names = vec!["name".into()];
-        module.class_bases = HashMap::from([("Dog".into(), "Animal".into())]);
-        module.field_layouts = BTreeMap::from([
-            ("Animal".into(), base_layout),
-            ("Dog".into(), derived_layout),
-        ]);
-        module.functions[2].blocks[0].instructions = vec![
-            Instruction::Default {
-                destination: ValueId(0),
-                ty: Type::Named("Dog".into()),
-                dimensions: Vec::new(),
-                dynamic_dimensions: Vec::new(),
-                span: span(),
-            },
-            Instruction::Member {
-                destination: ValueId(1),
-                object: ValueId(0),
-                field: Some(FieldRef {
-                    owner: "Animal".into(),
-                    id: FieldId::from_raw(0),
-                    slot: FieldSlot::from_raw(0),
-                }),
-                name: "name".into(),
-                owner: "Animal".into(),
-                ty: Type::String,
-                span: span(),
-            },
-        ];
-
-        super::validate(&module).expect("derived receiver may access inherited base field");
-    }
-
-    #[test]
-    fn field_name_table_must_not_duplicate_spellings() {
-        let mut module = module(Vec::new());
-        module.field_names = vec!["x".into(), "x".into()];
-
-        assert!(detail(super::validate(&module)).contains("field names must be unique"));
-    }
-
-    #[test]
-    fn derived_layout_must_preserve_the_base_prefix() {
-        let base = FieldLayout {
-            owner: "Parent".into(),
-            fields: vec![FieldLayoutEntry {
-                id: FieldId::from_raw(0),
-                slot: FieldSlot::from_raw(0),
-                ty: Type::Named("INTEGER".into()),
-                declaring_owner: "Parent".into(),
-                weak: false,
-                span: span(),
-            }],
-            span: span(),
-        };
-        let child = FieldLayout {
-            owner: "Child".into(),
-            fields: vec![FieldLayoutEntry {
-                id: FieldId::from_raw(1),
-                slot: FieldSlot::from_raw(0),
-                ty: Type::Named("INTEGER".into()),
-                declaring_owner: "Child".into(),
-                weak: false,
-                span: span(),
-            }],
-            span: span(),
-        };
-        let mut module = module(vec![function(
-            "Parent.$fields",
-            FunctionKind::FieldInit,
-            Some("Parent"),
-            1,
-            "VOID",
-        )]);
-        module.functions.push(function(
-            "Child.$fields",
-            FunctionKind::FieldInit,
-            Some("Child"),
-            1,
-            "VOID",
-        ));
-        module.field_names = vec!["first".into(), "second".into()];
-        module.class_bases = HashMap::from([("Child".into(), "Parent".into())]);
-        module.field_layouts = BTreeMap::from([("Parent".into(), base), ("Child".into(), child)]);
-
-        assert!(detail(super::validate(&module)).contains("base layout prefix"));
-    }
-
-    #[test]
-    fn field_path_stores_require_matching_resolved_fields() {
-        let layout = FieldLayout {
-            owner: "Point".into(),
-            fields: vec![FieldLayoutEntry {
-                id: FieldId::from_raw(0),
-                slot: FieldSlot::from_raw(0),
-                ty: Type::Integer(bn_types::IntegerType::Int32),
-                declaring_owner: "Point".into(),
-                weak: false,
-                span: span(),
-            }],
-            span: span(),
-        };
-        let mut module = module(vec![function(
-            "Start",
-            FunctionKind::Entry,
-            None,
-            0,
-            "VOID",
-        )]);
-        module.field_names = vec!["x".into()];
-        module.field_layouts = BTreeMap::from([("Point".into(), layout)]);
-        module.functions[0].blocks[0].instructions = vec![
-            Instruction::Constant {
-                destination: ValueId(0),
-                value: Constant::Integer("1".into()),
-                ty: Type::Integer(bn_types::IntegerType::Int32),
-                span: span(),
-            },
-            Instruction::SetField {
-                symbol: SymbolId(0),
-                root_owner: "Point".into(),
-                path: vec!["x".into()],
-                fields: None,
-                value: ValueId(0),
-                ty: Type::Integer(bn_types::IntegerType::Int32),
-                span: span(),
-            },
-        ];
-
-        assert!(detail(super::validate(&module)).contains("must carry resolved fields"));
-
-        let Instruction::SetField { fields, .. } =
-            &mut module.functions[0].blocks[0].instructions[1]
-        else {
-            unreachable!("field store");
-        };
-        *fields = Some(vec![FieldRef {
-            owner: "Point".into(),
-            id: FieldId::from_raw(0),
-            slot: FieldSlot::from_raw(1),
-        }]);
-        assert!(detail(super::validate(&module)).contains("does not match"));
-    }
-
-    #[test]
-    fn well_formed_kinds_validate() {
-        let m = module(vec![
-            function("Start", FunctionKind::Entry, None, 0, "VOID"),
-            function(
-                "C.CONSTRUCTOR",
-                FunctionKind::Constructor,
-                Some("C"),
-                1,
-                "VOID",
-            ),
-            function(
-                "C.DESTRUCTOR",
-                FunctionKind::Destructor,
-                Some("C"),
-                1,
-                "VOID",
-            ),
-            function("C.$fields", FunctionKind::FieldInit, Some("C"), 1, "VOID"),
-            function("C.$init", FunctionKind::Init, Some("C"), 0, "VOID"),
-            function("P.$default", FunctionKind::Default, Some("P"), 0, "VOID"),
-            function("C.Method", FunctionKind::User, Some("C"), 1, "VOID"),
-            function("Free", FunctionKind::User, None, 0, "VOID"),
-        ]);
-        super::validate(&m).expect("well-formed kinds");
-    }
-
-    #[test]
-    fn two_entries_are_invalid() {
-        let m = module(vec![
-            function("Start", FunctionKind::Entry, None, 0, "VOID"),
-            function("Start2", FunctionKind::Entry, None, 0, "VOID"),
-        ]);
-        assert!(detail(super::validate(&m)).contains("more than one entry"));
-    }
-
-    #[test]
-    fn entry_with_parameters_is_invalid() {
-        let m = module(vec![function(
-            "Start",
-            FunctionKind::Entry,
-            None,
-            1,
-            "VOID",
-        )]);
-        assert!(detail(super::validate(&m)).contains("entry function must not take parameters"));
-    }
-
-    #[test]
-    fn synthesised_kinds_need_an_owner() {
-        for kind in [
-            FunctionKind::Constructor,
-            FunctionKind::Destructor,
-            FunctionKind::FieldInit,
-            FunctionKind::Init,
-        ] {
-            let m = module(vec![function("X.f", kind, None, 1, "VOID")]);
-            assert!(
-                detail(super::validate(&m)).contains("need an owner class"),
-                "{kind:?}"
-            );
-        }
-        let m = module(vec![function(
-            "P.$default",
-            FunctionKind::Default,
-            None,
-            0,
-            "VOID",
-        )]);
-        assert!(detail(super::validate(&m)).contains("needs an owner struct"));
-    }
-
-    #[test]
-    fn self_taking_kinds_need_a_parameter() {
-        for kind in [
-            FunctionKind::Constructor,
-            FunctionKind::Destructor,
-            FunctionKind::FieldInit,
-        ] {
-            let m = module(vec![function("C.f", kind, Some("C"), 0, "VOID")]);
-            assert!(
-                detail(super::validate(&m)).contains("take SELF first"),
-                "{kind:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn destructor_must_return_void() {
-        let m = module(vec![function(
-            "C.DESTRUCTOR",
-            FunctionKind::Destructor,
-            Some("C"),
-            1,
-            "INTEGER",
-        )]);
-        assert!(detail(super::validate(&m)).contains("destructor must return VOID"));
-    }
-
-    #[test]
-    fn default_constructor_takes_no_parameters() {
-        let m = module(vec![function(
-            "P.$default",
-            FunctionKind::Default,
-            Some("P"),
-            1,
-            "VOID",
-        )]);
-        assert!(detail(super::validate(&m)).contains("must not take parameters"));
-    }
-}
+#[path = "validate/kind_tests.rs"]
+mod kind_tests;

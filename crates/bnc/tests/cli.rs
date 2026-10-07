@@ -261,6 +261,7 @@ fn warn_level_process_log_keeps_warning_events_and_summary() {
     let _ = fs::remove_dir_all(&directory);
     fs::create_dir_all(&directory).expect("warn log directory");
     let log_path = directory.join("warn.log");
+    let output_path = directory.join("unused-binding-warning");
     let output = bnc()
         .args([
             "tests/grammar/valid/unused-binding-warning.bn",
@@ -268,6 +269,8 @@ fn warn_level_process_log_keeps_warning_events_and_summary() {
             "warn",
             "--log-file",
             log_path.to_str().expect("UTF-8 log path"),
+            "-o",
+            output_path.to_str().expect("UTF-8 output path"),
         ])
         .output()
         .expect("build with warn-level process log");
@@ -338,6 +341,8 @@ fn no_log_disables_companion_and_unwritable_log_is_a_tool_error() {
                 .join("build.log")
                 .to_str()
                 .expect("UTF-8 log path"),
+            "-o",
+            output_path.to_str().expect("UTF-8 output path"),
         ])
         .output()
         .expect("build with unwritable log");
@@ -405,6 +410,7 @@ fn cli_log_file_overrides_configured_disabled_logging() {
     )
     .expect("write disabled logging config");
 
+    let output_path = directory.join("hello");
     let output = bnc()
         .args([
             "examples/hello.bn",
@@ -412,6 +418,8 @@ fn cli_log_file_overrides_configured_disabled_logging() {
             config_path.to_str().expect("UTF-8 config path"),
             "--log-file",
             log_path.to_str().expect("UTF-8 log path"),
+            "-o",
+            output_path.to_str().expect("UTF-8 output path"),
         ])
         .output()
         .expect("build with CLI logging override");
@@ -425,7 +433,7 @@ fn cli_log_file_overrides_configured_disabled_logging() {
 #[test]
 fn build_emits_llvm_for_finite_constant_loop() {
     let output = bnc()
-        .args(["examples/hello.bn"])
+        .args(["--emit", "llvm", "examples/hello.bn"])
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
@@ -435,7 +443,7 @@ fn build_emits_llvm_for_finite_constant_loop() {
 #[test]
 fn build_emits_llvm_for_empty_start() {
     let output = bnc()
-        .args(["tests/grammar/valid/empty-start.bn"])
+        .args(["--emit", "llvm", "tests/grammar/valid/empty-start.bn"])
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
@@ -447,7 +455,7 @@ fn build_emits_llvm_for_empty_start() {
 #[test]
 fn build_emits_integer_start_exit_code() {
     let output = bnc()
-        .args(["tests/grammar/valid/start-exit-code.bn"])
+        .args(["--emit", "llvm", "tests/grammar/valid/start-exit-code.bn"])
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
@@ -457,7 +465,7 @@ fn build_emits_integer_start_exit_code() {
 #[test]
 fn build_reports_the_type_for_unsupported_allocation_lowering() {
     let output = bnc()
-        .args(["tests/grammar/valid/pointer-void.bn"])
+        .args(["--emit", "llvm", "tests/grammar/valid/pointer-void.bn"])
         .output()
         .expect("run pointer build");
     assert_eq!(
@@ -467,15 +475,19 @@ fn build_reports_the_type_for_unsupported_allocation_lowering() {
         String::from_utf8_lossy(&output.stderr)
     );
     let llvm = String::from_utf8_lossy(&output.stdout);
-    // A region is a counted allocation: header + elements, count stored at +8.
+    // A region is a counted allocation: header + elements; the ARC core
+    // counts it (a region has no class) and its id is stored at +8.
     assert!(llvm.contains("call ptr @calloc"), "{llvm}");
-    assert!(llvm.contains("store i64 1, ptr %alloccount"), "{llvm}");
+    assert!(
+        llvm.contains("call i64 @bn_rt_arc_register(ptr null, ptr %allocbase"),
+        "{llvm}"
+    );
 }
 
 #[test]
 fn build_emits_llvm_for_integer_print() {
     let output = bnc()
-        .args(["tests/grammar/valid/print-integer.bn"])
+        .args(["--emit", "llvm", "tests/grammar/valid/print-integer.bn"])
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
@@ -487,7 +499,7 @@ fn build_emits_llvm_for_integer_print() {
 #[test]
 fn build_emits_multiple_integer_prints() {
     let output = bnc()
-        .args(["tests/grammar/valid/print-integers.bn"])
+        .args(["--emit", "llvm", "tests/grammar/valid/print-integers.bn"])
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
@@ -501,7 +513,7 @@ fn build_emits_multiple_integer_prints() {
 #[test]
 fn build_constant_folds_integer_expression() {
     let output = bnc()
-        .args(["tests/grammar/valid/print-expression.bn"])
+        .args(["--emit", "llvm", "tests/grammar/valid/print-expression.bn"])
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
@@ -511,7 +523,7 @@ fn build_constant_folds_integer_expression() {
 #[test]
 fn build_constant_folds_unary_integer_expression() {
     let output = bnc()
-        .args(["tests/grammar/valid/print-unary.bn"])
+        .args(["--emit", "llvm", "tests/grammar/valid/print-unary.bn"])
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
@@ -521,7 +533,7 @@ fn build_constant_folds_unary_integer_expression() {
 #[test]
 fn build_constant_propagates_integer_binding() {
     let output = bnc()
-        .args(["tests/grammar/valid/print-variable.bn"])
+        .args(["--emit", "llvm", "tests/grammar/valid/print-variable.bn"])
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
@@ -531,7 +543,7 @@ fn build_constant_propagates_integer_binding() {
 #[test]
 fn build_emits_boolean_prints() {
     let output = bnc()
-        .args(["tests/grammar/valid/print-boolean.bn"])
+        .args(["--emit", "llvm", "tests/grammar/valid/print-boolean.bn"])
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
@@ -543,7 +555,7 @@ fn build_emits_boolean_prints() {
 #[test]
 fn build_emits_float_print() {
     let output = bnc()
-        .args(["tests/grammar/valid/print-float.bn"])
+        .args(["--emit", "llvm", "tests/grammar/valid/print-float.bn"])
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
@@ -553,7 +565,7 @@ fn build_emits_float_print() {
 #[test]
 fn build_emits_string_print() {
     let output = bnc()
-        .args(["tests/grammar/valid/print-string.bn"])
+        .args(["--emit", "llvm", "tests/grammar/valid/print-string.bn"])
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
@@ -563,7 +575,7 @@ fn build_emits_string_print() {
 #[test]
 fn build_constant_folds_if_branch() {
     let output = bnc()
-        .args(["tests/grammar/valid/print-if-constant.bn"])
+        .args(["--emit", "llvm", "tests/grammar/valid/print-if-constant.bn"])
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
@@ -576,7 +588,11 @@ fn build_constant_folds_if_branch() {
 #[test]
 fn build_constant_folds_relational_if_branch() {
     let output = bnc()
-        .args(["tests/grammar/valid/print-if-comparison.bn"])
+        .args([
+            "--emit",
+            "llvm",
+            "tests/grammar/valid/print-if-comparison.bn",
+        ])
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
@@ -589,7 +605,11 @@ fn build_constant_folds_relational_if_branch() {
 #[test]
 fn build_constant_folds_short_circuit_if_branch() {
     let output = bnc()
-        .args(["tests/grammar/valid/print-if-boolean-expression.bn"])
+        .args([
+            "--emit",
+            "llvm",
+            "tests/grammar/valid/print-if-boolean-expression.bn",
+        ])
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
@@ -602,7 +622,11 @@ fn build_constant_folds_short_circuit_if_branch() {
 #[test]
 fn build_escapes_string_literal_for_llvm() {
     let output = bnc()
-        .args(["tests/grammar/valid/print-string-escaped.bn"])
+        .args([
+            "--emit",
+            "llvm",
+            "tests/grammar/valid/print-string-escaped.bn",
+        ])
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
@@ -690,7 +714,7 @@ fn wasm_build_emits_seeded_random_artifact() {
 #[test]
 fn build_eliminates_constant_false_loop() {
     let output = bnc()
-        .args(["tests/grammar/valid/print-while-false.bn"])
+        .args(["--emit", "llvm", "tests/grammar/valid/print-while-false.bn"])
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
@@ -741,7 +765,7 @@ fn build_emits_input_runtime_and_preserves_eof() {
 #[test]
 fn build_emits_host_args_length() {
     let output = bnc()
-        .args(["tests/grammar/valid/print-args-length.bn"])
+        .args(["--emit", "llvm", "tests/grammar/valid/print-args-length.bn"])
         .output()
         .expect("run args length build");
     assert_eq!(
@@ -757,7 +781,7 @@ fn build_emits_host_args_length() {
 #[test]
 fn build_emits_host_args_index_zero() {
     let output = bnc()
-        .args(["tests/grammar/valid/print-arg0.bn"])
+        .args(["--emit", "llvm", "tests/grammar/valid/print-arg0.bn"])
         .output()
         .expect("run args index build");
     assert_eq!(
@@ -772,7 +796,7 @@ fn build_emits_host_args_index_zero() {
 #[test]
 fn build_truncates_int64_host_argument_indices() {
     let output = bnc()
-        .args(["examples/edit_distance.bn"])
+        .args(["--emit", "llvm", "examples/edit_distance.bn"])
         .output()
         .expect("emit edit-distance LLVM");
     assert_eq!(
@@ -789,7 +813,7 @@ fn build_truncates_int64_host_argument_indices() {
 #[test]
 fn build_folds_relational_print() {
     let output = bnc()
-        .args(["tests/grammar/valid/print-comparison.bn"])
+        .args(["--emit", "llvm", "tests/grammar/valid/print-comparison.bn"])
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
@@ -846,7 +870,7 @@ fn native_released_pointer_binding_is_diagnosed_at_runtime() {
 #[test]
 fn build_rejects_recursive_constant_call_without_stack_overflow() {
     let output = bnc()
-        .args(["tests/grammar/valid/build-recursive.bn"])
+        .args(["--emit", "llvm", "tests/grammar/valid/build-recursive.bn"])
         .output()
         .expect("run bn build");
     assert_eq!(
@@ -865,7 +889,7 @@ fn build_rejects_recursive_constant_call_without_stack_overflow() {
 #[test]
 fn build_constant_folds_or_short_circuit_branch() {
     let output = bnc()
-        .args(["tests/grammar/valid/print-if-or.bn"])
+        .args(["--emit", "llvm", "tests/grammar/valid/print-if-or.bn"])
         .output()
         .expect("run bn build");
     assert_eq!(output.status.code(), Some(0));
@@ -878,7 +902,13 @@ fn build_constant_folds_or_short_circuit_branch() {
 #[test]
 fn wasm_build_supports_host_console_capability() {
     let output = bnc()
-        .args(["--target", "wasm32", "tests/grammar/valid/cls-and-beep.bn"])
+        .args([
+            "--emit",
+            "llvm",
+            "--target",
+            "wasm32",
+            "tests/grammar/valid/cls-and-beep.bn",
+        ])
         .output()
         .expect("run wasm build");
     assert_eq!(
@@ -910,6 +940,8 @@ fn wasm_build_rejects_host_net_with_an_explicit_capability_diagnostic() {
 fn wasm_build_allows_host_capability_names_in_strings() {
     let output = bnc()
         .args([
+            "--emit",
+            "llvm",
             "--target",
             "wasm32",
             "tests/grammar/valid/wasm-host-name-string.bn",

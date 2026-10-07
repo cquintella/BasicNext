@@ -1,6 +1,0 @@
-FUNCTION Start() AS VOID
-    LET e AS Error
-    PRINT "Code:", e.Code
-    PRINT "Message:", e.Message
-    PRINT "Cause:", e.Cause
-END FUNCTION

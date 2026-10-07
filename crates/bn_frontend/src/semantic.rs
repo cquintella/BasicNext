@@ -251,6 +251,8 @@ struct Symbol {
     ty: Type,
     declared_ty: Type,
     constant: bool,
+    /// A parameter: a constant binding (0.6.md, "Memory model (ARC)").
+    parameter: bool,
 }
 #[derive(Clone)]
 pub(crate) struct Member {

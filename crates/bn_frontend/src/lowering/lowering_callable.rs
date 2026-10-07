@@ -19,6 +19,10 @@ pub(crate) fn lower_callable(
     prefix: &str,
 ) -> Result<Function, Diagnostic> {
     let mut builder = Builder::new(model, methods, prefix);
+    for parameter in parameters {
+        let symbol = builder.symbol(parameter.span)?;
+        builder.parameters.insert(symbol);
+    }
     if kind == FunctionKind::Constructor {
         builder.derived_fields = Some(format!(
             "{}{}",
@@ -27,7 +31,10 @@ pub(crate) fn lower_callable(
         ));
     }
     if let Some(self_span) = self_span {
-        builder.receiver = Some((builder.symbol(self_span)?, type_at(model, self_span)?));
+        let receiver = builder.symbol(self_span)?;
+        // SELF is the receiver parameter: borrowed, as every parameter.
+        builder.parameters.insert(receiver);
+        builder.receiver = Some((receiver, type_at(model, self_span)?));
     }
     let explicit_super = statements.first().is_some_and(|statement| {
         matches!(statement, Statement::Call { expression, .. } if matches!(expression.kind, ExpressionKind::Call { ref callee, .. } if matches!(callee.kind, ExpressionKind::Super)))
@@ -47,7 +54,9 @@ pub(crate) fn lower_callable(
         let receiver = builder.load(receiver, receiver_type, span);
         builder.emit_derived_fields(receiver, span);
     }
-    builder.statements(statements)?;
+    // The body is the function's outer scope: its ARC locals are released
+    // when it ends (parameters and SELF are borrowed).
+    builder.scoped_statements(statements)?;
     if let Some(base) = parent_destructor
         && !builder.terminated()
     {

@@ -61,6 +61,13 @@ pub(super) fn resolve_member_fields(module: &mut Module) -> Result<(), Diagnosti
                         span,
                         ..
                     }
+                    | Instruction::TakeMember {
+                        field,
+                        name,
+                        owner,
+                        span,
+                        ..
+                    }
                     | Instruction::SetMemberIndex {
                         field,
                         name,

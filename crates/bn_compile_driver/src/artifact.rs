@@ -82,8 +82,25 @@ pub fn emit_build_output(
     build_options: BuildOptions,
     process_log: &mut ProcessLog,
 ) -> ExitCode {
-    let Some(output) = options.output.as_deref() else {
-        return emit_output(llvm, None);
+    if options.emit == Some(bn_cli::options::Emit::Llvm) {
+        return emit_output(llvm, options.output.as_deref());
+    }
+    let default_output;
+    let output = if let Some(path) = options.output.as_deref() {
+        path
+    } else {
+        let stem = std::path::Path::new(&options.path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("a");
+        default_output = if build_options.target == Target::Wasm32 {
+            format!("{stem}.wasm")
+        } else if cfg!(windows) {
+            format!("{stem}.exe")
+        } else {
+            stem.to_string()
+        };
+        &default_output
     };
     let temporary = env::temp_dir().join(format!("basicnext-llvm-{}.ll", std::process::id()));
     if let Err(error) = fs::write(&temporary, &llvm) {
@@ -108,35 +125,30 @@ pub fn emit_build_output(
     let object = temporary.with_extension("o");
     let _object_guard = TempFileGuard(object.clone());
     let mut failed_tool = "clang";
+    // `-g` keeps the debug sections the module metadata describes; on macOS
+    // it also makes clang run dsymutil, which writes `<output>.dSYM`.
+    let debug_flag = build_options.debug.then_some("-g");
     let result = if build_options.target == Target::Wasm32 {
+        let clang_args = [
+            build_options.optimization.clang_flag(),
+            "--target=wasm32-unknown-unknown",
+            "-Wno-override-module",
+            "-c",
+            temporary.to_string_lossy().as_ref(),
+            "-o",
+            object.to_string_lossy().as_ref(),
+        ]
+        .into_iter()
+        .map(ToString::to_string)
+        .chain(debug_flag.map(ToString::to_string))
+        .collect::<Vec<_>>();
         process_log.event(
             LogLevel::Debug,
             "external",
             "invoke",
-            format!(
-                "tool=clang argv={:?}",
-                [
-                    build_options.optimization.clang_flag(),
-                    "--target=wasm32-unknown-unknown",
-                    "-Wno-override-module",
-                    "-c",
-                    temporary.to_string_lossy().as_ref(),
-                    "-o",
-                    object.to_string_lossy().as_ref(),
-                ]
-            ),
+            format!("tool=clang argv={clang_args:?}"),
         );
-        let compiled = std::process::Command::new(clang)
-            .args([
-                build_options.optimization.clang_flag(),
-                "--target=wasm32-unknown-unknown",
-                "-Wno-override-module",
-                "-c",
-                temporary.to_string_lossy().as_ref(),
-                "-o",
-                object.to_string_lossy().as_ref(),
-            ])
-            .output();
+        let compiled = std::process::Command::new(clang).args(&clang_args).output();
         match compiled {
             Ok(compiled) if compiled.status.success() => {
                 failed_tool = "wasm-ld";
@@ -180,6 +192,7 @@ pub fn emit_build_output(
             temporary.to_string_lossy().into_owned(),
         ];
         command_args.extend(native_program_link_args().iter().map(ToString::to_string));
+        command_args.extend(debug_flag.map(ToString::to_string));
         if llvm.contains("@bn_rt_") {
             let bn_rt = match configured_bn_rt_lib() {
                 Ok(path) => path,

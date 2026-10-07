@@ -219,7 +219,7 @@ fn indexed_struct_and_static_fields_preserve_language_semantics() {
 #[test]
 fn inherited_fields_have_one_complete_native_object_layout() {
     let path = valid_fixture("build-inherited-field-layout.bn");
-    let emitted = execute(bnc().arg(&path), None);
+    let emitted = execute(bnc().args(["--emit", "llvm"]).arg(&path), None);
     assert_success(&emitted, "emit inherited layout");
     let allocation = b"call ptr @calloc(i64 1, i64 32)";
     assert!(
@@ -241,7 +241,7 @@ fn inherited_fields_have_one_complete_native_object_layout() {
 #[test]
 fn struct_fields_have_distinct_layout_and_bounded_native_lifetime() {
     let path = valid_fixture("build-struct-layout-lifetime.bn");
-    let emitted = execute(bnc().arg(&path), None);
+    let emitted = execute(bnc().args(["--emit", "llvm"]).arg(&path), None);
     assert_success(&emitted, "emit struct layout");
     for fragment in [
         b"call ptr @calloc(i64 1, i64 32)".as_slice(),
@@ -505,4 +505,61 @@ fn filesystem_types_do_not_depend_on_the_import_alias() {
         "TRUE hello\nFALSE\n"
     );
     assert_native_parity(&path, None);
+}
+
+/// HOST types and methods (`FS.File.ReadAll`, `FS.File.Close`, etc.) invoked
+/// from an imported module do not receive a module prefix (`#N.FS.File.ReadAll`),
+/// compiling and interpreting correctly across backends.
+#[test]
+fn host_methods_in_imported_modules_match_the_interpreter() {
+    let directory = TestDir::new("imported-fs").expect("create test dir");
+    let helper = directory.join("ConfigLoader.bn");
+    fs::write(
+        &helper,
+        "IMPORT HOST.FileSystem AS FS\n\
+         EXPORT CLASS ConfigLoader\n\
+             PUBLIC FUNCTION CONSTRUCTOR()\n\
+             END FUNCTION\n\
+             PUBLIC FUNCTION Read(path AS STRING) AS STRING\n\
+                 LET file AS FS.File OR Error = FS.Open(path, FS.READ)\n\
+                 IF file IS Error THEN\n\
+                     RETURN \"open-error: \" + file.Message\n\
+                 END IF\n\
+                 LET text AS STRING OR Error = file.ReadAll()\n\
+                 file.Close()\n\
+                 IF text IS Error THEN\n\
+                     RETURN \"read-error\"\n\
+                 END IF\n\
+                 RETURN text\n\
+             END FUNCTION\n\
+         END CLASS\n",
+    )
+    .expect("write ConfigLoader.bn");
+    let main_file = directory.join("main.bn");
+    let data_file = directory.join("data.txt");
+    fs::write(&data_file, "send-to-kindle-ok").expect("write data.txt");
+    fs::write(
+        &main_file,
+        format!(
+            "IMPORT ConfigLoader AS ConfigLoader\n\
+             FUNCTION Start() AS VOID\n\
+                 LET loader AS ConfigLoader.ConfigLoader = NEW ConfigLoader.ConfigLoader()\n\
+                 PRINT loader.Read(\"{}\")\n\
+             END FUNCTION\n",
+            data_file.display()
+        ),
+    )
+    .expect("write main.bn");
+
+    let interpreted = interpret(&main_file, None);
+    assert_success(&interpreted, "bni run imported host call");
+    assert_eq!(
+        String::from_utf8_lossy(&interpreted.stdout),
+        "send-to-kindle-ok\n"
+    );
+
+    let artifact = compile_native(&main_file, &directory);
+    let compiled = execute_artifact(&artifact, &[], None);
+    assert_success(&compiled, "native run imported host call");
+    assert_eq!(compiled.stdout, interpreted.stdout);
 }

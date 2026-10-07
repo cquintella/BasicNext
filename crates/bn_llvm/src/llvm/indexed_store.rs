@@ -1,11 +1,13 @@
+#![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::ir::{
+    BinaryOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T,
+};
+use crate::layout::{typed_llvm, vector_ty};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_pointer_set_index(
     text: &mut String,
-    module: &Module,
-    function: &Function,
-    symbols: &HashMap<SymbolId, usize>,
     block_id: BlockId,
     symbol_slot: usize,
     index: ValueId,
@@ -13,7 +15,7 @@ pub(crate) fn emit_pointer_set_index(
     value: ValueId,
     value_ty: &Type,
     elem_ty: &Type,
-    transfers_object: bool,
+    previous: Option<ValueId>,
     context: &'static str,
     state: &mut EmissionState,
 ) {
@@ -22,10 +24,8 @@ pub(crate) fn emit_pointer_set_index(
     let value_op = coerce_to_type(text, value, value_ty, elem_ty);
     let ok = take_continuation(block_id, state);
     let llvm_elem = llvm_type(elem_ty).expect("validated indexed-store element");
-    let _ = writeln!(
-        text,
-        "  %setfat{tag} = load {{ ptr, i32 }}, ptr %s{symbol_slot}"
-    );
+    let slot = O::reg(format!("s{symbol_slot}"));
+    text.assign(format!("setfat{tag}"), I::load(vector_ty(), slot));
     emit_fat_pointer_store(
         text,
         block_id,
@@ -35,15 +35,77 @@ pub(crate) fn emit_pointer_set_index(
         &index_op,
         &value_op,
         llvm_elem,
-        is_class_type(module, elem_ty),
-        transfers_object,
-        module,
-        function,
-        elem_ty,
-        symbols,
+        previous,
         ok,
         state,
     );
+}
+
+/// Bounds-checks `index` against the vector `fat_pointer`: writes
+/// `%{prefix}<ptr|len|neg|oob|bad>{tag}` and traps through `continuation`.
+#[allow(clippy::too_many_arguments)]
+fn emit_bounds_check(
+    text: &mut String,
+    block_id: BlockId,
+    state: &mut EmissionState,
+    prefix: &str,
+    tag: usize,
+    fat_pointer: &str,
+    index: &str,
+    continuation: String,
+    context: &'static str,
+) {
+    let r = |name: &str| O::reg(format!("{prefix}{name}{tag}"));
+    let fat = O::raw(fat_pointer);
+    let at = O::raw(index);
+    text.assign(
+        format!("{prefix}ptr{tag}"),
+        I::extract(vector_ty(), fat.clone(), 0),
+    );
+    text.assign(format!("{prefix}len{tag}"), I::extract(vector_ty(), fat, 1));
+    let negative = I::icmp(ICmpCond::Slt, T::I32, at.clone(), O::int(0));
+    text.assign(format!("{prefix}neg{tag}"), negative);
+    text.assign(
+        format!("{prefix}oob{tag}"),
+        I::icmp(ICmpCond::Uge, T::I32, at, r("len")),
+    );
+    text.assign(
+        format!("{prefix}bad{tag}"),
+        I::binary(BinaryOp::Or, T::I1, r("neg"), r("oob")),
+    );
+    emit_index_trap(
+        text,
+        block_id,
+        state,
+        &format!("%{prefix}bad{tag}"),
+        continuation,
+        index,
+        &format!("%{prefix}len{tag}"),
+        context,
+    );
+}
+
+/// Writes `%{prefix}slot{tag}`, the element of type `llvm_elem` at `index`;
+/// the element replaced goes to `previous` (explicit ownership).
+fn emit_element_store(
+    text: &mut String,
+    prefix: &str,
+    tag: usize,
+    (index, value, llvm_elem): (&str, &str, &str),
+    previous: Option<ValueId>,
+) {
+    let elem = typed_llvm(llvm_elem);
+    let slot = O::reg(format!("{prefix}slot{tag}"));
+    let base = O::reg(format!("{prefix}ptr{tag}"));
+    let at = vec![(T::I32, O::raw(index))];
+    text.assign(format!("{prefix}slot{tag}"), I::gep(elem.clone(), base, at));
+    if let Some(previous) = previous {
+        text.assign(
+            format!("v{}", previous.0),
+            I::load(elem.clone(), slot.clone()),
+        );
+    }
+    text.emit(I::store(elem, O::raw(value), slot));
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -55,6 +117,7 @@ pub(crate) fn emit_vector_set_indices(
     value: ValueId,
     value_ty: &Type,
     elem_ty: &Type,
+    previous: Option<ValueId>,
     analysis: &LoweringAnalysis<'_>,
     state: &mut EmissionState,
 ) {
@@ -62,9 +125,9 @@ pub(crate) fn emit_vector_set_indices(
     let value_op = coerce_to_type(text, value, value_ty, elem_ty);
     let llvm_elem = llvm_type(elem_ty).expect("validated indexed-store element");
     let mut fat_pointer = format!("%mdsetfat{base_tag}_0");
-    let _ = writeln!(
-        text,
-        "  {fat_pointer} = load {{ ptr, i32 }}, ptr %s{symbol_slot}"
+    text.assign(
+        &fat_pointer,
+        I::load(vector_ty(), O::reg(format!("s{symbol_slot}"))),
     );
 
     for (depth, index) in indices.iter().enumerate() {
@@ -75,47 +138,29 @@ pub(crate) fn emit_vector_set_indices(
             .expect("validated multidimensional index type");
         let index_op = coerce_to_type(text, *index, index_ty, &Type::Integer(IntegerType::Int32));
         let continuation = take_continuation(block_id, state);
-        let _ = writeln!(
-            text,
-            "  %mdsetptr{tag} = extractvalue {{ ptr, i32 }} {fat_pointer}, 0"
-        );
-        let _ = writeln!(
-            text,
-            "  %mdsetlen{tag} = extractvalue {{ ptr, i32 }} {fat_pointer}, 1"
-        );
-        let _ = writeln!(text, "  %mdsetneg{tag} = icmp slt i32 {index_op}, 0");
-        let _ = writeln!(
-            text,
-            "  %mdsetoob{tag} = icmp uge i32 {index_op}, %mdsetlen{tag}"
-        );
-        let _ = writeln!(
-            text,
-            "  %mdsetbad{tag} = or i1 %mdsetneg{tag}, %mdsetoob{tag}"
-        );
-        emit_index_trap(
+        emit_bounds_check(
             text,
             block_id,
             state,
-            &format!("%mdsetbad{tag}"),
-            continuation,
+            "mdset",
+            tag,
+            &fat_pointer,
             &index_op,
-            &format!("%mdsetlen{tag}"),
+            continuation,
             "vector",
         );
-
         if depth + 1 == indices.len() {
-            let _ = writeln!(
-                text,
-                "  %mdsetslot{tag} = getelementptr {llvm_elem}, ptr %mdsetptr{tag}, i32 {index_op}"
-            );
-            let _ = writeln!(text, "  store {llvm_elem} {value_op}, ptr %mdsetslot{tag}");
+            let store = (index_op.as_str(), value_op.as_str(), llvm_elem);
+            emit_element_store(text, "mdset", tag, store, previous);
         } else {
             let next = format!("%mdsetfat{base_tag}_{}", depth + 1);
-            let _ = writeln!(
-                text,
-                "  %mdsetslot{tag} = getelementptr {{ ptr, i32 }}, ptr %mdsetptr{tag}, i32 {index_op}"
+            let at = vec![(T::I32, O::raw(index_op))];
+            let row = I::gep(vector_ty(), O::reg(format!("mdsetptr{tag}")), at);
+            text.assign(format!("mdsetslot{tag}"), row);
+            text.assign(
+                &next,
+                I::load(vector_ty(), O::reg(format!("mdsetslot{tag}"))),
             );
-            let _ = writeln!(text, "  {next} = load {{ ptr, i32 }}, ptr %mdsetslot{tag}");
             fat_pointer = next;
         }
     }
@@ -125,9 +170,6 @@ pub(crate) fn emit_vector_set_indices(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_field_set_index(
     text: &mut String,
-    module: &Module,
-    function: &Function,
-    symbols: &HashMap<SymbolId, usize>,
     block_id: BlockId,
     symbol_slot: usize,
     field_offset: u32,
@@ -136,7 +178,7 @@ pub(crate) fn emit_field_set_index(
     value: ValueId,
     value_ty: &Type,
     elem_ty: &Type,
-    transfers_object: bool,
+    previous: Option<ValueId>,
     state: &mut EmissionState,
 ) {
     let tag = state.continuation_count;
@@ -144,15 +186,14 @@ pub(crate) fn emit_field_set_index(
     let value_op = coerce_to_type(text, value, value_ty, elem_ty);
     let ok = take_continuation(block_id, state);
     let llvm_elem = llvm_type(elem_ty).expect("validated indexed-field element");
-    let _ = writeln!(text, "  %fieldsetobj{tag} = load ptr, ptr %s{symbol_slot}");
-    let _ = writeln!(
-        text,
-        "  %fieldsetptr{tag} = getelementptr i8, ptr %fieldsetobj{tag}, i32 {field_offset}"
+    let r = |name: &str| O::reg(format!("fieldset{name}{tag}"));
+    text.assign(
+        format!("fieldsetobj{tag}"),
+        I::load(T::Ptr, O::reg(format!("s{symbol_slot}"))),
     );
-    let _ = writeln!(
-        text,
-        "  %fieldsetfat{tag} = load {{ ptr, i32 }}, ptr %fieldsetptr{tag}"
-    );
+    let offset = vec![(T::I32, O::uint(u64::from(field_offset)))];
+    text.assign(format!("fieldsetptr{tag}"), I::gep(T::I8, r("obj"), offset));
+    text.assign(format!("fieldsetfat{tag}"), I::load(vector_ty(), r("ptr")));
     emit_fat_pointer_store(
         text,
         block_id,
@@ -162,12 +203,7 @@ pub(crate) fn emit_field_set_index(
         &index_op,
         &value_op,
         llvm_elem,
-        is_class_type(module, elem_ty),
-        transfers_object,
-        module,
-        function,
-        elem_ty,
-        symbols,
+        previous,
         ok,
         state,
     );
@@ -183,48 +219,21 @@ fn emit_fat_pointer_store(
     index: &str,
     value: &str,
     llvm_elem: &str,
-    owns_object: bool,
-    transfers_object: bool,
-    module: &Module,
-    function: &Function,
-    element_ty: &Type,
-    symbols: &HashMap<SymbolId, usize>,
+    previous: Option<ValueId>,
     continuation: String,
     state: &mut EmissionState,
 ) {
-    let _ = writeln!(
-        text,
-        "  %setptr{tag} = extractvalue {{ ptr, i32 }} {fat_pointer}, 0"
-    );
-    let _ = writeln!(
-        text,
-        "  %setlen{tag} = extractvalue {{ ptr, i32 }} {fat_pointer}, 1"
-    );
-    let _ = writeln!(text, "  %setneg{tag} = icmp slt i32 {index}, 0");
-    let _ = writeln!(text, "  %setoob{tag} = icmp uge i32 {index}, %setlen{tag}");
-    let _ = writeln!(text, "  %setbad{tag} = or i1 %setneg{tag}, %setoob{tag}");
-    emit_index_trap(
+    emit_bounds_check(
         text,
         block_id,
         state,
-        &format!("%setbad{tag}"),
-        continuation,
+        "set",
+        tag,
+        fat_pointer,
         index,
-        &format!("%setlen{tag}"),
+        continuation,
         context,
     );
-    let _ = writeln!(
-        text,
-        "  %setslot{tag} = getelementptr {llvm_elem}, ptr %setptr{tag}, i32 {index}"
-    );
-    if owns_object {
-        let old = format!("%setold{tag}");
-        let _ = writeln!(text, "  {old} = load ptr, ptr %setslot{tag}");
-        emit_destroy_if_last(text, module, function, &old, element_ty, symbols, state);
-        if !transfers_object {
-            let _ = writeln!(text, "  call void @bn_arc_retain(ptr {value})");
-        }
-    }
-    let _ = writeln!(text, "  store {llvm_elem} {value}, ptr %setslot{tag}");
+    emit_element_store(text, "set", tag, (index, value, llvm_elem), previous);
     state.needs_numeric_overflow_trap = true;
 }

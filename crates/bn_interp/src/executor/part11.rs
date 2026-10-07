@@ -2,166 +2,21 @@
 use super::*;
 
 impl Executor<'_, '_> {
-    pub fn retain_owned_value(&mut self, value: &Value, span: Span) -> Result<(), Diagnostic> {
-        match value {
-            Value::Object { handle, .. } => self.objects.retain(*handle, span),
-            Value::Pointer { handle } => self.memory.retain(*handle, span),
-            Value::Vector(values) => {
-                for value in values {
-                    self.retain_owned_value(value, span)?;
-                }
-                Ok(())
-            }
-            Value::Record { record } => {
-                for value in record.iter() {
-                    self.retain_owned_value(value, span)?;
-                }
-                Ok(())
-            }
-            _ => Ok(()),
-        }
-    }
-
-    pub fn release_owned_value(&mut self, value: Value, span: Span) -> Result<(), Diagnostic> {
-        match value {
-            Value::Object { handle, class } => {
-                if !self.objects.release(handle, span)? {
-                    return Ok(());
-                }
-                self.objects.begin_delete(handle, span)?;
-                let target = Value::Object {
-                    handle,
-                    class: class.clone(),
-                };
-                let destructor = self
-                    .module
-                    .function_of_kind(bn_ir::FunctionKind::Destructor, &class)
-                    .map(|function| function.name.clone());
-                let result = if let Some(destructor) = destructor {
-                    self.call_named(&destructor, vec![target], span).map(|_| ())
-                } else {
-                    Ok(())
-                };
-                let instance = self.objects.get(handle, 0, span)?.clone();
-                self.objects.for_each_live_mut(|candidate| {
-                    for (slot, field) in candidate.fields.iter_mut().enumerate() {
-                        if self
-                            .module
-                            .field_layouts
-                            .get(&candidate.class)
-                            .and_then(|layout| layout.fields.get(slot))
-                            .is_some_and(|entry| entry.weak)
-                            && matches!(field, Value::Object { handle: other, .. } if *other == handle)
-                        {
-                            *field = Value::Null;
-                        }
-                    }
-                });
-                self.notify_object_destroyed(handle);
-                self.objects.finish_delete(handle, span)?;
-                for (slot, field) in instance.fields.into_vec().into_iter().enumerate() {
-                    if !self
-                        .module
-                        .field_layouts
-                        .get(class.as_ref())
-                        .and_then(|layout| layout.fields.get(slot))
-                        .is_some_and(|entry| entry.weak)
-                    {
-                        self.release_owned_value(field, span)?;
-                    }
-                }
-                result
-            }
-            Value::Vector(values) => {
-                for value in values {
-                    self.release_owned_value(value, span)?;
-                }
-                Ok(())
-            }
-            Value::Record { record } => {
-                for value in record.into_fields() {
-                    self.release_owned_value(value, span)?;
-                }
-                Ok(())
-            }
-            Value::Pointer { handle } => {
-                if self.memory.release(handle, span)? {
-                    self.memory.delete(handle, span)?;
-                }
-                Ok(())
-            }
-            _ => Ok(()),
-        }
-    }
-
-    pub fn refresh_weak_symbols(&self, symbols: &mut HashMap<SymbolId, Value>) {
-        let Some(frame) = self.ownership_frames.last() else {
-            return;
+    /// `Release` of a value: a native handle goes back to the library or
+    /// HOST capability that owns it; anything else gives up the strong
+    /// references it holds.
+    pub fn release_value(&mut self, target: Value, span: Span) -> Result<(), Diagnostic> {
+        let native = match &target {
+            Value::File(_) => return self.host_release(&target, span),
+            // A library class (`BNWeb`, `BNSqlite`) has no field layout.
+            Value::Object { class, .. } => !self.module.field_layouts.contains_key(class.as_ref()),
+            Value::Pointer { .. } | Value::Vector(_) | Value::Record { .. } => false,
+            _ => true,
         };
-        for symbol in &frame.weak_symbols {
-            if matches!(symbols.get(symbol), Some(Value::Object { handle, .. }) if !self.objects.is_live(*handle))
-            {
-                symbols.insert(*symbol, Value::Null);
-            }
-        }
-    }
-
-    pub fn finish_ownership_frame(
-        &mut self,
-        symbols: &mut HashMap<SymbolId, Value>,
-        returned: Option<ValueId>,
-        span: Span,
-    ) -> Result<(), Diagnostic> {
-        let transferred_symbol = returned.and_then(|value| {
-            self.ownership_frames
-                .last()
-                .and_then(|frame| frame.loaded_values.get(&value).copied())
-        });
-        let (locals, weak) = {
-            let frame = self
-                .ownership_frames
-                .last()
-                .expect("ownership frame exists while executing a function");
-            (frame.local_symbols.clone(), frame.weak_symbols.clone())
-        };
-        if let Some(symbol) = transferred_symbol {
-            symbols.remove(&symbol);
-        }
-        for symbol in locals {
-            if Some(symbol) == transferred_symbol || weak.contains(&symbol) {
-                continue;
-            }
-            if let Some(value) = symbols.remove(&symbol) {
-                self.release_owned_value(value, span)?;
-            }
-        }
-        self.ownership_frames.pop();
-        Ok(())
-    }
-
-    pub fn delete_value(
-        &mut self,
-        target: Value,
-        _destructor: Option<&str>,
-        span: Span,
-    ) -> Result<(), Diagnostic> {
-        if let Some(released) = self.library_release(&target, span) {
+        if native && let Some(released) = self.library_release(&target, span) {
             return released;
         }
-        match target {
-            Value::Null => Err(runtime_error(
-                bn_diag::DiagId::NULL_POINTER_ACCESS,
-                "cannot RELEASE NULL",
-                span,
-            )),
-            Value::Pointer { handle } => self.memory.delete(handle, span),
-            Value::Object { .. } | Value::Vector(_) | Value::Record { .. } => {
-                self.release_owned_value(target, span)
-            }
-            Value::File(_) => self.host_release(&target, span),
-
-            _ => Ok(()),
-        }
+        self.release_owned_value(target, span)
     }
 
     pub fn coerce_to(&self, value: Value, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
@@ -226,11 +81,15 @@ impl Executor<'_, '_> {
                 .ok_or_else(|| super::name_not_found(name, "record member", span)),
             (Value::Object { handle, .. }, _) => {
                 let instance = self.objects.get(*handle, 0, span)?;
-                instance
+                let member = instance
                     .fields
                     .get(field_slot(field, span)?)
                     .cloned()
-                    .ok_or_else(|| super::name_not_found(name, "object member", span))
+                    .ok_or_else(|| super::name_not_found(name, "object member", span))?;
+                Ok(match field {
+                    Some(field) if self.module.field_is_weak(field) => self.weak_read(member),
+                    _ => member,
+                })
             }
             _ => Err(super::name_not_found(name, "member lookup", span)),
         }
@@ -566,13 +425,20 @@ impl Executor<'_, '_> {
                 }
                 Ok(value)
             }
-            Type::Alternative(types) => self.default_value(
-                types.first().ok_or_else(|| {
-                    runtime_error(bn_diag::DiagId::INVALID_IR, "empty alternative type", span)
-                })?,
-                dimensions,
-                span,
-            ),
+            // The first member's default; `NULL`, `NA`, and `EOF` are their own
+            // default (0.6.md, "Alternative types: identity and assignment",
+            // rule 5).
+            Type::Alternative(types) => match types.first() {
+                Some(Type::Null) => Ok(Value::Null),
+                Some(Type::NotAvailable) => Ok(Value::NotAvailable),
+                Some(Type::EndOfFile) => Ok(Value::EndOfFile),
+                Some(first) => self.default_value(first, dimensions, span),
+                None => Err(runtime_error(
+                    bn_diag::DiagId::INVALID_IR,
+                    "empty alternative type",
+                    span,
+                )),
+            },
             Type::Named(name) | Type::TypeName(name) => Ok(self.empty_named_value(name)),
             Type::ImportedNamed { module, name } | Type::ImportedTypeName { module, name } => {
                 Ok(self.empty_named_value(&format!("#{}.{name}", module.0)))
@@ -660,7 +526,7 @@ impl Executor<'_, '_> {
     }
 }
 
-fn field_slot(field: Option<&bn_ir::FieldRef>, span: Span) -> Result<usize, Diagnostic> {
+pub(super) fn field_slot(field: Option<&bn_ir::FieldRef>, span: Span) -> Result<usize, Diagnostic> {
     field
         .map(|field| field.slot.value() as usize)
         .ok_or_else(|| {

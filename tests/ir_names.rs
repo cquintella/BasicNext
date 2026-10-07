@@ -61,6 +61,7 @@ fn every_emitted_function_name_follows_a_documented_shape() {
                 names::EmittedNameKind::FieldInit => FunctionKind::FieldInit,
                 names::EmittedNameKind::Init => FunctionKind::Init,
                 names::EmittedNameKind::Default => FunctionKind::Default,
+                names::EmittedNameKind::ReleaseFields => FunctionKind::ReleaseFields,
                 names::EmittedNameKind::User => FunctionKind::User,
             };
             if function.kind != expected {

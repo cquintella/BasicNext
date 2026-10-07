@@ -1,0 +1,30 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A function returns a fixed vector, alone or as an alternative member
+// (`return-type = value-type`), and `IS` tests a vector type
+// (`is-test = data-type`): `x IS INT32[2]` is not `(x IS INT32)[2]`.
+FUNCTION Pair() AS INT32[2]
+    LET v AS INT32[2] = [1, 2]
+    RETURN v
+END FUNCTION
+
+FUNCTION Maybe(found AS BOOLEAN) AS INT32[2] OR NULL
+    IF found THEN
+        RETURN Pair()
+    END IF
+    RETURN NULL
+END FUNCTION
+
+FUNCTION Show(x AS INT32[2] OR NULL) AS VOID
+    PRINT x IS INT32[2], x IS NULL
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET p AS INT32[2] = Pair()
+    PRINT p[0], p[1]
+    Show(Maybe(TRUE))
+    Show(Maybe(FALSE))
+END FUNCTION

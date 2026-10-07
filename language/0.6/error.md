@@ -29,6 +29,31 @@ owner. An operating-system error number may appear in `Cause`, never in
 TODO (normative gap): code tables for `BNData`, `BNJson`, `BNWeb`, `BNLog`,
 `BNCrypto`, `BNDispatch`, `BNMath`, and `BNString`.
 
+## No default value
+
+Bucket typed-llvm-emitter (BDFL decision, 2026-10-05). Because a program cannot
+construct an `Error`, an `Error` has no default value: a `LET`, a class or
+`STRUCT` field, or a vector whose type is `Error` (or whose elements are
+`Error`) needs an initializer that is an `Error` the program received, and
+omitting it is a `TYPE_MISMATCH`. An alternative such as `T OR Error` already
+needs an initializer (0.6.md, "STATIC field type defaults").
+
+```basic
+LET found AS INTEGER OR Error = ASC("")   // an Error from a fallible call
+IF found IS Error THEN
+    LET e AS Error = found                 // narrowed: valid
+END IF
+LET missing AS Error                       // TYPE_MISMATCH: no default
+```
+
+TODO (normative gap): whether a vector of a class type (`Box[2]`) without an
+initializer is valid; semantic analysis accepts it today while a class-typed
+binding needs `=`.
+
+**Fixtures:** `tests/grammar/valid/error-from-fallible-call.bn` (accept and
+run), `tests/grammar/invalid/error-without-initializer.bn`,
+`error-field-without-initializer.bn`, `error-vector-without-initializer.bn`.
+
 ## Runtime diagnostics are not `Error` values
 
 In 0.1, `TryParse` operations return their documented value type or `Error`

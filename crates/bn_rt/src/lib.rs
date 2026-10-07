@@ -18,10 +18,12 @@ use std::{
     ffi::{CStr, c_char},
     io::{self, Write},
     sync::atomic::{AtomicU64, Ordering},
-    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
+pub mod arc;
+mod arc_abi;
 pub mod civil;
+mod clock;
 mod console;
 pub mod crypto;
 mod crypto_abi;
@@ -94,29 +96,7 @@ pub use text_abi::*;
 pub use trap_abi::*;
 
 pub use civil::format_rfc3339;
-
-/// Milliseconds since Unix epoch for an arbitrary `SystemTime`.
-#[must_use]
-pub fn timestamp_ms_from(time: SystemTime) -> i64 {
-    match time.duration_since(UNIX_EPOCH) {
-        Ok(duration) => i64::try_from(duration.as_millis()).unwrap_or(i64::MAX),
-        Err(error) => i64::try_from(error.duration().as_millis()).map_or(i64::MIN, |value| -value),
-    }
-}
-
-/// Milliseconds since Unix epoch for the current wall clock.
-#[must_use]
-pub fn timestamp_ms() -> i64 {
-    timestamp_ms_from(SystemTime::now())
-}
-
-/// Nanoseconds since process start (saturating at `i64::MAX`).
-#[must_use]
-pub fn monotonic_ns() -> i64 {
-    static ORIGIN: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
-    let origin = *ORIGIN.get_or_init(Instant::now);
-    i64::try_from(origin.elapsed().as_nanos()).unwrap_or(i64::MAX)
-}
+pub use clock::{monotonic_ns, timestamp_ms, timestamp_ms_from};
 
 /// The call-boundary policy re-check denied `capability` (host-traits.md).
 fn denied(capability: &str) {

@@ -3,9 +3,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Shared language type identities used by semantic analysis and BN IR.
+//! Shared language type identities used by semantic analysis and BN IR, and
+//! the rules every consumer applies to them (`literals`, `alternatives`).
 
+pub mod alternatives;
 pub mod error_codes;
+pub mod literals;
 pub mod text;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]

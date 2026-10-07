@@ -98,6 +98,12 @@ impl Analyzer {
     pub(crate) fn type_requires_initializer(&self, ty: &Type) -> bool {
         match ty {
             Type::Alternative(_) | Type::Pointer { .. } | Type::Function { .. } => true,
+            // A program cannot construct an `Error`, so it has no default
+            // (error.md, "No default value"), nor do vectors of it.
+            Type::Named(name) if name == "Error" => true,
+            // A vector has a default only when its element has one: `Box[2]`,
+            // an interface vector and `Error[2]` need `=` (0.6.md, defaults).
+            Type::Vector { element, .. } => self.type_requires_initializer(element),
             Type::Named(name) => matches!(
                 self.declaration_kinds.get(name),
                 Some(DeclarationKind::Class | DeclarationKind::Interface)

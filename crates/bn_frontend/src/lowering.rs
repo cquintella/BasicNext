@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::{
     ast::{
@@ -43,6 +43,22 @@ fn qualified_class_name(prefix: &str, name: &str) -> String {
     } else {
         format!("{prefix}{name}")
     }
+}
+
+/// The fully qualified names of the interfaces `program` declares.
+fn lowered_interfaces(program: &Program, prefix: &str) -> BTreeSet<String> {
+    program
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Declaration {
+                kind: DeclarationKind::Interface,
+                name,
+                ..
+            } => Some(qualified_class_name(prefix, name)),
+            _ => None,
+        })
+        .collect()
 }
 
 fn lowered_class_bases(
@@ -197,6 +213,9 @@ struct LoopTargets {
     kind: &'static str,
     exit: BlockId,
     continue_at: BlockId,
+    /// Open scopes outside the loop body: `EXIT` and `CONTINUE` release the
+    /// ones from here inward.
+    scope_depth: usize,
 }
 
 enum AssignPlace {
@@ -247,6 +266,19 @@ struct Builder<'a> {
     loops: Vec<LoopTargets>,
     receiver: Option<(SymbolId, Type)>,
     derived_fields: Option<String>,
+    // Ownership (proposal `arc-shared-core-0.6.5`), decided here only.
+    /// The ARC locals of each open block, in declaration order.
+    scopes: Vec<Vec<(SymbolId, Type, Span)>>,
+    /// Owned values nothing has consumed yet, with the span that made them.
+    owned: Vec<(ValueId, Span)>,
+    /// The type of every value emitted so far.
+    value_types: HashMap<ValueId, Type>,
+    /// `AS WEAK` locals: never retained, never released.
+    weak_locals: HashSet<SymbolId>,
+    /// The function's parameters: borrowed, so `RELEASE` only ends them.
+    parameters: HashSet<SymbolId>,
+    /// The function named by each function constant emitted so far.
+    function_names: HashMap<ValueId, String>,
 }
 
 /// Returns a source-spanned diagnostic if the AST contains a construct that
@@ -268,6 +300,7 @@ fn lower_unvalidated(program: &Program, model: &SemanticModel) -> Result<Module,
         field_names,
         field_layouts,
         class_bases,
+        interfaces: lowered_interfaces(program, ""),
         bndata_providers: HashSet::new(),
         bnmath_providers: HashSet::new(),
         bnlog_providers: HashSet::new(),
@@ -339,6 +372,7 @@ fn lower_graph_unvalidated(
     }
     let mut functions = Vec::new();
     let mut class_bases = HashMap::new();
+    let mut interfaces = BTreeSet::new();
     let mut pending_layouts = HashMap::new();
     for loaded in &graph.modules {
         if loaded.standard_module.is_some() {
@@ -351,6 +385,7 @@ fn lower_graph_unvalidated(
             .ok_or_else(|| ir_error("missing semantic model for module", default_span()))?;
         let prefix = module_prefix(ir_module_id(graph.root), ir_module_id(loaded.id));
         class_bases.extend(lowered_class_bases(&loaded.program, model, &prefix));
+        interfaces.extend(lowered_interfaces(&loaded.program, &prefix));
         collect_layouts(&loaded.program, model, &prefix, &mut pending_layouts);
         collect_semantic_record_layouts(model, &prefix, &mut pending_layouts);
         functions.extend(lower_program(
@@ -362,15 +397,42 @@ fn lower_graph_unvalidated(
     }
     let root = graph.modules.iter().find(|module| module.id == graph.root);
     let source_name = root.and_then(|module| module.program.source_name.clone());
-    let filesystem_import = root.and_then(|module| filesystem_import_span(&module.program));
-    let clock_import = root.and_then(|module| clock_import_span(&module.program));
-    let random_import = root.and_then(|module| random_import_span(&module.program));
-    let console_import = root.and_then(|module| console_import_span(&module.program));
-    let network_import = root.and_then(|module| network_import_span(&module.program));
-    let exec_import = root.and_then(|module| exec_import_span(&module.program));
-    let bnlog_import = root.and_then(|module| standard_import_span(&module.program, "BNLog"));
-    let bnweb_import = root.and_then(|module| standard_import_span(&module.program, "BNWeb"));
-    let bnsqlite_import = root.and_then(|module| standard_import_span(&module.program, "BNSqlite"));
+    let filesystem_import = graph
+        .modules
+        .iter()
+        .find_map(|module| filesystem_import_span(&module.program));
+    let clock_import = graph
+        .modules
+        .iter()
+        .find_map(|module| clock_import_span(&module.program));
+    let random_import = graph
+        .modules
+        .iter()
+        .find_map(|module| random_import_span(&module.program));
+    let console_import = graph
+        .modules
+        .iter()
+        .find_map(|module| console_import_span(&module.program));
+    let network_import = graph
+        .modules
+        .iter()
+        .find_map(|module| network_import_span(&module.program));
+    let exec_import = graph
+        .modules
+        .iter()
+        .find_map(|module| exec_import_span(&module.program));
+    let bnlog_import = graph
+        .modules
+        .iter()
+        .find_map(|module| standard_import_span(&module.program, "BNLog"));
+    let bnweb_import = graph
+        .modules
+        .iter()
+        .find_map(|module| standard_import_span(&module.program, "BNWeb"));
+    let bnsqlite_import = graph
+        .modules
+        .iter()
+        .find_map(|module| standard_import_span(&module.program, "BNSqlite"));
     let (field_names, field_layouts) = lowered_field_metadata(&pending_layouts, &class_bases)?;
     let mut module = Module {
         source_name,
@@ -378,6 +440,7 @@ fn lower_graph_unvalidated(
         field_names,
         field_layouts,
         class_bases,
+        interfaces,
         bndata_providers: graph
             .modules
             .iter()
@@ -490,10 +553,11 @@ mod helpers;
 use helpers::{
     assignment_operator, class_ir_name, clock_import_span, console_import_span, constant,
     destructor_name, display_type, exec_import_span, filesystem_constant, filesystem_import_span,
-    host_capability_constant, ir_error, is_namespace_type, is_numeric_type_name, math_constant,
-    module_constant, module_id_from_prefix, named_or_void, namespace_function, net_constant,
-    network_import_span, random_import_span, standard_import_span, static_class_name, type_at,
-    type_test_name, user_class_name,
+    host_capability_constant, ir_error, is_host_or_builtin_owner, is_namespace_type,
+    is_numeric_type_name, is_user_class_name, math_constant, module_constant,
+    module_id_from_prefix, named_or_void, namespace_function, net_constant, network_import_span,
+    random_import_span, standard_import_span, static_class_name, type_at, type_test_name,
+    user_class_name,
 };
 fn default_span() -> Span {
     Span {

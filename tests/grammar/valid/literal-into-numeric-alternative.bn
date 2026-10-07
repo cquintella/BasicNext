@@ -1,0 +1,20 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A numeric literal stored in an alternative type takes its default type
+// when that is an alternative, else the only alternative of its class
+// (0.6.md, "Numeric literals in alternative types").
+FUNCTION Start() AS VOID
+    LET a AS FLOAT32 OR FLOAT64 = 1.5
+    PRINT a IS FLOAT64, a IS FLOAT32
+    LET b AS INT32 OR INT64 = 9
+    PRINT b IS INT32, b IS INT64
+    LET c AS INT64 OR Error = 9
+    PRINT c IS INT64
+    LET d AS FLOAT32 OR INT32 = 1.5
+    PRINT d IS FLOAT32, d IS INT32
+    LET e AS INT8 OR INT16 = 1 AS INT16
+    PRINT e IS INT16, e IS INT8
+END FUNCTION

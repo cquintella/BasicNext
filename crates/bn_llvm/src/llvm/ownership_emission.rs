@@ -7,12 +7,13 @@
 // object field and member stores, and class initialization.
 #![allow(clippy::wildcard_imports, clippy::too_many_lines)]
 use super::*;
+use crate::ir::{CastOp, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn lower_ownership_emission(
     text: &mut String,
     module: &Module,
-    function: &Function,
+    _function: &Function,
     block_id: BlockId,
     instruction: &Instruction,
     analysis: &LoweringAnalysis<'_>,
@@ -26,26 +27,16 @@ pub(crate) fn lower_ownership_emission(
                 .values
                 .get(value)
                 .expect("validated delete value type");
-            let released_symbol = function
-                .blocks
-                .iter()
-                .flat_map(|block| &block.instructions)
-                .find_map(|instruction| match instruction {
-                    Instruction::Load {
-                        destination,
-                        symbol,
-                        ..
-                    } if *destination == *value => Some(*symbol),
-                    _ => None,
-                });
-            if released_symbol.is_some_and(|symbol| function.weak_symbols.contains(&symbol)) {
-                let symbol = released_symbol.expect("checked weak release symbol");
-                let _ = writeln!(
+            if arc_ops::holds_references(module, ty) {
+                // Explicit ownership: the IR consumes one owned reference.
+                arc_ops::emit_ownership(
                     text,
-                    "  call void @bn_arc_weak_unregister(ptr %s{})",
-                    symbols[&symbol]
+                    module,
+                    arc_ops::Ownership::Release,
+                    ty,
+                    &format!("%v{}", value.0),
+                    state,
                 );
-                let _ = writeln!(text, "  store ptr null, ptr %s{}", symbols[&symbol]);
             } else if matches!(
                 ty,
                 Type::Integer(_)
@@ -54,234 +45,63 @@ pub(crate) fn lower_ownership_emission(
                     | Type::FloatLiteral
                     | Type::Boolean
                     | Type::String
-            ) {
-                // RELEASE ends the binding lifetime; primary values need no
-                // runtime destruction.
-            } else if matches!(ty, Type::Named(_) if is_struct_type(module, ty)) {
-                let Type::Named(owner) = ty else {
-                    unreachable!("validated struct release type");
-                };
-                for field in class_layout_fields(module, owner) {
-                    let weak = module.field_is_weak(&field.reference);
-                    if !is_class_type(module, &field.ty) || weak {
-                        continue;
-                    }
-                    let offset = field_byte_offset(module, &field.reference)
-                        .expect("validated release field slot");
-                    let field_ptr = format!("%structreleasefield{}_{}", value.0, offset);
-                    let object = format!("%structreleaseobj{}_{}", value.0, offset);
-                    let _ = writeln!(
-                        text,
-                        "  {field_ptr} = getelementptr i8, ptr %v{}, i32 {offset}",
-                        value.0
-                    );
-                    let _ = writeln!(text, "  {object} = load ptr, ptr {field_ptr}");
-                    emit_destroy_if_last(
-                        text, module, function, &object, &field.ty, symbols, state,
-                    );
-                    let _ = writeln!(text, "  store ptr null, ptr {field_ptr}");
-                }
-            } else if let Type::Vector {
-                element,
-                dimensions,
-            } = ty
-                && dimensions.len() == 1
-                && let Type::Named(class) = element.as_ref()
-                && module
-                    .function_of_kind(FunctionKind::FieldInit, class)
-                    .is_some()
+                    | Type::Vector { .. }
+                    | Type::Null
+            ) || is_struct_type(module, ty)
+                || general_alternative(ty).is_some()
             {
-                let data = format!("%vectorreleaseptr{}", value.0);
-                let _ = writeln!(
-                    text,
-                    "  {data} = extractvalue {{ ptr, i32 }} %v{}, 0",
-                    value.0
-                );
-                for index in 0..dimensions[0] {
-                    let slot = format!("%vectorreleaseslot{}_{}", value.0, index);
-                    let object = format!("%vectorreleaseobj{}_{}", value.0, index);
-                    let _ = writeln!(
-                        text,
-                        "  {slot} = getelementptr ptr, ptr {data}, i64 {index}"
-                    );
-                    let _ = writeln!(text, "  {object} = load ptr, ptr {slot}");
-                    emit_destroy_if_last(text, module, function, &object, element, symbols, state);
-                }
-            } else if matches!(ty, Type::Vector { .. }) {
-                // Fixed aggregate vectors use function-local storage; RELEASE
-                // closes their elements but never frees the fat-pointer base.
-            } else if is_region_type(ty) {
-                // Drop this binding's strong only. A parameter binding is
-                // borrowed on the native path (no retain on entry), so RELEASE
-                // just ends the binding; the caller's count is untouched.
-                if !released_symbol.is_some_and(|symbol| function.parameters.contains(&symbol)) {
-                    let base = emit_region_base(text, &format!("%v{}", value.0), state);
-                    emit_destroy_if_last(text, module, function, &base, ty, symbols, state);
-                }
-                if let Some(symbol) = released_symbol {
-                    let _ = writeln!(
-                        text,
-                        "  store {{ ptr, i32 }} zeroinitializer, ptr %s{}",
-                        symbols[&symbol]
-                    );
-                }
-            } else if is_bndata_dataframe_type(module, ty) {
-                let handle = format!("%dfdelhandle{}", value.0);
-                let _ = writeln!(text, "  {handle} = ptrtoint ptr %v{} to i64", value.0);
-                emit_checked_i32_eq_zero(
-                    text,
-                    block_id,
-                    *value,
-                    &format!("call i32 @bn_rt_dataframe_close(i64 {handle})"),
-                    &[],
-                    state,
-                );
+                // RELEASE ends the binding (`EndBinding`); a value that holds
+                // no reference needs no runtime work. A fixed vector's
+                // storage is function-local; a STRUCT's is freed with its
+                // function.
             } else if llvm_type(ty) == Some("{ i1, ptr, i64 }")
                 && matches!(ty, Type::Alternative(alternatives) if alternatives.iter().any(|item| matches!(item, Type::ImportedNamed { name, .. } | Type::ImportedTypeName { name, .. } if name == "DataFrame")))
             {
-                let tag = format!("dfaltdelete{}", value.0);
+                let v = value.0;
+                let union = T::struct_of([T::I1, T::Ptr, T::I64]);
+                let tag = format!("dfaltdelete{v}");
                 let continuation = take_continuation(block_id, state);
-                let _ = writeln!(
-                    text,
-                    "  %dfaltiserr{} = extractvalue {{ i1, ptr, i64 }} %v{}, 0",
-                    value.0, value.0
+                let own = O::reg(format!("v{v}"));
+                text.assign(
+                    format!("dfaltiserr{v}"),
+                    I::extract(union.clone(), own.clone(), 0),
                 );
-                let _ = writeln!(
-                    text,
-                    "  br i1 %dfaltiserr{}, label %{}, label %{}",
-                    value.0, continuation, tag
-                );
-                state.control_flow.label(text, tag.clone());
-                let _ = writeln!(
-                    text,
-                    "  %dfalthandle{} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-                    value.0, value.0
-                );
-                emit_checked_i32_eq_zero(
-                    text,
-                    block_id,
-                    *value,
-                    &format!(
-                        "call i32 @bn_rt_dataframe_close(i64 %dfalthandle{})",
-                        value.0
-                    ),
-                    &[],
-                    state,
-                );
-                let _ = writeln!(text, "  br label %{continuation}");
+                text.emit(I::CondBr {
+                    cond: O::reg(format!("dfaltiserr{v}")),
+                    true_dest: continuation.clone(),
+                    false_dest: tag.clone(),
+                });
+                state.control_flow.label(text, tag);
+                text.assign(format!("dfalthandle{v}"), I::extract(union, own, 2));
+                let handle = vec![(T::I64, O::reg(format!("dfalthandle{v}")))];
+                let call = I::call(T::I32, "bn_rt_dataframe_close", handle);
+                emit_checked_i32_eq_zero(text, block_id, *value, call, &[], state);
+                text.emit(I::Br {
+                    dest: continuation.clone(),
+                });
                 state.control_flow.label(text, continuation);
-            } else if llvm_type(ty) == Some("{ i1, ptr, i64 }")
-                && matches!(
-                    ty,
-                    Type::Alternative(alternatives)
-                        if alternatives.iter().any(|item| matches!(
-                            item,
-                            Type::Named(name) if name == "HOST.Exec.Result"
-                        ))
-                )
-            {
-                let _ = writeln!(
-                    text,
-                    "  %execdelhandle{} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-                    value.0, value.0
-                );
-                let _ = writeln!(
-                    text,
-                    "  call i32 @bn_rt_exec_result_close(i64 %execdelhandle{})",
-                    value.0
-                );
-            } else if llvm_type(ty) == Some("{ i1, ptr, i64 }") {
-                let _ = writeln!(
-                    text,
-                    "  %filedelhandle{} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-                    value.0, value.0
-                );
-                let _ = writeln!(
-                    text,
-                    "  call i32 @bn_rt_file_release(i64 %filedelhandle{})",
-                    value.0
-                );
-            } else if carries_bnjson(module, ty) {
-                let handle = format!("%jsondelhandle{}", value.0);
-                let _ = writeln!(text, "  {handle} = ptrtoint ptr %v{} to i64", value.0);
-                let _ = writeln!(
-                    text,
-                    "  %jsondelrc{} = call i32 @bn_rt_json_release(i64 {handle})",
-                    value.0
-                );
-            } else if is_bncrypto_bytes_type(module, ty) {
-                let handle = format!("%crydelhandle{}", value.0);
-                let _ = writeln!(text, "  {handle} = ptrtoint ptr %v{} to i64", value.0);
-                let _ = writeln!(
-                    text,
-                    "  %crydelrc{} = call i32 @bn_rt_crypto_bytes_release(i64 {handle})",
-                    value.0
-                );
-            } else if is_bnsqlite_connection_type(module, ty) {
-                let handle = format!("%sqlitedelhandle{}", value.0);
-                let _ = writeln!(text, "  {handle} = ptrtoint ptr %v{} to i64", value.0);
-                let _ = writeln!(
-                    text,
-                    "  %sqlitedelrc{} = call i32 @bn_rt_sqlite_close(i64 {handle})",
-                    value.0
-                );
-            } else if let Some(kind) = bnlog_resource_kind(module, ty) {
-                let handle = format!("%logdelhandle{}", value.0);
-                let symbol = if kind == "Fields" {
-                    "bn_rt_log_fields_close"
+            } else if let Some((slot, symbol, checked)) = release_call(module, ty) {
+                // A handle-backed value: a `bn_rt` table index behind a ptr,
+                // or slot 2 of the aggregate (`FS.File`, `HOST.Exec.Result`).
+                let v = value.0;
+                let own = O::reg(format!("v{v}"));
+                let handle = format!("{slot}delhandle{v}");
+                let inst = if llvm_type(ty) == Some("{ i1, ptr, i64 }") {
+                    I::extract(T::struct_of([T::I1, T::Ptr, T::I64]), own, 2)
                 } else {
-                    "bn_rt_log_logger_delete"
+                    I::cast(CastOp::PtrToInt, T::Ptr, own, T::I64)
                 };
-                let _ = writeln!(text, "  {handle} = ptrtoint ptr %v{} to i64", value.0);
-                let _ = writeln!(
-                    text,
-                    "  %logdelrc{} = call i32 @{symbol}(i64 {handle})",
-                    value.0
-                );
-            } else {
-                if is_class_type(module, ty) {
-                    emit_destroy_if_last(
-                        text,
-                        module,
-                        function,
-                        &format!("%v{}", value.0),
-                        ty,
-                        symbols,
-                        state,
-                    );
-                } else {
-                    emit_delete(text, module, *value, ty);
-                }
-                if llvm_type(ty) == Some("ptr") {
-                    for owned_value in analysis.owned_object_results.keys() {
-                        let tag = format!("arc_clear{}_{}", owned_value.0, value.0);
-                        let _ = writeln!(
-                            text,
-                            "  %{tag}old = load ptr, ptr %objectowned{}",
-                            owned_value.0
-                        );
-                        let _ = writeln!(text, "  %{tag}eq = icmp eq ptr %{tag}old, %v{}", value.0);
-                        let _ = writeln!(
-                            text,
-                            "  %{tag}next = select i1 %{tag}eq, ptr null, ptr %{tag}old",
-                        );
-                        let _ = writeln!(
-                            text,
-                            "  store ptr %{tag}next, ptr %objectowned{}",
-                            owned_value.0
-                        );
+                text.assign(&handle, inst);
+                let call = I::call(T::I32, symbol, vec![(T::I64, O::reg(handle))]);
+                match checked {
+                    Rc::Checked => {
+                        emit_checked_i32_eq_zero(text, block_id, *value, call, &[], state);
                     }
+                    Rc::Named => text.assign(format!("{slot}delrc{v}"), call),
+                    Rc::Dropped => text.emit(call),
                 }
-                if let Some(symbol) = released_symbol
-                    && analysis.symbols.get(&symbol).and_then(llvm_type) == Some("ptr")
-                {
-                    let _ = writeln!(text, "  store ptr null, ptr %s{}", symbols[&symbol]);
-                }
-            }
-            if let Some(symbol) = released_symbol
-                && analysis.released_symbols.contains(&symbol)
-            {
-                let _ = writeln!(text, "  store i1 false, ptr %slive{}", symbols[&symbol]);
+            } else {
+                emit_delete(text, module, *value, ty);
             }
         }
         Instruction::EnsureClass { class, .. } => {
@@ -289,18 +109,19 @@ pub(crate) fn lower_ownership_emission(
             let n = state.continuation_count;
             state.continuation_count += 1;
             let tag = format!("{}{n}", sanitize_symbol(class));
-            let _ = writeln!(text, "  %initflag{tag} = load i1, ptr {flag}");
-            let _ = writeln!(
-                text,
-                "  br i1 %initflag{tag}, label %initdone{tag}, label %initrun{tag}"
-            );
+            text.assign(format!("initflag{tag}"), I::load(T::I1, O::raw(&flag)));
+            text.emit(I::cond_br(
+                O::reg(format!("initflag{tag}")),
+                format!("initdone{tag}"),
+                format!("initrun{tag}"),
+            ));
             state.control_flow.label(text, format!("initrun{tag}"));
-            let _ = writeln!(text, "  store i1 true, ptr {flag}");
+            text.emit(I::store(T::I1, O::bool(true), O::raw(&flag)));
             if let Some(init) = module.function_of_kind(FunctionKind::Init, class) {
                 let init = llvm_function_symbol(&init.name);
-                let _ = writeln!(text, "  call void @{init}()");
+                text.emit(I::call(T::Void, &init, vec![]));
             }
-            let _ = writeln!(text, "  br label %initdone{tag}");
+            text.emit(I::br(format!("initdone{tag}")));
             state.control_flow.label(text, format!("initdone{tag}"));
         }
         Instruction::LoadStatic {
@@ -313,12 +134,16 @@ pub(crate) fn lower_ownership_emission(
             block_state.constants.remove(destination);
             let llvm_ty = llvm_type(ty).expect("validated static type");
             let global = static_global_name(class, field);
-            let _ = writeln!(text, "  %v{} = load {llvm_ty}, ptr {global}", destination.0);
+            text.assign(
+                format!("v{}", destination.0),
+                I::load(crate::layout::typed_llvm(llvm_ty), O::raw(global)),
+            );
         }
         Instruction::StoreStatic {
             class,
             field,
             value,
+            previous,
             ty,
             ..
         } => {
@@ -329,7 +154,24 @@ pub(crate) fn lower_ownership_emission(
                 .expect("validated static value type");
             let operand = coerce_to_type(text, *value, value_ty, ty);
             let global = static_global_name(class, field);
-            let _ = writeln!(text, "  store {llvm_ty} {operand}, ptr {global}");
+            let storage = global.replacen("@bn_st_", "@bn_sv_", 1);
+            if previous.is_some() && arc_ops::holds_references(module, ty) {
+                let kept = global.replacen("@bn_st_", "@bn_svp_", 1);
+                vectors::emit_vector_keep_previous(text, (&storage, &kept, &global), ty);
+            }
+            if let Some(previous) = previous {
+                text.assign(
+                    format!("v{}", previous.0),
+                    I::load(crate::layout::typed_llvm(llvm_ty), O::raw(&global)),
+                );
+            }
+            let operand =
+                vectors::emit_vector_copy(text, &storage, &operand, ty).unwrap_or(operand);
+            text.emit(I::store(
+                crate::layout::typed_llvm(llvm_ty),
+                O::raw(operand),
+                O::raw(global),
+            ));
         }
         Instruction::SetMember {
             object,
@@ -337,6 +179,7 @@ pub(crate) fn lower_ownership_emission(
             name: _,
             owner: _,
             value,
+            previous,
             ty,
             ..
         } => {
@@ -349,23 +192,11 @@ pub(crate) fn lower_ownership_emission(
                 .values
                 .get(value)
                 .expect("validated member value type");
-            let strong_object_field = is_class_type(module, ty)
-                && !field
-                    .as_ref()
-                    .is_some_and(|field| module.field_is_weak(field));
+            let weak = field
+                .as_ref()
+                .is_some_and(|field| module.field_is_weak(field));
             emit_set_member(
-                text,
-                module,
-                function,
-                analysis,
-                symbols,
-                *object,
-                offset,
-                *value,
-                value_ty,
-                ty,
-                strong_object_field,
-                state,
+                text, *object, offset, *value, value_ty, ty, *previous, weak, state,
             );
         }
         Instruction::SetField {
@@ -373,6 +204,7 @@ pub(crate) fn lower_ownership_emission(
             path: _,
             fields,
             value,
+            previous,
             ty,
             ..
         } => {
@@ -384,49 +216,38 @@ pub(crate) fn lower_ownership_emission(
                 .values
                 .get(value)
                 .expect("validated field value type");
-            let _ = writeln!(
-                text,
-                "  %fieldobj{} = load ptr, ptr %s{}",
-                value.0, symbols[symbol]
+            text.assign(
+                format!("fieldobj{}", value.0),
+                I::load(T::Ptr, O::reg(format!("s{}", symbols[symbol]))),
             );
             // Reuse SetMember emitter with a synthetic object value id name via temp.
             let llvm_ty = llvm_type(ty).expect("validated field type");
             let value_op = coerce_to_type(text, *value, value_ty, ty);
-            let _ = writeln!(
-                text,
-                "  %fieldptr{} = getelementptr i8, ptr %fieldobj{}, i32 {offset}",
-                value.0, value.0
+            let gep = I::gep(
+                T::I8,
+                O::reg(format!("fieldobj{}", value.0)),
+                vec![(T::I32, O::int(i64::from(offset)))],
             );
-            let strong_object_field = is_class_type(module, ty)
-                && !resolved.is_some_and(|field| module.field_is_weak(field));
-            if strong_object_field {
-                let old = format!("%fieldsetold{}", value.0);
-                let _ = writeln!(text, "  {old} = load ptr, ptr %fieldptr{}", value.0);
-                emit_destroy_if_last(text, module, function, &old, ty, symbols, state);
-                if analysis.owned_object_results.contains_key(value) {
-                    let _ = writeln!(text, "  store ptr null, ptr %objectowned{}", value.0);
-                } else {
-                    let _ = writeln!(text, "  call void @bn_arc_retain(ptr {value_op})");
-                }
-            } else if is_region_type(ty) {
-                emit_region_field_assign(
-                    text,
-                    module,
-                    function,
-                    analysis,
-                    symbols,
-                    &format!("%fieldptr{}", value.0),
-                    *value,
-                    &value_op,
-                    ty,
-                    state,
+            text.assign(format!("fieldptr{}", value.0), gep);
+            if let Some(previous) = previous {
+                text.assign(
+                    format!("v{}", previous.0),
+                    I::load(
+                        crate::layout::typed_llvm(llvm_ty),
+                        O::reg(format!("fieldptr{}", value.0)),
+                    ),
                 );
             }
-            let _ = writeln!(
-                text,
-                "  store {llvm_ty} {value_op}, ptr %fieldptr{}",
-                value.0
-            );
+            let value_op = if resolved.is_some_and(|field| module.field_is_weak(field)) {
+                arc_ops::weak_store_operand(text, &value_op, state)
+            } else {
+                value_op
+            };
+            text.emit(I::store(
+                crate::layout::typed_llvm(llvm_ty),
+                O::raw(value_op),
+                O::reg(format!("fieldptr{}", value.0)),
+            ));
         }
         Instruction::SetFieldIndex {
             symbol,
@@ -434,6 +255,7 @@ pub(crate) fn lower_ownership_emission(
             fields,
             indices,
             value,
+            previous,
             ty,
             ..
         } => {
@@ -444,16 +266,8 @@ pub(crate) fn lower_ownership_emission(
             let offset =
                 field_byte_offset(module, resolved).expect("validated indexed field path slot");
             let index = indices[0];
-            let transfers_object =
-                is_class_type(module, ty) && analysis.owned_object_results.contains_key(value);
-            if transfers_object {
-                let _ = writeln!(text, "  store ptr null, ptr %objectowned{}", value.0);
-            }
             emit_field_set_index(
                 text,
-                module,
-                function,
-                symbols,
                 block_id,
                 symbols[symbol],
                 offset,
@@ -462,11 +276,50 @@ pub(crate) fn lower_ownership_emission(
                 *value,
                 analysis.values.get(value).expect("validated value type"),
                 ty,
-                transfers_object,
+                *previous,
                 state,
             );
         }
         _ => return false,
     }
     true
+}
+
+/// What happens to the status of a handle's release call.
+enum Rc {
+    /// Non-zero traps with the failure `bn_rt` recorded.
+    Checked,
+    /// Bound to `%<slot>delrc` and unused.
+    Named,
+    /// Not bound.
+    Dropped,
+}
+
+/// The `bn_rt` call that releases a handle-backed value of type `ty`, with the
+/// slot prefix of its registers.
+fn release_call(module: &Module, ty: &Type) -> Option<(&'static str, &'static str, Rc)> {
+    let aggregate = llvm_type(ty) == Some("{ i1, ptr, i64 }");
+    let exec = matches!(ty, Type::Alternative(alternatives) if alternatives.iter().any(
+        |item| matches!(item, Type::Named(name) if name == "HOST.Exec.Result")
+    ));
+    Some(if is_bndata_dataframe_type(module, ty) {
+        ("df", "bn_rt_dataframe_close", Rc::Checked)
+    } else if aggregate && exec {
+        ("exec", "bn_rt_exec_result_close", Rc::Dropped)
+    } else if aggregate {
+        ("file", "bn_rt_file_release", Rc::Dropped)
+    } else if carries_bnjson(module, ty) {
+        ("json", "bn_rt_json_release", Rc::Named)
+    } else if is_bncrypto_bytes_type(module, ty) {
+        ("cry", "bn_rt_crypto_bytes_release", Rc::Named)
+    } else if is_bnsqlite_connection_type(module, ty) {
+        ("sqlite", "bn_rt_sqlite_close", Rc::Named)
+    } else {
+        let symbol = if bnlog_resource_kind(module, ty)? == "Fields" {
+            "bn_rt_log_fields_close"
+        } else {
+            "bn_rt_log_logger_delete"
+        };
+        ("log", symbol, Rc::Named)
+    })
 }

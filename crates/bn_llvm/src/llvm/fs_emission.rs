@@ -7,6 +7,10 @@
 // onto the `bn_rt_file_*` / `bn_rt_fs_*` C ABI (semantics in `bn_rt::file`).
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::ir::{
+    BinaryOp, CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T,
+};
+use crate::layout::{handle_result_ty, vector_ty};
 
 /// Every `HOST.FileSystem` operation native code implements.
 pub(crate) const FS_CALLS: [&str; 10] = [
@@ -72,9 +76,31 @@ pub(crate) fn lower_fs_call(
     analysis: &LoweringAnalysis<'_>,
     state: &mut EmissionState,
 ) -> bool {
+    let dest = destination.0;
+    let v = |index: usize| O::reg(format!("v{}", arguments[index].0));
+    let r = |name: &str| O::reg(format!("{name}{dest}"));
+    // `%{prefix}handle{dest}`: the file handle in slot 2 of `FS.File OR Error`.
+    let file_handle = |text: &mut String, prefix: &str| {
+        let handle = I::extract(handle_result_ty(), v(0), 2);
+        text.assign(format!("{prefix}handle{dest}"), handle);
+        (T::I64, r(&format!("{prefix}handle")))
+    };
+    // `%{prefix}ptr` and `%{prefix}cap64`: the data and length of a BYTE buffer.
+    let buffer = |text: &mut String, prefix: &str| {
+        text.assign(
+            format!("{prefix}ptr{dest}"),
+            I::extract(vector_ty(), v(1), 0),
+        );
+        text.assign(
+            format!("{prefix}cap{dest}"),
+            I::extract(vector_ty(), v(1), 1),
+        );
+        let wide = I::cast(CastOp::SExt, T::I32, r(&format!("{prefix}cap")), T::I64);
+        text.assign(format!("{prefix}cap64{dest}"), wide);
+    };
+    let call = |symbol: &str, args| I::call(T::I32, symbol, args).to_string();
     match name {
         "HOST.FileSystem.Open" => {
-            let dest = destination.0;
             let mode = extend_to_i32(
                 text,
                 arguments[1],
@@ -83,13 +109,17 @@ pub(crate) fn lower_fs_call(
                     .get(&arguments[1])
                     .expect("validated file mode"),
             );
-            let _ = writeln!(text, "  %fileout{dest} = alloca i64");
-            let _ = writeln!(
-                text,
-                "  %filerc{dest} = call i32 @bn_rt_file_open(ptr %v{}, i32 {mode}, ptr %fileout{dest})",
-                arguments[0].0
+            text.assign(format!("fileout{dest}"), I::alloca(T::I64));
+            let args = vec![
+                (T::Ptr, v(0)),
+                (T::I32, O::raw(mode)),
+                (T::Ptr, r("fileout")),
+            ];
+            text.assign(
+                format!("filerc{dest}"),
+                I::call(T::I32, "bn_rt_file_open", args),
             );
-            let _ = writeln!(text, "  %filehandle{dest} = load i64, ptr %fileout{dest}");
+            text.assign(format!("filehandle{dest}"), I::load(T::I64, r("fileout")));
             emit_handle_result(
                 text,
                 destination,
@@ -98,28 +128,19 @@ pub(crate) fn lower_fs_call(
             );
         }
         "FS.File.Close" => {
-            let dest = destination.0;
-            let _ = writeln!(
-                text,
-                "  %fileclosehandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-                arguments[0].0
-            );
-            emit_void_result(
-                text,
-                destination,
-                format!("call i32 @bn_rt_file_close(i64 %fileclosehandle{dest})"),
-            );
+            let handle = file_handle(text, "fileclose");
+            emit_void_result(text, destination, call("bn_rt_file_close", vec![handle]));
         }
         "HOST.FileSystem.Exists" => {
-            let dest = destination.0;
-            let _ = writeln!(text, "  %fsexout{dest} = alloca i32");
-            let _ = writeln!(
-                text,
-                "  %fsexrc{dest} = call i32 @bn_rt_fs_exists(ptr %v{}, ptr %fsexout{dest})",
-                arguments[0].0
+            text.assign(format!("fsexout{dest}"), I::alloca(T::I32));
+            let args = vec![(T::Ptr, v(0)), (T::Ptr, r("fsexout"))];
+            text.assign(
+                format!("fsexrc{dest}"),
+                I::call(T::I32, "bn_rt_fs_exists", args),
             );
-            let _ = writeln!(text, "  %fsexval{dest} = load i32, ptr %fsexout{dest}");
-            let _ = writeln!(text, "  %fsexpay{dest} = zext i32 %fsexval{dest} to i64");
+            text.assign(format!("fsexval{dest}"), I::load(T::I32, r("fsexout")));
+            let wide = I::cast(CastOp::ZExt, T::I32, r("fsexval"), T::I64);
+            text.assign(format!("fsexpay{dest}"), wide);
             emit_status_result(
                 text,
                 destination,
@@ -130,51 +151,33 @@ pub(crate) fn lower_fs_call(
             );
         }
         "HOST.FileSystem.DeleteFile" => {
-            emit_void_result(
-                text,
-                destination,
-                format!("call i32 @bn_rt_fs_delete_file(ptr %v{})", arguments[0].0),
-            );
+            let delete = call("bn_rt_fs_delete_file", vec![(T::Ptr, v(0))]);
+            emit_void_result(text, destination, delete);
         }
         "FS.File.Write" | "FS.File.WriteLine" => {
-            let dest = destination.0;
             let symbol = if name == "FS.File.Write" {
                 "bn_rt_file_write"
             } else {
                 "bn_rt_file_write_line"
             };
-            let _ = writeln!(
-                text,
-                "  %filewhandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-                arguments[0].0
-            );
+            let handle = file_handle(text, "filew");
             emit_void_result(
                 text,
                 destination,
-                format!(
-                    "call i32 @{symbol}(i64 %filewhandle{dest}, ptr %v{})",
-                    arguments[1].0
-                ),
+                call(symbol, vec![handle, (T::Ptr, v(1))]),
             );
         }
         "FS.File.ReadAll" | "FS.File.ReadLine" => {
-            let dest = destination.0;
             let (symbol, eof) = if name == "FS.File.ReadAll" {
                 ("bn_rt_file_read_all", None)
             } else {
                 ("bn_rt_file_read_line", Some(4))
             };
-            let _ = writeln!(
-                text,
-                "  %filerhandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-                arguments[0].0
-            );
-            let _ = writeln!(text, "  %filerout{dest} = alloca ptr");
-            let _ = writeln!(
-                text,
-                "  %filerrc{dest} = call i32 @{symbol}(i64 %filerhandle{dest}, ptr %filerout{dest})"
-            );
-            let _ = writeln!(text, "  %filerdata{dest} = load ptr, ptr %filerout{dest}");
+            let handle = file_handle(text, "filer");
+            text.assign(format!("filerout{dest}"), I::alloca(T::Ptr));
+            let args = vec![handle, (T::Ptr, r("filerout"))];
+            text.assign(format!("filerrc{dest}"), I::call(T::I32, symbol, args));
+            text.assign(format!("filerdata{dest}"), I::load(T::Ptr, r("filerout")));
             emit_status_result(
                 text,
                 destination,
@@ -185,32 +188,18 @@ pub(crate) fn lower_fs_call(
             );
         }
         "FS.File.ReadBytes" => {
-            let dest = destination.0;
-            let _ = writeln!(
-                text,
-                "  %filebhandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-                arguments[0].0
-            );
-            let _ = writeln!(
-                text,
-                "  %filebptr{dest} = extractvalue {{ ptr, i32 }} %v{}, 0",
-                arguments[1].0
-            );
-            let _ = writeln!(
-                text,
-                "  %filebcap{dest} = extractvalue {{ ptr, i32 }} %v{}, 1",
-                arguments[1].0
-            );
-            let _ = writeln!(
-                text,
-                "  %filebcap64{dest} = sext i32 %filebcap{dest} to i64"
-            );
-            let _ = writeln!(text, "  %filebout{dest} = alloca i64");
-            let _ = writeln!(
-                text,
-                "  %filebrc{dest} = call i32 @bn_rt_file_read_bytes(i64 %filebhandle{dest}, ptr %filebptr{dest}, i64 %filebcap64{dest}, ptr %filebout{dest})"
-            );
-            let _ = writeln!(text, "  %filebcount{dest} = load i64, ptr %filebout{dest}");
+            let handle = file_handle(text, "fileb");
+            buffer(text, "fileb");
+            text.assign(format!("filebout{dest}"), I::alloca(T::I64));
+            let args = vec![
+                handle,
+                (T::Ptr, r("filebptr")),
+                (T::I64, r("filebcap64")),
+                (T::Ptr, r("filebout")),
+            ];
+            let read = I::call(T::I32, "bn_rt_file_read_bytes", args);
+            text.assign(format!("filebrc{dest}"), read);
+            text.assign(format!("filebcount{dest}"), I::load(T::I64, r("filebout")));
             emit_status_result(
                 text,
                 destination,
@@ -221,52 +210,31 @@ pub(crate) fn lower_fs_call(
             );
         }
         "FS.File.WriteBytes" => {
-            let dest = destination.0;
             let count_ty = analysis
                 .values
                 .get(&arguments[2])
                 .expect("validated byte count");
-            let count = coerce_to_type(
+            let count = O::raw(coerce_to_type(
                 text,
                 arguments[2],
                 count_ty,
                 &Type::Integer(IntegerType::Int64),
-            );
-            let _ = writeln!(
-                text,
-                "  %filewbhandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-                arguments[0].0
-            );
-            let _ = writeln!(
-                text,
-                "  %filewbptr{dest} = extractvalue {{ ptr, i32 }} %v{}, 0",
-                arguments[1].0
-            );
-            let _ = writeln!(
-                text,
-                "  %filewbcap{dest} = extractvalue {{ ptr, i32 }} %v{}, 1",
-                arguments[1].0
-            );
-            let _ = writeln!(
-                text,
-                "  %filewbcap64{dest} = sext i32 %filewbcap{dest} to i64"
-            );
+            ));
+            let handle = file_handle(text, "filewb");
+            buffer(text, "filewb");
             // host.md: `count` outside 0..=LEN(buffer) is INDEX_OUT_OF_BOUNDS,
             // the same trap as vector indexing.
-            let _ = writeln!(text, "  %filewbneg{dest} = icmp slt i64 {count}, 0");
-            let _ = writeln!(
-                text,
-                "  %filewbover{dest} = icmp sgt i64 {count}, %filewbcap64{dest}"
-            );
-            let _ = writeln!(
-                text,
-                "  %filewbbad{dest} = or i1 %filewbneg{dest}, %filewbover{dest}"
-            );
+            let negative = I::icmp(ICmpCond::Slt, T::I64, count.clone(), O::int(0));
+            text.assign(format!("filewbneg{dest}"), negative);
+            let over = I::icmp(ICmpCond::Sgt, T::I64, count.clone(), r("filewbcap64"));
+            text.assign(format!("filewbover{dest}"), over);
+            let bad = I::binary(BinaryOp::Or, T::I1, r("filewbneg"), r("filewbover"));
+            text.assign(format!("filewbbad{dest}"), bad);
             let ok = take_continuation(block_id, state);
-            let _ = writeln!(
-                text,
-                "  %filewbidx{dest} = sext i64 {count} to i128\n  %filewblen{dest} = sext i32 %filewbcap{dest} to i128"
-            );
+            let index = I::cast(CastOp::SExt, T::I64, count.clone(), T::I128);
+            text.assign(format!("filewbidx{dest}"), index);
+            let length = I::cast(CastOp::SExt, T::I32, r("filewbcap"), T::I128);
+            text.assign(format!("filewblen{dest}"), length);
             emit_trap(
                 text,
                 block_id,
@@ -280,13 +248,8 @@ pub(crate) fn lower_fs_call(
                     ("context", Fact::Text("BYTE buffer".into())),
                 ],
             );
-            emit_void_result(
-                text,
-                destination,
-                format!(
-                    "call i32 @bn_rt_file_write_bytes(i64 %filewbhandle{dest}, ptr %filewbptr{dest}, i64 {count})"
-                ),
-            );
+            let args = vec![handle, (T::Ptr, r("filewbptr")), (T::I64, count)];
+            emit_void_result(text, destination, call("bn_rt_file_write_bytes", args));
         }
         _ => return false,
     }

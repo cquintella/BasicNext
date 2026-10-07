@@ -67,9 +67,50 @@ pub const fn boolean(value: bool) -> &'static str {
     if value { "TRUE" } else { "FALSE" }
 }
 
+/// A canonical IANA time-zone identifier as `TimeZone.Parse` accepts it
+/// (`temporal.md`): `UTC`, or two or more `/`-separated parts, each starting
+/// with a letter and continuing with letters, digits, `_`, `-`, `+`.
+#[must_use]
+pub fn is_timezone_id(text: &str) -> bool {
+    text == "UTC"
+        || text.split('/').count() >= 2
+            && text.split('/').all(|part| {
+                let mut characters = part.chars();
+                characters
+                    .next()
+                    .is_some_and(|first| first.is_ascii_alphabetic())
+                    && characters.all(|character| {
+                        character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '+')
+                    })
+            })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{boolean, error, float, integer};
+    use super::{boolean, error, float, integer, is_timezone_id};
+
+    #[test]
+    fn timezone_ids_follow_the_canonical_form() {
+        for valid in [
+            "UTC",
+            "America/Sao_Paulo",
+            "Etc/GMT+3",
+            "America/Argentina/Buenos_Aires",
+        ] {
+            assert!(is_timezone_id(valid), "{valid}");
+        }
+        for invalid in [
+            "",
+            "Utc",
+            "Europe",
+            "Europe/",
+            "/Paris",
+            "Europe/9x",
+            "Europe/Pa ris",
+        ] {
+            assert!(!is_timezone_id(invalid), "{invalid}");
+        }
+    }
     use crate::FloatType::{Float32, Float64};
 
     #[test]

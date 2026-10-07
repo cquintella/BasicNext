@@ -7,6 +7,10 @@
 // operators, casts) with constant propagation through the block state.
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::ir::{
+    BinaryOp, CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T,
+};
+use crate::layout::typed_llvm;
 #[path = "emission_tail.rs"]
 mod emission_tail;
 use emission_tail::lower_scalar_instruction_tail;
@@ -22,6 +26,19 @@ pub(crate) fn lower_scalar_instruction(
     block_state: &mut BlockState,
     state: &mut EmissionState,
 ) -> Result<(), String> {
+    if arc_ops::lower_ownership_instruction(
+        text,
+        module,
+        function,
+        block_id,
+        instruction,
+        analysis,
+        symbols,
+        block_state,
+        state,
+    ) {
+        return Ok(());
+    }
     match instruction {
         Instruction::Constant {
             destination,
@@ -55,11 +72,10 @@ pub(crate) fn lower_scalar_instruction(
                 block_state
                     .constants
                     .insert(*destination, ConstantValue::String(value.clone()));
-                let _ = writeln!(
-                    text,
-                    "  %v{} = getelementptr i8, ptr {}, i64 0",
-                    destination.0,
-                    string_global(&function.name, destination.0)
+                let global = O::raw(string_global(&function.name, destination.0));
+                text.assign(
+                    format!("v{}", destination.0),
+                    I::gep(T::I8, global, vec![(T::I64, O::int(0))]),
                 );
             }
             Constant::Function(name) => {
@@ -69,27 +85,27 @@ pub(crate) fn lower_scalar_instruction(
                     .any(|function| function.name == *name)
                 {
                     let symbol = llvm_function_symbol(name);
-                    let _ = writeln!(
-                        text,
-                        "  %v{} = select i1 true, ptr @{symbol}, ptr null",
-                        destination.0
-                    );
+                    let select = I::select(O::bool(true), T::Ptr, O::global(symbol), O::null());
+                    text.assign(format!("v{}", destination.0), select);
                 }
             }
             Constant::HostArgs | Constant::Type(_) | Constant::HostConsole => {}
             Constant::NotAvailable => {
-                let dest = destination.0;
-                let _ = writeln!(
-                    text,
-                    "  %na{dest} = insertvalue {{ i1, double }} undef, i1 true, 0"
+                let (dest, na) = (destination.0, T::struct_of([T::I1, T::Double]));
+                text.assign(
+                    format!("na{dest}"),
+                    I::insert(na.clone(), O::undef(), T::I1, O::bool(true), 0),
                 );
-                let _ = writeln!(
-                    text,
-                    "  %v{dest} = insertvalue {{ i1, double }} %na{dest}, double 0.0, 1"
+                text.assign(
+                    format!("v{dest}"),
+                    I::insert(na, O::reg(format!("na{dest}")), T::Double, O::float(0.0), 1),
                 );
             }
             Constant::Null => {
-                let _ = writeln!(text, "  %v{} = inttoptr i64 0 to ptr", destination.0);
+                text.assign(
+                    format!("v{}", destination.0),
+                    I::cast(CastOp::IntToPtr, T::I64, O::int(0), T::Ptr),
+                );
             }
             Constant::EndOfFile => {
                 unreachable!("EndOfFile must be rejected during target validation");
@@ -116,146 +132,131 @@ pub(crate) fn lower_scalar_instruction(
                 unreachable!("validated multidimensional default type");
             };
             let element_llvm = llvm_type(element).expect("validated vector element type");
+            let element_ty = typed_llvm(element_llvm);
             let len = dimensions[0];
             let dest = destination.0;
-            let _ = writeln!(
-                text,
-                "  %vecdefault{dest} = alloca [{len} x {element_llvm}]"
-            );
+            let array = T::Array(len, Box::new(element_ty.clone()));
+            let base = O::reg(format!("vecdefault{dest}"));
+            let at = |index: usize| {
+                let index = O::int(i64::try_from(index).expect("vector length fits i64"));
+                vec![(T::I32, O::int(0)), (T::I32, index)]
+            };
+            text.assign(format!("vecdefault{dest}"), I::alloca(array.clone()));
             for index in 0..len {
-                let _ = writeln!(
-                    text,
-                    "  %vecdefaultslot{dest}_{index} = getelementptr [{len} x {element_llvm}], ptr %vecdefault{dest}, i32 0, i32 {index}"
-                );
+                let slot = format!("vecdefaultslot{dest}_{index}");
+                text.assign(slot.clone(), I::gep(array.clone(), base.clone(), at(index)));
                 let zero = match element_llvm {
-                    "i1" | "i8" | "i16" | "i32" | "i64" => format!("{element_llvm} 0"),
-                    "float" => "float 0.0".into(),
-                    "double" => "double 0.0".into(),
-                    "ptr" => "ptr null".into(),
-                    "{ i1, ptr, i64 }" => "{ i1, ptr, i64 } zeroinitializer".into(),
-                    "{ i1, ptr }" => "{ i1, ptr } zeroinitializer".into(),
+                    "i1" | "i8" | "i16" | "i32" | "i64" => O::int(0),
+                    "float" | "double" => O::float(0.0),
+                    "ptr" => O::null(),
+                    "{ i1, ptr, i64 }" | "{ i1, ptr }" => O::zero_initializer(),
                     _ => unreachable!("validated vector element type"),
                 };
-                let _ = writeln!(text, "  store {zero}, ptr %vecdefaultslot{dest}_{index}");
+                text.emit(I::store(element_ty.clone(), zero, O::reg(slot)));
             }
-            let _ = writeln!(
-                text,
-                "  %vecdefaultptr{dest} = getelementptr [{len} x {element_llvm}], ptr %vecdefault{dest}, i32 0, i32 0"
+            text.assign(format!("vecdefaultptr{dest}"), I::gep(array, base, at(0)));
+            let fat = T::struct_of([T::Ptr, T::I32]);
+            let pointer = O::reg(format!("vecdefaultptr{dest}"));
+            text.assign(
+                format!("vecdefaultfat{dest}"),
+                I::insert(fat.clone(), O::undef(), T::Ptr, pointer, 0),
             );
-            let _ = writeln!(
-                text,
-                "  %vecdefaultfat{dest} = insertvalue {{ ptr, i32 }} undef, ptr %vecdefaultptr{dest}, 0"
-            );
-            let _ = writeln!(
-                text,
-                "  %v{dest} = insertvalue {{ ptr, i32 }} %vecdefaultfat{dest}, i32 {len}, 1"
+            let length = O::int(i64::try_from(len).expect("vector length fits i64"));
+            text.assign(
+                format!("v{dest}"),
+                I::insert(
+                    fat,
+                    O::reg(format!("vecdefaultfat{dest}")),
+                    T::I32,
+                    length,
+                    1,
+                ),
             );
         }
         Instruction::Default {
             destination, ty, ..
         } => match llvm_type(ty).expect("validated default type") {
+            GENERAL_LAYOUT => general_alternative::emit_default(
+                text,
+                *destination,
+                general_alternative(ty).expect("general alternative default"),
+            ),
             "i1" => define_boolean(text, analysis, *destination, false),
-            "i8" | "i16" | "i32" | "i64" => {
-                let _ = writeln!(
-                    text,
-                    "  %v{} = add {} 0, 0",
-                    destination.0,
-                    llvm_type(ty).expect("validated integer default type")
+            layout @ ("i8" | "i16" | "i32" | "i64") => {
+                let add = I::binary(BinaryOp::Add, typed_llvm(layout), O::int(0), O::int(0));
+                text.assign(format!("v{}", destination.0), add);
+            }
+            layout @ ("float" | "double") => {
+                let fadd = I::binary(
+                    BinaryOp::FAdd,
+                    typed_llvm(layout),
+                    O::float(0.0),
+                    O::float(0.0),
                 );
-            }
-            "float" => {
-                let _ = writeln!(text, "  %v{} = fadd float 0.0, 0.0", destination.0);
-            }
-            "double" => {
-                let _ = writeln!(text, "  %v{} = fadd double 0.0, 0.0", destination.0);
+                text.assign(format!("v{}", destination.0), fadd);
             }
             "ptr" => {
-                if function.kind == FunctionKind::Default {
+                let value = if function.kind == FunctionKind::Default {
                     let owner = function
                         .owner
                         .as_deref()
                         .expect("validated default constructor owner");
-                    let bytes = class_instance_bytes(module, owner);
-                    let _ = writeln!(
-                        text,
-                        "  %v{} = call ptr @calloc(i64 1, i64 {bytes})",
-                        destination.0
-                    );
+                    let bytes = i64::try_from(class_instance_bytes(module, owner))
+                        .expect("object size fits i64");
+                    I::call(
+                        T::Ptr,
+                        "calloc",
+                        vec![(T::I64, O::int(1)), (T::I64, O::int(bytes))],
+                    )
                 } else {
-                    let _ = writeln!(
-                        text,
-                        "  %v{} = getelementptr i8, ptr @.bn_empty, i64 0",
-                        destination.0
-                    );
-                }
+                    I::gep(T::I8, O::global(".bn_empty"), vec![(T::I64, O::int(0))])
+                };
+                text.assign(format!("v{}", destination.0), value);
             }
             "{ i1, double }" => emit_optional_float_default(text, *destination),
-            "{ ptr, i32 }" => {
+            // An aggregate default: every field zero or null, built field by
+            // field as `RETURN` builds it (`%<prefix>0_` … then `%v`).
+            layout @ ("{ ptr, i32 }" | "{ i1, ptr, i64 }" | "{ i1, ptr }" | "{ i1, ptr, i32 }") => {
                 let dest = destination.0;
-                let _ = writeln!(
-                    text,
-                    "  %vec{dest} = insertvalue {{ ptr, i32 }} undef, ptr null, 0"
-                );
-                let _ = writeln!(
-                    text,
-                    "  %v{dest} = insertvalue {{ ptr, i32 }} %vec{dest}, i32 0, 1"
-                );
-            }
-            "{ i1, ptr, i64 }" => {
-                let dest = destination.0;
-                let _ = writeln!(
-                    text,
-                    "  %errdef0_{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 false, 0"
-                );
-                let _ = writeln!(
-                    text,
-                    "  %errdef1_{dest} = insertvalue {{ i1, ptr, i64 }} %errdef0_{dest}, ptr null, 1"
-                );
-                let _ = writeln!(
-                    text,
-                    "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %errdef1_{dest}, i64 0, 2"
-                );
-            }
-            "{ i1, i32 }" => {
-                let dest = destination.0;
-                let _ = writeln!(
-                    text,
-                    "  %optdef0_{dest} = insertvalue {{ i1, i32 }} undef, i1 false, 0"
-                );
-                let _ = writeln!(
-                    text,
-                    "  %v{dest} = insertvalue {{ i1, i32 }} %optdef0_{dest}, i32 0, 1"
-                );
-            }
-            "{ i1, ptr }" => {
-                let dest = destination.0;
-                let _ = writeln!(
-                    text,
-                    "  %ptrdef0_{dest} = insertvalue {{ i1, ptr }} undef, i1 false, 0"
-                );
-                let _ = writeln!(
-                    text,
-                    "  %v{dest} = insertvalue {{ i1, ptr }} %ptrdef0_{dest}, ptr null, 1"
-                );
-            }
-            "{ i1, ptr, i32 }" => {
-                let dest = destination.0;
-                let _ = writeln!(
-                    text,
-                    "  %epdef0_{dest} = insertvalue {{ i1, ptr, i32 }} undef, i1 false, 0"
-                );
-                let _ = writeln!(
-                    text,
-                    "  %epdef1_{dest} = insertvalue {{ i1, ptr, i32 }} %epdef0_{dest}, ptr null, 1"
-                );
-                let _ = writeln!(
-                    text,
-                    "  %v{dest} = insertvalue {{ i1, ptr, i32 }} %epdef1_{dest}, i32 0, 2"
-                );
+                let prefix = match layout {
+                    "{ ptr, i32 }" => "vec",
+                    "{ i1, ptr, i64 }" => "errdef",
+                    "{ i1, ptr }" => "ptrdef",
+                    _ => "epdef",
+                };
+                let aggregate = typed_llvm(layout);
+                let T::Struct(fields) = aggregate.clone() else {
+                    unreachable!("aggregate layout");
+                };
+                let mut previous = O::undef();
+                for (index, field) in fields.iter().enumerate() {
+                    let zero = match field {
+                        T::I1 => O::bool(false),
+                        T::Ptr => O::null(),
+                        _ => O::int(0),
+                    };
+                    let name = if index + 1 == fields.len() {
+                        format!("v{dest}")
+                    } else if layout == "{ ptr, i32 }" {
+                        format!("{prefix}{dest}")
+                    } else {
+                        format!("{prefix}{index}_{dest}")
+                    };
+                    text.assign(
+                        name.clone(),
+                        I::insert(aggregate.clone(), previous, field.clone(), zero, index),
+                    );
+                    previous = O::reg(name);
+                }
             }
             _ => unreachable!("validated scalar default type"),
         },
-        Instruction::Store { symbol, value, .. } => {
+        Instruction::Store {
+            symbol,
+            value,
+            previous,
+            ..
+        } => {
             let value_ty = analysis
                 .values
                 .get(value)
@@ -269,24 +270,35 @@ pub(crate) fn lower_scalar_instruction(
                 };
                 let bytes = class_instance_bytes(module, owner);
                 let tag = value.0;
-                let _ = writeln!(text, "  %structcopy{tag} = alloca [{bytes} x i8]");
-                let _ = writeln!(
-                    text,
-                    "  call void @llvm.memcpy.p0.p0.i64(ptr %structcopy{tag}, ptr %v{tag}, i64 {bytes}, i1 false)"
+                let copy = O::reg(format!("structcopy{tag}"));
+                text.assign(
+                    format!("structcopy{tag}"),
+                    I::alloca(T::Array(
+                        usize::try_from(bytes).expect("struct size fits usize"),
+                        Box::new(T::I8),
+                    )),
                 );
+                let bytes = O::int(i64::try_from(bytes).expect("struct size fits i64"));
+                let args = vec![
+                    (T::Ptr, copy),
+                    (T::Ptr, O::reg(format!("v{tag}"))),
+                    (T::I64, bytes),
+                    (T::I1, O::bool(false)),
+                ];
+                text.emit(I::call(T::Void, "llvm.memcpy.p0.p0.i64", args));
                 format!("%structcopy{tag}")
             } else if slot_llvm == "{ i1, double }" && matches!(value_llvm, "float" | "double") {
                 let optional_value =
                     coerce_to_type(text, *value, value_ty, &Type::Float(FloatType::Float64));
-                let _ = writeln!(
-                    text,
-                    "  %optstoretag{} = insertvalue {{ i1, double }} undef, i1 false, 0",
-                    value.0
+                let optional = T::struct_of([T::I1, T::Double]);
+                let tag = O::reg(format!("optstoretag{}", value.0));
+                text.assign(
+                    format!("optstoretag{}", value.0),
+                    I::insert(optional.clone(), O::undef(), T::I1, O::bool(false), 0),
                 );
-                let _ = writeln!(
-                    text,
-                    "  %optstore{} = insertvalue {{ i1, double }} %optstoretag{}, double {optional_value}, 1",
-                    value.0, value.0
+                text.assign(
+                    format!("optstore{}", value.0),
+                    I::insert(optional, tag, T::Double, O::raw(optional_value), 1),
                 );
                 format!("%optstore{}", value.0)
             } else if slot_llvm == "i1" {
@@ -298,7 +310,8 @@ pub(crate) fn lower_scalar_instruction(
                         (value_llvm, slot_llvm),
                         ("float", "double") | ("double", "float")
                     )
-                    || slot_llvm == "{ i1, ptr, i64 }" && value_llvm != slot_llvm)
+                    || matches!(slot_llvm, "{ i1, ptr, i64 }" | GENERAL_LAYOUT)
+                        && value_llvm != slot_llvm)
             {
                 coerce_to_type(text, *value, value_ty, slot_ty)
             } else {
@@ -309,70 +322,83 @@ pub(crate) fn lower_scalar_instruction(
             {
                 let slot = symbols[symbol];
                 let tag = value.0;
-                let _ = writeln!(
-                    text,
-                    "  %inputreplaceowned{tag} = load i1, ptr %inputowned{slot}"
+                let owned = O::reg(format!("inputreplaceowned{tag}"));
+                let old = O::reg(format!("inputreplaceold{tag}"));
+                text.assign(
+                    format!("inputreplaceowned{tag}"),
+                    I::load(T::I1, O::reg(format!("inputowned{slot}"))),
                 );
-                let _ = writeln!(text, "  %inputreplaceold{tag} = load ptr, ptr %s{slot}");
-                let _ = writeln!(
-                    text,
-                    "  %inputreplacefree{tag} = select i1 %inputreplaceowned{tag}, ptr %inputreplaceold{tag}, ptr null"
+                text.assign(
+                    format!("inputreplaceold{tag}"),
+                    I::load(T::Ptr, O::reg(format!("s{slot}"))),
                 );
-                let _ = writeln!(text, "  call void @free(ptr %inputreplacefree{tag})");
+                text.assign(
+                    format!("inputreplacefree{tag}"),
+                    I::select(owned, T::Ptr, old, O::null()),
+                );
+                text.emit(I::call(
+                    T::Void,
+                    "free",
+                    vec![(T::Ptr, O::reg(format!("inputreplacefree{tag}")))],
+                ));
             }
-            if is_class_type(module, slot_ty) && !function.weak_symbols.contains(symbol) {
-                let slot = symbols[symbol];
-                let old = format!("%arcstoreold{}_{}", value.0, slot);
-                let _ = writeln!(text, "  {old} = load ptr, ptr %s{slot}");
-                emit_destroy_if_last(text, module, function, &old, slot_ty, symbols, state);
-                if analysis.owned_object_results.contains_key(value) {
-                    let _ = writeln!(text, "  store ptr null, ptr %objectowned{}", value.0);
-                } else {
-                    let _ = writeln!(text, "  call void @bn_arc_retain(ptr {operand})");
-                }
-            } else if is_region_type(slot_ty) {
-                let slot = symbols[symbol];
-                let old_fat = format!("%regstoreold{}_{}", value.0, slot);
-                let _ = writeln!(text, "  {old_fat} = load {{ ptr, i32 }}, ptr %s{slot}");
-                let old_base = emit_region_base(text, &old_fat, state);
-                emit_destroy_if_last(text, module, function, &old_base, slot_ty, symbols, state);
-                if analysis.owned_object_results.contains_key(value) {
-                    let _ = writeln!(text, "  store ptr null, ptr %objectowned{}", value.0);
-                } else {
-                    let new_base = emit_region_base(text, &operand, state);
-                    let _ = writeln!(text, "  call void @bn_arc_retain(ptr {new_base})");
-                }
+            let slot = symbols[symbol];
+            if previous.is_some() && arc_ops::holds_references(module, slot_ty) {
+                let (storage, kept, binding) = (
+                    format!("%vstore{slot}"),
+                    format!("%vprev{slot}"),
+                    format!("%s{slot}"),
+                );
+                vectors::emit_vector_keep_previous(text, (&storage, &kept, &binding), slot_ty);
             }
-            let _ = writeln!(
-                text,
-                "  store {slot_llvm} {operand}, ptr %s{}",
-                symbols[symbol]
-            );
-            if is_class_type(module, slot_ty) && function.weak_symbols.contains(symbol) {
-                let _ = writeln!(
+            // Explicit ownership: the write gives back the previous content
+            // (the IR releases it) and stores a value it owns.
+            if let Some(previous) = previous {
+                crate::ir::InstSink::assign(
                     text,
-                    "  call void @bn_arc_weak_register(ptr {operand}, ptr %s{})",
-                    symbols[symbol]
+                    format!("v{}", previous.0),
+                    crate::ir::LlvmInst::load(
+                        crate::layout::typed_llvm(slot_llvm),
+                        crate::ir::LlvmOperand::raw(format!("%s{slot}")),
+                    ),
                 );
             }
+            let operand = if function.weak_symbols.contains(symbol) {
+                arc_ops::weak_store_operand(text, &operand, state)
+            } else {
+                vectors::emit_vector_copy(text, &format!("%vstore{slot}"), &operand, slot_ty)
+                    .unwrap_or(operand)
+            };
+            text.emit(I::store(
+                typed_llvm(slot_llvm),
+                O::raw(operand),
+                O::reg(format!("s{slot}")),
+            ));
             if analysis.released_symbols.contains(symbol) {
-                let _ = writeln!(text, "  store i1 true, ptr %slive{}", symbols[symbol]);
+                text.emit(I::store(T::I1, O::bool(true), O::raw(live_flag(*symbol))));
             }
             if analysis.input_symbols.contains(symbol) {
                 let slot = symbols[symbol];
-                if analysis.input_targets.contains_key(value) {
-                    let _ = writeln!(
-                        text,
-                        "  %inputisvalue{} = icmp ne ptr %v{}, @.bn_eof",
-                        value.0, value.0
+                // A slot whose line escapes never owns it (`escaping_inputs`).
+                if analysis.input_targets.contains_key(value)
+                    && !analysis.escaping_inputs.contains(symbol)
+                {
+                    let line = O::reg(format!("v{}", value.0));
+                    text.assign(
+                        format!("inputisvalue{}", value.0),
+                        I::icmp(ICmpCond::Ne, T::Ptr, line, O::global(".bn_eof")),
                     );
-                    let _ = writeln!(
-                        text,
-                        "  store i1 %inputisvalue{}, ptr %inputowned{slot}",
-                        value.0
-                    );
+                    text.emit(I::store(
+                        T::I1,
+                        O::reg(format!("inputisvalue{}", value.0)),
+                        O::reg(format!("inputowned{slot}")),
+                    ));
                 } else {
-                    let _ = writeln!(text, "  store i1 false, ptr %inputowned{slot}");
+                    text.emit(I::store(
+                        T::I1,
+                        O::bool(false),
+                        O::reg(format!("inputowned{slot}")),
+                    ));
                 }
             }
             if let Some(value) = block_state.constants.get(value).cloned() {
@@ -396,6 +422,7 @@ pub(crate) fn lower_scalar_instruction(
             *destination,
             *symbol,
             ty,
+            true,
             state,
         ),
         Instruction::Copy {
@@ -412,62 +439,67 @@ pub(crate) fn lower_scalar_instruction(
                 block_state.constants.remove(destination);
                 match llvm_type(ty).expect("validated copy type") {
                     "i1" => define_boolean_from(text, analysis, state, *destination, *source),
-                    "i8" | "i16" | "i32" | "i64" => {
-                        let _ = writeln!(
-                            text,
-                            "  %v{} = add {} 0, %v{}",
-                            destination.0,
-                            llvm_type(ty).expect("validated integer copy type"),
-                            source.0
+                    layout @ ("i8" | "i16" | "i32" | "i64") => {
+                        let copy = I::binary(
+                            BinaryOp::Add,
+                            typed_llvm(layout),
+                            O::int(0),
+                            O::reg(format!("v{}", source.0)),
                         );
+                        text.assign(format!("v{}", destination.0), copy);
                     }
-                    "float" => {
-                        let _ = writeln!(
-                            text,
-                            "  %v{} = fadd float 0.0, %v{}",
-                            destination.0, source.0
+                    layout @ ("float" | "double") => {
+                        let copy = I::binary(
+                            BinaryOp::FAdd,
+                            typed_llvm(layout),
+                            O::float(0.0),
+                            O::reg(format!("v{}", source.0)),
                         );
-                    }
-                    "double" => {
-                        let _ = writeln!(
-                            text,
-                            "  %v{} = fadd double 0.0, %v{}",
-                            destination.0, source.0
-                        );
+                        text.assign(format!("v{}", destination.0), copy);
                     }
                     "ptr" => {
-                        let _ = writeln!(
-                            text,
-                            "  %v{} = getelementptr i8, ptr %v{}, i64 0",
-                            destination.0, source.0
+                        let copy = I::gep(
+                            T::I8,
+                            O::reg(format!("v{}", source.0)),
+                            vec![(T::I64, O::int(0))],
                         );
+                        text.assign(format!("v{}", destination.0), copy);
                     }
                     "{ i1, ptr, i64 }" => {
+                        // An `Error` record is wrapped again so the copy owns it.
                         let dest = destination.0;
-                        let src = source.0;
-                        let _ = writeln!(
-                            text,
-                            "  %netc0{dest} = extractvalue {{ i1, ptr, i64 }} %v{src}, 0"
+                        let union = T::struct_of([T::I1, T::Ptr, T::I64]);
+                        let source = O::reg(format!("v{}", source.0));
+                        let field = |index: usize| O::reg(format!("netc{index}{dest}"));
+                        for index in 0..3 {
+                            text.assign(
+                                format!("netc{index}{dest}"),
+                                I::extract(union.clone(), source.clone(), index),
+                            );
+                        }
+                        text.assign(
+                            format!("netca{dest}"),
+                            I::insert(union.clone(), O::undef(), T::I1, field(0), 0),
                         );
-                        let _ = writeln!(
-                            text,
-                            "  %netc1{dest} = extractvalue {{ i1, ptr, i64 }} %v{src}, 1"
+                        let wrap = vec![(T::I1, field(0)), (T::Ptr, field(1)), (T::Ptr, O::null())];
+                        text.assign(
+                            format!("netcbwrap{dest}"),
+                            I::call(T::Ptr, "bn_rt_error_wrap", wrap),
                         );
-                        let _ = writeln!(
-                            text,
-                            "  %netc2{dest} = extractvalue {{ i1, ptr, i64 }} %v{src}, 2"
+                        let wrapped = O::reg(format!("netcbwrap{dest}"));
+                        text.assign(
+                            format!("netcb{dest}"),
+                            I::insert(
+                                union.clone(),
+                                O::reg(format!("netca{dest}")),
+                                T::Ptr,
+                                wrapped,
+                                1,
+                            ),
                         );
-                        let _ = writeln!(
-                            text,
-                            "  %netca{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %netc0{dest}, 0"
-                        );
-                        let _ = writeln!(
-                            text,
-                            "  %netcbwrap{dest} = call ptr @bn_rt_error_wrap(i1 %netc0{dest}, ptr %netc1{dest}, ptr null)\n  %netcb{dest} = insertvalue {{ i1, ptr, i64 }} %netca{dest}, ptr %netcbwrap{dest}, 1"
-                        );
-                        let _ = writeln!(
-                            text,
-                            "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %netcb{dest}, i64 %netc2{dest}, 2"
+                        text.assign(
+                            format!("v{dest}"),
+                            I::insert(union, O::reg(format!("netcb{dest}")), T::I64, field(2), 2),
                         );
                     }
                     _ => unreachable!("validated copy type"),
@@ -494,12 +526,9 @@ pub(crate) fn lower_scalar_instruction(
                 ("Plus", "i8" | "i16" | "i32" | "i64") => {
                     let operand_ty = analysis.values.get(operand).unwrap_or(ty);
                     let operand_op = coerce_to_type(text, *operand, operand_ty, ty);
-                    let _ = writeln!(
-                        text,
-                        "  %v{} = add {} 0, {operand_op}",
-                        destination.0,
-                        llvm_type(ty).expect("validated integer unary type")
-                    );
+                    let layout = typed_llvm(llvm_type(ty).expect("validated integer unary type"));
+                    let plus = I::binary(BinaryOp::Add, layout, O::int(0), O::raw(operand_op));
+                    text.assign(format!("v{}", destination.0), plus);
                 }
                 ("Minus", "i8" | "i16" | "i32" | "i64") => {
                     let operand_ty = analysis.values.get(operand).unwrap_or(ty);
@@ -516,36 +545,28 @@ pub(crate) fn lower_scalar_instruction(
                         state,
                     );
                 }
-                ("Plus", "float") => {
-                    let _ = writeln!(
-                        text,
-                        "  %v{} = fadd float 0.0, %v{}",
-                        destination.0, operand.0
+                (sign @ ("Plus" | "Minus"), layout @ ("float" | "double")) => {
+                    let op = if sign == "Plus" {
+                        BinaryOp::FAdd
+                    } else {
+                        BinaryOp::FSub
+                    };
+                    let value = I::binary(
+                        op,
+                        typed_llvm(layout),
+                        O::float(0.0),
+                        O::reg(format!("v{}", operand.0)),
                     );
-                }
-                ("Minus", "float") => {
-                    let _ = writeln!(
-                        text,
-                        "  %v{} = fsub float 0.0, %v{}",
-                        destination.0, operand.0
-                    );
-                }
-                ("Plus", "double") => {
-                    let _ = writeln!(
-                        text,
-                        "  %v{} = fadd double 0.0, %v{}",
-                        destination.0, operand.0
-                    );
-                }
-                ("Minus", "double") => {
-                    let _ = writeln!(
-                        text,
-                        "  %v{} = fsub double 0.0, %v{}",
-                        destination.0, operand.0
-                    );
+                    text.assign(format!("v{}", destination.0), value);
                 }
                 ("NOT", "i1") => {
-                    let _ = writeln!(text, "  %v{} = xor i1 1, %v{}", destination.0, operand.0);
+                    let not = I::binary(
+                        BinaryOp::Xor,
+                        T::I1,
+                        O::int(1),
+                        O::reg(format!("v{}", operand.0)),
+                    );
+                    text.assign(format!("v{}", destination.0), not);
                 }
                 ("NOT", "i8" | "i16" | "i32" | "i64") => {
                     emit_integer_not(text, block_id, *destination, *operand, ty, state);
@@ -575,7 +596,40 @@ pub(crate) fn lower_scalar_instruction(
             let left_ty = analysis.values.get(left).expect("validated left type");
             let right_ty = analysis.values.get(right).expect("validated right type");
             if operator == "IS" {
-                emit_is(text, *destination, *left, left_ty, right_ty);
+                if !emit_is(text, *destination, *left, left_ty, right_ty) {
+                    return Err(unsupported_instruction(
+                        module,
+                        function,
+                        instruction,
+                        "IS on this alternative",
+                    ));
+                }
+            } else if matches!(operator.as_str(), "Assign" | "NotEqual")
+                && let Some((alternative, members, other, other_ty, left_is_alt)) =
+                    general_alternative::comparable_alternative(left_ty)
+                        .map(|members| (*left, members, *right, right_ty, true))
+                        .or_else(|| {
+                            general_alternative::comparable_alternative(right_ty)
+                                .map(|members| (*right, members, *left, left_ty, false))
+                        })
+            {
+                let (lhs, lhs_ty, rhs, rhs_ty) = if left_is_alt {
+                    (alternative, left_ty, other, other_ty)
+                } else {
+                    (other, other_ty, alternative, right_ty)
+                };
+                general_alternative::emit_equals(
+                    text,
+                    general_alternative::EqualsOperands {
+                        destination: *destination,
+                        left: lhs,
+                        left_ty: lhs_ty,
+                        members,
+                        right: rhs,
+                        right_ty: rhs_ty,
+                        not_equal: operator == "NotEqual",
+                    },
+                );
             } else {
                 emit_runtime_binary(
                     text,

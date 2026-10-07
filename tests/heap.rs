@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use bn_runtime::Heap;
+use bn_runtime::{Handle, Heap};
 use bn_source::{Position, Span};
 
 fn span() -> Span {
@@ -25,11 +25,15 @@ fn span() -> Span {
     }
 }
 
+fn handle(slot: u32, generation: u32) -> Handle {
+    Handle::new(slot, generation)
+}
+
 #[test]
-fn heap_checks_bounds_deletion_and_stale_handles() {
+fn heap_checks_bounds_removal_and_stale_handles() {
     let mut heap = Heap::default();
-    let first = heap
-        .allocate("INTEGER", 2, 0_i64, span())
+    let first = handle(0, 1);
+    heap.insert(first, 2, 0_i64, span())
         .expect("allocate region");
     *heap.get_mut(first, 1, span()).expect("write region") = 7;
     assert_eq!(*heap.get(first, 1, span()).expect("read region"), 7);
@@ -39,15 +43,10 @@ fn heap_checks_bounds_deletion_and_stale_handles() {
             .code,
         "INDEX_OUT_OF_BOUNDS"
     );
-    heap.delete(first, span()).expect("delete allocation");
-    assert_eq!(
-        heap.delete(first, span())
-            .expect_err("second delete must fail")
-            .code,
-        "DOUBLE_RELEASE"
-    );
-    let replacement = heap
-        .allocate("INTEGER", 1, 0_i64, span())
+    assert_eq!(heap.remove(first), Some(vec![0, 7]));
+    assert_eq!(heap.remove(first), None, "a removed payload is gone");
+    let replacement = handle(0, 2);
+    heap.insert(replacement, 1, 0_i64, span())
         .expect("reuse slot");
     assert_eq!(
         heap.get(first, 0, span())
@@ -55,14 +54,15 @@ fn heap_checks_bounds_deletion_and_stale_handles() {
             .code,
         "USE_AFTER_RELEASE"
     );
+    assert_eq!(heap.remove(first), None, "a stale handle removes nothing");
     assert_eq!(*heap.get(replacement, 0, span()).expect("new handle"), 0);
 }
 
 #[test]
 fn zero_length_regions_follow_the_contract() {
     let mut heap = Heap::default();
-    let empty = heap
-        .allocate("BYTE", 0, 0_u8, span())
+    let empty = handle(3, 1);
+    heap.insert(empty, 0, 0_u8, span())
         .expect("zero length is valid");
     assert_eq!(
         heap.get(empty, 0, span())
@@ -76,12 +76,12 @@ fn zero_length_regions_follow_the_contract() {
 fn impossible_region_reservation_is_a_diagnostic() {
     let mut heap = Heap::default();
     let error = heap
-        .allocate("BYTE", usize::MAX, 0_u8, span())
+        .insert(handle(0, 1), usize::MAX, 0_u8, span())
         .expect_err("impossible allocation must fail without panicking");
     assert_eq!(error.code, "ALLOCATION_TOO_LARGE");
 
-    let valid = heap
-        .allocate("BYTE", 1, 7_u8, span())
+    let valid = handle(0, 1);
+    heap.insert(valid, 1, 7_u8, span())
         .expect("failed reservation must not corrupt the heap");
     assert_eq!(*heap.get(valid, 0, span()).expect("valid payload"), 7);
 }

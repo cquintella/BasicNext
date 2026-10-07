@@ -93,3 +93,23 @@ fn bni_rejects_compiler_only_flags_and_the_build_command() {
     assert_eq!(build.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&build.stderr).contains("try: bni --help"));
 }
+
+/// Frontend artifacts are a compiler surface: `bni` refuses `--emit` and
+/// names `bnc --emit` (BDFL, 2026-10-07).
+#[test]
+fn bni_refuses_emit_and_points_to_bnc() {
+    let source = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/hello.bn");
+    for command in ["check", "run", "lex"] {
+        let output = bni()
+            .args([command, "--emit", "ir", source])
+            .output()
+            .expect("run bni");
+        assert_eq!(output.status.code(), Some(2), "{command}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains("--emit is a compiler option (bnc --emit"),
+            "{command}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}

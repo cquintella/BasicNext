@@ -53,6 +53,21 @@ impl Analyzer {
                     ))
                 }
             }
+            // Only Console, Args and NumProcs are used without an IMPORT
+            // (0.6.md, "Which capabilities need IMPORT").
+            ExpressionKind::HostCapability { name }
+                if !matches!(name.as_str(), "Console" | "Args" | "NumProcs")
+                    && !self
+                        .host_aliases
+                        .values()
+                        .any(|path| *path == format!("HOST.{name}")) =>
+            {
+                Err(name_not_found(
+                    format!("HOST.{name}"),
+                    format!("the imports of this module (add IMPORT HOST.{name} AS {name})"),
+                    expression.span,
+                ))
+            }
             ExpressionKind::HostCapability { name } => host_capability_type(name, expression.span),
             ExpressionKind::Length { operand } => {
                 if matches!(operand.kind, ExpressionKind::HostCapability { ref name } if name == "Args")

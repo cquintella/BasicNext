@@ -105,9 +105,14 @@ impl Analyzer {
                     .cloned()
                     .ok_or_else(|| undefined_name(name, "assignment target", expression.span))?;
                 if symbol.constant {
+                    let found = if symbol.parameter {
+                        format!("parameter '{name}' (parameters are constant)")
+                    } else {
+                        format!("CONST '{name}'")
+                    };
                     return Err(type_mismatch(
                         "mutable binding",
-                        format!("CONST '{name}'"),
+                        found,
                         "assignment target",
                         expression.span,
                     ));

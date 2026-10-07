@@ -1,5 +1,21 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Binary operators that are not constant-folded: integer, floating-point,
+// boolean and string arithmetic and comparisons, including comparisons
+// against an `INTEGER OR Error` payload.
 #![allow(clippy::wildcard_imports, clippy::match_same_arms)]
 use super::*;
+use crate::{
+    ir::{
+        BinaryOp, CastOp, ICmpCond, InstSink, LlvmInst, LlvmOperand,
+        LlvmType::{I1, I32, I64},
+    },
+    layout::{handle_result_ty, typed_llvm},
+};
+use runtime_abi::STR_EQ;
 
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub(crate) fn emit_runtime_binary(
@@ -149,145 +165,110 @@ pub(crate) fn emit_runtime_binary(
         ("AND" | "OR" | "XOR", "i8" | "i16" | "i32" | "i64")
             if integer_llvm(left_llvm) && integer_llvm(right_llvm) =>
         {
-            let op = match operator {
-                "AND" => "and",
-                "OR" => "or",
-                "XOR" => "xor",
-                _ => unreachable!(),
-            };
-            let left_op = coerce_to_type(text, left, left_ty, ty);
-            let right_op = coerce_to_type(text, right, right_ty, ty);
-            let _ = writeln!(
-                text,
-                "  %v{} = {op} {result_llvm} {left_op}, {right_op}",
-                destination.0
+            let left_op = LlvmOperand::raw(coerce_to_type(text, left, left_ty, ty));
+            let right_op = LlvmOperand::raw(coerce_to_type(text, right, right_ty, ty));
+            text.assign(
+                format!("v{}", destination.0),
+                LlvmInst::binary(
+                    logic_op(operator),
+                    typed_llvm(result_llvm),
+                    left_op,
+                    right_op,
+                ),
             );
         }
         ("Equal" | "Assign" | "NotEqual", "ptr") => {
-            let _ = writeln!(
-                text,
-                "  %streq{} = call i32 @bn_rt_str_eq(ptr %v{}, ptr %v{})",
-                destination.0, left.0, right.0
+            text.assign(
+                format!("streq{}", destination.0),
+                STR_EQ.call([value_reg(left), value_reg(right)]),
             );
             let predicate = if matches!(operator, "Equal" | "Assign") {
-                "eq"
+                ICmpCond::Eq
             } else {
-                "ne"
+                ICmpCond::Ne
             };
-            let _ = writeln!(
-                text,
-                "  %v{} = icmp {predicate} i32 %streq{}, 1",
-                destination.0, destination.0
+            text.assign(
+                format!("v{}", destination.0),
+                LlvmInst::icmp(
+                    predicate,
+                    I32,
+                    LlvmOperand::reg(format!("streq{}", destination.0)),
+                    LlvmOperand::int(1),
+                ),
             );
         }
-        ("Plus", "float") => {
-            let left = coerce_to_type(text, left, left_ty, ty);
-            let right = coerce_to_type(text, right, right_ty, ty);
-            let _ = writeln!(text, "  %v{} = fadd float {left}, {right}", destination.0);
-        }
-        ("Minus", "float") => {
-            let left = coerce_to_type(text, left, left_ty, ty);
-            let right = coerce_to_type(text, right, right_ty, ty);
-            let _ = writeln!(text, "  %v{} = fsub float {left}, {right}", destination.0);
-        }
-        ("Star" | "Multiply", "float") => {
-            let left = coerce_to_type(text, left, left_ty, ty);
-            let right = coerce_to_type(text, right, right_ty, ty);
-            let _ = writeln!(text, "  %v{} = fmul float {left}, {right}", destination.0);
-        }
-        ("Slash" | "Divide", "float") => {
-            let left = coerce_to_type(text, left, left_ty, ty);
-            let right = coerce_to_type(text, right, right_ty, ty);
-            let _ = writeln!(text, "  %v{} = fdiv float {left}, {right}", destination.0);
-        }
-        ("Plus", "double") => {
-            let left = coerce_to_type(text, left, left_ty, ty);
-            let right = coerce_to_type(text, right, right_ty, ty);
-            let _ = writeln!(text, "  %v{} = fadd double {left}, {right}", destination.0);
-        }
-        ("Minus", "double") => {
-            let left = coerce_to_type(text, left, left_ty, ty);
-            let right = coerce_to_type(text, right, right_ty, ty);
-            let _ = writeln!(text, "  %v{} = fsub double {left}, {right}", destination.0);
-        }
-        ("Star" | "Multiply", "double") => {
-            let left = coerce_to_type(text, left, left_ty, ty);
-            let right = coerce_to_type(text, right, right_ty, ty);
-            let _ = writeln!(text, "  %v{} = fmul double {left}, {right}", destination.0);
-        }
-        ("Slash" | "Divide", "double") => {
-            let left = coerce_to_type(text, left, left_ty, ty);
-            let right = coerce_to_type(text, right, right_ty, ty);
-            let _ = writeln!(text, "  %v{} = fdiv double {left}, {right}", destination.0);
-        }
-        ("AND", "i1") => {
-            let _ = writeln!(
-                text,
-                "  %v{} = and i1 %v{}, %v{}",
-                destination.0, left.0, right.0
+        ("Plus" | "Minus" | "Star" | "Multiply" | "Slash" | "Divide", "float" | "double") => {
+            let op = match operator {
+                "Plus" => BinaryOp::FAdd,
+                "Minus" => BinaryOp::FSub,
+                "Star" | "Multiply" => BinaryOp::FMul,
+                _ => BinaryOp::FDiv,
+            };
+            let left = LlvmOperand::raw(coerce_to_type(text, left, left_ty, ty));
+            let right = LlvmOperand::raw(coerce_to_type(text, right, right_ty, ty));
+            text.assign(
+                format!("v{}", destination.0),
+                LlvmInst::binary(op, typed_llvm(result_llvm), left, right),
             );
         }
-        ("OR", "i1") => {
-            let _ = writeln!(
-                text,
-                "  %v{} = or i1 %v{}, %v{}",
-                destination.0, left.0, right.0
-            );
-        }
-        ("XOR", "i1") => {
-            let _ = writeln!(
-                text,
-                "  %v{} = xor i1 %v{}, %v{}",
-                destination.0, left.0, right.0
-            );
-        }
+        ("AND" | "OR" | "XOR", "i1") => text.assign(
+            format!("v{}", destination.0),
+            LlvmInst::binary(logic_op(operator), I1, value_reg(left), value_reg(right)),
+        ),
         (
             "Less" | "LessEqual" | "Greater" | "GreaterEqual" | "Equal" | "Assign" | "NotEqual",
             "i8" | "i16" | "i32" | "i64",
         ) if integer_llvm(left_llvm) && integer_llvm(right_llvm) => {
             let cmp_ty = wider_integer_type(left_ty, right_ty);
-            let left_op = coerce_to_type(text, left, left_ty, cmp_ty);
-            let right_op = coerce_to_type(text, right, right_ty, cmp_ty);
-            let _ = writeln!(
-                text,
-                "  %v{} = {} {} {left_op}, {right_op}",
-                destination.0,
-                integer_compare_opcode(operator, cmp_ty),
-                llvm_type(cmp_ty).expect("validated compare type")
+            let left_op = LlvmOperand::raw(coerce_to_type(text, left, left_ty, cmp_ty));
+            let right_op = LlvmOperand::raw(coerce_to_type(text, right, right_ty, cmp_ty));
+            text.assign(
+                format!("v{}", destination.0),
+                LlvmInst::icmp(
+                    integer_compare_cond(operator, cmp_ty),
+                    typed_llvm(llvm_type(cmp_ty).expect("validated compare type")),
+                    left_op,
+                    right_op,
+                ),
             );
         }
         (
             "Less" | "LessEqual" | "Greater" | "GreaterEqual" | "Equal" | "Assign" | "NotEqual",
             "float" | "double",
         ) => {
-            let _ = writeln!(
-                text,
-                "  %v{} = {} {} %v{}, %v{}",
-                destination.0,
-                float_compare_opcode(operator),
-                llvm_type(left_ty).expect("validated float compare type"),
-                left.0,
-                right.0
+            text.assign(
+                format!("v{}", destination.0),
+                LlvmInst::fcmp(
+                    float_compare_cond(operator),
+                    typed_llvm(llvm_type(left_ty).expect("validated float compare type")),
+                    value_reg(left),
+                    value_reg(right),
+                ),
             );
         }
-        ("Equal" | "Assign", "i1") => {
-            let _ = writeln!(
-                text,
-                "  %v{} = icmp eq i1 %v{}, %v{}",
-                destination.0, left.0, right.0
-            );
-        }
-        ("NotEqual", "i1") => {
-            let _ = writeln!(
-                text,
-                "  %v{} = icmp ne i1 %v{}, %v{}",
-                destination.0, left.0, right.0
-            );
-        }
+        ("Equal" | "Assign" | "NotEqual", "i1") => text.assign(
+            format!("v{}", destination.0),
+            LlvmInst::icmp(
+                integer_compare_cond(operator, &Type::Boolean),
+                I1,
+                value_reg(left),
+                value_reg(right),
+            ),
+        ),
         _ => unreachable!("validated binary operator"),
     }
 }
 
+/// `and`, `or` or `xor` for the BN logical and bitwise operators.
+fn logic_op(operator: &str) -> BinaryOp {
+    match operator {
+        "AND" => BinaryOp::And,
+        "OR" => BinaryOp::Or,
+        _ => BinaryOp::Xor,
+    }
+}
+
+/// Compares the `i64` payload of an `INTEGER OR Error` with a scalar.
 #[allow(clippy::too_many_arguments)]
 fn emit_integer_union_compare(
     text: &mut String,
@@ -300,21 +281,25 @@ fn emit_integer_union_compare(
     union_on_left: bool,
 ) {
     let dest = destination.0;
-    let _ = writeln!(
-        text,
-        "  %unioncmp{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-        union.0
+    text.assign(
+        format!("unioncmp{dest}"),
+        LlvmInst::extract(handle_result_ty(), value_reg(union), 2),
     );
-    let scalar_i64 = coerce_to_type(text, scalar, scalar_ty, &Type::Integer(IntegerType::Int64));
-    let (left, right) = if union_on_left {
-        (format!("%unioncmp{dest}"), scalar_i64)
-    } else {
-        (scalar_i64, format!("%unioncmp{dest}"))
-    };
-    let _ = writeln!(
+    let payload = LlvmOperand::reg(format!("unioncmp{dest}"));
+    let scalar_i64 = LlvmOperand::raw(coerce_to_type(
         text,
-        "  %v{dest} = {} i64 {left}, {right}",
-        integer_compare_opcode(operator, payload_ty)
+        scalar,
+        scalar_ty,
+        &Type::Integer(IntegerType::Int64),
+    ));
+    let (left, right) = if union_on_left {
+        (payload, scalar_i64)
+    } else {
+        (scalar_i64, payload)
+    };
+    text.assign(
+        format!("v{dest}"),
+        LlvmInst::icmp(integer_compare_cond(operator, payload_ty), I64, left, right),
     );
 }
 
@@ -334,6 +319,7 @@ fn integer_llvm_bitwidth(ty: &Type) -> u8 {
     }
 }
 
+/// Integer `/` with a floating-point result: both operands convert first.
 fn emit_integer_float_div(
     text: &mut String,
     destination: ValueId,
@@ -345,10 +331,9 @@ fn emit_integer_float_div(
 ) {
     let left_op = int_to_float(text, left, left_ty, result_llvm, "divl");
     let right_op = int_to_float(text, right, right_ty, result_llvm, "divr");
-    let _ = writeln!(
-        text,
-        "  %v{} = fdiv {result_llvm} {left_op}, {right_op}",
-        destination.0
+    text.assign(
+        format!("v{}", destination.0),
+        LlvmInst::binary(BinaryOp::FDiv, typed_llvm(result_llvm), left_op, right_op),
     );
 }
 
@@ -358,14 +343,22 @@ fn int_to_float(
     ty: &Type,
     result_llvm: &str,
     tag: &str,
-) -> String {
+) -> LlvmOperand {
     let llvm_ty = llvm_type(ty).expect("validated integer dividend type");
-    let opcode = if is_unsigned(ty) { "uitofp" } else { "sitofp" };
+    let op = if is_unsigned(ty) {
+        CastOp::UIToFP
+    } else {
+        CastOp::SIToFP
+    };
     let temp = format!("{tag}{}", value.0);
-    let _ = writeln!(
-        text,
-        "  %{temp} = {opcode} {llvm_ty} %v{} to {result_llvm}",
-        value.0
+    text.assign(
+        temp.clone(),
+        LlvmInst::cast(
+            op,
+            typed_llvm(llvm_ty),
+            value_reg(value),
+            typed_llvm(result_llvm),
+        ),
     );
-    format!("%{temp}")
+    LlvmOperand::reg(temp)
 }

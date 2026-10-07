@@ -1,6 +1,11 @@
 #![allow(clippy::wildcard_imports, clippy::too_many_lines)]
 use super::runtime::is_bndata_function;
 use super::*;
+#[path = "crypto_calls.rs"]
+mod crypto_calls;
+#[path = "json_calls.rs"]
+mod json_calls;
+use crate::ir::{CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
 
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::unnecessary_wraps)]
@@ -24,6 +29,7 @@ pub(crate) fn lower_call_instruction(
     else {
         unreachable!("call emitter received another instruction");
     };
+    let v = |id: ValueId| O::reg(format!("v{}", id.0));
     if !analysis.functions.contains_key(callee)
         && matches!(analysis.values.get(callee), Some(Type::Function { .. }))
     {
@@ -185,63 +191,50 @@ pub(crate) fn lower_call_instruction(
         }
         name if is_bndata_function(name) => {
             let dest = destination.0;
+            let union = T::struct_of([T::I1, T::Ptr, T::I64]);
+            let r = |name: &str| O::reg(format!("csv{name}{dest}"));
+            let flag = |text: &mut String, slot: String, operand: ValueId| {
+                text.assign(slot, I::cast(CastOp::ZExt, T::I1, v(operand), T::I8));
+            };
             if name.ends_with("WriteCSV") {
-                let _ = writeln!(
-                    text,
-                    "  %csvfilew{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-                    arguments[0].0
-                );
-                if llvm_type(
-                    analysis
-                        .values
-                        .get(&arguments[1])
-                        .expect("validated DataFrame argument"),
-                ) == Some("{ i1, ptr, i64 }")
-                {
-                    let _ = writeln!(
-                        text,
-                        "  %csvframew{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-                        arguments[1].0
-                    );
+                let file = I::extract(union.clone(), v(arguments[0]), 2);
+                text.assign(format!("csvfilew{dest}"), file);
+                let frame = analysis
+                    .values
+                    .get(&arguments[1])
+                    .expect("validated DataFrame argument");
+                let frame = if llvm_type(frame) == Some("{ i1, ptr, i64 }") {
+                    I::extract(union, v(arguments[1]), 2)
                 } else {
-                    let _ = writeln!(
-                        text,
-                        "  %csvframew{dest} = ptrtoint ptr %v{} to i64",
-                        arguments[1].0
-                    );
-                }
-                let _ = writeln!(
-                    text,
-                    "  %csvheaderw{dest} = zext i1 %v{} to i8",
-                    arguments[2].0
-                );
-                emit_void_result(
-                    text,
-                    *destination,
-                    format!(
-                        "call i32 @bn_rt_dataframe_write_csv(i64 %csvfilew{dest}, i64 %csvframew{dest}, i8 %csvheaderw{dest}, ptr %v{})",
-                        arguments[3].0
-                    ),
-                );
+                    I::cast(CastOp::PtrToInt, T::Ptr, v(arguments[1]), T::I64)
+                };
+                text.assign(format!("csvframew{dest}"), frame);
+                flag(text, format!("csvheaderw{dest}"), arguments[2]);
+                let args = vec![
+                    (T::I64, r("filew")),
+                    (T::I64, r("framew")),
+                    (T::I8, r("headerw")),
+                    (T::Ptr, v(arguments[3])),
+                ];
+                let call = I::call(T::I32, "bn_rt_dataframe_write_csv", args);
+                emit_void_result(text, *destination, call.to_string());
                 return Ok(());
             }
-            let _ = writeln!(
-                text,
-                "  %csvfile{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-                arguments[0].0
+            text.assign(
+                format!("csvfile{dest}"),
+                I::extract(union, v(arguments[0]), 2),
             );
-            let _ = writeln!(
-                text,
-                "  %csvheader{dest} = zext i1 %v{} to i8",
-                arguments[1].0
-            );
-            let _ = writeln!(text, "  %csvout{dest} = alloca i64");
-            let _ = writeln!(
-                text,
-                "  %csvrc{dest} = call i32 @bn_rt_dataframe_read_csv(i64 %csvfile{dest}, i8 %csvheader{dest}, ptr %v{}, ptr %csvout{dest})",
-                arguments[2].0
-            );
-            let _ = writeln!(text, "  %csvvalue{dest} = load i64, ptr %csvout{dest}");
+            flag(text, format!("csvheader{dest}"), arguments[1]);
+            text.assign(format!("csvout{dest}"), I::alloca(T::I64));
+            let args = vec![
+                (T::I64, r("file")),
+                (T::I8, r("header")),
+                (T::Ptr, v(arguments[2])),
+                (T::Ptr, r("out")),
+            ];
+            let call = I::call(T::I32, "bn_rt_dataframe_read_csv", args);
+            text.assign(format!("csvrc{dest}"), call);
+            text.assign(format!("csvvalue{dest}"), I::load(T::I64, r("out")));
             emit_handle_result(
                 text,
                 *destination,
@@ -306,787 +299,82 @@ pub(crate) fn lower_call_instruction(
             lower_bn_dispatch_call(text, *destination, name, arguments, analysis);
         }
         "TimeZone.Parse" => {
-            let argument = arguments[0];
-            let _ = writeln!(
-                text,
-                "  %v{} = getelementptr i8, ptr %v{}, i64 0",
-                destination.0, argument.0
+            let index = vec![(T::I64, O::int(0))];
+            text.assign(
+                format!("v{}", destination.0),
+                I::gep(T::I8, v(arguments[0]), index),
             );
         }
         name if bnjson_member(module, name).is_some() => {
-            let dest = destination.0;
-            match bnjson_member(module, name).expect("validated BNJson member") {
-                "Array" => {
-                    let _ = writeln!(text, "  %jsonnew{dest} = call i64 @bn_rt_json_array()");
-                    let _ = writeln!(text, "  %v{dest} = inttoptr i64 %jsonnew{dest} to ptr");
-                }
-                "Object" => {
-                    let _ = writeln!(text, "  %jsonnew{dest} = call i64 @bn_rt_json_object()");
-                    let _ = writeln!(text, "  %v{dest} = inttoptr i64 %jsonnew{dest} to ptr");
-                }
-                "Kind" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let _ = writeln!(
-                        text,
-                        "  %v{dest} = call ptr @bn_rt_json_kind(i64 %jsonh{dest})"
-                    );
-                }
-                "Has" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_has(i64 %jsonh{dest}, ptr %v{})",
-                        arguments[1].0
-                    );
-                    let _ = writeln!(text, "  %v{dest} = icmp eq i32 %jsonrc{dest}, 1");
-                }
-                "Length" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let _ = writeln!(
-                        text,
-                        "  %jsonlen{dest} = call i64 @bn_rt_json_length(i64 %jsonh{dest})"
-                    );
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp slt i64 %jsonlen{dest}, 0");
-                    emit_bnjson_scalar_result(text, dest, "%jsonlen{dest}");
-                }
-                "Clone" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let _ = writeln!(text, "  %jsonout{dest} = alloca i64");
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_clone(i64 %jsonh{dest}, ptr %jsonout{dest})"
-                    );
-                    let _ = writeln!(text, "  %jsonhandle{dest} = load i64, ptr %jsonout{dest}");
-                    emit_handle_result(
-                        text,
-                        *destination,
-                        format!("%jsonrc{dest}"),
-                        format!("%jsonhandle{dest}"),
-                    );
-                }
-                "Parse" => {
-                    let _ = writeln!(text, "  %jsonout{dest} = alloca i64");
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_parse(ptr %v{}, ptr %jsonout{dest})",
-                        arguments[0].0
-                    );
-                    let _ = writeln!(text, "  %jsonhandle{dest} = load i64, ptr %jsonout{dest}");
-                    emit_handle_result(
-                        text,
-                        *destination,
-                        format!("%jsonrc{dest}"),
-                        format!("%jsonhandle{dest}"),
-                    );
-                }
-                "Stringify" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let _ = writeln!(text, "  %jsonst{dest} = alloca i32");
-                    let _ = writeln!(
-                        text,
-                        "  %jsontext{dest} = call ptr @bn_rt_json_stringify(i64 %jsonh{dest}, ptr %jsonst{dest})"
-                    );
-                    let _ = writeln!(text, "  %jsonrc{dest} = load i32, ptr %jsonst{dest}");
-                    emit_bnjson_string_result(text, dest);
-                }
-                "SetString" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_string(i64 %jsonh{dest}, ptr %v{}, ptr %v{})",
-                        arguments[1].0, arguments[2].0
-                    );
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    emit_bnjson_scalar_result(text, dest, "0");
-                }
-                "SetInteger" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let number = emit_bnjson_i64_arg(text, analysis, dest, arguments[2]);
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_integer(i64 %jsonh{dest}, ptr %v{}, i64 {number})",
-                        arguments[1].0
-                    );
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    emit_bnjson_scalar_result(text, dest, "0");
-                }
-                "SetFloat" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let number = emit_bnjson_f64_arg(text, analysis, dest, arguments[2]);
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_float(i64 %jsonh{dest}, ptr %v{}, double {number})",
-                        arguments[1].0
-                    );
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    emit_bnjson_scalar_result(text, dest, "0");
-                }
-                "SetBoolean" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let _ = writeln!(
-                        text,
-                        "  %jsonflag{dest} = zext i1 %v{} to i32",
-                        arguments[2].0
-                    );
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_boolean(i64 %jsonh{dest}, ptr %v{}, i32 %jsonflag{dest})",
-                        arguments[1].0
-                    );
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    emit_bnjson_scalar_result(text, dest, "0");
-                }
-                "SetNull" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_null(i64 %jsonh{dest}, ptr %v{})",
-                        arguments[1].0
-                    );
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    emit_bnjson_scalar_result(text, dest, "0");
-                }
-                "SetJson" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    emit_bnjson_handle_named(text, analysis, dest, "child", arguments[2]);
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_json(i64 %jsonh{dest}, ptr %v{}, i64 %jsonhchild{dest})",
-                        arguments[1].0
-                    );
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    emit_bnjson_scalar_result(text, dest, "0");
-                }
-                "GetString" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let _ = writeln!(text, "  %jsonst{dest} = alloca i32");
-                    let _ = writeln!(
-                        text,
-                        "  %jsontext{dest} = call ptr @bn_rt_json_get_string(i64 %jsonh{dest}, ptr %v{}, ptr %jsonst{dest})",
-                        arguments[1].0
-                    );
-                    let _ = writeln!(text, "  %jsonrc{dest} = load i32, ptr %jsonst{dest}");
-                    emit_bnjson_string_result(text, dest);
-                }
-                "GetInteger" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let _ = writeln!(text, "  %jsonst{dest} = alloca i32");
-                    let _ = writeln!(
-                        text,
-                        "  %jsonval{dest} = call i64 @bn_rt_json_get_integer(i64 %jsonh{dest}, ptr %v{}, ptr %jsonst{dest})",
-                        arguments[1].0
-                    );
-                    let _ = writeln!(text, "  %jsonrc{dest} = load i32, ptr %jsonst{dest}");
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    emit_bnjson_scalar_result(text, dest, "%jsonval{dest}");
-                }
-                "GetFloat" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let _ = writeln!(text, "  %jsonst{dest} = alloca i32");
-                    let _ = writeln!(
-                        text,
-                        "  %jsonf{dest} = call double @bn_rt_json_get_float(i64 %jsonh{dest}, ptr %v{}, ptr %jsonst{dest})",
-                        arguments[1].0
-                    );
-                    let _ = writeln!(text, "  %jsonrc{dest} = load i32, ptr %jsonst{dest}");
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    let _ = writeln!(
-                        text,
-                        "  %jsonval{dest} = bitcast double %jsonf{dest} to i64"
-                    );
-                    emit_bnjson_scalar_result(text, dest, "%jsonval{dest}");
-                }
-                "GetBoolean" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let _ = writeln!(text, "  %jsonst{dest} = alloca i32");
-                    let _ = writeln!(
-                        text,
-                        "  %jsonbool{dest} = call i32 @bn_rt_json_get_boolean(i64 %jsonh{dest}, ptr %v{}, ptr %jsonst{dest})",
-                        arguments[1].0
-                    );
-                    let _ = writeln!(text, "  %jsonrc{dest} = load i32, ptr %jsonst{dest}");
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    let _ = writeln!(text, "  %jsonwide{dest} = zext i32 %jsonbool{dest} to i64");
-                    emit_bnjson_scalar_result(text, dest, "%jsonwide{dest}");
-                }
-                "GetJson" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let _ = writeln!(text, "  %jsonout{dest} = alloca i64");
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_get_json(i64 %jsonh{dest}, ptr %v{}, ptr %jsonout{dest})",
-                        arguments[1].0
-                    );
-                    let _ = writeln!(text, "  %jsonhandle{dest} = load i64, ptr %jsonout{dest}");
-                    emit_handle_result(
-                        text,
-                        *destination,
-                        format!("%jsonrc{dest}"),
-                        format!("%jsonhandle{dest}"),
-                    );
-                }
-                "AppendString" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_append_string(i64 %jsonh{dest}, ptr %v{})",
-                        arguments[1].0
-                    );
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    emit_bnjson_scalar_result(text, dest, "0");
-                }
-                "AppendInteger" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let number = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_append_integer(i64 %jsonh{dest}, i64 {number})"
-                    );
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    emit_bnjson_scalar_result(text, dest, "0");
-                }
-                "AppendFloat" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let number = emit_bnjson_f64_arg(text, analysis, dest, arguments[1]);
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_append_float(i64 %jsonh{dest}, double {number})"
-                    );
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    emit_bnjson_scalar_result(text, dest, "0");
-                }
-                "AppendBoolean" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let _ = writeln!(
-                        text,
-                        "  %jsonflag{dest} = zext i1 %v{} to i32",
-                        arguments[1].0
-                    );
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_append_boolean(i64 %jsonh{dest}, i32 %jsonflag{dest})"
-                    );
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    emit_bnjson_scalar_result(text, dest, "0");
-                }
-                "AppendNull" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_append_null(i64 %jsonh{dest})"
-                    );
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    emit_bnjson_scalar_result(text, dest, "0");
-                }
-                "AppendJson" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    emit_bnjson_handle_named(text, analysis, dest, "child", arguments[1]);
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_append_json(i64 %jsonh{dest}, i64 %jsonhchild{dest})"
-                    );
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    emit_bnjson_scalar_result(text, dest, "0");
-                }
-                "GetStringAt" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
-                    let _ = writeln!(text, "  %jsonst{dest} = alloca i32");
-                    let _ = writeln!(
-                        text,
-                        "  %jsontext{dest} = call ptr @bn_rt_json_get_string_at(i64 %jsonh{dest}, i64 {index}, ptr %jsonst{dest})"
-                    );
-                    let _ = writeln!(text, "  %jsonrc{dest} = load i32, ptr %jsonst{dest}");
-                    emit_bnjson_string_result(text, dest);
-                }
-                "GetIntegerAt" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
-                    let _ = writeln!(text, "  %jsonst{dest} = alloca i32");
-                    let _ = writeln!(
-                        text,
-                        "  %jsonval{dest} = call i64 @bn_rt_json_get_integer_at(i64 %jsonh{dest}, i64 {index}, ptr %jsonst{dest})"
-                    );
-                    let _ = writeln!(text, "  %jsonrc{dest} = load i32, ptr %jsonst{dest}");
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    emit_bnjson_scalar_result(text, dest, "%jsonval{dest}");
-                }
-                "GetFloatAt" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
-                    let _ = writeln!(text, "  %jsonst{dest} = alloca i32");
-                    let _ = writeln!(
-                        text,
-                        "  %jsonf{dest} = call double @bn_rt_json_get_float_at(i64 %jsonh{dest}, i64 {index}, ptr %jsonst{dest})"
-                    );
-                    let _ = writeln!(text, "  %jsonrc{dest} = load i32, ptr %jsonst{dest}");
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    let _ = writeln!(
-                        text,
-                        "  %jsonval{dest} = bitcast double %jsonf{dest} to i64"
-                    );
-                    emit_bnjson_scalar_result(text, dest, "%jsonval{dest}");
-                }
-                "GetBooleanAt" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
-                    let _ = writeln!(text, "  %jsonst{dest} = alloca i32");
-                    let _ = writeln!(
-                        text,
-                        "  %jsonbool{dest} = call i32 @bn_rt_json_get_boolean_at(i64 %jsonh{dest}, i64 {index}, ptr %jsonst{dest})"
-                    );
-                    let _ = writeln!(text, "  %jsonrc{dest} = load i32, ptr %jsonst{dest}");
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    let _ = writeln!(text, "  %jsonwide{dest} = zext i32 %jsonbool{dest} to i64");
-                    emit_bnjson_scalar_result(text, dest, "%jsonwide{dest}");
-                }
-                "GetJsonAt" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
-                    let _ = writeln!(text, "  %jsonout{dest} = alloca i64");
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_get_json_at(i64 %jsonh{dest}, i64 {index}, ptr %jsonout{dest})"
-                    );
-                    let _ = writeln!(text, "  %jsonhandle{dest} = load i64, ptr %jsonout{dest}");
-                    emit_handle_result(
-                        text,
-                        *destination,
-                        format!("%jsonrc{dest}"),
-                        format!("%jsonhandle{dest}"),
-                    );
-                }
-                "SetStringAt" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_string_at(i64 %jsonh{dest}, i64 {index}, ptr %v{})",
-                        arguments[2].0
-                    );
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    emit_bnjson_scalar_result(text, dest, "0");
-                }
-                "SetIntegerAt" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
-                    let number =
-                        emit_bnjson_i64_arg_named(text, analysis, dest, "val", arguments[2]);
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_integer_at(i64 %jsonh{dest}, i64 {index}, i64 {number})"
-                    );
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    emit_bnjson_scalar_result(text, dest, "0");
-                }
-                "SetFloatAt" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
-                    let number =
-                        emit_bnjson_f64_arg_named(text, analysis, dest, "val", arguments[2]);
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_float_at(i64 %jsonh{dest}, i64 {index}, double {number})"
-                    );
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    emit_bnjson_scalar_result(text, dest, "0");
-                }
-                "SetBooleanAt" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
-                    let _ = writeln!(
-                        text,
-                        "  %jsonflag{dest} = zext i1 %v{} to i32",
-                        arguments[2].0
-                    );
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_boolean_at(i64 %jsonh{dest}, i64 {index}, i32 %jsonflag{dest})"
-                    );
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    emit_bnjson_scalar_result(text, dest, "0");
-                }
-                "SetNullAt" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_null_at(i64 %jsonh{dest}, i64 {index})"
-                    );
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    emit_bnjson_scalar_result(text, dest, "0");
-                }
-                "SetJsonAt" => {
-                    emit_bnjson_handle(text, analysis, dest, arguments[0]);
-                    let index = emit_bnjson_i64_arg(text, analysis, dest, arguments[1]);
-                    emit_bnjson_handle_named(text, analysis, dest, "child", arguments[2]);
-                    let _ = writeln!(
-                        text,
-                        "  %jsonrc{dest} = call i32 @bn_rt_json_set_json_at(i64 %jsonh{dest}, i64 {index}, i64 %jsonhchild{dest})"
-                    );
-                    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-                    emit_bnjson_scalar_result(text, dest, "0");
-                }
-                other => panic!("unhandled BNJson member in emission: {other}"),
-            }
+            let member = bnjson_member(module, name).expect("validated BNJson member");
+            json_calls::lower_bnjson_call(text, analysis, *destination, member, arguments);
         }
         name if bncrypto_method(module, name).is_some() => {
-            let dest = destination.0;
-            let argument = arguments[0].0;
-            match bncrypto_method(module, name).expect("validated BNCrypto member") {
-                "SHA256" => {
-                    let _ = writeln!(
-                        text,
-                        "  %v{dest} = call ptr @bn_rt_crypto_sha256(ptr %v{argument})"
-                    );
-                }
-                "SHA512" => {
-                    let _ = writeln!(
-                        text,
-                        "  %v{dest} = call ptr @bn_rt_crypto_sha512(ptr %v{argument})"
-                    );
-                }
-                // The handle travels as a ptr, as BNLog resources do.
-                "FromText" => {
-                    let _ = writeln!(
-                        text,
-                        "  %cryh{dest} = call i64 @bn_rt_crypto_bytes_from_text(ptr %v{argument})"
-                    );
-                    let _ = writeln!(text, "  %v{dest} = inttoptr i64 %cryh{dest} to ptr");
-                }
-                "Length" => {
-                    emit_bncrypto_handle(text, analysis, &format!("%cryh{dest}"), arguments[0]);
-                    let _ = writeln!(
-                        text,
-                        "  %cryl{dest} = call i64 @bn_rt_crypto_bytes_length(i64 %cryh{dest})"
-                    );
-                    let _ = writeln!(text, "  %v{dest} = trunc i64 %cryl{dest} to i32");
-                }
-                "ToHex" => {
-                    emit_bncrypto_handle(text, analysis, &format!("%cryh{dest}"), arguments[0]);
-                    let _ = writeln!(
-                        text,
-                        "  %v{dest} = call ptr @bn_rt_crypto_bytes_to_hex(i64 %cryh{dest})"
-                    );
-                }
-                member @ ("SealAesGcm" | "OpenAesGcm" | "SealChaCha20" | "OpenChaCha20") => {
-                    let selector = i32::from(member.ends_with("ChaCha20"));
-                    let symbol = if member.starts_with("Seal") {
-                        "bn_rt_crypto_seal"
-                    } else {
-                        "bn_rt_crypto_open"
-                    };
-                    for (index, operand) in arguments.iter().enumerate() {
-                        emit_bncrypto_handle(
-                            text,
-                            analysis,
-                            &format!("%cryarg{dest}_{index}"),
-                            *operand,
-                        );
-                    }
-                    let _ = writeln!(text, "  %cryout{dest} = alloca i64");
-                    let _ = writeln!(
-                        text,
-                        "  %cryrc{dest} = call i32 @{symbol}(i32 {selector}, i64 %cryarg{dest}_0, i64 %cryarg{dest}_1, i64 %cryarg{dest}_2, i64 %cryarg{dest}_3, ptr %cryout{dest})"
-                    );
-                    let _ = writeln!(text, "  %cryhandle{dest} = load i64, ptr %cryout{dest}");
-                    emit_handle_result(
-                        text,
-                        *destination,
-                        format!("%cryrc{dest}"),
-                        format!("%cryhandle{dest}"),
-                    );
-                }
-                "Slice" => {
-                    emit_bncrypto_handle(text, analysis, &format!("%cryh{dest}"), arguments[0]);
-                    let mut bounds = Vec::with_capacity(2);
-                    for (index, operand) in arguments[1..].iter().enumerate() {
-                        let slot = format!("%crybound{dest}_{index}");
-                        let ty = analysis
-                            .values
-                            .get(operand)
-                            .and_then(llvm_type)
-                            .unwrap_or("i64");
-                        if ty == "i64" {
-                            bounds.push(format!("%v{}", operand.0));
-                        } else {
-                            let _ = writeln!(text, "  {slot} = sext {ty} %v{} to i64", operand.0);
-                            bounds.push(slot);
-                        }
-                    }
-                    let _ = writeln!(text, "  %cryout{dest} = alloca i64");
-                    let _ = writeln!(
-                        text,
-                        "  %cryrc{dest} = call i32 @bn_rt_crypto_slice(i64 %cryh{dest}, i64 {}, i64 {}, ptr %cryout{dest})",
-                        bounds[0], bounds[1]
-                    );
-                    let _ = writeln!(text, "  %cryhandle{dest} = load i64, ptr %cryout{dest}");
-                    emit_handle_result(
-                        text,
-                        *destination,
-                        format!("%cryrc{dest}"),
-                        format!("%cryhandle{dest}"),
-                    );
-                }
-                member @ ("MlKemKeypair" | "MlKemEncapsulate" | "MlKemDecapsulate"
-                | "MlDsaKeypair" | "MlDsaSign" | "MlDsaVerify") => {
-                    for (index, operand) in arguments.iter().enumerate() {
-                        emit_bncrypto_handle(
-                            text,
-                            analysis,
-                            &format!("%cryarg{dest}_{index}"),
-                            *operand,
-                        );
-                    }
-                    let symbol = match member {
-                        "MlKemKeypair" => "bn_rt_crypto_kem_keypair",
-                        "MlKemEncapsulate" => "bn_rt_crypto_kem_encapsulate",
-                        "MlKemDecapsulate" => "bn_rt_crypto_kem_decapsulate",
-                        "MlDsaKeypair" => "bn_rt_crypto_dsa_keypair",
-                        "MlDsaSign" => "bn_rt_crypto_dsa_sign",
-                        _ => "bn_rt_crypto_dsa_verify",
-                    };
-                    let operands = (0..arguments.len())
-                        .map(|index| format!("i64 %cryarg{dest}_{index}"))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    if member == "MlDsaVerify" {
-                        let _ = writeln!(text, "  %cryrc{dest} = call i32 @{symbol}({operands})");
-                        let _ = writeln!(text, "  %v{dest} = icmp eq i32 %cryrc{dest}, 1");
-                    } else {
-                        let _ = writeln!(text, "  %cryout{dest} = alloca i64");
-                        let _ = writeln!(
-                            text,
-                            "  %cryrc{dest} = call i32 @{symbol}({operands}, ptr %cryout{dest})"
-                        );
-                        let _ = writeln!(text, "  %cryhandle{dest} = load i64, ptr %cryout{dest}");
-                        emit_handle_result(
-                            text,
-                            *destination,
-                            format!("%cryrc{dest}"),
-                            format!("%cryhandle{dest}"),
-                        );
-                    }
-                }
-                member @ ("Ed25519PublicKey" | "EcdsaP256PublicKey" | "Ed25519Sign"
-                | "EcdsaP256Sign" | "Ed25519Verify" | "EcdsaP256Verify") => {
-                    let selector = i32::from(member.starts_with("Ecdsa"));
-                    for (index, operand) in arguments.iter().enumerate() {
-                        emit_bncrypto_handle(
-                            text,
-                            analysis,
-                            &format!("%cryarg{dest}_{index}"),
-                            *operand,
-                        );
-                    }
-                    if member.ends_with("Verify") {
-                        let _ = writeln!(
-                            text,
-                            "  %cryrc{dest} = call i32 @bn_rt_crypto_verify(i32 {selector}, i64 %cryarg{dest}_0, i64 %cryarg{dest}_1, i64 %cryarg{dest}_2)"
-                        );
-                        let _ = writeln!(text, "  %v{dest} = icmp eq i32 %cryrc{dest}, 1");
-                    } else {
-                        let _ = writeln!(text, "  %cryout{dest} = alloca i64");
-                        if member.ends_with("PublicKey") {
-                            let _ = writeln!(
-                                text,
-                                "  %cryrc{dest} = call i32 @bn_rt_crypto_public_key(i32 {selector}, i64 %cryarg{dest}_0, ptr %cryout{dest})"
-                            );
-                        } else {
-                            let _ = writeln!(
-                                text,
-                                "  %cryrc{dest} = call i32 @bn_rt_crypto_sign(i32 {selector}, i64 %cryarg{dest}_0, i64 %cryarg{dest}_1, ptr %cryout{dest})"
-                            );
-                        }
-                        let _ = writeln!(text, "  %cryhandle{dest} = load i64, ptr %cryout{dest}");
-                        emit_handle_result(
-                            text,
-                            *destination,
-                            format!("%cryrc{dest}"),
-                            format!("%cryhandle{dest}"),
-                        );
-                    }
-                }
-                "HmacSha256" => {
-                    for (index, operand) in arguments.iter().enumerate() {
-                        emit_bncrypto_handle(
-                            text,
-                            analysis,
-                            &format!("%cryarg{dest}_{index}"),
-                            *operand,
-                        );
-                    }
-                    let _ = writeln!(text, "  %cryout{dest} = alloca i64");
-                    let _ = writeln!(
-                        text,
-                        "  %cryrc{dest} = call i32 @bn_rt_crypto_hmac(i64 %cryarg{dest}_0, i64 %cryarg{dest}_1, ptr %cryout{dest})"
-                    );
-                    let _ = writeln!(text, "  %cryhandle{dest} = load i64, ptr %cryout{dest}");
-                    let _ = writeln!(text, "  %v{dest} = inttoptr i64 %cryhandle{dest} to ptr");
-                }
-                "VerifyHmacSha256" => {
-                    for (index, operand) in arguments.iter().enumerate() {
-                        emit_bncrypto_handle(
-                            text,
-                            analysis,
-                            &format!("%cryarg{dest}_{index}"),
-                            *operand,
-                        );
-                    }
-                    let _ = writeln!(
-                        text,
-                        "  %cryrc{dest} = call i32 @bn_rt_crypto_hmac_verify(i64 %cryarg{dest}_0, i64 %cryarg{dest}_1, i64 %cryarg{dest}_2)"
-                    );
-                    let _ = writeln!(text, "  %v{dest} = icmp eq i32 %cryrc{dest}, 1");
-                }
-                "Argon2id" => {
-                    for (index, operand) in arguments[..2].iter().enumerate() {
-                        emit_bncrypto_handle(
-                            text,
-                            analysis,
-                            &format!("%cryarg{dest}_{index}"),
-                            *operand,
-                        );
-                    }
-                    let mut costs = Vec::with_capacity(3);
-                    for (index, operand) in arguments[2..].iter().enumerate() {
-                        let slot = format!("%crycost{dest}_{index}");
-                        let ty = analysis
-                            .values
-                            .get(operand)
-                            .and_then(llvm_type)
-                            .unwrap_or("i64");
-                        if ty == "i64" {
-                            costs.push(format!("%v{}", operand.0));
-                        } else {
-                            let _ = writeln!(text, "  {slot} = sext {ty} %v{} to i64", operand.0);
-                            costs.push(slot);
-                        }
-                    }
-                    let _ = writeln!(text, "  %cryout{dest} = alloca i64");
-                    let _ = writeln!(
-                        text,
-                        "  %cryrc{dest} = call i32 @bn_rt_crypto_argon2id(i64 %cryarg{dest}_0, i64 %cryarg{dest}_1, i64 {}, i64 {}, i64 {}, ptr %cryout{dest})",
-                        costs[0], costs[1], costs[2]
-                    );
-                    let _ = writeln!(text, "  %cryhandle{dest} = load i64, ptr %cryout{dest}");
-                    emit_handle_result(
-                        text,
-                        *destination,
-                        format!("%cryrc{dest}"),
-                        format!("%cryhandle{dest}"),
-                    );
-                }
-                "FromHex" => {
-                    let _ = writeln!(text, "  %cryout{dest} = alloca i64");
-                    let _ = writeln!(
-                        text,
-                        "  %cryrc{dest} = call i32 @bn_rt_crypto_bytes_from_hex(ptr %v{argument}, ptr %cryout{dest})"
-                    );
-                    let _ = writeln!(text, "  %cryhandle{dest} = load i64, ptr %cryout{dest}");
-                    emit_handle_result(
-                        text,
-                        *destination,
-                        format!("%cryrc{dest}"),
-                        format!("%cryhandle{dest}"),
-                    );
-                }
-                other => unreachable!("unsupported BNCrypto member reached emission: {other}"),
-            }
+            let member = bncrypto_method(module, name).expect("validated BNCrypto member");
+            crypto_calls::lower_bncrypto_call(text, analysis, *destination, member, arguments);
         }
         name if bnsqlite_method(module, name).is_some() => {
             let method = bnsqlite_method(module, name).expect("validated BNSqlite member");
             lower_sqlite_call(text, *destination, method, arguments, analysis);
         }
-        "TOLOWER" => {
-            let dest = destination.0;
-            let argument = arguments[0];
-            let _ = writeln!(
-                text,
-                "  %v{dest} = call ptr @bn_rt_str_to_lower(ptr %v{})",
-                argument.0
-            );
-        }
-        "TOUPPER" => {
-            let dest = destination.0;
-            let argument = arguments[0];
-            let _ = writeln!(
-                text,
-                "  %v{dest} = call ptr @bn_rt_str_to_upper(ptr %v{})",
-                argument.0
+        case @ ("TOLOWER" | "TOUPPER") => {
+            let symbol = format!("bn_rt_str_to_{}", case[2..].to_ascii_lowercase());
+            let args = vec![(T::Ptr, v(arguments[0]))];
+            text.assign(
+                format!("v{}", destination.0),
+                I::call(T::Ptr, &symbol, args),
             );
         }
         "ASC" => {
             let dest = destination.0;
-            let argument = arguments[0];
-            let _ = writeln!(
-                text,
-                "  %asccode{dest} = call i64 @bn_rt_str_asc(ptr %v{})",
-                argument.0
+            let r = |name: &str| O::reg(format!("asc{name}{dest}"));
+            let args = vec![(T::Ptr, v(arguments[0]))];
+            text.assign(
+                format!("asccode{dest}"),
+                I::call(T::I64, "bn_rt_str_asc", args),
             );
-            let _ = writeln!(text, "  %ascerror{dest} = icmp slt i64 %asccode{dest}, 0");
-            let _ = writeln!(
-                text,
-                "  %ascmessage{dest} = select i1 %ascerror{dest}, ptr @.bn_asc_error, ptr null"
+            text.assign(
+                format!("ascerror{dest}"),
+                I::icmp(ICmpCond::Slt, T::I64, r("code"), O::int(0)),
             );
-            let _ = writeln!(
-                text,
-                "  %ascpayload{dest} = select i1 %ascerror{dest}, i64 1, i64 %asccode{dest}"
+            let message = O::global(".bn_asc_error");
+            text.assign(
+                format!("ascmessage{dest}"),
+                I::select(r("error"), T::Ptr, message, O::null()),
             );
-            let _ = writeln!(
-                text,
-                "  %ascagg0{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %ascerror{dest}, 0"
+            text.assign(
+                format!("ascpayload{dest}"),
+                I::select(r("error"), T::I64, O::int(1), r("code")),
             );
-            let _ = writeln!(
-                text,
-                "  %ascagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %ascerror{dest}, ptr %ascmessage{dest}, ptr null)\n  %ascagg1{dest} = insertvalue {{ i1, ptr, i64 }} %ascagg0{dest}, ptr %ascagg1wrap{dest}, 1"
-            );
-            let _ = writeln!(
-                text,
-                "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %ascagg1{dest}, i64 %ascpayload{dest}, 2"
-            );
+            emit_wrapped_error(text, "asc", dest, r("message"));
         }
         "CHAR" => {
             let dest = destination.0;
             let argument = arguments[0];
-            let code = extend_to_i64(
-                text,
-                argument,
-                analysis
-                    .values
-                    .get(&argument)
-                    .expect("validated CHAR argument"),
+            let ty = analysis
+                .values
+                .get(&argument)
+                .expect("validated CHAR argument");
+            let code = O::raw(extend_to_i64(text, argument, ty));
+            let r = |name: &str| O::reg(format!("char{name}{dest}"));
+            let call = I::call(T::I64, "bn_rt_str_char_utf8", vec![(T::I64, code)]);
+            text.assign(format!("charpacked{dest}"), call);
+            text.assign(
+                format!("charerror{dest}"),
+                I::icmp(ICmpCond::Eq, T::I64, r("packed"), O::int(-1)),
             );
-            let _ = writeln!(
-                text,
-                "  %charpacked{dest} = call i64 @bn_rt_str_char_utf8(i64 {code})"
+            text.assign(format!("charbuffer{dest}"), I::alloca(T::I64));
+            text.emit(I::store(T::I64, r("packed"), r("buffer")));
+            let message = O::global(".bn_char_error");
+            text.assign(
+                format!("charvalue{dest}"),
+                I::select(r("error"), T::Ptr, message, r("buffer")),
             );
-            let _ = writeln!(
-                text,
-                "  %charerror{dest} = icmp eq i64 %charpacked{dest}, -1"
+            text.assign(
+                format!("charpayload{dest}"),
+                I::select(r("error"), T::I64, O::int(1), O::int(0)),
             );
-            let _ = writeln!(text, "  %charbuffer{dest} = alloca i64");
-            let _ = writeln!(text, "  store i64 %charpacked{dest}, ptr %charbuffer{dest}");
-            let _ = writeln!(
-                text,
-                "  %charvalue{dest} = select i1 %charerror{dest}, ptr @.bn_char_error, ptr %charbuffer{dest}"
-            );
-            let _ = writeln!(
-                text,
-                "  %charpayload{dest} = select i1 %charerror{dest}, i64 1, i64 0"
-            );
-            let _ = writeln!(
-                text,
-                "  %charagg0{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %charerror{dest}, 0"
-            );
-            let _ = writeln!(
-                text,
-                "  %charagg1wrap{dest} = call ptr @bn_rt_error_wrap(i1 %charerror{dest}, ptr %charvalue{dest}, ptr null)\n  %charagg1{dest} = insertvalue {{ i1, ptr, i64 }} %charagg0{dest}, ptr %charagg1wrap{dest}, 1"
-            );
-            let _ = writeln!(
-                text,
-                "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %charagg1{dest}, i64 %charpayload{dest}, 2"
-            );
+            emit_wrapped_error(text, "char", dest, r("value"));
         }
         name if module
             .functions
@@ -1108,193 +396,34 @@ pub(crate) fn lower_call_instruction(
                 text,
                 block_id,
                 *destination,
-                &format!("call i32 @bn_rt_random_seed(i64 {seed})"),
+                I::call(T::I32, "bn_rt_random_seed", vec![(T::I64, O::raw(seed))]),
                 &[bn_diag::DiagId::EXECUTION_POLICY_DENIED],
                 state,
             );
         }
         "HOST.Random.Random" => {
-            let _ = writeln!(
-                text,
-                "  %v{} = call double @bn_rt_random_next()",
-                destination.0
-            );
+            let call = I::call(T::Double, "bn_rt_random_next", vec![]);
+            text.assign(format!("v{}", destination.0), call);
         }
         _ => unreachable!("validated call target"),
     }
     Ok(())
 }
 
-/// Materialises `%cryh{dest}`, the `bn_rt` table index behind a `BNCrypto.Bytes`
-/// operand. A plain handle arrives as a pointer; a value narrowed out of
-/// `Bytes OR Error` arrives as the `{ i1, ptr, i64 }` aggregate, as `FS.File`
-/// does.
-fn emit_bncrypto_handle(
-    text: &mut String,
-    analysis: &LoweringAnalysis<'_>,
-    slot: &str,
-    operand: ValueId,
-) {
-    let source = operand.0;
-    if matches!(analysis.values.get(&operand), Some(Type::Alternative(_))) {
-        let _ = writeln!(
-            text,
-            "  {slot} = extractvalue {{ i1, ptr, i64 }} %v{source}, 2"
-        );
-    } else {
-        let _ = writeln!(text, "  {slot} = ptrtoint ptr %v{source} to i64");
-    }
-}
-
-/// Widen an integer operand to `i64` for a `bn_rt_json_*` call.
-fn emit_bnjson_i64_arg(
-    text: &mut String,
-    analysis: &LoweringAnalysis<'_>,
-    dest: u32,
-    operand: ValueId,
-) -> String {
-    emit_bnjson_i64_arg_named(text, analysis, dest, "", operand)
-}
-
-fn emit_bnjson_i64_arg_named(
-    text: &mut String,
-    analysis: &LoweringAnalysis<'_>,
-    dest: u32,
-    tag: &str,
-    operand: ValueId,
-) -> String {
-    let ty = analysis
-        .values
-        .get(&operand)
-        .and_then(llvm_type)
-        .unwrap_or("i64");
-    if ty == "i64" {
-        format!("%v{}", operand.0)
-    } else {
-        let slot = format!("%jsoni64{tag}{dest}");
-        let _ = writeln!(text, "  {slot} = sext {ty} %v{} to i64", operand.0);
-        slot
-    }
-}
-
-/// Coerce a float operand to `double` for a `bn_rt_json_*` call.
-fn emit_bnjson_f64_arg(
-    text: &mut String,
-    analysis: &LoweringAnalysis<'_>,
-    dest: u32,
-    operand: ValueId,
-) -> String {
-    emit_bnjson_f64_arg_named(text, analysis, dest, "", operand)
-}
-
-fn emit_bnjson_f64_arg_named(
-    text: &mut String,
-    analysis: &LoweringAnalysis<'_>,
-    dest: u32,
-    tag: &str,
-    operand: ValueId,
-) -> String {
-    let ty = analysis
-        .values
-        .get(&operand)
-        .and_then(llvm_type)
-        .unwrap_or("double");
-    if ty == "double" {
-        format!("%v{}", operand.0)
-    } else if ty == "float" {
-        let slot = format!("%jsonf64{tag}{dest}");
-        let _ = writeln!(text, "  {slot} = fpext float %v{} to double", operand.0);
-        slot
-    } else {
-        // Integer literal coerced at the call site.
-        let slot = format!("%jsonf64{tag}{dest}");
-        let _ = writeln!(text, "  {slot} = sitofp {ty} %v{} to double", operand.0);
-        slot
-    }
-}
-
-/// Like [`emit_bnjson_handle`], but names the slot `%jsonh{tag}{dest}` so a
-/// call can materialise two handles (parent and child) without colliding.
-fn emit_bnjson_handle_named(
-    text: &mut String,
-    analysis: &LoweringAnalysis<'_>,
-    dest: u32,
-    tag: &str,
-    operand: ValueId,
-) {
-    let source = operand.0;
-    if matches!(analysis.values.get(&operand), Some(Type::Alternative(_))) {
-        let _ = writeln!(
-            text,
-            "  %jsonh{tag}{dest} = extractvalue {{ i1, ptr, i64 }} %v{source}, 2"
-        );
-    } else {
-        let _ = writeln!(text, "  %jsonh{tag}{dest} = ptrtoint ptr %v{source} to i64");
-    }
-}
-
-/// Packs a scalar payload and `%jsonerr{dest}` into the `{ i1, ptr, i64 }`
-/// aggregate a `<scalar> OR Error` result uses: on failure slot 1 is the
-/// recorded report and slot 2 its code, as `emit_status_result` builds them.
-/// The caller branches on the flag, never on the payload.
-fn emit_bnjson_scalar_result(text: &mut String, dest: u32, payload: &str) {
-    let payload = payload.replace("{dest}", &dest.to_string());
-    let _ = writeln!(
-        text,
-        "  %jsonagg{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %jsonerr{dest}, 0"
+/// Packs `%<prefix>error`, `message` wrapped as an error record and
+/// `%<prefix>payload` into the `{ i1, ptr, i64 }` of a `T OR Error` result.
+fn emit_wrapped_error(text: &mut String, prefix: &str, dest: u32, message: O) {
+    let r = |name: &str| O::reg(format!("{prefix}{name}{dest}"));
+    let union = T::struct_of([T::I1, T::Ptr, T::I64]);
+    let head = I::insert(union.clone(), O::undef(), T::I1, r("error"), 0);
+    text.assign(format!("{prefix}agg0{dest}"), head);
+    let args = vec![(T::I1, r("error")), (T::Ptr, message), (T::Ptr, O::null())];
+    text.assign(
+        format!("{prefix}agg1wrap{dest}"),
+        I::call(T::Ptr, "bn_rt_error_wrap", args),
     );
-    let _ = writeln!(
-        text,
-        "  %jsonerrint{dest} = zext i1 %jsonerr{dest} to i32\n  %jsonaggpwrap{dest} = call ptr @bn_rt_error_take(i32 %jsonerrint{dest}, ptr null)\n  %jsonaggp{dest} = insertvalue {{ i1, ptr, i64 }} %jsonagg{dest}, ptr %jsonaggpwrap{dest}, 1"
-    );
-    let _ = writeln!(
-        text,
-        "  %jsoncode{dest} = call i64 @bn_rt_error_code(ptr %jsonaggpwrap{dest})\n  %jsonpay{dest} = select i1 %jsonerr{dest}, i64 %jsoncode{dest}, i64 {payload}"
-    );
-    let _ = writeln!(
-        text,
-        "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %jsonaggp{dest}, i64 %jsonpay{dest}, 2"
-    );
-}
-
-/// Packs `%jsontext{dest}` and `%jsonrc{dest}` into the `{ i1, ptr, i64 }`
-/// aggregate a `STRING OR Error` result uses. The caller branches on the flag,
-/// never on the string.
-fn emit_bnjson_string_result(text: &mut String, dest: u32) {
-    let _ = writeln!(text, "  %jsonerr{dest} = icmp ne i32 %jsonrc{dest}, 0");
-    let _ = writeln!(
-        text,
-        "  %jsonagg{dest} = insertvalue {{ i1, ptr, i64 }} undef, i1 %jsonerr{dest}, 0"
-    );
-    let _ = writeln!(
-        text,
-        "  %jsonerrint{dest} = zext i1 %jsonerr{dest} to i32\n  %jsonfail{dest} = call ptr @bn_rt_error_take(i32 %jsonerrint{dest}, ptr null)\n  %jsonaggpwrap{dest} = select i1 %jsonerr{dest}, ptr %jsonfail{dest}, ptr %jsontext{dest}\n  %jsonaggp{dest} = insertvalue {{ i1, ptr, i64 }} %jsonagg{dest}, ptr %jsonaggpwrap{dest}, 1"
-    );
-    let _ = writeln!(
-        text,
-        "  %jsoncode{dest} = call i64 @bn_rt_error_code(ptr %jsonaggpwrap{dest})\n  %jsonpay{dest} = select i1 %jsonerr{dest}, i64 %jsoncode{dest}, i64 0"
-    );
-    let _ = writeln!(
-        text,
-        "  %v{dest} = insertvalue {{ i1, ptr, i64 }} %jsonaggp{dest}, i64 %jsonpay{dest}, 2"
-    );
-}
-
-/// Materialises `%jsonh{dest}`, the `bn_rt` table index behind a `BNJson.Json`
-/// operand. A narrowed value arrives as the `{ i1, ptr, i64 }` aggregate.
-fn emit_bnjson_handle(
-    text: &mut String,
-    analysis: &LoweringAnalysis<'_>,
-    dest: u32,
-    operand: ValueId,
-) {
-    let source = operand.0;
-    if matches!(analysis.values.get(&operand), Some(Type::Alternative(_))) {
-        let _ = writeln!(
-            text,
-            "  %jsonh{dest} = extractvalue {{ i1, ptr, i64 }} %v{source}, 2"
-        );
-    } else {
-        let _ = writeln!(text, "  %jsonh{dest} = ptrtoint ptr %v{source} to i64");
-    }
+    let wrapped = I::insert(union.clone(), r("agg0"), T::Ptr, r("agg1wrap"), 1);
+    text.assign(format!("{prefix}agg1{dest}"), wrapped);
+    let payload = I::insert(union, r("agg1"), T::I64, r("payload"), 2);
+    text.assign(format!("v{dest}"), payload);
 }

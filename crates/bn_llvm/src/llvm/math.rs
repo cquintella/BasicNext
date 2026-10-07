@@ -1,5 +1,18 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNMath lowering: the `bn_rt` math declarations, support checks, and scalar,
+// integer and vector math calls through the typed `bn_rt` signatures.
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::ir::{
+    BinaryOp, CastOp, ICmpCond, InstSink, LlvmInst, LlvmOperand,
+    LlvmType::{self, Double, I1, I32, I64, I128},
+    RuntimeFn,
+};
+use runtime_abi::*;
 
 pub(crate) const BN_RT_MATH_DECLS: &str = "\
 declare i64 @bn_rt_math_iabs(i64)
@@ -181,28 +194,17 @@ pub(crate) fn lower_bnmath_call(
         })
         .collect::<Vec<_>>();
     let integer_op = types.iter().all(|ty| integer_arg(ty));
+    let dest = destination.0;
     match method {
-        "VAL" => {
-            let _ = writeln!(
-                text,
-                "  %v{} = call double @bn_rt_math_val(ptr %v{})",
-                destination.0, arguments[0].0
-            );
-        }
+        "VAL" => text.assign(format!("v{dest}"), MATH_VAL.call([value_reg(arguments[0])])),
         "TOHOUR" | "TOWEEKDAY" | "TODATE" | "TOTIME" => {
-            let value = extend_to_i64(text, arguments[0], types[0]);
-            let (intrinsic, trap) = match method {
-                "TOHOUR" => ("bn_rt_math_tohour", String::new()),
-                "TOWEEKDAY" => ("bn_rt_math_toweekday", String::new()),
+            let value = LlvmOperand::raw(extend_to_i64(text, arguments[0], types[0]));
+            let call = match method {
+                "TOHOUR" => MATH_TOHOUR.call([value]),
+                "TOWEEKDAY" => MATH_TOWEEKDAY.call([value]),
                 // Outside 0001..9999 `bn_rt` prints this site's diagnostic.
-                other => (
-                    if other == "TODATE" {
-                        "bn_rt_math_todate"
-                    } else {
-                        "bn_rt_math_totime"
-                    },
-                    format!(
-                        ", ptr {}",
+                other => {
+                    let trap = LlvmOperand::global(
                         trap_symbol(
                             state,
                             bn_diag::DiagId::FORMAT_OUT_OF_RANGE,
@@ -211,23 +213,21 @@ pub(crate) fn lower_bnmath_call(
                                 Fact::Text("civil time must be in years 0001 through 9999".into()),
                             )],
                         )
-                        .0
-                    ),
-                ),
+                        .0,
+                    );
+                    if other == "TODATE" {
+                        MATH_TODATE.call([value, trap])
+                    } else {
+                        MATH_TOTIME.call([value, trap])
+                    }
+                }
             };
-            let _ = writeln!(
-                text,
-                "  %v{} = call i32 @{intrinsic}(i64 {value}{trap})",
-                destination.0
-            );
+            text.assign(format!("v{dest}"), call);
         }
-        "TOTIMESTAMP" => {
-            let _ = writeln!(
-                text,
-                "  %v{} = call i64 @bn_rt_math_totimestamp(i32 %v{}, i32 %v{})",
-                destination.0, arguments[0].0, arguments[1].0
-            );
-        }
+        "TOTIMESTAMP" => text.assign(
+            format!("v{dest}"),
+            MATH_TOTIMESTAMP.call([value_reg(arguments[0]), value_reg(arguments[1])]),
+        ),
         "MIN" | "MAX" | "MEAN" | "MEDIAN" | "QUARTILE1" | "QUARTILE3" | "RANGE" | "STDEV"
         | "VARIANCE" | "MODE"
             if arguments.len() == 1
@@ -253,7 +253,20 @@ pub(crate) fn lower_bnmath_call(
                 state,
             );
         }
-        _ => lower_float_math(text, destination, method, arguments, types.as_slice()),
+        _ => {
+            let result_ty = analysis
+                .values
+                .get(&destination)
+                .expect("validated BNMath result type");
+            lower_float_math(
+                text,
+                destination,
+                method,
+                arguments,
+                types.as_slice(),
+                result_ty,
+            );
+        }
     }
 }
 
@@ -266,113 +279,103 @@ fn lower_vector_math(
     state: &EmissionState,
 ) {
     let dest = destination.0;
+    let reg = LlvmOperand::reg;
     let float_vector = match vector_ty {
         Type::Pointer { element, .. } => {
             matches!(element.as_ref(), Type::Float(FloatType::Float64))
         }
         _ => is_f64_vector(vector_ty),
     };
-    let _ = writeln!(
-        text,
-        "  %statptr{dest} = extractvalue {{ ptr, i32 }} %v{}, 0",
-        vector.0
+    let pair = crate::layout::vector_ty();
+    text.assign(
+        format!("statptr{dest}"),
+        LlvmInst::extract(pair.clone(), value_reg(vector), 0),
     );
-    let _ = writeln!(
-        text,
-        "  %statlen{dest} = extractvalue {{ ptr, i32 }} %v{}, 1",
-        vector.0
+    text.assign(
+        format!("statlen{dest}"),
+        LlvmInst::extract(pair, value_reg(vector), 1),
     );
-    let length = format!("%statlen{dest}");
-    // MIN and MAX of an empty vector: `bn_rt` prints this site's diagnostic.
-    let empty = || {
-        trap_symbol(
-            state,
-            bn_diag::DiagId::INDEX_OUT_OF_BOUNDS,
-            vec![
-                ("index", Fact::Text("0".into())),
-                ("bound", Fact::Text("0".into())),
-                (
-                    "context",
-                    Fact::Text(format!("the input of BNMath.{method}")),
-                ),
-            ],
-        )
-        .0
-    };
+    let data = reg(format!("statptr{dest}"));
+    let length = reg(format!("statlen{dest}"));
     match method {
-        "MIN" => {
-            if float_vector {
-                let _ = writeln!(
-                    text,
-                    "  %v{dest} = call double @bn_rt_math_vmin_f64(ptr %statptr{dest}, i32 {length}, ptr {})",
-                    empty()
-                );
-            } else {
-                let _ = writeln!(
-                    text,
-                    "  %v{dest} = call i32 @bn_rt_math_vmin_i32(ptr %statptr{dest}, i32 {length}, ptr {})",
-                    empty()
-                );
-            }
-        }
-        "MAX" => {
-            if float_vector {
-                let _ = writeln!(
-                    text,
-                    "  %v{dest} = call double @bn_rt_math_vmax_f64(ptr %statptr{dest}, i32 {length}, ptr {})",
-                    empty()
-                );
-            } else {
-                let _ = writeln!(
-                    text,
-                    "  %v{dest} = call i32 @bn_rt_math_vmax_i32(ptr %statptr{dest}, i32 {length}, ptr {})",
-                    empty()
-                );
-            }
+        "MIN" | "MAX" => {
+            // MIN and MAX of an empty vector: `bn_rt` prints this site's diagnostic.
+            let empty = LlvmOperand::global(
+                trap_symbol(
+                    state,
+                    bn_diag::DiagId::INDEX_OUT_OF_BOUNDS,
+                    vec![
+                        ("index", Fact::Text("0".into())),
+                        ("bound", Fact::Text("0".into())),
+                        (
+                            "context",
+                            Fact::Text(format!("the input of BNMath.{method}")),
+                        ),
+                    ],
+                )
+                .0,
+            );
+            let function = match (method, float_vector) {
+                ("MIN", true) => &MATH_VMIN_F64,
+                ("MAX", true) => &MATH_VMAX_F64,
+                ("MIN", false) => &MATH_VMIN_I32,
+                _ => &MATH_VMAX_I32,
+            };
+            text.assign(format!("v{dest}"), function.call([data, length, empty]));
         }
         "MODE" => {
-            let _ = writeln!(text, "  %modeout{dest} = alloca double");
-            let intrinsic = if float_vector {
-                "bn_rt_math_mode_f64"
+            let out = reg(format!("modeout{dest}"));
+            text.assign(format!("modeout{dest}"), LlvmInst::alloca(Double));
+            let function = if float_vector {
+                &MATH_MODE_F64
             } else {
-                "bn_rt_math_mode_i32"
+                &MATH_MODE_I32
             };
-            let _ = writeln!(
-                text,
-                "  %modena{dest} = call i32 @{intrinsic}(ptr %statptr{dest}, i32 {length}, ptr %modeout{dest})"
+            text.assign(
+                format!("modena{dest}"),
+                function.call([data, length, out.clone()]),
             );
-            let _ = writeln!(text, "  %modeis{dest} = icmp ne i32 %modena{dest}, 0");
-            let _ = writeln!(text, "  %modeval{dest} = load double, ptr %modeout{dest}");
-            let _ = writeln!(
-                text,
-                "  %modefat{dest} = insertvalue {{ i1, double }} undef, i1 %modeis{dest}, 0"
+            text.assign(
+                format!("modeis{dest}"),
+                LlvmInst::icmp(
+                    ICmpCond::Ne,
+                    I32,
+                    reg(format!("modena{dest}")),
+                    LlvmOperand::int(0),
+                ),
             );
-            let _ = writeln!(
+            text.assign(format!("modeval{dest}"), LlvmInst::load(Double, out));
+            text.assign(
+                format!("modebits{dest}"),
+                LlvmInst::cast(CastOp::BitCast, Double, reg(format!("modeval{dest}")), I64),
+            );
+            general_alternative::from_flag(
                 text,
-                "  %v{dest} = insertvalue {{ i1, double }} %modefat{dest}, double %modeval{dest}, 1"
+                &format!("v{dest}"),
+                reg(format!("modeis{dest}")),
+                &Type::NotAvailable,
+                &Type::Float(FloatType::Float64),
+                reg(format!("modebits{dest}")),
             );
         }
         "MEAN" | "MEDIAN" | "QUARTILE1" | "QUARTILE3" | "RANGE" | "STDEV" | "VARIANCE" => {
-            let intrinsic = match (method, float_vector) {
-                ("MEAN", false) => "bn_rt_math_mean_i32",
-                ("MEDIAN", false) => "bn_rt_math_median_i32",
-                ("QUARTILE1", false) => "bn_rt_math_quartile1_i32",
-                ("QUARTILE3", false) => "bn_rt_math_quartile3_i32",
-                ("RANGE", false) => "bn_rt_math_range_i32",
-                ("STDEV", false) => "bn_rt_math_stdev_i32",
-                ("MEAN", true) => "bn_rt_math_mean_f64",
-                ("MEDIAN", true) => "bn_rt_math_median_f64",
-                ("QUARTILE1", true) => "bn_rt_math_quartile1_f64",
-                ("QUARTILE3", true) => "bn_rt_math_quartile3_f64",
-                ("RANGE", true) => "bn_rt_math_range_f64",
-                ("STDEV", true) => "bn_rt_math_stdev_f64",
-                (_, false) => "bn_rt_math_variance_i32",
-                (_, true) => "bn_rt_math_variance_f64",
+            let function: &RuntimeFn<2> = match (method, float_vector) {
+                ("MEAN", false) => &MATH_MEAN_I32,
+                ("MEDIAN", false) => &MATH_MEDIAN_I32,
+                ("QUARTILE1", false) => &MATH_QUARTILE1_I32,
+                ("QUARTILE3", false) => &MATH_QUARTILE3_I32,
+                ("RANGE", false) => &MATH_RANGE_I32,
+                ("STDEV", false) => &MATH_STDEV_I32,
+                ("MEAN", true) => &MATH_MEAN_F64,
+                ("MEDIAN", true) => &MATH_MEDIAN_F64,
+                ("QUARTILE1", true) => &MATH_QUARTILE1_F64,
+                ("QUARTILE3", true) => &MATH_QUARTILE3_F64,
+                ("RANGE", true) => &MATH_RANGE_F64,
+                ("STDEV", true) => &MATH_STDEV_F64,
+                (_, false) => &MATH_VARIANCE_I32,
+                (_, true) => &MATH_VARIANCE_F64,
             };
-            let _ = writeln!(
-                text,
-                "  %v{dest} = call double @{intrinsic}(ptr %statptr{dest}, i32 {length})"
-            );
+            text.assign(format!("v{dest}"), function.call([data, length]));
         }
         _ => unreachable!("validated vector BNMath"),
     }
@@ -389,16 +392,55 @@ fn lower_integer_math(
     result_type: &Type,
     state: &mut EmissionState,
 ) {
-    let left = extend_to_i64(text, arguments[0], types[0]);
-    let result_ty = llvm_type(result_type).expect("validated integer math result type");
+    let dest = destination.0;
+    let reg = LlvmOperand::reg;
+    let left = LlvmOperand::raw(extend_to_i64(text, arguments[0], types[0]));
+    let result_ty = crate::layout::typed_llvm(
+        llvm_type(result_type).expect("validated integer math result type"),
+    );
     if method == "ABS" {
         // |x| of the most negative value does not fit its type; the exact
         // magnitude is reported as the interpreter does (i128 holds it).
-        let dest = destination.0;
         let (low, high) = i128_bounds(result_type);
-        let _ = writeln!(
-            text,
-            "  %absw{dest} = sext i64 {left} to i128\n  %absneg{dest} = icmp slt i128 %absw{dest}, 0\n  %absflip{dest} = sub i128 0, %absw{dest}\n  %absexact{dest} = select i1 %absneg{dest}, i128 %absflip{dest}, i128 %absw{dest}\n  %abslo{dest} = icmp slt i128 %absexact{dest}, {low}\n  %abshi{dest} = icmp sgt i128 %absexact{dest}, {high}\n  %absbad{dest} = or i1 %abslo{dest}, %abshi{dest}"
+        let wide = reg(format!("absw{dest}"));
+        let exact = reg(format!("absexact{dest}"));
+        text.assign(
+            format!("absw{dest}"),
+            LlvmInst::cast(CastOp::SExt, I64, left, I128),
+        );
+        text.assign(
+            format!("absneg{dest}"),
+            LlvmInst::icmp(ICmpCond::Slt, I128, wide.clone(), LlvmOperand::int(0)),
+        );
+        text.assign(
+            format!("absflip{dest}"),
+            LlvmInst::binary(BinaryOp::Sub, I128, LlvmOperand::int(0), wide.clone()),
+        );
+        text.assign(
+            format!("absexact{dest}"),
+            LlvmInst::select(
+                reg(format!("absneg{dest}")),
+                I128,
+                reg(format!("absflip{dest}")),
+                wide,
+            ),
+        );
+        text.assign(
+            format!("abslo{dest}"),
+            LlvmInst::icmp(ICmpCond::Slt, I128, exact.clone(), LlvmOperand::raw(low)),
+        );
+        text.assign(
+            format!("abshi{dest}"),
+            LlvmInst::icmp(ICmpCond::Sgt, I128, exact.clone(), LlvmOperand::raw(high)),
+        );
+        text.assign(
+            format!("absbad{dest}"),
+            LlvmInst::binary(
+                BinaryOp::Or,
+                I1,
+                reg(format!("abslo{dest}")),
+                reg(format!("abshi{dest}")),
+            ),
         );
         let ok = take_continuation(block_id, state);
         emit_overflow_trap(
@@ -410,32 +452,31 @@ fn lower_integer_math(
             &format!("%absexact{dest}"),
             result_type,
         );
-        let _ = writeln!(
-            text,
-            "  %v{dest} = trunc i128 %absexact{dest} to {result_ty}"
+        text.assign(
+            format!("v{dest}"),
+            LlvmInst::cast(CastOp::Trunc, I128, exact, result_ty),
         );
         return;
     }
     let call = match method {
-        "SIGN" => format!("call i64 @bn_rt_math_isign(i64 {left})"),
-        "MIN" => {
-            let right = extend_to_i64(text, arguments[1], types[1]);
-            format!("call i64 @bn_rt_math_imin(i64 {left}, i64 {right})")
-        }
-        "MAX" => {
-            let right = extend_to_i64(text, arguments[1], types[1]);
-            format!("call i64 @bn_rt_math_imax(i64 {left}, i64 {right})")
+        "SIGN" => MATH_ISIGN.call([left]),
+        "MIN" | "MAX" => {
+            let right = LlvmOperand::raw(extend_to_i64(text, arguments[1], types[1]));
+            if method == "MIN" {
+                MATH_IMIN.call([left, right])
+            } else {
+                MATH_IMAX.call([left, right])
+            }
         }
         _ => unreachable!("validated integer BNMath"),
     };
-    if result_ty == "i64" {
-        let _ = writeln!(text, "  %v{} = {call}", destination.0);
+    if result_ty == I64 {
+        text.assign(format!("v{dest}"), call);
     } else {
-        let _ = writeln!(text, "  %mathi64{} = {call}", destination.0);
-        let _ = writeln!(
-            text,
-            "  %v{} = trunc i64 %mathi64{} to {result_ty}",
-            destination.0, destination.0
+        text.assign(format!("mathi64{dest}"), call);
+        text.assign(
+            format!("v{dest}"),
+            LlvmInst::cast(CastOp::Trunc, I64, reg(format!("mathi64{dest}")), result_ty),
         );
     }
 }
@@ -446,67 +487,91 @@ fn lower_float_math(
     method: &str,
     arguments: &[ValueId],
     types: &[&Type],
+    result_type: &Type,
 ) {
     let args = arguments
         .iter()
         .zip(types)
-        .map(|(argument, ty)| extend_to_double(text, *argument, ty))
+        .map(|(argument, ty)| LlvmOperand::raw(extend_to_double(text, *argument, ty)))
         .collect::<Vec<_>>();
-    let intrinsic = match method {
-        "ABS" => "bn_rt_math_fabs",
-        "SIGN" => "bn_rt_math_fsign",
-        "FLOOR" => "bn_rt_math_floor",
-        "CEIL" => "bn_rt_math_ceil",
-        "TRUNC" => "bn_rt_math_trunc",
-        "EXP" => "bn_rt_math_exp",
-        "LOG" => "bn_rt_math_log",
-        "LOG10" => "bn_rt_math_log10",
-        "LOG2" => "bn_rt_math_log2",
-        "SIN" => "bn_rt_math_sin",
-        "COS" => "bn_rt_math_cos",
-        "TAN" => "bn_rt_math_tan",
-        "ASIN" => "bn_rt_math_asin",
-        "ACOS" => "bn_rt_math_acos",
-        "ATAN" => "bn_rt_math_atan",
-        "SQRT" => "bn_rt_math_sqrt",
-        "POW" => "bn_rt_math_pow",
-        "ATAN2" => "bn_rt_math_atan2",
-        "HYPOT" => "bn_rt_math_hypot",
-        "MIN" => "bn_rt_math_fmin",
-        "MAX" => "bn_rt_math_fmax",
-        "ROUND" => "bn_rt_math_round",
-        "FMA" => "bn_rt_math_fma",
-        _ => unreachable!("validated float BNMath"),
+    let unary = |method: &str| -> &'static RuntimeFn<1> {
+        match method {
+            "ABS" => &MATH_FABS,
+            "SIGN" => &MATH_FSIGN,
+            "FLOOR" => &MATH_FLOOR,
+            "CEIL" => &MATH_CEIL,
+            "TRUNC" => &MATH_TRUNC,
+            "EXP" => &MATH_EXP,
+            "LOG" => &MATH_LOG,
+            "LOG10" => &MATH_LOG10,
+            "LOG2" => &MATH_LOG2,
+            "SIN" => &MATH_SIN,
+            "COS" => &MATH_COS,
+            "TAN" => &MATH_TAN,
+            "ASIN" => &MATH_ASIN,
+            "ACOS" => &MATH_ACOS,
+            "ATAN" => &MATH_ATAN,
+            "SQRT" => &MATH_SQRT,
+            _ => unreachable!("validated unary float BNMath"),
+        }
     };
-    let joined = args
-        .iter()
-        .map(|value| format!("double {value}"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let _ = writeln!(
-        text,
-        "  %v{} = call double @{intrinsic}({joined})",
-        destination.0
-    );
+    let binary = |method: &str| -> &'static RuntimeFn<2> {
+        match method {
+            "POW" => &MATH_POW,
+            "ATAN2" => &MATH_ATAN2,
+            "HYPOT" => &MATH_HYPOT,
+            "MIN" => &MATH_FMIN,
+            "MAX" => &MATH_FMAX,
+            "ROUND" => &MATH_ROUND,
+            _ => unreachable!("validated binary float BNMath"),
+        }
+    };
+    let call = match <[LlvmOperand; 3]>::try_from(args) {
+        Ok(three) if method == "FMA" => MATH_FMA.call(three),
+        Ok(_) => unreachable!("validated float BNMath arity"),
+        Err(args) => match <[LlvmOperand; 2]>::try_from(args) {
+            Ok(two) => binary(method).call(two),
+            Err(args) => unary(method)
+                .call(<[LlvmOperand; 1]>::try_from(args).expect("validated float BNMath arity")),
+        },
+    };
+    // `bn_rt` computes in `double`; a FLOAT32 result narrows it back.
+    if llvm_type(result_type) == Some("float") {
+        let dest = destination.0;
+        text.assign(format!("mathres{dest}"), call);
+        text.assign(
+            format!("v{dest}"),
+            LlvmInst::cast(
+                CastOp::FPTrunc,
+                Double,
+                LlvmOperand::reg(format!("mathres{dest}")),
+                LlvmType::Float,
+            ),
+        );
+    } else {
+        text.assign(format!("v{}", destination.0), call);
+    }
 }
 
 fn extend_to_double(text: &mut String, value: ValueId, ty: &Type) -> String {
-    match llvm_type(ty).expect("validated numeric type") {
-        "double" => format!("%v{}", value.0),
-        "float" => {
-            let temp = format!("mathf64{}", value.0);
-            let _ = writeln!(text, "  %{temp} = fpext float %v{} to double", value.0);
-            format!("%{temp}")
-        }
-        llvm_ty => {
-            let opcode = if is_unsigned(ty) { "uitofp" } else { "sitofp" };
-            let temp = format!("mathf64{}", value.0);
-            let _ = writeln!(
-                text,
-                "  %{temp} = {opcode} {llvm_ty} %v{} to double",
-                value.0
-            );
-            format!("%{temp}")
-        }
+    let llvm_ty = llvm_type(ty).expect("validated numeric type");
+    if llvm_ty == "double" {
+        return format!("%v{}", value.0);
     }
+    let op = match llvm_ty {
+        "float" => CastOp::FPExt,
+        _ if is_unsigned(ty) => CastOp::UIToFP,
+        _ => CastOp::SIToFP,
+    };
+    let temp = format!("mathf64{}", value.0);
+    text.assign(
+        temp.clone(),
+        LlvmInst::cast(
+            op,
+            crate::layout::typed_llvm(llvm_ty),
+            value_reg(value),
+            Double,
+        ),
+    );
+    format!("%{temp}")
 }

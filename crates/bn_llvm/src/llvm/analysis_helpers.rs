@@ -56,6 +56,9 @@ pub(crate) fn instruction_destination(instruction: &Instruction) -> Option<Value
         | Instruction::Default { destination, .. }
         | Instruction::Phi { destination, .. }
         | Instruction::Load { destination, .. }
+        | Instruction::Retain { destination, .. }
+        | Instruction::Take { destination, .. }
+        | Instruction::TakeMember { destination, .. }
         | Instruction::Copy { destination, .. }
         | Instruction::Unary { destination, .. }
         | Instruction::Binary { destination, .. }
@@ -82,6 +85,7 @@ pub(crate) fn instruction_destination(instruction: &Instruction) -> Option<Value
         | Instruction::ClearScreen { .. }
         | Instruction::Beep { .. }
         | Instruction::Release { .. }
+        | Instruction::EndBinding { .. }
         | Instruction::EnsureClass { .. }
         | Instruction::StoreStatic { .. } => None,
     }

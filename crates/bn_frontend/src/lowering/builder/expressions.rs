@@ -373,15 +373,23 @@ impl Builder<'_> {
                 ty,
                 span: expression.span,
             },
-            ExpressionKind::Vector { values } => Instruction::Vector {
-                destination,
-                values: values
+            ExpressionKind::Vector { values } => {
+                let mut elements = values
                     .iter()
                     .map(|value| self.expression(value))
-                    .collect::<Result<Vec<_>, _>>()?,
-                ty,
-                span: expression.span,
-            },
+                    .collect::<Result<Vec<_>, _>>()?;
+                // The vector takes an owned reference for each element.
+                elements = elements
+                    .into_iter()
+                    .map(|element| self.owned_value(element, expression.span))
+                    .collect();
+                Instruction::Vector {
+                    destination,
+                    values: elements,
+                    ty,
+                    span: expression.span,
+                }
+            }
             ExpressionKind::Index { object, index } => {
                 let object = if matches!(object.kind, ExpressionKind::HostCapability { ref name } if name == "Args")
                 {
@@ -450,7 +458,11 @@ impl Builder<'_> {
                     {
                         let function =
                             if matches!(object_type, Type::TypeName(_)) && !owner.is_empty() {
-                                format!("{}{}.{}", self.prefix, owner, name)
+                                if is_user_class_name(&owner) {
+                                    format!("{}{}.{}", self.prefix, owner, name)
+                                } else {
+                                    format!("{owner}.{name}")
+                                }
                             } else {
                                 function
                             };
@@ -459,8 +471,10 @@ impl Builder<'_> {
                             let class =
                                 if owner.is_empty() || !matches!(object_type, Type::TypeName(_)) {
                                     static_class_name(&object_type, &self.prefix)
-                                } else {
+                                } else if is_user_class_name(&owner) {
                                     format!("{}{}", self.prefix, owner)
+                                } else {
+                                    owner
                                 };
                             self.ensure_class(&class, expression.span);
                         }
@@ -482,8 +496,10 @@ impl Builder<'_> {
                         let class = if owner.is_empty() || !matches!(object_type, Type::TypeName(_))
                         {
                             static_class_name(&object_type, &self.prefix)
-                        } else {
+                        } else if is_user_class_name(&owner) {
                             format!("{}{}", self.prefix, owner)
+                        } else {
+                            owner
                         };
                         self.ensure_class(&class, expression.span);
                         let _ = self.expression(object)?;

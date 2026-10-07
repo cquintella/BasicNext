@@ -16,6 +16,7 @@ pub(crate) fn call_instruction_supported(
 ) -> Result<bool, String> {
     Ok(match functions.get(callee).copied() {
         Some("$for_condition") => for_condition_supported(arguments, values),
+        Some(bn_ir::names::STOPPING | bn_ir::names::STOP_CODE) => arguments.is_empty(),
         Some("HOST.Random.Seed") => arguments.len() == 1,
         Some("HOST.Random.Random") => arguments.is_empty(),
         Some(name) if is_bn_rt_host_call(name) => bn_rt_call_supported(name, arguments, values),
@@ -411,7 +412,7 @@ pub(crate) fn call_instruction_supported(
         Some("TimeZone.Parse") => {
             arguments.len() == 1
                 && strings.iter().any(|(value, text)| {
-                    Some(value) == arguments.first() && is_canonical_timezone(text)
+                    Some(value) == arguments.first() && bn_types::text::is_timezone_id(text)
                 })
         }
         Some("ASC") => arguments.len() == 1 && values.get(&arguments[0]) == Some(&Type::String),

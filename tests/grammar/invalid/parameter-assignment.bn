@@ -1,0 +1,15 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A parameter is a constant binding (0.6.md, "Memory model (ARC)",
+// "Parameter"; Swift SE-0003): assigning to it is a TYPE_MISMATCH.
+FUNCTION Twice(n AS INTEGER) AS INTEGER
+    n = n * 2
+    RETURN n
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    PRINT Twice(3)
+END FUNCTION

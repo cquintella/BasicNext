@@ -1,0 +1,10 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Neither INT32 nor a single integer alternative: the literal's width is
+// ambiguous, so the store is a TYPE_MISMATCH (write `1 AS INT16`).
+FUNCTION Start() AS VOID
+    LET e AS INT8 OR INT16 = 1
+END FUNCTION

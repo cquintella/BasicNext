@@ -1,5 +1,41 @@
 #![allow(clippy::wildcard_imports)]
+use super::bndata_columns::emit_handle_operand;
 use super::*;
+use crate::ir::{CastOp, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
+use crate::layout::vector_ty;
+
+fn v(id: ValueId) -> O {
+    O::reg(format!("v{}", id.0))
+}
+
+/// `%{slot}`: the pointer bits of a plain `DataFrame` handle.
+fn emit_pointer_handle(text: &mut String, slot: String, operand: ValueId) -> O {
+    text.assign(&slot, I::cast(CastOp::PtrToInt, T::Ptr, v(operand), T::I64));
+    O::reg(slot)
+}
+
+/// A `bn_rt` call that writes a new handle through its last argument: the
+/// `DataFrame OR Error` result. Registers are `%{prefix}<out|rc|value>{dest}`.
+fn emit_new_frame_call(
+    text: &mut String,
+    destination: ValueId,
+    prefix: &str,
+    symbol: &str,
+    mut args: Vec<(T, O)>,
+) {
+    let dest = destination.0;
+    let out = O::reg(format!("{prefix}out{dest}"));
+    text.assign(format!("{prefix}out{dest}"), I::alloca(T::I64));
+    args.push((T::Ptr, out.clone()));
+    text.assign(format!("{prefix}rc{dest}"), I::call(T::I32, symbol, args));
+    text.assign(format!("{prefix}value{dest}"), I::load(T::I64, out));
+    emit_handle_result(
+        text,
+        destination,
+        format!("%{prefix}rc{dest}"),
+        format!("%{prefix}value{dest}"),
+    );
+}
 
 pub(crate) fn lower_bndata_set_label(
     text: &mut String,
@@ -7,16 +43,14 @@ pub(crate) fn lower_bndata_set_label(
     arguments: &[ValueId],
 ) {
     let dest = destination.0;
-    let _ = writeln!(
-        text,
-        "  %dflabelhandle{dest} = ptrtoint ptr %v{} to i64",
-        arguments[0].0
-    );
-    let _ = writeln!(
-        text,
-        "  %dflabelrc{dest} = call i32 @bn_rt_dataframe_set_label(i64 %dflabelhandle{dest}, ptr %v{}, ptr %v{})",
-        arguments[1].0, arguments[2].0
-    );
+    let handle = emit_pointer_handle(text, format!("dflabelhandle{dest}"), arguments[0]);
+    let args = vec![
+        (T::I64, handle),
+        (T::Ptr, v(arguments[1])),
+        (T::Ptr, v(arguments[2])),
+    ];
+    let call = I::call(T::I32, "bn_rt_dataframe_set_label", args);
+    text.assign(format!("dflabelrc{dest}"), call);
     emit_void_result(text, destination, format!("%dflabelrc{dest}"));
 }
 
@@ -28,38 +62,24 @@ pub(crate) fn lower_bndata_reduce(
     analysis: &LoweringAnalysis<'_>,
 ) {
     let dest = destination.0;
-    let name = arguments[1];
-    let name_operand = format!("%v{}", name.0);
-    if llvm_type(
-        analysis
-            .values
-            .get(&arguments[0])
-            .expect("validated DataFrame receiver"),
-    ) == Some("{ i1, ptr, i64 }")
-    {
-        let _ = writeln!(
-            text,
-            "  %dfredhandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-            arguments[0].0
-        );
-    } else {
-        let _ = writeln!(
-            text,
-            "  %dfredhandle{dest} = ptrtoint ptr %v{} to i64",
-            arguments[0].0
-        );
-    }
-    let _ = writeln!(text, "  %dfredout{dest} = alloca double");
-    let _ = writeln!(text, "  %dfredna{dest} = alloca i8");
-    let _ = writeln!(
-        text,
-        "  %dfredrc{dest} = call i32 @bn_rt_dataframe_reduce(i64 %dfredhandle{dest}, ptr {name_operand}, i32 {operation}, ptr %dfredout{dest}, ptr %dfredna{dest})"
+    let r = |name: &str| O::reg(format!("dfred{name}{dest}"));
+    emit_handle_operand(text, analysis, format!("dfredhandle{dest}"), arguments[0]);
+    text.assign(format!("dfredout{dest}"), I::alloca(T::Double));
+    text.assign(format!("dfredna{dest}"), I::alloca(T::I8));
+    let args = vec![
+        (T::I64, r("handle")),
+        (T::Ptr, v(arguments[1])),
+        (T::I32, O::uint(u64::from(operation))),
+        (T::Ptr, r("out")),
+        (T::Ptr, r("na")),
+    ];
+    text.assign(
+        format!("dfredrc{dest}"),
+        I::call(T::I32, "bn_rt_dataframe_reduce", args),
     );
-    let _ = writeln!(text, "  %dfredval{dest} = load double, ptr %dfredout{dest}");
-    let _ = writeln!(
-        text,
-        "  %dfredbits{dest} = bitcast double %dfredval{dest} to i64"
-    );
+    text.assign(format!("dfredval{dest}"), I::load(T::Double, r("out")));
+    let bits = I::cast(CastOp::BitCast, T::Double, r("val"), T::I64);
+    text.assign(format!("dfredbits{dest}"), bits);
     emit_status_result(
         text,
         destination,
@@ -77,39 +97,12 @@ pub(crate) fn lower_bndata_zscore(
     analysis: &LoweringAnalysis<'_>,
 ) {
     let dest = destination.0;
-    let name = arguments[1];
-    let name_operand = format!("%v{}", name.0);
-    if llvm_type(
-        analysis
-            .values
-            .get(&arguments[0])
-            .expect("validated DataFrame receiver"),
-    ) == Some("{ i1, ptr, i64 }")
-    {
-        let _ = writeln!(
-            text,
-            "  %dfzhandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-            arguments[0].0
-        );
-    } else {
-        let _ = writeln!(
-            text,
-            "  %dfzhandle{dest} = ptrtoint ptr %v{} to i64",
-            arguments[0].0
-        );
-    }
-    let _ = writeln!(text, "  %dfzout{dest} = alloca i64");
-    let _ = writeln!(
-        text,
-        "  %dfzrc{dest} = call i32 @bn_rt_dataframe_zscore(i64 %dfzhandle{dest}, ptr {name_operand}, ptr %dfzout{dest})"
-    );
-    let _ = writeln!(text, "  %dfzvalue{dest} = load i64, ptr %dfzout{dest}");
-    emit_handle_result(
-        text,
-        destination,
-        format!("%dfzrc{dest}"),
-        format!("%dfzvalue{dest}"),
-    );
+    emit_handle_operand(text, analysis, format!("dfzhandle{dest}"), arguments[0]);
+    let args = vec![
+        (T::I64, O::reg(format!("dfzhandle{dest}"))),
+        (T::Ptr, v(arguments[1])),
+    ];
+    emit_new_frame_call(text, destination, "dfz", "bn_rt_dataframe_zscore", args);
 }
 
 pub(crate) fn lower_bndata_copy(
@@ -120,6 +113,7 @@ pub(crate) fn lower_bndata_copy(
     symbol: &str,
 ) {
     let dest = destination.0;
+    let r = |name: &str| O::reg(format!("dfcopy{name}{dest}"));
     let length = match analysis.values.get(&arguments[2]) {
         Some(Type::Pointer {
             length: bn_types::PointerLength::Fixed(length),
@@ -127,98 +121,60 @@ pub(crate) fn lower_bndata_copy(
         }) => *length,
         _ => 0,
     };
-    if llvm_type(
-        analysis
-            .values
-            .get(&arguments[0])
-            .expect("validated DataFrame receiver"),
-    ) == Some("{ i1, ptr, i64 }")
-    {
-        let _ = writeln!(
-            text,
-            "  %dfcopyhandle{dest} = extractvalue {{ i1, ptr, i64 }} %v{}, 2",
-            arguments[0].0
+    emit_handle_operand(text, analysis, format!("dfcopyhandle{dest}"), arguments[0]);
+    let target_ty = analysis
+        .values
+        .get(&arguments[2])
+        .expect("validated copy target");
+    let target = if llvm_type(target_ty) == Some("{ ptr, i32 }") {
+        let fat = v(arguments[2]);
+        text.assign(
+            format!("dfcopytarget{dest}"),
+            I::extract(vector_ty(), fat.clone(), 0),
         );
+        text.assign(format!("dfcopylen{dest}"), I::extract(vector_ty(), fat, 1));
+        r("target")
     } else {
-        let _ = writeln!(
-            text,
-            "  %dfcopyhandle{dest} = ptrtoint ptr %v{} to i64",
-            arguments[0].0
-        );
-    }
-    let target = if llvm_type(
-        analysis
-            .values
-            .get(&arguments[2])
-            .expect("validated copy target"),
-    ) == Some("{ ptr, i32 }")
-    {
-        let _ = writeln!(
-            text,
-            "  %dfcopytarget{dest} = extractvalue {{ ptr, i32 }} %v{}, 0",
-            arguments[2].0
-        );
-        let _ = writeln!(
-            text,
-            "  %dfcopylen{dest} = extractvalue {{ ptr, i32 }} %v{}, 1",
-            arguments[2].0
-        );
-        format!("%dfcopytarget{dest}")
-    } else {
-        format!("%v{}", arguments[2].0)
+        v(arguments[2])
     };
     let length = if length == 0 {
-        format!("%dfcopylen{dest}")
+        r("len")
     } else {
-        length.to_string()
+        O::uint(length)
     };
-    let _ = writeln!(
-        text,
-        "  %dfcopyrc{dest} = call i32 @{symbol}(i64 %dfcopyhandle{dest}, ptr %v{}, ptr {target}, i32 {length})",
-        arguments[1].0
-    );
+    let args = vec![
+        (T::I64, r("handle")),
+        (T::Ptr, v(arguments[1])),
+        (T::Ptr, target),
+        (T::I32, length),
+    ];
+    text.assign(format!("dfcopyrc{dest}"), I::call(T::I32, symbol, args));
     emit_void_result(text, destination, format!("%dfcopyrc{dest}"));
 }
 
 pub(crate) fn lower_bndata_select(text: &mut String, destination: ValueId, arguments: &[ValueId]) {
     let dest = destination.0;
-    let _ = writeln!(
-        text,
-        "  %dfselhandle{dest} = ptrtoint ptr %v{} to i64",
-        arguments[0].0
-    );
-    let _ = writeln!(
-        text,
-        "  %dfselrows{dest} = extractvalue {{ ptr, i32 }} %v{}, 0",
-        arguments[1].0
-    );
-    let _ = writeln!(
-        text,
-        "  %dfselrowlen{dest} = extractvalue {{ ptr, i32 }} %v{}, 1",
-        arguments[1].0
-    );
-    let _ = writeln!(
-        text,
-        "  %dfselcols{dest} = extractvalue {{ ptr, i32 }} %v{}, 0",
-        arguments[2].0
-    );
-    let _ = writeln!(
-        text,
-        "  %dfselcollen{dest} = extractvalue {{ ptr, i32 }} %v{}, 1",
-        arguments[2].0
-    );
-    let _ = writeln!(text, "  %dfselout{dest} = alloca i64");
-    let _ = writeln!(
-        text,
-        "  %dfselrc{dest} = call i32 @bn_rt_dataframe_select(i64 %dfselhandle{dest}, ptr %dfselrows{dest}, i32 %dfselrowlen{dest}, ptr %dfselcols{dest}, i32 %dfselcollen{dest}, ptr %dfselout{dest})"
-    );
-    let _ = writeln!(text, "  %dfselvalue{dest} = load i64, ptr %dfselout{dest}");
-    emit_handle_result(
-        text,
-        destination,
-        format!("%dfselrc{dest}"),
-        format!("%dfselvalue{dest}"),
-    );
+    let r = |name: &str| O::reg(format!("dfsel{name}{dest}"));
+    let handle = emit_pointer_handle(text, format!("dfselhandle{dest}"), arguments[0]);
+    for (name, operand) in [("rows", arguments[1]), ("cols", arguments[2])] {
+        let length = if name == "rows" { "rowlen" } else { "collen" };
+        text.assign(
+            format!("dfsel{name}{dest}"),
+            I::extract(vector_ty(), v(operand), 0),
+        );
+        text.assign(
+            format!("dfsel{length}{dest}"),
+            I::extract(vector_ty(), v(operand), 1),
+        );
+    }
+    let args = vec![
+        (T::I64, handle),
+        (T::Ptr, r("rows")),
+        (T::I32, r("rowlen")),
+        (T::Ptr, r("cols")),
+        (T::I32, r("collen")),
+    ];
+    emit_new_frame_call(text, destination, "dfsel", "bn_rt_dataframe_select", args);
 }
 
 pub(crate) fn lower_bndata_transform(
@@ -227,24 +183,8 @@ pub(crate) fn lower_bndata_transform(
     arguments: &[ValueId],
     symbol: &str,
 ) {
-    let dest = destination.0;
-    let _ = writeln!(
-        text,
-        "  %dftrhandle{dest} = ptrtoint ptr %v{} to i64",
-        arguments[0].0
-    );
-    let _ = writeln!(text, "  %dftrout{dest} = alloca i64");
-    let _ = writeln!(
-        text,
-        "  %dftrrc{dest} = call i32 @{symbol}(i64 %dftrhandle{dest}, ptr %dftrout{dest})"
-    );
-    let _ = writeln!(text, "  %dftrvalue{dest} = load i64, ptr %dftrout{dest}");
-    emit_handle_result(
-        text,
-        destination,
-        format!("%dftrrc{dest}"),
-        format!("%dftrvalue{dest}"),
-    );
+    let handle = emit_pointer_handle(text, format!("dftrhandle{}", destination.0), arguments[0]);
+    emit_new_frame_call(text, destination, "dftr", symbol, vec![(T::I64, handle)]);
 }
 
 pub(crate) fn lower_bndata_binary_transform(
@@ -254,28 +194,10 @@ pub(crate) fn lower_bndata_binary_transform(
     symbol: &str,
 ) {
     let dest = destination.0;
-    let _ = writeln!(
-        text,
-        "  %dfbinleft{dest} = ptrtoint ptr %v{} to i64",
-        arguments[0].0
-    );
-    let _ = writeln!(
-        text,
-        "  %dfbinright{dest} = ptrtoint ptr %v{} to i64",
-        arguments[1].0
-    );
-    let _ = writeln!(text, "  %dfbinout{dest} = alloca i64");
-    let _ = writeln!(
-        text,
-        "  %dfbinrc{dest} = call i32 @{symbol}(i64 %dfbinleft{dest}, i64 %dfbinright{dest}, ptr %dfbinout{dest})"
-    );
-    let _ = writeln!(text, "  %dfbinvalue{dest} = load i64, ptr %dfbinout{dest}");
-    emit_handle_result(
-        text,
-        destination,
-        format!("%dfbinrc{dest}"),
-        format!("%dfbinvalue{dest}"),
-    );
+    let left = emit_pointer_handle(text, format!("dfbinleft{dest}"), arguments[0]);
+    let right = emit_pointer_handle(text, format!("dfbinright{dest}"), arguments[1]);
+    let args = vec![(T::I64, left), (T::I64, right)];
+    emit_new_frame_call(text, destination, "dfbin", symbol, args);
 }
 
 pub(crate) fn lower_bndata_join(
@@ -285,30 +207,14 @@ pub(crate) fn lower_bndata_join(
     kind: u32,
 ) {
     let dest = destination.0;
-    let _ = writeln!(
-        text,
-        "  %dfjoinleft{dest} = ptrtoint ptr %v{} to i64",
-        arguments[0].0
-    );
-    let _ = writeln!(
-        text,
-        "  %dfjoinright{dest} = ptrtoint ptr %v{} to i64",
-        arguments[1].0
-    );
-    let _ = writeln!(text, "  %dfjoinout{dest} = alloca i64");
-    let _ = writeln!(
-        text,
-        "  %dfjoinrc{dest} = call i32 @bn_rt_dataframe_join(i64 %dfjoinleft{dest}, i64 %dfjoinright{dest}, ptr %v{}, ptr %v{}, i32 {kind}, ptr %dfjoinout{dest})",
-        arguments[2].0, arguments[3].0
-    );
-    let _ = writeln!(
-        text,
-        "  %dfjoinvalue{dest} = load i64, ptr %dfjoinout{dest}"
-    );
-    emit_handle_result(
-        text,
-        destination,
-        format!("%dfjoinrc{dest}"),
-        format!("%dfjoinvalue{dest}"),
-    );
+    let left = emit_pointer_handle(text, format!("dfjoinleft{dest}"), arguments[0]);
+    let right = emit_pointer_handle(text, format!("dfjoinright{dest}"), arguments[1]);
+    let args = vec![
+        (T::I64, left),
+        (T::I64, right),
+        (T::Ptr, v(arguments[2])),
+        (T::Ptr, v(arguments[3])),
+        (T::I32, O::uint(u64::from(kind))),
+    ];
+    emit_new_frame_call(text, destination, "dfjoin", "bn_rt_dataframe_join", args);
 }

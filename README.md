@@ -65,9 +65,10 @@ model:
 - `bni` interprets and hosts the tools: `run`, `eval`, `check`, `lex`, `lsp`
   (language server), and `dap` (debugger).
 - `bnc` compiles to a native executable or WebAssembly through LLVM:
-  `bnc hello.bn -o hello`.
+  `bnc hello.bn` (or `bnc hello.bn -o hello`). `bnc -g` adds debug information
+  (DWARF; a PDB on Windows).
 
-A program needs no project file: `bni run hello.bn` is enough. The manuals are
+A program needs no project file: `bni hello.bn` or `bnc hello.bn` is enough. The manuals are
 [`bni(1)`](man/bni.1) and [`bnc(1)`](man/bnc.1).
 
 ## Installation

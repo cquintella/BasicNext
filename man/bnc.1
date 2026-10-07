@@ -16,9 +16,12 @@ does (lexer, parser/AST, semantic analysis, typed BN IR, language
 validation), checks the program against the selected target's support
 matrix, and lowers the validated IR to LLVM IR. Without
 .B -o
-the LLVM IR is written to standard output. With
+it generates an executable artifact named after the entry file
+in the current directory (or a WebAssembly module when targeting wasm32).
+With
 .B -o
-it invokes Clang to create a native executable, or Clang and
+it writes the artifact to the specified path. It invokes Clang to create a
+native executable, or Clang and
 .B wasm-ld
 to create a linked WebAssembly module, linking the native runtime
 .I libbn_rt.a
@@ -39,7 +42,7 @@ Write the artifact (or the artifact selected by
 .BR --emit )
 to
 .IR file .
-Without it, LLVM IR goes to standard output.
+Without it, the output filename is inferred from the entry file stem.
 .TP
 .BI --target " native|wasm32"
 Select the target. The default is
@@ -56,13 +59,29 @@ Select the Clang optimization level applied to the generated LLVM IR:
 .BR 2 " → " -O2
 (default),
 .BR 3 " → " -O3 ,
-.BR s " → " -Os .
+.BR s " → " -Oz .
 It never changes program semantics.
 .TP
-.BI --emit " tokens|ast|typed-ast|ir"
-Print a frontend artifact instead of compiling.
+.BR -g , " --debug"
+Emit source-level debug information: one subprogram per function and a
+line and column for every instruction. Native executables carry DWARF
+(on macOS clang runs
+.BR dsymutil ,
+which writes
+.IR file .dSYM );
+on Windows the linker writes a CodeView PDB next to the executable; Wasm
+modules keep DWARF custom sections. Breakpoints by line work best with
+.BR "--opt none" ,
+since optimization can fold or move the code of a line. Without
+.B -g
+the artifact carries no Basic Next debug metadata.
+.TP
+.BI --emit " tokens|ast|typed-ast|ir|llvm"
+Print an artifact instead of compiling.
 .B ir
-is the validated BN IR (not LLVM IR).
+is the validated BN IR, and
+.B llvm
+is the lowered textual LLVM IR.
 .SH COMMON OPTIONS
 Shared with
 .BR bni (1)
@@ -133,6 +152,22 @@ selected target; run it with
 .BR bni (1).
 .SH ENVIRONMENT
 .TP
+.B BN_ARC_TRACE
+When set to a non-empty value other than
+.BR 0 ,
+every retain, release, and destruction of an object or region is written to
+standard error, one line each, for example
+.BR "arc release Box#3 strong=0 at 14:5"
+(event, class and object id, strong count after the operation, source line and
+column). The lines come from the one ARC core of
+.BR bn_rt ,
+so
+.B bni
+and a
+.B bnc
+executable print the same trace for the same program. Standard output is not
+affected.
+.TP
 .B BN_HOME
 Explicit Basic Next home for the standard-library modules (see
 .BR bni (1)).
@@ -182,7 +217,9 @@ ABI.
 .SH EXAMPLES
 .nf
 .RS
-bnc examples/hello.bn                       # LLVM IR on stdout
+bnc examples/hello.bn                       # writes ./hello
+bnc --emit llvm examples/hello.bn           # LLVM IR on stdout
+bnc -g --opt none examples/hello.bn         # debuggable build
 bnc examples/hello.bn -o hello
 bnc --opt 3 examples/hello.bn -o hello
 bnc --opt s --target wasm32 examples/hello.bn -o hello.wasm
@@ -192,7 +229,8 @@ bnc --sandbox --read-root ./input examples/app.bn -o app
 .fi
 .SH SEE ALSO
 .BR bni (1),
-.IR docs/book/en/toc.md ,
+.IR docs/book/en/toc.md
+(online: https://github.com/cquintella/basicnext-book),
 .IR docs/project/usage.md ,
 .IR language/0.6/0.6.md ,
 .IR language/0.6/bnsqlite.md
