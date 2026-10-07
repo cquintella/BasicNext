@@ -369,3 +369,68 @@ fn a_native_debugger_reads_the_arc_core() {
     );
     let _ = std::fs::remove_dir_all(&directory);
 }
+
+#[test]
+fn bnc_cpu_option_validates_and_compiles() {
+    let directory = std::env::temp_dir().join(format!("bnc-cpu-test-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&directory);
+    let output_native = directory.join("test_cpu_native");
+
+    // Compiling with --cpu native works for native target
+    let compile_native = bnc()
+        .args([
+            "--cpu",
+            "native",
+            "-o",
+            output_native.to_str().unwrap(),
+            "tests/grammar/valid/print-integer.bn",
+        ])
+        .output()
+        .expect("run bnc --cpu native");
+    assert!(
+        compile_native.status.success(),
+        "{}",
+        String::from_utf8_lossy(&compile_native.stderr)
+    );
+
+    // Compiling with --cpu generic works for native target
+    let output_generic = directory.join("test_cpu_generic");
+    let compile_generic = bnc()
+        .args([
+            "--cpu",
+            "generic",
+            "-o",
+            output_generic.to_str().unwrap(),
+            "tests/grammar/valid/print-integer.bn",
+        ])
+        .output()
+        .expect("run bnc --cpu generic");
+    assert!(
+        compile_generic.status.success(),
+        "{}",
+        String::from_utf8_lossy(&compile_generic.stderr)
+    );
+
+    // Compiling with --cpu native and --target wasm32 is rejected with CONFIG_INVALID
+    let output_wasm = directory.join("test_cpu.wasm");
+    let compile_wasm = bnc()
+        .args([
+            "--target",
+            "wasm32",
+            "--cpu",
+            "native",
+            "-o",
+            output_wasm.to_str().unwrap(),
+            "tests/grammar/valid/print-integer.bn",
+        ])
+        .output()
+        .expect("run bnc --target wasm32 --cpu native");
+    assert!(!compile_wasm.status.success());
+    let stderr = String::from_utf8_lossy(&compile_wasm.stderr);
+    assert!(
+        stderr.contains("--cpu native is not supported when targeting wasm32"),
+        "stderr: {stderr}"
+    );
+
+    let _ = std::fs::remove_dir_all(&directory);
+}

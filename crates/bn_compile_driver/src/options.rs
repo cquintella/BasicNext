@@ -44,7 +44,13 @@ impl Optimization {
     }
 }
 
-/// Compile-only flags (`--target`, `--opt`, `-g`). The compiler executable
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CpuTarget {
+    Generic,
+    Native,
+}
+
+/// Compile-only flags (`--target`, `--opt`, `-g`, `--cpu`). The compiler executable
 /// parses them; `bn` also accepts them on every command for compatibility.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BuildOptions {
@@ -52,6 +58,8 @@ pub struct BuildOptions {
     pub optimization: Optimization,
     /// `-g`: emit source-level debug information.
     pub debug: bool,
+    /// `--cpu native|generic`: opt-in to host CPU-specific instructions.
+    pub cpu: CpuTarget,
 }
 
 impl Default for BuildOptions {
@@ -60,6 +68,7 @@ impl Default for BuildOptions {
             target: Target::Native,
             optimization: Optimization::Level(2),
             debug: false,
+            cpu: CpuTarget::Generic,
         }
     }
 }
@@ -87,6 +96,13 @@ impl OptionExtension for BuildOptions {
                     Some("native") => Target::Native,
                     Some("wasm32") => Target::Wasm32,
                     _ => return Err("--target expects native or wasm32".into()),
+                };
+            }
+            "--cpu" => {
+                self.cpu = match rest.next().as_deref() {
+                    Some("generic") => CpuTarget::Generic,
+                    Some("native") => CpuTarget::Native,
+                    _ => return Err("--cpu expects generic or native".into()),
                 };
             }
             _ => return Ok(false),

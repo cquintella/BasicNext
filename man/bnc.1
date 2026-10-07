@@ -76,6 +76,14 @@ since optimization can fold or move the code of a line. Without
 .B -g
 the artifact carries no Basic Next debug metadata.
 .TP
+.BI --cpu " native|generic"
+Select the CPU architecture tuning for native compilation:
+.BR generic
+(default, portable across processors of the same architecture) or
+.BR native
+(passes CPU-specific flags to Clang, yielding non-portable binaries
+that may fail on other host CPUs). Not supported when targeting wasm32.
+.TP
 .BI --emit " tokens|ast|typed-ast|ir|llvm"
 Print an artifact instead of compiling.
 .B ir

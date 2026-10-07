@@ -107,6 +107,19 @@ pub fn emit_build_output(
         eprintln!("error: cannot write temporary LLVM IR: {error}");
         return tool_error();
     }
+    if build_options.target == Target::Wasm32
+        && build_options.cpu == crate::options::CpuTarget::Native
+    {
+        eprintln!(
+            "{}",
+            tool_diagnostic(
+                DiagId::CONFIG_INVALID,
+                "--cpu native is not supported when targeting wasm32",
+                &options.diagnostic_catalog,
+            )
+        );
+        return tool_error();
+    }
     let _temporary_guard = TempFileGuard(temporary.clone());
     let clang = match if build_options.target == Target::Wasm32 {
         configured_wasm_clang()
@@ -128,6 +141,16 @@ pub fn emit_build_output(
     // `-g` keeps the debug sections the module metadata describes; on macOS
     // it also makes clang run dsymutil, which writes `<output>.dSYM`.
     let debug_flag = build_options.debug.then_some("-g");
+    let cpu_flag = match build_options.cpu {
+        crate::options::CpuTarget::Generic => None,
+        crate::options::CpuTarget::Native => {
+            if cfg!(target_arch = "x86_64") {
+                Some("-march=native")
+            } else {
+                Some("-mcpu=native")
+            }
+        }
+    };
     let result = if build_options.target == Target::Wasm32 {
         let clang_args = [
             build_options.optimization.clang_flag(),
@@ -193,6 +216,7 @@ pub fn emit_build_output(
         ];
         command_args.extend(native_program_link_args().iter().map(ToString::to_string));
         command_args.extend(debug_flag.map(ToString::to_string));
+        command_args.extend(cpu_flag.map(ToString::to_string));
         if llvm.contains("@bn_rt_") {
             let bn_rt = match configured_bn_rt_lib() {
                 Ok(path) => path,

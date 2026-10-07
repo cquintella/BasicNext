@@ -14,7 +14,7 @@ pub fn i32_slice<'a>(ptr: *const i32, len: i32) -> &'a [i32] {
 }
 
 pub fn vmin_i32(values: &[i32]) -> i32 {
-    *values.iter().min().unwrap_or_else(|| {
+    super::cpu::vmin_i32(values).unwrap_or_else(|| {
         fail(
             "INDEX_OUT_OF_BOUNDS",
             "BNMath reduction received an empty vector",
@@ -23,7 +23,7 @@ pub fn vmin_i32(values: &[i32]) -> i32 {
 }
 
 pub fn vmax_i32(values: &[i32]) -> i32 {
-    *values.iter().max().unwrap_or_else(|| {
+    super::cpu::vmax_i32(values).unwrap_or_else(|| {
         fail(
             "INDEX_OUT_OF_BOUNDS",
             "BNMath reduction received an empty vector",

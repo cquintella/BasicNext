@@ -32,6 +32,7 @@ compile options:
   --target native|wasm32     select the target (default native)
   --opt none|1|2|3|s         optimization level (default 2)
   -g, --debug                emit debug information (DWARF; PDB on Windows)
+  --cpu native|generic       target host CPU instructions (default generic)
   --emit llvm                print LLVM IR instead of compiling
   --emit ir                  print the validated BN IR instead of compiling
                              (tokens, ast and typed-ast are also accepted)
