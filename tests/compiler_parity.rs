@@ -671,3 +671,47 @@ fn malformed_env_policy_stops_both_backends() {
     }
 }
 
+/// `bnc --cpu native` changes no observable result: floating-point, integer
+/// width and `BNMath` reduction programs print exactly what `bni run` prints
+/// (no fast-math, no contraction; AGENTS.md "No optimization changes an
+/// observable result").
+#[test]
+fn cpu_native_artifacts_print_what_the_interpreter_prints() {
+    let directory = TestDir::new("cpu-native").expect("create directory");
+    for fixture in [
+        "examples/bnmath_tour.bn",
+        "tests/grammar/valid/bnmath-02.bn",
+        "tests/grammar/valid/build-bnmath-float32-results.bn",
+        "tests/grammar/valid/build-widths.bn",
+    ] {
+        let path = workspace_root().join(fixture);
+        let artifact = directory.join(format!(
+            "cpu-native-{}{}",
+            path.file_stem().expect("stem").to_string_lossy(),
+            std::env::consts::EXE_SUFFIX
+        ));
+        let built = execute(
+            bnc()
+                .arg("--cpu")
+                .arg("native")
+                .arg(&path)
+                .arg("-o")
+                .arg(&artifact),
+            None,
+        );
+        assert_success(&built, fixture);
+        let interpreted = interpret(&path, None);
+        let compiled = execute(&mut Command::new(&artifact), None);
+        assert_eq!(
+            interpreted.status.code(),
+            compiled.status.code(),
+            "{fixture}"
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&compiled.stdout),
+            String::from_utf8_lossy(&interpreted.stdout),
+            "{fixture}"
+        );
+        assert!(!interpreted.stdout.is_empty(), "{fixture}: no output");
+    }
+}
