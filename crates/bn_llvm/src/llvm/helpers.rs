@@ -750,6 +750,7 @@ pub(crate) fn parse_integer(value: &str) -> Option<i128> {
 pub(crate) fn input_runtime_ir() -> &'static str {
     r"
 declare i32 @getchar()
+declare void @bn_rt_input_nul()
 declare ptr @realloc(ptr, i64)
 declare void @free(ptr)
 
@@ -772,7 +773,13 @@ input.line.check:
   %input.cr = icmp eq i32 %input.char, 13
   br i1 %input.newline, label %input.done, label %input.cr.check
 input.cr.check:
-  br i1 %input.cr, label %input.carriage, label %input.store.check
+  br i1 %input.cr, label %input.carriage, label %input.nul.check
+input.nul.check:
+  %input.nul = icmp eq i32 %input.char, 0
+  br i1 %input.nul, label %input.nul.stop, label %input.store.check
+input.nul.stop:
+  call void @bn_rt_input_nul()
+  unreachable
 input.carriage:
   br label %input.read
 input.store.check:

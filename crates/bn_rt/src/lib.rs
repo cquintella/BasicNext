@@ -411,6 +411,7 @@ pub extern "C" fn bn_rt_str_char_utf8(code: i64) -> u64 {
     let Some(character) = u32::try_from(code).ok().and_then(char::from_u32) else {
         return u64::MAX;
     };
+    text_abi::reject_nul("CHAR", character.encode_utf8(&mut [0; 4]).as_bytes());
     pack_utf8(character)
 }
 
@@ -448,8 +449,10 @@ pub extern "C" fn bn_rt_dataframe_set_integer_cell(
 #[allow(unsafe_code)] // C ABI export; returned storage is released by the LLVM caller.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_dataframe_column_name_owned(frame: u64, index: u32) -> *mut c_char {
-    dataframe_abi::column_name_storage(frame, index)
-        .map_or(std::ptr::null_mut(), |name| c_string(&name))
+    dataframe_abi::column_name_storage(frame, index).map_or(std::ptr::null_mut(), |name| {
+        text_abi::reject_nul("BNData.DataFrame.ColumnName", name.as_bytes());
+        c_string(&name)
+    })
 }
 
 /// Returns `STRING[index]` as one NUL-terminated UTF-8 scalar packed in native

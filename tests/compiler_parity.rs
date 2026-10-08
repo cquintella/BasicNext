@@ -715,3 +715,108 @@ fn cpu_native_artifacts_print_what_the_interpreter_prints() {
         assert!(!interpreted.stdout.is_empty(), "{fixture}: no output");
     }
 }
+
+/// One NUL case: fixture name under `tests/native-nul/`, the operation the
+/// native stop names, the `bni` output, program arguments and stdin.
+struct NulCase<'a> {
+    name: &'a str,
+    operation: &'a str,
+    expected: &'a str,
+    arguments: Vec<String>,
+    input: Option<&'a [u8]>,
+}
+
+/// A STRING holding U+0000 (bucket 0.6.5b S7.c, option C): `bni` keeps the
+/// NUL and prints the full length; a native build, whose STRING is
+/// NUL-terminated, stops with `TARGET_UNSUPPORTED_TYPE` naming the
+/// operation, status 1, instead of printing a truncated value.
+#[test]
+fn nul_in_a_string_stops_native_builds_and_not_the_interpreter() {
+    let directory = TestDir::new("native-nul").expect("create directory");
+    let data = directory.join("nul.txt");
+    fs::write(&data, b"a\0b\n").expect("write data");
+    let file = vec![data.to_string_lossy().into_owned()];
+    let case = |name, operation, expected, arguments, input| NulCase {
+        name,
+        operation,
+        expected,
+        arguments,
+        input,
+    };
+    let mut cases = vec![
+        case("char", "CHAR", "1 3\n", Vec::new(), None),
+        case("input", "INPUT", "3\n", Vec::new(), Some(b"a\0b\n")),
+        case(
+            "file_read_all",
+            "HOST.FileSystem.File.ReadAll",
+            "all 4\n",
+            file.clone(),
+            None,
+        ),
+        case(
+            "file_read_line",
+            "HOST.FileSystem.File.ReadLine",
+            "line 3\n",
+            file,
+            None,
+        ),
+        case(
+            "json",
+            "BNJson.Json.GetString",
+            "json 3\n",
+            Vec::new(),
+            None,
+        ),
+        case(
+            "sqlite",
+            "BNData.DataFrame.GetString",
+            "sqlite 3\n",
+            Vec::new(),
+            None,
+        ),
+    ];
+    if cfg!(unix) {
+        cases.push(case(
+            "exec",
+            "HOST.Exec.Run",
+            "stdout 3\n",
+            Vec::new(),
+            None,
+        ));
+    }
+    for NulCase {
+        name,
+        operation,
+        expected,
+        arguments,
+        input,
+    } in cases
+    {
+        let path = workspace_root().join(format!("tests/native-nul/{name}.bn"));
+        let mut run_bni = bni();
+        run_bni.arg("run").arg(&path);
+        if !arguments.is_empty() {
+            run_bni.arg("--").args(&arguments);
+        }
+        let interpreted = execute(&mut run_bni, input);
+        assert_eq!(interpreted.status.code(), Some(0), "{name}: bni");
+        assert_eq!(
+            String::from_utf8_lossy(&interpreted.stdout),
+            expected,
+            "{name}: bni {}",
+            String::from_utf8_lossy(&interpreted.stderr)
+        );
+        let artifact = compile_native(&path, &directory);
+        let compiled = execute(Command::new(&artifact).args(&arguments), input);
+        assert_eq!(compiled.status.code(), Some(1), "{name}: native");
+        assert!(compiled.stdout.is_empty(), "{name}: native printed a value");
+        assert_eq!(
+            String::from_utf8_lossy(&compiled.stderr),
+            format!(
+                "error[TARGET_UNSUPPORTED_TYPE]: {operation}: a STRING containing NUL (U+0000) \
+                 is not supported by native builds yet; run the program with bni\n"
+            ),
+            "{name}: native"
+        );
+    }
+}

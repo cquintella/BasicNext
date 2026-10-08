@@ -1,0 +1,19 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A JSON string "a\u0000b": bni prints "json 3"; a native build stops.
+IMPORT BNJson AS Json
+
+FUNCTION Start() AS VOID
+    LET doc AS Json.Json OR Error = Json.Json.Parse("{\"k\":\"a\\u0000b\"}")
+    IF doc IS Error THEN
+        RETURN
+    END IF
+    LET v AS STRING OR Error = Json.Json.GetString(doc, "k")
+    IF v IS STRING THEN
+        PRINT "json", LEN(v)
+    END IF
+    RELEASE doc
+END FUNCTION

@@ -130,21 +130,6 @@ fn input_string(pointer: *const c_char) -> Option<String> {
         .map(str::to_owned)
 }
 
-fn owned_string(value: &[u8]) -> *mut c_char {
-    let Ok(length) = value.len().checked_add(1).ok_or(()) else {
-        return std::ptr::null_mut();
-    };
-    let pointer = unsafe { libc::malloc(length) }.cast::<u8>();
-    if pointer.is_null() {
-        return std::ptr::null_mut();
-    }
-    unsafe {
-        std::ptr::copy_nonoverlapping(value.as_ptr(), pointer, value.len());
-        pointer.add(value.len()).write(0);
-    }
-    pointer.cast()
-}
-
 fn add_column(
     frame: BNDataFrameHandle,
     name: *const c_char,
@@ -395,7 +380,7 @@ pub extern "C" fn bn_rt_dataframe_get_string(
     }
     match cell(frame, row, name) {
         Ok(StoredValue::String(value)) => unsafe {
-            let value = owned_string(&value);
+            let value = super::text_abi::owned_c_string("BNData.DataFrame.GetString", &value);
             if value.is_null() {
                 return failed(
                     "BNData.DataFrame.GetString",

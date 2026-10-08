@@ -585,12 +585,9 @@ pub extern "C" fn bn_rt_json_get_string(
     status: *mut i32,
 ) -> *mut c_char {
     let outcome = get_string(handle, c_str(key).unwrap_or_default());
-    c_string(&answer(
-        "BNJson.Json.GetString",
-        status,
-        outcome,
-        String::new(),
-    ))
+    let text = answer("BNJson.Json.GetString", status, outcome, String::new());
+    super::text_abi::reject_nul("BNJson.Json.GetString", text.as_bytes());
+    c_string(&text)
 }
 
 /// Reads an INTEGER member, writing the status through `status`.
@@ -642,12 +639,9 @@ pub extern "C" fn bn_rt_json_get_string_at(
     let outcome = element(handle, index, "STRING", |value| {
         value.as_str().map(str::to_owned)
     });
-    c_string(&answer(
-        "BNJson.Json.GetStringAt",
-        status,
-        outcome,
-        String::new(),
-    ))
+    let text = answer("BNJson.Json.GetStringAt", status, outcome, String::new());
+    super::text_abi::reject_nul("BNJson.Json.GetStringAt", text.as_bytes());
+    c_string(&text)
 }
 
 /// Reads an INTEGER element, writing the status through `status`.

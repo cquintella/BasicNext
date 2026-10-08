@@ -217,7 +217,10 @@ pub extern "C" fn bn_rt_file_read_all(handle: BNFileHandle, out: *mut *mut c_cha
     }
     unsafe { out.write(std::ptr::null_mut()) };
     match read_handle(handle) {
-        Ok(value) => write_owned(out, &value),
+        Ok(value) => {
+            super::text_abi::reject_nul("HOST.FileSystem.File.ReadAll", value.as_bytes());
+            write_owned(out, &value)
+        }
         Err(status) => status,
     }
 }
@@ -230,7 +233,10 @@ pub extern "C" fn bn_rt_file_read_line(handle: BNFileHandle, out: *mut *mut c_ch
     }
     unsafe { out.write(std::ptr::null_mut()) };
     match with_file(handle, OpenFile::read_line) {
-        Ok(Some(line)) => write_owned(out, &line),
+        Ok(Some(line)) => {
+            super::text_abi::reject_nul("HOST.FileSystem.File.ReadLine", line.as_bytes());
+            write_owned(out, &line)
+        }
         Ok(None) => BN_FILE_EOF,
         Err(status) => status,
     }

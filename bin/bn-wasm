@@ -155,6 +155,10 @@ const imports = {
         getchar() {
             return inputOffset < input.length ? input[inputOffset++] : -1;
         },
+        bn_rt_input_nul() {
+            process.stderr.write("error[TARGET_UNSUPPORTED_TYPE]: INPUT: a STRING containing NUL (U+0000) is not supported by native builds yet; run the program with bni\n");
+            process.exit(1);
+        },
         putchar(value) {
             process.stdout.write(Buffer.from([value & 0xff]));
             return value;

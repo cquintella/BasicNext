@@ -1,0 +1,19 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// HOST.Args[1] names a file holding "a<NUL>b" and a newline.
+// bni prints "line 3"; a native build stops in ReadLine.
+IMPORT HOST.FileSystem AS FS
+
+FUNCTION Start() AS VOID
+    LET f AS FS.File OR Error = FS.Open(HOST.Args[1], FS.READ)
+    IF f IS FS.File THEN
+        LET line AS STRING OR EOF OR Error = f.ReadLine()
+        IF line IS STRING THEN
+            PRINT "line", LEN(line)
+        END IF
+        f.Close()
+    END IF
+END FUNCTION

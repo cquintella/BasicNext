@@ -1,0 +1,16 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A child that writes "a<NUL>b" (Unix): bni prints "stdout 3"; a native
+// build stops in Exec.Run.
+IMPORT HOST.Exec AS Exec
+
+FUNCTION Start() AS VOID
+    LET args AS STRING[2] = ["-c", "printf 'a\\000b'"]
+    LET r AS Exec.Result OR Error = Exec.Run("/bin/sh", args)
+    IF r IS Exec.Result THEN
+        PRINT "stdout", LEN(r.Stdout)
+    END IF
+END FUNCTION

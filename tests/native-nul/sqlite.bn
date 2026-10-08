@@ -1,0 +1,23 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// An SQLite text value with char(0): bni prints "sqlite 3"; a native
+// build stops in DataFrame.GetString.
+IMPORT BNData AS Data
+IMPORT BNSqlite AS Sqlite
+
+FUNCTION Start() AS VOID
+    LET conn AS Sqlite.Connection OR Error = Sqlite.Open(":memory:")
+    IF conn IS Error THEN
+        RETURN
+    END IF
+    LET df AS Data.DataFrame OR Error = conn.Query("SELECT 'a' || char(0) || 'b' AS s;")
+    IF NOT (df IS Error) THEN
+        LET s AS STRING OR NA OR Error = df.GetString(0, "s")
+        IF s IS STRING THEN
+            PRINT "sqlite", LEN(s)
+        END IF
+    END IF
+END FUNCTION

@@ -19,7 +19,7 @@ const CEILINGS: &[(&str, usize)] = &[
     ("crates/bn_diag/src/lib.rs", 2339),
     ("crates/bn_lib_web/src/lib.rs", 2312),
     ("crates/bn_ir/src/validate.rs", 1052),
-    ("crates/bn_rt/src/dataframe_abi.rs", 1723),
+    ("crates/bn_rt/src/dataframe_abi.rs", 1708),
     ("crates/bn_llvm/src/llvm/call_emission.rs", 1300),
     ("crates/bn_llvm/src/lib.rs", 1069),
     ("crates/bn_rt/src/lib.rs", 1131),

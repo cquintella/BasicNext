@@ -64,11 +64,10 @@ pub extern "C" fn bn_rt_exec_run(
             return failure.code;
         }
     };
-    // C strings cannot carry NUL; the interpreter side keeps such output.
-    let (Ok(stdout), Ok(stderr)) = (CString::new(output.stdout), CString::new(output.stderr))
-    else {
-        return CAPTURE_FAILED;
-    };
+    // A native STRING cannot carry NUL (the interpreter keeps it): stop with
+    // the support diagnostic rather than return a different result.
+    let stdout = super::text_abi::c_string_or_stop("HOST.Exec.Run", output.stdout);
+    let stderr = super::text_abi::c_string_or_stop("HOST.Exec.Run", output.stderr);
     let result = Box::new(ExecResult {
         return_code: output.return_code,
         stdout,

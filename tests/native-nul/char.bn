@@ -1,0 +1,12 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// CHAR(0) is a one-scalar STRING: bni prints 1 3; a native build stops.
+FUNCTION Start() AS VOID
+    LET z AS STRING OR Error = CHAR(0)
+    IF z IS STRING THEN
+        PRINT LEN(z), LEN("a" + z + "b")
+    END IF
+END FUNCTION

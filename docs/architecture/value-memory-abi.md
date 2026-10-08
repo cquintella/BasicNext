@@ -456,6 +456,7 @@ bn_rt_policy_filesystem_root
 bn_rt_policy_filesystem_sandboxed
 bn_rt_random_next
 bn_rt_random_seed
+bn_rt_input_nul
 bn_rt_str_asc
 bn_rt_str_char_utf8
 bn_rt_str_index_utf8
