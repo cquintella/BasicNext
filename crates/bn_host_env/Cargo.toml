@@ -1,0 +1,17 @@
+[package]
+name = "bn_host_env"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.98"
+description = "Basic Next HOST.Env core: one process-environment reader shared by the interpreter and the native runtime"
+license.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+bn_types = { path = "../bn_types" }
+
+[lints]
+workspace = true

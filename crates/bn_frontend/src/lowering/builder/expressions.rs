@@ -143,6 +143,13 @@ impl Builder<'_> {
                         ty,
                         span: expression.span,
                     }
+                } else if ty == Type::HostEnv {
+                    Instruction::Constant {
+                        destination,
+                        value: Constant::Type("HOST.Env".into()),
+                        ty,
+                        span: expression.span,
+                    }
                 } else if matches!(ty, Type::TypeName(_) | Type::Module(_)) {
                     Instruction::Constant {
                         destination,
@@ -424,11 +431,7 @@ impl Builder<'_> {
                         ty,
                         span: expression.span,
                     }
-                } else if let Some(value) = match object_type {
-                    Type::HostFileSystem => filesystem_constant(name),
-                    Type::HostNet => net_constant(name),
-                    _ => None,
-                } {
+                } else if let Some(value) = capability_constant(&object_type, name) {
                     let _ = self.expression(object)?;
                     Instruction::Constant {
                         destination,

@@ -47,7 +47,7 @@ program              = { NEWLINE } { import-declaration { NEWLINE } }
 import-declaration   = "IMPORT" import-path "AS" identifier NEWLINE ;
 import-path          = host-import-path | module-import-path ;
 host-import-path     = "HOST" "." importable-host-capability-name { "." identifier } ;
-importable-host-capability-name = "Clock" | "Console" | "Exec" | "FileSystem" | "Net" | "Random" ;
+importable-host-capability-name = "Clock" | "Console" | "Env" | "Exec" | "FileSystem" | "Net" | "Random" ;
 host-capability-name = "Args" | "Clock" | "Console" | "FileSystem" | "Net" | "Random" ;
 module-import-path   = identifier { "." identifier } ;
                        (* 0.5.2 (I1): with two or more segments the last segment

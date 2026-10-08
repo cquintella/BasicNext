@@ -170,7 +170,7 @@ impl NetProvider {
                     ));
                 };
                 let endpoint = net_endpoint(&arguments[1], span)?;
-                let Value::Pointer { handle } = arguments[2] else {
+                let Value::Pointer { handle, .. } = arguments[2] else {
                     return Err(type_mismatch(
                         "BYTE buffer",
                         "non-pointer value",
@@ -307,7 +307,7 @@ impl NetProvider {
                     "HOST.Net.UDPPacket.CopyTo",
                     span,
                 )?;
-                let Value::Pointer { handle } = arguments[1] else {
+                let Value::Pointer { handle, .. } = arguments[1] else {
                     return Err(type_mismatch(
                         "BYTE buffer",
                         "non-pointer value",
@@ -832,7 +832,7 @@ impl NetProvider {
                         span,
                     ));
                 };
-                let Value::Pointer { handle } = arguments[1] else {
+                let Value::Pointer { handle, .. } = arguments[1] else {
                     return Err(type_mismatch(
                         "BYTE buffer pointer",
                         "non-pointer value",
@@ -873,7 +873,7 @@ impl NetProvider {
                         span,
                     ));
                 };
-                let Value::Pointer { handle } = arguments[1] else {
+                let Value::Pointer { handle, .. } = arguments[1] else {
                     return Err(type_mismatch(
                         "BYTE buffer pointer",
                         "non-pointer value",

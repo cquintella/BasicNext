@@ -114,7 +114,9 @@ fn llvm_storage_layout(ty: &Type) -> Option<(u32, u32)> {
         "i32" | "float" => Some((4, 4)),
         "i64" | "double" | "ptr" => Some((8, 8)),
         "{ ptr, i32 }" | "{ i1, double }" | "{ i1, ptr }" => Some((16, 8)),
-        "{ i1, ptr, i32 }" | "{ i1, ptr, i64 }" | "{ i32, ptr, i64 }" => Some((24, 8)),
+        "{ ptr, i32, i32 }" | "{ i1, ptr, i32 }" | "{ i1, ptr, i64 }" | "{ i32, ptr, i64 }" => {
+            Some((24, 8))
+        }
         _ => None,
     }
 }
@@ -289,12 +291,10 @@ pub(crate) fn llvm_type(ty: &Type) -> Option<&'static str> {
             dimensions,
         } if !dimensions.is_empty() && llvm_type(element).is_some() => Some("{ ptr, i32 }"),
         // Dynamic `NEW T[n]` / `POINTER TO T[]` share the vector fat pointer.
-        Type::Pointer { element, .. }
-            if llvm_type(element).is_some()
-                || matches!(element.as_ref(), Type::Named(name) if name == "VOID") =>
-        {
-            Some("{ ptr, i32 }")
+        Type::Pointer { element, .. } if matches!(element.as_ref(), Type::Named(name) if name == "VOID") => {
+            Some("{ ptr, i32, i32 }")
         }
+        Type::Pointer { element, .. } if llvm_type(element).is_some() => Some("{ ptr, i32 }"),
         Type::Named(name) if name == "POINTER" => Some("{ ptr, i32 }"),
         // User class instances (NEW Box(...)) lower as opaque pointers.
         Type::Named(name)

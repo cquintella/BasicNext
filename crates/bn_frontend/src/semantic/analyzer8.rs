@@ -30,6 +30,14 @@ impl Analyzer {
                     return Type::Named(format!("HOST.Exec.{exported_name}"));
                 }
                 if let Some((alias, exported_name)) = name.split_once('.')
+                    && self
+                        .globals
+                        .get(alias)
+                        .is_some_and(|symbol| symbol.ty == Type::HostEnv)
+                {
+                    return Type::Named(format!("HOST.Env.{exported_name}"));
+                }
+                if let Some((alias, exported_name)) = name.split_once('.')
                     && exported_name == "File"
                     && self
                         .globals

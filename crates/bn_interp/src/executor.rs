@@ -364,7 +364,8 @@ pub(super) fn coerce(value: Value, ty: &Type, span: Span) -> Result<Value, Diagn
             | Type::HostRandom
             | Type::HostFileSystem
             | Type::HostNet
-            | Type::HostExec,
+            | Type::HostExec
+            | Type::HostEnv,
         ) => Ok(value),
         (Value::Date(_), Type::Named(name)) if name == "DATE" => Ok(value),
         (Value::Time(_), Type::Named(name)) if name == "TIME" => Ok(value),

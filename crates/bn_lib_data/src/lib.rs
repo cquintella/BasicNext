@@ -614,7 +614,7 @@ impl DataProvider {
                         span,
                     ));
                 };
-                let Value::Pointer { handle } = arguments[2] else {
+                let Value::Pointer { handle, .. } = arguments[2] else {
                     return Err(type_mismatch(
                         "pointer",
                         "non-pointer value",
@@ -941,7 +941,7 @@ impl DataProvider {
         };
         let values = match &arguments[2] {
             Value::Vector(values) => values.clone(),
-            Value::Pointer { handle } => (0..core.memory().len(*handle, span)?)
+            Value::Pointer { handle, .. } => (0..core.memory().len(*handle, span)?)
                 .map(|index| core.memory().get(*handle, index, span).cloned())
                 .collect::<Result<Vec<_>, _>>()?,
             _ => {

@@ -194,6 +194,60 @@ pub(crate) fn coerce_to_type(text: &mut String, value: ValueId, from: &Type, to:
         );
         return format!("%{tag}");
     }
+    if from_llvm == "{ ptr, i32 }" && to_llvm == "{ ptr, i32, i32 }" {
+        let elem_code = match from {
+            Type::Pointer { element, .. } => {
+                bn_types::alternatives::member_code(element).unwrap_or(0)
+            }
+            _ => 0,
+        };
+        let tag = format!("voidcoer{}", value.0);
+        let fat_void = crate::layout::typed_llvm("{ ptr, i32, i32 }");
+        let val = crate::ir::LlvmOperand::reg(format!("v{}", value.0));
+        let ptr_val = format!("{tag}_ptr");
+        let len_val = format!("{tag}_len");
+        text.assign(
+            ptr_val.clone(),
+            crate::ir::LlvmInst::extract(crate::layout::typed_llvm("{ ptr, i32 }"), val.clone(), 0),
+        );
+        text.assign(
+            len_val.clone(),
+            crate::ir::LlvmInst::extract(crate::layout::typed_llvm("{ ptr, i32 }"), val, 1),
+        );
+        let ins0 = format!("{tag}_0");
+        text.assign(
+            ins0.clone(),
+            crate::ir::LlvmInst::insert(
+                fat_void.clone(),
+                crate::ir::LlvmOperand::undef(),
+                crate::ir::LlvmType::Ptr,
+                crate::ir::LlvmOperand::reg(ptr_val),
+                0,
+            ),
+        );
+        let ins1 = format!("{tag}_1");
+        text.assign(
+            ins1.clone(),
+            crate::ir::LlvmInst::insert(
+                fat_void.clone(),
+                crate::ir::LlvmOperand::reg(ins0),
+                crate::ir::LlvmType::I32,
+                crate::ir::LlvmOperand::reg(len_val),
+                1,
+            ),
+        );
+        text.assign(
+            tag.clone(),
+            crate::ir::LlvmInst::insert(
+                fat_void,
+                crate::ir::LlvmOperand::reg(ins1),
+                crate::ir::LlvmType::I32,
+                crate::ir::LlvmOperand::int(i64::from(elem_code)),
+                2,
+            ),
+        );
+        return format!("%{tag}");
+    }
     if matches!(from_llvm, "i8" | "i16" | "i32" | "i64")
         && matches!(to_llvm, "i8" | "i16" | "i32" | "i64")
     {

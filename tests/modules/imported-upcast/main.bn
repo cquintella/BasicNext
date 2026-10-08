@@ -1,0 +1,48 @@
+// A root class that extends an imported class and implements an imported
+// interface is accepted at the argument and result boundaries.
+IMPORT Pets AS Pets
+
+CLASS Dog EXTENDS Pets.Animal IMPLEMENTS Pets.Named
+    PUBLIC FUNCTION CONSTRUCTOR()
+        SUPER()
+    END FUNCTION
+
+    PUBLIC OVERRIDE FUNCTION Speak() AS STRING
+        RETURN "dog"
+    END FUNCTION
+
+    PUBLIC FUNCTION Name() AS STRING
+        RETURN "Puck"
+    END FUNCTION
+END CLASS
+
+CLASS Pup EXTENDS Dog
+    PUBLIC FUNCTION CONSTRUCTOR()
+        SUPER()
+    END FUNCTION
+END CLASS
+
+FUNCTION ByAnimal(a AS Pets.Animal) AS STRING
+    RETURN a.Speak()
+END FUNCTION
+
+FUNCTION ByNamed(n AS Pets.Named) AS STRING
+    RETURN "named"
+END FUNCTION
+
+FUNCTION MakeAnimal() AS Pets.Animal
+    RETURN NEW Pup()
+END FUNCTION
+
+FUNCTION MakeNamed() AS Pets.Named
+    RETURN NEW Pup()
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET d AS Dog = NEW Dog()
+    PRINT ByAnimal(d)
+    PRINT ByAnimal(NEW Pup())
+    PRINT ByNamed(d)
+    PRINT MakeAnimal().Speak()
+    PRINT ByNamed(MakeNamed())
+END FUNCTION

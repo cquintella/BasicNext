@@ -1,0 +1,19 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Run with BN_ENV_POLICY=deny: returns Error(Env.POLICY_DENIED) on both backends.
+IMPORT HOST.Env AS Env
+
+FUNCTION Start() AS INTEGER
+    LET val AS STRING OR Error = Env.Get("PATH")
+    IF val IS Error THEN
+        PRINT val.Code = Env.POLICY_DENIED, val.Operation
+    END IF
+    LET hasVal AS BOOLEAN OR Error = Env.Has("PATH")
+    IF hasVal IS Error THEN
+        PRINT hasVal.Code = Env.POLICY_DENIED, hasVal.Operation
+    END IF
+    RETURN 0
+END FUNCTION

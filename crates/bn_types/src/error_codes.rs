@@ -67,6 +67,52 @@ pub mod net {
     ];
 }
 
+/// `HOST.Exec` codes (language/0.6/0.6.md, "HOST.Exec Errors").
+pub mod exec {
+    pub const INVALID_ARGUMENT: i32 = 1;
+    pub const PROGRAM_NOT_FOUND: i32 = 2;
+    pub const PERMISSION_DENIED: i32 = 3;
+    pub const SPAWN_FAILED: i32 = 4;
+    pub const WAIT_FAILED: i32 = 5;
+    pub const CAPTURE_FAILED: i32 = 6;
+    pub const INVALID_UTF8: i32 = 7;
+    pub const CAPTURE_LIMIT: i32 = 8;
+    pub const TIMEOUT: i32 = 9;
+    pub const TERMINATION_FAILED: i32 = 10;
+    pub const POLICY_DENIED: i32 = 11;
+
+    /// Member name and value of every code.
+    pub const ALL: [(&str, i32); 11] = [
+        ("INVALID_ARGUMENT", INVALID_ARGUMENT),
+        ("PROGRAM_NOT_FOUND", PROGRAM_NOT_FOUND),
+        ("PERMISSION_DENIED", PERMISSION_DENIED),
+        ("SPAWN_FAILED", SPAWN_FAILED),
+        ("WAIT_FAILED", WAIT_FAILED),
+        ("CAPTURE_FAILED", CAPTURE_FAILED),
+        ("INVALID_UTF8", INVALID_UTF8),
+        ("CAPTURE_LIMIT", CAPTURE_LIMIT),
+        ("TIMEOUT", TIMEOUT),
+        ("TERMINATION_FAILED", TERMINATION_FAILED),
+        ("POLICY_DENIED", POLICY_DENIED),
+    ];
+}
+
+/// `HOST.Env` codes (language/0.6/host-env.md, "Errors").
+pub mod env {
+    pub const NOT_SET: i32 = 1;
+    pub const INVALID_NAME: i32 = 2;
+    pub const INVALID_UTF8: i32 = 3;
+    pub const POLICY_DENIED: i32 = 4;
+
+    /// Member name and value of every code.
+    pub const ALL: [(&str, i32); 4] = [
+        ("NOT_SET", NOT_SET),
+        ("INVALID_NAME", INVALID_NAME),
+        ("INVALID_UTF8", INVALID_UTF8),
+        ("POLICY_DENIED", POLICY_DENIED),
+    ];
+}
+
 /// `BNCrypto` `Error.Code` (`language/0.6/bncrypto.md` "Errors").
 pub mod crypto {
     pub const INVALID_ARGUMENT: i32 = 1;

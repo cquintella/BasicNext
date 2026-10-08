@@ -218,7 +218,7 @@ impl FsProvider {
             }
             "ReadBytes" => {
                 require_arity(name, arguments, 2, span)?;
-                let Value::Pointer { handle } = arguments[1] else {
+                let Value::Pointer { handle, .. } = arguments[1] else {
                     return Err(type_mismatch(
                         "BYTE buffer",
                         "non-pointer value",
@@ -258,7 +258,7 @@ fn write_bytes_argument(
     span: Span,
 ) -> Result<Vec<u8>, Diagnostic> {
     require_arity("FS.File.WriteBytes", arguments, 3, span)?;
-    let Value::Pointer { handle } = arguments[1] else {
+    let Value::Pointer { handle, .. } = arguments[1] else {
         return Err(type_mismatch(
             "BYTE buffer",
             "non-pointer value",

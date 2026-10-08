@@ -5,7 +5,8 @@
 
 //! The one-core gate (`tests/check-shared-cores.sh`) against trees made for
 //! it: rule (f) fails when an ARC mechanism appears outside `bn_rt::arc`
-//! (proposal `arc-shared-core-0.6.5`), and passes without it. The gate needs
+//! (proposal `arc-shared-core-0.6.5`), rule (g) when a `HOST.Env` provider
+//! reads the environment outside `bn_host_env`; each passes without it. The gate needs
 //! ripgrep and fails closed; this test never skips it.
 
 use std::{fs, path::Path, process::Command};
@@ -74,6 +75,46 @@ fn the_shared_cores_gate_rejects_a_second_arc_mechanism() {
         assert!(!output.status.success(), "{path}: the gate passed");
         assert!(
             stderr.contains(&format!("ARC mechanism outside bn_rt::arc: {path}")),
+            "{path}: {stderr}"
+        );
+    }
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// Rule (g): a `HOST.Env` provider that reads the environment itself, instead
+/// of through `bn_host_env`, fails the gate; `bn_host_env` may read it.
+#[test]
+fn the_shared_cores_gate_rejects_a_second_env_reader() {
+    let root = std::env::temp_dir().join(format!("bn-shared-env-{}", std::process::id()));
+    let core = (
+        "crates/bn_host_env/src/lib.rs",
+        "// HOST.Env.Get\nfn get(name: &str) { std::env::var_os(name); }\n",
+    );
+    tree(&root, Some(core));
+    let clean = gate(&root);
+    assert!(
+        clean.status.success(),
+        "{}",
+        String::from_utf8_lossy(&clean.stderr)
+    );
+    for (path, copy) in [
+        (
+            "crates/bn_rt/src/env.rs",
+            "// HOST.Env.Get\nfn get(name: &str) { std::env::var_os(name); }\n",
+        ),
+        (
+            "crates/bn_interpret_driver/src/hosts/env.rs",
+            "// HOST.Env.Has\nfn has(name: &str) -> bool { std::env::var(name).is_ok() }\n",
+        ),
+    ] {
+        tree(&root, Some((path, copy)));
+        let output = gate(&root);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!output.status.success(), "{path}: the gate passed");
+        assert!(
+            stderr.contains(&format!(
+                "HOST.Env reads the environment outside bn_host_env: {path}"
+            )),
             "{path}: {stderr}"
         );
     }

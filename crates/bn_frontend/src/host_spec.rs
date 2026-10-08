@@ -31,6 +31,8 @@ mod members4;
 mod members4;
 #[path = "host_spec/members5.rs"]
 mod members5;
+#[path = "host_spec/members6.rs"]
+mod members6;
 
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -111,6 +113,7 @@ pub(crate) enum Capability {
     FileSystem,
     Net,
     Exec,
+    Env,
     NumProcs,
 }
 
@@ -125,6 +128,7 @@ impl Capability {
             Self::FileSystem => "HOST.FileSystem",
             Self::Net => "HOST.Net",
             Self::Exec => "HOST.Exec",
+            Self::Env => "HOST.Env",
             Self::NumProcs => "HOST.NumProcs",
         }
     }
@@ -140,6 +144,7 @@ pub(crate) fn capability(name: &str) -> Option<Capability> {
         "FileSystem" => Some(Capability::FileSystem),
         "Net" => Some(Capability::Net),
         "Exec" => Some(Capability::Exec),
+        "Env" => Some(Capability::Env),
         "NumProcs" => Some(Capability::NumProcs),
         _ => None,
     }
@@ -185,6 +190,8 @@ fn declare_error_codes(catalog: &mut Catalog) {
     for (owner, codes) in [
         ("HOST.FileSystem", &bn_types::error_codes::fs::ALL[..]),
         ("HOST.Net", &bn_types::error_codes::net::ALL[..]),
+        ("HOST.Exec", &bn_types::error_codes::exec::ALL[..]),
+        ("HOST.Env", &bn_types::error_codes::env::ALL[..]),
     ] {
         let members = catalog
             .members
@@ -224,6 +231,7 @@ pub(crate) fn catalog() -> Catalog {
     members3::declare_16(&mut catalog);
     members4::declare_17(&mut catalog);
     members5::declare_exec(&mut catalog);
+    members6::declare_env(&mut catalog);
     declare_error_codes(&mut catalog);
     catalog
 }

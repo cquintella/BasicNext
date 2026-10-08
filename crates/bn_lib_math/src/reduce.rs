@@ -29,7 +29,7 @@ pub(super) fn reduce_vector(
     let owned;
     let values = match value {
         Value::Vector(values) => values,
-        Value::Pointer { handle } => {
+        Value::Pointer { handle, .. } => {
             let len = memory.len(*handle, span)?;
             owned = (0..len)
                 .map(|index| memory.get(*handle, index, span).cloned())

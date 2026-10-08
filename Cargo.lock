@@ -184,8 +184,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "bn_host_env"
+version = "0.6.4"
+dependencies = [
+ "bn_types",
+]
+
+[[package]]
 name = "bn_host_exec"
 version = "0.6.4"
+dependencies = [
+ "bn_types",
+]
 
 [[package]]
 name = "bn_host_fs"
@@ -232,6 +242,7 @@ dependencies = [
  "bn_cli",
  "bn_diag",
  "bn_frontend",
+ "bn_host_env",
  "bn_host_exec",
  "bn_host_fs",
  "bn_host_net",
@@ -408,6 +419,7 @@ version = "0.6.4"
 dependencies = [
  "aes-gcm",
  "argon2",
+ "bn_host_env",
  "bn_host_exec",
  "bn_limits",
  "bn_types",

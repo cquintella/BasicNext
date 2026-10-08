@@ -82,9 +82,8 @@ pub(crate) fn analyze_with_modules_mode(
         current_class: None,
         declaration_kinds: HashMap::new(),
         constructors: HashMap::new(),
-        base_classes: HashMap::new(),
+        class_model: ClassModel::new(),
         declared_members: HashMap::new(),
-        implementations: HashMap::new(),
         imported_types,
         bnmath_modules,
         standard_modules,
@@ -101,6 +100,7 @@ pub(crate) fn analyze_with_modules_mode(
         type_alias_uses: std::cell::RefCell::default(),
         host_aliases: HashMap::new(),
     };
+    analyzer.declare_imported_interfaces();
     analyzer.declare_globals(program)?;
     validate_implemented_interfaces(
         program,
@@ -114,7 +114,7 @@ pub(crate) fn analyze_with_modules_mode(
         symbols: analyzer.symbols,
         expressions: analyzer.expressions,
         layouts: analyzer.layouts,
-        base_classes: analyzer.base_classes,
+        class_model: analyzer.class_model,
         bnmath_modules: analyzer.bnmath_modules,
         standard_modules: analyzer.standard_modules,
         module_constants,

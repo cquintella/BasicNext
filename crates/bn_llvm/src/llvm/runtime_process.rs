@@ -18,8 +18,8 @@ use crate::ir::{
 use crate::layout::{handle_result_ty, vector_ty};
 use runtime_abi::{
     CLOCK_NOW, CLOCK_TIMER, CONSOLE_BEEP, CONSOLE_CLS, CONSOLE_NUM_COLS, CONSOLE_NUM_ROWS,
-    CONSOLE_PRINT_AT, ERROR_TAKE, EXEC_RESULT_CLOSE, EXEC_RESULT_RETURN_CODE, EXEC_RESULT_STDERR,
-    EXEC_RESULT_STDOUT, EXEC_RUN, HOST_NUM_PROCS,
+    CONSOLE_PRINT_AT, ENV_GET, ENV_HAS, ERROR_TAKE, EXEC_RESULT_CLOSE, EXEC_RESULT_RETURN_CODE,
+    EXEC_RESULT_STDERR, EXEC_RESULT_STDOUT, EXEC_RUN, HOST_NUM_PROCS,
 };
 
 pub(crate) fn lower_process_call(
@@ -34,6 +34,48 @@ pub(crate) fn lower_process_call(
     let dest = destination.0;
     let reg = LlvmOperand::reg;
     match name {
+        "HOST.Env.Get" => {
+            text.assign(format!("envout{dest}"), LlvmInst::alloca(Ptr));
+            text.assign(
+                format!("envrc{dest}"),
+                ENV_GET.call([value_reg(arguments[0]), reg(format!("envout{dest}"))]),
+            );
+            text.assign(
+                format!("envval{dest}"),
+                LlvmInst::load(Ptr, reg(format!("envout{dest}"))),
+            );
+            emit_status_result(
+                text,
+                destination,
+                &format!("%envrc{dest}"),
+                None,
+                &format!("%envval{dest}"),
+                "0",
+            );
+        }
+        "HOST.Env.Has" => {
+            text.assign(format!("envhasout{dest}"), LlvmInst::alloca(I32));
+            text.assign(
+                format!("envhasrc{dest}"),
+                ENV_HAS.call([value_reg(arguments[0]), reg(format!("envhasout{dest}"))]),
+            );
+            text.assign(
+                format!("envhasval{dest}"),
+                LlvmInst::load(I32, reg(format!("envhasout{dest}"))),
+            );
+            text.assign(
+                format!("envhasext{dest}"),
+                LlvmInst::cast(CastOp::ZExt, I32, reg(format!("envhasval{dest}")), I64),
+            );
+            emit_status_result(
+                text,
+                destination,
+                &format!("%envhasrc{dest}"),
+                None,
+                "null",
+                &format!("%envhasext{dest}"),
+            );
+        }
         "HOST.NumProcs" => {
             text.assign(format!("numprocsout{dest}"), LlvmInst::alloca(I32));
             text.assign(

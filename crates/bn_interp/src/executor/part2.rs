@@ -493,7 +493,7 @@ impl Executor<'_, '_> {
                     Value::Vector(elements) => integer_from_count(elements.len(), *span)?,
                     Value::String(text) => integer_from_count(text.chars().count(), *span)?,
                     Value::HostArgs => integer_from_count(self.host.arguments.len(), *span)?,
-                    Value::Pointer { handle } => {
+                    Value::Pointer { handle, .. } => {
                         integer_from_count(self.memory.len(*handle, *span)?, *span)?
                     }
                     Value::Null => {

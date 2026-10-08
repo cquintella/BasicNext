@@ -174,6 +174,7 @@ pub(crate) fn host_capability_type(name: &str, span: Span) -> Result<Type, Diagn
         Some(crate::host_spec::Capability::FileSystem) => Ok(Type::HostFileSystem),
         Some(crate::host_spec::Capability::Net) => Ok(Type::HostNet),
         Some(crate::host_spec::Capability::Exec) => Ok(Type::HostExec),
+        Some(crate::host_spec::Capability::Env) => Ok(Type::HostEnv),
         Some(crate::host_spec::Capability::NumProcs) => Ok(Type::Function {
             parameters: Vec::new(),
             return_type: Box::new(Type::Alternative(vec![
@@ -205,6 +206,7 @@ pub(crate) fn length_type(ty: &Type, span: Span) -> Result<Type, Diagnostic> {
             length: PointerLength::Dynamic,
             ..
         } => Ok(Type::Integer(IntegerType::Int32)),
+        Type::Pointer { element, .. } if is_void(element) => Ok(Type::Integer(IntegerType::Int32)),
         Type::Vector { dimensions, .. } => {
             if !dimensions.contains(&u64::MAX) {
                 require_integer_fit(dimension_product(dimensions), span)?;
@@ -320,8 +322,10 @@ pub(crate) fn compatible(expected: &Type, actual: &Type) -> bool {
                 length: actual_length,
             },
         ) => {
-            (is_void(expected) || is_void(actual) || compatible(expected, actual))
-                && pointer_lengths_compatible(*expected_length, *actual_length)
+            let void_conversion = is_void(expected) || is_void(actual);
+            void_conversion
+                || (compatible(expected, actual)
+                    && pointer_lengths_compatible(*expected_length, *actual_length))
         }
         (expected, actual) => expected == actual,
     }
@@ -429,6 +433,7 @@ pub fn display(ty: &Type) -> String {
         Type::HostFileSystem => "HOST.FileSystem".into(),
         Type::HostNet => "HOST.Net".into(),
         Type::HostExec => "HOST.Exec".into(),
+        Type::HostEnv => "HOST.Env".into(),
         Type::Module(id) => format!("MODULE {}", id.0),
         Type::Alternative(alternatives) => alternatives
             .iter()

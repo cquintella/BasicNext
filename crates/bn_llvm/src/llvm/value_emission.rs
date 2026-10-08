@@ -106,7 +106,7 @@ pub(crate) fn lower_value_emission(
         ) =>
         {
             block_state.constants.remove(destination);
-            emit_vector_length(text, *destination, *vector);
+            emit_vector_length(text, *destination, *vector, analysis);
         }
         Instruction::Vector {
             destination,

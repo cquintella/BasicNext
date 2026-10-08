@@ -29,9 +29,10 @@ fail() {
 # may spawn.
 allowed_spawn='^(crates/bn_host_exec/src/lib\.rs|crates/bn_rt/src/net/neighbor\.rs|crates/bn_compile_driver/src/(toolchain|artifact|tests)\.rs|.*_tests\.rs)$'
 while IFS= read -r file; do
+  file=${file//\\/\/}
   [[ $file =~ $allowed_spawn ]] || fail "process spawn outside the shared cores: $file"
 done < <(rg -l 'process::Command|Command::new\(' src crates --type rust -g '!crates/*/tests/**' \
-  | while IFS= read -r f; do rg -q 'current_exe\(\)' "$f" && [[ $f == crates/bn_rt/src/*_abi.rs ]] || echo "$f"; done)
+  | while IFS= read -r f; do f_norm=${f//\\/\/}; rg -q 'current_exe\(\)' "$f" && [[ $f_norm == crates/bn_rt/src/*_abi.rs ]] || echo "$f_norm"; done)
 
 # (b) The Net core is not duplicated in the interpreter provider crate.
 for name in icmp reverse neighbor; do
@@ -48,12 +49,14 @@ count=$(rg -c '^(pub(\(crate\))?\s+)?static\s' crates/bn_rt/src/policy.rs || tru
 # name the variables. No other reader.
 allowed_env='^(crates/bn_rt/src/policy\.rs)$'
 while IFS= read -r file; do
+  file=${file//\\/\/}
   [[ $file =~ $allowed_env ]] || fail "policy environment read outside the parser: $file"
-done < <(rg -l '^\s*[^/]*"BN_(FS_POLICY|EXEC_POLICY|EXEC_CAPTURE_LIMIT|EXEC_TIMEOUT_MS)"' src crates --type rust -g '!*_tests.rs' -g '!**/tests.rs' -g '!crates/*/tests/**')
+done < <(rg -l '^\s*[^/]*"BN_(FS_POLICY|EXEC_POLICY|EXEC_CAPTURE_LIMIT|EXEC_TIMEOUT_MS|ENV_POLICY)"' src crates --type rust -g '!*_tests.rs' -g '!**/tests.rs' -g '!crates/*/tests/**')
 
 # (e) The filesystem decision has one implementation: no OpenOptions in the
 # interpreter core or its providers.
 while IFS= read -r file; do
+  file=${file//\\/\/}
   fail "filesystem open bypasses bn_rt::FsPolicy: $file"
 done < <(rg -l 'OpenOptions::new\(\)' crates/bn_interp/src crates/bn_host_fs/src crates/bn_lib_log/src --type rust -g '!*_tests.rs' -g '!**/tests.rs' || true)
 
@@ -63,8 +66,19 @@ done < <(rg -l 'OpenOptions::new\(\)' crates/bn_interp/src crates/bn_host_fs/src
 # core; the backends only apply the IR's operations through it.
 allowed_arc='^crates/bn_rt/src/arc(_abi)?\.rs$'
 while IFS= read -r file; do
+  file=${file//\\/\/}
   [[ $file =~ $allowed_arc ]] || fail "ARC mechanism outside bn_rt::arc: $file"
 done < <(rg -l 'strong_count|strong \+=|strong -=|weak_(register|unregister|invalidate)|bn_arc_weak_(objects|locations)|struct ArcCore|fn bn_rt_arc_' src crates --type rust || true)
+
+# (g) HOST.Env has one environment reader (bucket 0.6.5b): a source that
+# implements a HOST.Env operation reads the environment only through
+# bn_host_env; it never calls `env::var` or `var_os` itself.
+allowed_env_reader='^crates/bn_host_env/src/lib\.rs$'
+while IFS= read -r file; do
+  file=${file//\\/\/}
+  [[ $file =~ $allowed_env_reader ]] && continue
+  rg -q 'var_os\(|env::var\(' "$file" && fail "HOST.Env reads the environment outside bn_host_env: $file"
+done < <(rg -l 'HOST\.Env\.' src crates --type rust -g '!*_tests.rs' -g '!**/tests.rs' -g '!crates/*/tests/**' || true)
 
 if ((status == 0)); then
   echo "shared-cores check passed"

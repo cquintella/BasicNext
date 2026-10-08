@@ -24,13 +24,15 @@ pub const POLICY_NET: u64 = 1 << 3;
 pub const POLICY_DISPATCH: u64 = 1 << 4;
 pub const POLICY_RANDOM: u64 = 1 << 5;
 pub const POLICY_EXEC: u64 = 1 << 6;
+pub const POLICY_ENV: u64 = 1 << 7;
 pub const POLICY_ALL: u64 = POLICY_CLOCK
     | POLICY_CONSOLE
     | POLICY_FILESYSTEM
     | POLICY_NET
     | POLICY_DISPATCH
     | POLICY_RANDOM
-    | POLICY_EXEC;
+    | POLICY_EXEC
+    | POLICY_ENV;
 pub const POLICY_VERSION: u32 = 1;
 pub const POLICY_OK: i32 = 0;
 pub const POLICY_INVALID: i32 = 2;
@@ -267,6 +269,14 @@ impl Policy {
         }
     }
 
+    /// The HOST.Env policy for one call.
+    #[must_use]
+    pub const fn env(&self) -> bn_host_env::Policy {
+        bn_host_env::Policy {
+            allowed: self.allows(POLICY_ENV),
+        }
+    }
+
     #[must_use]
     pub const fn fs(&self) -> &FsPolicy {
         &self.fs
@@ -289,6 +299,10 @@ impl Policy {
 
     pub const fn deny_exec(&mut self) {
         self.restrict(!POLICY_EXEC);
+    }
+
+    pub const fn deny_env(&mut self) {
+        self.restrict(!POLICY_ENV);
     }
 
     /// Denies the capability bit and every path.
@@ -357,6 +371,17 @@ impl Policy {
                 });
             }
         };
+        let env_denied = match text("BN_ENV_POLICY").as_deref() {
+            None => false,
+            Some("deny") => true,
+            Some(value) => {
+                return Err(PolicyError {
+                    variable: "BN_ENV_POLICY",
+                    value: value.to_owned(),
+                    expected: "deny",
+                });
+            }
+        };
         let capture_limit = integer("BN_EXEC_CAPTURE_LIMIT")?;
         let timeout_ms = integer("BN_EXEC_TIMEOUT_MS")?;
         // `deny` denies every path; the capability stays bound, so each
@@ -369,6 +394,9 @@ impl Policy {
         }
         if exec_denied {
             self.deny_exec();
+        }
+        if env_denied {
+            self.deny_env();
         }
         if let Some(bytes) = capture_limit {
             self.reduce_exec_capture_limit(usize::try_from(bytes).unwrap_or(usize::MAX));
@@ -422,6 +450,11 @@ pub(crate) fn allows(capability: u64) -> bool {
 /// The effective HOST.Exec policy, read once per call.
 pub(crate) fn exec_policy() -> bn_host_exec::Policy {
     current().exec()
+}
+
+/// The effective HOST.Env policy, read once per call.
+pub(crate) fn env_policy() -> bn_host_env::Policy {
+    current().env()
 }
 
 pub(crate) fn allows_path(path: &Path, write: bool) -> bool {

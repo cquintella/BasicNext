@@ -24,26 +24,49 @@ impl Executor<'_, '_> {
             return Ok(value);
         }
         if let (
-            Value::Pointer { handle },
+            Value::Pointer { handle, element },
             Type::Pointer {
-                length: PointerLength::Fixed(expected),
-                ..
+                element: target_element,
+                length: target_length,
             },
         ) = (&value, ty)
         {
-            let actual = u64::try_from(self.memory.len(*handle, span)?).map_err(|_| {
-                runtime_error(
-                    bn_diag::DiagId::POINTER_LENGTH_MISMATCH,
-                    "pointer length does not fit INTEGER",
-                    span,
-                )
-            })?;
-            if actual != *expected {
-                return Err(runtime_error(
-                    bn_diag::DiagId::POINTER_LENGTH_MISMATCH,
-                    format!("pointer length {actual} does not match {expected}"),
-                    span,
-                ));
+            let is_void_target =
+                matches!(target_element.as_ref(), Type::Named(name) if name == "VOID");
+            if !is_void_target {
+                let to_code = bn_types::alternatives::member_code(target_element).unwrap_or(0);
+                let actual_len = u64::try_from(self.memory.len(*handle, span)?).map_err(|_| {
+                    runtime_error(
+                        bn_diag::DiagId::POINTER_LENGTH_MISMATCH,
+                        "pointer length does not fit INTEGER",
+                        span,
+                    )
+                })?;
+                let to_len = match target_length {
+                    PointerLength::Fixed(expected) => Some(*expected),
+                    PointerLength::One => Some(1),
+                    PointerLength::Dynamic => None,
+                };
+                match bn_types::pointers::check_restore(*element, actual_len, to_code, to_len) {
+                    bn_types::pointers::RestoreCheck::Ok => {}
+                    bn_types::pointers::RestoreCheck::TypeMismatch => {
+                        return Err(runtime_error(
+                            bn_diag::DiagId::POINTER_TYPE_MISMATCH,
+                            "pointer element type does not match destination type",
+                            span,
+                        ));
+                    }
+                    bn_types::pointers::RestoreCheck::LengthMismatch => {
+                        return Err(runtime_error(
+                            bn_diag::DiagId::POINTER_LENGTH_MISMATCH,
+                            format!(
+                                "pointer length {actual_len} does not match {}",
+                                to_len.unwrap_or(actual_len)
+                            ),
+                            span,
+                        ));
+                    }
+                }
             }
         }
         coerce(value, ty, span)
@@ -449,6 +472,7 @@ impl Executor<'_, '_> {
             Type::HostFileSystem => Ok(Value::Type("HOST.FileSystem".into())),
             Type::HostNet => Ok(Value::Type("HOST.Net".into())),
             Type::HostExec => Ok(Value::Type("HOST.Exec".into())),
+            Type::HostEnv => Ok(Value::Type("HOST.Env".into())),
             _ => Err(runtime_error(
                 bn_diag::DiagId::UNINITIALIZED_VALUE,
                 "type has no default value",

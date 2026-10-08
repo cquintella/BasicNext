@@ -32,7 +32,7 @@ pub fn collect_indices(
 ) -> Result<Vec<i128>, Diagnostic> {
     let values = match value {
         Value::Vector(values) => values.clone(),
-        Value::Pointer { handle } => (0..memory.len(*handle, span)?)
+        Value::Pointer { handle, .. } => (0..memory.len(*handle, span)?)
             .map(|index| memory.get(*handle, index, span).cloned())
             .collect::<Result<Vec<_>, _>>()?,
         _ => {

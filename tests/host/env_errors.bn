@@ -1,0 +1,41 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// HOST.Env: error conditions (NOT_SET, INVALID_NAME).
+IMPORT HOST.Env AS Env
+
+FUNCTION Start() AS VOID
+    PRINT Env.NOT_SET, Env.INVALID_NAME, Env.INVALID_UTF8, Env.POLICY_DENIED
+
+    // NOT_SET
+    LET missing AS STRING OR Error = Env.Get("BN_DEFINITELY_NOT_SET")
+    IF missing IS Error THEN
+        PRINT missing.Code = Env.NOT_SET, missing.Operation
+    END IF
+
+    // INVALID_NAME: empty
+    LET emptyName AS STRING OR Error = Env.Get("")
+    IF emptyName IS Error THEN
+        PRINT emptyName.Code = Env.INVALID_NAME, emptyName.Operation
+    END IF
+
+    // INVALID_NAME: contains '='
+    LET eqName AS STRING OR Error = Env.Get("FOO=BAR")
+    IF eqName IS Error THEN
+        PRINT eqName.Code = Env.INVALID_NAME, eqName.Operation
+    END IF
+
+    // INVALID_NAME: starts with '='
+    LET eqLead AS STRING OR Error = Env.Get("=BAR")
+    IF eqLead IS Error THEN
+        PRINT eqLead.Code = Env.INVALID_NAME, eqLead.Operation
+    END IF
+
+    // Has on invalid name also returns INVALID_NAME
+    LET badHas AS BOOLEAN OR Error = Env.Has("")
+    IF badHas IS Error THEN
+        PRINT badHas.Code = Env.INVALID_NAME, badHas.Operation
+    END IF
+END FUNCTION

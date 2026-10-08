@@ -21,6 +21,20 @@ impl Analyzer {
         }
     }
 
+    /// Records the resolved return type at its reference, where lowering reads
+    /// it: `Pets.Animal` names an imported class, not a local one.
+    pub(crate) fn record_return_type(
+        &mut self,
+        signature: Option<&FunctionSignature>,
+        ty: Option<&Type>,
+    ) {
+        if let (Some(signature), Some(ty)) = (signature, ty)
+            && !signature.return_type.alternatives.is_empty()
+        {
+            self.record_expression(signature.return_type.span, ty, None);
+        }
+    }
+
     #[allow(clippy::too_many_lines)] // Member lookup enumerates every accepted owner type.
     #[allow(clippy::too_many_lines)] // Member lookup enumerates every accepted owner type.
     pub(crate) fn member_type(
@@ -107,6 +121,7 @@ impl Analyzer {
             Type::HostFileSystem => ("HOST.FileSystem", false),
             Type::HostNet => ("HOST.Net", false),
             Type::HostExec => ("HOST.Exec", false),
+            Type::HostEnv => ("HOST.Env", false),
             Type::Named(owner) => (owner.as_str(), false),
             Type::TypeName(owner) => (owner.as_str(), true),
             Type::Alternative(alternatives) => {
@@ -341,7 +356,7 @@ impl Analyzer {
                 span,
             )
         })?;
-        self.base_classes.get(class).cloned().ok_or_else(|| {
+        self.class_model.bases.get(class).cloned().ok_or_else(|| {
             error(
                 DiagId::INVALID_SUPER,
                 "SUPER is valid only in a derived CLASS",
@@ -574,7 +589,7 @@ impl Analyzer {
             if class == owner {
                 return true;
             }
-            match self.base_classes.get(class) {
+            match self.class_model.bases.get(class) {
                 Some(base) => class = base,
                 None => return false,
             }

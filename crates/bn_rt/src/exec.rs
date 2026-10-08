@@ -6,9 +6,8 @@
 use std::ffi::{CStr, CString, c_char};
 
 pub use bn_host_exec::{
-    EXEC_CAPTURE_FAILED, EXEC_CAPTURE_LIMIT, EXEC_INVALID_ARGUMENT, EXEC_INVALID_UTF8,
-    EXEC_PERMISSION_DENIED, EXEC_POLICY_DENIED, EXEC_PROGRAM_NOT_FOUND, EXEC_SPAWN_FAILED,
-    EXEC_TIMEOUT, EXEC_WAIT_FAILED,
+    CAPTURE_FAILED, CAPTURE_LIMIT, INVALID_ARGUMENT, INVALID_UTF8, PERMISSION_DENIED,
+    POLICY_DENIED, PROGRAM_NOT_FOUND, SPAWN_FAILED, TERMINATION_FAILED, TIMEOUT, WAIT_FAILED,
 };
 
 struct ExecResult {
@@ -34,21 +33,21 @@ pub extern "C" fn bn_rt_exec_run(
     out_result: *mut u64,
 ) -> i32 {
     if out_result.is_null() {
-        return EXEC_INVALID_ARGUMENT;
+        return INVALID_ARGUMENT;
     }
     unsafe { *out_result = 0 };
     let Some(program) = input(program) else {
-        return EXEC_INVALID_ARGUMENT;
+        return INVALID_ARGUMENT;
     };
     if arg_count > 0 && args.is_null() {
-        return EXEC_INVALID_ARGUMENT;
+        return INVALID_ARGUMENT;
     }
     let mut arguments = Vec::with_capacity(arg_count as usize);
     if arg_count > 0 {
         let values = unsafe { std::slice::from_raw_parts(args, arg_count as usize) };
         for value in values {
             let Some(value) = input(*value) else {
-                return EXEC_INVALID_ARGUMENT;
+                return INVALID_ARGUMENT;
             };
             arguments.push(value);
         }
@@ -68,7 +67,7 @@ pub extern "C" fn bn_rt_exec_run(
     // C strings cannot carry NUL; the interpreter side keeps such output.
     let (Ok(stdout), Ok(stderr)) = (CString::new(output.stdout), CString::new(output.stderr))
     else {
-        return EXEC_CAPTURE_FAILED;
+        return CAPTURE_FAILED;
     };
     let result = Box::new(ExecResult {
         return_code: output.return_code,

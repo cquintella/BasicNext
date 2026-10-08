@@ -1,0 +1,27 @@
+IMPORT other AS Other
+
+CLASS Animal
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION Speak() AS STRING
+        RETURN "animal"
+    END FUNCTION
+END CLASS
+
+CLASS Dog EXTENDS Animal
+    PUBLIC FUNCTION CONSTRUCTOR()
+        SUPER()
+    END FUNCTION
+
+    PUBLIC OVERRIDE FUNCTION Speak() AS STRING
+        RETURN "root dog"
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET a AS Animal = NEW Dog()
+    LET m AS Other.Dog = NEW Other.Dog()
+    PRINT a.Speak()
+    PRINT m.Speak()
+END FUNCTION

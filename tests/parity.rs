@@ -124,6 +124,53 @@ fn native_matches_interpreter(path: &str) {
     let _ = fs::remove_file(output_path);
 }
 
+fn native_and_interpreter_print(path: &str, expected: &str) {
+    let output_path = std::env::temp_dir().join(format!(
+        "basicnext-print-parity-{}-{}",
+        std::process::id(),
+        path.replace(['/', '.'], "_")
+    ));
+    let _ = fs::remove_file(&output_path);
+    let built = bnc()
+        .args([path, "-o", output_path.to_str().expect("temporary path")])
+        .output()
+        .expect("run bnc");
+    assert_eq!(
+        built.status.code(),
+        Some(0),
+        "build failed: {}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let compiled = Command::new(&output_path)
+        .output()
+        .expect("run compiled artifact");
+    let interpreted = bni().args(["run", path]).output().expect("run interpreter");
+    let _ = fs::remove_file(output_path);
+
+    assert_eq!(
+        interpreted.status.code(),
+        Some(0),
+        "interpreted status for {path}: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+    assert_eq!(
+        compiled.status.code(),
+        Some(0),
+        "compiled status for {path}: {}",
+        String::from_utf8_lossy(&compiled.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&interpreted.stdout),
+        expected,
+        "interpreter stdout mismatch for {path}"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&compiled.stdout),
+        expected,
+        "compiled stdout mismatch for {path}"
+    );
+}
+
 fn native_matches_interpreter_with_input(path: &str, input: &str) {
     let output_path = std::env::temp_dir().join(format!(
         "basicnext-input-parity-{}-{}",
@@ -2006,4 +2053,66 @@ fn release_of_locals_and_parameters_matches_across_backends() {
         "free optional\nfree fallible\nfree mixed\ndropped in callee\nkept alive\nfree kept\n"
     );
     native_matches_interpreter(path);
+}
+
+#[test]
+fn upcast_argument_passed_to_ancestor_parameter() {
+    let path = "tests/grammar/valid/upcast-argument.bn";
+    native_and_interpreter_print(path, "dog\npuppy\ndog\npuppy\npuppy\n");
+}
+
+#[test]
+fn interface_inherited_method_dispatch() {
+    let path = "tests/grammar/valid/interface-inherited-method.bn";
+    // bni must print "base"
+    let interpreted = bni().args(["run", path]).output().expect("run interpreter");
+    assert_eq!(
+        interpreted.status.code(),
+        Some(0),
+        "bni stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&interpreted.stdout), "base\n");
+
+    // bnc keeps its TARGET_UNSUPPORTED_OP support gap
+    let built = bnc()
+        .args([path, "-o", "/dev/null"])
+        .output()
+        .expect("run bnc");
+    assert_ne!(built.status.code(), Some(0));
+    let err = String::from_utf8_lossy(&built.stderr);
+    assert!(
+        err.contains("TARGET_UNSUPPORTED_OP"),
+        "unexpected bnc error: {err}"
+    );
+}
+
+#[test]
+fn override_intermediate_polymorphic_dispatch() {
+    let path = "tests/grammar/valid/override-intermediate.bn";
+    native_and_interpreter_print(path, "mid\nmid\nmid\nmid\n");
+}
+
+#[test]
+fn dispatch_same_class_name_in_root_and_module() {
+    let path = "tests/modules/dispatch-same-name/main.bn";
+    native_and_interpreter_print(path, "root dog\nmodule dog\n");
+}
+
+#[test]
+fn upcast_at_the_result_boundary() {
+    let path = "tests/grammar/valid/upcast-result.bn";
+    native_and_interpreter_print(path, "pup\nanimal\nnamed\nnamed\n");
+}
+
+#[test]
+fn upcast_to_imported_class_and_interface() {
+    let path = "tests/modules/imported-upcast/main.bn";
+    native_and_interpreter_print(path, "dog\ndog\nnamed\ndog\nnamed\n");
+}
+
+#[test]
+fn region_round_trip_through_pointer_to_void() {
+    let path = "tests/grammar/valid/region-void-roundtrip.bn";
+    native_and_interpreter_print(path, "3\n3\n1.5\n2.5\n3.5\n0\n0\n");
 }

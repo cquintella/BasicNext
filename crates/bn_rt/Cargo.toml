@@ -14,6 +14,7 @@ crate-type = ["rlib", "staticlib"]
 workspace = true
 
 [dependencies]
+bn_host_env = { path = "../bn_host_env" }
 bn_host_exec = { path = "../bn_host_exec" }
 bn_limits = { path = "../bn_limits" } # HOST.Net bounds shared with the interpreter
 bn_types = { path = "../bn_types" } # scalar text shared with the interpreter

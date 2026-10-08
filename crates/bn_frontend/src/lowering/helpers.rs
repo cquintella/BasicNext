@@ -126,6 +126,7 @@ pub(crate) fn is_namespace_type(ty: &Type) -> bool {
             | Type::HostFileSystem
             | Type::HostNet
             | Type::HostExec
+            | Type::HostEnv
             | Type::Module(_)
     )
 }
@@ -225,6 +226,17 @@ pub(crate) fn exec_import_span(program: &Program) -> Option<Span> {
     })
 }
 
+pub(crate) fn env_import_span(program: &Program) -> Option<Span> {
+    program.items.iter().find_map(|item| match item {
+        Item::Import { path, span, .. }
+            if path.len() == 2 && path[0] == "HOST" && path[1] == "Env" =>
+        {
+            Some(*span)
+        }
+        _ => None,
+    })
+}
+
 pub(crate) fn standard_import_span(program: &Program, name: &str) -> Option<Span> {
     program.items.iter().find_map(|item| match item {
         Item::Import { path, span, .. } if path.len() == 1 && path[0] == name => Some(*span),
@@ -232,28 +244,40 @@ pub(crate) fn standard_import_span(program: &Program, name: &str) -> Option<Span
     })
 }
 
-/// The value of an `INTEGER` member of `HOST.Net`: a portable error code.
-pub(crate) fn net_constant(name: &str) -> Option<Constant> {
-    let value = bn_types::error_codes::net::ALL
-        .iter()
-        .find(|(code, _)| *code == name)?
-        .1;
-    Some(Constant::Integer(value.to_string()))
-}
-
-/// The value of an `INTEGER` member of `HOST.FileSystem`: an open mode or a
-/// portable error code.
-pub(crate) fn filesystem_constant(name: &str) -> Option<Constant> {
-    let value = match name {
-        "READ" => 0,
-        "WRITE" => 1,
-        "APPEND" => 2,
-        _ => {
-            bn_types::error_codes::fs::ALL
+/// The value of an `INTEGER` member of a HOST capability: an open mode or a
+/// portable error code from one table in `bn_types::error_codes`.
+pub(crate) fn capability_constant(object_type: &Type, name: &str) -> Option<Constant> {
+    let value = match object_type {
+        Type::HostFileSystem => match name {
+            "READ" => 0,
+            "WRITE" => 1,
+            "APPEND" => 2,
+            _ => {
+                bn_types::error_codes::fs::ALL
+                    .iter()
+                    .find(|(code, _)| *code == name)?
+                    .1
+            }
+        },
+        Type::HostNet => {
+            bn_types::error_codes::net::ALL
                 .iter()
                 .find(|(code, _)| *code == name)?
                 .1
         }
+        Type::HostExec => {
+            bn_types::error_codes::exec::ALL
+                .iter()
+                .find(|(code, _)| *code == name)?
+                .1
+        }
+        Type::HostEnv => {
+            bn_types::error_codes::env::ALL
+                .iter()
+                .find(|(code, _)| *code == name)?
+                .1
+        }
+        _ => return None,
     };
     Some(Constant::Integer(value.to_string()))
 }
@@ -275,6 +299,7 @@ pub(crate) fn namespace_function(object_type: &Type, name: &str, prefix: &str) -
         Type::HostFileSystem => Some(format!("HOST.FileSystem.{name}")),
         Type::HostNet => Some(format!("HOST.Net.{name}")),
         Type::HostExec => Some(format!("HOST.Exec.{name}")),
+        Type::HostEnv => Some(format!("HOST.Env.{name}")),
         _ => None,
     }
 }

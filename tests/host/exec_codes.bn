@@ -1,0 +1,11 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// The portable HOST.Exec error codes (language/0.6/0.6.md, "HOST.Exec Errors").
+IMPORT HOST.Exec AS Exec
+
+FUNCTION Start() AS VOID
+    PRINT Exec.INVALID_ARGUMENT, Exec.PROGRAM_NOT_FOUND, Exec.PERMISSION_DENIED, Exec.SPAWN_FAILED, Exec.WAIT_FAILED, Exec.CAPTURE_FAILED, Exec.INVALID_UTF8, Exec.CAPTURE_LIMIT, Exec.TIMEOUT, Exec.TERMINATION_FAILED, Exec.POLICY_DENIED
+END FUNCTION

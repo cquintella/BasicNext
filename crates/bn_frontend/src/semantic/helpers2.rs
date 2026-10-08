@@ -8,6 +8,7 @@ pub(crate) fn member_target(object: &Type, name: &str) -> Option<MemberTarget> {
         Type::HostFileSystem => Some(crate::host_spec::Capability::FileSystem),
         Type::HostNet => Some(crate::host_spec::Capability::Net),
         Type::HostExec => Some(crate::host_spec::Capability::Exec),
+        Type::HostEnv => Some(crate::host_spec::Capability::Env),
         Type::HostConsole => Some(crate::host_spec::Capability::Console),
         _ => None,
     };

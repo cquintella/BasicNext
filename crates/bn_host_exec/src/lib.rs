@@ -12,24 +12,14 @@
 //! handle. Neither re-implements any of it.
 
 use std::{
-    io::Read,
-    process::{Command, Stdio},
+    io::{self, Read},
+    process::{Child, Command, Stdio},
     sync::mpsc,
     thread,
     time::{Duration, Instant},
 };
 
-/// Portable failure codes (`Error.Code` on both backends; D-H1-02).
-pub const EXEC_INVALID_ARGUMENT: i32 = 1;
-pub const EXEC_PROGRAM_NOT_FOUND: i32 = 2;
-pub const EXEC_PERMISSION_DENIED: i32 = 3;
-pub const EXEC_SPAWN_FAILED: i32 = 4;
-pub const EXEC_WAIT_FAILED: i32 = 5;
-pub const EXEC_CAPTURE_FAILED: i32 = 6;
-pub const EXEC_INVALID_UTF8: i32 = 7;
-pub const EXEC_CAPTURE_LIMIT: i32 = 8;
-pub const EXEC_TIMEOUT: i32 = 9;
-pub const EXEC_POLICY_DENIED: i32 = 11;
+pub use bn_types::error_codes::exec::*;
 
 /// The execution policy in force for one call. The interpreter reads it from
 /// `HostEnv`; the native runtime from its policy ceiling.
@@ -134,7 +124,8 @@ fn read_pipe<R: Read>(mut pipe: R, capture_limit: usize) -> StreamCapture {
 ///
 /// Returns a [`Failure`] with one of the portable codes: policy denial (11),
 /// an empty program (1), spawn failures (2–4), wait failure (5), invalid
-/// UTF-8 (7), capture overflow (8) or timeout (9).
+/// UTF-8 (7), capture overflow (8), timeout (9) or a child that could not be
+/// terminated after the timeout (10).
 pub fn run(program: &str, args: &[&str], policy: &Policy) -> Result<Output, Failure> {
     run_checked(program, args, policy).map_err(|failure| Failure {
         program: program.to_owned(),
@@ -146,25 +137,42 @@ pub fn run(program: &str, args: &[&str], policy: &Policy) -> Result<Output, Fail
 fn check(program: &str, args: &[&str], policy: &Policy) -> Result<(), Failure> {
     if !policy.allowed {
         return Err(Failure::new(
-            EXEC_POLICY_DENIED,
+            POLICY_DENIED,
             "the execution policy denies HOST.Exec",
         ));
     }
     if program.is_empty() || program.contains('\0') {
         return Err(Failure::new(
-            EXEC_INVALID_ARGUMENT,
+            INVALID_ARGUMENT,
             "the program must be non-empty and contain no NUL",
         ));
     }
     if args.iter().any(|argument| argument.contains('\0')) {
-        return Err(Failure::new(
-            EXEC_INVALID_ARGUMENT,
-            "an argument contains NUL",
-        ));
+        return Err(Failure::new(INVALID_ARGUMENT, "an argument contains NUL"));
     }
     Ok(())
 }
 
+/// Contains a child past its timeout: kill, then reap. A kill that fails
+/// returns `TERMINATION_FAILED` at once; waiting on a child that is still
+/// running would block past the timeout. `kill` is a parameter so a test can
+/// make it fail.
+fn terminate(child: &mut Child, kill: fn(&mut Child) -> io::Result<()>) -> Result<(), Failure> {
+    kill(child).map_err(|error| {
+        Failure::new(
+            TERMINATION_FAILED,
+            format!("failed to kill the child process after the timeout: {error}"),
+        )
+    })?;
+    child.wait().map(drop).map_err(|error| {
+        Failure::new(
+            TERMINATION_FAILED,
+            format!("failed to reap the child process after the timeout: {error}"),
+        )
+    })
+}
+
+#[allow(clippy::too_many_lines)]
 fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, Failure> {
     check(program, args, policy)?;
     let mut command = Command::new(program);
@@ -177,14 +185,14 @@ fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, 
         Ok(child) => child,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return Err(Failure::new(
-                EXEC_PROGRAM_NOT_FOUND,
+                PROGRAM_NOT_FOUND,
                 format!("no such program at that path or on PATH ({error})"),
             ));
         }
         Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
-            return Err(Failure::new(EXEC_PERMISSION_DENIED, error.to_string()));
+            return Err(Failure::new(PERMISSION_DENIED, error.to_string()));
         }
-        Err(error) => return Err(Failure::new(EXEC_SPAWN_FAILED, error.to_string())),
+        Err(error) => return Err(Failure::new(SPAWN_FAILED, error.to_string())),
     };
     let capture_limit = policy.capture_limit;
     let stdout = child.stdout.take();
@@ -216,12 +224,11 @@ fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, 
         match child.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) if Instant::now() >= deadline => {
-                let _ = child.kill();
-                let _ = child.wait();
+                terminate(&mut child, Child::kill)?;
                 // Return immediately without waiting for reader threads to prevent deadlock
                 // if background grandchildren inherited pipe file descriptors.
                 return Err(Failure::new(
-                    EXEC_TIMEOUT,
+                    TIMEOUT,
                     format!(
                         "the process ran past the {} ms execution timeout and was killed",
                         policy.timeout.as_millis()
@@ -229,7 +236,7 @@ fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, 
                 ));
             }
             Ok(None) => thread::sleep(Duration::from_millis(2)),
-            Err(error) => return Err(Failure::new(EXEC_WAIT_FAILED, error.to_string())),
+            Err(error) => return Err(Failure::new(WAIT_FAILED, error.to_string())),
         }
     };
 
@@ -244,19 +251,19 @@ fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, 
     // D-H1-02: count bytes before UTF-8 validation; overflow is a stable Error, not truncation.
     if stdout.overflow || stderr.overflow {
         return Err(Failure::new(
-            EXEC_CAPTURE_LIMIT,
+            CAPTURE_LIMIT,
             format!("a stream wrote more than the {capture_limit} bytes captured per stream"),
         ));
     }
     let Ok(stdout) = String::from_utf8(stdout.bytes) else {
         return Err(Failure::new(
-            EXEC_INVALID_UTF8,
+            INVALID_UTF8,
             "the program's stdout is not valid UTF-8",
         ));
     };
     let Ok(stderr) = String::from_utf8(stderr.bytes) else {
         return Err(Failure::new(
-            EXEC_INVALID_UTF8,
+            INVALID_UTF8,
             "the program's stderr is not valid UTF-8",
         ));
     };
@@ -295,21 +302,18 @@ mod tests {
             ..policy()
         };
         let failure = run("definitely-not-a-program", &[], &denied).unwrap_err();
-        assert_eq!(failure.code, EXEC_POLICY_DENIED);
+        assert_eq!(failure.code, POLICY_DENIED);
     }
 
     #[test]
     fn empty_program_is_invalid_argument() {
-        assert_eq!(
-            run("", &[], &policy()).unwrap_err().code,
-            EXEC_INVALID_ARGUMENT
-        );
+        assert_eq!(run("", &[], &policy()).unwrap_err().code, INVALID_ARGUMENT);
     }
 
     #[test]
     fn missing_program_is_code_2() {
         let failure = run("bn-host-exec-no-such-program", &[], &policy()).unwrap_err();
-        assert_eq!(failure.code, EXEC_PROGRAM_NOT_FOUND);
+        assert_eq!(failure.code, PROGRAM_NOT_FOUND);
         assert_eq!(failure.operation(), "HOST.Exec.Run");
         assert_eq!(
             failure.message(),
@@ -336,14 +340,14 @@ mod tests {
             (7, "out", "err")
         );
         let over = run("/bin/sh", &["-c", "head -c 65 /dev/zero"], &policy()).unwrap_err();
-        assert_eq!(over.code, EXEC_CAPTURE_LIMIT);
+        assert_eq!(over.code, CAPTURE_LIMIT);
         let slow = Policy {
             timeout: Duration::from_millis(50),
             ..policy()
         };
         assert_eq!(
             run("/bin/sh", &["-c", "sleep 5"], &slow).unwrap_err().code,
-            EXEC_TIMEOUT
+            TIMEOUT
         );
     }
 
@@ -363,5 +367,46 @@ mod tests {
         .unwrap();
         assert_eq!(res.stdout, "finished");
         assert!(start.elapsed() < Duration::from_secs(2));
+    }
+
+    /// A kill that fails during containment is `TERMINATION_FAILED`, returned
+    /// at once: the child is still running, so waiting on it would block.
+    #[test]
+    fn failed_kill_during_containment_is_termination_failed() {
+        fn refuse(_: &mut Child) -> io::Result<()> {
+            Err(io::Error::other("injected kill failure"))
+        }
+        #[cfg(unix)]
+        let mut command = Command::new("/bin/sh");
+        #[cfg(unix)]
+        command.args(["-c", "sleep 30"]);
+        #[cfg(windows)]
+        let mut command = Command::new("cmd");
+        #[cfg(windows)]
+        command.args(["/C", "ping -n 31 127.0.0.1 >NUL"]);
+        let mut child = command.spawn().expect("spawn a long-running child");
+        let start = Instant::now();
+        let failure = terminate(&mut child, refuse).unwrap_err();
+        assert_eq!(failure.code, TERMINATION_FAILED);
+        assert!(failure.cause.contains("injected kill failure"));
+        assert!(start.elapsed() < Duration::from_secs(5));
+        child.kill().expect("clean up the child");
+        child.wait().expect("reap the child");
+    }
+
+    #[test]
+    fn containment_kills_and_reaps_a_running_child() {
+        #[cfg(unix)]
+        let mut child = Command::new("/bin/sh")
+            .args(["-c", "sleep 30"])
+            .spawn()
+            .expect("spawn");
+        #[cfg(windows)]
+        let mut child = Command::new("cmd")
+            .args(["/C", "ping -n 31 127.0.0.1 >NUL"])
+            .spawn()
+            .expect("spawn");
+        assert!(terminate(&mut child, Child::kill).is_ok());
+        assert!(child.try_wait().expect("status").is_some());
     }
 }

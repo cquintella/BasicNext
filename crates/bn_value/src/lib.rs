@@ -148,6 +148,7 @@ pub enum Value {
     },
     Pointer {
         handle: Handle,
+        element: u32,
     },
     Date(i32),
     Time(u32),

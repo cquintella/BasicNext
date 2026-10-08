@@ -61,7 +61,7 @@ pub(super) fn validate_field_layouts(module: &Module) -> Result<(), Diagnostic> 
                 ));
             }
         }
-        if let Some(base_owner) = module.class_bases.get(owner)
+        if let Some(base_owner) = module.class_model.bases.get(owner)
             && let Some(base_layout) = module.field_layouts.get(base_owner)
             && (layout.fields.len() < base_layout.fields.len()
                 || !layout
@@ -93,7 +93,7 @@ fn layout_owner_contains(module: &Module, owner: &str, declaring_owner: &str) ->
         if current == declaring_owner {
             return true;
         }
-        let Some(base) = module.class_bases.get(current) else {
+        let Some(base) = module.class_model.bases.get(current) else {
             return false;
         };
         current = base;
@@ -214,7 +214,7 @@ fn owner_is_or_derives_from(module: &Module, receiver_owner: &str, field_owner: 
         if current == field_owner {
             return true;
         }
-        let Some(base) = module.class_bases.get(current) else {
+        let Some(base) = module.class_model.bases.get(current) else {
             return false;
         };
         current = base;
@@ -254,7 +254,7 @@ pub(super) fn validate_class_bases(module: &Module) -> Result<(), Diagnostic> {
         .functions
         .first()
         .map_or_else(default_module_span, |function| function.span);
-    for (class, base) in &module.class_bases {
+    for (class, base) in &module.class_model.bases {
         if class.is_empty() || base.is_empty() {
             return Err(invalid_ir(
                 "class and base identities cannot be empty",
@@ -263,7 +263,7 @@ pub(super) fn validate_class_bases(module: &Module) -> Result<(), Diagnostic> {
         }
         let mut seen = HashSet::new();
         let mut current = class.as_str();
-        while let Some(parent) = module.class_bases.get(current) {
+        while let Some(parent) = module.class_model.bases.get(current) {
             if !seen.insert(current) {
                 return Err(invalid_ir(
                     "class inheritance metadata must be acyclic",

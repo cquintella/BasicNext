@@ -135,6 +135,7 @@ pub(crate) fn bnlog_resource_kind(module: &Module, ty: &Type) -> Option<&'static
 
 const POLICY_CLOCK: u64 = 1;
 const POLICY_EXEC: u64 = 1 << 6;
+const POLICY_ENV: u64 = 1 << 7;
 const POLICY_CONSOLE: u64 = 1 << 1;
 const POLICY_FILESYSTEM: u64 = 1 << 2;
 const POLICY_NET: u64 = 1 << 3;
@@ -474,6 +475,9 @@ pub(crate) fn policy_ceiling(module: &Module) -> u64 {
     }
     if module.exec_import.is_some() {
         ceiling |= POLICY_EXEC;
+    }
+    if module.env_import.is_some() {
+        ceiling |= POLICY_ENV;
     }
     if module.console_import.is_some() {
         ceiling |= POLICY_CONSOLE;

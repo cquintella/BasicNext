@@ -397,6 +397,7 @@ impl Analyzer {
                     let return_type = signature
                         .as_ref()
                         .map(|signature| self.resolve_reference(&signature.return_type));
+                    self.record_return_type(signature.as_ref(), return_type.as_ref());
                     if let Some(signature) = signature {
                         for parameter in &signature.parameters {
                             self.validate_type_reference(&parameter.type_ref)?;

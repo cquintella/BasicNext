@@ -78,8 +78,174 @@ pub(crate) fn lower_cast(
         | (Some("double"), Some("double")) => {
             emit_same_type_copy(text, destination, value, target_ty);
         }
+        (Some("{ ptr, i32 }"), Some("{ ptr, i32, i32 }")) => {
+            let elem_code = match source_ty {
+                Type::Pointer { element, .. } => {
+                    bn_types::alternatives::member_code(element).unwrap_or(0)
+                }
+                _ => 0,
+            };
+            let tag = destination.0;
+            let val = v(value);
+            let ptr_val = format!("pvptr{tag}");
+            let len_val = format!("pvlen{tag}");
+            let fat_void = typed_llvm("{ ptr, i32, i32 }");
+            text.assign(
+                ptr_val.clone(),
+                I::extract(typed_llvm("{ ptr, i32 }"), val.clone(), 0),
+            );
+            text.assign(
+                len_val.clone(),
+                I::extract(typed_llvm("{ ptr, i32 }"), val, 1),
+            );
+            let ins0 = format!("pvins0_{tag}");
+            text.assign(
+                ins0.clone(),
+                I::insert(fat_void.clone(), O::undef(), T::Ptr, O::reg(ptr_val), 0),
+            );
+            let ins1 = format!("pvins1_{tag}");
+            text.assign(
+                ins1.clone(),
+                I::insert(fat_void.clone(), O::reg(ins0), T::I32, O::reg(len_val), 1),
+            );
+            text.assign(
+                own,
+                I::insert(
+                    fat_void,
+                    O::reg(ins1),
+                    T::I32,
+                    O::int(i64::from(elem_code)),
+                    2,
+                ),
+            );
+        }
+        (Some("{ ptr, i32, i32 }"), Some("{ ptr, i32 }")) => {
+            let res = emit_pointer_void_restore(
+                text,
+                block_id,
+                &format!("cast{}", destination.0),
+                v(value),
+                target_ty,
+                state,
+            );
+            text.assign(
+                own,
+                I::select(
+                    O::bool(true),
+                    typed_llvm("{ ptr, i32 }"),
+                    O::raw(res.clone()),
+                    O::raw(res),
+                ),
+            );
+        }
         _ => unreachable!("validated cast shape"),
     }
+}
+
+pub(crate) fn emit_pointer_void_restore(
+    text: &mut String,
+    block_id: BlockId,
+    tag: &str,
+    val: O,
+    target_ty: &Type,
+    state: &mut EmissionState,
+) -> String {
+    let r = |name: &str| O::reg(format!("vp{name}{tag}"));
+    let fat_void = typed_llvm("{ ptr, i32, i32 }");
+    text.assign(
+        format!("vpptr{tag}"),
+        I::extract(fat_void.clone(), val.clone(), 0),
+    );
+    text.assign(
+        format!("vplen{tag}"),
+        I::extract(fat_void.clone(), val.clone(), 1),
+    );
+    text.assign(format!("vpcode{tag}"), I::extract(fat_void, val, 2));
+
+    let (to_code, fixed_len) = match target_ty {
+        Type::Pointer { element, length } => {
+            let code = bn_types::alternatives::member_code(element).unwrap_or(0);
+            let len = match length {
+                bn_types::PointerLength::Fixed(n) => Some(*n),
+                bn_types::PointerLength::One => Some(1),
+                bn_types::PointerLength::Dynamic => None,
+            };
+            (code, len)
+        }
+        _ => (0, None),
+    };
+
+    let type_ok = format!("vptypeok{tag}");
+    let type_mismatch = format!("vptypemm{tag}");
+    text.assign(
+        type_ok.clone(),
+        I::icmp(ICmpCond::Eq, T::I32, r("code"), O::int(i64::from(to_code))),
+    );
+    text.assign(
+        type_mismatch.clone(),
+        I::binary(BinaryOp::Xor, T::I1, O::reg(type_ok), O::bool(true)),
+    );
+    let after_type_check = take_continuation(block_id, state);
+    emit_trap(
+        text,
+        block_id,
+        state,
+        &format!("%{type_mismatch}"),
+        after_type_check,
+        bn_diag::DiagId::POINTER_TYPE_MISMATCH,
+        vec![(
+            "message",
+            Fact::Text("pointer element type does not match destination type".into()),
+        )],
+    );
+
+    if let Some(expected) = fixed_len {
+        let expected_val = i64::try_from(expected).unwrap_or(i64::MAX);
+        let len_ok = format!("vplenok{tag}");
+        let len_mismatch = format!("vplenmm{tag}");
+        text.assign(
+            len_ok.clone(),
+            I::icmp(ICmpCond::Eq, T::I32, r("len"), O::int(expected_val)),
+        );
+        text.assign(
+            len_mismatch.clone(),
+            I::binary(BinaryOp::Xor, T::I1, O::reg(len_ok), O::bool(true)),
+        );
+        let wide_len = format!("vplenwide{tag}");
+        text.assign(
+            wide_len.clone(),
+            I::cast(CastOp::SExt, T::I32, r("len"), T::I128),
+        );
+        let after_len_check = take_continuation(block_id, state);
+        emit_trap(
+            text,
+            block_id,
+            state,
+            &format!("%{len_mismatch}"),
+            after_len_check,
+            bn_diag::DiagId::POINTER_LENGTH_MISMATCH,
+            vec![(
+                "message",
+                Fact::RuntimeDynamic(
+                    format!("pointer length {{}} does not match {expected}"),
+                    format!("%{wide_len}"),
+                ),
+            )],
+        );
+    }
+
+    let fat_typed = typed_llvm("{ ptr, i32 }");
+    let ins0 = format!("vpins0_{tag}");
+    text.assign(
+        ins0.clone(),
+        I::insert(fat_typed.clone(), O::undef(), T::Ptr, r("ptr"), 0),
+    );
+    let res = format!("vprest_{tag}");
+    text.assign(
+        res.clone(),
+        I::insert(fat_typed, O::reg(ins0), T::I32, r("len"), 1),
+    );
+    format!("%{res}")
 }
 
 /// Whether native code implements `source AS target`.
@@ -87,6 +253,21 @@ pub(crate) fn cast_supported(source: Option<&Type>, target: &Type) -> bool {
     let Some(source) = source else {
         return false;
     };
+    if matches!(
+        (source, target),
+        (
+            Type::Pointer { .. },
+            Type::Pointer { element, .. }
+        ) if matches!(element.as_ref(), Type::Named(name) if name == "VOID")
+    ) || matches!(
+        (source, target),
+        (
+            Type::Pointer { element, .. },
+            Type::Pointer { .. }
+        ) if matches!(element.as_ref(), Type::Named(name) if name == "VOID")
+    ) {
+        return true;
+    }
     matches!(
         (source, target),
         (

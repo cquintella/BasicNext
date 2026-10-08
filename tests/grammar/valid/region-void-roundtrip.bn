@@ -1,0 +1,25 @@
+// Round-trip of a typed region through POINTER TO VOID and back (F5).
+FUNCTION Start() AS VOID
+    LET r AS POINTER TO FLOAT64[] = NEW FLOAT64[3]
+    r[0] = 1.5
+    r[1] = 2.5
+    r[2] = 3.5
+
+    LET v AS POINTER TO VOID = r
+    PRINT LEN(v)
+
+    LET restored AS POINTER TO FLOAT64[] = v
+    PRINT LEN(restored)
+    PRINT restored[0]
+    PRINT restored[1]
+    PRINT restored[2]
+
+    LET empty AS POINTER TO INT32[] = NEW INT32[0]
+    LET empty_void AS POINTER TO VOID = empty
+    PRINT LEN(empty_void)
+    LET empty_restored AS POINTER TO INT32[] = empty_void
+    PRINT LEN(empty_restored)
+
+    RELEASE r
+    RELEASE empty
+END FUNCTION

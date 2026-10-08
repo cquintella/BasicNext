@@ -20,7 +20,7 @@ impl Executor<'_, '_> {
         let Some(method) = name.rsplit('.').next() else {
             return name.to_string();
         };
-        let dispatched = arguments
+        let runtime_class = arguments
             .first()
             .and_then(|value| match value {
                 Value::Object { handle, .. } => self
@@ -28,17 +28,13 @@ impl Executor<'_, '_> {
                     .iter()
                     .rev()
                     .find(|(pinned, _)| pinned == handle)
-                    .map(|(_, class)| format!("{class}.{method}")),
+                    .map(|(_, class)| class.as_str()),
                 _ => None,
             })
-            .unwrap_or_else(|| format!("{class}.{method}"));
-        if self
-            .module
-            .functions
-            .iter()
-            .any(|function| function.name == dispatched)
+            .unwrap_or(&**class);
+        if let Some(resolved) = bn_ir::dispatch::resolve_method(self.module, runtime_class, method)
         {
-            dispatched
+            resolved.to_string()
         } else {
             name.to_string()
         }
@@ -119,7 +115,11 @@ impl Executor<'_, '_> {
         let initial = pointer_element_default(element, span)?;
         let handle = self.register_allocation(&display_element(element), span);
         self.memory.insert(handle, count, initial, span)?;
-        Ok(Value::Pointer { handle })
+        let code = bn_types::alternatives::member_code(element).unwrap_or(0);
+        Ok(Value::Pointer {
+            handle,
+            element: code,
+        })
     }
 
     pub fn index_value(
@@ -138,7 +138,7 @@ impl Executor<'_, '_> {
                 let index = checked_index(index, vector.len(), "vector", span)?;
                 Ok(vector[index].clone())
             }
-            Value::Pointer { handle } => {
+            Value::Pointer { handle, .. } => {
                 let length = self.memory.len(*handle, span)?;
                 let index = checked_index(index, length, "region", span)?;
                 self.memory.get(*handle, index, span).cloned()
@@ -182,7 +182,7 @@ impl Executor<'_, '_> {
                 "cannot index a NULL pointer",
                 span,
             )),
-            Value::Pointer { handle } => {
+            Value::Pointer { handle, .. } => {
                 if !remaining.is_empty() {
                     return Err(super::index_out_of_bounds(
                         remaining.len() + 1,

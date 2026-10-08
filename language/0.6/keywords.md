@@ -135,6 +135,12 @@ ship with O3, `OVERRIDE` semantics with O2.
 | **Operators (S1)** | `++` / `--` — statement-only postfix tokens, sugar for `+= 1` / `-= 1`. Tokens, not reserved words. |
 | **No keyword** | I1 qualified import, O4 factories. O1 downcast is deferred (its surface, `AS` vs `TRYCAST`, is decided with it). |
 
+## 0.6.5 changes
+
+0.6.5 adds **no reserved word**. `HOST.Env` is a capability reached through
+`IMPORT HOST.Env AS <alias>`; `Env`, `Get`, `Has` are identifiers on host types,
+not keywords.
+
 Toolchain note: root `build.rs` reads this registry and
 `language/0.6/0.6.ebnf` (package version 0.6.0). ARC/migration notes live in this tree
 (`arc-conformance.md`, `memory-migration.md`).

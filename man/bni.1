@@ -264,6 +264,15 @@ without a standard library makes standard imports fail rather than silently
 resolving to another
 .B modules/bn
 higher in the tree.
+.TP
+.BR BN_ENV_POLICY ", " BN_EXEC_POLICY ", " BN_FS_POLICY
+Execution policy overrides for host capabilities. When set to
+.BR deny ,
+the corresponding capability denies operations at runtime with
+.B POLICY_DENIED
+(or capability unavailable). Malformed values cause
+.B CONFIG_INVALID
+at startup.
 .SH FILES
 .TP
 .I language/0.6/0.6.ebnf

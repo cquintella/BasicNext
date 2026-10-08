@@ -97,6 +97,16 @@ pub(crate) const ERROR_TAKE: RuntimeFn<2> = RuntimeFn {
     ret: Ptr,
     params: [I32, Ptr],
 };
+pub(crate) const ENV_GET: RuntimeFn<2> = RuntimeFn {
+    name: "bn_rt_env_get",
+    ret: I32,
+    params: [Ptr, Ptr],
+};
+pub(crate) const ENV_HAS: RuntimeFn<2> = RuntimeFn {
+    name: "bn_rt_env_has",
+    ret: I32,
+    params: [Ptr, Ptr],
+};
 pub(crate) const EXEC_RESULT_CLOSE: RuntimeFn<1> = RuntimeFn {
     name: "bn_rt_exec_result_close",
     ret: I32,

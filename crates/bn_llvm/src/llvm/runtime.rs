@@ -19,6 +19,8 @@ declare i32 @bn_rt_policy_init(i32, i64)
 declare void @bn_rt_policy_check(i32)
 declare i32 @bn_rt_policy_filesystem_sandboxed()
 declare i32 @bn_rt_policy_filesystem_root(i32, ptr)
+declare i32 @bn_rt_env_get(ptr, ptr)
+declare i32 @bn_rt_env_has(ptr, ptr)
 declare i32 @bn_rt_exec_run(ptr, ptr, i32, ptr)
 declare i64 @bn_rt_exec_result_return_code(i64)
 declare ptr @bn_rt_exec_result_stdout(i64)
@@ -232,6 +234,8 @@ pub(crate) fn is_bn_rt_host_call(name: &str) -> bool {
                 | "HOST.Console.PrintAt"
                 | "HOST.Console.NumCols"
                 | "HOST.Console.NumRows"
+                | "HOST.Env.Get"
+                | "HOST.Env.Has"
                 | "HOST.Exec.Run"
                 | "HOST.Exec.Result.ReturnCode"
                 | "HOST.Exec.Result.Stdout"
@@ -433,6 +437,9 @@ pub(crate) fn bn_rt_call_supported(
         | "HOST.Console.Beep"
         | "HOST.Console.NumCols"
         | "HOST.Console.NumRows" => arguments.is_empty(),
+        "HOST.Env.Get" | "HOST.Env.Has" => {
+            arguments.len() == 1 && values.get(&arguments[0]) == Some(&Type::String)
+        }
         "HOST.Exec.Run" => {
             arguments.len() == 2
                 && values.get(&arguments[0]) == Some(&Type::String)

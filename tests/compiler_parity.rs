@@ -433,6 +433,34 @@ fn filesystem_policy_deny_returns_policy_denied_on_both_backends() {
     }
 }
 
+/// `BN_ENV_POLICY=deny` narrows both backends the same way: the capability
+/// stays bound and every operation returns `Error(Env.POLICY_DENIED)`.
+#[test]
+fn env_policy_deny_returns_policy_denied_on_both_backends() {
+    let path = workspace_root().join("tests/host/env_policy_deny.bn");
+    let build = TestDir::new("env-policy-deny").expect("create directory");
+    let artifact = compile_native(&path, &build);
+    let interpreted = execute(
+        bni().arg("run").arg(&path).env("BN_ENV_POLICY", "deny"),
+        None,
+    );
+    let compiled = execute(Command::new(&artifact).env("BN_ENV_POLICY", "deny"), None);
+    let expected = "TRUE HOST.Env.Get\nTRUE HOST.Env.Has\n";
+    for (backend, output) in [("bni", &interpreted), ("native", &compiled)] {
+        assert_eq!(output.status.code(), Some(0), "{backend}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+        assert!(
+            output.stderr.is_empty(),
+            "{backend}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
 /// A malformed policy input stops every program before Start on both
 /// backends (0.6.md: `CONFIG_INVALID`, exit 2) with the same text; natively the
 /// check ran only when the program imported a HOST capability.
@@ -538,15 +566,15 @@ fn host_methods_in_imported_modules_match_the_interpreter() {
     let main_file = directory.join("main.bn");
     let data_file = directory.join("data.txt");
     fs::write(&data_file, "send-to-kindle-ok").expect("write data.txt");
+    let data_path_literal = data_file.display().to_string().replace('\\', "\\\\");
     fs::write(
         &main_file,
         format!(
             "IMPORT ConfigLoader AS ConfigLoader\n\
              FUNCTION Start() AS VOID\n\
                  LET loader AS ConfigLoader.ConfigLoader = NEW ConfigLoader.ConfigLoader()\n\
-                 PRINT loader.Read(\"{}\")\n\
+                 PRINT loader.Read(\"{data_path_literal}\")\n\
              END FUNCTION\n",
-            data_file.display()
         ),
     )
     .expect("write main.bn");
@@ -563,3 +591,83 @@ fn host_methods_in_imported_modules_match_the_interpreter() {
     assert_success(&compiled, "native run imported host call");
     assert_eq!(compiled.stdout, interpreted.stdout);
 }
+
+/// `Env.Get` / `Env.Has` read the process environment with the same result
+/// on both backends: a set value, an empty value, present and absent names.
+#[test]
+fn env_reads_the_process_environment_on_both_backends() {
+    let path = workspace_root().join("tests/host/env.bn");
+    let build = TestDir::new("env-read").expect("create directory");
+    let artifact = compile_native(&path, &build);
+    let environment = |command: &mut Command| {
+        command
+            .env("BN_TEST_ENV", "value")
+            .env("BN_TEST_EMPTY", "")
+            .env_remove("BN_NONEXISTENT_VAR");
+    };
+    let mut interpreted_command = bni();
+    interpreted_command.arg("run").arg(&path);
+    environment(&mut interpreted_command);
+    let mut compiled_command = Command::new(&artifact);
+    environment(&mut compiled_command);
+    let interpreted = execute(&mut interpreted_command, None);
+    let compiled = execute(&mut compiled_command, None);
+    for (backend, output) in [("bni", &interpreted), ("native", &compiled)] {
+        assert_eq!(output.status.code(), Some(0), "{backend}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "value\n0\nTRUE FALSE\n",
+            "{backend}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+/// A value that is not UTF-8 is `Env.INVALID_UTF8` on both backends. Unix
+/// only: the test builds the value from raw bytes; Windows is covered by the
+/// `bn_host_env` unit test with an unpaired surrogate.
+#[cfg(unix)]
+#[test]
+fn env_value_not_utf8_is_invalid_utf8_on_both_backends() {
+    use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
+
+    let path = workspace_root().join("tests/host/env_invalid_utf8.bn");
+    let build = TestDir::new("env-utf8").expect("create directory");
+    let artifact = compile_native(&path, &build);
+    let value = OsStr::from_bytes(b"a\xffb");
+    let interpreted = execute(bni().arg("run").arg(&path).env("BN_BAD_UTF8", value), None);
+    let compiled = execute(Command::new(&artifact).env("BN_BAD_UTF8", value), None);
+    for (backend, output) in [("bni", &interpreted), ("native", &compiled)] {
+        assert_eq!(output.status.code(), Some(0), "{backend}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "TRUE HOST.Env.Get\nTRUE\n",
+            "{backend}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+/// A malformed `BN_ENV_POLICY` stops the program before `Start` on both
+/// backends (`CONFIG_INVALID`, exit 2) with the same text.
+#[test]
+fn malformed_env_policy_stops_both_backends() {
+    let path = workspace_root().join("tests/host/env_policy_deny.bn");
+    let build = TestDir::new("env-policy-bogus").expect("create directory");
+    let artifact = compile_native(&path, &build);
+    let interpreted = execute(
+        bni().arg("run").arg(&path).env("BN_ENV_POLICY", "bogus"),
+        None,
+    );
+    let compiled = execute(Command::new(&artifact).env("BN_ENV_POLICY", "bogus"), None);
+    for (backend, output) in [("bni", &interpreted), ("native", &compiled)] {
+        assert_eq!(output.status.code(), Some(2), "{backend}");
+        assert!(output.stdout.is_empty(), "{backend}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "error[CONFIG_INVALID]: invalid BN_ENV_POLICY 'bogus' (expected deny)\n",
+            "{backend}"
+        );
+    }
+}
+

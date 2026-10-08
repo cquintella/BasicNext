@@ -36,6 +36,7 @@ mod dispatch_abi;
 pub mod dispatch_error;
 pub mod dispatch_sync;
 mod dispatch_sync_abi;
+pub mod env;
 mod error_abi;
 mod exec;
 pub mod file;

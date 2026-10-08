@@ -1,0 +1,8 @@
+// Runtime trap: restoring POINTER TO VOID with mismatched element type stops with POINTER_TYPE_MISMATCH.
+FUNCTION Start() AS VOID
+    LET r AS POINTER TO FLOAT64[] = NEW FLOAT64[3]
+    LET v AS POINTER TO VOID = r
+    LET bad AS POINTER TO INT32[] = v
+    PRINT LEN(bad)
+    RELEASE r
+END FUNCTION

@@ -966,3 +966,23 @@ fn constant_parameters_and_release_targets_follow_the_swift_model() {
         assert!(error.message.contains(detail), "{path}: {}", error.message);
     }
 }
+
+#[test]
+fn host_env_without_import_is_rejected() {
+    let path = "tests/grammar/invalid/env-without-import.bn";
+    let source = SourceFile::new(path, fs::read_to_string(path).expect("read fixture"));
+    let tokens = lex(&source).expect("lex fixture");
+    let program = parse(&tokens).expect("parse fixture");
+    let error = analyze(&program).expect_err(path);
+    assert_eq!(error.code, "NAME_NOT_FOUND");
+    assert!(error.message.contains("HOST.Env"));
+}
+
+#[test]
+fn host_env_with_import_is_accepted() {
+    let path = "tests/grammar/valid/env-import.bn";
+    let source = SourceFile::new(path, fs::read_to_string(path).expect("read fixture"));
+    let tokens = lex(&source).expect("lex fixture");
+    let program = parse(&tokens).expect("parse fixture");
+    analyze(&program).expect(path);
+}

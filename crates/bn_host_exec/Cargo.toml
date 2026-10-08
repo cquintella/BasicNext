@@ -10,5 +10,8 @@ publish = false
 [lib]
 path = "src/lib.rs"
 
+[dependencies]
+bn_types = { path = "../bn_types" }
+
 [lints]
 workspace = true

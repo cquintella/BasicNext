@@ -42,9 +42,15 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `valid/len-and-sizeof.bn` | Accept and run | `LEN` counts numeric values, strings, vectors, and pointer regions; `SIZEOF` reports portable byte sizes. |
 | `valid/pointer-named-type.bn` | Accept | Declared named pointer elements in bindings, signatures, and `IS` tests. |
 | `valid/pointer-void.bn` | Accept and run | C-style typed-pointer round trip through opaque `POINTER TO VOID`. |
+| `valid/upcast-argument.bn` | Accept and run | Upcast to an ancestor class in arguments, `NEW` expressions, and returned values. |
+| `valid/interface-inherited-method.bn` | Accept; run on `bni` | Method dispatch for an interface implemented by an ancestor class. |
+| `valid/override-intermediate.bn` | Accept and run | Polymorphic dispatch executes the nearest override in a multilevel hierarchy. |
+| `valid/region-void-roundtrip.bn` | Accept and run | Typed pointer region round-trip through `POINTER TO VOID` and back with length and elements preserved. |
+| `valid/env-import.bn` | Accept and run | `HOST.Env` import and `Env.Has` usage. |
 | `invalid/as-string-from-string.bn` | Reject (semantic) | `AS STRING` does not accept a `STRING` source. |
 | `invalid/as-string-from-alternative.bn` | Reject (semantic) | `AS STRING` needs a narrowed value, not `INTEGER OR Error`. |
 | `invalid/host-clock-without-import.bn` | Reject (semantic) | `HOST.Clock` without `IMPORT HOST.Clock` is `NAME_NOT_FOUND`; only `Console`, `Args`, `NumProcs` need no `IMPORT`. |
+| `invalid/env-without-import.bn` | Reject (semantic) | `HOST.Env` without `IMPORT HOST.Env` is `NAME_NOT_FOUND`. |
 | `invalid/class-vector-without-initializer.bn` | Reject (semantic) | A vector of a class has no default (`LET v AS Box[2]` needs `=`). |
 | `invalid/len-on-boolean.bn` | Reject (semantic) | `LEN` does not accept `BOOLEAN`. |
 | `invalid/len-on-single-pointer.bn` | Reject (semantic) | `LEN` accepts pointer regions, not a single-value pointer. |

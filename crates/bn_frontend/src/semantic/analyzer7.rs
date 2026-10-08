@@ -244,47 +244,13 @@ impl Analyzer {
         if compatible(expected, actual) {
             return true;
         }
+        if let (Some(expected), Some(actual)) =
+            (nominal_identity(expected), nominal_identity(actual))
+            && self.class_model.is_upcast(&actual, &expected)
+        {
+            return true;
+        }
         match (expected, actual) {
-            (Type::Named(expected), Type::Named(actual))
-                if self.is_subclass_of(actual, expected) =>
-            {
-                true
-            }
-            (Type::ImportedNamed { module, name }, Type::Named(class))
-                if self.is_subclass_of(class, &format!("#{}.{name}", module.0)) =>
-            {
-                true
-            }
-            (
-                Type::ImportedNamed {
-                    module,
-                    name: interface,
-                },
-                Type::Named(class),
-            ) => self.implementations.get(class).is_some_and(|interfaces| {
-                interfaces.iter().any(|implemented| {
-                    implemented.split_once('.').is_some_and(|(alias, name)| {
-                        name == interface && self.module_imports.get(alias) == Some(module)
-                    })
-                })
-            }),
-            (Type::Named(interface), Type::Named(class)) => self
-                .implementations
-                .get(class)
-                .is_some_and(|interfaces| interfaces.contains(interface)),
-            (
-                Type::ImportedNamed {
-                    module: interface_module,
-                    name: interface,
-                },
-                Type::ImportedNamed {
-                    module: class_module,
-                    name: class,
-                },
-            ) if interface_module == class_module => self
-                .imported_types
-                .get(&(*class_module, class.clone()))
-                .is_some_and(|info| info.interfaces.contains(interface)),
             // `compatible` above already applied the literal-alternative rule;
             // retrying each alternative here would bypass it.
             (Type::Alternative(_), Type::IntegerLiteral(_) | Type::FloatLiteral) => false,
@@ -312,29 +278,19 @@ impl Analyzer {
         }
     }
 
-    pub(crate) fn is_subclass_of(&self, class: &str, ancestor: &str) -> bool {
-        let mut current = class;
-        while let Some(base) = self.base_classes.get(current) {
-            if base == ancestor {
-                return true;
-            }
-            current = base;
-        }
-        false
-    }
-
     pub(crate) fn member_owner(&self, class: &str, name: &str) -> Option<String> {
-        if self
-            .declared_members
-            .get(class)
-            .is_some_and(|members| members.contains(name))
-        {
-            return Some(class.into());
-        }
-        self.base_classes
-            .get(class)
-            .and_then(|base| self.member_owner(base, name))
-            .or_else(|| Some(class.into()))
+        // The nearest ancestor that declares `name`; otherwise the root of the
+        // chain, where an inherited-member error is reported.
+        let ancestors = self.class_model.ancestors(class);
+        ancestors
+            .iter()
+            .find(|ancestor| {
+                self.declared_members
+                    .get(**ancestor)
+                    .is_some_and(|members| members.contains(name))
+            })
+            .or(ancestors.last())
+            .map(|owner| (*owner).to_string())
     }
 
     pub(crate) fn member_mutable(&self, object: &Type, name: &str) -> bool {
@@ -423,7 +379,7 @@ impl Analyzer {
                 && self
                     .globals
                     .get(alias)
-                    .is_some_and(|symbol| symbol.ty == Type::HostExec)
+                    .is_some_and(|symbol| symbol.ty == Type::HostExec || symbol.ty == Type::HostEnv)
             {
                 continue;
             }
@@ -456,5 +412,15 @@ impl Analyzer {
 
     pub(crate) fn resolve_reference(&self, reference: &TypeReference) -> Type {
         self.resolve_type(type_from_reference(reference))
+    }
+}
+
+/// The class-relation identity of a nominal type: a local class or interface
+/// by its name, an imported one as `#<module>.Name`.
+fn nominal_identity(ty: &Type) -> Option<String> {
+    match ty {
+        Type::Named(name) => Some(name.clone()),
+        Type::ImportedNamed { module, name } => Some(format!("#{}.{name}", module.0)),
+        _ => None,
     }
 }

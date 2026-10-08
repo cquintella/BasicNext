@@ -113,10 +113,20 @@ pub(crate) fn emit_vector(
     );
 }
 
-pub(crate) fn emit_vector_length(text: &mut String, destination: ValueId, vector: ValueId) {
+pub(crate) fn emit_vector_length(
+    text: &mut String,
+    destination: ValueId,
+    vector: ValueId,
+    analysis: &LoweringAnalysis<'_>,
+) {
+    let ty = analysis
+        .values
+        .get(&vector)
+        .and_then(llvm_type)
+        .unwrap_or("{ ptr, i32 }");
     text.assign(
         format!("v{}", destination.0),
-        I::extract(vector_ty(), v(vector), 1),
+        I::extract(typed_llvm(ty), v(vector), 1),
     );
 }
 

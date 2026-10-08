@@ -25,6 +25,7 @@ workspace = true
 bn_cli = { path = "../bn_cli" }
 bn_diag = { path = "../bn_diag" }
 bn_frontend = { path = "../bn_frontend" }
+bn_host_env = { path = "../bn_host_env" }
 bn_host_exec = { path = "../bn_host_exec" }
 bn_host_fs = { path = "../bn_host_fs" }
 bn_host_net = { path = "../bn_host_net" }

@@ -12,6 +12,7 @@
 
 pub mod clock;
 pub mod console;
+pub mod env;
 pub mod exec;
 pub mod random;
 
@@ -34,6 +35,7 @@ pub fn default_hosts() -> Providers {
         Arc::new(|| Box::new(bn_host_fs::FsProvider::default())),
     );
     hosts.register(exec::NAME, Arc::new(|| Box::new(exec::ExecProvider)));
+    hosts.register(env::NAME, Arc::new(|| Box::new(env::EnvProvider)));
     hosts.register(clock::NAME, Arc::new(|| Box::new(clock::ClockProvider)));
     hosts.register(random::NAME, Arc::new(|| Box::new(random::RandomProvider)));
     hosts.register(

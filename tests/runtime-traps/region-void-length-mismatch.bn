@@ -1,0 +1,8 @@
+// Runtime trap: restoring POINTER TO VOID with mismatched fixed length stops with POINTER_LENGTH_MISMATCH.
+FUNCTION Start() AS VOID
+    LET r AS POINTER TO INT32[3] = NEW INT32[3]
+    LET v AS POINTER TO VOID = r
+    LET bad AS POINTER TO INT32[4] = v
+    PRINT LEN(bad)
+    RELEASE r
+END FUNCTION

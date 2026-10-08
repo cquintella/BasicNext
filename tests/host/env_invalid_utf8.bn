@@ -1,0 +1,16 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Run with BN_BAD_UTF8 set to bytes that are not UTF-8: Get returns
+// Error(Env.INVALID_UTF8); Has still reports the variable as present.
+IMPORT HOST.Env AS Env
+
+FUNCTION Start() AS VOID
+    LET bad AS STRING OR Error = Env.Get("BN_BAD_UTF8")
+    IF bad IS Error THEN
+        PRINT bad.Code = Env.INVALID_UTF8, bad.Operation
+    END IF
+    PRINT Env.Has("BN_BAD_UTF8")
+END FUNCTION

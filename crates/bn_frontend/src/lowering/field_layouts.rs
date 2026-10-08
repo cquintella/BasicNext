@@ -210,7 +210,7 @@ fn field_owner_for_type(
 pub(super) fn lower_field_layout(
     owner: &str,
     pending: &HashMap<String, PendingLayout>,
-    class_bases: &HashMap<String, String>,
+    class_bases: &BTreeMap<String, String>,
     names: &mut Vec<String>,
     ids: &mut HashMap<String, FieldId>,
     layouts: &mut BTreeMap<String, FieldLayout>,

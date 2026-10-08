@@ -73,3 +73,22 @@ fn input_matches_interpreter() {
     let long_input = [vec![b'x'; 5_000], b"\n".to_vec()].concat();
     assert_wasm_parity(&source, &artifact, &long_input);
 }
+
+#[test]
+fn wasm_host_env_compiles_and_imports_provider() {
+    let source = workspace_root().join("tests/grammar/valid/env-import.bn");
+    let directory = TestDir::new("wasm-env").expect("create Wasm directory");
+    let artifact = compile_wasm(&source, &directory);
+    let output = execute(
+        Command::new("node")
+            .arg(workspace_root().join("bin/bn-wasm"))
+            .arg(&artifact),
+        None,
+    );
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("bn_rt_env_has"),
+        "expected missing callable import for bn_rt_env_has, got: {stderr}"
+    );
+}

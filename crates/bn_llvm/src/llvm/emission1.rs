@@ -216,10 +216,11 @@ pub(crate) fn lower_scalar_instruction(
             "{ i1, double }" => emit_optional_float_default(text, *destination),
             // An aggregate default: every field zero or null, built field by
             // field as `RETURN` builds it (`%<prefix>0_` … then `%v`).
-            layout @ ("{ ptr, i32 }" | "{ i1, ptr, i64 }" | "{ i1, ptr }" | "{ i1, ptr, i32 }") => {
+            layout @ ("{ ptr, i32 }" | "{ ptr, i32, i32 }" | "{ i1, ptr, i64 }" | "{ i1, ptr }"
+            | "{ i1, ptr, i32 }") => {
                 let dest = destination.0;
                 let prefix = match layout {
-                    "{ ptr, i32 }" => "vec",
+                    "{ ptr, i32 }" | "{ ptr, i32, i32 }" => "vec",
                     "{ i1, ptr, i64 }" => "errdef",
                     "{ i1, ptr }" => "ptrdef",
                     _ => "epdef",
@@ -303,6 +304,15 @@ pub(crate) fn lower_scalar_instruction(
                 format!("%optstore{}", value.0)
             } else if slot_llvm == "i1" {
                 i1_operand(text, analysis, state, *value)
+            } else if value_llvm == "{ ptr, i32, i32 }" && slot_llvm == "{ ptr, i32 }" {
+                casts::emit_pointer_void_restore(
+                    text,
+                    block_id,
+                    &format!("store{}", value.0),
+                    O::reg(format!("v{}", value.0)),
+                    slot_ty,
+                    state,
+                )
             } else if value_llvm != slot_llvm
                 && (matches!(value_llvm, "i8" | "i16" | "i32" | "i64")
                     && matches!(slot_llvm, "i8" | "i16" | "i32" | "i64")
@@ -311,7 +321,10 @@ pub(crate) fn lower_scalar_instruction(
                         ("float", "double") | ("double", "float")
                     )
                     || matches!(slot_llvm, "{ i1, ptr, i64 }" | GENERAL_LAYOUT)
-                        && value_llvm != slot_llvm)
+                    || matches!(
+                        (value_llvm, slot_llvm),
+                        ("{ ptr, i32 }", "{ ptr, i32, i32 }")
+                    ))
             {
                 coerce_to_type(text, *value, value_ty, slot_ty)
             } else {

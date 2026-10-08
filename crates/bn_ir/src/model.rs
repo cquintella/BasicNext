@@ -2,10 +2,10 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use bn_source::Span;
-use bn_types::Type;
+use bn_types::{Type, class_model::ClassModel};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BlockId(pub u32);
@@ -116,10 +116,8 @@ pub struct Module {
     /// Complete record/class layouts keyed by fully-qualified owner. The
     /// ordered map makes metadata construction deterministic.
     pub field_layouts: BTreeMap<String, FieldLayout>,
-    /// Fully qualified class identity to its fully qualified direct base.
-    /// The relation validates inherited field-layout prefixes and dispatch
-    /// without depending on frontend semantic types.
-    pub class_bases: HashMap<String, String>,
+    /// Fully qualified class inheritance and interface implementation model.
+    pub class_model: ClassModel,
     /// Fully qualified names of the declared `INTERFACE`s. A value of an
     /// interface type holds an object, so ownership applies to it.
     pub interfaces: BTreeSet<String>,
@@ -137,6 +135,7 @@ pub struct Module {
     pub console_import: Option<Span>,
     pub network_import: Option<Span>,
     pub exec_import: Option<Span>,
+    pub env_import: Option<Span>,
     pub bnlog_import: Option<Span>,
     pub bnweb_import: Option<Span>,
     pub bnsqlite_import: Option<Span>,

@@ -1,0 +1,46 @@
+CLASS Animal
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION Speak() AS STRING
+        RETURN "animal"
+    END FUNCTION
+END CLASS
+
+CLASS Dog EXTENDS Animal
+    PUBLIC FUNCTION CONSTRUCTOR()
+        SUPER()
+    END FUNCTION
+
+    PUBLIC OVERRIDE FUNCTION Speak() AS STRING
+        RETURN "dog"
+    END FUNCTION
+END CLASS
+
+CLASS Puppy EXTENDS Dog
+    PUBLIC FUNCTION CONSTRUCTOR()
+        SUPER()
+    END FUNCTION
+
+    PUBLIC OVERRIDE FUNCTION Speak() AS STRING
+        RETURN "puppy"
+    END FUNCTION
+END CLASS
+
+FUNCTION Describe(a AS Animal) AS STRING
+    RETURN a.Speak()
+END FUNCTION
+
+FUNCTION MakePuppy() AS Puppy
+    RETURN NEW Puppy()
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET d AS Dog = NEW Dog()
+    LET p AS Puppy = NEW Puppy()
+    PRINT Describe(d)
+    PRINT Describe(p)
+    PRINT Describe(NEW Dog())
+    PRINT Describe(NEW Puppy())
+    PRINT Describe(MakePuppy())
+END FUNCTION

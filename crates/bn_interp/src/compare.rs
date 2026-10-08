@@ -41,7 +41,9 @@ pub fn equals(left: &Value, right: &Value) -> bool {
             },
         ) => left_code == right_code && left_message == right_message,
         (Value::Object { handle: left, .. }, Value::Object { handle: right, .. }) => left == right,
-        (Value::Pointer { handle: left }, Value::Pointer { handle: right }) => left == right,
+        (Value::Pointer { handle: left, .. }, Value::Pointer { handle: right, .. }) => {
+            left == right
+        }
         (Value::Date(left), Value::Date(right)) => left == right,
         (Value::Time(left), Value::Time(right)) => left == right,
         (Value::TimeZone(left), Value::TimeZone(right)) => left == right,

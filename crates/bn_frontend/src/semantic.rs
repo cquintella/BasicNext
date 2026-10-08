@@ -5,6 +5,8 @@
 
 use std::collections::{HashMap, HashSet};
 
+use bn_types::class_model::ClassModel;
+
 use crate::{
     ast::{
         Block, DeclarationKind, Expression, ExpressionKind, ForHeader, FunctionSignature, Item,
@@ -101,7 +103,8 @@ pub struct SemanticModel {
     pub symbols: Vec<ResolvedSymbol>,
     pub expressions: Vec<ResolvedExpression>,
     pub layouts: HashMap<String, u64>,
-    pub base_classes: HashMap<String, String>,
+    /// The class relation, with interfaces resolved to `#<module>.Name`.
+    pub class_model: ClassModel,
     pub bnmath_modules: HashSet<ModuleId>,
     /// The standard (`modules/bn/`) modules this module imports.
     pub standard_modules: HashSet<ModuleId>,
@@ -330,9 +333,11 @@ struct Analyzer {
     current_class: Option<String>,
     declaration_kinds: HashMap<String, DeclarationKind>,
     constructors: HashMap<String, Constructor>,
-    base_classes: HashMap<String, String>,
+    /// Class → base and class → declared interfaces, in this module's
+    /// namespace (local names bare, imported ones `#<module>.Name`): the one
+    /// subtype relation (`bn_types::class_model`).
+    class_model: ClassModel,
     declared_members: HashMap<String, std::collections::HashSet<String>>,
-    implementations: HashMap<String, Vec<String>>,
     imported_types: HashMap<(ModuleId, String), ImportedTypeInfo>,
     bnmath_modules: HashSet<ModuleId>,
     standard_modules: HashSet<ModuleId>,

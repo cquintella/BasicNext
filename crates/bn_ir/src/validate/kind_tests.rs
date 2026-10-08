@@ -6,7 +6,7 @@
 // Unit tests of the language IR validator: function kinds, field layouts,
 // member and field paths, and alternative widening.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 use bn_source::{Position, Revision, SourceId, Span};
 use bn_types::Type;
@@ -228,7 +228,7 @@ fn derived_receiver_may_access_a_base_layout_field() {
         function("Start", FunctionKind::Entry, None, 0, "VOID"),
     ]);
     module.field_names = vec!["name".into()];
-    module.class_bases = HashMap::from([("Dog".into(), "Animal".into())]);
+    module.class_model.add_base("Dog", "Animal");
     module.field_layouts = BTreeMap::from([
         ("Animal".into(), base_layout),
         ("Dog".into(), derived_layout),
@@ -315,7 +315,7 @@ fn derived_layout_must_preserve_the_base_prefix() {
         "VOID",
     ));
     module.field_names = vec!["first".into(), "second".into()];
-    module.class_bases = HashMap::from([("Child".into(), "Parent".into())]);
+    module.class_model.add_base("Child", "Parent");
     module.field_layouts = BTreeMap::from([("Parent".into(), base), ("Child".into(), child)]);
 
     assert!(detail(super::validate(&module)).contains("base layout prefix"));

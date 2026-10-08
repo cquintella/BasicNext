@@ -23,9 +23,9 @@ mod builder;
 #[path = "lowering/field_layouts.rs"]
 mod field_layouts;
 pub use bn_ir::{
-    BasicBlock, BlockId, Constant, FieldId, FieldLayout, FieldLayoutEntry, FieldRef, FieldSlot,
-    Function, FunctionKind, Instruction, Module, ModuleId, SymbolId, Terminator, ValidatedModule,
-    ValueId, validate, validate_module,
+    BasicBlock, BlockId, ClassModel, Constant, FieldId, FieldLayout, FieldLayoutEntry, FieldRef,
+    FieldSlot, Function, FunctionKind, Instruction, Module, ModuleId, SymbolId, Terminator,
+    ValidatedModule, ValueId, validate, validate_module,
 };
 use field_layouts::{lower_field_layout, record_owner, resolve_member_fields};
 
@@ -61,30 +61,26 @@ fn lowered_interfaces(program: &Program, prefix: &str) -> BTreeSet<String> {
         .collect()
 }
 
-fn lowered_class_bases(
-    program: &Program,
-    model: &SemanticModel,
-    prefix: &str,
-) -> HashMap<String, String> {
-    program
-        .items
-        .iter()
-        .filter_map(|item| {
-            let Item::Declaration {
-                kind: DeclarationKind::Class,
-                name,
-                ..
-            } = item
-            else {
-                return None;
-            };
-            let base = model.base_classes.get(name)?;
-            Some((
-                qualified_class_name(prefix, name),
-                qualified_class_name(prefix, base),
-            ))
-        })
-        .collect()
+/// The module's class relation from semantic analysis, with the names
+/// `bn_ir` compares: local classes and interfaces get `prefix`; imported
+/// ones are already `#<module>.Name`.
+fn lowered_class_model(model: &SemanticModel, prefix: &str) -> ClassModel {
+    let mut class_model = ClassModel::new();
+    for (class, base) in &model.class_model.bases {
+        class_model.add_base(
+            qualified_class_name(prefix, class),
+            qualified_class_name(prefix, base),
+        );
+    }
+    for (class, interfaces) in &model.class_model.interfaces {
+        for interface in interfaces {
+            class_model.add_interface(
+                qualified_class_name(prefix, class),
+                qualified_class_name(prefix, interface),
+            );
+        }
+    }
+    class_model
 }
 
 #[derive(Clone)]
@@ -182,7 +178,7 @@ fn collect_semantic_record_layouts(
 
 fn lowered_field_metadata(
     pending: &HashMap<String, PendingLayout>,
-    class_bases: &HashMap<String, String>,
+    class_bases: &BTreeMap<String, String>,
 ) -> Result<(Vec<String>, BTreeMap<String, FieldLayout>), Diagnostic> {
     let mut names = Vec::new();
     let mut ids = HashMap::new();
@@ -289,17 +285,18 @@ struct Builder<'a> {
 /// Returns a diagnostic when semantic information is missing or lowering encounters an unsupported construct.
 fn lower_unvalidated(program: &Program, model: &SemanticModel) -> Result<Module, Diagnostic> {
     let functions = lower_program(program, model, "", &collect_methods(program, ""))?;
-    let class_bases = lowered_class_bases(program, model, "");
+    let class_model = lowered_class_model(model, "");
     let mut pending_layouts = HashMap::new();
     collect_layouts(program, model, "", &mut pending_layouts);
     collect_semantic_record_layouts(model, "", &mut pending_layouts);
-    let (field_names, field_layouts) = lowered_field_metadata(&pending_layouts, &class_bases)?;
+    let (field_names, field_layouts) =
+        lowered_field_metadata(&pending_layouts, &class_model.bases)?;
     let mut module = Module {
         source_name: program.source_name.clone(),
         functions,
         field_names,
         field_layouts,
-        class_bases,
+        class_model,
         interfaces: lowered_interfaces(program, ""),
         bndata_providers: HashSet::new(),
         bnmath_providers: HashSet::new(),
@@ -315,6 +312,7 @@ fn lower_unvalidated(program: &Program, model: &SemanticModel) -> Result<Module,
         console_import: console_import_span(program),
         network_import: network_import_span(program),
         exec_import: exec_import_span(program),
+        env_import: env_import_span(program),
         bnlog_import: standard_import_span(program, "BNLog"),
         bnweb_import: standard_import_span(program, "BNWeb"),
         bnsqlite_import: standard_import_span(program, "BNSqlite"),
@@ -371,20 +369,31 @@ fn lower_graph_unvalidated(
         method_names.extend(collect_methods(&loaded.program, &prefix));
     }
     let mut functions = Vec::new();
-    let mut class_bases = HashMap::new();
+    let mut class_model = ClassModel::new();
     let mut interfaces = BTreeSet::new();
     let mut pending_layouts = HashMap::new();
     for loaded in &graph.modules {
-        if loaded.standard_module.is_some() {
-            continue;
-        }
         let index = usize::try_from(loaded.id.0)
             .map_err(|_| ir_error("module index does not fit", default_span()))?;
         let model = models
             .get(index)
             .ok_or_else(|| ir_error("missing semantic model for module", default_span()))?;
         let prefix = module_prefix(ir_module_id(graph.root), ir_module_id(loaded.id));
-        class_bases.extend(lowered_class_bases(&loaded.program, model, &prefix));
+        // Standard modules contribute their class declarations (names only)
+        // so a user class may implement a standard interface; their bodies
+        // are bound natively and are not lowered.
+        let loaded_model = lowered_class_model(model, &prefix);
+        for (sub, base) in loaded_model.bases {
+            class_model.add_base(sub, base);
+        }
+        for (sub, ifaces) in loaded_model.interfaces {
+            for iface in ifaces {
+                class_model.add_interface(&sub, iface);
+            }
+        }
+        if loaded.standard_module.is_some() {
+            continue;
+        }
         interfaces.extend(lowered_interfaces(&loaded.program, &prefix));
         collect_layouts(&loaded.program, model, &prefix, &mut pending_layouts);
         collect_semantic_record_layouts(model, &prefix, &mut pending_layouts);
@@ -421,6 +430,10 @@ fn lower_graph_unvalidated(
         .modules
         .iter()
         .find_map(|module| exec_import_span(&module.program));
+    let env_import = graph
+        .modules
+        .iter()
+        .find_map(|module| env_import_span(&module.program));
     let bnlog_import = graph
         .modules
         .iter()
@@ -433,13 +446,14 @@ fn lower_graph_unvalidated(
         .modules
         .iter()
         .find_map(|module| standard_import_span(&module.program, "BNSqlite"));
-    let (field_names, field_layouts) = lowered_field_metadata(&pending_layouts, &class_bases)?;
+    let (field_names, field_layouts) =
+        lowered_field_metadata(&pending_layouts, &class_model.bases)?;
     let mut module = Module {
         source_name,
         functions,
         field_names,
         field_layouts,
-        class_bases,
+        class_model,
         interfaces,
         bndata_providers: graph
             .modules
@@ -511,6 +525,7 @@ fn lower_graph_unvalidated(
         console_import,
         network_import,
         exec_import,
+        env_import,
         bnlog_import,
         bnweb_import,
         bnsqlite_import,
@@ -551,13 +566,13 @@ use program_lowering::{class_method_name, collect_methods, lower_program, module
 #[path = "lowering/helpers.rs"]
 mod helpers;
 use helpers::{
-    assignment_operator, class_ir_name, clock_import_span, console_import_span, constant,
-    destructor_name, display_type, exec_import_span, filesystem_constant, filesystem_import_span,
-    host_capability_constant, ir_error, is_host_or_builtin_owner, is_namespace_type,
-    is_numeric_type_name, is_user_class_name, math_constant, module_constant,
-    module_id_from_prefix, named_or_void, namespace_function, net_constant, network_import_span,
-    random_import_span, standard_import_span, static_class_name, type_at, type_test_name,
-    user_class_name,
+    assignment_operator, capability_constant, class_ir_name, clock_import_span,
+    console_import_span, constant, destructor_name, display_type, env_import_span,
+    exec_import_span, filesystem_import_span, host_capability_constant, ir_error,
+    is_host_or_builtin_owner, is_namespace_type, is_numeric_type_name, is_user_class_name,
+    math_constant, module_constant, module_id_from_prefix, named_or_void, namespace_function,
+    network_import_span, random_import_span, standard_import_span, static_class_name, type_at,
+    type_test_name, user_class_name,
 };
 fn default_span() -> Span {
     Span {

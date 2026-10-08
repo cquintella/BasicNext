@@ -266,15 +266,19 @@ pub(crate) fn lower_user_call(
             .get(&arguments[0])
             .is_some_and(|ty| llvm_type(ty) == Some("ptr"));
     if virtualish {
-        let overrides: Vec<&str> = module
-            .functions
-            .iter()
-            .map(|function| function.name.as_str())
-            .filter(|candidate| {
-                candidate.ends_with(&format!(".{method}")) && !candidate.contains('$')
-            })
-            .collect();
-        if overrides.len() > 1 {
+        let static_class = resolved.rsplit_once('.').map_or("", |(c, _)| c);
+        let mut overrides: Vec<(&str, &str)> = Vec::new();
+        for candidate_class in module.field_layouts.keys() {
+            if (candidate_class == static_class
+                || module.class_model.is_upcast(candidate_class, static_class))
+                && let Some(target) =
+                    bn_ir::dispatch::resolve_method(module, candidate_class, method)
+                && target != resolved
+            {
+                overrides.push((candidate_class.as_str(), target));
+            }
+        }
+        if !overrides.is_empty() {
             emit_virtual_method_call(
                 text,
                 state,
@@ -336,7 +340,7 @@ fn emit_virtual_method_call(
     state: &mut EmissionState,
     destination: ValueId,
     fallback: &str,
-    overrides: &[&str],
+    overrides: &[(&str, &str)],
     args: &[Argument],
     ret: &LlvmType,
     receiver: ValueId,
@@ -350,18 +354,14 @@ fn emit_virtual_method_call(
     let call =
         |symbol: &str| LlvmInst::call(ret.clone(), &llvm_function_symbol(symbol), args.to_vec());
     let mut incoming = Vec::new();
-    for (index, candidate) in overrides.iter().enumerate() {
-        let class = candidate
-            .rsplit_once('.')
-            .map_or(*candidate, |(class, _)| class);
-        let class_leaf = class.rsplit('.').next().unwrap_or(class);
+    for (index, (class, target)) in overrides.iter().enumerate() {
         let label = format!("vcase{n}_{index}");
         let next = if index + 1 == overrides.len() {
             fallback_label.clone()
         } else {
             format!("vnext{n}_{index}")
         };
-        let class_global = LlvmOperand::global(format!(".bn_cls_{}", sanitize_symbol(class_leaf)));
+        let class_global = LlvmOperand::global(format!(".bn_cls_{}", sanitize_symbol(class)));
         text.assign(
             format!("veq{n}_{index}"),
             STR_EQ.call([reg(format!("vcls{n}")), class_global]),
@@ -382,9 +382,9 @@ fn emit_virtual_method_call(
         });
         state.control_flow.label(text, label.clone());
         if *ret == Void {
-            text.emit(call(candidate));
+            text.emit(call(target));
         } else {
-            text.assign(format!("vtmp{n}_{index}"), call(candidate));
+            text.assign(format!("vtmp{n}_{index}"), call(target));
             incoming.push((reg(format!("vtmp{n}_{index}")), label));
         }
         text.emit(LlvmInst::Br { dest: join.clone() });

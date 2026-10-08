@@ -66,7 +66,7 @@ impl Executor<'_, '_> {
 /// Adds one for each object or region `value` holds.
 fn count_references(value: &Value, held: &mut HashMap<u64, u64>) {
     match value {
-        Value::Object { handle, .. } | Value::Pointer { handle } => {
+        Value::Object { handle, .. } | Value::Pointer { handle, .. } => {
             *held.entry(id_of(*handle).bits()).or_insert(0) += 1;
         }
         Value::Vector(values) => {

@@ -3,6 +3,47 @@ use super::*;
 use crate::diagnostic::DiagId;
 
 impl Analyzer {
+    /// The identity of an interface named in `IMPLEMENTS`: `alias.Name`
+    /// resolves through this module's imports to `#<module>.Name`; a local
+    /// name stays bare.
+    pub(crate) fn interface_identity(&self, interface: &str) -> String {
+        interface
+            .split_once('.')
+            .and_then(|(alias, name)| {
+                self.module_imports
+                    .get(alias)
+                    .map(|module| format!("#{}.{name}", module.0))
+            })
+            .unwrap_or_else(|| interface.to_string())
+    }
+
+    /// Imported classes enter the class relation with the interfaces their
+    /// own module declares (`#<module>.Class` → `#<module>.Interface`).
+    /// TODO: an interface the imported module names through its own alias
+    /// (`IMPLEMENTS Other.Shape`) is not resolved here; it was not before.
+    pub(crate) fn declare_imported_interfaces(&mut self) {
+        let mut imported = self
+            .imported_types
+            .iter()
+            .filter(|(_, info)| info.kind == DeclarationKind::Class)
+            .flat_map(|((module, class), info)| {
+                info.interfaces
+                    .iter()
+                    .filter(|interface| !interface.contains('.'))
+                    .map(move |interface| {
+                        (
+                            format!("#{}.{class}", module.0),
+                            format!("#{}.{interface}", module.0),
+                        )
+                    })
+            })
+            .collect::<Vec<_>>();
+        imported.sort();
+        for (class, interface) in imported {
+            self.class_model.add_interface(class, interface);
+        }
+    }
+
     pub(crate) fn declare_bases(&mut self, program: &Program) -> Result<(), Diagnostic> {
         for item in &program.items {
             let Item::Declaration {
@@ -65,12 +106,12 @@ impl Analyzer {
                     ));
                 }
             };
-            self.base_classes.insert(name.clone(), base);
+            self.class_model.add_base(name.clone(), base);
         }
-        for class in self.base_classes.keys() {
+        for class in self.class_model.bases.keys() {
             let mut seen = std::collections::HashSet::new();
             let mut current = class.as_str();
-            while let Some(base) = self.base_classes.get(current) {
+            while let Some(base) = self.class_model.bases.get(current) {
                 if !seen.insert(current) {
                     return Err(error(
                         DiagId::INHERITANCE_CYCLE,
@@ -81,34 +122,13 @@ impl Analyzer {
                 current = base;
             }
         }
-        let classes = self.base_classes.keys().cloned().collect::<Vec<_>>();
-        for class in classes {
-            let mut inherited = Vec::new();
-            let mut current = self.base_classes.get(&class);
-            while let Some(base) = current {
-                if let Some(interfaces) = self.implementations.get(base) {
-                    for interface in interfaces {
-                        if !inherited.contains(interface) {
-                            inherited.push(interface.clone());
-                        }
-                    }
-                }
-                current = self.base_classes.get(base);
-            }
-            let interfaces = self.implementations.entry(class).or_default();
-            for interface in inherited {
-                if !interfaces.contains(&interface) {
-                    interfaces.push(interface);
-                }
-            }
-        }
         Ok(())
     }
 
     pub(crate) fn inherit_members(&mut self) -> Result<(), Diagnostic> {
         // A class without EXTENDS has nothing to override (0.5.2 O2).
         for (class, members) in &self.members {
-            if self.base_classes.contains_key(class) {
+            if self.class_model.bases.contains_key(class) {
                 continue;
             }
             if let Some((name, member)) = members.iter().find(|(_, member)| member.overrides) {
@@ -121,7 +141,7 @@ impl Analyzer {
                 ));
             }
         }
-        let mut pending = self.base_classes.keys().cloned().collect::<Vec<_>>();
+        let mut pending = self.class_model.bases.keys().cloned().collect::<Vec<_>>();
         while !pending.is_empty() {
             let pending_classes = pending
                 .iter()
@@ -130,8 +150,13 @@ impl Analyzer {
             let mut next = Vec::new();
             let mut progressed = false;
             for class in pending {
-                let base = self.base_classes.get(&class).expect("base exists").clone();
-                if self.base_classes.contains_key(&base) && pending_classes.contains(&base) {
+                let base = self
+                    .class_model
+                    .bases
+                    .get(&class)
+                    .expect("base exists")
+                    .clone();
+                if self.class_model.bases.contains_key(&base) && pending_classes.contains(&base) {
                     next.push(class);
                     continue;
                 }
@@ -232,7 +257,7 @@ impl Analyzer {
             else {
                 continue;
             };
-            let Some(base) = self.base_classes.get(name) else {
+            let Some(base) = self.class_model.bases.get(name) else {
                 continue;
             };
             let constructor = statements.iter().find_map(|statement| match statement {
@@ -357,6 +382,7 @@ impl Analyzer {
             let return_type = signature
                 .as_ref()
                 .map(|signature| self.resolve_reference(&signature.return_type));
+            self.record_return_type(signature.as_ref(), return_type.as_ref());
             let previous_class = std::mem::replace(
                 &mut self.current_class,
                 (*kind == DeclarationKind::Class).then(|| name.clone()),

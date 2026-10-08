@@ -1,0 +1,54 @@
+// Upcast to an ancestor class or to an interface implemented by an ancestor
+// at the result boundary: RETURN of a subclass value, two levels deep.
+INTERFACE Named
+    FUNCTION Name() AS STRING
+END INTERFACE
+
+CLASS Animal IMPLEMENTS Named
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION Name() AS STRING
+        RETURN "animal"
+    END FUNCTION
+END CLASS
+
+CLASS Dog EXTENDS Animal
+    PUBLIC FUNCTION CONSTRUCTOR()
+        SUPER()
+    END FUNCTION
+END CLASS
+
+CLASS Pup EXTENDS Dog
+    PUBLIC FUNCTION CONSTRUCTOR()
+        SUPER()
+    END FUNCTION
+
+    PUBLIC OVERRIDE FUNCTION Name() AS STRING
+        RETURN "pup"
+    END FUNCTION
+END CLASS
+
+FUNCTION MakeAnimal() AS Animal
+    RETURN NEW Pup()
+END FUNCTION
+
+FUNCTION FromLocal() AS Animal
+    LET d AS Dog = NEW Dog()
+    RETURN d
+END FUNCTION
+
+FUNCTION MakeNamed() AS Named
+    RETURN NEW Pup()
+END FUNCTION
+
+FUNCTION Describe(n AS Named) AS STRING
+    RETURN "named"
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    PRINT MakeAnimal().Name()
+    PRINT FromLocal().Name()
+    PRINT Describe(MakeNamed())
+    PRINT Describe(NEW Dog())
+END FUNCTION

@@ -538,8 +538,8 @@ fn validator_rejects_an_indexed_store_without_indices() {
 #[test]
 fn validator_rejects_cyclic_class_layout_metadata() {
     let mut module = Module::default();
-    module.class_bases.insert("A".into(), "B".into());
-    module.class_bases.insert("B".into(), "A".into());
+    module.class_model.bases.insert("A".into(), "B".into());
+    module.class_model.bases.insert("B".into(), "A".into());
     let error = validate_module(module).expect_err("layout inheritance must be acyclic");
     assert_eq!(error.code, "INVALID_IR");
 }
@@ -547,7 +547,10 @@ fn validator_rejects_cyclic_class_layout_metadata() {
 #[test]
 fn validator_rejects_dangling_class_layout_metadata() {
     let mut module = Module::default();
-    module.class_bases.insert("Child".into(), "Parent".into());
+    module
+        .class_model
+        .bases
+        .insert("Child".into(), "Parent".into());
     let error = validate_module(module).expect_err("layout classes must exist in the module");
     assert_eq!(error.code, "INVALID_IR");
 }

@@ -48,7 +48,7 @@ impl Executor<'_, '_> {
     /// `value` holds.
     pub fn retain_owned_value(&mut self, value: &Value, span: Span) -> Result<(), Diagnostic> {
         match value {
-            Value::Object { handle, .. } | Value::Pointer { handle } => self
+            Value::Object { handle, .. } | Value::Pointer { handle, .. } => self
                 .arc
                 .retain(id_of(*handle), site(span))
                 .map(|_| ())
@@ -85,7 +85,7 @@ impl Executor<'_, '_> {
                 }
                 Ok(())
             }
-            Value::Pointer { handle } => {
+            Value::Pointer { handle, .. } => {
                 if self
                     .arc
                     .release(id_of(handle), site(span))

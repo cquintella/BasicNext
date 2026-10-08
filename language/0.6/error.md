@@ -24,7 +24,8 @@ A capability or module publishes its codes as `INTEGER` constants
 (`FS.NOT_FOUND`, `Net.TIMEOUT`); values are stable and distinct within their
 owner. An operating-system error number may appear in `Cause`, never in
 `Code`. Code tables: `HOST.FileSystem` in [host.md](host.md), `HOST.Net` in
-[host-net.md](host-net.md), `HOST.Exec` in [0.6.md](0.6.md#hostexec-051).
+[host-net.md](host-net.md), `HOST.Exec` in [0.6.md](0.6.md#hostexec-051),
+`HOST.Env` in [host-env.md](host-env.md).
 
 TODO (normative gap): code tables for `BNData`, `BNJson`, `BNWeb`, `BNLog`,
 `BNCrypto`, `BNDispatch`, `BNMath`, and `BNString`.

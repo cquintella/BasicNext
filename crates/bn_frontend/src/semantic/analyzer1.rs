@@ -175,8 +175,10 @@ impl Analyzer {
                                 ));
                             }
                         }
-                        self.implementations
-                            .insert(name.clone(), interfaces.clone());
+                        for interface in interfaces {
+                            let interface = self.interface_identity(interface);
+                            self.class_model.add_interface(name, interface);
+                        }
                         if let Some(Statement::MemberFunction {
                             visibility,
                             is_static,

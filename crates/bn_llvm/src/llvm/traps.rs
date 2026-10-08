@@ -28,6 +28,8 @@ pub(crate) enum Fact {
     /// `template` with its `{}` replaced by an `i128` LLVM operand read when
     /// the trap fires (at most two runtime facts per site).
     Runtime(&'static str, String),
+    /// A runtime fact with a dynamically constructed template.
+    RuntimeDynamic(String, String),
 }
 
 /// A slot for runtime fact `index` in rendered text; `bn_rt_trap_report`
@@ -103,6 +105,11 @@ pub(crate) fn trap_symbol(
         let value = match fact {
             Fact::Text(text) => text,
             Fact::Runtime(template, operand) => {
+                let slot = format!("{SLOT}{}", runtime.len());
+                runtime.push(operand);
+                template.replacen("{}", &slot, 1)
+            }
+            Fact::RuntimeDynamic(template, operand) => {
                 let slot = format!("{SLOT}{}", runtime.len());
                 runtime.push(operand);
                 template.replacen("{}", &slot, 1)

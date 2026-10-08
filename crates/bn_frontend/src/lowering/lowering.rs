@@ -124,7 +124,7 @@ pub(crate) fn lower_program(
         };
         match kind {
             DeclarationKind::Class => {
-                let resolved_base = model.base_classes.get(type_name).cloned();
+                let resolved_base = model.class_model.bases.get(type_name).cloned();
                 if let Some(init) =
                     lower_static_init(model, prefix, type_name, statements, *span, method_names)?
                 {
@@ -480,7 +480,7 @@ pub(crate) fn lower_inherited_constructor(
         symbols: Vec::new(),
         expressions: Vec::new(),
         layouts: std::collections::HashMap::new(),
-        base_classes: std::collections::HashMap::new(),
+        class_model: bn_types::class_model::ClassModel::new(),
         bnmath_modules: HashSet::new(),
         standard_modules: HashSet::new(),
         module_constants: std::collections::HashMap::new(),
@@ -518,7 +518,7 @@ pub(crate) fn lower_inherited_destructor(
         symbols: Vec::new(),
         expressions: Vec::new(),
         layouts: std::collections::HashMap::new(),
-        base_classes: std::collections::HashMap::new(),
+        class_model: bn_types::class_model::ClassModel::new(),
         bnmath_modules: HashSet::new(),
         standard_modules: HashSet::new(),
         module_constants: std::collections::HashMap::new(),

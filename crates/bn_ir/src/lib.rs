@@ -7,6 +7,7 @@
 use bn_diag::{DiagId, Diagnostic, Label, LabelStyle};
 use bn_source::Span;
 
+pub mod dispatch;
 pub mod escape;
 mod model;
 pub mod names;
@@ -18,7 +19,7 @@ pub use model::{
 };
 pub use validate::{instruction_result, instruction_uses, validate};
 
-pub use bn_types::{FloatType, IntegerType, PointerLength, Type};
+pub use bn_types::{FloatType, IntegerType, PointerLength, Type, class_model::ClassModel};
 
 /// IR that has passed the language-level validation contract.
 #[derive(Debug)]

@@ -60,14 +60,17 @@ fn fresh(state: &mut EmissionState, prefix: &str) -> String {
     format!("{prefix}{n}")
 }
 
-/// The header base of a region fat pointer `{ ptr, i32 }` (null stays null).
-pub(crate) fn region_base(text: &mut String, fat: &str, state: &mut EmissionState) -> String {
+/// The header base of a region fat pointer (null stays null).
+pub(crate) fn region_base(
+    text: &mut String,
+    fat: &str,
+    ty: &Type,
+    state: &mut EmissionState,
+) -> String {
     let tag = fresh(state, "rbase");
     let data = format!("{tag}_data");
-    text.assign(
-        &data,
-        LlvmInst::extract(LlvmType::Struct(vec![Ptr, I32]), LlvmOperand::raw(fat), 0),
-    );
+    let fat_ty = llvm(ty);
+    text.assign(&data, LlvmInst::extract(fat_ty, LlvmOperand::raw(fat), 0));
     text.assign(
         format!("{tag}_null"),
         LlvmInst::icmp(
@@ -137,7 +140,7 @@ pub(crate) fn emit_ownership(
         let object = held_object(text, ty, operand, &name);
         call(text, &object);
     } else if is_region_type(ty) {
-        let base = region_base(text, operand, state);
+        let base = region_base(text, operand, ty, state);
         call(text, &base);
     } else if is_struct_type(module, ty) {
         let Type::Named(owner) = ty else {

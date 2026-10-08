@@ -7,8 +7,10 @@
 //! the rules every consumer applies to them (`literals`, `alternatives`).
 
 pub mod alternatives;
+pub mod class_model;
 pub mod error_codes;
 pub mod literals;
+pub mod pointers;
 pub mod text;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
@@ -32,6 +34,7 @@ pub enum Type {
     HostFileSystem,
     HostNet,
     HostExec,
+    HostEnv,
     HostArgs,
     Named(String),
     TypeName(String),

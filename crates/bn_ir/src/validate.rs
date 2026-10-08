@@ -13,12 +13,17 @@ mod kinds;
 mod operands;
 #[path = "validate/ownership.rs"]
 mod ownership;
+#[path = "validate/upcast.rs"]
+mod upcast;
 use fields::{
     receiver_matches_owner, validate_class_bases, validate_field_layouts, validate_field_reference,
     validate_resolved_field_path,
 };
 use operands::{instruction_defines, instruction_type};
 pub use operands::{instruction_result, instruction_uses};
+#[cfg(test)]
+pub(crate) use upcast::call_types_compatible;
+use upcast::{alternative_widens, call_types_compatible_with_module, types_compatible};
 
 #[allow(clippy::too_many_lines)]
 /// Enforces language-level IR well-formedness. Backend capability gaps are
@@ -219,7 +224,7 @@ pub fn validate(module: &Module) -> Result<(), Diagnostic> {
                     return Err(invalid_ir("terminator value is not defined", function.span));
                 }
                 Terminator::Return { value } => {
-                    validate_return_type(function, value.as_ref(), &value_types)?;
+                    validate_return_type(module, function, value.as_ref(), &value_types)?;
                 }
                 Terminator::Stop { code } if !is_integer(value_types.get(code)) => {
                     return Err(invalid_ir(
@@ -479,10 +484,15 @@ fn validate_instruction_types(
                         .zip(parameters)
                         .any(|(argument, parameter)| {
                             value_types.get(argument).is_none_or(|argument_type| {
-                                !vector_overload && !call_types_compatible(argument_type, parameter)
+                                !vector_overload
+                                    && !call_types_compatible_with_module(
+                                        module,
+                                        argument_type,
+                                        parameter,
+                                    )
                             })
                         })
-                    || !call_types_compatible(return_type, ty)
+                    || !call_types_compatible_with_module(module, return_type, ty)
                 {
                     return Err(invalid_ir(
                         "call arguments or result do not match the callee signature",
@@ -781,6 +791,7 @@ fn constant_matches_type(value: &super::Constant, ty: &Type) -> bool {
                 | Type::HostFileSystem
                 | Type::HostNet
                 | Type::HostExec
+                | Type::HostEnv
         ),
         super::Constant::HostConsole => matches!(ty, Type::HostConsole),
         super::Constant::HostArgs => matches!(ty, Type::HostArgs),
@@ -903,6 +914,7 @@ fn index_result_matches(object: &Type, result: &Type) -> bool {
 }
 
 fn validate_return_type(
+    module: &Module,
     function: &super::Function,
     value: Option<&super::ValueId>,
     value_types: &HashMap<super::ValueId, Type>,
@@ -923,6 +935,7 @@ fn validate_return_type(
             if value_types.get(value).is_none_or(|value_type| {
                 !types_compatible(value_type, &function.return_type)
                     && !alternative_widens(value_type, &function.return_type)
+                    && !upcast::is_upcast(module, value_type, &function.return_type)
             }) =>
         {
             Err(invalid_ir(
@@ -934,104 +947,8 @@ fn validate_return_type(
     }
 }
 
-fn alternative_sets_compatible(actual: &[Type], expected: &[Type]) -> bool {
-    actual.len() == expected.len()
-        && actual.iter().all(|actual_option| {
-            expected
-                .iter()
-                .any(|expected_option| types_compatible(actual_option, expected_option))
-        })
-        && expected.iter().all(|expected_option| {
-            actual
-                .iter()
-                .any(|actual_option| types_compatible(actual_option, expected_option))
-        })
-}
-
-fn types_compatible(actual: &Type, expected: &Type) -> bool {
-    actual == expected
-        || matches!(
-            (actual, expected),
-            (Type::ImportedNamed { name: actual, .. }, Type::Named(expected))
-                | (Type::Named(expected), Type::ImportedNamed { name: actual, .. })
-                if expected.rsplit('.').next() == Some(actual.as_str())
-        )
-        // The same exported class imported through two module graphs carries
-        // distinct ModuleIds. Compatibility is by the class name: a companion
-        // returning `Json.Json OR Error` must type-check against the caller's
-        // `Json.Json OR Error` even when each file imported BNJson separately.
-        || matches!(
-            (actual, expected),
-            (
-                Type::ImportedNamed { name: actual_name, .. },
-                Type::ImportedNamed {
-                    name: expected_name,
-                    ..
-                }
-            ) if actual_name == expected_name
-        )
-        || matches!(
-            (actual, expected),
-            (Type::Alternative(actual_options), Type::Alternative(expected_options))
-                if alternative_sets_compatible(actual_options, expected_options)
-        )
-        || matches!(
-            (actual, expected),
-            (Type::IntegerLiteral(_), Type::Integer(_))
-        )
-        || matches!((actual, expected), (Type::FloatLiteral, Type::Float(_)))
-        || matches!((actual, expected), (Type::Pointer { .. }, Type::Named(name)) if name == "POINTER")
-        || matches!(
-            (actual, expected),
-            (
-                Type::Pointer {
-                    element: actual_element,
-                    length: actual_length,
-                },
-                Type::Pointer {
-                    element: expected_element,
-                    length: expected_length,
-                }
-            ) if (is_void_type(actual_element)
-                || is_void_type(expected_element)
-                || types_compatible(actual_element, expected_element))
-                && (actual_length == expected_length
-                    || matches!(expected_length, bn_types::PointerLength::Dynamic))
-        )
-        || matches!(expected, Type::Alternative(options) if options.iter().any(|option| types_compatible(actual, option)))
-        || matches!(
-            (actual, expected),
-            (
-                Type::Vector {
-                    element: actual_element,
-                    dimensions: actual_dimensions,
-                },
-                Type::Vector {
-                    element: expected_element,
-                    dimensions: expected_dimensions,
-                }
-            ) if types_compatible(actual_element, expected_element)
-                && actual_dimensions.len() == expected_dimensions.len()
-                && actual_dimensions.iter().zip(expected_dimensions).all(
-                    |(actual_dimension, expected_dimension)| {
-                        actual_dimension == expected_dimension
-                            || *actual_dimension == u64::MAX
-                            || *expected_dimension == u64::MAX
-                    }
-                )
-        )
-        || matches!(
-            (actual, expected),
-            (
-                Type::Pointer { element: actual_element, .. },
-                Type::Vector {
-                    element: expected_element,
-                    dimensions,
-                }
-            ) if dimensions.len() == 1
-                && is_numeric_type(actual_element)
-                && is_numeric_type(expected_element)
-        )
+fn is_named_value_type(ty: &Type) -> bool {
+    matches!(ty, Type::Named(_) | Type::ImportedNamed { .. })
 }
 
 /// Assignment destinations do not carry the class hierarchy table in the
@@ -1061,61 +978,6 @@ fn assignment_types_compatible(actual: &Type, expected: &Type) -> bool {
         )
 }
 
-/// Widening (0.6.md, "Alternative types: identity and assignment", rule 3):
-/// a value of alternative type `actual` may be stored where the alternative
-/// `expected` contains every one of its members. Narrowing is not widening.
-fn alternative_widens(actual: &Type, expected: &Type) -> bool {
-    matches!(
-        (actual, expected),
-        (Type::Alternative(members), Type::Alternative(accepted))
-            if members
-                .iter()
-                .all(|member| accepted.iter().any(|option| types_compatible(member, option)))
-    )
-}
-
-fn is_named_value_type(ty: &Type) -> bool {
-    matches!(ty, Type::Named(_) | Type::ImportedNamed { .. })
-}
-
-fn call_types_compatible(actual: &Type, expected: &Type) -> bool {
-    types_compatible(actual, expected)
-        || alternative_widens(actual, expected)
-        || (is_numeric_type(actual) && is_numeric_type(expected))
-        // Standard-library reduction calls use a scalar declaration type for
-        // the overloaded one-vector form. Semantic analysis has already
-        // restricted that form to the catalogued BNMath functions; the IR
-        // handoff preserves the numeric element/result contract here.
-        || matches!(
-            actual,
-            Type::Vector { element, dimensions }
-                if dimensions.len() == 1
-                    && is_numeric_type(element)
-                    && is_numeric_type(expected)
-        )
-        || matches!(
-            (actual, expected),
-            (
-                Type::Vector {
-                    element: actual_element,
-                    dimensions: actual_dimensions,
-                },
-                Type::Vector {
-                    element: expected_element,
-                    dimensions: expected_dimensions,
-                }
-            ) if call_types_compatible(actual_element, expected_element)
-                && actual_dimensions.len() == expected_dimensions.len()
-                && actual_dimensions.iter().zip(expected_dimensions).all(
-                    |(actual_dimension, expected_dimension)| {
-                        actual_dimension == expected_dimension
-                            || *actual_dimension == u64::MAX
-                            || *expected_dimension == u64::MAX
-                    }
-                )
-        )
-}
-
 fn vector_element_type(vector: &Type) -> Type {
     let Type::Vector {
         element,
@@ -1131,10 +993,6 @@ fn vector_element_type(vector: &Type) -> Type {
         element: element.clone(),
         dimensions: dimensions[1..].to_vec(),
     }
-}
-
-fn is_void_type(ty: &Type) -> bool {
-    matches!(ty, Type::Named(name) if name == "VOID")
 }
 
 fn is_integer(ty: Option<&Type>) -> bool {
