@@ -104,12 +104,14 @@ impl BuildDir {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |elapsed| elapsed.subsec_nanos());
-        let mut builder = fs::DirBuilder::new();
+        let builder = fs::DirBuilder::new();
         #[cfg(unix)]
-        {
+        let builder = {
             use std::os::unix::fs::DirBuilderExt as _;
+            let mut builder = builder;
             builder.mode(0o700);
-        }
+            builder
+        };
         for attempt in 0..16 {
             let path = parent.join(format!(
                 ".{stem}.bnbuild-{}-{nanos}-{attempt}",

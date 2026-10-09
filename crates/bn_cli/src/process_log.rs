@@ -203,8 +203,13 @@ impl LogTarget {
 /// beside. A product not written yet (a failed build) still gets its log.
 #[must_use]
 pub fn companion_log(product: &Path) -> Option<PathBuf> {
-    if fs::symlink_metadata(product).is_ok_and(|metadata| !metadata.file_type().is_file()) {
-        return None;
+    // Only a regular file or a product not written yet: a device the system
+    // cannot describe (Windows `NUL` fails `symlink_metadata` with an error
+    // other than `NotFound`) is not a product either.
+    match fs::symlink_metadata(product) {
+        Ok(metadata) if metadata.file_type().is_file() => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        _ => return None,
     }
     let mut name = product.file_name()?.to_os_string();
     name.push(".bnbuild.log");
@@ -289,13 +294,13 @@ mod tests {
         );
     }
 
-    /// A product that is not a regular file (`/dev/null`, a directory) has no
-    /// companion log: nothing is written beside it.
+    /// A product that is not a regular file (the null device, a directory) has
+    /// no companion log: nothing is written beside it.
     #[test]
     fn special_products_have_no_companion_log() {
         assert_eq!(companion_log(&std::env::temp_dir()), None);
-        #[cfg(unix)]
-        assert_eq!(companion_log(Path::new("/dev/null")), None);
+        let null_device = if cfg!(windows) { "NUL" } else { "/dev/null" };
+        assert_eq!(companion_log(Path::new(null_device)), None);
     }
 
     /// The log never follows a symlink: a planted link cannot redirect the

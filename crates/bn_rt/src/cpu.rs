@@ -30,8 +30,9 @@ pub fn vmax_i32_scalar(values: &[i32]) -> Option<i32> {
 #[target_feature(enable = "avx2")]
 #[allow(unsafe_code)]
 unsafe fn vmin_i32_avx2(values: &[i32]) -> i32 {
-    #[cfg(target_arch = "x86_64")]
-    use std::arch::x86_64::*;
+    use std::arch::x86_64::{
+        _mm256_loadu_si256, _mm256_min_epi32, _mm256_set1_epi32, _mm256_storeu_si256,
+    };
 
     let mut i = 0;
     let len = values.len();
@@ -62,8 +63,9 @@ unsafe fn vmin_i32_avx2(values: &[i32]) -> i32 {
 #[target_feature(enable = "avx2")]
 #[allow(unsafe_code)]
 unsafe fn vmax_i32_avx2(values: &[i32]) -> i32 {
-    #[cfg(target_arch = "x86_64")]
-    use std::arch::x86_64::*;
+    use std::arch::x86_64::{
+        _mm256_loadu_si256, _mm256_max_epi32, _mm256_set1_epi32, _mm256_storeu_si256,
+    };
 
     let mut i = 0;
     let len = values.len();
