@@ -17,8 +17,12 @@ use super::{Handler, serve_connection_with_handler};
 use crate::web::ServerState;
 use bn_host_net::net::TcpStream;
 
-/// Runs a handler that outlives a 10 ms connection deadline; `client_delay` is
-/// how long the client waits after connecting before it writes the request.
+/// Runs a handler that outlives a 200 ms connection deadline; `client_delay`
+/// is how long the client waits after connecting before it writes the
+/// request. The deadline stays far above scheduling noise (a CI runner took
+/// more than 10 ms to read the request, so the deadline fell before the
+/// handler ran and the test measured something else); the handler blocks up
+/// to 1 s, so it still outlives the deadline.
 fn concurrent_handler_timeout_response(client_delay: Duration) -> Option<String> {
     let listener = match TcpListener::bind("127.0.0.1:0") {
         Ok(listener) => listener,
@@ -29,7 +33,7 @@ fn concurrent_handler_timeout_response(client_delay: Duration) -> Option<String>
     let options = crate::web::ServerOptions {
         concurrent_handlers: true,
         worker_count: 1,
-        connection_total_ms: 10,
+        connection_total_ms: 200,
         ..crate::web::ServerOptions::default()
     };
     let mut state = ServerState::new();
