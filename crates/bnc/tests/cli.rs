@@ -240,7 +240,7 @@ fn build_writes_companion_process_log_next_to_artifact() {
         .output()
         .expect("build with process log");
     assert_eq!(output.status.code(), Some(0));
-    let log_path = output_path.with_extension("log");
+    let log_path = directory.join("hello.bnbuild.log");
     let log = fs::read_to_string(&log_path).expect("companion process log");
     assert!(log.contains("phase=pipeline"));
     assert!(log.contains("event=start") && log.contains("event=end"));
@@ -1782,4 +1782,57 @@ fn compiled_bnjson_companion_matches_the_interpreter() {
         String::from_utf8_lossy(&run.stdout),
         "{\"name\":\"eagle\",\"wings\":2}\neagle\n2\ndecode-error TRUE\n"
     );
+}
+
+/// Known issue K2: the companion log is `<product>.bnbuild.log`, appended to
+/// the product's name, so a product named `*.log` keeps its bytes; a
+/// product that is not a regular file (`/dev/null`) has no companion; and an
+/// explicit `--log-file` equal to the product is refused.
+#[test]
+fn companion_log_never_replaces_or_hides_the_product() {
+    let directory = std::env::temp_dir().join(format!("bn-companion-cli-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).expect("companion test directory");
+
+    let product = directory.join("result.log");
+    let built = bnc()
+        .args(["tests/grammar/valid/print-integer.bn", "-o"])
+        .arg(&product)
+        .output()
+        .expect("build into result.log");
+    assert_eq!(built.status.code(), Some(0));
+    assert!(directory.join("result.log.bnbuild.log").is_file());
+    let product_head = fs::read(&product).expect("read product");
+    assert!(
+        !product_head.starts_with(b"level="),
+        "the log overwrote the product"
+    );
+
+    #[cfg(unix)]
+    {
+        let built = bnc()
+            .args(["tests/grammar/valid/print-integer.bn", "-o", "/dev/null"])
+            .output()
+            .expect("build into /dev/null");
+        assert_eq!(
+            built.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&built.stderr)
+        );
+        assert!(!std::path::Path::new("/dev/null.bnbuild.log").exists());
+    }
+
+    let same = directory.join("same");
+    let refused = bnc()
+        .args(["tests/grammar/valid/print-integer.bn", "-o"])
+        .arg(&same)
+        .arg("--log-file")
+        .arg(&same)
+        .output()
+        .expect("build with log == product");
+    assert_eq!(refused.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&refused.stderr).starts_with("error[CONFIG_INVALID]"));
+    assert!(!same.exists());
+    fs::remove_dir_all(directory).expect("remove companion test directory");
 }

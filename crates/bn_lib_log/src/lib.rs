@@ -8,10 +8,9 @@
 //! program output through [`CoreContext::output`], file transports go through
 //! the host filesystem policy.
 
-mod log;
-
 use std::collections::HashMap;
 
+use bn_core_log::{FileTransport, Level, dispatch_log};
 use bn_diag::Diagnostic;
 use bn_rt::log_error::LogFailure;
 use bn_source::Span;
@@ -29,16 +28,10 @@ pub const NAME: &str = "BNLog";
 struct LogLoggerResource {
     label: String,
     context: std::collections::BTreeMap<String, String>,
-    null_transports: Vec<i128>,
-    console_transports: Vec<i128>,
-    file_transports: Vec<LogFileTransport>,
+    null_transports: Vec<Level>,
+    console_transports: Vec<Level>,
+    file_transports: Vec<FileTransport>,
     closed: bool,
-}
-
-#[derive(Clone, Debug)]
-struct LogFileTransport {
-    path: String,
-    minimum: i128,
 }
 
 #[derive(Debug)]
@@ -523,11 +516,12 @@ impl LogProvider {
                         },
                     ));
                 }
+                let minimum_level = Level::from_i128(minimum).expect("minimum was validated");
                 self.loggers
                     .get_mut(id)
                     .expect("logger was checked above")
                     .null_transports
-                    .push(minimum);
+                    .push(minimum_level);
                 Ok(Value::Null)
             }
             "AddConsole" => {
@@ -564,18 +558,17 @@ impl LogProvider {
                         },
                     ));
                 }
+                let minimum_level = Level::from_i128(minimum).expect("minimum was validated");
                 self.loggers
                     .get_mut(id)
                     .expect("logger was checked above")
                     .console_transports
-                    .push(minimum);
+                    .push(minimum_level);
                 Ok(Value::Null)
             }
             "AddFile" => {
                 require_arity(name, arguments, 3, span)?;
-                if core.module().filesystem_import.is_none()
-                    || !core.host().filesystem().allows_capability()
-                {
+                if core.module().filesystem_import.is_none() {
                     return Ok(failed(
                         name,
                         &LogFailure::CapabilityRequired("HOST.FileSystem"),
@@ -589,15 +582,19 @@ impl LogProvider {
                         span,
                     ));
                 };
-                if !core
-                    .host()
-                    .filesystem()
-                    .allows_path(std::path::Path::new(path.as_ref()), true)
+                // A file the policy denies is a transport that cannot write
+                // (bnlog.md `IO_FAILED`; D2 of bucket 0.6.5c): `Error`, never a stop.
+                if !core.host().filesystem().allows_capability()
+                    || !core
+                        .host()
+                        .filesystem()
+                        .allows_path(std::path::Path::new(path.as_ref()), true)
                 {
-                    return Err(runtime_error(
-                        bn_diag::DiagId::EXECUTION_POLICY_DENIED,
-                        "logger file path is outside the execution policy",
-                        span,
+                    return Ok(failed(
+                        name,
+                        &LogFailure::IoFailed(
+                            "the filesystem policy denies writing the log file".into(),
+                        ),
                     ));
                 }
                 let minimum = integer(&arguments[2], span)?.0;
@@ -636,13 +633,14 @@ impl LogProvider {
                         },
                     ));
                 }
+                let minimum_level = Level::from_i128(minimum).expect("minimum was validated");
                 self.loggers
                     .get_mut(id)
                     .expect("logger was checked above")
                     .file_transports
-                    .push(LogFileTransport {
+                    .push(FileTransport {
                         path: path.to_string(),
-                        minimum,
+                        minimum: minimum_level,
                     });
                 Ok(Value::Null)
             }
@@ -696,10 +694,11 @@ impl LogProvider {
                         span,
                     )
                 })?;
-                let Some(level) = crate::log::Level::from_i128(level) else {
+                let Some(level) = Level::from_i128(level) else {
                     unreachable!("level was validated above")
                 };
-                let record = crate::log::Record::now(
+                let record = bn_core_log::Record::with_timestamp(
+                    bn_rt::format_rfc3339(bn_rt::timestamp_ms()),
                     &logger.label,
                     level,
                     message,
@@ -715,46 +714,35 @@ impl LogProvider {
                         ));
                     }
                 };
+                let (console_transports, file_transports) =
+                    (&logger.console_transports, &logger.file_transports);
+                let console_out = core.output();
                 let mut first_error = None;
-                for minimum in &logger.console_transports {
-                    if level as i128 <= *minimum
-                        && let Err(error) = writeln!(core.output(), "{json_line}")
+                for minimum in console_transports {
+                    if level <= *minimum
+                        && let Err(err) = writeln!(console_out, "{json_line}")
                     {
-                        first_error.get_or_insert_with(|| error.to_string());
+                        first_error.get_or_insert_with(|| err.to_string());
                     }
                 }
-                for transport in &logger.file_transports {
-                    if level as i128 > transport.minimum {
-                        continue;
-                    }
-                    let result = core
-                        .host()
-                        .filesystem()
-                        .open(
-                            std::path::Path::new(&transport.path),
-                            bn_rt::secure_fs::OpenMode::Append,
-                        )
-                        .and_then(|mut file| {
-                            use std::io::Write as _;
-                            file.write_all(json_line.as_bytes())?;
-                            file.write_all(b"\n")
-                        });
-                    if result
-                        .as_ref()
-                        .is_err_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied)
-                    {
-                        return Err(runtime_error(
-                            bn_diag::DiagId::EXECUTION_POLICY_DENIED,
-                            "logger file path is outside the execution policy",
-                            span,
-                        ));
-                    }
-                    if let Err(error) = result {
-                        first_error.get_or_insert_with(|| error.to_string());
-                    }
+                let dispatch_res = dispatch_log(
+                    &json_line,
+                    level,
+                    &[],
+                    file_transports,
+                    |_| Ok(()),
+                    &|path| {
+                        core.host()
+                            .filesystem()
+                            .open(path, bn_rt::secure_fs::OpenMode::Append)
+                            .map(|file| Box::new(file) as Box<dyn std::io::Write>)
+                    },
+                );
+                if let Some(err) = first_error {
+                    return Ok(failed(name, &LogFailure::IoFailed(err)));
                 }
-                if let Some(error) = first_error {
-                    return Ok(failed(name, &LogFailure::IoFailed(error)));
+                if let Err(failure) = dispatch_res {
+                    return Ok(failed(name, &failure));
                 }
                 Ok(Value::Null)
             }
@@ -782,16 +770,6 @@ impl LogProvider {
                             bn_rt::secure_fs::OpenMode::Append,
                         )
                         .and_then(|file| file.sync_all());
-                    if result
-                        .as_ref()
-                        .is_err_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied)
-                    {
-                        return Err(runtime_error(
-                            bn_diag::DiagId::EXECUTION_POLICY_DENIED,
-                            "logger file path is outside the execution policy",
-                            span,
-                        ));
-                    }
                     if let Err(error) = result {
                         first_error.get_or_insert_with(|| error.to_string());
                     }

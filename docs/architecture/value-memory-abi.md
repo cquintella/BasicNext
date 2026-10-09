@@ -319,6 +319,8 @@ bn_rt_trap_report
 bn_rt_trap_report_failure
 bn_rt_log_fields_close
 bn_rt_log_fields_create
+bn_rt_log_fields_set_boolean
+bn_rt_log_fields_set_integer
 bn_rt_log_fields_set_string
 bn_rt_log_logger_add_console
 bn_rt_log_logger_add_file

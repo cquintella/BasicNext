@@ -1,0 +1,849 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+//! `BNDispatch` core: queues, tickets, lifecycle state, and bounded worker pools.
+//!
+//! One implementation shared by the interpreter provider (`bn_lib_dispatch`) and
+//! the native runtime (`bn_rt`).
+
+#![allow(clippy::missing_errors_doc)]
+
+use std::collections::HashMap;
+use std::sync::{Arc, Condvar, Mutex, Weak, mpsc};
+use std::thread::JoinHandle;
+use std::time::Instant;
+
+use ring::rand::{SecureRandom, SystemRandom};
+
+pub const PENDING: i32 = 0;
+pub const RUNNING: i32 = 1;
+pub const COMPLETED: i32 = 2;
+pub const FAILED: i32 = 3;
+pub const CANCELLED: i32 = 4;
+
+pub mod error;
+pub use error::{DispatchFailure, auto_worker_count, deadline, worker_count};
+
+thread_local! {
+    /// Non-zero queue handle whose worker executes on this thread.
+    static CURRENT_QUEUE: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+pub fn current_queue_handle() -> u64 {
+    CURRENT_QUEUE.with(std::cell::Cell::get)
+}
+
+type Job = Box<dyn FnOnce() + Send>;
+type JobSender = mpsc::SyncSender<Job>;
+
+#[derive(Clone)]
+pub struct Queue {
+    inner: Arc<QueueInner>,
+}
+
+impl std::fmt::Debug for Queue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Queue")
+            .field("id", &self.inner.id)
+            .field("workers", &self.inner.workers)
+            .finish_non_exhaustive()
+    }
+}
+
+struct QueueInner {
+    id: u64,
+    workers: usize,
+    state: Mutex<QueueState>,
+    wake: Condvar,
+    sender: Mutex<Option<JobSender>>,
+    worker_handles: Mutex<Vec<JoinHandle<()>>>,
+}
+
+struct QueueState {
+    closed: bool,
+    tickets: HashMap<u64, Arc<TicketInner>>,
+}
+
+#[derive(Clone)]
+pub struct Ticket {
+    inner: Arc<TicketInner>,
+}
+
+impl std::fmt::Debug for Ticket {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Ticket")
+            .field("id", &self.inner.id)
+            .field("status", &self.status())
+            .finish_non_exhaustive()
+    }
+}
+
+struct TicketInner {
+    id: u64,
+    state: Mutex<TicketState>,
+    wake: Condvar,
+    queue_wake: Weak<QueueInner>,
+}
+
+struct TicketState {
+    status: i32,
+    error: Option<(i32, String)>,
+    closed: bool,
+    task: String,
+    output: String,
+}
+
+impl Queue {
+    pub fn new(workers: i128, id: u64) -> Result<Self, DispatchFailure> {
+        let workers = worker_count(workers)?;
+        let (sender, receiver) =
+            mpsc::sync_channel::<Job>(bn_limits::dispatch_limits().pending_tickets_max);
+        let receiver = Arc::new(Mutex::new(receiver));
+        let mut worker_handles = Vec::with_capacity(workers);
+        for _ in 0..workers {
+            let receiver = Arc::clone(&receiver);
+            worker_handles.push(std::thread::spawn(move || {
+                CURRENT_QUEUE.with(|current| current.set(id));
+                loop {
+                    let job = receiver
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .recv();
+                    match job {
+                        Ok(job) => {
+                            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job));
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }));
+        }
+        let inner = Arc::new(QueueInner {
+            id,
+            workers,
+            state: Mutex::new(QueueState {
+                closed: false,
+                tickets: HashMap::new(),
+            }),
+            wake: Condvar::new(),
+            sender: Mutex::new(Some(sender)),
+            worker_handles: Mutex::new(worker_handles),
+        });
+        Ok(Self { inner })
+    }
+
+    #[must_use]
+    pub fn id(&self) -> u64 {
+        self.inner.id
+    }
+
+    #[must_use]
+    pub fn workers(&self) -> usize {
+        self.inner.workers
+    }
+
+    pub fn tickets(&self) -> Vec<Ticket> {
+        self.inner
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .tickets
+            .values()
+            .cloned()
+            .map(|inner| Ticket { inner })
+            .collect()
+    }
+
+    pub fn submit(&self, task: String) -> Result<Ticket, DispatchFailure> {
+        self.submit_with(task, |_| {})
+    }
+
+    pub fn submit_with<F>(&self, task: String, job: F) -> Result<Ticket, DispatchFailure>
+    where
+        F: FnOnce(Ticket) + Send + 'static,
+    {
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.closed {
+            return Err(DispatchFailure::Closed("queue"));
+        }
+        state.tickets.retain(|_, ticket| !ticket.is_terminal());
+        if state.tickets.len() >= bn_limits::dispatch_limits().pending_tickets_max {
+            return Err(saturated());
+        }
+        let id = next_ticket_id(&state.tickets)?;
+        let ticket = Arc::new(TicketInner {
+            id,
+            state: Mutex::new(TicketState {
+                status: PENDING,
+                error: None,
+                closed: false,
+                task,
+                output: String::new(),
+            }),
+            wake: Condvar::new(),
+            queue_wake: Arc::downgrade(&self.inner),
+        });
+        state.tickets.insert(id, Arc::clone(&ticket));
+        let public_ticket = Ticket {
+            inner: Arc::clone(&ticket),
+        };
+        let queued_ticket = public_ticket.clone();
+        let sender = self
+            .inner
+            .sender
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .cloned()
+            .ok_or(DispatchFailure::Closed("queue"))?;
+        let queued = sender.try_send(Box::new(move || {
+            if queued_ticket.mark_running().is_err() {
+                return;
+            }
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                job(queued_ticket.clone());
+            }));
+            if result.is_err() {
+                queued_ticket.mark_failed(1, "dispatch task panicked".into());
+            } else if queued_ticket.status() == RUNNING {
+                queued_ticket.mark_completed();
+            }
+        }));
+        if queued.is_err() {
+            state.tickets.remove(&id);
+            return Err(saturated());
+        }
+        self.inner.wake.notify_all();
+        Ok(public_ticket)
+    }
+
+    pub fn join(&self, timeout_ms: i128) -> Result<(), DispatchFailure> {
+        if self.is_worker_thread() {
+            return Err(DispatchFailure::SelfWait);
+        }
+        let deadline_instant = deadline(timeout_ms)?;
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        loop {
+            if state.tickets.values().all(|ticket| ticket.is_terminal()) {
+                return Ok(());
+            }
+            let remaining = deadline_instant.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(DispatchFailure::Timeout { ms: timeout_ms });
+            }
+            (state, _) = self
+                .inner
+                .wake
+                .wait_timeout(state, remaining)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+    }
+
+    pub fn close(&self, timeout_ms: i128) -> Result<(), DispatchFailure> {
+        if self.is_worker_thread() {
+            return Err(DispatchFailure::SelfWait);
+        }
+        let deadline_instant = deadline(timeout_ms)?;
+        {
+            let mut state = self
+                .inner
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            state.closed = true;
+            for ticket in state.tickets.values() {
+                ticket.cancel_pending();
+            }
+        }
+        self.inner
+            .sender
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        self.inner.wake.notify_all();
+        loop {
+            let all_terminal = {
+                let state = self
+                    .inner
+                    .state
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                state.tickets.values().all(|ticket| ticket.is_terminal())
+            };
+            if all_terminal {
+                return self.join_workers_until(deadline_instant, timeout_ms);
+            }
+            let remaining = deadline_instant.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(DispatchFailure::Timeout { ms: timeout_ms });
+            }
+            let state = self
+                .inner
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let (_state, _) = self
+                .inner
+                .wake
+                .wait_timeout(state, remaining)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+    }
+
+    fn join_workers_until(
+        &self,
+        deadline_instant: Instant,
+        timeout_ms: i128,
+    ) -> Result<(), DispatchFailure> {
+        loop {
+            let all_finished = {
+                let workers = self
+                    .inner
+                    .worker_handles
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                workers.iter().all(JoinHandle::is_finished)
+            };
+            if all_finished {
+                let mut workers = self
+                    .inner
+                    .worker_handles
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                for worker in workers.drain(..) {
+                    let _ = worker.join();
+                }
+                return Ok(());
+            }
+            if deadline_instant
+                .saturating_duration_since(Instant::now())
+                .is_zero()
+            {
+                return Err(DispatchFailure::Timeout { ms: timeout_ms });
+            }
+            std::thread::yield_now();
+        }
+    }
+
+    pub fn is_worker_thread(&self) -> bool {
+        if CURRENT_QUEUE.with(std::cell::Cell::get) == self.inner.id && self.inner.id != 0 {
+            return true;
+        }
+        let current = std::thread::current().id();
+        let workers = self
+            .inner
+            .worker_handles
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        workers.iter().any(|worker| worker.thread().id() == current)
+    }
+
+    #[must_use]
+    pub fn is_closed(&self) -> bool {
+        self.inner
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .closed
+    }
+
+    #[cfg(test)]
+    fn workers_joined_for_test(&self) -> bool {
+        self.inner
+            .worker_handles
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_empty()
+    }
+}
+
+impl Ticket {
+    #[must_use]
+    pub fn id(&self) -> u64 {
+        self.inner.id
+    }
+
+    pub fn task(&self) -> Result<String, DispatchFailure> {
+        let state = self
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.closed {
+            return Err(DispatchFailure::Closed("ticket"));
+        }
+        Ok(state.task.clone())
+    }
+
+    #[must_use]
+    pub fn status(&self) -> i32 {
+        let state = self
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.status
+    }
+
+    pub fn wait(&self, timeout_ms: i128) -> Result<(), DispatchFailure> {
+        let deadline_instant = deadline(timeout_ms)?;
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        loop {
+            if state.closed {
+                return Err(DispatchFailure::Closed("ticket"));
+            }
+            match state.status {
+                COMPLETED => return Ok(()),
+                FAILED => return Err(task_failed(state.error.clone())),
+                CANCELLED => return Err(DispatchFailure::Cancelled),
+                _ => {}
+            }
+            let remaining = deadline_instant.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(DispatchFailure::Timeout { ms: timeout_ms });
+            }
+            (state, _) = self
+                .inner
+                .wake
+                .wait_timeout(state, remaining)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+    }
+
+    pub fn cancel(&self) -> Result<bool, DispatchFailure> {
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.closed {
+            return Err(DispatchFailure::Closed("ticket"));
+        }
+        if state.status == PENDING {
+            state.status = CANCELLED;
+            self.inner.wake.notify_all();
+            self.inner.notify_queue();
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    #[must_use]
+    pub fn error(&self) -> Option<(i32, String)> {
+        let state = self
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.error.clone()
+    }
+
+    #[must_use]
+    pub fn is_done(&self) -> bool {
+        matches!(self.status(), COMPLETED | FAILED | CANCELLED)
+    }
+
+    pub fn close(&self) {
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.closed = true;
+        state.task.clear();
+        state.output.clear();
+        self.inner.wake.notify_all();
+    }
+
+    pub fn mark_running(&self) -> Result<(), DispatchFailure> {
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.closed || state.status != PENDING {
+            return Err(DispatchFailure::Closed("ticket"));
+        }
+        state.status = RUNNING;
+        Ok(())
+    }
+
+    pub fn mark_completed(&self) {
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.status == RUNNING {
+            state.status = COMPLETED;
+            self.inner.wake.notify_all();
+            self.inner.notify_queue();
+        }
+    }
+
+    pub fn mark_failed(&self, code: i32, message: String) {
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.status == RUNNING {
+            state.status = FAILED;
+            state.error = Some((code, message));
+            self.inner.wake.notify_all();
+            self.inner.notify_queue();
+        }
+    }
+
+    pub fn set_output(&self, output: String) -> Result<(), DispatchFailure> {
+        let max = bn_limits::dispatch_limits().output_max_bytes;
+        if output.len() > max {
+            return Err(DispatchFailure::OutOfRange {
+                what: "output length in bytes",
+                value: i128::try_from(output.len()).unwrap_or(i128::MAX),
+                min: 0,
+                max: i128::try_from(max).unwrap_or(i128::MAX),
+            });
+        }
+        self.inner
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .output = output;
+        Ok(())
+    }
+
+    pub fn take_output(&self) -> String {
+        std::mem::take(
+            &mut self
+                .inner
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .output,
+        )
+    }
+}
+
+impl TicketInner {
+    fn is_terminal(&self) -> bool {
+        let state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.closed || matches!(state.status, COMPLETED | FAILED | CANCELLED)
+    }
+
+    fn cancel_pending(&self) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.status == PENDING {
+            state.status = CANCELLED;
+            self.wake.notify_all();
+            self.notify_queue();
+        }
+    }
+
+    fn notify_queue(&self) {
+        if let Some(queue) = self.queue_wake.upgrade() {
+            queue.wake.notify_all();
+        }
+    }
+}
+
+impl Drop for QueueInner {
+    fn drop(&mut self) {
+        if let Ok(sender) = self.sender.get_mut() {
+            sender.take();
+        }
+        if let Ok(workers) = self.worker_handles.get_mut() {
+            for worker in workers.drain(..) {
+                let _ = worker.join();
+            }
+        }
+    }
+}
+
+fn next_ticket_id(tickets: &HashMap<u64, Arc<TicketInner>>) -> Result<u64, DispatchFailure> {
+    let random = SystemRandom::new();
+    let mut bytes = [0_u8; std::mem::size_of::<u64>()];
+    for _ in 0..8 {
+        random.fill(&mut bytes).map_err(|_| {
+            DispatchFailure::Unavailable("the system provides no entropy for ticket identifiers")
+        })?;
+        let id = (u64::from_ne_bytes(bytes) & 0x7fff_ffff).max(1);
+        if !tickets.contains_key(&id) {
+            return Ok(id);
+        }
+    }
+    Err(saturated())
+}
+
+fn task_failed(error: Option<(i32, String)>) -> DispatchFailure {
+    let (code, message) = error.unwrap_or((1, "the task failed".into()));
+    DispatchFailure::TaskFailed {
+        code: code.into(),
+        message,
+    }
+}
+
+fn saturated() -> DispatchFailure {
+    DispatchFailure::Saturated {
+        pending: bn_limits::dispatch_limits().pending_tickets_max,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn queue_rejects_invalid_workers_and_tracks_ticket_lifecycle() {
+        assert!(Queue::new(0, 1).is_err());
+        let queue = Queue::new(2, 1).expect("valid queue");
+        let ticket = queue.submit("Work".into()).expect("ticket");
+        ticket.wait(1_000).expect("no-op task completes");
+        assert_eq!(ticket.status(), COMPLETED);
+        queue.close(1_000).expect("close queue");
+    }
+
+    #[test]
+    fn close_cancels_pending_tickets() {
+        let queue = Queue::new(1, 1).expect("valid queue");
+        let started = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let release = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let running = queue
+            .submit_with("Running".into(), {
+                let started = Arc::clone(&started);
+                let release = Arc::clone(&release);
+                move |_ticket| {
+                    started.store(true, std::sync::atomic::Ordering::Release);
+                    while !release.load(std::sync::atomic::Ordering::Acquire) {
+                        std::thread::yield_now();
+                    }
+                }
+            })
+            .expect("running ticket");
+        while !started.load(std::sync::atomic::Ordering::Acquire) {
+            std::thread::yield_now();
+        }
+        let pending = queue.submit("Pending".into()).expect("pending ticket");
+        assert!(queue.close(1).is_err());
+        assert_eq!(pending.status(), CANCELLED);
+        release.store(true, std::sync::atomic::Ordering::Release);
+        running.wait(1_000).expect("running task completes");
+        queue.close(1_000).expect("close after drain");
+    }
+
+    #[test]
+    fn ticket_rejects_output_above_registry_bound() {
+        let queue = Queue::new(1, 1).expect("valid queue");
+        let ticket = queue.submit("Work".into()).expect("ticket");
+        let maximum = bn_limits::dispatch_limits().output_max_bytes;
+
+        assert!(ticket.set_output("x".repeat(maximum + 1)).is_err());
+        assert_eq!(ticket.take_output(), "");
+    }
+
+    #[test]
+    fn queue_rejects_the_ticket_after_the_pending_bound() {
+        let queue = Queue::new(1, 1).expect("valid queue");
+        let release = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        for _ in 0..bn_limits::dispatch_limits().pending_tickets_max {
+            let release_for_job = Arc::clone(&release);
+            queue
+                .submit_with("Work".into(), move |_ticket| {
+                    while !release_for_job.load(std::sync::atomic::Ordering::Acquire) {
+                        std::thread::yield_now();
+                    }
+                })
+                .expect("within pending bound");
+        }
+        assert!(matches!(
+            queue.submit("Overflow".into()),
+            Err(DispatchFailure::Saturated { .. })
+        ));
+        release.store(true, std::sync::atomic::Ordering::Release);
+        queue.close(1_000).expect("close saturated queue");
+    }
+
+    #[test]
+    fn concurrent_queue_runs_two_jobs_at_once() {
+        let queue = Queue::new(2, 1).expect("valid queue");
+        let rendezvous = Arc::new(std::sync::Barrier::new(2));
+        for _ in 0..2 {
+            let rendezvous = Arc::clone(&rendezvous);
+            queue
+                .submit_with("Work".into(), move |ticket| {
+                    rendezvous.wait();
+                    ticket.mark_completed();
+                })
+                .expect("job within queue bound");
+        }
+        queue.join(1_000).expect("both workers rendezvous");
+    }
+
+    #[test]
+    fn panic_in_one_job_fails_its_ticket_and_keeps_worker_available() {
+        let queue = Queue::new(1, 1).expect("valid queue");
+        let failed = queue
+            .submit_with("Panic".into(), |_ticket| panic!("controlled task panic"))
+            .expect("panic task submission");
+        let completed = queue
+            .submit_with("Later".into(), |ticket| {
+                ticket.mark_completed();
+            })
+            .expect("later task submission");
+
+        assert!(matches!(
+            failed.wait(1_000),
+            Err(DispatchFailure::TaskFailed { code: 1, message }) if message.contains("panic")
+        ));
+        completed.wait(1_000).expect("later task survives panic");
+        queue.close(1_000).expect("close after panic");
+        assert!(queue.workers_joined_for_test());
+    }
+
+    #[test]
+    fn close_disconnects_and_joins_idle_workers() {
+        let queue = Queue::new(2, 1).expect("valid queue");
+        queue.close(1_000).expect("close idle workers");
+        assert!(queue.workers_joined_for_test());
+    }
+
+    #[test]
+    fn worker_cannot_join_or_close_its_own_queue() {
+        let queue = Queue::new(1, 1).expect("valid queue");
+        let result = Arc::new(std::sync::Mutex::new(None));
+        let ticket = queue
+            .submit_with("SelfClose".into(), {
+                let queue = queue.clone();
+                let result = Arc::clone(&result);
+                move |_ticket| {
+                    *result
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                        Some(queue.close(100));
+                }
+            })
+            .expect("self-close ticket");
+        ticket.wait(1_000).expect("self-close task completes");
+        assert_eq!(
+            result
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take(),
+            Some(Err(DispatchFailure::SelfWait))
+        );
+        queue.close(1_000).expect("close after worker returns");
+    }
+
+    #[test]
+    fn ticket_ids_are_opaque_and_not_sequential() {
+        let queue = Queue::new(1, 1).expect("valid queue");
+        let first = queue.submit("First".into()).expect("first ticket");
+        first.wait(1_000).expect("first completes");
+        let second = queue.submit("Second".into()).expect("second ticket");
+        second.wait(1_000).expect("second completes");
+        assert_ne!(second.id(), first.id().wrapping_add(1));
+        queue.close(1_000).expect("close queue");
+    }
+
+    #[test]
+    fn close_deadline_does_not_claim_success_for_running_work() {
+        let queue = Queue::new(1, 1).expect("valid queue");
+        let started = Arc::new(std::sync::Barrier::new(2));
+        let release = Arc::new(std::sync::Barrier::new(2));
+        let started_by_job = Arc::clone(&started);
+        let release_for_job = Arc::clone(&release);
+        queue
+            .submit_with("Blocked".into(), move |ticket| {
+                started_by_job.wait();
+                release_for_job.wait();
+                ticket.mark_completed();
+            })
+            .expect("blocked task submission");
+        started.wait();
+
+        assert_eq!(queue.close(1), Err(DispatchFailure::Timeout { ms: 1 }));
+        assert!(!queue.workers_joined_for_test());
+        release.wait();
+        queue.close(1_000).expect("close after running task exits");
+        assert!(queue.workers_joined_for_test());
+    }
+
+    #[test]
+    fn cancelling_pending_ticket_prevents_user_code_from_running() {
+        let queue = Queue::new(1, 1).expect("valid queue");
+        let started = Arc::new(std::sync::Barrier::new(2));
+        let release = Arc::new(std::sync::Barrier::new(2));
+        let ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let started_by_job = Arc::clone(&started);
+        let release_for_job = Arc::clone(&release);
+        queue
+            .submit_with("Blocker".into(), move |ticket| {
+                started_by_job.wait();
+                release_for_job.wait();
+                ticket.mark_completed();
+            })
+            .expect("blocker submission");
+        started.wait();
+        let ran_by_job = Arc::clone(&ran);
+        let cancelled = queue
+            .submit_with("Cancelled".into(), move |_ticket| {
+                ran_by_job.store(true, std::sync::atomic::Ordering::Release);
+            })
+            .expect("queued submission");
+
+        assert!(cancelled.cancel().expect("cancel pending task"));
+        release.wait();
+        queue.join(1_000).expect("cancelled queue joins");
+        assert!(!ran.load(std::sync::atomic::Ordering::Acquire));
+        assert_eq!(cancelled.status(), CANCELLED);
+        queue.close(1_000).expect("close after cancellation");
+    }
+
+    #[test]
+    fn completed_tickets_do_not_consume_future_pending_capacity() {
+        let queue = Queue::new(1, 1).expect("valid queue");
+        for _ in 0..(bn_limits::dispatch_limits().pending_tickets_max + 8) {
+            let ticket = queue
+                .submit_with("Short".into(), |_ticket| {})
+                .expect("terminal ticket can be replaced");
+            ticket.wait(1_000).expect("short task completes");
+        }
+        queue.close(1_000).expect("close after capacity reuse");
+    }
+
+    #[test]
+    fn closing_ticket_preserves_terminal_failure_diagnostic() {
+        let queue = Queue::new(1, 1).expect("valid queue");
+        let ticket = queue
+            .submit_with("Failure".into(), |_ticket| panic!("diagnostic panic"))
+            .expect("failure task submission");
+        let _ = ticket.wait(1_000);
+        ticket.close();
+        assert_eq!(ticket.status(), FAILED);
+        assert!(matches!(
+            ticket.error(),
+            Some((1, message)) if message.contains("panic")
+        ));
+        queue.close(1_000).expect("close after failure");
+    }
+}

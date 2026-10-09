@@ -117,10 +117,20 @@ Warning policy, as in
 Companion process log verbosity.
 .TP
 .BI --log-file " file" ", " --no-log
-Companion process log path (default: the artifact path with a
-.I .log
-extension) or disable it. The log records the frontend stages, module roots,
-target support check, emission and every external tool invocation.
+Companion process log path, or disable it. By default the log is written
+beside the artifact, named after it with
+.I .bnbuild.log
+appended (
+.I app
+gives
+.IR app.bnbuild.log );
+no log is written beside an artifact that is not a regular file, such as
+.IR /dev/null .
+An explicit
+.B --log-file
+equal to the artifact is refused. The log is never written through a
+symbolic link. It records the frontend stages, module roots, target support
+check, emission and every external tool invocation.
 .TP
 .BI --config " file"
 Load warning, logging and toolchain configuration from

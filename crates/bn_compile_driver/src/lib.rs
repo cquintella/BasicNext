@@ -5,6 +5,7 @@
 
 pub mod artifact;
 pub mod build;
+pub mod cli;
 pub mod options;
 pub mod toolchain;
 

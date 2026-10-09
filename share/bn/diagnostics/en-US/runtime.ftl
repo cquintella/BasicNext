@@ -1,11 +1,11 @@
 # Runtime and IR diagnostics
-invalid-ir = Invalid intermediate representation: {$detail}
+invalid-ir = {$detail}
     .title = Invalid intermediate representation
     .code = INVALID_IR
     .label = invalid IR
     .cause = the lowered program broke an IR rule that validation enforces
     .help = this is a toolchain defect: report it with the program that triggers it
-ir-lowering = IR lowering failed: {$detail}
+ir-lowering = {$detail}
     .title = IR lowering failed
     .code = IR_LOWERING
     .label = unsupported lowering
@@ -23,7 +23,7 @@ IMPORT_EXPORT_NOT_FOUND = Qualified import failed: {$detail}.
     .label = not an export of the module
     .cause = the qualified name is neither an EXPORT of the module nor a nested module
     .help = export the declaration from the module, or correct the qualified name
-MODULE_LIMIT = Module graph limit exceeded: {$detail}.
+MODULE_LIMIT = {$detail}.
     .title = Module graph limit exceeded
     .code = MODULE_LIMIT
     .label = module graph

@@ -55,7 +55,7 @@ use numeric::{
 use render::render;
 use temporal_ops::{is_temporal_builtin, temporal_call};
 
-pub use bn_rt::{DataProvider, StandardDataProvider};
+pub use bn_rt::{DataProvider, StandardDataProvider, data_error::DataFailure};
 
 use bn_diag::Diagnostic;
 use bn_ir::{

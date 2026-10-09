@@ -53,7 +53,7 @@ pub(super) fn integer_from_u64(count: u64, span: Span) -> Result<Value, Diagnost
 }
 
 pub(super) fn integer_overflow(span: Span) -> Diagnostic {
-    numeric_overflow("converting a value to INTEGER", span)
+    numeric_overflow(bn_diag::trap_texts::CONVERTING_TO_INTEGER, span)
 }
 
 /// # Panics

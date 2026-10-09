@@ -123,7 +123,7 @@ fn binary(
             left.checked_pow(u32::try_from(right).map_err(|_| {
                 runtime_error(
                     bn_diag::DiagId::INVALID_EXPONENT,
-                    "integer exponent is too large",
+                    bn_diag::trap_texts::EXPONENT_TOO_LARGE,
                     span,
                 )
             })?),
@@ -132,7 +132,7 @@ fn binary(
         ),
         "Power" => Err(runtime_error(
             bn_diag::DiagId::INVALID_EXPONENT,
-            "integer exponent cannot be negative",
+            bn_diag::trap_texts::EXPONENT_NEGATIVE,
             span,
         )),
         "AND" => checked_integer(Some(left & right), ty, span),
@@ -240,7 +240,7 @@ fn cast(value: Value, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
             }
             Value::Float(_, _) => Err(runtime_error(
                 bn_diag::DiagId::INVALID_NUMERIC_CONVERSION,
-                "NAN and infinity cannot convert to an integer",
+                bn_diag::trap_texts::NAN_OR_INF_TO_INT,
                 span,
             )),
             _ => Err(super::type_mismatch(
@@ -411,7 +411,8 @@ fn same_numeric_kind(value: &Value, ty: &Type) -> bool {
 }
 
 fn checked_integer(value: Option<i128>, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
-    let value = value.ok_or_else(|| numeric_overflow("performing an integer operation", span))?;
+    let value =
+        value.ok_or_else(|| numeric_overflow(bn_diag::trap_texts::PERFORMING_INTEGER_OP, span))?;
     let kind = integer_kind(ty).unwrap_or(IntegerType::Int32);
     let (minimum, maximum) = integer_range(kind);
     if !(minimum..=maximum).contains(&value) {
@@ -457,7 +458,7 @@ fn builtin(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnos
             ));
         };
         return Ok(text.chars().next().map_or_else(
-            || Value::error(1, "ASC requires a non-empty STRING".into()),
+            || Value::error(1, bn_diag::trap_texts::ASC_EMPTY_STRING.into()),
             |c| Value::Integer(i128::from(u32::from(c)), IntegerType::Int32),
         ));
     }
@@ -467,7 +468,7 @@ fn builtin(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnos
             .ok()
             .and_then(char::from_u32)
             .map_or_else(
-                || Value::error(1, "CHAR code is not a Unicode scalar".into()),
+                || Value::error(1, bn_diag::trap_texts::CHAR_NOT_UNICODE.into()),
                 |c| Value::String(shared_string(c.to_string())),
             ));
     }

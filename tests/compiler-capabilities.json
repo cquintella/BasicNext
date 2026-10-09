@@ -1329,6 +1329,39 @@
       "observation": "utc-clock"
     },
     {
+      "path": "tests/host/env_errors.bn",
+      "support": "llvm-supported",
+      "exit_code": 0,
+      "stdout": "1 2 3 4\nTRUE HOST.Env.Get\nTRUE HOST.Env.Get\nTRUE HOST.Env.Get\nTRUE HOST.Env.Get\nTRUE HOST.Env.Has\n",
+      "id": "cap.host-env",
+      "target": "llvm-native",
+      "op": "host.env.read",
+      "ir_instructions": [
+        "Binary",
+        "Call",
+        "Constant",
+        "Load",
+        "Member",
+        "Print",
+        "Store"
+      ],
+      "type_constraints": [
+        "STRING OR Error",
+        "BOOLEAN OR Error"
+      ],
+      "conditions": [
+        "HOST.Env.Get and HOST.Env.Has through bn_host_env",
+        "error codes read as capability members"
+      ],
+      "tests": [
+        "tests/host/env_errors.bn",
+        "tests/host/env.bn"
+      ],
+      "reject_diag": null,
+      "provider": "bn_rt",
+      "evidence": "fixture-exact"
+    },
+    {
       "path": "examples/net.bn",
       "support": "llvm-supported",
       "exit_code": 0,

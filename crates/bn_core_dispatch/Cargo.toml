@@ -1,0 +1,19 @@
+[package]
+name = "bn_core_dispatch"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.97"
+description = "Basic Next BNDispatch core: queues, tickets, lifecycle state, and bounded worker pools"
+license.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+bn_limits = { path = "../bn_limits" }
+bn_types = { path = "../bn_types" }
+ring = "0.17.14"
+
+[lints]
+workspace = true

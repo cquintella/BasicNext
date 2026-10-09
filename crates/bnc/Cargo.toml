@@ -15,5 +15,4 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
-bn_cli = { path = "../bn_cli" }
 bn_compile_driver = { path = "../bn_compile_driver" }

@@ -3,6 +3,7 @@
 //! HOST capabilities and `BN*` libraries (behind `lib-*` features).
 //! Executables (`bn`, future `bni`) and DAP compose from here.
 
+pub mod cli;
 pub mod environment;
 pub mod eval;
 pub mod hosts;

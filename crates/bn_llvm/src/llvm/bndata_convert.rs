@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::bndata_columns::emit_handle_operand;
 use super::*;
-use crate::ir::{CastOp, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
+use crate::ir::{InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
 
 pub(crate) fn lower_bndata_convert(
     text: &mut String,
@@ -28,10 +28,11 @@ pub(crate) fn lower_bndata_slice(
 ) {
     let dest = destination.0;
     let r = |name: &str| O::reg(format!("df{name}{dest}"));
-    let frame = O::reg(format!("v{}", arguments[0].0));
-    text.assign(
+    super::bndata_columns::emit_handle_operand(
+        text,
+        analysis,
         format!("dfslicehandle{dest}"),
-        I::cast(CastOp::PtrToInt, T::Ptr, frame, T::I64),
+        arguments[0],
     );
     let mut args = vec![(T::I64, r("slicehandle"))];
     for argument in &arguments[1..] {

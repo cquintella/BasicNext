@@ -142,6 +142,7 @@ dependencies = [
  "bn_diag",
  "bn_frontend",
  "bn_source",
+ "libc",
  "serde_json",
 ]
 
@@ -153,6 +154,34 @@ dependencies = [
  "bn_diag",
  "bn_llvm",
  "bn_source",
+]
+
+[[package]]
+name = "bn_core_dispatch"
+version = "0.6.4"
+dependencies = [
+ "bn_limits",
+ "bn_types",
+ "ring",
+]
+
+[[package]]
+name = "bn_core_log"
+version = "0.6.4"
+dependencies = [
+ "bn_core_text",
+ "bn_types",
+]
+
+[[package]]
+name = "bn_core_math"
+version = "0.6.4"
+
+[[package]]
+name = "bn_core_text"
+version = "0.6.4"
+dependencies = [
+ "bn_types",
 ]
 
 [[package]]
@@ -226,6 +255,7 @@ dependencies = [
 name = "bn_interp"
 version = "0.6.4"
 dependencies = [
+ "bn_core_text",
  "bn_diag",
  "bn_ir",
  "bn_rt",
@@ -299,6 +329,7 @@ dependencies = [
 name = "bn_lib_dispatch"
 version = "0.6.4"
 dependencies = [
+ "bn_core_dispatch",
  "bn_diag",
  "bn_interp",
  "bn_limits",
@@ -327,6 +358,7 @@ dependencies = [
 name = "bn_lib_log"
 version = "0.6.4"
 dependencies = [
+ "bn_core_log",
  "bn_diag",
  "bn_interp",
  "bn_rt",
@@ -339,6 +371,8 @@ dependencies = [
 name = "bn_lib_math"
 version = "0.6.4"
 dependencies = [
+ "bn_core_math",
+ "bn_core_text",
  "bn_diag",
  "bn_interp",
  "bn_rt",
@@ -419,6 +453,10 @@ version = "0.6.4"
 dependencies = [
  "aes-gcm",
  "argon2",
+ "bn_core_dispatch",
+ "bn_core_log",
+ "bn_core_math",
+ "bn_core_text",
  "bn_host_env",
  "bn_host_exec",
  "bn_limits",
@@ -468,7 +506,6 @@ dependencies = [
 name = "bnc"
 version = "0.6.4"
 dependencies = [
- "bn_cli",
  "bn_compile_driver",
 ]
 
@@ -476,7 +513,6 @@ dependencies = [
 name = "bni"
 version = "0.6.4"
 dependencies = [
- "bn_cli",
  "bn_dap",
  "bn_frontend",
  "bn_interpret_driver",

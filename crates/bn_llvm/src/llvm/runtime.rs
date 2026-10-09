@@ -70,6 +70,8 @@ declare i32 @bn_rt_dataframe_write_csv(i64, i64, i8, ptr)
 declare i64 @bn_rt_log_fields_create()
 declare i64 @bn_rt_log_logger_create()
 declare i32 @bn_rt_log_fields_set_string(i64, ptr, ptr)
+declare i32 @bn_rt_log_fields_set_integer(i64, ptr, i64)
+declare i32 @bn_rt_log_fields_set_boolean(i64, ptr, i8)
 declare i32 @bn_rt_log_logger_add_null(i64, i64)
 declare i32 @bn_rt_log_logger_add_console(i64, i64)
 declare i32 @bn_rt_log_logger_add_file(i64, ptr, i64)
@@ -356,6 +358,8 @@ pub(crate) fn bnlog_method(module: &Module, name: &str) -> Option<&'static str> 
     }
     match rest {
         "Fields.SetString" => Some("fields_set_string"),
+        "Fields.SetInteger" => Some("fields_set_integer"),
+        "Fields.SetBoolean" => Some("fields_set_boolean"),
         "Logger.AddNull" => Some("logger_add_null"),
         "Logger.AddConsole" => Some("logger_add_console"),
         "Logger.AddFile" => Some("logger_add_file"),

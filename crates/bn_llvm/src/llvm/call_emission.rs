@@ -86,7 +86,7 @@ pub(crate) fn lower_call_instruction(
                 "column_name" => {
                     lower_bndata_column_name(text, *destination, arguments, analysis);
                 }
-                "set_label" => lower_bndata_set_label(text, *destination, arguments),
+                "set_label" => lower_bndata_set_label(text, *destination, arguments, analysis),
                 "get_string" => lower_bndata_status_call(
                     text,
                     *destination,
@@ -148,30 +148,33 @@ pub(crate) fn lower_call_instruction(
                     analysis,
                     "bn_rt_dataframe_copy_float",
                 ),
-                "select" => lower_bndata_select(text, *destination, arguments),
+                "select" => lower_bndata_select(text, *destination, arguments, analysis),
                 "slice" => lower_bndata_slice(text, *destination, arguments, analysis),
                 "transpose" => lower_bndata_transform(
                     text,
                     *destination,
                     arguments,
                     "bn_rt_dataframe_transpose",
+                    analysis,
                 ),
                 "append_rows" => lower_bndata_binary_transform(
                     text,
                     *destination,
                     arguments,
                     "bn_rt_dataframe_append_rows",
+                    analysis,
                 ),
                 "append_columns" => lower_bndata_binary_transform(
                     text,
                     *destination,
                     arguments,
                     "bn_rt_dataframe_append_columns",
+                    analysis,
                 ),
-                "join" => lower_bndata_join(text, *destination, arguments, 0),
-                "left_join" => lower_bndata_join(text, *destination, arguments, 1),
-                "right_join" => lower_bndata_join(text, *destination, arguments, 2),
-                "full_join" => lower_bndata_join(text, *destination, arguments, 3),
+                "join" => lower_bndata_join(text, *destination, arguments, 0, analysis),
+                "left_join" => lower_bndata_join(text, *destination, arguments, 1, analysis),
+                "right_join" => lower_bndata_join(text, *destination, arguments, 2, analysis),
+                "full_join" => lower_bndata_join(text, *destination, arguments, 3, analysis),
                 "convert_integer" => lower_bndata_convert(
                     text,
                     *destination,

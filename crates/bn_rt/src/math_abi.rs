@@ -239,7 +239,7 @@ pub extern "C" fn bn_rt_math_mode_i32(ptr: *const i32, len: i32, out: *mut f64) 
     }
 }
 
-fn reduce_f64(name: &str, ptr: *const f64, len: i32) -> stats::Reduction {
+fn reduce_slice_f64(name: &str, ptr: *const f64, len: i32) -> stats::Reduction {
     stats::reduce_f64(name, float_slice(ptr, len))
 }
 
@@ -256,7 +256,7 @@ macro_rules! float_reduction {
         #[allow(unsafe_code)]
         #[unsafe(no_mangle)]
         pub extern "C" fn $export(ptr: *const f64, len: i32) -> f64 {
-            match reduce_f64($name, ptr, len) {
+            match reduce_slice_f64($name, ptr, len) {
                 stats::Reduction::Float(value) => value,
                 stats::Reduction::Na => f64::NAN,
             }
@@ -275,7 +275,7 @@ float_reduction!(bn_rt_math_variance_f64, "VARIANCE");
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_math_mode_f64(ptr: *const f64, len: i32, out: *mut f64) -> i32 {
-    match reduce_f64("MODE", ptr, len) {
+    match reduce_slice_f64("MODE", ptr, len) {
         stats::Reduction::Na => 1,
         stats::Reduction::Float(value) => {
             if !out.is_null() {

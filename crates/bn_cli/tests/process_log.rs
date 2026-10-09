@@ -1,4 +1,4 @@
-use bn_cli::process_log::{LogLevel, ProcessLog};
+use bn_cli::process_log::{LogLevel, LogTarget, ProcessLog};
 
 #[test]
 fn parse_rejects_unknown_level() {
@@ -15,7 +15,8 @@ fn write_redacts_token_values_and_filters_events() {
     let mut log = ProcessLog::new(LogLevel::Info);
     log.event(LogLevel::Debug, "config", "ignored", "token=secret");
     log.event(LogLevel::Info, "config", "accepted", "token=secret");
-    log.write_to(&path).expect("process log writes");
+    log.write_to(&LogTarget::Explicit(path.clone()))
+        .expect("process log writes");
     let text = std::fs::read_to_string(&path).expect("process log is readable");
     let _ = std::fs::remove_file(path);
 

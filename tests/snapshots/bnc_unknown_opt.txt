@@ -1,0 +1,3 @@
+error: unknown or repeated option '--unknown-opt'
+usage: bnc [compile-options] <entry.bn>
+try: bnc --help

@@ -301,9 +301,7 @@ pub fn lower_validated_module_with_diagnostics(
     let module = validated.as_module();
     let start = module.entry().expect("validated entry point");
     let functions = analyze_reachable(module, start)?;
-    let mut text = String::from(
-        "; Basic Next 0.2\n@.bn_fmt_int = private unnamed_addr constant [5 x i8] c\"%lld\\00\"\n@.bn_fmt_uint = private unnamed_addr constant [5 x i8] c\"%llu\\00\"\n@.bn_fmt_float = private unnamed_addr constant [6 x i8] c\"%.17g\\00\"\n@.bn_fmt_str = private unnamed_addr constant [3 x i8] c\"%s\\00\"\n@.bn_fmt_error = private unnamed_addr constant [16 x i8] c\"Error(%lld, %s)\\00\"\n@.bn_asc_error = private unnamed_addr constant [32 x i8] c\"ASC requires a non-empty STRING\\00\"\n@.bn_char_error = private unnamed_addr constant [34 x i8] c\"CHAR code is not a Unicode scalar\\00\"\n@.bn_true = private unnamed_addr constant [5 x i8] c\"TRUE\\00\"\n@.bn_false = private unnamed_addr constant [6 x i8] c\"FALSE\\00\"\n@.bn_empty = private unnamed_addr constant [1 x i8] c\"\\00\"\n@.bn_eof = private constant [4 x i8] c\"EOF\\00\"\n",
-    );
+    let mut text = module_header();
     for (index, root) in policy
         .read_roots
         .iter()
@@ -1005,7 +1003,7 @@ use functions::{
 };
 #[path = "llvm/preamble.rs"]
 mod preamble;
-use preamble::emit_preamble;
+use preamble::{emit_preamble, module_header};
 #[path = "llvm/emission3.rs"]
 mod emission3;
 use emission3::{

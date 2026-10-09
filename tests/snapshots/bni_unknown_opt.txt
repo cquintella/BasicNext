@@ -1,0 +1,3 @@
+error: unknown or repeated option '--unknown-opt'
+usage: bni <eval|check|lex|run|lsp|dap> [options] <file.bn>
+try: bni --help

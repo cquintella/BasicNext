@@ -372,6 +372,18 @@ pub(crate) fn call_instruction_supported(
                     && values.get(&arguments[1]) == Some(&Type::String)
                     && values.get(&arguments[2]) == Some(&Type::String)
             }
+            Some("fields_set_integer" | "fields_set_boolean") => {
+                arguments.len() == 3
+                    && bnlog_resource_kind(module, &values[&arguments[0]]) == Some("Fields")
+                    && values.get(&arguments[1]) == Some(&Type::String)
+                    && values.get(&arguments[2]).is_some_and(|value| {
+                        if bnlog_method(module, name) == Some("fields_set_integer") {
+                            matches!(value, Type::Integer(_) | Type::IntegerLiteral(_))
+                        } else {
+                            *value == Type::Boolean
+                        }
+                    })
+            }
             Some("logger_add_null" | "logger_add_console") => {
                 arguments.len() == 2
                     && bnlog_resource_kind(module, &values[&arguments[0]]) == Some("Logger")

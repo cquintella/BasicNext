@@ -3,12 +3,11 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::{CStr, c_char};
-use std::io::Write as _;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-use super::log::{Level, Record};
+use super::log::{FileTransport, Level, Record, dispatch_log};
 use super::log_error::LogFailure;
 use super::policy::{POLICY_CONSOLE, POLICY_FILESYSTEM, allows};
 
@@ -22,12 +21,6 @@ fn failed(operation: &str, failure: &LogFailure) -> i32 {
         failure.cause(),
     );
     failure.code()
-}
-
-#[derive(Clone)]
-struct FileTransport {
-    path: String,
-    minimum: Level,
 }
 
 #[derive(Clone)]
@@ -437,38 +430,36 @@ pub extern "C" fn bn_rt_log_logger_log(
     if logger.closed {
         return failed(op, &LogFailure::Closed);
     }
-    let record = Record::now(&logger.label, level, &message, &logger.context, &provided);
+    let record = Record::with_timestamp(
+        crate::format_rfc3339(crate::timestamp_ms()),
+        &logger.label,
+        level,
+        &message,
+        &logger.context,
+        &provided,
+    );
     let Ok(line) = record.json_line() else {
         return failed(
             op,
             &LogFailure::RecordSerialization("record exceeds maximum size".into()),
         );
     };
-    if logger
-        .console_transports
-        .iter()
-        .any(|minimum| level <= *minimum)
-        && (super::libc_write_stdout(line.as_bytes()).is_err()
-            || super::libc_write_stdout(b"\n").is_err())
-    {
-        return failed(op, &LogFailure::IoFailed("cannot write to stdout".into()));
-    }
-    for transport in logger
-        .file_transports
-        .iter()
-        .filter(|transport| level <= transport.minimum)
-    {
-        let result = super::policy::open_path(
-            Path::new(&transport.path),
-            super::secure_fs::OpenMode::Append,
-        )
-        .and_then(|mut file| {
-            file.write_all(line.as_bytes())?;
-            file.write_all(b"\n")
-        });
-        if let Err(error) = result {
-            return failed(op, &LogFailure::IoFailed(error.to_string()));
-        }
+    let dispatch_res = dispatch_log(
+        &line,
+        level,
+        &logger.console_transports,
+        &logger.file_transports,
+        |text| {
+            super::libc_write_stdout(text.as_bytes())?;
+            super::libc_write_stdout(b"\n")
+        },
+        &|path| {
+            super::policy::open_path(path, super::secure_fs::OpenMode::Append)
+                .map(|file| Box::new(file) as Box<dyn std::io::Write>)
+        },
+    );
+    if let Err(failure) = dispatch_res {
+        return failed(op, &failure);
     }
     BN_LOG_OK
 }

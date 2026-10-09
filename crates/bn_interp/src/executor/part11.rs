@@ -52,7 +52,7 @@ impl Executor<'_, '_> {
                     bn_types::pointers::RestoreCheck::TypeMismatch => {
                         return Err(runtime_error(
                             bn_diag::DiagId::POINTER_TYPE_MISMATCH,
-                            "pointer element type does not match destination type",
+                            bn_diag::trap_texts::POINTER_TYPE_MISMATCH,
                             span,
                         ));
                     }

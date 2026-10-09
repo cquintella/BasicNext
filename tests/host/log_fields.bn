@@ -1,0 +1,27 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNLog Fields setters for every value type BNLog.bn declares, logged to the
+// console on both backends (known issue K7).
+IMPORT HOST.Console AS Console
+IMPORT BNLog AS Log
+
+FUNCTION Start() AS INTEGER
+    LET fields AS Log.Fields = NEW Log.Fields()
+    LET logger AS Log.Logger = NEW Log.Logger()
+    LET s AS VOID OR Error = fields.SetString("name", "ana")
+    LET i AS VOID OR Error = fields.SetInteger("count", 42)
+    LET big AS INT64 = 9000000000
+    LET j AS VOID OR Error = fields.SetInteger("big", big)
+    LET b AS VOID OR Error = fields.SetBoolean("ok", TRUE)
+    LET f AS VOID OR Error = fields.SetBoolean("off", FALSE)
+    IF s IS Error OR i IS Error OR j IS Error OR b IS Error OR f IS Error THEN
+        RETURN 1
+    END IF
+    LET console AS VOID OR Error = logger.AddConsole(2)
+    LET logged AS VOID OR Error = logger.Log(2, "fields", fields)
+    PRINT console IS Error, logged IS Error
+    RETURN 0
+END FUNCTION

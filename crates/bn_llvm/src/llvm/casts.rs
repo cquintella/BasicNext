@@ -195,7 +195,7 @@ pub(crate) fn emit_pointer_void_restore(
         bn_diag::DiagId::POINTER_TYPE_MISMATCH,
         vec![(
             "message",
-            Fact::Text("pointer element type does not match destination type".into()),
+            Fact::Text(bn_diag::trap_texts::POINTER_TYPE_MISMATCH.into()),
         )],
     );
 
@@ -413,7 +413,7 @@ fn emit_float_to_integer(
         bn_diag::DiagId::INVALID_NUMERIC_CONVERSION,
         vec![(
             "message",
-            Fact::Text("NAN and infinity cannot convert to an integer".into()),
+            Fact::Text(bn_diag::trap_texts::NAN_OR_INF_TO_INT.into()),
         )],
     );
     let wide = I::cast(CastOp::FPToSI, source.clone(), v(value), T::I128);

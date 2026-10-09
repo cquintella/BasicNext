@@ -1668,7 +1668,11 @@ struct InjectedDataProvider;
 static NEXT_PROVIDER: AtomicU64 = AtomicU64::new(0);
 
 impl bn_interp::DataProvider for InjectedDataProvider {
-    fn read_csv(&self, _text: &str, _separator: char) -> Result<Vec<Vec<String>>, String> {
+    fn read_csv(
+        &self,
+        _text: &str,
+        _separator: char,
+    ) -> Result<Vec<Vec<String>>, bn_interp::DataFailure> {
         Ok(vec![vec![String::from("provided")]])
     }
 }

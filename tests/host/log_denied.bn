@@ -1,0 +1,22 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Run with BN_FS_POLICY=deny or read-only: a log file the policy denies is
+// Error(Log.IO_FAILED) on both backends and the program goes on (bnlog.md
+// "Errors"; D2 of bucket 0.6.5c).
+IMPORT HOST.FileSystem AS FS
+IMPORT BNLog AS Log
+
+FUNCTION Start() AS INTEGER
+    LET fields AS Log.Fields = NEW Log.Fields()
+    LET logger AS Log.Logger = NEW Log.Logger()
+    LET added AS VOID OR Error = logger.AddFile("bn-log-denied.log", 2)
+    IF added IS Error THEN
+        PRINT added.Code = Log.IO_FAILED, added.Operation
+    END IF
+    LET logged AS VOID OR Error = logger.Log(2, "hello", fields)
+    PRINT "logged", logged IS Error
+    RETURN 0
+END FUNCTION

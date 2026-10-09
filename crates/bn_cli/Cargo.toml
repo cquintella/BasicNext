@@ -15,3 +15,6 @@ bn_diag = { path = "../bn_diag" }
 bn_frontend = { path = "../bn_frontend" }
 bn_source = { path = "../bn_source" }
 serde_json = "1.0"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

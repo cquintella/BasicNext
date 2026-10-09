@@ -1,0 +1,1 @@
+error: --trace is an interpreter option (bni run)

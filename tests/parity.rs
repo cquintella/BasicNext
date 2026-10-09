@@ -1765,6 +1765,21 @@ fn dispatch_ticket_matches_across_backends() {
 }
 
 #[test]
+fn dispatch_saturation_matches_across_backends() {
+    let path = "tests/host/dispatch_saturation.bn";
+    let output = bni()
+        .args(["run", path])
+        .output()
+        .expect("run dispatch saturation");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "SATURATED 76\nSUCCESS 1023\n"
+    );
+    native_matches_interpreter(path);
+}
+
+#[test]
 fn sqlite_example_tour_matches_across_backends() {
     let path = "examples/sqlite.bn";
     let output = bni()
@@ -2074,16 +2089,30 @@ fn interface_inherited_method_dispatch() {
     );
     assert_eq!(String::from_utf8_lossy(&interpreted.stdout), "base\n");
 
-    // bnc keeps its TARGET_UNSUPPORTED_OP support gap
+    // bnc keeps its TARGET_UNSUPPORTED_OP support gap, and nothing else:
+    // a real output path, so a second failure (the companion log of
+    // `-o /dev/null`, known issue K2/K5) cannot hide behind this one.
+    let directory = std::env::temp_dir().join(format!("bn-interface-gap-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).expect("create output directory");
+    let artifact = directory.join("interface-gap");
     let built = bnc()
-        .args([path, "-o", "/dev/null"])
+        .arg(path)
+        .arg("-o")
+        .arg(&artifact)
         .output()
         .expect("run bnc");
-    assert_ne!(built.status.code(), Some(0));
     let err = String::from_utf8_lossy(&built.stderr);
+    let _ = std::fs::remove_dir_all(&directory);
+    assert_eq!(built.status.code(), Some(2), "{err}");
+    let errors = err
+        .lines()
+        .filter(|line| line.starts_with("error["))
+        .collect::<Vec<_>>();
+    assert_eq!(errors.len(), 1, "{err}");
     assert!(
-        err.contains("TARGET_UNSUPPORTED_OP"),
-        "unexpected bnc error: {err}"
+        errors[0].starts_with("error[TARGET_UNSUPPORTED_OP]: native, ")
+            && errors[0].contains("calls to user-defined function 'Shape.Name'"),
+        "{err}"
     );
 }
 
@@ -2115,4 +2144,43 @@ fn upcast_to_imported_class_and_interface() {
 fn region_round_trip_through_pointer_to_void() {
     let path = "tests/grammar/valid/region-void-roundtrip.bn";
     native_and_interpreter_print(path, "3\n3\n1.5\n2.5\n3.5\n0\n0\n");
+}
+
+/// `BNData` failure messages carry their facts on both backends, from typed
+/// `DataFailure` values (bucket 0.6.5c R6, AC5): no text mapping, no facts
+/// refilled with zeros. Also the spec rules both backends now share:
+/// a duplicate or empty label is `INVALID_ARGUMENT`; a negative index or
+/// slice bound is reported as written; conversion follows `VAL`.
+#[test]
+fn data_failure_messages_carry_their_facts() {
+    native_and_interpreter_print(
+        "tests/host/data_messages.bn",
+        "duplicate column name \"x\"\n\
+         column length 3 does not match frame row count 2\n\
+         column \"nope\" not found\n\
+         column \"absent\" not found\n\
+         column index 5 out of range for frame with 1 columns\n\
+         row index 7 out of range for frame with 2 rows\n\
+         destination length 5 does not match column length 2\n\
+         row counts differ: left frame has 2, right frame has 3\n\
+         left key column \"nokey\" not found\n\
+         TRUE duplicate column name \"q\"\n\
+         TRUE a column label must not be empty\n\
+         FALSE\n\
+         TRUE row index -5 out of range for frame with 2 rows\n\
+         TRUE cannot use -3 as the slice bound\n\
+         FALSE 12 7 NA\n",
+    );
+}
+
+/// A `DataFrame` receiver still typed `DataFrame OR Error` (narrowed by an
+/// `IS Error` branch) reaches `Select` and `Slice` natively: one handle helper
+/// for every `BNData` operation (known issue K4; the native build emitted
+/// invalid LLVM before).
+#[test]
+fn bndata_operations_on_a_narrowed_receiver_build_natively() {
+    native_and_interpreter_print(
+        "tests/grammar/valid/bndata-csv.bn",
+        "2 2 age\nAna\n35 31.5\n31.5\n31.5 28.0 35.0\n2 2\n1 1\n",
+    );
 }

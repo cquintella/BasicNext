@@ -1,0 +1,14 @@
+[package]
+name = "bn_core_math"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.97"
+description = "Basic Next math domain core: scalar functions and statistical vector reductions"
+license.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true

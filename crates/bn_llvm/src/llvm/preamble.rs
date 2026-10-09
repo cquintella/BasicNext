@@ -473,3 +473,15 @@ fn emit_trampoline(
     });
     text.push_str("}\n");
 }
+
+/// The first lines of every module: the source banner and the string
+/// constants `PRINT`, `ASC` and `CHAR` read (texts from `bn_diag::trap_texts`).
+pub(crate) fn module_header() -> String {
+    format!(
+        "; Basic Next 0.2\n@.bn_fmt_int = private unnamed_addr constant [5 x i8] c\"%lld\\00\"\n@.bn_fmt_uint = private unnamed_addr constant [5 x i8] c\"%llu\\00\"\n@.bn_fmt_float = private unnamed_addr constant [6 x i8] c\"%.17g\\00\"\n@.bn_fmt_str = private unnamed_addr constant [3 x i8] c\"%s\\00\"\n@.bn_fmt_error = private unnamed_addr constant [16 x i8] c\"Error(%lld, %s)\\00\"\n@.bn_asc_error = private unnamed_addr constant [{} x i8] c\"{}\\00\"\n@.bn_char_error = private unnamed_addr constant [{} x i8] c\"{}\\00\"\n@.bn_true = private unnamed_addr constant [5 x i8] c\"TRUE\\00\"\n@.bn_false = private unnamed_addr constant [6 x i8] c\"FALSE\\00\"\n@.bn_empty = private unnamed_addr constant [1 x i8] c\"\\00\"\n@.bn_eof = private constant [4 x i8] c\"EOF\\00\"\n",
+        bn_diag::trap_texts::ASC_EMPTY_STRING.len() + 1,
+        bn_diag::trap_texts::ASC_EMPTY_STRING,
+        bn_diag::trap_texts::CHAR_NOT_UNICODE.len() + 1,
+        bn_diag::trap_texts::CHAR_NOT_UNICODE,
+    )
+}

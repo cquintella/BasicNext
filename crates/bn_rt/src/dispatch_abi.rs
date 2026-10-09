@@ -5,10 +5,8 @@
 use crate::dispatch_error::DispatchFailure;
 use std::collections::HashMap;
 use std::ffi::{c_char, c_void};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Condvar, Mutex, OnceLock};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 
 pub type BNDispatchHandle = u64;
 pub type BNDispatchStatus = u32;
@@ -117,24 +115,21 @@ unsafe impl Sync for BNValue {}
 unsafe impl Send for BNDispatchError {}
 unsafe impl Sync for BNDispatchError {}
 
-struct TicketState {
-    done: bool,
-    cancelled: bool,
-    running: bool,
-    result: BNValue,
-    error: BNDispatchError,
+/// What a task left for `AWAIT`. Created before the task is submitted and
+/// shared with it, so a task that finishes before `submit_with` returns
+/// still records its result.
+struct Outcome {
+    result: Mutex<BNValue>,
+    error: Mutex<BNDispatchError>,
 }
 
 struct Ticket {
-    state: Mutex<TicketState>,
-    wake: Condvar,
+    core: bn_core_dispatch::Ticket,
+    outcome: Arc<Outcome>,
 }
 
 struct Queue {
-    closed: AtomicBool,
-    workers: u32,
-    active: Mutex<u32>,
-    idle: Condvar,
+    core: bn_core_dispatch::Queue,
     tickets: Mutex<Vec<BNDispatchHandle>>,
 }
 
@@ -172,13 +167,9 @@ fn failed(operation: &str, failure: &DispatchFailure) -> BNDispatchStatus {
         DispatchFailure::Timeout { .. } => BN_DISPATCH_TIMEOUT,
         DispatchFailure::Closed(_) => BN_DISPATCH_CLOSED,
         DispatchFailure::Cancelled => BN_DISPATCH_CANCELLED,
+        DispatchFailure::Saturated { .. } => BN_DISPATCH_LIMIT,
         _ => BN_DISPATCH_ERROR,
     }
-}
-
-thread_local! {
-    /// The queue whose task this thread runs; 0 outside a worker.
-    static CURRENT_QUEUE: std::cell::Cell<BNDispatchHandle> = const { std::cell::Cell::new(0) };
 }
 
 /// `Queue.Serial()` and `Queue.Concurrent(workers)`.
@@ -211,8 +202,12 @@ fn new_queue(workers: usize, out_queue: *mut BNDispatchHandle) -> BNDispatchStat
     if out_queue.is_null() {
         return BN_DISPATCH_ERROR;
     }
-    let workers = u32::try_from(workers).unwrap_or(u32::MAX);
     let handle = next_handle();
+    let core_queue =
+        match bn_core_dispatch::Queue::new(i128::try_from(workers).unwrap_or(1), handle) {
+            Ok(queue) => queue,
+            Err(failure) => return failed("BNDispatch.Queue.Create", &failure),
+        };
     registry()
         .queues
         .lock()
@@ -220,10 +215,7 @@ fn new_queue(workers: usize, out_queue: *mut BNDispatchHandle) -> BNDispatchStat
         .insert(
             handle,
             Arc::new(Queue {
-                closed: AtomicBool::new(false),
-                workers,
-                active: Mutex::new(0),
-                idle: Condvar::new(),
+                core: core_queue,
                 tickets: Mutex::new(Vec::new()),
             }),
         );
@@ -258,7 +250,7 @@ pub extern "C" fn bn_rt_dispatch_submit(
     let Some(queue_ref) = queue_ref else {
         return BN_DISPATCH_INVALID_HANDLE;
     };
-    if queue_ref.closed.load(Ordering::Acquire) {
+    if queue_ref.core.is_closed() {
         return failed("BNDispatch.Queue.Async", &DispatchFailure::Closed("queue"));
     }
     let args = if argument_count == 0 {
@@ -270,109 +262,70 @@ pub extern "C" fn bn_rt_dispatch_submit(
         }
     };
     let ticket_handle = next_handle();
-    let ticket = Arc::new(Ticket {
-        state: Mutex::new(TicketState {
-            done: false,
-            cancelled: false,
-            running: false,
-            result: BNValue::null(),
-            error: BNDispatchError::empty(),
-        }),
-        wake: Condvar::new(),
+    let Some(task) = task else {
+        return BN_DISPATCH_ERROR;
+    };
+    let context = context as usize;
+    let outcome = Arc::new(Outcome {
+        result: Mutex::new(BNValue::null()),
+        error: Mutex::new(BNDispatchError::empty()),
+    });
+    let task_outcome = Arc::clone(&outcome);
+    let submit_res =
+        queue_ref
+            .core
+            .submit_with(format!("task_{ticket_handle}"), move |core_ticket| {
+                if core_ticket.status() == bn_core_dispatch::CANCELLED {
+                    task_outcome
+                        .error
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .code = BN_DISPATCH_CANCELLED;
+                    return;
+                }
+                let mut result = BNValue::null();
+                let mut error = BNDispatchError::empty();
+                let status = task(
+                    context as *mut c_void,
+                    args.as_ptr(),
+                    u32::try_from(args.len()).unwrap_or(u32::MAX),
+                    &raw mut result,
+                    &raw mut error,
+                );
+                if core_ticket.status() != bn_core_dispatch::CANCELLED {
+                    *task_outcome
+                        .result
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner) = result;
+                    let mut err = task_outcome
+                        .error
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    *err = error;
+                    if status != BN_DISPATCH_OK && err.code == 0 {
+                        err.code = status;
+                    }
+                }
+            });
+    let core_ticket = match submit_res {
+        Ok(t) => t,
+        Err(failure) => return failed("BNDispatch.Queue.Async", &failure),
+    };
+    let ticket_storage = Arc::new(Ticket {
+        core: core_ticket,
+        outcome,
     });
     registry()
         .tickets
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .insert(ticket_handle, Arc::clone(&ticket));
+        .insert(ticket_handle, ticket_storage);
     queue_ref
         .tickets
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .push(ticket_handle);
-    let Some(task) = task else {
-        return BN_DISPATCH_ERROR;
-    };
-    let context = context as usize;
-    let workers = queue_ref.workers;
-    thread::spawn(move || {
-        CURRENT_QUEUE.with(|current| current.set(queue));
-        // A queue may create lightweight waiting threads, but only `workers`
-        // callbacks execute at once. This keeps the ABI deterministic without
-        // introducing a dependency on a particular executor implementation.
-        let mut active = queue_ref
-            .active
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        while *active >= workers && !queue_ref.closed.load(Ordering::Acquire) {
-            active = queue_ref
-                .idle
-                .wait(active)
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-        }
-        if queue_ref.closed.load(Ordering::Acquire) {
-            let mut state = ticket
-                .state
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            state.done = true;
-            state.running = false;
-            state.error.code = BN_DISPATCH_CLOSED;
-            ticket.wake.notify_all();
-            return;
-        }
-        *active += 1;
-        drop(active);
 
-        let mut state = ticket
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if state.cancelled {
-            state.done = true;
-            state.running = false;
-            ticket.wake.notify_all();
-            drop(state);
-            let mut active = queue_ref
-                .active
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            *active = active.saturating_sub(1);
-            queue_ref.idle.notify_all();
-            return;
-        }
-        state.running = true;
-        drop(state);
-        let mut result = BNValue::null();
-        let mut error = BNDispatchError::empty();
-        let status = task(
-            context as *mut c_void,
-            args.as_ptr(),
-            u32::try_from(args.len()).unwrap_or(u32::MAX),
-            &raw mut result,
-            &raw mut error,
-        );
-        state = ticket
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state.done = true;
-        state.running = false;
-        if !state.cancelled {
-            state.result = result;
-            state.error = error;
-            if status != BN_DISPATCH_OK && state.error.code == 0 {
-                state.error.code = status;
-            }
-        }
-        ticket.wake.notify_all();
-        let mut active = queue_ref
-            .active
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *active = active.saturating_sub(1);
-        queue_ref.idle.notify_all();
-    });
     #[allow(unsafe_code)]
     unsafe {
         *out_ticket = ticket_handle;
@@ -411,45 +364,42 @@ pub extern "C" fn bn_rt_dispatch_await(
             BN_DISPATCH_INVALID_HANDLE
         };
     };
-    let deadline = match crate::dispatch_sync::deadline(i128::from(timeout_ms)) {
-        Ok(deadline) => deadline,
-        Err(failure) => return failed(OPERATION, &failure),
-    };
-    let mut state = ticket_ref
-        .state
+    if let Err(failure) = ticket_ref.core.wait(i128::from(timeout_ms)) {
+        if matches!(failure, DispatchFailure::Cancelled) {
+            #[allow(unsafe_code)]
+            unsafe {
+                if !out_error.is_null() {
+                    (*out_error).code = BN_DISPATCH_CANCELLED;
+                }
+            }
+        }
+        return failed(OPERATION, &failure);
+    }
+    let result = *ticket_ref
+        .outcome
+        .result
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    while !state.done {
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
-            return failed(
-                OPERATION,
-                &DispatchFailure::Timeout {
-                    ms: i128::from(timeout_ms),
-                },
-            );
-        }
-        (state, _) = ticket_ref
-            .wake
-            .wait_timeout(state, remaining)
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-    }
+    let error = *ticket_ref
+        .outcome
+        .error
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     #[allow(unsafe_code)]
     unsafe {
         if !out_result.is_null() {
-            *out_result = state.result;
+            *out_result = result;
         }
         if !out_error.is_null() {
-            *out_error = state.error;
+            *out_error = error;
         }
     }
-    if state.cancelled || state.error.code == BN_DISPATCH_CLOSED {
-        // `Cancel`, or the queue's `Close`, removed the task before it ran.
+    if error.code == BN_DISPATCH_CANCELLED || error.code == BN_DISPATCH_CLOSED {
         return failed(OPERATION, &DispatchFailure::Cancelled);
     }
-    if state.error.code != 0 {
+    if error.code != 0 {
         let (code, message) =
-            crate::error_abi::code_and_message(state.error.message, i64::from(state.error.code));
+            crate::error_abi::code_and_message(error.message, i64::from(error.code));
         return failed(OPERATION, &DispatchFailure::TaskFailed { code, message });
     }
     BN_DISPATCH_OK
@@ -469,29 +419,36 @@ pub extern "C" fn bn_rt_dispatch_cancel(ticket: BNDispatchHandle) -> BNDispatchS
     let Some(ticket_ref) = ticket_ref else {
         return BN_DISPATCH_INVALID_HANDLE;
     };
-    let mut state = ticket_ref
-        .state
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if state.done {
+    if ticket_ref.core.is_done() {
         return BN_DISPATCH_CLOSED;
     }
-    state.cancelled = true;
-    state.done = true;
-    state.error.code = BN_DISPATCH_CANCELLED;
-    ticket_ref.wake.notify_all();
-    BN_DISPATCH_OK
+    match ticket_ref.core.cancel() {
+        Ok(true) => {
+            let mut err = ticket_ref
+                .outcome
+                .error
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            err.code = BN_DISPATCH_CANCELLED;
+            BN_DISPATCH_OK
+        }
+        Ok(false) => {
+            // Already running or completed
+            BN_DISPATCH_CLOSED
+        }
+        Err(failure) => failed("BNDispatch.Ticket.Cancel", &failure),
+    }
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_dispatch_ticket_close(ticket: BNDispatchHandle) -> BNDispatchStatus {
-    if registry()
+    let removed = registry()
         .tickets
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .remove(&ticket)
-        .is_some()
-    {
+        .remove(&ticket);
+    if let Some(t) = removed {
+        t.core.close();
         registry()
             .closed_tickets
             .lock()
@@ -537,30 +494,26 @@ pub extern "C" fn bn_rt_dispatch_ticket_cancel(
             BN_DISPATCH_INVALID_HANDLE
         };
     };
-    let mut state = ticket_ref
-        .state
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if state.cancelled || state.done || state.running {
-        #[allow(unsafe_code)]
-        unsafe {
-            if !out_cancelled.is_null() {
-                *out_cancelled = 0;
+    match ticket_ref.core.cancel() {
+        Ok(cancelled) => {
+            if cancelled {
+                let mut err = ticket_ref
+                    .outcome
+                    .error
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                err.code = BN_DISPATCH_CANCELLED;
             }
+            #[allow(unsafe_code)]
+            unsafe {
+                if !out_cancelled.is_null() {
+                    *out_cancelled = i32::from(cancelled);
+                }
+            }
+            BN_DISPATCH_OK
         }
-        return BN_DISPATCH_OK;
+        Err(failure) => failed(OPERATION, &failure),
     }
-    state.cancelled = true;
-    state.done = true;
-    state.error.code = BN_DISPATCH_CANCELLED;
-    ticket_ref.wake.notify_all();
-    #[allow(unsafe_code)]
-    unsafe {
-        if !out_cancelled.is_null() {
-            *out_cancelled = 1;
-        }
-    }
-    BN_DISPATCH_OK
 }
 
 #[unsafe(no_mangle)]
@@ -583,26 +536,23 @@ pub extern "C" fn bn_rt_dispatch_ticket_status(ticket: BNDispatchHandle) -> i32 
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .contains(&ticket)
         {
-            2 // COMPLETED
+            bn_core_dispatch::COMPLETED
         } else {
-            0 // PENDING
+            bn_core_dispatch::PENDING
         };
     };
-    let state = ticket_ref
-        .state
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if state.cancelled {
-        4 // CANCELLED
-    } else if state.done {
-        if state.error.code != 0 {
-            3 // FAILED
-        } else {
-            2 // COMPLETED
+    let status = ticket_ref.core.status();
+    if status == bn_core_dispatch::COMPLETED {
+        let err = ticket_ref
+            .outcome
+            .error
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if err.code != 0 {
+            return bn_core_dispatch::FAILED;
         }
-    } else {
-        i32::from(state.running)
     }
+    status
 }
 
 #[unsafe(no_mangle)]
@@ -622,11 +572,7 @@ pub extern "C" fn bn_rt_dispatch_ticket_is_done(ticket: BNDispatchHandle) -> i32
                 .contains(&ticket),
         );
     };
-    let state = ticket_ref
-        .state
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    i32::from(state.done)
+    i32::from(ticket_ref.core.is_done())
 }
 
 #[unsafe(no_mangle)]
@@ -644,11 +590,7 @@ pub extern "C" fn bn_rt_dispatch_ticket_error(
     let Some(ticket_ref) = ticket_ref else {
         return 0;
     };
-    let state = ticket_ref
-        .state
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if state.cancelled {
+    if ticket_ref.core.status() == bn_core_dispatch::CANCELLED {
         crate::set_error_report(
             DispatchFailure::Cancelled.code(),
             "BNDispatch.Ticket.Error",
@@ -667,9 +609,14 @@ pub extern "C" fn bn_rt_dispatch_ticket_error(
         }
         return 1;
     }
-    if state.error.code != 0 {
+    let error = *ticket_ref
+        .outcome
+        .error
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if error.code != 0 {
         let (code, message) =
-            crate::error_abi::code_and_message(state.error.message, i64::from(state.error.code));
+            crate::error_abi::code_and_message(error.message, i64::from(error.code));
         let failure = DispatchFailure::TaskFailed { code, message };
         crate::set_error_report(
             failure.code(),
@@ -699,9 +646,19 @@ pub extern "C" fn bn_rt_dispatch_queue_close(
     queue: BNDispatchHandle,
     timeout_ms: i64,
 ) -> BNDispatchStatus {
-    // The closed queue stays registered, so a later submit reports `CLOSED`
-    // rather than an unknown handle.
-    wait_for_queue(queue, timeout_ms, "BNDispatch.Queue.Close", true)
+    let queue_ref = registry()
+        .queues
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(&queue)
+        .cloned();
+    let Some(queue_ref) = queue_ref else {
+        return BN_DISPATCH_INVALID_HANDLE;
+    };
+    match queue_ref.core.close(i128::from(timeout_ms)) {
+        Ok(()) => BN_DISPATCH_OK,
+        Err(failure) => failed("BNDispatch.Queue.Close", &failure),
+    }
 }
 
 /// `queue.Join(timeoutMs)`: waits until every ticket is done.
@@ -709,17 +666,6 @@ pub extern "C" fn bn_rt_dispatch_queue_close(
 pub extern "C" fn bn_rt_dispatch_queue_join(
     queue: BNDispatchHandle,
     timeout_ms: i64,
-) -> BNDispatchStatus {
-    wait_for_queue(queue, timeout_ms, "BNDispatch.Queue.Join", false)
-}
-
-/// Waits until every ticket of `queue` is done, first closing it when
-/// `close` is set.
-fn wait_for_queue(
-    queue: BNDispatchHandle,
-    timeout_ms: i64,
-    operation: &str,
-    close: bool,
 ) -> BNDispatchStatus {
     let queue_ref = registry()
         .queues
@@ -730,57 +676,9 @@ fn wait_for_queue(
     let Some(queue_ref) = queue_ref else {
         return BN_DISPATCH_INVALID_HANDLE;
     };
-    if CURRENT_QUEUE.with(std::cell::Cell::get) == queue {
-        return failed(operation, &DispatchFailure::SelfWait);
-    }
-    let deadline = match crate::dispatch_sync::deadline(i128::from(timeout_ms)) {
-        Ok(deadline) => deadline,
-        Err(failure) => return failed(operation, &failure),
-    };
-    if close {
-        queue_ref.closed.store(true, Ordering::Release);
-        queue_ref.idle.notify_all();
-    }
-    loop {
-        let handles = queue_ref
-            .tickets
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
-        let all_done = handles.iter().all(|handle| {
-            registry()
-                .tickets
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .get(handle)
-                .is_none_or(|ticket| {
-                    ticket
-                        .state
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .done
-                })
-        });
-        if all_done {
-            return BN_DISPATCH_OK;
-        }
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
-            return failed(
-                operation,
-                &DispatchFailure::Timeout {
-                    ms: i128::from(timeout_ms),
-                },
-            );
-        }
-        let active = queue_ref
-            .active
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let _ = queue_ref
-            .idle
-            .wait_timeout(active, remaining.min(Duration::from_millis(1)))
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+    match queue_ref.core.join(i128::from(timeout_ms)) {
+        Ok(()) => BN_DISPATCH_OK,
+        Err(failure) => failed("BNDispatch.Queue.Join", &failure),
     }
 }
 
@@ -819,6 +717,7 @@ pub extern "C" fn bn_rt_dispatch_error_free(error: *mut BNDispatchError) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     extern "C" fn completed_task(
         _context: *mut c_void,

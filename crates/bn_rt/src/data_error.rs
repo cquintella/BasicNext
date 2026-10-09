@@ -236,54 +236,6 @@ impl DataFailure {
             }
         }
     }
-
-    /// Construct a [`DataFailure`] from a runtime error string.
-    #[must_use]
-    pub fn from_message(message: &str) -> Self {
-        match message {
-            "duplicate column name" | "duplicate column label" => {
-                Self::DuplicateColumn("duplicate column name".into())
-            }
-            "column length mismatch" => Self::ColumnLengthMismatch {
-                expected: 0,
-                got: 0,
-            },
-            "column layouts differ" => Self::ColumnLayoutsDiffer,
-            "row counts differ" => Self::RowCountsDiffer { left: 0, right: 0 },
-            "column not found" => Self::ColumnNotFound(String::new()),
-            "empty numeric column" => Self::EmptyNumericColumn,
-            "destination length mismatch" => Self::DestinationLengthMismatch {
-                expected: 0,
-                got: 0,
-            },
-            "column type or NA mismatch" => Self::ContainsNa(String::new()),
-            "column is not numeric" => Self::NonNumericColumn(String::new()),
-            "negative slice bound" => Self::NegativeBound {
-                bound: "slice bound",
-                value: -1,
-            },
-            "DataFrame index out of bounds" => Self::RowIndexOutOfRange { row: -1, count: 0 },
-            "column index out of bounds" => Self::ColumnIndexOutOfRange {
-                column: -1,
-                count: 0,
-            },
-            "ragged CSV row" => Self::RaggedRow {
-                expected: 0,
-                got: 0,
-            },
-            "unterminated quoted field" => Self::UnterminatedQuotedField,
-            s if s.contains("left key") => Self::KeyColumnNotFound {
-                key: s.into(),
-                side: "left",
-            },
-            s if s.contains("right key") => Self::KeyColumnNotFound {
-                key: s.into(),
-                side: "right",
-            },
-            s if s.contains("types differ") => Self::ColumnTypesDiffer { column: s.into() },
-            other => Self::InvalidFormat(other.into()),
-        }
-    }
 }
 
 #[cfg(test)]

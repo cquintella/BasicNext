@@ -500,7 +500,10 @@ pub(crate) fn lower_ownership_instruction(
                 &format!("%{tag}_released"),
                 live,
                 bn_diag::DiagId::DOUBLE_RELEASE,
-                vec![("detail", Fact::Text("binding was already released".into()))],
+                vec![(
+                    "detail",
+                    Fact::Text(bn_diag::trap_texts::BINDING_ALREADY_RELEASED.into()),
+                )],
             );
             text.emit(LlvmInst::store(
                 LlvmType::I1,

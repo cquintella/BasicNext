@@ -33,9 +33,8 @@ use bn_interp::provider::{CoreContext, Provider};
 use bn_interp::{
     collect_indices_pub as collect_indices, equals_pub as equals,
     integer_from_count_pub as integer_from_count, integer_pub as integer,
-    is_not_available_pub as is_not_available, name_not_found, parse_val_pub as parse_val,
-    render_pub as render, require_arity_pub as require_arity, runtime_error_pub as runtime_error,
-    type_mismatch, unsigned_indices_pub as unsigned_indices,
+    is_not_available_pub as is_not_available, name_not_found, render_pub as render,
+    require_arity_pub as require_arity, runtime_error_pub as runtime_error, type_mismatch,
 };
 use bn_rt::Reduction;
 use bn_rt::data_error::DataFailure;
@@ -175,16 +174,16 @@ impl DataProvider {
                     };
                 let rows = match core.host().data_provider().read_csv(&text, separator[0]) {
                     Ok(rows) => rows,
-                    Err(message) => {
-                        return Ok(failed(name, &DataFailure::from_message(&message)));
+                    Err(failure) => {
+                        return Ok(failed(name, &failure));
                     }
                 };
                 let frame = match bn_rt::frame_from_csv_rows(rows, has_header, |value| {
                     Value::String(shared_string(value))
                 }) {
                     Ok(frame) => frame,
-                    Err(message) => {
-                        return Ok(failed(name, &DataFailure::from_message(&message)));
+                    Err(failure) => {
+                        return Ok(failed(name, &failure));
                     }
                 };
                 let id = self.next;
@@ -394,18 +393,7 @@ impl DataProvider {
                 };
                 match set_column_label(frame, old_label, new_label) {
                     Ok(()) => Ok(Value::Null),
-                    Err(message) => Ok(failed(
-                        name,
-                        &match message.as_str() {
-                            "column not found" => {
-                                DataFailure::ColumnNotFound(old_label.to_string())
-                            }
-                            "duplicate column name" => {
-                                DataFailure::DuplicateColumn(new_label.to_string())
-                            }
-                            _ => DataFailure::from_message(&message),
-                        },
-                    )),
+                    Err(failure) => Ok(failed(name, &failure)),
                 }
             }
             "Transpose" => {
@@ -439,21 +427,7 @@ impl DataProvider {
                 };
                 let value = match get_dataframe_cell(frame, column_name, row) {
                     Ok(value) => value.clone(),
-                    Err(message) => {
-                        let failure = match message.as_str() {
-                            "column not found" => {
-                                DataFailure::ColumnNotFound(column_name.to_string())
-                            }
-                            "DataFrame index out of bounds" | "row index out of bounds" => {
-                                DataFailure::RowIndexOutOfRange {
-                                    row: i64::try_from(row).unwrap_or(i64::MAX),
-                                    count: frame.columns.first().map_or(0, |c| c.values.len()),
-                                }
-                            }
-                            _ => DataFailure::from_message(&message),
-                        };
-                        return Ok(failed(name, &failure));
-                    }
+                    Err(failure) => return Ok(failed(name, &failure)),
                 };
                 match method {
                     "GetString" if matches!(value, Value::String(_) | Value::NotAvailable) => {
@@ -492,38 +466,27 @@ impl DataProvider {
                         span,
                     ));
                 };
+                let to_integer = method == "ConvertToInteger";
                 let converter = |value: &Value| {
                     let Value::String(text) = value else {
-                        return Err("column is not STRING");
+                        return Err(DataFailure::ConversionFailed {
+                            column: column_name.to_string(),
+                            reason: "failed to convert column".into(),
+                        });
                     };
-                    if text.trim().is_empty() {
-                        return Ok(Value::NotAvailable);
-                    }
-                    let number = parse_val(text);
-                    if method == "ConvertToFloat" {
-                        Ok(Value::Float(number, FloatType::Float64))
-                    } else if number.is_finite()
-                        && number.trunc() >= f64::from(i32::MIN)
-                        && number.trunc() <= f64::from(i32::MAX)
-                    {
-                        Ok(Value::Integer(number.trunc() as i128, IntegerType::Int32))
-                    } else {
-                        Err("integer conversion overflow")
-                    }
+                    Ok(match bn_rt::convert_cell(text, to_integer, column_name)? {
+                        bn_rt::ConvertedCell::Integer(number) => {
+                            Value::Integer(i128::from(number), IntegerType::Int32)
+                        }
+                        bn_rt::ConvertedCell::Float(number) => {
+                            Value::Float(number, FloatType::Float64)
+                        }
+                        bn_rt::ConvertedCell::NotAvailable => Value::NotAvailable,
+                    })
                 };
                 match convert_dataframe_column(frame, column_name, converter) {
                     Ok(()) => Ok(Value::Null),
-                    Err("column not found") => Ok(failed(
-                        name,
-                        &DataFailure::ColumnNotFound(column_name.to_string()),
-                    )),
-                    Err(_) => Ok(failed(
-                        name,
-                        &DataFailure::ConversionFailed {
-                            column: column_name.to_string(),
-                            reason: "failed to convert column".into(),
-                        },
-                    )),
+                    Err(failure) => Ok(failed(name, &failure)),
                 }
             }
             "ZScore" => {
@@ -553,16 +516,7 @@ impl DataProvider {
                     match zscore_column(frame, column_name, to_f64, from_f64, &Value::NotAvailable)
                     {
                         Ok(frame) => frame,
-                        Err(message) => {
-                            let failure = match message.as_str() {
-                                "column not found" => {
-                                    DataFailure::ColumnNotFound(column_name.to_string())
-                                }
-                                "empty numeric column" => DataFailure::EmptyNumericColumn,
-                                _ => DataFailure::from_message(&message),
-                            };
-                            return Ok(failed(name, &failure));
-                        }
+                        Err(failure) => return Ok(failed(name, &failure)),
                     };
                 let new_id = self.next;
                 self.next += 1;
@@ -584,24 +538,12 @@ impl DataProvider {
                     Value::Integer(number, _) => Ok(Some(*number as f64)),
                     Value::Float(number, _) => Ok(Some(*number)),
                     Value::NotAvailable => Ok(None),
-                    _ => Err("column is not numeric"),
+                    _ => Err(DataFailure::NonNumericColumn(column_name.to_string())),
                 };
                 match dataframe_reduce_column(frame, column_name, method, to_f64) {
                     Ok(Reduction::Float(val)) => Ok(Value::Float(val, FloatType::Float64)),
                     Ok(Reduction::Na) => Ok(Value::NotAvailable),
-                    Err(message) => {
-                        let failure = match message {
-                            "column not found" => {
-                                DataFailure::ColumnNotFound(column_name.to_string())
-                            }
-                            "empty numeric column" => DataFailure::EmptyNumericColumn,
-                            "column is not numeric" => {
-                                DataFailure::NonNumericColumn(column_name.to_string())
-                            }
-                            _ => DataFailure::from_message(message),
-                        };
-                        Ok(failed(name, &failure))
-                    }
+                    Err(failure) => Ok(failed(name, &failure)),
                 }
             }
             "CopyIntegerColumn" | "CopyFloatColumn" => {
@@ -630,43 +572,18 @@ impl DataProvider {
                     ("CopyFloatColumn", Value::Float(number, _)) => {
                         Ok(Value::Float(*number, FloatType::Float64))
                     }
-                    _ => Err("column type or NA mismatch"),
+                    _ => Err(DataFailure::TypeMismatch {
+                        expected: if method == "CopyIntegerColumn" {
+                            "INTEGER"
+                        } else {
+                            "FLOAT"
+                        },
+                        column: column_name.to_string(),
+                    }),
                 };
                 let values = match copy_dataframe_column(frame, column_name, target_len, adapter) {
                     Ok(values) => values,
-                    Err("column not found") => {
-                        return Ok(failed(
-                            name,
-                            &DataFailure::ColumnNotFound(column_name.to_string()),
-                        ));
-                    }
-                    Err("destination length mismatch") => {
-                        let expected = frame
-                            .columns
-                            .iter()
-                            .find(|c| c.name == **column_name)
-                            .map_or(0, |c| c.values.len());
-                        return Ok(failed(
-                            name,
-                            &DataFailure::DestinationLengthMismatch {
-                                expected,
-                                got: target_len,
-                            },
-                        ));
-                    }
-                    Err(_) => {
-                        return Ok(failed(
-                            name,
-                            &DataFailure::TypeMismatch {
-                                expected: if method == "CopyIntegerColumn" {
-                                    "INTEGER"
-                                } else {
-                                    "FLOAT"
-                                },
-                                column: column_name.to_string(),
-                            },
-                        ));
-                    }
+                    Err(failure) => return Ok(failed(name, &failure)),
                 };
                 for (index, stored) in values.into_iter().enumerate() {
                     *core.memory_mut().get_mut(handle, index, span)? = stored;
@@ -695,28 +612,9 @@ impl DataProvider {
         })?;
         let selected = if method == "Select" {
             require_arity(method, arguments, 3, span)?;
-            let Some(row_indices) =
-                unsigned_indices(collect_indices(&arguments[1], core.memory(), span)?)
-            else {
-                return Ok(failed(
-                    &format!("BNData.DataFrame.{method}"),
-                    &DataFailure::RowIndexOutOfRange {
-                        row: -1,
-                        count: frame.columns.first().map_or(0, |c| c.values.len()),
-                    },
-                ));
-            };
-            let Some(column_indices) =
-                unsigned_indices(collect_indices(&arguments[2], core.memory(), span)?)
-            else {
-                return Ok(failed(
-                    &format!("BNData.DataFrame.{method}"),
-                    &DataFailure::ColumnIndexOutOfRange {
-                        column: -1,
-                        count: frame.columns.len(),
-                    },
-                ));
-            };
+            let row_indices = signed_indices(collect_indices(&arguments[1], core.memory(), span)?);
+            let column_indices =
+                signed_indices(collect_indices(&arguments[2], core.memory(), span)?);
             select_dataframe(frame, &row_indices, &column_indices)
         } else {
             require_arity(method, arguments, 5, span)?;
@@ -724,36 +622,13 @@ impl DataProvider {
             let (row_count, _) = integer(&arguments[2], span)?;
             let (start_col, _) = integer(&arguments[3], span)?;
             let (col_count, _) = integer(&arguments[4], span)?;
-            let values = [start_row, row_count, start_col, col_count]
-                .into_iter()
-                .map(|value| usize::try_from(value).ok())
-                .collect::<Option<Vec<_>>>();
-            let Some(values) = values else {
-                return Ok(failed(
-                    &format!("BNData.DataFrame.{method}"),
-                    &DataFailure::NegativeBound {
-                        bound: "slice bound",
-                        value: -1,
-                    },
-                ));
-            };
-            bn_rt::slice_dataframe(frame, values[0], values[1], values[2], values[3])
+            let [start_row, row_count, start_col, col_count] =
+                [start_row, row_count, start_col, col_count].map(saturating_i64);
+            bn_rt::slice_dataframe(frame, start_row, row_count, start_col, col_count)
         };
         let selected = match selected {
             Ok(frame) => frame,
-            Err(message) => {
-                let failure = match message.as_str() {
-                    "DataFrame index out of bounds" => DataFailure::RowIndexOutOfRange {
-                        row: -1,
-                        count: frame.columns.first().map_or(0, |c| c.values.len()),
-                    },
-                    "duplicate column name" => {
-                        DataFailure::DuplicateColumn("duplicate column name".into())
-                    }
-                    _ => DataFailure::from_message(&message),
-                };
-                return Ok(failed(&format!("BNData.DataFrame.{method}"), &failure));
-            }
+            Err(failure) => return Ok(failed(&format!("BNData.DataFrame.{method}"), &failure)),
         };
         let new_id = self.next;
         self.next += 1;
@@ -823,18 +698,7 @@ impl DataProvider {
             },
         ) {
             Ok(frame) => frame,
-            Err(message) => {
-                let failure = match message.as_str() {
-                    "left key column not found" => DataFailure::KeyColumnNotFound {
-                        key: left_label.to_string(),
-                        side: "left",
-                    },
-                    "right key column not found" => DataFailure::KeyColumnNotFound {
-                        key: right_label.to_string(),
-                        side: "right",
-                    },
-                    _ => DataFailure::from_message(&message),
-                };
+            Err(failure) => {
                 return Ok(failed(name, &failure));
             }
         };
@@ -881,8 +745,8 @@ impl DataProvider {
                 std::mem::discriminant(left) == std::mem::discriminant(right)
             }) {
                 Ok(frame) => frame,
-                Err(message) => {
-                    return Ok(failed(name, &DataFailure::from_message(&message)));
+                Err(failure) => {
+                    return Ok(failed(name, &failure));
                 }
             };
             let new_id = self.next;
@@ -892,18 +756,7 @@ impl DataProvider {
         }
         let columns = match append_columns(left, right) {
             Ok(frame) => frame,
-            Err(message) => {
-                let failure = match message.as_str() {
-                    "row counts differ" => {
-                        let left_rows = left.columns.first().map_or(0, |c| c.values.len());
-                        let right_rows = right.columns.first().map_or(0, |c| c.values.len());
-                        DataFailure::RowCountsDiffer {
-                            left: left_rows,
-                            right: right_rows,
-                        }
-                    }
-                    _ => DataFailure::from_message(&message),
-                };
+            Err(failure) => {
                 return Ok(failed(name, &failure));
             }
         };
@@ -974,25 +827,9 @@ impl DataProvider {
                 },
             ));
         }
-        let values_len = values.len();
         match add_dataframe_column(frame, column_name.to_string(), values) {
             Ok(()) => Ok(Value::Null),
-            Err(message) => {
-                let failure = match message.as_str() {
-                    "duplicate column name" => {
-                        DataFailure::DuplicateColumn(column_name.to_string())
-                    }
-                    "column length mismatch" => {
-                        let expected = frame.columns.first().map_or(0, |c| c.values.len());
-                        DataFailure::ColumnLengthMismatch {
-                            expected,
-                            got: values_len,
-                        }
-                    }
-                    _ => DataFailure::from_message(&message),
-                };
-                Ok(failed(name, &failure))
-            }
+            Err(failure) => Ok(failed(name, &failure)),
         }
     }
 
@@ -1039,6 +876,16 @@ fn failed(name: &str, failure: &DataFailure) -> Value {
         format!("BNData.{class}.{method}")
     };
     Value::error_report(failure.code(), &op_name, failure.message(), failure.cause())
+}
+
+/// An interpreter `INTEGER` as the `i64` the `DataFrame` primitives check;
+/// a value beyond `i64` saturates and is reported out of range.
+fn saturating_i64(value: i128) -> i64 {
+    i64::try_from(value).unwrap_or(if value < 0 { i64::MIN } else { i64::MAX })
+}
+
+fn signed_indices(values: Vec<i128>) -> Vec<i64> {
+    values.into_iter().map(saturating_i64).collect()
 }
 
 #[cfg(test)]

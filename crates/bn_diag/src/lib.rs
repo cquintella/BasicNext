@@ -12,6 +12,8 @@ use std::sync::OnceLock;
 
 use bn_source::{Position, Revision, SourceFile, SourceId, Span};
 
+pub mod trap_texts;
+
 /// Stable diagnostic identity: a validated handle into the single
 /// [`REGISTRY`] table. Every identity is a `const` on this type
 /// (`DiagId::TYPE_MISMATCH`); there is no way to construct an identity whose
@@ -1424,7 +1426,8 @@ mod tests {
 
     /// Gate (bucket 0.6.2b R7): every diagnostic explains itself — a
     /// specific title, a cause, and a help line — so the rustc-style
-    /// renderer never prints a bare message.
+    /// renderer never prints a bare message; and its message does not repeat
+    /// the title the renderer already prints (known issue K19).
     #[test]
     fn catalog_rows_have_title_cause_and_help() {
         let shard = [
@@ -1437,11 +1440,20 @@ mod tests {
         ]
         .join("\n");
         let mut failures = Vec::new();
-        let mut entry: Option<(String, Vec<&str>)> = None;
-        let mut check = |entry: Option<(String, Vec<&str>)>| {
-            let Some((id, attributes)) = entry else {
+        let mut entry: Option<(String, String, Vec<&str>)> = None;
+        let mut check = |entry: Option<(String, String, Vec<&str>)>| {
+            let Some((id, message, attributes)) = entry else {
                 return;
             };
+            // The renderer prints `title: message`; a message that starts with
+            // its own title would print it twice.
+            if let Some(title) = attributes
+                .iter()
+                .find_map(|line| line.strip_prefix(".title = "))
+                && message.starts_with(&format!("{title}: "))
+            {
+                failures.push(format!("{id}: message repeats its title"));
+            }
             let has = |name: &str| {
                 attributes
                     .iter()
@@ -1459,13 +1471,13 @@ mod tests {
                 continue;
             }
             if let Some(attribute) = line.strip_prefix("    ") {
-                if let Some((_, attributes)) = entry.as_mut() {
+                if let Some((_, _, attributes)) = entry.as_mut() {
                     attributes.push(attribute.trim());
                 }
             } else {
                 check(entry.take());
-                let id = line.split(" =").next().unwrap_or(line).to_string();
-                entry = Some((id, Vec::new()));
+                let (id, message) = line.split_once(" = ").unwrap_or((line, ""));
+                entry = Some((id.to_string(), message.to_string(), Vec::new()));
             }
         }
         check(entry);

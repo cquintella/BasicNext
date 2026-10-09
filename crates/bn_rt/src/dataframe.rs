@@ -7,6 +7,8 @@
 mod checked;
 pub use checked::{frame_from_csv_rows, slice_dataframe};
 
+use crate::data_error::DataFailure;
+
 /// Provider boundary for standard-library data ingestion.
 pub trait DataProvider: Send + Sync {
     /// Parses CSV text into rows.
@@ -14,7 +16,7 @@ pub trait DataProvider: Send + Sync {
     /// # Errors
     ///
     /// Returns an error when the input is not valid CSV.
-    fn read_csv(&self, text: &str, separator: char) -> Result<Vec<Vec<String>>, String>;
+    fn read_csv(&self, text: &str, separator: char) -> Result<Vec<Vec<String>>, DataFailure>;
 }
 
 /// Default statically linked CSV provider.
@@ -22,7 +24,7 @@ pub trait DataProvider: Send + Sync {
 pub struct StandardDataProvider;
 
 impl DataProvider for StandardDataProvider {
-    fn read_csv(&self, text: &str, separator: char) -> Result<Vec<Vec<String>>, String> {
+    fn read_csv(&self, text: &str, separator: char) -> Result<Vec<Vec<String>>, DataFailure> {
         parse_csv(text, separator)
     }
 }
@@ -68,25 +70,40 @@ pub fn join_dataframes<T: Clone>(
     left: &DataFrameResource<T>,
     right: &DataFrameResource<T>,
     config: &DataFrameJoinConfig<'_, T>,
-) -> Result<DataFrameResource<T>, String> {
+) -> Result<DataFrameResource<T>, DataFailure> {
     let Some(left_key) = left
         .columns
         .iter()
         .position(|column| column.name == config.left_label)
     else {
-        return Err("left key column not found".into());
+        return Err(DataFailure::KeyColumnNotFound {
+            key: config.left_label.to_string(),
+            side: "left",
+        });
     };
     let Some(right_key) = right
         .columns
         .iter()
         .position(|column| column.name == config.right_label)
     else {
-        return Err("right key column not found".into());
+        return Err(DataFailure::KeyColumnNotFound {
+            key: config.right_label.to_string(),
+            side: "right",
+        });
     };
-    if right.columns.iter().enumerate().any(|(index, column)| {
-        index != right_key && left.columns.iter().any(|left| left.name == column.name)
-    }) {
-        return Err("duplicate column label".into());
+    if let Some(dup) = right
+        .columns
+        .iter()
+        .enumerate()
+        .find_map(|(index, column)| {
+            if index != right_key && left.columns.iter().any(|left| left.name == column.name) {
+                Some(column.name.clone())
+            } else {
+                None
+            }
+        })
+    {
+        return Err(DataFailure::DuplicateColumn(dup));
     }
     let left_rows = left.columns.first().map_or(0, |column| column.values.len());
     let right_rows = right
@@ -183,12 +200,28 @@ pub fn join_dataframes<T: Clone>(
     Ok(DataFrameResource { columns })
 }
 
+/// 0-based indices as positions below `count`, or the first index (negative or
+/// too large) that is not one.
+fn checked_indices(indices: &[i64], count: usize) -> Result<Vec<usize>, i64> {
+    indices
+        .iter()
+        .map(|&index| {
+            usize::try_from(index)
+                .ok()
+                .filter(|&at| at < count)
+                .ok_or(index)
+        })
+        .collect()
+}
+
+/// The first column name that appears twice, for `DuplicateColumn`.
 #[must_use]
-pub fn duplicate_column_names<T>(columns: &[DataFrameColumn<T>]) -> bool {
+pub fn first_duplicate_column<T>(columns: &[DataFrameColumn<T>]) -> Option<String> {
     let mut seen = std::collections::HashSet::with_capacity(columns.len());
     columns
         .iter()
-        .any(|column| !seen.insert(column.name.as_str()))
+        .find(|column| !seen.insert(column.name.as_str()))
+        .map(|column| column.name.clone())
 }
 
 /// Appends rows after checking that both frames have the same column layout.
@@ -201,7 +234,7 @@ pub fn append_rows<T: Clone>(
     right: &DataFrameResource<T>,
     is_not_available: fn(&T) -> bool,
     same_type: fn(&T, &T) -> bool,
-) -> Result<DataFrameResource<T>, String> {
+) -> Result<DataFrameResource<T>, DataFailure> {
     if left.columns.len() != right.columns.len()
         || left
             .columns
@@ -209,14 +242,16 @@ pub fn append_rows<T: Clone>(
             .zip(&right.columns)
             .any(|(left, right)| left.name != right.name)
     {
-        return Err("column layouts differ".into());
+        return Err(DataFailure::ColumnLayoutsDiffer);
     }
     let mut columns = left.columns.clone();
     for (column, other) in columns.iter_mut().zip(&right.columns) {
         let left_value = column.values.iter().find(|value| !is_not_available(value));
         let right_value = other.values.iter().find(|value| !is_not_available(value));
         if left_value.is_some_and(|left| right_value.is_some_and(|right| !same_type(left, right))) {
-            return Err("column types differ".into());
+            return Err(DataFailure::ColumnTypesDiffer {
+                column: column.name.clone(),
+            });
         }
         column.values.extend(other.values.clone());
     }
@@ -231,23 +266,30 @@ pub fn append_rows<T: Clone>(
 pub fn append_columns<T: Clone>(
     left: &DataFrameResource<T>,
     right: &DataFrameResource<T>,
-) -> Result<DataFrameResource<T>, String> {
+) -> Result<DataFrameResource<T>, DataFailure> {
     let rows = left.columns.first().map_or(0, |column| column.values.len());
-    if rows
-        != right
-            .columns
-            .first()
-            .map_or(0, |column| column.values.len())
-    {
-        return Err("row counts differ".into());
+    let right_rows = right
+        .columns
+        .first()
+        .map_or(0, |column| column.values.len());
+    if rows != right_rows {
+        return Err(DataFailure::RowCountsDiffer {
+            left: rows,
+            right: right_rows,
+        });
     }
-    if left.columns.iter().any(|left_column| {
-        right
+    if let Some(dup) = left.columns.iter().find_map(|left_column| {
+        if right
             .columns
             .iter()
             .any(|right_column| left_column.name == right_column.name)
+        {
+            Some(left_column.name.clone())
+        } else {
+            None
+        }
     }) {
-        return Err("duplicate column label".into());
+        return Err(DataFailure::DuplicateColumn(dup));
     }
     let mut columns = left.columns.clone();
     columns.extend(right.columns.clone());
@@ -262,35 +304,37 @@ pub fn append_columns<T: Clone>(
 /// column name.
 pub fn select_dataframe<T: Clone>(
     frame: &DataFrameResource<T>,
-    row_indices: &[usize],
-    column_indices: &[usize],
-) -> Result<DataFrameResource<T>, String> {
+    row_indices: &[i64],
+    column_indices: &[i64],
+) -> Result<DataFrameResource<T>, DataFailure> {
     let row_count = frame
         .columns
         .first()
         .map_or(0, |column| column.values.len());
-    if row_indices.iter().any(|row| *row >= row_count)
-        || column_indices
-            .iter()
-            .any(|column| *column >= frame.columns.len())
-    {
-        return Err("DataFrame index out of bounds".into());
-    }
-    let columns = column_indices
+    let rows =
+        checked_indices(row_indices, row_count).map_err(|row| DataFailure::RowIndexOutOfRange {
+            row,
+            count: row_count,
+        })?;
+    let column_total = frame.columns.len();
+    let columns = checked_indices(column_indices, column_total).map_err(|column| {
+        DataFailure::ColumnIndexOutOfRange {
+            column,
+            count: column_total,
+        }
+    })?;
+    let columns = columns
         .iter()
         .map(|column| {
             let source = &frame.columns[*column];
             DataFrameColumn {
                 name: source.name.clone(),
-                values: row_indices
-                    .iter()
-                    .map(|row| source.values[*row].clone())
-                    .collect(),
+                values: rows.iter().map(|row| source.values[*row].clone()).collect(),
             }
         })
         .collect::<Vec<_>>();
-    if duplicate_column_names(&columns) {
-        return Err("duplicate column name".into());
+    if let Some(name) = first_duplicate_column(&columns) {
+        return Err(DataFailure::DuplicateColumn(name));
     }
     Ok(DataFrameResource { columns })
 }
@@ -305,21 +349,25 @@ pub fn set_column_label<T>(
     frame: &mut DataFrameResource<T>,
     old_label: &str,
     new_label: &str,
-) -> Result<(), String> {
-    if new_label.is_empty()
-        || frame
-            .columns
-            .iter()
-            .any(|column| column.name == new_label && column.name != old_label)
+) -> Result<(), DataFailure> {
+    if new_label.is_empty() {
+        return Err(DataFailure::InvalidArgument(
+            "a column label must not be empty".into(),
+        ));
+    }
+    if frame
+        .columns
+        .iter()
+        .any(|column| column.name == new_label && column.name != old_label)
     {
-        return Err("invalid or duplicate column label".into());
+        return Err(DataFailure::DuplicateColumn(new_label.to_string()));
     }
     let Some(column) = frame
         .columns
         .iter_mut()
         .find(|column| column.name == old_label)
     else {
-        return Err("column not found".into());
+        return Err(DataFailure::ColumnNotFound(old_label.to_string()));
     };
     column.name = new_label.to_string();
     Ok(())
@@ -363,16 +411,17 @@ pub fn add_dataframe_column<T>(
     frame: &mut DataFrameResource<T>,
     name: String,
     values: Vec<T>,
-) -> Result<(), String> {
+) -> Result<(), DataFailure> {
     if frame.columns.iter().any(|column| column.name == name) {
-        return Err("duplicate column name".into());
+        return Err(DataFailure::DuplicateColumn(name));
     }
-    if frame
-        .columns
-        .first()
-        .is_some_and(|column| column.values.len() != values.len())
+    if let Some(first) = frame.columns.first()
+        && first.values.len() != values.len()
     {
-        return Err("column length mismatch".into());
+        return Err(DataFailure::ColumnLengthMismatch {
+            expected: first.values.len(),
+            got: values.len(),
+        });
     }
     frame.columns.push(DataFrameColumn { name, values });
     Ok(())
@@ -383,12 +432,15 @@ pub fn add_dataframe_column<T>(
 /// # Errors
 ///
 /// Returns an error if the index is out of bounds.
-pub fn column_name<T>(frame: &DataFrameResource<T>, index: usize) -> Result<&str, String> {
+pub fn column_name<T>(frame: &DataFrameResource<T>, index: usize) -> Result<&str, DataFailure> {
     frame
         .columns
         .get(index)
         .map(|col| col.name.as_str())
-        .ok_or_else(|| "column index out of bounds".into())
+        .ok_or_else(|| DataFailure::ColumnIndexOutOfRange {
+            column: i64::try_from(index).unwrap_or(i64::MAX),
+            count: frame.columns.len(),
+        })
 }
 
 /// Retrieves a cell value from a column by name and 0-based row index.
@@ -400,18 +452,21 @@ pub fn get_dataframe_cell<'a, T>(
     frame: &'a DataFrameResource<T>,
     column_name: &str,
     row: usize,
-) -> Result<&'a T, String> {
+) -> Result<&'a T, DataFailure> {
     let Some(column) = frame
         .columns
         .iter()
         .find(|column| column.name == column_name)
     else {
-        return Err("column not found".into());
+        return Err(DataFailure::ColumnNotFound(column_name.to_string()));
     };
     column
         .values
         .get(row)
-        .ok_or_else(|| "row index out of bounds".into())
+        .ok_or_else(|| DataFailure::RowIndexOutOfRange {
+            row: i64::try_from(row).unwrap_or(i64::MAX),
+            count: column.values.len(),
+        })
 }
 
 /// Converts the elements of a named column in place using a conversion closure.
@@ -422,20 +477,20 @@ pub fn get_dataframe_cell<'a, T>(
 pub fn convert_dataframe_column<T>(
     frame: &mut DataFrameResource<T>,
     column_name: &str,
-    mut converter: impl FnMut(&T) -> Result<T, &'static str>,
-) -> Result<(), &'static str> {
+    mut converter: impl FnMut(&T) -> Result<T, DataFailure>,
+) -> Result<(), DataFailure> {
     let Some(column) = frame
         .columns
         .iter_mut()
         .find(|column| column.name == column_name)
     else {
-        return Err("column not found");
+        return Err(DataFailure::ColumnNotFound(column_name.to_string()));
     };
     let new_values = column
         .values
         .iter()
         .map(&mut converter)
-        .collect::<Result<Vec<_>, &'static str>>()?;
+        .collect::<Result<Vec<_>, DataFailure>>()?;
     column.values = new_values;
     Ok(())
 }
@@ -451,13 +506,13 @@ pub fn zscore_column<T: Clone>(
     to_f64: impl Fn(&T) -> Option<f64>,
     from_f64: impl Fn(f64) -> T,
     not_available: &T,
-) -> Result<DataFrameResource<T>, String> {
+) -> Result<DataFrameResource<T>, DataFailure> {
     let Some(column) = frame
         .columns
         .iter()
         .find(|column| column.name == column_name)
     else {
-        return Err("column not found".into());
+        return Err(DataFailure::ColumnNotFound(column_name.to_string()));
     };
     let mut numeric = Vec::new();
     for cell in &column.values {
@@ -514,15 +569,15 @@ pub fn dataframe_reduce_column<T>(
     frame: &DataFrameResource<T>,
     column_name: &str,
     method: &str,
-    to_f64: impl Fn(&T) -> Result<Option<f64>, &'static str>,
-) -> Result<super::stats::Reduction, &'static str> {
+    to_f64: impl Fn(&T) -> Result<Option<f64>, DataFailure>,
+) -> Result<super::stats::Reduction, DataFailure> {
     use super::stats::{Reduction, reduce_f64};
     let Some(column) = frame
         .columns
         .iter()
         .find(|column| column.name == column_name)
     else {
-        return Err("column not found");
+        return Err(DataFailure::ColumnNotFound(column_name.to_string()));
     };
     let mut numeric = Vec::new();
     for cell in &column.values {
@@ -531,7 +586,7 @@ pub fn dataframe_reduce_column<T>(
         }
     }
     if matches!(method, "Min" | "Max") && numeric.is_empty() {
-        return Err("empty numeric column");
+        return Err(DataFailure::EmptyNumericColumn);
     }
     let math_name = match method {
         "Quartile1" => "QUARTILE1",
@@ -544,7 +599,11 @@ pub fn dataframe_reduce_column<T>(
         "Range" => "RANGE",
         "Min" => "MIN",
         "Max" => "MAX",
-        _ => return Err("unknown reduction method"),
+        _ => {
+            return Err(DataFailure::InvalidArgument(format!(
+                "unknown reduction method {method}"
+            )));
+        }
     };
     if math_name == "MIN" {
         let min_val = numeric.iter().copied().fold(f64::INFINITY, f64::min);
@@ -566,19 +625,61 @@ pub fn copy_dataframe_column<T, U>(
     frame: &DataFrameResource<T>,
     column_name: &str,
     target_len: usize,
-    mut adapter: impl FnMut(&T) -> Result<U, &'static str>,
-) -> Result<Vec<U>, &'static str> {
+    mut adapter: impl FnMut(&T) -> Result<U, DataFailure>,
+) -> Result<Vec<U>, DataFailure> {
     let Some(column) = frame
         .columns
         .iter()
         .find(|column| column.name == column_name)
     else {
-        return Err("column not found");
+        return Err(DataFailure::ColumnNotFound(column_name.to_string()));
     };
     if target_len != column.values.len() {
-        return Err("destination length mismatch");
+        return Err(DataFailure::DestinationLengthMismatch {
+            expected: column.values.len(),
+            got: target_len,
+        });
     }
     column.values.iter().map(&mut adapter).collect()
+}
+
+/// One cell of `ConvertToInteger` / `ConvertToFloat`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ConvertedCell {
+    Integer(i32),
+    Float(f64),
+    NotAvailable,
+}
+
+/// Converts one string cell as bndata.md specifies: `BNMath.VAL`, then
+/// `AS INTEGER` (range-checked) or `FLOAT`; a cell whose `LEN` is 0 after
+/// skipping leading spaces is `NA`. Both backends call it.
+///
+/// # Errors
+///
+/// `ConversionFailed` naming `column` when an integer is out of range.
+pub fn convert_cell(
+    text: &str,
+    to_integer: bool,
+    column: &str,
+) -> Result<ConvertedCell, DataFailure> {
+    if text.trim_start().is_empty() {
+        return Ok(ConvertedCell::NotAvailable);
+    }
+    let number = bn_core_text::parse_val(text);
+    if !to_integer {
+        return Ok(ConvertedCell::Float(number));
+    }
+    let truncated = number.trunc();
+    if number.is_finite() && truncated >= f64::from(i32::MIN) && truncated <= f64::from(i32::MAX) {
+        #[allow(clippy::cast_possible_truncation)] // range-checked just above
+        Ok(ConvertedCell::Integer(truncated as i32))
+    } else {
+        Err(DataFailure::ConversionFailed {
+            column: column.to_string(),
+            reason: "failed to convert column".into(),
+        })
+    }
 }
 
 /// Parses CSV text without depending on the interpreter's `Value` model.
@@ -586,7 +687,7 @@ pub fn copy_dataframe_column<T, U>(
 /// # Errors
 ///
 /// Returns an error when the input ends inside a quoted field.
-pub fn parse_csv(text: &str, separator: char) -> Result<Vec<Vec<String>>, String> {
+pub fn parse_csv(text: &str, separator: char) -> Result<Vec<Vec<String>>, DataFailure> {
     let mut rows = Vec::new();
     let mut row = Vec::new();
     let mut field = String::new();
@@ -621,7 +722,7 @@ pub fn parse_csv(text: &str, separator: char) -> Result<Vec<Vec<String>>, String
         }
     }
     if quoted {
-        return Err("unterminated quoted field".into());
+        return Err(DataFailure::UnterminatedQuotedField);
     }
     if !field.is_empty() || !row.is_empty() || text.ends_with(separator) {
         row.push(field);
@@ -642,8 +743,9 @@ pub fn parse_csv(text: &str, separator: char) -> Result<Vec<Vec<String>>, String
 #[cfg(test)]
 mod tests {
     use super::{
-        DataFrameColumn, DataFrameJoin, DataFrameJoinConfig, DataFrameResource, append_columns,
-        append_rows, duplicate_column_names, join_dataframes, parse_csv, select_dataframe,
+        DataFailure, DataFrameColumn, DataFrameJoin, DataFrameJoinConfig, DataFrameResource,
+        append_columns, append_rows, first_duplicate_column, join_dataframes, parse_csv,
+        select_dataframe,
     };
 
     #[test]
@@ -659,7 +761,10 @@ mod tests {
 
     #[test]
     fn rejects_unterminated_fields() {
-        assert!(parse_csv("\"unterminated", ',').is_err());
+        assert!(matches!(
+            parse_csv("\"unterminated", ','),
+            Err(DataFailure::UnterminatedQuotedField)
+        ));
     }
 
     #[test]
@@ -751,8 +856,18 @@ mod tests {
         };
         let selected = select_dataframe(&frame, &[1], &[1]).expect("select");
         assert_eq!(selected.columns[0].values, vec![20]);
-        assert!(select_dataframe(&frame, &[2], &[0]).is_err());
-        assert!(select_dataframe(&frame, &[0], &[0, 0]).is_err());
+        assert!(matches!(
+            select_dataframe(&frame, &[2], &[0]),
+            Err(DataFailure::RowIndexOutOfRange { row: 2, count: 2 })
+        ));
+        assert!(matches!(
+            select_dataframe(&frame, &[0], &[3]),
+            Err(DataFailure::ColumnIndexOutOfRange { column: 3, .. })
+        ));
+        assert!(matches!(
+            select_dataframe(&frame, &[0], &[0, 0]),
+            Err(DataFailure::DuplicateColumn(name)) if !name.is_empty()
+        ));
     }
 
     #[test]
@@ -767,6 +882,6 @@ mod tests {
                 values: vec![2],
             },
         ];
-        assert!(duplicate_column_names(&columns));
+        assert_eq!(first_duplicate_column(&columns).as_deref(), Some("id"));
     }
 }

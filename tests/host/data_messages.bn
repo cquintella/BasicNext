@@ -1,0 +1,109 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// BNData failure messages carry their facts (column name, lengths, row
+// counts) on both backends (bucket 0.6.5c AC5, R6).
+IMPORT BNData AS Data
+
+FUNCTION Start() AS INTEGER
+    LET df AS Data.DataFrame = NEW Data.DataFrame()
+    LET xs AS INTEGER[2] = [1, 2]
+    LET added AS VOID OR Error = df.AddIntegerColumn("x", xs)
+    IF added IS Error THEN
+        RETURN 1
+    END IF
+
+    LET dup AS VOID OR Error = df.AddIntegerColumn("x", xs)
+    IF dup IS Error THEN
+        PRINT dup.Message
+    END IF
+
+    LET three AS INTEGER[3] = [1, 2, 3]
+    LET length AS VOID OR Error = df.AddIntegerColumn("y", three)
+    IF length IS Error THEN
+        PRINT length.Message
+    END IF
+
+    LET missing AS VOID OR Error = df.SetLabel("nope", "renamed")
+    IF missing IS Error THEN
+        PRINT missing.Message
+    END IF
+
+    LET cell AS INTEGER OR NA OR Error = df.GetInteger(0, "absent")
+    IF cell IS Error THEN
+        PRINT cell.Message
+    END IF
+
+    LET name AS STRING OR Error = df.ColumnName(5)
+    IF name IS Error THEN
+        PRINT name.Message
+    END IF
+
+    LET rows AS INTEGER[1] = [7]
+    LET cols AS INTEGER[1] = [0]
+    LET picked AS Data.DataFrame OR Error = df.Select(rows, cols)
+    IF picked IS Error THEN
+        PRINT picked.Message
+    END IF
+
+    LET dest AS POINTER TO INTEGER[] = NEW INTEGER[5]
+    LET copied AS VOID OR Error = df.CopyIntegerColumn("x", dest)
+    IF copied IS Error THEN
+        PRINT copied.Message
+    END IF
+    RELEASE dest
+
+    LET other AS Data.DataFrame = NEW Data.DataFrame()
+    LET ys AS INTEGER[3] = [1, 2, 3]
+    LET addedOther AS VOID OR Error = other.AddIntegerColumn("z", ys)
+    IF addedOther IS Error THEN
+        RETURN 1
+    END IF
+    LET wide AS Data.DataFrame OR Error = df.AppendColumns(other)
+    IF wide IS Error THEN
+        PRINT wide.Message
+    END IF
+
+    LET joined AS Data.DataFrame OR Error = df.Join(other, "nokey", "z")
+    IF joined IS Error THEN
+        PRINT joined.Message
+    END IF
+    LET dupLabel AS VOID OR Error = df.SetLabel("x", "x")
+    LET other2 AS Data.DataFrame = NEW Data.DataFrame()
+    LET a3 AS VOID OR Error = other2.AddIntegerColumn("p", xs)
+    LET a4 AS VOID OR Error = other2.AddIntegerColumn("q", xs)
+    IF a3 IS Error OR a4 IS Error THEN
+        RETURN 1
+    END IF
+    LET relabel AS VOID OR Error = other2.SetLabel("p", "q")
+    IF relabel IS Error THEN
+        PRINT relabel.Code = Data.INVALID_ARGUMENT, relabel.Message
+    END IF
+    LET emptyLabel AS VOID OR Error = other2.SetLabel("p", "")
+    IF emptyLabel IS Error THEN
+        PRINT emptyLabel.Code = Data.INVALID_ARGUMENT, emptyLabel.Message
+    END IF
+    PRINT dupLabel IS Error
+
+    LET negRows AS INTEGER[1] = [-5]
+    LET negPicked AS Data.DataFrame OR Error = df.Select(negRows, cols)
+    IF negPicked IS Error THEN
+        PRINT negPicked.Code = Data.OUT_OF_RANGE, negPicked.Message
+    END IF
+    LET negSlice AS Data.DataFrame OR Error = df.Slice(-3, 1, 0, 1)
+    IF negSlice IS Error THEN
+        PRINT negSlice.Code = Data.INVALID_ARGUMENT, negSlice.Message
+    END IF
+
+    LET texts AS STRING[3] = ["12abc", " 7", ""]
+    LET textFrame AS Data.DataFrame = NEW Data.DataFrame()
+    LET a5 AS VOID OR Error = textFrame.AddStringColumn("s", texts)
+    IF a5 IS Error THEN
+        RETURN 1
+    END IF
+    LET converted AS VOID OR Error = textFrame.ConvertToInteger("s")
+    PRINT converted IS Error, textFrame.GetInteger(0, "s"), textFrame.GetInteger(1, "s"), textFrame.GetInteger(2, "s")
+    RETURN 0
+END FUNCTION

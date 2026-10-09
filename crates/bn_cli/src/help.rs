@@ -41,3 +41,49 @@ pub fn usage(line: &str) -> ExitCode {
     eprintln!("{line}");
     tool_error()
 }
+
+/// Reports an option the common parser rejected (`CONFIG_INVALID: ` marks a
+/// configuration error) and prints `usage_line`. One printer for both tools.
+#[must_use]
+pub fn option_error(message: &str, usage_line: &str) -> ExitCode {
+    if let Some(message) = message.strip_prefix("CONFIG_INVALID: ") {
+        eprintln!("error[CONFIG_INVALID]: {message}");
+    } else {
+        eprintln!("error: {message}");
+    }
+    usage(usage_line)
+}
+
+/// The executable an option was given to.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Tool {
+    Interpreter,
+    Compiler,
+}
+
+/// The one table of options the shared parser accepts but only the other
+/// executable honors, as the error text `tool` prints (`None` when every
+/// given option belongs to `tool`).
+#[must_use]
+pub fn foreign_option(tool: Tool, options: &crate::options::Options) -> Option<&'static str> {
+    use crate::options::OutputFormat;
+    match tool {
+        Tool::Compiler if options.output_format != OutputFormat::Text => {
+            Some("--format json is an interpreter option (bni eval)")
+        }
+        Tool::Compiler if options.trace => Some("--trace is an interpreter option (bni run)"),
+        Tool::Compiler if !options.filesystem => {
+            Some("--no-filesystem is an interpreter option (bni run)")
+        }
+        Tool::Compiler if options.jupyter_stdin => {
+            Some("--jupyter-stdin is an interpreter option (bni run)")
+        }
+        Tool::Interpreter if options.output_format != OutputFormat::Text => {
+            Some("--format is available only with bni eval")
+        }
+        Tool::Interpreter if options.emit.is_some() => {
+            Some("--emit is a compiler option (bnc --emit tokens|ast|typed-ast|ir)")
+        }
+        _ => None,
+    }
+}

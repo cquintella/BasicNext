@@ -6,7 +6,8 @@
 use bn_diag::Diagnostic;
 use bn_source::Span;
 
-use bn_rt::civil::{self, DAY_MS, days_from_civil};
+use bn_core_text::civil::{self, DAY_MS, days_from_civil};
+use bn_core_text::temporal::{parse_hms, parse_rfc3339 as parse_rfc3339_core, parse_ymd};
 
 #[must_use]
 pub fn default_date() -> i32 {
@@ -70,7 +71,7 @@ pub fn parse_timezone(text: &str, span: Span) -> Result<String, Diagnostic> {
 ///
 /// Returns the language diagnostic for a malformed value.
 pub fn parse_rfc3339(text: &str, span: Span) -> Result<i64, Diagnostic> {
-    parse_rfc3339_text(text).ok_or_else(|| {
+    parse_rfc3339_core(text).ok_or_else(|| {
         temporal_error(
             bn_diag::DiagId::PARSE_ERROR,
             format!("'{text}' is not an RFC 3339 TIMESTAMP"),
@@ -152,106 +153,6 @@ fn out_of_range(span: Span) -> Diagnostic {
         "civil time must be in years 0001 through 9999",
         span,
     )
-}
-
-fn parse_ymd(text: &str) -> Option<(i32, u32, u32)> {
-    let bytes = text.as_bytes();
-    if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
-        return None;
-    }
-    let year = parse_digits(&text[0..4])?;
-    let month = u32::try_from(parse_digits(&text[5..7])?).ok()?;
-    let day = u32::try_from(parse_digits(&text[8..10])?).ok()?;
-    Some((i32::try_from(year).ok()?, month, day))
-}
-
-fn parse_hms(text: &str, require_millis: bool) -> Option<u32> {
-    let bytes = text.as_bytes();
-    if bytes.len() < 8 || bytes[2] != b':' || bytes[5] != b':' {
-        return None;
-    }
-    let hour = u32::try_from(parse_digits(&text[0..2])?).ok()?;
-    let minute = u32::try_from(parse_digits(&text[3..5])?).ok()?;
-    let second = u32::try_from(parse_digits(&text[6..8])?).ok()?;
-    if hour > 23 || minute > 59 || second > 59 {
-        return None;
-    }
-    let millis = if bytes.len() == 8 && !require_millis {
-        0
-    } else if bytes.get(8) == Some(&b'.') {
-        let fraction = bytes.get(9..)?;
-        if fraction.is_empty()
-            || fraction.iter().any(|byte| !byte.is_ascii_digit())
-            || (require_millis && fraction.len() != 3)
-            || fraction
-                .get(3..)
-                .is_some_and(|rest| rest.iter().any(|byte| *byte != b'0'))
-        {
-            return None;
-        }
-        fraction
-            .iter()
-            .take(3)
-            .chain(std::iter::repeat_n(
-                &b'0',
-                3_usize.saturating_sub(fraction.len()),
-            ))
-            .try_fold(0_u32, |value, byte| {
-                value.checked_mul(10)?.checked_add(u32::from(*byte - b'0'))
-            })?
-    } else {
-        return None;
-    };
-    Some(hour * 3_600_000 + minute * 60_000 + second * 1_000 + millis)
-}
-
-fn parse_rfc3339_text(text: &str) -> Option<i64> {
-    let separator = text.find('T')?;
-    let (date, rest) = text.split_at(separator);
-    let rest = rest.get(1..)?;
-    let (time, offset) = split_offset(rest)?;
-    let days = {
-        let (year, month, day) = parse_ymd(date)?;
-        days_from_civil(year, month, day)?
-    };
-    let millis = parse_hms(time, false)?;
-    let utc = i128::from(days) * DAY_MS + i128::from(millis) - i128::from(offset);
-    let timestamp = i64::try_from(utc).ok()?;
-    let utc_days = i32::try_from(i128::from(timestamp).div_euclid(DAY_MS)).ok()?;
-    if civil::in_range(utc_days) {
-        Some(timestamp)
-    } else {
-        None
-    }
-}
-
-fn split_offset(text: &str) -> Option<(&str, i32)> {
-    if let Some(time) = text.strip_suffix('Z') {
-        return Some((time, 0));
-    }
-    let sign_index = text.rfind(['+', '-'])?;
-    if sign_index < 8 {
-        return None;
-    }
-    let (time, offset) = text.split_at(sign_index);
-    let sign = if offset.starts_with('+') { 1 } else { -1 };
-    let offset = &offset[1..];
-    if offset.len() != 5 || offset.as_bytes()[2] != b':' {
-        return None;
-    }
-    let hours = i32::try_from(parse_digits(&offset[0..2])?).ok()?;
-    let minutes = i32::try_from(parse_digits(&offset[3..5])?).ok()?;
-    if hours > 23 || minutes > 59 {
-        return None;
-    }
-    Some((time, sign * (hours * 3_600_000 + minutes * 60_000)))
-}
-
-fn parse_digits(text: &str) -> Option<i64> {
-    if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    text.parse().ok()
 }
 
 fn temporal_error(id: bn_diag::DiagId, message: impl Into<String>, span: Span) -> Diagnostic {

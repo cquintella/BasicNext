@@ -88,7 +88,7 @@ pub(crate) fn lower_value_emission(
                 bn_diag::DiagId::NUMERIC_OVERFLOW,
                 vec![(
                     "operation",
-                    Fact::Text("converting a value to INTEGER".into()),
+                    Fact::Text(bn_diag::trap_texts::CONVERTING_TO_INTEGER.into()),
                 )],
             );
             text.assign(

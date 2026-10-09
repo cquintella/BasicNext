@@ -80,6 +80,39 @@ while IFS= read -r file; do
   rg -q 'var_os\(|env::var\(' "$file" && fail "HOST.Env reads the environment outside bn_host_env: $file"
 done < <(rg -l 'HOST\.Env\.' src crates --type rust -g '!*_tests.rs' -g '!**/tests.rs' -g '!crates/*/tests/**' || true)
 
+# (h) BNDispatch queue worker pool and pending queue state live only in
+# bn_core_dispatch (bucket 0.6.5c S1).
+allowed_dispatch_core='^crates/bn_core_dispatch/src/.*\.rs$'
+while IFS= read -r file; do
+  file=${file//\\/\/}
+  [[ $file =~ $allowed_dispatch_core ]] && continue
+  fail "BNDispatch worker pool or queue state outside bn_core_dispatch: $file"
+done < <(rg -l 'struct QueueInner|worker_handles' src crates --type rust -g '!*_tests.rs' -g '!**/tests.rs' -g '!crates/*/tests/**' || true)
+
+# (i) Core text / civil temporal arithmetic lives only in bn_core_text (bucket 0.6.5c S2).
+allowed_text_core='^crates/bn_core_text/src/.*\.rs$'
+while IFS= read -r file; do
+  file=${file//\\/\/}
+  [[ $file =~ $allowed_text_core ]] && continue
+  fail "civil calendar conversions outside bn_core_text: $file"
+done < <(rg -l 'fn days_from_civil\(|fn civil_from_days\(' src crates --type rust -g '!*_tests.rs' -g '!**/tests.rs' -g '!crates/*/tests/**' || true)
+
+# (j) Statistical reductions live only in bn_core_math (bucket 0.6.5c S2).
+allowed_math_core='^crates/bn_core_math/src/.*\.rs$'
+while IFS= read -r file; do
+  file=${file//\\/\/}
+  [[ $file =~ $allowed_math_core ]] && continue
+  fail "statistical reduction core outside bn_core_math: $file"
+done < <(rg -l 'fn reduce_f64\(name: &str' src crates --type rust -g '!*_tests.rs' -g '!**/tests.rs' -g '!crates/*/tests/**' || true)
+
+# (k) BNLog record redaction and dispatch live only in bn_core_log (bucket 0.6.5c S3).
+allowed_log_core='^crates/bn_core_log/src/.*\.rs$'
+while IFS= read -r file; do
+  file=${file//\\/\/}
+  [[ $file =~ $allowed_log_core ]] && continue
+  fail "log dispatch logic outside bn_core_log: $file"
+done < <(rg -l 'fn dispatch_log\(' src crates --type rust -g '!*_tests.rs' -g '!**/tests.rs' -g '!crates/*/tests/**' -g '!crates/bn_rt/src/log.rs' || true)
+
 if ((status == 0)); then
   echo "shared-cores check passed"
 fi

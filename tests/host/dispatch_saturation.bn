@@ -1,0 +1,56 @@
+IMPORT BNDispatch AS Dispatch
+
+ASYNC FUNCTION Blocker(ms AS INTEGER) AS INTEGER OR Error
+    LET mRes AS Dispatch.Mutex OR Error = Dispatch.Mutex.New()
+    IF mRes IS Error THEN
+        RETURN 1
+    END IF
+    LET m AS Dispatch.Mutex = mRes
+    LET l1 AS VOID OR Error = m.Lock(ms)
+    IF l1 IS Error THEN
+        RETURN 1
+    END IF
+    LET _l2 AS VOID OR Error = m.Lock(ms)
+    RETURN 0
+END FUNCTION
+
+ASYNC FUNCTION Quick() AS INTEGER OR Error
+    RETURN 42
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    LET queueRes AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
+    IF queueRes IS Error THEN
+        PRINT "QUEUE ERROR"
+        RETURN 1
+    END IF
+    LET queue AS Dispatch.Queue = queueRes
+
+    LET blockerRes AS Dispatch.Ticket OR Error = ASYNC queue Blocker(10000)
+    IF blockerRes IS Error THEN
+        PRINT "BLOCKER ERROR"
+        RETURN 1
+    END IF
+
+    LET saturatedCount AS INTEGER = 0
+    LET successCount AS INTEGER = 0
+
+    FOR i AS INTEGER = 1 TO 1099
+        LET ticket AS Dispatch.Ticket OR Error = ASYNC queue Quick()
+        IF ticket IS Error THEN
+            IF ticket.Code = Dispatch.SATURATED THEN
+                saturatedCount = saturatedCount + 1
+            ELSE
+                PRINT "UNEXPECTED ERROR", ticket.Code
+            END IF
+        ELSE
+            successCount = successCount + 1
+        END IF
+    END FOR
+
+    PRINT "SATURATED", saturatedCount
+    PRINT "SUCCESS", successCount
+
+    LET _closeRes AS VOID OR Error = queue.Close(15000)
+    RETURN 0
+END FUNCTION

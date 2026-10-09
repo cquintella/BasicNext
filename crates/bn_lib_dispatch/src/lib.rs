@@ -477,14 +477,14 @@ impl DispatchProvider {
     }
 
     fn dispatch_queue(&mut self, name: &str, workers: i128) -> Value {
-        let queue = match crate::dispatch::Queue::new(workers) {
+        let id = self.next_queue;
+        let queue = match crate::dispatch::Queue::new(workers, id) {
             Ok(queue) => queue,
             Err(failure) => return failed(name, &failure),
         };
         debug_assert!(
             (1..=bn_limits::dispatch_limits().worker_count_max).contains(&queue.workers())
         );
-        let id = self.next_queue;
         self.next_queue += 1;
         self.queues.insert(id, queue);
         Value::DispatchQueue(id)

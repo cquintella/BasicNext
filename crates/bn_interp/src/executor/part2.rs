@@ -63,7 +63,7 @@ impl Executor<'_, '_> {
                 if !frame.released_symbols.insert(*symbol) {
                     return Err(runtime_error(
                         bn_diag::DiagId::DOUBLE_RELEASE,
-                        "binding was already released",
+                        bn_diag::trap_texts::BINDING_ALREADY_RELEASED,
                         *span,
                     ));
                 }

@@ -1,0 +1,17 @@
+[package]
+name = "bn_core_text"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.97"
+description = "Basic Next text and temporal domain core: VAL parsing, IANA timezones, civil dates and RFC 3339"
+license.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+bn_types = { path = "../bn_types" }
+
+[lints]
+workspace = true

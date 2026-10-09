@@ -74,6 +74,21 @@ pub(crate) fn lower_bnlog_call(
             let receiver = handle(text, "receiver", 0);
             ("bn_rt_log_fields_set_string", vec![receiver, v(1), v(2)])
         }
+        "fields_set_integer" => {
+            let receiver = handle(text, "receiver", 0);
+            let value = integer(text, 2);
+            ("bn_rt_log_fields_set_integer", vec![receiver, v(1), value])
+        }
+        "fields_set_boolean" => {
+            let receiver = handle(text, "receiver", 0);
+            let byte = format!("logbool{}", destination.0);
+            let (_, flag) = v(2);
+            text.assign(&byte, I::cast(CastOp::ZExt, T::I1, flag, T::I8));
+            (
+                "bn_rt_log_fields_set_boolean",
+                vec![receiver, v(1), (T::I8, O::reg(byte))],
+            )
+        }
         "logger_add_null" | "logger_add_console" => {
             let receiver = handle(text, "receiver", 0);
             let minimum = integer(text, 1);

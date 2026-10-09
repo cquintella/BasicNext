@@ -26,7 +26,6 @@ lib-sqlite = ["bn_interpret_driver/lib-sqlite"]
 workspace = true
 
 [dependencies]
-bn_cli = { path = "../bn_cli" }
 bn_dap = { path = "../bn_dap" }
 bn_interpret_driver = { path = "../bn_interpret_driver" }
 bn_lsp = { path = "../bn_lsp" }

@@ -143,22 +143,8 @@ fn add_column(
         let Some(frame) = frames.get_mut(&frame) else {
             return failed(op_name, &DataFailure::InvalidHandle);
         };
-        let expected = frame
-            .columns
-            .first()
-            .map_or(values.len(), |c| c.values.len());
-        let got = values.len();
-        add_dataframe_column(frame, name.clone(), values).map_or_else(
-            |message| {
-                let failure = match message.as_str() {
-                    "duplicate column name" => DataFailure::DuplicateColumn(name),
-                    "column length mismatch" => DataFailure::ColumnLengthMismatch { expected, got },
-                    _ => DataFailure::from_message(&message),
-                };
-                failed(op_name, &failure)
-            },
-            |()| BN_DATAFRAME_OK,
-        )
+        add_dataframe_column(frame, name, values)
+            .map_or_else(|failure| failed(op_name, &failure), |()| BN_DATAFRAME_OK)
     })
 }
 
@@ -271,14 +257,7 @@ pub extern "C" fn bn_rt_dataframe_set_label(
             return failed("BNData.DataFrame.SetLabel", &DataFailure::InvalidHandle);
         };
         set_column_label(frame, &old_label, &new_label).map_or_else(
-            |message| {
-                let failure = match message.as_str() {
-                    "column not found" => DataFailure::ColumnNotFound(old_label),
-                    "duplicate column name" => DataFailure::DuplicateColumn(new_label),
-                    _ => DataFailure::from_message(&message),
-                };
-                failed("BNData.DataFrame.SetLabel", &failure)
-            },
+            |failure| failed("BNData.DataFrame.SetLabel", &failure),
             |()| BN_DATAFRAME_OK,
         )
     })
@@ -294,18 +273,7 @@ fn cell(
     };
     with_frames(|frames| {
         let frame = frames.get(&frame).ok_or(DataFailure::InvalidHandle)?;
-        get_dataframe_cell(frame, &name, row as usize)
-            .cloned()
-            .map_err(|message| match message.as_str() {
-                "column not found" => DataFailure::ColumnNotFound(name.clone()),
-                "DataFrame index out of bounds" | "row index out of bounds" => {
-                    DataFailure::RowIndexOutOfRange {
-                        row: i64::from(row),
-                        count: frame.columns.first().map_or(0, |c| c.values.len()),
-                    }
-                }
-                _ => DataFailure::from_message(&message),
-            })
+        get_dataframe_cell(frame, &name, row as usize).cloned()
     })
 }
 
@@ -447,13 +415,7 @@ pub extern "C" fn bn_rt_dataframe_reduce(
             StoredValue::Integer(value) => Ok(Some(*value as f64)),
             StoredValue::Float(value) => Ok(Some(*value)),
             StoredValue::NotAvailable => Ok(None),
-            _ => Err("column is not numeric"),
-        })
-        .map_err(|message| match message {
-            "column not found" => DataFailure::ColumnNotFound(name.clone()),
-            "empty numeric column" => DataFailure::EmptyNumericColumn,
-            "column is not numeric" => DataFailure::NonNumericColumn(name.clone()),
-            _ => DataFailure::from_message(message),
+            _ => Err(DataFailure::NonNumericColumn(name.clone())),
         })
     });
     match result {
@@ -502,20 +464,7 @@ pub(crate) fn add_integer_column_storage(
             name.to_owned(),
             vec![StoredValue::Integer(0); usize::try_from(length).unwrap_or(0)],
         )
-        .map_err(|message| {
-            let failure = match message.as_str() {
-                "duplicate column name" => DataFailure::DuplicateColumn(name.to_owned()),
-                "column length mismatch" => {
-                    let expected = resource.columns.first().map_or(0, |c| c.values.len());
-                    DataFailure::ColumnLengthMismatch {
-                        expected,
-                        got: usize::try_from(length).unwrap_or(0),
-                    }
-                }
-                _ => DataFailure::from_message(&message),
-            };
-            failed("BNData.DataFrame.AddIntegerColumn", &failure)
-        })?;
+        .map_err(|failure| failed("BNData.DataFrame.AddIntegerColumn", &failure))?;
         Ok(index)
     })
 }
@@ -720,7 +669,6 @@ pub extern "C" fn bn_rt_dataframe_append_rows(
                 return Err(DataFailure::InvalidHandle);
             };
             append_rows(left, right, is_missing, same_stored_type)
-                .map_err(|message| DataFailure::from_message(&message))
         });
         let frame = match result {
             Ok(frame) => frame,
@@ -756,20 +704,7 @@ pub extern "C" fn bn_rt_dataframe_append_columns(
             let (Some(left), Some(right)) = (frames.get(&left), frames.get(&right)) else {
                 return Err(DataFailure::InvalidHandle);
             };
-            append_columns(left, right).map_err(|message| match message.as_str() {
-                "row counts differ" => {
-                    let left_rows = left.columns.first().map_or(0, |c| c.values.len());
-                    let right_rows = right.columns.first().map_or(0, |c| c.values.len());
-                    DataFailure::RowCountsDiffer {
-                        left: left_rows,
-                        right: right_rows,
-                    }
-                }
-                "duplicate column label" => {
-                    DataFailure::DuplicateColumn("duplicate column label".into())
-                }
-                _ => DataFailure::from_message(&message),
-            })
+            append_columns(left, right)
         });
         let frame = match result {
             Ok(frame) => frame,
@@ -835,17 +770,6 @@ pub extern "C" fn bn_rt_dataframe_join(
                 not_available: &missing,
             },
         )
-        .map_err(|message| match message.as_str() {
-            "left key column not found" => DataFailure::KeyColumnNotFound {
-                key: left_key.clone(),
-                side: "left",
-            },
-            "right key column not found" => DataFailure::KeyColumnNotFound {
-                key: right_key.clone(),
-                side: "right",
-            },
-            _ => DataFailure::from_message(&message),
-        })
     });
     let result = match result {
         Ok(value) => value,
@@ -866,26 +790,7 @@ pub extern "C" fn bn_rt_dataframe_convert_integer(
     frame: BNDataFrameHandle,
     name: *const c_char,
 ) -> BNDataFrameStatus {
-    convert_column(
-        frame,
-        name,
-        "BNData.DataFrame.ConvertInteger",
-        |col_name, value| match value {
-            StoredValue::String(bytes) => String::from_utf8(bytes.clone())
-                .ok()
-                .and_then(|v| v.parse::<i64>().ok())
-                .map(StoredValue::Integer)
-                .ok_or_else(|| DataFailure::ConversionFailed {
-                    column: col_name.to_owned(),
-                    reason: "failed to parse string as integer".into(),
-                }),
-            StoredValue::Integer(_) => Ok(value.clone()),
-            _ => Err(DataFailure::TypeMismatch {
-                expected: "INTEGER",
-                column: col_name.to_owned(),
-            }),
-        },
-    )
+    convert_text_column(frame, name, "BNData.DataFrame.ConvertToInteger", true)
 }
 
 #[unsafe(no_mangle)]
@@ -893,57 +798,44 @@ pub extern "C" fn bn_rt_dataframe_convert_float(
     frame: BNDataFrameHandle,
     name: *const c_char,
 ) -> BNDataFrameStatus {
-    convert_column(
-        frame,
-        name,
-        "BNData.DataFrame.ConvertFloat",
-        |col_name, value| match value {
-            StoredValue::String(bytes) => String::from_utf8(bytes.clone())
-                .ok()
-                .and_then(|v| v.parse::<f64>().ok())
-                .map(StoredValue::Float)
-                .ok_or_else(|| DataFailure::ConversionFailed {
-                    column: col_name.to_owned(),
-                    reason: "failed to parse string as float".into(),
-                }),
-            StoredValue::Float(_) => Ok(value.clone()),
-            _ => Err(DataFailure::TypeMismatch {
-                expected: "FLOAT",
-                column: col_name.to_owned(),
-            }),
-        },
-    )
+    convert_text_column(frame, name, "BNData.DataFrame.ConvertToFloat", false)
 }
 
-fn convert_column(
+/// `ConvertToInteger` / `ConvertToFloat` with the rule `bni` uses
+/// (`dataframe::convert_cell`); only the cell representation differs.
+fn convert_text_column(
     frame: BNDataFrameHandle,
     name: *const c_char,
     operation: &'static str,
-    converter: impl Fn(&str, &StoredValue) -> Result<StoredValue, DataFailure>,
+    to_integer: bool,
 ) -> BNDataFrameStatus {
     let Some(name) = input_string(name) else {
         return failed(operation, &DataFailure::InvalidHandle);
+    };
+    let not_text = || DataFailure::ConversionFailed {
+        column: name.clone(),
+        reason: "failed to convert column".into(),
     };
     with_frames(|frames| {
         let Some(resource) = frames.get_mut(&frame) else {
             return failed(operation, &DataFailure::InvalidHandle);
         };
-        let Some(column) = resource
-            .columns
-            .iter_mut()
-            .find(|column| column.name == name)
-        else {
-            return failed(operation, &DataFailure::ColumnNotFound(name));
-        };
-        let mut values = Vec::with_capacity(column.values.len());
-        for val in &column.values {
-            match converter(&name, val) {
-                Ok(cell) => values.push(cell),
-                Err(failure) => return failed(operation, &failure),
-            }
-        }
-        column.values = values;
-        BN_DATAFRAME_OK
+        let converted = super::dataframe::convert_dataframe_column(resource, &name, |value| {
+            let StoredValue::String(bytes) = value else {
+                return Err(not_text());
+            };
+            let text = std::str::from_utf8(bytes.as_slice()).map_err(|_| not_text())?;
+            Ok(
+                match super::dataframe::convert_cell(text, to_integer, &name)? {
+                    super::dataframe::ConvertedCell::Integer(number) => {
+                        StoredValue::Integer(i64::from(number))
+                    }
+                    super::dataframe::ConvertedCell::Float(number) => StoredValue::Float(number),
+                    super::dataframe::ConvertedCell::NotAvailable => StoredValue::NotAvailable,
+                },
+            )
+        });
+        converted.map_or_else(|failure| failed(operation, &failure), |()| BN_DATAFRAME_OK)
     })
 }
 
@@ -1012,6 +904,12 @@ pub extern "C" fn bn_rt_dataframe_column_count(
 
 /// Selects rows and columns and returns a new owning frame handle.
 #[allow(unsafe_code)]
+/// An `INTEGER` index the emitted code passes as `u32`: the same 32 bits,
+/// read back with their sign so a negative index is reported as written.
+fn signed(bits: u32) -> i64 {
+    i64::from(i32::from_ne_bytes(bits.to_ne_bytes()))
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_dataframe_select(
     frame: BNDataFrameHandle,
@@ -1033,10 +931,7 @@ pub extern "C" fn bn_rt_dataframe_select(
         } else {
             unsafe { std::slice::from_raw_parts(rows, usize::try_from(row_count).unwrap_or(0)) }
         };
-        let row_indices = row_values
-            .iter()
-            .map(|index| usize::try_from(*index).unwrap_or(usize::MAX))
-            .collect::<Vec<_>>();
+        let row_indices = row_values.iter().copied().map(signed).collect::<Vec<_>>();
         let column_values = if column_count == 0 {
             &[]
         } else {
@@ -1046,28 +941,14 @@ pub extern "C" fn bn_rt_dataframe_select(
         };
         let column_indices = column_values
             .iter()
-            .map(|index| usize::try_from(*index).unwrap_or(usize::MAX))
+            .copied()
+            .map(signed)
             .collect::<Vec<_>>();
         let result = with_frames(|frames| {
             let Some(source) = frames.get(&frame) else {
                 return Err(DataFailure::InvalidHandle);
             };
-            let total_rows = source.columns.first().map_or(0, |c| c.values.len());
-            let total_cols = source.columns.len();
-            if let Some(&bad_row) = row_indices.iter().find(|&&r| r >= total_rows) {
-                return Err(DataFailure::RowIndexOutOfRange {
-                    row: i64::try_from(bad_row).unwrap_or(i64::MAX),
-                    count: total_rows,
-                });
-            }
-            if let Some(&bad_col) = column_indices.iter().find(|&&c| c >= total_cols) {
-                return Err(DataFailure::ColumnIndexOutOfRange {
-                    column: i64::try_from(bad_col).unwrap_or(i64::MAX),
-                    count: total_cols,
-                });
-            }
             select_dataframe(source, &row_indices, &column_indices)
-                .map_err(|message| DataFailure::from_message(&message))
         });
         let result = match result {
             Ok(result) => result,
@@ -1101,30 +982,13 @@ pub extern "C" fn bn_rt_dataframe_slice(
         let Some(source) = frames.get(&frame) else {
             return Err(DataFailure::InvalidHandle);
         };
-        let total_rows = source.columns.first().map_or(0, |c| c.values.len());
-        let total_cols = source.columns.len();
-        let sr = usize::try_from(start_row).unwrap_or(usize::MAX);
-        let rc = usize::try_from(row_count).unwrap_or(usize::MAX);
-        let sc = usize::try_from(start_column).unwrap_or(usize::MAX);
-        let cc = usize::try_from(column_count).unwrap_or(usize::MAX);
-        if rc > 0 && (sr >= total_rows || rc > total_rows - sr) {
-            return Err(DataFailure::SliceOutOfRange {
-                start: sr,
-                len: rc,
-                total: total_rows,
-                dim: "row",
-            });
-        }
-        if cc > 0 && (sc >= total_cols || cc > total_cols - sc) {
-            return Err(DataFailure::SliceOutOfRange {
-                start: sc,
-                len: cc,
-                total: total_cols,
-                dim: "column",
-            });
-        }
-        super::dataframe::slice_dataframe(source, sr, rc, sc, cc)
-            .map_err(|message| DataFailure::from_message(&message))
+        super::dataframe::slice_dataframe(
+            source,
+            signed(start_row),
+            signed(row_count),
+            signed(start_column),
+            signed(column_count),
+        )
     });
     let result = match result {
         Ok(value) => value,
@@ -1203,11 +1067,6 @@ pub extern "C" fn bn_rt_dataframe_zscore(
                 StoredValue::Float,
                 &StoredValue::NotAvailable,
             )
-            .map_err(|message| match message.as_str() {
-                "column not found" => DataFailure::ColumnNotFound(name.clone()),
-                "empty numeric column" => DataFailure::EmptyNumericColumn,
-                _ => DataFailure::from_message(&message),
-            })
         });
         let result = match result {
             Ok(result) => result,
@@ -1242,33 +1101,13 @@ pub extern "C" fn bn_rt_dataframe_copy_integer(
         let Some(source) = frames.get(&frame) else {
             return Err(DataFailure::InvalidHandle);
         };
-        let col = source.columns.iter().find(|c| c.name == name);
-        let Some(col) = col else {
-            return Err(DataFailure::ColumnNotFound(name.clone()));
-        };
-        if length as usize != col.values.len() {
-            return Err(DataFailure::DestinationLengthMismatch {
-                expected: col.values.len(),
-                got: length as usize,
-            });
-        }
         copy_dataframe_column(source, &name, length as usize, |value| match value {
-            StoredValue::Integer(value) => {
-                i32::try_from(*value).map_err(|_| "integer out of range")
-            }
-            _ => Err("column is not integer"),
-        })
-        .map_err(|message| match message {
-            "column not found" => DataFailure::ColumnNotFound(name.clone()),
-            "column is not integer" => DataFailure::TypeMismatch {
+            StoredValue::Integer(value) => i32::try_from(*value)
+                .map_err(|_| DataFailure::InvalidFormat("integer out of range".into())),
+            _ => Err(DataFailure::TypeMismatch {
                 expected: "INTEGER",
                 column: name.clone(),
-            },
-            "destination length mismatch" => DataFailure::DestinationLengthMismatch {
-                expected: col.values.len(),
-                got: length as usize,
-            },
-            _ => DataFailure::from_message(message),
+            }),
         })
     });
     match result {
@@ -1299,31 +1138,12 @@ pub extern "C" fn bn_rt_dataframe_copy_float(
         let Some(source) = frames.get(&frame) else {
             return Err(DataFailure::InvalidHandle);
         };
-        let col = source.columns.iter().find(|c| c.name == name);
-        let Some(col) = col else {
-            return Err(DataFailure::ColumnNotFound(name.clone()));
-        };
-        if length as usize != col.values.len() {
-            return Err(DataFailure::DestinationLengthMismatch {
-                expected: col.values.len(),
-                got: length as usize,
-            });
-        }
         copy_dataframe_column(source, &name, length as usize, |value| match value {
             StoredValue::Float(value) => Ok(*value),
-            _ => Err("column is not float"),
-        })
-        .map_err(|message| match message {
-            "column not found" => DataFailure::ColumnNotFound(name.clone()),
-            "column is not float" => DataFailure::TypeMismatch {
+            _ => Err(DataFailure::TypeMismatch {
                 expected: "FLOAT",
                 column: name.clone(),
-            },
-            "destination length mismatch" => DataFailure::DestinationLengthMismatch {
-                expected: col.values.len(),
-                got: length as usize,
-            },
-            _ => DataFailure::from_message(message),
+            }),
         })
     });
     match result {

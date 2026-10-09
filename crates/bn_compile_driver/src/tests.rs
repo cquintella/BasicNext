@@ -107,15 +107,52 @@ fn native_programs_use_the_dynamic_crt_and_legacy_stdio_only_on_windows() {
 }
 
 #[test]
-fn temp_file_guard_removes_file_on_drop() {
-    let temp_path = std::env::temp_dir().join(format!("test-guard-{}.tmp", std::process::id()));
-    std::fs::write(&temp_path, b"test").unwrap();
-    assert!(temp_path.exists());
+fn build_dir_is_private_beside_the_source_and_removed_on_drop() {
+    let source_dir = std::env::temp_dir().join(format!("bn-build-dir-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&source_dir);
+    std::fs::create_dir_all(&source_dir).unwrap();
+    let source = source_dir.join("prog.bn");
+    let path;
     {
-        let _guard = crate::artifact::TempFileGuard(temp_path.clone());
+        let build_dir = crate::artifact::BuildDir::beside(&source).unwrap();
+        path = build_dir.join("module.ll");
+        let directory = path.parent().unwrap().to_path_buf();
+        assert_eq!(directory.parent(), Some(source_dir.as_path()));
+        assert!(
+            directory
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with(".prog.bnbuild-")
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = std::fs::metadata(&directory).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o700);
+        }
+        crate::artifact::write_new(&path, "ir").unwrap();
+        // An existing file is never overwritten.
+        assert!(crate::artifact::write_new(&path, "again").is_err());
+        assert!(directory.is_dir());
     }
-    assert!(
-        !temp_path.exists(),
-        "TempFileGuard must remove the file on drop"
-    );
+    assert!(!path.exists(), "BuildDir must remove its contents on drop");
+    assert_eq!(std::fs::read_dir(&source_dir).unwrap().count(), 0);
+    std::fs::remove_dir_all(&source_dir).unwrap();
+}
+
+/// `write_new` never follows a planted symlink.
+#[cfg(unix)]
+#[test]
+fn write_new_refuses_a_planted_symlink() {
+    let directory = std::env::temp_dir().join(format!("bn-write-new-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&directory);
+    std::fs::create_dir_all(&directory).unwrap();
+    let victim = directory.join("victim");
+    std::fs::write(&victim, "keep").unwrap();
+    let link = directory.join("module.ll");
+    std::os::unix::fs::symlink(&victim, &link).unwrap();
+    assert!(crate::artifact::write_new(&link, "ir").is_err());
+    assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep");
+    std::fs::remove_dir_all(&directory).unwrap();
 }

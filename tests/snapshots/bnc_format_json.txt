@@ -1,0 +1,1 @@
+error: --format json is an interpreter option (bni eval)

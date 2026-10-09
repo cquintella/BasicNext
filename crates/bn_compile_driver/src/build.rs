@@ -12,7 +12,7 @@ use bn_cli::{
     frontend::load_frontend,
     options::Options,
     output::{language_error, tool_error},
-    process_log::{LogLevel, ProcessLog},
+    process_log::{LogLevel, LogTarget, ProcessLog, companion_log},
 };
 use bn_llvm::{
     CompiledPolicy, DebugInfo, Target as LlvmTarget, lower_validated_module_with_diagnostics,
@@ -21,28 +21,54 @@ use bn_llvm::{
 use bn_source::SourceFile;
 
 use crate::{
-    artifact::emit_build_output,
+    artifact::{emit_build_output, product_path},
     options::{BuildOptions, Optimization, Target},
 };
 
-fn process_log_path(options: &Options) -> Option<PathBuf> {
+/// Where the process log goes (target-architecture.md, "Companion `.log`":
+/// next to the product, or an explicit path): `--log-file` / `[logging] file`,
+/// else `<product>.bnbuild.log` (`process_log::companion_log`).
+///
+/// # Errors
+///
+/// An explicit log path equal to the product would overwrite it.
+fn process_log_target(
+    options: &Options,
+    build_options: BuildOptions,
+) -> Result<Option<LogTarget>, String> {
     if options.no_log {
-        return None;
+        return Ok(None);
     }
-    options.log_file.as_ref().map_or_else(
-        || {
-            options
-                .output
-                .as_ref()
-                .map(|output| Path::new(output).with_extension("log"))
-        },
-        |path| Some(PathBuf::from(path)),
-    )
+    let product = product_path(options, build_options);
+    match options.log_file.as_deref() {
+        Some(path) if product.as_deref() == Some(Path::new(path)) => Err(format!(
+            "--log-file {path} is the build output; choose another path"
+        )),
+        Some(path) => Ok(Some(LogTarget::Explicit(PathBuf::from(path)))),
+        None => Ok(product
+            .as_deref()
+            .and_then(companion_log)
+            .map(LogTarget::Companion)),
+    }
 }
 
 /// Compiles `options.path` and writes the companion process log.
 #[must_use]
 pub fn build(source: &SourceFile, options: &Options, build_options: BuildOptions) -> ExitCode {
+    let log_target = match process_log_target(options, build_options) {
+        Ok(target) => target,
+        Err(message) => {
+            eprintln!(
+                "{}",
+                bn_cli::diagnostics::tool_diagnostic(
+                    bn_diag::DiagId::CONFIG_INVALID,
+                    message,
+                    &options.diagnostic_catalog,
+                )
+            );
+            return tool_error();
+        }
+    };
     let mut process_log = ProcessLog::new(options.log_level);
     process_log.event(
         LogLevel::Info,
@@ -78,7 +104,7 @@ pub fn build(source: &SourceFile, options: &Options, build_options: BuildOptions
         "end",
         format!("exit={result:?}"),
     );
-    if process_log.finish(process_log_path(options).as_deref()) {
+    if process_log.finish(log_target.as_ref()) {
         return tool_error();
     }
     result

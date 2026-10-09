@@ -2,7 +2,12 @@
 //! wasm-ld to produce the native executable or Wasm module, linking
 //! `libbn_rt.a` and the platform runtime libraries when HOST is used.
 
-use std::{env, fs, path::PathBuf, process::ExitCode};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+    process::ExitCode,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use bn_diag::DiagId;
 
@@ -67,12 +72,96 @@ pub(crate) fn native_runtime_link_args() -> &'static [&'static str] {
     }
 }
 
-pub(crate) struct TempFileGuard(pub(crate) PathBuf);
+/// Writes `bytes` to a file that must not exist yet (`create_new`: no
+/// overwrite, no symlink followed).
+pub(crate) fn write_new(path: &Path, bytes: &str) -> io::Result<()> {
+    use std::io::Write as _;
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)?
+        .write_all(bytes.as_bytes())
+}
 
-impl Drop for TempFileGuard {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.0);
+/// The private directory a native build keeps its LLVM IR and object file in
+/// (known issue K24; Carlos, 2026-10-09: beside the source being compiled).
+/// Created exclusively (`mkdir` fails on an existing name, a planted
+/// symlink included), mode 0700 on Unix so nobody else can place a link
+/// inside it, and removed with its contents when dropped, on every path.
+pub(crate) struct BuildDir(PathBuf);
+
+impl BuildDir {
+    /// Creates `.<stem>.bnbuild-<pid>-<nanos>-<n>/` beside `source`.
+    pub(crate) fn beside(source: &Path) -> io::Result<Self> {
+        let parent = source
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        let stem = source
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("a");
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.subsec_nanos());
+        let mut builder = fs::DirBuilder::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt as _;
+            builder.mode(0o700);
+        }
+        for attempt in 0..16 {
+            let path = parent.join(format!(
+                ".{stem}.bnbuild-{}-{nanos}-{attempt}",
+                std::process::id()
+            ));
+            match builder.create(&path) {
+                Ok(()) => return Ok(Self(path)),
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "no free build directory name",
+        ))
     }
+
+    pub(crate) fn join(&self, name: &str) -> PathBuf {
+        self.0.join(name)
+    }
+}
+
+impl Drop for BuildDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+/// The file the build writes: `-o`, or the entry's stem (`.exe` on Windows,
+/// `.wasm` for wasm32); for `--emit llvm`, the `-o` file if any. The one
+/// answer the artifact and its companion process log both use.
+#[must_use]
+pub fn product_path(options: &Options, build_options: BuildOptions) -> Option<std::path::PathBuf> {
+    if let Some(path) = options.output.as_deref() {
+        return Some(std::path::PathBuf::from(path));
+    }
+    if options.emit.is_some() {
+        return None;
+    }
+    let stem = std::path::Path::new(&options.path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("a");
+    Some(std::path::PathBuf::from(
+        if build_options.target == Target::Wasm32 {
+            format!("{stem}.wasm")
+        } else if cfg!(windows) {
+            format!("{stem}.exe")
+        } else {
+            stem.to_string()
+        },
+    ))
 }
 
 #[allow(clippy::too_many_lines)] // External tool command construction stays auditable here.
@@ -85,28 +174,11 @@ pub fn emit_build_output(
     if options.emit == Some(bn_cli::options::Emit::Llvm) {
         return emit_output(llvm, options.output.as_deref());
     }
-    let default_output;
-    let output = if let Some(path) = options.output.as_deref() {
-        path
-    } else {
-        let stem = std::path::Path::new(&options.path)
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("a");
-        default_output = if build_options.target == Target::Wasm32 {
-            format!("{stem}.wasm")
-        } else if cfg!(windows) {
-            format!("{stem}.exe")
-        } else {
-            stem.to_string()
-        };
-        &default_output
-    };
-    let temporary = env::temp_dir().join(format!("basicnext-llvm-{}.ll", std::process::id()));
-    if let Err(error) = fs::write(&temporary, &llvm) {
-        eprintln!("error: cannot write temporary LLVM IR: {error}");
+    let Some(product) = product_path(options, build_options) else {
         return tool_error();
-    }
+    };
+    let output = product.to_string_lossy();
+    let output = output.as_ref();
     if build_options.target == Target::Wasm32
         && build_options.cpu == crate::options::CpuTarget::Native
     {
@@ -120,7 +192,24 @@ pub fn emit_build_output(
         );
         return tool_error();
     }
-    let _temporary_guard = TempFileGuard(temporary.clone());
+    // Beside the source (Carlos, 2026-10-09); a read-only source tree falls
+    // back to the system temporary directory, where the same exclusive,
+    // private creation is equally safe.
+    let source = Path::new(&options.path);
+    let build_dir = match BuildDir::beside(source).or_else(|_| {
+        BuildDir::beside(&std::env::temp_dir().join(source.file_name().unwrap_or_default()))
+    }) {
+        Ok(build_dir) => build_dir,
+        Err(error) => {
+            eprintln!("error: cannot create a private build directory: {error}");
+            return tool_error();
+        }
+    };
+    let temporary = build_dir.join("module.ll");
+    if let Err(error) = write_new(&temporary, &llvm) {
+        eprintln!("error: cannot write temporary LLVM IR: {error}");
+        return tool_error();
+    }
     let clang = match if build_options.target == Target::Wasm32 {
         configured_wasm_clang()
     } else {
@@ -135,8 +224,7 @@ pub fn emit_build_output(
             return tool_error();
         }
     };
-    let object = temporary.with_extension("o");
-    let _object_guard = TempFileGuard(object.clone());
+    let object = build_dir.join("module.o");
     let mut failed_tool = "clang";
     // `-g` keeps the debug sections the module metadata describes; on macOS
     // it also makes clang run dsymutil, which writes `<output>.dSYM`.

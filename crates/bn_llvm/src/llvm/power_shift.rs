@@ -196,7 +196,7 @@ pub(crate) fn emit_integer_power(
         bn_diag::DiagId::INVALID_EXPONENT,
         vec![(
             "detail",
-            Fact::Text("integer exponent cannot be negative".into()),
+            Fact::Text(bn_diag::trap_texts::EXPONENT_NEGATIVE.into()),
         )],
     );
     let setup = take_continuation(block_id, state);
@@ -207,7 +207,10 @@ pub(crate) fn emit_integer_power(
         &format!("%pbig{dest}"),
         setup.clone(),
         bn_diag::DiagId::INVALID_EXPONENT,
-        vec![("detail", Fact::Text("integer exponent is too large".into()))],
+        vec![(
+            "detail",
+            Fact::Text(bn_diag::trap_texts::EXPONENT_TOO_LARGE.into()),
+        )],
     );
     let label = |name: &str| format!("b{}.pow{dest}.{name}", block_id.0);
     let (loop_h, work, mulr) = (label("loop"), label("work"), label("mulr"));
@@ -401,7 +404,7 @@ fn emit_checked_i128_mul(
         bn_diag::DiagId::NUMERIC_OVERFLOW,
         vec![(
             "operation",
-            Fact::Text("performing an integer operation".into()),
+            Fact::Text(bn_diag::trap_texts::PERFORMING_INTEGER_OP.into()),
         )],
     );
 }

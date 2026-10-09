@@ -1,244 +1,11 @@
-use std::collections::BTreeMap;
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-const MAX_RECORD_BYTES: usize = 64 * 1024;
+//! `BNLog` record and formatting re-exported from `bn_core_log`.
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum Level {
-    Error = 0,
-    Warn = 1,
-    Info = 2,
-    Http = 3,
-    Verbose = 4,
-    Debug = 5,
-    Silly = 6,
-}
-
-impl Level {
-    #[must_use]
-    pub fn from_i64(value: i64) -> Option<Self> {
-        match value {
-            0 => Some(Self::Error),
-            1 => Some(Self::Warn),
-            2 => Some(Self::Info),
-            3 => Some(Self::Http),
-            4 => Some(Self::Verbose),
-            5 => Some(Self::Debug),
-            6 => Some(Self::Silly),
-            _ => None,
-        }
-    }
-
-    #[must_use]
-    pub fn from_i128(value: i128) -> Option<Self> {
-        i64::try_from(value).ok().and_then(Self::from_i64)
-    }
-
-    const fn name(self) -> &'static str {
-        match self {
-            Self::Error => "ERROR",
-            Self::Warn => "WARN",
-            Self::Info => "INFO",
-            Self::Http => "HTTP",
-            Self::Verbose => "VERBOSE",
-            Self::Debug => "DEBUG",
-            Self::Silly => "SILLY",
-        }
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Record {
-    pub timestamp: String,
-    pub label: String,
-    pub level: Level,
-    pub message: String,
-    pub fields: BTreeMap<String, String>,
-}
-
-impl Record {
-    /// A record made now: the logger's context fields with the call's fields
-    /// over them, stamped with the wall clock in RFC 3339. Both backends
-    /// build `Logger.Log` records here.
-    #[must_use]
-    pub fn now<'a>(
-        label: &str,
-        level: Level,
-        message: &str,
-        context: &BTreeMap<String, String>,
-        provided: impl IntoIterator<Item = (&'a String, &'a String)>,
-    ) -> Self {
-        let mut fields = context.clone();
-        fields.extend(
-            provided
-                .into_iter()
-                .map(|(key, value)| (key.clone(), value.clone())),
-        );
-        Self {
-            timestamp: crate::format_rfc3339(crate::timestamp_ms()),
-            label: label.to_owned(),
-            level,
-            message: message.to_owned(),
-            fields,
-        }
-    }
-
-    /// # Errors
-    ///
-    /// Returns an error when the bounded output exceeds the runtime limit.
-    pub fn json_line(&self) -> Result<String, &'static str> {
-        let fields = self
-            .fields
-            .iter()
-            .filter(|(key, _)| !is_sensitive(key))
-            .map(|(key, value)| format!("{}:{}", json_string(key), json_string(value)))
-            .collect::<Vec<_>>()
-            .join(",");
-        bounded(format!(
-            "{{\"fields\":{{{fields}}},\"label\":{},\"level\":{},\"message\":{},\"timestamp\":{}}}",
-            json_string(&self.label),
-            json_string(self.level.name()),
-            json_string(&self.message),
-            json_string(&self.timestamp),
-        ))
-    }
-
-    /// # Errors
-    ///
-    /// Returns an error when the bounded output exceeds the runtime limit.
-    pub fn text_line(&self) -> Result<String, &'static str> {
-        let fields = self
-            .fields
-            .iter()
-            .filter(|(key, _)| !is_sensitive(key))
-            .map(|(key, value)| format!("{}={}", escape(key), escape(value)))
-            .collect::<Vec<_>>()
-            .join(" ");
-        bounded(format!(
-            "{} {} {} {}{}\n",
-            self.timestamp,
-            self.label,
-            self.level.name(),
-            escape(&self.message),
-            if fields.is_empty() {
-                String::new()
-            } else {
-                format!(" {fields}")
-            }
-        ))
-    }
-
-    /// # Errors
-    ///
-    /// Returns an error when the bounded output exceeds the runtime limit.
-    pub fn apache_combined(&self) -> Result<String, &'static str> {
-        let field = |name: &str| self.fields.get(name).map_or("-", String::as_str);
-        bounded(format!(
-            "{} - - [{}] \"{}\" {} {} \"{}\" \"{}\"\n",
-            escape(field("remote")),
-            escape(&self.timestamp),
-            escape(&strip_query(field("request"))),
-            escape(field("status")),
-            escape(field("bytes_sent")),
-            escape(&strip_query(field("referrer"))),
-            escape(field("user_agent"))
-        ))
-    }
-}
-
-fn json_string(value: &str) -> String {
-    let mut result = String::with_capacity(value.len() + 2);
-    result.push('"');
-    for character in value.chars() {
-        match character {
-            '"' => result.push_str("\\\""),
-            '\\' => result.push_str("\\\\"),
-            '\n' => result.push_str("\\n"),
-            '\r' => result.push_str("\\r"),
-            '\t' => result.push_str("\\t"),
-            character if character.is_control() => {
-                use std::fmt::Write as _;
-                let _ = write!(result, "\\u{:04x}", u32::from(character));
-            }
-            character => result.push(character),
-        }
-    }
-    result.push('"');
-    result
-}
-
-fn bounded(value: String) -> Result<String, &'static str> {
-    (value.len() <= MAX_RECORD_BYTES)
-        .then_some(value)
-        .ok_or("serialized log record exceeds 64 KiB")
-}
-
-fn escape(value: &str) -> String {
-    value
-        .chars()
-        .map(|character| match character {
-            '\n' | '\r' | '\t' => ' ',
-            character if character.is_control() => '?',
-            character => character,
-        })
-        .collect()
-}
-
-fn is_sensitive(key: &str) -> bool {
-    let normalized = key.to_ascii_lowercase().replace(['-', '.'], "_");
-    matches!(
-        normalized.as_str(),
-        "authorization"
-            | "proxy_authorization"
-            | "cookie"
-            | "set_cookie"
-            | "session"
-            | "session_id"
-            | "query"
-            | "body"
-            | "password"
-            | "passwd"
-            | "secret"
-            | "token"
-            | "api_key"
-            | "apikey"
-            | "private_key"
-            | "client_secret"
-            | "access_key"
-            | "tls_key"
-            | "credential"
-            | "bearer"
-            | "refresh_token"
-            | "jwt"
-            | "signature"
-    ) || [
-        "authorization",
-        "cookie",
-        "session",
-        "password",
-        "secret",
-        "token",
-        "api_key",
-        "apikey",
-        "access_key",
-        "private_key",
-        "client_secret",
-        "credential",
-        "bearer",
-        "refresh_token",
-        "jwt",
-        "signature",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker))
-}
-
-fn strip_query(value: &str) -> String {
-    value
-        .split_whitespace()
-        .map(|part| part.split_once('?').map_or(part, |(path, _)| path))
-        .collect::<Vec<_>>()
-        .join(" ")
-}
+pub use bn_core_log::{FileTransport, Level, Record, dispatch_log};
 
 #[cfg(test)]
 mod tests {
@@ -254,7 +21,14 @@ mod tests {
             ("route".to_owned(), "/".to_owned()),
         ]);
         let provided = BTreeMap::from([("route".to_owned(), "/users".to_owned())]);
-        let record = Record::now("web", Level::Info, "hit", &context, &provided);
+        let record = Record::with_timestamp(
+            "2026-10-08T12:00:00Z".to_owned(),
+            "web",
+            Level::Info,
+            "hit",
+            &context,
+            &provided,
+        );
         assert_eq!(record.fields["service"], "api");
         assert_eq!(record.fields["route"], "/users");
         assert_eq!(record.label, "web");

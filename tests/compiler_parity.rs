@@ -820,3 +820,71 @@ fn nul_in_a_string_stops_native_builds_and_not_the_interpreter() {
         );
     }
 }
+
+/// A log file the filesystem policy denies is `Error(Log.IO_FAILED)` from
+/// `AddFile` on both backends, and the program goes on (bnlog.md "Errors";
+/// bucket 0.6.5c D2). `bni` stopped with `EXECUTION_POLICY_DENIED` under
+/// `read-only` and returned `CAPABILITY_REQUIRED` under `deny`.
+#[test]
+fn denied_log_file_is_io_failed_on_both_backends() {
+    let path = workspace_root().join("tests/host/log_denied.bn");
+    let build = TestDir::new("log-denied").expect("create directory");
+    let artifact = compile_native(&path, &build);
+    for policy in ["deny", "read-only"] {
+        let interpreted = execute(
+            bni()
+                .arg("run")
+                .arg(&path)
+                .current_dir(build.path())
+                .env("BN_FS_POLICY", policy),
+            None,
+        );
+        let compiled = execute(
+            Command::new(&artifact)
+                .current_dir(build.path())
+                .env("BN_FS_POLICY", policy),
+            None,
+        );
+        for (backend, output) in [("bni", &interpreted), ("native", &compiled)] {
+            assert_eq!(output.status.code(), Some(0), "{policy} {backend}");
+            assert_eq!(
+                String::from_utf8_lossy(&output.stdout),
+                "TRUE BNLog.Logger.AddFile\nlogged FALSE\n",
+                "{policy} {backend}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        assert!(
+            !build.join("bn-log-denied.log").exists(),
+            "{policy}: a denied log file was created"
+        );
+    }
+}
+
+/// `BNLog.Fields.SetInteger` / `SetBoolean` build natively and record the
+/// same field text as `bni` (known issue K7; native refused them as user
+/// function calls). The timestamp is the only part allowed to differ.
+#[test]
+fn bnlog_field_setters_match_on_both_backends() {
+    let path = workspace_root().join("tests/host/log_fields.bn");
+    let build = TestDir::new("log-fields").expect("create directory");
+    let artifact = compile_native(&path, &build);
+    let expected = "{\"fields\":{\"big\":\"9000000000\",\"count\":\"42\",\"name\":\"ana\",\
+                    \"off\":\"FALSE\",\"ok\":\"TRUE\"},\"label\":\"\",\"level\":\"INFO\",\
+                    \"message\":\"fields\",\"timestamp\":\"T\"}\nFALSE FALSE\n";
+    let without_timestamp = |stdout: &[u8]| {
+        let text = String::from_utf8_lossy(stdout).into_owned();
+        match (text.find("\"timestamp\":\""), text.find("\"}\n")) {
+            (Some(start), Some(end)) if start < end => {
+                format!("{}\"timestamp\":\"T{}", &text[..start], &text[end..])
+            }
+            _ => text,
+        }
+    };
+    let interpreted = execute(bni().arg("run").arg(&path), None);
+    let compiled = execute(&mut Command::new(&artifact), None);
+    for (backend, output) in [("bni", &interpreted), ("native", &compiled)] {
+        assert_eq!(output.status.code(), Some(0), "{backend}");
+        assert_eq!(without_timestamp(&output.stdout), expected, "{backend}");
+    }
+}

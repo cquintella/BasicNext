@@ -8,9 +8,15 @@ fn v(id: ValueId) -> O {
     O::reg(format!("v{}", id.0))
 }
 
-/// `%{slot}`: the pointer bits of a plain `DataFrame` handle.
-fn emit_pointer_handle(text: &mut String, slot: String, operand: ValueId) -> O {
-    text.assign(&slot, I::cast(CastOp::PtrToInt, T::Ptr, v(operand), T::I64));
+/// `%{slot}`: the `DataFrame` handle of `operand`, also when the receiver is
+/// still typed `DataFrame OR Error` (narrowed by an `IS Error` branch).
+fn emit_pointer_handle(
+    text: &mut String,
+    analysis: &LoweringAnalysis<'_>,
+    slot: String,
+    operand: ValueId,
+) -> O {
+    emit_handle_operand(text, analysis, slot.clone(), operand);
     O::reg(slot)
 }
 
@@ -41,9 +47,10 @@ pub(crate) fn lower_bndata_set_label(
     text: &mut String,
     destination: ValueId,
     arguments: &[ValueId],
+    analysis: &LoweringAnalysis<'_>,
 ) {
     let dest = destination.0;
-    let handle = emit_pointer_handle(text, format!("dflabelhandle{dest}"), arguments[0]);
+    let handle = emit_pointer_handle(text, analysis, format!("dflabelhandle{dest}"), arguments[0]);
     let args = vec![
         (T::I64, handle),
         (T::Ptr, v(arguments[1])),
@@ -152,10 +159,15 @@ pub(crate) fn lower_bndata_copy(
     emit_void_result(text, destination, format!("%dfcopyrc{dest}"));
 }
 
-pub(crate) fn lower_bndata_select(text: &mut String, destination: ValueId, arguments: &[ValueId]) {
+pub(crate) fn lower_bndata_select(
+    text: &mut String,
+    destination: ValueId,
+    arguments: &[ValueId],
+    analysis: &LoweringAnalysis<'_>,
+) {
     let dest = destination.0;
     let r = |name: &str| O::reg(format!("dfsel{name}{dest}"));
-    let handle = emit_pointer_handle(text, format!("dfselhandle{dest}"), arguments[0]);
+    let handle = emit_pointer_handle(text, analysis, format!("dfselhandle{dest}"), arguments[0]);
     for (name, operand) in [("rows", arguments[1]), ("cols", arguments[2])] {
         let length = if name == "rows" { "rowlen" } else { "collen" };
         text.assign(
@@ -182,8 +194,14 @@ pub(crate) fn lower_bndata_transform(
     destination: ValueId,
     arguments: &[ValueId],
     symbol: &str,
+    analysis: &LoweringAnalysis<'_>,
 ) {
-    let handle = emit_pointer_handle(text, format!("dftrhandle{}", destination.0), arguments[0]);
+    let handle = emit_pointer_handle(
+        text,
+        analysis,
+        format!("dftrhandle{}", destination.0),
+        arguments[0],
+    );
     emit_new_frame_call(text, destination, "dftr", symbol, vec![(T::I64, handle)]);
 }
 
@@ -192,10 +210,11 @@ pub(crate) fn lower_bndata_binary_transform(
     destination: ValueId,
     arguments: &[ValueId],
     symbol: &str,
+    analysis: &LoweringAnalysis<'_>,
 ) {
     let dest = destination.0;
-    let left = emit_pointer_handle(text, format!("dfbinleft{dest}"), arguments[0]);
-    let right = emit_pointer_handle(text, format!("dfbinright{dest}"), arguments[1]);
+    let left = emit_pointer_handle(text, analysis, format!("dfbinleft{dest}"), arguments[0]);
+    let right = emit_pointer_handle(text, analysis, format!("dfbinright{dest}"), arguments[1]);
     let args = vec![(T::I64, left), (T::I64, right)];
     emit_new_frame_call(text, destination, "dfbin", symbol, args);
 }
@@ -205,10 +224,11 @@ pub(crate) fn lower_bndata_join(
     destination: ValueId,
     arguments: &[ValueId],
     kind: u32,
+    analysis: &LoweringAnalysis<'_>,
 ) {
     let dest = destination.0;
-    let left = emit_pointer_handle(text, format!("dfjoinleft{dest}"), arguments[0]);
-    let right = emit_pointer_handle(text, format!("dfjoinright{dest}"), arguments[1]);
+    let left = emit_pointer_handle(text, analysis, format!("dfjoinleft{dest}"), arguments[0]);
+    let right = emit_pointer_handle(text, analysis, format!("dfjoinright{dest}"), arguments[1]);
     let args = vec![
         (T::I64, left),
         (T::I64, right),

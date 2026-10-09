@@ -133,7 +133,7 @@ value.
 | `DUPLICATE` | 2 | A field or entry key that already exists |
 | `LIMIT` | 3 | Too many transports, fields, or entry fields |
 | `CLOSED` | 4 | An operation on a closed logger |
-| `IO_FAILED` | 5 | A transport could not write or flush |
+| `IO_FAILED` | 5 | A transport could not write or flush, including a file the filesystem policy denies (`BN_FS_POLICY`) |
 | `CAPABILITY_REQUIRED` | 6 | `AddFile` without `IMPORT HOST.FileSystem`, `AddConsole` without `IMPORT HOST.Console` (programs import every capability they use) |
 | `TIMEOUT` | 7 | `Flush` or `Close` ran past its timeout |
 | `UNAVAILABLE` | 8 | The operation or provider is not available |

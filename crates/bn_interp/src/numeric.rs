@@ -56,24 +56,9 @@ pub fn number_as_float(value: &Value, span: Span) -> Result<f64, Diagnostic> {
     }
 }
 
+#[must_use]
 pub fn parse_val(text: &str) -> f64 {
-    let text = text.trim_start();
-    let bytes = text.as_bytes();
-    let mut end = usize::from(bytes.first().is_some_and(|b| matches!(b, b'+' | b'-')));
-    let digits = end;
-    while bytes.get(end).is_some_and(u8::is_ascii_digit) {
-        end += 1;
-    }
-    if bytes.get(end) == Some(&b'.') {
-        end += 1;
-        while bytes.get(end).is_some_and(u8::is_ascii_digit) {
-            end += 1;
-        }
-    }
-    if end == digits || (end == digits + 1 && bytes.get(digits) == Some(&b'.')) {
-        return 0.0;
-    }
-    text[..end].parse().unwrap_or(0.0)
+    bn_core_text::parse_val(text)
 }
 
 pub(super) fn is_float_value(value: &Value) -> bool {
