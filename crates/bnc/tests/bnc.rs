@@ -349,6 +349,10 @@ fn a_native_debugger_reads_the_arc_core() {
                 "break bn_rt_arc_release",
                 "-ex",
                 "run",
+                // The breakpoint stops in a Rust frame, where `(void)` is not
+                // an expression; the call is written in C.
+                "-ex",
+                "set language c",
                 "-ex",
                 "call (void)bn_rt_arc_dump()",
                 "-ex",
