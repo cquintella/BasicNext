@@ -43,7 +43,8 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `valid/pointer-named-type.bn` | Accept | Declared named pointer elements in bindings, signatures, and `IS` tests. |
 | `valid/pointer-void.bn` | Accept and run | C-style typed-pointer round trip through opaque `POINTER TO VOID`. |
 | `valid/upcast-argument.bn` | Accept and run | Upcast to an ancestor class in arguments, `NEW` expressions, and returned values. |
-| `valid/interface-inherited-method.bn` | Accept; run on `bni` | Method dispatch for an interface implemented by an ancestor class. |
+| `valid/interface-inherited-method.bn` | Accept and run | Method dispatch for an interface implemented by an ancestor class. |
+| `valid/interface-dispatch-many.bn` | Accept and run | A call through an interface reference reaches each implementing class, an inherited implementation and an override, with arguments and results. |
 | `valid/override-intermediate.bn` | Accept and run | Polymorphic dispatch executes the nearest override in a multilevel hierarchy. |
 | `valid/region-void-roundtrip.bn` | Accept and run | Typed pointer region round-trip through `POINTER TO VOID` and back with length and elements preserved. |
 | `valid/env-import.bn` | Accept and run | `HOST.Env` import and `Env.Has` usage. |

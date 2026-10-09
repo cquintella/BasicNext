@@ -382,7 +382,8 @@ pub(crate) fn lower_call_instruction(
         name if module
             .functions
             .iter()
-            .any(|function| function.name == name.strip_prefix("@super:").unwrap_or(name)) =>
+            .any(|function| function.name == name.strip_prefix("@super:").unwrap_or(name))
+            || crate::analysis_calls::interface_call_targets(module, name).is_some() =>
         {
             lower_user_call(text, module, *destination, name, arguments, analysis, state);
         }

@@ -27,6 +27,28 @@ pub fn resolve_method<'a>(
     None
 }
 
+/// Every class a receiver of static type `static_type` (a class or an
+/// interface) can have at run time, paired with the function `method`
+/// resolves to for it; sorted by class name. Classes with no implementation
+/// (an interface itself) are left out.
+#[must_use]
+pub fn dispatch_targets<'a>(
+    module: &'a Module,
+    static_type: &str,
+    method: &str,
+) -> Vec<(&'a str, &'a str)> {
+    module
+        .field_layouts
+        .keys()
+        .filter(|class| {
+            class.as_str() == static_type || module.class_model.is_upcast(class, static_type)
+        })
+        .filter_map(|class| {
+            resolve_method(module, class, method).map(|target| (class.as_str(), target))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::resolve_method;
@@ -127,6 +149,36 @@ mod tests {
         assert_eq!(
             resolve_method(&module, "#0.Dog", "Speak"),
             Some("#0.Dog.Speak")
+        );
+    }
+
+    #[test]
+    fn interface_targets_cover_every_implementing_class() {
+        let mut module = make_test_module();
+        module.class_model.add_interface("Base", "Shape");
+        module.class_model.add_base("Sub", "Base");
+        module.class_model.add_interface("Other", "Shape");
+        for class in ["Shape", "Base", "Sub", "Other", "Unrelated"] {
+            module.field_layouts.insert(
+                class.to_string(),
+                crate::FieldLayout {
+                    owner: class.to_string(),
+                    fields: Vec::new(),
+                    span: test_span(),
+                },
+            );
+        }
+        add_fn(&mut module, "Base.Name");
+        add_fn(&mut module, "Other.Name");
+        add_fn(&mut module, "Unrelated.Name");
+
+        assert_eq!(
+            super::dispatch_targets(&module, "Shape", "Name"),
+            vec![
+                ("Base", "Base.Name"),
+                ("Other", "Other.Name"),
+                ("Sub", "Base.Name")
+            ]
         );
     }
 }

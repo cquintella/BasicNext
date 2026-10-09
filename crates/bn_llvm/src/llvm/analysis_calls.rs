@@ -444,6 +444,13 @@ pub(crate) fn call_instruction_supported(
                     .is_some_and(|ty| llvm_type(ty).is_some() || is_void_type(ty))
             })
         }
+        Some(name) if interface_call_targets(module, name).is_some() => {
+            arguments.iter().all(|argument| {
+                values
+                    .get(argument)
+                    .is_some_and(|ty| llvm_type(ty).is_some() || is_void_type(ty))
+            })
+        }
         Some(name) => {
             return Err(unsupported_instruction(
                 module,
@@ -458,4 +465,19 @@ pub(crate) fn call_instruction_supported(
                     && arguments.iter().all(|argument| values.get(argument).and_then(llvm_type).is_some()))
         }
     })
+}
+
+/// A call to `Interface.Method`: the implementations a receiver of that
+/// interface can reach, one per class (`bn_ir::dispatch::dispatch_targets`).
+/// `None` when `name` is not an interface method or nothing implements it.
+pub(crate) fn interface_call_targets<'a>(
+    module: &'a Module,
+    name: &str,
+) -> Option<Vec<(&'a str, &'a str)>> {
+    let (interface, method) = name.rsplit_once('.')?;
+    if !module.interfaces.contains(interface) {
+        return None;
+    }
+    let targets = bn_ir::dispatch::dispatch_targets(module, interface, method);
+    (!targets.is_empty()).then_some(targets)
 }

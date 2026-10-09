@@ -1,0 +1,57 @@
+INTERFACE Shape
+    FUNCTION Area(scale AS INT32) AS INT32
+    FUNCTION Name() AS STRING
+END INTERFACE
+
+CLASS Square IMPLEMENTS Shape
+    PRIVATE side AS INT32
+
+    PUBLIC FUNCTION CONSTRUCTOR(side AS INT32)
+        SELF.side = side
+    END FUNCTION
+
+    PUBLIC FUNCTION Area(scale AS INT32) AS INT32
+        RETURN SELF.side * SELF.side * scale
+    END FUNCTION
+
+    PUBLIC FUNCTION Name() AS STRING
+        RETURN "square"
+    END FUNCTION
+END CLASS
+
+CLASS Cube EXTENDS Square
+    PUBLIC FUNCTION CONSTRUCTOR(side AS INT32)
+        SUPER(side)
+    END FUNCTION
+
+    PUBLIC OVERRIDE FUNCTION Name() AS STRING
+        RETURN "cube"
+    END FUNCTION
+END CLASS
+
+CLASS Strip IMPLEMENTS Shape
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION Area(scale AS INT32) AS INT32
+        RETURN 7 * scale
+    END FUNCTION
+
+    PUBLIC FUNCTION Name() AS STRING
+        RETURN "strip"
+    END FUNCTION
+END CLASS
+
+FUNCTION Describe(s AS Shape) AS VOID
+    PRINT s.Name() + " " + (s.Area(2) AS STRING)
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET a AS Shape = NEW Square(3)
+    LET b AS Shape = NEW Cube(2)
+    LET c AS Shape = NEW Strip()
+    Describe(a)
+    Describe(b)
+    Describe(c)
+    PRINT a.Area(1) + b.Area(1) + c.Area(1)
+END FUNCTION

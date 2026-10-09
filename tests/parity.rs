@@ -2078,41 +2078,14 @@ fn upcast_argument_passed_to_ancestor_parameter() {
 
 #[test]
 fn interface_inherited_method_dispatch() {
-    let path = "tests/grammar/valid/interface-inherited-method.bn";
-    // bni must print "base"
-    let interpreted = bni().args(["run", path]).output().expect("run interpreter");
-    assert_eq!(
-        interpreted.status.code(),
-        Some(0),
-        "bni stderr: {}",
-        String::from_utf8_lossy(&interpreted.stderr)
+    // K6: a call through an interface reference dispatches natively too.
+    native_and_interpreter_print(
+        "tests/grammar/valid/interface-inherited-method.bn",
+        "base\n",
     );
-    assert_eq!(String::from_utf8_lossy(&interpreted.stdout), "base\n");
-
-    // bnc keeps its TARGET_UNSUPPORTED_OP support gap, and nothing else:
-    // a real output path, so a second failure (the companion log of
-    // `-o /dev/null`, known issue K2/K5) cannot hide behind this one.
-    let directory = std::env::temp_dir().join(format!("bn-interface-gap-{}", std::process::id()));
-    std::fs::create_dir_all(&directory).expect("create output directory");
-    let artifact = directory.join("interface-gap");
-    let built = bnc()
-        .arg(path)
-        .arg("-o")
-        .arg(&artifact)
-        .output()
-        .expect("run bnc");
-    let err = String::from_utf8_lossy(&built.stderr);
-    let _ = std::fs::remove_dir_all(&directory);
-    assert_eq!(built.status.code(), Some(2), "{err}");
-    let errors = err
-        .lines()
-        .filter(|line| line.starts_with("error["))
-        .collect::<Vec<_>>();
-    assert_eq!(errors.len(), 1, "{err}");
-    assert!(
-        errors[0].starts_with("error[TARGET_UNSUPPORTED_OP]: native, ")
-            && errors[0].contains("calls to user-defined function 'Shape.Name'"),
-        "{err}"
+    native_and_interpreter_print(
+        "tests/grammar/valid/interface-dispatch-many.bn",
+        "square 18\ncube 8\nstrip 14\n20\n",
     );
 }
 

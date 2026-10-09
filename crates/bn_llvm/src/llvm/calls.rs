@@ -205,7 +205,18 @@ pub(crate) fn lower_user_call(
     state: &mut EmissionState,
 ) {
     let is_super = name.starts_with("@super:");
-    let resolved = name.strip_prefix("@super:").unwrap_or(name);
+    let mut resolved = name.strip_prefix("@super:").unwrap_or(name);
+    // `Interface.Method` has no body: every receiver is one of the classes
+    // that implement it, so the last implementation is the fallback of the
+    // dispatch and its signature (the interface's, checked by semantics)
+    // types the call.
+    let interface_targets = crate::analysis_calls::interface_call_targets(module, resolved);
+    if let Some((_, last)) = interface_targets
+        .as_ref()
+        .and_then(|targets| targets.last())
+    {
+        resolved = last;
+    }
     let callee = module
         .functions
         .iter()
@@ -266,18 +277,16 @@ pub(crate) fn lower_user_call(
             .get(&arguments[0])
             .is_some_and(|ty| llvm_type(ty) == Some("ptr"));
     if virtualish {
-        let static_class = resolved.rsplit_once('.').map_or("", |(c, _)| c);
-        let mut overrides: Vec<(&str, &str)> = Vec::new();
-        for candidate_class in module.field_layouts.keys() {
-            if (candidate_class == static_class
-                || module.class_model.is_upcast(candidate_class, static_class))
-                && let Some(target) =
-                    bn_ir::dispatch::resolve_method(module, candidate_class, method)
-                && target != resolved
-            {
-                overrides.push((candidate_class.as_str(), target));
-            }
-        }
+        let static_type = name
+            .strip_prefix("@super:")
+            .unwrap_or(name)
+            .rsplit_once('.')
+            .map_or("", |(owner, _)| owner);
+        let overrides: Vec<(&str, &str)> =
+            bn_ir::dispatch::dispatch_targets(module, static_type, method)
+                .into_iter()
+                .filter(|(_, target)| *target != resolved)
+                .collect();
         if !overrides.is_empty() {
             emit_virtual_method_call(
                 text,
