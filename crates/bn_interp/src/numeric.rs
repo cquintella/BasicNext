@@ -91,12 +91,7 @@ pub(super) fn float_value(value: f64, kind: FloatType) -> Value {
 }
 
 pub(super) fn integer_width(kind: IntegerType) -> u8 {
-    match kind {
-        IntegerType::Byte | IntegerType::Int8 => 8,
-        IntegerType::Int16 | IntegerType::UInt16 => 16,
-        IntegerType::Int32 | IntegerType::UInt32 => 32,
-        IntegerType::Int64 | IntegerType::UInt64 => 64,
-    }
+    kind.width()
 }
 
 pub(super) fn integer_range(kind: IntegerType) -> (i128, i128) {
@@ -113,13 +108,7 @@ pub(super) fn integer_range(kind: IntegerType) -> (i128, i128) {
 }
 
 pub(super) fn parse_integer(value: &str) -> Option<i128> {
-    if let Some(value) = value.strip_prefix("0b") {
-        i128::from_str_radix(value, 2).ok()
-    } else if let Some(value) = value.strip_prefix("0x") {
-        i128::from_str_radix(value, 16).ok()
-    } else {
-        value.parse().ok()
-    }
+    bn_types::literals::parse_integer(value)
 }
 
 pub(super) fn parse_float(value: &str) -> f64 {

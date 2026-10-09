@@ -75,6 +75,20 @@ pub enum IntegerType {
     UInt64,
 }
 
+impl IntegerType {
+    /// The width in bits, for range checks, shifts and constant folding on
+    /// both backends.
+    #[must_use]
+    pub const fn width(self) -> u8 {
+        match self {
+            Self::Byte | Self::Int8 => 8,
+            Self::Int16 | Self::UInt16 => 16,
+            Self::Int32 | Self::UInt32 => 32,
+            Self::Int64 | Self::UInt64 => 64,
+        }
+    }
+}
+
 /// The scalar type an `IS` test name denotes (`x IS INTEGER`), for both
 /// backends: `INTEGER` is `INT32` and `TIMESTAMP` is `INT64`.
 #[must_use]

@@ -11,10 +11,10 @@ use std::process::ExitCode;
 
 use bn_cli::{
     check::frontend_artifact,
-    frontend::{load_frontend, read_source},
-    help::{BOOK_URL, COMMON_OPTIONS, Tool, foreign_option, option_error},
+    frontend::load_frontend,
+    help::{BOOK_URL, COMMON_OPTIONS, Tool, option_error, tool_source},
     options::parse_options,
-    output::{emit_output, tool_error},
+    output::emit_output,
 };
 
 use crate::{build::build, options::BuildOptions};
@@ -64,11 +64,7 @@ pub fn main(version: &str, arguments: Vec<String>) -> ExitCode {
         Ok(options) => options,
         Err(message) => return option_error(&message, USAGE),
     };
-    if let Some(message) = foreign_option(Tool::Compiler, &options) {
-        eprintln!("error: {message}");
-        return tool_error();
-    }
-    let (source, tokens) = match read_source(&options) {
+    let (source, tokens) = match tool_source(Tool::Compiler, &options) {
         Ok(read) => read,
         Err(code) => return code,
     };

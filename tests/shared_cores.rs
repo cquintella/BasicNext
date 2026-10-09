@@ -26,6 +26,12 @@ fn tree(root: &Path, extra: Option<(&str, &str)>) {
         "pub struct ArcCore { strong_count: u64 }\n",
     )
     .expect("write core");
+    fs::create_dir_all(root.join("tests")).expect("create tests");
+    fs::write(
+        root.join("tests/bn_rt_modules.list"),
+        "# test tree\narc.rs\npolicy.rs\n",
+    )
+    .expect("write module list");
     if let Some((path, text)) = extra {
         let path = root.join(path);
         fs::create_dir_all(path.parent().expect("parent")).expect("create directory");
@@ -260,5 +266,55 @@ fn the_shared_cores_gate_rejects_log_dispatch_outside_bn_core_log() {
         stderr.contains("log dispatch logic outside bn_core_log: crates/bn_lib_log/src/lib.rs"),
         "{stderr}"
     );
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// Rule (l): a core using an adapter facility fails the gate.
+#[test]
+fn the_shared_cores_gate_keeps_cores_free_of_adapter_facilities() {
+    let root = std::env::temp_dir().join(format!("bn-shared-core-l-{}", std::process::id()));
+    for (path, copy) in [
+        (
+            "crates/bn_core_demo/src/lib.rs",
+            "pub extern \"C\" fn exported() {}\n",
+        ),
+        (
+            "crates/bn_host_exec/src/lib.rs",
+            "fn policy() { let _ = \"BN_EXEC_POLICY\"; }\n",
+        ),
+    ] {
+        tree(&root, Some((path, copy)));
+        let output = gate(&root);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!output.status.success(), "{path}: the gate passed");
+        assert!(
+            stderr.contains("core uses an adapter facility"),
+            "{path}: {stderr}"
+        );
+    }
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// Rule (m): a new non-ABI module in `bn_rt` fails, and so does a listed
+/// module that is gone; an `*_abi.rs` file is always allowed.
+#[test]
+fn the_shared_cores_gate_ratchets_bn_rt_modules() {
+    let root = std::env::temp_dir().join(format!("bn-shared-core-m-{}", std::process::id()));
+    tree(&root, Some(("crates/bn_rt/src/thing_abi.rs", "// C ABI\n")));
+    assert!(gate(&root).status.success(), "an *_abi module must pass");
+
+    tree(&root, Some(("crates/bn_rt/src/domain.rs", "// logic\n")));
+    let output = gate(&root);
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("bn_rt module not in tests/bn_rt_modules.list")
+    );
+
+    tree(&root, None);
+    fs::remove_file(root.join("crates/bn_rt/src/arc.rs")).expect("remove module");
+    let output = gate(&root);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("names a module that is gone"));
     let _ = fs::remove_dir_all(&root);
 }

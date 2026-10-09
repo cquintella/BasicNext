@@ -1,0 +1,32 @@
+# Modules of crates/bn_rt/src that are not C ABI files (*_abi): domain logic
+# still waiting for its core (bucket 0.6.5c §5). Only shrinks.
+# env.rs and exec.rs are the C ABI of HOST.Env / HOST.Exec under older names.
+arc.rs
+civil.rs
+clock.rs
+console.rs
+cpu.rs
+crypto_error.rs
+crypto.rs
+data_error.rs
+dataframe
+dataframe.rs
+dispatch_error.rs
+dispatch_sync.rs
+env.rs
+exec.rs
+file_error.rs
+file.rs
+json_error.rs
+json.rs
+log_error.rs
+log.rs
+math.rs
+net
+policy.rs
+secure_fs_windows.rs
+secure_fs.rs
+sqlite_error.rs
+stats.rs
+terminal.rs
+web_error.rs

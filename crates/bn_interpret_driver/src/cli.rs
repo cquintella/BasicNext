@@ -12,8 +12,7 @@ use std::process::ExitCode;
 
 use bn_cli::{
     check::check,
-    frontend::read_source,
-    help::{BOOK_URL, COMMON_OPTIONS, Tool, foreign_option, option_error},
+    help::{BOOK_URL, COMMON_OPTIONS, Tool, option_error, tool_source},
     options::parse_options,
     output::{emit_output, tokens_text, tool_error},
 };
@@ -127,11 +126,7 @@ fn command(version: &str, mut raw_args: Vec<String>, protocols: Protocols) -> Ex
         Err(message) => return option_error(&message, USAGE),
     };
     // Frontend artifacts are a compiler surface (BDFL, 2026-10-07).
-    if let Some(message) = foreign_option(Tool::Interpreter, &options) {
-        eprintln!("error: {message}");
-        return tool_error();
-    }
-    let (source, tokens) = match read_source(&options) {
+    let (source, tokens) = match tool_source(Tool::Interpreter, &options) {
         Ok(read) => read,
         Err(code) => return code,
     };

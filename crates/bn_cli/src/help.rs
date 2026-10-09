@@ -87,3 +87,21 @@ pub fn foreign_option(tool: Tool, options: &crate::options::Options) -> Option<&
         _ => None,
     }
 }
+
+/// The source of a command `tool` runs: refuses an option `tool` does not
+/// honour (the foreign-option table), then reads and lexes the file. One
+/// step both drivers take before their own work.
+///
+/// # Errors
+///
+/// The exit code of the refusal or of the read.
+pub fn tool_source(
+    tool: Tool,
+    options: &crate::options::Options,
+) -> Result<(bn_source::SourceFile, Vec<bn_frontend::token::Token>), ExitCode> {
+    if let Some(message) = foreign_option(tool, options) {
+        eprintln!("error: {message}");
+        return Err(tool_error());
+    }
+    crate::frontend::read_source(options)
+}

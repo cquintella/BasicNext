@@ -210,7 +210,7 @@ pub(crate) fn lower_bnmath_call(
                             bn_diag::DiagId::FORMAT_OUT_OF_RANGE,
                             vec![(
                                 "message",
-                                Fact::Text("civil time must be in years 0001 through 9999".into()),
+                                Fact::Text(bn_core_text::civil::RANGE_ERROR.into()),
                             )],
                         )
                         .0,

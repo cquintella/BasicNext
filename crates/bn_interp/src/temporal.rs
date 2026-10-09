@@ -150,7 +150,7 @@ fn require_civil_date(days: i32, span: Span) -> Result<(), Diagnostic> {
 fn out_of_range(span: Span) -> Diagnostic {
     temporal_error(
         bn_diag::DiagId::FORMAT_OUT_OF_RANGE,
-        "civil time must be in years 0001 through 9999",
+        bn_core_text::civil::RANGE_ERROR,
         span,
     )
 }

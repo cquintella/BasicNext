@@ -738,13 +738,7 @@ pub(crate) fn unsupported_instruction(
 }
 
 pub(crate) fn parse_integer(value: &str) -> Option<i128> {
-    if let Some(value) = value.strip_prefix("0b") {
-        i128::from_str_radix(value, 2).ok()
-    } else if let Some(value) = value.strip_prefix("0x") {
-        i128::from_str_radix(value, 16).ok()
-    } else {
-        value.parse().ok()
-    }
+    bn_types::literals::parse_integer(value)
 }
 
 pub(crate) fn input_runtime_ir() -> &'static str {

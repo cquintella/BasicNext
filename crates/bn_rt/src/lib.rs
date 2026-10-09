@@ -70,7 +70,7 @@ pub use console::{ConsoleError, beep, cls, num_cols, num_rows, print_at};
 pub use dataframe::{
     ConvertedCell, DataFrameColumn, DataFrameJoin, DataFrameJoinConfig, DataFrameResource,
     DataProvider, StandardDataProvider, add_dataframe_column, append_columns, append_rows,
-    column_name, convert_cell, convert_dataframe_column, copy_dataframe_column,
+    column_name, conversion_failed, convert_cell, convert_dataframe_column, copy_dataframe_column,
     dataframe_reduce_column, first_duplicate_column, frame_from_csv_rows, get_dataframe_cell,
     join_dataframes, parse_csv, select_dataframe, set_column_label, slice_dataframe,
     transpose_dataframe, zscore_column,

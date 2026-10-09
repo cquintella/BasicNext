@@ -10,6 +10,8 @@ pub const DAY_MS: i128 = 86_400_000;
 /// The civil range of every temporal value: years 0001 through 9999.
 pub const MIN_YEAR: i32 = 1;
 pub const MAX_YEAR: i32 = 9999;
+/// The error text for a value outside that range, on both backends.
+pub const RANGE_ERROR: &str = "civil time must be in years 0001 through 9999";
 
 /// A proleptic Gregorian date.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

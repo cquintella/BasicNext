@@ -812,10 +812,7 @@ fn convert_text_column(
     let Some(name) = input_string(name) else {
         return failed(operation, &DataFailure::InvalidHandle);
     };
-    let not_text = || DataFailure::ConversionFailed {
-        column: name.clone(),
-        reason: "failed to convert column".into(),
-    };
+    let not_text = || super::dataframe::conversion_failed(&name);
     with_frames(|frames| {
         let Some(resource) = frames.get_mut(&frame) else {
             return failed(operation, &DataFailure::InvalidHandle);

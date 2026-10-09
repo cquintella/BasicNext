@@ -28,7 +28,7 @@ pub(crate) fn split_at(timestamp: i64, trap: *const std::ffi::c_char) -> (i32, u
         super::math::fail_at(
             trap,
             "FORMAT_OUT_OF_RANGE",
-            "civil time must be in years 0001 through 9999",
+            bn_core_text::civil::RANGE_ERROR,
         )
     })
 }

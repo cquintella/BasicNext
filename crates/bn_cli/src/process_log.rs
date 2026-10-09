@@ -298,11 +298,11 @@ mod tests {
         assert_eq!(companion_log(Path::new("/dev/null")), None);
     }
 
-    /// The log never follows a symlink and never blocks on a FIFO: a
-    /// planted link cannot redirect the write to another file.
+    /// The log never follows a symlink: a planted link cannot redirect the
+    /// write to another file (the FIFO case is in `tests/process_log.rs`).
     #[cfg(unix)]
     #[test]
-    fn the_log_refuses_symlinks_and_fifos() {
+    fn the_log_refuses_symlinks() {
         let directory = std::env::temp_dir().join(format!("bn-log-links-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&directory);
         std::fs::create_dir_all(&directory).expect("create directory");
@@ -318,13 +318,6 @@ mod tests {
             "keep"
         );
 
-        let fifo = directory.join("fifo.bnbuild.log");
-        let status = std::process::Command::new("mkfifo")
-            .arg(&fifo)
-            .status()
-            .expect("run mkfifo");
-        assert!(status.success());
-        assert!(log.write_to(&LogTarget::Companion(fifo)).is_err());
         std::fs::remove_dir_all(directory).expect("remove directory");
     }
 }

@@ -68,3 +68,22 @@ fn option_errors_are_unchanged() {
     command.args(["--unknown-opt", ENTRY]);
     assert_snapshot(command, "bni_unknown_opt.txt", "stderr", 2);
 }
+
+/// Bucket 0.6.5c AC6: the two `main.rs` hold only the version line and one
+/// call into their driver: together at most 80 lines, no option name, help
+/// line or error text.
+#[test]
+fn both_main_files_stay_minimal() {
+    let mut total = 0;
+    for path in ["crates/bni/src/main.rs", "crates/bnc/src/main.rs"] {
+        let text = std::fs::read_to_string(workspace_root().join(path)).expect("read main.rs");
+        total += text.lines().count();
+        for forbidden in ["\"--", "\"-", "eprintln!", "println!", "usage:"] {
+            assert!(!text.contains(forbidden), "{path} contains {forbidden}");
+        }
+    }
+    assert!(
+        total <= 80,
+        "bni and bnc main.rs have {total} lines (limit 80)"
+    );
+}

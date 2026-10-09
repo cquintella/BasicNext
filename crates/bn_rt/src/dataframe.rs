@@ -675,10 +675,17 @@ pub fn convert_cell(
         #[allow(clippy::cast_possible_truncation)] // range-checked just above
         Ok(ConvertedCell::Integer(truncated as i32))
     } else {
-        Err(DataFailure::ConversionFailed {
-            column: column.to_string(),
-            reason: "failed to convert column".into(),
-        })
+        Err(conversion_failed(column))
+    }
+}
+
+/// The `ConversionFailed` of `ConvertToInteger` / `ConvertToFloat` for
+/// `column`, for every backend.
+#[must_use]
+pub fn conversion_failed(column: &str) -> DataFailure {
+    DataFailure::ConversionFailed {
+        column: column.to_string(),
+        reason: "failed to convert column".into(),
     }
 }
 

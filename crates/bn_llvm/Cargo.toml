@@ -14,6 +14,7 @@ path = "src/lib.rs"
 workspace = true
 
 [dependencies]
+bn_core_text = { path = "../bn_core_text" }
 bn_diag = { path = "../bn_diag" }
 bn_ir = { path = "../bn_ir" }
 bn_source = { path = "../bn_source" }

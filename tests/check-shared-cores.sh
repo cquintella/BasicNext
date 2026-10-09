@@ -111,7 +111,34 @@ while IFS= read -r file; do
   file=${file//\\/\/}
   [[ $file =~ $allowed_log_core ]] && continue
   fail "log dispatch logic outside bn_core_log: $file"
-done < <(rg -l 'fn dispatch_log\(' src crates --type rust -g '!*_tests.rs' -g '!**/tests.rs' -g '!crates/*/tests/**' -g '!crates/bn_rt/src/log.rs' || true)
+done < <(rg -l 'fn dispatch_log\(' src crates --type rust -g '!*_tests.rs' -g '!**/tests.rs' -g '!crates/*/tests/**' || true)
+
+# (l) A core is safe Rust for both adapters (bucket 0.6.5c AC4): no
+# bn_value, no extern "C", no policy variable of its own (the
+# caller passes the policy). Every bn_core_* crate is a core; so are the HOST
+# cores bn_host_exec and bn_host_env.
+for core in crates/bn_core_* crates/bn_host_exec crates/bn_host_env; do
+  [[ -d $core/src ]] || continue
+  while IFS= read -r file; do
+    file=${file//\\/\/}
+    fail "core uses an adapter facility (bn_value, extern \"C\", or a policy variable): $file"
+  done < <(rg -l 'bn_value|extern "C"|"BN_[A-Z_]*POLICY"' "$core/src" --type rust -g '!*_tests.rs' -g '!**/tests.rs' || true)
+done
+
+# (m) bn_rt shrinks to the C ABI (bucket 0.6.5c S5.b, §5): its modules that
+# are not `*_abi` are listed in tests/bn_rt_modules.list. A module not
+# listed fails (no new domain logic in bn_rt), and so does a listed one that
+# is gone (the list only shrinks).
+if [[ -d crates/bn_rt/src ]]; then
+  listed=$(grep -v '^#' tests/bn_rt_modules.list 2>/dev/null | sort)
+  present=$(ls crates/bn_rt/src | grep -Ev '(_abi(\.rs)?|^lib\.rs|_tests\.rs|^tests\.rs)$' | sort)
+  while IFS= read -r module; do
+    [[ -n $module ]] && fail "bn_rt module not in tests/bn_rt_modules.list (move the logic to a core): $module"
+  done < <(comm -13 <(printf '%s\n' "$listed") <(printf '%s\n' "$present"))
+  while IFS= read -r module; do
+    [[ -n $module ]] && fail "tests/bn_rt_modules.list names a module that is gone; remove it: $module"
+  done < <(comm -23 <(printf '%s\n' "$listed") <(printf '%s\n' "$present"))
+fi
 
 if ((status == 0)); then
   echo "shared-cores check passed"

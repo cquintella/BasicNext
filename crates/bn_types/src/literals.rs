@@ -9,6 +9,20 @@
 
 use crate::{FloatType, IntegerType, Type};
 
+/// The value of an integer literal as written: `0b` binary, `0x` hexadecimal,
+/// else decimal. `None` when it does not fit `i128` or is malformed. The
+/// interpreter and constant folding read literals through it.
+#[must_use]
+pub fn parse_integer(text: &str) -> Option<i128> {
+    if let Some(digits) = text.strip_prefix("0b") {
+        i128::from_str_radix(digits, 2).ok()
+    } else if let Some(digits) = text.strip_prefix("0x") {
+        i128::from_str_radix(digits, 16).ok()
+    } else {
+        text.parse().ok()
+    }
+}
+
 /// Integer or floating point: the class a numeric literal belongs to.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NumericClass {
@@ -111,5 +125,16 @@ mod tests {
             numeric_alternative(&alternatives, NumericClass::Float),
             None
         );
+    }
+
+    #[test]
+    fn integer_literals_parse_in_every_radix() {
+        assert_eq!(super::parse_integer("42"), Some(42));
+        assert_eq!(super::parse_integer("0b101"), Some(5));
+        assert_eq!(super::parse_integer("0xff"), Some(255));
+        assert_eq!(super::parse_integer("0x"), None);
+        assert_eq!(super::parse_integer("12a"), None);
+        assert_eq!(super::IntegerType::Byte.width(), 8);
+        assert_eq!(super::IntegerType::UInt64.width(), 64);
     }
 }

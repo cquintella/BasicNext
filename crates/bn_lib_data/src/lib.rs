@@ -469,10 +469,7 @@ impl DataProvider {
                 let to_integer = method == "ConvertToInteger";
                 let converter = |value: &Value| {
                     let Value::String(text) = value else {
-                        return Err(DataFailure::ConversionFailed {
-                            column: column_name.to_string(),
-                            reason: "failed to convert column".into(),
-                        });
+                        return Err(bn_rt::conversion_failed(column_name));
                     };
                     Ok(match bn_rt::convert_cell(text, to_integer, column_name)? {
                         bn_rt::ConvertedCell::Integer(number) => {

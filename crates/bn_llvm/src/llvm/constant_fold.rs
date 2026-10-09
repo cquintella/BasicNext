@@ -181,12 +181,7 @@ fn fold_binary_raw(
 }
 
 fn shift_width(ty: &Type) -> u8 {
-    match integer_kind(ty) {
-        IntegerType::Byte | IntegerType::Int8 => 8,
-        IntegerType::Int16 | IntegerType::UInt16 => 16,
-        IntegerType::Int32 | IntegerType::UInt32 => 32,
-        IntegerType::Int64 | IntegerType::UInt64 => 64,
-    }
+    integer_kind(ty).width()
 }
 
 #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
