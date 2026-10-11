@@ -2114,6 +2114,104 @@ fn upcast_to_imported_class_and_interface() {
 }
 
 #[test]
+fn imported_class_implements_an_interface_through_its_own_alias() {
+    // K18: `Zoo` names `Shapes.Named` through its alias `Kinds`; the importer
+    // sees `Zoo.Dog` as a `Shapes.Named`. K26: the alias used only in
+    // `IMPLEMENTS` is a use, so no unused-import warning.
+    let path = "tests/modules/imported-qualified-interface/main.bn";
+    native_and_interpreter_print(path, "hello Rex\nRex\n");
+    let checked = bni().args(["check", path]).output().expect("run bni check");
+    assert_eq!(checked.status.code(), Some(0));
+    assert_eq!(String::from_utf8_lossy(&checked.stderr), "");
+}
+
+#[test]
+fn is_holds_for_a_class_implementing_the_interface_alternative() {
+    // K27: `bni` compared only the class name, so `x IS Handler` was FALSE
+    // for a `Node` implementing `Handler`, and the chain stopped early.
+    native_and_interpreter_print(
+        "tests/grammar/valid/is-interface-alternative.bn",
+        "handled by 10\nhandled by 100\nunhandled\nTRUE\nFALSE\n",
+    );
+}
+
+#[test]
+fn vectors_of_an_interface_or_base_class_hold_reaching_classes() {
+    // K28: the IR validator refused a vector of objects stored into a vector
+    // of a base class or interface (`INVALID_IR` on both backends).
+    native_and_interpreter_print(
+        "tests/grammar/valid/interface-vector.bn",
+        "a got saved\nB GOT SAVED\nC GOT CLOSED\ne got opened\nD GOT OPENED\n",
+    );
+}
+
+#[test]
+fn absence_constants_convert_and_return_natively() {
+    native_and_interpreter_print(
+        "tests/grammar/valid/absence-constants.bn",
+        "FALSE FALSE FALSE\nline EOF TRUE FALSE\nEOF\n",
+    );
+}
+
+#[test]
+fn float32_special_constants_build_natively() {
+    native_and_interpreter_print(
+        "tests/grammar/valid/float32-special-constants.bn",
+        "NAN INF -INF\n",
+    );
+}
+
+#[test]
+fn constant_integer_expressions_past_int32_fill_a_wider_binding() {
+    // K33: the interpreter checked a literal-typed result against INT32.
+    native_and_interpreter_print(
+        "tests/grammar/valid/constant-past-int32.bn",
+        "-9223372036854775808 8000000000 2147483648 -3000000000 18446744073709551614\n",
+    );
+}
+
+#[test]
+fn vector_literals_take_their_declared_destination() {
+    // A.S6.n (D-1 = B): each element is checked against the declared element
+    // type, in every destination the specification names.
+    native_and_interpreter_print(
+        "tests/grammar/valid/vector-literal-declared-destination.bn",
+        "a got bound\nB GOT BOUND\nC GOT ASSIGNED\nd got assigned\ne got passed\n\
+         F GOT PASSED\nRETURNED GOT READ\nreturned got read\nFIELD GOT STORED\n\
+         field got stored\n3000000001\n127\n3.75\n",
+    );
+    // Rows take the element type too; their objects are released once on
+    // both backends (known issue K30).
+    native_and_interpreter_print(
+        "tests/grammar/valid/vector-literal-declared-destination-rows.bn",
+        "I GOT ROW\nH GOT ROW\nj got row\n",
+    );
+}
+
+#[test]
+fn pattern_examples_that_needed_interface_dispatch_run() {
+    // K25: these four printed "UNSUPPORTED" until K6, K27 and K28 were fixed.
+    for (path, expected) in [
+        (
+            "examples/patterns/chain_of_responsibility.bn",
+            "clerk approves 50\nmanager approves 500\ndirector approves 5000\nnobody approves 50000\n",
+        ),
+        ("examples/patterns/interpreter.bn", "(2 * (3 + 4)) = 14\n"),
+        ("examples/patterns/singleton.bn", "7 7\n"),
+        (
+            "examples/patterns/observer.bn",
+            "display: 21 C\ndisplay: 35 C\nalarm: too hot\n",
+        ),
+        (
+            "examples/patterns/mediator.bn",
+            "bia hears ana: hello\ncaio hears ana: hello\nana hears caio: bye\nbia hears caio: bye\n",
+        ),
+    ] {
+        native_and_interpreter_print(path, expected);
+    }
+}
+
+#[test]
 fn region_round_trip_through_pointer_to_void() {
     let path = "tests/grammar/valid/region-void-roundtrip.bn";
     native_and_interpreter_print(path, "3\n3\n1.5\n2.5\n3.5\n0\n0\n");
@@ -2156,4 +2254,12 @@ fn bndata_operations_on_a_narrowed_receiver_build_natively() {
         "tests/grammar/valid/bndata-csv.bn",
         "2 2 age\nAna\n35 31.5\n31.5\n31.5 28.0 35.0\n2 2\n1 1\n",
     );
+}
+
+/// A program in three files (`examples/two_files.bn` → `other.bn` →
+/// `another.bn`): each `IMPORT` names a file next to the importer, and only
+/// `EXPORT`ed classes cross the boundary; both backends print the same.
+#[test]
+fn a_program_in_three_files_imports_through_both_backends() {
+    native_and_interpreter_print("examples/two_files.bn", "20\n1\n2\n3\n");
 }

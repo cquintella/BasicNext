@@ -52,7 +52,6 @@ pub struct WebLimits {
     pub request_id_bytes: usize,
     pub session_id_min_bytes: usize,
     pub async_output_max_bytes: usize,
-    pub concurrent_handlers: bool,
     pub dispatch: DispatchLimits,
 }
 
@@ -159,7 +158,6 @@ fn parse_registry(text: &str) -> Result<WebLimits, String> {
         request_id_bytes: usize_value("identity", "request_id_bytes")?,
         session_id_min_bytes: usize_value("identity", "session_id_min_bytes")?,
         async_output_max_bytes: dispatch.output_max_bytes,
-        concurrent_handlers: get("dispatch", "concurrent_handlers_default")? != 0,
         dispatch,
     };
     if limits.active_connections > limits.active_connections_max

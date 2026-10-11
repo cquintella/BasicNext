@@ -232,9 +232,7 @@ pub(crate) fn lower_net_call(
             );
             load_handle_result(text, destination);
         }
-        "HOST.Net.UDPPacket.Size"
-        | "HOST.Net.UDPPacket.Truncated"
-        | "HOST.Net.UDPPacket.WasTruncated" => {
+        "HOST.Net.UDPPacket.Size" | "HOST.Net.UDPPacket.WasTruncated" => {
             let handle = net_handle(text);
             let size = name.ends_with("Size");
             let call = if size {

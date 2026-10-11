@@ -1,0 +1,17 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+IMPORT shapes AS S
+
+FUNCTION Start() AS VOID
+    S.Juggle()
+    LET b AS S.Box = NEW S.Box("x")
+    LET c AS S.Box = b.Copy()
+    PRINT c.label, b.label
+    PRINT S.Describe(S.Find("y"))
+    PRINT S.Describe(S.Find(""))
+    PRINT S.Pair()
+    PRINT "end"
+END FUNCTION

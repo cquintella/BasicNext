@@ -1,0 +1,52 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Imported by main.bn. Its functions copy, reassign, return and test
+// objects of its own class (known issues K52, K57: the IR named the class
+// "Box" here and "#0.Box" everywhere else, so the IR validator and the
+// native backend did not see these values as ARC objects).
+
+EXPORT CLASS Box
+    PUBLIC label AS STRING = ""
+
+    PUBLIC FUNCTION CONSTRUCTOR(text AS STRING)
+        SELF.label = text
+    END FUNCTION
+
+    FUNCTION DESTRUCTOR()
+        PRINT "free", SELF.label
+    END FUNCTION
+
+    PUBLIC FUNCTION Copy() AS Box
+        RETURN NEW Box(SELF.label + "2")
+    END FUNCTION
+END CLASS
+
+EXPORT FUNCTION Juggle() AS VOID
+    LET a AS Box = NEW Box("a")
+    LET b AS Box = a
+    a = NEW Box("c")
+    PRINT b.label, a.label
+END FUNCTION
+
+EXPORT FUNCTION Find(wanted AS STRING) AS Box OR NULL
+    IF wanted = "" THEN
+        RETURN NULL
+    END IF
+    RETURN NEW Box(wanted)
+END FUNCTION
+
+EXPORT FUNCTION Describe(found AS Box OR NULL) AS STRING
+    PRINT "is box", found IS Box
+    IF found IS NULL THEN
+        RETURN "none"
+    END IF
+    RETURN "box " + found.label
+END FUNCTION
+
+EXPORT FUNCTION Pair() AS INTEGER
+    LET boxes AS Box[2] = [NEW Box("p"), NEW Box("q")]
+    RETURN LEN(boxes)
+END FUNCTION

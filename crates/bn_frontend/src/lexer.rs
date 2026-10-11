@@ -188,7 +188,10 @@ impl<'a> Lexer<'a> {
                     match self.advance() {
                         Some('"') => value.push('"'),
                         Some('\\') => value.push('\\'),
-                        _ => return Err(self.error(r#"unsupported string escape; use \" or \\"#)),
+                        _ => {
+                            return Err(self
+                                .error(bn_catalog::text("frontend", "lexer.escape.unsupported")));
+                        }
                     }
                 }
                 Some(character) if character.is_control() || character == '\u{7f}' => {

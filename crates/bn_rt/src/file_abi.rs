@@ -385,7 +385,7 @@ mod tests {
         let name = CString::new(path.to_str().unwrap()).unwrap();
         let mut handle = 0;
         assert_eq!(bn_rt_file_open(name.as_ptr(), 0, &mut handle), BN_FILE_OK);
-        super::super::policy::bn_rt_policy_restrict(0);
+        super::super::policy::restrict_for_tests(0);
         let mut denied = 99;
         let status = bn_rt_file_open(name.as_ptr(), 1, &mut denied);
         assert_ne!(status, BN_FILE_OK);

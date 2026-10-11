@@ -810,8 +810,35 @@ fn socket_example_help_exits_zero() {
 fn socket_examples_exchange_tcp_and_udp_messages() {
     for protocol in ["--tcp", "--udp"] {
         for family in [None, Some("--ipv6")] {
-            // `{family:?}` would put quotes in the name, invalid on Windows.
-            let log = format!("socket{protocol}{}.jsonl", family.unwrap_or("--ipv4"));
+            // `{family:?}` would put quotes in the name, invalid on Windows. The
+            // log and the port are this run's own: two suites running at once
+            // (two gates) shared the example's fixed ports and log names
+            // (bucket 0.6.5 Q.1).
+            let log = std::env::temp_dir()
+                .join(format!(
+                    "basicnext-socket{protocol}{}-{}.jsonl",
+                    family.unwrap_or("--ipv4"),
+                    std::process::id()
+                ))
+                .display()
+                .to_string();
+            let loopback = if family.is_some() {
+                "[::1]:0"
+            } else {
+                "127.0.0.1:0"
+            };
+            let port = if protocol == "--tcp" {
+                std::net::TcpListener::bind(loopback).map(|probe| probe.local_addr())
+            } else {
+                std::net::UdpSocket::bind(loopback).map(|probe| probe.local_addr())
+            };
+            let port = match port.and_then(|address| address) {
+                Ok(address) => address.port().to_string(),
+                // A sandbox without network permission (as the server check
+                // below); any other failure is a failure.
+                Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => return,
+                Err(error) => panic!("probe a free {protocol} port on {loopback}: {error}"),
+            };
             let _ = fs::remove_file(&log);
             let mut server_command = bni();
             server_command.args([
@@ -822,9 +849,19 @@ fn socket_examples_exchange_tcp_and_udp_messages() {
                 "--server",
                 "--log",
                 &log,
+                "--port",
+                &port,
             ]);
             let mut client_command = bni();
-            client_command.args(["run", "examples/socket.bn", "--", protocol, "--client"]);
+            client_command.args([
+                "run",
+                "examples/socket.bn",
+                "--",
+                protocol,
+                "--client",
+                "--port",
+                &port,
+            ]);
             if let Some(family) = family {
                 server_command.arg(family);
                 client_command.arg(family);
@@ -841,6 +878,19 @@ fn socket_examples_exchange_tcp_and_udp_messages() {
             server_stdout
                 .read_line(&mut first_line)
                 .expect("read server status");
+            // The server binds first: anything but "listening" (a port in use
+            // exits with 3) is its failure, and the client must not run
+            // against whatever else holds the port (bucket 0.6.5 Q.1).
+            if first_line.trim() != "listening" {
+                let mut rest = String::new();
+                let _ = server_stdout.read_to_string(&mut rest);
+                let status = server_process.wait().expect("wait for server example");
+                let output = first_line + &rest;
+                if output.contains("Operation not permitted") {
+                    return;
+                }
+                panic!("server did not listen ({status}): {output}");
+            }
             let client = client_command.output().expect("run client example");
             let mut rest = String::new();
             server_stdout

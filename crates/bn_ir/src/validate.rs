@@ -23,7 +23,10 @@ use operands::{instruction_defines, instruction_type};
 pub use operands::{instruction_result, instruction_uses};
 #[cfg(test)]
 pub(crate) use upcast::call_types_compatible;
-use upcast::{alternative_widens, call_types_compatible_with_module, types_compatible};
+use upcast::{
+    alternative_widens, call_types_compatible_with_module, element_compatible, store_compatible,
+    types_compatible,
+};
 
 #[allow(clippy::too_many_lines)]
 /// Enforces language-level IR well-formedness. Backend capability gaps are
@@ -353,7 +356,7 @@ fn validate_instruction_types(
         | super::Instruction::SetStaticIndex { value, ty, .. }
             if value_types
                 .get(value)
-                .is_none_or(|value_type| !assignment_types_compatible(value_type, ty)) =>
+                .is_none_or(|value_type| !store_compatible(module, value_type, ty)) =>
         {
             return Err(invalid_ir(
                 "stored value does not match its declared type",
@@ -388,9 +391,9 @@ fn validate_instruction_types(
             }
             let expected_element = vector_element_type(ty);
             if values.iter().any(|value| {
-                value_types
-                    .get(value)
-                    .is_none_or(|value_type| !types_compatible(value_type, &expected_element))
+                value_types.get(value).is_none_or(|value_type| {
+                    !element_compatible(module, value_type, &expected_element)
+                })
             }) {
                 return Err(invalid_ir(
                     "vector element does not match the vector element type",
@@ -945,37 +948,6 @@ fn validate_return_type(
         }
         _ => Ok(()),
     }
-}
-
-fn is_named_value_type(ty: &Type) -> bool {
-    matches!(ty, Type::Named(_) | Type::ImportedNamed { .. })
-}
-
-/// Assignment destinations do not carry the class hierarchy table in the
-/// language IR. Semantic analysis has already checked class inheritance, so
-/// preserve that valid subtype assignment here while retaining strict checks
-/// for primitive, pointer and vector values.
-fn assignment_types_compatible(actual: &Type, expected: &Type) -> bool {
-    matches!(actual, Type::Unknown) || matches!(expected, Type::Unknown)
-        || types_compatible(actual, expected)
-        || alternative_widens(actual, expected)
-        || (is_named_value_type(actual) && is_named_value_type(expected))
-        // Pointer length is a runtime invariant: allocation can produce a
-        // dynamic length that a fixed destination checks when stored. The
-        // validator still requires compatible element types.
-        || matches!(
-            (actual, expected),
-            (
-                Type::Pointer {
-                    element: actual_element,
-                    ..
-                },
-                Type::Pointer {
-                    element: expected_element,
-                    ..
-                }
-            ) if types_compatible(actual_element, expected_element)
-        )
 }
 
 fn vector_element_type(vector: &Type) -> Type {

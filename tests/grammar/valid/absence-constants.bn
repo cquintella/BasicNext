@@ -1,0 +1,23 @@
+// NULL, NA and EOF as BOOLEAN are FALSE, and EOF is a value a method can
+// return as STRING OR EOF; both build natively (T.K9, T.K8: bnc refused the
+// cast and the EOF constant).
+CLASS Reader
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION Next(done AS BOOLEAN) AS STRING OR EOF
+        IF done THEN
+            RETURN EOF
+        END IF
+        RETURN "line"
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    PRINT NULL AS BOOLEAN, NA AS BOOLEAN, EOF AS BOOLEAN
+    LET reader AS Reader = NEW Reader()
+    LET first AS STRING OR EOF = reader.Next(FALSE)
+    LET last AS STRING OR EOF = reader.Next(TRUE)
+    PRINT first, last, last IS EOF, first IS EOF
+    PRINT EOF
+END FUNCTION

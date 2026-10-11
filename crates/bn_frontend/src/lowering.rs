@@ -22,6 +22,8 @@ pub use crate::types::{FloatType, IntegerType, PointerLength, Type};
 mod builder;
 #[path = "lowering/field_layouts.rs"]
 mod field_layouts;
+#[path = "lowering/qualify.rs"]
+mod qualify;
 pub use bn_ir::{
     BasicBlock, BlockId, ClassModel, Constant, FieldId, FieldLayout, FieldLayoutEntry, FieldRef,
     FieldSlot, Function, FunctionKind, Instruction, Module, ModuleId, SymbolId, Terminator,
@@ -395,14 +397,13 @@ fn lower_graph_unvalidated(
             continue;
         }
         interfaces.extend(lowered_interfaces(&loaded.program, &prefix));
+        let declared = qualify::declared_type_names(&loaded.program);
         collect_layouts(&loaded.program, model, &prefix, &mut pending_layouts);
         collect_semantic_record_layouts(model, &prefix, &mut pending_layouts);
-        functions.extend(lower_program(
-            &loaded.program,
-            model,
-            &prefix,
-            &method_names,
-        )?);
+        qualify::qualify_layouts(&mut pending_layouts, &prefix, &declared);
+        let mut lowered = lower_program(&loaded.program, model, &prefix, &method_names)?;
+        qualify::qualify_functions(&mut lowered, &prefix, &declared);
+        functions.extend(lowered);
     }
     let root = graph.modules.iter().find(|module| module.id == graph.root);
     let source_name = root.and_then(|module| module.program.source_name.clone());

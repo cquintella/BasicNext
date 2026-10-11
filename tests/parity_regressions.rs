@@ -1,0 +1,189 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+//! Regression tests for defects of section P of `ongoing/bucket-0.6.5.md`:
+//! each runs one fixture on `bni` and on the native binary and checks the
+//! exact output (or the support refusal) the known issue it names fixed.
+
+mod support;
+
+use std::{path::Path, process::Command, time::Duration};
+
+use support::{ProcessOutput, TestDir, bnc, bni, compile_native, run, workspace_root};
+
+const PROCESS_TIMEOUT: Duration = Duration::from_secs(30);
+
+fn execute(command: &mut Command, input: Option<&[u8]>) -> ProcessOutput {
+    run(command, input, PROCESS_TIMEOUT).expect("run child process")
+}
+
+fn interpret(path: &Path, input: Option<&[u8]>) -> ProcessOutput {
+    execute(bni().arg("run").arg(path), input)
+}
+
+fn execute_artifact(artifact: &Path, arguments: &[&str], input: Option<&[u8]>) -> ProcessOutput {
+    execute(Command::new(artifact).args(arguments), input)
+}
+
+fn assert_success(output: &ProcessOutput, context: &str) {
+    assert!(
+        output.status.success(),
+        "{context}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn valid_fixture(name: &str) -> std::path::PathBuf {
+    workspace_root().join("tests/grammar/valid").join(name)
+}
+
+/// A character from `s[i]` or `CHAR` outlives its frame (known issue K49):
+/// native builds returned a pointer into a dead stack buffer, and a loop
+/// grew the stack until the process crashed. The buffer is now a heap
+/// allocation, so no `alloca` remains on those paths.
+#[test]
+fn string_index_and_char_results_outlive_their_frame() {
+    let path = valid_fixture("string-index-escapes.bn");
+    let emitted = execute(bnc().args(["--emit", "llvm"]).arg(&path), None);
+    assert_success(&emitted, "emit string index");
+    let llvm = String::from_utf8_lossy(&emitted.stdout);
+    for buffer in ["%strindexbuffer", "%charbuffer"] {
+        let lines: Vec<&str> = llvm
+            .lines()
+            .filter(|line| line.trim_start().starts_with(buffer) && line.contains(" = "))
+            .collect();
+        assert!(!lines.is_empty(), "{buffer} not emitted");
+        for line in lines {
+            assert!(line.contains("call ptr @malloc(i64 8)"), "{line}");
+        }
+    }
+    let expected = "b ç\nx y z\n100\n";
+    let directory = TestDir::new("string-index-escapes").expect("create directory");
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
+}
+
+/// The elements of a `STRING` vector without an initializer are `""` on both
+/// backends, in a local and in a class field (known issue K50: native builds
+/// stored a null pointer).
+#[test]
+fn string_vector_elements_default_to_the_empty_string() {
+    let path = valid_fixture("string-vector-default.bn");
+    let expected = "[] 0 TRUE\nx\n[] 0\n";
+    let directory = TestDir::new("string-vector-default").expect("create directory");
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
+}
+
+/// `IS POINTER TO VOID` holds for every non-NULL pointer value, typed or
+/// opaque, and guards the conversion back to a typed pointer (known issue
+/// K51: native builds folded the test to `FALSE`, so the branch never ran).
+#[test]
+fn is_pointer_to_void_holds_for_a_non_null_pointer() {
+    let path = valid_fixture("pointer-void.bn");
+    let expected = "42\n";
+    let directory = TestDir::new("pointer-void").expect("create directory");
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
+}
+
+/// `IS POINTER TO T` with `T` not `VOID` is refused natively with a support
+/// diagnostic at the test's position until decision K55, and is never folded
+/// to a constant (known issue K51). `bni` answers `TRUE` for an `INTEGER`
+/// allocation, which every reading of K55 keeps.
+#[test]
+fn typed_pointer_test_on_an_opaque_pointer_is_a_support_refusal() {
+    let path = valid_fixture("pointer-typed-test-on-opaque.bn");
+    let interpreted = interpret(&path, None);
+    assert_success(&interpreted, "interpret typed pointer test");
+    assert_eq!(interpreted.stdout, b"TRUE\n");
+    let emitted = execute(bnc().arg(&path), None);
+    assert!(!emitted.status.success());
+    let diagnostics = String::from_utf8_lossy(&emitted.stderr);
+    assert!(
+        diagnostics.contains("error[TARGET_UNSUPPORTED_OP]"),
+        "{diagnostics}"
+    );
+    assert!(diagnostics.contains(":15:11:"), "{diagnostics}");
+    assert!(!diagnostics.contains("INVALID_IR"), "{diagnostics}");
+}
+
+/// Functions of an imported module copy, reassign, return and test objects
+/// of the module's own class with the ARC behaviour of a one-file program
+/// (known issues K57: both backends stopped with `INVALID_IR` on the copy
+/// and the reassignment; K52: a `NEW` returned by a method of the imported
+/// class was never registered natively, so the caller released another
+/// object).
+#[test]
+fn imported_module_owns_objects_of_its_own_class() {
+    let path = workspace_root().join("tests/modules/own-class-ownership/main.bn");
+    let expected = "a c\nfree a\nfree c\nx2 x\nis box TRUE\nbox y\nfree y\n\
+                    is box FALSE\nnone\nfree p\nfree q\n2\nend\nfree x2\nfree x\n";
+    let directory = TestDir::new("own-class-ownership").expect("create directory");
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
+}
+
+/// The objects of a vector of more than one dimension are released once
+/// each, row by row (known issue K30: native builds walked the rows as
+/// objects and stopped with `INVALID_IR`).
+#[test]
+fn objects_in_vector_rows_are_released_once() {
+    let path = valid_fixture("vector-rows-release.bn");
+    let expected = "b c\nfree a\nfree b\nfree c\nfree d\nend\n";
+    let directory = TestDir::new("vector-rows-release").expect("create directory");
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
+}

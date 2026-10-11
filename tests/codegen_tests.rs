@@ -53,7 +53,7 @@ fn read_gold(path: &str) -> String {
 }
 
 #[test]
-fn float32_special_constants_use_float_width_hex_encoding() {
+fn float32_special_constants_use_the_double_hex_encoding() {
     let module = start_module(vec![BasicBlock {
         id: BlockId(0),
         instructions: vec![
@@ -73,8 +73,15 @@ fn float32_special_constants_use_float_width_hex_encoding() {
         terminator: Terminator::Return { value: None },
     }]);
     let llvm = lower_module(&module).expect("lower FLOAT32 special constants");
-    assert!(llvm.contains("fadd float 0.0, 0x7FC00000"), "{llvm}");
-    assert!(llvm.contains("fadd float 0.0, 0x7F800000"), "{llvm}");
+    // LLVM reads a hexadecimal `float` constant in the 64-bit encoding (K34).
+    assert!(
+        llvm.contains("fadd float 0.0, 0x7FF8000000000000"),
+        "{llvm}"
+    );
+    assert!(
+        llvm.contains("fadd float 0.0, 0x7FF0000000000000"),
+        "{llvm}"
+    );
 }
 
 #[test]

@@ -69,7 +69,7 @@ impl Failure {
     /// `Error.Message`: the program that could not run.
     #[must_use]
     pub fn message(&self) -> String {
-        format!("cannot run \"{}\"", self.program)
+        bn_catalog::fill("exec", "run.message", &[("program", &self.program)])
     }
 
     /// `Error.Cause`: the rule, policy, or operating-system error.

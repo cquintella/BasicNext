@@ -173,13 +173,9 @@ impl From<crate::host_spec::SpecIntegerType> for IntegerType {
     fn from(value: crate::host_spec::SpecIntegerType) -> Self {
         match value {
             crate::host_spec::SpecIntegerType::Byte => Self::Byte,
-            crate::host_spec::SpecIntegerType::Int8 => Self::Int8,
-            crate::host_spec::SpecIntegerType::Int16 => Self::Int16,
             crate::host_spec::SpecIntegerType::Int32 => Self::Int32,
             crate::host_spec::SpecIntegerType::Int64 => Self::Int64,
             crate::host_spec::SpecIntegerType::UInt16 => Self::UInt16,
-            crate::host_spec::SpecIntegerType::UInt32 => Self::UInt32,
-            crate::host_spec::SpecIntegerType::UInt64 => Self::UInt64,
         }
     }
 }
@@ -187,7 +183,6 @@ impl From<crate::host_spec::SpecIntegerType> for IntegerType {
 impl From<crate::host_spec::SpecFloatType> for FloatType {
     fn from(value: crate::host_spec::SpecFloatType) -> Self {
         match value {
-            crate::host_spec::SpecFloatType::Float32 => Self::Float32,
             crate::host_spec::SpecFloatType::Float64 => Self::Float64,
         }
     }
@@ -196,8 +191,6 @@ impl From<crate::host_spec::SpecFloatType> for FloatType {
 impl From<crate::host_spec::SpecPointerLength> for PointerLength {
     fn from(value: crate::host_spec::SpecPointerLength) -> Self {
         match value {
-            crate::host_spec::SpecPointerLength::One => Self::One,
-            crate::host_spec::SpecPointerLength::Fixed(length) => Self::Fixed(length),
             crate::host_spec::SpecPointerLength::Dynamic => Self::Dynamic,
         }
     }
@@ -210,12 +203,8 @@ impl From<crate::host_spec::SpecType> for Type {
         match value {
             SpecType::Boolean => Self::Boolean,
             SpecType::Integer(kind) => Self::Integer(kind.into()),
-            SpecType::IntegerLiteral(value) => Self::IntegerLiteral(value),
             SpecType::Float(kind) => Self::Float(kind.into()),
-            SpecType::FloatLiteral => Self::FloatLiteral,
             SpecType::String => Self::String,
-            SpecType::Null => Self::Null,
-            SpecType::NotAvailable => Self::NotAvailable,
             SpecType::EndOfFile => Self::EndOfFile,
             SpecType::Named(name) => Self::Named(name),
             SpecType::TypeName(name) => Self::TypeName(name),
@@ -318,6 +307,7 @@ pub(crate) struct ImportedTypeInfo {
     kind: DeclarationKind,
     members: HashMap<String, Member>,
     constructor: Option<Constructor>,
+    /// Implemented interfaces as `#<module>.Name`, aliases resolved.
     interfaces: Vec<String>,
 }
 #[allow(clippy::struct_excessive_bools)]

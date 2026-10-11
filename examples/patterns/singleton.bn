@@ -1,18 +1,35 @@
 // GoF Singleton: one process-wide service instance is exposed by a static API.
+// The class keeps its only instance in a PRIVATE STATIC field and creates it on
+// the first GetInstance(); the PRIVATE constructor stops any other NEW.
 CLASS Configuration
-    PUBLIC INT value AS INTEGER=42
-    PUBLIC STATIC FUNCTION GetInstance() AS OBJECT
-    RETURN SELF
+    PRIVATE STATIC instance AS Configuration OR NULL = NULL
+    PUBLIC value AS INTEGER = 42
+
+    PRIVATE FUNCTION CONSTRUCTOR()
     END FUNCTION
 
-    PUBLIC STATIC value AS INTEGER = 42
+    // Always succeeds, so the result is the class itself (a program cannot
+    // construct an Error to return).
+    PUBLIC STATIC FUNCTION GetInstance() AS Configuration
+        LET current AS Configuration OR NULL = Configuration.instance
+        IF current IS Configuration THEN
+            RETURN current
+        END IF
+        LET created AS Configuration = NEW Configuration()
+        Configuration.instance = created
+        RETURN created
+    END FUNCTION
 
     PUBLIC STATIC FUNCTION Current() AS INTEGER
-        RETURN Configuration.value
+        RETURN Configuration.GetInstance().value
     END FUNCTION
 END CLASS
 
 FUNCTION Start() AS VOID
-    LET Conf AS INTEGER = Configuration.GetInstance().value
-    PRINT Conf
+    LET first AS Configuration = Configuration.GetInstance()
+    LET second AS Configuration = Configuration.GetInstance()
+    second.value = 7
+    // Both names hold the one instance: the change made through second is
+    // the value read through first and through Current().
+    PRINT first.value, Configuration.Current()
 END FUNCTION

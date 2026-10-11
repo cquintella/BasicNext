@@ -129,6 +129,10 @@ pub(crate) fn lower_terminator(
                 let union_return = state.return_llvm == "{ i1, ptr, i64 }";
                 let operand = if state.return_llvm == GENERAL_LAYOUT
                     || union_return && matches!(value_ty, Type::NotAvailable | Type::EndOfFile)
+                    // An `Error` returned as `Endpoint OR Error` / `Addresses OR
+                    // Error` (K36).
+                    || (matches!(state.return_llvm, "{ i1, ptr, i32 }" | "{ i1, ptr }")
+                        && is_error_type(value_ty))
                 {
                     coerce_to_type(text, *value, value_ty, &function.return_type)
                 } else if union_return

@@ -281,6 +281,23 @@ const CASES: &[Case] = &[
         native: Native::Unsupported("HOST.Net.Address.IsLoopback"),
     },
     Case {
+        fixture: "net_results.bn",
+        args: &[],
+        covers: &[
+            "HOST.Net.Resolve",
+            "HOST.Net.Addresses.Get",
+            "HOST.Net.Endpoint.Create",
+            "HOST.Net.Address.Parse",
+        ],
+        stdout: "TRUE TRUE TRUE\n1 TRUE TRUE TRUE\n\
+                 Error 1 in HOST.Net.Addresses.Get: cannot get address 1 \
+                 (cause: the index must be within 0..0; got 1)\n\
+                 TRUE HOST.Net.Address.Parse\n::1 8080\nTRUE HOST.Net.Address.Parse\nTRUE\n",
+        exit: 0,
+        stderr: None,
+        native: Native::Same,
+    },
+    Case {
         fixture: "net_tcp.bn",
         args: &[],
         covers: &[
@@ -315,12 +332,11 @@ const CASES: &[Case] = &[
             "HOST.Net.UDPSocket.Receive",
             "HOST.Net.UDPSocket.Close",
             "HOST.Net.UDPPacket.Size",
-            "HOST.Net.UDPPacket.Truncated",
             "HOST.Net.UDPPacket.WasTruncated",
             "HOST.Net.UDPPacket.CopyTo",
             "HOST.Net.UDPPacket.Source",
         ],
-        stdout: "TRUE TRUE 4\n2 TRUE TRUE 2 1 2\nfrom loopback: TRUE\n",
+        stdout: "TRUE TRUE 4\n2 TRUE 2 1 2\nfrom loopback: TRUE\n",
         exit: 0,
         stderr: None,
         native: Native::Unsupported("HOST.Net.Address.IsLoopback"),

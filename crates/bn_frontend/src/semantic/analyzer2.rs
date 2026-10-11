@@ -10,17 +10,17 @@ impl Analyzer {
         interface
             .split_once('.')
             .and_then(|(alias, name)| {
-                self.module_imports
-                    .get(alias)
-                    .map(|module| format!("#{}.{name}", module.0))
+                let module = self.module_imports.get(alias)?;
+                // `IMPLEMENTS Alias.Name` uses the import (K26).
+                self.type_alias_uses.borrow_mut().insert(alias.to_owned());
+                Some(format!("#{}.{name}", module.0))
             })
             .unwrap_or_else(|| interface.to_string())
     }
 
     /// Imported classes enter the class relation with the interfaces their
-    /// own module declares (`#<module>.Class` → `#<module>.Interface`).
-    /// TODO: an interface the imported module names through its own alias
-    /// (`IMPLEMENTS Other.Shape`) is not resolved here; it was not before.
+    /// own module declares (`#<module>.Class` → `#<module>.Interface`), as
+    /// resolved by `imported_type_catalog`, aliases included.
     pub(crate) fn declare_imported_interfaces(&mut self) {
         let mut imported = self
             .imported_types
@@ -29,13 +29,7 @@ impl Analyzer {
             .flat_map(|((module, class), info)| {
                 info.interfaces
                     .iter()
-                    .filter(|interface| !interface.contains('.'))
-                    .map(move |interface| {
-                        (
-                            format!("#{}.{class}", module.0),
-                            format!("#{}.{interface}", module.0),
-                        )
-                    })
+                    .map(move |interface| (format!("#{}.{class}", module.0), interface.clone()))
             })
             .collect::<Vec<_>>();
         imported.sort();

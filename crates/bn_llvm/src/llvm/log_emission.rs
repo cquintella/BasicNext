@@ -104,6 +104,10 @@ pub(crate) fn lower_bnlog_call(
             let minimum = integer(text, 2);
             ("bn_rt_log_logger_add_file", vec![receiver, v(1), minimum])
         }
+        "logger_set_format" => {
+            let receiver = handle(text, "receiver", 0);
+            ("bn_rt_log_logger_set_format", vec![receiver, v(1)])
+        }
         "logger_log" => {
             let receiver = handle(text, "receiver", 0);
             let fields = handle(text, "fields", 3);

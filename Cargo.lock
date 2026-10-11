@@ -136,6 +136,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bn_catalog"
+version = "0.6.4"
+
+[[package]]
 name = "bn_cli"
 version = "0.6.4"
 dependencies = [
@@ -169,7 +173,9 @@ dependencies = [
 name = "bn_core_log"
 version = "0.6.4"
 dependencies = [
+ "bn_catalog",
  "bn_core_text",
+ "bn_host_env",
  "bn_types",
 ]
 
@@ -178,10 +184,38 @@ name = "bn_core_math"
 version = "0.6.4"
 
 [[package]]
+name = "bn_core_net"
+version = "0.6.4"
+dependencies = [
+ "bn_catalog",
+ "bn_limits",
+ "bn_types",
+ "dns-lookup",
+ "socket2",
+]
+
+[[package]]
 name = "bn_core_text"
 version = "0.6.4"
 dependencies = [
  "bn_types",
+]
+
+[[package]]
+name = "bn_core_web"
+version = "0.6.4"
+dependencies = [
+ "bn_catalog",
+ "bn_core_dispatch",
+ "bn_core_net",
+ "bn_limits",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "ring",
+ "rustls",
+ "tokio",
+ "tokio-rustls",
 ]
 
 [[package]]
@@ -199,6 +233,7 @@ dependencies = [
 name = "bn_diag"
 version = "0.6.4"
 dependencies = [
+ "bn_catalog",
  "bn_source",
 ]
 
@@ -206,6 +241,7 @@ dependencies = [
 name = "bn_frontend"
 version = "0.6.4"
 dependencies = [
+ "bn_catalog",
  "bn_diag",
  "bn_ir",
  "bn_source",
@@ -216,13 +252,16 @@ dependencies = [
 name = "bn_host_env"
 version = "0.6.4"
 dependencies = [
+ "bn_catalog",
  "bn_types",
+ "rustix",
 ]
 
 [[package]]
 name = "bn_host_exec"
 version = "0.6.4"
 dependencies = [
+ "bn_catalog",
  "bn_types",
 ]
 
@@ -358,6 +397,7 @@ dependencies = [
 name = "bn_lib_log"
 version = "0.6.4"
 dependencies = [
+ "bn_catalog",
  "bn_core_log",
  "bn_diag",
  "bn_interp",
@@ -400,10 +440,14 @@ dependencies = [
 name = "bn_lib_web"
 version = "0.6.4"
 dependencies = [
+ "bn_catalog",
+ "bn_core_dispatch",
+ "bn_core_web",
  "bn_diag",
  "bn_host_net",
  "bn_interp",
  "bn_ir",
+ "bn_lib_dispatch",
  "bn_limits",
  "bn_rt",
  "bn_runtime",
@@ -427,6 +471,7 @@ version = "0.6.4"
 name = "bn_llvm"
 version = "0.6.4"
 dependencies = [
+ "bn_catalog",
  "bn_core_text",
  "bn_diag",
  "bn_ir",
@@ -454,9 +499,11 @@ version = "0.6.4"
 dependencies = [
  "aes-gcm",
  "argon2",
+ "bn_catalog",
  "bn_core_dispatch",
  "bn_core_log",
  "bn_core_math",
+ "bn_core_net",
  "bn_core_text",
  "bn_host_env",
  "bn_host_exec",

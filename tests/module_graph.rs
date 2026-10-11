@@ -258,3 +258,25 @@ fn protected_members_reach_subclasses_in_other_modules_only() {
     let error = analyze_modules(&graph).expect_err("Start is outside the hierarchy");
     assert_eq!(error.diagnostic.code, "PROTECTED_ACCESS");
 }
+
+/// A module path names its directories and file letter for letter on every
+/// platform (0.6.md, "Module names and files"; known issue K47): `IMPORT
+/// Lib` does not load `lib.bn`, nor `IMPORT Geo.shape` load `geo/shape.bn`,
+/// even where the file system ignores case.
+#[test]
+fn module_paths_match_file_names_letter_for_letter() {
+    load(Path::new("tests/modules/letter-case/exact.bn")).expect("exact names load");
+    for (entry, looked_for) in [
+        ("file_case.bn", "letter-case/Lib.bn"),
+        ("directory_case.bn", "letter-case/Geo/shape.bn"),
+    ] {
+        let error = load(Path::new("tests/modules/letter-case").join(entry))
+            .expect_err("a name that differs in case is not found");
+        assert_eq!(error.diagnostic.code, "MODULE_NOT_FOUND", "{entry}");
+        assert!(
+            error.diagnostic.message.contains(looked_for),
+            "{entry}: {}",
+            error.diagnostic.message
+        );
+    }
+}

@@ -213,6 +213,7 @@ impl Executor<'_, '_> {
                     value(values, *right, *span)?,
                     ty,
                     *span,
+                    &self.module.class_model,
                 )?;
                 set(values, *destination, result);
             }

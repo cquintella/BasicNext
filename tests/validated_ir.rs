@@ -422,8 +422,11 @@ fn dispatch_await_requires_a_ticket_and_integer_timeout() {
     assert_eq!(error.code, "INVALID_IR");
 }
 
+/// `bnc` represents `EOF` constants (bucket 0.6.5, the `EOF` constant fix);
+/// target-support rejection (W4) stays covered by the vector and literal
+/// cases.
 #[test]
-fn valid_eof_constant_is_rejected_as_target_support_not_language_error() {
+fn valid_eof_constant_passes_native_target_support() {
     let module = function_with_blocks(vec![BasicBlock {
         id: BlockId(0),
         instructions: vec![Instruction::Constant {
@@ -435,8 +438,7 @@ fn valid_eof_constant_is_rejected_as_target_support_not_language_error() {
         terminator: Terminator::Return { value: None },
     }]);
     let validated = validate_module(module).expect("EOF is valid language IR");
-    let error = validate_for(&validated, Target::Native).expect_err("LLVM lacks EOF constants");
-    assert_eq!(error.code, "TARGET_UNSUPPORTED_OP");
+    validate_for(&validated, Target::Native).expect("LLVM represents EOF constants");
 }
 
 #[test]

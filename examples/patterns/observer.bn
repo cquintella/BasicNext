@@ -1,6 +1,49 @@
-// UNSUPPORTED: Observer needs a collection of interface-typed subscribers and
-// iteration over heterogeneous objects. Basic Next currently has no generic
-// interface collection or safe downcast operation for that model.
+// GoF Observer: a subject notifies every registered observer through the
+// observer interface, without knowing their classes.
+INTERFACE Observer
+    FUNCTION Update(temperature AS INT32) AS VOID
+END INTERFACE
+
+CLASS Display IMPLEMENTS Observer
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION Update(temperature AS INT32) AS VOID
+        PRINT "display: " + (temperature AS STRING) + " C"
+    END FUNCTION
+END CLASS
+
+CLASS Alarm IMPLEMENTS Observer
+    PRIVATE threshold AS INT32
+
+    PUBLIC FUNCTION CONSTRUCTOR(threshold AS INT32)
+        SELF.threshold = threshold
+    END FUNCTION
+
+    PUBLIC FUNCTION Update(temperature AS INT32) AS VOID
+        IF temperature > SELF.threshold THEN
+            PRINT "alarm: too hot"
+        END IF
+    END FUNCTION
+END CLASS
+
+CLASS Thermometer
+    PRIVATE observers AS Observer[2] = [NEW Display(), NEW Display()]
+
+    PUBLIC FUNCTION CONSTRUCTOR(display AS Observer, alarm AS Observer)
+        SELF.observers[0] = display
+        SELF.observers[1] = alarm
+    END FUNCTION
+
+    PUBLIC FUNCTION Measure(temperature AS INT32) AS VOID
+        FOR i AS INT32 = 0 TO 1
+            SELF.observers[i].Update(temperature)
+        END FOR
+    END FUNCTION
+END CLASS
+
 FUNCTION Start() AS VOID
-    PRINT "UNSUPPORTED: Observer requires interface collection dispatch"
+    LET thermometer AS Thermometer = NEW Thermometer(NEW Display(), NEW Alarm(30))
+    thermometer.Measure(21)
+    thermometer.Measure(35)
 END FUNCTION

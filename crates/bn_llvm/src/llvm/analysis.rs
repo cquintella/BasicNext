@@ -105,6 +105,7 @@ pub(crate) fn analyze_function<'a>(
                         }
                         if matches!(name.as_str(), "ASC" | "CHAR" | "TOLOWER" | "TOUPPER") {
                             uses_bn_rt = true;
+                            uses_heap |= name == "CHAR";
                         }
                         if is_bndata_dataframe_call(module, name) {
                             uses_bn_rt = true;
@@ -202,6 +203,7 @@ pub(crate) fn analyze_function<'a>(
                 } => {
                     if values.get(object) == Some(&Type::String) {
                         uses_string_ops = true;
+                        uses_heap = true;
                     }
                     values.insert(*destination, ty.clone());
                 }

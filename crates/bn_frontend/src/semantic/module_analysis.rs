@@ -456,6 +456,7 @@ pub(crate) fn imported_type_catalog(
 ) -> HashMap<(ModuleId, String), ImportedTypeInfo> {
     let mut catalog = HashMap::new();
     for module in &graph.modules {
+        let aliases = module_imports(module);
         for item in &module.program.items {
             let Item::Declaration {
                 exported: true,
@@ -565,7 +566,17 @@ pub(crate) fn imported_type_catalog(
                     kind: *kind,
                     members,
                     constructor,
-                    interfaces: interfaces.clone(),
+                    interfaces: interfaces
+                        .iter()
+                        .filter_map(|interface| match interface.split_once('.') {
+                            None => Some(format!("#{}.{interface}", module.id.0)),
+                            // Named through this module's own alias (K18); an
+                            // unknown alias is that module's own error.
+                            Some((alias, name)) => aliases
+                                .get(alias)
+                                .map(|target| format!("#{}.{name}", target.0)),
+                        })
+                        .collect(),
                 },
             );
         }

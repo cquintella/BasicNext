@@ -1,5 +1,4 @@
 //! Interpreter adapter wrapping `bn_core_dispatch` with Basic Next `Value` storage.
-#![allow(dead_code)]
 
 use std::sync::{Arc, Mutex};
 
@@ -28,6 +27,11 @@ impl Queue {
 
     pub(crate) fn workers(&self) -> usize {
         self.core.workers()
+    }
+
+    /// The shared core queue, for `BNWeb` handlers (`Server.UseQueue`).
+    pub(crate) fn core(&self) -> CoreQueue {
+        self.core.clone()
     }
 
     pub(crate) fn tickets(&self) -> Vec<Ticket> {

@@ -2,9 +2,10 @@ use std::sync::atomic::Ordering;
 use std::time::{Duration, UNIX_EPOCH};
 
 use super::{
-    Executor, HostEnv, Instance, Module, Value, coerce, default_span, host_random_seed,
+    Executor, HostEnv, Instance, Module, Value, default_span, host_random_seed,
     integer_from_i128_count, is_value, shared_string,
 };
+use crate::executor::coerce;
 use bn_types::{FloatType, IntegerType, Type};
 
 #[test]
@@ -203,12 +204,36 @@ fn network_handles_match_their_explicit_alternative_types() {
 
 #[test]
 fn primitive_type_tests_match_their_runtime_values() {
-    assert!(is_value(&Value::Integer(1, IntegerType::Int32), "INTEGER"));
-    assert!(is_value(&Value::Integer(1, IntegerType::Byte), "BYTE"));
-    assert!(!is_value(&Value::Integer(1, IntegerType::Byte), "INTEGER"));
-    assert!(is_value(&Value::Float(1.0, FloatType::Float64), "FLOAT"));
-    assert!(is_value(&Value::Boolean(true), "BOOLEAN"));
-    assert!(is_value(&Value::String("BN".into()), "STRING"));
+    assert!(is_value(
+        &Value::Integer(1, IntegerType::Int32),
+        "INTEGER",
+        &bn_types::class_model::ClassModel::default()
+    ));
+    assert!(is_value(
+        &Value::Integer(1, IntegerType::Byte),
+        "BYTE",
+        &bn_types::class_model::ClassModel::default()
+    ));
+    assert!(!is_value(
+        &Value::Integer(1, IntegerType::Byte),
+        "INTEGER",
+        &bn_types::class_model::ClassModel::default()
+    ));
+    assert!(is_value(
+        &Value::Float(1.0, FloatType::Float64),
+        "FLOAT",
+        &bn_types::class_model::ClassModel::default()
+    ));
+    assert!(is_value(
+        &Value::Boolean(true),
+        "BOOLEAN",
+        &bn_types::class_model::ClassModel::default()
+    ));
+    assert!(is_value(
+        &Value::String("BN".into()),
+        "STRING",
+        &bn_types::class_model::ClassModel::default()
+    ));
 }
 
 /// `BN_FS_POLICY=deny` keeps the provider (operations return an Error);

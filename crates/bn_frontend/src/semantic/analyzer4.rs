@@ -193,6 +193,59 @@ impl Analyzer {
             self.record_expression(expression.span, expected, None);
             return Ok(expected.clone());
         }
+        if let (
+            ExpressionKind::Vector { .. },
+            Type::Vector {
+                element,
+                dimensions,
+            },
+        ) = (&expression.kind, expected)
+            && let Some(shape) = vector_shape(expression)
+            && shape.len() == dimensions.len()
+        {
+            return self.vector_literal_as(expression, element, &shape, locals);
+        }
         self.expression(expression, locals)
+    }
+
+    /// A vector literal with a declared destination (0.6.md, "Vector literals
+    /// take a declared destination"): each element is checked against the
+    /// declared element type by the assignment rules, and the literal (with
+    /// each nested row) takes that element type. A literal whose shape is not
+    /// rectangular or has another rank is typed from its elements, so the
+    /// caller reports it as before.
+    fn vector_literal_as(
+        &mut self,
+        expression: &Expression,
+        element: &Type,
+        shape: &[usize],
+        locals: &HashMap<String, Symbol>,
+    ) -> Result<Type, Diagnostic> {
+        let ty = Type::Vector {
+            element: Box::new(element.clone()),
+            dimensions: shape
+                .iter()
+                .map(|dimension| u64::try_from(*dimension).expect("usize fits u64"))
+                .collect(),
+        };
+        if let ExpressionKind::Vector { values } = &expression.kind {
+            for value in values {
+                if shape.len() > 1 {
+                    self.vector_literal_as(value, element, &shape[1..], locals)?;
+                } else {
+                    let actual = self.expression(value, locals)?;
+                    if !self.compatible(element, &actual) {
+                        return Err(type_mismatch(
+                            display(element),
+                            display(&actual),
+                            VECTOR_LITERAL_ELEMENT,
+                            value.span,
+                        ));
+                    }
+                }
+            }
+        }
+        self.record_expression(expression.span, &ty, None);
+        Ok(ty)
     }
 }

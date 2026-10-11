@@ -39,7 +39,7 @@ pub(crate) fn validate_instruction(
             | Constant::HostConsole => true,
             Constant::NotAvailable => llvm_type(ty).is_some(),
             Constant::Null => true,
-            Constant::EndOfFile => false,
+            Constant::EndOfFile => llvm_type(ty).is_some(),
         },
         Instruction::Phi { ty, .. } => llvm_type(ty).is_some(),
         Instruction::Default {
@@ -86,6 +86,7 @@ pub(crate) fn validate_instruction(
             ..
         } => unary_supported(operator, values.get(operand), ty),
         Instruction::Binary {
+            destination,
             operator,
             left,
             right,
@@ -117,6 +118,27 @@ pub(crate) fn validate_instruction(
                 intrinsics.insert(intrinsic);
             }
             if operator == "IS" {
+                // The emitter decides which `IS` forms it lowers; asking it
+                // on a scratch buffer keeps one rule and makes an unlowered
+                // form a support diagnostic here (W4), not at emission.
+                if matches!(ty, Type::Boolean)
+                    && !emit_is(&mut String::new(), *destination, *left, left_ty, right_ty)
+                {
+                    let detail = bn_catalog::fill(
+                        "llvm",
+                        "is.unsupported",
+                        &[
+                            ("test", &crate::display_type(right_ty)),
+                            ("value", &crate::display_type(left_ty)),
+                        ],
+                    );
+                    return Err(unsupported_instruction(
+                        module,
+                        function,
+                        instruction,
+                        &detail,
+                    ));
+                }
                 matches!(ty, Type::Boolean)
             } else {
                 binary_supported(operator, left_ty, right_ty, ty)

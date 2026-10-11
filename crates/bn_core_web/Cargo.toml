@@ -1,0 +1,27 @@
+[package]
+name = "bn_core_web"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.97"
+description = "Basic Next BNWeb core: HTTP server/client, TLS, routing, sessions, cookies, ACL"
+license.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+bn_catalog = { path = "../bn_catalog" }
+bn_core_dispatch = { path = "../bn_core_dispatch" }
+bn_core_net = { path = "../bn_core_net" }
+bn_limits = { path = "../bn_limits" }
+http-body-util = "0.1.5"
+hyper = { version = "1.11.1", default-features = false, features = ["client", "http1", "http2", "server"] }
+hyper-util = { version = "0.1.20", default-features = false, features = ["http1", "http2", "server", "tokio"] }
+ring = "0.17.14"
+rustls = { version = "0.23.43", default-features = false, features = ["ring", "std"] }
+tokio = { version = "1.53.1", default-features = false, features = ["net", "rt", "rt-multi-thread", "sync", "time"] }
+tokio-rustls = { version = "0.26.4", default-features = false, features = ["ring"] }

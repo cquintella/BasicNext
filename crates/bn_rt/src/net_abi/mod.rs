@@ -18,7 +18,8 @@ pub use udp::*;
 use super::*;
 
 use super::net::error::{Failure, NetError};
-use super::net::handles::{self, Handle};
+mod handles;
+use handles::Handle;
 
 /// Records `error` for the `Error` the emitted code builds; the status: 2
 /// for a policy denial (the call-boundary re-check, host-traits.md), else 1.
@@ -101,22 +102,6 @@ fn write_out<T>(out: *mut T, value: T) {
     if !out.is_null() {
         // SAFETY: emitted code passes a writable slot for `T` or null.
         unsafe { out.write(value) };
-    }
-}
-
-/// Frees a byte buffer returned by `bn_rt_net_udp_receive`.
-#[allow(unsafe_code)]
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_net_buffer_free(data: *mut u8, length: i32) {
-    let Ok(length) = usize::try_from(length) else {
-        return;
-    };
-    if !data.is_null() {
-        unsafe {
-            drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
-                data, length,
-            )));
-        }
     }
 }
 

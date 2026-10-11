@@ -46,6 +46,23 @@ Resolution preserves provider order, removes exact duplicate addresses, and
 returns a typed empty-result or provider error. A hostname is not silently
 resolved by an operation whose contract requires an address.
 
+### CIDR text (0.6.5)
+
+Decided 2026-10-10 (Carlos; known issue K39). `CIDR.Parse(text)` accepts
+`<address>/<prefix>` and nothing else:
+
+- the address follows the strict address parse (`Address.Parse`);
+- the prefix is decimal digits only: no sign, no space, and no leading zero
+  (`/0` is the one prefix that starts with `0`); it is at most 32 for IPv4
+  and 128 for IPv6;
+- the address is the network address: every bit past the prefix is zero.
+  `10.0.0.1/8` is refused, not masked to `10.0.0.0/8`.
+
+Anything else is `Net.INVALID_ARGUMENT`. `10.0.0.0/08`, `10.0.0.0/+8` and
+`10.0.0.1/8` are refused; `10.0.0.0/8`, `2001:db8::/32` and `0.0.0.0/0`
+are accepted. Every CIDR the library reads follows the same rule (a
+`BNWeb` `EgressPolicy` list included).
+
 ## TCP
 
 0.3 includes bounded connect, bind, listen, accept, read, write, endpoint
@@ -63,7 +80,10 @@ platform-specific socket constants.
 0.3 includes bounded bind, send-to, receive-from, endpoint inspection, timeout,
 and idempotent close. Every received datagram reports its source endpoint.
 Truncation is an explicit result; it must not be reported as a complete
-datagram. Arbitrary raw IP packets are outside 0.3.
+datagram. A received `UDPPacket` reports it with `WasTruncated()`
+(`TRUE` when the datagram was larger than the buffer and only its first
+bytes were kept). Decided 2026-10-10 (Carlos; K39): `WasTruncated` is the
+one name; the synonym `Truncated()` is removed. Arbitrary raw IP packets are outside 0.3.
 
 ## ICMP Echo
 

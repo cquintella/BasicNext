@@ -1,5 +1,63 @@
-// UNSUPPORTED: Mediator requires a shared interface reference between peers;
-// interface-typed fields and dynamic dispatch are not yet complete.
+// GoF Mediator: colleagues talk only to the mediator, which decides who
+// hears each message; colleagues never reference each other.
+INTERFACE Room
+    FUNCTION Send(sender AS STRING, text AS STRING) AS VOID
+END INTERFACE
+
+CLASS Member
+    PRIVATE name AS STRING
+    PRIVATE room AS Room OR NULL = NULL
+
+    PUBLIC FUNCTION CONSTRUCTOR(name AS STRING)
+        SELF.name = name
+    END FUNCTION
+
+    PUBLIC FUNCTION Join(room AS Room) AS VOID
+        SELF.room = room
+    END FUNCTION
+
+    PUBLIC FUNCTION Name() AS STRING
+        RETURN SELF.name
+    END FUNCTION
+
+    PUBLIC FUNCTION Say(text AS STRING) AS VOID
+        LET room AS Room OR NULL = SELF.room
+        IF room IS Room THEN
+            room.Send(SELF.name, text)
+        END IF
+    END FUNCTION
+
+    PUBLIC FUNCTION Receive(sender AS STRING, text AS STRING) AS VOID
+        PRINT SELF.name + " hears " + sender + ": " + text
+    END FUNCTION
+END CLASS
+
+CLASS ChatRoom IMPLEMENTS Room
+    PRIVATE members AS Member[3] = [NEW Member(""), NEW Member(""), NEW Member("")]
+
+    PUBLIC FUNCTION CONSTRUCTOR(a AS Member, b AS Member, c AS Member)
+        SELF.members[0] = a
+        SELF.members[1] = b
+        SELF.members[2] = c
+    END FUNCTION
+
+    PUBLIC FUNCTION Send(sender AS STRING, text AS STRING) AS VOID
+        FOR i AS INT32 = 0 TO 2
+            IF SELF.members[i].Name() <> sender THEN
+                SELF.members[i].Receive(sender, text)
+            END IF
+        END FOR
+    END FUNCTION
+END CLASS
+
 FUNCTION Start() AS VOID
-    PRINT "UNSUPPORTED: interface-typed peer references are not available"
+    LET ana AS Member = NEW Member("ana")
+    LET bia AS Member = NEW Member("bia")
+    LET caio AS Member = NEW Member("caio")
+    LET room AS Room = NEW ChatRoom(ana, bia, caio)
+    ana.Join(room)
+    bia.Join(room)
+    caio.Join(room)
+    ana.Say("hello")
+    caio.Say("bye")
 END FUNCTION

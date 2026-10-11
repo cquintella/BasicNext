@@ -27,7 +27,7 @@ fail() {
 # helpers that re-execute the test binary. Integration tests under
 # crates/*/tests drive the executables and are not scanned. Nothing else
 # may spawn.
-allowed_spawn='^(crates/bn_host_exec/src/lib\.rs|crates/bn_rt/src/net/neighbor\.rs|crates/bn_compile_driver/src/(toolchain|artifact|tests)\.rs|.*_tests\.rs)$'
+allowed_spawn='^(crates/bn_host_exec/src/lib\.rs|crates/bn_core_net/src/neighbor\.rs|crates/bn_compile_driver/src/(toolchain|artifact|tests)\.rs|.*_tests\.rs)$'
 while IFS= read -r file; do
   file=${file//\\/\/}
   [[ $file =~ $allowed_spawn ]] || fail "process spawn outside the shared cores: $file"

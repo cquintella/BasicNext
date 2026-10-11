@@ -1,5 +1,4 @@
 //! Snapshot and freshness boundary shared by frontend clients.
-#![allow(dead_code)]
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 

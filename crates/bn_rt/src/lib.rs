@@ -45,12 +45,10 @@ mod file_error;
 pub mod json;
 pub mod json_abi;
 pub mod json_error;
-mod log;
 mod log_abi;
-pub mod log_error;
 mod math;
 mod math_abi;
-pub mod net;
+pub use bn_core_net as net;
 mod net_abi;
 mod policy;
 pub mod secure_fs;
@@ -62,7 +60,7 @@ mod text_abi;
 mod trap_abi;
 pub mod web_error;
 
-pub use log::{Level as LogLevel, Record as LogRecord};
+pub use bn_core_log::{Level as LogLevel, Record as LogRecord};
 pub use log_abi::*;
 pub use stats::{Reduction, reduce};
 
@@ -93,7 +91,7 @@ pub use net_abi::*;
 pub use policy::{
     FsPolicy, POLICY_ALL, POLICY_CLOCK, POLICY_CONSOLE, POLICY_DISPATCH, POLICY_EXEC,
     POLICY_FILESYSTEM, POLICY_INVALID, POLICY_NET, POLICY_OK, POLICY_RANDOM, POLICY_VERSION,
-    Policy, PolicyError, bn_rt_policy_check, bn_rt_policy_init, bn_rt_policy_restrict,
+    Policy, PolicyError, bn_rt_policy_check, bn_rt_policy_init,
 };
 pub use terminal::terminal_dimensions;
 pub use text_abi::*;
@@ -520,8 +518,10 @@ mod tests {
     use super::{POLICY_ALL, POLICY_CONSOLE, POLICY_NET, POLICY_OK, POLICY_VERSION};
     use super::{bn_rt_net_addresses_count, bn_rt_net_addresses_free, bn_rt_net_resolve};
     use super::{
-        bn_rt_net_buffer_free, bn_rt_net_handle_close, bn_rt_net_string_free, bn_rt_net_udp_bind,
-        bn_rt_net_udp_local_endpoint, bn_rt_net_udp_receive, bn_rt_net_udp_send_to,
+        bn_rt_net_handle_close, bn_rt_net_string_free, bn_rt_net_udp_bind,
+        bn_rt_net_udp_local_endpoint, bn_rt_net_udp_packet_copy_to, bn_rt_net_udp_packet_size,
+        bn_rt_net_udp_packet_source, bn_rt_net_udp_packet_truncated, bn_rt_net_udp_receive_handle,
+        bn_rt_net_udp_send_to,
     };
     use super::{
         bn_rt_net_tcp_accept, bn_rt_net_tcp_connect, bn_rt_net_tcp_listen_with_backlog,
@@ -565,10 +565,7 @@ mod tests {
             super::bn_rt_policy_init(POLICY_VERSION, POLICY_ALL),
             POLICY_OK
         );
-        assert_eq!(
-            super::bn_rt_policy_restrict(POLICY_ALL & !(POLICY_CONSOLE | POLICY_NET)),
-            POLICY_OK
-        );
+        super::policy::restrict_for_tests(POLICY_ALL & !(POLICY_CONSOLE | POLICY_NET));
         assert_eq!(super::bn_rt_console_beep(), 2);
         assert_eq!(super::bn_rt_net_addresses_count(std::ptr::null()), -2);
         assert_eq!(
@@ -635,23 +632,13 @@ mod tests {
     #[test]
     fn udp_receive_rejects_invalid_handle_and_bounds() {
         let _lock = super::network_test_lock();
-        let mut data = std::ptr::null_mut();
-        let mut length = -1;
+        let mut packet = -1;
         assert_eq!(
-            bn_rt_net_udp_receive(
-                -1,
-                65_507,
-                1_000,
-                &raw mut data,
-                &raw mut length,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-            ),
+            bn_rt_net_udp_receive_handle(-1, 65_507, 1_000, &raw mut packet),
             1
         );
-        assert!(data.is_null());
-        assert_eq!(length, -1);
+        assert_eq!(packet, -1);
+        assert_eq!(bn_rt_net_udp_packet_size(-1), -1);
     }
 
     #[test]
@@ -692,31 +679,30 @@ mod tests {
         );
         assert_eq!(written, 4);
 
-        let mut data = std::ptr::null_mut();
-        let mut length = -1;
-        let mut source = std::ptr::null_mut();
-        let mut source_port = -1;
-        let mut truncated = -1;
+        // The path `bnc` emits: a packet handle, then its members.
+        let mut packet = -1;
         assert_eq!(
-            bn_rt_net_udp_receive(
-                receiver,
-                1024,
-                1_000,
-                &raw mut data,
-                &raw mut length,
-                &raw mut source,
-                &raw mut source_port,
-                &raw mut truncated,
-            ),
+            bn_rt_net_udp_receive_handle(receiver, 1024, 1_000, &raw mut packet),
             0
         );
-        let payload_out = unsafe {
-            std::slice::from_raw_parts(data, usize::try_from(length).expect("non-negative length"))
-        };
-        assert_eq!(payload_out, payload);
+        assert_eq!(bn_rt_net_udp_packet_size(packet), 4);
+        assert_eq!(bn_rt_net_udp_packet_truncated(packet), 0);
+        let mut payload_out = [0u8; 8];
+        let mut copied = -1;
+        assert_eq!(
+            bn_rt_net_udp_packet_copy_to(packet, payload_out.as_mut_ptr(), 8, &raw mut copied),
+            0
+        );
+        assert_eq!(&payload_out[..4], payload);
+        assert_eq!(copied, 4);
+        let mut source = std::ptr::null_mut();
+        let mut source_port = -1;
+        assert_eq!(
+            bn_rt_net_udp_packet_source(packet, &raw mut source, &raw mut source_port),
+            0
+        );
         assert!(source_port > 0);
-        assert_eq!(truncated, 0);
-        bn_rt_net_buffer_free(data, length);
+        assert_eq!(bn_rt_net_handle_close(packet), 0);
         bn_rt_net_string_free(receiver_address.cast());
         bn_rt_net_string_free(source);
         assert_eq!(bn_rt_net_handle_close(sender), 0);
@@ -843,7 +829,7 @@ mod tests {
         assert!(super::bn_rt_clock_timer() >= 0);
 
         // Restrict policy to exclude POLICY_CLOCK
-        super::policy::bn_rt_policy_restrict(super::policy::POLICY_CONSOLE);
+        super::policy::restrict_for_tests(super::policy::POLICY_CONSOLE);
         assert_eq!(super::bn_rt_clock_now(), -1);
         assert_eq!(super::bn_rt_clock_timer(), -1);
     }

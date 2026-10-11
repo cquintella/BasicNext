@@ -283,6 +283,44 @@ END FUNCTION
     assert_eq!(output, "FALSE\nFALSE\nFALSE\nFALSE FALSE TRUE\n");
 }
 
+/// A `Child` starts with its parent's format; a later `SetFormat` on the
+/// child leaves the parent's (bnlog.md, "Formats"). `bnc` has no `Child`.
+#[test]
+fn bnlog_child_starts_with_the_parent_format() {
+    let source = r#"IMPORT HOST.Console AS Console
+IMPORT BNLog AS Log
+FUNCTION Start() AS VOID
+LET logger AS Log.Logger = NEW Log.Logger()
+LET fields AS Log.Fields = NEW Log.Fields()
+LET added AS VOID OR Error = logger.AddConsole(2)
+LET text AS VOID OR Error = logger.SetFormat("SYSLOG")
+LET made AS Log.Logger OR Error = logger.Child(fields)
+IF made IS Log.Logger THEN
+LET child AS Log.Logger = made
+LET a AS VOID OR Error = child.Log(2, "from child", fields)
+LET json AS VOID OR Error = child.SetFormat("JSON")
+LET b AS VOID OR Error = logger.Log(2, "from parent", fields)
+LET c AS VOID OR Error = child.Log(2, "child json", fields)
+END IF
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute BNLog child format");
+    let lines = output.lines().collect::<Vec<_>>();
+    assert_eq!(lines.len(), 3, "{output}");
+    assert!(
+        lines[0].starts_with("<14>1 ") && lines[0].ends_with(" - - from child"),
+        "{output}"
+    );
+    assert!(
+        lines[1].starts_with("<14>1 ") && lines[1].ends_with(" - - from parent"),
+        "{output}"
+    );
+    assert!(
+        lines[2].starts_with("{\"fields\":{}") && lines[2].contains("\"child json\""),
+        "{output}"
+    );
+}
+
 #[test]
 fn bnlog_file_transport_requires_explicit_filesystem_and_appends_json_lines() {
     let path = unique_temp("bnlog.jsonl");
@@ -2623,7 +2661,7 @@ LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, 0)
 IF endpoint IS Error THEN
 STOP 2
 ELSE
-LET options AS Web.ServerOptions OR Error = Web.ServerOptions.New(1, 128, 1, 1, 65536, 100, 8192, 8388608, 5000, 5000, 30000, 60000, 120000, 5000, 10, 10, 10000, FALSE, FALSE)
+LET options AS Web.ServerOptions OR Error = Web.ServerOptions.New(1, 128, 1, 1, 65536, 100, 8192, 8388608, 5000, 5000, 30000, 60000, 120000, 5000, 10, 10, 10000, FALSE)
 IF options IS Error THEN
 PRINT "invalid"
 ELSE
@@ -2704,6 +2742,61 @@ END FUNCTION
         Ok((_, output)) => assert_eq!(output, "201\nTRUE\n"),
         Err(error) => assert_eq!(error.code, "WEB_LISTEN", "{error:?}"),
     }
+}
+
+/// The in-process `Server.Dispatch` keeps sessions as the network server
+/// does (bucket 0.6.5 E.S0.e): a write creates the session and the `sid`
+/// cookie; `Session()` without `UseSessions` is `UNAVAILABLE`. A header the
+/// response lacks is an `Error`, as `Response.Header` declares.
+#[test]
+fn bnweb_dispatch_keeps_server_sessions() {
+    let source = r#"IMPORT BNWeb AS Web
+IMPORT HOST.Net AS Net
+FUNCTION Login(request AS Web.Request, response AS Web.Response) AS VOID
+LET session AS Web.Session OR Error = request.Session()
+IF session IS Error THEN
+PRINT session.Code
+ELSE
+PRINT session.Get("user") IS Error
+session.Set("user", "ana")
+PRINT session.Get("user")
+END IF
+END FUNCTION
+FUNCTION Start() AS VOID
+LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+IF address IS Error THEN
+STOP 1
+END IF
+LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, 0)
+IF endpoint IS Error THEN
+STOP 2
+END IF
+LET plain AS Web.Server = NEW Web.Server()
+plain.Route("GET", "/", Login)
+plain.Start(endpoint)
+plain.Dispatch(NEW Web.Request(), NEW Web.Response())
+LET server AS Web.Server = NEW Web.Server()
+PRINT server.UseSessions(0, 1000) IS Error
+PRINT server.UseSessions(4, 60000)
+server.Route("GET", "/", Login)
+server.Start(endpoint)
+LET response AS Web.Response = NEW Web.Response()
+server.Dispatch(NEW Web.Request(), response)
+LET cookie AS STRING OR Error = response.Header("Set-Cookie")
+IF cookie IS STRING THEN
+PRINT LEN(cookie)
+END IF
+PRINT response.Header("X-Absent") IS Error
+plain.Stop(1000)
+server.Stop(1000)
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("dispatch with sessions");
+    let unavailable = bn_types::error_codes::web::UNAVAILABLE;
+    assert_eq!(
+        output,
+        format!("{unavailable}\nTRUE\nNULL\nTRUE\nana\n69\nTRUE\n")
+    );
 }
 
 #[test]
@@ -2798,6 +2891,292 @@ END FUNCTION
     assert_eq!(code, 0);
     assert!(response.starts_with("HTTP/1.1 207"), "{response}");
     assert!(response.ends_with("bn-handler"), "{response}");
+}
+
+/// One HTTP/1.1 exchange with `Connection: close`: the status line, the
+/// `set-cookie` values and the body.
+fn http_exchange(port: u16, request: &str) -> (String, Vec<String>, String) {
+    let mut client = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
+    client.write_all(request.as_bytes()).expect("write request");
+    let mut raw = String::new();
+    client.read_to_string(&mut raw).expect("read response");
+    let (head, body) = raw.split_once("\r\n\r\n").unwrap_or((raw.as_str(), ""));
+    let mut lines = head.lines();
+    let status = lines.next().unwrap_or_default().to_owned();
+    let cookies = lines
+        .filter_map(|line| line.split_once(": "))
+        .filter(|(name, _)| name.eq_ignore_ascii_case("set-cookie"))
+        .map(|(_, value)| value.to_owned())
+        .collect();
+    (status, cookies, body.to_owned())
+}
+
+/// A BNWeb program listening on a free loopback port, stopped by a line on
+/// its input.
+struct Served {
+    port: u16,
+    input: std::sync::mpsc::Sender<Vec<u8>>,
+    execution: std::thread::JoinHandle<Result<(u8, Vec<u8>), bn_diag::Diagnostic>>,
+}
+
+impl Served {
+    /// Runs `path` with the port, then `arguments`, as its arguments; `None` when this
+    /// host forbids binding (sandbox).
+    fn start(path: &str, arguments: &[&str]) -> Option<Self> {
+        let probe = match std::net::TcpListener::bind("127.0.0.1:0") {
+            Ok(listener) => listener,
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => return None,
+            Err(error) => panic!("bind probe: {error}"),
+        };
+        let port = probe.local_addr().expect("probe address").port();
+        drop(probe);
+        let graph = load(path).expect("load the program");
+        let models = analyze_modules(&graph).expect("analyze the program");
+        let module = lower_graph(&graph, &models).expect("lower the program");
+        let (input, input_receiver) = std::sync::mpsc::channel();
+        let mut host_arguments = vec![path.to_owned(), port.to_string()];
+        host_arguments.extend(arguments.iter().map(|argument| (*argument).to_owned()));
+        let execution = std::thread::spawn(move || {
+            let reader = ChannelReader {
+                receiver: input_receiver,
+                current: Cursor::new(Vec::new()),
+            };
+            let mut reader = std::io::BufReader::new(reader);
+            let mut output = Vec::new();
+            execute_with_host(
+                &module,
+                &mut reader,
+                &mut output,
+                &fixed(host_arguments, 0, 0),
+            )
+            .map(|code| (code, output))
+        });
+        let ready = (0..500).any(|_| {
+            let connected = std::net::TcpStream::connect(("127.0.0.1", port)).is_ok();
+            if !connected {
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            connected
+        });
+        let served = Self {
+            port,
+            input,
+            execution,
+        };
+        assert!(
+            ready,
+            "the program did not listen on {port}: {:?}",
+            served.stop()
+        );
+        Some(served)
+    }
+
+    /// Stops the program and returns its exit code and output.
+    fn stop(self) -> (u8, String) {
+        let _ = self.input.send(b"\n".to_vec());
+        let (code, output) = self
+            .execution
+            .join()
+            .expect("program thread")
+            .expect("run the program");
+        (code, String::from_utf8_lossy(&output).into_owned())
+    }
+}
+
+/// `examples/bnweb/users_api.bn` over real HTTP (bucket 0.6.5 E.S0.d,
+/// E.S0.e): `POST /auth` checks the form and keeps the user in a server
+/// session, rotating its id; `GET /users?id=` and `GET /users/:id` need it;
+/// `POST /logout` ends it, and the old id is refused afterwards.
+#[test]
+fn bnweb_users_api_example_authenticates_and_serves_users() {
+    let Some(served) = Served::start("examples/bnweb/users_api.bn", &[]) else {
+        return;
+    };
+    let port = served.port;
+    let form_post = |target: &str, form: &str, cookie: &str| {
+        format!(
+            "POST {target} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n{cookie}\
+             Content-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\r\n{form}",
+            form.len()
+        )
+    };
+    let get = |target: &str, cookie: &str| {
+        format!("GET {target} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n{cookie}\r\n")
+    };
+    let rejected = http_exchange(port, &form_post("/auth", "user=ana&password=wrong", ""));
+    let accepted = http_exchange(port, &form_post("/auth", "user=ana&password=bn-secret", ""));
+    let sid = accepted
+        .1
+        .iter()
+        .find_map(|cookie| cookie.strip_prefix("sid="))
+        .and_then(|cookie| cookie.split(';').next())
+        .unwrap_or_default()
+        .to_owned();
+    let session = format!("Cookie: sid={sid}\r\n");
+    let anonymous = http_exchange(port, &get("/users?id=00102", ""));
+    let by_query = http_exchange(port, &get("/users?id=00102", &session));
+    let by_path = http_exchange(port, &get("/users/00103", &session));
+    let missing = http_exchange(port, &get("/users/00999", &session));
+    let forged = http_exchange(port, &get("/users/00102", "Cookie: sid=s0123\r\n"));
+    let logout = http_exchange(port, &form_post("/logout", "", &session));
+    let replayed = http_exchange(port, &get("/users/00102", &session));
+    let (code, _) = served.stop();
+    assert_eq!(code, 0);
+    assert!(rejected.0.starts_with("HTTP/1.1 401"), "{rejected:?}");
+    assert!(
+        rejected.1.is_empty(),
+        "no session for a failed login: {rejected:?}"
+    );
+    assert!(accepted.0.starts_with("HTTP/1.1 200"), "{accepted:?}");
+    assert_eq!(accepted.2, "authenticated");
+    assert_eq!(sid.len(), 33, "{accepted:?}");
+    assert!(
+        accepted.1[0].ends_with("; Path=/; HttpOnly; SameSite=Lax"),
+        "{accepted:?}"
+    );
+    assert!(anonymous.0.starts_with("HTTP/1.1 401"), "{anonymous:?}");
+    assert!(
+        anonymous.1.is_empty(),
+        "reading creates no session: {anonymous:?}"
+    );
+    assert_eq!(by_query.2, r#"{"id":"00102","name":"Ana"}"#);
+    assert_eq!(by_path.2, r#"{"id":"00103","name":"Carla"}"#);
+    assert!(missing.0.starts_with("HTTP/1.1 404"), "{missing:?}");
+    assert!(forged.0.starts_with("HTTP/1.1 401"), "{forged:?}");
+    assert_eq!(
+        logout.1,
+        ["sid=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"],
+        "{logout:?}"
+    );
+    assert!(replayed.0.starts_with("HTTP/1.1 401"), "{replayed:?}");
+}
+
+/// A server whose `/slow` handler waits 300 ms; with a `queue` argument it
+/// runs its handlers on a `Dispatch.Queue`. It prints the results of
+/// `UseQueue` before and after `Start` (the second is refused).
+const SLOW_SERVER: &str = r#"IMPORT BNWeb AS Web
+IMPORT BNDispatch AS Dispatch
+IMPORT BNMath AS M
+IMPORT HOST.Net AS Net
+
+FUNCTION Slow(request AS Web.Request, response AS Web.Response) AS VOID
+    LET group AS Dispatch.Group OR Error = Dispatch.Group.New()
+    IF group IS Dispatch.Group THEN
+        group.Enter()
+        LET waited AS VOID OR Error = group.Wait(300)
+        IF waited IS Error THEN
+            response.Write("waited")
+        END IF
+    END IF
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Concurrent(8)
+    IF address IS Error OR queue IS Error THEN
+        RETURN 1
+    END IF
+    LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, M.VAL(HOST.Args[1]) AS UINT16)
+    IF endpoint IS Error THEN
+        RETURN 1
+    END IF
+    LET server AS Web.Server = NEW Web.Server()
+    LET parallel AS BOOLEAN = LEN(HOST.Args) > 2
+    IF parallel THEN
+        PRINT server.UseQueue(queue)
+    END IF
+    server.Route("GET", "/slow", Slow)
+    PRINT server.Start(endpoint)
+    IF parallel THEN
+        PRINT server.UseQueue(queue)
+    END IF
+    LET line AS STRING OR EOF = INPUT()
+    IF line IS STRING THEN
+        server.Stop(5000)
+    END IF
+    RETURN 0
+END FUNCTION
+"#;
+
+/// Sends `count` concurrent requests to `/slow`; the time they took and the
+/// program's output, or `None` when this host forbids binding.
+fn slow_requests(arguments: &[&str], count: usize) -> Option<(std::time::Duration, String)> {
+    let path = unique_temp("bnweb-slow.bn");
+    fs::write(&path, SLOW_SERVER).expect("write the program");
+    let served = Served::start(path.to_str().expect("utf-8 path"), arguments);
+    let _ = fs::remove_file(&path);
+    let served = served?;
+    let port = served.port;
+    let started = std::time::Instant::now();
+    let clients: Vec<_> = (0..count)
+        .map(|_| {
+            std::thread::spawn(move || {
+                http_exchange(
+                    port,
+                    "GET /slow HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+                )
+            })
+        })
+        .collect();
+    for client in clients {
+        let answer = client.join().expect("client thread");
+        assert!(answer.0.starts_with("HTTP/1.1 200"), "{answer:?}");
+        assert_eq!(answer.2, "waited");
+    }
+    let elapsed = started.elapsed();
+    let (code, output) = served.stop();
+    assert_eq!(code, 0, "{output}");
+    Some((elapsed, output))
+}
+
+/// `Server.UseQueue` runs handlers in parallel (bucket 0.6.5 E.S0.e): eight
+/// requests to a handler that waits 300 ms finish together, not one after
+/// the other (2.4 s serially). `UseQueue` on a started server is refused.
+#[test]
+fn bnweb_handlers_run_in_parallel_on_a_dispatch_queue() {
+    let Some((elapsed, output)) = slow_requests(&["queue"], 8) else {
+        return;
+    };
+    assert!(
+        elapsed < std::time::Duration::from_millis(1200),
+        "8 × 300 ms handlers took {elapsed:?}"
+    );
+    let lines: Vec<&str> = output.lines().collect();
+    assert_eq!(lines[..2], ["NULL", "NULL"], "{output}");
+    assert!(
+        lines[2].starts_with("Error 1 in BNWeb.Server.UseQueue: server is already started"),
+        "{output}"
+    );
+}
+
+/// Without `UseQueue`, handlers run one at a time (`bnweb.md`, "Server
+/// lifecycle"; known issue K43): four 300 ms handlers take at least 1.2 s.
+#[test]
+fn bnweb_handlers_without_a_queue_run_serially() {
+    let Some((elapsed, output)) = slow_requests(&[], 4) else {
+        return;
+    };
+    assert!(
+        elapsed >= std::time::Duration::from_millis(1200),
+        "4 × 300 ms handlers took {elapsed:?}, so some ran together"
+    );
+    assert_eq!(output, "NULL\n");
+}
+
+/// `IS` on a class of a BN-written standard module through its alias
+/// (`Str.Tokenizer`): the test uses the class identity its objects carry
+/// (known issue K41; `TRUE` was impossible before).
+#[test]
+fn is_names_an_imported_bn_class_through_its_alias() {
+    let source = r#"IMPORT BNString AS Str
+FUNCTION Start() AS VOID
+LET a AS Str.Tokenizer OR NULL = Str.Tokenizer.New("a&b", "&")
+LET b AS Str.Tokenizer OR NULL = NULL
+PRINT a IS NULL, a IS Str.Tokenizer, b IS NULL, b IS Str.Tokenizer
+END FUNCTION
+"#;
+    let (_, output) = run(source, "").expect("execute IS on an imported BN class");
+    assert_eq!(output, "FALSE TRUE TRUE FALSE\n");
 }
 
 #[test]

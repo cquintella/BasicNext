@@ -98,19 +98,97 @@ Responses expose explicit status, headers, bounded body writes, commit state,
 and close behavior. Header names/values reject protocol-invalid controls; a
 committed response cannot be reset or silently replaced.
 
+### Route parameters, query values and cookies (0.6.5)
+
+Bucket 0.6.5 E.S0.d (Carlos, 2026-10-10). A route `GET /users/:id` matches
+`/users/00102`; the handler reads `request.Param("id")`, `"00102"`. A query
+field never selects a route: `GET /users` serves `/users?id=00102`, and
+`request.Query("id")` returns its values.
+
+| Member | Result |
+| --- | --- |
+| `Request.Param(name AS STRING) AS STRING OR Error` | The `:name` segment of the matched pattern; `NOT_FOUND` when the pattern has no such parameter |
+| `Request.Cookie(name AS STRING) AS STRING OR Error` | The value of the cookie `name` the client sent ([RFC 6265](https://www.rfc-editor.org/rfc/rfc6265) §5.4: `name=value` pairs separated by `;` in every `Cookie` header, a quoted value without its quotes, the first pair with that name); `NOT_FOUND` when absent |
+| `Response.SetCookie(name AS STRING, value AS STRING, domain AS STRING, path AS STRING, maxAgeMs AS INTEGER) AS VOID OR Error` | Adds a `Set-Cookie` header with the default policy: `Secure`, `HttpOnly`, `SameSite=Lax` |
+| `Response.SetCookieWithPolicy(name AS STRING, value AS STRING, domain AS STRING, path AS STRING, maxAgeMs AS INTEGER, secure AS BOOLEAN, httpOnly AS BOOLEAN, sameSite AS STRING) AS VOID OR Error` | The same with an explicit policy, as `CookieJar.SetWithPolicy` |
+| `Response.ClearCookie(name AS STRING, domain AS STRING, path AS STRING) AS VOID OR Error` | Expires the cookie (`Max-Age=0`) |
+
+An empty `domain` is a host-only cookie; `maxAgeMs` `0` is a session cookie
+(no `Max-Age`), a negative one is `INVALID_ARGUMENT`; `Max-Age` is written in
+whole seconds (rounded down). `sameSite` is
+`"Strict"`, `"Lax"` or `"None"`, and `"None"` needs `secure`
+(`INVALID_ARGUMENT` otherwise). A `Secure` cookie is set only on a response
+to a request that arrived over TLS: on cleartext HTTP it is
+`INVALID_ARGUMENT`, so a program served over `http://` passes `secure` as
+`FALSE` explicitly. `ClearCookie` marks the cookie `Secure` only over TLS.
+Cookie names and values are bounded and reject protocol-invalid characters
+(`INVALID_ARGUMENT`).
+
 Duplicate-header policy, request-body consumption, streaming/file behavior,
 form decoding, and exact collection signatures are Phase 0 decisions. No
 handler receives an unbounded body by default.
 
 ## Server lifecycle
 
-BN handlers are synchronous and run serially in 0.3. An internal bounded
+BN handlers are synchronous and, without `Server.UseQueue` (below), run
+serially. An internal bounded
 `HOST.Net` runtime may perform concurrent transport I/O, but it does not add
 `ASYNC`/`AWAIT` syntax or concurrent handler execution. The explicit `Server.Dispatch`
 operation invokes BN filters and route handlers; HTTP transport adapters use
 the approved Rust callback bridge in the verified Sprint 11 boundary.
 Transport-to-BN callback projection is gated for Sprint 13 `BNDispatch`. Start, dispatch, overload, graceful
 stop, cleanup, and idempotent close have explicit time and queue bounds.
+
+### Parallel handlers and server sessions (0.6.5)
+
+Bucket 0.6.5 E.S0.e (Carlos, 2026-10-10). A server runs its handlers in
+parallel on a `BNDispatch` queue the program owns:
+
+```basic
+IMPORT BNDispatch AS Dispatch
+LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Concurrent(8)
+server.UseQueue(queue)
+server.UseSessions(1024, 900000)
+LET started AS VOID OR Error = server.Start(endpoint)
+```
+
+| Member | Result |
+| --- | --- |
+| `Server.UseQueue(queue AS Dispatch.Queue) AS VOID OR Error` | Every request's filters and handler run as one task of `queue`: at most its workers at once |
+| `Server.UseSessions(capacity AS INTEGER, idleMs AS INTEGER) AS VOID OR Error` | The server keeps at most `capacity` sessions, each forgotten after `idleMs` without a request |
+| `Request.Session() AS Session OR Error` | The session of this client: the one its `sid` cookie names, or a new one |
+| `Session.Id() AS STRING` | The session identifier |
+| `Session.Get(key AS STRING) AS STRING OR Error` | The value stored under `key`; `NOT_FOUND` when absent |
+| `Session.Set(key AS STRING, value AS STRING) AS VOID OR Error` | Stores `value` under `key` |
+| `Session.Remove(key AS STRING) AS VOID OR Error` | Removes `key`; `NOT_FOUND` when absent |
+| `Session.Rotate() AS VOID OR Error` | Gives the session a new identifier, keeping its values (call it on login) |
+| `Session.End() AS VOID OR Error` | Forgets the session (call it on logout) |
+
+`UseQueue` and `UseSessions` are called before a `Start` member; on a
+started server they are `INVALID_ARGUMENT`. A handler task runs in an
+isolated copy of the program, as an `ASYNC` worker does (0.6.md, "Isolation
+and conformance"): handlers share no BN variable or object, and the
+sessions are the state they share. Without `UseQueue`, handlers run as
+before. A queue with 1024 pending tasks answers `503`; `Stop` stops
+accepting, then waits within its timeout for the running tasks. Closing
+the queue while the server runs fails the waiting requests with `503`.
+
+Sessions are kept by the server and shared by every task. `Session()`
+without `UseSessions` is `UNAVAILABLE`. The server writes the session
+cookie itself after the handler: `sid`, `Path=/`, `HttpOnly`,
+`SameSite=Lax`, and `Secure` when the request arrived over TLS. A new or
+rotated session sets the cookie; `End` clears it. Identifiers come from the
+system's entropy (128 bits). Bounds: a key has 1 to 128 bytes, a value at
+most 4,096, a session at most 64 keys (`LIMIT` past them); a full server
+forgets the session idle the longest before creating a new one.
+
+`Id`, `Set` and `Rotate` create the session when the request has none;
+`Get` and `Remove` never do, so a visitor who only reads gets no cookie.
+`capacity` is 1 to 10,000 and `idleMs` 1 to 1,800,000 (30 minutes);
+outside them `UseSessions` is `INVALID_ARGUMENT`. A `Session` built with
+`NEW` reaches no server: its members are `UNAVAILABLE`. The in-process
+`Server.Dispatch` runs the handler in the caller, never on the queue, and
+keeps sessions as the network server does.
 
 The 0.4 design may add opt-in asynchronous named functions scheduled on an
 explicit `BNDispatch` queue and awaited through bounded tickets. That design is

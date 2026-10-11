@@ -180,14 +180,18 @@ impl FileError {
     pub fn message(&self) -> String {
         let action = self.operation.action();
         match (&self.subject, &self.failure) {
-            (Subject::Path(path, _), Failure::UnknownMode(mode)) => {
-                format!("cannot open \"{path}\" in mode {mode}")
-            }
-            (Subject::Path(path, Some(mode)), _) => {
-                format!("cannot open \"{path}\" for {}", mode_name(*mode))
-            }
+            (Subject::Path(path, _), Failure::UnknownMode(mode)) => bn_catalog::fill(
+                "file",
+                "open.mode.message",
+                &[("path", path), ("mode", mode)],
+            ),
+            (Subject::Path(path, Some(mode)), _) => bn_catalog::fill(
+                "file",
+                "open.purpose.message",
+                &[("path", path), ("purpose", &mode_name(*mode))],
+            ),
             (Subject::Path(path, None), _) if self.operation == FsOperation::Exists => {
-                format!("cannot check whether \"{path}\" exists")
+                bn_catalog::fill("file", "exists.message", &[("path", path)])
             }
             (Subject::Path(path, None) | Subject::File(Some(path)), _) => {
                 format!("cannot {action} \"{path}\"")
@@ -211,10 +215,10 @@ impl FileError {
                 }
                 _ => "the file is closed".into(),
             },
-            Failure::WrongFamily { binary_in_use } => format!(
-                "the file is in {} use; a file keeps the family of its first successful \
-                 method until Close",
-                if *binary_in_use { "binary" } else { "text" }
+            Failure::WrongFamily { binary_in_use } => bn_catalog::fill(
+                "file",
+                "family.cause",
+                &[("family", &if *binary_in_use { "binary" } else { "text" })],
             ),
             Failure::InvalidUtf8(error) => format!("the bytes are not UTF-8: {error}"),
             Failure::WrongMode { writing: true } => {

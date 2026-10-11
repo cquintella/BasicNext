@@ -1,0 +1,17 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+
+// IS POINTER TO T (T not VOID) on an opaque pointer. Its meaning is open
+// (known issue K55); with an INTEGER allocation every reading answers TRUE.
+// Native builds refuse the test with a support diagnostic until K55 is
+// decided, and never fold it to a constant (known issue K51).
+
+FUNCTION Start() AS VOID
+    LET typed AS POINTER TO INTEGER = NEW INTEGER
+    LET opaque AS POINTER TO VOID = typed
+    PRINT opaque IS POINTER TO INTEGER
+    RELEASE opaque
+END FUNCTION

@@ -1,0 +1,4 @@
+# allow(dead_code) / allow(unused…) in crates/*/src (tests/suppressions.rs;
+# bucket 0.6.5 H.S3.b). path<TAB>lint<TAB>reason. The list only shrinks.
+crates/bn_interpret_driver/src/libraries.rs	unused_mut	the registry stays empty when bni is built with no library feature (--no-default-features)
+crates/bn_rt/src/secure_fs.rs	dead_code	the root directory handle is held open to pin the sandbox root; Unix walks from it, Windows only keeps it open (read on Unix only)

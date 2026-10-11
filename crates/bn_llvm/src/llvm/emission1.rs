@@ -107,8 +107,13 @@ pub(crate) fn lower_scalar_instruction(
                     I::cast(CastOp::IntToPtr, T::I64, O::int(0), T::Ptr),
                 );
             }
+            // `EOF` is the `@.bn_eof` sentinel, the value `INPUT` reads at end
+            // of input (T.K9).
             Constant::EndOfFile => {
-                unreachable!("EndOfFile must be rejected during target validation");
+                text.assign(
+                    format!("v{}", destination.0),
+                    I::gep(T::I8, O::global(".bn_eof"), vec![(T::I64, O::int(0))]),
+                );
             }
         },
         Instruction::Phi {
@@ -148,6 +153,8 @@ pub(crate) fn lower_scalar_instruction(
                 let zero = match element_llvm {
                     "i1" | "i8" | "i16" | "i32" | "i64" => O::int(0),
                     "float" | "double" => O::float(0.0),
+                    // A STRING element defaults to "", as a scalar STRING does.
+                    "ptr" if **element == Type::String => O::global(".bn_empty"),
                     "ptr" => O::null(),
                     "{ i1, ptr, i64 }" | "{ i1, ptr }" => O::zero_initializer(),
                     _ => unreachable!("validated vector element type"),
@@ -321,6 +328,9 @@ pub(crate) fn lower_scalar_instruction(
                         ("float", "double") | ("double", "float")
                     )
                     || matches!(slot_llvm, "{ i1, ptr, i64 }" | GENERAL_LAYOUT)
+                    // An `Error` into `Endpoint OR Error` / `Addresses OR Error` (K36).
+                    || (matches!(slot_llvm, "{ i1, ptr, i32 }" | "{ i1, ptr }")
+                        && is_error_type(value_ty))
                     || matches!(
                         (value_llvm, slot_llvm),
                         ("{ ptr, i32 }", "{ ptr, i32, i32 }")
@@ -609,14 +619,8 @@ pub(crate) fn lower_scalar_instruction(
             let left_ty = analysis.values.get(left).expect("validated left type");
             let right_ty = analysis.values.get(right).expect("validated right type");
             if operator == "IS" {
-                if !emit_is(text, *destination, *left, left_ty, right_ty) {
-                    return Err(unsupported_instruction(
-                        module,
-                        function,
-                        instruction,
-                        "IS on this alternative",
-                    ));
-                }
+                let lowered = emit_is(text, *destination, *left, left_ty, right_ty);
+                assert!(lowered, "target validation accepted this IS form");
             } else if matches!(operator.as_str(), "Assign" | "NotEqual")
                 && let Some((alternative, members, other, other_ty, left_is_alt)) =
                     general_alternative::comparable_alternative(left_ty)

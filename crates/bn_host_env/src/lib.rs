@@ -75,6 +75,24 @@ fn check_policy(policy: &Policy, operation: &'static str) -> Result<(), Failure>
     Ok(())
 }
 
+/// The machine's host name, as `uname` (Unix) or `COMPUTERNAME` (Windows)
+/// gives it; `None` where the platform has none. `BNLog` writes it as the
+/// SYSLOG `HOSTNAME`. It is not a `HOST.Env` read, so no policy applies.
+#[must_use]
+pub fn host_name() -> Option<String> {
+    #[cfg(all(unix, not(target_os = "wasi")))]
+    let name = rustix::system::uname()
+        .nodename()
+        .to_str()
+        .ok()
+        .map(str::to_owned);
+    #[cfg(windows)]
+    let name = std::env::var("COMPUTERNAME").ok();
+    #[cfg(not(any(windows, all(unix, not(target_os = "wasi")))))]
+    let name = None;
+    name.filter(|name| !name.is_empty())
+}
+
 /// Reads the value of an environment variable.
 ///
 /// Checked in order:
@@ -103,7 +121,7 @@ fn value_of(name: &str, value: Option<OsString>) -> Result<String, Failure> {
         Failure::new(
             NOT_SET,
             OP,
-            format!("environment variable \"{name}\" is not set"),
+            bn_catalog::fill("env", "variable.unset.message", &[("name", &name)]),
             "variable is not defined in the process environment",
         )
     })?;
@@ -112,7 +130,7 @@ fn value_of(name: &str, value: Option<OsString>) -> Result<String, Failure> {
         Failure::new(
             INVALID_UTF8,
             OP,
-            format!("value of environment variable \"{name}\" is not valid UTF-8"),
+            bn_catalog::fill("env", "variable.not_utf8.message", &[("name", &name)]),
             "os string conversion to UTF-8 failed",
         )
     })

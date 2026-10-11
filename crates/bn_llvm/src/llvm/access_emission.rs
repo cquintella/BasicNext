@@ -230,7 +230,11 @@ pub(crate) fn lower_access_emission(
             ];
             let packed = I::call(T::I64, "bn_rt_str_index_utf8", args);
             text.assign(format!("strindexpacked{dest}"), packed);
-            text.assign(format!("strindexbuffer{dest}"), I::alloca(T::I64));
+            let bytes = vec![(T::I64, O::int(layout::PACKED_UTF8_BYTES))];
+            text.assign(
+                format!("strindexbuffer{dest}"),
+                I::call(T::Ptr, "malloc", bytes),
+            );
             text.emit(I::store(T::I64, r("packed"), r("buffer")));
             let start = vec![(T::I64, O::int(0))];
             text.assign(format!("v{dest}"), I::gep(T::I8, r("buffer"), start));

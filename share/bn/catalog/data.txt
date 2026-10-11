@@ -1,0 +1,13 @@
+# data texts and contract names (bn_catalog; AGENTS.md "No hard-coded
+# messages"). One `key = value` per line; `{name}` is filled by the code.
+
+separator.invalid.message = invalid CSV separator "{separator}"
+separator.invalid.cause = a CSV separator must be a single UTF-8 character other than '"', '\r', or '\n'
+column.not_found.message = column "{name}" not found
+key_column.not_found.message = {side} key column "{key}" not found
+column.type_mismatch.message = column "{column}" is not of type {expected}
+column.conversion_failed.message = cannot convert column "{column}": {reason}
+column.types_differ.message = column "{column}" types differ between frames
+column.contains_na.message = column "{name}" contains NA values
+column.non_numeric.message = column "{name}" is not numeric
+column.duplicate.message = duplicate column name "{name}"

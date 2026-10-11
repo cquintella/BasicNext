@@ -112,7 +112,9 @@ impl DataFailure {
         match self {
             Self::InvalidHandle => "the DataFrame handle is invalid".into(),
             Self::InvalidArgument(reason) => reason.clone(),
-            Self::InvalidSeparator(s) => format!("invalid CSV separator \"{s}\""),
+            Self::InvalidSeparator(s) => {
+                bn_catalog::fill("data", "separator.invalid.message", &[("separator", s)])
+            }
             Self::NegativeBound { bound, value } => {
                 format!("cannot use {value} as the {bound}")
             }
@@ -126,23 +128,37 @@ impl DataFailure {
                 format!("row counts differ: left frame has {left}, right frame has {right}")
             }
             Self::ColumnLayoutsDiffer => "column layouts differ between frames".into(),
-            Self::DuplicateColumn(name) => format!("duplicate column name \"{name}\""),
+            Self::DuplicateColumn(name) => {
+                bn_catalog::fill("data", "column.duplicate.message", &[("name", name)])
+            }
             Self::EmptyNumericColumn => "numeric column is empty".into(),
-            Self::ColumnNotFound(name) => format!("column \"{name}\" not found"),
-            Self::KeyColumnNotFound { key, side } => {
-                format!("{side} key column \"{key}\" not found")
+            Self::ColumnNotFound(name) => {
+                bn_catalog::fill("data", "column.not_found.message", &[("name", name)])
             }
-            Self::TypeMismatch { expected, column } => {
-                format!("column \"{column}\" is not of type {expected}")
-            }
-            Self::ConversionFailed { column, reason } => {
-                format!("cannot convert column \"{column}\": {reason}")
-            }
+            Self::KeyColumnNotFound { key, side } => bn_catalog::fill(
+                "data",
+                "key_column.not_found.message",
+                &[("side", side), ("key", key)],
+            ),
+            Self::TypeMismatch { expected, column } => bn_catalog::fill(
+                "data",
+                "column.type_mismatch.message",
+                &[("column", column), ("expected", expected)],
+            ),
+            Self::ConversionFailed { column, reason } => bn_catalog::fill(
+                "data",
+                "column.conversion_failed.message",
+                &[("column", column), ("reason", reason)],
+            ),
             Self::ColumnTypesDiffer { column } => {
-                format!("column \"{column}\" types differ between frames")
+                bn_catalog::fill("data", "column.types_differ.message", &[("column", column)])
             }
-            Self::ContainsNa(name) => format!("column \"{name}\" contains NA values"),
-            Self::NonNumericColumn(name) => format!("column \"{name}\" is not numeric"),
+            Self::ContainsNa(name) => {
+                bn_catalog::fill("data", "column.contains_na.message", &[("name", name)])
+            }
+            Self::NonNumericColumn(name) => {
+                bn_catalog::fill("data", "column.non_numeric.message", &[("name", name)])
+            }
             Self::RowIndexOutOfRange { row, count } => {
                 format!("row index {row} out of range for frame with {count} rows")
             }
@@ -178,10 +194,7 @@ impl DataFailure {
             | Self::ConversionFailed { reason, .. }
             | Self::IoFailed(reason)
             | Self::InvalidFormat(reason) => reason.clone(),
-            Self::InvalidSeparator(_) => {
-                "a CSV separator must be a single UTF-8 character other than '\"', '\\r', or '\\n'"
-                    .into()
-            }
+            Self::InvalidSeparator(_) => bn_catalog::text("data", "separator.invalid.cause").into(),
             Self::NegativeBound { bound, .. } => {
                 format!("the {bound} must not be negative")
             }

@@ -158,19 +158,16 @@ pub extern "C" fn bn_rt_net_addresses_get(
     // `bn_rt_net_resolve`.
     let addresses = unsafe { handle.cast::<AddressesHandle>().as_ref() };
     let count = addresses.map_or(0, AddressesHandle::len);
-    let found = usize::try_from(index)
-        .ok()
-        .and_then(|index| addresses.and_then(|addresses| addresses.get(index)));
-    if let Some(address) = found {
-        write_out(out, c_string(&address.to_string()));
-        return 0;
+    let found = crate::net::address_index(count, i128::from(index))
+        .map(|position| addresses.and_then(|addresses| addresses.get(position)));
+    match found {
+        Ok(Some(address)) => {
+            write_out(out, c_string(&address.to_string()));
+            0
+        }
+        Ok(None) => failed(&crate::net::address_index(0, i128::from(index)).unwrap_err()),
+        Err(error) => failed(&error),
     }
-    let upper = count.saturating_sub(1);
-    failed(&NetError::new(
-        "HOST.Net.Addresses.Get",
-        format!("get address {index}"),
-        Failure::InvalidArgument(format!("the index must be within 0..{upper}; got {index}")),
-    ))
 }
 
 #[allow(unsafe_code)] // C ABI export.

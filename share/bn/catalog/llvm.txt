@@ -1,0 +1,6 @@
+# llvm texts and contract names (bn_catalog; AGENTS.md "No hard-coded
+# messages"). One `key = value` per line; `{name}` is filled by the code.
+
+call.user_function.unsupported = calls to user-defined function '{name}' are unavailable in the LLVM backend; function calls are not supported by this build target yet (use 'bni run' or inline the call)
+is.unsupported = IS {test} on a value of type '{value}' has no LLVM lowering yet (use 'bni run')
+type.pointer_to_void = POINTER TO VOID

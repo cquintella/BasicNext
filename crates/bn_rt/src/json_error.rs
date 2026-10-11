@@ -72,12 +72,18 @@ impl JsonFailure {
     pub fn message(&self) -> String {
         match self {
             Self::InvalidHandle => "cannot use the Json document".into(),
-            Self::Missing(key) => format!("no member \"{}\"", shown(key)),
+            Self::Missing(key) => {
+                bn_catalog::fill("json", "member.missing.message", &[("key", &shown(key))])
+            }
             Self::WrongKind {
                 place: Place::Key(key),
                 expected,
                 ..
-            } => format!("member \"{}\" is not of type {expected}", shown(key)),
+            } => bn_catalog::fill(
+                "json",
+                "member.wrong_kind.message",
+                &[("key", &shown(key)), ("expected", expected)],
+            ),
             Self::WrongKind {
                 place: Place::Index(index),
                 expected,

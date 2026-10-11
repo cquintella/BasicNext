@@ -1,0 +1,686 @@
+use std::{collections::HashMap, net::IpAddr};
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EgressPolicy {
+    schemes: Option<Vec<String>>,
+    cidrs: Option<Vec<bn_core_net::Cidr>>,
+    ports: Option<Vec<u16>>,
+    max_redirects: usize,
+    total_deadline_ms: u64,
+}
+
+impl Default for EgressPolicy {
+    fn default() -> Self {
+        let limits = bn_limits::web_limits();
+        Self {
+            schemes: None,
+            cidrs: None,
+            ports: None,
+            max_redirects: limits.redirects,
+            total_deadline_ms: limits.connection_total_ms,
+        }
+    }
+}
+
+impl EgressPolicy {
+    pub fn from_csv(
+        schemes: &str,
+        cidrs: &str,
+        ports: &str,
+        max_redirects: usize,
+        total_deadline_ms: u64,
+    ) -> Result<Self, &'static str> {
+        let schemes = Some(parse_csv(schemes, |value| match value {
+            "http" | "https" => Ok(value.to_owned()),
+            _ => Err("egress policy contains an unsupported scheme"),
+        })?);
+        let limits = bn_limits::web_limits();
+        let cidrs = Some(parse_csv(cidrs, bn_core_net::Cidr::parse)?);
+        let ports = Some(parse_csv(ports, |value| {
+            value
+                .parse::<u16>()
+                .map_err(|_| "egress policy contains an invalid port")
+        })?);
+        if schemes
+            .as_ref()
+            .is_some_and(|values| values.len() > limits.egress_list_max)
+            || cidrs
+                .as_ref()
+                .is_some_and(|values| values.len() > limits.egress_list_max)
+            || ports
+                .as_ref()
+                .is_some_and(|values| values.len() > limits.egress_list_max)
+        {
+            return Err("egress policy list exceeds configured capacity");
+        }
+        Self::new(schemes, cidrs, ports, max_redirects, total_deadline_ms)
+    }
+
+    pub(crate) fn new(
+        schemes: Option<Vec<String>>,
+        cidrs: Option<Vec<bn_core_net::Cidr>>,
+        ports: Option<Vec<u16>>,
+        max_redirects: usize,
+        total_deadline_ms: u64,
+    ) -> Result<Self, &'static str> {
+        let limits = bn_limits::web_limits();
+        if !(1..=limits.redirects_max).contains(&max_redirects)
+            || !(1..=limits.connection_total_max_ms).contains(&total_deadline_ms)
+        {
+            return Err("egress policy value is outside the configured bounds");
+        }
+        if schemes.as_ref().is_some_and(|values| {
+            values.is_empty()
+                || values
+                    .iter()
+                    .any(|scheme| !matches!(scheme.as_str(), "http" | "https"))
+        }) {
+            return Err("egress policy contains an unsupported scheme");
+        }
+        if ports.as_ref().is_some_and(|values| values.contains(&0)) {
+            return Err("egress policy contains an invalid port");
+        }
+        Ok(Self {
+            schemes,
+            cidrs,
+            ports,
+            max_redirects,
+            total_deadline_ms,
+        })
+    }
+
+    pub(crate) fn filter_allowed_addresses(
+        &self,
+        scheme: &str,
+        port: u16,
+        addresses: &[IpAddr],
+    ) -> Result<Vec<IpAddr>, &'static str> {
+        if self
+            .schemes
+            .as_ref()
+            .is_some_and(|values| !values.iter().any(|value| value == scheme))
+            || self
+                .ports
+                .as_ref()
+                .is_some_and(|values| !values.contains(&port))
+        {
+            return Err("destination is outside the egress policy");
+        }
+        if addresses.is_empty() {
+            return Err("URL resolved to no addresses");
+        }
+        let mut allowed = Vec::new();
+        for &address in addresses {
+            if self.allows_candidate(address) {
+                allowed.push(address);
+            }
+        }
+        if allowed.is_empty() {
+            return Err("destination is outside the egress policy");
+        }
+        Ok(allowed)
+    }
+
+    fn allows_candidate(&self, address: IpAddr) -> bool {
+        if validate_ssrf_destinations(&[address], false).is_err() {
+            return false;
+        }
+        if let Some(cidrs) = &self.cidrs {
+            if cidrs.is_empty() {
+                return false;
+            }
+            let normalized = match address {
+                IpAddr::V4(addr) => IpAddr::V4(addr),
+                IpAddr::V6(addr) => addr.to_ipv4().map_or(IpAddr::V6(addr), IpAddr::V4),
+            };
+            if let Ok(net_addr) = bn_core_net::Address::parse(&normalized.to_string()) {
+                if !cidrs.iter().any(|cidr| cidr.contains(net_addr)) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        true
+    }
+
+    pub(crate) const fn max_redirects(&self) -> usize {
+        self.max_redirects
+    }
+    pub(crate) const fn total_deadline_ms(&self) -> u64 {
+        self.total_deadline_ms
+    }
+}
+
+fn parse_csv<T, F>(input: &str, parse: F) -> Result<Vec<T>, &'static str>
+where
+    F: Fn(&str) -> Result<T, &'static str>,
+{
+    if input.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    input.split(',').map(str::trim).map(parse).collect()
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Target {
+    pub path: String,
+    pub query: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct Request {
+    pub method: String,
+    pub target: Target,
+    pub headers: Vec<(String, String)>,
+    pub body: String,
+    pub peer: IpAddr,
+    /// The matched route's `:name` parameters, sorted by name.
+    pub params: Vec<(String, String)>,
+    /// Whether the request arrived over TLS (a `Secure` cookie needs it).
+    pub secure: bool,
+    /// The server session, when the server keeps sessions.
+    pub session: Option<sessions::RequestSession>,
+}
+
+impl Request {
+    /// # Errors
+    ///
+    /// Returns the validation message for a malformed target or header set.
+    pub fn new(
+        method: &str,
+        raw_target: &str,
+        headers: Vec<(String, String)>,
+        body: &str,
+        peer: IpAddr,
+    ) -> Result<Self, &'static str> {
+        if method.is_empty()
+            || method.bytes().any(|byte| {
+                !byte.is_ascii_uppercase() && !byte.is_ascii_digit() && !b"-".contains(&byte)
+            })
+        {
+            return Err("invalid request method");
+        }
+        let target = canonical_target(raw_target)?;
+        validate_headers(&headers)?;
+        bounded_body(body, bn_limits::web_limits().max_body_bytes as i128)?;
+        Ok(Self {
+            method: method.into(),
+            target,
+            headers,
+            body: body.into(),
+            peer,
+            params: Vec::new(),
+            secure: false,
+            session: None,
+        })
+    }
+    pub fn query(&self, name: &str) -> Result<QueryValues, &'static str> {
+        QueryValues::from_query(&self.target.query, name)
+    }
+    pub fn header(&self, name: &str) -> Result<HeaderValues, &'static str> {
+        HeaderValues::from_headers(&self.headers, name)
+    }
+    /// The value of the route parameter `name` (`:name` in the matched
+    /// pattern; `/users/:id` gives `id`).
+    #[must_use]
+    pub fn param(&self, name: &str) -> Option<&str> {
+        self.params
+            .iter()
+            .find(|(key, _)| key == name)
+            .map(|(_, value)| value.as_str())
+    }
+    /// The value of the cookie `name` the client sent (RFC 6265 §5.4: `name=value`
+    /// pairs separated by `;` in every `Cookie` header; a quoted value loses its
+    /// quotes; the first pair with that name wins).
+    #[must_use]
+    pub fn cookie(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .filter(|(header, _)| header.eq_ignore_ascii_case("cookie"))
+            .flat_map(|(_, value)| value.split(';'))
+            .filter_map(|pair| pair.trim().split_once('='))
+            .find(|(key, _)| *key == name)
+            .map(|(_, value)| {
+                value
+                    .strip_prefix('"')
+                    .and_then(|quoted| quoted.strip_suffix('"'))
+                    .unwrap_or(value)
+            })
+    }
+    #[must_use]
+    pub fn method(&self) -> &str {
+        &self.method
+    }
+    #[must_use]
+    pub fn target(&self) -> &str {
+        &self.target.path
+    }
+    pub fn body(&self, maximum: i128) -> Result<&str, &'static str> {
+        bounded_body(&self.body, maximum)
+    }
+    #[must_use]
+    pub fn peer_address(&self) -> IpAddr {
+        self.peer
+    }
+    #[must_use]
+    pub fn effective_client_address(&self, trusted_proxy: bool) -> IpAddr {
+        let forwarded = self
+            .headers
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case("x-forwarded-for"))
+            .map(|(_, value)| value.as_str());
+        effective_client_address(self.peer, forwarded, trusted_proxy)
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Response {
+    pub status: u16,
+    pub headers: Vec<(String, String)>,
+    pub body: String,
+    pub committed: bool,
+    /// Whether the response travels over TLS (copied from the request); a
+    /// `Secure` cookie needs it.
+    pub secure: bool,
+    closed: bool,
+}
+
+impl Response {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            status: 200,
+            ..Self::default()
+        }
+    }
+    pub fn set_status(&mut self, status: u16) -> Result<(), &'static str> {
+        if self.committed || self.closed {
+            return Err("response is already committed or closed");
+        }
+        if !(100..=599).contains(&status) {
+            return Err("invalid response status");
+        }
+        self.status = status;
+        Ok(())
+    }
+    pub fn set_header(&mut self, name: &str, value: &str) -> Result<(), &'static str> {
+        if self.committed || self.closed {
+            return Err("response is already committed or closed");
+        }
+        if name.is_empty()
+            || name
+                .bytes()
+                .any(|byte| byte <= 0x20 || byte == 0x7f || byte == b':')
+            || value.bytes().any(|byte| byte < 0x20 || byte == 0x7f)
+        {
+            return Err("invalid response header");
+        }
+        if self
+            .headers
+            .iter()
+            .map(|(key, value)| key.len() + value.len())
+            .sum::<usize>()
+            + name.len()
+            + value.len()
+            > bn_limits::web_limits().max_header_bytes
+        {
+            return Err("response headers exceed 64 KiB");
+        }
+        self.headers.push((name.to_ascii_lowercase(), value.into()));
+        Ok(())
+    }
+    /// Adds a `Set-Cookie` header (RFC 6265): no `domain` is a host-only
+    /// cookie, no `max_age` a session cookie. A `Secure` cookie needs a response
+    /// that travels over TLS (`secure`).
+    pub fn set_cookie(
+        &mut self,
+        name: &str,
+        value: &str,
+        domain: Option<&str>,
+        path: &str,
+        max_age: Option<std::time::Duration>,
+        options: crate::web_state::CookieOptions,
+    ) -> Result<(), &'static str> {
+        if options.secure && !self.secure {
+            return Err("Secure cookies cannot be sent over cleartext HTTP");
+        }
+        let cookie_header = options.format_set_cookie(name, value, domain, path, max_age)?;
+        self.set_header("set-cookie", &cookie_header)
+    }
+    /// Expires the cookie `name` (`Max-Age=0`); `Secure` only when the
+    /// response travels over TLS, so a cleartext response can clear it too.
+    pub fn clear_cookie(
+        &mut self,
+        name: &str,
+        domain: Option<&str>,
+        path: &str,
+    ) -> Result<(), &'static str> {
+        let options = crate::web_state::CookieOptions {
+            secure: self.secure,
+            ..crate::web_state::CookieOptions::default()
+        };
+        self.set_cookie(
+            name,
+            "",
+            domain,
+            path,
+            Some(std::time::Duration::ZERO),
+            options,
+        )
+    }
+    pub fn write(&mut self, body: &str) -> Result<(), &'static str> {
+        if self.committed || self.closed {
+            return Err("response is already committed or closed");
+        }
+        if self.body.len() + body.len() > bn_limits::web_limits().max_response_body_bytes {
+            return Err("response body exceeds 8 MiB");
+        }
+        self.body.push_str(body);
+        Ok(())
+    }
+    pub fn commit(&mut self) -> Result<(), &'static str> {
+        if self.closed {
+            return Err("response is closed");
+        }
+        self.committed = true;
+        Ok(())
+    }
+    #[must_use]
+    pub fn is_committed(&self) -> bool {
+        self.committed
+    }
+    pub fn close(&mut self) {
+        self.closed = true;
+    }
+    pub(crate) fn finish_for_method(&mut self, method: &str) -> Result<(), &'static str> {
+        if method == "HEAD" {
+            self.body.clear();
+        }
+        self.commit()
+    }
+}
+
+pub(crate) fn canonical_target(raw: &str) -> Result<Target, &'static str> {
+    if raw.is_empty()
+        || raw.len() > bn_limits::web_limits().max_target_bytes
+        || raw
+            .bytes()
+            .any(|byte| byte == b'\\' || byte < 0x20 || byte == 0x7f)
+    {
+        return Err("invalid request target");
+    }
+    let (raw_path, query) = raw.split_once('?').unwrap_or((raw, ""));
+    let mut path = String::new();
+    for (index, segment) in raw_path.split('/').enumerate() {
+        if index > 0 {
+            path.push('/');
+        }
+        let decoded = decode_component(segment)?;
+        if decoded.bytes().any(|byte| byte < 0x20 || byte == 0x7f)
+            || decoded == "."
+            || decoded == ".."
+            || decoded.contains('/')
+            || decoded.contains('\\')
+        {
+            return Err("ambiguous path segment");
+        }
+        path.push_str(&decoded);
+    }
+    if !path.starts_with('/') {
+        return Err("request target must be an origin-form path");
+    }
+    Ok(Target {
+        path,
+        query: query.to_string(),
+    })
+}
+
+pub(crate) fn query_values(query: &str, name: &str) -> Result<Vec<String>, &'static str> {
+    if query.len() > bn_limits::web_limits().max_target_bytes {
+        return Err("query exceeds 8 KiB");
+    }
+    let mut values = Vec::new();
+    let mut field_count = 0;
+    for pair in query.split('&').filter(|pair| !pair.is_empty()) {
+        field_count += 1;
+        if pair.len() > bn_limits::web_limits().max_target_bytes
+            || field_count > bn_limits::web_limits().max_header_fields
+        {
+            return Err("query fields exceed bounds");
+        }
+        let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
+        let key = decode_component(key)?;
+        let value = decode_component(value)?;
+        if key.len() > bn_limits::web_limits().max_target_bytes
+            || value.len() > bn_limits::web_limits().max_target_bytes
+        {
+            return Err("query key or value exceeds bounds");
+        }
+        if key == name {
+            values.push(value);
+        }
+    }
+    Ok(values)
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct QueryValues(Vec<String>);
+
+impl QueryValues {
+    pub(crate) fn from_query(query: &str, name: &str) -> Result<Self, &'static str> {
+        Ok(Self(query_values(query, name)?))
+    }
+    #[must_use]
+    pub fn count(&self) -> usize {
+        self.0.len()
+    }
+    pub fn get(&self, index: usize) -> Option<&str> {
+        self.0.get(index).map(String::as_str)
+    }
+}
+
+pub(crate) fn header_values(
+    headers: &[(String, String)],
+    name: &str,
+) -> Result<Vec<String>, &'static str> {
+    if name.is_empty()
+        || name.len() > 128
+        || name
+            .bytes()
+            .any(|byte| byte <= 0x20 || byte == 0x7f || byte == b':')
+    {
+        return Err("invalid header name");
+    }
+    let wanted = name.to_ascii_lowercase();
+    Ok(headers
+        .iter()
+        .filter(|(key, _)| key.eq_ignore_ascii_case(&wanted))
+        .map(|(_, value)| value.clone())
+        .collect())
+}
+
+fn validate_headers(headers: &[(String, String)]) -> Result<(), &'static str> {
+    if headers.len() > bn_limits::web_limits().max_header_fields
+        || headers
+            .iter()
+            .map(|(name, value)| name.len() + value.len())
+            .sum::<usize>()
+            > bn_limits::web_limits().max_header_bytes
+    {
+        return Err("request headers exceed bounds");
+    }
+    if headers.iter().any(|(name, value)| {
+        name.is_empty()
+            || name
+                .bytes()
+                .any(|byte| byte <= 0x20 || byte == 0x7f || byte == b':')
+            || value.bytes().any(|byte| byte < 0x20 || byte == 0x7f)
+    }) {
+        return Err("invalid request header");
+    }
+    Ok(())
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct HeaderValues(Vec<String>);
+
+impl HeaderValues {
+    pub(crate) fn from_headers(
+        headers: &[(String, String)],
+        name: &str,
+    ) -> Result<Self, &'static str> {
+        Ok(Self(header_values(headers, name)?))
+    }
+    #[must_use]
+    pub fn count(&self) -> usize {
+        self.0.len()
+    }
+    pub fn get(&self, index: usize) -> Option<&str> {
+        self.0.get(index).map(String::as_str)
+    }
+}
+
+pub fn validate_client_url(url: &str) -> Result<(), &'static str> {
+    let (scheme, rest) = url.split_once("://").ok_or("URL requires an authority")?;
+    if !matches!(scheme, "http" | "https") || rest.is_empty() || rest.contains('#') {
+        return Err("unsupported or ambiguous URL");
+    }
+    let authority = rest.split(['/', '?']).next().unwrap_or_default();
+    if authority.is_empty()
+        || authority.contains('@')
+        || authority.bytes().any(|byte| byte < 0x21 || byte == 0x7f)
+    {
+        return Err("invalid URL authority");
+    }
+    Ok(())
+}
+
+pub fn bounded_body(body: &str, maximum: i128) -> Result<&str, &'static str> {
+    if maximum < 0 || maximum > bn_limits::web_limits().max_response_body_bytes as i128 {
+        return Err("body limit exceeds 8 MiB");
+    }
+    let maximum = usize::try_from(maximum).map_err(|_| "body limit is invalid")?;
+    if body.len() > maximum {
+        return Err("request body exceeds declared limit");
+    }
+    Ok(body)
+}
+
+pub fn validate_ssrf_destinations(
+    addresses: &[IpAddr],
+    allow_private: bool,
+) -> Result<(), &'static str> {
+    if allow_private {
+        return Ok(());
+    }
+    if addresses.is_empty() {
+        return Err("URL resolved to no addresses");
+    }
+    if addresses.iter().any(|address| match address {
+        IpAddr::V4(address) => is_sensitive_ipv4(*address),
+        IpAddr::V6(address) => {
+            address.to_ipv4().is_some_and(is_sensitive_ipv4)
+                || address.is_loopback()
+                || address.is_unicast_link_local()
+                || address.is_multicast()
+                || address.is_unspecified()
+                || address.segments()[0] & 0xfe00 == 0xfc00
+        }
+    }) {
+        return Err("private or local destination requires explicit opt-in");
+    }
+    Ok(())
+}
+
+fn is_sensitive_ipv4(address: std::net::Ipv4Addr) -> bool {
+    let octets = address.octets();
+    let first = octets[0];
+    let second = octets[1];
+    address.is_private()
+        || address.is_loopback()
+        || address.is_link_local()
+        || address.is_multicast()
+        || address.is_unspecified()
+        || (first == 100 && (64..=127).contains(&second))
+        || (first == 192 && second == 0 && octets[2] == 2)
+        || (first == 198 && second == 51 && octets[2] == 100)
+        || (first == 203 && second == 0 && octets[2] == 113)
+        || (first == 198 && (18..=19).contains(&second))
+}
+
+pub(crate) fn effective_client_address(
+    peer: IpAddr,
+    forwarded_for: Option<&str>,
+    trusted_proxy: bool,
+) -> IpAddr {
+    if !trusted_proxy {
+        return peer;
+    }
+    forwarded_for
+        .and_then(|value| value.split(',').next())
+        .and_then(|value| value.trim().parse().ok())
+        .unwrap_or(peer)
+}
+
+fn decode_component(input: &str) -> Result<String, &'static str> {
+    let bytes = input.as_bytes();
+    let mut output = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            if index + 2 >= bytes.len() {
+                return Err("malformed percent escape");
+            }
+            let high = hex(bytes[index + 1]).ok_or("malformed percent escape")?;
+            let low = hex(bytes[index + 2]).ok_or("malformed percent escape")?;
+            output.push((high << 4) | low);
+            index += 3;
+        } else {
+            output.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(output).map_err(|_| "invalid UTF-8 in target")
+}
+
+fn hex(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+/// A matched route's parameters as `Request::params`: name and value pairs
+/// sorted by name (the router's map has no order).
+#[must_use]
+pub fn sorted_params<S: std::hash::BuildHasher>(
+    found: &HashMap<String, String, S>,
+) -> Vec<(String, String)> {
+    let mut params = found
+        .iter()
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect::<Vec<_>>();
+    params.sort();
+    params
+}
+
+mod routing;
+pub use routing::{Route, RouteOutcome};
+#[cfg(test)]
+pub(crate) use routing::{allowed_methods, select_route};
+pub(crate) use routing::{dispatch_route, route_for_request, valid_method, valid_route_pattern};
+mod drain;
+pub use drain::drain_server;
+mod server;
+pub mod sessions;
+pub use server::{ConnectionWork, ServerOptions, ServerState, ServerStatus};
+
+#[cfg(test)]
+mod request_tests;
+#[cfg(test)]
+mod sessions_tests;
+#[cfg(test)]
+mod tests;

@@ -1,5 +1,38 @@
-// UNSUPPORTED: a heterogeneous linked chain requires nullable self-referential
-// class fields and dynamic dispatch through an interface reference.
+// GoF Chain of Responsibility: each handler either answers a request or
+// passes it to the next handler of the chain.
+INTERFACE Approver
+    FUNCTION Approve(amount AS INT32) AS STRING
+END INTERFACE
+
+CLASS Level IMPLEMENTS Approver
+    PRIVATE title AS STRING
+    PRIVATE limit AS INT32
+    PRIVATE next AS Approver OR NULL = NULL
+
+    PUBLIC FUNCTION CONSTRUCTOR(title AS STRING, limit AS INT32, next AS Approver OR NULL)
+        SELF.title = title
+        SELF.limit = limit
+        SELF.next = next
+    END FUNCTION
+
+    PUBLIC FUNCTION Approve(amount AS INT32) AS STRING
+        IF amount <= SELF.limit THEN
+            RETURN SELF.title + " approves " + (amount AS STRING)
+        END IF
+        LET following AS Approver OR NULL = SELF.next
+        IF following IS Approver THEN
+            RETURN following.Approve(amount)
+        END IF
+        RETURN "nobody approves " + (amount AS STRING)
+    END FUNCTION
+END CLASS
+
 FUNCTION Start() AS VOID
-    PRINT "UNSUPPORTED: heterogeneous linked dispatch is not available"
+    LET director AS Approver = NEW Level("director", 10000, NULL)
+    LET manager AS Approver = NEW Level("manager", 1000, director)
+    LET clerk AS Approver = NEW Level("clerk", 100, manager)
+    PRINT clerk.Approve(50)
+    PRINT clerk.Approve(500)
+    PRINT clerk.Approve(5000)
+    PRINT clerk.Approve(50000)
 END FUNCTION

@@ -1,0 +1,12 @@
+// An imported module whose class implements an interface of a third
+// module, named through this module's own alias (known issue K18).
+IMPORT Shapes AS Kinds
+
+EXPORT CLASS Dog IMPLEMENTS Kinds.Named
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION Name() AS STRING
+        RETURN "Rex"
+    END FUNCTION
+END CLASS

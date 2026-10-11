@@ -401,6 +401,11 @@ pub(crate) fn call_instruction_supported(
                         .and_then(llvm_type)
                         .is_some_and(integer_llvm)
             }
+            Some("logger_set_format") => {
+                arguments.len() == 2
+                    && bnlog_resource_kind(module, &values[&arguments[0]]) == Some("Logger")
+                    && values.get(&arguments[1]) == Some(&Type::String)
+            }
             Some("logger_log") => {
                 arguments.len() == 4
                     && bnlog_resource_kind(module, &values[&arguments[0]]) == Some("Logger")

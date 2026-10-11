@@ -1,0 +1,294 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Conformance: every primitive type (BYTE, INT8, INT16, INT32, INT64, UINT16,
+// UINT32, UINT64, FLOAT32, FLOAT64, BOOLEAN, STRING and the aliases INTEGER,
+// FLOAT, TIMESTAMP) receives literals and values, crosses a parameter and a
+// result, and is converted with AS into every type the conversion accepts.
+// Expected output: primitive-conversions.expected, derived from the rules,
+// never from a backend:
+//   - no conversion is implicit; a value converted into a type whose range
+//     holds it keeps its value (out of range: traps/, one per target);
+//   - FLOAT to an integer truncates toward zero;
+//   - a number is TRUE as BOOLEAN when it is not zero; a STRING when it is
+//     not empty; NULL, NA and EOF are FALSE;
+//   - AS STRING is the text PRINT writes (0.6.md C3): floats as the shortest
+//     decimal that reads back as the same value of their own type, always
+//     with a decimal point.
+// Spec silent (examples/conversions.bn is the reference; normative gap
+// recorded in ongoing/known_issues.md K32): the integer conversion table, the
+// PRINT text of TIMESTAMP (taken as its INT64 alias), NAN AS BOOLEAN.
+
+FUNCTION PassByte(value AS BYTE) AS BYTE
+    RETURN value
+END FUNCTION
+
+FUNCTION PassInt8(value AS INT8) AS INT8
+    RETURN value
+END FUNCTION
+
+FUNCTION PassInt16(value AS INT16) AS INT16
+    RETURN value
+END FUNCTION
+
+FUNCTION PassInt32(value AS INT32) AS INT32
+    RETURN value
+END FUNCTION
+
+FUNCTION PassInt64(value AS INT64) AS INT64
+    RETURN value
+END FUNCTION
+
+FUNCTION PassUInt16(value AS UINT16) AS UINT16
+    RETURN value
+END FUNCTION
+
+FUNCTION PassUInt32(value AS UINT32) AS UINT32
+    RETURN value
+END FUNCTION
+
+FUNCTION PassUInt64(value AS UINT64) AS UINT64
+    RETURN value
+END FUNCTION
+
+FUNCTION PassFloat32(value AS FLOAT32) AS FLOAT32
+    RETURN value
+END FUNCTION
+
+FUNCTION PassFloat64(value AS FLOAT64) AS FLOAT64
+    RETURN value
+END FUNCTION
+
+FUNCTION PassBoolean(value AS BOOLEAN) AS BOOLEAN
+    RETURN value
+END FUNCTION
+
+FUNCTION PassString(value AS STRING) AS STRING
+    RETURN value
+END FUNCTION
+
+FUNCTION Literals() AS VOID
+    // The limits of each type, written as decimal literals; other bases.
+    LET byte_min AS BYTE = 0
+    LET byte_max AS BYTE = 255
+    LET int8_min AS INT8 = -128
+    LET int8_max AS INT8 = 127
+    LET int16_min AS INT16 = -32768
+    LET int16_max AS INT16 = 32767
+    LET int32_min AS INT32 = -2147483648
+    LET int32_max AS INT32 = 2147483647
+    LET int64_min AS INT64 = -9223372036854775808
+    LET int64_max AS INT64 = 9223372036854775807
+    LET uint16_max AS UINT16 = 65535
+    LET uint32_max AS UINT32 = 4294967295
+    LET uint64_max AS UINT64 = 18446744073709551615
+    PRINT "limits", byte_min, byte_max, int8_min, int8_max, int16_min, int16_max
+    PRINT "limits", int32_min, int32_max, int64_min, int64_max
+    PRINT "limits", uint16_max, uint32_max, uint64_max
+    LET hex AS BYTE = 0xFF
+    LET binary AS INT8 = 0b1010
+    LET negative_hex AS INT8 = -0x80
+    LET wide_hex AS UINT64 = 0xFFFFFFFFFFFFFFFF
+    PRINT "bases", hex, binary, negative_hex, wide_hex
+    // Aliases: INTEGER is INT32, FLOAT is FLOAT64, TIMESTAMP is INT64.
+    LET integer AS INTEGER = -2147483648
+    LET float AS FLOAT = 0.5
+    LET stamp AS TIMESTAMP = 1700000000
+    PRINT "aliases", integer, float, stamp
+    // Floating-point literals; an integer literal initializing a FLOAT
+    // binding denotes its float value (0.6.md C2).
+    LET single AS FLOAT32 = 1.5
+    LET single_negative AS FLOAT32 = -0.25
+    LET single_from_integer AS FLOAT32 = 16777216
+    LET double AS FLOAT64 = 0.1
+    LET double_from_hex AS FLOAT64 = -0x10
+    LET double_from_integer AS FLOAT64 = 9007199254740992
+    PRINT "floats", single, single_negative, single_from_integer
+    PRINT "floats", double, double_from_hex, double_from_integer
+    LET yes AS BOOLEAN = TRUE
+    LET no AS BOOLEAN = FALSE
+    LET empty AS STRING = ""
+    LET text AS STRING = "texto"
+    PRINT "boolean", yes, no
+    PRINT "string [" + empty + "] [" + text + "]"
+END FUNCTION
+
+FUNCTION Assignments() AS VOID
+    // Assignment copies the value: changing the source afterwards leaves the
+    // copy as it was.
+    LET a_byte AS BYTE = 200
+    LET b_byte AS BYTE = a_byte
+    a_byte = 1
+    LET a_int8 AS INT8 = -100
+    LET b_int8 AS INT8 = a_int8
+    a_int8 = 1
+    LET a_int16 AS INT16 = -30000
+    LET b_int16 AS INT16 = a_int16
+    a_int16 = 1
+    LET a_int32 AS INT32 = -2000000000
+    LET b_int32 AS INT32 = a_int32
+    a_int32 = 1
+    LET a_int64 AS INT64 = -9000000000000000000
+    LET b_int64 AS INT64 = a_int64
+    a_int64 = 1
+    LET a_uint16 AS UINT16 = 60000
+    LET b_uint16 AS UINT16 = a_uint16
+    a_uint16 = 1
+    LET a_uint32 AS UINT32 = 4000000000
+    LET b_uint32 AS UINT32 = a_uint32
+    a_uint32 = 1
+    LET a_uint64 AS UINT64 = 18000000000000000000
+    LET b_uint64 AS UINT64 = a_uint64
+    a_uint64 = 1
+    LET a_float32 AS FLOAT32 = 2.75
+    LET b_float32 AS FLOAT32 = a_float32
+    a_float32 = 1.0
+    LET a_float64 AS FLOAT64 = -2.75
+    LET b_float64 AS FLOAT64 = a_float64
+    a_float64 = 1.0
+    LET a_boolean AS BOOLEAN = TRUE
+    LET b_boolean AS BOOLEAN = a_boolean
+    a_boolean = FALSE
+    LET a_string AS STRING = "first"
+    LET b_string AS STRING = a_string
+    a_string = "second"
+    PRINT "copies", b_byte, b_int8, b_int16, b_int32, b_int64, b_uint16, b_uint32, b_uint64
+    PRINT "copies", b_float32, b_float64, b_boolean, b_string
+    PRINT "changed", a_byte, a_int8, a_int16, a_int32, a_int64, a_uint16, a_uint32, a_uint64
+    PRINT "changed", a_float32, a_float64, a_boolean, a_string
+    // A parameter and a result keep the type and the value.
+    PRINT "passed", PassByte(b_byte), PassInt8(b_int8), PassInt16(b_int16), PassInt32(b_int32)
+    PRINT "passed", PassInt64(b_int64), PassUInt16(b_uint16), PassUInt32(b_uint32), PassUInt64(b_uint64)
+    PRINT "passed", PassFloat32(b_float32), PassFloat64(b_float64), PassBoolean(b_boolean), PassString(b_string)
+    // Literals passed straight to a parameter take the parameter's type.
+    PRINT "literals", PassByte(255), PassInt8(-128), PassUInt64(18446744073709551615), PassFloat32(0.5)
+END FUNCTION
+
+FUNCTION IntegerConversions() AS VOID
+    // Each integer type's minimum and maximum, AS every integer type whose
+    // range holds the value.
+    LET byte_min AS BYTE = 0
+    LET byte_max AS BYTE = 255
+    LET int8_min AS INT8 = -128
+    LET int8_max AS INT8 = 127
+    LET int16_min AS INT16 = -32768
+    LET int16_max AS INT16 = 32767
+    LET int32_min AS INT32 = -2147483648
+    LET int32_max AS INT32 = 2147483647
+    LET int64_min AS INT64 = -9223372036854775808
+    LET int64_max AS INT64 = 9223372036854775807
+    LET uint16_min AS UINT16 = 0
+    LET uint16_max AS UINT16 = 65535
+    LET uint32_min AS UINT32 = 0
+    LET uint32_max AS UINT32 = 4294967295
+    LET uint64_min AS UINT64 = 0
+    LET uint64_max AS UINT64 = 18446744073709551615
+    PRINT "BYTE min >", byte_min AS BYTE, byte_min AS INT8, byte_min AS INT16, byte_min AS INT32, byte_min AS INT64, byte_min AS UINT16, byte_min AS UINT32, byte_min AS UINT64
+    PRINT "BYTE max >", byte_max AS BYTE, byte_max AS INT16, byte_max AS INT32, byte_max AS INT64, byte_max AS UINT16, byte_max AS UINT32, byte_max AS UINT64
+    PRINT "INT8 min >", int8_min AS INT8, int8_min AS INT16, int8_min AS INT32, int8_min AS INT64
+    PRINT "INT8 max >", int8_max AS BYTE, int8_max AS INT8, int8_max AS INT16, int8_max AS INT32, int8_max AS INT64, int8_max AS UINT16, int8_max AS UINT32, int8_max AS UINT64
+    PRINT "INT16 min >", int16_min AS INT16, int16_min AS INT32, int16_min AS INT64
+    PRINT "INT16 max >", int16_max AS INT16, int16_max AS INT32, int16_max AS INT64, int16_max AS UINT16, int16_max AS UINT32, int16_max AS UINT64
+    PRINT "INT32 min >", int32_min AS INT32, int32_min AS INT64
+    PRINT "INT32 max >", int32_max AS INT32, int32_max AS INT64, int32_max AS UINT32, int32_max AS UINT64
+    PRINT "INT64 min >", int64_min AS INT64
+    PRINT "INT64 max >", int64_max AS INT64, int64_max AS UINT64
+    PRINT "UINT16 min >", uint16_min AS BYTE, uint16_min AS INT8, uint16_min AS INT16, uint16_min AS INT32, uint16_min AS INT64, uint16_min AS UINT16, uint16_min AS UINT32, uint16_min AS UINT64
+    PRINT "UINT16 max >", uint16_max AS INT32, uint16_max AS INT64, uint16_max AS UINT16, uint16_max AS UINT32, uint16_max AS UINT64
+    PRINT "UINT32 min >", uint32_min AS BYTE, uint32_min AS INT8, uint32_min AS INT16, uint32_min AS INT32, uint32_min AS INT64, uint32_min AS UINT16, uint32_min AS UINT32, uint32_min AS UINT64
+    PRINT "UINT32 max >", uint32_max AS INT64, uint32_max AS UINT32, uint32_max AS UINT64
+    PRINT "UINT64 min >", uint64_min AS BYTE, uint64_min AS INT8, uint64_min AS INT16, uint64_min AS INT32, uint64_min AS INT64, uint64_min AS UINT16, uint64_min AS UINT32, uint64_min AS UINT64
+    PRINT "UINT64 max >", uint64_max AS UINT64
+    // Aliases convert as the type they name.
+    PRINT "aliases", int8_max AS INTEGER, int16_min AS TIMESTAMP, byte_max AS FLOAT
+    // Integer to floating point: exact while the value fits the significand
+    // (24 bits for FLOAT32, 53 for FLOAT64), otherwise the nearest value,
+    // printed as its shortest decimal.
+    PRINT "to FLOAT64", byte_max AS FLOAT64, int8_min AS FLOAT64, int16_min AS FLOAT64, uint16_max AS FLOAT64
+    PRINT "to FLOAT64", int32_min AS FLOAT64, int32_max AS FLOAT64, uint32_max AS FLOAT64
+    PRINT "to FLOAT64", int64_min AS FLOAT64, int64_max AS FLOAT64, uint64_max AS FLOAT64
+    PRINT "to FLOAT32", byte_max AS FLOAT32, int8_min AS FLOAT32, int16_min AS FLOAT32, uint16_max AS FLOAT32
+    PRINT "to FLOAT32", int32_min AS FLOAT32, int32_max AS FLOAT32, uint32_max AS FLOAT32
+    PRINT "to FLOAT32", int64_min AS FLOAT32, int64_max AS FLOAT32, uint64_max AS FLOAT32
+END FUNCTION
+
+FUNCTION FloatConversions() AS VOID
+    LET positive AS FLOAT64 = 2.5
+    LET negative AS FLOAT64 = -2.5
+    LET fraction AS FLOAT64 = 100.75
+    LET single_positive AS FLOAT32 = 2.5
+    LET single_negative AS FLOAT32 = -2.5
+    // To an integer: truncation toward zero, into every integer type.
+    PRINT "truncate", positive AS BYTE, positive AS INT8, positive AS INT16, positive AS INT32, positive AS INT64, positive AS UINT16, positive AS UINT32, positive AS UINT64
+    PRINT "truncate", fraction AS BYTE, fraction AS INT8, fraction AS INT16, fraction AS INT32, fraction AS INT64, fraction AS UINT16, fraction AS UINT32, fraction AS UINT64
+    PRINT "truncate", negative AS INT8, negative AS INT16, negative AS INT32, negative AS INT64
+    PRINT "truncate", single_positive AS BYTE, single_positive AS UINT64, single_negative AS INT8, single_negative AS INT64
+    // Between the floating-point types.
+    LET tenth AS FLOAT64 = 0.1
+    LET single_tenth AS FLOAT32 = 0.1
+    PRINT "float", tenth AS FLOAT32, single_tenth AS FLOAT64, positive AS FLOAT32, single_negative AS FLOAT64
+    PRINT "float", tenth AS FLOAT64, single_tenth AS FLOAT32
+    // Special values survive both widths.
+    LET zero AS FLOAT64 = 0.0
+    LET nan AS FLOAT64 = zero / zero
+    LET infinity AS FLOAT64 = 1.0 / zero
+    PRINT "special", nan AS FLOAT32, infinity AS FLOAT32, -infinity AS FLOAT32, nan AS FLOAT64
+END FUNCTION
+
+FUNCTION BooleanConversions() AS VOID
+    LET byte_zero AS BYTE = 0
+    LET int8_one AS INT8 = -1
+    LET int16_zero AS INT16 = 0
+    LET int32_one AS INT32 = 7
+    LET int64_one AS INT64 = -9223372036854775808
+    LET uint16_one AS UINT16 = 65535
+    LET uint32_zero AS UINT32 = 0
+    LET uint64_one AS UINT64 = 18446744073709551615
+    LET float32_zero AS FLOAT32 = 0.0
+    LET float64_one AS FLOAT64 = 0.001
+    LET negative_zero AS FLOAT64 = -0.0
+    PRINT "to BOOLEAN", byte_zero AS BOOLEAN, int8_one AS BOOLEAN, int16_zero AS BOOLEAN, int32_one AS BOOLEAN
+    PRINT "to BOOLEAN", int64_one AS BOOLEAN, uint16_one AS BOOLEAN, uint32_zero AS BOOLEAN, uint64_one AS BOOLEAN
+    PRINT "to BOOLEAN", float32_zero AS BOOLEAN, float64_one AS BOOLEAN, negative_zero AS BOOLEAN
+    LET zero AS FLOAT64 = 0.0
+    LET nan AS FLOAT64 = zero / zero
+    LET infinity AS FLOAT64 = 1.0 / zero
+    PRINT "special to BOOLEAN", nan AS BOOLEAN, infinity AS BOOLEAN
+    PRINT "literal to BOOLEAN", 0 AS BOOLEAN, 1 AS BOOLEAN, 0.0 AS BOOLEAN, 0.5 AS BOOLEAN
+    LET empty AS STRING = ""
+    LET space AS STRING = " "
+    LET digit_zero AS STRING = "0"
+    LET word_false AS STRING = "FALSE"
+    PRINT "STRING to BOOLEAN", empty AS BOOLEAN, space AS BOOLEAN, digit_zero AS BOOLEAN, word_false AS BOOLEAN
+    PRINT "absence to BOOLEAN", NULL AS BOOLEAN, NA AS BOOLEAN, EOF AS BOOLEAN
+END FUNCTION
+
+FUNCTION StringConversions() AS VOID
+    LET byte_max AS BYTE = 255
+    LET int8_min AS INT8 = -128
+    LET int16_min AS INT16 = -32768
+    LET int32_min AS INT32 = -2147483648
+    LET int64_min AS INT64 = -9223372036854775808
+    LET uint16_max AS UINT16 = 65535
+    LET uint32_max AS UINT32 = 4294967295
+    LET uint64_max AS UINT64 = 18446744073709551615
+    LET single AS FLOAT32 = 0.1
+    LET double AS FLOAT64 = 2.0
+    LET yes AS BOOLEAN = TRUE
+    // AS STRING is exactly the PRINT text, so it joins strings with +.
+    PRINT "[" + (byte_max AS STRING) + "|" + (int8_min AS STRING) + "|" + (int16_min AS STRING) + "|" + (int32_min AS STRING) + "]"
+    PRINT "[" + (int64_min AS STRING) + "|" + (uint16_max AS STRING) + "|" + (uint32_max AS STRING) + "|" + (uint64_max AS STRING) + "]"
+    PRINT "[" + (single AS STRING) + "|" + (double AS STRING) + "|" + (yes AS STRING) + "|" + ((1 > 2) AS STRING) + "]"
+    PRINT "[" + (42 AS STRING) + "|" + ((-0.5) AS STRING) + "]"
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    Literals()
+    Assignments()
+    IntegerConversions()
+    FloatConversions()
+    BooleanConversions()
+    StringConversions()
+END FUNCTION

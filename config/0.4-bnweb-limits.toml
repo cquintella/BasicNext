@@ -62,7 +62,6 @@ pending_tickets_max = 1024
 timeout_min_ms = 1
 timeout_max_ms = 60000
 output_max_bytes = 65536
-concurrent_handlers_default = 0
 
 [logging]
 record_size_source = "BNLog"

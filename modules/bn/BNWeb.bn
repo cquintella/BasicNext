@@ -2,6 +2,7 @@
 // by the Rust provider over HOST.Net and BNLog.
 IMPORT HOST.Net AS Net
 IMPORT BNLog AS Log
+IMPORT BNDispatch AS Dispatch
 
 // Error codes (language/0.6/bnweb.md "Errors").
 EXPORT CONST INVALID_ARGUMENT AS INTEGER = 1
@@ -36,6 +37,29 @@ EXPORT CLASS QueryValues
     END FUNCTION
 END CLASS
 
+EXPORT CLASS Session
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+    PUBLIC FUNCTION Id() AS STRING
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Get(key AS STRING) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Set(key AS STRING, value AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Remove(key AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Rotate() AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION End() AS VOID OR Error
+        RETURN
+    END FUNCTION
+END CLASS
+
 EXPORT CLASS Request
     PUBLIC FUNCTION CONSTRUCTOR()
     END FUNCTION
@@ -53,6 +77,15 @@ EXPORT CLASS Request
     END FUNCTION
     PUBLIC FUNCTION Body(maximum AS INTEGER) AS STRING OR Error
         RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Param(name AS STRING) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Cookie(name AS STRING) AS STRING OR Error
+        RETURN ""
+    END FUNCTION
+    PUBLIC FUNCTION Session() AS Session OR Error
+        RETURN NEW Session()
     END FUNCTION
     PUBLIC FUNCTION PeerAddress() AS Net.Address
         LET parsed AS Net.Address OR Error = Net.Address.Parse("0.0.0.0")
@@ -82,6 +115,15 @@ EXPORT CLASS Response
     PUBLIC FUNCTION Header(name AS STRING) AS STRING OR Error
         RETURN ""
     END FUNCTION
+    PUBLIC FUNCTION SetCookie(name AS STRING, value AS STRING, domain AS STRING, path AS STRING, maxAgeMs AS INTEGER) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION SetCookieWithPolicy(name AS STRING, value AS STRING, domain AS STRING, path AS STRING, maxAgeMs AS INTEGER, secure AS BOOLEAN, httpOnly AS BOOLEAN, sameSite AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION ClearCookie(name AS STRING, domain AS STRING, path AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
     PUBLIC FUNCTION Write(body AS STRING) AS VOID OR Error
         RETURN
     END FUNCTION
@@ -106,6 +148,12 @@ EXPORT CLASS Server
         RETURN
     END FUNCTION
     PUBLIC FUNCTION Route(method AS STRING, pattern AS STRING, handler AS FUNCTION(request AS Request, response AS Response) AS VOID) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION UseQueue(queue AS Dispatch.Queue) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION UseSessions(capacity AS INTEGER, idleMs AS INTEGER) AS VOID OR Error
         RETURN
     END FUNCTION
     PUBLIC FUNCTION Start(endpoint AS Net.Endpoint) AS VOID OR Error
@@ -174,10 +222,10 @@ EXPORT CLASS Server
 END CLASS
 
 EXPORT CLASS ServerOptions
-    PUBLIC FUNCTION CONSTRUCTOR(activeConnections AS INTEGER, backlog AS INTEGER, pendingWork AS INTEGER, workerCount AS INTEGER, maxHeaderBytes AS INTEGER, maxHeaderFields AS INTEGER, maxTargetBytes AS INTEGER, maxBodyBytes AS INTEGER, tlsHandshakeMs AS INTEGER, headerReadMs AS INTEGER, bodyReadMs AS INTEGER, idleKeepAliveMs AS INTEGER, connectionTotalMs AS INTEGER, stopDrainMs AS INTEGER, rateLimitBurst AS INTEGER, rateLimitRefillPerSecond AS INTEGER, rateLimitKeyCapacity AS INTEGER, trustedProxy AS BOOLEAN, concurrentHandlers AS BOOLEAN)
+    PUBLIC FUNCTION CONSTRUCTOR(activeConnections AS INTEGER, backlog AS INTEGER, pendingWork AS INTEGER, workerCount AS INTEGER, maxHeaderBytes AS INTEGER, maxHeaderFields AS INTEGER, maxTargetBytes AS INTEGER, maxBodyBytes AS INTEGER, tlsHandshakeMs AS INTEGER, headerReadMs AS INTEGER, bodyReadMs AS INTEGER, idleKeepAliveMs AS INTEGER, connectionTotalMs AS INTEGER, stopDrainMs AS INTEGER, rateLimitBurst AS INTEGER, rateLimitRefillPerSecond AS INTEGER, rateLimitKeyCapacity AS INTEGER, trustedProxy AS BOOLEAN)
     END FUNCTION
-    PUBLIC STATIC FUNCTION New(activeConnections AS INTEGER, backlog AS INTEGER, pendingWork AS INTEGER, workerCount AS INTEGER, maxHeaderBytes AS INTEGER, maxHeaderFields AS INTEGER, maxTargetBytes AS INTEGER, maxBodyBytes AS INTEGER, tlsHandshakeMs AS INTEGER, headerReadMs AS INTEGER, bodyReadMs AS INTEGER, idleKeepAliveMs AS INTEGER, connectionTotalMs AS INTEGER, stopDrainMs AS INTEGER, rateLimitBurst AS INTEGER, rateLimitRefillPerSecond AS INTEGER, rateLimitKeyCapacity AS INTEGER, trustedProxy AS BOOLEAN, concurrentHandlers AS BOOLEAN) AS ServerOptions OR Error
-        RETURN NEW ServerOptions(activeConnections, backlog, pendingWork, workerCount, maxHeaderBytes, maxHeaderFields, maxTargetBytes, maxBodyBytes, tlsHandshakeMs, headerReadMs, bodyReadMs, idleKeepAliveMs, connectionTotalMs, stopDrainMs, rateLimitBurst, rateLimitRefillPerSecond, rateLimitKeyCapacity, trustedProxy, concurrentHandlers)
+    PUBLIC STATIC FUNCTION New(activeConnections AS INTEGER, backlog AS INTEGER, pendingWork AS INTEGER, workerCount AS INTEGER, maxHeaderBytes AS INTEGER, maxHeaderFields AS INTEGER, maxTargetBytes AS INTEGER, maxBodyBytes AS INTEGER, tlsHandshakeMs AS INTEGER, headerReadMs AS INTEGER, bodyReadMs AS INTEGER, idleKeepAliveMs AS INTEGER, connectionTotalMs AS INTEGER, stopDrainMs AS INTEGER, rateLimitBurst AS INTEGER, rateLimitRefillPerSecond AS INTEGER, rateLimitKeyCapacity AS INTEGER, trustedProxy AS BOOLEAN) AS ServerOptions OR Error
+        RETURN NEW ServerOptions(activeConnections, backlog, pendingWork, workerCount, maxHeaderBytes, maxHeaderFields, maxTargetBytes, maxBodyBytes, tlsHandshakeMs, headerReadMs, bodyReadMs, idleKeepAliveMs, connectionTotalMs, stopDrainMs, rateLimitBurst, rateLimitRefillPerSecond, rateLimitKeyCapacity, trustedProxy)
     END FUNCTION
 END CLASS
 

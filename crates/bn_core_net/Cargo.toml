@@ -1,0 +1,21 @@
+[package]
+name = "bn_core_net"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.97"
+description = "Basic Next HOST.Net core: addresses, CIDR, resolution, ICMP Echo, TCP and UDP"
+license.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+bn_catalog = { path = "../bn_catalog" }
+bn_limits = { path = "../bn_limits" }
+bn_types = { path = "../bn_types" }
+dns-lookup = "2"
+socket2 = "0.6"
+
+[lints]
+workspace = true

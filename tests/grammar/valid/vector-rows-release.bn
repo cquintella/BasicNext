@@ -1,0 +1,32 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+
+// The objects of a vector of more than one dimension are released once each,
+// row by row, when the vector goes out of scope (known issue K30: native
+// builds walked the rows as if they were objects and stopped with
+// INVALID_IR).
+
+CLASS Tag
+    PUBLIC name AS STRING = ""
+
+    PUBLIC FUNCTION CONSTRUCTOR(text AS STRING)
+        SELF.name = text
+    END FUNCTION
+
+    FUNCTION DESTRUCTOR()
+        PRINT "free", SELF.name
+    END FUNCTION
+END CLASS
+
+FUNCTION Build() AS VOID
+    LET grid AS Tag[2][2] = [[NEW Tag("a"), NEW Tag("b")], [NEW Tag("c"), NEW Tag("d")]]
+    PRINT grid[0][1].name, grid[1][0].name
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    Build()
+    PRINT "end"
+END FUNCTION

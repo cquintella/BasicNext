@@ -152,7 +152,13 @@ pub(crate) fn parse_config_string(value: &str) -> Result<String, String> {
             Some('\\') => '\\',
             Some('n') => '\n',
             Some('t') => '\t',
-            Some(other) => return Err(format!("unsupported config escape: \\{other}")),
+            Some(other) => {
+                return Err(bn_catalog::fill(
+                    "config",
+                    "escape.unsupported",
+                    &[("escape", &other)],
+                ));
+            }
             None => return Err("unterminated config escape".into()),
         });
     }

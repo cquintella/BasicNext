@@ -7,6 +7,9 @@ use bn_ir::FieldRef;
 use super::*;
 
 pub(crate) const OBJECT_HEADER_BYTES: u32 = 16;
+/// Heap bytes of one UTF-8 scalar packed by `bn_rt` (up to four bytes and
+/// its NUL) for `s[i]` and `CHAR`: a value that can outlive its frame.
+pub(crate) const PACKED_UTF8_BYTES: i64 = 8;
 
 #[derive(Clone, Debug)]
 pub(crate) struct LayoutField {

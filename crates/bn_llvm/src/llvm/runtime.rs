@@ -75,6 +75,7 @@ declare i32 @bn_rt_log_fields_set_boolean(i64, ptr, i8)
 declare i32 @bn_rt_log_logger_add_null(i64, i64)
 declare i32 @bn_rt_log_logger_add_console(i64, i64)
 declare i32 @bn_rt_log_logger_add_file(i64, ptr, i64)
+declare i32 @bn_rt_log_logger_set_format(i64, ptr)
 declare i32 @bn_rt_log_logger_log(i64, i64, ptr, i64)
 declare i32 @bn_rt_log_logger_flush(i64, i64)
 declare i32 @bn_rt_log_logger_close(i64, i64)
@@ -264,7 +265,6 @@ pub(crate) fn is_bn_rt_host_call(name: &str) -> bool {
                 | "HOST.Net.UDPSocket.SendTo"
                 | "HOST.Net.UDPSocket.Receive"
                 | "HOST.Net.UDPPacket.Size"
-                | "HOST.Net.UDPPacket.Truncated"
                 | "HOST.Net.UDPPacket.WasTruncated"
                 | "HOST.Net.UDPPacket.CopyTo"
                 | "HOST.Net.UDPPacket.Source"
@@ -363,6 +363,7 @@ pub(crate) fn bnlog_method(module: &Module, name: &str) -> Option<&'static str> 
         "Logger.AddNull" => Some("logger_add_null"),
         "Logger.AddConsole" => Some("logger_add_console"),
         "Logger.AddFile" => Some("logger_add_file"),
+        "Logger.SetFormat" => Some("logger_set_format"),
         "Logger.Log" => Some("logger_log"),
         "Logger.Flush" => Some("logger_flush"),
         "Logger.Close" => Some("logger_close"),
@@ -641,7 +642,6 @@ pub(crate) fn bn_rt_call_supported(
                     .is_some_and(integer_llvm)
         }
         "HOST.Net.UDPPacket.Size"
-        | "HOST.Net.UDPPacket.Truncated"
         | "HOST.Net.UDPPacket.WasTruncated" => {
             arguments.len() == 1
                 && arguments.first().is_some_and(|value| {

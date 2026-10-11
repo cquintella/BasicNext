@@ -251,6 +251,7 @@ fn semantic_fixtures_are_rejected() {
         "tests/grammar/invalid/void-return-value.bn",
         "tests/grammar/invalid/zero-for-step.bn",
         "tests/grammar/invalid/ragged-vector-literal.bn",
+        "tests/grammar/invalid/vector-literal-unrelated-element.bn",
         "tests/grammar/invalid/removed-host-memory.bn",
         "tests/grammar/invalid/withdrawn-system-type.bn",
         "tests/grammar/invalid/withdrawn-argument-count.bn",
@@ -985,4 +986,32 @@ fn host_env_with_import_is_accepted() {
     let tokens = lex(&source).expect("lex fixture");
     let program = parse(&tokens).expect("parse fixture");
     analyze(&program).expect(path);
+}
+
+#[test]
+fn vector_literal_elements_are_checked_against_the_declared_destination() {
+    // A.S6.n: the element that is not assignable is named; an integer literal
+    // is not a FLOAT64 element (0.6.md C2 converts only a scalar binding
+    // initializer) and must fit a narrower integer element.
+    let path = "tests/grammar/invalid/vector-literal-unrelated-element.bn";
+    let source = SourceFile::new(path, fs::read_to_string(path).expect("read fixture"));
+    let error = analyze(&parse(&lex(&source).expect("lex")).expect("parse"))
+        .expect_err("an unrelated element must fail");
+    assert_eq!(error.code, "TYPE_MISMATCH");
+    assert!(error.message.contains("Clock"), "{}", error.message);
+    for (initializer, element) in [
+        ("LET v AS FLOAT64[2] = [1.5, 2]", "INTEGERLITERAL(\"2\")"),
+        ("LET v AS INT8[2] = [1, 300]", "INTEGERLITERAL(\"300\")"),
+    ] {
+        let error = analyze_text(&format!(
+            "FUNCTION Start() AS VOID\n{initializer}\nPRINT v[0]\nEND FUNCTION\n"
+        ))
+        .expect_err(initializer);
+        assert_eq!(error.code, "TYPE_MISMATCH", "{initializer}");
+        assert!(error.message.contains(element), "{}", error.message);
+    }
+    analyze_text(
+        "FUNCTION Start() AS VOID\nLET v AS INT64[2] = [1, 3000000000]\nPRINT v[1]\nEND FUNCTION\n",
+    )
+    .expect("literals that fit a wider element are accepted");
 }

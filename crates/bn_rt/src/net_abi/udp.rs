@@ -138,31 +138,6 @@ fn receive(handle: i64, maximum: i32, timeout_ms: i32) -> Result<net::UdpPacket,
     })
 }
 
-/// Receives one datagram into a new buffer, freed with
-/// `bn_rt_net_buffer_free`.
-#[allow(unsafe_code)] // C ABI export.
-#[allow(clippy::too_many_arguments)]
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_net_udp_receive(
-    handle: i64,
-    maximum: i32,
-    timeout_ms: i32,
-    out_data: *mut *mut u8,
-    out_length: *mut i32,
-    out_address: *mut *mut c_char,
-    out_port: *mut i32,
-    out_truncated: *mut i32,
-) -> i32 {
-    status(receive(handle, maximum, timeout_ms).map(|packet| {
-        let mut data = packet.bytes().to_vec().into_boxed_slice();
-        write_out(out_length, i32::try_from(data.len()).unwrap_or(i32::MAX));
-        write_out(out_data, data.as_mut_ptr());
-        std::mem::forget(data);
-        write_endpoint(packet.source(), out_address, out_port);
-        write_out(out_truncated, i32::from(packet.truncated()));
-    }))
-}
-
 /// `HOST.Net.UDPSocket.Receive`: `out` receives a packet handle, released
 /// with `bn_rt_net_handle_close`.
 #[allow(unsafe_code)] // C ABI export.
@@ -196,7 +171,7 @@ pub extern "C" fn bn_rt_net_udp_packet_size(handle: i64) -> i32 {
     .unwrap_or(-1)
 }
 
-/// `HOST.Net.UDPPacket.Truncated` (-1 for an unknown packet handle).
+/// `HOST.Net.UDPPacket.WasTruncated` (-1 for an unknown packet handle).
 #[allow(unsafe_code)] // C ABI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_udp_packet_truncated(handle: i64) -> i32 {

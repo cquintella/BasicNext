@@ -3,11 +3,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-#[allow(unused_imports)]
 use std::{
-    collections::{HashMap, HashSet},
-    io::{BufRead, Read, Write},
-    path::{Path, PathBuf},
+    collections::HashMap,
+    io::{BufRead, Write},
+    path::PathBuf,
     sync::{Arc, atomic::AtomicU64},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -718,15 +717,9 @@ enum Flow {
 }
 mod executor;
 
-#[allow(dead_code)]
-fn coerce(value: Value, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
-    crate::executor::coerce(value, ty, span)
-}
-
 /// # Errors
 ///
 /// Returns `NUMERIC_OVERFLOW` when the count does not fit the integer type.
-#[allow(dead_code)]
 pub fn integer_from_i128_count(count: i128, span: Span) -> Result<Value, Diagnostic> {
     if !(0..=i128::from(i32::MAX)).contains(&count) {
         return Err(integer_overflow(span));

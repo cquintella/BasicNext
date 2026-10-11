@@ -10,6 +10,7 @@ license.workspace = true
 path = "src/lib.rs"
 
 [dependencies]
+bn_catalog = { path = "../bn_catalog" }
 bn_source = { path = "../bn_source" }
 
 [lints]

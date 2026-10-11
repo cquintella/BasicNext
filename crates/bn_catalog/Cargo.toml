@@ -1,0 +1,14 @@
+[package]
+name = "bn_catalog"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.97"
+description = "Basic Next text catalog: user-visible texts and contract names, read from share/bn/catalog"
+license.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true

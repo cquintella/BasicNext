@@ -1,0 +1,43 @@
+// A vector of an interface or of a base class holds objects of the classes
+// that reach it: a literal of implementing or subclass objects, and an
+// element store of another class (known issue K28: the IR validator
+// refused both).
+INTERFACE Listener
+    FUNCTION Notify(event AS STRING) AS VOID
+END INTERFACE
+
+CLASS Printer IMPLEMENTS Listener
+    PROTECTED name AS STRING
+
+    PUBLIC FUNCTION CONSTRUCTOR(name AS STRING)
+        SELF.name = name
+    END FUNCTION
+
+    PUBLIC FUNCTION Notify(event AS STRING) AS VOID
+        PRINT SELF.name + " got " + event
+    END FUNCTION
+END CLASS
+
+CLASS LoudPrinter EXTENDS Printer
+    PUBLIC FUNCTION CONSTRUCTOR(name AS STRING)
+        SUPER(name)
+    END FUNCTION
+
+    PUBLIC OVERRIDE FUNCTION Notify(event AS STRING) AS VOID
+        PRINT TOUPPER(SELF.name + " got " + event)
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET listeners AS Listener[2] = [NEW Printer("a"), NEW Printer("b")]
+    listeners[1] = NEW LoudPrinter("b")
+    FOR i AS INT32 = 0 TO 1
+        listeners[i].Notify("saved")
+    END FOR
+    listeners[0] = NEW LoudPrinter("c")
+    listeners[0].Notify("closed")
+    LET printers AS Printer[2] = [NEW LoudPrinter("d"), NEW LoudPrinter("e")]
+    printers[1] = NEW Printer("e")
+    printers[1].Notify("opened")
+    printers[0].Notify("opened")
+END FUNCTION

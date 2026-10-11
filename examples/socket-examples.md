@@ -19,5 +19,9 @@ bni run examples/socket.bn -- --udp --client
 ```
 
 Add `--ipv6` to both commands to use `::1`. TCP uses port `39101`, UDP uses
-port `39102`, and all network waits are bounded to five seconds. Run `--help`
+port `39102`; `--port <n>` (1 to 65535) on both commands chooses another
+port. All network waits are bounded to five seconds. The server binds
+its port before anything else: a port already in use exits with status 3
+and names the port and the cause; any other failure exits with 1, a usage
+error with 2. Run `--help`
 for the complete option form.

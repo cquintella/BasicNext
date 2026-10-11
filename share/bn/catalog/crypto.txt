@@ -1,0 +1,5 @@
+# crypto texts and contract names (bn_catalog; AGENTS.md "No hard-coded
+# messages"). One `key = value` per line; `{name}` is filled by the code.
+
+hex.decode.message = cannot decode "{shown}{more}" as hexadecimal
+open.tag.cause = the authentication tag does not verify: the ciphertext, AAD, key, or nonce differs from the ones that sealed it

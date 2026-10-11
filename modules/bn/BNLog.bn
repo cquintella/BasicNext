@@ -74,6 +74,9 @@ EXPORT CLASS Logger
     PUBLIC FUNCTION AddNull(minimum AS INTEGER) AS VOID OR Error
         RETURN
     END FUNCTION
+    PUBLIC FUNCTION SetFormat(format AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
     PUBLIC FUNCTION Child(fields AS Fields) AS Logger OR Error
         RETURN NEW Logger()
     END FUNCTION

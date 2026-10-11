@@ -112,7 +112,7 @@ impl Analyzer {
                         return Err(type_mismatch(
                             display(&element_type),
                             display(&actual),
-                            "vector literal element",
+                            VECTOR_LITERAL_ELEMENT,
                             value.span,
                         ));
                     }

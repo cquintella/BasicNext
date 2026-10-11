@@ -1,0 +1,11 @@
+// Imported by other.bn: the last link of examples/two_files.bn.
+// A module's file name is its import name: IMPORT another AS ... loads
+// another.bn from the importing file's directory (or the module path).
+
+EXPORT CLASS Another
+    PUBLIC STATIC FUNCTION CountTo(limit AS INTEGER) AS VOID
+        FOR i AS INTEGER = 1 TO limit
+            PRINT i
+        END FOR
+    END FUNCTION
+END CLASS

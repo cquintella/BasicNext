@@ -1,0 +1,16 @@
+// A program in three files: two_files.bn imports other.bn, which imports
+// another.bn. Run it from any directory:
+//
+//   bni run examples/two_files.bn
+//   bnc examples/two_files.bn -o two_files && ./two_files
+//
+// IMPORT other AS Lib loads other.bn next to this file; Lib.Other names
+// the class that module EXPORTs.
+
+IMPORT other AS Lib
+
+FUNCTION Start() AS VOID
+    LET adder AS Lib.Other = NEW Lib.Other()
+    PRINT adder.Sum(10, 10)
+    adder.CountTo(3)
+END FUNCTION

@@ -4,7 +4,6 @@ use super::*;
 mod helpers;
 pub use self::helpers::integer_from_count as integer_from_count_pub;
 pub use self::helpers::numeric_overflow;
-#[allow(unused_imports)]
 use self::helpers::{integer_from_count, integer_from_u64, lifecycle_dispatch, require_console};
 
 mod arc_verifier;
@@ -40,6 +39,7 @@ fn binary(
     right: &Value,
     ty: &Type,
     span: Span,
+    classes: &bn_types::class_model::ClassModel,
 ) -> Result<Value, Diagnostic> {
     if operator == "IS" {
         let Value::Type(test) = right else {
@@ -49,7 +49,7 @@ fn binary(
                 span,
             ));
         };
-        return Ok(Value::Boolean(is_value(left, test)));
+        return Ok(Value::Boolean(is_value(left, test, classes)));
     }
     if matches!(operator, "Assign" | "NotEqual") {
         let equal = equals(left, right);
@@ -413,6 +413,12 @@ fn same_numeric_kind(value: &Value, ty: &Type) -> bool {
 fn checked_integer(value: Option<i128>, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
     let value =
         value.ok_or_else(|| numeric_overflow(bn_diag::trap_texts::PERFORMING_INTEGER_OP, span))?;
+    // A literal-typed result is a constant semantic analysis folded and
+    // checked against its destination (`LET x AS INT64 = -9223372036854775808`);
+    // the store converts it, as for a `Constant` (known issue K33).
+    if matches!(ty, Type::IntegerLiteral(_)) {
+        return Ok(Value::Integer(value, IntegerType::Int32));
+    }
     let kind = integer_kind(ty).unwrap_or(IntegerType::Int32);
     let (minimum, maximum) = integer_range(kind);
     if !(minimum..=maximum).contains(&value) {

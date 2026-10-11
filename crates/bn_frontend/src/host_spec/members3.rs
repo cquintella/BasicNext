@@ -400,18 +400,6 @@ pub(super) fn declare_16(catalog: &mut Catalog) {
                 },
             ),
             (
-                "Truncated".into(),
-                SpecMember {
-                    ty: SpecType::Function {
-                        parameters: Vec::new(),
-                        return_type: Box::new(SpecType::Boolean),
-                    },
-                    is_static: false,
-                    private: false,
-                    mutable: false,
-                },
-            ),
-            (
                 "WasTruncated".into(),
                 SpecMember {
                     ty: SpecType::Function {

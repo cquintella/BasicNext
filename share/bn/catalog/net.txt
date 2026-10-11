@@ -1,0 +1,23 @@
+# HOST.Net contract texts (language/0.6/host-net.md). One `key = value` per
+# line; code refers to the key, never to the value. Every key here is used,
+# and every key the code uses is here (bn_core_net `catalog` tests).
+# Texts written before this file are literals still; they move here with
+# the migration of bucket 0.6.5 H.S4.
+
+# CIDR.Parse (host-net.md, "CIDR text").
+cidr.host_bits = address has bits past the prefix
+cidr.host_bits.cause = the address has bits set past the prefix; write the network address (10.0.0.0/8, not 10.0.0.1/8)
+
+# Address.Parse (host-net.md, "Addressing and resolution").
+address.parse.action = parse "{text}" as an IP address
+address.parse.cause = an address is IPv4 (four decimal octets, 192.0.2.1) or IPv6 (hexadecimal groups, 2001:db8::1), without a port or a name
+
+# CIDR.Parse.
+cidr.parse.action = parse "{text}" as a CIDR prefix
+cidr.prefix.cause = the part after '/' is not a prefix length: decimal digits, no sign, no leading zero (0..128)
+
+# Resolve and its results.
+resolve.host_name.cause = a host name has 1..253 bytes and no space or control character
+resolve.not_found.cause = no address is registered for "{host}"
+addresses.empty.cause = the result holds no address; got {index}
+addresses.index.cause = the index must be within 0..{last}; got {index}

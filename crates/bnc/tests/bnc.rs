@@ -135,6 +135,30 @@ fn bnc_builds_and_runs_a_native_executable() {
     assert_eq!(String::from_utf8_lossy(&ran.stdout).trim(), "42");
 }
 
+/// Without `-g` the link drops runtime code the program never reaches (bucket
+/// 0.6.5 E, D2), so `bn_rt_arc_dump`, which only a debugger calls, is absent;
+/// `a_native_debugger_reads_the_arc_core` shows a `-g` build keeps it.
+#[cfg(unix)]
+#[test]
+fn bnc_links_only_the_runtime_a_program_reaches() {
+    let artifact = std::env::temp_dir().join(format!("bnc-dead-strip-{}", std::process::id()));
+    let built = bnc()
+        .args(["examples/hello.bn", "-o"])
+        .arg(&artifact)
+        .output()
+        .expect("run bnc -o");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let symbols = Command::new("nm").arg(&artifact).output().expect("run nm");
+    let _ = std::fs::remove_file(&artifact);
+    let listing = String::from_utf8_lossy(&symbols.stdout);
+    assert!(listing.contains("bn_rt_"), "the program links the runtime");
+    assert!(!listing.contains("bn_rt_arc_dump"), "{listing}");
+}
+
 #[test]
 fn bnc_emit_ir_prints_validated_bn_ir_without_compiling() {
     let output = bnc()

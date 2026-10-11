@@ -1,0 +1,5 @@
+IMPORT Geo.shape AS Shape
+
+FUNCTION Start() AS VOID
+    PRINT Shape.Sides
+END FUNCTION

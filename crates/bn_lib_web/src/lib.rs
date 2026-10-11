@@ -11,12 +11,13 @@
 
 #![allow(clippy::too_many_lines, clippy::too_many_arguments)] // Moved verbatim from the core (bucket 0.5.1d); one arm per BNWeb member.
 
-mod http;
-#[cfg(test)]
-mod test_support;
-mod tls;
-pub mod web;
-mod web_state;
+pub use bn_core_web::web;
+use bn_core_web::web::drain_server;
+use bn_core_web::{http, tls, web_state};
+
+mod access_log;
+mod request_response;
+mod sessions;
 
 use std::collections::HashMap;
 
@@ -68,6 +69,8 @@ pub struct WebProvider {
     responses: HashMap<Handle, crate::web::Response>,
     requests: HashMap<Handle, crate::web::Request>,
     values: HashMap<Handle, Vec<String>>,
+    /// `BNWeb.Session` objects: the request session each one reaches.
+    request_sessions: HashMap<Handle, crate::web::sessions::RequestSession>,
 }
 
 impl std::fmt::Debug for WebProvider {
@@ -111,6 +114,7 @@ impl Provider for WebProvider {
         self.responses.remove(&handle);
         self.requests.remove(&handle);
         self.values.remove(&handle);
+        self.request_sessions.remove(&handle);
     }
 
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
@@ -234,6 +238,7 @@ fn bn_server_handler(
         let key = format!("{}\n{pattern}", request.method);
         let handler = handlers.get(&key).ok_or("BNWeb handler is not live")?;
         let mut current = crate::web::Response::new();
+        current.secure = request.secure;
         for filter in &filters {
             current = execute_callback(&module, &host, filter, request.clone(), current)
                 .map_err(|_| "BNWeb filter failed")?;
@@ -243,77 +248,6 @@ fn bn_server_handler(
         *response = current;
         Ok(())
     })
-}
-
-fn drain_server(
-    state: &std::sync::Arc<std::sync::Mutex<crate::web::ServerState>>,
-    timeout_ms: i128,
-    close: bool,
-) -> Result<(), &'static str> {
-    let timeout = std::time::Duration::from_millis(
-        u64::try_from(timeout_ms).map_err(|_| "stop timeout is outside 1..60000 ms")?,
-    );
-    let deadline = std::time::Instant::now() + timeout;
-    let mut listener = {
-        let mut server = state.lock().map_err(|_| "server state unavailable")?;
-        server.begin_stop(timeout_ms)?;
-        server.take_listener()
-    };
-    while let Some(handle) = listener {
-        if handle.is_finished() {
-            if handle.join().is_err() {
-                if let Ok(mut server) = state.lock() {
-                    server.mark_failed();
-                }
-                return Err("server listener join failed");
-            }
-            break;
-        }
-        if std::time::Instant::now() >= deadline {
-            let mut server = state.lock().map_err(|_| "server state unavailable")?;
-            server
-                .install_listener(handle)
-                .map_err(|_| "server listener is already installed")?;
-            return Err("server listener join timed out");
-        }
-        std::thread::yield_now();
-        listener = Some(handle);
-    }
-    loop {
-        let result = {
-            let mut server = state.lock().map_err(|_| "server state unavailable")?;
-            server.finish_stop()
-        };
-        match result {
-            Ok(()) => {
-                let workers_finished = state
-                    .lock()
-                    .map_err(|_| "server state unavailable")?
-                    .workers_finished();
-                if !workers_finished {
-                    if std::time::Instant::now() >= deadline {
-                        return Err("server worker drain timed out");
-                    }
-                    std::thread::yield_now();
-                    continue;
-                }
-                if close {
-                    state
-                        .lock()
-                        .map_err(|_| "server state unavailable")?
-                        .mark_closed();
-                }
-                return Ok(());
-            }
-            Err("server drain timed out with active connections") => {
-                if std::time::Instant::now() >= deadline {
-                    return Err("server drain timed out with active connections");
-                }
-            }
-            Err(message) => return Err(message),
-        }
-        std::thread::yield_now();
-    }
 }
 
 impl WebProvider {
@@ -346,61 +280,6 @@ impl WebProvider {
         result
     }
 
-    /// Access-log record for a served request, written through `BNLog`'s
-    /// public contract (`Fields` + `Logger.Log`) exactly as a BN program would.
-    fn log_web_dispatch(
-        &mut self,
-        core: &mut dyn CoreContext,
-        server_handle: Handle,
-        method: &str,
-        path: &str,
-        status: i128,
-        request_id: Option<&str>,
-        span: Span,
-    ) -> Result<(), Diagnostic> {
-        let Some(&logger_id) = self.loggers.get(&server_handle) else {
-            return Ok(());
-        };
-        let log = "BNLog";
-        let Some(fields) = core.library_allocate(log, "Fields", span) else {
-            return Ok(());
-        };
-        let fields = fields?;
-        let mut entries = vec![
-            ("http.method", method.to_string()),
-            ("http.path", path.to_string()),
-            ("http.status", status.to_string()),
-        ];
-        if let Some(request_id) = request_id {
-            entries.push(("request_id", request_id.to_string()));
-        }
-        for (key, value) in entries {
-            core.library_call(
-                log,
-                "Fields.SetString",
-                vec![
-                    fields.clone(),
-                    Value::String(key.into()),
-                    Value::String(shared_string(value)),
-                ],
-                span,
-            )?;
-        }
-        let result = core.library_call(
-            log,
-            "Logger.Log",
-            vec![
-                Value::LogLogger(logger_id),
-                Value::Integer(3, IntegerType::Int32),
-                Value::String("web dispatch".into()),
-                fields.clone(),
-            ],
-            span,
-        );
-        let _ = core.library_release(&fields, span);
-        result.map(|_| ())
-    }
-
     fn web_call(
         &mut self,
         core: &mut dyn CoreContext,
@@ -420,6 +299,9 @@ impl WebProvider {
             || name.contains(".QueryValues.")
         {
             return self.web_state_call(core, name, arguments, span);
+        }
+        if name.contains(".Session.") {
+            return self.web_session_call(name, arguments, span);
         }
         if name.contains(".Request.") {
             return self.web_request_call(core, name, arguments, span);
@@ -584,6 +466,8 @@ impl WebProvider {
                 )
             })?;
             match method {
+                "UseQueue" => Self::server_use_queue(core, name, arguments, &state, span),
+                "UseSessions" => Self::server_use_sessions(name, arguments, &state, span),
                 "AddFilter" => {
                     require_arity(name, arguments, 2, span)?;
                     let Value::Function(filter) = &arguments[1] else {
@@ -1094,9 +978,10 @@ impl WebProvider {
                         if state
                             .dispatch(&method_name, &path, |outcome| {
                                 selected = Some(match outcome {
-                                    crate::web::RouteOutcome::Matched(route, _) => {
-                                        Ok(route.pattern().to_owned())
-                                    }
+                                    crate::web::RouteOutcome::Matched(route, found) => Ok((
+                                        route.pattern().to_owned(),
+                                        crate::web::sorted_params(&found),
+                                    )),
                                     crate::web::RouteOutcome::MethodNotAllowed(_) => Err(405),
                                     crate::web::RouteOutcome::NotFound => Err(404),
                                 });
@@ -1108,7 +993,11 @@ impl WebProvider {
                         selected.unwrap_or(Err(500))
                     };
                     match selected {
-                        Ok(pattern) => {
+                        Ok((pattern, params)) => {
+                            if let Some(stored) = self.requests.get_mut(request_handle) {
+                                stored.params = params;
+                            }
+                            self.begin_request_session(*request_handle, &state);
                             let filters = self.filters.get(handle).cloned().unwrap_or_default();
                             for filter in filters {
                                 let result = self.call_reentrant(
@@ -1149,6 +1038,7 @@ impl WebProvider {
                                 vec![arguments[1].clone(), arguments[2].clone()],
                                 span,
                             );
+                            self.apply_request_session(*request_handle, *response_handle);
                             let status = self
                                 .responses
                                 .get(response_handle)
@@ -1605,38 +1495,26 @@ impl WebProvider {
                             span,
                         ));
                     };
-                    let age = integer(&arguments[5], span)?.0;
-                    if age < 0 {
-                        return Ok(failed(name, &WebFailure::NegativeCookieAge));
-                    }
-                    let same_site = match same_site.as_ref() {
-                        "Strict" => crate::web_state::SameSite::Strict,
-                        "Lax" => crate::web_state::SameSite::Lax,
-                        "None" => crate::web_state::SameSite::None,
-                        _ => {
-                            return Ok(failed(name, &WebFailure::InvalidSameSite));
+                    // One policy rule for jars and responses, on both backends.
+                    let age =
+                        match crate::web_state::cookie_max_age(integer(&arguments[5], span)?.0) {
+                            Ok(age) => age,
+                            Err(message) => {
+                                return Ok(failed(name, &WebFailure::from_message(message)));
+                            }
+                        };
+                    let options = match crate::web_state::CookieOptions::from_policy(
+                        *secure, *http_only, same_site,
+                    ) {
+                        Ok(options) => options,
+                        Err(message) => {
+                            return Ok(failed(name, &WebFailure::from_message(message)));
                         }
                     };
-                    if same_site == crate::web_state::SameSite::None && !secure {
-                        return Ok(failed(name, &WebFailure::SameSiteNoneRequiresSecure));
-                    }
-                    Ok(jar
-                        .set_with_options(
-                            n,
-                            v,
-                            d,
-                            p,
-                            std::time::Duration::from_millis(u64::try_from(age).unwrap_or(0)),
-                            crate::web_state::CookieOptions {
-                                secure: *secure,
-                                http_only: *http_only,
-                                same_site,
-                            },
-                        )
-                        .map_or_else(
-                            |message| failed(name, &WebFailure::from_message(&message)),
-                            |()| Value::Null,
-                        ))
+                    Ok(jar.set_with_options(n, v, d, p, age, options).map_or_else(
+                        |message| failed(name, &WebFailure::from_message(&message)),
+                        |()| Value::Null,
+                    ))
                 }
                 "Get" => {
                     require_arity(name, arguments, 4, span)?;
@@ -1752,16 +1630,6 @@ impl WebProvider {
                         ));
                     }
                 };
-                let concurrent_handlers = match arguments.get(offset + 18) {
-                    Some(Value::Boolean(value)) => *value,
-                    _ => {
-                        return Err(runtime_error(
-                            bn_diag::DiagId::INVALID_OPTIONS,
-                            "concurrentHandlers must be BOOLEAN",
-                            span,
-                        ));
-                    }
-                };
                 Ok(crate::web::ServerOptions {
                     active_connections: value(0)?,
                     backlog: value(1)?,
@@ -1781,11 +1649,10 @@ impl WebProvider {
                     rate_limit_burst: value(14)?,
                     rate_limit_refill_per_second: value(15)?,
                     rate_limit_key_capacity: value(16)?,
-                    concurrent_handlers,
                 })
             };
             if method == "New" {
-                require_arity(name, arguments, 19, span)?;
+                require_arity(name, arguments, 18, span)?;
                 let options = make_options(0)?;
                 options.validate().map_err(|message| {
                     runtime_error(bn_diag::DiagId::INVALID_OPTIONS, message, span)
@@ -1805,7 +1672,7 @@ impl WebProvider {
                     ));
                 };
                 if method == "CONSTRUCTOR" {
-                    require_arity(name, arguments, 20, span)?;
+                    require_arity(name, arguments, 19, span)?;
                     let options = make_options(1)?;
                     options.validate().map_err(|message| {
                         runtime_error(bn_diag::DiagId::INVALID_OPTIONS, message, span)
@@ -1968,339 +1835,10 @@ impl WebProvider {
             ))
         }
     }
-
-    fn web_request_call(
-        &mut self,
-        core: &mut dyn CoreContext,
-        name: &str,
-        arguments: &[Value],
-        span: Span,
-    ) -> Result<Value, Diagnostic> {
-        let method = name.rsplit('.').next().unwrap_or_default();
-        if name.contains(".Request.") {
-            if method == "CONSTRUCTOR" {
-                let Some(Value::Object { handle, .. }) = arguments.first() else {
-                    return Err(type_mismatch(
-                        "BNWeb.Request",
-                        "non-object value",
-                        "BNWeb.Request operation receiver",
-                        span,
-                    ));
-                };
-                let request = crate::web::Request::new(
-                    "GET",
-                    "/",
-                    Vec::new(),
-                    "",
-                    std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
-                )
-                .map_err(|message| {
-                    runtime_error(bn_diag::DiagId::REQUEST_INVALID, message, span)
-                })?;
-                self.requests.insert(*handle, request);
-                return Ok(Value::Null);
-            }
-            let Some(Value::Object { handle, .. }) = arguments.first() else {
-                return Err(type_mismatch(
-                    "BNWeb.Request",
-                    "non-object value",
-                    "BNWeb.Request operation receiver",
-                    span,
-                ));
-            };
-            let request = self.requests.get(handle).ok_or_else(|| {
-                runtime_error(
-                    bn_diag::DiagId::STALE_HANDLE,
-                    "BNWeb.Request handle is not live",
-                    span,
-                )
-            })?;
-            match method {
-                "Method" => {
-                    require_arity(name, arguments, 1, span)?;
-                    Ok(Value::String(request.method().into()))
-                }
-                "Target" => {
-                    require_arity(name, arguments, 1, span)?;
-                    Ok(Value::String(request.target().into()))
-                }
-                "Headers" | "Query" => {
-                    require_arity(name, arguments, 2, span)?;
-                    let Value::String(key) = &arguments[1] else {
-                        return Err(type_mismatch(
-                            "STRING",
-                            "non-STRING value",
-                            "BNWeb.Request collection name",
-                            span,
-                        ));
-                    };
-                    let values = if method == "Headers" {
-                        request.header(key).map(|values| {
-                            (0..values.count())
-                                .filter_map(|index| values.get(index).map(str::to_owned))
-                                .collect::<Vec<_>>()
-                        })
-                    } else {
-                        request.query(key).map(|values| {
-                            (0..values.count())
-                                .filter_map(|index| values.get(index).map(str::to_owned))
-                                .collect::<Vec<_>>()
-                        })
-                    };
-                    let values = match values {
-                        Ok(values) => values,
-                        Err(message) => {
-                            return Ok(failed(name, &WebFailure::from_message(message)));
-                        }
-                    };
-                    let class = if method == "Headers" {
-                        "BNWeb.HeaderValues"
-                    } else {
-                        "BNWeb.QueryValues"
-                    };
-                    let object = core.allocate_object(class, span)?;
-                    let Value::Object { handle, .. } = object else {
-                        unreachable!("allocate_object returns object")
-                    };
-                    self.values.insert(handle, values);
-                    Ok(Value::Object {
-                        handle,
-                        class: class.into(),
-                    })
-                }
-                "Body" => {
-                    require_arity(name, arguments, 2, span)?;
-                    let maximum = integer(&arguments[1], span)?.0;
-                    Ok(request.body(maximum).map_or_else(
-                        |message| failed(name, &WebFailure::from_message(message)),
-                        |body| Value::String(body.into()),
-                    ))
-                }
-                "PeerAddress" => {
-                    require_arity(name, arguments, 1, span)?;
-                    Ok(address_value(request.peer_address()))
-                }
-                "EffectiveClientAddress" => {
-                    require_arity(name, arguments, 1, span)?;
-                    Ok(address_value(request.effective_client_address(false)))
-                }
-                _ => Ok(failed(name, &WebFailure::ProviderUnavailable("BNWeb"))),
-            }
-        } else {
-            Err(runtime_error(
-                bn_diag::DiagId::HOST_CAPABILITY_UNAVAILABLE,
-                format!("web function '{name}' is not available"),
-                span,
-            ))
-        }
-    }
-
-    fn web_response_call(
-        &mut self,
-        _core: &mut dyn CoreContext,
-        name: &str,
-        arguments: &[Value],
-        span: Span,
-    ) -> Result<Value, Diagnostic> {
-        let method = name.rsplit('.').next().unwrap_or_default();
-        if name.contains(".Response.") {
-            if method == "CONSTRUCTOR" {
-                let Some(Value::Object { handle, .. }) = arguments.first() else {
-                    return Err(type_mismatch(
-                        "BNWeb.Response",
-                        "non-object value",
-                        "BNWeb.Response constructor receiver",
-                        span,
-                    ));
-                };
-                self.responses.insert(*handle, crate::web::Response::new());
-                return Ok(Value::Null);
-            }
-            let Some(Value::Object { handle, .. }) = arguments.first() else {
-                return Err(type_mismatch(
-                    "BNWeb.Response",
-                    "non-object value",
-                    "BNWeb.Response operation receiver",
-                    span,
-                ));
-            };
-            let response = self.responses.get_mut(handle).ok_or_else(|| {
-                runtime_error(
-                    bn_diag::DiagId::STALE_HANDLE,
-                    "BNWeb.Response handle is not live",
-                    span,
-                )
-            })?;
-            match method {
-                "Status" => {
-                    require_arity(name, arguments, 1, span)?;
-                    Ok(Value::Integer(
-                        i128::from(response.status),
-                        IntegerType::Int32,
-                    ))
-                }
-                "SetStatus" => {
-                    require_arity(name, arguments, 2, span)?;
-                    let status = integer(&arguments[1], span)?.0;
-                    let Ok(status) = u16::try_from(status) else {
-                        return Ok(failed(name, &WebFailure::InvalidStatus(status)));
-                    };
-                    Ok(response.set_status(status).map_or_else(
-                        |message| failed(name, &WebFailure::from_message(message)),
-                        |()| Value::Null,
-                    ))
-                }
-                "SetHeader" => {
-                    require_arity(name, arguments, 3, span)?;
-                    let (Value::String(key), Value::String(value)) = (&arguments[1], &arguments[2])
-                    else {
-                        return Err(type_mismatch(
-                            "STRING, STRING",
-                            "non-STRING header name/value",
-                            "BNWeb.Response.SetHeader",
-                            span,
-                        ));
-                    };
-                    Ok(response.set_header(key, value).map_or_else(
-                        |message| failed(name, &WebFailure::from_message(message)),
-                        |()| Value::Null,
-                    ))
-                }
-                "Header" => {
-                    require_arity(name, arguments, 2, span)?;
-                    let Value::String(key) = &arguments[1] else {
-                        return Err(type_mismatch(
-                            "STRING",
-                            "non-STRING value",
-                            "BNWeb.Response.Header name",
-                            span,
-                        ));
-                    };
-                    response
-                        .headers
-                        .iter()
-                        .find(|(name, _)| name.eq_ignore_ascii_case(key))
-                        .map(|(_, value)| Value::String(shared_string(value.as_str())))
-                        .ok_or_else(|| {
-                            runtime_error(
-                                bn_diag::DiagId::HEADER_NOT_FOUND,
-                                "response header is not present",
-                                span,
-                            )
-                        })
-                }
-                "Write" => {
-                    require_arity(name, arguments, 2, span)?;
-                    let Value::String(body) = &arguments[1] else {
-                        return Err(type_mismatch(
-                            "STRING",
-                            "non-STRING value",
-                            "BNWeb.Response.Write body",
-                            span,
-                        ));
-                    };
-                    Ok(response.write(body).map_or_else(
-                        |message| failed(name, &WebFailure::from_message(message)),
-                        |()| Value::Null,
-                    ))
-                }
-                "Commit" => {
-                    require_arity(name, arguments, 1, span)?;
-                    Ok(response.commit().map_or_else(
-                        |message| failed(name, &WebFailure::from_message(message)),
-                        |()| Value::Null,
-                    ))
-                }
-                "IsCommitted" => {
-                    require_arity(name, arguments, 1, span)?;
-                    Ok(Value::Boolean(response.is_committed()))
-                }
-                "Close" => {
-                    require_arity(name, arguments, 1, span)?;
-                    response.close();
-                    Ok(Value::Null)
-                }
-                _ => Ok(failed(name, &WebFailure::ProviderUnavailable("BNWeb"))),
-            }
-        } else {
-            Err(runtime_error(
-                bn_diag::DiagId::HOST_CAPABILITY_UNAVAILABLE,
-                format!("web function '{name}' is not available"),
-                span,
-            ))
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::drain_server;
-    use crate::web::ServerState;
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{Arc, Mutex};
-    use std::time::Instant;
-
-    #[test]
-    fn drain_server_times_out_without_holding_the_state_lock() {
-        let state = Arc::new(Mutex::new(ServerState::new()));
-        let release = Arc::new(AtomicBool::new(false));
-        {
-            let mut server = state.lock().unwrap();
-            server.start().unwrap();
-            server.admit_connection().unwrap();
-        }
-        let worker_release = release.clone();
-        let worker = std::thread::spawn(move || {
-            while !worker_release.load(Ordering::Acquire) {
-                std::thread::yield_now();
-            }
-        });
-        {
-            let mut server = state.lock().unwrap();
-            server.track_connection_worker(worker);
-        }
-        let started = Instant::now();
-        assert_eq!(
-            drain_server(&state, 1, false),
-            Err("server drain timed out with active connections")
-        );
-        assert!(started.elapsed() < std::time::Duration::from_secs(1));
-
-        release.store(true, Ordering::Release);
-        state.lock().unwrap().release_connection();
-        loop {
-            let finished = {
-                let mut server = state.lock().unwrap();
-                server.reap_finished_workers();
-                server.tracked_worker_count() == 0
-            };
-            if finished {
-                break;
-            }
-            std::thread::yield_now();
-        }
-    }
-
-    #[test]
-    fn drain_server_bounds_listener_join_at_the_minimum_timeout() {
-        let state = Arc::new(Mutex::new(ServerState::new()));
-        let release = Arc::new(AtomicBool::new(false));
-        let listener_release = release.clone();
-        let listener = std::thread::spawn(move || {
-            while !listener_release.load(Ordering::Acquire) {
-                std::thread::yield_now();
-            }
-        });
-        state.lock().unwrap().install_listener(listener).unwrap();
-
-        assert_eq!(
-            drain_server(&state, 1, false),
-            Err("server listener join timed out")
-        );
-        release.store(true, Ordering::Release);
-        drain_server(&state, 1000, false).unwrap();
-    }
-
     #[test]
     fn module_constants_match_the_runtime_codes() {
         let module = include_str!("../../../modules/bn/BNWeb.bn");

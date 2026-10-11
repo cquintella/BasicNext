@@ -1,0 +1,67 @@
+// A vector literal with a declared destination checks each element against
+// the declared element type and takes it (0.6.md, "Vector literals take a
+// declared destination"): in a LET initializer, a field initializer, an
+// argument, a RETURN value and an assignment, for objects of classes that
+// reach an interface or a base class, and for literals that fit a narrower or
+// wider numeric type. Rows: vector-literal-declared-destination-rows.bn.
+INTERFACE Listener
+    FUNCTION Notify(event AS STRING) AS VOID
+END INTERFACE
+
+CLASS Printer IMPLEMENTS Listener
+    PROTECTED name AS STRING
+
+    PUBLIC FUNCTION CONSTRUCTOR(name AS STRING)
+        SELF.name = name
+    END FUNCTION
+
+    PUBLIC FUNCTION Notify(event AS STRING) AS VOID
+        PRINT SELF.name + " got " + event
+    END FUNCTION
+END CLASS
+
+CLASS LoudPrinter EXTENDS Printer
+    PUBLIC FUNCTION CONSTRUCTOR(name AS STRING)
+        SUPER(name)
+    END FUNCTION
+
+    PUBLIC OVERRIDE FUNCTION Notify(event AS STRING) AS VOID
+        PRINT TOUPPER(SELF.name + " got " + event)
+    END FUNCTION
+END CLASS
+
+CLASS Hub
+    PUBLIC listeners AS Listener[2] = [NEW LoudPrinter("field"), NEW Printer("field")]
+
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+FUNCTION NotifyAll(listeners AS Listener[2], event AS STRING) AS VOID
+    FOR i AS INT32 = 0 TO 1
+        listeners[i].Notify(event)
+    END FOR
+END FUNCTION
+
+FUNCTION Pair() AS Printer[2]
+    RETURN [NEW LoudPrinter("returned"), NEW Printer("returned")]
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET listeners AS Listener[2] = [NEW Printer("a"), NEW LoudPrinter("b")]
+    NotifyAll(listeners, "bound")
+    listeners = [NEW LoudPrinter("c"), NEW Printer("d")]
+    NotifyAll(listeners, "assigned")
+    NotifyAll([NEW Printer("e"), NEW LoudPrinter("f")], "passed")
+    LET printers AS Printer[2] = Pair()
+    printers[0].Notify("read")
+    printers[1].Notify("read")
+    LET hub AS Hub = NEW Hub()
+    NotifyAll(hub.listeners, "stored")
+    LET wide AS INT64[2] = [1, 3000000000]
+    PRINT wide[0] + wide[1]
+    LET narrow AS INT8[3] = [1, -2, 127]
+    PRINT narrow[2]
+    LET single AS FLOAT32[2] = [1.5, 2.25]
+    PRINT single[0] + single[1]
+END FUNCTION

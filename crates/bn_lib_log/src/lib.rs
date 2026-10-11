@@ -10,9 +10,9 @@
 
 use std::collections::HashMap;
 
-use bn_core_log::{FileTransport, Level, dispatch_log};
+use bn_core_log::LogFailure;
+use bn_core_log::{FileTransport, Level};
 use bn_diag::Diagnostic;
-use bn_rt::log_error::LogFailure;
 use bn_source::Span;
 use bn_value::{Value, shared_string};
 
@@ -24,14 +24,18 @@ use bn_interp::{
 
 pub const NAME: &str = "BNLog";
 
-#[derive(Clone, Debug)]
-struct LogLoggerResource {
-    label: String,
-    context: std::collections::BTreeMap<String, String>,
-    null_transports: Vec<Level>,
-    console_transports: Vec<Level>,
-    file_transports: Vec<FileTransport>,
-    closed: bool,
+/// A logger shared with other libraries (the `BNWeb` access log writes
+/// through the same logger as the program).
+pub type SharedLogger = std::sync::Arc<std::sync::Mutex<bn_core_log::Logger>>;
+
+fn lock(logger: &SharedLogger) -> std::sync::MutexGuard<'_, bn_core_log::Logger> {
+    logger
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn shared(logger: bn_core_log::Logger) -> SharedLogger {
+    std::sync::Arc::new(std::sync::Mutex::new(logger))
 }
 
 #[derive(Debug)]
@@ -40,7 +44,7 @@ pub struct LogProvider {
     next_fields: u64,
     entries: HashMap<u64, HashMap<String, String>>,
     next_entry: u64,
-    loggers: HashMap<u64, LogLoggerResource>,
+    loggers: HashMap<u64, SharedLogger>,
     next_logger: u64,
 }
 
@@ -58,6 +62,10 @@ impl Default for LogProvider {
 }
 
 impl Provider for LogProvider {
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
+
     fn call(
         &mut self,
         core: &mut dyn CoreContext,
@@ -101,17 +109,8 @@ impl Provider for LogProvider {
             "Logger" => {
                 let id = self.next_logger;
                 self.next_logger += 1;
-                self.loggers.insert(
-                    id,
-                    LogLoggerResource {
-                        label: String::new(),
-                        context: std::collections::BTreeMap::new(),
-                        null_transports: Vec::new(),
-                        console_transports: Vec::new(),
-                        file_transports: Vec::new(),
-                        closed: false,
-                    },
-                );
+                self.loggers
+                    .insert(id, shared(bn_core_log::Logger::default()));
                 Some(Ok(Value::LogLogger(id)))
             }
             _ => None,
@@ -139,6 +138,14 @@ impl Provider for LogProvider {
 
 #[allow(clippy::too_many_lines)] // One arm per BNLog member, as the library contract lists them.
 impl LogProvider {
+    /// The logger behind the `BNLog.Logger` handle `id`, shared with the
+    /// library that keeps it (the `BNWeb` server writes its access records
+    /// through it).
+    #[must_use]
+    pub fn core_logger(&self, id: u64) -> Option<SharedLogger> {
+        self.loggers.get(&id).map(std::sync::Arc::clone)
+    }
+
     fn log_fields_call(
         &mut self,
         _core: &mut dyn CoreContext,
@@ -388,17 +395,8 @@ impl LogProvider {
             }
             let id = self.next_logger;
             self.next_logger += 1;
-            self.loggers.insert(
-                id,
-                LogLoggerResource {
-                    label: label.to_string(),
-                    context: std::collections::BTreeMap::new(),
-                    null_transports: Vec::new(),
-                    console_transports: Vec::new(),
-                    file_transports: Vec::new(),
-                    closed: false,
-                },
-            );
+            self.loggers
+                .insert(id, shared(bn_core_log::Logger::new(label)));
             return Ok(Value::LogLogger(id));
         }
         let Value::LogLogger(id) = arguments.first().ok_or_else(|| {
@@ -437,16 +435,15 @@ impl LogProvider {
             let parent = self
                 .loggers
                 .get(id)
+                .map(|parent| lock(parent).clone())
                 .ok_or_else(|| {
                     runtime_error(
                         bn_diag::DiagId::USE_AFTER_RELEASE,
                         "BNLog.Logger is invalid",
                         span,
                     )
-                })?
-                .clone();
-            let mut context = parent.context;
-            context.extend(
+                })?;
+            let child = parent.child(
                 self.fields
                     .get(&fields_id)
                     .ok_or_else(|| {
@@ -461,26 +458,20 @@ impl LogProvider {
             );
             let child_id = self.next_logger;
             self.next_logger += 1;
-            self.loggers.insert(
-                child_id,
-                LogLoggerResource {
-                    label: parent.label,
-                    context,
-                    null_transports: parent.null_transports,
-                    console_transports: parent.console_transports,
-                    file_transports: parent.file_transports,
-                    closed: false,
-                },
-            );
+            self.loggers.insert(child_id, shared(child));
             return Ok(Value::LogLogger(child_id));
         }
-        let logger = self.loggers.get(id).cloned().ok_or_else(|| {
-            runtime_error(
-                bn_diag::DiagId::USE_AFTER_RELEASE,
-                "BNLog.Logger is invalid",
-                span,
-            )
-        })?;
+        let logger = self
+            .loggers
+            .get(id)
+            .map(|logger| lock(logger).clone())
+            .ok_or_else(|| {
+                runtime_error(
+                    bn_diag::DiagId::USE_AFTER_RELEASE,
+                    "BNLog.Logger is invalid",
+                    span,
+                )
+            })?;
         if method == "CONSTRUCTOR" {
             return Ok(Value::Null);
         }
@@ -502,11 +493,7 @@ impl LogProvider {
                         },
                     ));
                 }
-                if logger.null_transports.len()
-                    + logger.console_transports.len()
-                    + logger.file_transports.len()
-                    >= 8
-                {
+                if logger.transport_count() >= bn_core_log::MAX_TRANSPORTS {
                     return Ok(failed(
                         name,
                         &LogFailure::LimitExceeded {
@@ -517,9 +504,7 @@ impl LogProvider {
                     ));
                 }
                 let minimum_level = Level::from_i128(minimum).expect("minimum was validated");
-                self.loggers
-                    .get_mut(id)
-                    .expect("logger was checked above")
+                lock(self.loggers.get(id).expect("logger was checked above"))
                     .null_transports
                     .push(minimum_level);
                 Ok(Value::Null)
@@ -544,11 +529,7 @@ impl LogProvider {
                         },
                     ));
                 }
-                if logger.null_transports.len()
-                    + logger.console_transports.len()
-                    + logger.file_transports.len()
-                    >= 8
-                {
+                if logger.transport_count() >= bn_core_log::MAX_TRANSPORTS {
                     return Ok(failed(
                         name,
                         &LogFailure::LimitExceeded {
@@ -559,9 +540,7 @@ impl LogProvider {
                     ));
                 }
                 let minimum_level = Level::from_i128(minimum).expect("minimum was validated");
-                self.loggers
-                    .get_mut(id)
-                    .expect("logger was checked above")
+                lock(self.loggers.get(id).expect("logger was checked above"))
                     .console_transports
                     .push(minimum_level);
                 Ok(Value::Null)
@@ -619,11 +598,7 @@ impl LogProvider {
                         },
                     ));
                 }
-                if logger.null_transports.len()
-                    + logger.console_transports.len()
-                    + logger.file_transports.len()
-                    >= 8
-                {
+                if logger.transport_count() >= bn_core_log::MAX_TRANSPORTS {
                     return Ok(failed(
                         name,
                         &LogFailure::LimitExceeded {
@@ -634,14 +609,28 @@ impl LogProvider {
                     ));
                 }
                 let minimum_level = Level::from_i128(minimum).expect("minimum was validated");
-                self.loggers
-                    .get_mut(id)
-                    .expect("logger was checked above")
+                lock(self.loggers.get(id).expect("logger was checked above"))
                     .file_transports
                     .push(FileTransport {
                         path: path.to_string(),
                         minimum: minimum_level,
                     });
+                Ok(Value::Null)
+            }
+            "SetFormat" => {
+                require_arity(name, arguments, 2, span)?;
+                let Value::String(text) = &arguments[1] else {
+                    return Err(type_mismatch(
+                        "STRING",
+                        "non-STRING value",
+                        bn_catalog::text("bnlog", "context.set_format.format"),
+                        span,
+                    ));
+                };
+                let Some(format) = bn_core_log::Format::from_name(text) else {
+                    return Ok(failed(name, &LogFailure::InvalidFormat(text.to_string())));
+                };
+                lock(self.loggers.get(id).expect("logger was checked above")).format = format;
                 Ok(Value::Null)
             }
             "Log" => {
@@ -697,54 +686,10 @@ impl LogProvider {
                 let Some(level) = Level::from_i128(level) else {
                     unreachable!("level was validated above")
                 };
-                let record = bn_core_log::Record::with_timestamp(
-                    bn_rt::format_rfc3339(bn_rt::timestamp_ms()),
-                    &logger.label,
-                    level,
-                    message,
-                    &logger.context,
-                    provided,
-                );
-                let json_line = match record.json_line() {
-                    Ok(line) => line,
-                    Err(error) => {
-                        return Ok(failed(
-                            name,
-                            &LogFailure::RecordSerialization(error.to_string()),
-                        ));
-                    }
-                };
-                let (console_transports, file_transports) =
-                    (&logger.console_transports, &logger.file_transports);
-                let console_out = core.output();
-                let mut first_error = None;
-                for minimum in console_transports {
-                    if level <= *minimum
-                        && let Err(err) = writeln!(console_out, "{json_line}")
-                    {
-                        first_error.get_or_insert_with(|| err.to_string());
-                    }
-                }
-                let dispatch_res = dispatch_log(
-                    &json_line,
-                    level,
-                    &[],
-                    file_transports,
-                    |_| Ok(()),
-                    &|path| {
-                        core.host()
-                            .filesystem()
-                            .open(path, bn_rt::secure_fs::OpenMode::Append)
-                            .map(|file| Box::new(file) as Box<dyn std::io::Write>)
-                    },
-                );
-                if let Some(err) = first_error {
-                    return Ok(failed(name, &LogFailure::IoFailed(err)));
-                }
-                if let Err(failure) = dispatch_res {
-                    return Ok(failed(name, &failure));
-                }
-                Ok(Value::Null)
+                let sink = CoreSink(std::cell::RefCell::new(core));
+                Ok(logger
+                    .write(&sink, level, message, provided)
+                    .map_or_else(|failure| failed(name, &failure), |()| Value::Null))
             }
             "Flush" | "Close" => {
                 require_arity(name, arguments, 2, span)?;
@@ -783,10 +728,7 @@ impl LogProvider {
                     return Ok(failed(name, &LogFailure::IoFailed(error)));
                 }
                 if method == "Close" {
-                    self.loggers
-                        .get_mut(id)
-                        .expect("logger was checked above")
-                        .closed = true;
+                    lock(self.loggers.get(id).expect("logger was checked above")).closed = true;
                 }
                 Ok(Value::Null)
             }
@@ -810,6 +752,27 @@ fn failed(name: &str, failure: &LogFailure) -> Value {
         failure.message(),
         failure.cause(),
     )
+}
+
+/// Where a `Logger.Log` called by the program writes: the program output and
+/// the host filesystem policy of the interpreter.
+struct CoreSink<'a>(std::cell::RefCell<&'a mut dyn CoreContext>);
+
+impl bn_core_log::LogSink for CoreSink<'_> {
+    fn timestamp(&self) -> String {
+        bn_rt::format_rfc3339(bn_rt::timestamp_ms())
+    }
+    fn console(&self, line: &str) -> std::io::Result<()> {
+        writeln!(self.0.borrow_mut().output(), "{line}")
+    }
+    fn open_append(&self, path: &std::path::Path) -> std::io::Result<Box<dyn std::io::Write>> {
+        self.0
+            .borrow()
+            .host()
+            .filesystem()
+            .open(path, bn_rt::secure_fs::OpenMode::Append)
+            .map(|file| Box::new(file) as Box<dyn std::io::Write>)
+    }
 }
 
 #[cfg(test)]

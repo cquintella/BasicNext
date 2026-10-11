@@ -27,6 +27,12 @@ pub(crate) fn lower_cast(
     target_ty: &Type,
     state: &mut EmissionState,
 ) {
+    // An absence (`NULL`, `NA`, `EOF`) is FALSE as BOOLEAN, as in the
+    // interpreter (T.K9).
+    if matches!(source_ty, Type::Null | Type::NotAvailable | Type::EndOfFile) {
+        super::emission3::emit_boolean_assignment(text, destination, false);
+        return;
+    }
     if *target_ty == Type::String && *source_ty != Type::String {
         emit_to_string(text, destination, value, source_ty);
         return;
@@ -283,8 +289,10 @@ pub(crate) fn cast_supported(source: Option<&Type>, target: &Type) -> bool {
                 | Type::FloatLiteral
                 | Type::Boolean,
             Type::String
-        ) | (Type::Boolean, Type::Boolean)
-            | (Type::String, Type::Boolean | Type::String)
+        ) | (
+            Type::Boolean | Type::Null | Type::NotAvailable | Type::EndOfFile,
+            Type::Boolean
+        ) | (Type::String, Type::Boolean | Type::String)
     )
 }
 

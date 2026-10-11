@@ -74,7 +74,15 @@ pub(crate) fn narrows(stored: &Type, loaded: &Type) -> bool {
         Type::String | Type::Integer(_) | Type::Boolean | Type::Float(_)
     ) && llvm_type(stored) == Some("{ i1, ptr, i64 }")
         && matches!(stored, Type::Alternative(alternatives) if alternatives.contains(loaded));
-    from_payload || narrows_to_error(stored, loaded)
+    from_payload || narrows_to_error(stored, loaded) || narrows_to_endpoint(stored, loaded)
+}
+
+/// `HOST.Net.Endpoint` narrowed out of `Endpoint OR Error` (`{ i1, ptr, i32 }`):
+/// the address and port fields (known issue K36).
+fn narrows_to_endpoint(stored: &Type, loaded: &Type) -> bool {
+    llvm_type(stored) == Some("{ i1, ptr, i32 }")
+        && llvm_type(loaded) == Some("{ ptr, i32 }")
+        && matches!(stored, Type::Alternative(alternatives) if alternatives.contains(loaded))
 }
 
 /// An `Error` narrowed out of an alternative whose layout is not the
@@ -138,6 +146,32 @@ pub(crate) fn emit_narrowed_load(
     }
     let union = T::struct_of([T::I1, T::Ptr, T::I64]);
     let reg = |name: &str| O::reg(format!("{name}{dest}"));
+    if stored.is_some_and(|stored| narrows_to_endpoint(stored, loaded)) {
+        let status = T::struct_of([T::I1, T::Ptr, T::I32]);
+        text.assign(
+            format!("narrowload{dest}"),
+            I::load(status.clone(), O::reg(format!("s{slot}"))),
+        );
+        text.assign(
+            format!("narrowaddress{dest}"),
+            I::extract(status.clone(), reg("narrowload"), 1),
+        );
+        text.assign(
+            format!("narrowport{dest}"),
+            I::extract(status, reg("narrowload"), 2),
+        );
+        let head = I::insert(vector_ty(), O::undef(), T::Ptr, reg("narrowaddress"), 0);
+        text.assign(format!("narrowendpoint{dest}"), head);
+        let endpoint = I::insert(
+            vector_ty(),
+            reg("narrowendpoint"),
+            T::I32,
+            reg("narrowport"),
+            1,
+        );
+        text.assign(format!("v{dest}"), endpoint);
+        return;
+    }
     if let Some(stored) = stored.filter(|stored| narrows_to_error(stored, loaded)) {
         let layout = typed_llvm(llvm_type(stored).expect("validated error layout"));
         text.assign(
@@ -366,6 +400,34 @@ pub(crate) fn construct(
             (scalar || *from == Type::String || string_or_eof)
                 .then(|| wrap_success(text, value, from, from_llvm))
         }
+        // An `Error` into `Endpoint OR Error` or `Addresses OR Error`: the
+        // error flag and the runtime record, which carries the code (the
+        // inverse of the narrowing in `narrow_member`; known issue K36).
+        layout @ (AlternativeLayout::StatusEndpoint | AlternativeLayout::StatusPointer)
+            if is_error_type(from) =>
+        {
+            let name = format!("errwiden{v}_{}", text.len());
+            let record = O::reg(format!("{name}_record"));
+            text.assign(
+                format!("{name}_record"),
+                I::extract(handle_result_ty(), operand, 1),
+            );
+            let ty = typed_llvm(layout.llvm());
+            let flag = I::insert(ty.clone(), O::undef(), T::I1, O::bool(true), 0);
+            text.assign(format!("{name}_flag"), flag);
+            let flagged = O::reg(format!("{name}_flag"));
+            if layout == AlternativeLayout::StatusPointer {
+                text.assign(&name, I::insert(ty, flagged, T::Ptr, record, 1));
+            } else {
+                text.assign(
+                    format!("{name}_ptr"),
+                    I::insert(ty.clone(), flagged, T::Ptr, record, 1),
+                );
+                let with_record = O::reg(format!("{name}_ptr"));
+                text.assign(&name, I::insert(ty, with_record, T::I32, O::int(0), 2));
+            }
+            Some(format!("%{name}"))
+        }
         _ => None,
     }
 }
@@ -437,83 +499,4 @@ fn wrap_success(text: &mut String, value: ValueId, from: &Type, from_llvm: &str)
     let full = I::insert(union, O::reg(format!("wrapptr{v}")), T::I64, payload, 2);
     text.assign(format!("wrap{v}"), full);
     format!("%wrap{v}")
-}
-
-/// Reads `member` out of `operand`, a value of the alternative `from` that an
-/// `IS` (or the last store) proved holds it: the one extraction helper.
-/// Registers are `%{name}_…` and the result is `%{name}`. `None` when the
-/// layout of `from` has no such member to read.
-#[allow(dead_code)]
-pub(crate) fn extract_member(
-    text: &mut String,
-    name: &str,
-    operand: &O,
-    from: &Type,
-    member: &Type,
-) -> Option<O> {
-    let Type::Alternative(members) = from else {
-        return None;
-    };
-    let layout = AlternativeLayout::of(members)?;
-    let r = |suffix: &str| O::reg(format!("{name}_{suffix}"));
-    let field = |text: &mut String, suffix: &str, ty: T, index| {
-        text.assign(
-            format!("{name}_{suffix}"),
-            I::extract(ty, operand.clone(), index),
-        );
-    };
-    match layout {
-        AlternativeLayout::General => general_alternative::extract(text, name, operand, member),
-        AlternativeLayout::Status if *member == Type::String => {
-            text.assign(name, I::extract(handle_result_ty(), operand.clone(), 1));
-        }
-        AlternativeLayout::Status
-            if matches!(member, Type::Integer(_) | Type::Boolean | Type::Float(_)) =>
-        {
-            field(text, "payload", handle_result_ty(), 2);
-            let payload = r("payload");
-            let value = match (member, llvm_type(member)) {
-                (Type::Boolean, _) => I::icmp(ICmpCond::Ne, T::I64, payload, O::int(0)),
-                (Type::Float(FloatType::Float64), _) => {
-                    I::cast(CastOp::BitCast, T::I64, payload, T::Double)
-                }
-                (Type::Float(FloatType::Float32), _) => {
-                    let double = I::cast(CastOp::BitCast, T::I64, payload, T::Double);
-                    text.assign(format!("{name}_double"), double);
-                    I::cast(CastOp::FPTrunc, T::Double, r("double"), T::Float)
-                }
-                (_, Some("i64")) => I::binary(BinaryOp::Add, T::I64, O::int(0), payload),
-                (_, Some(width)) => I::cast(CastOp::Trunc, T::I64, payload, typed_llvm(width)),
-                (_, None) => unreachable!("validated narrowed type"),
-            };
-            text.assign(name, value);
-        }
-        // `Error` out of a layout that is not the `Error` layout: the pointer
-        // is the runtime record, which carries the code.
-        AlternativeLayout::StatusPointer | AlternativeLayout::StatusEndpoint
-            if is_error_type(member) =>
-        {
-            field(text, "record", typed_llvm(layout.llvm()), 1);
-            let record = vec![(T::Ptr, r("record"))];
-            text.assign(
-                format!("{name}_code"),
-                I::call(T::I64, "bn_rt_error_code", record),
-            );
-            emit_status(text, name, O::bool(true), r("record"), r("code"));
-        }
-        // `HOST.Net.Endpoint` out of `Endpoint OR Error`: address and port.
-        AlternativeLayout::StatusEndpoint if llvm_type(member) == Some("{ ptr, i32 }") => {
-            let endpoint = typed_llvm(layout.llvm());
-            field(text, "address", endpoint.clone(), 1);
-            field(text, "port", endpoint, 2);
-            let head = I::insert(vector_ty(), O::undef(), T::Ptr, r("address"), 0);
-            text.assign(format!("{name}_head"), head);
-            text.assign(
-                name,
-                I::insert(vector_ty(), r("head"), T::I32, r("port"), 1),
-            );
-        }
-        _ => return None,
-    }
-    Some(O::reg(name))
 }

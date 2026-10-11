@@ -9,7 +9,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 use crate::ir::{BinaryOp, CastOp, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
-use crate::layout::{typed_llvm, vector_ty};
+use crate::layout::typed_llvm;
 
 /// Emits `%v<destination> = load` of `symbol` as `ty`; `checked` traps a
 /// use of a binding a `RELEASE` ended (a `Take` reads it unchecked).
@@ -83,24 +83,6 @@ pub(crate) fn lower_load(
         }
     } else if narrows(slot_ty, dest_ty) {
         emit_narrowed_load(text, *destination, symbols[symbol], Some(slot_ty), dest_ty);
-    } else if slot_llvm != dest_llvm
-        && slot_llvm == "{ i1, ptr, i32 }"
-        && dest_llvm == "{ ptr, i32 }"
-    {
-        let endpoint = T::struct_of([T::I1, T::Ptr, T::I32]);
-        text.assign(format!("netload{dest}"), I::load(endpoint.clone(), slot));
-        text.assign(
-            format!("netloadp{dest}"),
-            I::extract(endpoint.clone(), r("netload"), 1),
-        );
-        text.assign(
-            format!("netloadport{dest}"),
-            I::extract(endpoint, r("netload"), 2),
-        );
-        let head = I::insert(vector_ty(), O::undef(), T::Ptr, r("netloadp"), 0);
-        text.assign(format!("netloadagg{dest}"), head);
-        let full = I::insert(vector_ty(), r("netloadagg"), T::I32, r("netloadport"), 1);
-        text.assign(own, full);
     } else if slot_llvm != dest_llvm
         && matches!(slot_llvm, "i8" | "i16" | "i32" | "i64")
         && matches!(dest_llvm, "i8" | "i16" | "i32" | "i64")

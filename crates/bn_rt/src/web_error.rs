@@ -31,6 +31,8 @@ pub enum WebFailure {
     InvalidSameSite,
     /// `SameSite=None` requires Secure cookie attribute.
     SameSiteNoneRequiresSecure,
+    /// A `Secure` cookie set on a response that did not arrive over TLS.
+    SecureCookieOverCleartext,
     /// Session idle timeout is invalid (<= 0 or > 30 minutes).
     InvalidSessionIdleTimeout,
     /// Session store capacity is invalid (0 or > 10,000).
@@ -57,6 +59,18 @@ pub enum WebFailure {
     NotFound(String),
     /// Cookie not found in jar.
     CookieNotFound,
+    /// The matched route has no such `:name` parameter.
+    RouteParameterNotFound,
+    /// The request carries no cookie with that name.
+    RequestCookieNotFound,
+    /// `Request.Session` on a server without `UseSessions`.
+    SessionsNotEnabled,
+    /// `Session.Get` or `Remove` of a key the session does not hold.
+    SessionKeyNotFound,
+    /// A session key outside 1..128 bytes or a value past 4096 bytes.
+    InvalidSessionEntry,
+    /// A session already holds 64 keys.
+    SessionKeyLimit,
     /// Session identifier not found or expired.
     SessionNotFound,
     /// Header not found in response.
@@ -153,6 +167,7 @@ impl WebFailure {
             | Self::NegativeCookieAge
             | Self::InvalidSameSite
             | Self::SameSiteNoneRequiresSecure
+            | Self::SecureCookieOverCleartext
             | Self::InvalidSessionIdleTimeout
             | Self::InvalidSessionCapacity
             | Self::FilterMustBeFunction
@@ -162,11 +177,15 @@ impl WebFailure {
             | Self::UnsupportedSelector(_)
             | Self::MalformedHtml
             | Self::InvalidServerOptions
-            | Self::ServerAlreadyStarted => web::INVALID_ARGUMENT,
+            | Self::ServerAlreadyStarted
+            | Self::InvalidSessionEntry => web::INVALID_ARGUMENT,
 
             Self::NotFound(_)
             | Self::CookieNotFound
+            | Self::RouteParameterNotFound
+            | Self::RequestCookieNotFound
             | Self::SessionNotFound
+            | Self::SessionKeyNotFound
             | Self::HeaderNotFound(_)
             | Self::RouteNotFound(_)
             | Self::SelectorNoMatch => web::NOT_FOUND,
@@ -178,7 +197,8 @@ impl WebFailure {
             | Self::BodyLimitExceeded(_)
             | Self::RedirectLimitExceeded
             | Self::HeaderLimitExceeded
-            | Self::SessionValueTooLarge => web::LIMIT,
+            | Self::SessionValueTooLarge
+            | Self::SessionKeyLimit => web::LIMIT,
 
             Self::Closed(_)
             | Self::ServerNotAccepting
@@ -201,9 +221,10 @@ impl WebFailure {
             | Self::RequestDispatchFailed
             | Self::ListenerJoinFailed => web::HTTP_FAILED,
 
-            Self::Unavailable(_) | Self::ProviderUnavailable(_) | Self::ServerStateUnavailable => {
-                web::UNAVAILABLE
-            }
+            Self::Unavailable(_)
+            | Self::ProviderUnavailable(_)
+            | Self::ServerStateUnavailable
+            | Self::SessionsNotEnabled => web::UNAVAILABLE,
         }
     }
 
@@ -231,24 +252,43 @@ impl WebFailure {
             | Self::ConnectionFailed(reason)
             | Self::Unavailable(reason) => reason.clone(),
 
-            Self::UnsupportedMethod(m) => format!("unsupported HTTP method \"{m}\""),
+            Self::UnsupportedMethod(m) => {
+                bn_catalog::fill("web", "method.unsupported.message", &[("method", m)])
+            }
             Self::InvalidStatus(s) => {
                 format!("status {s} outside valid HTTP status range 100..599")
             }
             Self::NegativeCookieAge => "negative cookie age".into(),
             Self::InvalidSameSite => "invalid SameSite policy".into(),
             Self::SameSiteNoneRequiresSecure => "SameSite=None requires Secure".into(),
+            Self::SecureCookieOverCleartext => {
+                bn_catalog::text("web", "cookie.secure_cleartext.message").into()
+            }
             Self::InvalidSessionIdleTimeout => "invalid session idle timeout".into(),
             Self::InvalidSessionCapacity => "invalid session capacity".into(),
             Self::FilterMustBeFunction => "filter must be a FUNCTION".into(),
             Self::RouteHandlerMustBeFunction => "route handler must be a FUNCTION".into(),
             Self::InvalidCookieBounds => "invalid cookie bounds".into(),
-            Self::UnsupportedSelector(s) => format!("unsupported selector \"{s}\""),
+            Self::UnsupportedSelector(s) => {
+                bn_catalog::fill("web", "selector.unsupported.message", &[("selector", s)])
+            }
             Self::MalformedHtml => "malformed HTML".into(),
             Self::InvalidServerOptions => "invalid server options".into(),
             Self::ServerAlreadyStarted => "server is already started".into(),
 
             Self::CookieNotFound => "cookie not found".into(),
+            Self::RouteParameterNotFound => {
+                bn_catalog::text("web", "route.param_missing.message").into()
+            }
+            Self::RequestCookieNotFound => {
+                bn_catalog::text("web", "request.cookie_missing.message").into()
+            }
+            Self::SessionsNotEnabled => bn_catalog::text("web", "session.disabled.message").into(),
+            Self::SessionKeyNotFound => {
+                bn_catalog::text("web", "session.key_missing.message").into()
+            }
+            Self::InvalidSessionEntry => bn_catalog::text("web", "session.invalid_entry").into(),
+            Self::SessionKeyLimit => bn_catalog::text("web", "session.key_limit").into(),
             Self::SessionNotFound => "session not found".into(),
             Self::SelectorNoMatch => "selector did not match".into(),
 
@@ -282,6 +322,7 @@ impl WebFailure {
 
     /// `Error.Cause`: the violated rule or underlying cause.
     #[must_use]
+    #[allow(clippy::too_many_lines)] // One arm per failure, like `message`.
     pub fn cause(&self) -> String {
         match self {
             Self::InvalidArgument(reason)
@@ -313,6 +354,9 @@ impl WebFailure {
             Self::SameSiteNoneRequiresSecure => {
                 "SameSite=None cookies must also declare the Secure attribute".into()
             }
+            Self::SecureCookieOverCleartext => {
+                bn_catalog::text("web", "cookie.secure_cleartext.cause").into()
+            }
             Self::InvalidSessionIdleTimeout => {
                 "session idle timeout must be between 1 ms and 30 minutes".into()
             }
@@ -336,6 +380,18 @@ impl WebFailure {
             Self::CookieNotFound => {
                 "the cookie does not exist in this jar for the given path".into()
             }
+            Self::RouteParameterNotFound => {
+                bn_catalog::text("web", "route.param_missing.cause").into()
+            }
+            Self::RequestCookieNotFound => {
+                bn_catalog::text("web", "request.cookie_missing.cause").into()
+            }
+            Self::SessionsNotEnabled => bn_catalog::text("web", "session.disabled.cause").into(),
+            Self::SessionKeyNotFound => bn_catalog::text("web", "session.key_missing.cause").into(),
+            Self::InvalidSessionEntry => {
+                bn_catalog::text("web", "session.invalid_entry.cause").into()
+            }
+            Self::SessionKeyLimit => bn_catalog::text("web", "session.key_limit.cause").into(),
             Self::SessionNotFound => "the session does not exist or has expired".into(),
             Self::SelectorNoMatch => {
                 "the selector did not match any element in the HTML document".into()
@@ -408,12 +464,19 @@ impl WebFailure {
             "negative cookie age" => Self::NegativeCookieAge,
             "invalid SameSite policy" => Self::InvalidSameSite,
             "SameSite=None requires Secure" => Self::SameSiteNoneRequiresSecure,
+            "Secure cookies cannot be sent over cleartext HTTP" => Self::SecureCookieOverCleartext,
             "cookie not found" => Self::CookieNotFound,
-            "invalid cookie bounds" => Self::InvalidCookieBounds,
+            "invalid cookie bounds"
+            | "invalid cookie name"
+            | "invalid cookie value"
+            | "invalid cookie path"
+            | "invalid cookie domain" => Self::InvalidCookieBounds,
             "invalid session idle timeout" => Self::InvalidSessionIdleTimeout,
             "invalid session capacity" => Self::InvalidSessionCapacity,
             "session not found" => Self::SessionNotFound,
             "session value too large" => Self::SessionValueTooLarge,
+            m if m == bn_catalog::text("web", "session.invalid_entry") => Self::InvalidSessionEntry,
+            m if m == bn_catalog::text("web", "session.key_limit") => Self::SessionKeyLimit,
             "unsupported selector" => Self::UnsupportedSelector(message.into()),
             "selector did not match" => Self::SelectorNoMatch,
             "malformed HTML" => Self::MalformedHtml,

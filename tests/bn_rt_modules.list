@@ -19,10 +19,7 @@ file_error.rs
 file.rs
 json_error.rs
 json.rs
-log_error.rs
-log.rs
 math.rs
-net
 policy.rs
 secure_fs_windows.rs
 secure_fs.rs

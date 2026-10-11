@@ -71,7 +71,7 @@ FUNCTION Start() AS INTEGER
     LET copy AS POINTER TO BYTE[] = NEW BYTE[3]
     LET copied AS INTEGER OR Error = packet.CopyTo(copy, 3)
     IF copied IS INTEGER THEN
-        PRINT "received", packet.Size(), packet.Truncated(), copied, copy[0], copy[2]
+        PRINT "received", packet.Size(), packet.WasTruncated(), copied, copy[0], copy[2]
     END IF
     socket.Close()
     LET closed AS VOID OR Error = socket.Close()

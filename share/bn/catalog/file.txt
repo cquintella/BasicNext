@@ -1,0 +1,7 @@
+# file texts and contract names (bn_catalog; AGENTS.md "No hard-coded
+# messages"). One `key = value` per line; `{name}` is filled by the code.
+
+open.mode.message = cannot open "{path}" in mode {mode}
+open.purpose.message = cannot open "{path}" for {purpose}
+exists.message = cannot check whether "{path}" exists
+family.cause = the file is in {family} use; a file keeps the family of its first successful method until Close

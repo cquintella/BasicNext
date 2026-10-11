@@ -119,13 +119,6 @@ pub extern "C" fn bn_rt_arc_finish_destroy(id: u64) -> i32 {
     }
 }
 
-/// `1` while `id` names a live object (a weak binding reads it), else `0`.
-#[allow(unsafe_code)] // C ABI export.
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_arc_alive(id: u64) -> i32 {
-    i32::from(core().alive(ObjectId::from_bits(id)))
-}
-
 fn info_line(info: &ObjectInfo) -> String {
     format!("{}{} strong={}", info.class, info.id, info.strong)
 }
@@ -170,11 +163,14 @@ mod tests {
             "a weak binding reads the live object"
         );
         assert_ne!(id, 0);
-        assert_eq!(bn_rt_arc_alive(id), 1);
+        assert!(core().alive(ObjectId::from_bits(id)));
         assert_eq!(bn_rt_arc_retain(id, 1, 1), 0);
         assert_eq!(bn_rt_arc_release(id, 1, 1), 0);
         assert_eq!(bn_rt_arc_release(id, 1, 1), 1);
-        assert_eq!(bn_rt_arc_alive(id), 0, "a weak binding reads NULL");
+        assert!(
+            !core().alive(ObjectId::from_bits(id)),
+            "a weak binding reads NULL"
+        );
         assert!(bn_rt_arc_address(id).is_null(), "from the destructor on");
         assert_eq!(
             bn_rt_arc_release(id, 1, 1),
@@ -223,6 +219,6 @@ mod tests {
         });
         assert_eq!(last.into_inner(), 1, "destroyed once, by the last release");
         assert_eq!(bn_rt_arc_finish_destroy(id), 0);
-        assert_eq!(bn_rt_arc_alive(id), 0);
+        assert!(!core().alive(ObjectId::from_bits(id)));
     }
 }

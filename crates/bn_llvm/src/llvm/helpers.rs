@@ -446,28 +446,18 @@ pub(crate) fn parse_float_constant(value: &str) -> Option<f64> {
     }
 }
 
+/// LLVM reads a hexadecimal `float` constant in the 64-bit `double` encoding
+/// (`LangRef`, "Simple Constants"), so the special values have one spelling for
+/// both widths; a 32-bit pattern is rejected by clang (known issue K34).
 pub(crate) fn render_float(value: f64, ty: &Type) -> String {
-    let is_float32 = matches!(ty, Type::Float(FloatType::Float32));
     if value.is_nan() {
-        return if is_float32 {
-            "0x7FC00000".into()
-        } else {
-            "0x7FF8000000000000".into()
-        };
+        return "0x7FF8000000000000".into();
     }
     if value == f64::INFINITY {
-        return if is_float32 {
-            "0x7F800000".into()
-        } else {
-            "0x7FF0000000000000".into()
-        };
+        return "0x7FF0000000000000".into();
     }
     if value == f64::NEG_INFINITY {
-        return if is_float32 {
-            "0xFF800000".into()
-        } else {
-            "0xFFF0000000000000".into()
-        };
+        return "0xFFF0000000000000".into();
     }
     let rendered = match ty {
         Type::Float(FloatType::Float32) => f64::from(value as f32).to_string(),
@@ -487,11 +477,7 @@ pub(crate) fn unsupported_call_detail(module: &Module, name: &str) -> String {
     if name.starts_with("HOST.") {
         return format!("unsupported HOST call {name}");
     }
-    format!(
-        "calls to user-defined function '{name}' are unavailable in the LLVM backend; \
-         function calls are not supported by this build target yet (use 'bni run' \
-         or inline the call)"
-    )
+    bn_catalog::fill("llvm", "call.user_function.unsupported", &[("name", &name)])
 }
 
 pub(crate) fn provider_name(module: &Module, name: &str) -> Option<&'static str> {

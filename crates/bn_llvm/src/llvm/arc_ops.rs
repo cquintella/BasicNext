@@ -180,7 +180,20 @@ pub(crate) fn emit_ownership(
     } = ty
         && holds_references(module, element)
     {
-        let count = dimensions.iter().product::<u64>();
+        // A vector of more than one dimension is stored as rows: its data
+        // holds one `{ ptr, i32 }` row per first index, each walked as the
+        // vector of the remaining dimensions (K30), never as objects.
+        let (count, item) = match dimensions.split_first() {
+            Some((rows, rest)) if !rest.is_empty() => (
+                *rows,
+                Type::Vector {
+                    element: element.clone(),
+                    dimensions: rest.to_vec(),
+                },
+            ),
+            _ => (dimensions.iter().product::<u64>(), (**element).clone()),
+        };
+        let element = &item;
         let tag = fresh(state, "vecarc");
         text.assign(
             format!("{tag}_data"),

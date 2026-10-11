@@ -1,0 +1,17 @@
+// Imported by two_files.bn; it imports another.bn in turn. Only what is
+// EXPORTed is visible to the importer.
+
+IMPORT another AS Counting
+
+EXPORT CLASS Other
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION Sum(a AS INTEGER, b AS INTEGER) AS INTEGER
+        RETURN a + b
+    END FUNCTION
+
+    PUBLIC FUNCTION CountTo(limit AS INTEGER) AS VOID
+        Counting.Another.CountTo(limit)
+    END FUNCTION
+END CLASS

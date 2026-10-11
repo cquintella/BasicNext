@@ -506,6 +506,50 @@ impl Instruction {
             | Self::StoreStatic { span, .. } => *span,
         }
     }
+
+    /// The type the instruction carries (its result, or the type it writes),
+    /// for a pass that rewrites types in place; `None` for an instruction
+    /// without one.
+    pub fn ty_mut(&mut self) -> Option<&mut Type> {
+        match self {
+            Self::Constant { ty, .. }
+            | Self::Default { ty, .. }
+            | Self::Phi { ty, .. }
+            | Self::Load { ty, .. }
+            | Self::Retain { ty, .. }
+            | Self::Take { ty, .. }
+            | Self::TakeMember { ty, .. }
+            | Self::Store { ty, .. }
+            | Self::Copy { ty, .. }
+            | Self::Unary { ty, .. }
+            | Self::Binary { ty, .. }
+            | Self::Cast { ty, .. }
+            | Self::Call { ty, .. }
+            | Self::DispatchSubmit { ty, .. }
+            | Self::DispatchAwait { ty, .. }
+            | Self::Input { ty, .. }
+            | Self::Vector { ty, .. }
+            | Self::Index { ty, .. }
+            | Self::Member { ty, .. }
+            | Self::SetIndex { ty, .. }
+            | Self::SetMemberIndex { ty, .. }
+            | Self::SetFieldIndex { ty, .. }
+            | Self::SetStaticIndex { ty, .. }
+            | Self::Allocate { ty, .. }
+            | Self::SetMember { ty, .. }
+            | Self::SetField { ty, .. }
+            | Self::LoadStatic { ty, .. }
+            | Self::StoreStatic { ty, .. } => Some(ty),
+            Self::EndBinding { .. }
+            | Self::Length { .. }
+            | Self::SizeOf { .. }
+            | Self::Print { .. }
+            | Self::ClearScreen { .. }
+            | Self::Beep { .. }
+            | Self::Release { .. }
+            | Self::EnsureClass { .. } => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

@@ -1,0 +1,44 @@
+// `IS` on a declared interface alternative holds for an object whose class
+// implements it, directly or through an ancestor (known issue K27): a
+// chain of handlers linked through `Handler OR NULL` fields.
+INTERFACE Handler
+    FUNCTION Handle(n AS INT32) AS STRING
+END INTERFACE
+
+CLASS Node IMPLEMENTS Handler
+    PRIVATE limit AS INT32
+    PRIVATE next AS Handler OR NULL = NULL
+
+    PUBLIC FUNCTION CONSTRUCTOR(limit AS INT32, next AS Handler OR NULL)
+        SELF.limit = limit
+        SELF.next = next
+    END FUNCTION
+
+    PUBLIC FUNCTION Handle(n AS INT32) AS STRING
+        IF n <= SELF.limit THEN
+            RETURN "handled by " + (SELF.limit AS STRING)
+        END IF
+        LET following AS Handler OR NULL = SELF.next
+        IF following IS Handler THEN
+            RETURN following.Handle(n)
+        END IF
+        RETURN "unhandled"
+    END FUNCTION
+END CLASS
+
+CLASS LoudNode EXTENDS Node
+    PUBLIC FUNCTION CONSTRUCTOR(limit AS INT32, next AS Handler OR NULL)
+        SUPER(limit, next)
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET last AS Handler = NEW LoudNode(100, NULL)
+    LET first AS Handler = NEW Node(10, last)
+    PRINT first.Handle(5)
+    PRINT first.Handle(50)
+    PRINT first.Handle(500)
+    LET maybe AS Handler OR NULL = last
+    PRINT maybe IS Handler
+    PRINT maybe IS NULL
+END FUNCTION

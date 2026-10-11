@@ -125,7 +125,6 @@ diagnostic_registry! {
     EXECUTION_POLICY_DENIED { code: "EXECUTION_POLICY_DENIED", fluent: "EXECUTION_POLICY_DENIED", severity: Error, schema: DETAIL },
     FORMAT_OUT_OF_RANGE { code: "FORMAT_OUT_OF_RANGE", fluent: "FORMAT_OUT_OF_RANGE", severity: Error, schema: LEGACY_MESSAGE },
     HANDLER_NOT_FOUND { code: "HANDLER_NOT_FOUND", fluent: "HANDLER_NOT_FOUND", severity: Error, schema: LEGACY_MESSAGE },
-    HEADER_NOT_FOUND { code: "HEADER_NOT_FOUND", fluent: "HEADER_NOT_FOUND", severity: Error, schema: LEGACY_MESSAGE },
     HOST_ARGS_SCOPE { code: "HOST_ARGS_SCOPE", fluent: "HOST_ARGS_SCOPE", severity: Error, schema: LEGACY_MESSAGE },
     HOST_CAPABILITY_UNAVAILABLE { code: "HOST_CAPABILITY_UNAVAILABLE", fluent: "HOST_CAPABILITY_UNAVAILABLE", severity: Error, schema: DETAIL },
     LIBRARY_PROVIDER_UNAVAILABLE { code: "LIBRARY_PROVIDER_UNAVAILABLE", fluent: "LIBRARY_PROVIDER_UNAVAILABLE", severity: Error, schema: DETAIL },

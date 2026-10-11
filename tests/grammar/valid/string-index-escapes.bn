@@ -1,0 +1,35 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+
+// A character from s[i] or CHAR outlives the frame that produced it: it is
+// returned, kept in a vector, and produced in a loop
+// (known issue K49: native builds returned a pointer into a dead stack
+// buffer and grew the stack on every iteration).
+
+FUNCTION At(text AS STRING, position AS INTEGER) AS STRING
+    RETURN text[position]
+END FUNCTION
+
+FUNCTION Letter(code AS INTEGER) AS STRING OR Error
+    RETURN CHAR(code)
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    PRINT At("abc", 1), Letter(231)
+    LET kept AS STRING[3]
+    FOR i AS INTEGER = 0 TO 2
+        kept[i] = At("xyz", i)
+    END FOR
+    PRINT kept[0], kept[1], kept[2]
+    LET total AS INTEGER = 0
+    LET text AS STRING = "abcdefghij"
+    FOR round AS INTEGER = 1 TO 10
+        FOR column AS INTEGER = 0 TO 9
+            total = total + LEN(text[column])
+        END FOR
+    END FOR
+    PRINT total
+END FUNCTION

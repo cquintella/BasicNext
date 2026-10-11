@@ -633,6 +633,23 @@ fn emit_static_is(
             return true;
         }
     }
+    // On a pointer value the only valid tests are pointer tests (semantic
+    // analysis rejects the rest). `IS POINTER TO VOID` holds for every
+    // non-NULL pointer, typed, region or opaque (`0.6.md`; K51): its pointer
+    // sits at field 0 of every pointer layout. Other `IS POINTER TO T` tests
+    // wait for decision K55 and are refused.
+    if matches!(left_ty, Type::Pointer { .. }) {
+        let Some(layout) = left_llvm else {
+            return false;
+        };
+        if test_name != bn_catalog::text("llvm", "type.pointer_to_void") {
+            return false;
+        }
+        let data = format!("isvoiddata{}", destination.0);
+        text.assign(data.clone(), I::extract(typed_llvm(layout), v(left), 0));
+        text.assign(own, I::icmp(ICmpCond::Ne, T::Ptr, O::reg(data), O::null()));
+        return true;
+    }
     // A value that is not an alternative has its static type: `IS` of that
     // type holds (a narrowed `FS.File` IS FS.File).
     let constant = if alternative_is(left_ty, test_name) {

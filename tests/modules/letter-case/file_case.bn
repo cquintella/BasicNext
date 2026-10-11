@@ -1,0 +1,5 @@
+IMPORT Lib AS Lib
+
+FUNCTION Start() AS VOID
+    PRINT Lib.Answer
+END FUNCTION

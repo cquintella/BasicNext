@@ -34,7 +34,6 @@ use crate::net_values::{
 };
 use bn_interp::provider::{CoreContext, Provider};
 use bn_interp::{
-    index_out_of_bounds_pub as index_out_of_bounds,
     integer_from_i128_count_pub as integer_from_i128_count, integer_pub as integer,
     require_arity_pub as require_arity, runtime_error_pub as runtime_error, type_mismatch,
 };
@@ -280,12 +279,12 @@ impl NetProvider {
                 };
                 integer_from_i128_count(bytes.len() as i128, span)
             }
-            "HOST.Net.UDPPacket.Truncated" | "HOST.Net.UDPPacket.WasTruncated" => {
+            "HOST.Net.UDPPacket.WasTruncated" => {
                 require_arity(name, arguments, 1, span)?;
                 record(
                     &arguments[0],
                     "HOST.Net.UDPPacket",
-                    "HOST.Net.UDPPacket.Truncated",
+                    "HOST.Net.UDPPacket.WasTruncated",
                     span,
                 )?
                 .get(UDP_PACKET_TRUNCATED)
@@ -294,7 +293,7 @@ impl NetProvider {
                     type_mismatch(
                         "UDPPacket.truncated field",
                         "missing field",
-                        "HOST.Net.UDPPacket.Truncated",
+                        "HOST.Net.UDPPacket.WasTruncated",
                         span,
                     )
                 })
@@ -377,11 +376,11 @@ impl NetProvider {
                 require_arity(name, arguments, 2, span)?;
                 let values = net_addresses(&arguments[0], span)?;
                 let (index, _) = integer(&arguments[1], span)?;
-                let index = usize::try_from(index).map_err(|_| {
-                    index_out_of_bounds("negative", "0", "HOST.Net.Addresses", span)
-                })?;
-                values.get(index).cloned().ok_or_else(|| {
-                    index_out_of_bounds(index, values.len(), "HOST.Net.Addresses", span)
+                // `Address OR Error`: an index outside the result is an `Error`,
+                // as natively, never a trap.
+                Ok(match bn_rt::net::address_index(values.len(), index) {
+                    Ok(position) => values[position].clone(),
+                    Err(error) => net_error(&error),
                 })
             }
 

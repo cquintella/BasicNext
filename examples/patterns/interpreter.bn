@@ -1,5 +1,61 @@
-// UNSUPPORTED: Interpreter needs a recursive object graph of expression nodes
-// and dynamic dispatch; recursive heterogeneous trees are not supported yet.
+// GoF Interpreter: a sentence of a small grammar is a tree of expression
+// objects; evaluating the tree interprets the sentence.
+INTERFACE Expression
+    FUNCTION Evaluate() AS INT32
+    FUNCTION Show() AS STRING
+END INTERFACE
+
+CLASS Number IMPLEMENTS Expression
+    PRIVATE value AS INT32
+
+    PUBLIC FUNCTION CONSTRUCTOR(value AS INT32)
+        SELF.value = value
+    END FUNCTION
+
+    PUBLIC FUNCTION Evaluate() AS INT32
+        RETURN SELF.value
+    END FUNCTION
+
+    PUBLIC FUNCTION Show() AS STRING
+        RETURN SELF.value AS STRING
+    END FUNCTION
+END CLASS
+
+CLASS Operation IMPLEMENTS Expression
+    PRIVATE symbol AS STRING
+    PRIVATE left AS Expression OR NULL = NULL
+    PRIVATE right AS Expression OR NULL = NULL
+
+    PUBLIC FUNCTION CONSTRUCTOR(symbol AS STRING, left AS Expression, right AS Expression)
+        SELF.symbol = symbol
+        SELF.left = left
+        SELF.right = right
+    END FUNCTION
+
+    PUBLIC FUNCTION Evaluate() AS INT32
+        LET left AS Expression OR NULL = SELF.left
+        LET right AS Expression OR NULL = SELF.right
+        IF left IS Expression AND right IS Expression THEN
+            IF SELF.symbol = "+" THEN
+                RETURN left.Evaluate() + right.Evaluate()
+            END IF
+            RETURN left.Evaluate() * right.Evaluate()
+        END IF
+        RETURN 0
+    END FUNCTION
+
+    PUBLIC FUNCTION Show() AS STRING
+        LET left AS Expression OR NULL = SELF.left
+        LET right AS Expression OR NULL = SELF.right
+        IF left IS Expression AND right IS Expression THEN
+            RETURN "(" + left.Show() + " " + SELF.symbol + " " + right.Show() + ")"
+        END IF
+        RETURN "?"
+    END FUNCTION
+END CLASS
+
 FUNCTION Start() AS VOID
-    PRINT "UNSUPPORTED: recursive heterogeneous expression trees are not available"
+    // 2 * (3 + 4)
+    LET sentence AS Expression = NEW Operation("*", NEW Number(2), NEW Operation("+", NEW Number(3), NEW Number(4)))
+    PRINT sentence.Show() + " = " + (sentence.Evaluate() AS STRING)
 END FUNCTION

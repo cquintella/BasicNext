@@ -1,0 +1,6 @@
+IMPORT lib AS Lib
+IMPORT geo.shape AS Shape
+
+FUNCTION Start() AS VOID
+    PRINT Lib.Answer, Shape.Sides
+END FUNCTION

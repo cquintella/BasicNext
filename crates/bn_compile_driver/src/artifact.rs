@@ -45,6 +45,27 @@ pub(crate) fn native_program_link_args() -> &'static [&'static str] {
     }
 }
 
+/// Link-time removal of runtime code the program never reaches (bucket
+/// 0.6.5 E, D2: a program links only what it uses, so the runtime archive can
+/// hold `BNWeb` without growing other programs). The MSVC linker already
+/// applies `/OPT:REF` by default.
+pub(crate) fn dead_code_link_args() -> &'static [&'static str] {
+    #[cfg(target_os = "macos")]
+    {
+        &["-Wl,-dead_strip"]
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        &["-Wl,--gc-sections"]
+    }
+
+    #[cfg(not(unix))]
+    {
+        &[]
+    }
+}
+
 /// System libraries the `bn_rt` static library needs, as reported by
 /// `rustc --print native-static-libs` for each target.
 pub(crate) fn native_runtime_link_args() -> &'static [&'static str] {
@@ -324,6 +345,11 @@ pub fn emit_build_output(
             };
             command_args.push(bn_rt.display().to_string());
             command_args.extend(native_runtime_link_args().iter().map(ToString::to_string));
+            // A `-g` build keeps the whole runtime: the debugger calls `bn_rt`
+            // functions the program never reaches (`bn_rt_arc_dump`).
+            if debug_flag.is_none() {
+                command_args.extend(dead_code_link_args().iter().map(ToString::to_string));
+            }
         }
         command_args.extend(["-o".into(), output.into()]);
         process_log.event(

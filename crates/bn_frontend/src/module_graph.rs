@@ -304,7 +304,20 @@ impl Loader<'_> {
         importer: Option<(&SourceFile, Span)>,
         root: Option<ModuleRoot>,
     ) -> Result<ModuleId, ModuleError> {
+        let requested = path.display().to_string();
         let path = normalize(path);
+        // An import no module root holds letter for letter is not found, even
+        // where the file system would open a name that differs in case.
+        if root.is_none()
+            && let Some((importer, span)) = importer
+            && !self.overlays.contains_key(&path)
+        {
+            return Err(module_not_found(
+                &requested,
+                Some((importer, span)),
+                &std::io::Error::from(std::io::ErrorKind::NotFound),
+            ));
+        }
         if let Some(state) = self.states.get(&path) {
             return match state {
                 State::Loaded(id) => Ok(*id),
@@ -385,7 +398,7 @@ impl Loader<'_> {
             return Ok((nested_path, nested_root, None));
         };
         let (parent_path, parent_root) = self.import_path(module_parts);
-        if !exact_file_exists(&parent_path) {
+        if parent_root.is_none() {
             return Ok((nested_path, nested_root, None));
         }
         let parent = read_source(
@@ -407,7 +420,7 @@ impl Loader<'_> {
         if exports_name {
             return Ok((parent_path, parent_root, Some(export.clone())));
         }
-        if exact_file_exists(&nested_path) {
+        if nested_root.is_some() {
             return Ok((nested_path, nested_root, None));
         }
         Err(module_error(
@@ -434,7 +447,7 @@ impl Loader<'_> {
                 candidate.push(part);
             }
             candidate.set_extension("bn");
-            if exact_file_exists(&candidate) {
+            if exact_module_exists(&root.path, parts) {
                 return (candidate, Some(root.clone()));
             }
         }
@@ -442,15 +455,29 @@ impl Loader<'_> {
     }
 }
 
-fn exact_file_exists(path: &Path) -> bool {
-    let Some(parent) = path.parent() else {
+/// Whether `root` holds the module `parts` with every directory and the file
+/// named letter for letter (0.6.md, "Module names and files"), even on a file
+/// system that ignores case.
+fn exact_module_exists(root: &Path, parts: &[String]) -> bool {
+    let Some((file, directories)) = parts.split_last() else {
         return false;
     };
-    let Some(name) = path.file_name() else {
-        return false;
-    };
-    fs::read_dir(parent)
-        .is_ok_and(|entries| entries.flatten().any(|entry| entry.file_name() == name))
+    let mut directory = root.to_path_buf();
+    for name in directories {
+        if !has_exact_entry(&directory, name) {
+            return false;
+        }
+        directory.push(name);
+    }
+    has_exact_entry(&directory, &format!("{file}.bn"))
+}
+
+fn has_exact_entry(directory: &Path, name: &str) -> bool {
+    fs::read_dir(directory).is_ok_and(|entries| {
+        entries
+            .flatten()
+            .any(|entry| entry.file_name() == std::ffi::OsStr::new(name))
+    })
 }
 
 fn standard_module(path: &Path) -> Option<StandardModule> {
@@ -492,32 +519,38 @@ fn read_source(
                 revision: snapshot.revision,
             })
         }
-        Err(error) => {
-            let (source, span) = importer.map_or_else(
-                || (SourceFile::new(name.clone(), ""), default_span()),
-                |(source, span)| {
-                    (
-                        SourceFile::new(source.name.clone(), source.text.clone()),
-                        span,
-                    )
-                },
-            );
-            Err(ModuleError {
-                source: Box::new(source),
-                diagnostic: Box::new(
-                    Diagnostic::structured(
-                        crate::diagnostic::DiagId::MODULE_NOT_FOUND,
-                        vec![("path".into(), format!("{name}: {error}").into())],
-                        vec![crate::diagnostic::Label {
-                            span,
-                            style: crate::diagnostic::LabelStyle::Primary,
-                            text: None,
-                        }],
-                    )
-                    .expect("module-not-found diagnostic schema is registered"),
-                ),
-            })
-        }
+        Err(error) => Err(module_not_found(&name, importer, &error)),
+    }
+}
+
+fn module_not_found(
+    name: &str,
+    importer: Option<(&SourceFile, Span)>,
+    error: &std::io::Error,
+) -> ModuleError {
+    let (source, span) = importer.map_or_else(
+        || (SourceFile::new(name.to_owned(), ""), default_span()),
+        |(source, span)| {
+            (
+                SourceFile::new(source.name.clone(), source.text.clone()),
+                span,
+            )
+        },
+    );
+    ModuleError {
+        source: Box::new(source),
+        diagnostic: Box::new(
+            Diagnostic::structured(
+                crate::diagnostic::DiagId::MODULE_NOT_FOUND,
+                vec![("path".into(), format!("{name}: {error}").into())],
+                vec![crate::diagnostic::Label {
+                    span,
+                    style: crate::diagnostic::LabelStyle::Primary,
+                    text: None,
+                }],
+            )
+            .expect("module-not-found diagnostic schema is registered"),
+        ),
     }
 }
 

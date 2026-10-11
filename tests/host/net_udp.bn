@@ -38,7 +38,7 @@ FUNCTION Start() AS INTEGER
     LET copy AS POINTER TO BYTE[] = NEW BYTE[4]
     LET copied AS INTEGER OR Error = packet.CopyTo(copy, 4)
     PRINT receiver IS Net.UDPSocket, packet IS Net.UDPPacket, sent
-    PRINT packet.Size(), packet.Truncated(), packet.WasTruncated(), copied, copy[0], copy[1]
+    PRINT packet.Size(), packet.WasTruncated(), copied, copy[0], copy[1]
     LET source AS Net.Endpoint OR Error = packet.Source()
     IF source IS Net.Endpoint THEN
         PRINT "from loopback:", source.Address().IsLoopback()

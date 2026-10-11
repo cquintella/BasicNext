@@ -861,6 +861,54 @@ fn denied_log_file_is_io_failed_on_both_backends() {
     }
 }
 
+/// `Logger.SetFormat` (bnlog.md, "Formats"): the same record as JSON, SYSLOG and
+/// APACHE, a sensitive field never written, an unknown name refused with the
+/// format unchanged, on both backends. Only the record time, the host name
+/// and the process identifier may differ.
+#[test]
+fn bnlog_formats_match_on_both_backends() {
+    let path = workspace_root().join("tests/host/log_formats.bn");
+    let build = TestDir::new("log-formats").expect("create directory");
+    let artifact = compile_native(&path, &build);
+    let expected = "{\"fields\":{\"http.method\":\"GET\",\"http.path\":\"/items?token=1\",\
+                    \"http.status\":\"200\",\"http.user_agent\":\"agent \\\"x\\\"\"},\"label\":\"\",\
+                    \"level\":\"INFO\",\"message\":\"as json\",\"timestamp\":\"T\"}\n\
+                    <14>1 T H - P - - as text http.method=GET http.path=/items?token=1 http.status=200 \
+                    http.user_agent=agent \"x\"\n\
+                    TRUE unknown log format \"text\"\n\
+                    - - - [T] \"GET /items\" 200 - \"-\" \"agent \\\"x\\\"\"\n\
+                    FALSE FALSE FALSE FALSE\nFALSE FALSE FALSE\n";
+    let without_time = |stdout: &[u8]| {
+        String::from_utf8_lossy(stdout)
+            .lines()
+            .map(|line| {
+                if let (Some(start), Some(end)) = (line.find("\"timestamp\":\""), line.rfind("\"}"))
+                {
+                    format!("{}\"timestamp\":\"T{}", &line[..start], &line[end..])
+                } else if let (Some(start), Some(end)) = (line.find(" ["), line.find(" +0000]")) {
+                    format!("{} [T{}", &line[..start], &line[end + " +0000".len()..])
+                } else if line.starts_with('<') {
+                    // SYSLOG: PRI and VERSION, TIMESTAMP, HOSTNAME, APP-NAME, PROCID.
+                    let mut parts = line.splitn(6, ' ').collect::<Vec<_>>();
+                    parts[1] = "T";
+                    parts[2] = "H";
+                    parts[4] = "P";
+                    parts.join(" ")
+                } else {
+                    line.to_owned()
+                }
+            })
+            .map(|line| line + "\n")
+            .collect::<String>()
+    };
+    let interpreted = execute(bni().arg("run").arg(&path), None);
+    let compiled = execute(&mut Command::new(&artifact), None);
+    for (backend, output) in [("bni", &interpreted), ("native", &compiled)] {
+        assert_eq!(output.status.code(), Some(0), "{backend}");
+        assert_eq!(without_time(&output.stdout), expected, "{backend}");
+    }
+}
+
 /// `BNLog.Fields.SetInteger` / `SetBoolean` build natively and record the
 /// same field text as `bni` (known issue K7; native refused them as user
 /// function calls). The timestamp is the only part allowed to differ.

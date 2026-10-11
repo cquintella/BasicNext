@@ -1,0 +1,26 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+
+// The elements of a STRING vector without an initializer are "", in a local
+// and in a class field, and read, compare and concatenate as "" (known issue
+// K50: native builds stored a null pointer, printed "(null)" and stopped on
+// LEN).
+
+CLASS Holder
+    PUBLIC items AS STRING[2]
+
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET lines AS STRING[2]
+    PRINT "[" + lines[0] + "]", LEN(lines[1]), lines[0] = ""
+    lines[1] = lines[0] + "x"
+    PRINT lines[1]
+    LET h AS Holder = NEW Holder()
+    PRINT "[" + h.items[1] + "]", LEN(h.items[0])
+END FUNCTION

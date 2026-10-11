@@ -366,7 +366,11 @@ pub(crate) fn lower_call_instruction(
                 format!("charerror{dest}"),
                 I::icmp(ICmpCond::Eq, T::I64, r("packed"), O::int(-1)),
             );
-            text.assign(format!("charbuffer{dest}"), I::alloca(T::I64));
+            let bytes = vec![(T::I64, O::int(layout::PACKED_UTF8_BYTES))];
+            text.assign(
+                format!("charbuffer{dest}"),
+                I::call(T::Ptr, "malloc", bytes),
+            );
             text.emit(I::store(T::I64, r("packed"), r("buffer")));
             let message = O::global(".bn_char_error");
             text.assign(

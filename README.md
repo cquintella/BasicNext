@@ -68,6 +68,19 @@ model:
   `bnc hello.bn` (or `bnc hello.bn -o hello`). `bnc -g` adds debug information
   (DWARF; a PDB on Windows).
 
+The default executable is portable (`--opt 2`, generic CPU). For an
+executable optimized for the machine that builds it, run
+`bnc --opt 3 --cpu native hello.bn`, or the wrapper that also strips the
+symbols:
+
+```sh
+scripts/build-native.sh hello.bn          # Linux, macOS
+.\scripts\build-native.ps1 hello.bn       # Windows
+```
+
+It runs on machines with the same CPU features; no option changes a
+program's results (no fast-math).
+
 A program needs no project file: `bni hello.bn` or `bnc hello.bn` is enough. The manuals are
 [`bni(1)`](man/bni.1) and [`bnc(1)`](man/bnc.1).
 

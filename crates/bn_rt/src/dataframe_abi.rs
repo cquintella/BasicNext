@@ -175,12 +175,6 @@ macro_rules! add_numeric_column {
 }
 
 add_numeric_column!(
-    bn_rt_dataframe_add_integer,
-    i32,
-    Integer,
-    "BNData.DataFrame.AddIntegerColumn"
-);
-add_numeric_column!(
     bn_rt_dataframe_add_float,
     f64,
     Float,

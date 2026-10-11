@@ -15,6 +15,7 @@ frontend-host-spec-path = []
 workspace = true
 
 [dependencies]
+bn_catalog = { path = "../bn_catalog" }
 bn_diag = { path = "../bn_diag" }
 bn_ir = { path = "../bn_ir" }
 bn_source = { path = "../bn_source" }

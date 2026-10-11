@@ -14,9 +14,9 @@ pub fn call_types_compatible_with_module(module: &Module, actual: &Type, expecte
     call_types_compatible_inner(Some(module), actual, expected)
 }
 
-/// Fallback compatibility check without module context (used by tests or non-nominal types).
-#[allow(dead_code)]
-#[must_use]
+/// Compatibility without module context (no nominal upcast): the rule the
+/// validator tests pin.
+#[cfg(test)]
 pub fn call_types_compatible(actual: &Type, expected: &Type) -> bool {
     call_types_compatible_inner(None, actual, expected)
 }
@@ -71,6 +71,50 @@ fn call_types_compatible_inner(module: Option<&Module>, actual: &Type, expected:
     }
 
     false
+}
+
+/// The store rule: `assignment_types_compatible`, or a vector of objects into a
+/// vector of a base class or an interface (K28).
+pub(crate) fn store_compatible(module: &Module, actual: &Type, expected: &Type) -> bool {
+    assignment_types_compatible(actual, expected) || upcast_compatible(module, actual, expected)
+}
+
+/// The vector-literal element rule: the element type, or a class that reaches
+/// it (A.S6.n).
+pub(crate) fn element_compatible(module: &Module, actual: &Type, expected: &Type) -> bool {
+    types_compatible(actual, expected) || upcast_compatible(module, actual, expected)
+}
+
+/// A value that reaches the slot only through the class model: a class into
+/// an ancestor or an interface it implements, or a vector of such values into
+/// a vector of the same dimensions (K28, A.S6.n). Numbers are not widened here:
+/// a numeric store or element keeps the strict rule.
+pub(crate) fn upcast_compatible(module: &Module, actual: &Type, expected: &Type) -> bool {
+    if is_upcast(module, actual, expected) {
+        return true;
+    }
+    matches!(
+        (actual, expected),
+        (
+            Type::Vector {
+                element: actual_element,
+                dimensions: actual_dimensions,
+            },
+            Type::Vector {
+                element: expected_element,
+                dimensions: expected_dimensions,
+            },
+        ) if (types_compatible(actual_element, expected_element)
+            || upcast_compatible(module, actual_element, expected_element))
+            && actual_dimensions.len() == expected_dimensions.len()
+            && actual_dimensions.iter().zip(expected_dimensions).all(
+                |(actual_dimension, expected_dimension)| {
+                    actual_dimension == expected_dimension
+                        || *actual_dimension == u64::MAX
+                        || *expected_dimension == u64::MAX
+                },
+            )
+    )
 }
 
 /// Whether `actual` is a class whose ancestors or their interfaces include the
@@ -209,6 +253,37 @@ pub(crate) fn types_compatible(actual: &Type, expected: &Type) -> bool {
         )
 }
 
+fn is_named_value_type(ty: &Type) -> bool {
+    matches!(ty, Type::Named(_) | Type::ImportedNamed { .. })
+}
+
+/// The store rule without the class model: equal or widening types, and a
+/// named value into a named slot (semantic analysis checked that class
+/// relation). A vector of objects stored into a vector of a base class or an
+/// interface needs the class model: `upcast_compatible` (K28).
+pub(crate) fn assignment_types_compatible(actual: &Type, expected: &Type) -> bool {
+    matches!(actual, Type::Unknown) || matches!(expected, Type::Unknown)
+        || types_compatible(actual, expected)
+        || alternative_widens(actual, expected)
+        || (is_named_value_type(actual) && is_named_value_type(expected))
+        // Pointer length is a runtime invariant: allocation can produce a
+        // dynamic length that a fixed destination checks when stored. The
+        // validator still requires compatible element types.
+        || matches!(
+            (actual, expected),
+            (
+                Type::Pointer {
+                    element: actual_element,
+                    ..
+                },
+                Type::Pointer {
+                    element: expected_element,
+                    ..
+                }
+            ) if types_compatible(actual_element, expected_element)
+        )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -283,6 +358,36 @@ mod tests {
             });
         }
         functions
+    }
+
+    #[test]
+    fn upcast_compatible_reaches_classes_but_widens_no_number() {
+        let mut module = make_test_module();
+        module.class_model.add_base("Dog", "Animal");
+        let vector = |element: Type| Type::Vector {
+            element: Box::new(element),
+            dimensions: vec![2],
+        };
+        let dog = Type::Named("Dog".into());
+        let animal = Type::Named("Animal".into());
+
+        assert!(upcast_compatible(&module, &dog, &animal));
+        assert!(upcast_compatible(
+            &module,
+            &vector(dog.clone()),
+            &vector(animal.clone())
+        ));
+        assert!(!upcast_compatible(&module, &animal, &dog));
+        // The class model never widens a number: an INT32 element or a vector
+        // of them is not a FLOAT64 one (W2).
+        let int32 = Type::Integer(bn_types::IntegerType::Int32);
+        let float64 = Type::Float(bn_types::FloatType::Float64);
+        assert!(!upcast_compatible(&module, &int32, &float64));
+        assert!(!upcast_compatible(
+            &module,
+            &vector(Type::IntegerLiteral("1".into())),
+            &vector(float64)
+        ));
     }
 
     #[test]

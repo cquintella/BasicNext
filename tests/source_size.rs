@@ -17,13 +17,13 @@ const MAX_LINES: usize = 1000;
 /// Lower a ceiling when its file shrinks; drop the entry once it fits.
 const CEILINGS: &[(&str, usize)] = &[
     ("crates/bn_diag/src/lib.rs", 2339),
-    ("crates/bn_lib_web/src/lib.rs", 2312),
-    ("crates/bn_ir/src/validate.rs", 1052),
+    ("crates/bn_lib_web/src/lib.rs", 1904),
+    ("crates/bn_ir/src/validate.rs", 1024),
     ("crates/bn_rt/src/dataframe_abi.rs", 1528),
     ("crates/bn_llvm/src/llvm/call_emission.rs", 1300),
     ("crates/bn_llvm/src/lib.rs", 1065),
     ("crates/bn_rt/src/lib.rs", 1131),
-    ("crates/bn_lib_web/src/http/tests.rs", 1081),
+    ("crates/bn_core_web/src/http/tests.rs", 1066),
     ("crates/bn_lib_data/src/lib.rs", 1054),
     ("crates/bn_rt/src/dispatch_abi.rs", 1034),
     ("crates/bn_host_net/src/lib.rs", 1029),

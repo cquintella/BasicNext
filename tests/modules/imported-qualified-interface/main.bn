@@ -1,0 +1,15 @@
+// The importer sees `Zoo.Dog` as a `Shapes.Named`, although `Zoo` names the
+// interface through its own alias (`Kinds`).
+IMPORT Shapes AS Shapes
+IMPORT Zoo AS Zoo
+
+FUNCTION Greet(n AS Shapes.Named) AS STRING
+    RETURN "hello " + n.Name()
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET d AS Zoo.Dog = NEW Zoo.Dog()
+    PRINT Greet(d)
+    LET n AS Shapes.Named = NEW Zoo.Dog()
+    PRINT n.Name()
+END FUNCTION

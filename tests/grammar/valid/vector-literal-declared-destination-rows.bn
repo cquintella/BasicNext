@@ -1,0 +1,36 @@
+// Each row of a two-dimensional vector literal with a declared destination
+// takes the declared element type (0.6.md, "Vector literals take a declared
+// destination"). bnc: known issue K30 (an object in a vector of more than one
+// dimension is released twice natively); parity waits for its fix.
+INTERFACE Listener
+    FUNCTION Notify(event AS STRING) AS VOID
+END INTERFACE
+
+CLASS Printer IMPLEMENTS Listener
+    PROTECTED name AS STRING
+
+    PUBLIC FUNCTION CONSTRUCTOR(name AS STRING)
+        SELF.name = name
+    END FUNCTION
+
+    PUBLIC FUNCTION Notify(event AS STRING) AS VOID
+        PRINT SELF.name + " got " + event
+    END FUNCTION
+END CLASS
+
+CLASS LoudPrinter EXTENDS Printer
+    PUBLIC FUNCTION CONSTRUCTOR(name AS STRING)
+        SUPER(name)
+    END FUNCTION
+
+    PUBLIC OVERRIDE FUNCTION Notify(event AS STRING) AS VOID
+        PRINT TOUPPER(SELF.name + " got " + event)
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET grid AS Listener[2][2] = [[NEW Printer("g"), NEW LoudPrinter("h")], [NEW LoudPrinter("i"), NEW Printer("j")]]
+    grid[1][0].Notify("row")
+    grid[0][1].Notify("row")
+    grid[1][1].Notify("row")
+END FUNCTION

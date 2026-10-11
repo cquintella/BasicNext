@@ -34,45 +34,30 @@ mod members5;
 #[path = "host_spec/members6.rs"]
 mod members6;
 
-#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SpecIntegerType {
     Byte,
-    Int8,
-    Int16,
     Int32,
     Int64,
     UInt16,
-    UInt32,
-    UInt64,
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SpecFloatType {
-    Float32,
     Float64,
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SpecPointerLength {
-    One,
-    Fixed(u64),
     Dynamic,
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum SpecType {
     Boolean,
     Integer(SpecIntegerType),
-    IntegerLiteral(String),
     Float(SpecFloatType),
-    FloatLiteral,
     String,
-    Null,
-    NotAvailable,
     EndOfFile,
     Named(String),
     TypeName(String),

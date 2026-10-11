@@ -1,0 +1,37 @@
+# web texts and contract names (bn_catalog; AGENTS.md "No hard-coded
+# messages"). One `key = value` per line; `{name}` is filled by the code.
+
+# Failures (bn_rt web_error: message, then cause).
+method.unsupported.message = unsupported HTTP method "{method}"
+selector.unsupported.message = unsupported selector "{selector}"
+cookie.secure_cleartext.message = Secure cookie on a cleartext response
+cookie.secure_cleartext.cause = a Secure cookie is sent only over TLS; this request arrived over cleartext HTTP
+route.param_missing.message = route parameter not found
+route.param_missing.cause = the matched route pattern has no `:name` segment with that name
+request.cookie_missing.message = request cookie not found
+request.cookie_missing.cause = the request's Cookie headers carry no cookie with that name
+session.disabled.message = sessions are not enabled
+session.disabled.cause = the server keeps no sessions; call Server.UseSessions before Start
+session.key_missing.message = session key not found
+session.key_missing.cause = the session holds no value under that key
+session.invalid_entry = invalid session entry
+session.invalid_entry.cause = a session key has 1 to 128 bytes and a value at most 4096 bytes
+session.key_limit = session key limit exceeded
+session.key_limit.cause = a session holds at most 64 keys
+
+# Server sessions and handler queue (bn_core_web).
+session.entropy_unavailable = session entropy provider unavailable
+response.session_cookie_failed = session cookie failed
+queue.closed = handler queue closed
+
+# Contract names and type-mismatch contexts (bn_lib_web).
+op.response.set_cookie = BNWeb.Response.SetCookie
+op.response.set_cookie_with_policy = BNWeb.Response.SetCookieWithPolicy
+op.response.clear_cookie = BNWeb.Response.ClearCookie
+op.server.use_queue = BNWeb.Server.UseQueue
+context.request.member_name = BNWeb.Request member name
+context.cookie_policy = BOOLEAN, BOOLEAN, STRING
+context.session.key_or_value = BNWeb.Session key or value
+context.session.receiver = BNWeb.Session operation receiver
+context.queue.not_live = Dispatch.Queue handle is not live
+context.queue.non_queue = non-queue value

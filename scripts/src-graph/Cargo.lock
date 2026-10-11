@@ -15,6 +15,7 @@ dependencies = [
 name = "bn-src-graph"
 version = "0.0.0"
 dependencies = [
+ "proc-macro2",
  "serde_json",
  "sha2",
  "syn 2.0.119",

@@ -75,17 +75,17 @@ fn alternatives_widen_but_never_narrow_without_a_test() {
     let found = Type::Alternative(vec![Type::Null, Type::Integer(Int32)]);
     let result = Type::Alternative(vec![Type::Integer(Int32), Type::Null, error]);
     // Widening, in any member order (0.6.md rule 3).
-    assert!(super::assignment_types_compatible(&found, &result));
+    assert!(super::upcast::assignment_types_compatible(&found, &result));
     assert!(super::call_types_compatible(&found, &result));
     // Narrowing needs an IS test, so the IR never stores it (rule 4).
-    assert!(!super::assignment_types_compatible(&result, &found));
+    assert!(!super::upcast::assignment_types_compatible(&result, &found));
     assert!(!super::call_types_compatible(&result, &found));
-    assert!(!super::assignment_types_compatible(
+    assert!(!super::upcast::assignment_types_compatible(
         &found,
         &Type::Integer(Int32)
     ));
     // A member still enters its alternative.
-    assert!(super::assignment_types_compatible(
+    assert!(super::upcast::assignment_types_compatible(
         &Type::Integer(Int32),
         &result
     ));

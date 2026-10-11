@@ -102,9 +102,20 @@ impl Provider for DispatchProvider {
         let name = format!("BNDispatch.{member}");
         self.dispatch_call(core, &name, &arguments, span)
     }
+
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
 }
 
 impl DispatchProvider {
+    /// The core queue behind the `Dispatch.Queue` handle `id`, for a `BNWeb`
+    /// server that runs its handlers on it (`Server.UseQueue`).
+    #[must_use]
+    pub fn core_queue(&self, id: u64) -> Option<bn_core_dispatch::Queue> {
+        self.queues.get(&id).map(crate::dispatch::Queue::core)
+    }
+
     fn dispatch_call(
         &mut self,
         core: &mut dyn CoreContext,

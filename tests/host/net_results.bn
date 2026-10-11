@@ -1,0 +1,66 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// HOST.Net results on both backends: resolution failures carry their own
+// codes (NOT_FOUND for a name without records, INVALID_ARGUMENT for a
+// malformed one; `.invalid` never exists, RFC 6761), an index outside a
+// resolver result is an Error, and an Error moves between `T OR Error`
+// results of different layouts (known issue K36).
+IMPORT HOST.Net AS Net
+
+FUNCTION Endpoint(text AS STRING, port AS UINT16) AS Net.Endpoint OR Error
+    LET address AS Net.Address OR Error = Net.Address.Parse(text)
+    IF address IS Error THEN
+        RETURN address
+    END IF
+    RETURN Net.Endpoint.Create(address, port)
+END FUNCTION
+
+FUNCTION Lookup(text AS STRING) AS Net.Addresses OR Error
+    LET address AS Net.Address OR Error = Net.Address.Parse(text)
+    IF address IS Error THEN
+        RETURN address
+    END IF
+    RETURN Net.Resolve(text, 5000)
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    LET missing AS Net.Addresses OR Error = Net.Resolve("nonexistent.invalid", 5000)
+    LET empty AS Net.Addresses OR Error = Net.Resolve("", 5000)
+    LET spaced AS Net.Addresses OR Error = Net.Resolve("bad host", 5000)
+    IF missing IS Error AND empty IS Error AND spaced IS Error THEN
+        PRINT missing.Code = Net.NOT_FOUND, empty.Code = Net.INVALID_ARGUMENT, spaced.Code = Net.INVALID_ARGUMENT
+    END IF
+    LET found AS Net.Addresses OR Error = Lookup("127.0.0.1")
+    IF found IS Net.Addresses THEN
+        LET first AS Net.Address OR Error = found.Get(0)
+        LET past AS Net.Address OR Error = found.Get(1)
+        LET negative AS Net.Address OR Error = found.Get(-1)
+        PRINT found.Count(), first IS Net.Address, past IS Error, negative IS Error
+        IF past IS Error THEN
+            PRINT past
+        END IF
+    END IF
+    LET refused AS Net.Addresses OR Error = Lookup("not an address")
+    IF refused IS Error THEN
+        PRINT refused.Code = Net.INVALID_ARGUMENT, refused.Operation
+    END IF
+    LET made AS Net.Endpoint OR Error = Endpoint("::1", 8080)
+    IF made IS Net.Endpoint THEN
+        LET endpoint AS Net.Endpoint = made
+        PRINT endpoint.Address().ToString(), endpoint.Port()
+    END IF
+    LET bad AS Net.Endpoint OR Error = Endpoint("::g", 1)
+    IF bad IS Error THEN
+        PRINT bad.Code = Net.INVALID_ARGUMENT, bad.Operation
+    END IF
+    LET held AS Net.Endpoint OR Error = made
+    LET parsed AS Net.Address OR Error = Net.Address.Parse("?")
+    IF parsed IS Error THEN
+        held = parsed
+    END IF
+    PRINT held IS Error
+    RETURN 0
+END FUNCTION

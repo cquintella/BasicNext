@@ -45,6 +45,13 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `valid/upcast-argument.bn` | Accept and run | Upcast to an ancestor class in arguments, `NEW` expressions, and returned values. |
 | `valid/interface-inherited-method.bn` | Accept and run | Method dispatch for an interface implemented by an ancestor class. |
 | `valid/interface-dispatch-many.bn` | Accept and run | A call through an interface reference reaches each implementing class, an inherited implementation and an override, with arguments and results. |
+| `valid/is-interface-alternative.bn` | Accept and run | `IS` on an interface alternative holds for a class that implements it, directly or through an ancestor (a handler chain through `Handler OR NULL` fields). |
+| `valid/interface-vector.bn` | Accept and run | A vector of an interface or a base class holds objects of classes that reach it, from a literal and from an element store. |
+| `valid/absence-constants.bn` | Accept and run | `NULL`, `NA`, `EOF` `AS BOOLEAN` are `FALSE`; a method returns `EOF` as `STRING OR EOF`. |
+| `valid/float32-special-constants.bn` | Accept and run | `NAN`, `INF` and `-INF` converted to `FLOAT32` build natively. |
+| `valid/constant-past-int32.bn` | Accept and run | Constant integer expressions past `INT32` (negated minimum, product, sum) initialize an `INT64` binding. |
+| `valid/vector-literal-declared-destination.bn` | Accept and run | A vector literal with a declared destination takes its element type: objects of classes that reach an interface or a base class in a `LET`, a field initializer, an argument, a `RETURN` value and an assignment; integer and float literals that fit a wider or narrower element. |
+| `valid/vector-literal-declared-destination-rows.bn` | Accept and run (`bni`; `bnc` after K30) | Each row of a two-dimensional vector literal takes the declared element type. |
 | `valid/override-intermediate.bn` | Accept and run | Polymorphic dispatch executes the nearest override in a multilevel hierarchy. |
 | `valid/region-void-roundtrip.bn` | Accept and run | Typed pointer region round-trip through `POINTER TO VOID` and back with length and elements preserved. |
 | `valid/env-import.bn` | Accept and run | `HOST.Env` import and `Env.Has` usage. |
@@ -74,6 +81,7 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `invalid/module-constant-negative-unsigned.bn` | Reject (semantic) | `AS UINT32 = -1` is out of range. |
 | `invalid/float-binding-inexact-integer.bn` | Reject (semantic) | `16777217` is not exact in `FLOAT32`. |
 | `invalid/literal-ambiguous-numeric-alternative.bn` | Reject (semantic) | A literal in `INT8 OR INT16` has no default-type or single same-class alternative. |
+| `invalid/vector-literal-unrelated-element.bn` | Reject (semantic) | A vector literal element not assignable to the declared element type is `TYPE_MISMATCH` naming that element. |
 | `invalid/alternative-duplicate-member.bn` | Reject (semantic) | `INTEGER OR INT32` repeats a member after alias resolution. |
 | `invalid/alternative-narrowing-without-is.bn` | Reject (semantic) | `INT32 OR NULL OR Error` stored as `INT32 OR NULL` without an `IS` test. |
 | `invalid/error-without-initializer.bn` | Reject (semantic) | An `Error` binding has no default value. |

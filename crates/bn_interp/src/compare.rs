@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use bn_types::Type;
+use bn_types::{Type, class_model::ClassModel};
 
 use super::Value;
 
@@ -66,7 +66,11 @@ pub fn equals(left: &Value, right: &Value) -> bool {
     }
 }
 
-pub(super) fn is_value(value: &Value, test: &str) -> bool {
+/// `value IS test`. An object holds a class or interface alternative when its
+/// class is that type or reaches it through `classes` (a subclass, or a
+/// class implementing the interface: `0.6.md`, "IS" on declared
+/// alternatives; K27).
+pub(super) fn is_value(value: &Value, test: &str, classes: &ClassModel) -> bool {
     if let Some(ty) = bn_types::scalar_test_type(test) {
         let actual = match value {
             Value::Integer(_, kind) => Type::Integer(*kind),
@@ -98,7 +102,7 @@ pub(super) fn is_value(value: &Value, test: &str) -> bool {
             let element = format!("{}{}", &test[..open], &test[close + 1..]);
             matches!(value, Value::Vector(items)
                 if test[open + 1..close].parse::<usize>() == Ok(items.len())
-                    && items.iter().all(|item| is_value(item, &element)))
+                    && items.iter().all(|item| is_value(item, &element, classes)))
         }
         _ => match value {
             Value::File(_) => is_host_file_type(test),
@@ -121,7 +125,9 @@ pub(super) fn is_value(value: &Value, test: &str) -> bool {
             Value::TcpListener(_) => test == "HOST.Net.TCPListener",
             Value::UdpSocket(_) => test == "HOST.Net.UDPSocket",
             Value::Object { class, .. } => {
-                class.as_ref() == test || class.rsplit('.').next() == Some(test)
+                class.as_ref() == test
+                    || class.rsplit('.').next() == Some(test)
+                    || classes.is_upcast(class, test)
             }
             Value::Record { record } => record.type_name().as_ref() == test,
             _ => false,

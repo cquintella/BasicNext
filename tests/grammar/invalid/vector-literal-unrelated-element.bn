@@ -1,0 +1,29 @@
+// A vector literal with a declared destination: an element not assignable to
+// the declared element type is a TYPE_MISMATCH naming that element, even when
+// the other elements are assignable (0.6.md, "Vector literals take a declared
+// destination").
+INTERFACE Listener
+    FUNCTION Notify(event AS STRING) AS VOID
+END INTERFACE
+
+CLASS Printer IMPLEMENTS Listener
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION Notify(event AS STRING) AS VOID
+        PRINT event
+    END FUNCTION
+END CLASS
+
+CLASS Clock
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+
+    PUBLIC FUNCTION Tick() AS VOID
+        PRINT "tick"
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET listeners AS Listener[2] = [NEW Printer(), NEW Clock()]
+END FUNCTION

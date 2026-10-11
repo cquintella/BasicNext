@@ -409,8 +409,8 @@ impl Policy {
 }
 
 /// The one policy static of the compiled image (D-P-02). `RwLock`, not
-/// `OnceLock`: `bn_rt_policy_filesystem_root` and `bn_rt_policy_restrict`
-/// tighten it after `bn_rt_policy_init`.
+/// `OnceLock`: `bn_rt_policy_filesystem_root` tightens it after
+/// `bn_rt_policy_init`.
 static POLICY: RwLock<Policy> = RwLock::new(Policy::unrestricted());
 
 fn current() -> RwLockReadGuard<'static, Policy> {
@@ -425,7 +425,10 @@ fn current_mut() -> RwLockWriteGuard<'static, Policy> {
 /// an unrestricted policy; `Drop` restores it so unrelated tests never observe
 /// a restricted static.
 #[cfg(test)]
-pub(crate) struct PolicyTestGuard(#[allow(dead_code)] std::sync::MutexGuard<'static, ()>);
+pub(crate) struct PolicyTestGuard {
+    // Held, not read: the lock serializes the tests that mutate the policy.
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
 
 #[cfg(test)]
 impl Drop for PolicyTestGuard {
@@ -439,7 +442,7 @@ pub(crate) fn reset_for_tests() -> PolicyTestGuard {
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let guard = LOCK.lock().unwrap_or_else(PoisonError::into_inner);
     *current_mut() = Policy::unrestricted();
-    PolicyTestGuard(guard)
+    PolicyTestGuard { _lock: guard }
 }
 
 #[must_use]
@@ -529,14 +532,12 @@ fn path_text(path: *const c_char) -> Option<String> {
     }
 }
 
-/// Restricts the effective policy; bits outside the artifact ceiling are ignored.
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_policy_restrict(mask: u64) -> i32 {
-    if mask & !POLICY_ALL != 0 {
-        return POLICY_INVALID;
-    }
+/// Narrows the effective policy below the artifact ceiling, as a host that
+/// denies more would (tests only: no compiled program narrows it; bucket
+/// 0.6.5 H.S3.a removed the unused `bn_rt_policy_restrict` export).
+#[cfg(test)]
+pub(crate) fn restrict_for_tests(mask: u64) {
     current_mut().restrict(mask);
-    POLICY_OK
 }
 
 #[cfg(test)]
@@ -548,7 +549,6 @@ mod tests {
         assert_eq!(POLICY_VERSION, 1);
         assert_ne!(POLICY_ALL & POLICY_CONSOLE, 0);
         assert_eq!(bn_rt_policy_init(POLICY_VERSION, 1 << 63), POLICY_INVALID);
-        assert_eq!(bn_rt_policy_restrict(1 << 63), POLICY_INVALID);
     }
 
     #[test]

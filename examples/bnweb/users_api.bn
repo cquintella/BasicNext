@@ -1,0 +1,196 @@
+// BNWeb: a small REST service with authentication.
+//
+//   POST /auth          form body user=...&password=...; on success the
+//                       server session holds the user
+//   POST /logout        ends the session
+//   GET  /users?id=ID   the user with that id, as JSON (login required)
+//   GET  /users/:id     the same, with the id in the path (login required)
+//
+// Handlers run in parallel on a BNDispatch queue, each in its own copy of
+// the program; the server sessions are the state they share. The server
+// writes the session cookie (`sid`) itself. Run, then try:
+//
+//   bni run examples/bnweb/users_api.bn -- 8080
+//   curl -c jar -b jar -d "user=ana&password=bn-secret" http://127.0.0.1:8080/auth
+//   curl -b jar "http://127.0.0.1:8080/users?id=00102"
+//   curl -b jar http://127.0.0.1:8080/users/00102
+//   curl -c jar -b jar -X POST http://127.0.0.1:8080/logout
+//
+// The password is written here only to keep the example short; a real
+// service checks a stored hash (BNCrypto) read from its environment.
+IMPORT BNWeb AS Web
+IMPORT BNDispatch AS Dispatch
+IMPORT BNString AS Str
+IMPORT BNMath AS M
+IMPORT HOST.Net AS Net
+
+CLASS Users
+    PUBLIC STATIC FUNCTION Name(id AS STRING) AS STRING OR NULL
+        LET ids AS STRING[3] = ["00101", "00102", "00103"]
+        LET names AS STRING[3] = ["Bruno", "Ana", "Carla"]
+        FOR i AS INT32 = 0 TO 2
+            IF ids[i] = id THEN
+                RETURN names[i]
+            END IF
+        END FOR
+        RETURN NULL
+    END FUNCTION
+END CLASS
+
+// The value of `key` in a form body `a=1&b=2`; "" when absent.
+FUNCTION FormValue(body AS STRING, key AS STRING) AS STRING
+    LET pairs AS Str.Tokenizer OR NULL = Str.Tokenizer.New(body, "&")
+    IF pairs IS NULL THEN
+        RETURN ""
+    END IF
+    LET pair AS STRING OR EOF = pairs.Next()
+    WHILE NOT (pair IS EOF)
+        IF pair IS STRING THEN
+            LET parts AS Str.Tokenizer OR NULL = Str.Tokenizer.New(pair, "=")
+            IF parts IS Str.Tokenizer THEN
+                LET name AS STRING OR EOF = parts.Next()
+                LET value AS STRING OR EOF = parts.Next()
+                IF name IS STRING AND value IS STRING THEN
+                    IF name = key THEN
+                        RETURN value
+                    END IF
+                END IF
+            END IF
+        END IF
+        pair = pairs.Next()
+    END WHILE
+    RETURN ""
+END FUNCTION
+
+FUNCTION Auth(request AS Web.Request, response AS Web.Response) AS VOID
+    LET body AS STRING OR Error = request.Body(1024)
+    IF body IS Error THEN
+        response.SetStatus(400)
+        response.Write("form body required")
+        RETURN
+    END IF
+    LET user AS STRING = FormValue(body, "user")
+    IF user <> "ana" OR FormValue(body, "password") <> "bn-secret" THEN
+        response.SetStatus(401)
+        response.Write("invalid credentials")
+        RETURN
+    END IF
+    LET session AS Web.Session OR Error = request.Session()
+    IF session IS Error THEN
+        response.SetStatus(500)
+        response.Write("sessions unavailable")
+        RETURN
+    END IF
+    LET stored AS VOID OR Error = session.Set("user", user)
+    // A new identifier on login, so an id seen before it is worthless.
+    LET rotated AS VOID OR Error = session.Rotate()
+    IF stored IS Error OR rotated IS Error THEN
+        response.SetStatus(500)
+        response.Write("session failed")
+        RETURN
+    END IF
+    response.Write("authenticated")
+END FUNCTION
+
+FUNCTION Logout(request AS Web.Request, response AS Web.Response) AS VOID
+    LET session AS Web.Session OR Error = request.Session()
+    IF session IS Web.Session THEN
+        session.End()
+    END IF
+    response.Write("signed out")
+END FUNCTION
+
+// Whether the request's session holds a signed-in user.
+FUNCTION SignedIn(request AS Web.Request) AS BOOLEAN
+    LET session AS Web.Session OR Error = request.Session()
+    IF session IS Error THEN
+        RETURN FALSE
+    END IF
+    LET user AS STRING OR Error = session.Get("user")
+    RETURN user IS STRING
+END FUNCTION
+
+FUNCTION WriteUser(id AS STRING, response AS Web.Response) AS VOID
+    LET name AS STRING OR NULL = Users.Name(id)
+    IF name IS NULL THEN
+        response.SetStatus(404)
+        response.Write("no user " + id)
+        RETURN
+    END IF
+    response.SetHeader("Content-Type", "application/json")
+    response.Write("{\"id\":\"" + id + "\",\"name\":\"" + name + "\"}")
+END FUNCTION
+
+FUNCTION UserByQuery(request AS Web.Request, response AS Web.Response) AS VOID
+    IF NOT SignedIn(request) THEN
+        response.SetStatus(401)
+        response.Write("login required")
+        RETURN
+    END IF
+    LET ids AS Web.QueryValues OR Error = request.Query("id")
+    IF ids IS Web.QueryValues THEN
+        LET id AS STRING OR Error = ids.Get(0)
+        IF id IS STRING THEN
+            WriteUser(id, response)
+            RETURN
+        END IF
+    END IF
+    response.SetStatus(400)
+    response.Write("id required")
+END FUNCTION
+
+FUNCTION UserByPath(request AS Web.Request, response AS Web.Response) AS VOID
+    IF NOT SignedIn(request) THEN
+        response.SetStatus(401)
+        response.Write("login required")
+        RETURN
+    END IF
+    LET id AS STRING OR Error = request.Param("id")
+    IF id IS STRING THEN
+        WriteUser(id, response)
+    END IF
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    LET port AS UINT16 = 8080
+    IF LEN(HOST.Args) > 1 THEN
+        port = M.VAL(HOST.Args[1]) AS UINT16
+    END IF
+    LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    IF address IS Error THEN
+        RETURN 1
+    END IF
+    LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, port)
+    IF endpoint IS Error THEN
+        RETURN 1
+    END IF
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Concurrent(8)
+    IF queue IS Error THEN
+        PRINT queue
+        RETURN 1
+    END IF
+    LET server AS Web.Server = NEW Web.Server()
+    LET parallel AS VOID OR Error = server.UseQueue(queue)
+    // At most 1024 signed-in clients, each forgotten after 15 idle minutes.
+    LET sessions AS VOID OR Error = server.UseSessions(1024, 900000)
+    IF parallel IS Error OR sessions IS Error THEN
+        PRINT "server setup failed"
+        RETURN 1
+    END IF
+    server.Route("POST", "/auth", Auth)
+    server.Route("POST", "/logout", Logout)
+    server.Route("GET", "/users", UserByQuery)
+    server.Route("GET", "/users/:id", UserByPath)
+    LET started AS VOID OR Error = server.Start(endpoint)
+    IF started IS Error THEN
+        PRINT started
+        RETURN 1
+    END IF
+    PRINT "listening on 127.0.0.1:" + (port AS STRING) + " (press Enter to stop)"
+    LET line AS STRING OR EOF = INPUT()
+    IF line IS EOF THEN
+        PRINT "input closed; stopping"
+    END IF
+    server.Stop(1000)
+    RETURN 0
+END FUNCTION

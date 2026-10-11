@@ -1,0 +1,40 @@
+# BNLog contract names and texts (language/0.6/bnlog.md, "Formats").
+# One `key = value` per line; code refers to the key, never to the value.
+# Every key here is used, and every key the code uses is here
+# (bn_core_log `catalog` tests).
+
+# Format names accepted by Logger.SetFormat.
+format.json = JSON
+format.syslog = SYSLOG
+format.apache = APACHE
+
+# What SYSLOG writes for an absent header field (RFC 5424 NILVALUE).
+syslog.nil = -
+
+# Fields an APACHE line reads, and what stands for an absent one.
+apache.remote = http.remote
+apache.method = http.method
+apache.path = http.path
+apache.protocol = http.protocol
+apache.status = http.status
+apache.bytes = http.bytes_sent
+apache.referrer = http.referrer
+apache.user_agent = http.user_agent
+apache.absent = -
+apache.zone = +0000
+apache.month = Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
+
+# Sensitive keys: exact names, then markers a key may contain.
+sensitive.exact = query body passwd tls_key
+sensitive.marker = authorization cookie session password secret token api_key apikey access_key private_key credential bearer jwt signature
+
+# Error for an unknown format ({format} is the text the program passed).
+error.invalid_format.message = unknown log format "{format}"
+error.invalid_format.cause = the format is "JSON", "SYSLOG" or "APACHE"
+error.duplicate_key.message = key "{key}" already exists
+error.duplicate_key.cause = the key "{key}" is already present
+error.invalid_transport.cause = transport "{kind}" is not supported
+
+# Contract names and type-mismatch contexts read by bn_rt and bn_lib_log.
+op.logger.set_format = BNLog.Logger.SetFormat
+context.set_format.format = BNLog.Logger.SetFormat format

@@ -377,6 +377,8 @@ pub(crate) fn integer_literal(expression: &Expression) -> Option<i64> {
         value.parse().ok()
     }
 }
+/// The context a vector literal element names in a `TYPE_MISMATCH`.
+pub(crate) const VECTOR_LITERAL_ELEMENT: &str = "vector literal element";
 pub(crate) fn vector_shape(expression: &Expression) -> Option<Vec<usize>> {
     let ExpressionKind::Vector { values } = &expression.kind else {
         return Some(Vec::new());

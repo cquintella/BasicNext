@@ -75,7 +75,11 @@ impl CryptoFailure {
             Self::Hex(text) => {
                 let shown: String = text.chars().take(64).collect();
                 let more = if text.chars().count() > 64 { "…" } else { "" };
-                format!("cannot decode \"{shown}{more}\" as hexadecimal")
+                bn_catalog::fill(
+                    "crypto",
+                    "hex.decode.message",
+                    &[("shown", &shown), ("more", &more)],
+                )
             }
             Self::Seal(_) => "cannot seal the plaintext".into(),
             Self::Open(_) => "cannot open the ciphertext".into(),
@@ -97,9 +101,7 @@ impl CryptoFailure {
                 "the text must hold an even number of hexadecimal digits (0-9, a-f, A-F)".into()
             }
             Self::Seal(_) => "the key must be 32 bytes and the nonce 12 bytes".into(),
-            Self::Open(_) => "the authentication tag does not verify: the ciphertext, AAD, \
-                              key, or nonce differs from the ones that sealed it"
-                .into(),
+            Self::Open(_) => bn_catalog::text("crypto", "open.tag.cause").into(),
             Self::Argon2id => {
                 "the memory, iteration, or parallelism cost is outside Argon2id's bounds".into()
             }

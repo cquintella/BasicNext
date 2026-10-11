@@ -1,0 +1,4 @@
+# exec texts and contract names (bn_catalog; AGENTS.md "No hard-coded
+# messages"). One `key = value` per line; `{name}` is filled by the code.
+
+run.message = cannot run "{program}"

@@ -1,0 +1,8 @@
+// NAN, INF and -INF converted to FLOAT32 build natively (known issue K34: the
+// LLVM constant used the 32-bit hexadecimal pattern, which clang rejects).
+FUNCTION Start() AS VOID
+    LET zero AS FLOAT64 = 0.0
+    LET nan AS FLOAT64 = zero / zero
+    LET infinity AS FLOAT64 = 1.0 / zero
+    PRINT nan AS FLOAT32, infinity AS FLOAT32, -infinity AS FLOAT32
+END FUNCTION

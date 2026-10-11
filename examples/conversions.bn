@@ -1,6 +1,6 @@
 // Type conversions with AS, and what PRINT writes for each type.
 // Basic Next converts nothing implicitly: every conversion is spelled AS.
-// Spec: language/0.6/0.6.md (casts, "AS STRING" C3); console.md (PRINT).
+// Spec: language/0.6/0.6.md ("Conversions with AS", "AS STRING" C3); console.md (PRINT).
 
 FUNCTION Start() AS VOID
     // PRINT separates its expressions with one space; no expression is a
@@ -9,7 +9,7 @@ FUNCTION Start() AS VOID
     PRINT
 
     // Integer to integer: widening always fits; narrowing is checked at run
-    // time (out of range stops with INVALID_NUMERIC_CONVERSION).
+    // time (out of range stops with NUMERIC_OVERFLOW; 0.6.md, "Conversions with AS").
     LET small AS BYTE = 200
     LET wide AS INT64 = small AS INT64
     LET big AS INT32 = 1000
