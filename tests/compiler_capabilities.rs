@@ -651,17 +651,12 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
     era * 146_097 + day_of_era - 719_468
 }
 
+/// Every `bn_rt` function the backend can declare: the symbols of its one
+/// signature table (bucket 0.6.5 T.5.1).
 fn llvm_declared_runtime_symbols() -> BTreeSet<String> {
-    [
-        "crates/bn_llvm/src/llvm/runtime.rs",
-        "crates/bn_llvm/src/llvm/math.rs",
-    ]
-    .into_iter()
-    .flat_map(|path| {
-        let source = fs::read_to_string(workspace_root().join(path)).expect("read LLVM source");
-        symbols_after_marker(&source, "@bn_rt_", '(')
-    })
-    .collect()
+    let table = workspace_root().join("crates/bn_llvm/src/llvm/runtime_abi.rs");
+    let source = fs::read_to_string(table).expect("read the signature table");
+    symbols_after_marker(&source, "\"bn_rt_", '"')
 }
 
 fn runtime_exported_symbols() -> BTreeSet<String> {

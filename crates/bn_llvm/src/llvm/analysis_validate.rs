@@ -1,5 +1,6 @@
 #![allow(clippy::wildcard_imports, clippy::match_same_arms)]
 use super::*;
+use crate::ir::LlvmType;
 
 #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
 pub(crate) fn validate_instruction(
@@ -11,7 +12,7 @@ pub(crate) fn validate_instruction(
     functions: &HashMap<ValueId, &str>,
     strings: &[(ValueId, String)],
     module_functions: &std::collections::HashSet<&str>,
-    intrinsics: &mut BTreeSet<&'static str>,
+    intrinsics: &mut BTreeSet<crate::ir::Intrinsic>,
 ) -> Result<(), String> {
     let supported = match instruction {
         // Explicit ownership (proposal arc-shared-core-0.6.5) is lowered only
@@ -49,6 +50,7 @@ pub(crate) fn validate_instruction(
             ..
         } => {
             (dimensions.is_empty() && dynamic_dimensions.is_empty() && llvm_type(ty).is_some())
+                || vectors::nested_default(ty, dimensions, dynamic_dimensions)
                 || (matches!(ty, Type::Vector { element, dimensions: ty_dimensions, .. }
                 if ty_dimensions.len() == 1
                     && dimensions.len() == 1
@@ -57,9 +59,8 @@ pub(crate) fn validate_instruction(
                     && llvm_type(ty).is_some()
                     && llvm_type(element).is_some_and(|element| matches!(
                     element,
-                    "i1" | "i8" | "i16" | "i32" | "i64" | "float" | "double" | "ptr"
-                        | "{ i1, ptr, i64 }" | "{ i1, ptr }"
-                ))))
+                    LlvmType::I1 | LlvmType::I8 | LlvmType::I16 | LlvmType::I32 | LlvmType::I64 | LlvmType::Float | LlvmType::Double | LlvmType::Ptr
+                ) || crate::layout::is_one_of(&element, &[crate::layout::handle_result_ty(), crate::layout::status_pointer_ty()]))))
         }
         Instruction::Load {
             destination,
@@ -109,11 +110,11 @@ pub(crate) fn validate_instruction(
                     "unknown value type",
                 ));
             };
-            if let Some(intrinsic) = checked_intrinsic_declaration(left_ty, operator) {
+            if let Some(intrinsic) = checked_intrinsic(left_ty, operator) {
                 intrinsics.insert(intrinsic);
             }
             if operator == "Power"
-                && let Some(intrinsic) = pow_intrinsic_declaration(ty)
+                && let Some(intrinsic) = pow_intrinsic(ty)
             {
                 intrinsics.insert(intrinsic);
             }
@@ -122,7 +123,13 @@ pub(crate) fn validate_instruction(
                 // on a scratch buffer keeps one rule and makes an unlowered
                 // form a support diagnostic here (W4), not at emission.
                 if matches!(ty, Type::Boolean)
-                    && !emit_is(&mut String::new(), *destination, *left, left_ty, right_ty)
+                    && !emit_is(
+                        &mut crate::ir::LlvmModule::new(),
+                        *destination,
+                        *left,
+                        left_ty,
+                        right_ty,
+                    )
                 {
                     let detail = bn_catalog::fill(
                         "llvm",
@@ -147,7 +154,7 @@ pub(crate) fn validate_instruction(
         Instruction::Cast { value, ty, .. } => {
             cast_supported(values.get(value), ty)
                 || values.get(value).is_some_and(|source| {
-                    llvm_type(source) == Some("{ i1, double }")
+                    llvm_type(source) == Some(crate::layout::optional_float_ty())
                         && matches!(ty, Type::Float(_) | Type::FloatLiteral)
                 })
         }
@@ -231,8 +238,8 @@ pub(crate) fn validate_instruction(
                     || matches!(ty, Type::Pointer { element, .. } if matches!(element.as_ref(), Type::Vector { .. }))
             })
                 || values.get(value).is_some_and(|ty| {
-                    llvm_type(ty) == Some("{ ptr, i32 }") || llvm_type(ty) == Some("ptr")
-                        || llvm_type(ty) == Some("{ i1, ptr, i64 }")
+                    llvm_type(ty) == Some(crate::layout::vector_ty()) || llvm_type(ty) == Some(LlvmType::Ptr)
+                        || llvm_type(ty) == Some(crate::layout::handle_result_ty())
                         || general_alternative(ty).is_some()
                 })
                 || values.get(value).is_some_and(|ty| {
@@ -284,7 +291,7 @@ pub(crate) fn validate_instruction(
             let field_ty = owner
                 .zip(path.first().map(String::as_str))
                 .and_then(|(owner, field)| field_type(module, owner, field));
-            let receiver_supported = symbols.get(symbol).and_then(llvm_type) == Some("ptr")
+            let receiver_supported = symbols.get(symbol).and_then(llvm_type) == Some(LlvmType::Ptr)
                 || function.parameters.first() == Some(symbol);
             path.len() == 1
                 && indices.len() == 1
@@ -307,27 +314,40 @@ pub(crate) fn validate_instruction(
         } => {
             (owner == "Error"
                 && matches!(name.as_str(), "Message" | "Operation" | "Cause")
-                && matches!(
-                    values.get(object).and_then(llvm_type),
-                    Some("{ i1, ptr }" | "{ i1, ptr, i32 }" | "{ i1, ptr, i64 }")
-                ))
+                && values.get(object).and_then(llvm_type).is_some_and(|ty| {
+                    crate::layout::is_one_of(
+                        &ty,
+                        &[
+                            crate::layout::status_pointer_ty(),
+                            crate::layout::status_endpoint_ty(),
+                            crate::layout::handle_result_ty(),
+                        ],
+                    )
+                }))
                 || (owner == "Error"
                     && name == "Code"
-                    && matches!(
-                        values.get(object).and_then(llvm_type),
-                        Some("{ i1, ptr }" | "{ i1, ptr, i32 }" | "{ i1, ptr, i64 }")
-                    ))
+                    && values.get(object).and_then(llvm_type).is_some_and(|ty| {
+                        crate::layout::is_one_of(
+                            &ty,
+                            &[
+                                crate::layout::status_pointer_ty(),
+                                crate::layout::status_endpoint_ty(),
+                                crate::layout::handle_result_ty(),
+                            ],
+                        )
+                    }))
                 || (owner == "HOST.Exec.Result"
                     && matches!(name.as_str(), "ReturnCode" | "Stdout" | "Stderr")
-                    && values.get(object).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+                    && values.get(object).and_then(llvm_type)
+                        == Some(crate::layout::handle_result_ty())
                     && llvm_type(ty).is_some())
-                || (values.get(object).and_then(llvm_type) == Some("ptr")
+                || (values.get(object).and_then(llvm_type) == Some(LlvmType::Ptr)
                     && llvm_type(ty).is_some())
         }
         Instruction::SetMember {
             object, value, ty, ..
         } => {
-            values.get(object).and_then(llvm_type) == Some("ptr")
+            values.get(object).and_then(llvm_type) == Some(LlvmType::Ptr)
                 && values.get(value).and_then(llvm_type).is_some()
                 && llvm_type(ty).is_some()
         }
@@ -339,7 +359,7 @@ pub(crate) fn validate_instruction(
             ..
         } => {
             path.len() == 1
-                && symbols.get(symbol).and_then(llvm_type) == Some("ptr")
+                && symbols.get(symbol).and_then(llvm_type) == Some(LlvmType::Ptr)
                 && values.get(value).and_then(llvm_type).is_some()
                 && llvm_type(ty).is_some()
         }
@@ -358,8 +378,8 @@ pub(crate) fn validate_instruction(
                 Type::Function { parameters, .. } => Some(parameters),
                 _ => None,
             });
-            llvm_type(ty) == Some("{ i1, ptr, i64 }")
-                && values.get(queue).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+            llvm_type(ty) == Some(crate::layout::handle_result_ty())
+                && values.get(queue).and_then(llvm_type) == Some(crate::layout::handle_result_ty())
                 && signature.is_some_and(|parameters| {
                     parameters.len() == arguments.len()
                         && arguments
@@ -390,11 +410,11 @@ pub(crate) fn validate_instruction(
             ty,
             ..
         } => {
-            values.get(ticket).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+            values.get(ticket).and_then(llvm_type) == Some(crate::layout::handle_result_ty())
                 && values
                     .get(timeout)
                     .and_then(llvm_type)
-                    .is_some_and(integer_llvm)
+                    .is_some_and(|ty| ty.is_integer())
                 && (matches!(ty, Type::Unknown)
                     || is_void_type(ty)
                     || matches!(ty, Type::Alternative(alternatives) if void_or_error(alternatives)

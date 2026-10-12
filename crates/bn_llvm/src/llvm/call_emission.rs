@@ -10,7 +10,7 @@ use crate::ir::{CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::unnecessary_wraps)]
 pub(crate) fn lower_call_instruction(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     module: &Module,
     _function: &Function,
     block_id: BlockId,
@@ -196,7 +196,7 @@ pub(crate) fn lower_call_instruction(
             let dest = destination.0;
             let union = T::struct_of([T::I1, T::Ptr, T::I64]);
             let r = |name: &str| O::reg(format!("csv{name}{dest}"));
-            let flag = |text: &mut String, slot: String, operand: ValueId| {
+            let flag = |text: &mut crate::ir::LlvmModule, slot: String, operand: ValueId| {
                 text.assign(slot, I::cast(CastOp::ZExt, T::I1, v(operand), T::I8));
             };
             if name.ends_with("WriteCSV") {
@@ -206,7 +206,7 @@ pub(crate) fn lower_call_instruction(
                     .values
                     .get(&arguments[1])
                     .expect("validated DataFrame argument");
-                let frame = if llvm_type(frame) == Some("{ i1, ptr, i64 }") {
+                let frame = if llvm_type(frame) == Some(crate::layout::handle_result_ty()) {
                     I::extract(union, v(arguments[1]), 2)
                 } else {
                     I::cast(CastOp::PtrToInt, T::Ptr, v(arguments[1]), T::I64)
@@ -220,7 +220,7 @@ pub(crate) fn lower_call_instruction(
                     (T::Ptr, v(arguments[3])),
                 ];
                 let call = I::call(T::I32, "bn_rt_dataframe_write_csv", args);
-                emit_void_result(text, *destination, call.to_string());
+                emit_void_call_result(text, *destination, call);
                 return Ok(());
             }
             text.assign(
@@ -241,12 +241,13 @@ pub(crate) fn lower_call_instruction(
             emit_handle_result(
                 text,
                 *destination,
-                format!("%csvrc{dest}"),
-                format!("%csvvalue{dest}"),
+                &O::reg(format!("csvrc{dest}")),
+                &O::reg(format!("csvvalue{dest}")),
             );
         }
         name if bnlog_method(module, name).is_some() => lower_bnlog_call(
             text,
+            module,
             *destination,
             bnlog_method(module, name).expect("validated BNLog method"),
             arguments,
@@ -358,7 +359,7 @@ pub(crate) fn lower_call_instruction(
                 .values
                 .get(&argument)
                 .expect("validated CHAR argument");
-            let code = O::raw(extend_to_i64(text, argument, ty));
+            let code = extend_to_i64(text, argument, ty);
             let r = |name: &str| O::reg(format!("char{name}{dest}"));
             let call = I::call(T::I64, "bn_rt_str_char_utf8", vec![(T::I64, code)]);
             text.assign(format!("charpacked{dest}"), call);
@@ -389,6 +390,12 @@ pub(crate) fn lower_call_instruction(
             .any(|function| function.name == name.strip_prefix("@super:").unwrap_or(name))
             || crate::analysis_calls::interface_call_targets(module, name).is_some() =>
         {
+            crate::traps::emit_stack_check(
+                text,
+                block_id,
+                name.strip_prefix("@super:").unwrap_or(name),
+                state,
+            );
             lower_user_call(text, module, *destination, name, arguments, analysis, state);
         }
         "HOST.Random.Seed" => {
@@ -404,7 +411,7 @@ pub(crate) fn lower_call_instruction(
                 text,
                 block_id,
                 *destination,
-                I::call(T::I32, "bn_rt_random_seed", vec![(T::I64, O::raw(seed))]),
+                I::call(T::I32, "bn_rt_random_seed", vec![(T::I64, seed)]),
                 &[bn_diag::DiagId::EXECUTION_POLICY_DENIED],
                 state,
             );
@@ -420,7 +427,7 @@ pub(crate) fn lower_call_instruction(
 
 /// Packs `%<prefix>error`, `message` wrapped as an error record and
 /// `%<prefix>payload` into the `{ i1, ptr, i64 }` of a `T OR Error` result.
-fn emit_wrapped_error(text: &mut String, prefix: &str, dest: u32, message: O) {
+fn emit_wrapped_error(text: &mut crate::ir::LlvmModule, prefix: &str, dest: u32, message: O) {
     let r = |name: &str| O::reg(format!("{prefix}{name}{dest}"));
     let union = T::struct_of([T::I1, T::Ptr, T::I64]);
     let head = I::insert(union.clone(), O::undef(), T::I1, r("error"), 0);

@@ -10,13 +10,12 @@ use super::*;
 use crate::ir::{
     BinaryOp, CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T,
 };
-use crate::layout::typed_llvm;
 #[path = "emission_tail.rs"]
 mod emission_tail;
 use emission_tail::lower_scalar_instruction_tail;
 
 pub(crate) fn lower_scalar_instruction(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     module: &Module,
     function: &Function,
     block_id: BlockId,
@@ -48,11 +47,9 @@ pub(crate) fn lower_scalar_instruction(
         } => match value {
             Constant::Integer(value) => {
                 let parsed = parse_integer(value).expect("validated integer constant");
-                block_state.constants.insert(
-                    *destination,
-                    ConstantValue::Integer(parsed, integer_kind(ty)),
-                );
-                emit_constant_assignment(text, *destination, ty, value);
+                let constant = ConstantValue::Integer(parsed, integer_kind(ty));
+                emit_constant_assignment(text, *destination, ty, &constant);
+                block_state.constants.insert(*destination, constant);
             }
             Constant::Float(value) => {
                 let parsed = parse_float_constant(value).expect("validated float constant");
@@ -60,7 +57,7 @@ pub(crate) fn lower_scalar_instruction(
                     *destination,
                     typed_constant(ConstantValue::Float(parsed), ty),
                 );
-                emit_constant_assignment(text, *destination, ty, &render_float(parsed, ty));
+                emit_constant_assignment(text, *destination, ty, &ConstantValue::Float(parsed));
             }
             Constant::Boolean(value) => {
                 block_state
@@ -72,7 +69,7 @@ pub(crate) fn lower_scalar_instruction(
                 block_state
                     .constants
                     .insert(*destination, ConstantValue::String(value.clone()));
-                let global = O::raw(string_global(&function.name, destination.0));
+                let global = O::global(string_global(&function.name, destination.0));
                 text.assign(
                     format!("v{}", destination.0),
                     I::gep(T::I8, global, vec![(T::I64, O::int(0))]),
@@ -125,7 +122,16 @@ pub(crate) fn lower_scalar_instruction(
             let llvm_ty = llvm_type(ty).expect("validated Phi type");
             state
                 .control_flow
-                .defer_phi(text.len(), *destination, llvm_ty, incoming);
+                .defer_phi(text.position(), *destination, llvm_ty, incoming);
+        }
+        Instruction::Default {
+            destination, ty, ..
+        } if vectors::nest(ty).is_some() => {
+            let strings = matches!(ty, Type::Vector { element, .. } if **element == Type::String);
+            let Some(nest) = vectors::nest(ty) else {
+                unreachable!()
+            };
+            nest.emit_default(text, destination.0, strings);
         }
         Instruction::Default {
             destination,
@@ -137,7 +143,7 @@ pub(crate) fn lower_scalar_instruction(
                 unreachable!("validated multidimensional default type");
             };
             let element_llvm = llvm_type(element).expect("validated vector element type");
-            let element_ty = typed_llvm(element_llvm);
+            let element_ty = element_llvm.clone();
             let len = dimensions[0];
             let dest = destination.0;
             let array = T::Array(len, Box::new(element_ty.clone()));
@@ -150,13 +156,23 @@ pub(crate) fn lower_scalar_instruction(
             for index in 0..len {
                 let slot = format!("vecdefaultslot{dest}_{index}");
                 text.assign(slot.clone(), I::gep(array.clone(), base.clone(), at(index)));
-                let zero = match element_llvm {
-                    "i1" | "i8" | "i16" | "i32" | "i64" => O::int(0),
-                    "float" | "double" => O::float(0.0),
+                let zero = match element_llvm.clone() {
+                    T::I1 | T::I8 | T::I16 | T::I32 | T::I64 => O::int(0),
+                    T::Float | T::Double => O::float(0.0),
                     // A STRING element defaults to "", as a scalar STRING does.
-                    "ptr" if **element == Type::String => O::global(".bn_empty"),
-                    "ptr" => O::null(),
-                    "{ i1, ptr, i64 }" | "{ i1, ptr }" => O::zero_initializer(),
+                    T::Ptr if **element == Type::String => O::global(".bn_empty"),
+                    T::Ptr => O::null(),
+                    other
+                        if crate::layout::is_one_of(
+                            &other,
+                            &[
+                                crate::layout::handle_result_ty(),
+                                crate::layout::status_pointer_ty(),
+                            ],
+                        ) =>
+                    {
+                        O::zero_initializer()
+                    }
                     _ => unreachable!("validated vector element type"),
                 };
                 text.emit(I::store(element_ty.clone(), zero, O::reg(slot)));
@@ -183,26 +199,23 @@ pub(crate) fn lower_scalar_instruction(
         Instruction::Default {
             destination, ty, ..
         } => match llvm_type(ty).expect("validated default type") {
-            GENERAL_LAYOUT => general_alternative::emit_default(
-                text,
-                *destination,
-                general_alternative(ty).expect("general alternative default"),
-            ),
-            "i1" => define_boolean(text, analysis, *destination, false),
-            layout @ ("i8" | "i16" | "i32" | "i64") => {
-                let add = I::binary(BinaryOp::Add, typed_llvm(layout), O::int(0), O::int(0));
+            layout if layout == crate::general_alternative::layout() => {
+                general_alternative::emit_default(
+                    text,
+                    *destination,
+                    general_alternative(ty).expect("general alternative default"),
+                );
+            }
+            T::I1 => define_boolean(text, analysis, *destination, false),
+            layout @ (T::I8 | T::I16 | T::I32 | T::I64) => {
+                let add = I::binary(BinaryOp::Add, layout, O::int(0), O::int(0));
                 text.assign(format!("v{}", destination.0), add);
             }
-            layout @ ("float" | "double") => {
-                let fadd = I::binary(
-                    BinaryOp::FAdd,
-                    typed_llvm(layout),
-                    O::float(0.0),
-                    O::float(0.0),
-                );
+            layout @ (T::Float | T::Double) => {
+                let fadd = I::binary(BinaryOp::FAdd, layout, O::float(0.0), O::float(0.0));
                 text.assign(format!("v{}", destination.0), fadd);
             }
-            "ptr" => {
+            T::Ptr => {
                 let value = if function.kind == FunctionKind::Default {
                     let owner = function
                         .owner
@@ -220,19 +233,37 @@ pub(crate) fn lower_scalar_instruction(
                 };
                 text.assign(format!("v{}", destination.0), value);
             }
-            "{ i1, double }" => emit_optional_float_default(text, *destination),
+            layout if layout == crate::layout::optional_float_ty() => {
+                emit_optional_float_default(text, *destination);
+            }
             // An aggregate default: every field zero or null, built field by
             // field as `RETURN` builds it (`%<prefix>0_` … then `%v`).
-            layout @ ("{ ptr, i32 }" | "{ ptr, i32, i32 }" | "{ i1, ptr, i64 }" | "{ i1, ptr }"
-            | "{ i1, ptr, i32 }") => {
+            layout
+                if crate::layout::is_one_of(
+                    &layout,
+                    &[
+                        crate::layout::vector_ty(),
+                        crate::layout::region_ty(),
+                        crate::layout::handle_result_ty(),
+                        crate::layout::status_pointer_ty(),
+                        crate::layout::status_endpoint_ty(),
+                    ],
+                ) =>
+            {
                 let dest = destination.0;
-                let prefix = match layout {
-                    "{ ptr, i32 }" | "{ ptr, i32, i32 }" => "vec",
-                    "{ i1, ptr, i64 }" => "errdef",
-                    "{ i1, ptr }" => "ptrdef",
-                    _ => "epdef",
+                let prefix = if crate::layout::is_one_of(
+                    &layout,
+                    &[crate::layout::vector_ty(), crate::layout::region_ty()],
+                ) {
+                    "vec"
+                } else if layout == crate::layout::handle_result_ty() {
+                    "errdef"
+                } else if layout == crate::layout::status_pointer_ty() {
+                    "ptrdef"
+                } else {
+                    "epdef"
                 };
-                let aggregate = typed_llvm(layout);
+                let aggregate = layout.clone();
                 let T::Struct(fields) = aggregate.clone() else {
                     unreachable!("aggregate layout");
                 };
@@ -245,7 +276,7 @@ pub(crate) fn lower_scalar_instruction(
                     };
                     let name = if index + 1 == fields.len() {
                         format!("v{dest}")
-                    } else if layout == "{ ptr, i32 }" {
+                    } else if layout == crate::layout::vector_ty() {
                         format!("{prefix}{dest}")
                     } else {
                         format!("{prefix}{index}_{dest}")
@@ -272,30 +303,24 @@ pub(crate) fn lower_scalar_instruction(
             let slot_ty = analysis.symbols.get(symbol).unwrap_or(value_ty);
             let value_llvm = llvm_type(value_ty).expect("validated store LLVM type");
             let slot_llvm = llvm_type(slot_ty).expect("validated slot LLVM type");
-            let operand = if is_struct_type(module, slot_ty) {
-                let Type::Named(owner) = slot_ty else {
-                    unreachable!("validated struct type");
-                };
-                let bytes = class_instance_bytes(module, owner);
-                let tag = value.0;
-                let copy = O::reg(format!("structcopy{tag}"));
-                text.assign(
-                    format!("structcopy{tag}"),
-                    I::alloca(T::Array(
-                        usize::try_from(bytes).expect("struct size fits usize"),
-                        Box::new(T::I8),
-                    )),
-                );
+            let operand = if let Some(owner) = struct_owner(module, slot_ty) {
+                // The slot owns fixed storage reserved at function entry
+                // (`functions.rs`); a store copies the value into it, so a loop
+                // never grows the stack. `memmove`: the value may already be it.
+                let bytes = class_instance_bytes(module, &owner);
+                let storage = format!("structslot{}", symbols[symbol]);
                 let bytes = O::int(i64::try_from(bytes).expect("struct size fits i64"));
                 let args = vec![
-                    (T::Ptr, copy),
-                    (T::Ptr, O::reg(format!("v{tag}"))),
+                    (T::Ptr, O::reg(&storage)),
+                    (T::Ptr, O::reg(format!("v{}", value.0))),
                     (T::I64, bytes),
                     (T::I1, O::bool(false)),
                 ];
-                text.emit(I::call(T::Void, "llvm.memcpy.p0.p0.i64", args));
-                format!("%structcopy{tag}")
-            } else if slot_llvm == "{ i1, double }" && matches!(value_llvm, "float" | "double") {
+                text.emit(I::call(T::Void, crate::runtime_abi::memmove().name, args));
+                O::reg(&storage)
+            } else if slot_llvm == crate::layout::optional_float_ty()
+                && matches!(value_llvm, T::Float | T::Double)
+            {
                 let optional_value =
                     coerce_to_type(text, *value, value_ty, &Type::Float(FloatType::Float64));
                 let optional = T::struct_of([T::I1, T::Double]);
@@ -306,12 +331,14 @@ pub(crate) fn lower_scalar_instruction(
                 );
                 text.assign(
                     format!("optstore{}", value.0),
-                    I::insert(optional, tag, T::Double, O::raw(optional_value), 1),
+                    I::insert(optional, tag, T::Double, optional_value, 1),
                 );
-                format!("%optstore{}", value.0)
-            } else if slot_llvm == "i1" {
+                O::reg(format!("optstore{}", value.0))
+            } else if slot_llvm == T::I1 {
                 i1_operand(text, analysis, state, *value)
-            } else if value_llvm == "{ ptr, i32, i32 }" && slot_llvm == "{ ptr, i32 }" {
+            } else if value_llvm == crate::layout::region_ty()
+                && slot_llvm == crate::layout::vector_ty()
+            {
                 casts::emit_pointer_void_restore(
                     text,
                     block_id,
@@ -321,24 +348,17 @@ pub(crate) fn lower_scalar_instruction(
                     state,
                 )
             } else if value_llvm != slot_llvm
-                && (matches!(value_llvm, "i8" | "i16" | "i32" | "i64")
-                    && matches!(slot_llvm, "i8" | "i16" | "i32" | "i64")
-                    || matches!(
-                        (value_llvm, slot_llvm),
-                        ("float", "double") | ("double", "float")
-                    )
-                    || matches!(slot_llvm, "{ i1, ptr, i64 }" | GENERAL_LAYOUT)
+                && (value_llvm.is_integer() && slot_llvm.is_integer()
+                    || value_llvm.is_floating() && slot_llvm.is_floating()
+                    || crate::layout::is_one_of(&slot_llvm, &[crate::layout::handle_result_ty(), crate::general_alternative::layout()])
                     // An `Error` into `Endpoint OR Error` / `Addresses OR Error` (K36).
-                    || (matches!(slot_llvm, "{ i1, ptr, i32 }" | "{ i1, ptr }")
+                    || (crate::layout::is_one_of(&slot_llvm, &[crate::layout::status_endpoint_ty(), crate::layout::status_pointer_ty()])
                         && is_error_type(value_ty))
-                    || matches!(
-                        (value_llvm, slot_llvm),
-                        ("{ ptr, i32 }", "{ ptr, i32, i32 }")
-                    ))
+                    || value_llvm == crate::layout::vector_ty() && slot_llvm == crate::layout::region_ty())
             {
                 coerce_to_type(text, *value, value_ty, slot_ty)
             } else {
-                format!("%v{}", value.0)
+                O::reg(format!("v{}", value.0))
             };
             if analysis.input_symbols.contains(symbol)
                 && !analysis.input_targets.contains_key(value)
@@ -368,9 +388,9 @@ pub(crate) fn lower_scalar_instruction(
             let slot = symbols[symbol];
             if previous.is_some() && arc_ops::holds_references(module, slot_ty) {
                 let (storage, kept, binding) = (
-                    format!("%vstore{slot}"),
-                    format!("%vprev{slot}"),
-                    format!("%s{slot}"),
+                    O::reg(format!("vstore{slot}")),
+                    O::reg(format!("vprev{slot}")),
+                    O::reg(format!("s{slot}")),
                 );
                 vectors::emit_vector_keep_previous(text, (&storage, &kept, &binding), slot_ty);
             }
@@ -380,25 +400,18 @@ pub(crate) fn lower_scalar_instruction(
                 crate::ir::InstSink::assign(
                     text,
                     format!("v{}", previous.0),
-                    crate::ir::LlvmInst::load(
-                        crate::layout::typed_llvm(slot_llvm),
-                        crate::ir::LlvmOperand::raw(format!("%s{slot}")),
-                    ),
+                    crate::ir::LlvmInst::load(slot_llvm.clone(), O::reg(format!("s{slot}"))),
                 );
             }
             let operand = if function.weak_symbols.contains(symbol) {
                 arc_ops::weak_store_operand(text, &operand, state)
             } else {
-                vectors::emit_vector_copy(text, &format!("%vstore{slot}"), &operand, slot_ty)
+                vectors::emit_vector_copy(text, &O::reg(format!("vstore{slot}")), &operand, slot_ty)
                     .unwrap_or(operand)
             };
-            text.emit(I::store(
-                typed_llvm(slot_llvm),
-                O::raw(operand),
-                O::reg(format!("s{slot}")),
-            ));
+            text.emit(I::store(slot_llvm, operand, O::reg(format!("s{slot}"))));
             if analysis.released_symbols.contains(symbol) {
-                text.emit(I::store(T::I1, O::bool(true), O::raw(live_flag(*symbol))));
+                text.emit(I::store(T::I1, O::bool(true), live_flag(*symbol)));
             }
             if analysis.input_symbols.contains(symbol) {
                 let slot = symbols[symbol];
@@ -461,26 +474,28 @@ pub(crate) fn lower_scalar_instruction(
             } else {
                 block_state.constants.remove(destination);
                 match llvm_type(ty).expect("validated copy type") {
-                    "i1" => define_boolean_from(text, analysis, state, *destination, *source),
-                    layout @ ("i8" | "i16" | "i32" | "i64") => {
+                    T::I1 => {
+                        define_boolean_from(text, analysis, state, *destination, *source);
+                    }
+                    layout @ (T::I8 | T::I16 | T::I32 | T::I64) => {
                         let copy = I::binary(
                             BinaryOp::Add,
-                            typed_llvm(layout),
+                            layout,
                             O::int(0),
                             O::reg(format!("v{}", source.0)),
                         );
                         text.assign(format!("v{}", destination.0), copy);
                     }
-                    layout @ ("float" | "double") => {
+                    layout @ (T::Float | T::Double) => {
                         let copy = I::binary(
                             BinaryOp::FAdd,
-                            typed_llvm(layout),
+                            layout,
                             O::float(0.0),
                             O::reg(format!("v{}", source.0)),
                         );
                         text.assign(format!("v{}", destination.0), copy);
                     }
-                    "ptr" => {
+                    T::Ptr => {
                         let copy = I::gep(
                             T::I8,
                             O::reg(format!("v{}", source.0)),
@@ -488,7 +503,7 @@ pub(crate) fn lower_scalar_instruction(
                         );
                         text.assign(format!("v{}", destination.0), copy);
                     }
-                    "{ i1, ptr, i64 }" => {
+                    layout if layout == crate::layout::handle_result_ty() => {
                         // An `Error` record is wrapped again so the copy owns it.
                         let dest = destination.0;
                         let union = T::struct_of([T::I1, T::Ptr, T::I64]);
@@ -546,14 +561,14 @@ pub(crate) fn lower_scalar_instruction(
                 operator.as_str(),
                 llvm_type(ty).expect("validated unary LLVM type"),
             ) {
-                ("Plus", "i8" | "i16" | "i32" | "i64") => {
+                ("Plus", T::I8 | T::I16 | T::I32 | T::I64) => {
                     let operand_ty = analysis.values.get(operand).unwrap_or(ty);
                     let operand_op = coerce_to_type(text, *operand, operand_ty, ty);
-                    let layout = typed_llvm(llvm_type(ty).expect("validated integer unary type"));
-                    let plus = I::binary(BinaryOp::Add, layout, O::int(0), O::raw(operand_op));
+                    let layout = llvm_type(ty).expect("validated integer unary type");
+                    let plus = I::binary(BinaryOp::Add, layout, O::int(0), operand_op);
                     text.assign(format!("v{}", destination.0), plus);
                 }
-                ("Minus", "i8" | "i16" | "i32" | "i64") => {
+                ("Minus", T::I8 | T::I16 | T::I32 | T::I64) => {
                     let operand_ty = analysis.values.get(operand).unwrap_or(ty);
                     emit_checked_integer_op(
                         text,
@@ -568,21 +583,17 @@ pub(crate) fn lower_scalar_instruction(
                         state,
                     );
                 }
-                (sign @ ("Plus" | "Minus"), layout @ ("float" | "double")) => {
+                (sign @ ("Plus" | "Minus"), layout @ (T::Float | T::Double)) => {
                     let op = if sign == "Plus" {
                         BinaryOp::FAdd
                     } else {
                         BinaryOp::FSub
                     };
-                    let value = I::binary(
-                        op,
-                        typed_llvm(layout),
-                        O::float(0.0),
-                        O::reg(format!("v{}", operand.0)),
-                    );
+                    let value =
+                        I::binary(op, layout, O::float(0.0), O::reg(format!("v{}", operand.0)));
                     text.assign(format!("v{}", destination.0), value);
                 }
-                ("NOT", "i1") => {
+                ("NOT", T::I1) => {
                     let not = I::binary(
                         BinaryOp::Xor,
                         T::I1,
@@ -591,7 +602,7 @@ pub(crate) fn lower_scalar_instruction(
                     );
                     text.assign(format!("v{}", destination.0), not);
                 }
-                ("NOT", "i8" | "i16" | "i32" | "i64") => {
+                ("NOT", T::I8 | T::I16 | T::I32 | T::I64) => {
                     emit_integer_not(text, block_id, *destination, *operand, ty, state);
                 }
                 _ => unreachable!("validated unary operator"),
@@ -678,7 +689,7 @@ pub(crate) fn lower_scalar_instruction(
                 .values
                 .get(value)
                 .expect("validated cast source type");
-            if llvm_type(source_ty) == Some("{ i1, double }")
+            if llvm_type(source_ty) == Some(crate::layout::optional_float_ty())
                 && matches!(ty, Type::Float(_) | Type::FloatLiteral)
             {
                 extract_optional_float(text, *destination, *value);

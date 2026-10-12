@@ -27,7 +27,11 @@ impl Executor<'_, '_> {
             let member = format!("File.{}", name.rsplit('.').next().unwrap_or_default());
             return self.host_provider_call("FileSystem", &member, arguments, span);
         }
-        if let Some((library, member)) = self.library_callee(name) {
+        // A standard module's members are supplied by its provider; the data it
+        // declares (a STRUCT default, a STATIC initializer) is lowered and runs here.
+        if let Some((library, member)) = self.library_callee(name)
+            && !self.function_index.contains_key(name)
+        {
             return self.library_call(library, member, arguments, span);
         }
         if is_temporal_builtin(name) {
@@ -54,12 +58,14 @@ impl Executor<'_, '_> {
             self.dispatch_name(name, &arguments)
         };
         let index = self
-            .module
-            .functions
-            .iter()
-            .position(|function| function.name == resolved)
+            .function_index
+            .get(resolved.as_str())
+            .copied()
             .ok_or_else(|| super::super::name_not_found(&resolved, "function dispatch", span))?;
         let callee = &self.module.functions[index];
+        if self.stack_base.abs_diff(super::super::stack_address()) > self.stack_budget {
+            return Err(super::super::stack_overflow(callee.name.clone(), span));
+        }
         let pinned = lifecycle_dispatch(callee, &arguments);
         if let Some(pinned) = pinned.clone() {
             self.pinned_dispatch.push(pinned);
@@ -190,6 +196,22 @@ impl Executor<'_, '_> {
         for library in libraries {
             let mut provider = self.libraries.remove(library).expect("key just listed");
             let result = provider.release(value, span);
+            self.libraries.insert(library, provider);
+            if result.is_some() {
+                return result;
+            }
+        }
+        None
+    }
+
+    /// One more binding holds a handle owned by a seam library, if any claims it.
+    pub fn library_retain(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
+        let libraries: Vec<&'static str> = self.libraries.keys().copied().collect();
+        for library in libraries {
+            let Some(mut provider) = self.libraries.remove(library) else {
+                continue;
+            };
+            let result = provider.retain(value, span);
             self.libraries.insert(library, provider);
             if result.is_some() {
                 return result;

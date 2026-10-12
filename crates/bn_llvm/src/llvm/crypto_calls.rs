@@ -9,7 +9,6 @@
 use super::json_calls::emit_handle_index;
 use super::*;
 use crate::ir::{CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
-use crate::layout::typed_llvm;
 
 /// How a member's `bn_rt` status becomes its result.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -23,7 +22,7 @@ enum Out {
 }
 
 pub(super) fn lower_bncrypto_call(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     analysis: &LoweringAnalysis<'_>,
     destination: ValueId,
     member: &str,
@@ -123,15 +122,12 @@ pub(super) fn lower_bncrypto_call(
             .values
             .get(operand)
             .and_then(llvm_type)
-            .unwrap_or("i64");
-        if ty == "i64" {
+            .unwrap_or(T::I64);
+        if ty == T::I64 {
             args.push((T::I64, v(*operand)));
         } else {
             let slot = format!("{int_prefix}{dest}_{index}");
-            text.assign(
-                &slot,
-                I::cast(CastOp::SExt, typed_llvm(ty), v(*operand), T::I64),
-            );
+            text.assign(&slot, I::cast(CastOp::SExt, ty, v(*operand), T::I64));
             args.push((T::I64, O::reg(slot)));
         }
     }
@@ -145,7 +141,7 @@ pub(super) fn lower_bncrypto_call(
 }
 
 fn lower_status_call(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     symbol: &str,
     mut args: Vec<(T, O)>,
@@ -176,8 +172,8 @@ fn lower_status_call(
         emit_handle_result(
             text,
             destination,
-            format!("%cryrc{dest}"),
-            format!("%cryhandle{dest}"),
+            &O::reg(format!("cryrc{dest}")),
+            &O::reg(format!("cryhandle{dest}")),
         );
     }
 }

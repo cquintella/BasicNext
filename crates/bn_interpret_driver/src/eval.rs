@@ -13,7 +13,7 @@ use std::{
 use bn_cli::{
     diagnostics::{diagnostic_json, render_diagnostic},
     frontend::load_frontend_with_overlays,
-    options::{EvalMapping, OptionExtension, OutputFormat, parse_options},
+    options::{EvalMapping, OutputFormat, parse_options},
     output::{language_error, tool_error},
 };
 use bn_diag::{DiagId, Diagnostic, DiagnosticValue, Label, LabelStyle};
@@ -23,7 +23,7 @@ use bn_frontend::{
 };
 use bn_source::SourceFile;
 
-use crate::run::run_loaded;
+use crate::{options::InterpreterOptions, run::run_loaded};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum EvalMode {
@@ -244,7 +244,8 @@ pub(crate) fn eval_json_error(
 }
 
 #[allow(clippy::too_many_lines)]
-pub fn eval(command_arguments: Vec<String>, extension: &mut dyn OptionExtension) -> ExitCode {
+#[must_use]
+pub fn eval(command_arguments: Vec<String>) -> ExitCode {
     let json_requested = command_arguments
         .windows(2)
         .any(|window| window[0] == "--format" && window[1] == "json");
@@ -295,7 +296,8 @@ pub fn eval(command_arguments: Vec<String>, extension: &mut dyn OptionExtension)
     } else {
         arguments.push(virtual_path.display().to_string());
     }
-    let mut options = match parse_options(arguments.into_iter(), extension) {
+    let mut interpreter = InterpreterOptions::default();
+    let mut options = match parse_options(arguments.into_iter(), &mut interpreter) {
         Ok(options) => options,
         Err(message) => {
             if json_requested {
@@ -325,12 +327,13 @@ pub fn eval(command_arguments: Vec<String>, extension: &mut dyn OptionExtension)
             return tool_error();
         }
     };
+    options.output_format = interpreter.output_format;
     if options.output_format == OutputFormat::Json {
         // JSON v1 owns both channels; verbosity/token tracing are incompatible
         // with the one-document stdout contract and are therefore suppressed.
         options.verbosity = 0;
-        options.trace = false;
-        options.jupyter_stdin = false;
+        interpreter.trace = false;
+        interpreter.jupyter_stdin = false;
         options.no_log = true;
     }
     options.eval_promotion_warning = has_start && mode == EvalMode::Snippet;
@@ -428,5 +431,5 @@ pub fn eval(command_arguments: Vec<String>, extension: &mut dyn OptionExtension)
         Ok(frontend) => frontend,
         Err(code) => return code,
     };
-    run_loaded(&source, &tokens, &options, &frontend)
+    run_loaded(&source, &tokens, &options, &interpreter, &frontend)
 }

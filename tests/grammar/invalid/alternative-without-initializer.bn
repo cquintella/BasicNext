@@ -1,0 +1,6 @@
+// A binding of an alternative type without `=`: the diagnostic names the
+// whole type, not its first member (known issue K20).
+FUNCTION Start() AS VOID
+    LET x AS INT32 OR NULL
+    PRINT x
+END FUNCTION

@@ -91,13 +91,14 @@ fn bni_rejects_compiler_only_flags_and_the_build_command() {
         .output()
         .expect("run bni build");
     assert_eq!(build.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&build.stderr).contains("try: bni --help"));
+    // `build` is not a bni command: the error comes with bni's own help (K3).
+    assert!(String::from_utf8_lossy(&build.stderr).contains("usage: bni"));
 }
 
-/// Frontend artifacts are a compiler surface: `bni` refuses `--emit` and
-/// names `bnc --emit` (BDFL, 2026-10-07).
+/// Frontend artifacts are a compiler surface (BDFL, 2026-10-07): `--emit` is a
+/// `bnc` option, unknown to `bni`, which prints the error and its help (K3).
 #[test]
-fn bni_refuses_emit_and_points_to_bnc() {
+fn bni_refuses_emit_as_an_unknown_option() {
     let source = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/hello.bn");
     for command in ["check", "run", "lex"] {
         let output = bni()
@@ -106,8 +107,7 @@ fn bni_refuses_emit_and_points_to_bnc() {
             .expect("run bni");
         assert_eq!(output.status.code(), Some(2), "{command}");
         assert!(
-            String::from_utf8_lossy(&output.stderr)
-                .contains("--emit is a compiler option (bnc --emit"),
+            String::from_utf8_lossy(&output.stderr).contains("unknown or repeated option '--emit'"),
             "{command}: {}",
             String::from_utf8_lossy(&output.stderr)
         );

@@ -293,7 +293,7 @@ fn failed_build_writes_partial_process_log_with_failure_stage() {
     let log_path = directory.join("failed.log");
     let output = bnc()
         .args([
-            "tests/grammar/valid/struct-return-lifetime-deferred.bn",
+            "tests/grammar/valid/pointer-named-type.bn",
             "--allow",
             "UNUSED_BINDING",
             "--log-level",
@@ -370,7 +370,7 @@ fn config_file_controls_process_log_level_and_destination() {
     .expect("write logging config");
     let output = bnc()
         .args([
-            "tests/grammar/valid/struct-return-lifetime-deferred.bn",
+            "tests/grammar/valid/pointer-named-type.bn",
             "--allow",
             "UNUSED_BINDING",
             "--config",

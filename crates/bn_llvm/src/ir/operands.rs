@@ -7,6 +7,8 @@
 
 use std::fmt;
 
+use super::types::LlvmType;
+
 /// LLVM string escaping, shared by `c"..."` constants and metadata strings:
 /// `"`, `\` and bytes outside printable ASCII become `\XX`.
 #[must_use]
@@ -25,6 +27,10 @@ pub fn escape_llvm(value: &str) -> String {
 pub enum LlvmOperand {
     ConstInt(i64),
     ConstUint(u64),
+    /// A 128-bit integer constant (the widening checks of `i128` arithmetic).
+    ConstI128(i128),
+    /// A constant array: `[i32 2, i32 3]`.
+    ConstArray(Vec<(LlvmType, LlvmOperand)>),
     ConstFloat(f64),
     ConstBool(bool),
     ConstString(String),
@@ -33,10 +39,6 @@ pub enum LlvmOperand {
     Null,
     Undef,
     ZeroInitializer,
-    /// Operand text produced by a backend helper that is still textual
-    /// (`%v3`, `42`, `@.str`), rendered verbatim. It bridges migrated and
-    /// unmigrated code without guessing what the text holds.
-    Raw(String),
 }
 
 impl LlvmOperand {
@@ -62,6 +64,18 @@ impl LlvmOperand {
     #[must_use]
     pub fn uint(val: u64) -> Self {
         Self::ConstUint(val)
+    }
+
+    /// Creates a 128-bit integer constant.
+    #[must_use]
+    pub const fn int128(val: i128) -> Self {
+        Self::ConstI128(val)
+    }
+
+    /// Creates a constant array of typed elements.
+    #[must_use]
+    pub const fn array(elements: Vec<(LlvmType, LlvmOperand)>) -> Self {
+        Self::ConstArray(elements)
     }
 
     /// Creates a floating point constant.
@@ -93,12 +107,6 @@ impl LlvmOperand {
     pub fn zero_initializer() -> Self {
         Self::ZeroInitializer
     }
-
-    /// Wraps operand text from a still-textual helper; see [`Self::Raw`].
-    #[must_use]
-    pub fn raw(text: impl Into<String>) -> Self {
-        Self::Raw(text.into())
-    }
 }
 
 impl fmt::Display for LlvmOperand {
@@ -106,6 +114,13 @@ impl fmt::Display for LlvmOperand {
         match self {
             Self::ConstInt(i) => write!(f, "{i}"),
             Self::ConstUint(u) => write!(f, "{u}"),
+            Self::ConstI128(value) => write!(f, "{value}"),
+            Self::ConstArray(elements) => {
+                let items: Vec<String> = (elements.iter())
+                    .map(|(ty, value)| format!("{ty} {value}"))
+                    .collect();
+                write!(f, "[{}]", items.join(", "))
+            }
             Self::ConstFloat(v) => {
                 if v.is_nan() {
                     write!(f, "0x7FF8000000000000")
@@ -143,7 +158,6 @@ impl fmt::Display for LlvmOperand {
             Self::Null => write!(f, "null"),
             Self::Undef => write!(f, "undef"),
             Self::ZeroInitializer => write!(f, "zeroinitializer"),
-            Self::Raw(text) => write!(f, "{text}"),
         }
     }
 }

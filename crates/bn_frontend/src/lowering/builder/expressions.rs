@@ -421,7 +421,7 @@ impl Builder<'_> {
             }
             ExpressionKind::Member { object, name } => {
                 let object_type = type_at(self.model, object.span)?;
-                if matches!(object_type, Type::Module(module) if self.model.bnmath_modules.contains(&module))
+                if is_bnmath_constant_owner(self.model, &object_type)
                     && let Some(value) = math_constant(name)
                 {
                     let _ = self.expression(object)?;

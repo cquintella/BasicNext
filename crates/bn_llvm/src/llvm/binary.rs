@@ -8,18 +8,19 @@
 // against an `INTEGER OR Error` payload.
 #![allow(clippy::wildcard_imports, clippy::match_same_arms)]
 use super::*;
+use crate::ir::LlvmType;
 use crate::{
     ir::{
         BinaryOp, CastOp, ICmpCond, InstSink, LlvmInst, LlvmOperand,
         LlvmType::{I1, I32, I64},
     },
-    layout::{handle_result_ty, typed_llvm},
+    layout::handle_result_ty,
 };
 use runtime_abi::STR_EQ;
 
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub(crate) fn emit_runtime_binary(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     destination: ValueId,
     operator: &str,
@@ -37,7 +38,7 @@ pub(crate) fn emit_runtime_binary(
         operator,
         "Less" | "LessEqual" | "Greater" | "GreaterEqual" | "Equal" | "Assign" | "NotEqual"
     ) && let Some(payload_ty) = integer_union_payload(left_ty)
-        && integer_llvm(right_llvm)
+        && right_llvm.is_integer()
     {
         emit_integer_union_compare(
             text,
@@ -54,7 +55,7 @@ pub(crate) fn emit_runtime_binary(
         operator,
         "Less" | "LessEqual" | "Greater" | "GreaterEqual" | "Equal" | "Assign" | "NotEqual"
     ) && let Some(payload_ty) = integer_union_payload(right_ty)
-        && integer_llvm(left_llvm)
+        && left_llvm.is_integer()
     {
         emit_integer_union_compare(
             text,
@@ -69,9 +70,9 @@ pub(crate) fn emit_runtime_binary(
         return;
     }
     if matches!(operator, "Slash" | "Divide")
-        && integer_llvm(left_llvm)
-        && integer_llvm(right_llvm)
-        && float_llvm(result_llvm)
+        && left_llvm.is_integer()
+        && right_llvm.is_integer()
+        && result_llvm.is_floating()
     {
         emit_integer_float_div(
             text,
@@ -80,20 +81,22 @@ pub(crate) fn emit_runtime_binary(
             right,
             left_ty,
             right_ty,
-            result_llvm,
+            &result_llvm,
         );
         return;
     }
     // Match on result width for integer ops so IntegerLiteral (i64) can feed INTEGER.
-    let int_op_llvm = if integer_llvm(result_llvm) || float_llvm(result_llvm) {
-        result_llvm
+    let int_op_llvm = if result_llvm.is_integer() || result_llvm.is_floating() {
+        result_llvm.clone()
     } else {
-        left_llvm
+        left_llvm.clone()
     };
     match (operator, int_op_llvm) {
-        ("Plus" | "Minus" | "Star" | "Multiply", "i8" | "i16" | "i32" | "i64")
-            if (integer_llvm(left_llvm) || integer_union_payload(left_ty).is_some())
-                && (integer_llvm(right_llvm) || integer_union_payload(right_ty).is_some()) =>
+        (
+            "Plus" | "Minus" | "Star" | "Multiply",
+            LlvmType::I8 | LlvmType::I16 | LlvmType::I32 | LlvmType::I64,
+        ) if (left_llvm.is_integer() || integer_union_payload(left_ty).is_some())
+            && (right_llvm.is_integer() || integer_union_payload(right_ty).is_some()) =>
         {
             emit_checked_integer_op(
                 text,
@@ -108,9 +111,9 @@ pub(crate) fn emit_runtime_binary(
                 state,
             );
         }
-        ("DIV" | "Percent", "i8" | "i16" | "i32" | "i64")
-            if (integer_llvm(left_llvm) || integer_union_payload(left_ty).is_some())
-                && (integer_llvm(right_llvm) || integer_union_payload(right_ty).is_some()) =>
+        ("DIV" | "Percent", LlvmType::I8 | LlvmType::I16 | LlvmType::I32 | LlvmType::I64)
+            if (left_llvm.is_integer() || integer_union_payload(left_ty).is_some())
+                && (right_llvm.is_integer() || integer_union_payload(right_ty).is_some()) =>
         {
             emit_euclidean_integer_op(
                 text,
@@ -125,8 +128,8 @@ pub(crate) fn emit_runtime_binary(
                 state,
             );
         }
-        ("SHL" | "SHR", "i8" | "i16" | "i32" | "i64")
-            if integer_llvm(left_llvm) && integer_llvm(right_llvm) =>
+        ("SHL" | "SHR", LlvmType::I8 | LlvmType::I16 | LlvmType::I32 | LlvmType::I64)
+            if left_llvm.is_integer() && right_llvm.is_integer() =>
         {
             emit_shift(
                 text,
@@ -141,8 +144,8 @@ pub(crate) fn emit_runtime_binary(
                 state,
             );
         }
-        ("Power", "i8" | "i16" | "i32" | "i64")
-            if integer_llvm(left_llvm) && integer_llvm(right_llvm) =>
+        ("Power", LlvmType::I8 | LlvmType::I16 | LlvmType::I32 | LlvmType::I64)
+            if left_llvm.is_integer() && right_llvm.is_integer() =>
         {
             emit_integer_power(
                 text,
@@ -156,28 +159,23 @@ pub(crate) fn emit_runtime_binary(
                 state,
             );
         }
-        ("Power", "float" | "double") => {
+        ("Power", LlvmType::Float | LlvmType::Double) => {
             emit_float_power(text, destination, left, right, ty);
         }
-        ("Plus", "ptr") => {
+        ("Plus", LlvmType::Ptr) => {
             emit_string_concat(text, destination, left, right);
         }
-        ("AND" | "OR" | "XOR", "i8" | "i16" | "i32" | "i64")
-            if integer_llvm(left_llvm) && integer_llvm(right_llvm) =>
+        ("AND" | "OR" | "XOR", LlvmType::I8 | LlvmType::I16 | LlvmType::I32 | LlvmType::I64)
+            if left_llvm.is_integer() && right_llvm.is_integer() =>
         {
-            let left_op = LlvmOperand::raw(coerce_to_type(text, left, left_ty, ty));
-            let right_op = LlvmOperand::raw(coerce_to_type(text, right, right_ty, ty));
+            let left_op = coerce_to_type(text, left, left_ty, ty);
+            let right_op = coerce_to_type(text, right, right_ty, ty);
             text.assign(
                 format!("v{}", destination.0),
-                LlvmInst::binary(
-                    logic_op(operator),
-                    typed_llvm(result_llvm),
-                    left_op,
-                    right_op,
-                ),
+                LlvmInst::binary(logic_op(operator), result_llvm, left_op, right_op),
             );
         }
-        ("Equal" | "Assign" | "NotEqual", "ptr") => {
+        ("Equal" | "Assign" | "NotEqual", LlvmType::Ptr) => {
             text.assign(
                 format!("streq{}", destination.0),
                 STR_EQ.call([value_reg(left), value_reg(right)]),
@@ -197,36 +195,39 @@ pub(crate) fn emit_runtime_binary(
                 ),
             );
         }
-        ("Plus" | "Minus" | "Star" | "Multiply" | "Slash" | "Divide", "float" | "double") => {
+        (
+            "Plus" | "Minus" | "Star" | "Multiply" | "Slash" | "Divide",
+            LlvmType::Float | LlvmType::Double,
+        ) => {
             let op = match operator {
                 "Plus" => BinaryOp::FAdd,
                 "Minus" => BinaryOp::FSub,
                 "Star" | "Multiply" => BinaryOp::FMul,
                 _ => BinaryOp::FDiv,
             };
-            let left = LlvmOperand::raw(coerce_to_type(text, left, left_ty, ty));
-            let right = LlvmOperand::raw(coerce_to_type(text, right, right_ty, ty));
+            let left = coerce_to_type(text, left, left_ty, ty);
+            let right = coerce_to_type(text, right, right_ty, ty);
             text.assign(
                 format!("v{}", destination.0),
-                LlvmInst::binary(op, typed_llvm(result_llvm), left, right),
+                LlvmInst::binary(op, result_llvm, left, right),
             );
         }
-        ("AND" | "OR" | "XOR", "i1") => text.assign(
+        ("AND" | "OR" | "XOR", LlvmType::I1) => text.assign(
             format!("v{}", destination.0),
             LlvmInst::binary(logic_op(operator), I1, value_reg(left), value_reg(right)),
         ),
         (
             "Less" | "LessEqual" | "Greater" | "GreaterEqual" | "Equal" | "Assign" | "NotEqual",
-            "i8" | "i16" | "i32" | "i64",
-        ) if integer_llvm(left_llvm) && integer_llvm(right_llvm) => {
+            LlvmType::I8 | LlvmType::I16 | LlvmType::I32 | LlvmType::I64,
+        ) if left_llvm.is_integer() && right_llvm.is_integer() => {
             let cmp_ty = wider_integer_type(left_ty, right_ty);
-            let left_op = LlvmOperand::raw(coerce_to_type(text, left, left_ty, cmp_ty));
-            let right_op = LlvmOperand::raw(coerce_to_type(text, right, right_ty, cmp_ty));
+            let left_op = coerce_to_type(text, left, left_ty, cmp_ty);
+            let right_op = coerce_to_type(text, right, right_ty, cmp_ty);
             text.assign(
                 format!("v{}", destination.0),
                 LlvmInst::icmp(
                     integer_compare_cond(operator, cmp_ty),
-                    typed_llvm(llvm_type(cmp_ty).expect("validated compare type")),
+                    llvm_type(cmp_ty).expect("validated compare type"),
                     left_op,
                     right_op,
                 ),
@@ -234,19 +235,19 @@ pub(crate) fn emit_runtime_binary(
         }
         (
             "Less" | "LessEqual" | "Greater" | "GreaterEqual" | "Equal" | "Assign" | "NotEqual",
-            "float" | "double",
+            LlvmType::Float | LlvmType::Double,
         ) => {
             text.assign(
                 format!("v{}", destination.0),
                 LlvmInst::fcmp(
                     float_compare_cond(operator),
-                    typed_llvm(llvm_type(left_ty).expect("validated float compare type")),
+                    llvm_type(left_ty).expect("validated float compare type"),
                     value_reg(left),
                     value_reg(right),
                 ),
             );
         }
-        ("Equal" | "Assign" | "NotEqual", "i1") => text.assign(
+        ("Equal" | "Assign" | "NotEqual", LlvmType::I1) => text.assign(
             format!("v{}", destination.0),
             LlvmInst::icmp(
                 integer_compare_cond(operator, &Type::Boolean),
@@ -271,7 +272,7 @@ fn logic_op(operator: &str) -> BinaryOp {
 /// Compares the `i64` payload of an `INTEGER OR Error` with a scalar.
 #[allow(clippy::too_many_arguments)]
 fn emit_integer_union_compare(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     operator: &str,
     union: ValueId,
@@ -286,12 +287,7 @@ fn emit_integer_union_compare(
         LlvmInst::extract(handle_result_ty(), value_reg(union), 2),
     );
     let payload = LlvmOperand::reg(format!("unioncmp{dest}"));
-    let scalar_i64 = LlvmOperand::raw(coerce_to_type(
-        text,
-        scalar,
-        scalar_ty,
-        &Type::Integer(IntegerType::Int64),
-    ));
+    let scalar_i64 = coerce_to_type(text, scalar, scalar_ty, &Type::Integer(IntegerType::Int64));
     let (left, right) = if union_on_left {
         (payload, scalar_i64)
     } else {
@@ -311,37 +307,37 @@ fn wider_integer_type<'a>(left: &'a Type, right: &'a Type) -> &'a Type {
 
 fn integer_llvm_bitwidth(ty: &Type) -> u8 {
     match llvm_type(ty) {
-        Some("i8") => 8,
-        Some("i16") => 16,
-        Some("i32") => 32,
-        Some("i64") => 64,
+        Some(LlvmType::I8) => 8,
+        Some(LlvmType::I16) => 16,
+        Some(LlvmType::I32) => 32,
+        Some(LlvmType::I64) => 64,
         _ => 32,
     }
 }
 
 /// Integer `/` with a floating-point result: both operands convert first.
 fn emit_integer_float_div(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     left: ValueId,
     right: ValueId,
     left_ty: &Type,
     right_ty: &Type,
-    result_llvm: &str,
+    result_llvm: &crate::ir::LlvmType,
 ) {
     let left_op = int_to_float(text, left, left_ty, result_llvm, "divl");
     let right_op = int_to_float(text, right, right_ty, result_llvm, "divr");
     text.assign(
         format!("v{}", destination.0),
-        LlvmInst::binary(BinaryOp::FDiv, typed_llvm(result_llvm), left_op, right_op),
+        LlvmInst::binary(BinaryOp::FDiv, result_llvm.clone(), left_op, right_op),
     );
 }
 
 fn int_to_float(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     value: ValueId,
     ty: &Type,
-    result_llvm: &str,
+    result_llvm: &crate::ir::LlvmType,
     tag: &str,
 ) -> LlvmOperand {
     let llvm_ty = llvm_type(ty).expect("validated integer dividend type");
@@ -353,12 +349,7 @@ fn int_to_float(
     let temp = format!("{tag}{}", value.0);
     text.assign(
         temp.clone(),
-        LlvmInst::cast(
-            op,
-            typed_llvm(llvm_ty),
-            value_reg(value),
-            typed_llvm(result_llvm),
-        ),
+        LlvmInst::cast(op, llvm_ty, value_reg(value), result_llvm.clone()),
     );
     LlvmOperand::reg(temp)
 }

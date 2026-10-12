@@ -15,6 +15,11 @@ let instance;
 let heapCursor = 0;
 const allocations = new Map();
 let randomState = 1n;
+// Stack left below a frame when the check trips (bn_rt::stack_abi keeps
+// 256 KiB natively; the wasm32 shadow stack is 64 KiB).
+const STACK_MARGIN_BYTES = 4096;
+// A wasm32 vector row `{ ptr, i32 }`.
+const ROW_BYTES = 8;
 
 function reserve(memory, size) {
     const address = Math.ceil(heapCursor / 8) * 8;
@@ -62,6 +67,62 @@ function formatGeneral(value, precision) {
 
 const imports = {
     env: {
+        // Mirrors bn_rt::stack_abi: `1` when a BN call from `frame` would run
+        // the shadow stack into the data below it (`__data_end`, exported by
+        // bnc), so the program stops with STACK_OVERFLOW.
+        bn_rt_stack_check(frame) {
+            const low = instance.exports.__data_end;
+            if (low === undefined) return 0;
+            return (frame >>> 0) < (low.value >>> 0) + STACK_MARGIN_BYTES ? 1 : 0;
+        },
+        // Mirrors bn_rt::vector_abi::bn_rt_vector_nest for wasm32, where a row
+        // `{ ptr, i32 }` is 8 bytes: links every row of the target storage to
+        // its own elements, then copies the elements of `source` (none when
+        // `source` is 0 or the target itself).
+        bn_rt_vector_nest(rows, leaves, source, dimensionsAddress, rank, elementBytes) {
+            const memory = instance.exports.memory;
+            const view = new DataView(memory.buffer);
+            const bytes = new Uint8Array(memory.buffer);
+            [rows, leaves, source] = [rows >>> 0, leaves >>> 0, source >>> 0];
+            const element = Number(elementBytes);
+            const dimensions = [];
+            for (let level = 0; level < rank; level += 1) {
+                dimensions.push(view.getUint32(dimensionsAddress + 4 * level, true));
+            }
+            const levels = rank - 1;
+            let levelStart = 0;
+            let count = 1;
+            for (let level = 0; level < levels; level += 1) {
+                count *= dimensions[level];
+                const nextStart = levelStart + count;
+                const length = dimensions[level + 1];
+                for (let index = 0; index < count; index += 1) {
+                    const child = index * length;
+                    const target = level + 1 === levels
+                        ? leaves + child * element
+                        : rows + (nextStart + child) * ROW_BYTES;
+                    const row = rows + (levelStart + index) * ROW_BYTES;
+                    view.setUint32(row, target, true);
+                    view.setInt32(row + 4, length, true);
+                }
+                levelStart = nextStart;
+            }
+            if (source === 0 || source === rows) return;
+            const leafRowBytes = dimensions[levels] * element;
+            let cursor = leaves;
+            const copy = (sourceRows, level) => {
+                for (let index = 0; index < dimensions[level]; index += 1) {
+                    const elements = view.getUint32(sourceRows + index * ROW_BYTES, true);
+                    if (level + 1 === levels) {
+                        bytes.copyWithin(cursor, elements, elements + leafRowBytes);
+                        cursor += leafRowBytes;
+                    } else {
+                        copy(elements, level + 1);
+                    }
+                }
+            };
+            copy(source, 0);
+        },
         bn_rt_policy_init() {
             return 0;
         },

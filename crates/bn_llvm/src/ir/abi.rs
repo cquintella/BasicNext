@@ -72,17 +72,82 @@ impl<const N: usize> RuntimeFn<N> {
 /// signatures of different `N` can be listed together.
 pub trait Declaration {
     fn declaration(&self) -> String;
+    fn name(&self) -> &'static str;
+}
+
+/// The parameter list of a declaration: `ptr, i64`.
+fn parameter_list(params: &[AbiType]) -> String {
+    let params: Vec<String> = params.iter().map(ToString::to_string).collect();
+    params.join(", ")
 }
 
 impl<const N: usize> Declaration for RuntimeFn<N> {
     fn declaration(&self) -> String {
-        let params = self
-            .params
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join(", ");
+        let params = parameter_list(&self.params);
         format!("declare {} @{}({params})", self.ret, self.name)
+    }
+
+    fn name(&self) -> &'static str {
+        self.name
+    }
+}
+
+/// A variadic C function with `N` fixed parameters (`printf`).
+#[derive(Clone, Copy, Debug)]
+pub struct VariadicFn<const N: usize> {
+    pub name: &'static str,
+    pub ret: AbiType,
+    pub params: [AbiType; N],
+}
+
+impl<const N: usize> Declaration for VariadicFn<N> {
+    fn declaration(&self) -> String {
+        let params = parameter_list(&self.params);
+        format!("declare {} @{}({params}, ...)", self.ret, self.name)
+    }
+
+    fn name(&self) -> &'static str {
+        self.name
+    }
+}
+
+/// An LLVM intrinsic and its signature, whose types (aggregates, `i128`,
+/// `float`) do not all cross the C boundary. Intrinsics order by their
+/// `declare` line, so a module declares them in a stable order.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Intrinsic {
+    pub name: &'static str,
+    pub ret: LlvmType,
+    pub params: Vec<LlvmType>,
+}
+
+impl Declaration for Intrinsic {
+    fn declaration(&self) -> String {
+        let params: Vec<String> = self.params.iter().map(ToString::to_string).collect();
+        format!("declare {} @{}({})", self.ret, self.name, params.join(", "))
+    }
+
+    fn name(&self) -> &'static str {
+        self.name
+    }
+}
+
+impl Ord for Intrinsic {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.declaration().cmp(&other.declaration())
+    }
+}
+
+impl PartialOrd for Intrinsic {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+/// Writes the `declare` line of every signature of `group`, in order.
+pub fn write_declarations(out: &mut impl fmt::Write, group: &[&dyn Declaration]) {
+    for signature in group {
+        let _ = writeln!(out, "{}", signature.declaration());
     }
 }
 

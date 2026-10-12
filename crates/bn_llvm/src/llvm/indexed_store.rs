@@ -3,11 +3,11 @@ use super::*;
 use crate::ir::{
     BinaryOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T,
 };
-use crate::layout::{typed_llvm, vector_ty};
+use crate::layout::vector_ty;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_pointer_set_index(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     symbol_slot: usize,
     index: ValueId,
@@ -31,7 +31,7 @@ pub(crate) fn emit_pointer_set_index(
         block_id,
         context,
         tag,
-        &format!("%setfat{tag}"),
+        &O::reg(format!("setfat{tag}")),
         &index_op,
         &value_op,
         llvm_elem,
@@ -45,19 +45,19 @@ pub(crate) fn emit_pointer_set_index(
 /// `%{prefix}<ptr|len|neg|oob|bad>{tag}` and traps through `continuation`.
 #[allow(clippy::too_many_arguments)]
 fn emit_bounds_check(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     state: &mut EmissionState,
     prefix: &str,
     tag: usize,
-    fat_pointer: &str,
-    index: &str,
+    fat_pointer: &O,
+    index: &O,
     continuation: String,
     context: &'static str,
 ) {
     let r = |name: &str| O::reg(format!("{prefix}{name}{tag}"));
-    let fat = O::raw(fat_pointer);
-    let at = O::raw(index);
+    let fat = fat_pointer.clone();
+    let at = index;
     text.assign(
         format!("{prefix}ptr{tag}"),
         I::extract(vector_ty(), fat.clone(), 0),
@@ -67,7 +67,7 @@ fn emit_bounds_check(
     text.assign(format!("{prefix}neg{tag}"), negative);
     text.assign(
         format!("{prefix}oob{tag}"),
-        I::icmp(ICmpCond::Uge, T::I32, at, r("len")),
+        I::icmp(ICmpCond::Uge, T::I32, at.clone(), r("len")),
     );
     text.assign(
         format!("{prefix}bad{tag}"),
@@ -77,10 +77,10 @@ fn emit_bounds_check(
         text,
         block_id,
         state,
-        &format!("%{prefix}bad{tag}"),
+        &O::reg(format!("{prefix}bad{tag}")),
         continuation,
         index,
-        &format!("%{prefix}len{tag}"),
+        &r("len"),
         context,
     );
 }
@@ -88,16 +88,16 @@ fn emit_bounds_check(
 /// Writes `%{prefix}slot{tag}`, the element of type `llvm_elem` at `index`;
 /// the element replaced goes to `previous` (explicit ownership).
 fn emit_element_store(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     prefix: &str,
     tag: usize,
-    (index, value, llvm_elem): (&str, &str, &str),
+    (index, value, llvm_elem): (&O, &O, crate::ir::LlvmType),
     previous: Option<ValueId>,
 ) {
-    let elem = typed_llvm(llvm_elem);
+    let elem = llvm_elem;
     let slot = O::reg(format!("{prefix}slot{tag}"));
     let base = O::reg(format!("{prefix}ptr{tag}"));
-    let at = vec![(T::I32, O::raw(index))];
+    let at = vec![(T::I32, index.clone())];
     text.assign(format!("{prefix}slot{tag}"), I::gep(elem.clone(), base, at));
     if let Some(previous) = previous {
         text.assign(
@@ -105,12 +105,12 @@ fn emit_element_store(
             I::load(elem.clone(), slot.clone()),
         );
     }
-    text.emit(I::store(elem, O::raw(value), slot));
+    text.emit(I::store(elem, value.clone(), slot));
 }
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_vector_set_indices(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     symbol_slot: usize,
     indices: &[ValueId],
@@ -124,9 +124,10 @@ pub(crate) fn emit_vector_set_indices(
     let base_tag = state.continuation_count;
     let value_op = coerce_to_type(text, value, value_ty, elem_ty);
     let llvm_elem = llvm_type(elem_ty).expect("validated indexed-store element");
-    let mut fat_pointer = format!("%mdsetfat{base_tag}_0");
+    let first_row = format!("mdsetfat{base_tag}_0");
+    let mut fat_pointer = O::reg(&first_row);
     text.assign(
-        &fat_pointer,
+        &first_row,
         I::load(vector_ty(), O::reg(format!("s{symbol_slot}"))),
     );
 
@@ -150,18 +151,18 @@ pub(crate) fn emit_vector_set_indices(
             "vector",
         );
         if depth + 1 == indices.len() {
-            let store = (index_op.as_str(), value_op.as_str(), llvm_elem);
+            let store = (&index_op, &value_op, llvm_elem.clone());
             emit_element_store(text, "mdset", tag, store, previous);
         } else {
-            let next = format!("%mdsetfat{base_tag}_{}", depth + 1);
-            let at = vec![(T::I32, O::raw(index_op))];
+            let next = format!("mdsetfat{base_tag}_{}", depth + 1);
+            let at = vec![(T::I32, index_op)];
             let row = I::gep(vector_ty(), O::reg(format!("mdsetptr{tag}")), at);
             text.assign(format!("mdsetslot{tag}"), row);
             text.assign(
                 &next,
                 I::load(vector_ty(), O::reg(format!("mdsetslot{tag}"))),
             );
-            fat_pointer = next;
+            fat_pointer = O::reg(next);
         }
     }
     state.needs_numeric_overflow_trap = true;
@@ -169,7 +170,7 @@ pub(crate) fn emit_vector_set_indices(
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_field_set_index(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     symbol_slot: usize,
     field_offset: u32,
@@ -199,7 +200,7 @@ pub(crate) fn emit_field_set_index(
         block_id,
         "vector",
         tag,
-        &format!("%fieldsetfat{tag}"),
+        &O::reg(format!("fieldsetfat{tag}")),
         &index_op,
         &value_op,
         llvm_elem,
@@ -211,14 +212,14 @@ pub(crate) fn emit_field_set_index(
 
 #[allow(clippy::too_many_arguments)]
 fn emit_fat_pointer_store(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     context: &'static str,
     tag: usize,
-    fat_pointer: &str,
-    index: &str,
-    value: &str,
-    llvm_elem: &str,
+    fat_pointer: &O,
+    index: &O,
+    value: &O,
+    llvm_elem: crate::ir::LlvmType,
     previous: Option<ValueId>,
     continuation: String,
     state: &mut EmissionState,

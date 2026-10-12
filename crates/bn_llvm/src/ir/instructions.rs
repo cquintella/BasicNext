@@ -261,7 +261,11 @@ pub enum LlvmInst {
     },
     Unreachable,
     Comment(String),
-    Raw(String),
+}
+
+/// The values of typed operands (`i64 %x`, `ptr @g`).
+fn values(pairs: &[(LlvmType, LlvmOperand)]) -> impl Iterator<Item = &LlvmOperand> {
+    pairs.iter().map(|(_, value)| value)
 }
 
 impl LlvmInst {
@@ -272,6 +276,36 @@ impl LlvmInst {
             self,
             Self::Br { .. } | Self::CondBr { .. } | Self::Ret { .. } | Self::Unreachable
         )
+    }
+
+    /// Every operand the instruction reads, the callee of a call included.
+    #[must_use]
+    pub fn operands(&self) -> Vec<&LlvmOperand> {
+        match self {
+            Self::Load { ptr, .. } => vec![ptr],
+            Self::Store { val, ptr, .. } => vec![val, ptr],
+            Self::Binary { lhs, rhs, .. }
+            | Self::ICmp { lhs, rhs, .. }
+            | Self::FCmp { lhs, rhs, .. } => vec![lhs, rhs],
+            Self::Cast { val, .. } => vec![val],
+            Self::GetElementPtr { ptr, indices, .. } => {
+                std::iter::once(ptr).chain(values(indices)).collect()
+            }
+            Self::ExtractValue { agg, .. } => vec![agg],
+            Self::InsertValue { agg, elem, .. } => vec![agg, elem],
+            Self::Call { func, args, .. } => std::iter::once(func).chain(values(args)).collect(),
+            Self::Select {
+                cond,
+                true_val,
+                false_val,
+            } => vec![cond, &true_val.1, &false_val.1],
+            Self::CondBr { cond, .. } => vec![cond],
+            Self::Phi { incoming, .. } => incoming.iter().map(|(value, _)| value).collect(),
+            Self::Ret { val } => val.iter().map(|(_, value)| value).collect(),
+            Self::Alloca { .. } | Self::Br { .. } | Self::Unreachable | Self::Comment(_) => {
+                Vec::new()
+            }
+        }
     }
 }
 
@@ -429,7 +463,6 @@ impl fmt::Display for LlvmInst {
             }
             Self::Unreachable => write!(f, "unreachable"),
             Self::Comment(c) => write!(f, "; {c}"),
-            Self::Raw(r) => write!(f, "{r}"),
         }
     }
 }

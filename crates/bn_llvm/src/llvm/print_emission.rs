@@ -8,10 +8,10 @@
 #![allow(clippy::wildcard_imports, clippy::too_many_lines)]
 use super::*;
 use crate::ir::{CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
-use crate::layout::{handle_result_ty, typed_llvm};
+use crate::layout::handle_result_ty;
 
 /// `printf(fmt, value)`, named `dest` when it is `Some`.
-fn printf(text: &mut String, dest: Option<String>, format: &str, value: (T, O)) {
+fn printf(text: &mut crate::ir::LlvmModule, dest: Option<String>, format: &str, value: (T, O)) {
     let args = vec![(T::Ptr, O::global(format)), value];
     let call = I::call_variadic(T::I32, vec![T::Ptr], "printf", args);
     match dest {
@@ -20,18 +20,18 @@ fn printf(text: &mut String, dest: Option<String>, format: &str, value: (T, O)) 
     }
 }
 
-fn putchar(text: &mut String, dest: String, byte: i64) {
+fn putchar(text: &mut crate::ir::LlvmModule, dest: String, byte: i64) {
     text.assign(
         dest,
         I::call(T::I32, "putchar", vec![(T::I32, O::int(byte))]),
     );
 }
 
-fn br(text: &mut String, dest: String) {
+fn br(text: &mut crate::ir::LlvmModule, dest: String) {
     text.emit(I::Br { dest });
 }
 
-fn cond_br(text: &mut String, cond: O, yes: String, no: String) {
+fn cond_br(text: &mut crate::ir::LlvmModule, cond: O, yes: String, no: String) {
     text.emit(I::CondBr {
         cond,
         true_dest: yes,
@@ -40,7 +40,7 @@ fn cond_br(text: &mut String, cond: O, yes: String, no: String) {
 }
 
 pub(crate) fn lower_print_emission(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     instruction: &Instruction,
     analysis: &LoweringAnalysis<'_>,
     _block_state: &mut BlockState,
@@ -54,7 +54,7 @@ pub(crate) fn lower_print_emission(
     };
     let stdout = format!("stdout{}", state.print_count);
     let (lock, unlock) = crate::platform_stdio::stdout_lock_functions();
-    let stream = |text: &mut String, function: &str| {
+    let stream = |text: &mut crate::ir::LlvmModule, function: &str| {
         let args = vec![(T::Ptr, O::reg(&stdout))];
         text.emit(I::call(T::Void, function, args));
     };
@@ -113,7 +113,7 @@ pub(crate) const fn float_print_symbol(kind: FloatType) -> &'static str {
 }
 
 pub(crate) fn lower_print_language_error_union(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     value: ValueId,
     integer_value: bool,
     void_value: bool,
@@ -138,7 +138,7 @@ pub(crate) fn lower_print_language_error_union(
     if let Some(sentinel) = sentinel {
         let (global, array) = sentinel.global();
         let zero = vec![(T::I64, O::int(0)), (T::I64, O::int(0))];
-        let marker = I::gep(typed_llvm(array), O::global(global), zero);
+        let marker = I::gep(array, O::global(global), zero);
         text.assign(label("naptr"), marker);
         let is_na = I::icmp(ICmpCond::Eq, T::Ptr, r("message"), r("naptr"));
         text.assign(label("isna"), is_na);
@@ -191,7 +191,7 @@ pub(crate) fn lower_print_language_error_union(
 /// OR Error`): the `Error`, or the handle's type name as the interpreter
 /// prints it. False for any other type.
 pub(crate) fn lower_print_handle_error_union(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     value: ValueId,
     ty: &Type,
     state: &mut EmissionState,
@@ -210,7 +210,7 @@ pub(crate) fn lower_print_handle_error_union(
         }
         _ => return false,
     };
-    if llvm_type(ty) != Some("{ i1, ptr, i64 }") {
+    if llvm_type(ty) != Some(crate::layout::handle_result_ty()) {
         return false;
     }
     let count = state.print_count;
@@ -227,7 +227,7 @@ pub(crate) fn lower_print_handle_error_union(
     text.emit(I::call(T::Void, "bn_rt_error_print", args));
     br(text, label("join"));
     state.control_flow.label(text, label("ok"));
-    let type_name = (T::Ptr, O::raw(type_name_global(name)));
+    let type_name = (T::Ptr, O::global(type_name_global(name)));
     printf(text, Some(label("name")), ".bn_fmt_str", type_name);
     br(text, label("join"));
     state.control_flow.label(text, label("join"));
@@ -246,15 +246,11 @@ fn type_name_global(name: &str) -> String {
 }
 
 /// Defines every `@.bn_typename_<hex>` the module references.
-pub(crate) fn define_type_name_globals(text: &mut String) {
-    let mut names = std::collections::BTreeSet::new();
-    for (index, _) in text.match_indices("@.bn_typename_") {
-        let hex: String = text[index + "@.bn_typename_".len()..]
-            .chars()
-            .take_while(char::is_ascii_hexdigit)
-            .collect();
-        names.insert(hex);
-    }
+pub(crate) fn define_type_name_globals(text: &mut crate::ir::LlvmModule) {
+    let names: std::collections::BTreeSet<String> = (text.referenced_globals().iter())
+        .filter_map(|name| name.strip_prefix(".bn_typename_"))
+        .map(|rest| rest.chars().take_while(char::is_ascii_hexdigit).collect())
+        .collect();
     for hex in names {
         let bytes: Vec<u8> = (0..hex.len())
             .step_by(2)

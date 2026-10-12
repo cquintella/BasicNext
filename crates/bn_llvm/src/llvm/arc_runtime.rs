@@ -18,44 +18,13 @@ use std::fmt::Write as _;
 use bn_ir::{FunctionKind, Module};
 
 use super::{llvm_function_symbol, sanitize_symbol};
-use crate::ir::{
-    AbiType::{I32, I64, Ptr, Void},
-    BasicBlock, ICmpCond, LlvmFunction, LlvmInst, LlvmOperand, LlvmType, RuntimeFn,
+use crate::ir::{BasicBlock, ICmpCond, LlvmFunction, LlvmInst, LlvmOperand, LlvmType};
+use crate::runtime_abi::{
+    ARC_ADDRESS, ARC_DECLARATIONS, ARC_FINISH_DESTROY, ARC_RELEASE, ARC_RETAIN, TRAP_REPORT_FAILURE,
 };
 
 /// Byte offset of the core id in an object or region header.
 pub(crate) const ID_OFFSET: i64 = 8;
-
-pub(crate) const ARC_REGISTER: RuntimeFn<4> = RuntimeFn {
-    name: "bn_rt_arc_register",
-    ret: I64,
-    params: [Ptr, Ptr, I32, I32],
-};
-const ARC_RETAIN: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_arc_retain",
-    ret: I32,
-    params: [I64, I32, I32],
-};
-const ARC_RELEASE: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_arc_release",
-    ret: I32,
-    params: [I64, I32, I32],
-};
-const ARC_FINISH_DESTROY: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_arc_finish_destroy",
-    ret: I32,
-    params: [I64],
-};
-const ARC_ADDRESS: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_arc_address",
-    ret: Ptr,
-    params: [I64],
-};
-const TRAP_REPORT: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_trap_report_failure",
-    ret: Void,
-    params: [Ptr],
-};
 
 /// A `STOP` outside `Start` (0.6.md, "`STOP`"): the function stores its
 /// code, raises the flag, and returns; each caller's `$stopping` check reads
@@ -73,7 +42,7 @@ pub(crate) fn stop_globals() -> String {
 /// In a dispatch trampoline, after the task returns: a task that stopped
 /// ends the program with its code (a task's caller is the runtime, so no BN
 /// function is left to release its locals).
-pub(crate) fn stop_exit_check(text: &mut String) {
+pub(crate) fn stop_exit_check(text: &mut crate::ir::LlvmModule) {
     use crate::ir::InstSink;
     text.assign(
         "dispatch_stopping",
@@ -164,7 +133,7 @@ fn on_object(name: &str, body: impl FnOnce(&mut LlvmFunction)) -> LlvmFunction {
 /// validated IR never causes one).
 fn invariant_block(function: &mut LlvmFunction) {
     let failed = function.add_block("failed");
-    failed.push(TRAP_REPORT.call([LlvmOperand::null()]));
+    failed.push(TRAP_REPORT_FAILURE.call([LlvmOperand::null()]));
     failed.push(LlvmInst::call(
         LlvmType::Void,
         "exit",
@@ -368,17 +337,8 @@ fn weak_read() -> LlvmFunction {
 /// `allocated` names the classes `NEW` creates (their class constants are
 /// defined by the preamble).
 pub(crate) fn glue(module: &Module, allocated: &BTreeSet<String>) -> String {
-    use crate::ir::Declaration;
     let mut text = String::new();
-    for declaration in [
-        &ARC_REGISTER as &dyn Declaration,
-        &ARC_RETAIN,
-        &ARC_RELEASE,
-        &ARC_FINISH_DESTROY,
-        &ARC_ADDRESS,
-    ] {
-        let _ = writeln!(text, "{}", declaration.declaration());
-    }
+    crate::ir::write_declarations(&mut text, ARC_DECLARATIONS);
     for function in [
         retain(),
         release(),

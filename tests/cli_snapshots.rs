@@ -64,9 +64,16 @@ fn option_errors_are_unchanged() {
         command.args(arguments);
         assert_snapshot(command, snapshot, "stderr", status);
     }
-    let mut command = bni();
-    command.args(["--unknown-opt", ENTRY]);
-    assert_snapshot(command, "bni_unknown_opt.txt", "stderr", 2);
+    // Each option has one owner (known issue K3): an option of the other tool
+    // is unknown, and the error is followed by the tool's own help.
+    for (arguments, snapshot) in [
+        (&["--unknown-opt", ENTRY][..], "bni_unknown_opt.txt"),
+        (&["run", "--target", "wasm32", ENTRY][..], "bni_target.txt"),
+    ] {
+        let mut command = bni();
+        command.args(arguments);
+        assert_snapshot(command, snapshot, "stderr", 2);
+    }
 }
 
 /// Bucket 0.6.5c AC6: the two `main.rs` hold only the version line and one
@@ -86,4 +93,66 @@ fn both_main_files_stay_minimal() {
         total <= 80,
         "bni and bnc main.rs have {total} lines (limit 80)"
     );
+}
+
+/// The missing-initializer diagnostic of an alternative names the whole type,
+/// not its first member (known issue K20).
+#[test]
+fn missing_initializer_names_the_whole_alternative() {
+    let output = bni()
+        .args([
+            "check",
+            "tests/grammar/invalid/alternative-without-initializer.bn",
+        ])
+        .current_dir(workspace_root())
+        .output()
+        .expect("run bni");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("missing initializer in INTEGER(INT32) OR NULL binding."),
+        "{stderr}"
+    );
+}
+
+/// A `STRUCT` field read through a value is not an unused binding (known
+/// issue K54): `bni check` passes without a warning.
+#[test]
+fn read_struct_fields_are_not_unused_bindings() {
+    let output = bni()
+        .args(["check", "tests/grammar/valid/struct-field-read.bn"])
+        .current_dir(workspace_root())
+        .output()
+        .expect("run bni");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(0), "{stderr}");
+    assert!(!stderr.contains("UNUSED_BINDING"), "{stderr}");
+}
+
+/// A vector literal without a declared destination takes the first element's
+/// type; `[1, 2.5]` is a `TYPE_MISMATCH` naming the element, not an
+/// `INVALID_IR` (decision D-2; known issue K31).
+#[test]
+fn mixed_numeric_vector_literal_is_a_type_mismatch() {
+    for tool in [bni(), bnc()] {
+        let mut command = tool;
+        if command.get_program().to_string_lossy().contains("bni") {
+            command.arg("check");
+        } else {
+            command.args(["--emit", "llvm"]);
+        }
+        let output = command
+            .arg("tests/grammar/invalid/vector-literal-mixed-numeric.bn")
+            .current_dir(workspace_root())
+            .output()
+            .expect("run the tool");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_ne!(output.status.code(), Some(0), "{stderr}");
+        assert!(
+            stderr.contains("error[TYPE_MISMATCH]")
+                && stderr.contains("Expected INTEGER(INT32)")
+                && !stderr.contains("INVALID_IR"),
+            "{stderr}"
+        );
+    }
 }

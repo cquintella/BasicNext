@@ -9,13 +9,12 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 use crate::ir::{BinaryOp, CastOp, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
-use crate::layout::typed_llvm;
 
 /// Emits `%v<destination> = load` of `symbol` as `ty`; `checked` traps a
 /// use of a binding a `RELEASE` ended (a `Take` reads it unchecked).
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub(crate) fn lower_load(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     function: &Function,
     analysis: &LoweringAnalysis<'_>,
@@ -44,7 +43,7 @@ pub(crate) fn lower_load(
         let (id, detail) = (bn_diag::DiagId::USE_AFTER_RELEASE, "binding was released");
         text.assign(
             format!("loadlive{dest}"),
-            I::load(T::I1, O::raw(live_flag(*symbol))),
+            I::load(T::I1, live_flag(*symbol)),
         );
         let released = I::binary(BinaryOp::Xor, T::I1, r("loadlive"), O::bool(true));
         text.assign(format!("loadreleased{dest}"), released);
@@ -53,7 +52,7 @@ pub(crate) fn lower_load(
             text,
             block_id,
             state,
-            &format!("%loadreleased{dest}"),
+            &O::reg(format!("loadreleased{dest}")),
             live,
             id,
             vec![("detail", Fact::Text(detail.into()))],
@@ -64,15 +63,20 @@ pub(crate) fn lower_load(
         // lives, else NULL.
         block_state.constants.remove(destination);
         text.assign(format!("weakslot{dest}"), I::load(T::Ptr, slot));
-        arc_ops::weak_read(text, &format!("v{dest}"), &format!("%weakslot{dest}"));
+        arc_ops::weak_read(
+            text,
+            &format!("v{dest}"),
+            &O::reg(format!("weakslot{dest}")),
+        );
         return;
     }
     let own = format!("v{dest}");
-    if slot_llvm == "{ i1, double }" && matches!(dest_llvm, "float" | "double") {
+    if slot_llvm == crate::layout::optional_float_ty() && matches!(dest_llvm, T::Float | T::Double)
+    {
         let optional = T::struct_of([T::I1, T::Double]);
         text.assign(format!("optload{dest}"), I::load(optional.clone(), slot));
         let value = I::extract(optional, r("optload"), 1);
-        if dest_llvm == "float" {
+        if dest_llvm == T::Float {
             text.assign(format!("optdbl{dest}"), value);
             text.assign(
                 own,
@@ -83,19 +87,11 @@ pub(crate) fn lower_load(
         }
     } else if narrows(slot_ty, dest_ty) {
         emit_narrowed_load(text, *destination, symbols[symbol], Some(slot_ty), dest_ty);
-    } else if slot_llvm != dest_llvm
-        && matches!(slot_llvm, "i8" | "i16" | "i32" | "i64")
-        && matches!(dest_llvm, "i8" | "i16" | "i32" | "i64")
-    {
-        let width = |llvm: &str| match llvm {
-            "i8" => 8u8,
-            "i16" => 16,
-            "i32" => 32,
-            _ => 64,
-        };
-        let (from, to) = (typed_llvm(slot_llvm), typed_llvm(dest_llvm));
+    } else if slot_llvm != dest_llvm && slot_llvm.is_integer() && dest_llvm.is_integer() {
+        let width = |llvm: &crate::ir::LlvmType| llvm.integer_bits().unwrap_or(64);
+        let (from, to) = (slot_llvm.clone(), dest_llvm.clone());
         text.assign(format!("slotload{dest}"), I::load(from.clone(), slot));
-        let op = if width(slot_llvm) >= width(dest_llvm) {
+        let op = if width(&slot_llvm) >= width(&dest_llvm) {
             CastOp::Trunc
         } else if is_unsigned(slot_ty) {
             CastOp::ZExt
@@ -104,7 +100,7 @@ pub(crate) fn lower_load(
         };
         text.assign(own, I::cast(op, from, r("slotload"), to));
     } else {
-        text.assign(own, I::load(typed_llvm(dest_llvm), slot));
+        text.assign(own, I::load(dest_llvm, slot));
     }
     if let Some(value) = block_state.bindings.get(symbol).cloned() {
         block_state

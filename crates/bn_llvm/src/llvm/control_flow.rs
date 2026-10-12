@@ -1,4 +1,5 @@
 use super::{BlockId, HashMap, ValueId};
+use crate::ir::{LlvmInst, LlvmOperand};
 
 /// Physical exits and Phi relocations belong to one emitted function. A BN
 /// block may expand into several LLVM blocks; its successor's Phi must name
@@ -11,14 +12,14 @@ pub(super) struct EmittedControlFlow {
 }
 
 struct PendingPhi {
-    offset: usize,
+    position: usize,
     destination: ValueId,
-    ty: &'static str,
+    ty: crate::ir::LlvmType,
     incoming: Vec<(BlockId, ValueId)>,
 }
 
 impl EmittedControlFlow {
-    pub(super) fn label(&mut self, text: &mut String, label: String) {
+    pub(super) fn label(&mut self, text: &mut crate::ir::LlvmModule, label: String) {
         crate::ir::InstSink::label(text, &label);
         self.current_label = label;
     }
@@ -29,44 +30,41 @@ impl EmittedControlFlow {
 
     pub(super) fn defer_phi(
         &mut self,
-        offset: usize,
+        position: usize,
         destination: ValueId,
-        ty: &'static str,
+        ty: crate::ir::LlvmType,
         incoming: &[(BlockId, ValueId)],
     ) {
         self.phis.push(PendingPhi {
-            offset,
+            position,
             destination,
             ty,
             incoming: incoming.to_vec(),
         });
     }
 
-    pub(super) fn resolve(self, text: &mut String) -> Result<(), String> {
-        // Descending byte offsets preserve every recorded insertion position.
-        // Only deferred Phi instructions are inserted; existing text (including
-        // other functions and emitter-internal Phi nodes) is never rewritten.
+    pub(super) fn resolve(self, text: &mut crate::ir::LlvmModule) -> Result<(), String> {
+        // Inserting from the last recorded position back keeps the earlier
+        // positions valid. Only deferred Phi instructions are inserted; nothing
+        // already emitted (other functions, emitter-internal Phi nodes) changes.
         for phi in self.phis.into_iter().rev() {
-            let incoming = phi
-                .incoming
-                .iter()
+            let incoming: Vec<(LlvmOperand, String)> = (phi.incoming.iter())
                 .filter_map(|(block, value)| {
-                    self.exits
-                        .get(&block.0)
-                        .map(|label| format!("[ %v{}, %{label} ]", value.0))
+                    let label = self.exits.get(&block.0)?;
+                    Some((LlvmOperand::reg(format!("v{}", value.0)), label.clone()))
                 })
-                .collect::<Vec<_>>()
-                .join(", ");
+                .collect();
             if incoming.is_empty() {
                 return Err(format!(
                     "Phi %v{} has no reachable emitted predecessor",
                     phi.destination.0
                 ));
             }
-            text.insert_str(
-                phi.offset,
-                &format!("  %v{} = phi {} {incoming}\n", phi.destination.0, phi.ty),
-            );
+            let inst = LlvmInst::Phi {
+                ty: phi.ty,
+                incoming,
+            };
+            text.insert_assign(phi.position, format!("v{}", phi.destination.0), inst);
         }
         Ok(())
     }

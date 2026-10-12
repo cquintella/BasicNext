@@ -7,7 +7,8 @@
 // C `stdout` stream (POSIX libc or the Microsoft UCRT), and the binary-mode
 // setup that keeps Windows output byte-identical to the interpreter.
 
-use crate::ir::{InstSink as _, LlvmInst, LlvmOperand, LlvmType};
+use crate::ir::{InstSink as _, LlvmInst, LlvmOperand, LlvmType, write_declarations};
+use crate::runtime_abi;
 
 /// Libc `FILE *stdout` symbol name for native PRINT synchronization on
 /// POSIX C libraries (the Microsoft UCRT has no such global).
@@ -28,15 +29,14 @@ fn stdout_file_symbol() -> &'static str {
 /// Declarations used by native PRINT synchronization: the C `stdout` stream
 /// and the functions that lock and unlock it.
 pub(crate) fn stdout_lock_decls() -> String {
+    let mut text = String::new();
     if cfg!(windows) {
-        "declare ptr @__acrt_iob_func(i32)\ndeclare void @_lock_file(ptr)\ndeclare void @_unlock_file(ptr)\n"
-            .into()
+        write_declarations(&mut text, runtime_abi::WINDOWS_STDIO_LOCK_DECLARATIONS);
     } else {
-        format!(
-            "@{} = external global ptr\ndeclare void @flockfile(ptr)\ndeclare void @funlockfile(ptr)\n",
-            stdout_file_symbol()
-        )
+        text = format!("@{} = external global ptr\n", stdout_file_symbol());
+        write_declarations(&mut text, runtime_abi::POSIX_STDIO_LOCK_DECLARATIONS);
     }
+    text
 }
 
 /// The instruction that reads the C `stdout` stream: a global on POSIX C
@@ -54,7 +54,7 @@ pub(crate) fn stdout_stream() -> LlvmInst {
 /// `_setmode(fd, _O_BINARY)`), so `\n` is not rewritten as `\r\n` and native
 /// output matches the interpreter byte for byte. Nothing for Wasm and on
 /// other hosts.
-pub(crate) fn emit_windows_binary_stdio(text: &mut String, native: bool) {
+pub(crate) fn emit_windows_binary_stdio(text: &mut crate::ir::LlvmModule, native: bool) {
     if native && cfg!(windows) {
         for (fd, name) in [(0, "winstdin"), (1, "winstdout"), (2, "winstderr")] {
             let args = vec![
@@ -67,12 +67,12 @@ pub(crate) fn emit_windows_binary_stdio(text: &mut String, native: bool) {
 }
 
 /// Module-level declaration for [`emit_windows_binary_stdio`]. Empty elsewhere.
-pub(crate) fn windows_binary_stdio_decl(native: bool) -> &'static str {
+pub(crate) fn windows_binary_stdio_decl(native: bool) -> String {
+    let mut text = String::new();
     if native && cfg!(windows) {
-        "declare i32 @_setmode(i32, i32)\n"
-    } else {
-        ""
+        write_declarations(&mut text, &[&runtime_abi::SETMODE]);
     }
+    text
 }
 
 /// The C functions that lock and unlock a `FILE *`.

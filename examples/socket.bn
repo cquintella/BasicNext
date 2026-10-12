@@ -29,19 +29,15 @@ FUNCTION PortNumber(text AS STRING) AS INTEGER
 END FUNCTION
 
 FUNCTION LogConnection(path AS STRING, protocol AS STRING, peer AS Net.Endpoint) AS INTEGER
-    LET logger AS Log.Logger = NEW Log.Logger()
-    LET added AS VOID OR Error = logger.AddFile(path, 2)
-    IF added IS Error THEN
+    LET logger AS Log.Logger OR Error = Log.Logger.New("socket", "JSON", path)
+    IF logger IS Error THEN
         RETURN 1
     END IF
-    LET fields AS Log.Fields = NEW Log.Fields()
-    LET protocolSet AS VOID OR Error = fields.SetString("protocol", protocol)
-    LET peerSet AS VOID OR Error = fields.SetString("peer", peer.Address().ToString())
-    IF protocolSet IS Error OR peerSet IS Error THEN
-        logger.Close(1000)
-        RETURN 1
-    END IF
-    LET recorded AS VOID OR Error = logger.Log(2, "connection accepted", fields)
+    // The protocol names the service; the peer address is the detail.
+    LET event AS Log.Event
+    event.service = protocol
+    event.detail = peer.Address().ToString()
+    LET recorded AS VOID OR Error = logger.Info("connection accepted", event)
     LET flushed AS VOID OR Error = logger.Flush(1000)
     LET closed AS VOID OR Error = logger.Close(1000)
     IF recorded IS Error OR flushed IS Error OR closed IS Error THEN

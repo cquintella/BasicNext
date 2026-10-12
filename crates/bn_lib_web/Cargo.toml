@@ -17,6 +17,7 @@ workspace = true
 bn_catalog = { path = "../bn_catalog" }
 bn_core_dispatch = { path = "../bn_core_dispatch" }
 bn_lib_dispatch = { path = "../bn_lib_dispatch" }
+bn_lib_log = { path = "../bn_lib_log" }
 bn_core_web = { path = "../bn_core_web" }
 bn_diag = { path = "../bn_diag" }
 bn_interp = { path = "../bn_interp" }

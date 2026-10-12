@@ -1,35 +1,38 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 use crate::ir::{BinaryOp, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
-use crate::layout::typed_llvm;
 
 fn own(destination: ValueId) -> String {
     format!("v{}", destination.0)
 }
 
 pub(crate) fn emit_constant_assignment(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     ty: &Type,
-    value: &str,
+    value: &ConstantValue,
 ) {
     let llvm_ty = llvm_type(ty).expect("validated constant type");
-    let (op, zero, rendered) = match llvm_ty {
-        "i8" | "i16" | "i32" | "i64" => {
-            let rendered = parse_integer(value).map_or_else(
-                || value.to_string(),
-                |number| render_llvm_integer(number, llvm_ty),
-            );
-            (BinaryOp::Add, "0", rendered)
+    let (op, zero, constant) = match value {
+        ConstantValue::Integer(number, _) => (
+            BinaryOp::Add,
+            O::int(0),
+            integer_constant(*number, &llvm_ty),
+        ),
+        ConstantValue::Float(number) => {
+            (BinaryOp::FAdd, O::float(0.0), float_constant(*number, ty))
         }
-        "float" | "double" => (BinaryOp::FAdd, "0.0", value.to_string()),
         _ => unreachable!("validated scalar constant type"),
     };
-    let inst = I::binary(op, typed_llvm(llvm_ty), O::raw(zero), O::raw(rendered));
+    let inst = I::binary(op, llvm_ty, zero, constant);
     text.assign(own(destination), inst);
 }
 
-pub(crate) fn emit_boolean_assignment(text: &mut String, destination: ValueId, value: bool) {
+pub(crate) fn emit_boolean_assignment(
+    text: &mut crate::ir::LlvmModule,
+    destination: ValueId,
+    value: bool,
+) {
     let inst = I::binary(BinaryOp::Or, T::I1, O::int(0), O::int(i64::from(value)));
     text.assign(own(destination), inst);
 }
@@ -42,7 +45,7 @@ fn short_circuit_slot(value: ValueId) -> O {
 /// Short-circuit AND/OR reuses one `ValueId` across blocks. Those values live in
 /// `%scN` allocas; never emit a second `%vN` SSA def for them.
 pub(crate) fn define_boolean(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     analysis: &LoweringAnalysis<'_>,
     destination: ValueId,
     value: bool,
@@ -56,13 +59,13 @@ pub(crate) fn define_boolean(
 }
 
 pub(crate) fn define_boolean_from(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     analysis: &LoweringAnalysis<'_>,
     state: &mut EmissionState,
     destination: ValueId,
     source: ValueId,
 ) {
-    let operand = O::raw(i1_operand(text, analysis, state, source));
+    let operand = i1_operand(text, analysis, state, source);
     if analysis.multi_defs.contains(&destination) {
         text.emit(I::store(T::I1, operand, short_circuit_slot(destination)));
     } else {
@@ -72,34 +75,31 @@ pub(crate) fn define_boolean_from(
 }
 
 pub(crate) fn i1_operand(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     analysis: &LoweringAnalysis<'_>,
     state: &mut EmissionState,
     value: ValueId,
-) -> String {
+) -> crate::ir::LlvmOperand {
     if analysis.multi_defs.contains(&value) {
         let n = state.md_temp;
         state.md_temp += 1;
         let name = format!("md{}_{n}", value.0);
         text.assign(&name, I::load(T::I1, short_circuit_slot(value)));
-        format!("%{name}")
+        O::reg(&name)
     } else {
-        format!("%v{}", value.0)
+        O::reg(format!("v{}", value.0))
     }
 }
 
 pub(crate) fn emit_constant_value(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     ty: &Type,
     value: &ConstantValue,
 ) {
     match value {
-        ConstantValue::Integer(number, _) => {
-            emit_constant_assignment(text, destination, ty, &number.to_string());
-        }
-        ConstantValue::Float(number) => {
-            emit_constant_assignment(text, destination, ty, &render_float(*number, ty));
+        ConstantValue::Integer(..) | ConstantValue::Float(_) => {
+            emit_constant_assignment(text, destination, ty, value);
         }
         ConstantValue::Boolean(value) => emit_boolean_assignment(text, destination, *value),
         ConstantValue::String(_) => {
@@ -113,7 +113,7 @@ pub(crate) fn emit_constant_value(
 }
 
 pub(crate) fn emit_constant_value_analyzed(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     analysis: &LoweringAnalysis<'_>,
     destination: ValueId,
     ty: &Type,

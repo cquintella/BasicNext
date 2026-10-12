@@ -10,7 +10,7 @@ fn v(id: ValueId) -> O {
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn lower_value_emission(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     module: &Module,
     _function: &Function,
     block_id: BlockId,
@@ -83,7 +83,7 @@ pub(crate) fn lower_value_emission(
                 text,
                 block_id,
                 state,
-                &format!("%sizeofbig{dest}"),
+                &O::reg(format!("sizeofbig{dest}")),
                 continuation,
                 bn_diag::DiagId::NUMERIC_OVERFLOW,
                 vec![(
@@ -153,7 +153,7 @@ pub(crate) fn lower_value_emission(
                     text,
                     *destination,
                     None,
-                    &format!("%allocbase{}", destination.0),
+                    &O::reg(format!("allocbase{}", destination.0)),
                     state,
                 );
             } else if is_class_type(module, ty) {
@@ -161,7 +161,7 @@ pub(crate) fn lower_value_emission(
                     text,
                     *destination,
                     Some(&format!(".bn_cls_{}", sanitize_symbol(type_name))),
-                    &format!("%v{}", destination.0),
+                    &O::reg(format!("v{}", destination.0)),
                     state,
                 );
             }

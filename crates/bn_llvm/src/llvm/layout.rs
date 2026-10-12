@@ -3,6 +3,8 @@
 
 use bn_ir::FieldRef;
 
+use crate::ir::LlvmType;
+
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
@@ -62,23 +64,32 @@ pub(crate) fn vector_field_offsets(module: &Module, owner: &str) -> Vec<u32> {
         .collect()
 }
 
-pub(crate) fn is_struct_type(module: &Module, ty: &Type) -> bool {
-    let Type::Named(name) = ty else {
-        return false;
+/// The layout owner of the STRUCT `ty` names: its own name, or `#<module>.Name`
+/// for a STRUCT of an imported module (`Log.Event`); `None` for any other type.
+pub(crate) fn struct_owner(module: &Module, ty: &Type) -> Option<String> {
+    let owner = match ty {
+        Type::Named(name) => name.clone(),
+        Type::ImportedNamed {
+            module: module_id,
+            name,
+        } => format!("#{}.{name}", module_id.0),
+        _ => return None,
     };
     module
-        .function_of_kind(FunctionKind::Default, name)
+        .function_of_kind(FunctionKind::Default, &owner)
         .is_some()
+        .then_some(owner)
+}
+
+pub(crate) fn is_struct_type(module: &Module, ty: &Type) -> bool {
+    struct_owner(module, ty).is_some()
 }
 
 pub(crate) fn struct_copy_supported(module: &Module, ty: &Type) -> bool {
-    let Type::Named(name) = ty else {
+    let Some(name) = struct_owner(module, ty) else {
         return true;
     };
-    if !is_struct_type(module, ty) {
-        return true;
-    }
-    class_layout_fields(module, name)
+    class_layout_fields(module, &name)
         .into_iter()
         .all(|field| !matches!(field.ty, Type::Vector { .. } | Type::Pointer { .. }))
 }
@@ -112,12 +123,29 @@ fn align_to(offset: u32, alignment: u32) -> u32 {
 
 fn llvm_storage_layout(ty: &Type) -> Option<(u32, u32)> {
     match llvm_type(ty)? {
-        "i1" | "i8" => Some((1, 1)),
-        "i16" => Some((2, 2)),
-        "i32" | "float" => Some((4, 4)),
-        "i64" | "double" | "ptr" => Some((8, 8)),
-        "{ ptr, i32 }" | "{ i1, double }" | "{ i1, ptr }" => Some((16, 8)),
-        "{ ptr, i32, i32 }" | "{ i1, ptr, i32 }" | "{ i1, ptr, i64 }" | "{ i32, ptr, i64 }" => {
+        LlvmType::I1 | LlvmType::I8 => Some((1, 1)),
+        LlvmType::I16 => Some((2, 2)),
+        LlvmType::I32 | LlvmType::Float => Some((4, 4)),
+        LlvmType::I64 | LlvmType::Double | LlvmType::Ptr => Some((8, 8)),
+        layout
+            if is_one_of(
+                &layout,
+                &[vector_ty(), optional_float_ty(), status_pointer_ty()],
+            ) =>
+        {
+            Some((16, 8))
+        }
+        layout
+            if is_one_of(
+                &layout,
+                &[
+                    region_ty(),
+                    status_endpoint_ty(),
+                    handle_result_ty(),
+                    crate::general_alternative::layout(),
+                ],
+            ) =>
+        {
             Some((24, 8))
         }
         _ => None,
@@ -127,18 +155,39 @@ fn llvm_storage_layout(ty: &Type) -> Option<(u32, u32)> {
 /// `{ i1, ptr, i64 }`: a handle or status result (`T OR Error`).
 pub(crate) fn handle_result_ty() -> crate::ir::LlvmType {
     use crate::ir::LlvmType::{I1, I64, Ptr};
-    crate::ir::LlvmType::struct_of([I1, Ptr, I64])
+    LlvmType::struct_of([I1, Ptr, I64])
 }
 
 /// `{ ptr, i32 }`: a vector or byte buffer (data, length), and an `Endpoint`.
 pub(crate) fn vector_ty() -> crate::ir::LlvmType {
     use crate::ir::LlvmType::{I32, Ptr};
-    crate::ir::LlvmType::struct_of([Ptr, I32])
+    LlvmType::struct_of([Ptr, I32])
 }
 
-/// The typed form of a type string `llvm_type` produced; all are canonical.
-pub(crate) fn typed_llvm(ty: &str) -> crate::ir::LlvmType {
-    crate::ir::LlvmType::parse_canonical(ty).expect("canonical LLVM type")
+/// Whether `ty` is one of `layouts`: an aggregate type cannot be a `match`
+/// pattern, so a match on a layout tests it in a guard.
+pub(crate) fn is_one_of(ty: &LlvmType, layouts: &[LlvmType]) -> bool {
+    layouts.contains(ty)
+}
+
+/// `{ i1, ptr }`: `HOST.Net.Addresses OR Error`.
+pub(crate) fn status_pointer_ty() -> LlvmType {
+    LlvmType::struct_of([LlvmType::I1, LlvmType::Ptr])
+}
+
+/// `{ i1, ptr, i32 }`: `HOST.Net.Endpoint OR Error`.
+pub(crate) fn status_endpoint_ty() -> LlvmType {
+    LlvmType::struct_of([LlvmType::I1, LlvmType::Ptr, LlvmType::I32])
+}
+
+/// `{ i1, double }`: a `FLOAT OR NA`-style optional float.
+pub(crate) fn optional_float_ty() -> LlvmType {
+    LlvmType::struct_of([LlvmType::I1, LlvmType::Double])
+}
+
+/// `{ ptr, i32, i32 }`: a `POINTER TO VOID` region.
+pub(crate) fn region_ty() -> LlvmType {
+    LlvmType::struct_of([LlvmType::Ptr, LlvmType::I32, LlvmType::I32])
 }
 
 /// How an alternative is represented natively (`value-memory-abi.md`,
@@ -171,7 +220,7 @@ impl AlternativeLayout {
                 && members.iter().any(|ty| {
                     matches!(ty, Type::Named(name) if name != "Error")
                         || matches!(ty, Type::ImportedNamed { name, .. } if name != "Error")
-                            && llvm_type(ty) == Some("ptr")
+                            && llvm_type(ty) == Some(LlvmType::Ptr)
                 }))
                 || (members.contains(&Type::String) && members.contains(&Type::EndOfFile)));
         let status = string_na_or_error(members)
@@ -214,49 +263,50 @@ impl AlternativeLayout {
         })
     }
 
-    pub(crate) const fn llvm(self) -> &'static str {
+    pub(crate) fn llvm(self) -> LlvmType {
         match self {
-            Self::Sentinel => "ptr",
-            Self::Status => "{ i1, ptr, i64 }",
-            Self::StatusPointer => "{ i1, ptr }",
-            Self::StatusEndpoint => "{ i1, ptr, i32 }",
-            Self::General => GENERAL_LAYOUT,
-            Self::Region => "{ ptr, i32 }",
+            Self::Sentinel => LlvmType::Ptr,
+            Self::Status => handle_result_ty(),
+            Self::StatusPointer => status_pointer_ty(),
+            Self::StatusEndpoint => status_endpoint_ty(),
+            Self::General => crate::general_alternative::layout(),
+            Self::Region => vector_ty(),
         }
     }
 }
 
-pub(crate) fn llvm_type(ty: &Type) -> Option<&'static str> {
+pub(crate) fn llvm_type(ty: &Type) -> Option<LlvmType> {
     match ty {
-        Type::Boolean => Some("i1"),
-        Type::Integer(IntegerType::Byte | IntegerType::Int8) => Some("i8"),
-        Type::Integer(IntegerType::Int16 | IntegerType::UInt16) => Some("i16"),
-        Type::Integer(IntegerType::Int32 | IntegerType::UInt32) => Some("i32"),
+        Type::Boolean => Some(LlvmType::I1),
+        Type::Integer(IntegerType::Byte | IntegerType::Int8) => Some(LlvmType::I8),
+        Type::Integer(IntegerType::Int16 | IntegerType::UInt16) => Some(LlvmType::I16),
+        Type::Integer(IntegerType::Int32 | IntegerType::UInt32) => Some(LlvmType::I32),
         // Untyped integer literals lower as i64 so UINT64/INT64 initializers
         // (including hex source text) stay in range; Store coerces to the slot.
         Type::IntegerLiteral(_) | Type::Integer(IntegerType::Int64 | IntegerType::UInt64) => {
-            Some("i64")
+            Some(LlvmType::I64)
         }
-        Type::Float(FloatType::Float32) => Some("float"),
-        Type::Float(FloatType::Float64) | Type::FloatLiteral => Some("double"),
-        Type::String => Some("ptr"),
-        Type::Null => Some("ptr"),
+        Type::Float(FloatType::Float32) => Some(LlvmType::Float),
+        Type::Float(FloatType::Float64) | Type::FloatLiteral => Some(LlvmType::Double),
+        Type::String => Some(LlvmType::Ptr),
+        Type::Null => Some(LlvmType::Ptr),
         // `EOF` is the `@.bn_eof` sentinel, the value `INPUT` reads at end of
         // input; `PRINT` writes its text.
-        Type::EndOfFile => Some("ptr"),
-        Type::Function { .. } => Some("ptr"),
-        Type::Named(name) if name == "DATE" || name == "TIME" => Some("i32"),
-        Type::NotAvailable => Some("{ i1, double }"),
+        Type::EndOfFile => Some(LlvmType::Ptr),
+        Type::Function { .. } => Some(LlvmType::Ptr),
+        Type::Named(name) if name == "DATE" || name == "TIME" => Some(LlvmType::I32),
+        Type::NotAvailable => Some(optional_float_ty()),
         Type::Alternative(members) => AlternativeLayout::of(members).map(AlternativeLayout::llvm),
-        Type::Named(name) if name == "Error" => Some("{ i1, ptr, i64 }"),
+        Type::Named(name) if name == "Error" => Some(handle_result_ty()),
+        ty if crate::runtime_net::is_net_cidr_type(ty) => Some(handle_result_ty()),
         Type::Named(name) if name == "HOST.Net.Address" || name == "HOST.Net.PingReply" => {
-            Some("{ i1, ptr, i64 }")
+            Some(handle_result_ty())
         }
-        Type::Named(name) if name == "HOST.Net.Addresses" => Some("{ i1, ptr }"),
-        Type::Named(name) if name == "HOST.Net.Endpoint" => Some("{ ptr, i32 }"),
+        Type::Named(name) if name == "HOST.Net.Addresses" => Some(status_pointer_ty()),
+        Type::Named(name) if name == "HOST.Net.Endpoint" => Some(vector_ty()),
         // A file handle alone has the layout of `FS.File OR Error`, whose
         // methods read the handle from the payload.
-        Type::Named(name) if name == "FS.File" => Some("{ i1, ptr, i64 }"),
+        Type::Named(name) if name == "FS.File" => Some(handle_result_ty()),
         Type::Named(name)
             if matches!(
                 name.as_str(),
@@ -266,39 +316,39 @@ pub(crate) fn llvm_type(ty: &Type) -> Option<&'static str> {
                     | "HOST.Net.UDPPacket"
             ) =>
         {
-            Some("{ i1, ptr, i64 }")
+            Some(handle_result_ty())
         }
         Type::ImportedNamed { name, .. }
             if name == "Address" || name == "PingReply" || name == "Error" =>
         {
-            Some("{ i1, ptr, i64 }")
+            Some(handle_result_ty())
         }
-        Type::ImportedNamed { name, .. } if name == "Addresses" => Some("{ i1, ptr }"),
-        Type::ImportedNamed { name, .. } if name == "Endpoint" => Some("{ ptr, i32 }"),
+        Type::ImportedNamed { name, .. } if name == "Addresses" => Some(status_pointer_ty()),
+        Type::ImportedNamed { name, .. } if name == "Endpoint" => Some(vector_ty()),
         Type::ImportedNamed { name, .. }
             if matches!(
                 name.as_str(),
                 "TCPStream" | "TCPListener" | "UDPSocket" | "UDPPacket"
             ) =>
         {
-            Some("{ i1, ptr, i64 }")
+            Some(handle_result_ty())
         }
-        Type::ImportedNamed { name, .. } if dispatch_handle_name(name) => Some("{ i1, ptr, i64 }"),
+        Type::ImportedNamed { name, .. } if dispatch_handle_name(name) => Some(handle_result_ty()),
         Type::ImportedTypeName { name, .. } if dispatch_handle_name(name) => {
-            Some("{ i1, ptr, i64 }")
+            Some(handle_result_ty())
         }
-        Type::ImportedNamed { .. } => Some("ptr"),
-        Type::ImportedTypeName { .. } => Some("ptr"),
+        Type::ImportedNamed { .. } => Some(LlvmType::Ptr),
+        Type::ImportedTypeName { .. } => Some(LlvmType::Ptr),
         Type::Vector {
             element,
             dimensions,
-        } if !dimensions.is_empty() && llvm_type(element).is_some() => Some("{ ptr, i32 }"),
+        } if !dimensions.is_empty() && llvm_type(element).is_some() => Some(vector_ty()),
         // Dynamic `NEW T[n]` / `POINTER TO T[]` share the vector fat pointer.
         Type::Pointer { element, .. } if matches!(element.as_ref(), Type::Named(name) if name == "VOID") => {
-            Some("{ ptr, i32, i32 }")
+            Some(region_ty())
         }
-        Type::Pointer { element, .. } if llvm_type(element).is_some() => Some("{ ptr, i32 }"),
-        Type::Named(name) if name == "POINTER" => Some("{ ptr, i32 }"),
+        Type::Pointer { element, .. } if llvm_type(element).is_some() => Some(vector_ty()),
+        Type::Named(name) if name == "POINTER" => Some(vector_ty()),
         // User class instances (NEW Box(...)) lower as opaque pointers.
         Type::Named(name)
             if !matches!(
@@ -306,7 +356,7 @@ pub(crate) fn llvm_type(ty: &Type) -> Option<&'static str> {
                 "VOID" | "POINTER" | "DATE" | "TIME" | "Error"
             ) =>
         {
-            Some("ptr")
+            Some(LlvmType::Ptr)
         }
         _ => None,
     }
@@ -319,7 +369,9 @@ mod tests {
     use bn_ir::{FieldId, FieldLayout, FieldLayoutEntry, FieldRef, FieldSlot};
     use bn_source::{Position, Revision, SourceId, Span};
 
-    use super::{Type, class_layout_fields};
+    use super::{Type, class_layout_fields, llvm_type};
+    use crate::ir::LlvmType;
+    use bn_types::{FloatType, IntegerType};
 
     fn span() -> Span {
         let position = Position {
@@ -426,6 +478,34 @@ mod tests {
                 }
             )
             .is_none()
+        );
+    }
+
+    #[test]
+    fn llvm_type_uses_contract_integer_widths() {
+        assert_eq!(
+            llvm_type(&Type::Integer(IntegerType::Int32)),
+            Some(LlvmType::I32)
+        );
+        assert_eq!(
+            llvm_type(&Type::Integer(IntegerType::Byte)),
+            Some(LlvmType::I8)
+        );
+        assert_eq!(
+            llvm_type(&Type::Integer(IntegerType::UInt64)),
+            Some(LlvmType::I64)
+        );
+    }
+
+    #[test]
+    fn llvm_type_uses_contract_float_widths() {
+        assert_eq!(
+            llvm_type(&Type::Float(FloatType::Float32)),
+            Some(LlvmType::Float)
+        );
+        assert_eq!(
+            llvm_type(&Type::Float(FloatType::Float64)),
+            Some(LlvmType::Double)
         );
     }
 }

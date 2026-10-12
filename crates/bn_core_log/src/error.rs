@@ -25,28 +25,18 @@ pub enum LogFailure {
         len: usize,
         max: usize,
     },
-    /// Invalid transport type or target.
-    InvalidTransport(&'static str),
-    /// A `SetFormat` name that is not `"JSON"`, `"SYSLOG"` or `"APACHE"`.
+    /// A `Logger.New` format that is not `"JSON"`, `"SYSLOG"` or `"APACHE"`.
     InvalidFormat(String),
-    /// A field or entry key that already exists.
-    DuplicateKey(String),
-    /// Too many transports, fields, or entry fields.
-    LimitExceeded {
-        what: &'static str,
-        count: usize,
-        max: usize,
-    },
+    /// A level method on an APACHE logger, which writes access records only.
+    ApacheLevel,
     /// Record serialization error (e.g. JSON line serialization failed or exceeded buffer).
     RecordSerialization(String),
     /// An operation on a closed logger.
     Closed,
     /// A transport could not write or flush.
     IoFailed(String),
-    /// `AddFile` without `IMPORT HOST.FileSystem`, `AddConsole` without `IMPORT HOST.Console`.
+    /// A destination whose capability the program did not import.
     CapabilityRequired(&'static str),
-    /// Flush or Close ran past its timeout.
-    Timeout { ms: i128 },
     /// The operation or provider is not available.
     Unavailable(&'static str),
 }
@@ -59,14 +49,12 @@ impl LogFailure {
             Self::InvalidHandle
             | Self::OutOfRange { .. }
             | Self::InvalidString { .. }
-            | Self::InvalidTransport(_)
-            | Self::InvalidFormat(_) => log::INVALID_ARGUMENT,
-            Self::DuplicateKey(_) => log::DUPLICATE,
-            Self::LimitExceeded { .. } | Self::RecordSerialization(_) => log::LIMIT,
+            | Self::InvalidFormat(_)
+            | Self::ApacheLevel => log::INVALID_ARGUMENT,
+            Self::RecordSerialization(_) => log::LIMIT,
             Self::Closed => log::CLOSED,
             Self::IoFailed(_) => log::IO_FAILED,
             Self::CapabilityRequired(_) => log::CAPABILITY_REQUIRED,
-            Self::Timeout { .. } => log::TIMEOUT,
             Self::Unavailable(_) => log::UNAVAILABLE,
         }
     }
@@ -83,23 +71,16 @@ impl LogFailure {
             Self::InvalidString { what, len, max } => {
                 format!("the {what} of {len} bytes exceeds the maximum of {max} bytes")
             }
-            Self::InvalidTransport(kind) => format!("invalid transport {kind}"),
             Self::InvalidFormat(format) => {
                 crate::catalog::text("error.invalid_format.message").replace("{format}", format)
             }
-            Self::DuplicateKey(key) => {
-                crate::catalog::fill("error.duplicate_key.message", &[("key", key)])
-            }
-            Self::LimitExceeded { what, count, max } => {
-                format!("cannot add {what}: {count} reaches the maximum of {max}")
-            }
+            Self::ApacheLevel => crate::catalog::text("error.apache_level.message").into(),
             Self::RecordSerialization(reason) => {
                 format!("cannot serialize log record: {reason}")
             }
             Self::Closed => "logger is closed".into(),
             Self::IoFailed(reason) => format!("log transport failed: {reason}"),
             Self::CapabilityRequired(cap) => format!("{cap} capability is required"),
-            Self::Timeout { ms } => format!("timed out after {ms} ms"),
             Self::Unavailable(_) => "the operation is not available".into(),
         }
     }
@@ -118,22 +99,13 @@ impl LogFailure {
             Self::InvalidString { what, max, .. } => {
                 format!("the {what} must not exceed {max} bytes")
             }
-            Self::InvalidTransport(kind) => {
-                crate::catalog::fill("error.invalid_transport.cause", &[("kind", kind)])
-            }
             Self::InvalidFormat(_) => crate::catalog::text("error.invalid_format.cause").into(),
-            Self::DuplicateKey(key) => {
-                crate::catalog::fill("error.duplicate_key.cause", &[("key", key)])
-            }
-            Self::LimitExceeded { what, max, .. } => {
-                format!("a logger allows at most {max} {what}")
-            }
+            Self::ApacheLevel => crate::catalog::text("error.apache_level.cause").into(),
             Self::RecordSerialization(reason) | Self::IoFailed(reason) => reason.clone(),
             Self::Closed => "a closed logger accepts no further operations".into(),
             Self::CapabilityRequired(cap) => {
-                format!("importing {cap} is required to use this transport")
+                crate::catalog::fill("error.capability.cause", &[("capability", cap)])
             }
-            Self::Timeout { .. } => "the operation did not complete within its timeout".into(),
             Self::Unavailable(reason) => (*reason).into(),
         }
     }
@@ -167,17 +139,20 @@ mod tests {
         assert_eq!(level.message(), "cannot use 9 as the log level");
         assert_eq!(level.cause(), "the log level must be from 0 through 6");
 
-        let dup = LogFailure::DuplicateKey("foo".into());
-        assert_eq!(dup.code(), log::DUPLICATE);
-        assert_eq!(dup.message(), "key \"foo\" already exists");
-        assert_eq!(dup.cause(), "the key \"foo\" is already present");
-
-        let limit = LogFailure::LimitExceeded {
-            what: "transports",
-            count: 8,
-            max: 8,
-        };
-        assert_eq!(limit.code(), log::LIMIT);
+        let apache = LogFailure::ApacheLevel;
+        assert_eq!(apache.code(), log::INVALID_ARGUMENT);
+        assert_eq!(
+            apache.message(),
+            "cannot write a level record to an APACHE logger"
+        );
+        assert_eq!(
+            LogFailure::RecordSerialization("long".into()).code(),
+            log::LIMIT
+        );
+        assert_eq!(
+            LogFailure::CapabilityRequired("HOST.Console").cause(),
+            "the destination needs IMPORT HOST.Console"
+        );
         assert_eq!(LogFailure::Closed.code(), log::CLOSED);
         assert_eq!(
             LogFailure::IoFailed("disk full".into()).code(),
@@ -187,7 +162,6 @@ mod tests {
             LogFailure::CapabilityRequired("HOST.Console").code(),
             log::CAPABILITY_REQUIRED
         );
-        assert_eq!(LogFailure::Timeout { ms: 100 }.code(), log::TIMEOUT);
         assert_eq!(
             LogFailure::Unavailable("no provider").code(),
             log::UNAVAILABLE

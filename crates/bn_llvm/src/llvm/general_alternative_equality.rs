@@ -27,7 +27,7 @@ pub(crate) struct EqualsOperands<'a> {
 /// `%v{destination} = left = right` (or `<>`), `left` a general alternative
 /// and `right` a value of one of its members (or a literal): equal when the
 /// alternative holds that member with an equal value.
-pub(crate) fn emit_equals(text: &mut String, operands: EqualsOperands<'_>) {
+pub(crate) fn emit_equals(text: &mut crate::ir::LlvmModule, operands: EqualsOperands<'_>) {
     let dest = operands.destination.0;
     let reg = |suffix: &str| format!("geneq{dest}_{suffix}");
     let left_op = if general_alternative(operands.left_ty).is_some() {

@@ -1,4 +1,6 @@
-// BNLog 0.3 external-module interface. Runtime dispatch is supplied by Rust.
+// BNLog external-module interface (language/0.6/bnlog.md, "API (0.6.5)").
+// The members are supplied by the runtime; the bodies below only satisfy
+// their declared types and never run.
 
 // Error codes (language/0.6/bnlog.md "Errors").
 EXPORT CONST INVALID_ARGUMENT AS INTEGER = 1
@@ -20,67 +22,64 @@ EXPORT CLASS Level
     PUBLIC STATIC SILLY AS INTEGER = 6
 END CLASS
 
-EXPORT CLASS Fields
-    PUBLIC FUNCTION CONSTRUCTOR()
-    END FUNCTION
-    PUBLIC FUNCTION Count() AS INTEGER
-        RETURN 0
-    END FUNCTION
-    PUBLIC FUNCTION SetString(key AS STRING, value AS STRING) AS VOID OR Error
-        RETURN
-    END FUNCTION
-    PUBLIC FUNCTION SetInteger(key AS STRING, value AS INT64) AS VOID OR Error
-        RETURN
-    END FUNCTION
-    PUBLIC FUNCTION SetBoolean(key AS STRING, value AS BOOLEAN) AS VOID OR Error
-        RETURN
-    END FUNCTION
-    PUBLIC FUNCTION Get(key AS STRING) AS STRING OR Error
-        RETURN ""
-    END FUNCTION
-END CLASS
+// The fields of an application record; a field left at "" or 0 takes the
+// logger's default (SetDefaults) or is absent.
+EXPORT STRUCT Event
+    service AS STRING
+    request_id AS STRING
+    route AS STRING
+    user AS STRING
+    detail AS STRING
+    code AS INTEGER
+END STRUCT
 
-EXPORT CLASS Entry
-    PUBLIC FUNCTION CONSTRUCTOR()
-    END FUNCTION
-    PUBLIC FUNCTION WithField(key AS STRING, value AS STRING) AS Entry OR Error
-        RETURN NEW Entry()
-    END FUNCTION
-END CLASS
-
-EXPORT CLASS Transport
-    PUBLIC FUNCTION CONSTRUCTOR()
-    END FUNCTION
-    PUBLIC FUNCTION Flush(timeoutMs AS INTEGER) AS VOID OR Error
-        RETURN
-    END FUNCTION
-    PUBLIC FUNCTION Close(timeoutMs AS INTEGER) AS VOID OR Error
-        RETURN
-    END FUNCTION
-END CLASS
+// The fields of an access record (Apache Combined Log Format).
+EXPORT STRUCT Apache
+    remote AS STRING
+    method AS STRING
+    path AS STRING
+    protocol AS STRING
+    status AS INTEGER
+    bytes AS INTEGER
+    referrer AS STRING
+    agent AS STRING
+END STRUCT
 
 EXPORT CLASS Logger
-    PUBLIC STATIC FUNCTION New(label AS STRING) AS Logger OR Error
+    PUBLIC STATIC FUNCTION New(label AS STRING, format AS STRING, destination AS STRING) AS Logger OR Error
         RETURN NEW Logger()
     END FUNCTION
-    PUBLIC FUNCTION CONSTRUCTOR()
-    END FUNCTION
-    PUBLIC FUNCTION AddConsole(minimum AS INTEGER) AS VOID OR Error
+    PUBLIC FUNCTION Error(message AS STRING, event AS Event) AS VOID OR Error
         RETURN
     END FUNCTION
-    PUBLIC FUNCTION AddFile(path AS STRING, minimum AS INTEGER) AS VOID OR Error
+    PUBLIC FUNCTION Warn(message AS STRING, event AS Event) AS VOID OR Error
         RETURN
     END FUNCTION
-    PUBLIC FUNCTION AddNull(minimum AS INTEGER) AS VOID OR Error
+    PUBLIC FUNCTION Info(message AS STRING, event AS Event) AS VOID OR Error
         RETURN
     END FUNCTION
-    PUBLIC FUNCTION SetFormat(format AS STRING) AS VOID OR Error
+    PUBLIC FUNCTION Http(message AS STRING, event AS Event) AS VOID OR Error
         RETURN
     END FUNCTION
-    PUBLIC FUNCTION Child(fields AS Fields) AS Logger OR Error
-        RETURN NEW Logger()
+    PUBLIC FUNCTION Verbose(message AS STRING, event AS Event) AS VOID OR Error
+        RETURN
     END FUNCTION
-    PUBLIC FUNCTION Log(level AS INTEGER, message AS STRING, fields AS Fields) AS VOID OR Error
+    PUBLIC FUNCTION Debug(message AS STRING, event AS Event) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Silly(message AS STRING, event AS Event) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION Access(request AS Apache) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION SetLevel(minimum AS INTEGER) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION SetDefaults(defaults AS Event) AS VOID OR Error
+        RETURN
+    END FUNCTION
+    PUBLIC FUNCTION SetAccessDefaults(defaults AS Apache) AS VOID OR Error
         RETURN
     END FUNCTION
     PUBLIC FUNCTION Flush(timeoutMs AS INTEGER) AS VOID OR Error

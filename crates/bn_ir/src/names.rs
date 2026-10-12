@@ -127,6 +127,12 @@ fn is_identifier(text: &str) -> bool {
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
+/// The `BNLog` class whose values are counted handles: a copy retains one,
+/// the end of a binding releases one, and the last release destroys it,
+/// closing its destination (known issue K61). Lowering and the ownership
+/// check apply the same rule; other library types are not counted yet (K63).
+pub const BNLOG_COUNTED_CLASS: &str = "Logger";
+
 #[cfg(test)]
 mod tests {
     use super::{EmittedNameKind, classify};

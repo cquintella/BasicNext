@@ -3,777 +3,494 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// Typed signatures of the `bn_rt` C functions that typed lowering calls.
-// A test checks every entry against the `declare` lines the backend emits,
-// so a call built from this table matches its declaration.
+// Every C function the backend declares (`bn_rt`, the C library and the
+// LLVM intrinsics with C types) as one typed signature, and the groups a
+// module declares together, in emission order. No `declare` is written as
+// text anywhere else (bucket 0.6.5 T.5.1).
 
 use crate::ir::{
-    AbiType::{Double, I32, I64, Ptr},
-    RuntimeFn,
+    AbiType::{Double, I1, I8, I32, I64, Ptr, Void},
+    Declaration, Intrinsic, LlvmType, RuntimeFn, VariadicFn,
 };
 
-pub(crate) const CLOCK_NOW: RuntimeFn<0> = RuntimeFn {
-    name: "bn_rt_clock_now",
-    ret: I64,
-    params: [],
-};
-pub(crate) const CLOCK_TIMER: RuntimeFn<0> = RuntimeFn {
-    name: "bn_rt_clock_timer",
-    ret: I64,
-    params: [],
-};
-pub(crate) const CONSOLE_BEEP: RuntimeFn<0> = RuntimeFn {
-    name: "bn_rt_console_beep",
-    ret: I32,
-    params: [],
-};
-pub(crate) const CONSOLE_CLS: RuntimeFn<0> = RuntimeFn {
-    name: "bn_rt_console_cls",
-    ret: I32,
-    params: [],
-};
-pub(crate) const CONSOLE_NUM_COLS: RuntimeFn<0> = RuntimeFn {
-    name: "bn_rt_console_num_cols",
-    ret: I32,
-    params: [],
-};
-pub(crate) const CONSOLE_NUM_ROWS: RuntimeFn<0> = RuntimeFn {
-    name: "bn_rt_console_num_rows",
-    ret: I32,
-    params: [],
-};
-pub(crate) const CONSOLE_PRINT_AT: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_console_print_at",
-    ret: I32,
-    params: [I32, I32, Ptr],
-};
-pub(crate) const DISPATCH_AWAIT: RuntimeFn<4> = RuntimeFn {
-    name: "bn_rt_dispatch_await",
-    ret: I32,
-    params: [I64, I64, Ptr, Ptr],
-};
-pub(crate) const DISPATCH_BARRIER_WAIT: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_dispatch_barrier_wait",
-    ret: I32,
-    params: [I64, I64, Ptr],
-};
-pub(crate) const DISPATCH_QUEUE_CREATE: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_dispatch_queue_create",
-    ret: I32,
-    params: [I64, Ptr],
-};
-pub(crate) const DISPATCH_QUEUE_CREATE_AUTO: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_dispatch_queue_create_auto",
-    ret: I32,
-    params: [Ptr],
-};
-pub(crate) const DISPATCH_TICKET_CANCEL: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_dispatch_ticket_cancel",
-    ret: I32,
-    params: [I64, Ptr],
-};
-pub(crate) const DISPATCH_TICKET_ERROR: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_dispatch_ticket_error",
-    ret: I32,
-    params: [I64, Ptr, Ptr],
-};
-pub(crate) const DISPATCH_TICKET_ID: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_dispatch_ticket_id",
-    ret: I64,
-    params: [I64],
-};
-pub(crate) const DISPATCH_TICKET_IS_DONE: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_dispatch_ticket_is_done",
-    ret: I32,
-    params: [I64],
-};
-pub(crate) const DISPATCH_TICKET_STATUS: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_dispatch_ticket_status",
-    ret: I32,
-    params: [I64],
-};
-pub(crate) const ERROR_TAKE: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_error_take",
-    ret: Ptr,
-    params: [I32, Ptr],
-};
-pub(crate) const ENV_GET: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_env_get",
-    ret: I32,
-    params: [Ptr, Ptr],
-};
-pub(crate) const ENV_HAS: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_env_has",
-    ret: I32,
-    params: [Ptr, Ptr],
-};
-pub(crate) const EXEC_RESULT_CLOSE: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_exec_result_close",
-    ret: I32,
-    params: [I64],
-};
-pub(crate) const EXEC_RESULT_RETURN_CODE: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_exec_result_return_code",
-    ret: I64,
-    params: [I64],
-};
-pub(crate) const EXEC_RUN: RuntimeFn<4> = RuntimeFn {
-    name: "bn_rt_exec_run",
-    ret: I32,
-    params: [Ptr, Ptr, I32, Ptr],
-};
-pub(crate) const HOST_NUM_PROCS: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_host_num_procs",
-    ret: I32,
-    params: [Ptr],
-};
-pub(crate) const MATH_ACOS: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_math_acos",
-    ret: Double,
-    params: [Double],
-};
-pub(crate) const MATH_ASIN: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_math_asin",
-    ret: Double,
-    params: [Double],
-};
-pub(crate) const MATH_ATAN: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_math_atan",
-    ret: Double,
-    params: [Double],
-};
-pub(crate) const MATH_ATAN2: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_atan2",
-    ret: Double,
-    params: [Double, Double],
-};
-pub(crate) const MATH_CEIL: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_math_ceil",
-    ret: Double,
-    params: [Double],
-};
-pub(crate) const MATH_COS: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_math_cos",
-    ret: Double,
-    params: [Double],
-};
-pub(crate) const MATH_EXP: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_math_exp",
-    ret: Double,
-    params: [Double],
-};
-pub(crate) const MATH_FABS: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_math_fabs",
-    ret: Double,
-    params: [Double],
-};
-pub(crate) const MATH_FLOOR: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_math_floor",
-    ret: Double,
-    params: [Double],
-};
-pub(crate) const MATH_FMA: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_math_fma",
-    ret: Double,
-    params: [Double, Double, Double],
-};
-pub(crate) const MATH_FMAX: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_fmax",
-    ret: Double,
-    params: [Double, Double],
-};
-pub(crate) const MATH_FMIN: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_fmin",
-    ret: Double,
-    params: [Double, Double],
-};
-pub(crate) const MATH_FSIGN: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_math_fsign",
-    ret: Double,
-    params: [Double],
-};
-pub(crate) const MATH_HYPOT: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_hypot",
-    ret: Double,
-    params: [Double, Double],
-};
-pub(crate) const MATH_IMAX: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_imax",
-    ret: I64,
-    params: [I64, I64],
-};
-pub(crate) const MATH_IMIN: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_imin",
-    ret: I64,
-    params: [I64, I64],
-};
-pub(crate) const MATH_ISIGN: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_math_isign",
-    ret: I64,
-    params: [I64],
-};
-pub(crate) const MATH_LOG: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_math_log",
-    ret: Double,
-    params: [Double],
-};
-pub(crate) const MATH_LOG10: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_math_log10",
-    ret: Double,
-    params: [Double],
-};
-pub(crate) const MATH_LOG2: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_math_log2",
-    ret: Double,
-    params: [Double],
-};
-pub(crate) const MATH_MEAN_F64: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_mean_f64",
-    ret: Double,
-    params: [Ptr, I32],
-};
-pub(crate) const MATH_MEAN_I32: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_mean_i32",
-    ret: Double,
-    params: [Ptr, I32],
-};
-pub(crate) const MATH_MEDIAN_F64: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_median_f64",
-    ret: Double,
-    params: [Ptr, I32],
-};
-pub(crate) const MATH_MEDIAN_I32: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_median_i32",
-    ret: Double,
-    params: [Ptr, I32],
-};
-pub(crate) const MATH_MODE_F64: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_math_mode_f64",
-    ret: I32,
-    params: [Ptr, I32, Ptr],
-};
-pub(crate) const MATH_MODE_I32: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_math_mode_i32",
-    ret: I32,
-    params: [Ptr, I32, Ptr],
-};
-pub(crate) const MATH_POW: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_pow",
-    ret: Double,
-    params: [Double, Double],
-};
-pub(crate) const MATH_QUARTILE1_F64: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_quartile1_f64",
-    ret: Double,
-    params: [Ptr, I32],
-};
-pub(crate) const MATH_QUARTILE1_I32: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_quartile1_i32",
-    ret: Double,
-    params: [Ptr, I32],
-};
-pub(crate) const MATH_QUARTILE3_F64: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_quartile3_f64",
-    ret: Double,
-    params: [Ptr, I32],
-};
-pub(crate) const MATH_QUARTILE3_I32: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_quartile3_i32",
-    ret: Double,
-    params: [Ptr, I32],
-};
-pub(crate) const MATH_RANGE_F64: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_range_f64",
-    ret: Double,
-    params: [Ptr, I32],
-};
-pub(crate) const MATH_RANGE_I32: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_range_i32",
-    ret: Double,
-    params: [Ptr, I32],
-};
-pub(crate) const MATH_ROUND: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_round",
-    ret: Double,
-    params: [Double, Double],
-};
-pub(crate) const MATH_SIN: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_math_sin",
-    ret: Double,
-    params: [Double],
-};
-pub(crate) const MATH_SQRT: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_math_sqrt",
-    ret: Double,
-    params: [Double],
-};
-pub(crate) const MATH_STDEV_F64: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_stdev_f64",
-    ret: Double,
-    params: [Ptr, I32],
-};
-pub(crate) const MATH_STDEV_I32: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_stdev_i32",
-    ret: Double,
-    params: [Ptr, I32],
-};
-pub(crate) const MATH_TAN: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_math_tan",
-    ret: Double,
-    params: [Double],
-};
-pub(crate) const MATH_TODATE: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_todate",
-    ret: I32,
-    params: [I64, Ptr],
-};
-pub(crate) const MATH_TOHOUR: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_math_tohour",
-    ret: I32,
-    params: [I64],
-};
-pub(crate) const MATH_TOTIME: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_totime",
-    ret: I32,
-    params: [I64, Ptr],
-};
-pub(crate) const MATH_TOTIMESTAMP: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_totimestamp",
-    ret: I64,
-    params: [I32, I32],
-};
-pub(crate) const MATH_TOWEEKDAY: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_math_toweekday",
-    ret: I32,
-    params: [I64],
-};
-pub(crate) const MATH_TRUNC: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_math_trunc",
-    ret: Double,
-    params: [Double],
-};
-pub(crate) const MATH_VAL: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_math_val",
-    ret: Double,
-    params: [Ptr],
-};
-pub(crate) const MATH_VARIANCE_F64: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_variance_f64",
-    ret: Double,
-    params: [Ptr, I32],
-};
-pub(crate) const MATH_VARIANCE_I32: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_math_variance_i32",
-    ret: Double,
-    params: [Ptr, I32],
-};
-pub(crate) const MATH_VMAX_F64: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_math_vmax_f64",
-    ret: Double,
-    params: [Ptr, I32, Ptr],
-};
-pub(crate) const MATH_VMAX_I32: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_math_vmax_i32",
-    ret: I32,
-    params: [Ptr, I32, Ptr],
-};
-pub(crate) const MATH_VMIN_F64: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_math_vmin_f64",
-    ret: Double,
-    params: [Ptr, I32, Ptr],
-};
-pub(crate) const MATH_VMIN_I32: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_math_vmin_i32",
-    ret: I32,
-    params: [Ptr, I32, Ptr],
-};
-pub(crate) const NET_ADDRESS_PARSE: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_net_address_parse",
-    ret: I32,
-    params: [Ptr, Ptr],
-};
-pub(crate) const NET_ADDRESSES_COUNT: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_net_addresses_count",
-    ret: I32,
-    params: [Ptr],
-};
-pub(crate) const NET_ADDRESSES_GET: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_net_addresses_get",
-    ret: I32,
-    params: [Ptr, I32, Ptr],
-};
-pub(crate) const NET_HANDLE_CLOSE: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_net_handle_close",
-    ret: I32,
-    params: [I64],
-};
-pub(crate) const NET_NEIGHBOR: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_net_neighbor",
-    ret: I32,
-    params: [Ptr, Ptr],
-};
-pub(crate) const NET_PING: RuntimeFn<4> = RuntimeFn {
-    name: "bn_rt_net_ping",
-    ret: I32,
-    params: [Ptr, I32, Ptr, Ptr],
-};
-pub(crate) const NET_RESOLVE: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_net_resolve",
-    ret: I32,
-    params: [Ptr, I32, Ptr],
-};
-pub(crate) const NET_REVERSE: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_net_reverse",
-    ret: I32,
-    params: [Ptr, I32, Ptr],
-};
-pub(crate) const NET_TCP_ACCEPT: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_net_tcp_accept",
-    ret: I32,
-    params: [I64, I32, Ptr],
-};
-pub(crate) const NET_TCP_CONNECT: RuntimeFn<4> = RuntimeFn {
-    name: "bn_rt_net_tcp_connect",
-    ret: I32,
-    params: [Ptr, I32, I32, Ptr],
-};
-pub(crate) const NET_TCP_LISTEN_WITH_BACKLOG: RuntimeFn<4> = RuntimeFn {
-    name: "bn_rt_net_tcp_listen_with_backlog",
-    ret: I32,
-    params: [Ptr, I32, I32, Ptr],
-};
-pub(crate) const NET_TCP_READ: RuntimeFn<4> = RuntimeFn {
-    name: "bn_rt_net_tcp_read",
-    ret: I32,
-    params: [I64, Ptr, I32, Ptr],
-};
-pub(crate) const NET_TCP_WRITE: RuntimeFn<4> = RuntimeFn {
-    name: "bn_rt_net_tcp_write",
-    ret: I32,
-    params: [I64, Ptr, I32, Ptr],
-};
-pub(crate) const NET_UDP_BIND: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_net_udp_bind",
-    ret: I32,
-    params: [Ptr, I32, Ptr],
-};
-pub(crate) const NET_UDP_PACKET_COPY_TO: RuntimeFn<4> = RuntimeFn {
-    name: "bn_rt_net_udp_packet_copy_to",
-    ret: I32,
-    params: [I64, Ptr, I32, Ptr],
-};
-pub(crate) const NET_UDP_PACKET_SOURCE: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_net_udp_packet_source",
-    ret: I32,
-    params: [I64, Ptr, Ptr],
-};
-pub(crate) const NET_UDP_RECEIVE_HANDLE: RuntimeFn<4> = RuntimeFn {
-    name: "bn_rt_net_udp_receive_handle",
-    ret: I32,
-    params: [I64, I32, I32, Ptr],
-};
-pub(crate) const NET_UDP_SEND_TO: RuntimeFn<6> = RuntimeFn {
-    name: "bn_rt_net_udp_send_to",
-    ret: I32,
-    params: [I64, Ptr, I32, Ptr, I32, Ptr],
-};
+/// One `RuntimeFn` constant per line: `NAME = "symbol"(parameters) -> result;`.
+macro_rules! signatures {
+    ($($konst:ident = $name:literal ($($param:ident),*) -> $ret:ident;)*) => {
+        $(pub(crate) const $konst: RuntimeFn<{ <[&str]>::len(&[$(stringify!($param)),*]) }> =
+            RuntimeFn { name: $name, ret: $ret, params: [$($param),*] };)*
+    };
+}
 
-pub(crate) const EXEC_RESULT_STDOUT: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_exec_result_stdout",
-    ret: Ptr,
-    params: [I64],
-};
+/// One declaration group: the signatures a module declares together, in order.
+macro_rules! declarations {
+    ($($group:ident = $($konst:ident)*;)*) => {
+        $(pub(crate) const $group: &[&dyn Declaration] = &[$(&$konst),*];)*
+    };
+}
 
-pub(crate) const EXEC_RESULT_STDERR: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_exec_result_stderr",
-    ret: Ptr,
-    params: [I64],
-};
+signatures! {
+    ARC_ADDRESS = "bn_rt_arc_address"(I64) -> Ptr;
+    ARC_FINISH_DESTROY = "bn_rt_arc_finish_destroy"(I64) -> I32;
+    ARC_REGISTER = "bn_rt_arc_register"(Ptr, Ptr, I32, I32) -> I64;
+    ARC_RELEASE = "bn_rt_arc_release"(I64, I32, I32) -> I32;
+    ARC_RETAIN = "bn_rt_arc_retain"(I64, I32, I32) -> I32;
+    ACRT_IOB_FUNC = "__acrt_iob_func"(I32) -> Ptr;
+    CALLOC = "calloc"(I64, I64) -> Ptr;
+    CLOCK_NOW = "bn_rt_clock_now"() -> I64;
+    CLOCK_TIMER = "bn_rt_clock_timer"() -> I64;
+    CONSOLE_BEEP = "bn_rt_console_beep"() -> I32;
+    CONSOLE_CLS = "bn_rt_console_cls"() -> I32;
+    CONSOLE_NUM_COLS = "bn_rt_console_num_cols"() -> I32;
+    CONSOLE_NUM_ROWS = "bn_rt_console_num_rows"() -> I32;
+    CONSOLE_PRINT_AT = "bn_rt_console_print_at"(I32, I32, Ptr) -> I32;
+    CRYPTO_ARGON2ID = "bn_rt_crypto_argon2id"(I64, I64, I64, I64, I64, Ptr) -> I32;
+    CRYPTO_BYTES_FROM_HEX = "bn_rt_crypto_bytes_from_hex"(Ptr, Ptr) -> I32;
+    CRYPTO_BYTES_FROM_TEXT = "bn_rt_crypto_bytes_from_text"(Ptr) -> I64;
+    CRYPTO_BYTES_LENGTH = "bn_rt_crypto_bytes_length"(I64) -> I64;
+    CRYPTO_BYTES_RELEASE = "bn_rt_crypto_bytes_release"(I64) -> I32;
+    CRYPTO_BYTES_TO_HEX = "bn_rt_crypto_bytes_to_hex"(I64) -> Ptr;
+    CRYPTO_DSA_KEYPAIR = "bn_rt_crypto_dsa_keypair"(I64, Ptr) -> I32;
+    CRYPTO_DSA_SIGN = "bn_rt_crypto_dsa_sign"(I64, I64, Ptr) -> I32;
+    CRYPTO_DSA_VERIFY = "bn_rt_crypto_dsa_verify"(I64, I64, I64) -> I32;
+    CRYPTO_HMAC = "bn_rt_crypto_hmac"(I64, I64, Ptr) -> I32;
+    CRYPTO_HMAC_VERIFY = "bn_rt_crypto_hmac_verify"(I64, I64, I64) -> I32;
+    CRYPTO_KEM_DECAPSULATE = "bn_rt_crypto_kem_decapsulate"(I64, I64, Ptr) -> I32;
+    CRYPTO_KEM_ENCAPSULATE = "bn_rt_crypto_kem_encapsulate"(I64, Ptr) -> I32;
+    CRYPTO_KEM_KEYPAIR = "bn_rt_crypto_kem_keypair"(I64, Ptr) -> I32;
+    CRYPTO_OPEN = "bn_rt_crypto_open"(I32, I64, I64, I64, I64, Ptr) -> I32;
+    CRYPTO_PUBLIC_KEY = "bn_rt_crypto_public_key"(I32, I64, Ptr) -> I32;
+    CRYPTO_SEAL = "bn_rt_crypto_seal"(I32, I64, I64, I64, I64, Ptr) -> I32;
+    CRYPTO_SHA256 = "bn_rt_crypto_sha256"(Ptr) -> Ptr;
+    CRYPTO_SHA512 = "bn_rt_crypto_sha512"(Ptr) -> Ptr;
+    CRYPTO_SIGN = "bn_rt_crypto_sign"(I32, I64, I64, Ptr) -> I32;
+    CRYPTO_SLICE = "bn_rt_crypto_slice"(I64, I64, I64, Ptr) -> I32;
+    CRYPTO_VERIFY = "bn_rt_crypto_verify"(I32, I64, I64, I64) -> I32;
+    DATAFRAME_ADD_BOOLEAN = "bn_rt_dataframe_add_boolean"(I64, Ptr, Ptr, I32) -> I32;
+    DATAFRAME_ADD_FLOAT = "bn_rt_dataframe_add_float"(I64, Ptr, Ptr, I32) -> I32;
+    DATAFRAME_ADD_INTEGER_START = "bn_rt_dataframe_add_integer_start"(I64, Ptr, I32) -> I32;
+    DATAFRAME_ADD_STRING = "bn_rt_dataframe_add_string"(I64, Ptr, Ptr, I32) -> I32;
+    DATAFRAME_APPEND_COLUMNS = "bn_rt_dataframe_append_columns"(I64, I64, Ptr) -> I32;
+    DATAFRAME_APPEND_ROWS = "bn_rt_dataframe_append_rows"(I64, I64, Ptr) -> I32;
+    DATAFRAME_CLOSE = "bn_rt_dataframe_close"(I64) -> I32;
+    DATAFRAME_COLUMN_COUNT = "bn_rt_dataframe_column_count"(I64, Ptr) -> I32;
+    DATAFRAME_COLUMN_NAME_OWNED = "bn_rt_dataframe_column_name_owned"(I64, I32) -> Ptr;
+    DATAFRAME_CONVERT_FLOAT = "bn_rt_dataframe_convert_float"(I64, Ptr) -> I32;
+    DATAFRAME_CONVERT_INTEGER = "bn_rt_dataframe_convert_integer"(I64, Ptr) -> I32;
+    DATAFRAME_COPY_FLOAT = "bn_rt_dataframe_copy_float"(I64, Ptr, Ptr, I32) -> I32;
+    DATAFRAME_COPY_INTEGER = "bn_rt_dataframe_copy_integer"(I64, Ptr, Ptr, I32) -> I32;
+    DATAFRAME_CREATE = "bn_rt_dataframe_create"(Ptr, I32, Ptr) -> I32;
+    DATAFRAME_GET_BOOLEAN = "bn_rt_dataframe_get_boolean"(I64, I32, Ptr, Ptr, Ptr) -> I32;
+    DATAFRAME_GET_FLOAT = "bn_rt_dataframe_get_float"(I64, I32, Ptr, Ptr, Ptr) -> I32;
+    DATAFRAME_GET_INTEGER = "bn_rt_dataframe_get_integer"(I64, I32, Ptr, Ptr, Ptr) -> I32;
+    DATAFRAME_GET_STRING = "bn_rt_dataframe_get_string"(I64, I32, Ptr, Ptr, Ptr) -> I32;
+    DATAFRAME_JOIN = "bn_rt_dataframe_join"(I64, I64, Ptr, Ptr, I32, Ptr) -> I32;
+    DATAFRAME_READ_CSV = "bn_rt_dataframe_read_csv"(I64, I8, Ptr, Ptr) -> I32;
+    DATAFRAME_REDUCE = "bn_rt_dataframe_reduce"(I64, Ptr, I32, Ptr, Ptr) -> I32;
+    DATAFRAME_ROW_COUNT = "bn_rt_dataframe_row_count"(I64, Ptr) -> I32;
+    DATAFRAME_SELECT = "bn_rt_dataframe_select"(I64, Ptr, I32, Ptr, I32, Ptr) -> I32;
+    DATAFRAME_SET_INTEGER_CELL = "bn_rt_dataframe_set_integer_cell"(I64, I32, I32, I64) -> I32;
+    DATAFRAME_SET_LABEL = "bn_rt_dataframe_set_label"(I64, Ptr, Ptr) -> I32;
+    DATAFRAME_SLICE = "bn_rt_dataframe_slice"(I64, I32, I32, I32, I32, Ptr) -> I32;
+    DATAFRAME_TRANSPOSE = "bn_rt_dataframe_transpose"(I64, Ptr) -> I32;
+    DATAFRAME_WRITE_CSV = "bn_rt_dataframe_write_csv"(I64, I64, I8, Ptr) -> I32;
+    DATAFRAME_ZSCORE = "bn_rt_dataframe_zscore"(I64, Ptr, Ptr) -> I32;
+    DISPATCH_AWAIT = "bn_rt_dispatch_await"(I64, I64, Ptr, Ptr) -> I32;
+    DISPATCH_BARRIER_CLOSE = "bn_rt_dispatch_barrier_close"(I64) -> I32;
+    DISPATCH_BARRIER_CREATE = "bn_rt_dispatch_barrier_create"(I64, Ptr) -> I32;
+    DISPATCH_BARRIER_WAIT = "bn_rt_dispatch_barrier_wait"(I64, I64, Ptr) -> I32;
+    DISPATCH_CANCEL = "bn_rt_dispatch_cancel"(I64) -> I32;
+    DISPATCH_GROUP_CLOSE = "bn_rt_dispatch_group_close"(I64) -> I32;
+    DISPATCH_GROUP_CREATE = "bn_rt_dispatch_group_create"(Ptr) -> I32;
+    DISPATCH_GROUP_ENTER = "bn_rt_dispatch_group_enter"(I64) -> I32;
+    DISPATCH_GROUP_LEAVE = "bn_rt_dispatch_group_leave"(I64) -> I32;
+    DISPATCH_GROUP_WAIT = "bn_rt_dispatch_group_wait"(I64, I64) -> I32;
+    DISPATCH_MUTEX_CLOSE = "bn_rt_dispatch_mutex_close"(I64) -> I32;
+    DISPATCH_MUTEX_CREATE = "bn_rt_dispatch_mutex_create"(Ptr) -> I32;
+    DISPATCH_MUTEX_LOCK = "bn_rt_dispatch_mutex_lock"(I64, I64) -> I32;
+    DISPATCH_MUTEX_UNLOCK = "bn_rt_dispatch_mutex_unlock"(I64) -> I32;
+    DISPATCH_QUEUE_CLOSE = "bn_rt_dispatch_queue_close"(I64, I64) -> I32;
+    DISPATCH_QUEUE_CREATE = "bn_rt_dispatch_queue_create"(I64, Ptr) -> I32;
+    DISPATCH_QUEUE_CREATE_AUTO = "bn_rt_dispatch_queue_create_auto"(Ptr) -> I32;
+    DISPATCH_QUEUE_JOIN = "bn_rt_dispatch_queue_join"(I64, I64) -> I32;
+    DISPATCH_SEMAPHORE_ACQUIRE = "bn_rt_dispatch_semaphore_acquire"(I64, I64) -> I32;
+    DISPATCH_SEMAPHORE_CLOSE = "bn_rt_dispatch_semaphore_close"(I64) -> I32;
+    DISPATCH_SEMAPHORE_CREATE = "bn_rt_dispatch_semaphore_create"(I64, Ptr) -> I32;
+    DISPATCH_SEMAPHORE_RELEASE = "bn_rt_dispatch_semaphore_release"(I64) -> I32;
+    DISPATCH_SUBMIT = "bn_rt_dispatch_submit"(I64, Ptr, Ptr, Ptr, I32, Ptr) -> I32;
+    DISPATCH_TICKET_CANCEL = "bn_rt_dispatch_ticket_cancel"(I64, Ptr) -> I32;
+    DISPATCH_TICKET_CLOSE = "bn_rt_dispatch_ticket_close"(I64) -> I32;
+    DISPATCH_TICKET_ERROR = "bn_rt_dispatch_ticket_error"(I64, Ptr, Ptr) -> I32;
+    DISPATCH_TICKET_ID = "bn_rt_dispatch_ticket_id"(I64) -> I64;
+    DISPATCH_TICKET_IS_DONE = "bn_rt_dispatch_ticket_is_done"(I64) -> I32;
+    DISPATCH_TICKET_STATUS = "bn_rt_dispatch_ticket_status"(I64) -> I32;
+    ENV_GET = "bn_rt_env_get"(Ptr, Ptr) -> I32;
+    ENV_HAS = "bn_rt_env_has"(Ptr, Ptr) -> I32;
+    ERROR_CODE = "bn_rt_error_code"(Ptr) -> I64;
+    ERROR_FIELD = "bn_rt_error_field"(Ptr, I32) -> Ptr;
+    ERROR_PRINT = "bn_rt_error_print"(I64, Ptr) -> Void;
+    ERROR_TAKE = "bn_rt_error_take"(I32, Ptr) -> Ptr;
+    ERROR_WRAP = "bn_rt_error_wrap"(I1, Ptr, Ptr) -> Ptr;
+    EXEC_RESULT_CLOSE = "bn_rt_exec_result_close"(I64) -> I32;
+    EXEC_RESULT_RETURN_CODE = "bn_rt_exec_result_return_code"(I64) -> I64;
+    EXEC_RESULT_STDERR = "bn_rt_exec_result_stderr"(I64) -> Ptr;
+    EXEC_RESULT_STDOUT = "bn_rt_exec_result_stdout"(I64) -> Ptr;
+    EXEC_RUN = "bn_rt_exec_run"(Ptr, Ptr, I32, Ptr) -> I32;
+    EXIT = "exit"(I32) -> Void;
+    FILE_CLOSE = "bn_rt_file_close"(I64) -> I32;
+    FILE_NEW = "bn_rt_file_new"(Ptr) -> I32;
+    FILE_OPEN = "bn_rt_file_open"(Ptr, I32, Ptr) -> I32;
+    FILE_READ_ALL = "bn_rt_file_read_all"(I64, Ptr) -> I32;
+    FILE_READ_BYTES = "bn_rt_file_read_bytes"(I64, Ptr, I64, Ptr) -> I32;
+    FILE_READ_LINE = "bn_rt_file_read_line"(I64, Ptr) -> I32;
+    FILE_RELEASE = "bn_rt_file_release"(I64) -> I32;
+    FILE_WRITE = "bn_rt_file_write"(I64, Ptr) -> I32;
+    FILE_WRITE_BYTES = "bn_rt_file_write_bytes"(I64, Ptr, I64) -> I32;
+    FILE_WRITE_LINE = "bn_rt_file_write_line"(I64, Ptr) -> I32;
+    FLOCKFILE = "flockfile"(Ptr) -> Void;
+    FREE = "free"(Ptr) -> Void;
+    FS_DELETE_FILE = "bn_rt_fs_delete_file"(Ptr) -> I32;
+    FS_EXISTS = "bn_rt_fs_exists"(Ptr, Ptr) -> I32;
+    FUNLOCKFILE = "funlockfile"(Ptr) -> Void;
+    GETCHAR = "getchar"() -> I32;
+    HOST_NUM_PROCS = "bn_rt_host_num_procs"(Ptr) -> I32;
+    INPUT_NUL = "bn_rt_input_nul"() -> Void;
+    JSON_APPEND_BOOLEAN = "bn_rt_json_append_boolean"(I64, I32) -> I32;
+    JSON_APPEND_FLOAT = "bn_rt_json_append_float"(I64, Double) -> I32;
+    JSON_APPEND_INTEGER = "bn_rt_json_append_integer"(I64, I64) -> I32;
+    JSON_APPEND_JSON = "bn_rt_json_append_json"(I64, I64) -> I32;
+    JSON_APPEND_NULL = "bn_rt_json_append_null"(I64) -> I32;
+    JSON_APPEND_STRING = "bn_rt_json_append_string"(I64, Ptr) -> I32;
+    JSON_ARRAY = "bn_rt_json_array"() -> I64;
+    JSON_CLONE = "bn_rt_json_clone"(I64, Ptr) -> I32;
+    JSON_GET_BOOLEAN = "bn_rt_json_get_boolean"(I64, Ptr, Ptr) -> I32;
+    JSON_GET_BOOLEAN_AT = "bn_rt_json_get_boolean_at"(I64, I64, Ptr) -> I32;
+    JSON_GET_FLOAT = "bn_rt_json_get_float"(I64, Ptr, Ptr) -> Double;
+    JSON_GET_FLOAT_AT = "bn_rt_json_get_float_at"(I64, I64, Ptr) -> Double;
+    JSON_GET_INTEGER = "bn_rt_json_get_integer"(I64, Ptr, Ptr) -> I64;
+    JSON_GET_INTEGER_AT = "bn_rt_json_get_integer_at"(I64, I64, Ptr) -> I64;
+    JSON_GET_JSON = "bn_rt_json_get_json"(I64, Ptr, Ptr) -> I32;
+    JSON_GET_JSON_AT = "bn_rt_json_get_json_at"(I64, I64, Ptr) -> I32;
+    JSON_GET_STRING = "bn_rt_json_get_string"(I64, Ptr, Ptr) -> Ptr;
+    JSON_GET_STRING_AT = "bn_rt_json_get_string_at"(I64, I64, Ptr) -> Ptr;
+    JSON_HAS = "bn_rt_json_has"(I64, Ptr) -> I32;
+    JSON_KIND = "bn_rt_json_kind"(I64) -> Ptr;
+    JSON_LENGTH = "bn_rt_json_length"(I64) -> I64;
+    JSON_OBJECT = "bn_rt_json_object"() -> I64;
+    JSON_PARSE = "bn_rt_json_parse"(Ptr, Ptr) -> I32;
+    JSON_RELEASE = "bn_rt_json_release"(I64) -> I32;
+    JSON_SET_BOOLEAN = "bn_rt_json_set_boolean"(I64, Ptr, I32) -> I32;
+    JSON_SET_BOOLEAN_AT = "bn_rt_json_set_boolean_at"(I64, I64, I32) -> I32;
+    JSON_SET_FLOAT = "bn_rt_json_set_float"(I64, Ptr, Double) -> I32;
+    JSON_SET_FLOAT_AT = "bn_rt_json_set_float_at"(I64, I64, Double) -> I32;
+    JSON_SET_INTEGER = "bn_rt_json_set_integer"(I64, Ptr, I64) -> I32;
+    JSON_SET_INTEGER_AT = "bn_rt_json_set_integer_at"(I64, I64, I64) -> I32;
+    JSON_SET_JSON = "bn_rt_json_set_json"(I64, Ptr, I64) -> I32;
+    JSON_SET_JSON_AT = "bn_rt_json_set_json_at"(I64, I64, I64) -> I32;
+    JSON_SET_NULL = "bn_rt_json_set_null"(I64, Ptr) -> I32;
+    JSON_SET_NULL_AT = "bn_rt_json_set_null_at"(I64, I64) -> I32;
+    JSON_SET_STRING = "bn_rt_json_set_string"(I64, Ptr, Ptr) -> I32;
+    JSON_SET_STRING_AT = "bn_rt_json_set_string_at"(I64, I64, Ptr) -> I32;
+    JSON_STRINGIFY = "bn_rt_json_stringify"(I64, Ptr) -> Ptr;
+    LLVM_MEMCPY_P0_P0_I64 = "llvm.memcpy.p0.p0.i64"(Ptr, Ptr, I64, I1) -> Void;
+    LOCK_FILE = "_lock_file"(Ptr) -> Void;
+    LOG_LOGGER_ACCESS = "bn_rt_log_logger_access"(I64, Ptr, Ptr, Ptr, Ptr, I64, I64, Ptr, Ptr) -> I32;
+    LOG_LOGGER_CLOSE = "bn_rt_log_logger_close"(I64, I64) -> I32;
+    LOG_LOGGER_DELETE = "bn_rt_log_logger_delete"(I64) -> I32;
+    LOG_LOGGER_FLUSH = "bn_rt_log_logger_flush"(I64, I64) -> I32;
+    LOG_LOGGER_NEW = "bn_rt_log_logger_new"(Ptr, Ptr, Ptr, Ptr) -> I32;
+    LOG_LOGGER_RETAIN = "bn_rt_log_logger_retain"(I64) -> I32;
+    LOG_LOGGER_SET_ACCESS_DEFAULTS = "bn_rt_log_logger_set_access_defaults"(I64, Ptr, Ptr, Ptr, Ptr, I64, I64, Ptr, Ptr) -> I32;
+    LOG_LOGGER_SET_DEFAULTS = "bn_rt_log_logger_set_defaults"(I64, Ptr, Ptr, Ptr, Ptr, Ptr, I64) -> I32;
+    LOG_LOGGER_SET_LEVEL = "bn_rt_log_logger_set_level"(I64, I64) -> I32;
+    LOG_LOGGER_WRITE = "bn_rt_log_logger_write"(I64, I64, Ptr, Ptr, Ptr, Ptr, Ptr, Ptr, I64) -> I32;
+    MALLOC = "malloc"(I64) -> Ptr;
+    MATH_ACOS = "bn_rt_math_acos"(Double) -> Double;
+    MATH_ASIN = "bn_rt_math_asin"(Double) -> Double;
+    MATH_ATAN = "bn_rt_math_atan"(Double) -> Double;
+    MATH_ATAN2 = "bn_rt_math_atan2"(Double, Double) -> Double;
+    MATH_CEIL = "bn_rt_math_ceil"(Double) -> Double;
+    MATH_COS = "bn_rt_math_cos"(Double) -> Double;
+    MATH_EXP = "bn_rt_math_exp"(Double) -> Double;
+    MATH_FABS = "bn_rt_math_fabs"(Double) -> Double;
+    MATH_FLOOR = "bn_rt_math_floor"(Double) -> Double;
+    MATH_FMA = "bn_rt_math_fma"(Double, Double, Double) -> Double;
+    MATH_FMAX = "bn_rt_math_fmax"(Double, Double) -> Double;
+    MATH_FMIN = "bn_rt_math_fmin"(Double, Double) -> Double;
+    MATH_FSIGN = "bn_rt_math_fsign"(Double) -> Double;
+    MATH_HYPOT = "bn_rt_math_hypot"(Double, Double) -> Double;
+    MATH_IABS = "bn_rt_math_iabs"(I64) -> I64;
+    MATH_IMAX = "bn_rt_math_imax"(I64, I64) -> I64;
+    MATH_IMIN = "bn_rt_math_imin"(I64, I64) -> I64;
+    MATH_ISIGN = "bn_rt_math_isign"(I64) -> I64;
+    MATH_LOG = "bn_rt_math_log"(Double) -> Double;
+    MATH_LOG10 = "bn_rt_math_log10"(Double) -> Double;
+    MATH_LOG2 = "bn_rt_math_log2"(Double) -> Double;
+    MATH_MEAN_F64 = "bn_rt_math_mean_f64"(Ptr, I32) -> Double;
+    MATH_MEAN_I32 = "bn_rt_math_mean_i32"(Ptr, I32) -> Double;
+    MATH_MEDIAN_F64 = "bn_rt_math_median_f64"(Ptr, I32) -> Double;
+    MATH_MEDIAN_I32 = "bn_rt_math_median_i32"(Ptr, I32) -> Double;
+    MATH_MODE_F64 = "bn_rt_math_mode_f64"(Ptr, I32, Ptr) -> I32;
+    MATH_MODE_I32 = "bn_rt_math_mode_i32"(Ptr, I32, Ptr) -> I32;
+    MATH_POW = "bn_rt_math_pow"(Double, Double) -> Double;
+    MATH_QUARTILE1_F64 = "bn_rt_math_quartile1_f64"(Ptr, I32) -> Double;
+    MATH_QUARTILE1_I32 = "bn_rt_math_quartile1_i32"(Ptr, I32) -> Double;
+    MATH_QUARTILE3_F64 = "bn_rt_math_quartile3_f64"(Ptr, I32) -> Double;
+    MATH_QUARTILE3_I32 = "bn_rt_math_quartile3_i32"(Ptr, I32) -> Double;
+    MATH_RANGE_F64 = "bn_rt_math_range_f64"(Ptr, I32) -> Double;
+    MATH_RANGE_I32 = "bn_rt_math_range_i32"(Ptr, I32) -> Double;
+    MATH_ROUND = "bn_rt_math_round"(Double, Double) -> Double;
+    MATH_SIN = "bn_rt_math_sin"(Double) -> Double;
+    MATH_SQRT = "bn_rt_math_sqrt"(Double) -> Double;
+    MATH_STDEV_F64 = "bn_rt_math_stdev_f64"(Ptr, I32) -> Double;
+    MATH_STDEV_I32 = "bn_rt_math_stdev_i32"(Ptr, I32) -> Double;
+    MATH_TAN = "bn_rt_math_tan"(Double) -> Double;
+    MATH_TODATE = "bn_rt_math_todate"(I64, Ptr) -> I32;
+    MATH_TOHOUR = "bn_rt_math_tohour"(I64) -> I32;
+    MATH_TOTIME = "bn_rt_math_totime"(I64, Ptr) -> I32;
+    MATH_TOTIMESTAMP = "bn_rt_math_totimestamp"(I32, I32) -> I64;
+    MATH_TOWEEKDAY = "bn_rt_math_toweekday"(I64) -> I32;
+    MATH_TRUNC = "bn_rt_math_trunc"(Double) -> Double;
+    MATH_VAL = "bn_rt_math_val"(Ptr) -> Double;
+    MATH_VARIANCE_F64 = "bn_rt_math_variance_f64"(Ptr, I32) -> Double;
+    MATH_VARIANCE_I32 = "bn_rt_math_variance_i32"(Ptr, I32) -> Double;
+    MATH_VMAX_F64 = "bn_rt_math_vmax_f64"(Ptr, I32, Ptr) -> Double;
+    MATH_VMAX_I32 = "bn_rt_math_vmax_i32"(Ptr, I32, Ptr) -> I32;
+    MATH_VMIN_F64 = "bn_rt_math_vmin_f64"(Ptr, I32, Ptr) -> Double;
+    MATH_VMIN_I32 = "bn_rt_math_vmin_i32"(Ptr, I32, Ptr) -> I32;
+    NET_ADDRESS_IS_IPV4 = "bn_rt_net_address_is_ipv4"(Ptr) -> I32;
+    NET_ADDRESS_IS_IPV6 = "bn_rt_net_address_is_ipv6"(Ptr) -> I32;
+    NET_ADDRESS_IS_LINK_LOCAL = "bn_rt_net_address_is_link_local"(Ptr) -> I32;
+    NET_ADDRESS_IS_LOOPBACK = "bn_rt_net_address_is_loopback"(Ptr) -> I32;
+    NET_ADDRESS_IS_MULTICAST = "bn_rt_net_address_is_multicast"(Ptr) -> I32;
+    NET_ADDRESS_IS_PRIVATE = "bn_rt_net_address_is_private"(Ptr) -> I32;
+    NET_ADDRESS_PARSE = "bn_rt_net_address_parse"(Ptr, Ptr) -> I32;
+    NET_ADDRESSES_COUNT = "bn_rt_net_addresses_count"(Ptr) -> I32;
+    NET_ADDRESSES_FREE = "bn_rt_net_addresses_free"(Ptr) -> Void;
+    NET_ADDRESSES_GET = "bn_rt_net_addresses_get"(Ptr, I32, Ptr) -> I32;
+    NET_CIDR_CONTAINS = "bn_rt_net_cidr_contains"(Ptr, I32, Ptr) -> I32;
+    NET_CIDR_PARSE = "bn_rt_net_cidr_parse"(Ptr, Ptr, Ptr) -> I32;
+    NET_HANDLE_CLOSE = "bn_rt_net_handle_close"(I64) -> I32;
+    NET_NEIGHBOR = "bn_rt_net_neighbor"(Ptr, Ptr) -> I32;
+    NET_PING = "bn_rt_net_ping"(Ptr, I32, Ptr, Ptr) -> I32;
+    NET_RESOLVE = "bn_rt_net_resolve"(Ptr, I32, Ptr) -> I32;
+    NET_REVERSE = "bn_rt_net_reverse"(Ptr, I32, Ptr) -> I32;
+    NET_TCP_ACCEPT = "bn_rt_net_tcp_accept"(I64, I32, Ptr) -> I32;
+    NET_TCP_CONNECT = "bn_rt_net_tcp_connect"(Ptr, I32, I32, Ptr) -> I32;
+    NET_TCP_LISTEN_WITH_BACKLOG = "bn_rt_net_tcp_listen_with_backlog"(Ptr, I32, I32, Ptr) -> I32;
+    NET_TCP_LISTENER_LOCAL_ENDPOINT = "bn_rt_net_tcp_listener_local_endpoint"(I64, Ptr, Ptr) -> I32;
+    NET_TCP_READ = "bn_rt_net_tcp_read"(I64, Ptr, I32, Ptr) -> I32;
+    NET_TCP_SET_TIMEOUTS = "bn_rt_net_tcp_set_timeouts"(I64, I32, I32) -> I32;
+    NET_TCP_SHUTDOWN_READ = "bn_rt_net_tcp_shutdown_read"(I64) -> I32;
+    NET_TCP_SHUTDOWN_WRITE = "bn_rt_net_tcp_shutdown_write"(I64) -> I32;
+    NET_TCP_STREAM_LOCAL_ENDPOINT = "bn_rt_net_tcp_stream_local_endpoint"(I64, Ptr, Ptr) -> I32;
+    NET_TCP_STREAM_REMOTE_ENDPOINT = "bn_rt_net_tcp_stream_remote_endpoint"(I64, Ptr, Ptr) -> I32;
+    NET_TCP_WRITE = "bn_rt_net_tcp_write"(I64, Ptr, I32, Ptr) -> I32;
+    NET_UDP_BIND = "bn_rt_net_udp_bind"(Ptr, I32, Ptr) -> I32;
+    NET_UDP_LOCAL_ENDPOINT = "bn_rt_net_udp_local_endpoint"(I64, Ptr, Ptr) -> I32;
+    NET_UDP_PACKET_COPY_TO = "bn_rt_net_udp_packet_copy_to"(I64, Ptr, I32, Ptr) -> I32;
+    NET_UDP_PACKET_SIZE = "bn_rt_net_udp_packet_size"(I64) -> I32;
+    NET_UDP_PACKET_SOURCE = "bn_rt_net_udp_packet_source"(I64, Ptr, Ptr) -> I32;
+    NET_UDP_PACKET_TRUNCATED = "bn_rt_net_udp_packet_truncated"(I64) -> I32;
+    NET_UDP_RECEIVE_HANDLE = "bn_rt_net_udp_receive_handle"(I64, I32, I32, Ptr) -> I32;
+    NET_UDP_SEND_TO = "bn_rt_net_udp_send_to"(I64, Ptr, I32, Ptr, I32, Ptr) -> I32;
+    POLICY_CHECK = "bn_rt_policy_check"(I32) -> Void;
+    POLICY_FILESYSTEM_ROOT = "bn_rt_policy_filesystem_root"(I32, Ptr) -> I32;
+    POLICY_FILESYSTEM_SANDBOXED = "bn_rt_policy_filesystem_sandboxed"() -> I32;
+    POLICY_INIT = "bn_rt_policy_init"(I32, I64) -> I32;
+    PRINT_DATE = "bn_rt_print_date"(I32) -> Void;
+    PRINT_FLOAT = "bn_rt_print_float"(Double) -> Void;
+    PRINT_FLOAT32 = "bn_rt_print_float32"(Double) -> Void;
+    PRINT_TIME = "bn_rt_print_time"(I32) -> Void;
+    PUTCHAR = "putchar"(I32) -> I32;
+    RANDOM_NEXT = "bn_rt_random_next"() -> Double;
+    RANDOM_SEED = "bn_rt_random_seed"(I64) -> I32;
+    REALLOC = "realloc"(Ptr, I64) -> Ptr;
+    SETMODE = "_setmode"(I32, I32) -> I32;
+    SQLITE_BEGIN = "bn_rt_sqlite_begin"(I64) -> I32;
+    SQLITE_CHANGES = "bn_rt_sqlite_changes"(I64) -> I32;
+    SQLITE_CLOSE = "bn_rt_sqlite_close"(I64) -> I32;
+    SQLITE_COMMIT = "bn_rt_sqlite_commit"(I64) -> I32;
+    SQLITE_EXEC = "bn_rt_sqlite_exec"(I64, Ptr) -> I32;
+    SQLITE_LAST_INSERT_ROWID = "bn_rt_sqlite_last_insert_rowid"(I64) -> I64;
+    SQLITE_OPEN = "bn_rt_sqlite_open"(Ptr, Ptr) -> I32;
+    SQLITE_OPEN_EXISTING = "bn_rt_sqlite_open_existing"(Ptr, Ptr) -> I32;
+    SQLITE_OPEN_READ_ONLY = "bn_rt_sqlite_open_read_only"(Ptr, Ptr) -> I32;
+    SQLITE_QUERY = "bn_rt_sqlite_query"(I64, Ptr, Ptr) -> I32;
+    SQLITE_ROLLBACK = "bn_rt_sqlite_rollback"(I64) -> I32;
+    STACK_CHECK = "bn_rt_stack_check"(Ptr) -> I32;
+    STR_ASC = "bn_rt_str_asc"(Ptr) -> I64;
+    STR_CHAR_UTF8 = "bn_rt_str_char_utf8"(I64) -> I64;
+    STR_EQ = "bn_rt_str_eq"(Ptr, Ptr) -> I32;
+    STR_INDEX_UTF8 = "bn_rt_str_index_utf8"(Ptr, I32, Ptr) -> I64;
+    STR_LEN = "bn_rt_str_len"(Ptr) -> I32;
+    STR_TO_LOWER = "bn_rt_str_to_lower"(Ptr) -> Ptr;
+    STR_TO_UPPER = "bn_rt_str_to_upper"(Ptr) -> Ptr;
+    STRLEN = "strlen"(Ptr) -> I64;
+    TEXT_FLOAT = "bn_rt_text_float"(Double) -> Ptr;
+    TEXT_FLOAT32 = "bn_rt_text_float32"(Double) -> Ptr;
+    TEXT_INT = "bn_rt_text_int"(I64) -> Ptr;
+    TEXT_UINT = "bn_rt_text_uint"(I64) -> Ptr;
+    TRAP_REPORT = "bn_rt_trap_report"(Ptr, I64, I64, I64, I64) -> Void;
+    TRAP_REPORT_FAILURE = "bn_rt_trap_report_failure"(Ptr) -> Void;
+    UNLOCK_FILE = "_unlock_file"(Ptr) -> Void;
+    VECTOR_NEST = "bn_rt_vector_nest"(Ptr, Ptr, Ptr, Ptr, I32, I64) -> Void;
+}
 
-pub(crate) const DISPATCH_GROUP_CREATE: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_dispatch_group_create",
+/// `printf`, the one variadic function the backend calls.
+pub(crate) const PRINTF: VariadicFn<1> = VariadicFn {
+    name: "printf",
     ret: I32,
     params: [Ptr],
 };
 
-pub(crate) const DISPATCH_BARRIER_CREATE: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_dispatch_barrier_create",
-    ret: I32,
-    params: [I64, Ptr],
-};
+declarations! {
+    BN_RT_DECLARATIONS =
+    POLICY_INIT POLICY_CHECK POLICY_FILESYSTEM_SANDBOXED POLICY_FILESYSTEM_ROOT ENV_GET ENV_HAS
+    EXEC_RUN EXEC_RESULT_RETURN_CODE EXEC_RESULT_STDOUT EXEC_RESULT_STDERR EXEC_RESULT_CLOSE
+    DATAFRAME_CREATE DATAFRAME_ROW_COUNT DATAFRAME_COLUMN_COUNT DATAFRAME_ADD_INTEGER_START
+    DATAFRAME_SET_INTEGER_CELL DATAFRAME_ADD_FLOAT DATAFRAME_ADD_BOOLEAN DATAFRAME_ADD_STRING
+    DATAFRAME_GET_INTEGER DATAFRAME_GET_FLOAT DATAFRAME_GET_BOOLEAN DATAFRAME_GET_STRING
+    DATAFRAME_SET_LABEL DATAFRAME_REDUCE DATAFRAME_ZSCORE DATAFRAME_COPY_INTEGER
+    DATAFRAME_COPY_FLOAT DATAFRAME_SELECT DATAFRAME_SLICE DATAFRAME_TRANSPOSE
+    DATAFRAME_APPEND_ROWS DATAFRAME_APPEND_COLUMNS DATAFRAME_JOIN DATAFRAME_CONVERT_INTEGER
+    DATAFRAME_CONVERT_FLOAT DATAFRAME_COLUMN_NAME_OWNED DATAFRAME_CLOSE FILE_OPEN FILE_NEW
+    FILE_CLOSE FILE_RELEASE FILE_READ_ALL FILE_READ_LINE FILE_WRITE FILE_WRITE_LINE
+    FILE_READ_BYTES FILE_WRITE_BYTES FS_EXISTS FS_DELETE_FILE DATAFRAME_READ_CSV
+    DATAFRAME_WRITE_CSV LOG_LOGGER_NEW LOG_LOGGER_WRITE LOG_LOGGER_ACCESS LOG_LOGGER_SET_LEVEL
+    LOG_LOGGER_SET_DEFAULTS LOG_LOGGER_SET_ACCESS_DEFAULTS LOG_LOGGER_FLUSH LOG_LOGGER_CLOSE
+    LOG_LOGGER_DELETE LOG_LOGGER_RETAIN STACK_CHECK VECTOR_NEST CLOCK_NOW CLOCK_TIMER
+    RANDOM_SEED RANDOM_NEXT CONSOLE_CLS CONSOLE_BEEP CONSOLE_PRINT_AT CONSOLE_NUM_COLS
+    CONSOLE_NUM_ROWS STR_ASC STR_TO_LOWER STR_TO_UPPER TEXT_INT TEXT_UINT TEXT_FLOAT
+    TEXT_FLOAT32 CRYPTO_SHA256 CRYPTO_SHA512 CRYPTO_BYTES_FROM_TEXT CRYPTO_BYTES_FROM_HEX
+    CRYPTO_BYTES_LENGTH CRYPTO_BYTES_TO_HEX CRYPTO_BYTES_RELEASE CRYPTO_SEAL CRYPTO_OPEN
+    CRYPTO_HMAC CRYPTO_HMAC_VERIFY CRYPTO_ARGON2ID CRYPTO_PUBLIC_KEY CRYPTO_SIGN CRYPTO_VERIFY
+    CRYPTO_SLICE CRYPTO_KEM_KEYPAIR CRYPTO_KEM_ENCAPSULATE CRYPTO_KEM_DECAPSULATE
+    CRYPTO_DSA_KEYPAIR CRYPTO_DSA_SIGN CRYPTO_DSA_VERIFY SQLITE_OPEN SQLITE_OPEN_READ_ONLY
+    SQLITE_OPEN_EXISTING SQLITE_CLOSE SQLITE_EXEC SQLITE_QUERY SQLITE_BEGIN SQLITE_COMMIT
+    SQLITE_ROLLBACK SQLITE_CHANGES SQLITE_LAST_INSERT_ROWID JSON_OBJECT JSON_PARSE
+    JSON_STRINGIFY JSON_SET_STRING JSON_GET_STRING JSON_RELEASE JSON_ARRAY JSON_KIND JSON_HAS
+    JSON_LENGTH JSON_SET_INTEGER JSON_SET_BOOLEAN JSON_SET_NULL JSON_GET_INTEGER
+    JSON_GET_BOOLEAN JSON_SET_FLOAT JSON_GET_FLOAT JSON_SET_JSON JSON_GET_JSON JSON_CLONE
+    JSON_APPEND_STRING JSON_APPEND_INTEGER JSON_APPEND_FLOAT JSON_APPEND_BOOLEAN
+    JSON_APPEND_NULL JSON_APPEND_JSON JSON_GET_STRING_AT JSON_GET_INTEGER_AT JSON_GET_FLOAT_AT
+    JSON_GET_BOOLEAN_AT JSON_GET_JSON_AT JSON_SET_STRING_AT JSON_SET_INTEGER_AT
+    JSON_SET_FLOAT_AT JSON_SET_BOOLEAN_AT JSON_SET_NULL_AT JSON_SET_JSON_AT STR_CHAR_UTF8
+    NET_ADDRESS_PARSE NET_ADDRESS_IS_IPV4 NET_ADDRESS_IS_IPV6 NET_ADDRESS_IS_LOOPBACK
+    NET_ADDRESS_IS_PRIVATE NET_ADDRESS_IS_LINK_LOCAL NET_ADDRESS_IS_MULTICAST NET_CIDR_PARSE
+    NET_CIDR_CONTAINS NET_PING NET_REVERSE NET_NEIGHBOR NET_RESOLVE NET_ADDRESSES_COUNT
+    NET_ADDRESSES_GET NET_ADDRESSES_FREE NET_UDP_BIND NET_TCP_CONNECT
+    NET_TCP_LISTEN_WITH_BACKLOG NET_TCP_ACCEPT NET_TCP_LISTENER_LOCAL_ENDPOINT
+    NET_UDP_LOCAL_ENDPOINT NET_TCP_STREAM_LOCAL_ENDPOINT NET_TCP_STREAM_REMOTE_ENDPOINT
+    NET_TCP_WRITE NET_TCP_READ NET_TCP_SET_TIMEOUTS NET_TCP_SHUTDOWN_READ NET_TCP_SHUTDOWN_WRITE
+    NET_HANDLE_CLOSE NET_UDP_SEND_TO NET_UDP_RECEIVE_HANDLE NET_UDP_PACKET_SIZE
+    NET_UDP_PACKET_TRUNCATED NET_UDP_PACKET_COPY_TO NET_UDP_PACKET_SOURCE DISPATCH_QUEUE_CREATE
+    DISPATCH_QUEUE_CREATE_AUTO DISPATCH_SUBMIT DISPATCH_AWAIT DISPATCH_CANCEL
+    DISPATCH_TICKET_CLOSE DISPATCH_TICKET_CANCEL DISPATCH_TICKET_ID DISPATCH_TICKET_STATUS
+    DISPATCH_TICKET_IS_DONE DISPATCH_TICKET_ERROR DISPATCH_QUEUE_JOIN DISPATCH_QUEUE_CLOSE
+    DISPATCH_GROUP_CREATE DISPATCH_GROUP_ENTER DISPATCH_GROUP_LEAVE DISPATCH_GROUP_WAIT
+    DISPATCH_GROUP_CLOSE DISPATCH_BARRIER_CREATE DISPATCH_BARRIER_WAIT DISPATCH_BARRIER_CLOSE
+    DISPATCH_SEMAPHORE_CREATE DISPATCH_SEMAPHORE_ACQUIRE DISPATCH_SEMAPHORE_RELEASE
+    DISPATCH_SEMAPHORE_CLOSE DISPATCH_MUTEX_CREATE DISPATCH_MUTEX_LOCK DISPATCH_MUTEX_UNLOCK
+    DISPATCH_MUTEX_CLOSE HOST_NUM_PROCS
+    ;
+    BN_RT_MATH_DECLARATIONS =
+    MATH_IABS MATH_ISIGN MATH_IMIN MATH_IMAX MATH_TOHOUR MATH_TOWEEKDAY MATH_VAL MATH_FABS
+    MATH_FSIGN MATH_FLOOR MATH_CEIL MATH_TRUNC MATH_EXP MATH_LOG MATH_LOG10 MATH_LOG2 MATH_SIN
+    MATH_COS MATH_TAN MATH_ASIN MATH_ACOS MATH_ATAN MATH_SQRT MATH_POW MATH_ATAN2 MATH_HYPOT
+    MATH_FMIN MATH_FMAX MATH_ROUND MATH_FMA MATH_VMIN_I32 MATH_VMAX_I32 MATH_VMIN_F64
+    MATH_VMAX_F64 MATH_MEAN_I32 MATH_MEDIAN_I32 MATH_QUARTILE1_I32 MATH_QUARTILE3_I32
+    MATH_RANGE_I32 MATH_STDEV_I32 MATH_VARIANCE_I32 MATH_MODE_I32 MATH_MEAN_F64 MATH_MEDIAN_F64
+    MATH_QUARTILE1_F64 MATH_QUARTILE3_F64 MATH_RANGE_F64 MATH_STDEV_F64 MATH_VARIANCE_F64
+    MATH_MODE_F64 MATH_TODATE MATH_TOTIME MATH_TOTIMESTAMP
+    ;
+    STRING_CONCAT_DECLARATIONS =
+    STRLEN MALLOC LLVM_MEMCPY_P0_P0_I64
+    ;
+    ARC_DECLARATIONS = ARC_REGISTER ARC_RETAIN ARC_RELEASE ARC_FINISH_DESTROY ARC_ADDRESS;
+    PRINT_DECLARATIONS = PRINTF PUTCHAR;
+    PRINT_FLOAT_DECLARATIONS = PRINT_FLOAT PRINT_FLOAT32;
+    PRINT_TEMPORAL_DECLARATIONS = PRINT_DATE PRINT_TIME;
+    STRING_OPS_DECLARATIONS = STR_LEN STR_INDEX_UTF8 STR_EQ;
+    HEAP_COPY_DECLARATIONS = MALLOC LLVM_MEMCPY_P0_P0_I64;
+    INPUT_DECLARATIONS = GETCHAR INPUT_NUL REALLOC FREE;
+    WINDOWS_STDIO_LOCK_DECLARATIONS = ACRT_IOB_FUNC LOCK_FILE UNLOCK_FILE;
+    POSIX_STDIO_LOCK_DECLARATIONS = FLOCKFILE FUNLOCKFILE;
+}
 
-pub(crate) const DISPATCH_SEMAPHORE_CREATE: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_dispatch_semaphore_create",
-    ret: I32,
-    params: [I64, Ptr],
-};
+/// `llvm.memmove.p0.p0.i64`: the copy of a fixed vector's elements, a move
+/// because a vector may be stored into the slot it came from.
+pub(crate) fn memmove() -> Intrinsic {
+    let params = vec![LlvmType::Ptr, LlvmType::Ptr, LlvmType::I64, LlvmType::I1];
+    Intrinsic {
+        name: "llvm.memmove.p0.p0.i64",
+        ret: LlvmType::Void,
+        params,
+    }
+}
 
-pub(crate) const DISPATCH_MUTEX_CREATE: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_dispatch_mutex_create",
-    ret: I32,
-    params: [Ptr],
-};
+/// `llvm.frameaddress.p0`: the current frame, for the stack check.
+pub(crate) fn frame_address() -> Intrinsic {
+    let params = vec![LlvmType::I32];
+    Intrinsic {
+        name: "llvm.frameaddress.p0",
+        ret: LlvmType::Ptr,
+        params,
+    }
+}
 
-pub(crate) const DISPATCH_QUEUE_JOIN: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_dispatch_queue_join",
-    ret: I32,
-    params: [I64, I64],
-};
+/// `{ T, i1 } @name(T, T)`: an integer operation that reports overflow.
+pub(crate) fn overflow(name: &'static str, ty: LlvmType) -> Intrinsic {
+    let ret = LlvmType::Struct(vec![ty.clone(), LlvmType::I1]);
+    Intrinsic {
+        name,
+        ret,
+        params: vec![ty.clone(), ty],
+    }
+}
 
-pub(crate) const DISPATCH_QUEUE_CLOSE: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_dispatch_queue_close",
-    ret: I32,
-    params: [I64, I64],
-};
-
-pub(crate) const DISPATCH_GROUP_WAIT: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_dispatch_group_wait",
-    ret: I32,
-    params: [I64, I64],
-};
-
-pub(crate) const DISPATCH_GROUP_ENTER: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_dispatch_group_enter",
-    ret: I32,
-    params: [I64],
-};
-
-pub(crate) const DISPATCH_GROUP_LEAVE: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_dispatch_group_leave",
-    ret: I32,
-    params: [I64],
-};
-
-pub(crate) const DISPATCH_SEMAPHORE_ACQUIRE: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_dispatch_semaphore_acquire",
-    ret: I32,
-    params: [I64, I64],
-};
-
-pub(crate) const DISPATCH_SEMAPHORE_RELEASE: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_dispatch_semaphore_release",
-    ret: I32,
-    params: [I64],
-};
-
-pub(crate) const DISPATCH_MUTEX_LOCK: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_dispatch_mutex_lock",
-    ret: I32,
-    params: [I64, I64],
-};
-
-pub(crate) const DISPATCH_MUTEX_UNLOCK: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_dispatch_mutex_unlock",
-    ret: I32,
-    params: [I64],
-};
-
-pub(crate) const DISPATCH_TICKET_CLOSE: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_dispatch_ticket_close",
-    ret: I32,
-    params: [I64],
-};
-
-pub(crate) const NET_TCP_STREAM_LOCAL_ENDPOINT: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_net_tcp_stream_local_endpoint",
-    ret: I32,
-    params: [I64, Ptr, Ptr],
-};
-
-pub(crate) const NET_TCP_STREAM_REMOTE_ENDPOINT: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_net_tcp_stream_remote_endpoint",
-    ret: I32,
-    params: [I64, Ptr, Ptr],
-};
-
-pub(crate) const NET_UDP_PACKET_SIZE: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_net_udp_packet_size",
-    ret: I32,
-    params: [I64],
-};
-
-pub(crate) const NET_UDP_PACKET_TRUNCATED: RuntimeFn<1> = RuntimeFn {
-    name: "bn_rt_net_udp_packet_truncated",
-    ret: I32,
-    params: [I64],
-};
-
-pub(crate) const NET_UDP_LOCAL_ENDPOINT: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_net_udp_local_endpoint",
-    ret: I32,
-    params: [I64, Ptr, Ptr],
-};
-
-pub(crate) const NET_TCP_LISTENER_LOCAL_ENDPOINT: RuntimeFn<3> = RuntimeFn {
-    name: "bn_rt_net_tcp_listener_local_endpoint",
-    ret: I32,
-    params: [I64, Ptr, Ptr],
-};
-
-pub(crate) const STR_EQ: RuntimeFn<2> = RuntimeFn {
-    name: "bn_rt_str_eq",
-    ret: I32,
-    params: [Ptr, Ptr],
-};
+/// `T @name(T, T)`: a floating-point power.
+pub(crate) fn float_power(name: &'static str, ty: LlvmType) -> Intrinsic {
+    Intrinsic {
+        name,
+        ret: ty.clone(),
+        params: vec![ty.clone(), ty],
+    }
+}
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::ir::Declaration;
+    use super::{BN_RT_DECLARATIONS, PRINTF, memmove, overflow};
+    use crate::ir::{Declaration, LlvmType};
 
-    const ALL: &[&dyn Declaration] = &[
-        &STR_EQ,
-        &NET_TCP_LISTENER_LOCAL_ENDPOINT,
-        &NET_UDP_LOCAL_ENDPOINT,
-        &NET_UDP_PACKET_TRUNCATED,
-        &NET_UDP_PACKET_SIZE,
-        &NET_TCP_STREAM_REMOTE_ENDPOINT,
-        &NET_TCP_STREAM_LOCAL_ENDPOINT,
-        &DISPATCH_TICKET_CLOSE,
-        &DISPATCH_MUTEX_UNLOCK,
-        &DISPATCH_MUTEX_LOCK,
-        &DISPATCH_SEMAPHORE_RELEASE,
-        &DISPATCH_SEMAPHORE_ACQUIRE,
-        &DISPATCH_GROUP_LEAVE,
-        &DISPATCH_GROUP_ENTER,
-        &DISPATCH_GROUP_WAIT,
-        &DISPATCH_QUEUE_CLOSE,
-        &DISPATCH_QUEUE_JOIN,
-        &DISPATCH_MUTEX_CREATE,
-        &DISPATCH_SEMAPHORE_CREATE,
-        &DISPATCH_BARRIER_CREATE,
-        &DISPATCH_GROUP_CREATE,
-        &EXEC_RESULT_STDERR,
-        &EXEC_RESULT_STDOUT,
-        &CLOCK_NOW,
-        &CLOCK_TIMER,
-        &CONSOLE_BEEP,
-        &CONSOLE_CLS,
-        &CONSOLE_NUM_COLS,
-        &CONSOLE_NUM_ROWS,
-        &CONSOLE_PRINT_AT,
-        &DISPATCH_AWAIT,
-        &DISPATCH_BARRIER_WAIT,
-        &DISPATCH_QUEUE_CREATE,
-        &DISPATCH_QUEUE_CREATE_AUTO,
-        &DISPATCH_TICKET_CANCEL,
-        &DISPATCH_TICKET_ERROR,
-        &DISPATCH_TICKET_ID,
-        &DISPATCH_TICKET_IS_DONE,
-        &DISPATCH_TICKET_STATUS,
-        &ERROR_TAKE,
-        &EXEC_RESULT_CLOSE,
-        &EXEC_RESULT_RETURN_CODE,
-        &EXEC_RUN,
-        &HOST_NUM_PROCS,
-        &MATH_ACOS,
-        &MATH_ASIN,
-        &MATH_ATAN,
-        &MATH_ATAN2,
-        &MATH_CEIL,
-        &MATH_COS,
-        &MATH_EXP,
-        &MATH_FABS,
-        &MATH_FLOOR,
-        &MATH_FMA,
-        &MATH_FMAX,
-        &MATH_FMIN,
-        &MATH_FSIGN,
-        &MATH_HYPOT,
-        &MATH_IMAX,
-        &MATH_IMIN,
-        &MATH_ISIGN,
-        &MATH_LOG,
-        &MATH_LOG10,
-        &MATH_LOG2,
-        &MATH_MEAN_F64,
-        &MATH_MEAN_I32,
-        &MATH_MEDIAN_F64,
-        &MATH_MEDIAN_I32,
-        &MATH_MODE_F64,
-        &MATH_MODE_I32,
-        &MATH_POW,
-        &MATH_QUARTILE1_F64,
-        &MATH_QUARTILE1_I32,
-        &MATH_QUARTILE3_F64,
-        &MATH_QUARTILE3_I32,
-        &MATH_RANGE_F64,
-        &MATH_RANGE_I32,
-        &MATH_ROUND,
-        &MATH_SIN,
-        &MATH_SQRT,
-        &MATH_STDEV_F64,
-        &MATH_STDEV_I32,
-        &MATH_TAN,
-        &MATH_TODATE,
-        &MATH_TOHOUR,
-        &MATH_TOTIME,
-        &MATH_TOTIMESTAMP,
-        &MATH_TOWEEKDAY,
-        &MATH_TRUNC,
-        &MATH_VAL,
-        &MATH_VARIANCE_F64,
-        &MATH_VARIANCE_I32,
-        &MATH_VMAX_F64,
-        &MATH_VMAX_I32,
-        &MATH_VMIN_F64,
-        &MATH_VMIN_I32,
-        &NET_ADDRESS_PARSE,
-        &NET_ADDRESSES_COUNT,
-        &NET_ADDRESSES_GET,
-        &NET_HANDLE_CLOSE,
-        &NET_NEIGHBOR,
-        &NET_PING,
-        &NET_RESOLVE,
-        &NET_REVERSE,
-        &NET_TCP_ACCEPT,
-        &NET_TCP_CONNECT,
-        &NET_TCP_LISTEN_WITH_BACKLOG,
-        &NET_TCP_READ,
-        &NET_TCP_WRITE,
-        &NET_UDP_BIND,
-        &NET_UDP_PACKET_COPY_TO,
-        &NET_UDP_PACKET_SOURCE,
-        &NET_UDP_RECEIVE_HANDLE,
-        &NET_UDP_SEND_TO,
-    ];
-
-    /// Every literal `declare` the backend sources contain, wherever it sits
-    /// (a `const` table, a one-off string, a multi-line literal).
-    fn emitted_declarations() -> String {
-        let sources = [
-            include_str!("runtime.rs"),
-            include_str!("math.rs"),
-            include_str!("power_shift.rs"),
-            include_str!("preamble.rs"),
-            include_str!("host_results.rs"),
-            include_str!("helpers.rs"),
-            include_str!("platform_stdio.rs"),
-            include_str!("traps.rs"),
-        ];
-        let mut lines = String::new();
-        for source in sources {
-            for (index, _) in source.match_indices("declare ") {
-                let rest = &source[index..];
-                if let Some(end) = rest.find(')') {
-                    lines.push_str(&rest[..=end]);
-                    lines.push('\n');
-                }
-            }
+    /// Bucket 0.6.5 T.5.1: a `declare` comes from this table only; no other
+    /// backend source writes one as text.
+    #[test]
+    fn no_backend_source_writes_a_declaration_as_text() {
+        let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/llvm");
+        for entry in std::fs::read_dir(directory).expect("read the backend sources") {
+            let path = entry.expect("source entry").path();
+            let source = std::fs::read_to_string(&path).expect("read a backend source");
+            let code = source.split("#[cfg(test)]").next().unwrap_or_default();
+            let written = code
+                .lines()
+                .filter(|line| !line.trim_start().starts_with("//"))
+                .any(|line| line.contains("declare "));
+            assert!(!written, "{} writes a declaration", path.display());
         }
-        lines
     }
 
     #[test]
-    fn every_typed_signature_matches_an_emitted_declaration() {
-        let emitted = emitted_declarations();
-        let lines = emitted.lines().collect::<std::collections::HashSet<_>>();
-        for function in ALL {
-            let declaration = function.declaration();
-            assert!(
-                lines.contains(declaration.as_str()),
-                "no emitted declaration matches `{declaration}`"
-            );
-        }
+    fn signatures_render_their_declarations() {
+        assert_eq!(
+            BN_RT_DECLARATIONS[0].declaration(),
+            "declare i32 @bn_rt_policy_init(i32, i64)"
+        );
+        assert_eq!(PRINTF.declaration(), "declare i32 @printf(ptr, ...)");
+        let checked = overflow("llvm.sadd.with.overflow.i8", LlvmType::I8);
+        assert_eq!(
+            checked.declaration(),
+            "declare { i8, i1 } @llvm.sadd.with.overflow.i8(i8, i8)"
+        );
+        assert!(memmove() < checked, "intrinsics order by their declaration");
     }
 }

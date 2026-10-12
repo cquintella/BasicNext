@@ -11,7 +11,7 @@ use crate::{
     diagnostics::emit_frontend_warnings,
     frontend::{Frontend, load_frontend},
     options::{Emit, Options},
-    output::{colorize, emit_output, log, module_index, tokens_text, tool_error},
+    output::{colorize, module_index, tokens_text, tool_error},
 };
 
 /// The `--emit` artifact of a prepared program (tokens, AST, typed AST or
@@ -44,12 +44,11 @@ pub fn frontend_artifact(
 
 #[must_use]
 pub fn check(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
-    if options.emit == Some(Emit::Llvm) {
-        eprintln!("error: --emit llvm is a compiler option (bnc --emit llvm)");
-        return tool_error();
-    }
-    if options.output.is_some() && options.emit.is_none() {
-        eprintln!("error: -o requires --emit with bn check");
+    if options.output.is_some() {
+        eprintln!(
+            "error: {}",
+            bn_catalog::text("cli", "option.output.lex_only")
+        );
         return tool_error();
     }
     let frontend = match load_frontend(source, options) {
@@ -61,22 +60,6 @@ pub fn check(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCo
     }
     if options.verbosity > 1 {
         print!("{}", tokens_text(tokens));
-    }
-    if let Some(emit) = options.emit {
-        let output = match frontend_artifact(&frontend, tokens, emit) {
-            Ok(output) => output,
-            Err(code) => return code,
-        };
-        if emit_output(output, options.output.as_deref()) != ExitCode::SUCCESS {
-            return tool_error();
-        }
-    }
-    if options.trace {
-        log(
-            options.verbosity.max(1),
-            1,
-            "check has no execution to trace",
-        );
     }
     println!(
         "{}",

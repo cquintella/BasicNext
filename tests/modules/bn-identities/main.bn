@@ -5,13 +5,12 @@ IMPORT BNJson AS Json
 IMPORT BNDispatch AS Dispatch
 
 FUNCTION Start() AS VOID
-LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
-LET fields AS Log.Fields = NEW Log.Fields()
-LET logger AS Log.Logger OR Error = Log.Logger.New("test")
-IF logger IS Error THEN
-RETURN
-END IF
-logger.AddNull(Log.Level.INFO)
-logger.Log(Log.Level.INFO, "ok", fields)
-logger.Close(100)
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
+    LET logger AS Log.Logger OR Error = Log.Logger.New("test", "JSON", "NULL")
+    IF logger IS Error THEN
+        RETURN
+    END IF
+    LET event AS Log.Event
+    logger.Info("ok", event)
+    logger.Close(100)
 END FUNCTION

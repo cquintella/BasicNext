@@ -12,12 +12,12 @@ use std::process::ExitCode;
 
 use bn_cli::{
     check::check,
-    help::{BOOK_URL, COMMON_OPTIONS, Tool, option_error, tool_source},
-    options::parse_options,
-    output::{emit_output, tokens_text, tool_error},
+    help::{BOOK_URL, COMMON_OPTIONS, option_error, tool_source},
+    options::{Options, OutputFormat, parse_options},
+    output::{emit_output, log, tokens_text, tool_error},
 };
 
-use crate::{eval::eval, run::run};
+use crate::{eval::eval, options::InterpreterOptions, run::run};
 
 const USAGE: &str = "usage: bni <eval|check|lex|run|lsp|dap> [options] <file.bn>\ntry: bni --help";
 
@@ -29,8 +29,9 @@ pub struct Protocols {
     pub dap: fn() -> Result<(), String>,
 }
 
-fn help(version: &str) -> ExitCode {
-    println!(
+/// The whole help, printed by `--help` and after an option error.
+fn help_text(version: &str) -> String {
+    format!(
         "\
 {version}
 usage: bni <eval|check|lex|run|lsp|dap> [options] <file.bn> [-- program-args]
@@ -57,7 +58,11 @@ options:
 See also: man bni
 More information: {BOOK_URL}
 "
-    );
+    )
+}
+
+fn help(version: &str) -> ExitCode {
+    println!("{}", help_text(version));
     ExitCode::SUCCESS
 }
 
@@ -77,6 +82,10 @@ fn protocol(name: &str, result: Result<(), String>) -> ExitCode {
 /// on Windows at `Factorial(10)`.
 const COMMAND_STACK: usize = 64 * 1024 * 1024;
 
+/// The part of [`COMMAND_STACK`] BN calls do not use: the frames of one more
+/// call and the `STACK_OVERFLOW` report (known issue K53).
+const STACK_MARGIN: usize = 8 * 1024 * 1024;
+
 /// Runs `bni` with `arguments` (without the program name) on a thread with
 /// [`COMMAND_STACK`]; `version` is the line `--version` prints.
 #[must_use]
@@ -84,7 +93,10 @@ pub fn main(version: &'static str, arguments: Vec<String>, protocols: Protocols)
     std::thread::Builder::new()
         .name("bni".into())
         .stack_size(COMMAND_STACK)
-        .spawn(move || command(version, arguments, protocols))
+        .spawn(move || {
+            bn_interp::set_stack_budget(COMMAND_STACK - STACK_MARGIN);
+            command(version, arguments, protocols)
+        })
         .map_or_else(
             |error| {
                 eprintln!("error: cannot start the interpreter thread: {error}");
@@ -109,7 +121,7 @@ fn command(version: &str, mut raw_args: Vec<String>, protocols: Protocols) -> Ex
             println!("{version}");
             return ExitCode::SUCCESS;
         }
-        "eval" => return eval(raw_args[1..].to_vec(), &mut ()),
+        "eval" => return eval(raw_args[1..].to_vec()),
         "lsp" => return protocol("LSP", (protocols.lsp)()),
         "dap" => return protocol("DAP", (protocols.dap)()),
         _ => {}
@@ -121,18 +133,41 @@ fn command(version: &str, mut raw_args: Vec<String>, protocols: Protocols) -> Ex
         }
         _ => ("run".to_string(), raw_args),
     };
-    let options = match parse_options(args.into_iter(), &mut ()) {
+    let mut interpreter = InterpreterOptions::default();
+    let options = match parse_options(args.into_iter(), &mut interpreter)
+        .and_then(|options| interpreter_rules(&options, interpreter).map(|()| options))
+    {
         Ok(options) => options,
-        Err(message) => return option_error(&message, USAGE),
+        Err(message) => return option_error(&message, &help_text(version)),
     };
-    // Frontend artifacts are a compiler surface (BDFL, 2026-10-07).
-    let (source, tokens) = match tool_source(Tool::Interpreter, &options) {
+    let (source, tokens) = match tool_source(&options) {
         Ok(read) => read,
         Err(code) => return code,
     };
     match subcommand.as_str() {
         "lex" => emit_output(tokens_text(&tokens), options.output.as_deref()),
-        "check" => check(&source, &tokens, &options),
-        _ => run(&source, &tokens, &options),
+        "check" => {
+            if interpreter.trace {
+                log(
+                    options.verbosity.max(1),
+                    1,
+                    bn_catalog::text("cli", "check.no_trace"),
+                );
+            }
+            check(&source, &tokens, &options)
+        }
+        _ => run(&source, &tokens, &options, &interpreter),
     }
+}
+
+/// The rules between interpreter options of a file command (`eval` has its
+/// own): `--format` is for `bni eval`, and a sandbox needs the filesystem.
+fn interpreter_rules(options: &Options, interpreter: InterpreterOptions) -> Result<(), String> {
+    if interpreter.output_format != OutputFormat::Text {
+        return Err(bn_catalog::text("cli", "option.format.eval_only").into());
+    }
+    if options.sandbox && !interpreter.filesystem {
+        return Err(bn_catalog::text("cli", "option.sandbox.no_filesystem").into());
+    }
+    Ok(())
 }

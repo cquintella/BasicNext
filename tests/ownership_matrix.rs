@@ -304,15 +304,7 @@ const CELLS: &[(&str, &str, &str)] = &[
 /// instead (a diagnostic code, or `WRONG`). A ratchet: remove a cell when
 /// it passes; never add one to make the test green.
 const KNOWN_BNI_FAILURES: &[(&str, &str)] = &[];
-const KNOWN_BNC_FAILURES: &[(&str, &str)] = &[
-    ("STRUCT field / reassignment", "TARGET_UNSUPPORTED_OP"),
-    (
-        "STRUCT field / RELEASE of the struct",
-        "TARGET_UNSUPPORTED_OP",
-    ),
-    ("STRUCT field / copy of the struct", "TARGET_UNSUPPORTED_OP"),
-    ("STRUCT field / end of scope", "TARGET_UNSUPPORTED_OP"),
-];
+const KNOWN_BNC_FAILURES: &[(&str, &str)] = &[];
 
 fn source(body: &str) -> String {
     format!(

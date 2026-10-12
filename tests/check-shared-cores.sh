@@ -105,13 +105,14 @@ while IFS= read -r file; do
   fail "statistical reduction core outside bn_core_math: $file"
 done < <(rg -l 'fn reduce_f64\(name: &str' src crates --type rust -g '!*_tests.rs' -g '!**/tests.rs' -g '!crates/*/tests/**' || true)
 
-# (k) BNLog record redaction and dispatch live only in bn_core_log (bucket 0.6.5c S3).
+# (k) BNLog record redaction and writing live only in bn_core_log (bucket 0.6.5c S3;
+# the record write is `Logger::write_event` since 0.6.5 P.15).
 allowed_log_core='^crates/bn_core_log/src/.*\.rs$'
 while IFS= read -r file; do
   file=${file//\\/\/}
   [[ $file =~ $allowed_log_core ]] && continue
-  fail "log dispatch logic outside bn_core_log: $file"
-done < <(rg -l 'fn dispatch_log\(' src crates --type rust -g '!*_tests.rs' -g '!**/tests.rs' -g '!crates/*/tests/**' || true)
+  fail "log record writing outside bn_core_log: $file"
+done < <(rg -l 'fn write_event\(' src crates --type rust -g '!*_tests.rs' -g '!**/tests.rs' -g '!crates/*/tests/**' || true)
 
 # (l) A core is safe Rust for both adapters (bucket 0.6.5c AC4): no
 # bn_value, no extern "C", no policy variable of its own (the

@@ -267,18 +267,20 @@ fn struct_fields_have_distinct_layout_and_bounded_native_lifetime() {
     assert_eq!(compiled.stdout, interpreted.stdout);
 }
 
+/// A STRUCT made in a function other than `Start` and returned builds natively
+/// (known issue K13): the frame's storage ends at the return, so the returned
+/// value leaves in a heap block the caller owns.
 #[test]
-fn struct_return_without_ownership_transfer_fails_closed() {
+fn struct_returned_from_a_function_matches_interpreter() {
     let path = valid_fixture("struct-return-lifetime-deferred.bn");
     let interpreted = interpret(&path, None);
-    assert_success(&interpreted, "interpret deferred struct return");
+    assert_success(&interpreted, "interpret struct return");
     assert_eq!(interpreted.stdout, b"ok\n");
-    let emitted = execute(bnc().arg(&path), None);
-    assert!(!emitted.status.success());
-    let diagnostics = String::from_utf8_lossy(&emitted.stderr);
-    assert!(diagnostics.contains("error[TARGET_UNSUPPORTED_OP]"));
-    assert!(diagnostics.contains("STRUCT default allocation requires an acyclic Start lifetime"));
-    assert!(!diagnostics.contains("INVALID_IR"));
+    let directory = TestDir::new("struct-return").expect("create struct directory");
+    let artifact = compile_native(&path, &directory);
+    let compiled = execute_artifact(&artifact, &[], None);
+    assert_success(&compiled, "run struct return");
+    assert_eq!(compiled.stdout, interpreted.stdout);
 }
 
 #[test]
@@ -822,7 +824,7 @@ fn nul_in_a_string_stops_native_builds_and_not_the_interpreter() {
 }
 
 /// A log file the filesystem policy denies is `Error(Log.IO_FAILED)` from
-/// `AddFile` on both backends, and the program goes on (bnlog.md "Errors";
+/// `Logger.New` on both backends, and the program goes on (bnlog.md "Errors";
 /// bucket 0.6.5c D2). `bni` stopped with `EXECUTION_POLICY_DENIED` under
 /// `read-only` and returned `CAPABILITY_REQUIRED` under `deny`.
 #[test]
@@ -849,7 +851,7 @@ fn denied_log_file_is_io_failed_on_both_backends() {
             assert_eq!(output.status.code(), Some(0), "{policy} {backend}");
             assert_eq!(
                 String::from_utf8_lossy(&output.stdout),
-                "TRUE BNLog.Logger.AddFile\nlogged FALSE\n",
+                "TRUE BNLog.Logger.New\nwent on\n",
                 "{policy} {backend}: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
@@ -861,24 +863,28 @@ fn denied_log_file_is_io_failed_on_both_backends() {
     }
 }
 
-/// `Logger.SetFormat` (bnlog.md, "Formats"): the same record as JSON, SYSLOG and
-/// APACHE, a sensitive field never written, an unknown name refused with the
-/// format unchanged, on both backends. Only the record time, the host name
-/// and the process identifier may differ.
+/// The `BNLog` API (bnlog.md, "API (0.6.5)"): JSON, SYSLOG and APACHE
+/// records from `Log.Event` and `Log.Apache`, defaults, the minimum level,
+/// the null destination and `Close`, on both backends. Only the record time,
+/// the host name and the process identifier may differ.
 #[test]
-fn bnlog_formats_match_on_both_backends() {
-    let path = workspace_root().join("tests/host/log_formats.bn");
-    let build = TestDir::new("log-formats").expect("create directory");
+fn bnlog_api_matches_on_both_backends() {
+    let path = workspace_root().join("tests/host/log_api.bn");
+    let build = TestDir::new("log-api").expect("create directory");
     let artifact = compile_native(&path, &build);
-    let expected = "{\"fields\":{\"http.method\":\"GET\",\"http.path\":\"/items?token=1\",\
-                    \"http.status\":\"200\",\"http.user_agent\":\"agent \\\"x\\\"\"},\"label\":\"\",\
-                    \"level\":\"INFO\",\"message\":\"as json\",\"timestamp\":\"T\"}\n\
-                    <14>1 T H - P - - as text http.method=GET http.path=/items?token=1 http.status=200 \
-                    http.user_agent=agent \"x\"\n\
-                    TRUE unknown log format \"text\"\n\
-                    - - - [T] \"GET /items\" 200 - \"-\" \"agent \\\"x\\\"\"\n\
-                    FALSE FALSE FALSE FALSE\nFALSE FALSE FALSE\n";
-    let without_time = |stdout: &[u8]| {
+    let event =
+        "\"fields\":{\"code\":\"7\",\"route\":\"/signin\",\"service\":\"users\",\"user\":\"ana\"}";
+    let expected = format!(
+        "{{{event},\"label\":\"app\",\"level\":\"INFO\",\"message\":\"signed in\",\"timestamp\":\"T\"}}\n\
+         {{{event},\"label\":\"app\",\"level\":\"DEBUG\",\"message\":\"written now\",\"timestamp\":\"T\"}}\n\
+         <12>1 T H app P - - slow code=7 route=/signin user=ana\n\
+         10.0.0.1 - - [T] \"GET /items HTTP/1.1\" 200 - \"-\" \"curl\"\n\
+         {{\"fields\":{{\"http.method\":\"GET\",\"http.path\":\"/items\",\
+         \"http.protocol\":\"HTTP/1.1\",\"http.remote\":\"10.0.0.1\",\"http.status\":\"200\"}},\
+         \"label\":\"app\",\"level\":\"HTTP\",\"message\":\"\",\"timestamp\":\"T\"}}\n\
+         FALSE FALSE FALSE FALSE FALSE\nFALSE FALSE FALSE FALSE FALSE\nFALSE FALSE FALSE\n"
+    );
+    let masked = |stdout: &[u8]| {
         String::from_utf8_lossy(stdout)
             .lines()
             .map(|line| {
@@ -905,34 +911,6 @@ fn bnlog_formats_match_on_both_backends() {
     let compiled = execute(&mut Command::new(&artifact), None);
     for (backend, output) in [("bni", &interpreted), ("native", &compiled)] {
         assert_eq!(output.status.code(), Some(0), "{backend}");
-        assert_eq!(without_time(&output.stdout), expected, "{backend}");
-    }
-}
-
-/// `BNLog.Fields.SetInteger` / `SetBoolean` build natively and record the
-/// same field text as `bni` (known issue K7; native refused them as user
-/// function calls). The timestamp is the only part allowed to differ.
-#[test]
-fn bnlog_field_setters_match_on_both_backends() {
-    let path = workspace_root().join("tests/host/log_fields.bn");
-    let build = TestDir::new("log-fields").expect("create directory");
-    let artifact = compile_native(&path, &build);
-    let expected = "{\"fields\":{\"big\":\"9000000000\",\"count\":\"42\",\"name\":\"ana\",\
-                    \"off\":\"FALSE\",\"ok\":\"TRUE\"},\"label\":\"\",\"level\":\"INFO\",\
-                    \"message\":\"fields\",\"timestamp\":\"T\"}\nFALSE FALSE\n";
-    let without_timestamp = |stdout: &[u8]| {
-        let text = String::from_utf8_lossy(stdout).into_owned();
-        match (text.find("\"timestamp\":\""), text.find("\"}\n")) {
-            (Some(start), Some(end)) if start < end => {
-                format!("{}\"timestamp\":\"T{}", &text[..start], &text[end..])
-            }
-            _ => text,
-        }
-    };
-    let interpreted = execute(bni().arg("run").arg(&path), None);
-    let compiled = execute(&mut Command::new(&artifact), None);
-    for (backend, output) in [("bni", &interpreted), ("native", &compiled)] {
-        assert_eq!(output.status.code(), Some(0), "{backend}");
-        assert_eq!(without_timestamp(&output.stdout), expected, "{backend}");
+        assert_eq!(masked(&output.stdout), expected, "{backend}");
     }
 }

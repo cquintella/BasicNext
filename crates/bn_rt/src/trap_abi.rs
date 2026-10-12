@@ -152,6 +152,9 @@ pub(crate) fn report(text: *const c_char, [first, second]: [i128; 2]) {
     }
     // SAFETY: emitted code passes a NUL-terminated constant.
     let text = unsafe { CStr::from_ptr(text) }.to_string_lossy();
+    // What the program printed comes first, as under `bni`: the report
+    // follows it and the stop loses nothing.
+    let _ = crate::libc_fflush();
     let mut stderr = std::io::stderr().lock();
     let _ = writeln!(stderr, "{}", fill(&text, [first, second]));
 }

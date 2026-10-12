@@ -16,8 +16,8 @@ use arc_runtime::{STOP_CODE_GLOBAL, STOPPING_GLOBAL};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn lower_terminator(
-    text: &mut String,
-    _module: &Module,
+    text: &mut crate::ir::LlvmModule,
+    module: &Module,
     function: &Function,
     terminator: &Terminator,
     analysis: &LoweringAnalysis<'_>,
@@ -38,7 +38,7 @@ pub(crate) fn lower_terminator(
         } => {
             let operand = i1_operand(text, analysis, state, *condition);
             text.emit(LlvmInst::CondBr {
-                cond: LlvmOperand::raw(operand),
+                cond: operand,
                 true_dest: format!("b{}", then_block.0),
                 false_dest: format!("b{}", else_block.0),
             });
@@ -49,14 +49,21 @@ pub(crate) fn lower_terminator(
                 val: Some((LlvmType::I32, LlvmOperand::int(0))),
             });
         }
-        Terminator::Return { value: None } if state.return_llvm == "void" => {
+        Terminator::Return { value: None } if state.return_llvm == LlvmType::Void => {
             cleanup_owned_memory(text, analysis, symbols, state);
             text.emit(LlvmInst::Ret { val: None });
         }
-        Terminator::Return { value: None } if state.return_llvm == "{ i1, ptr, i64 }" => {
+        Terminator::Return { value: None }
+            if state.return_llvm == crate::layout::handle_result_ty() =>
+        {
             cleanup_owned_memory(text, analysis, symbols, state);
             let union = union_ty();
-            let insert = |text: &mut String, name: &str, from: LlvmOperand, ty, value, index| {
+            let insert = |text: &mut crate::ir::LlvmModule,
+                          name: &str,
+                          from: LlvmOperand,
+                          ty,
+                          value,
+                          index| {
                 text.assign(
                     name,
                     LlvmInst::insert(union.clone(), from, ty, value, index),
@@ -103,7 +110,7 @@ pub(crate) fn lower_terminator(
             // never read.
             text.emit(LlvmInst::store(
                 LlvmType::I32,
-                LlvmOperand::raw(operand),
+                operand,
                 LlvmOperand::global(STOP_CODE_GLOBAL),
             ));
             text.emit(LlvmInst::store(
@@ -112,26 +119,22 @@ pub(crate) fn lower_terminator(
                 LlvmOperand::global(STOPPING_GLOBAL),
             ));
             text.emit(LlvmInst::Ret {
-                val: (state.return_llvm != "void").then(|| {
-                    (
-                        crate::layout::typed_llvm(state.return_llvm),
-                        LlvmOperand::zero_initializer(),
-                    )
-                }),
+                val: (state.return_llvm != LlvmType::Void)
+                    .then(|| (state.return_llvm.clone(), LlvmOperand::zero_initializer())),
             });
         }
         Terminator::Return { value: Some(value) } if !state.is_start => {
-            if state.return_llvm == "void" {
+            if state.return_llvm == LlvmType::Void {
                 cleanup_owned_memory(text, analysis, symbols, state);
                 text.emit(LlvmInst::Ret { val: None });
             } else {
                 let value_ty = analysis.values.get(value).expect("validated return type");
-                let union_return = state.return_llvm == "{ i1, ptr, i64 }";
-                let operand = if state.return_llvm == GENERAL_LAYOUT
+                let union_return = state.return_llvm == crate::layout::handle_result_ty();
+                let operand = if state.return_llvm == crate::general_alternative::layout()
                     || union_return && matches!(value_ty, Type::NotAvailable | Type::EndOfFile)
                     // An `Error` returned as `Endpoint OR Error` / `Addresses OR
                     // Error` (K36).
-                    || (matches!(state.return_llvm, "{ i1, ptr, i32 }" | "{ i1, ptr }")
+                    || (crate::layout::is_one_of(&state.return_llvm, &[crate::layout::status_endpoint_ty(), crate::layout::status_pointer_ty()])
                         && is_error_type(value_ty))
                 {
                     coerce_to_type(text, *value, value_ty, &function.return_type)
@@ -139,28 +142,58 @@ pub(crate) fn lower_terminator(
                     && let Some(operand) = union_success_operand(text, *value, value_ty)
                 {
                     operand
-                } else if matches!(state.return_llvm, "i8" | "i16" | "i32" | "i64")
-                    && llvm_type(value_ty) != Some(state.return_llvm)
-                    && matches!(llvm_type(value_ty), Some("i8" | "i16" | "i32" | "i64"))
+                } else if state.return_llvm.is_integer()
+                    && llvm_type(value_ty)
+                        .is_some_and(|ty| ty.is_integer() && ty != state.return_llvm)
                 {
                     coerce_to_type(
                         text,
                         *value,
                         value_ty,
                         match state.return_llvm {
-                            "i8" => &Type::Integer(IntegerType::Int8),
-                            "i16" => &Type::Integer(IntegerType::Int16),
-                            "i32" => &Type::Integer(IntegerType::Int32),
+                            LlvmType::I8 => &Type::Integer(IntegerType::Int8),
+                            LlvmType::I16 => &Type::Integer(IntegerType::Int16),
+                            LlvmType::I32 => &Type::Integer(IntegerType::Int32),
                             _ => &Type::Integer(IntegerType::Int64),
                         },
                     )
                 } else {
-                    format!("%v{}", value.0)
+                    LlvmOperand::reg(format!("v{}", value.0))
+                };
+                // A returned STRUCT leaves the dying frame in a heap block the caller
+                // owns (`owned_struct_results`): the frame's storage ends here.
+                let operand = match struct_owner(module, &function.return_type) {
+                    Some(owner) if function.kind != FunctionKind::Default => {
+                        let bytes = class_instance_bytes(module, &owner);
+                        let copy = format!("structret{}", value.0);
+                        text.assign(
+                            &copy,
+                            LlvmInst::call(
+                                LlvmType::Ptr,
+                                "malloc",
+                                vec![(LlvmType::I64, LlvmOperand::uint(bytes))],
+                            ),
+                        );
+                        let args = vec![
+                            (LlvmType::Ptr, LlvmOperand::reg(&copy)),
+                            (LlvmType::Ptr, operand.clone()),
+                            (LlvmType::I64, LlvmOperand::uint(bytes)),
+                            (LlvmType::I1, LlvmOperand::bool(false)),
+                        ];
+                        text.emit(LlvmInst::call(
+                            LlvmType::Void,
+                            "llvm.memcpy.p0.p0.i64",
+                            args,
+                        ));
+                        LlvmOperand::reg(&copy)
+                    }
+                    _ => operand,
                 };
                 // A returned vector leaves the dying frame through the function's
                 // thread-local buffer; the caller copies it right away.
-                let buffer = format!("@bn_vret_{}", sanitize_symbol(&function.name));
-                let out = format!("%vrout{}", text.len());
+                let buffer =
+                    LlvmOperand::global(format!("bn_vret_{}", sanitize_symbol(&function.name)));
+                let out = format!("vrout{}", text.fresh_tag());
                 let operand = vectors::emit_vector_relocate(
                     text,
                     &operand,
@@ -168,11 +201,11 @@ pub(crate) fn lower_terminator(
                     &buffer,
                     &out,
                 )
-                .map_or(operand, |()| out);
+                .map_or(operand, |()| LlvmOperand::reg(out));
                 cleanup_owned_memory(text, analysis, symbols, state);
-                let layout = crate::layout::typed_llvm(state.return_llvm);
+                let layout = state.return_llvm.clone();
                 text.emit(LlvmInst::Ret {
-                    val: Some((layout, LlvmOperand::raw(operand))),
+                    val: Some((layout, operand)),
                 });
             }
         }
@@ -184,7 +217,7 @@ pub(crate) fn lower_terminator(
             );
             cleanup_owned_memory(text, analysis, symbols, state);
             text.emit(LlvmInst::Ret {
-                val: Some((LlvmType::I32, LlvmOperand::raw(operand))),
+                val: Some((LlvmType::I32, operand)),
             });
         }
     }
@@ -197,27 +230,21 @@ fn union_ty() -> LlvmType {
 /// A success value as a `T OR Error` result (`{ i1 false, ptr, i64 }`): a
 /// STRING in the pointer, an integer, float bits, `BOOLEAN` or pointer bits
 /// in the payload. `None` when `ty` is none of those.
-fn union_success_operand(text: &mut String, value: ValueId, ty: &Type) -> Option<String> {
+fn union_success_operand(
+    text: &mut crate::ir::LlvmModule,
+    value: ValueId,
+    ty: &Type,
+) -> Option<crate::ir::LlvmOperand> {
     let v = value.0;
     let own = LlvmOperand::reg(format!("v{v}"));
     let (message, payload) = match ty {
         Type::Integer(_) | Type::IntegerLiteral(_) => (
             LlvmOperand::null(),
-            LlvmOperand::raw(coerce_to_type(
-                text,
-                value,
-                ty,
-                &Type::Integer(IntegerType::Int64),
-            )),
+            coerce_to_type(text, value, ty, &Type::Integer(IntegerType::Int64)),
         ),
         Type::Float(_) | Type::FloatLiteral => {
             let wide = coerce_to_type(text, value, ty, &Type::Float(FloatType::Float64));
-            let bits = LlvmInst::cast(
-                CastOp::BitCast,
-                LlvmType::Double,
-                LlvmOperand::raw(wide),
-                LlvmType::I64,
-            );
+            let bits = LlvmInst::cast(CastOp::BitCast, LlvmType::Double, wide, LlvmType::I64);
             text.assign(format!("retunionbits{v}"), bits);
             (
                 LlvmOperand::null(),
@@ -235,7 +262,7 @@ fn union_success_operand(text: &mut String, value: ValueId, ty: &Type) -> Option
                 LlvmOperand::reg(format!("retunionbool{v}")),
             )
         }
-        _ if llvm_type(ty) == Some("ptr") => {
+        _ if llvm_type(ty) == Some(LlvmType::Ptr) => {
             text.assign(
                 format!("retunionbits{v}"),
                 LlvmInst::cast(CastOp::PtrToInt, LlvmType::Ptr, own, LlvmType::I64),
@@ -268,13 +295,13 @@ fn union_success_operand(text: &mut String, value: ValueId, ty: &Type) -> Option
         format!("retunion{v}"),
         LlvmInst::insert(union, with_message, LlvmType::I64, payload, 2),
     );
-    Some(format!("%retunion{v}"))
+    Some(LlvmOperand::reg(format!("retunion{v}")))
 }
 
 /// Frees what the function owns outside ARC (the IR releases objects):
 /// `INPUT` lines, `STRUCT` copies, and log resources.
 pub(crate) fn cleanup_owned_memory(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     analysis: &LoweringAnalysis<'_>,
     symbols: &HashMap<SymbolId, usize>,
     state: &mut EmissionState,
@@ -282,7 +309,7 @@ pub(crate) fn cleanup_owned_memory(
     let cleanup = state.input_cleanup_count;
     state.input_cleanup_count += 1;
     let reg = LlvmOperand::reg;
-    let free = |text: &mut String, pointer: String| {
+    let free = |text: &mut crate::ir::LlvmModule, pointer: String| {
         text.emit(LlvmInst::call(
             LlvmType::Void,
             "free",
@@ -323,32 +350,16 @@ pub(crate) fn cleanup_owned_memory(
         );
         free(text, pointer);
     }
-    let mut log_results = analysis.owned_log_results.iter().collect::<Vec<_>>();
-    log_results.sort_by_key(|(value, _)| value.0);
-    for (value, kind) in log_results {
-        let symbol = if *kind == "Fields" {
-            "bn_rt_log_fields_close"
-        } else {
-            "bn_rt_log_logger_delete"
-        };
-        let handle = format!("logfree{cleanup}_{}", value.0);
-        text.assign(
-            handle.clone(),
-            LlvmInst::load(LlvmType::I64, reg(format!("logowned{}", value.0))),
-        );
-        let close = LlvmInst::call(LlvmType::I32, symbol, vec![(LlvmType::I64, reg(handle))]);
-        text.assign(format!("logfreerc{cleanup}_{}", value.0), close);
-    }
 }
 
 /// `%dest = call i32 (ptr, ...) @printf(args)`.
-fn printf(text: &mut String, dest: String, args: Vec<(LlvmType, LlvmOperand)>) {
+fn printf(text: &mut crate::ir::LlvmModule, dest: String, args: Vec<(LlvmType, LlvmOperand)>) {
     let call = LlvmInst::call_variadic(LlvmType::I32, vec![LlvmType::Ptr], "printf", args);
     text.assign(dest, call);
 }
 
 pub(crate) fn lower_print_value(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     value: ValueId,
     ty: &Type,
     state: &mut EmissionState,
@@ -409,7 +420,7 @@ pub(crate) fn lower_print_value(
         return;
     }
     let union = union_ty();
-    if is_error_type(ty) && llvm_type(ty) == Some("{ i1, ptr, i64 }") {
+    if is_error_type(ty) && llvm_type(ty) == Some(crate::layout::handle_result_ty()) {
         // An `Error` (a narrowed union too): its pointer is the runtime
         // record, not text; print it as the unions do.
         let count = state.print_count;
@@ -448,7 +459,7 @@ pub(crate) fn lower_print_value(
             return;
         }
     }
-    if llvm_type(ty) == Some("{ i1, ptr, i64 }") {
+    if llvm_type(ty) == Some(crate::layout::handle_result_ty()) {
         let count = state.print_count;
         text.assign(format!("netprint{count}"), LlvmInst::extract(union, own, 1));
         let args = vec![
@@ -459,7 +470,7 @@ pub(crate) fn lower_print_value(
         state.print_count += 1;
         return;
     }
-    if llvm_type(ty) == Some("{ i1, double }") {
+    if llvm_type(ty) == Some(crate::layout::optional_float_ty()) {
         let count = state.print_count;
         let optional = LlvmType::struct_of([LlvmType::I1, LlvmType::Double]);
         text.assign(
@@ -496,7 +507,7 @@ pub(crate) fn lower_print_value(
     let count = state.print_count;
     let print = format!("print{count}");
     match llvm_type(ty).expect("validated print type") {
-        "i1" => {
+        LlvmType::I1 => {
             let text_of =
                 LlvmInst::select(own, LlvmType::Ptr, global(".bn_true"), global(".bn_false"));
             text.assign(format!("bool{count}"), text_of);
@@ -506,13 +517,13 @@ pub(crate) fn lower_print_value(
             ];
             printf(text, print, args);
         }
-        width @ ("i8" | "i16" | "i32") => {
+        width @ (LlvmType::I8 | LlvmType::I16 | LlvmType::I32) => {
             let opcode = if is_unsigned(ty) {
                 CastOp::ZExt
             } else {
                 CastOp::SExt
             };
-            let wide = LlvmInst::cast(opcode, crate::layout::typed_llvm(width), own, LlvmType::I64);
+            let wide = LlvmInst::cast(opcode, width, own, LlvmType::I64);
             text.assign(format!("printint{count}"), wide);
             let args = vec![
                 (LlvmType::Ptr, global(".bn_fmt_int")),
@@ -520,7 +531,7 @@ pub(crate) fn lower_print_value(
             ];
             printf(text, print, args);
         }
-        "i64" => {
+        LlvmType::I64 => {
             let fmt = if is_unsigned(ty) {
                 ".bn_fmt_uint"
             } else {
@@ -532,20 +543,20 @@ pub(crate) fn lower_print_value(
                 vec![(LlvmType::Ptr, global(fmt)), (LlvmType::I64, own)],
             );
         }
-        "float" => {
+        LlvmType::Float => {
             let wide = LlvmInst::cast(CastOp::FPExt, LlvmType::Float, own, LlvmType::Double);
             text.assign(format!("printfloat{count}"), wide);
             let args = vec![(LlvmType::Double, reg(format!("printfloat{count}")))];
             text.emit(LlvmInst::call(LlvmType::Void, "bn_rt_print_float32", args));
         }
-        "double" => {
+        LlvmType::Double => {
             text.emit(LlvmInst::call(
                 LlvmType::Void,
                 "bn_rt_print_float",
                 vec![(LlvmType::Double, own)],
             ));
         }
-        "ptr" => {
+        LlvmType::Ptr => {
             printf(
                 text,
                 print,
@@ -558,13 +569,13 @@ pub(crate) fn lower_print_value(
 }
 
 fn lower_print_int32_vector(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     value: ValueId,
     length: u64,
     state: &mut EmissionState,
 ) {
     let reg = LlvmOperand::reg;
-    let putchar = |text: &mut String, dest: String, code: i64| {
+    let putchar = |text: &mut crate::ir::LlvmModule, dest: String, code: i64| {
         text.assign(
             dest,
             LlvmInst::call(
@@ -618,7 +629,7 @@ fn lower_print_int32_vector(
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_checked_integer_op(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     destination: ValueId,
     operator: &str,
@@ -632,7 +643,7 @@ pub(crate) fn emit_checked_integer_op(
     let intrinsic = checked_intrinsic_name(ty, operator).expect("validated checked intrinsic");
     let llvm_ty = llvm_type(ty).expect("validated integer type");
     let (left_operand, right_operand) = if operator == "Minus" && right.is_none() {
-        ("0".into(), coerce_to_type(text, left, left_ty, ty))
+        (LlvmOperand::int(0), coerce_to_type(text, left, left_ty, ty))
     } else {
         (
             coerce_to_type(text, left, left_ty, ty),
@@ -641,12 +652,9 @@ pub(crate) fn emit_checked_integer_op(
     };
     let dest = destination.0;
     let reg = LlvmOperand::reg;
-    let width = crate::layout::typed_llvm(llvm_ty);
+    let width = llvm_ty;
     let result = LlvmType::struct_of([width.clone(), LlvmType::I1]);
-    let (lhs, rhs) = (
-        LlvmOperand::raw(left_operand),
-        LlvmOperand::raw(right_operand),
-    );
+    let (lhs, rhs) = (left_operand, right_operand);
     let args = vec![(width.clone(), lhs.clone()), (width.clone(), rhs.clone())];
     text.assign(
         format!("ov{dest}"),
@@ -692,19 +700,19 @@ pub(crate) fn emit_checked_integer_op(
         text,
         block_id,
         state,
-        &format!("%ovf{dest}"),
+        &LlvmOperand::reg(format!("ovf{dest}")),
         ok,
-        &format!("%ovexact{dest}"),
+        &LlvmOperand::reg(format!("ovexact{dest}")),
         ty,
     );
 }
 
 pub(crate) fn checked_intrinsic_name(ty: &Type, operator: &str) -> Option<&'static str> {
     let width = match llvm_type(ty)? {
-        "i8" => "i8",
-        "i16" => "i16",
-        "i32" => "i32",
-        "i64" => "i64",
+        LlvmType::I8 => "i8",
+        LlvmType::I16 => "i16",
+        LlvmType::I32 => "i32",
+        LlvmType::I64 => "i64",
         _ => return None,
     };
     let signed = !is_unsigned(ty);
@@ -746,72 +754,13 @@ pub(crate) fn checked_intrinsic_name(ty: &Type, operator: &str) -> Option<&'stat
     }
 }
 
-pub(crate) fn checked_intrinsic_declaration(ty: &Type, operator: &str) -> Option<&'static str> {
-    let llvm_ty = llvm_type(ty)?;
-    let name = checked_intrinsic_name(ty, operator)?;
-    Some(match (llvm_ty, name) {
-        ("i8", "llvm.sadd.with.overflow.i8") => "{ i8, i1 } @llvm.sadd.with.overflow.i8(i8, i8)",
-        ("i16", "llvm.sadd.with.overflow.i16") => {
-            "{ i16, i1 } @llvm.sadd.with.overflow.i16(i16, i16)"
-        }
-        ("i32", "llvm.sadd.with.overflow.i32") => {
-            "{ i32, i1 } @llvm.sadd.with.overflow.i32(i32, i32)"
-        }
-        ("i64", "llvm.sadd.with.overflow.i64") => {
-            "{ i64, i1 } @llvm.sadd.with.overflow.i64(i64, i64)"
-        }
-        ("i8", "llvm.uadd.with.overflow.i8") => "{ i8, i1 } @llvm.uadd.with.overflow.i8(i8, i8)",
-        ("i16", "llvm.uadd.with.overflow.i16") => {
-            "{ i16, i1 } @llvm.uadd.with.overflow.i16(i16, i16)"
-        }
-        ("i32", "llvm.uadd.with.overflow.i32") => {
-            "{ i32, i1 } @llvm.uadd.with.overflow.i32(i32, i32)"
-        }
-        ("i64", "llvm.uadd.with.overflow.i64") => {
-            "{ i64, i1 } @llvm.uadd.with.overflow.i64(i64, i64)"
-        }
-        ("i8", "llvm.ssub.with.overflow.i8") => "{ i8, i1 } @llvm.ssub.with.overflow.i8(i8, i8)",
-        ("i16", "llvm.ssub.with.overflow.i16") => {
-            "{ i16, i1 } @llvm.ssub.with.overflow.i16(i16, i16)"
-        }
-        ("i32", "llvm.ssub.with.overflow.i32") => {
-            "{ i32, i1 } @llvm.ssub.with.overflow.i32(i32, i32)"
-        }
-        ("i64", "llvm.ssub.with.overflow.i64") => {
-            "{ i64, i1 } @llvm.ssub.with.overflow.i64(i64, i64)"
-        }
-        ("i8", "llvm.usub.with.overflow.i8") => "{ i8, i1 } @llvm.usub.with.overflow.i8(i8, i8)",
-        ("i16", "llvm.usub.with.overflow.i16") => {
-            "{ i16, i1 } @llvm.usub.with.overflow.i16(i16, i16)"
-        }
-        ("i32", "llvm.usub.with.overflow.i32") => {
-            "{ i32, i1 } @llvm.usub.with.overflow.i32(i32, i32)"
-        }
-        ("i64", "llvm.usub.with.overflow.i64") => {
-            "{ i64, i1 } @llvm.usub.with.overflow.i64(i64, i64)"
-        }
-        ("i8", "llvm.smul.with.overflow.i8") => "{ i8, i1 } @llvm.smul.with.overflow.i8(i8, i8)",
-        ("i16", "llvm.smul.with.overflow.i16") => {
-            "{ i16, i1 } @llvm.smul.with.overflow.i16(i16, i16)"
-        }
-        ("i32", "llvm.smul.with.overflow.i32") => {
-            "{ i32, i1 } @llvm.smul.with.overflow.i32(i32, i32)"
-        }
-        ("i64", "llvm.smul.with.overflow.i64") => {
-            "{ i64, i1 } @llvm.smul.with.overflow.i64(i64, i64)"
-        }
-        ("i8", "llvm.umul.with.overflow.i8") => "{ i8, i1 } @llvm.umul.with.overflow.i8(i8, i8)",
-        ("i16", "llvm.umul.with.overflow.i16") => {
-            "{ i16, i1 } @llvm.umul.with.overflow.i16(i16, i16)"
-        }
-        ("i32", "llvm.umul.with.overflow.i32") => {
-            "{ i32, i1 } @llvm.umul.with.overflow.i32(i32, i32)"
-        }
-        ("i64", "llvm.umul.with.overflow.i64") => {
-            "{ i64, i1 } @llvm.umul.with.overflow.i64(i64, i64)"
-        }
-        _ => return None,
-    })
+/// The overflow-checking intrinsic of an integer `operator` on `ty`.
+pub(crate) fn checked_intrinsic(ty: &Type, operator: &str) -> Option<crate::ir::Intrinsic> {
+    let width = llvm_type(ty)?;
+    Some(crate::runtime_abi::overflow(
+        checked_intrinsic_name(ty, operator)?,
+        width,
+    ))
 }
 
 /// The `icmp` predicate of a BN comparison; `ty` decides signedness.

@@ -8,4 +8,5 @@ pub mod environment;
 pub mod eval;
 pub mod hosts;
 pub mod libraries;
+pub mod options;
 pub mod run;

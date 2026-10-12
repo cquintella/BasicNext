@@ -48,6 +48,7 @@ pub mod json_error;
 mod log_abi;
 mod math;
 mod math_abi;
+mod stack_abi;
 pub use bn_core_net as net;
 mod net_abi;
 mod policy;
@@ -58,11 +59,14 @@ mod stats;
 mod terminal;
 mod text_abi;
 mod trap_abi;
+mod vector_abi;
 pub mod web_error;
 
 pub use bn_core_log::{Level as LogLevel, Record as LogRecord};
 pub use log_abi::*;
+pub use stack_abi::bn_rt_stack_check;
 pub use stats::{Reduction, reduce};
+pub use vector_abi::bn_rt_vector_nest;
 
 pub use console::{ConsoleError, beep, cls, num_cols, num_rows, print_at};
 pub use dataframe::{

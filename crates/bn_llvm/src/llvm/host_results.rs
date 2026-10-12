@@ -19,23 +19,23 @@ use crate::ir::{
 /// `Error` with `Code` 1 and the message the runtime recorded for the call
 /// (`bn_rt_error_take`), as in the interpreter.
 pub(crate) fn emit_status_result(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
-    rc: &str,
+    rc: &O,
     eof_status: Option<u32>,
-    value_ptr: &str,
-    payload: &str,
+    value_ptr: &O,
+    payload: &O,
 ) {
     let dest = destination.0;
     let r = |name: &str| O::reg(format!("{name}{dest}"));
     text.assign(
         format!("stfail{dest}"),
-        I::icmp(ICmpCond::Ne, T::I32, O::raw(rc), O::int(0)),
+        I::icmp(ICmpCond::Ne, T::I32, rc.clone(), O::int(0)),
     );
     let (error, pointer) = if let Some(eof) = eof_status {
         text.assign(
             format!("steof{dest}"),
-            I::icmp(ICmpCond::Eq, T::I32, O::raw(rc), O::int(i64::from(eof))),
+            I::icmp(ICmpCond::Eq, T::I32, rc.clone(), O::int(i64::from(eof))),
         );
         text.assign(
             format!("stnoteof{dest}"),
@@ -47,11 +47,11 @@ pub(crate) fn emit_status_result(
         );
         text.assign(
             format!("stvalue{dest}"),
-            I::select(r("steof"), T::Ptr, O::global(".bn_eof"), O::raw(value_ptr)),
+            I::select(r("steof"), T::Ptr, O::global(".bn_eof"), value_ptr.clone()),
         );
         (r("sterr"), r("stvalue"))
     } else {
-        (r("stfail"), O::raw(value_ptr))
+        (r("stfail"), value_ptr.clone())
     };
     text.assign(
         format!("sterrint{dest}"),
@@ -75,7 +75,7 @@ pub(crate) fn emit_status_result(
     );
     text.assign(
         format!("stpayload{dest}"),
-        I::select(error.clone(), T::I64, r("stcode"), O::raw(payload)),
+        I::select(error.clone(), T::I64, r("stcode"), payload.clone()),
     );
     let status_ty = T::struct_of([T::I1, T::Ptr, T::I64]);
     text.assign(
@@ -93,60 +93,47 @@ pub(crate) fn emit_status_result(
 }
 
 pub(crate) fn emit_handle_result(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
-    rc: impl AsRef<str>,
-    handle: impl AsRef<str>,
+    rc: &O,
+    handle: &O,
 ) {
-    emit_status_result(
-        text,
-        destination,
-        rc.as_ref(),
-        None,
-        "null",
-        handle.as_ref(),
-    );
+    emit_status_result(text, destination, rc, None, &O::null(), handle);
 }
 
-pub(crate) fn emit_void_result(text: &mut String, destination: ValueId, rc: impl AsRef<str>) {
-    let dest = destination.0;
-    let rc_str = rc.as_ref();
-    let rc_reg = if rc_str.starts_with('%') {
-        rc_str.to_string()
-    } else {
-        let tag = format!("netrc{dest}");
-        let _ = writeln!(text, "  %{tag} = {rc_str}");
-        format!("%{tag}")
-    };
-    emit_status_result(text, destination, &rc_reg, None, "null", "0");
+/// A `VOID OR Error` result from the status `rc` a runtime call returned.
+pub(crate) fn emit_void_result(text: &mut crate::ir::LlvmModule, destination: ValueId, rc: &O) {
+    emit_status_result(text, destination, rc, None, &O::null(), &O::int(0));
+}
+
+/// A `VOID OR Error` result from the runtime `call` that returns the status.
+pub(crate) fn emit_void_call_result(
+    text: &mut crate::ir::LlvmModule,
+    destination: ValueId,
+    call: crate::ir::LlvmInst,
+) {
+    let status = format!("netrc{}", destination.0);
+    text.assign(&status, call);
+    emit_void_result(text, destination, &O::reg(status));
 }
 
 /// Declares the `bn_rt` error-record functions (`error_abi`) the module
 /// calls; a module without `Error` values declares none.
-pub(crate) fn declare_error_abi(text: &mut String) {
-    for (symbol, declaration) in [
-        (
-            "@bn_rt_error_take(",
-            "declare ptr @bn_rt_error_take(i32, ptr)\n",
-        ),
-        (
-            "@bn_rt_error_wrap(",
-            "declare ptr @bn_rt_error_wrap(i1, ptr, ptr)\n",
-        ),
-        (
-            "@bn_rt_error_field(",
-            "declare ptr @bn_rt_error_field(ptr, i32)\n",
-        ),
-        ("@bn_rt_error_code(", "declare i64 @bn_rt_error_code(ptr)\n"),
-        (
-            "@bn_rt_error_print(",
-            "declare void @bn_rt_error_print(i64, ptr)\n",
-        ),
-    ] {
-        if text.contains(symbol) {
-            text.push_str(declaration);
-        }
-    }
+pub(crate) fn declare_error_abi(text: &mut crate::ir::LlvmModule) {
+    use crate::runtime_abi::{ERROR_CODE, ERROR_FIELD, ERROR_PRINT, ERROR_TAKE, ERROR_WRAP};
+    let group: [&dyn crate::ir::Declaration; 5] = [
+        &ERROR_TAKE,
+        &ERROR_WRAP,
+        &ERROR_FIELD,
+        &ERROR_CODE,
+        &ERROR_PRINT,
+    ];
+    let globals = text.referenced_globals();
+    let called: Vec<&dyn crate::ir::Declaration> = group
+        .into_iter()
+        .filter(|signature| globals.contains(signature.name()))
+        .collect();
+    crate::ir::write_declarations(text, &called);
 }
 
 /// Traps (as an index out of bounds does) when `length` is negative or
@@ -154,11 +141,11 @@ pub(crate) fn declare_error_abi(text: &mut String) {
 /// or reads `length` bytes through the buffer's pointer, and the
 /// interpreter rejects the same call before any I/O.
 pub(crate) fn emit_buffer_bound(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     destination: ValueId,
     buffer: ValueId,
-    length: &str,
+    length: &crate::ir::LlvmOperand,
     message: &'static str,
     state: &mut EmissionState,
 ) {
@@ -171,11 +158,11 @@ pub(crate) fn emit_buffer_bound(
     );
     text.assign(
         format!("bufneg{dest}"),
-        I::icmp(ICmpCond::Slt, T::I32, O::raw(length), O::int(0)),
+        I::icmp(ICmpCond::Slt, T::I32, length.clone(), O::int(0)),
     );
     text.assign(
         format!("bufover{dest}"),
-        I::icmp(ICmpCond::Sgt, T::I32, O::raw(length), r("bufcap")),
+        I::icmp(ICmpCond::Sgt, T::I32, length.clone(), r("bufcap")),
     );
     text.assign(
         format!("bufbad{dest}"),
@@ -186,7 +173,7 @@ pub(crate) fn emit_buffer_bound(
         text,
         block_id,
         state,
-        &format!("%bufbad{dest}"),
+        &O::reg(format!("bufbad{dest}")),
         ok,
         bn_diag::DiagId::LIMIT,
         vec![("message", Fact::Text(message.into()))],
@@ -198,17 +185,17 @@ pub(crate) fn emit_buffer_bound(
 /// `Error` whose pointer is the recorded report (`bn_rt_error_take`) and
 /// whose payload is its code, as `emit_status_result` builds for handles.
 pub(crate) fn emit_endpoint_result(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
-    rc: &str,
-    address: &str,
-    port: &str,
+    rc: &O,
+    address: &O,
+    port: &O,
 ) {
     let dest = destination.0;
     let r = |name: &str| O::reg(format!("{name}{dest}"));
     text.assign(
         format!("eperr{dest}"),
-        I::icmp(ICmpCond::Ne, T::I32, O::raw(rc), O::int(0)),
+        I::icmp(ICmpCond::Ne, T::I32, rc.clone(), O::int(0)),
     );
     text.assign(
         format!("eperrint{dest}"),
@@ -224,7 +211,7 @@ pub(crate) fn emit_endpoint_result(
     );
     text.assign(
         format!("epptr{dest}"),
-        I::select(r("eperr"), T::Ptr, r("epmsg"), O::raw(address)),
+        I::select(r("eperr"), T::Ptr, r("epmsg"), address.clone()),
     );
     text.assign(
         format!("epcode{dest}"),
@@ -236,7 +223,7 @@ pub(crate) fn emit_endpoint_result(
     );
     text.assign(
         format!("epport{dest}"),
-        I::select(r("eperr"), T::I32, r("epcode32"), O::raw(port)),
+        I::select(r("eperr"), T::I32, r("epcode32"), port.clone()),
     );
     let ep_ty = T::struct_of([T::I1, T::Ptr, T::I32]);
     text.assign(

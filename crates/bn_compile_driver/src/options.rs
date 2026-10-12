@@ -1,7 +1,7 @@
-//! Compiler-only option semantics: `--target`, `--opt` and `-g`, parsed as a
+//! Compiler-only option semantics: `--target`, `--opt`, `-g`, `--cpu` and `--emit`, parsed as a
 //! `bn_cli::options::OptionExtension` supplied by the executable.
 
-use bn_cli::options::OptionExtension;
+use bn_cli::options::{Emit, OptionExtension};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Target {
@@ -50,8 +50,8 @@ pub enum CpuTarget {
     Native,
 }
 
-/// Compile-only flags (`--target`, `--opt`, `-g`, `--cpu`). The compiler executable
-/// parses them; `bn` also accepts them on every command for compatibility.
+/// The compiler's own options (`--target`, `--opt`, `-g`, `--cpu`, `--emit`).
+/// Only `bnc` parses them; to `bni` each is an unknown option (known issue K3).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BuildOptions {
     pub target: Target,
@@ -60,6 +60,8 @@ pub struct BuildOptions {
     pub debug: bool,
     /// `--cpu native|generic`: opt-in to host CPU-specific instructions.
     pub cpu: CpuTarget,
+    /// `--emit`: print a frontend artifact or LLVM IR instead of compiling.
+    pub emit: Option<Emit>,
 }
 
 impl Default for BuildOptions {
@@ -69,6 +71,7 @@ impl Default for BuildOptions {
             optimization: Optimization::Level(2),
             debug: false,
             cpu: CpuTarget::Generic,
+            emit: None,
         }
     }
 }
@@ -104,6 +107,19 @@ impl OptionExtension for BuildOptions {
                     Some("native") => CpuTarget::Native,
                     _ => return Err("--cpu expects generic or native".into()),
                 };
+            }
+            "--emit" => {
+                if self.emit.is_some() {
+                    return Err(bn_catalog::text("cli", "option.emit.repeated").into());
+                }
+                self.emit = Some(match rest.next().as_deref() {
+                    Some("tokens") => Emit::Tokens,
+                    Some("ast") => Emit::Ast,
+                    Some("typed-ast") => Emit::TypedAst,
+                    Some("ir") => Emit::Ir,
+                    Some("llvm" | "llvm-ir") => Emit::Llvm,
+                    _ => return Err(bn_catalog::text("cli", "option.emit.expects").into()),
+                });
             }
             _ => return Ok(false),
         }

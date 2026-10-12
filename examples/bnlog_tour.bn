@@ -1,4 +1,5 @@
-// BNLog tour: console + file transports, structured fields, flush/close.
+// BNLog tour: a logger per format and destination, records from Log.Event
+// and Log.Apache, defaults, levels, flush and close.
 // Author: Carlos Quintella
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -15,59 +16,66 @@ END FUNCTION
 FUNCTION Start() AS VOID
     LET path AS STRING = "/tmp/basicnext-bnlog-tour.jsonl"
 
-    PRINT "=== BNLog tour: console transport ==="
-    LET logger AS Log.Logger = NEW Log.Logger()
-    LET addedConsole AS VOID OR Error = logger.AddConsole(2)
-    IF addedConsole IS Error THEN
-        Fail("AddConsole", addedConsole)
+    PRINT "=== BNLog tour: JSON to the console ==="
+    LET app AS Log.Logger OR Error = Log.Logger.New("tour", "JSON", "CONSOLE")
+    IF app IS Error THEN
+        Fail("New console", app)
         RETURN
     END IF
+    // Every record of this logger names its service unless it sets one.
+    LET defaults AS Log.Event
+    defaults.service = "bnlog-tour"
+    LET kept AS VOID OR Error = app.SetDefaults(defaults)
+    IF kept IS Error THEN
+        Fail("SetDefaults", kept)
+        RETURN
+    END IF
+    LET event AS Log.Event
+    event.user = "ana"
+    event.code = 200
+    LET wrote AS VOID OR Error = app.Info("hello-console", event)
+    IF wrote IS Error THEN
+        Fail("Info", wrote)
+        RETURN
+    END IF
+    // DEBUG is below the default minimum (INFO): not written.
+    LET hidden AS VOID OR Error = app.Debug("not written", event)
+    PRINT "PASS  console Info, Debug filtered: ", hidden IS Error
 
-    LET fields AS Log.Fields = NEW Log.Fields()
-    LET setTour AS VOID OR Error = fields.SetString("tour", "bnlog")
-    IF setTour IS Error THEN
-        Fail("SetString tour", setTour)
+    PRINT "=== BNLog tour: an Apache access log ==="
+    LET web AS Log.Logger OR Error = Log.Logger.New("web", "APACHE", "CONSOLE")
+    IF web IS Error THEN
+        Fail("New apache", web)
         RETURN
     END IF
-    LET setOk AS VOID OR Error = fields.SetBoolean("ok", TRUE)
-    IF setOk IS Error THEN
-        Fail("SetBoolean ok", setOk)
+    LET request AS Log.Apache
+    request.remote = "127.0.0.1"
+    request.method = "GET"
+    request.path = "/tour"
+    request.protocol = "HTTP/1.1"
+    request.status = 200
+    request.bytes = 12
+    LET line AS VOID OR Error = web.Access(request)
+    IF line IS Error THEN
+        Fail("Access", line)
         RETURN
     END IF
+    PRINT "PASS  access line"
 
-    LET wroteConsole AS VOID OR Error = logger.Log(2, "hello-console", fields)
-    IF wroteConsole IS Error THEN
-        Fail("Log console", wroteConsole)
+    PRINT "=== BNLog tour: JSON to a file ==="
+    LET file AS Log.Logger OR Error = Log.Logger.New("tour", "JSON", path)
+    IF file IS Error THEN
+        Fail("New file", file)
         RETURN
     END IF
-    PRINT "PASS  console Log"
-
-    PRINT "=== BNLog tour: file transport ==="
-    LET addedFile AS VOID OR Error = logger.AddFile(path, 2)
-    IF addedFile IS Error THEN
-        Fail("AddFile", addedFile)
+    LET wroteFile AS VOID OR Error = file.Warn("hello-file", event)
+    LET flushed AS VOID OR Error = file.Flush(1000)
+    LET closed AS VOID OR Error = file.Close(1000)
+    IF wroteFile IS Error OR flushed IS Error OR closed IS Error THEN
+        PRINT "FAIL  file record"
         RETURN
     END IF
-
-    LET wroteFile AS VOID OR Error = logger.Log(2, "hello-file", fields)
-    IF wroteFile IS Error THEN
-        Fail("Log file", wroteFile)
-        RETURN
-    END IF
-    PRINT "PASS  file Log  path=", path
-
-    LET flushed AS VOID OR Error = logger.Flush(1000)
-    IF flushed IS Error THEN
-        Fail("Flush", flushed)
-        RETURN
-    END IF
-
-    LET closed AS VOID OR Error = logger.Close(1000)
-    IF closed IS Error THEN
-        Fail("Close", closed)
-        RETURN
-    END IF
-    PRINT "PASS  Flush + Close"
+    PRINT "PASS  file Warn, Flush, Close  path=", path
 
     PRINT "=== BNLog tour: read back JSON line ==="
     LET inn AS FS.File OR Error = FS.Open(path, FS.READ)
@@ -75,21 +83,16 @@ FUNCTION Start() AS VOID
         Fail("Open log file", inn)
         RETURN
     END IF
-    LET line AS STRING OR EOF OR Error = inn.ReadLine()
-    IF line IS Error THEN
-        Fail("ReadLine log", line)
-        inn.Close()
-        RELEASE inn
-        RETURN
-    ELSE IF line IS EOF THEN
+    LET first AS STRING OR EOF OR Error = inn.ReadLine()
+    IF first IS Error THEN
+        Fail("ReadLine log", first)
+    ELSE IF first IS EOF THEN
         PRINT "FAIL  expected at least one JSON line"
-        inn.Close()
-        RELEASE inn
-        RETURN
     ELSE
-        PRINT "PASS  log line  ", line
+        PRINT "PASS  log line  ", first
     END IF
     inn.Close()
     RELEASE inn
+    LET done AS VOID OR Error = app.Close(1000)
     PRINT "PASS  BNLog tour complete"
 END FUNCTION

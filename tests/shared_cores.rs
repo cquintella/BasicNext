@@ -236,13 +236,13 @@ fn the_shared_cores_gate_rejects_duplicated_statistical_reductions() {
     let _ = fs::remove_dir_all(&root);
 }
 
-/// Rule (k): log dispatch logic outside `bn_core_log` fails the gate.
+/// Rule (k): log record writing outside `bn_core_log` fails the gate.
 #[test]
-fn the_shared_cores_gate_rejects_log_dispatch_outside_bn_core_log() {
+fn the_shared_cores_gate_rejects_log_writing_outside_bn_core_log() {
     let root = std::env::temp_dir().join(format!("bn-shared-log-{}", std::process::id()));
     let core = (
         "crates/bn_core_log/src/lib.rs",
-        "pub fn dispatch_log() -> () { () }\n",
+        "pub fn write_event() -> () { () }\n",
     );
     tree(&root, Some(core));
     let clean = gate(&root);
@@ -253,17 +253,17 @@ fn the_shared_cores_gate_rejects_log_dispatch_outside_bn_core_log() {
     );
     let duplicate = (
         "crates/bn_lib_log/src/lib.rs",
-        "pub fn dispatch_log() -> () { () }\n",
+        "pub fn write_event() -> () { () }\n",
     );
     tree(&root, Some(duplicate));
     let output = gate(&root);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         !output.status.success(),
-        "the gate passed on duplicate log dispatch"
+        "the gate passed on duplicate log writing"
     );
     assert!(
-        stderr.contains("log dispatch logic outside bn_core_log: crates/bn_lib_log/src/lib.rs"),
+        stderr.contains("log record writing outside bn_core_log: crates/bn_lib_log/src/lib.rs"),
         "{stderr}"
     );
     let _ = fs::remove_dir_all(&root);

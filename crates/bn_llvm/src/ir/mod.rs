@@ -13,15 +13,17 @@ pub mod debug;
 pub mod emit;
 pub mod function;
 pub mod instructions;
+pub mod module;
 pub mod operands;
 pub mod types;
 
-pub use abi::{AbiType, Declaration, RuntimeFn};
+pub use abi::{AbiType, Declaration, Intrinsic, RuntimeFn, VariadicFn, write_declarations};
 pub use block::BasicBlock;
 pub use debug::{DebugFormat, DebugMetadata, DebugNode, MdRef};
 pub use emit::InstSink;
 pub use function::LlvmFunction;
 pub use instructions::{BinaryOp, CastOp, FCmpCond, ICmpCond, InstructionEntry, LlvmInst};
+pub use module::LlvmModule;
 pub use operands::{LlvmOperand, escape_llvm};
 pub use types::LlvmType;
 

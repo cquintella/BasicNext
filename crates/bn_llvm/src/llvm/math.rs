@@ -14,62 +14,6 @@ use crate::ir::{
 };
 use runtime_abi::*;
 
-pub(crate) const BN_RT_MATH_DECLS: &str = "\
-declare i64 @bn_rt_math_iabs(i64)
-declare i64 @bn_rt_math_isign(i64)
-declare i64 @bn_rt_math_imin(i64, i64)
-declare i64 @bn_rt_math_imax(i64, i64)
-declare i32 @bn_rt_math_tohour(i64)
-declare i32 @bn_rt_math_toweekday(i64)
-declare double @bn_rt_math_val(ptr)
-declare double @bn_rt_math_fabs(double)
-declare double @bn_rt_math_fsign(double)
-declare double @bn_rt_math_floor(double)
-declare double @bn_rt_math_ceil(double)
-declare double @bn_rt_math_trunc(double)
-declare double @bn_rt_math_exp(double)
-declare double @bn_rt_math_log(double)
-declare double @bn_rt_math_log10(double)
-declare double @bn_rt_math_log2(double)
-declare double @bn_rt_math_sin(double)
-declare double @bn_rt_math_cos(double)
-declare double @bn_rt_math_tan(double)
-declare double @bn_rt_math_asin(double)
-declare double @bn_rt_math_acos(double)
-declare double @bn_rt_math_atan(double)
-declare double @bn_rt_math_sqrt(double)
-declare double @bn_rt_math_pow(double, double)
-declare double @bn_rt_math_atan2(double, double)
-declare double @bn_rt_math_hypot(double, double)
-declare double @bn_rt_math_fmin(double, double)
-declare double @bn_rt_math_fmax(double, double)
-declare double @bn_rt_math_round(double, double)
-declare double @bn_rt_math_fma(double, double, double)
-declare i32 @bn_rt_math_vmin_i32(ptr, i32, ptr)
-declare i32 @bn_rt_math_vmax_i32(ptr, i32, ptr)
-declare double @bn_rt_math_vmin_f64(ptr, i32, ptr)
-declare double @bn_rt_math_vmax_f64(ptr, i32, ptr)
-declare double @bn_rt_math_mean_i32(ptr, i32)
-declare double @bn_rt_math_median_i32(ptr, i32)
-declare double @bn_rt_math_quartile1_i32(ptr, i32)
-declare double @bn_rt_math_quartile3_i32(ptr, i32)
-declare double @bn_rt_math_range_i32(ptr, i32)
-declare double @bn_rt_math_stdev_i32(ptr, i32)
-declare double @bn_rt_math_variance_i32(ptr, i32)
-declare i32 @bn_rt_math_mode_i32(ptr, i32, ptr)
-declare double @bn_rt_math_mean_f64(ptr, i32)
-declare double @bn_rt_math_median_f64(ptr, i32)
-declare double @bn_rt_math_quartile1_f64(ptr, i32)
-declare double @bn_rt_math_quartile3_f64(ptr, i32)
-declare double @bn_rt_math_range_f64(ptr, i32)
-declare double @bn_rt_math_stdev_f64(ptr, i32)
-declare double @bn_rt_math_variance_f64(ptr, i32)
-declare i32 @bn_rt_math_mode_f64(ptr, i32, ptr)
-declare i32 @bn_rt_math_todate(i64, ptr)
-declare i32 @bn_rt_math_totime(i64, ptr)
-declare i64 @bn_rt_math_totimestamp(i32, i32)
-";
-
 pub(crate) fn bnmath_method<'a>(module: &Module, name: &'a str) -> Option<&'a str> {
     let method = name.rsplit('.').next()?;
     (!module.bnmath_providers.is_empty()
@@ -153,7 +97,7 @@ pub(crate) fn bnmath_call_supported(
 }
 
 fn integer_arg(ty: &Type) -> bool {
-    llvm_type(ty).is_some_and(integer_llvm)
+    llvm_type(ty).is_some_and(|ty| ty.is_integer())
 }
 
 fn is_f64_vector(ty: &Type) -> bool {
@@ -172,11 +116,11 @@ fn is_supported_numeric_vector(ty: &Type) -> bool {
 }
 
 fn numeric_arg(ty: &Type) -> bool {
-    llvm_type(ty).is_some_and(|llvm| integer_llvm(llvm) || float_llvm(llvm))
+    llvm_type(ty).is_some_and(|llvm| llvm.is_integer() || llvm.is_floating())
 }
 
 pub(crate) fn lower_bnmath_call(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     destination: ValueId,
     method: &str,
@@ -198,7 +142,7 @@ pub(crate) fn lower_bnmath_call(
     match method {
         "VAL" => text.assign(format!("v{dest}"), MATH_VAL.call([value_reg(arguments[0])])),
         "TOHOUR" | "TOWEEKDAY" | "TODATE" | "TOTIME" => {
-            let value = LlvmOperand::raw(extend_to_i64(text, arguments[0], types[0]));
+            let value = extend_to_i64(text, arguments[0], types[0]);
             let call = match method {
                 "TOHOUR" => MATH_TOHOUR.call([value]),
                 "TOWEEKDAY" => MATH_TOWEEKDAY.call([value]),
@@ -271,7 +215,7 @@ pub(crate) fn lower_bnmath_call(
 }
 
 fn lower_vector_math(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     method: &str,
     vector: ValueId,
@@ -383,7 +327,7 @@ fn lower_vector_math(
 
 #[allow(clippy::too_many_arguments)]
 fn lower_integer_math(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     destination: ValueId,
     method: &str,
@@ -394,10 +338,8 @@ fn lower_integer_math(
 ) {
     let dest = destination.0;
     let reg = LlvmOperand::reg;
-    let left = LlvmOperand::raw(extend_to_i64(text, arguments[0], types[0]));
-    let result_ty = crate::layout::typed_llvm(
-        llvm_type(result_type).expect("validated integer math result type"),
-    );
+    let left = extend_to_i64(text, arguments[0], types[0]);
+    let result_ty = llvm_type(result_type).expect("validated integer math result type");
     if method == "ABS" {
         // |x| of the most negative value does not fit its type; the exact
         // magnitude is reported as the interpreter does (i128 holds it).
@@ -427,11 +369,11 @@ fn lower_integer_math(
         );
         text.assign(
             format!("abslo{dest}"),
-            LlvmInst::icmp(ICmpCond::Slt, I128, exact.clone(), LlvmOperand::raw(low)),
+            LlvmInst::icmp(ICmpCond::Slt, I128, exact.clone(), low),
         );
         text.assign(
             format!("abshi{dest}"),
-            LlvmInst::icmp(ICmpCond::Sgt, I128, exact.clone(), LlvmOperand::raw(high)),
+            LlvmInst::icmp(ICmpCond::Sgt, I128, exact.clone(), high),
         );
         text.assign(
             format!("absbad{dest}"),
@@ -447,9 +389,9 @@ fn lower_integer_math(
             text,
             block_id,
             state,
-            &format!("%absbad{dest}"),
+            &LlvmOperand::reg(format!("absbad{dest}")),
             ok,
-            &format!("%absexact{dest}"),
+            &LlvmOperand::reg(format!("absexact{dest}")),
             result_type,
         );
         text.assign(
@@ -461,7 +403,7 @@ fn lower_integer_math(
     let call = match method {
         "SIGN" => MATH_ISIGN.call([left]),
         "MIN" | "MAX" => {
-            let right = LlvmOperand::raw(extend_to_i64(text, arguments[1], types[1]));
+            let right = extend_to_i64(text, arguments[1], types[1]);
             if method == "MIN" {
                 MATH_IMIN.call([left, right])
             } else {
@@ -482,7 +424,7 @@ fn lower_integer_math(
 }
 
 fn lower_float_math(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     method: &str,
     arguments: &[ValueId],
@@ -492,7 +434,7 @@ fn lower_float_math(
     let args = arguments
         .iter()
         .zip(types)
-        .map(|(argument, ty)| LlvmOperand::raw(extend_to_double(text, *argument, ty)))
+        .map(|(argument, ty)| extend_to_double(text, *argument, ty))
         .collect::<Vec<_>>();
     let unary = |method: &str| -> &'static RuntimeFn<1> {
         match method {
@@ -536,7 +478,7 @@ fn lower_float_math(
         },
     };
     // `bn_rt` computes in `double`; a FLOAT32 result narrows it back.
-    if llvm_type(result_type) == Some("float") {
+    if llvm_type(result_type) == Some(LlvmType::Float) {
         let dest = destination.0;
         text.assign(format!("mathres{dest}"), call);
         text.assign(
@@ -553,25 +495,24 @@ fn lower_float_math(
     }
 }
 
-fn extend_to_double(text: &mut String, value: ValueId, ty: &Type) -> String {
+fn extend_to_double(
+    text: &mut crate::ir::LlvmModule,
+    value: ValueId,
+    ty: &Type,
+) -> crate::ir::LlvmOperand {
     let llvm_ty = llvm_type(ty).expect("validated numeric type");
-    if llvm_ty == "double" {
-        return format!("%v{}", value.0);
+    if llvm_ty == LlvmType::Double {
+        return LlvmOperand::reg(format!("v{}", value.0));
     }
     let op = match llvm_ty {
-        "float" => CastOp::FPExt,
+        LlvmType::Float => CastOp::FPExt,
         _ if is_unsigned(ty) => CastOp::UIToFP,
         _ => CastOp::SIToFP,
     };
     let temp = format!("mathf64{}", value.0);
     text.assign(
         temp.clone(),
-        LlvmInst::cast(
-            op,
-            crate::layout::typed_llvm(llvm_ty),
-            value_reg(value),
-            Double,
-        ),
+        LlvmInst::cast(op, llvm_ty, value_reg(value), Double),
     );
-    format!("%{temp}")
+    LlvmOperand::reg(&temp)
 }

@@ -5,9 +5,8 @@ use std::process::ExitCode;
 
 use crate::output::tool_error;
 
-/// Help lines for the flags both executables honor. Interpreter-only flags
-/// (`--emit` of frontend artifacts, `--trace`, `--no-filesystem`) are listed by
-/// `bni`; `bnc` lists its own `-o` and `--emit`.
+/// Help lines for the flags both executables honor. Interpreter options are
+/// listed by `bni`, compiler options (`--emit`, `--target`, …) by `bnc`.
 // The first line stays on the opening line: a `\` line continuation would
 // also strip its indentation.
 pub const COMMON_OPTIONS: &str =
@@ -42,66 +41,29 @@ pub fn usage(line: &str) -> ExitCode {
     tool_error()
 }
 
-/// Reports an option the common parser rejected (`CONFIG_INVALID: ` marks a
-/// configuration error) and prints `usage_line`. One printer for both tools.
+/// Reports an option the tool rejected (`CONFIG_INVALID: ` marks a
+/// configuration error) and prints the tool's whole help, `help`, to stderr:
+/// an option the tool does not own is unknown to it (each option has one
+/// owner; `bni` and `bnc` each list their own).
 #[must_use]
-pub fn option_error(message: &str, usage_line: &str) -> ExitCode {
+pub fn option_error(message: &str, help: &str) -> ExitCode {
     if let Some(message) = message.strip_prefix("CONFIG_INVALID: ") {
         eprintln!("error[CONFIG_INVALID]: {message}");
     } else {
         eprintln!("error: {message}");
     }
-    usage(usage_line)
+    eprint!("{help}");
+    tool_error()
 }
 
-/// The executable an option was given to.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Tool {
-    Interpreter,
-    Compiler,
-}
-
-/// The one table of options the shared parser accepts but only the other
-/// executable honors, as the error text `tool` prints (`None` when every
-/// given option belongs to `tool`).
-#[must_use]
-pub fn foreign_option(tool: Tool, options: &crate::options::Options) -> Option<&'static str> {
-    use crate::options::OutputFormat;
-    match tool {
-        Tool::Compiler if options.output_format != OutputFormat::Text => {
-            Some("--format json is an interpreter option (bni eval)")
-        }
-        Tool::Compiler if options.trace => Some("--trace is an interpreter option (bni run)"),
-        Tool::Compiler if !options.filesystem => {
-            Some("--no-filesystem is an interpreter option (bni run)")
-        }
-        Tool::Compiler if options.jupyter_stdin => {
-            Some("--jupyter-stdin is an interpreter option (bni run)")
-        }
-        Tool::Interpreter if options.output_format != OutputFormat::Text => {
-            Some("--format is available only with bni eval")
-        }
-        Tool::Interpreter if options.emit.is_some() => {
-            Some("--emit is a compiler option (bnc --emit tokens|ast|typed-ast|ir)")
-        }
-        _ => None,
-    }
-}
-
-/// The source of a command `tool` runs: refuses an option `tool` does not
-/// honour (the foreign-option table), then reads and lexes the file. One
-/// step both drivers take before their own work.
+/// Reads and lexes the source of a command. One step both drivers take
+/// before their own work.
 ///
 /// # Errors
 ///
-/// The exit code of the refusal or of the read.
+/// The exit code of the read.
 pub fn tool_source(
-    tool: Tool,
     options: &crate::options::Options,
 ) -> Result<(bn_source::SourceFile, Vec<bn_frontend::token::Token>), ExitCode> {
-    if let Some(message) = foreign_option(tool, options) {
-        eprintln!("error: {message}");
-        return Err(tool_error());
-    }
     crate::frontend::read_source(options)
 }

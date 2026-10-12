@@ -137,6 +137,16 @@ pub trait Provider: Send {
         None
     }
 
+    /// One more binding holds a handle this library owns (a copy of a counted
+    /// handle, `BNLog.Logger`). `None` = not this provider's value.
+    ///
+    /// # Errors
+    ///
+    /// Returns `USE_AFTER_RELEASE` when the handle was already released.
+    fn retain(&mut self, _value: &Value, _span: Span) -> Option<Result<(), Diagnostic>> {
+        None
+    }
+
     /// Releases every resource still held (program end, worker teardown).
     fn close_all(&mut self) {}
 

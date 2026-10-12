@@ -1,0 +1,47 @@
+// Fixed vectors of two and three dimensions are values on both backends:
+// a copy, an argument and a returned vector never share a row (0.6.md,
+// value semantics; known issue K21).
+CLASS Grid
+    PUBLIC STATIC cells AS INTEGER[2][3]
+END CLASS
+
+FUNCTION Cube() AS INTEGER[2][2][2]
+    LET c AS INTEGER[2][2][2] = [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
+    RETURN c
+END FUNCTION
+
+FUNCTION Names() AS STRING[2][2]
+    LET n AS STRING[2][2] = [["a", "b"], ["c", "d"]]
+    RETURN n
+END FUNCTION
+
+FUNCTION Bump(v AS INTEGER[2][2][2]) AS VOID
+    v[0][0][0] = 50
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET c AS INTEGER[2][2][2] = Cube()
+    LET d AS INTEGER[2][2][2] = c
+    d[1][1][1] = 80
+    Bump(c)
+    PRINT c[1][1][1], d[1][1][1], c[0][1][0], c[0][0][0]
+    LET empty AS STRING[2][2]
+    PRINT LEN(empty[1][1]), LEN(empty)
+    PRINT Grid.cells[1][2]
+    LET g AS INTEGER[2][3] = Grid.cells
+    g[1][2] = 13
+    PRINT Grid.cells[1][2], g[1][2]
+    Grid.cells = g
+    g[0][0] = 99
+    PRINT Grid.cells[0][0], Grid.cells[1][2]
+    LET n AS STRING[2][2] = Names()
+    LET m AS STRING[2][2] = n
+    m[0][1] = "z"
+    PRINT n[0][1], m[0][1], n[1][0]
+    LET total AS INTEGER = 0
+    FOR i AS INTEGER = 1 TO 1000
+        LET t AS INTEGER[2][2][2] = Cube()
+        total = total + t[1][0][1]
+    END FOR
+    PRINT total
+END FUNCTION

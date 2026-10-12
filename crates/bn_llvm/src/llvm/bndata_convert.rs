@@ -4,7 +4,7 @@ use super::*;
 use crate::ir::{InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
 
 pub(crate) fn lower_bndata_convert(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     arguments: &[ValueId],
     symbol: &str,
@@ -17,11 +17,11 @@ pub(crate) fn lower_bndata_convert(
         (T::Ptr, O::reg(format!("v{}", arguments[1].0))),
     ];
     text.assign(format!("dfconvrc{dest}"), I::call(T::I32, symbol, args));
-    emit_void_result(text, destination, format!("%dfconvrc{dest}"));
+    emit_void_result(text, destination, &O::reg(format!("dfconvrc{dest}")));
 }
 
 pub(crate) fn lower_bndata_slice(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     arguments: &[ValueId],
     analysis: &LoweringAnalysis<'_>,
@@ -41,7 +41,7 @@ pub(crate) fn lower_bndata_slice(
             .get(argument)
             .expect("validated slice bound");
         let bound = coerce_to_type(text, *argument, ty, &Type::Integer(IntegerType::Int32));
-        args.push((T::I32, O::raw(bound)));
+        args.push((T::I32, bound));
     }
     text.assign(format!("dfsliceout{dest}"), I::alloca(T::I64));
     args.push((T::Ptr, r("sliceout")));
@@ -56,7 +56,7 @@ pub(crate) fn lower_bndata_slice(
     emit_handle_result(
         text,
         destination,
-        format!("%dfsrc{dest}"),
-        format!("%dfslicevalue{dest}"),
+        &O::reg(format!("dfsrc{dest}")),
+        &O::reg(format!("dfslicevalue{dest}")),
     );
 }

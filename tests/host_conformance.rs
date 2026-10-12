@@ -4,10 +4,10 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! HOST conformance: every operation the frontend type-checks has a fixture
-//! under `tests/host/`, each fixture has an exact `bni` result, and `bnc`
-//! either matches it byte for byte or is listed as not supporting a named
-//! operation — and then must actually reject it. Adding a HOST member without
-//! a case, or implementing one natively without updating the table, fails.
+//! under `tests/host/`, each fixture has an exact `bni` result, and the `bnc`
+//! build of every fixture matches it byte for byte (every HOST operation
+//! compiles natively since 2026-10-11). Adding a HOST member without a case
+//! fails.
 
 mod support;
 
@@ -16,14 +16,6 @@ use std::{collections::BTreeSet, fs, time::Duration};
 use support::{ProcessOutput, TestDir, bnc, bni, executable_path, run, workspace_root};
 
 const TIMEOUT: Duration = Duration::from_secs(30);
-
-/// What `bnc` does with a fixture.
-enum Native {
-    /// Compiles, and the program's stdout and exit status equal `bni`'s.
-    Same,
-    /// Rejected at build time; the diagnostic names this operation.
-    Unsupported(&'static str),
-}
 
 struct Case {
     fixture: &'static str,
@@ -34,7 +26,6 @@ struct Case {
     exit: i32,
     /// A diagnostic code expected on stderr (runtime failures).
     stderr: Option<&'static str>,
-    native: Native,
 }
 
 const CASES: &[Case] = &[
@@ -45,7 +36,6 @@ const CASES: &[Case] = &[
         stdout: "2\nAna\nBia\n",
         exit: 0,
         stderr: None,
-        native: Native::Same,
     },
     Case {
         fixture: "clock.bn",
@@ -54,7 +44,6 @@ const CASES: &[Case] = &[
         stdout: "TRUE TRUE\n",
         exit: 0,
         stderr: None,
-        native: Native::Same,
     },
     Case {
         fixture: "numprocs.bn",
@@ -63,7 +52,6 @@ const CASES: &[Case] = &[
         stdout: "TRUE FALSE\nTRUE\n",
         exit: 0,
         stderr: None,
-        native: Native::Same,
     },
     Case {
         fixture: "random.bn",
@@ -72,7 +60,6 @@ const CASES: &[Case] = &[
         stdout: "TRUE TRUE TRUE TRUE\n",
         exit: 0,
         stderr: None,
-        native: Native::Same,
     },
     Case {
         fixture: "console_stream.bn",
@@ -81,7 +68,6 @@ const CASES: &[Case] = &[
         stdout: "\u{1b}[2J\u{1b}[H\u{7}done\n",
         exit: 0,
         stderr: None,
-        native: Native::Same,
     },
     // Standard output is a pipe here, so the TTY-only methods must fail.
     Case {
@@ -91,7 +77,6 @@ const CASES: &[Case] = &[
         stdout: "",
         exit: 1,
         stderr: Some("HOST_CAPABILITY_UNAVAILABLE"),
-        native: Native::Same,
     },
     Case {
         fixture: "console_numcols.bn",
@@ -100,7 +85,6 @@ const CASES: &[Case] = &[
         stdout: "",
         exit: 1,
         stderr: Some("HOST_CAPABILITY_UNAVAILABLE"),
-        native: Native::Same,
     },
     Case {
         fixture: "console_numrows.bn",
@@ -109,7 +93,6 @@ const CASES: &[Case] = &[
         stdout: "",
         exit: 1,
         stderr: Some("HOST_CAPABILITY_UNAVAILABLE"),
-        native: Native::Same,
     },
     Case {
         fixture: "net_codes.bn",
@@ -132,7 +115,6 @@ const CASES: &[Case] = &[
         stdout: "1 2 3 4\n5 6 7 8\n9 10 11 12 13\n",
         exit: 0,
         stderr: None,
-        native: Native::Same,
     },
     Case {
         fixture: "fs_codes.bn",
@@ -151,7 +133,6 @@ const CASES: &[Case] = &[
         stdout: "1 2 3 4 5\n6 7 8 9\n",
         exit: 0,
         stderr: None,
-        native: Native::Same,
     },
     Case {
         fixture: "fs_text.bn",
@@ -174,7 +155,6 @@ const CASES: &[Case] = &[
                  removed error: FALSE exists: FALSE\nmissing is error: TRUE\n",
         exit: 0,
         stderr: None,
-        native: Native::Same,
     },
     Case {
         fixture: "fs_bytes.bn",
@@ -183,7 +163,6 @@ const CASES: &[Case] = &[
         stdout: "FALSE 3 1 128 255 TRUE\n",
         exit: 0,
         stderr: None,
-        native: Native::Same,
     },
     Case {
         fixture: "exec.bn",
@@ -197,7 +176,6 @@ const CASES: &[Case] = &[
         stdout: "TRUE 0 TRUE 0\nTRUE TRUE\nTRUE\n",
         exit: 0,
         stderr: None,
-        native: Native::Same,
     },
     Case {
         fixture: "exec_codes.bn",
@@ -218,7 +196,6 @@ const CASES: &[Case] = &[
         stdout: "1 2 3 4 5 6 7 8 9 10 11\n",
         exit: 0,
         stderr: None,
-        native: Native::Same,
     },
     Case {
         fixture: "env_errors.bn",
@@ -234,7 +211,6 @@ const CASES: &[Case] = &[
         stdout: "1 2 3 4\nTRUE HOST.Env.Get\nTRUE HOST.Env.Get\nTRUE HOST.Env.Get\nTRUE HOST.Env.Get\nTRUE HOST.Env.Has\n",
         exit: 0,
         stderr: None,
-        native: Native::Same,
     },
     Case {
         fixture: "net_address.bn",
@@ -263,7 +239,6 @@ const CASES: &[Case] = &[
                  TRUE 127.0.0.1 8080\nTRUE FALSE FALSE TRUE\n",
         exit: 0,
         stderr: None,
-        native: Native::Unsupported("HOST.Net.Address.IsLoopback"),
     },
     Case {
         fixture: "net_resolve.bn",
@@ -278,7 +253,6 @@ const CASES: &[Case] = &[
         stdout: "TRUE TRUE TRUE\nreverse answered: TRUE\n",
         exit: 0,
         stderr: None,
-        native: Native::Unsupported("HOST.Net.Address.IsLoopback"),
     },
     Case {
         fixture: "net_results.bn",
@@ -295,7 +269,6 @@ const CASES: &[Case] = &[
                  TRUE HOST.Net.Address.Parse\n::1 8080\nTRUE HOST.Net.Address.Parse\nTRUE\n",
         exit: 0,
         stderr: None,
-        native: Native::Same,
     },
     Case {
         fixture: "net_tcp.bn",
@@ -320,7 +293,31 @@ const CASES: &[Case] = &[
         stdout: "TRUE TRUE TRUE\nFALSE TRUE TRUE\n2 2 72 105 TRUE FALSE FALSE\n",
         exit: 0,
         stderr: None,
-        native: Native::Unsupported("HOST.Net.TCPStream.SetTimeouts"),
+    },
+    Case {
+        fixture: "net_cidr_tcp_errors.bn",
+        args: &[],
+        covers: &[
+            "HOST.Net.CIDR.Parse",
+            "HOST.Net.CIDR.Network",
+            "HOST.Net.CIDR.PrefixLength",
+            "HOST.Net.TCPStream.SetTimeouts",
+            "HOST.Net.TCPStream.ShutdownRead",
+            "HOST.Net.TCPStream.ShutdownWrite",
+            "HOST.Net.TCPStream.Close",
+        ],
+        stdout: "1 cannot parse \"10.0.0.1/8\" as a CIDR prefix\n\
+                 1 cannot parse \"10.0.0.0/08\" as a CIDR prefix\n\
+                 1 cannot parse \"nope\" as a CIDR prefix\n\
+                 1 cannot parse \"::/129\" as a CIDR prefix\n\
+                 2001:db8:: 32\n0.0.0.0 0\n\
+                 1 HOST.Net.TCPStream.SetTimeouts cannot set the timeouts of the TCP stream\n\
+                 1 HOST.Net.TCPStream.SetTimeouts cannot set the timeouts of the TCP stream\n\
+                 ok\nok\nok\n\
+                 11 HOST.Net.TCPStream.SetTimeouts cannot set the timeouts of the TCP stream\n\
+                 11 HOST.Net.TCPStream.ShutdownRead cannot shut down reading on the TCP stream\n",
+        exit: 0,
+        stderr: None,
     },
     Case {
         fixture: "net_udp.bn",
@@ -339,7 +336,6 @@ const CASES: &[Case] = &[
         stdout: "TRUE TRUE 4\n2 TRUE 2 1 2\nfrom loopback: TRUE\n",
         exit: 0,
         stderr: None,
-        native: Native::Unsupported("HOST.Net.Address.IsLoopback"),
     },
     Case {
         fixture: "net_ping.bn",
@@ -353,7 +349,6 @@ const CASES: &[Case] = &[
         stdout: "ping: TRUE TRUE\nneighbor answered: TRUE\n",
         exit: 0,
         stderr: None,
-        native: Native::Unsupported("HOST.Net.Address.IsLoopback"),
     },
 ];
 
@@ -459,43 +454,25 @@ fn host_fixtures_produce_their_exact_interpreter_results() {
 }
 
 #[test]
-fn host_fixtures_match_natively_or_are_declared_unsupported() {
+fn host_fixtures_match_natively() {
     for case in CASES {
         let directory = TestDir::new("host-bnc").expect("create directory");
         let artifact = directory.join(format!("program{}", std::env::consts::EXE_SUFFIX));
         let mut compile = bnc();
         compile.arg(fixture_path(case)).arg("-o").arg(&artifact);
-        let mut built = run(&mut compile, None, TIMEOUT).expect("run bnc");
-        match case.native {
-            Native::Same => {
-                assert!(
-                    built.status.success(),
-                    "bnc rejected {}: {}",
-                    case.fixture,
-                    String::from_utf8_lossy(&built.stderr)
-                );
-                let mut command = std::process::Command::new(&artifact);
-                command
-                    .current_dir(directory.path())
-                    .args(program_args(case));
-                let mut output = run(&mut command, None, TIMEOUT).expect("run native program");
-                output.accept_expected_status();
-                assert_expected(case, &output, "bnc");
-            }
-            Native::Unsupported(operation) => {
-                assert!(
-                    !built.status.success(),
-                    "{} now compiles natively: mark it Native::Same",
-                    case.fixture
-                );
-                built.accept_expected_status();
-                let diagnostics = String::from_utf8_lossy(&built.stderr);
-                assert!(
-                    diagnostics.contains("TARGET_UNSUPPORTED") && diagnostics.contains(operation),
-                    "{} must be rejected as unsupported {operation}: {diagnostics}",
-                    case.fixture
-                );
-            }
-        }
+        let built = run(&mut compile, None, TIMEOUT).expect("run bnc");
+        assert!(
+            built.status.success(),
+            "bnc rejected {}: {}",
+            case.fixture,
+            String::from_utf8_lossy(&built.stderr)
+        );
+        let mut command = std::process::Command::new(&artifact);
+        command
+            .current_dir(directory.path())
+            .args(program_args(case));
+        let mut output = run(&mut command, None, TIMEOUT).expect("run native program");
+        output.accept_expected_status();
+        assert_expected(case, &output, "bnc");
     }
 }

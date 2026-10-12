@@ -12,7 +12,7 @@ use std::process::ExitCode;
 use bn_cli::{
     check::frontend_artifact,
     frontend::load_frontend,
-    help::{BOOK_URL, COMMON_OPTIONS, Tool, option_error, tool_source},
+    help::{BOOK_URL, COMMON_OPTIONS, option_error, tool_source},
     options::parse_options,
     output::emit_output,
 };
@@ -21,8 +21,9 @@ use crate::{build::build, options::BuildOptions};
 
 const USAGE: &str = "usage: bnc [compile-options] <entry.bn>\ntry: bnc --help";
 
-fn help(version: &str) -> ExitCode {
-    println!(
+/// The whole help, printed by `--help` and after an option error.
+fn help_text(version: &str) -> String {
+    format!(
         "\
 {version}
 usage: bnc [compile-options] <entry.bn>
@@ -42,7 +43,11 @@ compile options:
 See also: man bnc
 More information: {BOOK_URL}
 "
-    );
+    )
+}
+
+fn help(version: &str) -> ExitCode {
+    println!("{}", help_text(version));
     ExitCode::SUCCESS
 }
 
@@ -60,11 +65,12 @@ pub fn main(version: &str, arguments: Vec<String>) -> ExitCode {
         Some(_) => {}
     }
     let mut build_options = BuildOptions::default();
-    let options = match parse_options(arguments.into_iter(), &mut build_options) {
+    let mut options = match parse_options(arguments.into_iter(), &mut build_options) {
         Ok(options) => options,
-        Err(message) => return option_error(&message, USAGE),
+        Err(message) => return option_error(&message, &help_text(version)),
     };
-    let (source, tokens) = match tool_source(Tool::Compiler, &options) {
+    options.emit = build_options.emit;
+    let (source, tokens) = match tool_source(&options) {
         Ok(read) => read,
         Err(code) => return code,
     };

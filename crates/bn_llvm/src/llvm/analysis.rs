@@ -7,6 +7,7 @@
 // slot, and which runtime declarations, intrinsics, and traps the function needs.
 #![allow(clippy::wildcard_imports, clippy::match_same_arms)]
 use super::*;
+use crate::ir::LlvmType;
 
 pub(crate) fn analyze_function<'a>(
     module: &Module,
@@ -34,7 +35,6 @@ pub(crate) fn analyze_function<'a>(
     let mut input_values = HashSet::new();
     let mut owned_string_results = HashSet::new();
     let mut owned_struct_results = HashSet::new();
-    let mut owned_log_results = HashMap::new();
     // Bindings a `RELEASE` ends: a later use is checked at run time.
     let released_symbols = function
         .blocks
@@ -96,6 +96,17 @@ pub(crate) fn analyze_function<'a>(
                     ..
                 } => match value {
                     Constant::Function(name) => {
+                        // A call of a BN function checks the stack first (K53).
+                        let user = name.strip_prefix("@super:").unwrap_or(name);
+                        if module
+                            .functions
+                            .iter()
+                            .any(|function| function.name == user)
+                            || crate::analysis_calls::interface_call_targets(module, name).is_some()
+                        {
+                            uses_bn_rt = true;
+                            intrinsics.insert(crate::runtime_abi::frame_address());
+                        }
                         if matches!(name.as_str(), "HOST.Random.Random" | "HOST.Random.Seed") {
                             uses_random = true;
                             uses_bn_rt = true;
@@ -145,9 +156,12 @@ pub(crate) fn analyze_function<'a>(
                 } if (dimensions.is_empty() && dynamic_dimensions.is_empty())
                     || matches!(ty, Type::Vector { .. })
                         && dimensions.len() == 1
-                        && dynamic_dimensions.is_empty() =>
+                        && dynamic_dimensions.is_empty()
+                    || vectors::nested_default(ty, dimensions, dynamic_dimensions) =>
                 {
-                    if function.kind == FunctionKind::Default && llvm_type(ty) == Some("ptr") {
+                    if function.kind == FunctionKind::Default
+                        && llvm_type(ty) == Some(LlvmType::Ptr)
+                    {
                         uses_heap = true;
                     }
                     values.insert(*destination, ty.clone());
@@ -181,6 +195,8 @@ pub(crate) fn analyze_function<'a>(
                     symbols.insert(*symbol, ty.clone());
                     if is_struct_type(module, ty) {
                         uses_heap = true;
+                        // A STRUCT store copies into the binding's storage.
+                        intrinsics.insert(crate::runtime_abi::memmove());
                     }
                 }
                 Instruction::Copy {
@@ -237,20 +253,15 @@ pub(crate) fn analyze_function<'a>(
                     ty,
                     ..
                 } => {
-                    if functions
-                        .get(callee)
-                        .is_some_and(|name| module.kind_of(name) == Some(FunctionKind::Default))
-                    {
-                        if function.kind != FunctionKind::Entry
-                            || block_is_cyclic(function, block.id)
-                        {
-                            return Err(unsupported_instruction(
-                                module,
-                                function,
-                                instruction,
-                                "STRUCT default allocation requires an acyclic Start lifetime",
-                            ));
-                        }
+                    // A STRUCT default, or a STRUCT a user function returns, is a heap
+                    // block this frame owns: copied into its binding's storage,
+                    // freed when the next one replaces it and at the return.
+                    if functions.get(callee).is_some_and(|name| {
+                        module.kind_of(name) == Some(FunctionKind::Default)
+                            || module.functions.iter().any(|callee| {
+                                callee.name == *name && is_struct_type(module, &callee.return_type)
+                            })
+                    }) {
                         uses_heap = true;
                         owned_struct_results.insert(*destination);
                     }
@@ -369,10 +380,6 @@ pub(crate) fn analyze_function<'a>(
                     destination, ty, ..
                 } => {
                     uses_heap = true;
-                    if let Some(kind) = bnlog_resource_kind(module, ty) {
-                        uses_bn_rt = true;
-                        owned_log_results.insert(*destination, kind);
-                    }
                     values.insert(*destination, ty.clone());
                 }
                 Instruction::Release { .. } => {
@@ -426,8 +433,9 @@ pub(crate) fn analyze_function<'a>(
                 }
                 Instruction::StoreStatic { ty, .. } => {
                     if vectors::fixed_vector_array(ty).is_some() {
-                        intrinsics.insert(vectors::MEMMOVE);
+                        intrinsics.insert(crate::runtime_abi::memmove());
                     }
+                    uses_bn_rt |= vectors::carries_nested_vector(ty);
                 }
                 Instruction::Length { .. }
                 | Instruction::ClearScreen { .. }
@@ -545,8 +553,13 @@ pub(crate) fn analyze_function<'a>(
         .any(|ty| vectors::fixed_vector_array(ty).is_some())
         || vectors::returned_vector(&function.return_type).is_some()
     {
-        intrinsics.insert(vectors::MEMMOVE);
+        intrinsics.insert(crate::runtime_abi::memmove());
     }
+    uses_bn_rt |= symbols.values().any(vectors::carries_nested_vector)
+        || vectors::carries_nested_vector(&function.return_type)
+        || (function.blocks.iter().flat_map(|block| &block.instructions)).any(|instruction| {
+            matches!(instruction, Instruction::Call { ty, .. } if vectors::carries_nested_vector(ty))
+        });
     uses_arc |= function
         .blocks
         .iter()
@@ -577,7 +590,6 @@ pub(crate) fn analyze_function<'a>(
         released_symbols,
         owned_string_results,
         owned_struct_results,
-        owned_log_results,
         uses_string_concat,
         uses_bn_rt,
         uses_bn_rt_math,

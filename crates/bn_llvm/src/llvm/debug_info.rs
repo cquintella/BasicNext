@@ -46,7 +46,7 @@ impl DebugInfo {
 }
 
 /// Writes the marker that precedes a function's `define` line.
-pub(crate) fn mark_function(text: &mut String, span: Span, name: &str) {
+pub(crate) fn mark_function(text: &mut crate::ir::LlvmModule, span: Span, name: &str) {
     let _ = writeln!(
         text,
         "{FUNCTION_MARKER}{} {} {name}",
@@ -56,7 +56,7 @@ pub(crate) fn mark_function(text: &mut String, span: Span, name: &str) {
 
 /// Writes the marker for the instructions lowered from `span`. Spans from
 /// another file or without a line keep the previous location.
-pub(crate) fn mark_location(text: &mut String, span: Span, function: Span) {
+pub(crate) fn mark_location(text: &mut crate::ir::LlvmModule, span: Span, function: Span) {
     if span.start.line == 0 || span.start.source_id != function.start.source_id {
         return;
     }
@@ -180,12 +180,12 @@ mod tests {
     #[test]
     fn markers_become_subprogram_and_location_attachments() {
         let function = span(7, 1, 1);
-        let mut text = String::from("@g = global i32 0\n");
+        let mut text = crate::ir::LlvmModule::from(String::from("@g = global i32 0\n"));
         mark_function(&mut text, function, "Twice");
         text.push_str("define i32 @bn_Twice(i32 %p0) {\nb0:\n  %s0 = alloca i64\n");
         mark_location(&mut text, span(7, 2, 5), function);
         text.push_str("  ; note\n  %v1 = mul i64 %v0, 2\n  ret i32 0\n}\ndeclare void @f()\n");
-        let out = attach_debug_info(&text, &info());
+        let out = attach_debug_info(&text.render(), &info());
         assert!(!out.contains(";bn.dbg"), "markers are removed: {out}");
         assert!(out.contains("define i32 @bn_Twice(i32 %p0) !dbg !3 {\nb0:\n"));
         assert!(out.contains("  %s0 = alloca i64, !dbg !4\n"), "{out}");
@@ -205,7 +205,7 @@ mod tests {
     #[test]
     fn foreign_or_lineless_spans_keep_the_previous_location() {
         let function = span(7, 3, 1);
-        let mut text = String::new();
+        let mut text = crate::ir::LlvmModule::new();
         mark_location(&mut text, span(8, 9, 9), function);
         mark_location(&mut text, span(7, 0, 0), function);
         assert!(text.is_empty());

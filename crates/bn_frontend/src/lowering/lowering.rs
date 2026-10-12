@@ -482,6 +482,7 @@ pub(crate) fn lower_inherited_constructor(
         layouts: std::collections::HashMap::new(),
         class_model: bn_types::class_model::ClassModel::new(),
         bnmath_modules: HashSet::new(),
+        bnlog_modules: HashSet::new(),
         standard_modules: HashSet::new(),
         module_constants: std::collections::HashMap::new(),
         record_members: std::collections::HashMap::new(),
@@ -520,6 +521,7 @@ pub(crate) fn lower_inherited_destructor(
         layouts: std::collections::HashMap::new(),
         class_model: bn_types::class_model::ClassModel::new(),
         bnmath_modules: HashSet::new(),
+        bnlog_modules: HashSet::new(),
         standard_modules: HashSet::new(),
         module_constants: std::collections::HashMap::new(),
         record_members: std::collections::HashMap::new(),
@@ -646,4 +648,47 @@ pub(crate) fn emit_field_inits(
         });
     }
     Ok(())
+}
+
+/// The data of a standard module, and nothing else: the `STATIC` field
+/// initializers of its classes (`Log.Level.INFO`) and the default value of
+/// its STRUCTs (`Log.Event`). Its method bodies are bound natively.
+pub(crate) fn lower_standard_module_data(
+    program: &Program,
+    model: &SemanticModel,
+    prefix: &str,
+    method_names: &HashSet<String>,
+) -> Result<Vec<Function>, Diagnostic> {
+    let mut functions = Vec::new();
+    for item in &program.items {
+        let Item::Declaration {
+            kind,
+            name,
+            statements,
+            span,
+            ..
+        } = item
+        else {
+            continue;
+        };
+        match kind {
+            DeclarationKind::Class => {
+                if let Some(init) =
+                    lower_static_init(model, prefix, name, statements, *span, method_names)?
+                {
+                    functions.push(init);
+                }
+            }
+            DeclarationKind::Struct => functions.push(lower_struct_default(
+                model,
+                prefix,
+                name,
+                statements,
+                *span,
+                method_names,
+            )?),
+            _ => {}
+        }
+    }
+    Ok(functions)
 }

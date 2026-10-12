@@ -19,16 +19,24 @@ use bn_frontend::token::Token;
 use bn_interp::execute_validated_with_host;
 use bn_source::SourceFile;
 
-use crate::eval::{eval_json_error, eval_promotion_diagnostic};
+use crate::{
+    eval::{eval_json_error, eval_promotion_diagnostic},
+    options::InterpreterOptions,
+};
 
 /// Prepares `options.path` and executes it.
 #[must_use]
-pub fn run(source: &SourceFile, tokens: &[Token], options: &Options) -> ExitCode {
+pub fn run(
+    source: &SourceFile,
+    tokens: &[Token],
+    options: &Options,
+    interpreter: &InterpreterOptions,
+) -> ExitCode {
     let frontend = match load_frontend(source, options) {
         Ok(frontend) => frontend,
         Err(code) => return code,
     };
-    run_loaded(source, tokens, options, &frontend)
+    run_loaded(source, tokens, options, interpreter, &frontend)
 }
 
 /// Executes an already prepared program (text or JSON v1 output).
@@ -43,6 +51,7 @@ pub fn run_loaded(
     source: &SourceFile,
     tokens: &[Token],
     options: &Options,
+    interpreter: &InterpreterOptions,
     frontend: &Frontend,
 ) -> ExitCode {
     if emit_frontend_warnings(frontend, source, options) {
@@ -76,7 +85,7 @@ pub fn run_loaded(
     }
     log(options.verbosity, 1, "lowering typed BN IR");
     let module = &frontend.validated;
-    if options.trace {
+    if interpreter.trace {
         log(
             options.verbosity.max(1),
             1,
@@ -117,7 +126,7 @@ pub fn run_loaded(
             eprintln!("{}", render_diagnostic(&promotion, source, options));
         }
     }
-    let host = match crate::environment::host_env(options, arguments) {
+    let host = match crate::environment::host_env(options, interpreter, arguments) {
         Ok(host) => host,
         Err(message) => {
             if options.output_format == OutputFormat::Json {
@@ -132,7 +141,7 @@ pub fn run_loaded(
         let mut output = Vec::new();
         let mut input = JupyterInput {
             input: stdin.lock(),
-            notify: options.jupyter_stdin,
+            notify: interpreter.jupyter_stdin,
         };
         let result = execute_validated_with_host(module, &mut input, &mut output, &host);
         let mut diagnostics = frontend
@@ -191,7 +200,7 @@ pub fn run_loaded(
         let stdout = io::stdout();
         let mut input = JupyterInput {
             input: stdin.lock(),
-            notify: options.jupyter_stdin,
+            notify: interpreter.jupyter_stdin,
         };
         match execute_validated_with_host(module, &mut input, &mut stdout.lock(), &host) {
             Ok(code) => ExitCode::from(code),

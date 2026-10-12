@@ -1,0 +1,6 @@
+// A vector literal with no declared destination takes the first element's
+// type; an element not assignable to it is a TYPE_MISMATCH naming it
+// (decision D-2; known issue K31).
+FUNCTION Start() AS VOID
+    PRINT LEN([1, 2.5])
+END FUNCTION

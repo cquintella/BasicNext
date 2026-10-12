@@ -17,7 +17,12 @@ pub(crate) fn object_class(module: &Module, ty: &Type) -> Option<Type> {
 /// protocol: the value itself for a class type; for a general alternative,
 /// its pointer payload when the tag is `OBJECT`, else null (retain and
 /// release ignore null). Registers are named `{name}_…`.
-pub(crate) fn held_object(text: &mut String, ty: &Type, operand: &str, name: &str) -> String {
+pub(crate) fn held_object(
+    text: &mut crate::ir::LlvmModule,
+    ty: &Type,
+    operand: &crate::ir::LlvmOperand,
+    name: &str,
+) -> crate::ir::LlvmOperand {
     use crate::ir::{
         ICmpCond, InstSink, LlvmInst, LlvmOperand,
         LlvmType::{I32, Ptr},
@@ -25,8 +30,8 @@ pub(crate) fn held_object(text: &mut String, ty: &Type, operand: &str, name: &st
     if general_alternative(ty).is_none() {
         return operand.to_owned();
     }
-    let layout = crate::layout::typed_llvm(GENERAL_LAYOUT);
-    let value = LlvmOperand::raw(operand);
+    let layout = crate::general_alternative::layout();
+    let value = operand;
     let reg = |suffix: &str| format!("{name}_{suffix}");
     text.assign(
         reg("tag"),
@@ -41,7 +46,7 @@ pub(crate) fn held_object(text: &mut String, ty: &Type, operand: &str, name: &st
             LlvmOperand::int(i64::from(bn_types::alternatives::OBJECT)),
         ),
     );
-    text.assign(reg("ptr"), LlvmInst::extract(layout, value, 1));
+    text.assign(reg("ptr"), LlvmInst::extract(layout, value.clone(), 1));
     text.assign(
         name,
         LlvmInst::select(
@@ -51,7 +56,7 @@ pub(crate) fn held_object(text: &mut String, ty: &Type, operand: &str, name: &st
             LlvmOperand::null(),
         ),
     );
-    format!("%{name}")
+    LlvmOperand::reg(name)
 }
 
 pub(crate) fn is_class_type(module: &Module, ty: &Type) -> bool {

@@ -10,7 +10,6 @@
 #![allow(clippy::uninlined_format_args, clippy::doc_markdown)]
 
 use std::{
-    fmt::Write as _,
     fs,
     io::{BufRead, Cursor, Read, Write},
     path::{Path, PathBuf},
@@ -262,133 +261,62 @@ END FUNCTION
     assert_eq!(output, "127.0.0.1\n");
 }
 
+/// `Logger.New` with a file destination appends JSON Lines, and needs
+/// `IMPORT HOST.FileSystem` (bnlog.md, "Making a logger").
 #[test]
-fn bnlog_logger_null_transport_is_bounded_and_idempotent() {
-    let source = r#"IMPORT BNLog AS Log
-FUNCTION Start() AS VOID
-LET logger AS Log.Logger OR Error = Log.Logger.New("test")
-IF logger IS Error THEN
-PRINT "error"
-ELSE
-PRINT logger.AddNull(2) IS Error
-LET fields AS Log.Fields = NEW Log.Fields()
-PRINT logger.Log(2, "hello", fields) IS Error
-LET child AS Log.Logger OR Error = logger.Child(fields)
-PRINT child IS Error
-PRINT logger.Flush(1000) IS Error, logger.Close(1000) IS Error, logger.Close(1000) IS Error
-END IF
-END FUNCTION
-"#;
-    let (_, output) = run(source, "").expect("execute BNLog logger provider");
-    assert_eq!(output, "FALSE\nFALSE\nFALSE\nFALSE FALSE TRUE\n");
-}
-
-/// A `Child` starts with its parent's format; a later `SetFormat` on the
-/// child leaves the parent's (bnlog.md, "Formats"). `bnc` has no `Child`.
-#[test]
-fn bnlog_child_starts_with_the_parent_format() {
-    let source = r#"IMPORT HOST.Console AS Console
-IMPORT BNLog AS Log
-FUNCTION Start() AS VOID
-LET logger AS Log.Logger = NEW Log.Logger()
-LET fields AS Log.Fields = NEW Log.Fields()
-LET added AS VOID OR Error = logger.AddConsole(2)
-LET text AS VOID OR Error = logger.SetFormat("SYSLOG")
-LET made AS Log.Logger OR Error = logger.Child(fields)
-IF made IS Log.Logger THEN
-LET child AS Log.Logger = made
-LET a AS VOID OR Error = child.Log(2, "from child", fields)
-LET json AS VOID OR Error = child.SetFormat("JSON")
-LET b AS VOID OR Error = logger.Log(2, "from parent", fields)
-LET c AS VOID OR Error = child.Log(2, "child json", fields)
-END IF
-END FUNCTION
-"#;
-    let (_, output) = run(source, "").expect("execute BNLog child format");
-    let lines = output.lines().collect::<Vec<_>>();
-    assert_eq!(lines.len(), 3, "{output}");
-    assert!(
-        lines[0].starts_with("<14>1 ") && lines[0].ends_with(" - - from child"),
-        "{output}"
-    );
-    assert!(
-        lines[1].starts_with("<14>1 ") && lines[1].ends_with(" - - from parent"),
-        "{output}"
-    );
-    assert!(
-        lines[2].starts_with("{\"fields\":{}") && lines[2].contains("\"child json\""),
-        "{output}"
-    );
-}
-
-#[test]
-fn bnlog_file_transport_requires_explicit_filesystem_and_appends_json_lines() {
+fn bnlog_file_logger_appends_json_lines_and_needs_the_filesystem_import() {
     let path = unique_temp("bnlog.jsonl");
-    let source = format!(
-        "IMPORT BNLog AS Log\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET logger AS Log.Logger = NEW Log.Logger()\nLET added AS VOID OR Error = logger.AddFile(\"{}\", 2)\nIF added IS Error THEN\nPRINT added.Code\nELSE\nLET fields AS Log.Fields = NEW Log.Fields()\nLET written AS VOID OR Error = logger.Log(2, \"hello\", fields)\nPRINT written IS Error\nEND IF\nEND FUNCTION\n",
-        bn_path(&path)
-    );
-    let (_, output) = run(&source, "").expect("execute BNLog file provider");
+    let program = |import: &str| {
+        format!(
+            "IMPORT BNLog AS Log\n{import}FUNCTION Start() AS VOID\nLET logger AS Log.Logger OR Error = Log.Logger.New(\"app\", \"JSON\", \"{}\")\nIF logger IS Error THEN\nPRINT logger.Code\nELSE\nLET event AS Log.Event\nevent.detail = \"x\"\nPRINT logger.Info(\"hello\", event) IS Error\nEND IF\nEND FUNCTION\n",
+            bn_path(&path)
+        )
+    };
+    let (_, refused) = run(&program(""), "").expect("execute BNLog without the import");
+    assert_eq!(refused, "6\n");
+    let (_, output) =
+        run(&program("IMPORT HOST.FileSystem AS FS\n"), "").expect("execute BNLog file logger");
     let contents = fs::read_to_string(&path).expect("read JSON Lines output");
     let _ = fs::remove_file(path);
     assert_eq!(output, "FALSE\n");
-    assert!(contents.contains("\"message\":\"hello\""));
+    assert!(contents.contains("\"message\":\"hello\"") && contents.contains("\"detail\":\"x\""));
 }
 
+/// `"CONSOLE"` needs `IMPORT HOST.Console`; a record past the field-value
+/// bound is refused and nothing is written (bnlog.md, "Records").
 #[test]
-fn bnlog_console_transport_requires_explicit_console_and_writes_json_lines() {
-    let source = r#"IMPORT BNLog AS Log
-IMPORT HOST.Console AS CON
+fn bnlog_console_logger_needs_the_console_import_and_bounds_values() {
+    let refused = r#"IMPORT BNLog AS Log
 FUNCTION Start() AS VOID
-LET logger AS Log.Logger = NEW Log.Logger()
-LET added AS VOID OR Error = logger.AddConsole(2)
-IF added IS Error THEN
-PRINT "error"
-ELSE
-LET fields AS Log.Fields = NEW Log.Fields()
-LET written AS VOID OR Error = logger.Log(2, "console", fields)
-PRINT written IS Error
+LET logger AS Log.Logger OR Error = Log.Logger.New("app", "JSON", "CONSOLE")
+IF logger IS Error THEN
+PRINT logger.Code
 END IF
 END FUNCTION
 "#;
-    let (_, output) = run(source, "").expect("execute BNLog console provider");
-    assert!(output.contains("\"message\":\"console\""));
-    assert!(output.ends_with("FALSE\n"));
-}
-
-#[test]
-fn bnlog_attempts_later_transports_after_an_earlier_failure() {
-    let good = unique_temp("bnlog-good.jsonl");
-    let bad = unique_temp("missing-parent/bnlog-bad.jsonl");
-    let source = format!(
-        "IMPORT BNLog AS Log\nIMPORT HOST.FileSystem AS FS\nFUNCTION Start() AS VOID\nLET logger AS Log.Logger = NEW Log.Logger()\nlogger.AddFile(\"{}\", 2)\nlogger.AddFile(\"{}\", 2)\nLET fields AS Log.Fields = NEW Log.Fields()\nLET result AS VOID OR Error = logger.Log(2, \"attempt-all\", fields)\nPRINT result IS Error\nEND FUNCTION\n",
-        bn_path(&bad),
-        bn_path(&good)
-    );
-    let (_, output) = run(&source, "").expect("execute multi-transport logger");
-    let contents = fs::read_to_string(&good).expect("later transport was attempted");
-    let _ = fs::remove_file(good);
-    assert_eq!(output, "TRUE\n");
-    assert!(contents.contains("\"message\":\"attempt-all\""));
-}
-
-#[test]
-fn bnlog_child_context_is_included_in_record_bounds() {
-    let mut source = String::from(
-        "IMPORT BNLog AS Log\nFUNCTION Start() AS VOID\nLET logger AS Log.Logger = NEW Log.Logger()\nLET fields AS Log.Fields = NEW Log.Fields()\n",
-    );
-    for index in 0..16 {
-        let _ = writeln!(
-            source,
-            "fields.SetString(\"key{index}\", \"{}\")",
-            "x".repeat(4096)
-        );
-    }
-    source.push_str(
-        "LET child AS Log.Logger OR Error = logger.Child(fields)\nIF child IS Error THEN\nPRINT \"child-error\"\nELSE\nLET child_logger AS Log.Logger = child\nPRINT child_logger.Log(2, \"x\", fields) IS Error\nEND IF\nEND FUNCTION\n",
-    );
-    let (_, output) = run(&source, "").expect("execute BNLog child provider");
-    assert_eq!(output, "TRUE\n");
+    let (_, output) = run(refused, "").expect("execute BNLog without the console import");
+    assert_eq!(output, "6\n");
+    let bounded = r#"IMPORT BNLog AS Log
+IMPORT HOST.Console AS CON
+FUNCTION Start() AS VOID
+LET logger AS Log.Logger OR Error = Log.Logger.New("app", "JSON", "CONSOLE")
+IF logger IS Error THEN
+RETURN
+END IF
+LET event AS Log.Event
+LET long AS STRING = ""
+FOR index AS INTEGER = 1 TO 4097
+long = long + "x"
+END FOR
+event.detail = long
+LET written AS VOID OR Error = logger.Info("too long", event)
+IF written IS Error THEN
+PRINT written.Code
+END IF
+END FUNCTION
+"#;
+    let (_, output) = run(bounded, "").expect("execute BNLog value bound");
+    assert_eq!(output, "1\n");
 }
 
 #[test]
@@ -405,40 +333,6 @@ END FUNCTION
 "#;
     let (_, output) = run(source, "").expect("execute BNJson provider");
     assert_eq!(output, "{\"ok\":true}\n");
-}
-
-#[test]
-fn bnlog_fields_provider_sets_and_gets_bounded_values() {
-    let source = r#"IMPORT BNLog AS Log
-FUNCTION Start() AS VOID
-LET fields AS Log.Fields = NEW Log.Fields()
-fields.SetString("service", "basicnext")
-fields.SetInteger("port", 8080)
-fields.SetBoolean("secure", TRUE)
-LET duplicate AS VOID OR Error = fields.SetString("service", "other")
-PRINT fields.Count(), fields.Get("service"), fields.Get("port"), fields.Get("secure"), duplicate IS Error
-END FUNCTION
-"#;
-    let (_, output) = run(source, "").expect("execute BNLog fields provider");
-    assert_eq!(output, "3 basicnext 8080 TRUE TRUE\n");
-}
-
-#[test]
-fn bnlog_entry_with_field_is_immutable_and_bounded() {
-    let source = r#"IMPORT BNLog AS Log
-FUNCTION Start() AS VOID
-LET entry AS Log.Entry = NEW Log.Entry()
-LET enriched AS Log.Entry OR Error = entry.WithField("request_id", "abc")
-IF enriched IS Error THEN
-PRINT "unexpected"
-ELSE
-LET duplicate AS Log.Entry OR Error = enriched.WithField("request_id", "def")
-PRINT duplicate IS Error
-END IF
-END FUNCTION
-"#;
-    let (_, output) = run(source, "").expect("execute BNLog entry provider");
-    assert_eq!(output, "TRUE\n");
 }
 
 #[test]
@@ -3191,11 +3085,12 @@ FUNCTION Handler(request AS Web.Request, response AS Web.Response) AS VOID
 response.SetStatus(204)
 END FUNCTION
 FUNCTION Start() AS VOID
-LET logger AS Log.Logger = NEW Log.Logger()
-LET added AS VOID OR Error = logger.AddFile("{}", 3)
-IF added IS Error THEN
+LET made AS Log.Logger OR Error = Log.Logger.New("web", "JSON", "{}")
+IF made IS Error THEN
 PRINT "logger-error"
 ELSE
+LET logger AS Log.Logger = made
+LET level AS VOID OR Error = logger.SetLevel(Log.Level.HTTP)
 LET serverResult AS Web.Server OR Error = Web.Server.New(logger)
 IF serverResult IS Error THEN
 PRINT "server-error"

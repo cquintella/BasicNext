@@ -65,7 +65,8 @@ impl Executor<'_, '_> {
                 }
                 Ok(())
             }
-            _ => Ok(()),
+            // A counted library handle (`BNLog.Logger`) is counted by its library.
+            other => self.library_retain(other, span).unwrap_or(Ok(())),
         }
     }
 

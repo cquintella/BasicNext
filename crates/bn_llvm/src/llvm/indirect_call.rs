@@ -1,10 +1,10 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::ir::LlvmType;
 use crate::ir::{InstSink as _, LlvmInst as I, LlvmOperand as O};
-use crate::layout::typed_llvm;
 
 pub(crate) fn lower_indirect_call(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     callee: ValueId,
     arguments: &[ValueId],
@@ -31,21 +31,17 @@ pub(crate) fn lower_indirect_call(
                 analysis.values.get(argument).expect("validated argument"),
                 parameter,
             );
-            (typed_llvm(llvm_ty), O::raw(operand))
+            (llvm_ty, operand)
         })
         .collect::<Vec<_>>();
     let callee_op = O::reg(format!("v{}", callee.0));
     if is_void_type(return_type) {
-        text.emit(I::call_operand(
-            crate::ir::LlvmType::Void,
-            callee_op,
-            typed_args,
-        ));
+        text.emit(I::call_operand(LlvmType::Void, callee_op, typed_args));
     } else {
         let return_llvm = llvm_type(return_type).expect("validated indirect return");
         text.assign(
             format!("v{}", destination.0),
-            I::call_operand(typed_llvm(return_llvm), callee_op, typed_args),
+            I::call_operand(return_llvm, callee_op, typed_args),
         );
     }
 }

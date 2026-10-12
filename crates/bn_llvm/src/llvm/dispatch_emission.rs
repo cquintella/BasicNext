@@ -6,7 +6,7 @@ use crate::ir::{
 use crate::layout::handle_result_ty;
 
 pub(crate) fn lower_dispatch_emission(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     instruction: &Instruction,
     analysis: &LoweringAnalysis<'_>,
     _state: &mut EmissionState,
@@ -70,13 +70,13 @@ pub(crate) fn lower_dispatch_emission(
                         Type::Float(_) | Type::FloatLiteral => {
                             let wide = Type::Float(FloatType::Float64);
                             let value = coerce_to_type(text, *argument, argument_ty, &wide);
-                            (T::Double, O::raw(value))
+                            (T::Double, value)
                         }
                         Type::String => (T::Ptr, own),
                         _ => {
                             let wide = Type::Integer(IntegerType::Int64);
                             let value = coerce_to_type(text, *argument, argument_ty, &wide);
-                            (T::I64, O::raw(value))
+                            (T::I64, value)
                         }
                     };
                     text.emit(I::store(ty, value, a("payload")));
@@ -97,8 +97,8 @@ pub(crate) fn lower_dispatch_emission(
             emit_handle_result(
                 text,
                 *destination,
-                format!("%dispatchrc{d}"),
-                format!("%dispatchhandle{d}"),
+                &O::reg(format!("dispatchrc{d}")),
+                &O::reg(format!("dispatchhandle{d}")),
             );
         }
         Instruction::DispatchAwait {
@@ -125,13 +125,15 @@ pub(crate) fn lower_dispatch_emission(
             );
             let args = vec![
                 (T::I64, r("ticket")),
-                (T::I64, O::raw(timeout)),
+                (T::I64, timeout),
                 (T::Ptr, r("result")),
                 (T::Ptr, r("error")),
             ];
             let call = I::call(T::I32, "bn_rt_dispatch_await", args);
             let alternatives = match ty {
-                Type::Alternative(alternatives) if llvm_type(ty) == Some("{ i1, ptr, i64 }") => {
+                Type::Alternative(alternatives)
+                    if llvm_type(ty) == Some(crate::layout::handle_result_ty()) =>
+                {
                     alternatives.as_slice()
                 }
                 _ => &[],
@@ -150,7 +152,7 @@ pub(crate) fn lower_dispatch_emission(
             };
             match kind {
                 Some((kind, payload)) => emit_dispatch_result(text, d, call, kind, &payload),
-                None => emit_void_result(text, *destination, call.to_string()),
+                None => emit_void_call_result(text, *destination, call),
             }
         }
         _ => return false,
@@ -161,7 +163,7 @@ pub(crate) fn lower_dispatch_emission(
 /// The `T OR Error` of an `AWAIT`: `%dispatchresult{d}` holds the value of
 /// `kind` 8 bytes in. On failure slot 1 is the `Error` the runtime recorded
 /// and slot 2 its code, as `emit_status_result` builds them.
-fn emit_dispatch_result(text: &mut String, d: u32, call: I, kind: i64, payload: &T) {
+fn emit_dispatch_result(text: &mut crate::ir::LlvmModule, d: u32, call: I, kind: i64, payload: &T) {
     let r = |name: &str| O::reg(format!("dispatch{name}{d}"));
     let union = handle_result_ty();
     text.assign(format!("dispatchrc{d}"), call);

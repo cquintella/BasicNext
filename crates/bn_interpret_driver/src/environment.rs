@@ -33,12 +33,16 @@ impl HostEnvDefaults for HostEnv {
 ///
 /// Returns the configuration message for invalid sandbox roots or a
 /// malformed policy environment (both `CONFIG_INVALID`, exit 2).
-pub fn host_env(options: &Options, arguments: Vec<String>) -> Result<HostEnv, String> {
+pub fn host_env(
+    options: &Options,
+    interpreter: &crate::options::InterpreterOptions,
+    arguments: Vec<String>,
+) -> Result<HostEnv, String> {
     let host = if options.sandbox {
         HostEnv::system(arguments)
             .with_default_providers()
             .with_filesystem_roots(options.read_roots.clone(), options.write_roots.clone())?
-    } else if options.filesystem {
+    } else if interpreter.filesystem {
         HostEnv::system(arguments).with_default_providers()
     } else {
         HostEnv::system(arguments)
@@ -76,10 +80,15 @@ mod tests {
             missing.to_str().expect("UTF-8 path"),
             "file.bn",
         ]);
-        let Err(error) = host_env(&sandboxed, vec!["file.bn".into()]) else {
+        let interpreter = crate::options::InterpreterOptions::default();
+        let Err(error) = host_env(&sandboxed, &interpreter, vec!["file.bn".into()]) else {
             panic!("missing sandbox root must be rejected");
         };
         assert!(error.contains("root"), "{error}");
-        assert!(host_env(&options(&["--no-filesystem", "file.bn"]), Vec::new()).is_ok());
+        let no_filesystem = crate::options::InterpreterOptions {
+            filesystem: false,
+            ..interpreter
+        };
+        assert!(host_env(&options(&["file.bn"]), &no_filesystem, Vec::new()).is_ok());
     }
 }

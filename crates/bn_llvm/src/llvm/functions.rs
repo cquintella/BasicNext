@@ -12,7 +12,7 @@
 )]
 use super::*;
 use crate::ir::{InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
-use crate::layout::{typed_llvm, vector_ty};
+use crate::layout::vector_ty;
 use std::collections::HashSet;
 
 /// LLVM symbol for a BN function name. The entry name is fixed by the
@@ -49,9 +49,9 @@ pub(crate) fn is_void_type(ty: &Type) -> bool {
     matches!(ty, Type::Named(name) if name == "VOID")
 }
 
-pub(crate) fn function_return_llvm(ty: &Type) -> Option<&'static str> {
+pub(crate) fn function_return_llvm(ty: &Type) -> Option<T> {
     if is_void_type(ty) {
-        Some("void")
+        Some(T::Void)
     } else {
         llvm_type(ty)
     }
@@ -176,7 +176,7 @@ fn validate_user_function(function: &Function) -> Result<(), String> {
 }
 
 pub(crate) fn emit_function(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     module: &Module,
     function: &Function,
     analysis: &LoweringAnalysis<'_>,
@@ -216,7 +216,7 @@ pub(crate) fn emit_function(
         is_start,
         synchronize_prints,
         return_llvm: if is_start {
-            "i32"
+            T::I32
         } else {
             function_return_llvm(&function.return_type).expect("validated return type")
         },
@@ -265,16 +265,23 @@ pub(crate) fn emit_function(
                     && let Some((array, _)) =
                         vectors::returned_vector(ty).and_then(vectors::fixed_vector_array)
                 {
-                    text.assign(
-                        format!("vret{}", destination.0),
-                        I::alloca(typed_llvm(&array)),
-                    );
+                    text.assign(format!("vret{}", destination.0), I::alloca(array));
                 }
             }
             for &(symbol, ty) in &symbols {
                 let llvm_ty = llvm_type(ty).expect("validated alloca type");
                 let slot = O::reg(format!("s{}", symbol_names[symbol]));
-                text.assign(slot.to_string(), I::alloca(typed_llvm(llvm_ty)));
+                text.assign(slot.to_string(), I::alloca(llvm_ty.clone()));
+                if let Some(owner) = struct_owner(module, ty) {
+                    // Fixed storage of a STRUCT binding: every Store copies into
+                    // it (`emission1.rs`), so the value lives until the return.
+                    let bytes = usize::try_from(class_instance_bytes(module, &owner))
+                        .expect("struct size fits usize");
+                    text.assign(
+                        format!("structslot{}", symbol_names[symbol]),
+                        I::alloca(T::Array(bytes, Box::new(T::I8))),
+                    );
+                }
                 vectors::emit_vector_storage(
                     text,
                     symbol_names[symbol],
@@ -283,7 +290,7 @@ pub(crate) fn emit_function(
                 );
                 if (matches!(ty, Type::Alternative(types) if types.iter().any(|item| matches!(item, Type::Null)))
                     || is_class_type(module, ty))
-                    && llvm_ty == "ptr"
+                    && llvm_ty == T::Ptr
                 {
                     text.emit(I::store(T::Ptr, O::null(), slot.clone()));
                 }
@@ -292,7 +299,7 @@ pub(crate) fn emit_function(
                     && !function.parameters.contains(symbol)
                 {
                     // Tag 0 holds no object, so the first Store releases nothing.
-                    let layout = typed_llvm(GENERAL_LAYOUT);
+                    let layout = crate::general_alternative::layout();
                     text.emit(I::store(layout, O::zero_initializer(), slot.clone()));
                 }
                 if is_region_type(ty) && !function.parameters.contains(symbol) {
@@ -306,9 +313,8 @@ pub(crate) fn emit_function(
             let mut released = analysis.released_symbols.iter().collect::<Vec<_>>();
             released.sort_by_key(|symbol| symbol.0);
             for symbol in released {
-                let live = live_flag(*symbol);
                 let initial = function.parameters.contains(symbol) && !is_start;
-                emit_flag_slot(text, &live, T::I1, O::bool(initial));
+                emit_flag_slot(text, &live_flag_name(*symbol), T::I1, O::bool(initial));
             }
             let mut input_symbols = analysis.input_symbols.iter().collect::<Vec<_>>();
             input_symbols.sort_by_key(|symbol| symbol.0);
@@ -327,15 +333,6 @@ pub(crate) fn emit_function(
             owned_struct_results.sort_by_key(|value| value.0);
             for value in owned_struct_results {
                 emit_flag_slot(text, &format!("structowned{}", value.0), T::Ptr, O::null());
-            }
-            let mut owned_log_results = analysis
-                .owned_log_results
-                .keys()
-                .copied()
-                .collect::<Vec<_>>();
-            owned_log_results.sort_by_key(|value| value.0);
-            for value in owned_log_results {
-                emit_flag_slot(text, &format!("logowned{}", value.0), T::I64, O::int(0));
             }
             let mut multi_defs = analysis.multi_defs.iter().collect::<Vec<_>>();
             multi_defs.sort_by_key(|value| value.0);
@@ -419,7 +416,7 @@ fn reachable_block_ids(function: &Function) -> HashSet<u32> {
 }
 
 fn emit_traps(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     analysis: &LoweringAnalysis<'_>,
     symbols: &HashMap<SymbolId, usize>,
     state: &mut EmissionState,
@@ -445,13 +442,19 @@ fn emit_traps(
     }
 }
 
-/// The flag that says the binding `symbol`, which a `RELEASE` ends, is live.
-pub(crate) fn live_flag(symbol: SymbolId) -> String {
-    format!("%slive.sym{}", symbol.0)
+/// The register of the flag that says the binding `symbol`, which a
+/// `RELEASE` ends, is live.
+fn live_flag_name(symbol: SymbolId) -> String {
+    format!("slive.sym{}", symbol.0)
+}
+
+/// The flag of [`live_flag_name`] as an operand.
+pub(crate) fn live_flag(symbol: SymbolId) -> crate::ir::LlvmOperand {
+    O::reg(live_flag_name(symbol))
 }
 
 /// `%{name} = alloca ty` holding `initial`.
-fn emit_flag_slot(text: &mut String, name: &str, ty: T, initial: O) {
+fn emit_flag_slot(text: &mut crate::ir::LlvmModule, name: &str, ty: T, initial: O) {
     text.assign(name, I::alloca(ty.clone()));
     text.emit(I::store(ty, initial, O::reg(name)));
 }

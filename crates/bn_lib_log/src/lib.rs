@@ -3,59 +3,42 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! `BNLog` — an external library module served through the provider seam.
-//! Owns the fields / entry / logger tables; console transports write to the
-//! program output through [`CoreContext::output`], file transports go through
-//! the host filesystem policy.
+//! `BNLog` — an external library module served through the provider seam
+//! (bnlog.md, "API (0.6.5)"). Owns the logger table; the logger itself is
+//! the shared core (`bn_core_log`). The console destination writes to the
+//! program output through [`CoreContext::output`]; a file goes through the
+//! host filesystem policy.
 
 use std::collections::HashMap;
 
-use bn_core_log::LogFailure;
-use bn_core_log::{FileTransport, Level};
+use bn_core_log::{Apache, Event, FieldMap, Imports, Level, LogFailure, Operation};
 use bn_diag::Diagnostic;
 use bn_source::Span;
-use bn_value::{Value, shared_string};
+use bn_value::{RecordValue, Value};
 
 use bn_interp::provider::{CoreContext, Provider};
-use bn_interp::{
-    integer_from_i128_count_pub, integer_pub as integer, require_arity_pub as require_arity,
-    runtime_error_pub as runtime_error, type_mismatch,
-};
+use bn_interp::{integer_pub as integer, runtime_error_pub as runtime_error, type_mismatch};
 
 pub const NAME: &str = "BNLog";
 
-/// A logger shared with other libraries (the `BNWeb` access log writes
-/// through the same logger as the program).
-pub type SharedLogger = std::sync::Arc<std::sync::Mutex<bn_core_log::Logger>>;
-
-fn lock(logger: &SharedLogger) -> std::sync::MutexGuard<'_, bn_core_log::Logger> {
-    logger
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-fn shared(logger: bn_core_log::Logger) -> SharedLogger {
-    std::sync::Arc::new(std::sync::Mutex::new(logger))
-}
+/// The member the `BNWeb` provider writes its access records through: an
+/// access record with fields beyond `Log.Apache` (`request_id`), as
+/// alternating key and value texts. A `$` name cannot be written in BN.
+pub const WEB_ACCESS_MEMBER: &str = "Logger.$access";
 
 #[derive(Debug)]
 pub struct LogProvider {
-    fields: HashMap<u64, HashMap<String, String>>,
-    next_fields: u64,
-    entries: HashMap<u64, HashMap<String, String>>,
-    next_entry: u64,
-    loggers: HashMap<u64, SharedLogger>,
+    loggers: HashMap<u64, bn_core_log::Logger>,
+    /// Bindings that hold each logger: the last one's end destroys it (K61).
+    holders: HashMap<u64, usize>,
     next_logger: u64,
 }
 
 impl Default for LogProvider {
     fn default() -> Self {
         Self {
-            fields: HashMap::new(),
-            next_fields: 1,
-            entries: HashMap::new(),
-            next_entry: 1,
             loggers: HashMap::new(),
+            holders: HashMap::new(),
             next_logger: 1,
         }
     }
@@ -73,689 +56,239 @@ impl Provider for LogProvider {
         arguments: Vec<Value>,
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        let name = format!("BNLog.{member}");
-        if member.contains("Fields.") {
-            return self.log_fields_call(core, &name, &arguments, span);
+        let operation = format!("{NAME}.{member}");
+        if Operation::of_name(&operation) == Some(Operation::New) {
+            return Ok(self.new_logger(core, &arguments));
         }
-        if member.contains("Entry.") {
-            return self.log_entry_call(core, &name, &arguments, span);
-        }
-        if member.contains("Logger.") {
-            return self.log_logger_call(core, &name, &arguments, span);
-        }
-        if matches!(member.rsplit('.').next(), Some("CONSTRUCTOR" | "$fields")) {
-            return Ok(Value::Null);
-        }
-        Ok(failed(
-            &name,
-            &LogFailure::Unavailable("BNLog provider unavailable"),
-        ))
-    }
-
-    fn allocate(&mut self, class: &str, _span: Span) -> Option<Result<Value, Diagnostic>> {
-        match class.rsplit('.').next()? {
-            "Fields" => {
-                let id = self.next_fields;
-                self.next_fields += 1;
-                self.fields.insert(id, HashMap::new());
-                Some(Ok(Value::LogFields(id)))
-            }
-            "Entry" => {
-                let id = self.next_entry;
-                self.next_entry += 1;
-                self.entries.insert(id, HashMap::new());
-                Some(Ok(Value::LogEntry(id)))
-            }
-            "Logger" => {
-                let id = self.next_logger;
-                self.next_logger += 1;
-                self.loggers
-                    .insert(id, shared(bn_core_log::Logger::default()));
-                Some(Ok(Value::LogLogger(id)))
-            }
-            _ => None,
-        }
-    }
-
-    fn release(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
-        let (removed, what) = match value {
-            Value::LogFields(id) => (self.fields.remove(id).is_some(), "BNLog.Fields"),
-            Value::LogEntry(id) => (self.entries.remove(id).is_some(), "BNLog.Entry"),
-            Value::LogLogger(id) => (self.loggers.remove(id).is_some(), "BNLog.Logger"),
-            _ => return None,
+        let Some(Value::LogLogger(id)) = arguments.first() else {
+            return Err(type_mismatch(
+                "BNLog.Logger",
+                "non-BNLog.Logger value",
+                &operation,
+                span,
+            ));
         };
-        Some(if removed {
+        let Some(logger) = self.loggers.get_mut(id) else {
+            return Err(invalid_logger(span));
+        };
+        let sink = CoreSink(std::cell::RefCell::new(core));
+        let result = logger_call(logger, &sink, &operation, member, &arguments, span)?;
+        Ok(result.map_or_else(|failure| failed(&operation, &failure), |()| Value::Null))
+    }
+
+    fn allocate(&mut self, _class: &str, _span: Span) -> Option<Result<Value, Diagnostic>> {
+        None
+    }
+
+    fn retain(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
+        let Value::LogLogger(id) = value else {
+            return None;
+        };
+        Some(match self.holders.get_mut(id) {
+            Some(holders) => {
+                *holders += 1;
+                Ok(())
+            }
+            None => Err(invalid_logger(span)),
+        })
+    }
+
+    /// One binding fewer holds the logger; the last one destroys it, which
+    /// closes its destination (records are already written when received).
+    fn release(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
+        let Value::LogLogger(id) = value else {
+            return None;
+        };
+        Some(if let Some(holders) = self.holders.get_mut(id) {
+            *holders -= 1;
+            if *holders == 0 {
+                self.holders.remove(id);
+                self.loggers.remove(id);
+            }
             Ok(())
         } else {
             Err(runtime_error(
                 bn_diag::DiagId::DOUBLE_RELEASE,
-                format!("{what} was already deleted"),
+                bn_catalog::text("bnlog", "error.released.message"),
                 span,
             ))
         })
     }
 }
 
-#[allow(clippy::too_many_lines)] // One arm per BNLog member, as the library contract lists them.
 impl LogProvider {
-    /// The logger behind the `BNLog.Logger` handle `id`, shared with the
-    /// library that keeps it (the `BNWeb` server writes its access records
-    /// through it).
-    #[must_use]
-    pub fn core_logger(&self, id: u64) -> Option<SharedLogger> {
-        self.loggers.get(&id).map(std::sync::Arc::clone)
-    }
-
-    fn log_fields_call(
-        &mut self,
-        _core: &mut dyn CoreContext,
-        name: &str,
-        arguments: &[Value],
-        span: Span,
-    ) -> Result<Value, Diagnostic> {
-        let method = name.rsplit('.').next().unwrap_or_default();
-        let Value::LogFields(id) = arguments.first().ok_or_else(|| {
-            type_mismatch(
-                "BNLog.Fields",
-                "missing receiver",
-                "BNLog.Fields operation",
-                span,
-            )
-        })?
-        else {
-            return Err(type_mismatch(
-                "BNLog.Fields",
-                "non-BNLog.Fields value",
-                "BNLog.Fields operation",
-                span,
-            ));
+    /// `Logger.New(label, format, destination)`.
+    fn new_logger(&mut self, core: &mut dyn CoreContext, arguments: &[Value]) -> Value {
+        let operation = Operation::New.name();
+        let text = |index: usize| match arguments.get(index) {
+            Some(Value::String(text)) => text.to_string(),
+            _ => String::new(),
         };
-        let fields = self.fields.get_mut(id).ok_or_else(|| {
-            runtime_error(
-                bn_diag::DiagId::USE_AFTER_RELEASE,
-                "BNLog.Fields is invalid",
-                span,
-            )
-        })?;
-        match method {
-            "CONSTRUCTOR" => Ok(Value::Null),
-            "Count" => integer_from_i128_count_pub(fields.len() as i128, span),
-            "SetString" | "SetInteger" | "SetBoolean" => {
-                require_arity(name, arguments, 3, span)?;
-                let Value::String(key) = &arguments[1] else {
-                    return Err(type_mismatch(
-                        "STRING",
-                        "non-STRING value",
-                        "BNLog.Fields key",
-                        span,
-                    ));
-                };
-                if key.is_empty() || key.len() > 128 {
-                    return Ok(failed(
-                        name,
-                        &LogFailure::InvalidString {
-                            what: "field key",
-                            len: key.len(),
-                            max: 128,
-                        },
-                    ));
-                }
-                if fields.contains_key(key.as_ref()) {
-                    return Ok(failed(name, &LogFailure::DuplicateKey(key.to_string())));
-                }
-                if fields.len() >= 64 {
-                    return Ok(failed(
-                        name,
-                        &LogFailure::LimitExceeded {
-                            what: "fields",
-                            count: fields.len(),
-                            max: 64,
-                        },
-                    ));
-                }
-                let value = match method {
-                    "SetString" => {
-                        let Value::String(value) = &arguments[2] else {
-                            return Err(type_mismatch(
-                                "STRING",
-                                "non-STRING value",
-                                "BNLog.Fields.SetString value",
-                                span,
-                            ));
-                        };
-                        value.to_string()
-                    }
-                    "SetInteger" => integer(&arguments[2], span)?.0.to_string(),
-                    "SetBoolean" => match arguments[2] {
-                        Value::Boolean(value) => value.to_string().to_uppercase(),
-                        _ => {
-                            return Err(type_mismatch(
-                                "BOOLEAN",
-                                "non-BOOLEAN value",
-                                "BNLog.Fields.SetBoolean value",
-                                span,
-                            ));
-                        }
-                    },
-                    _ => unreachable!(),
-                };
-                fields.insert(key.to_string(), value);
-                Ok(Value::Null)
-            }
-            "Get" => {
-                require_arity(name, arguments, 2, span)?;
-                let Value::String(key) = &arguments[1] else {
-                    return Err(type_mismatch(
-                        "STRING",
-                        "non-STRING value",
-                        "BNLog.Fields.Get key",
-                        span,
-                    ));
-                };
-                fields
-                    .get(key.as_ref())
-                    .cloned()
-                    .map(|value| Value::String(shared_string(value)))
-                    .ok_or_else(|| {
-                        runtime_error(bn_diag::DiagId::NOT_FOUND, "field key was not found", span)
-                    })
-            }
-            _ => Ok(failed(
-                name,
-                &LogFailure::Unavailable("BNLog.Fields operation unavailable"),
-            )),
-        }
-    }
-
-    fn log_entry_call(
-        &mut self,
-        _core: &mut dyn CoreContext,
-        name: &str,
-        arguments: &[Value],
-        span: Span,
-    ) -> Result<Value, Diagnostic> {
-        let method = name.rsplit('.').next().unwrap_or_default();
-        let Value::LogEntry(id) = arguments.first().ok_or_else(|| {
-            type_mismatch(
-                "BNLog.Entry",
-                "missing receiver",
-                "BNLog.Entry operation",
-                span,
-            )
-        })?
-        else {
-            return Err(type_mismatch(
-                "BNLog.Entry",
-                "non-BNLog.Entry value",
-                "BNLog.Entry operation",
-                span,
-            ));
+        let imports = Imports {
+            console: core.module().console_import.is_some(),
+            filesystem: core.module().filesystem_import.is_some(),
         };
-        let fields = self.entries.get(id).ok_or_else(|| {
-            runtime_error(
-                bn_diag::DiagId::USE_AFTER_RELEASE,
-                "BNLog.Entry is invalid",
-                span,
-            )
-        })?;
-        match method {
-            "CONSTRUCTOR" => Ok(Value::Null),
-            "WithField" => {
-                require_arity(name, arguments, 3, span)?;
-                let Value::String(key) = &arguments[1] else {
-                    return Err(type_mismatch(
-                        "STRING",
-                        "non-STRING value",
-                        "BNLog.Entry.WithField key",
-                        span,
-                    ));
-                };
-                let Value::String(value) = &arguments[2] else {
-                    return Err(type_mismatch(
-                        "STRING",
-                        "non-STRING value",
-                        "BNLog.Entry.WithField value",
-                        span,
-                    ));
-                };
-                if key.is_empty() || key.len() > 128 {
-                    return Ok(failed(
-                        name,
-                        &LogFailure::InvalidString {
-                            what: "entry field key",
-                            len: key.len(),
-                            max: 128,
-                        },
-                    ));
-                }
-                if value.len() > 4096 {
-                    return Ok(failed(
-                        name,
-                        &LogFailure::InvalidString {
-                            what: "entry field value",
-                            len: value.len(),
-                            max: 4096,
-                        },
-                    ));
-                }
-                if fields.contains_key(key.as_ref()) {
-                    return Ok(failed(name, &LogFailure::DuplicateKey(key.to_string())));
-                }
-                let mut next = fields.clone();
-                if next.len() >= 64 {
-                    return Ok(failed(
-                        name,
-                        &LogFailure::LimitExceeded {
-                            what: "entry fields",
-                            count: next.len(),
-                            max: 64,
-                        },
-                    ));
-                }
-                next.insert(key.to_string(), value.to_string());
-                let next_id = self.next_entry;
-                self.next_entry += 1;
-                self.entries.insert(next_id, next);
-                Ok(Value::LogEntry(next_id))
+        let sink = CoreSink(std::cell::RefCell::new(core));
+        match bn_core_log::Logger::open(&text(0), &text(1), &text(2), imports, &sink) {
+            Ok(logger) => {
+                let id = self.next_logger;
+                self.next_logger += 1;
+                self.loggers.insert(id, logger);
+                self.holders.insert(id, 1);
+                Value::LogLogger(id)
             }
-            _ => Ok(failed(
-                name,
-                &LogFailure::Unavailable("BNLog.Entry provider unavailable"),
-            )),
-        }
-    }
-
-    fn log_logger_call(
-        &mut self,
-        core: &mut dyn CoreContext,
-        name: &str,
-        arguments: &[Value],
-        span: Span,
-    ) -> Result<Value, Diagnostic> {
-        let method = name.rsplit('.').next().unwrap_or_default();
-        if method == "New" {
-            require_arity(name, arguments, 1, span)?;
-            let Value::String(label) = &arguments[0] else {
-                return Err(type_mismatch(
-                    "STRING",
-                    "non-STRING value",
-                    "BNLog.Logger.New label",
-                    span,
-                ));
-            };
-            if label.is_empty() || label.len() > 128 {
-                return Ok(failed(
-                    name,
-                    &LogFailure::InvalidString {
-                        what: "logger label",
-                        len: label.len(),
-                        max: 128,
-                    },
-                ));
-            }
-            let id = self.next_logger;
-            self.next_logger += 1;
-            self.loggers
-                .insert(id, shared(bn_core_log::Logger::new(label)));
-            return Ok(Value::LogLogger(id));
-        }
-        let Value::LogLogger(id) = arguments.first().ok_or_else(|| {
-            type_mismatch(
-                "BNLog.Logger",
-                "missing receiver",
-                "BNLog.Logger operation",
-                span,
-            )
-        })?
-        else {
-            return Err(type_mismatch(
-                "BNLog.Logger",
-                "non-BNLog.Logger value",
-                "BNLog.Logger operation",
-                span,
-            ));
-        };
-        if method == "Child" {
-            require_arity(name, arguments, 2, span)?;
-            let Value::LogFields(fields_id) = arguments[1] else {
-                return Err(type_mismatch(
-                    "BNLog.Fields",
-                    "non-BNLog.Fields value",
-                    "BNLog.Logger.Child fields",
-                    span,
-                ));
-            };
-            if !self.fields.contains_key(&fields_id) {
-                return Err(runtime_error(
-                    bn_diag::DiagId::USE_AFTER_RELEASE,
-                    "BNLog.Fields is invalid",
-                    span,
-                ));
-            }
-            let parent = self
-                .loggers
-                .get(id)
-                .map(|parent| lock(parent).clone())
-                .ok_or_else(|| {
-                    runtime_error(
-                        bn_diag::DiagId::USE_AFTER_RELEASE,
-                        "BNLog.Logger is invalid",
-                        span,
-                    )
-                })?;
-            let child = parent.child(
-                self.fields
-                    .get(&fields_id)
-                    .ok_or_else(|| {
-                        runtime_error(
-                            bn_diag::DiagId::USE_AFTER_RELEASE,
-                            "BNLog.Fields is invalid",
-                            span,
-                        )
-                    })?
-                    .iter()
-                    .map(|(key, value)| (key.clone(), value.clone())),
-            );
-            let child_id = self.next_logger;
-            self.next_logger += 1;
-            self.loggers.insert(child_id, shared(child));
-            return Ok(Value::LogLogger(child_id));
-        }
-        let logger = self
-            .loggers
-            .get(id)
-            .map(|logger| lock(logger).clone())
-            .ok_or_else(|| {
-                runtime_error(
-                    bn_diag::DiagId::USE_AFTER_RELEASE,
-                    "BNLog.Logger is invalid",
-                    span,
-                )
-            })?;
-        if method == "CONSTRUCTOR" {
-            return Ok(Value::Null);
-        }
-        if logger.closed {
-            return Ok(failed(name, &LogFailure::Closed));
-        }
-        match method {
-            "AddNull" => {
-                require_arity(name, arguments, 2, span)?;
-                let minimum = integer(&arguments[1], span)?.0;
-                if !(0..=6).contains(&minimum) {
-                    return Ok(failed(
-                        name,
-                        &LogFailure::OutOfRange {
-                            what: "log level",
-                            value: minimum,
-                            min: 0,
-                            max: 6,
-                        },
-                    ));
-                }
-                if logger.transport_count() >= bn_core_log::MAX_TRANSPORTS {
-                    return Ok(failed(
-                        name,
-                        &LogFailure::LimitExceeded {
-                            what: "transports",
-                            count: 8,
-                            max: 8,
-                        },
-                    ));
-                }
-                let minimum_level = Level::from_i128(minimum).expect("minimum was validated");
-                lock(self.loggers.get(id).expect("logger was checked above"))
-                    .null_transports
-                    .push(minimum_level);
-                Ok(Value::Null)
-            }
-            "AddConsole" => {
-                require_arity(name, arguments, 2, span)?;
-                if core.module().console_import.is_none() {
-                    return Ok(failed(
-                        name,
-                        &LogFailure::CapabilityRequired("HOST.Console"),
-                    ));
-                }
-                let minimum = integer(&arguments[1], span)?.0;
-                if !(0..=6).contains(&minimum) {
-                    return Ok(failed(
-                        name,
-                        &LogFailure::OutOfRange {
-                            what: "log level",
-                            value: minimum,
-                            min: 0,
-                            max: 6,
-                        },
-                    ));
-                }
-                if logger.transport_count() >= bn_core_log::MAX_TRANSPORTS {
-                    return Ok(failed(
-                        name,
-                        &LogFailure::LimitExceeded {
-                            what: "transports",
-                            count: 8,
-                            max: 8,
-                        },
-                    ));
-                }
-                let minimum_level = Level::from_i128(minimum).expect("minimum was validated");
-                lock(self.loggers.get(id).expect("logger was checked above"))
-                    .console_transports
-                    .push(minimum_level);
-                Ok(Value::Null)
-            }
-            "AddFile" => {
-                require_arity(name, arguments, 3, span)?;
-                if core.module().filesystem_import.is_none() {
-                    return Ok(failed(
-                        name,
-                        &LogFailure::CapabilityRequired("HOST.FileSystem"),
-                    ));
-                }
-                let Value::String(path) = &arguments[1] else {
-                    return Err(type_mismatch(
-                        "STRING",
-                        "non-STRING value",
-                        "BNLog.Logger.AddFile path",
-                        span,
-                    ));
-                };
-                // A file the policy denies is a transport that cannot write
-                // (bnlog.md `IO_FAILED`; D2 of bucket 0.6.5c): `Error`, never a stop.
-                if !core.host().filesystem().allows_capability()
-                    || !core
-                        .host()
-                        .filesystem()
-                        .allows_path(std::path::Path::new(path.as_ref()), true)
-                {
-                    return Ok(failed(
-                        name,
-                        &LogFailure::IoFailed(
-                            "the filesystem policy denies writing the log file".into(),
-                        ),
-                    ));
-                }
-                let minimum = integer(&arguments[2], span)?.0;
-                if path.is_empty() || path.len() > 4096 {
-                    return Ok(failed(
-                        name,
-                        &LogFailure::InvalidString {
-                            what: "file path",
-                            len: path.len(),
-                            max: 4096,
-                        },
-                    ));
-                }
-                if !(0..=6).contains(&minimum) {
-                    return Ok(failed(
-                        name,
-                        &LogFailure::OutOfRange {
-                            what: "log level",
-                            value: minimum,
-                            min: 0,
-                            max: 6,
-                        },
-                    ));
-                }
-                if logger.transport_count() >= bn_core_log::MAX_TRANSPORTS {
-                    return Ok(failed(
-                        name,
-                        &LogFailure::LimitExceeded {
-                            what: "transports",
-                            count: 8,
-                            max: 8,
-                        },
-                    ));
-                }
-                let minimum_level = Level::from_i128(minimum).expect("minimum was validated");
-                lock(self.loggers.get(id).expect("logger was checked above"))
-                    .file_transports
-                    .push(FileTransport {
-                        path: path.to_string(),
-                        minimum: minimum_level,
-                    });
-                Ok(Value::Null)
-            }
-            "SetFormat" => {
-                require_arity(name, arguments, 2, span)?;
-                let Value::String(text) = &arguments[1] else {
-                    return Err(type_mismatch(
-                        "STRING",
-                        "non-STRING value",
-                        bn_catalog::text("bnlog", "context.set_format.format"),
-                        span,
-                    ));
-                };
-                let Some(format) = bn_core_log::Format::from_name(text) else {
-                    return Ok(failed(name, &LogFailure::InvalidFormat(text.to_string())));
-                };
-                lock(self.loggers.get(id).expect("logger was checked above")).format = format;
-                Ok(Value::Null)
-            }
-            "Log" => {
-                require_arity(name, arguments, 4, span)?;
-                let level = integer(&arguments[1], span)?.0;
-                if !(0..=6).contains(&level) {
-                    return Ok(failed(
-                        name,
-                        &LogFailure::OutOfRange {
-                            what: "log level",
-                            value: level,
-                            min: 0,
-                            max: 6,
-                        },
-                    ));
-                }
-                let Value::String(message) = &arguments[2] else {
-                    return Err(type_mismatch(
-                        "STRING",
-                        "non-STRING value",
-                        "BNLog.Logger.Log message",
-                        span,
-                    ));
-                };
-                if message.len() > 16 * 1024 {
-                    return Ok(failed(
-                        name,
-                        &LogFailure::InvalidString {
-                            what: "log message",
-                            len: message.len(),
-                            max: 16 * 1024,
-                        },
-                    ));
-                }
-                if !matches!(arguments[3], Value::LogFields(_)) {
-                    return Err(type_mismatch(
-                        "BNLog.Fields",
-                        "non-BNLog.Fields value",
-                        "BNLog.Logger.Log fields",
-                        span,
-                    ));
-                }
-                let Value::LogFields(fields_id) = arguments[3] else {
-                    unreachable!("fields type was validated above")
-                };
-                let provided = self.fields.get(&fields_id).ok_or_else(|| {
-                    runtime_error(
-                        bn_diag::DiagId::USE_AFTER_RELEASE,
-                        "BNLog.Fields is invalid",
-                        span,
-                    )
-                })?;
-                let Some(level) = Level::from_i128(level) else {
-                    unreachable!("level was validated above")
-                };
-                let sink = CoreSink(std::cell::RefCell::new(core));
-                Ok(logger
-                    .write(&sink, level, message, provided)
-                    .map_or_else(|failure| failed(name, &failure), |()| Value::Null))
-            }
-            "Flush" | "Close" => {
-                require_arity(name, arguments, 2, span)?;
-                let timeout = integer(&arguments[1], span)?.0;
-                if !(1..=60_000).contains(&timeout) {
-                    return Ok(failed(
-                        name,
-                        &LogFailure::OutOfRange {
-                            what: "timeout",
-                            value: timeout,
-                            min: 1,
-                            max: 60_000,
-                        },
-                    ));
-                }
-                let mut first_error = None;
-                for transport in &logger.file_transports {
-                    let result = core
-                        .host()
-                        .filesystem()
-                        .open(
-                            std::path::Path::new(&transport.path),
-                            bn_rt::secure_fs::OpenMode::Append,
-                        )
-                        .and_then(|file| file.sync_all());
-                    if let Err(error) = result {
-                        first_error.get_or_insert_with(|| error.to_string());
-                    }
-                }
-                if !logger.console_transports.is_empty()
-                    && let Err(error) = core.output().flush()
-                {
-                    first_error.get_or_insert_with(|| error.to_string());
-                }
-                if let Some(error) = first_error {
-                    return Ok(failed(name, &LogFailure::IoFailed(error)));
-                }
-                if method == "Close" {
-                    lock(self.loggers.get(id).expect("logger was checked above")).closed = true;
-                }
-                Ok(Value::Null)
-            }
-            _ => Ok(failed(
-                name,
-                &LogFailure::Unavailable("BNLog.Logger operation unavailable"),
-            )),
+            Err(failure) => failed(operation, &failure),
         }
     }
 }
 
-/// The `Error` of a failed member `name` (`BNLog.Logger.Log`),
-/// with the report the native ABI records for the same failure.
-fn failed(name: &str, failure: &LogFailure) -> Value {
-    let mut parts = name.rsplit('.');
-    let method = parts.next().unwrap_or_default();
-    let class = parts.next().unwrap_or_default();
+/// One call on an open logger; `Err` is a diagnostic that stops the program
+/// (a wrong argument type the checker let through), `Ok(Err)` a BN `Error`.
+fn logger_call(
+    logger: &mut bn_core_log::Logger,
+    sink: &CoreSink<'_>,
+    operation: &str,
+    member: &str,
+    arguments: &[Value],
+    span: Span,
+) -> Result<Result<(), LogFailure>, Diagnostic> {
+    if let Some(level) = Level::of_operation(operation) {
+        let message = string_argument(arguments, 1, operation, span)?;
+        let event = event_fields(record_argument(arguments, 2, operation, span)?);
+        return Ok(logger.write_event(sink, level, &message, &event));
+    }
+    if member == WEB_ACCESS_MEMBER {
+        let mut fields = FieldMap::new();
+        for pair in arguments[1..].chunks(2) {
+            if let [Value::String(key), Value::String(value)] = pair {
+                fields.insert(key.to_string(), value.to_string());
+            }
+        }
+        return Ok(logger.write_access(sink, &fields));
+    }
+    Ok(match Operation::of_name(operation) {
+        Some(Operation::Access) => {
+            let request = apache_fields(record_argument(arguments, 1, operation, span)?);
+            logger.write_access(sink, &request)
+        }
+        Some(Operation::SetLevel) => logger.set_level(integer_argument(arguments, 1, span)?),
+        Some(Operation::SetDefaults) => {
+            let defaults = event_fields(record_argument(arguments, 1, operation, span)?);
+            logger.set_event_defaults(defaults)
+        }
+        Some(Operation::SetAccessDefaults) => {
+            let defaults = apache_fields(record_argument(arguments, 1, operation, span)?);
+            logger.set_access_defaults(defaults)
+        }
+        Some(Operation::Flush) => logger.flush(sink, integer_argument(arguments, 1, span)?),
+        Some(Operation::Close) => logger.close(sink, integer_argument(arguments, 1, span)?),
+        Some(Operation::New) | None => Err(LogFailure::Unavailable(bn_catalog::text(
+            "bnlog",
+            "error.unavailable.cause",
+        ))),
+    })
+}
+
+fn string_argument(
+    arguments: &[Value],
+    index: usize,
+    operation: &str,
+    span: Span,
+) -> Result<String, Diagnostic> {
+    match arguments.get(index) {
+        Some(Value::String(text)) => Ok(text.to_string()),
+        _ => Err(type_mismatch("STRING", "non-STRING value", operation, span)),
+    }
+}
+
+fn integer_argument(arguments: &[Value], index: usize, span: Span) -> Result<i128, Diagnostic> {
+    let value = arguments.get(index).unwrap_or(&Value::Null);
+    integer(value, span).map(|(value, _)| value)
+}
+
+fn record_argument<'a>(
+    arguments: &'a [Value],
+    index: usize,
+    operation: &str,
+    span: Span,
+) -> Result<&'a RecordValue, Diagnostic> {
+    match arguments.get(index) {
+        Some(Value::Record { record }) => Ok(record),
+        _ => Err(type_mismatch(
+            "STRUCT",
+            bn_catalog::text("bnlog", "context.non_struct"),
+            operation,
+            span,
+        )),
+    }
+}
+
+/// The text in `slot` of a record, or `""`.
+fn slot_text(record: &RecordValue, slot: usize) -> String {
+    match record.get(slot) {
+        Some(Value::String(text)) => text.to_string(),
+        _ => String::new(),
+    }
+}
+
+/// The integer in `slot` of a record, or `0`.
+fn slot_number(record: &RecordValue, slot: usize) -> i64 {
+    match record.get(slot) {
+        Some(Value::Integer(value, _)) => i64::try_from(*value).unwrap_or(0),
+        _ => 0,
+    }
+}
+
+/// The set fields of a `Log.Event` (slots in declaration order).
+fn event_fields(record: &RecordValue) -> FieldMap {
+    Event {
+        service: slot_text(record, 0),
+        request_id: slot_text(record, 1),
+        route: slot_text(record, 2),
+        user: slot_text(record, 3),
+        detail: slot_text(record, 4),
+        code: slot_number(record, 5),
+    }
+    .fields()
+}
+
+/// The set fields of a `Log.Apache` (slots in declaration order).
+fn apache_fields(record: &RecordValue) -> FieldMap {
+    Apache {
+        remote: slot_text(record, 0),
+        method: slot_text(record, 1),
+        path: slot_text(record, 2),
+        protocol: slot_text(record, 3),
+        status: slot_number(record, 4),
+        bytes: slot_number(record, 5),
+        referrer: slot_text(record, 6),
+        agent: slot_text(record, 7),
+    }
+    .fields()
+}
+
+/// `USE_AFTER_RELEASE` for a logger the program no longer holds.
+fn invalid_logger(span: Span) -> Diagnostic {
+    runtime_error(
+        bn_diag::DiagId::USE_AFTER_RELEASE,
+        "BNLog.Logger is invalid",
+        span,
+    )
+}
+
+/// The `Error` of a failed operation (`BNLog.Logger.Info`), with the report
+/// the native ABI records for the same failure.
+fn failed(operation: &str, failure: &LogFailure) -> Value {
     Value::error_report(
         failure.code(),
-        &format!("BNLog.{class}.{method}"),
+        operation,
         failure.message(),
         failure.cause(),
     )
 }
 
-/// Where a `Logger.Log` called by the program writes: the program output and
-/// the host filesystem policy of the interpreter.
+/// Where a logger called by the program writes: the program output and the
+/// host filesystem policy of the interpreter.
 struct CoreSink<'a>(std::cell::RefCell<&'a mut dyn CoreContext>);
 
 impl bn_core_log::LogSink for CoreSink<'_> {
@@ -764,6 +297,9 @@ impl bn_core_log::LogSink for CoreSink<'_> {
     }
     fn console(&self, line: &str) -> std::io::Result<()> {
         writeln!(self.0.borrow_mut().output(), "{line}")
+    }
+    fn flush_console(&self) -> std::io::Result<()> {
+        self.0.borrow_mut().output().flush()
     }
     fn open_append(&self, path: &std::path::Path) -> std::io::Result<Box<dyn std::io::Write>> {
         self.0
@@ -784,5 +320,81 @@ mod tests {
             let line = format!("EXPORT CONST {name} AS INTEGER = {value}");
             assert!(module.contains(&line), "BNLog.bn lacks `{line}`");
         }
+    }
+}
+
+#[cfg(test)]
+mod lifetime_tests {
+    use super::LogProvider;
+    use bn_interp::provider::Provider;
+    use bn_source::Span;
+    use bn_value::Value;
+
+    struct NoSink;
+
+    impl bn_core_log::LogSink for NoSink {
+        fn timestamp(&self) -> String {
+            String::new()
+        }
+        fn console(&self, _: &str) -> std::io::Result<()> {
+            Ok(())
+        }
+        fn flush_console(&self) -> std::io::Result<()> {
+            Ok(())
+        }
+        fn open_append(&self, _: &std::path::Path) -> std::io::Result<Box<dyn std::io::Write>> {
+            Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+        }
+    }
+
+    /// A copy retains the logger, each binding's end releases one, and the
+    /// last release destroys it (known issue K61).
+    #[test]
+    fn the_last_release_destroys_a_logger() {
+        let mut provider = LogProvider::default();
+        let logger = bn_core_log::Logger::open(
+            "app",
+            "JSON",
+            "NULL",
+            bn_core_log::Imports::default(),
+            &NoSink,
+        )
+        .expect("null logger");
+        provider.loggers.insert(1, logger);
+        provider.holders.insert(1, 1);
+        let value = Value::LogLogger(1);
+        let position = bn_source::Position {
+            source_id: bn_source::Position::UNKNOWN_SOURCE,
+            revision: bn_source::Position::UNKNOWN_REVISION,
+            offset: 0,
+            line: 1,
+            column: 1,
+        };
+        let span = Span {
+            start: position,
+            end: position,
+        };
+        assert!(
+            provider
+                .retain(&value, span)
+                .is_some_and(|result| result.is_ok())
+        );
+        assert!(
+            provider
+                .release(&value, span)
+                .is_some_and(|result| result.is_ok())
+        );
+        assert!(provider.loggers.contains_key(&1));
+        assert!(
+            provider
+                .release(&value, span)
+                .is_some_and(|result| result.is_ok())
+        );
+        assert!(!provider.loggers.contains_key(&1));
+        assert!(
+            provider
+                .retain(&value, span)
+                .is_some_and(|result| result.is_err())
+        );
     }
 }

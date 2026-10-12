@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports, clippy::too_many_lines)]
 use super::*;
 use crate::ir::{CastOp, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
-use crate::layout::{handle_result_ty, typed_llvm};
+use crate::layout::handle_result_ty;
 
 fn v(id: ValueId) -> O {
     O::reg(format!("v{}", id.0))
@@ -9,7 +9,7 @@ fn v(id: ValueId) -> O {
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn lower_access_emission(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     module: &Module,
     _function: &Function,
     block_id: BlockId,
@@ -44,7 +44,7 @@ pub(crate) fn lower_access_emission(
                     _ => 2,
                 };
                 let dest = destination.0;
-                let record = I::extract(typed_llvm(aggregate), v(*object), 1);
+                let record = I::extract(aggregate, v(*object), 1);
                 text.assign(format!("errorptr{dest}"), record);
                 let args = vec![
                     (T::Ptr, O::reg(format!("errorptr{dest}"))),
@@ -62,12 +62,12 @@ pub(crate) fn lower_access_emission(
                     .and_then(llvm_type)
                     .expect("validated error aggregate");
                 let code = O::reg(format!("errorcode{dest}"));
-                if aggregate == "{ i1, ptr, i64 }" {
+                if aggregate == crate::layout::handle_result_ty() {
                     let field = I::extract(handle_result_ty(), v(*object), 2);
                     text.assign(format!("errorcode{dest}"), field);
                 } else {
                     // No code field: the runtime record carries the code.
-                    let record = I::extract(typed_llvm(aggregate), v(*object), 1);
+                    let record = I::extract(aggregate, v(*object), 1);
                     text.assign(format!("errorrecord{dest}"), record);
                     let args = vec![(T::Ptr, O::reg(format!("errorrecord{dest}")))];
                     text.assign(
@@ -217,16 +217,17 @@ pub(crate) fn lower_access_emission(
                 state,
                 bn_diag::DiagId::INDEX_OUT_OF_BOUNDS,
                 vec![
-                    ("index", Fact::Runtime("{}", String::new())),
-                    ("bound", Fact::Runtime("{}", String::new())),
+                    // No operand is read: `bn_rt` fills both facts itself.
+                    ("index", Fact::Runtime("{}", O::int(0))),
+                    ("bound", Fact::Runtime("{}", O::int(0))),
                     ("context", Fact::Text("string".into())),
                 ],
             );
             let r = |name: &str| O::reg(format!("strindex{name}{dest}"));
             let args = vec![
                 (T::Ptr, v(*object)),
-                (T::I32, O::raw(idx)),
-                (T::Ptr, O::raw(trap)),
+                (T::I32, idx),
+                (T::Ptr, O::global(trap)),
             ];
             let packed = I::call(T::I64, "bn_rt_str_index_utf8", args);
             text.assign(format!("strindexpacked{dest}"), packed);
@@ -250,7 +251,7 @@ pub(crate) fn lower_access_emission(
             let index =
                 coerce_to_type(text, *index, index_type, &Type::Integer(IntegerType::Int32));
             let dest = destination.0;
-            let at = vec![(T::I32, O::raw(index))];
+            let at = vec![(T::I32, index)];
             text.assign(format!("argptr{dest}"), I::gep(T::Ptr, O::reg("argv"), at));
             text.assign(
                 format!("v{dest}"),
@@ -262,15 +263,19 @@ pub(crate) fn lower_access_emission(
     true
 }
 
-fn extend_to_i32_index(text: &mut String, value: ValueId, ty: &Type) -> String {
+fn extend_to_i32_index(
+    text: &mut crate::ir::LlvmModule,
+    value: ValueId,
+    ty: &Type,
+) -> crate::ir::LlvmOperand {
     let llvm_ty = llvm_type(ty).expect("validated index type");
     let op = match llvm_ty {
-        "i32" => return format!("%v{}", value.0),
-        "i64" => CastOp::Trunc,
+        T::I32 => return O::reg(format!("v{}", value.0)),
+        T::I64 => CastOp::Trunc,
         _ if is_unsigned(ty) => CastOp::ZExt,
         _ => CastOp::SExt,
     };
     let temp = format!("stridx{}", value.0);
-    text.assign(&temp, I::cast(op, typed_llvm(llvm_ty), v(value), T::I32));
-    format!("%{temp}")
+    text.assign(&temp, I::cast(op, llvm_ty, v(value), T::I32));
+    O::reg(&temp)
 }

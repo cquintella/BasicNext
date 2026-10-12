@@ -286,35 +286,28 @@ pub fn emit_build_output(
         match compiled {
             Ok(compiled) if compiled.status.success() => {
                 failed_tool = "wasm-ld";
+                let object_path = object.to_string_lossy();
+                // `__data_end` is the low end of the stack, which `wasm-ld` places
+                // above the data: the host's `bn_rt_stack_check` reads it.
+                let wasm_ld_args = [
+                    build_options.optimization.linker_flag(),
+                    "--no-entry",
+                    "--export=main",
+                    "--export=__heap_base",
+                    "--export=__data_end",
+                    "--allow-undefined",
+                    object_path.as_ref(),
+                    "-o",
+                    output,
+                ];
                 process_log.event(
                     LogLevel::Debug,
                     "external",
                     "invoke",
-                    format!(
-                        "tool=wasm-ld argv={:?}",
-                        [
-                            build_options.optimization.linker_flag(),
-                            "--no-entry",
-                            "--export=main",
-                            "--export=__heap_base",
-                            "--allow-undefined",
-                            object.to_string_lossy().as_ref(),
-                            "-o",
-                            output,
-                        ]
-                    ),
+                    format!("tool=wasm-ld argv={wasm_ld_args:?}"),
                 );
                 std::process::Command::new(configured_wasm_ld())
-                    .args([
-                        build_options.optimization.linker_flag(),
-                        "--no-entry",
-                        "--export=main",
-                        "--export=__heap_base",
-                        "--allow-undefined",
-                        object.to_string_lossy().as_ref(),
-                        "-o",
-                        output,
-                    ])
+                    .args(wasm_ld_args)
                     .output()
             }
             compiled => compiled,

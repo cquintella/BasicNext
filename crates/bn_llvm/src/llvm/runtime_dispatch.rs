@@ -26,7 +26,7 @@ use runtime_abi::{
 };
 
 pub(crate) fn lower_bn_dispatch_call(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     name: &str,
     arguments: &[ValueId],
@@ -34,12 +34,8 @@ pub(crate) fn lower_bn_dispatch_call(
 ) {
     let dest = destination.0;
     let reg = LlvmOperand::reg;
-    let argument_i64 = |text: &mut String, value: ValueId, what: &str| {
-        LlvmOperand::raw(extend_to_i64(
-            text,
-            value,
-            analysis.values.get(&value).expect(what),
-        ))
+    let argument_i64 = |text: &mut crate::ir::LlvmModule, value: ValueId, what: &str| {
+        extend_to_i64(text, value, analysis.values.get(&value).expect(what))
     };
     if name.ends_with(".Queue.Concurrent")
         || name.ends_with(".Queue.Serial")
@@ -63,8 +59,8 @@ pub(crate) fn lower_bn_dispatch_call(
         emit_handle_result(
             text,
             destination,
-            format!("%dispatchrc{dest}"),
-            format!("%dispatchhandle{dest}"),
+            &LlvmOperand::reg(format!("dispatchrc{dest}")),
+            &LlvmOperand::reg(format!("dispatchhandle{dest}")),
         );
         return;
     }
@@ -91,8 +87,8 @@ pub(crate) fn lower_bn_dispatch_call(
         emit_handle_result(
             text,
             destination,
-            format!("%dispatchrc{dest}"),
-            format!("%dispatchcreated{dest}"),
+            &LlvmOperand::reg(format!("dispatchrc{dest}")),
+            &LlvmOperand::reg(format!("dispatchcreated{dest}")),
         );
         return;
     }
@@ -160,10 +156,10 @@ pub(crate) fn lower_bn_dispatch_call(
         emit_status_result(
             text,
             destination,
-            &format!("%dispatchcancelrc{dest}"),
+            &LlvmOperand::reg(format!("dispatchcancelrc{dest}")),
             None,
-            "null",
-            &format!("%dispatchcancelsext{dest}"),
+            &LlvmOperand::null(),
+            &LlvmOperand::reg(format!("dispatchcancelsext{dest}")),
         );
         return;
     }
@@ -173,7 +169,7 @@ pub(crate) fn lower_bn_dispatch_call(
     }
     if name.ends_with(".Ticket.Wait") {
         let call = DISPATCH_AWAIT.call([handle, timeout, LlvmOperand::null(), LlvmOperand::null()]);
-        emit_void_result(text, destination, call.to_string());
+        emit_void_call_result(text, destination, call);
         return;
     }
     if name.ends_with(".Barrier.Wait") {
@@ -192,8 +188,8 @@ pub(crate) fn lower_bn_dispatch_call(
         emit_handle_result(
             text,
             destination,
-            format!("%dispatchrc{dest}"),
-            format!("%dispatchlastw{dest}"),
+            &LlvmOperand::reg(format!("dispatchrc{dest}")),
+            &LlvmOperand::reg(format!("dispatchlastw{dest}")),
         );
         return;
     }
@@ -219,12 +215,12 @@ pub(crate) fn lower_bn_dispatch_call(
     } else {
         DISPATCH_TICKET_CLOSE.call([handle])
     };
-    emit_void_result(text, destination, call.to_string());
+    emit_void_call_result(text, destination, call);
 }
 
 /// `Ticket.Error`: the failure message and code a ticket recorded, or
 /// `N/A` and 0 when it has none.
-fn lower_ticket_error(text: &mut String, dest: u32, handle: LlvmOperand) {
+fn lower_ticket_error(text: &mut crate::ir::LlvmModule, dest: u32, handle: LlvmOperand) {
     let reg = LlvmOperand::reg;
     let result = handle_result_ty();
     text.assign(format!("dispatcherrmsg{dest}"), LlvmInst::alloca(Ptr));

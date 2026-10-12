@@ -11,7 +11,7 @@ use super::*;
 use crate::ir::{
     BinaryOp, CastOp, ICmpCond, InstSink, LlvmInst as I, LlvmOperand as O, LlvmType as T,
 };
-use crate::layout::{AlternativeLayout, handle_result_ty, typed_llvm, vector_ty};
+use crate::layout::{AlternativeLayout, handle_result_ty, vector_ty};
 
 /// The pointer a `{ i1, ptr, i64 }` alternative stores for a value that is
 /// neither the payload nor an `Error`: `NA` or `EOF`.
@@ -35,10 +35,11 @@ impl Sentinel {
         }
     }
 
-    pub(crate) const fn global(self) -> (&'static str, &'static str) {
+    pub(crate) fn global(self) -> (&'static str, T) {
+        let bytes = |count| T::Array(count, Box::new(T::I8));
         match self {
-            Self::NotAvailable => ("@.bn_na", "[3 x i8]"),
-            Self::EndOfFile => ("@.bn_eof", "[4 x i8]"),
+            Self::NotAvailable => ("@.bn_na", bytes(3)),
+            Self::EndOfFile => ("@.bn_eof", bytes(4)),
         }
     }
 }
@@ -72,7 +73,7 @@ pub(crate) fn narrows(stored: &Type, loaded: &Type) -> bool {
     let from_payload = matches!(
         loaded,
         Type::String | Type::Integer(_) | Type::Boolean | Type::Float(_)
-    ) && llvm_type(stored) == Some("{ i1, ptr, i64 }")
+    ) && llvm_type(stored) == Some(crate::layout::handle_result_ty())
         && matches!(stored, Type::Alternative(alternatives) if alternatives.contains(loaded));
     from_payload || narrows_to_error(stored, loaded) || narrows_to_endpoint(stored, loaded)
 }
@@ -80,8 +81,8 @@ pub(crate) fn narrows(stored: &Type, loaded: &Type) -> bool {
 /// `HOST.Net.Endpoint` narrowed out of `Endpoint OR Error` (`{ i1, ptr, i32 }`):
 /// the address and port fields (known issue K36).
 fn narrows_to_endpoint(stored: &Type, loaded: &Type) -> bool {
-    llvm_type(stored) == Some("{ i1, ptr, i32 }")
-        && llvm_type(loaded) == Some("{ ptr, i32 }")
+    llvm_type(stored) == Some(crate::layout::status_endpoint_ty())
+        && llvm_type(loaded) == Some(crate::layout::vector_ty())
         && matches!(stored, Type::Alternative(alternatives) if alternatives.contains(loaded))
 }
 
@@ -90,7 +91,15 @@ fn narrows_to_endpoint(stored: &Type, loaded: &Type) -> bool {
 /// pointer is the runtime record, which carries the code.
 fn narrows_to_error(stored: &Type, loaded: &Type) -> bool {
     is_error_type(loaded)
-        && matches!(llvm_type(stored), Some("{ i1, ptr }" | "{ i1, ptr, i32 }"))
+        && llvm_type(stored).is_some_and(|ty| {
+            crate::layout::is_one_of(
+                &ty,
+                &[
+                    crate::layout::status_pointer_ty(),
+                    crate::layout::status_endpoint_ty(),
+                ],
+            )
+        })
         && matches!(stored, Type::Alternative(alternatives) if alternatives.iter().any(is_error_type))
 }
 
@@ -120,7 +129,7 @@ pub(crate) fn alternative_is(value_ty: &Type, test: &str) -> bool {
 /// Loads a value narrowed by `IS` (see [`narrows`]) from a
 /// `{ i1, ptr, i64 }` slot.
 pub(crate) fn emit_narrowed_load(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     slot: usize,
     stored: Option<&Type>,
@@ -132,16 +141,11 @@ pub(crate) fn emit_narrowed_load(
         text.assign(
             held.clone(),
             crate::ir::LlvmInst::load(
-                crate::layout::typed_llvm(GENERAL_LAYOUT),
-                crate::ir::LlvmOperand::reg(format!("s{slot}")),
+                crate::general_alternative::layout(),
+                O::reg(format!("s{slot}")),
             ),
         );
-        general_alternative::extract(
-            text,
-            &format!("v{dest}"),
-            &crate::ir::LlvmOperand::reg(held),
-            loaded,
-        );
+        general_alternative::extract(text, &format!("v{dest}"), &O::reg(held), loaded);
         return;
     }
     let union = T::struct_of([T::I1, T::Ptr, T::I64]);
@@ -173,7 +177,7 @@ pub(crate) fn emit_narrowed_load(
         return;
     }
     if let Some(stored) = stored.filter(|stored| narrows_to_error(stored, loaded)) {
-        let layout = typed_llvm(llvm_type(stored).expect("validated error layout"));
+        let layout = llvm_type(stored).expect("validated error layout");
         text.assign(
             format!("narrowload{dest}"),
             I::load(layout.clone(), O::reg(format!("s{slot}"))),
@@ -232,8 +236,8 @@ pub(crate) fn emit_narrowed_load(
             );
             I::cast(CastOp::FPTrunc, T::Double, reg("narrowdouble"), T::Float)
         }
-        (_, Some("i64")) => I::binary(BinaryOp::Add, T::I64, O::int(0), payload),
-        (_, Some(width)) => I::cast(CastOp::Trunc, T::I64, payload, typed_llvm(width)),
+        (_, Some(T::I64)) => I::binary(BinaryOp::Add, T::I64, O::int(0), payload),
+        (_, Some(width)) => I::cast(CastOp::Trunc, T::I64, payload, width),
         (_, None) => unreachable!("validated narrowed type"),
     };
     text.assign(format!("v{dest}"), conversion);
@@ -242,7 +246,7 @@ pub(crate) fn emit_narrowed_load(
 /// `IS` on an alternative with a sentinel (`STRING OR NA OR Error`,
 /// `STRING OR EOF OR Error`, ...). Returns false when `left_ty` has none.
 pub(crate) fn emit_sentinel_is(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     left: ValueId,
     left_ty: &Type,
@@ -272,7 +276,7 @@ pub(crate) fn emit_sentinel_is(
     let at = vec![(T::I64, O::int(0)), (T::I64, O::int(0))];
     text.assign(
         format!("cellnaptr{id}"),
-        I::gep(typed_llvm(array), O::raw(global), at),
+        I::gep(array, O::global(global), at),
     );
     text.assign(
         format!("cellna{id}"),
@@ -352,11 +356,11 @@ pub(crate) fn opaque_or_error(alternatives: &[Type]) -> bool {
 /// Converts `value`, of type `from`, into the alternative `to`: the one
 /// construction helper. `None` when `to` needs no conversion from `from`.
 pub(crate) fn construct(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     value: ValueId,
     from: &Type,
     to: &Type,
-) -> Option<String> {
+) -> Option<crate::ir::LlvmOperand> {
     let Type::Alternative(members) = to else {
         return None;
     };
@@ -364,14 +368,16 @@ pub(crate) fn construct(
     let operand = O::reg(format!("v{v}"));
     match AlternativeLayout::of(members)? {
         AlternativeLayout::General => {
-            // `text.len()` keeps names unique when one value converts twice.
-            let name = format!("genwrap{v}_{}", text.len());
-            Some(general_alternative::wrap(text, &name, operand, from, members).to_string())
+            // `fresh_tag` keeps names unique when one value converts twice.
+            let name = format!("genwrap{v}_{}", text.fresh_tag());
+            Some(general_alternative::wrap(
+                text, &name, operand, from, members,
+            ))
         }
         AlternativeLayout::Status if general_alternative(from).is_some() => {
-            let name = format!("genwiden{v}_{}", text.len());
+            let name = format!("genwiden{v}_{}", text.fresh_tag());
             let widened = general_alternative::narrow_layout(text, &name, operand, members);
-            Some(widened.to_string())
+            Some(widened)
         }
         AlternativeLayout::Status => {
             let sentinel = Sentinel::of(members).filter(|sentinel| {
@@ -383,7 +389,7 @@ pub(crate) fn construct(
             });
             if let Some(sentinel) = sentinel {
                 // `NA` / `EOF` is its sentinel pointer, not an error.
-                let name = format!("nasentinel{v}_{}", text.len());
+                let name = format!("nasentinel{v}_{}", text.fresh_tag());
                 let pointer = O::global(sentinel.global().0.trim_start_matches('@'));
                 return Some(emit_status(text, &name, O::bool(false), pointer, O::int(0)));
             }
@@ -395,7 +401,7 @@ pub(crate) fn construct(
                     && members.contains(&Type::EndOfFile));
             let scalar = matches!(
                 from_llvm,
-                "i1" | "i8" | "i16" | "i32" | "i64" | "float" | "double"
+                T::I1 | T::I8 | T::I16 | T::I32 | T::I64 | T::Float | T::Double
             );
             (scalar || *from == Type::String || string_or_eof)
                 .then(|| wrap_success(text, value, from, from_llvm))
@@ -406,13 +412,13 @@ pub(crate) fn construct(
         layout @ (AlternativeLayout::StatusEndpoint | AlternativeLayout::StatusPointer)
             if is_error_type(from) =>
         {
-            let name = format!("errwiden{v}_{}", text.len());
+            let name = format!("errwiden{v}_{}", text.fresh_tag());
             let record = O::reg(format!("{name}_record"));
             text.assign(
                 format!("{name}_record"),
                 I::extract(handle_result_ty(), operand, 1),
             );
-            let ty = typed_llvm(layout.llvm());
+            let ty = layout.llvm();
             let flag = I::insert(ty.clone(), O::undef(), T::I1, O::bool(true), 0);
             text.assign(format!("{name}_flag"), flag);
             let flagged = O::reg(format!("{name}_flag"));
@@ -426,7 +432,7 @@ pub(crate) fn construct(
                 let with_record = O::reg(format!("{name}_ptr"));
                 text.assign(&name, I::insert(ty, with_record, T::I32, O::int(0), 2));
             }
-            Some(format!("%{name}"))
+            Some(O::reg(&name))
         }
         _ => None,
     }
@@ -434,7 +440,13 @@ pub(crate) fn construct(
 
 /// `{ i1 error, ptr, i64 }` from its three fields, as `%{name}`; the
 /// intermediate registers are `%{name}_flag` and `%{name}_ptr`.
-fn emit_status(text: &mut String, name: &str, error: O, pointer: O, payload: O) -> String {
+fn emit_status(
+    text: &mut crate::ir::LlvmModule,
+    name: &str,
+    error: O,
+    pointer: O,
+    payload: O,
+) -> crate::ir::LlvmOperand {
     let union = handle_result_ty();
     let flag = I::insert(union.clone(), O::undef(), T::I1, error, 0);
     text.assign(format!("{name}_flag"), flag);
@@ -448,21 +460,26 @@ fn emit_status(text: &mut String, name: &str, error: O, pointer: O, payload: O) 
     text.assign(format!("{name}_ptr"), with_pointer);
     let full = I::insert(union, O::reg(format!("{name}_ptr")), T::I64, payload, 2);
     text.assign(name, full);
-    format!("%{name}")
+    O::reg(name)
 }
 
 /// A scalar or STRING as the success of a `T OR Error` / `T OR EOF OR …`
 /// value: a STRING in the pointer, any other scalar in the `i64` payload
 /// (floats as their `double` bits), as `RETURN` builds it.
-fn wrap_success(text: &mut String, value: ValueId, from: &Type, from_llvm: &str) -> String {
+fn wrap_success(
+    text: &mut crate::ir::LlvmModule,
+    value: ValueId,
+    from: &Type,
+    from_llvm: T,
+) -> crate::ir::LlvmOperand {
     let v = value.0;
     let own = O::reg(format!("v{v}"));
     let bits = O::reg(format!("wrapbits{v}"));
     let (pointer, payload) = match from_llvm {
-        "ptr" => (own, O::int(0)),
-        "i64" => (O::null(), own),
-        "float" | "double" => {
-            let wide = if from_llvm == "float" {
+        T::Ptr => (own, O::int(0)),
+        T::I64 => (O::null(), own),
+        floating if floating.is_floating() => {
+            let wide = if floating == T::Float {
                 let fpext = I::cast(CastOp::FPExt, T::Float, own, T::Double);
                 text.assign(format!("wrapwide{v}"), fpext);
                 O::reg(format!("wrapwide{v}"))
@@ -475,12 +492,12 @@ fn wrap_success(text: &mut String, value: ValueId, from: &Type, from_llvm: &str)
         }
         narrow => {
             // `i1` is BOOLEAN, 0 or 1.
-            let extend = if narrow != "i1" && !is_unsigned(from) {
+            let extend = if narrow != T::I1 && !is_unsigned(from) {
                 CastOp::SExt
             } else {
                 CastOp::ZExt
             };
-            let cast = I::cast(extend, typed_llvm(narrow), own, T::I64);
+            let cast = I::cast(extend, narrow, own, T::I64);
             text.assign(format!("wrapbits{v}"), cast);
             (O::null(), bits)
         }
@@ -498,5 +515,5 @@ fn wrap_success(text: &mut String, value: ValueId, from: &Type, from_llvm: &str)
     text.assign(format!("wrapptr{v}"), with_pointer);
     let full = I::insert(union, O::reg(format!("wrapptr{v}")), T::I64, payload, 2);
     text.assign(format!("wrap{v}"), full);
-    format!("%wrap{v}")
+    O::reg(format!("wrap{v}"))
 }

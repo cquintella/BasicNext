@@ -33,7 +33,7 @@ pub(crate) fn sqlite_call_supported(
 }
 
 pub(crate) fn lower_sqlite_call(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     method: &str,
     arguments: &[ValueId],
@@ -42,28 +42,29 @@ pub(crate) fn lower_sqlite_call(
     let dest = destination.0;
     let r = |name: &str| O::reg(format!("sqlite{name}{dest}"));
     let v = |index: usize| O::reg(format!("v{}", arguments[index].0));
-    let handle = |text: &mut String| {
+    let handle = |text: &mut crate::ir::LlvmModule| {
         emit_handle_operand(text, analysis, format!("sqliteh{dest}"), arguments[0]);
         (T::I64, r("h"))
     };
     // A call whose status is the `VOID OR Error` result.
-    let status = |text: &mut String, symbol: &str, args| {
+    let status = |text: &mut crate::ir::LlvmModule, symbol: &str, args| {
         text.assign(format!("sqliterc{dest}"), I::call(T::I32, symbol, args));
-        emit_void_result(text, destination, format!("%sqliterc{dest}"));
+        emit_void_result(text, destination, &O::reg(format!("sqliterc{dest}")));
     };
     // A call that writes a new handle through its last argument.
-    let new_handle = |text: &mut String, symbol: &str, mut args: Vec<(T, O)>, value: &str| {
-        text.assign(format!("sqliteout{dest}"), I::alloca(T::I64));
-        args.push((T::Ptr, r("out")));
-        text.assign(format!("sqliterc{dest}"), I::call(T::I32, symbol, args));
-        text.assign(format!("sqlite{value}{dest}"), I::load(T::I64, r("out")));
-        emit_handle_result(
-            text,
-            destination,
-            format!("%sqliterc{dest}"),
-            format!("%sqlite{value}{dest}"),
-        );
-    };
+    let new_handle =
+        |text: &mut crate::ir::LlvmModule, symbol: &str, mut args: Vec<(T, O)>, value: &str| {
+            text.assign(format!("sqliteout{dest}"), I::alloca(T::I64));
+            args.push((T::Ptr, r("out")));
+            text.assign(format!("sqliterc{dest}"), I::call(T::I32, symbol, args));
+            text.assign(format!("sqlite{value}{dest}"), I::load(T::I64, r("out")));
+            emit_handle_result(
+                text,
+                destination,
+                &O::reg(format!("sqliterc{dest}")),
+                &O::reg(format!("sqlite{value}{dest}")),
+            );
+        };
     match method {
         "Open" | "OpenReadOnly" | "OpenExisting" => {
             let symbol = match method {

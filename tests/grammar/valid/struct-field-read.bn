@@ -1,0 +1,17 @@
+// STRUCT fields read through a value, here and in another function, are
+// not unused bindings (known issue K54).
+STRUCT Row
+    name AS STRING
+    size AS INTEGER
+END STRUCT
+
+FUNCTION Show(r AS Row) AS VOID
+    PRINT r.name
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET r AS Row
+    r.name = "a"
+    PRINT r.size
+    Show(r)
+END FUNCTION

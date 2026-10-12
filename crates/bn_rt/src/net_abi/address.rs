@@ -7,6 +7,7 @@
 //! and forward resolution, neighbor lookup, and address collections. The
 //! operations are the shared core (`net::addressing`, `net::lookup`); a
 //! failure records its `Error` (status 1) for the emitted code to read.
+//! Also the address predicates and the `CIDR` parse and containment test.
 
 use super::*;
 
@@ -178,5 +179,97 @@ pub extern "C" fn bn_rt_net_addresses_free(handle: *mut std::ffi::c_void) {
         unsafe {
             drop(Box::from_raw(handle.cast::<AddressesHandle>()));
         }
+    }
+}
+
+/// 1 when the canonical address text emitted code holds satisfies
+/// `predicate`, else 0 (a text that is not an address satisfies none).
+fn address_satisfies(text: *const c_char, predicate: fn(net::Address) -> bool) -> i32 {
+    c_str(text)
+        .and_then(|text| net::parse_address(text).ok())
+        .map_or(0, |address| i32::from(predicate(address)))
+}
+
+/// `HOST.Net.Address.IsIPv4`.
+#[allow(unsafe_code)] // C ABI export.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_net_address_is_ipv4(text: *const c_char) -> i32 {
+    address_satisfies(text, net::Address::is_ipv4)
+}
+
+/// `HOST.Net.Address.IsIPv6`.
+#[allow(unsafe_code)] // C ABI export.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_net_address_is_ipv6(text: *const c_char) -> i32 {
+    address_satisfies(text, net::Address::is_ipv6)
+}
+
+/// `HOST.Net.Address.IsLoopback`.
+#[allow(unsafe_code)] // C ABI export.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_net_address_is_loopback(text: *const c_char) -> i32 {
+    address_satisfies(text, net::Address::is_loopback)
+}
+
+/// `HOST.Net.Address.IsPrivate`.
+#[allow(unsafe_code)] // C ABI export.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_net_address_is_private(text: *const c_char) -> i32 {
+    address_satisfies(text, net::Address::is_private)
+}
+
+/// `HOST.Net.Address.IsLinkLocal`.
+#[allow(unsafe_code)] // C ABI export.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_net_address_is_link_local(text: *const c_char) -> i32 {
+    address_satisfies(text, net::Address::is_link_local)
+}
+
+/// `HOST.Net.Address.IsMulticast`.
+#[allow(unsafe_code)] // C ABI export.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_net_address_is_multicast(text: *const c_char) -> i32 {
+    address_satisfies(text, net::Address::is_multicast)
+}
+
+/// `HOST.Net.CIDR.Parse`: `out_network` receives the canonical network
+/// address text, `out_prefix` the prefix length.
+#[allow(unsafe_code)] // C ABI export.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_net_cidr_parse(
+    text: *const c_char,
+    out_network: *mut *mut c_char,
+    out_prefix: *mut i32,
+) -> i32 {
+    // BN strings are UTF-8; an empty text fails the strict parse.
+    let text = c_str(text).unwrap_or_default();
+    let action = bn_catalog::fill("net", "cidr.parse.action", &[("text", &text)]);
+    let parsed = authorized(bn_catalog::text("net", "member.cidr.parse"), &action)
+        .and_then(|()| net::parse_cidr(text));
+    match parsed {
+        Ok(cidr) => {
+            write_out(out_network, c_string(&cidr.network().to_string()));
+            write_out(out_prefix, i32::from(cidr.prefix_length()));
+            0
+        }
+        Err(error) => failed(&error),
+    }
+}
+
+/// `HOST.Net.CIDR.Contains`: 1 when `address` is inside the prefix
+/// `network`/`prefix` (the parts of a parsed `CIDR`), else 0.
+#[allow(unsafe_code)] // C ABI export.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_net_cidr_contains(
+    network: *const c_char,
+    prefix: i32,
+    address: *const c_char,
+) -> i32 {
+    let cidr =
+        c_str(network).and_then(|network| net::Cidr::parse(&format!("{network}/{prefix}")).ok());
+    let address = c_str(address).and_then(|address| net::parse_address(address).ok());
+    match (cidr, address) {
+        (Some(cidr), Some(address)) => i32::from(cidr.contains(address)),
+        _ => 0,
     }
 }

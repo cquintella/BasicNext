@@ -100,15 +100,20 @@ struct PendingLayout {
     fields: Vec<PendingField>,
 }
 
+/// The declarations of a user module whose fields have a layout.
+const USER_LAYOUT_KINDS: &[DeclarationKind] = &[DeclarationKind::Class, DeclarationKind::Struct];
+
+/// The field layouts of the declarations of `program` whose kind is in `kinds`.
 fn collect_layouts(
     program: &Program,
     model: &SemanticModel,
     prefix: &str,
+    kinds: &[DeclarationKind],
     layouts: &mut HashMap<String, PendingLayout>,
 ) {
     for item in &program.items {
         let Item::Declaration {
-            kind: DeclarationKind::Class | DeclarationKind::Struct,
+            kind,
             name,
             statements,
             span,
@@ -117,6 +122,9 @@ fn collect_layouts(
         else {
             continue;
         };
+        if !kinds.contains(kind) {
+            continue;
+        }
         let owner = qualified_class_name(prefix, name);
         let fields = statements
             .iter()
@@ -289,7 +297,7 @@ fn lower_unvalidated(program: &Program, model: &SemanticModel) -> Result<Module,
     let functions = lower_program(program, model, "", &collect_methods(program, ""))?;
     let class_model = lowered_class_model(model, "");
     let mut pending_layouts = HashMap::new();
-    collect_layouts(program, model, "", &mut pending_layouts);
+    collect_layouts(program, model, "", USER_LAYOUT_KINDS, &mut pending_layouts);
     collect_semantic_record_layouts(model, "", &mut pending_layouts);
     let (field_names, field_layouts) =
         lowered_field_metadata(&pending_layouts, &class_model.bases)?;
@@ -383,7 +391,7 @@ fn lower_graph_unvalidated(
         let prefix = module_prefix(ir_module_id(graph.root), ir_module_id(loaded.id));
         // Standard modules contribute their class declarations (names only)
         // so a user class may implement a standard interface; their bodies
-        // are bound natively and are not lowered.
+        // are bound natively and are not lowered; their STATIC initializers are.
         let loaded_model = lowered_class_model(model, &prefix);
         for (sub, base) in loaded_model.bases {
             class_model.add_base(sub, base);
@@ -393,12 +401,38 @@ fn lower_graph_unvalidated(
                 class_model.add_interface(&sub, iface);
             }
         }
-        if loaded.standard_module.is_some() {
+        if let Some(standard) = loaded.standard_module {
+            // Its STRUCTs are values programs build (`Log.Event`); its classes
+            // are native resources with no fields.
+            collect_layouts(
+                &loaded.program,
+                model,
+                &prefix,
+                &[DeclarationKind::Struct],
+                &mut pending_layouts,
+            );
+            let declared = qualify::declared_type_names(&loaded.program);
+            qualify::qualify_layouts(&mut pending_layouts, &prefix, &declared);
+            // BNMath's STATIC fields are its range constants, folded where they
+            // are read (`is_bnmath_constant_owner`): they have no storage.
+            if standard == StandardModule::BNMath {
+                continue;
+            }
+            let mut data =
+                lower_standard_module_data(&loaded.program, model, &prefix, &method_names)?;
+            qualify::qualify_functions(&mut data, &prefix, &declared);
+            functions.extend(data);
             continue;
         }
         interfaces.extend(lowered_interfaces(&loaded.program, &prefix));
         let declared = qualify::declared_type_names(&loaded.program);
-        collect_layouts(&loaded.program, model, &prefix, &mut pending_layouts);
+        collect_layouts(
+            &loaded.program,
+            model,
+            &prefix,
+            USER_LAYOUT_KINDS,
+            &mut pending_layouts,
+        );
         collect_semantic_record_layouts(model, &prefix, &mut pending_layouts);
         qualify::qualify_layouts(&mut pending_layouts, &prefix, &declared);
         let mut lowered = lower_program(&loaded.program, model, &prefix, &method_names)?;
@@ -562,7 +596,9 @@ pub fn lower_graph(graph: &ModuleGraph, models: &[SemanticModel]) -> Result<Modu
 
 #[path = "lowering/lowering.rs"]
 mod program_lowering;
-use program_lowering::{class_method_name, collect_methods, lower_program, module_prefix};
+use program_lowering::{
+    class_method_name, collect_methods, lower_program, lower_standard_module_data, module_prefix,
+};
 
 #[path = "lowering/helpers.rs"]
 mod helpers;
@@ -570,10 +606,10 @@ use helpers::{
     assignment_operator, capability_constant, class_ir_name, clock_import_span,
     console_import_span, constant, destructor_name, display_type, env_import_span,
     exec_import_span, filesystem_import_span, host_capability_constant, ir_error,
-    is_host_or_builtin_owner, is_namespace_type, is_numeric_type_name, is_user_class_name,
-    math_constant, module_constant, module_id_from_prefix, named_or_void, namespace_function,
-    network_import_span, random_import_span, standard_import_span, static_class_name, type_at,
-    type_test_name, user_class_name,
+    is_bnmath_constant_owner, is_host_or_builtin_owner, is_namespace_type, is_numeric_type_name,
+    is_user_class_name, math_constant, module_constant, module_id_from_prefix, named_or_void,
+    namespace_function, network_import_span, random_import_span, standard_import_span,
+    static_class_name, type_at, type_test_name, user_class_name,
 };
 fn default_span() -> Span {
     Span {

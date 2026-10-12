@@ -3,10 +3,7 @@
 # under share/bn/ and remove its line here.
 #
 # Present before the rule: migrated domain by domain (H.S4.a).
-crates/bn_cli/src/check.rs	prose	check has no execution to trace
 crates/bn_cli/src/check.rs	prose	error: --emit llvm is a compiler option (bnc --emit llvm)
-crates/bn_cli/src/check.rs	prose	error: --emit llvm is a compiler option (bnc --emit llvm)
-crates/bn_cli/src/check.rs	prose	error: -o requires --emit with bn check
 crates/bn_cli/src/check.rs	prose	error: missing semantic model for the executable module
 crates/bn_cli/src/check.rs	prose	{}: lexical, syntax, and semantic checks passed
 crates/bn_cli/src/config.rs	prose	--config expects a file path
@@ -30,26 +27,16 @@ crates/bn_cli/src/frontend.rs	prose	parser completed: {} top-level items
 crates/bn_cli/src/frontend.rs	prose	semantic analysis
 crates/bn_cli/src/frontend.rs	prose	syntax analysis (module graph root reused)
 crates/bn_cli/src/help.rs	prose	  -v, --verbose              show pipeline stages (repeat for tokens: -v -v)\n  -vv                        show stages and tokens\n  --module-path <dir>        add an ordered import search directory (repeatable)\n  --sandbox                  opt into filesystem root restrictions\n  --read-root <dir>          allow reads below a sandbox root (repeatable)\n  --write-root <dir>         allow writes below a sandbox root (repeatable)\n  --warnings errors          promote all warning diagnostics to errors\n  --allow <CODE>             suppress one warning diagnostic (repeatable)\n  --warn <CODE>              keep one warning diagnostic at warning level\n  --deny <CODE>              promote one warning diagnostic to an error\n  --color auto|always|never  control ANSI color on status messages\n  --log-level error|warn|info|debug\n                             process log verbosity (build)\n  --log-file <file>          companion process log path (build)\n  --no-log                   disable the companion process log\n  --config <file>            load warning/logging configuration\n  -V, --version              print version\n  -h, --help                 print this help\n
-crates/bn_cli/src/help.rs	prose	--emit is a compiler option (bnc --emit tokens|ast|typed-ast|ir)
-crates/bn_cli/src/help.rs	prose	--format is available only with bni eval
-crates/bn_cli/src/help.rs	prose	--format json is an interpreter option (bni eval)
-crates/bn_cli/src/help.rs	prose	--jupyter-stdin is an interpreter option (bni run)
-crates/bn_cli/src/help.rs	prose	--no-filesystem is an interpreter option (bni run)
-crates/bn_cli/src/help.rs	prose	--trace is an interpreter option (bni run)
 crates/bn_cli/src/help.rs	prose	CONFIG_INVALID: 
 crates/bn_cli/src/help.rs	prose	error[CONFIG_INVALID]: {message}
 crates/bn_cli/src/options.rs	prose	--color expects auto, always, or never
 crates/bn_cli/src/options.rs	prose	--config expects a file path
-crates/bn_cli/src/options.rs	prose	--emit expects tokens, ast, typed-ast, ir, or llvm
-crates/bn_cli/src/options.rs	prose	--emit was specified more than once
-crates/bn_cli/src/options.rs	prose	--format expects text or json
 crates/bn_cli/src/options.rs	prose	--log-file expects a file path
 crates/bn_cli/src/options.rs	prose	--log-file was specified more than once
 crates/bn_cli/src/options.rs	prose	--log-level expects a value
 crates/bn_cli/src/options.rs	prose	--module-path expects a directory
 crates/bn_cli/src/options.rs	prose	--read-root expects a directory
 crates/bn_cli/src/options.rs	prose	--read-root/--write-root require --sandbox
-crates/bn_cli/src/options.rs	prose	--sandbox cannot be combined with --no-filesystem
 crates/bn_cli/src/options.rs	prose	--warnings expects errors
 crates/bn_cli/src/options.rs	prose	--write-root expects a directory
 crates/bn_cli/src/options.rs	prose	-o expects an output file path
@@ -74,7 +61,7 @@ crates/bn_compile_driver/src/artifact.rs	prose	error: cannot write temporary LLV
 crates/bn_compile_driver/src/artifact.rs	prose	no free build directory name
 crates/bn_compile_driver/src/artifact.rs	prose	tool=clang argv={clang_args:?}
 crates/bn_compile_driver/src/artifact.rs	prose	tool=clang argv={command_args:?}
-crates/bn_compile_driver/src/artifact.rs	prose	tool=wasm-ld argv={:?}
+crates/bn_compile_driver/src/artifact.rs	prose	tool=wasm-ld argv={wasm_ld_args:?}
 crates/bn_compile_driver/src/cli.rs	prose	\\\n{version}\nusage: bnc [compile-options] <entry.bn>\n\nCompiles the program to a native executable or a Wasm module.\n\ncompile options:\n  -o, --output <file>        write the artifact to <file> (defaults to entry name)\n  --target native|wasm32     select the target (default native)\n  --opt none|1|2|3|s         optimization level (default 2)\n  -g, --debug                emit debug information (DWARF; PDB on Windows)\n  --cpu native|generic       target host CPU instructions (default generic)\n  --emit llvm                print LLVM IR instead of compiling\n  --emit ir                  print the validated BN IR instead of compiling\n                             (tokens, ast and typed-ast are also accepted)\n{COMMON_OPTIONS}\nSee also: man bnc\nMore information: {BOOK_URL}\n
 crates/bn_compile_driver/src/cli.rs	prose	usage: bnc [compile-options] <entry.bn>\\ntry: bnc --help
 crates/bn_compile_driver/src/options.rs	prose	--cpu expects generic or native
@@ -120,24 +107,18 @@ crates/bn_core_dispatch/src/lib.rs	prose	output length in bytes
 crates/bn_core_dispatch/src/lib.rs	prose	the system provides no entropy for ticket identifiers
 crates/bn_core_dispatch/src/lib.rs	prose	the task failed
 crates/bn_core_log/src/error.rs	prose	a closed logger accepts no further operations
-crates/bn_core_log/src/error.rs	prose	a logger allows at most {max} {what}
-crates/bn_core_log/src/error.rs	prose	cannot add {what}: {count} reaches the maximum of {max}
 crates/bn_core_log/src/error.rs	prose	cannot serialize log record: {reason}
 crates/bn_core_log/src/error.rs	prose	cannot use {value} as the {what}
-crates/bn_core_log/src/error.rs	prose	importing {cap} is required to use this transport
-crates/bn_core_log/src/error.rs	prose	invalid transport {kind}
 crates/bn_core_log/src/error.rs	prose	log transport failed: {reason}
 crates/bn_core_log/src/error.rs	prose	logger is closed
 crates/bn_core_log/src/error.rs	prose	the handle was released or was not created by BNLog
 crates/bn_core_log/src/error.rs	prose	the logger or fields handle is invalid
-crates/bn_core_log/src/error.rs	prose	the operation did not complete within its timeout
 crates/bn_core_log/src/error.rs	prose	the operation is not available
 crates/bn_core_log/src/error.rs	prose	the {what} must be from {min} through {max}
 crates/bn_core_log/src/error.rs	prose	the {what} must have at least 1 byte
 crates/bn_core_log/src/error.rs	prose	the {what} must not be empty
 crates/bn_core_log/src/error.rs	prose	the {what} must not exceed {max} bytes
 crates/bn_core_log/src/error.rs	prose	the {what} of {len} bytes exceeds the maximum of {max} bytes
-crates/bn_core_log/src/error.rs	prose	timed out after {ms} ms
 crates/bn_core_log/src/error.rs	prose	{cap} capability is required
 crates/bn_core_log/src/lib.rs	prose	serialized log record exceeds 64 KiB
 crates/bn_core_net/src/addressing.rs	identifier	HOST.Net.Address.Parse
@@ -2161,89 +2142,10 @@ crates/bn_lib_json/src/lib.rs	prose	non-INTEGER value
 crates/bn_lib_json/src/lib.rs	prose	non-STRING value
 crates/bn_lib_json/src/lib.rs	prose	out-of-range value
 crates/bn_lib_log/src/lib.rs	identifier	BNLog
-crates/bn_lib_log/src/lib.rs	identifier	BNLog.Entry
-crates/bn_lib_log/src/lib.rs	identifier	BNLog.Entry
-crates/bn_lib_log/src/lib.rs	identifier	BNLog.Entry
-crates/bn_lib_log/src/lib.rs	identifier	BNLog.Fields
-crates/bn_lib_log/src/lib.rs	identifier	BNLog.Fields
-crates/bn_lib_log/src/lib.rs	identifier	BNLog.Fields
-crates/bn_lib_log/src/lib.rs	identifier	BNLog.Fields
-crates/bn_lib_log/src/lib.rs	identifier	BNLog.Fields
 crates/bn_lib_log/src/lib.rs	identifier	BNLog.Logger
-crates/bn_lib_log/src/lib.rs	identifier	BNLog.Logger
-crates/bn_lib_log/src/lib.rs	identifier	BNLog.Logger
-crates/bn_lib_log/src/lib.rs	identifier	HOST.Console
-crates/bn_lib_log/src/lib.rs	identifier	HOST.FileSystem
-crates/bn_lib_log/src/lib.rs	prose	BNLog provider unavailable
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Entry is invalid
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Entry operation
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Entry operation
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Entry provider unavailable
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Entry.WithField key
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Entry.WithField value
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Fields is invalid
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Fields is invalid
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Fields is invalid
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Fields is invalid
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Fields key
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Fields operation
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Fields operation
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Fields operation unavailable
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Fields.Get key
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Fields.SetBoolean value
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Fields.SetString value
 crates/bn_lib_log/src/lib.rs	prose	BNLog.Logger is invalid
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Logger is invalid
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Logger operation
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Logger operation
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Logger operation unavailable
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Logger.AddFile path
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Logger.Child fields
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Logger.Log fields
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Logger.Log message
-crates/bn_lib_log/src/lib.rs	prose	BNLog.Logger.New label
-crates/bn_lib_log/src/lib.rs	prose	entry field key
-crates/bn_lib_log/src/lib.rs	prose	entry field value
-crates/bn_lib_log/src/lib.rs	prose	entry fields
-crates/bn_lib_log/src/lib.rs	prose	field key
-crates/bn_lib_log/src/lib.rs	prose	field key was not found
-crates/bn_lib_log/src/lib.rs	prose	fields type was validated above
-crates/bn_lib_log/src/lib.rs	prose	file path
-crates/bn_lib_log/src/lib.rs	prose	level was validated above
-crates/bn_lib_log/src/lib.rs	prose	log level
-crates/bn_lib_log/src/lib.rs	prose	log level
-crates/bn_lib_log/src/lib.rs	prose	log level
-crates/bn_lib_log/src/lib.rs	prose	log level
-crates/bn_lib_log/src/lib.rs	prose	log message
-crates/bn_lib_log/src/lib.rs	prose	logger label
-crates/bn_lib_log/src/lib.rs	prose	logger was checked above
-crates/bn_lib_log/src/lib.rs	prose	logger was checked above
-crates/bn_lib_log/src/lib.rs	prose	logger was checked above
-crates/bn_lib_log/src/lib.rs	prose	logger was checked above
-crates/bn_lib_log/src/lib.rs	prose	logger was checked above
-crates/bn_lib_log/src/lib.rs	prose	minimum was validated
-crates/bn_lib_log/src/lib.rs	prose	minimum was validated
-crates/bn_lib_log/src/lib.rs	prose	minimum was validated
-crates/bn_lib_log/src/lib.rs	prose	missing receiver
-crates/bn_lib_log/src/lib.rs	prose	missing receiver
-crates/bn_lib_log/src/lib.rs	prose	missing receiver
-crates/bn_lib_log/src/lib.rs	prose	non-BNLog.Entry value
-crates/bn_lib_log/src/lib.rs	prose	non-BNLog.Fields value
-crates/bn_lib_log/src/lib.rs	prose	non-BNLog.Fields value
-crates/bn_lib_log/src/lib.rs	prose	non-BNLog.Fields value
 crates/bn_lib_log/src/lib.rs	prose	non-BNLog.Logger value
-crates/bn_lib_log/src/lib.rs	prose	non-BOOLEAN value
 crates/bn_lib_log/src/lib.rs	prose	non-STRING value
-crates/bn_lib_log/src/lib.rs	prose	non-STRING value
-crates/bn_lib_log/src/lib.rs	prose	non-STRING value
-crates/bn_lib_log/src/lib.rs	prose	non-STRING value
-crates/bn_lib_log/src/lib.rs	prose	non-STRING value
-crates/bn_lib_log/src/lib.rs	prose	non-STRING value
-crates/bn_lib_log/src/lib.rs	prose	non-STRING value
-crates/bn_lib_log/src/lib.rs	prose	non-STRING value
-crates/bn_lib_log/src/lib.rs	prose	non-STRING value
-crates/bn_lib_log/src/lib.rs	prose	the filesystem policy denies writing the log file
-crates/bn_lib_log/src/lib.rs	prose	{what} was already deleted
 crates/bn_lib_math/src/lib.rs	identifier	BNMath
 crates/bn_lib_math/src/lib.rs	identifier	BNMath.VAL
 crates/bn_lib_math/src/lib.rs	prose	BNMath function
@@ -2290,8 +2192,6 @@ crates/bn_lib_sqlite/src/lib.rs	prose	non-STRING SQL query
 crates/bn_lib_sqlite/src/lib.rs	prose	non-STRING path
 crates/bn_lib_sqlite/src/lib.rs	prose	non-object receiver
 crates/bn_lib_sqlite/src/lib.rs	prose	non-object receiver
-crates/bn_lib_web/src/access_log.rs	identifier	BNLog
-crates/bn_lib_web/src/access_log.rs	prose	web dispatch
 crates/bn_lib_web/src/lib.rs	identifier	BNLog.Logger
 crates/bn_lib_web/src/lib.rs	identifier	BNLog.Logger
 crates/bn_lib_web/src/lib.rs	identifier	BNWeb
@@ -2574,7 +2474,6 @@ crates/bn_llvm/src/llvm/analysis.rs	identifier	HOST.Random.Seed
 crates/bn_llvm/src/llvm/analysis.rs	prose	HOST.Random.Random without HOST.Random.Seed
 crates/bn_llvm/src/llvm/analysis.rs	prose	INPUT result stored more than once
 crates/bn_llvm/src/llvm/analysis.rs	prose	INPUT result without a variable owner
-crates/bn_llvm/src/llvm/analysis.rs	prose	STRUCT default allocation requires an acyclic Start lifetime
 crates/bn_llvm/src/llvm/analysis.rs	prose	an alternative with a STRUCT member
 crates/bn_llvm/src/llvm/analysis.rs	prose	random use without seed must come from a call
 crates/bn_llvm/src/llvm/analysis.rs	prose	stores of this type
@@ -2585,8 +2484,6 @@ crates/bn_llvm/src/llvm/analysis_validate.rs	identifier	HOST.Exec.Result
 crates/bn_llvm/src/llvm/analysis_validate.rs	prose	RELEASE of an indexed element is unsupported
 crates/bn_llvm/src/llvm/analysis_validate.rs	prose	unknown value type
 crates/bn_llvm/src/llvm/analysis_validate.rs	prose	unknown value type
-crates/bn_llvm/src/llvm/arc_ops.rs	prose	a STRUCT type is named
-crates/bn_llvm/src/llvm/arc_ops.rs	prose	canonical LLVM type
 crates/bn_llvm/src/llvm/arc_ops.rs	prose	header fits i64
 crates/bn_llvm/src/llvm/arc_ops.rs	prose	validated ARC value type
 crates/bn_llvm/src/llvm/arc_ops.rs	prose	validated field
@@ -2649,7 +2546,6 @@ crates/bn_llvm/src/llvm/emission1.rs	prose	aggregate layout
 crates/bn_llvm/src/llvm/emission1.rs	prose	general alternative default
 crates/bn_llvm/src/llvm/emission1.rs	prose	object size fits i64
 crates/bn_llvm/src/llvm/emission1.rs	prose	struct size fits i64
-crates/bn_llvm/src/llvm/emission1.rs	prose	struct size fits usize
 crates/bn_llvm/src/llvm/emission1.rs	prose	validated Phi type
 crates/bn_llvm/src/llvm/emission1.rs	prose	validated cast source type
 crates/bn_llvm/src/llvm/emission1.rs	prose	validated copy type
@@ -2666,7 +2562,6 @@ crates/bn_llvm/src/llvm/emission1.rs	prose	validated scalar default type
 crates/bn_llvm/src/llvm/emission1.rs	prose	validated slot LLVM type
 crates/bn_llvm/src/llvm/emission1.rs	prose	validated store LLVM type
 crates/bn_llvm/src/llvm/emission1.rs	prose	validated stored value type
-crates/bn_llvm/src/llvm/emission1.rs	prose	validated struct type
 crates/bn_llvm/src/llvm/emission1.rs	prose	validated unary LLVM type
 crates/bn_llvm/src/llvm/emission1.rs	prose	validated unary operator
 crates/bn_llvm/src/llvm/emission1.rs	prose	validated vector element type
@@ -2686,7 +2581,6 @@ crates/bn_llvm/src/llvm/emission2.rs	prose	validated stop type
 crates/bn_llvm/src/llvm/emission3.rs	prose	validated constant type
 crates/bn_llvm/src/llvm/emission3.rs	prose	validated scalar constant type
 crates/bn_llvm/src/llvm/emission_tail.rs	prose	all instructions must be validated before emission: {}
-crates/bn_llvm/src/llvm/euclidean.rs	prose	signed integer LLVM type
 crates/bn_llvm/src/llvm/euclidean.rs	prose	validated euclidean operator
 crates/bn_llvm/src/llvm/euclidean.rs	prose	validated euclidean operator
 crates/bn_llvm/src/llvm/euclidean.rs	prose	validated integer type
@@ -2784,13 +2678,10 @@ crates/bn_llvm/src/llvm/layout.rs	identifier	HOST.Net.TCPListener
 crates/bn_llvm/src/llvm/layout.rs	identifier	HOST.Net.TCPStream
 crates/bn_llvm/src/llvm/layout.rs	identifier	HOST.Net.UDPPacket
 crates/bn_llvm/src/llvm/layout.rs	identifier	HOST.Net.UDPSocket
-crates/bn_llvm/src/llvm/layout.rs	prose	canonical LLVM type
 crates/bn_llvm/src/llvm/load_emission.rs	prose	binding was released
 crates/bn_llvm/src/llvm/load_emission.rs	prose	validated load LLVM type
 crates/bn_llvm/src/llvm/load_emission.rs	prose	validated loaded type
 crates/bn_llvm/src/llvm/load_emission.rs	prose	validated slot LLVM type
-crates/bn_llvm/src/llvm/log_emission.rs	prose	validated BNLog integer
-crates/bn_llvm/src/llvm/log_emission.rs	prose	validated BNLog method
 crates/bn_llvm/src/llvm/loop_emission.rs	prose	validated FOR current type
 crates/bn_llvm/src/llvm/loop_emission.rs	prose	validated FOR end type
 crates/bn_llvm/src/llvm/loop_emission.rs	prose	validated FOR step type
@@ -3038,16 +2929,15 @@ crates/bn_llvm/src/llvm/traps.rs	prose	error: runtime failure
 crates/bn_llvm/src/llvm/value_emission.rs	prose	validated INPUT owner
 crates/bn_llvm/src/llvm/vectors.rs	prose	binding was released
 crates/bn_llvm/src/llvm/vectors.rs	prose	object size
-crates/bn_llvm/src/llvm/vectors.rs	prose	sentinel layout of an alternative
-crates/bn_llvm/src/llvm/vectors.rs	prose	status layout
-crates/bn_llvm/src/llvm/vectors.rs	prose	status layout of an alternative
+crates/bn_llvm/src/llvm/is_emission.rs	prose	sentinel layout of an alternative
+crates/bn_llvm/src/llvm/is_emission.rs	prose	status layout
+crates/bn_llvm/src/llvm/is_emission.rs	prose	status layout of an alternative
 crates/bn_llvm/src/llvm/vectors.rs	prose	validated allocate element
 crates/bn_llvm/src/llvm/vectors.rs	prose	validated allocate length type
 crates/bn_llvm/src/llvm/vectors.rs	prose	validated index element
 crates/bn_llvm/src/llvm/vectors.rs	prose	validated member type
 crates/bn_llvm/src/llvm/vectors.rs	prose	validated member type
 crates/bn_llvm/src/llvm/vectors.rs	prose	validated scalar vector field element
-crates/bn_llvm/src/llvm/vectors.rs	prose	validated struct vector element
 crates/bn_llvm/src/llvm/vectors.rs	prose	validated vector element
 crates/bn_llvm/src/llvm/vectors.rs	prose	validated vector element value
 crates/bn_llvm/src/llvm/vectors.rs	prose	validated vector field element
@@ -3408,37 +3298,6 @@ crates/bn_rt/src/lib.rs	prose	libc_write_stdout requires unix or windows
 crates/bn_rt/src/lib.rs	prose	text that is not UTF-8
 crates/bn_rt/src/lib.rs	prose	write to stdout returned 0
 crates/bn_rt/src/lib.rs	prose	{capability} is denied by execution policy
-crates/bn_rt/src/log_abi/mod.rs	identifier	BNLog.Fields.Close
-crates/bn_rt/src/log_abi/mod.rs	identifier	BNLog.Fields.Count
-crates/bn_rt/src/log_abi/mod.rs	identifier	BNLog.Fields.SetBoolean
-crates/bn_rt/src/log_abi/mod.rs	identifier	BNLog.Fields.SetInteger
-crates/bn_rt/src/log_abi/mod.rs	identifier	BNLog.Fields.SetString
-crates/bn_rt/src/log_abi/mod.rs	identifier	BNLog.Logger.AddConsole
-crates/bn_rt/src/log_abi/mod.rs	identifier	BNLog.Logger.AddFile
-crates/bn_rt/src/log_abi/mod.rs	identifier	BNLog.Logger.AddNull
-crates/bn_rt/src/log_abi/mod.rs	identifier	BNLog.Logger.Child
-crates/bn_rt/src/log_abi/mod.rs	identifier	BNLog.Logger.Close
-crates/bn_rt/src/log_abi/mod.rs	identifier	BNLog.Logger.Close
-crates/bn_rt/src/log_abi/mod.rs	identifier	BNLog.Logger.Flush
-crates/bn_rt/src/log_abi/mod.rs	identifier	BNLog.Logger.Log
-crates/bn_rt/src/log_abi/mod.rs	identifier	BNLog.Logger.New
-crates/bn_rt/src/log_abi/mod.rs	identifier	HOST.Console
-crates/bn_rt/src/log_abi/mod.rs	identifier	HOST.FileSystem
-crates/bn_rt/src/log_abi/mod.rs	prose	cannot flush stdout
-crates/bn_rt/src/log_abi/mod.rs	prose	field key
-crates/bn_rt/src/log_abi/mod.rs	prose	field key
-crates/bn_rt/src/log_abi/mod.rs	prose	field value
-crates/bn_rt/src/log_abi/mod.rs	prose	file path
-crates/bn_rt/src/log_abi/mod.rs	prose	file path
-crates/bn_rt/src/log_abi/mod.rs	prose	file path
-crates/bn_rt/src/log_abi/mod.rs	prose	log level
-crates/bn_rt/src/log_abi/mod.rs	prose	log level
-crates/bn_rt/src/log_abi/mod.rs	prose	log message
-crates/bn_rt/src/log_abi/mod.rs	prose	log message
-crates/bn_rt/src/log_abi/mod.rs	prose	logger label
-crates/bn_rt/src/log_abi/mod.rs	prose	logger label
-crates/bn_rt/src/log_abi/mod.rs	prose	path is outside execution policy
-crates/bn_rt/src/log_abi/mod.rs	prose	unknown transport
 crates/bn_rt/src/math.rs	identifier	NUMERIC_OVERFLOW
 crates/bn_rt/src/math.rs	prose	BNMath.ABS overflowed
 crates/bn_rt/src/math_abi.rs	identifier	INDEX_OUT_OF_BOUNDS
@@ -3822,3 +3681,4 @@ crates/bn_types/src/error_codes.rs	identifier	WAIT_FAILED
 crates/bn_types/src/error_codes.rs	identifier	WRONG_FAMILY
 crates/bnc/src/main.rs	identifier	CARGO_PKG_VERSION
 crates/bni/src/main.rs	identifier	CARGO_PKG_VERSION
+crates/bn_llvm/src/llvm/functions.rs	prose	struct size fits usize

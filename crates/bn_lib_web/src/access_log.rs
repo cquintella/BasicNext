@@ -10,8 +10,9 @@
 use super::*;
 
 impl WebProvider {
-    /// Access-log record for a served request, written through `BNLog`'s
-    /// public contract (`Fields` + `Logger.Log`) exactly as a BN program would.
+    /// Access-log record for a served request, written through the `BNLog`
+    /// provider as an access record (bnlog.md, "`BNWeb` integration"), with
+    /// the request ID beyond the `Log.Apache` fields.
     pub(super) fn log_web_dispatch(
         &mut self,
         core: &mut dyn CoreContext,
@@ -25,11 +26,6 @@ impl WebProvider {
         let Some(&logger_id) = self.loggers.get(&server_handle) else {
             return Ok(());
         };
-        let log = "BNLog";
-        let Some(fields) = core.library_allocate(log, "Fields", span) else {
-            return Ok(());
-        };
-        let fields = fields?;
         let mut entries = vec![
             ("http.method", method.to_string()),
             ("http.path", path.to_string()),
@@ -38,30 +34,17 @@ impl WebProvider {
         if let Some(request_id) = request_id {
             entries.push(("request_id", request_id.to_string()));
         }
+        let mut arguments = vec![Value::LogLogger(logger_id)];
         for (key, value) in entries {
-            core.library_call(
-                log,
-                "Fields.SetString",
-                vec![
-                    fields.clone(),
-                    Value::String(key.into()),
-                    Value::String(shared_string(value)),
-                ],
-                span,
-            )?;
+            arguments.push(Value::String(key.into()));
+            arguments.push(Value::String(shared_string(value)));
         }
-        let result = core.library_call(
-            log,
-            "Logger.Log",
-            vec![
-                Value::LogLogger(logger_id),
-                Value::Integer(3, IntegerType::Int32),
-                Value::String("web dispatch".into()),
-                fields.clone(),
-            ],
+        core.library_call(
+            bn_lib_log::NAME,
+            bn_lib_log::WEB_ACCESS_MEMBER,
+            arguments,
             span,
-        );
-        let _ = core.library_release(&fields, span);
-        result.map(|_| ())
+        )
+        .map(|_| ())
     }
 }

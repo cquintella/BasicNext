@@ -1,0 +1,65 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// STRUCT values outside Start (known issue K13): made in a function and
+// returned, made in a loop, copied (value semantics), holding an object
+// that is released once.
+
+CLASS Box
+    PUBLIC name AS STRING
+    PUBLIC FUNCTION CONSTRUCTOR(name AS STRING)
+        SELF.name = name
+    END FUNCTION
+    PUBLIC FUNCTION DESTRUCTOR()
+        PRINT "free", SELF.name
+    END FUNCTION
+END CLASS
+
+STRUCT Point
+    x AS INTEGER
+    label AS STRING
+END STRUCT
+
+STRUCT Holder
+    box AS Box OR NULL = NULL
+    n AS INTEGER
+END STRUCT
+
+FUNCTION Make(x AS INTEGER) AS Point
+    LET p AS Point
+    p.x = x
+    p.label = "made"
+    RETURN p
+END FUNCTION
+
+FUNCTION Sum(count AS INTEGER) AS INTEGER
+    LET total AS INTEGER = 0
+    FOR i AS INTEGER = 1 TO count
+        LET p AS Point
+        p.x = i
+        total = total + p.x
+    END FOR
+    RETURN total
+END FUNCTION
+
+FUNCTION Wrap(name AS STRING) AS Holder
+    LET h AS Holder
+    h.box = NEW Box(name)
+    h.n = 1
+    RETURN h
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET a AS Point = Make(7)
+    LET b AS Point = a
+    b.x = 9
+    PRINT a.x, b.x, a.label
+    PRINT Sum(10000)
+    LET h AS Holder = Wrap("k")
+    PRINT h.n
+    LET copy AS Holder = h
+    PRINT copy.n
+    PRINT "end"
+END FUNCTION

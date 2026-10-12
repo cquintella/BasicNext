@@ -1,0 +1,16 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Recursion that never ends stops with STACK_OVERFLOW on both backends, after
+// the output written before it (0.6.md, "Recursion depth"; known issue K53).
+
+FUNCTION Depth(n AS INTEGER) AS INTEGER
+    RETURN Depth(n + 1) + 1
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    PRINT "before"
+    PRINT Depth(0)
+END FUNCTION

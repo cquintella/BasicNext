@@ -3,9 +3,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! C ABI for `HOST.Net` TCP streams and listeners. The operations are the
-//! shared core (`net::tcp`); a failure records its `Error` (status 1, or 2
-//! for a policy denial) for the emitted code to read.
+//! C ABI for `HOST.Net` TCP streams and listeners, with their timeouts and
+//! half shutdown. The operations are the shared core (`net::tcp`); a failure
+//! records its `Error` (status 1, or 2 for a policy denial) for the emitted
+//! code to read.
 
 use super::*;
 
@@ -230,4 +231,35 @@ pub extern "C" fn bn_rt_net_tcp_write(
             })
             .map(|written| write_out(out_written, i32::try_from(written).unwrap_or(i32::MAX))),
     )
+}
+
+/// `HOST.Net.TCPStream.SetTimeouts`: read and write timeouts in ms.
+#[allow(unsafe_code)] // C ABI export.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_net_tcp_set_timeouts(handle: i64, read_ms: i32, write_ms: i32) -> i32 {
+    status(with_stream(handle, |stream| {
+        net::tcp_set_timeouts(
+            stream.map(|stream| &*stream),
+            read_ms.into(),
+            write_ms.into(),
+        )
+    }))
+}
+
+/// `HOST.Net.TCPStream.ShutdownRead`.
+#[allow(unsafe_code)] // C ABI export.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_net_tcp_shutdown_read(handle: i64) -> i32 {
+    status(with_stream(handle, |stream| {
+        net::tcp_shutdown(stream.map(|stream| &*stream), true)
+    }))
+}
+
+/// `HOST.Net.TCPStream.ShutdownWrite`.
+#[allow(unsafe_code)] // C ABI export.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_net_tcp_shutdown_write(handle: i64) -> i32 {
+    status(with_stream(handle, |stream| {
+        net::tcp_shutdown(stream.map(|stream| &*stream), false)
+    }))
 }

@@ -160,6 +160,22 @@ pub(crate) fn math_constant(name: &str) -> Option<Constant> {
     Some(value)
 }
 
+/// True for what owns the `BNMath` range constants: the module itself
+/// (`Math.MAX_FLOAT`) or its `Limits` class (`Math.Limits.MAX_FLOAT`), which
+/// math.md says is one storage location, so both fold to the same constant.
+pub(crate) fn is_bnmath_constant_owner(model: &SemanticModel, owner: &Type) -> bool {
+    match owner {
+        Type::Module(module) => model.bnmath_modules.contains(module),
+        Type::ImportedTypeName { module, name } => {
+            name == BNMATH_LIMITS_CLASS && model.bnmath_modules.contains(module)
+        }
+        _ => false,
+    }
+}
+
+/// The `BNMath` class that repeats the range constants as `STATIC` fields.
+const BNMATH_LIMITS_CLASS: &str = "Limits";
+
 pub(crate) fn filesystem_import_span(program: &Program) -> Option<Span> {
     program.items.iter().find_map(|item| match item {
         Item::Import { path, span, .. }

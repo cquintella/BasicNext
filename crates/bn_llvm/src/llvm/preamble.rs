@@ -7,10 +7,12 @@
 // helper IR each emitted module needs.
 #![allow(clippy::wildcard_imports, clippy::too_many_lines)]
 use super::*;
-use crate::ir::{CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
-use crate::layout::typed_llvm;
+use crate::ir::{
+    CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T,
+    write_declarations,
+};
 pub(crate) fn emit_preamble(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     module: &Module,
     functions: &[(&Function, LoweringAnalysis<'_>)],
     synchronize_prints: bool,
@@ -64,50 +66,49 @@ pub(crate) fn emit_preamble(
                 escape_llvm(string)
             );
         }
-        intrinsics.extend(analysis.intrinsics.iter().copied());
+        intrinsics.extend(analysis.intrinsics.iter().cloned());
     }
     if uses_input {
-        text.push_str(input_runtime_ir());
+        text.push_str(&input_runtime_ir());
     }
     if uses_string_sizeof {
         text.push_str(string_byte_length_ir());
     }
-    text.push_str("\ndeclare i32 @printf(ptr, ...)\ndeclare i32 @putchar(i32)\n");
-    text.push_str(crate::platform_stdio::windows_binary_stdio_decl(
+    text.push('\n');
+    write_declarations(text, runtime_abi::PRINT_DECLARATIONS);
+    text.push_str(&crate::platform_stdio::windows_binary_stdio_decl(
         synchronize_prints,
     ));
     if synchronize_prints {
         text.push_str(&crate::platform_stdio::stdout_lock_decls());
     }
     if uses_concat {
-        text.push_str(STRING_CONCAT_DECLS);
+        write_declarations(text, runtime_abi::STRING_CONCAT_DECLARATIONS);
     }
     if uses_bn_rt {
-        text.push_str(BN_RT_DECLS);
+        write_declarations(text, runtime_abi::BN_RT_DECLARATIONS);
     }
     if functions
         .iter()
         .any(|(_, analysis)| analysis.uses_bn_rt_math)
     {
-        text.push_str(BN_RT_MATH_DECLS);
+        write_declarations(text, runtime_abi::BN_RT_MATH_DECLARATIONS);
     }
     if functions
         .iter()
         .any(|(_, analysis)| analysis.uses_float_print)
     {
-        text.push_str(
-            "declare void @bn_rt_print_float(double)\ndeclare void @bn_rt_print_float32(double)\n",
-        );
+        write_declarations(text, runtime_abi::PRINT_FLOAT_DECLARATIONS);
     }
     if functions
         .iter()
         .any(|(_, analysis)| analysis.uses_temporal_print)
     {
-        text.push_str("declare void @bn_rt_print_date(i32)\ndeclare void @bn_rt_print_time(i32)\n");
+        write_declarations(text, runtime_abi::PRINT_TEMPORAL_DECLARATIONS);
     }
     if needs_na || functions.iter().any(|(_, analysis)| {
             analysis.values.values().any(|ty| {
-                llvm_type(ty) == Some("{ i1, double }")
+                llvm_type(ty) == Some(crate::layout::optional_float_ty())
                     || matches!(ty, Type::Alternative(types) if string_na_or_error(types) || scalar_na_or_error(types) || error_or_na(types))
                     || general_alternative(ty).is_some_and(|members| members.contains(&Type::NotAvailable))
             })
@@ -127,22 +128,18 @@ pub(crate) fn emit_preamble(
         .iter()
         .any(|(_, analysis)| analysis.uses_string_ops)
     {
-        text.push_str(
-            "declare i32 @bn_rt_str_len(ptr)\ndeclare i64 @bn_rt_str_index_utf8(ptr, i32, ptr)\ndeclare i32 @bn_rt_str_eq(ptr, ptr)\n",
-        );
+        write_declarations(text, runtime_abi::STRING_OPS_DECLARATIONS);
     }
     if functions.iter().any(|(_, analysis)| analysis.uses_heap) {
         if !uses_concat {
-            text.push_str(
-                "declare ptr @malloc(i64)\ndeclare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\n",
-            );
+            write_declarations(text, runtime_abi::HEAP_COPY_DECLARATIONS);
         }
-        text.push_str("declare ptr @calloc(i64, i64)\n");
+        write_declarations(text, &[&runtime_abi::CALLOC]);
         if !uses_input {
-            text.push_str("declare void @free(ptr)\n");
+            write_declarations(text, &[&runtime_abi::FREE]);
         }
     }
-    let mut static_globals = BTreeSet::new();
+    let mut static_globals = std::collections::BTreeMap::new();
     let mut class_inits = BTreeSet::new();
     for (function, analysis) in functions {
         for block in &function.blocks {
@@ -155,12 +152,21 @@ pub(crate) fn emit_preamble(
                         class, field, ty, ..
                     } => {
                         if let Some(llvm_ty) = llvm_type(ty) {
-                            static_globals.insert((
-                                class.clone(),
-                                field.clone(),
-                                llvm_ty,
-                                vectors::fixed_vector_array(ty),
-                            ));
+                            static_globals.insert(
+                                (class.clone(), field.clone()),
+                                (
+                                    llvm_ty,
+                                    vectors::fixed_vector_array(ty).map(|(array, count)| {
+                                        let global = format!(
+                                            "@bn_sv_{}_{}",
+                                            sanitize_symbol(class),
+                                            sanitize_symbol(field)
+                                        );
+                                        let nested = vectors::nest(ty);
+                                        (array, count, nested.map(|n| n.linked_constant(&global)))
+                                    }),
+                                ),
+                            );
                         }
                     }
                     Instruction::EnsureClass { class, .. } => {
@@ -172,25 +178,26 @@ pub(crate) fn emit_preamble(
         }
         let _ = analysis;
     }
-    for (class, field, llvm_ty, vector) in &static_globals {
+    for ((class, field), (llvm_ty, vector)) in &static_globals {
         let gclass = sanitize_symbol(class);
         let gfield = sanitize_symbol(field);
         // A fixed vector STATIC owns its elements (and a copy of the replaced ones).
-        if let Some((array, count)) = vector {
+        if let Some((array, count, linked)) = vector {
+            let initial = linked.as_deref().unwrap_or("zeroinitializer");
             let _ = writeln!(
                 text,
-                "@bn_sv_{gclass}_{gfield} = global {array} zeroinitializer\n@bn_svp_{gclass}_{gfield} = global {array} zeroinitializer\n@bn_st_{gclass}_{gfield} = global {{ ptr, i32 }} {{ ptr @bn_sv_{gclass}_{gfield}, i32 {count} }}"
+                "@bn_sv_{gclass}_{gfield} = global {array} {initial}\n@bn_svp_{gclass}_{gfield} = global {array} zeroinitializer\n@bn_st_{gclass}_{gfield} = global {{ ptr, i32 }} {{ ptr @bn_sv_{gclass}_{gfield}, i32 {count} }}"
             );
             continue;
         }
         let _ = writeln!(
             text,
             "@bn_st_{gclass}_{gfield} = global {llvm_ty} {}",
-            match *llvm_ty {
-                "i1" => "false",
-                "float" | "double" => "0.0",
-                "ptr" => "null",
-                aggregate if aggregate.starts_with('{') => "zeroinitializer",
+            match llvm_ty {
+                T::I1 => "false",
+                T::Float | T::Double => "0.0",
+                T::Ptr => "null",
+                T::Struct(_) => "zeroinitializer",
                 _ => "0",
             }
         );
@@ -235,7 +242,7 @@ pub(crate) fn emit_preamble(
             .iter()
             .any(|(_, analysis)| analysis.uses_string_ops)
     {
-        text.push_str("declare i32 @bn_rt_str_eq(ptr, ptr)\n");
+        write_declarations(text, &[&runtime_abi::STR_EQ]);
     }
     if uses_arc {
         // The classes `NEW` creates: the destruction dispatches on them, and
@@ -273,11 +280,11 @@ pub(crate) fn emit_preamble(
             })
         })
     {
-        text.push_str("declare void @exit(i32)\n");
+        write_declarations(text, &[&runtime_abi::EXIT]);
     }
-    for intrinsic in intrinsics {
-        let _ = writeln!(text, "declare {intrinsic}");
-    }
+    let intrinsics: Vec<&dyn crate::ir::Declaration> =
+        intrinsics.iter().map(|intrinsic| intrinsic as _).collect();
+    write_declarations(text, &intrinsics);
     let mut trampolines = BTreeSet::new();
     for (_, analysis) in functions {
         for name in analysis.functions.values().copied() {
@@ -325,7 +332,7 @@ fn prints_null(function: &Function, analysis: &LoweringAnalysis<'_>) -> bool {
 /// argument cells, calls the task, and writes its result (`kind` at 0, the
 /// payload at 8) or its `Error` (code at 0, record at 8).
 fn emit_trampoline(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     task_fn: &Function,
     task_analysis: &LoweringAnalysis<'_>,
     symbol: &str,
@@ -333,11 +340,11 @@ fn emit_trampoline(
     may_stop: bool,
 ) {
     let ret = match &task_fn.return_type {
-        Type::Alternative(alternatives) if integer_or_error(alternatives) => "i32",
-        Type::Alternative(alternatives) if float_or_error(alternatives) => "double",
-        Type::Alternative(alternatives) if string_or_error(alternatives) => "ptr",
-        Type::Alternative(alternatives) if boolean_or_error(alternatives) => "i1",
-        _ => function_return_llvm(&task_fn.return_type).unwrap_or("void"),
+        Type::Alternative(alternatives) if integer_or_error(alternatives) => T::I32,
+        Type::Alternative(alternatives) if float_or_error(alternatives) => T::Double,
+        Type::Alternative(alternatives) if string_or_error(alternatives) => T::Ptr,
+        Type::Alternative(alternatives) if boolean_or_error(alternatives) => T::I1,
+        _ => function_return_llvm(&task_fn.return_type).unwrap_or(T::Void),
     };
     let params = ["context", "arguments", "argument_count", "result", "error"]
         .into_iter()
@@ -368,20 +375,23 @@ fn emit_trampoline(
         let arg = format!("dispatch_arg{index}");
         let offset = vec![(T::I64, O::uint(index as u64 * 16 + 8))];
         text.assign(payload.to_string(), I::gep(T::I8, r("arguments"), offset));
-        let load_raw =
-            |text: &mut String, ty: T| text.assign(raw.to_string(), I::load(ty, payload.clone()));
+        let load_raw = |text: &mut crate::ir::LlvmModule, ty: T| {
+            text.assign(raw.to_string(), I::load(ty, payload.clone()));
+        };
         match parameter_ty {
             Type::Boolean => {
                 load_raw(text, T::I64);
                 text.assign(&arg, I::icmp(ICmpCond::Ne, T::I64, raw.clone(), O::int(0)));
             }
-            Type::Integer(_) if llvm_ty == "i64" => text.assign(&arg, I::load(T::I64, payload)),
+            Type::Integer(_) if llvm_ty == T::I64 => {
+                text.assign(&arg, I::load(T::I64, payload));
+            }
             Type::Integer(_) => {
                 load_raw(text, T::I64);
-                let narrow = I::cast(CastOp::Trunc, T::I64, raw.clone(), typed_llvm(llvm_ty));
+                let narrow = I::cast(CastOp::Trunc, T::I64, raw.clone(), llvm_ty.clone());
                 text.assign(&arg, narrow);
             }
-            Type::Float(_) if llvm_ty == "float" => {
+            Type::Float(_) if llvm_ty == T::Float => {
                 load_raw(text, T::Double);
                 text.assign(
                     &arg,
@@ -392,22 +402,24 @@ fn emit_trampoline(
             Type::String => text.assign(&arg, I::load(T::Ptr, payload)),
             _ => unreachable!("validated dispatch parameter type"),
         }
-        dispatch_arguments.push((typed_llvm(llvm_ty), O::reg(arg)));
+        dispatch_arguments.push((llvm_ty, O::reg(arg)));
     }
-    let stop_check = |text: &mut String| {
+    let stop_check = |text: &mut crate::ir::LlvmModule| {
         if may_stop {
             super::arc_runtime::stop_exit_check(text);
         }
     };
     let payload_at = |base: O| I::gep(T::I8, base, vec![(T::I64, O::int(8))]);
-    let store = |text: &mut String, ty: T, value: O, slot: O| text.emit(I::store(ty, value, slot));
-    if ret == "void" {
+    let store = |text: &mut crate::ir::LlvmModule, ty: T, value: O, slot: O| {
+        text.emit(I::store(ty, value, slot));
+    };
+    if ret == T::Void {
         text.emit(I::call(T::Void, symbol, dispatch_arguments));
         stop_check(text);
     } else {
         // ASYNC_RETURN_TYPE: a typed task returns `T OR Error`.
         assert!(aggregate_return, "validated ASYNC return type");
-        let aggregate = typed_llvm(function_return_llvm(&task_fn.return_type).unwrap_or(ret));
+        let aggregate = function_return_llvm(&task_fn.return_type).unwrap_or_else(|| ret.clone());
         let field = |index| I::extract(aggregate.clone(), r("dispatch_raw"), index);
         text.assign(
             "dispatch_raw",
@@ -438,9 +450,9 @@ fn emit_trampoline(
         });
         text.label("dispatch_success");
         let kind = match ret {
-            "double" => 3,
-            "ptr" => 4,
-            "i1" => 1,
+            T::Double => 3,
+            T::Ptr => 4,
+            T::I1 => 1,
             _ if matches!(&task_fn.return_type, Type::Alternative(alternatives) if void_or_error(alternatives)) => {
                 0
             }
@@ -452,15 +464,15 @@ fn emit_trampoline(
         let payload = r("dispatch_payload");
         if kind == 0 {
             store(text, T::I64, O::int(0), payload);
-        } else if ret == "ptr" {
+        } else if ret == T::Ptr {
             text.assign("dispatch_string", field(1));
             store(text, T::Ptr, r("dispatch_string"), payload.clone());
             text.assign("dispatch_string_length", payload_at(payload));
             store(text, T::I32, O::int(0), r("dispatch_string_length"));
-        } else if ret == "i1" {
+        } else if ret == T::I1 {
             text.assign("dispatch_bool64", field(2));
             store(text, T::I64, r("dispatch_bool64"), payload);
-        } else if ret == "double" {
+        } else if ret == T::Double {
             let float = I::cast(CastOp::BitCast, T::I64, r("dispatch_value"), T::Double);
             text.assign("dispatch_float", float);
             store(text, T::Double, r("dispatch_float"), payload);

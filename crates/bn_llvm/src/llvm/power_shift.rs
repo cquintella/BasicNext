@@ -3,21 +3,20 @@ use super::*;
 use crate::ir::{
     BinaryOp, CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T,
 };
-use crate::layout::typed_llvm;
 
 fn v(id: ValueId) -> O {
     O::reg(format!("v{}", id.0))
 }
 
 pub(crate) fn emit_integer_not(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     destination: ValueId,
     operand: ValueId,
     ty: &Type,
     state: &mut EmissionState,
 ) {
-    let llvm_ty = typed_llvm(llvm_type(ty).expect("validated integer type"));
+    let llvm_ty = llvm_type(ty).expect("validated integer type");
     let dest = destination.0;
     if is_unsigned(ty) {
         // NOT u is -u - 1, never representable unsigned (the interpreter
@@ -34,9 +33,9 @@ pub(crate) fn emit_integer_not(
             text,
             block_id,
             state,
-            "true",
+            &O::bool(true),
             cont,
-            &format!("%notexact{dest}"),
+            &O::reg(format!("notexact{dest}")),
             ty,
         );
         let zero = I::binary(BinaryOp::Add, llvm_ty, O::int(0), O::int(0));
@@ -51,7 +50,7 @@ pub(crate) fn emit_integer_not(
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_shift(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     destination: ValueId,
     operator: &str,
@@ -64,9 +63,9 @@ pub(crate) fn emit_shift(
 ) {
     let dest = destination.0;
     let r = |name: &str| O::reg(format!("sh{name}{dest}"));
-    let llvm_ty = typed_llvm(llvm_type(ty).expect("validated integer type"));
-    let left_llvm = typed_llvm(llvm_type(left_ty).expect("validated shift left type"));
-    let right_llvm = typed_llvm(llvm_type(right_ty).expect("validated shift count type"));
+    let llvm_ty = llvm_type(ty).expect("validated integer type");
+    let left_llvm = llvm_type(left_ty).expect("validated shift left type");
+    let right_llvm = llvm_type(right_ty).expect("validated shift count type");
     let width = bit_width(ty);
     let count = format!("shcnt{dest}");
     emit_cast_integer(
@@ -94,7 +93,7 @@ pub(crate) fn emit_shift(
         text,
         block_id,
         state,
-        &format!("%shbad{dest}"),
+        &O::reg(format!("shbad{dest}")),
         ok,
         bn_diag::DiagId::INVALID_SHIFT_COUNT,
         vec![(
@@ -142,7 +141,7 @@ pub(crate) fn emit_shift(
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_integer_power(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     destination: ValueId,
     left: ValueId,
@@ -154,9 +153,9 @@ pub(crate) fn emit_integer_power(
 ) {
     let dest = destination.0;
     let r = |name: &str| O::reg(format!("p{name}{dest}"));
-    let llvm_ty = typed_llvm(llvm_type(ty).expect("validated integer type"));
-    let left_llvm = typed_llvm(llvm_type(left_ty).expect("validated power base type"));
-    let right_llvm = typed_llvm(llvm_type(right_ty).expect("validated power exponent type"));
+    let llvm_ty = llvm_type(ty).expect("validated integer type");
+    let left_llvm = llvm_type(left_ty).expect("validated power base type");
+    let right_llvm = llvm_type(right_ty).expect("validated power exponent type");
     let base = format!("pbase{dest}");
     emit_cast_integer(
         text,
@@ -191,7 +190,7 @@ pub(crate) fn emit_integer_power(
         text,
         block_id,
         state,
-        &format!("%pneg{dest}"),
+        &O::reg(format!("pneg{dest}")),
         positive,
         bn_diag::DiagId::INVALID_EXPONENT,
         vec![(
@@ -204,7 +203,7 @@ pub(crate) fn emit_integer_power(
         text,
         block_id,
         state,
-        &format!("%pbig{dest}"),
+        &O::reg(format!("pbig{dest}")),
         setup.clone(),
         bn_diag::DiagId::INVALID_EXPONENT,
         vec![(
@@ -215,8 +214,8 @@ pub(crate) fn emit_integer_power(
     let label = |name: &str| format!("b{}.pow{dest}.{name}", block_id.0);
     let (loop_h, work, mulr) = (label("loop"), label("work"), label("mulr"));
     let (after, square, done) = (label("after"), label("sq"), label("done"));
-    let br = |text: &mut String, dest: &str| text.emit(I::Br { dest: dest.into() });
-    let cond_br = |text: &mut String, cond: O, yes: &str, no: &str| {
+    let br = |text: &mut crate::ir::LlvmModule, dest: &str| text.emit(I::Br { dest: dest.into() });
+    let cond_br = |text: &mut crate::ir::LlvmModule, cond: O, yes: &str, no: &str| {
         text.emit(I::CondBr {
             cond,
             true_dest: yes.into(),
@@ -286,7 +285,7 @@ pub(crate) fn emit_integer_power(
 }
 
 pub(crate) fn emit_float_power(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     left: ValueId,
     right: ValueId,
@@ -294,11 +293,10 @@ pub(crate) fn emit_float_power(
 ) {
     let llvm_ty = llvm_type(ty).expect("validated float type");
     let intrinsic = match llvm_ty {
-        "float" => "llvm.pow.f32",
-        "double" => "llvm.pow.f64",
+        T::Float => "llvm.pow.f32",
+        T::Double => "llvm.pow.f64",
         _ => unreachable!("validated float power type"),
     };
-    let llvm_ty = typed_llvm(llvm_ty);
     let args = vec![(llvm_ty.clone(), v(left)), (llvm_ty.clone(), v(right))];
     text.assign(
         format!("v{}", destination.0),
@@ -307,7 +305,7 @@ pub(crate) fn emit_float_power(
 }
 
 pub(crate) fn emit_string_concat(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     left: ValueId,
     right: ValueId,
@@ -316,7 +314,7 @@ pub(crate) fn emit_string_concat(
     let r = |name: &str| O::reg(format!("s{name}{dest}"));
     let own = O::reg(format!("v{dest}"));
     let strlen = |value: O| I::call(T::I64, "strlen", vec![(T::Ptr, value)]);
-    let memcpy = |text: &mut String, target: O, source: O, bytes: O| {
+    let memcpy = |text: &mut crate::ir::LlvmModule, target: O, source: O, bytes: O| {
         let args = vec![
             (T::Ptr, target),
             (T::Ptr, source),
@@ -352,26 +350,26 @@ pub(crate) fn emit_string_concat(
     text.emit(I::store(T::I8, O::int(0), r("end")));
 }
 
-pub(crate) fn pow_intrinsic_declaration(ty: &Type) -> Option<&'static str> {
+/// The intrinsic a `^` on `ty` calls: `llvm.pow` for floating point, the
+/// checked `i128` multiplication for integers.
+pub(crate) fn pow_intrinsic(ty: &Type) -> Option<crate::ir::Intrinsic> {
+    use crate::{
+        ir::LlvmType,
+        runtime_abi::{float_power, overflow},
+    };
     match llvm_type(ty)? {
-        "float" => Some("float @llvm.pow.f32(float, float)"),
-        "double" => Some("double @llvm.pow.f64(double, double)"),
-        "i8" | "i16" | "i32" | "i64" => {
-            Some("{ i128, i1 } @llvm.smul.with.overflow.i128(i128, i128)")
+        T::Float => Some(float_power("llvm.pow.f32", LlvmType::Float)),
+        T::Double => Some(float_power("llvm.pow.f64", LlvmType::Double)),
+        T::I8 | T::I16 | T::I32 | T::I64 => {
+            Some(overflow("llvm.smul.with.overflow.i128", LlvmType::I128))
         }
         _ => None,
     }
 }
 
-pub(crate) const STRING_CONCAT_DECLS: &str = "\
-declare i64 @strlen(ptr)
-declare ptr @malloc(i64)
-declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)
-";
-
 #[allow(clippy::too_many_arguments)]
 fn emit_checked_i128_mul(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     state: &mut EmissionState,
     dest: u32,
@@ -399,7 +397,7 @@ fn emit_checked_i128_mul(
         text,
         block_id,
         state,
-        &format!("%{out}f{dest}"),
+        &O::reg(format!("{out}f{dest}")),
         format!("{from}.ok"),
         bn_diag::DiagId::NUMERIC_OVERFLOW,
         vec![(
@@ -410,7 +408,7 @@ fn emit_checked_i128_mul(
 }
 
 fn emit_i128_range_trunc(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     dest: u32,
     llvm_ty: T,
@@ -421,11 +419,11 @@ fn emit_i128_range_trunc(
     let (min, max) = i128_bounds(ty);
     text.assign(
         format!("shlo{dest}"),
-        I::icmp(ICmpCond::Slt, T::I128, r("raw"), O::raw(min)),
+        I::icmp(ICmpCond::Slt, T::I128, r("raw"), min),
     );
     text.assign(
         format!("shhi{dest}"),
-        I::icmp(ICmpCond::Sgt, T::I128, r("raw"), O::raw(max)),
+        I::icmp(ICmpCond::Sgt, T::I128, r("raw"), max),
     );
     text.assign(
         format!("shov{dest}"),
@@ -436,9 +434,9 @@ fn emit_i128_range_trunc(
         text,
         block_id,
         state,
-        &format!("%shov{dest}"),
+        &O::reg(format!("shov{dest}")),
         ok,
-        &format!("%shraw{dest}"),
+        &O::reg(format!("shraw{dest}")),
         ty,
     );
     text.assign(
@@ -449,7 +447,14 @@ fn emit_i128_range_trunc(
 
 /// `%{result}` = `value` (of `from`) as `to`: `add 0` when the widths
 /// agree, `ext` to widen, `trunc` to narrow.
-fn emit_cast_integer(text: &mut String, result: &str, value: O, from: &T, to: &T, ext: CastOp) {
+fn emit_cast_integer(
+    text: &mut crate::ir::LlvmModule,
+    result: &str,
+    value: O,
+    from: &T,
+    to: &T,
+    ext: CastOp,
+) {
     let inst = if from == to {
         I::binary(BinaryOp::Add, from.clone(), O::int(0), value)
     } else if llvm_int_width(from) < llvm_int_width(to) {

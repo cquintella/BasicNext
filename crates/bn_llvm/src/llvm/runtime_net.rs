@@ -15,7 +15,7 @@ use crate::ir::{
     BinaryOp, CastOp, ICmpCond, InstSink, LlvmInst, LlvmOperand,
     LlvmType::{self, I1, I8, I16, I32, I64, Ptr},
 };
-use crate::layout::{handle_result_ty, typed_llvm, vector_ty};
+use crate::layout::{handle_result_ty, vector_ty};
 use runtime_abi::{
     ERROR_TAKE, NET_ADDRESS_PARSE, NET_ADDRESSES_COUNT, NET_ADDRESSES_GET, NET_HANDLE_CLOSE,
     NET_NEIGHBOR, NET_PING, NET_RESOLVE, NET_REVERSE, NET_TCP_ACCEPT, NET_TCP_CONNECT,
@@ -25,8 +25,12 @@ use runtime_abi::{
     NET_UDP_PACKET_TRUNCATED, NET_UDP_RECEIVE_HANDLE, NET_UDP_SEND_TO,
 };
 
+#[path = "net_members.rs"]
+mod net_members;
+pub(crate) use net_members::{NetMember, is_net_cidr_type};
+
 pub(crate) fn lower_net_call(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     destination: ValueId,
     name: &str,
@@ -34,10 +38,13 @@ pub(crate) fn lower_net_call(
     analysis: &LoweringAnalysis<'_>,
     state: &mut EmissionState,
 ) {
+    if let Some(member) = NetMember::of(name) {
+        member.lower(text, destination, arguments, analysis);
+        return;
+    }
     let dest = destination.0;
     let reg = LlvmOperand::reg;
-    let raw = LlvmOperand::raw;
-    let i32_argument = |text: &mut String, index: usize, what: &str| {
+    let i32_argument = |text: &mut crate::ir::LlvmModule, index: usize, what: &str| {
         extend_to_i32(
             text,
             arguments[index],
@@ -45,7 +52,7 @@ pub(crate) fn lower_net_call(
         )
     };
     // `%nethandle<dest>`: the runtime handle inside a handle result.
-    let net_handle = |text: &mut String| {
+    let net_handle = |text: &mut crate::ir::LlvmModule| {
         text.assign(
             format!("nethandle{dest}"),
             LlvmInst::extract(handle_result_ty(), value_reg(arguments[0]), 2),
@@ -62,10 +69,10 @@ pub(crate) fn lower_net_call(
                 LlvmInst::extract(vector_ty(), value_reg(arguments[2]), 0),
             );
             let len = i32_argument(text, 3, "validated length");
-            let length = format!("%netlen{dest}");
+            let length = reg(format!("netlen{dest}"));
             text.assign(
                 format!("netlen{dest}"),
-                LlvmInst::binary(BinaryOp::Add, I32, raw(len), LlvmOperand::int(0)),
+                LlvmInst::binary(BinaryOp::Add, I32, len, LlvmOperand::int(0)),
             );
             text.assign(format!("netwritten{dest}"), LlvmInst::alloca(I32));
             emit_buffer_bound(
@@ -81,10 +88,10 @@ pub(crate) fn lower_net_call(
                 format!("netrc{dest}"),
                 NET_UDP_SEND_TO.call([
                     handle,
-                    raw(address),
-                    raw(port),
+                    address,
+                    port,
                     reg(format!("netbytes{dest}")),
-                    raw(length),
+                    length,
                     reg(format!("netwritten{dest}")),
                 ]),
             );
@@ -99,8 +106,8 @@ pub(crate) fn lower_net_call(
             emit_handle_result(
                 text,
                 destination,
-                format!("%netrc{dest}"),
-                format!("%netwritten64{dest}"),
+                &LlvmOperand::reg(format!("netrc{dest}")),
+                &LlvmOperand::reg(format!("netwritten64{dest}")),
             );
         }
         "HOST.Net.TCPStream.Read" | "HOST.Net.TCPStream.Write" | "HOST.Net.UDPPacket.CopyTo" => {
@@ -132,7 +139,7 @@ pub(crate) fn lower_net_call(
             let operands = [
                 handle,
                 reg(format!("netbuffer{dest}")),
-                raw(length),
+                length,
                 reg(format!("{out}{dest}")),
             ];
             let call = match name {
@@ -165,8 +172,8 @@ pub(crate) fn lower_net_call(
                 emit_handle_result(
                     text,
                     destination,
-                    format!("%netrc{dest}"),
-                    format!("%{wide}{dest}"),
+                    &LlvmOperand::reg(format!("netrc{dest}")),
+                    &LlvmOperand::reg(format!("{wide}{dest}")),
                 );
             }
         }
@@ -211,9 +218,9 @@ pub(crate) fn lower_net_call(
             emit_endpoint_result(
                 text,
                 destination,
-                &format!("%netrc{dest}"),
-                &format!("%netaddrv{dest}"),
-                &format!("%netportv{dest}"),
+                &LlvmOperand::reg(format!("netrc{dest}")),
+                &LlvmOperand::reg(format!("netaddrv{dest}")),
+                &LlvmOperand::reg(format!("netportv{dest}")),
             );
         }
         "HOST.Net.UDPSocket.Receive" => {
@@ -225,8 +232,8 @@ pub(crate) fn lower_net_call(
                 format!("netrc{dest}"),
                 NET_UDP_RECEIVE_HANDLE.call([
                     handle,
-                    raw(maximum),
-                    raw(timeout),
+                    maximum,
+                    timeout,
                     reg(format!("netout{dest}")),
                 ]),
             );
@@ -260,9 +267,9 @@ pub(crate) fn lower_net_call(
             emit_net_result(
                 text,
                 destination,
-                format!("%netrc{dest}"),
-                format!("%netout{dest}"),
-                "0",
+                &LlvmOperand::reg(format!("netrc{dest}")),
+                &LlvmOperand::reg(format!("netout{dest}")),
+                &LlvmOperand::int(0),
             );
         }
         "HOST.Net.Address.ToString" => text.assign(
@@ -275,13 +282,7 @@ pub(crate) fn lower_net_call(
             let endpoint = LlvmType::struct_of([I1, Ptr, I32]);
             text.assign(
                 format!("netep0{dest}"),
-                LlvmInst::insert(
-                    vector_ty(),
-                    LlvmOperand::undef(),
-                    Ptr,
-                    raw(address.clone()),
-                    0,
-                ),
+                LlvmInst::insert(vector_ty(), LlvmOperand::undef(), Ptr, address.clone(), 0),
             );
             text.assign(
                 format!("netep1{dest}"),
@@ -289,7 +290,7 @@ pub(crate) fn lower_net_call(
                     vector_ty(),
                     reg(format!("netep0{dest}")),
                     I32,
-                    raw(port.clone()),
+                    port.clone(),
                     1,
                 ),
             );
@@ -309,29 +310,24 @@ pub(crate) fn lower_net_call(
                     endpoint.clone(),
                     reg(format!("netagg{dest}")),
                     Ptr,
-                    raw(address),
+                    address,
                     1,
                 ),
             );
             text.assign(
                 format!("v{dest}"),
-                LlvmInst::insert(endpoint, reg(format!("netaggp{dest}")), I32, raw(port), 2),
+                LlvmInst::insert(endpoint, reg(format!("netaggp{dest}")), I32, port, 2),
             );
         }
         "HOST.Net.UDPBind" | "HOST.Net.TCPConnect" => {
             let (address, port) = endpoint_parts(text, arguments[0], analysis);
             let call = if name == "HOST.Net.UDPBind" {
                 text.assign(format!("netout{dest}"), LlvmInst::alloca(I64));
-                NET_UDP_BIND.call([raw(address), raw(port), reg(format!("netout{dest}"))])
+                NET_UDP_BIND.call([address, port, reg(format!("netout{dest}"))])
             } else {
                 let timeout = i32_argument(text, 1, "validated timeout");
                 text.assign(format!("netout{dest}"), LlvmInst::alloca(I64));
-                NET_TCP_CONNECT.call([
-                    raw(address),
-                    raw(port),
-                    raw(timeout),
-                    reg(format!("netout{dest}")),
-                ])
+                NET_TCP_CONNECT.call([address, port, timeout, reg(format!("netout{dest}"))])
             };
             text.assign(format!("netrc{dest}"), call);
             load_handle_result(text, destination);
@@ -365,7 +361,7 @@ pub(crate) fn lower_net_call(
                 NET_TCP_LISTEN_WITH_BACKLOG.call([
                     reg(format!("netaddress{dest}")),
                     reg(format!("netport{dest}")),
-                    raw(backlog),
+                    backlog,
                     reg(format!("netout{dest}")),
                 ]),
             );
@@ -377,28 +373,28 @@ pub(crate) fn lower_net_call(
             text.assign(format!("netout{dest}"), LlvmInst::alloca(I64));
             text.assign(
                 format!("netrc{dest}"),
-                NET_TCP_ACCEPT.call([handle, raw(timeout), reg(format!("netout{dest}"))]),
+                NET_TCP_ACCEPT.call([handle, timeout, reg(format!("netout{dest}"))]),
             );
             load_handle_result(text, destination);
         }
         "HOST.Net.TCPStream.Close" | "HOST.Net.TCPListener.Close" | "HOST.Net.UDPSocket.Close" => {
             let handle = net_handle(text);
-            emit_void_result(
-                text,
-                destination,
-                NET_HANDLE_CLOSE.call([handle]).to_string(),
-            );
+            emit_void_call_result(text, destination, NET_HANDLE_CLOSE.call([handle]));
         }
         "HOST.Net.Endpoint.Port" => {
             let ty = analysis
                 .values
                 .get(&arguments[0])
                 .and_then(llvm_type)
-                .unwrap_or("{ i1, ptr, i32 }");
-            let index = if ty == "{ ptr, i32 }" { 1 } else { 2 };
+                .unwrap_or(crate::layout::status_endpoint_ty());
+            let index = if ty == crate::layout::vector_ty() {
+                1
+            } else {
+                2
+            };
             text.assign(
                 format!("netport{dest}"),
-                LlvmInst::extract(typed_llvm(ty), value_reg(arguments[0]), index),
+                LlvmInst::extract(ty, value_reg(arguments[0]), index),
             );
             let port = reg(format!("netport{dest}"));
             let narrow = llvm_type(
@@ -406,7 +402,7 @@ pub(crate) fn lower_net_call(
                     .values
                     .get(&destination)
                     .expect("validated port result"),
-            ) == Some("i16");
+            ) == Some(LlvmType::I16);
             text.assign(
                 format!("v{dest}"),
                 if narrow {
@@ -421,11 +417,11 @@ pub(crate) fn lower_net_call(
                 .values
                 .get(&arguments[0])
                 .and_then(llvm_type)
-                .unwrap_or("{ i1, ptr, i32 }");
-            let index = usize::from(ty != "{ ptr, i32 }");
+                .unwrap_or(crate::layout::status_endpoint_ty());
+            let index = usize::from(ty != crate::layout::vector_ty());
             text.assign(
                 format!("netaddr{dest}"),
-                LlvmInst::extract(typed_llvm(ty), value_reg(arguments[0]), index),
+                LlvmInst::extract(ty, value_reg(arguments[0]), index),
             );
             lower_address_result(text, dest);
         }
@@ -438,8 +434,8 @@ pub(crate) fn lower_net_call(
                 text.assign(
                     format!("netrc{dest}"),
                     NET_PING.call([
-                        raw(address),
-                        raw(timeout),
+                        address,
+                        timeout,
                         reg(format!("netout{dest}")),
                         reg(format!("netrtt{dest}")),
                     ]),
@@ -448,25 +444,25 @@ pub(crate) fn lower_net_call(
                     format!("netrttv{dest}"),
                     LlvmInst::load(I64, reg(format!("netrtt{dest}"))),
                 );
-                format!("%netrttv{dest}")
+                reg(format!("netrttv{dest}"))
             } else {
                 text.assign(
                     format!("netrc{dest}"),
-                    NET_REVERSE.call([raw(address), raw(timeout), reg(format!("netout{dest}"))]),
+                    NET_REVERSE.call([address, timeout, reg(format!("netout{dest}"))]),
                 );
-                "0".into()
+                LlvmOperand::int(0)
             };
             emit_net_result(
                 text,
                 destination,
-                format!("%netrc{dest}"),
-                format!("%netout{dest}"),
-                payload,
+                &LlvmOperand::reg(format!("netrc{dest}")),
+                &LlvmOperand::reg(format!("netout{dest}")),
+                &payload,
             );
         }
         "HOST.Net.Resolve" => {
             let timeout = i32_argument(text, 1, "validated timeout");
-            lower_resolve(text, dest, value_reg(arguments[0]), raw(timeout));
+            lower_resolve(text, dest, value_reg(arguments[0]), timeout);
         }
         "HOST.Net.Addresses.Count" => {
             text.assign(
@@ -489,16 +485,16 @@ pub(crate) fn lower_net_call(
                 format!("netrc{dest}"),
                 NET_ADDRESSES_GET.call([
                     reg(format!("netaddr{dest}")),
-                    raw(index),
+                    index,
                     reg(format!("netout{dest}")),
                 ]),
             );
             emit_net_result(
                 text,
                 destination,
-                format!("%netrc{dest}"),
-                format!("%netout{dest}"),
-                "0",
+                &LlvmOperand::reg(format!("netrc{dest}")),
+                &LlvmOperand::reg(format!("netout{dest}")),
+                &LlvmOperand::int(0),
             );
         }
         "HOST.Net.Neighbor" => {
@@ -506,14 +502,14 @@ pub(crate) fn lower_net_call(
             text.assign(format!("netout{dest}"), LlvmInst::alloca(Ptr));
             text.assign(
                 format!("netrc{dest}"),
-                NET_NEIGHBOR.call([raw(address), reg(format!("netout{dest}"))]),
+                NET_NEIGHBOR.call([address, reg(format!("netout{dest}"))]),
             );
             emit_net_result(
                 text,
                 destination,
-                format!("%netrc{dest}"),
-                format!("%netout{dest}"),
-                "0",
+                &LlvmOperand::reg(format!("netrc{dest}")),
+                &LlvmOperand::reg(format!("netout{dest}")),
+                &LlvmOperand::int(0),
             );
         }
         "HOST.Net.PingReply.RoundTripMicroseconds" => text.assign(
@@ -533,7 +529,7 @@ pub(crate) fn lower_net_call(
 
 /// `TCPStream.Read`: zero bytes on success is EOF, status 4 for the shared
 /// result builder.
-fn lower_tcp_read_result(text: &mut String, destination: ValueId) {
+fn lower_tcp_read_result(text: &mut crate::ir::LlvmModule, destination: ValueId) {
     let dest = destination.0;
     let reg = LlvmOperand::reg;
     text.assign(
@@ -583,15 +579,15 @@ fn lower_tcp_read_result(text: &mut String, destination: ValueId) {
     emit_status_result(
         text,
         destination,
-        &format!("%netstatus{dest}"),
+        &LlvmOperand::reg(format!("netstatus{dest}")),
         Some(4),
-        "null",
-        &format!("%netread64{dest}"),
+        &LlvmOperand::null(),
+        &LlvmOperand::reg(format!("netread64{dest}")),
     );
 }
 
 /// Loads the handle `bn_rt` wrote to `%netout<dest>` and builds the result.
-fn load_handle_result(text: &mut String, destination: ValueId) {
+fn load_handle_result(text: &mut crate::ir::LlvmModule, destination: ValueId) {
     let dest = destination.0;
     text.assign(
         format!("netdata{dest}"),
@@ -600,13 +596,13 @@ fn load_handle_result(text: &mut String, destination: ValueId) {
     emit_handle_result(
         text,
         destination,
-        format!("%netrc{dest}"),
-        format!("%netdata{dest}"),
+        &LlvmOperand::reg(format!("netrc{dest}")),
+        &LlvmOperand::reg(format!("netdata{dest}")),
     );
 }
 
 /// Wraps the address in `%netaddr<dest>` as a successful `Address` result.
-fn lower_address_result(text: &mut String, dest: u32) {
+fn lower_address_result(text: &mut crate::ir::LlvmModule, dest: u32) {
     let reg = LlvmOperand::reg;
     text.assign(
         format!("netfat0{dest}"),
@@ -642,7 +638,12 @@ fn lower_address_result(text: &mut String, dest: u32) {
 
 /// `Resolve`: the address list, or the error record the runtime kept
 /// (code, message, cause).
-fn lower_resolve(text: &mut String, dest: u32, host: LlvmOperand, timeout: LlvmOperand) {
+fn lower_resolve(
+    text: &mut crate::ir::LlvmModule,
+    dest: u32,
+    host: LlvmOperand,
+    timeout: LlvmOperand,
+) {
     let reg = LlvmOperand::reg;
     let result = LlvmType::struct_of([I1, Ptr]);
     text.assign(format!("netout{dest}"), LlvmInst::alloca(Ptr));
@@ -702,62 +703,62 @@ fn lower_resolve(text: &mut String, dest: u32, host: LlvmOperand, timeout: LlvmO
     );
 }
 
-fn net_payload_ptr(text: &mut String, value: ValueId) -> String {
+fn net_payload_ptr(text: &mut crate::ir::LlvmModule, value: ValueId) -> crate::ir::LlvmOperand {
     let temp = format!("netpay{}", value.0);
     text.assign(
         temp.clone(),
         LlvmInst::extract(handle_result_ty(), value_reg(value), 1),
     );
-    format!("%{temp}")
+    LlvmOperand::reg(&temp)
 }
 
 /// The address and port registers of an `Endpoint` (`{ ptr, i32 }`) or an
 /// endpoint result (`{ i1, ptr, i32 }`).
 fn endpoint_parts(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     value: ValueId,
     analysis: &LoweringAnalysis<'_>,
-) -> (String, String) {
+) -> (LlvmOperand, LlvmOperand) {
     let ty = analysis
         .values
         .get(&value)
         .and_then(llvm_type)
-        .unwrap_or("{ ptr, i32 }");
-    let first = usize::from(ty != "{ ptr, i32 }");
+        .unwrap_or(crate::layout::vector_ty());
+    let first = usize::from(ty != crate::layout::vector_ty());
     let address = format!("netepaddr{}", value.0);
     let port = format!("netepport{}", value.0);
     text.assign(
         address.clone(),
-        LlvmInst::extract(typed_llvm(ty), value_reg(value), first),
+        LlvmInst::extract(ty.clone(), value_reg(value), first),
     );
     text.assign(
         port.clone(),
-        LlvmInst::extract(typed_llvm(ty), value_reg(value), first + 1),
+        LlvmInst::extract(ty, value_reg(value), first + 1),
     );
-    (format!("%{address}"), format!("%{port}"))
+    (LlvmOperand::reg(address), LlvmOperand::reg(port))
 }
 
 /// A `HOST.Net` result whose success value is in `out_slot`: the value, or
 /// the `Error` the runtime recorded (`emit_status_result`); `payload` is the
 /// success `i64` (a round-trip time).
 fn emit_net_result(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
-    rc: impl AsRef<str>,
-    out_slot: impl AsRef<str>,
-    payload: impl AsRef<str>,
+    rc: &LlvmOperand,
+    out_slot: &LlvmOperand,
+    payload: &LlvmOperand,
 ) {
     let dest = destination.0;
     text.assign(
         format!("netdata{dest}"),
-        LlvmInst::load(Ptr, LlvmOperand::raw(out_slot.as_ref())),
+        LlvmInst::load(Ptr, out_slot.clone()),
     );
     emit_status_result(
         text,
         destination,
-        rc.as_ref(),
+        rc,
         None,
-        &format!("%netdata{dest}"),
-        payload.as_ref(),
+        &LlvmOperand::reg(format!("netdata{dest}")),
+        payload,
     );
 }

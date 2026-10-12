@@ -1,6 +1,9 @@
 //! Common command-line options shared by every Basic Next executable.
-//! Backend-specific flags are parsed through [`OptionExtension`], supplied by
-//! the driver, so this parser never learns about targets or interpreters.
+//! Each option has one owner: the options here are common; interpreter and
+//! compiler options are parsed through [`OptionExtension`], supplied by the
+//! driver, so this parser never learns them and a tool refuses the other
+//! tool's options as unknown. `emit` and `output_format` are data a driver
+//! sets from its own options.
 
 use std::path::PathBuf;
 
@@ -57,14 +60,11 @@ pub struct Options {
     pub eval_source_text: Option<String>,
     pub eval_promotion_warning: bool,
     pub eval_promotion_span: Option<bn_source::Span>,
-    pub trace: bool,
     pub color: Color,
-    pub filesystem: bool,
     pub sandbox: bool,
     pub module_paths: Vec<ModuleRoot>,
     pub read_roots: Vec<PathBuf>,
     pub write_roots: Vec<PathBuf>,
-    pub jupyter_stdin: bool,
     pub program_arguments: Vec<String>,
     pub warning_policy: WarningPolicy,
     pub diagnostic_catalog: Catalog,
@@ -115,16 +115,12 @@ pub fn parse_options(
     let mut arguments = arguments.into_iter();
     let mut path = None;
     let mut verbosity = 0u8;
-    let mut emit = None;
     let mut output = None;
-    let mut output_format = OutputFormat::Text;
-    let mut trace = false;
+    let output_format = OutputFormat::Text;
     let mut color = Color::Auto;
-    let mut filesystem = true;
     let mut sandbox = false;
     let mut read_roots = Vec::new();
     let mut write_roots = Vec::new();
-    let mut jupyter_stdin = false;
     let mut program_arguments = Vec::new();
     let mut log_level = configured.log_level;
     let mut log_file = configured.log_file;
@@ -150,8 +146,6 @@ pub fn parse_options(
             "-h" | "--help" => return Err("help is available via --help".into()),
             "-v" | "--verbose" => verbosity = verbosity.saturating_add(1).min(2),
             "-vv" => verbosity = 2,
-            "--trace" => trace = true,
-            "--no-filesystem" => filesystem = false,
             "--sandbox" => sandbox = true,
             "--read-root" => read_roots.push(PathBuf::from(
                 arguments
@@ -165,7 +159,6 @@ pub fn parse_options(
                     .filter(|v| !v.starts_with('-'))
                     .ok_or("--write-root expects a directory".to_string())?,
             )),
-            "--jupyter-stdin" => jupyter_stdin = true,
             "--module-path" => module_paths.push(ModuleRoot {
                 path: PathBuf::from(
                     arguments
@@ -222,19 +215,6 @@ pub fn parse_options(
                 };
                 warning_policy.set_cli(id, level)?;
             }
-            "--emit" => {
-                if emit.is_some() {
-                    return Err("--emit was specified more than once".into());
-                }
-                emit = Some(match arguments.next().as_deref() {
-                    Some("tokens") => Emit::Tokens,
-                    Some("ast") => Emit::Ast,
-                    Some("typed-ast") => Emit::TypedAst,
-                    Some("ir") => Emit::Ir,
-                    Some("llvm" | "llvm-ir") => Emit::Llvm,
-                    _ => return Err("--emit expects tokens, ast, typed-ast, ir, or llvm".into()),
-                });
-            }
             "-o" | "--output" => {
                 if output.is_some() {
                     return Err("output file was specified more than once".into());
@@ -245,13 +225,6 @@ pub fn parse_options(
                         .filter(|value| !value.starts_with('-'))
                         .ok_or_else(|| "-o expects an output file path".to_string())?,
                 );
-            }
-            "--format" => {
-                output_format = match arguments.next().as_deref() {
-                    Some("text") => OutputFormat::Text,
-                    Some("json") => OutputFormat::Json,
-                    _ => return Err("--format expects text or json".into()),
-                };
             }
             "--color" => {
                 color = match arguments.next().as_deref() {
@@ -265,30 +238,24 @@ pub fn parse_options(
             _ => return Err(format!("unknown or repeated option '{argument}'")),
         }
     }
-    if sandbox && !filesystem {
-        return Err("--sandbox cannot be combined with --no-filesystem".into());
-    }
     if (!read_roots.is_empty() || !write_roots.is_empty()) && !sandbox {
         return Err("--read-root/--write-root require --sandbox".into());
     }
     path.map(|path| Options {
         path,
         verbosity,
-        emit,
+        emit: None,
         output,
         output_format,
         eval_mapping: None,
         eval_source_text: None,
         eval_promotion_warning: false,
         eval_promotion_span: None,
-        trace,
         color,
-        filesystem,
         sandbox,
         read_roots,
         write_roots,
         module_paths,
-        jupyter_stdin,
         program_arguments,
         warning_policy,
         diagnostic_catalog,

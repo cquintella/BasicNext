@@ -143,6 +143,7 @@ version = "0.6.4"
 name = "bn_cli"
 version = "0.6.4"
 dependencies = [
+ "bn_catalog",
  "bn_diag",
  "bn_frontend",
  "bn_source",
@@ -154,6 +155,7 @@ dependencies = [
 name = "bn_compile_driver"
 version = "0.6.4"
 dependencies = [
+ "bn_catalog",
  "bn_cli",
  "bn_diag",
  "bn_llvm",
@@ -308,6 +310,7 @@ dependencies = [
 name = "bn_interpret_driver"
 version = "0.6.4"
 dependencies = [
+ "bn_catalog",
  "bn_cli",
  "bn_diag",
  "bn_frontend",
@@ -448,6 +451,7 @@ dependencies = [
  "bn_interp",
  "bn_ir",
  "bn_lib_dispatch",
+ "bn_lib_log",
  "bn_limits",
  "bn_rt",
  "bn_runtime",

@@ -13,7 +13,7 @@ use crate::ir::{
 };
 
 pub(crate) fn lower_for_condition(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     arguments: &[ValueId],
     analysis: &LoweringAnalysis<'_>,
@@ -26,19 +26,19 @@ pub(crate) fn lower_for_condition(
         .get(&current)
         .expect("validated FOR current type");
     let step_type = analysis.values.get(&step).expect("validated FOR step type");
-    let current_i64 = LlvmOperand::raw(extend_to_i64(text, current, current_type));
-    let end_i64 = LlvmOperand::raw(extend_to_i64(
+    let current_i64 = extend_to_i64(text, current, current_type);
+    let end_i64 = extend_to_i64(
         text,
         end,
         analysis.values.get(&end).expect("validated FOR end type"),
-    ));
+    );
     let dest = destination.0;
     let reg = LlvmOperand::reg;
     text.assign(
         format!("for_step_positive{dest}"),
         LlvmInst::icmp(
             integer_compare_cond("Greater", step_type),
-            crate::layout::typed_llvm(llvm_type(step_type).expect("validated FOR step type")),
+            llvm_type(step_type).expect("validated FOR step type"),
             value_reg(step),
             LlvmOperand::int(0),
         ),

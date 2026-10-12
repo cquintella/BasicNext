@@ -3,7 +3,7 @@ use super::*;
 
 #[allow(clippy::unnecessary_wraps)]
 pub(crate) fn lower_scalar_instruction_tail(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     module: &Module,
     function: &Function,
     block_id: BlockId,

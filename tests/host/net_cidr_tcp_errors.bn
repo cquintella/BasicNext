@@ -1,0 +1,58 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// The refusals of CIDR.Parse (host-net.md, "CIDR text") and of the TCP
+// timeouts and half shutdown, on an open and on a closed stream.
+
+IMPORT HOST.Net AS Net
+
+FUNCTION Show(result AS VOID OR Error) AS VOID
+    IF result IS Error THEN
+        PRINT result.Code, result.Operation, result.Message
+    ELSE
+        PRINT "ok"
+    END IF
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    FOR EACH text AS STRING IN ["10.0.0.1/8", "10.0.0.0/08", "nope", "::/129", "2001:db8::/32", "0.0.0.0/0"]
+        LET parsed AS Net.CIDR OR Error = Net.CIDR.Parse(text)
+        IF parsed IS Error THEN
+            PRINT parsed.Code, parsed.Message
+        ELSE
+            PRINT parsed.Network().ToString(), parsed.PrefixLength()
+        END IF
+    END FOR
+    LET loopback AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    IF loopback IS Error THEN
+        RETURN 1
+    END IF
+    LET wanted AS Net.Endpoint OR Error = Net.Endpoint.Create(loopback, 0)
+    IF wanted IS Error THEN
+        RETURN 1
+    END IF
+    LET endpoints AS Net.Endpoint[1] = [wanted]
+    LET listener AS Net.TCPListener OR Error = Net.TCPListen(endpoints, 4)
+    IF listener IS Error THEN
+        RETURN 1
+    END IF
+    LET bound AS Net.Endpoint OR Error = listener.LocalEndpoint()
+    IF bound IS Error THEN
+        RETURN 1
+    END IF
+    LET stream AS Net.TCPStream OR Error = Net.TCPConnect(bound, 2000)
+    IF stream IS Error THEN
+        RETURN 1
+    END IF
+    Show(stream.SetTimeouts(0, 10))
+    Show(stream.SetTimeouts(10, 60001))
+    Show(stream.SetTimeouts(100, 100))
+    Show(stream.ShutdownWrite())
+    Show(stream.Close())
+    Show(stream.SetTimeouts(100, 100))
+    Show(stream.ShutdownRead())
+    listener.Close()
+    RETURN 0
+END FUNCTION

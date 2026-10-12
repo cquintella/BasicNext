@@ -187,3 +187,113 @@ fn objects_in_vector_rows_are_released_once() {
         );
     }
 }
+
+/// `BNMath` range constants read through the `Limits` class fold to the
+/// same values as the module members (math.md: one storage location; K59).
+#[test]
+fn bnmath_limits_class_reads_the_range_constants() {
+    let directory = TestDir::new("bnmath-limits").expect("create directory");
+    let path = directory.join("limits.bn");
+    std::fs::write(
+        &path,
+        "IMPORT BNMath AS Math\n\nFUNCTION Start() AS VOID\n    \
+         PRINT Math.Limits.MAX_FLOAT = Math.MAX_FLOAT, Math.Limits.MAX_INTEGER, \
+         Math.Limits.MIN_POSITIVE_FLOAT32 = Math.MIN_POSITIVE_FLOAT32, Math.Limits.MAX_BYTE\n\
+         END FUNCTION\n",
+    )
+    .expect("write program");
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "TRUE 2147483647 TRUE 255\n",
+            "{backend}"
+        );
+    }
+}
+
+/// A STRUCT made outside `Start` builds natively (known issue K13): returned
+/// from a function, made on every turn of a loop, copied with value
+/// semantics, and holding an object that is released exactly once.
+#[test]
+fn struct_values_outside_start_match_on_both_backends() {
+    let path = valid_fixture("struct-values-outside-start.bn");
+    let expected = "7 9 made\n50005000\n1\n1\nend\nfree k\n";
+    let directory = TestDir::new("struct-values").expect("create directory");
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
+}
+
+/// Recursion that never ends stops with `STACK_OVERFLOW` naming the call, on
+/// both backends, after the output written before it; a tail call takes
+/// stack too, so `bnc` does not loop forever (0.6.md, "Recursion depth";
+/// known issue K53).
+#[test]
+fn endless_recursion_stops_with_stack_overflow_on_both_backends() {
+    for (path, callee) in [
+        (
+            workspace_root().join("tests/runtime-traps/stack-overflow.bn"),
+            "Depth",
+        ),
+        (valid_fixture("build-recursive.bn"), "Loop"),
+    ] {
+        let directory = TestDir::new("stack-overflow").expect("create directory");
+        let artifact = compile_native(&path, &directory);
+        for (backend, output) in [
+            ("bni", interpret(&path, None)),
+            ("native", execute_artifact(&artifact, &[], None)),
+        ] {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert_eq!(output.status.code(), Some(1), "{backend}: {stderr}");
+            assert!(
+                stderr.contains(&format!(
+                    "error[STACK_OVERFLOW]: Stack overflow: Calling {callee} would exhaust the call stack."
+                )),
+                "{backend}: {stderr}"
+            );
+            if callee == "Depth" {
+                assert_eq!(
+                    String::from_utf8_lossy(&output.stdout),
+                    "before\n",
+                    "{backend}"
+                );
+            }
+        }
+    }
+}
+
+/// Fixed vectors of two and three dimensions are values natively, as under
+/// `bni`: a copy, an argument, a returned vector, a default and a `STATIC`
+/// each own their rows (0.6.md, value semantics; known issue K21).
+#[test]
+fn nested_vectors_are_values_on_both_backends() {
+    let path = valid_fixture("nested-vector-values.bn");
+    let expected = "8 80 3 1\n0 4\n0\n0 13\n0 13\nb z c\n6000\n";
+    let directory = TestDir::new("nested-vectors").expect("create directory");
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
+}

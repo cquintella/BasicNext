@@ -22,6 +22,7 @@ lib-sqlite = ["dep:bn_lib_sqlite"]
 workspace = true
 
 [dependencies]
+bn_catalog = { path = "../bn_catalog" }
 bn_cli = { path = "../bn_cli" }
 bn_diag = { path = "../bn_diag" }
 bn_frontend = { path = "../bn_frontend" }

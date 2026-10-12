@@ -3,63 +3,45 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// BNLog error codes (bnlog.md "Errors"): one case per code reachable
-// without external transport failures.
+// The refusals of the BNLog API (bnlog.md, "Errors"), each an Error the
+// program handles: Code and Operation, on both backends.
 IMPORT BNLog AS Log
+IMPORT HOST.Console AS CON
+
+FUNCTION Show(result AS VOID OR Error) AS VOID
+    IF result IS Error THEN
+        PRINT result.Code, result.Operation
+    ELSE
+        PRINT "ok"
+    END IF
+END FUNCTION
+
+FUNCTION Made(made AS Log.Logger OR Error) AS VOID
+    IF made IS Error THEN
+        PRINT made.Code, made.Operation
+    ELSE
+        PRINT "made"
+    END IF
+END FUNCTION
 
 FUNCTION Start() AS INTEGER
-    LET fields AS Log.Fields = NEW Log.Fields()
-
-    LET invalidKey AS VOID OR Error = fields.SetString("", "value")
-    IF invalidKey IS Error THEN
-        PRINT invalidKey.Code = Log.INVALID_ARGUMENT, invalidKey.Operation
+    Made(Log.Logger.New("", "JSON", "CONSOLE"))
+    Made(Log.Logger.New("app", "XML", "CONSOLE"))
+    Made(Log.Logger.New("app", "JSON", ""))
+    Made(Log.Logger.New("app", "JSON", "app.log"))
+    LET web AS Log.Logger OR Error = Log.Logger.New("web", "APACHE", "NULL")
+    LET app AS Log.Logger OR Error = Log.Logger.New("app", "JSON", "NULL")
+    IF web IS Error OR app IS Error THEN
+        RETURN 1
     END IF
-
-    LET dup1 AS VOID OR Error = fields.SetString("user", "alice")
-    LET dup2 AS VOID OR Error = fields.SetString("user", "bob")
-    IF dup2 IS Error THEN
-        PRINT dup1 IS Error, dup2.Code = Log.DUPLICATE, dup2.Operation
-    END IF
-
-    LET logger AS Log.Logger = NEW Log.Logger()
-
-    LET invalidLevel AS VOID OR Error = logger.Log(10, "bad level", fields)
-    IF invalidLevel IS Error THEN
-        PRINT invalidLevel.Code = Log.INVALID_ARGUMENT, invalidLevel.Operation
-    END IF
-
-    LET invalidTimeout AS VOID OR Error = logger.Flush(0)
-    IF invalidTimeout IS Error THEN
-        PRINT invalidTimeout.Code = Log.INVALID_ARGUMENT, invalidTimeout.Operation
-    END IF
-
-    FOR i AS INTEGER = 1 TO 8
-        LET ok AS VOID OR Error = logger.AddNull(2)
-        IF ok IS Error THEN
-            RETURN 1
-        END IF
-    END FOR
-    LET overLimit AS VOID OR Error = logger.AddNull(2)
-    IF overLimit IS Error THEN
-        PRINT overLimit.Code = Log.LIMIT, overLimit.Operation
-    END IF
-
-    LET closed AS VOID OR Error = logger.Close(1000)
-    LET afterClose AS VOID OR Error = logger.Log(2, "late", fields)
-    IF afterClose IS Error THEN
-        PRINT closed IS Error, afterClose.Code = Log.CLOSED, afterClose.Operation
-    END IF
-
-    LET freshLogger AS Log.Logger = NEW Log.Logger()
-    LET noFs AS VOID OR Error = freshLogger.AddFile("test.log", 2)
-    IF noFs IS Error THEN
-        PRINT noFs.Code = Log.CAPABILITY_REQUIRED, noFs.Operation
-    END IF
-
-    LET noConsole AS VOID OR Error = freshLogger.AddConsole(2)
-    IF noConsole IS Error THEN
-        PRINT noConsole.Code = Log.CAPABILITY_REQUIRED, noConsole.Operation
-    END IF
-
+    LET event AS Log.Event
+    Show(web.Info("not an access record", event))
+    Show(app.SetLevel(7))
+    Show(app.Flush(0))
+    Show(app.Close(60001))
+    Show(app.Close(1000))
+    Show(app.Info("closed", event))
+    Show(app.SetLevel(Log.Level.INFO))
+    Show(app.Close(1000))
     RETURN 0
 END FUNCTION

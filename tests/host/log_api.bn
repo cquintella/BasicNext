@@ -1,0 +1,49 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// The BNLog API (bnlog.md, "API (0.6.5)"): a logger per format, records from
+// Log.Event and Log.Apache, defaults for unset fields, the minimum level, and
+// Close. Timestamps, host name and process id vary; the test masks them.
+IMPORT BNLog AS Log
+IMPORT HOST.Console AS CON
+
+FUNCTION Start() AS INTEGER
+    LET app AS Log.Logger OR Error = Log.Logger.New("app", "JSON", "CONSOLE")
+    LET text AS Log.Logger OR Error = Log.Logger.New("app", "SYSLOG", "CONSOLE")
+    LET web AS Log.Logger OR Error = Log.Logger.New("web", "APACHE", "CONSOLE")
+    LET quiet AS Log.Logger OR Error = Log.Logger.New("quiet", "JSON", "NULL")
+    IF app IS Error OR text IS Error OR web IS Error OR quiet IS Error THEN
+        RETURN 1
+    END IF
+    LET defaults AS Log.Event
+    defaults.service = "users"
+    defaults.route = "/login"
+    LET kept AS VOID OR Error = app.SetDefaults(defaults)
+    LET event AS Log.Event
+    event.user = "ana"
+    event.code = 7
+    event.route = "/signin"
+    LET info AS VOID OR Error = app.Info("signed in", event)
+    LET debug AS VOID OR Error = app.Debug("not written", event)
+    LET level AS VOID OR Error = app.SetLevel(Log.Level.DEBUG)
+    LET shown AS VOID OR Error = app.Debug("written now", event)
+    LET warn AS VOID OR Error = text.Warn("slow", event)
+    LET request AS Log.Apache
+    request.remote = "10.0.0.1"
+    request.method = "GET"
+    request.path = "/items?token=1"
+    request.protocol = "HTTP/1.1"
+    request.status = 200
+    LET agent AS Log.Apache
+    agent.agent = "curl"
+    LET agents AS VOID OR Error = web.SetAccessDefaults(agent)
+    LET line AS VOID OR Error = web.Access(request)
+    LET http AS VOID OR Error = app.Access(request)
+    LET none AS VOID OR Error = quiet.Error("discarded", event)
+    PRINT kept IS Error, info IS Error, debug IS Error, level IS Error, shown IS Error
+    PRINT warn IS Error, agents IS Error, line IS Error, http IS Error, none IS Error
+    PRINT app.Flush(1000) IS Error, app.Close(1000) IS Error, app.Close(1000) IS Error
+    RETURN 0
+END FUNCTION

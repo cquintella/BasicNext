@@ -12,6 +12,7 @@
 )]
 use super::*;
 use crate::ir::InstSink as _;
+use crate::ir::LlvmType;
 
 pub(crate) fn integer_kind(ty: &Type) -> IntegerType {
     match ty {
@@ -21,47 +22,45 @@ pub(crate) fn integer_kind(ty: &Type) -> IntegerType {
     }
 }
 
-/// Render an integer for LLVM IR. Never pass BN hex source (`0x…`) through:
-/// LLVM treats `0x` as a floating-point constant encoding.
-pub(crate) fn render_llvm_integer(value: i128, llvm_ty: &str) -> String {
-    match llvm_ty {
-        "i8" => render_signed_bits(value, 8),
-        "i16" => render_signed_bits(value, 16),
-        "i32" => render_signed_bits(value, 32),
-        "i64" => render_signed_bits(value, 64),
-        _ => value.to_string(),
+/// The constant of an integer `value` in `llvm_ty`: its bit pattern read as a
+/// signed number, as LLVM reads it. Never BN hex source (`0x…`), which LLVM
+/// takes for a floating-point encoding.
+pub(crate) fn integer_constant(
+    value: i128,
+    llvm_ty: &crate::ir::LlvmType,
+) -> crate::ir::LlvmOperand {
+    match llvm_ty.integer_bits() {
+        Some(bits @ (8 | 16 | 32 | 64)) => crate::ir::LlvmOperand::int128(signed_bits(value, bits)),
+        _ => crate::ir::LlvmOperand::int128(value),
     }
 }
 
-fn render_signed_bits(value: i128, bits: u32) -> String {
+fn signed_bits(value: i128, bits: u32) -> i128 {
     let modulus = 1_i128 << bits;
     let normalized = value.rem_euclid(modulus);
     let sign = 1_i128 << (bits - 1);
     if normalized >= sign {
-        (normalized - modulus).to_string()
+        normalized - modulus
     } else {
-        normalized.to_string()
+        normalized
     }
 }
 
 pub(crate) fn coerce_integer(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     value: ValueId,
-    from_ty: &str,
-    to_ty: &str,
+    from_ty: &crate::ir::LlvmType,
+    to_ty: &crate::ir::LlvmType,
     unsigned: bool,
-) -> String {
+) -> crate::ir::LlvmOperand {
     if from_ty == to_ty {
-        return format!("%v{}", value.0);
+        return crate::ir::LlvmOperand::reg(format!("v{}", value.0));
     }
     let temp = format!("coer{}_{from_ty}_{to_ty}", value.0);
-    let from_w = integer_llvm_width(from_ty);
-    let to_w = integer_llvm_width(to_ty);
+    let from_w = from_ty.integer_bits().unwrap_or(64);
+    let to_w = to_ty.integer_bits().unwrap_or(64);
     let own = crate::ir::LlvmOperand::reg(format!("v{}", value.0));
-    let (from, to) = (
-        crate::layout::typed_llvm(from_ty),
-        crate::layout::typed_llvm(to_ty),
-    );
+    let (from, to) = (from_ty.clone(), to_ty.clone());
     if from_w < to_w {
         let op = if unsigned {
             crate::ir::CastOp::ZExt
@@ -75,24 +74,33 @@ pub(crate) fn coerce_integer(
             crate::ir::LlvmInst::cast(crate::ir::CastOp::Trunc, from, own, to),
         );
     }
-    format!("%{temp}")
+    crate::ir::LlvmOperand::reg(&temp)
 }
 
-pub(crate) fn coerce_to_type(text: &mut String, value: ValueId, from: &Type, to: &Type) -> String {
+pub(crate) fn coerce_to_type(
+    text: &mut crate::ir::LlvmModule,
+    value: ValueId,
+    from: &Type,
+    to: &Type,
+) -> crate::ir::LlvmOperand {
     let from_llvm = llvm_type(from).expect("validated coerce source");
     let to_llvm = llvm_type(to).expect("validated coerce target");
     if from_llvm == to_llvm {
-        return format!("%v{}", value.0);
+        return crate::ir::LlvmOperand::reg(format!("v{}", value.0));
     }
-    if from_llvm == "{ i1, ptr, i64 }"
-        && matches!(to_llvm, "i8" | "i16" | "i32" | "i64" | "float" | "double")
+    if from_llvm == crate::layout::handle_result_ty()
+        && matches!(
+            to_llvm,
+            LlvmType::I8
+                | LlvmType::I16
+                | LlvmType::I32
+                | LlvmType::I64
+                | LlvmType::Float
+                | LlvmType::Double
+        )
     {
         let tag = format!("unionpayload{}", value.0);
-        let union_ty = crate::ir::LlvmType::struct_of([
-            crate::ir::LlvmType::I1,
-            crate::ir::LlvmType::Ptr,
-            crate::ir::LlvmType::I64,
-        ]);
+        let union_ty = LlvmType::struct_of([LlvmType::I1, LlvmType::Ptr, LlvmType::I64]);
         text.assign(
             tag.clone(),
             crate::ir::LlvmInst::extract(
@@ -101,37 +109,37 @@ pub(crate) fn coerce_to_type(text: &mut String, value: ValueId, from: &Type, to:
                 2,
             ),
         );
-        if matches!(to_llvm, "float" | "double") {
+        if matches!(to_llvm, LlvmType::Float | LlvmType::Double) {
             let ftag = format!("{tag}f");
             text.assign(
                 ftag.clone(),
                 crate::ir::LlvmInst::cast(
                     crate::ir::CastOp::BitCast,
-                    crate::ir::LlvmType::I64,
+                    LlvmType::I64,
                     crate::ir::LlvmOperand::reg(&tag),
-                    crate::ir::LlvmType::Double,
+                    LlvmType::Double,
                 ),
             );
-            if to_llvm == "float" {
+            if to_llvm == LlvmType::Float {
                 let f32tag = format!("{tag}f32");
                 text.assign(
                     f32tag.clone(),
                     crate::ir::LlvmInst::cast(
                         crate::ir::CastOp::FPTrunc,
-                        crate::ir::LlvmType::Double,
+                        LlvmType::Double,
                         crate::ir::LlvmOperand::reg(ftag),
-                        crate::ir::LlvmType::Float,
+                        LlvmType::Float,
                     ),
                 );
-                return format!("%{f32tag}");
+                return crate::ir::LlvmOperand::reg(&f32tag);
             }
-            return format!("%{ftag}");
+            return crate::ir::LlvmOperand::reg(&ftag);
         }
-        if to_llvm == "i64" {
-            return format!("%{tag}");
+        if to_llvm == LlvmType::I64 {
+            return crate::ir::LlvmOperand::reg(&tag);
         }
         let ctag = format!("{tag}c");
-        let opcode = if integer_llvm_width(to_llvm) < 64 {
+        let opcode = if to_llvm.integer_bits().unwrap_or(64) < 64 {
             crate::ir::CastOp::Trunc
         } else if is_unsigned(to) {
             crate::ir::CastOp::ZExt
@@ -142,25 +150,20 @@ pub(crate) fn coerce_to_type(text: &mut String, value: ValueId, from: &Type, to:
             ctag.clone(),
             crate::ir::LlvmInst::cast(
                 opcode,
-                crate::ir::LlvmType::I64,
+                LlvmType::I64,
                 crate::ir::LlvmOperand::reg(tag),
-                crate::layout::typed_llvm(to_llvm),
+                to_llvm,
             ),
         );
-        return format!("%{ctag}");
+        return crate::ir::LlvmOperand::reg(&ctag);
     }
     if let Some(constructed) = alternatives::construct(text, value, from, to) {
         return constructed;
     }
-    if from_llvm == "{ i1, ptr, i32 }" && to_llvm == "{ ptr, i32 }" {
+    if from_llvm == crate::layout::status_endpoint_ty() && to_llvm == crate::layout::vector_ty() {
         let tag = format!("endpointcoerce{}", value.0);
-        let ep_in = crate::ir::LlvmType::struct_of([
-            crate::ir::LlvmType::I1,
-            crate::ir::LlvmType::Ptr,
-            crate::ir::LlvmType::I32,
-        ]);
-        let ep_out =
-            crate::ir::LlvmType::struct_of([crate::ir::LlvmType::Ptr, crate::ir::LlvmType::I32]);
+        let ep_in = LlvmType::struct_of([LlvmType::I1, LlvmType::Ptr, LlvmType::I32]);
+        let ep_out = LlvmType::struct_of([LlvmType::Ptr, LlvmType::I32]);
         let r = |suffix: &str| crate::ir::LlvmOperand::reg(format!("{tag}_{suffix}"));
         text.assign(
             format!("{tag}_ptr"),
@@ -183,18 +186,18 @@ pub(crate) fn coerce_to_type(text: &mut String, value: ValueId, from: &Type, to:
             crate::ir::LlvmInst::insert(
                 ep_out.clone(),
                 crate::ir::LlvmOperand::undef(),
-                crate::ir::LlvmType::Ptr,
+                LlvmType::Ptr,
                 r("ptr"),
                 0,
             ),
         );
         text.assign(
             tag.clone(),
-            crate::ir::LlvmInst::insert(ep_out, r("0"), crate::ir::LlvmType::I32, r("port"), 1),
+            crate::ir::LlvmInst::insert(ep_out, r("0"), LlvmType::I32, r("port"), 1),
         );
-        return format!("%{tag}");
+        return crate::ir::LlvmOperand::reg(&tag);
     }
-    if from_llvm == "{ ptr, i32 }" && to_llvm == "{ ptr, i32, i32 }" {
+    if from_llvm == crate::layout::vector_ty() && to_llvm == crate::layout::region_ty() {
         let elem_code = match from {
             Type::Pointer { element, .. } => {
                 bn_types::alternatives::member_code(element).unwrap_or(0)
@@ -202,17 +205,17 @@ pub(crate) fn coerce_to_type(text: &mut String, value: ValueId, from: &Type, to:
             _ => 0,
         };
         let tag = format!("voidcoer{}", value.0);
-        let fat_void = crate::layout::typed_llvm("{ ptr, i32, i32 }");
+        let fat_void = crate::layout::region_ty();
         let val = crate::ir::LlvmOperand::reg(format!("v{}", value.0));
         let ptr_val = format!("{tag}_ptr");
         let len_val = format!("{tag}_len");
         text.assign(
             ptr_val.clone(),
-            crate::ir::LlvmInst::extract(crate::layout::typed_llvm("{ ptr, i32 }"), val.clone(), 0),
+            crate::ir::LlvmInst::extract(crate::layout::vector_ty(), val.clone(), 0),
         );
         text.assign(
             len_val.clone(),
-            crate::ir::LlvmInst::extract(crate::layout::typed_llvm("{ ptr, i32 }"), val, 1),
+            crate::ir::LlvmInst::extract(crate::layout::vector_ty(), val, 1),
         );
         let ins0 = format!("{tag}_0");
         text.assign(
@@ -220,7 +223,7 @@ pub(crate) fn coerce_to_type(text: &mut String, value: ValueId, from: &Type, to:
             crate::ir::LlvmInst::insert(
                 fat_void.clone(),
                 crate::ir::LlvmOperand::undef(),
-                crate::ir::LlvmType::Ptr,
+                LlvmType::Ptr,
                 crate::ir::LlvmOperand::reg(ptr_val),
                 0,
             ),
@@ -231,7 +234,7 @@ pub(crate) fn coerce_to_type(text: &mut String, value: ValueId, from: &Type, to:
             crate::ir::LlvmInst::insert(
                 fat_void.clone(),
                 crate::ir::LlvmOperand::reg(ins0),
-                crate::ir::LlvmType::I32,
+                LlvmType::I32,
                 crate::ir::LlvmOperand::reg(len_val),
                 1,
             ),
@@ -241,40 +244,34 @@ pub(crate) fn coerce_to_type(text: &mut String, value: ValueId, from: &Type, to:
             crate::ir::LlvmInst::insert(
                 fat_void,
                 crate::ir::LlvmOperand::reg(ins1),
-                crate::ir::LlvmType::I32,
+                LlvmType::I32,
                 crate::ir::LlvmOperand::int(i64::from(elem_code)),
                 2,
             ),
         );
-        return format!("%{tag}");
+        return crate::ir::LlvmOperand::reg(&tag);
     }
-    if matches!(from_llvm, "i8" | "i16" | "i32" | "i64")
-        && matches!(to_llvm, "i8" | "i16" | "i32" | "i64")
-    {
+    if from_llvm.is_integer() && to_llvm.is_integer() {
         return coerce_integer(
             text,
             value,
-            from_llvm,
-            to_llvm,
+            &from_llvm,
+            &to_llvm,
             is_unsigned(to) || is_unsigned(from),
         );
     }
     if matches!(
-        (from_llvm, to_llvm),
-        ("float", "double") | ("double", "float")
+        (from_llvm.clone(), to_llvm.clone()),
+        (LlvmType::Float, LlvmType::Double) | (LlvmType::Double, LlvmType::Float)
     ) {
         let temp = format!("fcoer{}_{from_llvm}_{to_llvm}", value.0);
-        let (opcode, from, to) = if from_llvm == "float" {
-            (
-                crate::ir::CastOp::FPExt,
-                crate::ir::LlvmType::Float,
-                crate::ir::LlvmType::Double,
-            )
+        let (opcode, from, to) = if from_llvm == LlvmType::Float {
+            (crate::ir::CastOp::FPExt, LlvmType::Float, LlvmType::Double)
         } else {
             (
                 crate::ir::CastOp::FPTrunc,
-                crate::ir::LlvmType::Double,
-                crate::ir::LlvmType::Float,
+                LlvmType::Double,
+                LlvmType::Float,
             )
         };
         text.assign(
@@ -286,19 +283,9 @@ pub(crate) fn coerce_to_type(text: &mut String, value: ValueId, from: &Type, to:
                 to,
             ),
         );
-        return format!("%{temp}");
+        return crate::ir::LlvmOperand::reg(&temp);
     }
-    format!("%v{}", value.0)
-}
-fn integer_llvm_width(llvm_ty: &str) -> u8 {
-    match llvm_ty {
-        "i1" => 1,
-        "i8" => 8,
-        "i16" => 16,
-        "i32" => 32,
-        "i64" => 64,
-        _ => 64,
-    }
+    crate::ir::LlvmOperand::reg(format!("v{}", value.0))
 }
 
 pub(crate) fn integer_range(kind: IntegerType) -> (i128, i128) {
@@ -323,9 +310,13 @@ pub(crate) fn is_unsigned(ty: &Type) -> bool {
     )
 }
 
-pub(crate) fn extend_to_i64(text: &mut String, value: ValueId, ty: &Type) -> String {
+pub(crate) fn extend_to_i64(
+    text: &mut crate::ir::LlvmModule,
+    value: ValueId,
+    ty: &Type,
+) -> crate::ir::LlvmOperand {
     match llvm_type(ty).expect("validated extension type") {
-        "i64" => format!("%v{}", value.0),
+        LlvmType::I64 => crate::ir::LlvmOperand::reg(format!("v{}", value.0)),
         llvm_ty => {
             let temp = format!("seedext{}", value.0);
             let opcode = if is_unsigned(ty) {
@@ -337,20 +328,24 @@ pub(crate) fn extend_to_i64(text: &mut String, value: ValueId, ty: &Type) -> Str
                 temp.clone(),
                 crate::ir::LlvmInst::cast(
                     opcode,
-                    crate::layout::typed_llvm(llvm_ty),
+                    llvm_ty,
                     crate::ir::LlvmOperand::reg(format!("v{}", value.0)),
-                    crate::ir::LlvmType::I64,
+                    LlvmType::I64,
                 ),
             );
-            format!("%{temp}")
+            crate::ir::LlvmOperand::reg(&temp)
         }
     }
 }
 
-pub(crate) fn coerce_return_operand(text: &mut String, value: ValueId, ty: &Type) -> String {
+pub(crate) fn coerce_return_operand(
+    text: &mut crate::ir::LlvmModule,
+    value: ValueId,
+    ty: &Type,
+) -> crate::ir::LlvmOperand {
     match llvm_type(ty).expect("validated return LLVM type") {
-        "i32" => format!("%v{}", value.0),
-        "i8" | "i16" => {
+        LlvmType::I32 => crate::ir::LlvmOperand::reg(format!("v{}", value.0)),
+        LlvmType::I8 | LlvmType::I16 => {
             let opcode = if is_unsigned(ty) {
                 crate::ir::CastOp::ZExt
             } else {
@@ -362,33 +357,29 @@ pub(crate) fn coerce_return_operand(text: &mut String, value: ValueId, ty: &Type
                 temp.clone(),
                 crate::ir::LlvmInst::cast(
                     opcode,
-                    crate::layout::typed_llvm(llvm_ty),
+                    llvm_ty,
                     crate::ir::LlvmOperand::reg(format!("v{}", value.0)),
-                    crate::ir::LlvmType::I32,
+                    LlvmType::I32,
                 ),
             );
-            format!("%{temp}")
+            crate::ir::LlvmOperand::reg(&temp)
         }
-        "i64" => {
+        LlvmType::I64 => {
             let temp = format!("ret{}", value.0);
             text.assign(
                 temp.clone(),
                 crate::ir::LlvmInst::cast(
                     crate::ir::CastOp::Trunc,
-                    crate::ir::LlvmType::I64,
+                    LlvmType::I64,
                     crate::ir::LlvmOperand::reg(format!("v{}", value.0)),
-                    crate::ir::LlvmType::I32,
+                    LlvmType::I32,
                 ),
             );
-            format!("%{temp}")
+            crate::ir::LlvmOperand::reg(&temp)
         }
-        "{ i1, ptr, i64 }" => {
+        layout if layout == crate::layout::handle_result_ty() => {
             let temp = format!("ret{}", value.0);
-            let union_ty = crate::ir::LlvmType::struct_of([
-                crate::ir::LlvmType::I1,
-                crate::ir::LlvmType::Ptr,
-                crate::ir::LlvmType::I64,
-            ]);
+            let union_ty = LlvmType::struct_of([LlvmType::I1, LlvmType::Ptr, LlvmType::I64]);
             text.assign(
                 format!("{temp}flag"),
                 crate::ir::LlvmInst::extract(
@@ -401,12 +392,12 @@ pub(crate) fn coerce_return_operand(text: &mut String, value: ValueId, ty: &Type
                 temp.clone(),
                 crate::ir::LlvmInst::cast(
                     crate::ir::CastOp::ZExt,
-                    crate::ir::LlvmType::I1,
+                    LlvmType::I1,
                     crate::ir::LlvmOperand::reg(format!("{temp}flag")),
-                    crate::ir::LlvmType::I32,
+                    LlvmType::I32,
                 ),
             );
-            format!("%{temp}")
+            crate::ir::LlvmOperand::reg(&temp)
         }
         _ => unreachable!("validated return type"),
     }
@@ -449,25 +440,14 @@ pub(crate) fn parse_float_constant(value: &str) -> Option<f64> {
 /// LLVM reads a hexadecimal `float` constant in the 64-bit `double` encoding
 /// (`LangRef`, "Simple Constants"), so the special values have one spelling for
 /// both widths; a 32-bit pattern is rejected by clang (known issue K34).
-pub(crate) fn render_float(value: f64, ty: &Type) -> String {
-    if value.is_nan() {
-        return "0x7FF8000000000000".into();
-    }
-    if value == f64::INFINITY {
-        return "0x7FF0000000000000".into();
-    }
-    if value == f64::NEG_INFINITY {
-        return "0xFFF0000000000000".into();
-    }
-    let rendered = match ty {
-        Type::Float(FloatType::Float32) => f64::from(value as f32).to_string(),
-        _ => value.to_string(),
+/// The constant of a floating-point `value` of type `ty`; a `FLOAT32` value is
+/// rounded to single precision first, as LLVM requires of a `float` constant.
+pub(crate) fn float_constant(value: f64, ty: &Type) -> crate::ir::LlvmOperand {
+    let value = match ty {
+        Type::Float(FloatType::Float32) => f64::from(value as f32),
+        _ => value,
     };
-    if rendered.contains('.') || rendered.contains('e') || rendered.contains('E') {
-        rendered
-    } else {
-        format!("{rendered}.0")
-    }
+    crate::ir::LlvmOperand::float(value)
 }
 
 pub(crate) fn unsupported_call_detail(module: &Module, name: &str) -> String {
@@ -727,13 +707,15 @@ pub(crate) fn parse_integer(value: &str) -> Option<i128> {
     bn_types::literals::parse_integer(value)
 }
 
-pub(crate) fn input_runtime_ir() -> &'static str {
-    r"
-declare i32 @getchar()
-declare void @bn_rt_input_nul()
-declare ptr @realloc(ptr, i64)
-declare void @free(ptr)
+pub(crate) fn input_runtime_ir() -> String {
+    let mut text = String::from("\n");
+    crate::ir::write_declarations(&mut text, crate::runtime_abi::INPUT_DECLARATIONS);
+    text.push_str(INPUT_FUNCTION);
+    text
+}
 
+/// `bn_input`, still LLVM text (bucket 0.6.5 T.5.2).
+const INPUT_FUNCTION: &str = r"
 define ptr @bn_input(ptr %input.reusable) {
 entry:
   %input.initial = call ptr @realloc(ptr %input.reusable, i64 64)
@@ -788,8 +770,7 @@ input.eof.out:
   call void @free(ptr %input.buffer)
   ret ptr @.bn_eof
 }
-"
-}
+";
 
 pub(crate) fn string_byte_length_ir() -> &'static str {
     r"
@@ -891,5 +872,22 @@ pub(crate) fn unsupported_instruction_detail(instruction: &Instruction) -> Strin
         ),
         Instruction::Release { .. } => "LLVM lowering for pointer release is unavailable".into(),
         _ => instruction_name(instruction).into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::integer_constant;
+    use crate::ir::LlvmType;
+
+    #[test]
+    fn integer_constants_keep_the_signed_bit_pattern_without_a_cast_wrap() {
+        assert_eq!(integer_constant(255, &LlvmType::I8).to_string(), "-1");
+        assert_eq!(integer_constant(-129, &LlvmType::I8).to_string(), "127");
+        assert_eq!(integer_constant(65_536, &LlvmType::I16).to_string(), "0");
+        assert_eq!(
+            integer_constant(-9_223_372_036_854_775_809, &LlvmType::I64).to_string(),
+            "9223372036854775807"
+        );
     }
 }

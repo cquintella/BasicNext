@@ -74,25 +74,35 @@ fn both_backends_accept_the_same_validated_artifact() {
     assert!(!output.is_empty());
 }
 
-#[test]
-fn target_support_is_checked_after_language_validation() {
-    let module = function_with_blocks(vec![BasicBlock {
+fn nested_default(dimensions: [u64; 2]) -> bn_ir::Module {
+    function_with_blocks(vec![BasicBlock {
         id: BlockId(0),
         instructions: vec![Instruction::Default {
             destination: bn_ir::ValueId(0),
             ty: bn_types::Type::Vector {
                 element: Box::new(bn_types::Type::Integer(bn_types::IntegerType::Int32)),
-                dimensions: vec![2, 3],
+                dimensions: dimensions.to_vec(),
             },
-            dimensions: vec![2, 3],
+            dimensions: dimensions
+                .map(|d| usize::try_from(d).expect("dimension fits"))
+                .to_vec(),
             dynamic_dimensions: Vec::new(),
             span: span(),
         }],
         terminator: Terminator::Return { value: None },
-    }]);
-    let validated = validate_module(module).expect("multidimensional vector is valid IR");
-    let error = validate_for(&validated, Target::Native).expect_err("LLVM lacks vector support");
+    }])
+}
+
+/// W4: valid IR the target cannot represent fails the support check, not
+/// validation. A row longer than `u32::MAX` elements has no native layout;
+/// a `[2][3]` default has one (known issue K21).
+#[test]
+fn target_support_is_checked_after_language_validation() {
+    let validated = validate_module(nested_default([2, 5_000_000_000])).expect("valid IR");
+    let error = validate_for(&validated, Target::Native).expect_err("row too long for LLVM");
     assert_eq!(error.code, "TARGET_UNSUPPORTED_TYPE");
+    let validated = validate_module(nested_default([2, 3])).expect("valid IR");
+    assert!(validate_for(&validated, Target::Native).is_ok());
 }
 
 #[test]

@@ -22,7 +22,7 @@ use bn_source::{Position, Span};
 use bn_types::{FloatType, IntegerType, Type};
 
 pub mod ir;
-use ir::escape_llvm;
+use ir::{LlvmType, escape_llvm};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Target {
@@ -117,22 +117,6 @@ pub(crate) fn is_bndata_dataframe_type(module: &Module, ty: &Type) -> bool {
     )
 }
 
-pub(crate) fn bnlog_resource_kind(module: &Module, ty: &Type) -> Option<&'static str> {
-    match ty {
-        Type::ImportedNamed {
-            module: module_id,
-            name,
-        } if module
-            .bnlog_providers
-            .contains(&bn_ir::ModuleId::from(*module_id))
-            && matches!(name.as_str(), "Fields" | "Logger") =>
-        {
-            Some(if name == "Fields" { "Fields" } else { "Logger" })
-        }
-        _ => None,
-    }
-}
-
 const POLICY_CLOCK: u64 = 1;
 const POLICY_EXEC: u64 = 1 << 6;
 const POLICY_ENV: u64 = 1 << 7;
@@ -163,7 +147,6 @@ struct LoweringAnalysis<'a> {
     released_symbols: HashSet<SymbolId>,
     owned_string_results: HashSet<ValueId>,
     owned_struct_results: HashSet<ValueId>,
-    owned_log_results: HashMap<ValueId, &'static str>,
     uses_string_concat: bool,
     uses_bn_rt: bool,
     /// The function counts references through the ARC core (`arc_runtime`).
@@ -175,7 +158,7 @@ struct LoweringAnalysis<'a> {
     uses_temporal_print: bool,
     uses_heap: bool,
     multi_defs: HashSet<ValueId>,
-    intrinsics: BTreeSet<&'static str>,
+    intrinsics: BTreeSet<crate::ir::Intrinsic>,
 }
 
 struct BlockState {
@@ -196,7 +179,7 @@ struct EmissionState {
     span: bn_source::Span,
     is_start: bool,
     synchronize_prints: bool,
-    return_llvm: &'static str,
+    return_llvm: crate::ir::LlvmType,
 }
 
 /// Lower the supported typed BN IR subset to LLVM IR.
@@ -301,7 +284,7 @@ pub fn lower_validated_module_with_diagnostics(
     let module = validated.as_module();
     let start = module.entry().expect("validated entry point");
     let functions = analyze_reachable(module, start)?;
-    let mut text = module_header();
+    let mut text = crate::ir::LlvmModule::from(module_header());
     for (index, root) in policy
         .read_roots
         .iter()
@@ -338,8 +321,8 @@ pub fn lower_validated_module_with_diagnostics(
     define_type_name_globals(&mut text);
     define_trap_globals(&mut text, render, wasm32);
     Ok(match debug {
-        Some(info) => attach_debug_info(&text, info),
-        None => text,
+        Some(info) => attach_debug_info(&text.render(), info),
+        None => text.render(),
     })
 }
 
@@ -543,9 +526,7 @@ use alternatives::{
 };
 #[path = "llvm/general_alternative.rs"]
 mod general_alternative;
-use general_alternative::{
-    GENERAL_LAYOUT, comparable_alternative, general_alternative, general_members,
-};
+use general_alternative::{comparable_alternative, general_alternative, general_members};
 #[path = "llvm/analysis_calls.rs"]
 mod analysis_calls;
 #[path = "llvm/general_alternative_equality.rs"]
@@ -553,7 +534,7 @@ mod general_alternative_equality;
 use analysis_calls::call_instruction_supported;
 #[path = "llvm/analysis_helpers.rs"]
 mod analysis_helpers;
-use analysis_helpers::{block_is_cyclic, instruction_destination, llvm_vector_dimension_supported};
+use analysis_helpers::{instruction_destination, llvm_vector_dimension_supported};
 #[path = "llvm/analysis_validate.rs"]
 mod analysis_validate;
 use analysis_validate::{for_condition_supported, validate_instruction};
@@ -593,6 +574,7 @@ fn net_or_error(alternatives: &[Type]) -> bool {
         && alternatives.iter().any(is_error_type)
         && alternatives.iter().any(|ty| {
             is_net_address_type(ty)
+                || is_net_cidr_type(ty)
                 || is_net_ping_reply_type(ty)
                 || is_net_addresses_type(ty)
                 || is_net_endpoint_type(ty)
@@ -759,20 +741,18 @@ fn unary_supported(operator: &str, operand: Option<&Type>, ty: &Type) -> bool {
         (operator, llvm_type(operand), llvm_type(ty)),
         (
             "Plus" | "Minus" | "NOT",
-            Some("i8" | "i16" | "i32" | "i64"),
-            Some("i8" | "i16" | "i32" | "i64")
-        ) | ("Plus" | "Minus", Some("float"), Some("float"))
-            | ("Plus" | "Minus", Some("double"), Some("double"))
-            | ("NOT", Some("i1"), Some("i1"))
+            Some(LlvmType::I8 | LlvmType::I16 | LlvmType::I32 | LlvmType::I64),
+            Some(LlvmType::I8 | LlvmType::I16 | LlvmType::I32 | LlvmType::I64)
+        ) | (
+            "Plus" | "Minus",
+            Some(LlvmType::Float),
+            Some(LlvmType::Float)
+        ) | (
+            "Plus" | "Minus",
+            Some(LlvmType::Double),
+            Some(LlvmType::Double)
+        ) | ("NOT", Some(LlvmType::I1), Some(LlvmType::I1))
     )
-}
-
-fn integer_llvm(llvm_ty: &str) -> bool {
-    matches!(llvm_ty, "i8" | "i16" | "i32" | "i64")
-}
-
-fn float_llvm(llvm_ty: &str) -> bool {
-    matches!(llvm_ty, "float" | "double")
 }
 
 fn binary_supported(operator: &str, left: &Type, right: &Type, result: &Type) -> bool {
@@ -794,62 +774,64 @@ fn binary_supported(operator: &str, left: &Type, right: &Type, result: &Type) ->
     }
     match operator {
         "Plus" | "Minus" | "Star" | "Multiply" => {
-            integer_llvm(left_llvm) && integer_llvm(right_llvm) && integer_llvm(result_llvm)
-                || float_llvm(left_llvm) && float_llvm(right_llvm) && float_llvm(result_llvm)
+            left_llvm.is_integer() && right_llvm.is_integer() && result_llvm.is_integer()
+                || left_llvm.is_floating() && right_llvm.is_floating() && result_llvm.is_floating()
                 || integer_union_payload(left).is_some()
                     && integer_union_payload(right).is_some()
-                    && integer_llvm(result_llvm)
-                || (integer_union_payload(left).is_some() && integer_llvm(right_llvm)
-                    || integer_union_payload(right).is_some() && integer_llvm(left_llvm))
-                    && integer_llvm(result_llvm)
-                || (float_union_payload(left).is_some() && float_llvm(right_llvm)
-                    || float_union_payload(right).is_some() && float_llvm(left_llvm))
-                    && float_llvm(result_llvm)
+                    && result_llvm.is_integer()
+                || (integer_union_payload(left).is_some() && right_llvm.is_integer()
+                    || integer_union_payload(right).is_some() && left_llvm.is_integer())
+                    && result_llvm.is_integer()
+                || (float_union_payload(left).is_some() && right_llvm.is_floating()
+                    || float_union_payload(right).is_some() && left_llvm.is_floating())
+                    && result_llvm.is_floating()
                 || float_union_payload(left).is_some()
                     && float_union_payload(right).is_some()
-                    && float_llvm(result_llvm)
+                    && result_llvm.is_floating()
                 || operator == "Plus"
-                    && left_llvm == "ptr"
-                    && right_llvm == "ptr"
-                    && result_llvm == "ptr"
+                    && left_llvm == LlvmType::Ptr
+                    && right_llvm == LlvmType::Ptr
+                    && result_llvm == LlvmType::Ptr
         }
         "Slash" | "Divide" => {
-            float_llvm(left_llvm) && float_llvm(right_llvm) && float_llvm(result_llvm)
-                || integer_llvm(left_llvm) && integer_llvm(right_llvm) && float_llvm(result_llvm)
+            left_llvm.is_floating() && right_llvm.is_floating() && result_llvm.is_floating()
+                || left_llvm.is_integer() && right_llvm.is_integer() && result_llvm.is_floating()
                 || integer_union_payload(left).is_some()
                     && integer_union_payload(right).is_some()
-                    && float_llvm(result_llvm)
-                || (integer_union_payload(left).is_some() && integer_llvm(right_llvm)
-                    || integer_union_payload(right).is_some() && integer_llvm(left_llvm))
-                    && float_llvm(result_llvm)
-                || (float_union_payload(left).is_some() && float_llvm(right_llvm)
-                    || float_union_payload(right).is_some() && float_llvm(left_llvm))
-                    && float_llvm(result_llvm)
+                    && result_llvm.is_floating()
+                || (integer_union_payload(left).is_some() && right_llvm.is_integer()
+                    || integer_union_payload(right).is_some() && left_llvm.is_integer())
+                    && result_llvm.is_floating()
+                || (float_union_payload(left).is_some() && right_llvm.is_floating()
+                    || float_union_payload(right).is_some() && left_llvm.is_floating())
+                    && result_llvm.is_floating()
                 || float_union_payload(left).is_some()
                     && float_union_payload(right).is_some()
-                    && float_llvm(result_llvm)
+                    && result_llvm.is_floating()
         }
         // IntegerLiteral is i64; expression results may be narrower INTEGER/BYTE/….
         // Emission coerces operands to the result width.
         "DIV" | "Percent" | "SHL" | "SHR" | "Power" => {
-            integer_llvm(left_llvm) && integer_llvm(right_llvm) && integer_llvm(result_llvm)
+            left_llvm.is_integer() && right_llvm.is_integer() && result_llvm.is_integer()
                 || operator == "Power"
-                    && float_llvm(left_llvm)
-                    && float_llvm(right_llvm)
-                    && float_llvm(result_llvm)
+                    && left_llvm.is_floating()
+                    && right_llvm.is_floating()
+                    && result_llvm.is_floating()
         }
         "AND" | "OR" | "XOR" => {
-            integer_llvm(left_llvm) && integer_llvm(right_llvm) && integer_llvm(result_llvm)
-                || left_llvm == "i1" && right_llvm == "i1" && result_llvm == "i1"
+            left_llvm.is_integer() && right_llvm.is_integer() && result_llvm.is_integer()
+                || left_llvm == LlvmType::I1
+                    && right_llvm == LlvmType::I1
+                    && result_llvm == LlvmType::I1
         }
         "Less" | "LessEqual" | "Greater" | "GreaterEqual" | "Equal" | "Assign" | "NotEqual" => {
-            result_llvm == "i1"
+            result_llvm == LlvmType::I1
                 && (left_llvm == right_llvm
-                    || integer_llvm(left_llvm) && integer_llvm(right_llvm)
-                    || float_llvm(left_llvm) && float_llvm(right_llvm))
-                || result_llvm == "i1"
-                    && (integer_union_payload(left).is_some() && integer_llvm(right_llvm)
-                        || integer_union_payload(right).is_some() && integer_llvm(left_llvm))
+                    || left_llvm.is_integer() && right_llvm.is_integer()
+                    || left_llvm.is_floating() && right_llvm.is_floating())
+                || result_llvm == LlvmType::I1
+                    && (integer_union_payload(left).is_some() && right_llvm.is_integer()
+                        || integer_union_payload(right).is_some() && left_llvm.is_integer())
         }
         _ => false,
     }
@@ -876,8 +858,8 @@ use emission1::lower_scalar_instruction;
 #[path = "llvm/emission2.rs"]
 mod emission2;
 use emission2::{
-    checked_intrinsic_declaration, cleanup_owned_memory, emit_checked_integer_op,
-    float_compare_cond, integer_compare_cond, lower_print_value, lower_terminator,
+    checked_intrinsic, cleanup_owned_memory, emit_checked_integer_op, float_compare_cond,
+    integer_compare_cond, lower_print_value, lower_terminator,
 };
 #[path = "llvm/loop_emission.rs"]
 mod loop_emission;
@@ -899,7 +881,9 @@ mod bndata_convert;
 use bndata_convert::{lower_bndata_convert, lower_bndata_slice};
 #[path = "llvm/log_emission.rs"]
 mod log_emission;
-use log_emission::lower_bnlog_call;
+use log_emission::{
+    bnlog_arguments_supported, bnlog_release_symbol, bnlog_resource_kind, lower_bnlog_call,
+};
 #[path = "llvm/sqlite_ops.rs"]
 mod sqlite_ops;
 use sqlite_ops::{lower_sqlite_call, sqlite_call_supported};
@@ -936,8 +920,8 @@ use euclidean::emit_euclidean_integer_op;
 #[path = "llvm/power_shift.rs"]
 mod power_shift;
 use power_shift::{
-    STRING_CONCAT_DECLS, emit_float_power, emit_integer_not, emit_integer_power, emit_shift,
-    emit_string_concat, pow_intrinsic_declaration,
+    emit_float_power, emit_integer_not, emit_integer_power, emit_shift, emit_string_concat,
+    pow_intrinsic,
 };
 #[path = "llvm/binary.rs"]
 mod binary;
@@ -945,7 +929,7 @@ use binary::emit_runtime_binary;
 #[path = "llvm/runtime.rs"]
 mod runtime;
 use runtime::{
-    BN_RT_DECLS, bn_rt_call_supported, bndata_dataframe_method, bnlog_method, emit_checked_i32,
+    bn_rt_call_supported, bndata_dataframe_method, bnlog_method, emit_checked_i32,
     emit_checked_i32_eq_zero, extend_to_i32, is_bn_rt_host_call, is_bndata_dataframe_call,
     lower_bn_rt_call, take_continuation, value_reg,
 };
@@ -953,7 +937,7 @@ use runtime::{
 mod runtime_abi;
 #[path = "llvm/runtime_net.rs"]
 mod runtime_net;
-use runtime_net::lower_net_call;
+use runtime_net::{is_net_cidr_type, lower_net_call};
 #[path = "llvm/runtime_process.rs"]
 mod runtime_process;
 use runtime_process::lower_process_call;
@@ -977,11 +961,11 @@ use traps::{
 mod host_results;
 use host_results::{
     declare_error_abi, emit_buffer_bound, emit_endpoint_result, emit_handle_result,
-    emit_status_result, emit_void_result,
+    emit_status_result, emit_void_call_result, emit_void_result,
 };
 #[path = "llvm/math.rs"]
 mod math;
-use math::{BN_RT_MATH_DECLS, bnmath_call_supported, bnmath_method, lower_bnmath_call};
+use math::{bnmath_call_supported, bnmath_method, lower_bnmath_call};
 #[path = "llvm/vectors.rs"]
 mod vectors;
 use vectors::{
@@ -1025,41 +1009,13 @@ use arc::{REGION_HEADER_BYTES, held_object, is_class_type, is_region_type, objec
 use helpers::{
     bncrypto_method, bnjson_member, bnsqlite_method, carries_bncrypto_bytes, carries_bnjson,
     carries_bnsqlite_connection, class_init_flag, coerce_return_operand, coerce_to_type,
-    extend_to_i64, input_runtime_ir, instruction_name, integer_kind, is_bncrypto_bytes_type,
-    is_bnsqlite_connection_type, is_unsigned, parse_float_constant, parse_integer, render_float,
-    render_llvm_integer, sanitize_symbol, static_global_name, string_byte_length_ir,
-    unsupported_call_detail, unsupported_instruction, unsupported_instruction_detail,
+    extend_to_i64, float_constant, input_runtime_ir, instruction_name, integer_constant,
+    integer_kind, is_bncrypto_bytes_type, is_bnsqlite_connection_type, is_unsigned,
+    parse_float_constant, parse_integer, sanitize_symbol, static_global_name,
+    string_byte_length_ir, unsupported_call_detail, unsupported_instruction,
+    unsupported_instruction_detail,
 };
 use layout::{
     OBJECT_HEADER_BYTES, class_instance_bytes, class_layout_fields, field_byte_offset, field_type,
-    is_struct_type, struct_copy_supported, vector_field_offsets,
+    is_struct_type, struct_copy_supported, struct_owner, vector_field_offsets,
 };
-#[cfg(test)]
-mod tests {
-    use super::{helpers::render_llvm_integer, llvm_type};
-    use bn_types::{FloatType, IntegerType, Type};
-
-    #[test]
-    fn llvm_type_uses_contract_integer_widths() {
-        assert_eq!(llvm_type(&Type::Integer(IntegerType::Int32)), Some("i32"));
-        assert_eq!(llvm_type(&Type::Integer(IntegerType::Byte)), Some("i8"));
-        assert_eq!(llvm_type(&Type::Integer(IntegerType::UInt64)), Some("i64"));
-    }
-
-    #[test]
-    fn llvm_type_uses_contract_float_widths() {
-        assert_eq!(llvm_type(&Type::Float(FloatType::Float32)), Some("float"));
-        assert_eq!(llvm_type(&Type::Float(FloatType::Float64)), Some("double"));
-    }
-
-    #[test]
-    fn llvm_integer_rendering_preserves_signed_bit_patterns_without_cast_wrap() {
-        assert_eq!(render_llvm_integer(255, "i8"), "-1");
-        assert_eq!(render_llvm_integer(-129, "i8"), "127");
-        assert_eq!(render_llvm_integer(65_536, "i16"), "0");
-        assert_eq!(
-            render_llvm_integer(-9_223_372_036_854_775_809, "i64"),
-            "9223372036854775807"
-        );
-    }
-}

@@ -1068,14 +1068,9 @@ fn log_errors_match_across_backends() {
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "TRUE BNLog.Fields.SetString\n\
-         FALSE TRUE BNLog.Fields.SetString\n\
-         TRUE BNLog.Logger.Log\n\
-         TRUE BNLog.Logger.Flush\n\
-         TRUE BNLog.Logger.AddNull\n\
-         FALSE TRUE BNLog.Logger.Log\n\
-         TRUE BNLog.Logger.AddFile\n\
-         TRUE BNLog.Logger.AddConsole\n"
+        "1 BNLog.Logger.New\n1 BNLog.Logger.New\n1 BNLog.Logger.New\n6 BNLog.Logger.New\n\
+         1 BNLog.Logger.Info\n1 BNLog.Logger.SetLevel\n1 BNLog.Logger.Flush\n\
+         1 BNLog.Logger.Close\nok\n4 BNLog.Logger.Info\n4 BNLog.Logger.SetLevel\nok\n"
     );
     native_matches_interpreter(path);
 }

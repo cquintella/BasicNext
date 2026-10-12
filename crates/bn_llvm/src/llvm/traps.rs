@@ -17,7 +17,9 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
-use crate::ir::{BinaryOp, CastOp, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
+use crate::ir::{
+    BinaryOp, CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T,
+};
 use bn_diag::{DiagId, Diagnostic, DiagnosticValue, Label, LabelStyle};
 use bn_source::{Position, Revision, SourceId, Span};
 
@@ -27,9 +29,9 @@ pub(crate) enum Fact {
     Text(String),
     /// `template` with its `{}` replaced by an `i128` LLVM operand read when
     /// the trap fires (at most two runtime facts per site).
-    Runtime(&'static str, String),
+    Runtime(&'static str, O),
     /// A runtime fact with a dynamically constructed template.
-    RuntimeDynamic(String, String),
+    RuntimeDynamic(String, O),
 }
 
 /// A slot for runtime fact `index` in rendered text; `bn_rt_trap_report`
@@ -51,27 +53,26 @@ const CODE_END: char = '\u{1e}';
 /// reports `id` with `facts` at the current instruction's span, then joins
 /// the function's trap exit (`trap_numeric_overflow`).
 pub(crate) fn emit_trap(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     state: &mut EmissionState,
-    condition: &str,
+    condition: &O,
     ok: String,
     id: DiagId,
     facts: Vec<(&'static str, Fact)>,
 ) {
     let (symbol, runtime) = trap_symbol(state, id, facts);
     let mut operands = runtime.into_iter();
-    let first = operands.next().unwrap_or_else(|| "0".into());
-    let second = operands.next().unwrap_or_else(|| "0".into());
+    let first = operands.next().unwrap_or_else(|| O::int(0));
+    let second = operands.next().unwrap_or_else(|| O::int(0));
     let site = take_continuation(block_id, state);
     emit_branch_to_site(text, condition, &site, &ok);
     state.control_flow.label(text, site.clone());
     // Each fact crosses the ABI as two i64 halves (no portable i128 C ABI).
-    let mut args = vec![(T::Ptr, O::raw(symbol))];
+    let mut args = vec![(T::Ptr, O::global(symbol))];
     for (index, operand) in [first, second].into_iter().enumerate() {
         let name = format!("{site}.fact{index}");
         let r = |part: &str| O::reg(format!("{name}.{part}"));
-        let operand = O::raw(operand);
         let low = I::cast(CastOp::Trunc, T::I128, operand.clone(), T::I64);
         text.assign(format!("{name}.lo"), low);
         let shifted = I::binary(BinaryOp::LShr, T::I128, operand, O::int(64));
@@ -97,7 +98,7 @@ pub(crate) fn trap_symbol(
     state: &EmissionState,
     id: DiagId,
     facts: Vec<(&'static str, Fact)>,
-) -> (String, Vec<String>) {
+) -> (String, Vec<O>) {
     let mut runtime = Vec::new();
     let mut payload = id.code().to_owned();
     payload.push_str(&span_payload(state));
@@ -125,18 +126,18 @@ pub(crate) fn trap_symbol(
 /// or `region`).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_index_trap(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     state: &mut EmissionState,
-    condition: &str,
+    condition: &O,
     ok: String,
-    index: &str,
-    length: &str,
+    index: &crate::ir::LlvmOperand,
+    length: &crate::ir::LlvmOperand,
     context: &'static str,
 ) {
     let tag = state.continuation_count;
     for (name, value) in [("idxfact", index), ("lenfact", length)] {
-        let wide = I::cast(CastOp::SExt, T::I32, O::raw(value), T::I128);
+        let wide = I::cast(CastOp::SExt, T::I32, value.clone(), T::I128);
         text.assign(format!("{name}{tag}"), wide);
     }
     emit_trap(
@@ -147,8 +148,14 @@ pub(crate) fn emit_index_trap(
         ok,
         DiagId::INDEX_OUT_OF_BOUNDS,
         vec![
-            ("index", Fact::Runtime("{}", format!("%idxfact{tag}"))),
-            ("bound", Fact::Runtime("{}", format!("%lenfact{tag}"))),
+            (
+                "index",
+                Fact::Runtime("{}", O::reg(format!("idxfact{tag}"))),
+            ),
+            (
+                "bound",
+                Fact::Runtime("{}", O::reg(format!("lenfact{tag}"))),
+            ),
             ("context", Fact::Text(context.into())),
         ],
     );
@@ -157,12 +164,12 @@ pub(crate) fn emit_index_trap(
 /// `NUMERIC_OVERFLOW` when `condition` holds, reporting the exact `i128`
 /// value that did not fit `ty` (the interpreter's "converting V to T").
 pub(crate) fn emit_overflow_trap(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     state: &mut EmissionState,
-    condition: &str,
+    condition: &O,
     ok: String,
-    exact: &str,
+    exact: &O,
     ty: &Type,
 ) {
     let Type::Integer(kind) = ty else {
@@ -185,7 +192,7 @@ pub(crate) fn emit_overflow_trap(
         condition,
         ok,
         DiagId::NUMERIC_OVERFLOW,
-        vec![("operation", Fact::Runtime(template, exact.into()))],
+        vec![("operation", Fact::Runtime(template, exact.clone()))],
     );
 }
 
@@ -234,10 +241,10 @@ fn span_payload(state: &EmissionState) -> String {
 /// Branches to `trap_bn_rt` when `failed` holds, printing the failure the
 /// runtime recorded with this site's texts for `ids` first.
 pub(crate) fn emit_failure_trap(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     state: &mut EmissionState,
-    failed: &str,
+    failed: &O,
     ok: String,
     ids: &[DiagId],
 ) {
@@ -245,7 +252,7 @@ pub(crate) fn emit_failure_trap(
     let site = take_continuation(block_id, state);
     emit_branch_to_site(text, failed, &site, &ok);
     state.control_flow.label(text, site);
-    let args = vec![(T::Ptr, O::raw(set))];
+    let args = vec![(T::Ptr, O::global(set))];
     text.emit(I::call(T::Void, "bn_rt_trap_report_failure", args));
     text.emit(I::Br {
         dest: "trap_bn_rt".into(),
@@ -337,15 +344,16 @@ fn render_set(payload: &str, render: &dyn Fn(&Diagnostic) -> String) -> Option<S
 /// `render` gives its diagnostic, and declares `bn_rt_trap_report`. The
 /// Wasm target links no `bn_rt`, so there the report is a no-op.
 pub(crate) fn define_trap_globals(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     render: &dyn Fn(&Diagnostic) -> String,
     wasm32: bool,
 ) {
+    let globals = text.referenced_globals();
     let referenced = |prefix: &str| {
-        text.match_indices(prefix)
-            .map(|(index, _)| {
-                text[index + prefix.len()..]
-                    .chars()
+        let prefix = prefix.trim_start_matches('@');
+        (globals.iter().filter_map(|name| name.strip_prefix(prefix)))
+            .map(|rest| {
+                rest.chars()
                     .take_while(char::is_ascii_hexdigit)
                     .collect::<String>()
             })
@@ -365,12 +373,14 @@ pub(crate) fn define_trap_globals(
         );
     }
     // The ARC glue reports a broken core invariant with the null set.
-    if !sets.is_empty() || text.contains("@bn_rt_trap_report_failure(ptr null)") {
-        definitions.push_str(if wasm32 {
-            "define void @bn_rt_trap_report_failure(ptr %set) {\n  ret void\n}\n"
+    if !sets.is_empty() || globals.contains(crate::runtime_abi::TRAP_REPORT_FAILURE.name) {
+        if wasm32 {
+            definitions
+                .push_str("define void @bn_rt_trap_report_failure(ptr %set) {\n  ret void\n}\n");
         } else {
-            "declare void @bn_rt_trap_report_failure(ptr)\n"
-        });
+            let failure = &crate::runtime_abi::TRAP_REPORT_FAILURE;
+            crate::ir::write_declarations(&mut definitions, &[failure]);
+        }
     }
     if symbols.is_empty() {
         text.push_str(&definitions);
@@ -394,7 +404,7 @@ pub(crate) fn define_trap_globals(
             "define void @bn_rt_trap_report(ptr %text, i64 %a, i64 %b, i64 %c, i64 %d) {\n  ret void\n}\n",
         );
     } else {
-        definitions.push_str("declare void @bn_rt_trap_report(ptr, i64, i64, i64, i64)\n");
+        crate::ir::write_declarations(&mut definitions, &[&crate::runtime_abi::TRAP_REPORT]);
     }
     text.push_str(&definitions);
 }
@@ -414,13 +424,56 @@ fn c_literal(text: &str) -> (String, usize) {
 }
 
 /// `br i1 condition, label %site, label %ok`.
-fn emit_branch_to_site(text: &mut String, condition: &str, site: &str, ok: &str) {
+fn emit_branch_to_site(text: &mut crate::ir::LlvmModule, condition: &O, site: &str, ok: &str) {
     text.emit(I::CondBr {
-        cond: O::raw(condition),
+        cond: condition.clone(),
         true_dest: site.into(),
         false_dest: ok.into(),
     });
 }
+
+/// Stops with `STACK_OVERFLOW` naming `callee` when this call would exhaust
+/// the stack (0.6.md, "Recursion depth"; known issue K53): `bn_rt` compares
+/// the frame with the bounds of the running thread's stack, as `bni` does
+/// before each BN call.
+pub(crate) fn emit_stack_check(
+    text: &mut crate::ir::LlvmModule,
+    block_id: BlockId,
+    callee: &str,
+    state: &mut EmissionState,
+) {
+    let n = state.continuation_count;
+    let frame = format!("stkframe{n}");
+    text.assign(
+        &frame,
+        I::call(
+            T::Ptr,
+            crate::runtime_abi::frame_address().name,
+            vec![(T::I32, O::int(0))],
+        ),
+    );
+    let check = format!("stkover{n}");
+    text.assign(
+        &check,
+        I::call(T::I32, "bn_rt_stack_check", vec![(T::Ptr, O::reg(&frame))]),
+    );
+    let exhausted = format!("stkbad{n}");
+    text.assign(
+        &exhausted,
+        I::icmp(ICmpCond::Ne, T::I32, O::reg(&check), O::int(0)),
+    );
+    let ok = take_continuation(block_id, state);
+    emit_trap(
+        text,
+        block_id,
+        state,
+        &O::reg(&exhausted),
+        ok,
+        DiagId::STACK_OVERFLOW,
+        vec![("name", Fact::Text(callee.to_owned()))],
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::{c_literal, decode, hex, unhex};

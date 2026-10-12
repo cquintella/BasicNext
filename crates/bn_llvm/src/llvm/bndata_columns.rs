@@ -13,7 +13,7 @@ fn v(id: ValueId) -> O {
 /// `BNSqlite.Connection`): slot 2 of a `T OR Error` aggregate, or the pointer
 /// bits of a plain one.
 pub(crate) fn emit_handle_operand(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     analysis: &LoweringAnalysis<'_>,
     slot: String,
     operand: ValueId,
@@ -22,7 +22,7 @@ pub(crate) fn emit_handle_operand(
         .values
         .get(&operand)
         .expect("validated handle operand");
-    let inst = if llvm_type(ty) == Some("{ i1, ptr, i64 }") {
+    let inst = if llvm_type(ty) == Some(crate::layout::handle_result_ty()) {
         I::extract(handle_result_ty(), v(operand), 2)
     } else {
         I::cast(CastOp::PtrToInt, T::Ptr, v(operand), T::I64)
@@ -33,7 +33,14 @@ pub(crate) fn emit_handle_operand(
 /// The `{ i1, ptr, i64 }` of a `T OR Error` from the flag `error`: on
 /// failure the error record `bn_rt` left and its code, else `ok` and 0.
 /// Registers are `%{prefix}<name>{dest}`; the pointer select is `pointer`.
-fn emit_flag_result(text: &mut String, prefix: &str, dest: u32, error: &O, ok: O, pointer: &str) {
+fn emit_flag_result(
+    text: &mut crate::ir::LlvmModule,
+    prefix: &str,
+    dest: u32,
+    error: &O,
+    ok: O,
+    pointer: &str,
+) {
     let r = |name: &str| O::reg(format!("{prefix}{name}{dest}"));
     let union = handle_result_ty();
     let wide = I::cast(CastOp::ZExt, T::I1, error.clone(), T::I32);
@@ -61,7 +68,7 @@ fn emit_flag_result(text: &mut String, prefix: &str, dest: u32, error: &O, ok: O
 }
 
 pub(crate) fn lower_bndata_count(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     destination: ValueId,
     arguments: &[ValueId],
@@ -97,7 +104,7 @@ fn vector_length(analysis: &LoweringAnalysis<'_>, vector: ValueId) -> u64 {
 }
 
 pub(crate) fn lower_bndata_add_integer_column(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     arguments: &[ValueId],
     analysis: &LoweringAnalysis<'_>,
@@ -153,7 +160,7 @@ pub(crate) fn lower_bndata_add_integer_column(
 }
 
 pub(crate) fn lower_bndata_add_simple_column(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     arguments: &[ValueId],
     analysis: &LoweringAnalysis<'_>,
@@ -176,11 +183,11 @@ pub(crate) fn lower_bndata_add_simple_column(
         (T::I32, O::uint(length)),
     ];
     text.assign(format!("dfsimplerc{dest}"), I::call(T::I32, symbol, args));
-    emit_void_result(text, destination, format!("%dfsimplerc{dest}"));
+    emit_void_result(text, destination, &O::reg(format!("dfsimplerc{dest}")));
 }
 
 pub(crate) fn lower_bndata_column_name(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     arguments: &[ValueId],
     analysis: &LoweringAnalysis<'_>,
@@ -198,7 +205,7 @@ pub(crate) fn lower_bndata_column_name(
     );
     let r = |name: &str| O::reg(format!("dfname{name}{dest}"));
     emit_handle_operand(text, analysis, format!("dfnamehandle{dest}"), arguments[0]);
-    let args = vec![(T::I64, r("handle")), (T::I32, O::raw(index))];
+    let args = vec![(T::I64, r("handle")), (T::I32, index)];
     let call = I::call(T::Ptr, "bn_rt_dataframe_column_name_owned", args);
     text.assign(format!("dfnameptr{dest}"), call);
     let missing = I::icmp(ICmpCond::Eq, T::Ptr, r("ptr"), O::null());
@@ -207,7 +214,7 @@ pub(crate) fn lower_bndata_column_name(
 }
 
 pub(crate) fn lower_bndata_status_call(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     arguments: &[ValueId],
     analysis: &LoweringAnalysis<'_>,
@@ -230,7 +237,7 @@ pub(crate) fn lower_bndata_status_call(
         .values
         .get(&name)
         .expect("validated DataFrame column name");
-    let name_operand = if llvm_type(name_ty) == Some("{ i1, ptr, i64 }") {
+    let name_operand = if llvm_type(name_ty) == Some(crate::layout::handle_result_ty()) {
         let text_pointer = I::extract(handle_result_ty(), v(name), 1);
         text.assign(format!("dfgetname{dest}"), text_pointer);
         r("name")
@@ -244,7 +251,7 @@ pub(crate) fn lower_bndata_status_call(
     text.emit(I::store(T::I8, O::int(0), r("na")));
     let args = vec![
         (T::I64, r("handle")),
-        (T::I32, O::raw(first)),
+        (T::I32, first),
         (T::Ptr, name_operand),
         (T::Ptr, r("out")),
         (T::Ptr, r("na")),
@@ -272,9 +279,9 @@ pub(crate) fn lower_bndata_status_call(
     emit_status_result(
         text,
         destination,
-        &format!("%dfgetrc{dest}"),
+        &O::reg(format!("dfgetrc{dest}")),
         None,
-        &format!("%dfgetvalueptr{dest}"),
-        &format!("%dfgetpayload{dest}"),
+        &O::reg(format!("dfgetvalueptr{dest}")),
+        &O::reg(format!("dfgetpayload{dest}")),
     );
 }

@@ -372,6 +372,13 @@ struct OwnershipFrame {
 
 struct Executor<'a, 'debug> {
     module: &'a Module,
+    /// Each function of `module` by name: the call dispatch reads it on every
+    /// call, so it is built once.
+    function_index: HashMap<&'a str, usize>,
+    /// The stack address when the executor started, and how far below it BN
+    /// calls may go before `STACK_OVERFLOW` (K53).
+    stack_base: usize,
+    stack_budget: usize,
     input: &'a mut dyn BufRead,
     output: &'a mut dyn Write,
     host: &'a HostEnv,
@@ -396,6 +403,15 @@ struct Executor<'a, 'debug> {
     ownership_frames: Vec<OwnershipFrame>,
 }
 
+/// Each function of `module` by name (the first one, as the IR keeps names unique).
+fn function_index(module: &Module) -> HashMap<&str, usize> {
+    let mut index = HashMap::new();
+    for (position, function) in module.functions.iter().enumerate() {
+        index.entry(function.name.as_str()).or_insert(position);
+    }
+    index
+}
+
 impl<'a, 'debug> Executor<'a, 'debug> {
     fn new(
         module: &'a Module,
@@ -407,6 +423,9 @@ impl<'a, 'debug> Executor<'a, 'debug> {
     ) -> Self {
         Self {
             module,
+            function_index: function_index(module),
+            stack_base: stack_address(),
+            stack_budget: stack_budget(),
             input,
             output,
             host,
@@ -858,4 +877,48 @@ pub fn default_span() -> Span {
             column: 1,
         },
     }
+}
+
+/// Stack the interpreter lets BN calls use on a thread whose size nobody
+/// told it: a thread Rust spawns has 2 MiB, so 1 MiB leaves the rest for
+/// the frames of one more call and the error report (known issue K53).
+pub const DEFAULT_STACK_BUDGET: usize = 1024 * 1024;
+
+thread_local! {
+    static STACK_BUDGET: std::cell::Cell<usize> = const { std::cell::Cell::new(DEFAULT_STACK_BUDGET) };
+}
+
+/// Sets the stack BN calls may use on this thread: a driver that runs the
+/// program on a thread of known size gives its size less a margin.
+pub fn set_stack_budget(bytes: usize) {
+    STACK_BUDGET.with(|budget| budget.set(bytes));
+}
+
+fn stack_budget() -> usize {
+    STACK_BUDGET.with(std::cell::Cell::get)
+}
+
+/// An address on the current stack: how deep the thread's stack is, by the
+/// distance to an address taken earlier on the same thread.
+#[inline(never)]
+fn stack_address() -> usize {
+    let marker = 0_u8;
+    std::ptr::addr_of!(marker) as usize
+}
+
+/// `STACK_OVERFLOW` for the call to `name` at `span` (0.6.md, "Recursion
+/// depth"): the program stops instead of the interpreter aborting.
+#[must_use]
+pub fn stack_overflow(name: impl Into<String>, span: Span) -> Diagnostic {
+    Diagnostic::structured(
+        bn_diag::DiagId::STACK_OVERFLOW,
+        vec![("name".into(), name.into().into())],
+        vec![bn_diag::Label {
+            span,
+            style: bn_diag::LabelStyle::Primary,
+            text: None,
+        }],
+    )
+    // The schema (one `name`) and the primary label are fixed here.
+    .unwrap_or_else(|reason| unreachable!("{reason}"))
 }

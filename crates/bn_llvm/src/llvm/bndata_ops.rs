@@ -11,7 +11,7 @@ fn v(id: ValueId) -> O {
 /// `%{slot}`: the `DataFrame` handle of `operand`, also when the receiver is
 /// still typed `DataFrame OR Error` (narrowed by an `IS Error` branch).
 fn emit_pointer_handle(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     analysis: &LoweringAnalysis<'_>,
     slot: String,
     operand: ValueId,
@@ -23,7 +23,7 @@ fn emit_pointer_handle(
 /// A `bn_rt` call that writes a new handle through its last argument: the
 /// `DataFrame OR Error` result. Registers are `%{prefix}<out|rc|value>{dest}`.
 fn emit_new_frame_call(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     prefix: &str,
     symbol: &str,
@@ -38,13 +38,13 @@ fn emit_new_frame_call(
     emit_handle_result(
         text,
         destination,
-        format!("%{prefix}rc{dest}"),
-        format!("%{prefix}value{dest}"),
+        &O::reg(format!("{prefix}rc{dest}")),
+        &O::reg(format!("{prefix}value{dest}")),
     );
 }
 
 pub(crate) fn lower_bndata_set_label(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     arguments: &[ValueId],
     analysis: &LoweringAnalysis<'_>,
@@ -58,11 +58,11 @@ pub(crate) fn lower_bndata_set_label(
     ];
     let call = I::call(T::I32, "bn_rt_dataframe_set_label", args);
     text.assign(format!("dflabelrc{dest}"), call);
-    emit_void_result(text, destination, format!("%dflabelrc{dest}"));
+    emit_void_result(text, destination, &O::reg(format!("dflabelrc{dest}")));
 }
 
 pub(crate) fn lower_bndata_reduce(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     arguments: &[ValueId],
     operation: u32,
@@ -90,15 +90,15 @@ pub(crate) fn lower_bndata_reduce(
     emit_status_result(
         text,
         destination,
-        &format!("%dfredrc{dest}"),
+        &O::reg(format!("dfredrc{dest}")),
         None,
-        "null",
-        &format!("%dfredbits{dest}"),
+        &O::null(),
+        &O::reg(format!("dfredbits{dest}")),
     );
 }
 
 pub(crate) fn lower_bndata_zscore(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     arguments: &[ValueId],
     analysis: &LoweringAnalysis<'_>,
@@ -113,7 +113,7 @@ pub(crate) fn lower_bndata_zscore(
 }
 
 pub(crate) fn lower_bndata_copy(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     arguments: &[ValueId],
     analysis: &LoweringAnalysis<'_>,
@@ -133,7 +133,7 @@ pub(crate) fn lower_bndata_copy(
         .values
         .get(&arguments[2])
         .expect("validated copy target");
-    let target = if llvm_type(target_ty) == Some("{ ptr, i32 }") {
+    let target = if llvm_type(target_ty) == Some(crate::layout::vector_ty()) {
         let fat = v(arguments[2]);
         text.assign(
             format!("dfcopytarget{dest}"),
@@ -156,11 +156,11 @@ pub(crate) fn lower_bndata_copy(
         (T::I32, length),
     ];
     text.assign(format!("dfcopyrc{dest}"), I::call(T::I32, symbol, args));
-    emit_void_result(text, destination, format!("%dfcopyrc{dest}"));
+    emit_void_result(text, destination, &O::reg(format!("dfcopyrc{dest}")));
 }
 
 pub(crate) fn lower_bndata_select(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     arguments: &[ValueId],
     analysis: &LoweringAnalysis<'_>,
@@ -190,7 +190,7 @@ pub(crate) fn lower_bndata_select(
 }
 
 pub(crate) fn lower_bndata_transform(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     arguments: &[ValueId],
     symbol: &str,
@@ -206,7 +206,7 @@ pub(crate) fn lower_bndata_transform(
 }
 
 pub(crate) fn lower_bndata_binary_transform(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     arguments: &[ValueId],
     symbol: &str,
@@ -220,7 +220,7 @@ pub(crate) fn lower_bndata_binary_transform(
 }
 
 pub(crate) fn lower_bndata_join(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     arguments: &[ValueId],
     kind: u32,

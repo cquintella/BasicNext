@@ -4,18 +4,18 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 // A capability import BNLog writes through is used with no member access:
-// AddFile needs HOST.FileSystem and AddConsole needs HOST.Console.
+// a file destination needs HOST.FileSystem and "CONSOLE" needs HOST.Console.
 IMPORT BNLog AS Log
 IMPORT HOST.FileSystem AS FS
 IMPORT HOST.Console AS Console
 
 FUNCTION Start() AS INTEGER
-    LET logger AS Log.Logger = NEW Log.Logger()
-    LET file AS VOID OR Error = logger.AddFile("app.jsonl", 2)
-    LET console AS VOID OR Error = logger.AddConsole(2)
+    LET file AS Log.Logger OR Error = Log.Logger.New("app", "JSON", "app.jsonl")
+    LET console AS Log.Logger OR Error = Log.Logger.New("app", "JSON", "CONSOLE")
     IF file IS Error OR console IS Error THEN
         RETURN 1
     END IF
-    logger.Close(1000)
+    file.Close(1000)
+    console.Close(1000)
     RETURN 0
 END FUNCTION

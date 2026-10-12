@@ -19,8 +19,6 @@ use crate::ir::{
 use bn_types::alternatives::member_code;
 use bn_types::literals::{NumericClass, numeric_alternative};
 
-pub(crate) const GENERAL_LAYOUT: &str = "{ i32, ptr, i64 }";
-
 pub(crate) fn layout() -> LlvmType {
     LlvmType::struct_of([I32, Ptr, I64])
 }
@@ -49,7 +47,7 @@ pub(crate) fn general_members(members: &[Type]) -> bool {
 }
 
 pub(crate) fn vector_member(member: &Type) -> bool {
-    matches!(member, Type::Vector { .. }) && llvm_type(member) == Some("{ ptr, i32 }")
+    matches!(member, Type::Vector { .. }) && llvm_type(member) == Some(crate::layout::vector_ty())
 }
 
 /// A class instance member (a `ptr` to the object). Two of them in one
@@ -63,7 +61,7 @@ pub(crate) fn pointer_member(member: &Type) -> bool {
     matches!(member, Type::Named(name) if !name.contains(['.', '#']))
         && !is_error_type(member)
         && !matches!(member, Type::Named(name) if name == "DATE" || name == "TIME")
-        && llvm_type(member) == Some("ptr")
+        && llvm_type(member) == Some(LlvmType::Ptr)
 }
 
 fn stage_one_member(member: &Type) -> bool {
@@ -83,7 +81,11 @@ fn stage_one_member(member: &Type) -> bool {
 /// The members of `ty` when it has the general layout.
 pub(crate) fn general_alternative(ty: &Type) -> Option<&[Type]> {
     match ty {
-        Type::Alternative(members) if llvm_type(ty) == Some(GENERAL_LAYOUT) => Some(members),
+        Type::Alternative(members)
+            if llvm_type(ty) == Some(crate::general_alternative::layout()) =>
+        {
+            Some(members)
+        }
         _ => None,
     }
 }
@@ -93,8 +95,8 @@ pub(crate) fn general_alternative(ty: &Type) -> Option<&[Type]> {
 pub(crate) fn comparable_alternative(ty: &Type) -> Option<&[Type]> {
     match ty {
         Type::Alternative(members)
-            if llvm_type(ty) == Some(GENERAL_LAYOUT)
-                || llvm_type(ty) == Some("{ i1, ptr, i64 }") =>
+            if llvm_type(ty) == Some(crate::general_alternative::layout())
+                || llvm_type(ty) == Some(crate::layout::handle_result_ty()) =>
         {
             Some(members)
         }
@@ -119,7 +121,7 @@ pub(crate) fn stored_member<'a>(from: &'a Type, members: &'a [Type]) -> &'a Type
 /// Converts `operand`, of type `from`, into the general alternative `to`.
 /// Registers are named `{name}_…`; the result is the converted operand.
 pub(crate) fn wrap(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     name: &str,
     operand: LlvmOperand,
     from: &Type,
@@ -135,7 +137,7 @@ pub(crate) fn wrap(
     }
     let member = stored_member(from, to);
     let reg = |suffix: &str| format!("{name}_{suffix}");
-    let source = llvm_type(from).map(crate::layout::typed_llvm);
+    let source = llvm_type(from);
     let (pointer, payload) = match member {
         Type::String => (operand, LlvmOperand::int(0)),
         _ if pointer_member(member) => (operand, LlvmOperand::int(0)),
@@ -195,8 +197,7 @@ pub(crate) fn wrap(
         Type::Integer(_) | Type::Boolean | Type::Named(_) => {
             let mut value = operand;
             let mut width = source.expect("validated scalar layout");
-            let member_width =
-                crate::layout::typed_llvm(llvm_type(member).expect("validated member layout"));
+            let member_width = llvm_type(member).expect("validated member layout");
             if width != member_width {
                 // An integer literal (i64) takes the member's width first.
                 text.assign(
@@ -264,7 +265,11 @@ pub(crate) fn wrap(
 
 /// `%v{destination}` = the default of a general alternative: the default of
 /// its first member, as `bni` gives it (zero, `FALSE`, `""`).
-pub(crate) fn emit_default(text: &mut String, destination: ValueId, members: &[Type]) {
+pub(crate) fn emit_default(
+    text: &mut crate::ir::LlvmModule,
+    destination: ValueId,
+    members: &[Type],
+) {
     let first = members.first().expect("alternative has members");
     let name = format!("v{}", destination.0);
     let reg = |suffix: &str| format!("{name}_{suffix}");
@@ -298,7 +303,7 @@ pub(crate) fn emit_default(text: &mut String, destination: ValueId, members: &[T
 /// set, else `value` with payload `bits` (a runtime result such as
 /// `BNMath.MODE`, `FLOAT OR NA`).
 pub(crate) fn from_flag(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     name: &str,
     flag: LlvmOperand,
     unit: &Type,
@@ -346,14 +351,14 @@ pub(crate) fn from_flag(
 ///   member, and otherwise the value member is held (the unit member when
 ///   there is none, as in `NULL OR Error`).
 fn widen_dedicated(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     name: &str,
     operand: LlvmOperand,
     from: &Type,
     members: &[Type],
 ) -> LlvmOperand {
     let reg = |suffix: &str| format!("{name}_{suffix}");
-    let source = crate::layout::typed_llvm(llvm_type(from).expect("validated dedicated layout"));
+    let source = llvm_type(from).expect("validated dedicated layout");
     if source == Ptr {
         let object = members
             .iter()
@@ -489,7 +494,7 @@ fn widen_dedicated(
 /// subsets): the flag is the `Error` tag, the pointer is the `NA` / `EOF`
 /// sentinel when the tag is that member, and the payloads carry over.
 pub(crate) fn narrow_layout(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     name: &str,
     operand: LlvmOperand,
     to: &[Type],
@@ -567,7 +572,12 @@ pub(crate) fn narrow_layout(
 
 /// Writes `%{dest}` = the `member` a general alternative holds; the IR has
 /// already proven which member that is (an `IS` test or the last store).
-pub(crate) fn extract(text: &mut String, dest: &str, operand: &LlvmOperand, member: &Type) {
+pub(crate) fn extract(
+    text: &mut crate::ir::LlvmModule,
+    dest: &str,
+    operand: &LlvmOperand,
+    member: &Type,
+) {
     let reg = |suffix: &str| format!("{dest}_{suffix}");
     let payload = || LlvmInst::extract(layout(), operand.clone(), 2);
     match member {
@@ -676,7 +686,7 @@ pub(crate) fn extract(text: &mut String, dest: &str, operand: &LlvmOperand, memb
             );
         }
         Type::Integer(_) | Type::Named(_) => {
-            let width = crate::layout::typed_llvm(llvm_type(member).expect("validated member"));
+            let width = llvm_type(member).expect("validated member");
             if width == I64 {
                 text.assign(dest, payload());
             } else {
@@ -701,7 +711,7 @@ pub(crate) fn extract(text: &mut String, dest: &str, operand: &LlvmOperand, memb
             dest,
             LlvmInst::GetElementPtr {
                 inbounds: false,
-                elem_ty: crate::ir::LlvmType::I8,
+                elem_ty: LlvmType::I8,
                 ptr: LlvmOperand::global(".bn_eof"),
                 indices: vec![(I64, LlvmOperand::int(0))],
             },
@@ -725,7 +735,7 @@ fn tested_member<'a>(members: &'a [Type], test: &str, test_ty: &Type) -> Option<
 
 /// `%v{destination} = left IS test` on a general alternative.
 pub(crate) fn emit_is(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     left: ValueId,
     members: &[Type],
@@ -800,7 +810,7 @@ pub(crate) use general_alternative_equality::{EqualsOperands, emit_equals};
 /// `PRINT` of a general alternative: one branch per member, each printing
 /// the member as `PRINT` prints a value of that type.
 pub(crate) fn emit_print(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     value: ValueId,
     members: &[Type],
     state: &mut EmissionState,
@@ -856,7 +866,7 @@ pub(crate) fn emit_print(
                 format!("v{}", held.0),
                 LlvmInst::GetElementPtr {
                     inbounds: false,
-                    elem_ty: crate::ir::LlvmType::I8,
+                    elem_ty: LlvmType::I8,
                     ptr: LlvmOperand::global(global),
                     indices: vec![(I64, LlvmOperand::int(0))],
                 },

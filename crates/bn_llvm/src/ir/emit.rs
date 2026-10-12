@@ -235,7 +235,7 @@ mod tests {
             LlvmInst::call(
                 I32,
                 "bn_rt_f",
-                vec![(Ptr, LlvmOperand::raw("%v3")), (I32, LlvmOperand::raw("7"))],
+                vec![(Ptr, LlvmOperand::reg("v3")), (I32, LlvmOperand::int(7))],
             ),
         );
         text.assign(

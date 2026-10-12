@@ -14,219 +14,9 @@
 use super::*;
 use crate::ir::{CastOp, ICmpCond, InstSink, LlvmInst, LlvmOperand, LlvmType};
 
-pub(crate) const BN_RT_DECLS: &str = "\
-declare i32 @bn_rt_policy_init(i32, i64)
-declare void @bn_rt_policy_check(i32)
-declare i32 @bn_rt_policy_filesystem_sandboxed()
-declare i32 @bn_rt_policy_filesystem_root(i32, ptr)
-declare i32 @bn_rt_env_get(ptr, ptr)
-declare i32 @bn_rt_env_has(ptr, ptr)
-declare i32 @bn_rt_exec_run(ptr, ptr, i32, ptr)
-declare i64 @bn_rt_exec_result_return_code(i64)
-declare ptr @bn_rt_exec_result_stdout(i64)
-declare ptr @bn_rt_exec_result_stderr(i64)
-declare i32 @bn_rt_exec_result_close(i64)
-declare i32 @bn_rt_dataframe_create(ptr, i32, ptr)
-declare i32 @bn_rt_dataframe_row_count(i64, ptr)
-declare i32 @bn_rt_dataframe_column_count(i64, ptr)
-declare i32 @bn_rt_dataframe_add_integer_start(i64, ptr, i32)
-declare i32 @bn_rt_dataframe_set_integer_cell(i64, i32, i32, i64)
-declare i32 @bn_rt_dataframe_add_float(i64, ptr, ptr, i32)
-declare i32 @bn_rt_dataframe_add_boolean(i64, ptr, ptr, i32)
-declare i32 @bn_rt_dataframe_add_string(i64, ptr, ptr, i32)
-declare i32 @bn_rt_dataframe_get_integer(i64, i32, ptr, ptr, ptr)
-declare i32 @bn_rt_dataframe_get_float(i64, i32, ptr, ptr, ptr)
-declare i32 @bn_rt_dataframe_get_boolean(i64, i32, ptr, ptr, ptr)
-declare i32 @bn_rt_dataframe_get_string(i64, i32, ptr, ptr, ptr)
-declare i32 @bn_rt_dataframe_set_label(i64, ptr, ptr)
-declare i32 @bn_rt_dataframe_reduce(i64, ptr, i32, ptr, ptr)
-declare i32 @bn_rt_dataframe_zscore(i64, ptr, ptr)
-declare i32 @bn_rt_dataframe_copy_integer(i64, ptr, ptr, i32)
-declare i32 @bn_rt_dataframe_copy_float(i64, ptr, ptr, i32)
-declare i32 @bn_rt_dataframe_select(i64, ptr, i32, ptr, i32, ptr)
-declare i32 @bn_rt_dataframe_slice(i64, i32, i32, i32, i32, ptr)
-declare i32 @bn_rt_dataframe_transpose(i64, ptr)
-declare i32 @bn_rt_dataframe_append_rows(i64, i64, ptr)
-declare i32 @bn_rt_dataframe_append_columns(i64, i64, ptr)
-declare i32 @bn_rt_dataframe_join(i64, i64, ptr, ptr, i32, ptr)
-declare i32 @bn_rt_dataframe_convert_integer(i64, ptr)
-declare i32 @bn_rt_dataframe_convert_float(i64, ptr)
-declare ptr @bn_rt_dataframe_column_name_owned(i64, i32)
-declare i32 @bn_rt_dataframe_close(i64)
-declare i32 @bn_rt_file_open(ptr, i32, ptr)
-declare i32 @bn_rt_file_new(ptr)
-declare i32 @bn_rt_file_close(i64)
-declare i32 @bn_rt_file_release(i64)
-declare i32 @bn_rt_file_read_all(i64, ptr)
-declare i32 @bn_rt_file_read_line(i64, ptr)
-declare i32 @bn_rt_file_write(i64, ptr)
-declare i32 @bn_rt_file_write_line(i64, ptr)
-declare i32 @bn_rt_file_read_bytes(i64, ptr, i64, ptr)
-declare i32 @bn_rt_file_write_bytes(i64, ptr, i64)
-declare i32 @bn_rt_fs_exists(ptr, ptr)
-declare i32 @bn_rt_fs_delete_file(ptr)
-declare i32 @bn_rt_dataframe_read_csv(i64, i8, ptr, ptr)
-declare i32 @bn_rt_dataframe_write_csv(i64, i64, i8, ptr)
-declare i64 @bn_rt_log_fields_create()
-declare i64 @bn_rt_log_logger_create()
-declare i32 @bn_rt_log_fields_set_string(i64, ptr, ptr)
-declare i32 @bn_rt_log_fields_set_integer(i64, ptr, i64)
-declare i32 @bn_rt_log_fields_set_boolean(i64, ptr, i8)
-declare i32 @bn_rt_log_logger_add_null(i64, i64)
-declare i32 @bn_rt_log_logger_add_console(i64, i64)
-declare i32 @bn_rt_log_logger_add_file(i64, ptr, i64)
-declare i32 @bn_rt_log_logger_set_format(i64, ptr)
-declare i32 @bn_rt_log_logger_log(i64, i64, ptr, i64)
-declare i32 @bn_rt_log_logger_flush(i64, i64)
-declare i32 @bn_rt_log_logger_close(i64, i64)
-declare i32 @bn_rt_log_fields_close(i64)
-declare i32 @bn_rt_log_logger_delete(i64)
-declare i64 @bn_rt_clock_now()
-declare i64 @bn_rt_clock_timer()
-declare i32 @bn_rt_random_seed(i64)
-declare double @bn_rt_random_next()
-declare i32 @bn_rt_console_cls()
-declare i32 @bn_rt_console_beep()
-declare i32 @bn_rt_console_print_at(i32, i32, ptr)
-declare i32 @bn_rt_console_num_cols()
-declare i32 @bn_rt_console_num_rows()
-declare i64 @bn_rt_str_asc(ptr)
-declare ptr @bn_rt_str_to_lower(ptr)
-declare ptr @bn_rt_str_to_upper(ptr)
-declare ptr @bn_rt_text_int(i64)
-declare ptr @bn_rt_text_uint(i64)
-declare ptr @bn_rt_text_float(double)
-declare ptr @bn_rt_text_float32(double)
-declare ptr @bn_rt_crypto_sha256(ptr)
-declare ptr @bn_rt_crypto_sha512(ptr)
-declare i64 @bn_rt_crypto_bytes_from_text(ptr)
-declare i32 @bn_rt_crypto_bytes_from_hex(ptr, ptr)
-declare i64 @bn_rt_crypto_bytes_length(i64)
-declare ptr @bn_rt_crypto_bytes_to_hex(i64)
-declare i32 @bn_rt_crypto_bytes_release(i64)
-declare i32 @bn_rt_crypto_seal(i32, i64, i64, i64, i64, ptr)
-declare i32 @bn_rt_crypto_open(i32, i64, i64, i64, i64, ptr)
-declare i32 @bn_rt_crypto_hmac(i64, i64, ptr)
-declare i32 @bn_rt_crypto_hmac_verify(i64, i64, i64)
-declare i32 @bn_rt_crypto_argon2id(i64, i64, i64, i64, i64, ptr)
-declare i32 @bn_rt_crypto_public_key(i32, i64, ptr)
-declare i32 @bn_rt_crypto_sign(i32, i64, i64, ptr)
-declare i32 @bn_rt_crypto_verify(i32, i64, i64, i64)
-declare i32 @bn_rt_crypto_slice(i64, i64, i64, ptr)
-declare i32 @bn_rt_crypto_kem_keypair(i64, ptr)
-declare i32 @bn_rt_crypto_kem_encapsulate(i64, ptr)
-declare i32 @bn_rt_crypto_kem_decapsulate(i64, i64, ptr)
-declare i32 @bn_rt_crypto_dsa_keypair(i64, ptr)
-declare i32 @bn_rt_crypto_dsa_sign(i64, i64, ptr)
-declare i32 @bn_rt_crypto_dsa_verify(i64, i64, i64)
-declare i32 @bn_rt_sqlite_open(ptr, ptr)
-declare i32 @bn_rt_sqlite_open_read_only(ptr, ptr)
-declare i32 @bn_rt_sqlite_open_existing(ptr, ptr)
-declare i32 @bn_rt_sqlite_close(i64)
-declare i32 @bn_rt_sqlite_exec(i64, ptr)
-declare i32 @bn_rt_sqlite_query(i64, ptr, ptr)
-declare i32 @bn_rt_sqlite_begin(i64)
-declare i32 @bn_rt_sqlite_commit(i64)
-declare i32 @bn_rt_sqlite_rollback(i64)
-declare i32 @bn_rt_sqlite_changes(i64)
-declare i64 @bn_rt_sqlite_last_insert_rowid(i64)
-declare i64 @bn_rt_json_object()
-declare i32 @bn_rt_json_parse(ptr, ptr)
-declare ptr @bn_rt_json_stringify(i64, ptr)
-declare i32 @bn_rt_json_set_string(i64, ptr, ptr)
-declare ptr @bn_rt_json_get_string(i64, ptr, ptr)
-declare i32 @bn_rt_json_release(i64)
-declare i64 @bn_rt_json_array()
-declare ptr @bn_rt_json_kind(i64)
-declare i32 @bn_rt_json_has(i64, ptr)
-declare i64 @bn_rt_json_length(i64)
-declare i32 @bn_rt_json_set_integer(i64, ptr, i64)
-declare i32 @bn_rt_json_set_boolean(i64, ptr, i32)
-declare i32 @bn_rt_json_set_null(i64, ptr)
-declare i64 @bn_rt_json_get_integer(i64, ptr, ptr)
-declare i32 @bn_rt_json_get_boolean(i64, ptr, ptr)
-declare i32 @bn_rt_json_set_float(i64, ptr, double)
-declare double @bn_rt_json_get_float(i64, ptr, ptr)
-declare i32 @bn_rt_json_set_json(i64, ptr, i64)
-declare i32 @bn_rt_json_get_json(i64, ptr, ptr)
-declare i32 @bn_rt_json_clone(i64, ptr)
-declare i32 @bn_rt_json_append_string(i64, ptr)
-declare i32 @bn_rt_json_append_integer(i64, i64)
-declare i32 @bn_rt_json_append_float(i64, double)
-declare i32 @bn_rt_json_append_boolean(i64, i32)
-declare i32 @bn_rt_json_append_null(i64)
-declare i32 @bn_rt_json_append_json(i64, i64)
-declare ptr @bn_rt_json_get_string_at(i64, i64, ptr)
-declare i64 @bn_rt_json_get_integer_at(i64, i64, ptr)
-declare double @bn_rt_json_get_float_at(i64, i64, ptr)
-declare i32 @bn_rt_json_get_boolean_at(i64, i64, ptr)
-declare i32 @bn_rt_json_get_json_at(i64, i64, ptr)
-declare i32 @bn_rt_json_set_string_at(i64, i64, ptr)
-declare i32 @bn_rt_json_set_integer_at(i64, i64, i64)
-declare i32 @bn_rt_json_set_float_at(i64, i64, double)
-declare i32 @bn_rt_json_set_boolean_at(i64, i64, i32)
-declare i32 @bn_rt_json_set_null_at(i64, i64)
-declare i32 @bn_rt_json_set_json_at(i64, i64, i64)
-declare i64 @bn_rt_str_char_utf8(i64)
-declare i32 @bn_rt_net_address_parse(ptr, ptr)
-declare i32 @bn_rt_net_ping(ptr, i32, ptr, ptr)
-declare i32 @bn_rt_net_reverse(ptr, i32, ptr)
-declare i32 @bn_rt_net_neighbor(ptr, ptr)
-declare i32 @bn_rt_net_resolve(ptr, i32, ptr)
-declare i32 @bn_rt_net_addresses_count(ptr)
-declare i32 @bn_rt_net_addresses_get(ptr, i32, ptr)
-declare void @bn_rt_net_addresses_free(ptr)
-declare i32 @bn_rt_net_udp_bind(ptr, i32, ptr)
-declare i32 @bn_rt_net_tcp_connect(ptr, i32, i32, ptr)
-declare i32 @bn_rt_net_tcp_listen_with_backlog(ptr, i32, i32, ptr)
-declare i32 @bn_rt_net_tcp_accept(i64, i32, ptr)
-declare i32 @bn_rt_net_tcp_listener_local_endpoint(i64, ptr, ptr)
-declare i32 @bn_rt_net_udp_local_endpoint(i64, ptr, ptr)
-declare i32 @bn_rt_net_tcp_stream_local_endpoint(i64, ptr, ptr)
-declare i32 @bn_rt_net_tcp_stream_remote_endpoint(i64, ptr, ptr)
-declare i32 @bn_rt_net_tcp_write(i64, ptr, i32, ptr)
-declare i32 @bn_rt_net_tcp_read(i64, ptr, i32, ptr)
-declare i32 @bn_rt_net_handle_close(i64)
-declare i32 @bn_rt_net_udp_send_to(i64, ptr, i32, ptr, i32, ptr)
-declare i32 @bn_rt_net_udp_receive_handle(i64, i32, i32, ptr)
-declare i32 @bn_rt_net_udp_packet_size(i64)
-declare i32 @bn_rt_net_udp_packet_truncated(i64)
-declare i32 @bn_rt_net_udp_packet_copy_to(i64, ptr, i32, ptr)
-declare i32 @bn_rt_net_udp_packet_source(i64, ptr, ptr)
-declare i32 @bn_rt_dispatch_queue_create(i64, ptr)
-declare i32 @bn_rt_dispatch_queue_create_auto(ptr)
-declare i32 @bn_rt_dispatch_submit(i64, ptr, ptr, ptr, i32, ptr)
-declare i32 @bn_rt_dispatch_await(i64, i64, ptr, ptr)
-declare i32 @bn_rt_dispatch_cancel(i64)
-declare i32 @bn_rt_dispatch_ticket_close(i64)
-declare i32 @bn_rt_dispatch_ticket_cancel(i64, ptr)
-declare i64 @bn_rt_dispatch_ticket_id(i64)
-declare i32 @bn_rt_dispatch_ticket_status(i64)
-declare i32 @bn_rt_dispatch_ticket_is_done(i64)
-declare i32 @bn_rt_dispatch_ticket_error(i64, ptr, ptr)
-declare i32 @bn_rt_dispatch_queue_join(i64, i64)
-declare i32 @bn_rt_dispatch_queue_close(i64, i64)
-declare i32 @bn_rt_dispatch_group_create(ptr)
-declare i32 @bn_rt_dispatch_group_enter(i64)
-declare i32 @bn_rt_dispatch_group_leave(i64)
-declare i32 @bn_rt_dispatch_group_wait(i64, i64)
-declare i32 @bn_rt_dispatch_group_close(i64)
-declare i32 @bn_rt_dispatch_barrier_create(i64, ptr)
-declare i32 @bn_rt_dispatch_barrier_wait(i64, i64, ptr)
-declare i32 @bn_rt_dispatch_barrier_close(i64)
-declare i32 @bn_rt_dispatch_semaphore_create(i64, ptr)
-declare i32 @bn_rt_dispatch_semaphore_acquire(i64, i64)
-declare i32 @bn_rt_dispatch_semaphore_release(i64)
-declare i32 @bn_rt_dispatch_semaphore_close(i64)
-declare i32 @bn_rt_dispatch_mutex_create(ptr)
-declare i32 @bn_rt_dispatch_mutex_lock(i64, i64)
-declare i32 @bn_rt_dispatch_mutex_unlock(i64)
-declare i32 @bn_rt_dispatch_mutex_close(i64)
-declare i32 @bn_rt_host_num_procs(ptr)
-";
-
 pub(crate) fn is_bn_rt_host_call(name: &str) -> bool {
     FS_CALLS.contains(&name)
+        || crate::runtime_net::NetMember::of(name).is_some()
         || matches!(
             name,
             "HOST.NumProcs"
@@ -346,25 +136,17 @@ pub(crate) fn bnlog_method(module: &Module, name: &str) -> Option<&'static str> 
     if !module.bnlog_providers.contains(&module_id) {
         return None;
     }
-    // Provider-backed stubs have no lowered body, so the constructor callee
-    // is identified by its documented name shape (`bn_ir::names`); the
-    // remaining members are library names (host/library contract).
-    if bn_ir::names::classify(name) == Some(bn_ir::names::EmittedNameKind::Constructor) {
-        return match rest.split_once('.')?.0 {
-            "Fields" => Some("fields_constructor"),
-            "Logger" => Some("logger_constructor"),
-            _ => None,
-        };
+    // Provider-backed members have no lowered body; they are named by the
+    // library contract (bnlog.md, "API (0.6.5)").
+    if let Some(method) = crate::log_emission::level_method(rest) {
+        return Some(method);
     }
     match rest {
-        "Fields.SetString" => Some("fields_set_string"),
-        "Fields.SetInteger" => Some("fields_set_integer"),
-        "Fields.SetBoolean" => Some("fields_set_boolean"),
-        "Logger.AddNull" => Some("logger_add_null"),
-        "Logger.AddConsole" => Some("logger_add_console"),
-        "Logger.AddFile" => Some("logger_add_file"),
-        "Logger.SetFormat" => Some("logger_set_format"),
-        "Logger.Log" => Some("logger_log"),
+        "Logger.New" => Some("logger_new"),
+        "Logger.Access" => Some("logger_access"),
+        "Logger.SetLevel" => Some("logger_set_level"),
+        "Logger.SetDefaults" => Some("logger_set_defaults"),
+        "Logger.SetAccessDefaults" => Some("logger_set_access_defaults"),
         "Logger.Flush" => Some("logger_flush"),
         "Logger.Close" => Some("logger_close"),
         _ => None,
@@ -434,6 +216,9 @@ pub(crate) fn bn_rt_call_supported(
     if let Some(supported) = fs_call_supported(name, arguments, values) {
         return supported;
     }
+    if let Some(member) = crate::runtime_net::NetMember::of(name) {
+        return member.arguments_supported(arguments, values);
+    }
     match name {
         "HOST.NumProcs"
         | "HOST.Clock.Now"
@@ -448,15 +233,15 @@ pub(crate) fn bn_rt_call_supported(
         "HOST.Exec.Run" => {
             arguments.len() == 2
                 && values.get(&arguments[0]) == Some(&Type::String)
-                && values.get(&arguments[1]).and_then(llvm_type) == Some("{ ptr, i32 }")
+                && values.get(&arguments[1]).and_then(llvm_type) == Some(crate::layout::vector_ty())
         }
         "HOST.Exec.Result.ReturnCode" | "HOST.Exec.Result.Stdout" | "HOST.Exec.Result.Stderr" => {
             arguments.len() == 1
-                && values.get(&arguments[0]).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+                && values.get(&arguments[0]).and_then(llvm_type) == Some(crate::layout::handle_result_ty())
         }
         "HOST.Exec.Result.Close" => {
             arguments.len() == 1
-                && values.get(&arguments[0]).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+                && values.get(&arguments[0]).and_then(llvm_type) == Some(crate::layout::handle_result_ty())
         }
         "HOST.Console.PrintAt" => {
             arguments.len() == 3
@@ -464,13 +249,13 @@ pub(crate) fn bn_rt_call_supported(
                     values
                         .get(value)
                         .and_then(llvm_type)
-                        .is_some_and(integer_llvm)
+                        .is_some_and(|ty| ty.is_integer())
                 })
                 && arguments.get(1).is_some_and(|value| {
                     values
                         .get(value)
                         .and_then(llvm_type)
-                        .is_some_and(integer_llvm)
+                        .is_some_and(|ty| ty.is_integer())
                 })
                 && arguments
                     .get(2)
@@ -496,30 +281,24 @@ pub(crate) fn bn_rt_call_supported(
         "HOST.Net.Endpoint.Create" => {
             arguments.len() == 2
                 && arguments.first().is_some_and(|value| {
-                    values.get(value).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+                    values.get(value).and_then(llvm_type) == Some(crate::layout::handle_result_ty())
                 })
                 && arguments
                     .get(1)
                     .and_then(|value| values.get(value))
                     .and_then(llvm_type)
-                    .is_some_and(integer_llvm)
+                    .is_some_and(|ty| ty.is_integer())
         }
         "HOST.Net.Endpoint.Port" => {
             arguments.len() == 1
                 && arguments.first().is_some_and(|value| {
-                    matches!(
-                        values.get(value).and_then(llvm_type),
-                        Some("{ i1, ptr, i32 }" | "{ ptr, i32 }")
-                    )
+                    values.get(value).and_then(llvm_type).is_some_and(|ty| crate::layout::is_one_of(&ty, &[crate::layout::status_endpoint_ty(), crate::layout::vector_ty()]))
                 })
         }
         "HOST.Net.Endpoint.Address" => {
             arguments.len() == 1
                 && arguments.first().is_some_and(|value| {
-                    matches!(
-                        values.get(value).and_then(llvm_type),
-                        Some("{ i1, ptr, i32 }" | "{ ptr, i32 }")
-                    )
+                    values.get(value).and_then(llvm_type).is_some_and(|ty| crate::layout::is_one_of(&ty, &[crate::layout::status_endpoint_ty(), crate::layout::vector_ty()]))
                 })
         }
         "HOST.Net.UDPBind" => endpoint_net_call_supported(arguments, values, 1),
@@ -534,7 +313,7 @@ pub(crate) fn bn_rt_call_supported(
                     .get(1)
                     .and_then(|value| values.get(value))
                     .and_then(llvm_type)
-                    .is_some_and(integer_llvm)
+                    .is_some_and(|ty| ty.is_integer())
         }
         "HOST.Net.TCPListener.Accept" => {
             arguments.len() == 2
@@ -542,12 +321,12 @@ pub(crate) fn bn_rt_call_supported(
                     .first()
                     .and_then(|value| values.get(value))
                     .and_then(llvm_type)
-                    == Some("{ i1, ptr, i64 }")
+                    == Some(crate::layout::handle_result_ty())
                 && arguments
                     .get(1)
                     .and_then(|value| values.get(value))
                     .and_then(llvm_type)
-                    .is_some_and(integer_llvm)
+                    .is_some_and(|ty| ty.is_integer())
         }
         "HOST.Net.TCPListener.LocalEndpoint" | "HOST.Net.UDPSocket.LocalEndpoint" => {
             arguments.len() == 1
@@ -555,7 +334,7 @@ pub(crate) fn bn_rt_call_supported(
                     .first()
                     .and_then(|value| values.get(value))
                     .and_then(llvm_type)
-                    == Some("{ i1, ptr, i64 }")
+                    == Some(crate::layout::handle_result_ty())
         }
         "HOST.Net.TCPStream.Write" => {
             arguments.len() == 3
@@ -563,17 +342,17 @@ pub(crate) fn bn_rt_call_supported(
                     .first()
                     .and_then(|value| values.get(value))
                     .and_then(llvm_type)
-                    == Some("{ i1, ptr, i64 }")
+                    == Some(crate::layout::handle_result_ty())
                 && arguments
                     .get(1)
                     .and_then(|value| values.get(value))
                     .and_then(llvm_type)
-                    == Some("{ ptr, i32 }")
+                    == Some(crate::layout::vector_ty())
                 && arguments
                     .get(2)
                     .and_then(|value| values.get(value))
                     .and_then(llvm_type)
-                    .is_some_and(integer_llvm)
+                    .is_some_and(|ty| ty.is_integer())
         }
         "HOST.Net.TCPStream.Read" => {
             arguments.len() == 3
@@ -581,17 +360,17 @@ pub(crate) fn bn_rt_call_supported(
                     .first()
                     .and_then(|value| values.get(value))
                     .and_then(llvm_type)
-                    == Some("{ i1, ptr, i64 }")
+                    == Some(crate::layout::handle_result_ty())
                 && arguments
                     .get(1)
                     .and_then(|value| values.get(value))
                     .and_then(llvm_type)
-                    == Some("{ ptr, i32 }")
+                    == Some(crate::layout::vector_ty())
                 && arguments
                     .get(2)
                     .and_then(|value| values.get(value))
                     .and_then(llvm_type)
-                    .is_some_and(integer_llvm)
+                    .is_some_and(|ty| ty.is_integer())
         }
         "HOST.Net.TCPStream.LocalEndpoint" | "HOST.Net.TCPStream.RemoteEndpoint" => {
             arguments.len() == 1
@@ -599,73 +378,70 @@ pub(crate) fn bn_rt_call_supported(
                     .first()
                     .and_then(|value| values.get(value))
                     .and_then(llvm_type)
-                    == Some("{ i1, ptr, i64 }")
+                    == Some(crate::layout::handle_result_ty())
         }
         "HOST.Net.TCPStream.Close" | "HOST.Net.TCPListener.Close" | "HOST.Net.UDPSocket.Close" => {
             arguments.len() == 1
                 && arguments.first().is_some_and(|value| {
-                    values.get(value).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+                    values.get(value).and_then(llvm_type) == Some(crate::layout::handle_result_ty())
                 })
         }
         "HOST.Net.UDPSocket.SendTo" => {
             arguments.len() == 4
                 && arguments.first().is_some_and(|value| {
-                    values.get(value).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+                    values.get(value).and_then(llvm_type) == Some(crate::layout::handle_result_ty())
                 })
                 && arguments.get(1).is_some_and(|value| {
-                    matches!(
-                        values.get(value).and_then(llvm_type),
-                        Some("{ ptr, i32 }" | "{ i1, ptr, i32 }")
-                    )
+                    values.get(value).and_then(llvm_type).is_some_and(|ty| crate::layout::is_one_of(&ty, &[crate::layout::vector_ty(), crate::layout::status_endpoint_ty()]))
                 })
                 && arguments.get(2).is_some_and(|value| {
-                    values.get(value).and_then(llvm_type) == Some("{ ptr, i32 }")
+                    values.get(value).and_then(llvm_type) == Some(crate::layout::vector_ty())
                 })
                 && arguments.get(3).is_some_and(|value| {
-                    matches!(values.get(value).and_then(llvm_type), Some("i32" | "i64"))
+                    matches!(values.get(value).and_then(llvm_type), Some(LlvmType::I32 | LlvmType::I64))
                 })
         }
         "HOST.Net.UDPSocket.Receive" => {
             arguments.len() == 3
                 && arguments.first().is_some_and(|value| {
-                    values.get(value).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+                    values.get(value).and_then(llvm_type) == Some(crate::layout::handle_result_ty())
                 })
                 && arguments
                     .get(1)
                     .and_then(|value| values.get(value))
                     .and_then(llvm_type)
-                    .is_some_and(integer_llvm)
+                    .is_some_and(|ty| ty.is_integer())
                 && arguments
                     .get(2)
                     .and_then(|value| values.get(value))
                     .and_then(llvm_type)
-                    .is_some_and(integer_llvm)
+                    .is_some_and(|ty| ty.is_integer())
         }
         "HOST.Net.UDPPacket.Size"
         | "HOST.Net.UDPPacket.WasTruncated" => {
             arguments.len() == 1
                 && arguments.first().is_some_and(|value| {
-                    values.get(value).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+                    values.get(value).and_then(llvm_type) == Some(crate::layout::handle_result_ty())
                 })
         }
         "HOST.Net.UDPPacket.CopyTo" => {
             arguments.len() == 3
                 && arguments.first().is_some_and(|value| {
-                    values.get(value).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+                    values.get(value).and_then(llvm_type) == Some(crate::layout::handle_result_ty())
                 })
                 && arguments.get(1).is_some_and(|value| {
-                    values.get(value).and_then(llvm_type) == Some("{ ptr, i32 }")
+                    values.get(value).and_then(llvm_type) == Some(crate::layout::vector_ty())
                 })
                 && arguments
                     .get(2)
                     .and_then(|value| values.get(value))
                     .and_then(llvm_type)
-                    .is_some_and(integer_llvm)
+                    .is_some_and(|ty| ty.is_integer())
         }
         "HOST.Net.UDPPacket.Source" => {
             arguments.len() == 1
                 && arguments.first().is_some_and(|value| {
-                    values.get(value).and_then(llvm_type) == Some("{ i1, ptr, i64 }")
+                    values.get(value).and_then(llvm_type) == Some(crate::layout::handle_result_ty())
                 })
         }
         "HOST.Net.Ping" | "HOST.Net.Reverse" => {
@@ -673,13 +449,13 @@ pub(crate) fn bn_rt_call_supported(
                 && arguments.first().is_some_and(|value| {
                     values
                         .get(value)
-                        .is_some_and(|ty| llvm_type(ty) == Some("{ i1, ptr, i64 }"))
+                        .is_some_and(|ty| llvm_type(ty) == Some(crate::layout::handle_result_ty()))
                 })
                 && arguments.get(1).is_some_and(|value| {
                     values
                         .get(value)
                         .and_then(llvm_type)
-                        .is_some_and(integer_llvm)
+                        .is_some_and(|ty| ty.is_integer())
                 })
         }
         "HOST.Net.Resolve" => {
@@ -691,24 +467,24 @@ pub(crate) fn bn_rt_call_supported(
                     .get(1)
                     .and_then(|value| values.get(value))
                     .and_then(llvm_type)
-                    .is_some_and(integer_llvm)
+                    .is_some_and(|ty| ty.is_integer())
         }
         "HOST.Net.Addresses.Count" => {
             arguments.len() == 1
                 && arguments.first().is_some_and(|value| {
-                    values.get(value).and_then(llvm_type) == Some("{ i1, ptr }")
+                    values.get(value).and_then(llvm_type) == Some(crate::layout::status_pointer_ty())
                 })
         }
         "HOST.Net.Addresses.Get" => {
             arguments.len() == 2
                 && arguments.first().is_some_and(|value| {
-                    values.get(value).and_then(llvm_type) == Some("{ i1, ptr }")
+                    values.get(value).and_then(llvm_type) == Some(crate::layout::status_pointer_ty())
                 })
                 && arguments
                     .get(1)
                     .and_then(|value| values.get(value))
                     .and_then(llvm_type)
-                    .is_some_and(integer_llvm)
+                    .is_some_and(|ty| ty.is_integer())
         }
         "HOST.Net.Neighbor"
         | "HOST.Net.PingReply.RoundTripMicroseconds"
@@ -717,7 +493,7 @@ pub(crate) fn bn_rt_call_supported(
                 && arguments.first().is_some_and(|value| {
                     values
                         .get(value)
-                        .is_some_and(|ty| llvm_type(ty) == Some("{ i1, ptr, i64 }"))
+                        .is_some_and(|ty| llvm_type(ty) == Some(crate::layout::handle_result_ty()))
                 })
         }
         _ => false,
@@ -726,7 +502,7 @@ pub(crate) fn bn_rt_call_supported(
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn lower_bn_rt_call(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     destination: ValueId,
     name: &str,
@@ -775,10 +551,15 @@ fn endpoint_net_call_supported(
 ) -> bool {
     arguments.len() == count
         && arguments.first().is_some_and(|value| {
-            matches!(
-                values.get(value).and_then(llvm_type),
-                Some("{ ptr, i32 }" | "{ i1, ptr, i32 }")
-            )
+            values.get(value).and_then(llvm_type).is_some_and(|ty| {
+                crate::layout::is_one_of(
+                    &ty,
+                    &[
+                        crate::layout::vector_ty(),
+                        crate::layout::status_endpoint_ty(),
+                    ],
+                )
+            })
         })
 }
 
@@ -786,7 +567,7 @@ fn endpoint_net_call_supported(
 /// recorded is printed with this site's texts for `failures`, and the
 /// program leaves through `trap_bn_rt`.
 pub(crate) fn emit_checked_i32_eq_zero(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     destination: ValueId,
     call: LlvmInst,
@@ -810,7 +591,7 @@ pub(crate) fn emit_checked_i32_eq_zero(
 /// `status <fail_when> 0` holds (`ne`: nonzero status; `slt`: negative count).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_checked_i32(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     destination: ValueId,
     call: LlvmInst,
@@ -835,29 +616,33 @@ pub(crate) fn emit_checked_i32(
         text,
         block_id,
         state,
-        &format!("%bnrtfail{dest}"),
+        &LlvmOperand::reg(format!("bnrtfail{dest}")),
         ok,
         failures,
     );
 }
 
-pub(crate) fn extend_to_i32(text: &mut String, value: ValueId, ty: &Type) -> String {
-    let llvm_ty = llvm_type(ty).unwrap_or("i32");
+pub(crate) fn extend_to_i32(
+    text: &mut crate::ir::LlvmModule,
+    value: ValueId,
+    ty: &Type,
+) -> crate::ir::LlvmOperand {
+    let llvm_ty = llvm_type(ty).unwrap_or(LlvmType::I32);
     match llvm_ty {
-        "i32" => format!("%v{}", value.0),
+        LlvmType::I32 => LlvmOperand::reg(format!("v{}", value.0)),
         llvm_ty => {
             let op = match llvm_ty {
-                "i64" => CastOp::Trunc,
+                LlvmType::I64 => CastOp::Trunc,
                 _ if is_unsigned(ty) => CastOp::ZExt,
                 _ => CastOp::SExt,
             };
-            let from = crate::layout::typed_llvm(llvm_ty);
+            let from = llvm_ty;
             let temp = format!("bnrti32{}", value.0);
             text.assign(
                 temp.clone(),
                 LlvmInst::cast(op, from, value_reg(value), LlvmType::I32),
             );
-            format!("%{temp}")
+            LlvmOperand::reg(&temp)
         }
     }
 }

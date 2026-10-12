@@ -35,13 +35,12 @@ pub(crate) fn is_object_type(module: &Module, ty: &Type) -> bool {
 /// one.
 fn nullable_object(module: &Module, ty: &Type) -> bool {
     matches!(ty, Type::Alternative(members)
-        if llvm_type(ty) == Some("ptr")
+        if llvm_type(ty) == Some(LlvmType::Ptr)
             && members.iter().any(|member| is_object_type(module, member)))
 }
 
 fn llvm(ty: &Type) -> LlvmType {
-    LlvmType::parse_canonical(llvm_type(ty).expect("validated ARC value type"))
-        .expect("canonical LLVM type")
+    llvm_type(ty).expect("validated ARC value type")
 }
 
 /// The `line` and `column` of the instruction being emitted, for the
@@ -62,15 +61,15 @@ fn fresh(state: &mut EmissionState, prefix: &str) -> String {
 
 /// The header base of a region fat pointer (null stays null).
 pub(crate) fn region_base(
-    text: &mut String,
-    fat: &str,
+    text: &mut crate::ir::LlvmModule,
+    fat: &crate::ir::LlvmOperand,
     ty: &Type,
     state: &mut EmissionState,
-) -> String {
+) -> crate::ir::LlvmOperand {
     let tag = fresh(state, "rbase");
     let data = format!("{tag}_data");
     let fat_ty = llvm(ty);
-    text.assign(&data, LlvmInst::extract(fat_ty, LlvmOperand::raw(fat), 0));
+    text.assign(&data, LlvmInst::extract(fat_ty, fat.clone(), 0));
     text.assign(
         format!("{tag}_null"),
         LlvmInst::icmp(
@@ -101,7 +100,7 @@ pub(crate) fn region_base(
             LlvmOperand::reg(format!("{tag}_header")),
         ),
     );
-    format!("%{tag}")
+    LlvmOperand::reg(&tag)
 }
 
 /// Applies `op` to every object and region that `operand`, a value of type
@@ -110,11 +109,11 @@ pub(crate) fn region_base(
 /// (in reverse declaration order for a release, as an object's fields), or
 /// the elements of a fixed vector.
 pub(crate) fn emit_ownership(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     module: &Module,
     op: Ownership,
     ty: &Type,
-    operand: &str,
+    operand: &crate::ir::LlvmOperand,
     state: &mut EmissionState,
 ) {
     let glue = match op {
@@ -122,18 +121,25 @@ pub(crate) fn emit_ownership(
         Ownership::Release => arc_runtime::RELEASE,
     };
     let (line, column) = site(state);
-    let call = |text: &mut String, object: &str| {
+    let call = |text: &mut crate::ir::LlvmModule, object: &crate::ir::LlvmOperand| {
         text.emit(LlvmInst::call(
             LlvmType::Void,
             glue,
             vec![
-                (Ptr, LlvmOperand::raw(object)),
+                (Ptr, object.clone()),
                 (I32, LlvmOperand::int(line)),
                 (I32, LlvmOperand::int(column)),
             ],
         ));
     };
-    if is_object_type(module, ty) || nullable_object(module, ty) {
+    if crate::log_emission::holds_counted_logger(module, ty) {
+        let symbol = match op {
+            Ownership::Retain => crate::log_emission::bnlog_retain_symbol(),
+            Ownership::Release => bnlog_release_symbol(),
+        };
+        let tag = fresh(state, "logown");
+        crate::log_emission::emit_logger_ownership(text, ty, operand, &tag, symbol);
+    } else if is_object_type(module, ty) || nullable_object(module, ty) {
         call(text, operand);
     } else if general_alternative(ty).is_some() && object_class(module, ty).is_some() {
         let name = fresh(state, "heldobj");
@@ -142,11 +148,8 @@ pub(crate) fn emit_ownership(
     } else if is_region_type(ty) {
         let base = region_base(text, operand, ty, state);
         call(text, &base);
-    } else if is_struct_type(module, ty) {
-        let Type::Named(owner) = ty else {
-            unreachable!("a STRUCT type is named");
-        };
-        let mut fields = class_layout_fields(module, owner);
+    } else if let Some(owner) = struct_owner(module, ty) {
+        let mut fields = class_layout_fields(module, &owner);
         if op == Ownership::Release {
             fields.reverse();
         }
@@ -163,7 +166,7 @@ pub(crate) fn emit_ownership(
                 LlvmInst::GetElementPtr {
                     inbounds: false,
                     elem_ty: LlvmType::I8,
-                    ptr: LlvmOperand::raw(operand),
+                    ptr: operand.clone(),
                     indices: vec![(I32, LlvmOperand::int(i64::from(offset)))],
                 },
             );
@@ -171,7 +174,7 @@ pub(crate) fn emit_ownership(
                 &tag,
                 LlvmInst::load(llvm(&field.ty), LlvmOperand::reg(format!("{tag}_ptr"))),
             );
-            emit_ownership(text, module, op, &field.ty, &format!("%{tag}"), state);
+            emit_ownership(text, module, op, &field.ty, &LlvmOperand::reg(&tag), state);
         }
         join(text, done, state);
     } else if let Type::Vector {
@@ -197,10 +200,10 @@ pub(crate) fn emit_ownership(
         let tag = fresh(state, "vecarc");
         text.assign(
             format!("{tag}_data"),
-            LlvmInst::extract(llvm(ty), LlvmOperand::raw(operand), 0),
+            LlvmInst::extract(llvm(ty), operand.clone(), 0),
         );
         // An emptied slot (`Take` after `RELEASE`) holds no elements.
-        let done = skip_if_null(text, &format!("%{tag}_data"), state);
+        let done = skip_if_null(text, &LlvmOperand::reg(format!("{tag}_data")), state);
         for index in 0..count {
             let element_reg = format!("{tag}_{index}");
             text.assign(
@@ -222,7 +225,14 @@ pub(crate) fn emit_ownership(
                     LlvmOperand::reg(format!("{element_reg}_ptr")),
                 ),
             );
-            emit_ownership(text, module, op, element, &format!("%{element_reg}"), state);
+            emit_ownership(
+                text,
+                module,
+                op,
+                element,
+                &LlvmOperand::reg(&element_reg),
+                state,
+            );
         }
         join(text, done, state);
     }
@@ -230,16 +240,15 @@ pub(crate) fn emit_ownership(
 
 /// Branches past the following code when the pointer `operand` is null;
 /// returns the label [`join`] opens.
-fn skip_if_null(text: &mut String, operand: &str, state: &mut EmissionState) -> String {
+fn skip_if_null(
+    text: &mut crate::ir::LlvmModule,
+    operand: &crate::ir::LlvmOperand,
+    state: &mut EmissionState,
+) -> String {
     let tag = fresh(state, "arcwalk");
     text.assign(
         format!("{tag}_null"),
-        LlvmInst::icmp(
-            ICmpCond::Eq,
-            Ptr,
-            LlvmOperand::raw(operand),
-            LlvmOperand::null(),
-        ),
+        LlvmInst::icmp(ICmpCond::Eq, Ptr, operand.clone(), LlvmOperand::null()),
     );
     text.emit(LlvmInst::CondBr {
         cond: LlvmOperand::reg(format!("{tag}_null")),
@@ -251,7 +260,7 @@ fn skip_if_null(text: &mut String, operand: &str, state: &mut EmissionState) -> 
 }
 
 /// Joins the path [`skip_if_null`] split.
-fn join(text: &mut String, done: String, state: &mut EmissionState) {
+fn join(text: &mut crate::ir::LlvmModule, done: String, state: &mut EmissionState) {
     text.emit(LlvmInst::Br { dest: done.clone() });
     state.control_flow.label(text, done);
 }
@@ -260,21 +269,22 @@ fn join(text: &mut String, done: String, state: &mut EmissionState) {
 /// (the shapes `emit_ownership` handles).
 pub(crate) fn holds_references(module: &Module, ty: &Type) -> bool {
     is_object_type(module, ty)
+        || crate::log_emission::holds_counted_logger(module, ty)
         || nullable_object(module, ty)
         || general_alternative(ty).is_some() && object_class(module, ty).is_some()
         || is_region_type(ty)
-        || is_struct_type(module, ty)
-            && matches!(ty, Type::Named(owner) if class_layout_fields(module, owner)
-                .iter()
-                .any(|field| !module.field_is_weak(&field.reference)
-                    && holds_references(module, &field.ty)))
+        || struct_owner(module, ty).is_some_and(|owner| {
+            class_layout_fields(module, &owner).iter().any(|field| {
+                !module.field_is_weak(&field.reference) && holds_references(module, &field.ty)
+            })
+        })
         || matches!(ty, Type::Vector { element, .. } if holds_references(module, element))
 }
 
 /// The zero value of `ty`'s native representation: what a slot holds once
 /// `Take` moved its content out.
 pub(crate) fn zero(ty: &Type) -> LlvmOperand {
-    if llvm_type(ty) == Some("ptr") {
+    if llvm_type(ty) == Some(LlvmType::Ptr) {
         LlvmOperand::null()
     } else {
         LlvmOperand::zero_initializer()
@@ -285,18 +295,14 @@ pub(crate) fn zero(ty: &Type) -> LlvmOperand {
 /// the object's core id, carried in a `ptr` slot (0.6.5, the core keeps the
 /// address).
 pub(crate) fn weak_store_operand(
-    text: &mut String,
-    object: &str,
+    text: &mut crate::ir::LlvmModule,
+    object: &crate::ir::LlvmOperand,
     state: &mut EmissionState,
-) -> String {
+) -> crate::ir::LlvmOperand {
     let tag = fresh(state, "weakid");
     text.assign(
         format!("{tag}_id"),
-        LlvmInst::call(
-            I64,
-            arc_runtime::WEAK_ID,
-            vec![(Ptr, LlvmOperand::raw(object))],
-        ),
+        LlvmInst::call(I64, arc_runtime::WEAK_ID, vec![(Ptr, object.clone())]),
     );
     text.assign(
         &tag,
@@ -307,15 +313,15 @@ pub(crate) fn weak_store_operand(
             Ptr,
         ),
     );
-    format!("%{tag}")
+    LlvmOperand::reg(&tag)
 }
 
 /// The object a weak binding or field reads from what it stores: the
 /// object while it lives, else null.
-pub(crate) fn weak_read(text: &mut String, dest: &str, stored: &str) {
+pub(crate) fn weak_read(text: &mut crate::ir::LlvmModule, dest: &str, stored: &LlvmOperand) {
     text.assign(
         format!("{dest}_weakid"),
-        LlvmInst::cast(CastOp::PtrToInt, Ptr, LlvmOperand::raw(stored), I64),
+        LlvmInst::cast(CastOp::PtrToInt, Ptr, stored.clone(), I64),
     );
     text.assign(
         dest,
@@ -331,19 +337,19 @@ pub(crate) fn weak_read(text: &mut String, dest: &str, stored: &str) {
 /// constant `class`, or a region for `None`) in the ARC core and stores the
 /// id in its header.
 pub(crate) fn register(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     class: Option<&str>,
-    base: &str,
+    base: &LlvmOperand,
     state: &EmissionState,
 ) {
     let tag = format!("arcid{}", destination.0);
     let (line, column) = site(state);
     text.assign(
         &tag,
-        arc_runtime::ARC_REGISTER.call([
+        crate::runtime_abi::ARC_REGISTER.call([
             class.map_or_else(LlvmOperand::null, LlvmOperand::global),
-            LlvmOperand::raw(base),
+            base.clone(),
             LlvmOperand::int(line),
             LlvmOperand::int(column),
         ]),
@@ -353,7 +359,7 @@ pub(crate) fn register(
         LlvmInst::GetElementPtr {
             inbounds: false,
             elem_ty: LlvmType::I8,
-            ptr: LlvmOperand::raw(base),
+            ptr: base.clone(),
             indices: vec![(I64, LlvmOperand::int(arc_runtime::ID_OFFSET))],
         },
     );
@@ -368,7 +374,7 @@ pub(crate) fn register(
 /// `EndBinding`. Returns `false` for any other instruction.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn lower_ownership_instruction(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     module: &Module,
     function: &Function,
     block_id: BlockId,
@@ -386,8 +392,21 @@ pub(crate) fn lower_ownership_instruction(
             ..
         } => {
             block_state.constants.remove(destination);
-            let operand = format!("%v{}", value.0);
+            let mut operand = LlvmOperand::reg(format!("v{}", value.0));
             let ty = analysis.values.get(destination).unwrap_or(ty);
+            // A narrowed `Logger OR Error` (the `IS Error` branch left) is
+            // retained as the logger it holds in field 1.
+            if llvm_type(ty) == Some(LlvmType::Ptr)
+                && analysis.values.get(value).and_then(llvm_type)
+                    == Some(crate::layout::handle_result_ty())
+            {
+                let narrowed = format!("narrowed{}", destination.0);
+                text.assign(
+                    &narrowed,
+                    LlvmInst::extract(crate::layout::handle_result_ty(), operand.clone(), 1),
+                );
+                operand = LlvmOperand::reg(&narrowed);
+            }
             emit_ownership(text, module, Ownership::Retain, ty, &operand, state);
             // The retained value is the same value, now owned.
             text.assign(
@@ -395,8 +414,8 @@ pub(crate) fn lower_ownership_instruction(
                 LlvmInst::select(
                     LlvmOperand::bool(true),
                     llvm(ty),
-                    LlvmOperand::raw(&operand),
-                    LlvmOperand::raw(&operand),
+                    operand.clone(),
+                    operand.clone(),
                 ),
             );
         }
@@ -423,7 +442,7 @@ pub(crate) fn lower_ownership_instruction(
             );
             block_state.bindings.remove(symbol);
             let slot_ty = analysis.symbols.get(symbol).unwrap_or(ty);
-            let slot = LlvmOperand::raw(format!("%s{}", symbols[symbol]));
+            let slot = LlvmOperand::reg(format!("s{}", symbols[symbol]));
             text.emit(LlvmInst::store(llvm(slot_ty), zero(slot_ty), slot));
         }
         Instruction::TakeMember {
@@ -445,7 +464,7 @@ pub(crate) fn lower_ownership_instruction(
                 LlvmInst::GetElementPtr {
                     inbounds: false,
                     elem_ty: LlvmType::I8,
-                    ptr: LlvmOperand::raw(format!("%v{}", object.0)),
+                    ptr: LlvmOperand::reg(format!("v{}", object.0)),
                     indices: vec![(I32, LlvmOperand::int(i64::from(offset)))],
                 },
             );
@@ -494,7 +513,7 @@ pub(crate) fn lower_ownership_instruction(
             let tag = fresh(state, "endbinding");
             text.assign(
                 format!("{tag}_live"),
-                LlvmInst::load(LlvmType::I1, LlvmOperand::raw(&live_flag)),
+                LlvmInst::load(LlvmType::I1, live_flag.clone()),
             );
             text.assign(
                 format!("{tag}_released"),
@@ -510,7 +529,7 @@ pub(crate) fn lower_ownership_instruction(
                 text,
                 block_id,
                 state,
-                &format!("%{tag}_released"),
+                &LlvmOperand::reg(format!("{tag}_released")),
                 live,
                 bn_diag::DiagId::DOUBLE_RELEASE,
                 vec![(
@@ -521,7 +540,7 @@ pub(crate) fn lower_ownership_instruction(
             text.emit(LlvmInst::store(
                 LlvmType::I1,
                 LlvmOperand::bool(false),
-                LlvmOperand::raw(live_flag),
+                live_flag,
             ));
         }
         _ => return false,

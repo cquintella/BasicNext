@@ -1,13 +1,13 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 use crate::ir::{
-    BinaryOp, CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T,
+    BinaryOp, CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType,
+    LlvmType as T,
 };
-use crate::layout::typed_llvm;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_euclidean_integer_op(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     destination: ValueId,
     operator: &str,
@@ -19,27 +19,22 @@ pub(crate) fn emit_euclidean_integer_op(
     state: &mut EmissionState,
 ) {
     let llvm_str = llvm_type(ty).expect("validated integer type");
-    let llvm_ty = typed_llvm(llvm_str);
+    let llvm_ty = llvm_str;
     let dest = destination.0;
     let r = |name: &str| O::reg(format!("div{name}{dest}"));
-    let left_op = O::raw(coerce_to_type(text, left, left_ty, ty));
-    let right_op = O::raw(coerce_to_type(text, right, right_ty, ty));
-    let compare = |text: &mut String, name: &str, value: &O, constant: &str| {
-        let inst = I::icmp(
-            ICmpCond::Eq,
-            llvm_ty.clone(),
-            value.clone(),
-            O::raw(constant),
-        );
+    let left_op = coerce_to_type(text, left, left_ty, ty);
+    let right_op = coerce_to_type(text, right, right_ty, ty);
+    let compare = |text: &mut crate::ir::LlvmModule, name: &str, value: &O, constant: O| {
+        let inst = I::icmp(ICmpCond::Eq, llvm_ty.clone(), value.clone(), constant);
         text.assign(format!("div{name}{dest}"), inst);
     };
     let zero_ok = take_continuation(block_id, state);
-    compare(text, "z", &right_op, "0");
+    compare(text, "z", &right_op, O::int(0));
     emit_trap(
         text,
         block_id,
         state,
-        &format!("%divz{dest}"),
+        &O::reg(format!("divz{dest}")),
         zero_ok,
         bn_diag::DiagId::DIVISION_BY_ZERO,
         vec![(
@@ -59,8 +54,8 @@ pub(crate) fn emit_euclidean_integer_op(
         );
         return;
     }
-    compare(text, "min", &left_op, signed_minimum(llvm_str));
-    compare(text, "neg", &right_op, "-1");
+    compare(text, "min", &left_op, signed_minimum(&llvm_ty));
+    compare(text, "neg", &right_op, O::int(-1));
     text.assign(
         format!("divovf{dest}"),
         I::binary(BinaryOp::And, T::I1, r("min"), r("neg")),
@@ -77,9 +72,9 @@ pub(crate) fn emit_euclidean_integer_op(
                 text,
                 block_id,
                 state,
-                &format!("%divovf{dest}"),
+                &O::reg(format!("divovf{dest}")),
                 ok,
-                &format!("%divneg128{dest}"),
+                &O::reg(format!("divneg128{dest}")),
                 ty,
             );
             emit_signed_div(text, dest, &llvm_ty, left_op, right_op);
@@ -112,7 +107,7 @@ pub(crate) fn emit_euclidean_integer_op(
     }
 }
 
-fn emit_signed_div(text: &mut String, dest: u32, ty: &T, left: O, right: O) {
+fn emit_signed_div(text: &mut crate::ir::LlvmModule, dest: u32, ty: &T, left: O, right: O) {
     let r = |name: &str| O::reg(format!("{name}{dest}"));
     let op = |op, a, b| I::binary(op, ty.clone(), a, b);
     text.assign(
@@ -139,7 +134,7 @@ fn emit_signed_div(text: &mut String, dest: u32, ty: &T, left: O, right: O) {
     text.assign(format!("v{dest}"), quotient);
 }
 
-fn emit_signed_rem(text: &mut String, dest: u32, ty: &T, left: O, right: O) {
+fn emit_signed_rem(text: &mut crate::ir::LlvmModule, dest: u32, ty: &T, left: O, right: O) {
     let r = |name: &str| O::reg(format!("{name}{dest}"));
     let op = |op, a, b| I::binary(op, ty.clone(), a, b);
     text.assign(
@@ -161,12 +156,10 @@ fn emit_signed_rem(text: &mut String, dest: u32, ty: &T, left: O, right: O) {
     text.assign(format!("eucl{dest}"), remainder);
 }
 
-fn signed_minimum(llvm_ty: &str) -> &'static str {
-    match llvm_ty {
-        "i8" => "-128",
-        "i16" => "-32768",
-        "i32" => "-2147483648",
-        "i64" => "-9223372036854775808",
-        _ => unreachable!("signed integer LLVM type"),
-    }
+fn signed_minimum(llvm_ty: &LlvmType) -> O {
+    let bits = llvm_ty
+        .integer_bits()
+        .filter(|bits| (8..=64).contains(bits));
+    let Some(bits) = bits else { unreachable!() };
+    O::int128(-(1_i128 << (bits - 1)))
 }

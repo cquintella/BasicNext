@@ -40,7 +40,7 @@ pub(crate) fn fs_call_supported(
                 && values
                     .get(&arguments[1])
                     .and_then(llvm_type)
-                    .is_some_and(integer_llvm)
+                    .is_some_and(|ty| ty.is_integer())
         }
         "FS.File.Close" | "FS.File.ReadAll" | "FS.File.ReadLine" => arguments.len() == 1,
         "HOST.FileSystem.Exists" | "HOST.FileSystem.DeleteFile" => {
@@ -51,15 +51,15 @@ pub(crate) fn fs_call_supported(
         }
         "FS.File.ReadBytes" => {
             arguments.len() == 2
-                && values.get(&arguments[1]).and_then(llvm_type) == Some("{ ptr, i32 }")
+                && values.get(&arguments[1]).and_then(llvm_type) == Some(crate::layout::vector_ty())
         }
         "FS.File.WriteBytes" => {
             arguments.len() == 3
-                && values.get(&arguments[1]).and_then(llvm_type) == Some("{ ptr, i32 }")
+                && values.get(&arguments[1]).and_then(llvm_type) == Some(crate::layout::vector_ty())
                 && values
                     .get(&arguments[2])
                     .and_then(llvm_type)
-                    .is_some_and(integer_llvm)
+                    .is_some_and(|ty| ty.is_integer())
         }
         _ => return None,
     })
@@ -68,7 +68,7 @@ pub(crate) fn fs_call_supported(
 /// Lowers FS call `name`; false when `name` is not a `HOST.FileSystem` call.
 #[allow(clippy::too_many_lines)]
 pub(crate) fn lower_fs_call(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     destination: ValueId,
     name: &str,
@@ -80,13 +80,13 @@ pub(crate) fn lower_fs_call(
     let v = |index: usize| O::reg(format!("v{}", arguments[index].0));
     let r = |name: &str| O::reg(format!("{name}{dest}"));
     // `%{prefix}handle{dest}`: the file handle in slot 2 of `FS.File OR Error`.
-    let file_handle = |text: &mut String, prefix: &str| {
+    let file_handle = |text: &mut crate::ir::LlvmModule, prefix: &str| {
         let handle = I::extract(handle_result_ty(), v(0), 2);
         text.assign(format!("{prefix}handle{dest}"), handle);
         (T::I64, r(&format!("{prefix}handle")))
     };
     // `%{prefix}ptr` and `%{prefix}cap64`: the data and length of a BYTE buffer.
-    let buffer = |text: &mut String, prefix: &str| {
+    let buffer = |text: &mut crate::ir::LlvmModule, prefix: &str| {
         text.assign(
             format!("{prefix}ptr{dest}"),
             I::extract(vector_ty(), v(1), 0),
@@ -98,7 +98,7 @@ pub(crate) fn lower_fs_call(
         let wide = I::cast(CastOp::SExt, T::I32, r(&format!("{prefix}cap")), T::I64);
         text.assign(format!("{prefix}cap64{dest}"), wide);
     };
-    let call = |symbol: &str, args| I::call(T::I32, symbol, args).to_string();
+    let call = |symbol: &str, args| I::call(T::I32, symbol, args);
     match name {
         "HOST.FileSystem.Open" => {
             let mode = extend_to_i32(
@@ -110,11 +110,7 @@ pub(crate) fn lower_fs_call(
                     .expect("validated file mode"),
             );
             text.assign(format!("fileout{dest}"), I::alloca(T::I64));
-            let args = vec![
-                (T::Ptr, v(0)),
-                (T::I32, O::raw(mode)),
-                (T::Ptr, r("fileout")),
-            ];
+            let args = vec![(T::Ptr, v(0)), (T::I32, mode), (T::Ptr, r("fileout"))];
             text.assign(
                 format!("filerc{dest}"),
                 I::call(T::I32, "bn_rt_file_open", args),
@@ -123,13 +119,13 @@ pub(crate) fn lower_fs_call(
             emit_handle_result(
                 text,
                 destination,
-                format!("%filerc{dest}"),
-                format!("%filehandle{dest}"),
+                &O::reg(format!("filerc{dest}")),
+                &O::reg(format!("filehandle{dest}")),
             );
         }
         "FS.File.Close" => {
             let handle = file_handle(text, "fileclose");
-            emit_void_result(text, destination, call("bn_rt_file_close", vec![handle]));
+            emit_void_call_result(text, destination, call("bn_rt_file_close", vec![handle]));
         }
         "HOST.FileSystem.Exists" => {
             text.assign(format!("fsexout{dest}"), I::alloca(T::I32));
@@ -144,15 +140,15 @@ pub(crate) fn lower_fs_call(
             emit_status_result(
                 text,
                 destination,
-                &format!("%fsexrc{dest}"),
+                &O::reg(format!("fsexrc{dest}")),
                 None,
-                "null",
-                &format!("%fsexpay{dest}"),
+                &O::null(),
+                &O::reg(format!("fsexpay{dest}")),
             );
         }
         "HOST.FileSystem.DeleteFile" => {
             let delete = call("bn_rt_fs_delete_file", vec![(T::Ptr, v(0))]);
-            emit_void_result(text, destination, delete);
+            emit_void_call_result(text, destination, delete);
         }
         "FS.File.Write" | "FS.File.WriteLine" => {
             let symbol = if name == "FS.File.Write" {
@@ -161,7 +157,7 @@ pub(crate) fn lower_fs_call(
                 "bn_rt_file_write_line"
             };
             let handle = file_handle(text, "filew");
-            emit_void_result(
+            emit_void_call_result(
                 text,
                 destination,
                 call(symbol, vec![handle, (T::Ptr, v(1))]),
@@ -181,10 +177,10 @@ pub(crate) fn lower_fs_call(
             emit_status_result(
                 text,
                 destination,
-                &format!("%filerrc{dest}"),
+                &O::reg(format!("filerrc{dest}")),
                 eof,
-                &format!("%filerdata{dest}"),
-                "0",
+                &O::reg(format!("filerdata{dest}")),
+                &O::int(0),
             );
         }
         "FS.File.ReadBytes" => {
@@ -203,10 +199,10 @@ pub(crate) fn lower_fs_call(
             emit_status_result(
                 text,
                 destination,
-                &format!("%filebrc{dest}"),
+                &O::reg(format!("filebrc{dest}")),
                 Some(4),
-                "null",
-                &format!("%filebcount{dest}"),
+                &O::null(),
+                &O::reg(format!("filebcount{dest}")),
             );
         }
         "FS.File.WriteBytes" => {
@@ -214,12 +210,12 @@ pub(crate) fn lower_fs_call(
                 .values
                 .get(&arguments[2])
                 .expect("validated byte count");
-            let count = O::raw(coerce_to_type(
+            let count = coerce_to_type(
                 text,
                 arguments[2],
                 count_ty,
                 &Type::Integer(IntegerType::Int64),
-            ));
+            );
             let handle = file_handle(text, "filewb");
             buffer(text, "filewb");
             // host.md: `count` outside 0..=LEN(buffer) is INDEX_OUT_OF_BOUNDS,
@@ -239,17 +235,23 @@ pub(crate) fn lower_fs_call(
                 text,
                 block_id,
                 state,
-                &format!("%filewbbad{dest}"),
+                &O::reg(format!("filewbbad{dest}")),
                 ok,
                 bn_diag::DiagId::INDEX_OUT_OF_BOUNDS,
                 vec![
-                    ("index", Fact::Runtime("{}", format!("%filewbidx{dest}"))),
-                    ("bound", Fact::Runtime("{}", format!("%filewblen{dest}"))),
+                    (
+                        "index",
+                        Fact::Runtime("{}", O::reg(format!("filewbidx{dest}"))),
+                    ),
+                    (
+                        "bound",
+                        Fact::Runtime("{}", O::reg(format!("filewblen{dest}"))),
+                    ),
                     ("context", Fact::Text("BYTE buffer".into())),
                 ],
             );
             let args = vec![handle, (T::Ptr, r("filewbptr")), (T::I64, count)];
-            emit_void_result(text, destination, call("bn_rt_file_write_bytes", args));
+            emit_void_call_result(text, destination, call("bn_rt_file_write_bytes", args));
         }
         _ => return false,
     }

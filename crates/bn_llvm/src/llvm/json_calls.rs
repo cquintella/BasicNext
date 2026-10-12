@@ -8,7 +8,6 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 use crate::ir::{CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
-use crate::layout::typed_llvm;
 
 /// What a member returns, and so how its `bn_rt` result is packed.
 #[derive(Clone, Copy)]
@@ -71,7 +70,7 @@ fn snake(member: &str) -> String {
 }
 
 pub(super) fn lower_bnjson_call(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     analysis: &LoweringAnalysis<'_>,
     destination: ValueId,
     member: &str,
@@ -133,7 +132,7 @@ pub(super) fn lower_bnjson_call(
 
 #[allow(clippy::too_many_arguments)]
 fn lower_table_call(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     analysis: &LoweringAnalysis<'_>,
     destination: ValueId,
     symbol: &str,
@@ -160,24 +159,24 @@ fn lower_table_call(
             'p' => (T::Ptr, own),
             'i' | 'f' => {
                 let (want, slot) = if kind == 'i' {
-                    ("i64", format!("jsoni64{tag}{dest}"))
+                    (T::I64, format!("jsoni64{tag}{dest}"))
                 } else {
-                    ("double", format!("jsonf64{tag}{dest}"))
+                    (T::Double, format!("jsonf64{tag}{dest}"))
                 };
-                let ty = ty.unwrap_or(want);
-                let op = match (kind, ty) {
-                    (_, ty) if ty == want => None,
+                let ty = ty.unwrap_or_else(|| want.clone());
+                let op = match (kind, &ty) {
+                    (_, ty) if *ty == want => None,
                     ('i', _) => Some(CastOp::SExt),
-                    (_, "float") => Some(CastOp::FPExt),
+                    (_, T::Float) => Some(CastOp::FPExt),
                     // Integer literal coerced at the call site.
                     _ => Some(CastOp::SIToFP),
                 };
                 tag = "val";
-                let want = typed_llvm(want);
+
                 match op {
                     None => (want, own),
                     Some(op) => {
-                        text.assign(&slot, I::cast(op, typed_llvm(ty), own, want.clone()));
+                        text.assign(&slot, I::cast(op, ty, own, want.clone()));
                         (want, O::reg(slot))
                     }
                 }
@@ -220,8 +219,8 @@ fn lower_table_call(
         emit_handle_result(
             text,
             destination,
-            format!("%jsonrc{dest}"),
-            format!("%jsonhandle{dest}"),
+            &O::reg(format!("jsonrc{dest}")),
+            &O::reg(format!("jsonhandle{dest}")),
         );
         return;
     }
@@ -264,7 +263,7 @@ fn lower_table_call(
 /// (`BNJson.Json`, `BNCrypto` keys). A narrowed value arrives as the
 /// `{ i1, ptr, i64 }` aggregate.
 pub(super) fn emit_handle_index(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     analysis: &LoweringAnalysis<'_>,
     slot: &str,
     operand: ValueId,
@@ -284,7 +283,7 @@ fn union() -> T {
 
 /// Packs `%jsonerr{dest}` and the error record the failure left behind into
 /// the `{ i1, ptr, i64 }` head of a `T OR Error` result; returns the record.
-fn emit_error_head(text: &mut String, dest: u32, record: &str) -> O {
+fn emit_error_head(text: &mut crate::ir::LlvmModule, dest: u32, record: &str) -> O {
     let r = |name: &str| O::reg(format!("json{name}{dest}"));
     text.assign(
         format!("jsonagg{dest}"),
@@ -308,7 +307,7 @@ fn emit_error_head(text: &mut String, dest: u32, record: &str) -> O {
 /// Finishes the aggregate: slot 1 is the pointer, slot 2 the error code on
 /// failure or `payload`. The caller branches on the flag, never on the
 /// payload.
-fn emit_result_tail(text: &mut String, dest: u32, pointer: O, payload: O) {
+fn emit_result_tail(text: &mut crate::ir::LlvmModule, dest: u32, pointer: O, payload: O) {
     let r = |name: &str| O::reg(format!("json{name}{dest}"));
     text.assign(
         format!("jsonaggp{dest}"),
@@ -329,13 +328,13 @@ fn emit_result_tail(text: &mut String, dest: u32, pointer: O, payload: O) {
 }
 
 /// A `<scalar> OR Error` result from `%jsonerr{dest}` and `payload`.
-fn emit_scalar_result(text: &mut String, dest: u32, payload: O) {
+fn emit_scalar_result(text: &mut crate::ir::LlvmModule, dest: u32, payload: O) {
     let record = emit_error_head(text, dest, "aggpwrap");
     emit_result_tail(text, dest, record, payload);
 }
 
 /// A `STRING OR Error` result from `%jsontext{dest}` and `%jsonrc{dest}`.
-fn emit_string_result(text: &mut String, dest: u32) {
+fn emit_string_result(text: &mut crate::ir::LlvmModule, dest: u32) {
     let r = |name: &str| O::reg(format!("json{name}{dest}"));
     text.assign(
         format!("jsonerr{dest}"),

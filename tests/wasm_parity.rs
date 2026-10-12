@@ -64,6 +64,17 @@ fn non_tty_subset_matches_interpreter() {
     }
 }
 
+/// User calls take the stack check and nested vectors the row helper, both
+/// `bn_rt` imports `bin/bn-wasm` must provide: a module that imports a
+/// missing host function does not instantiate (known issues K21, K53).
+#[test]
+fn user_calls_and_nested_vectors_match_interpreter() {
+    let source = workspace_root().join("tests/grammar/valid/nested-vector-values.bn");
+    let directory = TestDir::new("wasm-nested").expect("create Wasm directory");
+    let artifact = compile_wasm(&source, &directory);
+    assert_wasm_parity(&source, &artifact, b"");
+}
+
 #[test]
 fn input_matches_interpreter() {
     let source = workspace_root().join("tests/grammar/valid/build-input.bn");

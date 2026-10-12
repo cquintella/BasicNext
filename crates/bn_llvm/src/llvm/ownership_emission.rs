@@ -11,7 +11,7 @@ use crate::ir::{CastOp, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn lower_ownership_emission(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     module: &Module,
     _function: &Function,
     block_id: BlockId,
@@ -34,7 +34,7 @@ pub(crate) fn lower_ownership_emission(
                     module,
                     arc_ops::Ownership::Release,
                     ty,
-                    &format!("%v{}", value.0),
+                    &O::reg(format!("v{}", value.0)),
                     state,
                 );
             } else if matches!(
@@ -54,7 +54,7 @@ pub(crate) fn lower_ownership_emission(
                 // no reference needs no runtime work. A fixed vector's
                 // storage is function-local; a STRUCT's is freed with its
                 // function.
-            } else if llvm_type(ty) == Some("{ i1, ptr, i64 }")
+            } else if llvm_type(ty) == Some(crate::layout::handle_result_ty())
                 && matches!(ty, Type::Alternative(alternatives) if alternatives.iter().any(|item| matches!(item, Type::ImportedNamed { name, .. } | Type::ImportedTypeName { name, .. } if name == "DataFrame")))
             {
                 let v = value.0;
@@ -86,7 +86,7 @@ pub(crate) fn lower_ownership_emission(
                 let v = value.0;
                 let own = O::reg(format!("v{v}"));
                 let handle = format!("{slot}delhandle{v}");
-                let inst = if llvm_type(ty) == Some("{ i1, ptr, i64 }") {
+                let inst = if llvm_type(ty) == Some(crate::layout::handle_result_ty()) {
                     I::extract(T::struct_of([T::I1, T::Ptr, T::I64]), own, 2)
                 } else {
                     I::cast(CastOp::PtrToInt, T::Ptr, own, T::I64)
@@ -109,14 +109,14 @@ pub(crate) fn lower_ownership_emission(
             let n = state.continuation_count;
             state.continuation_count += 1;
             let tag = format!("{}{n}", sanitize_symbol(class));
-            text.assign(format!("initflag{tag}"), I::load(T::I1, O::raw(&flag)));
+            text.assign(format!("initflag{tag}"), I::load(T::I1, O::global(&flag)));
             text.emit(I::cond_br(
                 O::reg(format!("initflag{tag}")),
                 format!("initdone{tag}"),
                 format!("initrun{tag}"),
             ));
             state.control_flow.label(text, format!("initrun{tag}"));
-            text.emit(I::store(T::I1, O::bool(true), O::raw(&flag)));
+            text.emit(I::store(T::I1, O::bool(true), O::global(&flag)));
             if let Some(init) = module.function_of_kind(FunctionKind::Init, class) {
                 let init = llvm_function_symbol(&init.name);
                 text.emit(I::call(T::Void, &init, vec![]));
@@ -136,7 +136,7 @@ pub(crate) fn lower_ownership_emission(
             let global = static_global_name(class, field);
             text.assign(
                 format!("v{}", destination.0),
-                I::load(crate::layout::typed_llvm(llvm_ty), O::raw(global)),
+                I::load(llvm_ty, O::global(global)),
             );
         }
         Instruction::StoreStatic {
@@ -157,21 +157,18 @@ pub(crate) fn lower_ownership_emission(
             let storage = global.replacen("@bn_st_", "@bn_sv_", 1);
             if previous.is_some() && arc_ops::holds_references(module, ty) {
                 let kept = global.replacen("@bn_st_", "@bn_svp_", 1);
-                vectors::emit_vector_keep_previous(text, (&storage, &kept, &global), ty);
+                let slots = (O::global(&storage), O::global(&kept), O::global(&global));
+                vectors::emit_vector_keep_previous(text, (&slots.0, &slots.1, &slots.2), ty);
             }
             if let Some(previous) = previous {
                 text.assign(
                     format!("v{}", previous.0),
-                    I::load(crate::layout::typed_llvm(llvm_ty), O::raw(&global)),
+                    I::load(llvm_ty.clone(), O::global(&global)),
                 );
             }
-            let operand =
-                vectors::emit_vector_copy(text, &storage, &operand, ty).unwrap_or(operand);
-            text.emit(I::store(
-                crate::layout::typed_llvm(llvm_ty),
-                O::raw(operand),
-                O::raw(global),
-            ));
+            let operand = vectors::emit_vector_copy(text, &O::global(&storage), &operand, ty)
+                .unwrap_or(operand);
+            text.emit(I::store(llvm_ty, operand, O::global(global)));
         }
         Instruction::SetMember {
             object,
@@ -232,10 +229,7 @@ pub(crate) fn lower_ownership_emission(
             if let Some(previous) = previous {
                 text.assign(
                     format!("v{}", previous.0),
-                    I::load(
-                        crate::layout::typed_llvm(llvm_ty),
-                        O::reg(format!("fieldptr{}", value.0)),
-                    ),
+                    I::load(llvm_ty.clone(), O::reg(format!("fieldptr{}", value.0))),
                 );
             }
             let value_op = if resolved.is_some_and(|field| module.field_is_weak(field)) {
@@ -244,8 +238,8 @@ pub(crate) fn lower_ownership_emission(
                 value_op
             };
             text.emit(I::store(
-                crate::layout::typed_llvm(llvm_ty),
-                O::raw(value_op),
+                llvm_ty,
+                value_op,
                 O::reg(format!("fieldptr{}", value.0)),
             ));
         }
@@ -298,7 +292,7 @@ enum Rc {
 /// The `bn_rt` call that releases a handle-backed value of type `ty`, with the
 /// slot prefix of its registers.
 fn release_call(module: &Module, ty: &Type) -> Option<(&'static str, &'static str, Rc)> {
-    let aggregate = llvm_type(ty) == Some("{ i1, ptr, i64 }");
+    let aggregate = llvm_type(ty) == Some(crate::layout::handle_result_ty());
     let exec = matches!(ty, Type::Alternative(alternatives) if alternatives.iter().any(
         |item| matches!(item, Type::Named(name) if name == "HOST.Exec.Result")
     ));
@@ -315,11 +309,8 @@ fn release_call(module: &Module, ty: &Type) -> Option<(&'static str, &'static st
     } else if is_bnsqlite_connection_type(module, ty) {
         ("sqlite", "bn_rt_sqlite_close", Rc::Named)
     } else {
-        let symbol = if bnlog_resource_kind(module, ty)? == "Fields" {
-            "bn_rt_log_fields_close"
-        } else {
-            "bn_rt_log_logger_delete"
-        };
+        bnlog_resource_kind(module, ty)?;
+        let symbol = bnlog_release_symbol();
         ("log", symbol, Rc::Named)
     })
 }

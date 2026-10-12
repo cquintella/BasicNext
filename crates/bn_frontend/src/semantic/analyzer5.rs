@@ -106,11 +106,26 @@ impl Analyzer {
                 let mut element_type = Type::Unknown;
                 for value in values {
                     let actual = self.expression(value, locals)?;
+                    // Decision D-2 (0.6.md, "Vector literals take a declared
+                    // destination"): a scalar element is checked against the
+                    // first element's type by the assignment rules; rows keep
+                    // their own check.
+                    let rows = matches!(element_type, Type::Vector { .. });
+                    let expected = if rows {
+                        element_type.clone()
+                    } else {
+                        default_literal_type(element_type.clone())
+                    };
+                    let fits = if rows {
+                        comparable(&expected, &actual)
+                    } else {
+                        self.compatible(&expected, &actual)
+                    };
                     if element_type == Type::Unknown {
                         element_type = actual;
-                    } else if !comparable(&element_type, &actual) {
+                    } else if !fits {
                         return Err(type_mismatch(
-                            display(&element_type),
+                            display(&expected),
                             display(&actual),
                             VECTOR_LITERAL_ELEMENT,
                             value.span,

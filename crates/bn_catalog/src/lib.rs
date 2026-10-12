@@ -19,6 +19,7 @@ use std::sync::OnceLock;
 /// `(domain, contents)` of every catalog file.
 pub const FILES: &[(&str, &str)] = &[
     ("bnlog", include_str!("../../../share/bn/catalog/bnlog.txt")),
+    ("cli", include_str!("../../../share/bn/catalog/cli.txt")),
     (
         "config",
         include_str!("../../../share/bn/catalog/config.txt"),

@@ -5,6 +5,3 @@ bn_rt_arc_info	debugger	book ch. 20: prints one object from a native debugger
 bn_rt_dispatch_error_free	pending	T.K22: emitted AWAIT never frees the error message bn_rt_dispatch_await returns
 bn_rt_file_string_free	pending	T.K22: emitted HOST.FileSystem reads never free the strings they receive
 bn_rt_net_string_free	pending	T.K22: emitted HOST.Net never frees the address strings it receives
-bn_rt_log_logger_new	pending	K48: bnc does not compile BNLog Logger.New (a BN function of a provider module)
-bn_rt_log_logger_child	pending	K48: bnc does not compile BNLog Logger.Child
-bn_rt_log_fields_count	pending	K48: bnc does not compile BNLog Fields.Count

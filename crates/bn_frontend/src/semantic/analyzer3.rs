@@ -89,7 +89,7 @@ impl Analyzer {
                         return Err(type_mismatch(
                             "initializer",
                             "missing initializer",
-                            format!("{} binding", type_ref.alternatives[0].name),
+                            format!("{} binding", display(&ty)),
                             *span,
                         ));
                     }
@@ -134,7 +134,7 @@ impl Analyzer {
                             return Err(type_mismatch(
                                 "initializer",
                                 "missing initializer",
-                                format!("{} binding", type_ref.alternatives[0].name),
+                                format!("{} binding", display(&ty)),
                                 *span,
                             ));
                         }

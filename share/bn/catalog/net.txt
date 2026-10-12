@@ -21,3 +21,22 @@ resolve.host_name.cause = a host name has 1..253 bytes and no space or control c
 resolve.not_found.cause = no address is registered for "{host}"
 addresses.empty.cause = the result holds no address; got {index}
 addresses.index.cause = the index must be within 0..{last}; got {index}
+
+# Members `bnc` lowers through `bn_rt` (host-net.md, "Addressing and
+# resolution", "TCP"); the LLVM backend matches a call by these names.
+member.address.is_ipv4 = HOST.Net.Address.IsIPv4
+member.address.is_ipv6 = HOST.Net.Address.IsIPv6
+member.address.is_loopback = HOST.Net.Address.IsLoopback
+member.address.is_private = HOST.Net.Address.IsPrivate
+member.address.is_link_local = HOST.Net.Address.IsLinkLocal
+member.address.is_multicast = HOST.Net.Address.IsMulticast
+member.cidr.parse = HOST.Net.CIDR.Parse
+member.cidr.contains = HOST.Net.CIDR.Contains
+member.cidr.network = HOST.Net.CIDR.Network
+member.cidr.prefix_length = HOST.Net.CIDR.PrefixLength
+member.tcp.set_timeouts = HOST.Net.TCPStream.SetTimeouts
+member.tcp.shutdown_read = HOST.Net.TCPStream.ShutdownRead
+member.tcp.shutdown_write = HOST.Net.TCPStream.ShutdownWrite
+# The `HOST.Net.CIDR` type name (a value of it is its network address text
+# and prefix length).
+type.cidr = HOST.Net.CIDR

@@ -106,6 +106,9 @@ pub struct SemanticModel {
     /// The class relation, with interfaces resolved to `#<module>.Name`.
     pub class_model: ClassModel,
     pub bnmath_modules: HashSet<ModuleId>,
+    /// The `BNLog` modules this module imports: their `Logger` is a counted
+    /// handle (ARC), released when its last binding ends (known issue K61).
+    pub bnlog_modules: HashSet<ModuleId>,
     /// The standard (`modules/bn/`) modules this module imports.
     pub standard_modules: HashSet<ModuleId>,
     pub module_constants: HashMap<(ModuleId, String), ConstantValue>,
@@ -493,7 +496,16 @@ fn analyze_modules_with_warnings_mode(
             module: module.id,
             diagnostic: Box::new(diagnostic),
         })?;
-        models.push(analysis.model);
+        let mut model = analysis.model;
+        model.bnlog_modules = graph
+            .modules
+            .iter()
+            .filter_map(|loaded| {
+                (loaded.standard_module == Some(crate::module_graph::StandardModule::BNLog))
+                    .then_some(loaded.id)
+            })
+            .collect();
+        models.push(model);
         if collect_warnings {
             warnings.extend(
                 analysis

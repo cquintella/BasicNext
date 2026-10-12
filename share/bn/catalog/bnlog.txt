@@ -31,10 +31,50 @@ sensitive.marker = authorization cookie session password secret token api_key ap
 # Error for an unknown format ({format} is the text the program passed).
 error.invalid_format.message = unknown log format "{format}"
 error.invalid_format.cause = the format is "JSON", "SYSLOG" or "APACHE"
-error.duplicate_key.message = key "{key}" already exists
-error.duplicate_key.cause = the key "{key}" is already present
-error.invalid_transport.cause = transport "{kind}" is not supported
 
-# Contract names and type-mismatch contexts read by bn_rt and bn_lib_log.
-op.logger.set_format = BNLog.Logger.SetFormat
-context.set_format.format = BNLog.Logger.SetFormat format
+
+
+# What a bound names in an INVALID_ARGUMENT or OUT_OF_RANGE error.
+what.label = logger label
+what.destination = destination
+what.field_value = field value
+what.level = log level
+what.timeout = timeout in milliseconds
+error.apache_level.cause = an APACHE logger writes access records only (Logger.Access)
+
+# Destinations named in Logger.New (bnlog.md, "Making a logger").
+destination.console = CONSOLE
+destination.null = NULL
+
+# The fields of Log.Event, under their own names in a record.
+event.service = service
+event.request_id = request_id
+event.route = route
+event.user = user
+event.detail = detail
+event.code = code
+
+# Contract names of the operations (Error.Operation).
+op.logger.new = BNLog.Logger.New
+op.logger.access = BNLog.Logger.Access
+op.logger.set_level = BNLog.Logger.SetLevel
+op.logger.set_defaults = BNLog.Logger.SetDefaults
+op.logger.set_access_defaults = BNLog.Logger.SetAccessDefaults
+op.logger.flush = BNLog.Logger.Flush
+op.logger.close = BNLog.Logger.Close
+op.logger.error = BNLog.Logger.Error
+op.logger.warn = BNLog.Logger.Warn
+op.logger.info = BNLog.Logger.Info
+op.logger.http = BNLog.Logger.Http
+op.logger.verbose = BNLog.Logger.Verbose
+op.logger.debug = BNLog.Logger.Debug
+op.logger.silly = BNLog.Logger.Silly
+
+# Capabilities a destination needs (CAPABILITY_REQUIRED names them).
+capability.console = HOST.Console
+capability.filesystem = HOST.FileSystem
+error.apache_level.message = cannot write a level record to an APACHE logger
+error.capability.cause = the destination needs IMPORT {capability}
+error.unavailable.cause = the BNLog member is not supplied by this runtime
+error.released.message = BNLog.Logger was already deleted
+context.non_struct = non-STRUCT value

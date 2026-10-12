@@ -1,0 +1,16 @@
+# Command-line texts of bni and bnc (bn_catalog; AGENTS.md "No hard-coded
+# messages"). One `key = value` per line; `{name}` is filled by the code.
+# Each option has one owner: the common parser (bn_cli), the interpreter
+# driver (bni) or the compiler driver (bnc); an option a tool does not own
+# is unknown to it.
+
+# Interpreter options (bn_interpret_driver).
+option.format.expects = --format expects text or json
+option.format.eval_only = --format is available only with bni eval
+option.sandbox.no_filesystem = --sandbox cannot be combined with --no-filesystem
+option.output.lex_only = -o writes the token stream of bni lex
+check.no_trace = check has no execution to trace
+
+# Compiler options (bn_compile_driver).
+option.emit.repeated = --emit was specified more than once
+option.emit.expects = --emit expects tokens, ast, typed-ast, ir, or llvm

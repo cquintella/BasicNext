@@ -23,7 +23,7 @@ use runtime_abi::{
 };
 
 pub(crate) fn lower_process_call(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     destination: ValueId,
     name: &str,
@@ -47,10 +47,10 @@ pub(crate) fn lower_process_call(
             emit_status_result(
                 text,
                 destination,
-                &format!("%envrc{dest}"),
+                &LlvmOperand::reg(format!("envrc{dest}")),
                 None,
-                &format!("%envval{dest}"),
-                "0",
+                &LlvmOperand::reg(format!("envval{dest}")),
+                &LlvmOperand::int(0),
             );
         }
         "HOST.Env.Has" => {
@@ -70,10 +70,10 @@ pub(crate) fn lower_process_call(
             emit_status_result(
                 text,
                 destination,
-                &format!("%envhasrc{dest}"),
+                &LlvmOperand::reg(format!("envhasrc{dest}")),
                 None,
-                "null",
-                &format!("%envhasext{dest}"),
+                &LlvmOperand::null(),
+                &LlvmOperand::reg(format!("envhasext{dest}")),
             );
         }
         "HOST.NumProcs" => {
@@ -93,10 +93,10 @@ pub(crate) fn lower_process_call(
             emit_status_result(
                 text,
                 destination,
-                &format!("%numprocsrc{dest}"),
+                &LlvmOperand::reg(format!("numprocsrc{dest}")),
                 None,
-                "null",
-                &format!("%numprocsext{dest}"),
+                &LlvmOperand::null(),
+                &LlvmOperand::reg(format!("numprocsext{dest}")),
             );
         }
         "HOST.Exec.Run" => {
@@ -227,11 +227,7 @@ pub(crate) fn lower_process_call(
                         arguments[1],
                         analysis.values.get(&arguments[1]).expect("validated row"),
                     );
-                    CONSOLE_PRINT_AT.call([
-                        LlvmOperand::raw(column),
-                        LlvmOperand::raw(row),
-                        value_reg(arguments[2]),
-                    ])
+                    CONSOLE_PRINT_AT.call([column, row, value_reg(arguments[2])])
                 }
             };
             emit_checked_i32_eq_zero(text, block_id, destination, call, CONSOLE_FAILURES, state);

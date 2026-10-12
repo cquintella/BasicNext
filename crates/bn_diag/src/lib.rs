@@ -61,8 +61,19 @@ mod schema {
 
 /// Declares the registry once: the `const DiagId::NAME` handles and the
 /// `REGISTRY` rows come from the same list, so an index can never drift.
+/// A registry entry's code: the one given, or the entry's own name when the
+/// code is the name (stated once).
+macro_rules! registry_code {
+    ($name:ident, $code:literal) => {
+        $code
+    };
+    ($name:ident) => {
+        stringify!($name)
+    };
+}
+
 macro_rules! diagnostic_registry {
-    ($( $name:ident { code: $code:literal, fluent: $fluent:literal, severity: $severity:ident, schema: $schema:ident } ),+ $(,)?) => {
+    ($( $name:ident { $( code: $code:literal, )? fluent: $fluent:literal, severity: $severity:ident, schema: $schema:ident } ),+ $(,)?) => {
         #[allow(non_camel_case_types, clippy::upper_case_acronyms)]
         #[repr(u16)]
         enum RegistryKey { $( $name ),+ }
@@ -73,7 +84,7 @@ macro_rules! diagnostic_registry {
 
         static REGISTRY: &[DiagDesc] = &[
             $( DiagDesc {
-                code: $code,
+                code: registry_code!($name $(, $code)?),
                 fluent_id: $fluent,
                 severity: Severity::$severity,
                 schema: schema::$schema,
@@ -195,6 +206,7 @@ diagnostic_registry! {
     UNRESOLVED_TYPE { code: "UNRESOLVED_TYPE", fluent: "UNRESOLVED_TYPE", severity: Error, schema: LEGACY_MESSAGE },
     VECTOR_LENGTH_MISMATCH { code: "VECTOR_LENGTH_MISMATCH", fluent: "VECTOR_LENGTH_MISMATCH", severity: Error, schema: LEGACY_MESSAGE },
     WEB_LISTEN { code: "WEB_LISTEN", fluent: "WEB_LISTEN", severity: Error, schema: LEGACY_MESSAGE },
+    STACK_OVERFLOW { fluent: "stack-overflow", severity: Error, schema: NAME },
 }
 
 impl DiagId {

@@ -11,7 +11,6 @@ use crate::ir::{
     BinaryOp, CastOp, FCmpCond, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O,
     LlvmType as T,
 };
-use crate::layout::typed_llvm;
 
 fn v(id: ValueId) -> O {
     O::reg(format!("v{}", id.0))
@@ -19,7 +18,7 @@ fn v(id: ValueId) -> O {
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn lower_cast(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     destination: ValueId,
     value: ValueId,
@@ -39,52 +38,53 @@ pub(crate) fn lower_cast(
     }
     let own = format!("v{}", destination.0);
     match (llvm_type(source_ty), llvm_type(target_ty)) {
-        (Some(source), Some("i1")) => emit_to_boolean(text, destination, value, source),
-        (Some(source), Some(target)) if integer_llvm(source) && integer_llvm(target) => {
+        (Some(source), Some(T::I1)) => {
+            emit_to_boolean(text, destination, value, source);
+        }
+        (Some(source), Some(target)) if source.is_integer() && target.is_integer() => {
             let ext = if is_unsigned(source_ty) {
                 CastOp::ZExt
             } else {
                 CastOp::SExt
             };
-            let wide = I::cast(ext, typed_llvm(source), v(value), T::I128);
+            let wide = I::cast(ext, source, v(value), T::I128);
             text.assign(format!("castw{}", destination.0), wide);
             emit_i128_fit_trunc(text, block_id, destination.0, target, target_ty, state);
         }
-        (Some(source), Some(target)) if integer_llvm(source) && float_llvm(target) => {
+        (Some(source), Some(target)) if source.is_integer() && target.is_floating() => {
             let op = if is_unsigned(source_ty) {
                 CastOp::UIToFP
             } else {
                 CastOp::SIToFP
             };
-            text.assign(
-                own,
-                I::cast(op, typed_llvm(source), v(value), typed_llvm(target)),
-            );
+            text.assign(own, I::cast(op, source, v(value), target));
         }
-        (Some(source), Some(target)) if float_llvm(source) && integer_llvm(target) => {
+        (Some(source), Some(target)) if source.is_floating() && target.is_integer() => {
             emit_float_to_integer(
                 text,
                 block_id,
                 destination,
                 value,
-                source,
+                &source,
                 target,
                 target_ty,
                 state,
             );
         }
-        (Some("float"), Some("double")) => {
+        (Some(T::Float), Some(T::Double)) => {
             text.assign(own, I::cast(CastOp::FPExt, T::Float, v(value), T::Double));
         }
-        (Some("double"), Some("float")) => {
+        (Some(T::Double), Some(T::Float)) => {
             text.assign(own, I::cast(CastOp::FPTrunc, T::Double, v(value), T::Float));
         }
-        (Some("ptr"), Some("ptr"))
-        | (Some("float"), Some("float"))
-        | (Some("double"), Some("double")) => {
+        (Some(T::Ptr), Some(T::Ptr))
+        | (Some(T::Float), Some(T::Float))
+        | (Some(T::Double), Some(T::Double)) => {
             emit_same_type_copy(text, destination, value, target_ty);
         }
-        (Some("{ ptr, i32 }"), Some("{ ptr, i32, i32 }")) => {
+        (Some(source), Some(target))
+            if source == crate::layout::vector_ty() && target == crate::layout::region_ty() =>
+        {
             let elem_code = match source_ty {
                 Type::Pointer { element, .. } => {
                     bn_types::alternatives::member_code(element).unwrap_or(0)
@@ -95,14 +95,14 @@ pub(crate) fn lower_cast(
             let val = v(value);
             let ptr_val = format!("pvptr{tag}");
             let len_val = format!("pvlen{tag}");
-            let fat_void = typed_llvm("{ ptr, i32, i32 }");
+            let fat_void = crate::layout::region_ty();
             text.assign(
                 ptr_val.clone(),
-                I::extract(typed_llvm("{ ptr, i32 }"), val.clone(), 0),
+                I::extract(crate::layout::vector_ty(), val.clone(), 0),
             );
             text.assign(
                 len_val.clone(),
-                I::extract(typed_llvm("{ ptr, i32 }"), val, 1),
+                I::extract(crate::layout::vector_ty(), val, 1),
             );
             let ins0 = format!("pvins0_{tag}");
             text.assign(
@@ -125,7 +125,9 @@ pub(crate) fn lower_cast(
                 ),
             );
         }
-        (Some("{ ptr, i32, i32 }"), Some("{ ptr, i32 }")) => {
+        (Some(source), Some(target))
+            if source == crate::layout::region_ty() && target == crate::layout::vector_ty() =>
+        {
             let res = emit_pointer_void_restore(
                 text,
                 block_id,
@@ -136,12 +138,7 @@ pub(crate) fn lower_cast(
             );
             text.assign(
                 own,
-                I::select(
-                    O::bool(true),
-                    typed_llvm("{ ptr, i32 }"),
-                    O::raw(res.clone()),
-                    O::raw(res),
-                ),
+                I::select(O::bool(true), crate::layout::vector_ty(), res.clone(), res),
             );
         }
         _ => unreachable!("validated cast shape"),
@@ -149,15 +146,15 @@ pub(crate) fn lower_cast(
 }
 
 pub(crate) fn emit_pointer_void_restore(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     tag: &str,
     val: O,
     target_ty: &Type,
     state: &mut EmissionState,
-) -> String {
+) -> crate::ir::LlvmOperand {
     let r = |name: &str| O::reg(format!("vp{name}{tag}"));
-    let fat_void = typed_llvm("{ ptr, i32, i32 }");
+    let fat_void = crate::layout::region_ty();
     text.assign(
         format!("vpptr{tag}"),
         I::extract(fat_void.clone(), val.clone(), 0),
@@ -196,7 +193,7 @@ pub(crate) fn emit_pointer_void_restore(
         text,
         block_id,
         state,
-        &format!("%{type_mismatch}"),
+        &O::reg(&type_mismatch),
         after_type_check,
         bn_diag::DiagId::POINTER_TYPE_MISMATCH,
         vec![(
@@ -227,20 +224,20 @@ pub(crate) fn emit_pointer_void_restore(
             text,
             block_id,
             state,
-            &format!("%{len_mismatch}"),
+            &O::reg(&len_mismatch),
             after_len_check,
             bn_diag::DiagId::POINTER_LENGTH_MISMATCH,
             vec![(
                 "message",
                 Fact::RuntimeDynamic(
                     format!("pointer length {{}} does not match {expected}"),
-                    format!("%{wide_len}"),
+                    O::reg(&wide_len),
                 ),
             )],
         );
     }
 
-    let fat_typed = typed_llvm("{ ptr, i32 }");
+    let fat_typed = crate::layout::vector_ty();
     let ins0 = format!("vpins0_{tag}");
     text.assign(
         ins0.clone(),
@@ -251,7 +248,7 @@ pub(crate) fn emit_pointer_void_restore(
         res.clone(),
         I::insert(fat_typed, O::reg(ins0), T::I32, r("len"), 1),
     );
-    format!("%{res}")
+    O::reg(&res)
 }
 
 /// Whether native code implements `source AS target`.
@@ -308,12 +305,17 @@ pub(crate) const fn is_text_cast(instruction: &Instruction) -> bool {
 }
 
 /// `AS STRING` (C3): `bn_rt` formats with the same code the interpreter uses.
-fn emit_to_string(text: &mut String, destination: ValueId, value: ValueId, source_ty: &Type) {
+fn emit_to_string(
+    text: &mut crate::ir::LlvmModule,
+    destination: ValueId,
+    value: ValueId,
+    source_ty: &Type,
+) {
     let dest = destination.0;
     let source = llvm_type(source_ty).expect("validated text cast source");
     let wide = O::reg(format!("textwide{dest}"));
-    let widen = |text: &mut String, op, to| {
-        let inst = I::cast(op, typed_llvm(source), v(value), to);
+    let widen = |text: &mut crate::ir::LlvmModule, op, to| {
+        let inst = I::cast(op, source.clone(), v(value), to);
         text.assign(format!("textwide{dest}"), inst);
     };
     let integer = if is_unsigned(source_ty) {
@@ -322,7 +324,7 @@ fn emit_to_string(text: &mut String, destination: ValueId, value: ValueId, sourc
         ("bn_rt_text_int", CastOp::SExt)
     };
     let (symbol, argument) = match source {
-        "i1" => {
+        T::I1 => {
             let words = I::select(
                 v(value),
                 T::Ptr,
@@ -332,43 +334,51 @@ fn emit_to_string(text: &mut String, destination: ValueId, value: ValueId, sourc
             text.assign(format!("v{dest}"), words);
             return;
         }
-        "i64" => (integer.0, (T::I64, v(value))),
-        "i8" | "i16" | "i32" => {
+        T::I64 => (integer.0, (T::I64, v(value))),
+        T::I8 | T::I16 | T::I32 => {
             widen(text, integer.1, T::I64);
             (integer.0, (T::I64, wide))
         }
-        "float" => {
+        T::Float => {
             widen(text, CastOp::FPExt, T::Double);
             ("bn_rt_text_float32", (T::Double, wide))
         }
-        "double" => ("bn_rt_text_float", (T::Double, v(value))),
+        T::Double => ("bn_rt_text_float", (T::Double, v(value))),
         _ => unreachable!("validated text cast source"),
     };
     text.assign(format!("v{dest}"), I::call(T::Ptr, symbol, vec![argument]));
 }
 
-fn emit_same_type_copy(text: &mut String, destination: ValueId, value: ValueId, ty: &Type) {
+fn emit_same_type_copy(
+    text: &mut crate::ir::LlvmModule,
+    destination: ValueId,
+    value: ValueId,
+    ty: &Type,
+) {
     let llvm_ty = llvm_type(ty).expect("validated copy type");
     let inst = match llvm_ty {
-        "i1" => I::binary(BinaryOp::Or, T::I1, O::bool(false), v(value)),
-        "ptr" => I::gep(T::I8, v(value), vec![(T::I64, O::int(0))]),
-        "float" | "double" => {
-            I::binary(BinaryOp::FAdd, typed_llvm(llvm_ty), O::raw("0.0"), v(value))
-        }
-        other => I::binary(BinaryOp::Add, typed_llvm(other), O::int(0), v(value)),
+        T::I1 => I::binary(BinaryOp::Or, T::I1, O::bool(false), v(value)),
+        T::Ptr => I::gep(T::I8, v(value), vec![(T::I64, O::int(0))]),
+        T::Float | T::Double => I::binary(BinaryOp::FAdd, llvm_ty, O::float(0.0), v(value)),
+        other => I::binary(BinaryOp::Add, other, O::int(0), v(value)),
     };
     text.assign(format!("v{}", destination.0), inst);
 }
 
-fn emit_to_boolean(text: &mut String, destination: ValueId, value: ValueId, source: &str) {
+fn emit_to_boolean(
+    text: &mut crate::ir::LlvmModule,
+    destination: ValueId,
+    value: ValueId,
+    source: T,
+) {
     let dest = destination.0;
     let inst = match source {
-        "i1" => I::binary(BinaryOp::Or, T::I1, O::bool(false), v(value)),
-        "i8" | "i16" | "i32" | "i64" => {
-            I::icmp(ICmpCond::Ne, typed_llvm(source), v(value), O::int(0))
+        T::I1 => I::binary(BinaryOp::Or, T::I1, O::bool(false), v(value)),
+        integer if integer.is_integer() => I::icmp(ICmpCond::Ne, integer, v(value), O::int(0)),
+        floating if floating.is_floating() => {
+            I::fcmp(FCmpCond::Une, floating, v(value), O::float(0.0))
         }
-        "float" | "double" => I::fcmp(FCmpCond::Une, typed_llvm(source), v(value), O::raw("0.0")),
-        "ptr" => {
+        T::Ptr => {
             text.assign(format!("boolch{dest}"), I::load(T::I8, v(value)));
             I::icmp(
                 ICmpCond::Ne,
@@ -384,25 +394,24 @@ fn emit_to_boolean(text: &mut String, destination: ValueId, value: ValueId, sour
 
 #[allow(clippy::too_many_arguments)]
 fn emit_float_to_integer(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     destination: ValueId,
     value: ValueId,
-    source: &str,
-    target: &str,
+    source: &T,
+    target: T,
     target_ty: &Type,
     state: &mut EmissionState,
 ) {
     let dest = destination.0;
     let r = |name: &str| O::reg(format!("cast{name}{dest}"));
-    let source = typed_llvm(source);
-    let compare = |text: &mut String, name: &str, cond, constant: &str| {
-        let inst = I::fcmp(cond, source.clone(), v(value), O::raw(constant));
+    let compare = |text: &mut crate::ir::LlvmModule, name: &str, cond, constant: f64| {
+        let inst = I::fcmp(cond, source.clone(), v(value), O::float(constant));
         text.assign(format!("cast{name}{dest}"), inst);
     };
-    compare(text, "nan", FCmpCond::Uno, "0.0");
-    compare(text, "pinf", FCmpCond::Oeq, "0x7FF0000000000000");
-    compare(text, "ninf", FCmpCond::Oeq, "0xFFF0000000000000");
+    compare(text, "nan", FCmpCond::Uno, 0.0);
+    compare(text, "pinf", FCmpCond::Oeq, f64::INFINITY);
+    compare(text, "ninf", FCmpCond::Oeq, f64::NEG_INFINITY);
     text.assign(
         format!("castinf{dest}"),
         I::binary(BinaryOp::Or, T::I1, r("pinf"), r("ninf")),
@@ -416,7 +425,7 @@ fn emit_float_to_integer(
         text,
         block_id,
         state,
-        &format!("%castbad{dest}"),
+        &O::reg(format!("castbad{dest}")),
         finite,
         bn_diag::DiagId::INVALID_NUMERIC_CONVERSION,
         vec![(
@@ -430,10 +439,10 @@ fn emit_float_to_integer(
 }
 
 fn emit_i128_fit_trunc(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     block_id: BlockId,
     dest: u32,
-    target: &str,
+    target: T,
     target_ty: &Type,
     state: &mut EmissionState,
 ) {
@@ -441,11 +450,11 @@ fn emit_i128_fit_trunc(
     let (min, max) = i128_bounds(target_ty);
     text.assign(
         format!("castlo{dest}"),
-        I::icmp(ICmpCond::Slt, T::I128, r("w"), O::raw(min)),
+        I::icmp(ICmpCond::Slt, T::I128, r("w"), min),
     );
     text.assign(
         format!("casthi{dest}"),
-        I::icmp(ICmpCond::Sgt, T::I128, r("w"), O::raw(max)),
+        I::icmp(ICmpCond::Sgt, T::I128, r("w"), max),
     );
     text.assign(
         format!("castov{dest}"),
@@ -456,25 +465,17 @@ fn emit_i128_fit_trunc(
         text,
         block_id,
         state,
-        &format!("%castov{dest}"),
+        &O::reg(format!("castov{dest}")),
         ok,
-        &format!("%castw{dest}"),
+        &O::reg(format!("castw{dest}")),
         target_ty,
     );
-    let narrow = I::cast(CastOp::Trunc, T::I128, r("w"), typed_llvm(target));
+    let narrow = I::cast(CastOp::Trunc, T::I128, r("w"), target);
     text.assign(format!("v{dest}"), narrow);
 }
 
 /// The inclusive range of an integer type as `i128` literals.
-pub(crate) fn i128_bounds(ty: &Type) -> (&'static str, &'static str) {
-    match integer_kind(ty) {
-        IntegerType::Byte => ("0", "255"),
-        IntegerType::Int8 => ("-128", "127"),
-        IntegerType::Int16 => ("-32768", "32767"),
-        IntegerType::Int32 => ("-2147483648", "2147483647"),
-        IntegerType::Int64 => ("-9223372036854775808", "9223372036854775807"),
-        IntegerType::UInt16 => ("0", "65535"),
-        IntegerType::UInt32 => ("0", "4294967295"),
-        IntegerType::UInt64 => ("0", "18446744073709551615"),
-    }
+pub(crate) fn i128_bounds(ty: &Type) -> (O, O) {
+    let (low, high) = crate::helpers::integer_range(integer_kind(ty));
+    (O::int128(low), O::int128(high))
 }

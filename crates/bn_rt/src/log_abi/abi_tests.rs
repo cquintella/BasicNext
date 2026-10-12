@@ -2,39 +2,76 @@ use super::*;
 use std::ffi::CString;
 
 #[test]
-fn file_transport_writes_redacted_json_and_releases_handles() {
+fn a_file_logger_writes_json_records_and_releases_its_handle() {
     let path = std::env::temp_dir().join(format!(
         "bn-log-abi-{}-{}.jsonl",
         std::process::id(),
-        next_handle()
+        registry().next.fetch_add(1, Ordering::Relaxed)
     ));
     let _ = std::fs::remove_file(&path);
     let path_text = CString::new(path.to_string_lossy().as_bytes()).unwrap();
-    let key = CString::new("authorization").unwrap();
-    let secret = CString::new("do-not-write").unwrap();
+    let label = CString::new("app").unwrap();
+    let json = CString::new("JSON").unwrap();
+    let user = CString::new("ana").unwrap();
     let message = CString::new("connected").unwrap();
-    let fields = bn_rt_log_fields_create();
-    let logger = bn_rt_log_logger_create();
+    let mut logger = 0;
     assert_eq!(
-        bn_rt_log_fields_set_string(fields, key.as_ptr(), secret.as_ptr()),
+        bn_rt_log_logger_new(
+            label.as_ptr(),
+            json.as_ptr(),
+            path_text.as_ptr(),
+            &raw mut logger
+        ),
         BN_LOG_OK
     );
+    let null = std::ptr::null();
     assert_eq!(
-        bn_rt_log_logger_add_file(logger, path_text.as_ptr(), 2),
-        BN_LOG_OK
-    );
-    assert_eq!(
-        bn_rt_log_logger_log(logger, 2, message.as_ptr(), fields),
+        bn_rt_log_logger_write(
+            logger,
+            2,
+            message.as_ptr(),
+            null,
+            null,
+            null,
+            user.as_ptr(),
+            null,
+            0
+        ),
         BN_LOG_OK
     );
     assert_eq!(bn_rt_log_logger_flush(logger, 1_000), BN_LOG_OK);
     assert_eq!(bn_rt_log_logger_close(logger, 1_000), BN_LOG_OK);
-    assert_eq!(bn_rt_log_fields_close(fields), BN_LOG_OK);
+    assert_eq!(bn_rt_log_logger_close(logger, 1_000), BN_LOG_OK);
     assert_eq!(bn_rt_log_logger_delete(logger), BN_LOG_OK);
     let contents = std::fs::read_to_string(&path).unwrap();
     assert!(contents.contains("\"message\":\"connected\""));
-    assert!(!contents.contains("do-not-write"));
+    assert!(contents.contains("\"user\":\"ana\""));
     std::fs::remove_file(path).unwrap();
+}
+
+/// A file logger on `path`, as `Logger.New` makes it in a compiled program.
+fn file_logger(path: &std::path::Path) -> u64 {
+    let path_text = CString::new(path.to_string_lossy().as_bytes()).unwrap();
+    let label = CString::new("app").unwrap();
+    let json = CString::new("JSON").unwrap();
+    let mut logger = 0;
+    assert_eq!(
+        bn_rt_log_logger_new(
+            label.as_ptr(),
+            json.as_ptr(),
+            path_text.as_ptr(),
+            &raw mut logger
+        ),
+        BN_LOG_OK
+    );
+    logger
+}
+
+/// One INFO record with no field.
+fn info(logger: u64, message: &str) -> i32 {
+    let message = CString::new(message).unwrap();
+    let null = std::ptr::null();
+    bn_rt_log_logger_write(logger, 2, message.as_ptr(), null, null, null, null, null, 0)
 }
 
 #[cfg(unix)]
@@ -70,21 +107,10 @@ fn rooted_file_transport_cannot_be_redirected_after_policy_configuration() {
         super::super::policy::bn_rt_policy_filesystem_root(1, root_name.as_ptr()),
         0
     );
-    let log_path = root.join("events.jsonl");
-    let path_text = CString::new(log_path.to_string_lossy().as_bytes()).unwrap();
-    let message = CString::new("safe").unwrap();
-    let fields = bn_rt_log_fields_create();
-    let logger = bn_rt_log_logger_create();
-    assert_eq!(
-        bn_rt_log_logger_add_file(logger, path_text.as_ptr(), 2),
-        BN_LOG_OK
-    );
+    let logger = file_logger(&root.join("events.jsonl"));
     std::fs::rename(&root, &moved).unwrap();
     std::os::unix::fs::symlink(&outside, &root).unwrap();
-    assert_eq!(
-        bn_rt_log_logger_log(logger, 2, message.as_ptr(), fields),
-        BN_LOG_OK
-    );
+    assert_eq!(info(logger, "safe"), BN_LOG_OK);
     assert!(moved.join("events.jsonl").is_file());
     assert!(!outside.join("events.jsonl").exists());
     std::fs::remove_file(root).unwrap();
@@ -125,23 +151,44 @@ fn file_transport_reports_policy_denial_after_intermediate_symlink_swap() {
         super::super::policy::bn_rt_policy_filesystem_root(1, root_name.as_ptr()),
         0
     );
-    let log_path = live.join("events.jsonl");
-    let path_text = CString::new(log_path.to_string_lossy().as_bytes()).unwrap();
-    let logger = bn_rt_log_logger_create();
-    assert_eq!(
-        bn_rt_log_logger_add_file(logger, path_text.as_ptr(), 2),
-        BN_LOG_OK
-    );
+    let logger = file_logger(&live.join("events.jsonl"));
     std::fs::rename(&live, &parked).unwrap();
     std::os::unix::fs::symlink(&outside, &live).unwrap();
-
-    let message = CString::new("denied").unwrap();
-    let fields = bn_rt_log_fields_create();
     assert_eq!(
-        bn_rt_log_logger_log(logger, 2, message.as_ptr(), fields),
+        info(logger, "denied"),
         bn_types::error_codes::log::IO_FAILED
     );
     assert!(!outside.join("events.jsonl").exists());
     std::fs::remove_file(live).unwrap();
     std::fs::remove_dir_all(base).unwrap();
+}
+
+/// A logger lives while a binding holds it: a copy retains it, each binding's
+/// end releases one, and the last release destroys it (known issue K61).
+#[test]
+fn the_last_release_destroys_a_logger() {
+    let label = CString::new("app").unwrap();
+    let json = CString::new("JSON").unwrap();
+    let null = CString::new("NULL").unwrap();
+    let mut logger = 0;
+    assert_eq!(
+        bn_rt_log_logger_new(
+            label.as_ptr(),
+            json.as_ptr(),
+            null.as_ptr(),
+            &raw mut logger
+        ),
+        BN_LOG_OK
+    );
+    assert_eq!(bn_rt_log_logger_retain(logger), BN_LOG_OK);
+    assert_eq!(bn_rt_log_logger_delete(logger), BN_LOG_OK);
+    assert_eq!(info(logger, "still held"), BN_LOG_OK);
+    assert_eq!(bn_rt_log_logger_delete(logger), BN_LOG_OK);
+    assert_eq!(
+        info(logger, "destroyed"),
+        bn_types::error_codes::log::INVALID_ARGUMENT
+    );
+    // Handle 0 is the error case of `Logger OR Error`: nothing to count.
+    assert_eq!(bn_rt_log_logger_retain(0), BN_LOG_OK);
+    assert_eq!(bn_rt_log_logger_delete(0), BN_LOG_OK);
 }

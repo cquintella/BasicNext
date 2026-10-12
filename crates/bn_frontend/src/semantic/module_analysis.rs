@@ -116,6 +116,7 @@ pub(crate) fn analyze_with_modules_mode(
         layouts: analyzer.layouts,
         class_model: analyzer.class_model,
         bnmath_modules: analyzer.bnmath_modules,
+        bnlog_modules: HashSet::new(),
         standard_modules: analyzer.standard_modules,
         module_constants,
         record_members: analyzer
@@ -227,6 +228,20 @@ fn unused_binding_warnings(program: &Program, model: &SemanticModel) -> Vec<Diag
                 statements,
                 ..
             } => class_binding_candidates(name, *exported, statements, &mut candidates),
+            // A STRUCT field is a member read through a value (`r.name`), never a
+            // local; every field is public, so an exported STRUCT's fields may be
+            // read by another module (known issue K54).
+            Item::Declaration {
+                kind: DeclarationKind::Struct,
+                name,
+                exported,
+                statements,
+                ..
+            } => {
+                if !*exported {
+                    class_binding_candidates(name, false, statements, &mut candidates);
+                }
+            }
             Item::Declaration { statements, .. } => {
                 binding_candidates(statements, &mut candidates);
             }

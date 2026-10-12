@@ -12,15 +12,18 @@ use crate::{
         CastOp, ICmpCond, InstSink, LlvmFunction, LlvmInst, LlvmOperand,
         LlvmType::{self, I1, I32, I64, Ptr, Void},
     },
-    layout::{handle_result_ty, typed_llvm, vector_ty},
+    layout::{handle_result_ty, vector_ty},
 };
 use runtime_abi::STR_EQ;
 
 /// A call argument: its LLVM type and operand.
 type Argument = (LlvmType, LlvmOperand);
 
+/// The LLVM function attribute that keeps every call a call.
+const DISABLE_TAIL_CALLS: &str = "\"disable-tail-calls\"=\"true\"";
+
 pub(crate) fn emit_user_signature(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     function: &Function,
     analysis: &LoweringAnalysis<'_>,
 ) {
@@ -29,21 +32,21 @@ pub(crate) fn emit_user_signature(
         .zip(&function.parameters)
         .map(|(index, symbol)| {
             (
-                typed_llvm(parameter_type(function, *symbol, analysis)),
+                parameter_type(function, *symbol, analysis),
                 format!("p{index}"),
             )
         })
         .collect();
-    let signature = LlvmFunction::new_definition(
-        llvm_function_symbol(&function.name),
-        typed_llvm(ret),
-        params,
-    );
+    let mut signature =
+        LlvmFunction::new_definition(llvm_function_symbol(&function.name), ret, params);
+    // Every BN call takes stack, as under `bni`: no call becomes a jump, so
+    // endless recursion stops with `STACK_OVERFLOW` (0.6.md, "Recursion depth").
+    signature.add_attribute(DISABLE_TAIL_CALLS);
     let _ = writeln!(text, "\n{}", signature.header());
 }
 
 pub(crate) fn store_parameters(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     function: &Function,
     analysis: &LoweringAnalysis<'_>,
     symbol_names: &HashMap<SymbolId, usize>,
@@ -52,14 +55,14 @@ pub(crate) fn store_parameters(
         let Some(&slot) = symbol_names.get(symbol) else {
             continue;
         };
-        let incoming = format!("%p{index}");
+        let incoming = LlvmOperand::reg(format!("p{index}"));
         // A vector argument is a copy: the callee owns its elements.
-        let storage = format!("%vstore{slot}");
+        let storage = LlvmOperand::reg(format!("vstore{slot}"));
         let value = (analysis.symbols.get(symbol))
             .and_then(|ty| vectors::emit_vector_copy(text, &storage, &incoming, ty));
         text.emit(LlvmInst::store(
-            typed_llvm(parameter_type(function, *symbol, analysis)),
-            LlvmOperand::raw(value.unwrap_or(incoming)),
+            parameter_type(function, *symbol, analysis),
+            value.unwrap_or(incoming),
             LlvmOperand::reg(format!("s{slot}")),
         ));
     }
@@ -72,13 +75,13 @@ fn parameter_type<'a>(
     function: &'a Function,
     symbol: SymbolId,
     analysis: &'a LoweringAnalysis<'a>,
-) -> &'static str {
+) -> crate::ir::LlvmType {
     analysis
         .symbols
         .get(&symbol)
         .and_then(llvm_type)
         .or_else(|| parameter_semantic_type(function, symbol).and_then(llvm_type))
-        .unwrap_or("ptr")
+        .unwrap_or(LlvmType::Ptr)
 }
 
 fn parameter_semantic_type(function: &Function, symbol: SymbolId) -> Option<&Type> {
@@ -101,12 +104,12 @@ fn parameter_semantic_type(function: &Function, symbol: SymbolId) -> Option<&Typ
 /// `param_llvm`, converting the argument's representation where they differ.
 #[allow(clippy::too_many_arguments)]
 fn call_operand(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     destination: ValueId,
     argument: ValueId,
     arg_ty: &Type,
     param_ty: &Type,
-    param_llvm: &str,
+    param_llvm: &crate::ir::LlvmType,
     analysis: &LoweringAnalysis<'_>,
     state: &mut EmissionState,
 ) -> LlvmOperand {
@@ -114,14 +117,16 @@ fn call_operand(
     let arg_llvm = llvm_type(arg_ty);
     let value = value_reg(argument);
     // A union result carries the payload in field 2 and a message in field 1.
-    let union_payload = |text: &mut String, tag: &str| {
+    let union_payload = |text: &mut crate::ir::LlvmModule, tag: &str| {
         text.assign(
             format!("{tag}raw"),
             LlvmInst::extract(handle_result_ty(), value_reg(argument), 2),
         );
         reg(format!("{tag}raw"))
     };
-    if param_llvm == "{ ptr, i32 }" && arg_llvm == Some("{ i1, ptr, i32 }") {
+    if *param_llvm == crate::layout::vector_ty()
+        && arg_llvm == Some(crate::layout::status_endpoint_ty())
+    {
         let tag = state.continuation_count;
         state.continuation_count += 1;
         let endpoint = LlvmType::struct_of([I1, Ptr, I32]);
@@ -155,13 +160,13 @@ fn call_operand(
         );
         return reg(format!("call_endpoint{tag}"));
     }
-    if param_llvm == "i1" {
-        return LlvmOperand::raw(i1_operand(text, analysis, state, argument));
+    if *param_llvm == LlvmType::I1 {
+        return i1_operand(text, analysis, state, argument);
     }
-    if param_llvm == "ptr" && arg_llvm == Some("ptr") {
+    if *param_llvm == LlvmType::Ptr && arg_llvm == Some(LlvmType::Ptr) {
         return value;
     }
-    if param_llvm == "ptr" && arg_llvm == Some("{ i1, ptr, i64 }") {
+    if *param_llvm == LlvmType::Ptr && arg_llvm == Some(crate::layout::handle_result_ty()) {
         let tag = format!("callstr{}_{}", destination.0, argument.0);
         text.assign(
             format!("{tag}msg"),
@@ -192,11 +197,11 @@ fn call_operand(
         );
         return reg(tag);
     }
-    LlvmOperand::raw(coerce_to_type(text, argument, arg_ty, param_ty))
+    coerce_to_type(text, argument, arg_ty, param_ty)
 }
 
 pub(crate) fn lower_user_call(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     module: &Module,
     destination: ValueId,
     name: &str,
@@ -222,8 +227,7 @@ pub(crate) fn lower_user_call(
         .iter()
         .find(|function| function.name == resolved)
         .unwrap_or_else(|| panic!("validated user function {resolved}"));
-    let ret =
-        typed_llvm(function_return_llvm(&callee.return_type).expect("validated user return type"));
+    let ret = function_return_llvm(&callee.return_type).expect("validated user return type");
     let mut args = Vec::with_capacity(arguments.len());
     for (index, (argument, param_symbol)) in arguments.iter().zip(&callee.parameters).enumerate() {
         let arg_ty = analysis
@@ -236,8 +240,8 @@ pub(crate) fn lower_user_call(
         let param_ty = parameter_semantic_type(callee, *param_symbol)
             .or(declared.as_ref())
             .unwrap_or(arg_ty);
-        if llvm_type(param_ty) == Some("{ i1, double }")
-            || (llvm_type(arg_ty) == Some("{ i1, double }")
+        if llvm_type(param_ty) == Some(crate::layout::optional_float_ty())
+            || (llvm_type(arg_ty) == Some(crate::layout::optional_float_ty())
                 && matches!(param_ty, Type::Float(_) | Type::FloatLiteral))
         {
             let temp = format!("callopt{}", argument.0);
@@ -252,18 +256,18 @@ pub(crate) fn lower_user_call(
             args.push((LlvmType::Double, LlvmOperand::reg(temp)));
             continue;
         }
-        let param_llvm = llvm_type(param_ty).unwrap_or("ptr");
+        let param_llvm = llvm_type(param_ty).unwrap_or(LlvmType::Ptr);
         let operand = call_operand(
             text,
             destination,
             *argument,
             arg_ty,
             param_ty,
-            param_llvm,
+            &param_llvm,
             analysis,
             state,
         );
-        args.push((typed_llvm(param_llvm), operand));
+        args.push((param_llvm, operand));
     }
     let method = resolved.rsplit('.').next().unwrap_or(resolved);
     let virtualish = !is_super
@@ -275,7 +279,7 @@ pub(crate) fn lower_user_call(
         && analysis
             .values
             .get(&arguments[0])
-            .is_some_and(|ty| llvm_type(ty) == Some("ptr"));
+            .is_some_and(|ty| llvm_type(ty) == Some(LlvmType::Ptr));
     if virtualish {
         let static_type = name
             .strip_prefix("@super:")
@@ -311,23 +315,29 @@ pub(crate) fn lower_user_call(
         text.assign(raw.clone(), call);
         if relocated {
             let (buffer, out) = (
-                format!("%vret{}", destination.0),
+                LlvmOperand::reg(format!("vret{}", destination.0)),
                 format!("%v{}", destination.0),
             );
             vectors::emit_vector_relocate(
                 text,
-                &format!("%{raw}"),
+                &LlvmOperand::reg(&raw),
                 &callee.return_type,
                 &buffer,
                 &out,
             );
         }
         if analysis.owned_struct_results.contains(&destination) {
-            text.emit(LlvmInst::store(
-                Ptr,
-                value_reg(destination),
-                LlvmOperand::reg(format!("structowned{}", destination.0)),
+            // A loop makes a new STRUCT value each turn; the previous one was
+            // copied into its binding's storage, so nothing points to it.
+            let owned = LlvmOperand::reg(format!("structowned{}", destination.0));
+            let previous = format!("structprev{}", destination.0);
+            text.assign(&previous, LlvmInst::load(Ptr, owned.clone()));
+            text.emit(LlvmInst::call(
+                Void,
+                "free",
+                vec![(Ptr, LlvmOperand::reg(previous))],
             ));
+            text.emit(LlvmInst::store(Ptr, value_reg(destination), owned));
         }
     }
     for argument in arguments {
@@ -345,7 +355,7 @@ pub(crate) fn lower_user_call(
 /// or `fallback` when none does.
 #[allow(clippy::too_many_arguments)]
 fn emit_virtual_method_call(
-    text: &mut String,
+    text: &mut crate::ir::LlvmModule,
     state: &mut EmissionState,
     destination: ValueId,
     fallback: &str,

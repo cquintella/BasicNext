@@ -27,12 +27,14 @@ use crate::{
 pub(super) fn is_arc_type(module: &Module, ty: &Type) -> bool {
     match ty {
         Type::Named(name) => is_declared(module, name),
-        // A natively implemented library's type is a handle the library
-        // manages (the same rule the lowering applies).
-        Type::ImportedNamed { module: id, .. }
+        // A `BNLog.Logger` is a counted handle; any other type of a natively
+        // implemented library is a handle the IR does not count (the same
+        // rule the lowering applies; K61, K63).
+        Type::ImportedNamed { module: id, name }
             if module.standard_library_of((*id).into()).is_some() =>
         {
-            false
+            module.bnlog_providers.contains(&(*id).into())
+                && name == crate::names::BNLOG_COUNTED_CLASS
         }
         Type::ImportedNamed { module: id, name } => {
             is_declared(module, &format!("#{}.{name}", id.0))

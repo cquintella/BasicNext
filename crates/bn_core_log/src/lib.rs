@@ -4,17 +4,22 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! `BNLog` core (R2): levels, record serialization, sensitive key redaction,
-//! error representations and transport dispatch.
+//! error representations, records and the logger.
 
 use std::collections::BTreeMap;
-use std::io::{self, Write};
-use std::path::Path;
 
 mod catalog;
 pub mod error;
 pub use error::LogFailure;
+mod fields;
+pub use fields::{FIELD_VALUE_MAX_BYTES, FieldMap, check_values};
 mod logger;
-pub use logger::{LogSink, Logger, MAX_TRANSPORTS};
+pub use logger::{
+    Destination, Imports, LABEL_MAX_BYTES, LogSink, Logger, Operation, TIMEOUT_MAX_MS,
+    TIMEOUT_MIN_MS,
+};
+mod records;
+pub use records::{Apache, Event};
 
 const MAX_RECORD_BYTES: usize = 64 * 1024;
 const RECORD_TOO_LONG: &str = "serialized log record exceeds 64 KiB";
@@ -74,6 +79,40 @@ impl Level {
             Self::Silly => "SILLY",
         }
     }
+
+    /// Every level, most severe first.
+    pub const ALL: [Self; 7] = [
+        Self::Error,
+        Self::Warn,
+        Self::Info,
+        Self::Http,
+        Self::Verbose,
+        Self::Debug,
+        Self::Silly,
+    ];
+
+    /// The contract name of the `Logger` method that writes at this level
+    /// (`BNLog.Logger.Info`).
+    #[must_use]
+    pub fn operation(self) -> &'static str {
+        catalog::text(match self {
+            Self::Error => "op.logger.error",
+            Self::Warn => "op.logger.warn",
+            Self::Info => "op.logger.info",
+            Self::Http => "op.logger.http",
+            Self::Verbose => "op.logger.verbose",
+            Self::Debug => "op.logger.debug",
+            Self::Silly => "op.logger.silly",
+        })
+    }
+
+    /// The level whose `Logger` method has the contract name `operation`.
+    #[must_use]
+    pub fn of_operation(operation: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|level| level.operation() == operation)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -127,13 +166,27 @@ impl Record {
     /// the limit is checked while building, so an oversized record is never
     /// built whole.
     pub fn line(&self, format: Format) -> Result<String, &'static str> {
+        let record = self.without_queries();
         let mut line = Line::default();
         match format {
-            Format::Json => self.json(&mut line)?,
-            Format::Syslog => self.syslog(&mut line)?,
-            Format::Apache => self.apache(&mut line)?,
+            Format::Json => record.json(&mut line)?,
+            Format::Syslog => record.syslog(&mut line)?,
+            Format::Apache => record.apache(&mut line)?,
         }
         Ok(line.text)
+    }
+
+    /// The record with the query of `http.path` and `http.referrer` removed: a
+    /// URL query may carry a token or a session id, so no format writes it
+    /// (bnlog.md, "Formats"; bnweb.md never logs query values).
+    fn without_queries(&self) -> Self {
+        let mut record = self.clone();
+        for key in ["apache.path", "apache.referrer"] {
+            if let Some(value) = record.fields.get_mut(catalog::text(key)) {
+                *value = without_query(value);
+            }
+        }
+        record
     }
 
     fn written_fields(&self) -> impl Iterator<Item = (&String, &String)> {
@@ -201,7 +254,7 @@ impl Record {
         };
         let request = [
             field("apache.method").map(str::to_owned),
-            field("apache.path").map(without_query),
+            field("apache.path").map(str::to_owned),
             field("apache.protocol").map(str::to_owned),
         ]
         .into_iter()
@@ -222,15 +275,15 @@ impl Record {
         line.push(" ")?;
         line.plain(field("apache.bytes").unwrap_or(absent))?;
         line.push(" \"")?;
-        line.quoted(&field("apache.referrer").map_or_else(|| absent.to_owned(), without_query))?;
+        line.quoted(field("apache.referrer").unwrap_or(absent))?;
         line.push("\" \"")?;
         line.quoted(field("apache.user_agent").unwrap_or(absent))?;
         line.push("\"")
     }
 }
 
-/// The format of every record a logger writes, named by
-/// `Logger.SetFormat` (bnlog.md, "Formats").
+/// The format of every record a logger writes, named in `Logger.New`
+/// (bnlog.md, "Formats").
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum Format {
     #[default]
@@ -252,61 +305,6 @@ impl Format {
         .into_iter()
         .find(|(_, key)| catalog::text(key) == name)
         .map(|(format, _)| format)
-    }
-}
-
-/// A configured file transport destination.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct FileTransport {
-    pub path: String,
-    pub minimum: Level,
-}
-
-/// Dispatches a record line across console and file transports.
-///
-/// Follows D2:
-/// - Every transport is attempted.
-/// - The first failure (if any) is returned as `Err(LogFailure)`.
-/// - A permission denial when opening a file returns `Err(LogFailure::IoFailed(...))`.
-///
-/// # Errors
-///
-/// Returns `LogFailure` on write or file open error.
-pub fn dispatch_log(
-    line: &str,
-    level: Level,
-    console_transports: &[Level],
-    file_transports: &[FileTransport],
-    mut write_console: impl FnMut(&str) -> io::Result<()>,
-    open_append: &dyn Fn(&Path) -> io::Result<Box<dyn Write>>,
-) -> Result<(), LogFailure> {
-    let mut first_error: Option<String> = None;
-
-    for minimum in console_transports {
-        if level <= *minimum
-            && let Err(err) = write_console(line)
-        {
-            first_error.get_or_insert_with(|| err.to_string());
-        }
-    }
-
-    for transport in file_transports {
-        if level > transport.minimum {
-            continue;
-        }
-        let write_res = open_append(Path::new(&transport.path)).and_then(|mut file| {
-            file.write_all(line.as_bytes())?;
-            file.write_all(b"\n")
-        });
-        if let Err(err) = write_res {
-            first_error.get_or_insert_with(|| err.to_string());
-        }
-    }
-
-    if let Some(err) = first_error {
-        Err(LogFailure::IoFailed(err))
-    } else {
-        Ok(())
     }
 }
 
@@ -479,6 +477,22 @@ mod tests {
     }
 
     #[test]
+    fn no_format_writes_a_url_query() {
+        let record = record(
+            "web",
+            "m",
+            &[
+                ("http.path", "/a?token=1"),
+                ("http.referrer", "https://x/?q=2"),
+            ],
+        );
+        for format in [Format::Json, Format::Syslog, Format::Apache] {
+            let line = record.line(format).unwrap();
+            assert!(!line.contains("token") && !line.contains("q=2"), "{line}");
+        }
+    }
+
+    #[test]
     fn format_names_are_exact() {
         assert_eq!(Format::from_name("JSON"), Some(Format::Json));
         assert_eq!(Format::from_name("SYSLOG"), Some(Format::Syslog));
@@ -607,68 +621,5 @@ mod tests {
         assert_eq!(over.line(Format::Syslog), Err(RECORD_TOO_LONG));
         let quotes = record("l", &"\"".repeat(MAX_RECORD_BYTES / 2), &[]);
         assert_eq!(quotes.line(Format::Json), Err(RECORD_TOO_LONG));
-    }
-
-    #[test]
-    fn dispatch_log_handles_failures_deterministically() {
-        let console_called = std::sync::atomic::AtomicBool::new(false);
-        let res = dispatch_log(
-            "test log line",
-            Level::Error,
-            &[Level::Error],
-            &[FileTransport {
-                path: "/nonexistent/test.log".into(),
-                minimum: Level::Error,
-            }],
-            |_| {
-                console_called.store(true, std::sync::atomic::Ordering::Relaxed);
-                Ok(())
-            },
-            &|_| Err(io::Error::new(io::ErrorKind::PermissionDenied, "denied")),
-        );
-        assert!(console_called.load(std::sync::atomic::Ordering::Relaxed));
-        assert!(matches!(res, Err(LogFailure::IoFailed(msg)) if msg.contains("denied")));
-    }
-
-    /// A console that fails does not stop the file transport, and its
-    /// failure is the one returned (every transport is attempted; the first
-    /// failure wins).
-    #[test]
-    fn failed_console_still_writes_the_file_and_reports_first() {
-        let written = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
-        let res = dispatch_log(
-            "line",
-            Level::Error,
-            &[Level::Error],
-            &[FileTransport {
-                path: "log.txt".into(),
-                minimum: Level::Error,
-            }],
-            |_| Err(io::Error::other("console closed")),
-            &|_| {
-                struct Sink(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
-                impl Write for Sink {
-                    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-                        self.0
-                            .lock()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner)
-                            .extend_from_slice(bytes);
-                        Ok(bytes.len())
-                    }
-                    fn flush(&mut self) -> io::Result<()> {
-                        Ok(())
-                    }
-                }
-                Ok(Box::new(Sink(std::sync::Arc::clone(&written))) as Box<dyn Write>)
-            },
-        );
-        assert!(matches!(res, Err(LogFailure::IoFailed(msg)) if msg == "console closed"));
-        assert_eq!(
-            written
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .as_slice(),
-            b"line\n"
-        );
     }
 }
