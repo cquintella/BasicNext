@@ -4,13 +4,10 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! Short constructors for `LlvmInst` and the `InstSink` trait that writes
-//! instructions straight into an emission buffer, so a typed instruction
-//! takes no more lines than the `writeln!` it replaces.
-
-use std::fmt::Write as _;
+//! instructions into an emission destination (`LlvmModule`).
 
 use super::{
-    instructions::{BinaryOp, CastOp, FCmpCond, ICmpCond, InstructionEntry, LlvmInst},
+    instructions::{BinaryOp, CastOp, FCmpCond, ICmpCond, LlvmInst},
     operands::LlvmOperand,
     types::LlvmType,
 };
@@ -202,20 +199,6 @@ pub trait InstSink {
     fn label(&mut self, name: &str);
 }
 
-impl InstSink for String {
-    fn assign(&mut self, dest: impl Into<String>, inst: LlvmInst) {
-        let _ = writeln!(self, "{}", InstructionEntry::assign(dest, inst));
-    }
-
-    fn emit(&mut self, inst: LlvmInst) {
-        let _ = writeln!(self, "{}", InstructionEntry::void(inst));
-    }
-
-    fn label(&mut self, name: &str) {
-        let _ = writeln!(self, "{name}:");
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,7 +206,7 @@ mod tests {
 
     #[test]
     fn sink_renders_one_canonical_line_per_instruction() {
-        let mut text = String::new();
+        let mut text = crate::ir::LlvmModule::new();
         text.assign("out1", LlvmInst::alloca(I64));
         text.emit(LlvmInst::store(
             I64,
@@ -256,7 +239,7 @@ mod tests {
             ),
         );
         assert_eq!(
-            text,
+            text.render(),
             "  %out1 = alloca i64\n  \
              store i64 0, ptr %out1\n  \
              %rc1 = call i32 @bn_rt_f(ptr %v3, i32 7)\n  \

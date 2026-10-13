@@ -8,8 +8,8 @@
 #![allow(clippy::wildcard_imports, clippy::too_many_lines)]
 use super::*;
 use crate::ir::{
-    CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T,
-    write_declarations,
+    CastOp, ICmpCond, InstSink as _, Linkage, LlvmGlobal, LlvmInst as I, LlvmOperand as O,
+    LlvmType as T, write_declarations,
 };
 pub(crate) fn emit_preamble(
     text: &mut crate::ir::LlvmModule,
@@ -34,7 +34,7 @@ pub(crate) fn emit_preamble(
                     .any(|block| matches!(block.terminator, Terminator::Stop { .. }))
     });
     if may_stop {
-        text.push_str(&super::arc_runtime::stop_globals());
+        super::arc_runtime::emit_stop_globals(text);
     }
     let mut uses_concat = false;
     // `Start` of a module that imports a capability calls the policy entry
@@ -59,28 +59,21 @@ pub(crate) fn emit_preamble(
                 }));
         for (value, string) in &analysis.strings {
             let global = string_global(&function.name, value.0);
-            let _ = writeln!(
-                text,
-                "{global} = private constant [{} x i8] c\"{}\\00\"",
-                string.len() + 1,
-                escape_llvm(string)
-            );
+            text.global(LlvmGlobal::text(global, string, false));
         }
         intrinsics.extend(analysis.intrinsics.iter().cloned());
     }
     if uses_input {
-        text.push_str(&input_runtime_ir());
+        emit_input_runtime(text);
     }
     if uses_string_sizeof {
-        text.push_str(string_byte_length_ir());
+        emit_string_byte_length(text);
     }
-    text.push('\n');
+    text.blank();
     write_declarations(text, runtime_abi::PRINT_DECLARATIONS);
-    text.push_str(&crate::platform_stdio::windows_binary_stdio_decl(
-        synchronize_prints,
-    ));
+    crate::platform_stdio::emit_windows_binary_stdio_decl(text, synchronize_prints);
     if synchronize_prints {
-        text.push_str(&crate::platform_stdio::stdout_lock_decls());
+        crate::platform_stdio::emit_stdout_lock_decls(text);
     }
     if uses_concat {
         write_declarations(text, runtime_abi::STRING_CONCAT_DECLARATIONS);
@@ -114,7 +107,7 @@ pub(crate) fn emit_preamble(
             })
         })
     {
-        text.push_str("@.bn_na = private unnamed_addr constant [3 x i8] c\"NA\\00\"\n");
+        text.global(LlvmGlobal::text(".bn_na", "NA", true));
     }
     if functions.iter().any(|(function, analysis)| {
         analysis.values.values().any(|ty| {
@@ -122,7 +115,7 @@ pub(crate) fn emit_preamble(
                 || general_alternative(ty).is_some_and(|members| members.contains(&Type::Null))
         }) || prints_null(function, analysis)
     }) {
-        text.push_str("@.bn_null = private constant [5 x i8] c\"NULL\\00\"\n");
+        text.global(LlvmGlobal::text(".bn_null", "NULL", false));
     }
     if functions
         .iter()
@@ -182,40 +175,51 @@ pub(crate) fn emit_preamble(
         let gclass = sanitize_symbol(class);
         let gfield = sanitize_symbol(field);
         // A fixed vector STATIC owns its elements (and a copy of the replaced ones).
+        let (storage, kept, slot) = (
+            format!("bn_sv_{gclass}_{gfield}"),
+            format!("bn_svp_{gclass}_{gfield}"),
+            format!("bn_st_{gclass}_{gfield}"),
+        );
         if let Some((array, count, linked)) = vector {
-            let initial = linked.as_deref().unwrap_or("zeroinitializer");
-            let _ = writeln!(
-                text,
-                "@bn_sv_{gclass}_{gfield} = global {array} {initial}\n@bn_svp_{gclass}_{gfield} = global {array} zeroinitializer\n@bn_st_{gclass}_{gfield} = global {{ ptr, i32 }} {{ ptr @bn_sv_{gclass}_{gfield}, i32 {count} }}"
-            );
+            let initial = linked.clone().unwrap_or_else(O::zero_initializer);
+            text.global(LlvmGlobal::variable(&storage, array.clone(), initial));
+            text.global(LlvmGlobal::variable(
+                kept,
+                array.clone(),
+                O::zero_initializer(),
+            ));
+            let fat = O::ConstStruct(vec![
+                (T::Ptr, O::global(storage)),
+                (T::I32, O::uint(*count)),
+            ]);
+            text.global(LlvmGlobal::variable(slot, crate::layout::vector_ty(), fat));
             continue;
         }
-        let _ = writeln!(
-            text,
-            "@bn_st_{gclass}_{gfield} = global {llvm_ty} {}",
-            match llvm_ty {
-                T::I1 => "false",
-                T::Float | T::Double => "0.0",
-                T::Ptr => "null",
-                T::Struct(_) => "zeroinitializer",
-                _ => "0",
-            }
-        );
+        let initial = match llvm_ty {
+            T::I1 => O::bool(false),
+            T::Float | T::Double => O::float(0.0),
+            T::Ptr => O::null(),
+            T::Struct(_) => O::zero_initializer(),
+            _ => O::int(0),
+        };
+        text.global(LlvmGlobal::variable(slot, llvm_ty.clone(), initial));
     }
     for (function, _) in functions {
         if let Some((array, _)) =
             vectors::returned_vector(&function.return_type).and_then(vectors::fixed_vector_array)
         {
-            let name = sanitize_symbol(&function.name);
-            let _ = writeln!(
-                text,
-                "@bn_vret_{name} = internal thread_local global {array} zeroinitializer"
-            );
+            let name = format!("bn_vret_{}", sanitize_symbol(&function.name));
+            let buffer = LlvmGlobal::variable(name, array, O::zero_initializer());
+            text.global(buffer.with_linkage(Linkage::Internal).thread_local());
         }
     }
     for class in &class_inits {
         let gclass = sanitize_symbol(class);
-        let _ = writeln!(text, "@bn_init_{gclass} = global i1 false");
+        text.global(LlvmGlobal::variable(
+            format!("bn_init_{gclass}"),
+            T::I1,
+            O::bool(false),
+        ));
     }
     let mut class_names = BTreeSet::new();
     for (function, _) in functions {
@@ -258,16 +262,11 @@ pub(crate) fn emit_preamble(
                 _ => None,
             })
             .collect::<BTreeSet<_>>();
-        text.push_str(&super::arc_runtime::glue(module, &allocated));
+        super::arc_runtime::emit_glue(text, module, &allocated);
     }
     for class in &class_names {
         let gclass = sanitize_symbol(class);
-        let _ = writeln!(
-            text,
-            "@.bn_cls_{gclass} = private unnamed_addr constant [{} x i8] c\"{}\\00\"",
-            class.len() + 1,
-            escape_llvm(class)
-        );
+        text.global(LlvmGlobal::text(format!(".bn_cls_{gclass}"), class, true));
     }
     if uses_arc
         || uses_exit
@@ -357,8 +356,12 @@ fn emit_trampoline(
             (ty, name.to_string())
         })
         .collect();
-    let header = crate::ir::LlvmFunction::new_definition(wrapper, T::I32, params).header();
-    let _ = writeln!(text, "\n{header}");
+    text.blank();
+    text.begin_function(crate::ir::LlvmFunction::new_definition(
+        wrapper,
+        T::I32,
+        params,
+    ));
     let aggregate_return = matches!(&task_fn.return_type, Type::Alternative(alternatives)
         if void_or_error(alternatives)
             || integer_or_error(alternatives)
@@ -483,17 +486,28 @@ fn emit_trampoline(
     text.emit(I::Ret {
         val: Some((T::I32, O::int(0))),
     });
-    text.push_str("}\n");
+    text.end_function();
 }
 
 /// The first lines of every module: the source banner and the string
 /// constants `PRINT`, `ASC` and `CHAR` read (texts from `bn_diag::trap_texts`).
-pub(crate) fn module_header() -> String {
-    format!(
-        "; Basic Next 0.2\n@.bn_fmt_int = private unnamed_addr constant [5 x i8] c\"%lld\\00\"\n@.bn_fmt_uint = private unnamed_addr constant [5 x i8] c\"%llu\\00\"\n@.bn_fmt_float = private unnamed_addr constant [6 x i8] c\"%.17g\\00\"\n@.bn_fmt_str = private unnamed_addr constant [3 x i8] c\"%s\\00\"\n@.bn_fmt_error = private unnamed_addr constant [16 x i8] c\"Error(%lld, %s)\\00\"\n@.bn_asc_error = private unnamed_addr constant [{} x i8] c\"{}\\00\"\n@.bn_char_error = private unnamed_addr constant [{} x i8] c\"{}\\00\"\n@.bn_true = private unnamed_addr constant [5 x i8] c\"TRUE\\00\"\n@.bn_false = private unnamed_addr constant [6 x i8] c\"FALSE\\00\"\n@.bn_empty = private unnamed_addr constant [1 x i8] c\"\\00\"\n@.bn_eof = private constant [4 x i8] c\"EOF\\00\"\n",
-        bn_diag::trap_texts::ASC_EMPTY_STRING.len() + 1,
-        bn_diag::trap_texts::ASC_EMPTY_STRING,
-        bn_diag::trap_texts::CHAR_NOT_UNICODE.len() + 1,
-        bn_diag::trap_texts::CHAR_NOT_UNICODE,
-    )
+pub(crate) fn emit_module_header(text: &mut crate::ir::LlvmModule) {
+    use crate::ir::LlvmGlobal;
+    text.comment(super::debug_info::PRODUCER);
+    let shared = [
+        (".bn_fmt_int", "%lld"),
+        (".bn_fmt_uint", "%llu"),
+        (".bn_fmt_float", "%.17g"),
+        (".bn_fmt_str", "%s"),
+        (".bn_fmt_error", "Error(%lld, %s)"),
+        (".bn_asc_error", bn_diag::trap_texts::ASC_EMPTY_STRING),
+        (".bn_char_error", bn_diag::trap_texts::CHAR_NOT_UNICODE),
+        (".bn_true", "TRUE"),
+        (".bn_false", "FALSE"),
+        (".bn_empty", ""),
+    ];
+    for (name, value) in shared {
+        text.global(LlvmGlobal::text(name, value, true));
+    }
+    text.global(LlvmGlobal::text(".bn_eof", "EOF", false));
 }

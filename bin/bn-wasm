@@ -68,11 +68,14 @@ function formatGeneral(value, precision) {
 const imports = {
     env: {
         // Mirrors bn_rt::stack_abi: `1` when a BN call from `frame` would run
-        // the shadow stack into the data below it (`__data_end`, exported by
-        // bnc), so the program stops with STACK_OVERFLOW.
+        // the shadow stack past its low end (`__stack_low`, exported by bnc),
+        // so the program stops with STACK_OVERFLOW.
         bn_rt_stack_check(frame) {
-            const low = instance.exports.__data_end;
-            if (low === undefined) return 0;
+            const low = instance.exports.__stack_low;
+            if (low === undefined) {
+                // bnc always exports it; without it no overflow is detected.
+                throw new Error("module does not export __stack_low");
+            }
             return (frame >>> 0) < (low.value >>> 0) + STACK_MARGIN_BYTES ? 1 : 0;
         },
         // Mirrors bn_rt::vector_abi::bn_rt_vector_nest for wasm32, where a row

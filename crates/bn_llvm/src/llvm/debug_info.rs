@@ -4,22 +4,19 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! Source-level debug information for `bnc -g`: the request type, the span
-//! markers `emit_function` writes, and the pass that turns markers into
-//! `!dbg` attachments plus the typed metadata table.
-//!
-//! Markers are comment lines, so later insertions by byte offset (deferred
-//! Phi nodes) stay valid; the pass runs once on the finished module text.
-// ponytail: line-based attachment over the textual backend; attach `!dbg`
-// through `InstructionEntry::with_dbg` once the backend is fully typed.
+//! markers `emit_function` records in the module, and the metadata table
+//! whose nodes the module attaches as `!dbg` when it renders
+//! (`LlvmModule::render_debug`, bucket 0.6.5 T.5.6c).
 
-use std::{collections::BTreeMap, fmt::Write as _, path::PathBuf};
+use std::{collections::BTreeMap, path::PathBuf};
 
 use bn_source::{SourceId, Span};
 
-use crate::ir::{DebugFormat, DebugMetadata, MdRef};
+use crate::ir::{DebugFormat, DebugMetadata, DebugScopes, LlvmModule, MdRef};
 
-const FUNCTION_MARKER: &str = ";bn.dbg.fn ";
-const LOCATION_MARKER: &str = ";bn.dbg ";
+/// The toolchain that wrote a module: the `.ll` header comment and the
+/// debug compile unit name it.
+pub(crate) const PRODUCER: &str = concat!("Basic Next ", env!("CARGO_PKG_VERSION"));
 
 /// What `bnc -g` asks the backend to describe.
 #[derive(Clone, Debug)]
@@ -45,26 +42,21 @@ impl DebugInfo {
     }
 }
 
-/// Writes the marker that precedes a function's `define` line.
-pub(crate) fn mark_function(text: &mut crate::ir::LlvmModule, span: Span, name: &str) {
-    let _ = writeln!(
-        text,
-        "{FUNCTION_MARKER}{} {} {name}",
-        span.start.source_id.0, span.start.line
-    );
+/// Marks the function that opens next as `name`, declared at `span`.
+pub(crate) fn mark_function(text: &mut LlvmModule, span: Span, name: &str) {
+    let line = u32::try_from(span.start.line).unwrap_or(0);
+    text.mark_function(span.start.source_id.0, line, name);
 }
 
-/// Writes the marker for the instructions lowered from `span`. Spans from
-/// another file or without a line keep the previous location.
-pub(crate) fn mark_location(text: &mut crate::ir::LlvmModule, span: Span, function: Span) {
+/// Marks the instructions lowered from `span`. Spans from another file or
+/// without a line keep the previous location.
+pub(crate) fn mark_location(text: &mut LlvmModule, span: Span, function: Span) {
     if span.start.line == 0 || span.start.source_id != function.start.source_id {
         return;
     }
-    let _ = writeln!(
-        text,
-        "{LOCATION_MARKER}{} {}",
-        span.start.line, span.start.column
-    );
+    let line = u32::try_from(span.start.line).unwrap_or(0);
+    let column = u32::try_from(span.start.column).unwrap_or(0);
+    text.mark_location(line, column);
 }
 
 fn split_path(path: &std::path::Path) -> (String, String) {
@@ -77,81 +69,45 @@ fn split_path(path: &std::path::Path) -> (String, String) {
     (filename, directory)
 }
 
-fn to_u32(value: &str) -> u32 {
-    value.parse().unwrap_or(0)
+/// The metadata table of one module, with the sources its spans name.
+struct Scopes<'a> {
+    table: DebugMetadata,
+    info: &'a DebugInfo,
+    entry: PathBuf,
 }
 
-/// Every non-empty, non-comment, non-label line inside a function body is
-/// an instruction; the backend emits no multi-line instructions.
-fn is_instruction(line: &str) -> bool {
-    line.starts_with("  ") && !line.trim_start().starts_with(';') && !line.contains("!dbg")
+impl DebugScopes for Scopes<'_> {
+    fn subprogram(&mut self, source: u64, line: u32, name: &str) -> MdRef {
+        let path = self
+            .info
+            .sources
+            .get(&SourceId(source))
+            .unwrap_or(&self.entry);
+        let (filename, directory) = split_path(path);
+        let file = self.table.file(&filename, &directory);
+        self.table.subprogram(name, file, line)
+    }
+
+    fn location(&mut self, line: u32, column: u32, scope: MdRef) -> MdRef {
+        self.table.location(line, column, scope)
+    }
 }
 
-/// Replaces the markers with `!dbg` attachments and appends the metadata.
-pub(crate) fn attach_debug_info(text: &str, info: &DebugInfo) -> String {
+/// The module's text with its `!dbg` attachments and the metadata after it.
+pub(crate) fn attach_debug_info(text: &LlvmModule, info: &DebugInfo) -> String {
     let entry = info.sources.get(&info.entry).cloned().unwrap_or_default();
     let (filename, directory) = split_path(&entry);
-    let mut table = DebugMetadata::new(
-        &filename,
-        &directory,
-        concat!("Basic Next ", env!("CARGO_PKG_VERSION")),
-        info.optimized,
-        info.format,
-    );
-    let mut out = String::with_capacity(text.len() + text.len() / 4);
-    let mut pending: Option<(SourceId, u32, String)> = None;
-    // The current function's subprogram and the location its next
-    // instructions carry.
-    let mut scope: Option<(MdRef, MdRef)> = None;
-    for line in text.lines() {
-        if let Some(rest) = line.strip_prefix(FUNCTION_MARKER) {
-            let mut parts = rest.splitn(3, ' ');
-            let source = SourceId(parts.next().map_or(0, |id| id.parse().unwrap_or(0)));
-            let start = parts.next().map_or(0, to_u32);
-            let name = parts.next().unwrap_or_default().to_owned();
-            pending = Some((source, start, name));
-            continue;
-        }
-        if let Some(rest) = line.strip_prefix(LOCATION_MARKER) {
-            if let Some((subprogram, _)) = scope {
-                let mut parts = rest.split(' ');
-                let row = parts.next().map_or(0, to_u32);
-                let column = parts.next().map_or(0, to_u32);
-                scope = Some((subprogram, table.location(row, column, subprogram)));
-            }
-            continue;
-        }
-        if line.starts_with("define ")
-            && let Some((source, start, name)) = pending.take()
-            && let Some(head) = line.strip_suffix(" {")
-        {
-            let path = info.sources.get(&source).unwrap_or(&entry);
-            let (filename, directory) = split_path(path);
-            let file = table.file(&filename, &directory);
-            let subprogram = table.subprogram(&name, file, start);
-            // Prologue code (allocas, policy setup) carries the header line.
-            scope = Some((subprogram, table.location(start, 1, subprogram)));
-            let _ = writeln!(out, "{head} !dbg {subprogram} {{");
-            continue;
-        }
-        if line == "}" {
-            scope = None;
-        } else if let Some((_, location)) = scope
-            && is_instruction(line)
-        {
-            let _ = writeln!(out, "{line}, !dbg {location}");
-            continue;
-        }
-        out.push_str(line);
-        out.push('\n');
-    }
-    let _ = write!(out, "{table}");
+    let table = DebugMetadata::new(&filename, &directory, PRODUCER, info.optimized, info.format);
+    let mut scopes = Scopes { table, info, entry };
+    let mut out = text.render_debug(&mut scopes);
+    out.push_str(&scopes.table.to_string());
     out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ir::{InstSink as _, LlvmFunction, LlvmGlobal, LlvmInst, LlvmOperand, LlvmType};
     use bn_source::{Position, Revision};
 
     fn span(source: u64, line: usize, column: usize) -> Span {
@@ -177,23 +133,48 @@ mod tests {
         }
     }
 
+    fn twice() -> LlvmFunction {
+        let params = vec![(LlvmType::I32, "p0".to_string())];
+        LlvmFunction::new_definition("bn_Twice", LlvmType::I32, params)
+    }
+
     #[test]
     fn markers_become_subprogram_and_location_attachments() {
         let function = span(7, 1, 1);
-        let mut text = crate::ir::LlvmModule::from(String::from("@g = global i32 0\n"));
+        let mut text = LlvmModule::new();
+        text.global(LlvmGlobal::variable(
+            "g",
+            LlvmType::I32,
+            LlvmOperand::int(0),
+        ));
         mark_function(&mut text, function, "Twice");
-        text.push_str("define i32 @bn_Twice(i32 %p0) {\nb0:\n  %s0 = alloca i64\n");
+        text.begin_function(twice());
+        text.label("b0");
+        text.assign("s0", LlvmInst::alloca(LlvmType::I64));
         mark_location(&mut text, span(7, 2, 5), function);
-        text.push_str("  ; note\n  %v1 = mul i64 %v0, 2\n  ret i32 0\n}\ndeclare void @f()\n");
-        let out = attach_debug_info(&text.render(), &info());
-        assert!(!out.contains(";bn.dbg"), "markers are removed: {out}");
-        assert!(out.contains("define i32 @bn_Twice(i32 %p0) !dbg !3 {\nb0:\n"));
+        text.comment("note");
+        let doubled = LlvmInst::binary(
+            crate::ir::BinaryOp::Mul,
+            LlvmType::I64,
+            LlvmOperand::reg("v0"),
+            LlvmOperand::int(2),
+        );
+        text.assign("v1", doubled);
+        text.emit(LlvmInst::Ret {
+            val: Some((LlvmType::I32, LlvmOperand::int(0))),
+        });
+        text.end_function();
+        let out = attach_debug_info(&text, &info());
+        assert!(
+            out.contains("define i32 @bn_Twice(i32 %p0) !dbg !3 {\nb0:\n"),
+            "{out}"
+        );
         assert!(out.contains("  %s0 = alloca i64, !dbg !4\n"), "{out}");
         assert!(
-            out.contains("  ; note\n  %v1 = mul i64 %v0, 2, !dbg !5\n  ret i32 0, !dbg !5\n}\n")
+            out.contains("; note\n  %v1 = mul i64 %v0, 2, !dbg !5\n  ret i32 0, !dbg !5\n}\n"),
+            "{out}"
         );
         assert!(out.contains("@g = global i32 0\n"));
-        assert!(out.contains("declare void @f()\n"));
         assert!(
             out.contains(
                 "!3 = distinct !DISubprogram(name: \"Twice\", scope: !0, file: !0, line: 1"
@@ -205,16 +186,21 @@ mod tests {
     #[test]
     fn foreign_or_lineless_spans_keep_the_previous_location() {
         let function = span(7, 3, 1);
-        let mut text = crate::ir::LlvmModule::new();
+        let mut text = LlvmModule::new();
         mark_location(&mut text, span(8, 9, 9), function);
         mark_location(&mut text, span(7, 0, 0), function);
-        assert!(text.is_empty());
+        assert!(text.render().is_empty());
     }
 
     #[test]
     fn functions_without_a_marker_get_no_debug_attachments() {
-        let text = "define internal void @helper() {\nb0:\n  ret void\n}\n";
-        let out = attach_debug_info(text, &info());
-        assert!(out.starts_with(text), "{out}");
+        let mut text = LlvmModule::new();
+        text.begin_function(twice());
+        text.label("b0");
+        text.emit(LlvmInst::Ret { val: None });
+        text.end_function();
+        let out = attach_debug_info(&text, &info());
+        assert!(out.starts_with(&text.render()), "{out}");
+        assert!(!out[..text.render().len()].contains("!dbg"), "{out}");
     }
 }

@@ -3,47 +3,25 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Management of LLVM functions, basic blocks, and scoped SSA generation.
+//! LLVM function definitions and their basic blocks; a declaration is a
+//! `Signature` (`abi.rs`).
 
 use std::fmt;
 
-use super::{block::BasicBlock, operands::LlvmOperand, types::LlvmType};
+use super::{block::BasicBlock, types::LlvmType};
 
-/// An LLVM function representing either an external declaration or a full definition.
+/// An LLVM function definition.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LlvmFunction {
     pub name: String,
     pub ret_ty: LlvmType,
     pub params: Vec<(LlvmType, String)>,
     pub blocks: Vec<BasicBlock>,
-    pub is_declaration: bool,
     pub linkage: Option<String>,
     pub attributes: Vec<String>,
-    reg_counter: usize,
-    block_counter: usize,
 }
 
 impl LlvmFunction {
-    /// Creates a declaration prototype (`declare ...`).
-    #[must_use]
-    pub fn new_declaration(
-        name: impl Into<String>,
-        ret_ty: LlvmType,
-        params: Vec<(LlvmType, String)>,
-    ) -> Self {
-        Self {
-            name: name.into(),
-            ret_ty,
-            params,
-            blocks: Vec::new(),
-            is_declaration: true,
-            linkage: None,
-            attributes: Vec::new(),
-            reg_counter: 0,
-            block_counter: 0,
-        }
-    }
-
     /// Creates a function definition (`define ... { ... }`).
     #[must_use]
     pub fn new_definition(
@@ -56,11 +34,8 @@ impl LlvmFunction {
             ret_ty,
             params,
             blocks: Vec::new(),
-            is_declaration: false,
             linkage: None,
             attributes: Vec::new(),
-            reg_counter: 0,
-            block_counter: 0,
         }
     }
 
@@ -72,24 +47,6 @@ impl LlvmFunction {
     /// Appends a function attribute (e.g. "nounwind").
     pub fn add_attribute(&mut self, attr: impl Into<String>) {
         self.attributes.push(attr.into());
-    }
-
-    /// Generates a unique SSA register operand scoped to this function.
-    pub fn fresh_reg(&mut self) -> LlvmOperand {
-        self.reg_counter += 1;
-        LlvmOperand::reg(format!("t{}", self.reg_counter))
-    }
-
-    /// Generates a unique SSA register with a custom prefix.
-    pub fn fresh_named_reg(&mut self, prefix: &str) -> LlvmOperand {
-        self.reg_counter += 1;
-        LlvmOperand::reg(format!("{prefix}{}", self.reg_counter))
-    }
-
-    /// Generates a unique block label name.
-    pub fn fresh_block_label(&mut self, prefix: &str) -> String {
-        self.block_counter += 1;
-        format!("{prefix}.{}", self.block_counter)
     }
 
     /// Adds a new basic block with the specified label and returns a mutable reference to it.
@@ -108,6 +65,18 @@ impl LlvmFunction {
     /// caller that streams the body can emit the header alone.
     #[must_use]
     pub fn header(&self) -> String {
+        format!("{} {{", self.signature_line())
+    }
+
+    /// The header of a function described by the debug subprogram `dbg`:
+    /// `define ... !dbg !N {`.
+    #[must_use]
+    pub fn header_with_dbg(&self, dbg: super::debug::MdRef) -> String {
+        format!("{} !dbg {dbg} {{", self.signature_line())
+    }
+
+    /// `define <linkage><ret> @<name>(<params>) <attributes>`, without the brace.
+    fn signature_line(&self) -> String {
         let sigil = if self.name.starts_with('@') { "" } else { "@" };
         let linkage = self
             .linkage
@@ -130,52 +99,24 @@ impl LlvmFunction {
             header.push(' ');
             header.push_str(attr);
         }
-        header.push_str(" {");
         header
     }
 }
 
 impl fmt::Display for LlvmFunction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let fn_name = if self.name.starts_with('@') {
-            self.name.clone()
-        } else {
-            format!("@{}", self.name)
-        };
-
-        if self.is_declaration {
-            write!(f, "declare {} {fn_name}(", self.ret_ty)?;
-            for (i, (ty, _)) in self.params.iter().enumerate() {
-                if i > 0 {
-                    write!(f, ", ")?;
-                }
-                write!(f, "{ty}")?;
-            }
-            writeln!(f, ")")
-        } else {
-            writeln!(f, "{}", self.header())?;
-            for block in &self.blocks {
-                write!(f, "{block}")?;
-            }
-            writeln!(f, "}}")
+        writeln!(f, "{}", self.header())?;
+        for block in &self.blocks {
+            write!(f, "{block}")?;
         }
+        writeln!(f, "}}")
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::instructions::LlvmInst;
-
-    #[test]
-    fn function_declaration_rendering() {
-        let decl = LlvmFunction::new_declaration(
-            "malloc",
-            LlvmType::Ptr,
-            vec![(LlvmType::I64, "size".to_string())],
-        );
-        assert_eq!(decl.to_string(), "declare ptr @malloc(i64)\n");
-    }
+    use crate::ir::{instructions::LlvmInst, operands::LlvmOperand};
 
     #[test]
     fn function_definition_rendering() {
@@ -211,21 +152,5 @@ entry:
 }
 ";
         assert_eq!(def.to_string(), expected);
-    }
-
-    #[test]
-    fn scoped_register_and_block_counter() {
-        let mut f = LlvmFunction::new_definition("test", LlvmType::Void, vec![]);
-        let r1 = f.fresh_reg();
-        let r2 = f.fresh_reg();
-        let named = f.fresh_named_reg("call");
-        let b1 = f.fresh_block_label("then");
-        let b2 = f.fresh_block_label("else");
-
-        assert_eq!(r1.to_string(), "%t1");
-        assert_eq!(r2.to_string(), "%t2");
-        assert_eq!(named.to_string(), "%call3");
-        assert_eq!(b1, "then.1");
-        assert_eq!(b2, "else.2");
     }
 }

@@ -28,15 +28,16 @@ fn stdout_file_symbol() -> &'static str {
 
 /// Declarations used by native PRINT synchronization: the C `stdout` stream
 /// and the functions that lock and unlock it.
-pub(crate) fn stdout_lock_decls() -> String {
-    let mut text = String::new();
+pub(crate) fn emit_stdout_lock_decls(text: &mut crate::ir::LlvmModule) {
     if cfg!(windows) {
-        write_declarations(&mut text, runtime_abi::WINDOWS_STDIO_LOCK_DECLARATIONS);
+        write_declarations(text, runtime_abi::WINDOWS_STDIO_LOCK_DECLARATIONS);
     } else {
-        text = format!("@{} = external global ptr\n", stdout_file_symbol());
-        write_declarations(&mut text, runtime_abi::POSIX_STDIO_LOCK_DECLARATIONS);
+        text.global(crate::ir::LlvmGlobal::external(
+            stdout_file_symbol(),
+            LlvmType::Ptr,
+        ));
+        write_declarations(text, runtime_abi::POSIX_STDIO_LOCK_DECLARATIONS);
     }
-    text
 }
 
 /// The instruction that reads the C `stdout` stream: a global on POSIX C
@@ -67,12 +68,10 @@ pub(crate) fn emit_windows_binary_stdio(text: &mut crate::ir::LlvmModule, native
 }
 
 /// Module-level declaration for [`emit_windows_binary_stdio`]. Empty elsewhere.
-pub(crate) fn windows_binary_stdio_decl(native: bool) -> String {
-    let mut text = String::new();
+pub(crate) fn emit_windows_binary_stdio_decl(text: &mut crate::ir::LlvmModule, native: bool) {
     if native && cfg!(windows) {
-        write_declarations(&mut text, &[&runtime_abi::SETMODE]);
+        write_declarations(text, &[&runtime_abi::SETMODE]);
     }
-    text
 }
 
 /// The C functions that lock and unlock a `FILE *`.

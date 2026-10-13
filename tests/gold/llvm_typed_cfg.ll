@@ -1,4 +1,4 @@
-; Basic Next 0.2
+; Basic Next {version}
 @.bn_fmt_int = private unnamed_addr constant [5 x i8] c"%lld\00"
 @.bn_fmt_uint = private unnamed_addr constant [5 x i8] c"%llu\00"
 @.bn_fmt_float = private unnamed_addr constant [6 x i8] c"%.17g\00"

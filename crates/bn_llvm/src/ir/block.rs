@@ -38,11 +38,6 @@ impl BasicBlock {
         self.instructions.push(InstructionEntry::assign(dest, inst));
     }
 
-    /// Pushes an arbitrary instruction entry.
-    pub fn push_entry(&mut self, entry: InstructionEntry) {
-        self.instructions.push(entry);
-    }
-
     /// Returns true if this basic block ends with a terminator instruction.
     #[must_use]
     pub fn is_terminated(&self) -> bool {
@@ -61,7 +56,9 @@ impl BasicBlock {
 
 impl fmt::Display for BasicBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{}:", self.label)?;
+        if !self.label.is_empty() {
+            writeln!(f, "{}:", self.label)?;
+        }
         for inst in &self.instructions {
             writeln!(f, "{inst}")?;
         }

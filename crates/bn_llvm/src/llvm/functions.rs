@@ -200,7 +200,8 @@ pub(crate) fn emit_function(
     if is_start {
         let params = vec![(T::I32, "argc".to_string()), (T::Ptr, "argv".to_string())];
         let main = crate::ir::LlvmFunction::new_definition("main", T::I32, params);
-        let _ = writeln!(text, "\n{}", main.header());
+        text.blank();
+        text.begin_function(main);
     } else {
         emit_user_signature(text, function, analysis);
     }
@@ -380,7 +381,7 @@ pub(crate) fn emit_function(
         mark_location(text, function.span, function.span);
     }
     emit_traps(text, analysis, &symbol_names, &mut state);
-    text.push_str("}\n");
+    text.end_function();
     state.control_flow.resolve(text)
 }
 

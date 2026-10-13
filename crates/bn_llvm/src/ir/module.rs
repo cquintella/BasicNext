@@ -4,33 +4,39 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! The LLVM module `bnc` builds in memory and renders once at the end
-//! (bucket 0.6.5 T.5.6, the Swift architecture): typed instructions and
-//! block labels, plus `Raw` text that typed lowering has not replaced yet.
-//! `Raw` is transitional; T.5.5 deletes it.
+//! (bucket 0.6.5 T.5, the Swift architecture): declarations, globals,
+//! functions, block labels and instructions, all typed. There is no way to
+//! write LLVM text into it.
 
-use std::fmt;
+use std::fmt::{self, Write as _};
 
 use std::collections::BTreeSet;
 
 use super::{
+    abi::Signature,
+    debug::MdRef,
     emit::InstSink,
+    function::LlvmFunction,
+    global::LlvmGlobal,
     instructions::{InstructionEntry, LlvmInst},
     operands::LlvmOperand,
 };
 
-/// Adds the global names (`@name`) written in `text` to `names`.
-fn scan_globals(text: &str, names: &mut BTreeSet<String>) {
-    for (index, _) in text.match_indices('@') {
-        let name: String = text[index + 1..]
-            .chars()
-            .take_while(|character| {
-                character.is_ascii_alphanumeric() || matches!(character, '_' | '.' | '$')
-            })
-            .collect();
-        if !name.is_empty() {
-            names.insert(name);
+/// Adds the globals `inst` reads to `names`.
+fn record_globals(inst: &LlvmInst, names: &mut BTreeSet<String>) {
+    for operand in inst.operands() {
+        if let LlvmOperand::Global(name) = operand {
+            names.insert(name.trim_start_matches('@').to_owned());
         }
     }
+}
+
+/// Makes the debug metadata nodes [`LlvmModule::render_debug`] attaches.
+pub trait DebugScopes {
+    /// The subprogram of function `name`, declared at `line` of `source`.
+    fn subprogram(&mut self, source: u64, line: u32, name: &str) -> MdRef;
+    /// The location `line`:`column` inside `scope`.
+    fn location(&mut self, line: u32, column: u32, scope: MdRef) -> MdRef;
 }
 
 /// One piece of a module, in emission order.
@@ -40,8 +46,29 @@ enum Piece {
     Instruction(InstructionEntry),
     /// The label that starts a basic block.
     Label(String),
-    /// LLVM text not yet in the typed model, rendered as written.
-    Raw(String),
+    /// A declared function.
+    Declaration(Signature),
+    /// A global variable or constant.
+    Global(LlvmGlobal),
+    /// A whole function built with the typed builder.
+    Function(LlvmFunction),
+    /// The `define ... {` line of a function emitted instruction by instruction.
+    FunctionStart(LlvmFunction),
+    /// The `}` that closes such a function.
+    FunctionEnd,
+    /// An empty line between items.
+    Blank,
+    /// A comment line: `; text`.
+    Comment(String),
+    /// `bnc -g`: the next function opened describes `name`, declared at
+    /// `line` of source `source`. Renders nothing by itself.
+    DebugFunction {
+        source: u64,
+        line: u32,
+        name: String,
+    },
+    /// `bnc -g`: the instructions that follow were lowered from `line`:`column`.
+    DebugLocation { line: u32, column: u32 },
 }
 
 impl fmt::Display for Piece {
@@ -49,7 +76,14 @@ impl fmt::Display for Piece {
         match self {
             Self::Instruction(entry) => writeln!(f, "{entry}"),
             Self::Label(name) => writeln!(f, "{name}:"),
-            Self::Raw(text) => f.write_str(text),
+            Self::Declaration(signature) => writeln!(f, "{signature}"),
+            Self::Global(global) => writeln!(f, "{global}"),
+            Self::Function(function) => write!(f, "{function}"),
+            Self::FunctionStart(function) => writeln!(f, "{}", function.header()),
+            Self::FunctionEnd => writeln!(f, "}}"),
+            Self::Blank => writeln!(f),
+            Self::Comment(text) => writeln!(f, "; {text}"),
+            Self::DebugFunction { .. } | Self::DebugLocation { .. } => Ok(()),
         }
     }
 }
@@ -72,22 +106,53 @@ impl LlvmModule {
         self.pieces.push(piece);
     }
 
-    /// Appends LLVM text not yet in the typed model (transitional).
-    pub fn push_str(&mut self, text: &str) {
-        if !text.is_empty() {
-            self.append(Piece::Raw(text.to_owned()));
-        }
+    /// Declares a function.
+    pub fn declare(&mut self, signature: Signature) {
+        self.append(Piece::Declaration(signature));
     }
 
-    /// Appends one character of LLVM text (transitional).
-    pub fn push(&mut self, character: char) {
-        self.append(Piece::Raw(character.to_string()));
+    /// Defines a global.
+    pub fn global(&mut self, global: LlvmGlobal) {
+        self.append(Piece::Global(global));
     }
 
-    /// Whether nothing was emitted yet.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.pieces.is_empty()
+    /// Defines a whole function.
+    pub fn function(&mut self, function: LlvmFunction) {
+        self.append(Piece::Function(function));
+    }
+
+    /// Opens a function whose body the emitter writes next.
+    pub fn begin_function(&mut self, header: LlvmFunction) {
+        self.append(Piece::FunctionStart(header));
+    }
+
+    /// Closes the function [`Self::begin_function`] opened.
+    pub fn end_function(&mut self) {
+        self.append(Piece::FunctionEnd);
+    }
+
+    /// An empty line.
+    pub fn blank(&mut self) {
+        self.append(Piece::Blank);
+    }
+
+    /// Marks the next function opened as describing `name` (`bnc -g`).
+    pub fn mark_function(&mut self, source: u64, line: u32, name: impl Into<String>) {
+        self.append(Piece::DebugFunction {
+            source,
+            line,
+            name: name.into(),
+        });
+    }
+
+    /// Marks the source position of the instructions that follow (`bnc -g`).
+    pub fn mark_location(&mut self, line: u32, column: u32) {
+        self.append(Piece::DebugLocation { line, column });
+    }
+
+    /// A comment line.
+    pub fn comment(&mut self, text: impl Into<String>) {
+        self.append(Piece::Comment(text.into()));
     }
 
     /// A number no other `fresh_tag` call of this module returns, for unique
@@ -112,25 +177,80 @@ impl LlvmModule {
     }
 
     /// The names, without `@`, of every global the module refers to: the
-    /// functions it calls and the constants it reads. `Raw` text is scanned
-    /// until T.5.5 removes it.
+    /// functions it calls and the constants it reads.
     #[must_use]
     pub fn referenced_globals(&self) -> BTreeSet<String> {
         let mut names = BTreeSet::new();
         for piece in &self.pieces {
             match piece {
-                Piece::Instruction(entry) => {
-                    for operand in entry.inst.operands() {
-                        if let LlvmOperand::Global(name) = operand {
-                            names.insert(name.trim_start_matches('@').to_owned());
+                Piece::Instruction(entry) => record_globals(&entry.inst, &mut names),
+                Piece::Function(function) => {
+                    for block in &function.blocks {
+                        for entry in &block.instructions {
+                            record_globals(&entry.inst, &mut names);
                         }
                     }
                 }
-                Piece::Raw(text) => scan_globals(text, &mut names),
+                Piece::Declaration(_)
+                | Piece::Global(_)
+                | Piece::FunctionStart(_)
+                | Piece::FunctionEnd
+                | Piece::Blank
+                | Piece::Comment(_)
+                | Piece::DebugFunction { .. }
+                | Piece::DebugLocation { .. } => {}
                 Piece::Label(_) => {}
             }
         }
         names
+    }
+
+    /// The `.ll` text with debug attachments (`bnc -g`): a marked function
+    /// opens with `!dbg` and its subprogram, and each of its instructions
+    /// carries the location last marked (the function's line for the
+    /// prologue). `scopes` makes the metadata nodes.
+    pub fn render_debug(&self, scopes: &mut impl DebugScopes) -> String {
+        let mut out = String::new();
+        let mut pending: Option<(u64, u32, &str)> = None;
+        let mut scope: Option<(MdRef, MdRef)> = None;
+        for piece in &self.pieces {
+            match piece {
+                Piece::DebugFunction { source, line, name } => {
+                    pending = Some((*source, *line, name));
+                }
+                Piece::DebugLocation { line, column } => {
+                    if let Some((subprogram, _)) = scope {
+                        scope = Some((subprogram, scopes.location(*line, *column, subprogram)));
+                    }
+                }
+                Piece::FunctionStart(function) => match pending.take() {
+                    Some((source, line, name)) => {
+                        let subprogram = scopes.subprogram(source, line, name);
+                        scope = Some((subprogram, scopes.location(line, 1, subprogram)));
+                        let _ = writeln!(out, "{}", function.header_with_dbg(subprogram));
+                    }
+                    None => {
+                        let _ = write!(out, "{piece}");
+                    }
+                },
+                Piece::FunctionEnd => {
+                    scope = None;
+                    let _ = write!(out, "{piece}");
+                }
+                Piece::Instruction(entry) => match scope {
+                    Some((_, location)) => {
+                        let _ = writeln!(out, "{}", entry.clone().with_dbg(location.0));
+                    }
+                    None => {
+                        let _ = write!(out, "{piece}");
+                    }
+                },
+                _ => {
+                    let _ = write!(out, "{piece}");
+                }
+            }
+        }
+        out
     }
 
     /// The `.ll` text of the module.
@@ -148,13 +268,6 @@ impl fmt::Display for LlvmModule {
     }
 }
 
-impl fmt::Write for LlvmModule {
-    fn write_str(&mut self, text: &str) -> fmt::Result {
-        self.push_str(text);
-        Ok(())
-    }
-}
-
 impl InstSink for LlvmModule {
     fn assign(&mut self, dest: impl Into<String>, inst: LlvmInst) {
         self.append(Piece::Instruction(InstructionEntry::assign(dest, inst)));
@@ -169,25 +282,15 @@ impl InstSink for LlvmModule {
     }
 }
 
-impl From<String> for LlvmModule {
-    fn from(text: String) -> Self {
-        let mut module = Self::new();
-        module.push_str(&text);
-        module
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use std::fmt::Write as _;
-
     use super::LlvmModule;
-    use crate::ir::{InstSink as _, LlvmInst, LlvmOperand, LlvmType};
+    use crate::ir::{InstSink as _, LlvmFunction, LlvmInst, LlvmOperand, LlvmType};
 
     #[test]
     fn a_module_renders_what_was_emitted_and_inserts_at_a_position() {
         let mut module = LlvmModule::new();
-        module.push_str("define void @f() {\n");
+        module.begin_function(LlvmFunction::new_definition("f", LlvmType::Void, vec![]));
         module.label("b0");
         let position = module.position();
         module.emit(LlvmInst::Ret { val: None });
@@ -196,7 +299,7 @@ mod tests {
             incoming: vec![(LlvmOperand::int(1), "b1".into())],
         };
         module.insert_assign(position, "x", phi);
-        let _ = writeln!(module, "}}");
+        module.end_function();
         let expected = "define void @f() {\nb0:\n  %x = phi i32 [ 1, %b1 ]\n  ret void\n}\n";
         assert_eq!(module.render(), expected);
         let typed = LlvmInst::store(LlvmType::I32, LlvmOperand::int(1), LlvmOperand::reg("s"));

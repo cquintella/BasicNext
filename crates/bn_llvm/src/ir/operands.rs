@@ -13,13 +13,16 @@ use super::types::LlvmType;
 /// `"`, `\` and bytes outside printable ASCII become `\XX`.
 #[must_use]
 pub fn escape_llvm(value: &str) -> String {
-    value
-        .bytes()
-        .map(|byte| match byte {
-            b' '..=b'!' | b'#'..=b'[' | b']'..=b'~' => char::from(byte).to_string(),
-            _ => format!("\\{byte:02X}"),
-        })
-        .collect()
+    value.bytes().map(escape_byte).collect()
+}
+
+/// One byte of a C string constant: printable ASCII but `"` and `\` as is,
+/// anything else as `\XX`.
+fn escape_byte(byte: u8) -> String {
+    match byte {
+        b' '..=b'!' | b'#'..=b'[' | b']'..=b'~' => char::from(byte).to_string(),
+        _ => format!("\\{byte:02X}"),
+    }
 }
 
 /// Representation of an LLVM operand or constant.
@@ -33,7 +36,16 @@ pub enum LlvmOperand {
     ConstArray(Vec<(LlvmType, LlvmOperand)>),
     ConstFloat(f64),
     ConstBool(bool),
-    ConstString(String),
+    /// The bytes of a C string constant: `c"NA\00"` (escaped by [`escape_llvm`]).
+    ConstBytes(Vec<u8>),
+    /// A constant structure: `{ ptr @g, i32 4 }`.
+    ConstStruct(Vec<(LlvmType, LlvmOperand)>),
+    /// A constant address: `getelementptr inbounds (T, ptr @g, i32 0, i64 3)`.
+    ConstGep {
+        element: LlvmType,
+        base: String,
+        indices: Vec<(LlvmType, LlvmOperand)>,
+    },
     Reg(String),
     Global(String),
     Null,
@@ -140,7 +152,30 @@ impl fmt::Display for LlvmOperand {
                 }
             }
             Self::ConstBool(b) => write!(f, "{b}"),
-            Self::ConstString(s) => write!(f, "{s}"),
+            Self::ConstBytes(bytes) => {
+                let text: String = bytes.iter().map(|&byte| escape_byte(byte)).collect();
+                write!(f, "c\"{text}\"")
+            }
+            Self::ConstStruct(fields) => {
+                let items: Vec<String> = (fields.iter())
+                    .map(|(ty, value)| format!("{ty} {value}"))
+                    .collect();
+                write!(f, "{{ {} }}", items.join(", "))
+            }
+            Self::ConstGep {
+                element,
+                base,
+                indices,
+            } => {
+                let items: Vec<String> = (indices.iter())
+                    .map(|(ty, value)| format!(", {ty} {value}"))
+                    .collect();
+                write!(
+                    f,
+                    "getelementptr inbounds ({element}, ptr @{base}{})",
+                    items.concat()
+                )
+            }
             Self::Reg(r) => {
                 if r.starts_with('%') {
                     write!(f, "{r}")

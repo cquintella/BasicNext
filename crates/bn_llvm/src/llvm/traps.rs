@@ -361,29 +361,22 @@ pub(crate) fn define_trap_globals(
     };
     let symbols = referenced(PREFIX);
     let sets = referenced(SET_PREFIX);
-    let mut definitions = String::new();
+    let message = |name: String, rendered: &str| {
+        let bytes = rendered.bytes().chain(std::iter::once(0)).collect();
+        crate::ir::LlvmGlobal::c_string(name, bytes, true)
+    };
     for hex in &sets {
         let rendered = unhex(hex)
             .and_then(|payload| render_set(&payload, render))
             .unwrap_or_default();
-        let (literal, length) = c_literal(&rendered);
-        let _ = writeln!(
-            definitions,
-            "{SET_PREFIX}{hex} = private unnamed_addr constant [{length} x i8] c\"{literal}\""
-        );
+        text.global(message(format!("{SET_PREFIX}{hex}"), &rendered));
     }
     // The ARC glue reports a broken core invariant with the null set.
-    if !sets.is_empty() || globals.contains(crate::runtime_abi::TRAP_REPORT_FAILURE.name) {
-        if wasm32 {
-            definitions
-                .push_str("define void @bn_rt_trap_report_failure(ptr %set) {\n  ret void\n}\n");
-        } else {
-            let failure = &crate::runtime_abi::TRAP_REPORT_FAILURE;
-            crate::ir::write_declarations(&mut definitions, &[failure]);
-        }
+    let failure = &crate::runtime_abi::TRAP_REPORT_FAILURE;
+    if !sets.is_empty() || globals.contains(failure.name) {
+        report_function(text, failure, wasm32);
     }
     if symbols.is_empty() {
-        text.push_str(&definitions);
         return;
     }
     for hex in symbols {
@@ -393,34 +386,35 @@ pub(crate) fn define_trap_globals(
                 || "error: runtime failure".into(),
                 |diagnostic| render(&diagnostic),
             );
-        let (literal, length) = c_literal(&rendered);
-        let _ = writeln!(
-            definitions,
-            "{PREFIX}{hex} = private unnamed_addr constant [{length} x i8] c\"{literal}\""
-        );
+        text.global(message(format!("{PREFIX}{hex}"), &rendered));
     }
-    if wasm32 {
-        definitions.push_str(
-            "define void @bn_rt_trap_report(ptr %text, i64 %a, i64 %b, i64 %c, i64 %d) {\n  ret void\n}\n",
-        );
-    } else {
-        crate::ir::write_declarations(&mut definitions, &[&crate::runtime_abi::TRAP_REPORT]);
-    }
-    text.push_str(&definitions);
+    report_function(text, &crate::runtime_abi::TRAP_REPORT, wasm32);
 }
 
-/// `text` as an LLVM `c"..."` body with its NUL, and the byte length.
-fn c_literal(text: &str) -> (String, usize) {
-    let mut literal = String::new();
-    for byte in text.bytes() {
-        if byte.is_ascii_graphic() && byte != b'"' && byte != b'\\' || byte == b' ' {
-            literal.push(char::from(byte));
-        } else {
-            let _ = write!(literal, "\\{byte:02X}");
-        }
+/// The `bn_rt` report function `report`: declared natively; on wasm32, which
+/// links no `bn_rt`, a definition that does nothing.
+fn report_function<const N: usize>(
+    text: &mut crate::ir::LlvmModule,
+    report: &crate::ir::RuntimeFn<N>,
+    wasm32: bool,
+) {
+    use crate::ir::Declaration;
+    if !wasm32 {
+        crate::ir::write_declarations(text, &[report]);
+        return;
     }
-    literal.push_str("\\00");
-    (literal, text.len() + 1)
+    let signature = report.signature();
+    let names = ["set", "text", "a", "b", "c", "d"];
+    let params = if N == 1 { &names[..1] } else { &names[1..] };
+    let params = signature
+        .params
+        .iter()
+        .cloned()
+        .zip(params.iter().map(ToString::to_string));
+    let mut stub =
+        crate::ir::LlvmFunction::new_definition(signature.name, signature.ret, params.collect());
+    stub.add_block("").push(I::Ret { val: None });
+    text.function(stub);
 }
 
 /// `br i1 condition, label %site, label %ok`.
@@ -476,7 +470,7 @@ pub(crate) fn emit_stack_check(
 
 #[cfg(test)]
 mod tests {
-    use super::{c_literal, decode, hex, unhex};
+    use super::{decode, hex, unhex};
 
     #[test]
     fn trap_payload_round_trips_to_the_diagnostic() {
@@ -485,6 +479,11 @@ mod tests {
         let diagnostic = decode(payload).expect("decodes");
         assert_eq!(diagnostic.code, "INDEX_OUT_OF_BOUNDS");
         assert_eq!(diagnostic.span.start.line, 2);
-        assert_eq!(c_literal("a\"b\n"), ("a\\22b\\0A\\00".into(), 5));
+        let message = crate::ir::LlvmGlobal::text(".bn_trap_1", "a\"b\n", true);
+        assert!(
+            message
+                .to_string()
+                .ends_with("[5 x i8] c\"a\\22b\\0A\\00\"")
+        );
     }
 }

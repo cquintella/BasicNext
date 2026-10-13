@@ -68,27 +68,61 @@ impl<const N: usize> RuntimeFn<N> {
     }
 }
 
-/// The `declare` line of a signature, independent of its arity, so
-/// signatures of different `N` can be listed together.
-pub trait Declaration {
-    fn declaration(&self) -> String;
-    fn name(&self) -> &'static str;
+/// A function the module declares: its name and typed signature, rendered
+/// as `declare <ret> @<name>(<params>[, ...])`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Signature {
+    pub name: &'static str,
+    pub ret: LlvmType,
+    pub params: Vec<LlvmType>,
+    pub variadic: bool,
 }
 
-/// The parameter list of a declaration: `ptr, i64`.
-fn parameter_list(params: &[AbiType]) -> String {
-    let params: Vec<String> = params.iter().map(ToString::to_string).collect();
-    params.join(", ")
+impl fmt::Display for Signature {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut params: Vec<String> = self.params.iter().map(ToString::to_string).collect();
+        if self.variadic {
+            params.push("...".into());
+        }
+        write!(
+            f,
+            "declare {} @{}({})",
+            self.ret,
+            self.name,
+            params.join(", ")
+        )
+    }
+}
+
+/// Anything the module can declare, independent of its arity, so
+/// signatures of different `N` can be listed together.
+pub trait Declaration {
+    fn signature(&self) -> Signature;
+
+    fn name(&self) -> &'static str {
+        self.signature().name
+    }
+
+    /// The `declare` line.
+    fn declaration(&self) -> String {
+        self.signature().to_string()
+    }
+}
+
+/// The LLVM types of C parameters.
+fn llvm_params(params: &[AbiType]) -> Vec<LlvmType> {
+    params.iter().map(|&ty| LlvmType::from(ty)).collect()
 }
 
 impl<const N: usize> Declaration for RuntimeFn<N> {
-    fn declaration(&self) -> String {
-        let params = parameter_list(&self.params);
-        format!("declare {} @{}({params})", self.ret, self.name)
-    }
-
-    fn name(&self) -> &'static str {
-        self.name
+    fn signature(&self) -> Signature {
+        let (name, ret, params) = (self.name, self.ret.into(), llvm_params(&self.params));
+        Signature {
+            name,
+            ret,
+            params,
+            variadic: false,
+        }
     }
 }
 
@@ -101,13 +135,14 @@ pub struct VariadicFn<const N: usize> {
 }
 
 impl<const N: usize> Declaration for VariadicFn<N> {
-    fn declaration(&self) -> String {
-        let params = parameter_list(&self.params);
-        format!("declare {} @{}({params}, ...)", self.ret, self.name)
-    }
-
-    fn name(&self) -> &'static str {
-        self.name
+    fn signature(&self) -> Signature {
+        let (name, ret, params) = (self.name, self.ret.into(), llvm_params(&self.params));
+        Signature {
+            name,
+            ret,
+            params,
+            variadic: true,
+        }
     }
 }
 
@@ -122,13 +157,14 @@ pub struct Intrinsic {
 }
 
 impl Declaration for Intrinsic {
-    fn declaration(&self) -> String {
-        let params: Vec<String> = self.params.iter().map(ToString::to_string).collect();
-        format!("declare {} @{}({})", self.ret, self.name, params.join(", "))
-    }
-
-    fn name(&self) -> &'static str {
-        self.name
+    fn signature(&self) -> Signature {
+        let (name, ret, params) = (self.name, self.ret.clone(), self.params.clone());
+        Signature {
+            name,
+            ret,
+            params,
+            variadic: false,
+        }
     }
 }
 
@@ -144,10 +180,10 @@ impl PartialOrd for Intrinsic {
     }
 }
 
-/// Writes the `declare` line of every signature of `group`, in order.
-pub fn write_declarations(out: &mut impl fmt::Write, group: &[&dyn Declaration]) {
+/// Declares every signature of `group` in `module`, in order.
+pub fn write_declarations(module: &mut super::LlvmModule, group: &[&dyn Declaration]) {
     for signature in group {
-        let _ = writeln!(out, "{}", signature.declaration());
+        module.declare(signature.signature());
     }
 }
 

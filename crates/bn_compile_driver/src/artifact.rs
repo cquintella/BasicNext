@@ -287,14 +287,16 @@ pub fn emit_build_output(
             Ok(compiled) if compiled.status.success() => {
                 failed_tool = "wasm-ld";
                 let object_path = object.to_string_lossy();
-                // `__data_end` is the low end of the stack, which `wasm-ld` places
-                // above the data: the host's `bn_rt_stack_check` reads it.
+                // The stack goes first, so an overflow leaves linear memory
+                // instead of corrupting the data, and the layout is the same on
+                // every host; the host's `bn_rt_stack_check` reads `__stack_low`.
                 let wasm_ld_args = [
                     build_options.optimization.linker_flag(),
                     "--no-entry",
                     "--export=main",
                     "--export=__heap_base",
-                    "--export=__data_end",
+                    "--stack-first",
+                    "--export=__stack_low",
                     "--allow-undefined",
                     object_path.as_ref(),
                     "-o",

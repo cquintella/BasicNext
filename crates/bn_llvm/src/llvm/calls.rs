@@ -42,7 +42,8 @@ pub(crate) fn emit_user_signature(
     // Every BN call takes stack, as under `bni`: no call becomes a jump, so
     // endless recursion stops with `STACK_OVERFLOW` (0.6.md, "Recursion depth").
     signature.add_attribute(DISABLE_TAIL_CALLS);
-    let _ = writeln!(text, "\n{}", signature.header());
+    text.blank();
+    text.begin_function(signature);
 }
 
 pub(crate) fn store_parameters(

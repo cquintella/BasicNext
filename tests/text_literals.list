@@ -2535,8 +2535,6 @@ crates/bn_llvm/src/llvm/casts.rs	prose	validated text cast source
 crates/bn_llvm/src/llvm/casts.rs	prose	validated text cast source
 crates/bn_llvm/src/llvm/crypto_calls.rs	prose	unsupported BNCrypto member reached emission: {other}
 crates/bn_llvm/src/llvm/debug_info.rs	identifier	CARGO_PKG_VERSION
-crates/bn_llvm/src/llvm/debug_info.rs	prose	;bn.dbg 
-crates/bn_llvm/src/llvm/debug_info.rs	prose	;bn.dbg.fn 
 crates/bn_llvm/src/llvm/debug_info.rs	prose	Basic Next 
 crates/bn_llvm/src/llvm/dispatch_emission.rs	prose	validated async task target
 crates/bn_llvm/src/llvm/dispatch_emission.rs	prose	validated dispatch argument

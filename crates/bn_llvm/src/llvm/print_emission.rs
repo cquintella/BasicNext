@@ -256,11 +256,8 @@ pub(crate) fn define_type_name_globals(text: &mut crate::ir::LlvmModule) {
             .step_by(2)
             .filter_map(|at| u8::from_str_radix(&hex[at..at + 2], 16).ok())
             .collect();
-        let _ = writeln!(
-            text,
-            "@.bn_typename_{hex} = private unnamed_addr constant [{} x i8] c\"{}\\00\"",
-            bytes.len() + 1,
-            escape_llvm(&String::from_utf8_lossy(&bytes))
-        );
+        let name = format!(".bn_typename_{hex}");
+        let global = crate::ir::LlvmGlobal::text(name, &String::from_utf8_lossy(&bytes), true);
+        text.global(global);
     }
 }

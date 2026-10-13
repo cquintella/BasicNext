@@ -23,10 +23,8 @@ pub enum BinaryOp {
     FSub,
     FMul,
     FDiv,
-    FRem,
     Shl,
     LShr,
-    AShr,
     And,
     Or,
     Xor,
@@ -46,10 +44,8 @@ impl fmt::Display for BinaryOp {
             Self::FSub => "fsub",
             Self::FMul => "fmul",
             Self::FDiv => "fdiv",
-            Self::FRem => "frem",
             Self::Shl => "shl",
             Self::LShr => "lshr",
-            Self::AShr => "ashr",
             Self::And => "and",
             Self::Or => "or",
             Self::Xor => "xor",
@@ -99,13 +95,6 @@ pub enum FCmpCond {
     Oge,
     Olt,
     Ole,
-    One,
-    Ord,
-    Ueq,
-    Ugt,
-    Uge,
-    Ult,
-    Ule,
     Une,
     Uno,
 }
@@ -118,13 +107,6 @@ impl fmt::Display for FCmpCond {
             Self::Oge => "oge",
             Self::Olt => "olt",
             Self::Ole => "ole",
-            Self::One => "one",
-            Self::Ord => "ord",
-            Self::Ueq => "ueq",
-            Self::Ugt => "ugt",
-            Self::Uge => "uge",
-            Self::Ult => "ult",
-            Self::Ule => "ule",
             Self::Une => "une",
             Self::Uno => "uno",
         };
@@ -138,7 +120,6 @@ pub enum CastOp {
     Trunc,
     ZExt,
     SExt,
-    FPToUI,
     FPToSI,
     UIToFP,
     SIToFP,
@@ -155,7 +136,6 @@ impl fmt::Display for CastOp {
             Self::Trunc => "trunc",
             Self::ZExt => "zext",
             Self::SExt => "sext",
-            Self::FPToUI => "fptoui",
             Self::FPToSI => "fptosi",
             Self::UIToFP => "uitofp",
             Self::SIToFP => "sitofp",
@@ -260,7 +240,6 @@ pub enum LlvmInst {
         val: Option<(LlvmType, LlvmOperand)>,
     },
     Unreachable,
-    Comment(String),
 }
 
 /// The values of typed operands (`i64 %x`, `ptr @g`).
@@ -302,9 +281,7 @@ impl LlvmInst {
             Self::CondBr { cond, .. } => vec![cond],
             Self::Phi { incoming, .. } => incoming.iter().map(|(value, _)| value).collect(),
             Self::Ret { val } => val.iter().map(|(_, value)| value).collect(),
-            Self::Alloca { .. } | Self::Br { .. } | Self::Unreachable | Self::Comment(_) => {
-                Vec::new()
-            }
+            Self::Alloca { .. } | Self::Br { .. } | Self::Unreachable => Vec::new(),
         }
     }
 }
@@ -462,7 +439,6 @@ impl fmt::Display for LlvmInst {
                 Ok(())
             }
             Self::Unreachable => write!(f, "unreachable"),
-            Self::Comment(c) => write!(f, "; {c}"),
         }
     }
 }
@@ -506,9 +482,6 @@ impl InstructionEntry {
 
 impl fmt::Display for InstructionEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if matches!(self.inst, LlvmInst::Comment(_)) {
-            return write!(f, "  {}", self.inst);
-        }
         write!(f, "  ")?;
         if let Some(dest) = &self.dest {
             let reg = if dest.starts_with('%') {

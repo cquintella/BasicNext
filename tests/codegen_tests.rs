@@ -48,8 +48,10 @@ fn start_module(blocks: Vec<BasicBlock>) -> Module {
     }
 }
 
+/// A gold module; its header names the toolchain version (`{version}`).
 fn read_gold(path: &str) -> String {
-    fs::read_to_string(path).expect("read gold fixture")
+    let gold = fs::read_to_string(path).expect("read gold fixture");
+    gold.replace("{version}", env!("CARGO_PKG_VERSION"))
 }
 
 #[test]

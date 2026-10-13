@@ -102,12 +102,17 @@ impl Nest<'_> {
 
     /// The constant of a global storage named `global`, its rows already
     /// linked: a `STATIC` is readable before its first store.
-    pub(crate) fn linked_constant(&self, global: &str) -> String {
+    pub(crate) fn linked_constant(&self, global: &str) -> O {
         let storage = self.storage();
-        let at = |field: u64, index: u64| {
-            format!(
-                "ptr getelementptr inbounds ({storage}, ptr {global}, i32 0, i32 {field}, i64 {index})"
-            )
+        let base = global.trim_start_matches('@').to_owned();
+        let at = |field: i64, index: u64| O::ConstGep {
+            element: storage.clone(),
+            base: base.clone(),
+            indices: vec![
+                (T::I32, O::int(0)),
+                (T::I32, O::int(field)),
+                (T::I64, O::uint(index)),
+            ],
         };
         let levels = self.dimensions.len() - 1;
         let mut rows = Vec::new();
@@ -122,18 +127,19 @@ impl Nest<'_> {
                 } else {
                     at(0, next_start + child)
                 };
-                rows.push(format!("{{ ptr, i32 }} {{ {target}, i32 {length} }}"));
+                let row = O::ConstStruct(vec![(T::Ptr, target), (T::I32, O::uint(length))]);
+                rows.push((vector_ty(), row));
             }
         }
-        format!(
-            "{{ [{} x {{ ptr, i32 }}] [{}], [{} x {}] zeroinitializer, {} {} }}",
-            self.rows(),
-            rows.join(", "),
-            self.leaves(),
-            self.element,
-            self.dimension_ty(),
-            self.dimension_values()
-        )
+        let T::Struct(fields) = storage.clone() else {
+            unreachable!()
+        };
+        let values = [
+            O::array(rows),
+            O::zero_initializer(),
+            self.dimension_values(),
+        ];
+        O::ConstStruct(fields.into_iter().zip(values).collect())
     }
 
     /// The default value `v{destination}`: a vector of zero elements (`""` for

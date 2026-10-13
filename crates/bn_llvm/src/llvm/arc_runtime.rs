@@ -13,7 +13,6 @@
 //! (`@.bn_cls_*`, null for a region), `+8` the core id.
 
 use std::collections::BTreeSet;
-use std::fmt::Write as _;
 
 use bn_ir::{FunctionKind, Module};
 
@@ -33,10 +32,20 @@ pub(crate) const STOPPING_GLOBAL: &str = ".bn_stopping";
 pub(crate) const STOP_CODE_GLOBAL: &str = ".bn_stop_code";
 
 /// The definitions of the two `STOP` globals.
-pub(crate) fn stop_globals() -> String {
-    format!(
-        "@{STOPPING_GLOBAL} = private global i1 false\n@{STOP_CODE_GLOBAL} = private global i32 0\n"
-    )
+pub(crate) fn emit_stop_globals(text: &mut crate::ir::LlvmModule) {
+    use crate::ir::{Linkage, LlvmGlobal};
+    let private =
+        |name: &str, ty, init| LlvmGlobal::variable(name, ty, init).with_linkage(Linkage::Private);
+    text.global(private(
+        STOPPING_GLOBAL,
+        LlvmType::I1,
+        LlvmOperand::bool(false),
+    ));
+    text.global(private(
+        STOP_CODE_GLOBAL,
+        LlvmType::I32,
+        LlvmOperand::int(0),
+    ));
 }
 
 /// In a dispatch trampoline, after the task returns: a task that stopped
@@ -336,9 +345,12 @@ fn weak_read() -> LlvmFunction {
 /// The ARC glue of a module whose objects and regions use the core;
 /// `allocated` names the classes `NEW` creates (their class constants are
 /// defined by the preamble).
-pub(crate) fn glue(module: &Module, allocated: &BTreeSet<String>) -> String {
-    let mut text = String::new();
-    crate::ir::write_declarations(&mut text, ARC_DECLARATIONS);
+pub(crate) fn emit_glue(
+    text: &mut crate::ir::LlvmModule,
+    module: &Module,
+    allocated: &BTreeSet<String>,
+) {
+    crate::ir::write_declarations(text, ARC_DECLARATIONS);
     for function in [
         retain(),
         release(),
@@ -346,7 +358,7 @@ pub(crate) fn glue(module: &Module, allocated: &BTreeSet<String>) -> String {
         weak_id(),
         weak_read(),
     ] {
-        let _ = write!(text, "\n{function}");
+        text.blank();
+        text.function(function);
     }
-    text
 }

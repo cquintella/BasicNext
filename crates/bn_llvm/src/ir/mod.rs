@@ -12,6 +12,7 @@ pub mod block;
 pub mod debug;
 pub mod emit;
 pub mod function;
+pub mod global;
 pub mod instructions;
 pub mod module;
 pub mod operands;
@@ -19,12 +20,13 @@ pub mod types;
 
 pub use abi::{AbiType, Declaration, Intrinsic, RuntimeFn, VariadicFn, write_declarations};
 pub use block::BasicBlock;
-pub use debug::{DebugFormat, DebugMetadata, DebugNode, MdRef};
+pub use debug::{DebugFormat, DebugMetadata, MdRef};
 pub use emit::InstSink;
 pub use function::LlvmFunction;
-pub use instructions::{BinaryOp, CastOp, FCmpCond, ICmpCond, InstructionEntry, LlvmInst};
-pub use module::LlvmModule;
-pub use operands::{LlvmOperand, escape_llvm};
+pub use global::{Linkage, LlvmGlobal};
+pub use instructions::{BinaryOp, CastOp, FCmpCond, ICmpCond, LlvmInst};
+pub use module::{DebugScopes, LlvmModule};
+pub use operands::LlvmOperand;
 pub use types::LlvmType;
 
 #[cfg(test)]
@@ -33,93 +35,31 @@ mod tests {
 
     #[test]
     fn full_function_emission_pipeline() {
-        let mut func = LlvmFunction::new_definition(
-            "min_max",
-            LlvmType::Struct(vec![LlvmType::I32, LlvmType::I32]),
-            vec![
-                (LlvmType::I32, "x".to_string()),
-                (LlvmType::I32, "y".to_string()),
-            ],
-        );
-
+        let pair = LlvmType::struct_of([LlvmType::I32, LlvmType::I32]);
+        let params = vec![
+            (LlvmType::I32, "x".to_string()),
+            (LlvmType::I32, "y".to_string()),
+        ];
+        let mut func = LlvmFunction::new_definition("min_max", pair.clone(), params);
         let entry = func.add_block("entry");
-        let cmp = InstructionEntry::assign(
-            "is_less",
-            LlvmInst::ICmp {
-                cond: ICmpCond::Slt,
-                ty: LlvmType::I32,
-                lhs: LlvmOperand::reg("x"),
-                rhs: LlvmOperand::reg("y"),
-            },
-        );
-        entry.push_entry(cmp);
-
-        let cond_br = LlvmInst::CondBr {
-            cond: LlvmOperand::reg("is_less"),
-            true_dest: "x_smaller".to_string(),
-            false_dest: "y_smaller".to_string(),
-        };
-        entry.terminate(cond_br);
-
-        let x_smaller = func.add_block("x_smaller");
-        let t1 = InstructionEntry::assign(
-            "t1",
-            LlvmInst::InsertValue {
-                agg_ty: LlvmType::Struct(vec![LlvmType::I32, LlvmType::I32]),
-                agg: LlvmOperand::undef(),
-                elem_ty: LlvmType::I32,
-                elem: LlvmOperand::reg("x"),
-                indices: vec![0],
-            },
-        );
-        let t2 = InstructionEntry::assign(
-            "t2",
-            LlvmInst::InsertValue {
-                agg_ty: LlvmType::Struct(vec![LlvmType::I32, LlvmType::I32]),
-                agg: LlvmOperand::reg("t1"),
-                elem_ty: LlvmType::I32,
-                elem: LlvmOperand::reg("y"),
-                indices: vec![1],
-            },
-        );
-        x_smaller.push_entry(t1);
-        x_smaller.push_entry(t2);
-        x_smaller.terminate(LlvmInst::Ret {
-            val: Some((
-                LlvmType::Struct(vec![LlvmType::I32, LlvmType::I32]),
-                LlvmOperand::reg("t2"),
-            )),
-        });
-
-        let y_smaller = func.add_block("y_smaller");
-        let t3 = InstructionEntry::assign(
-            "t3",
-            LlvmInst::InsertValue {
-                agg_ty: LlvmType::Struct(vec![LlvmType::I32, LlvmType::I32]),
-                agg: LlvmOperand::undef(),
-                elem_ty: LlvmType::I32,
-                elem: LlvmOperand::reg("y"),
-                indices: vec![0],
-            },
-        );
-        let t4 = InstructionEntry::assign(
-            "t4",
-            LlvmInst::InsertValue {
-                agg_ty: LlvmType::Struct(vec![LlvmType::I32, LlvmType::I32]),
-                agg: LlvmOperand::reg("t3"),
-                elem_ty: LlvmType::I32,
-                elem: LlvmOperand::reg("x"),
-                indices: vec![1],
-            },
-        );
-        y_smaller.push_entry(t3);
-        y_smaller.push_entry(t4);
-        y_smaller.terminate(LlvmInst::Ret {
-            val: Some((
-                LlvmType::Struct(vec![LlvmType::I32, LlvmType::I32]),
-                LlvmOperand::reg("t4"),
-            )),
-        });
+        let (x, y) = (LlvmOperand::reg("x"), LlvmOperand::reg("y"));
+        let less = LlvmInst::icmp(ICmpCond::Slt, LlvmType::I32, x.clone(), y.clone());
+        entry.push_assign("is_less", less);
+        let branch = LlvmInst::cond_br(LlvmOperand::reg("is_less"), "x_smaller", "y_smaller");
+        entry.terminate(branch);
+        for (label, first, second, names) in [
+            ("x_smaller", &x, &y, ["t1", "t2"]),
+            ("y_smaller", &y, &x, ["t3", "t4"]),
+        ] {
+            let block = func.add_block(label);
+            let insert = |agg, value: &LlvmOperand, index| {
+                LlvmInst::insert(pair.clone(), agg, LlvmType::I32, value.clone(), index)
+            };
+            block.push_assign(names[0], insert(LlvmOperand::undef(), first, 0));
+            block.push_assign(names[1], insert(LlvmOperand::reg(names[0]), second, 1));
+            let result = Some((pair.clone(), LlvmOperand::reg(names[1])));
+            block.terminate(LlvmInst::Ret { val: result });
+        }
 
         let output = func.to_string();
         assert!(output.starts_with("define { i32, i32 } @min_max(i32 %x, i32 %y) {"));

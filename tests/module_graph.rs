@@ -273,10 +273,8 @@ fn module_paths_match_file_names_letter_for_letter() {
         let error = load(Path::new("tests/modules/letter-case").join(entry))
             .expect_err("a name that differs in case is not found");
         assert_eq!(error.diagnostic.code, "MODULE_NOT_FOUND", "{entry}");
-        assert!(
-            error.diagnostic.message.contains(looked_for),
-            "{entry}: {}",
-            error.diagnostic.message
-        );
+        // The message names the path with the host's separator.
+        let message = error.diagnostic.message.replace('\\', "/");
+        assert!(message.contains(looked_for), "{entry}: {message}");
     }
 }

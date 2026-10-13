@@ -13,6 +13,8 @@
 use super::*;
 use crate::ir::InstSink as _;
 use crate::ir::LlvmType;
+#[path = "input_runtime.rs"]
+mod input_runtime;
 
 pub(crate) fn integer_kind(ty: &Type) -> IntegerType {
     match ty {
@@ -707,89 +709,18 @@ pub(crate) fn parse_integer(value: &str) -> Option<i128> {
     bn_types::literals::parse_integer(value)
 }
 
-pub(crate) fn input_runtime_ir() -> String {
-    let mut text = String::from("\n");
-    crate::ir::write_declarations(&mut text, crate::runtime_abi::INPUT_DECLARATIONS);
-    text.push_str(INPUT_FUNCTION);
-    text
+/// Declares the C functions `bn_input` calls and defines it.
+pub(crate) fn emit_input_runtime(text: &mut crate::ir::LlvmModule) {
+    text.blank();
+    crate::ir::write_declarations(text, crate::runtime_abi::INPUT_DECLARATIONS);
+    text.blank();
+    text.function(input_runtime::input_function());
 }
 
-/// `bn_input`, still LLVM text (bucket 0.6.5 T.5.2).
-const INPUT_FUNCTION: &str = r"
-define ptr @bn_input(ptr %input.reusable) {
-entry:
-  %input.initial = call ptr @realloc(ptr %input.reusable, i64 64)
-  br label %input.read
-input.read:
-  %input.buffer = phi ptr [ %input.initial, %entry ], [ %input.active.buffer, %input.store ], [ %input.buffer, %input.carriage ]
-  %input.capacity = phi i64 [ 64, %entry ], [ %input.active.capacity, %input.store ], [ %input.capacity, %input.carriage ]
-  %input.index = phi i64 [ 0, %entry ], [ %input.next, %input.store ], [ %input.index, %input.carriage ]
-  %input.char = call i32 @getchar()
-  %input.eof = icmp eq i32 %input.char, -1
-  br i1 %input.eof, label %input.eof.check, label %input.line.check
-input.eof.check:
-  %input.empty = icmp eq i64 %input.index, 0
-  br i1 %input.empty, label %input.eof.out, label %input.done
-input.line.check:
-  %input.newline = icmp eq i32 %input.char, 10
-  %input.cr = icmp eq i32 %input.char, 13
-  br i1 %input.newline, label %input.done, label %input.cr.check
-input.cr.check:
-  br i1 %input.cr, label %input.carriage, label %input.nul.check
-input.nul.check:
-  %input.nul = icmp eq i32 %input.char, 0
-  br i1 %input.nul, label %input.nul.stop, label %input.store.check
-input.nul.stop:
-  call void @bn_rt_input_nul()
-  unreachable
-input.carriage:
-  br label %input.read
-input.store.check:
-  %input.required = add i64 %input.index, 2
-  %input.must.grow = icmp ugt i64 %input.required, %input.capacity
-  br i1 %input.must.grow, label %input.grow, label %input.keep
-input.grow:
-  %input.new.capacity = shl i64 %input.capacity, 1
-  %input.grown = call ptr @realloc(ptr %input.buffer, i64 %input.new.capacity)
-  br label %input.store
-input.keep:
-  br label %input.store
-input.store:
-  %input.active.buffer = phi ptr [ %input.grown, %input.grow ], [ %input.buffer, %input.keep ]
-  %input.active.capacity = phi i64 [ %input.new.capacity, %input.grow ], [ %input.capacity, %input.keep ]
-  %input.byte = trunc i32 %input.char to i8
-  %input.slot = getelementptr i8, ptr %input.active.buffer, i64 %input.index
-  store i8 %input.byte, ptr %input.slot
-  %input.next = add i64 %input.index, 1
-  br label %input.read
-input.done:
-  %input.end = getelementptr i8, ptr %input.buffer, i64 %input.index
-  store i8 0, ptr %input.end
-  ret ptr %input.buffer
-input.eof.out:
-  call void @free(ptr %input.buffer)
-  ret ptr @.bn_eof
-}
-";
-
-pub(crate) fn string_byte_length_ir() -> &'static str {
-    r"
-define i64 @bn_string_byte_length(ptr %text) {
-entry:
-  br label %length.scan
-length.scan:
-  %length.index = phi i64 [ 0, %entry ], [ %length.next, %length.more ]
-  %length.slot = getelementptr i8, ptr %text, i64 %length.index
-  %length.byte = load i8, ptr %length.slot
-  %length.done = icmp eq i8 %length.byte, 0
-  br i1 %length.done, label %length.out, label %length.more
-length.more:
-  %length.next = add i64 %length.index, 1
-  br label %length.scan
-length.out:
-  ret i64 %length.index
-}
-"
+/// Defines `bn_string_byte_length`.
+pub(crate) fn emit_string_byte_length(text: &mut crate::ir::LlvmModule) {
+    text.blank();
+    text.function(input_runtime::string_byte_length_function());
 }
 
 pub(crate) fn instruction_name(instruction: &Instruction) -> &'static str {

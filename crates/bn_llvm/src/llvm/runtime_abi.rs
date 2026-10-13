@@ -462,20 +462,58 @@ mod tests {
     use super::{BN_RT_DECLARATIONS, PRINTF, memmove, overflow};
     use crate::ir::{Declaration, LlvmType};
 
-    /// Bucket 0.6.5 T.5.1: a `declare` comes from this table only; no other
-    /// backend source writes one as text.
+    /// Bucket 0.6.5 T.5.1 and T.5.5: a `declare` comes from this table only, and
+    /// no backend source writes LLVM text (a definition, a global, a debug
+    /// attachment); `LlvmModule` takes typed pieces only.
     #[test]
-    fn no_backend_source_writes_a_declaration_as_text() {
-        let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/llvm");
-        for entry in std::fs::read_dir(directory).expect("read the backend sources") {
-            let path = entry.expect("source entry").path();
+    fn no_backend_source_writes_llvm_text() {
+        let text_forms = [
+            "declare ",
+            "define ",
+            "!dbg",
+            "unnamed_addr",
+            "thread_local",
+            "external global",
+            "private ",
+            "internal ",
+            "= global",
+            "constant [",
+        ];
+        // The emitter is `lib.rs`, any other file at the top of `src/` and
+        // `src/llvm/`; only `src/ir/` renders text.
+        let source_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut sources = Vec::new();
+        for directory in [source_root.clone(), source_root.join("llvm")] {
+            for entry in std::fs::read_dir(directory).expect("read the backend sources") {
+                let path = entry.expect("source entry").path();
+                if path.extension().is_some_and(|extension| extension == "rs") {
+                    sources.push(path);
+                }
+            }
+        }
+        assert!(
+            sources.iter().any(|path| path.ends_with("lib.rs")),
+            "the gate reads the backend sources"
+        );
+        for path in sources {
             let source = std::fs::read_to_string(&path).expect("read a backend source");
             let code = source.split("#[cfg(test)]").next().unwrap_or_default();
+            // Only string literals can carry LLVM text; the odd pieces of a line
+            // split at its quotes are the literal contents.
             let written = code
                 .lines()
                 .filter(|line| !line.trim_start().starts_with("//"))
-                .any(|line| line.contains("declare "));
-            assert!(!written, "{} writes a declaration", path.display());
+                .find(|line| {
+                    let literals = line.split('"').skip(1).step_by(2);
+                    literals
+                        .into_iter()
+                        .any(|literal| text_forms.iter().any(|form| literal.contains(form)))
+                });
+            assert!(
+                written.is_none(),
+                "{} writes LLVM text: {written:?}",
+                path.display()
+            );
         }
     }
 

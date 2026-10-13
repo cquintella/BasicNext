@@ -22,7 +22,7 @@ use bn_source::{Position, Span};
 use bn_types::{FloatType, IntegerType, Type};
 
 pub mod ir;
-use ir::{LlvmType, escape_llvm};
+use ir::LlvmType;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Target {
@@ -284,19 +284,12 @@ pub fn lower_validated_module_with_diagnostics(
     let module = validated.as_module();
     let start = module.entry().expect("validated entry point");
     let functions = analyze_reachable(module, start)?;
-    let mut text = crate::ir::LlvmModule::from(module_header());
-    for (index, root) in policy
-        .read_roots
-        .iter()
-        .chain(&policy.write_roots)
-        .enumerate()
-    {
-        let _ = writeln!(
-            text,
-            "@.bn_policy_root{index} = private constant [{} x i8] c\"{}\\00\"",
-            root.len() + 1,
-            escape_llvm(root)
-        );
+    let mut text = crate::ir::LlvmModule::new();
+    emit_module_header(&mut text);
+    let roots = policy.read_roots.iter().chain(&policy.write_roots);
+    for (index, root) in roots.enumerate() {
+        let name = format!(".bn_policy_root{index}");
+        text.global(crate::ir::LlvmGlobal::text(name, root, false));
     }
     emit_preamble(
         &mut text,
@@ -321,7 +314,7 @@ pub fn lower_validated_module_with_diagnostics(
     define_type_name_globals(&mut text);
     define_trap_globals(&mut text, render, wasm32);
     Ok(match debug {
-        Some(info) => attach_debug_info(&text.render(), info),
+        Some(info) => attach_debug_info(&text, info),
         None => text.render(),
     })
 }
@@ -987,7 +980,7 @@ use functions::{
 };
 #[path = "llvm/preamble.rs"]
 mod preamble;
-use preamble::{emit_preamble, module_header};
+use preamble::{emit_module_header, emit_preamble};
 #[path = "llvm/emission3.rs"]
 mod emission3;
 use emission3::{
@@ -1009,11 +1002,10 @@ use arc::{REGION_HEADER_BYTES, held_object, is_class_type, is_region_type, objec
 use helpers::{
     bncrypto_method, bnjson_member, bnsqlite_method, carries_bncrypto_bytes, carries_bnjson,
     carries_bnsqlite_connection, class_init_flag, coerce_return_operand, coerce_to_type,
-    extend_to_i64, float_constant, input_runtime_ir, instruction_name, integer_constant,
-    integer_kind, is_bncrypto_bytes_type, is_bnsqlite_connection_type, is_unsigned,
-    parse_float_constant, parse_integer, sanitize_symbol, static_global_name,
-    string_byte_length_ir, unsupported_call_detail, unsupported_instruction,
-    unsupported_instruction_detail,
+    emit_input_runtime, emit_string_byte_length, extend_to_i64, float_constant, instruction_name,
+    integer_constant, integer_kind, is_bncrypto_bytes_type, is_bnsqlite_connection_type,
+    is_unsigned, parse_float_constant, parse_integer, sanitize_symbol, static_global_name,
+    unsupported_call_detail, unsupported_instruction, unsupported_instruction_detail,
 };
 use layout::{
     OBJECT_HEADER_BYTES, class_instance_bytes, class_layout_fields, field_byte_offset, field_type,

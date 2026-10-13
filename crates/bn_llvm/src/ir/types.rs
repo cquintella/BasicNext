@@ -22,30 +22,9 @@ pub enum LlvmType {
     Ptr,
     Array(usize, Box<LlvmType>),
     Struct(Vec<LlvmType>),
-    Vector(usize, Box<LlvmType>),
 }
 
 impl LlvmType {
-    /// Returns a conventional natural alignment in bytes for this type.
-    #[must_use]
-    pub fn default_alignment(&self) -> usize {
-        match self {
-            Self::I1 | Self::I8 => 1,
-            Self::I16 => 2,
-            Self::I32 | Self::Float => 4,
-            Self::I128 => 16,
-            Self::I64 | Self::Double | Self::Ptr => 8,
-            Self::Array(_, elem) => elem.default_alignment(),
-            Self::Struct(fields) => fields
-                .iter()
-                .map(Self::default_alignment)
-                .max()
-                .unwrap_or(1),
-            Self::Vector(len, elem) => (elem.default_alignment() * len).next_power_of_two(),
-            Self::Void => 1,
-        }
-    }
-
     /// The bit width of an integer type (`i1` … `i128`).
     #[must_use]
     pub const fn integer_bits(&self) -> Option<u32> {
@@ -97,7 +76,6 @@ impl fmt::Display for LlvmType {
                 }
                 write!(f, " }}")
             }
-            Self::Vector(len, elem) => write!(f, "<{len} x {elem}>"),
         }
     }
 }
@@ -133,18 +111,5 @@ mod tests {
             LlvmType::Struct(vec![LlvmType::Ptr, LlvmType::I64]),
         ]);
         assert_eq!(nested.to_string(), "{ i1, { ptr, i64 } }");
-
-        let vec = LlvmType::Vector(4, Box::new(LlvmType::Float));
-        assert_eq!(vec.to_string(), "<4 x float>");
-    }
-
-    #[test]
-    fn alignment_checks() {
-        assert_eq!(LlvmType::I1.default_alignment(), 1);
-        assert_eq!(LlvmType::I32.default_alignment(), 4);
-        assert_eq!(LlvmType::I64.default_alignment(), 8);
-        assert_eq!(LlvmType::Ptr.default_alignment(), 8);
-        let s = LlvmType::Struct(vec![LlvmType::I1, LlvmType::I64]);
-        assert_eq!(s.default_alignment(), 8);
     }
 }

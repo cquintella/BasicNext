@@ -40,6 +40,7 @@ const LLVM_KEYWORDS: &[&str] = &[
     "target",
     "attributes",
     "source_filename",
+    "thread_local",
     "call",
     "ret",
     "br",
