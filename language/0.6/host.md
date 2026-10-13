@@ -163,10 +163,10 @@ A file is released with `Close()`. `DELETE` was removed in 0.5 and is not
 sugar over `Close`: HOST resources close through their capability methods
 (see "HOST: `Close` / `*_close` only" in [`0.6.md`](0.6.md)).
 
-TODO (normative gap): what happens to an open `FS.File` that becomes
-unreachable without `Close` (closed automatically, or leaked until process
-exit) is not specified; unifying HOST handles with ARC classes is a later
-proposal. Programs must call `Close`.
+An open `FS.File` that becomes unreachable without `Close` — its last
+binding ends, by scope exit, reassignment or `RELEASE` — is closed at that
+point, as `Close` would, and any error of that close is discarded (BDFL,
+2026-10-12). Programs should still call `Close` to see its result.
 
 A user class must not `EXTENDS FS.File`. Hold a `File` in a field instead.
 

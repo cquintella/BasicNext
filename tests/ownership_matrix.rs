@@ -19,7 +19,13 @@ mod support;
 
 use std::time::Duration;
 
-use support::{TestDir, bnc, bni, run};
+#[cfg(unix)]
+use support::matrix::sanitizer_failures;
+use support::{
+    TestDir, bnc, bni,
+    matrix::{Cell, KnownFailures, run_matrix, selected},
+    run,
+};
 
 const HEADER: &str = "CLASS Box
     PUBLIC name AS STRING = \"\"
@@ -303,8 +309,8 @@ const CELLS: &[(&str, &str, &str)] = &[
 /// Cells a backend does not run as the rules define, each with what it does
 /// instead (a diagnostic code, or `WRONG`). A ratchet: remove a cell when
 /// it passes; never add one to make the test green.
-const KNOWN_BNI_FAILURES: &[(&str, &str)] = &[];
-const KNOWN_BNC_FAILURES: &[(&str, &str)] = &[];
+const KNOWN_BNI_FAILURES: KnownFailures = &[];
+const KNOWN_BNC_FAILURES: KnownFailures = &[];
 
 fn source(body: &str) -> String {
     format!(
@@ -312,46 +318,16 @@ fn source(body: &str) -> String {
     )
 }
 
-fn outcome(output: &support::ProcessOutput, expected: &str) -> Result<(), String> {
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    if output.status.success() && stdout == expected {
-        return Ok(());
-    }
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let code = stderr
-        .lines()
-        .find_map(|line| line.split_once("error[").map(|(_, code)| code))
-        .and_then(|code| code.split_once(']'))
-        .map(|(code, _)| code.to_owned());
-    Err(code.unwrap_or_else(|| "WRONG".to_owned()))
-}
-
-fn run_cell(
-    body: &str,
-    expected: &str,
-    directory: &TestDir,
-    index: usize,
-) -> [Result<(), String>; 2] {
-    let timeout = Duration::from_secs(60);
-    let path = directory.join(format!("cell{index}.bn"));
-    std::fs::write(&path, source(body)).expect("write cell");
-    let mut interpreted = run(bni().arg("run").arg(&path), None, timeout).expect("run bni");
-    let interpreted_result = outcome(&interpreted, expected);
-    interpreted.accept_expected_status();
-    let artifact = directory.join(format!("cell{index}{}", std::env::consts::EXE_SUFFIX));
-    let mut built = run(bnc().arg(&path).arg("-o").arg(&artifact), None, timeout).expect("run bnc");
-    let compiled_result = if built.status.success() {
-        let mut compiled = run(&mut std::process::Command::new(&artifact), None, timeout)
-            .expect("run compiled cell");
-        let result = outcome(&compiled, expected);
-        compiled.accept_expected_status();
-        result
-    } else {
-        let result = outcome(&built, expected);
-        built.accept_expected_status();
-        result
-    };
-    [interpreted_result, compiled_result]
+/// Every cell, with its full source.
+fn cells() -> Vec<Cell> {
+    CELLS
+        .iter()
+        .map(|(name, body, expected)| Cell {
+            name: (*name).to_owned(),
+            source: source(body),
+            expected: (*expected).to_owned(),
+        })
+        .collect()
 }
 
 /// The `arc …` lines `BN_ARC_TRACE=1` writes to standard error.
@@ -413,71 +389,10 @@ fn the_arc_trace_is_the_same_on_both_backends() {
 #[test]
 fn objects_are_released_once_where_the_rules_say_on_both_backends() {
     let directory = TestDir::new("ownership-matrix").expect("create test directory");
-    // `BN_OWNERSHIP_CELL=<text>` prints the source of every cell whose name
-    // contains it, to study one by hand.
-    if let Ok(only) = std::env::var("BN_OWNERSHIP_CELL") {
-        for (cell, body, expected) in CELLS
-            .iter()
-            .filter(|(cell, ..)| cell.contains(only.as_str()))
-        {
-            eprintln!("== {cell}\n{}-- expected\n{expected}", source(body));
-        }
-    }
-    let workers = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
-    let next = std::sync::atomic::AtomicUsize::new(0);
-    let mut results = std::thread::scope(|scope| {
-        let handles = (0..workers)
-            .map(|_| {
-                scope.spawn(|| {
-                    let mut done = Vec::new();
-                    loop {
-                        let index = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                        let Some((_, body, expected)) = CELLS.get(index) else {
-                            return done;
-                        };
-                        done.push((index, run_cell(body, expected, &directory, index)));
-                    }
-                })
-            })
-            .collect::<Vec<_>>();
-        handles
-            .into_iter()
-            .flat_map(|handle| handle.join().expect("matrix worker"))
-            .collect::<Vec<_>>()
-    });
-    results.sort_by_key(|(index, _)| *index);
-    let mut report = Vec::new();
-    let mut failing = Vec::new();
-    for (index, outcomes) in results {
-        let cell = CELLS[index].0;
-        for ((backend, known), result) in [("bni", KNOWN_BNI_FAILURES), ("bnc", KNOWN_BNC_FAILURES)]
-            .into_iter()
-            .zip(outcomes)
-        {
-            if let Err(reason) = &result {
-                failing.push(format!("{backend}    (\"{cell}\", \"{reason}\"),"));
-            }
-            let listed = known.iter().find(|(listed, _)| *listed == cell);
-            match (result, listed) {
-                (Ok(()), Some(_)) => report.push(format!(
-                    "{backend} `{cell}` now passes: remove it from its known-failure list"
-                )),
-                (Err(reason), None) => report.push(format!("{backend} `{cell}` fails: {reason}")),
-                (Err(reason), Some((_, listed_reason))) if reason != *listed_reason => {
-                    report.push(format!(
-                        "{backend} `{cell}` fails differently: {reason}, listed {listed_reason}"
-                    ));
-                }
-                _ => {}
-            }
-        }
-    }
-    assert!(
-        report.is_empty(),
-        "{}\n\nfailing cells:\n{}",
-        report.join("\n"),
-        failing.join("\n")
-    );
+    let cells = cells();
+    // `BN_OWNERSHIP_CELL=<text>` runs only the cells whose name contains it.
+    let cells = selected(cells, "BN_OWNERSHIP_CELL");
+    run_matrix(&cells, &directory, KNOWN_BNI_FAILURES, KNOWN_BNC_FAILURES);
 }
 
 /// Every cell lowered with explicit ownership passes the validator's balance
@@ -629,71 +544,23 @@ fn concurrent_tasks_destroy_every_object_once_on_both_backends() {
 #[cfg(unix)]
 #[test]
 fn native_ownership_runs_clean_under_address_sanitizer() {
-    use std::os::unix::fs::PermissionsExt;
-    let directory = TestDir::new("ownership-asan").expect("create test directory");
-    let wrapper = directory.join("asan-clang");
-    std::fs::write(
-        &wrapper,
-        "#!/bin/sh\nexec clang -fsanitize=address -fno-omit-frame-pointer \"$@\"\n",
-    )
-    .expect("write clang wrapper");
-    std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755))
-        .expect("make the wrapper executable");
-    std::fs::write(
-        directory.join("config.toml"),
-        format!("[toolchain]\nclang = \"{}\"\n", wrapper.display()),
-    )
-    .expect("write config.toml");
-    let timeout = Duration::from_secs(120);
-    let concurrent = std::fs::canonicalize("tests/grammar/valid/dispatch-objects-concurrently.bn")
-        .expect("concurrency program");
-    let mut programs = CELLS
-        .iter()
-        .enumerate()
-        .filter(|(_, (cell, _, _))| !KNOWN_BNC_FAILURES.iter().any(|(known, _)| known == cell))
-        .map(|(index, (cell, body, expected))| {
-            let path = directory.join(format!("cell{index}.bn"));
-            std::fs::write(&path, source(body)).expect("write cell");
-            ((*cell).to_owned(), path, (*expected).to_owned())
+    let mut cells = cells()
+        .into_iter()
+        .filter(|cell| {
+            !KNOWN_BNC_FAILURES
+                .iter()
+                .any(|(known, _)| *known == cell.name)
         })
         .collect::<Vec<_>>();
-    programs.push(("concurrent tasks".into(), concurrent, "done\n".into()));
-    let mut failures = Vec::new();
-    for (index, (cell, path, expected)) in programs.iter().enumerate() {
-        let artifact = directory.join(format!("asan{index}"));
-        let mut built = run(
-            bnc()
-                .current_dir(directory.path())
-                .arg(path)
-                .arg("-o")
-                .arg(&artifact),
-            None,
-            timeout,
-        )
-        .expect("run bnc");
-        built.accept_expected_status();
-        if !built.status.success() {
-            failures.push(format!(
-                "{cell}: build: {}",
-                String::from_utf8_lossy(&built.stderr)
-            ));
-            continue;
-        }
-        let mut ran = run(
-            std::process::Command::new(&artifact).env("ASAN_OPTIONS", "detect_leaks=0"),
-            None,
-            timeout,
-        )
-        .expect("run the sanitized program");
-        ran.accept_expected_status();
-        let stderr = String::from_utf8_lossy(&ran.stderr);
-        if !ran.status.success()
-            || stderr.contains("AddressSanitizer")
-            || String::from_utf8_lossy(&ran.stdout) != *expected
-        {
-            failures.push(format!("{cell}: {stderr}"));
-        }
-    }
-    assert!(programs.len() > 30, "only {} programs", programs.len());
+    let concurrent =
+        std::fs::read_to_string("tests/grammar/valid/dispatch-objects-concurrently.bn")
+            .expect("concurrency program");
+    cells.push(Cell {
+        name: "concurrent tasks".to_owned(),
+        source: concurrent,
+        expected: "done\n".to_owned(),
+    });
+    assert!(cells.len() > 30, "only {} programs", cells.len());
+    let failures = sanitizer_failures(&cells, "ownership-asan");
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

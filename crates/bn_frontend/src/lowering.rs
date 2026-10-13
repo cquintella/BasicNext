@@ -285,6 +285,9 @@ struct Builder<'a> {
     parameters: HashSet<SymbolId>,
     /// The function named by each function constant emitted so far.
     function_names: HashMap<ValueId, String>,
+    /// The next hidden local (`builder/places.rs`), counted down from below
+    /// the synthetic `SELF`.
+    next_hidden_local: u32,
 }
 
 /// Returns a source-spanned diagnostic if the AST contains a construct that

@@ -13,6 +13,8 @@ use std::{
 use serde_json::json;
 use wait_timeout::ChildExt;
 
+pub mod matrix;
+
 static UNIQUE_ID: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug)]

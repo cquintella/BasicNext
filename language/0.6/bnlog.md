@@ -169,8 +169,8 @@ type with the set fields of `defaults` (an unset field clears that default).
 and is idempotent. A timeout outside `1..60000` ms is `INVALID_ARGUMENT`.
 Every call on a closed logger, except `Close`, is `CLOSED`.
 
-TODO (normative gap, Carlos decides later): a way to send fields beyond
-those of `Log.Event` ("STRUCT desestruturada").
+Outside 0.6 (BDFL, 2026-10-12): a way to send fields beyond those of
+`Log.Event` ("STRUCT desestruturada") is a later proposal.
 
 ## Formats
 
@@ -180,12 +180,13 @@ A logger writes every record as one line in the format it was made with
 A record line has no line terminator of its own: the destination writes the
 line followed by exactly one line feed. Fields are written in key order,
 and a field whose key is sensitive is never written in any format. A key is
-sensitive when, lower-cased with `-` and `.` read as `_`, it is `query`,
-`body`, `passwd` or `tls_key`, or it contains `authorization`, `cookie`,
-`session`, `password`, `secret`, `token`, `api_key`, `apikey`,
-`access_key`, `private_key`, `credential`, `bearer`, `jwt` or `signature`.
-TODO (normative gap, Carlos decides): `request_body` and `passwd_hash` are
-written, while `token_count` is not.
+read lower-cased, with `-` and `.` read as `_`, and split at `_` into
+segments. It is sensitive when one segment, or several consecutive segments
+joined by `_`, is `query`, `body`, `passwd` or `tls_key`, or when it
+contains `authorization`, `cookie`, `session`, `password`, `secret`,
+`token`, `api_key`, `apikey`, `access_key`, `private_key`, `credential`,
+`bearer`, `jwt` or `signature` (BDFL, 2026-10-12: the safer reading, so
+`request_body`, `passwd_hash` and `token_count` are all withheld).
 
 - **`"JSON"` (JSON Lines):** one UTF-8 JSON object,
   `{"fields":{…},"label":…,"level":…,"message":…,"timestamp":…}`, members in

@@ -14,6 +14,8 @@ mod control_flow;
 mod expressions;
 #[path = "builder/ownership.rs"]
 pub(crate) mod ownership;
+#[path = "builder/places.rs"]
+mod places;
 #[path = "builder/statements.rs"]
 mod statements;
 
@@ -69,6 +71,7 @@ impl<'a> Builder<'a> {
             weak_locals: HashSet::new(),
             parameters: HashSet::new(),
             function_names: HashMap::new(),
+            next_hidden_local: u32::MAX - 1,
         }
     }
 

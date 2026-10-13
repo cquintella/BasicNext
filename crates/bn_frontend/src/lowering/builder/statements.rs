@@ -173,40 +173,22 @@ impl Builder<'_> {
     }
 
     /// Stores `value` into the assignment target `target` (binding, element,
-    /// member, field or static). Shared by compound assignment statements
-    /// and increment-expressions (0.6.1 S1').
-    #[allow(clippy::too_many_lines)] // One arm per assignable place; moved verbatim from the statement.
+    /// member, field, static, or a place below a `STRUCT` value). Shared by
+    /// assignment statements and increment-expressions (0.6.1 S1').
     pub(crate) fn store_to_target(
         &mut self,
         target: &Expression,
         value: ValueId,
         span: Span,
     ) -> Result<(), Diagnostic> {
-        let place = self.assignment_place(target)?;
+        let place = self.resolve_place(target)?;
         let target_type = type_at(self.model, target.span)?;
-        let weak_target = matches!(&place, AssignPlace::Binding { symbol, .. } if self.weak_locals.contains(symbol))
-            || self.is_weak_field(target);
-        // Explicit ownership: the write takes an owned value and gives back
-        // the previous content, which is released right after.
-        let (value, previous) = if self.is_arc(&target_type) && !weak_target {
-            (self.owned_value(value, span), Some(self.value()))
-        } else {
-            (value, None)
-        };
-        self.write_place(place, value, previous, &target_type, span);
-        if let Some(previous) = previous {
-            self.emit(Instruction::Release {
-                value: previous,
-                destructor: None,
-                span,
-            });
-        }
-        Ok(())
+        self.assign_place(place, value, &target_type, span)
     }
 
     /// Emits the write instruction for `place`.
     #[allow(clippy::too_many_lines)] // One arm per assignable place.
-    fn write_place(
+    pub(super) fn write_place(
         &mut self,
         place: AssignPlace,
         value: ValueId,

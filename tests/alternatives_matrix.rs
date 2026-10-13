@@ -14,13 +14,16 @@
 
 mod support;
 
-use std::{fmt::Write as _, time::Duration};
+use std::fmt::Write as _;
 
 use bn_types::{
     FloatType, IntegerType, Type,
     literals::{NumericClass, numeric_alternative},
 };
-use support::{TestDir, bnc, bni, run};
+use support::{
+    TestDir,
+    matrix::{Cell, KnownFailures, run_matrix, selected},
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Kind {
@@ -264,13 +267,6 @@ impl Flow {
             Self::Static => "static",
         }
     }
-}
-
-/// A program for one alternative and one flow, and the text it must print.
-struct Case {
-    cell: String,
-    source: String,
-    expected: String,
 }
 
 fn is_line(label: &str, held: Kind, tested: &[Kind]) -> String {
@@ -529,7 +525,7 @@ fn static_field(members: &[Kind], alternative: &str) -> Option<Parts> {
 
 /// The case for `members` through `flow`, or `None` when the flow does not
 /// apply (no field initializer, no wider alternative, no literal class).
-fn case(members: &[Kind], flow: Flow) -> Option<Case> {
+fn case(members: &[Kind], flow: Flow) -> Option<Cell> {
     let alternative = spelled(members);
     let parts = match flow {
         Flow::Linear => linear(members, &alternative),
@@ -547,8 +543,8 @@ fn case(members: &[Kind], flow: Flow) -> Option<Case> {
         "CLASS Box\n    PUBLIC FUNCTION CONSTRUCTOR()\n    END FUNCTION\nEND CLASS\n\n{}{START}{}    END IF\n    END IF\nEND FUNCTION\n",
         parts.declarations, parts.body
     );
-    Some(Case {
-        cell: format!("{alternative} / {}", flow.name()),
+    Some(Cell {
+        name: format!("{alternative} / {}", flow.name()),
         source,
         expected: parts.expected,
     })
@@ -580,140 +576,27 @@ fn alternatives() -> Vec<Vec<Kind>> {
 }
 
 /// Whether one backend printed `expected`; the error says how it did not.
-fn outcome(output: &support::ProcessOutput, expected: &str) -> Result<(), String> {
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    if output.status.success() && stdout == expected {
-        return Ok(());
-    }
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let diagnostic = stderr
-        .lines()
-        .find_map(|line| line.split_once("error[").map(|(_, code)| code))
-        .and_then(|code| code.split_once(']'))
-        .map(|(code, _)| code);
-    if let Some(code) = diagnostic {
-        return Err(code.to_owned());
-    }
-    Err("WRONG".to_owned())
-}
-
 /// Cells (`alternative / flow`) the native backend does not run as the
 /// language defines (the Sprint 6 phase C work), each with what it does
 /// instead: a diagnostic code, or `WRONG` for a wrong result. Remove a cell
 /// when it passes.
-const KNOWN_BNC_FAILURES: &[(&str, &str)] = &[];
+const KNOWN_BNC_FAILURES: KnownFailures = &[];
 
 /// Cells the interpreter does not run as the language defines. All ten are
 /// one defect outside alternatives: an object stored in a `STRUCT` field
 /// (`pair.slot = box`) is reported `USE_AFTER_RELEASE` at scope exit, because
 /// `SetField` skips the ownership protocol (bucket typed-llvm-emitter,
 /// Sprint 8).
-const KNOWN_BNI_FAILURES: &[(&str, &str)] = &[];
-
-fn run_case(case: &Case, directory: &TestDir, index: usize) -> [Result<(), String>; 2] {
-    let timeout = Duration::from_secs(60);
-    let path = directory.join(format!("case{index}.bn"));
-    std::fs::write(&path, &case.source).expect("write case");
-    let mut interpreted = run(bni().arg("run").arg(&path), None, timeout).expect("run bni");
-    let interpreted_result = outcome(&interpreted, &case.expected);
-    interpreted.accept_expected_status();
-    let artifact = directory.join(format!("case{index}{}", std::env::consts::EXE_SUFFIX));
-    let mut built = run(bnc().arg(&path).arg("-o").arg(&artifact), None, timeout).expect("run bnc");
-    let compiled_result = if built.status.success() {
-        let mut compiled = run(&mut std::process::Command::new(&artifact), None, timeout)
-            .expect("run compiled case");
-        let result = outcome(&compiled, &case.expected);
-        compiled.accept_expected_status();
-        result
-    } else {
-        let result = outcome(&built, &case.expected);
-        built.accept_expected_status();
-        result
-    };
-    [interpreted_result, compiled_result]
-}
+const KNOWN_BNI_FAILURES: KnownFailures = &[];
 
 #[test]
 fn alternatives_match_the_language_rule_on_both_backends() {
     let directory = TestDir::new("alternatives-matrix").expect("create test directory");
-    // `BN_MATRIX_CELL=<text>` runs only the cells whose name contains it and
-    // prints their source, to study one cell by hand.
-    let only = std::env::var("BN_MATRIX_CELL").ok();
-    let cases = alternatives()
+    let cells = alternatives()
         .iter()
         .flat_map(|members| FLOWS.iter().filter_map(|flow| case(members, *flow)))
-        .filter(|case| {
-            only.as_ref()
-                .is_none_or(|only| case.cell.contains(only.as_str()))
-        })
-        .inspect(|case| {
-            if only.is_some() {
-                eprintln!(
-                    "== {}\n{}-- expected\n{}",
-                    case.cell, case.source, case.expected
-                );
-            }
-        })
-        .collect::<Vec<_>>();
-    // Each case is two independent processes; run them on every core.
-    let workers = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
-    let next = std::sync::atomic::AtomicUsize::new(0);
-    let mut results = std::thread::scope(|scope| {
-        let handles = (0..workers)
-            .map(|_| {
-                scope.spawn(|| {
-                    let mut done = Vec::new();
-                    loop {
-                        let index = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                        let Some(case) = cases.get(index) else {
-                            return done;
-                        };
-                        done.push((index, run_case(case, &directory, index)));
-                    }
-                })
-            })
-            .collect::<Vec<_>>();
-        handles
-            .into_iter()
-            .flat_map(|handle| handle.join().expect("matrix worker"))
-            .collect::<Vec<_>>()
-    });
-    results.sort_by_key(|(index, _)| *index);
-    let mut report = Vec::new();
-    // Every failing cell, so a changed list can be pasted from the output.
-    let mut failing = Vec::new();
-    for (index, outcomes) in results {
-        let case = &cases[index];
-        for ((backend, known), result) in [("bni", KNOWN_BNI_FAILURES), ("bnc", KNOWN_BNC_FAILURES)]
-            .into_iter()
-            .zip(outcomes)
-        {
-            if let Err(reason) = &result {
-                failing.push(format!("{backend}    (\"{}\", \"{reason}\"),", case.cell));
-            }
-            let listed = known.iter().find(|(cell, _)| *cell == case.cell);
-            match (result, listed) {
-                (Ok(()), Some(_)) => report.push(format!(
-                    "{backend} `{}` now passes: remove it from its known-failure list",
-                    case.cell
-                )),
-                (Err(reason), None) => {
-                    report.push(format!("{backend} `{}` fails: {reason}", case.cell));
-                }
-                (Err(reason), Some((_, listed_reason))) if reason != *listed_reason => {
-                    report.push(format!(
-                        "{backend} `{}` fails differently: {reason}, listed {listed_reason}",
-                        case.cell
-                    ));
-                }
-                _ => {}
-            }
-        }
-    }
-    assert!(
-        report.is_empty(),
-        "{}\n\nfailing cells:\n{}",
-        report.join("\n"),
-        failing.join("\n")
-    );
+        .collect();
+    // `BN_MATRIX_CELL=<text>` runs only the cells whose name contains it.
+    let cells = selected(cells, "BN_MATRIX_CELL");
+    run_matrix(&cells, &directory, KNOWN_BNI_FAILURES, KNOWN_BNC_FAILURES);
 }

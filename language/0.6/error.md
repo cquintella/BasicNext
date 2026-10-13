@@ -27,8 +27,15 @@ owner. An operating-system error number may appear in `Cause`, never in
 [host-net.md](host-net.md), `HOST.Exec` in [0.6.md](0.6.md#hostexec-051),
 `HOST.Env` in [host-env.md](host-env.md).
 
-TODO (normative gap): code tables for `BNData`, `BNJson`, `BNWeb`, `BNLog`,
-`BNCrypto`, `BNDispatch`, `BNMath`, and `BNString`.
+Standard modules: `BNCrypto` in [bncrypto.md](bncrypto.md), `BNData` in
+[bndata.md](bndata.md), `BNDispatch` in [bndispatch.md](bndispatch.md),
+`BNJson` in [bnjson.md](bnjson.md), `BNLog` in [bnlog.md](bnlog.md),
+`BNSqlite` in [bnsqlite.md](bnsqlite.md) and `BNWeb` in [bnweb.md](bnweb.md),
+each in its "Errors" section; the values are the constants each module
+exports (`crates/bn_types/src/error_codes.rs` holds them once). `BNMath`
+and `BNString` return no `Error`: a `BNMath` misuse stops the program with a
+run-time diagnostic, and `BNString` answers `NULL` where an operation has no
+result (see [math.md](math.md), [bnstring.md](bnstring.md)).
 
 ## No default value
 
@@ -47,9 +54,9 @@ END IF
 LET missing AS Error                       // TYPE_MISMATCH: no default
 ```
 
-TODO (normative gap): whether a vector of a class type (`Box[2]`) without an
-initializer is valid; semantic analysis accepts it today while a class-typed
-binding needs `=`.
+A vector whose element type has no default — a class (`Box[2]`), an
+interface, `Error` — also needs an initializer (BDFL, 2026-10-07; [0.6.md,
+"STATIC field type defaults"](0.6.md#static-field-type-defaults-04)).
 
 **Fixtures:** `tests/grammar/valid/error-from-fallible-call.bn` (accept and
 run), `tests/grammar/invalid/error-without-initializer.bn`,

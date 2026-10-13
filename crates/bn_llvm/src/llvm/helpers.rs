@@ -58,7 +58,7 @@ pub(crate) fn coerce_integer(
     if from_ty == to_ty {
         return crate::ir::LlvmOperand::reg(format!("v{}", value.0));
     }
-    let temp = format!("coer{}_{from_ty}_{to_ty}", value.0);
+    let temp = format!("coer{}_{}_{from_ty}_{to_ty}", value.0, text.fresh_tag());
     let from_w = from_ty.integer_bits().unwrap_or(64);
     let to_w = to_ty.integer_bits().unwrap_or(64);
     let own = crate::ir::LlvmOperand::reg(format!("v{}", value.0));
@@ -101,7 +101,7 @@ pub(crate) fn coerce_to_type(
                 | LlvmType::Double
         )
     {
-        let tag = format!("unionpayload{}", value.0);
+        let tag = format!("unionpayload{}_{}", value.0, text.fresh_tag());
         let union_ty = LlvmType::struct_of([LlvmType::I1, LlvmType::Ptr, LlvmType::I64]);
         text.assign(
             tag.clone(),
@@ -163,7 +163,7 @@ pub(crate) fn coerce_to_type(
         return constructed;
     }
     if from_llvm == crate::layout::status_endpoint_ty() && to_llvm == crate::layout::vector_ty() {
-        let tag = format!("endpointcoerce{}", value.0);
+        let tag = format!("endpointcoerce{}_{}", value.0, text.fresh_tag());
         let ep_in = LlvmType::struct_of([LlvmType::I1, LlvmType::Ptr, LlvmType::I32]);
         let ep_out = LlvmType::struct_of([LlvmType::Ptr, LlvmType::I32]);
         let r = |suffix: &str| crate::ir::LlvmOperand::reg(format!("{tag}_{suffix}"));
@@ -206,7 +206,7 @@ pub(crate) fn coerce_to_type(
             }
             _ => 0,
         };
-        let tag = format!("voidcoer{}", value.0);
+        let tag = format!("voidcoer{}_{}", value.0, text.fresh_tag());
         let fat_void = crate::layout::region_ty();
         let val = crate::ir::LlvmOperand::reg(format!("v{}", value.0));
         let ptr_val = format!("{tag}_ptr");
@@ -266,7 +266,11 @@ pub(crate) fn coerce_to_type(
         (from_llvm.clone(), to_llvm.clone()),
         (LlvmType::Float, LlvmType::Double) | (LlvmType::Double, LlvmType::Float)
     ) {
-        let temp = format!("fcoer{}_{from_llvm}_{to_llvm}", value.0);
+        let temp = format!(
+            "fcoer{}_{}_{from_llvm}_{to_llvm}",
+            value.0,
+            text.fresh_tag()
+        );
         let (opcode, from, to) = if from_llvm == LlvmType::Float {
             (crate::ir::CastOp::FPExt, LlvmType::Float, LlvmType::Double)
         } else {
@@ -320,7 +324,7 @@ pub(crate) fn extend_to_i64(
     match llvm_type(ty).expect("validated extension type") {
         LlvmType::I64 => crate::ir::LlvmOperand::reg(format!("v{}", value.0)),
         llvm_ty => {
-            let temp = format!("seedext{}", value.0);
+            let temp = format!("seedext{}_{}", value.0, text.fresh_tag());
             let opcode = if is_unsigned(ty) {
                 crate::ir::CastOp::ZExt
             } else {
@@ -353,7 +357,7 @@ pub(crate) fn coerce_return_operand(
             } else {
                 crate::ir::CastOp::SExt
             };
-            let temp = format!("ret{}", value.0);
+            let temp = format!("ret{}_{}", value.0, text.fresh_tag());
             let llvm_ty = llvm_type(ty).expect("validated integer return type");
             text.assign(
                 temp.clone(),
@@ -367,7 +371,7 @@ pub(crate) fn coerce_return_operand(
             crate::ir::LlvmOperand::reg(&temp)
         }
         LlvmType::I64 => {
-            let temp = format!("ret{}", value.0);
+            let temp = format!("ret{}_{}", value.0, text.fresh_tag());
             text.assign(
                 temp.clone(),
                 crate::ir::LlvmInst::cast(
@@ -380,7 +384,7 @@ pub(crate) fn coerce_return_operand(
             crate::ir::LlvmOperand::reg(&temp)
         }
         layout if layout == crate::layout::handle_result_ty() => {
-            let temp = format!("ret{}", value.0);
+            let temp = format!("ret{}_{}", value.0, text.fresh_tag());
             let union_ty = LlvmType::struct_of([LlvmType::I1, LlvmType::Ptr, LlvmType::I64]);
             text.assign(
                 format!("{temp}flag"),

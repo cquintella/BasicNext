@@ -43,8 +43,10 @@
 
 source-file          = program EOF ;
 program              = { NEWLINE } { import-declaration { NEWLINE } }
-                       { ( exported-constant-declaration | declaration ) { NEWLINE } } ;
-import-declaration   = "IMPORT" import-path "AS" identifier NEWLINE ;
+                       { ( module-constant-declaration | declaration ) { NEWLINE } } ;
+import-declaration   = [ "EXPORT" ] "IMPORT" import-path "AS" identifier NEWLINE ;
+                       (* 0.6.5 (E3): EXPORT IMPORT re-exports a module import (not a
+                          HOST capability) under its alias; see 0.6.md "Modules". *)
 import-path          = host-import-path | module-import-path ;
 host-import-path     = "HOST" "." importable-host-capability-name { "." identifier } ;
 importable-host-capability-name = "Clock" | "Console" | "Env" | "Exec" | "FileSystem" | "Net" | "Random" ;
@@ -55,9 +57,10 @@ module-import-path   = identifier { "." identifier } ;
                           nested-module resolution is the fallback. *)
 declaration          = [ "EXPORT" ] ( function-declaration | class-declaration
                        | struct-declaration | interface-declaration ) ;
-exported-constant-declaration = "EXPORT" "CONST" identifier [ "AS" variable-type ] "=" constant-literal NEWLINE ;
+module-constant-declaration = [ "EXPORT" ] "CONST" identifier [ "AS" variable-type ] "=" constant-literal NEWLINE ;
                        (* Omitting AS infers the type from a scalar literal;
-                          see 0.6.md, constant inference. *)
+                          see 0.6.md, constant inference. 0.6.5 (B4): without
+                          EXPORT the constant is private to the module. *)
 constant-literal     = "-" ( integer-literal | floating-literal ) | literal ;
                        (* A minus sign applied to one numeric literal is a
                           negative literal, not an expression. *)
@@ -107,13 +110,16 @@ parameter            = identifier "AS" parameter-type ;
 return-type          = "VOID" | value-type ;
 variable-type        = value-type ;
 field-type           = value-type ;
-parameter-type       = value-type ;
+parameter-type       = value-type | open-vector-type ;
+open-vector-type     = vector-element-type "[" "]" { "[" integer-literal "]" } ;
+                       (* 0.6.5 (A8): a parameter vector whose first dimension is
+                          the argument's; see 0.6.md "Vectors". *)
 value-type           = data-type { "OR" ( data-type | "NULL" | "NA" | "EOF" ) } ;
 local-value-type     = local-data-type { "OR" ( local-data-type | "NULL" | "NA" | "EOF" ) } ;
 data-type            = scalar-type | vector-type | pointer-type | function-type
-                       | weak-named-type | named-type | system-type ;
+                       | weak-named-type | named-type ;
 local-data-type      = scalar-type | local-vector-type | pointer-type | function-type
-                       | weak-named-type | named-type | system-type ;
+                       | weak-named-type | named-type ;
 (* Weak references to class instances. Spelling: AS WEAK ClassName [OR NULL].
    Dead weak reads as NULL. Target must be a class named-type. *)
 weak-named-type      = "WEAK" named-type ;
@@ -125,7 +131,8 @@ numeric-type         = "BYTE" | "INT8" | "INT16" | "INT32" | "INT64"
 integer-type         = "BYTE" | "INT8" | "INT16" | "INT32" | "INT64"
                        | "UINT16" | "UINT32" | "UINT64" | "INTEGER" | "TIMESTAMP" ;
 named-type           = identifier { "." identifier } ;
-system-type          = "SYSTEM" ;
+(* SYSTEM: withdrawn in 0.2 with HOST.Main; it stays a reserved word and is
+   no type (0.6.5, R12). *)
 vector-type          = vector-element-type "[" integer-literal "]"
                        { "[" integer-literal "]" } ;
 local-vector-type    = vector-element-type "[" expression "]"
@@ -150,7 +157,11 @@ simple-statement     = let-declaration | const-declaration | assignment-statemen
                        | return-statement | exit-statement | continue-statement
                        | stop-statement ;
 let-declaration      = "LET" identifier { "," identifier } "AS" local-variable-type
-                       [ "=" expression { "," expression } ] ;
+                       [ "=" expression { "," expression } ]
+                     | "LET" "[" destructuring-binding { "," destructuring-binding } "]"
+                       "=" expression ;
+                       (* 0.6.5: destructuring; see 0.6.md "Destructuring LET". *)
+destructuring-binding = identifier [ "AS" local-variable-type ] ;
 local-variable-type  = local-value-type ;
 const-declaration    = "CONST" identifier [ "AS" variable-type ] "=" expression ;
 assignment-statement = assignment-target assignment-operator expression ;
@@ -186,11 +197,13 @@ while-statement      = "WHILE" expression NEWLINE statement-block
 repeat-statement     = "REPEAT" NEWLINE statement-block "UNTIL" expression NEWLINE
                        "END" "REPEAT" NEWLINE ;
 for-statement        = counted-for-statement | for-each-statement ;
-counted-for-statement = "FOR" identifier "AS" integer-type "=" expression "TO"
+counted-for-statement = "FOR" identifier [ "AS" integer-type ] "=" expression "TO"
                        expression [ "STEP" expression ] NEWLINE statement-block
                        "END" "FOR" NEWLINE ;
-for-each-statement   = "FOR" "EACH" identifier "AS" variable-type "IN" expression
+for-each-statement   = "FOR" "EACH" identifier [ "AS" variable-type ] "IN" expression
                        NEWLINE statement-block "END" "FOR" NEWLINE ;
+                       (* 0.6.5 (C10, C11): without AS a counted FOR variable is
+                          INTEGER and a FOR EACH variable has the element type. *)
 
 (* Expressions. Suffixes bind more tightly than unary operators. ** is right associative. *)
 
