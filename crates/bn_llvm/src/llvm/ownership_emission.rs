@@ -47,8 +47,8 @@ pub(crate) fn lower_ownership_emission(
                     | Type::String
                     | Type::Vector { .. }
                     | Type::Null
-            ) || is_struct_type(module, ty)
-                || general_alternative(ty).is_some()
+            ) || general_alternative(ty).is_some()
+                || struct_owner(module, ty).is_some()
             {
                 // RELEASE ends the binding (`EndBinding`); a value that holds
                 // no reference needs no runtime work. A fixed vector's
@@ -158,7 +158,12 @@ pub(crate) fn lower_ownership_emission(
             if previous.is_some() && arc_ops::holds_references(module, ty) {
                 let kept = global.replacen("@bn_st_", "@bn_svp_", 1);
                 let slots = (O::global(&storage), O::global(&kept), O::global(&global));
-                vectors::emit_vector_keep_previous(text, (&slots.0, &slots.1, &slots.2), ty);
+                vectors::emit_vector_keep_previous(
+                    text,
+                    module,
+                    (&slots.0, &slots.1, &slots.2),
+                    ty,
+                );
             }
             if let Some(previous) = previous {
                 text.assign(
@@ -166,9 +171,22 @@ pub(crate) fn lower_ownership_emission(
                     I::load(llvm_ty.clone(), O::global(&global)),
                 );
             }
-            let operand = vectors::emit_vector_copy(text, &O::global(&storage), &operand, ty)
-                .unwrap_or(operand);
-            text.emit(I::store(llvm_ty, operand, O::global(global)));
+            if let Some(owner) = struct_owner(module, ty) {
+                let bytes = class_instance_bytes(module, &owner);
+                let args = vec![
+                    (T::Ptr, O::global(&storage)),
+                    (T::Ptr, operand),
+                    (T::I64, O::uint(bytes)),
+                    (T::I1, O::bool(false)),
+                ];
+                text.emit(I::call(T::Void, crate::runtime_abi::memmove().name, args));
+                text.emit(I::store(T::Ptr, O::global(&storage), O::global(global)));
+            } else {
+                let operand =
+                    vectors::emit_vector_copy(text, module, &O::global(&storage), &operand, ty)
+                        .unwrap_or(operand);
+                text.emit(I::store(llvm_ty, operand, O::global(global)));
+            }
         }
         Instruction::SetMember {
             object,
@@ -193,7 +211,7 @@ pub(crate) fn lower_ownership_emission(
                 .as_ref()
                 .is_some_and(|field| module.field_is_weak(field));
             emit_set_member(
-                text, *object, offset, *value, value_ty, ty, *previous, weak, state,
+                text, module, *object, offset, *value, value_ty, ty, *previous, weak, state,
             );
         }
         Instruction::SetField {
@@ -205,10 +223,13 @@ pub(crate) fn lower_ownership_emission(
             ty,
             ..
         } => {
-            let resolved = fields.as_ref().and_then(|fields| fields.first());
-            let offset =
-                field_byte_offset(module, resolved.expect("validated field path reference"))
-                    .expect("validated field path slot");
+            let resolved = fields.as_ref().and_then(|fields| fields.last());
+            let offset: u32 = fields.as_ref().map_or(0, |fields| {
+                fields
+                    .iter()
+                    .map(|f| field_byte_offset(module, f).unwrap_or(0))
+                    .sum()
+            });
             let value_ty = analysis
                 .values
                 .get(value)
@@ -232,16 +253,35 @@ pub(crate) fn lower_ownership_emission(
                     I::load(llvm_ty.clone(), O::reg(format!("fieldptr{}", value.0))),
                 );
             }
-            let value_op = if resolved.is_some_and(|field| module.field_is_weak(field)) {
-                arc_ops::weak_store_operand(text, &value_op, state)
+            if let Some(owner) = struct_owner(module, ty) {
+                let copy_witness = arc_runtime::struct_copy_witness_name(&owner);
+                let destroy_witness = arc_runtime::struct_destroy_witness_name(&owner);
+                let fieldptr = O::reg(format!("fieldptr{}", value.0));
+                text.emit(I::call(
+                    T::Void,
+                    &destroy_witness,
+                    vec![(T::Ptr, fieldptr.clone())],
+                ));
+                text.emit(I::call(
+                    T::Void,
+                    &copy_witness,
+                    vec![(T::Ptr, fieldptr), (T::Ptr, value_op)],
+                ));
+            } else if matches!(ty, Type::Vector { .. }) {
+                let fieldptr = O::reg(format!("fieldptr{}", value.0));
+                vectors::emit_vector_field_store(text, fieldptr, value_op, ty, state);
             } else {
-                value_op
-            };
-            text.emit(I::store(
-                llvm_ty,
-                value_op,
-                O::reg(format!("fieldptr{}", value.0)),
-            ));
+                let value_op = if resolved.is_some_and(|field| module.field_is_weak(field)) {
+                    arc_ops::weak_store_operand(text, &value_op, state)
+                } else {
+                    value_op
+                };
+                text.emit(I::store(
+                    llvm_ty,
+                    value_op,
+                    O::reg(format!("fieldptr{}", value.0)),
+                ));
+            }
         }
         Instruction::SetFieldIndex {
             symbol,
@@ -262,9 +302,65 @@ pub(crate) fn lower_ownership_emission(
             let index = indices[0];
             emit_field_set_index(
                 text,
+                module,
                 block_id,
                 symbols[symbol],
                 offset,
+                index,
+                analysis.values.get(&index).expect("validated index type"),
+                *value,
+                analysis.values.get(value).expect("validated value type"),
+                ty,
+                *previous,
+                state,
+            );
+        }
+        Instruction::SetMemberIndex {
+            object,
+            field,
+            indices,
+            value,
+            previous,
+            ty,
+            ..
+        } => {
+            let offset = field_byte_offset(
+                module,
+                field.as_ref().expect("validated member field reference"),
+            )
+            .expect("validated member field slot");
+            let index = indices[0];
+            indexed_store::emit_member_set_index(
+                text,
+                module,
+                block_id,
+                *object,
+                offset,
+                index,
+                analysis.values.get(&index).expect("validated index type"),
+                *value,
+                analysis.values.get(value).expect("validated value type"),
+                ty,
+                *previous,
+                state,
+            );
+        }
+        Instruction::SetStaticIndex {
+            class,
+            field,
+            indices,
+            value,
+            previous,
+            ty,
+            ..
+        } => {
+            let index = indices[0];
+            indexed_store::emit_static_set_index(
+                text,
+                module,
+                block_id,
+                class,
+                field,
                 index,
                 analysis.values.get(&index).expect("validated index type"),
                 *value,

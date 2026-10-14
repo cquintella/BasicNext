@@ -158,6 +158,8 @@ pub(crate) fn emit_preamble(
                                         let nested = vectors::nest(ty);
                                         (array, count, nested.map(|n| n.linked_constant(&global)))
                                     }),
+                                    struct_owner(module, ty)
+                                        .map(|owner| class_instance_bytes(module, &owner)),
                                 ),
                             );
                         }
@@ -171,7 +173,7 @@ pub(crate) fn emit_preamble(
         }
         let _ = analysis;
     }
-    for ((class, field), (llvm_ty, vector)) in &static_globals {
+    for ((class, field), (llvm_ty, vector, struct_bytes)) in &static_globals {
         let gclass = sanitize_symbol(class);
         let gfield = sanitize_symbol(field);
         // A fixed vector STATIC owns its elements (and a copy of the replaced ones).
@@ -193,6 +195,15 @@ pub(crate) fn emit_preamble(
                 (T::I32, O::uint(*count)),
             ]);
             text.global(LlvmGlobal::variable(slot, crate::layout::vector_ty(), fat));
+            continue;
+        }
+        if let Some(bytes) = struct_bytes {
+            let array = T::Array(
+                usize::try_from(*bytes).expect("fits usize"),
+                Box::new(T::I8),
+            );
+            text.global(LlvmGlobal::variable(&storage, array, O::zero_initializer()));
+            text.global(LlvmGlobal::variable(slot, T::Ptr, O::global(storage)));
             continue;
         }
         let initial = match llvm_ty {
@@ -263,6 +274,8 @@ pub(crate) fn emit_preamble(
             })
             .collect::<BTreeSet<_>>();
         super::arc_runtime::emit_glue(text, module, &allocated);
+    } else {
+        super::arc_runtime::emit_witness_glue(text, module);
     }
     for class in &class_names {
         let gclass = sanitize_symbol(class);

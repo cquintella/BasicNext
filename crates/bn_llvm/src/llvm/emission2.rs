@@ -44,19 +44,19 @@ pub(crate) fn lower_terminator(
             });
         }
         Terminator::Return { value: None } if state.is_start => {
-            cleanup_owned_memory(text, analysis, symbols, state);
+            cleanup_owned_memory(text, module, analysis, symbols, state);
             text.emit(LlvmInst::Ret {
                 val: Some((LlvmType::I32, LlvmOperand::int(0))),
             });
         }
         Terminator::Return { value: None } if state.return_llvm == LlvmType::Void => {
-            cleanup_owned_memory(text, analysis, symbols, state);
+            cleanup_owned_memory(text, module, analysis, symbols, state);
             text.emit(LlvmInst::Ret { val: None });
         }
         Terminator::Return { value: None }
             if state.return_llvm == crate::layout::handle_result_ty() =>
         {
-            cleanup_owned_memory(text, analysis, symbols, state);
+            cleanup_owned_memory(text, module, analysis, symbols, state);
             let union = union_ty();
             let insert = |text: &mut crate::ir::LlvmModule,
                           name: &str,
@@ -104,7 +104,7 @@ pub(crate) fn lower_terminator(
                 *value,
                 analysis.values.get(value).expect("validated stop type"),
             );
-            cleanup_owned_memory(text, analysis, symbols, state);
+            cleanup_owned_memory(text, module, analysis, symbols, state);
             // The caller sees the STOP through `$stopping` and releases its
             // own locals in turn (0.6.md, "`STOP`"); the value returned is
             // never read.
@@ -125,7 +125,7 @@ pub(crate) fn lower_terminator(
         }
         Terminator::Return { value: Some(value) } if !state.is_start => {
             if state.return_llvm == LlvmType::Void {
-                cleanup_owned_memory(text, analysis, symbols, state);
+                cleanup_owned_memory(text, module, analysis, symbols, state);
                 text.emit(LlvmInst::Ret { val: None });
             } else {
                 let value_ty = analysis.values.get(value).expect("validated return type");
@@ -174,16 +174,14 @@ pub(crate) fn lower_terminator(
                                 vec![(LlvmType::I64, LlvmOperand::uint(bytes))],
                             ),
                         );
-                        let args = vec![
-                            (LlvmType::Ptr, LlvmOperand::reg(&copy)),
-                            (LlvmType::Ptr, operand.clone()),
-                            (LlvmType::I64, LlvmOperand::uint(bytes)),
-                            (LlvmType::I1, LlvmOperand::bool(false)),
-                        ];
+                        let copy_witness = arc_runtime::struct_copy_witness_name(&owner);
                         text.emit(LlvmInst::call(
                             LlvmType::Void,
-                            "llvm.memcpy.p0.p0.i64",
-                            args,
+                            &copy_witness,
+                            vec![
+                                (LlvmType::Ptr, LlvmOperand::reg(&copy)),
+                                (LlvmType::Ptr, operand.clone()),
+                            ],
                         ));
                         LlvmOperand::reg(&copy)
                     }
@@ -196,13 +194,14 @@ pub(crate) fn lower_terminator(
                 let out = format!("vrout{}", text.fresh_tag());
                 let operand = vectors::emit_vector_relocate(
                     text,
+                    module,
                     &operand,
                     &function.return_type,
                     &buffer,
                     &out,
                 )
                 .map_or(operand, |()| LlvmOperand::reg(out));
-                cleanup_owned_memory(text, analysis, symbols, state);
+                cleanup_owned_memory(text, module, analysis, symbols, state);
                 let layout = state.return_llvm.clone();
                 text.emit(LlvmInst::Ret {
                     val: Some((layout, operand)),
@@ -215,7 +214,7 @@ pub(crate) fn lower_terminator(
                 *value,
                 analysis.values.get(value).expect("validated return type"),
             );
-            cleanup_owned_memory(text, analysis, symbols, state);
+            cleanup_owned_memory(text, module, analysis, symbols, state);
             text.emit(LlvmInst::Ret {
                 val: Some((LlvmType::I32, operand)),
             });
@@ -302,6 +301,7 @@ fn union_success_operand(
 /// `INPUT` lines, `STRUCT` copies, and log resources.
 pub(crate) fn cleanup_owned_memory(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     analysis: &LoweringAnalysis<'_>,
     symbols: &HashMap<SymbolId, usize>,
     state: &mut EmissionState,
@@ -316,6 +316,17 @@ pub(crate) fn cleanup_owned_memory(
             vec![(LlvmType::Ptr, reg(pointer))],
         ));
     };
+    for (symbol, ty) in &analysis.symbols {
+        if let Some(owner) = struct_owner(module, ty) {
+            let slot = symbols[symbol];
+            let destroy_witness = arc_runtime::struct_destroy_witness_name(&owner);
+            text.emit(LlvmInst::call(
+                LlvmType::Void,
+                &destroy_witness,
+                vec![(LlvmType::Ptr, reg(format!("structslot{slot}")))],
+            ));
+        }
+    }
     let mut input_symbols = analysis.input_symbols.iter().collect::<Vec<_>>();
     input_symbols.sort_by_key(|symbol| symbol.0);
     for symbol in input_symbols {
@@ -348,6 +359,16 @@ pub(crate) fn cleanup_owned_memory(
             pointer.clone(),
             LlvmInst::load(LlvmType::Ptr, reg(format!("structowned{}", value.0))),
         );
+        if let Some(ty) = analysis.values.get(&value)
+            && let Some(owner) = struct_owner(module, ty)
+        {
+            let destroy_witness = arc_runtime::struct_destroy_witness_name(&owner);
+            text.emit(LlvmInst::call(
+                LlvmType::Void,
+                &destroy_witness,
+                vec![(LlvmType::Ptr, reg(pointer.clone()))],
+            ));
+        }
         free(text, pointer);
     }
 }

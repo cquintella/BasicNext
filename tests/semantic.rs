@@ -6,7 +6,9 @@
 use bn_frontend::lexer::lex;
 use bn_frontend::module_graph::load;
 use bn_frontend::parser::parse;
-use bn_frontend::semantic::{analyze, analyze_modules, analyze_with_warnings};
+use bn_frontend::semantic::{
+    analyze, analyze_modules, analyze_modules_with_warnings, analyze_with_warnings,
+};
 use bn_source::SourceFile;
 use bn_types::{IntegerType, PointerLength, Type};
 use std::fs;
@@ -929,7 +931,14 @@ fn bnsqlite_companion_fixtures_validate_semantic_rules() {
 
     let ok_graph =
         load(Path::new("tests/modules/bnsqlite-companion/main.bn")).expect("load valid companion");
-    assert!(analyze_modules(&ok_graph).is_ok());
+    let analysis = analyze_modules_with_warnings(&ok_graph).expect("valid companion");
+    assert!(
+        !analysis
+            .warnings
+            .iter()
+            .any(|w| w.diagnostic.code == "UNUSED_IMPORT" && w.diagnostic.message.contains("Data")),
+        "BNData required by BNSqlite must not be reported as UNUSED_IMPORT"
+    );
 }
 
 /// Swift's ARC model (0.6.md, "Memory model (ARC)", "`RELEASE`"): a

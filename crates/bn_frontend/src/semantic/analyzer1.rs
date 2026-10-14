@@ -60,17 +60,22 @@ impl Analyzer {
             _ => None,
         });
         if let Some(sqlite_span) = imports_bnsqlite {
-            let imports_bndata = program.items.iter().any(|item| match item {
-                Item::Import { path, .. } => path.first().is_some_and(|part| part == "BNData"),
-                _ => false,
+            let bndata_alias = program.items.iter().find_map(|item| match item {
+                Item::Import { path, alias, .. }
+                    if path.first().is_some_and(|part| part == "BNData") =>
+                {
+                    Some(alias.clone())
+                }
+                _ => None,
             });
-            if !imports_bndata {
+            let Some(data_alias) = bndata_alias else {
                 return Err(error(
                     DiagId::BNSQLITE_REQUIRES_BNDATA,
                     "BNSqlite requires BNData to represent query results",
                     sqlite_span,
                 ));
-            }
+            };
+            self.type_alias_uses.borrow_mut().insert(data_alias);
         }
         for item in &program.items {
             match item {

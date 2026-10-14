@@ -23,7 +23,7 @@ use crate::runtime_abi::{
 };
 
 /// Byte offset of the core id in an object or region header.
-pub(crate) const ID_OFFSET: i64 = 8;
+pub(crate) const ID_OFFSET: i64 = crate::layout::POINTER_BYTES as i64;
 
 /// A `STOP` outside `Start` (0.6.md, "`STOP`"): the function stores its
 /// code, raises the flag, and returns; each caller's `$stopping` check reads
@@ -342,6 +342,449 @@ fn weak_read() -> LlvmFunction {
     function
 }
 
+pub(crate) fn struct_copy_witness_name(owner: &str) -> String {
+    format!("__bn_copy_{}", sanitize_symbol(owner))
+}
+
+pub(crate) fn struct_destroy_witness_name(owner: &str) -> String {
+    format!("__bn_destroy_{}", sanitize_symbol(owner))
+}
+
+fn element_storage_bytes(module: &Module, ty: &bn_types::Type) -> u64 {
+    if let Some(owner) = super::layout::struct_owner(module, ty) {
+        return super::layout::class_instance_bytes(module, &owner);
+    }
+    match super::layout::llvm_type(ty).unwrap_or(LlvmType::I32) {
+        LlvmType::I1 | LlvmType::I8 => u64::from(crate::layout::I8_BYTES),
+        LlvmType::I16 => u64::from(crate::layout::I16_BYTES),
+        LlvmType::I32 | LlvmType::Float => u64::from(crate::layout::I32_BYTES),
+        LlvmType::I64 | LlvmType::Double | LlvmType::Ptr => u64::from(crate::layout::POINTER_BYTES),
+        other
+            if crate::layout::is_one_of(
+                &other,
+                &[
+                    crate::layout::vector_ty(),
+                    crate::layout::optional_float_ty(),
+                    crate::layout::status_pointer_ty(),
+                ],
+            ) =>
+        {
+            u64::from(crate::layout::FAT_POINTER_BYTES)
+        }
+        _ => u64::from(crate::layout::POINTER_BYTES),
+    }
+}
+
+fn copy_witness(module: &Module, owner: &str) -> LlvmFunction {
+    let mut function = LlvmFunction::new_definition(
+        struct_copy_witness_name(owner),
+        LlvmType::Void,
+        vec![(LlvmType::Ptr, "dst".into()), (LlvmType::Ptr, "src".into())],
+    );
+    function.set_linkage("private");
+    let mut curr_blk = function.add_block("entry");
+    let bytes = super::layout::class_instance_bytes(module, owner);
+    curr_blk.push(LlvmInst::call(
+        LlvmType::Void,
+        crate::runtime_abi::memmove().name,
+        vec![
+            (LlvmType::Ptr, reg("dst")),
+            (LlvmType::Ptr, reg("src")),
+            (LlvmType::I64, LlvmOperand::uint(bytes)),
+            (LlvmType::I1, LlvmOperand::bool(false)),
+        ],
+    ));
+
+    for field in super::layout::struct_managed_fields(module, owner) {
+        let offset = super::layout::field_byte_offset(module, &field.reference).unwrap_or(0);
+        let slot_val = field.reference.slot.value();
+        let dst_field = format!("dst_fld_{slot_val}");
+        let src_field = format!("src_fld_{slot_val}");
+        curr_blk.push_assign(
+            &dst_field,
+            LlvmInst::GetElementPtr {
+                inbounds: false,
+                elem_ty: LlvmType::I8,
+                ptr: reg("dst"),
+                indices: vec![(LlvmType::I32, LlvmOperand::int(i64::from(offset)))],
+            },
+        );
+        curr_blk.push_assign(
+            &src_field,
+            LlvmInst::GetElementPtr {
+                inbounds: false,
+                elem_ty: LlvmType::I8,
+                ptr: reg("src"),
+                indices: vec![(LlvmType::I32, LlvmOperand::int(i64::from(offset)))],
+            },
+        );
+
+        match &field.ty {
+            bn_types::Type::Vector {
+                element,
+                dimensions,
+            } => {
+                let src_fat = format!("src_fat_{slot_val}");
+                curr_blk.push_assign(
+                    &src_fat,
+                    LlvmInst::load(crate::layout::vector_ty(), reg(&src_field)),
+                );
+                let src_buf = format!("src_buf_{slot_val}");
+                curr_blk.push_assign(
+                    &src_buf,
+                    LlvmInst::extract(
+                        crate::layout::vector_ty(),
+                        reg(&src_fat),
+                        crate::layout::VECTOR_BUFFER_FIELD_INDEX,
+                    ),
+                );
+                let src_len = format!("src_len_{slot_val}");
+                curr_blk.push_assign(
+                    &src_len,
+                    LlvmInst::extract(
+                        crate::layout::vector_ty(),
+                        reg(&src_fat),
+                        crate::layout::VECTOR_LENGTH_FIELD_INDEX,
+                    ),
+                );
+                let is_null = format!("src_null_{slot_val}");
+                curr_blk.push_assign(
+                    &is_null,
+                    LlvmInst::icmp(
+                        ICmpCond::Eq,
+                        LlvmType::Ptr,
+                        reg(&src_buf),
+                        LlvmOperand::null(),
+                    ),
+                );
+
+                let copy_blk_name = format!("vec_copy_{slot_val}");
+                let done_blk_name = format!("vec_done_{slot_val}");
+                curr_blk.terminate(LlvmInst::CondBr {
+                    cond: reg(&is_null),
+                    true_dest: done_blk_name.clone(),
+                    false_dest: copy_blk_name.clone(),
+                });
+
+                let copy_blk = function.add_block(copy_blk_name);
+                let count =
+                    usize::try_from(dimensions.iter().copied().product::<u64>()).unwrap_or(0);
+                let elem_bytes = element_storage_bytes(module, element);
+                let total_bytes = (count as u64).saturating_mul(elem_bytes);
+                let dst_buf = format!("dst_buf_{slot_val}");
+                copy_blk.push_assign(
+                    &dst_buf,
+                    LlvmInst::call(
+                        LlvmType::Ptr,
+                        "malloc",
+                        vec![(LlvmType::I64, LlvmOperand::uint(total_bytes))],
+                    ),
+                );
+
+                if let Some(elem_owner) = super::layout::struct_owner(module, element) {
+                    for i in 0..count {
+                        let offset_i = (i as u64).saturating_mul(elem_bytes);
+                        let dst_elem = format!("dst_elem_{slot_val}_{i}");
+                        let src_elem = format!("src_elem_{slot_val}_{i}");
+                        copy_blk.push_assign(
+                            &dst_elem,
+                            LlvmInst::GetElementPtr {
+                                inbounds: false,
+                                elem_ty: LlvmType::I8,
+                                ptr: reg(&dst_buf),
+                                indices: vec![(
+                                    LlvmType::I64,
+                                    LlvmOperand::int(i64::try_from(offset_i).unwrap_or(0)),
+                                )],
+                            },
+                        );
+                        copy_blk.push_assign(
+                            &src_elem,
+                            LlvmInst::GetElementPtr {
+                                inbounds: false,
+                                elem_ty: LlvmType::I8,
+                                ptr: reg(&src_buf),
+                                indices: vec![(
+                                    LlvmType::I64,
+                                    LlvmOperand::int(i64::try_from(offset_i).unwrap_or(0)),
+                                )],
+                            },
+                        );
+                        copy_blk.push(LlvmInst::call(
+                            LlvmType::Void,
+                            &struct_copy_witness_name(&elem_owner),
+                            vec![
+                                (LlvmType::Ptr, reg(&dst_elem)),
+                                (LlvmType::Ptr, reg(&src_elem)),
+                            ],
+                        ));
+                    }
+                } else if super::arc_ops::holds_references(module, element) {
+                    copy_blk.push(LlvmInst::call(
+                        LlvmType::Void,
+                        crate::runtime_abi::memmove().name,
+                        vec![
+                            (LlvmType::Ptr, reg(&dst_buf)),
+                            (LlvmType::Ptr, reg(&src_buf)),
+                            (LlvmType::I64, LlvmOperand::uint(total_bytes)),
+                            (LlvmType::I1, LlvmOperand::bool(false)),
+                        ],
+                    ));
+                    for i in 0..count {
+                        let offset_i = (i as u64).saturating_mul(elem_bytes);
+                        let elem_ptr = format!("elem_ptr_{slot_val}_{i}");
+                        copy_blk.push_assign(
+                            &elem_ptr,
+                            LlvmInst::GetElementPtr {
+                                inbounds: false,
+                                elem_ty: LlvmType::I8,
+                                ptr: reg(&dst_buf),
+                                indices: vec![(
+                                    LlvmType::I64,
+                                    LlvmOperand::int(i64::try_from(offset_i).unwrap_or(0)),
+                                )],
+                            },
+                        );
+                        let elem_obj = format!("elem_obj_{slot_val}_{i}");
+                        copy_blk
+                            .push_assign(&elem_obj, LlvmInst::load(LlvmType::Ptr, reg(&elem_ptr)));
+                        copy_blk.push(LlvmInst::call(
+                            LlvmType::Void,
+                            RETAIN,
+                            vec![
+                                (LlvmType::Ptr, reg(&elem_obj)),
+                                (LlvmType::I32, LlvmOperand::int(0)),
+                                (LlvmType::I32, LlvmOperand::int(0)),
+                            ],
+                        ));
+                    }
+                } else {
+                    copy_blk.push(LlvmInst::call(
+                        LlvmType::Void,
+                        crate::runtime_abi::memmove().name,
+                        vec![
+                            (LlvmType::Ptr, reg(&dst_buf)),
+                            (LlvmType::Ptr, reg(&src_buf)),
+                            (LlvmType::I64, LlvmOperand::uint(total_bytes)),
+                            (LlvmType::I1, LlvmOperand::bool(false)),
+                        ],
+                    ));
+                }
+
+                let new_fat0 = format!("new_fat0_{slot_val}");
+                copy_blk.push_assign(
+                    &new_fat0,
+                    LlvmInst::insert(
+                        crate::layout::vector_ty(),
+                        LlvmOperand::undef(),
+                        LlvmType::Ptr,
+                        reg(&dst_buf),
+                        crate::layout::VECTOR_BUFFER_FIELD_INDEX,
+                    ),
+                );
+                let new_fat = format!("new_fat_{slot_val}");
+                copy_blk.push_assign(
+                    &new_fat,
+                    LlvmInst::insert(
+                        crate::layout::vector_ty(),
+                        reg(&new_fat0),
+                        LlvmType::I32,
+                        reg(&src_len),
+                        crate::layout::VECTOR_LENGTH_FIELD_INDEX,
+                    ),
+                );
+                copy_blk.push(LlvmInst::store(
+                    crate::layout::vector_ty(),
+                    reg(&new_fat),
+                    reg(&dst_field),
+                ));
+                copy_blk.terminate(LlvmInst::Br {
+                    dest: done_blk_name.clone(),
+                });
+
+                curr_blk = function.add_block(done_blk_name);
+            }
+            nested if super::layout::struct_owner(module, nested).is_some() => {
+                let nested_owner = super::layout::struct_owner(module, nested).expect("owner");
+                curr_blk.push(LlvmInst::call(
+                    LlvmType::Void,
+                    &struct_copy_witness_name(&nested_owner),
+                    vec![
+                        (LlvmType::Ptr, reg(&dst_field)),
+                        (LlvmType::Ptr, reg(&src_field)),
+                    ],
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    curr_blk.terminate(LlvmInst::Ret { val: None });
+    function
+}
+
+fn destroy_witness(module: &Module, owner: &str) -> LlvmFunction {
+    let mut function = LlvmFunction::new_definition(
+        struct_destroy_witness_name(owner),
+        LlvmType::Void,
+        vec![(LlvmType::Ptr, "ptr".into())],
+    );
+    function.set_linkage("private");
+    let entry = function.add_block("entry");
+    entry.push_assign(
+        "is_null",
+        LlvmInst::icmp(ICmpCond::Eq, LlvmType::Ptr, reg("ptr"), LlvmOperand::null()),
+    );
+    entry.terminate(LlvmInst::CondBr {
+        cond: reg("is_null"),
+        true_dest: "ret".into(),
+        false_dest: "live".into(),
+    });
+
+    let mut curr_blk = function.add_block("live");
+    let mut managed_fields = super::layout::struct_managed_fields(module, owner);
+    managed_fields.reverse();
+
+    for field in managed_fields {
+        let offset = super::layout::field_byte_offset(module, &field.reference).unwrap_or(0);
+        let slot_val = field.reference.slot.value();
+        let field_ptr = format!("fld_ptr_{slot_val}");
+        curr_blk.push_assign(
+            &field_ptr,
+            LlvmInst::GetElementPtr {
+                inbounds: false,
+                elem_ty: LlvmType::I8,
+                ptr: reg("ptr"),
+                indices: vec![(LlvmType::I32, LlvmOperand::int(i64::from(offset)))],
+            },
+        );
+
+        match &field.ty {
+            bn_types::Type::Vector {
+                element,
+                dimensions,
+            } => {
+                let fat = format!("vec_fat_{slot_val}");
+                curr_blk.push_assign(
+                    &fat,
+                    LlvmInst::load(crate::layout::vector_ty(), reg(&field_ptr)),
+                );
+                let buf = format!("vec_buf_{slot_val}");
+                curr_blk.push_assign(
+                    &buf,
+                    LlvmInst::extract(
+                        crate::layout::vector_ty(),
+                        reg(&fat),
+                        crate::layout::VECTOR_BUFFER_FIELD_INDEX,
+                    ),
+                );
+                let buf_null = format!("buf_null_{slot_val}");
+                curr_blk.push_assign(
+                    &buf_null,
+                    LlvmInst::icmp(ICmpCond::Eq, LlvmType::Ptr, reg(&buf), LlvmOperand::null()),
+                );
+
+                let free_blk_name = format!("free_{slot_val}");
+                let done_blk_name = format!("done_{slot_val}");
+                curr_blk.terminate(LlvmInst::CondBr {
+                    cond: reg(&buf_null),
+                    true_dest: done_blk_name.clone(),
+                    false_dest: free_blk_name.clone(),
+                });
+
+                let free_blk = function.add_block(free_blk_name);
+                let count =
+                    usize::try_from(dimensions.iter().copied().product::<u64>()).unwrap_or(0);
+                let elem_bytes = element_storage_bytes(module, element);
+
+                if let Some(elem_owner) = super::layout::struct_owner(module, element) {
+                    for i in (0..count).rev() {
+                        let offset_i = (i as u64).saturating_mul(elem_bytes);
+                        let elem_ptr = format!("elem_ptr_{slot_val}_{i}");
+                        free_blk.push_assign(
+                            &elem_ptr,
+                            LlvmInst::GetElementPtr {
+                                inbounds: false,
+                                elem_ty: LlvmType::I8,
+                                ptr: reg(&buf),
+                                indices: vec![(
+                                    LlvmType::I64,
+                                    LlvmOperand::int(i64::try_from(offset_i).unwrap_or(0)),
+                                )],
+                            },
+                        );
+                        free_blk.push(LlvmInst::call(
+                            LlvmType::Void,
+                            &struct_destroy_witness_name(&elem_owner),
+                            vec![(LlvmType::Ptr, reg(&elem_ptr))],
+                        ));
+                    }
+                } else if super::arc_ops::holds_references(module, element) {
+                    for i in (0..count).rev() {
+                        let offset_i = (i as u64).saturating_mul(elem_bytes);
+                        let elem_ptr = format!("elem_ptr_{slot_val}_{i}");
+                        free_blk.push_assign(
+                            &elem_ptr,
+                            LlvmInst::GetElementPtr {
+                                inbounds: false,
+                                elem_ty: LlvmType::I8,
+                                ptr: reg(&buf),
+                                indices: vec![(
+                                    LlvmType::I64,
+                                    LlvmOperand::int(i64::try_from(offset_i).unwrap_or(0)),
+                                )],
+                            },
+                        );
+                        let elem_obj = format!("elem_obj_{slot_val}_{i}");
+                        free_blk
+                            .push_assign(&elem_obj, LlvmInst::load(LlvmType::Ptr, reg(&elem_ptr)));
+                        free_blk.push(LlvmInst::call(
+                            LlvmType::Void,
+                            RELEASE,
+                            vec![
+                                (LlvmType::Ptr, reg(&elem_obj)),
+                                (LlvmType::I32, LlvmOperand::int(0)),
+                                (LlvmType::I32, LlvmOperand::int(0)),
+                            ],
+                        ));
+                    }
+                }
+
+                free_blk.push(LlvmInst::call(
+                    LlvmType::Void,
+                    "free",
+                    vec![(LlvmType::Ptr, reg(&buf))],
+                ));
+                free_blk.push(LlvmInst::store(
+                    crate::layout::vector_ty(),
+                    LlvmOperand::zero_initializer(),
+                    reg(&field_ptr),
+                ));
+                free_blk.terminate(LlvmInst::Br {
+                    dest: done_blk_name.clone(),
+                });
+
+                curr_blk = function.add_block(done_blk_name);
+            }
+            nested if super::layout::struct_owner(module, nested).is_some() => {
+                let nested_owner = super::layout::struct_owner(module, nested).expect("owner");
+                curr_blk.push(LlvmInst::call(
+                    LlvmType::Void,
+                    &struct_destroy_witness_name(&nested_owner),
+                    vec![(LlvmType::Ptr, reg(&field_ptr))],
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    curr_blk.terminate(LlvmInst::Br { dest: "ret".into() });
+    function
+        .add_block("ret")
+        .terminate(LlvmInst::Ret { val: None });
+    function
+}
+
 /// The ARC glue of a module whose objects and regions use the core;
 /// `allocated` names the classes `NEW` creates (their class constants are
 /// defined by the preamble).
@@ -360,5 +803,21 @@ pub(crate) fn emit_glue(
     ] {
         text.blank();
         text.function(function);
+    }
+    emit_witness_glue(text, module);
+}
+
+pub(crate) fn emit_witness_glue(text: &mut crate::ir::LlvmModule, module: &Module) {
+    if !super::layout::all_struct_owners(module).is_empty() {
+        crate::ir::write_declarations(
+            text,
+            &[&crate::runtime_abi::FREE, &crate::runtime_abi::MALLOC],
+        );
+    }
+    for owner in super::layout::all_struct_owners(module) {
+        text.blank();
+        text.function(copy_witness(module, &owner));
+        text.blank();
+        text.function(destroy_witness(module, &owner));
     }
 }

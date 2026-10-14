@@ -58,8 +58,8 @@ The special path `":memory:"` opens a private, in-memory database valid for the 
 | `Begin` | `Begin() AS VOID OR Error` | Begins an immediate transaction. Fails with `Sqlite.MISUSE` if a transaction is already active. |
 | `Commit` | `Commit() AS VOID OR Error` | Commits the active transaction. Fails with `Sqlite.MISUSE` if no transaction is active. |
 | `Rollback` | `Rollback() AS VOID OR Error` | Rolls back the active transaction. Fails with `Sqlite.MISUSE` if no transaction is active. |
-| `Changes` | `Changes() AS INTEGER` | Returns the count of database rows modified, inserted, or deleted by the most recently completed statement. |
-| `LastInsertRowId` | `LastInsertRowId() AS INTEGER` | Returns the rowid of the most recent successful `INSERT` into a rowid table. |
+| `Changes` | `Changes() AS INT64` | Returns the count of database rows modified, inserted, or deleted by the most recently completed statement. |
+| `LastInsertRowId` | `LastInsertRowId() AS INT64` | Returns the rowid of the most recent successful `INSERT` into a rowid table. |
 | `Close` | `Close() AS VOID OR Error` | Closes the connection and releases file locks immediately. Subsequent method calls on the closed connection return `Sqlite.CLOSED`. |
 
 ## DataFrame Mapping

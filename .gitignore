@@ -49,3 +49,4 @@ fix-*.md
 
 # Plugins live in sibling repos ../basicnext-vscode and ../basicnext-jupyter
 /plugins/
+/tmp/

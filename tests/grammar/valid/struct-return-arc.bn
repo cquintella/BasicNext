@@ -1,0 +1,30 @@
+CLASS Box
+    PUBLIC name AS STRING
+    PUBLIC FUNCTION CONSTRUCTOR(name AS STRING)
+        SELF.name = name
+    END FUNCTION
+END CLASS
+
+STRUCT Container
+    item AS Box OR NULL = NULL
+    numbers AS INTEGER[2] = [0, 0]
+END STRUCT
+
+FUNCTION MakeContainer(name AS STRING, first AS INTEGER, second AS INTEGER) AS Container
+    LET c AS Container
+    c.item = NEW Box(name)
+    c.numbers[0] = first
+    c.numbers[1] = second
+    RETURN c
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET c AS Container = MakeContainer("golden", 42, 84)
+    LET item AS Box OR NULL = c.item
+    IF item IS Box THEN
+        LET b AS Box = item
+        PRINT b.name
+    END IF
+    PRINT c.numbers[0]
+    PRINT c.numbers[1]
+END FUNCTION

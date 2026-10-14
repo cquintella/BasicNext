@@ -311,7 +311,7 @@ signatures! {
     REALLOC = "realloc"(Ptr, I64) -> Ptr;
     SETMODE = "_setmode"(I32, I32) -> I32;
     SQLITE_BEGIN = "bn_rt_sqlite_begin"(I64) -> I32;
-    SQLITE_CHANGES = "bn_rt_sqlite_changes"(I64) -> I32;
+    SQLITE_CHANGES = "bn_rt_sqlite_changes"(I64) -> I64;
     SQLITE_CLOSE = "bn_rt_sqlite_close"(I64) -> I32;
     SQLITE_COMMIT = "bn_rt_sqlite_commit"(I64) -> I32;
     SQLITE_EXEC = "bn_rt_sqlite_exec"(I64, Ptr) -> I32;

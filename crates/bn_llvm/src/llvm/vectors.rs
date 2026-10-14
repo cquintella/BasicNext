@@ -26,11 +26,11 @@ fn v(id: ValueId) -> O {
     O::reg(format!("v{}", id.0))
 }
 
-fn free(text: &mut crate::ir::LlvmModule, pointer: O) {
+pub(crate) fn free(text: &mut crate::ir::LlvmModule, pointer: O) {
     text.emit(I::call(T::Void, "free", vec![(T::Ptr, pointer)]));
 }
 
-fn memcpy(text: &mut crate::ir::LlvmModule, target: O, source: O, bytes: O) {
+pub(crate) fn memcpy(text: &mut crate::ir::LlvmModule, target: O, source: O, bytes: O) {
     let args = vec![
         (T::Ptr, target),
         (T::Ptr, source),
@@ -42,7 +42,13 @@ fn memcpy(text: &mut crate::ir::LlvmModule, target: O, source: O, bytes: O) {
 
 /// `%{name}0 = { ptr, i32 }` holding `pointer`, then `%{name}` with `length`
 /// (`name0` is spelled `{name}0` or `{name}0_` per caller).
-fn emit_fat(text: &mut crate::ir::LlvmModule, first: String, name: String, pointer: O, length: O) {
+pub(crate) fn emit_fat(
+    text: &mut crate::ir::LlvmModule,
+    first: String,
+    name: String,
+    pointer: O,
+    length: O,
+) {
     let fat = vector_ty();
     text.assign(
         &first,
@@ -97,7 +103,12 @@ pub(crate) fn emit_vector(
                 Box::new(T::I8),
             );
             text.assign(&copy, I::alloca(buffer));
-            memcpy(text, O::reg(&copy), v(*element_id), O::uint(bytes));
+            let copy_witness = arc_runtime::struct_copy_witness_name(&owner);
+            text.emit(I::call(
+                T::Void,
+                &copy_witness,
+                vec![(T::Ptr, O::reg(&copy)), (T::Ptr, v(*element_id))],
+            ));
             O::reg(&copy)
         } else {
             coerce_to_type(text, *element_id, source_ty, &stored_type)
@@ -226,12 +237,88 @@ pub(crate) fn emit_store_object_class(
 }
 
 /// Stores `value` into the field at `field_offset` of `object`. Under
+/// Deep-copies a vector value into `dest_ptr`, releasing the previous buffer held in `dest_ptr`.
+pub(crate) fn emit_vector_field_store(
+    text: &mut crate::ir::LlvmModule,
+    dest_ptr: O,
+    source_val: O,
+    field_ty: &Type,
+    state: &mut EmissionState,
+) {
+    let tag = state.continuation_count;
+    state.continuation_count += 1;
+    let Type::Vector { element, .. } = field_ty else {
+        unreachable!("vector field store on non-vector type")
+    };
+    let element_llvm = llvm_type(element).expect("validated vector field element");
+    let fat = source_val;
+    text.assign(
+        format!("vcopy_src_{tag}"),
+        I::extract(vector_ty(), fat.clone(), 0),
+    );
+    text.assign(format!("vcopy_len_{tag}"), I::extract(vector_ty(), fat, 1));
+    let wide = I::cast(
+        CastOp::ZExt,
+        T::I32,
+        O::reg(format!("vcopy_len_{tag}")),
+        T::I64,
+    );
+    text.assign(format!("vcopy_len64_{tag}"), wide);
+    let element_bytes: u64 = match element_llvm {
+        T::I1 | T::I8 => 1,
+        T::I16 => 2,
+        T::I32 | T::Float => 4,
+        T::I64 | T::Double | T::Ptr => 8,
+        _ => unreachable!("validated scalar vector field element"),
+    };
+    let bytes = I::binary(
+        BinaryOp::Mul,
+        T::I64,
+        O::reg(format!("vcopy_len64_{tag}")),
+        O::uint(element_bytes),
+    );
+    text.assign(format!("vcopy_bytes_{tag}"), bytes);
+    let copy = I::call(
+        T::Ptr,
+        "malloc",
+        vec![(T::I64, O::reg(format!("vcopy_bytes_{tag}")))],
+    );
+    text.assign(format!("vcopy_buf_{tag}"), copy);
+    memcpy(
+        text,
+        O::reg(format!("vcopy_buf_{tag}")),
+        O::reg(format!("vcopy_src_{tag}")),
+        O::reg(format!("vcopy_bytes_{tag}")),
+    );
+    text.assign(
+        format!("vcopy_old_{tag}"),
+        I::load(vector_ty(), dest_ptr.clone()),
+    );
+    let old = I::extract(vector_ty(), O::reg(format!("vcopy_old_{tag}")), 0);
+    text.assign(format!("vcopy_oldptr_{tag}"), old);
+    free(text, O::reg(format!("vcopy_oldptr_{tag}")));
+    emit_fat(
+        text,
+        format!("vcopy_fat0_{tag}"),
+        format!("vcopy_fat_{tag}"),
+        O::reg(format!("vcopy_buf_{tag}")),
+        O::reg(format!("vcopy_len_{tag}")),
+    );
+    text.emit(I::store(
+        vector_ty(),
+        O::reg(format!("vcopy_fat_{tag}")),
+        dest_ptr,
+    ));
+}
+
+/// Stores `value` into the field at `field_offset` of `object`. Under
 /// explicit ownership the field's previous content goes to `previous`, the
 /// stored value is owned (the IR retained it), and a weak field stores the
 /// object's core id.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_set_member(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     object: ValueId,
     field_offset: u32,
     value: ValueId,
@@ -243,60 +330,36 @@ pub(crate) fn emit_set_member(
 ) {
     let llvm_ty = llvm_type(field_ty).expect("validated member type");
     let mut value_op = coerce_to_type(text, value, value_ty, field_ty);
-    let tag = state.continuation_count;
-    let f = |name: &str| O::reg(format!("field{name}{tag}"));
-    if let Type::Vector { element, .. } = field_ty {
-        state.continuation_count += 1;
-        let element_llvm = llvm_type(element).expect("validated vector field element");
-        let fat = value_op.clone();
-        text.assign(
-            format!("fieldsrc{tag}"),
-            I::extract(vector_ty(), fat.clone(), 0),
-        );
-        text.assign(format!("fieldlen{tag}"), I::extract(vector_ty(), fat, 1));
-        let wide = I::cast(CastOp::ZExt, T::I32, f("len"), T::I64);
-        text.assign(format!("fieldlen64_{tag}"), wide);
-        let element_bytes: u64 = match element_llvm {
-            T::I1 | T::I8 => 1,
-            T::I16 => 2,
-            T::I32 | T::Float => 4,
-            T::I64 | T::Double | T::Ptr => 8,
-            _ => unreachable!("validated scalar vector field element"),
-        };
-        let bytes = I::binary(BinaryOp::Mul, T::I64, f("len64_"), O::uint(element_bytes));
-        text.assign(format!("fieldbytes{tag}"), bytes);
-        let copy = I::call(T::Ptr, "malloc", vec![(T::I64, f("bytes"))]);
-        text.assign(format!("fieldcopy{tag}"), copy);
-        memcpy(text, f("copy"), f("src"), f("bytes"));
-        emit_fat(
-            text,
-            format!("fieldfat0_{tag}"),
-            format!("fieldfat{tag}"),
-            f("copy"),
-            f("len"),
-        );
-        value_op = O::reg(format!("fieldfat{tag}"));
-    }
     let member = O::reg(format!("mbrptr{}", value.0));
     let offset = vec![(T::I32, O::uint(u64::from(field_offset)))];
     text.assign(
         format!("mbrptr{}", value.0),
         I::gep(T::I8, v(object), offset),
     );
-    if matches!(field_ty, Type::Vector { .. }) {
-        text.assign(
-            format!("fieldoldfat{tag}"),
-            I::load(vector_ty(), member.clone()),
-        );
-        let old = I::extract(vector_ty(), f("oldfat"), 0);
-        text.assign(format!("fieldoldptr{tag}"), old);
-        free(text, f("oldptr"));
+    if let Some(owner) = struct_owner(module, field_ty) {
+        let copy_witness = arc_runtime::struct_copy_witness_name(&owner);
+        let destroy_witness = arc_runtime::struct_destroy_witness_name(&owner);
+        text.emit(I::call(
+            T::Void,
+            &destroy_witness,
+            vec![(T::Ptr, member.clone())],
+        ));
+        text.emit(I::call(
+            T::Void,
+            &copy_witness,
+            vec![(T::Ptr, member), (T::Ptr, value_op)],
+        ));
+        return;
     }
     if let Some(previous) = previous {
         text.assign(
             format!("v{}", previous.0),
             I::load(llvm_ty.clone(), member.clone()),
         );
+    }
+    if matches!(field_ty, Type::Vector { .. }) {
+        emit_vector_field_store(text, member, value_op, field_ty, state);
+        return;
     }
     if weak {
         value_op = arc_ops::weak_store_operand(text, &value_op, state);
@@ -306,6 +369,7 @@ pub(crate) fn emit_set_member(
 
 pub(crate) fn emit_member(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     block_id: BlockId,
     destination: ValueId,
     object: ValueId,
@@ -338,6 +402,11 @@ pub(crate) fn emit_member(
             text,
             &format!("v{dest}"),
             &O::reg(format!("weakfield{dest}")),
+        );
+    } else if is_struct_type(module, field_ty) {
+        text.assign(
+            format!("v{dest}"),
+            I::gep(T::I8, member, vec![(T::I32, O::int(0))]),
         );
     } else {
         text.assign(format!("v{dest}"), I::load(llvm_ty, member));
@@ -459,14 +528,69 @@ pub(crate) fn fixed_vector_array(ty: &Type) -> Option<(T, u64)> {
 
 /// Copies the elements of the fixed vector `ty` from `source` to the
 /// storage `target`.
-fn emit_copy_elements(text: &mut crate::ir::LlvmModule, ty: &Type, target: O, source: O) {
+fn emit_copy_elements(
+    text: &mut crate::ir::LlvmModule,
+    module: &Module,
+    ty: &Type,
+    target: O,
+    source: O,
+) {
     if let Some(nest) = nest(ty) {
         nest.emit_copy(text, &target, source);
         return;
     }
-    let Some((array, _)) = fixed_vector_array(ty) else {
+    let Some((array, count)) = fixed_vector_array(ty) else {
         return;
     };
+    if let Type::Vector { element, .. } = ty
+        && let Some(owner) = struct_owner(module, element)
+    {
+        for i in 0..count {
+            let tag = text.fresh_tag();
+            let dst_slot = format!("cpdstslot{tag}");
+            let src_slot = format!("cpsrcslot{tag}");
+            text.assign(
+                dst_slot.clone(),
+                I::gep(T::Ptr, target.clone(), vec![(T::I32, O::uint(i))]),
+            );
+            text.assign(
+                src_slot.clone(),
+                I::gep(T::Ptr, source.clone(), vec![(T::I32, O::uint(i))]),
+            );
+            let dst_ptr = format!("cpdstptr{tag}");
+            let src_ptr = format!("cpsrcptr{tag}");
+            text.assign(dst_ptr.clone(), I::load(T::Ptr, O::reg(dst_slot)));
+            text.assign(src_ptr.clone(), I::load(T::Ptr, O::reg(src_slot)));
+            let is_null = format!("cpnull{tag}");
+            text.assign(
+                is_null.clone(),
+                I::icmp(ICmpCond::Eq, T::Ptr, O::reg(src_ptr.clone()), O::null()),
+            );
+            let safe_src = format!("cpsafesrc{tag}");
+            text.assign(
+                safe_src.clone(),
+                I::select(
+                    O::reg(is_null.clone()),
+                    T::Ptr,
+                    O::reg(dst_ptr.clone()),
+                    O::reg(src_ptr),
+                ),
+            );
+            let copy_witness = arc_runtime::struct_copy_witness_name(&owner);
+            let destroy_witness = arc_runtime::struct_destroy_witness_name(&owner);
+            text.emit(I::call(
+                T::Void,
+                &destroy_witness,
+                vec![(T::Ptr, O::reg(dst_ptr.clone()))],
+            ));
+            text.emit(I::call(
+                T::Void,
+                &copy_witness,
+                vec![(T::Ptr, O::reg(dst_ptr)), (T::Ptr, O::reg(safe_src))],
+            ));
+        }
+        return;
+    }
     let tag = text.fresh_tag();
     let size = I::gep(array.clone(), O::null(), vec![(T::I32, O::int(1))]);
     text.assign(format!("vsize{tag}"), size);
@@ -491,6 +615,7 @@ fn emit_copy_elements(text: &mut crate::ir::LlvmModule, ty: &Type, target: O, so
 /// the elements hold references.
 pub(crate) fn emit_vector_storage(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     slot: usize,
     ty: &Type,
     references: bool,
@@ -508,6 +633,41 @@ pub(crate) fn emit_vector_storage(
     ));
     if let Some(nest) = nest(ty) {
         nest.emit_copy(text, &storage, O::null());
+    }
+    if let Type::Vector { element, .. } = ty
+        && let Some(owner) = struct_owner(module, element)
+    {
+        let bytes = class_instance_bytes(module, &owner);
+        let total_bytes = count.saturating_mul(bytes);
+        let array_bytes = T::Array(
+            usize::try_from(total_bytes).expect("fits usize"),
+            Box::new(T::I8),
+        );
+        let struct_data = format!("vstructdata{slot}");
+        text.assign(struct_data.clone(), I::alloca(array_bytes.clone()));
+        text.emit(I::store(
+            array_bytes,
+            O::zero_initializer(),
+            O::reg(struct_data.clone()),
+        ));
+        for i in 0..count {
+            let elem_ptr = format!("vstructelem{slot}_{i}");
+            let offset = i.saturating_mul(bytes);
+            text.assign(
+                elem_ptr.clone(),
+                I::gep(
+                    T::I8,
+                    O::reg(struct_data.clone()),
+                    vec![(T::I64, O::uint(offset))],
+                ),
+            );
+            let elem_slot = format!("vstructslot{slot}_{i}");
+            text.assign(
+                elem_slot.clone(),
+                I::gep(T::Ptr, storage.clone(), vec![(T::I32, O::uint(i))]),
+            );
+            text.emit(I::store(T::Ptr, O::reg(elem_ptr), O::reg(elem_slot)));
+        }
     }
     emit_fat(
         text,
@@ -528,11 +688,12 @@ pub(crate) fn emit_vector_storage(
 /// so the `previous` load the IR releases reads the old content.
 pub(crate) fn emit_vector_keep_previous(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     (storage, previous, binding): (&O, &O, &O),
     ty: &Type,
 ) {
     if fixed_vector_array(ty).is_some() {
-        emit_copy_elements(text, ty, previous.clone(), storage.clone());
+        emit_copy_elements(text, module, ty, previous.clone(), storage.clone());
         let tag = text.fresh_tag();
         text.assign(format!("vpold{tag}"), I::load(vector_ty(), binding.clone()));
         let old = O::reg(format!("vpold{tag}"));
@@ -547,6 +708,7 @@ pub(crate) fn emit_vector_keep_previous(
 /// result points there.
 pub(crate) fn emit_vector_copy(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     storage: &crate::ir::LlvmOperand,
     value: &crate::ir::LlvmOperand,
     ty: &Type,
@@ -558,7 +720,7 @@ pub(crate) fn emit_vector_copy(
         I::extract(vector_ty(), value.clone(), 0),
     );
     let source = O::reg(format!("vcsrc{tag}"));
-    emit_copy_elements(text, ty, storage.clone(), source);
+    emit_copy_elements(text, module, ty, storage.clone(), source);
     let moved = I::insert(vector_ty(), value.clone(), T::Ptr, storage.clone(), 0);
     text.assign(format!("vcfat{tag}"), moved);
     Some(O::reg(format!("vcfat{tag}")))
@@ -593,6 +755,7 @@ pub(crate) fn returned_vector(ty: &Type) -> Option<&Type> {
 /// `select` keeps the copy's source readable otherwise.
 pub(crate) fn emit_vector_relocate(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     value: &O,
     ty: &Type,
     buffer: &O,
@@ -600,7 +763,7 @@ pub(crate) fn emit_vector_relocate(
 ) -> Option<()> {
     let vector = returned_vector(ty)?;
     if vector == ty {
-        let moved = emit_vector_copy(text, buffer, value, ty)?;
+        let moved = emit_vector_copy(text, module, buffer, value, ty)?;
         let fat = I::insert(vector_ty(), moved, T::Ptr, buffer.clone(), 0);
         text.assign(out, fat);
         return Some(());
@@ -622,7 +785,7 @@ pub(crate) fn emit_vector_relocate(
     );
     let source = I::select(r("is"), T::Ptr, r("ptr"), buffer.clone());
     text.assign(format!("vrsrc{tag}"), source);
-    emit_copy_elements(text, vector, buffer.clone(), r("src"));
+    emit_copy_elements(text, module, vector, buffer.clone(), r("src"));
     let target = I::select(r("is"), T::Ptr, buffer.clone(), r("ptr"));
     text.assign(format!("vrnew{tag}"), target);
     text.assign(out, I::insert(layout, value.clone(), T::Ptr, r("new"), 1));

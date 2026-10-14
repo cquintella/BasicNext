@@ -3,9 +3,14 @@ use super::*;
 use crate::ir::{InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
 use crate::layout::vector_ty;
 
+fn v(id: ValueId) -> O {
+    O::reg(format!("v{}", id.0))
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_pointer_set_index(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     block_id: BlockId,
     symbol_slot: usize,
     index: ValueId,
@@ -26,6 +31,8 @@ pub(crate) fn emit_pointer_set_index(
     text.assign(format!("setfat{tag}"), I::load(vector_ty(), slot));
     emit_fat_pointer_store(
         text,
+        module,
+        elem_ty,
         block_id,
         context,
         tag,
@@ -67,6 +74,8 @@ fn emit_bounds_check(
 /// the element replaced goes to `previous` (explicit ownership).
 fn emit_element_store(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
+    elem_ty: &Type,
     prefix: &str,
     tag: usize,
     (index, value, llvm_elem): (&O, &O, crate::ir::LlvmType),
@@ -83,12 +92,30 @@ fn emit_element_store(
             I::load(elem.clone(), slot.clone()),
         );
     }
-    text.emit(I::store(elem, value.clone(), slot));
+    if let Some(owner) = struct_owner(module, elem_ty) {
+        let copy_witness = arc_runtime::struct_copy_witness_name(&owner);
+        let destroy_witness = arc_runtime::struct_destroy_witness_name(&owner);
+        let dest = format!("{prefix}elemptr{tag}");
+        text.assign(dest.clone(), I::load(T::Ptr, slot));
+        text.emit(I::call(
+            T::Void,
+            &destroy_witness,
+            vec![(T::Ptr, O::reg(dest.clone()))],
+        ));
+        text.emit(I::call(
+            T::Void,
+            &copy_witness,
+            vec![(T::Ptr, O::reg(dest)), (T::Ptr, value.clone())],
+        ));
+    } else {
+        text.emit(I::store(elem, value.clone(), slot));
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_vector_set_indices(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     block_id: BlockId,
     symbol_slot: usize,
     indices: &[ValueId],
@@ -130,7 +157,7 @@ pub(crate) fn emit_vector_set_indices(
         );
         if depth + 1 == indices.len() {
             let store = (&index_op.at, &value_op, llvm_elem.clone());
-            emit_element_store(text, "mdset", tag, store, previous);
+            emit_element_store(text, module, elem_ty, "mdset", tag, store, previous);
         } else {
             let next = format!("mdsetfat{base_tag}_{}", depth + 1);
             let at = vec![(T::I32, index_op.at)];
@@ -149,6 +176,7 @@ pub(crate) fn emit_vector_set_indices(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_field_set_index(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     block_id: BlockId,
     symbol_slot: usize,
     field_offset: u32,
@@ -175,6 +203,8 @@ pub(crate) fn emit_field_set_index(
     text.assign(format!("fieldsetfat{tag}"), I::load(vector_ty(), r("ptr")));
     emit_fat_pointer_store(
         text,
+        module,
+        elem_ty,
         block_id,
         "vector",
         tag,
@@ -189,8 +219,93 @@ pub(crate) fn emit_field_set_index(
 }
 
 #[allow(clippy::too_many_arguments)]
+pub(crate) fn emit_member_set_index(
+    text: &mut crate::ir::LlvmModule,
+    module: &Module,
+    block_id: BlockId,
+    object: ValueId,
+    field_offset: u32,
+    index: ValueId,
+    index_ty: &Type,
+    value: ValueId,
+    value_ty: &Type,
+    elem_ty: &Type,
+    previous: Option<ValueId>,
+    state: &mut EmissionState,
+) {
+    let tag = state.continuation_count;
+    let index_op = lower_index(text, index, index_ty);
+    let value_op = coerce_to_type(text, value, value_ty, elem_ty);
+    let ok = take_continuation(block_id, state);
+    let llvm_elem = llvm_type(elem_ty).expect("validated member indexed element");
+    let r = |name: &str| O::reg(format!("mbrset{name}{tag}"));
+    let offset = vec![(T::I32, O::uint(u64::from(field_offset)))];
+    text.assign(format!("mbrsetptr{tag}"), I::gep(T::I8, v(object), offset));
+    text.assign(format!("mbrsetfat{tag}"), I::load(vector_ty(), r("ptr")));
+    emit_fat_pointer_store(
+        text,
+        module,
+        elem_ty,
+        block_id,
+        "vector",
+        tag,
+        &O::reg(format!("mbrsetfat{tag}")),
+        &index_op,
+        &value_op,
+        llvm_elem,
+        previous,
+        ok,
+        state,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn emit_static_set_index(
+    text: &mut crate::ir::LlvmModule,
+    module: &Module,
+    block_id: BlockId,
+    class: &str,
+    field: &str,
+    index: ValueId,
+    index_ty: &Type,
+    value: ValueId,
+    value_ty: &Type,
+    elem_ty: &Type,
+    previous: Option<ValueId>,
+    state: &mut EmissionState,
+) {
+    let tag = state.continuation_count;
+    let index_op = lower_index(text, index, index_ty);
+    let value_op = coerce_to_type(text, value, value_ty, elem_ty);
+    let ok = take_continuation(block_id, state);
+    let llvm_elem = llvm_type(elem_ty).expect("validated static indexed element");
+    let global = static_global_name(class, field);
+    text.assign(
+        format!("staticsetfat{tag}"),
+        I::load(vector_ty(), O::global(global)),
+    );
+    emit_fat_pointer_store(
+        text,
+        module,
+        elem_ty,
+        block_id,
+        "vector",
+        tag,
+        &O::reg(format!("staticsetfat{tag}")),
+        &index_op,
+        &value_op,
+        llvm_elem,
+        previous,
+        ok,
+        state,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
 fn emit_fat_pointer_store(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
+    elem_ty: &Type,
     block_id: BlockId,
     context: &'static str,
     tag: usize,
@@ -213,6 +328,14 @@ fn emit_fat_pointer_store(
         continuation,
         context,
     );
-    emit_element_store(text, "set", tag, (&index.at, value, llvm_elem), previous);
+    emit_element_store(
+        text,
+        module,
+        elem_ty,
+        "set",
+        tag,
+        (&index.at, value, llvm_elem),
+        previous,
+    );
     state.needs_numeric_overflow_trap = true;
 }

@@ -153,29 +153,60 @@ pub(crate) fn lower_scalar_instruction(
                 vec![(T::I32, O::int(0)), (T::I32, index)]
             };
             text.assign(format!("vecdefault{dest}"), I::alloca(array.clone()));
-            for index in 0..len {
-                let slot = format!("vecdefaultslot{dest}_{index}");
-                text.assign(slot.clone(), I::gep(array.clone(), base.clone(), at(index)));
-                let zero = match element_llvm.clone() {
-                    T::I1 | T::I8 | T::I16 | T::I32 | T::I64 => O::int(0),
-                    T::Float | T::Double => O::float(0.0),
-                    // A STRING element defaults to "", as a scalar STRING does.
-                    T::Ptr if **element == Type::String => O::global(".bn_empty"),
-                    T::Ptr => O::null(),
-                    other
-                        if crate::layout::is_one_of(
-                            &other,
-                            &[
-                                crate::layout::handle_result_ty(),
-                                crate::layout::status_pointer_ty(),
-                            ],
-                        ) =>
-                    {
-                        O::zero_initializer()
-                    }
-                    _ => unreachable!("validated vector element type"),
-                };
-                text.emit(I::store(element_ty.clone(), zero, O::reg(slot)));
+            if let Some(owner) = struct_owner(module, element) {
+                let bytes = class_instance_bytes(module, &owner);
+                let total_bytes = (len as u64).saturating_mul(bytes);
+                let struct_bytes = T::Array(
+                    usize::try_from(total_bytes).expect("fits usize"),
+                    Box::new(T::I8),
+                );
+                let struct_data = format!("vecdefstructdata{dest}");
+                text.assign(struct_data.clone(), I::alloca(struct_bytes.clone()));
+                text.emit(I::store(
+                    struct_bytes,
+                    O::zero_initializer(),
+                    O::reg(struct_data.clone()),
+                ));
+                for index in 0..len {
+                    let elem_ptr = format!("vecdefelemptr{dest}_{index}");
+                    let offset = (index as u64).saturating_mul(bytes);
+                    text.assign(
+                        elem_ptr.clone(),
+                        I::gep(
+                            T::I8,
+                            O::reg(struct_data.clone()),
+                            vec![(T::I64, O::uint(offset))],
+                        ),
+                    );
+                    let slot = format!("vecdefaultslot{dest}_{index}");
+                    text.assign(slot.clone(), I::gep(array.clone(), base.clone(), at(index)));
+                    text.emit(I::store(T::Ptr, O::reg(elem_ptr), O::reg(slot)));
+                }
+            } else {
+                for index in 0..len {
+                    let slot = format!("vecdefaultslot{dest}_{index}");
+                    text.assign(slot.clone(), I::gep(array.clone(), base.clone(), at(index)));
+                    let zero = match element_llvm.clone() {
+                        T::I1 | T::I8 | T::I16 | T::I32 | T::I64 => O::int(0),
+                        T::Float | T::Double => O::float(0.0),
+                        // A STRING element defaults to "", as a scalar STRING does.
+                        T::Ptr if **element == Type::String => O::global(".bn_empty"),
+                        T::Ptr => O::null(),
+                        other
+                            if crate::layout::is_one_of(
+                                &other,
+                                &[
+                                    crate::layout::handle_result_ty(),
+                                    crate::layout::status_pointer_ty(),
+                                ],
+                            ) =>
+                        {
+                            O::zero_initializer()
+                        }
+                        _ => unreachable!("validated vector element type"),
+                    };
+                    text.emit(I::store(element_ty.clone(), zero, O::reg(slot)));
+                }
             }
             text.assign(format!("vecdefaultptr{dest}"), I::gep(array, base, at(0)));
             let fat = T::struct_of([T::Ptr, T::I32]);
@@ -306,17 +337,23 @@ pub(crate) fn lower_scalar_instruction(
             let operand = if let Some(owner) = struct_owner(module, slot_ty) {
                 // The slot owns fixed storage reserved at function entry
                 // (`functions.rs`); a store copies the value into it, so a loop
-                // never grows the stack. `memmove`: the value may already be it.
-                let bytes = class_instance_bytes(module, &owner);
+                // never grows the stack.
                 let storage = format!("structslot{}", symbols[symbol]);
-                let bytes = O::int(i64::try_from(bytes).expect("struct size fits i64"));
-                let args = vec![
-                    (T::Ptr, O::reg(&storage)),
-                    (T::Ptr, O::reg(format!("v{}", value.0))),
-                    (T::I64, bytes),
-                    (T::I1, O::bool(false)),
-                ];
-                text.emit(I::call(T::Void, crate::runtime_abi::memmove().name, args));
+                let copy_witness = arc_runtime::struct_copy_witness_name(&owner);
+                let destroy_witness = arc_runtime::struct_destroy_witness_name(&owner);
+                text.emit(I::call(
+                    T::Void,
+                    &destroy_witness,
+                    vec![(T::Ptr, O::reg(&storage))],
+                ));
+                text.emit(I::call(
+                    T::Void,
+                    &copy_witness,
+                    vec![
+                        (T::Ptr, O::reg(&storage)),
+                        (T::Ptr, O::reg(format!("v{}", value.0))),
+                    ],
+                ));
                 O::reg(&storage)
             } else if slot_llvm == crate::layout::optional_float_ty()
                 && matches!(value_llvm, T::Float | T::Double)
@@ -392,7 +429,12 @@ pub(crate) fn lower_scalar_instruction(
                     O::reg(format!("vprev{slot}")),
                     O::reg(format!("s{slot}")),
                 );
-                vectors::emit_vector_keep_previous(text, (&storage, &kept, &binding), slot_ty);
+                vectors::emit_vector_keep_previous(
+                    text,
+                    module,
+                    (&storage, &kept, &binding),
+                    slot_ty,
+                );
             }
             // Explicit ownership: the write gives back the previous content
             // (the IR releases it) and stores a value it owns.
@@ -406,8 +448,14 @@ pub(crate) fn lower_scalar_instruction(
             let operand = if function.weak_symbols.contains(symbol) {
                 arc_ops::weak_store_operand(text, &operand, state)
             } else {
-                vectors::emit_vector_copy(text, &O::reg(format!("vstore{slot}")), &operand, slot_ty)
-                    .unwrap_or(operand)
+                vectors::emit_vector_copy(
+                    text,
+                    module,
+                    &O::reg(format!("vstore{slot}")),
+                    &operand,
+                    slot_ty,
+                )
+                .unwrap_or(operand)
             };
             text.emit(I::store(slot_llvm, operand, O::reg(format!("s{slot}"))));
             if analysis.released_symbols.contains(symbol) {

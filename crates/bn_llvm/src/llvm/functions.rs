@@ -288,13 +288,20 @@ pub(crate) fn emit_function(
                     // it (`emission1.rs`), so the value lives until the return.
                     let bytes = usize::try_from(class_instance_bytes(module, &owner))
                         .expect("struct size fits usize");
+                    let slot_name = format!("structslot{}", symbol_names[symbol]);
                     text.assign(
-                        format!("structslot{}", symbol_names[symbol]),
+                        slot_name.clone(),
                         I::alloca(T::Array(bytes, Box::new(T::I8))),
                     );
+                    text.emit(I::store(
+                        T::Array(bytes, Box::new(T::I8)),
+                        O::zero_initializer(),
+                        O::reg(slot_name),
+                    ));
                 }
                 vectors::emit_vector_storage(
                     text,
+                    module,
                     symbol_names[symbol],
                     ty,
                     arc_ops::holds_references(module, ty),
@@ -351,7 +358,7 @@ pub(crate) fn emit_function(
                 text.assign(format!("sc{}", value.0), I::alloca(T::I1));
             }
             if !is_start {
-                store_parameters(text, function, analysis, &symbol_names);
+                store_parameters(text, module, function, analysis, &symbol_names);
             }
         }
         let mut block_state = BlockState {
@@ -390,7 +397,7 @@ pub(crate) fn emit_function(
     if debug {
         mark_location(text, function.span, function.span);
     }
-    emit_traps(text, analysis, &symbol_names, &mut state);
+    emit_traps(text, module, analysis, &symbol_names, &mut state);
     text.end_function();
     state.control_flow.resolve(text)
 }
@@ -428,6 +435,7 @@ fn reachable_block_ids(function: &Function) -> HashSet<u32> {
 
 fn emit_traps(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     analysis: &LoweringAnalysis<'_>,
     symbols: &HashMap<SymbolId, usize>,
     state: &mut EmissionState,
@@ -442,7 +450,7 @@ fn emit_traps(
         }
         text.label(label);
         if state.is_start {
-            cleanup_owned_memory(text, analysis, symbols, state);
+            cleanup_owned_memory(text, module, analysis, symbols, state);
             text.emit(I::Ret {
                 val: Some((T::I32, O::int(1))),
             });

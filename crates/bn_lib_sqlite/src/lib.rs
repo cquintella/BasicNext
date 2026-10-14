@@ -254,10 +254,10 @@ impl SqliteProvider {
                         Value::String(shared_string(String::from_utf8_lossy(&bytes)))
                     }
                     StoredValue::Boolean(b) => Value::Boolean(b),
-                    StoredValue::Null => Value::Null,
-                    StoredValue::NotAvailable | StoredValue::EndOfFile | StoredValue::Handle(_) => {
-                        Value::NotAvailable
-                    }
+                    StoredValue::Null
+                    | StoredValue::NotAvailable
+                    | StoredValue::EndOfFile
+                    | StoredValue::Handle(_) => Value::NotAvailable,
                 };
                 values.push(val);
             }

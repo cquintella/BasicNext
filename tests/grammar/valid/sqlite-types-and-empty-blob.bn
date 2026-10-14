@@ -1,0 +1,77 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Regression tests for K73 (64-bit rowid/changes) and K78 (empty blob and null columns).
+IMPORT BNData AS Data
+IMPORT BNSqlite AS Sqlite
+
+FUNCTION Start() AS INTEGER
+    LET conn AS Sqlite.Connection OR Error = Sqlite.Open(":memory:")
+    IF conn IS Error THEN
+        PRINT "OPEN_FAILED", conn.Code
+        RETURN 1
+    END IF
+
+    LET resExec AS VOID OR Error = conn.Exec("CREATE TABLE test_types (id INTEGER PRIMARY KEY, b BLOB, txt TEXT, opt INT);")
+    IF resExec IS Error THEN
+        PRINT "EXEC_CREATE_FAILED", resExec.Code
+        RETURN 1
+    END IF
+
+    resExec = conn.Exec("INSERT INTO test_types VALUES (3000000000, x'', '', NULL);")
+    IF resExec IS Error THEN
+        PRINT "EXEC_INSERT_FAILED", resExec.Code
+        RETURN 1
+    END IF
+
+    LET chg AS INT64 = conn.Changes()
+    LET rowid AS INT64 = conn.LastInsertRowId()
+    PRINT "CHANGES:", chg
+    PRINT "LAST_ID:", rowid
+
+    LET df AS Data.DataFrame OR Error = conn.Query("SELECT b, txt, opt FROM test_types WHERE id = 3000000000;")
+    IF df IS Error THEN
+        PRINT "QUERY_FAILED", df.Code
+        RETURN 1
+    END IF
+
+    PRINT "ROWS:", df.RowCount()
+    LET bVal AS STRING OR NA OR Error = df.GetString(0, "b")
+    LET txtVal AS STRING OR NA OR Error = df.GetString(0, "txt")
+    LET optVal AS INTEGER OR NA OR Error = df.GetInteger(0, "opt")
+
+    IF bVal IS STRING THEN
+        PRINT "BLOB_LEN:", LEN(bVal)
+    ELSE IF bVal IS NA THEN
+        PRINT "BLOB_IS_NA: TRUE"
+    ELSE
+        PRINT "BLOB_IS_ERR"
+    END IF
+
+    IF txtVal IS STRING THEN
+        PRINT "TXT_LEN:", LEN(txtVal)
+    ELSE IF txtVal IS NA THEN
+        PRINT "TXT_IS_NA: TRUE"
+    ELSE
+        PRINT "TXT_IS_ERR"
+    END IF
+
+    IF optVal IS NA THEN
+        PRINT "OPT_IS_NA: TRUE"
+    ELSE IF optVal IS INTEGER THEN
+        PRINT "OPT_VAL:", optVal
+    ELSE
+        PRINT "OPT_IS_ERR"
+    END IF
+
+    LET resClose AS VOID OR Error = conn.Close()
+    IF resClose IS Error THEN
+        PRINT "CLOSE_FAILED", resClose.Code
+        RETURN 1
+    END IF
+
+    PRINT "SQLITE_TYPES_OK"
+    RETURN 0
+END FUNCTION

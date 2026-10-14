@@ -363,3 +363,43 @@ fn temporal_builtins_match_on_both_backends() {
         );
     }
 }
+
+/// SQLite 64-bit rowid/changes (K73) and empty blob/text with NULL (K78) match on both backends.
+#[test]
+fn sqlite_types_and_empty_blob_match_on_both_backends() {
+    let path = valid_fixture("sqlite-types-and-empty-blob.bn");
+    let expected = "CHANGES: 1\nLAST_ID: 3000000000\nROWS: 1\nBLOB_LEN: 0\nTXT_LEN: 0\nOPT_IS_NA: TRUE\nSQLITE_TYPES_OK\n";
+    let directory = TestDir::new("sqlite-types-and-empty-blob").expect("create directory");
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
+}
+
+/// Returning a struct by value containing ARC references and vectors outlives its frame (K10, K63).
+#[test]
+fn struct_return_arc_matches_on_both_backends() {
+    let path = valid_fixture("struct-return-arc.bn");
+    let expected = "golden\n42\n84\n";
+    let directory = TestDir::new("struct-return-arc").expect("create directory");
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
+}

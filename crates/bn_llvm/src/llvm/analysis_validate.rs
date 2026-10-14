@@ -303,7 +303,31 @@ pub(crate) fn validate_instruction(
                 && values.get(value).and_then(llvm_type).is_some()
                 && llvm_type(ty).is_some()
         }
-        Instruction::SetMemberIndex { .. } | Instruction::SetStaticIndex { .. } => false,
+        Instruction::SetMemberIndex {
+            object,
+            indices,
+            value,
+            ty,
+            ..
+        } => {
+            indices.len() == 1
+                && values.get(object).and_then(llvm_type) == Some(LlvmType::Ptr)
+                && indices
+                    .iter()
+                    .all(|index| values.get(index).and_then(llvm_type).is_some())
+                && values.get(value).and_then(llvm_type).is_some()
+                && llvm_type(ty).is_some()
+        }
+        Instruction::SetStaticIndex {
+            indices, value, ty, ..
+        } => {
+            indices.len() == 1
+                && indices
+                    .iter()
+                    .all(|index| values.get(index).and_then(llvm_type).is_some())
+                && values.get(value).and_then(llvm_type).is_some()
+                && llvm_type(ty).is_some()
+        }
         Instruction::EnsureClass { .. } => true,
         Instruction::Member {
             object,
@@ -358,7 +382,7 @@ pub(crate) fn validate_instruction(
             ty,
             ..
         } => {
-            path.len() == 1
+            !path.is_empty()
                 && symbols.get(symbol).and_then(llvm_type) == Some(LlvmType::Ptr)
                 && values.get(value).and_then(llvm_type).is_some()
                 && llvm_type(ty).is_some()

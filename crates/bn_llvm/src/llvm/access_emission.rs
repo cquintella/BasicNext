@@ -105,6 +105,7 @@ pub(crate) fn lower_access_emission(
                 let weak = module.field_is_weak(field);
                 emit_member(
                     text,
+                    module,
                     block_id,
                     *destination,
                     *object,
@@ -135,6 +136,7 @@ pub(crate) fn lower_access_emission(
                     .expect("validated setindex index type");
                 emit_pointer_set_index(
                     text,
+                    module,
                     block_id,
                     symbols[symbol],
                     index,
@@ -153,6 +155,7 @@ pub(crate) fn lower_access_emission(
             } else {
                 emit_vector_set_indices(
                     text,
+                    module,
                     block_id,
                     symbols[symbol],
                     indices,

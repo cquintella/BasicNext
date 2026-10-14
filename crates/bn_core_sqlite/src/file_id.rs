@@ -8,7 +8,7 @@
 use std::path::Path;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct FileIdentity {
+pub struct FileIdentity {
     #[cfg(unix)]
     dev: u64,
     #[cfg(unix)]
@@ -47,7 +47,7 @@ extern "system" {
 const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
 
 impl FileIdentity {
-    pub(crate) fn from_path(path: &Path) -> Option<Self> {
+    pub fn from_path(path: &Path) -> Option<Self> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt as _;
@@ -59,15 +59,22 @@ impl FileIdentity {
         }
         #[cfg(windows)]
         {
+            use std::fs::OpenOptions;
+            use std::os::windows::fs::OpenOptionsExt as _;
             use std::os::windows::io::AsRawHandle as _;
-            let file = std::fs::File::open(path).ok()?;
+            const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+            let file = OpenOptions::new()
+                .read(true)
+                .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+                .open(path)
+                .ok()?;
             let mut info = ByHandleFileInformation::default();
-            // SAFETY: `file` is a valid open file handle, and `info` is a valid
-            // memory buffer matching the Win32 `BY_HANDLE_FILE_INFORMATION` structure.
-            #[allow(unsafe_code)]
-            let success =
-                unsafe { GetFileInformationByHandle(file.as_raw_handle().cast(), &mut info) };
-            if success == 0 {
+            // SAFETY: Calling Win32 GetFileInformationByHandle with valid raw handle
+            // and pointer to ByHandleFileInformation struct.
+            let ret = unsafe {
+                GetFileInformationByHandle(file.as_raw_handle() as *mut std::ffi::c_void, &mut info)
+            };
+            if ret == 0 {
                 return None;
             }
             let index =
@@ -77,28 +84,19 @@ impl FileIdentity {
                 index,
             })
         }
-        #[cfg(not(any(unix, windows)))]
-        {
-            let _ = path;
-            None
-        }
     }
 }
 
-pub(crate) fn is_symlink_or_reparse_point(path: &Path) -> bool {
+pub fn is_symlink_or_reparse_point(path: &Path) -> bool {
     #[cfg(unix)]
     {
-        std::fs::symlink_metadata(path).is_ok_and(|m| m.is_symlink())
+        std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink())
     }
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt as _;
-        std::fs::symlink_metadata(path)
-            .is_ok_and(|m| m.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0)
-    }
-    #[cfg(not(any(unix, windows)))]
-    {
-        let _ = path;
-        false
+        std::fs::symlink_metadata(path).is_ok_and(|m| {
+            m.file_type().is_symlink() || (m.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT) != 0
+        })
     }
 }

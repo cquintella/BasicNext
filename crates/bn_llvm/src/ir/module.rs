@@ -106,8 +106,14 @@ impl LlvmModule {
         self.pieces.push(piece);
     }
 
-    /// Declares a function.
+    /// Declares a function if not already declared.
     pub fn declare(&mut self, signature: Signature) {
+        if self.pieces.iter().any(|p| match p {
+            Piece::Declaration(s) => s.name == signature.name,
+            _ => false,
+        }) {
+            return;
+        }
         self.append(Piece::Declaration(signature));
     }
 

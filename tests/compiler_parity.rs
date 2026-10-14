@@ -206,14 +206,14 @@ fn nullable_integer_type_tests_inspect_the_runtime_tag() {
 #[test]
 fn indexed_struct_and_static_fields_preserve_language_semantics() {
     let path = valid_fixture("indexed-member-assignment.bn");
+    let directory = TestDir::new("indexed-member").expect("create indexed directory");
+    let artifact = compile_native(&path, &directory);
     let interpreted = interpret(&path, None);
     assert_success(&interpreted, "interpret indexed member fixture");
     assert_eq!(interpreted.stdout, b"7\n9\n");
-    let emitted = execute(bnc().arg(&path), None);
-    assert!(!emitted.status.success());
-    let diagnostics = String::from_utf8_lossy(&emitted.stderr);
-    assert!(diagnostics.contains("error[TARGET_UNSUPPORTED_OP]"));
-    assert!(!diagnostics.contains("INVALID_IR"));
+    let compiled = execute_artifact(&artifact, &[], None);
+    assert_success(&compiled, "compile indexed member fixture");
+    assert_eq!(compiled.stdout, interpreted.stdout);
 }
 
 #[test]

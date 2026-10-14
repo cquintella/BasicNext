@@ -500,58 +500,6 @@ const KNOWN_BNI_FAILURES: KnownFailures = &[
     ("STRING / ordering", "TYPE_MISMATCH"),
 ];
 const KNOWN_BNC_FAILURES: KnownFailures = &[
-    // K67: a STRUCT stored into a field, an element or a STATIC is not
-    // copied.
-    (
-        "Point / object field / copy then change the source",
-        "WRONG",
-    ),
-    ("Point / object field / outlives the frame", "WRONG"),
-    (
-        "Point / struct field / copy then change the source",
-        "WRONG",
-    ),
-    ("Point / element / copy then change the source", "WRONG"),
-    ("Point / STATIC / copy then change the source", "WRONG"),
-    ("Point / STATIC / outlives the frame", "WRONG"),
-    // K67 / K65: stores into a field of a field are refused.
-    (
-        "Point / object field / store into the place",
-        "TARGET_UNSUPPORTED_OP",
-    ),
-    (
-        "Point / struct field / store into the place",
-        "TARGET_UNSUPPORTED_OP",
-    ),
-    (
-        "Point / struct field / change a copy of the owner",
-        "TARGET_UNSUPPORTED_OP",
-    ),
-    // K67: a vector stored into an object field is not copied.
-    (
-        "vector / object field / copy then change the source",
-        "WRONG",
-    ),
-    ("vector / object field / outlives the frame", "WRONG"),
-    // K65: an indexed store into a STATIC vector is refused.
-    (
-        "vector / STATIC / store into the place",
-        "TARGET_UNSUPPORTED_OP",
-    ),
-    // T.K10 (K67 family): a STRUCT holding a vector or a STRUCT is refused.
-    ("Bag / local / default", "TARGET_UNSUPPORTED_OP"),
-    (
-        "Bag / local / store into the place",
-        "TARGET_UNSUPPORTED_OP",
-    ),
-    (
-        "Bag / local / copy then change the source",
-        "TARGET_UNSUPPORTED_OP",
-    ),
-    ("Bag / local / change the copy", "TARGET_UNSUPPORTED_OP"),
-    ("Bag / return / outlives the frame", "TARGET_UNSUPPORTED_OP"),
-    ("Bag / local / replaced in a loop", "TARGET_UNSUPPORTED_OP"),
-    ("Line / local / change the copy", "TARGET_UNSUPPORTED_OP"),
     // K1 / G.S1 (A7): U+0000 in a native STRING.
     ("STRING / holds U+0000", "TARGET_UNSUPPORTED_TYPE"),
     // S.13 (C7, C11, A5), as on bni.

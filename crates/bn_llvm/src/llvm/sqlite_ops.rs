@@ -8,7 +8,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::bndata_columns::emit_handle_operand;
 use super::*;
-use crate::ir::{CastOp, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
+use crate::ir::{InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
 
 pub(crate) fn sqlite_call_supported(
     method: &str,
@@ -91,16 +91,14 @@ pub(crate) fn lower_sqlite_call(
             let args = vec![handle(text)];
             text.assign(
                 format!("v{dest}"),
-                I::call(T::I32, "bn_rt_sqlite_changes", args),
+                I::call(T::I64, "bn_rt_sqlite_changes", args),
             );
         }
         "LastInsertRowId" => {
             let args = vec![handle(text)];
-            let rowid = I::call(T::I64, "bn_rt_sqlite_last_insert_rowid", args);
-            text.assign(format!("sqliterowid{dest}"), rowid);
             text.assign(
                 format!("v{dest}"),
-                I::cast(CastOp::Trunc, T::I64, r("rowid"), T::I32),
+                I::call(T::I64, "bn_rt_sqlite_last_insert_rowid", args),
             );
         }
         _ => panic!("unhandled BNSqlite member in emission: {method}"),

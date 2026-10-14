@@ -48,6 +48,7 @@ pub(crate) fn emit_user_signature(
 
 pub(crate) fn store_parameters(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     function: &Function,
     analysis: &LoweringAnalysis<'_>,
     symbol_names: &HashMap<SymbolId, usize>,
@@ -60,7 +61,7 @@ pub(crate) fn store_parameters(
         // A vector argument is a copy: the callee owns its elements.
         let storage = LlvmOperand::reg(format!("vstore{slot}"));
         let value = (analysis.symbols.get(symbol))
-            .and_then(|ty| vectors::emit_vector_copy(text, &storage, &incoming, ty));
+            .and_then(|ty| vectors::emit_vector_copy(text, module, &storage, &incoming, ty));
         text.emit(LlvmInst::store(
             parameter_type(function, *symbol, analysis),
             value.unwrap_or(incoming),
@@ -321,6 +322,7 @@ pub(crate) fn lower_user_call(
             );
             vectors::emit_vector_relocate(
                 text,
+                module,
                 &LlvmOperand::reg(&raw),
                 &callee.return_type,
                 &buffer,
@@ -333,6 +335,16 @@ pub(crate) fn lower_user_call(
             let owned = LlvmOperand::reg(format!("structowned{}", destination.0));
             let previous = format!("structprev{}", destination.0);
             text.assign(&previous, LlvmInst::load(Ptr, owned.clone()));
+            if let Some(ty) = analysis.values.get(&destination)
+                && let Some(owner) = struct_owner(module, ty)
+            {
+                let destroy_witness = arc_runtime::struct_destroy_witness_name(&owner);
+                text.emit(LlvmInst::call(
+                    Void,
+                    &destroy_witness,
+                    vec![(Ptr, LlvmOperand::reg(previous.clone()))],
+                ));
+            }
             text.emit(LlvmInst::call(
                 Void,
                 "free",

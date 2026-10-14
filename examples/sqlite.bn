@@ -368,6 +368,84 @@ FUNCTION Start() AS VOID
         PRINT "<- Result: Authentication database connection closed."
     END IF
 
+    // -------------------------------------------------------------
+    // Section 6: Advanced Types (64-Bit RowIDs, Empty BLOB, Empty TEXT, and NULL)
+    // -------------------------------------------------------------
+    PRINT ""
+    PRINT "--- Section 6: Advanced Types (64-Bit RowIDs, Empty BLOB, Empty TEXT, and NULL) ---"
+
+    PRINT "-> Action: Opening in-memory database to demonstrate 64-bit rowids and column types..."
+    LET typeDb AS Sqlite.Connection OR Error = Sqlite.Open(":memory:")
+    IF typeDb IS Error THEN
+        PRINT "<- Result: FAILED to open type database: Code =", typeDb.Code
+        RETURN
+    END IF
+    PRINT "<- Result: Type demonstration database connection established."
+
+    PRINT "-> Action: Creating 'type_demo' table with 64-bit rowid, BLOB, TEXT and NULLable INT..."
+    res = typeDb.Exec("CREATE TABLE type_demo (id INTEGER PRIMARY KEY, bin_payload BLOB, note TEXT, optional_score INT);")
+    IF res IS Error THEN
+        PRINT "<- Result: FAILED to create 'type_demo' table: Code =", res.Code
+        RETURN
+    END IF
+    PRINT "<- Result: Table 'type_demo' created successfully."
+
+    PRINT "-> Action: Inserting row with 64-bit rowid (3000000000), empty BLOB (x''), empty TEXT (''), and NULL..."
+    res = typeDb.Exec("INSERT INTO type_demo VALUES (3000000000, x'', '', NULL);")
+    IF res IS Error THEN
+        PRINT "<- Result: FAILED to insert record: Code =", res.Code
+        RETURN
+    END IF
+
+    LET lastId AS INT64 = typeDb.LastInsertRowId()
+    LET changesCount AS INT64 = typeDb.Changes()
+    PRINT "<- Result: Record inserted successfully."
+    PRINT "   RowID (64-bit INT64):", lastId
+    PRINT "   Changes (64-bit INT64):", changesCount
+
+    PRINT "-> Action: Querying row back via typeDb.Query()..."
+    LET typeQuery AS Data.DataFrame OR Error = typeDb.Query("SELECT id, bin_payload, note, optional_score FROM type_demo WHERE id = 3000000000;")
+    IF typeQuery IS Error THEN
+        PRINT "<- Result: FAILED to query 'type_demo': Code =", typeQuery.Code
+        RETURN
+    END IF
+    PRINT "<- Result: Query returned", typeQuery.RowCount(), "row(s)."
+
+    LET binVal AS STRING OR NA OR Error = typeQuery.GetString(0, "bin_payload")
+    IF binVal IS STRING THEN
+        PRINT "   BLOB payload: successfully read as STRING, length =", LEN(binVal), "(empty binary data preserved)"
+    ELSE IF binVal IS NA THEN
+        PRINT "   BLOB payload: UNEXPECTED NA"
+    ELSE
+        PRINT "   BLOB payload: error reading column"
+    END IF
+
+    LET noteVal AS STRING OR NA OR Error = typeQuery.GetString(0, "note")
+    IF noteVal IS STRING THEN
+        PRINT "   TEXT note: successfully read as STRING, length =", LEN(noteVal), "(empty text preserved)"
+    ELSE IF noteVal IS NA THEN
+        PRINT "   TEXT note: UNEXPECTED NA"
+    ELSE
+        PRINT "   TEXT note: error reading column"
+    END IF
+
+    LET scoreVal AS INTEGER OR NA OR Error = typeQuery.GetInteger(0, "optional_score")
+    IF scoreVal IS NA THEN
+        PRINT "   Optional score: correctly identified as NA (mapped from SQLite NULL)"
+    ELSE IF scoreVal IS INTEGER THEN
+        PRINT "   Optional score: value =", scoreVal
+    ELSE
+        PRINT "   Optional score: error reading column"
+    END IF
+
+    PRINT "-> Action: Closing type demonstration connection..."
+    res = typeDb.Close()
+    IF res IS Error THEN
+        PRINT "<- Result: FAILED to close type connection: Code =", res.Code
+    ELSE
+        PRINT "<- Result: Type demonstration connection closed."
+    END IF
+
     PRINT ""
     PRINT "=== Tour completed successfully ==="
 END FUNCTION

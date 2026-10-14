@@ -13,6 +13,22 @@ pub(crate) const OBJECT_HEADER_BYTES: u32 = 16;
 /// its NUL) for `s[i]` and `CHAR`: a value that can outlive its frame.
 pub(crate) const PACKED_UTF8_BYTES: i64 = 8;
 
+pub(crate) const I8_BYTES: u32 = 1;
+pub(crate) const I16_BYTES: u32 = 2;
+pub(crate) const I32_BYTES: u32 = 4;
+pub(crate) const POINTER_BYTES: u32 = 8;
+pub(crate) const FAT_POINTER_BYTES: u32 = 16;
+pub(crate) const REGION_DESCRIPTOR_BYTES: u32 = 24;
+
+pub(crate) const I8_ALIGNMENT: u32 = 1;
+pub(crate) const I16_ALIGNMENT: u32 = 2;
+pub(crate) const I32_ALIGNMENT: u32 = 4;
+pub(crate) const POINTER_ALIGNMENT: u32 = 8;
+pub(crate) const AGGREGATE_ALIGNMENT: u32 = 8;
+
+pub(crate) const VECTOR_BUFFER_FIELD_INDEX: usize = 0;
+pub(crate) const VECTOR_LENGTH_FIELD_INDEX: usize = 1;
+
 #[derive(Clone, Debug)]
 pub(crate) struct LayoutField {
     pub reference: FieldRef,
@@ -22,7 +38,7 @@ pub(crate) struct LayoutField {
 pub(crate) fn field_byte_offset(module: &Module, field: &FieldRef) -> Option<u32> {
     let mut offset = OBJECT_HEADER_BYTES;
     for candidate in class_layout_fields(module, &field.owner) {
-        let (size, alignment) = llvm_storage_layout(&candidate.ty)
+        let (size, alignment) = llvm_storage_layout(module, &candidate.ty)
             .expect("target validation accepted member field type");
         offset = align_to(offset, alignment);
         if candidate.reference == *field {
@@ -34,14 +50,27 @@ pub(crate) fn field_byte_offset(module: &Module, field: &FieldRef) -> Option<u32
 }
 
 pub(crate) fn class_instance_bytes(module: &Module, type_name: &str) -> u64 {
+    let mut visited = std::collections::HashSet::new();
+    class_instance_bytes_inner(module, type_name, &mut visited)
+}
+
+fn class_instance_bytes_inner(
+    module: &Module,
+    type_name: &str,
+    visited: &mut std::collections::HashSet<String>,
+) -> u64 {
+    if !visited.insert(type_name.to_string()) {
+        return u64::from(OBJECT_HEADER_BYTES);
+    }
     let mut total = OBJECT_HEADER_BYTES;
     let mut object_alignment = OBJECT_HEADER_BYTES;
     for field in class_layout_fields(module, type_name) {
-        let (size, alignment) =
-            llvm_storage_layout(&field.ty).expect("target validation accepted member field type");
+        let (size, alignment) = llvm_storage_layout_inner(module, &field.ty, visited)
+            .expect("target validation accepted member field type");
         total = align_to(total, alignment).saturating_add(size);
         object_alignment = object_alignment.max(alignment);
     }
+    visited.remove(type_name);
     u64::from(align_to(total, object_alignment))
 }
 
@@ -91,7 +120,49 @@ pub(crate) fn struct_copy_supported(module: &Module, ty: &Type) -> bool {
     };
     class_layout_fields(module, &name)
         .into_iter()
-        .all(|field| !matches!(field.ty, Type::Vector { .. } | Type::Pointer { .. }))
+        .all(|field| llvm_type(&field.ty).is_some())
+}
+
+pub(crate) fn all_struct_owners(module: &Module) -> std::collections::BTreeSet<String> {
+    let mut owners = std::collections::BTreeSet::new();
+    for name in module.field_layouts.keys() {
+        if module
+            .function_of_kind(FunctionKind::Default, name)
+            .is_some()
+        {
+            owners.insert(name.clone());
+        }
+    }
+    owners
+}
+
+pub(crate) fn struct_managed_fields(module: &Module, owner: &str) -> Vec<LayoutField> {
+    let mut visited = std::collections::HashSet::new();
+    struct_managed_fields_inner(module, owner, &mut visited)
+}
+
+fn struct_managed_fields_inner(
+    module: &Module,
+    owner: &str,
+    visited: &mut std::collections::HashSet<String>,
+) -> Vec<LayoutField> {
+    if !visited.insert(owner.to_string()) {
+        return Vec::new();
+    }
+    let fields = class_layout_fields(module, owner)
+        .into_iter()
+        .filter(|field| {
+            if matches!(field.ty, Type::Vector { .. }) {
+                return true;
+            }
+            if let Some(nested_owner) = struct_owner(module, &field.ty) {
+                return !struct_managed_fields_inner(module, &nested_owner, visited).is_empty();
+            }
+            false
+        })
+        .collect();
+    visited.remove(owner);
+    fields
 }
 
 pub(crate) fn class_layout_fields(module: &Module, class: &str) -> Vec<LayoutField> {
@@ -121,19 +192,37 @@ fn align_to(offset: u32, alignment: u32) -> u32 {
     }
 }
 
-fn llvm_storage_layout(ty: &Type) -> Option<(u32, u32)> {
+fn llvm_storage_layout(module: &Module, ty: &Type) -> Option<(u32, u32)> {
+    let mut visited = std::collections::HashSet::new();
+    llvm_storage_layout_inner(module, ty, &mut visited)
+}
+
+fn llvm_storage_layout_inner(
+    module: &Module,
+    ty: &Type,
+    visited: &mut std::collections::HashSet<String>,
+) -> Option<(u32, u32)> {
+    if let Some(owner) = struct_owner(module, ty) {
+        let bytes = class_instance_bytes_inner(module, &owner, visited);
+        return Some((
+            u32::try_from(bytes).expect("struct size fits u32"),
+            POINTER_ALIGNMENT,
+        ));
+    }
     match llvm_type(ty)? {
-        LlvmType::I1 | LlvmType::I8 => Some((1, 1)),
-        LlvmType::I16 => Some((2, 2)),
-        LlvmType::I32 | LlvmType::Float => Some((4, 4)),
-        LlvmType::I64 | LlvmType::Double | LlvmType::Ptr => Some((8, 8)),
+        LlvmType::I1 | LlvmType::I8 => Some((I8_BYTES, I8_ALIGNMENT)),
+        LlvmType::I16 => Some((I16_BYTES, I16_ALIGNMENT)),
+        LlvmType::I32 | LlvmType::Float => Some((I32_BYTES, I32_ALIGNMENT)),
+        LlvmType::I64 | LlvmType::Double | LlvmType::Ptr => {
+            Some((POINTER_BYTES, POINTER_ALIGNMENT))
+        }
         layout
             if is_one_of(
                 &layout,
                 &[vector_ty(), optional_float_ty(), status_pointer_ty()],
             ) =>
         {
-            Some((16, 8))
+            Some((FAT_POINTER_BYTES, AGGREGATE_ALIGNMENT))
         }
         layout
             if is_one_of(
@@ -146,7 +235,7 @@ fn llvm_storage_layout(ty: &Type) -> Option<(u32, u32)> {
                 ],
             ) =>
         {
-            Some((24, 8))
+            Some((REGION_DESCRIPTOR_BYTES, AGGREGATE_ALIGNMENT))
         }
         _ => None,
     }

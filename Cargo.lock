@@ -197,6 +197,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bn_core_sqlite"
+version = "0.6.4"
+dependencies = [
+ "bn_types",
+ "rusqlite",
+]
+
+[[package]]
 name = "bn_core_text"
 version = "0.6.4"
 dependencies = [
@@ -429,6 +437,7 @@ dependencies = [
 name = "bn_lib_sqlite"
 version = "0.6.4"
 dependencies = [
+ "bn_core_sqlite",
  "bn_diag",
  "bn_interp",
  "bn_lib_data",
@@ -508,6 +517,7 @@ dependencies = [
  "bn_core_log",
  "bn_core_math",
  "bn_core_net",
+ "bn_core_sqlite",
  "bn_core_text",
  "bn_host_env",
  "bn_host_exec",
@@ -521,7 +531,6 @@ dependencies = [
  "ml-dsa",
  "ml-kem",
  "p256",
- "rusqlite",
  "serde",
  "serde_json",
  "sha2",

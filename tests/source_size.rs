@@ -31,8 +31,9 @@ const CEILINGS: &[(&str, usize)] = &[
 
 /// Lines of `crates/bn_llvm/src` when the gate was added (20 703), plus the
 /// 10% the BDFL allowed for the typed-builder migration (2026-10-05), 5%
-/// more to finish it (2026-10-07), and adjusted for composite comparisons (K68).
-const BN_LLVM_CEILING: usize = 24_500;
+/// more to finish it (2026-10-07), adjusted for composite comparisons (K68),
+/// struct value copying (K67), and value witnesses and drop glue (Sprint V.S3).
+const BN_LLVM_CEILING: usize = 25_600;
 
 fn rust_sources(directory: &Path, files: &mut Vec<String>) {
     let mut entries = fs::read_dir(directory)

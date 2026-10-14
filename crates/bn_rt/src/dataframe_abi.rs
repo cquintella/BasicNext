@@ -293,7 +293,7 @@ macro_rules! get_scalar {
                     out_na.write(0);
                     BN_DATAFRAME_OK
                 },
-                Ok(StoredValue::NotAvailable) => unsafe {
+                Ok(StoredValue::NotAvailable | StoredValue::Null) => unsafe {
                     out_na.write(1);
                     BN_DATAFRAME_OK
                 },
@@ -341,7 +341,7 @@ pub extern "C" fn bn_rt_dataframe_get_string(
         return failed("BNData.DataFrame.GetString", &DataFailure::InvalidHandle);
     }
     match cell(frame, row, name) {
-        Ok(StoredValue::String(value)) => unsafe {
+        Ok(StoredValue::String(value) | StoredValue::Bytes(value)) => unsafe {
             let value = super::text_abi::owned_c_string("BNData.DataFrame.GetString", &value);
             if value.is_null() {
                 return failed(
@@ -353,7 +353,7 @@ pub extern "C" fn bn_rt_dataframe_get_string(
             out_na.write(0);
             BN_DATAFRAME_OK
         },
-        Ok(StoredValue::NotAvailable) => unsafe {
+        Ok(StoredValue::NotAvailable | StoredValue::Null) => unsafe {
             out.write(std::ptr::null_mut());
             out_na.write(1);
             BN_DATAFRAME_OK
