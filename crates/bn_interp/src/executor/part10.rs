@@ -153,7 +153,8 @@ impl Executor<'_, '_> {
             }
             Value::HostArgs => {
                 let arguments = &self.host.arguments;
-                let index = checked_index(index, arguments.len(), "HOST.Args", span)?;
+                let context = bn_diag::trap_texts::HOST_ARGS_CONTEXT;
+                let index = checked_index(index, arguments.len(), context, span)?;
                 Ok(Value::String(shared_string(arguments[index].as_str())))
             }
             _ => Err(super::type_mismatch(

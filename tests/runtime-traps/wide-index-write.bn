@@ -1,0 +1,14 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Runtime trap: a store at an INT64 index above the INT32 range (known
+// issue K71: the native binary wrote element 2).
+FUNCTION Start() AS INTEGER
+    LET values AS INTEGER[3] = [1, 2, 3]
+    LET at AS INT64 = 4294967298
+    values[at] = 99
+    PRINT values[2]
+    RETURN 0
+END FUNCTION

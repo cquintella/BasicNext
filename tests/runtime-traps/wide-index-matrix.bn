@@ -1,0 +1,14 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Runtime trap: a store into a two-dimensional vector at an INT64 index
+// above the INT32 range (known issue K71).
+FUNCTION Start() AS INTEGER
+    LET grid AS INTEGER[2][3]
+    LET at AS INT64 = 4294967296
+    grid[0][at] = 5
+    PRINT grid[0][0]
+    RETURN 0
+END FUNCTION

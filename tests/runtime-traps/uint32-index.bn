@@ -1,0 +1,13 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Runtime trap: a UINT32 index above the INT32 range (known issue K71: the
+// native binary read it as -1).
+FUNCTION Start() AS INTEGER
+    LET values AS INTEGER[3] = [1, 2, 3]
+    LET at AS UINT32 = 4294967295
+    PRINT values[at]
+    RETURN 0
+END FUNCTION

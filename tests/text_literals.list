@@ -672,6 +672,7 @@ crates/bn_diag/src/trap_texts.rs	prose	integer exponent cannot be negative
 crates/bn_diag/src/trap_texts.rs	prose	integer exponent is too large
 crates/bn_diag/src/trap_texts.rs	prose	performing an integer operation
 crates/bn_diag/src/trap_texts.rs	prose	pointer element type does not match destination type
+crates/bn_diag/src/trap_texts.rs	identifier	HOST.Args
 crates/bn_frontend/src/host_spec.rs	identifier	HOST.
 crates/bn_frontend/src/host_spec.rs	identifier	HOST.Args
 crates/bn_frontend/src/host_spec.rs	identifier	HOST.Args
@@ -1672,7 +1673,6 @@ crates/bn_interp/src/executor/part1.rs	prose	Phi cannot execute in the function 
 crates/bn_interp/src/executor/part1.rs	prose	Phi has no incoming value for the predecessor block
 crates/bn_interp/src/executor/part1.rs	prose	STATIC initialization of {class} reentered
 crates/bn_interp/src/executor/part1.rs	prose	execution terminated by debugger
-crates/bn_interp/src/executor/part10.rs	identifier	HOST.Args
 crates/bn_interp/src/executor/part10.rs	prose	allocation byte size overflowed
 crates/bn_interp/src/executor/part10.rs	prose	allocation exceeds the host limit
 crates/bn_interp/src/executor/part10.rs	prose	allocation length does not fit the host
@@ -2454,7 +2454,6 @@ crates/bn_llvm/src/llvm/access_emission.rs	prose	validated error aggregate
 crates/bn_llvm/src/llvm/access_emission.rs	prose	validated error aggregate
 crates/bn_llvm/src/llvm/access_emission.rs	prose	validated index type
 crates/bn_llvm/src/llvm/access_emission.rs	prose	validated index type
-crates/bn_llvm/src/llvm/access_emission.rs	prose	validated index type
 crates/bn_llvm/src/llvm/access_emission.rs	prose	validated member field reference
 crates/bn_llvm/src/llvm/access_emission.rs	prose	validated member field slot
 crates/bn_llvm/src/llvm/access_emission.rs	prose	validated setindex index type
@@ -2661,6 +2660,7 @@ crates/bn_llvm/src/llvm/indexed_store.rs	prose	validated indexed-field element
 crates/bn_llvm/src/llvm/indexed_store.rs	prose	validated indexed-store element
 crates/bn_llvm/src/llvm/indexed_store.rs	prose	validated indexed-store element
 crates/bn_llvm/src/llvm/indexed_store.rs	prose	validated multidimensional index type
+crates/bn_llvm/src/llvm/index_bounds.rs	prose	validated index type
 crates/bn_llvm/src/llvm/indirect_call.rs	prose	validated argument
 crates/bn_llvm/src/llvm/indirect_call.rs	prose	validated indirect callee
 crates/bn_llvm/src/llvm/indirect_call.rs	prose	validated indirect function type
@@ -3436,6 +3436,7 @@ crates/bn_rt/src/sqlite_abi.rs	prose	cannot begin transaction: transaction is al
 crates/bn_rt/src/sqlite_abi.rs	prose	cannot commit: no active transaction
 crates/bn_rt/src/sqlite_abi.rs	prose	cannot execute mutative statement on read-only connection
 crates/bn_rt/src/sqlite_abi.rs	prose	cannot rollback: no active transaction
+crates/bn_rt/src/sqlite_abi.rs	prose	database file identity changed concurrently during open
 crates/bn_rt/src/sqlite_abi.rs	prose	directory traversal (..) and null bytes are not permitted
 crates/bn_rt/src/sqlite_abi.rs	prose	invalid database path (missing file name)
 crates/bn_rt/src/sqlite_abi.rs	prose	invalid null or non-UTF8 SQL string

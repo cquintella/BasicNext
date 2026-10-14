@@ -1,0 +1,35 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// An index of any integer type reads and writes the element it names on
+// both backends (known issue K71: wide indices were narrowed natively).
+CLASS Box
+    PUBLIC items AS INTEGER[3]
+
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS INTEGER
+    LET values AS INTEGER[3] = [10, 20, 30]
+    LET small AS INT8 = 2
+    LET byte AS BYTE = 1
+    LET unsigned AS UINT32 = 1
+    LET wide AS INT64 = 2
+    LET widest AS UINT64 = 0
+    PRINT values[small], values[byte], values[unsigned], values[wide], values[widest]
+    values[wide] = 33
+    PRINT values[2]
+    LET grid AS INTEGER[2][3]
+    grid[byte][wide] = 5
+    PRINT grid[1][2]
+    LET box AS Box = NEW Box()
+    box.items[unsigned] = 7
+    PRINT box.items[wide - 1]
+    LET text AS STRING = "héllo"
+    PRINT text[wide], text[widest], text[unsigned]
+    PRINT LEN(HOST.Args[widest]) > 0
+    RETURN 0
+END FUNCTION

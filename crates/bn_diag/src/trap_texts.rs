@@ -33,3 +33,6 @@ pub const BINDING_ALREADY_RELEASED: &str = "binding was already released";
 
 /// "converting a value to INTEGER"
 pub const CONVERTING_TO_INTEGER: &str = "converting a value to INTEGER";
+
+/// "HOST.Args": what an index outside `HOST.Args` names in its diagnostic.
+pub const HOST_ARGS_CONTEXT: &str = "HOST.Args";

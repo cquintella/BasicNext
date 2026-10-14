@@ -1,8 +1,6 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
-use crate::ir::{
-    BinaryOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T,
-};
+use crate::ir::{InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
 use crate::layout::vector_ty;
 
 #[allow(clippy::too_many_arguments)]
@@ -20,7 +18,7 @@ pub(crate) fn emit_pointer_set_index(
     state: &mut EmissionState,
 ) {
     let tag = state.continuation_count;
-    let index_op = coerce_to_type(text, index, index_ty, &Type::Integer(IntegerType::Int32));
+    let index_op = lower_index(text, index, index_ty);
     let value_op = coerce_to_type(text, value, value_ty, elem_ty);
     let ok = take_continuation(block_id, state);
     let llvm_elem = llvm_type(elem_ty).expect("validated indexed-store element");
@@ -42,7 +40,7 @@ pub(crate) fn emit_pointer_set_index(
 }
 
 /// Bounds-checks `index` against the vector `fat_pointer`: writes
-/// `%{prefix}<ptr|len|neg|oob|bad>{tag}` and traps through `continuation`.
+/// `%{prefix}<ptr|len>{tag}` and traps through `continuation`.
 #[allow(clippy::too_many_arguments)]
 fn emit_bounds_check(
     text: &mut crate::ir::LlvmModule,
@@ -51,38 +49,18 @@ fn emit_bounds_check(
     prefix: &str,
     tag: usize,
     fat_pointer: &O,
-    index: &O,
+    index: &LoweredIndex,
     continuation: String,
     context: &'static str,
 ) {
-    let r = |name: &str| O::reg(format!("{prefix}{name}{tag}"));
     let fat = fat_pointer.clone();
-    let at = index;
     text.assign(
         format!("{prefix}ptr{tag}"),
         I::extract(vector_ty(), fat.clone(), 0),
     );
     text.assign(format!("{prefix}len{tag}"), I::extract(vector_ty(), fat, 1));
-    let negative = I::icmp(ICmpCond::Slt, T::I32, at.clone(), O::int(0));
-    text.assign(format!("{prefix}neg{tag}"), negative);
-    text.assign(
-        format!("{prefix}oob{tag}"),
-        I::icmp(ICmpCond::Uge, T::I32, at.clone(), r("len")),
-    );
-    text.assign(
-        format!("{prefix}bad{tag}"),
-        I::binary(BinaryOp::Or, T::I1, r("neg"), r("oob")),
-    );
-    emit_index_trap(
-        text,
-        block_id,
-        state,
-        &O::reg(format!("{prefix}bad{tag}")),
-        continuation,
-        index,
-        &r("len"),
-        context,
-    );
+    let length = O::reg(format!("{prefix}len{tag}"));
+    emit_index_check(text, block_id, state, index, &length, continuation, context);
 }
 
 /// Writes `%{prefix}slot{tag}`, the element of type `llvm_elem` at `index`;
@@ -137,7 +115,7 @@ pub(crate) fn emit_vector_set_indices(
             .values
             .get(index)
             .expect("validated multidimensional index type");
-        let index_op = coerce_to_type(text, *index, index_ty, &Type::Integer(IntegerType::Int32));
+        let index_op = lower_index(text, *index, index_ty);
         let continuation = take_continuation(block_id, state);
         emit_bounds_check(
             text,
@@ -151,11 +129,11 @@ pub(crate) fn emit_vector_set_indices(
             "vector",
         );
         if depth + 1 == indices.len() {
-            let store = (&index_op, &value_op, llvm_elem.clone());
+            let store = (&index_op.at, &value_op, llvm_elem.clone());
             emit_element_store(text, "mdset", tag, store, previous);
         } else {
             let next = format!("mdsetfat{base_tag}_{}", depth + 1);
-            let at = vec![(T::I32, index_op)];
+            let at = vec![(T::I32, index_op.at)];
             let row = I::gep(vector_ty(), O::reg(format!("mdsetptr{tag}")), at);
             text.assign(format!("mdsetslot{tag}"), row);
             text.assign(
@@ -183,7 +161,7 @@ pub(crate) fn emit_field_set_index(
     state: &mut EmissionState,
 ) {
     let tag = state.continuation_count;
-    let index_op = coerce_to_type(text, index, index_ty, &Type::Integer(IntegerType::Int32));
+    let index_op = lower_index(text, index, index_ty);
     let value_op = coerce_to_type(text, value, value_ty, elem_ty);
     let ok = take_continuation(block_id, state);
     let llvm_elem = llvm_type(elem_ty).expect("validated indexed-field element");
@@ -217,7 +195,7 @@ fn emit_fat_pointer_store(
     context: &'static str,
     tag: usize,
     fat_pointer: &O,
-    index: &O,
+    index: &LoweredIndex,
     value: &O,
     llvm_elem: crate::ir::LlvmType,
     previous: Option<ValueId>,
@@ -235,6 +213,6 @@ fn emit_fat_pointer_store(
         continuation,
         context,
     );
-    emit_element_store(text, "set", tag, (index, value, llvm_elem), previous);
+    emit_element_store(text, "set", tag, (&index.at, value, llvm_elem), previous);
     state.needs_numeric_overflow_trap = true;
 }

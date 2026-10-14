@@ -205,12 +205,17 @@ pub(crate) fn lower_access_emission(
             ..
         } if analysis.values.get(object) == Some(&Type::String) => {
             block_state.constants.remove(destination);
-            let idx = extend_to_i32_index(
-                text,
-                *index,
-                analysis.values.get(index).expect("validated index type"),
-            );
             let dest = destination.0;
+            let index_ty = analysis.values.get(index).expect("validated index type");
+            let idx = lower_index(text, *index, index_ty);
+            if idx.wide {
+                // `bn_rt` takes an `i32`: a wider index is checked whole first.
+                let length = I::call(T::I32, "bn_rt_str_len", vec![(T::Ptr, v(*object))]);
+                text.assign(format!("strindexlen{dest}"), length);
+                let ok = take_continuation(block_id, state);
+                let length = O::reg(format!("strindexlen{dest}"));
+                emit_index_check(text, block_id, state, &idx, &length, ok, "string");
+            }
             // `bn_rt` checks the index against the character count and, when
             // it is outside, prints this site's diagnostic with both facts.
             let (trap, _) = trap_symbol(
@@ -226,7 +231,7 @@ pub(crate) fn lower_access_emission(
             let r = |name: &str| O::reg(format!("strindex{name}{dest}"));
             let args = vec![
                 (T::Ptr, v(*object)),
-                (T::I32, idx),
+                (T::I32, idx.at),
                 (T::Ptr, O::global(trap)),
             ];
             let packed = I::call(T::I64, "bn_rt_str_index_utf8", args);
@@ -248,10 +253,12 @@ pub(crate) fn lower_access_emission(
         } if analysis.values.get(object) == Some(&Type::HostArgs) => {
             block_state.constants.remove(destination);
             let index_type = analysis.values.get(index).expect("validated index type");
-            let index =
-                coerce_to_type(text, *index, index_type, &Type::Integer(IntegerType::Int32));
+            let index = lower_index(text, *index, index_type);
+            let ok = take_continuation(block_id, state);
+            let context = bn_diag::trap_texts::HOST_ARGS_CONTEXT;
+            emit_index_check(text, block_id, state, &index, &O::reg("argc"), ok, context);
             let dest = destination.0;
-            let at = vec![(T::I32, index)];
+            let at = vec![(T::I32, index.at)];
             text.assign(format!("argptr{dest}"), I::gep(T::Ptr, O::reg("argv"), at));
             text.assign(
                 format!("v{dest}"),
@@ -261,21 +268,4 @@ pub(crate) fn lower_access_emission(
         _ => return false,
     }
     true
-}
-
-fn extend_to_i32_index(
-    text: &mut crate::ir::LlvmModule,
-    value: ValueId,
-    ty: &Type,
-) -> crate::ir::LlvmOperand {
-    let llvm_ty = llvm_type(ty).expect("validated index type");
-    let op = match llvm_ty {
-        T::I32 => return O::reg(format!("v{}", value.0)),
-        T::I64 => CastOp::Trunc,
-        _ if is_unsigned(ty) => CastOp::ZExt,
-        _ => CastOp::SExt,
-    };
-    let temp = format!("stridx{}", value.0);
-    text.assign(&temp, I::cast(op, llvm_ty, v(value), T::I32));
-    O::reg(&temp)
 }

@@ -2,3 +2,5 @@
 # messages"). One `key = value` per line; `{name}` is filled by the code.
 
 run.message = cannot run "{program}"
+run.pipe_timeout = the program ended, but a process it started kept its output open past the {timeout_ms} ms execution timeout
+run.reader_lost = the thread capturing an output stream ended without its capture

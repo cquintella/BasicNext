@@ -947,9 +947,11 @@ use debug_info::{attach_debug_info, mark_function, mark_location};
 #[path = "llvm/traps.rs"]
 mod traps;
 use traps::{
-    Fact, define_trap_globals, emit_failure_trap, emit_index_trap, emit_overflow_trap, emit_trap,
-    trap_symbol,
+    Fact, define_trap_globals, emit_failure_trap, emit_overflow_trap, emit_trap, trap_symbol,
 };
+#[path = "llvm/index_bounds.rs"]
+mod index_bounds;
+use index_bounds::{LoweredIndex, emit_index_check, lower_index};
 #[path = "llvm/host_results.rs"]
 mod host_results;
 use host_results::{

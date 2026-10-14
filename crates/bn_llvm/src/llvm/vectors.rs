@@ -400,8 +400,7 @@ pub(crate) fn emit_vector_index(
     let dest = destination.0;
     let r = |name: &str| O::reg(format!("vec{name}{dest}"));
     let ok = take_continuation(block_id, state);
-    let index_op = coerce_to_type(text, index, index_ty, &Type::Integer(IntegerType::Int32));
-    let at = index_op.clone();
+    let index = lower_index(text, index, index_ty);
     text.assign(
         format!("vecptr{dest}"),
         I::extract(vector_ty(), v(object), 0),
@@ -410,25 +409,8 @@ pub(crate) fn emit_vector_index(
         format!("veclen{dest}"),
         I::extract(vector_ty(), v(object), 1),
     );
-    let negative = I::icmp(ICmpCond::Slt, T::I32, at.clone(), O::int(0));
-    text.assign(format!("vecneg{dest}"), negative);
-    text.assign(
-        format!("vecoob{dest}"),
-        I::icmp(ICmpCond::Uge, T::I32, at.clone(), r("len")),
-    );
-    let bad = I::binary(BinaryOp::Or, T::I1, r("neg"), r("oob"));
-    text.assign(format!("vecbad{dest}"), bad);
-    emit_index_trap(
-        text,
-        block_id,
-        state,
-        &O::reg(format!("vecbad{dest}")),
-        ok,
-        &index_op,
-        &O::reg(format!("veclen{dest}")),
-        context,
-    );
-    let slot = I::gep(elem_ty.clone(), r("ptr"), vec![(T::I32, at)]);
+    emit_index_check(text, block_id, state, &index, &r("len"), ok, context);
+    let slot = I::gep(elem_ty.clone(), r("ptr"), vec![(T::I32, index.at)]);
     text.assign(format!("vecslot{dest}"), slot);
     text.assign(format!("v{dest}"), I::load(elem_ty, r("slot")));
     state.needs_numeric_overflow_trap = true;

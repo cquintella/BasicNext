@@ -121,46 +121,6 @@ pub(crate) fn trap_symbol(
     (format!("{PREFIX}{}", hex(&payload)), runtime)
 }
 
-/// `INDEX_OUT_OF_BOUNDS` when `condition` holds, with the `i32` index and
-/// length read at run time (the interpreter's facts; `context` is `vector`
-/// or `region`).
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn emit_index_trap(
-    text: &mut crate::ir::LlvmModule,
-    block_id: BlockId,
-    state: &mut EmissionState,
-    condition: &O,
-    ok: String,
-    index: &crate::ir::LlvmOperand,
-    length: &crate::ir::LlvmOperand,
-    context: &'static str,
-) {
-    let tag = state.continuation_count;
-    for (name, value) in [("idxfact", index), ("lenfact", length)] {
-        let wide = I::cast(CastOp::SExt, T::I32, value.clone(), T::I128);
-        text.assign(format!("{name}{tag}"), wide);
-    }
-    emit_trap(
-        text,
-        block_id,
-        state,
-        condition,
-        ok,
-        DiagId::INDEX_OUT_OF_BOUNDS,
-        vec![
-            (
-                "index",
-                Fact::Runtime("{}", O::reg(format!("idxfact{tag}"))),
-            ),
-            (
-                "bound",
-                Fact::Runtime("{}", O::reg(format!("lenfact{tag}"))),
-            ),
-            ("context", Fact::Text(context.into())),
-        ],
-    );
-}
-
 /// `NUMERIC_OVERFLOW` when `condition` holds, reporting the exact `i128`
 /// value that did not fit `ty` (the interpreter's "converting V to T").
 pub(crate) fn emit_overflow_trap(

@@ -1,0 +1,12 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Runtime trap: HOST.Args read at LEN(HOST.Args) (known issue K70: the
+// native binary read argv[argc], a null pointer, and crashed).
+FUNCTION Start() AS INTEGER
+    LET at AS INTEGER = LEN(HOST.Args)
+    PRINT HOST.Args[at]
+    RETURN 0
+END FUNCTION

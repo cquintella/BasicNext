@@ -1,0 +1,21 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Runtime trap: a store into a vector field at an INT64 index above the
+// INT32 range (known issue K71).
+CLASS Box
+    PUBLIC items AS INTEGER[3]
+
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS INTEGER
+    LET box AS Box = NEW Box()
+    LET at AS INT64 = 4294967297
+    box.items[at] = 5
+    PRINT box.items[1]
+    RETURN 0
+END FUNCTION

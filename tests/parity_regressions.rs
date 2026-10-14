@@ -297,3 +297,26 @@ fn nested_vectors_are_values_on_both_backends() {
         );
     }
 }
+
+/// An index of any integer type names the same element on both backends
+/// (known issue K71: native builds narrowed a wide index to 32 bits before
+/// the bounds check). The out-of-range cases are traps in
+/// `tests/runtime-traps/` (`wide-index-*`, `uint32-index`, `host-args-*`).
+#[test]
+fn indices_of_every_integer_width_match_on_both_backends() {
+    let path = valid_fixture("index-widths.bn");
+    let expected = "30 20 20 30 10\n33\n5\n7\nl h é\nTRUE\n";
+    let directory = TestDir::new("index-widths").expect("create directory");
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
+}

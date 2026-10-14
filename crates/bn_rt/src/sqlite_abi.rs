@@ -29,6 +29,11 @@ use super::dataframe::DataFrameColumn;
 use super::dataframe_abi::{BNDataFrameHandle, StoredValue, register_frame_columns};
 use super::sqlite_error::SqliteFailure;
 
+/// Default busy timeout for database connection locks (5 seconds).
+const SQLITE_BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(5000);
+
+const CONCURRENT_MUTATION_MSG: &str = "database file identity changed concurrently during open";
+
 struct ConnectionState {
     connection: Option<Connection>,
     _path: String,
@@ -118,7 +123,7 @@ fn open_connection(path_str: &str, mode: OpenMode) -> Result<u64, SqliteFailure>
 
     if is_memory {
         let conn = Connection::open_in_memory().map_err(SqliteFailure::from)?;
-        conn.busy_timeout(std::time::Duration::from_millis(5000))
+        conn.busy_timeout(SQLITE_BUSY_TIMEOUT)
             .map_err(SqliteFailure::from)?;
 
         let handle = next_handle();
@@ -206,9 +211,37 @@ fn open_connection(path_str: &str, mode: OpenMode) -> Result<u64, SqliteFailure>
         }
     };
 
+    // Capture pre-open device and inode if target file exists
+    #[cfg(unix)]
+    let pre_meta = if canonical_path.exists() {
+        use std::os::unix::fs::MetadataExt as _;
+        std::fs::metadata(&canonical_path)
+            .ok()
+            .map(|m| (m.dev(), m.ino()))
+    } else {
+        None
+    };
+
     let conn = Connection::open_with_flags(&canonical_path, flags).map_err(SqliteFailure::from)?;
 
-    conn.busy_timeout(std::time::Duration::from_millis(5000))
+    // TOCTOU mitigation: verify post-open file identity matches pre-open identity
+    #[cfg(unix)]
+    if let Some((expected_dev, expected_ino)) = pre_meta {
+        use std::os::unix::fs::MetadataExt as _;
+        if let Ok(post_meta) = std::fs::metadata(&canonical_path) {
+            if (expected_dev, expected_ino) != (post_meta.dev(), post_meta.ino()) {
+                return Err(SqliteFailure::PolicyDenied(
+                    CONCURRENT_MUTATION_MSG.to_owned(),
+                ));
+            }
+        } else {
+            return Err(SqliteFailure::PolicyDenied(
+                CONCURRENT_MUTATION_MSG.to_owned(),
+            ));
+        }
+    }
+
+    conn.busy_timeout(SQLITE_BUSY_TIMEOUT)
         .map_err(SqliteFailure::from)?;
 
     let handle = next_handle();

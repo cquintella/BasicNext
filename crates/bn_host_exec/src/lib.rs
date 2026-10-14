@@ -83,6 +83,8 @@ impl Failure {
 struct StreamCapture {
     bytes: Vec<u8>,
     overflow: bool,
+    /// The read error that ended the capture before end of file.
+    failure: Option<String>,
 }
 
 /// Drains a captured stream. Keeps reading past the ceiling so the child
@@ -93,9 +95,15 @@ fn read_pipe<R: Read>(mut pipe: R, capture_limit: usize) -> StreamCapture {
     let mut chunk = [0_u8; 8192];
     let mut total = 0_usize;
     let mut exceeded = false;
+    let mut failure = None;
     loop {
         match pipe.read(&mut chunk) {
-            Ok(0) | Err(_) => break,
+            Ok(0) => break,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) => {
+                failure = Some(error.to_string());
+                break;
+            }
             Ok(count) => {
                 total = total.saturating_add(count);
                 if !exceeded && bytes.len() <= capture_limit {
@@ -115,7 +123,42 @@ fn read_pipe<R: Read>(mut pipe: R, capture_limit: usize) -> StreamCapture {
     if overflow {
         bytes.clear();
     }
-    StreamCapture { bytes, overflow }
+    StreamCapture {
+        bytes,
+        overflow,
+        failure,
+    }
+}
+
+/// Waits for one stream's capture until `deadline`. The wall clock runs
+/// through pipe end of file (0.6.md, `HOST.Exec` rule 5): a process the child
+/// started may keep the pipe open after the child exits, and its output is
+/// never dropped — the call ends with `TIMEOUT` instead.
+fn collect(
+    capture: &mpsc::Receiver<StreamCapture>,
+    deadline: Instant,
+    policy: &Policy,
+) -> Result<StreamCapture, Failure> {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    let stream = capture
+        .recv_timeout(remaining)
+        .map_err(|error| match error {
+            mpsc::RecvTimeoutError::Timeout => Failure::new(
+                TIMEOUT,
+                bn_catalog::fill(
+                    "exec",
+                    "run.pipe_timeout",
+                    &[("timeout_ms", &policy.timeout.as_millis())],
+                ),
+            ),
+            mpsc::RecvTimeoutError::Disconnected => {
+                Failure::new(CAPTURE_FAILED, bn_catalog::text("exec", "run.reader_lost"))
+            }
+        })?;
+    match stream.failure {
+        Some(cause) => Err(Failure::new(CAPTURE_FAILED, cause)),
+        None => Ok(stream),
+    }
 }
 
 /// Runs `program` with `args` under `policy`.
@@ -240,13 +283,8 @@ fn run_checked(program: &str, args: &[&str], policy: &Policy) -> Result<Output, 
         }
     };
 
-    // Bounded timeout for pipe drain in case background grandchildren hold descriptors open.
-    let stdout = out_rx
-        .recv_timeout(Duration::from_millis(500))
-        .unwrap_or_default();
-    let stderr = err_rx
-        .recv_timeout(Duration::from_millis(500))
-        .unwrap_or_default();
+    let stdout = collect(&out_rx, deadline, policy)?;
+    let stderr = collect(&err_rx, deadline, policy)?;
 
     // D-H1-02: count bytes before UTF-8 validation; overflow is a stable Error, not truncation.
     if stdout.overflow || stderr.overflow {
@@ -366,6 +404,31 @@ mod tests {
         )
         .unwrap();
         assert_eq!(res.stdout, "finished");
+        assert!(start.elapsed() < Duration::from_secs(2));
+    }
+
+    /// A process the child started keeps stdout open after the child exits
+    /// (known issue K72): its output is kept, not dropped as an empty
+    /// success.
+    #[cfg(unix)]
+    #[test]
+    fn output_held_open_by_a_grandchild_is_kept() {
+        let held = run("/bin/sh", &["-c", "printf hello; sleep 1 &"], &policy()).unwrap();
+        assert_eq!((held.return_code, held.stdout.as_str()), (0, "hello"));
+    }
+
+    /// A pipe still open at the deadline ends the call with `TIMEOUT` (0.6.md,
+    /// `HOST.Exec` rule 5: the wall clock runs through pipe end of file).
+    #[cfg(unix)]
+    #[test]
+    fn output_held_open_past_the_deadline_is_timeout() {
+        let short = Policy {
+            timeout: Duration::from_millis(300),
+            ..policy()
+        };
+        let start = Instant::now();
+        let failure = run("/bin/sh", &["-c", "printf hello; sleep 3 &"], &short).unwrap_err();
+        assert_eq!(failure.code, TIMEOUT);
         assert!(start.elapsed() < Duration::from_secs(2));
     }
 
