@@ -42,6 +42,7 @@ mod exec;
 pub mod file;
 mod file_abi;
 mod file_error;
+mod file_id;
 pub mod json;
 pub mod json_abi;
 pub mod json_error;

@@ -211,13 +211,16 @@ fn open_connection(path_str: &str, mode: OpenMode) -> Result<u64, SqliteFailure>
         }
     };
 
-    // Capture pre-open device and inode if target file exists
-    #[cfg(unix)]
+    // Reject symlinks or reparse points on the database file path
+    if crate::file_id::is_symlink_or_reparse_point(&canonical_path) {
+        return Err(SqliteFailure::PolicyDenied(
+            CONCURRENT_MUTATION_MSG.to_owned(),
+        ));
+    }
+
+    // Capture pre-open file identity if target file exists
     let pre_meta = if canonical_path.exists() {
-        use std::os::unix::fs::MetadataExt as _;
-        std::fs::metadata(&canonical_path)
-            .ok()
-            .map(|m| (m.dev(), m.ino()))
+        crate::file_id::FileIdentity::from_path(&canonical_path)
     } else {
         None
     };
@@ -225,11 +228,9 @@ fn open_connection(path_str: &str, mode: OpenMode) -> Result<u64, SqliteFailure>
     let conn = Connection::open_with_flags(&canonical_path, flags).map_err(SqliteFailure::from)?;
 
     // TOCTOU mitigation: verify post-open file identity matches pre-open identity
-    #[cfg(unix)]
-    if let Some((expected_dev, expected_ino)) = pre_meta {
-        use std::os::unix::fs::MetadataExt as _;
-        if let Ok(post_meta) = std::fs::metadata(&canonical_path) {
-            if (expected_dev, expected_ino) != (post_meta.dev(), post_meta.ino()) {
+    if let Some(expected_identity) = pre_meta {
+        if let Some(post_identity) = crate::file_id::FileIdentity::from_path(&canonical_path) {
+            if expected_identity != post_identity {
                 return Err(SqliteFailure::PolicyDenied(
                     CONCURRENT_MUTATION_MSG.to_owned(),
                 ));
