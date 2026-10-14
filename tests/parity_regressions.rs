@@ -320,3 +320,46 @@ fn indices_of_every_integer_width_match_on_both_backends() {
         );
     }
 }
+
+/// `HOST.Args` read from functions outside `Start` works on both backends
+/// (known issue K79: native builds failed with undefined value `%argc` / `%argv`
+/// in any function other than `Start`).
+#[test]
+fn host_args_outside_start_match_on_both_backends() {
+    let path = valid_fixture("host-args-outside-start.bn");
+    let expected = "TRUE\nTRUE\n";
+    let directory = TestDir::new("host-args-outside-start").expect("create directory");
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
+}
+
+/// Global temporal builtins `Date.Parse`, `Time.Parse`, `Timestamp.Parse`,
+/// and `Timestamp.Format` match on both backends (known issue K80).
+#[test]
+fn temporal_builtins_match_on_both_backends() {
+    let path = valid_fixture("temporal-builtins.bn");
+    let expected = "2026-01-02\n03:04:05.000\n1767323045000\n2026-01-02T03:04:05.000Z\n2026-01-02T03:04:05.000Z\n";
+    let directory = TestDir::new("temporal-builtins").expect("create directory");
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
+}

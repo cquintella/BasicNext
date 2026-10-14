@@ -248,6 +248,10 @@ signatures! {
     MATH_TOHOUR = "bn_rt_math_tohour"(I64) -> I32;
     MATH_TOTIME = "bn_rt_math_totime"(I64, Ptr) -> I32;
     MATH_TOTIMESTAMP = "bn_rt_math_totimestamp"(I32, I32) -> I64;
+    TEMPORAL_DATE_PARSE = "bn_rt_temporal_date_parse"(Ptr, Ptr) -> I32;
+    TEMPORAL_TIME_PARSE = "bn_rt_temporal_time_parse"(Ptr, Ptr) -> I32;
+    TEMPORAL_TIMESTAMP_PARSE = "bn_rt_temporal_timestamp_parse"(Ptr, Ptr) -> I64;
+    TEMPORAL_TIMESTAMP_FORMAT = "bn_rt_temporal_timestamp_format"(I64, Ptr) -> Ptr;
     MATH_TOWEEKDAY = "bn_rt_math_toweekday"(I64) -> I32;
     MATH_TRUNC = "bn_rt_math_trunc"(Double) -> Double;
     MATH_VAL = "bn_rt_math_val"(Ptr) -> Double;
@@ -402,6 +406,7 @@ declarations! {
     MATH_RANGE_I32 MATH_STDEV_I32 MATH_VARIANCE_I32 MATH_MODE_I32 MATH_MEAN_F64 MATH_MEDIAN_F64
     MATH_QUARTILE1_F64 MATH_QUARTILE3_F64 MATH_RANGE_F64 MATH_STDEV_F64 MATH_VARIANCE_F64
     MATH_MODE_F64 MATH_TODATE MATH_TOTIME MATH_TOTIMESTAMP
+    TEMPORAL_DATE_PARSE TEMPORAL_TIME_PARSE TEMPORAL_TIMESTAMP_PARSE TEMPORAL_TIMESTAMP_FORMAT
     ;
     STRING_CONCAT_DECLARATIONS =
     STRLEN MALLOC LLVM_MEMCPY_P0_P0_I64

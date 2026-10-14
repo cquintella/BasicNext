@@ -183,7 +183,7 @@ fn libc_fflush() -> io::Result<()> {
 }
 
 #[allow(unsafe_code)] // C ABI: read a NUL-terminated LLVM string pointer.
-fn c_str<'a>(ptr: *const c_char) -> Option<&'a str> {
+pub(crate) fn c_str<'a>(ptr: *const c_char) -> Option<&'a str> {
     if ptr.is_null() {
         return None;
     }
@@ -499,7 +499,7 @@ pub extern "C" fn bn_rt_console_num_rows() -> i32 {
 }
 
 #[allow(unsafe_code)] // C ABI: allocate a NUL-terminated copy for LLVM strings.
-fn c_string(text: &str) -> *mut c_char {
+pub(crate) fn c_string(text: &str) -> *mut c_char {
     let mut bytes = text.as_bytes().to_vec();
     bytes.push(0);
     let mut boxed = bytes.into_boxed_slice();

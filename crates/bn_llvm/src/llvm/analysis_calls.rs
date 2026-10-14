@@ -373,6 +373,15 @@ pub(crate) fn call_instruction_supported(
                     Some(value) == arguments.first() && bn_types::text::is_timezone_id(text)
                 })
         }
+        Some("Date.Parse" | "Time.Parse" | "Timestamp.Parse") => {
+            arguments.len() == 1 && values.get(&arguments[0]) == Some(&Type::String)
+        }
+        Some("Timestamp.Format") => {
+            arguments.len() == 1
+                && values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| matches!(ty, Type::Integer(_) | Type::IntegerLiteral(_)))
+        }
         Some("ASC") => arguments.len() == 1 && values.get(&arguments[0]) == Some(&Type::String),
         Some("TOLOWER" | "TOUPPER") => {
             arguments.len() == 1 && values.get(&arguments[0]) == Some(&Type::String)

@@ -256,10 +256,32 @@ pub(crate) fn lower_access_emission(
             let index = lower_index(text, *index, index_type);
             let ok = take_continuation(block_id, state);
             let context = bn_diag::trap_texts::HOST_ARGS_CONTEXT;
-            emit_index_check(text, block_id, state, &index, &O::reg("argc"), ok, context);
+            let tag = text.fresh_tag();
+            let arg_count_reg = format!("host_argc{tag}");
+            text.assign(
+                arg_count_reg.clone(),
+                I::load(T::I32, O::global(super::preamble::HOST_ARGC_GLOBAL)),
+            );
+            emit_index_check(
+                text,
+                block_id,
+                state,
+                &index,
+                &O::reg(arg_count_reg),
+                ok,
+                context,
+            );
             let dest = destination.0;
+            let arg_vector_reg = format!("host_argv{tag}");
+            text.assign(
+                arg_vector_reg.clone(),
+                I::load(T::Ptr, O::global(super::preamble::HOST_ARGV_GLOBAL)),
+            );
             let at = vec![(T::I32, index.at)];
-            text.assign(format!("argptr{dest}"), I::gep(T::Ptr, O::reg("argv"), at));
+            text.assign(
+                format!("argptr{dest}"),
+                I::gep(T::Ptr, O::reg(arg_vector_reg), at),
+            );
             text.assign(
                 format!("v{dest}"),
                 I::load(T::Ptr, O::reg(format!("argptr{dest}"))),

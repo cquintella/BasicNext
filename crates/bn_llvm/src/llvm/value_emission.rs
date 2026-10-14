@@ -1,8 +1,6 @@
 #![allow(clippy::wildcard_imports, clippy::too_many_lines)]
 use super::*;
-use crate::ir::{
-    BinaryOp, CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T,
-};
+use crate::ir::{CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
 
 fn v(id: ValueId) -> O {
     O::reg(format!("v{}", id.0))
@@ -55,7 +53,7 @@ pub(crate) fn lower_value_emission(
             ..
         } if analysis.values.get(vector) == Some(&Type::HostArgs) => {
             block_state.constants.remove(destination);
-            let count = I::binary(BinaryOp::Add, T::I32, O::int(0), O::reg("argc"));
+            let count = I::load(T::I32, O::global(super::preamble::HOST_ARGC_GLOBAL));
             text.assign(format!("v{}", destination.0), count);
         }
         Instruction::Length {

@@ -22,6 +22,20 @@
 #
 # Exit status: 0 when every binary and the doc-tests pass.
 set -u
+
+usage() {
+  sed -n '/^#   scripts\/test-battery.sh/,/^# Exit status:/p' "$0" | sed '$d; s/^# \{0,1\}//'
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+  esac
+done
+
 cd "$(dirname "$0")/.."
 
 JOBS=${JOBS:-1}   # see the note on concurrency below

@@ -21,6 +21,10 @@ pub fn format_rfc3339(timestamp: i64) -> String {
     rfc3339(timestamp).unwrap_or_default()
 }
 
+use std::ffi::c_char;
+
+use crate::{c_str, c_string};
+
 /// [`split`], ending the program outside the civil range with the calling
 /// site's diagnostic (`trap`, rendered by `bnc`).
 pub(crate) fn split_at(timestamp: i64, trap: *const std::ffi::c_char) -> (i32, u32) {
@@ -31,6 +35,56 @@ pub(crate) fn split_at(timestamp: i64, trap: *const std::ffi::c_char) -> (i32, u
             bn_core_text::civil::RANGE_ERROR,
         )
     })
+}
+
+/// `Date.Parse(str)` (K80): returns days since 1970-01-01, or ends with the site's trap.
+#[allow(unsafe_code)] // SAFETY: C ABI export for LLVM-emitted code reading NUL-terminated strings.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_temporal_date_parse(text: *const c_char, trap: *const c_char) -> i32 {
+    let s = c_str(text).unwrap_or("");
+    let Some(days) = bn_core_text::temporal::parse_date(s) else {
+        super::math::fail_at(trap, "INVALID_DATE", "invalid DATE");
+    };
+    days
+}
+
+/// `Time.Parse(str)` (K80): returns milliseconds since midnight, or ends with the site's trap.
+#[allow(unsafe_code)] // SAFETY: C ABI export for LLVM-emitted code reading NUL-terminated strings.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_temporal_time_parse(text: *const c_char, trap: *const c_char) -> i32 {
+    let s = c_str(text).unwrap_or("");
+    let Some(millis) = bn_core_text::temporal::parse_hms(s, true) else {
+        super::math::fail_at(trap, "INVALID_TIME", "invalid TIME");
+    };
+    i32::try_from(millis).unwrap_or(0)
+}
+
+/// `Timestamp.Parse(str)` (K80): returns epoch milliseconds, or ends with the site's trap.
+#[allow(unsafe_code)] // SAFETY: C ABI export for LLVM-emitted code reading NUL-terminated strings.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_temporal_timestamp_parse(text: *const c_char, trap: *const c_char) -> i64 {
+    let s = c_str(text).unwrap_or("");
+    let Some(ts) = bn_core_text::temporal::parse_rfc3339(s) else {
+        super::math::fail_at(trap, "PARSE_ERROR", "invalid TIMESTAMP");
+    };
+    ts
+}
+
+/// `Timestamp.Format(ts)` (K80): returns owned RFC 3339 string, or ends with the site's trap.
+#[allow(unsafe_code)] // SAFETY: C ABI export for LLVM-emitted code allocating NUL-terminated strings.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_temporal_timestamp_format(
+    timestamp: i64,
+    trap: *const c_char,
+) -> *mut c_char {
+    let s = bn_core_text::civil::rfc3339(timestamp).unwrap_or_else(|| {
+        super::math::fail_at(
+            trap,
+            "FORMAT_OUT_OF_RANGE",
+            bn_core_text::civil::RANGE_ERROR,
+        )
+    });
+    c_string(&s)
 }
 
 #[cfg(test)]

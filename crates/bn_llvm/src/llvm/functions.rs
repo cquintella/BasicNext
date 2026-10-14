@@ -230,6 +230,16 @@ pub(crate) fn emit_function(
         state.control_flow.label(text, format!("b{}", block.id.0));
         if block.id == function.entry {
             if is_start {
+                text.emit(I::store(
+                    T::I32,
+                    O::reg("argc"),
+                    O::global(super::preamble::HOST_ARGC_GLOBAL),
+                ));
+                text.emit(I::store(
+                    T::Ptr,
+                    O::reg("argv"),
+                    O::global(super::preamble::HOST_ARGV_GLOBAL),
+                ));
                 crate::platform_stdio::emit_windows_binary_stdio(text, synchronize_prints);
                 // Every native program applies the environment policy, so a
                 // malformed input stops it (CONFIG_INVALID, exit 2) as it

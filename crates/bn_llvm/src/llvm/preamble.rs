@@ -494,10 +494,13 @@ fn emit_trampoline(
     text.end_function();
 }
 
+pub(crate) const HOST_ARGC_GLOBAL: &str = ".bn_argc";
+pub(crate) const HOST_ARGV_GLOBAL: &str = ".bn_argv";
+
 /// The first lines of every module: the source banner and the string
 /// constants `PRINT`, `ASC` and `CHAR` read (texts from `bn_diag::trap_texts`).
 pub(crate) fn emit_module_header(text: &mut crate::ir::LlvmModule) {
-    use crate::ir::LlvmGlobal;
+    use crate::ir::{Linkage, LlvmGlobal, LlvmOperand, LlvmType};
     text.comment(super::debug_info::PRODUCER);
     let shared = [
         (".bn_fmt_int", "%lld"),
@@ -515,4 +518,16 @@ pub(crate) fn emit_module_header(text: &mut crate::ir::LlvmModule) {
         text.global(LlvmGlobal::text(name, value, true));
     }
     text.global(LlvmGlobal::text(".bn_eof", "EOF", false));
+    let private =
+        |name: &str, ty, init| LlvmGlobal::variable(name, ty, init).with_linkage(Linkage::Private);
+    text.global(private(
+        HOST_ARGC_GLOBAL,
+        LlvmType::I32,
+        LlvmOperand::int(0),
+    ));
+    text.global(private(
+        HOST_ARGV_GLOBAL,
+        LlvmType::Ptr,
+        LlvmOperand::null(),
+    ));
 }

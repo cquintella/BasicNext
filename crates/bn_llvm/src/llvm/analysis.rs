@@ -124,7 +124,15 @@ pub(crate) fn analyze_function<'a>(
                         if bnlog_method(module, name).is_some() {
                             uses_bn_rt = true;
                         }
-                        if bnmath_method(module, name).is_some() {
+                        if bnmath_method(module, name).is_some()
+                            || matches!(
+                                name.as_str(),
+                                "Date.Parse"
+                                    | "Time.Parse"
+                                    | "Timestamp.Parse"
+                                    | "Timestamp.Format"
+                            )
+                        {
                             uses_bn_rt_math = true;
                         }
                         if bncrypto_method(module, name).is_some() {

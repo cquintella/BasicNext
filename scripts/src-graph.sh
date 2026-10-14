@@ -26,7 +26,15 @@ run() {
     --manifest-path "$root/scripts/src-graph/Cargo.toml" -- "$@"
 }
 
+usage() {
+  sed -n '/^#   scripts\/src-graph.sh/,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'
+}
+
 case "${1:-}" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
   --check)
     run --check "$root" "${2:-"$root/target/src-graph.gml"}"
     ;;

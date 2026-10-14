@@ -1,6 +1,8 @@
 #![allow(clippy::wildcard_imports, clippy::too_many_lines)]
 use super::runtime::is_bndata_function;
 use super::*;
+use runtime_abi::*;
+use traps::Fact;
 #[path = "crypto_calls.rs"]
 mod crypto_calls;
 #[path = "json_calls.rs"]
@@ -307,6 +309,70 @@ pub(crate) fn lower_call_instruction(
             text.assign(
                 format!("v{}", destination.0),
                 I::gep(T::I8, v(arguments[0]), index),
+            );
+        }
+        "Date.Parse" => {
+            let trap = O::global(
+                traps::trap_symbol(
+                    state,
+                    bn_diag::DiagId::INVALID_DATE,
+                    vec![("message", Fact::Text("DATE must be YYYY-MM-DD".into()))],
+                )
+                .0,
+            );
+            text.assign(
+                format!("v{}", destination.0),
+                TEMPORAL_DATE_PARSE.call([v(arguments[0]), trap]),
+            );
+        }
+        "Time.Parse" => {
+            let trap = O::global(
+                traps::trap_symbol(
+                    state,
+                    bn_diag::DiagId::INVALID_TIME,
+                    vec![("message", Fact::Text("TIME must be HH:MM:SS.mmm".into()))],
+                )
+                .0,
+            );
+            text.assign(
+                format!("v{}", destination.0),
+                TEMPORAL_TIME_PARSE.call([v(arguments[0]), trap]),
+            );
+        }
+        "Timestamp.Parse" => {
+            let trap = O::global(
+                traps::trap_symbol(
+                    state,
+                    bn_diag::DiagId::PARSE_ERROR,
+                    vec![("message", Fact::Text("invalid RFC 3339 TIMESTAMP".into()))],
+                )
+                .0,
+            );
+            text.assign(
+                format!("v{}", destination.0),
+                TEMPORAL_TIMESTAMP_PARSE.call([v(arguments[0]), trap]),
+            );
+        }
+        "Timestamp.Format" => {
+            let arg_ty = analysis
+                .values
+                .get(&arguments[0])
+                .expect("validated timestamp argument");
+            let value = helpers::extend_to_i64(text, arguments[0], arg_ty);
+            let trap = O::global(
+                traps::trap_symbol(
+                    state,
+                    bn_diag::DiagId::FORMAT_OUT_OF_RANGE,
+                    vec![(
+                        "message",
+                        Fact::Text(bn_core_text::civil::RANGE_ERROR.into()),
+                    )],
+                )
+                .0,
+            );
+            text.assign(
+                format!("v{}", destination.0),
+                TEMPORAL_TIMESTAMP_FORMAT.call([value, trap]),
             );
         }
         name if bnjson_member(module, name).is_some() => {

@@ -1,0 +1,17 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+FUNCTION GetArgCount() AS INTEGER
+    RETURN LEN(HOST.Args)
+END FUNCTION
+
+FUNCTION GetArg(index AS INTEGER) AS STRING
+    RETURN HOST.Args[index]
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    PRINT GetArgCount() > 0
+    PRINT LEN(GetArg(0)) > 0
+END FUNCTION
