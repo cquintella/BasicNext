@@ -237,7 +237,7 @@ pub(crate) fn lower_print_handle_error_union(
 
 /// The global holding `name` as a C string, defined at the end of the module
 /// by [`define_type_name_globals`]: the symbol carries the name in hex.
-fn type_name_global(name: &str) -> String {
+pub(crate) fn type_name_global(name: &str) -> String {
     let hex = name.bytes().fold(String::new(), |mut hex, byte| {
         let _ = write!(hex, "{byte:02x}");
         hex

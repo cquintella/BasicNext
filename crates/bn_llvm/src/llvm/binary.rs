@@ -14,13 +14,17 @@ use crate::{
         BinaryOp, CastOp, ICmpCond, InstSink, LlvmInst, LlvmOperand,
         LlvmType::{I1, I32, I64},
     },
-    layout::handle_result_ty,
+    layout::{handle_result_ty, is_struct_type, vector_ty},
 };
 use runtime_abi::STR_EQ;
+
+#[path = "composite_compare.rs"]
+mod composite_compare;
 
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub(crate) fn emit_runtime_binary(
     text: &mut crate::ir::LlvmModule,
+    module: &Module,
     block_id: BlockId,
     destination: ValueId,
     operator: &str,
@@ -173,6 +177,52 @@ pub(crate) fn emit_runtime_binary(
             text.assign(
                 format!("v{}", destination.0),
                 LlvmInst::binary(logic_op(operator), result_llvm, left_op, right_op),
+            );
+        }
+        ("Equal" | "Assign" | "NotEqual", layout) if layout == vector_ty() => {
+            composite_compare::emit_vector_compare(
+                text,
+                module,
+                destination,
+                operator,
+                left,
+                right,
+                left_ty,
+                state,
+            );
+        }
+        ("Equal" | "Assign" | "NotEqual", LlvmType::Ptr) if is_struct_type(module, left_ty) => {
+            composite_compare::emit_struct_compare(
+                text,
+                module,
+                destination,
+                operator,
+                left,
+                right,
+                left_ty,
+                state,
+            );
+        }
+        ("Equal" | "Assign" | "NotEqual", LlvmType::Ptr)
+            if is_class_type(module, left_ty)
+                || is_class_type(module, right_ty)
+                || *left_ty == Type::Null
+                || *right_ty == Type::Null
+                || matches!(left_ty, Type::Pointer { .. })
+                || matches!(right_ty, Type::Pointer { .. })
+                || matches!(left_ty, Type::Named(name) if name == "POINTER")
+                || matches!(right_ty, Type::Named(name) if name == "POINTER")
+                || *left_ty == Type::EndOfFile
+                || *right_ty == Type::EndOfFile =>
+        {
+            let predicate = if matches!(operator, "Equal" | "Assign") {
+                ICmpCond::Eq
+            } else {
+                ICmpCond::Ne
+            };
+            text.assign(
+                format!("v{}", destination.0),
+                LlvmInst::icmp(predicate, LlvmType::Ptr, value_reg(left), value_reg(right)),
             );
         }
         ("Equal" | "Assign" | "NotEqual", LlvmType::Ptr) => {

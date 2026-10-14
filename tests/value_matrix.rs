@@ -264,6 +264,21 @@ const CELLS: &[(&str, &str, &str)] = &[
     PRINT a",
         "Point\n",
     ),
+    (
+        "Box / compare",
+        "LET a AS Box = NEW Box()
+    LET b AS Box = a
+    LET c AS Box = NEW Box()
+    PRINT a = b
+    PRINT a = c",
+        "TRUE\nFALSE\n",
+    ),
+    (
+        "Box / print",
+        "LET a AS Box = NEW Box()
+    PRINT a",
+        "Box\n",
+    ),
     // A STRUCT holding a vector.
     (
         "Bag / local / default",
@@ -537,11 +552,6 @@ const KNOWN_BNC_FAILURES: KnownFailures = &[
     ("Bag / return / outlives the frame", "TARGET_UNSUPPORTED_OP"),
     ("Bag / local / replaced in a loop", "TARGET_UNSUPPORTED_OP"),
     ("Line / local / change the copy", "TARGET_UNSUPPORTED_OP"),
-    // K68: comparing STRUCTs fails to build, comparing vectors panics in
-    // bnc, PRINT writes no type name.
-    ("Point / compare", "BUILD_EMISSION_FAILED"),
-    ("vector / compare", "WRONG"),
-    ("Point / print", "WRONG"),
     // K1 / G.S1 (A7): U+0000 in a native STRING.
     ("STRING / holds U+0000", "TARGET_UNSUPPORTED_TYPE"),
     // S.13 (C7, C11, A5), as on bni.

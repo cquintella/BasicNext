@@ -236,11 +236,9 @@ pub(crate) fn analyze_function<'a>(
                     }
                     if matches!(operator.as_str(), "Equal" | "Assign" | "NotEqual")
                         && [left, right].into_iter().any(|side| {
-                            values.get(side).is_some_and(|ty| {
-                                *ty == Type::String
-                                    || general_alternative(ty)
-                                        .is_some_and(|members| members.contains(&Type::String))
-                            })
+                            values
+                                .get(side)
+                                .is_some_and(|ty| type_contains_string(module, ty))
                         })
                     {
                         uses_string_ops = true;
@@ -632,5 +630,22 @@ fn representable(ty: &Type, fallback: Option<&Type>) -> Type {
         ty.clone()
     } else {
         fallback.cloned().unwrap_or_else(|| ty.clone())
+    }
+}
+
+fn type_contains_string(module: &Module, ty: &Type) -> bool {
+    match ty {
+        Type::String => true,
+        Type::Vector { element, .. } => type_contains_string(module, element),
+        Type::Alternative(members) => members.iter().any(|m| type_contains_string(module, m)),
+        _ => {
+            if let Some(owner) = struct_owner(module, ty) {
+                class_layout_fields(module, &owner)
+                    .into_iter()
+                    .any(|f| type_contains_string(module, &f.ty))
+            } else {
+                false
+            }
+        }
     }
 }

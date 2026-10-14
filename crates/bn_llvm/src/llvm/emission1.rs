@@ -661,6 +661,7 @@ pub(crate) fn lower_scalar_instruction(
             } else {
                 emit_runtime_binary(
                     text,
+                    module,
                     block_id,
                     *destination,
                     operator,

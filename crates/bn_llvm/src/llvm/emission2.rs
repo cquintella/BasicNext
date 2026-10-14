@@ -504,6 +504,94 @@ pub(crate) fn lower_print_value(
         state.control_flow.label(text, format!("optjoin{count}"));
         return;
     }
+    if let Type::Alternative(alternatives) = ty
+        && alternatives.len() == 2
+        && alternatives.contains(&Type::Null)
+        && let Some(name) = alternatives.iter().find_map(|item| match item {
+            Type::Named(name) => Some(name.as_str()),
+            Type::ImportedNamed { name, .. } => Some(name.as_str()),
+            _ => None,
+        })
+    {
+        let short_name = name.rsplit('.').next().unwrap_or(name);
+        let name_sym = print_emission::type_name_global(short_name);
+        let count = state.print_count;
+        let is_null = LlvmInst::icmp(
+            crate::ir::ICmpCond::Eq,
+            LlvmType::Ptr,
+            own.clone(),
+            LlvmOperand::null(),
+        );
+        text.assign(format!("printnullcond{count}"), is_null);
+        let target_str = LlvmInst::select(
+            LlvmOperand::reg(format!("printnullcond{count}")),
+            LlvmType::Ptr,
+            global(".bn_null"),
+            global(&name_sym),
+        );
+        text.assign(format!("printstr{count}"), target_str);
+        let args = vec![
+            (LlvmType::Ptr, global(".bn_fmt_str")),
+            (LlvmType::Ptr, LlvmOperand::reg(format!("printstr{count}"))),
+        ];
+        printf(text, format!("print{count}"), args);
+        state.print_count += 1;
+        return;
+    }
+    if let Type::Named(name) = ty
+        && !matches!(name.as_str(), "DATE" | "TIME" | "Error" | "VOID")
+        && !name.starts_with("HOST.Net.")
+        && !name.starts_with("FS.")
+        && llvm_type(ty) == Some(LlvmType::Ptr)
+    {
+        let short_name = name.rsplit('.').next().unwrap_or(name.as_str());
+        let name_sym = print_emission::type_name_global(short_name);
+        let count = state.print_count;
+        let args = vec![
+            (LlvmType::Ptr, global(".bn_fmt_str")),
+            (LlvmType::Ptr, global(&name_sym)),
+        ];
+        printf(text, format!("print{count}"), args);
+        state.print_count += 1;
+        return;
+    }
+    if let Type::ImportedNamed { name, .. } = ty
+        && !matches!(
+            name.as_str(),
+            "Address"
+                | "PingReply"
+                | "Error"
+                | "Addresses"
+                | "Endpoint"
+                | "TCPStream"
+                | "TCPListener"
+                | "UDPSocket"
+                | "UDPPacket"
+        )
+        && llvm_type(ty) == Some(LlvmType::Ptr)
+    {
+        let short_name = name.rsplit('.').next().unwrap_or(name.as_str());
+        let name_sym = print_emission::type_name_global(short_name);
+        let count = state.print_count;
+        let args = vec![
+            (LlvmType::Ptr, global(".bn_fmt_str")),
+            (LlvmType::Ptr, global(&name_sym)),
+        ];
+        printf(text, format!("print{count}"), args);
+        state.print_count += 1;
+        return;
+    }
+    if matches!(ty, Type::Pointer { .. }) {
+        let name_sym = print_emission::type_name_global("POINTER");
+        let count = state.print_count;
+        let args = vec![
+            (LlvmType::Ptr, global(".bn_fmt_str")),
+            (LlvmType::Ptr, global(&name_sym)),
+        ];
+        printf(text, format!("print{count}"), args);
+        state.print_count += 1;
+        return;
+    }
     let count = state.print_count;
     let print = format!("print{count}");
     match llvm_type(ty).expect("validated print type") {

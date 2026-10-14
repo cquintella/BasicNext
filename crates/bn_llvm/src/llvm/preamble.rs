@@ -323,7 +323,12 @@ fn prints_null(function: &Function, analysis: &LoweringAnalysis<'_>) -> bool {
         .flat_map(|block| &block.instructions)
         .any(|instruction| {
             matches!(instruction, Instruction::Print { values, .. }
-                if values.iter().any(|value| analysis.values.get(value) == Some(&Type::Null)))
+            if values.iter().any(|value| {
+                analysis.values.get(value).is_some_and(|ty| {
+                    *ty == Type::Null
+                        || matches!(ty, Type::Alternative(types) if types.contains(&Type::Null))
+                })
+            }))
         })
 }
 
