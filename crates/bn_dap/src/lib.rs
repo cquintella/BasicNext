@@ -31,9 +31,11 @@ struct DebugFrame {
 #[derive(Debug, Default)]
 struct SessionState {
     paused: bool,
+    pause_requested: bool,
     step: Option<StepMode>,
     terminate: bool,
     started: bool,
+    stop_on_entry: bool,
     frame: Option<DebugFrame>,
     events: Vec<Value>,
 }
@@ -52,11 +54,22 @@ type SharedSession = Arc<(Mutex<SessionState>, Condvar)>;
 ///
 /// Returns a framing, JSON, or I/O error when the client sends malformed data
 /// or the service cannot write a response.
-#[allow(clippy::too_many_lines)]
 pub fn run_stdio() -> Result<(), String> {
     let stdin = io::stdin();
-    let mut input = stdin.lock();
-    let output = Arc::new(Mutex::new(io::stdout()));
+    run_session(stdin.lock(), io::stdout())
+}
+
+/// Runs the bounded DAP lifecycle service over arbitrary reader and writer streams.
+/// # Errors
+///
+/// Returns a framing, JSON, or I/O error when the client sends malformed data
+/// or the service cannot write a response.
+#[allow(clippy::too_many_lines)]
+pub fn run_session<R: BufRead, W: Write + Send + 'static>(
+    mut input: R,
+    output_writer: W,
+) -> Result<(), String> {
+    let output = Arc::new(Mutex::new(output_writer));
     let sequence = Arc::new(AtomicU64::new(1));
     let breakpoints = Arc::new(Mutex::new(HashMap::<String, BTreeSet<u64>>::new()));
     let mut launched = false;
@@ -108,11 +121,19 @@ pub fn run_stdio() -> Result<(), String> {
             "launch" => match validate_launch(&message) {
                 Ok(()) if !launched && !terminated => {
                     launched = true;
+                    let stop_on_entry = message
+                        .get("arguments")
+                        .and_then(|a| a.get("stopOnEntry"))
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false);
                     let program = message["arguments"]["program"]
                         .as_str()
                         .ok_or("launch requires a program path")?
                         .to_owned();
                     let state = Arc::clone(&session);
+                    if let Ok(mut state_guard) = state.0.lock() {
+                        state_guard.stop_on_entry = stop_on_entry;
+                    }
                     let breakpoints_for_thread = Arc::clone(&breakpoints);
                     let event_state = Arc::clone(&state);
                     execution = Some(thread::spawn(move || {
@@ -277,53 +298,79 @@ fn execute_program(
     let mut input = io::Cursor::new(Vec::<u8>::new());
     let mut output = Vec::new();
     let session_for_hook = Arc::clone(session);
-    let mut control =
-        move |function: &str, depth: usize, span: bn_source::Span, view: &bn_interp::DebugView| {
-            let (lock, condvar) = &*session_for_hook;
-            let Ok(mut state) = lock.lock() else {
-                return bn_interp::DebugDecision::Terminate;
-            };
-            state.frame = Some(DebugFrame {
-                function: function.to_owned(),
-                depth,
-                line: u64::try_from(span.start.line).unwrap_or(u64::MAX),
-                view: view.clone(),
-            });
-            let at_breakpoint = breakpoints
-                .lock()
-                .ok()
-                .and_then(|registry| registry.get(path).cloned())
-                .is_some_and(|lines| {
-                    lines.contains(&state.frame.as_ref().map_or(0, |frame| frame.line))
-                });
-            let step_pause = match state.step {
-                Some(StepMode::Next(target)) => depth <= target,
-                Some(StepMode::In) => true,
-                Some(StepMode::Out(target)) => depth < target,
-                None => false,
-            };
-            if !state.started || step_pause || at_breakpoint {
-                state.started = true;
-                state.step = None;
-                state.paused = true;
-                state.events.push(json!({
-                "type": "event", "event": "stopped",
-                "body": {"reason": if at_breakpoint { "breakpoint" } else { "step" }, "threadId": 1}
-            }));
-                condvar.notify_all();
-            }
-            while state.paused && !state.terminate {
-                state = match condvar.wait(state) {
-                    Ok(guard) => guard,
-                    Err(_) => return bn_interp::DebugDecision::Terminate,
-                };
-            }
-            if state.terminate {
-                bn_interp::DebugDecision::Terminate
-            } else {
-                bn_interp::DebugDecision::Continue
-            }
+    let mut control = move |function: &str,
+                            depth: usize,
+                            span: bn_source::Span,
+                            view: &bn_interp::DebugView| {
+        let (lock, condvar) = &*session_for_hook;
+        let Ok(mut state) = lock.lock() else {
+            return bn_interp::DebugDecision::Terminate;
         };
+        let prev_line = state.frame.as_ref().map_or(0, |f| f.line);
+        let prev_depth = state.frame.as_ref().map_or(0, |f| f.depth);
+        let prev_func = state
+            .frame
+            .as_ref()
+            .map(|f| f.function.clone())
+            .unwrap_or_default();
+
+        let cur_line = u64::try_from(span.start.line).unwrap_or(u64::MAX);
+        let line_changed = cur_line != prev_line || depth != prev_depth || function != prev_func;
+
+        state.frame = Some(DebugFrame {
+            function: function.to_owned(),
+            depth,
+            line: cur_line,
+            view: view.clone(),
+        });
+        let at_breakpoint = breakpoints
+            .lock()
+            .ok()
+            .and_then(|registry| registry.get(path).cloned())
+            .is_some_and(|lines| lines.contains(&cur_line));
+        let pause_requested = state.pause_requested;
+        let step_pause = match state.step {
+            Some(StepMode::Next(target)) => (depth < target) || (depth <= target && line_changed),
+            Some(StepMode::In) => line_changed || depth > prev_depth,
+            Some(StepMode::Out(target)) => depth <= target && (depth < prev_depth || line_changed),
+            None => false,
+        };
+        let should_stop_entry = state.stop_on_entry && !state.started;
+        if should_stop_entry || step_pause || at_breakpoint || pause_requested {
+            state.started = true;
+            state.step = None;
+            state.pause_requested = false;
+            state.paused = true;
+            let reason = if at_breakpoint {
+                "breakpoint"
+            } else if pause_requested {
+                "pause"
+            } else if should_stop_entry {
+                "entry"
+            } else {
+                "step"
+            };
+            state.events.push(json!({
+                "type": "event",
+                "event": "stopped",
+                "body": {"reason": reason, "threadId": 1}
+            }));
+            condvar.notify_all();
+        } else if !state.started {
+            state.started = true;
+        }
+        while state.paused && !state.terminate {
+            state = match condvar.wait(state) {
+                Ok(guard) => guard,
+                Err(_) => return bn_interp::DebugDecision::Terminate,
+            };
+        }
+        if state.terminate {
+            bn_interp::DebugDecision::Terminate
+        } else {
+            bn_interp::DebugDecision::Continue
+        }
+    };
     bn_interp::execute_validated_with_host_debug_control(
         module,
         &mut input,
@@ -357,9 +404,10 @@ fn current_depth(session: &SharedSession) -> usize {
 }
 
 fn request_pause(session: &SharedSession) {
-    let (lock, _) = &**session;
+    let (lock, condvar) = &**session;
     if let Ok(mut state) = lock.lock() {
-        state.paused = true;
+        state.pause_requested = true;
+        condvar.notify_all();
     }
 }
 

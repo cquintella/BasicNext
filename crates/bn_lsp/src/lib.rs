@@ -1,26 +1,19 @@
 //! Language Server Protocol adapter over the shared frontend: document
 //! snapshots, diagnostics (≡ `check`), completion, definition and references.
 //! Frontend-only; no backend crate is reachable from here.
-use std::{
-    collections::{BTreeMap, HashMap},
-    fs,
-    path::PathBuf,
-};
+use std::{collections::HashMap, fs, path::PathBuf};
 
 use lsp_server::{Connection, Message, Notification, Request, Response};
 use lsp_types::{
     CompletionItem, CompletionOptions, CompletionParams, CompletionResponse,
-    Diagnostic as LspDiagnostic, DiagnosticRelatedInformation, DiagnosticSeverity,
-    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    GotoDefinitionParams, GotoDefinitionResponse, InitializeParams, Location, NumberOrString,
-    Position, PublishDiagnosticsParams, ReferenceParams, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncKind, Uri,
+    Diagnostic as LspDiagnostic, DiagnosticSeverity, DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, GotoDefinitionParams,
+    GotoDefinitionResponse, InitializeParams, Location, Position, ReferenceParams,
+    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Uri,
 };
 
-use bn_diag::{Catalog, Diagnostic, Severity};
 use bn_frontend::{
-    frontend_session::FrontendSession, lexer::lex, lowering::lower_graph_validated,
-    module_graph::load_with_overlays, parser::parse_named, semantic::analyze,
+    frontend_session::FrontendSession, lexer::lex, parser::parse_named, semantic::analyze,
 };
 use bn_source::{SourceFile, SourceId};
 
@@ -32,7 +25,107 @@ use completion::completion_items;
 mod file_uri;
 use file_uri::{file_uri_to_path, path_to_file_uri};
 
+#[path = "lsp/position.rs"]
+mod position;
+pub use position::{
+    lsp_pos_to_scalar, scalar_to_utf16_col, span_to_lsp_range, utf16_to_scalar_col,
+};
+
+#[path = "lsp/folding.rs"]
+mod folding;
+pub use folding::compute_folding_ranges;
+
+#[path = "lsp/diagnostics.rs"]
+mod diagnostics;
+pub use diagnostics::diagnostics_for_documents;
+#[cfg(test)]
+pub(crate) use diagnostics::{graph_diagnostics, to_lsp};
+use diagnostics::{lsp_range, publish_diagnostics, uri_to_path};
+#[cfg(test)]
+pub(crate) use lsp_types::NumberOrString;
+
 const MAX_DOCUMENT_BYTES: usize = 8 * 1024 * 1024;
+
+fn bounded_transport() -> (
+    Connection,
+    std::thread::JoinHandle<std::io::Result<()>>,
+    std::thread::JoinHandle<std::io::Result<()>>,
+) {
+    let (client, server) = Connection::memory();
+    let reader = std::thread::Builder::new()
+        .spawn(move || {
+            let stdin = std::io::stdin();
+            let mut input = stdin.lock();
+            while let Some(msg) = read_bounded_message(&mut input)? {
+                let is_exit = matches!(&msg, Message::Notification(n) if n.method == "exit");
+                if client.sender.send(msg).is_err() {
+                    break;
+                }
+                if is_exit {
+                    break;
+                }
+            }
+            Ok(())
+        })
+        .expect("reader");
+    let writer = std::thread::Builder::new()
+        .spawn(move || {
+            let stdout = std::io::stdout();
+            let mut output = stdout.lock();
+            for msg in client.receiver {
+                write_bounded_message(&mut output, &msg)?;
+            }
+            Ok(())
+        })
+        .expect("writer");
+    (server, reader, writer)
+}
+
+fn read_bounded_message(input: &mut impl std::io::BufRead) -> std::io::Result<Option<Message>> {
+    let mut length = None;
+    let mut line = String::new();
+    loop {
+        line.clear();
+        if input.read_line(&mut line)? == 0 {
+            return Ok(None);
+        }
+        if !line.ends_with("\r\n") {
+            return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
+        }
+        let trimmed = line.trim_end_matches(['\r', '\n']);
+        if trimmed.is_empty() {
+            break;
+        }
+        if let Some((name, val)) = trimmed.split_once(": ")
+            && name.eq_ignore_ascii_case("Content-Length")
+        {
+            let parsed = val
+                .trim()
+                .parse::<usize>()
+                .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
+            if parsed > MAX_DOCUMENT_BYTES {
+                return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
+            }
+            length = Some(parsed);
+        }
+    }
+    let Some(length) = length else {
+        return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
+    };
+    let mut payload = vec![0u8; length];
+    input.read_exact(&mut payload)?;
+    serde_json::from_slice(&payload)
+        .map(Some)
+        .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))
+}
+
+fn write_bounded_message(output: &mut impl std::io::Write, msg: &Message) -> std::io::Result<()> {
+    let payload = serde_json::to_vec(msg)
+        .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
+    write!(output, "Content-Length: {}\r\n\r\n", payload.len())?;
+    output.write_all(&payload)?;
+    output.flush()
+}
 
 /// Runs the bounded LSP service over standard input/output.
 ///
@@ -40,8 +133,9 @@ const MAX_DOCUMENT_BYTES: usize = 8 * 1024 * 1024;
 ///
 /// Returns a protocol or I/O error when framing, initialization, or message
 /// processing fails.
+#[allow(clippy::too_many_lines)]
 pub fn run_stdio() -> Result<(), String> {
-    let (connection, io_threads) = Connection::stdio();
+    let (connection, reader_thread, writer_thread) = bounded_transport();
     let (initialize_id, initialize_value) = connection
         .initialize_start()
         .map_err(|error| format!("LSP initialize read failed: {error}"))?;
@@ -57,6 +151,7 @@ pub fn run_stdio() -> Result<(), String> {
         references_provider: Some(lsp_types::OneOf::Left(true)),
         hover_provider: Some(lsp_types::HoverProviderCapability::Simple(true)),
         document_symbol_provider: Some(lsp_types::OneOf::Left(true)),
+        folding_range_provider: Some(lsp_types::FoldingRangeProviderCapability::Simple(true)),
         text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
         ..ServerCapabilities::default()
     };
@@ -98,6 +193,9 @@ pub fn run_stdio() -> Result<(), String> {
             Message::Request(request) if request.method == "textDocument/documentSymbol" => {
                 respond_document_symbols(&connection, request, &documents)?;
             }
+            Message::Request(request) if request.method == "textDocument/foldingRange" => {
+                respond_folding_range(&connection, request, &documents)?;
+            }
             Message::Request(request) => respond_unsupported(&connection, request)?,
             Message::Notification(notification) if notification.method == "exit" => break,
             Message::Notification(notification) if notification.method == "initialized" => {}
@@ -132,9 +230,12 @@ pub fn run_stdio() -> Result<(), String> {
             // LSP requires exit after shutdown; continue consuming until the client sends it.
         }
     }
-    io_threads
+    drop(connection);
+    let _ = reader_thread
         .join()
-        .map_err(|error| format!("LSP I/O thread failed: {error:?}"))
+        .map_err(|error| format!("LSP I/O thread failed: {error:?}"))?;
+    let _ = writer_thread.join().map_err(|error| format!("{error:?}"))?;
+    Ok(())
 }
 
 fn decode<T: serde::de::DeserializeOwned>(notification: Notification) -> Result<T, String> {
@@ -234,7 +335,7 @@ fn respond_hover(
     let position = params.text_document_position_params.position;
     let result =
         documents.get(&uri.to_string()).and_then(|source| {
-            let word = word_prefix(source, position);
+            let word = word_at(source, position);
             (!word.is_empty()).then(|| serde_json::json!({
             "contents": {"kind": "markdown", "value": format!("**{word}** — Basic Next symbol")}
         }))
@@ -312,7 +413,7 @@ fn find_definition(
     let Some(source) = documents.get(&uri.to_string()) else {
         return Ok(Vec::new());
     };
-    let prefix = word_prefix(source, position);
+    let prefix = word_at(source, position);
     if prefix.is_empty() {
         return Ok(Vec::new());
     }
@@ -416,32 +517,47 @@ fn load_imported_document(
     alias: &str,
 ) -> Option<(String, SourceFile)> {
     let current_path = file_uri_to_path(current_uri.as_str())?;
-    if path.is_empty()
-        || path
-            .iter()
-            .any(|part| part.is_empty() || part == "." || part == ".." || !valid_module_name(part))
-    {
+    let parent_dir = current_path.parent()?;
+    if path.is_empty() {
         return None;
     }
-    let module = path.last().map_or(alias, String::as_str);
-    if !valid_module_name(module) {
-        return None;
+
+    let mut candidate = parent_dir.to_path_buf();
+    for part in path {
+        candidate.push(part);
     }
-    let candidate = current_path.parent()?.join(format!("{module}.bn"));
-    let metadata = fs::metadata(&candidate).ok()?;
+    candidate.set_extension("bn");
+    if let Some(res) = try_load_file(&candidate) {
+        return Some(res);
+    }
+
+    if path.len() >= 2 {
+        let mut parent_candidate = parent_dir.to_path_buf();
+        for part in &path[..path.len() - 1] {
+            parent_candidate.push(part);
+        }
+        parent_candidate.set_extension("bn");
+        if let Some(res) = try_load_file(&parent_candidate) {
+            return Some(res);
+        }
+    }
+
+    let alias_candidate = parent_dir.join(format!("{alias}.bn"));
+    if let Some(res) = try_load_file(&alias_candidate) {
+        return Some(res);
+    }
+
+    None
+}
+
+fn try_load_file(candidate: &std::path::Path) -> Option<(String, SourceFile)> {
+    let metadata = fs::metadata(candidate).ok()?;
     if !metadata.is_file() || metadata.len() > MAX_DOCUMENT_BYTES as u64 {
         return None;
     }
-    let text = fs::read_to_string(&candidate).ok()?;
-    let document_uri = path_to_file_uri(&candidate);
+    let text = fs::read_to_string(candidate).ok()?;
+    let document_uri = path_to_file_uri(candidate);
     Some((document_uri.clone(), SourceFile::new(document_uri, text)))
-}
-
-fn valid_module_name(name: &str) -> bool {
-    !name.is_empty()
-        && name
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }
 
 fn imported_document_matches(uri: &str, path: &[String], alias: &str) -> bool {
@@ -450,8 +566,39 @@ fn imported_document_matches(uri: &str, path: &[String], alias: &str) -> bool {
         .map_or(uri, |(_, name)| name)
         .strip_suffix(".bn")
         .unwrap_or(uri);
-    let imported_name = path.last().map_or(alias, String::as_str);
-    name == imported_name || name == alias
+    let imported_last = path.last().map_or(alias, String::as_str);
+    if name == imported_last || name == alias {
+        return true;
+    }
+    if path.len() >= 2 && name == path[path.len() - 2] {
+        return true;
+    }
+    let clean_uri = uri
+        .strip_prefix("file://")
+        .unwrap_or(uri)
+        .strip_suffix(".bn")
+        .unwrap_or(uri);
+    let joined = path.join("/");
+    clean_uri.ends_with(&joined)
+}
+
+fn respond_folding_range(
+    connection: &Connection,
+    request: Request,
+    documents: &HashMap<String, SourceFile>,
+) -> Result<(), String> {
+    let params: lsp_types::FoldingRangeParams =
+        serde_json::from_value(request.params).map_err(|error| error.to_string())?;
+    let ranges = if let Some(source) = documents.get(&params.text_document.uri.to_string()) {
+        compute_folding_ranges(source)
+    } else {
+        Vec::new()
+    };
+    let value = serde_json::to_value(ranges).map_err(|error| error.to_string())?;
+    connection
+        .sender
+        .send(Message::Response(Response::new_ok(request.id, value)))
+        .map_err(|error| error.to_string())
 }
 
 fn respond_references(
@@ -483,7 +630,7 @@ fn find_locations(
     let Some(source) = documents.get(&uri.to_string()) else {
         return Ok(Vec::new());
     };
-    let prefix = word_prefix(source, position);
+    let prefix = word_at(source, position);
     if prefix.is_empty() {
         return Ok(Vec::new());
     }
@@ -524,7 +671,8 @@ fn find_locations(
         .collect())
 }
 
-fn word_prefix(source: &SourceFile, position: Position) -> String {
+#[cfg(test)]
+pub(crate) fn word_prefix(source: &SourceFile, position: Position) -> String {
     source
         .text
         .lines()
@@ -549,6 +697,39 @@ fn word_prefix(source: &SourceFile, position: Position) -> String {
                 .to_string()
         })
         .unwrap_or_default()
+}
+
+pub(crate) fn word_at(source: &SourceFile, position: Position) -> String {
+    let Some(line) = source.text.lines().nth(position.line as usize) else {
+        return String::new();
+    };
+    let char_idx = utf16_to_scalar_col(line, position.character).saturating_sub(1);
+    let chars: Vec<char> = line.chars().collect();
+    if chars.is_empty() {
+        return String::new();
+    }
+    let idx = char_idx.min(chars.len().saturating_sub(1));
+    let is_ident_char = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    if !is_ident_char(chars[idx]) {
+        if idx > 0 && is_ident_char(chars[idx - 1]) {
+            return word_at_index(&chars, idx - 1);
+        }
+        return String::new();
+    }
+    word_at_index(&chars, idx)
+}
+
+fn word_at_index(chars: &[char], idx: usize) -> String {
+    let is_ident_char = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let mut start = idx;
+    while start > 0 && is_ident_char(chars[start - 1]) {
+        start -= 1;
+    }
+    let mut end = idx;
+    while end < chars.len() && is_ident_char(chars[end]) {
+        end += 1;
+    }
+    chars[start..end].iter().collect()
 }
 
 fn publish(
@@ -599,231 +780,6 @@ fn publish(
         publish_diagnostics(connection, open_uri, diagnostics)?;
     }
     Ok(())
-}
-
-#[cfg(test)]
-fn graph_diagnostics(
-    uri: &Uri,
-    documents: &HashMap<String, SourceFile>,
-    session: &mut FrontendSession,
-) -> Vec<LspDiagnostic> {
-    let Some(entry) = uri_to_path(uri) else {
-        return Vec::new();
-    };
-    diagnostics_for_documents(&entry, documents, session)
-        .remove(&uri.to_string())
-        .unwrap_or_default()
-}
-
-/// Collects diagnostics for an open multi-file snapshot set.
-///
-/// This is the same load → semantic analysis → lowering → language validation
-/// pipeline used by the CLI. The returned map is keyed by the URI of the open
-/// document that owns each diagnostic, so clients can publish one coherent
-/// baseline for every affected buffer.
-pub fn diagnostics_for_documents<S: std::hash::BuildHasher>(
-    entry: &PathBuf,
-    documents: &HashMap<String, SourceFile, S>,
-    session: &mut FrontendSession,
-) -> HashMap<String, Vec<LspDiagnostic>> {
-    let overlays = documents
-        .values()
-        .filter_map(|source| {
-            uri_to_path_string(&source.name).map(|path| {
-                (
-                    std::fs::canonicalize(&path).unwrap_or(path),
-                    source.text.clone(),
-                )
-            })
-        })
-        .collect::<BTreeMap<_, _>>();
-    let target = std::fs::canonicalize(entry).unwrap_or_else(|_| entry.clone());
-    let target_source = SourceFile::new(target.display().to_string(), "").source_id;
-    let mut result = documents
-        .keys()
-        .filter_map(|key| {
-            key.parse::<Uri>()
-                .ok()
-                .map(|uri| (uri.to_string(), Vec::new()))
-        })
-        .collect::<HashMap<_, Vec<_>>>();
-    let source_uris = documents
-        .keys()
-        .filter_map(|key| {
-            key.parse::<Uri>().ok().and_then(|uri| {
-                uri_to_path(&uri).map(|path| {
-                    let path = path.canonicalize().unwrap_or(path);
-                    (
-                        SourceFile::new(path.display().to_string(), "").source_id,
-                        uri.to_string(),
-                    )
-                })
-            })
-        })
-        .collect::<HashMap<_, _>>();
-    let add = |diagnostic: &Diagnostic, result: &mut HashMap<String, Vec<LspDiagnostic>>| {
-        let source = diagnostic_source(diagnostic);
-        let uri = source_uris.get(&source).cloned().or_else(|| {
-            if source == target_source {
-                documents
-                    .keys()
-                    .find(|key| {
-                        uri_to_path_string(key)
-                            .is_some_and(|path| path.canonicalize().unwrap_or(path) == target)
-                    })
-                    .cloned()
-            } else {
-                None
-            }
-        });
-        if let Some(uri) = uri
-            && let Ok(parsed) = uri.parse::<Uri>()
-        {
-            result
-                .entry(uri)
-                .or_default()
-                .push(to_lsp(diagnostic, &parsed));
-        }
-    };
-    let graph = match load_with_overlays(entry, session, &overlays) {
-        Ok(graph) => graph,
-        Err(error) => {
-            add(&error.diagnostic, &mut result);
-            return result;
-        }
-    };
-    let analysis = match bn_frontend::semantic::analyze_modules_with_warnings(&graph) {
-        Ok(analysis) => analysis,
-        Err(error) => {
-            add(&error.diagnostic, &mut result);
-            return result;
-        }
-    };
-    if let Err(error) = lower_graph_validated(&graph, &analysis.models) {
-        add(&error, &mut result);
-        return result;
-    }
-    for warning in &analysis.warnings {
-        add(&warning.diagnostic, &mut result);
-    }
-    result
-}
-
-fn diagnostic_source(diagnostic: &Diagnostic) -> bn_source::SourceId {
-    diagnostic.span.start.source_id
-}
-
-fn uri_to_path(uri: &Uri) -> Option<PathBuf> {
-    uri_to_path_string(uri.as_str())
-}
-
-fn uri_to_path_string(uri: &str) -> Option<PathBuf> {
-    file_uri_to_path(uri)
-}
-
-fn to_lsp(error: &Diagnostic, uri: &Uri) -> LspDiagnostic {
-    let structured = error
-        .spec()
-        .and_then(|spec| Catalog::global_for_environment().ok()?.render(&spec).ok());
-    let related_information = structured.as_ref().map(|rendered| {
-        rendered
-            .labels
-            .iter()
-            .filter(|label| label.style == bn_diag::LabelStyle::Secondary)
-            .map(|label| DiagnosticRelatedInformation {
-                location: Location {
-                    uri: uri.clone(),
-                    range: lsp_range(
-                        label.span.start.line,
-                        label.span.start.column,
-                        label.span.end.line,
-                        label.span.end.column,
-                    ),
-                },
-                message: label.text.clone().unwrap_or_default(),
-            })
-            .collect::<Vec<_>>()
-    });
-    let (severity, message) = structured.map_or(
-        (DiagnosticSeverity::ERROR, error.message.clone()),
-        |rendered| {
-            // Legacy diagnostics still carry an intentional compatibility
-            // message; catalog rendering supplies the stable title while the
-            // original facts remain verbatim until that producer is migrated.
-            let rendered_message = if error.structured.is_none() {
-                error.message.to_string()
-            } else {
-                rendered.message.clone()
-            };
-            let mut message = format!("{}: {}", rendered.title, rendered_message);
-            for cause in rendered.causes {
-                message.push_str("\n= cause: ");
-                message.push_str(&cause);
-            }
-            if let Some(help) = rendered.help {
-                message.push_str("\n= help: ");
-                message.push_str(&help);
-            }
-            let severity = match rendered.severity {
-                Severity::Error => DiagnosticSeverity::ERROR,
-                Severity::Warning => DiagnosticSeverity::WARNING,
-            };
-            (severity, message.into())
-        },
-    );
-    LspDiagnostic {
-        range: lsp_range(
-            error.span.start.line,
-            error.span.start.column,
-            error.span.end.line,
-            error.span.end.column,
-        ),
-        severity: Some(severity),
-        code: Some(NumberOrString::String(error.code.into())),
-        code_description: None,
-        source: Some("bn".into()),
-        message: message.to_string(),
-        related_information,
-        tags: None,
-        data: None,
-    }
-}
-
-fn lsp_range(
-    start_line: usize,
-    start_column: usize,
-    end_line: usize,
-    end_column: usize,
-) -> lsp_types::Range {
-    lsp_types::Range {
-        start: Position::new(
-            u32::try_from(start_line.saturating_sub(1)).unwrap_or(u32::MAX),
-            u32::try_from(start_column.saturating_sub(1)).unwrap_or(u32::MAX),
-        ),
-        end: Position::new(
-            u32::try_from(end_line.saturating_sub(1)).unwrap_or(u32::MAX),
-            u32::try_from(end_column.saturating_sub(1)).unwrap_or(u32::MAX),
-        ),
-    }
-}
-
-fn publish_diagnostics(
-    connection: &Connection,
-    uri: Uri,
-    diagnostics: Vec<LspDiagnostic>,
-) -> Result<(), String> {
-    let params = PublishDiagnosticsParams {
-        uri,
-        diagnostics,
-        version: None,
-    };
-    connection
-        .sender
-        .send(Message::Notification(Notification::new(
-            "textDocument/publishDiagnostics".to_string(),
-            params,
-        )))
-        .map_err(|error| error.to_string())
 }
 
 #[cfg(test)]

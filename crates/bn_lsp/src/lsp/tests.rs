@@ -385,3 +385,96 @@ fn lsp_problems_equivalent_to_cli_check_on_shared_fixture() {
         lsp_diags[0].range.start.character as usize + 1
     );
 }
+
+#[test]
+fn definition_resolves_nested_module_and_relative_paths() {
+    let suffix = std::process::id();
+    let directory = std::path::PathBuf::from(format!("/tmp/basicnext-lsp-nested-{suffix}"));
+    let nested_dir = directory.join("nested");
+    std::fs::create_dir_all(&nested_dir).unwrap();
+    let main_path = directory.join("main.bn");
+    let child_path = nested_dir.join("Child.bn");
+    std::fs::write(
+        &child_path,
+        "FUNCTION Compute() AS INTEGER\nRETURN 42\nEND FUNCTION\n",
+    )
+    .unwrap();
+    std::fs::write(
+        &main_path,
+        "IMPORT nested.Child AS Child\nFUNCTION Main() AS INTEGER\nRETURN Child.Compute()\nEND FUNCTION\n",
+    )
+    .unwrap();
+
+    let main_uri: super::Uri = super::file_uri::path_to_file_uri(&main_path)
+        .parse()
+        .unwrap();
+    let child_uri: super::Uri = super::file_uri::path_to_file_uri(&child_path)
+        .parse()
+        .unwrap();
+    let main_source = SourceFile::new(
+        main_uri.to_string(),
+        std::fs::read_to_string(&main_path).unwrap(),
+    );
+    let documents = HashMap::from([(main_uri.to_string(), main_source)]);
+
+    let locations =
+        super::find_definition(&documents, &main_uri, super::Position::new(2, 15)).unwrap();
+    let _ = std::fs::remove_dir_all(&directory);
+
+    assert_eq!(locations.len(), 1);
+    assert_eq!(locations[0].uri, child_uri);
+}
+
+#[test]
+fn lsp_folding_uses_ast_statement_and_declaration_spans() {
+    let source_text = "FUNCTION Calc(x AS INTEGER) AS INTEGER\n    IF x > 0 THEN\n        RETURN x\n    END IF\n    RETURN 0\nEND FUNCTION\n";
+    let source = SourceFile::new("calc.bn", source_text);
+    let ranges = super::folding::compute_folding_ranges(&source);
+    assert_eq!(ranges.len(), 2);
+    assert_eq!(ranges[0].start_line, 0);
+    assert_eq!(ranges[0].end_line, 5);
+    assert_eq!(ranges[1].start_line, 1);
+    assert_eq!(ranges[1].end_line, 3);
+}
+
+#[test]
+fn unsupported_methods_respond_with_protocol_not_implemented() {
+    let (client, server) = lsp_server::Connection::memory();
+    let request = lsp_server::Request::new(
+        1.into(),
+        "textDocument/formatting".into(),
+        serde_json::Value::Null,
+    );
+    super::respond_unsupported(&server, request).unwrap();
+    let response = client.receiver.recv().unwrap();
+    let lsp_server::Message::Response(res) = response else {
+        panic!()
+    };
+    assert_eq!(res.id, 1.into());
+    assert_eq!(res.response_result.unwrap_err().code, -32601);
+}
+
+#[test]
+fn diagnostics_and_spans_with_emojis_use_utf16_offsets() {
+    let source = SourceFile::new("emoji.bn", "LET 🚀 = 1\n");
+    let span = bn_source::Span {
+        start: bn_source::Position {
+            source_id: source.source_id,
+            revision: source.revision,
+            offset: 0,
+            line: 1,
+            column: 5, // on '🚀'
+        },
+        end: bn_source::Position {
+            source_id: source.source_id,
+            revision: source.revision,
+            offset: 8,
+            line: 1,
+            column: 6, // after '🚀'
+        },
+    };
+    let range = super::position::span_to_lsp_range(&source, span);
+    // In UTF-16, 'LET ' is 4 units; '🚀' is 2 units (surrogate pair)
+    assert_eq!(range.start.character, 4);
+    assert_eq!(range.end.character, 6);
+}

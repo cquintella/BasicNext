@@ -1,7 +1,7 @@
 use super::{
-    SessionState, breakpoint_response, evaluate_response, executable_lines_from_source,
-    execute_program, read_message, resume_session, terminate_session, validate_launch,
-    variables_response, write_message,
+    SessionState, StepMode, breakpoint_response, evaluate_response, executable_lines_from_source,
+    execute_program, read_message, request_pause, resume_session, terminate_session,
+    validate_launch, variables_response, write_message,
 };
 use serde_json::json;
 use std::{
@@ -67,7 +67,13 @@ fn launch_accepts_a_valid_frontend_program() {
 
 #[test]
 fn execution_session_pauses_then_resumes() {
-    let session = Arc::new((Mutex::new(SessionState::default()), Condvar::new()));
+    let session = Arc::new((
+        Mutex::new(SessionState {
+            stop_on_entry: true,
+            ..SessionState::default()
+        }),
+        Condvar::new(),
+    ));
     let breakpoints = Arc::new(Mutex::new(HashMap::new()));
     let worker_session = Arc::clone(&session);
     let worker_breakpoints = Arc::clone(&breakpoints);
@@ -186,5 +192,100 @@ fn a_paused_session_shows_objects_from_the_arc_core() {
     );
     terminate_session(&session);
     let _ = worker.join();
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
+#[test]
+fn dap_stepping_next_step_in_step_out_and_pause() {
+    let directory = std::env::temp_dir().join(format!("bn-dap-step-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("step.bn");
+    std::fs::write(
+        &path,
+        "FUNCTION Helper(x AS INTEGER) AS INTEGER\n    LET y AS INTEGER = x * 2\n    RETURN y\nEND FUNCTION\n\nFUNCTION Start() AS VOID\n    LET a AS INTEGER = 10\n    LET b AS INTEGER = Helper(a)\n    PRINT b\nEND FUNCTION\n",
+    )
+    .unwrap();
+    let program = path.to_string_lossy().into_owned();
+    let session = Arc::new((
+        Mutex::new(SessionState {
+            stop_on_entry: true,
+            ..SessionState::default()
+        }),
+        Condvar::new(),
+    ));
+    let breakpoints = Arc::new(Mutex::new(HashMap::new()));
+    let worker_session = Arc::clone(&session);
+    let worker_breakpoints = Arc::clone(&breakpoints);
+    let worker_program = program.clone();
+    let worker = std::thread::spawn(move || {
+        execute_program(&worker_program, &worker_session, &worker_breakpoints)
+    });
+
+    let wait_for_pause = |session: &Arc<(Mutex<SessionState>, Condvar)>| {
+        let (lock, condvar) = &**session;
+        let mut state = lock.lock().unwrap();
+        while !state.paused {
+            state = condvar.wait(state).unwrap();
+        }
+        (
+            state
+                .frame
+                .as_ref()
+                .map(|f| f.function.clone())
+                .unwrap_or_default(),
+            state.frame.as_ref().map_or(0, |f| f.depth),
+            state.frame.as_ref().map_or(0, |f| f.line),
+        )
+    };
+
+    // 1. Initial pause at entry
+    let (func, depth, line) = wait_for_pause(&session);
+    assert_eq!(func, "Start");
+    assert_eq!(depth, 0);
+    assert_eq!(line, 7);
+
+    // 2. Step in -> advances to LET b = Helper(a) at line 8
+    resume_session(&session, Some(StepMode::In));
+    let (func, depth, line) = wait_for_pause(&session);
+    assert_eq!(func, "Start");
+    assert_eq!(depth, 0);
+    assert_eq!(line, 8);
+
+    // 3. Step in -> steps into Helper at line 2
+    resume_session(&session, Some(StepMode::In));
+    let (func, depth, line) = wait_for_pause(&session);
+    assert_eq!(func, "Helper");
+    assert_eq!(depth, 1);
+    assert_eq!(line, 2);
+
+    // 4. Next -> advances to RETURN y at line 3 in Helper
+    resume_session(&session, Some(StepMode::Next(1)));
+    let (func, depth, line) = wait_for_pause(&session);
+    assert_eq!(func, "Helper");
+    assert_eq!(depth, 1);
+    assert_eq!(line, 3);
+
+    // 5. Step out -> returns to Start at depth 0
+    resume_session(&session, Some(StepMode::Out(0)));
+    let (func, depth, _line) = wait_for_pause(&session);
+    assert_eq!(func, "Start");
+    assert_eq!(depth, 0);
+
+    // 6. Test pause command
+    resume_session(&session, None);
+    request_pause(&session);
+    // Should stop due to pause
+    let (lock, condvar) = &*session;
+    let mut state = lock.lock().unwrap();
+    while !state.paused {
+        state = condvar.wait(state).unwrap();
+    }
+    assert!(state.paused);
+    drop(state);
+
+    // 7. Resume to finish
+    resume_session(&session, None);
+    let exit_code = worker.join().unwrap().unwrap();
+    assert_eq!(exit_code, 0);
     let _ = std::fs::remove_dir_all(&directory);
 }

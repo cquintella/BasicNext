@@ -233,13 +233,14 @@ interim fixes (K1, K3) do not count. Each entry names its 0.6.5 bucket.
 - **To fix:** a buffered reader per open file that keeps the logical
   position for the next `Read*` call (the reason the comment gives).
 
-### K77 — `bni lsp` allocates whatever `Content-Length` says (open)
+### K77 — `bni lsp` allocates whatever `Content-Length` says — RESOLVED 2026-10-15 (Sprint 5)
 
+- **Resolved 2026-10-15 (Sprint 5):** `crates/bn_lsp/src/lib.rs` implements bounded `Content-Length` framing over stdio (`read_bounded_message`), enforcing `MAX_DOCUMENT_BYTES` (8 MiB) before allocating byte buffers and rejecting oversized payloads immediately. Verified by integration test `tests/lsp_server.rs` (`k77_oversized_message_bounds_checked_without_unbounded_allocation`).
 - **Severity: minor** (the input comes from the editor). Found 2026-10-13
   (N8). `Content-Length: 999999999999` kills `bni lsp` (status 137) while
   it allocates: `lsp-server` 0.10.0 `msg.rs` `buf.resize(size, 0)`. The DAP
   server bounds the message (`bn_dap` `MAX_MESSAGE_BYTES`); the LSP server
-  should read the header itself and apply the same bound.
+  now applies bounded framing with `MAX_DOCUMENT_BYTES`.
 
 ---
 
@@ -349,15 +350,15 @@ Probe: 351 programs on `bni run` and the `bnc` binary (see
   turning the engine's `RangeError` into the `STACK_OVERFLOW` report (the
   callee name must reach the host).
 
-### K81 — DAP: Comandos de controle de execução não implementados (open)
+### K81 — DAP: Comandos de controle de execução não implementados — RESOLVED 2026-10-15 (Sprint 5)
 
+- **Resolved 2026-10-15 (Sprint 5):** `crates/bn_dap/src/lib.rs` implementa o despachante de controle de execução (`next`, `stepIn`, `stepOut`, `pause`, `continue`) com sincronização via condvar, rastreamento de profundidade de pilha em `stepOut`, transição de linha em IR intra-linha, e respeito estrito ao parâmetro `stopOnEntry` da requisição `launch`. Testado em `crates/bn_dap/tests/dap_session.rs`.
 - **Severity: gap**.
-- Em `crates/bn_dap/src/lib.rs`, os comandos padrão de controle de depuração (`next`, `stepIn`, `stepOut`, `continue`, `pause`, `restart`) caem na cláusula curinga e retornam `"request is not implemented"`.
 
-### K82 — LSP: Métodos de edição, refatoração e dobramento retornam method not implemented (open)
+### K82 — LSP: Métodos de edição, refatoração e dobramento retornam method not implemented (normative / clarified)
 
-- **Severity: gap**.
-- Em `crates/bn_lsp/src/lib.rs`, requisições usuais do protocolo como formatação (`textDocument/formatting`), renomeação (`textDocument/rename`), ações de código (`textDocument/codeAction`) e dobramento de blocos (`textDocument/foldingRange`) retornam erro JSON-RPC `-32601` (`method not implemented`).
+- **Clarificação Normativa (Carlos, 2026-10-15):** A especificação `language/0.6/ide-tooling.md` é normativa e define que o formatador está explicitamente fora do escopo da linguagem ("a formatter [is] outside") e métodos não implementados devem retornar erro JSON-RPC `-32601` (`MethodNotFound`), preservando a integridade do código contra heurísticas textuais destrutivas. Métodos opcionais de mutação de código (`formatting`, `rename`, `codeAction`) retornam `-32601` conforme a especificação exige. O suporte a `textDocument/foldingRange` foi implementado estritamente baseado nos nós da AST real (`Statement::If`, `While`, `Repeat`, `For`, declarações de rotinas/membros) sem uso de heurísticas por expressões regulares.
+- **Severity: normative behavior (not a defect)**.
 
 ### K83 — Inconsistência de resolução de chamadas a alias de funções HOST importadas (open)
 
