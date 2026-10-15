@@ -982,6 +982,8 @@ use functions::{
 };
 #[path = "llvm/preamble.rs"]
 mod preamble;
+#[path = "llvm/statics.rs"]
+mod statics;
 use preamble::{emit_module_header, emit_preamble};
 #[path = "llvm/emission3.rs"]
 mod emission3;

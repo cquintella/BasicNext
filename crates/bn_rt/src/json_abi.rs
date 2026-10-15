@@ -23,7 +23,7 @@
 use std::collections::HashMap;
 use std::ffi::c_char;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock, PoisonError};
+use std::sync::{Mutex, PoisonError};
 
 use crate::json::{MAX_DEPTH, parse, stringify};
 use crate::json_error::{JsonFailure, Place, kind_of};
@@ -39,10 +39,10 @@ pub const BN_JSON_FAILED: i32 = 3;
 
 type Outcome<T> = Result<T, JsonFailure>;
 
-fn documents() -> &'static Mutex<HashMap<u64, serde_json::Value>> {
-    static DOCUMENTS: OnceLock<Mutex<HashMap<u64, serde_json::Value>>> = OnceLock::new();
-    DOCUMENTS.get_or_init(|| Mutex::new(HashMap::new()))
-}
+/// The documents of the module copy that runs on this thread
+/// (`bn_core_copy`): a task's are freed when the task ends.
+#[derive(Default)]
+struct Documents(Mutex<HashMap<u64, serde_json::Value>>);
 
 fn next_handle() -> u64 {
     static NEXT: AtomicU64 = AtomicU64::new(1);
@@ -50,7 +50,8 @@ fn next_handle() -> u64 {
 }
 
 fn with_documents<T>(operation: impl FnOnce(&mut HashMap<u64, serde_json::Value>) -> T) -> T {
-    operation(&mut documents().lock().unwrap_or_else(PoisonError::into_inner))
+    let documents = bn_core_copy::table::<Documents>();
+    operation(&mut documents.0.lock().unwrap_or_else(PoisonError::into_inner))
 }
 
 /// Files `value` and returns its handle. Rust callers inside the interpreter

@@ -549,12 +549,16 @@ pub fn execute_named_with_host(
                 default_span(),
             )
         })?;
-    let mut executor = Executor::new(validated.as_module(), input, output, host, None, None);
-    match executor.function(function, arguments)? {
-        Flow::Return(Some(value)) => Ok(value),
-        Flow::Return(None) => Ok(Value::Null),
-        Flow::Stop(code) => Ok(Value::Integer(code, IntegerType::Int32)),
-    }
+    // A fresh module copy: the handles it opens end with it (0.6.md,
+    // "Isolation and conformance"; K90).
+    bn_core_copy::run(|| {
+        let mut executor = Executor::new(validated.as_module(), input, output, host, None, None);
+        match executor.function(function, arguments)? {
+            Flow::Return(Some(value)) => Ok(value),
+            Flow::Return(None) => Ok(Value::Null),
+            Flow::Stop(code) => Ok(Value::Integer(code, IntegerType::Int32)),
+        }
+    })
 }
 
 /// Executes a module after the language validator has produced its proof
@@ -724,10 +728,13 @@ pub fn run_isolated<R>(
     host: &HostEnv,
     f: impl FnOnce(&mut dyn provider::CoreContext) -> R,
 ) -> R {
-    let mut input = std::io::Cursor::new(Vec::<u8>::new());
-    let mut output = Vec::<u8>::new();
-    let mut executor = Executor::new(module, &mut input, &mut output, host, None, None);
-    f(&mut executor)
+    // A fresh module copy, as for an `ASYNC` task (K90).
+    bn_core_copy::run(|| {
+        let mut input = std::io::Cursor::new(Vec::<u8>::new());
+        let mut output = Vec::<u8>::new();
+        let mut executor = Executor::new(module, &mut input, &mut output, host, None, None);
+        f(&mut executor)
+    })
 }
 
 enum Flow {

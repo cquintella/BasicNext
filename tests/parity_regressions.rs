@@ -403,3 +403,188 @@ fn struct_return_arc_matches_on_both_backends() {
         );
     }
 }
+
+/// An `ASYNC` task runs on its own fresh copy of the `STATIC` fields (known
+/// issue K44): native builds shared one copy across threads, so a task saw
+/// the caller's values, its writes reached the caller, and concurrent tasks
+/// lost updates. Every `STATIC` global is now thread-local, and each
+/// trampoline resets them before its task, since a queue reuses threads.
+#[test]
+fn async_tasks_run_on_a_fresh_copy_of_the_static_fields() {
+    let path = valid_fixture("dispatch-static-isolation.bn");
+    let emitted = execute(bnc().args(["--emit", "llvm"]).arg(&path), None);
+    assert_success(&emitted, "emit static isolation");
+    let llvm = String::from_utf8_lossy(&emitted.stdout);
+    let static_globals: Vec<&str> = llvm
+        .lines()
+        .filter(|line| {
+            ["@bn_st_", "@bn_sv_", "@bn_svp_", "@bn_init_"]
+                .iter()
+                .any(|prefix| line.starts_with(prefix))
+        })
+        .collect();
+    assert!(!static_globals.is_empty(), "no STATIC global emitted");
+    for line in static_globals {
+        assert!(line.contains(" thread_local global "), "{line}");
+    }
+    let trampolines = llvm
+        .split("\ndefine ")
+        .filter(|function| function.contains("@bn_dispatch_trampoline_"))
+        .collect::<Vec<_>>();
+    assert!(!trampolines.is_empty(), "no dispatch trampoline emitted");
+    for trampoline in trampolines {
+        assert!(
+            trampoline.contains("call void @bn_statics_reset()"),
+            "{trampoline}"
+        );
+    }
+    let task = "task 0 start 3 4 1 none\n";
+    let expected = format!("{}main 10 main 300 4 500 set\n", task.repeat(5));
+    let directory = TestDir::new("dispatch-static-isolation").expect("create directory");
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
+}
+
+/// The end of an `ASYNC` task is the end of its copy's program (known issue
+/// K88): what its `STATIC` fields or a cycle still hold gets no
+/// `DESTRUCTOR`, and the copy is discarded. Native builds kept those
+/// objects for the life of the process, so each task leaked them and took
+/// new object ids; now the next task reuses the reclaimed slots, and the
+/// `BN_ARC_TRACE` lines match `bni`, which drops the copy's core.
+#[test]
+fn the_end_of_an_async_task_discards_its_copy() {
+    let path = valid_fixture("dispatch-task-end-discards.bn");
+    let directory = TestDir::new("dispatch-task-end-discards").expect("create directory");
+    let artifact = compile_native(&path, &directory);
+    let trace = |output: &ProcessOutput| -> Vec<String> {
+        String::from_utf8_lossy(&output.stderr)
+            .lines()
+            .filter(|line| line.starts_with("arc "))
+            .map(str::to_owned)
+            .collect()
+    };
+    let interpreted = execute(bni().env("BN_ARC_TRACE", "1").arg("run").arg(&path), None);
+    let native = execute(Command::new(&artifact).env("BN_ARC_TRACE", "1"), None);
+    let one_task = "destroyed temporary\ntask 1\n";
+    let expected = format!("{}end\n", one_task.repeat(2));
+    for (backend, output) in [("bni", &interpreted), ("native", &native)] {
+        assert_success(output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
+    let objects_of_one_task = "Node#0 Node#1 Node#0 Node#2 Node#3 Node#3 Node#2 Node#4 Node#4 \
+                               Node#4 Node#3 Node#2 Node#0";
+    let ids = |lines: &[String]| -> String {
+        lines
+            .iter()
+            .filter_map(|line| line.split_whitespace().nth(2))
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let native_trace = trace(&native);
+    assert_eq!(trace(&interpreted), native_trace);
+    assert_eq!(
+        ids(&native_trace),
+        format!("{objects_of_one_task} {objects_of_one_task}")
+    );
+}
+
+/// Runs `path` on `bni` and natively, each in its own fresh directory (the
+/// fixture writes files in the working directory), and checks the exact
+/// standard output.
+fn assert_same_output_in_fresh_directories(path: &Path, label: &str, expected: &str) {
+    let directory = TestDir::new(label).expect("create directory");
+    let artifact = compile_native(path, &directory);
+    let interpreted_dir = TestDir::new(&format!("{label}-bni")).expect("create directory");
+    let native_dir = TestDir::new(&format!("{label}-native")).expect("create directory");
+    for (backend, output) in [
+        (
+            "bni",
+            execute(
+                bni()
+                    .arg("run")
+                    .arg(path)
+                    .current_dir(interpreted_dir.path()),
+                None,
+            ),
+        ),
+        (
+            "native",
+            execute(Command::new(&artifact).current_dir(native_dir.path()), None),
+        ),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
+}
+
+/// A listener an `ASYNC` task keeps in a `STATIC` closes with the task's
+/// copy (known issue K90): the program can bind its port afterwards. Native
+/// builds kept it open for the life of the process.
+#[test]
+fn the_end_of_an_async_task_closes_its_sockets() {
+    let path = valid_fixture("dispatch-task-end-closes-socket.bn");
+    assert_same_output_in_fresh_directories(&path, "task-end-socket", "port released\n");
+}
+
+/// A connection an `ASYNC` task keeps in a `STATIC` closes with the task's
+/// copy (known issue K90): its open transaction rolls back and the database
+/// is free. Both backends kept it open (`BUSY`), the connection table being
+/// process-wide.
+#[test]
+fn the_end_of_an_async_task_closes_its_connections() {
+    let path = valid_fixture("dispatch-task-end-closes-sqlite.bn");
+    assert_same_output_in_fresh_directories(&path, "task-end-sqlite", "database free\nrows: 1\n");
+}
+
+/// 200 tasks each keep an open file in a `STATIC` under a limit of 64
+/// descriptors (known issue K90): every file closes with its task's copy,
+/// so no open fails. Native builds failed from the 32nd task on.
+#[cfg(unix)]
+#[test]
+fn the_end_of_an_async_task_closes_its_files() {
+    let path = valid_fixture("dispatch-task-end-closes-files.bn");
+    let directory = TestDir::new("task-end-files").expect("create directory");
+    let artifact = compile_native(&path, &directory);
+    let limited = |program: &str| {
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg(format!("ulimit -n 64 && exec {program}"))
+            .current_dir(directory.path());
+        execute(&mut command, None)
+    };
+    let interpreter = format!(
+        "'{}' run '{}'",
+        bni().get_program().to_string_lossy(),
+        path.display()
+    );
+    for (backend, output) in [
+        ("bni", limited(&interpreter)),
+        ("native", limited(&format!("'{}'", artifact.display()))),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "ok 200 failed 0\n",
+            "{backend}"
+        );
+    }
+}

@@ -1,0 +1,62 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// The end of an ASYNC task is the end of its copy's program (0.6.md,
+// "Isolation and conformance"; known issue K88): no DESTRUCTOR runs for what
+// its STATIC fields or a cycle still hold, and the copy is discarded, so the
+// next task on the same worker reuses the reclaimed storage (BN_ARC_TRACE
+// shows the same object ids for both tasks).
+IMPORT BNDispatch AS Dispatch
+
+CLASS Node
+    PUBLIC label AS STRING = ""
+    PUBLIC next AS Node OR NULL = NULL
+
+    PUBLIC FUNCTION CONSTRUCTOR(label AS STRING)
+        SELF.label = label
+    END FUNCTION
+
+    FUNCTION DESTRUCTOR()
+        PRINT "destroyed", SELF.label
+    END FUNCTION
+END CLASS
+
+CLASS Keep
+    PUBLIC STATIC held AS Node OR NULL = NULL
+END CLASS
+
+ASYNC FUNCTION Work() AS INTEGER OR Error
+    LET head AS Node = NEW Node("head")
+    head.next = NEW Node("child")
+    Keep.held = head
+    LET left AS Node = NEW Node("left")
+    LET right AS Node = NEW Node("right")
+    left.next = right
+    right.next = left
+    LET done AS Node = NEW Node("temporary")
+    RETURN 1
+END FUNCTION
+
+FUNCTION Run(queue AS Dispatch.Queue) AS VOID
+    LET ticket AS Dispatch.Ticket OR Error = ASYNC queue Work()
+    IF ticket IS Error THEN
+        PRINT "ticket error"
+        RETURN
+    END IF
+    LET result AS INTEGER OR Error = AWAIT ticket(5000)
+    IF result IS INTEGER THEN
+        PRINT "task", result
+    END IF
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET serial AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
+    IF serial IS Error THEN
+        RETURN
+    END IF
+    Run(serial)
+    Run(serial)
+    PRINT "end"
+END FUNCTION

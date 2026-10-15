@@ -230,6 +230,11 @@ pub(crate) fn emit_function(
         state.control_flow.label(text, format!("b{}", block.id.0));
         if block.id == function.entry {
             if is_start {
+                // The globals start zeroed; the reset links vector rows and
+                // `STRUCT` blocks of this thread (`statics.rs`).
+                if !super::statics::StaticState::collect(module).is_empty() {
+                    text.emit(super::statics::reset_call());
+                }
                 text.emit(I::store(
                     T::I32,
                     O::reg("argc"),

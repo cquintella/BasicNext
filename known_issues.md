@@ -192,18 +192,6 @@ interim fixes (K1, K3) do not count. Each entry names its 0.6.5 bucket.
   expected output derived from those rules; `bni` matches every line,
   2026-10-09).
 
-### K44 — `bnc`: an `ASYNC` task shares the program's `STATIC` fields (open)
-
-- **Severity: high** (backends differ; specification broken under `bnc`).
-  `0.6.md`, "Isolation and conformance": a worker runs on an isolated
-  module copy. A task that writes `Counter.hits` (set to 10 by `Start`):
-  `bni` prints `task sees 1` then `main sees 10`; the `bnc` binary prints
-  `task sees 11` then `main sees 11`. Found 2026-10-10 measuring task
-  isolation for BNWeb handlers under `bnc` (E), which need the same
-  isolation.
-- **Also seen:** `IS Dispatch.Queue` on `Dispatch.Queue OR Error` is
-  `TARGET_UNSUPPORTED_OP` ("IS on this alternative") under `bnc`, as in K41.
-
 ### K45 — `bni`: `Web.Client.New(logger)` rejects every logger (Carlos decides)
 
 - `Client.New(logger AS Log.Logger)` fails with `TYPE_MISMATCH` ("non-logger
@@ -397,3 +385,63 @@ Probe: 351 programs on `bni run` and the `bnc` binary (see
     - `bn_llvm_arc`: geração de witnesses de cópia/destruição e ARC runtime glue.
     - `bn_llvm_ops`: operadores nativos (vetores, dispatch, chamadas externas).
 - **Proposta formal**: `todo/proposals/llvm-backend-modularization-and-sqlite.md`.
+
+### K87 — `bnc`: `IS` on an alternative of an imported module class has no lowering (open)
+
+- **Severity: medium** (a program `bni` runs is refused by `bnc`; no wrong
+  result). Split from K44 on 2026-10-15, when K44's isolation defect closed.
+- `IF queue IS Dispatch.Queue` on `Dispatch.Queue OR Error` stops the build
+  with `TARGET_UNSUPPORTED_OP` ("IS Queue on a value of type
+  'MODULE#0.Queue OR Error' has no LLVM lowering yet"); `bni` prints the
+  branch. The same gap as the open `bnc` part of K41 (`IS` on
+  `Str.Tokenizer OR NULL`). `IS Error` on the same value lowers.
+- Reproduced 2026-10-15 on the working tree (probe:
+  `queue IS Dispatch.Queue` after `Dispatch.Queue.Serial()`).
+
+### K89 — `bnc`: destroying an object does not free its fixed-vector fields (open)
+
+- **Severity: high** (unbounded memory growth; output is correct). Found
+  2026-10-15 measuring K88. A class with a field `cells AS INTEGER[20000]`:
+  `NEW` allocates the object block with `calloc(1, 32)` and the vector's
+  elements in a separate `malloc` (`vcopy_buf`); the object's destruction
+  (`BN_ARC_TRACE` shows one `destroy` per object) does not free that buffer.
+- Reproduced on a clean `HEAD` worktree, no task involved: a loop that
+  creates, fills and drops one such object per round reaches 27 MB maximum
+  resident size after 300 rounds and 249 MB after 3,000.
+- Next: find which emitted path owns the element buffer of a vector field
+  (`vectors.rs` copy, the class `$release`), free it at destruction, and add
+  a regression that measures it (the `BN_ARC_TRACE` count alone does not).
+
+### K91 — `bnc`: storing a narrowed resource into `T OR NULL` (or a logger `STATIC`) fails code generation (open)
+
+- **Severity: medium** (valid programs `bni` runs do not build; no wrong
+  result). `LET kept AS FS.File OR NULL = NULL` then `kept = output` (with
+  `output` narrowed from `FS.File OR Error`) stops with
+  `BUILD_EMISSION_FAILED` ("'%v10' defined with type '{ i1, ptr, i64 }' but
+  expected 'ptr'"), in a local as in a `STATIC`; the same for
+  `Net.TCPListener` and `BNSqlite.Connection`. A `STATIC` of
+  `Log.Logger OR Error` assigned a narrowed logger fails the other way
+  ("'%v34' defined with type 'ptr' but expected '{ i1, ptr, i64 }'").
+  Found 2026-10-15 writing the K90 probes; a `T OR Error` `STATIC` of a
+  file, listener or connection builds.
+
+### K92 — `BNDispatch` coordination values cannot reach a task (decided; implementation open)
+
+- **Severity: high** (a valid program fails on both backends, differently).
+  `bndispatch.md` "Synchronization" specified `Barrier`, `Semaphore`,
+  `Mutex` and `Group` with rules between tasks, while `0.6.md` "Isolation
+  and conformance" shared nothing with a task and set no rule on argument
+  types. Probe 2026-10-15: a `Dispatch.Mutex` passed to a task — `bni` runs
+  it and the task fails with "mutex is invalid" (its copy's provider does
+  not know the handle); `bnc` refuses the build (`TARGET_UNSUPPORTED_OP`,
+  the trampoline takes scalars and `STRING` only).
+- **Decision (Carlos, 2026-10-15), written in the specification.**
+  `0.6.md` "Isolation and conformance" and "Async submit with arguments",
+  `bndispatch.md` "Sharing between tasks": `Queue`, `Ticket`, `Group`,
+  `Barrier`, `Semaphore` and `Mutex` cross into a task by reference (the one
+  exception to isolation); task argument types are listed and any other is
+  a static `TYPE_MISMATCH`; a primitive lives while a copy holds it; a
+  `Mutex` a task still holds is unlocked when the task ends; a `Barrier`
+  round ends only at its timeout (`parties` counts calls, not holders); a
+  task's end changes no `Group` count or `Semaphore` permit.
+- **Open.** Implementation and fixtures: bucket 0.6.5, P.6c.

@@ -2975,7 +2975,6 @@ crates/bn_rt/src/arc.rs	prose	ARC operation on object {id}, which is not alive
 crates/bn_rt/src/arc.rs	prose	arc {event} {class}{id} strong={strong} at {at}
 crates/bn_rt/src/arc.rs	prose	fewer than 2^32 live objects
 crates/bn_rt/src/arc.rs	prose	slot index fits u32
-crates/bn_rt/src/arc.rs	prose	slot index fits u32
 crates/bn_rt/src/arc.rs	prose	slot index fits usize
 crates/bn_rt/src/arc_abi.rs	identifier	BN_ARC_TRACE
 crates/bn_rt/src/arc_abi.rs	identifier	INVALID_IR

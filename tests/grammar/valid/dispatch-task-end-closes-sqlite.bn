@@ -1,0 +1,71 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// The end of an ASYNC task ends its copy's program (known issue K90): a
+// connection the task keeps in a STATIC closes with the copy, so the
+// transaction it left open rolls back and the database is free for the
+// program. Writes probe.db in the working directory.
+IMPORT BNDispatch AS Dispatch
+IMPORT BNData AS Data
+IMPORT BNSqlite AS Sqlite
+
+CLASS Keep
+    PUBLIC STATIC connection AS Sqlite.Connection OR Error = Sqlite.Open(":memory:")
+END CLASS
+
+ASYNC FUNCTION Hold(path AS STRING) AS INTEGER OR Error
+    LET conn AS Sqlite.Connection OR Error = Sqlite.Open(path)
+    IF conn IS Error THEN
+        RETURN conn
+    END IF
+    LET made AS VOID OR Error = conn.Exec("CREATE TABLE IF NOT EXISTS t (x INTEGER);")
+    IF made IS Error THEN
+        RETURN made
+    END IF
+    LET begun AS VOID OR Error = conn.Begin()
+    IF begun IS Error THEN
+        RETURN begun
+    END IF
+    LET added AS VOID OR Error = conn.Exec("INSERT INTO t VALUES (1);")
+    IF added IS Error THEN
+        RETURN added
+    END IF
+    Keep.connection = conn
+    RETURN 1
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET path AS STRING = "probe.db"
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
+    IF queue IS Error THEN
+        RETURN
+    END IF
+    LET ticket AS Dispatch.Ticket OR Error = ASYNC queue Hold(path)
+    IF ticket IS Error THEN
+        RETURN
+    END IF
+    LET done AS INTEGER OR Error = AWAIT ticket(5000)
+    IF done IS Error THEN
+        PRINT "task failed", done
+        RETURN
+    END IF
+    LET conn AS Sqlite.Connection OR Error = Sqlite.Open(path)
+    IF conn IS Error THEN
+        PRINT "open failed", conn
+        RETURN
+    END IF
+    LET wrote AS VOID OR Error = conn.Exec("INSERT INTO t VALUES (2);")
+    IF wrote IS Error THEN
+        PRINT "database still locked:", wrote.Code
+    ELSE
+        PRINT "database free"
+    END IF
+    LET rows AS Data.DataFrame OR Error = conn.Query("SELECT COUNT(*) AS n FROM t;")
+    IF rows IS Error THEN
+        PRINT "query failed", rows.Code
+    ELSE
+        PRINT "rows:", rows.GetInteger(0, "n")
+    END IF
+END FUNCTION

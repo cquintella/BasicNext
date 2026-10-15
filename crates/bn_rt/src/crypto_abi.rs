@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 use std::ffi::c_char;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock, PoisonError};
+use std::sync::{Mutex, PoisonError};
 
 use crate::crypto::{
     Aead, Argon2Params, argon2id, decode_hex, ed25519_public_key, ed25519_sign, ed25519_verify,
@@ -27,10 +27,10 @@ pub const BN_CRYPTO_OK: i32 = 0;
 pub const BN_CRYPTO_INVALID_ARGUMENT: i32 = 1;
 pub const BN_CRYPTO_INVALID_HANDLE: i32 = 2;
 
-fn buffers() -> &'static Mutex<HashMap<u64, Vec<u8>>> {
-    static BUFFERS: OnceLock<Mutex<HashMap<u64, Vec<u8>>>> = OnceLock::new();
-    BUFFERS.get_or_init(|| Mutex::new(HashMap::new()))
-}
+/// The byte buffers of the module copy that runs on this thread
+/// (`bn_core_copy`): a task's are freed when the task ends.
+#[derive(Default)]
+struct Buffers(Mutex<HashMap<u64, Vec<u8>>>);
 
 fn next_handle() -> u64 {
     static NEXT: AtomicU64 = AtomicU64::new(1);
@@ -38,7 +38,8 @@ fn next_handle() -> u64 {
 }
 
 fn with_buffers<T>(operation: impl FnOnce(&mut HashMap<u64, Vec<u8>>) -> T) -> T {
-    operation(&mut buffers().lock().unwrap_or_else(PoisonError::into_inner))
+    let buffers = bn_core_copy::table::<Buffers>();
+    operation(&mut buffers.0.lock().unwrap_or_else(PoisonError::into_inner))
 }
 
 fn store(bytes: Vec<u8>) -> u64 {

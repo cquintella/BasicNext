@@ -285,13 +285,20 @@ pub extern "C" fn bn_rt_dispatch_submit(
                 }
                 let mut result = BNValue::null();
                 let mut error = BNDispatchError::empty();
-                let status = task(
-                    context as *mut c_void,
-                    args.as_ptr(),
-                    u32::try_from(args.len()).unwrap_or(u32::MAX),
-                    &raw mut result,
-                    &raw mut error,
-                );
+                // The task runs on a fresh module copy: its objects and
+                // handle tables end when it returns (0.6.md, "Isolation and
+                // conformance"; K88, K90).
+                let status = bn_core_copy::run(|| {
+                    crate::arc_abi::run_in_fresh_core(|| {
+                        task(
+                            context as *mut c_void,
+                            args.as_ptr(),
+                            u32::try_from(args.len()).unwrap_or(u32::MAX),
+                            &raw mut result,
+                            &raw mut error,
+                        )
+                    })
+                });
                 if core_ticket.status() != bn_core_dispatch::CANCELLED {
                     *task_outcome
                         .result

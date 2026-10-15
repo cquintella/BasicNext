@@ -11,8 +11,8 @@
 
 use std::collections::HashMap;
 use std::ffi::{CStr, c_char};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock};
 
 use super::policy::{POLICY_CONSOLE, POLICY_FILESYSTEM, allows};
 use bn_core_log::{
@@ -56,18 +56,25 @@ impl bn_core_log::LogSink for RuntimeSink {
     }
 }
 
+/// The loggers of the module copy that runs on this thread
+/// (`bn_core_copy`): a task's close their destinations when the task ends.
 struct Registry {
     next: AtomicU64,
     /// Each logger with the number of bindings that hold it (K61).
     loggers: Mutex<HashMap<u64, (Logger, usize)>>,
 }
 
-fn registry() -> &'static Registry {
-    static REGISTRY: OnceLock<Registry> = OnceLock::new();
-    REGISTRY.get_or_init(|| Registry {
-        next: AtomicU64::new(1),
-        loggers: Mutex::new(HashMap::new()),
-    })
+impl Default for Registry {
+    fn default() -> Self {
+        Self {
+            next: AtomicU64::new(1),
+            loggers: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+fn registry() -> std::sync::Arc<Registry> {
+    bn_core_copy::table::<Registry>()
 }
 
 fn with_loggers<T>(body: impl FnOnce(&mut HashMap<u64, (Logger, usize)>) -> T) -> T {

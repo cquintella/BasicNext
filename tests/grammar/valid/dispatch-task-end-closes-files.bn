@@ -1,0 +1,48 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// The end of an ASYNC task ends its copy's program (known issue K90): 200
+// tasks each keep an open file in a STATIC; each closes with its copy, so a
+// low descriptor limit (the test runs it under `ulimit -n 64`) is never
+// reached. Writes fd.txt and seed.txt in the working directory.
+IMPORT BNDispatch AS Dispatch
+IMPORT HOST.FileSystem AS FS
+
+CLASS Keep
+    PUBLIC STATIC file AS FS.File OR Error = FS.Open("seed.txt", FS.WRITE)
+END CLASS
+
+
+
+ASYNC FUNCTION Hold(round AS INTEGER) AS INTEGER OR Error
+    LET output AS FS.File OR Error = FS.Open("fd.txt", FS.WRITE)
+    IF output IS Error THEN
+        RETURN output
+    END IF
+    Keep.file = output
+    RETURN 1
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
+    IF queue IS Error THEN
+        RETURN
+    END IF
+    LET ok AS INTEGER = 0
+    LET failed AS INTEGER = 0
+    FOR round AS INTEGER = 1 TO 200
+        LET ticket AS Dispatch.Ticket OR Error = ASYNC queue Hold(round)
+        IF ticket IS Error THEN
+            RETURN
+        END IF
+        LET done AS INTEGER OR Error = AWAIT ticket(5000)
+        IF done IS Error THEN
+            failed = failed + 1
+        ELSE
+            ok = ok + 1
+        END IF
+    END FOR
+    PRINT "ok", ok, "failed", failed
+END FUNCTION

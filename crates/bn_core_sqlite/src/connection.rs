@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, RwLock};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock};
 use std::time::Duration;
 
 use rusqlite::ffi as libsqlite3_sys;
@@ -47,10 +47,19 @@ impl ConnectionState {
     }
 }
 
+/// The connections of the module copy that runs on this thread
+/// (`bn_core_copy`): a task's close when the task ends, rolling back a
+/// transaction it left open.
 #[derive(Debug)]
 pub struct ConnectionRegistry {
     next: AtomicU64,
     connections: RwLock<HashMap<u64, Arc<ConnectionState>>>,
+}
+
+impl Default for ConnectionRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ConnectionRegistry {
@@ -74,9 +83,8 @@ impl ConnectionRegistry {
     }
 }
 
-pub fn registry() -> &'static ConnectionRegistry {
-    static REGISTRY: OnceLock<ConnectionRegistry> = OnceLock::new();
-    REGISTRY.get_or_init(ConnectionRegistry::new)
+fn registry() -> Arc<ConnectionRegistry> {
+    bn_core_copy::table::<ConnectionRegistry>()
 }
 
 fn is_trailing_sql_empty(tail: &str) -> bool {
@@ -568,41 +576,49 @@ mod tests {
         Ok(())
     }
 
+    /// A connection belongs to the module copy that opened it (`0.6.md`,
+    /// "Isolation and conformance"): another thread's copy does not see it,
+    /// and the end of a task's copy closes what it left open.
     #[test]
-    fn concurrent_operations_on_same_connection_are_serialized() {
+    fn a_connection_belongs_to_the_copy_that_opened_it() {
         let handle = open_connection(":memory:", OpenMode::CreateOrReadWrite, no_policy)
             .expect("open memory db");
-
-        exec(
-            handle,
-            "CREATE TABLE items (id INTEGER PRIMARY KEY, score INTEGER);",
-        )
-        .expect("create table");
-
-        let mut threads = Vec::new();
-        for t in 0..10 {
-            threads.push(std::thread::spawn(move || {
-                for i in 0..15 {
-                    let sql = format!("INSERT INTO items (score) VALUES ({});", t * 100 + i);
-                    exec(handle, &sql).expect("concurrent insert");
-                }
-            }));
-        }
-
-        for thread in threads {
-            thread.join().expect("thread join");
-        }
-
-        let result = query(handle, "SELECT COUNT(*) FROM items;").expect("select count");
-        assert_eq!(result.columns.len(), 1);
-        assert_eq!(result.columns[0].values.len(), 1);
-        assert_eq!(result.columns[0].values[0], SqliteValue::Integer(150));
+        exec(handle, "CREATE TABLE items (id INTEGER PRIMARY KEY);").expect("create table");
+        let elsewhere = std::thread::spawn(move || exec(handle, "SELECT 1;"))
+            .join()
+            .expect("thread join");
+        assert_eq!(elsewhere.unwrap_err(), SqliteFailure::Closed);
 
         close(handle).expect("close");
         assert_eq!(
             exec(handle, "SELECT 1;").unwrap_err(),
             SqliteFailure::Closed
         );
+    }
+
+    /// A task that leaves a transaction open in a connection it keeps ends
+    /// with its copy: the connection closes, the transaction rolls back, and
+    /// the database is free for the program.
+    #[test]
+    fn the_end_of_a_task_closes_its_connections() {
+        let path =
+            std::env::temp_dir().join(format!("bn-core-sqlite-task-end-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let name = path.to_str().expect("temporary path is UTF-8").to_owned();
+        let program = open_connection(&name, OpenMode::CreateOrReadWrite, no_policy)
+            .expect("open in the program");
+        exec(program, "CREATE TABLE items (id INTEGER);").expect("create table");
+        bn_core_copy::run(|| {
+            let task = open_connection(&name, OpenMode::CreateOrReadWrite, no_policy)
+                .expect("open in the task");
+            begin(task).expect("begin");
+            exec(task, "INSERT INTO items VALUES (1);").expect("insert in the task");
+        });
+        exec(program, "INSERT INTO items VALUES (2);").expect("the database is free");
+        let result = query(program, "SELECT COUNT(*) FROM items;").expect("count");
+        assert_eq!(result.columns[0].values[0], SqliteValue::Integer(1));
+        close(program).expect("close");
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

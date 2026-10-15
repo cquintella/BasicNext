@@ -132,89 +132,6 @@ pub(crate) fn emit_preamble(
             write_declarations(text, &[&runtime_abi::FREE]);
         }
     }
-    let mut static_globals = std::collections::BTreeMap::new();
-    let mut class_inits = BTreeSet::new();
-    for (function, analysis) in functions {
-        for block in &function.blocks {
-            for instruction in &block.instructions {
-                match instruction {
-                    Instruction::LoadStatic {
-                        class, field, ty, ..
-                    }
-                    | Instruction::StoreStatic {
-                        class, field, ty, ..
-                    } => {
-                        if let Some(llvm_ty) = llvm_type(ty) {
-                            static_globals.insert(
-                                (class.clone(), field.clone()),
-                                (
-                                    llvm_ty,
-                                    vectors::fixed_vector_array(ty).map(|(array, count)| {
-                                        let global = format!(
-                                            "@bn_sv_{}_{}",
-                                            sanitize_symbol(class),
-                                            sanitize_symbol(field)
-                                        );
-                                        let nested = vectors::nest(ty);
-                                        (array, count, nested.map(|n| n.linked_constant(&global)))
-                                    }),
-                                    struct_owner(module, ty)
-                                        .map(|owner| class_instance_bytes(module, &owner)),
-                                ),
-                            );
-                        }
-                    }
-                    Instruction::EnsureClass { class, .. } => {
-                        class_inits.insert(class.clone());
-                    }
-                    _ => {}
-                }
-            }
-        }
-        let _ = analysis;
-    }
-    for ((class, field), (llvm_ty, vector, struct_bytes)) in &static_globals {
-        let gclass = sanitize_symbol(class);
-        let gfield = sanitize_symbol(field);
-        // A fixed vector STATIC owns its elements (and a copy of the replaced ones).
-        let (storage, kept, slot) = (
-            format!("bn_sv_{gclass}_{gfield}"),
-            format!("bn_svp_{gclass}_{gfield}"),
-            format!("bn_st_{gclass}_{gfield}"),
-        );
-        if let Some((array, count, linked)) = vector {
-            let initial = linked.clone().unwrap_or_else(O::zero_initializer);
-            text.global(LlvmGlobal::variable(&storage, array.clone(), initial));
-            text.global(LlvmGlobal::variable(
-                kept,
-                array.clone(),
-                O::zero_initializer(),
-            ));
-            let fat = O::ConstStruct(vec![
-                (T::Ptr, O::global(storage)),
-                (T::I32, O::uint(*count)),
-            ]);
-            text.global(LlvmGlobal::variable(slot, crate::layout::vector_ty(), fat));
-            continue;
-        }
-        if let Some(bytes) = struct_bytes {
-            let array = T::Array(
-                usize::try_from(*bytes).expect("fits usize"),
-                Box::new(T::I8),
-            );
-            text.global(LlvmGlobal::variable(&storage, array, O::zero_initializer()));
-            text.global(LlvmGlobal::variable(slot, T::Ptr, O::global(storage)));
-            continue;
-        }
-        let initial = match llvm_ty {
-            T::I1 => O::bool(false),
-            T::Float | T::Double => O::float(0.0),
-            T::Ptr => O::null(),
-            T::Struct(_) => O::zero_initializer(),
-            _ => O::int(0),
-        };
-        text.global(LlvmGlobal::variable(slot, llvm_ty.clone(), initial));
-    }
     for (function, _) in functions {
         if let Some((array, _)) =
             vectors::returned_vector(&function.return_type).and_then(vectors::fixed_vector_array)
@@ -224,14 +141,9 @@ pub(crate) fn emit_preamble(
             text.global(buffer.with_linkage(Linkage::Internal).thread_local());
         }
     }
-    for class in &class_inits {
-        let gclass = sanitize_symbol(class);
-        text.global(LlvmGlobal::variable(
-            format!("bn_init_{gclass}"),
-            T::I1,
-            O::bool(false),
-        ));
-    }
+    let static_state = super::statics::StaticState::collect(module);
+    static_state.emit(text);
+    let resets_statics = !static_state.is_empty();
     let mut class_names = BTreeSet::new();
     for (function, _) in functions {
         for block in &function.blocks {
@@ -322,7 +234,15 @@ pub(crate) fn emit_preamble(
         };
         let symbol = llvm_function_symbol(&task);
         let wrapper = dispatch_trampoline_symbol(&task);
-        emit_trampoline(text, task_fn, task_analysis, &symbol, &wrapper, may_stop);
+        emit_trampoline(
+            text,
+            task_fn,
+            task_analysis,
+            &symbol,
+            &wrapper,
+            may_stop,
+            resets_statics,
+        );
     }
     let _ = uses_exit;
 }
@@ -347,7 +267,8 @@ fn prints_null(function: &Function, analysis: &LoweringAnalysis<'_>) -> bool {
 
 /// The `bn_rt` dispatch trampoline of an async task: unpacks the 16-byte
 /// argument cells, calls the task, and writes its result (`kind` at 0, the
-/// payload at 8) or its `Error` (code at 0, record at 8).
+/// payload at 8) or its `Error` (code at 0, record at 8). A task starts on
+/// its own fresh copy of the `STATIC` fields (`statics.rs`, K44).
 fn emit_trampoline(
     text: &mut crate::ir::LlvmModule,
     task_fn: &Function,
@@ -355,6 +276,7 @@ fn emit_trampoline(
     symbol: &str,
     wrapper: &str,
     may_stop: bool,
+    resets_statics: bool,
 ) {
     let ret = match &task_fn.return_type {
         Type::Alternative(alternatives) if integer_or_error(alternatives) => T::I32,
@@ -380,6 +302,9 @@ fn emit_trampoline(
         T::I32,
         params,
     ));
+    if resets_statics {
+        text.emit(super::statics::reset_call());
+    }
     let aggregate_return = matches!(&task_fn.return_type, Type::Alternative(alternatives)
         if void_or_error(alternatives)
             || integer_or_error(alternatives)

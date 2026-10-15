@@ -17,6 +17,7 @@ workspace = true
 bn_core_text = { path = "../bn_core_text" }
 bn_diag = { path = "../bn_diag" }
 bn_ir = { path = "../bn_ir" }
+bn_core_copy = { path = "../bn_core_copy" } # each task and handler runs on a fresh module copy
 bn_rt = { path = "../bn_rt" }
 bn_runtime = { path = "../bn_runtime" }
 bn_source = { path = "../bn_source" }

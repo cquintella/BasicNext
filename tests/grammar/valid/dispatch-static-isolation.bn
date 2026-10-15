@@ -1,0 +1,88 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Each ASYNC task runs on its own fresh copy of the STATIC fields (0.6.md,
+// "Isolation and conformance"; known issue K44): it sees the values before
+// Start, vector rows included, not the caller's; its writes reach neither
+// the caller nor the next task, also when a serial queue reuses one worker
+// thread.
+IMPORT BNDispatch AS Dispatch
+
+STRUCT Point
+    x AS INTEGER = 1
+END STRUCT
+
+CLASS Tag
+    PUBLIC name AS STRING = "set"
+
+    PUBLIC FUNCTION CONSTRUCTOR()
+    END FUNCTION
+END CLASS
+
+CLASS State
+    PUBLIC STATIC hits AS INTEGER = 0
+    PUBLIC STATIC label AS STRING = "start"
+    PUBLIC STATIC row AS INTEGER[3] = [1, 2, 3]
+    PUBLIC STATIC grid AS INTEGER[2][2] = [[1, 2], [3, 4]]
+    PUBLIC STATIC point AS Point
+    PUBLIC STATIC tag AS Tag OR NULL = NULL
+END CLASS
+
+FUNCTION Describe() AS STRING
+    LET tagged AS STRING = "none"
+    LET tag AS Tag OR NULL = State.tag
+    IF tag IS Tag THEN
+        tagged = tag.name
+    END IF
+    RETURN (State.hits AS STRING) + " " + State.label + " " + (State.row[2] AS STRING) + " " + (State.grid[1][1] AS STRING) + " " + (State.point.x AS STRING) + " " + tagged
+END FUNCTION
+
+ASYNC FUNCTION Observe() AS STRING OR Error
+    LET seen AS STRING = Describe()
+    State.hits = State.hits + 1
+    State.label = "task"
+    State.row[2] = 30
+    State.point.x = 50
+    State.tag = NEW Tag()
+    RETURN seen
+END FUNCTION
+
+FUNCTION Report(ticket AS Dispatch.Ticket OR Error) AS VOID
+    IF ticket IS Error THEN
+        PRINT "ticket error"
+        RETURN
+    END IF
+    LET seen AS STRING OR Error = AWAIT ticket(5000)
+    IF seen IS STRING THEN
+        PRINT "task", seen
+    ELSE
+        PRINT "task error"
+    END IF
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    State.hits = 10
+    State.label = "main"
+    State.row[2] = 300
+    State.point.x = 500
+    State.tag = NEW Tag()
+    LET serial AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
+    IF serial IS Error THEN
+        RETURN
+    END IF
+    Report(ASYNC serial Observe())
+    Report(ASYNC serial Observe())
+    LET pool AS Dispatch.Queue OR Error = Dispatch.Queue.Concurrent(4)
+    IF pool IS Error THEN
+        RETURN
+    END IF
+    LET first AS Dispatch.Ticket OR Error = ASYNC pool Observe()
+    LET second AS Dispatch.Ticket OR Error = ASYNC pool Observe()
+    LET third AS Dispatch.Ticket OR Error = ASYNC pool Observe()
+    Report(first)
+    Report(second)
+    Report(third)
+    PRINT "main", Describe()
+END FUNCTION

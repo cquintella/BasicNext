@@ -125,3 +125,24 @@ fn abi_records_the_failure_for_the_emitted_code() {
     );
     assert!(release(handle));
 }
+
+/// A document belongs to the module copy that made it (known issue K90): a
+/// task's copy starts with none of the program's, and its own are freed
+/// when the task ends.
+#[test]
+fn the_documents_of_a_task_copy_end_with_it() {
+    let program = store(serde_json::Value::from(1));
+    let task = bn_core_copy::run(|| {
+        assert_eq!(
+            kind(program),
+            None,
+            "the task's copy has no program document"
+        );
+        let task = store(serde_json::Value::from(2));
+        assert!(kind(task).is_some());
+        task
+    });
+    assert!(kind(program).is_some(), "the program keeps its document");
+    assert_ne!(task, program, "handles are unique in the process");
+    assert_eq!(kind(task), None, "the task's document ended with it");
+}

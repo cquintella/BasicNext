@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::ffi::{CStr, c_char};
 use std::path::Path;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use super::file::{FileError, OpenFile};
 
@@ -43,14 +43,21 @@ impl FileRegistry {
     }
 }
 
-fn files() -> &'static Mutex<FileRegistry> {
-    static FILES: OnceLock<Mutex<FileRegistry>> = OnceLock::new();
-    FILES.get_or_init(|| {
-        Mutex::new(FileRegistry {
+/// The open files of the module copy that runs on this thread
+/// (`bn_core_copy`): a task's close when the task ends.
+struct FileTable(Mutex<FileRegistry>);
+
+impl Default for FileTable {
+    fn default() -> Self {
+        Self(Mutex::new(FileRegistry {
             next: Some(1),
             files: HashMap::new(),
-        })
-    })
+        }))
+    }
+}
+
+fn files() -> Arc<FileTable> {
+    bn_core_copy::table::<FileTable>()
 }
 
 fn text(ptr: *const c_char) -> Option<String> {
@@ -90,7 +97,9 @@ fn with_file_unchecked<T>(
     handle: BNFileHandle,
     f: impl FnOnce(&mut OpenFile) -> Result<T, FileError>,
 ) -> Result<T, u32> {
-    let mut guard = files()
+    let table = files();
+    let mut guard = table
+        .0
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let Some(file) = guard.files.get_mut(&handle) else {
@@ -140,7 +149,9 @@ pub extern "C" fn bn_rt_file_new(out: *mut BNFileHandle) -> u32 {
     if out.is_null() {
         return BN_FILE_INVALID;
     }
-    let mut guard = files()
+    let table = files();
+    let mut guard = table
+        .0
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let id = match guard.reserve() {
@@ -172,7 +183,9 @@ pub extern "C" fn bn_rt_file_open(path: *const c_char, mode: i32, out: *mut BNFi
     if let Err(status) = authorize() {
         return status;
     }
-    let mut guard = files()
+    let table = files();
+    let mut guard = table
+        .0
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let id = match guard.reserve() {
@@ -203,6 +216,7 @@ pub extern "C" fn bn_rt_file_close(handle: BNFileHandle) -> u32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_file_release(handle: BNFileHandle) -> u32 {
     files()
+        .0
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .files

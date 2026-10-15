@@ -163,6 +163,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bn_core_copy"
+version = "0.6.4"
+
+[[package]]
 name = "bn_core_dispatch"
 version = "0.6.4"
 dependencies = [
@@ -200,6 +204,7 @@ dependencies = [
 name = "bn_core_sqlite"
 version = "0.6.4"
 dependencies = [
+ "bn_core_copy",
  "bn_types",
  "rusqlite",
 ]
@@ -304,6 +309,7 @@ dependencies = [
 name = "bn_interp"
 version = "0.6.4"
 dependencies = [
+ "bn_core_copy",
  "bn_core_text",
  "bn_diag",
  "bn_ir",
@@ -513,6 +519,7 @@ dependencies = [
  "aes-gcm",
  "argon2",
  "bn_catalog",
+ "bn_core_copy",
  "bn_core_dispatch",
  "bn_core_log",
  "bn_core_math",

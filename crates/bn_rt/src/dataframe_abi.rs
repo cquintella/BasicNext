@@ -3,8 +3,8 @@
 
 use std::collections::HashMap;
 use std::ffi::{CStr, c_char};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock};
 
 use super::dataframe::{
     DataFrameColumn, DataFrameJoin, DataFrameJoinConfig, DataFrameResource, add_dataframe_column,
@@ -103,17 +103,24 @@ fn render_value(value: &StoredValue) -> String {
     }
 }
 
+/// The frames of the module copy that runs on this thread (`bn_core_copy`):
+/// a task's are freed when the task ends.
 struct Registry {
     next: AtomicU64,
     frames: Mutex<HashMap<BNDataFrameHandle, Frame>>,
 }
 
-fn registry() -> &'static Registry {
-    static REGISTRY: OnceLock<Registry> = OnceLock::new();
-    REGISTRY.get_or_init(|| Registry {
-        next: AtomicU64::new(1),
-        frames: Mutex::new(HashMap::new()),
-    })
+impl Default for Registry {
+    fn default() -> Self {
+        Self {
+            next: AtomicU64::new(1),
+            frames: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+fn registry() -> std::sync::Arc<Registry> {
+    bn_core_copy::table::<Registry>()
 }
 
 fn next_handle() -> BNDataFrameHandle {

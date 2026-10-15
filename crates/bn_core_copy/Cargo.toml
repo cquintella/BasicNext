@@ -1,0 +1,16 @@
+[package]
+name = "bn_core_copy"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Basic Next module copies: the handle tables of one program, discarded when an ASYNC task ends"
+license.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]

@@ -125,22 +125,40 @@ impl fmt::Display for Site {
 }
 
 /// Strong counts and liveness for every object of one program run.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ArcCore {
     slots: Vec<Slot>,
     free: Vec<u32>,
     /// `BN_ARC_TRACE`: write each operation to standard error.
     trace: bool,
+    /// The generation of a slot's first object: 1 in `bni`; distinct per
+    /// core in `bnc`, so an id from another module copy's core does not
+    /// name a live object here.
+    first_generation: u32,
+}
+
+impl Default for ArcCore {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ArcCore {
     /// An empty core (no live object), not tracing.
     #[must_use]
     pub const fn new() -> Self {
+        Self::with_first_generation(1)
+    }
+
+    /// An empty core whose slots start at `generation` (never zero, so no
+    /// id is zero).
+    #[must_use]
+    pub const fn with_first_generation(generation: u32) -> Self {
         Self {
             slots: Vec::new(),
             free: Vec::new(),
             trace: false,
+            first_generation: if generation == 0 { 1 } else { generation },
         }
     }
 
@@ -175,18 +193,31 @@ impl ArcCore {
             ObjectId::from_parts(index, slot.generation)
         } else {
             let index = u32::try_from(self.slots.len()).expect("fewer than 2^32 live objects");
-            // Generation 1 for the first object in a slot, so no id is zero.
             self.slots.push(Slot {
-                generation: 1,
+                generation: self.first_generation,
                 strong: 1,
                 destroying: false,
                 class: class.to_owned(),
                 address,
             });
-            ObjectId::from_parts(index, 1)
+            ObjectId::from_parts(index, self.first_generation)
         };
         self.trace("new", id, at);
         id
+    }
+
+    /// The addresses of the objects still alive: what a task's module copy
+    /// holds when its program ends (`0.6.md`, "Isolation and conformance"),
+    /// for `bnc` to free with no `DESTRUCTOR`, as `bni` drops the copy's
+    /// core. An object in the middle of its destruction (count zero) is left
+    /// to the destruction, which frees it.
+    #[must_use]
+    pub fn live_addresses(&self) -> Vec<u64> {
+        self.slots
+            .iter()
+            .filter(|slot| slot.strong > 0)
+            .map(|slot| slot.address)
+            .collect()
     }
 
     /// The slot of a live object, or of one whose destructor is running.
@@ -258,8 +289,7 @@ impl ArcCore {
         slot.destroying = false;
         slot.generation = slot.generation.wrapping_add(1).max(1);
         slot.class.clear();
-        self.free
-            .push(u32::try_from(id.index()).expect("slot index fits u32"));
+        self.free.push(slot_number(id.index()));
         Ok(())
     }
 
@@ -308,15 +338,22 @@ impl ArcCore {
             .enumerate()
             .filter(|(_, slot)| slot.strong > 0)
             .map(|(index, slot)| ObjectInfo {
-                id: ObjectId::from_parts(
-                    u32::try_from(index).expect("slot index fits u32"),
-                    slot.generation,
-                ),
+                id: ObjectId::from_parts(slot_number(index), slot.generation),
                 class: slot.class.clone(),
                 strong: slot.strong,
             })
             .collect()
     }
+}
+
+/// A slot index as the 32-bit half of an [`ObjectId`].
+///
+/// # Panics
+///
+/// Never for a slot of a core: [`ArcCore::register`] keeps every index
+/// within 32 bits.
+fn slot_number(index: usize) -> u32 {
+    u32::try_from(index).expect("slot index fits u32")
 }
 
 /// The `BN_ARC_TRACE` line for one event (`retain`, `release`, `destroy`),
@@ -487,5 +524,21 @@ mod tests {
         assert!(!trace_enabled(Some("0")));
         assert!(!trace_enabled(Some("")));
         assert!(!trace_enabled(None));
+    }
+
+    #[test]
+    fn live_addresses_are_the_objects_not_yet_destroyed() {
+        let mut core = ArcCore::default();
+        let held = core.register("Node", 200, Site::default());
+        let cycle = core.register("Node", 300, Site::default());
+        let gone = core.register("Node", 400, Site::default());
+        assert_eq!(core.retain(cycle, Site::default()), Ok(2));
+        assert_eq!(core.release(gone, Site::default()), Ok(true));
+        // An object whose destruction runs is left to its destruction.
+        assert_eq!(core.live_addresses(), vec![200, 300]);
+        assert_eq!(core.finish_destroy(gone), Ok(()));
+        assert_eq!(core.release(held, Site::default()), Ok(true));
+        assert_eq!(core.finish_destroy(held), Ok(()));
+        assert_eq!(core.live_addresses(), vec![300]);
     }
 }

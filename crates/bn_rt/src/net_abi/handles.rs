@@ -1,5 +1,5 @@
 use crate::net::{TcpListener, TcpStream, UdpPacket, UdpSocket};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 pub enum Handle {
     TcpStream(TcpStream),
@@ -8,13 +8,19 @@ pub enum Handle {
     UdpPacket(UdpPacket),
 }
 
-fn table() -> &'static Mutex<Vec<Option<Handle>>> {
-    static TABLE: OnceLock<Mutex<Vec<Option<Handle>>>> = OnceLock::new();
-    TABLE.get_or_init(|| Mutex::new(Vec::new()))
+/// The sockets of the module copy that runs on this thread (`bn_core_copy`):
+/// a task's close when the task ends.
+#[derive(Default)]
+struct Sockets(Mutex<Vec<Option<Handle>>>);
+
+fn table() -> Arc<Sockets> {
+    bn_core_copy::table::<Sockets>()
 }
 
 pub fn insert(handle: Handle) -> Result<usize, &'static str> {
-    let mut table = table()
+    let sockets = table();
+    let mut table = sockets
+        .0
         .lock()
         .map_err(|_| "network handle table poisoned")?;
     if let Some((index, slot)) = table
@@ -34,7 +40,9 @@ pub fn insert(handle: Handle) -> Result<usize, &'static str> {
 }
 
 pub fn remove(index: usize) -> Result<Option<Handle>, &'static str> {
-    let mut table = table()
+    let sockets = table();
+    let mut table = sockets
+        .0
         .lock()
         .map_err(|_| "network handle table poisoned")?;
     Ok(table.get_mut(index).and_then(Option::take))
@@ -44,7 +52,9 @@ pub fn with<T>(
     index: usize,
     operation: impl FnOnce(&Handle) -> T,
 ) -> Result<Option<T>, &'static str> {
-    let table = table()
+    let sockets = table();
+    let table = sockets
+        .0
         .lock()
         .map_err(|_| "network handle table poisoned")?;
     Ok(table.get(index).and_then(Option::as_ref).map(operation))
@@ -54,7 +64,9 @@ pub fn with_mut<T>(
     index: usize,
     operation: impl FnOnce(&mut Handle) -> T,
 ) -> Result<Option<T>, &'static str> {
-    let mut table = table()
+    let sockets = table();
+    let mut table = sockets
+        .0
         .lock()
         .map_err(|_| "network handle table poisoned")?;
     Ok(table.get_mut(index).and_then(Option::as_mut).map(operation))

@@ -1,4 +1,4 @@
-# BNDispatch Standard Library (0.6.2)
+# BNDispatch Standard Library (0.6.5)
 
 `BNDispatch` is an explicitly imported external module. `ASYNC` and `AWAIT`
 submit work to its queues and wait for their tickets ([0.6.md](0.6.md),
@@ -59,6 +59,35 @@ wait for itself.
 | `Mutex.New()` | `Mutex OR Error` | unlocked |
 | `mutex.Lock(timeoutMs)` | `VOID OR Error` | waits while it is locked, including by the caller (not re-entrant) |
 | `mutex.Unlock()` | `VOID OR Error` | `INVALID_STATE` unless the calling task holds the lock |
+
+## Sharing between tasks (0.6.5)
+
+A task runs on its own copy of the module and shares nothing with the code
+that submitted it ([0.6.md](0.6.md), "Isolation and conformance"), except
+the values of this module's classes: `Queue`, `Ticket`, `Group`, `Barrier`,
+`Semaphore`, `Mutex`. Passed as an argument of a task, such a value names
+the same queue, ticket, or primitive in the worker; tasks coordinate through
+it. (BDFL decision, 2026-10-15.)
+
+- **Lifetime.** A queue, ticket, or primitive lives while a copy holds it:
+  the program's, or that of a task it was passed to. The end of a task
+  releases what its copy holds, and the last copy to release it ends it; a
+  queue then ends as `Close` does (pending tickets cancelled, running ones
+  finish).
+- **Ticket.** A ticket passed to a task can be waited on, awaited,
+  cancelled, or closed there, with the rules above; it is one ticket, so
+  `Close` in any copy closes it for every holder.
+- **Mutex.** When a task ends — its function returns or fails — while it
+  holds a `Mutex`, the end of its copy unlocks it, as the end of a process
+  releases its locks; the next `Lock` succeeds. (BDFL decision,
+  2026-10-15.)
+- **Barrier.** `parties` counts calls to `Wait`, not the copies that hold
+  the barrier: the end of a task that holds it does not change the round,
+  and a round that cannot complete ends at its timeout (`TIMEOUT` for every
+  caller waiting in it). (BDFL decision, 2026-10-15.)
+- **Group, Semaphore.** A group's count and a semaphore's permits belong to
+  no task (any task may `Leave` or `Release`), so the end of a task changes
+  neither.
 
 ## Errors
 

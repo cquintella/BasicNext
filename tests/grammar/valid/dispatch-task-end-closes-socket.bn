@@ -1,0 +1,77 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// The end of an ASYNC task ends its copy's program (0.6.md, "Isolation and
+// conformance"; known issue K90): a listener the task keeps in a STATIC
+// closes with the copy, so the program can bind the same port afterwards.
+IMPORT BNDispatch AS Dispatch
+IMPORT HOST.Net AS Net
+
+CLASS Keep
+    PUBLIC STATIC listener AS Net.TCPListener OR Error = Placeholder()
+END CLASS
+
+// A listener on an ephemeral port, only to give the STATIC a value.
+FUNCTION Placeholder() AS Net.TCPListener OR Error
+    LET wanted AS Net.Endpoint OR Error = Loopback(0)
+    IF wanted IS Error THEN
+        RETURN wanted
+    END IF
+    LET endpoints AS Net.Endpoint[1] = [wanted]
+    RETURN Net.TCPListen(endpoints, 8)
+END FUNCTION
+
+FUNCTION Loopback(port AS INTEGER) AS Net.Endpoint OR Error
+    LET loopback AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    IF loopback IS Error THEN
+        RETURN loopback
+    END IF
+    RETURN Net.Endpoint.Create(loopback, port AS UINT16)
+END FUNCTION
+
+ASYNC FUNCTION Hold() AS INTEGER OR Error
+    LET wanted AS Net.Endpoint OR Error = Loopback(0)
+    IF wanted IS Error THEN
+        RETURN wanted
+    END IF
+    LET endpoints AS Net.Endpoint[1] = [wanted]
+    LET listener AS Net.TCPListener OR Error = Net.TCPListen(endpoints, 8)
+    IF listener IS Error THEN
+        RETURN listener
+    END IF
+    LET bound AS Net.Endpoint OR Error = listener.LocalEndpoint()
+    IF bound IS Error THEN
+        RETURN bound
+    END IF
+    Keep.listener = listener
+    RETURN bound.Port() AS INTEGER
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Serial()
+    IF queue IS Error THEN
+        RETURN
+    END IF
+    LET ticket AS Dispatch.Ticket OR Error = ASYNC queue Hold()
+    IF ticket IS Error THEN
+        RETURN
+    END IF
+    LET port AS INTEGER OR Error = AWAIT ticket(5000)
+    IF port IS Error THEN
+        PRINT "task failed", port
+        RETURN
+    END IF
+    LET again AS Net.Endpoint OR Error = Loopback(port)
+    IF again IS Error THEN
+        RETURN
+    END IF
+    LET endpoints AS Net.Endpoint[1] = [again]
+    LET rebound AS Net.TCPListener OR Error = Net.TCPListen(endpoints, 8)
+    IF rebound IS Error THEN
+        PRINT "port still held:", rebound.Code = Net.ADDRESS_IN_USE
+    ELSE
+        PRINT "port released"
+    END IF
+END FUNCTION

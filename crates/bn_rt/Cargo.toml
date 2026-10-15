@@ -15,6 +15,7 @@ workspace = true
 
 [dependencies]
 bn_catalog = { path = "../bn_catalog" }
+bn_core_copy = { path = "../bn_core_copy" } # handle tables of one module copy
 bn_core_dispatch = { path = "../bn_core_dispatch" }
 bn_core_log = { path = "../bn_core_log" }
 bn_core_net = { path = "../bn_core_net" }
