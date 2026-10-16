@@ -268,6 +268,7 @@ pub(crate) fn call_instruction_supported(
                 }
             }
         }
+        #[cfg(feature = "sqlite")]
         Some(name) if bnsqlite_method(module, name).is_some() => sqlite_call_supported(
             bnsqlite_method(module, name).unwrap_or(name),
             arguments,

@@ -877,8 +877,10 @@ mod log_emission;
 use log_emission::{
     bnlog_arguments_supported, bnlog_release_symbol, bnlog_resource_kind, lower_bnlog_call,
 };
+#[cfg(feature = "sqlite")]
 #[path = "llvm/sqlite_ops.rs"]
 mod sqlite_ops;
+#[cfg(feature = "sqlite")]
 use sqlite_ops::{lower_sqlite_call, sqlite_call_supported};
 #[path = "llvm/indirect_call.rs"]
 mod indirect_call;
@@ -1004,13 +1006,15 @@ mod helpers;
 mod platform_stdio;
 use arc::{REGION_HEADER_BYTES, held_object, is_class_type, is_region_type, object_class};
 use helpers::{
-    bncrypto_method, bnjson_member, bnsqlite_method, carries_bncrypto_bytes, carries_bnjson,
-    carries_bnsqlite_connection, class_init_flag, coerce_return_operand, coerce_to_type,
-    emit_input_runtime, emit_string_byte_length, extend_to_i64, float_constant, instruction_name,
-    integer_constant, integer_kind, is_bncrypto_bytes_type, is_bnsqlite_connection_type,
-    is_unsigned, parse_float_constant, parse_integer, sanitize_symbol, static_global_name,
-    unsupported_call_detail, unsupported_instruction, unsupported_instruction_detail,
+    bncrypto_method, bnjson_member, carries_bncrypto_bytes, carries_bnjson, class_init_flag,
+    coerce_return_operand, coerce_to_type, emit_input_runtime, emit_string_byte_length,
+    extend_to_i64, float_constant, instruction_name, integer_constant, integer_kind,
+    is_bncrypto_bytes_type, is_unsigned, parse_float_constant, parse_integer, sanitize_symbol,
+    static_global_name, unsupported_call_detail, unsupported_instruction,
+    unsupported_instruction_detail,
 };
+#[cfg(feature = "sqlite")]
+use helpers::{bnsqlite_method, carries_bnsqlite_connection, is_bnsqlite_connection_type};
 use layout::{
     OBJECT_HEADER_BYTES, class_instance_bytes, class_layout_fields, field_byte_offset, field_type,
     is_struct_type, struct_copy_supported, struct_owner, vector_field_offsets,

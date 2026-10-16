@@ -3,26 +3,25 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! `BNSqlite` — standard library module providing an embedded `SQLite3` driver.
+//! Interpreter adapter for `BNSqlite`.
+//!
+//! Calls `bn_core_sqlite` directly. The compiled program uses the same crate
+//! through `bn_rt::sqlite_abi`; this adapter does not.
 
-#![allow(clippy::similar_names, clippy::borrow_as_ptr)]
+#![allow(clippy::similar_names)]
 
 use std::collections::HashMap;
 use std::ffi::CString;
 
+use bn_core_sqlite::{
+    OpenMode, SqliteFailure, SqliteValue, begin, changes, close, commit, exec, last_insert_rowid,
+    open_connection, query, rollback,
+};
 use bn_diag::Diagnostic;
 use bn_interp::provider::{CoreContext, Provider};
 use bn_interp::{name_not_found, require_arity_pub as require_arity, type_mismatch};
 use bn_lib_data::DataProvider;
-use bn_rt::sqlite_abi::{
-    bn_rt_sqlite_begin, bn_rt_sqlite_changes, bn_rt_sqlite_close, bn_rt_sqlite_commit,
-    bn_rt_sqlite_exec, bn_rt_sqlite_last_insert_rowid, bn_rt_sqlite_open,
-    bn_rt_sqlite_open_existing, bn_rt_sqlite_open_read_only, bn_rt_sqlite_query,
-    bn_rt_sqlite_rollback,
-};
-use bn_rt::{
-    DataFrameColumn, DataFrameResource, StoredValue, get_frame_columns, take_error_report,
-};
+use bn_rt::{DataFrameColumn, DataFrameResource};
 use bn_runtime::Handle;
 use bn_source::Span;
 use bn_types::error_codes::sqlite as sqlite_err;
@@ -53,13 +52,13 @@ impl Provider for SqliteProvider {
 
     fn object_destroyed(&mut self, handle: Handle) {
         if let Some(db_handle) = self.connections.remove(&handle) {
-            bn_rt_sqlite_close(db_handle);
+            let _ = close(db_handle);
         }
     }
 
     fn close_all(&mut self) {
         for db_handle in self.connections.values() {
-            bn_rt_sqlite_close(*db_handle);
+            let _ = close(*db_handle);
         }
         self.connections.clear();
     }
@@ -79,12 +78,10 @@ impl SqliteProvider {
     ) -> Result<Value, Diagnostic> {
         let op = name.rsplit('.').next().unwrap_or_default();
         match op {
-            "Open" => self.open_call(core, name, arguments, span, bn_rt_sqlite_open),
-            "OpenReadOnly" => {
-                self.open_call(core, name, arguments, span, bn_rt_sqlite_open_read_only)
-            }
+            "Open" => self.open_call(core, name, arguments, span, OpenMode::CreateOrReadWrite),
+            "OpenReadOnly" => self.open_call(core, name, arguments, span, OpenMode::ReadOnly),
             "OpenExisting" => {
-                self.open_call(core, name, arguments, span, bn_rt_sqlite_open_existing)
+                self.open_call(core, name, arguments, span, OpenMode::ExistingReadWrite)
             }
             "Exec" => self.exec_call(name, arguments, span),
             "Query" => self.query_call(core, name, arguments, span),
@@ -104,31 +101,25 @@ impl SqliteProvider {
         name: &str,
         arguments: &[Value],
         span: Span,
-        open_fn: extern "C" fn(*const std::ffi::c_char, *mut u64) -> i32,
+        mode: OpenMode,
     ) -> Result<Value, Diagnostic> {
         require_arity(name, arguments, 1, span)?;
         let Value::String(path) = &arguments[0] else {
             return Err(type_mismatch("STRING", "non-STRING path", name, span));
         };
-        let c_path = match CString::new(path.as_ref()) {
-            Ok(s) => s,
-            Err(e) => {
-                return Ok(Value::error_report(
-                    sqlite_err::MISUSE,
-                    name,
-                    "Database path contains interior NUL byte".to_string(),
-                    e.to_string(),
-                ));
-            }
-        };
-
-        let mut db_handle = 0u64;
-        let rc = open_fn(c_path.as_ptr(), &mut db_handle);
-        if rc != 0 {
-            let (code, op, msg, cause) = take_error_report();
-            let effective_op = if op.is_empty() { name } else { &op };
-            return Ok(Value::error_report(code, effective_op, msg, cause));
+        if let Some(value) = interior_nul(
+            name,
+            path.as_ref(),
+            "Database path contains interior NUL byte",
+        ) {
+            return Ok(value);
         }
+
+        let opened = open_with_policy(core, path.as_ref(), mode);
+        let db_handle = match opened {
+            Ok(handle) => handle,
+            Err(failure) => return Ok(failure_value(name, &failure)),
+        };
 
         let object = core.allocate_object("BNSqlite.Connection", span)?;
         let Value::Object { handle, .. } = object else {
@@ -172,31 +163,23 @@ impl SqliteProvider {
     ) -> Result<Value, Diagnostic> {
         require_arity(name, arguments, 2, span)?;
         let db_handle = match self.resolve_handle(name, &arguments[0], span)? {
-            Ok(h) => h,
+            Ok(handle) => handle,
             Err(err) => return Ok(err),
         };
         let Value::String(sql) = &arguments[1] else {
             return Err(type_mismatch("STRING", "non-STRING SQL query", name, span));
         };
-        let c_sql = match CString::new(sql.as_ref()) {
-            Ok(s) => s,
-            Err(e) => {
-                return Ok(Value::error_report(
-                    sqlite_err::MISUSE,
-                    name,
-                    "SQL statement contains interior NUL byte".to_string(),
-                    e.to_string(),
-                ));
-            }
-        };
-
-        let rc = bn_rt_sqlite_exec(db_handle, c_sql.as_ptr());
-        if rc != 0 {
-            let (code, op, msg, cause) = take_error_report();
-            let effective_op = if op.is_empty() { name } else { &op };
-            return Ok(Value::error_report(code, effective_op, msg, cause));
+        if let Some(value) = interior_nul(
+            name,
+            sql.as_ref(),
+            "SQL statement contains interior NUL byte",
+        ) {
+            return Ok(value);
         }
-        Ok(Value::Null)
+        match exec(db_handle, sql.as_ref()) {
+            Ok(()) => Ok(Value::Null),
+            Err(failure) => Ok(failure_value(name, &failure)),
+        }
     }
 
     fn query_call(
@@ -208,67 +191,32 @@ impl SqliteProvider {
     ) -> Result<Value, Diagnostic> {
         require_arity(name, arguments, 2, span)?;
         let db_handle = match self.resolve_handle(name, &arguments[0], span)? {
-            Ok(h) => h,
+            Ok(handle) => handle,
             Err(err) => return Ok(err),
         };
         let Value::String(sql) = &arguments[1] else {
             return Err(type_mismatch("STRING", "non-STRING SQL query", name, span));
         };
-        let c_sql = match CString::new(sql.as_ref()) {
-            Ok(s) => s,
-            Err(e) => {
-                return Ok(Value::error_report(
-                    sqlite_err::MISUSE,
-                    name,
-                    "SQL statement contains interior NUL byte".to_string(),
-                    e.to_string(),
-                ));
-            }
-        };
-
-        let mut frame_handle = 0u64;
-        let rc = bn_rt_sqlite_query(db_handle, c_sql.as_ptr(), &mut frame_handle);
-        if rc != 0 {
-            let (code, op, msg, cause) = take_error_report();
-            let effective_op = if op.is_empty() { name } else { &op };
-            return Ok(Value::error_report(code, effective_op, msg, cause));
+        if let Some(value) = interior_nul(
+            name,
+            sql.as_ref(),
+            "SQL statement contains interior NUL byte",
+        ) {
+            return Ok(value);
         }
 
-        let Some(columns) = get_frame_columns(frame_handle) else {
-            return Ok(Value::error_report(
-                sqlite_err::INTERNAL_ERROR,
-                name,
-                "Failed to retrieve query dataframe columns".to_string(),
-                "internal frame not found".to_string(),
-            ));
+        let columns = match query(db_handle, sql.as_ref()) {
+            Ok(result) => result.columns,
+            Err(failure) => return Ok(failure_value(name, &failure)),
         };
-
-        let mut value_columns = Vec::with_capacity(columns.len());
-        for col in columns {
-            let mut values = Vec::with_capacity(col.values.len());
-            for v in col.values {
-                let val = match v {
-                    StoredValue::Integer(i) => Value::Integer(i.into(), IntegerType::Int64),
-                    StoredValue::Float(f) => Value::Float(f, FloatType::Float64),
-                    StoredValue::String(bytes) | StoredValue::Bytes(bytes) => {
-                        Value::String(shared_string(String::from_utf8_lossy(&bytes)))
-                    }
-                    StoredValue::Boolean(b) => Value::Boolean(b),
-                    StoredValue::Null
-                    | StoredValue::NotAvailable
-                    | StoredValue::EndOfFile
-                    | StoredValue::Handle(_) => Value::NotAvailable,
-                };
-                values.push(val);
-            }
-            value_columns.push(DataFrameColumn {
-                name: col.name,
-                values,
-            });
-        }
-
         let resource = DataFrameResource {
-            columns: value_columns,
+            columns: columns
+                .into_iter()
+                .map(|column| DataFrameColumn {
+                    name: column.name,
+                    values: column.values.into_iter().map(sqlite_cell).collect(),
+                })
+                .collect(),
         };
 
         let mut data_box = core.library_take("BNData");
@@ -305,18 +253,7 @@ impl SqliteProvider {
         arguments: &[Value],
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        require_arity(name, arguments, 1, span)?;
-        let db_handle = match self.resolve_handle(name, &arguments[0], span)? {
-            Ok(h) => h,
-            Err(err) => return Ok(err),
-        };
-        let rc = bn_rt_sqlite_begin(db_handle);
-        if rc != 0 {
-            let (code, op, msg, cause) = take_error_report();
-            let effective_op = if op.is_empty() { name } else { &op };
-            return Ok(Value::error_report(code, effective_op, msg, cause));
-        }
-        Ok(Value::Null)
+        self.status_call(name, arguments, span, begin)
     }
 
     fn commit_call(
@@ -325,18 +262,7 @@ impl SqliteProvider {
         arguments: &[Value],
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        require_arity(name, arguments, 1, span)?;
-        let db_handle = match self.resolve_handle(name, &arguments[0], span)? {
-            Ok(h) => h,
-            Err(err) => return Ok(err),
-        };
-        let rc = bn_rt_sqlite_commit(db_handle);
-        if rc != 0 {
-            let (code, op, msg, cause) = take_error_report();
-            let effective_op = if op.is_empty() { name } else { &op };
-            return Ok(Value::error_report(code, effective_op, msg, cause));
-        }
-        Ok(Value::Null)
+        self.status_call(name, arguments, span, commit)
     }
 
     fn rollback_call(
@@ -345,18 +271,25 @@ impl SqliteProvider {
         arguments: &[Value],
         span: Span,
     ) -> Result<Value, Diagnostic> {
+        self.status_call(name, arguments, span, rollback)
+    }
+
+    fn status_call(
+        &mut self,
+        name: &str,
+        arguments: &[Value],
+        span: Span,
+        operation: fn(u64) -> Result<(), SqliteFailure>,
+    ) -> Result<Value, Diagnostic> {
         require_arity(name, arguments, 1, span)?;
         let db_handle = match self.resolve_handle(name, &arguments[0], span)? {
-            Ok(h) => h,
+            Ok(handle) => handle,
             Err(err) => return Ok(err),
         };
-        let rc = bn_rt_sqlite_rollback(db_handle);
-        if rc != 0 {
-            let (code, op, msg, cause) = take_error_report();
-            let effective_op = if op.is_empty() { name } else { &op };
-            return Ok(Value::error_report(code, effective_op, msg, cause));
+        match operation(db_handle) {
+            Ok(()) => Ok(Value::Null),
+            Err(failure) => Ok(failure_value(name, &failure)),
         }
-        Ok(Value::Null)
     }
 
     fn changes_call(
@@ -365,13 +298,7 @@ impl SqliteProvider {
         arguments: &[Value],
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        require_arity(name, arguments, 1, span)?;
-        let db_handle = match self.resolve_handle(name, &arguments[0], span)? {
-            Ok(h) => h,
-            Err(err) => return Ok(err),
-        };
-        let count = bn_rt_sqlite_changes(db_handle);
-        Ok(Value::Integer(count.into(), IntegerType::Int64))
+        self.integer_call(name, arguments, span, changes)
     }
 
     fn last_insert_rowid_call(
@@ -380,13 +307,24 @@ impl SqliteProvider {
         arguments: &[Value],
         span: Span,
     ) -> Result<Value, Diagnostic> {
+        self.integer_call(name, arguments, span, last_insert_rowid)
+    }
+
+    fn integer_call(
+        &mut self,
+        name: &str,
+        arguments: &[Value],
+        span: Span,
+        operation: fn(u64) -> Result<i64, SqliteFailure>,
+    ) -> Result<Value, Diagnostic> {
         require_arity(name, arguments, 1, span)?;
         let db_handle = match self.resolve_handle(name, &arguments[0], span)? {
-            Ok(h) => h,
+            Ok(handle) => handle,
             Err(err) => return Ok(err),
         };
-        let rowid = bn_rt_sqlite_last_insert_rowid(db_handle);
-        Ok(Value::Integer(rowid.into(), IntegerType::Int64))
+        // A closed handle reports 0, matching the compiled `bn_rt_sqlite_*` ABI.
+        let value = operation(db_handle).unwrap_or(0);
+        Ok(Value::Integer(value.into(), IntegerType::Int64))
     }
 
     fn close_call(
@@ -405,13 +343,10 @@ impl SqliteProvider {
             ));
         };
         if let Some(db_handle) = self.connections.remove(&handle) {
-            let rc = bn_rt_sqlite_close(db_handle);
-            if rc != 0 {
-                let (code, op, msg, cause) = take_error_report();
-                let effective_op = if op.is_empty() { name } else { &op };
-                return Ok(Value::error_report(code, effective_op, msg, cause));
+            match close(db_handle) {
+                Ok(()) => Ok(Value::Null),
+                Err(failure) => Ok(failure_value(name, &failure)),
             }
-            Ok(Value::Null)
         } else {
             Ok(Value::error_report(
                 sqlite_err::CLOSED,
@@ -420,6 +355,49 @@ impl SqliteProvider {
                 "closed handle".to_string(),
             ))
         }
+    }
+}
+
+/// Filesystem policy stays in the host. The core only receives the answer.
+fn open_with_policy(
+    core: &dyn CoreContext,
+    path: &str,
+    mode: OpenMode,
+) -> Result<u64, SqliteFailure> {
+    let filesystem = core.host().filesystem();
+    open_connection(path, mode, |canonical, write| {
+        if filesystem.allows_path(canonical, write) {
+            Ok(())
+        } else {
+            Err(filesystem.denial_reason(write).to_string())
+        }
+    })
+}
+
+fn failure_value(name: &str, failure: &SqliteFailure) -> Value {
+    Value::error_report(failure.code(), name, failure.message(), failure.cause())
+}
+
+/// Keeps the adapter's `MISUSE` text. The core reports the same byte as `PolicyDenied` or `SyntaxError`.
+fn interior_nul(name: &str, text: &str, message: &str) -> Option<Value> {
+    CString::new(text).err().map(|error| {
+        Value::error_report(
+            sqlite_err::MISUSE,
+            name,
+            message.to_string(),
+            error.to_string(),
+        )
+    })
+}
+
+fn sqlite_cell(value: SqliteValue) -> Value {
+    match value {
+        SqliteValue::Integer(integer) => Value::Integer(integer.into(), IntegerType::Int64),
+        SqliteValue::Float(float) => Value::Float(float, FloatType::Float64),
+        SqliteValue::Text(bytes) | SqliteValue::Blob(bytes) => {
+            Value::String(shared_string(String::from_utf8_lossy(&bytes)))
+        }
+        SqliteValue::Null | SqliteValue::NotAvailable => Value::NotAvailable,
     }
 }
 

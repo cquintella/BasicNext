@@ -13,6 +13,12 @@ crate-type = ["rlib", "staticlib"]
 [lints]
 workspace = true
 
+# Default on so a normal `bnc` link still contains BNSqlite. The proof build
+# is `--no-default-features`, which drops `rusqlite` and the `bn_rt_sqlite_*` objects.
+[features]
+default = ["sqlite"]
+sqlite = ["dep:bn_core_sqlite"]
+
 [dependencies]
 bn_catalog = { path = "../bn_catalog" }
 bn_core_copy = { path = "../bn_core_copy" } # handle tables of one module copy
@@ -40,4 +46,4 @@ hmac = "0.12"
 sha2 = "0.10"
 subtle = "2.6"
 socket2 = "0.6"
-bn_core_sqlite = { path = "../bn_core_sqlite" }
+bn_core_sqlite = { path = "../bn_core_sqlite", optional = true }

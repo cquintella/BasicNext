@@ -75,6 +75,7 @@ pub enum StoredValue {
 
 type Frame = DataFrameResource<StoredValue>;
 
+#[cfg(feature = "sqlite")]
 pub(crate) fn register_frame_columns(
     columns: Vec<DataFrameColumn<StoredValue>>,
 ) -> BNDataFrameHandle {

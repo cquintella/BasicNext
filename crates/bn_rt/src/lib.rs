@@ -53,7 +53,9 @@ pub use bn_core_net as net;
 mod net_abi;
 mod policy;
 pub mod secure_fs;
+#[cfg(feature = "sqlite")]
 pub mod sqlite_abi;
+#[cfg(feature = "sqlite")]
 pub mod sqlite_error;
 mod stats;
 mod terminal;

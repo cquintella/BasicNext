@@ -460,6 +460,7 @@ pub(crate) fn env_policy() -> bn_host_env::Policy {
     current().env()
 }
 
+#[cfg(feature = "sqlite")]
 pub(crate) fn allows_path(path: &Path, write: bool) -> bool {
     current().fs().allows_path(path, write)
 }

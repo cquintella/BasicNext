@@ -385,6 +385,28 @@ enum Rc {
     Dropped,
 }
 
+/// `BNSqlite.Connection` releases through `bn_rt_sqlite_close` only when the
+/// sqlite feature emitted the rest of the ABI. Without it, a connection is not
+/// a supported value and must not name a symbol absent from `libbn_rt.a`.
+fn sqlite_connection_release(
+    module: &Module,
+    ty: &Type,
+) -> Option<(&'static str, &'static str, Rc)> {
+    #[cfg(not(feature = "sqlite"))]
+    {
+        let _ = (module, ty);
+        None
+    }
+    #[cfg(feature = "sqlite")]
+    {
+        is_bnsqlite_connection_type(module, ty).then_some((
+            "sqlite",
+            "bn_rt_sqlite_close",
+            Rc::Named,
+        ))
+    }
+}
+
 /// The `bn_rt` call that releases a handle-backed value of type `ty`, with the
 /// slot prefix of its registers.
 fn release_call(module: &Module, ty: &Type) -> Option<(&'static str, &'static str, Rc)> {
@@ -402,8 +424,8 @@ fn release_call(module: &Module, ty: &Type) -> Option<(&'static str, &'static st
         ("json", "bn_rt_json_release", Rc::Named)
     } else if is_bncrypto_bytes_type(module, ty) {
         ("cry", "bn_rt_crypto_bytes_release", Rc::Named)
-    } else if is_bnsqlite_connection_type(module, ty) {
-        ("sqlite", "bn_rt_sqlite_close", Rc::Named)
+    } else if let Some(release) = sqlite_connection_release(module, ty) {
+        release
     } else {
         bnlog_resource_kind(module, ty)?;
         let symbol = bnlog_release_symbol();

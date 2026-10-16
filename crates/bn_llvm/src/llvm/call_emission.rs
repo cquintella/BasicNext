@@ -383,6 +383,7 @@ pub(crate) fn lower_call_instruction(
             let member = bncrypto_method(module, name).expect("validated BNCrypto member");
             crypto_calls::lower_bncrypto_call(text, analysis, *destination, member, arguments);
         }
+        #[cfg(feature = "sqlite")]
         name if bnsqlite_method(module, name).is_some() => {
             let method = bnsqlite_method(module, name).expect("validated BNSqlite member");
             lower_sqlite_call(text, *destination, method, arguments, analysis);

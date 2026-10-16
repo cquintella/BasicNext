@@ -501,6 +501,12 @@ pub(crate) fn provider_name(module: &Module, name: &str) -> Option<&'static str>
         .any(|provider| provider.0 == module_id)
     {
         Some("BNJson")
+    } else if module
+        .bnsqlite_providers
+        .iter()
+        .any(|provider| provider.0 == module_id)
+    {
+        Some("BNSqlite")
     } else {
         None
     }
@@ -635,6 +641,7 @@ pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a 
 }
 
 /// True when `ty` is `BNSqlite.Connection` from a module this program imports.
+#[cfg_attr(not(feature = "sqlite"), allow(dead_code))]
 pub(crate) fn is_bnsqlite_connection_type(module: &Module, ty: &Type) -> bool {
     matches!(
         ty,
@@ -650,6 +657,7 @@ pub(crate) fn is_bnsqlite_connection_type(module: &Module, ty: &Type) -> bool {
 
 /// True when `ty` carries a `BNSqlite.Connection`, either directly or inside an
 /// `OR Error` alternative.
+#[cfg_attr(not(feature = "sqlite"), allow(dead_code))]
 pub(crate) fn carries_bnsqlite_connection(module: &Module, ty: &Type) -> bool {
     match ty {
         Type::Alternative(alternatives) => alternatives
@@ -661,6 +669,7 @@ pub(crate) fn carries_bnsqlite_connection(module: &Module, ty: &Type) -> bool {
 
 /// The `BNSqlite` member `name` selects, if this module imports `BNSqlite` and
 /// the callee is part of the supported surface.
+#[cfg_attr(not(feature = "sqlite"), allow(dead_code))]
 pub(crate) fn bnsqlite_method<'a>(module: &Module, name: &'a str) -> Option<&'a str> {
     let method = name.rsplit('.').next()?;
     (!module.bnsqlite_providers.is_empty()
