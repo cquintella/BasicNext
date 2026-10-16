@@ -176,6 +176,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "bn_core_json"
+version = "0.6.4"
+dependencies = [
+ "bn_catalog",
+ "bn_core_copy",
+ "bn_types",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "bn_core_log"
 version = "0.6.4"
 dependencies = [
@@ -400,13 +411,12 @@ dependencies = [
 name = "bn_lib_json"
 version = "0.6.4"
 dependencies = [
+ "bn_core_json",
  "bn_diag",
  "bn_interp",
- "bn_rt",
  "bn_source",
  "bn_types",
  "bn_value",
- "serde",
  "serde_json",
 ]
 
@@ -521,6 +531,7 @@ dependencies = [
  "bn_catalog",
  "bn_core_copy",
  "bn_core_dispatch",
+ "bn_core_json",
  "bn_core_log",
  "bn_core_math",
  "bn_core_net",
@@ -538,7 +549,6 @@ dependencies = [
  "ml-dsa",
  "ml-kem",
  "p256",
- "serde",
  "serde_json",
  "sha2",
  "socket2",

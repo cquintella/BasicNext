@@ -375,6 +375,7 @@ pub(crate) fn lower_call_instruction(
                 TEMPORAL_TIMESTAMP_FORMAT.call([value, trap]),
             );
         }
+        #[cfg(feature = "json")]
         name if bnjson_member(module, name).is_some() => {
             let member = bnjson_member(module, name).expect("validated BNJson member");
             json_calls::lower_bnjson_call(text, analysis, *destination, member, arguments);

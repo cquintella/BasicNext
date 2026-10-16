@@ -1008,7 +1008,7 @@ fn crypto_errors_match_across_backends() {
     native_matches_interpreter(path);
 }
 
-/// `BNJson` failures carry the shared `bn_rt::json_error` report on both
+/// `BNJson` failures carry the shared `bn_core_json` report on both
 /// backends (bnjson.md "Errors"); `Parse` of invalid text is an `Error`,
 /// not a stop, and reads that succeed keep their value.
 #[test]

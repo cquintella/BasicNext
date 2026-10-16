@@ -4,8 +4,8 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! `BNJson` `Error`s (`language/0.6/bnjson.md` "Errors"), one producer for
-//! both backends: `json_abi` returns a [`JsonFailure`], the interpreter turns
-//! it into an `Error` value and the C ABI records it for the emitted code.
+//! both adapters: the document table returns a [`JsonFailure`], the interpreter
+//! turns it into an `Error` value and the C ABI records it for the emitted code.
 
 use bn_types::error_codes::json;
 
@@ -122,7 +122,7 @@ impl JsonFailure {
             }
             Self::Depth => format!(
                 "the document would nest deeper than {} levels",
-                crate::json::MAX_DEPTH
+                crate::parse::MAX_DEPTH
             ),
             Self::NonFinite => "JSON has no NaN or infinity".into(),
             Self::SelfMove => "a value lives in exactly one place".into(),

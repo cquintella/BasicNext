@@ -57,6 +57,7 @@ pub(crate) fn call_instruction_supported(
             arguments,
             values,
         ),
+        #[cfg(feature = "json")]
         Some(name) if bnjson_member(module, name).is_some() => {
             let doc = |argument: &ValueId| {
                 values

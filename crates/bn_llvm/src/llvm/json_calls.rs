@@ -7,10 +7,13 @@
 // symbol is the member name in snake case.
 #![allow(clippy::wildcard_imports)]
 use super::*;
-use crate::ir::{CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
+use crate::ir::{CastOp, LlvmInst as I, LlvmOperand as O, LlvmType as T};
+#[cfg(feature = "json")]
+use crate::ir::{ICmpCond, InstSink as _};
 
 /// What a member returns, and so how its `bn_rt` result is packed.
 #[derive(Clone, Copy)]
+#[cfg(feature = "json")]
 enum Out {
     Status,
     Text,
@@ -24,6 +27,7 @@ enum Out {
 /// `b` BOOLEAN, `j` child `Json`) and the result of a member, read off its
 /// name: `Set<T>`, `Get<T>` and `Append<T>`, keyed by name or, with `At`,
 /// by index.
+#[cfg(feature = "json")]
 fn signature(member: &str) -> Option<(bool, String, Out)> {
     let fixed = match member {
         "Clone" => Some((true, "", Out::Handle)),
@@ -58,6 +62,7 @@ fn signature(member: &str) -> Option<(bool, String, Out)> {
     })
 }
 
+#[cfg(feature = "json")]
 fn snake(member: &str) -> String {
     let mut name = String::new();
     for c in member.chars() {
@@ -69,6 +74,7 @@ fn snake(member: &str) -> String {
     name
 }
 
+#[cfg(feature = "json")]
 pub(super) fn lower_bnjson_call(
     text: &mut crate::ir::LlvmModule,
     analysis: &LoweringAnalysis<'_>,
@@ -131,6 +137,7 @@ pub(super) fn lower_bnjson_call(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[cfg(feature = "json")]
 fn lower_table_call(
     text: &mut crate::ir::LlvmModule,
     analysis: &LoweringAnalysis<'_>,
@@ -283,6 +290,7 @@ fn union() -> T {
 
 /// Packs `%jsonerr{dest}` and the error record the failure left behind into
 /// the `{ i1, ptr, i64 }` head of a `T OR Error` result; returns the record.
+#[cfg(feature = "json")]
 fn emit_error_head(text: &mut crate::ir::LlvmModule, dest: u32, record: &str) -> O {
     let r = |name: &str| O::reg(format!("json{name}{dest}"));
     text.assign(
@@ -307,6 +315,7 @@ fn emit_error_head(text: &mut crate::ir::LlvmModule, dest: u32, record: &str) ->
 /// Finishes the aggregate: slot 1 is the pointer, slot 2 the error code on
 /// failure or `payload`. The caller branches on the flag, never on the
 /// payload.
+#[cfg(feature = "json")]
 fn emit_result_tail(text: &mut crate::ir::LlvmModule, dest: u32, pointer: O, payload: O) {
     let r = |name: &str| O::reg(format!("json{name}{dest}"));
     text.assign(
@@ -328,12 +337,14 @@ fn emit_result_tail(text: &mut crate::ir::LlvmModule, dest: u32, pointer: O, pay
 }
 
 /// A `<scalar> OR Error` result from `%jsonerr{dest}` and `payload`.
+#[cfg(feature = "json")]
 fn emit_scalar_result(text: &mut crate::ir::LlvmModule, dest: u32, payload: O) {
     let record = emit_error_head(text, dest, "aggpwrap");
     emit_result_tail(text, dest, record, payload);
 }
 
 /// A `STRING OR Error` result from `%jsontext{dest}` and `%jsonrc{dest}`.
+#[cfg(feature = "json")]
 fn emit_string_result(text: &mut crate::ir::LlvmModule, dest: u32) {
     let r = |name: &str| O::reg(format!("json{name}{dest}"));
     text.assign(

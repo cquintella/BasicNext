@@ -10,10 +10,11 @@ publish = false
 [lints]
 workspace = true
 
-# Forwards `bn_llvm`'s sqlite emission. Default on; `bnc --no-default-features` turns it off.
+# Forwards `bn_llvm`'s sqlite and json emission. Default on; `bnc --no-default-features` turns both off.
 [features]
-default = ["sqlite"]
+default = ["sqlite", "json"]
 sqlite = ["bn_llvm/sqlite"]
+json = ["bn_llvm/json"]
 
 [dependencies]
 bn_catalog = { path = "../bn_catalog" }

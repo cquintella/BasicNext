@@ -8,9 +8,8 @@
 
 //! `BNJson` — an external library module served through the provider seam.
 //! This file marshals `Value`s only. The documents themselves live in
-//! `bn_rt::json_abi`, the single table both backends share, so a handle means
-//! the same thing interpreted and compiled (W3). Relocated from a
-//! provider-owned table in bucket 0.6.1c.
+//! `bn_core_json`, the single table both backends share, so a handle means
+//! the same thing interpreted and compiled (W3).
 
 use bn_diag::Diagnostic;
 use bn_source::Span;
@@ -22,8 +21,7 @@ use bn_interp::{
     require_arity_pub as require_arity, runtime_error_pub as runtime_error, type_mismatch,
 };
 
-use bn_rt::json_abi;
-use bn_rt::json_error::JsonFailure;
+use bn_core_json::JsonFailure;
 
 pub const NAME: &str = "BNJson";
 
@@ -153,7 +151,7 @@ impl JsonProvider {
             "Integer" => Ok(serde_json::Value::from(Self::integer(
                 arguments, index, member, span,
             )?)),
-            "Float" => json_abi::number(Self::float(arguments, index, member, span)?),
+            "Float" => bn_core_json::number(Self::float(arguments, index, member, span)?),
             "Boolean" => Ok(serde_json::Value::Bool(Self::boolean(
                 arguments, index, member, span,
             )?)),
@@ -176,44 +174,54 @@ impl Provider for JsonProvider {
             "Parse" => {
                 require_arity(member, &arguments, 1, span)?;
                 let text = Self::text(&arguments, 0, member, span)?;
-                Self::answer(method, json_abi::parse_document(text), span, Value::Json)
+                Self::answer(
+                    method,
+                    bn_core_json::parse_document(text),
+                    span,
+                    Value::Json,
+                )
             }
             "Stringify" => {
                 require_arity(member, &arguments, 1, span)?;
                 let handle = Self::handle(&arguments[0], member, span)?;
-                Self::answer(method, json_abi::stringify_document(handle), span, string)
+                Self::answer(
+                    method,
+                    bn_core_json::stringify_document(handle),
+                    span,
+                    string,
+                )
             }
             "Object" => {
                 require_arity(member, &arguments, 0, span)?;
-                Ok(Value::Json(json_abi::bn_rt_json_object()))
+                Ok(Value::Json(bn_core_json::object()))
             }
             "Array" => {
                 require_arity(member, &arguments, 0, span)?;
-                Ok(Value::Json(json_abi::bn_rt_json_array()))
+                Ok(Value::Json(bn_core_json::array()))
             }
             "Kind" => {
                 require_arity(member, &arguments, 1, span)?;
                 let handle = Self::handle(&arguments[0], member, span)?;
-                let kind = json_abi::kind(handle).ok_or_else(|| Self::invalid_handle(span))?;
+                let kind = bn_core_json::kind(handle).ok_or_else(|| Self::invalid_handle(span))?;
                 Ok(Value::String(shared_string(kind)))
             }
             "Has" => {
                 require_arity(member, &arguments, 2, span)?;
                 let handle = Self::handle(&arguments[0], member, span)?;
                 let key = Self::text(&arguments, 1, member, span)?;
-                Ok(Value::Boolean(json_abi::has(handle, key)))
+                Ok(Value::Boolean(bn_core_json::has(handle, key)))
             }
             "Length" => {
                 require_arity(member, &arguments, 1, span)?;
                 let handle = Self::handle(&arguments[0], member, span)?;
-                Self::answer(method, json_abi::length(handle), span, |count| {
+                Self::answer(method, bn_core_json::length(handle), span, |count| {
                     Value::Integer(i128::from(count), IntegerType::Int32)
                 })
             }
             "Clone" => {
                 require_arity(member, &arguments, 1, span)?;
                 let handle = Self::handle(&arguments[0], member, span)?;
-                match json_abi::clone_document(handle) {
+                match bn_core_json::clone_document(handle) {
                     Some(copy) => Ok(Value::Json(copy)),
                     None => Err(Self::invalid_handle(span)),
                 }
@@ -224,7 +232,7 @@ impl Provider for JsonProvider {
                 let handle = Self::handle(&arguments[0], member, span)?;
                 let key = Self::text(&arguments, 1, member, span)?;
                 let value = Self::scalar(method, &arguments, 2, member, span)?;
-                let outcome = value.and_then(|value| json_abi::set_value(handle, key, value));
+                let outcome = value.and_then(|value| bn_core_json::set_value(handle, key, value));
                 Self::done(method, outcome, span)
             }
             "SetStringAt" | "SetIntegerAt" | "SetFloatAt" | "SetBooleanAt" | "SetNullAt" => {
@@ -233,7 +241,7 @@ impl Provider for JsonProvider {
                 let handle = Self::handle(&arguments[0], member, span)?;
                 let index = Self::integer(&arguments, 1, member, span)?;
                 let value = Self::scalar(method, &arguments, 2, member, span)?;
-                let outcome = value.and_then(|value| json_abi::set_at(handle, index, value));
+                let outcome = value.and_then(|value| bn_core_json::set_at(handle, index, value));
                 Self::done(method, outcome, span)
             }
             "AppendString" | "AppendInteger" | "AppendFloat" | "AppendBoolean" | "AppendNull" => {
@@ -241,7 +249,7 @@ impl Provider for JsonProvider {
                 require_arity(member, &arguments, arity, span)?;
                 let handle = Self::handle(&arguments[0], member, span)?;
                 let value = Self::scalar(method, &arguments, 1, member, span)?;
-                let outcome = value.and_then(|value| json_abi::append_value(handle, value));
+                let outcome = value.and_then(|value| bn_core_json::append_value(handle, value));
                 Self::done(method, outcome, span)
             }
             "SetJson" => {
@@ -250,27 +258,31 @@ impl Provider for JsonProvider {
                 let key = Self::text(&arguments, 1, member, span)?;
                 let child = Self::handle(&arguments[2], member, span)?;
                 // Move: child handle is consumed on success.
-                Self::done(method, json_abi::move_into(parent, key, child), span)
+                Self::done(method, bn_core_json::move_into(parent, key, child), span)
             }
             "SetJsonAt" => {
                 require_arity(member, &arguments, 3, span)?;
                 let parent = Self::handle(&arguments[0], member, span)?;
                 let index = Self::integer(&arguments, 1, member, span)?;
                 let child = Self::handle(&arguments[2], member, span)?;
-                Self::done(method, json_abi::move_into_at(parent, index, child), span)
+                Self::done(
+                    method,
+                    bn_core_json::move_into_at(parent, index, child),
+                    span,
+                )
             }
             "AppendJson" => {
                 require_arity(member, &arguments, 2, span)?;
                 let parent = Self::handle(&arguments[0], member, span)?;
                 let child = Self::handle(&arguments[1], member, span)?;
-                Self::done(method, json_abi::append_moved(parent, child), span)
+                Self::done(method, bn_core_json::append_moved(parent, child), span)
             }
             "GetString" | "GetInteger" | "GetFloat" | "GetBoolean" => {
                 require_arity(member, &arguments, 2, span)?;
                 let handle = Self::handle(&arguments[0], member, span)?;
                 let key = Self::text(&arguments, 1, member, span)?;
                 let (expected, project) = read_as(method);
-                let outcome = json_abi::get_value(handle, key, expected, project);
+                let outcome = bn_core_json::get_value(handle, key, expected, project);
                 Self::answer(method, outcome, span, std::convert::identity)
             }
             "GetStringAt" | "GetIntegerAt" | "GetFloatAt" | "GetBooleanAt" => {
@@ -278,14 +290,19 @@ impl Provider for JsonProvider {
                 let handle = Self::handle(&arguments[0], member, span)?;
                 let index = Self::integer(&arguments, 1, member, span)?;
                 let (expected, project) = read_as(method.trim_end_matches("At"));
-                let outcome = json_abi::element(handle, index, expected, project);
+                let outcome = bn_core_json::element(handle, index, expected, project);
                 Self::answer(method, outcome, span, std::convert::identity)
             }
             "GetJson" => {
                 require_arity(member, &arguments, 2, span)?;
                 let handle = Self::handle(&arguments[0], member, span)?;
                 let key = Self::text(&arguments, 1, member, span)?;
-                Self::answer(method, json_abi::get_json(handle, key), span, Value::Json)
+                Self::answer(
+                    method,
+                    bn_core_json::get_json(handle, key),
+                    span,
+                    Value::Json,
+                )
             }
             "GetJsonAt" => {
                 require_arity(member, &arguments, 2, span)?;
@@ -293,7 +310,7 @@ impl Provider for JsonProvider {
                 let index = Self::integer(&arguments, 1, member, span)?;
                 Self::answer(
                     method,
-                    json_abi::get_json_at(handle, index),
+                    bn_core_json::get_json_at(handle, index),
                     span,
                     Value::Json,
                 )
@@ -305,14 +322,14 @@ impl Provider for JsonProvider {
 
     fn allocate(&mut self, class: &str, _span: Span) -> Option<Result<Value, Diagnostic>> {
         (class.rsplit('.').next() == Some("Json"))
-            .then(|| Ok(Value::Json(json_abi::store(serde_json::Value::Null))))
+            .then(|| Ok(Value::Json(bn_core_json::store(serde_json::Value::Null))))
     }
 
     fn release(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
         let Value::Json(id) = value else {
             return None;
         };
-        Some(if json_abi::release(*id) {
+        Some(if bn_core_json::release(*id) {
             Ok(())
         } else {
             Err(runtime_error(

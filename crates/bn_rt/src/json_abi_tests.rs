@@ -4,7 +4,10 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use super::*;
-use crate::json_error::{JsonFailure, Place};
+use bn_core_json::{
+    JsonFailure, Place, append_value, clone_document, document, element, get_json, get_string,
+    kind, length, move_into, parse_document, release, set_at, set_value, store,
+};
 use std::ffi::CString;
 
 #[test]

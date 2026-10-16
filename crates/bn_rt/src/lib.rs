@@ -42,9 +42,8 @@ mod exec;
 pub mod file;
 mod file_abi;
 mod file_error;
-pub mod json;
+#[cfg(feature = "json")]
 pub mod json_abi;
-pub mod json_error;
 mod log_abi;
 mod math;
 mod math_abi;

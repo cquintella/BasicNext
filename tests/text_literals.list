@@ -3226,16 +3226,16 @@ crates/bn_rt/src/file_error.rs	prose	the mode must be FS.READ (0), FS.WRITE (1),
 crates/bn_rt/src/file_error.rs	prose	the path is a directory, not a file
 crates/bn_rt/src/file_error.rs	prose	write bytes to
 crates/bn_rt/src/file_error.rs	prose	write to
-crates/bn_rt/src/json.rs	prose	JSON input exceeds 8 MiB
-crates/bn_rt/src/json.rs	prose	JSON nesting exceeds 64 levels
-crates/bn_rt/src/json.rs	prose	JSON nesting exceeds 64 levels
-crates/bn_rt/src/json.rs	prose	JSON nesting exceeds 64 levels
-crates/bn_rt/src/json.rs	prose	JSON nesting exceeds 64 levels
-crates/bn_rt/src/json.rs	prose	JSON number is not finite
-crates/bn_rt/src/json.rs	prose	JSON output exceeds 8 MiB
-crates/bn_rt/src/json.rs	prose	a valid bounded JSON value
-crates/bn_rt/src/json.rs	prose	duplicate JSON object key
-crates/bn_rt/src/json.rs	prose	trailing JSON input
+crates/bn_core_json/src/parse.rs	prose	JSON input exceeds 8 MiB
+crates/bn_core_json/src/parse.rs	prose	JSON nesting exceeds 64 levels
+crates/bn_core_json/src/parse.rs	prose	JSON nesting exceeds 64 levels
+crates/bn_core_json/src/parse.rs	prose	JSON nesting exceeds 64 levels
+crates/bn_core_json/src/parse.rs	prose	JSON nesting exceeds 64 levels
+crates/bn_core_json/src/parse.rs	prose	JSON number is not finite
+crates/bn_core_json/src/parse.rs	prose	JSON output exceeds 8 MiB
+crates/bn_core_json/src/parse.rs	prose	a valid bounded JSON value
+crates/bn_core_json/src/parse.rs	prose	duplicate JSON object key
+crates/bn_core_json/src/parse.rs	prose	trailing JSON input
 crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.
 crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.
 crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.
@@ -3258,26 +3258,26 @@ crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.Parse
 crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.SetJson
 crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.SetJsonAt
 crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.Stringify
-crates/bn_rt/src/json_abi.rs	prose	object or array
-crates/bn_rt/src/json_error.rs	prose	JSON has no NaN or infinity
-crates/bn_rt/src/json_error.rs	prose	a value lives in exactly one place
-crates/bn_rt/src/json_error.rs	prose	cannot move a document into itself
-crates/bn_rt/src/json_error.rs	prose	cannot parse the text as JSON
-crates/bn_rt/src/json_error.rs	prose	cannot stringify the document
-crates/bn_rt/src/json_error.rs	prose	cannot use the Json document
-crates/bn_rt/src/json_error.rs	prose	cannot write a non-finite FLOAT
-crates/bn_rt/src/json_error.rs	prose	cannot write the value
-crates/bn_rt/src/json_error.rs	prose	element {index} is not of type {expected}
-crates/bn_rt/src/json_error.rs	prose	no element {index}
-crates/bn_rt/src/json_error.rs	prose	only an {expected} accepts this operation
-crates/bn_rt/src/json_error.rs	prose	the document is {} {found}, not an {expected}
-crates/bn_rt/src/json_error.rs	prose	the document was released
-crates/bn_rt/src/json_error.rs	prose	the document would nest deeper than {} levels
-crates/bn_rt/src/json_error.rs	prose	the index must be at least 0 and less than the array length {length}
-crates/bn_rt/src/json_error.rs	prose	the object has no member with that key
-crates/bn_rt/src/json_error.rs	prose	the operation is not provided
-crates/bn_rt/src/json_error.rs	prose	the value there is {} {found}
-crates/bn_rt/src/json_error.rs	prose	this build does not provide it
+crates/bn_core_json/src/documents.rs	prose	object or array
+crates/bn_core_json/src/error.rs	prose	JSON has no NaN or infinity
+crates/bn_core_json/src/error.rs	prose	a value lives in exactly one place
+crates/bn_core_json/src/error.rs	prose	cannot move a document into itself
+crates/bn_core_json/src/error.rs	prose	cannot parse the text as JSON
+crates/bn_core_json/src/error.rs	prose	cannot stringify the document
+crates/bn_core_json/src/error.rs	prose	cannot use the Json document
+crates/bn_core_json/src/error.rs	prose	cannot write a non-finite FLOAT
+crates/bn_core_json/src/error.rs	prose	cannot write the value
+crates/bn_core_json/src/error.rs	prose	element {index} is not of type {expected}
+crates/bn_core_json/src/error.rs	prose	no element {index}
+crates/bn_core_json/src/error.rs	prose	only an {expected} accepts this operation
+crates/bn_core_json/src/error.rs	prose	the document is {} {found}, not an {expected}
+crates/bn_core_json/src/error.rs	prose	the document was released
+crates/bn_core_json/src/error.rs	prose	the document would nest deeper than {} levels
+crates/bn_core_json/src/error.rs	prose	the index must be at least 0 and less than the array length {length}
+crates/bn_core_json/src/error.rs	prose	the object has no member with that key
+crates/bn_core_json/src/error.rs	prose	the operation is not provided
+crates/bn_core_json/src/error.rs	prose	the value there is {} {found}
+crates/bn_core_json/src/error.rs	prose	this build does not provide it
 crates/bn_rt/src/lib.rs	identifier	BNData.DataFrame.ColumnName
 crates/bn_rt/src/lib.rs	identifier	EXECUTION_POLICY_DENIED
 crates/bn_rt/src/lib.rs	identifier	HOST.Clock

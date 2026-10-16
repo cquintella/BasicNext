@@ -14,10 +14,11 @@ path = "src/main.rs"
 [lints]
 workspace = true
 
-# Forwards the compile driver's sqlite feature. A normal build keeps it.
+# Forwards the compile driver's sqlite and json features. A normal build keeps both.
 [features]
-default = ["sqlite"]
+default = ["sqlite", "json"]
 sqlite = ["bn_compile_driver/sqlite"]
+json = ["bn_compile_driver/json"]
 
 [dependencies]
 bn_compile_driver = { path = "../bn_compile_driver", default-features = false }

@@ -514,6 +514,7 @@ pub(crate) fn provider_name(module: &Module, name: &str) -> Option<&'static str>
 
 /// True when `ty` carries a `BNJson.Json`, directly or inside an `OR Error`
 /// alternative (a narrowed value keeps the aggregate, as `FS.File` does).
+#[cfg_attr(not(feature = "json"), allow(dead_code))]
 pub(crate) fn carries_bnjson(module: &Module, ty: &Type) -> bool {
     let named = |ty: &Type| {
         matches!(
@@ -532,6 +533,7 @@ pub(crate) fn carries_bnjson(module: &Module, ty: &Type) -> bool {
 }
 
 /// The `BNJson` member `name` selects, if this module imports `BNJson`.
+#[cfg_attr(not(feature = "json"), allow(dead_code))]
 pub(crate) fn bnjson_member<'a>(module: &Module, name: &'a str) -> Option<&'a str> {
     let method = name.rsplit('.').next()?;
     (!module.bnjson_providers.is_empty()

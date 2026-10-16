@@ -17,8 +17,6 @@ env.rs
 exec.rs
 file_error.rs
 file.rs
-json_error.rs
-json.rs
 math.rs
 policy.rs
 secure_fs_windows.rs

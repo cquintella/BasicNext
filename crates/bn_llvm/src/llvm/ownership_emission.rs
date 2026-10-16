@@ -407,6 +407,21 @@ fn sqlite_connection_release(
     }
 }
 
+/// `BNJson.Json` releases through `bn_rt_json_release` only when the json
+/// feature emitted the rest of the ABI. Without it, a document is not a
+/// supported value and must not name a symbol absent from `libbn_rt.a`.
+fn json_document_release(module: &Module, ty: &Type) -> Option<(&'static str, &'static str, Rc)> {
+    #[cfg(not(feature = "json"))]
+    {
+        let _ = (module, ty);
+        None
+    }
+    #[cfg(feature = "json")]
+    {
+        carries_bnjson(module, ty).then_some(("json", "bn_rt_json_release", Rc::Named))
+    }
+}
+
 /// The `bn_rt` call that releases a handle-backed value of type `ty`, with the
 /// slot prefix of its registers.
 fn release_call(module: &Module, ty: &Type) -> Option<(&'static str, &'static str, Rc)> {
@@ -420,8 +435,8 @@ fn release_call(module: &Module, ty: &Type) -> Option<(&'static str, &'static st
         ("exec", "bn_rt_exec_result_close", Rc::Dropped)
     } else if aggregate {
         ("file", "bn_rt_file_release", Rc::Dropped)
-    } else if carries_bnjson(module, ty) {
-        ("json", "bn_rt_json_release", Rc::Named)
+    } else if let Some(release) = json_document_release(module, ty) {
+        release
     } else if is_bncrypto_bytes_type(module, ty) {
         ("cry", "bn_rt_crypto_bytes_release", Rc::Named)
     } else if let Some(release) = sqlite_connection_release(module, ty) {

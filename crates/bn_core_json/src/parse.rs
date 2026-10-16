@@ -5,10 +5,8 @@
 
 #![allow(clippy::missing_errors_doc)] // parse/stringify errors are plain String messages.
 
-//! Bounded JSON and the `BNJson` document table. This lives in `bn_rt`, not in
-//! the interpreter provider, so `bni` and `bnc` share one table and one set of
-//! bounds — a handle means the same thing on both paths (W3). Relocated from
-//! `bn_lib_json` in bucket 0.6.1c.
+//! Bounded JSON parse and stringify for `BNJson`. The document table is
+//! `documents`. Both adapters share these bounds.
 
 use serde::de::{DeserializeSeed, Error as _, MapAccess, SeqAccess, Visitor};
 

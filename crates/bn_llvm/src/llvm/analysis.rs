@@ -138,6 +138,7 @@ pub(crate) fn analyze_function<'a>(
                         if bncrypto_method(module, name).is_some() {
                             uses_bn_rt = true;
                         }
+                        #[cfg(feature = "json")]
                         if bnjson_member(module, name).is_some() {
                             uses_bn_rt = true;
                         }

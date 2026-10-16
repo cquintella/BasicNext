@@ -13,11 +13,13 @@ path = "src/lib.rs"
 [lints]
 workspace = true
 
-# Default on so a normal `bnc` still emits `bn_rt_sqlite_*`. Off, `validate_for`
-# rejects BNSqlite before link. The feature carries no crate of its own.
+# Default on so a normal `bnc` still emits `bn_rt_sqlite_*` and `bn_rt_json_*`.
+# Off, `validate_for` rejects that module before link. The features carry no
+# crate of their own.
 [features]
-default = ["sqlite"]
+default = ["sqlite", "json"]
 sqlite = []
+json = []
 
 [dependencies]
 bn_catalog = { path = "../bn_catalog" }

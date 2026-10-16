@@ -1006,13 +1006,14 @@ mod helpers;
 mod platform_stdio;
 use arc::{REGION_HEADER_BYTES, held_object, is_class_type, is_region_type, object_class};
 use helpers::{
-    bncrypto_method, bnjson_member, carries_bncrypto_bytes, carries_bnjson, class_init_flag,
-    coerce_return_operand, coerce_to_type, emit_input_runtime, emit_string_byte_length,
-    extend_to_i64, float_constant, instruction_name, integer_constant, integer_kind,
-    is_bncrypto_bytes_type, is_unsigned, parse_float_constant, parse_integer, sanitize_symbol,
-    static_global_name, unsupported_call_detail, unsupported_instruction,
-    unsupported_instruction_detail,
+    bncrypto_method, carries_bncrypto_bytes, class_init_flag, coerce_return_operand,
+    coerce_to_type, emit_input_runtime, emit_string_byte_length, extend_to_i64, float_constant,
+    instruction_name, integer_constant, integer_kind, is_bncrypto_bytes_type, is_unsigned,
+    parse_float_constant, parse_integer, sanitize_symbol, static_global_name,
+    unsupported_call_detail, unsupported_instruction, unsupported_instruction_detail,
 };
+#[cfg(feature = "json")]
+use helpers::{bnjson_member, carries_bnjson};
 #[cfg(feature = "sqlite")]
 use helpers::{bnsqlite_method, carries_bnsqlite_connection, is_bnsqlite_connection_type};
 use layout::{
