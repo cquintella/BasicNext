@@ -62,6 +62,18 @@ pub fn take_error_report() -> (i32, String, String, String) {
     })
 }
 
+/// Sets the recorded report for the next `bn_rt_error_take` from C ABI.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_error_set_report(
+    code: i32,
+    operation: *const c_char,
+    message: *const c_char,
+    cause: *const c_char,
+) {
+    set_error_report(code, text(operation), text(message), text(cause));
+}
+
 /// One native `Error`'s fields: its code and owned NUL-terminated texts.
 #[repr(C)]
 struct ErrorRecord {
@@ -79,14 +91,15 @@ fn records() -> &'static Mutex<HashSet<usize>> {
     RECORDS.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
-#[allow(unsafe_code)] // C ABI: a borrowed NUL-terminated string or null.
-fn text(ptr: *const c_char) -> &'static str {
+#[allow(unsafe_code)] // C ABI: a borrowed Basic Next string or NUL-terminated constant.
+fn text<'a>(ptr: *const c_char) -> &'a str {
     if ptr.is_null() {
         return "";
     }
-    // SAFETY: callers pass live NUL-terminated strings from emitted code or
-    // this runtime.
-    unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or("")
+    match crate::string::slice_from_raw(ptr) {
+        Some(bytes) => std::str::from_utf8(bytes).unwrap_or(""),
+        None => unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or(""),
+    }
 }
 
 fn new_record(code: i64, message: &str, operation: &str, cause: &str) -> *mut c_char {

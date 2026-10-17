@@ -1,0 +1,43 @@
+IMPORT BNWeb AS Web
+IMPORT HOST.Net AS Net
+
+FUNCTION Start() AS VOID
+    LET jar AS Web.CookieJar = NEW Web.CookieJar()
+    IF jar.Set("sid", "abc", "example.test", "/", 60000) IS Error THEN
+        PRINT "cookie set error"
+        RETURN
+    END IF
+    PRINT jar.Get("sid", "example.test", "/"), jar.Count()
+
+    LET store AS Web.SessionStore OR Error = Web.SessionStore.New(10, 60000)
+    IF store IS Error THEN
+        PRINT "session store error"
+        RETURN
+    END IF
+    LET sid AS STRING OR Error = store.Create("session-data")
+    IF sid IS Error THEN
+        PRINT "session create error"
+        RETURN
+    END IF
+    PRINT store.Get(sid)
+
+    LET page AS Web.Scraper = NEW Web.Scraper("<title>BNWeb</title><div>Hello World</div>")
+    PRINT page.Text("title"), page.Text("div")
+
+    LET acl AS Web.ACL = NEW Web.ACL()
+    LET cidr AS Net.CIDR OR Error = Net.CIDR.Parse("192.168.0.0/16")
+    IF cidr IS Error THEN
+        PRINT "cidr error"
+        RETURN
+    END IF
+    IF acl.Deny(cidr) IS Error THEN
+        PRINT "acl deny error"
+        RETURN
+    END IF
+    LET addr AS Net.Address OR Error = Net.Address.Parse("192.168.1.50")
+    IF addr IS Error THEN
+        PRINT "addr error"
+        RETURN
+    END IF
+    PRINT acl.Check(addr)
+END FUNCTION

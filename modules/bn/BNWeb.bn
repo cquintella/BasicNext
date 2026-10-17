@@ -150,6 +150,9 @@ EXPORT CLASS Server
     PUBLIC FUNCTION Route(method AS STRING, pattern AS STRING, handler AS FUNCTION(request AS Request, response AS Response) AS VOID) AS VOID OR Error
         RETURN
     END FUNCTION
+    PUBLIC FUNCTION Static(prefix AS STRING, directory AS STRING) AS VOID OR Error
+        RETURN
+    END FUNCTION
     PUBLIC FUNCTION UseQueue(queue AS Dispatch.Queue) AS VOID OR Error
         RETURN
     END FUNCTION

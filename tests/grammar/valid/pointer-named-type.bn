@@ -14,6 +14,8 @@ END FUNCTION
 
 FUNCTION Start() AS VOID
     LET value AS POINTER TO Box OR NULL = NULL
+    PRINT value IS NULL
+    PRINT value IS POINTER TO Box
     IF value IS POINTER TO Box THEN
         RELEASE value
     END IF

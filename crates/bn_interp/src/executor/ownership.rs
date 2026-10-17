@@ -65,6 +65,8 @@ impl Executor<'_, '_> {
                 }
                 Ok(())
             }
+            // `FS.File` is counted by `HOST.FileSystem`, not by a seam library.
+            Value::File(_) => self.host_retain(value, span),
             // A counted library handle (`BNLog.Logger`) is counted by its library.
             other => self.library_retain(other, span).unwrap_or(Ok(())),
         }

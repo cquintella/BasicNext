@@ -110,7 +110,7 @@ fn missing_initializer_names_the_whole_alternative() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(1), "{stderr}");
     assert!(
-        stderr.contains("missing initializer in INTEGER(INT32) OR NULL binding."),
+        stderr.contains("missing initializer in INT32 OR NULL binding."),
         "{stderr}"
     );
 }
@@ -150,7 +150,7 @@ fn mixed_numeric_vector_literal_is_a_type_mismatch() {
         assert_ne!(output.status.code(), Some(0), "{stderr}");
         assert!(
             stderr.contains("error[TYPE_MISMATCH]")
-                && stderr.contains("Expected INTEGER(INT32)")
+                && stderr.contains("Expected INT32")
                 && !stderr.contains("INVALID_IR"),
             "{stderr}"
         );

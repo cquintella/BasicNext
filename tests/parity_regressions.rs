@@ -9,7 +9,7 @@
 
 mod support;
 
-use std::{path::Path, process::Command, time::Duration};
+use std::{fs, path::Path, process::Command, time::Duration};
 
 use support::{ProcessOutput, TestDir, bnc, bni, compile_native, run, workspace_root};
 
@@ -49,15 +49,17 @@ fn string_index_and_char_results_outlive_their_frame() {
     let emitted = execute(bnc().args(["--emit", "llvm"]).arg(&path), None);
     assert_success(&emitted, "emit string index");
     let llvm = String::from_utf8_lossy(&emitted.stdout);
-    for buffer in ["%strindexbuffer", "%charbuffer"] {
-        let lines: Vec<&str> = llvm
-            .lines()
-            .filter(|line| line.trim_start().starts_with(buffer) && line.contains(" = "))
-            .collect();
-        assert!(!lines.is_empty(), "{buffer} not emitted");
-        for line in lines {
-            assert!(line.contains("call ptr @malloc(i64 8)"), "{line}");
-        }
+    for helper in ["call ptr @bn_rt_str_from_packed(", "call ptr @bn_rt_str_from_char("] {
+        assert!(
+            llvm.lines().any(|line| line.contains(helper)),
+            "{helper} not emitted"
+        );
+    }
+    for stack_buf in ["%strindexbuffer = alloca", "%charbuffer = alloca"] {
+        assert!(
+            !llvm.lines().any(|line| line.contains(stack_buf)),
+            "unexpected stack buffer: {stack_buf}"
+        );
     }
     let expected = "b ç\nx y z\n100\n";
     let directory = TestDir::new("string-index-escapes").expect("create directory");
@@ -119,25 +121,130 @@ fn is_pointer_to_void_holds_for_a_non_null_pointer() {
     }
 }
 
-/// `IS POINTER TO T` with `T` not `VOID` is refused natively with a support
-/// diagnostic at the test's position until decision K55, and is never folded
-/// to a constant (known issue K51). `bni` answers `TRUE` for an `INTEGER`
-/// allocation, which every reading of K55 keeps.
+/// `IS POINTER TO INTEGER` on a `POINTER TO VOID` that holds one INTEGER
+/// (0.6.md, BDFL decision 2026-10-16).
 #[test]
-fn typed_pointer_test_on_an_opaque_pointer_is_a_support_refusal() {
+fn typed_pointer_test_on_an_opaque_pointer_reads_the_allocation() {
     let path = valid_fixture("pointer-typed-test-on-opaque.bn");
-    let interpreted = interpret(&path, None);
-    assert_success(&interpreted, "interpret typed pointer test");
-    assert_eq!(interpreted.stdout, b"TRUE\n");
-    let emitted = execute(bnc().arg(&path), None);
-    assert!(!emitted.status.success());
-    let diagnostics = String::from_utf8_lossy(&emitted.stderr);
-    assert!(
-        diagnostics.contains("error[TARGET_UNSUPPORTED_OP]"),
-        "{diagnostics}"
-    );
-    assert!(diagnostics.contains(":15:11:"), "{diagnostics}");
-    assert!(!diagnostics.contains("INVALID_IR"), "{diagnostics}");
+    let expected = "TRUE\n";
+    let directory = TestDir::new("pointer-typed-test").expect("create directory");
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
+}
+
+/// Element and length of `IS POINTER TO T` on an opaque pointer, plus a null
+/// alternative (0.6.md, BDFL decision 2026-10-16).
+#[test]
+fn pointer_is_reads_element_and_length() {
+    let path = valid_fixture("pointer-is-allocation.bn");
+    let expected = "TRUE\nTRUE\nFALSE\nTRUE\nTRUE\nTRUE\nFALSE\n";
+    let directory = TestDir::new("pointer-is-allocation").expect("create directory");
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
+}
+
+/// `POINTER TO INTEGER[] OR NULL` holding `NEW INTEGER[3]` (BDFL decision,
+/// 2026-10-16). `VOID` and the open length are true; a named length matches
+/// the stored count; `NULL` fails every pointer test.
+#[test]
+fn nullable_integer_region_is_reads_length() {
+    let path = valid_fixture("pointer-region-is.bn");
+    let expected = "TRUE\nTRUE\nTRUE\nFALSE\nFALSE\nFALSE\nFALSE\nFALSE\nFALSE\nTRUE\n";
+    let directory = TestDir::new("pointer-region-is").expect("create directory");
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
+}
+
+/// `IS POINTER TO Log.Logger` on `POINTER TO Log.Logger OR NULL` (K11).
+/// The stored value is NULL. This does not read an allocation.
+#[test]
+fn qualified_null_pointer_alternative_is_not_the_pointer() {
+    let path = valid_fixture("qualified-pointer-alternative-is.bn");
+    let expected = "TRUE\nFALSE\n";
+    let directory = TestDir::new("qualified-pointer-alternative").expect("create directory");
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
+}
+
+/// `IS POINTER TO Box` on `POINTER TO Box OR NULL` (K11).
+/// The stored value is NULL; a live `POINTER TO Box` is not constructed here.
+#[test]
+fn null_named_pointer_alternative_is_not_the_pointer() {
+    let path = valid_fixture("pointer-named-type.bn");
+    let expected = "TRUE\nFALSE\n";
+    let directory = TestDir::new("pointer-named-type").expect("create directory");
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
+}
+
+/// `IS Log.Logger` on `Log.Logger OR Error` (K64).
+#[test]
+fn imported_logger_alternative_is_the_logger() {
+    let path = workspace_root().join("tests/grammar/valid/logger-alternative-is.bn");
+    let expected = "TRUE\nFALSE\n";
+    let directory = TestDir::new("logger-alternative-is").expect("create directory");
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
 }
 
 /// Functions of an imported module copy, reassign, return and test objects
@@ -282,7 +389,7 @@ fn endless_recursion_stops_with_stack_overflow_on_both_backends() {
 #[test]
 fn nested_vectors_are_values_on_both_backends() {
     let path = valid_fixture("nested-vector-values.bn");
-    let expected = "8 80 3 1\n0 4\n0\n0 13\n0 13\nb z c\n6000\n";
+    let expected = "8 80 3 1\n0 4\n0\n0 13\n0 13\n10 20 30 77\n40 50\nb z c\n6000\n";
     let directory = TestDir::new("nested-vectors").expect("create directory");
     let artifact = compile_native(&path, &directory);
     for (backend, output) in [
@@ -584,6 +691,99 @@ fn the_end_of_an_async_task_closes_its_files() {
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
             "ok 200 failed 0\n",
+            "{backend}"
+        );
+    }
+}
+
+/// A dynamic vector dimension (`LET values AS INTEGER[n]`) lowers cleanly
+/// on both backends and zeros its memory (known issue K12 / T.K12).
+#[test]
+fn dynamic_vector_dimension_allocates_and_zeros_memory() {
+    let directory = TestDir::new("dynamic-vector-dimension").expect("create directory");
+    let path = directory.join("dynamic_vec.bn");
+    fs::write(
+        &path,
+        "FUNCTION Start() AS VOID\n\
+            LET n AS INTEGER = 4\n\
+            LET values AS INTEGER[n]\n\
+            PRINT \"len:\", LEN(values)\n\
+            PRINT \"default:\", values[0], values[1], values[2], values[3]\n\
+            values[0] = 10\n\
+            values[3] = 40\n\
+            PRINT \"assigned:\", values[0], values[1], values[2], values[3]\n\
+        END FUNCTION\n",
+    )
+    .expect("write dynamic vec test");
+    let expected = "len: 4\ndefault: 0 0 0 0\nassigned: 10 0 0 40\n";
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{backend}"
+        );
+    }
+}
+
+/// A vector literal inside a loop pre-allocates its storage in the entry block
+/// and does not grow the call stack across iterations (known issue K62).
+#[test]
+fn vector_literal_in_loop_reuses_entry_slot_without_stack_growth() {
+    let directory = TestDir::new("vector-loop-stack").expect("create directory");
+    let path = directory.join("vec_loop.bn");
+    fs::write(
+        &path,
+        "FUNCTION Start() AS VOID\n\
+            LET sum AS INTEGER = 0\n\
+            FOR i AS INTEGER = 1 TO 20000\n\
+                LET v AS INTEGER[3] = [1, 2, 3]\n\
+                sum = sum + v[0] + v[1] + v[2]\n\
+            END FOR\n\
+            PRINT \"sum:\", sum\n\
+        END FUNCTION\n",
+    )
+    .expect("write vec loop test");
+    let emitted = execute(bnc().args(["--emit", "llvm"]).arg(&path), None);
+    assert_success(&emitted, "emit vector loop llvm");
+    let llvm = String::from_utf8_lossy(&emitted.stdout);
+    let mut in_b0 = false;
+    let mut in_loop = false;
+    let mut found_b0_alloca = false;
+    let mut loop_has_alloca = false;
+    for line in llvm.lines() {
+        let trimmed = line.trim();
+        if trimmed == "b0:" {
+            in_b0 = true;
+            in_loop = false;
+        } else if trimmed.starts_with('b') && trimmed.ends_with(':') {
+            in_b0 = false;
+            in_loop = true;
+        }
+        if in_b0 && trimmed.contains("alloca [3 x i32]") {
+            found_b0_alloca = true;
+        }
+        if in_loop && trimmed.contains("alloca [3 x i32]") {
+            loop_has_alloca = true;
+        }
+    }
+    assert!(found_b0_alloca, "vector data alloca must be in entry block b0");
+    assert!(!loop_has_alloca, "no vector data alloca should exist inside loop blocks");
+
+    let expected = "sum: 120000\n";
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
             "{backend}"
         );
     }

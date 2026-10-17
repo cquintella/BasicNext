@@ -21,6 +21,7 @@ pub fn equals(left: &Value, right: &Value) -> bool {
         (Value::Float(left, _), Value::Integer(right, _)) => *left == *right as f64,
         (Value::Boolean(left), Value::Boolean(right)) => left == right,
         (Value::String(left), Value::String(right)) => left == right,
+        (Value::Function(left), Value::Function(right)) => left == right,
         (Value::Null, Value::Null)
         | (Value::NotAvailable, Value::NotAvailable)
         | (Value::EndOfFile, Value::EndOfFile)
@@ -70,7 +71,12 @@ pub fn equals(left: &Value, right: &Value) -> bool {
 /// class is that type or reaches it through `classes` (a subclass, or a
 /// class implementing the interface: `0.6.md`, "IS" on declared
 /// alternatives; K27).
-pub(super) fn is_value(value: &Value, test: &str, classes: &ClassModel) -> bool {
+pub(super) fn is_value(
+    value: &Value,
+    test: &str,
+    classes: &ClassModel,
+    pointer_len: Option<u64>,
+) -> bool {
     if let Some(ty) = bn_types::scalar_test_type(test) {
         let actual = match value {
             Value::Integer(_, kind) => Type::Integer(*kind),
@@ -92,7 +98,13 @@ pub(super) fn is_value(value: &Value, test: &str, classes: &ClassModel) -> bool 
         "DATE" => matches!(value, Value::Date(_)),
         "TIME" => matches!(value, Value::Time(_)),
         "TIMEZONE" => matches!(value, Value::TimeZone(_)),
-        test if test.starts_with("POINTER TO ") => matches!(value, Value::Pointer { .. }),
+        test if test.starts_with("POINTER TO ") => match value {
+            Value::Pointer { element, .. } => {
+                bn_types::pointers::pointer_is_holds(*element, pointer_len.unwrap_or(0), test)
+                    .unwrap_or(false)
+            }
+            _ => false,
+        },
         // `ELEMENT[n][m]`: a fixed vector of exactly `n` elements, each an
         // `ELEMENT[m]`.
         test if test.ends_with(']')
@@ -102,7 +114,7 @@ pub(super) fn is_value(value: &Value, test: &str, classes: &ClassModel) -> bool 
             let element = format!("{}{}", &test[..open], &test[close + 1..]);
             matches!(value, Value::Vector(items)
                 if test[open + 1..close].parse::<usize>() == Ok(items.len())
-                    && items.iter().all(|item| is_value(item, &element, classes)))
+                    && items.iter().all(|item| is_value(item, &element, classes, None)))
         }
         _ => match value {
             Value::File(_) => is_host_file_type(test),
@@ -141,6 +153,7 @@ pub(super) fn value_matches_type(value: &Value, ty: &Type) -> bool {
         (Value::Integer(_, _), Type::Integer(_))
         | (Value::Float(_, _), Type::Float(_))
         | (Value::Boolean(_), Type::Boolean)
+        | (Value::Function(_), Type::Function { .. })
         | (Value::String(_), Type::String)
         | (Value::Vector(_), Type::Vector { .. })
         | (Value::Null, Type::Null)

@@ -10,7 +10,7 @@
 #![allow(clippy::must_use_candidate)]
 #![allow(clippy::borrow_as_ptr)]
 
-use std::ffi::{CStr, c_char};
+use std::ffi::c_char;
 
 use bn_core_sqlite::{OpenMode, SqliteFailure, SqliteValue};
 
@@ -19,14 +19,9 @@ use super::dataframe_abi::{BNDataFrameHandle, StoredValue, register_frame_column
 use super::sqlite_error::SqliteReport as _;
 
 fn input_string(pointer: *const c_char) -> Option<String> {
-    if pointer.is_null() {
-        return None;
-    }
-    // SAFETY: Reading valid NUL-terminated C string pointer.
-    unsafe { CStr::from_ptr(pointer) }
-        .to_str()
-        .ok()
-        .map(str::to_owned)
+    // Path and SQL arrive as STRING values. The header length keeps an
+    // interior NUL, which `bn_core_sqlite` rejects (G7-D4).
+    super::string::string_text(pointer)
 }
 
 fn open_connection(path_str: &str, mode: OpenMode) -> Result<u64, SqliteFailure> {

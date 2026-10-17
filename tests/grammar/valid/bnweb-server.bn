@@ -1,0 +1,71 @@
+IMPORT BNWeb AS Web
+IMPORT HOST.Net AS Net
+
+FUNCTION Handler(request AS Web.Request, response AS Web.Response) AS VOID
+    IF response.Status() = 202 THEN
+        IF response.SetStatus(201) IS Error THEN
+            RETURN
+        END IF
+        IF response.Write("served") IS Error THEN
+            RETURN
+        END IF
+    ELSE
+        IF response.SetStatus(500) IS Error THEN
+            RETURN
+        END IF
+    END IF
+END FUNCTION
+
+FUNCTION Filter(request AS Web.Request, response AS Web.Response) AS VOID
+    IF response.SetStatus(202) IS Error THEN
+        RETURN
+    END IF
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+    IF address IS Error THEN
+        PRINT "address error"
+        RETURN
+    END IF
+
+    LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, 0)
+    IF endpoint IS Error THEN
+        PRINT "endpoint error"
+        RETURN
+    END IF
+
+    LET server AS Web.Server = NEW Web.Server()
+    IF server.AddFilter(Filter) IS Error THEN
+        PRINT "filter error"
+        RETURN
+    END IF
+    IF server.Route("GET", "/", Handler) IS Error THEN
+        PRINT "route error"
+        RETURN
+    END IF
+
+    LET started AS VOID OR Error = server.Start(endpoint)
+    IF started IS Error THEN
+        PRINT "start error"
+        RETURN
+    END IF
+
+    LET request AS Web.Request = NEW Web.Request()
+    LET response AS Web.Response = NEW Web.Response()
+    LET dispatched AS VOID OR Error = server.Dispatch(request, response)
+    IF dispatched IS Error THEN
+        PRINT "dispatch error", dispatched.Code
+    ELSE
+        PRINT response.Status()
+    END IF
+
+    IF server.Stop(1000) IS Error THEN
+        PRINT "stop error"
+    END IF
+    IF server.Close(1000) IS Error THEN
+        PRINT "close error"
+    ELSE
+        PRINT "stopped"
+    END IF
+END FUNCTION

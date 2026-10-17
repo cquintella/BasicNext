@@ -1,0 +1,75 @@
+{
+  "motd": "Basic Next - Bucket & Project Management Console\nType '?' or double-tab for help.\n",
+  "config_version": "1.0",
+  "scripts_dir": "scripts",
+  "bucketfile": "ongoing/bucket-0.6.5-remainings.md",
+  "commands": [
+    {
+      "name": "board",
+      "abbrev": "bo",
+      "short_desc": "Exibir o quadro Kanban do bucket atual",
+      "activation": "scripts/bucket_manager.sh board",
+      "syntax": "board"
+    },
+    {
+      "name": "task",
+      "abbrev": "tk",
+      "short_desc": "Gerenciamento de tarefas do bucket",
+      "subcommands": [
+        {
+          "name": "list",
+          "abbrev": "ls",
+          "short_desc": "Listar tarefas do bucket (all|todo|doing|blocked|done)",
+          "activation": "scripts/bucket_manager.sh list",
+          "syntax": "task list [all|todo|doing|blocked|done]",
+          "args": "append"
+        },
+        {
+          "name": "show",
+          "abbrev": "sh",
+          "short_desc": "Exibir detalhes e contexto de uma tarefa",
+          "activation": "scripts/bucket_manager.sh show",
+          "syntax": "task show <task_id>",
+          "args": "append"
+        },
+        {
+          "name": "move",
+          "abbrev": "mv",
+          "short_desc": "Alterar o status de uma tarefa (todo|doing|blocked|done)",
+          "activation": "scripts/bucket_manager.sh status",
+          "syntax": "task move <task_id> <todo|doing|blocked|done>",
+          "args": "append"
+        },
+        {
+          "name": "complete",
+          "abbrev": "cp",
+          "short_desc": "Concluir tarefa [X] com evidencia de teste",
+          "activation": "scripts/bucket_manager.sh complete",
+          "syntax": "task complete <task_id> [evidencia_teste]",
+          "args": "append"
+        },
+        {
+          "name": "count",
+          "abbrev": "ct",
+          "short_desc": "Contagem de tarefas por status",
+          "activation": "scripts/bucket_manager.sh count",
+          "syntax": "task count"
+        }
+      ]
+    },
+    {
+      "name": "cluster",
+      "abbrev": "cl",
+      "short_desc": "Visualizar status de um Cluster especifico",
+      "subcommands": [
+        {
+          "name": "show",
+          "short_desc": "Exibir tarefas associadas a um cluster (A, B, C, D, E, F)",
+          "activation": "scripts/bucket_manager.sh show",
+          "syntax": "cluster show <Cluster_Letter>",
+          "args": "append"
+        }
+      ]
+    }
+  ]
+}

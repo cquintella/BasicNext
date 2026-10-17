@@ -1,0 +1,12 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// INTEGER is INT32. One past the maximum stops with NUMERIC_OVERFLOW on both
+// backends (0.6.md, integer range).
+
+FUNCTION Start() AS VOID
+    LET n AS INTEGER = 2147483647
+    PRINT n + 1
+END FUNCTION

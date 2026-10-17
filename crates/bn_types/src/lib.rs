@@ -16,6 +16,15 @@ pub mod text;
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct ModuleId(pub u32);
 
+/// Whether `test` is the name lowering emits for an imported type: the
+/// simple name of a standard module, or `#<module>.<Name>` otherwise.
+/// An import alias (`Log.Logger`) and a different qualifier (`Foo.Logger`)
+/// are not that name.
+#[must_use]
+pub fn import_test_matches(module: ModuleId, name: &str, test: &str) -> bool {
+    test == name || test == format!("#{}.{name}", module.0)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Type {
     Boolean,
@@ -27,7 +36,6 @@ pub enum Type {
     Null,
     NotAvailable,
     EndOfFile,
-    System,
     HostClock,
     HostRandom,
     HostConsole,

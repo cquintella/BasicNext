@@ -121,6 +121,14 @@ impl Analyzer {
     }
 
     pub(crate) fn sizeof_type(&self, ty: &Type, span: Span) -> Result<Type, Diagnostic> {
+        if self.sizeof_rejected(ty) {
+            return Err(type_mismatch(
+                "value with defined byte size",
+                display(ty),
+                "SIZEOF",
+                span,
+            ));
+        }
         if matches!(ty, Type::String)
             || matches!(ty, Type::Vector { element, .. } if self.sizeof_allowed(element))
         {
@@ -136,10 +144,39 @@ impl Analyzer {
             }
             None => Err(type_mismatch(
                 "value with defined byte size",
-                "unsized value",
+                display(ty),
                 "SIZEOF",
                 span,
             )),
+        }
+    }
+
+    /// Pointer, object, interface, `TIMEZONE`, function and alternative have
+    /// no `SIZEOF` (0.6.md). A vector of those is unsized too.
+    fn sizeof_rejected(&self, ty: &Type) -> bool {
+        match ty {
+            Type::Pointer { .. } | Type::Function { .. } | Type::Alternative(_) => true,
+            Type::Named(name) | Type::TypeName(name) => {
+                name == "TIMEZONE"
+                    || matches!(
+                        self.declaration_kinds.get(name),
+                        Some(DeclarationKind::Class | DeclarationKind::Interface)
+                    )
+            }
+            Type::ImportedNamed { module, name } | Type::ImportedTypeName { module, name } => {
+                name == "TIMEZONE"
+                    || self
+                        .imported_types
+                        .get(&(*module, name.clone()))
+                        .is_some_and(|info| {
+                            matches!(
+                                info.kind,
+                                DeclarationKind::Class | DeclarationKind::Interface
+                            )
+                        })
+            }
+            Type::Vector { element, .. } => self.sizeof_rejected(element),
+            _ => false,
         }
     }
 
@@ -166,11 +203,21 @@ impl Analyzer {
         }
     }
 
-    pub(crate) fn compute_layouts(&mut self) {
-        let names: Vec<String> = self.declaration_kinds.keys().cloned().collect();
+    pub(crate) fn compute_layouts(&mut self) -> Result<(), Diagnostic> {
+        let mut names: Vec<String> = self.declaration_kinds.keys().cloned().collect();
+        names.sort();
         for name in names {
             self.ensure_layout(&name);
         }
+        if let Some(span) = self.recursive_struct.take() {
+            return Err(type_mismatch(
+                "struct that does not contain itself",
+                "struct that contains itself",
+                "struct field",
+                span,
+            ));
+        }
+        Ok(())
     }
 
     pub(crate) fn ensure_layout(&mut self, name: &str) -> Option<u64> {
@@ -181,20 +228,38 @@ impl Analyzer {
         if !matches!(kind, DeclarationKind::Struct | DeclarationKind::Class) {
             return None;
         }
+        let tracking = kind == DeclarationKind::Struct;
+        if tracking && self.layout_active.iter().any(|active| active == name) {
+            return None;
+        }
+        if tracking {
+            self.layout_active.push(name.to_string());
+        }
+        let size = self.sum_layout(name);
+        if tracking {
+            self.layout_active.pop();
+        }
+        let size = size?;
+        self.layouts.insert(name.to_string(), size);
+        Some(size)
+    }
+
+    fn sum_layout(&mut self, name: &str) -> Option<u64> {
         let members = self.members.get(name)?.clone();
+        let mut members: Vec<_> = members.into_values().collect();
+        members.sort_by_key(|member| member.span.start.offset);
         let mut total = 0u64;
-        for member in members.values() {
+        for member in members {
             if member.is_static || matches!(member.ty, Type::Function { .. }) {
                 continue;
             }
-            let size = self.field_static_size(&member.ty)?;
+            let size = self.field_static_size(&member.ty, member.span)?;
             total = total.checked_add(size)?;
         }
-        self.layouts.insert(name.to_string(), total);
         Some(total)
     }
 
-    pub(crate) fn field_static_size(&mut self, ty: &Type) -> Option<u64> {
+    pub(crate) fn field_static_size(&mut self, ty: &Type, span: Span) -> Option<u64> {
         if let Some(size) = static_size_of(ty) {
             return Some(size);
         }
@@ -202,13 +267,19 @@ impl Analyzer {
             Type::Named(name)
                 if self.declaration_kinds.get(name) == Some(&DeclarationKind::Struct) =>
             {
+                if self.layout_active.iter().any(|active| active == name) {
+                    if self.recursive_struct.is_none() {
+                        self.recursive_struct = Some(span);
+                    }
+                    return None;
+                }
                 self.ensure_layout(name)
             }
             Type::Vector {
                 element,
                 dimensions,
             } => {
-                let element = self.field_static_size(element)?;
+                let element = self.field_static_size(element, span)?;
                 dimension_product(dimensions)?.checked_mul(element)
             }
             _ => None,
@@ -277,27 +348,83 @@ pub(crate) fn type_from_atom(atom: &crate::ast::TypeAtom) -> Type {
         "NA" => Type::NotAvailable,
         "EOF" => Type::EndOfFile,
         "POINTER" => Type::Unknown,
-        "SYSTEM" => Type::System,
         name => Type::Named(name.into()),
     };
-    let dimensions = atom
-        .parts
-        .windows(3)
-        .filter(|parts| parts[0] == "LeftBracket" && parts[2] == "RightBracket")
-        .filter_map(|parts| parse_integer(&parts[1]).and_then(|value| u64::try_from(value).ok()))
-        .collect::<Vec<_>>();
-    let has_vector_brackets = atom.parts.iter().any(|part| part == "LeftBracket");
-    if dimensions.is_empty() && !has_vector_brackets {
-        base
-    } else {
-        Type::Vector {
+    match bracket_dimensions(&atom.parts) {
+        BracketDimensions::Absent => base,
+        BracketDimensions::Known(dimensions) => Type::Vector {
             element: Box::new(base),
-            dimensions: if dimensions.is_empty() {
-                vec![u64::MAX]
-            } else {
-                dimensions
-            },
+            dimensions,
+        },
+        BracketDimensions::Expression => {
+            let dimensions = atom
+                .parts
+                .windows(3)
+                .filter(|parts| parts[0] == "LeftBracket" && parts[2] == "RightBracket")
+                .filter_map(|parts| {
+                    parse_integer(&parts[1]).and_then(|value| u64::try_from(value).ok())
+                })
+                .collect::<Vec<_>>();
+            Type::Vector {
+                element: Box::new(base),
+                dimensions: if dimensions.is_empty() {
+                    vec![u64::MAX]
+                } else {
+                    dimensions
+                },
+            }
         }
+    }
+}
+
+enum BracketDimensions {
+    Absent,
+    /// Every bracket group is `[]` (`u64::MAX`) or an integer literal, in order.
+    Known(Vec<u64>),
+    /// A dimension is an expression (`INTEGER[n]`). Callers keep the older shape.
+    Expression,
+}
+
+/// Bracket groups outside parentheses. `INTEGER[][3]` is `[MAX, 3]`.
+fn bracket_dimensions(parts: &[String]) -> BracketDimensions {
+    let mut index = 0;
+    let mut depth = 0_i32;
+    let mut found = false;
+    let mut dimensions = Vec::new();
+    while index < parts.len() {
+        match parts[index].as_str() {
+            "LeftParen" => {
+                depth += 1;
+                index += 1;
+            }
+            "RightParen" => {
+                depth -= 1;
+                index += 1;
+            }
+            "LeftBracket" if depth == 0 => {
+                found = true;
+                if parts.get(index + 1).map(String::as_str) == Some("RightBracket") {
+                    dimensions.push(u64::MAX);
+                    index += 2;
+                    continue;
+                }
+                if parts.get(index + 2).map(String::as_str) == Some("RightBracket")
+                    && let Some(value) = parts.get(index + 1).and_then(|text| parse_integer(text))
+                    && let Ok(value) = u64::try_from(value)
+                {
+                    dimensions.push(value);
+                    index += 3;
+                    continue;
+                }
+                return BracketDimensions::Expression;
+            }
+            _ => index += 1,
+        }
+    }
+    if found {
+        BracketDimensions::Known(dimensions)
+    } else {
+        BracketDimensions::Absent
     }
 }
 

@@ -91,20 +91,46 @@ pub(crate) fn type_test_name(atom: &TypeAtom) -> String {
                 crate::ast::VectorDimension::Expression(_) => format!("{name}[]"),
             });
     }
-    let dotted = atom.parts.iter().any(|part| part == "." || part == "Dot");
-    let names: Vec<&str> = std::iter::once(atom.name.as_str())
-        .chain(
-            atom.parts
-                .iter()
-                .filter(|part| *part != "." && *part != "Dot")
-                .map(String::as_str),
-        )
+    // `POINTER TO Log.Logger` keeps the two pointer words spaced. A dot in
+    // the element used to join the whole test (`POINTER.TO.Log.Logger`),
+    // which `parse_pointer_is` does not read.
+    if atom.name == "POINTER" && atom.parts.first().is_some_and(|part| part == "TO") {
+        let element = join_type_parts(&atom.parts[1..]);
+        return format!("POINTER TO {element}");
+    }
+    let mut parts = Vec::with_capacity(atom.parts.len() + 1);
+    parts.push(atom.name.clone());
+    parts.extend(atom.parts.iter().cloned());
+    join_type_parts(&parts)
+}
+
+/// Dots join a qualified name. Anything else, including `LeftBracket`, stays
+/// spaced so a pointer test still spells `POINTER TO INTEGER LeftBracket 3
+/// RightBracket`.
+fn join_type_parts(parts: &[String]) -> String {
+    let dotted = parts.iter().any(|part| part == "." || part == "Dot");
+    let names: Vec<&str> = parts
+        .iter()
+        .filter(|part| *part != "." && *part != "Dot")
+        .map(String::as_str)
         .collect();
     if dotted {
         names.join(".")
     } else {
         names.join(" ")
     }
+}
+
+/// `written` is `POINTER TO <element><suffix>`. `<element>` is replaced by
+/// the identity lowering emits for an imported type (`Logger`, or
+/// `#<module>.Logger`). The bracket suffix stays, so a length test is not
+/// rewritten into a different length.
+pub(crate) fn pointer_test_with_identity(written: &str, identity: &str) -> String {
+    let Some(rest) = written.strip_prefix("POINTER TO ") else {
+        return written.to_string();
+    };
+    let suffix_at = rest.find([' ', '[']).unwrap_or(rest.len());
+    format!("POINTER TO {identity}{}", &rest[suffix_at..])
 }
 
 pub(crate) fn named_or_void(reference: &TypeReference) -> Type {
@@ -425,5 +451,78 @@ pub(crate) fn display_type(ty: &Type) -> String {
     match ty {
         Type::Named(name) | Type::TypeName(name) | Type::ImportedNamed { name, .. } => name.clone(),
         _ => format!("{ty:?}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bn_source::{Position, Revision, SourceId, Span};
+
+    use super::type_test_name;
+    use crate::ast::TypeAtom;
+
+    fn span() -> Span {
+        let position = Position {
+            source_id: SourceId(1),
+            revision: Revision(1),
+            offset: 0,
+            line: 1,
+            column: 1,
+        };
+        Span {
+            start: position,
+            end: position,
+        }
+    }
+
+    fn atom(name: &str, parts: &[&str]) -> TypeAtom {
+        TypeAtom {
+            name: name.into(),
+            parts: parts.iter().map(|part| (*part).to_string()).collect(),
+            dimensions: Vec::new(),
+            span: span(),
+        }
+    }
+
+    #[test]
+    fn qualified_pointer_test_keeps_pointer_to_spaced() {
+        assert_eq!(
+            type_test_name(&atom("POINTER", &["TO", "Log", "Dot", "Logger"])),
+            "POINTER TO Log.Logger"
+        );
+    }
+
+    #[test]
+    fn bracket_pointer_test_stays_spaced() {
+        assert_eq!(
+            type_test_name(&atom(
+                "POINTER",
+                &["TO", "INTEGER", "LeftBracket", "3", "RightBracket"]
+            )),
+            "POINTER TO INTEGER LeftBracket 3 RightBracket"
+        );
+    }
+
+    #[test]
+    fn qualified_type_test_stays_dotted() {
+        assert_eq!(
+            type_test_name(&atom("Log", &["Dot", "Logger"])),
+            "Log.Logger"
+        );
+    }
+
+    #[test]
+    fn imported_pointer_identity_replaces_only_the_element() {
+        assert_eq!(
+            super::pointer_test_with_identity("POINTER TO Log.Logger", "Logger"),
+            "POINTER TO Logger"
+        );
+        assert_eq!(
+            super::pointer_test_with_identity(
+                "POINTER TO Log.Logger LeftBracket 3 RightBracket",
+                "#2.Logger"
+            ),
+            "POINTER TO #2.Logger LeftBracket 3 RightBracket"
+        );
     }
 }

@@ -21,7 +21,8 @@ use bn_cli::{
 use crate::{
     options::{BuildOptions, Target},
     toolchain::{
-        configured_bn_rt_lib, configured_clang, configured_wasm_clang, configured_wasm_ld,
+        configured_bn_rt_lib, configured_bn_web_lib, configured_clang, configured_wasm_clang,
+        configured_wasm_ld,
     },
 };
 
@@ -344,6 +345,42 @@ pub fn emit_build_output(
             // functions the program never reaches (`bn_rt_arc_dump`).
             if debug_flag.is_none() {
                 command_args.extend(dead_code_link_args().iter().map(ToString::to_string));
+            }
+        }
+        if llvm.contains("@bn_web_") {
+            let bn_web = match configured_bn_web_lib() {
+                Ok(path) => path,
+                Err(message) => {
+                    eprintln!(
+                        "{}",
+                        tool_diagnostic(
+                            DiagId::BUILD_TOOLCHAIN_UNAVAILABLE,
+                            message,
+                            &options.diagnostic_catalog,
+                        )
+                    );
+                    return tool_error();
+                }
+            };
+            command_args.push(bn_web.display().to_string());
+            #[cfg(target_os = "macos")]
+            {
+                command_args.extend([
+                    "-framework".into(),
+                    "Security".into(),
+                    "-framework".into(),
+                    "CoreFoundation".into(),
+                    "-framework".into(),
+                    "SystemConfiguration".into(),
+                ]);
+            }
+            #[cfg(target_os = "linux")]
+            {
+                command_args.extend(["-lpthread".into(), "-ldl".into()]);
+            }
+            #[cfg(windows)]
+            {
+                command_args.extend(["-lsecur32".into(), "-lcrypt32".into()]);
             }
         }
         command_args.extend(["-o".into(), output.into()]);

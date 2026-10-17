@@ -273,6 +273,17 @@ pub extern "C" fn bn_rt_dispatch_mutex_close(mutex: BNDispatchHandle) -> BNDispa
     close(&MUTEXES, mutex)
 }
 
+/// Unlocks any mutex currently held by the calling thread (e.g. when an ASYNC task ends).
+pub fn unlock_held_mutexes_for_current_thread() {
+    let thread_id = std::thread::current().id();
+    if let Some(mutexes) = MUTEXES.get() {
+        let table = mutexes.lock().unwrap_or_else(PoisonError::into_inner);
+        for mutex in table.values() {
+            mutex.unlock_if_held_by(thread_id);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -76,24 +76,6 @@ pub(crate) fn lower_print_emission(
                 .expect("validated printable type"),
             state,
         );
-        if analysis.owned_string_results.contains(value) {
-            let id = value.0;
-            let r = |name: &str| O::reg(format!("ownedstring{name}{id}"));
-            let union = handle_result_ty();
-            let own = O::reg(format!("v{id}"));
-            text.assign(
-                format!("ownedstringerror{id}"),
-                I::extract(union.clone(), own.clone(), 0),
-            );
-            text.assign(format!("ownedstringptr{id}"), I::extract(union, own, 1));
-            let free = I::select(r("error"), T::Ptr, O::null(), r("ptr"));
-            text.assign(format!("ownedstringfree{id}"), free);
-            let na = I::icmp(ICmpCond::Eq, T::Ptr, r("free"), O::global(".bn_na"));
-            text.assign(format!("ownedstringna{id}"), na);
-            let storage = I::select(r("na"), T::Ptr, O::null(), r("free"));
-            text.assign(format!("ownedstringstorage{id}"), storage);
-            text.emit(I::call(T::Void, "free", vec![(T::Ptr, r("storage"))]));
-        }
     }
     putchar(text, format!("newline{}", state.print_count), 10);
     state.print_count += 1;
@@ -136,10 +118,15 @@ pub(crate) fn lower_print_language_error_union(
     br(text, label("join"));
     state.control_flow.label(text, label("value"));
     if let Some(sentinel) = sentinel {
-        let (global, array) = sentinel.global();
-        let zero = vec![(T::I64, O::int(0)), (T::I64, O::int(0))];
-        let marker = I::gep(array, O::global(global), zero);
-        text.assign(label("naptr"), marker);
+        text.assign(
+            label("naptr"),
+            I::select(
+                O::bool(true),
+                T::Ptr,
+                sentinel.pointer(),
+                sentinel.pointer(),
+            ),
+        );
         let is_na = I::icmp(ICmpCond::Eq, T::Ptr, r("message"), r("naptr"));
         text.assign(label("isna"), is_na);
         cond_br(text, r("isna"), label("na"), label("present"));
@@ -159,8 +146,8 @@ pub(crate) fn lower_print_language_error_union(
         let words = I::select(
             r("bool"),
             T::Ptr,
-            O::global(".bn_true"),
-            O::global(".bn_false"),
+            crate::layout::string_payload(".bn_true"),
+            crate::layout::string_payload(".bn_false"),
         );
         text.assign(label("boolstr"), words);
         printf(text, None, ".bn_fmt_str", (T::Ptr, r("boolstr")));

@@ -60,11 +60,13 @@ Accessors are typed so the result type is visible at the call site. There is
 | `Length(doc)` | `AS INTEGER OR Error` | scalars have no length → `Error` |
 | `Clone(doc)` | `AS Json OR Error` | explicit duplicate |
 | `Parse` / `Stringify` | unchanged | `Parse` allocates |
-| `SetString` / `SetInteger` / `SetFloat` / `SetBoolean` / `SetNull` | `AS VOID OR Error` | object writes |
-| `GetString` / `GetInteger` / `GetFloat` / `GetBoolean` | scalar `OR Error` | missing / wrong kind → `Error` |
+| `SetString` / `SetInteger` / `SetFloat` / `SetBoolean` / `SetNull` | `AS VOID OR Error` | object writes (`SetInteger` takes `value AS INT64`) |
+| `GetString` / `GetInteger` / `GetFloat` / `GetBoolean` | scalar `OR Error` | missing / wrong kind → `Error` (`GetInteger` yields `INT64 OR Error`) |
 | `SetJson(doc, key, child)` | `AS VOID OR Error` | **moves** `child` |
 | `GetJson(doc, key)` | `AS Json OR Error` | fresh handle; caller `RELEASE` |
-| `Append*` / `Get*At` / `Set*At` | array twins | OOB → `Error`; `AppendJson` / `SetJsonAt` **move** |
+| `Append*` / `Get*At` / `Set*At` | array twins | OOB → `Error`; `AppendJson` / `SetJsonAt` **move**; values use `INT64`, `index` uses `INTEGER` (`INT32`) |
+
+Integer values in DOM storage and accessors (`SetInteger`, `GetInteger`, `AppendInteger`, `GetIntegerAt`, `SetIntegerAt`) use 64-bit signed integers (`INT64`). Array lengths (`Length`) and array indexing arguments (`index AS INTEGER`) use 32-bit signed integers (`INTEGER` / `INT32`).
 
 ### Move semantics
 

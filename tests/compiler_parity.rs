@@ -718,77 +718,75 @@ fn cpu_native_artifacts_print_what_the_interpreter_prints() {
     }
 }
 
-/// One NUL case: fixture name under `tests/native-nul/`, the operation the
-/// native stop names, the `bni` output, program arguments and stdin.
+/// One NUL case: fixture name under `tests/native-nul/`,
+/// the `bni` output, program arguments and stdin.
 struct NulCase<'a> {
     name: &'a str,
-    operation: &'a str,
     expected: &'a str,
     arguments: Vec<String>,
     input: Option<&'a [u8]>,
 }
 
-/// A STRING holding U+0000 (bucket 0.6.5b S7.c, option C): `bni` keeps the
-/// NUL and prints the full length; a native build, whose STRING is
-/// NUL-terminated, stops with `TARGET_UNSUPPORTED_TYPE` naming the
-/// operation, status 1, instead of printing a truncated value.
+/// A compiled STRING program does not hand a STRING to `free`.
 #[test]
-fn nul_in_a_string_stops_native_builds_and_not_the_interpreter() {
+fn a_string_program_does_not_free_its_payload() {
+    let path = workspace_root().join("tests/native-nul/ops.bn");
+    let emitted = execute(bnc().args(["--emit", "llvm"]).arg(&path), None);
+    assert_success(&emitted, "emit string program");
+    let llvm = String::from_utf8_lossy(&emitted.stdout);
+    assert!(
+        !llvm.contains("call void @free(ptr %v"),
+        "a STRING value is released through bn_rt_str_release"
+    );
+    assert!(
+        llvm.contains("i64 -1"),
+        "a literal carries the immortal count"
+    );
+    assert!(
+        llvm.contains("getelementptr i8, ptr @.bn_str"),
+        "the value is the payload"
+    );
+    assert!(llvm.contains("i64 16"), "the payload skips the header");
+}
+
+/// A STRING holding U+0000 (Sprint 3 / G.S1): `bni` and `bnc` both keep
+/// the NUL and print the full length with exit status 0 and exact parity.
+#[test]
+fn nul_in_a_string_matches_on_both_backends() {
     let directory = TestDir::new("native-nul").expect("create directory");
     let data = directory.join("nul.txt");
     fs::write(&data, b"a\0b\n").expect("write data");
+    let magic = directory.join("magic.txt");
+    fs::write(&magic, b"GNIRTSNB").expect("write magic");
     let file = vec![data.to_string_lossy().into_owned()];
-    let case = |name, operation, expected, arguments, input| NulCase {
+    let magic_file = vec![magic.to_string_lossy().into_owned()];
+    let case = |name, expected, arguments, input| NulCase {
         name,
-        operation,
         expected,
         arguments,
         input,
     };
     let mut cases = vec![
-        case("char", "CHAR", "1 3\n", Vec::new(), None),
-        case("input", "INPUT", "3\n", Vec::new(), Some(b"a\0b\n")),
+        case("char", "1 3\n", Vec::new(), None),
         case(
-            "file_read_all",
-            "HOST.FileSystem.File.ReadAll",
-            "all 4\n",
-            file.clone(),
-            None,
-        ),
-        case(
-            "file_read_line",
-            "HOST.FileSystem.File.ReadLine",
-            "line 3\n",
-            file,
-            None,
-        ),
-        case(
-            "json",
-            "BNJson.Json.GetString",
-            "json 3\n",
+            "ops",
+            "3\neq\nne\nA\u{0}B\na\u{0}b\na\n97\na\u{0}b\n",
             Vec::new(),
             None,
         ),
-        case(
-            "sqlite",
-            "BNData.DataFrame.GetString",
-            "sqlite 3\n",
-            Vec::new(),
-            None,
-        ),
+        case("forged", "8 2\n", Vec::new(), None),
+        case("forged_file", "8\n", magic_file, None),
+        case("input", "3\n", Vec::new(), Some(b"a\0b\n")),
+        case("file_read_all", "all 4\n", file.clone(), None),
+        case("file_read_line", "line 3\n", file, None),
+        case("json", "json 3\n", Vec::new(), None),
+        case("sqlite", "sqlite 3\n", Vec::new(), None),
     ];
     if cfg!(unix) {
-        cases.push(case(
-            "exec",
-            "HOST.Exec.Run",
-            "stdout 3\n",
-            Vec::new(),
-            None,
-        ));
+        cases.push(case("exec", "stdout 3\n", Vec::new(), None));
     }
     for NulCase {
         name,
-        operation,
         expected,
         arguments,
         input,
@@ -810,15 +808,16 @@ fn nul_in_a_string_stops_native_builds_and_not_the_interpreter() {
         );
         let artifact = compile_native(&path, &directory);
         let compiled = execute(Command::new(&artifact).args(&arguments), input);
-        assert_eq!(compiled.status.code(), Some(1), "{name}: native");
-        assert!(compiled.stdout.is_empty(), "{name}: native printed a value");
         assert_eq!(
-            String::from_utf8_lossy(&compiled.stderr),
-            format!(
-                "error[TARGET_UNSUPPORTED_TYPE]: {operation}: a STRING containing NUL (U+0000) \
-                 is not supported by native builds yet; run the program with bni\n"
-            ),
-            "{name}: native"
+            compiled.status.code(),
+            Some(0),
+            "{name}: native failed: {}",
+            String::from_utf8_lossy(&compiled.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&compiled.stdout),
+            expected,
+            "{name}: native stdout matches bni"
         );
     }
 }
@@ -913,4 +912,30 @@ fn bnlog_api_matches_on_both_backends() {
         assert_eq!(output.status.code(), Some(0), "{backend}");
         assert_eq!(masked(&output.stdout), expected, "{backend}");
     }
+}
+
+/// A loop of 100,000 string concatenations (SP7.2): native execution releases
+/// each iteration's temporary and binding without accumulating memory.
+#[test]
+fn hundred_thousand_string_concatenations_in_a_loop_releases_every_buffer() {
+    let directory = TestDir::new("string-loop-100k").expect("create directory");
+    let path = directory.join("loop.bn");
+    fs::write(
+        &path,
+        "FUNCTION Start() AS VOID\n    FOR i AS INTEGER = 1 TO 100000\n        LET line AS STRING = \"line\"\n        LET res AS STRING = line + \"!\"\n    END FOR\n    PRINT \"done\"\nEND FUNCTION\n",
+    )
+    .expect("write source");
+    let artifact = compile_native(&path, &directory);
+    let compiled = execute(&mut Command::new(&artifact), None);
+    assert_eq!(
+        compiled.status.code(),
+        Some(0),
+        "native failed: {}",
+        String::from_utf8_lossy(&compiled.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&compiled.stdout),
+        "done\n",
+        "output must be 'done'"
+    );
 }

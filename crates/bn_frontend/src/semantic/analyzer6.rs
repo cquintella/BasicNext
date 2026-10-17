@@ -114,7 +114,6 @@ impl Analyzer {
             return Ok(member.ty.clone());
         }
         let (owner, static_access) = match object {
-            Type::System => ("SYSTEM", false),
             Type::HostClock => ("HOST.Clock", false),
             Type::HostRandom => ("HOST.Random", false),
             Type::HostConsole => ("HOST.Console", false),
@@ -124,34 +123,15 @@ impl Analyzer {
             Type::HostEnv => ("HOST.Env", false),
             Type::Named(owner) => (owner.as_str(), false),
             Type::TypeName(owner) => (owner.as_str(), true),
-            Type::Alternative(alternatives) => {
-                let mut found = None;
-                for alternative in alternatives {
-                    if matches!(
-                        alternative,
-                        Type::Null | Type::NotAvailable | Type::EndOfFile
-                    ) {
-                        continue;
-                    }
-                    let ty = self.member_type(alternative, name, span)?;
-                    if found.as_ref().is_some_and(|found| found != &ty) {
-                        return Err(type_mismatch(
-                            "one compatible member type",
-                            "conflicting alternative member types",
-                            format!("member '{name}'"),
-                            span,
-                        ));
-                    }
-                    found = Some(ty);
-                }
-                return found.ok_or_else(|| {
-                    type_mismatch(
-                        "available member",
-                        format!("{} without '{name}'", display(object)),
-                        "alternative member access",
-                        span,
-                    )
-                });
+            // An alternative is not narrowed here: `b.n` with `b AS Box OR NULL`
+            // is a static mismatch even when every arm has `n` (0.6.md, IS, D2).
+            Type::Alternative(_) => {
+                return Err(type_mismatch(
+                    "narrowed value",
+                    display(object),
+                    format!("member '{name}'"),
+                    span,
+                ));
             }
             _ => {
                 return Err(type_mismatch(
@@ -485,7 +465,23 @@ impl Analyzer {
                         span,
                     ));
                 }
+                if rest.len() > 8 {
+                    return Err(type_mismatch(
+                        "at most 8 worker arguments",
+                        format!("{} arguments", rest.len()),
+                        "Async call",
+                        span,
+                    ));
+                }
                 for (argument, parameter) in rest.iter().zip(parameters) {
+                    if !is_valid_async_parameter_type(&parameter, &self.standard_modules) {
+                        return Err(type_mismatch(
+                            "scalar, string, date/time, or dispatch handle",
+                            display(&parameter),
+                            "Async worker argument",
+                            argument.span,
+                        ));
+                    }
                     let actual = self.expression_as(argument, &parameter, locals)?;
                     if !self.compatible(&parameter, &actual) {
                         return Err(type_mismatch(

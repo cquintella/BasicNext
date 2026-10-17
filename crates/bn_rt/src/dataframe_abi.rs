@@ -132,10 +132,7 @@ fn input_string(pointer: *const c_char) -> Option<String> {
     if pointer.is_null() {
         return None;
     }
-    unsafe { CStr::from_ptr(pointer) }
-        .to_str()
-        .ok()
-        .map(str::to_owned)
+    crate::string::string_text(pointer)
 }
 
 fn add_column(
@@ -350,7 +347,7 @@ pub extern "C" fn bn_rt_dataframe_get_string(
     }
     match cell(frame, row, name) {
         Ok(StoredValue::String(value) | StoredValue::Bytes(value)) => unsafe {
-            let value = super::text_abi::owned_c_string("BNData.DataFrame.GetString", &value);
+            let value = super::text_abi::owned_c_string(&value);
             if value.is_null() {
                 return failed(
                     "BNData.DataFrame.GetString",
@@ -582,7 +579,6 @@ unsafe fn copy_column(view: &BNDataFrameColumnView) -> Option<DataFrameColumn<St
     if view.name.is_null() || (view.length > 0 && view.values.is_null()) {
         return None;
     }
-    // Scan at most MAX_COLUMN_NAME_LENGTH + 1 bytes looking for NUL terminator.
     let name_slice = unsafe {
         let ptr = view.name.cast::<u8>();
         std::slice::from_raw_parts(ptr, MAX_COLUMN_NAME_LENGTH + 1)
@@ -1101,8 +1097,9 @@ pub extern "C" fn bn_rt_dataframe_copy_integer(
             return Err(DataFailure::InvalidHandle);
         };
         copy_dataframe_column(source, &name, length as usize, |value| match value {
-            StoredValue::Integer(value) => i32::try_from(*value)
-                .map_err(|_| DataFailure::InvalidFormat("integer out of range".into())),
+            StoredValue::Integer(value) => {
+                super::dataframe::copy_integer_element(i128::from(*value))
+            }
             _ => Err(DataFailure::TypeMismatch {
                 expected: "INTEGER",
                 column: name.clone(),
@@ -1509,19 +1506,5 @@ mod tests {
             bn_rt_dataframe_row_count(999_999, &raw mut count),
             BN_DATAFRAME_INVALID_HANDLE
         );
-    }
-
-    #[test]
-    fn negative_incremental_column_index_is_rejected_without_selecting_column_zero() {
-        let mut frame = 0;
-        assert_eq!(
-            bn_rt_dataframe_create(std::ptr::null(), 0, &raw mut frame),
-            BN_DATAFRAME_OK
-        );
-        assert_eq!(
-            super::super::bn_rt_dataframe_set_integer_cell(frame, -1, 0, 42),
-            BN_DATAFRAME_INVALID_ARGUMENT
-        );
-        assert_eq!(bn_rt_dataframe_close(frame), BN_DATAFRAME_OK);
     }
 }

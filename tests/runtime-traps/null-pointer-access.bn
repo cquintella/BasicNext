@@ -1,0 +1,11 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Indexing a NULL pointer is NULL_POINTER_ACCESS on both backends.
+FUNCTION Start() AS INTEGER
+    LET value AS POINTER TO INTEGER OR NULL = NULL
+    value[0] = 1
+    RETURN 0
+END FUNCTION

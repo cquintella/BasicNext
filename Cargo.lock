@@ -228,23 +228,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bn_core_web"
-version = "0.6.4"
-dependencies = [
- "bn_catalog",
- "bn_core_dispatch",
- "bn_core_net",
- "bn_limits",
- "http-body-util",
- "hyper",
- "hyper-util",
- "ring",
- "rustls",
- "tokio",
- "tokio-rustls",
-]
-
-[[package]]
 name = "bn_dap"
 version = "0.6.4"
 dependencies = [
@@ -470,7 +453,7 @@ version = "0.6.4"
 dependencies = [
  "bn_catalog",
  "bn_core_dispatch",
- "bn_core_web",
+ "bn_core_log",
  "bn_diag",
  "bn_host_net",
  "bn_interp",
@@ -483,13 +466,8 @@ dependencies = [
  "bn_source",
  "bn_types",
  "bn_value",
- "http-body-util",
- "hyper",
- "hyper-util",
- "ring",
+ "bn_web",
  "rustls",
- "tokio",
- "tokio-rustls",
 ]
 
 [[package]]
@@ -578,6 +556,27 @@ version = "0.6.4"
 dependencies = [
  "bn_source",
  "bn_types",
+]
+
+[[package]]
+name = "bn_web"
+version = "0.6.4"
+dependencies = [
+ "bn_catalog",
+ "bn_core_copy",
+ "bn_core_dispatch",
+ "bn_core_log",
+ "bn_core_net",
+ "bn_limits",
+ "bn_types",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "libc",
+ "ring",
+ "rustls",
+ "tokio",
+ "tokio-rustls",
 ]
 
 [[package]]

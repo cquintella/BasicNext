@@ -284,6 +284,44 @@ pub(crate) fn emit_function(
                     text.assign(format!("vret{}", destination.0), I::alloca(array));
                 }
             }
+            // Vector literals reserve storage at function entry so loops do not grow the stack (K62).
+            for instruction in function.blocks.iter().flat_map(|block| &block.instructions) {
+                if let Instruction::Vector {
+                    destination,
+                    values: elements,
+                    ty,
+                    ..
+                } = instruction
+                {
+                    if let Type::Vector { element, dimensions } = ty {
+                        let stored_type = if dimensions.len() == 1 {
+                            element.as_ref().clone()
+                        } else {
+                            Type::Vector {
+                                element: element.clone(),
+                                dimensions: dimensions[1..].to_vec(),
+                            }
+                        };
+                        if let Some(elem) = llvm_type(&stored_type) {
+                            let len = u32::try_from(dimensions[0]).unwrap_or(0);
+                            let array = T::Array(len as usize, Box::new(elem));
+                            let dest = destination.0;
+                            text.assign(format!("vecdata{dest}"), I::alloca(array));
+                            if let Some(owner) = struct_owner(module, &stored_type) {
+                                let bytes = class_instance_bytes(module, &owner);
+                                let struct_bytes = T::Array(
+                                    usize::try_from(bytes).expect("fits usize"),
+                                    Box::new(T::I8),
+                                );
+                                for index in 0..elements.len() {
+                                    let copy = format!("vecstructcopy{dest}_{index}");
+                                    text.assign(copy, I::alloca(struct_bytes.clone()));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             for &(symbol, ty) in &symbols {
                 let llvm_ty = llvm_type(ty).expect("validated alloca type");
                 let slot = O::reg(format!("s{}", symbol_names[symbol]));
@@ -339,15 +377,6 @@ pub(crate) fn emit_function(
                 let initial = function.parameters.contains(symbol) && !is_start;
                 emit_flag_slot(text, &live_flag_name(*symbol), T::I1, O::bool(initial));
             }
-            let mut input_symbols = analysis.input_symbols.iter().collect::<Vec<_>>();
-            input_symbols.sort_by_key(|symbol| symbol.0);
-            for symbol in input_symbols {
-                let slot = symbol_names[symbol];
-                let owned = format!("inputowned{slot}");
-                text.assign(&owned, I::alloca(T::I1));
-                text.emit(I::store(T::Ptr, O::null(), O::reg(format!("s{slot}"))));
-                text.emit(I::store(T::I1, O::bool(false), O::reg(owned)));
-            }
             let mut owned_struct_results = analysis
                 .owned_struct_results
                 .iter()
@@ -392,6 +421,7 @@ pub(crate) fn emit_function(
             text,
             module,
             function,
+            block.id,
             &block.terminator,
             analysis,
             &symbol_names,

@@ -16,7 +16,7 @@ specification.
 - [BNText Markdown](bntext-markdown.md) — proposed portable Markdown text
   values for 0.3.
 - [HOST.Env](host-env.md) — read-only process environment capability (`Get`, `Has`); language change (importable capability name). Proposed 2026-10-06; prerequisite of BNFfi.
-- [BNFfi](bnffi.md) — C calls through a standard module with C-named value types; no language change. Accepted 2026-10-06; supersedes `c-ffi.md` and AQ-22. Bucket 0.6.6.
+- [BNFfi](bnffi.md) — C calls through a standard module with C-named value types; no language change. Accepted 2026-10-06; supersedes `c-ffi.md` and AQ-22. Bucket 0.6.7 (renumbered from 0.6.6 on 2026-10-14).
 - [C Foreign Function Interface](c-ffi.md) — proposed `HOST.c` capability and a deliberately narrow C ABI profile. Distinct from architecture [native-stdlib-binding](../../docs/architecture/native-stdlib-binding.md) (stdlib → shared `bn_rt`).
 - [Checked Numeric Semantics](numeric-semantics.md) — 0.1 rules in the
   interpreter; remaining work is negative fixtures (`DIVISION_BY_ZERO`,

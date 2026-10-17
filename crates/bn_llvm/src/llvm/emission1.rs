@@ -7,9 +7,7 @@
 // operators, casts) with constant propagation through the block state.
 #![allow(clippy::wildcard_imports)]
 use super::*;
-use crate::ir::{
-    BinaryOp, CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T,
-};
+use crate::ir::{BinaryOp, CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
 #[path = "emission_tail.rs"]
 mod emission_tail;
 use emission_tail::lower_scalar_instruction_tail;
@@ -69,10 +67,10 @@ pub(crate) fn lower_scalar_instruction(
                 block_state
                     .constants
                     .insert(*destination, ConstantValue::String(value.clone()));
-                let global = O::global(string_global(&function.name, destination.0));
+                let global = string_global(&function.name, destination.0);
                 text.assign(
                     format!("v{}", destination.0),
-                    I::gep(T::I8, global, vec![(T::I64, O::int(0))]),
+                    crate::layout::string_payload_address(&global),
                 );
             }
             Constant::Function(name) => {
@@ -99,17 +97,24 @@ pub(crate) fn lower_scalar_instruction(
                 );
             }
             Constant::Null => {
-                text.assign(
-                    format!("v{}", destination.0),
-                    I::cast(CastOp::IntToPtr, T::I64, O::int(0), T::Ptr),
-                );
+                if let Type::Alternative(members) = ty
+                    && crate::layout::AlternativeLayout::of(members)
+                        == Some(crate::layout::AlternativeLayout::Region)
+                {
+                    let _ = alternatives::null_region(text, &format!("v{}", destination.0));
+                } else {
+                    text.assign(
+                        format!("v{}", destination.0),
+                        I::cast(CastOp::IntToPtr, T::I64, O::int(0), T::Ptr),
+                    );
+                }
             }
             // `EOF` is the `@.bn_eof` sentinel, the value `INPUT` reads at end
             // of input (T.K9).
             Constant::EndOfFile => {
                 text.assign(
                     format!("v{}", destination.0),
-                    I::gep(T::I8, O::global(".bn_eof"), vec![(T::I64, O::int(0))]),
+                    crate::layout::string_payload_address(".bn_eof"),
                 );
             }
         },
@@ -132,6 +137,108 @@ pub(crate) fn lower_scalar_instruction(
                 unreachable!()
             };
             nest.emit_default(text, destination.0, strings);
+        }
+        Instruction::Default {
+            destination,
+            ty,
+            dimensions,
+            dynamic_dimensions,
+            ..
+        } if dimensions.is_empty() && dynamic_dimensions.len() == 1 => {
+            let Type::Vector { element, .. } = ty else {
+                unreachable!("validated dynamic default type");
+            };
+            let element_llvm = llvm_type(element).expect("validated vector element type");
+            let element_ty = element_llvm.clone();
+            let dest = destination.0;
+            let dim_id = dynamic_dimensions[0];
+            let dim_ty = analysis
+                .values
+                .get(&dim_id)
+                .expect("validated dynamic dimension type");
+            let dim_llvm = llvm_type(dim_ty).expect("validated dynamic dimension llvm type");
+            let dim_op = O::reg(format!("v{}", dim_id.0));
+
+            // Check if dimension < 0 -> trap INVALID_VECTOR_DIMENSION
+            let is_neg = I::icmp(ICmpCond::Slt, dim_llvm.clone(), dim_op.clone(), O::int(0));
+            text.assign(format!("dynvecneg{dest}"), is_neg);
+            let ok_label = format!("dynvecok{dest}");
+            let neg_op = O::reg(format!("dynvecneg{dest}"));
+            traps::emit_trap(
+                text,
+                block_id,
+                state,
+                &neg_op,
+                ok_label,
+                bn_diag::DiagId::INVALID_VECTOR_DIMENSION,
+                vec![("message", Fact::Text("vector dimension must be a non-negative size".into()))],
+            );
+
+            // Coerce/cast to i32 for fat pointer and i64 for byte size
+            let len_i32 = if dim_llvm == T::I32 {
+                dim_op.clone()
+            } else if dim_llvm == T::I64 {
+                let tr = I::cast(CastOp::Trunc, T::I64, dim_op.clone(), T::I32);
+                text.assign(format!("dynveclen32_{dest}"), tr);
+                O::reg(format!("dynveclen32_{dest}"))
+            } else {
+                let ext = I::cast(CastOp::ZExt, dim_llvm.clone(), dim_op.clone(), T::I32);
+                text.assign(format!("dynveclen32_{dest}"), ext);
+                O::reg(format!("dynveclen32_{dest}"))
+            };
+
+            let len_i64 = if dim_llvm == T::I64 {
+                dim_op
+            } else {
+                let ext = I::cast(CastOp::ZExt, T::I32, len_i32.clone(), T::I64);
+                text.assign(format!("dynveclen64_{dest}"), ext);
+                O::reg(format!("dynveclen64_{dest}"))
+            };
+
+            let elem_bytes: u64 = match element_ty {
+                T::I1 | T::I8 => 1,
+                T::I16 => 2,
+                T::I32 | T::Float => 4,
+                T::I64 | T::Double | T::Ptr => 8,
+                _ => 8,
+            };
+
+            // Allocate buffer on stack with dynamic count
+            text.assign(
+                format!("dynvecbuf{dest}"),
+                I::alloca_counted(element_ty, T::I64, len_i64.clone()),
+            );
+
+            // Compute byte size = len_i64 * elem_bytes
+            let byte_count = I::binary(BinaryOp::Mul, T::I64, len_i64, O::uint(elem_bytes));
+            text.assign(format!("dynvecbytes{dest}"), byte_count);
+
+            // Zero-initialize buffer via llvm.memset.p0.i64
+            let memset_args = vec![
+                (T::Ptr, O::reg(format!("dynvecbuf{dest}"))),
+                (T::I8, O::int(0)),
+                (T::I64, O::reg(format!("dynvecbytes{dest}"))),
+                (T::I1, O::bool(false)),
+            ];
+            text.emit(I::call(T::Void, "llvm.memset.p0.i64", memset_args));
+
+            // Construct fat vector { ptr, i32 }
+            let fat = T::struct_of([T::Ptr, T::I32]);
+            let pointer = O::reg(format!("dynvecbuf{dest}"));
+            text.assign(
+                format!("dynvecfat0_{dest}"),
+                I::insert(fat.clone(), O::undef(), T::Ptr, pointer, 0),
+            );
+            text.assign(
+                format!("v{dest}"),
+                I::insert(
+                    fat,
+                    O::reg(format!("dynvecfat0_{dest}")),
+                    T::I32,
+                    len_i32,
+                    1,
+                ),
+            );
         }
         Instruction::Default {
             destination,
@@ -190,7 +297,9 @@ pub(crate) fn lower_scalar_instruction(
                         T::I1 | T::I8 | T::I16 | T::I32 | T::I64 => O::int(0),
                         T::Float | T::Double => O::float(0.0),
                         // A STRING element defaults to "", as a scalar STRING does.
-                        T::Ptr if **element == Type::String => O::global(".bn_empty"),
+                        T::Ptr if **element == Type::String => {
+                            crate::layout::string_payload(".bn_empty")
+                        }
                         T::Ptr => O::null(),
                         other
                             if crate::layout::is_one_of(
@@ -247,7 +356,13 @@ pub(crate) fn lower_scalar_instruction(
                 text.assign(format!("v{}", destination.0), fadd);
             }
             T::Ptr => {
-                let value = if function.kind == FunctionKind::Default {
+                // A STRING default is the immortal empty literal, including
+                // inside a STRUCT `$default`. The calloc below is the STRUCT
+                // (or class) value itself; applying it to a STRING field
+                // yields a zeroed header, and releasing that field traps.
+                let value = if *ty == Type::String {
+                    crate::layout::string_payload_address(".bn_empty")
+                } else if function.kind == FunctionKind::Default {
                     let owner = function
                         .owner
                         .as_deref()
@@ -260,7 +375,7 @@ pub(crate) fn lower_scalar_instruction(
                         vec![(T::I64, O::int(1)), (T::I64, O::int(bytes))],
                     )
                 } else {
-                    I::gep(T::I8, O::global(".bn_empty"), vec![(T::I64, O::int(0))])
+                    crate::layout::string_payload_address(".bn_empty")
                 };
                 text.assign(format!("v{}", destination.0), value);
             }
@@ -391,37 +506,16 @@ pub(crate) fn lower_scalar_instruction(
                     // An `Error` into `Endpoint OR Error` / `Addresses OR Error` (K36).
                     || (crate::layout::is_one_of(&slot_llvm, &[crate::layout::status_endpoint_ty(), crate::layout::status_pointer_ty()])
                         && is_error_type(value_ty))
-                    || value_llvm == crate::layout::vector_ty() && slot_llvm == crate::layout::region_ty())
+                    || value_llvm == crate::layout::vector_ty() && slot_llvm == crate::layout::region_ty()
+                    || matches!(slot_ty, Type::Alternative(members)
+                        if crate::layout::AlternativeLayout::of(members)
+                            == Some(crate::layout::AlternativeLayout::Region)
+                            && value_llvm != slot_llvm))
             {
                 coerce_to_type(text, *value, value_ty, slot_ty)
             } else {
                 O::reg(format!("v{}", value.0))
             };
-            if analysis.input_symbols.contains(symbol)
-                && !analysis.input_targets.contains_key(value)
-            {
-                let slot = symbols[symbol];
-                let tag = value.0;
-                let owned = O::reg(format!("inputreplaceowned{tag}"));
-                let old = O::reg(format!("inputreplaceold{tag}"));
-                text.assign(
-                    format!("inputreplaceowned{tag}"),
-                    I::load(T::I1, O::reg(format!("inputowned{slot}"))),
-                );
-                text.assign(
-                    format!("inputreplaceold{tag}"),
-                    I::load(T::Ptr, O::reg(format!("s{slot}"))),
-                );
-                text.assign(
-                    format!("inputreplacefree{tag}"),
-                    I::select(owned, T::Ptr, old, O::null()),
-                );
-                text.emit(I::call(
-                    T::Void,
-                    "free",
-                    vec![(T::Ptr, O::reg(format!("inputreplacefree{tag}")))],
-                ));
-            }
             let slot = symbols[symbol];
             if previous.is_some() && arc_ops::holds_references(module, slot_ty) {
                 let (storage, kept, binding) = (
@@ -460,30 +554,6 @@ pub(crate) fn lower_scalar_instruction(
             text.emit(I::store(slot_llvm, operand, O::reg(format!("s{slot}"))));
             if analysis.released_symbols.contains(symbol) {
                 text.emit(I::store(T::I1, O::bool(true), live_flag(*symbol)));
-            }
-            if analysis.input_symbols.contains(symbol) {
-                let slot = symbols[symbol];
-                // A slot whose line escapes never owns it (`escaping_inputs`).
-                if analysis.input_targets.contains_key(value)
-                    && !analysis.escaping_inputs.contains(symbol)
-                {
-                    let line = O::reg(format!("v{}", value.0));
-                    text.assign(
-                        format!("inputisvalue{}", value.0),
-                        I::icmp(ICmpCond::Ne, T::Ptr, line, O::global(".bn_eof")),
-                    );
-                    text.emit(I::store(
-                        T::I1,
-                        O::reg(format!("inputisvalue{}", value.0)),
-                        O::reg(format!("inputowned{slot}")),
-                    ));
-                } else {
-                    text.emit(I::store(
-                        T::I1,
-                        O::bool(false),
-                        O::reg(format!("inputowned{slot}")),
-                    ));
-                }
             }
             if let Some(value) = block_state.constants.get(value).cloned() {
                 block_state.bindings.insert(*symbol, value);

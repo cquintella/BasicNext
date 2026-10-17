@@ -1,0 +1,17 @@
+IMPORT BNWeb AS Web
+
+FUNCTION Start() AS VOID
+    LET policy AS Web.EgressPolicy OR Error = Web.EgressPolicy.New("https", "203.0.113.0/24", "443", 2, 1000)
+    PRINT "policy-error:", policy IS Error
+    LET client AS Web.Client = NEW Web.Client()
+    IF policy IS Error THEN
+        PRINT "cannot test request"
+    ELSE
+        LET response AS Web.Response OR Error = client.RequestWithPolicy("GET", "http://127.0.0.1/", "", policy)
+        IF response IS Error THEN
+            PRINT "egress-denied:", response IS Error, response.Code
+        ELSE
+            PRINT "egress-unexpected-success"
+        END IF
+    END IF
+END FUNCTION

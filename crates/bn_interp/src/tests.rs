@@ -207,32 +207,38 @@ fn primitive_type_tests_match_their_runtime_values() {
     assert!(is_value(
         &Value::Integer(1, IntegerType::Int32),
         "INTEGER",
-        &bn_types::class_model::ClassModel::default()
+        &bn_types::class_model::ClassModel::default(),
+        None
     ));
     assert!(is_value(
         &Value::Integer(1, IntegerType::Byte),
         "BYTE",
-        &bn_types::class_model::ClassModel::default()
+        &bn_types::class_model::ClassModel::default(),
+        None
     ));
     assert!(!is_value(
         &Value::Integer(1, IntegerType::Byte),
         "INTEGER",
-        &bn_types::class_model::ClassModel::default()
+        &bn_types::class_model::ClassModel::default(),
+        None
     ));
     assert!(is_value(
         &Value::Float(1.0, FloatType::Float64),
         "FLOAT",
-        &bn_types::class_model::ClassModel::default()
+        &bn_types::class_model::ClassModel::default(),
+        None
     ));
     assert!(is_value(
         &Value::Boolean(true),
         "BOOLEAN",
-        &bn_types::class_model::ClassModel::default()
+        &bn_types::class_model::ClassModel::default(),
+        None
     ));
     assert!(is_value(
         &Value::String("BN".into()),
         "STRING",
-        &bn_types::class_model::ClassModel::default()
+        &bn_types::class_model::ClassModel::default(),
+        None
     ));
 }
 

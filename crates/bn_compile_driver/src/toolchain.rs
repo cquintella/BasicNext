@@ -97,6 +97,45 @@ pub(crate) fn configured_bn_rt_lib() -> Result<PathBuf, String> {
         .ok_or_else(|| "libbn_rt.a not found; install it under $PREFIX/lib (scripts/install.sh) or build the bn_rt crate (cargo build -p bn_rt) / set BN_RT_LIB".into())
 }
 
+pub(crate) fn configured_bn_web_lib() -> Result<PathBuf, String> {
+    if let Ok(path) = env::var("BN_WEB_LIB") {
+        let path = PathBuf::from(path);
+        if path.is_file() {
+            return Ok(path);
+        }
+        return Err(format!("BN_WEB_LIB is not a file: {}", path.display()));
+    }
+    let file_name = if cfg!(windows) {
+        "bn_web.lib"
+    } else {
+        "libbn_web.a"
+    };
+    let mut candidates = Vec::new();
+    if let Ok(exe) = env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        candidates.push(dir.join(file_name));
+        if let Some(parent) = dir.parent() {
+            candidates.push(parent.join(file_name));
+            candidates.push(parent.join("lib").join(file_name));
+            candidates.push(parent.join("share").join("bn").join("lib").join(file_name));
+        }
+    }
+    let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for profile in ["debug", "release"] {
+        candidates.push(workspace.join("target").join(profile).join(file_name));
+    }
+    if let Ok(dir) = env::var("CARGO_TARGET_DIR") {
+        for profile in ["debug", "release"] {
+            candidates.push(PathBuf::from(&dir).join(profile).join(file_name));
+        }
+    }
+    candidates
+        .into_iter()
+        .find(|path| path.is_file())
+        .ok_or_else(|| "libbn_web.a not found; build the bn_web library (cargo build -p bn_web) or set BN_WEB_LIB".into())
+}
+
 pub(crate) fn toolchain_value(key: &str) -> Result<Option<String>, String> {
     let Ok(config) = fs::read_to_string("config.toml") else {
         return Ok(None);

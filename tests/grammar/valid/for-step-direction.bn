@@ -1,0 +1,16 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A positive step counts up and a negative step counts down (0.6.md).
+
+FUNCTION Start() AS VOID
+    FOR up AS INTEGER = 1 TO 3 STEP 1
+        PRINT up
+    END FOR
+    LET down AS INTEGER = -1
+    FOR n AS INTEGER = 3 TO 1 STEP down
+        PRINT n
+    END FOR
+END FUNCTION

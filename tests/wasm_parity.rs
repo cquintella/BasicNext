@@ -75,6 +75,21 @@ fn user_calls_and_nested_vectors_match_interpreter() {
     assert_wasm_parity(&source, &artifact, b"");
 }
 
+/// U+0000 stays inside a wasm STRING. The host reads the header length.
+#[test]
+fn nul_string_matches_interpreter() {
+    for fixture in ["char.bn", "ops.bn", "forged.bn"] {
+        let source = workspace_root().join("tests/native-nul").join(fixture);
+        let directory = TestDir::new("wasm-nul").expect("create Wasm directory");
+        let artifact = compile_wasm(&source, &directory);
+        assert_wasm_parity(&source, &artifact, b"");
+    }
+    let source = workspace_root().join("tests/native-nul/input.bn");
+    let directory = TestDir::new("wasm-nul-input").expect("create Wasm directory");
+    let artifact = compile_wasm(&source, &directory);
+    assert_wasm_parity(&source, &artifact, b"a\0b\n");
+}
+
 #[test]
 fn input_matches_interpreter() {
     let source = workspace_root().join("tests/grammar/valid/build-input.bn");

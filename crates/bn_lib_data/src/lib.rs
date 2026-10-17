@@ -564,7 +564,8 @@ impl DataProvider {
                 let target_len = core.memory().len(handle, span)?;
                 let adapter = |value: &Value| match (method, value) {
                     ("CopyIntegerColumn", Value::Integer(number, _)) => {
-                        Ok(Value::Integer(*number, IntegerType::Int32))
+                        let ok_i32 = bn_rt::copy_integer_element(*number)?;
+                        Ok(Value::Integer(i128::from(ok_i32), IntegerType::Int32))
                     }
                     ("CopyFloatColumn", Value::Float(number, _)) => {
                         Ok(Value::Float(*number, FloatType::Float64))
@@ -887,6 +888,9 @@ fn signed_indices(values: Vec<i128>) -> Vec<i64> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use bn_types::IntegerType;
+
     #[test]
     fn module_constants_match_the_runtime_codes() {
         let module = include_str!("../../../modules/bn/BNData.bn");
@@ -894,5 +898,31 @@ mod tests {
             let line = format!("EXPORT CONST {name} AS INTEGER = {value}");
             assert!(module.contains(&line), "BNData.bn lacks `{line}`");
         }
+    }
+
+    #[test]
+    fn copy_integer_adapter_rejects_out_of_range_value() {
+        let mut provider = DataProvider::default();
+        let frame = bn_rt::DataFrameResource {
+            columns: vec![bn_rt::DataFrameColumn {
+                name: "col".to_string(),
+                values: vec![Value::Integer(3_000_000_000, IntegerType::Int64)],
+            }],
+        };
+        provider.frames.insert(1, frame);
+        let res = provider.frames.get(&1).unwrap();
+        let adapter = |value: &Value| match value {
+            Value::Integer(number, _) => {
+                let ok_i32 = bn_rt::copy_integer_element(*number)?;
+                Ok(Value::Integer(i128::from(ok_i32), IntegerType::Int32))
+            }
+            _ => unreachable!(),
+        };
+        let err = bn_rt::copy_dataframe_column(res, "col", 1, adapter).unwrap_err();
+        assert_eq!(
+            err,
+            DataFailure::InvalidFormat("integer out of range".into())
+        );
+        assert_eq!(err.code(), bn_types::error_codes::data::INVALID_FORMAT);
     }
 }

@@ -45,7 +45,7 @@ impl Analyzer {
                     span,
                     ..
                 } => {
-                    self.validate_type_reference(type_ref)?;
+                    self.validate_type_reference(type_ref, false)?;
                     let ty = self.resolve_reference(type_ref);
                     for atom in &type_ref.alternatives {
                         for dimension in &atom.dimensions {
@@ -148,6 +148,13 @@ impl Analyzer {
                         )?;
                     }
                 }
+                Statement::Destructuring {
+                    bindings,
+                    source,
+                    span,
+                } => {
+                    self.destructure(bindings, source, locals, declaration_kind, *span)?;
+                }
                 Statement::Assignment {
                     target,
                     operator,
@@ -237,10 +244,11 @@ impl Analyzer {
                     condition, body, ..
                 } => {
                     self.require_boolean(condition, locals)?;
+                    let mut body_locals = self.narrowed_locals(condition, locals, true)?;
                     loops.push("WHILE");
                     self.block(
                         &body.statements,
-                        locals,
+                        &mut body_locals,
                         loops,
                         declaration_kind,
                         declaration_name,
@@ -264,6 +272,11 @@ impl Analyzer {
                     self.require_boolean(condition, locals)?;
                 }
                 Statement::For { header, body, .. } => {
+                    let variable = match header {
+                        ForHeader::Counted { variable, .. } | ForHeader::Each { variable, .. } => {
+                            variable.clone()
+                        }
+                    };
                     self.for_header(header, locals)?;
                     loops.push("FOR");
                     self.block(
@@ -275,6 +288,10 @@ impl Analyzer {
                         return_type,
                     )?;
                     loops.pop();
+                    // The name stays reserved for the function (no shadowing)
+                    // and is not visible after END FOR (B2).
+                    locals.remove(&variable);
+                    self.ended_loop_names.insert(variable);
                 }
                 Statement::Control { kind, target, span } => {
                     if !matches!(kind.as_str(), "EXIT" | "CONTINUE")
@@ -384,6 +401,7 @@ impl Analyzer {
                     } else {
                         DeclarationKind::Function
                     };
+                    let saved_names = std::mem::take(&mut self.ended_loop_names);
                     let mut member_locals = HashMap::new();
                     if !*is_static {
                         self.declare_local(
@@ -400,7 +418,7 @@ impl Analyzer {
                     self.record_return_type(signature.as_ref(), return_type.as_ref());
                     if let Some(signature) = signature {
                         for parameter in &signature.parameters {
-                            self.validate_type_reference(&parameter.type_ref)?;
+                            self.validate_type_reference(&parameter.type_ref, true)?;
                             self.declare_parameter(
                                 &mut member_locals,
                                 &parameter.name,
@@ -410,7 +428,7 @@ impl Analyzer {
                         }
                     } else {
                         for parameter in parameters {
-                            self.validate_type_reference(&parameter.type_ref)?;
+                            self.validate_type_reference(&parameter.type_ref, true)?;
                             self.declare_parameter(
                                 &mut member_locals,
                                 &parameter.name,
@@ -427,6 +445,7 @@ impl Analyzer {
                         declaration_name,
                         return_type.as_ref(),
                     )?;
+                    self.ended_loop_names = saved_names;
                     if let Some(signature) = signature
                         && (!self.is_standard_module || !body.statements.is_empty())
                     {

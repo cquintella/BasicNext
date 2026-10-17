@@ -31,6 +31,8 @@ pub struct OpenFile {
     path: Option<String>,
     writable: bool,
     family: Option<Family>,
+    buffer: Vec<u8>,
+    buffer_pos: usize,
 }
 
 /// Classifies a failed open or remove. A path outside the policy is a
@@ -91,6 +93,8 @@ pub fn open(policy: &FsPolicy, path: &Path, mode: OpenMode) -> Result<OpenFile, 
         path: Some(text(path)),
         writable: write,
         family: None,
+        buffer: Vec::new(),
+        buffer_pos: 0,
     })
 }
 
@@ -161,6 +165,8 @@ impl OpenFile {
     /// The flush failure.
     pub fn close(&mut self) -> Result<(), FileError> {
         self.family = None;
+        self.buffer.clear();
+        self.buffer_pos = 0;
         let Some(file) = self.file.take() else {
             return Ok(());
         };
@@ -182,24 +188,34 @@ impl OpenFile {
     }
 
     fn read_line_bytes(&mut self) -> Result<Option<String>, Failure> {
-        let file = self.file_for(Family::Text, false)?;
+        self.file_for(Family::Text, false)?;
         let mut bytes = Vec::new();
         let mut read_any = false;
-        let mut one = [0_u8; 1];
-        // ponytail: one read per byte keeps the position exact for the next
-        // call without a buffer to share; buffer when large files matter.
+
         loop {
-            match file.read(&mut one)? {
-                0 => break,
-                _ => {
-                    read_any = true;
-                    if one[0] == b'\n' {
-                        break;
-                    }
-                    bytes.push(one[0]);
+            if self.buffer_pos < self.buffer.len() {
+                read_any = true;
+                let available = &self.buffer[self.buffer_pos..];
+                if let Some(pos) = available.iter().position(|&b| b == b'\n') {
+                    bytes.extend_from_slice(&available[..pos]);
+                    self.buffer_pos += pos + 1;
+                    break;
                 }
+                bytes.extend_from_slice(available);
+                self.buffer_pos = self.buffer.len();
+            }
+
+            // Buffer is exhausted; read another 8KB chunk.
+            self.buffer.resize(8192, 0);
+            let file = self.file.as_mut().expect("file verified by file_for");
+            let n = file.read(&mut self.buffer)?;
+            self.buffer.truncate(n);
+            self.buffer_pos = 0;
+            if n == 0 {
+                break;
             }
         }
+
         if !read_any {
             self.family = Some(Family::Text);
             return Ok(None);
@@ -223,8 +239,13 @@ impl OpenFile {
     }
 
     fn read_all_text(&mut self) -> Result<String, Failure> {
-        let file = self.file_for(Family::Text, false)?;
+        self.file_for(Family::Text, false)?;
         let mut bytes = Vec::new();
+        if self.buffer_pos < self.buffer.len() {
+            bytes.extend_from_slice(&self.buffer[self.buffer_pos..]);
+            self.buffer_pos = self.buffer.len();
+        }
+        let file = self.file.as_mut().expect("file verified by file_for");
         file.read_to_end(&mut bytes)?;
         let text = String::from_utf8(bytes).map_err(Failure::InvalidUtf8)?;
         self.family = Some(Family::Text);

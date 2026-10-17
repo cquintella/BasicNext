@@ -9,8 +9,8 @@ use bn_types::class_model::ClassModel;
 
 use crate::{
     ast::{
-        Block, DeclarationKind, Expression, ExpressionKind, ForHeader, FunctionSignature, Item,
-        Literal, Program, Statement, TypeReference,
+        Block, DeclarationKind, DestructuringBinding, Expression, ExpressionKind, ForHeader,
+        FunctionSignature, Item, Literal, Program, Statement, TypeReference,
     },
     diagnostic::{DiagId, Diagnostic, DiagnosticValue, Label, LabelStyle},
     module_graph::{ModuleGraph, ModuleId},
@@ -116,6 +116,11 @@ pub struct SemanticModel {
     /// record-like types. Lowering projects these into IR layouts without
     /// leaking semantic identities into `bn_ir`.
     pub record_members: HashMap<String, Vec<RecordMember>>,
+    /// Data fields of each `STRUCT`, in declaration order. The key is the
+    /// local name, or `#<module>.Name` for an imported struct. A positional
+    /// literal reads this order. `record_members` is sorted by name and is
+    /// not this list.
+    pub struct_fields: HashMap<String, Vec<RecordMember>>,
     pub host_aliases: HashMap<String, String>,
 }
 
@@ -153,6 +158,17 @@ impl SemanticModel {
                 .and_then(|element| dimension_product(dimensions)?.checked_mul(element)),
             _ => None,
         }
+    }
+
+    /// Fields of `ty` when it is a `STRUCT`, in declaration order.
+    #[must_use]
+    pub fn struct_fields_of(&self, ty: &Type) -> Option<&[RecordMember]> {
+        let key = match ty {
+            Type::Named(name) => name.clone(),
+            Type::ImportedNamed { module, name } => format!("#{}.{}", module.0, name),
+            _ => return None,
+        };
+        self.struct_fields.get(&key).map(Vec::as_slice)
     }
 }
 
@@ -312,6 +328,8 @@ pub(crate) struct ImportedTypeInfo {
     constructor: Option<Constructor>,
     /// Implemented interfaces as `#<module>.Name`, aliases resolved.
     interfaces: Vec<String>,
+    /// Data fields in declaration order. Empty when `kind` is not a `STRUCT`.
+    field_order: Vec<RecordMember>,
 }
 #[allow(clippy::struct_excessive_bools)]
 struct Analyzer {
@@ -345,6 +363,16 @@ struct Analyzer {
     collect_warnings: bool,
     warnings: Vec<Diagnostic>,
     host_aliases: HashMap<String, String>,
+    /// Local `STRUCT` fields in declaration order, keyed by the struct name.
+    struct_fields: HashMap<String, Vec<RecordMember>>,
+    /// `FOR` names that have left their loop. The name is not visible, and
+    /// declaring it again in the same function is `DUPLICATE_NAME` (B2).
+    ended_loop_names: HashSet<String>,
+    /// Struct names whose layout is on the stack, so a cycle is a
+    /// `TYPE_MISMATCH` instead of a recursive walk.
+    layout_active: Vec<String>,
+    /// Span of the field that closes a self-containing `STRUCT`.
+    recursive_struct: Option<Span>,
 }
 
 #[derive(Debug)]
@@ -428,11 +456,10 @@ fn analyze_modules_with_warnings_mode(
     graph: &ModuleGraph,
     collect_warnings: bool,
 ) -> Result<ModuleAnalysis, ModuleAnalysisError> {
-    let exports = graph
-        .modules
-        .iter()
-        .map(|module| (module.id, exported_declarations(module.id, &module.program)))
-        .collect::<HashMap<_, _>>();
+    let mut exports = HashMap::new();
+    for module in &graph.modules {
+        exports.insert(module.id, exported_declarations(module, &exports));
+    }
     let imported_types = imported_type_catalog(graph);
     let module_constants = exported_constants(graph);
     let mut models = Vec::with_capacity(graph.modules.len());
@@ -540,6 +567,8 @@ mod analyzer6;
 mod analyzer7;
 #[path = "semantic/analyzer8.rs"]
 mod analyzer8;
+#[path = "semantic/destructuring.rs"]
+mod destructuring;
 #[path = "semantic/host_defaults.rs"]
 mod host_defaults;
 pub(crate) use analyzer8::{declaration_type, function_type, type_from_atom, type_from_reference};

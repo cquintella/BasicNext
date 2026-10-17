@@ -66,7 +66,7 @@ expose those snapshots.
 
 ## Consistency requirements
 
-The services must report the same source spans and diagnostics as `bn check`
+The services must report the same source spans and diagnostics as `bni check`
 for complete, unchanged source. A breakpoint maps to an executable statement
 span; non-executable locations are rejected explicitly. Paused-variable
 inspection must not evaluate arbitrary BN expressions or invoke user code.
@@ -86,4 +86,4 @@ and [Debug Adapter Protocol specification](https://microsoft.github.io/debug-ada
 Conformance tests use local stdio clients. They cover malformed framing,
 incremental document replacement, diagnostics, navigation, completion,
 breakpoint mapping, stepping, scope visibility, termination, and source-span
-parity with `bn check`. VS Code integration tests exercise the same services.
+parity with `bni check`. VS Code integration tests exercise the same services.

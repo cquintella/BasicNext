@@ -40,6 +40,7 @@ fn binary(
     ty: &Type,
     span: Span,
     classes: &bn_types::class_model::ClassModel,
+    pointer_len: Option<u64>,
 ) -> Result<Value, Diagnostic> {
     if operator == "IS" {
         let Value::Type(test) = right else {
@@ -49,7 +50,7 @@ fn binary(
                 span,
             ));
         };
-        return Ok(Value::Boolean(is_value(left, test, classes)));
+        return Ok(Value::Boolean(is_value(left, test, classes, pointer_len)));
     }
     if matches!(operator, "Assign" | "NotEqual") {
         let equal = equals(left, right);
@@ -73,15 +74,25 @@ fn binary(
         };
     }
     if let (Value::String(left), Value::String(right)) = (left, right) {
+        let order = left.chars().cmp(right.chars());
         return match operator {
             "Plus" => Ok(Value::String(shared_string(format!("{left}{right}")))),
+            "Less" => Ok(Value::Boolean(order.is_lt())),
+            "LessEqual" => Ok(Value::Boolean(order.is_le())),
+            "Greater" => Ok(Value::Boolean(order.is_gt())),
+            "GreaterEqual" => Ok(Value::Boolean(order.is_ge())),
             _ => Err(super::type_mismatch(
-                "Plus",
+                "Plus or an ordering operator",
                 operator,
                 "STRING operation",
                 span,
             )),
         };
+    }
+    if operator == "Power" && matches!(ty, Type::Float(_)) {
+        let left = number_as_float(left, span)?;
+        let right = number_as_float(right, span)?;
+        return Ok(float_value(left.powf(right), float_kind(ty)));
     }
     if let (Value::Date(left), Value::Date(right)) = (left, right) {
         return ordered(operator, left, right, span);
@@ -221,6 +232,21 @@ fn shift(value: i128, count: i128, ty: &Type, left: bool, span: Span) -> Result<
     }
 }
 
+/// `FLOAT32` keeps a finite narrowing. An infinite result is overflow.
+fn finite_float(value: f64, kind: FloatType, span: Span) -> Result<Value, Diagnostic> {
+    if kind == FloatType::Float32 {
+        #[allow(clippy::cast_possible_truncation)]
+        let narrowed = value as f32;
+        if narrowed.is_infinite() {
+            return Err(numeric_overflow(
+                bn_diag::trap_texts::FLOAT64_TO_FLOAT32,
+                span,
+            ));
+        }
+    }
+    Ok(float_value(value, kind))
+}
+
 fn cast(value: Value, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
     match ty {
         Type::Boolean => Ok(Value::Boolean(match value {
@@ -250,9 +276,10 @@ fn cast(value: Value, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
                 span,
             )),
         },
-        Type::Float(_) => Ok(float_value(number_as_float(&value, span)?, float_kind(ty))),
+        Type::Float(_) => finite_float(number_as_float(&value, span)?, float_kind(ty), span),
         // C3: the text is exactly what PRINT writes for the value.
         Type::String => match value {
+            Value::String(_) => Ok(value),
             Value::Integer(..) | Value::Float(..) | Value::Boolean(_) => {
                 Ok(Value::String(shared_string(render(&value))))
             }
@@ -274,6 +301,7 @@ fn cast(value: Value, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
                 span,
             )),
         },
+        _ if value_matches_type(&value, ty) => Ok(value),
         _ => Err(super::type_mismatch(
             "supported conversion target",
             "incompatible value or type",
@@ -286,7 +314,7 @@ fn cast(value: Value, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
 pub(super) fn coerce(value: Value, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
     match (&value, ty) {
         (Value::Integer(number, _), Type::Integer(_)) => checked_integer(Some(*number), ty, span),
-        (Value::Float(number, _), Type::Float(_)) => Ok(float_value(*number, float_kind(ty))),
+        (Value::Float(number, _), Type::Float(_)) => finite_float(*number, float_kind(ty), span),
         // A number stored as `INT64 OR Error` becomes that alternative's
         // width: `IS INT64` must hold (0.6.md, IS tests a declared
         // alternative), as it does in compiled code. Only a single numeric
@@ -359,8 +387,7 @@ pub(super) fn coerce(value: Value, ty: &Type, span: Span) -> Result<Value, Diagn
         )
         | (
             Value::Type(_),
-            Type::System
-            | Type::HostClock
+            Type::HostClock
             | Type::HostRandom
             | Type::HostFileSystem
             | Type::HostNet
@@ -444,7 +471,7 @@ fn builtin(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnos
         if step == 0 {
             return Err(runtime_error(
                 bn_diag::DiagId::INVALID_FOR_STEP,
-                "FOR STEP cannot be zero",
+                bn_diag::trap_texts::FOR_STEP_ZERO,
                 span,
             ));
         }
@@ -453,6 +480,15 @@ fn builtin(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnos
         } else {
             current >= end
         }));
+    }
+    if name == "$for_fits" {
+        let (current, kind) = integer(&arguments[0], span)?;
+        let (step, _) = integer(&arguments[1], span)?;
+        let fits = current.checked_add(step).is_some_and(|sum| {
+            let (minimum, maximum) = integer_range(kind);
+            (minimum..=maximum).contains(&sum)
+        });
+        return Ok(Value::Boolean(fits));
     }
     if name == "ASC" {
         let Value::String(text) = &arguments[0] else {

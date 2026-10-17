@@ -19,6 +19,7 @@ pub(crate) fn lower_terminator(
     text: &mut crate::ir::LlvmModule,
     module: &Module,
     function: &Function,
+    block_id: BlockId,
     terminator: &Terminator,
     analysis: &LoweringAnalysis<'_>,
     symbols: &HashMap<SymbolId, usize>,
@@ -99,11 +100,9 @@ pub(crate) fn lower_terminator(
         }
         Terminator::Return { value: None } => text.emit(LlvmInst::Unreachable),
         Terminator::Stop { code: value } if !state.is_start => {
-            let operand = coerce_return_operand(
-                text,
-                *value,
-                analysis.values.get(value).expect("validated stop type"),
-            );
+            let stop_ty = analysis.values.get(value).expect("validated stop type");
+            traps::emit_exit_range_check(text, module, block_id, *value, stop_ty, state);
+            let operand = coerce_return_operand(text, *value, stop_ty);
             cleanup_owned_memory(text, module, analysis, symbols, state);
             // The caller sees the STOP through `$stopping` and releases its
             // own locals in turn (0.6.md, "`STOP`"); the value returned is
@@ -209,15 +208,54 @@ pub(crate) fn lower_terminator(
             }
         }
         Terminator::Return { value: Some(value) } | Terminator::Stop { code: value } => {
-            let operand = coerce_return_operand(
-                text,
-                *value,
-                analysis.values.get(value).expect("validated return type"),
-            );
-            cleanup_owned_memory(text, module, analysis, symbols, state);
-            text.emit(LlvmInst::Ret {
-                val: Some((LlvmType::I32, operand)),
-            });
+            let return_ty = analysis.values.get(value).expect("validated return type");
+            if state.is_start && !matches!(return_ty, Type::Integer(_) | Type::IntegerLiteral(_)) {
+                let union = crate::layout::handle_result_ty();
+                let own = LlvmOperand::reg(format!("v{}", value.0));
+                let tag = text.fresh_tag();
+                let is_err = format!("starterriserr{tag}");
+                text.assign(&is_err, LlvmInst::extract(union.clone(), own.clone(), 0));
+                let err_block = format!("starterr{tag}");
+                let ok_block = format!("startok{tag}");
+                text.emit(LlvmInst::cond_br(
+                    LlvmOperand::reg(&is_err),
+                    &err_block,
+                    &ok_block,
+                ));
+                state.control_flow.label(text, err_block);
+                text.assign(
+                    format!("starterrptr{tag}"),
+                    LlvmInst::extract(union.clone(), own.clone(), 1),
+                );
+                text.assign(
+                    format!("starterrcode{tag}"),
+                    LlvmInst::extract(union, own, 2),
+                );
+                let args = vec![
+                    (
+                        LlvmType::I64,
+                        LlvmOperand::reg(format!("starterrcode{tag}")),
+                    ),
+                    (LlvmType::Ptr, LlvmOperand::reg(format!("starterrptr{tag}"))),
+                ];
+                text.emit(LlvmInst::call(LlvmType::Void, "bn_rt_error_print", args));
+                cleanup_owned_memory(text, module, analysis, symbols, state);
+                text.emit(LlvmInst::Ret {
+                    val: Some((LlvmType::I32, LlvmOperand::int(1))),
+                });
+                state.control_flow.label(text, ok_block);
+                cleanup_owned_memory(text, module, analysis, symbols, state);
+                text.emit(LlvmInst::Ret {
+                    val: Some((LlvmType::I32, LlvmOperand::int(0))),
+                });
+            } else {
+                traps::emit_exit_range_check(text, module, block_id, *value, return_ty, state);
+                let operand = coerce_return_operand(text, *value, return_ty);
+                cleanup_owned_memory(text, module, analysis, symbols, state);
+                text.emit(LlvmInst::Ret {
+                    val: Some((LlvmType::I32, operand)),
+                });
+            }
         }
     }
 }
@@ -326,26 +364,6 @@ pub(crate) fn cleanup_owned_memory(
                 vec![(LlvmType::Ptr, reg(format!("structslot{slot}")))],
             ));
         }
-    }
-    let mut input_symbols = analysis.input_symbols.iter().collect::<Vec<_>>();
-    input_symbols.sort_by_key(|symbol| symbol.0);
-    for symbol in input_symbols {
-        let slot = symbols[symbol];
-        let (line, owned) = (
-            format!("inputfree{cleanup}_{slot}"),
-            format!("inputfreeowned{cleanup}_{slot}"),
-        );
-        text.assign(
-            line.clone(),
-            LlvmInst::load(LlvmType::Ptr, reg(format!("s{slot}"))),
-        );
-        text.assign(
-            owned.clone(),
-            LlvmInst::load(LlvmType::I1, reg(format!("inputowned{slot}"))),
-        );
-        let select = LlvmInst::select(reg(owned), LlvmType::Ptr, reg(line), LlvmOperand::null());
-        text.assign(format!("inputfreenull{cleanup}_{slot}"), select);
-        free(text, format!("inputfreenull{cleanup}_{slot}"));
     }
     let mut struct_results = analysis
         .owned_struct_results
@@ -510,7 +528,7 @@ pub(crate) fn lower_print_value(
         state.control_flow.label(text, format!("optna{count}"));
         let args = vec![
             (LlvmType::Ptr, global(".bn_fmt_str")),
-            (LlvmType::Ptr, global(".bn_na")),
+            (LlvmType::Ptr, crate::layout::string_payload(".bn_na")),
         ];
         printf(text, format!("optnaprint{count}"), args);
         text.emit(LlvmInst::Br {
@@ -613,12 +631,29 @@ pub(crate) fn lower_print_value(
         state.print_count += 1;
         return;
     }
+    if *ty == Type::String {
+        // The header length is authoritative; printf would stop at U+0000.
+        text.emit(LlvmInst::call(
+            LlvmType::Void,
+            "bn_rt_print_str",
+            vec![
+                (LlvmType::Ptr, own.clone()),
+                (LlvmType::I64, LlvmOperand::int(-1)),
+            ],
+        ));
+        state.print_count += 1;
+        return;
+    }
     let count = state.print_count;
     let print = format!("print{count}");
     match llvm_type(ty).expect("validated print type") {
         LlvmType::I1 => {
-            let text_of =
-                LlvmInst::select(own, LlvmType::Ptr, global(".bn_true"), global(".bn_false"));
+            let text_of = LlvmInst::select(
+                own,
+                LlvmType::Ptr,
+                crate::layout::string_payload(".bn_true"),
+                crate::layout::string_payload(".bn_false"),
+            );
             text.assign(format!("bool{count}"), text_of);
             let args = vec![
                 (LlvmType::Ptr, global(".bn_fmt_str")),

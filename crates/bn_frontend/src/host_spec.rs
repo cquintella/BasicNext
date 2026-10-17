@@ -235,6 +235,7 @@ mod tests {
             "FileSystem",
             "Net",
             "Exec",
+            "Env",
             "NumProcs",
         ] {
             assert!(capability(name).is_some(), "missing HOST capability {name}");

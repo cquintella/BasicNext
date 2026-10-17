@@ -289,6 +289,8 @@ pub(crate) fn emit_float_power(
     destination: ValueId,
     left: ValueId,
     right: ValueId,
+    left_ty: &Type,
+    right_ty: &Type,
     ty: &Type,
 ) {
     let llvm_ty = llvm_type(ty).expect("validated float type");
@@ -297,11 +299,40 @@ pub(crate) fn emit_float_power(
         T::Double => "llvm.pow.f64",
         _ => unreachable!("validated float power type"),
     };
-    let args = vec![(llvm_ty.clone(), v(left)), (llvm_ty.clone(), v(right))];
+    let left_op = float_power_operand(text, left, left_ty, &llvm_ty);
+    let right_op = float_power_operand(text, right, right_ty, &llvm_ty);
+    let args = vec![(llvm_ty.clone(), left_op), (llvm_ty.clone(), right_op)];
     text.assign(
         format!("v{}", destination.0),
         I::call(llvm_ty, intrinsic, args),
     );
+}
+
+fn float_power_operand(
+    text: &mut crate::ir::LlvmModule,
+    value: ValueId,
+    from: &Type,
+    target: &T,
+) -> O {
+    let source = llvm_type(from).expect("validated power operand");
+    if source == *target {
+        return v(value);
+    }
+    let opcode = if source.is_integer() {
+        if is_unsigned(from) {
+            CastOp::UIToFP
+        } else {
+            CastOp::SIToFP
+        }
+    } else {
+        CastOp::FPExt
+    };
+    let name = format!("powarg{}_{}", value.0, text.fresh_tag());
+    text.assign(
+        name.clone(),
+        I::cast(opcode, source, v(value), target.clone()),
+    );
+    O::reg(name)
 }
 
 pub(crate) fn emit_string_concat(
@@ -311,43 +342,17 @@ pub(crate) fn emit_string_concat(
     right: ValueId,
 ) {
     let dest = destination.0;
-    let r = |name: &str| O::reg(format!("s{name}{dest}"));
-    let own = O::reg(format!("v{dest}"));
-    let strlen = |value: O| I::call(T::I64, "strlen", vec![(T::Ptr, value)]);
-    let memcpy = |text: &mut crate::ir::LlvmModule, target: O, source: O, bytes: O| {
-        let args = vec![
-            (T::Ptr, target),
-            (T::Ptr, source),
-            (T::I64, bytes),
-            (T::I1, O::bool(false)),
-        ];
-        text.emit(I::call(T::Void, "llvm.memcpy.p0.p0.i64", args));
-    };
-    text.assign(format!("slenl{dest}"), strlen(v(left)));
-    text.assign(format!("slenr{dest}"), strlen(v(right)));
-    text.assign(
-        format!("slens{dest}"),
-        I::binary(BinaryOp::Add, T::I64, r("lenl"), r("lenr")),
+    let call = I::call(
+        T::Ptr,
+        "bn_rt_str_concat",
+        vec![
+            (T::Ptr, v(left)),
+            (T::I64, O::int(-1)),
+            (T::Ptr, v(right)),
+            (T::I64, O::int(-1)),
+        ],
     );
-    text.assign(
-        format!("sbytes{dest}"),
-        I::binary(BinaryOp::Add, T::I64, r("lens"), O::int(1)),
-    );
-    text.assign(
-        format!("v{dest}"),
-        I::call(T::Ptr, "malloc", vec![(T::I64, r("bytes"))]),
-    );
-    memcpy(text, own.clone(), v(left), r("lenl"));
-    text.assign(
-        format!("stail{dest}"),
-        I::gep(T::I8, own, vec![(T::I64, r("lenl"))]),
-    );
-    memcpy(text, r("tail"), v(right), r("lenr"));
-    text.assign(
-        format!("send{dest}"),
-        I::gep(T::I8, r("tail"), vec![(T::I64, r("lenr"))]),
-    );
-    text.emit(I::store(T::I8, O::int(0), r("end")));
+    text.assign(format!("v{dest}"), call);
 }
 
 /// The intrinsic a `^` on `ty` calls: `llvm.pow` for floating point, the

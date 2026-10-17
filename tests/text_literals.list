@@ -671,7 +671,9 @@ crates/bn_diag/src/trap_texts.rs	prose	converting a value to INTEGER
 crates/bn_diag/src/trap_texts.rs	prose	integer exponent cannot be negative
 crates/bn_diag/src/trap_texts.rs	prose	integer exponent is too large
 crates/bn_diag/src/trap_texts.rs	prose	performing an integer operation
+crates/bn_diag/src/trap_texts.rs	prose	cannot index a NULL pointer
 crates/bn_diag/src/trap_texts.rs	prose	pointer element type does not match destination type
+crates/bn_diag/src/trap_texts.rs	prose	pointer length does not fit INTEGER
 crates/bn_diag/src/trap_texts.rs	identifier	HOST.Args
 crates/bn_frontend/src/host_spec.rs	identifier	HOST.
 crates/bn_frontend/src/host_spec.rs	identifier	HOST.Args
@@ -1677,8 +1679,6 @@ crates/bn_interp/src/executor/part10.rs	prose	allocation byte size overflowed
 crates/bn_interp/src/executor/part10.rs	prose	allocation exceeds the host limit
 crates/bn_interp/src/executor/part10.rs	prose	allocation length does not fit the host
 crates/bn_interp/src/executor/part10.rs	prose	assignment index operation
-crates/bn_interp/src/executor/part10.rs	prose	cannot index a NULL pointer
-crates/bn_interp/src/executor/part10.rs	prose	cannot index a NULL pointer
 crates/bn_interp/src/executor/part10.rs	prose	checked string index
 crates/bn_interp/src/executor/part10.rs	prose	index operation
 crates/bn_interp/src/executor/part10.rs	prose	indexable value
@@ -1719,7 +1719,6 @@ crates/bn_interp/src/executor/part11.rs	prose	object member
 crates/bn_interp/src/executor/part11.rs	prose	object member
 crates/bn_interp/src/executor/part11.rs	prose	object member
 crates/bn_interp/src/executor/part11.rs	prose	object member
-crates/bn_interp/src/executor/part11.rs	prose	pointer length does not fit INTEGER
 crates/bn_interp/src/executor/part11.rs	prose	pointer length {actual_len} does not match {}
 crates/bn_interp/src/executor/part11.rs	prose	record field slot is absent
 crates/bn_interp/src/executor/part11.rs	prose	record field slot is absent
@@ -3250,8 +3249,6 @@ crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.GetIntegerAt
 crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.GetJson
 crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.GetJsonAt
 crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.GetString
-crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.GetString
-crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.GetStringAt
 crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.GetStringAt
 crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.Length
 crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.Parse

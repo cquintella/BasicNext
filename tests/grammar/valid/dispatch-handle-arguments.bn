@@ -1,0 +1,185 @@
+IMPORT BNDispatch AS Dispatch
+IMPORT BNMath AS Math
+
+ASYNC FUNCTION WorkerWithMutex(m AS Dispatch.Mutex, value AS INTEGER) AS INTEGER OR Error
+    LET lockRes AS VOID OR Error = m.Lock(1000)
+    IF lockRes IS Error THEN
+        RETURN lockRes
+    END IF
+    LET result AS INTEGER = value * 2
+    LET unlockRes AS VOID OR Error = m.Unlock()
+    IF unlockRes IS Error THEN
+        RETURN unlockRes
+    END IF
+    RETURN result
+END FUNCTION
+
+ASYNC FUNCTION LockAndLeave(m AS Dispatch.Mutex) AS INTEGER OR Error
+    LET lockRes AS VOID OR Error = m.Lock(1000)
+    IF lockRes IS Error THEN
+        RETURN lockRes
+    END IF
+    RETURN 42
+END FUNCTION
+
+ASYNC FUNCTION ChildTask(n AS INTEGER) AS INTEGER OR Error
+    RETURN n * 10
+END FUNCTION
+
+ASYNC FUNCTION ParentTask(q AS Dispatch.Queue, val AS INTEGER) AS INTEGER OR Error
+    LET t AS Dispatch.Ticket OR Error = ASYNC q ChildTask(val)
+    IF t IS Error THEN
+        RETURN t
+    END IF
+    LET res AS INTEGER OR Error = AWAIT t(1000)
+    IF res IS Error THEN
+        RETURN res
+    END IF
+    t.Close()
+    RETURN res + 5
+END FUNCTION
+
+ASYNC FUNCTION Producer() AS INTEGER OR Error
+    RETURN 99
+END FUNCTION
+
+ASYNC FUNCTION Consumer(t AS Dispatch.Ticket) AS INTEGER OR Error
+    LET res AS INTEGER OR Error = AWAIT t(2000)
+    IF res IS Error THEN
+        RETURN res
+    END IF
+    RETURN res + 1
+END FUNCTION
+
+ASYNC FUNCTION WorkerBarrier(b AS Dispatch.Barrier) AS BOOLEAN OR Error
+    LET arrivedLast AS BOOLEAN OR Error = b.Wait(2000)
+    RETURN arrivedLast
+END FUNCTION
+
+ASYNC FUNCTION WorkerDate(d AS DATE, t AS TIME, ts AS TIMESTAMP) AS INTEGER OR Error
+    LET rt AS TIMESTAMP = Math.TOTIMESTAMP(d, t)
+    IF rt = ts THEN
+        RETURN 777
+    END IF
+    RETURN 0
+END FUNCTION
+
+FUNCTION Start() AS VOID OR Error
+    LET queue AS Dispatch.Queue OR Error = Dispatch.Queue.Concurrent(4)
+    IF queue IS Error THEN
+        RETURN queue
+    END IF
+    IF queue IS Dispatch.Queue THEN
+        PRINT "IS QUEUE TRUE"
+    END IF
+
+    LET mutex AS Dispatch.Mutex OR Error = Dispatch.Mutex.New()
+    IF mutex IS Error THEN
+        RETURN mutex
+    END IF
+
+    LET ticket1 AS Dispatch.Ticket OR Error = ASYNC queue WorkerWithMutex(mutex, 21)
+    IF ticket1 IS Error THEN
+        RETURN ticket1
+    END IF
+    LET res1 AS INTEGER OR Error = AWAIT ticket1(1000)
+    IF res1 IS Error THEN
+        RETURN res1
+    END IF
+    PRINT "RES1", res1
+    ticket1.Close()
+
+    LET ticket2 AS Dispatch.Ticket OR Error = ASYNC queue LockAndLeave(mutex)
+    IF ticket2 IS Error THEN
+        RETURN ticket2
+    END IF
+    LET res2 AS INTEGER OR Error = AWAIT ticket2(1000)
+    IF res2 IS Error THEN
+        RETURN res2
+    END IF
+    PRINT "RES2", res2
+    ticket2.Close()
+
+    LET lockAfter AS VOID OR Error = mutex.Lock(1000)
+    IF lockAfter IS Error THEN
+        RETURN lockAfter
+    END IF
+    PRINT "MUTEX AUTO UNLOCKED"
+    mutex.Unlock()
+
+    LET tParent AS Dispatch.Ticket OR Error = ASYNC queue ParentTask(queue, 4)
+    IF tParent IS Error THEN
+        RETURN tParent
+    END IF
+    LET resParent AS INTEGER OR Error = AWAIT tParent(2000)
+    IF resParent IS Error THEN
+        RETURN resParent
+    END IF
+    PRINT "NESTED TASK RES", resParent
+    tParent.Close()
+
+    LET tProd AS Dispatch.Ticket OR Error = ASYNC queue Producer()
+    IF tProd IS Error THEN
+        RETURN tProd
+    END IF
+    LET tCons AS Dispatch.Ticket OR Error = ASYNC queue Consumer(tProd)
+    IF tCons IS Error THEN
+        RETURN tCons
+    END IF
+    LET resCons AS INTEGER OR Error = AWAIT tCons(2000)
+    IF resCons IS Error THEN
+        RETURN resCons
+    END IF
+    PRINT "CONSUMER RES", resCons
+    tProd.Close()
+    tCons.Close()
+
+    LET barrier AS Dispatch.Barrier OR Error = Dispatch.Barrier.New(3)
+    IF barrier IS Error THEN
+        RETURN barrier
+    END IF
+    LET b1 AS Dispatch.Ticket OR Error = ASYNC queue WorkerBarrier(barrier)
+    LET b2 AS Dispatch.Ticket OR Error = ASYNC queue WorkerBarrier(barrier)
+    LET b3 AS Dispatch.Ticket OR Error = ASYNC queue WorkerBarrier(barrier)
+    IF b1 IS Error OR b2 IS Error OR b3 IS Error THEN
+        PRINT "ERROR SUBMITTING BARRIER"
+        RETURN
+    END IF
+    LET br1 AS BOOLEAN OR Error = AWAIT b1(3000)
+    LET br2 AS BOOLEAN OR Error = AWAIT b2(3000)
+    LET br3 AS BOOLEAN OR Error = AWAIT b3(3000)
+    IF br1 IS Error OR br2 IS Error OR br3 IS Error THEN
+        PRINT "ERROR AWAITING BARRIER"
+        RETURN
+    END IF
+    LET trueCount AS INTEGER = 0
+    IF br1 IS BOOLEAN AND br1 THEN
+        trueCount = trueCount + 1
+    END IF
+    IF br2 IS BOOLEAN AND br2 THEN
+        trueCount = trueCount + 1
+    END IF
+    IF br3 IS BOOLEAN AND br3 THEN
+        trueCount = trueCount + 1
+    END IF
+    PRINT "BARRIER TRUE COUNT", trueCount
+    b1.Close()
+    b2.Close()
+    b3.Close()
+
+    LET tsIn AS TIMESTAMP = 1000
+    LET d AS DATE = Math.TODATE(tsIn)
+    LET t AS TIME = Math.TOTIME(tsIn)
+    LET tktDate AS Dispatch.Ticket OR Error = ASYNC queue WorkerDate(d, t, tsIn)
+    IF tktDate IS Error THEN
+        RETURN tktDate
+    END IF
+    LET resDate AS INTEGER OR Error = AWAIT tktDate(2000)
+    IF resDate IS Error THEN
+        RETURN resDate
+    END IF
+    PRINT "DATE TIME RES", resDate
+    tktDate.Close()
+
+    RETURN queue.Close(1000)
+END FUNCTION

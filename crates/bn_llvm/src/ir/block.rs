@@ -81,6 +81,7 @@ mod tests {
             LlvmInst::Alloca {
                 ty: LlvmType::I32,
                 align: Some(4),
+                count: None,
             },
         );
         bb.push(LlvmInst::Store {

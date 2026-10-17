@@ -132,8 +132,12 @@ ship with O3, `OVERRIDE` semantics with O2.
 |---|---|
 | **Added (O3)** | `PROTECTED` — third `visibility`: same class and `EXTENDS` subclasses only. |
 | **Added (O2)** | `OVERRIDE` — required marker on a method that overrides an inherited instance method. |
-| **Operators (S1)** | `++` / `--` — statement-only postfix tokens, sugar for `+= 1` / `-= 1`. Tokens, not reserved words. |
+| **Operators (S1)** | `++` / `--` — postfix statement tokens in 0.5.2, sugar for `+= 1` / `-= 1`. Tokens, not reserved words. (Expanded in 0.6.0 S1' to prefix and postfix expressions and statements.) |
 | **No keyword** | I1 qualified import, O4 factories. O1 downcast is deferred (its surface, `AS` vs `TRYCAST`, is decided with it). |
+
+## 0.6.0 changes
+
+0.6.0 adds **no reserved word**. The toolchain surface splits into `bni` (interpreter) and `bnc` (native compiler) replacing `bn`. S1' expands `++` / `--` operators from statement-only sugar to prefix and postfix expressions (`++x`, `--x`, `x++`, `x--`) and statements.
 
 ## 0.6.5 changes
 

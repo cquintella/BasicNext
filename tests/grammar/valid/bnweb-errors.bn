@@ -1,0 +1,23 @@
+IMPORT BNWeb AS Web
+
+FUNCTION Start() AS VOID
+    LET resp AS Web.Response = NEW Web.Response()
+    IF resp.SetStatus(200) IS Error THEN
+        PRINT "status error"
+        RETURN
+    END IF
+    IF resp.Write("initial") IS Error THEN
+        PRINT "write error"
+        RETURN
+    END IF
+    IF resp.Commit() IS Error THEN
+        PRINT "commit error"
+        RETURN
+    END IF
+    LET late AS VOID OR Error = resp.Write("cannot write after commit")
+    PRINT "late-error:", late IS Error
+
+    LET server AS Web.Server = NEW Web.Server()
+    LET stopped AS VOID OR Error = server.Stop(0)
+    PRINT "unstarted-stop-error:", stopped IS Error
+END FUNCTION

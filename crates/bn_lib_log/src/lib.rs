@@ -28,7 +28,7 @@ pub const WEB_ACCESS_MEMBER: &str = "Logger.$access";
 
 #[derive(Debug)]
 pub struct LogProvider {
-    loggers: HashMap<u64, bn_core_log::Logger>,
+    loggers: HashMap<u64, std::sync::Arc<std::sync::Mutex<bn_core_log::Logger>>>,
     /// Bindings that hold each logger: the last one's end destroys it (K61).
     holders: HashMap<u64, usize>,
     next_logger: u64,
@@ -68,11 +68,12 @@ impl Provider for LogProvider {
                 span,
             ));
         };
-        let Some(logger) = self.loggers.get_mut(id) else {
+        let Some(logger) = self.loggers.get(id).cloned() else {
             return Err(invalid_logger(span));
         };
         let sink = CoreSink(std::cell::RefCell::new(core));
-        let result = logger_call(logger, &sink, &operation, member, &arguments, span)?;
+        let mut guard = logger.lock().map_err(|_| invalid_logger(span))?;
+        let result = logger_call(&mut guard, &sink, &operation, member, &arguments, span)?;
         Ok(result.map_or_else(|failure| failed(&operation, &failure), |()| Value::Null))
     }
 
@@ -117,6 +118,15 @@ impl Provider for LogProvider {
 }
 
 impl LogProvider {
+    /// Hands the shared logger to another library (`BNWeb` access log).
+    #[must_use]
+    pub fn core_logger(
+        &self,
+        id: u64,
+    ) -> Option<std::sync::Arc<std::sync::Mutex<bn_core_log::Logger>>> {
+        self.loggers.get(&id).cloned()
+    }
+
     /// `Logger.New(label, format, destination)`.
     fn new_logger(&mut self, core: &mut dyn CoreContext, arguments: &[Value]) -> Value {
         let operation = Operation::New.name();
@@ -133,7 +143,8 @@ impl LogProvider {
             Ok(logger) => {
                 let id = self.next_logger;
                 self.next_logger += 1;
-                self.loggers.insert(id, logger);
+                self.loggers
+                    .insert(id, std::sync::Arc::new(std::sync::Mutex::new(logger)));
                 self.holders.insert(id, 1);
                 Value::LogLogger(id)
             }
@@ -360,7 +371,9 @@ mod lifetime_tests {
             &NoSink,
         )
         .expect("null logger");
-        provider.loggers.insert(1, logger);
+        provider
+            .loggers
+            .insert(1, std::sync::Arc::new(std::sync::Mutex::new(logger)));
         provider.holders.insert(1, 1);
         let value = Value::LogLogger(1);
         let position = bn_source::Position {

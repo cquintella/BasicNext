@@ -27,9 +27,16 @@ use bn_types::IntegerType;
 
 pub const NAME: &str = "FileSystem";
 
+/// One open or closed file and the strong references that keep it alive.
+#[derive(Debug)]
+struct FileSlot {
+    file: OpenFile,
+    strong: u32,
+}
+
 #[derive(Debug)]
 pub struct FsProvider {
-    files: HashMap<u64, OpenFile>,
+    files: HashMap<u64, FileSlot>,
     next_file: u64,
 }
 
@@ -103,7 +110,7 @@ impl Provider for FsProvider {
                 let opened = bn_rt::file::open(core.host().filesystem(), path, mode).map(|file| {
                     let id = self.next_file;
                     self.next_file += 1;
-                    self.files.insert(id, file);
+                    self.files.insert(id, FileSlot { file, strong: 1 });
                     Value::File(id)
                 });
                 Ok(method_result(opened, |value| value))
@@ -131,7 +138,13 @@ impl Provider for FsProvider {
         }
         let id = self.next_file;
         self.next_file += 1;
-        self.files.insert(id, OpenFile::default());
+        self.files.insert(
+            id,
+            FileSlot {
+                file: OpenFile::default(),
+                strong: 1,
+            },
+        );
         Some(Ok(Value::File(id)))
     }
 
@@ -139,14 +152,44 @@ impl Provider for FsProvider {
         let Value::File(id) = value else {
             return None;
         };
-        Some(if self.files.remove(id).is_some() {
-            Ok(())
-        } else {
-            Err(runtime_error(
+        Some(match self.files.get_mut(id) {
+            Some(slot) if slot.strong > 1 => {
+                slot.strong -= 1;
+                Ok(())
+            }
+            Some(_) => {
+                self.files.remove(id);
+                Ok(())
+            }
+            None => Err(runtime_error(
                 bn_diag::DiagId::DOUBLE_RELEASE,
                 "file handle was already deleted",
                 span,
-            ))
+            )),
+        })
+    }
+
+    fn retain(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
+        let Value::File(id) = value else {
+            return None;
+        };
+        Some(match self.files.get_mut(id) {
+            Some(slot) => match slot.strong.checked_add(1) {
+                Some(count) => {
+                    slot.strong = count;
+                    Ok(())
+                }
+                None => Err(runtime_error(
+                    bn_diag::DiagId::USE_AFTER_RELEASE,
+                    "file handle count overflowed",
+                    span,
+                )),
+            },
+            None => Err(runtime_error(
+                bn_diag::DiagId::USE_AFTER_RELEASE,
+                "file handle is invalid",
+                span,
+            )),
         })
     }
 }
@@ -177,13 +220,17 @@ impl FsProvider {
         } else {
             None
         };
-        let file = self.files.get_mut(id).ok_or_else(|| {
-            runtime_error(
-                bn_diag::DiagId::USE_AFTER_RELEASE,
-                "file handle is invalid",
-                span,
-            )
-        })?;
+        let file = self
+            .files
+            .get_mut(id)
+            .map(|slot| &mut slot.file)
+            .ok_or_else(|| {
+                runtime_error(
+                    bn_diag::DiagId::USE_AFTER_RELEASE,
+                    "file handle is invalid",
+                    span,
+                )
+            })?;
         match method {
             "Close" => {
                 require_arity(name, arguments, 1, span)?;

@@ -35,11 +35,11 @@ impl Sentinel {
         }
     }
 
-    pub(crate) fn global(self) -> (&'static str, T) {
-        let bytes = |count| T::Array(count, Box::new(T::I8));
+    /// The STRING payload of this sentinel.
+    pub(crate) fn pointer(self) -> O {
         match self {
-            Self::NotAvailable => ("@.bn_na", bytes(3)),
-            Self::EndOfFile => ("@.bn_eof", bytes(4)),
+            Self::NotAvailable => crate::layout::string_payload(".bn_na"),
+            Self::EndOfFile => crate::layout::string_payload(".bn_eof"),
         }
     }
 }
@@ -107,6 +107,12 @@ fn narrows_to_error(stored: &Type, loaded: &Type) -> bool {
 pub(crate) fn alternative_is(value_ty: &Type, test: &str) -> bool {
     match value_ty {
         Type::Named(name) => name == test,
+        // Lowering emits the simple name for a standard module (`Logger`)
+        // and `#<module>.<Name>` otherwise (`control_flow.rs`). An alias
+        // (`Log.Logger`) or another qualifier (`Foo.Logger`) is not either.
+        Type::ImportedNamed { module, name } | Type::ImportedTypeName { module, name } => {
+            bn_types::import_test_matches(*module, name, test)
+        }
         Type::Null => test == "NULL",
         Type::NotAvailable => test == "NA",
         Type::EndOfFile => test == "EOF",
@@ -261,7 +267,6 @@ pub(crate) fn emit_sentinel_is(
     };
     let id = destination.0;
     let reg = |name: &str| O::reg(format!("{name}{id}"));
-    let (global, array) = sentinel.global();
     let sentinel_name = match sentinel {
         Sentinel::NotAvailable => "NA",
         Sentinel::EndOfFile => "EOF",
@@ -273,10 +278,14 @@ pub(crate) fn emit_sentinel_is(
         I::extract(union.clone(), value.clone(), 0),
     );
     text.assign(format!("cellptr{id}"), I::extract(union, value, 1));
-    let at = vec![(T::I64, O::int(0)), (T::I64, O::int(0))];
     text.assign(
         format!("cellnaptr{id}"),
-        I::gep(array, O::global(global), at),
+        I::select(
+            O::bool(true),
+            T::Ptr,
+            sentinel.pointer(),
+            sentinel.pointer(),
+        ),
     );
     text.assign(
         format!("cellna{id}"),
@@ -390,7 +399,7 @@ pub(crate) fn construct(
             if let Some(sentinel) = sentinel {
                 // `NA` / `EOF` is its sentinel pointer, not an error.
                 let name = format!("nasentinel{v}_{}", text.fresh_tag());
-                let pointer = O::global(sentinel.global().0.trim_start_matches('@'));
+                let pointer = sentinel.pointer();
                 return Some(emit_status(text, &name, O::bool(false), pointer, O::int(0)));
             }
             let from_llvm = llvm_type(from)?;
@@ -434,8 +443,154 @@ pub(crate) fn construct(
             }
             Some(O::reg(&name))
         }
+        AlternativeLayout::Region if matches!(from, Type::Null) => {
+            let name = format!("regionnull{v}_{}", text.fresh_tag());
+            Some(null_region(text, &name))
+        }
         _ => None,
     }
+}
+
+/// `IS` on `POINTER TO E OR NULL` (`{ ptr, i32 }`). `NULL` is a null data
+/// pointer. An exact member, and `IS POINTER TO VOID`, are any other pointer.
+/// A length the member does not declare (`E[n]` on `E[]`) compares the stored
+/// count in field 1. The element is the member's element: this slot has no
+/// runtime element code (BDFL decision, 2026-10-16).
+pub(crate) fn emit_region_is(
+    text: &mut crate::ir::LlvmModule,
+    destination: ValueId,
+    left: ValueId,
+    left_ty: &Type,
+    right_ty: &Type,
+    test_name: &str,
+) -> bool {
+    let Type::Alternative(members) = left_ty else {
+        return false;
+    };
+    let Some(pointer) = members
+        .iter()
+        .find(|member| matches!(member, Type::Pointer { .. }))
+    else {
+        return false;
+    };
+    if test_name == "NULL" || matches!(right_ty, Type::Null) {
+        emit_region_pointer_cmp(text, destination, left, ICmpCond::Eq);
+        return true;
+    }
+    if bn_types::pointers::pointer_member_matches(pointer, test_name) {
+        emit_region_pointer_cmp(text, destination, left, ICmpCond::Ne);
+        return true;
+    }
+    let Some(spec) = bn_types::pointers::parse_pointer_is(test_name) else {
+        return false;
+    };
+    if spec.void {
+        emit_region_pointer_cmp(text, destination, left, ICmpCond::Ne);
+        return true;
+    }
+    if !bn_types::pointers::pointer_element_matches(pointer, test_name) {
+        emit_region_bit(text, destination, O::bool(false));
+        return true;
+    }
+    let expected = match spec.length {
+        bn_types::PointerLength::Fixed(length) => Some(length),
+        bn_types::PointerLength::One => Some(1),
+        bn_types::PointerLength::Dynamic => None,
+    };
+    let Some(length) = expected else {
+        emit_region_pointer_cmp(text, destination, left, ICmpCond::Ne);
+        return true;
+    };
+    emit_region_length(text, destination, left, length);
+    true
+}
+
+fn emit_region_pointer_cmp(
+    text: &mut crate::ir::LlvmModule,
+    destination: ValueId,
+    left: ValueId,
+    condition: ICmpCond,
+) {
+    let id = destination.0;
+    text.assign(
+        format!("regionptr{id}"),
+        I::extract(vector_ty(), O::reg(format!("v{}", left.0)), 0),
+    );
+    text.assign(
+        format!("v{id}"),
+        I::icmp(
+            condition,
+            T::Ptr,
+            O::reg(format!("regionptr{id}")),
+            O::null(),
+        ),
+    );
+}
+
+fn emit_region_bit(text: &mut crate::ir::LlvmModule, destination: ValueId, bit: O) {
+    text.assign(
+        format!("v{}", destination.0),
+        I::binary(BinaryOp::Or, T::I1, O::bool(false), bit),
+    );
+}
+
+/// Non-null data pointer and stored count equal to `length`.
+fn emit_region_length(
+    text: &mut crate::ir::LlvmModule,
+    destination: ValueId,
+    left: ValueId,
+    length: u64,
+) {
+    let id = destination.0;
+    let slot = O::reg(format!("v{}", left.0));
+    text.assign(
+        format!("regionptr{id}"),
+        I::extract(vector_ty(), slot.clone(), 0),
+    );
+    text.assign(
+        format!("regionnn{id}"),
+        I::icmp(
+            ICmpCond::Ne,
+            T::Ptr,
+            O::reg(format!("regionptr{id}")),
+            O::null(),
+        ),
+    );
+    text.assign(format!("regionlen{id}"), I::extract(vector_ty(), slot, 1));
+    let wide = i64::try_from(length).unwrap_or(i64::MAX);
+    text.assign(
+        format!("regionlenok{id}"),
+        I::icmp(
+            ICmpCond::Eq,
+            T::I32,
+            O::reg(format!("regionlen{id}")),
+            O::int(wide),
+        ),
+    );
+    text.assign(
+        format!("regionboth{id}"),
+        I::binary(
+            BinaryOp::And,
+            T::I1,
+            O::reg(format!("regionnn{id}")),
+            O::reg(format!("regionlenok{id}")),
+        ),
+    );
+    emit_region_bit(text, destination, O::reg(format!("regionboth{id}")));
+}
+
+/// `{ null, 0 }`: the `NULL` member of a `POINTER TO T OR NULL` slot.
+pub(crate) fn null_region(text: &mut crate::ir::LlvmModule, name: &str) -> O {
+    let ty = vector_ty();
+    text.assign(
+        format!("{name}_0"),
+        I::insert(ty.clone(), O::undef(), T::Ptr, O::null(), 0),
+    );
+    text.assign(
+        name,
+        I::insert(ty, O::reg(format!("{name}_0")), T::I32, O::int(0), 1),
+    );
+    O::reg(name)
 }
 
 /// `{ i1 error, ptr, i64 }` from its three fields, as `%{name}`; the

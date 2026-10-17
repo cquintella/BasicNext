@@ -37,6 +37,11 @@ pub(crate) fn lower_ownership_emission(
                     &O::reg(format!("v{}", value.0)),
                     state,
                 );
+                if _function.kind == FunctionKind::ReleaseFields
+                    && matches!(ty, Type::Vector { .. })
+                {
+                    emit_delete(text, module, *value, ty);
+                }
             } else if matches!(
                 ty,
                 Type::Integer(_)
@@ -44,7 +49,6 @@ pub(crate) fn lower_ownership_emission(
                     | Type::Float(_)
                     | Type::FloatLiteral
                     | Type::Boolean
-                    | Type::String
                     | Type::Vector { .. }
                     | Type::Null
             ) || general_alternative(ty).is_some()

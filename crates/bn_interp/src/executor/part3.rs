@@ -46,7 +46,10 @@ impl Executor<'_, '_> {
             let code = self.unwinding.take().unwrap_or(0);
             return Ok(Value::Integer(code, IntegerType::Int32));
         }
-        if matches!(name, "ASC" | "CHAR" | "TOLOWER" | "TOUPPER") || name == "$for_condition" {
+        if matches!(name, "ASC" | "CHAR" | "TOLOWER" | "TOUPPER")
+            || name == "$for_condition"
+            || name == "$for_fits"
+        {
             return builtin(name, &arguments, span);
         }
         let (name, super_call) = name
@@ -146,6 +149,24 @@ impl Executor<'_, '_> {
         let result = provider.allocate(class, span);
         self.hosts.insert(capability, provider);
         result.unwrap_or_else(|| Err(host_unavailable(capability, span)))
+    }
+
+    /// One more binding holds a handle owned by a HOST capability.
+    pub fn host_retain(&mut self, value: &Value, span: Span) -> Result<(), Diagnostic> {
+        let capabilities: Vec<&'static str> = self.hosts.keys().copied().collect();
+        for capability in capabilities {
+            let mut provider = self.hosts.remove(capability).expect("key just listed");
+            let result = provider.retain(value, span);
+            self.hosts.insert(capability, provider);
+            if let Some(result) = result {
+                return result;
+            }
+        }
+        Err(runtime_error(
+            bn_diag::DiagId::HOST_CAPABILITY_UNAVAILABLE,
+            "no HOST capability owns this handle",
+            span,
+        ))
     }
 
     /// `RELEASE` of a handle owned by a HOST capability.

@@ -4,10 +4,9 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 
-// IS POINTER TO T (T not VOID) on an opaque pointer. Its meaning is open
-// (known issue K55); with an INTEGER allocation every reading answers TRUE.
-// Native builds refuse the test with a support diagnostic until K55 is
-// decided, and never fold it to a constant (known issue K51).
+// IS POINTER TO INTEGER on a POINTER TO VOID that holds one INTEGER.
+// The test reads the allocation (K55): true exactly when the conversion
+// back to POINTER TO INTEGER would succeed.
 
 FUNCTION Start() AS VOID
     LET typed AS POINTER TO INTEGER = NEW INTEGER

@@ -1,0 +1,15 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// IS of the declared pointer member. The value is NULL, so the pointer
+// test is false. The name stays `POINTER TO Log.Logger` (a dot in the
+// element must not rewrite the pointer words).
+IMPORT BNLog AS Log
+
+FUNCTION Start() AS VOID
+    LET pointer AS POINTER TO Log.Logger OR NULL = NULL
+    PRINT pointer IS NULL
+    PRINT pointer IS POINTER TO Log.Logger
+END FUNCTION

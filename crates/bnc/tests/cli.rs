@@ -293,9 +293,7 @@ fn failed_build_writes_partial_process_log_with_failure_stage() {
     let log_path = directory.join("failed.log");
     let output = bnc()
         .args([
-            "tests/grammar/valid/pointer-named-type.bn",
-            "--allow",
-            "UNUSED_BINDING",
+            "tests/host/web_errors.bn",
             "--log-level",
             "error",
             "--log-file",
@@ -370,9 +368,7 @@ fn config_file_controls_process_log_level_and_destination() {
     .expect("write logging config");
     let output = bnc()
         .args([
-            "tests/grammar/valid/pointer-named-type.bn",
-            "--allow",
-            "UNUSED_BINDING",
+            "tests/host/web_errors.bn",
             "--config",
             config_path.to_str().expect("UTF-8 config path"),
             "-o",

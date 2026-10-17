@@ -1,0 +1,15 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// A step that is 0 at run time stops with INVALID_FOR_STEP. A literal
+// STEP 0 is rejected earlier, so the step here is a variable (0.6.md).
+
+FUNCTION Start() AS VOID
+    LET step AS INTEGER = 0
+    FOR i AS INTEGER = 1 TO 3 STEP step
+        PRINT i
+    END FOR
+    PRINT "DONE"
+END FUNCTION

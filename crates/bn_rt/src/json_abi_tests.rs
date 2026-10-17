@@ -8,7 +8,6 @@ use bn_core_json::{
     JsonFailure, Place, append_value, clone_document, document, element, get_json, get_string,
     kind, length, move_into, parse_document, release, set_at, set_value, store,
 };
-use std::ffi::CString;
 
 #[test]
 fn object_round_trips_and_fails_closed() {
@@ -103,29 +102,28 @@ fn reads_tell_missing_from_wrong_kind_and_out_of_range() {
 #[test]
 fn abi_records_the_failure_for_the_emitted_code() {
     let handle = bn_rt_json_object();
-    let key = CString::new("pi").unwrap();
-    assert_ne!(
-        bn_rt_json_set_float(handle, key.as_ptr(), f64::NAN),
-        BN_JSON_OK
-    );
+    let key = crate::string::c_string_from_bytes(b"pi");
+    assert_ne!(bn_rt_json_set_float(handle, key, f64::NAN), BN_JSON_OK);
     let record = crate::error_abi::bn_rt_error_take(1, std::ptr::null());
     assert_eq!(
         crate::error_abi::bn_rt_error_code(record),
         i64::from(bn_types::error_codes::json::INVALID_ARGUMENT)
     );
-    assert_eq!(bn_rt_json_set_float(handle, key.as_ptr(), 3.5), BN_JSON_OK);
+    assert_eq!(bn_rt_json_set_float(handle, key, 3.5), BN_JSON_OK);
     let mut status = -1;
-    let value = bn_rt_json_get_float(handle, key.as_ptr(), &raw mut status);
+    let value = bn_rt_json_get_float(handle, key, &raw mut status);
     assert_eq!(status, BN_JSON_OK);
     assert!((value - 3.5).abs() < f64::EPSILON);
-    let absent = CString::new("absent").unwrap();
-    let _ = bn_rt_json_get_integer(handle, absent.as_ptr(), &raw mut status);
+    let absent = crate::string::c_string_from_bytes(b"absent");
+    let _ = bn_rt_json_get_integer(handle, absent, &raw mut status);
     assert_eq!(status, BN_JSON_FAILED);
     let record = crate::error_abi::bn_rt_error_take(1, std::ptr::null());
     assert_eq!(
         crate::error_abi::bn_rt_error_code(record),
         i64::from(bn_types::error_codes::json::NOT_FOUND)
     );
+    crate::string::bn_rt_str_release(key);
+    crate::string::bn_rt_str_release(absent);
     assert!(release(handle));
 }
 

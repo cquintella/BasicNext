@@ -124,7 +124,7 @@ pub(super) fn exit_code(code: i128, span: Span) -> Result<u8, Diagnostic> {
     u8::try_from(code).map_err(|_| {
         runtime_error(
             bn_diag::DiagId::INVALID_EXIT_CODE,
-            "exit code must be in 0..255",
+            bn_diag::trap_texts::EXIT_CODE_RANGE,
             span,
         )
     })

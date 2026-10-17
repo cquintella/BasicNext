@@ -2,6 +2,7 @@
 "use strict";
 
 const fs = require("node:fs");
+const path = require("node:path");
 
 const [modulePath, ...programArgs] = process.argv.slice(2);
 if (!modulePath) {
@@ -20,6 +21,28 @@ let randomState = 1n;
 const STACK_MARGIN_BYTES = 4096;
 // A wasm32 vector row `{ ptr, i32 }`.
 const ROW_BYTES = 8;
+// STRING header: `[u64 count][u64 len]` then the payload. The value is payload.
+const STRING_HEADER_BYTES = 16;
+const STRING_LEN_OFFSET = 8;
+const IMMORTAL_REF_COUNT = 0xFFFFFFFFFFFFFFFFn;
+const MAX_STRING_REF_COUNT = 0x7FFFFFFFFFFFFFFFn;
+const FREE_LISTS = new Map();
+
+function catalogLine(key) {
+    const file = path.join(__dirname, "../share/bn/catalog/string.txt");
+    const text = fs.readFileSync(file, "utf8");
+    const prefix = `${key} = `;
+    const line = text.split("\n").find((entry) => entry.startsWith(prefix));
+    if (line === undefined) {
+        throw new Error(`missing string catalog key ${key}`);
+    }
+    return line.slice(prefix.length);
+}
+
+function trapCount(key) {
+    process.stderr.write(`${catalogLine(key)}\n`);
+    process.exit(1);
+}
 
 function reserve(memory, size) {
     const address = Math.ceil(heapCursor / 8) * 8;
@@ -31,11 +54,66 @@ function reserve(memory, size) {
     return address;
 }
 
+function takeBlock(memory, size) {
+    const list = FREE_LISTS.get(size);
+    if (list !== undefined && list.length > 0) {
+        const address = list.pop();
+        allocations.set(address, size);
+        return address;
+    }
+    const address = reserve(memory, size);
+    allocations.set(address, size);
+    return address;
+}
+
+function releaseBlock(address) {
+    if (address === 0) return;
+    const size = allocations.get(address);
+    if (size === undefined) return;
+    allocations.delete(address);
+    const list = FREE_LISTS.get(size) ?? [];
+    list.push(address);
+    FREE_LISTS.set(size, list);
+}
+
 function cString(memory, address) {
     const bytes = new Uint8Array(memory.buffer);
     let end = address;
     while (bytes[end] !== 0) end += 1;
     return Buffer.from(bytes.subarray(address, end)).toString("utf8");
+}
+
+function stringBytes(memory, payload) {
+    if (payload === 0) return Buffer.alloc(0);
+    const view = new DataView(memory.buffer);
+    const length = Number(view.getBigUint64(payload - STRING_LEN_OFFSET, true));
+    return Buffer.from(new Uint8Array(memory.buffer).subarray(payload, payload + length));
+}
+
+function allocateString(memory, bytes) {
+    const total = STRING_HEADER_BYTES + bytes.length + 1;
+    const base = takeBlock(memory, total);
+    const view = new DataView(memory.buffer);
+    view.setBigUint64(base, 1n, true);
+    view.setBigUint64(base + STRING_LEN_OFFSET, BigInt(bytes.length), true);
+    const payload = base + STRING_HEADER_BYTES;
+    const stored = new Uint8Array(memory.buffer);
+    stored.set(bytes, payload);
+    stored[payload + bytes.length] = 0;
+    return payload;
+}
+
+function scalarCount(bytes) {
+    return [...Buffer.from(bytes).toString("utf8")].length;
+}
+
+function packUtf8(character) {
+    const encoded = Buffer.from(character, "utf8");
+    let value = 0n;
+    for (let index = 0; index < encoded.length; index += 1) {
+        value |= BigInt(encoded[index]) << BigInt(8 * index);
+    }
+    return value;
 }
 
 function formatInterpreterFloat(value) {
@@ -219,10 +297,6 @@ const imports = {
         getchar() {
             return inputOffset < input.length ? input[inputOffset++] : -1;
         },
-        bn_rt_input_nul() {
-            process.stderr.write("error[TARGET_UNSUPPORTED_TYPE]: INPUT: a STRING containing NUL (U+0000) is not supported by native builds yet; run the program with bni\n");
-            process.exit(1);
-        },
         putchar(value) {
             process.stdout.write(Buffer.from([value & 0xff]));
             return value;
@@ -250,55 +324,147 @@ const imports = {
         realloc(address, rawSize) {
             const memory = instance.exports.memory;
             const size = Number(rawSize);
-            const replacement = reserve(memory, size);
-            const previousSize = allocations.get(address) ?? 0;
+            const previousSize = address === 0 ? 0 : allocations.get(address) ?? 0;
+            const replacement = takeBlock(memory, size);
+            const bytes = new Uint8Array(memory.buffer);
+            bytes.fill(0, replacement, replacement + size);
             if (address !== 0) {
-                const bytes = new Uint8Array(memory.buffer);
                 bytes.copyWithin(replacement, address, address + Math.min(previousSize, size));
+                releaseBlock(address);
             }
-            allocations.set(replacement, size);
             return replacement;
         },
         malloc(rawSize) {
             const memory = instance.exports.memory;
             const size = Number(rawSize);
-            const address = reserve(memory, size);
-            allocations.set(address, size);
-            const bytes = new Uint8Array(memory.buffer);
-            bytes.fill(0, address, address + size);
+            const address = takeBlock(memory, size);
+            new Uint8Array(memory.buffer).fill(0, address, address + size);
             return address;
         },
         free(address) {
-            allocations.delete(address);
+            releaseBlock(address);
         },
         exit(code) {
             process.exit(Number(code));
         },
         bn_rt_str_len(address) {
-            const text = cString(instance.exports.memory, address);
-            return [...text].length;
+            const bytes = stringBytes(instance.exports.memory, address);
+            return scalarCount(bytes);
         },
-        bn_rt_str_index(address, index) {
+        bn_rt_str_eq(left, right) {
             const memory = instance.exports.memory;
-            const text = cString(memory, address);
-            const chars = [...text];
+            return stringBytes(memory, left).equals(stringBytes(memory, right)) ? 1 : 0;
+        },
+        bn_rt_str_concat(left, _leftLength, right, _rightLength) {
+            const memory = instance.exports.memory;
+            return allocateString(memory, Buffer.concat([
+                stringBytes(memory, left),
+                stringBytes(memory, right),
+            ]));
+        },
+        bn_rt_str_from_packed(packed) {
+            const value = BigInt(packed);
+            if (value === 0n) {
+                return allocateString(instance.exports.memory, Buffer.from([0]));
+            }
+            const bytes = [];
+            for (let shift = 0n; shift < 64n; shift += 8n) {
+                const byte = Number((value >> shift) & 0xFFn);
+                if (byte === 0) break;
+                bytes.push(byte);
+            }
+            return allocateString(instance.exports.memory, Buffer.from(bytes));
+        },
+        bn_rt_str_from_char(code) {
+            const value = Number(code);
+            let character;
+            try {
+                character = String.fromCodePoint(value);
+            } catch {
+                return 0;
+            }
+            return allocateString(instance.exports.memory, Buffer.from(character, "utf8"));
+        },
+        bn_rt_str_asc(address) {
+            const bytes = stringBytes(instance.exports.memory, address);
+            if (bytes.length === 0) return -1n;
+            const code = bytes.toString("utf8").codePointAt(0);
+            return code === undefined ? -1n : BigInt(code);
+        },
+        bn_rt_str_index_utf8(address, index, _trap) {
+            const bytes = stringBytes(instance.exports.memory, address);
+            const chars = [...bytes.toString("utf8")];
             if (index < 0 || index >= chars.length) {
                 process.stderr.write(
                     `bn-wasm: INDEX_OUT_OF_BOUNDS index ${index} is outside string length ${chars.length}\n`,
                 );
                 process.exit(1);
             }
-            const encoded = Buffer.from(chars[index], "utf8");
-            const out = reserve(memory, encoded.length + 1);
-            const bytes = new Uint8Array(memory.buffer);
-            bytes.set(encoded, out);
-            bytes[out + encoded.length] = 0;
-            allocations.set(out, encoded.length + 1);
-            return out;
+            return packUtf8(chars[index]);
         },
-        bn_rt_str_eq(left, right) {
-            const memory = instance.exports.memory;
-            return cString(memory, left) === cString(memory, right) ? 1 : 0;
+        bn_rt_str_to_lower(address) {
+            const bytes = stringBytes(instance.exports.memory, address);
+            return allocateString(
+                instance.exports.memory,
+                Buffer.from(bytes.toString("utf8").toLowerCase(), "utf8"),
+            );
+        },
+        bn_rt_str_to_upper(address) {
+            const bytes = stringBytes(instance.exports.memory, address);
+            return allocateString(
+                instance.exports.memory,
+                Buffer.from(bytes.toString("utf8").toUpperCase(), "utf8"),
+            );
+        },
+        bn_rt_str_retain(address) {
+            if (address === 0) return 0;
+            const view = new DataView(instance.exports.memory.buffer);
+            const slot = address - STRING_HEADER_BYTES;
+            const current = view.getBigUint64(slot, true);
+            if (current === IMMORTAL_REF_COUNT) return 0;
+            if (current >= MAX_STRING_REF_COUNT) trapCount("retain-overflow");
+            view.setBigUint64(slot, current + 1n, true);
+            return 0;
+        },
+        bn_rt_str_release(address) {
+            if (address === 0) return 0;
+            const view = new DataView(instance.exports.memory.buffer);
+            const slot = address - STRING_HEADER_BYTES;
+            const current = view.getBigUint64(slot, true);
+            if (current === IMMORTAL_REF_COUNT) return 0;
+            if (current === 0n) trapCount("release-of-zero");
+            const next = current - 1n;
+            view.setBigUint64(slot, next, true);
+            if (next === 0n) releaseBlock(slot);
+            return 0;
+        },
+        bn_rt_cstr_copy(address) {
+            if (address === 0) return 0;
+            return allocateString(
+                instance.exports.memory,
+                Buffer.from(cString(instance.exports.memory, address), "utf8"),
+            );
+        },
+        bn_rt_input_line(_reusable) {
+            if (inputOffset >= input.length) return 0;
+            let end = inputOffset;
+            while (end < input.length && input[end] !== 10) end += 1;
+            let stop = end;
+            if (stop > inputOffset && input[stop - 1] === 13) stop -= 1;
+            const bytes = input.subarray(inputOffset, stop);
+            inputOffset = end < input.length ? end + 1 : end;
+            return allocateString(instance.exports.memory, bytes);
+        },
+        bn_rt_error_print(code, _error) {
+            process.stdout.write(`Error ${code}\n`);
+        },
+        bn_rt_error_wrap(failed, value, _operation) {
+            if (!failed) return value;
+            process.stderr.write("bn-wasm: a failed call was wrapped as Error\n");
+            process.exit(1);
+        },
+        bn_rt_print_str(address, _length) {
+            process.stdout.write(stringBytes(instance.exports.memory, address));
         },
     },
 };
@@ -307,25 +473,17 @@ WebAssembly.instantiate(fs.readFileSync(modulePath), imports)
     .then(({ instance: loaded }) => {
         instance = loaded;
         const memory = instance.exports.memory;
-        const encoder = new TextEncoder();
         const argumentsList = [modulePath, ...programArgs];
-        let cursor = Number(instance.exports.__heap_base.value);
-        const pointers = cursor;
-        cursor += argumentsList.length * 4;
-        const encoded = argumentsList.map((value) => encoder.encode(value));
-        const required = cursor + encoded.reduce((size, value) => size + value.length + 1, 0);
-        if (required > memory.buffer.byteLength) {
-            memory.grow(Math.ceil((required - memory.buffer.byteLength) / 65536));
-        }
-        const bytes = new Uint8Array(memory.buffer);
-        const view = new DataView(memory.buffer);
-        encoded.forEach((value, index) => {
-            view.setUint32(pointers + index * 4, cursor, true);
-            bytes.set(value, cursor);
-            bytes[cursor + value.length] = 0;
-            cursor += value.length + 1;
+        heapCursor = Number(instance.exports.__heap_base.value);
+        const pointers = takeBlock(memory, argumentsList.length * 4);
+        argumentsList.forEach((value, index) => {
+            const payload = allocateString(memory, Buffer.from(value, "utf8"));
+            new DataView(instance.exports.memory.buffer).setUint32(
+                pointers + index * 4,
+                payload,
+                true,
+            );
         });
-        heapCursor = cursor;
         const code = instance.exports.main(argumentsList.length, pointers);
         process.exit(Number(code));
     })

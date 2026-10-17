@@ -7,7 +7,7 @@ library only. Not scheduled in a bucket; nothing here is implemented. Open
 decisions are marked `TODO (Carlos)`.
 
 This is the reverse direction of [`bnffi.md`](bnffi.md) (BN calls C). It is a
-**language change** and therefore cannot ride in bucket 0.6.6, whose claim is
+**language change** and therefore cannot ride in bucket 0.6.7, whose claim is
 "no language change".
 
 ## Example

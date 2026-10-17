@@ -39,6 +39,14 @@ fn nullable_object(module: &Module, ty: &Type) -> bool {
             && members.iter().any(|member| is_object_type(module, member)))
 }
 
+/// `POINTER TO T OR NULL`: one region fat pointer, or null. Not a buffer
+/// `free` can take — field 0 is the data, not the allocation base.
+fn is_nullable_region(ty: &Type) -> bool {
+    matches!(ty, Type::Alternative(members)
+        if crate::layout::AlternativeLayout::of(members)
+            == Some(crate::layout::AlternativeLayout::Region))
+}
+
 fn llvm(ty: &Type) -> LlvmType {
     llvm_type(ty).expect("validated ARC value type")
 }
@@ -139,13 +147,18 @@ pub(crate) fn emit_ownership(
         };
         let tag = fresh(state, "logown");
         crate::log_emission::emit_logger_ownership(text, ty, operand, &tag, symbol);
+    } else if is_fs_file(ty) {
+        // Before the object path: a file aggregate is not an ARC pointer.
+        emit_file_count(text, op, ty, operand, state);
     } else if is_object_type(module, ty) || nullable_object(module, ty) {
         call(text, operand);
     } else if general_alternative(ty).is_some() && object_class(module, ty).is_some() {
         let name = fresh(state, "heldobj");
         let object = held_object(text, ty, operand, &name);
         call(text, &object);
-    } else if is_region_type(ty) {
+    } else if is_region_type(ty) || is_nullable_region(ty) {
+        // `POINTER TO T OR NULL` is the same `{ ptr, i32 }` fat pointer. The
+        // count lives in the header 16 bytes before the data, as for `POINTER TO T`.
         let base = region_base(text, operand, ty, state);
         call(text, &base);
     } else if let Some(owner) = struct_owner(module, ty) {
@@ -235,6 +248,156 @@ pub(crate) fn emit_ownership(
             );
         }
         join(text, done, state);
+    } else if *ty == Type::String {
+        emit_string_buffer(text, op, operand);
+    } else if contains_string(module, ty)
+        && !is_object_type(module, ty)
+        && object_class(module, ty).is_none()
+    {
+        emit_alternative_string(text, op, ty, operand, state);
+    }
+}
+
+/// `FS.File`, or an alternative that has `FS.File` as a member (`FS.File OR Error`).
+fn is_fs_file(ty: &Type) -> bool {
+    match ty {
+        Type::Named(name) | Type::TypeName(name) => name == "FS.File",
+        Type::Alternative(members) => members.iter().any(is_fs_file),
+        _ => false,
+    }
+}
+
+/// One strong reference on the file handle in field 2. An error alternative
+/// (field 0) holds no file. The call is `bn_rt_file_retain` / `bn_rt_file_release`,
+/// never `bn_rt_arc_retain`.
+fn emit_file_count(
+    text: &mut crate::ir::LlvmModule,
+    op: Ownership,
+    ty: &Type,
+    operand: &crate::ir::LlvmOperand,
+    state: &mut EmissionState,
+) {
+    let Some(layout) = llvm_type(ty) else {
+        return;
+    };
+    if layout != crate::layout::handle_result_ty() {
+        return;
+    }
+    let symbol = match op {
+        Ownership::Retain => "bn_rt_file_retain",
+        Ownership::Release => "bn_rt_file_release",
+    };
+    let tag = fresh(state, "fileown");
+    text.assign(
+        format!("{tag}_err"),
+        LlvmInst::extract(layout.clone(), operand.clone(), 0),
+    );
+    text.assign(
+        format!("{tag}_handle"),
+        LlvmInst::extract(layout, operand.clone(), 2),
+    );
+    text.emit(LlvmInst::CondBr {
+        cond: LlvmOperand::reg(format!("{tag}_err")),
+        true_dest: format!("{tag}_done"),
+        false_dest: format!("{tag}_walk"),
+    });
+    state.control_flow.label(text, format!("{tag}_walk"));
+    text.emit(LlvmInst::call(
+        I32,
+        symbol,
+        vec![(I64, LlvmOperand::reg(format!("{tag}_handle")))],
+    ));
+    text.emit(LlvmInst::Br {
+        dest: format!("{tag}_done"),
+    });
+    state.control_flow.label(text, format!("{tag}_done"));
+}
+
+/// `bn_rt_str_retain` / `bn_rt_str_release` on one STRING payload.
+fn emit_string_buffer(
+    text: &mut crate::ir::LlvmModule,
+    op: Ownership,
+    operand: &crate::ir::LlvmOperand,
+) {
+    let symbol = match op {
+        Ownership::Retain => "bn_rt_str_retain",
+        Ownership::Release => "bn_rt_str_release",
+    };
+    text.emit(LlvmInst::call(I32, symbol, vec![(Ptr, operand.clone())]));
+}
+
+/// A status or general alternative that holds a STRING. An error record is
+/// not a STRING. A general alternative releases field 1 only for the string tag.
+fn emit_alternative_string(
+    text: &mut crate::ir::LlvmModule,
+    op: Ownership,
+    ty: &Type,
+    operand: &crate::ir::LlvmOperand,
+    state: &mut EmissionState,
+) {
+    let Some(layout) = llvm_type(ty) else {
+        return;
+    };
+    if layout == LlvmType::Ptr {
+        emit_string_buffer(text, op, operand);
+        return;
+    }
+    if layout == crate::layout::handle_result_ty() {
+        let tag = fresh(state, "strow");
+        text.assign(
+            format!("{tag}_err"),
+            LlvmInst::extract(layout.clone(), operand.clone(), 0),
+        );
+        text.assign(
+            format!("{tag}_ptr"),
+            LlvmInst::extract(layout, operand.clone(), 1),
+        );
+        text.emit(LlvmInst::CondBr {
+            cond: LlvmOperand::reg(format!("{tag}_err")),
+            true_dest: format!("{tag}_done"),
+            false_dest: format!("{tag}_walk"),
+        });
+        state.control_flow.label(text, format!("{tag}_walk"));
+        emit_string_buffer(text, op, &LlvmOperand::reg(format!("{tag}_ptr")));
+        text.emit(LlvmInst::Br {
+            dest: format!("{tag}_done"),
+        });
+        state.control_flow.label(text, format!("{tag}_done"));
+        return;
+    }
+    if layout == crate::general_alternative::layout() {
+        let Some(code) = bn_types::alternatives::member_code(&Type::String) else {
+            return;
+        };
+        let tag = fresh(state, "genstr");
+        text.assign(
+            format!("{tag}_tag"),
+            LlvmInst::extract(layout.clone(), operand.clone(), 0),
+        );
+        text.assign(
+            format!("{tag}_ptr"),
+            LlvmInst::extract(layout, operand.clone(), 1),
+        );
+        text.assign(
+            format!("{tag}_isstr"),
+            LlvmInst::icmp(
+                ICmpCond::Eq,
+                I32,
+                LlvmOperand::reg(format!("{tag}_tag")),
+                LlvmOperand::int(i64::from(code)),
+            ),
+        );
+        text.emit(LlvmInst::CondBr {
+            cond: LlvmOperand::reg(format!("{tag}_isstr")),
+            true_dest: format!("{tag}_walk"),
+            false_dest: format!("{tag}_done"),
+        });
+        state.control_flow.label(text, format!("{tag}_walk"));
+        emit_string_buffer(text, op, &LlvmOperand::reg(format!("{tag}_ptr")));
+        text.emit(LlvmInst::Br {
+            dest: format!("{tag}_done"),
+        });
+        state.control_flow.label(text, format!("{tag}_done"));
     }
 }
 
@@ -273,12 +436,30 @@ pub(crate) fn holds_references(module: &Module, ty: &Type) -> bool {
         || nullable_object(module, ty)
         || general_alternative(ty).is_some() && object_class(module, ty).is_some()
         || is_region_type(ty)
+        || is_nullable_region(ty)
         || struct_owner(module, ty).is_some_and(|owner| {
             class_layout_fields(module, &owner).iter().any(|field| {
                 !module.field_is_weak(&field.reference) && holds_references(module, &field.ty)
             })
         })
         || matches!(ty, Type::Vector { element, .. } if holds_references(module, element))
+        || *ty == Type::String
+        || is_fs_file(ty)
+        || matches!(ty, Type::Alternative(_) if contains_string(module, ty))
+}
+
+/// Whether `ty` contains a STRING buffer the native code counts.
+pub(crate) fn contains_string(module: &Module, ty: &Type) -> bool {
+    match ty {
+        Type::String => true,
+        Type::Vector { element, .. } => contains_string(module, element),
+        Type::Alternative(members) => members.iter().any(|member| contains_string(module, member)),
+        _ => struct_owner(module, ty).is_some_and(|owner| {
+            class_layout_fields(module, &owner).iter().any(|field| {
+                !module.field_is_weak(&field.reference) && contains_string(module, &field.ty)
+            })
+        }),
+    }
 }
 
 /// The zero value of `ty`'s native representation: what a slot holds once

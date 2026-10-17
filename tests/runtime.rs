@@ -3148,6 +3148,120 @@ END FUNCTION
 }
 
 #[test]
+fn bnweb_network_request_correlates_response_id_with_log_record() {
+    let probe = match std::net::TcpListener::bind("127.0.0.1:0") {
+        Ok(listener) => listener,
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => return,
+        Err(error) => panic!("bind BNWeb probe: {error}"),
+    };
+    let port = probe.local_addr().expect("probe address").port();
+    drop(probe);
+    let log_path = unique_temp("bnweb-network-log.jsonl");
+    let source = format!(
+        r#"IMPORT BNWeb AS Web
+IMPORT BNLog AS Log
+IMPORT HOST.Net AS Net
+IMPORT HOST.FileSystem AS FS
+FUNCTION Handler(request AS Web.Request, response AS Web.Response) AS VOID
+response.SetStatus(200)
+response.Write("ok")
+END FUNCTION
+FUNCTION Start() AS VOID
+LET made AS Log.Logger OR Error = Log.Logger.New("netweb", "JSON", "{}")
+IF made IS Error THEN
+PRINT "logger-error"
+STOP 1
+END IF
+LET logger AS Log.Logger = made
+LET level AS VOID OR Error = logger.SetLevel(Log.Level.HTTP)
+LET serverResult AS Web.Server OR Error = Web.Server.New(logger)
+IF serverResult IS Error THEN
+PRINT "server-error"
+STOP 2
+END IF
+LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+IF address IS Error THEN
+STOP 3
+END IF
+LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, {port})
+IF endpoint IS Error THEN
+STOP 4
+END IF
+LET server AS Web.Server = serverResult
+server.Route("GET", "/test-access", Handler)
+LET started AS VOID OR Error = server.Start(endpoint)
+IF started IS Error THEN
+STOP 5
+END IF
+LET gate AS STRING OR EOF = INPUT()
+server.Stop(1000)
+logger.Flush(1000)
+END FUNCTION
+"#,
+        bn_path(&log_path)
+    );
+    let path = unique_temp("bnweb-network-access.bn");
+    fs::write(&path, &source).expect("write BNWeb network access fixture");
+    let graph = load(path.to_str().expect("fixture path")).expect("load fixture");
+    let models = analyze_modules(&graph).expect("analyze fixture");
+    let module = lower_graph(&graph, &models).expect("lower fixture");
+    let (input_sender, input_receiver) = std::sync::mpsc::channel();
+    let execution = std::thread::spawn(move || {
+        let reader = ChannelReader {
+            receiver: input_receiver,
+            current: Cursor::new(Vec::new()),
+        };
+        let mut input = std::io::BufReader::new(reader);
+        let mut output = Vec::new();
+        execute_with_host(
+            &module,
+            &mut input,
+            &mut output,
+            &fixed(vec!["network-access.bn".into()], 0, 0),
+        )
+        .map(|code| (code, output))
+    });
+    let mut client = None;
+    for _ in 0..200 {
+        match std::net::TcpStream::connect(("127.0.0.1", port)) {
+            Ok(stream) => {
+                client = Some(stream);
+                break;
+            }
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(1)),
+        }
+    }
+    let Some(mut client) = client else {
+        let _ = input_sender.send(b"release\n".to_vec());
+        let _ = execution.join();
+        let _ = fs::remove_file(path);
+        let _ = fs::remove_file(log_path);
+        return;
+    };
+    client
+        .write_all(b"GET /test-access HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+        .expect("write request");
+    let mut response = String::new();
+    client.read_to_string(&mut response).expect("read response");
+    input_sender.send(b"release\n".to_vec()).expect("stop server");
+    let result = execution.join().expect("join server execution");
+    let _ = fs::remove_file(path);
+    if let Err(error) = result {
+        let _ = fs::remove_file(&log_path);
+        assert_eq!(error.code, "WEB_LISTEN", "{error:?}");
+        return;
+    }
+    let contents = fs::read_to_string(&log_path).expect("read access log");
+    let _ = fs::remove_file(log_path);
+    assert!(response.contains("HTTP/1.1 200"), "response was: {response}");
+    assert!(response.contains("x-request-id:"), "response was: {response}");
+    assert!(contents.contains("\"http.method\":\"GET\""), "log was: {contents}");
+    assert!(contents.contains("\"http.path\":\"/test-access\""), "log was: {contents}");
+    assert!(contents.contains("\"http.status\":\"200\""), "log was: {contents}");
+    assert!(contents.contains("\"request_id\":\"r"), "log was: {contents}");
+}
+
+#[test]
 fn bnweb_client_rejects_unsafe_urls_before_transport() {
     let source = r#"IMPORT BNWeb AS Web
 FUNCTION Start() AS VOID
@@ -3339,6 +3453,140 @@ END FUNCTION
     let (_, output) = run(source, "").expect("execute explicit CookieJar policy");
     assert_eq!(output, "FALSE 1\nTRUE 1\n");
 }
+
+#[test]
+fn bnweb_server_static_requires_filesystem_and_serves_files() {
+    let no_fs_source = r#"IMPORT BNWeb AS Web
+FUNCTION Start() AS VOID
+LET server AS Web.Server = NEW Web.Server()
+LET res AS VOID OR Error = server.Static("/assets", ".")
+IF res IS Error THEN
+PRINT res.Code
+END IF
+END FUNCTION
+"#;
+    let (_, out) = run(no_fs_source, "").expect("execute no-fs source");
+    assert_eq!(out, "9\n");
+
+    let probe = match std::net::TcpListener::bind("127.0.0.1:0") {
+        Ok(listener) => listener,
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => return,
+        Err(error) => panic!("bind static probe: {error}"),
+    };
+    let port = probe.local_addr().expect("probe address").port();
+    drop(probe);
+
+    let temp_dir = std::env::temp_dir().join(format!("bnweb-rt-static-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("create temp dir");
+    fs::write(temp_dir.join("index.html"), "<html>hello bnweb</html>").unwrap();
+    fs::write(temp_dir.join("info.txt"), "static content").unwrap();
+
+    let temp_str = bn_path(&temp_dir);
+
+    let source = format!(
+        r#"IMPORT BNWeb AS Web
+IMPORT HOST.Net AS Net
+IMPORT HOST.FileSystem AS FS
+FUNCTION Handler(request AS Web.Request, response AS Web.Response) AS VOID
+response.SetStatus(200)
+response.Write("override-handler")
+END FUNCTION
+FUNCTION Start() AS VOID
+LET address AS Net.Address OR Error = Net.Address.Parse("127.0.0.1")
+IF address IS Error THEN
+STOP 1
+END IF
+LET endpoint AS Net.Endpoint OR Error = Net.Endpoint.Create(address, {port})
+IF endpoint IS Error THEN
+STOP 2
+END IF
+LET server AS Web.Server = NEW Web.Server()
+server.Route("GET", "/assets/custom", Handler)
+LET static_res AS VOID OR Error = server.Static("/assets", "{temp_str}")
+IF static_res IS Error THEN
+STOP 3
+END IF
+LET started AS VOID OR Error = server.Start(endpoint)
+IF started IS Error THEN
+STOP 4
+END IF
+LET gate AS STRING OR EOF = INPUT()
+server.Stop(1000)
+END FUNCTION
+"#
+    );
+    let path = unique_temp("bnweb-static-test.bn");
+    fs::write(&path, &source).expect("write static fixture");
+    let graph = load(path.to_str().expect("fixture path")).expect("load fixture");
+    let models = analyze_modules(&graph).expect("analyze fixture");
+    let module = lower_graph(&graph, &models).expect("lower fixture");
+    let (input_sender, input_receiver) = std::sync::mpsc::channel();
+    let execution = std::thread::spawn(move || {
+        let reader = ChannelReader {
+            receiver: input_receiver,
+            current: Cursor::new(Vec::new()),
+        };
+        let mut input = std::io::BufReader::new(reader);
+        let mut output = Vec::new();
+        execute_with_host(
+            &module,
+            &mut input,
+            &mut output,
+            &fixed(vec!["static.bn".into()], 0, 0),
+        )
+        .map(|code| (code, output))
+    });
+    let mut client = None;
+    for _ in 0..200 {
+        match std::net::TcpStream::connect(("127.0.0.1", port)) {
+            Ok(stream) => {
+                client = Some(stream);
+                break;
+            }
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(1)),
+        }
+    }
+    let Some(client) = client else {
+        let _ = input_sender.send(b"stop\n".to_vec());
+        let _ = execution.join();
+        let _ = fs::remove_file(path);
+        let _ = fs::remove_dir_all(&temp_dir);
+        return;
+    };
+    drop(client);
+
+    let send_req = |req: &str| -> String {
+        let mut conn = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
+        conn.write_all(req.as_bytes()).expect("write");
+        let mut res = String::new();
+        conn.read_to_string(&mut res).expect("read");
+        res
+    };
+
+    let res = send_req("GET /assets/info.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+    assert!(res.starts_with("HTTP/1.1 200 OK"), "{res}");
+    assert!(res.contains("content-type: text/plain; charset=utf-8"), "{res}");
+    assert!(res.ends_with("\r\n\r\nstatic content"), "{res}");
+
+    let res_dir = send_req("GET /assets/ HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+    assert!(res_dir.starts_with("HTTP/1.1 200 OK"), "{res_dir}");
+    assert!(res_dir.contains("content-type: text/html; charset=utf-8"), "{res_dir}");
+    assert!(res_dir.ends_with("\r\n\r\n<html>hello bnweb</html>"), "{res_dir}");
+
+    let res_custom = send_req("GET /assets/custom HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+    assert!(res_custom.starts_with("HTTP/1.1 200 OK"), "{res_custom}");
+    assert!(res_custom.ends_with("\r\n\r\noverride-handler"), "{res_custom}");
+
+    input_sender.send(b"stop\n".to_vec()).expect("stop server");
+    let result = execution.join().expect("join server thread");
+    let _ = fs::remove_file(path);
+    let _ = fs::remove_dir_all(&temp_dir);
+    if let Err(error) = result {
+        assert_eq!(error.code, "WEB_LISTEN", "{error:?}");
+    }
+}
+
 
 /// Serialize HOST.Exec acceptance tests: parallel rustc/spawn storms were
 /// falsely tripping the 60s Exec timeout under load.

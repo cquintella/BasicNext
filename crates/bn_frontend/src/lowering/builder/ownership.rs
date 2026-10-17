@@ -19,10 +19,12 @@ impl Builder<'_> {
     /// Whether values of `ty` carry strong references, so ownership
     /// operations apply: a class instance (it has a `$fields` function), an
     /// `INTERFACE` (it holds an object), a `STRUCT` (`$default`), a pointer
-    /// region, a vector of those, or an
-    /// alternative with one of those members; never a native library handle. Every `STRUCT` counts: one
-    /// without strong fields makes `Retain` and `Release` do nothing, which
-    /// is simpler than tracking which ones hold objects.
+    /// region, a STRING buffer (the count is the value copy, not a class),
+    /// a vector of those, or an alternative with one of those members; never
+    /// a native library handle. Every `STRUCT` counts: one without strong
+    /// fields makes `Retain` and `Release` do nothing, which is simpler than
+    /// tracking which ones hold objects. `RELEASE` of a STRING does not
+    /// expose the buffer count.
     pub(crate) fn is_arc(&self, ty: &Type) -> bool {
         let declared = |name: &str| {
             [".$fields", ".$default", ".$interface"]
@@ -34,6 +36,10 @@ impl Builder<'_> {
                 })
         };
         match ty {
+            // `FS.File` is a counted handle, not an object: the last strong
+            // reference closes it (host.md). The count is the file table, not
+            // `bn_rt_arc_retain`.
+            Type::Named(name) if name == "FS.File" => true,
             Type::Named(name) => declared(name),
             // A `BNLog.Logger` is a counted handle: a copy retains it and the
             // end of its last binding destroys it, which closes its
@@ -51,7 +57,7 @@ impl Builder<'_> {
                 false
             }
             Type::ImportedNamed { module, name } => declared(&format!("#{}.{name}", module.0)),
-            Type::Pointer { .. } => true,
+            Type::Pointer { .. } | Type::String => true,
             Type::Vector { element, .. } => self.is_arc(element),
             Type::Alternative(members) => members.iter().any(|member| self.is_arc(member)),
             _ => false,
@@ -152,13 +158,22 @@ impl Builder<'_> {
         let Some((value, ty)) = bn_ir::instruction_result(instruction) else {
             return;
         };
-        let owned = matches!(
+        let host_argument = matches!(
+            instruction,
+            Instruction::Index { object, .. }
+                if self.value_types.get(object).is_some_and(|object| {
+                    matches!(object, Type::HostArgs | Type::String)
+                })
+        );
+        let owned = (matches!(
             instruction,
             Instruction::Allocate { .. }
                 | Instruction::Call { .. }
                 | Instruction::Vector { .. }
                 | Instruction::Default { .. }
-        ) && self.is_arc(ty);
+                | Instruction::Input { .. }
+        ) || host_argument)
+            && self.is_arc(ty);
         self.value_types.insert(value, ty.clone());
         if owned {
             self.owned.push((value, instruction.span()));

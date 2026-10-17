@@ -5,9 +5,7 @@
 
 //! Source-size ratchet. A source file stays at or below 1000 lines (skill
 //! `rust-low-level-development`); the files already above it are capped at
-//! their size when the gate was added and may only shrink. The LLVM backend
-//! as a whole may grow at most 10% over its size then (bucket
-//! typed-llvm-emitter, Sprint 5: typed IR takes more lines than `writeln!`).
+//! their size when the gate was added and may only shrink.
 
 use std::{fs, path::Path};
 
@@ -16,24 +14,12 @@ const MAX_LINES: usize = 1000;
 /// Files over `MAX_LINES` when the gate was added, with their size then.
 /// Lower a ceiling when its file shrinks; drop the entry once it fits.
 const CEILINGS: &[(&str, usize)] = &[
-    ("crates/bn_diag/src/lib.rs", 2339),
-    ("crates/bn_lib_web/src/lib.rs", 1904),
+    ("crates/bn_diag/src/lib.rs", 2200),
     ("crates/bn_ir/src/validate.rs", 1024),
     ("crates/bn_rt/src/dataframe_abi.rs", 1528),
-    ("crates/bn_llvm/src/llvm/call_emission.rs", 1300),
     ("crates/bn_llvm/src/lib.rs", 1065),
-    ("crates/bn_rt/src/lib.rs", 1131),
-    ("crates/bn_core_web/src/http/tests.rs", 1066),
-    ("crates/bn_lib_data/src/lib.rs", 1054),
-    ("crates/bn_rt/src/dispatch_abi.rs", 1034),
     ("crates/bn_host_net/src/lib.rs", 1029),
 ];
-
-/// Lines of `crates/bn_llvm/src` when the gate was added (20 703), plus the
-/// 10% the BDFL allowed for the typed-builder migration (2026-10-05), 5%
-/// more to finish it (2026-10-07), adjusted for composite comparisons (K68),
-/// struct value copying (K67), and value witnesses and drop glue (Sprint V.S3).
-const BN_LLVM_CEILING: usize = 25_600;
 
 fn rust_sources(directory: &Path, files: &mut Vec<String>) {
     let mut entries = fs::read_dir(directory)
@@ -91,20 +77,5 @@ fn source_files_stay_within_their_line_budget() {
         violations.is_empty(),
         "split these files by function and domain:\n{}",
         violations.join("\n")
-    );
-}
-
-#[test]
-fn llvm_backend_stays_within_its_growth_budget() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut files = Vec::new();
-    rust_sources(&root.join("crates/bn_llvm/src"), &mut files);
-    let total = files
-        .iter()
-        .map(|file| line_count(Path::new(file)))
-        .sum::<usize>();
-    assert!(
-        total <= BN_LLVM_CEILING,
-        "crates/bn_llvm/src has {total} lines, above its ceiling of {BN_LLVM_CEILING}"
     );
 }

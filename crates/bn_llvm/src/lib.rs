@@ -51,7 +51,18 @@ fn display_type(ty: &Type) -> String {
         Type::ImportedNamed { module, name } | Type::ImportedTypeName { module, name } => {
             format!("MODULE#{}.{}", module.0, name)
         }
-        Type::System => "SYSTEM".into(),
+        Type::Boolean => "BOOLEAN".into(),
+        Type::Integer(kind) => bn_types::integer_type_name(*kind).into(),
+        Type::IntegerLiteral(_) => "INT32".into(),
+        Type::Float(FloatType::Float32) => "FLOAT32".into(),
+        Type::Float(FloatType::Float64) | Type::FloatLiteral => "FLOAT64".into(),
+        Type::String => "STRING".into(),
+        Type::Null => "NULL".into(),
+        Type::NotAvailable => "NA".into(),
+        Type::EndOfFile => "EOF".into(),
+        Type::HostArgs => "HOST.Args".into(),
+        Type::HostEnv => "HOST.Env".into(),
+        Type::Unknown => "UNKNOWN".into(),
         Type::HostClock => "HOST.Clock".into(),
         Type::HostRandom => "HOST.Random".into(),
         Type::HostConsole => "HOST.Console".into(),
@@ -141,11 +152,7 @@ struct LoweringAnalysis<'a> {
     functions: HashMap<ValueId, &'a str>,
     strings: Vec<(ValueId, String)>,
     input_count: usize,
-    input_targets: HashMap<ValueId, SymbolId>,
-    input_symbols: HashSet<SymbolId>,
-    escaping_inputs: HashSet<SymbolId>,
     released_symbols: HashSet<SymbolId>,
-    owned_string_results: HashSet<ValueId>,
     owned_struct_results: HashSet<ValueId>,
     uses_string_concat: bool,
     uses_bn_rt: bool,
@@ -154,7 +161,6 @@ struct LoweringAnalysis<'a> {
     uses_bn_rt_math: bool,
     uses_float_print: bool,
     uses_string_ops: bool,
-    uses_string_sizeof: bool,
     uses_temporal_print: bool,
     uses_heap: bool,
     multi_defs: HashSet<ValueId>,
@@ -530,7 +536,7 @@ mod analysis_helpers;
 use analysis_helpers::{instruction_destination, llvm_vector_dimension_supported};
 #[path = "llvm/analysis_validate.rs"]
 mod analysis_validate;
-use analysis_validate::{for_condition_supported, validate_instruction};
+use analysis_validate::{for_condition_supported, for_fits_supported, validate_instruction};
 
 fn is_error_type(ty: &Type) -> bool {
     matches!(ty, Type::Named(name) if name == "Error")
@@ -667,7 +673,7 @@ fn integer_eof_or_error(alternatives: &[Type]) -> bool {
         && alternatives.iter().any(is_error_type)
 }
 
-fn dispatch_handle_name(name: &str) -> bool {
+pub(crate) fn dispatch_handle_name(name: &str) -> bool {
     matches!(
         name,
         "Queue" | "Ticket" | "Group" | "Barrier" | "Semaphore" | "Mutex"
@@ -679,7 +685,7 @@ fn is_native_vector(ty: &Type) -> bool {
         ty,
         Type::Vector { element, dimensions }
             if !dimensions.is_empty()
-                && dimensions.iter().all(|dimension| *dimension != u64::MAX)
+                && (dimensions.iter().all(|dimension| *dimension != u64::MAX) || dimensions.len() == 1)
                 && llvm_type(element).is_some()
     )
 }
@@ -689,7 +695,6 @@ fn is_int_vector(ty: &Type) -> bool {
         ty,
         Type::Vector { element, dimensions }
             if dimensions.len() == 1
-                && dimensions[0] != u64::MAX
                 && matches!(element.as_ref(), Type::Integer(IntegerType::Int32) | Type::IntegerLiteral(_))
     )
 }
@@ -701,6 +706,17 @@ fn is_native_pointer(ty: &Type) -> bool {
             if llvm_type(element).is_some()
                 || matches!(element.as_ref(), Type::Vector { dimensions, .. } if dimensions.len() == 1)
     ) || matches!(ty, Type::Named(name) if name == "POINTER")
+}
+
+/// `POINTER TO T OR NULL`: the region fat pointer, null when the alternative
+/// holds `NULL`. Indexing it is a region index (K11); a definite `Type::Null`
+/// value is not this type.
+fn is_region_alternative(ty: &Type) -> bool {
+    matches!(
+        ty,
+        Type::Alternative(members)
+            if layout::AlternativeLayout::of(members) == Some(layout::AlternativeLayout::Region)
+    )
 }
 
 fn printable_type(ty: &Type) -> bool {
@@ -810,6 +826,10 @@ fn binary_supported(operator: &str, left: &Type, right: &Type, result: &Type) ->
                     && left_llvm.is_floating()
                     && right_llvm.is_floating()
                     && result_llvm.is_floating()
+                || operator == "Power"
+                    && left_llvm.is_integer()
+                    && right_llvm.is_integer()
+                    && result_llvm.is_floating()
         }
         "AND" | "OR" | "XOR" => {
             left_llvm.is_integer() && right_llvm.is_integer() && result_llvm.is_integer()
@@ -856,7 +876,7 @@ use emission2::{
 };
 #[path = "llvm/loop_emission.rs"]
 mod loop_emission;
-use loop_emission::lower_for_condition;
+use loop_emission::{lower_for_condition, lower_for_fits};
 #[path = "llvm/bndata_columns.rs"]
 mod bndata_columns;
 use bndata_columns::{
@@ -953,12 +973,17 @@ use traps::{
 };
 #[path = "llvm/index_bounds.rs"]
 mod index_bounds;
-use index_bounds::{LoweredIndex, emit_index_check, lower_index};
+use index_bounds::{LoweredIndex, emit_index_check, emit_null_region_check, lower_index};
 #[path = "llvm/host_results.rs"]
 mod host_results;
 use host_results::{
     declare_error_abi, emit_buffer_bound, emit_endpoint_result, emit_handle_result,
     emit_status_result, emit_void_call_result, emit_void_result,
+};
+#[path = "llvm/web_ops.rs"]
+mod web_ops;
+pub(crate) use web_ops::{
+    bnweb_arguments_supported, bnweb_method, is_bnweb_resource_type, lower_bnweb_call,
 };
 #[path = "llvm/math.rs"]
 mod math;
@@ -1007,10 +1032,10 @@ mod platform_stdio;
 use arc::{REGION_HEADER_BYTES, held_object, is_class_type, is_region_type, object_class};
 use helpers::{
     bncrypto_method, carries_bncrypto_bytes, class_init_flag, coerce_return_operand,
-    coerce_to_type, emit_input_runtime, emit_string_byte_length, extend_to_i64, float_constant,
-    instruction_name, integer_constant, integer_kind, is_bncrypto_bytes_type, is_unsigned,
-    parse_float_constant, parse_integer, sanitize_symbol, static_global_name,
-    unsupported_call_detail, unsupported_instruction, unsupported_instruction_detail,
+    coerce_to_type, emit_input_runtime, extend_to_i64, float_constant, instruction_name,
+    integer_constant, integer_kind, is_bncrypto_bytes_type, is_unsigned, parse_float_constant,
+    parse_integer, sanitize_symbol, static_global_name, unsupported_call_detail,
+    unsupported_instruction, unsupported_instruction_detail,
 };
 #[cfg(feature = "json")]
 use helpers::{bnjson_member, carries_bnjson};

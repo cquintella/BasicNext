@@ -50,33 +50,64 @@ pub(crate) fn lower_dispatch_emission(
                         format!("dispatcharg{d}_{index}"),
                         I::gep(T::I8, r("argbase"), offset),
                     );
-                    let kind = match argument_ty {
-                        Type::Boolean => 1,
-                        Type::Integer(_) | Type::IntegerLiteral(_) => 2,
-                        Type::Float(_) | Type::FloatLiteral => 3,
-                        Type::String => 4,
-                        _ => unreachable!("validated dispatch scalar argument"),
+                    let is_handle = match argument_ty {
+                        Type::ImportedNamed { name, .. } | Type::ImportedTypeName { name, .. } => {
+                            dispatch_handle_name(name)
+                        }
+                        Type::Named(name) | Type::TypeName(name) => {
+                            dispatch_handle_name(name)
+                                || dispatch_handle_name(name.rsplit('.').next().unwrap_or(name))
+                        }
+                        _ => false,
+                    };
+                    let is_date_time = matches!(argument_ty, Type::Named(name) | Type::TypeName(name) if matches!(name.as_str(), "DATE" | "TIME" | "TIMESTAMP"));
+                    let kind = if is_handle {
+                        6
+                    } else if is_date_time {
+                        2
+                    } else {
+                        match argument_ty {
+                            Type::Boolean => 1,
+                            Type::Integer(_) | Type::IntegerLiteral(_) => 2,
+                            Type::Float(_) | Type::FloatLiteral => 3,
+                            Type::String => 4,
+                            _ => unreachable!("validated dispatch argument"),
+                        }
                     };
                     text.emit(I::store(T::I32, O::int(kind), a("")));
                     let payload = I::gep(T::I8, a(""), vec![(T::I64, O::int(8))]);
                     text.assign(format!("dispatchargpayload{d}_{index}"), payload);
                     let own = O::reg(format!("v{}", argument.0));
-                    let (ty, value) = match argument_ty {
-                        Type::Boolean => {
-                            let wide = I::cast(CastOp::ZExt, T::I1, own, T::I64);
-                            text.assign(format!("dispatchargbool{d}_{index}"), wide);
-                            (T::I64, a("bool"))
+                    let (ty, value) = if is_handle {
+                        let handle = I::extract(handle_result_ty(), own, 2);
+                        text.assign(format!("dispatcharghandle{d}_{index}"), handle);
+                        (T::I64, a("handle"))
+                    } else if is_date_time {
+                        if llvm_type(argument_ty) == Some(T::I32) {
+                            let wide = I::cast(CastOp::ZExt, T::I32, own, T::I64);
+                            text.assign(format!("dispatchargdt{d}_{index}"), wide);
+                            (T::I64, a("dt"))
+                        } else {
+                            (T::I64, own)
                         }
-                        Type::Float(_) | Type::FloatLiteral => {
-                            let wide = Type::Float(FloatType::Float64);
-                            let value = coerce_to_type(text, *argument, argument_ty, &wide);
-                            (T::Double, value)
-                        }
-                        Type::String => (T::Ptr, own),
-                        _ => {
-                            let wide = Type::Integer(IntegerType::Int64);
-                            let value = coerce_to_type(text, *argument, argument_ty, &wide);
-                            (T::I64, value)
+                    } else {
+                        match argument_ty {
+                            Type::Boolean => {
+                                let wide = I::cast(CastOp::ZExt, T::I1, own, T::I64);
+                                text.assign(format!("dispatchargbool{d}_{index}"), wide);
+                                (T::I64, a("bool"))
+                            }
+                            Type::Float(_) | Type::FloatLiteral => {
+                                let wide = Type::Float(FloatType::Float64);
+                                let value = coerce_to_type(text, *argument, argument_ty, &wide);
+                                (T::Double, value)
+                            }
+                            Type::String => (T::Ptr, own),
+                            _ => {
+                                let wide = Type::Integer(IntegerType::Int64);
+                                let value = coerce_to_type(text, *argument, argument_ty, &wide);
+                                (T::I64, value)
+                            }
                         }
                     };
                     text.emit(I::store(ty, value, a("payload")));
@@ -138,8 +169,24 @@ pub(crate) fn lower_dispatch_emission(
                 }
                 _ => &[],
             };
+            let is_handle_result = alternatives.iter().any(|ty| match ty {
+                Type::ImportedNamed { name, .. } | Type::ImportedTypeName { name, .. } => {
+                    dispatch_handle_name(name)
+                }
+                Type::Named(name) | Type::TypeName(name) => {
+                    dispatch_handle_name(name)
+                        || dispatch_handle_name(name.rsplit('.').next().unwrap_or(name))
+                }
+                _ => false,
+            });
+            let is_date_time_result = alternatives.iter().any(|ty| {
+                matches!(
+                    ty,
+                    Type::Named(name) | Type::TypeName(name) if matches!(name.as_str(), "DATE" | "TIME" | "TIMESTAMP")
+                )
+            });
             // The `bn_rt` value kind of the result and the type of its payload.
-            let kind = if integer_or_error(alternatives) {
+            let kind = if integer_or_error(alternatives) || is_date_time_result {
                 Some((2, T::I64))
             } else if float_or_error(alternatives) {
                 Some((3, T::Double))
@@ -147,6 +194,8 @@ pub(crate) fn lower_dispatch_emission(
                 Some((4, T::Ptr))
             } else if boolean_or_error(alternatives) {
                 Some((1, T::I64))
+            } else if is_handle_result {
+                Some((6, T::I64))
             } else {
                 None
             };

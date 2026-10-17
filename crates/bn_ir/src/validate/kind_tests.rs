@@ -487,3 +487,53 @@ fn default_constructor_takes_no_parameters() {
     )]);
     assert!(detail(super::validate(&m)).contains("must not take parameters"));
 }
+
+fn index_of(object: Type, result: Type) -> Result<(), bn_diag::Diagnostic> {
+    use bn_types::IntegerType::Int32;
+    let mut function = function("Start", FunctionKind::Entry, None, 0, "VOID");
+    function.blocks[0].instructions = vec![
+        Instruction::Constant {
+            destination: ValueId(0),
+            value: Constant::Integer("0".into()),
+            ty: Type::Integer(Int32),
+            span: span(),
+        },
+        Instruction::Load {
+            destination: ValueId(1),
+            symbol: SymbolId(0),
+            ty: object,
+            span: span(),
+        },
+        Instruction::Index {
+            destination: ValueId(2),
+            object: ValueId(1),
+            index: ValueId(0),
+            ty: result,
+            span: span(),
+        },
+    ];
+    super::validate(&module(vec![function]))
+}
+
+#[test]
+fn null_is_not_indexable_and_a_nullable_pointer_indexes_its_element() {
+    use bn_types::IntegerType::Int32;
+    use bn_types::PointerLength;
+    let element = Type::Integer(Int32);
+    let nullable = Type::Alternative(vec![
+        Type::Pointer {
+            element: Box::new(element.clone()),
+            length: PointerLength::One,
+        },
+        Type::Null,
+    ]);
+    assert!(
+        detail(index_of(Type::Null, element.clone())).contains("incompatible"),
+        "a value typed exactly NULL is not an indexable region"
+    );
+    index_of(nullable.clone(), element).expect("POINTER TO T OR NULL indexes its element");
+    assert!(
+        detail(index_of(nullable, Type::String)).contains("incompatible"),
+        "the index result has to be the pointer element"
+    );
+}

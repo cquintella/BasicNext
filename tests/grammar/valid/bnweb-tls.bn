@@ -1,0 +1,10 @@
+IMPORT BNWeb AS Web
+
+FUNCTION Start() AS VOID
+    LET tls AS Web.TLSConfig OR Error = Web.TLSConfig.FromPEM("bad-cert", "bad-key")
+    IF tls IS Error THEN
+        PRINT "tls-error", tls.Code
+    ELSE
+        PRINT "tls-unexpected-success"
+    END IF
+END FUNCTION

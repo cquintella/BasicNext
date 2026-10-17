@@ -353,15 +353,6 @@ pub(crate) fn lower_user_call(
             text.emit(LlvmInst::store(Ptr, value_reg(destination), owned));
         }
     }
-    for argument in arguments {
-        if analysis.owned_string_results.contains(argument) {
-            text.emit(LlvmInst::call(
-                Void,
-                "free",
-                vec![(Ptr, value_reg(*argument))],
-            ));
-        }
-    }
 }
 
 /// Calls the override whose class name matches the receiver's runtime class,

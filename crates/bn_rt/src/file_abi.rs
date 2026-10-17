@@ -6,7 +6,7 @@
 //! ([`super::set_error`], read back through `bn_rt_error_take`).
 
 use std::collections::HashMap;
-use std::ffi::{CStr, c_char};
+use std::ffi::c_char;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -30,9 +30,14 @@ fn authorize() -> Result<(), u32> {
     }
 }
 
+struct FileSlot {
+    file: OpenFile,
+    strong: u32,
+}
+
 struct FileRegistry {
     next: Option<BNFileHandle>,
-    files: HashMap<BNFileHandle, OpenFile>,
+    files: HashMap<BNFileHandle, FileSlot>,
 }
 
 impl FileRegistry {
@@ -61,14 +66,7 @@ fn files() -> Arc<FileTable> {
 }
 
 fn text(ptr: *const c_char) -> Option<String> {
-    if ptr.is_null() {
-        None
-    } else {
-        unsafe { CStr::from_ptr(ptr) }
-            .to_str()
-            .ok()
-            .map(str::to_owned)
-    }
+    super::string::string_text(ptr)
 }
 
 /// A core failure: its report becomes the next `Error`.
@@ -102,11 +100,11 @@ fn with_file_unchecked<T>(
         .0
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let Some(file) = guard.files.get_mut(&handle) else {
+    let Some(slot) = guard.files.get_mut(&handle) else {
         super::set_error("file handle is invalid");
         return Err(BN_FILE_INVALID);
     };
-    f(file).map_err(|error| failed(&error))
+    f(&mut slot.file).map_err(|error| failed(&error))
 }
 
 pub(crate) fn read_handle(handle: BNFileHandle) -> Result<String, u32> {
@@ -120,16 +118,13 @@ pub(crate) fn write_handle(handle: BNFileHandle, value: &str) -> Result<(), u32>
 /// Writes an owned NUL-terminated copy of `value` to `out` (freed with
 /// `bn_rt_file_string_free`).
 fn write_owned(out: *mut *mut c_char, value: &str) -> u32 {
-    let bytes = value.as_bytes();
-    let ptr = unsafe { libc::malloc(bytes.len() + 1) }.cast::<u8>();
+    let ptr = super::string::c_string_from_bytes(value.as_bytes());
     if ptr.is_null() {
         super::set_error("out of memory");
         return BN_FILE_ERROR;
     }
     unsafe {
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
-        ptr.add(bytes.len()).write(0);
-        out.write(ptr.cast());
+        out.write(ptr);
     }
     BN_FILE_OK
 }
@@ -158,7 +153,13 @@ pub extern "C" fn bn_rt_file_new(out: *mut BNFileHandle) -> u32 {
         Ok(id) => id,
         Err(status) => return status,
     };
-    guard.files.insert(id, super::file::OpenFile::default());
+    guard.files.insert(
+        id,
+        FileSlot {
+            file: super::file::OpenFile::default(),
+            strong: 1,
+        },
+    );
     // SAFETY: emitted code passes a writable handle slot.
     unsafe { out.write(id) };
     BN_FILE_OK
@@ -198,7 +199,7 @@ pub extern "C" fn bn_rt_file_open(path: *const c_char, mode: i32, out: *mut BNFi
     };
     match super::policy::with_fs(|policy| super::file::open(policy, Path::new(&path), mode)) {
         Ok(file) => {
-            entry.insert(file);
+            entry.insert(FileSlot { file, strong: 1 });
             unsafe { out.write(id) };
             BN_FILE_OK
         }
@@ -212,16 +213,46 @@ pub extern "C" fn bn_rt_file_close(handle: BNFileHandle) -> u32 {
     with_file_unchecked(handle, OpenFile::close).map_or_else(|status| status, |()| BN_FILE_OK)
 }
 
-/// `RELEASE` of an `FS.File`: drops the handle (closing an open file).
+/// One more binding holds `handle`. The last `bn_rt_file_release` drops it.
 #[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_file_release(handle: BNFileHandle) -> u32 {
-    files()
+pub extern "C" fn bn_rt_file_retain(handle: BNFileHandle) -> u32 {
+    let table = files();
+    let mut guard = table
         .0
         .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .files
-        .remove(&handle)
-        .map_or(BN_FILE_INVALID, |_| BN_FILE_OK)
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let Some(slot) = guard.files.get_mut(&handle) else {
+        super::set_error("file handle is invalid");
+        return BN_FILE_INVALID;
+    };
+    slot.strong = match slot.strong.checked_add(1) {
+        Some(count) => count,
+        None => {
+            super::set_error("file handle count overflowed");
+            return BN_FILE_ERROR;
+        }
+    };
+    BN_FILE_OK
+}
+
+/// One fewer binding. The last one drops the handle and closes an open file.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_file_release(handle: BNFileHandle) -> u32 {
+    let table = files();
+    let mut guard = table
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let Some(slot) = guard.files.get_mut(&handle) else {
+        super::set_error("file handle is invalid");
+        return BN_FILE_INVALID;
+    };
+    if slot.strong > 1 {
+        slot.strong -= 1;
+        return BN_FILE_OK;
+    }
+    guard.files.remove(&handle);
+    BN_FILE_OK
 }
 
 #[unsafe(no_mangle)]
@@ -231,10 +262,7 @@ pub extern "C" fn bn_rt_file_read_all(handle: BNFileHandle, out: *mut *mut c_cha
     }
     unsafe { out.write(std::ptr::null_mut()) };
     match read_handle(handle) {
-        Ok(value) => {
-            super::text_abi::reject_nul("HOST.FileSystem.File.ReadAll", value.as_bytes());
-            write_owned(out, &value)
-        }
+        Ok(value) => write_owned(out, &value),
         Err(status) => status,
     }
 }
@@ -247,10 +275,7 @@ pub extern "C" fn bn_rt_file_read_line(handle: BNFileHandle, out: *mut *mut c_ch
     }
     unsafe { out.write(std::ptr::null_mut()) };
     match with_file(handle, OpenFile::read_line) {
-        Ok(Some(line)) => {
-            super::text_abi::reject_nul("HOST.FileSystem.File.ReadLine", line.as_bytes());
-            write_owned(out, &line)
-        }
+        Ok(Some(line)) => write_owned(out, &line),
         Ok(None) => BN_FILE_EOF,
         Err(status) => status,
     }
@@ -352,16 +377,14 @@ pub extern "C" fn bn_rt_fs_delete_file(path: *const c_char) -> u32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_file_string_free(data: *mut c_char) {
     if !data.is_null() {
-        unsafe {
-            libc::free(data.cast());
-        }
+        super::string::bn_rt_str_release(data);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ffi::CString;
+    use std::ffi::{CStr, CString};
 
     #[test]
     fn exhausted_handles_never_wrap() {
@@ -396,12 +419,12 @@ mod tests {
         }
         let path = std::env::temp_dir().join(format!("bn-file-policy-{}", std::process::id()));
         std::fs::write(&path, b"preserve").unwrap();
-        let name = CString::new(path.to_str().unwrap()).unwrap();
+        let name = crate::string::c_string_from_bytes(path.to_str().unwrap().as_bytes());
         let mut handle = 0;
-        assert_eq!(bn_rt_file_open(name.as_ptr(), 0, &mut handle), BN_FILE_OK);
+        assert_eq!(bn_rt_file_open(name, 0, &mut handle), BN_FILE_OK);
         super::super::policy::restrict_for_tests(0);
         let mut denied = 99;
-        let status = bn_rt_file_open(name.as_ptr(), 1, &mut denied);
+        let status = bn_rt_file_open(name, 1, &mut denied);
         assert_ne!(status, BN_FILE_OK);
         assert_eq!(denied, 0);
         assert!(read_handle(handle).is_err());
@@ -425,11 +448,8 @@ mod tests {
             if i == 2 {
                 assert_eq!(bn_rt_file_close(handles[0]), BN_FILE_OK);
             }
-            let path = CString::new(path.to_str().unwrap()).unwrap();
-            assert_eq!(
-                bn_rt_file_open(path.as_ptr(), 0, &mut handles[i]),
-                BN_FILE_OK
-            );
+            let path = crate::string::c_string_from_bytes(path.to_str().unwrap().as_bytes());
+            assert_eq!(bn_rt_file_open(path, 0, &mut handles[i]), BN_FILE_OK);
         }
         assert_ne!(handles[1], handles[2]);
         assert!(read_handle(handles[0]).is_err());
@@ -449,13 +469,13 @@ mod tests {
         // Other tests restrict the process-wide policy; hold its lock.
         let _policy = super::super::policy::reset_for_tests();
         let path = std::env::temp_dir().join(format!("bn-file-{}-{}.txt", std::process::id(), 1));
-        let path_c = CString::new(path.to_string_lossy().as_bytes()).expect("path");
+        let path_c = crate::string::c_string_from_bytes(path.to_string_lossy().as_bytes());
         let mut handle = 0;
-        assert_eq!(bn_rt_file_open(path_c.as_ptr(), 1, &mut handle), BN_FILE_OK);
-        let data = CString::new("hello\n").expect("data");
-        assert_eq!(bn_rt_file_write(handle, data.as_ptr()), BN_FILE_OK);
+        assert_eq!(bn_rt_file_open(path_c, 1, &mut handle), BN_FILE_OK);
+        let data = crate::string::c_string_from_bytes(b"hello\n");
+        assert_eq!(bn_rt_file_write(handle, data), BN_FILE_OK);
         assert_eq!(bn_rt_file_close(handle), BN_FILE_OK);
-        assert_eq!(bn_rt_file_open(path_c.as_ptr(), 0, &mut handle), BN_FILE_OK);
+        assert_eq!(bn_rt_file_open(path_c, 0, &mut handle), BN_FILE_OK);
         let mut output = std::ptr::null_mut();
         assert_eq!(bn_rt_file_read_all(handle, &mut output), BN_FILE_OK);
         let actual = unsafe { CStr::from_ptr(output) }.to_bytes();
@@ -504,9 +524,10 @@ mod tests {
         std::fs::rename(&root, &moved).unwrap();
         std::os::unix::fs::symlink(&outside, &root).unwrap();
 
-        let name = CString::new(root.join("value.txt").to_string_lossy().as_bytes()).unwrap();
+        let name =
+            crate::string::c_string_from_bytes(root.join("value.txt").to_string_lossy().as_bytes());
         let mut handle = 0;
-        assert_eq!(bn_rt_file_open(name.as_ptr(), 0, &mut handle), BN_FILE_OK);
+        assert_eq!(bn_rt_file_open(name, 0, &mut handle), BN_FILE_OK);
         assert_eq!(read_handle(handle).unwrap(), "inside");
         assert_eq!(bn_rt_file_close(handle), BN_FILE_OK);
         assert_eq!(
@@ -515,5 +536,24 @@ mod tests {
         );
         std::fs::remove_file(root).unwrap();
         std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    #[allow(clippy::borrow_as_ptr)]
+    fn last_release_drops_the_file_and_close_does_not() {
+        let _policy = super::super::policy::reset_for_tests();
+        let path = std::env::temp_dir().join(format!("bn-file-retain-{}", std::process::id()));
+        std::fs::write(&path, b"kept").unwrap();
+        let name = crate::string::c_string_from_bytes(path.to_str().unwrap().as_bytes());
+        let mut handle = 0;
+        assert_eq!(bn_rt_file_open(name, 0, &mut handle), BN_FILE_OK);
+        assert_eq!(bn_rt_file_retain(handle), BN_FILE_OK);
+        assert_eq!(bn_rt_file_release(handle), BN_FILE_OK);
+        assert_eq!(read_handle(handle).unwrap(), "kept");
+        assert_eq!(bn_rt_file_close(handle), BN_FILE_OK);
+        assert!(read_handle(handle).is_err());
+        assert_eq!(bn_rt_file_release(handle), BN_FILE_OK);
+        assert_eq!(bn_rt_file_release(handle), BN_FILE_INVALID);
+        std::fs::remove_file(path).unwrap();
     }
 }

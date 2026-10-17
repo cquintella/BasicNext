@@ -11,86 +11,142 @@ impl Analyzer {
             ForHeader::Counted {
                 variable,
                 type_ref,
+                variable_span,
                 start,
                 end,
                 step,
             } => {
+                let declared = match type_ref {
+                    Some(type_ref) => self.resolve_reference(type_ref),
+                    None => Type::Integer(IntegerType::Int32),
+                };
+                let Type::Integer(kind) = declared else {
+                    return Err(type_mismatch(
+                        "INTEGER",
+                        display(&declared),
+                        "counted FOR variable",
+                        type_ref
+                            .as_ref()
+                            .map_or(*variable_span, |type_ref| type_ref.span),
+                    ));
+                };
                 for expression in [start, end] {
-                    if !is_integer(&self.expression(expression, locals)?) {
+                    let bound = self.expression(expression, locals)?;
+                    if !is_integer(&bound) {
                         return Err(type_mismatch(
                             "INTEGER",
-                            "non-INTEGER value",
+                            display(&bound),
                             "counted FOR bound",
                             expression.span,
                         ));
                     }
+                    if let Some(value) = constant_integer(expression) {
+                        let (minimum, maximum) = integer_range(kind);
+                        if !(minimum..=maximum).contains(&value) {
+                            return Err(type_mismatch(
+                                display(&declared),
+                                value.to_string(),
+                                "counted FOR bound",
+                                expression.span,
+                            ));
+                        }
+                    }
                 }
-                if let Some(step) = step
-                    && !is_integer(&self.expression(step, locals)?)
-                {
-                    return Err(type_mismatch(
-                        "INTEGER",
-                        "non-INTEGER value",
-                        "FOR STEP",
-                        step.span,
-                    ));
-                }
-                if let Some(step) = step
-                    && integer_literal(step) == Some(0)
-                {
-                    return Err(type_mismatch(
-                        "non-zero INTEGER",
-                        "0",
-                        "FOR STEP",
-                        step.span,
-                    ));
+                if let Some(step) = step {
+                    let step_type = self.expression(step, locals)?;
+                    if !is_integer(&step_type) {
+                        return Err(type_mismatch(
+                            "INTEGER",
+                            display(&step_type),
+                            "FOR STEP",
+                            step.span,
+                        ));
+                    }
+                    if integer_literal(step) == Some(0) {
+                        return Err(type_mismatch(
+                            "non-zero INTEGER",
+                            "0",
+                            "FOR STEP",
+                            step.span,
+                        ));
+                    }
                 }
                 self.declare_local(
                     locals,
                     variable,
-                    self.resolve_reference(type_ref),
+                    declared,
                     false,
-                    type_ref.span,
+                    type_ref
+                        .as_ref()
+                        .map_or(*variable_span, |type_ref| type_ref.span),
                 )
             }
             ForHeader::Each {
                 variable,
                 type_ref,
+                variable_span,
                 iterable,
+            } => self.each_header(
+                variable,
+                type_ref.as_ref(),
+                *variable_span,
+                iterable,
+                locals,
+            ),
+        }
+    }
+
+    /// `FOR EACH`: the iterable is a STRING or a fixed vector, and an explicit
+    /// `AS` must accept that element.
+    fn each_header(
+        &mut self,
+        variable: &str,
+        type_ref: Option<&TypeReference>,
+        variable_span: Span,
+        iterable: &Expression,
+        locals: &mut HashMap<String, Symbol>,
+    ) -> Result<(), Diagnostic> {
+        let iterable_type = self.expression(iterable, locals)?;
+        let element = match &iterable_type {
+            Type::String => Type::String,
+            Type::Vector {
+                element,
+                dimensions,
             } => {
-                let iterable_type = self.expression(iterable, locals)?;
-                let Type::Vector {
-                    element,
-                    dimensions,
-                } = iterable_type
-                else {
-                    return Err(type_mismatch(
-                        "fixed-length vector",
-                        display(&iterable_type),
-                        "FOR EACH iterable",
-                        iterable.span,
-                    ));
-                };
                 if dimensions.contains(&u64::MAX) {
                     return Err(type_mismatch(
-                        "fixed-length vector",
+                        "fixed-length vector or STRING",
                         "dynamic-length vector",
                         "FOR EACH iterable",
                         iterable.span,
                     ));
                 }
-                let declared = self.resolve_reference(type_ref);
-                if declared != *element {
-                    return Err(type_mismatch(
-                        display(&element),
-                        display(&declared),
-                        "FOR EACH binding",
-                        type_ref.span,
-                    ));
-                }
-                self.declare_local(locals, variable, declared, true, type_ref.span)
+                (**element).clone()
             }
-        }
+            _ => {
+                return Err(type_mismatch(
+                    "fixed-length vector or STRING",
+                    display(&iterable_type),
+                    "FOR EACH iterable",
+                    iterable.span,
+                ));
+            }
+        };
+        let (declared, span) = if let Some(type_ref) = type_ref {
+            let declared = self.resolve_reference(type_ref);
+            if !self.compatible(&declared, &element) {
+                return Err(type_mismatch(
+                    display(&declared),
+                    display(&element),
+                    "FOR EACH binding",
+                    type_ref.span,
+                ));
+            }
+            (declared, type_ref.span)
+        } else {
+            (element, variable_span)
+        };
+        self.declare_local(locals, variable, declared, true, span)
     }
 
     pub(crate) fn assignment_target(
@@ -187,6 +243,11 @@ impl Analyzer {
         expected: &Type,
         locals: &HashMap<String, Symbol>,
     ) -> Result<Type, Diagnostic> {
+        if let ExpressionKind::Vector { values } = &expression.kind
+            && let Some(fields) = self.struct_field_list(expected)
+        {
+            return self.struct_literal_as(expression, values, expected, &fields, locals);
+        }
         if matches!(&expression.kind, ExpressionKind::Vector { values } if values.is_empty())
             && matches!(expected, Type::Vector { .. })
         {
@@ -247,5 +308,38 @@ impl Analyzer {
         }
         self.record_expression(expression.span, &ty, None);
         Ok(ty)
+    }
+
+    /// A bracket literal whose declared destination is a `STRUCT` (0.6.md,
+    /// "STRUCT literals"): element `i` is an assignment to field `i`.
+    fn struct_literal_as(
+        &mut self,
+        expression: &Expression,
+        values: &[Expression],
+        expected: &Type,
+        fields: &[RecordMember],
+        locals: &HashMap<String, Symbol>,
+    ) -> Result<Type, Diagnostic> {
+        if values.len() != fields.len() {
+            return Err(type_mismatch(
+                format!("STRUCT with {} fields", fields.len()),
+                format!("literal with {} elements", values.len()),
+                "STRUCT literal",
+                expression.span,
+            ));
+        }
+        for (value, field) in values.iter().zip(fields) {
+            let actual = self.expression_as(value, &field.ty, locals)?;
+            if !self.compatible(&field.ty, &actual) {
+                return Err(type_mismatch(
+                    display(&field.ty),
+                    display(&actual),
+                    "STRUCT literal element",
+                    value.span,
+                ));
+            }
+        }
+        self.record_expression(expression.span, expected, None);
+        Ok(expected.clone())
     }
 }

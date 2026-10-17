@@ -79,7 +79,9 @@ impl Analyzer {
         }
         for item in &program.items {
             match item {
-                Item::Import { path, alias, span } => {
+                Item::Import {
+                    path, alias, span, ..
+                } => {
                     let ty = match path.as_slice() {
                         [host, capability] if host == "HOST" && capability == "Main" => {
                             return Err(name_not_found(
@@ -144,24 +146,43 @@ impl Analyzer {
                     statements,
                     ..
                 } => {
-                    if *asynchronous
-                        && let Some(signature) = signature
-                        && signature
+                    if *asynchronous && let Some(signature) = signature {
+                        if signature.parameters.len() > 8 {
+                            return Err(type_mismatch(
+                                "at most 8 worker parameters",
+                                format!("{} parameters", signature.parameters.len()),
+                                "ASYNC FUNCTION parameter count",
+                                *span,
+                            ));
+                        }
+                        for parameter in &signature.parameters {
+                            let param_ty = self.resolve_reference(&parameter.type_ref);
+                            if !is_valid_async_parameter_type(&param_ty, &self.standard_modules) {
+                                return Err(type_mismatch(
+                                    "scalar, string, date/time, or dispatch handle",
+                                    display(&param_ty),
+                                    "ASYNC FUNCTION parameter",
+                                    parameter.span,
+                                ));
+                            }
+                        }
+                        if signature
                             .return_type
                             .alternatives
                             .iter()
                             .any(|atom| atom.name != "VOID")
-                        && !signature
-                            .return_type
-                            .alternatives
-                            .iter()
-                            .any(|atom| atom.name == "Error")
-                    {
-                        return Err(error(
-                            DiagId::ASYNC_RETURN_TYPE,
-                            "typed ASYNC FUNCTION must return T OR Error",
-                            signature.return_type.span,
-                        ));
+                            && !signature
+                                .return_type
+                                .alternatives
+                                .iter()
+                                .any(|atom| atom.name == "Error")
+                        {
+                            return Err(error(
+                                DiagId::ASYNC_RETURN_TYPE,
+                                "typed ASYNC FUNCTION must return T OR Error",
+                                signature.return_type.span,
+                            ));
+                        }
                     }
                     let ty = signature.as_ref().map_or_else(
                         || declaration_type(*kind, name),
@@ -278,6 +299,31 @@ impl Analyzer {
                 }
             }
             self.members.insert(name.clone(), declared);
+            if *kind == DeclarationKind::Struct {
+                self.struct_fields.insert(
+                    name.clone(),
+                    statements
+                        .iter()
+                        .filter_map(|statement| {
+                            let Statement::Binding {
+                                name: field,
+                                type_ref,
+                                is_static: false,
+                                span,
+                                ..
+                            } = statement
+                            else {
+                                return None;
+                            };
+                            Some(RecordMember {
+                                name: field.clone(),
+                                ty: self.resolve_reference(type_ref),
+                                span: *span,
+                            })
+                        })
+                        .collect(),
+                );
+            }
             self.declared_members.insert(
                 name.clone(),
                 statements
@@ -291,7 +337,7 @@ impl Analyzer {
             );
         }
         self.inherit_members()?;
-        self.compute_layouts();
+        self.compute_layouts()?;
         Ok(())
     }
 }

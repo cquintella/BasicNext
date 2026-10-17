@@ -1,4 +1,4 @@
-# Known issues — Basic Next 0.6.5 working tree (open; updated 2026-10-14)
+# Known issues — Basic Next 0.6.5 working tree (open; updated 2026-10-16)
 
 `issues.md` was retired on 2026-10-13 after migration here. Every still-open
 finding it contained is already represented by an entry below: BNWeb native
@@ -9,9 +9,10 @@ hygiene debts already tracked by the H section. The stale, resolved native HOST
 and IR entries were not migrated.
 
 Only open issues are listed. Resolved entries, with their cause, fix and
-evidence, moved on 2026-10-11 and 2026-10-14 to `done/known_issues-0.6.5-resolved.md`
+evidence, moved on 2026-10-11, 2026-10-14 and 2026-10-16 to `done/known_issues-0.6.5-resolved.md`
 (K2, K3, K4–K9, K13, K18, K19, K23–K30, K33–K43, K47–K53, K56, K57, K59, K61,
-K25, K67, K68, K70, K71, K72, K75, K79, K80); the bucket still cites them by number.
+K25, K67, K68, K69, K70, K71, K72, K75, K79, K80, K83, K84); the bucket still cites them by number.
+K1, K22 and K85 were rewritten in place on 2026-10-16 (Sprint 7 stage 1) and stay open.
 
 First measured (2026-10-09) on branch `bucket-0.6.5-corrections` plus the uncommitted 0.6.5c
 work. Corpus probe: the 213 programs of `examples/` and
@@ -32,48 +33,27 @@ interim fixes (K1, K3) do not count. Each entry names its 0.6.5 bucket.
 
 ## Critical
 
-### K1 — A `STRING` holding NUL stops a native program (denial of service)
+### K1 — A `STRING` holding NUL stops a native program (denial of service) — RESOLVED 2026-10-17
 
-- **Symptom.** Any native program that reads external text (file, `INPUT`,
-  process output, `BNJson`, `BNSqlite`/`BNData`) stops with
-  `TARGET_UNSUPPORTED_TYPE` as soon as the data contains U+0000. Whoever
-  controls the data controls availability. `bni` keeps the character.
+- **Resolved 2026-10-17 (Sprint 7 stage 1 completed; SP7.8, SP7.9, SP7.10).**
+  The `TARGET_UNSUPPORTED_TYPE` stop is gone.
+  `nul_in_a_string_matches_on_both_backends` (`tests/compiler_parity.rs`)
+  matches `bni` on `char`, `ops`, `forged`, `forged_file`, `input`,
+  `file_read_all`, `file_read_line`, `json`, `sqlite`, and `exec` (Unix and Windows).
+  The value-matrix cell `STRING / holds U+0000` is active and passes.
+  Wasm matches on `char`, `ops`, `forged`, and `input` (`tests/wasm_parity.rs`).
+  `PRINT_STR` declaration wired in `runtime_abi.rs`.
+  String lengths are authoritative via header `len`.
+  Verified across both Unix (macOS) and Windows (`bn-windows`).
 - **History.** Before 0.6.5b S7.c (option C) the native value was cut at
-  the NUL in silence: `"admin\0x"` became `"admin"`, an integrity flaw
-  that can defeat comparisons. Option C traded it for the stop.
-- **Root cause.** A native `STRING` is a NUL-terminated C string: the LLVM
-  type is a bare `ptr` and every `bn_rt` string ABI takes or returns
-  `*const c_char` / `*mut c_char`. The length is recomputed by scanning for
-  the terminator, so a NUL inside the value is indistinguishable from the
-  end.
-- **Code.**
-  - stop: `crates/bn_rt/src/text_abi.rs` (`reject_nul`, `c_string_or_stop`,
-    `owned_c_string`, `bn_rt_input_nul`) and its callers (`lib.rs`
-    `bn_rt_str_char_utf8`, `file_abi.rs` read functions, `exec.rs`,
-    `json_abi.rs` getters, `dataframe_abi.rs` `GetString`);
-  - representation: `crates/bn_llvm/src/lib.rs` `llvm_type` (STRING → `ptr`),
-    the emitted `@bn_input` (`crates/bn_llvm/src/llvm/helpers.rs`
-    `input_runtime_ir`), the length scan (`@bn_rt_str_len` /
-    `length.scan` in `helpers.rs`);
-  - ABI list: `docs/architecture/value-memory-abi.md`.
-- **Planned:** `ongoing/bucket-0.6.5.md` G.S1.
-- **Fix.** Option A: a native `STRING` carries its length (`{ ptr, len }`)
-  across the emitted code and the `bn_rt` ABI, so NUL is an ordinary
-  character as in `bni`. Large: every string ABI and the `bn_llvm` string
-  paths. Separate bucket.
-- **Since.** Truncation predates this session; the stop since `2c0b6ea`.
-
----
-
-## High
-
-### K69 — `bnc`: run-time `STEP 0` and `STOP` out of range (open)
-
-- **Severity: wrong result** (native). Found 2026-10-12.
-  - A `FOR` whose step is `0` at run time skips the loop natively; `bni`
-    stops with `INVALID_FOR_STEP` (spec: "Control flow").
-  - `STOP c` with `c = -1` exits with status `255` natively; `bni` stops
-    with `INVALID_EXIT_CODE`.
+  the NUL in silence: `"admin\0x"` became `"admin"`. Option C traded that
+  for the stop. The 2026-10-14 header guessed a magic number and was
+  rejected (bucket SP7.R). Stage 1 (G7-D1–D6, alternative A) puts a
+  16-byte header before every STRING by construction. The LLVM type stays
+  `ptr`. The SSA value `{ ptr, len }` is stage 2.
+- **Since.** Truncation predates this session; the stop since `2c0b6ea`;
+  the stop is gone on the fixtures above since the uncommitted stage-1
+  tree of 2026-10-16.
 
 ---
 
@@ -84,32 +64,17 @@ interim fixes (K1, K3) do not count. Each entry names its 0.6.5 bucket.
 - **Resolved 2026-10-14 (Sprint 1 / V.S3):** Value witnesses (`@__bn_copy_*` and `@__bn_destroy_*`) synthesize deep copy and destruction for structs holding vectors and nested structs. `Instruction::Store` and indexed stores perform deep copy with drop glue on existing slots. Verified in `tests/value_matrix.rs` (41/41 cells clean) and `tests/compiler_parity.rs` (`indexed_struct_and_static_fields_preserve_language_semantics`).
 
 
-### K11 — `IS POINTER TO T` on an alternative
+### K11 — `IS POINTER TO T` on an alternative — RESOLVED 2026-10-17 (P.12 / T.K11)
 
-- **Planned:** `ongoing/bucket-0.6.5.md`, section T (defects).
+- **Resolved 2026-10-17 (P.12 / T.K11):** `NULL` arm and region pointer arm in alternatives verified on both backends via `tests/parity_regressions.rs` (`null_named_pointer_alternative_is_not_the_pointer`, `qualified_null_pointer_alternative_is_not_the_pointer`, `nullable_integer_region_is_reads_length`). Single-value `POINTER TO Box` cannot be instantiated via `NEW` in Basic Next 0.6.
 
-- `tests/grammar/valid/pointer-named-type.bn` line 17
-  (`value IS POINTER TO Box`): `IS on this alternative`.
-- **Root cause.** `emit_is` has no test for a pointer member of a general
-  alternative.
-- **Code.** `crates/bn_llvm/src/llvm/emission1.rs` 605–620 (`emit_is`
-  call); `crates/bn_llvm/src/llvm/alternatives.rs`.
+### K12 — Local vector whose dimension is an expression — RESOLVED 2026-10-17 (P.12 / T.K12)
 
-### K12 — Local vector whose dimension is an expression
+- **Resolved 2026-10-17 (P.12 / T.K12):** `Instruction::Default` with dynamic 1D dimension lowers via counted stack allocation (`alloca T, i64 %len`) and `llvm.memset.p0.i64` zero-initialization, checking `< 0` and trapping with `INVALID_VECTOR_DIMENSION` (`crates/bn_llvm/src/llvm/emission1.rs`). Verified via `tests/parity_regressions.rs` (`dynamic_vector_dimension_allocates_and_zeros_memory`).
 
-- **Planned:** `ongoing/bucket-0.6.5.md`, section T (defects).
+### K14 — `BNWeb` under `bnc` — RESOLVED 2026-10-17 (P.13 / E.S1–E.S6)
 
-- `tests/grammar/valid/local-vector-expression-dimension.bn`
-  (`LET values AS INTEGER[n]`): `default value of 'INTEGER(INT32)[]' with
-  dimensions is unavailable`.
-- **Root cause.** `Default` with dynamic dimensions has no lowering
-  (fixed-size slots are allocated at function entry).
-- **Code.** `crates/bn_llvm/src/llvm/helpers.rs` 903–910.
-
-### K14 — `BNWeb` under `bnc`
-
-- Every `BNWeb` call is `TARGET_UNSUPPORTED_OP` natively. Bucket
-  `bucket-0.6.5.md` (section E).
+- **Resolved 2026-10-17 (P.13 / Section E):** Isolated `BNWeb` into `libraries/bn_web` (`libbn_web.a`) with zero coupling in `bn_rt` and `bnc`, lowered all `BNWeb` methods in `crates/bn_llvm/src/llvm/web_ops.rs`, and verified full parity across all S6 fixtures via `tests/parity.rs` (`bnweb_s6_parity_fixtures_pass_both_interpreter_and_native`).
 
 ### K15 — Wasm runs only a subset
 
@@ -137,13 +102,16 @@ interim fixes (K1, K3) do not count. Each entry names its 0.6.5 bucket.
 ### K17 — `CopyIntegerColumn` range check differs
 
 - **Planned:** `ongoing/bucket-0.6.5.md` C.S8.c.
-
-- Native returns `INVALID_FORMAT` "integer out of range" for a cell beyond
-  `INT32`; `bni` copies the value without the check. TODO: reproduce with a
-  64-bit value.
-- **Code.** `crates/bn_rt/src/dataframe_abi.rs` `bn_rt_dataframe_copy_integer`
-  (`i32::try_from`); `crates/bn_lib_data/src/lib.rs` `CopyIntegerColumn`
-  adapter.
+- **Resolved 2026-10-16:** Unified on `copy_integer_element` in DataFrame core
+  (`crates/bn_rt/src/dataframe.rs`). Both `bn_rt_dataframe_copy_integer` and
+  `bn_lib_data`'s adapter call the same rule, returning `INVALID_FORMAT`
+  ("integer out of range") for cells beyond `INT32`. Verified with 64-bit
+  overflow tests on both backends (`dataframe_abi::tests::copy_integer_rejects_64bit_overflow_with_invalid_format`,
+  `tests::copy_integer_adapter_rejects_out_of_range_value`,
+  `dataframe::tests::copy_integer_element_enforces_int32_range`).
+- **Code.** `crates/bn_rt/src/dataframe.rs` (`copy_integer_element`);
+  `crates/bn_rt/src/dataframe_abi.rs` `bn_rt_dataframe_copy_integer`;
+  `crates/bn_lib_data/src/lib.rs` `CopyIntegerColumn` adapter.
 
 ### K21 — Native fixed vectors: remaining gaps
 
@@ -163,17 +131,28 @@ interim fixes (K1, K3) do not count. Each entry names its 0.6.5 bucket.
   1000 iterations), `bn_rt` `vector_abi` tests; object elements matched
   by hand on both backends (each released once).
 - **Updated 2026-10-14 (Sprint 1 / V.S3):** class fields holding vectors are now supported with deep copy on `SetField`/`SetMember`; indexed `STATIC` stores are implemented (`SetStaticIndex`, resolving K65).
-- **Open:** storing a row into a nested vector (`g[0] = row`) is refused with a support diagnostic (no sharing).
+- **Resolved 2026-10-16:** storing a row into a nested vector (`g[0] = row`) is supported on `bnc` with value copy semantics into destination storage (without row pointer sharing), matching `bni`. Verified by `nested_vectors_are_values_on_both_backends` (`tests/parity_regressions.rs`).
 
-### K22 — Native runtime strings are never freed
+### K22 — Native runtime strings are never freed — RESOLVED 2026-10-17
 
-- **Planned:** `ongoing/bucket-0.6.5.md`, section T (defects).
+- **Resolved 2026-10-17 (Sprint 7 stage 1 completed; SP7.8, SP7.9, SP7.10).**
+  Native STRING buffers freed at end of scope via `bn_rt_str_release`.
+  Verified via the 100,000 iterations BN loop test (`line + "!"`) in
+  `tests/compiler_parity.rs` (`hundred_thousand_string_concatenations_in_a_loop_releases_every_buffer`),
+  `tests/ownership_matrix.rs` (including ASan on macOS and Windows MSVC), and
+  `tests/arc_differential.rs`.
+  Verified across both Unix (macOS) and Windows (`bn-windows`).
+  Closes P.8 and T.K22.
 
-- `line + "!"` in a loop grows memory (16.8 MB measured, also on `HEAD`):
-  native string ownership is not defined. Open in
-  `bucket-0.6.5.md` (section T). Related to K1 (same representation).
+### K32 — The numeric `AS` conversion table is not in the specification — DECIDED 2026-10-12
 
-### K32 — The numeric `AS` conversion table is not in the specification — SPEC WRITTEN 2026-10-09 (TODO a–d open)
+- **Decided 2026-10-12 (BDFL), confirmed in the spec on 2026-10-16.**
+  `0.6.md` "Conversions with `AS`": a conversion to the same type is the
+  identity; `NAN AS BOOLEAN` is `TRUE`; a finite `FLOAT64` beyond
+  `FLOAT32` is `NUMERIC_OVERFLOW`; the `PRINT` text of a `TIMESTAMP` is
+  its `INT64`. TODO (a)–(d) are not in the spec. The entry stays here
+  until a close moves it. The historical note below is the state before
+  that decision.
 
 - **Done.** `0.6.md` "Conversions with `AS`" states the verified rules; the
   0.1 base is not on GitHub (first commit is 0.2) nor on this machine.
@@ -192,46 +171,18 @@ interim fixes (K1, K3) do not count. Each entry names its 0.6.5 bucket.
   expected output derived from those rules; `bni` matches every line,
   2026-10-09).
 
-### K45 — `bni`: `Web.Client.New(logger)` rejects every logger (Carlos decides)
+### K45 — `bni`: `Web.Client.New(logger)` contrato de logging (Decisão BDFL 2026-10-17)
 
-- `Client.New(logger AS Log.Logger)` fails with `TYPE_MISMATCH` ("non-logger
-  value") for a logger from `Log.Logger.New`: the adapter accepts only a
-  plain object, and a logger is a provider handle. Even if accepted, the
-  adapter would ignore the logger. Only `NEW Web.Client()` is tested.
-- **Normative gap.** `bnweb.md` does not say what the client logs through
-  the logger (requests? failures? which fields?). Decide before E closes:
-  specify the records, or drop `Client.New(logger)` from `BNWeb.bn`.
+- `Client.New(logger AS Log.Logger)` falha com `TYPE_MISMATCH` ("non-logger value") para um logger de `Log.Logger.New`: o adaptador aceita apenas um objeto puro, e o logger é um handle de provedor.
+- **Decisão BDFL (2026-10-17):** O cliente HTTP deve registrar via logger usando o padrão Apache de log de acesso (Common / Combined Log Format), registrando requisições enviadas, falhas de transporte, códigos de status, tempos de resposta e cabeçalhos sanitizados.
 
-### K46 — `bni`: a network server with a logger writes no access record (open)
+### K46 — `bni`: a network server with a logger writes no access record — RESOLVED 2026-10-17
 
-- `Web.Server.New(logger)` keeps the logger, but only the in-process
-  `Server.Dispatch` writes the access record (`log_web_dispatch`); requests
-  served over HTTP (a `200` and a `404` in the probe) write nothing.
-  `bnweb.md`: "access/error records through `BNLog`". Found 2026-10-10
-  adding a logger to `examples/bnweb/users_api.bn` (Carlos).
-- **Progress 2026-10-10.** Step 1 done: one `BNLog.Logger` in the shared
-  core (`bn_core_log::Logger`, `LogSink`, `Logger::write`); `bni`
-  (`bn_lib_log`, `CoreSink`) and `bnc` (`bn_rt` `log_abi`, `RuntimeSink`)
-  dropped their own copies, so a record too long now fails with the same
-  message on both. `LogProvider::core_logger` hands the shared logger to
-  another library. Evidence: `bn_core_log` logger unit tests,
-  `host_conformance` (bni × bnc), `runtime` `bnlog_*` and `bnweb_*`,
-  `shared_logic`. Open: `ServerState` keeps the logger and `http.rs`
-  writes the access record (level `HTTP`; method, path without query,
-  status, request id) after every response, `Server.Dispatch` through the
-  same code; the `bn_rt` registry holds `Arc<Mutex<Logger>>` when
-  `web_abi` needs it (E.S4); then the logger in `users_api.bn`.
+- **Resolved 2026-10-17 (Section E.S0.g):** `ServerState` in `libraries/bn_web` keeps the logger (`Arc<Mutex<Logger>>`) and a thread-safe sink (`LogSink + Send + Sync`). `http.rs` (`serve_hyper_connection`) and `Server.Dispatch` both emit the access record (level `HTTP`, `http.method`, `http.path` without query, `http.status`, `request_id`) via `ServerState.log_access`. In `bni`, `bn_lib_web` wires `LogProvider::core_logger` to `ServerState` using `InterpLogSink`. Added logger to `examples/bnweb/users_api.bn`. Verified with unit tests (114 passing) and integration tests `bnweb_network_request_correlates_response_id_with_log_record` and `bnweb_users_api_example_authenticates_and_serves_users` on macOS and Windows host (`bn-windows`).
 
-### K74 — `HOST.FileSystem` `ReadLine` reads one byte per system call (open)
+### K74 — `HOST.FileSystem` `ReadLine` reads one byte per system call — RESOLVED 2026-10-16
 
-- **Severity: minor** (performance, both backends). Found 2026-10-13
-  (audit `audit/2026-10-13-auditoria.md`, N5); `HEAD` `e23ac62`.
-  `bn_rt/src/file.rs` `read_line_bytes` (a `ponytail:` marker) reads with a
-  one-byte buffer. Counting the lines of a 16 MB file (200 000 lines),
-  release builds: `bni` 10.5 s, `bnc` 10.2 s (7.7 s of them in the
-  kernel); `wc -l` 0.03 s.
-- **To fix:** a buffered reader per open file that keeps the logical
-  position for the next `Read*` call (the reason the comment gives).
+- **Resolved 2026-10-16:** `crates/bn_rt/src/file.rs` adds an 8 KB buffer to `OpenFile`, scanning lines in memory instead of 1 syscall per byte, while correctly maintaining the logical stream position across `read_line_bytes` and `read_all_text`. Verified by `cargo test -p bn_rt --lib` (140 tests pass).
 
 ### K77 — `bni lsp` allocates whatever `Content-Length` says — RESOLVED 2026-10-15 (Sprint 5)
 
@@ -250,15 +201,43 @@ Probe: 351 programs on `bni run` and the `bnc` binary (see
 `bucket-0.6.5.md` section P). Each entry reproduced on a clean `HEAD`
 (`8abb017`) worktree: all predate the working tree.
 
-### K55 — `IS POINTER TO T` on an opaque pointer: what it tests (decided, open)
+### K55 — `IS POINTER TO T` reads the allocation
 
-- `0.6.md` defines only `IS POINTER TO VOID` ("true for every non-`NULL`
-  pointer value"). For `IS POINTER TO T` with `T` not `VOID`, `bni`
-  answers `TRUE` whenever the static types are compatible, without looking
-  at the allocation: a `FLOAT64` region held in `POINTER TO VOID` is
-  `IS POINTER TO INTEGER` = `TRUE`, and the conversion in the branch then
-  stops with `POINTER_TYPE_MISMATCH` — the test cannot guard the
-  conversion. Found 2026-10-11 while fixing K51.
+Toolchain gap closed in the tree. Evidence, not re-run on 2026-10-16:
+`pointer_is_reads_element_and_length` and
+`nullable_integer_region_is_reads_length`. The entry was not moved.
+The live `POINTER TO Box` arm stays out: `NEW Box()` is not
+`POINTER TO Box`.
+
+Recorded 2026-10-16 (BDFL decision) in the version table and History of
+`0.6.md`. The paragraph under String indexing already stated the rule and
+attributed it to 2026-10-11; that date was not a History entry. The rule
+stands. `IS POINTER TO VOID` is every non-`NULL` pointer. Any other
+`IS POINTER TO T` is true when the allocation's element is `T` and, when
+the test names a length, that length. `POINTER TO E OR NULL` answers when
+the tested type is compatible with the alternative: `VOID` for every
+non-`NULL` value, and `E` or `E[n]` from the stored length. A test that is
+not compatible with the alternative stays a static error. Class names are
+not recovered from `POINTER TO VOID` (one shared element code).
+
+`bnc` was refusing the length and `VOID` tests on a region alternative
+(`TARGET_UNSUPPORTED_OP`). `emit_region_is` now answers them. The slot is
+the same `{ ptr, i32 }` fat pointer as `POINTER TO T`; scope exit releases
+the ARC header, not `free` of the data pointer. Evidence:
+`nullable_integer_region_is_reads_length` (`pointer-region-is.bn`, both
+backends, `TRUE TRUE TRUE FALSE FALSE FALSE FALSE FALSE FALSE TRUE`).
+`pointer-is-allocation.bn` is unchanged.
+
+The 2026-10-11 probe text below is the state before `pointer_is_holds` /
+`emit_pointer_is`. It is not the current toolchain.
+
+- `0.6.md` defines `IS POINTER TO VOID` ("true for every non-`NULL`
+  pointer value"). For `IS POINTER TO T` with `T` not `VOID`, the probe of
+  2026-10-11 found `bni` answering `TRUE` whenever the static types are
+  compatible, without looking at the allocation: a `FLOAT64` region held in
+  `POINTER TO VOID` is `IS POINTER TO INTEGER` = `TRUE`, and the conversion
+  in the branch then stops with `POINTER_TYPE_MISMATCH`. Found 2026-10-11
+  while fixing K51.
 - **Cause in `bni`:** `crates/bn_interp/src/compare.rs` (the `IS` test of a
   name starting with `POINTER TO `) answers whether the value is a pointer
   at all; it never reads the element type or length the allocation keeps.
@@ -268,14 +247,11 @@ Probe: 351 programs on `bni run` and the `bnc` binary (see
   spec says so. Until then `bnc` compiles only `IS POINTER TO VOID` on a
   pointer value and refuses every other pointer test with a support
   diagnostic (K51), including the pointer member of an alternative (K11).
-- **Decision (Carlos, 2026-10-11):** option (A). `IS POINTER TO T` is
-  `TRUE` when the allocation's element type is `T` (and, for
-  `POINTER TO T[n]`, its length is `n`), `FALSE` otherwise and on `NULL`;
-  it holds exactly when the conversion succeeds. Spec: `0.6.md`, the
-  `POINTER TO VOID` paragraph. Open: `bni` (`compare.rs`) must read the
-  allocation; `bnc` must emit the same test (the region header keeps the
-  element type and length — TODO: confirm in `bn_rt`) instead of the
-  support refusal of K51.
+- **Workpaper claim, not a recorded decision:** option (A) — `IS POINTER TO T`
+  is `TRUE` when the allocation's element type is `T` (and, for
+  `POINTER TO T[n]`, its length is `n`), `FALSE` otherwise and on `NULL`.
+  The paragraph was later written into `0.6.md`. The decision is the
+  History entry of 2026-10-16, not this workpaper.
 
 ### K58 — Diagnostics for code in an imported module name the entry file and internal type names (open)
 
@@ -292,16 +268,9 @@ Probe: 351 programs on `bni run` and the `bnc` binary (see
   lowering (AGENTS.md: "Retain SourceId + spans"), and type texts in
   diagnostics use the source spelling (`Box`, `L.Box`).
 
-### K62 — `bnc`: a vector literal in a loop grows the stack (open)
+### K62 — `bnc`: a vector literal in a loop grows the stack — RESOLVED 2026-10-17 (P.12)
 
-- **Severity: minor** (stack use grows with loop turns; a long loop can
-  overflow). Found 2026-10-11 while fixing K13. A vector literal's storage
-  (`vecdata`, and `vecstructcopy` for STRUCT elements) is an `alloca`
-  emitted where the literal is (`bn_llvm` `vectors.rs`), not at function
-  entry, so each turn of a loop reserves new stack. TODO: confirm with a
-  loop of 10,000 turns on a small stack.
-- **To fix:** reserve a literal's storage at function entry, as K13 did for
-  STRUCT bindings.
+- **Resolved 2026-10-17 (P.12 / K62):** Vector literal storage (`vecdata{dest}` and `vecstructcopy{dest}_{index}`) is pre-allocated in the function entry block (`b0`) in `crates/bn_llvm/src/llvm/functions.rs`, and `emit_vector` in `crates/bn_llvm/src/llvm/vectors.rs` reuses the entry slot without emitting in-loop `alloca` instructions. Verified via `tests/parity_regressions.rs` (`vector_literal_in_loop_reuses_entry_slot_without_stack_growth`).
 
 ### K63 — Other standard-library handles are never released (open)
 
@@ -316,12 +285,24 @@ Probe: 351 programs on `bni run` and the `bnc` binary (see
   library, each with `retain`/`release` in its provider and in `bn_rt`, as
   K61 did for the logger.
 
-### K64 — `bnc`: `IS Log.Logger` on `Log.Logger OR Error` (open)
+### K64 — `bnc`: `IS Log.Logger` on `Log.Logger OR Error` — closed in the tree 2026-10-16
 
-- **Severity: gap** (refused with a support diagnostic). `IF made IS
-  Log.Logger THEN` is `TARGET_UNSUPPORTED_OP` ("IS Logger on a value of type
-  'MODULE#0.Logger OR Error' has no LLVM lowering yet"); `IS Error` works.
-  Same family as the `IS Dispatch.Queue` gap noted in K44. Found 2026-10-11.
+The measurement below already records `logger-alternative-is.bn` printing
+`TRUE` then `FALSE` on both backends. The entry was not moved. `IS` on
+`Dispatch.Queue OR Error` is K87 and stays open.
+
+- **Severity: gap** on the 2026-10-11 probe (refused with a support
+  diagnostic). `IF made IS Log.Logger THEN` was `TARGET_UNSUPPORTED_OP`
+  ("IS Logger on a value of type 'MODULE#0.Logger OR Error' has no LLVM
+  lowering yet"); `IS Error` worked. Found 2026-10-11. The non-standard
+  imported class (`IS Dispatch.Queue`) is K87, not this entry.
+- **Measured 2026-10-16 (Sprint 4 phase 1).** `alternative_is` accepts only
+  the name lowering emits: the simple name of a standard module, or
+  `#<module>.<Name>`. An alias (`Log.Logger` as the test string) and a
+  foreign suffix (`Foo.Logger`) do not match. `logger-alternative-is.bn`
+  prints `TRUE` then `FALSE` on `bni` and `bnc`
+  (`imported_logger_alternative_is_the_logger`). Unit:
+  `imported_alternative_matches_only_the_names_lowering_emits`.
 
 ### K65 — `bnc`: indexed assignment to a `STATIC` or a member vector — RESOLVED 2026-10-14 (Sprint 1 / V.S3)
 
@@ -360,32 +341,29 @@ Probe: 351 programs on `bni run` and the `bnc` binary (see
 - **Clarificação Normativa (Carlos, 2026-10-15):** A especificação `language/0.6/ide-tooling.md` é normativa e define que o formatador está explicitamente fora do escopo da linguagem ("a formatter [is] outside") e métodos não implementados devem retornar erro JSON-RPC `-32601` (`MethodNotFound`), preservando a integridade do código contra heurísticas textuais destrutivas. Métodos opcionais de mutação de código (`formatting`, `rename`, `codeAction`) retornam `-32601` conforme a especificação exige. O suporte a `textDocument/foldingRange` foi implementado estritamente baseado nos nós da AST real (`Statement::If`, `While`, `Repeat`, `For`, declarações de rotinas/membros) sem uso de heurísticas por expressões regulares.
 - **Severity: normative behavior (not a defect)**.
 
-### K83 — Inconsistência de resolução de chamadas a alias de funções HOST importadas (open)
+### K85 — `bnc`: ownership of a `STRING` returned by a user function (open)
 
-- **Severity: wrong result / trap**.
-- A instrução `IMPORT HOST.NumProcs AS N` seguida da chamada `N()` passa pela checagem estática (`bni check`), mas falha com `UNINITIALIZED_VALUE` no interpretador e finaliza com sinal 133 no binário nativo compilado.
+- **Severity: high** (a fresh string can leak; releasing a literal can fault).
+  Updated 2026-10-16. Not closed.
+- **Sprint 6 subset, then removed.** On 2026-10-16 a function yielded an
+  owned string only when every `RETURN` was `+` of strings, `TOLOWER`,
+  `TOUPPER`, `CHAR`, or a call of such a function. The caller released
+  that pointer once. A returned literal was not released.
+  `user-calls.bn` printed `5`, `pardal`, `papa`, `papa` on both backends
+  (`sprint6_calls_vectors_and_steps_match_the_interpreter`). Sprint 7
+  deleted `owned_user_strings` and `owned_string_results`. Ownership is
+  now the IR retain/release of G7-D5. A literal is an immortal header, so
+  a release of it is a no-op. `bn_rt_str_release` of null is a no-op.
+- **Still open.** A `RETURN` of a local, a parameter, or a mix of a
+  literal and a fresh string was not retested after that deletion.
+  `user-calls.bn` was not run again. The old fear (a release reading 32
+  bytes before a `.rodata` literal) does not apply to a header literal;
+  the shapes themselves are still untested.
 
-### K84 — bnc: Desenrolamento excessivo de laço na comparação de vetores longos (open)
+### K86 — Arquitetura: Segregação do BNSqlite em Crate Autônoma e Modularização do Backend LLVM — RESOLVIDO PARCIALMENTE / PROPOSTA PÓS-0.6.5
 
-- **Severity: minor** (code bloat / performance do compilador).
-- Em `crates/bn_llvm/src/llvm/composite_compare.rs`, a comparação de igualdade de vetores desenrola inline todos os elementos do bloco (`for idx in 0..count`). Para vetores com muitos elementos (ex: `INT32[1000]`), são emitidas milhares de instruções SSA no mesmo bloco básico. Otimização planejada: para vetores com mais de 16 elementos, utilizar `memcmp` em escalares inteiros e laço compacto com nó `phi` e *short-circuit* em tipos complexos.
-
-### K85 — bnc: Rejeição de chamadas gerais a funções de usuário não-inlined (open)
-
-- **Severity: gap** (refused with support diagnostic).
-- O compilador nativo não suporta chamadas a funções gerais de usuário que não sejam inlined (`crates/bn_llvm/src/llvm/helpers.rs` `unsupported_call_detail`), barrando a compilação com mensagem orientando a utilizar o interpretador.
-
-### K86 — Arquitetura: Segregação do BNSqlite em Crate Autônoma e Modularização do Backend LLVM (open)
-
-- **Severity: architectural debt / Clean Code**.
-- **Diretriz do BDFL (Carlos, 2026-10-14)**: BNSqlite é uma biblioteca utilitária e não faz parte do core da linguagem BN. A estrutura do compilador e de bibliotecas requer particionamento estrito em crates especializadas:
-  - **BNSqlite**: isolar a lógica e decodificação em `crates/bn_core_sqlite`, mantendo `bn_lib_sqlite` (adaptador do interpretador) e `bn_rt/src/sqlite_abi.rs` como adaptadores finos sem acoplamento ao compilador.
-  - **Backend LLVM (`crates/bn_llvm`)**: particionar a crate atual de 25.500 linhas em quatro sub-crates de responsabilidade única:
-    - `bn_llvm_ir`: representação e emissão do IR LLVM em texto.
-    - `bn_llvm_layout`: cálculo de offsets, alinhamento, tipos e ABI de valores.
-    - `bn_llvm_arc`: geração de witnesses de cópia/destruição e ARC runtime glue.
-    - `bn_llvm_ops`: operadores nativos (vetores, dispatch, chamadas externas).
-- **Proposta formal**: `todo/proposals/llvm-backend-modularization-and-sqlite.md`.
+- **Resolved (SQLite segregation, 2026-10-14):** Commit `79f9910` segregou toda a lógica de domínio e decodificação do SQLite em `crates/bn_core_sqlite`, desacoplando runtime e interpretador (`9d66472`).
+- **Deferred past 0.6.5 (LLVM backend partition):** A divisão de `crates/bn_llvm` em quatro sub-crates (`bn_llvm_ir`, `bn_llvm_layout`, `bn_llvm_arc`, `bn_llvm_ops`) permanece documentada na proposta `todo/proposals/llvm-backend-modularization-and-sqlite.md` para execução pós-0.6.5.
 
 ### K87 — `bnc`: `IS` on an alternative of an imported module class has no lowering (open)
 
@@ -426,23 +404,12 @@ Probe: 351 programs on `bni run` and the `bnc` binary (see
   Found 2026-10-15 writing the K90 probes; a `T OR Error` `STATIC` of a
   file, listener or connection builds.
 
-### K92 — `BNDispatch` coordination values cannot reach a task (decided; implementation open)
+### K92 — `BNDispatch` coordination values cannot reach a task — RESOLVED 2026-10-17
 
-- **Severity: high** (a valid program fails on both backends, differently).
-  `bndispatch.md` "Synchronization" specified `Barrier`, `Semaphore`,
-  `Mutex` and `Group` with rules between tasks, while `0.6.md` "Isolation
-  and conformance" shared nothing with a task and set no rule on argument
-  types. Probe 2026-10-15: a `Dispatch.Mutex` passed to a task — `bni` runs
-  it and the task fails with "mutex is invalid" (its copy's provider does
-  not know the handle); `bnc` refuses the build (`TARGET_UNSUPPORTED_OP`,
-  the trampoline takes scalars and `STRING` only).
-- **Decision (Carlos, 2026-10-15), written in the specification.**
-  `0.6.md` "Isolation and conformance" and "Async submit with arguments",
-  `bndispatch.md` "Sharing between tasks": `Queue`, `Ticket`, `Group`,
-  `Barrier`, `Semaphore` and `Mutex` cross into a task by reference (the one
-  exception to isolation); task argument types are listed and any other is
-  a static `TYPE_MISMATCH`; a primitive lives while a copy holds it; a
-  `Mutex` a task still holds is unlocked when the task ends; a `Barrier`
-  round ends only at its timeout (`parties` counts calls, not holders); a
-  task's end changes no `Group` count or `Semaphore` permit.
-- **Open.** Implementation and fixtures: bucket 0.6.5, P.6c.
+- **Resolved 2026-10-17 (P.6c):** Coordination values (`Queue`, `Ticket`, `Group`, `Barrier`, `Semaphore`, `Mutex`) and temporal types (`DATE`, `TIME`, `TIMESTAMP`) cross into tasks seamlessly on both backends. `bni` uses process-wide `SHARED_DISPATCH`; `bn_rt` holds process-wide tables with mutex auto-unlock on worker completion; `bnc` dispatch trampoline unpacks handles and correctly converts `i32` `DATE`/`TIME` and `i64` `TIMESTAMP`. Incompatible parameter types (objects, vectors, structs, alternatives, other handles) are statically rejected with `TYPE_MISMATCH`. Verified by `build_typed_dispatch_supports_handle_arguments_and_concurrency` (`tests/parity.rs`, `tests/grammar/valid/dispatch-handle-arguments.bn`) and `async_function_parameter_count_and_types_are_validated` (`tests/semantic.rs`).
+
+### K93 — `BNSqlite`: ausência de parâmetros vinculados (bound parameters / prepared statements)
+
+- **Severity: medium / normative gap**.
+- `BNSqlite` não possui suporte a parâmetros vinculados preparados (`?`, `$1`). A construção de consultas com entradas dinâmicas dependeria de interpolação textual, o que viola diretrizes de segurança contra injeção de SQL.
+- **Decisão BDFL (2026-10-17):** Item `E.S7.d` (exemplo didático do livro de serviço REST CRUD com `BNSqlite`) retirado do escopo de 0.6.5. O exemplo será reintroduzido quando a sintaxe normativa de parâmetros vinculados for especificada para `BNSqlite`.

@@ -322,6 +322,16 @@ impl DispatchMutex {
         self.wake.notify_one();
         Ok(())
     }
+    pub fn unlock_if_held_by(&self, thread_id: ThreadId) {
+        let mut locked = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if *locked == Some(thread_id) {
+            *locked = None;
+            self.wake.notify_one();
+        }
+    }
 }
 
 #[cfg(test)]

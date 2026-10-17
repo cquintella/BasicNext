@@ -46,7 +46,6 @@ pub(crate) fn type_from_name(name: &str) -> Type {
         | "INTEGER" | "TIMESTAMP" => Type::Integer(integer_type(name).expect("numeric type")),
         "FLOAT32" | "FLOAT64" | "FLOAT" => Type::Float(float_type(name).expect("float type")),
         "STRING" => Type::String,
-        "SYSTEM" => Type::System,
         name => Type::Named(name.into()),
     }
 }
@@ -309,7 +308,7 @@ pub(crate) fn compatible(expected: &Type, actual: &Type) -> bool {
             },
         ) => {
             (expected_dimensions == actual_dimensions
-                || (expected_dimensions.len() == 1 && expected_dimensions[0] == u64::MAX))
+                || open_first_dimension(expected_dimensions, actual_dimensions))
                 && compatible(expected, actual)
         }
         (
@@ -330,6 +329,14 @@ pub(crate) fn compatible(expected: &Type, actual: &Type) -> bool {
         (expected, actual) => expected == actual,
     }
 }
+/// `INTEGER[]` and `INTEGER[][3]` accept a vector whose first dimension
+/// varies and whose remaining dimensions match (0.6.md, vectors, A8).
+pub(crate) fn open_first_dimension(expected: &[u64], actual: &[u64]) -> bool {
+    expected.len() == actual.len()
+        && expected.first() == Some(&u64::MAX)
+        && expected[1..] == actual[1..]
+}
+
 pub(crate) fn pointer_lengths_compatible(expected: PointerLength, actual: PointerLength) -> bool {
     match (expected, actual) {
         (PointerLength::One, PointerLength::One)
@@ -422,13 +429,67 @@ pub fn is_dispatch_class(
     }
 }
 
+/// The six BNDispatch handle classes: `Queue`, `Ticket`, `Group`, `Barrier`, `Semaphore`, `Mutex`.
+#[must_use]
+pub fn is_dispatch_sync_class(
+    ty: &Type,
+    standard_modules: &std::collections::HashSet<ModuleId>,
+) -> bool {
+    const CLASSES: &[&str] = &["Queue", "Ticket", "Group", "Barrier", "Semaphore", "Mutex"];
+    match ty {
+        Type::ImportedNamed { module, name } | Type::ImportedTypeName { module, name } => {
+            CLASSES.contains(&name.as_str()) && standard_modules.contains(module)
+        }
+        Type::Named(name) | Type::TypeName(name) => {
+            CLASSES.contains(&name.as_str())
+                || CLASSES.iter().any(|c| name.ends_with(&format!(".{c}")))
+        }
+        _ => false,
+    }
+}
+
+/// Allowed argument types for an `ASYNC` task:
+/// scalar integers (`INT8` through `UINT64`), floats (`FLOAT32`, `FLOAT64`),
+/// `BOOLEAN`, `STRING`, `DATE`, `TIME`, `TIMESTAMP`, and the 6 `BNDispatch` classes.
+/// Objects, vectors, structs, alternatives, and other library handles are rejected.
+#[must_use]
+pub fn is_valid_async_parameter_type(
+    ty: &Type,
+    standard_modules: &std::collections::HashSet<ModuleId>,
+) -> bool {
+    match ty {
+        Type::Boolean
+        | Type::Integer(_)
+        | Type::IntegerLiteral(_)
+        | Type::Float(_)
+        | Type::FloatLiteral
+        | Type::String => true,
+        Type::Named(name) | Type::TypeName(name)
+            if matches!(name.as_str(), "DATE" | "TIME" | "TIMESTAMP") =>
+        {
+            true
+        }
+        _ => is_dispatch_sync_class(ty, standard_modules),
+    }
+}
+
 pub fn display(ty: &Type) -> String {
     match ty {
         Type::Named(name) | Type::TypeName(name) => name.clone(),
         Type::ImportedNamed { module, name } | Type::ImportedTypeName { module, name } => {
             format!("MODULE#{}.{}", module.0, name)
         }
-        Type::System => "SYSTEM".into(),
+        Type::Boolean => "BOOLEAN".into(),
+        Type::Integer(kind) => crate::types::integer_type_name(*kind).into(),
+        Type::IntegerLiteral(_) => "INT32".into(),
+        Type::Float(FloatType::Float32) => "FLOAT32".into(),
+        Type::Float(FloatType::Float64) | Type::FloatLiteral => "FLOAT64".into(),
+        Type::String => "STRING".into(),
+        Type::Null => "NULL".into(),
+        Type::NotAvailable => "NA".into(),
+        Type::EndOfFile => "EOF".into(),
+        Type::HostArgs => "HOST.Args".into(),
+        Type::Unknown => "UNKNOWN".into(),
         Type::HostClock => "HOST.Clock".into(),
         Type::HostRandom => "HOST.Random".into(),
         Type::HostConsole => "HOST.Console".into(),
@@ -479,7 +540,6 @@ pub fn display(ty: &Type) -> String {
             }
             PointerLength::Dynamic => format!("POINTER TO {}[]", display(element)),
         },
-        other => format!("{other:?}").to_uppercase(),
     }
 }
 

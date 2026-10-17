@@ -67,6 +67,9 @@ fn emit_bounds_check(
     );
     text.assign(format!("{prefix}len{tag}"), I::extract(vector_ty(), fat, 1));
     let length = O::reg(format!("{prefix}len{tag}"));
+    if context == "region" {
+        emit_null_region_check(text, block_id, state, &O::reg(format!("{prefix}ptr{tag}")));
+    }
     emit_index_check(text, block_id, state, index, &length, continuation, context);
 }
 
@@ -92,7 +95,18 @@ fn emit_element_store(
             I::load(elem.clone(), slot.clone()),
         );
     }
-    if let Some(owner) = struct_owner(module, elem_ty) {
+    if matches!(elem_ty, Type::Vector { .. }) {
+        let dest_row = format!("{prefix}destrow{tag}");
+        let dest_ptr = format!("{prefix}destptr{tag}");
+        let src_ptr = format!("{prefix}srcptr{tag}");
+        text.assign(dest_row.clone(), I::load(vector_ty(), slot));
+        text.assign(
+            dest_ptr.clone(),
+            I::extract(vector_ty(), O::reg(dest_row), 0),
+        );
+        text.assign(src_ptr.clone(), I::extract(vector_ty(), value.clone(), 0));
+        vectors::emit_copy_elements(text, module, elem_ty, O::reg(dest_ptr), O::reg(src_ptr));
+    } else if let Some(owner) = struct_owner(module, elem_ty) {
         let copy_witness = arc_runtime::struct_copy_witness_name(&owner);
         let destroy_witness = arc_runtime::struct_destroy_witness_name(&owner);
         let dest = format!("{prefix}elemptr{tag}");

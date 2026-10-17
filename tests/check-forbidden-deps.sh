@@ -100,3 +100,18 @@ if rg -n 'bn_frontend|module_graph::ModuleId|semantic::' "$ir_model" >/dev/null;
 fi
 
 echo "IR model dependency check passed"
+
+# E.S1.a / AC9: bnc must not link or depend on tokio, hyper, or rustls.
+# The web runtime may live in the runtime library/archive, but never in the bnc compiler binary.
+for forbidden in tokio hyper rustls; do
+  if cargo tree -p bnc -i "$forbidden" >/dev/null 2>&1; then
+    echo "bnc unexpectedly depends on web runtime crate: $forbidden" >&2
+    exit 1
+  fi
+done
+# Positive sanity check: ensure inverted search works on an actual dependency
+if ! cargo tree -p bnc -i bn_frontend >/dev/null 2>&1; then
+  echo "cargo tree inverted query sanity check failed for bn_frontend" >&2
+  exit 1
+fi
+echo "bnc web-runtime dependency gate (AC9) passed"

@@ -1,0 +1,24 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// Comparisons, case, index, ASC and PRINT of a STRING that holds U+0000.
+FUNCTION Start() AS VOID
+    LET z AS STRING OR Error = CHAR(0)
+    IF z IS STRING THEN
+        LET text AS STRING = "a" + z + "b"
+        PRINT LEN(text)
+        IF text = "a" + z + "b" THEN
+            PRINT "eq"
+        END IF
+        IF text <> "ab" THEN
+            PRINT "ne"
+        END IF
+        PRINT TOUPPER(text)
+        PRINT TOLOWER(text)
+        PRINT text[0]
+        PRINT ASC(text)
+        PRINT text
+    END IF
+END FUNCTION

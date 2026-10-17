@@ -16,6 +16,7 @@ pub(crate) fn call_instruction_supported(
 ) -> Result<bool, String> {
     Ok(match functions.get(callee).copied() {
         Some("$for_condition") => for_condition_supported(arguments, values),
+        Some("$for_fits") => for_fits_supported(arguments, values),
         Some(bn_ir::names::STOPPING | bn_ir::names::STOP_CODE) => arguments.is_empty(),
         Some("HOST.Random.Seed") => arguments.len() == 1,
         Some("HOST.Random.Random") => arguments.is_empty(),
@@ -368,6 +369,9 @@ pub(crate) fn call_instruction_supported(
         }
         Some(name) if bnlog_method(module, name).is_some() => {
             bnlog_arguments_supported(module, bnlog_method(module, name), arguments, values)
+        }
+        Some(name) if bnweb_method(module, name).is_some() => {
+            bnweb_arguments_supported(module, bnweb_method(module, name), arguments, values)
         }
         Some("TimeZone.Parse") => {
             arguments.len() == 1

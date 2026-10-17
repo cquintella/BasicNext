@@ -1,0 +1,17 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// STOP outside Start still reports INVALID_EXIT_CODE at FUNCTION Start.
+// The value is an INT64 so a narrowing to the process status cannot hide it.
+
+FUNCTION Helper() AS VOID
+    LET code AS INT64 = 256
+    STOP code
+END FUNCTION
+
+FUNCTION Start() AS INTEGER
+    Helper()
+    RETURN 0
+END FUNCTION

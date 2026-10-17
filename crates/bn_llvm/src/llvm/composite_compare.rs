@@ -19,6 +19,45 @@ use crate::layout::{
 };
 use crate::runtime_abi::STR_EQ;
 
+/// Above this length a vector compare is one `memcmp` (integer elements) or
+/// one counted loop. At or below it, each element is compared in place
+/// (known issue K84).
+const VECTOR_COMPARE_UNROLL_LIMIT: u64 = 16;
+
+/// Whether comparing `ty` emits `memcmp` for a long integer vector, including
+/// one nested inside a wider vector.
+pub(crate) fn vector_needs_memcmp(ty: &Type) -> bool {
+    let Type::Vector {
+        element,
+        dimensions,
+    } = ty
+    else {
+        return false;
+    };
+    let count = dimensions.first().copied().unwrap_or(0);
+    if dimensions.len() == 1
+        && count > VECTOR_COMPARE_UNROLL_LIMIT
+        && integer_element_bytes(element).is_some()
+    {
+        return true;
+    }
+    if dimensions.len() > 1 {
+        let inner = Type::Vector {
+            element: element.clone(),
+            dimensions: dimensions[1..].to_vec(),
+        };
+        return vector_needs_memcmp(&inner);
+    }
+    false
+}
+
+fn integer_element_bytes(ty: &Type) -> Option<u64> {
+    match ty {
+        Type::Integer(kind) => Some(u64::from(kind.width() / 8)),
+        _ => None,
+    }
+}
+
 pub(crate) fn emit_struct_compare(
     text: &mut crate::ir::LlvmModule,
     module: &Module,
@@ -222,72 +261,28 @@ fn emit_vector_operands_compare(
     };
 
     let count = dimensions.first().copied().unwrap_or(0);
-    let mut current_and: Option<String> = None;
-    if count > 0 {
-        let child_ty = if dimensions.len() > 1 {
-            Type::Vector {
-                element: element.clone(),
-                dimensions: dimensions[1..].to_vec(),
-            }
-        } else {
-            element.as_ref().clone()
-        };
-        let elem_llvm = llvm_type(&child_ty).expect("vector element llvm type");
-        for idx in 0..count {
-            let elem_l_ptr = format!("vecl_ptr_{idx}_{tag}");
-            let elem_r_ptr = format!("vecr_ptr_{idx}_{tag}");
-            let at = vec![(T::I32, O::uint(idx))];
-            text.assign(
-                elem_l_ptr.clone(),
-                I::gep(elem_llvm.clone(), O::reg(ptr_l.clone()), at.clone()),
-            );
-            text.assign(
-                elem_r_ptr.clone(),
-                I::gep(elem_llvm.clone(), O::reg(ptr_r.clone()), at),
-            );
-            let elem_l = format!("vecl_v_{idx}_{tag}");
-            let elem_r = format!("vecr_v_{idx}_{tag}");
-            text.assign(
-                elem_l.clone(),
-                I::load(elem_llvm.clone(), O::reg(elem_l_ptr)),
-            );
-            text.assign(
-                elem_r.clone(),
-                I::load(elem_llvm.clone(), O::reg(elem_r_ptr)),
-            );
-
-            let elem_eq = format!("vecelem_eq_{idx}_{tag}");
-            emit_value_compare(
-                text,
-                module,
-                &elem_eq,
-                &child_ty,
-                O::reg(elem_l),
-                O::reg(elem_r),
-                state,
-            );
-
-            current_and = match current_and {
-                None => Some(elem_eq),
-                Some(prev) => {
-                    let next_and = format!("vecand_{idx}_{tag}");
-                    text.assign(
-                        next_and.clone(),
-                        I::binary(BinaryOp::And, T::I1, O::reg(prev), O::reg(elem_eq)),
-                    );
-                    Some(next_and)
-                }
-            };
+    let child_ty = if dimensions.len() > 1 {
+        Type::Vector {
+            element: element.clone(),
+            dimensions: dimensions[1..].to_vec(),
         }
-    }
-    let elems_eq = current_and.unwrap_or_else(|| {
+    } else {
+        element.as_ref().clone()
+    };
+    let elems_eq = if count == 0 {
         let true_val = format!("vectrue{tag}");
         text.assign(
             true_val.clone(),
             I::icmp(ICmpCond::Eq, T::I32, O::int(0), O::int(0)),
         );
         true_val
-    });
+    } else if count > VECTOR_COMPARE_UNROLL_LIMIT && integer_element_bytes(&child_ty).is_some() {
+        emit_integer_memcmp(text, tag, &ptr_l, &ptr_r, count, &child_ty)
+    } else if count > VECTOR_COMPARE_UNROLL_LIMIT {
+        emit_element_loop(text, module, tag, &child_ty, &ptr_l, &ptr_r, count, state)
+    } else {
+        emit_unrolled_elements(text, module, tag, &child_ty, &ptr_l, &ptr_r, count, state)
+    };
 
     let elems_match = format!("vecelemmatch{tag}");
     text.assign(
@@ -368,4 +363,200 @@ fn emit_value_compare(
             );
         }
     }
+}
+
+fn emit_integer_memcmp(
+    text: &mut crate::ir::LlvmModule,
+    tag: usize,
+    left: &str,
+    right: &str,
+    count: u64,
+    element: &Type,
+) -> String {
+    let bytes = integer_element_bytes(element).expect("integer vector element");
+    let total = count * bytes;
+    let call = format!("vecmem{tag}");
+    text.assign(
+        call.clone(),
+        I::call(
+            T::I32,
+            "memcmp",
+            vec![
+                (T::Ptr, O::reg(left)),
+                (T::Ptr, O::reg(right)),
+                (T::I64, O::uint(total)),
+            ],
+        ),
+    );
+    let equal = format!("vecmemeq{tag}");
+    text.assign(
+        equal.clone(),
+        I::icmp(ICmpCond::Eq, T::I32, O::reg(call), O::int(0)),
+    );
+    equal
+}
+
+fn emit_unrolled_elements(
+    text: &mut crate::ir::LlvmModule,
+    module: &Module,
+    tag: usize,
+    child_ty: &Type,
+    left: &str,
+    right: &str,
+    count: u64,
+    state: &mut EmissionState,
+) -> String {
+    let elem_llvm = llvm_type(child_ty).expect("vector element llvm type");
+    let mut current_and = None;
+    for idx in 0..count {
+        let elem_l_ptr = format!("vecl_ptr_{idx}_{tag}");
+        let elem_r_ptr = format!("vecr_ptr_{idx}_{tag}");
+        let at = vec![(T::I32, O::uint(idx))];
+        text.assign(
+            elem_l_ptr.clone(),
+            I::gep(elem_llvm.clone(), O::reg(left), at.clone()),
+        );
+        text.assign(
+            elem_r_ptr.clone(),
+            I::gep(elem_llvm.clone(), O::reg(right), at),
+        );
+        let elem_l = format!("vecl_v_{idx}_{tag}");
+        let elem_r = format!("vecr_v_{idx}_{tag}");
+        text.assign(
+            elem_l.clone(),
+            I::load(elem_llvm.clone(), O::reg(elem_l_ptr)),
+        );
+        text.assign(
+            elem_r.clone(),
+            I::load(elem_llvm.clone(), O::reg(elem_r_ptr)),
+        );
+        let elem_eq = format!("vecelem_eq_{idx}_{tag}");
+        emit_value_compare(
+            text,
+            module,
+            &elem_eq,
+            child_ty,
+            O::reg(elem_l),
+            O::reg(elem_r),
+            state,
+        );
+        current_and = match current_and {
+            None => Some(elem_eq),
+            Some(prev) => {
+                let next_and = format!("vecand_{idx}_{tag}");
+                text.assign(
+                    next_and.clone(),
+                    I::binary(BinaryOp::And, T::I1, O::reg(prev), O::reg(elem_eq)),
+                );
+                Some(next_and)
+            }
+        };
+    }
+    current_and.expect("a positive element count")
+}
+
+/// One index, one element compare, stop at the first mismatch. The index and
+/// the accumulator are `phi` nodes so the body stays one copy.
+fn emit_element_loop(
+    text: &mut crate::ir::LlvmModule,
+    module: &Module,
+    tag: usize,
+    child_ty: &Type,
+    left: &str,
+    right: &str,
+    count: u64,
+    state: &mut EmissionState,
+) -> String {
+    let elem_llvm = llvm_type(child_ty).expect("vector element llvm type");
+    let pre = format!("veccmp.pre{tag}");
+    let header = format!("veccmp.h{tag}");
+    let body = format!("veccmp.b{tag}");
+    let latch = format!("veccmp.l{tag}");
+    let exit = format!("veccmp.x{tag}");
+    let idx = format!("vecidx{tag}");
+    let acc = format!("vecacc{tag}");
+    let next = format!("vecnext{tag}");
+    let acc_and = format!("vecaccand{tag}");
+    text.emit(I::Br { dest: pre.clone() });
+    state.control_flow.label(text, pre.clone());
+    text.emit(I::Br {
+        dest: header.clone(),
+    });
+    state.control_flow.label(text, header.clone());
+    text.assign(
+        idx.clone(),
+        I::Phi {
+            ty: T::I32,
+            incoming: vec![(O::int(0), pre), (O::reg(&next), latch.clone())],
+        },
+    );
+    text.assign(
+        acc.clone(),
+        I::Phi {
+            ty: T::I1,
+            incoming: vec![
+                (O::bool(true), format!("veccmp.pre{tag}")),
+                (O::reg(&acc_and), latch.clone()),
+            ],
+        },
+    );
+    let in_range = format!("vecin{tag}");
+    text.assign(
+        in_range.clone(),
+        I::icmp(ICmpCond::Ult, T::I32, O::reg(&idx), O::uint(count)),
+    );
+    let go = format!("vecgo{tag}");
+    text.assign(
+        go.clone(),
+        I::binary(BinaryOp::And, T::I1, O::reg(&acc), O::reg(in_range)),
+    );
+    text.emit(I::CondBr {
+        cond: O::reg(go),
+        true_dest: body.clone(),
+        false_dest: exit.clone(),
+    });
+    state.control_flow.label(text, body);
+    let at = vec![(T::I32, O::reg(&idx))];
+    let elem_l_ptr = format!("vecl_ptr_{tag}");
+    let elem_r_ptr = format!("vecr_ptr_{tag}");
+    text.assign(
+        elem_l_ptr.clone(),
+        I::gep(elem_llvm.clone(), O::reg(left), at.clone()),
+    );
+    text.assign(
+        elem_r_ptr.clone(),
+        I::gep(elem_llvm.clone(), O::reg(right), at),
+    );
+    let elem_l = format!("vecl_v_{tag}");
+    let elem_r = format!("vecr_v_{tag}");
+    text.assign(
+        elem_l.clone(),
+        I::load(elem_llvm.clone(), O::reg(elem_l_ptr)),
+    );
+    text.assign(elem_r.clone(), I::load(elem_llvm, O::reg(elem_r_ptr)));
+    let elem_eq = format!("vecelem_eq_{tag}");
+    emit_value_compare(
+        text,
+        module,
+        &elem_eq,
+        child_ty,
+        O::reg(elem_l),
+        O::reg(elem_r),
+        state,
+    );
+    text.emit(I::Br {
+        dest: latch.clone(),
+    });
+    state.control_flow.label(text, latch);
+    text.assign(
+        acc_and,
+        I::binary(BinaryOp::And, T::I1, O::reg(&acc), O::reg(elem_eq)),
+    );
+    text.assign(
+        next,
+        I::binary(BinaryOp::Add, T::I32, O::reg(&idx), O::int(1)),
+    );
+    text.emit(I::Br { dest: header });
+    state.control_flow.label(text, exit);
+    acc
 }

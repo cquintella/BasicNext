@@ -99,6 +99,10 @@ pub(crate) fn analyze_with_modules_mode(
         warnings: Vec::new(),
         type_alias_uses: std::cell::RefCell::default(),
         host_aliases: HashMap::new(),
+        struct_fields: HashMap::new(),
+        ended_loop_names: HashSet::new(),
+        layout_active: Vec::new(),
+        recursive_struct: None,
     };
     analyzer.declare_imported_interfaces();
     analyzer.declare_globals(program)?;
@@ -138,6 +142,15 @@ pub(crate) fn analyze_with_modules_mode(
                 (owner.clone(), fields)
             })
             .collect(),
+        struct_fields: {
+            let mut fields = analyzer.struct_fields;
+            for ((module, name), info) in &analyzer.imported_types {
+                if info.kind == DeclarationKind::Struct {
+                    fields.insert(format!("#{}.{}", module.0, name), info.field_order.clone());
+                }
+            }
+            fields
+        },
         host_aliases: analyzer.host_aliases,
     };
     let mut warnings = analyzer.warnings;
@@ -162,6 +175,10 @@ fn unused_import_warnings(
         .items
         .iter()
         .any(|item| matches!(item, Item::Import { path, .. } if *path == ["BNLog"]));
+    let imports_bnweb = program
+        .items
+        .iter()
+        .any(|item| matches!(item, Item::Import { path, .. } if *path == ["BNWeb"]));
     program
         .items
         .iter()
@@ -172,7 +189,10 @@ fn unused_import_warnings(
             else {
                 return None;
             };
-            if type_alias_uses.contains(alias) || (imports_bnlog && grants_bnlog(path)) {
+            let grants_capability = (imports_bnlog && grants_bnlog(path))
+                || (imports_bnweb
+                    && matches!(path.as_slice(), [host, cap] if host == "HOST" && cap == "FileSystem"));
+            if type_alias_uses.contains(alias) || grants_capability {
                 return None;
             }
             let symbol = model
@@ -376,9 +396,40 @@ fn binding_candidates(statements: &[Statement], candidates: &mut Vec<BindingCand
     }
 }
 
-pub(crate) fn exported_declarations(module: ModuleId, program: &Program) -> HashMap<String, Type> {
+pub(crate) fn exported_declarations(
+    module: &crate::module_graph::LoadedModule,
+    known: &HashMap<ModuleId, HashMap<String, Type>>,
+) -> HashMap<String, Type> {
+    let module_id = module.id;
+    let program = &module.program;
     let mut exports = HashMap::new();
+    let imports = module_imports(module);
+    let selectors = export_selectors(module);
     for item in &program.items {
+        if let Item::Import {
+            exported: true,
+            path,
+            alias,
+            ..
+        } = item
+        {
+            if path.first().is_some_and(|part| part == "HOST") {
+                continue;
+            }
+            let Some(imported) = imports.get(alias) else {
+                continue;
+            };
+            let ty = if let Some(name) = selectors.get(alias) {
+                let Some(ty) = known.get(imported).and_then(|exports| exports.get(name)) else {
+                    continue;
+                };
+                ty.clone()
+            } else {
+                Type::Module(*imported)
+            };
+            exports.insert(alias.clone(), ty);
+            continue;
+        }
         if let Item::Constant {
             exported: true,
             name,
@@ -388,7 +439,7 @@ pub(crate) fn exported_declarations(module: ModuleId, program: &Program) -> Hash
         {
             exports.insert(
                 name.clone(),
-                qualify_local_type(module, program, type_from_reference(type_ref)),
+                qualify_local_type(module_id, program, type_from_reference(type_ref)),
             );
             continue;
         }
@@ -406,7 +457,7 @@ pub(crate) fn exported_declarations(module: ModuleId, program: &Program) -> Hash
         let ty = signature
             .as_ref()
             .map_or_else(|| declaration_type(*kind, name), function_type);
-        exports.insert(name.clone(), qualify_local_type(module, program, ty));
+        exports.insert(name.clone(), qualify_local_type(module_id, program, ty));
         if *kind == DeclarationKind::Class {
             for statement in statements {
                 let Statement::Binding {
@@ -424,7 +475,7 @@ pub(crate) fn exported_declarations(module: ModuleId, program: &Program) -> Hash
                 }
                 exports.insert(
                     field.clone(),
-                    qualify_local_type(module, program, type_from_reference(type_ref)),
+                    qualify_local_type(module_id, program, type_from_reference(type_ref)),
                 );
             }
         }
@@ -575,12 +626,40 @@ pub(crate) fn imported_type_catalog(
                     _ => {}
                 }
             }
+            let field_order = if *kind == DeclarationKind::Struct {
+                statements
+                    .iter()
+                    .filter_map(|statement| {
+                        let Statement::Binding {
+                            name: member_name,
+                            type_ref,
+                            is_static: false,
+                            ..
+                        } = statement
+                        else {
+                            return None;
+                        };
+                        Some(RecordMember {
+                            name: member_name.clone(),
+                            ty: qualify_local_type(
+                                module.id,
+                                &module.program,
+                                type_from_reference(type_ref),
+                            ),
+                            span: default_span(),
+                        })
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
             catalog.insert(
                 (module.id, name.clone()),
                 ImportedTypeInfo {
                     kind: *kind,
                     members,
                     constructor,
+                    field_order,
                     interfaces: interfaces
                         .iter()
                         .filter_map(|interface| match interface.split_once('.') {

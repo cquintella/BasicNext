@@ -177,41 +177,44 @@ parse.
 
 ### Range constants
 
-These are namespace members, not calls. Their types match the named BN
-type. Integer `MIN`/`MAX` are the inclusive representable endpoints.
-Unsigned `MIN` is `0`. Floating `MAX` is the largest finite value; floating
-`MIN` is the most-negative finite value; `MIN_POSITIVE_*` is the smallest
-positive normal.
+These are namespace members, not calls. They are accessible both directly on
+the module namespace (`Math.MAX_INTEGER`) and through the exported `Limits`
+class (`Math.Limits.MAX_INTEGER`); both spellings fold to the same compile-time
+constants. Their types match the named BN type. Integer `MIN`/`MAX` are the
+inclusive representable endpoints. Unsigned `MIN` is `0`. Floating `MAX` is the
+largest finite value; floating `MIN` is the most-negative finite value;
+`MIN_POSITIVE_*` is the smallest positive normal.
 
 | Name | Type | Value |
 | --- | --- | --- |
-| `BNMath.MAX_INT8` | `INT8` | `127` |
-| `BNMath.MIN_INT8` | `INT8` | `-128` |
-| `BNMath.MAX_INT16` | `INT16` | `32767` |
-| `BNMath.MIN_INT16` | `INT16` | `-32768` |
+| `BNMath.MAX_INT8` / `BNMath.Limits.MAX_INT8` | `INT8` | `127` |
+| `BNMath.MIN_INT8` / `BNMath.Limits.MIN_INT8` | `INT8` | `-128` |
+| `BNMath.MAX_INT16` / `BNMath.Limits.MAX_INT16` | `INT16` | `32767` |
+| `BNMath.MIN_INT16` / `BNMath.Limits.MIN_INT16` | `INT16` | `-32768` |
 | `BNMath.MAX_INTEGER` / `BNMath.MAX_INT32` | `INTEGER` | `2147483647` |
 | `BNMath.MIN_INTEGER` / `BNMath.MIN_INT32` | `INTEGER` | `-2147483648` |
 | `BNMath.MAX_INT64` / `BNMath.MAX_TIMESTAMP` | `INT64` | `9223372036854775807` |
 | `BNMath.MIN_INT64` / `BNMath.MIN_TIMESTAMP` | `INT64` | `-9223372036854775808` |
-| `BNMath.MAX_BYTE` | `BYTE` | `255` |
-| `BNMath.MIN_BYTE` | `BYTE` | `0` |
-| `BNMath.MAX_UINT16` | `UINT16` | `65535` |
-| `BNMath.MIN_UINT16` | `UINT16` | `0` |
-| `BNMath.MAX_UINT32` | `UINT32` | `4294967295` |
-| `BNMath.MIN_UINT32` | `UINT32` | `0` |
-| `BNMath.MAX_UINT64` | `UINT64` | `18446744073709551615` |
-| `BNMath.MIN_UINT64` | `UINT64` | `0` |
-| `BNMath.MAX_FLOAT32` | `FLOAT32` | IEEE 754 binary32 largest finite |
-| `BNMath.MIN_FLOAT32` | `FLOAT32` | IEEE 754 binary32 most-negative finite |
-| `BNMath.MIN_POSITIVE_FLOAT32` | `FLOAT32` | IEEE 754 binary32 smallest positive normal |
+| `BNMath.MAX_BYTE` / `BNMath.Limits.MAX_BYTE` | `BYTE` | `255` |
+| `BNMath.MIN_BYTE` / `BNMath.Limits.MIN_BYTE` | `BYTE` | `0` |
+| `BNMath.MAX_UINT16` / `BNMath.Limits.MAX_UINT16` | `UINT16` | `65535` |
+| `BNMath.MIN_UINT16` / `BNMath.Limits.MIN_UINT16` | `UINT16` | `0` |
+| `BNMath.MAX_UINT32` / `BNMath.Limits.MAX_UINT32` | `UINT32` | `4294967295` |
+| `BNMath.MIN_UINT32` / `BNMath.Limits.MIN_UINT32` | `UINT32` | `0` |
+| `BNMath.MAX_UINT64` / `BNMath.Limits.MAX_UINT64` | `UINT64` | `18446744073709551615` |
+| `BNMath.MIN_UINT64` / `BNMath.Limits.MIN_UINT64` | `UINT64` | `0` |
+| `BNMath.MAX_FLOAT32` / `BNMath.Limits.MAX_FLOAT32` | `FLOAT32` | IEEE 754 binary32 largest finite |
+| `BNMath.MIN_FLOAT32` / `BNMath.Limits.MIN_FLOAT32` | `FLOAT32` | IEEE 754 binary32 most-negative finite |
+| `BNMath.MIN_POSITIVE_FLOAT32` / `BNMath.Limits.MIN_POSITIVE_FLOAT32` | `FLOAT32` | IEEE 754 binary32 smallest positive normal |
 | `BNMath.MAX_FLOAT` / `BNMath.MAX_FLOAT64` | `FLOAT` | IEEE 754 binary64 largest finite |
 | `BNMath.MIN_FLOAT` / `BNMath.MIN_FLOAT64` | `FLOAT` | IEEE 754 binary64 most-negative finite |
 | `BNMath.MIN_POSITIVE_FLOAT` / `BNMath.MIN_POSITIVE_FLOAT64` | `FLOAT` | IEEE 754 binary64 smallest positive normal |
 
 `MAX_INTEGER` and `MAX_INT32` are the same member with two spellings of the
 same `INTEGER`/`INT32` alias pair; likewise `FLOAT`/`FLOAT64` and
-`INT64`/`TIMESTAMP`. Implementations must not expose two distinct storage
-locations.
+`INT64`/`TIMESTAMP`. Whether accessed as `Math.<Name>` or `Math.Limits.<Name>`,
+implementations fold them to the same constants and must not expose two distinct
+storage locations.
 
 ### Descriptive statistics
 

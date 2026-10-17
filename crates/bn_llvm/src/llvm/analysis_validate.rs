@@ -60,7 +60,16 @@ pub(crate) fn validate_instruction(
                     && llvm_type(element).is_some_and(|element| matches!(
                     element,
                     LlvmType::I1 | LlvmType::I8 | LlvmType::I16 | LlvmType::I32 | LlvmType::I64 | LlvmType::Float | LlvmType::Double | LlvmType::Ptr
-                ) || crate::layout::is_one_of(&element, &[crate::layout::handle_result_ty(), crate::layout::status_pointer_ty()]))))
+                ) || crate::layout::is_one_of(&element, &[crate::layout::handle_result_ty(), crate::layout::status_pointer_ty()])))
+                || (matches!(ty, Type::Vector { element, dimensions: ty_dimensions, .. }
+                if ty_dimensions.len() == 1
+                    && dimensions.is_empty()
+                    && dynamic_dimensions.len() == 1
+                    && llvm_type(ty).is_some()
+                    && llvm_type(element).is_some_and(|element| matches!(
+                    element,
+                    LlvmType::I1 | LlvmType::I8 | LlvmType::I16 | LlvmType::I32 | LlvmType::I64 | LlvmType::Float | LlvmType::Double | LlvmType::Ptr
+                ) || crate::layout::is_one_of(&element, &[crate::layout::handle_result_ty(), crate::layout::status_pointer_ty()])))))
         }
         Instruction::Load {
             destination,
@@ -183,7 +192,8 @@ pub(crate) fn validate_instruction(
         } => {
             (matches!(values.get(object), Some(Type::HostArgs | Type::String))
                 || values.get(object).is_some_and(is_native_vector)
-                || values.get(object).is_some_and(is_native_pointer))
+                || values.get(object).is_some_and(is_native_pointer)
+                || values.get(object).is_some_and(is_region_alternative))
                 && values.get(index).and_then(llvm_type).is_some()
                 && llvm_type(ty).is_some()
         }
@@ -220,9 +230,24 @@ pub(crate) fn validate_instruction(
                     || !matches!(ty, Type::Pointer { .. }))
         }
         Instruction::Release { value, .. } => {
-            if function.blocks.iter().flat_map(|block| &block.instructions).any(|instruction| {
-                matches!(instruction, Instruction::Index { destination, .. } if destination == value)
-            }) {
+            // A STRING or HOST.Args index is a fresh buffer. Releasing it
+            // ends that buffer. An index into a vector or pointer is a view.
+            let indexed_view = function
+                .blocks
+                .iter()
+                .flat_map(|block| &block.instructions)
+                .any(|instruction| {
+                    matches!(
+                        instruction,
+                        Instruction::Index { destination, object, .. }
+                            if destination == value
+                                && !matches!(
+                                    values.get(object),
+                                    Some(Type::String | Type::HostArgs)
+                                )
+                    )
+                });
+            if indexed_view {
                 return Err(unsupported_instruction(
                     module,
                     function,
@@ -261,11 +286,23 @@ pub(crate) fn validate_instruction(
                         dimensions,
                     } => {
                         !indices.is_empty()
-                            && indices.len() == dimensions.len()
-                            && dimensions.iter().all(|dimension| *dimension != u64::MAX)
-                            && llvm_type(element).is_some()
+                            && (dimensions.iter().all(|dimension| *dimension != u64::MAX)
+                                || (dimensions.len() == 1 && indices.len() == 1))
+                            && if indices.len() == dimensions.len() {
+                                llvm_type(element).is_some()
+                            } else if indices.len() + 1 == dimensions.len() {
+                                ty == &Type::Vector {
+                                    element: element.clone(),
+                                    dimensions: dimensions[indices.len()..].to_vec(),
+                                }
+                            } else {
+                                false
+                            }
                     }
-                    _ => indices.len() == 1 && is_native_pointer(container),
+                    _ => {
+                        indices.len() == 1
+                            && (is_native_pointer(container) || is_region_alternative(container))
+                    }
                 })
                 && indices
                     .iter()
@@ -422,6 +459,46 @@ pub(crate) fn validate_instruction(
                                         }
                                         Type::Boolean => matches!(argument, Type::Boolean),
                                         Type::String => matches!(argument, Type::String),
+                                        Type::Named(name) | Type::TypeName(name)
+                                            if matches!(name.as_str(), "DATE" | "TIME" | "TIMESTAMP") =>
+                                        {
+                                            matches!(argument, Type::Named(a) | Type::TypeName(a) if a == name)
+                                        }
+                                        Type::ImportedNamed { name, .. }
+                                        | Type::ImportedTypeName { name, .. }
+                                            if dispatch_handle_name(name) =>
+                                        {
+                                            match argument {
+                                                Type::ImportedNamed { name: aname, .. }
+                                                | Type::ImportedTypeName { name: aname, .. } => {
+                                                    aname == name
+                                                }
+                                                Type::Named(aname) | Type::TypeName(aname) => {
+                                                    aname == name
+                                                        || aname.ends_with(&format!(".{name}"))
+                                                }
+                                                _ => false,
+                                            }
+                                        }
+                                        Type::Named(name) | Type::TypeName(name)
+                                            if dispatch_handle_name(name)
+                                                || dispatch_handle_name(
+                                                    name.rsplit('.').next().unwrap_or(name),
+                                                ) =>
+                                        {
+                                            let base = name.rsplit('.').next().unwrap_or(name);
+                                            match argument {
+                                                Type::ImportedNamed { name: aname, .. }
+                                                | Type::ImportedTypeName { name: aname, .. } => {
+                                                    aname == base
+                                                }
+                                                Type::Named(aname) | Type::TypeName(aname) => {
+                                                    aname == base
+                                                        || aname.ends_with(&format!(".{base}"))
+                                                }
+                                                _ => false,
+                                            }
+                                        }
                                         _ => false,
                                     })
                             })
@@ -445,7 +522,13 @@ pub(crate) fn validate_instruction(
                         || integer_or_error(alternatives)
                         || float_or_error(alternatives)
                         || string_or_error(alternatives)
-                        || boolean_or_error(alternatives)))
+                        || boolean_or_error(alternatives)
+                        || alternatives.iter().any(|alt| match alt {
+                            Type::ImportedNamed { name, .. } | Type::ImportedTypeName { name, .. } => dispatch_handle_name(name),
+                            Type::Named(name) | Type::TypeName(name) => dispatch_handle_name(name) || dispatch_handle_name(name.rsplit('.').next().unwrap_or(name)),
+                            _ => false,
+                        })
+                        || alternatives.iter().any(|alt| matches!(alt, Type::Named(name) | Type::TypeName(name) if matches!(name.as_str(), "DATE" | "TIME" | "TIMESTAMP")))))
         }
         Instruction::SizeOf { value, .. } => values.get(value) == Some(&Type::String),
         Instruction::ClearScreen { .. } | Instruction::Beep { .. } => false,
@@ -478,5 +561,16 @@ pub(crate) fn for_condition_supported(
     };
     types.iter().all(|ty| {
         matches!(ty, Type::Integer(_) | Type::IntegerLiteral(_)) && llvm_type(ty).is_some()
+    })
+}
+
+pub(crate) fn for_fits_supported(arguments: &[ValueId], values: &HashMap<ValueId, Type>) -> bool {
+    if arguments.len() != 2 {
+        return false;
+    }
+    arguments.iter().all(|argument| {
+        values.get(argument).is_some_and(|ty| {
+            matches!(ty, Type::Integer(_) | Type::IntegerLiteral(_)) && llvm_type(ty).is_some()
+        })
     })
 }

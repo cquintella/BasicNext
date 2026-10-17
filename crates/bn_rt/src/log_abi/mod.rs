@@ -107,10 +107,12 @@ fn text(pointer: *const c_char) -> String {
     if pointer.is_null() {
         return String::new();
     }
-    // SAFETY: emitted code passes a NUL-terminated BN string or null.
-    unsafe { CStr::from_ptr(pointer) }
-        .to_string_lossy()
-        .into_owned()
+    crate::string::string_text(pointer).unwrap_or_else(|| {
+        // Fallback for non-BN static strings
+        unsafe { CStr::from_ptr(pointer) }
+            .to_string_lossy()
+            .into_owned()
+    })
 }
 
 /// The fields of a `Log.Event` as emitted code passes them.

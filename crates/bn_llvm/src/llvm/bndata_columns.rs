@@ -268,11 +268,9 @@ pub(crate) fn lower_bndata_status_call(
     } else {
         O::null()
     };
-    let marker = T::Array(3, Box::new(T::I8));
-    let zero = vec![(T::I64, O::int(0)), (T::I64, O::int(0))];
     text.assign(
         format!("dfgetnaptr{dest}"),
-        I::gep(marker, O::global(".bn_na"), zero),
+        crate::layout::string_payload_address(".bn_na"),
     );
     let chosen = I::select(r("isna"), T::Ptr, r("naptr"), value_pointer);
     text.assign(format!("dfgetvalueptr{dest}"), chosen);

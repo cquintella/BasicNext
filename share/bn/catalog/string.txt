@@ -1,0 +1,3 @@
+# Native STRING buffer counts (Sprint 7, G7-D3).
+retain-overflow = string retain count exceeded the maximum
+release-of-zero = string buffer was released after its count reached zero

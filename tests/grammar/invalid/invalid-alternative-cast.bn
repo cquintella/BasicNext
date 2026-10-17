@@ -1,0 +1,11 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// AS does not narrow an alternative. The grammar admits AS INTEGER; the
+// conversion is rejected because an alternative is not a numeric value.
+FUNCTION Start() AS VOID
+    LET number AS INTEGER OR NULL = 1
+    PRINT number AS INTEGER
+END FUNCTION

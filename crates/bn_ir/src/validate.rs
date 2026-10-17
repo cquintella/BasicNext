@@ -7,6 +7,8 @@ use super::{Diagnostic, Module, Terminator, invalid_ir};
 
 #[path = "validate/fields.rs"]
 mod fields;
+#[path = "validate/index.rs"]
+mod index;
 #[path = "validate/kinds.rs"]
 mod kinds;
 #[path = "validate/operands.rs"]
@@ -19,6 +21,7 @@ use fields::{
     receiver_matches_owner, validate_class_bases, validate_field_layouts, validate_field_reference,
     validate_resolved_field_path,
 };
+use index::index_result_matches;
 use operands::{instruction_defines, instruction_type};
 pub use operands::{instruction_result, instruction_uses};
 #[cfg(test)]
@@ -805,7 +808,8 @@ fn valid_binary_types(operator: &str, left: &Type, right: &Type, result: &Type) 
     match operator {
         "Assign" | "NotEqual" => is_comparable(left, right) && is_boolean_type(result),
         "Less" | "LessEqual" | "Greater" | "GreaterEqual" => {
-            is_numeric_pair(left, right) && is_boolean_type(result)
+            is_boolean_type(result)
+                && (is_numeric_pair(left, right) || (is_string_type(left) && is_string_type(right)))
         }
         "AND" | "OR" | "XOR" => {
             (is_boolean_type(left) && is_boolean_type(right) && is_boolean_type(result))
@@ -828,6 +832,10 @@ fn valid_binary_types(operator: &str, left: &Type, right: &Type, result: &Type) 
 }
 
 fn valid_cast_types(source: &Type, target: &Type) -> bool {
+    // Identity `AS` is a copy for every type (0.6.md, conversions).
+    if source == target {
+        return true;
+    }
     let numeric = |ty: &Type| is_numeric_type(ty);
     numeric(source) && (numeric(target) || is_boolean_type(target))
         || is_string_type(source) && is_boolean_type(target)
@@ -889,31 +897,6 @@ fn is_dispatch_wait_handle(ty: &Type) -> bool {
     ["Ticket", "Group", "Barrier", "Semaphore", "Mutex"]
         .iter()
         .any(|name| contains_named_type(ty, name))
-}
-
-fn index_result_matches(object: &Type, result: &Type) -> bool {
-    match object {
-        Type::Vector {
-            element,
-            dimensions,
-        } => {
-            let expected = if dimensions.len() > 1 {
-                Type::Vector {
-                    element: element.clone(),
-                    dimensions: dimensions[1..].to_vec(),
-                }
-            } else {
-                element.as_ref().clone()
-            };
-            types_compatible(&expected, result)
-        }
-        Type::Pointer { element, .. } => types_compatible(element, result),
-        Type::String | Type::HostArgs => is_string_type(result),
-        // Lowering may preserve an unresolved synthesized value. Its concrete
-        // index contract is checked once the producer's type is known.
-        Type::Unknown => true,
-        _ => false,
-    }
 }
 
 fn validate_return_type(

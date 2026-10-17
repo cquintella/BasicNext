@@ -86,7 +86,6 @@ pub(crate) fn emit_vector(
     let dest = destination.0;
     let data = O::reg(format!("vecdata{dest}"));
     let at = |index: u64| vec![(T::I32, O::int(0)), (T::I32, O::uint(index))];
-    text.assign(format!("vecdata{dest}"), I::alloca(array.clone()));
     for (index, element_id) in elements.iter().enumerate() {
         let slot = format!("vecslot{dest}_{index}");
         let gep = I::gep(array.clone(), data.clone(), at(index as u64));
@@ -96,13 +95,7 @@ pub(crate) fn emit_vector(
             .get(element_id)
             .expect("validated vector element value");
         let operand = if let Some(owner) = struct_owner(module, &stored_type) {
-            let bytes = class_instance_bytes(module, &owner);
             let copy = format!("vecstructcopy{dest}_{index}");
-            let buffer = T::Array(
-                usize::try_from(bytes).expect("object size"),
-                Box::new(T::I8),
-            );
-            text.assign(&copy, I::alloca(buffer));
             let copy_witness = arc_runtime::struct_copy_witness_name(&owner);
             text.emit(I::call(
                 T::Void,
@@ -179,6 +172,32 @@ pub(crate) fn emit_allocate(
         text.assign(format!("dfrc{dest}"), call);
         text.assign(format!("dfhandle{dest}"), I::load(T::I64, r("dfout")));
         let pointer = I::cast(CastOp::IntToPtr, T::I64, r("dfhandle"), T::Ptr);
+        text.assign(format!("v{dest}"), pointer);
+        return;
+    }
+    if is_bnweb_resource_type(module, ty) {
+        let Type::ImportedNamed { name, .. } = ty else { unreachable!() };
+        let (symbol, args) = match name.as_str() {
+            "Response" => ("bn_web_response_create", vec![]),
+            "Request" => ("bn_web_request_create", vec![]),
+            "Server" => ("bn_web_server_create", vec![]),
+            "CookieJar" => ("bn_web_cookie_jar_create", vec![]),
+            "SessionStore" => ("bn_web_session_store_create", vec![]),
+            "Scraper" => {
+                let html_arg = if let Some(arg) = arguments.first() {
+                    (T::Ptr, O::reg(format!("v{}", arg.0)))
+                } else {
+                    (T::Ptr, O::null())
+                };
+                ("bn_web_scraper_create", vec![html_arg])
+            }
+            "ACL" => ("bn_web_acl_create", vec![]),
+            "Client" => ("bn_web_client_create", vec![]),
+            _ => unreachable!("unhandled BNWeb resource allocation"),
+        };
+        let call = I::call(T::I64, symbol, args);
+        text.assign(format!("webh{dest}"), call);
+        let pointer = I::cast(CastOp::IntToPtr, T::I64, O::reg(format!("webh{dest}")), T::Ptr);
         text.assign(format!("v{dest}"), pointer);
         return;
     }
@@ -478,6 +497,9 @@ pub(crate) fn emit_vector_index(
         format!("veclen{dest}"),
         I::extract(vector_ty(), v(object), 1),
     );
+    if context == "region" {
+        emit_null_region_check(text, block_id, state, &r("ptr"));
+    }
     emit_index_check(text, block_id, state, &index, &r("len"), ok, context);
     let slot = I::gep(elem_ty.clone(), r("ptr"), vec![(T::I32, index.at)]);
     text.assign(format!("vecslot{dest}"), slot);
@@ -528,7 +550,7 @@ pub(crate) fn fixed_vector_array(ty: &Type) -> Option<(T, u64)> {
 
 /// Copies the elements of the fixed vector `ty` from `source` to the
 /// storage `target`.
-fn emit_copy_elements(
+pub(crate) fn emit_copy_elements(
     text: &mut crate::ir::LlvmModule,
     module: &Module,
     ty: &Type,

@@ -7,8 +7,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::{
     ast::{
-        Block as AstBlock, DeclarationKind, Expression, ExpressionKind, ForHeader,
-        FunctionSignature, Item, Literal, Program, Statement, TypeAtom, TypeReference,
+        Block as AstBlock, DeclarationKind, DestructuringBinding, Expression, ExpressionKind,
+        ForHeader, FunctionSignature, Item, Literal, Program, Statement, TypeAtom, TypeReference,
     },
     diagnostic::Diagnostic,
     module_graph::{ModuleGraph, ModuleId as FrontendModuleId, StandardModule},
@@ -611,8 +611,8 @@ use helpers::{
     exec_import_span, filesystem_import_span, host_capability_constant, ir_error,
     is_bnmath_constant_owner, is_host_or_builtin_owner, is_namespace_type, is_numeric_type_name,
     is_user_class_name, math_constant, module_constant, module_id_from_prefix, named_or_void,
-    namespace_function, network_import_span, random_import_span, standard_import_span,
-    static_class_name, type_at, type_test_name, user_class_name,
+    namespace_function, network_import_span, pointer_test_with_identity, random_import_span,
+    standard_import_span, static_class_name, type_at, type_test_name, user_class_name,
 };
 fn default_span() -> Span {
     Span {

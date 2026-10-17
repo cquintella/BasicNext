@@ -128,6 +128,7 @@ signatures! {
     ERROR_CODE = "bn_rt_error_code"(Ptr) -> I64;
     ERROR_FIELD = "bn_rt_error_field"(Ptr, I32) -> Ptr;
     ERROR_PRINT = "bn_rt_error_print"(I64, Ptr) -> Void;
+    ERROR_SET_REPORT = "bn_rt_error_set_report"(I32, Ptr, Ptr, Ptr) -> Void;
     ERROR_TAKE = "bn_rt_error_take"(I32, Ptr) -> Ptr;
     ERROR_WRAP = "bn_rt_error_wrap"(I1, Ptr, Ptr) -> Ptr;
     EXEC_RESULT_CLOSE = "bn_rt_exec_result_close"(I64) -> I32;
@@ -143,6 +144,7 @@ signatures! {
     FILE_READ_BYTES = "bn_rt_file_read_bytes"(I64, Ptr, I64, Ptr) -> I32;
     FILE_READ_LINE = "bn_rt_file_read_line"(I64, Ptr) -> I32;
     FILE_RELEASE = "bn_rt_file_release"(I64) -> I32;
+    FILE_RETAIN = "bn_rt_file_retain"(I64) -> I32;
     FILE_WRITE = "bn_rt_file_write"(I64, Ptr) -> I32;
     FILE_WRITE_BYTES = "bn_rt_file_write_bytes"(I64, Ptr, I64) -> I32;
     FILE_WRITE_LINE = "bn_rt_file_write_line"(I64, Ptr) -> I32;
@@ -151,9 +153,7 @@ signatures! {
     FS_DELETE_FILE = "bn_rt_fs_delete_file"(Ptr) -> I32;
     FS_EXISTS = "bn_rt_fs_exists"(Ptr, Ptr) -> I32;
     FUNLOCKFILE = "funlockfile"(Ptr) -> Void;
-    GETCHAR = "getchar"() -> I32;
     HOST_NUM_PROCS = "bn_rt_host_num_procs"(Ptr) -> I32;
-    INPUT_NUL = "bn_rt_input_nul"() -> Void;
     JSON_APPEND_BOOLEAN = "bn_rt_json_append_boolean"(I64, I32) -> I32;
     JSON_APPEND_FLOAT = "bn_rt_json_append_float"(I64, Double) -> I32;
     JSON_APPEND_INTEGER = "bn_rt_json_append_integer"(I64, I64) -> I32;
@@ -304,11 +304,11 @@ signatures! {
     PRINT_DATE = "bn_rt_print_date"(I32) -> Void;
     PRINT_FLOAT = "bn_rt_print_float"(Double) -> Void;
     PRINT_FLOAT32 = "bn_rt_print_float32"(Double) -> Void;
+    PRINT_STR = "bn_rt_print_str"(Ptr, I64) -> Void;
     PRINT_TIME = "bn_rt_print_time"(I32) -> Void;
     PUTCHAR = "putchar"(I32) -> I32;
     RANDOM_NEXT = "bn_rt_random_next"() -> Double;
     RANDOM_SEED = "bn_rt_random_seed"(I64) -> I32;
-    REALLOC = "realloc"(Ptr, I64) -> Ptr;
     SETMODE = "_setmode"(I32, I32) -> I32;
     SQLITE_BEGIN = "bn_rt_sqlite_begin"(I64) -> I32;
     SQLITE_CHANGES = "bn_rt_sqlite_changes"(I64) -> I64;
@@ -324,12 +324,19 @@ signatures! {
     STACK_CHECK = "bn_rt_stack_check"(Ptr) -> I32;
     STR_ASC = "bn_rt_str_asc"(Ptr) -> I64;
     STR_CHAR_UTF8 = "bn_rt_str_char_utf8"(I64) -> I64;
+    STR_CONCAT = "bn_rt_str_concat"(Ptr, I64, Ptr, I64) -> Ptr;
+    STR_CMP = "bn_rt_str_cmp"(Ptr, Ptr) -> I32;
     STR_EQ = "bn_rt_str_eq"(Ptr, Ptr) -> I32;
+    STR_FROM_CHAR = "bn_rt_str_from_char"(I64) -> Ptr;
+    STR_FROM_PACKED = "bn_rt_str_from_packed"(I64) -> Ptr;
     STR_INDEX_UTF8 = "bn_rt_str_index_utf8"(Ptr, I32, Ptr) -> I64;
+    STR_CSTR_COPY = "bn_rt_cstr_copy"(Ptr) -> Ptr;
+    STR_INPUT = "bn_rt_input_line"(Ptr) -> Ptr;
     STR_LEN = "bn_rt_str_len"(Ptr) -> I32;
+    STR_RELEASE = "bn_rt_str_release"(Ptr) -> I32;
+    STR_RETAIN = "bn_rt_str_retain"(Ptr) -> I32;
     STR_TO_LOWER = "bn_rt_str_to_lower"(Ptr) -> Ptr;
     STR_TO_UPPER = "bn_rt_str_to_upper"(Ptr) -> Ptr;
-    STRLEN = "strlen"(Ptr) -> I64;
     TEXT_FLOAT = "bn_rt_text_float"(Double) -> Ptr;
     TEXT_FLOAT32 = "bn_rt_text_float32"(Double) -> Ptr;
     TEXT_INT = "bn_rt_text_int"(I64) -> Ptr;
@@ -358,13 +365,13 @@ declarations! {
     DATAFRAME_COPY_FLOAT DATAFRAME_SELECT DATAFRAME_SLICE DATAFRAME_TRANSPOSE
     DATAFRAME_APPEND_ROWS DATAFRAME_APPEND_COLUMNS DATAFRAME_JOIN DATAFRAME_CONVERT_INTEGER
     DATAFRAME_CONVERT_FLOAT DATAFRAME_COLUMN_NAME_OWNED DATAFRAME_CLOSE FILE_OPEN FILE_NEW
-    FILE_CLOSE FILE_RELEASE FILE_READ_ALL FILE_READ_LINE FILE_WRITE FILE_WRITE_LINE
+    FILE_CLOSE FILE_RELEASE FILE_RETAIN FILE_READ_ALL FILE_READ_LINE FILE_WRITE FILE_WRITE_LINE
     FILE_READ_BYTES FILE_WRITE_BYTES FS_EXISTS FS_DELETE_FILE DATAFRAME_READ_CSV
     DATAFRAME_WRITE_CSV LOG_LOGGER_NEW LOG_LOGGER_WRITE LOG_LOGGER_ACCESS LOG_LOGGER_SET_LEVEL
     LOG_LOGGER_SET_DEFAULTS LOG_LOGGER_SET_ACCESS_DEFAULTS LOG_LOGGER_FLUSH LOG_LOGGER_CLOSE
     LOG_LOGGER_DELETE LOG_LOGGER_RETAIN STACK_CHECK VECTOR_NEST CLOCK_NOW CLOCK_TIMER
     RANDOM_SEED RANDOM_NEXT CONSOLE_CLS CONSOLE_BEEP CONSOLE_PRINT_AT CONSOLE_NUM_COLS
-    CONSOLE_NUM_ROWS STR_ASC STR_TO_LOWER STR_TO_UPPER TEXT_INT TEXT_UINT TEXT_FLOAT
+    CONSOLE_NUM_ROWS STR_ASC STR_CONCAT STR_TO_LOWER STR_TO_UPPER PRINT_STR TEXT_INT TEXT_UINT TEXT_FLOAT
     TEXT_FLOAT32 CRYPTO_SHA256 CRYPTO_SHA512 CRYPTO_BYTES_FROM_TEXT CRYPTO_BYTES_FROM_HEX
     CRYPTO_BYTES_LENGTH CRYPTO_BYTES_TO_HEX CRYPTO_BYTES_RELEASE CRYPTO_SEAL CRYPTO_OPEN
     CRYPTO_HMAC CRYPTO_HMAC_VERIFY CRYPTO_ARGON2ID CRYPTO_PUBLIC_KEY CRYPTO_SIGN CRYPTO_VERIFY
@@ -379,6 +386,7 @@ declarations! {
     JSON_APPEND_NULL JSON_APPEND_JSON JSON_GET_STRING_AT JSON_GET_INTEGER_AT JSON_GET_FLOAT_AT
     JSON_GET_BOOLEAN_AT JSON_GET_JSON_AT JSON_SET_STRING_AT JSON_SET_INTEGER_AT
     JSON_SET_FLOAT_AT JSON_SET_BOOLEAN_AT JSON_SET_NULL_AT JSON_SET_JSON_AT STR_CHAR_UTF8
+    STR_RELEASE STR_RETAIN
     NET_ADDRESS_PARSE NET_ADDRESS_IS_IPV4 NET_ADDRESS_IS_IPV6 NET_ADDRESS_IS_LOOPBACK
     NET_ADDRESS_IS_PRIVATE NET_ADDRESS_IS_LINK_LOCAL NET_ADDRESS_IS_MULTICAST NET_CIDR_PARSE
     NET_CIDR_CONTAINS NET_PING NET_REVERSE NET_NEIGHBOR NET_RESOLVE NET_ADDRESSES_COUNT
@@ -409,17 +417,27 @@ declarations! {
     TEMPORAL_DATE_PARSE TEMPORAL_TIME_PARSE TEMPORAL_TIMESTAMP_PARSE TEMPORAL_TIMESTAMP_FORMAT
     ;
     STRING_CONCAT_DECLARATIONS =
-    STRLEN MALLOC LLVM_MEMCPY_P0_P0_I64
+    STR_CONCAT MALLOC LLVM_MEMCPY_P0_P0_I64
     ;
     ARC_DECLARATIONS = ARC_REGISTER ARC_RETAIN ARC_RELEASE ARC_FINISH_DESTROY ARC_ADDRESS;
-    PRINT_DECLARATIONS = PRINTF PUTCHAR;
+    PRINT_DECLARATIONS = PRINTF PUTCHAR PRINT_STR;
     PRINT_FLOAT_DECLARATIONS = PRINT_FLOAT PRINT_FLOAT32;
     PRINT_TEMPORAL_DECLARATIONS = PRINT_DATE PRINT_TIME;
-    STRING_OPS_DECLARATIONS = STR_LEN STR_INDEX_UTF8 STR_EQ;
+    STRING_OPS_DECLARATIONS = STR_LEN STR_INDEX_UTF8 STR_CMP STR_EQ STR_FROM_CHAR STR_FROM_PACKED STR_CONCAT STR_CSTR_COPY STR_RELEASE STR_RETAIN;
     HEAP_COPY_DECLARATIONS = MALLOC LLVM_MEMCPY_P0_P0_I64;
-    INPUT_DECLARATIONS = GETCHAR INPUT_NUL REALLOC FREE;
+    INPUT_DECLARATIONS = STR_INPUT;
     WINDOWS_STDIO_LOCK_DECLARATIONS = ACRT_IOB_FUNC LOCK_FILE UNLOCK_FILE;
     POSIX_STDIO_LOCK_DECLARATIONS = FLOCKFILE FUNLOCKFILE;
+}
+
+/// `memcmp`: byte equality of a long integer vector (`composite_compare`).
+pub(crate) fn memcmp() -> Intrinsic {
+    let params = vec![LlvmType::Ptr, LlvmType::Ptr, LlvmType::I64];
+    Intrinsic {
+        name: "memcmp",
+        ret: LlvmType::I32,
+        params,
+    }
 }
 
 /// `llvm.memmove.p0.p0.i64`: the copy of a fixed vector's elements, a move
@@ -428,6 +446,16 @@ pub(crate) fn memmove() -> Intrinsic {
     let params = vec![LlvmType::Ptr, LlvmType::Ptr, LlvmType::I64, LlvmType::I1];
     Intrinsic {
         name: "llvm.memmove.p0.p0.i64",
+        ret: LlvmType::Void,
+        params,
+    }
+}
+
+/// `llvm.memset.p0.i64`: zero-initialization of dynamic vector buffers.
+pub(crate) fn memset() -> Intrinsic {
+    let params = vec![LlvmType::Ptr, LlvmType::I8, LlvmType::I64, LlvmType::I1];
+    Intrinsic {
+        name: "llvm.memset.p0.i64",
         ret: LlvmType::Void,
         params,
     }

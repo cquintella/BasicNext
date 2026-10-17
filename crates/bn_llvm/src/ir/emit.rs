@@ -23,7 +23,20 @@ impl LlvmType {
 impl LlvmInst {
     #[must_use]
     pub const fn alloca(ty: LlvmType) -> Self {
-        Self::Alloca { ty, align: None }
+        Self::Alloca {
+            ty,
+            align: None,
+            count: None,
+        }
+    }
+
+    #[must_use]
+    pub fn alloca_counted(ty: LlvmType, count_ty: LlvmType, count: LlvmOperand) -> Self {
+        Self::Alloca {
+            ty,
+            align: None,
+            count: Some((count_ty, count)),
+        }
     }
 
     #[must_use]

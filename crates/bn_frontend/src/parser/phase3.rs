@@ -111,6 +111,14 @@ impl<'a> Parser<'a> {
                 span,
             });
         }
+        if self.keyword("LET")
+            && matches!(
+                line.get(1).map(|token| &token.kind),
+                Some(TokenKind::Symbol(Symbol::LeftBracket))
+            )
+        {
+            return self.destructuring_let(line, span);
+        }
         if self.keyword("LET") || self.keyword("CONST") {
             let as_index = line
                 .iter()
@@ -414,6 +422,96 @@ impl<'a> Parser<'a> {
         }
         values.push(self.expression_in(&tokens[start..])?);
         Ok(values)
+    }
+
+    /// `LET [name AS type, ...] = expression` (0.6.5).
+    fn destructuring_let(
+        &self,
+        line: &'a [Token],
+        span: Span,
+    ) -> Result<crate::ast::Statement, Diagnostic> {
+        let mut depth = 1i32;
+        let mut close = None;
+        for (index, token) in line.iter().enumerate().skip(2) {
+            match token.kind {
+                TokenKind::Symbol(Symbol::LeftBracket | Symbol::LeftParen) => depth += 1,
+                TokenKind::Symbol(Symbol::RightBracket | Symbol::RightParen) => {
+                    depth -= 1;
+                    if depth == 0 {
+                        close = Some(index);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let Some(close) = close else {
+            return Err(self.error("destructuring LET requires a closing bracket"));
+        };
+        if !matches!(
+            line.get(close + 1).map(|token| &token.kind),
+            Some(TokenKind::Symbol(Symbol::Assign))
+        ) {
+            return Err(self.error("destructuring LET requires an initializer"));
+        }
+        let source = self.expression_in(&line[close + 2..])?;
+        let interior = &line[2..close];
+        if interior.is_empty() {
+            return Err(self.error("destructuring LET requires a binding"));
+        }
+        let mut bindings = Vec::new();
+        let mut start = 0;
+        let mut depth = 0i32;
+        for (index, token) in interior.iter().enumerate() {
+            match token.kind {
+                TokenKind::Symbol(Symbol::LeftBracket | Symbol::LeftParen) => depth += 1,
+                TokenKind::Symbol(Symbol::RightBracket | Symbol::RightParen) => depth -= 1,
+                TokenKind::Symbol(Symbol::Comma) if depth == 0 => {
+                    bindings.push(self.destructuring_binding(&interior[start..index])?);
+                    start = index + 1;
+                }
+                _ => {}
+            }
+        }
+        bindings.push(self.destructuring_binding(&interior[start..])?);
+        Ok(crate::ast::Statement::Destructuring {
+            bindings,
+            source,
+            span,
+        })
+    }
+
+    fn destructuring_binding(
+        &self,
+        tokens: &[Token],
+    ) -> Result<crate::ast::DestructuringBinding, Diagnostic> {
+        let Some(Token {
+            kind: TokenKind::Identifier(name),
+            span: name_span,
+        }) = tokens.first()
+        else {
+            return Err(self.error("expected binding name"));
+        };
+        let type_ref = if matches!(tokens.get(1).map(|token| &token.kind), Some(TokenKind::Keyword(word)) if word == "AS")
+        {
+            if tokens.len() == 2 {
+                return Err(self.error("expected type"));
+            }
+            Some(self.type_reference(&tokens[2..], true)?)
+        } else if tokens.len() == 1 {
+            None
+        } else {
+            return Err(self.error("destructuring binding is a name or a name AS type"));
+        };
+        let end = tokens.last().map_or(name_span.end, |token| token.span.end);
+        Ok(crate::ast::DestructuringBinding {
+            name: name.clone(),
+            type_ref,
+            span: Span {
+                start: name_span.start,
+                end,
+            },
+        })
     }
 
     pub(crate) fn type_reference(

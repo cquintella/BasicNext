@@ -299,6 +299,7 @@ pub extern "C" fn bn_rt_dispatch_submit(
                         )
                     })
                 });
+                crate::dispatch_sync_abi::unlock_held_mutexes_for_current_thread();
                 if core_ticket.status() != bn_core_dispatch::CANCELLED {
                     *task_outcome
                         .result

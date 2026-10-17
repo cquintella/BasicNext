@@ -16,10 +16,11 @@ use crate::{
     },
     layout::{handle_result_ty, is_struct_type, vector_ty},
 };
-use runtime_abi::STR_EQ;
+use runtime_abi::{STR_CMP, STR_EQ};
 
 #[path = "composite_compare.rs"]
 mod composite_compare;
+pub(crate) use composite_compare::vector_needs_memcmp;
 
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub(crate) fn emit_runtime_binary(
@@ -164,7 +165,7 @@ pub(crate) fn emit_runtime_binary(
             );
         }
         ("Power", LlvmType::Float | LlvmType::Double) => {
-            emit_float_power(text, destination, left, right, ty);
+            emit_float_power(text, destination, left, right, left_ty, right_ty, ty);
         }
         ("Plus", LlvmType::Ptr) => {
             emit_string_concat(text, destination, left, right);
@@ -223,6 +224,43 @@ pub(crate) fn emit_runtime_binary(
             text.assign(
                 format!("v{}", destination.0),
                 LlvmInst::icmp(predicate, LlvmType::Ptr, value_reg(left), value_reg(right)),
+            );
+        }
+        ("Equal" | "Assign" | "NotEqual", LlvmType::Ptr)
+            if matches!(left_ty, Type::Function { .. })
+                || matches!(right_ty, Type::Function { .. }) =>
+        {
+            let predicate = if matches!(operator, "Equal" | "Assign") {
+                ICmpCond::Eq
+            } else {
+                ICmpCond::Ne
+            };
+            text.assign(
+                format!("v{}", destination.0),
+                LlvmInst::icmp(predicate, LlvmType::Ptr, value_reg(left), value_reg(right)),
+            );
+        }
+        ("Less" | "LessEqual" | "Greater" | "GreaterEqual", LlvmType::Ptr)
+            if *left_ty == Type::String && *right_ty == Type::String =>
+        {
+            text.assign(
+                format!("strcmp{}", destination.0),
+                STR_CMP.call([value_reg(left), value_reg(right)]),
+            );
+            let predicate = match operator {
+                "Less" => ICmpCond::Slt,
+                "LessEqual" => ICmpCond::Sle,
+                "Greater" => ICmpCond::Sgt,
+                _ => ICmpCond::Sge,
+            };
+            text.assign(
+                format!("v{}", destination.0),
+                LlvmInst::icmp(
+                    predicate,
+                    I32,
+                    LlvmOperand::reg(format!("strcmp{}", destination.0)),
+                    LlvmOperand::int(0),
+                ),
             );
         }
         ("Equal" | "Assign" | "NotEqual", LlvmType::Ptr) => {

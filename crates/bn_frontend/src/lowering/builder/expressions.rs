@@ -24,6 +24,11 @@ impl Builder<'_> {
         {
             return self.increment(target, *delta, *prefix, expression.span);
         }
+        if let ExpressionKind::Vector { values } = &expression.kind
+            && self.model.struct_fields_of(&ty).is_some()
+        {
+            return self.struct_literal(expression, values, &ty);
+        }
         let destination = self.value();
         let instruction = match &expression.kind {
             ExpressionKind::Super => unreachable!("semantic analysis rejects bare SUPER"),
@@ -446,6 +451,16 @@ impl Builder<'_> {
                     Instruction::Constant {
                         destination,
                         value: module_constant(value),
+                        ty,
+                        span: expression.span,
+                    }
+                } else if matches!(ty, Type::Module(_)) {
+                    // `EXPORT IMPORT path AS Alias` is a module value, not a
+                    // static field of the importing module.
+                    let _ = self.expression(object)?;
+                    Instruction::Constant {
+                        destination,
+                        value: Constant::Type(name.clone()),
                         ty,
                         span: expression.span,
                     }

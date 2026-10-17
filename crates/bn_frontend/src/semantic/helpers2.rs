@@ -42,11 +42,6 @@ pub(crate) fn member_target(object: &Type, name: &str) -> Option<MemberTarget> {
             owner: Some(owner.clone()),
             name: name.into(),
         }),
-        Type::System => Some(MemberTarget {
-            module: None,
-            owner: Some("SYSTEM".into()),
-            name: name.into(),
-        }),
         Type::Alternative(types) => {
             let mut targets = types.iter().filter_map(|ty| member_target(ty, name));
             let target = targets.next()?;
@@ -88,14 +83,14 @@ pub(crate) fn validate_type_reference(reference: &TypeReference) -> Result<(), D
                 alternative.span,
             ));
         }
-        let ty = type_from_atom(alternative);
-        if matches!(ty, Type::System) {
+        if alternative.name == "SYSTEM" {
             return Err(name_not_found(
                 "SYSTEM",
                 "Basic Next 0.6 (withdrawn in 0.2; use HOST.Args)",
                 alternative.span,
             ));
         }
+        let ty = type_from_atom(alternative);
         if types.contains(&ty) {
             return Err(type_mismatch(
                 "unique alternative type",
@@ -350,6 +345,7 @@ pub(crate) fn statement_span(statement: &Statement) -> Span {
         | Statement::Repeat { span, .. }
         | Statement::For { span, .. }
         | Statement::Binding { span, .. }
+        | Statement::Destructuring { span, .. }
         | Statement::Assignment { span, .. }
         | Statement::Return { span, .. }
         | Statement::Print { span, .. }
@@ -393,6 +389,7 @@ pub(crate) fn block_uses_self(statements: &[Statement]) -> bool {
         Statement::Binding { initializer, .. } => {
             initializer.as_ref().is_some_and(expression_uses_self)
         }
+        Statement::Destructuring { source, .. } => expression_uses_self(source),
         Statement::If {
             branches,
             otherwise,
@@ -435,6 +432,7 @@ pub(crate) fn statement_uses_super(statement: &Statement) -> bool {
         Statement::Binding { initializer, .. } => {
             initializer.as_ref().is_some_and(expression_uses_super)
         }
+        Statement::Destructuring { source, .. } => expression_uses_super(source),
         Statement::If {
             branches,
             otherwise,
@@ -478,6 +476,7 @@ pub(crate) fn statement_has_invalid_super(statement: &Statement) -> bool {
         Statement::Binding { initializer, .. } => initializer
             .as_ref()
             .is_some_and(expression_has_invalid_super),
+        Statement::Destructuring { source, .. } => expression_has_invalid_super(source),
         Statement::If {
             branches,
             otherwise,

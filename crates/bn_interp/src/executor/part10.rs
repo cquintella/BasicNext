@@ -131,7 +131,7 @@ impl Executor<'_, '_> {
         match object {
             Value::Null => Err(runtime_error(
                 bn_diag::DiagId::NULL_POINTER_ACCESS,
-                "cannot index a NULL pointer",
+                bn_diag::trap_texts::NULL_POINTER_INDEX,
                 span,
             )),
             Value::Vector(vector) => {
@@ -180,7 +180,7 @@ impl Executor<'_, '_> {
         match target {
             Value::Null => Err(runtime_error(
                 bn_diag::DiagId::NULL_POINTER_ACCESS,
-                "cannot index a NULL pointer",
+                bn_diag::trap_texts::NULL_POINTER_INDEX,
                 span,
             )),
             Value::Pointer { handle, .. } => {

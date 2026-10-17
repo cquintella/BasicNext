@@ -296,7 +296,6 @@ pub extern "C" fn bn_rt_json_get_string(
 ) -> *mut c_char {
     let outcome = get_string(handle, c_str(key).unwrap_or_default());
     let text = answer("BNJson.Json.GetString", status, outcome, String::new());
-    super::text_abi::reject_nul("BNJson.Json.GetString", text.as_bytes());
     c_string(&text)
 }
 
@@ -350,7 +349,6 @@ pub extern "C" fn bn_rt_json_get_string_at(
         value.as_str().map(str::to_owned)
     });
     let text = answer("BNJson.Json.GetStringAt", status, outcome, String::new());
-    super::text_abi::reject_nul("BNJson.Json.GetStringAt", text.as_bytes());
     c_string(&text)
 }
 

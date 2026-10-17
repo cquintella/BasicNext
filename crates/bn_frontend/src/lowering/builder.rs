@@ -10,6 +10,8 @@ use super::*;
 mod builder_state;
 #[path = "builder/control_flow.rs"]
 mod control_flow;
+#[path = "builder/destructuring.rs"]
+mod destructuring;
 #[path = "builder/expressions.rs"]
 mod expressions;
 #[path = "builder/ownership.rs"]

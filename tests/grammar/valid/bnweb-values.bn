@@ -1,0 +1,27 @@
+IMPORT BNWeb AS Web
+
+FUNCTION Start() AS VOID
+    LET resp AS Web.Response = NEW Web.Response()
+    IF resp.SetStatus(201) IS Error THEN
+        PRINT "status error"
+        RETURN
+    END IF
+    IF resp.SetHeader("X-Test", "BasicNext") IS Error THEN
+        PRINT "header error"
+        RETURN
+    END IF
+    IF resp.SetCookieWithPolicy("token", "xyz", "", "/", 3600000, FALSE, TRUE, "Lax") IS Error THEN
+        PRINT "cookie error"
+        RETURN
+    END IF
+    IF resp.Write("{\"ok\":true}") IS Error THEN
+        PRINT "write error"
+        RETURN
+    END IF
+    LET read_h AS STRING OR Error = resp.Header("X-Test")
+    IF read_h IS Error THEN
+        PRINT "read header error"
+    ELSE
+        PRINT resp.Status(), read_h, resp.IsCommitted()
+    END IF
+END FUNCTION

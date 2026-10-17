@@ -1414,6 +1414,47 @@ fn build_folds_pure_function_local_binding() {
 }
 
 #[test]
+fn sprint6_calls_vectors_and_steps_match_the_interpreter() {
+    native_and_interpreter_print("tests/grammar/valid/host-alias-calls.bn", "OK\n");
+    native_and_interpreter_print(
+        "tests/grammar/valid/user-calls.bn",
+        "5\npardal\npapa\npapa\n",
+    );
+    native_and_interpreter_print(
+        "tests/grammar/valid/vector-compare-long.bn",
+        "TRUE\nTRUE\nFALSE\nTRUE\nTRUE\nFALSE\n",
+    );
+    native_and_interpreter_print(
+        "tests/grammar/valid/for-step-direction.bn",
+        "1\n2\n3\n3\n2\n1\n",
+    );
+    native_matches_interpreter("tests/grammar/valid/stop-255.bn");
+    let llvm = bnc()
+        .args([
+            "--emit",
+            "llvm",
+            "tests/grammar/valid/vector-compare-long.bn",
+        ])
+        .output()
+        .expect("emit llvm");
+    assert_eq!(
+        llvm.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&llvm.stderr)
+    );
+    let ir = String::from_utf8_lossy(&llvm.stdout);
+    assert!(
+        ir.contains("call i32 @memcmp"),
+        "long integer vector compare was not a memcmp"
+    );
+    assert!(
+        !ir.contains("vecelem_eq_16_"),
+        "a 17-element vector was still unrolled"
+    );
+}
+
+#[test]
 fn build_lowers_factorial_recursion_matching_interpreter() {
     native_matches_interpreter("examples/factorial.bn");
 }
@@ -1538,6 +1579,11 @@ fn build_typed_dispatch_supports_all_mvp_scalar_results() {
 #[test]
 fn build_typed_dispatch_supports_all_mvp_scalar_arguments() {
     native_matches_interpreter("tests/grammar/valid/dispatch-mvp-arguments.bn");
+}
+
+#[test]
+fn build_typed_dispatch_supports_handle_arguments_and_concurrency() {
+    native_matches_interpreter("tests/grammar/valid/dispatch-handle-arguments.bn");
 }
 
 #[cfg(unix)]
@@ -2257,4 +2303,32 @@ fn bndata_operations_on_a_narrowed_receiver_build_natively() {
 #[test]
 fn a_program_in_three_files_imports_through_both_backends() {
     native_and_interpreter_print("examples/two_files.bn", "20\n1\n2\n3\n");
+}
+
+/// S6 parity fixtures (bucket 0.6.5 E.S1.c): all six fixtures pass under `bni`
+/// and fail under `bnc` with `TARGET_UNSUPPORTED_OP: ... BNWeb calls`.
+/// BNWeb S6 parity: all 6 normative fixtures produce identical output across bni and bnc.
+#[test]
+fn bnweb_s6_parity_fixtures_pass_both_interpreter_and_native() {
+    let fixtures = [
+        ("tests/grammar/valid/bnweb-values.bn", "201 BasicNext FALSE\n"),
+        ("tests/grammar/valid/bnweb-server.bn", "201\nstopped\n"),
+        ("tests/grammar/valid/bnweb-tls.bn", "tls-error 1\n"),
+        (
+            "tests/grammar/valid/bnweb-client.bn",
+            "abc 1\nsession-data\nBNWeb Hello World\nFALSE\n",
+        ),
+        (
+            "tests/grammar/valid/bnweb-errors.bn",
+            "late-error: TRUE\nunstarted-stop-error: TRUE\n",
+        ),
+        (
+            "tests/grammar/valid/bnweb-policy.bn",
+            "policy-error: FALSE\negress-denied: TRUE 7\n",
+        ),
+    ];
+
+    for (path, expected_stdout) in fixtures {
+        native_and_interpreter_print(path, expected_stdout);
+    }
 }

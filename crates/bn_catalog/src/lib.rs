@@ -39,6 +39,10 @@ pub const FILES: &[(&str, &str)] = &[
     ("json", include_str!("../../../share/bn/catalog/json.txt")),
     ("llvm", include_str!("../../../share/bn/catalog/llvm.txt")),
     ("net", include_str!("../../../share/bn/catalog/net.txt")),
+    (
+        "string",
+        include_str!("../../../share/bn/catalog/string.txt"),
+    ),
     ("web", include_str!("../../../share/bn/catalog/web.txt")),
 ];
 

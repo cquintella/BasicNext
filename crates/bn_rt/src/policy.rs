@@ -526,6 +526,7 @@ pub extern "C" fn bn_rt_policy_filesystem_root(write: i32, path: *const c_char) 
 }
 
 fn path_text(path: *const c_char) -> Option<String> {
+    // The compiler driver passes an operating-system path, not a STRING.
     if path.is_null() {
         None
     } else {

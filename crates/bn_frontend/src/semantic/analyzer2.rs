@@ -350,21 +350,21 @@ impl Analyzer {
                         }
                     }
                     for parameter in parameters {
-                        self.validate_type_reference(&parameter.type_ref)?;
+                        self.validate_type_reference(&parameter.type_ref, true)?;
                     }
                     if let Some(signature) = member_signature {
-                        self.validate_type_reference(&signature.return_type)?;
+                        self.validate_type_reference(&signature.return_type, false)?;
                         for parameter in &signature.parameters {
-                            self.validate_type_reference(&parameter.type_ref)?;
+                            self.validate_type_reference(&parameter.type_ref, true)?;
                         }
                     }
                 }
             }
             let mut locals = HashMap::new();
             if let Some(signature) = signature {
-                self.validate_type_reference(&signature.return_type)?;
+                self.validate_type_reference(&signature.return_type, false)?;
                 for parameter in &signature.parameters {
-                    self.validate_type_reference(&parameter.type_ref)?;
+                    self.validate_type_reference(&parameter.type_ref, true)?;
                     self.declare_parameter(
                         &mut locals,
                         &parameter.name,
@@ -390,6 +390,7 @@ impl Analyzer {
                     default_span(),
                 )?;
             }
+            let saved_names = std::mem::take(&mut self.ended_loop_names);
             self.block(
                 statements,
                 &mut locals,
@@ -398,6 +399,7 @@ impl Analyzer {
                 name,
                 return_type.as_ref(),
             )?;
+            self.ended_loop_names = saved_names;
             self.current_class = previous_class;
             if *kind == DeclarationKind::Function
                 && let Some(signature) = signature

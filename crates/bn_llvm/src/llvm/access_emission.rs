@@ -145,7 +145,11 @@ pub(crate) fn lower_access_emission(
                     value_ty,
                     ty,
                     *previous,
-                    if analysis.symbols.get(symbol).is_some_and(is_native_pointer) {
+                    if analysis
+                        .symbols
+                        .get(symbol)
+                        .is_some_and(|ty| is_native_pointer(ty) || is_region_alternative(ty))
+                    {
                         "region"
                     } else {
                         "vector"
@@ -174,17 +178,20 @@ pub(crate) fn lower_access_emission(
             index,
             ty,
             ..
-        } if analysis
-            .values
-            .get(object)
-            .is_some_and(|ty| is_native_vector(ty) || is_native_pointer(ty)) =>
+        } if analysis.values.get(object).is_some_and(|ty| {
+            is_native_vector(ty) || is_native_pointer(ty) || is_region_alternative(ty)
+        }) =>
         {
             block_state.constants.remove(destination);
             let index_ty = analysis
                 .values
                 .get(index)
                 .expect("validated vector index type");
-            let context = if analysis.values.get(object).is_some_and(is_native_pointer) {
+            let context = if analysis
+                .values
+                .get(object)
+                .is_some_and(|ty| is_native_pointer(ty) || is_region_alternative(ty))
+            {
                 "region"
             } else {
                 "vector"
@@ -239,14 +246,10 @@ pub(crate) fn lower_access_emission(
             ];
             let packed = I::call(T::I64, "bn_rt_str_index_utf8", args);
             text.assign(format!("strindexpacked{dest}"), packed);
-            let bytes = vec![(T::I64, O::int(layout::PACKED_UTF8_BYTES))];
             text.assign(
-                format!("strindexbuffer{dest}"),
-                I::call(T::Ptr, "malloc", bytes),
+                format!("v{dest}"),
+                I::call(T::Ptr, "bn_rt_str_from_packed", vec![(T::I64, r("packed"))]),
             );
-            text.emit(I::store(T::I64, r("packed"), r("buffer")));
-            let start = vec![(T::I64, O::int(0))];
-            text.assign(format!("v{dest}"), I::gep(T::I8, r("buffer"), start));
         }
         Instruction::Index {
             destination,
@@ -286,8 +289,16 @@ pub(crate) fn lower_access_emission(
                 I::gep(T::Ptr, O::reg(arg_vector_reg), at),
             );
             text.assign(
-                format!("v{dest}"),
+                format!("argraw{dest}"),
                 I::load(T::Ptr, O::reg(format!("argptr{dest}"))),
+            );
+            text.assign(
+                format!("v{dest}"),
+                I::call(
+                    T::Ptr,
+                    "bn_rt_cstr_copy",
+                    vec![(T::Ptr, O::reg(format!("argraw{dest}")))],
+                ),
             );
         }
         _ => return false,

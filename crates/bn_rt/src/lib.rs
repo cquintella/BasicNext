@@ -15,7 +15,7 @@
 //! LLVM emits calls to the `bn_rt_*` C ABI; `bn run` uses the Rust API.
 
 use std::{
-    ffi::{CStr, c_char},
+    ffi::c_char,
     io::{self, Write},
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -57,6 +57,7 @@ pub mod sqlite_abi;
 #[cfg(feature = "sqlite")]
 pub mod sqlite_error;
 mod stats;
+pub mod string;
 mod terminal;
 mod text_abi;
 mod trap_abi;
@@ -74,9 +75,9 @@ pub use dataframe::{
     ConvertedCell, DataFrameColumn, DataFrameJoin, DataFrameJoinConfig, DataFrameResource,
     DataProvider, StandardDataProvider, add_dataframe_column, append_columns, append_rows,
     column_name, conversion_failed, convert_cell, convert_dataframe_column, copy_dataframe_column,
-    dataframe_reduce_column, first_duplicate_column, frame_from_csv_rows, get_dataframe_cell,
-    join_dataframes, parse_csv, select_dataframe, set_column_label, slice_dataframe,
-    transpose_dataframe, zscore_column,
+    copy_integer_element, dataframe_reduce_column, first_duplicate_column, frame_from_csv_rows,
+    get_dataframe_cell, join_dataframes, parse_csv, select_dataframe, set_column_label,
+    slice_dataframe, transpose_dataframe, zscore_column,
 };
 pub use dataframe_abi::*;
 pub use dispatch_abi::*;
@@ -182,12 +183,13 @@ fn libc_fflush() -> io::Result<()> {
     }
 }
 
-#[allow(unsafe_code)] // C ABI: read a NUL-terminated LLVM string pointer.
+#[allow(unsafe_code)] // C ABI: read a Basic Next STRING pointer using header length (G7-D1).
 pub(crate) fn c_str<'a>(ptr: *const c_char) -> Option<&'a str> {
     if ptr.is_null() {
         return None;
     }
-    unsafe { CStr::from_ptr(ptr) }.to_str().ok()
+    let bytes = crate::string::slice_from_raw(ptr)?;
+    std::str::from_utf8(bytes).ok()
 }
 
 #[allow(unsafe_code)] // C ABI export for LLVM-emitted HOST.NumProcs.
@@ -349,76 +351,6 @@ pub extern "C" fn bn_rt_print_time(millis: i32) {
     let _ = LibcStdout.write_all(civil::format_time(u32::try_from(millis).unwrap_or(0)).as_bytes());
 }
 
-#[allow(unsafe_code)] // C ABI: STRING equality.
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_str_eq(left: *const c_char, right: *const c_char) -> i32 {
-    match (c_str(left), c_str(right)) {
-        (Some(left), Some(right)) => i32::from(left == right),
-        _ => 0,
-    }
-}
-
-#[allow(unsafe_code)] // C ABI: LEN of a UTF-8 STRING.
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_str_len(text: *const c_char) -> i32 {
-    let Some(text) = c_str(text) else {
-        return 0;
-    };
-    i32::try_from(text.chars().count()).unwrap_or(i32::MAX)
-}
-
-#[allow(unsafe_code)] // C ABI: decode the first Unicode scalar from a borrowed STRING.
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_str_asc(text: *const c_char) -> i64 {
-    c_str(text)
-        .and_then(|text| text.chars().next())
-        .map_or(-1, |character| i64::from(u32::from(character)))
-}
-
-/// Unicode lowercase (Rust `str::to_lowercase` — full Unicode case mapping,
-/// not ASCII-only). Returns a freshly allocated NUL-terminated UTF-8 string.
-/// Caller frees with the same allocator used for other owned rt strings
-/// (`bn_rt_file_string_free` / libc free of the `c_string` allocation).
-#[allow(unsafe_code)] // C ABI: owned UTF-8 STRING.
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_str_to_lower(text: *const c_char) -> *mut c_char {
-    let Some(text) = c_str(text) else {
-        return c_string("");
-    };
-    c_string(&text.to_lowercase())
-}
-
-/// Unicode uppercase (Rust `str::to_uppercase` — full Unicode case mapping,
-/// not ASCII-only). May change scalar length (e.g. `ß` → `SS`).
-#[allow(unsafe_code)] // C ABI: owned UTF-8 STRING.
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_str_to_upper(text: *const c_char) -> *mut c_char {
-    let Some(text) = c_str(text) else {
-        return c_string("");
-    };
-    c_string(&text.to_uppercase())
-}
-
-fn pack_utf8(character: char) -> u64 {
-    let mut encoded = [0_u8; 4];
-    let text = character.encode_utf8(&mut encoded);
-    let mut bytes = [0_u8; size_of::<u64>()];
-    bytes[..text.len()].copy_from_slice(text.as_bytes());
-    u64::from_ne_bytes(bytes)
-}
-
-/// Returns one UTF-8 scalar packed in native byte order, including a trailing
-/// NUL byte. `u64::MAX` represents an invalid Unicode scalar.
-#[allow(unsafe_code)] // C ABI export for LLVM-emitted CHAR.
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_str_char_utf8(code: i64) -> u64 {
-    let Some(character) = u32::try_from(code).ok().and_then(char::from_u32) else {
-        return u64::MAX;
-    };
-    text_abi::reject_nul("CHAR", character.encode_utf8(&mut [0; 4]).as_bytes());
-    pack_utf8(character)
-}
-
 #[allow(unsafe_code)] // C ABI: the column name is a borrowed NUL-terminated STRING.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_dataframe_add_integer_start(
@@ -453,33 +385,8 @@ pub extern "C" fn bn_rt_dataframe_set_integer_cell(
 #[allow(unsafe_code)] // C ABI export; returned storage is released by the LLVM caller.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_dataframe_column_name_owned(frame: u64, index: u32) -> *mut c_char {
-    dataframe_abi::column_name_storage(frame, index).map_or(std::ptr::null_mut(), |name| {
-        text_abi::reject_nul("BNData.DataFrame.ColumnName", name.as_bytes());
-        c_string(&name)
-    })
-}
-
-/// Returns `STRING[index]` as one NUL-terminated UTF-8 scalar packed in native
-/// byte order. This ABI lets the LLVM caller materialize function-local
-/// storage, so indexing does not create heap ownership.
-#[allow(unsafe_code)] // C ABI: STRING[index] from a borrowed UTF-8 string.
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_str_index_utf8(
-    text: *const c_char,
-    index: i32,
-    trap: *const c_char,
-) -> u64 {
-    let text = c_str(text).unwrap_or_default();
-    let character = usize::try_from(index)
-        .ok()
-        .and_then(|position| text.chars().nth(position));
-    let Some(character) = character else {
-        // The site's diagnostic (`bnc` rendered it): the index and the length.
-        let length = i128::try_from(text.chars().count()).unwrap_or(i128::MAX);
-        trap_abi::report(trap, [index.into(), length]);
-        std::process::exit(1);
-    };
-    pack_utf8(character)
+    dataframe_abi::column_name_storage(frame, index)
+        .map_or(std::ptr::null_mut(), |name| c_string(&name))
 }
 
 #[allow(unsafe_code)] // C ABI export for LLVM-emitted HOST.Console.NumRows.
@@ -500,12 +407,7 @@ pub extern "C" fn bn_rt_console_num_rows() -> i32 {
 
 #[allow(unsafe_code)] // C ABI: allocate a NUL-terminated copy for LLVM strings.
 pub(crate) fn c_string(text: &str) -> *mut c_char {
-    let mut bytes = text.as_bytes().to_vec();
-    bytes.push(0);
-    let mut boxed = bytes.into_boxed_slice();
-    let ptr = boxed.as_mut_ptr().cast::<c_char>();
-    std::mem::forget(boxed);
-    ptr
+    string::c_string_from_bytes(text.as_bytes())
 }
 
 #[cfg(test)]
@@ -533,7 +435,6 @@ mod tests {
         bn_rt_net_tcp_read, bn_rt_net_tcp_write,
     };
     use super::{monotonic_ns, timestamp_ms, timestamp_ms_from};
-    use std::ffi::CString;
     use std::io::{Read, Write};
     use std::net::TcpStream as StdTcpStream;
     use std::time::{Duration, UNIX_EPOCH};
@@ -541,10 +442,10 @@ mod tests {
     #[test]
 
     fn packed_string_index_preserves_ascii_and_multibyte_scalars() {
-        let text = CString::new("Aé界").expect("literal has no NUL");
+        let text = super::string::c_string_from_bytes("Aé界".as_bytes());
         for (index, expected) in ["A", "é", "界"].into_iter().enumerate() {
-            let packed = super::bn_rt_str_index_utf8(
-                text.as_ptr(),
+            let packed = super::string::bn_rt_str_index_utf8(
+                text,
                 i32::try_from(index).expect("small index"),
                 std::ptr::null(),
             );
@@ -552,15 +453,17 @@ mod tests {
             let nul = bytes.iter().position(|byte| *byte == 0).expect("NUL");
             assert_eq!(std::str::from_utf8(&bytes[..nul]), Ok(expected));
         }
+        assert_eq!(super::string::bn_rt_str_release(text), 0);
     }
 
     #[test]
     fn packed_char_uses_the_same_native_byte_contract_as_string_index() {
-        let text = CString::new("é").expect("literal has no NUL");
+        let text = super::string::c_string_from_bytes("é".as_bytes());
         assert_eq!(
-            super::bn_rt_str_char_utf8(i64::from(u32::from('é'))),
-            super::bn_rt_str_index_utf8(text.as_ptr(), 0, std::ptr::null())
+            super::string::bn_rt_str_char_utf8(i64::from(u32::from('é'))),
+            super::string::bn_rt_str_index_utf8(text, 0, std::ptr::null())
         );
+        assert_eq!(super::string::bn_rt_str_release(text), 0);
     }
 
     #[test]
@@ -596,33 +499,35 @@ mod tests {
     #[test]
     fn resolve_c_abi_returns_bounded_handle() {
         let _lock = super::network_test_lock();
-        let host = CString::new("localhost").expect("literal has no NUL");
+        let host = super::c_string("localhost");
         let mut handle = std::ptr::null_mut();
-        let status = bn_rt_net_resolve(host.as_ptr(), 1_000, &raw mut handle);
+        let status = bn_rt_net_resolve(host, 1_000, &raw mut handle);
         assert_eq!(status, 0);
         assert!(!handle.is_null());
         assert!((0..=64).contains(&bn_rt_net_addresses_count(handle)));
         bn_rt_net_addresses_free(handle);
+        crate::string::bn_rt_str_release(host);
     }
 
     #[test]
     fn udp_bind_c_abi_allocates_and_closes_handle() {
         let _lock = super::network_test_lock();
-        let address = CString::new("127.0.0.1").expect("literal has no NUL");
+        let address = super::c_string("127.0.0.1");
         let mut handle = -1;
-        assert_eq!(bn_rt_net_udp_bind(address.as_ptr(), 0, &raw mut handle), 0);
+        assert_eq!(bn_rt_net_udp_bind(address, 0, &raw mut handle), 0);
         assert!(handle >= 0);
         assert_eq!(bn_rt_net_handle_close(handle), 0);
         // Close is idempotent (host-net.md): a second Close is not an error.
         assert_eq!(bn_rt_net_handle_close(handle), 0);
+        crate::string::bn_rt_str_release(address);
     }
 
     #[test]
     fn udp_local_endpoint_c_abi_returns_bound_port() {
         let _lock = super::network_test_lock();
-        let address = CString::new("127.0.0.1").expect("literal has no NUL");
+        let address = super::c_string("127.0.0.1");
         let mut handle = -1;
-        assert_eq!(bn_rt_net_udp_bind(address.as_ptr(), 0, &raw mut handle), 0);
+        assert_eq!(bn_rt_net_udp_bind(address, 0, &raw mut handle), 0);
         let mut rendered = std::ptr::null_mut();
         let mut port = -1;
         assert_eq!(
@@ -632,6 +537,7 @@ mod tests {
         assert!(!rendered.is_null());
         assert!(port > 0);
         assert_eq!(bn_rt_net_handle_close(handle), 0);
+        crate::string::bn_rt_str_release(address);
     }
 
     #[test]
@@ -650,14 +556,11 @@ mod tests {
     #[allow(unsafe_code)]
     fn udp_c_abi_round_trip_preserves_payload_and_source() {
         let _lock = super::network_test_lock();
-        let address = CString::new("127.0.0.1").expect("literal has no NUL");
+        let address = super::c_string("127.0.0.1");
         let mut sender = -1;
         let mut receiver = -1;
-        assert_eq!(bn_rt_net_udp_bind(address.as_ptr(), 0, &raw mut sender), 0);
-        assert_eq!(
-            bn_rt_net_udp_bind(address.as_ptr(), 0, &raw mut receiver),
-            0
-        );
+        assert_eq!(bn_rt_net_udp_bind(address, 0, &raw mut sender), 0);
+        assert_eq!(bn_rt_net_udp_bind(address, 0, &raw mut receiver), 0);
 
         let mut receiver_address = std::ptr::null_mut();
         let mut receiver_port = -1;
@@ -712,6 +615,7 @@ mod tests {
         bn_rt_net_string_free(source);
         assert_eq!(bn_rt_net_handle_close(sender), 0);
         assert_eq!(bn_rt_net_handle_close(receiver), 0);
+        crate::string::bn_rt_str_release(address);
     }
 
     #[test]
@@ -727,10 +631,10 @@ mod tests {
             assert_eq!(&input, b"ping");
             stream.write_all(b"pong").expect("write response");
         });
-        let address = CString::new("127.0.0.1").expect("literal has no NUL");
+        let address = super::c_string("127.0.0.1");
         let mut handle = -1;
         assert_eq!(
-            bn_rt_net_tcp_connect(address.as_ptr(), i32::from(port), 1_000, &raw mut handle),
+            bn_rt_net_tcp_connect(address, i32::from(port), 1_000, &raw mut handle),
             0
         );
         let mut written = -1;
@@ -748,6 +652,7 @@ mod tests {
         assert_eq!(read, 4);
         assert_eq!(&output, b"pong");
         assert_eq!(bn_rt_net_handle_close(handle), 0);
+        crate::string::bn_rt_str_release(address);
         worker.join().expect("worker completed");
     }
 
@@ -755,10 +660,10 @@ mod tests {
     #[allow(unsafe_code)]
     fn tcp_listener_c_abi_accepts_connection() {
         let _lock = super::network_test_lock();
-        let address = CString::new("127.0.0.1").expect("literal has no NUL");
+        let address = super::c_string("127.0.0.1");
         let mut listener = -1;
         assert_eq!(
-            bn_rt_net_tcp_listen_with_backlog(address.as_ptr(), 0, 8, &raw mut listener),
+            bn_rt_net_tcp_listen_with_backlog(address, 0, 8, &raw mut listener),
             0
         );
         let mut rendered = std::ptr::null_mut();
@@ -782,16 +687,17 @@ mod tests {
         bn_rt_net_string_free(rendered.cast());
         assert_eq!(bn_rt_net_handle_close(accepted), 0);
         assert_eq!(bn_rt_net_handle_close(listener), 0);
+        crate::string::bn_rt_str_release(address);
     }
 
     #[test]
     #[allow(unsafe_code)]
     fn tcp_read_c_abi_reports_eof_as_zero_bytes() {
         let _lock = super::network_test_lock();
-        let address = CString::new("127.0.0.1").expect("literal has no NUL");
+        let address = super::c_string("127.0.0.1");
         let mut listener = -1;
         assert_eq!(
-            bn_rt_net_tcp_listen_with_backlog(address.as_ptr(), 0, 8, &raw mut listener),
+            bn_rt_net_tcp_listen_with_backlog(address, 0, 8, &raw mut listener),
             0
         );
         let mut rendered = std::ptr::null_mut();
@@ -825,6 +731,7 @@ mod tests {
         bn_rt_net_string_free(rendered.cast());
         assert_eq!(bn_rt_net_handle_close(accepted), 0);
         assert_eq!(bn_rt_net_handle_close(listener), 0);
+        crate::string::bn_rt_str_release(address);
     }
 
     #[test]

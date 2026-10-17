@@ -38,7 +38,7 @@ impl Executor<'_, '_> {
                 let actual_len = u64::try_from(self.memory.len(*handle, span)?).map_err(|_| {
                     runtime_error(
                         bn_diag::DiagId::POINTER_LENGTH_MISMATCH,
-                        "pointer length does not fit INTEGER",
+                        bn_diag::trap_texts::POINTER_LENGTH_HOST,
                         span,
                     )
                 })?;
@@ -466,7 +466,6 @@ impl Executor<'_, '_> {
             Type::ImportedNamed { module, name } | Type::ImportedTypeName { module, name } => {
                 Ok(self.empty_named_value(&format!("#{}.{name}", module.0)))
             }
-            Type::System => Ok(Value::Type("SYSTEM".into())),
             Type::HostClock => Ok(Value::Type("HOST.Clock".into())),
             Type::HostRandom => Ok(Value::Type("HOST.Random".into())),
             Type::HostFileSystem => Ok(Value::Type("HOST.FileSystem".into())),
@@ -508,6 +507,7 @@ impl Executor<'_, '_> {
         }
     }
 
+    #[allow(clippy::self_only_used_in_recursion)]
     pub fn size_of_value(&self, value: &Value, span: Span) -> Result<Value, Diagnostic> {
         let size = match value {
             Value::Integer(_, kind) => integer_byte_size(*kind),
@@ -525,14 +525,6 @@ impl Executor<'_, '_> {
             Value::Record { record } => {
                 let mut total = 0u64;
                 for field in record.iter() {
-                    total = add_sizes(total, &self.size_of_value(field, span)?, span)?;
-                }
-                total
-            }
-            Value::Object { handle, .. } => {
-                let instance = self.objects.get(*handle, 0, span)?;
-                let mut total = 0u64;
-                for field in &instance.fields {
                     total = add_sizes(total, &self.size_of_value(field, span)?, span)?;
                 }
                 total

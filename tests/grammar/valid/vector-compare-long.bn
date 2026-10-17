@@ -1,0 +1,24 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// INTEGER[17] is past the unroll limit (memcmp). STRING[17] uses the counted
+// loop. INTEGER[3] stays unrolled. Equality is element-wise (0.6.md).
+
+FUNCTION Start() AS VOID
+    LET left AS INTEGER[17] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+    LET same AS INTEGER[17] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+    LET last AS INTEGER[17] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18]
+    LET short_left AS INTEGER[3] = [1, 2, 3]
+    LET short_right AS INTEGER[3] = [1, 2, 3]
+    LET words AS STRING[17] = ["a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a"]
+    LET words_same AS STRING[17] = ["a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a"]
+    LET words_differ AS STRING[17] = ["b", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a"]
+    PRINT left = left
+    PRINT left = same
+    PRINT left = last
+    PRINT short_left = short_right
+    PRINT words = words_same
+    PRINT words = words_differ
+END FUNCTION

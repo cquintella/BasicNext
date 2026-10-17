@@ -155,6 +155,7 @@ pub enum LlvmInst {
     Alloca {
         ty: LlvmType,
         align: Option<usize>,
+        count: Option<(LlvmType, LlvmOperand)>,
     },
     Load {
         ty: LlvmType,
@@ -281,7 +282,14 @@ impl LlvmInst {
             Self::CondBr { cond, .. } => vec![cond],
             Self::Phi { incoming, .. } => incoming.iter().map(|(value, _)| value).collect(),
             Self::Ret { val } => val.iter().map(|(_, value)| value).collect(),
-            Self::Alloca { .. } | Self::Br { .. } | Self::Unreachable => Vec::new(),
+            Self::Alloca { count, .. } => {
+                if let Some((_, cval)) = count {
+                    vec![cval]
+                } else {
+                    Vec::new()
+                }
+            }
+            Self::Br { .. } | Self::Unreachable => Vec::new(),
         }
     }
 }
@@ -289,8 +297,11 @@ impl LlvmInst {
 impl fmt::Display for LlvmInst {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Alloca { ty, align } => {
+            Self::Alloca { ty, align, count } => {
                 write!(f, "alloca {ty}")?;
+                if let Some((cty, cval)) = count {
+                    write!(f, ", {cty} {cval}")?;
+                }
                 if let Some(a) = align {
                     write!(f, ", align {a}")?;
                 }
@@ -510,6 +521,7 @@ mod tests {
             LlvmInst::Alloca {
                 ty: LlvmType::I32,
                 align: Some(4),
+                count: None,
             },
         );
         assert_eq!(a.to_string(), "  %x = alloca i32, align 4");

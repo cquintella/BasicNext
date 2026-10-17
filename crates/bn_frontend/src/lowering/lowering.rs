@@ -486,6 +486,7 @@ pub(crate) fn lower_inherited_constructor(
         standard_modules: HashSet::new(),
         module_constants: std::collections::HashMap::new(),
         record_members: std::collections::HashMap::new(),
+        struct_fields: std::collections::HashMap::new(),
         host_aliases: std::collections::HashMap::new(),
     };
     let mut builder = Builder::new(&empty_model, methods.clone(), prefix);
@@ -525,6 +526,7 @@ pub(crate) fn lower_inherited_destructor(
         standard_modules: HashSet::new(),
         module_constants: std::collections::HashMap::new(),
         record_members: std::collections::HashMap::new(),
+        struct_fields: std::collections::HashMap::new(),
         host_aliases: std::collections::HashMap::new(),
     };
     let mut builder = Builder::new(&empty_model, methods.clone(), prefix);

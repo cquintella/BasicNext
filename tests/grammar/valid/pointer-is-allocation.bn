@@ -1,0 +1,23 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// IS POINTER TO T reads the allocation (0.6.md, K55). VOID matches every
+// non-NULL pointer. A typed test matches the element and, when it names a
+// length, that length. NULL is not a pointer.
+FUNCTION Start() AS VOID
+    LET numbers AS POINTER TO INTEGER[] = NEW INTEGER[3]
+    LET opaque AS POINTER TO VOID = numbers
+    PRINT opaque IS POINTER TO VOID
+    PRINT opaque IS POINTER TO INTEGER[]
+    PRINT opaque IS POINTER TO FLOAT64[]
+    PRINT opaque IS POINTER TO INTEGER[3]
+    LET one AS POINTER TO INTEGER = NEW INTEGER
+    PRINT one IS POINTER TO INTEGER
+    LET missing AS POINTER TO INTEGER OR NULL = NULL
+    PRINT missing IS NULL
+    PRINT missing IS POINTER TO INTEGER
+    RELEASE opaque
+    RELEASE one
+END FUNCTION

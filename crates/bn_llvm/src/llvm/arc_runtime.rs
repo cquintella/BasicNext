@@ -269,6 +269,40 @@ fn destroy(module: &Module, allocated: &BTreeSet<String>) -> LlvmFunction {
                 ));
             }
         }
+        for (v_idx, offset) in super::layout::vector_field_offsets(module, class)
+            .into_iter()
+            .enumerate()
+        {
+            let fptr = format!("vfield_ptr_{index}_{v_idx}");
+            let fval = format!("vfield_val_{index}_{v_idx}");
+            let fbuf = format!("vfield_buf_{index}_{v_idx}");
+            run.push_assign(
+                &fptr,
+                LlvmInst::GetElementPtr {
+                    inbounds: false,
+                    elem_ty: LlvmType::I8,
+                    ptr: reg("object"),
+                    indices: vec![(LlvmType::I32, LlvmOperand::int(i64::from(offset)))],
+                },
+            );
+            run.push_assign(
+                &fval,
+                LlvmInst::load(crate::layout::vector_ty(), reg(&fptr)),
+            );
+            run.push_assign(
+                &fbuf,
+                LlvmInst::extract(
+                    crate::layout::vector_ty(),
+                    reg(&fval),
+                    crate::layout::VECTOR_BUFFER_FIELD_INDEX,
+                ),
+            );
+            run.push(LlvmInst::call(
+                LlvmType::Void,
+                "free",
+                vec![(LlvmType::Ptr, reg(&fbuf))],
+            ));
+        }
         run.terminate(LlvmInst::Br {
             dest: "free".into(),
         });

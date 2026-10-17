@@ -183,10 +183,11 @@ impl Analyzer {
         constant: bool,
         span: Span,
     ) -> Result<(), Diagnostic> {
-        let symbol = self.symbol(ty, constant);
-        if locals.insert(name.into(), symbol).is_some() {
+        if locals.contains_key(name) || self.ended_loop_names.contains(name) {
             return Err(duplicate_name(name, span));
         }
+        let symbol = self.symbol(ty, constant);
+        locals.insert(name.into(), symbol);
         let record = locals.get(name).expect("inserted local").clone();
         self.record_symbol(name, &record, span);
         Ok(())
@@ -271,7 +272,7 @@ impl Analyzer {
                 },
             ) => {
                 (expected_dimensions == actual_dimensions
-                    || (expected_dimensions.len() == 1 && expected_dimensions[0] == u64::MAX))
+                    || open_first_dimension(expected_dimensions, actual_dimensions))
                     && self.compatible(expected, actual)
             }
             _ => false,
@@ -323,22 +324,13 @@ impl Analyzer {
     pub(crate) fn validate_type_reference(
         &self,
         reference: &TypeReference,
+        allow_open: bool,
     ) -> Result<(), Diagnostic> {
         validate_type_reference(reference)?;
-        if !self.allow_variable_vectors
-            && reference.alternatives.iter().any(|atom| {
-                atom.name != "POINTER"
-                    && atom
-                        .parts
-                        .windows(2)
-                        .any(|parts| parts == ["LeftBracket", "RightBracket"])
-            })
-        {
-            return Err(error(
-                DiagId::INVALID_VECTOR_TYPE,
-                "variable-length vectors are reserved for the BNData library",
-                reference.span,
-            ));
+        if !self.allow_variable_vectors {
+            for atom in &reference.alternatives {
+                reject_open_vector(atom, allow_open)?;
+            }
         }
         for atom in &reference.alternatives {
             let ty = type_from_atom(atom);
@@ -423,4 +415,128 @@ fn nominal_identity(ty: &Type) -> Option<String> {
         Type::ImportedNamed { module, name } => Some(format!("#{}.{name}", module.0)),
         _ => None,
     }
+}
+
+/// `T[]` is an open first dimension on a parameter, including a parameter of
+/// a `FUNCTION` type. A later open dimension, and an open dimension on a
+/// local, field or return type, is rejected (0.6.md, vectors, A8).
+fn reject_open_vector(atom: &crate::ast::TypeAtom, allow_open: bool) -> Result<(), Diagnostic> {
+    match atom.name.as_str() {
+        "POINTER" => Ok(()),
+        "FUNCTION" => reject_function_open(&atom.parts, atom.span),
+        _ => reject_bracket_open(&atom.parts, allow_open, atom.span),
+    }
+}
+
+fn reject_function_open(parts: &[String], span: Span) -> Result<(), Diagnostic> {
+    let Some(close) = super::analyzer8::matching_right_paren(parts) else {
+        return Ok(());
+    };
+    for parameter in split_top(&parts[1..close], "Comma") {
+        reject_type_tokens(type_tokens(parameter), true, span)?;
+    }
+    if parts.get(close + 1).map(String::as_str) == Some("AS") {
+        reject_type_tokens(&parts[close + 2..], false, span)?;
+    }
+    Ok(())
+}
+
+fn reject_type_tokens(tokens: &[String], allow_open: bool, span: Span) -> Result<(), Diagnostic> {
+    for alternative in split_top(tokens, "OR") {
+        let Some(name) = alternative.first() else {
+            continue;
+        };
+        match name.as_str() {
+            "POINTER" => {}
+            "FUNCTION" => reject_function_open(&alternative[1..], span)?,
+            _ => reject_bracket_open(&alternative[1..], allow_open, span)?,
+        }
+    }
+    Ok(())
+}
+
+fn type_tokens(tokens: &[String]) -> &[String] {
+    let mut depth = 0_i32;
+    for (index, token) in tokens.iter().enumerate() {
+        match token.as_str() {
+            "LeftParen" | "LeftBracket" => depth += 1,
+            "RightParen" | "RightBracket" => depth -= 1,
+            "AS" if depth == 0 => return &tokens[index + 1..],
+            _ => {}
+        }
+    }
+    tokens
+}
+
+fn reject_bracket_open(parts: &[String], allow_open: bool, span: Span) -> Result<(), Diagnostic> {
+    let mut index = 0;
+    let mut dimension = 0_usize;
+    let mut depth = 0_i32;
+    while index < parts.len() {
+        match parts[index].as_str() {
+            "LeftParen" => {
+                depth += 1;
+                index += 1;
+            }
+            "RightParen" => {
+                depth -= 1;
+                index += 1;
+            }
+            "LeftBracket" if depth == 0 => {
+                let empty = parts.get(index + 1).map(String::as_str) == Some("RightBracket");
+                if empty && dimension != 0 {
+                    return Err(type_mismatch(
+                        "open dimension in the first position only",
+                        "open dimension after a fixed dimension",
+                        "vector type",
+                        span,
+                    ));
+                }
+                if empty && !allow_open {
+                    return Err(error(
+                        DiagId::INVALID_VECTOR_TYPE,
+                        "variable-length vectors are reserved for the BNData library",
+                        span,
+                    ));
+                }
+                if empty {
+                    dimension += 1;
+                    index += 2;
+                    continue;
+                }
+                let mut nested = 1_i32;
+                index += 1;
+                while index < parts.len() && nested != 0 {
+                    match parts[index].as_str() {
+                        "LeftBracket" => nested += 1,
+                        "RightBracket" => nested -= 1,
+                        _ => {}
+                    }
+                    index += 1;
+                }
+                dimension += 1;
+            }
+            _ => index += 1,
+        }
+    }
+    Ok(())
+}
+
+fn split_top<'a>(tokens: &'a [String], separator: &str) -> Vec<&'a [String]> {
+    let mut parts = Vec::new();
+    let mut start = 0;
+    let mut depth = 0_i32;
+    for (index, token) in tokens.iter().enumerate() {
+        match token.as_str() {
+            "LeftParen" | "LeftBracket" => depth += 1,
+            "RightParen" | "RightBracket" => depth -= 1,
+            word if word == separator && depth == 0 => {
+                parts.push(&tokens[start..index]);
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(&tokens[start..]);
+    parts
 }

@@ -501,7 +501,6 @@ const KNOWN_BNI_FAILURES: KnownFailures = &[
 ];
 const KNOWN_BNC_FAILURES: KnownFailures = &[
     // K1 / G.S1 (A7): U+0000 in a native STRING.
-    ("STRING / holds U+0000", "TARGET_UNSUPPORTED_TYPE"),
     // S.13 (C7, C11, A5), as on bni.
     ("STRING / FOR EACH", "E0100"),
     ("STRING / ordering", "TYPE_MISMATCH"),

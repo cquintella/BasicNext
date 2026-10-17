@@ -34,6 +34,13 @@ FUNCTION Start() AS VOID
     Grid.cells = g
     g[0][0] = 99
     PRINT Grid.cells[0][0], Grid.cells[1][2]
+    LET row AS INTEGER[3] = [10, 20, 30]
+    g[0] = row
+    row[0] = 77
+    PRINT g[0][0], g[0][1], g[0][2], row[0]
+    LET r AS INTEGER[2] = [40, 50]
+    c[0][1] = r
+    PRINT c[0][1][0], c[0][1][1]
     LET n AS STRING[2][2] = Names()
     LET m AS STRING[2][2] = n
     m[0][1] = "z"

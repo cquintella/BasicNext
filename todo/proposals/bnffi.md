@@ -3,8 +3,10 @@
 ## Status
 
 **Accepted 2026-10-06 (Carlos).** Planned as
-[`todo/bucket-0.6.6.md`](../bucket-0.6.6.md) (not started); nothing here is
-implemented.
+[`todo/bucket-0.6.7.md`](../bucket-0.6.7.md) (not started); nothing here is
+implemented. The bucket was 0.6.6 until 2026-10-14, when Carlos moved the
+test-system bucket ahead of it; decisions cited as "bucket 0.6.7 D…" were
+recorded under the old number.
 
 This proposal supersedes [`c-ffi.md`](c-ffi.md) and the AQ-22 decision
 recorded in
@@ -52,7 +54,7 @@ Every class below implements the exported interface `C.Value`, a marker
 interface with no members (the runtime reads the class tag; no method is
 dispatched through `C.Value`). The names follow C, not Basic Next, so the
 boundary stays visible in source. The class list is under review in bucket
-0.6.6 (D10, D11).
+0.6.7 (D10, D11).
 
 | Class | C type | Constructor / `Value()` result |
 | --- | --- | --- |
@@ -75,7 +77,7 @@ boundary stays visible in source. The class list is under review in bucket
   `C.Call` with `Error`; it is never truncated.
 - Plain `char` is excluded: its signedness is platform-defined.
 - Values are read with the accessor method `Value()`, not a field (Carlos,
-  2026-10-07): native standard modules support methods only (bucket 0.6.6
+  2026-10-07): native standard modules support methods only (bucket 0.6.7
   D6).
 
 ### Calls

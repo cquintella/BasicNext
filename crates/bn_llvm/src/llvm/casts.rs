@@ -75,7 +75,71 @@ pub(crate) fn lower_cast(
             text.assign(own, I::cast(CastOp::FPExt, T::Float, v(value), T::Double));
         }
         (Some(T::Double), Some(T::Float)) => {
-            text.assign(own, I::cast(CastOp::FPTrunc, T::Double, v(value), T::Float));
+            text.assign(
+                own.clone(),
+                I::cast(CastOp::FPTrunc, T::Double, v(value), T::Float),
+            );
+            let dest = destination.0;
+            // Infinity constants are f64 bit patterns. Truncate them so the
+            // compare is `float` against `float`.
+            text.assign(
+                format!("f32pinf{dest}"),
+                I::cast(
+                    CastOp::FPTrunc,
+                    T::Double,
+                    O::float(f64::INFINITY),
+                    T::Float,
+                ),
+            );
+            text.assign(
+                format!("f32ninf{dest}"),
+                I::cast(
+                    CastOp::FPTrunc,
+                    T::Double,
+                    O::float(f64::NEG_INFINITY),
+                    T::Float,
+                ),
+            );
+            text.assign(
+                format!("f32p{dest}"),
+                I::fcmp(
+                    FCmpCond::Oeq,
+                    T::Float,
+                    O::reg(&own),
+                    O::reg(format!("f32pinf{dest}")),
+                ),
+            );
+            text.assign(
+                format!("f32n{dest}"),
+                I::fcmp(
+                    FCmpCond::Oeq,
+                    T::Float,
+                    O::reg(&own),
+                    O::reg(format!("f32ninf{dest}")),
+                ),
+            );
+            text.assign(
+                format!("f32bad{dest}"),
+                I::binary(
+                    BinaryOp::Or,
+                    T::I1,
+                    O::reg(format!("f32p{dest}")),
+                    O::reg(format!("f32n{dest}")),
+                ),
+            );
+            let fits = take_continuation(block_id, state);
+            emit_trap(
+                text,
+                block_id,
+                state,
+                &O::reg(format!("f32bad{dest}")),
+                fits,
+                bn_diag::DiagId::NUMERIC_OVERFLOW,
+                vec![(
+                    "operation",
+                    Fact::Text(bn_diag::trap_texts::FLOAT64_TO_FLOAT32.into()),
+                )],
+            );
         }
         (Some(T::Ptr), Some(T::Ptr))
         | (Some(T::Float), Some(T::Float))
@@ -328,8 +392,8 @@ fn emit_to_string(
             let words = I::select(
                 v(value),
                 T::Ptr,
-                O::global(".bn_true"),
-                O::global(".bn_false"),
+                crate::layout::string_payload(".bn_true"),
+                crate::layout::string_payload(".bn_false"),
             );
             text.assign(format!("v{dest}"), words);
             return;

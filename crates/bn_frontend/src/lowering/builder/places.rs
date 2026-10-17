@@ -51,7 +51,7 @@ fn peel_indices(target: &Expression) -> (&Expression, Vec<(&Expression, &Express
 impl Builder<'_> {
     /// A fresh local the program cannot name, counted down from below
     /// `SYNTHETIC_SELF`; the analyzer numbers its symbols up from zero.
-    fn hidden_local(&mut self) -> SymbolId {
+    pub(crate) fn hidden_local(&mut self) -> SymbolId {
         let symbol = SymbolId::from_raw(self.next_hidden_local);
         self.next_hidden_local -= 1;
         assert!(

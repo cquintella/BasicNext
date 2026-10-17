@@ -9,10 +9,6 @@ use crate::ir::LlvmType;
 use super::*;
 
 pub(crate) const OBJECT_HEADER_BYTES: u32 = 16;
-/// Heap bytes of one UTF-8 scalar packed by `bn_rt` (up to four bytes and
-/// its NUL) for `s[i]` and `CHAR`: a value that can outlive its frame.
-pub(crate) const PACKED_UTF8_BYTES: i64 = 8;
-
 pub(crate) const I8_BYTES: u32 = 1;
 pub(crate) const I16_BYTES: u32 = 2;
 pub(crate) const I32_BYTES: u32 = 4;
@@ -25,6 +21,11 @@ pub(crate) const I16_ALIGNMENT: u32 = 2;
 pub(crate) const I32_ALIGNMENT: u32 = 4;
 pub(crate) const POINTER_ALIGNMENT: u32 = 8;
 pub(crate) const AGGREGATE_ALIGNMENT: u32 = 8;
+
+/// Bytes of a STRING header before the payload: count, then length (G7-D2).
+pub(crate) const STRING_HEADER_BYTES: i64 = 16;
+/// Signed distance from the payload back to the length field.
+pub(crate) const STRING_LEN_FROM_PAYLOAD: i64 = (POINTER_BYTES as i64) - STRING_HEADER_BYTES;
 
 pub(crate) const VECTOR_BUFFER_FIELD_INDEX: usize = 0;
 pub(crate) const VECTOR_LENGTH_FIELD_INDEX: usize = 1;
@@ -239,6 +240,28 @@ fn llvm_storage_layout_inner(
         }
         _ => None,
     }
+}
+
+/// The payload of a static STRING global: 16 bytes past the header.
+#[must_use]
+pub(crate) fn string_payload(global: &str) -> crate::ir::LlvmOperand {
+    use crate::ir::{LlvmOperand, LlvmType};
+    LlvmOperand::ConstGep {
+        element: LlvmType::I8,
+        base: global.trim_start_matches('@').to_string(),
+        indices: vec![(LlvmType::I64, LlvmOperand::int(STRING_HEADER_BYTES))],
+    }
+}
+
+/// An SSA `getelementptr` of [`string_payload`].
+#[must_use]
+pub(crate) fn string_payload_address(global: &str) -> crate::ir::LlvmInst {
+    use crate::ir::{LlvmInst, LlvmOperand, LlvmType};
+    LlvmInst::gep(
+        LlvmType::I8,
+        LlvmOperand::global(global.trim_start_matches('@')),
+        vec![(LlvmType::I64, LlvmOperand::int(STRING_HEADER_BYTES))],
+    )
 }
 
 /// `{ i1, ptr, i64 }`: a handle or status result (`T OR Error`).
@@ -595,6 +618,14 @@ mod tests {
         assert_eq!(
             llvm_type(&Type::Float(FloatType::Float64)),
             Some(LlvmType::Double)
+        );
+    }
+
+    #[test]
+    fn string_payload_skips_the_header() {
+        assert_eq!(
+            super::string_payload(".bn_eof").to_string(),
+            "getelementptr inbounds (i8, ptr @.bn_eof, i64 16)"
         );
     }
 }

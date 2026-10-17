@@ -12,7 +12,7 @@
 use super::*;
 use crate::ir::{
     CastOp, ICmpCond, InstSink, LlvmInst, LlvmOperand,
-    LlvmType::{self, I1, I8, I32, I64, Ptr},
+    LlvmType::{I1, I32, I64, Ptr},
 };
 use crate::layout::handle_result_ty;
 use runtime_abi::{
@@ -252,12 +252,7 @@ fn lower_ticket_error(text: &mut crate::ir::LlvmModule, dest: u32, handle: LlvmO
     );
     text.assign(
         format!("dispatchnaptr{dest}"),
-        LlvmInst::GetElementPtr {
-            inbounds: false,
-            elem_ty: LlvmType::Array(3, Box::new(I8)),
-            ptr: LlvmOperand::global(".bn_na"),
-            indices: vec![(I64, LlvmOperand::int(0)), (I64, LlvmOperand::int(0))],
-        },
+        crate::layout::string_payload_address(".bn_na"),
     );
     let failed = reg(format!("dispatchiserr{dest}"));
     text.assign(

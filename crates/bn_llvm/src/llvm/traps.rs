@@ -121,6 +121,76 @@ pub(crate) fn trap_symbol(
     (format!("{PREFIX}{}", hex(&payload)), runtime)
 }
 
+/// Inclusive process-status limit (`0.6.md`, "`STOP`"): `0..255`.
+const EXIT_CODE_MAX: i64 = 255;
+
+/// `INVALID_EXIT_CODE` when `value` is outside `0..255`. The caret is the
+/// `Start` function, which is where `bni` reports the status (`exit_code`).
+/// The check uses the integer's full width, before a narrowing to the
+/// process status.
+pub(crate) fn emit_exit_range_check(
+    text: &mut crate::ir::LlvmModule,
+    module: &Module,
+    block_id: BlockId,
+    value: ValueId,
+    ty: &Type,
+    state: &mut EmissionState,
+) {
+    let saved = state.span;
+    if let Some(entry) = module.entry() {
+        state.span = entry.span;
+    }
+    let tag = text.fresh_tag();
+    let wide = format!("exitwide{tag}");
+    let from = llvm_type(ty).expect("validated exit code type");
+    let opcode = if is_unsigned(ty) {
+        CastOp::ZExt
+    } else {
+        CastOp::SExt
+    };
+    text.assign(
+        wide.clone(),
+        I::cast(opcode, from, value_reg(value), T::I128),
+    );
+    let bad = format!("exitbad{tag}");
+    let wide_reg = O::reg(&wide);
+    if is_unsigned(ty) {
+        text.assign(
+            bad.clone(),
+            I::icmp(ICmpCond::Ugt, T::I128, wide_reg, O::int(EXIT_CODE_MAX)),
+        );
+    } else {
+        let below = format!("exitbelow{tag}");
+        let above = format!("exitabove{tag}");
+        text.assign(
+            below.clone(),
+            I::icmp(ICmpCond::Slt, T::I128, wide_reg.clone(), O::int(0)),
+        );
+        text.assign(
+            above.clone(),
+            I::icmp(ICmpCond::Sgt, T::I128, wide_reg, O::int(EXIT_CODE_MAX)),
+        );
+        text.assign(
+            bad.clone(),
+            I::binary(BinaryOp::Or, T::I1, O::reg(below), O::reg(above)),
+        );
+    }
+    let ok = take_continuation(block_id, state);
+    emit_trap(
+        text,
+        block_id,
+        state,
+        &O::reg(bad),
+        ok,
+        DiagId::INVALID_EXIT_CODE,
+        vec![(
+            "detail",
+            Fact::Text(bn_diag::trap_texts::EXIT_CODE_RANGE.into()),
+        )],
+    );
+    state.span = saved;
+}
+
 /// `NUMERIC_OVERFLOW` when `condition` holds, reporting the exact `i128`
 /// value that did not fit `ty` (the interpreter's "converting V to T").
 pub(crate) fn emit_overflow_trap(

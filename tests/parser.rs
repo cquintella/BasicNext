@@ -39,7 +39,6 @@ fn syntax_error_fixtures_are_rejected_by_the_parser() {
     for path in [
         "tests/grammar/invalid/import-after-declaration.bn",
         "tests/grammar/invalid/import-after-constant.bn",
-        "tests/grammar/invalid/module-constant-not-exported.bn",
         "tests/grammar/invalid/module-constant-expression.bn",
         "tests/grammar/invalid/import-host-bare.bn",
         "tests/grammar/invalid/mismatched-end.bn",

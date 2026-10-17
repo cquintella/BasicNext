@@ -16,6 +16,7 @@
 mod dispatch;
 
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use bn_diag::Diagnostic;
 use bn_rt::dispatch_error::DispatchFailure;
@@ -53,30 +54,21 @@ impl std::io::Write for BoundedTaskOutput {
     }
 }
 
-pub struct DispatchProvider {
+#[derive(Default)]
+struct SharedDispatchState {
     queues: HashMap<u64, crate::dispatch::Queue>,
     next_queue: u64,
     tickets: HashMap<u64, crate::dispatch::Ticket>,
     next_ticket: u64,
-    groups: HashMap<u64, crate::dispatch::DispatchGroup>,
-    barriers: HashMap<u64, crate::dispatch::Barrier>,
-    semaphores: HashMap<u64, crate::dispatch::DispatchSemaphore>,
-    mutexes: HashMap<u64, crate::dispatch::DispatchMutex>,
+    groups: HashMap<u64, Arc<crate::dispatch::DispatchGroup>>,
+    barriers: HashMap<u64, Arc<crate::dispatch::Barrier>>,
+    semaphores: HashMap<u64, Arc<crate::dispatch::DispatchSemaphore>>,
+    mutexes: HashMap<u64, Arc<crate::dispatch::DispatchMutex>>,
     next_sync: u64,
 }
 
-impl std::fmt::Debug for DispatchProvider {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DispatchProvider")
-            .field("next_queue", &self.next_queue)
-            .field("next_ticket", &self.next_ticket)
-            .field("next_sync", &self.next_sync)
-            .finish_non_exhaustive()
-    }
-}
-
-impl Default for DispatchProvider {
-    fn default() -> Self {
+impl SharedDispatchState {
+    fn new() -> Self {
         Self {
             queues: HashMap::new(),
             next_queue: 1,
@@ -90,6 +82,28 @@ impl Default for DispatchProvider {
         }
     }
 }
+
+static SHARED_DISPATCH: OnceLock<Mutex<SharedDispatchState>> = OnceLock::new();
+
+fn shared_dispatch() -> &'static Mutex<SharedDispatchState> {
+    SHARED_DISPATCH.get_or_init(|| Mutex::new(SharedDispatchState::new()))
+}
+
+fn unlock_held_mutexes_in_shared_dispatch() {
+    let thread_id = std::thread::current().id();
+    let mutexes: Vec<Arc<crate::dispatch::DispatchMutex>> = {
+        let state = shared_dispatch()
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        state.mutexes.values().cloned().collect()
+    };
+    for mutex in mutexes {
+        mutex.unlock_if_held_by(thread_id);
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct DispatchProvider;
 
 impl Provider for DispatchProvider {
     fn call(
@@ -113,7 +127,10 @@ impl DispatchProvider {
     /// server that runs its handlers on it (`Server.UseQueue`).
     #[must_use]
     pub fn core_queue(&self, id: u64) -> Option<bn_core_dispatch::Queue> {
-        self.queues.get(&id).map(crate::dispatch::Queue::core)
+        let state = shared_dispatch()
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        state.queues.get(&id).map(crate::dispatch::Queue::core)
     }
 
     fn dispatch_call(
@@ -127,10 +144,14 @@ impl DispatchProvider {
         match method {
             "New" | "Create" if name.contains(".Group.") => {
                 require_arity(name, arguments, 0, span)?;
-                let id = self.next_sync;
-                self.next_sync = self.next_sync.saturating_add(1);
-                self.groups
-                    .insert(id, crate::dispatch::DispatchGroup::new());
+                let mut state = shared_dispatch()
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner);
+                let id = state.next_sync;
+                state.next_sync = state.next_sync.saturating_add(1);
+                state
+                    .groups
+                    .insert(id, Arc::new(crate::dispatch::DispatchGroup::new()));
                 Ok(Value::DispatchGroup(id))
             }
             "Enter" | "Leave" | "Wait" if name.contains(".Group.") => {
@@ -143,9 +164,14 @@ impl DispatchProvider {
                         span,
                     ));
                 };
-                let group = self.groups.get(&id).ok_or_else(|| {
-                    runtime_error(bn_diag::DiagId::STALE_HANDLE, "group is invalid", span)
-                })?;
+                let group = {
+                    let state = shared_dispatch()
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner);
+                    state.groups.get(&id).cloned().ok_or_else(|| {
+                        runtime_error(bn_diag::DiagId::STALE_HANDLE, "group is invalid", span)
+                    })?
+                };
                 match method {
                     "Enter" => {
                         require_arity(name, arguments, 1, span)?;
@@ -173,9 +199,12 @@ impl DispatchProvider {
                     Ok(barrier) => barrier,
                     Err(failure) => return Ok(failed(name, &failure)),
                 };
-                let id = self.next_sync;
-                self.next_sync = self.next_sync.saturating_add(1);
-                self.barriers.insert(id, barrier);
+                let mut state = shared_dispatch()
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner);
+                let id = state.next_sync;
+                state.next_sync = state.next_sync.saturating_add(1);
+                state.barriers.insert(id, Arc::new(barrier));
                 Ok(Value::DispatchBarrier(id))
             }
             "Wait" if name.contains(".Barrier.") => {
@@ -188,9 +217,14 @@ impl DispatchProvider {
                         span,
                     ));
                 };
-                let barrier = self.barriers.get(&id).ok_or_else(|| {
-                    runtime_error(bn_diag::DiagId::STALE_HANDLE, "barrier is invalid", span)
-                })?;
+                let barrier = {
+                    let state = shared_dispatch()
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner);
+                    state.barriers.get(&id).cloned().ok_or_else(|| {
+                        runtime_error(bn_diag::DiagId::STALE_HANDLE, "barrier is invalid", span)
+                    })?
+                };
                 Ok(barrier
                     .wait(integer(&arguments[1], span)?.0)
                     .map_or_else(|failure| failed(name, &failure), Value::Boolean))
@@ -202,9 +236,12 @@ impl DispatchProvider {
                     Ok(semaphore) => semaphore,
                     Err(failure) => return Ok(failed(name, &failure)),
                 };
-                let id = self.next_sync;
-                self.next_sync = self.next_sync.saturating_add(1);
-                self.semaphores.insert(id, semaphore);
+                let mut state = shared_dispatch()
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner);
+                let id = state.next_sync;
+                state.next_sync = state.next_sync.saturating_add(1);
+                state.semaphores.insert(id, Arc::new(semaphore));
                 Ok(Value::DispatchSemaphore(id))
             }
             "Acquire" | "Release" if name.contains(".Semaphore.") => {
@@ -216,9 +253,14 @@ impl DispatchProvider {
                         span,
                     ));
                 };
-                let semaphore = self.semaphores.get(&id).ok_or_else(|| {
-                    runtime_error(bn_diag::DiagId::STALE_HANDLE, "semaphore is invalid", span)
-                })?;
+                let semaphore = {
+                    let state = shared_dispatch()
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner);
+                    state.semaphores.get(&id).cloned().ok_or_else(|| {
+                        runtime_error(bn_diag::DiagId::STALE_HANDLE, "semaphore is invalid", span)
+                    })?
+                };
                 if method == "Acquire" {
                     require_arity(name, arguments, 2, span)?;
                     Ok(semaphore
@@ -233,10 +275,14 @@ impl DispatchProvider {
             }
             "New" | "Create" if name.contains(".Mutex.") => {
                 require_arity(name, arguments, 0, span)?;
-                let id = self.next_sync;
-                self.next_sync = self.next_sync.saturating_add(1);
-                self.mutexes
-                    .insert(id, crate::dispatch::DispatchMutex::new());
+                let mut state = shared_dispatch()
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner);
+                let id = state.next_sync;
+                state.next_sync = state.next_sync.saturating_add(1);
+                state
+                    .mutexes
+                    .insert(id, Arc::new(crate::dispatch::DispatchMutex::new()));
                 Ok(Value::DispatchMutex(id))
             }
             "Lock" | "Unlock" if name.contains(".Mutex.") => {
@@ -248,9 +294,14 @@ impl DispatchProvider {
                         span,
                     ));
                 };
-                let mutex = self.mutexes.get(&id).ok_or_else(|| {
-                    runtime_error(bn_diag::DiagId::STALE_HANDLE, "mutex is invalid", span)
-                })?;
+                let mutex = {
+                    let state = shared_dispatch()
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner);
+                    state.mutexes.get(&id).cloned().ok_or_else(|| {
+                        runtime_error(bn_diag::DiagId::STALE_HANDLE, "mutex is invalid", span)
+                    })?
+                };
                 if method == "Lock" {
                     require_arity(name, arguments, 2, span)?;
                     Ok(mutex
@@ -296,13 +347,14 @@ impl DispatchProvider {
                 let Value::Function(task) = &arguments[1] else {
                     return Ok(Value::error(1, "Async expects a named function".into()));
                 };
-                let queue = self
-                    .queues
-                    .get(&id)
-                    .ok_or_else(|| {
+                let queue = {
+                    let state = shared_dispatch()
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner);
+                    state.queues.get(&id).cloned().ok_or_else(|| {
                         runtime_error(bn_diag::DiagId::STALE_HANDLE, "queue is invalid", span)
                     })?
-                    .clone();
+                };
                 let task_name = task.clone();
                 let task_arguments = arguments[2..].to_vec();
                 let worker_module = core.module().clone();
@@ -313,14 +365,17 @@ impl DispatchProvider {
                         bytes: Vec::new(),
                         maximum: bn_limits::dispatch_limits().output_max_bytes,
                     };
-                    match bn_interp::execute_named_with_host(
+                    let outcome = bn_interp::execute_named_with_host(
                         &worker_module,
                         &task_name,
                         task_arguments,
                         &mut input,
                         &mut output,
                         &worker_host,
-                    ) {
+                    );
+                    bn_rt::unlock_held_mutexes_for_current_thread();
+                    unlock_held_mutexes_in_shared_dispatch();
+                    match outcome {
                         Ok(result) => {
                             let output = String::from_utf8_lossy(&output.bytes).into_owned();
                             if ticket.set_output(output).is_err() {
@@ -345,9 +400,15 @@ impl DispatchProvider {
                     Ok(ticket) => ticket,
                     Err(failure) => return Ok(failed(name, &failure)),
                 };
-                let ticket_id = self.next_ticket;
-                self.next_ticket = self.next_ticket.saturating_add(1);
-                self.tickets.insert(ticket_id, ticket);
+                let ticket_id = {
+                    let mut state = shared_dispatch()
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner);
+                    let id = state.next_ticket;
+                    state.next_ticket = state.next_ticket.saturating_add(1);
+                    state.tickets.insert(id, ticket);
+                    id
+                };
                 Ok(Value::DispatchTicket(ticket_id))
             }
             "Join" if name.contains(".Queue.") => {
@@ -361,19 +422,16 @@ impl DispatchProvider {
                     ));
                 };
                 let timeout = integer(&arguments[1], span)?.0;
-                let queue = self
-                    .queues
-                    .get(&id)
-                    .ok_or_else(|| {
+                let queue = {
+                    let state = shared_dispatch()
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner);
+                    state.queues.get(&id).cloned().ok_or_else(|| {
                         runtime_error(bn_diag::DiagId::STALE_HANDLE, "queue is invalid", span)
                     })?
-                    .clone();
-                let tickets = queue.tickets();
-                let result = if method == "Join" {
-                    queue.join(timeout)
-                } else {
-                    queue.close(timeout)
                 };
+                let tickets = queue.tickets();
+                let result = queue.join(timeout);
                 for ticket in tickets {
                     let output = ticket.take_output();
                     core.output()
@@ -382,7 +440,7 @@ impl DispatchProvider {
                             runtime_error(bn_diag::DiagId::IO, error.to_string(), span)
                         })?;
                 }
-                return Ok(result.map_or_else(|failure| failed(name, &failure), |_| Value::Null));
+                Ok(result.map_or_else(|failure| failed(name, &failure), |_| Value::Null))
             }
             "Close" if name.contains(".Queue.") => {
                 require_arity(name, arguments, 2, span)?;
@@ -395,9 +453,14 @@ impl DispatchProvider {
                     ));
                 };
                 let timeout = integer(&arguments[1], span)?.0;
-                let queue = self.queues.get(&id).ok_or_else(|| {
-                    runtime_error(bn_diag::DiagId::STALE_HANDLE, "queue is invalid", span)
-                })?;
+                let queue = {
+                    let state = shared_dispatch()
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner);
+                    state.queues.get(&id).cloned().ok_or_else(|| {
+                        runtime_error(bn_diag::DiagId::STALE_HANDLE, "queue is invalid", span)
+                    })?
+                };
                 Ok(queue
                     .close(timeout)
                     .map_or_else(|failure| failed(name, &failure), |_| Value::Null))
@@ -414,13 +477,14 @@ impl DispatchProvider {
                         span,
                     ));
                 };
-                let ticket = self
-                    .tickets
-                    .get(&id)
-                    .ok_or_else(|| {
+                let ticket = {
+                    let state = shared_dispatch()
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner);
+                    state.tickets.get(&id).cloned().ok_or_else(|| {
                         runtime_error(bn_diag::DiagId::STALE_HANDLE, "ticket is invalid", span)
                     })?
-                    .clone();
+                };
                 return match method {
                     "Id" => {
                         require_arity(name, arguments, 1, span)?;
@@ -474,6 +538,12 @@ impl DispatchProvider {
                     }
                     "Close" => {
                         require_arity(name, arguments, 1, span)?;
+                        {
+                            let mut state = shared_dispatch()
+                                .lock()
+                                .unwrap_or_else(PoisonError::into_inner);
+                            state.tickets.remove(&id);
+                        }
                         ticket.close();
                         Ok(Value::Null)
                     }
@@ -487,8 +557,16 @@ impl DispatchProvider {
         }
     }
 
+    #[allow(clippy::unused_self)]
     fn dispatch_queue(&mut self, name: &str, workers: i128) -> Value {
-        let id = self.next_queue;
+        let id = {
+            let mut state = shared_dispatch()
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            let id = state.next_queue;
+            state.next_queue = state.next_queue.saturating_add(1);
+            id
+        };
         let queue = match crate::dispatch::Queue::new(workers, id) {
             Ok(queue) => queue,
             Err(failure) => return failed(name, &failure),
@@ -496,8 +574,10 @@ impl DispatchProvider {
         debug_assert!(
             (1..=bn_limits::dispatch_limits().worker_count_max).contains(&queue.workers())
         );
-        self.next_queue += 1;
-        self.queues.insert(id, queue);
+        let mut state = shared_dispatch()
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        state.queues.insert(id, queue);
         Value::DispatchQueue(id)
     }
 }

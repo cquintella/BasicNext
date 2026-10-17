@@ -107,13 +107,9 @@ fn write_out<T>(out: *mut T, value: T) {
 
 /// Frees a NUL-terminated string returned by a network C ABI operation.
 #[allow(unsafe_code)]
-#[allow(clippy::same_length_and_capacity)]
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_net_string_free(data: *mut c_char) {
     if !data.is_null() {
-        unsafe {
-            let length = CStr::from_ptr(data).to_bytes_with_nul().len();
-            drop(Vec::from_raw_parts(data.cast::<u8>(), length, length));
-        }
+        crate::string::bn_rt_str_release(data);
     }
 }

@@ -23,9 +23,13 @@ use crate::{
 };
 
 /// Whether values of `ty` carry a strong reference: a class instance, a
-/// pointer region, or an alternative with one of those members.
+/// pointer region, a STRING buffer, or an alternative with one of those
+/// members. The STRING count is the value copy; it does not make STRING a class.
 pub(super) fn is_arc_type(module: &Module, ty: &Type) -> bool {
     match ty {
+        Type::String | Type::Pointer { .. } => true,
+        // `FS.File` is a counted handle. The count lives in the file table.
+        Type::Named(name) if name == "FS.File" => true,
         Type::Named(name) => is_declared(module, name),
         // A `BNLog.Logger` is a counted handle; any other type of a natively
         // implemented library is a handle the IR does not count (the same
@@ -39,9 +43,20 @@ pub(super) fn is_arc_type(module: &Module, ty: &Type) -> bool {
         Type::ImportedNamed { module: id, name } => {
             is_declared(module, &format!("#{}.{name}", id.0))
         }
-        Type::Pointer { .. } => true,
         Type::Vector { element, .. } => is_arc_type(module, element),
         Type::Alternative(members) => members.iter().any(|member| is_arc_type(module, member)),
+        _ => false,
+    }
+}
+
+/// A phi may carry a STRING buffer. A phi of a class, region, or struct may not.
+fn counts_only_string_buffers(module: &Module, ty: &Type) -> bool {
+    match ty {
+        Type::String => true,
+        Type::Vector { element, .. } => counts_only_string_buffers(module, element),
+        Type::Alternative(members) => members.iter().all(|member| {
+            !is_arc_type(module, member) || counts_only_string_buffers(module, member)
+        }),
         _ => false,
     }
 }
@@ -107,16 +122,29 @@ fn consumed(
 }
 
 /// Whether the value an instruction defines is owned.
-fn produces_owned(module: &Module, instruction: &Instruction) -> bool {
+fn produces_owned(
+    module: &Module,
+    instruction: &Instruction,
+    value_types: &HashMap<ValueId, Type>,
+) -> bool {
     match instruction {
         // `RELEASE` of a native handle moves it out with `Take` too, owning
         // nothing.
         Instruction::Allocate { ty, .. }
         | Instruction::Call { ty, .. }
+        | Instruction::DispatchSubmit { ty, .. }
+        | Instruction::DispatchAwait { ty, .. }
         | Instruction::Vector { ty, .. }
         | Instruction::Default { ty, .. }
         | Instruction::Take { ty, .. }
-        | Instruction::TakeMember { ty, .. } => is_arc_type(module, ty),
+        | Instruction::TakeMember { ty, .. }
+        | Instruction::Input { ty, .. } => is_arc_type(module, ty),
+        Instruction::Index { object, ty, .. } => {
+            is_arc_type(module, ty)
+                && value_types
+                    .get(object)
+                    .is_some_and(|object| matches!(object, Type::HostArgs | Type::String))
+        }
         Instruction::Retain { .. } => true,
         _ => {
             instruction_defines(instruction).is_some()
@@ -267,6 +295,7 @@ fn check_instructions(
         let span = instruction.span();
         if let Instruction::Phi { ty, .. } = instruction
             && is_arc_type(module, ty)
+            && !counts_only_string_buffers(module, ty)
         {
             return Err(invalid_ir(
                 "a phi of ARC values is not supported under explicit ownership",
@@ -299,7 +328,7 @@ fn check_instructions(
             consumed_values.insert(value.0);
         }
         if let Some(value) = instruction_defines(instruction)
-            && produces_owned(module, instruction)
+            && produces_owned(module, instruction, value_types)
         {
             owned.insert(value.0);
         }

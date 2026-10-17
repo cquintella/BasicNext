@@ -3,7 +3,7 @@
 //! result lives behind an opaque handle (`bn_rt_exec_result_*`). No process
 //! is spawned here.
 
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::c_char;
 
 pub use bn_host_exec::{
     CAPTURE_FAILED, CAPTURE_LIMIT, INVALID_ARGUMENT, INVALID_UTF8, PERMISSION_DENIED,
@@ -12,16 +12,14 @@ pub use bn_host_exec::{
 
 struct ExecResult {
     return_code: i64,
-    stdout: CString,
-    stderr: CString,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
 }
 
-#[allow(unsafe_code)]
 fn input<'a>(ptr: *const c_char) -> Option<&'a str> {
-    if ptr.is_null() {
-        return None;
-    }
-    unsafe { CStr::from_ptr(ptr).to_str().ok() }
+    // A program or argument is a STRING. An interior NUL stays in the text so
+    // `bn_host_exec` rejects it the same way `bni` does (G7-D4).
+    std::str::from_utf8(crate::string::slice_from_raw(ptr)?).ok()
 }
 
 #[allow(unsafe_code)]
@@ -64,10 +62,10 @@ pub extern "C" fn bn_rt_exec_run(
             return failure.code;
         }
     };
-    // A native STRING cannot carry NUL (the interpreter keeps it): stop with
-    // the support diagnostic rather than return a different result.
-    let stdout = super::text_abi::c_string_or_stop("HOST.Exec.Run", output.stdout);
-    let stderr = super::text_abi::c_string_or_stop("HOST.Exec.Run", output.stderr);
+    let mut stdout = output.stdout.into_bytes();
+    stdout.push(0);
+    let mut stderr = output.stderr.into_bytes();
+    stderr.push(0);
     let result = Box::new(ExecResult {
         return_code: output.return_code,
         stdout,
@@ -92,7 +90,9 @@ pub extern "C" fn bn_rt_exec_result_stdout(handle: u64) -> *const c_char {
     if handle == 0 {
         return std::ptr::null();
     }
-    unsafe { (*(handle as *const ExecResult)).stdout.as_ptr() }
+    let res = unsafe { &*(handle as *const ExecResult) };
+    let bytes = res.stdout.strip_suffix(&[0]).unwrap_or(&res.stdout);
+    crate::string::c_string_from_bytes(bytes)
 }
 
 #[allow(unsafe_code)]
@@ -101,7 +101,9 @@ pub extern "C" fn bn_rt_exec_result_stderr(handle: u64) -> *const c_char {
     if handle == 0 {
         return std::ptr::null();
     }
-    unsafe { (*(handle as *const ExecResult)).stderr.as_ptr() }
+    let res = unsafe { &*(handle as *const ExecResult) };
+    let bytes = res.stderr.strip_suffix(&[0]).unwrap_or(&res.stderr);
+    crate::string::c_string_from_bytes(bytes)
 }
 
 #[allow(unsafe_code)]

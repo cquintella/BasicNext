@@ -15,6 +15,8 @@ pub struct Program {
 #[derive(Debug)]
 pub enum Item {
     Import {
+        /// `EXPORT IMPORT` (E3): the alias is an export of this module.
+        exported: bool,
         path: Vec<String>,
         alias: String,
         span: Span,
@@ -89,6 +91,13 @@ pub enum Statement {
         additional_initializers: Vec<Expression>,
         span: Span,
     },
+    /// `LET [name AS type, ...] = source` (0.6.5). Lowering turns it into
+    /// ordinary bindings; the backends never see this node.
+    Destructuring {
+        bindings: Vec<DestructuringBinding>,
+        source: Expression,
+        span: Span,
+    },
     Assignment {
         target: Expression,
         operator: String,
@@ -141,6 +150,15 @@ pub enum Statement {
     },
 }
 
+/// One name in a destructuring `LET`. `type_ref` is absent when the binding
+/// takes the type of the value it receives.
+#[derive(Debug)]
+pub struct DestructuringBinding {
+    pub name: String,
+    pub type_ref: Option<TypeReference>,
+    pub span: Span,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Visibility {
     Public,
@@ -153,14 +171,18 @@ pub enum Visibility {
 pub enum ForHeader {
     Counted {
         variable: String,
-        type_ref: TypeReference,
+        /// Absent `AS` means `INTEGER` (C10).
+        type_ref: Option<TypeReference>,
+        variable_span: Span,
         start: Expression,
         end: Expression,
         step: Option<Expression>,
     },
     Each {
         variable: String,
-        type_ref: TypeReference,
+        /// Absent `AS` means the element type (C11).
+        type_ref: Option<TypeReference>,
+        variable_span: Span,
         iterable: Expression,
     },
 }

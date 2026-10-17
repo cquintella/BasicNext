@@ -421,8 +421,31 @@ pub fn is_sensitive(key: &str) -> bool {
             character => character,
         })
         .collect::<String>();
-    catalog::words("sensitive.exact").any(|name| normalized == name)
-        || catalog::words("sensitive.marker").any(|marker| normalized.contains(marker))
+    catalog::words("sensitive.marker").any(|marker| normalized.contains(marker))
+        || sensitive_segments(&normalized)
+}
+
+/// One segment, or several consecutive segments joined by `_`, is an exact
+/// sensitive name (`request_body`, `passwd_hash`).
+fn sensitive_segments(normalized: &str) -> bool {
+    let segments = normalized
+        .split('_')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    let names = catalog::words("sensitive.exact").collect::<Vec<_>>();
+    for start in 0..segments.len() {
+        let mut joined = String::new();
+        for (offset, segment) in segments[start..].iter().enumerate() {
+            if offset != 0 {
+                joined.push('_');
+            }
+            joined.push_str(segment);
+            if names.iter().any(|name| *name == joined) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Each space-separated part of `value` without its query (`?…`).
@@ -598,10 +621,13 @@ mod tests {
             "refresh.token",
             "query",
             "tls_key",
+            "request_body",
+            "passwd_hash",
+            "token_count",
         ] {
             assert!(is_sensitive(key), "{key}");
         }
-        for key in ["route", "request_body", "passwd_hash", "http.status"] {
+        for key in ["route", "http.status"] {
             assert!(!is_sensitive(key), "{key}");
         }
         let line = record("l", "m", &[("api-key", "s3cret"), ("route", "/")])

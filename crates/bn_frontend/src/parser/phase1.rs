@@ -7,7 +7,7 @@ impl Parser<'_> {
         let mut saw_declaration = false;
         self.newlines();
         while !self.eof() {
-            if self.keyword("IMPORT") {
+            if self.keyword("IMPORT") || self.export_of("IMPORT") {
                 if saw_declaration {
                     return Err(self.error("IMPORT declarations must precede all declarations"));
                 }
@@ -33,9 +33,25 @@ impl Parser<'_> {
         })
     }
 
+    pub(crate) fn export_of(&self, word: &str) -> bool {
+        self.keyword("EXPORT")
+            && matches!(
+                self.tokens.get(self.index + 1).map(|token| &token.kind),
+                Some(TokenKind::Keyword(next)) if next == word
+            )
+    }
+
     pub(crate) fn import(&mut self) -> Result<Item, Diagnostic> {
-        let start = self.take().span.start;
+        let start = self.peek().span.start;
+        let exported = self.keyword("EXPORT");
+        if exported {
+            self.take();
+        }
+        self.expect_keyword("IMPORT")?;
         let first = self.path_part_name()?;
+        if exported && first == "HOST" {
+            return Err(self.error("EXPORT IMPORT re-exports a module, not a HOST capability"));
+        }
         let host_import = first == "HOST";
         let mut path = vec![first];
         if host_import || self.symbol(Symbol::Dot) {
@@ -54,6 +70,7 @@ impl Parser<'_> {
         let alias = self.identifier_name()?;
         let end = self.newline()?;
         Ok(Item::Import {
+            exported,
             path,
             alias,
             span: Span { start, end },
@@ -93,9 +110,6 @@ impl Parser<'_> {
         };
         self.index += line_len;
         let end = self.newline()?;
-        if !exported {
-            return Err(self.error("top-level CONST declarations must be exported"));
-        }
         if !matches!(initializer.kind, ExpressionKind::Literal(_)) {
             return Err(self.error("module constants require a literal initializer"));
         }

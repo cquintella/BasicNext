@@ -1,0 +1,27 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// User functions: an integer result, a STRING literal (not released), and a
+// STRING built with `+` (one managed allocation, still alive for both prints).
+
+FUNCTION Add(left AS INTEGER, right AS INTEGER) AS INTEGER
+    RETURN left + right
+END FUNCTION
+
+FUNCTION Name() AS STRING
+    RETURN "pardal"
+END FUNCTION
+
+FUNCTION Twice(text AS STRING) AS STRING
+    RETURN text + text
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    PRINT Add(2, 3)
+    PRINT Name()
+    LET doubled AS STRING = Twice("pa")
+    PRINT doubled
+    PRINT doubled
+END FUNCTION

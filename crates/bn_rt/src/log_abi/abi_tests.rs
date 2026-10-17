@@ -1,6 +1,14 @@
 use super::*;
 use std::ffi::CString;
 
+fn bn_string(s: &str) -> *mut c_char {
+    crate::string::c_string_from_bytes(s.as_bytes())
+}
+
+fn free_bn_string(ptr: *mut c_char) {
+    crate::string::bn_rt_str_release(ptr);
+}
+
 #[test]
 fn a_file_logger_writes_json_records_and_releases_its_handle() {
     let path = std::env::temp_dir().join(format!(
@@ -9,36 +17,26 @@ fn a_file_logger_writes_json_records_and_releases_its_handle() {
         registry().next.fetch_add(1, Ordering::Relaxed)
     ));
     let _ = std::fs::remove_file(&path);
-    let path_text = CString::new(path.to_string_lossy().as_bytes()).unwrap();
-    let label = CString::new("app").unwrap();
-    let json = CString::new("JSON").unwrap();
-    let user = CString::new("ana").unwrap();
-    let message = CString::new("connected").unwrap();
+    let path_text = bn_string(&path.to_string_lossy());
+    let label = bn_string("app");
+    let json = bn_string("JSON");
+    let user = bn_string("ana");
+    let message = bn_string("connected");
     let mut logger = 0;
     assert_eq!(
-        bn_rt_log_logger_new(
-            label.as_ptr(),
-            json.as_ptr(),
-            path_text.as_ptr(),
-            &raw mut logger
-        ),
+        bn_rt_log_logger_new(label, json, path_text, &raw mut logger),
         BN_LOG_OK
     );
+    free_bn_string(path_text);
+    free_bn_string(label);
+    free_bn_string(json);
     let null = std::ptr::null();
     assert_eq!(
-        bn_rt_log_logger_write(
-            logger,
-            2,
-            message.as_ptr(),
-            null,
-            null,
-            null,
-            user.as_ptr(),
-            null,
-            0
-        ),
+        bn_rt_log_logger_write(logger, 2, message, null, null, null, user, null, 0),
         BN_LOG_OK
     );
+    free_bn_string(user);
+    free_bn_string(message);
     assert_eq!(bn_rt_log_logger_flush(logger, 1_000), BN_LOG_OK);
     assert_eq!(bn_rt_log_logger_close(logger, 1_000), BN_LOG_OK);
     assert_eq!(bn_rt_log_logger_close(logger, 1_000), BN_LOG_OK);
@@ -51,27 +49,27 @@ fn a_file_logger_writes_json_records_and_releases_its_handle() {
 
 /// A file logger on `path`, as `Logger.New` makes it in a compiled program.
 fn file_logger(path: &std::path::Path) -> u64 {
-    let path_text = CString::new(path.to_string_lossy().as_bytes()).unwrap();
-    let label = CString::new("app").unwrap();
-    let json = CString::new("JSON").unwrap();
+    let path_text = bn_string(&path.to_string_lossy());
+    let label = bn_string("app");
+    let json = bn_string("JSON");
     let mut logger = 0;
     assert_eq!(
-        bn_rt_log_logger_new(
-            label.as_ptr(),
-            json.as_ptr(),
-            path_text.as_ptr(),
-            &raw mut logger
-        ),
+        bn_rt_log_logger_new(label, json, path_text, &raw mut logger),
         BN_LOG_OK
     );
+    free_bn_string(path_text);
+    free_bn_string(label);
+    free_bn_string(json);
     logger
 }
 
 /// One INFO record with no field.
 fn info(logger: u64, message: &str) -> i32 {
-    let message = CString::new(message).unwrap();
+    let message = bn_string(message);
     let null = std::ptr::null();
-    bn_rt_log_logger_write(logger, 2, message.as_ptr(), null, null, null, null, null, 0)
+    let res = bn_rt_log_logger_write(logger, 2, message, null, null, null, null, null, 0);
+    free_bn_string(message);
+    res
 }
 
 #[cfg(unix)]
@@ -167,19 +165,17 @@ fn file_transport_reports_policy_denial_after_intermediate_symlink_swap() {
 /// end releases one, and the last release destroys it (known issue K61).
 #[test]
 fn the_last_release_destroys_a_logger() {
-    let label = CString::new("app").unwrap();
-    let json = CString::new("JSON").unwrap();
-    let null = CString::new("NULL").unwrap();
+    let label = bn_string("app");
+    let json = bn_string("JSON");
+    let null_dst = bn_string("NULL");
     let mut logger = 0;
     assert_eq!(
-        bn_rt_log_logger_new(
-            label.as_ptr(),
-            json.as_ptr(),
-            null.as_ptr(),
-            &raw mut logger
-        ),
+        bn_rt_log_logger_new(label, json, null_dst, &raw mut logger),
         BN_LOG_OK
     );
+    free_bn_string(label);
+    free_bn_string(json);
+    free_bn_string(null_dst);
     assert_eq!(bn_rt_log_logger_retain(logger), BN_LOG_OK);
     assert_eq!(bn_rt_log_logger_delete(logger), BN_LOG_OK);
     assert_eq!(info(logger, "still held"), BN_LOG_OK);

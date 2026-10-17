@@ -44,7 +44,12 @@ pub(crate) fn lower_call_instruction(
         .copied()
         .expect("validated callee")
     {
-        "$for_condition" => lower_for_condition(text, *destination, arguments, analysis),
+        "$for_condition" => {
+            lower_for_condition(text, block_id, *destination, arguments, analysis, state);
+        }
+        "$for_fits" => {
+            lower_for_fits(text, *destination, arguments, analysis);
+        }
         name if is_bndata_dataframe_call(module, name) => {
             match bndata_dataframe_method(name).expect("validated BNData method") {
                 "constructor" => {}
@@ -255,6 +260,14 @@ pub(crate) fn lower_call_instruction(
             arguments,
             analysis,
         ),
+        name if bnweb_method(module, name).is_some() => lower_bnweb_call(
+            text,
+            module,
+            *destination,
+            bnweb_method(module, name).expect("validated BNWeb method"),
+            arguments,
+            analysis,
+        ),
         name if bnmath_method(module, name).is_some() => {
             lower_bnmath_call(
                 text,
@@ -429,22 +442,16 @@ pub(crate) fn lower_call_instruction(
                 .expect("validated CHAR argument");
             let code = extend_to_i64(text, argument, ty);
             let r = |name: &str| O::reg(format!("char{name}{dest}"));
-            let call = I::call(T::I64, "bn_rt_str_char_utf8", vec![(T::I64, code)]);
-            text.assign(format!("charpacked{dest}"), call);
+            let call = I::call(T::Ptr, "bn_rt_str_from_char", vec![(T::I64, code)]);
+            text.assign(format!("charptr{dest}"), call);
             text.assign(
                 format!("charerror{dest}"),
-                I::icmp(ICmpCond::Eq, T::I64, r("packed"), O::int(-1)),
+                I::icmp(ICmpCond::Eq, T::Ptr, r("ptr"), O::null()),
             );
-            let bytes = vec![(T::I64, O::int(layout::PACKED_UTF8_BYTES))];
-            text.assign(
-                format!("charbuffer{dest}"),
-                I::call(T::Ptr, "malloc", bytes),
-            );
-            text.emit(I::store(T::I64, r("packed"), r("buffer")));
             let message = O::global(".bn_char_error");
             text.assign(
                 format!("charvalue{dest}"),
-                I::select(r("error"), T::Ptr, message, r("buffer")),
+                I::select(r("error"), T::Ptr, message, r("ptr")),
             );
             text.assign(
                 format!("charpayload{dest}"),

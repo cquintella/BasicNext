@@ -195,7 +195,16 @@ pub(crate) fn fold_cast(value: Option<&ConstantValue>, ty: &Type) -> Option<Cons
             Some(ConstantValue::Float(*value as f64))
         }
         (ConstantValue::Float(value), Type::Float(FloatType::Float32)) => {
-            Some(ConstantValue::Float(f64::from(*value as f32)))
+            // An infinite narrowing is `NUMERIC_OVERFLOW` at the cast. `NAN`
+            // stays `NAN`. A finite result, including underflow to zero, folds.
+            let narrowed = *value as f32;
+            if narrowed.is_nan() {
+                Some(ConstantValue::Float(*value))
+            } else if narrowed.is_finite() {
+                Some(ConstantValue::Float(f64::from(narrowed)))
+            } else {
+                None
+            }
         }
         (ConstantValue::Float(value), Type::Float(FloatType::Float64)) => {
             Some(ConstantValue::Float(*value))

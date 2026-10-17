@@ -20,8 +20,10 @@
 // service checks a stored hash (BNCrypto) read from its environment.
 IMPORT BNWeb AS Web
 IMPORT BNDispatch AS Dispatch
+IMPORT BNLog AS Log
 IMPORT BNString AS Str
 IMPORT BNMath AS M
+IMPORT HOST.Console AS Console
 IMPORT HOST.Net AS Net
 
 CLASS Users
@@ -169,7 +171,19 @@ FUNCTION Start() AS INTEGER
         PRINT queue
         RETURN 1
     END IF
-    LET server AS Web.Server = NEW Web.Server()
+    LET made AS Log.Logger OR Error = Log.Logger.New("users-api", "JSON", "CONSOLE")
+    IF made IS Error THEN
+        PRINT made
+        RETURN 1
+    END IF
+    LET logger AS Log.Logger = made
+    LET level AS VOID OR Error = logger.SetLevel(Log.Level.HTTP)
+    LET serverResult AS Web.Server OR Error = Web.Server.New(logger)
+    IF serverResult IS Error THEN
+        PRINT serverResult
+        RETURN 1
+    END IF
+    LET server AS Web.Server = serverResult
     LET parallel AS VOID OR Error = server.UseQueue(queue)
     // At most 1024 signed-in clients, each forgotten after 15 idle minutes.
     LET sessions AS VOID OR Error = server.UseSessions(1024, 900000)
@@ -192,5 +206,6 @@ FUNCTION Start() AS INTEGER
         PRINT "input closed; stopping"
     END IF
     server.Stop(1000)
+    logger.Flush(1000)
     RETURN 0
 END FUNCTION

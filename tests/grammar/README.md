@@ -55,8 +55,7 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `valid/override-intermediate.bn` | Accept and run | Polymorphic dispatch executes the nearest override in a multilevel hierarchy. |
 | `valid/region-void-roundtrip.bn` | Accept and run | Typed pointer region round-trip through `POINTER TO VOID` and back with length and elements preserved. |
 | `valid/env-import.bn` | Accept and run | `HOST.Env` import and `Env.Has` usage. |
-| `invalid/as-string-from-string.bn` | Reject (semantic) | `AS STRING` does not accept a `STRING` source. |
-| `invalid/as-string-from-alternative.bn` | Reject (semantic) | `AS STRING` needs a narrowed value, not `INTEGER OR Error`. |
+| `invalid/as-string-from-alternative.bn` | Reject (semantic) | `AS STRING` needs a narrowed value, not `INTEGER OR Error`. `STRING AS STRING` is the identity. |
 | `invalid/host-clock-without-import.bn` | Reject (semantic) | `HOST.Clock` without `IMPORT HOST.Clock` is `NAME_NOT_FOUND`; only `Console`, `Args`, `NumProcs` need no `IMPORT`. |
 | `invalid/env-without-import.bn` | Reject (semantic) | `HOST.Env` without `IMPORT HOST.Env` is `NAME_NOT_FOUND`. |
 | `invalid/class-vector-without-initializer.bn` | Reject (semantic) | A vector of a class has no default (`LET v AS Box[2]` needs `=`). |
@@ -75,7 +74,7 @@ with a source-spanned lexical, syntactic, or semantic diagnostic as noted below.
 | `invalid/filesystem-directory-api.bn` | Reject (semantic) | Directory APIs are outside the 0.2 surface. |
 | `invalid/import-after-declaration.bn` | Reject (syntax) | Import ordering. |
 | `invalid/import-after-constant.bn` | Reject (syntax) | An `IMPORT` cannot follow a module `EXPORT CONST`. |
-| `invalid/module-constant-not-exported.bn` | Reject (syntax) | A module-level `CONST` must be `EXPORT`ed. |
+| `valid/private-module-constant.bn` | Accept | A module-level `CONST` without `EXPORT` is private to the module. |
 | `invalid/module-constant-expression.bn` | Reject (syntax) | `-1 + 2` is an expression, not a `constant-literal`. |
 | `invalid/module-constant-out-of-range.bn` | Reject (semantic) | Inferred `INT32` constant `0x80000000` is out of range. |
 | `invalid/module-constant-negative-unsigned.bn` | Reject (semantic) | `AS UINT32 = -1` is out of range. |

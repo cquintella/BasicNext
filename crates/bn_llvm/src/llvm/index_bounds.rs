@@ -13,6 +13,37 @@ use crate::ir::{
     BinaryOp, CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T,
 };
 
+/// A null region data pointer is `NULL_POINTER_ACCESS`, before the index is
+/// compared with the length (an empty region has a non-null element pointer).
+/// The not-null path is labeled here, so the caller's index check follows in
+/// that block and keeps its own success label.
+pub(crate) fn emit_null_region_check(
+    text: &mut crate::ir::LlvmModule,
+    block_id: BlockId,
+    state: &mut EmissionState,
+    pointer: &O,
+) {
+    let tag = text.fresh_tag();
+    let is_null = format!("regionnull{tag}");
+    text.assign(
+        is_null.clone(),
+        I::icmp(ICmpCond::Eq, T::Ptr, pointer.clone(), O::null()),
+    );
+    let live = take_continuation(block_id, state);
+    emit_trap(
+        text,
+        block_id,
+        state,
+        &O::reg(&is_null),
+        live,
+        bn_diag::DiagId::NULL_POINTER_ACCESS,
+        vec![(
+            "message",
+            Fact::Text(bn_diag::trap_texts::NULL_POINTER_INDEX.into()),
+        )],
+    );
+}
+
 /// An index lowered for a bounds check: `at` is the `i32` the address uses,
 /// `exact` the index's own value as `i128` (the diagnostic's fact), and
 /// `fits` whether `at` is that value; `wide` says the type can hold an index

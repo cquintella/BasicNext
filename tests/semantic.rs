@@ -275,11 +275,11 @@ fn semantic_fixtures_are_rejected() {
         "tests/grammar/invalid/module-constant-negative-unsigned.bn",
         "tests/grammar/invalid/float-binding-inexact-integer.bn",
         "tests/grammar/invalid/float-binding-integer-variable.bn",
-        "tests/grammar/invalid/as-string-from-string.bn",
         "tests/grammar/invalid/as-string-from-alternative.bn",
         "tests/grammar/invalid/literal-ambiguous-numeric-alternative.bn",
         "tests/grammar/invalid/alternative-duplicate-member.bn",
         "tests/grammar/invalid/alternative-narrowing-without-is.bn",
+        "tests/grammar/invalid/invalid-alternative-cast.bn",
         "tests/grammar/invalid/error-without-initializer.bn",
         "tests/grammar/invalid/error-field-without-initializer.bn",
         "tests/grammar/invalid/error-vector-without-initializer.bn",
@@ -1023,4 +1023,76 @@ fn vector_literal_elements_are_checked_against_the_declared_destination() {
         "FUNCTION Start() AS VOID\nLET v AS INT64[2] = [1, 3000000000]\nPRINT v[1]\nEND FUNCTION\n",
     )
     .expect("literals that fit a wider element are accepted");
+}
+
+#[test]
+fn async_function_parameter_count_and_types_are_validated() {
+    let too_many = "ASYNC FUNCTION Nine(a AS INT32, b AS INT32, c AS INT32, d AS INT32, e AS INT32, f AS INT32, g AS INT32, h AS INT32, i AS INT32) AS VOID OR Error\nRETURN\nEND FUNCTION\nFUNCTION Start() AS VOID\nEND FUNCTION\n";
+    let error = analyze_text(too_many).expect_err("more than 8 parameters must fail");
+    assert_eq!(error.code, "TYPE_MISMATCH");
+    assert!(
+        error.message.contains("at most 8 worker parameters"),
+        "{}",
+        error.message
+    );
+
+    let bad_param = "ASYNC FUNCTION BadVec(v AS INT32[4]) AS VOID OR Error\nRETURN\nEND FUNCTION\nFUNCTION Start() AS VOID\nEND FUNCTION\n";
+    let error = analyze_text(bad_param).expect_err("vector parameter must fail");
+    assert_eq!(error.code, "TYPE_MISMATCH");
+    assert!(
+        error
+            .message
+            .contains("scalar, string, date/time, or dispatch handle"),
+        "{}",
+        error.message
+    );
+
+    let bad_obj = "CLASS Person\nPUBLIC name AS STRING\nEND CLASS\nASYNC FUNCTION BadObj(p AS Person) AS VOID OR Error\nRETURN\nEND FUNCTION\nFUNCTION Start() AS VOID\nEND FUNCTION\n";
+    let error = analyze_text(bad_obj).expect_err("class object parameter must fail");
+    assert_eq!(error.code, "TYPE_MISMATCH");
+    assert!(
+        error
+            .message
+            .contains("scalar, string, date/time, or dispatch handle"),
+        "{}",
+        error.message
+    );
+
+    let bad_struct = "STRUCT Point\nx AS INTEGER\ny AS INTEGER\nEND STRUCT\nASYNC FUNCTION BadStruct(p AS Point) AS VOID OR Error\nRETURN\nEND FUNCTION\nFUNCTION Start() AS VOID\nEND FUNCTION\n";
+    let error = analyze_text(bad_struct).expect_err("struct parameter must fail");
+    assert_eq!(error.code, "TYPE_MISMATCH");
+    assert!(
+        error
+            .message
+            .contains("scalar, string, date/time, or dispatch handle"),
+        "{}",
+        error.message
+    );
+
+    let bad_alt = "ASYNC FUNCTION BadAlt(a AS INT32 OR STRING) AS VOID OR Error\nRETURN\nEND FUNCTION\nFUNCTION Start() AS VOID\nEND FUNCTION\n";
+    let error = analyze_text(bad_alt).expect_err("alternative parameter must fail");
+    assert_eq!(error.code, "TYPE_MISMATCH");
+    assert!(
+        error
+            .message
+            .contains("scalar, string, date/time, or dispatch handle"),
+        "{}",
+        error.message
+    );
+
+    let bad_handle = "IMPORT HOST.FileSystem AS FS\nASYNC FUNCTION BadHandle(f AS FS.File) AS VOID OR Error\nRETURN\nEND FUNCTION\nFUNCTION Start() AS VOID\nEND FUNCTION\n";
+    let error = analyze_text(bad_handle).expect_err("library handle parameter must fail");
+    assert_eq!(error.code, "TYPE_MISMATCH");
+    assert!(
+        error
+            .message
+            .contains("scalar, string, date/time, or dispatch handle"),
+        "{}",
+        error.message
+    );
+
+    let valid = "ASYNC FUNCTION Good(a AS INT8, b AS FLOAT64, c AS STRING, d AS BOOLEAN) AS VOID OR Error\nRETURN\nEND FUNCTION\nFUNCTION Start() AS VOID\nEND FUNCTION\n";
+    analyze_text(valid).expect("valid parameters must pass semantic analysis");
+
+    analyze_path("tests/grammar/valid/dispatch-handle-arguments.bn");
 }

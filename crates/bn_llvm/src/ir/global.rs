@@ -34,7 +34,14 @@ pub struct LlvmGlobal {
     pub constant: bool,
     pub ty: LlvmType,
     pub init: Option<LlvmOperand>,
+    /// `align N` when the value's address is significant (a STRING header).
+    pub align: Option<u32>,
 }
+
+/// Alignment of a static STRING header (`[i64 count][i64 len][bytes]`).
+const STRING_GLOBAL_ALIGNMENT: u32 = 8;
+/// Bit pattern of `u64::MAX`: an immortal buffer (G7-D2).
+const IMMORTAL_REF_COUNT_BITS: i64 = -1;
 
 impl LlvmGlobal {
     /// A mutable global with an initializer and default linkage.
@@ -48,6 +55,7 @@ impl LlvmGlobal {
             constant: false,
             ty,
             init: Some(init),
+            align: None,
         }
     }
 
@@ -64,6 +72,7 @@ impl LlvmGlobal {
             constant: true,
             ty,
             init: Some(LlvmOperand::ConstBytes(bytes)),
+            align: None,
         }
     }
 
@@ -72,6 +81,37 @@ impl LlvmGlobal {
     pub fn text(name: impl Into<String>, text: &str, unnamed_addr: bool) -> Self {
         let bytes = text.bytes().chain(std::iter::once(0)).collect();
         Self::c_string(name, bytes, unnamed_addr)
+    }
+
+    /// A static STRING: immortal count, byte length, payload and trailing NUL.
+    /// The value pointer is 16 bytes into this global (G7-D2).
+    ///
+    /// # Panics
+    ///
+    /// Panics when the byte length does not fit in `i64`. A source string
+    /// that large is not a program this compiler accepts.
+    #[must_use]
+    pub fn bn_string(name: impl Into<String>, text: &str, unnamed_addr: bool) -> Self {
+        let mut payload: Vec<u8> = text.bytes().collect();
+        payload.push(0);
+        let len = i64::try_from(payload.len() - 1).expect("string length fits i64");
+        let array = LlvmType::Array(payload.len(), Box::new(LlvmType::I8));
+        let ty = LlvmType::struct_of([LlvmType::I64, LlvmType::I64, array.clone()]);
+        let init = LlvmOperand::ConstStruct(vec![
+            (LlvmType::I64, LlvmOperand::int(IMMORTAL_REF_COUNT_BITS)),
+            (LlvmType::I64, LlvmOperand::int(len)),
+            (array, LlvmOperand::ConstBytes(payload)),
+        ]);
+        Self {
+            name: name.into(),
+            linkage: Linkage::Private,
+            thread_local: false,
+            unnamed_addr,
+            constant: true,
+            ty,
+            init: Some(init),
+            align: Some(STRING_GLOBAL_ALIGNMENT),
+        }
     }
 
     /// A global defined in another module.
@@ -85,6 +125,7 @@ impl LlvmGlobal {
             constant: false,
             ty,
             init: None,
+            align: None,
         }
     }
 
@@ -122,6 +163,9 @@ impl fmt::Display for LlvmGlobal {
         if let Some(init) = &self.init {
             write!(f, " {init}")?;
         }
+        if let Some(align) = self.align {
+            write!(f, ", align {align}")?;
+        }
         Ok(())
     }
 }
@@ -140,6 +184,11 @@ mod tests {
         );
         let flag = LlvmGlobal::variable("bn_init_Box", LlvmType::I1, LlvmOperand::bool(false));
         assert_eq!(flag.to_string(), "@bn_init_Box = global i1 false");
+        let eof = LlvmGlobal::bn_string(".bn_eof", "EOF", false);
+        assert_eq!(
+            eof.to_string(),
+            "@.bn_eof = private constant { i64, i64, [4 x i8] } { i64 -1, i64 3, [4 x i8] c\"EOF\\00\" }, align 8"
+        );
         let out = LlvmGlobal::external("__stdoutp", LlvmType::Ptr);
         assert_eq!(out.to_string(), "@__stdoutp = external global ptr");
         let buffer =

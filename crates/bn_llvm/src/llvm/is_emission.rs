@@ -57,7 +57,10 @@ pub(crate) fn emit_is(
             | AlternativeLayout::StatusPointer
             | AlternativeLayout::StatusEndpoint,
         ) => emit_status_is(text, destination, left, left_ty, right_ty, test_name),
-        Some(AlternativeLayout::Region) | None => false,
+        Some(AlternativeLayout::Region) => {
+            alternatives::emit_region_is(text, destination, left, left_ty, right_ty, test_name)
+        }
+        None => false,
     }
 }
 
@@ -139,10 +142,15 @@ fn emit_status_is(
 /// `IS EOF` on a `{ i1, ptr, i64 }`: its pointer is the `@.bn_eof` marker.
 fn emit_eof_is(text: &mut crate::ir::LlvmModule, destination: ValueId, left: ValueId) {
     let dest = destination.0;
-    let marker = T::Array(4, Box::new(T::I8));
-    let zero = vec![(T::I64, O::int(0)), (T::I64, O::int(0))];
-    let eof = I::gep(marker, O::global(".bn_eof"), zero);
-    text.assign(format!("eofptr{dest}"), eof);
+    text.assign(
+        format!("eofptr{dest}"),
+        I::select(
+            O::bool(true),
+            T::Ptr,
+            crate::layout::string_payload(".bn_eof"),
+            crate::layout::string_payload(".bn_eof"),
+        ),
+    );
     let value = I::extract(handle_result_ty(), v(left), 1);
     text.assign(format!("eofvalue{dest}"), value);
     let (value, eof) = (
@@ -225,20 +233,11 @@ fn emit_static_is(
     }
     // On a pointer value the only valid tests are pointer tests (semantic
     // analysis rejects the rest). `IS POINTER TO VOID` holds for every
-    // non-NULL pointer, typed, region or opaque (`0.6.md`; K51): its pointer
-    // sits at field 0 of every pointer layout. Other `IS POINTER TO T` tests
-    // wait for decision K55 and are refused.
+    // non-NULL pointer (`0.6.md`). Any other `IS POINTER TO T` reads the
+    // allocation: the element code (field 2 of a `POINTER TO VOID`, the
+    // static element of a typed pointer) and the length (K55).
     if matches!(left_ty, Type::Pointer { .. }) {
-        let Some(layout) = left_llvm else {
-            return false;
-        };
-        if test_name != bn_catalog::text("llvm", "type.pointer_to_void") {
-            return false;
-        }
-        let data = format!("isvoiddata{}", destination.0);
-        text.assign(data.clone(), I::extract(layout, v(left), 0));
-        text.assign(own, I::icmp(ICmpCond::Ne, T::Ptr, O::reg(data), O::null()));
-        return true;
+        return emit_pointer_is(text, destination, left, left_ty, test_name);
     }
     // A value that is not an alternative has its static type: `IS` of that
     // type holds (a narrowed `FS.File` IS FS.File).
@@ -290,13 +289,103 @@ fn emit_integer_error_union_is(
             format!("unionisptr{dest}"),
             I::extract(handle_result_ty(), v(left), 1),
         );
-        let not_eof = I::icmp(ICmpCond::Ne, T::Ptr, r("isptr"), O::global(".bn_eof"));
+        let not_eof = I::icmp(
+            ICmpCond::Ne,
+            T::Ptr,
+            r("isptr"),
+            crate::layout::string_payload(".bn_eof"),
+        );
         text.assign(format!("unionnoteof{dest}"), not_eof);
         let both = I::binary(BinaryOp::And, T::I1, r("noterror"), r("noteof"));
         text.assign(format!("v{dest}"), both);
     } else {
         emit_is_constant(text, destination, r("noterror"));
     }
+    true
+}
+
+/// `%v{destination}` for `IS POINTER TO` on a pointer value.
+fn emit_pointer_is(
+    text: &mut crate::ir::LlvmModule,
+    destination: ValueId,
+    left: ValueId,
+    left_ty: &Type,
+    test_name: &str,
+) -> bool {
+    let Type::Pointer { element, .. } = left_ty else {
+        return false;
+    };
+    let Some(layout) = llvm_type(left_ty) else {
+        return false;
+    };
+    let void_value = layout == crate::layout::region_ty();
+    let typed = layout == crate::layout::vector_ty();
+    if !void_value && !typed {
+        return false;
+    }
+    let id = destination.0;
+    let pointer = format!("pisptr{id}");
+    text.assign(pointer.clone(), I::extract(layout.clone(), v(left), 0));
+    let non_null = format!("pisnn{id}");
+    text.assign(
+        non_null.clone(),
+        I::icmp(ICmpCond::Ne, T::Ptr, O::reg(&pointer), O::null()),
+    );
+    let void_test = test_name == bn_catalog::text("llvm", "type.pointer_to_void")
+        || bn_types::pointers::parse_pointer_is(test_name).is_some_and(|spec| spec.void);
+    if void_test {
+        emit_is_constant(text, destination, O::reg(non_null));
+        return true;
+    }
+    let Some(spec) = bn_types::pointers::parse_pointer_is(test_name) else {
+        return false;
+    };
+    let expected = bn_types::alternatives::member_code(&spec.element).unwrap_or(u32::MAX);
+    let code = if void_value {
+        let name = format!("piscode{id}");
+        text.assign(name.clone(), I::extract(layout, v(left), 2));
+        O::reg(name)
+    } else {
+        let static_code = bn_types::alternatives::member_code(element).unwrap_or(u32::MAX);
+        O::int(i64::from(static_code))
+    };
+    let code_ok = format!("piscodeok{id}");
+    text.assign(
+        code_ok.clone(),
+        I::icmp(ICmpCond::Eq, T::I32, code, O::int(i64::from(expected))),
+    );
+    let mut held = format!("pisboth{id}");
+    text.assign(
+        held.clone(),
+        I::binary(BinaryOp::And, T::I1, O::reg(non_null), O::reg(&code_ok)),
+    );
+    let expected_len = match spec.length {
+        bn_types::PointerLength::Fixed(length) => Some(length),
+        bn_types::PointerLength::One => Some(1),
+        bn_types::PointerLength::Dynamic => None,
+    };
+    if let Some(length) = expected_len {
+        let len = format!("pislen{id}");
+        let len_layout = if void_value {
+            crate::layout::region_ty()
+        } else {
+            crate::layout::vector_ty()
+        };
+        text.assign(len.clone(), I::extract(len_layout, v(left), 1));
+        let len_ok = format!("pislenok{id}");
+        let wide = i64::try_from(length).unwrap_or(i64::MAX);
+        text.assign(
+            len_ok.clone(),
+            I::icmp(ICmpCond::Eq, T::I32, O::reg(len), O::int(wide)),
+        );
+        let all = format!("pisall{id}");
+        text.assign(
+            all.clone(),
+            I::binary(BinaryOp::And, T::I1, O::reg(&held), O::reg(&len_ok)),
+        );
+        held = all;
+    }
+    emit_is_constant(text, destination, O::reg(held));
     true
 }
 
@@ -333,7 +422,12 @@ fn emit_string_or_eof_is(
     } else {
         ICmpCond::Ne
     };
-    let compare = I::icmp(cond, T::Ptr, v(left), O::global(".bn_eof"));
+    let compare = I::icmp(
+        cond,
+        T::Ptr,
+        v(left),
+        crate::layout::string_payload(".bn_eof"),
+    );
     text.assign(format!("v{}", destination.0), compare);
     true
 }
@@ -361,5 +455,67 @@ mod tests {
         let llvm = llvm.render();
         assert!(llvm.contains("icmp eq ptr"));
         assert!(llvm.contains("@.bn_eof"));
+    }
+
+    #[test]
+    fn nullable_region_length_test_reads_the_stored_count() {
+        let mut llvm = crate::ir::LlvmModule::new();
+        let region = Type::Alternative(vec![
+            Type::Pointer {
+                element: Box::new(Type::Integer(IntegerType::Int32)),
+                length: bn_types::PointerLength::Dynamic,
+            },
+            Type::Null,
+        ]);
+        assert!(emit_is(
+            &mut llvm,
+            ValueId(2),
+            ValueId(1),
+            &region,
+            &Type::TypeName("POINTER TO INTEGER[3]".into()),
+        ));
+        let rendered = llvm.render();
+        assert!(rendered.contains("extractvalue"), "{rendered}");
+        assert!(rendered.contains("icmp eq i32"), "{rendered}");
+        assert!(rendered.contains(", 3"), "{rendered}");
+        assert!(rendered.contains("and i1"), "{rendered}");
+    }
+
+    #[test]
+    fn nullable_region_void_is_a_non_null_pointer() {
+        let mut llvm = crate::ir::LlvmModule::new();
+        let region = Type::Alternative(vec![
+            Type::Pointer {
+                element: Box::new(Type::Integer(IntegerType::Int32)),
+                length: bn_types::PointerLength::Dynamic,
+            },
+            Type::Null,
+        ]);
+        assert!(emit_is(
+            &mut llvm,
+            ValueId(2),
+            ValueId(1),
+            &region,
+            &Type::TypeName("POINTER TO VOID".into()),
+        ));
+        let rendered = llvm.render();
+        assert!(rendered.contains("icmp ne ptr"), "{rendered}");
+        assert!(
+            !rendered.contains("extractvalue { ptr, i32 } %v1, 1"),
+            "{rendered}"
+        );
+    }
+
+    #[test]
+    fn imported_alternative_matches_only_the_names_lowering_emits() {
+        let member = Type::ImportedNamed {
+            module: bn_types::ModuleId(0),
+            name: "Logger".into(),
+        };
+        assert!(crate::alternatives::alternative_is(&member, "Logger"));
+        assert!(crate::alternatives::alternative_is(&member, "#0.Logger"));
+        assert!(!crate::alternatives::alternative_is(&member, "Log.Logger"));
+        assert!(!crate::alternatives::alternative_is(&member, "Foo.Logger"));
+        assert!(!crate::alternatives::alternative_is(&member, "#1.Logger"));
     }
 }

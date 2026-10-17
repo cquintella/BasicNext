@@ -182,35 +182,41 @@ impl Parser<'_> {
 
     pub(crate) fn for_header(&self, line: &[Token]) -> Result<crate::ast::ForHeader, Diagnostic> {
         let name = |token: &Token| match &token.kind {
-            TokenKind::Identifier(name) => Ok(name.clone()),
+            TokenKind::Identifier(name) => Ok((name.clone(), token.span)),
             _ => Err(self.error("expected FOR variable name")),
         };
+        let is_as = |token: &Token| matches!(&token.kind, TokenKind::Keyword(word) if word == "AS");
         if matches!(line.get(1).map(|token| &token.kind), Some(TokenKind::Keyword(word)) if word == "EACH")
         {
-            let variable = name(
-                line.get(2)
-                    .ok_or_else(|| self.error("expected FOR EACH variable"))?,
-            )?;
-            let as_index = 3;
-            if !matches!(line.get(as_index).map(|token| &token.kind), Some(TokenKind::Keyword(word)) if word == "AS")
-            {
-                return Err(self.error("expected AS in FOR EACH"));
-            }
+            let variable_token = line
+                .get(2)
+                .ok_or_else(|| self.error("expected FOR EACH variable"))?;
+            let (variable, variable_span) = name(variable_token)?;
             let in_index = line
                 .iter()
                 .position(|token| matches!(&token.kind, TokenKind::Keyword(word) if word == "IN"))
                 .ok_or_else(|| self.error("expected IN in FOR EACH"))?;
+            let type_ref = if line.get(3).is_some_and(is_as) {
+                if in_index <= 4 {
+                    return Err(self.error("expected a type in FOR EACH"));
+                }
+                Some(self.type_reference(&line[4..in_index], false)?)
+            } else if in_index == 3 {
+                None
+            } else {
+                return Err(self.error("expected IN in FOR EACH"));
+            };
             return Ok(crate::ast::ForHeader::Each {
                 variable,
-                type_ref: self.type_reference(&line[as_index + 1..in_index], false)?,
+                type_ref,
+                variable_span,
                 iterable: self.expression_in(&line[in_index + 1..])?,
             });
         }
-        let variable = name(
-            line.get(1)
-                .ok_or_else(|| self.error("expected FOR variable"))?,
-        )?;
-        let as_index = 2;
+        let variable_token = line
+            .get(1)
+            .ok_or_else(|| self.error("expected FOR variable"))?;
+        let (variable, variable_span) = name(variable_token)?;
         let equal = line
             .iter()
             .position(|token| matches!(token.kind, TokenKind::Symbol(Symbol::Assign)))
@@ -222,16 +228,23 @@ impl Parser<'_> {
         let step = line
             .iter()
             .position(|token| matches!(&token.kind, TokenKind::Keyword(word) if word == "STEP"));
-        if !matches!(line.get(as_index).map(|token| &token.kind), Some(TokenKind::Keyword(word)) if word == "AS")
-        {
-            return Err(self.error("expected AS in FOR"));
-        }
-        if equal <= as_index || to <= equal || step.is_some_and(|step| step <= to) {
-            return Err(self.error("expected FOR name AS type = start TO end [STEP step]"));
+        let type_ref = if line.get(2).is_some_and(is_as) {
+            if equal <= 3 {
+                return Err(self.error("expected FOR name [AS type] = start TO end [STEP step]"));
+            }
+            Some(self.type_reference(&line[3..equal], false)?)
+        } else if equal == 2 {
+            None
+        } else {
+            return Err(self.error("expected FOR name [AS type] = start TO end [STEP step]"));
+        };
+        if to <= equal || step.is_some_and(|step| step <= to) {
+            return Err(self.error("expected FOR name [AS type] = start TO end [STEP step]"));
         }
         Ok(crate::ast::ForHeader::Counted {
             variable,
-            type_ref: self.type_reference(&line[as_index + 1..equal], false)?,
+            type_ref,
+            variable_span,
             start: self.expression_in(&line[equal + 1..to])?,
             end: self.expression_in(&line[to + 1..step.unwrap_or(line.len())])?,
             step: step
@@ -350,9 +363,9 @@ impl Parser<'_> {
         if tokens.is_empty() {
             return Err(self.error("single-line IF requires a statement after THEN/ELSE"));
         }
-        if tokens.iter().any(|token| {
-            matches!(&token.kind, TokenKind::Keyword(word) if matches!(word.as_str(), "IF" | "WHILE" | "REPEAT" | "FOR"))
-        }) {
+        // `EXIT WHILE` names the loop; it is not a nested `WHILE` (C5).
+        if matches!(&tokens[0].kind, TokenKind::Keyword(word) if matches!(word.as_str(), "IF" | "WHILE" | "REPEAT" | "FOR"))
+        {
             return Err(self.error("single-line IF branches cannot contain compound statements"));
         }
         let mut owned = tokens.to_vec();

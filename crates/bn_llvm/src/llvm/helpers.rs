@@ -732,12 +732,6 @@ pub(crate) fn emit_input_runtime(text: &mut crate::ir::LlvmModule) {
     text.function(input_runtime::input_function());
 }
 
-/// Defines `bn_string_byte_length`.
-pub(crate) fn emit_string_byte_length(text: &mut crate::ir::LlvmModule) {
-    text.blank();
-    text.function(input_runtime::string_byte_length_function());
-}
-
 pub(crate) fn instruction_name(instruction: &Instruction) -> &'static str {
     match instruction {
         Instruction::Constant { .. } => "constants",

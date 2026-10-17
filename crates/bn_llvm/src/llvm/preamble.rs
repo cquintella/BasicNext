@@ -41,14 +41,12 @@ pub(crate) fn emit_preamble(
     // points (`functions.rs`), which live in bn_rt.
     let mut uses_bn_rt = calls_policy;
     let mut uses_input = false;
-    let mut uses_string_sizeof = false;
     let mut uses_exit = false;
     let mut intrinsics = BTreeSet::new();
     for (function, analysis) in functions {
         uses_concat |= analysis.uses_string_concat;
         uses_bn_rt |= analysis.uses_bn_rt;
         uses_input |= analysis.input_count > 0;
-        uses_string_sizeof |= analysis.uses_string_sizeof;
         uses_exit |= function.kind != FunctionKind::Entry
             && (analysis.uses_bn_rt
                 || function.blocks.iter().any(|block| {
@@ -59,15 +57,12 @@ pub(crate) fn emit_preamble(
                 }));
         for (value, string) in &analysis.strings {
             let global = string_global(&function.name, value.0);
-            text.global(LlvmGlobal::text(global, string, false));
+            text.global(LlvmGlobal::bn_string(global, string, false));
         }
         intrinsics.extend(analysis.intrinsics.iter().cloned());
     }
     if uses_input {
         emit_input_runtime(text);
-    }
-    if uses_string_sizeof {
-        emit_string_byte_length(text);
     }
     text.blank();
     write_declarations(text, runtime_abi::PRINT_DECLARATIONS);
@@ -80,6 +75,9 @@ pub(crate) fn emit_preamble(
     }
     if uses_bn_rt {
         write_declarations(text, runtime_abi::BN_RT_DECLARATIONS);
+    }
+    if !module.bnweb_providers.is_empty() {
+        crate::web_ops::declare_web_abi(text);
     }
     if functions
         .iter()
@@ -107,7 +105,7 @@ pub(crate) fn emit_preamble(
             })
         })
     {
-        text.global(LlvmGlobal::text(".bn_na", "NA", true));
+        text.global(LlvmGlobal::bn_string(".bn_na", "NA", false));
     }
     if functions.iter().any(|(function, analysis)| {
         analysis.values.values().any(|ty| {
@@ -128,7 +126,9 @@ pub(crate) fn emit_preamble(
             write_declarations(text, runtime_abi::HEAP_COPY_DECLARATIONS);
         }
         write_declarations(text, &[&runtime_abi::CALLOC]);
-        if !uses_input {
+        // INPUT no longer declares `free` itself. The object ARC glue,
+        // emitted for a STRING buffer release, still calls it.
+        if !uses_input || uses_arc {
             write_declarations(text, &[&runtime_abi::FREE]);
         }
     }
@@ -305,12 +305,22 @@ fn emit_trampoline(
     if resets_statics {
         text.emit(super::statics::reset_call());
     }
+    let is_task_handle = matches!(&task_fn.return_type, Type::Alternative(alternatives)
+    if alternatives.iter().any(|ty| match ty {
+        Type::ImportedNamed { name, .. } | Type::ImportedTypeName { name, .. } => dispatch_handle_name(name),
+        Type::Named(name) | Type::TypeName(name) => dispatch_handle_name(name) || dispatch_handle_name(name.rsplit('.').next().unwrap_or(name)),
+        _ => false,
+    }));
+    let is_task_datetime = matches!(&task_fn.return_type, Type::Alternative(alternatives)
+        if alternatives.iter().any(|ty| matches!(ty, Type::Named(name) | Type::TypeName(name) if matches!(name.as_str(), "DATE" | "TIME" | "TIMESTAMP"))));
     let aggregate_return = matches!(&task_fn.return_type, Type::Alternative(alternatives)
         if void_or_error(alternatives)
             || integer_or_error(alternatives)
             || float_or_error(alternatives)
             || string_or_error(alternatives)
-            || boolean_or_error(alternatives));
+            || boolean_or_error(alternatives)
+            || is_task_handle
+            || is_task_datetime);
     let r = |name: &str| O::reg(name.to_string());
     let mut dispatch_arguments = Vec::new();
     for (index, parameter) in task_fn.parameters.iter().enumerate() {
@@ -324,29 +334,79 @@ fn emit_trampoline(
         let load_raw = |text: &mut crate::ir::LlvmModule, ty: T| {
             text.assign(raw.to_string(), I::load(ty, payload.clone()));
         };
-        match parameter_ty {
-            Type::Boolean => {
-                load_raw(text, T::I64);
-                text.assign(&arg, I::icmp(ICmpCond::Ne, T::I64, raw.clone(), O::int(0)));
+        let is_handle = match parameter_ty {
+            Type::ImportedNamed { name, .. } | Type::ImportedTypeName { name, .. } => {
+                dispatch_handle_name(name)
             }
-            Type::Integer(_) if llvm_ty == T::I64 => {
+            Type::Named(name) | Type::TypeName(name) => {
+                dispatch_handle_name(name)
+                    || dispatch_handle_name(name.rsplit('.').next().unwrap_or(name))
+            }
+            _ => false,
+        };
+        let is_date_time = matches!(
+            parameter_ty,
+            Type::Named(name) | Type::TypeName(name) if matches!(name.as_str(), "DATE" | "TIME" | "TIMESTAMP")
+        );
+        if is_handle {
+            load_raw(text, T::I64);
+            let head = I::insert(
+                crate::layout::handle_result_ty(),
+                O::undef(),
+                T::I1,
+                O::bool(false),
+                0,
+            );
+            text.assign(format!("dispatch_handle_agg0_{index}"), head);
+            let null = I::insert(
+                crate::layout::handle_result_ty(),
+                O::reg(format!("dispatch_handle_agg0_{index}")),
+                T::Ptr,
+                O::null(),
+                1,
+            );
+            text.assign(format!("dispatch_handle_agg1_{index}"), null);
+            let handle = I::insert(
+                crate::layout::handle_result_ty(),
+                O::reg(format!("dispatch_handle_agg1_{index}")),
+                T::I64,
+                raw.clone(),
+                2,
+            );
+            text.assign(&arg, handle);
+        } else if is_date_time {
+            if llvm_ty == T::I32 {
+                load_raw(text, T::I64);
+                let narrow = I::cast(CastOp::Trunc, T::I64, raw.clone(), T::I32);
+                text.assign(&arg, narrow);
+            } else {
                 text.assign(&arg, I::load(T::I64, payload));
             }
-            Type::Integer(_) => {
-                load_raw(text, T::I64);
-                let narrow = I::cast(CastOp::Trunc, T::I64, raw.clone(), llvm_ty.clone());
-                text.assign(&arg, narrow);
+        } else {
+            match parameter_ty {
+                Type::Boolean => {
+                    load_raw(text, T::I64);
+                    text.assign(&arg, I::icmp(ICmpCond::Ne, T::I64, raw.clone(), O::int(0)));
+                }
+                Type::Integer(_) if llvm_ty == T::I64 => {
+                    text.assign(&arg, I::load(T::I64, payload));
+                }
+                Type::Integer(_) => {
+                    load_raw(text, T::I64);
+                    let narrow = I::cast(CastOp::Trunc, T::I64, raw.clone(), llvm_ty.clone());
+                    text.assign(&arg, narrow);
+                }
+                Type::Float(_) if llvm_ty == T::Float => {
+                    load_raw(text, T::Double);
+                    text.assign(
+                        &arg,
+                        I::cast(CastOp::FPTrunc, T::Double, raw.clone(), T::Float),
+                    );
+                }
+                Type::Float(_) => text.assign(&arg, I::load(T::Double, payload)),
+                Type::String => text.assign(&arg, I::load(T::Ptr, payload)),
+                _ => unreachable!("validated dispatch parameter type"),
             }
-            Type::Float(_) if llvm_ty == T::Float => {
-                load_raw(text, T::Double);
-                text.assign(
-                    &arg,
-                    I::cast(CastOp::FPTrunc, T::Double, raw.clone(), T::Float),
-                );
-            }
-            Type::Float(_) => text.assign(&arg, I::load(T::Double, payload)),
-            Type::String => text.assign(&arg, I::load(T::Ptr, payload)),
-            _ => unreachable!("validated dispatch parameter type"),
         }
         dispatch_arguments.push((llvm_ty, O::reg(arg)));
     }
@@ -402,6 +462,7 @@ fn emit_trampoline(
             _ if matches!(&task_fn.return_type, Type::Alternative(alternatives) if void_or_error(alternatives)) => {
                 0
             }
+            _ if is_task_handle => 6,
             _ => 2,
         };
         store(text, T::I32, O::int(kind), r("result"));
@@ -448,14 +509,18 @@ pub(crate) fn emit_module_header(text: &mut crate::ir::LlvmModule) {
         (".bn_fmt_error", "Error(%lld, %s)"),
         (".bn_asc_error", bn_diag::trap_texts::ASC_EMPTY_STRING),
         (".bn_char_error", bn_diag::trap_texts::CHAR_NOT_UNICODE),
-        (".bn_true", "TRUE"),
-        (".bn_false", "FALSE"),
-        (".bn_empty", ""),
     ];
     for (name, value) in shared {
         text.global(LlvmGlobal::text(name, value, true));
     }
-    text.global(LlvmGlobal::text(".bn_eof", "EOF", false));
+    for (name, value) in [
+        (".bn_true", "TRUE"),
+        (".bn_false", "FALSE"),
+        (".bn_empty", ""),
+    ] {
+        text.global(LlvmGlobal::bn_string(name, value, true));
+    }
+    text.global(LlvmGlobal::bn_string(".bn_eof", "EOF", false));
     let private =
         |name: &str, ty, init| LlvmGlobal::variable(name, ty, init).with_linkage(Linkage::Private);
     text.global(private(

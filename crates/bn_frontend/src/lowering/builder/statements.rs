@@ -69,6 +69,11 @@ impl Builder<'_> {
                     });
                 }
             }
+            Statement::Destructuring {
+                bindings,
+                source,
+                span,
+            } => self.destructure(bindings, source, *span)?,
             Statement::Assignment {
                 target,
                 operator,

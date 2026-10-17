@@ -207,13 +207,28 @@ impl Executor<'_, '_> {
                 ty,
                 span,
             } => {
+                let left_value = value(values, *left, *span)?;
+                let pointer_len = if let Value::Pointer { handle, .. } = left_value {
+                    Some(
+                        u64::try_from(self.memory.len(*handle, *span)?).map_err(|_| {
+                            runtime_error(
+                                bn_diag::DiagId::POINTER_LENGTH_MISMATCH,
+                                bn_diag::trap_texts::POINTER_LENGTH_HOST,
+                                *span,
+                            )
+                        })?,
+                    )
+                } else {
+                    None
+                };
                 let result = binary(
                     operator,
-                    value(values, *left, *span)?,
+                    left_value,
                     value(values, *right, *span)?,
                     ty,
                     *span,
                     &self.module.class_model,
+                    pointer_len,
                 )?;
                 set(values, *destination, result);
             }

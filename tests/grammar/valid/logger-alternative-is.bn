@@ -1,0 +1,13 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// IS on an imported alternative member uses the member's own name (K64).
+IMPORT BNLog AS Log
+
+FUNCTION Start() AS VOID
+    LET made AS Log.Logger OR Error = Log.Logger.New("app", "JSON", "NULL")
+    PRINT made IS Log.Logger
+    PRINT made IS Error
+END FUNCTION

@@ -63,14 +63,18 @@ IPv4/IPv6 address.
 
 Routes are registered explicitly for an HTTP method and path pattern. 0.3
 patterns contain literal segments and `:name` parameter segments only. Route
-selection is ordered and deterministic. Phase 0 must choose and document
-whether literal specificity precedes registration order when two patterns
-match the same method and path; implementation must not invent that rule.
+selection is ordered and deterministic: when two patterns match the same method
+and path, literal specificity (more literal segments) precedes registration
+order, and registration order breaks ties.
 
 Parameter names are unique within a pattern. Matching uses the canonical
 decoded path produced by the URL boundary. Query fields never select a route.
-No match produces `404`; a path match with the wrong method produces `405` and
-an `Allow` header. `HEAD` and `OPTIONS` behavior must be frozen in Phase 0.
+No match produces `404`; a path match with an unregistered method produces `405`
+and an `Allow` header listing permitted methods in sorted order. An incoming `HEAD`
+request matches an explicit `HEAD` route first or falls back to a matching `GET`
+route and suppresses the response body on emission; an incoming `OPTIONS` request
+matches an explicit `OPTIONS` route first or automatically returns `204 No Content`
+with the `Allow` header containing all methods registered for that path pattern.
 Regex routes, implicit controller discovery, and generic middleware/plugins are
 outside 0.3.
 
@@ -124,9 +128,11 @@ to a request that arrived over TLS: on cleartext HTTP it is
 Cookie names and values are bounded and reject protocol-invalid characters
 (`INVALID_ARGUMENT`).
 
-Duplicate-header policy, request-body consumption, streaming/file behavior,
-form decoding, and exact collection signatures are Phase 0 decisions. No
-handler receives an unbounded body by default.
+Duplicate headers are preserved in arrival order and accessed via `Request.Header(name)`
+returning `HeaderValues OR Error` (`Count() AS INTEGER`, `Get(index AS INTEGER) AS STRING OR Error`).
+Request bodies are read with an explicit maximum via `Request.Body(maximum AS INTEGER) AS STRING OR Error`
+(up to the 8 MiB protocol ceiling); incoming payloads that exceed 8 MiB at the transport boundary
+are rejected with status `413 Payload Too Large`. No handler receives an unbounded body.
 
 ## Server lifecycle
 

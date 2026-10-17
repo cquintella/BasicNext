@@ -36,7 +36,7 @@ struct ByHandleFileInformation {
 }
 
 #[cfg(windows)]
-extern "system" {
+unsafe extern "system" {
     fn GetFileInformationByHandle(
         handle: *mut std::ffi::c_void,
         info: *mut ByHandleFileInformation,

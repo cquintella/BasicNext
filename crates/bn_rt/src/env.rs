@@ -6,31 +6,26 @@
 //! Native C ABI for `HOST.Env`: `bn_rt_env_get` and `bn_rt_env_has`.
 //! Validates C strings, reads process policy, and calls `bn_host_env`.
 
-use std::ffi::{CStr, c_char};
+use std::ffi::c_char;
 
 pub use bn_host_env::{INVALID_NAME, INVALID_UTF8, NOT_SET, POLICY_DENIED};
 
-#[allow(unsafe_code)]
 fn input<'a>(ptr: *const c_char) -> Option<&'a str> {
-    if ptr.is_null() {
-        return None;
-    }
-    unsafe { CStr::from_ptr(ptr).to_str().ok() }
+    // An environment name is a STRING. An interior NUL stays in the text so
+    // `bn_host_env` rejects it the same way `bni` does (G7-D4).
+    std::str::from_utf8(crate::string::slice_from_raw(ptr)?).ok()
 }
 
 #[allow(unsafe_code)]
 fn write_owned(out: *mut *mut c_char, value: &str) -> i32 {
-    let bytes = value.as_bytes();
-    let ptr = unsafe { libc::malloc(bytes.len() + 1) }.cast::<u8>();
+    let ptr = super::string::c_string_from_bytes(value.as_bytes());
     if ptr.is_null() {
         crate::set_error("out of memory");
         return 1;
     }
-    unsafe {
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
-        ptr.add(bytes.len()).write(0);
-        out.write(ptr.cast());
-    }
+    // SAFETY: `out` is the caller's non-null out-parameter (`bn_rt_env_get`
+    // checks it). The pointer is a STRING payload.
+    unsafe { out.write(ptr) };
     0
 }
 

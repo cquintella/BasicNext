@@ -25,6 +25,11 @@ pub(crate) fn binary_type(
                 Err(invalid())
             }
         }
+        "Less" | "LessEqual" | "Greater" | "GreaterEqual"
+            if left == &Type::String && right == &Type::String =>
+        {
+            Ok(Type::Boolean)
+        }
         "Less" | "LessEqual" | "Greater" | "GreaterEqual" => {
             numeric_result(left, right).map_or_else(|| Err(invalid()), |_| Ok(Type::Boolean))
         }
@@ -53,6 +58,14 @@ pub(crate) fn binary_type(
             .map(|_| Type::Float(FloatType::Float64))
             .ok_or_else(invalid),
         "Plus" | "Minus" | "Star" | "Power" => {
+            // A negative constant exponent makes `**` FLOAT64 (0.6.md, operators).
+            if operator == "Power"
+                && matches!(&expression.kind, ExpressionKind::Binary { right, .. } if constant_integer(right).is_some_and(|exponent| exponent < 0))
+                && is_integer(left)
+                && is_integer(right)
+            {
+                return Ok(Type::Float(FloatType::Float64));
+            }
             if let Some(value) = constant_integer(expression) {
                 return Ok(Type::IntegerLiteral(value.to_string()));
             }
@@ -63,6 +76,10 @@ pub(crate) fn binary_type(
 }
 
 pub(crate) fn conversion_allowed(source: &Type, target: &Type) -> bool {
+    // Identity `AS` is a copy for every type (0.6.md, conversions, G5).
+    if source == target {
+        return true;
+    }
     let numeric = |ty: &Type| {
         matches!(
             ty,

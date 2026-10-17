@@ -629,6 +629,7 @@ fn collect_statement_lines(statements: &[bn_frontend::ast::Statement], lines: &m
                 *span
             }
             bn_frontend::ast::Statement::Binding { span, .. }
+            | bn_frontend::ast::Statement::Destructuring { span, .. }
             | bn_frontend::ast::Statement::Assignment { span, .. }
             | bn_frontend::ast::Statement::Return { span, .. }
             | bn_frontend::ast::Statement::Print { span, .. }

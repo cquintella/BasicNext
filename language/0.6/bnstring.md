@@ -57,7 +57,7 @@ Preferred over Split→`STRING[]` (see `todo/proposals/string-extras.md`).
 
 ## Precompiled objects
 
-No `.bno` / module object pipeline in the toolchain yet. **Intent (0.5.x):** ship
+No `.bno` / module object pipeline in the toolchain yet. **Intent (0.6.x):** ship
 precompiled module artifacts alongside source. Until then, distribute
 `modules/bn/BNString.bn` source only (`modules/README.md`).
 

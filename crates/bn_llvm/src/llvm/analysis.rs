@@ -25,7 +25,6 @@ pub(crate) fn analyze_function<'a>(
     let mut uses_bn_rt_math = false;
     let mut uses_float_print = false;
     let mut uses_string_ops = false;
-    let mut uses_string_sizeof = false;
     let mut uses_temporal_print = false;
     let mut uses_heap = false;
     let mut uses_arc = !function.weak_symbols.is_empty();
@@ -33,7 +32,6 @@ pub(crate) fn analyze_function<'a>(
     let mut intrinsics = BTreeSet::new();
     let mut def_counts = HashMap::<ValueId, usize>::new();
     let mut input_values = HashSet::new();
-    let mut owned_string_results = HashSet::new();
     let mut owned_struct_results = HashSet::new();
     // Bindings a `RELEASE` ends: a later use is checked at run time.
     let released_symbols = function
@@ -124,6 +122,9 @@ pub(crate) fn analyze_function<'a>(
                         if bnlog_method(module, name).is_some() {
                             uses_bn_rt = true;
                         }
+                        if bnweb_method(module, name).is_some() {
+                            uses_bn_rt = true;
+                        }
                         if bnmath_method(module, name).is_some()
                             || matches!(
                                 name.as_str(),
@@ -166,8 +167,16 @@ pub(crate) fn analyze_function<'a>(
                     || matches!(ty, Type::Vector { .. })
                         && dimensions.len() == 1
                         && dynamic_dimensions.is_empty()
+                    || (matches!(ty, Type::Vector { element, dimensions: ty_dimensions, .. }
+                        if ty_dimensions.len() == 1
+                            && dimensions.is_empty()
+                            && dynamic_dimensions.len() == 1
+                            && llvm_type(element).is_some()))
                     || vectors::nested_default(ty, dimensions, dynamic_dimensions) =>
                 {
+                    if !dynamic_dimensions.is_empty() {
+                        intrinsics.insert(crate::runtime_abi::memset());
+                    }
                     if function.kind == FunctionKind::Default
                         && llvm_type(ty) == Some(LlvmType::Ptr)
                     {
@@ -243,14 +252,21 @@ pub(crate) fn analyze_function<'a>(
                     if operator == "Plus" && *ty == Type::String {
                         uses_string_concat = true;
                     }
-                    if matches!(operator.as_str(), "Equal" | "Assign" | "NotEqual")
-                        && [left, right].into_iter().any(|side| {
+                    if matches!(operator.as_str(), "Equal" | "Assign" | "NotEqual") {
+                        if [left, right].into_iter().any(|side| {
                             values
                                 .get(side)
                                 .is_some_and(|ty| type_contains_string(module, ty))
-                        })
-                    {
-                        uses_string_ops = true;
+                        }) {
+                            uses_string_ops = true;
+                        }
+                        if [left, right].into_iter().any(|side| {
+                            values
+                                .get(side)
+                                .is_some_and(super::binary::vector_needs_memcmp)
+                        }) {
+                            intrinsics.insert(crate::runtime_abi::memcmp());
+                        }
                     }
                     values.insert(*destination, ty.clone());
                 }
@@ -282,7 +298,7 @@ pub(crate) fn analyze_function<'a>(
                         Some("column_name" | "get_string")
                     ) {
                         uses_heap = true;
-                        owned_string_results.insert(*destination);
+                        uses_string_ops = true;
                     }
                     if !matches!(ty, Type::Named(name) if name == "VOID") {
                         let value_ty = if functions.get(callee).is_some_and(|name| {
@@ -330,12 +346,7 @@ pub(crate) fn analyze_function<'a>(
                     }
                     values.insert(*destination, ty.clone());
                 }
-                Instruction::SizeOf {
-                    destination, value, ..
-                } => {
-                    if values.get(value) == Some(&Type::String) {
-                        uses_string_sizeof = true;
-                    }
+                Instruction::SizeOf { destination, .. } => {
                     values.insert(*destination, Type::Integer(IntegerType::Int32));
                 }
                 Instruction::DispatchSubmit {
@@ -520,22 +531,19 @@ pub(crate) fn analyze_function<'a>(
         ));
     }
 
-    let mut input_targets = HashMap::new();
-    let mut input_symbols = HashSet::new();
+    let mut input_targets = std::collections::HashSet::new();
     for block in &function.blocks {
         for instruction in &block.instructions {
-            if let Instruction::Store { symbol, value, .. } = instruction
+            if let Instruction::Store { value, .. } = instruction
                 && input_values.contains(value)
+                && !input_targets.insert(*value)
             {
-                if input_targets.insert(*value, *symbol).is_some() {
-                    return Err(unsupported_instruction(
-                        module,
-                        function,
-                        instruction,
-                        "INPUT result stored more than once",
-                    ));
-                }
-                input_symbols.insert(*symbol);
+                return Err(unsupported_instruction(
+                    module,
+                    function,
+                    instruction,
+                    "INPUT result stored more than once",
+                ));
             }
         }
     }
@@ -544,7 +552,7 @@ pub(crate) fn analyze_function<'a>(
             .blocks
             .iter()
             .flat_map(|block| &block.instructions)
-            .find(|instruction| matches!(instruction, Instruction::Input { destination, .. } if !input_targets.contains_key(destination)))
+            .find(|instruction| matches!(instruction, Instruction::Input { destination, .. } if !input_targets.contains(destination)))
             .expect("unowned INPUT result must have an instruction");
         return Err(unsupported_instruction(
             module,
@@ -553,8 +561,6 @@ pub(crate) fn analyze_function<'a>(
             "INPUT result without a variable owner",
         ));
     }
-    // A slot whose line can outlive it never owns the buffer.
-    let escaping_inputs = bn_ir::escape::escaping_symbols(module, function, &input_symbols);
     if symbols
         .values()
         .any(|ty| vectors::fixed_vector_array(ty).is_some())
@@ -562,6 +568,10 @@ pub(crate) fn analyze_function<'a>(
     {
         intrinsics.insert(crate::runtime_abi::memmove());
     }
+    uses_string_ops |= values
+        .values()
+        .chain(symbols.values())
+        .any(|ty| arc_ops::contains_string(module, ty));
     uses_bn_rt |= symbols.values().any(vectors::carries_nested_vector)
         || vectors::carries_nested_vector(&function.return_type)
         || (function.blocks.iter().flat_map(|block| &block.instructions)).any(|instruction| {
@@ -591,18 +601,13 @@ pub(crate) fn analyze_function<'a>(
         functions,
         strings,
         input_count,
-        input_targets,
-        input_symbols,
-        escaping_inputs,
         released_symbols,
-        owned_string_results,
         owned_struct_results,
         uses_string_concat,
         uses_bn_rt,
         uses_bn_rt_math,
         uses_float_print,
         uses_string_ops,
-        uses_string_sizeof,
         uses_temporal_print,
         uses_heap: uses_heap || uses_arc,
         uses_arc,

@@ -85,3 +85,56 @@ fn impossible_region_reservation_is_a_diagnostic() {
         .expect("failed reservation must not corrupt the heap");
     assert_eq!(*heap.get(valid, 0, span()).expect("valid payload"), 7);
 }
+
+mod support;
+
+use std::{fs, process::Command};
+use support::{TestDir, compile_native, run};
+
+/// General alternative ownership (T.6.C2): strings and objects in an alternative
+/// undergo exactly one release on reassignment or scope end, with no leak or double free.
+#[test]
+fn general_alternative_releases_strings_and_objects_cleanly() {
+    let directory = TestDir::new("heap-alt-ownership").expect("create directory");
+    let path = directory.join("alt.bn");
+    fs::write(
+        &path,
+        r#"CLASS Node
+    PUBLIC name AS STRING = ""
+    PUBLIC FUNCTION CONSTRUCTOR(n AS STRING)
+        SELF.name = n
+    END FUNCTION
+    PUBLIC FUNCTION DESTRUCTOR()
+        PRINT "free", SELF.name
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET a AS Node OR STRING = NEW Node("node1")
+    a = "string_payload"
+    PRINT "reassigned to string"
+
+    LET b AS Node OR STRING = "initial_string"
+    b = NEW Node("node2")
+    PRINT "reassigned to object"
+END FUNCTION
+"#,
+    )
+    .expect("write source");
+    let artifact = compile_native(&path, &directory);
+    let output = run(
+        &mut Command::new(&artifact),
+        None,
+        std::time::Duration::from_secs(30),
+    )
+    .expect("run process");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "execution failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let expected = "free node1\nreassigned to string\nreassigned to object\nfree node2\n";
+    assert_eq!(stdout, expected);
+}

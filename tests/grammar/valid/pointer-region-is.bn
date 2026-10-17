@@ -1,0 +1,24 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// POINTER TO INTEGER[] OR NULL answers IS from the declared element and the
+// stored length (0.6.md, BDFL decision 2026-10-16). NEW INTEGER[3] is
+// VOID, INTEGER[] and INTEGER[3]. INTEGER[1] and INTEGER[0] name another
+// length. NULL fails every pointer test. A different element is not a
+// compatible alternative, so it is not a runtime answer.
+FUNCTION Start() AS VOID
+    LET region AS POINTER TO INTEGER[] OR NULL = NEW INTEGER[3]
+    PRINT region IS POINTER TO VOID
+    PRINT region IS POINTER TO INTEGER[]
+    PRINT region IS POINTER TO INTEGER[3]
+    PRINT region IS POINTER TO INTEGER[1]
+    PRINT region IS POINTER TO INTEGER[0]
+    PRINT region IS NULL
+    LET missing AS POINTER TO INTEGER[] OR NULL = NULL
+    PRINT missing IS POINTER TO VOID
+    PRINT missing IS POINTER TO INTEGER[3]
+    PRINT missing IS POINTER TO INTEGER[]
+    PRINT missing IS NULL
+END FUNCTION

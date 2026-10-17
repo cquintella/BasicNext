@@ -47,7 +47,12 @@ pub(crate) fn emit_status_result(
         );
         text.assign(
             format!("stvalue{dest}"),
-            I::select(r("steof"), T::Ptr, O::global(".bn_eof"), value_ptr.clone()),
+            I::select(
+                r("steof"),
+                T::Ptr,
+                crate::layout::string_payload(".bn_eof"),
+                value_ptr.clone(),
+            ),
         );
         (r("sterr"), r("stvalue"))
     } else {
@@ -120,13 +125,16 @@ pub(crate) fn emit_void_call_result(
 /// Declares the `bn_rt` error-record functions (`error_abi`) the module
 /// calls; a module without `Error` values declares none.
 pub(crate) fn declare_error_abi(text: &mut crate::ir::LlvmModule) {
-    use crate::runtime_abi::{ERROR_CODE, ERROR_FIELD, ERROR_PRINT, ERROR_TAKE, ERROR_WRAP};
-    let group: [&dyn crate::ir::Declaration; 5] = [
+    use crate::runtime_abi::{
+        ERROR_CODE, ERROR_FIELD, ERROR_PRINT, ERROR_SET_REPORT, ERROR_TAKE, ERROR_WRAP,
+    };
+    let group: [&dyn crate::ir::Declaration; 6] = [
         &ERROR_TAKE,
         &ERROR_WRAP,
         &ERROR_FIELD,
         &ERROR_CODE,
         &ERROR_PRINT,
+        &ERROR_SET_REPORT,
     ];
     let globals = text.referenced_globals();
     let called: Vec<&dyn crate::ir::Declaration> = group

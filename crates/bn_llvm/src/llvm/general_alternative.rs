@@ -234,7 +234,7 @@ pub(crate) fn wrap(
                 ICmpCond::Eq,
                 Ptr,
                 pointer.clone(),
-                LlvmOperand::global(".bn_eof"),
+                crate::layout::string_payload(".bn_eof"),
             ),
         );
         text.assign(
@@ -274,7 +274,7 @@ pub(crate) fn emit_default(
     let name = format!("v{}", destination.0);
     let reg = |suffix: &str| format!("{name}_{suffix}");
     let pointer = if *first == Type::String {
-        LlvmOperand::global(".bn_empty")
+        crate::layout::string_payload(".bn_empty")
     } else {
         LlvmOperand::null()
     };
@@ -431,14 +431,13 @@ fn widen_dedicated(
     text.assign(reg("payload"), LlvmInst::extract(source, operand, 2));
     let mut value_tag = tag(value_member);
     if let Some(sentinel) = Sentinel::of(members) {
-        let (global, _) = sentinel.global();
         text.assign(
             reg("sentinel"),
             LlvmInst::icmp(
                 ICmpCond::Eq,
                 Ptr,
                 LlvmOperand::reg(reg("pointer")),
-                LlvmOperand::global(global.trim_start_matches('@')),
+                sentinel.pointer(),
             ),
         );
         text.assign(
@@ -521,7 +520,6 @@ pub(crate) fn narrow_layout(
             .iter()
             .find(|member| matches!(member, Type::NotAvailable | Type::EndOfFile))
             .expect("sentinel member");
-        let (global, _) = sentinel.global();
         text.assign(
             reg("isunit"),
             LlvmInst::icmp(ICmpCond::Eq, I32, LlvmOperand::reg(reg("tag")), tag(unit)),
@@ -531,7 +529,7 @@ pub(crate) fn narrow_layout(
             LlvmInst::select(
                 LlvmOperand::reg(reg("isunit")),
                 Ptr,
-                LlvmOperand::global(global.trim_start_matches('@')),
+                sentinel.pointer(),
                 pointer,
             ),
         );
@@ -707,15 +705,9 @@ pub(crate) fn extract(
                 0,
             ),
         ),
-        Type::EndOfFile => text.assign(
-            dest,
-            LlvmInst::GetElementPtr {
-                inbounds: false,
-                elem_ty: LlvmType::I8,
-                ptr: LlvmOperand::global(".bn_eof"),
-                indices: vec![(I64, LlvmOperand::int(0))],
-            },
-        ),
+        Type::EndOfFile => {
+            text.assign(dest, crate::layout::string_payload_address(".bn_eof"));
+        }
         // NULL: the null pointer.
         _ => text.assign(
             dest,
@@ -861,16 +853,18 @@ pub(crate) fn emit_print(
             _ => None,
         };
         if let Some(global) = unit_text {
-            // A unit member prints its name, as text.
-            text.assign(
-                format!("v{}", held.0),
-                LlvmInst::GetElementPtr {
-                    inbounds: false,
-                    elem_ty: LlvmType::I8,
-                    ptr: LlvmOperand::global(global),
-                    indices: vec![(I64, LlvmOperand::int(0))],
-                },
-            );
+            // A unit member prints its name. NULL stays a C string; NA and EOF
+            // are STRING payloads.
+            let address = if global == ".bn_null" {
+                LlvmInst::gep(
+                    LlvmType::I8,
+                    LlvmOperand::global(global),
+                    vec![(I64, LlvmOperand::int(0))],
+                )
+            } else {
+                crate::layout::string_payload_address(global)
+            };
+            text.assign(format!("v{}", held.0), address);
             lower_print_value(text, held, &Type::String, state);
         } else {
             extract(text, &format!("v{}", held.0), &value_reg(value), member);

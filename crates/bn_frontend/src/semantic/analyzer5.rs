@@ -338,6 +338,19 @@ impl Analyzer {
                 if operator == "IS" {
                     self.validate_is_test(&left_type, right, expression.span)?;
                     Ok(Type::Boolean)
+                } else if (operator == "AND" || operator == "OR") && left_type == Type::Boolean {
+                    // The right operand sees a narrowed binding (0.6.md, IS, D1).
+                    let narrowed = self.narrowed_locals(left, locals, operator == "AND")?;
+                    let right_type = self.expression(right, &narrowed)?;
+                    if right_type != Type::Boolean {
+                        return Err(type_mismatch(
+                            "BOOLEAN",
+                            display(&right_type),
+                            format!("binary operator {operator}"),
+                            right.span,
+                        ));
+                    }
+                    Ok(Type::Boolean)
                 } else {
                     let right_type = self.expression(right, locals)?;
                     binary_type(operator, &left_type, &right_type, expression)

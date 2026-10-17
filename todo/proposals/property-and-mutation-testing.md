@@ -1,7 +1,7 @@
 # Proposal: property-based and mutation testing
 
-**Status:** Proposed (Carlos, 2026-10-14). Split from bucket 0.6.7
-(`todo/bucket-0.6.7-test-system.md`), which keeps the independent-oracle,
+**Status:** Proposed (Carlos, 2026-10-14). Split from bucket 0.6.6
+(`todo/bucket-0.6.6-test-system.md`), which keeps the independent-oracle,
 real-component, fuzzing and concurrency work (section V).
 **Date:** 2026-10-14.
 **Target release:** TODO (decision).
@@ -45,7 +45,7 @@ Open points:
 - Tool: `proptest` as a dev-dependency (shrinking, persisted failure
   seeds). TODO (decision): approval of the dependency; check its current
   version and licence before adding it.
-- Every failure the tool finds becomes a fixed example case (bucket 0.6.7
+- Every failure the tool finds becomes a fixed example case (bucket 0.6.6
   V.1 rules), so the regression does not depend on a seed.
 - Case count and time per property fixed and recorded, so the run stays
   deterministic in CI (fixed seed in CI, random locally).
@@ -55,6 +55,11 @@ Open points:
 A mutation tool changes the code (an operator, a condition, a return
 value) and runs the tests; a mutant that survives shows a place the tests
 do not check.
+
+The use of mutation as the verifier of the test migration (old suite
+against new suite) is not here: it is bucket 0.6.6 M.5. This part keeps
+the general use, finding gaps in the suite; the mutants that survive both
+suites in M.5 are its first input.
 
 Applied only to small modules where a silent change is a security or
 correctness failure:
@@ -70,7 +75,7 @@ Open points:
 - Tool: `cargo-mutants`. TODO: verify it handles the workspace layout and
   the integration tests that need `bni`, `bnc` and `libbn_rt.a` built.
 - Cost: every mutant rebuilds and runs the selected tests; on macOS each
-  fresh test binary pays the first-exec scan (bucket 0.6.7 Sprint 2). Run
+  fresh test binary pays the first-exec scan (bucket 0.6.6 Sprint 2). Run
   it on Linux, per module, at bucket close or on demand; never a CI gate.
 - A surviving mutant becomes a test activity (a stronger assertion or a
   new case), or is recorded as equivalent with the reason; the list of
@@ -78,16 +83,16 @@ Open points:
 
 ## Dependencies
 
-- Bucket 0.6.7 Sprint 5 (test index, `covers:` tags) to select the tests
+- Bucket 0.6.6 Sprint 5 (test index, `covers:` tags) to select the tests
   that cover each target module.
-- Bucket 0.6.7 V.1 (independent oracle) so properties and new cases follow
+- Bucket 0.6.6 V.1 (independent oracle) so properties and new cases follow
   the same rule.
-- Bucket 0.6.7 Sprint 2 measurements, for the cost of Part B on macOS.
+- Bucket 0.6.6 Sprint 2 measurements, for the cost of Part B on macOS.
 
 ## Out of scope
 
 - Coverage targets as a goal: coverage (`cargo-llvm-cov`, Sprint 8) shows
   what runs, not what is checked; Part B is the check.
 - Generative differential testing of `bni` × `bnc` (well-typed program
-  generator): excluded from bucket 0.6.7 V.3; TODO (decision) whether it
+  generator): excluded from bucket 0.6.6 V.3; TODO (decision) whether it
   joins this proposal or gets its own.

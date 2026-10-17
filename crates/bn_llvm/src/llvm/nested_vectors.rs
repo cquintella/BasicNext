@@ -170,7 +170,11 @@ impl Nest<'_> {
             ];
             let leaf = format!("vecdefaultleaf{destination}_{index}");
             text.assign(&leaf, I::gep(storage.clone(), base.clone(), at));
-            text.emit(I::store(T::Ptr, O::global(".bn_empty"), O::reg(leaf)));
+            text.emit(I::store(
+                T::Ptr,
+                crate::layout::string_payload(".bn_empty"),
+                O::reg(leaf),
+            ));
         }
         let first = format!("vecdefaultfat{destination}");
         text.assign(&first, I::insert(vector_ty(), O::undef(), T::Ptr, base, 0));

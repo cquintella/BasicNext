@@ -51,10 +51,13 @@ pub extern "C" fn bn_rt_math_val(text: *const c_char) -> f64 {
     if text.is_null() {
         return 0.0;
     }
-    unsafe {
-        std::ffi::CStr::from_ptr(text)
-            .to_str()
-            .map_or(0.0, math::parse_val)
+    match crate::string::slice_from_raw(text) {
+        Some(bytes) => std::str::from_utf8(bytes).map_or(0.0, math::parse_val),
+        None => unsafe {
+            std::ffi::CStr::from_ptr(text)
+                .to_str()
+                .map_or(0.0, math::parse_val)
+        },
     }
 }
 

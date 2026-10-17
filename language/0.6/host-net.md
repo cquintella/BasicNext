@@ -141,7 +141,7 @@ network exception bypasses BN control flow.
 | `Net.LIMIT` | 10 | A bounded resource is exhausted |
 | `Net.CLOSED` | 11 | An operation on a closed stream, listener, or socket |
 | `Net.IO_FAILED` | 12 | Any other network failure |
-| `Net.POLICY_DENIED` | 13 | The execution policy denies the operation |
+| `Net.POLICY_DENIED` | 13 | The execution policy denies the operation (when the host execution policy ceiling masks `POLICY_NET`) |
 
 ## Verification boundary
 

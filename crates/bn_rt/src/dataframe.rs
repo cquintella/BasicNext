@@ -643,6 +643,15 @@ pub fn copy_dataframe_column<T, U>(
     column.values.iter().map(&mut adapter).collect()
 }
 
+/// Adapts an integer cell value into an `i32` element for `CopyIntegerColumn`.
+///
+/// # Errors
+///
+/// Returns `DataFailure::InvalidFormat` if the value does not fit in `i32`.
+pub fn copy_integer_element(value: i128) -> Result<i32, DataFailure> {
+    i32::try_from(value).map_err(|_| DataFailure::InvalidFormat("integer out of range".into()))
+}
+
 /// One cell of `ConvertToInteger` / `ConvertToFloat`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ConvertedCell {
@@ -751,8 +760,8 @@ pub fn parse_csv(text: &str, separator: char) -> Result<Vec<Vec<String>>, DataFa
 mod tests {
     use super::{
         DataFailure, DataFrameColumn, DataFrameJoin, DataFrameJoinConfig, DataFrameResource,
-        append_columns, append_rows, first_duplicate_column, join_dataframes, parse_csv,
-        select_dataframe,
+        append_columns, append_rows, copy_integer_element, first_duplicate_column, join_dataframes,
+        parse_csv, select_dataframe,
     };
 
     #[test]
@@ -890,5 +899,31 @@ mod tests {
             },
         ];
         assert_eq!(first_duplicate_column(&columns).as_deref(), Some("id"));
+    }
+
+    #[test]
+    fn copy_integer_element_enforces_int32_range() {
+        assert_eq!(copy_integer_element(0).expect("zero"), 0);
+        assert_eq!(copy_integer_element(42).expect("42"), 42);
+        assert_eq!(
+            copy_integer_element(i128::from(i32::MAX)).expect("i32 max"),
+            i32::MAX
+        );
+        assert_eq!(
+            copy_integer_element(i128::from(i32::MIN)).expect("i32 min"),
+            i32::MIN
+        );
+        assert_eq!(
+            copy_integer_element(3_000_000_000_i128),
+            Err(DataFailure::InvalidFormat("integer out of range".into()))
+        );
+        assert_eq!(
+            copy_integer_element(-3_000_000_000_i128),
+            Err(DataFailure::InvalidFormat("integer out of range".into()))
+        );
+        assert_eq!(
+            copy_integer_element(i128::MAX),
+            Err(DataFailure::InvalidFormat("integer out of range".into()))
+        );
     }
 }
