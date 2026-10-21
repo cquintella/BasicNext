@@ -528,6 +528,8 @@ mod tests {
 
     #[test]
     fn concurrent_retain_and_release_ends_at_the_starting_count() {
+        use std::sync::{Arc, Barrier};
+
         const CHILD: &str = "BN_STRING_CONCURRENT_CHILD";
         const NAME: &str =
             "string::tests::concurrent_retain_and_release_ends_at_the_starting_count";
@@ -540,7 +542,6 @@ mod tests {
             );
             return;
         }
-        use std::sync::{Arc, Barrier};
         let before = live_string_count();
         let ptr = c_string_from_bytes(b"shared");
         // The payload address is shared. The header stays allocated until

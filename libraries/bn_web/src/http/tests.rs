@@ -1065,12 +1065,43 @@ fn redirect_destination_is_revalidated_with_the_same_resolver_policy() {
     assert!(super::resolve_validated_addresses("blocked.test", 80, &resolver).is_err());
 }
 
-#[test]
-fn serves_static_files_with_mime_etag_conditional_and_sanitization() {
+fn assert_static_refusals_and_conditional(send_raw: &impl Fn(&str) -> String, etag_val: &str) {
+    let res_dot =
+        send_raw("GET /assets/.secret HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+    assert!(res_dot.starts_with("HTTP/1.1 404 Not Found"), "{res_dot}");
+
+    let res_traversal = send_raw(
+        "GET /assets/../hello.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    );
+    assert!(
+        res_traversal.starts_with("HTTP/1.1 400 Bad Request"),
+        "{res_traversal}"
+    );
+
+    let res_post = send_raw(
+        "POST /assets/hello.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+    );
+    assert!(
+        res_post.starts_with("HTTP/1.1 405 Method Not Allowed"),
+        "{res_post}"
+    );
+    assert!(res_post.contains("allow: GET, HEAD"), "{res_post}");
+
+    let conditional = format!(
+        "GET /assets/hello.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nIf-None-Match: {etag_val}\r\n\r\n"
+    );
+    let not_modified = send_raw(&conditional);
+    assert!(
+        not_modified.starts_with("HTTP/1.1 304 Not Modified"),
+        "{not_modified}"
+    );
+    assert!(not_modified.ends_with("\r\n\r\n"), "{not_modified}");
+}
+
+fn sample_static_tree() -> std::path::PathBuf {
     let temp_dir = std::env::temp_dir().join(format!("bnweb-static-test-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&temp_dir);
     std::fs::create_dir_all(temp_dir.join("sub")).expect("create test dirs");
-
     std::fs::write(temp_dir.join("index.html"), "<html>index</html>").unwrap();
     std::fs::write(temp_dir.join("hello.txt"), "hello static").unwrap();
     std::fs::write(
@@ -1079,6 +1110,12 @@ fn serves_static_files_with_mime_etag_conditional_and_sanitization() {
     )
     .unwrap();
     std::fs::write(temp_dir.join(".secret"), "shh").unwrap();
+    temp_dir
+}
+
+#[test]
+fn serves_static_files_with_mime_etag_conditional_and_sanitization() {
+    let temp_dir = sample_static_tree();
 
     let listener = match std::net::TcpListener::bind("127.0.0.1:0") {
         Ok(listener) => listener,
@@ -1088,7 +1125,7 @@ fn serves_static_files_with_mime_etag_conditional_and_sanitization() {
 
     let mut state = ServerState::new();
     state
-        .add_static("/assets".into(), temp_dir.to_str().unwrap().into())
+        .add_static("/assets", temp_dir.to_str().unwrap())
         .expect("add static mount");
     state
         .add_route("GET".into(), "/assets/override".into())
@@ -1170,40 +1207,7 @@ fn serves_static_files_with_mime_etag_conditional_and_sanitization() {
     );
     assert!(res_dir.ends_with("<html>index</html>"), "{res_dir}");
 
-    // 5. Dotfile segment returns 404
-    let res_dot =
-        send_raw("GET /assets/.secret HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
-    assert!(res_dot.starts_with("HTTP/1.1 404 Not Found"), "{res_dot}");
-
-    // 6. Path traversal rejected with 400 Bad Request
-    let res_traversal = send_raw(
-        "GET /assets/../hello.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
-    );
-    assert!(
-        res_traversal.starts_with("HTTP/1.1 400 Bad Request"),
-        "{res_traversal}"
-    );
-
-    // 7. Non-GET/HEAD method returns 405 Method Not Allowed with Allow header
-    let res_post = send_raw(
-        "POST /assets/hello.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
-    );
-    assert!(
-        res_post.starts_with("HTTP/1.1 405 Method Not Allowed"),
-        "{res_post}"
-    );
-    assert!(res_post.contains("allow: GET, HEAD"), "{res_post}");
-
-    // 8. Conditional GET: If-None-Match with matching ETag returns 304 Not Modified
-    let req_inm = format!(
-        "GET /assets/hello.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nIf-None-Match: {etag_val}\r\n\r\n"
-    );
-    let res_inm = send_raw(&req_inm);
-    assert!(
-        res_inm.starts_with("HTTP/1.1 304 Not Modified"),
-        "{res_inm}"
-    );
-    assert!(res_inm.ends_with("\r\n\r\n"), "{res_inm}");
+    assert_static_refusals_and_conditional(&send_raw, etag_val);
 
     server.join().expect("server thread");
     let _ = std::fs::remove_dir_all(&temp_dir);

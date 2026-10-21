@@ -3,7 +3,7 @@ members = ["crates/bn_catalog", "crates/bn_core_copy", "crates/bn_core_dispatch"
 resolver = "3"
 
 [workspace.package]
-version = "0.6.4"
+version = "0.6.5"
 edition = "2024"
 rust-version = "1.98"
 license = "MPL-2.0"

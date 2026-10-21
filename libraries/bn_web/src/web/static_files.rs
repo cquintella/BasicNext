@@ -439,7 +439,7 @@ mod tests {
 
     #[test]
     fn http_date_round_trips() {
-        let now = 1729166977; // Sample timestamp
+        let now = 1_729_166_977; // Sample timestamp
         let formatted = format_http_date(now);
         let parsed = parse_http_date(&formatted).expect("parsed date");
         assert_eq!(now, parsed);

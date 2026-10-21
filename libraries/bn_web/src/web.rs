@@ -312,6 +312,7 @@ impl Response {
             ..Self::default()
         }
     }
+    #[must_use]
     pub fn header(&self, name: &str) -> Option<&str> {
         self.headers
             .iter()

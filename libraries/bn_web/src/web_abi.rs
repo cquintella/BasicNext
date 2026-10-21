@@ -49,6 +49,7 @@ pub(crate) struct StringHeader {
 }
 pub(crate) const HEADER_SIZE: usize = std::mem::size_of::<StringHeader>();
 
+#[allow(clippy::cast_ptr_alignment)] // the alignment check above the cast accepts only a StringHeader
 pub(crate) fn slice_from_raw<'a>(ptr: *const c_char) -> Option<&'a [u8]> {
     if ptr.is_null() || !(ptr as usize).is_multiple_of(std::mem::align_of::<StringHeader>()) {
         return None;
@@ -77,6 +78,7 @@ pub(crate) fn string_text(ptr: *const c_char) -> Option<String> {
     }
 }
 
+#[allow(clippy::cast_ptr_alignment)] // malloc is aligned for StringHeader
 pub(crate) fn c_string_from_bytes(bytes: &[u8]) -> *mut c_char {
     let len = bytes.len();
     let total_alloc = HEADER_SIZE + len + 1;
@@ -270,7 +272,7 @@ pub extern "C" fn bn_web_response_header(
                 *out_status = record_failure(
                     "Response.Header",
                     &WebFailure::InvalidArgument("invalid header name".into()),
-                )
+                );
             };
         }
         return std::ptr::null_mut();
@@ -284,31 +286,28 @@ pub extern "C" fn bn_web_response_header(
                 *out_status = record_failure(
                     "Response.Header",
                     &WebFailure::Closed("response closed".into()),
-                )
+                );
             };
         }
         return std::ptr::null_mut();
     };
-    match response.header(&name_str) {
-        Some(val) => {
-            if !out_status.is_null() {
-                // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
-                unsafe { *out_status = BN_WEB_OK };
-            }
-            c_string(val)
+    if let Some(val) = response.header(&name_str) {
+        if !out_status.is_null() {
+            // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
+            unsafe { *out_status = BN_WEB_OK };
         }
-        None => {
-            if !out_status.is_null() {
-                // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
-                unsafe {
-                    *out_status = record_failure(
-                        "Response.Header",
-                        &WebFailure::from_message("response header is not present"),
-                    )
-                };
-            }
-            std::ptr::null_mut()
+        c_string(val)
+    } else {
+        if !out_status.is_null() {
+            // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
+            unsafe {
+                *out_status = record_failure(
+                    "Response.Header",
+                    &WebFailure::from_message("response header is not present"),
+                );
+            };
         }
+        std::ptr::null_mut()
     }
 }
 
@@ -469,7 +468,7 @@ pub extern "C" fn bn_web_response_is_committed(handle: u64) -> bool {
     guard
         .responses
         .get(&handle)
-        .is_some_and(|r| r.is_committed())
+        .is_some_and(super::web::Response::is_committed)
 }
 
 #[unsafe(no_mangle)]
@@ -477,7 +476,7 @@ pub extern "C" fn bn_web_response_close(handle: u64) -> i32 {
     let wrapper = table();
     let mut guard = wrapper.0.lock().unwrap();
     if let Some(mut response) = guard.responses.remove(&handle) {
-        let _ = response.close();
+        let () = response.close();
     }
     BN_WEB_OK
 }
@@ -528,7 +527,7 @@ pub extern "C" fn bn_web_request_header(
                 *out_status = record_failure(
                     "Request.Header",
                     &WebFailure::InvalidArgument("invalid header name".into()),
-                )
+                );
             };
         }
         return std::ptr::null_mut();
@@ -542,7 +541,7 @@ pub extern "C" fn bn_web_request_header(
                 *out_status = record_failure(
                     "Request.Header",
                     &WebFailure::Closed("request closed".into()),
-                )
+                );
             };
         }
         return std::ptr::null_mut();
@@ -559,7 +558,7 @@ pub extern "C" fn bn_web_request_header(
             if !out_status.is_null() {
                 // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
                 unsafe {
-                    *out_status = record_failure("Request.Header", &WebFailure::from_message(err))
+                    *out_status = record_failure("Request.Header", &WebFailure::from_message(err));
                 };
             }
             std::ptr::null_mut()
@@ -580,7 +579,7 @@ pub extern "C" fn bn_web_request_param(
                 *out_status = record_failure(
                     "Request.Param",
                     &WebFailure::InvalidArgument("invalid param name".into()),
-                )
+                );
             };
         }
         return std::ptr::null_mut();
@@ -594,29 +593,25 @@ pub extern "C" fn bn_web_request_param(
                 *out_status = record_failure(
                     "Request.Param",
                     &WebFailure::Closed("request closed".into()),
-                )
+                );
             };
         }
         return std::ptr::null_mut();
     };
-    match request.param(&name_str) {
-        Some(val) => {
-            if !out_status.is_null() {
-                // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
-                unsafe { *out_status = BN_WEB_OK };
-            }
-            c_string(val)
+    if let Some(val) = request.param(&name_str) {
+        if !out_status.is_null() {
+            // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
+            unsafe { *out_status = BN_WEB_OK };
         }
-        None => {
-            if !out_status.is_null() {
-                // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
-                unsafe {
-                    *out_status =
-                        record_failure("Request.Param", &WebFailure::RouteParameterNotFound)
-                };
-            }
-            std::ptr::null_mut()
+        c_string(val)
+    } else {
+        if !out_status.is_null() {
+            // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
+            unsafe {
+                *out_status = record_failure("Request.Param", &WebFailure::RouteParameterNotFound);
+            };
         }
+        std::ptr::null_mut()
     }
 }
 
@@ -633,7 +628,7 @@ pub extern "C" fn bn_web_request_cookie(
                 *out_status = record_failure(
                     "Request.Cookie",
                     &WebFailure::InvalidArgument("invalid cookie name".into()),
-                )
+                );
             };
         }
         return std::ptr::null_mut();
@@ -647,29 +642,25 @@ pub extern "C" fn bn_web_request_cookie(
                 *out_status = record_failure(
                     "Request.Cookie",
                     &WebFailure::Closed("request closed".into()),
-                )
+                );
             };
         }
         return std::ptr::null_mut();
     };
-    match request.cookie(&name_str) {
-        Some(val) => {
-            if !out_status.is_null() {
-                // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
-                unsafe { *out_status = BN_WEB_OK };
-            }
-            c_string(val)
+    if let Some(val) = request.cookie(&name_str) {
+        if !out_status.is_null() {
+            // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
+            unsafe { *out_status = BN_WEB_OK };
         }
-        None => {
-            if !out_status.is_null() {
-                // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
-                unsafe {
-                    *out_status =
-                        record_failure("Request.Cookie", &WebFailure::RequestCookieNotFound)
-                };
-            }
-            std::ptr::null_mut()
+        c_string(val)
+    } else {
+        if !out_status.is_null() {
+            // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
+            unsafe {
+                *out_status = record_failure("Request.Cookie", &WebFailure::RequestCookieNotFound);
+            };
         }
+        std::ptr::null_mut()
     }
 }
 
@@ -686,12 +677,12 @@ pub extern "C" fn bn_web_request_body(
             // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
             unsafe {
                 *out_status =
-                    record_failure("Request.Body", &WebFailure::Closed("request closed".into()))
+                    record_failure("Request.Body", &WebFailure::Closed("request closed".into()));
             };
         }
         return std::ptr::null_mut();
     };
-    match request.body(max_bytes as i128) {
+    match request.body(i128::from(max_bytes)) {
         Ok(text) => {
             if !out_status.is_null() {
                 // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
@@ -703,7 +694,7 @@ pub extern "C" fn bn_web_request_body(
             if !out_status.is_null() {
                 // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
                 unsafe {
-                    *out_status = record_failure("Request.Body", &WebFailure::from_message(err))
+                    *out_status = record_failure("Request.Body", &WebFailure::from_message(err));
                 };
             }
             std::ptr::null_mut()
@@ -809,7 +800,7 @@ pub extern "C" fn bn_web_server_use_sessions(handle: u64, capacity: i64, idle_ms
         );
     };
     let mut state = entry.state.lock().unwrap();
-    match state.use_sessions(capacity as i128, idle_ms as i128) {
+    match state.use_sessions(i128::from(capacity), i128::from(idle_ms)) {
         Ok(()) => BN_WEB_OK,
         Err(err) => record_failure("Server.UseSessions", &WebFailure::from_message(err)),
     }
@@ -955,7 +946,7 @@ pub extern "C" fn bn_web_server_stop(handle: u64, timeout_ms: i64) -> i32 {
         };
         entry.state.clone()
     };
-    match crate::web::drain_server(&state_arc, timeout_ms as i128, false) {
+    match crate::web::drain_server(&state_arc, i128::from(timeout_ms), false) {
         Ok(()) => BN_WEB_OK,
         Err(err) => record_failure("Server.Stop", &WebFailure::from_message(err)),
     }
@@ -971,7 +962,7 @@ pub extern "C" fn bn_web_server_close(handle: u64, timeout_ms: i64) -> i32 {
         };
         entry.state.clone()
     };
-    match crate::web::drain_server(&state_arc, timeout_ms as i128, true) {
+    match crate::web::drain_server(&state_arc, i128::from(timeout_ms), true) {
         Ok(()) => BN_WEB_OK,
         Err(err) => record_failure("Server.Close", &WebFailure::from_message(err)),
     }
@@ -1109,7 +1100,7 @@ pub extern "C" fn bn_web_cookie_jar_get(
                 *out_status = record_failure(
                     "CookieJar.Get",
                     &WebFailure::InvalidArgument("invalid argument".into()),
-                )
+                );
             };
         }
         return std::ptr::null_mut();
@@ -1123,28 +1114,25 @@ pub extern "C" fn bn_web_cookie_jar_get(
                 *out_status = record_failure(
                     "CookieJar.Get",
                     &WebFailure::Closed("cookie jar closed".into()),
-                )
+                );
             };
         }
         return std::ptr::null_mut();
     };
-    match jar.get(&name_str, &domain_str, &path_str) {
-        Some(val) => {
-            if !out_status.is_null() {
-                // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
-                unsafe { *out_status = BN_WEB_OK };
-            }
-            c_string(&val)
+    if let Some(val) = jar.get(&name_str, &domain_str, &path_str) {
+        if !out_status.is_null() {
+            // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
+            unsafe { *out_status = BN_WEB_OK };
         }
-        None => {
-            if !out_status.is_null() {
-                // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
-                unsafe {
-                    *out_status = record_failure("CookieJar.Get", &WebFailure::CookieNotFound)
-                };
-            }
-            std::ptr::null_mut()
+        c_string(&val)
+    } else {
+        if !out_status.is_null() {
+            // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
+            unsafe {
+                *out_status = record_failure("CookieJar.Get", &WebFailure::CookieNotFound);
+            };
         }
+        std::ptr::null_mut()
     }
 }
 
@@ -1152,7 +1140,10 @@ pub extern "C" fn bn_web_cookie_jar_get(
 pub extern "C" fn bn_web_cookie_jar_count(handle: u64) -> i64 {
     let wrapper = table();
     let guard = wrapper.0.lock().unwrap();
-    guard.cookie_jars.get(&handle).map_or(0, |j| j.len() as i64)
+    guard
+        .cookie_jars
+        .get(&handle)
+        .map_or(0, |jar| i64::try_from(jar.len()).unwrap_or(i64::MAX))
 }
 
 // ---- SessionStore C ABI --------------------------------------------------
@@ -1165,7 +1156,7 @@ pub extern "C" fn bn_web_session_store_new(
 ) -> i32 {
     let idle_duration =
         std::time::Duration::from_millis(u64::try_from(idle_ms.max(1)).unwrap_or(1));
-    match crate::web_state::SessionStore::new(capacity as i128, idle_duration) {
+    match crate::web_state::SessionStore::new(i128::from(capacity), idle_duration) {
         Ok(store) => {
             let handle = alloc_handle();
             let wrapper = table();
@@ -1194,7 +1185,7 @@ pub extern "C" fn bn_web_session_store_create(
                 *out_status = record_failure(
                     "SessionStore.Create",
                     &WebFailure::InvalidArgument("invalid val".into()),
-                )
+                );
             };
         }
         return std::ptr::null_mut();
@@ -1208,7 +1199,7 @@ pub extern "C" fn bn_web_session_store_create(
                 *out_status = record_failure(
                     "SessionStore.Create",
                     &WebFailure::Closed("session store closed".into()),
-                )
+                );
             };
         }
         return std::ptr::null_mut();
@@ -1226,7 +1217,7 @@ pub extern "C" fn bn_web_session_store_create(
                 // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
                 unsafe {
                     *out_status =
-                        record_failure("SessionStore.Create", &WebFailure::from_message(&err))
+                        record_failure("SessionStore.Create", &WebFailure::from_message(&err));
                 };
             }
             std::ptr::null_mut()
@@ -1247,7 +1238,7 @@ pub extern "C" fn bn_web_session_store_get(
                 *out_status = record_failure(
                     "SessionStore.Get",
                     &WebFailure::InvalidArgument("invalid id".into()),
-                )
+                );
             };
         }
         return std::ptr::null_mut();
@@ -1261,28 +1252,25 @@ pub extern "C" fn bn_web_session_store_get(
                 *out_status = record_failure(
                     "SessionStore.Get",
                     &WebFailure::Closed("session store closed".into()),
-                )
+                );
             };
         }
         return std::ptr::null_mut();
     };
-    match store.get(&id_str) {
-        Some(val) => {
-            if !out_status.is_null() {
-                // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
-                unsafe { *out_status = BN_WEB_OK };
-            }
-            c_string(&val)
+    if let Some(val) = store.get(&id_str) {
+        if !out_status.is_null() {
+            // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
+            unsafe { *out_status = BN_WEB_OK };
         }
-        None => {
-            if !out_status.is_null() {
-                // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
-                unsafe {
-                    *out_status = record_failure("SessionStore.Get", &WebFailure::SessionNotFound)
-                };
-            }
-            std::ptr::null_mut()
+        c_string(&val)
+    } else {
+        if !out_status.is_null() {
+            // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
+            unsafe {
+                *out_status = record_failure("SessionStore.Get", &WebFailure::SessionNotFound);
+            };
         }
+        std::ptr::null_mut()
     }
 }
 
@@ -1313,7 +1301,7 @@ pub extern "C" fn bn_web_scraper_text(
                 *out_status = record_failure(
                     "Scraper.Text",
                     &WebFailure::InvalidArgument("invalid selector".into()),
-                )
+                );
             };
         }
         return std::ptr::null_mut();
@@ -1325,7 +1313,7 @@ pub extern "C" fn bn_web_scraper_text(
             // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
             unsafe {
                 *out_status =
-                    record_failure("Scraper.Text", &WebFailure::Closed("scraper closed".into()))
+                    record_failure("Scraper.Text", &WebFailure::Closed("scraper closed".into()));
             };
         }
         return std::ptr::null_mut();
@@ -1342,7 +1330,7 @@ pub extern "C" fn bn_web_scraper_text(
             if !out_status.is_null() {
                 // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
                 unsafe {
-                    *out_status = record_failure("Scraper.Text", &WebFailure::from_message(&err))
+                    *out_status = record_failure("Scraper.Text", &WebFailure::from_message(&err));
                 };
             }
             std::ptr::null_mut()
@@ -1403,10 +1391,10 @@ pub extern "C" fn bn_web_acl_deny(handle: u64, net_str_ptr: *const c_char, prefi
 
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_web_acl_check(handle: u64, addr_ptr: *const c_char) -> i32 {
-    let Some(addr_str) = string_text(addr_ptr) else {
+    let Some(host_address) = string_text(addr_ptr) else {
         return 0;
     };
-    let Ok(addr) = addr_str.parse::<IpAddr>() else {
+    let Ok(parsed) = host_address.parse::<IpAddr>() else {
         return 0;
     };
     let wrapper = table();
@@ -1414,7 +1402,7 @@ pub extern "C" fn bn_web_acl_check(handle: u64, addr_ptr: *const c_char) -> i32 
     let Some(acl) = guard.acls.get(&handle) else {
         return 0;
     };
-    if acl.check(addr) { 1 } else { 0 }
+    i32::from(acl.check(parsed))
 }
 
 // ---- EgressPolicy C ABI --------------------------------------------------

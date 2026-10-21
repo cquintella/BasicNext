@@ -38,7 +38,7 @@ pub(crate) fn default_libraries() -> Providers {
     #[cfg(feature = "lib-dispatch")]
     libraries.register(
         bn_lib_dispatch::NAME,
-        std::sync::Arc::new(|| Box::new(bn_lib_dispatch::DispatchProvider::default())),
+        std::sync::Arc::new(|| Box::new(bn_lib_dispatch::DispatchProvider)),
     );
     #[cfg(feature = "lib-web")]
     libraries.register(

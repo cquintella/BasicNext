@@ -2307,7 +2307,7 @@ fn a_program_in_three_files_imports_through_both_backends() {
 
 /// S6 parity fixtures (bucket 0.6.5 E.S1.c): all six fixtures pass under `bni`
 /// and fail under `bnc` with `TARGET_UNSUPPORTED_OP: ... BNWeb calls`.
-/// BNWeb S6 parity: all 6 normative fixtures produce identical output across bni and bnc.
+/// `BNWeb` S6 parity: all 6 normative fixtures produce identical output across `bni` and `bnc`.
 #[test]
 fn bnweb_s6_parity_fixtures_pass_both_interpreter_and_native() {
     let fixtures = [
@@ -2339,6 +2339,7 @@ fn bnweb_s6_parity_fixtures_pass_both_interpreter_and_native() {
 /// `Client.New(logger)` writes one access record on both backends
 /// (bnweb.md, "Client and security policy").
 #[test]
+#[allow(clippy::too_many_lines)]
 fn http_client_logs_the_request_on_both_backends() {
     let listener = match std::net::TcpListener::bind("127.0.0.1:0") {
         Ok(listener) => listener,

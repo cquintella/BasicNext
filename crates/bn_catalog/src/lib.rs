@@ -40,12 +40,12 @@ pub fn parse(contents: &str) -> Vec<(&str, String)> {
 /// `tests/catalog_keys.rs` catches before a release.
 #[must_use]
 pub fn text(domain: &str, key: &str) -> &'static str {
-    ENTRIES
+    let index = ENTRIES
         .binary_search_by(|(entry_domain, entry_key, _)| {
             (*entry_domain, *entry_key).cmp(&(domain, key))
         })
-        .map(|index| ENTRIES[index].2)
-        .unwrap_or_else(|_| panic!("{domain}:{key}"))
+        .unwrap_or_else(|_| panic!("{domain}:{key}"));
+    ENTRIES[index].2
 }
 
 /// The whitespace-separated words of `key` in `domain`.

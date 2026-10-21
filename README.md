@@ -98,7 +98,7 @@ The script asks for a prefix (`$HOME/basicnext`, `/opt/basicnext`,
 catalog, and the man pages. It uses `sudo` only when the prefix is not
 writable, and builds from source with `cargo` when the release has no binary
 for your platform. Skip the menu with `--prefix DIR`; pin a release with
-`BN_VERSION=v0.6.4`. The install writes `$HOME/.basicnext/uninstall.sh`.
+`BN_VERSION=v0.6.5`. The install writes `$HOME/.basicnext/uninstall.sh`.
 
 **Windows (PowerShell)**
 
@@ -111,7 +111,7 @@ rights, or to `$env:BN_PREFIX`. It downloads the latest release's `bni.exe`,
 `bnc.exe`, and `bn_rt.lib` (checksum-verified against `SHA256SUMS`), the
 standard-library modules, and the diagnostics catalog, updates the user `PATH`,
 and writes `%USERPROFILE%\.basicnext\uninstall.ps1`. Pin a release with
-`$env:BN_VERSION = 'v0.6.4'`.
+`$env:BN_VERSION = 'v0.6.5'`.
 
 Or from a local repository checkout:
 
@@ -155,6 +155,14 @@ From a checkout, `cargo run -p bni -- run <file>` uses this tree's toolchain.
 | [`examples/parallel-examples.md`](examples/parallel-examples.md) | `BNDispatch`, including a parallel computation of pi |
 
 ## Release notes
+
+### 0.6.5
+
+- **Typed LLVM and one class model.** `bnc` lowers through a typed in-memory LLVM module. Classes, upcasts, and interface calls use one model on `bni` and `bnc`.
+- **Shared domain cores.** `BNSqlite` and `BNJson` run from `bn_core_sqlite` and `bn_core_json` on both backends. `BNWeb` links only when the program imports it, and an HTTP client with a logger writes one access record per request.
+- **`HOST.Env` and `bnc --cpu`.** Environment lookup is a host capability. `--cpu native` may use measured CPU kernels; the default artifact stays portable.
+- **WebAssembly withdrawn.** `bnc` compiles native executables only.
+- **Messages live in the catalog.** Diagnostics and runtime text are catalog entries. `Address.ToString` keeps its string, and `FOR EACH` over an owned vector no longer frees the vector at the loop edge.
 
 ### 0.6.4
 

@@ -429,7 +429,7 @@ pub(crate) fn is_dispatch_class(
     }
 }
 
-/// The six BNDispatch handle classes: `Queue`, `Ticket`, `Group`, `Barrier`, `Semaphore`, `Mutex`.
+/// The six `BNDispatch` handle classes: `Queue`, `Ticket`, `Group`, `Barrier`, `Semaphore`, `Mutex`.
 #[must_use]
 pub(crate) fn is_dispatch_sync_class(
     ty: &Type,

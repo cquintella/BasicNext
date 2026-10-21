@@ -3148,6 +3148,7 @@ END FUNCTION
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn bnweb_network_request_correlates_response_id_with_log_record() {
     let probe = match std::net::TcpListener::bind("127.0.0.1:0") {
         Ok(listener) => listener,
@@ -3475,6 +3476,7 @@ END FUNCTION
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn bnweb_server_static_requires_filesystem_and_serves_files() {
     let no_fs_source = r#"IMPORT BNWeb AS Web
 FUNCTION Start() AS VOID

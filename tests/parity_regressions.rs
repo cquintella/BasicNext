@@ -853,11 +853,11 @@ fn arc_trace_region_labels_match_on_both_backends() {
     let path = directory.join("k16.bn");
     fs::write(
         &path,
-        r#"FUNCTION Start() AS VOID
+        r"FUNCTION Start() AS VOID
     LET r AS POINTER TO FLOAT64[] = NEW FLOAT64[3]
     PRINT LEN(r)
 END FUNCTION
-"#,
+",
     )
     .expect("write k16 source");
 

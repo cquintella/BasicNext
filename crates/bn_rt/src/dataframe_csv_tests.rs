@@ -66,7 +66,12 @@ fn copy_integer_rejects_64bit_overflow_with_invalid_format() {
     let col_name = crate::string::c_string_from_bytes(b"big");
     let col_idx = super::add_integer_column_storage(frame, "big", 1).expect("add column");
     assert_eq!(
-        super::super::bn_rt_dataframe_set_integer_cell(frame, col_idx as i32, 0, 3_000_000_000_i64),
+        super::super::bn_rt_dataframe_set_integer_cell(
+            frame,
+            col_idx.cast_signed(),
+            0,
+            3_000_000_000_i64
+        ),
         BN_DATAFRAME_OK
     );
     let mut target = [0_i32; 1];

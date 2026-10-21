@@ -94,16 +94,16 @@ fn assert_both_fail(source: &str, code: &str) {
     fs::write(&path, source).expect("write source");
     let mut compiler = bnc();
     compiler.arg(&path).arg("-o").arg(directory.join("out"));
-    let compiled = execute(compiler);
-    let mut checker = bni();
-    checker.arg("check").arg(&path);
-    let checked = execute(checker);
-    let compiled_text = String::from_utf8_lossy(&compiled.stderr);
-    let checked_text = String::from_utf8_lossy(&checked.stderr);
-    assert!(!compiled.status.success(), "{compiled_text}");
-    assert!(!checked.status.success(), "{checked_text}");
+    let native = execute(compiler);
+    let mut check_command = bni();
+    check_command.arg("check").arg(&path);
+    let check_output = execute(check_command);
+    let compiled_text = String::from_utf8_lossy(&native.stderr);
+    let analyzed_text = String::from_utf8_lossy(&check_output.stderr);
+    assert!(!native.status.success(), "{compiled_text}");
+    assert!(!check_output.status.success(), "{analyzed_text}");
     assert!(compiled_text.contains(code), "{compiled_text}");
-    assert!(checked_text.contains(code), "{checked_text}");
+    assert!(analyzed_text.contains(code), "{analyzed_text}");
 }
 
 #[test]
@@ -176,33 +176,33 @@ fn a_runtime_vector_length_must_match() {
     // `bnc` rejects `Index` of a local `T[n]` (the same diagnostic as
     // `values[0]`). The pointer region is the run-time length both backends
     // execute; the interpreter still checks the local form.
-    let source = r#"FUNCTION Start() AS VOID
+    let source = r"FUNCTION Start() AS VOID
     LET n AS INTEGER = 2
     LET values AS INTEGER[n] = [4, 5]
     LET [first, second] = values
     PRINT first, second
 END FUNCTION
-"#;
+";
     let (code, output) = interpret(source).expect("interpret local length");
     assert_eq!(code, 0);
     assert_eq!(output, "4 5\n");
-    let mismatch = r#"FUNCTION Start() AS VOID
+    let mismatch = r"FUNCTION Start() AS VOID
     LET n AS INTEGER = 3
     LET values AS INTEGER[n] = [1, 2, 3]
     LET [first, second] = values
     PRINT first, second
 END FUNCTION
-"#;
+";
     let interpreted = interpret(mismatch).expect_err("bounds");
     assert_eq!(interpreted.code, "INDEX_OUT_OF_BOUNDS");
 
-    let pointer_mismatch = r#"FUNCTION Start() AS VOID
+    let pointer_mismatch = r"FUNCTION Start() AS VOID
     LET n AS INTEGER = 3
     LET region AS POINTER TO INTEGER[] = NEW INTEGER[n]
     LET [first, second] = region
     PRINT first, second
 END FUNCTION
-"#;
+";
     let directory = TestDir::new("destructure-bounds").expect("create directory");
     let path = directory.join("program.bn");
     fs::write(&path, pointer_mismatch).expect("write source");
@@ -220,7 +220,7 @@ END FUNCTION
 
 #[test]
 fn a_pointer_region_destructures_by_position() {
-    let source = r#"FUNCTION Start() AS VOID
+    let source = r"FUNCTION Start() AS VOID
     LET n AS INTEGER = 2
     LET region AS POINTER TO INTEGER[] = NEW INTEGER[n]
     region[0] = 7
@@ -228,7 +228,7 @@ fn a_pointer_region_destructures_by_position() {
     LET [first, second] = region
     PRINT first, second
 END FUNCTION
-"#;
+";
     assert_both(source, "7 8\n");
 }
 

@@ -512,7 +512,7 @@ fn private_module_constant_and_re_export() {
          PRINT Lib.Secret\n\
          END FUNCTION\n";
     fs::write(directory.join("hidden.bn"), hidden).expect("write hidden");
-    let graph = load(&directory.join("hidden.bn")).expect("load hidden");
+    let graph = load(directory.join("hidden.bn")).expect("load hidden");
     let diagnostic = bn_frontend::semantic::analyze_modules(&graph).expect_err("private constant");
     assert_eq!(diagnostic.diagnostic.code, "NAME_NOT_FOUND");
 
@@ -545,7 +545,7 @@ fn private_module_constant_and_re_export() {
         "IMPORT A AS A\nFUNCTION Start() AS VOID\nEND FUNCTION\n",
     )
     .expect("write cycle main");
-    let diagnostic = load(&cycle.join("main.bn")).expect_err("import cycle");
+    let diagnostic = load(cycle.join("main.bn")).expect_err("import cycle");
     assert_eq!(diagnostic.diagnostic.code, "IMPORT_CYCLE");
 
     reject(
