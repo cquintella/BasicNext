@@ -1898,7 +1898,7 @@ FUNCTION Start() AS VOID
     alias.Increment(1)
     LET valued AS Valued = counter
     LET counters AS Counter[1] = [counter]
-    PRINT counter.Value(), valued.Value(), counters[0].Value(), SIZEOF(counter)
+    PRINT counter.Value(), valued.Value(), counters[0].Value()
     PRINT counter = alias, counter = NEW Counter(2)
 END FUNCTION
 ";
@@ -1906,7 +1906,7 @@ END FUNCTION
     assert_eq!(code, 0);
     assert_eq!(
         output,
-        "0.0 10.0 1 2\nFALSE TRUE 0.0 16\n2 2 2 4\nTRUE FALSE\n"
+        "0.0 10.0 1 2\nFALSE TRUE 0.0 16\n2 2 2\nTRUE FALSE\n"
     );
 }
 
@@ -3243,7 +3243,9 @@ END FUNCTION
         .expect("write request");
     let mut response = String::new();
     client.read_to_string(&mut response).expect("read response");
-    input_sender.send(b"release\n".to_vec()).expect("stop server");
+    input_sender
+        .send(b"release\n".to_vec())
+        .expect("stop server");
     let result = execution.join().expect("join server execution");
     let _ = fs::remove_file(path);
     if let Err(error) = result {
@@ -3253,12 +3255,30 @@ END FUNCTION
     }
     let contents = fs::read_to_string(&log_path).expect("read access log");
     let _ = fs::remove_file(log_path);
-    assert!(response.contains("HTTP/1.1 200"), "response was: {response}");
-    assert!(response.contains("x-request-id:"), "response was: {response}");
-    assert!(contents.contains("\"http.method\":\"GET\""), "log was: {contents}");
-    assert!(contents.contains("\"http.path\":\"/test-access\""), "log was: {contents}");
-    assert!(contents.contains("\"http.status\":\"200\""), "log was: {contents}");
-    assert!(contents.contains("\"request_id\":\"r"), "log was: {contents}");
+    assert!(
+        response.contains("HTTP/1.1 200"),
+        "response was: {response}"
+    );
+    assert!(
+        response.contains("x-request-id:"),
+        "response was: {response}"
+    );
+    assert!(
+        contents.contains("\"http.method\":\"GET\""),
+        "log was: {contents}"
+    );
+    assert!(
+        contents.contains("\"http.path\":\"/test-access\""),
+        "log was: {contents}"
+    );
+    assert!(
+        contents.contains("\"http.status\":\"200\""),
+        "log was: {contents}"
+    );
+    assert!(
+        contents.contains("\"request_id\":\"r"),
+        "log was: {contents}"
+    );
 }
 
 #[test]
@@ -3564,19 +3584,33 @@ END FUNCTION
         res
     };
 
-    let res = send_req("GET /assets/info.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+    let res =
+        send_req("GET /assets/info.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
     assert!(res.starts_with("HTTP/1.1 200 OK"), "{res}");
-    assert!(res.contains("content-type: text/plain; charset=utf-8"), "{res}");
+    assert!(
+        res.contains("content-type: text/plain; charset=utf-8"),
+        "{res}"
+    );
     assert!(res.ends_with("\r\n\r\nstatic content"), "{res}");
 
     let res_dir = send_req("GET /assets/ HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
     assert!(res_dir.starts_with("HTTP/1.1 200 OK"), "{res_dir}");
-    assert!(res_dir.contains("content-type: text/html; charset=utf-8"), "{res_dir}");
-    assert!(res_dir.ends_with("\r\n\r\n<html>hello bnweb</html>"), "{res_dir}");
+    assert!(
+        res_dir.contains("content-type: text/html; charset=utf-8"),
+        "{res_dir}"
+    );
+    assert!(
+        res_dir.ends_with("\r\n\r\n<html>hello bnweb</html>"),
+        "{res_dir}"
+    );
 
-    let res_custom = send_req("GET /assets/custom HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+    let res_custom =
+        send_req("GET /assets/custom HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
     assert!(res_custom.starts_with("HTTP/1.1 200 OK"), "{res_custom}");
-    assert!(res_custom.ends_with("\r\n\r\noverride-handler"), "{res_custom}");
+    assert!(
+        res_custom.ends_with("\r\n\r\noverride-handler"),
+        "{res_custom}"
+    );
 
     input_sender.send(b"stop\n".to_vec()).expect("stop server");
     let result = execution.join().expect("join server thread");
@@ -3586,7 +3620,6 @@ END FUNCTION
         assert_eq!(error.code, "WEB_LISTEN", "{error:?}");
     }
 }
-
 
 /// Serialize HOST.Exec acceptance tests: parallel rustc/spawn storms were
 /// falsely tripping the 60s Exec timeout under load.

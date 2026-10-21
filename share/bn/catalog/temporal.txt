@@ -1,0 +1,11 @@
+# temporal texts.
+
+
+# Messages moved out of Rust source (text-literal gate).
+msg.format_out_of_range = FORMAT_OUT_OF_RANGE
+msg.invalid_date = INVALID_DATE
+msg.invalid_time = INVALID_TIME
+msg.parse_error = PARSE_ERROR
+msg.invalid_date_2 = invalid DATE
+msg.invalid_time_2 = invalid TIME
+msg.invalid_timestamp = invalid TIMESTAMP

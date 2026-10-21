@@ -18,9 +18,9 @@ pub const OBJECT: u32 = 0x20;
 /// Code of a function-value member.
 pub const FUNCTION: u32 = 0x21;
 /// Base of vector member codes: `VECTOR + code of the element`.
-pub const VECTOR: u32 = 0x100;
+pub(crate) const VECTOR: u32 = 0x100;
 /// Base of pointer member codes: `POINTER + code of the element`.
-pub const POINTER: u32 = 0x200;
+pub(crate) const POINTER: u32 = 0x200;
 
 /// The code of `member`, or `None` for a type that is not a storable member
 /// (an unresolved literal, a module, a nested alternative, a vector of

@@ -1,6 +1,6 @@
-//! Artifact production: writes the emitted LLVM IR and drives clang /
-//! wasm-ld to produce the native executable or Wasm module, linking
-//! `libbn_rt.a` and the platform runtime libraries when HOST is used.
+//! Artifact production: writes the emitted LLVM IR and drives clang to
+//! produce the native executable, linking `libbn_rt.a` and the platform
+//! runtime libraries when HOST is used.
 
 use std::{
     fs, io,
@@ -19,11 +19,8 @@ use bn_cli::{
 };
 
 use crate::{
-    options::{BuildOptions, Target},
-    toolchain::{
-        configured_bn_rt_lib, configured_bn_web_lib, configured_clang, configured_wasm_clang,
-        configured_wasm_ld,
-    },
+    options::BuildOptions,
+    toolchain::{configured_bn_rt_lib, configured_bn_web_lib, configured_clang},
 };
 
 /// Flags for every native executable. On Windows the emitted IR carries no
@@ -162,11 +159,11 @@ impl Drop for BuildDir {
     }
 }
 
-/// The file the build writes: `-o`, or the entry's stem (`.exe` on Windows,
-/// `.wasm` for wasm32); for `--emit llvm`, the `-o` file if any. The one
-/// answer the artifact and its companion process log both use.
+/// The file the build writes: `-o`, or the entry's stem (`.exe` on Windows);
+/// for `--emit llvm`, the `-o` file if any. The one answer the artifact and
+/// its companion process log both use.
 #[must_use]
-pub fn product_path(options: &Options, build_options: BuildOptions) -> Option<std::path::PathBuf> {
+pub(crate) fn product_path(options: &Options) -> Option<std::path::PathBuf> {
     if let Some(path) = options.output.as_deref() {
         return Some(std::path::PathBuf::from(path));
     }
@@ -177,19 +174,15 @@ pub fn product_path(options: &Options, build_options: BuildOptions) -> Option<st
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("a");
-    Some(std::path::PathBuf::from(
-        if build_options.target == Target::Wasm32 {
-            format!("{stem}.wasm")
-        } else if cfg!(windows) {
-            format!("{stem}.exe")
-        } else {
-            stem.to_string()
-        },
-    ))
+    Some(std::path::PathBuf::from(if cfg!(windows) {
+        format!("{stem}.exe")
+    } else {
+        stem.to_string()
+    }))
 }
 
 #[allow(clippy::too_many_lines)] // External tool command construction stays auditable here.
-pub fn emit_build_output(
+pub(crate) fn emit_build_output(
     llvm: String,
     options: &Options,
     build_options: BuildOptions,
@@ -198,24 +191,11 @@ pub fn emit_build_output(
     if options.emit == Some(bn_cli::options::Emit::Llvm) {
         return emit_output(llvm, options.output.as_deref());
     }
-    let Some(product) = product_path(options, build_options) else {
+    let Some(product) = product_path(options) else {
         return tool_error();
     };
     let output = product.to_string_lossy();
     let output = output.as_ref();
-    if build_options.target == Target::Wasm32
-        && build_options.cpu == crate::options::CpuTarget::Native
-    {
-        eprintln!(
-            "{}",
-            tool_diagnostic(
-                DiagId::CONFIG_INVALID,
-                "--cpu native is not supported when targeting wasm32",
-                &options.diagnostic_catalog,
-            )
-        );
-        return tool_error();
-    }
     // Beside the source (Carlos, 2026-10-09); a read-only source tree falls
     // back to the system temporary directory, where the same exclusive,
     // private creation is equally safe.
@@ -234,11 +214,7 @@ pub fn emit_build_output(
         eprintln!("error: cannot write temporary LLVM IR: {error}");
         return tool_error();
     }
-    let clang = match if build_options.target == Target::Wasm32 {
-        configured_wasm_clang()
-    } else {
-        configured_clang()
-    } {
+    let clang = match configured_clang() {
         Ok(clang) => clang,
         Err(message) => {
             eprintln!(
@@ -248,8 +224,7 @@ pub fn emit_build_output(
             return tool_error();
         }
     };
-    let object = build_dir.join("module.o");
-    let mut failed_tool = "clang";
+    let failed_tool = "clang";
     // `-g` keeps the debug sections the module metadata describes; on macOS
     // it also makes clang run dsymutil, which writes `<output>.dSYM`.
     let debug_flag = build_options.debug.then_some("-g");
@@ -263,59 +238,7 @@ pub fn emit_build_output(
             }
         }
     };
-    let result = if build_options.target == Target::Wasm32 {
-        let clang_args = [
-            build_options.optimization.clang_flag(),
-            "--target=wasm32-unknown-unknown",
-            "-Wno-override-module",
-            "-c",
-            temporary.to_string_lossy().as_ref(),
-            "-o",
-            object.to_string_lossy().as_ref(),
-        ]
-        .into_iter()
-        .map(ToString::to_string)
-        .chain(debug_flag.map(ToString::to_string))
-        .collect::<Vec<_>>();
-        process_log.event(
-            LogLevel::Debug,
-            "external",
-            "invoke",
-            format!("tool=clang argv={clang_args:?}"),
-        );
-        let compiled = std::process::Command::new(clang).args(&clang_args).output();
-        match compiled {
-            Ok(compiled) if compiled.status.success() => {
-                failed_tool = "wasm-ld";
-                let object_path = object.to_string_lossy();
-                // The stack goes first, so an overflow leaves linear memory
-                // instead of corrupting the data, and the layout is the same on
-                // every host; the host's `bn_rt_stack_check` reads `__stack_low`.
-                let wasm_ld_args = [
-                    build_options.optimization.linker_flag(),
-                    "--no-entry",
-                    "--export=main",
-                    "--export=__heap_base",
-                    "--stack-first",
-                    "--export=__stack_low",
-                    "--allow-undefined",
-                    object_path.as_ref(),
-                    "-o",
-                    output,
-                ];
-                process_log.event(
-                    LogLevel::Debug,
-                    "external",
-                    "invoke",
-                    format!("tool=wasm-ld argv={wasm_ld_args:?}"),
-                );
-                std::process::Command::new(configured_wasm_ld())
-                    .args(wasm_ld_args)
-                    .output()
-            }
-            compiled => compiled,
-        }
-    } else {
+    let result = {
         let mut command = std::process::Command::new(clang);
         let mut command_args = vec![
             build_options.optimization.clang_flag().to_string(),

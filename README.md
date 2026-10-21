@@ -64,7 +64,7 @@ model:
 
 - `bni` interprets and hosts the tools: `run`, `eval`, `check`, `lex`, `lsp`
   (language server), and `dap` (debugger).
-- `bnc` compiles to a native executable or WebAssembly through LLVM:
+- `bnc` compiles to a native executable through LLVM:
   `bnc hello.bn` (or `bnc hello.bn -o hello`). `bnc -g` adds debug information
   (DWARF; a PDB on Windows).
 
@@ -168,12 +168,10 @@ From a checkout, `cargo run -p bni -- run <file>` uses this tree's toolchain.
 
 ## Known limitations
 
-- `bnc` does not yet compile `BNWeb`, the `Net.Address` predicates (`IsIPv4`,
-  `IsIPv6`, `IsLoopback`, `IsPrivate`, `IsLinkLocal`, `IsMulticast`), `Net.CIDR`,
+- `bnc` does not yet compile the `Net.Address` predicates (`IsIPv4`,
+  `IsIPv6`, `IsLoopback`, `IsPrivate`, `IsLinkLocal`, `IsMulticast`)
   and `TCPStream.SetTimeouts`/`Shutdown*`; run those programs with `bni`.
 - `TIMEZONE` holds an IANA identifier; zone conversion is not implemented.
-- A WebAssembly build from `bnc` runs under Node.js with
-  [`bin/bn-wasm`](bin/bn-wasm).
 
 ## Documentation
 

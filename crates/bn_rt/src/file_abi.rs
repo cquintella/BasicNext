@@ -12,13 +12,13 @@ use std::sync::{Arc, Mutex};
 
 use super::file::{FileError, OpenFile};
 
-pub type BNFileHandle = u64;
-pub const BN_FILE_OK: u32 = 0;
-pub const BN_FILE_INVALID: u32 = 1;
-pub const BN_FILE_ERROR: u32 = 2;
-pub const BN_FILE_POLICY_DENIED: u32 = 3;
+pub(crate) type BNFileHandle = u64;
+pub(crate) const BN_FILE_OK: u32 = 0;
+pub(crate) const BN_FILE_INVALID: u32 = 1;
+pub(crate) const BN_FILE_ERROR: u32 = 2;
+pub(crate) const BN_FILE_POLICY_DENIED: u32 = 3;
 /// `EOF` from `ReadLine` / `ReadBytes`: a success, not an `Error`.
-pub const BN_FILE_EOF: u32 = 4;
+pub(crate) const BN_FILE_EOF: u32 = 4;
 
 fn authorize() -> Result<(), u32> {
     if super::policy::allows(super::policy::POLICY_FILESYSTEM) {
@@ -101,7 +101,7 @@ fn with_file_unchecked<T>(
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let Some(slot) = guard.files.get_mut(&handle) else {
-        super::set_error("file handle is invalid");
+        super::set_error(bn_catalog::text("file", "msg.file_handle_is_invalid_2"));
         return Err(BN_FILE_INVALID);
     };
     f(&mut slot.file).map_err(|error| failed(&error))
@@ -116,13 +116,14 @@ pub(crate) fn write_handle(handle: BNFileHandle, value: &str) -> Result<(), u32>
 }
 
 /// Writes an owned NUL-terminated copy of `value` to `out` (freed with
-/// `bn_rt_file_string_free`).
+/// `crate::string::bn_rt_str_release`).
 fn write_owned(out: *mut *mut c_char, value: &str) -> u32 {
     let ptr = super::string::c_string_from_bytes(value.as_bytes());
     if ptr.is_null() {
         super::set_error("out of memory");
         return BN_FILE_ERROR;
     }
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe {
         out.write(ptr);
     }
@@ -172,6 +173,7 @@ pub extern "C" fn bn_rt_file_open(path: *const c_char, mode: i32, out: *mut BNFi
     }
     // The ABI caller supplies a writable handle slot; failure never exposes an
     // uninitialized handle to generated code.
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { out.write(0) };
     let path = match path_argument(path) {
         Ok(path) => path,
@@ -200,6 +202,7 @@ pub extern "C" fn bn_rt_file_open(path: *const c_char, mode: i32, out: *mut BNFi
     match super::policy::with_fs(|policy| super::file::open(policy, Path::new(&path), mode)) {
         Ok(file) => {
             entry.insert(FileSlot { file, strong: 1 });
+            // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
             unsafe { out.write(id) };
             BN_FILE_OK
         }
@@ -222,13 +225,16 @@ pub extern "C" fn bn_rt_file_retain(handle: BNFileHandle) -> u32 {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let Some(slot) = guard.files.get_mut(&handle) else {
-        super::set_error("file handle is invalid");
+        super::set_error(bn_catalog::text("file", "msg.file_handle_is_invalid_2"));
         return BN_FILE_INVALID;
     };
     slot.strong = match slot.strong.checked_add(1) {
         Some(count) => count,
         None => {
-            super::set_error("file handle count overflowed");
+            super::set_error(bn_catalog::text(
+                "file",
+                "msg.file_handle_count_overflowed_2",
+            ));
             return BN_FILE_ERROR;
         }
     };
@@ -244,7 +250,7 @@ pub extern "C" fn bn_rt_file_release(handle: BNFileHandle) -> u32 {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let Some(slot) = guard.files.get_mut(&handle) else {
-        super::set_error("file handle is invalid");
+        super::set_error(bn_catalog::text("file", "msg.file_handle_is_invalid_2"));
         return BN_FILE_INVALID;
     };
     if slot.strong > 1 {
@@ -260,6 +266,7 @@ pub extern "C" fn bn_rt_file_read_all(handle: BNFileHandle, out: *mut *mut c_cha
     if out.is_null() {
         return BN_FILE_INVALID;
     }
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { out.write(std::ptr::null_mut()) };
     match read_handle(handle) {
         Ok(value) => write_owned(out, &value),
@@ -273,6 +280,7 @@ pub extern "C" fn bn_rt_file_read_line(handle: BNFileHandle, out: *mut *mut c_ch
     if out.is_null() {
         return BN_FILE_INVALID;
     }
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { out.write(std::ptr::null_mut()) };
     match with_file(handle, OpenFile::read_line) {
         Ok(Some(line)) => write_owned(out, &line),
@@ -309,6 +317,7 @@ pub extern "C" fn bn_rt_file_read_bytes(
     let (Ok(len), false) = (usize::try_from(len), out.is_null() || buffer.is_null()) else {
         return BN_FILE_INVALID;
     };
+    // SAFETY: `out` was checked non-null and points at a writable `i64` slot.
     unsafe { out.write(0) };
     // SAFETY: the caller passes a live buffer of `len` bytes.
     let buffer = unsafe { std::slice::from_raw_parts_mut(buffer, len) };
@@ -344,6 +353,7 @@ pub extern "C" fn bn_rt_fs_exists(path: *const c_char, out: *mut i32) -> u32 {
     if out.is_null() {
         return BN_FILE_INVALID;
     }
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { out.write(0) };
     let path = match path_argument(path) {
         Ok(path) => path,
@@ -354,6 +364,7 @@ pub extern "C" fn bn_rt_fs_exists(path: *const c_char, out: *mut i32) -> u32 {
     }
     match super::policy::with_fs(|policy| super::file::exists(policy, Path::new(&path))) {
         Ok(found) => {
+            // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
             unsafe { out.write(i32::from(found)) };
             BN_FILE_OK
         }
@@ -372,13 +383,6 @@ pub extern "C" fn bn_rt_fs_delete_file(path: *const c_char) -> u32 {
     }
     super::policy::with_fs(|policy| super::file::delete_file(policy, Path::new(&path)))
         .map_or_else(|error| failed(&error), |()| BN_FILE_OK)
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_file_string_free(data: *mut c_char) {
-    if !data.is_null() {
-        super::string::bn_rt_str_release(data);
-    }
 }
 
 #[cfg(test)]
@@ -478,9 +482,10 @@ mod tests {
         assert_eq!(bn_rt_file_open(path_c, 0, &mut handle), BN_FILE_OK);
         let mut output = std::ptr::null_mut();
         assert_eq!(bn_rt_file_read_all(handle, &mut output), BN_FILE_OK);
+        // SAFETY: the pointer is non-null and NUL-terminated for this read.
         let actual = unsafe { CStr::from_ptr(output) }.to_bytes();
         assert_eq!(actual, b"hello\n");
-        bn_rt_file_string_free(output);
+        crate::string::bn_rt_str_release(output);
         assert_eq!(bn_rt_file_close(handle), BN_FILE_OK);
         let _ = std::fs::remove_file(path);
     }

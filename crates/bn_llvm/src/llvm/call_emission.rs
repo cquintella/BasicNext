@@ -264,7 +264,9 @@ pub(crate) fn lower_call_instruction(
             text,
             module,
             *destination,
-            bnweb_method(module, name).expect("validated BNWeb method"),
+            bnweb_method(module, name).unwrap_or_else(|| {
+                panic!("{}", bn_catalog::text("llvm", "msg.validated_bnweb_method"))
+            }),
             arguments,
             analysis,
         ),
@@ -329,7 +331,10 @@ pub(crate) fn lower_call_instruction(
                 traps::trap_symbol(
                     state,
                     bn_diag::DiagId::INVALID_DATE,
-                    vec![("message", Fact::Text("DATE must be YYYY-MM-DD".into()))],
+                    vec![(
+                        "message",
+                        Fact::Text(bn_catalog::text("llvm", "msg.date_must_be_yyyy_mm_dd").into()),
+                    )],
                 )
                 .0,
             );
@@ -343,7 +348,12 @@ pub(crate) fn lower_call_instruction(
                 traps::trap_symbol(
                     state,
                     bn_diag::DiagId::INVALID_TIME,
-                    vec![("message", Fact::Text("TIME must be HH:MM:SS.mmm".into()))],
+                    vec![(
+                        "message",
+                        Fact::Text(
+                            bn_catalog::text("llvm", "msg.time_must_be_hh_mm_ss_mmm").into(),
+                        ),
+                    )],
                 )
                 .0,
             );
@@ -357,7 +367,12 @@ pub(crate) fn lower_call_instruction(
                 traps::trap_symbol(
                     state,
                     bn_diag::DiagId::PARSE_ERROR,
-                    vec![("message", Fact::Text("invalid RFC 3339 TIMESTAMP".into()))],
+                    vec![(
+                        "message",
+                        Fact::Text(
+                            bn_catalog::text("llvm", "msg.invalid_rfc_3339_timestamp").into(),
+                        ),
+                    )],
                 )
                 .0,
             );
@@ -367,10 +382,12 @@ pub(crate) fn lower_call_instruction(
             );
         }
         "Timestamp.Format" => {
-            let arg_ty = analysis
-                .values
-                .get(&arguments[0])
-                .expect("validated timestamp argument");
+            let arg_ty = analysis.values.get(&arguments[0]).unwrap_or_else(|| {
+                panic!(
+                    "{}",
+                    bn_catalog::text("llvm", "msg.validated_timestamp_argument")
+                )
+            });
             let value = helpers::extend_to_i64(text, arguments[0], arg_ty);
             let trap = O::global(
                 traps::trap_symbol(
@@ -422,7 +439,7 @@ pub(crate) fn lower_call_instruction(
                 format!("ascerror{dest}"),
                 I::icmp(ICmpCond::Slt, T::I64, r("code"), O::int(0)),
             );
-            let message = O::global(".bn_asc_error");
+            let message = crate::layout::string_payload(".bn_asc_error");
             text.assign(
                 format!("ascmessage{dest}"),
                 I::select(r("error"), T::Ptr, message, O::null()),
@@ -448,7 +465,7 @@ pub(crate) fn lower_call_instruction(
                 format!("charerror{dest}"),
                 I::icmp(ICmpCond::Eq, T::Ptr, r("ptr"), O::null()),
             );
-            let message = O::global(".bn_char_error");
+            let message = crate::layout::string_payload(".bn_char_error");
             text.assign(
                 format!("charvalue{dest}"),
                 I::select(r("error"), T::Ptr, message, r("ptr")),

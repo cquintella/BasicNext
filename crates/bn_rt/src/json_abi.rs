@@ -16,18 +16,18 @@ use std::ffi::c_char;
 use bn_core_json::{
     JsonFailure, append_moved, append_value, array, clone_document, element, get_json, get_json_at,
     get_string, get_value, has, kind, length, move_into, move_into_at, number, object,
-    parse_document, release, set_at, set_value, stringify_document,
+    parse_document, release, retain, set_at, set_value, stringify_document,
 };
 
 use crate::{c_str, c_string};
 
-pub const BN_JSON_OK: i32 = 0;
+pub(crate) const BN_JSON_OK: i32 = 0;
 /// A null pointer from the caller; emitted code never passes one.
-pub const BN_JSON_INVALID_ARGUMENT: i32 = 1;
+pub(crate) const BN_JSON_INVALID_ARGUMENT: i32 = 1;
 /// The handle was released.
-pub const BN_JSON_INVALID_HANDLE: i32 = 2;
+pub(crate) const BN_JSON_INVALID_HANDLE: i32 = 2;
 /// Any other failure; its report is recorded for `bn_rt_error_take`.
-pub const BN_JSON_FAILED: i32 = 3;
+pub(crate) const BN_JSON_FAILED: i32 = 3;
 
 type Outcome<T> = Result<T, JsonFailure>;
 
@@ -159,11 +159,30 @@ pub extern "C" fn bn_rt_json_clone(handle: u64, out: *mut u64) -> i32 {
     )
 }
 
-/// Drops a document. [`BN_JSON_INVALID_HANDLE`] when it was already released,
-/// so a double `RELEASE` is reported rather than ignored.
+/// One more binding holds the document behind `handle` (a copy). Handle 0 is
+/// the error case of `Json OR Error`, which holds no document.
+#[allow(unsafe_code)] // C ABI: opaque handle in, status out.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_json_retain(handle: u64) -> i32 {
+    if handle == 0 {
+        return BN_JSON_OK;
+    }
+    if retain(handle) {
+        BN_JSON_OK
+    } else {
+        BN_JSON_INVALID_HANDLE
+    }
+}
+
+/// Drops a document reference. [`BN_JSON_INVALID_HANDLE`] when it was already released,
+/// so a double `RELEASE` is reported rather than ignored. Handle 0 is the error case
+/// of `Json OR Error`, which holds no document.
 #[allow(unsafe_code)] // C ABI: opaque handle in, status out.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_json_release(handle: u64) -> i32 {
+    if handle == 0 {
+        return BN_JSON_OK;
+    }
     if release(handle) {
         BN_JSON_OK
     } else {

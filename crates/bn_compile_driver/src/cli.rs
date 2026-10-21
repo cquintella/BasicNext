@@ -23,26 +23,14 @@ const USAGE: &str = "usage: bnc [compile-options] <entry.bn>\ntry: bnc --help";
 
 /// The whole help, printed by `--help` and after an option error.
 fn help_text(version: &str) -> String {
-    format!(
-        "\
-{version}
-usage: bnc [compile-options] <entry.bn>
-
-Compiles the program to a native executable or a Wasm module.
-
-compile options:
-  -o, --output <file>        write the artifact to <file> (defaults to entry name)
-  --target native|wasm32     select the target (default native)
-  --opt none|1|2|3|s         optimization level (default 2)
-  -g, --debug                emit debug information (DWARF; PDB on Windows)
-  --cpu native|generic       target host CPU instructions (default generic)
-  --emit llvm                print LLVM IR instead of compiling
-  --emit ir                  print the validated BN IR instead of compiling
-                             (tokens, ast and typed-ast are also accepted)
-{COMMON_OPTIONS}
-See also: man bnc
-More information: {BOOK_URL}
-"
+    bn_catalog::fill(
+        "cli",
+        "help.bnc",
+        &[
+            ("version", &version),
+            ("common_options", &COMMON_OPTIONS),
+            ("book_url", &BOOK_URL),
+        ],
     )
 }
 

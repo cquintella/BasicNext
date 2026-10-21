@@ -13,7 +13,7 @@ use super::error::{Failure, NetError, checked_timeout};
 use super::{Endpoint, TcpListener, TcpStream};
 
 /// The most bytes one `Read` or `Write` moves (1 MiB).
-pub const TRANSFER_MAX: usize = 1_048_576;
+pub(crate) const TRANSFER_MAX: usize = 1_048_576;
 
 /// `Net.LIMIT` for a new socket past the process quota (`bn_limits`).
 #[must_use]

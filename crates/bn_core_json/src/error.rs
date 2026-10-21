@@ -134,7 +134,7 @@ impl JsonFailure {
 
 /// The kind name `Kind` reports for `value`.
 #[must_use]
-pub const fn kind_of(value: &serde_json::Value) -> &'static str {
+pub(crate) const fn kind_of(value: &serde_json::Value) -> &'static str {
     match value {
         serde_json::Value::Object(_) => "object",
         serde_json::Value::Array(_) => "array",

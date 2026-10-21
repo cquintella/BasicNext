@@ -34,20 +34,20 @@ impl BasicBlock {
     }
 
     /// Pushes an instruction producing a value into the destination SSA register.
-    pub fn push_assign(&mut self, dest: impl Into<String>, inst: LlvmInst) {
+    pub(crate) fn push_assign(&mut self, dest: impl Into<String>, inst: LlvmInst) {
         self.instructions.push(InstructionEntry::assign(dest, inst));
     }
 
     /// Returns true if this basic block ends with a terminator instruction.
     #[must_use]
-    pub fn is_terminated(&self) -> bool {
+    pub(crate) fn is_terminated(&self) -> bool {
         self.instructions
             .last()
             .is_some_and(|e| e.inst.is_terminator())
     }
 
     /// Terminates the block with the specified instruction if not already terminated.
-    pub fn terminate(&mut self, inst: LlvmInst) {
+    pub(crate) fn terminate(&mut self, inst: LlvmInst) {
         if !self.is_terminated() {
             self.push(inst);
         }

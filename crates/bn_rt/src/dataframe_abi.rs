@@ -17,11 +17,11 @@ use super::file_abi::{read_handle, write_handle};
 
 use super::data_error::DataFailure;
 
-pub type BNDataFrameHandle = u64;
-pub type BNDataFrameStatus = u32;
+pub(crate) type BNDataFrameHandle = u64;
+pub(crate) type BNDataFrameStatus = u32;
 
-pub const BN_DATAFRAME_OK: BNDataFrameStatus = 0;
-pub const BN_DATAFRAME_INVALID_ARGUMENT: BNDataFrameStatus =
+pub(crate) const BN_DATAFRAME_OK: BNDataFrameStatus = 0;
+pub(crate) const BN_DATAFRAME_INVALID_ARGUMENT: BNDataFrameStatus =
     bn_types::error_codes::data::INVALID_ARGUMENT as u32;
 pub const BN_DATAFRAME_NOT_FOUND: BNDataFrameStatus = bn_types::error_codes::data::NOT_FOUND as u32;
 pub const BN_DATAFRAME_TYPE_MISMATCH: BNDataFrameStatus =
@@ -33,7 +33,7 @@ pub const BN_DATAFRAME_INVALID_FORMAT: BNDataFrameStatus =
     bn_types::error_codes::data::INVALID_FORMAT as u32;
 
 pub const BN_DATAFRAME_INVALID_HANDLE: BNDataFrameStatus = BN_DATAFRAME_INVALID_ARGUMENT;
-pub const BN_DATAFRAME_CONTRACT_ERROR: BNDataFrameStatus = BN_DATAFRAME_INVALID_ARGUMENT;
+pub(crate) const BN_DATAFRAME_CONTRACT_ERROR: BNDataFrameStatus = BN_DATAFRAME_INVALID_ARGUMENT;
 pub const BN_DATAFRAME_DUPLICATE_COLUMN: BNDataFrameStatus = BN_DATAFRAME_INVALID_ARGUMENT;
 pub const BN_DATAFRAME_COLUMN_LENGTH_MISMATCH: BNDataFrameStatus = BN_DATAFRAME_INVALID_ARGUMENT;
 pub const BN_DATAFRAME_POLICY_DENIED: BNDataFrameStatus = BN_DATAFRAME_IO_FAILED;
@@ -49,7 +49,7 @@ fn failed(operation: &str, failure: &DataFailure) -> BNDataFrameStatus {
 }
 
 /// Maximum allowed byte length for column names passed across the C ABI.
-pub const MAX_COLUMN_NAME_LENGTH: usize = 256;
+pub(crate) const MAX_COLUMN_NAME_LENGTH: usize = 256;
 
 /// Borrowed input view. Names and values are copied during `create`.
 #[repr(C)]
@@ -109,6 +109,7 @@ fn render_value(value: &StoredValue) -> String {
 struct Registry {
     next: AtomicU64,
     frames: Mutex<HashMap<BNDataFrameHandle, Frame>>,
+    holders: Mutex<HashMap<BNDataFrameHandle, usize>>,
 }
 
 impl Default for Registry {
@@ -116,6 +117,7 @@ impl Default for Registry {
         Self {
             next: AtomicU64::new(1),
             frames: Mutex::new(HashMap::new()),
+            holders: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -125,7 +127,13 @@ fn registry() -> std::sync::Arc<Registry> {
 }
 
 fn next_handle() -> BNDataFrameHandle {
-    registry().next.fetch_add(1, Ordering::Relaxed)
+    let handle = registry().next.fetch_add(1, Ordering::Relaxed);
+    registry()
+        .holders
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(handle, 1);
+    handle
 }
 
 fn input_string(pointer: *const c_char) -> Option<String> {
@@ -168,6 +176,7 @@ macro_rules! add_numeric_column {
             let values = if length == 0 {
                 Vec::new()
             } else {
+                // SAFETY: the pointer and the length describe a buffer the caller allocated and keeps alive for this call.
                 unsafe { std::slice::from_raw_parts(values, length as usize) }
                     .iter()
                     .copied()
@@ -202,6 +211,7 @@ pub extern "C" fn bn_rt_dataframe_add_boolean(
     let values = if length == 0 {
         Vec::new()
     } else {
+        // SAFETY: the pointer and the length describe a buffer the caller allocated and keeps alive for this call.
         unsafe { std::slice::from_raw_parts(values, length as usize) }
             .iter()
             .map(|value| StoredValue::Boolean(*value != 0))
@@ -226,6 +236,7 @@ pub extern "C" fn bn_rt_dataframe_add_string(
     let pointers = if length == 0 {
         &[][..]
     } else {
+        // SAFETY: the pointer and the length describe a buffer the caller allocated and keeps alive for this call.
         unsafe { std::slice::from_raw_parts(values, length as usize) }
     };
     let Some(values) = pointers
@@ -293,11 +304,13 @@ macro_rules! get_scalar {
                 );
             }
             match cell(frame, row, name) {
+                // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
                 Ok(StoredValue::$variant(value)) => unsafe {
                     out.write(value as $output);
                     out_na.write(0);
                     BN_DATAFRAME_OK
                 },
+                // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
                 Ok(StoredValue::NotAvailable | StoredValue::Null) => unsafe {
                     out_na.write(1);
                     BN_DATAFRAME_OK
@@ -346,6 +359,7 @@ pub extern "C" fn bn_rt_dataframe_get_string(
         return failed("BNData.DataFrame.GetString", &DataFailure::InvalidHandle);
     }
     match cell(frame, row, name) {
+        // SAFETY: `out` and `out_na` were checked non-null and point at writable caller slots.
         Ok(StoredValue::String(value) | StoredValue::Bytes(value)) => unsafe {
             let value = super::text_abi::owned_c_string(&value);
             if value.is_null() {
@@ -358,6 +372,7 @@ pub extern "C" fn bn_rt_dataframe_get_string(
             out_na.write(0);
             BN_DATAFRAME_OK
         },
+        // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
         Ok(StoredValue::NotAvailable | StoredValue::Null) => unsafe {
             out.write(std::ptr::null_mut());
             out_na.write(1);
@@ -418,11 +433,13 @@ pub extern "C" fn bn_rt_dataframe_reduce(
         })
     });
     match result {
+        // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
         Ok(super::stats::Reduction::Float(value)) => unsafe {
             out.write(value);
             out_na.write(0);
             BN_DATAFRAME_OK
         },
+        // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
         Ok(super::stats::Reduction::Na) => unsafe {
             out_na.write(1);
             BN_DATAFRAME_OK
@@ -529,24 +546,30 @@ pub(crate) fn column_name_storage(
 }
 
 #[allow(unsafe_code)]
+// SAFETY: the caller meets the precondition on this function; an AVX2 kernel runs only after the runtime feature check.
 unsafe fn copy_value(value: &BNValue) -> Option<StoredValue> {
     // Validate value.kind range before inspecting union payload to avoid UB on hostile/uninitialized FFI values.
     // We read the raw 4-byte discriminant at value's address.
+    // SAFETY: this match arm is the active field of the C union, and the kind was range-checked before the read.
     let raw_kind = unsafe { *std::ptr::from_ref::<BNValue>(value).cast::<u32>() };
     if raw_kind > (super::dispatch_abi::BNValueKind::EndOfFile as u32) {
         return None;
     }
     match value.kind {
         super::dispatch_abi::BNValueKind::Boolean => {
+            // SAFETY: this match arm is the active field of the C union, and the kind was range-checked before the read.
             Some(StoredValue::Boolean(unsafe { value.payload.boolean != 0 }))
         }
         super::dispatch_abi::BNValueKind::Integer => {
+            // SAFETY: this match arm is the active field of the C union, and the kind was range-checked before the read.
             Some(StoredValue::Integer(unsafe { value.payload.integer }))
         }
         super::dispatch_abi::BNValueKind::Float => {
+            // SAFETY: this match arm is the active field of the C union, and the kind was range-checked before the read.
             Some(StoredValue::Float(unsafe { value.payload.floating }))
         }
         super::dispatch_abi::BNValueKind::String | super::dispatch_abi::BNValueKind::Bytes => {
+            // SAFETY: this match arm is the active field of the C union, and the kind was range-checked before the read.
             let bytes = unsafe { value.payload.bytes };
             if bytes.length > 0 && bytes.data.is_null() {
                 return None;
@@ -554,6 +577,7 @@ unsafe fn copy_value(value: &BNValue) -> Option<StoredValue> {
             let copied = if bytes.length == 0 {
                 Vec::new()
             } else {
+                // SAFETY: the pointer and the length describe a buffer the caller allocated and keeps alive for this call.
                 unsafe {
                     std::slice::from_raw_parts(bytes.data, usize::try_from(bytes.length).ok()?)
                 }
@@ -569,16 +593,19 @@ unsafe fn copy_value(value: &BNValue) -> Option<StoredValue> {
         super::dispatch_abi::BNValueKind::NotAvailable => Some(StoredValue::NotAvailable),
         super::dispatch_abi::BNValueKind::EndOfFile => Some(StoredValue::EndOfFile),
         super::dispatch_abi::BNValueKind::Handle => {
+            // SAFETY: the caller meets the precondition on this function; an AVX2 kernel runs only after the runtime feature check.
             Some(StoredValue::Handle(unsafe { value.payload.handle }))
         }
     }
 }
 
 #[allow(unsafe_code)]
+// SAFETY: the caller meets the precondition on this function; an AVX2 kernel runs only after the runtime feature check.
 unsafe fn copy_column(view: &BNDataFrameColumnView) -> Option<DataFrameColumn<StoredValue>> {
     if view.name.is_null() || (view.length > 0 && view.values.is_null()) {
         return None;
     }
+    // SAFETY: the pointer and the length describe a buffer the caller allocated and keeps alive for this call.
     let name_slice = unsafe {
         let ptr = view.name.cast::<u8>();
         std::slice::from_raw_parts(ptr, MAX_COLUMN_NAME_LENGTH + 1)
@@ -587,6 +614,7 @@ unsafe fn copy_column(view: &BNDataFrameColumnView) -> Option<DataFrameColumn<St
     if nul_pos > MAX_COLUMN_NAME_LENGTH {
         return None;
     }
+    // SAFETY: the pointer and the length describe a buffer the caller allocated and keeps alive for this call.
     let name = unsafe { CStr::from_ptr(view.name) }
         .to_str()
         .ok()?
@@ -594,8 +622,10 @@ unsafe fn copy_column(view: &BNDataFrameColumnView) -> Option<DataFrameColumn<St
     let values = if view.length == 0 {
         Vec::new()
     } else {
+        // SAFETY: the pointer and the length describe a buffer the caller allocated and keeps alive for this call.
         unsafe { std::slice::from_raw_parts(view.values, usize::try_from(view.length).ok()?) }
             .iter()
+            // SAFETY: the callee checks the kind and the pointers before it reads them.
             .map(|value| unsafe { copy_value(value) })
             .collect::<Option<Vec<_>>>()?
     };
@@ -617,12 +647,14 @@ pub extern "C" fn bn_rt_dataframe_create(
         let views = if column_count == 0 {
             &[]
         } else {
+            // SAFETY: the pointer and the length describe a buffer the caller allocated and keeps alive for this call.
             unsafe {
                 std::slice::from_raw_parts(columns, usize::try_from(column_count).unwrap_or(0))
             }
         };
         let Some(columns) = views
             .iter()
+            // SAFETY: the callee checks the kind and the pointers before it reads them.
             .map(|view| unsafe { copy_column(view) })
             .collect::<Option<Vec<_>>>()
         else {
@@ -635,6 +667,7 @@ pub extern "C" fn bn_rt_dataframe_create(
         with_frames(|frames| {
             frames.insert(handle, DataFrameResource { columns });
         });
+        // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
         unsafe {
             *out_frame = handle;
         }
@@ -676,6 +709,7 @@ pub extern "C" fn bn_rt_dataframe_append_rows(
         with_frames(|frames| {
             frames.insert(handle, frame);
         });
+        // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
         unsafe {
             *out_frame = handle;
         }
@@ -712,6 +746,7 @@ pub extern "C" fn bn_rt_dataframe_append_columns(
         with_frames(|frames| {
             frames.insert(handle, frame);
         });
+        // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
         unsafe {
             *out_frame = handle;
         }
@@ -777,6 +812,7 @@ pub extern "C" fn bn_rt_dataframe_join(
     with_frames(|frames| {
         frames.insert(handle, result);
     });
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe {
         out_frame.write(handle);
     }
@@ -860,6 +896,7 @@ pub extern "C" fn bn_rt_dataframe_row_count(
                 &DataFailure::InvalidFormat("row count overflow".into()),
             );
         };
+        // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
         unsafe {
             *out_count = count;
         }
@@ -889,6 +926,7 @@ pub extern "C" fn bn_rt_dataframe_column_count(
                 &DataFailure::InvalidFormat("column count overflow".into()),
             );
         };
+        // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
         unsafe {
             *out_count = count;
         }
@@ -924,12 +962,14 @@ pub extern "C" fn bn_rt_dataframe_select(
         let row_values = if row_count == 0 {
             &[]
         } else {
+            // SAFETY: the pointer and the length describe a buffer the caller allocated and keeps alive for this call.
             unsafe { std::slice::from_raw_parts(rows, usize::try_from(row_count).unwrap_or(0)) }
         };
         let row_indices = row_values.iter().copied().map(signed).collect::<Vec<_>>();
         let column_values = if column_count == 0 {
             &[]
         } else {
+            // SAFETY: the pointer and the length describe a buffer the caller allocated and keeps alive for this call.
             unsafe {
                 std::slice::from_raw_parts(columns, usize::try_from(column_count).unwrap_or(0))
             }
@@ -953,6 +993,7 @@ pub extern "C" fn bn_rt_dataframe_select(
         with_frames(|frames| {
             frames.insert(handle, result);
         });
+        // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
         unsafe {
             *out_frame = handle;
         }
@@ -993,6 +1034,7 @@ pub extern "C" fn bn_rt_dataframe_slice(
     with_frames(|frames| {
         frames.insert(handle, result);
     });
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe {
         out_frame.write(handle);
     }
@@ -1026,6 +1068,7 @@ pub extern "C" fn bn_rt_dataframe_transpose(
     with_frames(|frames| {
         frames.insert(handle, result);
     });
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe {
         out_frame.write(handle);
     }
@@ -1071,6 +1114,7 @@ pub extern "C" fn bn_rt_dataframe_zscore(
         with_frames(|frames| {
             frames.insert(handle, result);
         });
+        // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
         unsafe {
             out_frame.write(handle);
         }
@@ -1108,6 +1152,7 @@ pub extern "C" fn bn_rt_dataframe_copy_integer(
     });
     match result {
         Ok(values) => {
+            // SAFETY: G7-D1: a non-null STRING is preceded by its header; the allocation is the header, the payload and a trailing NUL, and a null allocation is not read.
             unsafe {
                 std::ptr::copy_nonoverlapping(values.as_ptr(), target, values.len());
             }
@@ -1144,6 +1189,7 @@ pub extern "C" fn bn_rt_dataframe_copy_float(
     });
     match result {
         Ok(values) => {
+            // SAFETY: G7-D1: a non-null STRING is preceded by its header; the allocation is the header, the payload and a trailing NUL, and a null allocation is not read.
             unsafe {
                 std::ptr::copy_nonoverlapping(values.as_ptr(), target, values.len());
             }
@@ -1209,22 +1255,68 @@ pub extern "C" fn bn_rt_dataframe_read_csv(
     with_frames(|frames| {
         frames.insert(handle, frame);
     });
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe {
         out_frame.write(handle);
     }
     BN_DATAFRAME_OK
 }
 
-/// Closes a frame handle. Closing twice returns `INVALID_HANDLE`.
+/// One more binding holds the frame behind `frame` (a copy). Handle 0 is
+/// the error case of `DataFrame OR Error`, which holds no frame.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_dataframe_retain(frame: BNDataFrameHandle) -> BNDataFrameStatus {
+    if frame == 0 {
+        return BN_DATAFRAME_OK;
+    }
+    let held = {
+        let reg = registry();
+        let mut holders = reg
+            .holders
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(count) = holders.get_mut(&frame) {
+            *count += 1;
+            true
+        } else {
+            false
+        }
+    };
+    if held {
+        BN_DATAFRAME_OK
+    } else {
+        failed(
+            bn_catalog::text("data", "msg.bndata_dataframe_retain"),
+            &DataFailure::InvalidHandle,
+        )
+    }
+}
+
+/// Closes a frame handle. Decrements reference count, freeing the frame when
+/// reaching 0. Handle 0 is the error case of `DataFrame OR Error`.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_dataframe_close(frame: BNDataFrameHandle) -> BNDataFrameStatus {
+    if frame == 0 {
+        return BN_DATAFRAME_OK;
+    }
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        with_frames(|frames| {
-            frames.remove(&frame).map_or_else(
-                || failed("BNData.DataFrame.Close", &DataFailure::InvalidHandle),
-                |_| BN_DATAFRAME_OK,
-            )
-        })
+        let reg = registry();
+        let mut holders = reg
+            .holders
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(count) = holders.get_mut(&frame) else {
+            return failed("BNData.DataFrame.Close", &DataFailure::InvalidHandle);
+        };
+        *count -= 1;
+        if *count == 0 {
+            holders.remove(&frame);
+            drop(holders);
+            with_frames(|frames| {
+                frames.remove(&frame);
+            });
+        }
+        BN_DATAFRAME_OK
     }))
     .unwrap_or_else(|_| failed("BNData.DataFrame.Close", &DataFailure::InvalidHandle))
 }
@@ -1297,214 +1389,5 @@ pub extern "C" fn bn_rt_dataframe_write_csv(
 mod csv_tests;
 
 #[cfg(test)]
-mod tests {
-    use super::super::dispatch_abi::{BNValueBytes, BNValueKind, BNValuePayload};
-    use super::{
-        BN_DATAFRAME_CONTRACT_ERROR, BN_DATAFRAME_INVALID_ARGUMENT, BN_DATAFRAME_INVALID_HANDLE,
-        BN_DATAFRAME_OK, BNDataFrameColumnView, BNDataFrameHandle, BNValue, MAX_COLUMN_NAME_LENGTH,
-        bn_rt_dataframe_append_columns, bn_rt_dataframe_append_rows, bn_rt_dataframe_close,
-        bn_rt_dataframe_column_count, bn_rt_dataframe_create, bn_rt_dataframe_row_count,
-        bn_rt_dataframe_select,
-    };
-
-    #[test]
-    fn structural_abi_copies_views_and_invalidates_closed_handles() {
-        let name = c"id";
-        let values = [
-            BNValue {
-                kind: BNValueKind::Integer,
-                flags: 0,
-                payload: BNValuePayload { integer: 1 },
-            },
-            BNValue {
-                kind: BNValueKind::Integer,
-                flags: 0,
-                payload: BNValuePayload { integer: 2 },
-            },
-        ];
-        let view = BNDataFrameColumnView {
-            name: name.as_ptr(),
-            values: values.as_ptr(),
-            length: u32::try_from(values.len()).expect("test values fit ABI length"),
-        };
-        let mut first: BNDataFrameHandle = 0;
-        assert_eq!(
-            bn_rt_dataframe_create(&raw const view, 1, &raw mut first),
-            BN_DATAFRAME_OK
-        );
-        let mut second = 0;
-        assert_eq!(
-            bn_rt_dataframe_append_rows(first, first, &raw mut second),
-            BN_DATAFRAME_OK
-        );
-        let mut selected = 0;
-        let rows = [1_u32];
-        let columns = [0_u32];
-        assert_eq!(
-            bn_rt_dataframe_select(
-                second,
-                rows.as_ptr(),
-                1,
-                columns.as_ptr(),
-                1,
-                &raw mut selected,
-            ),
-            BN_DATAFRAME_OK
-        );
-        let mut appended = 0;
-        assert_eq!(
-            bn_rt_dataframe_append_columns(first, selected, &raw mut appended),
-            BN_DATAFRAME_CONTRACT_ERROR
-        );
-        assert_eq!(bn_rt_dataframe_close(first), BN_DATAFRAME_OK);
-        assert_eq!(bn_rt_dataframe_close(first), BN_DATAFRAME_INVALID_HANDLE);
-        assert_eq!(bn_rt_dataframe_close(second), BN_DATAFRAME_OK);
-        assert_eq!(bn_rt_dataframe_close(selected), BN_DATAFRAME_OK);
-    }
-
-    #[test]
-    fn empty_views_may_use_null_data_pointers() {
-        let empty_name = c"empty";
-        let empty_column = BNDataFrameColumnView {
-            name: empty_name.as_ptr(),
-            values: std::ptr::null(),
-            length: 0,
-        };
-        let empty_bytes = BNValue {
-            kind: BNValueKind::Bytes,
-            flags: 0,
-            payload: BNValuePayload {
-                bytes: BNValueBytes {
-                    data: std::ptr::null(),
-                    length: 0,
-                },
-            },
-        };
-        let bytes_name = c"bytes";
-        let bytes_column = BNDataFrameColumnView {
-            name: bytes_name.as_ptr(),
-            values: &raw const empty_bytes,
-            length: 1,
-        };
-        let columns = [empty_column, bytes_column];
-        let mut frame = 0;
-        assert_eq!(
-            bn_rt_dataframe_create(
-                columns.as_ptr(),
-                u32::try_from(columns.len()).expect("test columns fit ABI length"),
-                &raw mut frame,
-            ),
-            BN_DATAFRAME_OK
-        );
-        assert_eq!(bn_rt_dataframe_close(frame), BN_DATAFRAME_OK);
-    }
-
-    #[test]
-    fn empty_frame_counts_are_exported_and_closed_handles_are_rejected() {
-        let mut frame = 0;
-        assert_eq!(
-            bn_rt_dataframe_create(std::ptr::null(), 0, &raw mut frame),
-            BN_DATAFRAME_OK
-        );
-        let mut rows = u32::MAX;
-        let mut columns = u32::MAX;
-        assert_eq!(
-            bn_rt_dataframe_row_count(frame, &raw mut rows),
-            BN_DATAFRAME_OK
-        );
-        assert_eq!(
-            bn_rt_dataframe_column_count(frame, &raw mut columns),
-            BN_DATAFRAME_OK
-        );
-        assert_eq!(rows, 0);
-        assert_eq!(columns, 0);
-        assert_eq!(bn_rt_dataframe_close(frame), BN_DATAFRAME_OK);
-        assert_eq!(
-            bn_rt_dataframe_row_count(frame, &raw mut rows),
-            BN_DATAFRAME_INVALID_HANDLE
-        );
-        assert_eq!(
-            bn_rt_dataframe_column_count(frame, &raw mut columns),
-            BN_DATAFRAME_INVALID_HANDLE
-        );
-    }
-
-    #[test]
-    fn hostile_column_names_are_rejected_with_invalid_argument() {
-        // 1. Null column name
-        let null_name_view = BNDataFrameColumnView {
-            name: std::ptr::null(),
-            values: std::ptr::null(),
-            length: 0,
-        };
-        let mut frame = 0;
-        assert_eq!(
-            bn_rt_dataframe_create(&raw const null_name_view, 1, &raw mut frame),
-            BN_DATAFRAME_INVALID_ARGUMENT
-        );
-
-        // 2. Overlong column name (> 256 bytes)
-        let overlong_bytes = vec![b'a'; MAX_COLUMN_NAME_LENGTH + 10];
-        let overlong_c = std::ffi::CString::new(overlong_bytes).unwrap();
-        let overlong_view = BNDataFrameColumnView {
-            name: overlong_c.as_ptr(),
-            values: std::ptr::null(),
-            length: 0,
-        };
-        assert_eq!(
-            bn_rt_dataframe_create(&raw const overlong_view, 1, &raw mut frame),
-            BN_DATAFRAME_INVALID_ARGUMENT
-        );
-
-        // 3. Exactly MAX_COLUMN_NAME_LENGTH (256 bytes) is allowed
-        let exact_bytes = vec![b'b'; MAX_COLUMN_NAME_LENGTH];
-        let exact_c = std::ffi::CString::new(exact_bytes).unwrap();
-        let exact_view = BNDataFrameColumnView {
-            name: exact_c.as_ptr(),
-            values: std::ptr::null(),
-            length: 0,
-        };
-        assert_eq!(
-            bn_rt_dataframe_create(&raw const exact_view, 1, &raw mut frame),
-            BN_DATAFRAME_OK
-        );
-        assert_eq!(bn_rt_dataframe_close(frame), BN_DATAFRAME_OK);
-    }
-
-    #[test]
-    fn invalid_value_kind_is_rejected_safely() {
-        let name = c"bad_kind_col";
-        // Construct properly aligned buffer matching BNValue layout with out-of-range kind (99)
-        let mut uninit = std::mem::MaybeUninit::<BNValue>::uninit();
-        let uninit_ptr = uninit.as_mut_ptr();
-        unsafe {
-            uninit_ptr
-                .cast::<u8>()
-                .write_bytes(0, std::mem::size_of::<BNValue>());
-            uninit_ptr.cast::<u32>().write(99);
-        }
-        let bad_value_ptr = uninit.as_ptr();
-
-        let view = BNDataFrameColumnView {
-            name: name.as_ptr(),
-            values: bad_value_ptr,
-            length: 1,
-        };
-        let mut frame = 0;
-        assert_eq!(
-            bn_rt_dataframe_create(&raw const view, 1, &raw mut frame),
-            BN_DATAFRAME_INVALID_ARGUMENT
-        );
-    }
-
-    #[test]
-    fn catch_unwind_prevents_process_abort_on_panic() {
-        // An unmapped / invalid handle returns BN_DATAFRAME_INVALID_HANDLE without unwinding
-        assert_eq!(bn_rt_dataframe_close(999_999), BN_DATAFRAME_INVALID_HANDLE);
-        let mut count = 0;
-        assert_eq!(
-            bn_rt_dataframe_row_count(999_999, &raw mut count),
-            BN_DATAFRAME_INVALID_HANDLE
-        );
-    }
-}
+#[path = "dataframe_abi_tests.rs"]
+mod tests;

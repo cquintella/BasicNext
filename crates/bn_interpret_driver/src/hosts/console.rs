@@ -23,10 +23,10 @@ use bn_interp::{
 };
 use bn_types::IntegerType;
 
-pub const NAME: &str = "Console";
+pub(crate) const NAME: &str = "Console";
 
 #[derive(Debug, Default)]
-pub struct ConsoleProvider;
+pub(crate) struct ConsoleProvider;
 
 impl Provider for ConsoleProvider {
     fn call(

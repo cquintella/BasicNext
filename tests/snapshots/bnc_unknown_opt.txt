@@ -2,11 +2,11 @@ error: unknown or repeated option '--unknown-opt'
 bnc {VERSION}
 usage: bnc [compile-options] <entry.bn>
 
-Compiles the program to a native executable or a Wasm module.
+Compiles the program to a native executable.
 
 compile options:
   -o, --output <file>        write the artifact to <file> (defaults to entry name)
-  --target native|wasm32     select the target (default native)
+  --target native            select the target (default native)
   --opt none|1|2|3|s         optimization level (default 2)
   -g, --debug                emit debug information (DWARF; PDB on Windows)
   --cpu native|generic       target host CPU instructions (default generic)

@@ -2,7 +2,7 @@
 use super::*;
 
 impl Executor<'_, '_> {
-    pub fn dispatch_name(&self, name: &str, arguments: &[Value]) -> String {
+    pub(crate) fn dispatch_name(&self, name: &str, arguments: &[Value]) -> String {
         if matches!(
             self.module.kind_of(name),
             Some(
@@ -61,7 +61,7 @@ impl Executor<'_, '_> {
         })
     }
 
-    pub fn allocate_region(
+    pub(crate) fn allocate_region(
         &mut self,
         element: &Type,
         arguments: &[ValueId],
@@ -122,7 +122,7 @@ impl Executor<'_, '_> {
         })
     }
 
-    pub fn index_value(
+    pub(crate) fn index_value(
         &self,
         object: &Value,
         index: i128,
@@ -166,7 +166,7 @@ impl Executor<'_, '_> {
         }
     }
 
-    pub fn set_index(
+    pub(crate) fn set_index(
         &mut self,
         target: &mut Value,
         indices: &[i128],
@@ -226,7 +226,7 @@ fn checked_index(
         .ok_or_else(|| super::index_out_of_bounds(index, length, context, span))
 }
 
-pub fn indexed_value<'a>(
+pub(crate) fn indexed_value<'a>(
     value: &'a Value,
     indices: &[i128],
     span: Span,

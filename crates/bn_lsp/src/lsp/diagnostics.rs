@@ -11,7 +11,10 @@ use lsp_types::{
 };
 
 use bn_diag::{Catalog, Diagnostic, Severity};
-use bn_frontend::{lowering::lower_graph_validated, module_graph::load_with_overlays};
+use bn_frontend::{
+    lowering::lower_graph_validated,
+    module_graph::{load_with_overlays, spell_diagnostic_text},
+};
 use bn_source::{SourceFile, SourceId};
 
 use crate::file_uri::file_uri_to_path;
@@ -63,7 +66,9 @@ pub fn diagnostics_for_documents<S: std::hash::BuildHasher>(
             })
         })
         .collect::<HashMap<_, _>>();
-    let add = |diagnostic: &Diagnostic, result: &mut HashMap<String, Vec<LspDiagnostic>>| {
+    let add = |diagnostic: &Diagnostic,
+               result: &mut HashMap<String, Vec<LspDiagnostic>>,
+               graph: Option<&bn_frontend::module_graph::ModuleGraph>| {
         let source = diagnostic_source(diagnostic);
         let uri = source_uris.get(&source).cloned().or_else(|| {
             if source == target_source {
@@ -82,32 +87,37 @@ pub fn diagnostics_for_documents<S: std::hash::BuildHasher>(
             && let Ok(parsed) = uri.parse::<Uri>()
         {
             let doc = documents.get(&uri);
-            result
-                .entry(uri)
-                .or_default()
-                .push(to_lsp_with_source(diagnostic, &parsed, doc));
+            let mut published = to_lsp_with_source(diagnostic, &parsed, doc);
+            if let Some(graph) = graph {
+                published.message = spell_diagnostic_text(
+                    &published.message,
+                    diagnostic.span.start.source_id,
+                    graph,
+                );
+            }
+            result.entry(uri).or_default().push(published);
         }
     };
     let graph = match load_with_overlays(entry, session, &overlays) {
         Ok(graph) => graph,
         Err(error) => {
-            add(&error.diagnostic, &mut result);
+            add(&error.diagnostic, &mut result, None);
             return result;
         }
     };
     let analysis = match bn_frontend::semantic::analyze_modules_with_warnings(&graph) {
         Ok(analysis) => analysis,
         Err(error) => {
-            add(&error.diagnostic, &mut result);
+            add(&error.diagnostic, &mut result, Some(&graph));
             return result;
         }
     };
     if let Err(error) = lower_graph_validated(&graph, &analysis.models) {
-        add(&error, &mut result);
+        add(&error, &mut result, Some(&graph));
         return result;
     }
     for warning in &analysis.warnings {
-        add(&warning.diagnostic, &mut result);
+        add(&warning.diagnostic, &mut result, Some(&graph));
     }
     result
 }

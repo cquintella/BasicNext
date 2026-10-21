@@ -142,7 +142,12 @@ pub(crate) fn emit_exit_range_check(
     }
     let tag = text.fresh_tag();
     let wide = format!("exitwide{tag}");
-    let from = llvm_type(ty).expect("validated exit code type");
+    let from = llvm_type(ty).unwrap_or_else(|| {
+        panic!(
+            "{}",
+            bn_catalog::text("llvm", "msg.validated_exit_code_type")
+        )
+    });
     let opcode = if is_unsigned(ty) {
         CastOp::ZExt
     } else {
@@ -371,12 +376,10 @@ fn render_set(payload: &str, render: &dyn Fn(&Diagnostic) -> String) -> Option<S
 }
 
 /// Defines every `@.bn_trap_<hex>` the module references with the text
-/// `render` gives its diagnostic, and declares `bn_rt_trap_report`. The
-/// Wasm target links no `bn_rt`, so there the report is a no-op.
+/// `render` gives its diagnostic, and declares `bn_rt_trap_report`.
 pub(crate) fn define_trap_globals(
     text: &mut crate::ir::LlvmModule,
     render: &dyn Fn(&Diagnostic) -> String,
-    wasm32: bool,
 ) {
     let globals = text.referenced_globals();
     let referenced = |prefix: &str| {
@@ -404,7 +407,7 @@ pub(crate) fn define_trap_globals(
     // The ARC glue reports a broken core invariant with the null set.
     let failure = &crate::runtime_abi::TRAP_REPORT_FAILURE;
     if !sets.is_empty() || globals.contains(failure.name) {
-        report_function(text, failure, wasm32);
+        report_function(text, failure);
     }
     if symbols.is_empty() {
         return;
@@ -418,33 +421,15 @@ pub(crate) fn define_trap_globals(
             );
         text.global(message(format!("{PREFIX}{hex}"), &rendered));
     }
-    report_function(text, &crate::runtime_abi::TRAP_REPORT, wasm32);
+    report_function(text, &crate::runtime_abi::TRAP_REPORT);
 }
 
-/// The `bn_rt` report function `report`: declared natively; on wasm32, which
-/// links no `bn_rt`, a definition that does nothing.
+/// Declares the `bn_rt` report function `report`. The native link provides it.
 fn report_function<const N: usize>(
     text: &mut crate::ir::LlvmModule,
     report: &crate::ir::RuntimeFn<N>,
-    wasm32: bool,
 ) {
-    use crate::ir::Declaration;
-    if !wasm32 {
-        crate::ir::write_declarations(text, &[report]);
-        return;
-    }
-    let signature = report.signature();
-    let names = ["set", "text", "a", "b", "c", "d"];
-    let params = if N == 1 { &names[..1] } else { &names[1..] };
-    let params = signature
-        .params
-        .iter()
-        .cloned()
-        .zip(params.iter().map(ToString::to_string));
-    let mut stub =
-        crate::ir::LlvmFunction::new_definition(signature.name, signature.ret, params.collect());
-    stub.add_block("").push(I::Ret { val: None });
-    text.function(stub);
+    crate::ir::write_declarations(text, &[report]);
 }
 
 /// `br i1 condition, label %site, label %ok`.

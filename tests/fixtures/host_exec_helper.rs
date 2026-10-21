@@ -3,6 +3,7 @@
 use std::io::{self, Read, Write};
 
 #[cfg(unix)]
+// SAFETY: the foreign signature matches the C or system function this module calls.
 unsafe extern "C" {
     fn raise(sig: i32) -> i32;
 }
@@ -70,6 +71,7 @@ fn main() {
         Some("signal") => {
             #[cfg(unix)]
             {
+                // SAFETY: `raise` sends SIGTERM to this process; the declaration matches libc.
                 unsafe {
                     raise(SIGTERM);
                 }

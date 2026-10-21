@@ -123,7 +123,7 @@ impl NetError {
 /// # Errors
 ///
 /// `Net.INVALID_ARGUMENT` outside that range.
-pub fn checked_timeout(
+pub(crate) fn checked_timeout(
     operation: &'static str,
     action: &str,
     timeout_ms: i128,

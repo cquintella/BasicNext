@@ -15,20 +15,21 @@
 /// Scalar fallback for minimum of 32-bit signed integers.
 #[inline]
 #[must_use]
-pub fn vmin_i32_scalar(values: &[i32]) -> Option<i32> {
+pub(crate) fn vmin_i32_scalar(values: &[i32]) -> Option<i32> {
     values.iter().copied().min()
 }
 
 /// Scalar fallback for maximum of 32-bit signed integers.
 #[inline]
 #[must_use]
-pub fn vmax_i32_scalar(values: &[i32]) -> Option<i32> {
+pub(crate) fn vmax_i32_scalar(values: &[i32]) -> Option<i32> {
     values.iter().copied().max()
 }
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[allow(unsafe_code)]
+// SAFETY: the caller meets the precondition on this function; an AVX2 kernel runs only after the runtime feature check.
 unsafe fn vmin_i32_avx2(values: &[i32]) -> i32 {
     use std::arch::x86_64::{
         _mm256_loadu_si256, _mm256_min_epi32, _mm256_set1_epi32, _mm256_storeu_si256,
@@ -62,6 +63,7 @@ unsafe fn vmin_i32_avx2(values: &[i32]) -> i32 {
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[allow(unsafe_code)]
+// SAFETY: the caller meets the precondition on this function; an AVX2 kernel runs only after the runtime feature check.
 unsafe fn vmax_i32_avx2(values: &[i32]) -> i32 {
     use std::arch::x86_64::{
         _mm256_loadu_si256, _mm256_max_epi32, _mm256_set1_epi32, _mm256_storeu_si256,
@@ -94,7 +96,7 @@ unsafe fn vmax_i32_avx2(values: &[i32]) -> i32 {
 /// Finds the minimum element in a 32-bit signed integer slice using
 /// hardware-accelerated SIMD instructions when available on the host CPU.
 #[must_use]
-pub fn vmin_i32(values: &[i32]) -> Option<i32> {
+pub(crate) fn vmin_i32(values: &[i32]) -> Option<i32> {
     if values.is_empty() {
         return None;
     }
@@ -114,7 +116,7 @@ pub fn vmin_i32(values: &[i32]) -> Option<i32> {
 /// Finds the maximum element in a 32-bit signed integer slice using
 /// hardware-accelerated SIMD instructions when available on the host CPU.
 #[must_use]
-pub fn vmax_i32(values: &[i32]) -> Option<i32> {
+pub(crate) fn vmax_i32(values: &[i32]) -> Option<i32> {
     if values.is_empty() {
         return None;
     }

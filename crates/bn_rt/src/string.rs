@@ -127,6 +127,7 @@ pub extern "C" fn bn_rt_str_release(ptr: *const c_char) -> i32 {
         if current == 1 {
             std::sync::atomic::fence(Ordering::Acquire);
             LIVE_STRINGS.fetch_sub(1, Ordering::Release);
+            // SAFETY: G7-D1: a non-null STRING is preceded by its header; the allocation is the header, the payload and a trailing NUL, and a null allocation is not read.
             let base = unsafe { ptr.cast::<u8>().sub(HEADER_SIZE) };
             // SAFETY: `base` is the block `c_string_from_bytes` allocated, and
             // this thread observed the count fall from 1 to 0.
@@ -145,7 +146,12 @@ pub(crate) fn c_string_from_bytes(bytes: &[u8]) -> *mut c_char {
     let total_alloc = HEADER_SIZE
         .checked_add(len)
         .and_then(|size| size.checked_add(1))
-        .expect("string size fits address space");
+        .unwrap_or_else(|| {
+            panic!(
+                "{}",
+                bn_catalog::text("string", "msg.string_size_fits_address_space",)
+            )
+        });
 
     // SAFETY: the size is header + payload + NUL, and malloc returns that many
     // bytes or null.
@@ -153,7 +159,12 @@ pub(crate) fn c_string_from_bytes(bytes: &[u8]) -> *mut c_char {
     if base.is_null() {
         return std::ptr::null_mut();
     }
-    let len = u64::try_from(len).expect("string length fits u64");
+    let len = u64::try_from(len).unwrap_or_else(|_| {
+        panic!(
+            "{}",
+            bn_catalog::text("string", "msg.string_length_fits_u64")
+        )
+    });
     unsafe {
         base.cast::<StringHeader>().write(StringHeader {
             ref_count: AtomicU64::new(INITIAL_REF_COUNT),

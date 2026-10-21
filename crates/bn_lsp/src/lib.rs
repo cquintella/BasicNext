@@ -27,9 +27,8 @@ use file_uri::{file_uri_to_path, path_to_file_uri};
 
 #[path = "lsp/position.rs"]
 mod position;
-pub use position::{
-    lsp_pos_to_scalar, scalar_to_utf16_col, span_to_lsp_range, utf16_to_scalar_col,
-};
+pub use position::lsp_pos_to_scalar;
+pub(crate) use position::utf16_to_scalar_col;
 
 #[path = "lsp/folding.rs"]
 mod folding;

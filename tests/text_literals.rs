@@ -25,7 +25,9 @@
 //!
 //! Declared exclusion: LLVM IR templates in `crates/bn_llvm` (a literal with
 //! an LLVM sigil `%`, `@` or `!`, or starting with an LLVM keyword) are
-//! machine text, not prose.
+//! machine text, not prose. The argument of `env!` or `option_env!` is a
+//! Cargo or Rust environment name that the compiler requires to be a
+//! literal; it is not a Basic Next message.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -176,7 +178,7 @@ fn scan(source: &str) -> Scan {
         } else if byte == b'\'' {
             index = skip_char_or_lifetime(bytes, index);
         } else if let Some((text, end, is_bytes)) = string_at(source, index) {
-            if !is_bytes {
+            if !is_bytes && !rust_environment_literal(source, index) {
                 literals.push(Literal {
                     text,
                     in_test: test_depth.is_some() || pending_test,
@@ -336,6 +338,13 @@ fn is_llvm_template(text: &str) -> bool {
                 .strip_prefix(keyword)
                 .is_some_and(|rest| rest.is_empty() || rest.starts_with([' ', ',', '(']))
         })
+}
+
+/// `env!("NAME")` and `option_env!("NAME")`: the compiler rejects a
+/// non-literal, and the name is a Cargo or Rust environment variable.
+fn rust_environment_literal(source: &str, quote: usize) -> bool {
+    let prefix = source[..quote].trim_end();
+    prefix.ends_with("env!(") || prefix.ends_with("option_env!(")
 }
 
 fn classify(path: &str, text: &str) -> Option<Kind> {
@@ -526,6 +535,8 @@ fn f() -> &'static str {
     let c = '"';
     let raw = r#"server is "already" started"#;
     let bytes = b"not counted text here";
+    let _ = env!("OUT_DIR");
+    let _ = option_env!("CARGO_MANIFEST_DIR");
     "HOST.Net.TCPStream.Read"
 }
 #[cfg(test)]

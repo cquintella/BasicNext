@@ -2311,7 +2311,10 @@ fn a_program_in_three_files_imports_through_both_backends() {
 #[test]
 fn bnweb_s6_parity_fixtures_pass_both_interpreter_and_native() {
     let fixtures = [
-        ("tests/grammar/valid/bnweb-values.bn", "201 BasicNext FALSE\n"),
+        (
+            "tests/grammar/valid/bnweb-values.bn",
+            "201 BasicNext FALSE\n",
+        ),
         ("tests/grammar/valid/bnweb-server.bn", "201\nstopped\n"),
         ("tests/grammar/valid/bnweb-tls.bn", "tls-error 1\n"),
         (
@@ -2331,4 +2334,162 @@ fn bnweb_s6_parity_fixtures_pass_both_interpreter_and_native() {
     for (path, expected_stdout) in fixtures {
         native_and_interpreter_print(path, expected_stdout);
     }
+}
+
+/// `Client.New(logger)` writes one access record on both backends
+/// (bnweb.md, "Client and security policy").
+#[test]
+fn http_client_logs_the_request_on_both_backends() {
+    let listener = match std::net::TcpListener::bind("127.0.0.1:0") {
+        Ok(listener) => listener,
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => return,
+        Err(error) => panic!("bind client log probe: {error}"),
+    };
+    let port = listener.local_addr().expect("probe address").port();
+    listener.set_nonblocking(true).expect("nonblocking probe");
+    let server = std::thread::spawn(move || {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        let mut served = 0;
+        while served < 2 && std::time::Instant::now() < deadline {
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+                    let mut buffer = [0_u8; 1024];
+                    let _ = std::io::Read::read(&mut stream, &mut buffer);
+                    let response = b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nSet-Cookie: secret=1\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok";
+                    let _ = std::io::Write::write_all(&mut stream, response);
+                    served += 1;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+                Err(error) => panic!("accept client log probe: {error}"),
+            }
+        }
+    });
+
+    let modules = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("modules/bn");
+    let module_path = modules.to_str().expect("module path");
+    for backend in ["bni", "bnc"] {
+        let log_path = std::env::temp_dir().join(format!(
+            "basicnext-client-log-{}-{}-{}.jsonl",
+            std::process::id(),
+            backend,
+            port
+        ));
+        let _ = fs::remove_file(&log_path);
+        let source_path = std::env::temp_dir().join(format!(
+            "basicnext-client-log-{}-{}.bn",
+            std::process::id(),
+            backend
+        ));
+        let log = log_path.display().to_string().replace('\\', "\\\\");
+        fs::write(
+            &source_path,
+            format!(
+                r#"IMPORT BNWeb AS Web
+IMPORT BNLog AS Log
+IMPORT HOST.FileSystem AS FS
+FUNCTION Start() AS VOID
+LET made AS Log.Logger OR Error = Log.Logger.New("client", "JSON", "{log}")
+IF made IS Error THEN
+PRINT "logger-error"
+STOP 1
+END IF
+LET logger AS Log.Logger = made
+LET level AS VOID OR Error = logger.SetLevel(Log.Level.HTTP)
+LET clientResult AS Web.Client OR Error = Web.Client.New(logger)
+IF clientResult IS Error THEN
+PRINT "client-error"
+STOP 2
+END IF
+LET client AS Web.Client = clientResult
+LET response AS Web.Response OR Error = client.Request("GET", "http://127.0.0.1:{port}/item?token=1", "")
+IF response IS Error THEN
+PRINT "err"
+ELSE
+PRINT "ok"
+END IF
+LET flushed AS VOID OR Error = logger.Flush(1000)
+END FUNCTION
+"#
+            ),
+        )
+        .expect("write client log fixture");
+        let source = source_path.to_str().expect("source path");
+        let (stdout, stderr, status) = if backend == "bni" {
+            let output = bni()
+                .args(["run", "--module-path", module_path, source])
+                .output()
+                .expect("run interpreter");
+            (output.stdout, output.stderr, output.status.code())
+        } else {
+            let binary = std::env::temp_dir()
+                .join(format!("basicnext-client-log-bin-{}", std::process::id()));
+            let _ = fs::remove_file(&binary);
+            let built = bnc()
+                .args([
+                    "--module-path",
+                    module_path,
+                    source,
+                    "-o",
+                    binary.to_str().expect("binary path"),
+                ])
+                .output()
+                .expect("compile client log fixture");
+            assert_eq!(
+                built.status.code(),
+                Some(0),
+                "build failed: {}",
+                String::from_utf8_lossy(&built.stderr)
+            );
+            let output = Command::new(&binary).output().expect("run compiled client");
+            let _ = fs::remove_file(&binary);
+            (output.stdout, output.stderr, output.status.code())
+        };
+        let stdout = String::from_utf8_lossy(&stdout).into_owned();
+        assert_eq!(
+            status,
+            Some(0),
+            "{backend} status stdout {stdout} stderr {}",
+            String::from_utf8_lossy(&stderr)
+        );
+        let log_text = fs::read_to_string(&log_path).unwrap_or_default();
+        assert!(
+            log_text.contains("\"http.method\":\"GET\""),
+            "{backend} stdout {stdout} log {log_text}"
+        );
+        assert!(
+            log_text.contains("\"http.path\":\"/item\""),
+            "{backend} log {log_text}"
+        );
+        assert!(
+            log_text.contains("\"http.duration_ms\":"),
+            "{backend} log {log_text}"
+        );
+        assert!(!log_text.contains("token"), "{backend} log {log_text}");
+        assert!(!log_text.contains("secret"), "{backend} log {log_text}");
+        assert!(
+            !log_text.to_ascii_lowercase().contains("set-cookie"),
+            "{backend} log {log_text}"
+        );
+        if stdout.contains("ok") {
+            assert!(
+                log_text.contains("\"http.status\":\"200\""),
+                "{backend} log {log_text}"
+            );
+            assert!(
+                log_text.contains("\"http.header.content-type\":\"text/plain\""),
+                "{backend} log {log_text}"
+            );
+        } else {
+            assert!(
+                log_text.contains("\"http.status\":\"0\""),
+                "{backend} stdout {stdout} log {log_text}"
+            );
+        }
+        let _ = fs::remove_file(&log_path);
+        let _ = fs::remove_file(&source_path);
+    }
+    let _ = server.join();
 }

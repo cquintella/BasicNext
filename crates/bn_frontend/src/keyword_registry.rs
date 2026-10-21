@@ -13,8 +13,8 @@
 pub const SPEC_KEYWORDS: &str = "language/0.6/keywords.md";
 pub const SPEC_EBNF: &str = "language/0.6/0.6.ebnf";
 
-pub const RESERVED_BEGIN: &str = "<!-- reserved-words:start -->";
-pub const RESERVED_END: &str = "<!-- reserved-words:end -->";
+pub(crate) const RESERVED_BEGIN: &str = "<!-- reserved-words:start -->";
+pub(crate) const RESERVED_END: &str = "<!-- reserved-words:end -->";
 pub const SPECIAL_BEGIN: &str = "<!-- special-float-literals:start -->";
 pub const SPECIAL_END: &str = "<!-- special-float-literals:end -->";
 

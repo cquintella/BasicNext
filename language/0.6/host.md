@@ -224,10 +224,10 @@ Capability-level helpers, without a file object:
 Outside 0.2: `ChangeDirectory`, directory create/list/delete, `Move`,
 `Copy`, `chmod` / `chown`, `Seek`, `Flush`, and a `Path` object.
 
-The Jupyter 0.2 kernel and a `wasm32` host that does not grant files fail
-before `Start` with `HOST_CAPABILITY_UNAVAILABLE` when a module imports
-`HOST.FileSystem`. The reference `bni run` command provides it for the local
-process, subject to ordinary OS permissions.
+The Jupyter 0.2 kernel does not grant files: a module that imports
+`HOST.FileSystem` fails before `Start` with `HOST_CAPABILITY_UNAVAILABLE`.
+The reference `bni run` command provides it for the local process, subject
+to ordinary OS permissions.
 
 ## Availability
 

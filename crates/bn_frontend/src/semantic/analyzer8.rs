@@ -123,7 +123,7 @@ impl Analyzer {
     pub(crate) fn sizeof_type(&self, ty: &Type, span: Span) -> Result<Type, Diagnostic> {
         if self.sizeof_rejected(ty) {
             return Err(type_mismatch(
-                "value with defined byte size",
+                bn_catalog::text("frontend", "msg.value_with_defined_byte_size"),
                 display(ty),
                 "SIZEOF",
                 span,
@@ -143,7 +143,7 @@ impl Analyzer {
                 Ok(Type::Integer(IntegerType::Int32))
             }
             None => Err(type_mismatch(
-                "value with defined byte size",
+                bn_catalog::text("frontend", "msg.value_with_defined_byte_size"),
                 display(ty),
                 "SIZEOF",
                 span,
@@ -211,9 +211,9 @@ impl Analyzer {
         }
         if let Some(span) = self.recursive_struct.take() {
             return Err(type_mismatch(
-                "struct that does not contain itself",
-                "struct that contains itself",
-                "struct field",
+                bn_catalog::text("frontend", "msg.struct_that_does_not_contain_itself"),
+                bn_catalog::text("frontend", "msg.struct_that_contains_itself"),
+                bn_catalog::text("frontend", "msg.struct_field"),
                 span,
             ));
         }

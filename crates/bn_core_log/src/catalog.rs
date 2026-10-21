@@ -39,6 +39,8 @@ pub(crate) const KEYS: &[&str] = &[
     "apache.bytes",
     "apache.referrer",
     "apache.user_agent",
+    "apache.duration_ms",
+    "apache.header_prefix",
     "apache.absent",
     "apache.zone",
     "apache.month",

@@ -45,7 +45,7 @@ impl ObjectId {
 
     /// The id a `u64` carries, as given by [`ObjectId::bits`].
     #[must_use]
-    pub const fn from_bits(bits: u64) -> Self {
+    pub(crate) const fn from_bits(bits: u64) -> Self {
         Self(bits)
     }
 
@@ -153,7 +153,7 @@ impl ArcCore {
     /// An empty core whose slots start at `generation` (never zero, so no
     /// id is zero).
     #[must_use]
-    pub const fn with_first_generation(generation: u32) -> Self {
+    pub(crate) const fn with_first_generation(generation: u32) -> Self {
         Self {
             slots: Vec::new(),
             free: Vec::new(),
@@ -212,7 +212,7 @@ impl ArcCore {
     /// core. An object in the middle of its destruction (count zero) is left
     /// to the destruction, which frees it.
     #[must_use]
-    pub fn live_addresses(&self) -> Vec<u64> {
+    pub(crate) fn live_addresses(&self) -> Vec<u64> {
         self.slots
             .iter()
             .filter(|slot| slot.strong > 0)
@@ -359,7 +359,7 @@ fn slot_number(index: usize) -> u32 {
 /// The `BN_ARC_TRACE` line for one event (`retain`, `release`, `destroy`),
 /// the same text on both backends.
 #[must_use]
-pub fn trace_line(event: &str, class: &str, id: ObjectId, strong: u64, at: Site) -> String {
+pub(crate) fn trace_line(event: &str, class: &str, id: ObjectId, strong: u64, at: Site) -> String {
     format!("arc {event} {class}{id} strong={strong} at {at}")
 }
 

@@ -13,7 +13,7 @@ use crate::ir::{CastOp, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType
 pub(crate) fn lower_ownership_emission(
     text: &mut crate::ir::LlvmModule,
     module: &Module,
-    _function: &Function,
+    function: &Function,
     block_id: BlockId,
     instruction: &Instruction,
     analysis: &LoweringAnalysis<'_>,
@@ -37,8 +37,7 @@ pub(crate) fn lower_ownership_emission(
                     &O::reg(format!("v{}", value.0)),
                     state,
                 );
-                if _function.kind == FunctionKind::ReleaseFields
-                    && matches!(ty, Type::Vector { .. })
+                if function.kind == FunctionKind::ReleaseFields && matches!(ty, Type::Vector { .. })
                 {
                     emit_delete(text, module, *value, ty);
                 }
@@ -204,9 +203,19 @@ pub(crate) fn lower_ownership_emission(
         } => {
             let offset = field_byte_offset(
                 module,
-                field.as_ref().expect("validated member field reference"),
+                field.as_ref().unwrap_or_else(|| {
+                    panic!(
+                        "{}",
+                        bn_catalog::text("llvm", "msg.validated_member_field_reference")
+                    )
+                }),
             )
-            .expect("validated member field slot");
+            .unwrap_or_else(|| {
+                panic!(
+                    "{}",
+                    bn_catalog::text("llvm", "msg.validated_member_field_slot")
+                )
+            });
             let value_ty = analysis
                 .values
                 .get(value)
@@ -311,9 +320,13 @@ pub(crate) fn lower_ownership_emission(
                 symbols[symbol],
                 offset,
                 index,
-                analysis.values.get(&index).expect("validated index type"),
+                analysis.values.get(&index).unwrap_or_else(|| {
+                    panic!("{}", bn_catalog::text("llvm", "msg.validated_index_type"))
+                }),
                 *value,
-                analysis.values.get(value).expect("validated value type"),
+                analysis.values.get(value).unwrap_or_else(|| {
+                    panic!("{}", bn_catalog::text("llvm", "msg.validated_value_type"))
+                }),
                 ty,
                 *previous,
                 state,
@@ -330,9 +343,19 @@ pub(crate) fn lower_ownership_emission(
         } => {
             let offset = field_byte_offset(
                 module,
-                field.as_ref().expect("validated member field reference"),
+                field.as_ref().unwrap_or_else(|| {
+                    panic!(
+                        "{}",
+                        bn_catalog::text("llvm", "msg.validated_member_field_reference")
+                    )
+                }),
             )
-            .expect("validated member field slot");
+            .unwrap_or_else(|| {
+                panic!(
+                    "{}",
+                    bn_catalog::text("llvm", "msg.validated_member_field_slot")
+                )
+            });
             let index = indices[0];
             indexed_store::emit_member_set_index(
                 text,
@@ -341,9 +364,13 @@ pub(crate) fn lower_ownership_emission(
                 *object,
                 offset,
                 index,
-                analysis.values.get(&index).expect("validated index type"),
+                analysis.values.get(&index).unwrap_or_else(|| {
+                    panic!("{}", bn_catalog::text("llvm", "msg.validated_index_type"))
+                }),
                 *value,
-                analysis.values.get(value).expect("validated value type"),
+                analysis.values.get(value).unwrap_or_else(|| {
+                    panic!("{}", bn_catalog::text("llvm", "msg.validated_value_type"))
+                }),
                 ty,
                 *previous,
                 state,
@@ -366,9 +393,13 @@ pub(crate) fn lower_ownership_emission(
                 class,
                 field,
                 index,
-                analysis.values.get(&index).expect("validated index type"),
+                analysis.values.get(&index).unwrap_or_else(|| {
+                    panic!("{}", bn_catalog::text("llvm", "msg.validated_index_type"))
+                }),
                 *value,
-                analysis.values.get(value).expect("validated value type"),
+                analysis.values.get(value).unwrap_or_else(|| {
+                    panic!("{}", bn_catalog::text("llvm", "msg.validated_value_type"))
+                }),
                 ty,
                 *previous,
                 state,

@@ -25,7 +25,7 @@ mod arc_abi;
 pub mod civil;
 mod clock;
 mod console;
-pub mod cpu;
+pub(crate) mod cpu;
 pub mod crypto;
 mod crypto_abi;
 pub mod crypto_error;
@@ -43,19 +43,21 @@ pub mod file;
 mod file_abi;
 mod file_error;
 #[cfg(feature = "json")]
-pub mod json_abi;
+pub(crate) mod json_abi;
 mod log_abi;
 mod math;
 mod math_abi;
 mod stack_abi;
+#[cfg(feature = "net")]
 pub use bn_core_net as net;
+#[cfg(feature = "net")]
 mod net_abi;
 mod policy;
 pub mod secure_fs;
 #[cfg(feature = "sqlite")]
-pub mod sqlite_abi;
+pub(crate) mod sqlite_abi;
 #[cfg(feature = "sqlite")]
-pub mod sqlite_error;
+pub(crate) mod sqlite_error;
 mod stats;
 pub mod string;
 mod terminal;
@@ -68,16 +70,16 @@ pub use bn_core_log::{Level as LogLevel, Record as LogRecord};
 pub use log_abi::*;
 pub use stack_abi::bn_rt_stack_check;
 pub use stats::{Reduction, reduce};
-pub use vector_abi::bn_rt_vector_nest;
+pub use vector_abi::{Row, bn_rt_vector_nest};
 
 pub use console::{ConsoleError, beep, cls, num_cols, num_rows, print_at};
 pub use dataframe::{
     ConvertedCell, DataFrameColumn, DataFrameJoin, DataFrameJoinConfig, DataFrameResource,
     DataProvider, StandardDataProvider, add_dataframe_column, append_columns, append_rows,
     column_name, conversion_failed, convert_cell, convert_dataframe_column, copy_dataframe_column,
-    copy_integer_element, dataframe_reduce_column, first_duplicate_column, frame_from_csv_rows,
-    get_dataframe_cell, join_dataframes, parse_csv, select_dataframe, set_column_label,
-    slice_dataframe, transpose_dataframe, zscore_column,
+    copy_integer_element, dataframe_reduce_column, frame_from_csv_rows, get_dataframe_cell,
+    join_dataframes, select_dataframe, set_column_label, slice_dataframe, transpose_dataframe,
+    zscore_column,
 };
 pub use dataframe_abi::*;
 pub use dispatch_abi::*;
@@ -89,17 +91,16 @@ pub use error_abi::{
 pub(crate) use error_abi::{set_error, set_error_report};
 pub use exec::*;
 pub use file_abi::*;
+#[cfg(feature = "net")]
 pub use net::{
     Address as NetAddress, AddressesHandle, NeighborError, PingError, PingReply, ReverseError,
     join_resolver_tasks, neighbor, ping, reverse_timeout,
 };
+#[cfg(feature = "net")]
 pub use net_abi::*;
 pub use policy::{
-    FsPolicy, POLICY_ALL, POLICY_CLOCK, POLICY_CONSOLE, POLICY_DISPATCH, POLICY_EXEC,
-    POLICY_FILESYSTEM, POLICY_INVALID, POLICY_NET, POLICY_OK, POLICY_RANDOM, POLICY_VERSION,
-    Policy, PolicyError, bn_rt_policy_check, bn_rt_policy_init,
+    FsPolicy, POLICY_FILESYSTEM, Policy, PolicyError, bn_rt_policy_check, bn_rt_policy_init,
 };
-pub use terminal::terminal_dimensions;
 pub use text_abi::*;
 pub use trap_abi::*;
 
@@ -143,7 +144,8 @@ fn libc_write_stdout(buf: &[u8]) -> io::Result<()> {
     let mut written = 0;
     while written < buf.len() {
         // Unix: STDOUT_FILENO + size_t count. Windows CRT: fd 1 + c_uint count.
-        #[cfg(unix)]
+        #[cfg(any(unix, target_os = "wasi"))]
+        // SAFETY: the slice is borrowed for this call; fflush of a null stream flushes the C library's open output streams.
         let next = unsafe {
             libc::write(
                 libc::STDOUT_FILENO,
@@ -152,13 +154,22 @@ fn libc_write_stdout(buf: &[u8]) -> io::Result<()> {
             )
         };
         #[cfg(windows)]
+        // SAFETY: the slice is borrowed for this call; fflush of a null stream flushes the C library's open output streams.
         let next = unsafe {
             let remaining = buf.len() - written;
             let chunk = u32::try_from(remaining).unwrap_or(u32::MAX);
             libc::write(1, buf[written..].as_ptr().cast(), chunk)
         };
-        #[cfg(not(any(unix, windows)))]
-        compile_error!("libc_write_stdout requires unix or windows");
+        #[cfg(not(any(unix, windows, target_os = "wasi")))]
+        compile_error!(concat!(
+            "libc_write_stdout",
+            " requires ",
+            "unix",
+            ", ",
+            "windows",
+            ", or ",
+            "wasi"
+        ));
         if next <= 0 {
             return Err(if next < 0 {
                 io::Error::last_os_error()
@@ -175,6 +186,7 @@ fn libc_write_stdout(buf: &[u8]) -> io::Result<()> {
 fn libc_fflush() -> io::Result<()> {
     // A null stream flushes all open output streams and avoids platform-specific
     // `stdout` symbols (`__stdoutp` on Darwin, unavailable on some libc targets).
+    // SAFETY: the slice is borrowed for this call; fflush of a null stream flushes the C library's open output streams.
     let rc = unsafe { libc::fflush(std::ptr::null_mut()) };
     if rc == 0 {
         Ok(())
@@ -198,6 +210,7 @@ pub extern "C" fn bn_rt_host_num_procs(out: *mut i32) -> i32 {
     let count = std::thread::available_parallelism()
         .map_or(1, |c| i32::try_from(c.get()).unwrap_or(i32::MAX));
     if !out.is_null() {
+        // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
         unsafe { *out = count };
     }
     0
@@ -422,13 +435,12 @@ pub(crate) fn network_test_lock() -> std::sync::MutexGuard<'static, ()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{POLICY_ALL, POLICY_CONSOLE, POLICY_NET, POLICY_OK, POLICY_VERSION};
+    use super::policy::{POLICY_ALL, POLICY_CONSOLE, POLICY_NET, POLICY_OK, POLICY_VERSION};
     use super::{bn_rt_net_addresses_count, bn_rt_net_addresses_free, bn_rt_net_resolve};
     use super::{
-        bn_rt_net_handle_close, bn_rt_net_string_free, bn_rt_net_udp_bind,
-        bn_rt_net_udp_local_endpoint, bn_rt_net_udp_packet_copy_to, bn_rt_net_udp_packet_size,
-        bn_rt_net_udp_packet_source, bn_rt_net_udp_packet_truncated, bn_rt_net_udp_receive_handle,
-        bn_rt_net_udp_send_to,
+        bn_rt_net_handle_close, bn_rt_net_udp_bind, bn_rt_net_udp_local_endpoint,
+        bn_rt_net_udp_packet_copy_to, bn_rt_net_udp_packet_size, bn_rt_net_udp_packet_source,
+        bn_rt_net_udp_packet_truncated, bn_rt_net_udp_receive_handle, bn_rt_net_udp_send_to,
     };
     use super::{
         bn_rt_net_tcp_accept, bn_rt_net_tcp_connect, bn_rt_net_tcp_listen_with_backlog,
@@ -611,8 +623,8 @@ mod tests {
         );
         assert!(source_port > 0);
         assert_eq!(bn_rt_net_handle_close(packet), 0);
-        bn_rt_net_string_free(receiver_address.cast());
-        bn_rt_net_string_free(source);
+        crate::string::bn_rt_str_release(receiver_address.cast());
+        crate::string::bn_rt_str_release(source);
         assert_eq!(bn_rt_net_handle_close(sender), 0);
         assert_eq!(bn_rt_net_handle_close(receiver), 0);
         crate::string::bn_rt_str_release(address);
@@ -684,7 +696,7 @@ mod tests {
         assert_eq!(bn_rt_net_tcp_accept(listener, 1_000, &raw mut accepted), 0);
         assert!(accepted >= 0);
         worker.join().expect("client thread");
-        bn_rt_net_string_free(rendered.cast());
+        crate::string::bn_rt_str_release(rendered.cast());
         assert_eq!(bn_rt_net_handle_close(accepted), 0);
         assert_eq!(bn_rt_net_handle_close(listener), 0);
         crate::string::bn_rt_str_release(address);
@@ -728,7 +740,7 @@ mod tests {
             0
         );
         assert_eq!(read, 0);
-        bn_rt_net_string_free(rendered.cast());
+        crate::string::bn_rt_str_release(rendered.cast());
         assert_eq!(bn_rt_net_handle_close(accepted), 0);
         assert_eq!(bn_rt_net_handle_close(listener), 0);
         crate::string::bn_rt_str_release(address);

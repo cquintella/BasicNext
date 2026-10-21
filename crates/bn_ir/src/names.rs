@@ -34,7 +34,7 @@ pub enum EmittedNameKind {
 
 /// Suffixes (after the last `.`) that name a synthesised function. Backends
 /// may match these and nothing else.
-pub const SYNTHESISED_SUFFIXES: &[(&str, EmittedNameKind)] = &[
+pub(crate) const SYNTHESISED_SUFFIXES: &[(&str, EmittedNameKind)] = &[
     ("CONSTRUCTOR", EmittedNameKind::Constructor),
     ("DESTRUCTOR", EmittedNameKind::Destructor),
     ("$fields", EmittedNameKind::FieldInit),
@@ -51,7 +51,7 @@ pub const ENTRY: &str = "Start";
 pub const SUPER_PREFIX: &str = "@super:";
 
 /// Prefix of an imported module namespace (`#<ModuleId>.<Name>`).
-pub const MODULE_PREFIX: char = '#';
+pub(crate) const MODULE_PREFIX: char = '#';
 
 /// Intrinsic callees: names a `Call` may target that have **no** `Function`
 /// body in the module. Every backend must implement each one natively; the
@@ -59,11 +59,11 @@ pub const MODULE_PREFIX: char = '#';
 pub const INTRINSICS: &[&str] = &[FOR_CONDITION, FOR_FITS, STOPPING, STOP_CODE];
 
 /// `FOR` loop test: `$for_condition(current, end, step)`.
-pub const FOR_CONDITION: &str = "$for_condition";
+pub(crate) const FOR_CONDITION: &str = "$for_condition";
 
 /// `$for_fits(current, step)`: `current + step` stays inside `current`'s type.
 /// A counted `FOR` ends instead of overflowing (0.6.md, control flow, C3).
-pub const FOR_FITS: &str = "$for_fits";
+pub(crate) const FOR_FITS: &str = "$for_fits";
 
 /// `$stopping()` (`BOOLEAN`): a `STOP` ran in the call just made, so this
 /// function releases its locals and stops too (0.6.md, "`STOP`").

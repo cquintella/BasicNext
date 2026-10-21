@@ -9,6 +9,8 @@ K44 (P.6, `STATIC` shared by `ASYNC` tasks under `bnc`), which D4 needs,
 closed on 2026-10-15.
 **Kind:** toolchain only. No grammar, keyword or semantic change; the
 observable behaviour of every program stays identical to `bni`.
+**Wasm:** compilation was withdrawn on 2026-10-20. ABI notes that mention
+`wasm32` or `bin/bn-wasm` do not apply; the desktop ABIs remain.
 
 Claim: in `bnc` programs, a `STRING` value is `{ ptr, len|flags }` in
 registers, locals, fields and vector elements. Small strings may live inside
@@ -95,7 +97,7 @@ object carries the count. What it adds over stage 1, and what it costs:
 
 - [ ] **S.1** `value-memory-abi.md`: value layout (D1), ABI rule (D5), C
   boundary (D6), alternative and vector layouts with a two-word `STRING`.
-- [ ] **S.2** `support-matrix.md`: wasm32 row (D2 capacity on wasm32).
+- [X] **S.2** Withdrawn with the wasm32 target (BDFL, 2026-10-20). Desktop ABIs only.
 
 ### F — Fixtures and gates first
 
@@ -117,7 +119,7 @@ object carries the count. What it adds over stage 1, and what it costs:
   load, store, phi, parameter, return, field, element and alternative payload
   goes through it (no second representation).
 - [ ] **E.2** `bn_rt` string exports take `(ptr, len)` and return through
-  out-pointers (D5); `bin/bn-wasm` matches.
+  out-pointers (D5).
 - [ ] **E.3** SSO and/or slices only if M.3 said go.
 - [ ] **E.4** C boundary per D6 in HOST calls; C export and `BNFfi` as their
   buckets reach this point.
@@ -125,7 +127,7 @@ object carries the count. What it adds over stage 1, and what it costs:
 ### C — Close
 
 - [ ] **C.1** Audit (rule of 2026-10-14): allocation/release pairs, `unsafe`
-  and `SAFETY:`, tearing (D4), ABI on the three desktop platforms and wasm32.
+  and `SAFETY:`, tearing (D4), ABI on Windows, macOS and Linux.
 - [ ] **C.2** Corpus probe unchanged or better; measurement M repeated and
   recorded against the stage 1 baseline.
 - [ ] **C.3** `cargo build -p bni -p bnc -p bn_rt`; `cargo test --workspace`;

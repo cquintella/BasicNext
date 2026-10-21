@@ -14,3 +14,12 @@ check.no_trace = check has no execution to trace
 # Compiler options (bn_compile_driver).
 option.emit.repeated = --emit was specified more than once
 option.emit.expects = --emit expects tokens, ast, typed-ast, ir, or llvm
+
+# Messages moved out of Rust source (text-literal gate).
+msg.target_expects_native = --target expects native
+msg.bn_web_lib = BN_WEB_LIB
+msg.cargo_target_dir = CARGO_TARGET_DIR
+msg.libbn_web_a_not_found_build_the_bn = libbn_web.a not found; build the bn_web library (cargo build -p bn_web) or set BN_WEB_LIB
+
+msg.bn_web_lib_not_a_file = BN_WEB_LIB is not a file: {path}
+help.bnc = {version}\nusage: bnc [compile-options] <entry.bn>\n\nCompiles the program to a native executable.\n\ncompile options:\n  -o, --output <file>        write the artifact to <file> (defaults to entry name)\n  --target native            select the target (default native)\n  --opt none|1|2|3|s         optimization level (default 2)\n  -g, --debug                emit debug information (DWARF; PDB on Windows)\n  --cpu native|generic       target host CPU instructions (default generic)\n  --emit llvm                print LLVM IR instead of compiling\n  --emit ir                  print the validated BN IR instead of compiling\n                             (tokens, ast and typed-ast are also accepted)\n{common_options}\nSee also: man bnc\nMore information: {book_url}\n

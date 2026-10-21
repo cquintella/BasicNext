@@ -5,8 +5,8 @@
 
 pub mod cli;
 pub mod environment;
-pub mod eval;
-pub mod hosts;
+pub(crate) mod eval;
+pub(crate) mod hosts;
 pub mod libraries;
 pub mod options;
 pub mod run;

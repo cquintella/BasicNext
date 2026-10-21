@@ -289,34 +289,38 @@ pub(crate) fn emit_function(
                 if let Instruction::Vector {
                     destination,
                     values: elements,
-                    ty,
+                    ty:
+                        Type::Vector {
+                            element,
+                            dimensions,
+                        },
                     ..
                 } = instruction
                 {
-                    if let Type::Vector { element, dimensions } = ty {
-                        let stored_type = if dimensions.len() == 1 {
-                            element.as_ref().clone()
-                        } else {
-                            Type::Vector {
-                                element: element.clone(),
-                                dimensions: dimensions[1..].to_vec(),
-                            }
-                        };
-                        if let Some(elem) = llvm_type(&stored_type) {
-                            let len = u32::try_from(dimensions[0]).unwrap_or(0);
-                            let array = T::Array(len as usize, Box::new(elem));
-                            let dest = destination.0;
-                            text.assign(format!("vecdata{dest}"), I::alloca(array));
-                            if let Some(owner) = struct_owner(module, &stored_type) {
-                                let bytes = class_instance_bytes(module, &owner);
-                                let struct_bytes = T::Array(
-                                    usize::try_from(bytes).expect("fits usize"),
-                                    Box::new(T::I8),
-                                );
-                                for index in 0..elements.len() {
-                                    let copy = format!("vecstructcopy{dest}_{index}");
-                                    text.assign(copy, I::alloca(struct_bytes.clone()));
-                                }
+                    let stored_type = if dimensions.len() == 1 {
+                        element.as_ref().clone()
+                    } else {
+                        Type::Vector {
+                            element: element.clone(),
+                            dimensions: dimensions[1..].to_vec(),
+                        }
+                    };
+                    if let Some(elem) = llvm_type(&stored_type) {
+                        let len = u32::try_from(dimensions[0]).unwrap_or(0);
+                        let array = T::Array(len as usize, Box::new(elem));
+                        let dest = destination.0;
+                        text.assign(format!("vecdata{dest}"), I::alloca(array));
+                        if let Some(owner) = struct_owner(module, &stored_type) {
+                            let bytes = class_instance_bytes(module, &owner);
+                            let struct_bytes = T::Array(
+                                usize::try_from(bytes).unwrap_or_else(|_| {
+                                    panic!("{}", bn_catalog::text("llvm", "msg.fits_usize_2"))
+                                }),
+                                Box::new(T::I8),
+                            );
+                            for index in 0..elements.len() {
+                                let copy = format!("vecstructcopy{dest}_{index}");
+                                text.assign(copy, I::alloca(struct_bytes.clone()));
                             }
                         }
                     }

@@ -176,7 +176,9 @@ pub(crate) fn emit_allocate(
         return;
     }
     if is_bnweb_resource_type(module, ty) {
-        let Type::ImportedNamed { name, .. } = ty else { unreachable!() };
+        let Type::ImportedNamed { name, .. } = ty else {
+            unreachable!()
+        };
         let (symbol, args) = match name.as_str() {
             "Response" => ("bn_web_response_create", vec![]),
             "Request" => ("bn_web_request_create", vec![]),
@@ -192,12 +194,20 @@ pub(crate) fn emit_allocate(
                 ("bn_web_scraper_create", vec![html_arg])
             }
             "ACL" => ("bn_web_acl_create", vec![]),
-            "Client" => ("bn_web_client_create", vec![]),
-            _ => unreachable!("unhandled BNWeb resource allocation"),
+            "Client" => ("bn_web_client_create", vec![(T::I64, O::int(0))]),
+            _ => unreachable!(
+                "{}",
+                bn_catalog::text("llvm", "msg.unhandled_bnweb_resource_allocation")
+            ),
         };
         let call = I::call(T::I64, symbol, args);
         text.assign(format!("webh{dest}"), call);
-        let pointer = I::cast(CastOp::IntToPtr, T::I64, O::reg(format!("webh{dest}")), T::Ptr);
+        let pointer = I::cast(
+            CastOp::IntToPtr,
+            T::I64,
+            O::reg(format!("webh{dest}")),
+            T::Ptr,
+        );
         text.assign(format!("v{dest}"), pointer);
         return;
     }
@@ -267,7 +277,10 @@ pub(crate) fn emit_vector_field_store(
     let tag = state.continuation_count;
     state.continuation_count += 1;
     let Type::Vector { element, .. } = field_ty else {
-        unreachable!("vector field store on non-vector type")
+        unreachable!(
+            "{}",
+            bn_catalog::text("llvm", "msg.vector_field_store_on_non_vector_type")
+        )
     };
     let element_llvm = llvm_type(element).expect("validated vector field element");
     let fat = source_val;
@@ -662,7 +675,8 @@ pub(crate) fn emit_vector_storage(
         let bytes = class_instance_bytes(module, &owner);
         let total_bytes = count.saturating_mul(bytes);
         let array_bytes = T::Array(
-            usize::try_from(total_bytes).expect("fits usize"),
+            usize::try_from(total_bytes)
+                .unwrap_or_else(|_| panic!("{}", bn_catalog::text("llvm", "msg.fits_usize_3"))),
             Box::new(T::I8),
         );
         let struct_data = format!("vstructdata{slot}");

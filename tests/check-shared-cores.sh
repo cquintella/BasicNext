@@ -23,7 +23,7 @@ fail() {
 }
 
 # (a) Process spawning: HOST.Exec core, trusted-path neighbor lookup, the
-# compilation driver (clang / wasm-ld / brew, bucket 0.6.0 1.3), and test
+# compilation driver (clang, bucket 0.6.0 1.3), and test
 # helpers that re-execute the test binary. Integration tests under
 # crates/*/tests drive the executables and are not scanned. Nothing else
 # may spawn.

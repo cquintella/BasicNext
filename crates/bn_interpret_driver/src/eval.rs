@@ -245,7 +245,7 @@ pub(crate) fn eval_json_error(
 
 #[allow(clippy::too_many_lines)]
 #[must_use]
-pub fn eval(command_arguments: Vec<String>) -> ExitCode {
+pub(crate) fn eval(command_arguments: Vec<String>) -> ExitCode {
     let json_requested = command_arguments
         .windows(2)
         .any(|window| window[0] == "--format" && window[1] == "json");
@@ -416,7 +416,7 @@ pub fn eval(command_arguments: Vec<String>) -> ExitCode {
                     "exit_code": 1,
                     "stdout": "",
                     "stderr": "",
-                    "diagnostics": [diagnostic_json(&diagnostic, &source, &options, "lexical")],
+                    "diagnostics": [diagnostic_json(&diagnostic, &source, &options, "lexical", None)],
                 });
                 println!("{envelope}");
             } else {

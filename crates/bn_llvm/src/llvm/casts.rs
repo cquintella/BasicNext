@@ -80,51 +80,62 @@ pub(crate) fn lower_cast(
                 I::cast(CastOp::FPTrunc, T::Double, v(value), T::Float),
             );
             let dest = destination.0;
-            // Infinity constants are f64 bit patterns. Truncate them so the
-            // compare is `float` against `float`.
             text.assign(
-                format!("f32pinf{dest}"),
-                I::cast(
-                    CastOp::FPTrunc,
+                format!("f32gt{dest}"),
+                I::fcmp(
+                    FCmpCond::Ogt,
                     T::Double,
-                    O::float(f64::INFINITY),
-                    T::Float,
+                    v(value),
+                    O::float(f64::from(f32::MAX)),
                 ),
             );
             text.assign(
-                format!("f32ninf{dest}"),
-                I::cast(
-                    CastOp::FPTrunc,
+                format!("f32lt{dest}"),
+                I::fcmp(
+                    FCmpCond::Olt,
                     T::Double,
+                    v(value),
+                    O::float(f64::from(f32::MIN)),
+                ),
+            );
+            text.assign(
+                format!("f32range{dest}"),
+                I::binary(
+                    BinaryOp::Or,
+                    T::I1,
+                    O::reg(format!("f32gt{dest}")),
+                    O::reg(format!("f32lt{dest}")),
+                ),
+            );
+            text.assign(
+                format!("f32ne_inf{dest}"),
+                I::fcmp(FCmpCond::Une, T::Double, v(value), O::float(f64::INFINITY)),
+            );
+            text.assign(
+                format!("f32ne_ninf{dest}"),
+                I::fcmp(
+                    FCmpCond::Une,
+                    T::Double,
+                    v(value),
                     O::float(f64::NEG_INFINITY),
-                    T::Float,
                 ),
             );
             text.assign(
-                format!("f32p{dest}"),
-                I::fcmp(
-                    FCmpCond::Oeq,
-                    T::Float,
-                    O::reg(&own),
-                    O::reg(format!("f32pinf{dest}")),
-                ),
-            );
-            text.assign(
-                format!("f32n{dest}"),
-                I::fcmp(
-                    FCmpCond::Oeq,
-                    T::Float,
-                    O::reg(&own),
-                    O::reg(format!("f32ninf{dest}")),
+                format!("f32fin_inf{dest}"),
+                I::binary(
+                    BinaryOp::And,
+                    T::I1,
+                    O::reg(format!("f32ne_inf{dest}")),
+                    O::reg(format!("f32ne_ninf{dest}")),
                 ),
             );
             text.assign(
                 format!("f32bad{dest}"),
                 I::binary(
-                    BinaryOp::Or,
+                    BinaryOp::And,
                     T::I1,
-                    O::reg(format!("f32p{dest}")),
-                    O::reg(format!("f32n{dest}")),
+                    O::reg(format!("f32range{dest}")),
+                    O::reg(format!("f32fin_inf{dest}")),
                 ),
             );
             let fits = take_continuation(block_id, state);

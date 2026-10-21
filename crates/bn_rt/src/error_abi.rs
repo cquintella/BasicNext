@@ -98,6 +98,7 @@ fn text<'a>(ptr: *const c_char) -> &'a str {
     }
     match crate::string::slice_from_raw(ptr) {
         Some(bytes) => std::str::from_utf8(bytes).unwrap_or(""),
+        // SAFETY: the pointer is non-null and NUL-terminated for this read.
         None => unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or(""),
     }
 }

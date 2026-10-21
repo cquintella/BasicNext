@@ -21,8 +21,8 @@ mod udp;
 
 pub use socket::{TcpListener, TcpStream, UdpPacket, UdpSocket};
 pub use tcp::{
-    TRANSFER_MAX, listener_endpoint, quota_exceeded, tcp_accept, tcp_connect, tcp_endpoint,
-    tcp_listen, tcp_read, tcp_set_timeouts, tcp_shutdown, tcp_write,
+    listener_endpoint, quota_exceeded, tcp_accept, tcp_connect, tcp_endpoint, tcp_listen, tcp_read,
+    tcp_set_timeouts, tcp_shutdown, tcp_write,
 };
 pub use udp::{datagram_max, udp_bind, udp_local_endpoint, udp_receive, udp_send_to};
 
@@ -127,7 +127,7 @@ impl Address {
     }
 
     #[must_use]
-    pub const fn from_ip(address: IpAddr) -> Self {
+    pub(crate) const fn from_ip(address: IpAddr) -> Self {
         Self(address)
     }
 

@@ -116,6 +116,7 @@ dependencies = [
 name = "bn"
 version = "0.6.4"
 dependencies = [
+ "bn_catalog",
  "bn_diag",
  "bn_frontend",
  "bn_interp",
@@ -215,6 +216,7 @@ dependencies = [
 name = "bn_core_sqlite"
 version = "0.6.4"
 dependencies = [
+ "bn_catalog",
  "bn_core_copy",
  "bn_types",
  "rusqlite",
@@ -278,6 +280,7 @@ dependencies = [
 name = "bn_host_fs"
 version = "0.6.4"
 dependencies = [
+ "bn_catalog",
  "bn_diag",
  "bn_interp",
  "bn_rt",
@@ -303,6 +306,7 @@ dependencies = [
 name = "bn_interp"
 version = "0.6.4"
 dependencies = [
+ "bn_catalog",
  "bn_core_copy",
  "bn_core_text",
  "bn_diag",
@@ -355,6 +359,7 @@ dependencies = [
 name = "bn_lib_crypto"
 version = "0.6.4"
 dependencies = [
+ "bn_catalog",
  "bn_diag",
  "bn_interp",
  "bn_rt",
@@ -367,6 +372,7 @@ dependencies = [
 name = "bn_lib_data"
 version = "0.6.4"
 dependencies = [
+ "bn_catalog",
  "bn_diag",
  "bn_interp",
  "bn_rt",
@@ -394,6 +400,7 @@ dependencies = [
 name = "bn_lib_json"
 version = "0.6.4"
 dependencies = [
+ "bn_catalog",
  "bn_core_json",
  "bn_diag",
  "bn_interp",
@@ -520,7 +527,6 @@ dependencies = [
  "bn_limits",
  "bn_types",
  "chacha20poly1305",
- "dns-lookup",
  "ed25519-dalek",
  "hmac",
  "libc",
@@ -529,7 +535,6 @@ dependencies = [
  "p256",
  "serde_json",
  "sha2",
- "socket2",
  "subtle",
 ]
 

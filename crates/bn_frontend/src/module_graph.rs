@@ -16,7 +16,7 @@ use crate::{
     frontend_session::FrontendSession,
     lexer::lex,
     parser::parse_named,
-    source::{Position, SourceFile, Span},
+    source::{Position, SourceFile, SourceId, Span},
 };
 
 pub use crate::types::ModuleId;
@@ -158,7 +158,7 @@ pub fn load_with_overlays(
 ///
 /// Returns the source and diagnostic for a lexical, syntax, missing-module, or
 /// import-cycle failure.
-pub fn load_with_overlays_and_paths(
+pub(crate) fn load_with_overlays_and_paths(
     entry: impl AsRef<Path>,
     session: &mut FrontendSession,
     overlays: &BTreeMap<PathBuf, String>,
@@ -252,7 +252,7 @@ fn discover_standard_root(root_directory: &Path, bn_home: Option<OsString>) -> M
 /// Computes the ordered import roots. Earlier roots win when the same module
 /// exists in multiple roots; a repeated path keeps its first provenance.
 #[must_use]
-pub fn effective_module_paths(
+pub(crate) fn effective_module_paths(
     root_directory: &Path,
     standard: &ModuleRoot,
     extras: &[ModuleRoot],
@@ -352,7 +352,10 @@ impl Loader<'_> {
             else {
                 continue;
             };
-            if import.first().is_some_and(|part| part == "HOST") {
+            if import
+                .first()
+                .is_some_and(|part| part == bn_catalog::text("frontend", "msg.host"))
+            {
                 continue;
             }
             let (imported_path, winning_root, selector) =
@@ -554,6 +557,126 @@ fn module_not_found(
     }
 }
 
+/// The loaded file whose spans carry `source`, when the graph has it.
+#[must_use]
+pub fn source_of(graph: &ModuleGraph, source: SourceId) -> Option<&SourceFile> {
+    graph
+        .modules
+        .iter()
+        .find(|module| module.source.source_id == source)
+        .map(|module| &module.source)
+}
+
+/// Rewrites internal type names in a diagnostic message to the spelling of
+/// the module `source` identifies.
+///
+/// `MODULE#<id>.Name` and `#<id>.Name` are the module index, not a name the
+/// program wrote. In the diagnosing module the spelling is `Alias.Name` when
+/// that module imports `<id>`, and `Name` when `<id>` is the module itself.
+/// A source the graph does not contain is left unchanged.
+#[must_use]
+pub fn spell_diagnostic_text(text: &str, source: SourceId, graph: &ModuleGraph) -> String {
+    let Some(diagnosing) = graph
+        .modules
+        .iter()
+        .find(|module| module.source.source_id == source)
+    else {
+        return text.to_string();
+    };
+    let aliases = import_aliases(diagnosing);
+    let mut spelled = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(character) = rest.chars().next() {
+        let at_boundary = spelled
+            .chars()
+            .next_back()
+            .is_none_or(|previous| !is_name_character(previous));
+        if at_boundary && let Some((module, name, consumed)) = internal_type_at(rest) {
+            spelled.push_str(&spell_imported_name(module, name, diagnosing.id, &aliases));
+            rest = &rest[consumed..];
+            continue;
+        }
+        spelled.push(character);
+        rest = &rest[character.len_utf8()..];
+    }
+    spelled
+}
+
+fn spell_imported_name(
+    module: u32,
+    name: &str,
+    diagnosing: ModuleId,
+    aliases: &BTreeMap<u32, String>,
+) -> String {
+    if diagnosing.0 == module {
+        name.to_string()
+    } else if let Some(alias) = aliases.get(&module) {
+        format!("{alias}.{name}")
+    } else {
+        name.to_string()
+    }
+}
+
+/// `alias` → imported module, first alias in alphabetical order when several
+/// imports name the same module. `HOST` imports are capabilities, not modules.
+fn import_aliases(module: &LoadedModule) -> BTreeMap<u32, String> {
+    let mut pairs = Vec::new();
+    let mut imported = module.imports.iter();
+    for item in &module.program.items {
+        let Item::Import { path, alias, .. } = item else {
+            continue;
+        };
+        if path
+            .first()
+            .is_some_and(|part| part == bn_catalog::text("frontend", "msg.host"))
+        {
+            continue;
+        }
+        let Some(id) = imported.next() else {
+            break;
+        };
+        pairs.push((alias.clone(), id.0));
+    }
+    pairs.sort();
+    let mut aliases = BTreeMap::new();
+    for (alias, id) in pairs {
+        aliases.entry(id).or_insert(alias);
+    }
+    aliases
+}
+
+fn internal_type_at(text: &str) -> Option<(u32, &str, usize)> {
+    let (body, marker) = if let Some(body) = text.strip_prefix("MODULE#") {
+        (body, "MODULE#".len())
+    } else {
+        let body = text.strip_prefix('#')?;
+        (body, 1)
+    };
+    let digits = body.bytes().take_while(u8::is_ascii_digit).count();
+    if digits == 0 {
+        return None;
+    }
+    let module = body[..digits].parse::<u32>().ok()?;
+    let after_dot = body[digits..].strip_prefix('.')?;
+    let name_len = after_dot
+        .bytes()
+        .take_while(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+        .count();
+    let first = after_dot.as_bytes().first().copied()?;
+    if name_len == 0 || (!first.is_ascii_alphabetic() && first != b'_') {
+        return None;
+    }
+    Some((
+        module,
+        &after_dot[..name_len],
+        marker + digits + 1 + name_len,
+    ))
+}
+
+fn is_name_character(character: char) -> bool {
+    character.is_ascii_alphanumeric() || character == '_'
+}
+
 fn normalize(path: &Path) -> PathBuf {
     fs::canonicalize(path).unwrap_or_else(|_| {
         if path.is_absolute() {
@@ -569,7 +692,8 @@ fn normalize(path: &Path) -> PathBuf {
 mod tests {
     use super::{
         BTreeMap, HashMap, Item, Loader, ModuleRoot, PathBuf, RootProvenance,
-        discover_standard_root, effective_module_paths, load_with_session,
+        discover_standard_root, effective_module_paths, load_with_overlays, load_with_session,
+        source_of, spell_diagnostic_text,
     };
     use crate::frontend_session::FrontendSession;
 
@@ -697,6 +821,49 @@ mod tests {
         };
         assert_ne!(span.source_id(), crate::source::SourceId::UNKNOWN);
         assert_eq!(span.revision(), snapshot.revision);
+    }
+
+    #[test]
+    fn imported_type_names_use_the_diagnosing_modules_spelling() {
+        let entry = PathBuf::from("/bn-k58-spell/main.bn");
+        let library = PathBuf::from("/bn-k58-spell/lib.bn");
+        let mut overlays = BTreeMap::new();
+        overlays.insert(library.clone(), "EXPORT CONST Answer = 1\n".into());
+        overlays.insert(
+            entry.clone(),
+            "IMPORT lib AS L\nFUNCTION Start() AS VOID\nEND FUNCTION\n".into(),
+        );
+        let mut session = FrontendSession::default();
+        let graph = load_with_overlays(&entry, &mut session, &overlays).expect("load overlays");
+        let main = graph
+            .modules
+            .iter()
+            .find(|module| module.id == graph.root)
+            .expect("entry module");
+        let library_module = graph
+            .modules
+            .iter()
+            .find(|module| module.id != graph.root)
+            .expect("imported module");
+        assert_eq!(
+            source_of(&graph, library_module.source.source_id)
+                .expect("library source")
+                .name,
+            library.display().to_string()
+        );
+        let internal = "POINTER TO MODULE#0.Box OR NULL, and #0.Box";
+        assert_eq!(
+            spell_diagnostic_text(internal, main.source.source_id, &graph),
+            "POINTER TO L.Box OR NULL, and L.Box"
+        );
+        assert_eq!(
+            spell_diagnostic_text(internal, library_module.source.source_id, &graph),
+            "POINTER TO Box OR NULL, and Box"
+        );
+        assert_eq!(
+            spell_diagnostic_text("a#0.Box HOST.Net", main.source.source_id, &graph),
+            "a#0.Box HOST.Net"
+        );
     }
 }
 

@@ -373,7 +373,8 @@ fn emit_integer_memcmp(
     count: u64,
     element: &Type,
 ) -> String {
-    let bytes = integer_element_bytes(element).expect("integer vector element");
+    let bytes = integer_element_bytes(element)
+        .unwrap_or_else(|| panic!("{}", bn_catalog::text("llvm", "msg.integer_vector_element")));
     let total = count * bytes;
     let call = format!("vecmem{tag}");
     text.assign(
@@ -406,7 +407,12 @@ fn emit_unrolled_elements(
     count: u64,
     state: &mut EmissionState,
 ) -> String {
-    let elem_llvm = llvm_type(child_ty).expect("vector element llvm type");
+    let elem_llvm = llvm_type(child_ty).unwrap_or_else(|| {
+        panic!(
+            "{}",
+            bn_catalog::text("llvm", "msg.vector_element_llvm_type")
+        )
+    });
     let mut current_and = None;
     for idx in 0..count {
         let elem_l_ptr = format!("vecl_ptr_{idx}_{tag}");
@@ -452,7 +458,12 @@ fn emit_unrolled_elements(
             }
         };
     }
-    current_and.expect("a positive element count")
+    current_and.unwrap_or_else(|| {
+        panic!(
+            "{}",
+            bn_catalog::text("llvm", "msg.a_positive_element_count")
+        )
+    })
 }
 
 /// One index, one element compare, stop at the first mismatch. The index and
@@ -467,7 +478,12 @@ fn emit_element_loop(
     count: u64,
     state: &mut EmissionState,
 ) -> String {
-    let elem_llvm = llvm_type(child_ty).expect("vector element llvm type");
+    let elem_llvm = llvm_type(child_ty).unwrap_or_else(|| {
+        panic!(
+            "{}",
+            bn_catalog::text("llvm", "msg.vector_element_llvm_type")
+        )
+    });
     let pre = format!("veccmp.pre{tag}");
     let header = format!("veccmp.h{tag}");
     let body = format!("veccmp.b{tag}");

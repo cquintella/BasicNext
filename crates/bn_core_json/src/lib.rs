@@ -18,7 +18,7 @@ mod parse;
 pub use documents::{
     append_moved, append_value, array, clone_document, document, element, get_json, get_json_at,
     get_string, get_value, has, kind, length, move_into, move_into_at, number, object,
-    parse_document, release, set_at, set_value, store, stringify_document,
+    parse_document, release, retain, set_at, set_value, store, stringify_document,
 };
-pub use error::{JsonFailure, Place, kind_of};
-pub use parse::{MAX_BYTES, MAX_DEPTH, parse, stringify};
+pub use error::{JsonFailure, Place};
+pub use parse::parse;

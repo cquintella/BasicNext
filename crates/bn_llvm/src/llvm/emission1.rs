@@ -7,7 +7,9 @@
 // operators, casts) with constant propagation through the block state.
 #![allow(clippy::wildcard_imports)]
 use super::*;
-use crate::ir::{BinaryOp, CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
+use crate::ir::{
+    BinaryOp, CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T,
+};
 #[path = "emission_tail.rs"]
 mod emission_tail;
 use emission_tail::lower_scalar_instruction_tail;
@@ -146,17 +148,32 @@ pub(crate) fn lower_scalar_instruction(
             ..
         } if dimensions.is_empty() && dynamic_dimensions.len() == 1 => {
             let Type::Vector { element, .. } = ty else {
-                unreachable!("validated dynamic default type");
+                unreachable!(
+                    "{}",
+                    bn_catalog::text("llvm", "msg.validated_dynamic_default_type")
+                );
             };
-            let element_llvm = llvm_type(element).expect("validated vector element type");
+            let element_llvm = llvm_type(element).unwrap_or_else(|| {
+                panic!(
+                    "{}",
+                    bn_catalog::text("llvm", "msg.validated_vector_element_type",)
+                )
+            });
             let element_ty = element_llvm.clone();
             let dest = destination.0;
             let dim_id = dynamic_dimensions[0];
-            let dim_ty = analysis
-                .values
-                .get(&dim_id)
-                .expect("validated dynamic dimension type");
-            let dim_llvm = llvm_type(dim_ty).expect("validated dynamic dimension llvm type");
+            let dim_ty = analysis.values.get(&dim_id).unwrap_or_else(|| {
+                panic!(
+                    "{}",
+                    bn_catalog::text("llvm", "msg.validated_dynamic_dimension_type",)
+                )
+            });
+            let dim_llvm = llvm_type(dim_ty).unwrap_or_else(|| {
+                panic!(
+                    "{}",
+                    bn_catalog::text("llvm", "msg.validated_dynamic_dimension_llvm_type",)
+                )
+            });
             let dim_op = O::reg(format!("v{}", dim_id.0));
 
             // Check if dimension < 0 -> trap INVALID_VECTOR_DIMENSION
@@ -171,7 +188,16 @@ pub(crate) fn lower_scalar_instruction(
                 &neg_op,
                 ok_label,
                 bn_diag::DiagId::INVALID_VECTOR_DIMENSION,
-                vec![("message", Fact::Text("vector dimension must be a non-negative size".into()))],
+                vec![(
+                    "message",
+                    Fact::Text(
+                        bn_catalog::text(
+                            "llvm",
+                            "msg.vector_dimension_must_be_a_non_negative_size",
+                        )
+                        .into(),
+                    ),
+                )],
             );
 
             // Coerce/cast to i32 for fat pointer and i64 for byte size
@@ -249,7 +275,12 @@ pub(crate) fn lower_scalar_instruction(
             let Type::Vector { element, .. } = ty else {
                 unreachable!("validated multidimensional default type");
             };
-            let element_llvm = llvm_type(element).expect("validated vector element type");
+            let element_llvm = llvm_type(element).unwrap_or_else(|| {
+                panic!(
+                    "{}",
+                    bn_catalog::text("llvm", "msg.validated_vector_element_type",)
+                )
+            });
             let element_ty = element_llvm.clone();
             let len = dimensions[0];
             let dest = destination.0;
@@ -264,7 +295,9 @@ pub(crate) fn lower_scalar_instruction(
                 let bytes = class_instance_bytes(module, &owner);
                 let total_bytes = (len as u64).saturating_mul(bytes);
                 let struct_bytes = T::Array(
-                    usize::try_from(total_bytes).expect("fits usize"),
+                    usize::try_from(total_bytes).unwrap_or_else(|_| {
+                        panic!("{}", bn_catalog::text("llvm", "msg.fits_usize"))
+                    }),
                     Box::new(T::I8),
                 );
                 let struct_data = format!("vecdefstructdata{dest}");
@@ -312,7 +345,10 @@ pub(crate) fn lower_scalar_instruction(
                         {
                             O::zero_initializer()
                         }
-                        _ => unreachable!("validated vector element type"),
+                        _ => unreachable!(
+                            "{}",
+                            bn_catalog::text("llvm", "msg.validated_vector_element_type")
+                        ),
                     };
                     text.emit(I::store(element_ty.clone(), zero, O::reg(slot)));
                 }
@@ -499,19 +535,7 @@ pub(crate) fn lower_scalar_instruction(
                     slot_ty,
                     state,
                 )
-            } else if value_llvm != slot_llvm
-                && (value_llvm.is_integer() && slot_llvm.is_integer()
-                    || value_llvm.is_floating() && slot_llvm.is_floating()
-                    || crate::layout::is_one_of(&slot_llvm, &[crate::layout::handle_result_ty(), crate::general_alternative::layout()])
-                    // An `Error` into `Endpoint OR Error` / `Addresses OR Error` (K36).
-                    || (crate::layout::is_one_of(&slot_llvm, &[crate::layout::status_endpoint_ty(), crate::layout::status_pointer_ty()])
-                        && is_error_type(value_ty))
-                    || value_llvm == crate::layout::vector_ty() && slot_llvm == crate::layout::region_ty()
-                    || matches!(slot_ty, Type::Alternative(members)
-                        if crate::layout::AlternativeLayout::of(members)
-                            == Some(crate::layout::AlternativeLayout::Region)
-                            && value_llvm != slot_llvm))
-            {
+            } else if value_llvm != slot_llvm {
                 coerce_to_type(text, *value, value_ty, slot_ty)
             } else {
                 O::reg(format!("v{}", value.0))

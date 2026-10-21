@@ -203,6 +203,18 @@ not part of this 0.3 grammar or support claim; it is described in the internal
 
 ## Client and security policy
 
+`Client.New(logger AS Log.Logger)` keeps that logger for the client
+(BDFL decision, 2026-10-17). Each `Client.Request` and
+`Client.RequestWithPolicy` writes one access record through it, at level
+HTTP, in the logger's format ([bnlog.md](bnlog.md), "Formats"). The record
+carries the method, the path of the URL the call names with the query
+removed, the protocol `HTTP/1.1`, the status, and the response body size.
+A transport failure records status `0`. The response time in milliseconds
+is the field `http.duration_ms`. Response headers are fields
+`http.header.<name>` with the name in lower case; a header whose key is
+sensitive is omitted. The query, the body, userinfo, and TLS private
+material are not written. `NEW Client()` has no logger and writes nothing.
+
 The 0.3 client has bounded cleartext connect/read/write/total timeouts,
 response bodies, decompression policy, cookie jars, and connection reuse.
 HTTPS client transport and certificate trust roots are gated for Sprint 13 by

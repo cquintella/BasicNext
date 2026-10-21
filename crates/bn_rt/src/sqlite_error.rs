@@ -7,7 +7,7 @@
 
 pub use bn_core_sqlite::SqliteFailure;
 
-pub trait SqliteReport {
+pub(crate) trait SqliteReport {
     fn report(&self, operation: &str) -> i32;
 }
 

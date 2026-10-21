@@ -104,12 +104,3 @@ fn write_out<T>(out: *mut T, value: T) {
         unsafe { out.write(value) };
     }
 }
-
-/// Frees a NUL-terminated string returned by a network C ABI operation.
-#[allow(unsafe_code)]
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_net_string_free(data: *mut c_char) {
-    if !data.is_null() {
-        crate::string::bn_rt_str_release(data);
-    }
-}

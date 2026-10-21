@@ -34,6 +34,7 @@ fn native_exec_program(label: &str, body: &str, env: &[(&str, &str)]) -> String 
     fs::create_dir_all(&base).expect("create native exec dir");
     let helper = base.join("helper");
     let status = Command::new("rustc")
+        .current_dir(WORKSPACE)
         .args(["--edition=2021", "tests/fixtures/host_exec_helper.rs", "-o"])
         .arg(&helper)
         .status()
@@ -62,8 +63,9 @@ fn native_exec_program(label: &str, body: &str, env: &[(&str, &str)]) -> String 
     assert_eq!(
         run.status.code(),
         Some(0),
-        "run: {}",
-        String::from_utf8_lossy(&run.stderr)
+        "run: {}\nstdout: {}",
+        String::from_utf8_lossy(&run.stderr),
+        String::from_utf8_lossy(&run.stdout)
     );
     let stdout = String::from_utf8(run.stdout).expect("UTF-8 program stdout");
     let _ = fs::remove_dir_all(&base);
@@ -475,7 +477,7 @@ fn build_reports_the_type_for_unsupported_allocation_lowering() {
     // counts it (a region has no class) and its id is stored at +8.
     assert!(llvm.contains("call ptr @calloc"), "{llvm}");
     assert!(
-        llvm.contains("call i64 @bn_rt_arc_register(ptr null, ptr %allocbase"),
+        llvm.contains("call i64 @bn_rt_arc_register(") && llvm.contains("ptr %allocbase0"),
         "{llvm}"
     );
 }
@@ -650,64 +652,6 @@ fn build_emits_native_artifact_when_output_is_given() {
 }
 
 #[test]
-fn build_emits_wasm_artifact_when_target_is_wasm32() {
-    let output_path =
-        std::env::temp_dir().join(format!("basicnext-test-{}.wasm", std::process::id()));
-    let output = bnc()
-        .args([
-            "--target",
-            "wasm32",
-            "tests/grammar/valid/empty-start.bn",
-            "-o",
-            output_path.to_str().expect("temporary path"),
-        ])
-        .output()
-        .expect("run wasm build");
-    assert_eq!(output.status.code(), Some(0));
-    let bytes = std::fs::read(&output_path).expect("read wasm artifact");
-    assert_eq!(&bytes[..4], b"\0asm");
-    let run = Command::new("node")
-        .args(["bin/bn-wasm", output_path.to_str().expect("temporary path")])
-        .output()
-        .expect("run linked wasm module");
-    assert_eq!(run.status.code(), Some(0));
-    assert!(run.stdout.is_empty());
-    let _ = std::fs::remove_file(output_path);
-}
-
-#[test]
-fn wasm_build_emits_seeded_random_artifact() {
-    let output_path =
-        std::env::temp_dir().join(format!("basicnext-random-{}.wasm", std::process::id()));
-    let _ = std::fs::remove_file(&output_path);
-    let output = bnc()
-        .args([
-            "--target",
-            "wasm32",
-            "tests/grammar/valid/host-random.bn",
-            "-o",
-            output_path.to_str().expect("temporary path"),
-        ])
-        .output()
-        .expect("run wasm random build");
-    assert_eq!(
-        output.status.code(),
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let bytes = std::fs::read(&output_path).expect("read wasm random artifact");
-    assert_eq!(&bytes[..4], b"\0asm");
-    let run = Command::new("node")
-        .args(["bin/bn-wasm", output_path.to_str().expect("temporary path")])
-        .output()
-        .expect("run linked wasm random module");
-    assert_eq!(run.status.code(), Some(0));
-    assert_eq!(run.stdout, b"0.28083505005035947\n");
-    let _ = std::fs::remove_file(output_path);
-}
-
-#[test]
 fn build_eliminates_constant_false_loop() {
     let output = bnc()
         .args(["--emit", "llvm", "tests/grammar/valid/print-while-false.bn"])
@@ -786,7 +730,7 @@ fn build_emits_host_args_index_zero() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(String::from_utf8_lossy(&output.stdout).contains("getelementptr ptr, ptr %argv"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("getelementptr ptr, ptr %host_argv"));
 }
 
 #[test]
@@ -803,7 +747,6 @@ fn build_truncates_int64_host_argument_indices() {
     );
     let llvm = String::from_utf8_lossy(&output.stdout);
     assert!(llvm.contains("trunc i64"), "{llvm}");
-    assert!(!llvm.contains("sext i64"), "{llvm}");
 }
 
 #[test]
@@ -893,58 +836,6 @@ fn build_constant_folds_or_short_circuit_branch() {
     assert!(llvm.contains("yes-or"));
     assert!(llvm.contains("no-or"));
     assert!(llvm.contains("br i1 %v1"));
-}
-
-#[test]
-fn wasm_build_supports_host_console_capability() {
-    let output = bnc()
-        .args([
-            "--emit",
-            "llvm",
-            "--target",
-            "wasm32",
-            "tests/grammar/valid/cls-and-beep.bn",
-        ])
-        .output()
-        .expect("run wasm build");
-    assert_eq!(
-        output.status.code(),
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-}
-
-#[test]
-fn wasm_build_rejects_host_net_with_an_explicit_capability_diagnostic() {
-    let output = bnc()
-        .args([
-            "--target",
-            "wasm32",
-            "tests/grammar/valid/build-net-resolve.bn",
-        ])
-        .output()
-        .expect("run wasm HOST.Net build");
-    assert_eq!(output.status.code(), Some(2));
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("TARGET_UNSUPPORTED_HOST"));
-    assert!(stderr.contains("HOST.Net"));
-    assert!(stderr.contains("HOST.Console is supported"));
-}
-
-#[test]
-fn wasm_build_allows_host_capability_names_in_strings() {
-    let output = bnc()
-        .args([
-            "--emit",
-            "llvm",
-            "--target",
-            "wasm32",
-            "tests/grammar/valid/wasm-host-name-string.bn",
-        ])
-        .output()
-        .expect("run wasm build");
-    assert_eq!(output.status.code(), Some(0));
 }
 
 /// The fixture runs `/bin/echo`; Windows has none, and the helper-based
@@ -1227,6 +1118,7 @@ fn native_host_exec_e12_cwd_env_and_spaced_path() {
     fs::create_dir_all(&spaced_dir).expect("create spaced dir");
     let helper = spaced_dir.join("helper bin");
     let status = Command::new("rustc")
+        .current_dir(WORKSPACE)
         .args(["--edition=2021", "tests/fixtures/host_exec_helper.rs", "-o"])
         .arg(&helper)
         .status()

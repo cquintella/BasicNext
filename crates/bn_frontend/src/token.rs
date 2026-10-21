@@ -59,12 +59,12 @@ pub enum Symbol {
 }
 
 #[must_use]
-pub fn is_reserved_word(text: &str) -> bool {
+pub(crate) fn is_reserved_word(text: &str) -> bool {
     RESERVED_WORDS.binary_search(&text).is_ok()
 }
 
 #[must_use]
-pub fn special_float_literal(text: &str) -> Option<&'static str> {
+pub(crate) fn special_float_literal(text: &str) -> Option<&'static str> {
     SPECIAL_FLOAT_LITERALS
         .binary_search(&text)
         .ok()

@@ -10,8 +10,8 @@
 
 use serde::de::{DeserializeSeed, Error as _, MapAccess, SeqAccess, Visitor};
 
-pub const MAX_DEPTH: usize = 64;
-pub const MAX_BYTES: usize = 8 * 1024 * 1024;
+pub(crate) const MAX_DEPTH: usize = 64;
+pub(crate) const MAX_BYTES: usize = 8 * 1024 * 1024;
 
 pub fn parse(input: &str) -> Result<serde_json::Value, String> {
     if input.len() > MAX_BYTES {
@@ -31,7 +31,7 @@ pub fn parse(input: &str) -> Result<serde_json::Value, String> {
     Ok(value)
 }
 
-pub fn stringify(value: &serde_json::Value) -> Result<String, String> {
+pub(crate) fn stringify(value: &serde_json::Value) -> Result<String, String> {
     ensure_depth(value, 0)?;
     let output = serde_json::to_string(value).map_err(|error| error.to_string())?;
     if output.len() > MAX_BYTES {

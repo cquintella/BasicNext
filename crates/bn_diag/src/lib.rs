@@ -24,7 +24,7 @@ pub struct DiagId(u16);
 /// One registry row: machine code, Fluent message id, default severity and the
 /// typed argument contract.
 #[derive(Clone, Copy, Debug)]
-pub struct DiagDesc {
+pub(crate) struct DiagDesc {
     pub code: &'static str,
     pub fluent_id: &'static str,
     pub severity: Severity,
@@ -211,17 +211,17 @@ diagnostic_registry! {
 
 impl DiagId {
     #[must_use]
-    pub fn desc(self) -> &'static DiagDesc {
+    pub(crate) fn desc(self) -> &'static DiagDesc {
         &REGISTRY[usize::from(self.0)]
     }
 
     #[must_use]
-    pub fn fluent_id(self) -> &'static str {
+    pub(crate) fn fluent_id(self) -> &'static str {
         self.desc().fluent_id
     }
 
     #[must_use]
-    pub fn from_fluent_id(id: &str) -> Option<Self> {
+    pub(crate) fn from_fluent_id(id: &str) -> Option<Self> {
         Self::all()
             .find(|candidate| candidate.fluent_id() == id)
             .or_else(|| Self::from_code(id))
@@ -377,7 +377,7 @@ pub struct DiagnosticSpec {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CatalogEntry {
+pub(crate) struct CatalogEntry {
     pub id: DiagId,
     pub code: &'static str,
     pub title: String,
@@ -435,7 +435,7 @@ impl Catalog {
     /// # Errors
     ///
     /// Returns an error when the selected overlay cannot be read or validated.
-    pub fn selected_from_paths(
+    pub(crate) fn selected_from_paths(
         environment: Option<&Path>,
         configured: Option<&Path>,
         installed: Option<&Path>,
@@ -483,7 +483,7 @@ impl Catalog {
     ///
     /// Returns a catalog error if a shard has an unknown or duplicate id, a
     /// duplicate display code, a malformed attribute, or misses a registry id.
-    pub fn embedded_en_us() -> Result<Self, String> {
+    pub(crate) fn embedded_en_us() -> Result<Self, String> {
         Self::from_shards([
             include_str!("../../../share/bn/diagnostics/en-US/lex.ftl"),
             include_str!("../../../share/bn/diagnostics/en-US/parse.ftl"),
@@ -502,7 +502,7 @@ impl Catalog {
     ///
     /// Returns an error when an overlay shard cannot be read, contains a
     /// duplicate entry, or contains invalid Fluent attributes.
-    pub fn embedded_en_us_with_overlay(directory: &Path) -> Result<Self, String> {
+    pub(crate) fn embedded_en_us_with_overlay(directory: &Path) -> Result<Self, String> {
         if !directory.is_dir() {
             return Err(format!(
                 "diagnostic overlay is not a readable directory: {}",
@@ -1154,7 +1154,7 @@ impl Diagnostic {
     /// # Errors
     ///
     /// Returns an error if the registry schema changes.
-    pub fn parse_rule_facts(rule: impl Into<String>, span: Span) -> Result<Self, String> {
+    pub(crate) fn parse_rule_facts(rule: impl Into<String>, span: Span) -> Result<Self, String> {
         Self::structured(
             DiagId::PARSE_RULE,
             vec![("rule".into(), rule.into().into())],

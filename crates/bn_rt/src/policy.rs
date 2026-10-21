@@ -17,15 +17,15 @@ use std::{
 
 use super::secure_fs::{OpenMode, RootedDir};
 
-pub const POLICY_CLOCK: u64 = 1 << 0;
-pub const POLICY_CONSOLE: u64 = 1 << 1;
+pub(crate) const POLICY_CLOCK: u64 = 1 << 0;
+pub(crate) const POLICY_CONSOLE: u64 = 1 << 1;
 pub const POLICY_FILESYSTEM: u64 = 1 << 2;
-pub const POLICY_NET: u64 = 1 << 3;
-pub const POLICY_DISPATCH: u64 = 1 << 4;
-pub const POLICY_RANDOM: u64 = 1 << 5;
-pub const POLICY_EXEC: u64 = 1 << 6;
-pub const POLICY_ENV: u64 = 1 << 7;
-pub const POLICY_ALL: u64 = POLICY_CLOCK
+pub(crate) const POLICY_NET: u64 = 1 << 3;
+pub(crate) const POLICY_DISPATCH: u64 = 1 << 4;
+pub(crate) const POLICY_RANDOM: u64 = 1 << 5;
+pub(crate) const POLICY_EXEC: u64 = 1 << 6;
+pub(crate) const POLICY_ENV: u64 = 1 << 7;
+pub(crate) const POLICY_ALL: u64 = POLICY_CLOCK
     | POLICY_CONSOLE
     | POLICY_FILESYSTEM
     | POLICY_NET
@@ -33,13 +33,13 @@ pub const POLICY_ALL: u64 = POLICY_CLOCK
     | POLICY_RANDOM
     | POLICY_EXEC
     | POLICY_ENV;
-pub const POLICY_VERSION: u32 = 1;
-pub const POLICY_OK: i32 = 0;
-pub const POLICY_INVALID: i32 = 2;
+pub(crate) const POLICY_VERSION: u32 = 1;
+pub(crate) const POLICY_OK: i32 = 0;
+pub(crate) const POLICY_INVALID: i32 = 2;
 
 /// Compiled HOST.Exec ceilings (D-H1-02). Policy may reduce these, never widen.
-pub const EXEC_CAPTURE_DEFAULT: usize = 16 * 1024 * 1024;
-pub const EXEC_TIMEOUT_DEFAULT: Duration = Duration::from_secs(60);
+pub(crate) const EXEC_CAPTURE_DEFAULT: usize = 16 * 1024 * 1024;
+pub(crate) const EXEC_TIMEOUT_DEFAULT: Duration = Duration::from_secs(60);
 
 const FS_OUTSIDE_POLICY: &str = "filesystem path is outside execution policy";
 const FS_WRITES_DENIED: &str = "filesystem writes are denied by execution policy";
@@ -111,7 +111,7 @@ impl FsPolicy {
 
     /// Adds a root to the read (or write) scope; an unrestricted scope becomes
     /// rooted at that directory.
-    pub fn add_root(&mut self, write: bool, root: RootedDir) {
+    pub(crate) fn add_root(&mut self, write: bool, root: RootedDir) {
         let scope = if write {
             &mut self.write
         } else {
@@ -287,13 +287,13 @@ impl Policy {
     }
 
     /// Installs or narrows the artifact ceiling; repeated calls never widen it.
-    pub const fn install_ceiling(&mut self, ceiling: u64) {
+    pub(crate) const fn install_ceiling(&mut self, ceiling: u64) {
         self.ceiling &= ceiling;
         self.effective &= self.ceiling;
     }
 
     /// Restricts the effective capabilities; bits outside the ceiling are ignored.
-    pub const fn restrict(&mut self, mask: u64) {
+    pub(crate) const fn restrict(&mut self, mask: u64) {
         self.effective &= mask & self.ceiling;
     }
 
@@ -301,7 +301,7 @@ impl Policy {
         self.restrict(!POLICY_EXEC);
     }
 
-    pub const fn deny_env(&mut self) {
+    pub(crate) const fn deny_env(&mut self) {
         self.restrict(!POLICY_ENV);
     }
 
@@ -530,6 +530,7 @@ fn path_text(path: *const c_char) -> Option<String> {
     if path.is_null() {
         None
     } else {
+        // SAFETY: the pointer is non-null and NUL-terminated for this read.
         unsafe { CStr::from_ptr(path).to_str().ok().map(str::to_owned) }
     }
 }

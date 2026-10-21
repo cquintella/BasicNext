@@ -816,9 +816,7 @@ fn static_outcome_to_response(outcome: crate::web::StaticServeOutcome) -> Respon
             "static file exceeds configured body limit",
         ),
         crate::web::StaticServeOutcome::NotFound => response(StatusCode::NOT_FOUND, "not found"),
-        crate::web::StaticServeOutcome::Forbidden => {
-            response(StatusCode::FORBIDDEN, "forbidden")
-        }
+        crate::web::StaticServeOutcome::Forbidden => response(StatusCode::FORBIDDEN, "forbidden"),
         crate::web::StaticServeOutcome::InternalError(_) => {
             response(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
         }

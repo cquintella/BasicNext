@@ -69,6 +69,7 @@ impl<'a> Builder<'a> {
             derived_fields: None,
             scopes: Vec::new(),
             owned: Vec::new(),
+            held: Vec::new(),
             value_types: HashMap::new(),
             weak_locals: HashSet::new(),
             parameters: HashSet::new(),

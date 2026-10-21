@@ -1,6 +1,8 @@
 # Bucket 0.6.7 — BNFfi: C calls through a standard module
 
 **Status:** Planned (todo). Not started.
+**Wasm:** compilation was withdrawn on 2026-10-20. Items that say
+`--target wasm32` (W4, AC8, S6.f) are void; `BNFfi` is native `bni` and `bnc` only.
 **Tag:** `docs/releases/0.6.7.md` on close.
 **Proposal:** [`todo/proposals/bnffi.md`](proposals/bnffi.md)
 
@@ -74,7 +76,7 @@ exporting Basic Next functions to C (language change; see
 | `bn_llvm/src` budget (190 lines before 0.6.5a/b; measured after them) | one table-driven emission path: a table (member → ABI symbol, LLVM argument and result types) and one emitter; no per-type code. Measured at every gate; if it cannot fit, stop and ask Carlos |
 | `unsafe` only in `crates/bn_rt/src/ffi.rs` (AGENTS.md, approved 2026-10-06) | `libloading::Library::new`, `Library::get` and `libffi` `Cif::call` live there, each under `#[allow(unsafe_code)]` with `SAFETY:` naming the checks that precede it |
 | Forbidden-deps gate (`scripts/check-forbidden-deps.sh`) | `bnc` must not link the interpreter; `bni --no-default-features` stays language + HOST: `lib-ffi` is a default feature of `bni`, off without defaults |
-| W4 | `IMPORT BNFfi` with `--target wasm32` is a support diagnostic, distinct from language errors |
+| W4 | Withdrawn with the wasm32 target (2026-10-20). `BNFfi` is native `bni` and `bnc` only |
 
 ### 1.4 Design (closed)
 
@@ -149,7 +151,7 @@ exporting Basic Next functions to C (language change; see
 | **AC5** | Each error code 1–8 arises from its condition with the contract's `Code`, `Operation` and `Message`, on both backends | S6 error fixtures |
 | **AC6** | `NEW C.Handle()` is `PRIVATE_ACCESS` | negative fixture |
 | **AC7** | Resolution order D4 holds: under `bni run`, a library in `--ffi-path` wins over one in `BN_LIBRARY_PATH`; a compiled program, which has no `--ffi-path`, resolves through `BN_LIBRARY_PATH` then the system loader; an empty `BN_LIBRARY_PATH` entry does not load from the current directory; a dotted name is not expanded | S6.e |
-| **AC8** | `wasm32`: support diagnostic, not a language error | S6.f |
+| **AC8** | Withdrawn with the wasm32 target (2026-10-20) | S6.f |
 | **AC9** | `unsafe` appears only in `crates/bn_rt/src/ffi.rs`, each use with `SAFETY:` | `rg` recorded (S3.h) |
 | **AC10** | One implementation: resolution, checks and the call exist only in `bn_rt::ffi`; the provider and the emission only translate | `rg` recorded (S5.d) |
 | **AC11** | Build and tests green on Linux, macOS, Windows (test host and CI), including the release matrix targets | logs |
@@ -259,7 +261,7 @@ sites Miri cannot execute are listed, not assumed safe).
 - [ ] **S6.d** `NEW C.Handle()` negative fixture (AC6).
 - [ ] **S6.e** Resolution order (AC7): the same library name in two
   directories with different results.
-- [ ] **S6.f** `wasm32` support diagnostic (AC8).
+- [X] **S6.f** Withdrawn with the wasm32 target (BDFL, 2026-10-20). See the Wasm note at the top.
 - [ ] **S6.g** System library smoke: `cos` from `"libm.so.6"` on Linux,
   `"m"` on macOS, `"ucrtbase"` on Windows (system library names are not
   portable; the book shows the wrapper choosing the name).

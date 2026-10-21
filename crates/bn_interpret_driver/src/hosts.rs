@@ -13,7 +13,7 @@
 pub mod clock;
 pub mod console;
 pub mod env;
-pub mod exec;
+pub(crate) mod exec;
 pub mod random;
 
 use std::sync::Arc;
@@ -24,7 +24,7 @@ use bn_interp::provider::Providers;
 /// `HOST.` (`"Net"`, `"FileSystem"`, …). `HOST.NumProcs`/`HOST.Args` are
 /// language surface and stay in the core.
 #[must_use]
-pub fn default_hosts() -> Providers {
+pub(crate) fn default_hosts() -> Providers {
     let mut hosts = Providers::default();
     hosts.register(
         bn_host_net::NAME,

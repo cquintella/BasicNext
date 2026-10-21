@@ -718,6 +718,35 @@ fn cpu_native_artifacts_print_what_the_interpreter_prints() {
     }
 }
 
+#[test]
+fn cpu_generic_omits_cpu_flags_and_prints_what_the_interpreter_prints() {
+    let directory = TestDir::new("cpu-generic").expect("create directory");
+    let path = workspace_root().join("examples/bnmath_tour.bn");
+    let artifact = directory.join(format!("cpu-generic-math{}", std::env::consts::EXE_SUFFIX));
+    let built = execute(
+        bnc()
+            .arg("--cpu")
+            .arg("generic")
+            .arg(&path)
+            .arg("-o")
+            .arg(&artifact),
+        None,
+    );
+    assert_success(&built, "examples/bnmath_tour.bn");
+    let interpreted = interpret(&path, None);
+    let compiled = execute(&mut Command::new(&artifact), None);
+    assert_eq!(
+        interpreted.status.code(),
+        compiled.status.code(),
+        "examples/bnmath_tour.bn"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&compiled.stdout),
+        String::from_utf8_lossy(&interpreted.stdout),
+        "examples/bnmath_tour.bn"
+    );
+}
+
 /// One NUL case: fixture name under `tests/native-nul/`,
 /// the `bni` output, program arguments and stdin.
 struct NulCase<'a> {

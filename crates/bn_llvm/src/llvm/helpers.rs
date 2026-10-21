@@ -79,6 +79,86 @@ pub(crate) fn coerce_integer(
     crate::ir::LlvmOperand::reg(&temp)
 }
 
+pub(crate) fn region_element_label(element: &Type) -> String {
+    match element {
+        Type::Integer(kind) => format!("{kind:?}"),
+        Type::Float(kind) => format!("{kind:?}"),
+        _ => "POINTER".into(),
+    }
+}
+
+pub(crate) fn is_integer_handle_type(ty: &Type) -> bool {
+    match ty {
+        Type::Named(name) | Type::TypeName(name) => {
+            let base = name.rsplit('.').next().unwrap_or(name);
+            matches!(
+                base,
+                "File"
+                    | "TCPStream"
+                    | "TCPListener"
+                    | "UDPSocket"
+                    | "UDPPacket"
+                    | "Connection"
+                    | "DataFrame"
+                    | "Bytes"
+                    | "Queue"
+                    | "Ticket"
+                    | "Group"
+                    | "Barrier"
+                    | "Semaphore"
+                    | "Mutex"
+                    | "SessionStore"
+                    | "CookieJar"
+                    | "Scraper"
+                    | "ACL"
+                    | "Client"
+                    | "Server"
+                    | "EgressPolicy"
+                    | "TLSConfig"
+                    | "Response"
+                    | "Request"
+                    | "Json"
+                    | "Logger"
+                    | "Result"
+            )
+        }
+        Type::ImportedNamed { name, .. } | Type::ImportedTypeName { name, .. } => {
+            matches!(
+                name.as_str(),
+                "File"
+                    | "TCPStream"
+                    | "TCPListener"
+                    | "UDPSocket"
+                    | "UDPPacket"
+                    | "Connection"
+                    | "DataFrame"
+                    | "Bytes"
+                    | "Queue"
+                    | "Ticket"
+                    | "Group"
+                    | "Barrier"
+                    | "Semaphore"
+                    | "Mutex"
+                    | "SessionStore"
+                    | "CookieJar"
+                    | "Scraper"
+                    | "ACL"
+                    | "Client"
+                    | "Server"
+                    | "EgressPolicy"
+                    | "TLSConfig"
+                    | "Response"
+                    | "Request"
+                    | "Json"
+                    | "Logger"
+                    | "Result"
+            )
+        }
+        Type::Alternative(members) => members.iter().any(is_integer_handle_type),
+        _ => false,
+    }
+}
+
 pub(crate) fn coerce_to_type(
     text: &mut crate::ir::LlvmModule,
     value: ValueId,
@@ -89,6 +169,41 @@ pub(crate) fn coerce_to_type(
     let to_llvm = llvm_type(to).expect("validated coerce target");
     if from_llvm == to_llvm {
         return crate::ir::LlvmOperand::reg(format!("v{}", value.0));
+    }
+    if from_llvm == crate::layout::handle_result_ty() && to_llvm == LlvmType::Ptr {
+        let union_ty = LlvmType::struct_of([LlvmType::I1, LlvmType::Ptr, LlvmType::I64]);
+        if is_integer_handle_type(from) || is_integer_handle_type(to) {
+            let tag = format!("unhdlpayload{}_{}", value.0, text.fresh_tag());
+            text.assign(
+                tag.clone(),
+                crate::ir::LlvmInst::extract(
+                    union_ty,
+                    crate::ir::LlvmOperand::reg(format!("v{}", value.0)),
+                    2,
+                ),
+            );
+            let ptag = format!("unhdlptr{}_{}", value.0, text.fresh_tag());
+            text.assign(
+                ptag.clone(),
+                crate::ir::LlvmInst::cast(
+                    crate::ir::CastOp::IntToPtr,
+                    LlvmType::I64,
+                    crate::ir::LlvmOperand::reg(tag),
+                    LlvmType::Ptr,
+                ),
+            );
+            return crate::ir::LlvmOperand::reg(&ptag);
+        }
+        let tag = format!("unptrpayload{}_{}", value.0, text.fresh_tag());
+        text.assign(
+            tag.clone(),
+            crate::ir::LlvmInst::extract(
+                union_ty,
+                crate::ir::LlvmOperand::reg(format!("v{}", value.0)),
+                1,
+            ),
+        );
+        return crate::ir::LlvmOperand::reg(&tag);
     }
     if from_llvm == crate::layout::handle_result_ty()
         && matches!(
@@ -506,7 +621,7 @@ pub(crate) fn provider_name(module: &Module, name: &str) -> Option<&'static str>
         .iter()
         .any(|provider| provider.0 == module_id)
     {
-        Some("BNSqlite")
+        Some(bn_catalog::text("llvm", "msg.bnsqlite"))
     } else {
         None
     }
@@ -514,7 +629,7 @@ pub(crate) fn provider_name(module: &Module, name: &str) -> Option<&'static str>
 
 /// True when `ty` carries a `BNJson.Json`, directly or inside an `OR Error`
 /// alternative (a narrowed value keeps the aggregate, as `FS.File` does).
-#[cfg_attr(not(feature = "json"), allow(dead_code))]
+#[cfg(feature = "json")]
 pub(crate) fn carries_bnjson(module: &Module, ty: &Type) -> bool {
     let named = |ty: &Type| {
         matches!(
@@ -533,7 +648,7 @@ pub(crate) fn carries_bnjson(module: &Module, ty: &Type) -> bool {
 }
 
 /// The `BNJson` member `name` selects, if this module imports `BNJson`.
-#[cfg_attr(not(feature = "json"), allow(dead_code))]
+#[cfg(feature = "json")]
 pub(crate) fn bnjson_member<'a>(module: &Module, name: &'a str) -> Option<&'a str> {
     let method = name.rsplit('.').next()?;
     (!module.bnjson_providers.is_empty()
@@ -643,7 +758,7 @@ pub(crate) fn bncrypto_method<'a>(module: &Module, name: &'a str) -> Option<&'a 
 }
 
 /// True when `ty` is `BNSqlite.Connection` from a module this program imports.
-#[cfg_attr(not(feature = "sqlite"), allow(dead_code))]
+#[cfg(feature = "sqlite")]
 pub(crate) fn is_bnsqlite_connection_type(module: &Module, ty: &Type) -> bool {
     matches!(
         ty,
@@ -659,7 +774,7 @@ pub(crate) fn is_bnsqlite_connection_type(module: &Module, ty: &Type) -> bool {
 
 /// True when `ty` carries a `BNSqlite.Connection`, either directly or inside an
 /// `OR Error` alternative.
-#[cfg_attr(not(feature = "sqlite"), allow(dead_code))]
+#[cfg(feature = "sqlite")]
 pub(crate) fn carries_bnsqlite_connection(module: &Module, ty: &Type) -> bool {
     match ty {
         Type::Alternative(alternatives) => alternatives
@@ -671,7 +786,7 @@ pub(crate) fn carries_bnsqlite_connection(module: &Module, ty: &Type) -> bool {
 
 /// The `BNSqlite` member `name` selects, if this module imports `BNSqlite` and
 /// the callee is part of the supported surface.
-#[cfg_attr(not(feature = "sqlite"), allow(dead_code))]
+#[cfg(feature = "sqlite")]
 pub(crate) fn bnsqlite_method<'a>(module: &Module, name: &'a str) -> Option<&'a str> {
     let method = name.rsplit('.').next()?;
     (!module.bnsqlite_providers.is_empty()

@@ -54,24 +54,15 @@ crates/bn_cli/src/process_log.rs	prose	cannot write process log {}: {error}
 crates/bn_cli/src/process_log.rs	prose	code={} source={} line={} column={}
 crates/bn_cli/src/process_log.rs	prose	level={} phase={} event={} detail={}
 crates/bn_cli/src/process_log.rs	prose	the log path is not a regular file
-crates/bn_compile_driver/src/artifact.rs	prose	--cpu native is not supported when targeting wasm32
 crates/bn_compile_driver/src/artifact.rs	prose	cannot execute {failed_tool}: {error}
 crates/bn_compile_driver/src/artifact.rs	prose	error: cannot create a private build directory: {error}
 crates/bn_compile_driver/src/artifact.rs	prose	error: cannot write temporary LLVM IR: {error}
 crates/bn_compile_driver/src/artifact.rs	prose	no free build directory name
-crates/bn_compile_driver/src/artifact.rs	prose	tool=clang argv={clang_args:?}
 crates/bn_compile_driver/src/artifact.rs	prose	tool=clang argv={command_args:?}
-crates/bn_compile_driver/src/artifact.rs	prose	tool=wasm-ld argv={wasm_ld_args:?}
-crates/bn_compile_driver/src/cli.rs	prose	\\\n{version}\nusage: bnc [compile-options] <entry.bn>\n\nCompiles the program to a native executable or a Wasm module.\n\ncompile options:\n  -o, --output <file>        write the artifact to <file> (defaults to entry name)\n  --target native|wasm32     select the target (default native)\n  --opt none|1|2|3|s         optimization level (default 2)\n  -g, --debug                emit debug information (DWARF; PDB on Windows)\n  --cpu native|generic       target host CPU instructions (default generic)\n  --emit llvm                print LLVM IR instead of compiling\n  --emit ir                  print the validated BN IR instead of compiling\n                             (tokens, ast and typed-ast are also accepted)\n{COMMON_OPTIONS}\nSee also: man bnc\nMore information: {BOOK_URL}\n
 crates/bn_compile_driver/src/cli.rs	prose	usage: bnc [compile-options] <entry.bn>\\ntry: bnc --help
 crates/bn_compile_driver/src/options.rs	prose	--cpu expects generic or native
 crates/bn_compile_driver/src/options.rs	prose	--opt expects none, 1, 2, 3, or s
-crates/bn_compile_driver/src/options.rs	prose	--target expects native or wasm32
 crates/bn_compile_driver/src/toolchain.rs	identifier	BN_RT_LIB
-crates/bn_compile_driver/src/toolchain.rs	identifier	BN_WASM_CLANG
-crates/bn_compile_driver/src/toolchain.rs	identifier	BN_WASM_LD
-crates/bn_compile_driver/src/toolchain.rs	identifier	CARGO_MANIFEST_DIR
-crates/bn_compile_driver/src/toolchain.rs	identifier	CARGO_TARGET_DIR
 crates/bn_compile_driver/src/toolchain.rs	prose	BN_RT_LIB is not a file: {}
 crates/bn_compile_driver/src/toolchain.rs	prose	libbn_rt.a not found; install it under $PREFIX/lib (scripts/install.sh) or build the bn_rt crate (cargo build -p bn_rt) / set BN_RT_LIB
 crates/bn_compile_driver/src/toolchain.rs	prose	toolchain.{key} must be a quoted command
@@ -207,185 +198,6 @@ crates/bn_core_net/src/udp.rs	prose	receive a datagram
 crates/bn_core_net/src/udp.rs	prose	send a datagram to {endpoint}
 crates/bn_core_net/src/udp.rs	prose	use the UDP socket
 crates/bn_core_text/src/civil.rs	prose	civil time must be in years 0001 through 9999
-crates/bn_core_web/src/http.rs	prose	BNWeb handler
-crates/bn_core_web/src/http.rs	prose	HTTP handshake timed out
-crates/bn_core_web/src/http.rs	prose	HTTP request timed out
-crates/bn_core_web/src/http.rs	prose	HTTP response body timed out
-crates/bn_core_web/src/http.rs	prose	TLS configuration must advertise h2 or http/1.1
-crates/bn_core_web/src/http.rs	prose	TLS handshake failed: {error}
-crates/bn_core_web/src/http.rs	prose	TLS handshake timed out
-crates/bn_core_web/src/http.rs	prose	URL requires an authority
-crates/bn_core_web/src/http.rs	prose	URL resolved to no addresses
-crates/bn_core_web/src/http.rs	prose	compressed responses are unavailable without a bounded decoder
-crates/bn_core_web/src/http.rs	prose	connection deadline exceeded
-crates/bn_core_web/src/http.rs	prose	failed to connect to allowed destination
-crates/bn_core_web/src/http.rs	prose	handler failed
-crates/bn_core_web/src/http.rs	prose	handler failed
-crates/bn_core_web/src/http.rs	prose	handler queue is full
-crates/bn_core_web/src/http.rs	prose	handler queue is full
-crates/bn_core_web/src/http.rs	prose	handler timed out
-crates/bn_core_web/src/http.rs	prose	handler timed out
-crates/bn_core_web/src/http.rs	prose	handler timed out
-crates/bn_core_web/src/http.rs	prose	invalid IPv6 authority
-crates/bn_core_web/src/http.rs	prose	invalid IPv6 authority
-crates/bn_core_web/src/http.rs	prose	invalid TLS server name
-crates/bn_core_web/src/http.rs	prose	invalid URL authority
-crates/bn_core_web/src/http.rs	prose	invalid URL authority
-crates/bn_core_web/src/http.rs	prose	invalid port
-crates/bn_core_web/src/http.rs	prose	invalid port
-crates/bn_core_web/src/http.rs	prose	invalid redirect Location
-crates/bn_core_web/src/http.rs	prose	invalid redirect base
-crates/bn_core_web/src/http.rs	prose	invalid request
-crates/bn_core_web/src/http.rs	prose	invalid request body
-crates/bn_core_web/src/http.rs	prose	invalid request header
-crates/bn_core_web/src/http.rs	prose	invalid response
-crates/bn_core_web/src/http.rs	prose	method not allowed
-crates/bn_core_web/src/http.rs	prose	not found
-crates/bn_core_web/src/http.rs	prose	peer address unavailable
-crates/bn_core_web/src/http.rs	prose	rate limit exceeded
-crates/bn_core_web/src/http.rs	prose	rate limit exceeded
-crates/bn_core_web/src/http.rs	prose	redirect limit exceeded
-crates/bn_core_web/src/http.rs	prose	redirect response missing Location
-crates/bn_core_web/src/http.rs	prose	request IDs use only ASCII hex
-crates/bn_core_web/src/http.rs	prose	request body exceeds 8 MiB
-crates/bn_core_web/src/http.rs	prose	request body exceeds 8 MiB
-crates/bn_core_web/src/http.rs	prose	request body is not UTF-8
-crates/bn_core_web/src/http.rs	prose	request body timed out
-crates/bn_core_web/src/http.rs	prose	request headers or target exceed configured bounds
-crates/bn_core_web/src/http.rs	prose	response body exceeds 8 MiB
-crates/bn_core_web/src/http.rs	prose	response body is not UTF-8
-crates/bn_core_web/src/http.rs	prose	response commit failed
-crates/bn_core_web/src/http.rs	prose	server is stopping
-crates/bn_core_web/src/http.rs	prose	server state unavailable
-crates/bn_core_web/src/http.rs	prose	server state unavailable
-crates/bn_core_web/src/http.rs	prose	server state unavailable
-crates/bn_core_web/src/http.rs	prose	server state unavailable
-crates/bn_core_web/src/http.rs	prose	server state unavailable
-crates/bn_core_web/src/http.rs	prose	unsupported URL scheme
-crates/bn_core_web/src/tls.rs	prose	PRIVATE KEY
-crates/bn_core_web/src/tls.rs	prose	TLS material exceeds 64 KiB
-crates/bn_core_web/src/tls.rs	prose	a non-ring Rustls crypto provider is already installed
-crates/bn_core_web/src/tls.rs	prose	invalid PEM base64
-crates/bn_core_web/src/tls.rs	prose	invalid PEM base64
-crates/bn_core_web/src/tls.rs	prose	invalid PEM base64
-crates/bn_core_web/src/tls.rs	prose	invalid PEM base64
-crates/bn_core_web/src/tls.rs	prose	invalid TLS certificate or key: {error}
-crates/bn_core_web/src/tls.rs	prose	invalid system CA certificate: {error}
-crates/bn_core_web/src/tls.rs	prose	missing PEM {label} block
-crates/bn_core_web/src/tls.rs	prose	missing PEM {label} end marker
-crates/bn_core_web/src/tls.rs	prose	no system CA bundle was found
-crates/bn_core_web/src/web.rs	prose	Secure cookies cannot be sent over cleartext HTTP
-crates/bn_core_web/src/web.rs	prose	URL requires an authority
-crates/bn_core_web/src/web.rs	prose	URL resolved to no addresses
-crates/bn_core_web/src/web.rs	prose	URL resolved to no addresses
-crates/bn_core_web/src/web.rs	prose	ambiguous path segment
-crates/bn_core_web/src/web.rs	prose	body limit exceeds 8 MiB
-crates/bn_core_web/src/web.rs	prose	body limit is invalid
-crates/bn_core_web/src/web.rs	prose	destination is outside the egress policy
-crates/bn_core_web/src/web.rs	prose	destination is outside the egress policy
-crates/bn_core_web/src/web.rs	prose	egress policy contains an invalid port
-crates/bn_core_web/src/web.rs	prose	egress policy contains an invalid port
-crates/bn_core_web/src/web.rs	prose	egress policy contains an unsupported scheme
-crates/bn_core_web/src/web.rs	prose	egress policy contains an unsupported scheme
-crates/bn_core_web/src/web.rs	prose	egress policy list exceeds configured capacity
-crates/bn_core_web/src/web.rs	prose	egress policy value is outside the configured bounds
-crates/bn_core_web/src/web.rs	prose	invalid URL authority
-crates/bn_core_web/src/web.rs	prose	invalid UTF-8 in target
-crates/bn_core_web/src/web.rs	prose	invalid header name
-crates/bn_core_web/src/web.rs	prose	invalid request header
-crates/bn_core_web/src/web.rs	prose	invalid request method
-crates/bn_core_web/src/web.rs	prose	invalid request target
-crates/bn_core_web/src/web.rs	prose	invalid response header
-crates/bn_core_web/src/web.rs	prose	invalid response status
-crates/bn_core_web/src/web.rs	prose	malformed percent escape
-crates/bn_core_web/src/web.rs	prose	malformed percent escape
-crates/bn_core_web/src/web.rs	prose	malformed percent escape
-crates/bn_core_web/src/web.rs	prose	private or local destination requires explicit opt-in
-crates/bn_core_web/src/web.rs	prose	query exceeds 8 KiB
-crates/bn_core_web/src/web.rs	prose	query fields exceed bounds
-crates/bn_core_web/src/web.rs	prose	query key or value exceeds bounds
-crates/bn_core_web/src/web.rs	prose	request body exceeds declared limit
-crates/bn_core_web/src/web.rs	prose	request headers exceed bounds
-crates/bn_core_web/src/web.rs	prose	request target must be an origin-form path
-crates/bn_core_web/src/web.rs	prose	response body exceeds 8 MiB
-crates/bn_core_web/src/web.rs	prose	response headers exceed 64 KiB
-crates/bn_core_web/src/web.rs	prose	response is already committed or closed
-crates/bn_core_web/src/web.rs	prose	response is already committed or closed
-crates/bn_core_web/src/web.rs	prose	response is already committed or closed
-crates/bn_core_web/src/web.rs	prose	response is closed
-crates/bn_core_web/src/web.rs	prose	unsupported or ambiguous URL
-crates/bn_core_web/src/web/drain.rs	prose	server drain timed out with active connections
-crates/bn_core_web/src/web/drain.rs	prose	server drain timed out with active connections
-crates/bn_core_web/src/web/drain.rs	prose	server listener is already installed
-crates/bn_core_web/src/web/drain.rs	prose	server listener join failed
-crates/bn_core_web/src/web/drain.rs	prose	server listener join timed out
-crates/bn_core_web/src/web/drain.rs	prose	server state unavailable
-crates/bn_core_web/src/web/drain.rs	prose	server state unavailable
-crates/bn_core_web/src/web/drain.rs	prose	server state unavailable
-crates/bn_core_web/src/web/drain.rs	prose	server state unavailable
-crates/bn_core_web/src/web/drain.rs	prose	server state unavailable
-crates/bn_core_web/src/web/drain.rs	prose	server worker drain timed out
-crates/bn_core_web/src/web/drain.rs	prose	stop timeout is outside 1..60000 ms
-crates/bn_core_web/src/web/server.rs	prose	failed to start server runtime
-crates/bn_core_web/src/web/server.rs	prose	failed to start server worker pool
-crates/bn_core_web/src/web/server.rs	prose	invalid route
-crates/bn_core_web/src/web/server.rs	prose	rate limit exceeded
-crates/bn_core_web/src/web/server.rs	prose	server connection limit reached
-crates/bn_core_web/src/web/server.rs	prose	server drain timed out with active connections
-crates/bn_core_web/src/web/server.rs	prose	server drain timed out with active handlers
-crates/bn_core_web/src/web/server.rs	prose	server is already started
-crates/bn_core_web/src/web/server.rs	prose	server is already started
-crates/bn_core_web/src/web/server.rs	prose	server is not accepting connections
-crates/bn_core_web/src/web/server.rs	prose	server is not accepting requests
-crates/bn_core_web/src/web/server.rs	prose	server is stopping or closed
-crates/bn_core_web/src/web/server.rs	prose	server is stopping or closed
-crates/bn_core_web/src/web/server.rs	prose	server is stopping or closed
-crates/bn_core_web/src/web/server.rs	prose	server listener is already installed
-crates/bn_core_web/src/web/server.rs	prose	server options are outside the configured bounds
-crates/bn_core_web/src/web/server.rs	prose	server request queue is full
-crates/bn_core_web/src/web/server.rs	prose	server request queue is full
-crates/bn_core_web/src/web/server.rs	prose	server worker pool is already installed
-crates/bn_core_web/src/web/server.rs	prose	server worker pool is unavailable
-crates/bn_core_web/src/web/server.rs	prose	server worker pool is unavailable
-crates/bn_core_web/src/web/server.rs	prose	server worker queue is full
-crates/bn_core_web/src/web/server.rs	prose	stop timeout is outside 1..60000 ms
-crates/bn_core_web/src/web/sessions.rs	prose	invalid session capacity
-crates/bn_core_web/src/web/sessions.rs	prose	invalid session idle timeout
-crates/bn_core_web/src/web/sessions.rs	prose	session not found
-crates/bn_core_web/src/web_state.rs	prose	; Max-Age={}
-crates/bn_core_web/src/web_state.rs	prose	; SameSite=Lax
-crates/bn_core_web/src/web_state.rs	prose	; SameSite=None
-crates/bn_core_web/src/web_state.rs	prose	; SameSite=Strict
-crates/bn_core_web/src/web_state.rs	prose	SameSite=None requires Secure
-crates/bn_core_web/src/web_state.rs	prose	invalid CIDR
-crates/bn_core_web/src/web_state.rs	prose	invalid CIDR
-crates/bn_core_web/src/web_state.rs	prose	invalid CIDR
-crates/bn_core_web/src/web_state.rs	prose	invalid CIDR prefix
-crates/bn_core_web/src/web_state.rs	prose	invalid SameSite policy
-crates/bn_core_web/src/web_state.rs	prose	invalid cookie bounds
-crates/bn_core_web/src/web_state.rs	prose	invalid cookie domain
-crates/bn_core_web/src/web_state.rs	prose	invalid cookie name
-crates/bn_core_web/src/web_state.rs	prose	invalid cookie path
-crates/bn_core_web/src/web_state.rs	prose	invalid cookie value
-crates/bn_core_web/src/web_state.rs	prose	invalid session capacity
-crates/bn_core_web/src/web_state.rs	prose	invalid session capacity
-crates/bn_core_web/src/web_state.rs	prose	invalid session idle timeout
-crates/bn_core_web/src/web_state.rs	prose	malformed HTML
-crates/bn_core_web/src/web_state.rs	prose	malformed HTML
-crates/bn_core_web/src/web_state.rs	prose	negative cookie age
-crates/bn_core_web/src/web_state.rs	prose	request ID encoding failed
-crates/bn_core_web/src/web_state.rs	prose	request ID entropy provider failed
-crates/bn_core_web/src/web_state.rs	prose	scripts are not allowed
-crates/bn_core_web/src/web_state.rs	prose	selector did not match
-crates/bn_core_web/src/web_state.rs	prose	session ID encoding failed
-crates/bn_core_web/src/web_state.rs	prose	session entropy provider failed
-crates/bn_core_web/src/web_state.rs	prose	session not found
-crates/bn_core_web/src/web_state.rs	prose	session not found
-crates/bn_core_web/src/web_state.rs	prose	session not found
-crates/bn_core_web/src/web_state.rs	prose	session value too large
-crates/bn_core_web/src/web_state.rs	prose	session value too large
-crates/bn_core_web/src/web_state.rs	prose	unsupported selector
-crates/bn_core_web/src/web_state.rs	prose	unsupported selector
 crates/bn_dap/src/lib.rs	prose	Basic Next
 crates/bn_dap/src/lib.rs	prose	DAP message exceeds 1 MiB
 crates/bn_dap/src/lib.rs	prose	DAP output lock poisoned
@@ -889,7 +701,6 @@ crates/bn_frontend/src/module_graph.rs	identifier	BNSqlite.bn
 crates/bn_frontend/src/module_graph.rs	identifier	BNWeb.bn
 crates/bn_frontend/src/module_graph.rs	identifier	BN_HOME
 crates/bn_frontend/src/module_graph.rs	identifier	BN_HOME
-crates/bn_frontend/src/module_graph.rs	identifier	HOST
 crates/bn_frontend/src/module_graph.rs	identifier	IMPORT_CYCLE
 crates/bn_frontend/src/module_graph.rs	identifier	IMPORT_EXPORT_NOT_FOUND
 crates/bn_frontend/src/module_graph.rs	identifier	MODULE_LIMIT
@@ -924,9 +735,6 @@ crates/bn_frontend/src/parser/expressions.rs	prose	parser error
 crates/bn_frontend/src/parser/expressions.rs	prose	pointer shape requires an integer literal
 crates/bn_frontend/src/parser/expressions.rs	prose	token stream is not empty
 crates/bn_frontend/src/parser/expressions.rs	prose	type test token
-crates/bn_frontend/src/parser/phase1.rs	identifier	HOST
-crates/bn_frontend/src/parser/phase1.rs	identifier	HOST
-crates/bn_frontend/src/parser/phase1.rs	identifier	HOST
 crates/bn_frontend/src/parser/phase1.rs	prose	ASYNC can only modify FUNCTION declarations
 crates/bn_frontend/src/parser/phase1.rs	prose	CONST inference does not support this literal; use AS TYPE
 crates/bn_frontend/src/parser/phase1.rs	prose	CONST inference supports only BOOLEAN, INTEGER, FLOAT, and STRING literals
@@ -951,21 +759,16 @@ crates/bn_frontend/src/parser/phase1.rs	prose	expected interface name after IMPL
 crates/bn_frontend/src/parser/phase1.rs	prose	expected parameter name
 crates/bn_frontend/src/parser/phase1.rs	prose	expected parameter name
 crates/bn_frontend/src/parser/phase1.rs	prose	module constants require a literal initializer
-crates/bn_frontend/src/parser/phase1.rs	prose	top-level CONST declarations must be exported
 crates/bn_frontend/src/parser/phase1.rs	prose	trailing comma in FUNCTION parameters
 crates/bn_frontend/src/parser/phase1.rs	prose	unexpected token after declaration name
 crates/bn_frontend/src/parser/phase2.rs	prose	UNTIL requires an expression
 crates/bn_frontend/src/parser/phase2.rs	prose	expected = in FOR
-crates/bn_frontend/src/parser/phase2.rs	prose	expected AS in FOR
-crates/bn_frontend/src/parser/phase2.rs	prose	expected AS in FOR EACH
 crates/bn_frontend/src/parser/phase2.rs	prose	expected END REPEAT
 crates/bn_frontend/src/parser/phase2.rs	prose	expected END {outer_end} before end of file
 crates/bn_frontend/src/parser/phase2.rs	prose	expected END {outer_end}, found END {end}
 crates/bn_frontend/src/parser/phase2.rs	prose	expected FOR EACH variable
-crates/bn_frontend/src/parser/phase2.rs	prose	expected FOR name AS type = start TO end [STEP step]
 crates/bn_frontend/src/parser/phase2.rs	prose	expected FOR variable
 crates/bn_frontend/src/parser/phase2.rs	prose	expected FOR variable name
-crates/bn_frontend/src/parser/phase2.rs	prose	expected IN in FOR EACH
 crates/bn_frontend/src/parser/phase2.rs	prose	expected THEN after ELSE IF condition
 crates/bn_frontend/src/parser/phase2.rs	prose	expected THEN after IF condition
 crates/bn_frontend/src/parser/phase2.rs	prose	expected TO in FOR
@@ -998,9 +801,6 @@ crates/bn_frontend/src/parser/phase3.rs	prose	assignment operator
 crates/bn_frontend/src/parser/phase3.rs	prose	assignment requires a target and expression
 crates/bn_frontend/src/parser/phase3.rs	prose	expected ']' in vector type
 crates/bn_frontend/src/parser/phase3.rs	prose	expected a call statement
-crates/bn_frontend/src/parser/phase3.rs	prose	expected binding name
-crates/bn_frontend/src/parser/phase3.rs	prose	expected binding name
-crates/bn_frontend/src/parser/phase3.rs	prose	expected binding name
 crates/bn_frontend/src/parser/phase3.rs	prose	expected expression
 crates/bn_frontend/src/parser/phase3.rs	prose	expected statement
 crates/bn_frontend/src/parser/phase3.rs	prose	expected statement
@@ -1100,18 +900,13 @@ crates/bn_frontend/src/semantic/analyzer4.rs	prose	STRING index
 crates/bn_frontend/src/semantic/analyzer4.rs	prose	assignable field
 crates/bn_frontend/src/semantic/analyzer4.rs	prose	assignment target
 crates/bn_frontend/src/semantic/analyzer4.rs	prose	assignment target
-crates/bn_frontend/src/semantic/analyzer4.rs	prose	counted FOR bound
 crates/bn_frontend/src/semantic/analyzer4.rs	prose	dynamic-length vector
-crates/bn_frontend/src/semantic/analyzer4.rs	prose	fixed-length vector
-crates/bn_frontend/src/semantic/analyzer4.rs	prose	fixed-length vector
 crates/bn_frontend/src/semantic/analyzer4.rs	prose	indexed assignment
 crates/bn_frontend/src/semantic/analyzer4.rs	prose	member assignment
 crates/bn_frontend/src/semantic/analyzer4.rs	prose	mutable assignment target
 crates/bn_frontend/src/semantic/analyzer4.rs	prose	mutable binding
 crates/bn_frontend/src/semantic/analyzer4.rs	prose	mutable indexed value
 crates/bn_frontend/src/semantic/analyzer4.rs	prose	mutable value
-crates/bn_frontend/src/semantic/analyzer4.rs	prose	non-INTEGER value
-crates/bn_frontend/src/semantic/analyzer4.rs	prose	non-INTEGER value
 crates/bn_frontend/src/semantic/analyzer4.rs	prose	non-assignable member '{name}'
 crates/bn_frontend/src/semantic/analyzer4.rs	prose	non-mutable value
 crates/bn_frontend/src/semantic/analyzer4.rs	prose	non-zero INTEGER
@@ -1171,10 +966,8 @@ crates/bn_frontend/src/semantic/analyzer6.rs	identifier	HOST.Random
 crates/bn_frontend/src/semantic/analyzer6.rs	prose	1 timeout argument
 crates/bn_frontend/src/semantic/analyzer6.rs	prose	ASYNC submission requires a named function target
 crates/bn_frontend/src/semantic/analyzer6.rs	prose	AWAIT timeout must be between 1 and 60000 milliseconds
-crates/bn_frontend/src/semantic/analyzer6.rs	prose	Async call
 crates/bn_frontend/src/semantic/analyzer6.rs	prose	Async provider
 crates/bn_frontend/src/semantic/analyzer6.rs	prose	Async target
-crates/bn_frontend/src/semantic/analyzer6.rs	prose	Async worker argument
 crates/bn_frontend/src/semantic/analyzer6.rs	prose	FS.Open mode must be FS.READ, FS.WRITE, or FS.APPEND
 crates/bn_frontend/src/semantic/analyzer6.rs	prose	FUNCTION target
 crates/bn_frontend/src/semantic/analyzer6.rs	prose	IS requires a type, NULL, NA, EOF, NAN, or INF test
@@ -1185,10 +978,7 @@ crates/bn_frontend/src/semantic/analyzer6.rs	prose	SUPER constructor call
 crates/bn_frontend/src/semantic/analyzer6.rs	prose	SUPER constructor parameter
 crates/bn_frontend/src/semantic/analyzer6.rs	prose	SUPER is valid only in a derived CLASS
 crates/bn_frontend/src/semantic/analyzer6.rs	prose	SUPER is valid only in a derived CLASS
-crates/bn_frontend/src/semantic/analyzer6.rs	prose	alternative member access
-crates/bn_frontend/src/semantic/analyzer6.rs	prose	available member
 crates/bn_frontend/src/semantic/analyzer6.rs	prose	callable Async provider
-crates/bn_frontend/src/semantic/analyzer6.rs	prose	conflicting alternative member types
 crates/bn_frontend/src/semantic/analyzer6.rs	prose	function call
 crates/bn_frontend/src/semantic/analyzer6.rs	prose	function parameter
 crates/bn_frontend/src/semantic/analyzer6.rs	prose	imported member access
@@ -1203,7 +993,6 @@ crates/bn_frontend/src/semantic/analyzer6.rs	prose	member '{}.{name}' is PROTECT
 crates/bn_frontend/src/semantic/analyzer6.rs	prose	member access
 crates/bn_frontend/src/semantic/analyzer6.rs	prose	member receiver has no resolved type
 crates/bn_frontend/src/semantic/analyzer6.rs	prose	missing target
-crates/bn_frontend/src/semantic/analyzer6.rs	prose	one compatible member type
 crates/bn_frontend/src/semantic/analyzer6.rs	prose	the exported members of imported type '{}'
 crates/bn_frontend/src/semantic/analyzer6.rs	prose	the exports of the imported module
 crates/bn_frontend/src/semantic/analyzer6.rs	prose	the members of type '{owner}'
@@ -1233,8 +1022,6 @@ crates/bn_frontend/src/semantic/analyzer7.rs	prose	type '{name}' is not declared
 crates/bn_frontend/src/semantic/analyzer7.rs	prose	variable-length vectors are reserved for the BNData library
 crates/bn_frontend/src/semantic/analyzer8.rs	prose	float type
 crates/bn_frontend/src/semantic/analyzer8.rs	prose	numeric type
-crates/bn_frontend/src/semantic/analyzer8.rs	prose	unsized value
-crates/bn_frontend/src/semantic/analyzer8.rs	prose	value with defined byte size
 crates/bn_frontend/src/semantic/helpers1.rs	identifier	HOST.Clock
 crates/bn_frontend/src/semantic/helpers1.rs	identifier	HOST.Console
 crates/bn_frontend/src/semantic/helpers1.rs	identifier	HOST.Env
@@ -1274,9 +1061,6 @@ crates/bn_frontend/src/semantic/helpers2.rs	prose	unreachable-code diagnostic sc
 crates/bn_frontend/src/semantic/helpers2.rs	prose	{} needs an explicit argument mapping ({} arguments)
 crates/bn_frontend/src/semantic/host_defaults.rs	prose	Timestamp namespace
 crates/bn_frontend/src/semantic/module_analysis.rs	identifier	BNLog
-crates/bn_frontend/src/semantic/module_analysis.rs	identifier	HOST
-crates/bn_frontend/src/semantic/module_analysis.rs	identifier	HOST
-crates/bn_frontend/src/semantic/module_analysis.rs	identifier	HOST
 crates/bn_frontend/src/semantic/module_analysis.rs	prose	'{interface}' is not an INTERFACE
 crates/bn_frontend/src/semantic/module_analysis.rs	prose	PUBLIC instance FUNCTION {method} matching {interface}
 crates/bn_frontend/src/semantic/module_analysis.rs	prose	interface implementation
@@ -1292,7 +1076,6 @@ crates/bn_frontend/src/semantic/module_analysis.rs	prose	unused import diagnosti
 crates/bn_frontend/src/semantic/type_ops.rs	prose	binary operator {operator}
 crates/bn_frontend/src/semantic/type_ops.rs	prose	operands accepted by {operator}
 crates/bn_frontend/src/semantic/type_ops.rs	prose	shift count must be non-negative and smaller than the left operand width
-crates/bn_frontend/src/token.rs	identifier	OUT_DIR
 crates/bn_host_env/src/lib.rs	identifier	HOST.Env.Get
 crates/bn_host_env/src/lib.rs	identifier	HOST.Env.Get
 crates/bn_host_env/src/lib.rs	identifier	HOST.Env.Has
@@ -1324,7 +1107,6 @@ crates/bn_host_fs/src/lib.rs	prose	FS.File.WriteBytes buffer element
 crates/bn_host_fs/src/lib.rs	prose	HOST.FileSystem.DeleteFile path
 crates/bn_host_fs/src/lib.rs	prose	HOST.FileSystem.Exists path
 crates/bn_host_fs/src/lib.rs	prose	HOST.FileSystem.Open path
-crates/bn_host_fs/src/lib.rs	prose	file handle is invalid
 crates/bn_host_fs/src/lib.rs	prose	file handle was already deleted
 crates/bn_host_fs/src/lib.rs	prose	file operation
 crates/bn_host_fs/src/lib.rs	prose	file operation receiver
@@ -1626,11 +1408,9 @@ crates/bn_interp/src/compare.rs	identifier	HOST.Net.TCPStream
 crates/bn_interp/src/compare.rs	identifier	HOST.Net.TCPStream
 crates/bn_interp/src/compare.rs	identifier	HOST.Net.UDPSocket
 crates/bn_interp/src/compare.rs	identifier	HOST.Net.UDPSocket
-crates/bn_interp/src/compare.rs	prose	POINTER TO 
 crates/bn_interp/src/compare.rs	prose	closing bracket
 crates/bn_interp/src/executor.rs	prose	AND, OR or XOR
 crates/bn_interp/src/executor.rs	prose	BOOLEAN operation
-crates/bn_interp/src/executor.rs	prose	FOR STEP cannot be zero
 crates/bn_interp/src/executor.rs	prose	IR coercion
 crates/bn_interp/src/executor.rs	prose	IR destination type
 crates/bn_interp/src/executor.rs	prose	IS requires a type operand
@@ -1778,9 +1558,6 @@ crates/bn_interp/src/executor/part2.rs	prose	vector dimension must be a non-nega
 crates/bn_interp/src/executor/part3.rs	identifier	HOST.
 crates/bn_interp/src/executor/part3.rs	prose	HOST.{capability} is not provided by this host
 crates/bn_interp/src/executor/part3.rs	prose	function dispatch
-crates/bn_interp/src/executor/part3.rs	prose	key just listed
-crates/bn_interp/src/executor/part3.rs	prose	key just listed
-crates/bn_interp/src/executor/part3.rs	prose	no HOST capability owns this handle
 crates/bn_interp/src/executor/part3.rs	prose	{library} provider unavailable
 crates/bn_interp/src/executor/part7.rs	identifier	HOST.NumProcs
 crates/bn_interp/src/executor/part7.rs	prose	available processor count exceeds INTEGER range
@@ -1804,7 +1581,6 @@ crates/bn_interp/src/lib.rs	prose	runtime compatibility diagnostic schema
 crates/bn_interp/src/lib.rs	prose	type-mismatch diagnostic schema
 crates/bn_interp/src/lib.rs	prose	{} needs its typed constructor ({} arguments)
 crates/bn_interp/src/numeric.rs	prose	boolean operation
-crates/bn_interp/src/numeric.rs	prose	exit code must be in 0..255
 crates/bn_interp/src/numeric.rs	prose	integer operation
 crates/bn_interp/src/numeric.rs	prose	integral value
 crates/bn_interp/src/numeric.rs	prose	non-BOOLEAN value
@@ -2027,7 +1803,6 @@ crates/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.MlDsaKeypair
 crates/bn_lib_crypto/src/lib.rs	identifier	BNCrypto.MlKemKeypair
 crates/bn_lib_crypto/src/lib.rs	prose	BNCrypto function
 crates/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Bytes is invalid
-crates/bn_lib_crypto/src/lib.rs	prose	BNCrypto.Bytes was already released
 crates/bn_lib_crypto/src/lib.rs	prose	a non-negative INTEGER
 crates/bn_lib_crypto/src/lib.rs	prose	non-BNCrypto.Bytes value
 crates/bn_lib_crypto/src/lib.rs	prose	non-BNCrypto.Bytes value
@@ -2060,7 +1835,6 @@ crates/bn_lib_data/src/lib.rs	prose	DataFrame handle is invalid
 crates/bn_lib_data/src/lib.rs	prose	DataFrame handle is invalid
 crates/bn_lib_data/src/lib.rs	prose	DataFrame handle is invalid
 crates/bn_lib_data/src/lib.rs	prose	DataFrame handle is invalid
-crates/bn_lib_data/src/lib.rs	prose	DataFrame handle was already deleted
 crates/bn_lib_data/src/lib.rs	prose	DataFrame method
 crates/bn_lib_data/src/lib.rs	prose	DataFrame method
 crates/bn_lib_data/src/lib.rs	prose	DataFrame method
@@ -2132,7 +1906,6 @@ crates/bn_lib_dispatch/src/lib.rs	prose	usize fits i128
 crates/bn_lib_json/src/lib.rs	identifier	BNJson
 crates/bn_lib_json/src/lib.rs	identifier	BNJson.Json
 crates/bn_lib_json/src/lib.rs	prose	BNJson.Json is invalid
-crates/bn_lib_json/src/lib.rs	prose	BNJson.Json was already deleted
 crates/bn_lib_json/src/lib.rs	prose	an INTEGER in range
 crates/bn_lib_json/src/lib.rs	prose	non-BNJson.Json value
 crates/bn_lib_json/src/lib.rs	prose	non-BOOLEAN value
@@ -2177,240 +1950,18 @@ crates/bn_lib_sqlite/src/lib.rs	prose	Connection is already closed
 crates/bn_lib_sqlite/src/lib.rs	prose	Connection is closed or invalid
 crates/bn_lib_sqlite/src/lib.rs	prose	Database path contains interior NUL byte
 crates/bn_lib_sqlite/src/lib.rs	prose	Failed to downcast BNData provider
-crates/bn_lib_sqlite/src/lib.rs	prose	Failed to retrieve query dataframe columns
 crates/bn_lib_sqlite/src/lib.rs	prose	SQL statement contains interior NUL byte
 crates/bn_lib_sqlite/src/lib.rs	prose	SQL statement contains interior NUL byte
 crates/bn_lib_sqlite/src/lib.rs	prose	allocate_object returns object
 crates/bn_lib_sqlite/src/lib.rs	prose	closed handle
 crates/bn_lib_sqlite/src/lib.rs	prose	downcast error
 crates/bn_lib_sqlite/src/lib.rs	prose	handle not found in connection table
-crates/bn_lib_sqlite/src/lib.rs	prose	internal frame not found
 crates/bn_lib_sqlite/src/lib.rs	prose	missing BNData provider
 crates/bn_lib_sqlite/src/lib.rs	prose	non-STRING SQL query
 crates/bn_lib_sqlite/src/lib.rs	prose	non-STRING SQL query
 crates/bn_lib_sqlite/src/lib.rs	prose	non-STRING path
 crates/bn_lib_sqlite/src/lib.rs	prose	non-object receiver
 crates/bn_lib_sqlite/src/lib.rs	prose	non-object receiver
-crates/bn_lib_web/src/lib.rs	identifier	BNLog.Logger
-crates/bn_lib_web/src/lib.rs	identifier	BNLog.Logger
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.Client
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.Client.New
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.Client.Request
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.Client.RequestWithPolicy
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.EgressPolicy
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.Request
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.Response
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.Response
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.Response
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.Scraper
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.Server
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.Server
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.Server
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.Server.Dispatch
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.Server.New
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.Server.Route
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.Server.StartTLS
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.Server.StartTLSWithOptions
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.Server.StartWithOptions
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.ServerOptions
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.SessionStore
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.TLSConfig
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.TLSConfig
-crates/bn_lib_web/src/lib.rs	identifier	BNWeb.TLSConfig
-crates/bn_lib_web/src/lib.rs	identifier	HOST.Net.Address
-crates/bn_lib_web/src/lib.rs	identifier	HOST.Net.Address
-crates/bn_lib_web/src/lib.rs	identifier	HOST.Net.CIDR
-crates/bn_lib_web/src/lib.rs	identifier	HOST.Net.CIDR
-crates/bn_lib_web/src/lib.rs	prose	ACL CIDR
-crates/bn_lib_web/src/lib.rs	prose	ACL CIDR
-crates/bn_lib_web/src/lib.rs	prose	ACL CIDR
-crates/bn_lib_web/src/lib.rs	prose	ACL handle is not live
-crates/bn_lib_web/src/lib.rs	prose	ACL object
-crates/bn_lib_web/src/lib.rs	prose	ACL receiver
-crates/bn_lib_web/src/lib.rs	prose	ACL.Check address
-crates/bn_lib_web/src/lib.rs	prose	ACL.Check address
-crates/bn_lib_web/src/lib.rs	prose	ACL.Check address
-crates/bn_lib_web/src/lib.rs	prose	BNWeb callback did not retain its response
-crates/bn_lib_web/src/lib.rs	prose	BNWeb callback object allocation failed
-crates/bn_lib_web/src/lib.rs	prose	BNWeb callback object allocation failed
-crates/bn_lib_web/src/lib.rs	prose	BNWeb filter failed
-crates/bn_lib_web/src/lib.rs	prose	BNWeb handler failed
-crates/bn_lib_web/src/lib.rs	prose	BNWeb handler is not live
-crates/bn_lib_web/src/lib.rs	prose	BNWeb provider unavailable
-crates/bn_lib_web/src/lib.rs	prose	BNWeb provider unavailable
-crates/bn_lib_web/src/lib.rs	prose	BNWeb route disappeared
-crates/bn_lib_web/src/lib.rs	prose	BNWeb state was lost during a handler
-crates/bn_lib_web/src/lib.rs	prose	BNWeb values handle is not live
-crates/bn_lib_web/src/lib.rs	prose	BNWeb values object
-crates/bn_lib_web/src/lib.rs	prose	BNWeb values object
-crates/bn_lib_web/src/lib.rs	prose	BNWeb.Request handle is not live
-crates/bn_lib_web/src/lib.rs	prose	BNWeb.Server constructor receiver
-crates/bn_lib_web/src/lib.rs	prose	BNWeb.Server handle is not live
-crates/bn_lib_web/src/lib.rs	prose	BNWeb.Server operation receiver
-crates/bn_lib_web/src/lib.rs	prose	BNWeb.TLSConfig handle is not live
-crates/bn_lib_web/src/lib.rs	prose	CookieJar handle is not live
-crates/bn_lib_web/src/lib.rs	prose	CookieJar object
-crates/bn_lib_web/src/lib.rs	prose	CookieJar receiver
-crates/bn_lib_web/src/lib.rs	prose	EgressPolicy handle is not live
-crates/bn_lib_web/src/lib.rs	prose	HOST.FileSystem is not provided by this host
-crates/bn_lib_web/src/lib.rs	prose	Request, Response
-crates/bn_lib_web/src/lib.rs	prose	STRING, INTEGER
-crates/bn_lib_web/src/lib.rs	prose	STRING, STRING
-crates/bn_lib_web/src/lib.rs	prose	STRING, STRING
-crates/bn_lib_web/src/lib.rs	prose	STRING, STRING
-crates/bn_lib_web/src/lib.rs	prose	STRING, STRING
-crates/bn_lib_web/src/lib.rs	prose	STRING, STRING
-crates/bn_lib_web/src/lib.rs	prose	STRING, STRING
-crates/bn_lib_web/src/lib.rs	prose	STRING, STRING, STRING
-crates/bn_lib_web/src/lib.rs	prose	STRING, STRING, STRING
-crates/bn_lib_web/src/lib.rs	prose	STRING, STRING, STRING
-crates/bn_lib_web/src/lib.rs	prose	STRING, STRING, STRING
-crates/bn_lib_web/src/lib.rs	prose	STRING, STRING, STRING, STRING
-crates/bn_lib_web/src/lib.rs	prose	Scraper constructor HTML
-crates/bn_lib_web/src/lib.rs	prose	Scraper handle is not live
-crates/bn_lib_web/src/lib.rs	prose	Scraper object
-crates/bn_lib_web/src/lib.rs	prose	Scraper receiver
-crates/bn_lib_web/src/lib.rs	prose	Scraper.Parse HTML
-crates/bn_lib_web/src/lib.rs	prose	Scraper.Text selector
-crates/bn_lib_web/src/lib.rs	prose	ServerOptions handle is not live
-crates/bn_lib_web/src/lib.rs	prose	ServerOptions handle is not live
-crates/bn_lib_web/src/lib.rs	prose	ServerOptions object
-crates/bn_lib_web/src/lib.rs	prose	ServerOptions receiver
-crates/bn_lib_web/src/lib.rs	prose	SessionStore handle is not live
-crates/bn_lib_web/src/lib.rs	prose	SessionStore object
-crates/bn_lib_web/src/lib.rs	prose	SessionStore receiver
-crates/bn_lib_web/src/lib.rs	prose	TLSConfig constructor
-crates/bn_lib_web/src/lib.rs	prose	TLSConfig object
-crates/bn_lib_web/src/lib.rs	prose	TLSConfig receiver
-crates/bn_lib_web/src/lib.rs	prose	allocate_object returns object
-crates/bn_lib_web/src/lib.rs	prose	cookie policy types
-crates/bn_lib_web/src/lib.rs	prose	incompatible argument
-crates/bn_lib_web/src/lib.rs	prose	invalid CIDR fields
-crates/bn_lib_web/src/lib.rs	prose	invalid address text
-crates/bn_lib_web/src/lib.rs	prose	invalid egress deadline
-crates/bn_lib_web/src/lib.rs	prose	invalid redirect limit
-crates/bn_lib_web/src/lib.rs	prose	malformed record shape
-crates/bn_lib_web/src/lib.rs	prose	malformed record shape
-crates/bn_lib_web/src/lib.rs	prose	missing field
-crates/bn_lib_web/src/lib.rs	prose	missing network
-crates/bn_lib_web/src/lib.rs	prose	missing prefix
-crates/bn_lib_web/src/lib.rs	prose	non-STRING argument
-crates/bn_lib_web/src/lib.rs	prose	non-STRING argument
-crates/bn_lib_web/src/lib.rs	prose	non-STRING argument
-crates/bn_lib_web/src/lib.rs	prose	non-STRING argument
-crates/bn_lib_web/src/lib.rs	prose	non-STRING argument
-crates/bn_lib_web/src/lib.rs	prose	non-STRING argument
-crates/bn_lib_web/src/lib.rs	prose	non-STRING argument
-crates/bn_lib_web/src/lib.rs	prose	non-STRING argument
-crates/bn_lib_web/src/lib.rs	prose	non-STRING argument
-crates/bn_lib_web/src/lib.rs	prose	non-STRING field
-crates/bn_lib_web/src/lib.rs	prose	non-STRING request argument
-crates/bn_lib_web/src/lib.rs	prose	non-STRING route argument
-crates/bn_lib_web/src/lib.rs	prose	non-STRING value
-crates/bn_lib_web/src/lib.rs	prose	non-STRING value
-crates/bn_lib_web/src/lib.rs	prose	non-STRING value
-crates/bn_lib_web/src/lib.rs	prose	non-STRING value
-crates/bn_lib_web/src/lib.rs	prose	non-STRING value
-crates/bn_lib_web/src/lib.rs	prose	non-STRING value
-crates/bn_lib_web/src/lib.rs	prose	non-TLSConfig value
-crates/bn_lib_web/src/lib.rs	prose	non-logger value
-crates/bn_lib_web/src/lib.rs	prose	non-logger value
-crates/bn_lib_web/src/lib.rs	prose	non-object value
-crates/bn_lib_web/src/lib.rs	prose	non-object value
-crates/bn_lib_web/src/lib.rs	prose	non-object value
-crates/bn_lib_web/src/lib.rs	prose	non-object value
-crates/bn_lib_web/src/lib.rs	prose	non-object value
-crates/bn_lib_web/src/lib.rs	prose	non-object value
-crates/bn_lib_web/src/lib.rs	prose	non-object value
-crates/bn_lib_web/src/lib.rs	prose	non-object value
-crates/bn_lib_web/src/lib.rs	prose	non-object value
-crates/bn_lib_web/src/lib.rs	prose	non-object value
-crates/bn_lib_web/src/lib.rs	prose	non-options value
-crates/bn_lib_web/src/lib.rs	prose	non-options value
-crates/bn_lib_web/src/lib.rs	prose	non-policy value
-crates/bn_lib_web/src/lib.rs	prose	non-record value
-crates/bn_lib_web/src/lib.rs	prose	non-record value
-crates/bn_lib_web/src/lib.rs	prose	non-request/response values
-crates/bn_lib_web/src/lib.rs	prose	route handler is not live
-crates/bn_lib_web/src/lib.rs	prose	route handler was validated above
-crates/bn_lib_web/src/lib.rs	prose	server option must be non-negative
-crates/bn_lib_web/src/lib.rs	prose	server state unavailable
-crates/bn_lib_web/src/lib.rs	prose	server state unavailable
-crates/bn_lib_web/src/lib.rs	prose	server state unavailable
-crates/bn_lib_web/src/lib.rs	prose	server state unavailable
-crates/bn_lib_web/src/lib.rs	prose	server state unavailable
-crates/bn_lib_web/src/lib.rs	prose	server state unavailable
-crates/bn_lib_web/src/lib.rs	prose	server state unavailable
-crates/bn_lib_web/src/lib.rs	prose	server state unavailable
-crates/bn_lib_web/src/lib.rs	prose	server state unavailable
-crates/bn_lib_web/src/lib.rs	prose	server state unavailable
-crates/bn_lib_web/src/lib.rs	prose	server state unavailable
-crates/bn_lib_web/src/lib.rs	prose	server state unavailable
-crates/bn_lib_web/src/lib.rs	prose	server state unavailable
-crates/bn_lib_web/src/lib.rs	prose	server timeout must be non-negative
-crates/bn_lib_web/src/lib.rs	prose	trustedProxy must be BOOLEAN
-crates/bn_lib_web/src/lib.rs	prose	valid IP address
-crates/bn_lib_web/src/lib.rs	prose	value: STRING
-crates/bn_lib_web/src/lib.rs	prose	value: STRING
-crates/bn_lib_web/src/lib.rs	prose	values constructor
-crates/bn_lib_web/src/lib.rs	prose	values method
-crates/bn_lib_web/src/lib.rs	prose	web function '{name}' is not available
-crates/bn_lib_web/src/lib.rs	prose	well-formed HOST.Net.Address
-crates/bn_lib_web/src/lib.rs	prose	well-formed HOST.Net.CIDR
-crates/bn_lib_web/src/request_response.rs	identifier	BNWeb
-crates/bn_lib_web/src/request_response.rs	identifier	BNWeb
-crates/bn_lib_web/src/request_response.rs	identifier	BNWeb.HeaderValues
-crates/bn_lib_web/src/request_response.rs	identifier	BNWeb.QueryValues
-crates/bn_lib_web/src/request_response.rs	identifier	BNWeb.Request
-crates/bn_lib_web/src/request_response.rs	identifier	BNWeb.Request
-crates/bn_lib_web/src/request_response.rs	identifier	BNWeb.Response
-crates/bn_lib_web/src/request_response.rs	identifier	BNWeb.Response
-crates/bn_lib_web/src/request_response.rs	identifier	BNWeb.Response.SetHeader
-crates/bn_lib_web/src/request_response.rs	prose	BNWeb.Request collection name
-crates/bn_lib_web/src/request_response.rs	prose	BNWeb.Request handle is not live
-crates/bn_lib_web/src/request_response.rs	prose	BNWeb.Request operation receiver
-crates/bn_lib_web/src/request_response.rs	prose	BNWeb.Request operation receiver
-crates/bn_lib_web/src/request_response.rs	prose	BNWeb.Response constructor receiver
-crates/bn_lib_web/src/request_response.rs	prose	BNWeb.Response handle is not live
-crates/bn_lib_web/src/request_response.rs	prose	BNWeb.Response operation receiver
-crates/bn_lib_web/src/request_response.rs	prose	BNWeb.Response.Header name
-crates/bn_lib_web/src/request_response.rs	prose	BNWeb.Response.Write body
-crates/bn_lib_web/src/request_response.rs	prose	STRING, STRING
-crates/bn_lib_web/src/request_response.rs	prose	STRING, STRING, STRING
-crates/bn_lib_web/src/request_response.rs	prose	STRING, STRING, STRING, STRING
-crates/bn_lib_web/src/request_response.rs	prose	allocate_object returns object
-crates/bn_lib_web/src/request_response.rs	prose	incompatible argument
-crates/bn_lib_web/src/request_response.rs	prose	non-STRING argument
-crates/bn_lib_web/src/request_response.rs	prose	non-STRING argument
-crates/bn_lib_web/src/request_response.rs	prose	non-STRING header name/value
-crates/bn_lib_web/src/request_response.rs	prose	non-STRING value
-crates/bn_lib_web/src/request_response.rs	prose	non-STRING value
-crates/bn_lib_web/src/request_response.rs	prose	non-STRING value
-crates/bn_lib_web/src/request_response.rs	prose	non-STRING value
-crates/bn_lib_web/src/request_response.rs	prose	non-object value
-crates/bn_lib_web/src/request_response.rs	prose	non-object value
-crates/bn_lib_web/src/request_response.rs	prose	non-object value
-crates/bn_lib_web/src/request_response.rs	prose	non-object value
-crates/bn_lib_web/src/request_response.rs	prose	web function '{name}' is not available
-crates/bn_lib_web/src/request_response.rs	prose	web function '{name}' is not available
-crates/bn_lib_web/src/sessions.rs	identifier	BNWeb
-crates/bn_lib_web/src/sessions.rs	identifier	BNWeb.Request
-crates/bn_lib_web/src/sessions.rs	identifier	BNWeb.Session
-crates/bn_lib_web/src/sessions.rs	identifier	BNWeb.Session
-crates/bn_lib_web/src/sessions.rs	prose	BNWeb.Request handle is not live
-crates/bn_lib_web/src/sessions.rs	prose	BNWeb.Request operation receiver
-crates/bn_lib_web/src/sessions.rs	prose	non-STRING value
-crates/bn_lib_web/src/sessions.rs	prose	non-object value
-crates/bn_lib_web/src/sessions.rs	prose	non-object value
-crates/bn_lib_web/src/sessions.rs	prose	server state unavailable
-crates/bn_lib_web/src/sessions.rs	prose	server state unavailable
 crates/bn_limits/src/lib.rs	prose	invalid embedded 0.4 limits
 crates/bn_limits/src/lib.rs	prose	invalid integer for {section}.{key}
 crates/bn_limits/src/lib.rs	prose	invalid registry line: {line}
@@ -2438,7 +1989,6 @@ crates/bn_llvm/src/lib.rs	identifier	TARGET_UNSUPPORTED_LLVM
 crates/bn_llvm/src/lib.rs	identifier	TARGET_UNSUPPORTED_OP
 crates/bn_llvm/src/lib.rs	identifier	TARGET_UNSUPPORTED_TYPE
 crates/bn_llvm/src/lib.rs	prose	FUNCTION({}) AS {}
-crates/bn_llvm/src/lib.rs	prose	HOST.FileSystem, HOST.Net, BNLog and BNWeb are unavailable; HOST.Console is supported
 crates/bn_llvm/src/lib.rs	prose	LLVM entry point requires FUNCTION Start(), found {} parameter(s)
 crates/bn_llvm/src/lib.rs	prose	LLVM target requires an executable Start function
 crates/bn_llvm/src/lib.rs	prose	POINTER TO {}
@@ -2532,16 +2082,12 @@ crates/bn_llvm/src/llvm/casts.rs	prose	validated copy type
 crates/bn_llvm/src/llvm/casts.rs	prose	validated text cast source
 crates/bn_llvm/src/llvm/casts.rs	prose	validated text cast source
 crates/bn_llvm/src/llvm/crypto_calls.rs	prose	unsupported BNCrypto member reached emission: {other}
-crates/bn_llvm/src/llvm/debug_info.rs	identifier	CARGO_PKG_VERSION
 crates/bn_llvm/src/llvm/debug_info.rs	prose	Basic Next 
 crates/bn_llvm/src/llvm/dispatch_emission.rs	prose	validated async task target
-crates/bn_llvm/src/llvm/dispatch_emission.rs	prose	validated dispatch argument
-crates/bn_llvm/src/llvm/dispatch_emission.rs	prose	validated dispatch scalar argument
 crates/bn_llvm/src/llvm/dispatch_emission.rs	prose	validated timeout type
 crates/bn_llvm/src/llvm/emission1.rs	prose	aggregate layout
 crates/bn_llvm/src/llvm/emission1.rs	prose	general alternative default
 crates/bn_llvm/src/llvm/emission1.rs	prose	object size fits i64
-crates/bn_llvm/src/llvm/emission1.rs	prose	struct size fits i64
 crates/bn_llvm/src/llvm/emission1.rs	prose	validated Phi type
 crates/bn_llvm/src/llvm/emission1.rs	prose	validated cast source type
 crates/bn_llvm/src/llvm/emission1.rs	prose	validated copy type
@@ -2560,8 +2106,6 @@ crates/bn_llvm/src/llvm/emission1.rs	prose	validated store LLVM type
 crates/bn_llvm/src/llvm/emission1.rs	prose	validated stored value type
 crates/bn_llvm/src/llvm/emission1.rs	prose	validated unary LLVM type
 crates/bn_llvm/src/llvm/emission1.rs	prose	validated unary operator
-crates/bn_llvm/src/llvm/emission1.rs	prose	validated vector element type
-crates/bn_llvm/src/llvm/emission1.rs	prose	validated vector element type
 crates/bn_llvm/src/llvm/emission1.rs	prose	vector length fits i64
 crates/bn_llvm/src/llvm/emission1.rs	prose	vector length fits i64
 crates/bn_llvm/src/llvm/emission2.rs	prose	binary op right
@@ -2679,10 +2223,7 @@ crates/bn_llvm/src/llvm/load_emission.rs	prose	binding was released
 crates/bn_llvm/src/llvm/load_emission.rs	prose	validated load LLVM type
 crates/bn_llvm/src/llvm/load_emission.rs	prose	validated loaded type
 crates/bn_llvm/src/llvm/load_emission.rs	prose	validated slot LLVM type
-crates/bn_llvm/src/llvm/loop_emission.rs	prose	validated FOR current type
 crates/bn_llvm/src/llvm/loop_emission.rs	prose	validated FOR end type
-crates/bn_llvm/src/llvm/loop_emission.rs	prose	validated FOR step type
-crates/bn_llvm/src/llvm/loop_emission.rs	prose	validated FOR step type
 crates/bn_llvm/src/llvm/math.rs	prose	the input of BNMath.{method}
 crates/bn_llvm/src/llvm/math.rs	prose	validated BNMath argument
 crates/bn_llvm/src/llvm/math.rs	prose	validated BNMath result type
@@ -2697,20 +2238,14 @@ crates/bn_llvm/src/llvm/math.rs	prose	validated unary float BNMath
 crates/bn_llvm/src/llvm/math.rs	prose	validated vector BNMath
 crates/bn_llvm/src/llvm/ownership_emission.rs	identifier	HOST.Exec.Result
 crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated delete value type
-crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated field path reference
-crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated field path slot
 crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated field type
 crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated field value type
-crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated index type
 crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated indexed field path reference
 crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated indexed field path slot
-crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated member field reference
-crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated member field slot
 crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated member value type
 crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated static type
 crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated static type
 crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated static value type
-crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated value type
 crates/bn_llvm/src/llvm/power_shift.rs	prose	integer LLVM type
 crates/bn_llvm/src/llvm/power_shift.rs	prose	shift count must be in 0..{width}
 crates/bn_llvm/src/llvm/power_shift.rs	prose	validated float power type
@@ -2923,9 +2458,7 @@ crates/bn_llvm/src/llvm/traps.rs	prose	converting {} to UINT16
 crates/bn_llvm/src/llvm/traps.rs	prose	converting {} to UINT32
 crates/bn_llvm/src/llvm/traps.rs	prose	converting {} to UINT64
 crates/bn_llvm/src/llvm/traps.rs	prose	error: runtime failure
-crates/bn_llvm/src/llvm/value_emission.rs	prose	validated INPUT owner
 crates/bn_llvm/src/llvm/vectors.rs	prose	binding was released
-crates/bn_llvm/src/llvm/vectors.rs	prose	object size
 crates/bn_llvm/src/llvm/is_emission.rs	prose	sentinel layout of an alternative
 crates/bn_llvm/src/llvm/is_emission.rs	prose	status layout
 crates/bn_llvm/src/llvm/is_emission.rs	prose	status layout of an alternative
@@ -2981,7 +2514,6 @@ crates/bn_rt/src/arc_abi.rs	prose	a registered address fits usize
 crates/bn_rt/src/arc_abi.rs	prose	addresses fit 64 bits
 crates/bn_rt/src/arc_abi.rs	prose	arc: {id} is not alive
 crates/bn_rt/src/arc_abi.rs	prose	arc: {} live object(s)
-crates/bn_rt/src/civil.rs	identifier	FORMAT_OUT_OF_RANGE
 crates/bn_rt/src/console.rs	identifier	HOST_CAPABILITY_UNAVAILABLE
 crates/bn_rt/src/console.rs	identifier	INDEX_OUT_OF_BOUNDS
 crates/bn_rt/src/console.rs	identifier	NUMERIC_OVERFLOW
@@ -3112,7 +2644,6 @@ crates/bn_rt/src/dataframe_abi.rs	identifier	BNData.DataFrame.GetString
 crates/bn_rt/src/dataframe_abi.rs	identifier	BNData.DataFrame.GetString
 crates/bn_rt/src/dataframe_abi.rs	identifier	BNData.DataFrame.GetString
 crates/bn_rt/src/dataframe_abi.rs	identifier	BNData.DataFrame.GetString
-crates/bn_rt/src/dataframe_abi.rs	identifier	BNData.DataFrame.GetString
 crates/bn_rt/src/dataframe_abi.rs	identifier	BNData.DataFrame.Join
 crates/bn_rt/src/dataframe_abi.rs	identifier	BNData.DataFrame.Join
 crates/bn_rt/src/dataframe_abi.rs	identifier	BNData.DataFrame.Join
@@ -3154,7 +2685,6 @@ crates/bn_rt/src/dataframe_abi.rs	prose	column count overflow
 crates/bn_rt/src/dataframe_abi.rs	prose	column count overflow
 crates/bn_rt/src/dataframe_abi.rs	prose	file error status {status}
 crates/bn_rt/src/dataframe_abi.rs	prose	file error status {status}
-crates/bn_rt/src/dataframe_abi.rs	prose	integer out of range
 crates/bn_rt/src/dataframe_abi.rs	prose	invalid column view
 crates/bn_rt/src/dataframe_abi.rs	prose	out of memory
 crates/bn_rt/src/dataframe_abi.rs	prose	row count overflow
@@ -3195,12 +2725,7 @@ crates/bn_rt/src/env.rs	prose	invalid name
 crates/bn_rt/src/env.rs	prose	name is empty or contains '=' or NUL
 crates/bn_rt/src/env.rs	prose	name is empty or contains '=' or NUL
 crates/bn_rt/src/env.rs	prose	out of memory
-crates/bn_rt/src/exec.rs	identifier	HOST.Exec.Run
-crates/bn_rt/src/exec.rs	identifier	HOST.Exec.Run
-crates/bn_rt/src/file_abi.rs	identifier	HOST.FileSystem.File.ReadAll
-crates/bn_rt/src/file_abi.rs	identifier	HOST.FileSystem.File.ReadLine
 crates/bn_rt/src/file_abi.rs	prose	HOST.FileSystem is denied by execution policy
-crates/bn_rt/src/file_abi.rs	prose	file handle is invalid
 crates/bn_rt/src/file_abi.rs	prose	out of memory
 crates/bn_rt/src/file_abi.rs	prose	path is not valid UTF-8
 crates/bn_rt/src/file_error.rs	identifier	HOST.FileSystem.DeleteFile
@@ -3275,7 +2800,6 @@ crates/bn_core_json/src/error.rs	prose	the object has no member with that key
 crates/bn_core_json/src/error.rs	prose	the operation is not provided
 crates/bn_core_json/src/error.rs	prose	the value there is {} {found}
 crates/bn_core_json/src/error.rs	prose	this build does not provide it
-crates/bn_rt/src/lib.rs	identifier	BNData.DataFrame.ColumnName
 crates/bn_rt/src/lib.rs	identifier	EXECUTION_POLICY_DENIED
 crates/bn_rt/src/lib.rs	identifier	HOST.Clock
 crates/bn_rt/src/lib.rs	identifier	HOST.Clock
@@ -3288,7 +2812,6 @@ crates/bn_rt/src/lib.rs	identifier	HOST.Console.PrintAt
 crates/bn_rt/src/lib.rs	identifier	HOST.Random
 crates/bn_rt/src/lib.rs	identifier	HOST.Random
 crates/bn_rt/src/lib.rs	identifier	TYPE_MISMATCH
-crates/bn_rt/src/lib.rs	prose	libc_write_stdout requires unix or windows
 crates/bn_rt/src/lib.rs	prose	text that is not UTF-8
 crates/bn_rt/src/lib.rs	prose	write to stdout returned 0
 crates/bn_rt/src/lib.rs	prose	{capability} is denied by execution policy
@@ -3382,37 +2905,13 @@ crates/bn_rt/src/secure_fs_windows.rs	prose	filesystem path traverses a non-dire
 crates/bn_rt/src/secure_fs_windows.rs	prose	filesystem path traverses a symlink
 crates/bn_rt/src/secure_fs_windows.rs	prose	filesystem target is not a regular file
 crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Begin
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Begin
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Begin
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Begin
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Close
 crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Close
 crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Commit
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Commit
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Commit
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Commit
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Exec
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Exec
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Exec
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Exec
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Exec
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Exec
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Exec
 crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Exec
 crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Exec
 crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Query
 crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Query
 crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Query
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Query
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Query
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Query
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Query
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Query
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Query
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Query
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Rollback
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Rollback
-crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Rollback
 crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Connection.Rollback
 crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Open
 crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.Open
@@ -3423,69 +2922,19 @@ crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.OpenExisting
 crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.OpenReadOnly
 crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.OpenReadOnly
 crates/bn_rt/src/sqlite_abi.rs	identifier	BNSqlite.OpenReadOnly
-crates/bn_rt/src/sqlite_abi.rs	prose	BEGIN IMMEDIATE;
-crates/bn_rt/src/sqlite_abi.rs	prose	Exec cannot be called with row-producing query (SELECT); use Query
-crates/bn_rt/src/sqlite_abi.rs	prose	Query cannot be called with non-row statement (DDL/DML); use Exec
-crates/bn_rt/src/sqlite_abi.rs	prose	SQL string contains null byte
-crates/bn_rt/src/sqlite_abi.rs	prose	SQL string contains null byte
-crates/bn_rt/src/sqlite_abi.rs	prose	cannot begin transaction: transaction is already active
-crates/bn_rt/src/sqlite_abi.rs	prose	cannot commit: no active transaction
-crates/bn_rt/src/sqlite_abi.rs	prose	cannot execute mutative statement on read-only connection
-crates/bn_rt/src/sqlite_abi.rs	prose	cannot rollback: no active transaction
-crates/bn_rt/src/sqlite_abi.rs	prose	database file identity changed concurrently during open
-crates/bn_rt/src/sqlite_abi.rs	prose	directory traversal (..) and null bytes are not permitted
-crates/bn_rt/src/sqlite_abi.rs	prose	invalid database path (missing file name)
 crates/bn_rt/src/sqlite_abi.rs	prose	invalid null or non-UTF8 SQL string
 crates/bn_rt/src/sqlite_abi.rs	prose	invalid null or non-UTF8 SQL string
 crates/bn_rt/src/sqlite_abi.rs	prose	invalid null or non-UTF8 path string
 crates/bn_rt/src/sqlite_abi.rs	prose	invalid null or non-UTF8 path string
 crates/bn_rt/src/sqlite_abi.rs	prose	invalid null or non-UTF8 path string
-crates/bn_rt/src/sqlite_abi.rs	prose	multiple SQL statements in single call are prohibited
-crates/bn_rt/src/sqlite_abi.rs	prose	multiple SQL statements in single call are prohibited
 crates/bn_rt/src/sqlite_abi.rs	prose	null out_frame pointer
 crates/bn_rt/src/sqlite_abi.rs	prose	null out_handle pointer
 crates/bn_rt/src/sqlite_abi.rs	prose	null out_handle pointer
 crates/bn_rt/src/sqlite_abi.rs	prose	null out_handle pointer
-crates/bn_rt/src/sqlite_abi.rs	prose	query string contains no executable SQL statement
-crates/bn_rt/src/sqlite_error.rs	prose	API misuse: {msg}
-crates/bn_rt/src/sqlite_error.rs	prose	SQL syntax error: {msg}
-crates/bn_rt/src/sqlite_error.rs	prose	attempt to write to read-only database: {msg}
-crates/bn_rt/src/sqlite_error.rs	prose	conflicting transaction or statement held a lock
-crates/bn_rt/src/sqlite_error.rs	prose	data type mismatch: {msg}
-crates/bn_rt/src/sqlite_error.rs	prose	database I/O failure: {msg}
-crates/bn_rt/src/sqlite_error.rs	prose	database access denied: {msg}
-crates/bn_rt/src/sqlite_error.rs	prose	database connection is closed
-crates/bn_rt/src/sqlite_error.rs	prose	database constraint violation: {msg}
-crates/bn_rt/src/sqlite_error.rs	prose	database corruption detected: {msg}
-crates/bn_rt/src/sqlite_error.rs	prose	database file not found: {path}
-crates/bn_rt/src/sqlite_error.rs	prose	database is busy: {msg}
-crates/bn_rt/src/sqlite_error.rs	prose	database limit exceeded: {msg}
-crates/bn_rt/src/sqlite_error.rs	prose	database lock contention exceeded timeout
-crates/bn_rt/src/sqlite_error.rs	prose	database schema error: {msg}
-crates/bn_rt/src/sqlite_error.rs	prose	database table or lock conflict: {msg}
-crates/bn_rt/src/sqlite_error.rs	prose	database was opened with OpenReadOnly or media is read-only
-crates/bn_rt/src/sqlite_error.rs	prose	execution policy denied database operation: {msg}
-crates/bn_rt/src/sqlite_error.rs	prose	integer value out of 64-bit range
-crates/bn_rt/src/sqlite_error.rs	prose	internal database engine failure: {msg}
-crates/bn_rt/src/sqlite_error.rs	prose	method invoked on a closed Connection
-crates/bn_rt/src/sqlite_error.rs	prose	no such column
-crates/bn_rt/src/sqlite_error.rs	prose	no such column
-crates/bn_rt/src/sqlite_error.rs	prose	no such index
-crates/bn_rt/src/sqlite_error.rs	prose	no such table
-crates/bn_rt/src/sqlite_error.rs	prose	no such table
-crates/bn_rt/src/sqlite_error.rs	prose	syntax error
-crates/bn_rt/src/sqlite_error.rs	prose	syntax error
-crates/bn_rt/src/sqlite_error.rs	prose	text is not valid UTF-8: {detail}
-crates/bn_rt/src/sqlite_error.rs	prose	the specified path does not exist on disk
-crates/bn_rt/src/sqlite_error.rs	prose	unrecognized token
-crates/bn_rt/src/sqlite_error.rs	prose	unrecognized token
 crates/bn_rt/src/stats.rs	identifier	INDEX_OUT_OF_BOUNDS
 crates/bn_rt/src/stats.rs	identifier	INDEX_OUT_OF_BOUNDS
 crates/bn_rt/src/stats.rs	prose	BNMath reduction received an empty vector
 crates/bn_rt/src/stats.rs	prose	BNMath reduction received an empty vector
-crates/bn_rt/src/text_abi.rs	identifier	TARGET_UNSUPPORTED_TYPE
-crates/bn_rt/src/text_abi.rs	identifier	TARGET_UNSUPPORTED_TYPE
-crates/bn_rt/src/text_abi.rs	prose	{operation}: a STRING containing NUL (U+0000) is not supported by native builds yet; run the program with bni
 crates/bn_rt/src/web_error.rs	prose	DNS resolution yielded no IP addresses for the target
 crates/bn_rt/src/web_error.rs	prose	HTML markup could not be parsed
 crates/bn_rt/src/web_error.rs	prose	HTTP handshake timed out
@@ -3674,6 +3123,4 @@ crates/bn_types/src/error_codes.rs	identifier	TYPE_MISMATCH
 crates/bn_types/src/error_codes.rs	identifier	TYPE_MISMATCH
 crates/bn_types/src/error_codes.rs	identifier	WAIT_FAILED
 crates/bn_types/src/error_codes.rs	identifier	WRONG_FAMILY
-crates/bnc/src/main.rs	identifier	CARGO_PKG_VERSION
-crates/bni/src/main.rs	identifier	CARGO_PKG_VERSION
 crates/bn_llvm/src/llvm/functions.rs	prose	struct size fits usize

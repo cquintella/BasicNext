@@ -1,0 +1,3 @@
+not-key-value=`{line}` is not `key = value`
+trailing-backslash=trailing backslash
+unknown-escape=unknown escape \{other}

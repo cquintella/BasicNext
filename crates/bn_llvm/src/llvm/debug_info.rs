@@ -31,10 +31,10 @@ pub struct DebugInfo {
 
 impl DebugInfo {
     /// `CodeView` for Windows executables (the MSVC linker writes a PDB),
-    /// DWARF 4 everywhere else, including Wasm.
+    /// DWARF 4 on every other host.
     #[must_use]
-    pub const fn format_for(wasm32: bool) -> DebugFormat {
-        if cfg!(windows) && !wasm32 {
+    pub const fn format_for() -> DebugFormat {
+        if cfg!(windows) {
             DebugFormat::CodeView
         } else {
             DebugFormat::Dwarf(4)

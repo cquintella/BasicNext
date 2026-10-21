@@ -98,7 +98,22 @@ pub extern "C" fn bn_rt_sqlite_open_existing(path: *const c_char, out_handle: *m
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_sqlite_retain(handle: u64) -> i32 {
+    if handle == 0 {
+        return 0;
+    }
+    if bn_core_sqlite::retain(handle) {
+        0
+    } else {
+        SqliteFailure::Closed.report(bn_catalog::text("sqlite", "msg.bnsqlite_connection_retain"))
+    }
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_sqlite_close(handle: u64) -> i32 {
+    if handle == 0 {
+        return 0;
+    }
     match bn_core_sqlite::close(handle) {
         Ok(()) => 0,
         Err(failure) => failure.report("BNSqlite.Connection.Close"),

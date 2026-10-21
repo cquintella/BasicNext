@@ -9,7 +9,7 @@
 //! Implements safe mathematical functions with exact parity across backends.
 
 pub mod reduce;
-pub mod scalar;
+pub(crate) mod scalar;
 
 pub use reduce::{Reduction, reduce, reduce_f64, vmax_f64, vmax_i32, vmin_f64, vmin_i32};
 pub use scalar::*;

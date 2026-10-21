@@ -268,12 +268,23 @@ fn validate_launch(message: &Value) -> Result<(), String> {
         PrepareError::Load(error) => {
             format!("cannot load launch program: {}", error.diagnostic.message)
         }
-        PrepareError::Semantic { error, .. } => format!(
+        PrepareError::Semantic { graph, error } => format!(
             "launch semantic analysis failed: {}",
-            error.diagnostic.message
+            bn_frontend::module_graph::spell_diagnostic_text(
+                &error.diagnostic.message,
+                error.diagnostic.span.start.source_id,
+                &graph
+            )
         ),
-        PrepareError::Lower { diagnostic, .. } => {
-            format!("launch lowering failed: {}", diagnostic.message)
+        PrepareError::Lower { graph, diagnostic } => {
+            format!(
+                "launch lowering failed: {}",
+                bn_frontend::module_graph::spell_diagnostic_text(
+                    &diagnostic.message,
+                    diagnostic.span.start.source_id,
+                    &graph
+                )
+            )
         }
     })?;
     if prepared.graph.modules.len() > 256 {

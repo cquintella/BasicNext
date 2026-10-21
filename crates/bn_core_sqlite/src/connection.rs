@@ -21,10 +21,12 @@ use super::types::{OpenMode, SqliteColumn, SqliteQueryResult, SqliteValue};
 
 /// Default busy timeout for database connection locks (5 seconds).
 const SQLITE_BUSY_TIMEOUT: Duration = Duration::from_millis(5000);
-const CONCURRENT_MUTATION_MSG: &str = "database file identity changed concurrently during open";
+fn sqlite_text(key: &str) -> String {
+    bn_catalog::text("sqlite", key).to_owned()
+}
 
 #[derive(Debug)]
-pub struct ConnectionInner {
+pub(crate) struct ConnectionInner {
     connection: Option<Connection>,
 }
 
@@ -51,9 +53,10 @@ impl ConnectionState {
 /// (`bn_core_copy`): a task's close when the task ends, rolling back a
 /// transaction it left open.
 #[derive(Debug)]
-pub struct ConnectionRegistry {
+pub(crate) struct ConnectionRegistry {
     next: AtomicU64,
     connections: RwLock<HashMap<u64, Arc<ConnectionState>>>,
+    holders: RwLock<HashMap<u64, usize>>,
 }
 
 impl Default for ConnectionRegistry {
@@ -67,6 +70,7 @@ impl ConnectionRegistry {
         Self {
             next: AtomicU64::new(1),
             connections: RwLock::new(HashMap::new()),
+            holders: RwLock::new(HashMap::new()),
         }
     }
 
@@ -134,9 +138,9 @@ where
                 .components()
                 .any(|c| matches!(c, std::path::Component::ParentDir)))
     {
-        return Err(SqliteFailure::PolicyDenied(
-            "directory traversal (..) and null bytes are not permitted".to_owned(),
-        ));
+        return Err(SqliteFailure::PolicyDenied(sqlite_text(
+            "error.path_traversal",
+        )));
     }
     let flags = match mode {
         OpenMode::ReadOnly => OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -168,9 +172,9 @@ where
                     SqliteFailure::FileNotFound(path_str.to_owned())
                 }
             })?;
-            let file_name = path.file_name().ok_or_else(|| {
-                SqliteFailure::Misuse("invalid database path (missing file name)".into())
-            })?;
+            let file_name = path
+                .file_name()
+                .ok_or_else(|| SqliteFailure::Misuse(sqlite_text("error.missing_file_name")))?;
             canonical_parent.join(file_name)
         };
 
@@ -193,9 +197,9 @@ where
         }
 
         if is_symlink_or_reparse_point(&canonical_path) {
-            return Err(SqliteFailure::PolicyDenied(
-                CONCURRENT_MUTATION_MSG.to_owned(),
-            ));
+            return Err(SqliteFailure::PolicyDenied(sqlite_text(
+                "error.concurrent_mutation",
+            )));
         }
 
         let pre_meta = if canonical_path.exists() {
@@ -209,14 +213,14 @@ where
         if let Some(expected_identity) = pre_meta {
             if let Some(post_identity) = FileIdentity::from_path(&canonical_path) {
                 if expected_identity != post_identity {
-                    return Err(SqliteFailure::PolicyDenied(
-                        CONCURRENT_MUTATION_MSG.to_owned(),
-                    ));
+                    return Err(SqliteFailure::PolicyDenied(sqlite_text(
+                        "error.concurrent_mutation",
+                    )));
                 }
             } else {
-                return Err(SqliteFailure::PolicyDenied(
-                    CONCURRENT_MUTATION_MSG.to_owned(),
-                ));
+                return Err(SqliteFailure::PolicyDenied(sqlite_text(
+                    "error.concurrent_mutation",
+                )));
             }
         }
         c
@@ -240,11 +244,41 @@ where
         .unwrap_or_else(PoisonError::into_inner)
         .insert(handle, state);
 
+    registry()
+        .holders
+        .write()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(handle, 1);
+
     Ok(handle)
 }
 
+/// One more binding holds the connection behind `handle` (a copy).
+pub fn retain(handle: u64) -> bool {
+    let reg = registry();
+    let mut holders = reg.holders.write().unwrap_or_else(PoisonError::into_inner);
+    if let Some(count) = holders.get_mut(&handle) {
+        *count += 1;
+        true
+    } else {
+        false
+    }
+}
+
 pub fn close(handle: u64) -> Result<(), SqliteFailure> {
-    let state = registry()
+    let reg = registry();
+    let mut holders = reg.holders.write().unwrap_or_else(PoisonError::into_inner);
+    let Some(count) = holders.get_mut(&handle) else {
+        return Err(SqliteFailure::Closed);
+    };
+    *count -= 1;
+    if *count > 0 {
+        return Ok(());
+    }
+    holders.remove(&handle);
+    drop(holders);
+
+    let state = reg
         .connections
         .write()
         .unwrap_or_else(PoisonError::into_inner)
@@ -267,7 +301,7 @@ pub fn exec(handle: u64, sql_str: &str) -> Result<(), SqliteFailure> {
     let conn = inner.connection.as_mut().ok_or(SqliteFailure::Closed)?;
 
     let sql_c_str = CString::new(sql_str.as_bytes())
-        .map_err(|_| SqliteFailure::SyntaxError("SQL string contains null byte".into()))?;
+        .map_err(|_| SqliteFailure::SyntaxError(sqlite_text("error.sql_nul")))?;
 
     // SAFETY: Preparing statement on active, locked connection handle.
     let db_handle = unsafe { conn.handle() };
@@ -304,9 +338,9 @@ pub fn exec(handle: u64, sql_str: &str) -> Result<(), SqliteFailure> {
         let tail_str = unsafe { CStr::from_ptr(raw_tail) }.to_string_lossy();
         if !is_trailing_sql_empty(&tail_str) {
             unsafe { libsqlite3_sys::sqlite3_finalize(raw_stmt) };
-            return Err(SqliteFailure::Misuse(
-                "multiple SQL statements in single call are prohibited".into(),
-            ));
+            return Err(SqliteFailure::Misuse(sqlite_text(
+                "error.multiple_statements",
+            )));
         }
     }
 
@@ -314,18 +348,18 @@ pub fn exec(handle: u64, sql_str: &str) -> Result<(), SqliteFailure> {
     let col_count = unsafe { libsqlite3_sys::sqlite3_column_count(raw_stmt) };
     if col_count > 0 {
         unsafe { libsqlite3_sys::sqlite3_finalize(raw_stmt) };
-        return Err(SqliteFailure::Misuse(
-            "Exec cannot be called with row-producing query (SELECT); use Query".into(),
-        ));
+        return Err(SqliteFailure::Misuse(sqlite_text(
+            "error.exec_returns_rows",
+        )));
     }
 
     // SAFETY: Verify read-only constraint.
     let is_stmt_readonly = unsafe { libsqlite3_sys::sqlite3_stmt_readonly(raw_stmt) } != 0;
     if state.read_only && !is_stmt_readonly {
         unsafe { libsqlite3_sys::sqlite3_finalize(raw_stmt) };
-        return Err(SqliteFailure::ReadOnly(
-            "cannot execute mutative statement on read-only connection".into(),
-        ));
+        return Err(SqliteFailure::ReadOnly(sqlite_text(
+            "error.read_only_mutation",
+        )));
     }
 
     // SAFETY: Stepping statement and finalizing.
@@ -351,7 +385,7 @@ pub fn query(handle: u64, sql_str: &str) -> Result<SqliteQueryResult, SqliteFail
     let conn = inner.connection.as_mut().ok_or(SqliteFailure::Closed)?;
 
     let sql_c_str = CString::new(sql_str.as_bytes())
-        .map_err(|_| SqliteFailure::SyntaxError("SQL string contains null byte".into()))?;
+        .map_err(|_| SqliteFailure::SyntaxError(sqlite_text("error.sql_nul")))?;
 
     // SAFETY: Preparing query on active, locked connection handle.
     let db_handle = unsafe { conn.handle() };
@@ -369,6 +403,7 @@ pub fn query(handle: u64, sql_str: &str) -> Result<SqliteQueryResult, SqliteFail
     };
 
     if rc != libsqlite3_sys::SQLITE_OK {
+        // SAFETY: the pointer is non-null and NUL-terminated for this read.
         let err_msg = unsafe { CStr::from_ptr(libsqlite3_sys::sqlite3_errmsg(db_handle)) }
             .to_string_lossy()
             .into_owned();
@@ -379,9 +414,7 @@ pub fn query(handle: u64, sql_str: &str) -> Result<SqliteQueryResult, SqliteFail
     }
 
     if raw_stmt.is_null() {
-        return Err(SqliteFailure::Misuse(
-            "query string contains no executable SQL statement".into(),
-        ));
+        return Err(SqliteFailure::Misuse(sqlite_text("error.query_empty")));
     }
 
     // SAFETY: Checking trailing statement tokens.
@@ -389,9 +422,9 @@ pub fn query(handle: u64, sql_str: &str) -> Result<SqliteQueryResult, SqliteFail
         let tail_str = unsafe { CStr::from_ptr(raw_tail) }.to_string_lossy();
         if !is_trailing_sql_empty(&tail_str) {
             unsafe { libsqlite3_sys::sqlite3_finalize(raw_stmt) };
-            return Err(SqliteFailure::Misuse(
-                "multiple SQL statements in single call are prohibited".into(),
-            ));
+            return Err(SqliteFailure::Misuse(sqlite_text(
+                "error.multiple_statements",
+            )));
         }
     }
 
@@ -399,9 +432,7 @@ pub fn query(handle: u64, sql_str: &str) -> Result<SqliteQueryResult, SqliteFail
     let col_count = unsafe { libsqlite3_sys::sqlite3_column_count(raw_stmt) };
     if col_count <= 0 {
         unsafe { libsqlite3_sys::sqlite3_finalize(raw_stmt) };
-        return Err(SqliteFailure::Misuse(
-            "Query cannot be called with non-row statement (DDL/DML); use Exec".into(),
-        ));
+        return Err(SqliteFailure::Misuse(sqlite_text("error.query_not_rows")));
     }
 
     let col_count_usize = usize::try_from(col_count).unwrap_or(0);
@@ -441,21 +472,25 @@ pub fn query(handle: u64, sql_str: &str) -> Result<SqliteQueryResult, SqliteFail
                     }
                     libsqlite3_sys::SQLITE_FLOAT => {
                         let num =
+                            // SAFETY: `raw_stmt` is live until `sqlite3_finalize`, and `col_idx` is in range.
                             unsafe { libsqlite3_sys::sqlite3_column_double(raw_stmt, col_idx) };
                         SqliteValue::Float(num)
                     }
                     libsqlite3_sys::SQLITE_TEXT => {
                         let raw_bytes =
+                            // SAFETY: `raw_stmt` is live until `sqlite3_finalize`, and `col_idx` is in range.
                             unsafe { libsqlite3_sys::sqlite3_column_bytes(raw_stmt, col_idx) };
                         let bytes_count = usize::try_from(raw_bytes).unwrap_or(0);
                         if bytes_count == 0 {
                             SqliteValue::Text(Vec::new())
                         } else {
                             let ptr =
+                                // SAFETY: SQLite keeps this column pointer valid until the next step or finalize.
                                 unsafe { libsqlite3_sys::sqlite3_column_text(raw_stmt, col_idx) };
                             if ptr.is_null() {
                                 SqliteValue::NotAvailable
                             } else {
+                                // SAFETY: SQLite keeps this column pointer valid until the next step or finalize.
                                 let slice = unsafe { std::slice::from_raw_parts(ptr, bytes_count) };
                                 SqliteValue::Text(slice.to_vec())
                             }
@@ -463,16 +498,19 @@ pub fn query(handle: u64, sql_str: &str) -> Result<SqliteQueryResult, SqliteFail
                     }
                     libsqlite3_sys::SQLITE_BLOB => {
                         let raw_bytes =
+                            // SAFETY: `raw_stmt` is live until `sqlite3_finalize`, and `col_idx` is in range.
                             unsafe { libsqlite3_sys::sqlite3_column_bytes(raw_stmt, col_idx) };
                         let bytes_count = usize::try_from(raw_bytes).unwrap_or(0);
                         if bytes_count == 0 {
                             SqliteValue::Blob(Vec::new())
                         } else {
                             let ptr =
+                                // SAFETY: SQLite keeps this column pointer valid until the next step or finalize.
                                 unsafe { libsqlite3_sys::sqlite3_column_blob(raw_stmt, col_idx) };
                             if ptr.is_null() {
                                 SqliteValue::NotAvailable
                             } else {
+                                // SAFETY: SQLite keeps this column pointer valid until the next step or finalize.
                                 let slice = unsafe {
                                     std::slice::from_raw_parts(ptr.cast::<u8>(), bytes_count)
                                 };
@@ -486,9 +524,11 @@ pub fn query(handle: u64, sql_str: &str) -> Result<SqliteQueryResult, SqliteFail
                 col.values.push(val);
             }
         } else {
+            // SAFETY: the pointer is non-null and NUL-terminated for this read.
             let err_msg = unsafe { CStr::from_ptr(libsqlite3_sys::sqlite3_errmsg(db_handle)) }
                 .to_string_lossy()
                 .into_owned();
+            // SAFETY: `raw_stmt` is the statement this function prepared and has not finalized yet.
             unsafe { libsqlite3_sys::sqlite3_finalize(raw_stmt) };
             return Err(SqliteFailure::from(rusqlite::Error::SqliteFailure(
                 rusqlite::ffi::Error::new(step_rc),
@@ -508,12 +548,10 @@ pub fn begin(handle: u64) -> Result<(), SqliteFailure> {
     let conn = inner.connection.as_mut().ok_or(SqliteFailure::Closed)?;
 
     if is_in_transaction(conn) {
-        return Err(SqliteFailure::Misuse(
-            "cannot begin transaction: a transaction is already active".into(),
-        ));
+        return Err(SqliteFailure::Misuse(sqlite_text("error.begin_active")));
     }
 
-    conn.execute_batch("BEGIN IMMEDIATE;")
+    conn.execute_batch(bn_catalog::text("sqlite", "sql.begin_immediate"))
         .map_err(SqliteFailure::from)
 }
 
@@ -523,9 +561,7 @@ pub fn commit(handle: u64) -> Result<(), SqliteFailure> {
     let conn = inner.connection.as_mut().ok_or(SqliteFailure::Closed)?;
 
     if !is_in_transaction(conn) {
-        return Err(SqliteFailure::Misuse(
-            "cannot commit: no transaction is active".into(),
-        ));
+        return Err(SqliteFailure::Misuse(sqlite_text("error.commit_inactive")));
     }
 
     conn.execute_batch("COMMIT;").map_err(SqliteFailure::from)
@@ -537,9 +573,9 @@ pub fn rollback(handle: u64) -> Result<(), SqliteFailure> {
     let conn = inner.connection.as_mut().ok_or(SqliteFailure::Closed)?;
 
     if !is_in_transaction(conn) {
-        return Err(SqliteFailure::Misuse(
-            "cannot rollback: no transaction is active".into(),
-        ));
+        return Err(SqliteFailure::Misuse(sqlite_text(
+            "error.rollback_inactive",
+        )));
     }
 
     conn.execute_batch("ROLLBACK;").map_err(SqliteFailure::from)

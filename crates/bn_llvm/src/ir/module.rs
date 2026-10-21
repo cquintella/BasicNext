@@ -32,7 +32,7 @@ fn record_globals(inst: &LlvmInst, names: &mut BTreeSet<String>) {
 }
 
 /// Makes the debug metadata nodes [`LlvmModule::render_debug`] attaches.
-pub trait DebugScopes {
+pub(crate) trait DebugScopes {
     /// The subprogram of function `name`, declared at `line` of `source`.
     fn subprogram(&mut self, source: u64, line: u32, name: &str) -> MdRef;
     /// The location `line`:`column` inside `scope`.
@@ -90,7 +90,7 @@ impl fmt::Display for Piece {
 
 /// An LLVM module under construction. Its rendering is the `.ll` text.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct LlvmModule {
+pub(crate) struct LlvmModule {
     pieces: Vec<Piece>,
     /// The last number `fresh_tag` returned.
     tags: usize,
@@ -107,7 +107,7 @@ impl LlvmModule {
     }
 
     /// Declares a function if not already declared.
-    pub fn declare(&mut self, signature: Signature) {
+    pub(crate) fn declare(&mut self, signature: Signature) {
         if self.pieces.iter().any(|p| match p {
             Piece::Declaration(s) => s.name == signature.name,
             _ => false,
@@ -118,7 +118,7 @@ impl LlvmModule {
     }
 
     /// Defines a global.
-    pub fn global(&mut self, global: LlvmGlobal) {
+    pub(crate) fn global(&mut self, global: LlvmGlobal) {
         self.append(Piece::Global(global));
     }
 
@@ -128,22 +128,22 @@ impl LlvmModule {
     }
 
     /// Opens a function whose body the emitter writes next.
-    pub fn begin_function(&mut self, header: LlvmFunction) {
+    pub(crate) fn begin_function(&mut self, header: LlvmFunction) {
         self.append(Piece::FunctionStart(header));
     }
 
     /// Closes the function [`Self::begin_function`] opened.
-    pub fn end_function(&mut self) {
+    pub(crate) fn end_function(&mut self) {
         self.append(Piece::FunctionEnd);
     }
 
     /// An empty line.
-    pub fn blank(&mut self) {
+    pub(crate) fn blank(&mut self) {
         self.append(Piece::Blank);
     }
 
     /// Marks the next function opened as describing `name` (`bnc -g`).
-    pub fn mark_function(&mut self, source: u64, line: u32, name: impl Into<String>) {
+    pub(crate) fn mark_function(&mut self, source: u64, line: u32, name: impl Into<String>) {
         self.append(Piece::DebugFunction {
             source,
             line,
@@ -152,18 +152,18 @@ impl LlvmModule {
     }
 
     /// Marks the source position of the instructions that follow (`bnc -g`).
-    pub fn mark_location(&mut self, line: u32, column: u32) {
+    pub(crate) fn mark_location(&mut self, line: u32, column: u32) {
         self.append(Piece::DebugLocation { line, column });
     }
 
     /// A comment line.
-    pub fn comment(&mut self, text: impl Into<String>) {
+    pub(crate) fn comment(&mut self, text: impl Into<String>) {
         self.append(Piece::Comment(text.into()));
     }
 
     /// A number no other `fresh_tag` call of this module returns, for unique
     /// register names.
-    pub fn fresh_tag(&mut self) -> usize {
+    pub(crate) fn fresh_tag(&mut self) -> usize {
         self.tags += 1;
         self.tags
     }
@@ -177,7 +177,12 @@ impl LlvmModule {
 
     /// Inserts `%dest = inst` at `position`, a value `position` returned
     /// earlier; inserting from the last position back keeps the others valid.
-    pub fn insert_assign(&mut self, position: usize, dest: impl Into<String>, inst: LlvmInst) {
+    pub(crate) fn insert_assign(
+        &mut self,
+        position: usize,
+        dest: impl Into<String>,
+        inst: LlvmInst,
+    ) {
         let piece = Piece::Instruction(InstructionEntry::assign(dest, inst));
         self.pieces.insert(position, piece);
     }
@@ -185,7 +190,7 @@ impl LlvmModule {
     /// The names, without `@`, of every global the module refers to: the
     /// functions it calls and the constants it reads.
     #[must_use]
-    pub fn referenced_globals(&self) -> BTreeSet<String> {
+    pub(crate) fn referenced_globals(&self) -> BTreeSet<String> {
         let mut names = BTreeSet::new();
         for piece in &self.pieces {
             match piece {
@@ -215,7 +220,7 @@ impl LlvmModule {
     /// opens with `!dbg` and its subprogram, and each of its instructions
     /// carries the location last marked (the function's line for the
     /// prologue). `scopes` makes the metadata nodes.
-    pub fn render_debug(&self, scopes: &mut impl DebugScopes) -> String {
+    pub(crate) fn render_debug(&self, scopes: &mut impl DebugScopes) -> String {
         let mut out = String::new();
         let mut pending: Option<(u64, u32, &str)> = None;
         let mut scope: Option<(MdRef, MdRef)> = None;
@@ -261,7 +266,7 @@ impl LlvmModule {
 
     /// The `.ll` text of the module.
     #[must_use]
-    pub fn render(&self) -> String {
+    pub(crate) fn render(&self) -> String {
         self.to_string()
     }
 }

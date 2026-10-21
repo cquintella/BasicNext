@@ -25,5 +25,4 @@ literal	HOST.Net.UDPSocket.Receive	Net operation name or message in bn_host_net 
 literal	HOST.Net.UDPSocket.SendTo	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
 literal	cannot write output: {error}	console write failure text in bn_interp and bn_rt; leaves with the console core (bucket 0.6.5c §5 step 7)
 literal	datagram exceeds the buffer	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)
-literal	server state unavailable	BNWeb error text in bn_lib_web and bn_rt::web_error; leaves with BNWeb under bnc (bucket 0.6.5e)
 literal	write exceeds the buffer	Net operation name or message in bn_host_net and bn_llvm/bn_rt; leaves with the Net core (bucket 0.6.5c §5 step 2)

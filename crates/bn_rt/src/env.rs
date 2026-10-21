@@ -35,6 +35,7 @@ pub extern "C" fn bn_rt_env_get(name: *const c_char, out_val: *mut *mut c_char) 
     if out_val.is_null() {
         return INVALID_NAME;
     }
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { *out_val = std::ptr::null_mut() };
     let Some(name) = input(name) else {
         crate::set_error_report(
@@ -66,6 +67,7 @@ pub extern "C" fn bn_rt_env_has(name: *const c_char, out_has: *mut i32) -> i32 {
     if out_has.is_null() {
         return INVALID_NAME;
     }
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { *out_has = 0 };
     let Some(name) = input(name) else {
         crate::set_error_report(
@@ -79,6 +81,7 @@ pub extern "C" fn bn_rt_env_has(name: *const c_char, out_has: *mut i32) -> i32 {
     let policy = crate::policy::env_policy();
     match bn_host_env::has(name, &policy) {
         Ok(present) => {
+            // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
             unsafe { *out_has = i32::from(present) };
             0
         }

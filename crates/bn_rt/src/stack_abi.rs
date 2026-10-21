@@ -76,6 +76,7 @@ fn stack_low() -> Option<usize> {
 #[cfg(windows)]
 #[allow(unsafe_code)] // Operating-system call on the current thread.
 fn stack_low() -> Option<usize> {
+    // SAFETY: the foreign signature matches the C or system function this module calls.
     unsafe extern "system" {
         fn GetCurrentThreadStackLimits(low: *mut usize, high: *mut usize);
     }

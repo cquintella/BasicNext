@@ -43,7 +43,7 @@ impl NumericClass {
 
     /// `INTEGER` (`INT32`) or `FLOAT` (`FLOAT64`).
     #[must_use]
-    pub const fn default_type(self) -> Type {
+    pub(crate) const fn default_type(self) -> Type {
         match self {
             Self::Integer => Type::Integer(IntegerType::Int32),
             Self::Float => Type::Float(FloatType::Float64),

@@ -61,7 +61,7 @@ pub(crate) fn validate_instruction(
                     element,
                     LlvmType::I1 | LlvmType::I8 | LlvmType::I16 | LlvmType::I32 | LlvmType::I64 | LlvmType::Float | LlvmType::Double | LlvmType::Ptr
                 ) || crate::layout::is_one_of(&element, &[crate::layout::handle_result_ty(), crate::layout::status_pointer_ty()])))
-                || (matches!(ty, Type::Vector { element, dimensions: ty_dimensions, .. }
+                    || (matches!(ty, Type::Vector { element, dimensions: ty_dimensions, .. }
                 if ty_dimensions.len() == 1
                     && dimensions.is_empty()
                     && dynamic_dimensions.len() == 1

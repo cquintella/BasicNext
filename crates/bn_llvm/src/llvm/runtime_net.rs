@@ -22,7 +22,7 @@ use runtime_abi::{
     NET_TCP_LISTEN_WITH_BACKLOG, NET_TCP_LISTENER_LOCAL_ENDPOINT, NET_TCP_READ,
     NET_TCP_STREAM_LOCAL_ENDPOINT, NET_TCP_STREAM_REMOTE_ENDPOINT, NET_TCP_WRITE, NET_UDP_BIND,
     NET_UDP_LOCAL_ENDPOINT, NET_UDP_PACKET_COPY_TO, NET_UDP_PACKET_SIZE, NET_UDP_PACKET_SOURCE,
-    NET_UDP_PACKET_TRUNCATED, NET_UDP_RECEIVE_HANDLE, NET_UDP_SEND_TO,
+    NET_UDP_PACKET_TRUNCATED, NET_UDP_RECEIVE_HANDLE, NET_UDP_SEND_TO, STR_RETAIN,
 };
 
 #[path = "net_members.rs"]
@@ -272,10 +272,19 @@ pub(crate) fn lower_net_call(
                 &LlvmOperand::int(0),
             );
         }
-        "HOST.Net.Address.ToString" => text.assign(
-            format!("v{dest}"),
-            LlvmInst::extract(handle_result_ty(), value_reg(arguments[0]), 1),
-        ),
+        "HOST.Net.Address.ToString" => {
+            // The address owns this text. The caller releases the returned
+            // string, so the return is a new reference, not the field itself.
+            let owned = format!("v{dest}");
+            text.assign(
+                owned.clone(),
+                LlvmInst::extract(handle_result_ty(), value_reg(arguments[0]), 1),
+            );
+            text.assign(
+                format!("netretain{dest}"),
+                STR_RETAIN.call([LlvmOperand::reg(owned)]),
+            );
+        }
         "HOST.Net.Endpoint.Create" => {
             let address = net_payload_ptr(text, arguments[0]);
             let port = i32_argument(text, 1, "validated port");

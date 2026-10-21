@@ -3,3 +3,6 @@
 
 member.missing.message = no member "{key}"
 member.wrong_kind.message = member "{key}" is not of type {expected}
+
+# Messages moved out of Rust source (text-literal gate).
+msg.bnjson_json_was_already_deleted = BNJson.Json was already deleted

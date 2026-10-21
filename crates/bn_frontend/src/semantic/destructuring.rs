@@ -24,9 +24,9 @@ impl Analyzer {
     ) -> Result<(), Diagnostic> {
         if declaration_kind != DeclarationKind::Function {
             return Err(type_mismatch(
-                "statement in a FUNCTION",
-                "destructuring LET",
-                "STRUCT or CLASS body",
+                bn_catalog::text("frontend", "msg.statement_in_a_function"),
+                bn_catalog::text("frontend", "msg.destructuring_let"),
+                bn_catalog::text("frontend", "msg.struct_or_class_body"),
                 span,
             ));
         }
@@ -56,7 +56,11 @@ impl Analyzer {
                     .ok_or_else(|| {
                         name_not_found(
                             &binding.name,
-                            format!("the fields of {}", display(source_type)),
+                            bn_catalog::fill(
+                                "frontend",
+                                "msg.the_fields_of",
+                                &[("type", &display(source_type))],
+                            ),
                             binding.span,
                         )
                     })?;
@@ -69,9 +73,9 @@ impl Analyzer {
             && length != u64::try_from(bindings.len()).unwrap_or(u64::MAX)
         {
             return Err(type_mismatch(
-                format!("vector of length {length}"),
+                bn_catalog::fill("frontend", "msg.vector_of_length", &[("length", &length)]),
                 format!("{} bindings", bindings.len()),
-                "destructuring LET",
+                bn_catalog::text("frontend", "msg.destructuring_let"),
                 span,
             ));
         }
@@ -112,9 +116,9 @@ impl Analyzer {
 
 fn not_a_region(source_type: &Type, span: Span) -> Diagnostic {
     type_mismatch(
-        "vector or STRUCT",
+        bn_catalog::text("frontend", "msg.vector_or_struct"),
         display(source_type),
-        "destructuring source",
+        bn_catalog::text("frontend", "msg.destructuring_source"),
         span,
     )
 }
@@ -134,7 +138,7 @@ impl Analyzer {
             return Err(type_mismatch(
                 display(&declared),
                 display(received),
-                "destructuring binding",
+                bn_catalog::text("frontend", "msg.destructuring_binding"),
                 binding.span,
             ));
         }

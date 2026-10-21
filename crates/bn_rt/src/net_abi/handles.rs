@@ -60,7 +60,7 @@ pub fn with<T>(
     Ok(table.get(index).and_then(Option::as_ref).map(operation))
 }
 
-pub fn with_mut<T>(
+pub(crate) fn with_mut<T>(
     index: usize,
     operation: impl FnOnce(&mut Handle) -> T,
 ) -> Result<Option<T>, &'static str> {

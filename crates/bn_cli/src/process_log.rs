@@ -59,7 +59,7 @@ impl ProcessLog {
         }
     }
 
-    pub fn record_warning(&mut self) {
+    pub(crate) fn record_warning(&mut self) {
         self.warning_count = self.warning_count.saturating_add(1);
     }
 

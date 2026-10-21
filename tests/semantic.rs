@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use bn_frontend::lexer::lex;
-use bn_frontend::module_graph::load;
+use bn_frontend::module_graph::{load, load_with_overlays, spell_diagnostic_text};
 use bn_frontend::parser::parse;
 use bn_frontend::semantic::{
     analyze, analyze_modules, analyze_modules_with_warnings, analyze_with_warnings,
@@ -1008,16 +1008,22 @@ fn vector_literal_elements_are_checked_against_the_declared_destination() {
         .expect_err("an unrelated element must fail");
     assert_eq!(error.code, "TYPE_MISMATCH");
     assert!(error.message.contains("Clock"), "{}", error.message);
-    for (initializer, element) in [
-        ("LET v AS FLOAT64[2] = [1.5, 2]", "INTEGERLITERAL(\"2\")"),
-        ("LET v AS INT8[2] = [1, 300]", "INTEGERLITERAL(\"300\")"),
+    for (initializer, element, expected) in [
+        ("LET v AS FLOAT64[2] = [1.5, 2]", "2", "FLOAT64"),
+        ("LET v AS INT8[2] = [1, 300]", "300", "INT8"),
     ] {
-        let error = analyze_text(&format!(
-            "FUNCTION Start() AS VOID\n{initializer}\nPRINT v[0]\nEND FUNCTION\n"
-        ))
-        .expect_err(initializer);
+        let text = format!("FUNCTION Start() AS VOID\n{initializer}\nPRINT v[0]\nEND FUNCTION\n");
+        let error = analyze_text(&text).expect_err(initializer);
         assert_eq!(error.code, "TYPE_MISMATCH", "{initializer}");
-        assert!(error.message.contains(element), "{}", error.message);
+        assert!(error.message.contains(expected), "{}", error.message);
+        let start = error.span.start.offset;
+        let end = error.span.end.offset;
+        assert_eq!(
+            &text[start..end],
+            element,
+            "{initializer}: {}",
+            error.message
+        );
     }
     analyze_text(
         "FUNCTION Start() AS VOID\nLET v AS INT64[2] = [1, 3000000000]\nPRINT v[1]\nEND FUNCTION\n",
@@ -1095,4 +1101,69 @@ fn async_function_parameter_count_and_types_are_validated() {
     analyze_text(valid).expect("valid parameters must pass semantic analysis");
 
     analyze_path("tests/grammar/valid/dispatch-handle-arguments.bn");
+}
+
+#[test]
+fn imported_module_diagnostics_use_that_modules_source_and_spelling() {
+    let library = Path::new("/bn-k58-semantic/lib.bn");
+    let entry = Path::new("/bn-k58-semantic/main.bn");
+    let class =
+        "EXPORT CLASS Box\n    PUBLIC FUNCTION CONSTRUCTOR()\n    END FUNCTION\nEND CLASS\n";
+    let mut overlays = std::collections::BTreeMap::new();
+    overlays.insert(library.to_path_buf(), class.into());
+    overlays.insert(
+        entry.to_path_buf(),
+        "IMPORT lib AS L\nFUNCTION Start() AS VOID\n    LET box AS L.Box = 1\nEND FUNCTION\n"
+            .into(),
+    );
+    let mut session = bn_frontend::frontend_session::FrontendSession::default();
+    let graph = load_with_overlays(entry, &mut session, &overlays).expect("load");
+    let error = analyze_modules(&graph).expect_err("L.Box is not an integer");
+    let entry_module = graph
+        .modules
+        .iter()
+        .find(|module| module.id == graph.root)
+        .expect("entry");
+    assert_eq!(
+        error.diagnostic.span.start.source_id,
+        entry_module.source.source_id
+    );
+    let spelled = spell_diagnostic_text(
+        &error.diagnostic.message,
+        error.diagnostic.span.start.source_id,
+        &graph,
+    );
+    assert!(spelled.contains("L.Box"), "{spelled}");
+    assert!(!spelled.contains("MODULE#"), "{spelled}");
+
+    overlays.insert(
+        library.to_path_buf(),
+        format!("{class}FUNCTION Bad() AS VOID\n    LET n AS INTEGER = \"no\"\nEND FUNCTION\n"),
+    );
+    overlays.insert(
+        entry.to_path_buf(),
+        "IMPORT lib AS L\nFUNCTION Start() AS VOID\nEND FUNCTION\n".into(),
+    );
+    let mut session = bn_frontend::frontend_session::FrontendSession::default();
+    let graph = load_with_overlays(entry, &mut session, &overlays).expect("load library error");
+    let error = analyze_modules(&graph).expect_err("the library binding is a string");
+    let library_module = graph
+        .modules
+        .iter()
+        .find(|module| module.path == library)
+        .expect("library");
+    assert_eq!(
+        error.diagnostic.span.start.source_id,
+        library_module.source.source_id
+    );
+    assert_ne!(
+        error.diagnostic.span.start.source_id,
+        graph
+            .modules
+            .iter()
+            .find(|module| module.id == graph.root)
+            .expect("entry")
+            .source
+            .source_id
+    );
 }

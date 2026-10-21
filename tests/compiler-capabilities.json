@@ -398,7 +398,9 @@
         "Input",
         "Load",
         "Print",
-        "Store"
+        "Release",
+        "Store",
+        "Take"
       ],
       "type_constraints": [
         "STRING",
@@ -766,9 +768,12 @@
         "Length",
         "Load",
         "Print",
+        "Release",
+        "Retain",
         "SetIndex",
         "SizeOf",
         "Store",
+        "Take",
         "Unary"
       ],
       "type_constraints": [
@@ -848,7 +853,10 @@
         "Load",
         "Phi",
         "Print",
+        "Release",
+        "Retain",
         "Store",
+        "Take",
         "Unary",
         "Vector"
       ],
@@ -996,6 +1004,7 @@
         "Phi",
         "Print",
         "Release",
+        "Retain",
         "SetIndex",
         "Store",
         "Take",
@@ -1035,7 +1044,10 @@
         "Load",
         "Phi",
         "Print",
-        "Store"
+        "Release",
+        "Retain",
+        "Store",
+        "Take"
       ],
       "type_constraints": [
         "STRING",
@@ -1159,6 +1171,7 @@
         "Phi",
         "Print",
         "Release",
+        "Retain",
         "SetIndex",
         "Store",
         "Take",
@@ -1226,7 +1239,10 @@
         "Constant",
         "Load",
         "Print",
-        "Store"
+        "Release",
+        "Retain",
+        "Store",
+        "Take"
       ],
       "type_constraints": [
         "STRING"
@@ -1343,7 +1359,9 @@
         "Load",
         "Member",
         "Print",
-        "Store"
+        "Release",
+        "Store",
+        "Take"
       ],
       "type_constraints": [
         "STRING OR Error",
@@ -1420,6 +1438,7 @@
         "Phi",
         "Print",
         "Release",
+        "Retain",
         "SetField",
         "SetIndex",
         "SetMember",
@@ -1458,7 +1477,10 @@
         "Load",
         "Member",
         "Print",
-        "Store"
+        "Release",
+        "Retain",
+        "Store",
+        "Take"
       ],
       "type_constraints": [
         "HOST.Net"
@@ -1536,6 +1558,7 @@
         "Phi",
         "Print",
         "Release",
+        "Retain",
         "Store",
         "Take",
         "Unary",
@@ -1828,10 +1851,12 @@
         "Member",
         "Print",
         "Release",
+        "Retain",
         "SetField",
         "SetMember",
         "Store",
-        "Take"
+        "Take",
+        "TakeMember"
       ],
       "type_constraints": [
         "BNJson.Json",

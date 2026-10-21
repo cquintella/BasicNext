@@ -454,7 +454,7 @@ impl<'a, 'debug> Executor<'a, 'debug> {
 }
 
 /// Read-only interpreter event emitted at an executable instruction boundary.
-pub type DebugHook<'a> = &'a mut dyn FnMut(&str, bn_source::Span);
+pub(crate) type DebugHook<'a> = &'a mut dyn FnMut(&str, bn_source::Span);
 
 /// Decision returned by an interactive debugger at an instruction boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -482,7 +482,7 @@ pub struct DebugView {
 
 /// Interactive debugger callback. It is invoked before each executable
 /// instruction and may block while the client is paused.
-pub type DebugControl<'a> =
+pub(crate) type DebugControl<'a> =
     &'a mut dyn FnMut(&str, usize, bn_source::Span, &DebugView) -> DebugDecision;
 
 #[derive(Clone, Copy)]
@@ -599,7 +599,7 @@ pub fn execute_with_host_debug(
 /// # Errors
 ///
 /// Returns the same runtime diagnostics as [`execute_validated_with_host`].
-pub fn execute_validated_with_host_debug(
+pub(crate) fn execute_validated_with_host_debug(
     validated: &ValidatedModule,
     input: &mut dyn BufRead,
     output: &mut dyn Write,
@@ -889,7 +889,7 @@ pub fn default_span() -> Span {
 /// Stack the interpreter lets BN calls use on a thread whose size nobody
 /// told it: a thread Rust spawns has 2 MiB, so 1 MiB leaves the rest for
 /// the frames of one more call and the error report (known issue K53).
-pub const DEFAULT_STACK_BUDGET: usize = 1024 * 1024;
+pub(crate) const DEFAULT_STACK_BUDGET: usize = 1024 * 1024;
 
 thread_local! {
     static STACK_BUDGET: std::cell::Cell<usize> = const { std::cell::Cell::new(DEFAULT_STACK_BUDGET) };
@@ -916,7 +916,7 @@ fn stack_address() -> usize {
 /// `STACK_OVERFLOW` for the call to `name` at `span` (0.6.md, "Recursion
 /// depth"): the program stops instead of the interpreter aborting.
 #[must_use]
-pub fn stack_overflow(name: impl Into<String>, span: Span) -> Diagnostic {
+pub(crate) fn stack_overflow(name: impl Into<String>, span: Span) -> Diagnostic {
     Diagnostic::structured(
         bn_diag::DiagId::STACK_OVERFLOW,
         vec![("name".into(), name.into().into())],

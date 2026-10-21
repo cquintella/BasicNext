@@ -24,7 +24,7 @@ impl Analyzer {
                     return Err(type_mismatch(
                         "INTEGER",
                         display(&declared),
-                        "counted FOR variable",
+                        bn_catalog::text("frontend", "msg.counted_for_variable"),
                         type_ref
                             .as_ref()
                             .map_or(*variable_span, |type_ref| type_ref.span),
@@ -36,7 +36,7 @@ impl Analyzer {
                         return Err(type_mismatch(
                             "INTEGER",
                             display(&bound),
-                            "counted FOR bound",
+                            bn_catalog::text("frontend", "msg.counted_for_bound"),
                             expression.span,
                         ));
                     }
@@ -46,7 +46,7 @@ impl Analyzer {
                             return Err(type_mismatch(
                                 display(&declared),
                                 value.to_string(),
-                                "counted FOR bound",
+                                bn_catalog::text("frontend", "msg.counted_for_bound"),
                                 expression.span,
                             ));
                         }
@@ -115,7 +115,7 @@ impl Analyzer {
             } => {
                 if dimensions.contains(&u64::MAX) {
                     return Err(type_mismatch(
-                        "fixed-length vector or STRING",
+                        bn_catalog::text("frontend", "msg.fixed_length_vector_or_string"),
                         "dynamic-length vector",
                         "FOR EACH iterable",
                         iterable.span,
@@ -125,7 +125,7 @@ impl Analyzer {
             }
             _ => {
                 return Err(type_mismatch(
-                    "fixed-length vector or STRING",
+                    bn_catalog::text("frontend", "msg.fixed_length_vector_or_string"),
                     display(&iterable_type),
                     "FOR EACH iterable",
                     iterable.span,
@@ -322,9 +322,17 @@ impl Analyzer {
     ) -> Result<Type, Diagnostic> {
         if values.len() != fields.len() {
             return Err(type_mismatch(
-                format!("STRUCT with {} fields", fields.len()),
-                format!("literal with {} elements", values.len()),
-                "STRUCT literal",
+                bn_catalog::fill(
+                    "frontend",
+                    "msg.struct_with_fields",
+                    &[("count", &fields.len())],
+                ),
+                bn_catalog::fill(
+                    "frontend",
+                    "msg.literal_with_elements",
+                    &[("count", &values.len())],
+                ),
+                bn_catalog::text("frontend", "msg.struct_literal"),
                 expression.span,
             ));
         }
@@ -334,7 +342,7 @@ impl Analyzer {
                 return Err(type_mismatch(
                     display(&field.ty),
                     display(&actual),
-                    "STRUCT literal element",
+                    bn_catalog::text("frontend", "msg.struct_literal_element"),
                     value.span,
                 ));
             }

@@ -164,10 +164,8 @@ pub(crate) fn lower_bnlog_call(
         let call = I::call(T::I32, "bn_rt_log_logger_new", args);
         text.assign(format!("logrc{dest}"), call);
         text.assign(format!("loghandle{dest}"), I::load(T::I64, r("out")));
-        let pointer = I::cast(CastOp::IntToPtr, T::I64, r("handle"), T::Ptr);
-        text.assign(format!("logvalue{dest}"), pointer);
-        let (rc, value) = (r("rc"), r("value"));
-        emit_status_result(text, destination, &rc, None, &value, &O::int(0));
+        let (rc, handle) = (r("rc"), r("handle"));
+        emit_handle_result(text, destination, &rc, &handle);
         return;
     }
     let receiver = logger_handle(text, dest, arguments[0], analysis);
@@ -210,20 +208,20 @@ pub(crate) fn lower_bnlog_call(
 
 /// The `i64` handle of a logger argument; a narrowed `Logger OR Error` holds
 /// the logger in field 1.
-fn logger_handle(
+pub(crate) fn logger_handle(
     text: &mut crate::ir::LlvmModule,
     dest: u32,
     value: ValueId,
     analysis: &LoweringAnalysis<'_>,
 ) -> (T, O) {
-    let mut pointer = O::reg(format!("v{}", value.0));
+    let own = O::reg(format!("v{}", value.0));
     if matches!(analysis.values.get(&value), Some(Type::Alternative(_))) {
         let field = format!("logreceiver{dest}");
-        text.assign(&field, I::extract(handle_result_ty(), pointer, 1));
-        pointer = O::reg(field);
+        text.assign(&field, I::extract(handle_result_ty(), own, 2));
+        return (T::I64, O::reg(field));
     }
     let handle = format!("loghandlearg{dest}");
-    text.assign(&handle, I::cast(CastOp::PtrToInt, T::Ptr, pointer, T::I64));
+    text.assign(&handle, I::cast(CastOp::PtrToInt, T::Ptr, own, T::I64));
     (T::I64, O::reg(handle))
 }
 
@@ -281,29 +279,27 @@ pub(crate) fn emit_logger_ownership(
     tag: &str,
     symbol: &str,
 ) {
-    let mut pointer = operand.clone();
-    let mut failed = None;
-    if matches!(ty, Type::Alternative(_)) {
+    let handle = if matches!(ty, Type::Alternative(_)) {
         let union = handle_result_ty();
         text.assign(
             format!("{tag}err"),
             I::extract(union.clone(), operand.clone(), 0),
         );
-        text.assign(format!("{tag}ptr"), I::extract(union, operand.clone(), 1));
-        pointer = O::reg(format!("{tag}ptr"));
-        failed = Some(O::reg(format!("{tag}err")));
-    }
-    text.assign(
-        format!("{tag}raw"),
-        I::cast(CastOp::PtrToInt, T::Ptr, pointer.clone(), T::I64),
-    );
-    let handle = match failed {
-        Some(failed) => {
-            let select = I::select(failed, T::I64, O::int(0), O::reg(format!("{tag}raw")));
-            text.assign(format!("{tag}handle"), select);
-            O::reg(format!("{tag}handle"))
-        }
-        None => O::reg(format!("{tag}raw")),
+        text.assign(format!("{tag}raw"), I::extract(union, operand.clone(), 2));
+        let select = I::select(
+            O::reg(format!("{tag}err")),
+            T::I64,
+            O::int(0),
+            O::reg(format!("{tag}raw")),
+        );
+        text.assign(format!("{tag}handle"), select);
+        O::reg(format!("{tag}handle"))
+    } else {
+        text.assign(
+            format!("{tag}handle"),
+            I::cast(CastOp::PtrToInt, T::Ptr, operand.clone(), T::I64),
+        );
+        O::reg(format!("{tag}handle"))
     };
     text.assign(
         format!("{tag}rc"),

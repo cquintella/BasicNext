@@ -346,7 +346,11 @@ impl Analyzer {
                         return Err(type_mismatch(
                             "BOOLEAN",
                             display(&right_type),
-                            format!("binary operator {operator}"),
+                            bn_catalog::fill(
+                                "frontend",
+                                "msg.binary_operator",
+                                &[("operator", &operator)],
+                            ),
                             right.span,
                         ));
                     }

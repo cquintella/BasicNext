@@ -486,9 +486,12 @@ fn reject_bracket_open(parts: &[String], allow_open: bool, span: Span) -> Result
                 let empty = parts.get(index + 1).map(String::as_str) == Some("RightBracket");
                 if empty && dimension != 0 {
                     return Err(type_mismatch(
-                        "open dimension in the first position only",
-                        "open dimension after a fixed dimension",
-                        "vector type",
+                        bn_catalog::text(
+                            "frontend",
+                            "msg.open_dimension_in_the_first_position_only",
+                        ),
+                        bn_catalog::text("frontend", "msg.open_dimension_after_a_fixed_dimension"),
+                        bn_catalog::text("frontend", "msg.vector_type"),
                         span,
                     ));
                 }

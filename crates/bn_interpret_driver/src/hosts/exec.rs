@@ -24,7 +24,7 @@ use bn_interp::{
 };
 use bn_types::IntegerType;
 
-pub const NAME: &str = "Exec";
+pub(crate) const NAME: &str = "Exec";
 
 // HOST provider record layouts are canonicalized by member spelling during
 // semantic lowering: ReturnCode, Stderr, Stdout.
@@ -33,7 +33,7 @@ const RESULT_STDERR: usize = 1;
 const RESULT_STDOUT: usize = 2;
 
 #[derive(Debug, Default)]
-pub struct ExecProvider;
+pub(crate) struct ExecProvider;
 
 impl Provider for ExecProvider {
     fn call(

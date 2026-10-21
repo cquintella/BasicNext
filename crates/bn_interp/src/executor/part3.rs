@@ -8,7 +8,7 @@
 use super::*;
 
 impl Executor<'_, '_> {
-    pub fn call_named(
+    pub(crate) fn call_named(
         &mut self,
         name: &str,
         arguments: Vec<Value>,
@@ -91,7 +91,7 @@ impl Executor<'_, '_> {
 
     /// Splits a library callee into (library name, member): `#3.MEAN` →
     /// (`"BNMath"`, `"MEAN"`) when the IR says module 3 provides `BNMath`.
-    pub fn library_callee<'n>(&self, name: &'n str) -> Option<(&'static str, &'n str)> {
+    pub(crate) fn library_callee<'n>(&self, name: &'n str) -> Option<(&'static str, &'n str)> {
         let rest = name.strip_prefix('#')?;
         let (module, member) = rest.split_once('.')?;
         let library = self
@@ -100,7 +100,7 @@ impl Executor<'_, '_> {
         Some((library, member))
     }
 
-    pub fn library_call(
+    pub(crate) fn library_call(
         &mut self,
         library: &'static str,
         member: &str,
@@ -137,7 +137,7 @@ impl Executor<'_, '_> {
     }
 
     /// `NEW <class>()` owned by a HOST capability (`FS.File`).
-    pub fn host_allocate(
+    pub(crate) fn host_allocate(
         &mut self,
         capability: &'static str,
         class: &str,
@@ -152,10 +152,12 @@ impl Executor<'_, '_> {
     }
 
     /// One more binding holds a handle owned by a HOST capability.
-    pub fn host_retain(&mut self, value: &Value, span: Span) -> Result<(), Diagnostic> {
+    pub(crate) fn host_retain(&mut self, value: &Value, span: Span) -> Result<(), Diagnostic> {
         let capabilities: Vec<&'static str> = self.hosts.keys().copied().collect();
         for capability in capabilities {
-            let mut provider = self.hosts.remove(capability).expect("key just listed");
+            let mut provider = self.hosts.remove(capability).unwrap_or_else(|| {
+                panic!("{}", bn_catalog::text("frontend", "msg.key_just_listed"))
+            });
             let result = provider.retain(value, span);
             self.hosts.insert(capability, provider);
             if let Some(result) = result {
@@ -164,16 +166,18 @@ impl Executor<'_, '_> {
         }
         Err(runtime_error(
             bn_diag::DiagId::HOST_CAPABILITY_UNAVAILABLE,
-            "no HOST capability owns this handle",
+            bn_catalog::text("frontend", "msg.no_host_capability_owns_this_handle"),
             span,
         ))
     }
 
     /// `RELEASE` of a handle owned by a HOST capability.
-    pub fn host_release(&mut self, value: &Value, span: Span) -> Result<(), Diagnostic> {
+    pub(crate) fn host_release(&mut self, value: &Value, span: Span) -> Result<(), Diagnostic> {
         let capabilities: Vec<&'static str> = self.hosts.keys().copied().collect();
         for capability in capabilities {
-            let mut provider = self.hosts.remove(capability).expect("key just listed");
+            let mut provider = self.hosts.remove(capability).unwrap_or_else(|| {
+                panic!("{}", bn_catalog::text("frontend", "msg.key_just_listed"))
+            });
             let result = provider.release(value, span);
             self.hosts.insert(capability, provider);
             if let Some(result) = result {
@@ -182,13 +186,13 @@ impl Executor<'_, '_> {
         }
         Err(runtime_error(
             bn_diag::DiagId::HOST_CAPABILITY_UNAVAILABLE,
-            "no HOST capability owns this handle",
+            bn_catalog::text("frontend", "msg.no_host_capability_owns_this_handle"),
             span,
         ))
     }
 
     /// `NEW #N.Class()` served by a seam library, if `type_name` names one.
-    pub fn library_allocate(
+    pub(crate) fn library_allocate(
         &mut self,
         type_name: &str,
         span: Span,
@@ -199,7 +203,7 @@ impl Executor<'_, '_> {
 
     /// `NEW <class>()` on a named seam library (cross-library use, e.g. `BNWeb`
     /// creating `BNLog` `Fields` for its access log).
-    pub fn library_allocate_in(
+    pub(crate) fn library_allocate_in(
         &mut self,
         library: &'static str,
         class: &str,
@@ -212,10 +216,16 @@ impl Executor<'_, '_> {
     }
 
     /// `RELEASE` of a handle owned by a seam library, if any claims it.
-    pub fn library_release(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
+    pub(crate) fn library_release(
+        &mut self,
+        value: &Value,
+        span: Span,
+    ) -> Option<Result<(), Diagnostic>> {
         let libraries: Vec<&'static str> = self.libraries.keys().copied().collect();
         for library in libraries {
-            let mut provider = self.libraries.remove(library).expect("key just listed");
+            let mut provider = self.libraries.remove(library).unwrap_or_else(|| {
+                panic!("{}", bn_catalog::text("frontend", "msg.key_just_listed"))
+            });
             let result = provider.release(value, span);
             self.libraries.insert(library, provider);
             if result.is_some() {
@@ -226,7 +236,11 @@ impl Executor<'_, '_> {
     }
 
     /// One more binding holds a handle owned by a seam library, if any claims it.
-    pub fn library_retain(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
+    pub(crate) fn library_retain(
+        &mut self,
+        value: &Value,
+        span: Span,
+    ) -> Option<Result<(), Diagnostic>> {
         let libraries: Vec<&'static str> = self.libraries.keys().copied().collect();
         for library in libraries {
             let Some(mut provider) = self.libraries.remove(library) else {
@@ -242,7 +256,7 @@ impl Executor<'_, '_> {
     }
 
     /// Tells every library the core destroyed the object at `handle`.
-    pub fn notify_object_destroyed(&mut self, handle: Handle) {
+    pub(crate) fn notify_object_destroyed(&mut self, handle: Handle) {
         for provider in self.libraries.values_mut() {
             provider.object_destroyed(handle);
         }

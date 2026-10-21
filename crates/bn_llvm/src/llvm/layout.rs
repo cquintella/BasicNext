@@ -206,7 +206,9 @@ fn llvm_storage_layout_inner(
     if let Some(owner) = struct_owner(module, ty) {
         let bytes = class_instance_bytes_inner(module, &owner, visited);
         return Some((
-            u32::try_from(bytes).expect("struct size fits u32"),
+            u32::try_from(bytes).unwrap_or_else(|_| {
+                panic!("{}", bn_catalog::text("llvm", "msg.struct_size_fits_u32"))
+            }),
             POINTER_ALIGNMENT,
         ));
     }
@@ -335,7 +337,8 @@ impl AlternativeLayout {
                             && llvm_type(ty) == Some(LlvmType::Ptr)
                 }))
                 || (members.contains(&Type::String) && members.contains(&Type::EndOfFile)));
-        let status = string_na_or_error(members)
+        let status = string_or_error(members)
+            || string_na_or_error(members)
             || string_eof_or_error(members)
             || scalar_na_or_error(members)
             || error_or_na(members)

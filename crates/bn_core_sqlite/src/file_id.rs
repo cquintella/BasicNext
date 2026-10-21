@@ -8,7 +8,7 @@
 use std::path::Path;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct FileIdentity {
+pub(crate) struct FileIdentity {
     #[cfg(unix)]
     dev: u64,
     #[cfg(unix)]
@@ -36,6 +36,7 @@ struct ByHandleFileInformation {
 }
 
 #[cfg(windows)]
+// SAFETY: the foreign signature matches the C or system function this module calls.
 unsafe extern "system" {
     fn GetFileInformationByHandle(
         handle: *mut std::ffi::c_void,
@@ -47,7 +48,7 @@ unsafe extern "system" {
 const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
 
 impl FileIdentity {
-    pub fn from_path(path: &Path) -> Option<Self> {
+    pub(crate) fn from_path(path: &Path) -> Option<Self> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt as _;
@@ -87,7 +88,7 @@ impl FileIdentity {
     }
 }
 
-pub fn is_symlink_or_reparse_point(path: &Path) -> bool {
+pub(crate) fn is_symlink_or_reparse_point(path: &Path) -> bool {
     #[cfg(unix)]
     {
         std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink())

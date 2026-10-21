@@ -12,7 +12,7 @@ use super::types::LlvmType;
 /// LLVM string escaping, shared by `c"..."` constants and metadata strings:
 /// `"`, `\` and bytes outside printable ASCII become `\XX`.
 #[must_use]
-pub fn escape_llvm(value: &str) -> String {
+pub(crate) fn escape_llvm(value: &str) -> String {
     value.bytes().map(escape_byte).collect()
 }
 
@@ -56,43 +56,43 @@ pub enum LlvmOperand {
 impl LlvmOperand {
     /// Creates an SSA register operand: `%<name>`.
     #[must_use]
-    pub fn reg(name: impl Into<String>) -> Self {
+    pub(crate) fn reg(name: impl Into<String>) -> Self {
         Self::Reg(name.into())
     }
 
     /// Creates a global identifier operand: `@<name>`.
     #[must_use]
-    pub fn global(name: impl Into<String>) -> Self {
+    pub(crate) fn global(name: impl Into<String>) -> Self {
         Self::Global(name.into())
     }
 
     /// Creates a signed integer constant.
     #[must_use]
-    pub fn int(val: i64) -> Self {
+    pub(crate) fn int(val: i64) -> Self {
         Self::ConstInt(val)
     }
 
     /// Creates an unsigned integer constant.
     #[must_use]
-    pub fn uint(val: u64) -> Self {
+    pub(crate) fn uint(val: u64) -> Self {
         Self::ConstUint(val)
     }
 
     /// Creates a 128-bit integer constant.
     #[must_use]
-    pub const fn int128(val: i128) -> Self {
+    pub(crate) const fn int128(val: i128) -> Self {
         Self::ConstI128(val)
     }
 
     /// Creates a constant array of typed elements.
     #[must_use]
-    pub const fn array(elements: Vec<(LlvmType, LlvmOperand)>) -> Self {
+    pub(crate) const fn array(elements: Vec<(LlvmType, LlvmOperand)>) -> Self {
         Self::ConstArray(elements)
     }
 
     /// Creates a floating point constant.
     #[must_use]
-    pub fn float(val: f64) -> Self {
+    pub(crate) fn float(val: f64) -> Self {
         Self::ConstFloat(val)
     }
 
@@ -110,13 +110,13 @@ impl LlvmOperand {
 
     /// Creates an undefined value constant (`undef`).
     #[must_use]
-    pub fn undef() -> Self {
+    pub(crate) fn undef() -> Self {
         Self::Undef
     }
 
     /// Creates a zeroinitializer constant (`zeroinitializer`).
     #[must_use]
-    pub fn zero_initializer() -> Self {
+    pub(crate) fn zero_initializer() -> Self {
         Self::ZeroInitializer
     }
 }

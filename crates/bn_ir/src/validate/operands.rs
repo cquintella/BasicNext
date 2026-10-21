@@ -51,7 +51,7 @@ pub(super) fn instruction_defines(instruction: &crate::Instruction) -> Option<cr
 
 /// Enumerates every SSA operand read by an instruction.
 #[must_use]
-pub fn instruction_uses(instruction: &crate::Instruction) -> Vec<crate::ValueId> {
+pub(crate) fn instruction_uses(instruction: &crate::Instruction) -> Vec<crate::ValueId> {
     match instruction {
         crate::Instruction::Copy { source, .. }
         | crate::Instruction::Unary {

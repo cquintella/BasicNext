@@ -17,7 +17,8 @@ pub use model::{
     BasicBlock, BlockId, Constant, FieldId, FieldLayout, FieldLayoutEntry, FieldRef, FieldSlot,
     Function, FunctionKind, Instruction, Module, ModuleId, SymbolId, Terminator, ValueId,
 };
-pub use validate::{instruction_result, instruction_uses, validate};
+pub(crate) use validate::instruction_uses;
+pub use validate::{instruction_result, validate};
 
 pub use bn_types::{FloatType, IntegerType, PointerLength, Type, class_model::ClassModel};
 

@@ -195,16 +195,21 @@ impl Parser<'_> {
             let in_index = line
                 .iter()
                 .position(|token| matches!(&token.kind, TokenKind::Keyword(word) if word == "IN"))
-                .ok_or_else(|| self.error("expected IN in FOR EACH"))?;
+                .ok_or_else(|| {
+                    self.error(bn_catalog::text("frontend", "msg.expected_in_in_for_each"))
+                })?;
             let type_ref = if line.get(3).is_some_and(is_as) {
                 if in_index <= 4 {
-                    return Err(self.error("expected a type in FOR EACH"));
+                    return Err(self.error(bn_catalog::text(
+                        "frontend",
+                        "msg.expected_a_type_in_for_each",
+                    )));
                 }
                 Some(self.type_reference(&line[4..in_index], false)?)
             } else if in_index == 3 {
                 None
             } else {
-                return Err(self.error("expected IN in FOR EACH"));
+                return Err(self.error(bn_catalog::text("frontend", "msg.expected_in_in_for_each")));
             };
             return Ok(crate::ast::ForHeader::Each {
                 variable,
@@ -230,16 +235,25 @@ impl Parser<'_> {
             .position(|token| matches!(&token.kind, TokenKind::Keyword(word) if word == "STEP"));
         let type_ref = if line.get(2).is_some_and(is_as) {
             if equal <= 3 {
-                return Err(self.error("expected FOR name [AS type] = start TO end [STEP step]"));
+                return Err(self.error(bn_catalog::text(
+                    "frontend",
+                    "msg.expected_for_name_as_type_start_to_end",
+                )));
             }
             Some(self.type_reference(&line[3..equal], false)?)
         } else if equal == 2 {
             None
         } else {
-            return Err(self.error("expected FOR name [AS type] = start TO end [STEP step]"));
+            return Err(self.error(bn_catalog::text(
+                "frontend",
+                "msg.expected_for_name_as_type_start_to_end",
+            )));
         };
         if to <= equal || step.is_some_and(|step| step <= to) {
-            return Err(self.error("expected FOR name [AS type] = start TO end [STEP step]"));
+            return Err(self.error(bn_catalog::text(
+                "frontend",
+                "msg.expected_for_name_as_type_start_to_end",
+            )));
         }
         Ok(crate::ast::ForHeader::Counted {
             variable,

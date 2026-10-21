@@ -99,6 +99,7 @@ fn ping_v4(dest: std::net::Ipv4Addr, timeout: Duration) -> Result<PingReply, Pin
             continue;
         }
         // DGRAM ICMP replies often omit the IP header.
+        // SAFETY: `recv_from` initialized the first `received` bytes of this local buffer.
         let bytes = unsafe { std::slice::from_raw_parts(buffer.as_ptr().cast::<u8>(), received) };
         let Some(icmp) = ipv4_icmp_payload(bytes) else {
             continue;
@@ -163,6 +164,7 @@ fn ping_v6(dest: std::net::Ipv6Addr, timeout: Duration) -> Result<PingReply, Pin
             }
             Err(error) => return Err(map_recv(error)),
         };
+        // SAFETY: `recv_from` initialized the first `received` bytes of this local buffer.
         let icmp = unsafe { std::slice::from_raw_parts(buffer.as_ptr().cast::<u8>(), received) };
         if received < 8 || icmp[0] != 129 {
             continue;

@@ -7,27 +7,28 @@
 //! constructors and a buffer sink, typed C-ABI signatures, debug-information
 //! metadata, and the canonical textual rendering.
 
-pub mod abi;
+pub(crate) mod abi;
 pub mod block;
 pub mod debug;
 pub mod emit;
 pub mod function;
-pub mod global;
+pub(crate) mod global;
 pub mod instructions;
 pub mod module;
-pub mod operands;
+pub(crate) mod operands;
 pub mod types;
 
-pub use abi::{AbiType, Declaration, Intrinsic, RuntimeFn, VariadicFn, write_declarations};
+pub(crate) use abi::{AbiType, Intrinsic, RuntimeFn, VariadicFn, write_declarations};
+pub use abi::{Declaration, Signature};
 pub use block::BasicBlock;
-pub use debug::{DebugFormat, DebugMetadata, MdRef};
-pub use emit::InstSink;
-pub use function::LlvmFunction;
-pub use global::{Linkage, LlvmGlobal};
-pub use instructions::{BinaryOp, CastOp, FCmpCond, ICmpCond, LlvmInst};
-pub use module::{DebugScopes, LlvmModule};
+pub(crate) use debug::{DebugFormat, DebugMetadata, MdRef};
+pub(crate) use emit::InstSink;
+pub(crate) use function::LlvmFunction;
+pub(crate) use global::{Linkage, LlvmGlobal};
+pub(crate) use instructions::{BinaryOp, CastOp, FCmpCond, ICmpCond, LlvmInst};
+pub(crate) use module::{DebugScopes, LlvmModule};
 pub use operands::LlvmOperand;
-pub use types::LlvmType;
+pub(crate) use types::LlvmType;
 
 #[cfg(test)]
 mod tests {

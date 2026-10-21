@@ -31,6 +31,7 @@ pub const NAME: &str = "BNCrypto";
 #[derive(Debug, Default)]
 pub struct CryptoProvider {
     buffers: HashMap<u64, Vec<u8>>,
+    holders: HashMap<u64, usize>,
     next: u64,
 }
 
@@ -39,6 +40,7 @@ impl CryptoProvider {
         self.next += 1;
         let handle = self.next;
         self.buffers.insert(handle, bytes);
+        self.holders.insert(handle, 1);
         Value::CryptoBytes(handle)
     }
 
@@ -470,16 +472,38 @@ impl Provider for CryptoProvider {
         (class.rsplit('.').next() == Some("Bytes")).then(|| Ok(self.insert(Vec::new())))
     }
 
+    fn retain(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
+        let Value::CryptoBytes(handle) = value else {
+            return None;
+        };
+        Some(match self.holders.get_mut(handle) {
+            Some(holders) => {
+                *holders += 1;
+                Ok(())
+            }
+            None => Err(runtime_error(
+                bn_diag::DiagId::USE_AFTER_RELEASE,
+                bn_catalog::text("crypto", "msg.bncrypto_bytes_was_already_released"),
+                span,
+            )),
+        })
+    }
+
     fn release(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
         let Value::CryptoBytes(handle) = value else {
             return None;
         };
-        Some(if self.buffers.remove(handle).is_some() {
+        Some(if let Some(holders) = self.holders.get_mut(handle) {
+            *holders -= 1;
+            if *holders == 0 {
+                self.holders.remove(handle);
+                self.buffers.remove(handle);
+            }
             Ok(())
         } else {
             Err(runtime_error(
                 bn_diag::DiagId::USE_AFTER_RELEASE,
-                "BNCrypto.Bytes was already released",
+                bn_catalog::text("crypto", "msg.bncrypto_bytes_was_already_released"),
                 span,
             ))
         })

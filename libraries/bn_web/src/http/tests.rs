@@ -1073,7 +1073,11 @@ fn serves_static_files_with_mime_etag_conditional_and_sanitization() {
 
     std::fs::write(temp_dir.join("index.html"), "<html>index</html>").unwrap();
     std::fs::write(temp_dir.join("hello.txt"), "hello static").unwrap();
-    std::fs::write(temp_dir.join("sub").join("style.css"), "body { color: red; }").unwrap();
+    std::fs::write(
+        temp_dir.join("sub").join("style.css"),
+        "body { color: red; }",
+    )
+    .unwrap();
     std::fs::write(temp_dir.join(".secret"), "shh").unwrap();
 
     let listener = match std::net::TcpListener::bind("127.0.0.1:0") {
@@ -1119,55 +1123,88 @@ fn serves_static_files_with_mime_etag_conditional_and_sanitization() {
     };
 
     // 1. GET static file: 200 OK, mime type, content, ETag, Last-Modified
-    let res = send_raw("GET /assets/hello.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+    let res =
+        send_raw("GET /assets/hello.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
     assert!(res.starts_with("HTTP/1.1 200 OK"), "{res}");
-    assert!(res.contains("content-type: text/plain; charset=utf-8"), "{res}");
+    assert!(
+        res.contains("content-type: text/plain; charset=utf-8"),
+        "{res}"
+    );
     assert!(res.contains("content-length: 12"), "{res}");
     assert!(res.contains("etag: "), "{res}");
     assert!(res.contains("last-modified: "), "{res}");
     assert!(res.ends_with("\r\n\r\nhello static"), "{res}");
 
     // Extract ETag for conditional test
-    let etag_line = res.lines().find(|l| l.to_lowercase().starts_with("etag: ")).unwrap();
+    let etag_line = res
+        .lines()
+        .find(|l| l.to_lowercase().starts_with("etag: "))
+        .unwrap();
     let etag_val = etag_line.split_once(':').unwrap().1.trim();
 
     // 2. HEAD static file: 200 OK, same headers, empty body
-    let res_head = send_raw("HEAD /assets/hello.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+    let res_head =
+        send_raw("HEAD /assets/hello.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
     assert!(res_head.starts_with("HTTP/1.1 200 OK"), "{res_head}");
     assert!(res_head.contains("content-length: 12"), "{res_head}");
     assert!(res_head.ends_with("\r\n\r\n"), "{res_head}");
 
     // 3. Explicit route wins over static
-    let res_override = send_raw("GET /assets/override HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
-    assert!(res_override.starts_with("HTTP/1.1 200 OK"), "{res_override}");
-    assert!(res_override.contains("explicit route wins"), "{res_override}");
+    let res_override =
+        send_raw("GET /assets/override HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+    assert!(
+        res_override.starts_with("HTTP/1.1 200 OK"),
+        "{res_override}"
+    );
+    assert!(
+        res_override.contains("explicit route wins"),
+        "{res_override}"
+    );
 
     // 4. Directory root serves index.html
     let res_dir = send_raw("GET /assets/ HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
     assert!(res_dir.starts_with("HTTP/1.1 200 OK"), "{res_dir}");
-    assert!(res_dir.contains("content-type: text/html; charset=utf-8"), "{res_dir}");
+    assert!(
+        res_dir.contains("content-type: text/html; charset=utf-8"),
+        "{res_dir}"
+    );
     assert!(res_dir.ends_with("<html>index</html>"), "{res_dir}");
 
     // 5. Dotfile segment returns 404
-    let res_dot = send_raw("GET /assets/.secret HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+    let res_dot =
+        send_raw("GET /assets/.secret HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
     assert!(res_dot.starts_with("HTTP/1.1 404 Not Found"), "{res_dot}");
 
     // 6. Path traversal rejected with 400 Bad Request
-    let res_traversal = send_raw("GET /assets/../hello.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
-    assert!(res_traversal.starts_with("HTTP/1.1 400 Bad Request"), "{res_traversal}");
+    let res_traversal = send_raw(
+        "GET /assets/../hello.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    );
+    assert!(
+        res_traversal.starts_with("HTTP/1.1 400 Bad Request"),
+        "{res_traversal}"
+    );
 
     // 7. Non-GET/HEAD method returns 405 Method Not Allowed with Allow header
-    let res_post = send_raw("POST /assets/hello.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
-    assert!(res_post.starts_with("HTTP/1.1 405 Method Not Allowed"), "{res_post}");
+    let res_post = send_raw(
+        "POST /assets/hello.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+    );
+    assert!(
+        res_post.starts_with("HTTP/1.1 405 Method Not Allowed"),
+        "{res_post}"
+    );
     assert!(res_post.contains("allow: GET, HEAD"), "{res_post}");
 
     // 8. Conditional GET: If-None-Match with matching ETag returns 304 Not Modified
-    let req_inm = format!("GET /assets/hello.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nIf-None-Match: {etag_val}\r\n\r\n");
+    let req_inm = format!(
+        "GET /assets/hello.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nIf-None-Match: {etag_val}\r\n\r\n"
+    );
     let res_inm = send_raw(&req_inm);
-    assert!(res_inm.starts_with("HTTP/1.1 304 Not Modified"), "{res_inm}");
+    assert!(
+        res_inm.starts_with("HTTP/1.1 304 Not Modified"),
+        "{res_inm}"
+    );
     assert!(res_inm.ends_with("\r\n\r\n"), "{res_inm}");
 
     server.join().expect("server thread");
     let _ = std::fs::remove_dir_all(&temp_dir);
 }
-

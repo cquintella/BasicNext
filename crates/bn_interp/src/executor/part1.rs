@@ -127,7 +127,7 @@ impl Executor<'_, '_> {
         }
     }
 
-    pub fn ensure_class(&mut self, class: &str, span: Span) -> Result<(), Diagnostic> {
+    pub(crate) fn ensure_class(&mut self, class: &str, span: Span) -> Result<(), Diagnostic> {
         match self.class_init.get(class).copied() {
             Some(ClassInit::Ready) => return Ok(()),
             Some(ClassInit::Running) => {

@@ -22,10 +22,10 @@ use bn_interp::{
 };
 use bn_types::FloatType;
 
-pub const NAME: &str = "Random";
+pub(crate) const NAME: &str = "Random";
 
 #[derive(Debug, Default)]
-pub struct RandomProvider;
+pub(crate) struct RandomProvider;
 
 impl Provider for RandomProvider {
     fn call(

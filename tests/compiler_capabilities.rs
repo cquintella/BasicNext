@@ -385,7 +385,7 @@ struct InventoryEntry {
 }
 
 fn build_report() -> SupportReport {
-    const TARGETS: [&str; 3] = ["interpret", "llvm-native", "wasm32"];
+    const TARGETS: [&str; 2] = ["interpret", "llvm-native"];
     let instructions = enum_variants("crates/bn_ir/src/model.rs", "Instruction");
     let types = enum_variants("crates/bn_types/src/lib.rs", "Type");
     let mut evidence: std::collections::BTreeMap<(String, String, String), Vec<String>> =

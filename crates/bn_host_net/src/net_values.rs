@@ -13,26 +13,26 @@ use bn_interp::{runtime_error_pub as runtime_error, type_mismatch};
 
 /// Canonical positional layouts shared by HOST.Net providers and `BNWeb`.
 pub mod slots {
-    pub const UDP_PACKET_SOURCE: usize = 0;
-    pub const UDP_PACKET_BYTES: usize = 1;
-    pub const UDP_PACKET_TRUNCATED: usize = 2;
-    pub const UDP_PACKET_FIELDS: usize = 3;
-    pub const ADDRESSES_VALUES: usize = 0;
-    pub const ADDRESSES_FIELDS: usize = 1;
+    pub(crate) const UDP_PACKET_SOURCE: usize = 0;
+    pub(crate) const UDP_PACKET_BYTES: usize = 1;
+    pub(crate) const UDP_PACKET_TRUNCATED: usize = 2;
+    pub(crate) const UDP_PACKET_FIELDS: usize = 3;
+    pub(crate) const ADDRESSES_VALUES: usize = 0;
+    pub(crate) const ADDRESSES_FIELDS: usize = 1;
     pub const ADDRESS_VALUE: usize = 0;
     pub const ADDRESS_FIELDS: usize = 1;
-    pub const ENDPOINT_ADDRESS: usize = 0;
-    pub const ENDPOINT_PORT: usize = 1;
-    pub const ENDPOINT_FIELDS: usize = 2;
+    pub(crate) const ENDPOINT_ADDRESS: usize = 0;
+    pub(crate) const ENDPOINT_PORT: usize = 1;
+    pub(crate) const ENDPOINT_FIELDS: usize = 2;
     pub const CIDR_NETWORK: usize = 0;
     pub const CIDR_PREFIX: usize = 1;
     pub const CIDR_FIELDS: usize = 2;
-    pub const PING_REPLY_ADDRESS: usize = 0;
-    pub const PING_REPLY_ROUND_TRIP_MICROSECONDS: usize = 1;
-    pub const PING_REPLY_FIELDS: usize = 2;
+    pub(crate) const PING_REPLY_ADDRESS: usize = 0;
+    pub(crate) const PING_REPLY_ROUND_TRIP_MICROSECONDS: usize = 1;
+    pub(crate) const PING_REPLY_FIELDS: usize = 2;
 
     #[must_use]
-    pub fn field_count(type_name: &str) -> Option<usize> {
+    pub(crate) fn field_count(type_name: &str) -> Option<usize> {
         match type_name {
             "HOST.Net.UDPPacket" => Some(UDP_PACKET_FIELDS),
             "HOST.Net.Addresses" => Some(ADDRESSES_FIELDS),
@@ -48,7 +48,7 @@ pub mod slots {
 /// # Errors
 ///
 /// Returns `TYPE_MISMATCH` when the value is not an address vector.
-pub fn net_addresses(value: &Value, span: Span) -> Result<&Vec<Value>, Diagnostic> {
+pub(crate) fn net_addresses(value: &Value, span: Span) -> Result<&Vec<Value>, Diagnostic> {
     let Value::Record { record } = value else {
         return Err(type_mismatch(
             "HOST.Net.Addresses",
@@ -87,7 +87,7 @@ pub fn net_addresses(value: &Value, span: Span) -> Result<&Vec<Value>, Diagnosti
 /// # Errors
 ///
 /// Returns `TYPE_MISMATCH` when the value is not a `HOST.Net.Address`.
-pub fn net_address(value: &Value, span: Span) -> Result<crate::net::Address, Diagnostic> {
+pub(crate) fn net_address(value: &Value, span: Span) -> Result<crate::net::Address, Diagnostic> {
     let Value::Record { record } = value else {
         return Err(type_mismatch(
             "HOST.Net.Address",
@@ -218,7 +218,7 @@ pub fn net_endpoint(value: &Value, span: Span) -> Result<crate::net::Endpoint, D
 }
 
 #[must_use]
-pub fn endpoint_value(endpoint: crate::net::Endpoint) -> Value {
+pub(crate) fn endpoint_value(endpoint: crate::net::Endpoint) -> Value {
     Value::Record {
         record: RecordValue::new(
             "HOST.Net.Endpoint",
@@ -246,7 +246,7 @@ pub fn address_value(address: std::net::IpAddr) -> Value {
 }
 
 #[must_use]
-pub fn ping_reply_value(reply: crate::net::PingReply) -> Value {
+pub(crate) fn ping_reply_value(reply: crate::net::PingReply) -> Value {
     Value::Record {
         record: RecordValue::new(
             "HOST.Net.PingReply",

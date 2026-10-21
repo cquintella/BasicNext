@@ -176,7 +176,7 @@ pub mod dispatch {
 /// `BNLog` `Error.Code` (`language/0.6/bnlog.md` "Errors").
 pub mod log {
     pub const INVALID_ARGUMENT: i32 = 1;
-    pub const DUPLICATE: i32 = 2;
+    pub(crate) const DUPLICATE: i32 = 2;
     pub const LIMIT: i32 = 3;
     pub const CLOSED: i32 = 4;
     pub const IO_FAILED: i32 = 5;

@@ -149,9 +149,9 @@ impl Analyzer {
                     if *asynchronous && let Some(signature) = signature {
                         if signature.parameters.len() > 8 {
                             return Err(type_mismatch(
-                                "at most 8 worker parameters",
+                                bn_catalog::text("frontend", "msg.at_most_8_worker_parameters"),
                                 format!("{} parameters", signature.parameters.len()),
-                                "ASYNC FUNCTION parameter count",
+                                bn_catalog::text("frontend", "msg.async_function_parameter_count"),
                                 *span,
                             ));
                         }
@@ -159,9 +159,12 @@ impl Analyzer {
                             let param_ty = self.resolve_reference(&parameter.type_ref);
                             if !is_valid_async_parameter_type(&param_ty, &self.standard_modules) {
                                 return Err(type_mismatch(
-                                    "scalar, string, date/time, or dispatch handle",
+                                    bn_catalog::text(
+                                        "frontend",
+                                        "msg.scalar_string_date_time_or_dispatch_handle",
+                                    ),
                                     display(&param_ty),
-                                    "ASYNC FUNCTION parameter",
+                                    bn_catalog::text("frontend", "msg.async_function_parameter"),
                                     parameter.span,
                                 ));
                             }

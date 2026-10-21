@@ -216,7 +216,7 @@ fn checked_indices(indices: &[i64], count: usize) -> Result<Vec<usize>, i64> {
 
 /// The first column name that appears twice, for `DuplicateColumn`.
 #[must_use]
-pub fn first_duplicate_column<T>(columns: &[DataFrameColumn<T>]) -> Option<String> {
+pub(crate) fn first_duplicate_column<T>(columns: &[DataFrameColumn<T>]) -> Option<String> {
     let mut seen = std::collections::HashSet::with_capacity(columns.len());
     columns
         .iter()
@@ -649,7 +649,9 @@ pub fn copy_dataframe_column<T, U>(
 ///
 /// Returns `DataFailure::InvalidFormat` if the value does not fit in `i32`.
 pub fn copy_integer_element(value: i128) -> Result<i32, DataFailure> {
-    i32::try_from(value).map_err(|_| DataFailure::InvalidFormat("integer out of range".into()))
+    i32::try_from(value).map_err(|_| {
+        DataFailure::InvalidFormat(bn_catalog::text("data", "msg.integer_out_of_range").into())
+    })
 }
 
 /// One cell of `ConvertToInteger` / `ConvertToFloat`.
@@ -703,7 +705,7 @@ pub fn conversion_failed(column: &str) -> DataFailure {
 /// # Errors
 ///
 /// Returns an error when the input ends inside a quoted field.
-pub fn parse_csv(text: &str, separator: char) -> Result<Vec<Vec<String>>, DataFailure> {
+pub(crate) fn parse_csv(text: &str, separator: char) -> Result<Vec<Vec<String>>, DataFailure> {
     let mut rows = Vec::new();
     let mut row = Vec::new();
     let mut field = String::new();
@@ -915,15 +917,21 @@ mod tests {
         );
         assert_eq!(
             copy_integer_element(3_000_000_000_i128),
-            Err(DataFailure::InvalidFormat("integer out of range".into()))
+            Err(DataFailure::InvalidFormat(
+                bn_catalog::text("data", "msg.integer_out_of_range").into()
+            ))
         );
         assert_eq!(
             copy_integer_element(-3_000_000_000_i128),
-            Err(DataFailure::InvalidFormat("integer out of range".into()))
+            Err(DataFailure::InvalidFormat(
+                bn_catalog::text("data", "msg.integer_out_of_range").into()
+            ))
         );
         assert_eq!(
             copy_integer_element(i128::MAX),
-            Err(DataFailure::InvalidFormat("integer out of range".into()))
+            Err(DataFailure::InvalidFormat(
+                bn_catalog::text("data", "msg.integer_out_of_range").into()
+            ))
         );
     }
 }

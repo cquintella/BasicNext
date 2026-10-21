@@ -7,7 +7,7 @@ use lsp_types::{Position as LspPosition, Range as LspRange};
 /// Converts a 1-based character (scalar) column on `line` to a 0-based UTF-16
 /// code unit offset for LSP.
 #[must_use]
-pub fn scalar_to_utf16_col(line: &str, scalar_col_1based: usize) -> u32 {
+pub(crate) fn scalar_to_utf16_col(line: &str, scalar_col_1based: usize) -> u32 {
     let target_scalar = scalar_col_1based.saturating_sub(1);
     let mut utf16_offset: u32 = 0;
     for (idx, ch) in line.chars().enumerate() {
@@ -23,7 +23,7 @@ pub fn scalar_to_utf16_col(line: &str, scalar_col_1based: usize) -> u32 {
 /// Converts a 0-based UTF-16 code unit offset on `line` to a 1-based character
 /// (scalar) column for Basic Next positions.
 #[must_use]
-pub fn utf16_to_scalar_col(line: &str, utf16_col_0based: u32) -> usize {
+pub(crate) fn utf16_to_scalar_col(line: &str, utf16_col_0based: u32) -> usize {
     let mut accumulated_utf16: u32 = 0;
     let mut scalar_idx: usize = 0;
     for ch in line.chars() {
@@ -39,7 +39,7 @@ pub fn utf16_to_scalar_col(line: &str, utf16_col_0based: u32) -> usize {
 
 /// Converts a Basic Next `Span` to an LSP `Range` using UTF-16 code units.
 #[must_use]
-pub fn span_to_lsp_range(source: &SourceFile, span: Span) -> LspRange {
+pub(crate) fn span_to_lsp_range(source: &SourceFile, span: Span) -> LspRange {
     let start_line_idx = span.start.line.saturating_sub(1);
     let end_line_idx = span.end.line.saturating_sub(1);
 

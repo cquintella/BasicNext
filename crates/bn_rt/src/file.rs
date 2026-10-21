@@ -13,7 +13,8 @@ use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::Path;
 
-pub use super::file_error::{Failure, FileError, FsOperation};
+use super::file_error::FsOperation;
+pub use super::file_error::{Failure, FileError};
 use super::policy::FsPolicy;
 use super::secure_fs::OpenMode;
 
@@ -207,7 +208,12 @@ impl OpenFile {
 
             // Buffer is exhausted; read another 8KB chunk.
             self.buffer.resize(8192, 0);
-            let file = self.file.as_mut().expect("file verified by file_for");
+            let file = self.file.as_mut().unwrap_or_else(|| {
+                panic!(
+                    "{}",
+                    bn_catalog::text("file", "msg.file_verified_by_file_for")
+                )
+            });
             let n = file.read(&mut self.buffer)?;
             self.buffer.truncate(n);
             self.buffer_pos = 0;
@@ -245,7 +251,12 @@ impl OpenFile {
             bytes.extend_from_slice(&self.buffer[self.buffer_pos..]);
             self.buffer_pos = self.buffer.len();
         }
-        let file = self.file.as_mut().expect("file verified by file_for");
+        let file = self.file.as_mut().unwrap_or_else(|| {
+            panic!(
+                "{}",
+                bn_catalog::text("file", "msg.file_verified_by_file_for")
+            )
+        });
         file.read_to_end(&mut bytes)?;
         let text = String::from_utf8(bytes).map_err(Failure::InvalidUtf8)?;
         self.family = Some(Family::Text);

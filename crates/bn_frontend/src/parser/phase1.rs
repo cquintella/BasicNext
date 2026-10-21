@@ -49,10 +49,13 @@ impl Parser<'_> {
         }
         self.expect_keyword("IMPORT")?;
         let first = self.path_part_name()?;
-        if exported && first == "HOST" {
-            return Err(self.error("EXPORT IMPORT re-exports a module, not a HOST capability"));
+        if exported && first == bn_catalog::text("frontend", "msg.host_2") {
+            return Err(self.error(bn_catalog::text(
+                "frontend",
+                "msg.export_import_re_exports_a_module_not_a",
+            )));
         }
-        let host_import = first == "HOST";
+        let host_import = first == bn_catalog::text("frontend", "msg.host_2");
         let mut path = vec![first];
         if host_import || self.symbol(Symbol::Dot) {
             self.expect_symbol(Symbol::Dot)?;
@@ -123,9 +126,9 @@ impl Parser<'_> {
     }
 
     pub(crate) fn path_part_name(&mut self) -> Result<String, Diagnostic> {
-        if self.keyword("HOST") {
+        if self.keyword(bn_catalog::text("frontend", "msg.host_2")) {
             self.take();
-            Ok("HOST".into())
+            Ok(bn_catalog::text("frontend", "msg.host_2").into())
         } else {
             self.identifier_name()
         }

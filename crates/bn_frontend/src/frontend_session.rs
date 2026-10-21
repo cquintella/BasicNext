@@ -54,7 +54,7 @@ impl FrontendSession {
     ///
     /// This function does not panic for a consistent session; a matching
     /// snapshot is returned directly and otherwise a new snapshot is created.
-    pub fn upsert_if_changed(&mut self, source: Option<SourceId>, text: String) -> Snapshot {
+    pub(crate) fn upsert_if_changed(&mut self, source: Option<SourceId>, text: String) -> Snapshot {
         if let Some(source) = source
             && self
                 .snapshots

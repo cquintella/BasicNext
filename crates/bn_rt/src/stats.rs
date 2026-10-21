@@ -6,14 +6,15 @@
 use super::math::fail;
 
 #[allow(unsafe_code)] // C ABI: INTEGER[] buffer from LLVM alloca.
-pub fn i32_slice<'a>(ptr: *const i32, len: i32) -> &'a [i32] {
+pub(crate) fn i32_slice<'a>(ptr: *const i32, len: i32) -> &'a [i32] {
     if ptr.is_null() || len <= 0 {
         return &[];
     }
+    // SAFETY: the pointer and the length describe a buffer the caller allocated and keeps alive for this call.
     unsafe { std::slice::from_raw_parts(ptr, usize::try_from(len).unwrap_or(0)) }
 }
 
-pub fn vmin_i32(values: &[i32]) -> i32 {
+pub(crate) fn vmin_i32(values: &[i32]) -> i32 {
     super::cpu::vmin_i32(values).unwrap_or_else(|| {
         fail(
             "INDEX_OUT_OF_BOUNDS",
@@ -22,7 +23,7 @@ pub fn vmin_i32(values: &[i32]) -> i32 {
     })
 }
 
-pub fn vmax_i32(values: &[i32]) -> i32 {
+pub(crate) fn vmax_i32(values: &[i32]) -> i32 {
     super::cpu::vmax_i32(values).unwrap_or_else(|| {
         fail(
             "INDEX_OUT_OF_BOUNDS",

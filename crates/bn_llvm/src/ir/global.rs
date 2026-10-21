@@ -12,7 +12,7 @@ use super::{operands::LlvmOperand, types::LlvmType};
 
 /// How a global is linked.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Linkage {
+pub(crate) enum Linkage {
     /// Visible to other modules (no keyword).
     Default,
     /// `private`: this module only, no symbol.
@@ -26,7 +26,7 @@ pub enum Linkage {
 /// A global: `@name = [linkage] [thread_local] [unnamed_addr] global|constant
 /// <type> [initializer]`.
 #[derive(Clone, Debug, PartialEq)]
-pub struct LlvmGlobal {
+pub(crate) struct LlvmGlobal {
     pub name: String,
     pub linkage: Linkage,
     pub thread_local: bool,
@@ -62,7 +62,7 @@ impl LlvmGlobal {
     /// A private C string constant: `private [unnamed_addr] constant
     /// [N x i8] c"..."`, the bytes ending with their NUL.
     #[must_use]
-    pub fn c_string(name: impl Into<String>, bytes: Vec<u8>, unnamed_addr: bool) -> Self {
+    pub(crate) fn c_string(name: impl Into<String>, bytes: Vec<u8>, unnamed_addr: bool) -> Self {
         let ty = LlvmType::Array(bytes.len(), Box::new(LlvmType::I8));
         Self {
             name: name.into(),
@@ -91,10 +91,12 @@ impl LlvmGlobal {
     /// Panics when the byte length does not fit in `i64`. A source string
     /// that large is not a program this compiler accepts.
     #[must_use]
-    pub fn bn_string(name: impl Into<String>, text: &str, unnamed_addr: bool) -> Self {
+    pub(crate) fn bn_string(name: impl Into<String>, text: &str, unnamed_addr: bool) -> Self {
         let mut payload: Vec<u8> = text.bytes().collect();
         payload.push(0);
-        let len = i64::try_from(payload.len() - 1).expect("string length fits i64");
+        let len = i64::try_from(payload.len() - 1).unwrap_or_else(|_| {
+            panic!("{}", bn_catalog::text("llvm", "msg.string_length_fits_i64"))
+        });
         let array = LlvmType::Array(payload.len(), Box::new(LlvmType::I8));
         let ty = LlvmType::struct_of([LlvmType::I64, LlvmType::I64, array.clone()]);
         let init = LlvmOperand::ConstStruct(vec![
@@ -116,7 +118,7 @@ impl LlvmGlobal {
 
     /// A global defined in another module.
     #[must_use]
-    pub fn external(name: impl Into<String>, ty: LlvmType) -> Self {
+    pub(crate) fn external(name: impl Into<String>, ty: LlvmType) -> Self {
         Self {
             name: name.into(),
             linkage: Linkage::External,
@@ -130,13 +132,13 @@ impl LlvmGlobal {
     }
 
     #[must_use]
-    pub const fn with_linkage(mut self, linkage: Linkage) -> Self {
+    pub(crate) const fn with_linkage(mut self, linkage: Linkage) -> Self {
         self.linkage = linkage;
         self
     }
 
     #[must_use]
-    pub const fn thread_local(mut self) -> Self {
+    pub(crate) const fn thread_local(mut self) -> Self {
         self.thread_local = true;
         self
     }

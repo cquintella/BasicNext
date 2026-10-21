@@ -385,6 +385,9 @@ impl Builder<'_> {
         finished: BlockId,
         each: &Each<'_>,
     ) -> Result<(), Diagnostic> {
+        // `terminate` releases owned temporaries. A vector literal is owned,
+        // and the loop uses it after that release. Hold it until the loop ends.
+        self.hold_across_loop(vector, finished, each.leave, each.span);
         let row = match vector_ty {
             Type::Vector {
                 element,
@@ -458,7 +461,35 @@ impl Builder<'_> {
         };
         self.finish_index_loop(&cursor, &index_ty, continues, each.span);
         self.current = finished;
+        self.held.retain(|(held, _)| *held != vector);
         Ok(())
+    }
+
+    /// An owned temporary must survive the jump that opens the loop.
+    /// `EXIT FOR` and normal completion are different blocks when this rank
+    /// is a row; each path releases the value once. `RETURN` releases it
+    /// through `held` because that path never reaches those blocks.
+    fn hold_across_loop(&mut self, value: ValueId, finished: BlockId, leave: BlockId, span: Span) {
+        let Some(index) = self.owned.iter().position(|(owned, _)| *owned == value) else {
+            return;
+        };
+        self.owned.remove(index);
+        self.held.push((value, span));
+        self.release_on_arrival(finished, value, span);
+        if leave != finished {
+            self.release_on_arrival(leave, value, span);
+        }
+    }
+
+    fn release_on_arrival(&mut self, block: BlockId, value: ValueId, span: Span) {
+        self.blocks[block.0 as usize].instructions.insert(
+            0,
+            Instruction::Release {
+                value,
+                destructor: None,
+                span,
+            },
+        );
     }
 
     /// Binds one scalar element, runs the body, and reports whether any path

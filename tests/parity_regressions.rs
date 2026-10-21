@@ -49,7 +49,10 @@ fn string_index_and_char_results_outlive_their_frame() {
     let emitted = execute(bnc().args(["--emit", "llvm"]).arg(&path), None);
     assert_success(&emitted, "emit string index");
     let llvm = String::from_utf8_lossy(&emitted.stdout);
-    for helper in ["call ptr @bn_rt_str_from_packed(", "call ptr @bn_rt_str_from_char("] {
+    for helper in [
+        "call ptr @bn_rt_str_from_packed(",
+        "call ptr @bn_rt_str_from_char(",
+    ] {
         assert!(
             llvm.lines().any(|line| line.contains(helper)),
             "{helper} not emitted"
@@ -771,8 +774,14 @@ fn vector_literal_in_loop_reuses_entry_slot_without_stack_growth() {
             loop_has_alloca = true;
         }
     }
-    assert!(found_b0_alloca, "vector data alloca must be in entry block b0");
-    assert!(!loop_has_alloca, "no vector data alloca should exist inside loop blocks");
+    assert!(
+        found_b0_alloca,
+        "vector data alloca must be in entry block b0"
+    );
+    assert!(
+        !loop_has_alloca,
+        "no vector data alloca should exist inside loop blocks"
+    );
 
     let expected = "sum: 120000\n";
     let artifact = compile_native(&path, &directory);
@@ -784,6 +793,140 @@ fn vector_literal_in_loop_reuses_entry_slot_without_stack_growth() {
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
             expected,
+            "{backend}"
+        );
+    }
+}
+
+/// Narrowed resources store cleanly into `T OR NULL` and static `Log.Logger OR Error` (K91).
+#[test]
+fn narrowed_resources_store_into_nullable_and_error_alternatives() {
+    let directory = TestDir::new("parity-k91-narrowed-resources").expect("create directory");
+    let path = directory.join("k91.bn");
+    fs::write(
+        &path,
+        r#"IMPORT HOST.FileSystem AS FS
+IMPORT BNLog AS Log
+
+CLASS State
+    PUBLIC STATIC file_kept AS FS.File OR NULL = NULL
+    PUBLIC STATIC log_kept AS Log.Logger OR Error = Log.Logger.New("app", "JSON", "CONSOLE")
+END CLASS
+
+FUNCTION Start() AS VOID
+    LET local_file AS FS.File OR NULL = NULL
+    LET res AS FS.File OR Error = FS.Open("nonexistent_test_k91.txt", FS.READ)
+    IF NOT (res IS Error) THEN
+        local_file = res
+        State.file_kept = res
+    END IF
+
+    LET log_res AS Log.Logger OR Error = Log.Logger.New("app2", "JSON", "CONSOLE")
+    IF log_res IS Log.Logger THEN
+        LET logger AS Log.Logger = log_res
+        State.log_kept = logger
+    END IF
+    PRINT "k91 ok"
+END FUNCTION
+"#,
+    )
+    .expect("write k91 source");
+
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).trim(),
+            "k91 ok",
+            "{backend}"
+        );
+    }
+}
+
+/// ARC trace region labels match on both backends (K16 / T.K-trace).
+#[test]
+fn arc_trace_region_labels_match_on_both_backends() {
+    let directory = TestDir::new("parity-k16-arc-trace-region").expect("create directory");
+    let path = directory.join("k16.bn");
+    fs::write(
+        &path,
+        r#"FUNCTION Start() AS VOID
+    LET r AS POINTER TO FLOAT64[] = NEW FLOAT64[3]
+    PRINT LEN(r)
+END FUNCTION
+"#,
+    )
+    .expect("write k16 source");
+
+    let artifact = compile_native(&path, &directory);
+    let interpreted = execute(bni().env("BN_ARC_TRACE", "1").arg("run").arg(&path), None);
+    let native = execute(Command::new(&artifact).env("BN_ARC_TRACE", "1"), None);
+    assert_success(&interpreted, "bni");
+    assert_success(&native, "native");
+    let interp_trace: Vec<_> = String::from_utf8_lossy(&interpreted.stderr)
+        .lines()
+        .filter(|l| l.starts_with("arc "))
+        .map(str::to_owned)
+        .collect();
+    let native_trace: Vec<_> = String::from_utf8_lossy(&native.stderr)
+        .lines()
+        .filter(|l| l.starts_with("arc "))
+        .map(str::to_owned)
+        .collect();
+    assert!(!interp_trace.is_empty(), "must produce ARC trace");
+    assert_eq!(interp_trace, native_trace, "region trace lines must match");
+    assert!(
+        interp_trace[0].contains("Float64#"),
+        "trace must include element type prefix: {}",
+        interp_trace[0]
+    );
+}
+
+/// Standard-library handles are released at end of binding (K63).
+#[test]
+fn standard_library_handles_are_released_at_end_of_binding() {
+    let directory = TestDir::new("parity-k63-standard-handles").expect("create directory");
+    let path = directory.join("k63.bn");
+    fs::write(
+        &path,
+        r#"IMPORT BNJson AS Json
+
+FUNCTION MakeAndRead() AS STRING
+    LET doc AS Json.Json = Json.Json.Object()
+    LET w AS VOID OR Error = Json.Json.SetString(doc, "name", "pardal")
+    IF w IS Error THEN
+        RETURN "set-failed"
+    END IF
+    LET val AS STRING OR Error = Json.Json.GetString(doc, "name")
+    IF val IS STRING THEN
+        RETURN val
+    END IF
+    RETURN "FAIL"
+END FUNCTION
+
+FUNCTION Start() AS VOID
+    LET i AS INTEGER = 0
+    WHILE i < 5
+        PRINT MakeAndRead()
+        i = i + 1
+    END WHILE
+END FUNCTION
+"#,
+    )
+    .expect("write k63 source");
+
+    let artifact = compile_native(&path, &directory);
+    for (backend, output) in [
+        ("bni", interpret(&path, None)),
+        ("native", execute_artifact(&artifact, &[], None)),
+    ] {
+        assert_success(&output, backend);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "pardal\npardal\npardal\npardal\npardal\n",
             "{backend}"
         );
     }

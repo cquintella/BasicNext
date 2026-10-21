@@ -15,14 +15,14 @@ use super::{
 impl LlvmType {
     /// A literal struct type: `{ ptr, i32 }` is `struct_of([Ptr, I32])`.
     #[must_use]
-    pub fn struct_of<const N: usize>(fields: [Self; N]) -> Self {
+    pub(crate) fn struct_of<const N: usize>(fields: [Self; N]) -> Self {
         Self::Struct(fields.into())
     }
 }
 
 impl LlvmInst {
     #[must_use]
-    pub const fn alloca(ty: LlvmType) -> Self {
+    pub(crate) const fn alloca(ty: LlvmType) -> Self {
         Self::Alloca {
             ty,
             align: None,
@@ -31,7 +31,7 @@ impl LlvmInst {
     }
 
     #[must_use]
-    pub fn alloca_counted(ty: LlvmType, count_ty: LlvmType, count: LlvmOperand) -> Self {
+    pub(crate) fn alloca_counted(ty: LlvmType, count_ty: LlvmType, count: LlvmOperand) -> Self {
         Self::Alloca {
             ty,
             align: None,
@@ -49,7 +49,7 @@ impl LlvmInst {
     }
 
     #[must_use]
-    pub const fn store(ty: LlvmType, val: LlvmOperand, ptr: LlvmOperand) -> Self {
+    pub(crate) const fn store(ty: LlvmType, val: LlvmOperand, ptr: LlvmOperand) -> Self {
         Self::Store {
             ty,
             val,
@@ -60,7 +60,7 @@ impl LlvmInst {
 
     /// A call of a variadic global (`printf`) with its `fixed` parameters.
     #[must_use]
-    pub fn call_variadic(
+    pub(crate) fn call_variadic(
         ret_ty: LlvmType,
         fixed: Vec<LlvmType>,
         func: &str,
@@ -89,7 +89,7 @@ impl LlvmInst {
 
     /// A call through a function pointer or operand.
     #[must_use]
-    pub fn call_operand(
+    pub(crate) fn call_operand(
         ret_ty: LlvmType,
         func: LlvmOperand,
         args: Vec<(LlvmType, LlvmOperand)>,
@@ -104,7 +104,12 @@ impl LlvmInst {
     }
 
     #[must_use]
-    pub const fn cast(op: CastOp, from_ty: LlvmType, val: LlvmOperand, to_ty: LlvmType) -> Self {
+    pub(crate) const fn cast(
+        op: CastOp,
+        from_ty: LlvmType,
+        val: LlvmOperand,
+        to_ty: LlvmType,
+    ) -> Self {
         Self::Cast {
             op,
             from_ty,
@@ -114,12 +119,22 @@ impl LlvmInst {
     }
 
     #[must_use]
-    pub const fn icmp(cond: ICmpCond, ty: LlvmType, lhs: LlvmOperand, rhs: LlvmOperand) -> Self {
+    pub(crate) const fn icmp(
+        cond: ICmpCond,
+        ty: LlvmType,
+        lhs: LlvmOperand,
+        rhs: LlvmOperand,
+    ) -> Self {
         Self::ICmp { cond, ty, lhs, rhs }
     }
 
     #[must_use]
-    pub const fn fcmp(cond: FCmpCond, ty: LlvmType, lhs: LlvmOperand, rhs: LlvmOperand) -> Self {
+    pub(crate) const fn fcmp(
+        cond: FCmpCond,
+        ty: LlvmType,
+        lhs: LlvmOperand,
+        rhs: LlvmOperand,
+    ) -> Self {
         Self::FCmp { cond, ty, lhs, rhs }
     }
 
@@ -130,7 +145,7 @@ impl LlvmInst {
 
     /// `extractvalue` of one top-level field.
     #[must_use]
-    pub fn extract(agg_ty: LlvmType, agg: LlvmOperand, index: usize) -> Self {
+    pub(crate) fn extract(agg_ty: LlvmType, agg: LlvmOperand, index: usize) -> Self {
         Self::ExtractValue {
             agg_ty,
             agg,
@@ -158,7 +173,7 @@ impl LlvmInst {
 
     /// `getelementptr` (not `inbounds`) over `elem_ty` from `ptr`.
     #[must_use]
-    pub const fn gep(
+    pub(crate) const fn gep(
         elem_ty: LlvmType,
         ptr: LlvmOperand,
         indices: Vec<(LlvmType, LlvmOperand)>,
@@ -173,7 +188,7 @@ impl LlvmInst {
 
     /// `select i1 cond, ty a, ty b`: both arms share one type.
     #[must_use]
-    pub fn select(cond: LlvmOperand, ty: LlvmType, a: LlvmOperand, b: LlvmOperand) -> Self {
+    pub(crate) fn select(cond: LlvmOperand, ty: LlvmType, a: LlvmOperand, b: LlvmOperand) -> Self {
         Self::Select {
             cond,
             true_val: (ty.clone(), a),
@@ -183,13 +198,13 @@ impl LlvmInst {
 
     /// `br label %dest`
     #[must_use]
-    pub fn br(dest: impl Into<String>) -> Self {
+    pub(crate) fn br(dest: impl Into<String>) -> Self {
         Self::Br { dest: dest.into() }
     }
 
     /// `br i1 cond, label %true_dest, label %false_dest`
     #[must_use]
-    pub fn cond_br(
+    pub(crate) fn cond_br(
         cond: LlvmOperand,
         true_dest: impl Into<String>,
         false_dest: impl Into<String>,
@@ -203,7 +218,7 @@ impl LlvmInst {
 }
 
 /// A buffer that receives one rendered instruction per line.
-pub trait InstSink {
+pub(crate) trait InstSink {
     /// Writes `%dest = inst`.
     fn assign(&mut self, dest: impl Into<String>, inst: LlvmInst);
     /// Writes an instruction without a result.

@@ -70,10 +70,11 @@ pub(crate) fn narrows(stored: &Type, loaded: &Type) -> bool {
         return members.contains(loaded);
     }
     // `INT32 OR NULL` / `FLOAT OR NA`: the value is field 1.
-    let from_payload = matches!(
+    let from_payload = (matches!(
         loaded,
         Type::String | Type::Integer(_) | Type::Boolean | Type::Float(_)
-    ) && llvm_type(stored) == Some(crate::layout::handle_result_ty())
+    ) || llvm_type(loaded) == Some(crate::ir::LlvmType::Ptr))
+        && llvm_type(stored) == Some(crate::layout::handle_result_ty())
         && matches!(stored, Type::Alternative(alternatives) if alternatives.contains(loaded));
     from_payload || narrows_to_error(stored, loaded) || narrows_to_endpoint(stored, loaded)
 }
@@ -230,6 +231,13 @@ pub(crate) fn emit_narrowed_load(
         I::extract(union, reg("narrowload"), 2),
     );
     let payload = reg("narrowpayload");
+    if llvm_type(loaded) == Some(T::Ptr) {
+        text.assign(
+            format!("v{dest}"),
+            I::cast(CastOp::IntToPtr, T::I64, payload, T::Ptr),
+        );
+        return;
+    }
     let conversion = match (loaded, llvm_type(loaded)) {
         (Type::Boolean, _) => I::icmp(ICmpCond::Ne, T::I64, payload, O::int(0)),
         (Type::Float(FloatType::Float64), _) => {
@@ -412,7 +420,7 @@ pub(crate) fn construct(
                 from_llvm,
                 T::I1 | T::I8 | T::I16 | T::I32 | T::I64 | T::Float | T::Double
             );
-            (scalar || *from == Type::String || string_or_eof)
+            (scalar || *from == Type::String || string_or_eof || from_llvm == T::Ptr)
                 .then(|| wrap_success(text, value, from, from_llvm))
         }
         // An `Error` into `Endpoint OR Error` or `Addresses OR Error`: the
@@ -631,7 +639,15 @@ fn wrap_success(
     let own = O::reg(format!("v{v}"));
     let bits = O::reg(format!("wrapbits{v}"));
     let (pointer, payload) = match from_llvm {
-        T::Ptr => (own, O::int(0)),
+        T::Ptr => {
+            if helpers::is_integer_handle_type(from) {
+                let htag = format!("handlecast{v}_{}", text.fresh_tag());
+                text.assign(htag.clone(), I::cast(CastOp::PtrToInt, T::Ptr, own, T::I64));
+                (O::null(), O::reg(&htag))
+            } else {
+                (own, O::int(0))
+            }
+        }
         T::I64 => (O::null(), own),
         floating if floating.is_floating() => {
             let wide = if floating == T::Float {

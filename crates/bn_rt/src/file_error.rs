@@ -18,7 +18,7 @@ use super::secure_fs::OpenMode;
 
 /// The `HOST.FileSystem` operations, by canonical name.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FsOperation {
+pub(crate) enum FsOperation {
     Open,
     Exists,
     DeleteFile,
@@ -122,7 +122,7 @@ const fn mode_name(mode: OpenMode) -> &'static str {
 impl FileError {
     /// A failure of an operation on `path` (`Open` with its `mode`).
     #[must_use]
-    pub fn on_path(
+    pub(crate) fn on_path(
         operation: FsOperation,
         path: &str,
         mode: Option<OpenMode>,
@@ -137,7 +137,7 @@ impl FileError {
 
     /// A failure of a file method; `path` is `None` for `NEW FS.File()`.
     #[must_use]
-    pub fn on_file(operation: FsOperation, path: Option<&str>, failure: Failure) -> Self {
+    pub(crate) fn on_file(operation: FsOperation, path: Option<&str>, failure: Failure) -> Self {
         Self {
             operation,
             subject: Subject::File(path.map(str::to_owned)),

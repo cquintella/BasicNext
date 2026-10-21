@@ -164,7 +164,7 @@ pub trait Provider: Send {
 /// Builds a fresh provider for one execution. Every `Executor` (including a
 /// forked dispatch worker) gets its own instance, so provider state is never
 /// shared between executions.
-pub type ProviderFactory = Arc<dyn Fn() -> Box<dyn Provider> + Send + Sync>;
+pub(crate) type ProviderFactory = Arc<dyn Fn() -> Box<dyn Provider> + Send + Sync>;
 
 /// Providers registered on a `HostEnv`: one registry for `BN*` libraries,
 /// keyed by standard-module name (`"BNMath"`), and a separate one for `HOST`

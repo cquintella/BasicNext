@@ -491,20 +491,10 @@ const CELLS: &[(&str, &str, &str)] = &[
     ),
 ];
 
-/// Every listed cell names the known issue or bucket activity that explains
-/// it (`ongoing/known_issues.md`, `ongoing/bucket-0.6.5.md`).
-const KNOWN_BNI_FAILURES: KnownFailures = &[
-    // S.13 (C7, C11): FOR EACH over a STRING, without AS.
-    ("STRING / FOR EACH", "E0100"),
-    // S.13 (A5): STRING ordering.
-    ("STRING / ordering", "TYPE_MISMATCH"),
-];
-const KNOWN_BNC_FAILURES: KnownFailures = &[
-    // K1 / G.S1 (A7): U+0000 in a native STRING.
-    // S.13 (C7, C11, A5), as on bni.
-    ("STRING / FOR EACH", "E0100"),
-    ("STRING / ordering", "TYPE_MISMATCH"),
-];
+/// Cells that still fail. Empty: STRING iteration and ordering pass on both
+/// backends (S.13).
+const KNOWN_BNI_FAILURES: KnownFailures = &[];
+const KNOWN_BNC_FAILURES: KnownFailures = &[];
 
 fn source(body: &str) -> String {
     format!(

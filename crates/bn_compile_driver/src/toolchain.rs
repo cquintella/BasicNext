@@ -1,55 +1,11 @@
-//! Discovery of the external compiler toolchain: clang (native and wasm32),
-//! wasm-ld and `libbn_rt.a`, from `BN_*` environment variables, the
-//! toolchain configuration file, PATH and Homebrew locations.
+//! Discovery of the external compiler toolchain: clang and `libbn_rt.a`,
+//! from `BN_*` environment variables, the toolchain configuration file and
+//! PATH.
 
 use std::{
     env, fs,
     path::{Path, PathBuf},
 };
-
-pub(crate) fn configured_wasm_ld() -> String {
-    if let Ok(command) = env::var("BN_WASM_LD") {
-        return command;
-    }
-    if let Ok(Some(command)) = toolchain_value("wasm-ld") {
-        return command;
-    }
-    if command_succeeds("wasm-ld", &["--version"]) {
-        return "wasm-ld".into();
-    }
-    if let Some(command) = brew_bin("lld@20", "wasm-ld").or_else(|| brew_bin("lld", "wasm-ld")) {
-        return command;
-    }
-    "wasm-ld".into()
-}
-
-pub(crate) fn configured_wasm_clang() -> Result<String, String> {
-    if let Ok(command) = env::var("BN_WASM_CLANG") {
-        return Ok(command);
-    }
-    if let Some(command) = toolchain_value("wasm-clang")? {
-        return Ok(command);
-    }
-    let default = configured_clang()?;
-    if clang_has_wasm32(&default) {
-        return Ok(default);
-    }
-    if let Some(command) = brew_bin("llvm", "clang")
-        && clang_has_wasm32(&command)
-    {
-        return Ok(command);
-    }
-    if let Some(parent) = Path::new(&configured_wasm_ld()).parent() {
-        let sibling = parent.join("clang");
-        if sibling.is_file()
-            && let Some(command) = sibling.to_str()
-            && clang_has_wasm32(command)
-        {
-            return Ok(command.into());
-        }
-    }
-    Ok(default)
-}
 
 pub(crate) fn configured_clang() -> Result<String, String> {
     Ok(toolchain_value("clang")?.unwrap_or_else(|| "clang".into()))
@@ -86,7 +42,7 @@ pub(crate) fn configured_bn_rt_lib() -> Result<PathBuf, String> {
     for profile in ["debug", "release"] {
         candidates.push(workspace.join("target").join(profile).join(file_name));
     }
-    if let Ok(dir) = env::var("CARGO_TARGET_DIR") {
+    if let Ok(dir) = env::var(bn_catalog::text("cli", "msg.cargo_target_dir")) {
         for profile in ["debug", "release"] {
             candidates.push(PathBuf::from(&dir).join(profile).join(file_name));
         }
@@ -98,12 +54,16 @@ pub(crate) fn configured_bn_rt_lib() -> Result<PathBuf, String> {
 }
 
 pub(crate) fn configured_bn_web_lib() -> Result<PathBuf, String> {
-    if let Ok(path) = env::var("BN_WEB_LIB") {
+    if let Ok(path) = env::var(bn_catalog::text("cli", "msg.bn_web_lib")) {
         let path = PathBuf::from(path);
         if path.is_file() {
             return Ok(path);
         }
-        return Err(format!("BN_WEB_LIB is not a file: {}", path.display()));
+        return Err(bn_catalog::fill(
+            "cli",
+            "msg.bn_web_lib_not_a_file",
+            &[("path", &path.display())],
+        ));
     }
     let file_name = if cfg!(windows) {
         "bn_web.lib"
@@ -125,7 +85,7 @@ pub(crate) fn configured_bn_web_lib() -> Result<PathBuf, String> {
     for profile in ["debug", "release"] {
         candidates.push(workspace.join("target").join(profile).join(file_name));
     }
-    if let Ok(dir) = env::var("CARGO_TARGET_DIR") {
+    if let Ok(dir) = env::var(bn_catalog::text("cli", "msg.cargo_target_dir")) {
         for profile in ["debug", "release"] {
             candidates.push(PathBuf::from(&dir).join(profile).join(file_name));
         }
@@ -133,7 +93,7 @@ pub(crate) fn configured_bn_web_lib() -> Result<PathBuf, String> {
     candidates
         .into_iter()
         .find(|path| path.is_file())
-        .ok_or_else(|| "libbn_web.a not found; build the bn_web library (cargo build -p bn_web) or set BN_WEB_LIB".into())
+        .ok_or_else(|| bn_catalog::text("cli", "msg.libbn_web_a_not_found_build_the_bn").into())
 }
 
 pub(crate) fn toolchain_value(key: &str) -> Result<Option<String>, String> {
@@ -166,40 +126,4 @@ pub(crate) fn toolchain_value(key: &str) -> Result<Option<String>, String> {
         return Ok(Some(value.into()));
     }
     Ok(None)
-}
-
-pub(crate) fn brew_bin(formula: &str, binary: &str) -> Option<String> {
-    let output = std::process::Command::new("brew")
-        .args(["--prefix", formula])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let command = Path::new(String::from_utf8_lossy(&output.stdout).trim())
-        .join("bin")
-        .join(binary);
-    command
-        .is_file()
-        .then(|| command.to_string_lossy().into_owned())
-}
-
-pub(crate) fn clang_has_wasm32(clang: &str) -> bool {
-    let Ok(output) = std::process::Command::new(clang)
-        .arg("-print-targets")
-        .output()
-    else {
-        return false;
-    };
-    output.status.success()
-        && String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .any(|line| line.split_whitespace().next() == Some("wasm32"))
-}
-
-pub(crate) fn command_succeeds(command: &str, args: &[&str]) -> bool {
-    std::process::Command::new(command)
-        .args(args)
-        .output()
-        .is_ok_and(|output| output.status.success())
 }

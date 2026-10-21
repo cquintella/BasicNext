@@ -72,19 +72,17 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/llvm-22.list
           sudo apt-get update
           # gdb: the ARC debugger test (`a_native_debugger_reads_the_arc_core`).
-          sudo apt-get install -y clang-22 lld-22 ripgrep gdb
+          sudo apt-get install -y clang-22 ripgrep gdb
           mkdir -p "$RUNNER_TEMP/llvm-22"
           ln -s "$(command -v clang-22)" "$RUNNER_TEMP/llvm-22/clang"
-          ln -s "$(command -v wasm-ld-22)" "$RUNNER_TEMP/llvm-22/wasm-ld"
           echo "$RUNNER_TEMP/llvm-22" >> "$GITHUB_PATH"
 
       - name: Install LLVM 22 and ripgrep (macOS)
         if: runner.os == 'macOS'
         run: |
           set -euo pipefail
-          brew install llvm@22 lld@22 ripgrep
+          brew install llvm@22 ripgrep
           echo "$(brew --prefix llvm@22)/bin" >> "$GITHUB_PATH"
-          echo "$(brew --prefix lld@22)/bin" >> "$GITHUB_PATH"
 
       - name: Install LLVM 22 and ripgrep (Windows)
         if: runner.os == 'Windows'
@@ -109,10 +107,8 @@ jobs:
           set -euo pipefail
           cargo --version
           clang --version
-          wasm-ld --version
           rg --version
-          # Wasm parity runs modules under Node; the ABI gate reads bn_rt with nm.
-          node --version
+          # The ABI gate reads bn_rt with nm.
           command -v llvm-nm || command -v nm
 
       - name: Build runtime and executables

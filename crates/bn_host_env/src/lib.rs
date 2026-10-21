@@ -89,7 +89,7 @@ pub fn host_name() -> Option<String> {
     #[cfg(windows)]
     let name = std::env::var("COMPUTERNAME").ok();
     #[cfg(not(any(windows, all(unix, not(target_os = "wasi")))))]
-    let name = None;
+    let name: Option<String> = None;
     name.filter(|name| !name.is_empty())
 }
 

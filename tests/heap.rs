@@ -138,3 +138,48 @@ END FUNCTION
     let expected = "free node1\nreassigned to string\nreassigned to object\nfree node2\n";
     assert_eq!(stdout, expected);
 }
+
+/// K89: Destroying an object releases the element buffer of its fixed-vector fields.
+#[test]
+fn object_destruction_releases_fixed_vector_element_buffer() {
+    let directory = TestDir::new("heap-k89-vector-field").expect("create directory");
+    let path = directory.join("vec_field.bn");
+    fs::write(
+        &path,
+        r#"CLASS Container
+    PUBLIC cells AS INTEGER[1000]
+    PUBLIC FUNCTION CONSTRUCTOR(val AS INTEGER)
+        SELF.cells[0] = val
+        SELF.cells[999] = val * 2
+    END FUNCTION
+END CLASS
+
+FUNCTION Start() AS VOID
+    FOR i AS INTEGER = 1 TO 2000
+        LET c AS Container = NEW Container(i)
+        IF c.cells[0] <> i OR c.cells[999] <> i * 2 THEN
+            PRINT "mismatch at", i
+            RETURN
+        END IF
+    END FOR
+    PRINT "ok"
+END FUNCTION
+"#,
+    )
+    .expect("write source");
+    let artifact = compile_native(&path, &directory);
+    let output = run(
+        &mut Command::new(&artifact),
+        None,
+        std::time::Duration::from_secs(30),
+    )
+    .expect("run process");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "execution failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.trim(), "ok");
+}

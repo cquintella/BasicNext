@@ -2,7 +2,7 @@
 # messages"). One `key = value` per line; `{name}` is filled by the code.
 
 separator.invalid.message = invalid CSV separator "{separator}"
-separator.invalid.cause = a CSV separator must be a single UTF-8 character other than '"', '\r', or '\n'
+separator.invalid.cause = a CSV separator must be a single UTF-8 character other than '"', '\\r', or '\\n'
 column.not_found.message = column "{name}" not found
 key_column.not_found.message = {side} key column "{key}" not found
 column.type_mismatch.message = column "{column}" is not of type {expected}
@@ -11,3 +11,8 @@ column.types_differ.message = column "{column}" types differ between frames
 column.contains_na.message = column "{name}" contains NA values
 column.non_numeric.message = column "{name}" is not numeric
 column.duplicate.message = duplicate column name "{name}"
+
+# Messages moved out of Rust source (text-literal gate).
+msg.dataframe_handle_was_already_deleted = DataFrame handle was already deleted
+msg.integer_out_of_range = integer out of range
+msg.bndata_dataframe_retain = BNData.DataFrame.Retain

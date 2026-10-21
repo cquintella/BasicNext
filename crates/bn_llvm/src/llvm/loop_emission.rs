@@ -25,11 +25,18 @@ pub(crate) fn lower_for_condition(
     let current = arguments[0];
     let end = arguments[1];
     let step = arguments[2];
-    let current_type = analysis
-        .values
-        .get(&current)
-        .expect("validated FOR current type");
-    let step_type = analysis.values.get(&step).expect("validated FOR step type");
+    let current_type = analysis.values.get(&current).unwrap_or_else(|| {
+        panic!(
+            "{}",
+            bn_catalog::text("llvm", "msg.validated_for_current_type")
+        )
+    });
+    let step_type = analysis.values.get(&step).unwrap_or_else(|| {
+        panic!(
+            "{}",
+            bn_catalog::text("llvm", "msg.validated_for_step_type")
+        )
+    });
     let current_i64 = extend_to_i64(text, current, current_type);
     let end_i64 = extend_to_i64(
         text,
@@ -38,7 +45,12 @@ pub(crate) fn lower_for_condition(
     );
     let dest = destination.0;
     let reg = LlvmOperand::reg;
-    let step_ty = llvm_type(step_type).expect("validated FOR step type");
+    let step_ty = llvm_type(step_type).unwrap_or_else(|| {
+        panic!(
+            "{}",
+            bn_catalog::text("llvm", "msg.validated_for_step_type")
+        )
+    });
     text.assign(
         format!("for_step_zero{dest}"),
         LlvmInst::icmp(ICmpCond::Eq, step_ty, value_reg(step), LlvmOperand::int(0)),
@@ -60,7 +72,12 @@ pub(crate) fn lower_for_condition(
         format!("for_step_positive{dest}"),
         LlvmInst::icmp(
             integer_compare_cond("Greater", step_type),
-            llvm_type(step_type).expect("validated FOR step type"),
+            llvm_type(step_type).unwrap_or_else(|| {
+                panic!(
+                    "{}",
+                    bn_catalog::text("llvm", "msg.validated_for_step_type")
+                )
+            }),
             value_reg(step),
             LlvmOperand::int(0),
         ),
@@ -105,11 +122,18 @@ pub(crate) fn lower_for_fits(
     use crate::ir::{BinaryOp, ICmpCond, LlvmInst, LlvmType::I128};
     let current = arguments[0];
     let step = arguments[1];
-    let current_type = analysis
-        .values
-        .get(&current)
-        .expect("validated FOR current type");
-    let step_type = analysis.values.get(&step).expect("validated FOR step type");
+    let current_type = analysis.values.get(&current).unwrap_or_else(|| {
+        panic!(
+            "{}",
+            bn_catalog::text("llvm", "msg.validated_for_current_type")
+        )
+    });
+    let step_type = analysis.values.get(&step).unwrap_or_else(|| {
+        panic!(
+            "{}",
+            bn_catalog::text("llvm", "msg.validated_for_step_type")
+        )
+    });
     let dest = destination.0;
     let current_wide = extend_to_i128(text, current, current_type);
     let step_wide = extend_to_i128(text, step, step_type);
@@ -159,7 +183,8 @@ fn extend_to_i128(
     ty: &Type,
 ) -> crate::ir::LlvmOperand {
     use crate::ir::{CastOp, LlvmInst, LlvmType::I128};
-    let llvm_ty = llvm_type(ty).expect("validated FOR integer");
+    let llvm_ty = llvm_type(ty)
+        .unwrap_or_else(|| panic!("{}", bn_catalog::text("llvm", "msg.validated_for_integer")));
     if llvm_ty == I128 {
         return crate::ir::LlvmOperand::reg(format!("v{}", value.0));
     }

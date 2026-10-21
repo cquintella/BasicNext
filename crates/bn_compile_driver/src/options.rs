@@ -6,7 +6,6 @@ use bn_cli::options::{Emit, OptionExtension};
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Target {
     Native,
-    Wasm32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -18,7 +17,7 @@ pub enum Optimization {
 
 impl Optimization {
     #[must_use]
-    pub const fn clang_flag(self) -> &'static str {
+    pub(crate) const fn clang_flag(self) -> &'static str {
         match self {
             Self::None => "-O0",
             Self::Level(level) => match level {
@@ -27,19 +26,6 @@ impl Optimization {
                 _ => "-O2",
             },
             Self::Size => "-Oz",
-        }
-    }
-
-    #[must_use]
-    pub const fn linker_flag(self) -> &'static str {
-        match self {
-            Self::None => "-O0",
-            Self::Level(level) => match level {
-                1 => "-O1",
-                3 => "-O3",
-                _ => "-O2",
-            },
-            Self::Size => "-O2",
         }
     }
 }
@@ -97,8 +83,7 @@ impl OptionExtension for BuildOptions {
             "--target" => {
                 self.target = match rest.next().as_deref() {
                     Some("native") => Target::Native,
-                    Some("wasm32") => Target::Wasm32,
-                    _ => return Err("--target expects native or wasm32".into()),
+                    _ => return Err(bn_catalog::text("cli", "msg.target_expects_native").into()),
                 };
             }
             "--cpu" => {

@@ -66,6 +66,15 @@ impl Builder<'_> {
                 Terminator::Return { value } => *value,
                 _ => None,
             };
+            // A loop holds its vector across the jumps inside it. Leaving the
+            // function releases that vector here; the loop's own exit does not
+            // run on this path.
+            if matches!(
+                terminator,
+                Terminator::Return { .. } | Terminator::Stop { .. }
+            ) {
+                self.release_held(keep);
+            }
             self.release_temporaries(keep);
         }
         self.blocks[self.current.0 as usize].terminator = Some(terminator);

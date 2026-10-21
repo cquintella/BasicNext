@@ -57,6 +57,11 @@ fn references() -> (BTreeSet<(String, String)>, BTreeSet<String>) {
     for crate_dir in fs::read_dir("crates").expect("crates directory") {
         rust_sources(&crate_dir.expect("crate").path().join("src"), &mut files);
     }
+    if let Ok(lib_dirs) = fs::read_dir("libraries") {
+        for entry in lib_dirs.flatten() {
+            rust_sources(&entry.path().join("src"), &mut files);
+        }
+    }
     let mut calls = BTreeSet::new();
     let mut literals = BTreeSet::new();
     for path in files {
@@ -142,20 +147,24 @@ fn every_named_text_exists_and_every_entry_is_used() {
     assert!(report.is_empty(), "{}", report.join("\n"));
 }
 
-/// Every catalog file is embedded in `bn_catalog` (a file it misses would
-/// make every key of it fail at run time).
+/// Every catalog file is embedded in `bn_catalog` (a file the build script
+/// misses is absent from `FILES`, and every key of it fails at run time).
 #[test]
 fn every_catalog_file_is_embedded() {
-    let embedded = fs::read_to_string("crates/bn_catalog/src/lib.rs").expect("read bn_catalog");
-    for entry in fs::read_dir("share/bn/catalog").expect("catalog directory") {
-        let name = entry
-            .expect("entry")
-            .file_name()
-            .to_string_lossy()
-            .into_owned();
-        assert!(
-            embedded.contains(&format!("share/bn/catalog/{name}")),
-            "share/bn/catalog/{name} is not embedded in crates/bn_catalog/src/lib.rs"
-        );
-    }
+    let mut on_disk: Vec<String> = fs::read_dir("share/bn/catalog")
+        .expect("catalog directory")
+        .map(|entry| entry.expect("entry").path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "txt"))
+        .filter_map(|path| {
+            path.file_stem()
+                .and_then(|stem| stem.to_str())
+                .map(str::to_owned)
+        })
+        .collect();
+    on_disk.sort();
+    let embedded: Vec<&str> = bn_catalog::FILES
+        .iter()
+        .map(|(domain, _)| *domain)
+        .collect();
+    assert_eq!(embedded, on_disk);
 }

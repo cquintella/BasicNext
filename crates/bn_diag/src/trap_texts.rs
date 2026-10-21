@@ -44,8 +44,27 @@ pub const CONVERTING_TO_INTEGER: &str = "converting a value to INTEGER";
 pub const HOST_ARGS_CONTEXT: &str = "HOST.Args";
 
 /// "FOR STEP cannot be zero"
-pub const FOR_STEP_ZERO: &str = "FOR STEP cannot be zero";
-pub const FLOAT64_TO_FLOAT32: &str = "FLOAT64 value does not fit FLOAT32";
-
+pub const FOR_STEP_ZERO: &str = bn_catalog::frontend::MSG_FOR_STEP_CANNOT_BE_ZERO;
+/// "FLOAT64 value does not fit FLOAT32"
+pub const FLOAT64_TO_FLOAT32: &str = bn_catalog::frontend::MSG_FLOAT64_VALUE_DOES_NOT_FIT_FLOAT32;
 /// "exit code must be in 0..255"
-pub const EXIT_CODE_RANGE: &str = "exit code must be in 0..255";
+pub const EXIT_CODE_RANGE: &str = bn_catalog::frontend::MSG_EXIT_CODE_MUST_BE_IN_0_255;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn trap_texts_are_the_catalog_entries() {
+        assert_eq!(
+            super::FOR_STEP_ZERO,
+            bn_catalog::text("frontend", "msg.for_step_cannot_be_zero")
+        );
+        assert_eq!(
+            super::FLOAT64_TO_FLOAT32,
+            bn_catalog::text("frontend", "msg.float64_value_does_not_fit_float32")
+        );
+        assert_eq!(
+            super::EXIT_CODE_RANGE,
+            bn_catalog::text("frontend", "msg.exit_code_must_be_in_0_255")
+        );
+    }
+}

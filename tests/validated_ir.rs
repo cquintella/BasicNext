@@ -58,7 +58,7 @@ fn both_backends_accept_the_same_validated_artifact() {
     let models = analyze_modules(&graph).expect("analyze example");
     let validated = lower_graph_validated(&graph, &models).expect("validate example");
 
-    let llvm = lower_validated_module_for_target(&validated, true).expect("emit LLVM");
+    let llvm = lower_validated_module_for_target(&validated).expect("emit LLVM");
     assert!(llvm.contains("define"));
 
     let mut input = Cursor::new(Vec::<u8>::new());
@@ -109,16 +109,23 @@ fn target_support_is_checked_after_language_validation() {
 fn vector_default_with_string_element_is_supported_before_emit() {
     let module = function_with_blocks(vec![BasicBlock {
         id: BlockId(0),
-        instructions: vec![Instruction::Default {
-            destination: bn_ir::ValueId(0),
-            ty: bn_types::Type::Vector {
-                element: Box::new(bn_types::Type::String),
+        instructions: vec![
+            Instruction::Default {
+                destination: bn_ir::ValueId(0),
+                ty: bn_types::Type::Vector {
+                    element: Box::new(bn_types::Type::String),
+                    dimensions: vec![2],
+                },
                 dimensions: vec![2],
+                dynamic_dimensions: Vec::new(),
+                span: span(),
             },
-            dimensions: vec![2],
-            dynamic_dimensions: Vec::new(),
-            span: span(),
-        }],
+            Instruction::Release {
+                value: bn_ir::ValueId(0),
+                destructor: None,
+                span: span(),
+            },
+        ],
         terminator: Terminator::Return { value: None },
     }]);
     let validated = validate_module(module).expect("vector default is valid language IR");
@@ -1247,7 +1254,7 @@ fn alternative_default_is_the_first_members_default_on_both_backends() {
             format!("{printed}\n"),
             "{members:?}"
         );
-        let llvm = lower_validated_module_for_target(&validated, false).expect("emit LLVM");
+        let llvm = lower_validated_module_for_target(&validated).expect("emit LLVM");
         assert!(
             llvm.contains(&format!(
                 "%v0_tag = insertvalue {{ i32, ptr, i64 }} undef, {tag}"

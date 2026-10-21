@@ -317,7 +317,10 @@ CRLF                 = ? U+000D U+000A ? ;
      include **= before ** before *=, <= >= <> before < > =, and += -= *= /= %=.
      // and /* start comments before / is emitted. Braces are not tokens in 0.2.
    - Exact-uppercase reserved words and the exact NAN and INF literals are never
-     identifiers. `-INF` is the unary `-` operator applied to the `INF` literal;
+     identifiers. Furthermore, any spelling matching a reserved word under ASCII
+     case-insensitive comparison (e.g. `for`, `For`, `fOR`) is a reserved identifier
+     and is prohibited in all identifier positions (BDFL decision, 2026-10-20).
+     `-INF` is the unary `-` operator applied to the `INF` literal;
      it is not a separate lexer token.
      EXTENDS and SUPER have grammar productions in 0.2.
      CLS, BEEP, and PRINTAT are not reserved in 0.2; console operations are

@@ -181,13 +181,13 @@ impl Provider for FsProvider {
                 }
                 None => Err(runtime_error(
                     bn_diag::DiagId::USE_AFTER_RELEASE,
-                    "file handle count overflowed",
+                    bn_catalog::text("file", "msg.file_handle_count_overflowed"),
                     span,
                 )),
             },
             None => Err(runtime_error(
                 bn_diag::DiagId::USE_AFTER_RELEASE,
-                "file handle is invalid",
+                bn_catalog::text("file", "msg.file_handle_is_invalid"),
                 span,
             )),
         })
@@ -227,7 +227,7 @@ impl FsProvider {
             .ok_or_else(|| {
                 runtime_error(
                     bn_diag::DiagId::USE_AFTER_RELEASE,
-                    "file handle is invalid",
+                    bn_catalog::text("file", "msg.file_handle_is_invalid"),
                     span,
                 )
             })?;

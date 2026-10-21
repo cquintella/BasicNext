@@ -6,8 +6,22 @@
 //! Access-log sink and logger wiring for `BNWeb` under `bni`.
 
 #![allow(clippy::wildcard_imports)]
-use std::io::{Read, Write};
 use super::*;
+use std::io::{Read, Write};
+
+pub(super) fn write_client_access(
+    logger: &bn_core_log::Logger,
+    sink: &InterpLogSink,
+    method: &str,
+    url: &str,
+    status: i64,
+    bytes: i64,
+    duration_ms: i64,
+    headers: &[(&str, &str)],
+) {
+    let fields = bn_core_log::http_client_access(method, url, status, bytes, duration_ms, headers);
+    let _ = logger.write_access(sink, &fields);
+}
 
 pub(super) fn with_log_provider<R>(
     core: &mut dyn CoreContext,
@@ -91,5 +105,3 @@ impl bn_web::StaticFileOpener for InterpStaticFileOpener {
         Ok(bn_web::StaticFileContent { bytes, mtime_secs })
     }
 }
-
-

@@ -189,6 +189,19 @@ pub(crate) fn emit_preamble(
     } else {
         super::arc_runtime::emit_witness_glue(text, module);
     }
+    for (function, _) in functions {
+        for block in &function.blocks {
+            for instruction in &block.instructions {
+                if let Instruction::Allocate {
+                    ty: Type::Pointer { element, .. },
+                    ..
+                } = instruction
+                {
+                    class_names.insert(super::helpers::region_element_label(element));
+                }
+            }
+        }
+    }
     for class in &class_names {
         let gclass = sanitize_symbol(class);
         text.global(LlvmGlobal::text(format!(".bn_cls_{gclass}"), class, true));
@@ -507,8 +520,6 @@ pub(crate) fn emit_module_header(text: &mut crate::ir::LlvmModule) {
         (".bn_fmt_float", "%.17g"),
         (".bn_fmt_str", "%s"),
         (".bn_fmt_error", "Error(%lld, %s)"),
-        (".bn_asc_error", bn_diag::trap_texts::ASC_EMPTY_STRING),
-        (".bn_char_error", bn_diag::trap_texts::CHAR_NOT_UNICODE),
     ];
     for (name, value) in shared {
         text.global(LlvmGlobal::text(name, value, true));
@@ -517,6 +528,8 @@ pub(crate) fn emit_module_header(text: &mut crate::ir::LlvmModule) {
         (".bn_true", "TRUE"),
         (".bn_false", "FALSE"),
         (".bn_empty", ""),
+        (".bn_asc_error", bn_diag::trap_texts::ASC_EMPTY_STRING),
+        (".bn_char_error", bn_diag::trap_texts::CHAR_NOT_UNICODE),
     ] {
         text.global(LlvmGlobal::bn_string(name, value, true));
     }

@@ -18,7 +18,7 @@ fn bnc_help_succeeds() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("usage: bnc [compile-options] <entry.bn>"));
-    assert!(stdout.contains("--target native|wasm32"));
+    assert!(stdout.contains("--target native"));
     assert!(
         !stdout.contains("-c, --compile"),
         "the wrapper profile flags are gone"
@@ -66,19 +66,14 @@ fn bnc_rejects_removed_wrapper_flags() {
 }
 
 #[test]
-fn bnc_compiles_wasm32() {
+fn bnc_rejects_wasm32_target() {
     let output = bnc()
-        .args([
-            "--emit",
-            "llvm",
-            "--target",
-            "wasm32",
-            "tests/grammar/valid/print-integer.bn",
-        ])
+        .args(["--target", "wasm32", "tests/grammar/valid/print-integer.bn"])
         .output()
-        .expect("run bnc --emit llvm --target wasm32");
-    assert!(output.status.success());
-    assert!(String::from_utf8_lossy(&output.stdout).contains("define i32 @main"));
+        .expect("run bnc --target wasm32");
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("--target expects native"), "{stderr}");
 }
 
 #[test]
@@ -437,27 +432,6 @@ fn bnc_cpu_option_validates_and_compiles() {
         compile_generic.status.success(),
         "{}",
         String::from_utf8_lossy(&compile_generic.stderr)
-    );
-
-    // Compiling with --cpu native and --target wasm32 is rejected with CONFIG_INVALID
-    let output_wasm = directory.join("test_cpu.wasm");
-    let compile_wasm = bnc()
-        .args([
-            "--target",
-            "wasm32",
-            "--cpu",
-            "native",
-            "-o",
-            output_wasm.to_str().unwrap(),
-            "tests/grammar/valid/print-integer.bn",
-        ])
-        .output()
-        .expect("run bnc --target wasm32 --cpu native");
-    assert!(!compile_wasm.status.success());
-    let stderr = String::from_utf8_lossy(&compile_wasm.stderr);
-    assert!(
-        stderr.contains("--cpu native is not supported when targeting wasm32"),
-        "stderr: {stderr}"
     );
 
     let _ = std::fs::remove_dir_all(&directory);

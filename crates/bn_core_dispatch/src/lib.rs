@@ -18,7 +18,7 @@ use std::time::Instant;
 use ring::rand::{SecureRandom, SystemRandom};
 
 pub const PENDING: i32 = 0;
-pub const RUNNING: i32 = 1;
+pub(crate) const RUNNING: i32 = 1;
 pub const COMPLETED: i32 = 2;
 pub const FAILED: i32 = 3;
 pub const CANCELLED: i32 = 4;
@@ -335,7 +335,7 @@ impl Queue {
         }
     }
 
-    pub fn is_worker_thread(&self) -> bool {
+    pub(crate) fn is_worker_thread(&self) -> bool {
         if CURRENT_QUEUE.with(std::cell::Cell::get) == self.inner.id && self.inner.id != 0 {
             return true;
         }
@@ -469,7 +469,7 @@ impl Ticket {
         self.inner.wake.notify_all();
     }
 
-    pub fn mark_running(&self) -> Result<(), DispatchFailure> {
+    pub(crate) fn mark_running(&self) -> Result<(), DispatchFailure> {
         let mut state = self
             .inner
             .state

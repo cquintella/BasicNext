@@ -78,7 +78,7 @@ impl RootedDir {
     }
 
     #[must_use]
-    pub fn contains_resolved(&self, path: &Path) -> bool {
+    pub(crate) fn contains_resolved(&self, path: &Path) -> bool {
         let candidate = if path.exists() {
             path.canonicalize().ok()
         } else {

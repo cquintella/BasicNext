@@ -846,24 +846,14 @@ pub(crate) fn emit_print(
         // existing per-type `PRINT` lowering prints it; real ids are dense
         // from 0 and never reach this range.
         let held = ValueId(0x8000_0000 + u32::try_from(n * 64 + index).expect("print id"));
-        let unit_text = match member {
-            Type::Null => Some(".bn_null"),
+        if *member == Type::Null {
+            lower_print_value(text, held, &Type::Null, state);
+        } else if let Some(global) = match member {
             Type::NotAvailable => Some(".bn_na"),
             Type::EndOfFile => Some(".bn_eof"),
             _ => None,
-        };
-        if let Some(global) = unit_text {
-            // A unit member prints its name. NULL stays a C string; NA and EOF
-            // are STRING payloads.
-            let address = if global == ".bn_null" {
-                LlvmInst::gep(
-                    LlvmType::I8,
-                    LlvmOperand::global(global),
-                    vec![(I64, LlvmOperand::int(0))],
-                )
-            } else {
-                crate::layout::string_payload_address(global)
-            };
+        } {
+            let address = crate::layout::string_payload_address(global);
             text.assign(format!("v{}", held.0), address);
             lower_print_value(text, held, &Type::String, state);
         } else {

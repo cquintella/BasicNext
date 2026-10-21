@@ -10,7 +10,11 @@ use bn_types::Type;
 /// Determines whether an actual argument type is compatible with the expected parameter type,
 /// taking into account nominal upcasting (`ClassModel::is_upcast`).
 #[must_use]
-pub fn call_types_compatible_with_module(module: &Module, actual: &Type, expected: &Type) -> bool {
+pub(crate) fn call_types_compatible_with_module(
+    module: &Module,
+    actual: &Type,
+    expected: &Type,
+) -> bool {
     call_types_compatible_inner(Some(module), actual, expected)
 }
 

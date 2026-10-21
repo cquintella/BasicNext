@@ -354,16 +354,21 @@ pub(crate) fn cleanup_owned_memory(
             vec![(LlvmType::Ptr, reg(pointer))],
         ));
     };
+    let mut struct_symbols = Vec::new();
     for (symbol, ty) in &analysis.symbols {
         if let Some(owner) = struct_owner(module, ty) {
-            let slot = symbols[symbol];
-            let destroy_witness = arc_runtime::struct_destroy_witness_name(&owner);
-            text.emit(LlvmInst::call(
-                LlvmType::Void,
-                &destroy_witness,
-                vec![(LlvmType::Ptr, reg(format!("structslot{slot}")))],
-            ));
+            struct_symbols.push((symbol.0, *symbol, owner));
         }
+    }
+    struct_symbols.sort_by_key(|(raw, _, _)| *raw);
+    for (_, symbol, owner) in struct_symbols {
+        let slot = symbols[&symbol];
+        let destroy_witness = arc_runtime::struct_destroy_witness_name(&owner);
+        text.emit(LlvmInst::call(
+            LlvmType::Void,
+            &destroy_witness,
+            vec![(LlvmType::Ptr, reg(format!("structslot{slot}")))],
+        ));
     }
     let mut struct_results = analysis
         .owned_struct_results
@@ -579,7 +584,7 @@ pub(crate) fn lower_print_value(
     }
     if let Type::Named(name) = ty
         && !matches!(name.as_str(), "DATE" | "TIME" | "Error" | "VOID")
-        && !name.starts_with("HOST.Net.")
+        && !name.starts_with(bn_catalog::text("llvm", "msg.host_net"))
         && !name.starts_with("FS.")
         && llvm_type(ty) == Some(LlvmType::Ptr)
     {

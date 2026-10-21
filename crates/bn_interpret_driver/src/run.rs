@@ -9,7 +9,7 @@ use std::{
 };
 
 use bn_cli::{
-    diagnostics::{diagnostic_json, emit_frontend_warnings, render_diagnostic},
+    diagnostics::{diagnostic_json, emit_frontend_warnings, present_diagnostic, render_diagnostic},
     frontend::{Frontend, load_frontend},
     options::{Options, OutputFormat},
     output::{language_error, log, module_index, tokens_text, tool_error},
@@ -66,6 +66,7 @@ pub fn run_loaded(
                         &module.source,
                         options,
                         "semantic",
+                        Some(&frontend.graph),
                     ))
                 })
                 .collect::<Vec<_>>();
@@ -114,7 +115,7 @@ pub fn run_loaded(
                     serde_json::json!({
                         "schema_version": 1, "ok": false, "exit_code": 1,
                         "stdout": "", "stderr": "",
-                        "diagnostics": [diagnostic_json(&promotion, source, options, "cli")],
+                        "diagnostics": [diagnostic_json(&promotion, source, options, "cli", None)],
                     })
                 );
             } else {
@@ -126,7 +127,7 @@ pub fn run_loaded(
             eprintln!("{}", render_diagnostic(&promotion, source, options));
         }
     }
-    let host = match crate::environment::host_env(options, interpreter, arguments) {
+    let host = match crate::environment::host_env(options, *interpreter, arguments) {
         Ok(host) => host,
         Err(message) => {
             if options.output_format == OutputFormat::Json {
@@ -158,6 +159,7 @@ pub fn run_loaded(
                     &module.source,
                     options,
                     "semantic",
+                    Some(&frontend.graph),
                 ))
             })
             .collect::<Vec<_>>();
@@ -169,13 +171,19 @@ pub fn run_loaded(
                     .expect("promotion warning has a source span"),
             );
             if options.warning_policy.level(DiagId::EVAL_START_PROMOTED) != Level::Allow {
-                diagnostics.insert(0, diagnostic_json(&promotion, source, options, "cli"));
+                diagnostics.insert(0, diagnostic_json(&promotion, source, options, "cli", None));
             }
         }
         let (ok, exit_code) = match result {
             Ok(code) => (code == 0, code),
             Err(diagnostic) => {
-                diagnostics.push(diagnostic_json(&diagnostic, source, options, "runtime"));
+                diagnostics.push(diagnostic_json(
+                    &diagnostic,
+                    source,
+                    options,
+                    "runtime",
+                    Some(&frontend.graph),
+                ));
                 (
                     false,
                     if diagnostic.code == "EXECUTION_POLICY_DENIED" {
@@ -205,7 +213,10 @@ pub fn run_loaded(
         match execute_validated_with_host(module, &mut input, &mut stdout.lock(), &host) {
             Ok(code) => ExitCode::from(code),
             Err(diagnostic) => {
-                eprintln!("{}", render_diagnostic(&diagnostic, source, options));
+                eprintln!(
+                    "{}",
+                    present_diagnostic(&diagnostic, source, Some(&frontend.graph), options)
+                );
                 if diagnostic.code == "EXECUTION_POLICY_DENIED" {
                     tool_error()
                 } else {
@@ -217,7 +228,7 @@ pub fn run_loaded(
 }
 
 #[derive(Debug)]
-pub struct JupyterInput<R> {
+pub(crate) struct JupyterInput<R> {
     input: R,
     notify: bool,
 }

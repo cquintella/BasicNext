@@ -5,7 +5,7 @@ impl Executor<'_, '_> {
     /// `Release` of a value: a native handle goes back to the library or
     /// HOST capability that owns it; anything else gives up the strong
     /// references it holds.
-    pub fn release_value(&mut self, target: Value, span: Span) -> Result<(), Diagnostic> {
+    pub(crate) fn release_value(&mut self, target: Value, span: Span) -> Result<(), Diagnostic> {
         let native = match &target {
             Value::File(_) => return self.host_release(&target, span),
             // A library class (`BNWeb`, `BNSqlite`) has no field layout.
@@ -19,7 +19,12 @@ impl Executor<'_, '_> {
         self.release_owned_value(target, span)
     }
 
-    pub fn coerce_to(&self, value: Value, ty: &Type, span: Span) -> Result<Value, Diagnostic> {
+    pub(crate) fn coerce_to(
+        &self,
+        value: Value,
+        ty: &Type,
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
         if matches!(ty, Type::Unknown) {
             return Ok(value);
         }
@@ -72,7 +77,7 @@ impl Executor<'_, '_> {
         coerce(value, ty, span)
     }
 
-    pub fn member_of(
+    pub(crate) fn member_of(
         &self,
         object: &Value,
         name: &str,
@@ -118,7 +123,7 @@ impl Executor<'_, '_> {
         }
     }
 
-    pub fn set_member_value(
+    pub(crate) fn set_member_value(
         &mut self,
         values: &mut HashMap<ValueId, Value>,
         object: ValueId,
@@ -168,7 +173,7 @@ impl Executor<'_, '_> {
     }
 
     #[allow(clippy::too_many_arguments)] // Carries the resolved field and index operation without allocating a command object.
-    pub fn set_member_index_value(
+    pub(crate) fn set_member_index_value(
         &mut self,
         values: &mut HashMap<ValueId, Value>,
         object: ValueId,
@@ -229,7 +234,7 @@ impl Executor<'_, '_> {
         }
     }
 
-    pub fn set_field_index_path(
+    pub(crate) fn set_field_index_path(
         &mut self,
         target: &mut Value,
         path: &[String],
@@ -306,7 +311,7 @@ impl Executor<'_, '_> {
         }
     }
 
-    pub fn set_field_path(
+    pub(crate) fn set_field_path(
         &mut self,
         target: &mut Value,
         path: &[String],
@@ -388,7 +393,7 @@ impl Executor<'_, '_> {
         }
     }
 
-    pub fn default_value(
+    pub(crate) fn default_value(
         &mut self,
         ty: &Type,
         dimensions: &[usize],
@@ -480,7 +485,7 @@ impl Executor<'_, '_> {
         }
     }
 
-    pub fn default_named(&mut self, ir_name: &str, span: Span) -> Result<Value, Diagnostic> {
+    pub(crate) fn default_named(&mut self, ir_name: &str, span: Span) -> Result<Value, Diagnostic> {
         if let Some(default) = self
             .module
             .function_of_kind(bn_ir::FunctionKind::Default, ir_name)
@@ -508,7 +513,7 @@ impl Executor<'_, '_> {
     }
 
     #[allow(clippy::self_only_used_in_recursion)]
-    pub fn size_of_value(&self, value: &Value, span: Span) -> Result<Value, Diagnostic> {
+    pub(crate) fn size_of_value(&self, value: &Value, span: Span) -> Result<Value, Diagnostic> {
         let size = match value {
             Value::Integer(_, kind) => integer_byte_size(*kind),
             Value::Float(_, FloatType::Float32) | Value::Date(_) | Value::Time(_) => 4,

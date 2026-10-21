@@ -27,7 +27,6 @@ use ir::LlvmType;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Target {
     Native,
-    Wasm32,
 }
 
 /// Execution-policy materialized into a compiled artifact.
@@ -60,8 +59,8 @@ fn display_type(ty: &Type) -> String {
         Type::Null => "NULL".into(),
         Type::NotAvailable => "NA".into(),
         Type::EndOfFile => "EOF".into(),
-        Type::HostArgs => "HOST.Args".into(),
-        Type::HostEnv => "HOST.Env".into(),
+        Type::HostArgs => bn_catalog::text("llvm", "msg.host_args").into(),
+        Type::HostEnv => bn_catalog::text("llvm", "msg.host_env").into(),
         Type::Unknown => "UNKNOWN".into(),
         Type::HostClock => "HOST.Clock".into(),
         Type::HostRandom => "HOST.Random".into(),
@@ -199,21 +198,19 @@ struct EmissionState {
 /// Returns a diagnostic when the module contains unsupported IR or has no
 /// executable entry point.
 pub fn lower_module(module: &Module) -> Result<String, String> {
-    // Keep the public IR-only helper byte-for-byte compatible with the
-    // historical textual output; the CLI selects native/Wasm host interop.
-    lower_module_for_target(module, true)
+    lower_module_for_target(module)
 }
 
-/// Lowers a module while selecting target-specific host interop behavior.
+/// Lowers a module for the native LLVM target.
 ///
 /// # Errors
 ///
 /// Returns a diagnostic when the module has no supported entry point or
 /// contains an instruction outside the target lowering contract.
-pub fn lower_module_for_target(module: &Module, wasm32: bool) -> Result<String, String> {
+pub(crate) fn lower_module_for_target(module: &Module) -> Result<String, String> {
     let validated = validate_module(module.clone())
         .map_err(|error| format!("{}: {}", error.code, error.message))?;
-    lower_validated_module_for_target(&validated, wasm32)
+    lower_validated_module_for_target(&validated)
 }
 
 /// Lowers IR after the language validator has produced its proof object.
@@ -227,11 +224,8 @@ pub fn lower_module_for_target(module: &Module, wasm32: bool) -> Result<String, 
 ///
 /// Panics if the validated module has no `Start` entry point, which is guaranteed
 /// to exist by `validate_for`.
-pub fn lower_validated_module_for_target(
-    validated: &ValidatedModule,
-    wasm32: bool,
-) -> Result<String, String> {
-    lower_validated_module_for_target_with_policy(validated, wasm32, &CompiledPolicy::default())
+pub fn lower_validated_module_for_target(validated: &ValidatedModule) -> Result<String, String> {
+    lower_validated_module_for_target_with_policy(validated, &CompiledPolicy::default())
 }
 
 /// Lowers a validated module while materializing its execution policy.
@@ -243,14 +237,12 @@ pub fn lower_validated_module_for_target(
 /// # Panics
 ///
 /// Panics if the validated module has no `Start` entry point.
-pub fn lower_validated_module_for_target_with_policy(
+pub(crate) fn lower_validated_module_for_target_with_policy(
     validated: &ValidatedModule,
-    wasm32: bool,
     policy: &CompiledPolicy,
 ) -> Result<String, String> {
     lower_validated_module_with_diagnostics(
         validated,
-        wasm32,
         policy,
         &|diagnostic| {
             let rendered = diagnostic.render(&bn_source::SourceFile::new("", ""));
@@ -273,20 +265,12 @@ pub fn lower_validated_module_for_target_with_policy(
 /// Panics if the validated module has no `Start` entry point.
 pub fn lower_validated_module_with_diagnostics(
     validated: &ValidatedModule,
-    wasm32: bool,
     policy: &CompiledPolicy,
     render: &dyn Fn(&bn_diag::Diagnostic) -> String,
     debug: Option<&DebugInfo>,
 ) -> Result<String, String> {
-    validate_for(
-        validated,
-        if wasm32 {
-            Target::Wasm32
-        } else {
-            Target::Native
-        },
-    )
-    .map_err(|error| format!("{}: {}", error.code, error.message))?;
+    validate_for(validated, Target::Native)
+        .map_err(|error| format!("{}: {}", error.code, error.message))?;
     let module = validated.as_module();
     let start = module.entry().expect("validated entry point");
     let functions = analyze_reachable(module, start)?;
@@ -301,9 +285,9 @@ pub fn lower_validated_module_with_diagnostics(
         &mut text,
         module,
         &functions,
-        !wasm32,
+        true,
         !module.bndata_providers.is_empty(),
-        policy_ceiling(module) != 0 || !wasm32,
+        true,
     );
     for (function, analysis) in &functions {
         emit_function(
@@ -311,14 +295,14 @@ pub fn lower_validated_module_with_diagnostics(
             module,
             function,
             analysis,
-            !wasm32,
+            true,
             policy,
             debug.is_some(),
         )?;
     }
     declare_error_abi(&mut text);
     define_type_name_globals(&mut text);
-    define_trap_globals(&mut text, render, wasm32);
+    define_trap_globals(&mut text, render);
     Ok(match debug {
         Some(info) => attach_debug_info(&text, info),
         None => text.render(),
@@ -369,14 +353,6 @@ pub fn validate_for(validated: &ValidatedModule, target: Target) -> Result<(), D
             start.span,
         ));
     }
-    if target == Target::Wasm32 && requires_unavailable_wasm_capability(module) {
-        return Err(support_fact(
-            DiagId::TARGET_UNSUPPORTED_HOST,
-            target,
-            "HOST.FileSystem, HOST.Net, BNLog and BNWeb are unavailable; HOST.Console is supported",
-            start.span,
-        ));
-    }
     analyze_reachable(module, start).map_err(|message| {
         let (code, message) = support_diagnostic(&message);
         let id = DiagId::from_code(code).unwrap_or(DiagId::TARGET_UNSUPPORTED_LLVM);
@@ -404,7 +380,6 @@ fn support_fact(id: DiagId, target: Target, detail: &str, span: Span) -> Diagnos
 fn target_name(target: Target) -> &'static str {
     match target {
         Target::Native => "native",
-        Target::Wasm32 => "wasm32",
     }
 }
 
@@ -472,14 +447,6 @@ pub(crate) fn policy_ceiling(module: &Module) -> u64 {
         ceiling |= POLICY_DISPATCH;
     }
     ceiling
-}
-
-fn requires_unavailable_wasm_capability(module: &Module) -> bool {
-    module.filesystem_import.is_some()
-        || module.network_import.is_some()
-        || module.bnlog_import.is_some()
-        || module.bnweb_import.is_some()
-        || module.bnsqlite_import.is_some()
 }
 
 fn default_span() -> Span {

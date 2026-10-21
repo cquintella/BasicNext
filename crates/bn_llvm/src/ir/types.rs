@@ -27,7 +27,7 @@ pub enum LlvmType {
 impl LlvmType {
     /// The bit width of an integer type (`i1` … `i128`).
     #[must_use]
-    pub const fn integer_bits(&self) -> Option<u32> {
+    pub(crate) const fn integer_bits(&self) -> Option<u32> {
         match self {
             Self::I1 => Some(1),
             Self::I8 => Some(8),
@@ -41,13 +41,13 @@ impl LlvmType {
 
     /// Whether the type is a BN integer layout: `i8`, `i16`, `i32` or `i64`.
     #[must_use]
-    pub const fn is_integer(&self) -> bool {
+    pub(crate) const fn is_integer(&self) -> bool {
         matches!(self, Self::I8 | Self::I16 | Self::I32 | Self::I64)
     }
 
     /// Whether the type is `float` or `double`.
     #[must_use]
-    pub const fn is_floating(&self) -> bool {
+    pub(crate) const fn is_floating(&self) -> bool {
         matches!(self, Self::Float | Self::Double)
     }
 }

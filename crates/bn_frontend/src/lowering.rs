@@ -277,6 +277,9 @@ struct Builder<'a> {
     scopes: Vec<Vec<(SymbolId, Type, Span)>>,
     /// Owned values nothing has consumed yet, with the span that made them.
     owned: Vec<(ValueId, Span)>,
+    /// Owned values a loop still uses after the jump that would release a
+    /// temporary. Released on `RETURN`/`STOP`, or by the loop when it ends.
+    held: Vec<(ValueId, Span)>,
     /// The type of every value emitted so far.
     value_types: HashMap<ValueId, Type>,
     /// `AS WEAK` locals: never retained, never released.

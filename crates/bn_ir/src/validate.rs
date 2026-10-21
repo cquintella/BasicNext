@@ -22,8 +22,9 @@ use fields::{
     validate_resolved_field_path,
 };
 use index::index_result_matches;
+pub use operands::instruction_result;
+pub(crate) use operands::instruction_uses;
 use operands::{instruction_defines, instruction_type};
-pub use operands::{instruction_result, instruction_uses};
 #[cfg(test)]
 pub(crate) use upcast::call_types_compatible;
 use upcast::{

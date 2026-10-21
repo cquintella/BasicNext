@@ -12,7 +12,7 @@ use crate::catalog;
 use crate::error::LogFailure;
 
 /// Bytes of one field value at most (UTF-8).
-pub const FIELD_VALUE_MAX_BYTES: usize = 4096;
+pub(crate) const FIELD_VALUE_MAX_BYTES: usize = 4096;
 
 /// Field key to value, in key order.
 pub type FieldMap = BTreeMap<String, String>;
@@ -22,7 +22,7 @@ pub type FieldMap = BTreeMap<String, String>;
 /// # Errors
 ///
 /// `InvalidString` naming the first value past the bound.
-pub fn check_values(fields: &FieldMap) -> Result<(), LogFailure> {
+pub(crate) fn check_values(fields: &FieldMap) -> Result<(), LogFailure> {
     match fields
         .values()
         .find(|value| value.len() > FIELD_VALUE_MAX_BYTES)

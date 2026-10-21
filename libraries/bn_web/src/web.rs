@@ -701,12 +701,11 @@ mod drain;
 pub use drain::drain_server;
 mod server;
 pub mod sessions;
-pub mod static_files;
-pub use server::{ConnectionWork, ServerOptions, ServerState, ServerStatus};
+pub(crate) mod static_files;
+pub use server::{ConnectionWork, ServerOptions, ServerState, ServerStats, ServerStatus};
 pub use static_files::{
-    format_http_date, mime_type_for_path, parse_http_date, sanitize_subpath, serve_static_file,
-    SanitizationError, StaticFileContent, StaticFileError, StaticFileOpener, StaticMount,
-    StaticServeOutcome, SystemFileOpener,
+    StaticFileContent, StaticFileError, StaticFileOpener, StaticMount, StaticServeOutcome,
+    serve_static_file,
 };
 
 #[cfg(test)]
@@ -715,4 +714,3 @@ mod request_tests;
 mod sessions_tests;
 #[cfg(test)]
 mod tests;
-

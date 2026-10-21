@@ -73,7 +73,7 @@ impl WarningPolicy {
     /// # Errors
     ///
     /// Returns an error when `allow` is requested for a hard diagnostic.
-    pub fn set_config(&mut self, id: DiagId, level: Level) -> Result<(), String> {
+    pub(crate) fn set_config(&mut self, id: DiagId, level: Level) -> Result<(), String> {
         validate_level(id, level)?;
         self.config_levels.insert(id, level);
         Ok(())

@@ -21,7 +21,7 @@
 ))]
 #[must_use]
 #[allow(unsafe_code)] // Narrow ioctl TIOCGWINSZ; no Rust memory is retained by the kernel.
-pub fn terminal_dimensions() -> Option<(i128, i128)> {
+pub(crate) fn terminal_dimensions() -> Option<(i128, i128)> {
     use std::os::raw::{c_int, c_ulong};
 
     #[repr(C)]
@@ -44,6 +44,7 @@ pub fn terminal_dimensions() -> Option<(i128, i128)> {
     ))]
     const TIOCGWINSZ: c_ulong = 0x4008_7468;
 
+    // SAFETY: the foreign signature matches the C or system function this module calls.
     unsafe extern "C" {
         fn ioctl(fd: c_int, request: c_ulong, ...) -> c_int;
     }
@@ -54,6 +55,7 @@ pub fn terminal_dimensions() -> Option<(i128, i128)> {
         xpixel: 0,
         ypixel: 0,
     };
+    // SAFETY: the call queries this process's stdout console and does not keep the pointer.
     if unsafe { ioctl(1, TIOCGWINSZ, &raw mut size) } != 0 || size.col == 0 || size.row == 0 {
         return None;
     }
@@ -74,14 +76,14 @@ pub fn terminal_dimensions() -> Option<(i128, i128)> {
     ))
 ))]
 #[must_use]
-pub fn terminal_dimensions() -> Option<(i128, i128)> {
+pub(crate) fn terminal_dimensions() -> Option<(i128, i128)> {
     None
 }
 
 #[cfg(windows)]
 #[must_use]
 #[allow(unsafe_code)] // Narrow BDFL-approved Win32 terminal query; no Rust memory is retained by Windows.
-pub fn terminal_dimensions() -> Option<(i128, i128)> {
+pub(crate) fn terminal_dimensions() -> Option<(i128, i128)> {
     #[repr(C)]
     struct Coord {
         x: i16,
@@ -102,6 +104,7 @@ pub fn terminal_dimensions() -> Option<(i128, i128)> {
         window: SmallRect,
         maximum_window_size: Coord,
     }
+    // SAFETY: the foreign signature matches the C or system function this module calls.
     unsafe extern "system" {
         fn GetStdHandle(standard_handle: u32) -> *mut std::ffi::c_void;
         fn GetConsoleScreenBufferInfo(
@@ -110,14 +113,17 @@ pub fn terminal_dimensions() -> Option<(i128, i128)> {
         ) -> i32;
     }
     const STD_OUTPUT_HANDLE: u32 = u32::MAX - 10;
+    // SAFETY: the call queries this process's stdout console and does not keep the pointer.
     let handle = unsafe { GetStdHandle(STD_OUTPUT_HANDLE) };
     if handle.is_null() || handle as isize == -1 {
         return None;
     }
     let mut info = std::mem::MaybeUninit::<ConsoleScreenBufferInfo>::uninit();
+    // SAFETY: the call queries this process's stdout console and does not keep the pointer.
     if unsafe { GetConsoleScreenBufferInfo(handle, info.as_mut_ptr()) } == 0 {
         return None;
     }
+    // SAFETY: the call queries this process's stdout console and does not keep the pointer.
     let info = unsafe { info.assume_init() };
     Some((
         i128::from(info.window.right) - i128::from(info.window.left) + 1,
@@ -127,6 +133,6 @@ pub fn terminal_dimensions() -> Option<(i128, i128)> {
 
 #[cfg(not(any(unix, windows)))]
 #[must_use]
-pub fn terminal_dimensions() -> Option<(i128, i128)> {
+pub(crate) fn terminal_dimensions() -> Option<(i128, i128)> {
     None
 }

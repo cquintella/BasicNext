@@ -24,12 +24,12 @@ pub fn tool_error() -> ExitCode {
 }
 
 #[must_use]
-pub fn color_enabled(color: Color) -> bool {
+pub(crate) fn color_enabled(color: Color) -> bool {
     matches!(color, Color::Always) || (matches!(color, Color::Auto) && io::stdout().is_terminal())
 }
 
 #[must_use]
-pub fn colorize(text: &str, color: Color) -> String {
+pub(crate) fn colorize(text: &str, color: Color) -> String {
     if color_enabled(color) {
         format!("\x1b[32m{text}\x1b[0m")
     } else {

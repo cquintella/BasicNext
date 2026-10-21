@@ -3,3 +3,6 @@
 
 hex.decode.message = cannot decode "{shown}{more}" as hexadecimal
 open.tag.cause = the authentication tag does not verify: the ciphertext, AAD, key, or nonce differs from the ones that sealed it
+
+# Messages moved out of Rust source (text-literal gate).
+msg.bncrypto_bytes_was_already_released = BNCrypto.Bytes was already released

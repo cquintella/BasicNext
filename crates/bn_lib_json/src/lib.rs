@@ -325,6 +325,21 @@ impl Provider for JsonProvider {
             .then(|| Ok(Value::Json(bn_core_json::store(serde_json::Value::Null))))
     }
 
+    fn retain(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
+        let Value::Json(id) = value else {
+            return None;
+        };
+        Some(if bn_core_json::retain(*id) {
+            Ok(())
+        } else {
+            Err(runtime_error(
+                bn_diag::DiagId::USE_AFTER_RELEASE,
+                bn_catalog::text("json", "msg.bnjson_json_was_already_deleted"),
+                span,
+            ))
+        })
+    }
+
     fn release(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
         let Value::Json(id) = value else {
             return None;
@@ -334,7 +349,7 @@ impl Provider for JsonProvider {
         } else {
             Err(runtime_error(
                 bn_diag::DiagId::DOUBLE_RELEASE,
-                "BNJson.Json was already deleted",
+                bn_catalog::text("json", "msg.bnjson_json_was_already_deleted"),
                 span,
             ))
         })

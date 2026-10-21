@@ -43,7 +43,7 @@ pub trait StaticFileOpener: Send + Sync {
 
 /// Standard opener using `std::fs`.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct SystemFileOpener;
+pub(crate) struct SystemFileOpener;
 
 impl StaticFileOpener for SystemFileOpener {
     fn read_file(
@@ -111,7 +111,7 @@ impl StaticMount {
     /// Checks if a request path matches this static mount.
     /// Returns the relative subpath if matched.
     #[must_use]
-    pub fn match_path<'a>(&self, path: &'a str) -> Option<&'a str> {
+    pub(crate) fn match_path<'a>(&self, path: &'a str) -> Option<&'a str> {
         if self.prefix == "/" {
             let sub = path.strip_prefix('/').unwrap_or(path);
             return Some(sub);
@@ -129,13 +129,16 @@ impl StaticMount {
 
 /// Result of static path sanitization.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum SanitizationError {
+pub(crate) enum SanitizationError {
     BadRequest(&'static str),
     NotFound,
 }
 
 /// Sanitizes a request subpath against path traversal, encoded separators, and dotfiles.
-pub fn sanitize_subpath(raw_target: &str, subpath: &str) -> Result<PathBuf, SanitizationError> {
+pub(crate) fn sanitize_subpath(
+    raw_target: &str,
+    subpath: &str,
+) -> Result<PathBuf, SanitizationError> {
     // 1. Encoded separators or NUL check on the raw target
     if raw_target.contains("%2f")
         || raw_target.contains("%2F")
@@ -185,7 +188,7 @@ pub fn sanitize_subpath(raw_target: &str, subpath: &str) -> Result<PathBuf, Sani
 
 /// Resolves MIME Content-Type from file extension using static table.
 #[must_use]
-pub fn mime_type_for_path(path: &Path) -> &'static str {
+pub(crate) fn mime_type_for_path(path: &Path) -> &'static str {
     let ext = path
         .extension()
         .and_then(|s| s.to_str())
@@ -231,7 +234,7 @@ const MONTHS: [&str; 12] = [
     clippy::cast_possible_wrap,
     clippy::unreadable_literal
 )]
-pub fn format_http_date(secs_since_epoch: u64) -> String {
+pub(crate) fn format_http_date(secs_since_epoch: u64) -> String {
     let mut days = (secs_since_epoch / 86400) as i64;
     let day_secs = (secs_since_epoch % 86400) as u32;
     let hour = day_secs / 3600;
@@ -256,7 +259,13 @@ pub fn format_http_date(secs_since_epoch: u64) -> String {
 
     format!(
         "{}, {:02} {} {:04} {:02}:{:02}:{:02} GMT",
-        DAYS[wday as usize], d, MONTHS[(m - 1) as usize], y, hour, minute, second
+        DAYS[wday as usize],
+        d,
+        MONTHS[(m - 1) as usize],
+        y,
+        hour,
+        minute,
+        second
     )
 }
 
@@ -269,7 +278,7 @@ pub fn format_http_date(secs_since_epoch: u64) -> String {
     clippy::cast_possible_wrap,
     clippy::unreadable_literal
 )]
-pub fn parse_http_date(s: &str) -> Option<u64> {
+pub(crate) fn parse_http_date(s: &str) -> Option<u64> {
     let s = s.trim();
     // Sun, 06 Nov 1994 08:49:37 GMT
     let parts: Vec<&str> = s.split_whitespace().collect();
@@ -300,7 +309,8 @@ pub fn parse_http_date(s: &str) -> Option<u64> {
     if days < 0 {
         return None;
     }
-    let total_secs = (days as u64) * 86400 + (hour as u64) * 3600 + (minute as u64) * 60 + (second as u64);
+    let total_secs =
+        (days as u64) * 86400 + (hour as u64) * 3600 + (minute as u64) * 60 + (second as u64);
     Some(total_secs)
 }
 
@@ -390,13 +400,19 @@ pub fn serve_static_file(
             .split(',')
             .any(|item| item.trim() == "*" || item.trim() == etag);
         if matches {
-            return StaticServeOutcome::NotModified { etag, last_modified };
+            return StaticServeOutcome::NotModified {
+                etag,
+                last_modified,
+            };
         }
     } else if let Some(ims) = if_modified_since
         && let Some(header_time) = parse_http_date(ims)
         && header_time >= content.mtime_secs
     {
-        return StaticServeOutcome::NotModified { etag, last_modified };
+        return StaticServeOutcome::NotModified {
+            etag,
+            last_modified,
+        };
     }
 
     let content_type = mime_type_for_path(&canonical);
@@ -431,13 +447,28 @@ mod tests {
 
     #[test]
     fn mime_type_detection() {
-        assert_eq!(mime_type_for_path(Path::new("file.html")), "text/html; charset=utf-8");
-        assert_eq!(mime_type_for_path(Path::new("style.css")), "text/css; charset=utf-8");
-        assert_eq!(mime_type_for_path(Path::new("app.js")), "application/javascript; charset=utf-8");
-        assert_eq!(mime_type_for_path(Path::new("data.json")), "application/json");
+        assert_eq!(
+            mime_type_for_path(Path::new("file.html")),
+            "text/html; charset=utf-8"
+        );
+        assert_eq!(
+            mime_type_for_path(Path::new("style.css")),
+            "text/css; charset=utf-8"
+        );
+        assert_eq!(
+            mime_type_for_path(Path::new("app.js")),
+            "application/javascript; charset=utf-8"
+        );
+        assert_eq!(
+            mime_type_for_path(Path::new("data.json")),
+            "application/json"
+        );
         assert_eq!(mime_type_for_path(Path::new("image.png")), "image/png");
         assert_eq!(mime_type_for_path(Path::new("image.svg")), "image/svg+xml");
-        assert_eq!(mime_type_for_path(Path::new("unknown.xyz")), "application/octet-stream");
+        assert_eq!(
+            mime_type_for_path(Path::new("unknown.xyz")),
+            "application/octet-stream"
+        );
     }
 
     #[test]

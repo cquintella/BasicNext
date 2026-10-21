@@ -47,7 +47,13 @@ impl Builder<'_> {
                     .iter()
                     .find(|field| field.name == binding.name)
                     .ok_or_else(|| {
-                        ir_error("destructuring field was not resolved", binding.span)
+                        ir_error(
+                            bn_catalog::text(
+                                "frontend",
+                                "msg.destructuring_field_was_not_resolved",
+                            ),
+                            binding.span,
+                        )
                     })?;
                 self.read_struct_field(
                     value,
@@ -81,11 +87,19 @@ impl Builder<'_> {
         let fields = self
             .model
             .struct_fields_of(ty)
-            .ok_or_else(|| ir_error("STRUCT literal has no field list", expression.span))?
+            .ok_or_else(|| {
+                ir_error(
+                    bn_catalog::text("frontend", "msg.struct_literal_has_no_field_list"),
+                    expression.span,
+                )
+            })?
             .to_vec();
-        let function = self
-            .struct_default_name(ty)
-            .ok_or_else(|| ir_error("STRUCT literal has no default value", expression.span))?;
+        let function = self.struct_default_name(ty).ok_or_else(|| {
+            ir_error(
+                bn_catalog::text("frontend", "msg.struct_literal_has_no_default_value"),
+                expression.span,
+            )
+        })?;
         let record = self.value();
         let callee = self.function_constant(&function, expression.span);
         self.emit(Instruction::Call {
@@ -95,8 +109,12 @@ impl Builder<'_> {
             ty: ty.clone(),
             span: expression.span,
         });
-        let owner = struct_value_owner(ty, &self.prefix)
-            .ok_or_else(|| ir_error("STRUCT literal has no owner", expression.span))?;
+        let owner = struct_value_owner(ty, &self.prefix).ok_or_else(|| {
+            ir_error(
+                bn_catalog::text("frontend", "msg.struct_literal_has_no_owner"),
+                expression.span,
+            )
+        })?;
         let owner = self.emitted_member_owner(owner);
         for (value, field) in values.iter().zip(fields) {
             let element = self.expression(value)?;
@@ -160,7 +178,10 @@ impl Builder<'_> {
             }),
             Type::Vector { element, .. } | Type::Pointer { element, .. } => Ok((**element).clone()),
             _ => Err(ir_error(
-                "destructuring source is not a vector or pointer region",
+                bn_catalog::text(
+                    "frontend",
+                    "msg.destructuring_source_is_not_a_vector_or_pointer",
+                ),
                 default_span(),
             )),
         }
@@ -183,8 +204,12 @@ impl Builder<'_> {
             span,
         });
         let expected = self.value();
-        let count = i64::try_from(bindings)
-            .map_err(|_| ir_error("destructuring binding count does not fit", span))?;
+        let count = i64::try_from(bindings).map_err(|_| {
+            ir_error(
+                bn_catalog::text("frontend", "msg.destructuring_binding_count_does_not_fit"),
+                span,
+            )
+        })?;
         self.emit(Instruction::Constant {
             destination: expected,
             value: Constant::Integer(count.to_string()),
@@ -229,8 +254,12 @@ impl Builder<'_> {
         span: Span,
     ) -> Result<ValueId, Diagnostic> {
         let index_value = self.value();
-        let position =
-            i64::try_from(index).map_err(|_| ir_error("destructuring index does not fit", span))?;
+        let position = i64::try_from(index).map_err(|_| {
+            ir_error(
+                bn_catalog::text("frontend", "msg.destructuring_index_does_not_fit"),
+                span,
+            )
+        })?;
         self.emit(Instruction::Constant {
             destination: index_value,
             value: Constant::Integer(position.to_string()),
@@ -256,8 +285,12 @@ impl Builder<'_> {
         ty: Type,
         span: Span,
     ) -> Result<ValueId, Diagnostic> {
-        let owner = struct_value_owner(source_type, &self.prefix)
-            .ok_or_else(|| ir_error("destructuring STRUCT has no owner", span))?;
+        let owner = struct_value_owner(source_type, &self.prefix).ok_or_else(|| {
+            ir_error(
+                bn_catalog::text("frontend", "msg.destructuring_struct_has_no_owner"),
+                span,
+            )
+        })?;
         let owner = self.emitted_member_owner(owner);
         let destination = self.value();
         self.emit(Instruction::Member {

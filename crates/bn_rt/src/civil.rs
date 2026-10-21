@@ -31,7 +31,7 @@ pub(crate) fn split_at(timestamp: i64, trap: *const std::ffi::c_char) -> (i32, u
     split(timestamp).unwrap_or_else(|| {
         super::math::fail_at(
             trap,
-            "FORMAT_OUT_OF_RANGE",
+            bn_catalog::text("temporal", "msg.format_out_of_range"),
             bn_core_text::civil::RANGE_ERROR,
         )
     })
@@ -43,7 +43,11 @@ pub(crate) fn split_at(timestamp: i64, trap: *const std::ffi::c_char) -> (i32, u
 pub extern "C" fn bn_rt_temporal_date_parse(text: *const c_char, trap: *const c_char) -> i32 {
     let s = c_str(text).unwrap_or("");
     let Some(days) = bn_core_text::temporal::parse_date(s) else {
-        super::math::fail_at(trap, "INVALID_DATE", "invalid DATE");
+        super::math::fail_at(
+            trap,
+            bn_catalog::text("temporal", "msg.invalid_date"),
+            bn_catalog::text("temporal", "msg.invalid_date_2"),
+        );
     };
     days
 }
@@ -54,7 +58,11 @@ pub extern "C" fn bn_rt_temporal_date_parse(text: *const c_char, trap: *const c_
 pub extern "C" fn bn_rt_temporal_time_parse(text: *const c_char, trap: *const c_char) -> i32 {
     let s = c_str(text).unwrap_or("");
     let Some(millis) = bn_core_text::temporal::parse_hms(s, true) else {
-        super::math::fail_at(trap, "INVALID_TIME", "invalid TIME");
+        super::math::fail_at(
+            trap,
+            bn_catalog::text("temporal", "msg.invalid_time"),
+            bn_catalog::text("temporal", "msg.invalid_time_2"),
+        );
     };
     i32::try_from(millis).unwrap_or(0)
 }
@@ -65,7 +73,11 @@ pub extern "C" fn bn_rt_temporal_time_parse(text: *const c_char, trap: *const c_
 pub extern "C" fn bn_rt_temporal_timestamp_parse(text: *const c_char, trap: *const c_char) -> i64 {
     let s = c_str(text).unwrap_or("");
     let Some(ts) = bn_core_text::temporal::parse_rfc3339(s) else {
-        super::math::fail_at(trap, "PARSE_ERROR", "invalid TIMESTAMP");
+        super::math::fail_at(
+            trap,
+            bn_catalog::text("temporal", "msg.parse_error"),
+            bn_catalog::text("temporal", "msg.invalid_timestamp"),
+        );
     };
     ts
 }
@@ -80,7 +92,7 @@ pub extern "C" fn bn_rt_temporal_timestamp_format(
     let s = bn_core_text::civil::rfc3339(timestamp).unwrap_or_else(|| {
         super::math::fail_at(
             trap,
-            "FORMAT_OUT_OF_RANGE",
+            bn_catalog::text("temporal", "msg.format_out_of_range"),
             bn_core_text::civil::RANGE_ERROR,
         )
     });

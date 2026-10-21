@@ -17,9 +17,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use super::policy::{POLICY_CONSOLE, POLICY_FILESYSTEM, allows};
 use bn_core_log::{
     Apache, Event, FieldMap, Imports, Level, LogFailure, Logger, Operation, TIMEOUT_MAX_MS,
+    http_client_access,
 };
 
-pub const BN_LOG_OK: i32 = 0;
+pub(crate) const BN_LOG_OK: i32 = 0;
 
 fn failed(operation: &str, failure: &LogFailure) -> i32 {
     crate::set_error_report(
@@ -102,6 +103,33 @@ fn with_logger(
     result.map_or_else(|failure| failed(operation, &failure), |()| BN_LOG_OK)
 }
 
+/// A NUL-terminated C string; a null pointer reads as `""`.
+fn c_string(pointer: *const c_char) -> String {
+    if pointer.is_null() {
+        return String::new();
+    }
+    // SAFETY: the caller passes a CString pointer that stays alive for this read.
+    unsafe { CStr::from_ptr(pointer) }
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// Header pairs from `name\nvalue\n` lines. A trailing name without a value is dropped.
+fn header_pairs(blob: &str) -> Vec<(String, String)> {
+    let mut pairs = Vec::new();
+    let mut lines = blob.split('\n');
+    while let Some(name) = lines.next() {
+        let Some(value) = lines.next() else {
+            break;
+        };
+        if name.is_empty() {
+            continue;
+        }
+        pairs.push((name.to_owned(), value.to_owned()));
+    }
+    pairs
+}
+
 /// A BN string from emitted code; a null pointer reads as `""`.
 fn text(pointer: *const c_char) -> String {
     if pointer.is_null() {
@@ -109,6 +137,7 @@ fn text(pointer: *const c_char) -> String {
     }
     crate::string::string_text(pointer).unwrap_or_else(|| {
         // Fallback for non-BN static strings
+        // SAFETY: the pointer is non-null and NUL-terminated for this read.
         unsafe { CStr::from_ptr(pointer) }
             .to_string_lossy()
             .into_owned()
@@ -247,6 +276,36 @@ pub extern "C" fn bn_rt_log_logger_access(
     );
     with_logger(handle, Operation::Access.name(), |logger| {
         logger.write_access(&RuntimeSink, &request)
+    })
+}
+
+/// One HTTP client access record. `headers` is `name\nvalue\n` pairs.
+#[allow(clippy::too_many_arguments)]
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_log_client_access(
+    handle: u64,
+    method: *const c_char,
+    url: *const c_char,
+    status: i64,
+    bytes: i64,
+    duration_ms: i64,
+    headers: *const c_char,
+) -> i32 {
+    let headers = header_pairs(&c_string(headers));
+    let header_refs: Vec<(&str, &str)> = headers
+        .iter()
+        .map(|(name, value)| (name.as_str(), value.as_str()))
+        .collect();
+    let fields = http_client_access(
+        &c_string(method),
+        &c_string(url),
+        status,
+        bytes,
+        duration_ms,
+        &header_refs,
+    );
+    with_logger(handle, Operation::Access.name(), |logger| {
+        logger.write_access(&RuntimeSink, &fields)
     })
 }
 

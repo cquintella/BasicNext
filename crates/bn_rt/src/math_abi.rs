@@ -53,6 +53,7 @@ pub extern "C" fn bn_rt_math_val(text: *const c_char) -> f64 {
     }
     match crate::string::slice_from_raw(text) {
         Some(bytes) => std::str::from_utf8(bytes).map_or(0.0, math::parse_val),
+        // SAFETY: the pointer is non-null and NUL-terminated for this read.
         None => unsafe {
             std::ffi::CStr::from_ptr(text)
                 .to_str()
@@ -235,6 +236,7 @@ pub extern "C" fn bn_rt_math_mode_i32(ptr: *const i32, len: i32, out: *mut f64) 
         stats::Reduction::Na => 1,
         stats::Reduction::Float(value) => {
             if !out.is_null() {
+                // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
                 unsafe { out.write(value) };
             }
             0
@@ -251,6 +253,7 @@ fn float_slice<'a>(ptr: *const f64, len: i32) -> &'a [f64] {
     if ptr.is_null() || len <= 0 {
         return &[];
     }
+    // SAFETY: the pointer and the length describe a buffer the caller allocated and keeps alive for this call.
     unsafe { std::slice::from_raw_parts(ptr, usize::try_from(len).unwrap_or(0)) }
 }
 
@@ -282,6 +285,7 @@ pub extern "C" fn bn_rt_math_mode_f64(ptr: *const f64, len: i32, out: *mut f64) 
         stats::Reduction::Na => 1,
         stats::Reduction::Float(value) => {
             if !out.is_null() {
+                // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
                 unsafe { out.write(value) };
             }
             0

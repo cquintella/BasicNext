@@ -17,8 +17,7 @@ K1, K22 and K85 were rewritten in place on 2026-10-16 (Sprint 7 stage 1) and sta
 First measured (2026-10-09) on branch `bucket-0.6.5-corrections` plus the uncommitted 0.6.5c
 work. Corpus probe: the 213 programs of `examples/` and
 `tests/grammar/valid/`: `bni check` passes on all 213; `bnc` builds 203; 9
-stop with a support diagnostic, 1 with a defect (K4). Wasm: 9 of a 40-program
-sample run under `bin/bn-wasm`.
+stop with a support diagnostic, 1 with a defect (K4).
 
 Severity: **critical** (security or data integrity), **high** (wrong
 behaviour), **gap** (declared native support gap: refused with a support
@@ -41,7 +40,6 @@ interim fixes (K1, K3) do not count. Each entry names its 0.6.5 bucket.
   matches `bni` on `char`, `ops`, `forged`, `forged_file`, `input`,
   `file_read_all`, `file_read_line`, `json`, `sqlite`, and `exec` (Unix and Windows).
   The value-matrix cell `STRING / holds U+0000` is active and passes.
-  Wasm matches on `char`, `ops`, `forged`, and `input` (`tests/wasm_parity.rs`).
   `PRINT_STR` declaration wired in `runtime_abi.rs`.
   String lengths are authoritative via header `len`.
   Verified across both Unix (macOS) and Windows (`bn-windows`).
@@ -76,28 +74,21 @@ interim fixes (K1, K3) do not count. Each entry names its 0.6.5 bucket.
 
 - **Resolved 2026-10-17 (P.13 / Section E):** Isolated `BNWeb` into `libraries/bn_web` (`libbn_web.a`) with zero coupling in `bn_rt` and `bnc`, lowered all `BNWeb` methods in `crates/bn_llvm/src/llvm/web_ops.rs`, and verified full parity across all S6 fixtures via `tests/parity.rs` (`bnweb_s6_parity_fixtures_pass_both_interpreter_and_native`).
 
-### K15 — Wasm runs only a subset
+### K15 — Wasm runs only a subset — RESOLVED 2026-10-20 (target withdrawn)
 
-- **Symptom.** 9 of 40 sampled fixtures run; most fail at instantiation
-  (`function import requires a callable`), including `HOST.Env`
-  (`bn_rt_env_get` / `_has`).
-- **Root cause.** `bin/bn-wasm` re-implements part of `bn_rt` in
-  JavaScript; `bn_rt` cannot be built for `wasm32` (unconditional
-  `socket2`, `dns-lookup`, `rusqlite`, crypto crates).
-- **Code.** `bin/bn-wasm`; `crates/bn_rt/Cargo.toml`. Bucket 0.6.5c S7.
+- **Resolved 2026-10-20 (BDFL).** `bnc` no longer emits WebAssembly.
+  `--target wasm32` is an invalid option. `bin/bn-wasm` and
+  `tests/wasm_parity.rs` are removed.
 
 ---
 
 ## Divergences and minor issues
 
-### K16 — `BN_ARC_TRACE` labels a region differently
+### K16 — `BN_ARC_TRACE` labels a region differently — RESOLVED 2026-10-17
 
-- `bni`: `arc new Float64#0 …`; native: `arc new #0 …` (counts, ids and
-  order match). Registered in `bucket-0.6.5.md` (section T).
-- **Root cause.** The native trace does not receive the element type of a
-  region allocation. TODO: confirm the emitting site.
-- **Code.** `crates/bn_rt/src/arc.rs` 149–238 (trace); the interpreter
-  label in `bn_interp` (TODO: locate).
+- **Resolved 2026-10-17:** Emitted code passes the element type symbol (`.bn_cls_<Element>`)
+  to `bn_rt_arc_register`, aligning native region traces with interpreter output (`Float64#0`, `Int32#0`, etc.).
+  Verified by `tests/parity_regressions.rs::arc_trace_region_labels_match_on_both_backends`.
 
 ### K17 — `CopyIntegerColumn` range check differs
 
@@ -171,10 +162,10 @@ interim fixes (K1, K3) do not count. Each entry names its 0.6.5 bucket.
   expected output derived from those rules; `bni` matches every line,
   2026-10-09).
 
-### K45 — `bni`: `Web.Client.New(logger)` contrato de logging (Decisão BDFL 2026-10-17)
+### K45 — `bni`: `Web.Client.New(logger)` contrato de logging — RESOLVED 2026-10-21
 
-- `Client.New(logger AS Log.Logger)` falha com `TYPE_MISMATCH` ("non-logger value") para um logger de `Log.Logger.New`: o adaptador aceita apenas um objeto puro, e o logger é um handle de provedor.
-- **Decisão BDFL (2026-10-17):** O cliente HTTP deve registrar via logger usando o padrão Apache de log de acesso (Common / Combined Log Format), registrando requisições enviadas, falhas de transporte, códigos de status, tempos de resposta e cabeçalhos sanitizados.
+- **Resolved 2026-10-21.** `Client.New(logger)` keeps a `Log.Logger` (the same acceptance as `Server.New`) and writes one access record per `Request` and `RequestWithPolicy`. The shared field map is `bn_core_log::http_client_access`: method, path without the query, `HTTP/1.1`, status (`0` on transport failure), body size, `http.duration_ms`, and `http.header.<name>`. Sensitive keys, the query, and userinfo are omitted. `NEW Client()` stores no logger. `bni` looks the logger up at the call; `bnc` stores the handle in `bn_web_client_create` and `bn_rt_log_client_access` writes the record. Spec: `language/0.6/bnweb.md`, "Client and security policy".
+- Evidence: `client_access_drops_the_query_userinfo_and_sensitive_headers` (`bn_core_log`); `http_client_logs_the_request_on_both_backends` (`tests/parity.rs`, `bni` and `bnc`, 2026-10-21); `bnweb_client_rejects_unsafe_urls_before_transport` still passes.
 
 ### K46 — `bni`: a network server with a logger writes no access record — RESOLVED 2026-10-17
 
@@ -253,37 +244,33 @@ The 2026-10-11 probe text below is the state before `pointer_is_holds` /
   The paragraph was later written into `0.6.md`. The decision is the
   History entry of 2026-10-16, not this workpaper.
 
-### K58 — Diagnostics for code in an imported module name the entry file and internal type names (open)
+### K58 — Diagnostics for code in an imported module name the entry file and internal type names — RESOLVED 2026-10-20
 
-- **Severity: minor** (refusals and errors are correct; their text
-  misleads). A diagnostic raised in a function of an imported module
-  points to the entry file with the module's line and column
-  (`main2.bn:8:12` for line 8 of `lib2.bn`; also the K57 `INVALID_IR`
-  pointed at `main.bn:27:1`), and support texts show internal names:
-  `POINTER TO #0.Box OR NULL` for module code, `POINTER TO MODULE#0.Box`
-  and the test `POINTER.TO.L.Box` for the same type seen from the entry
-  module. Found 2026-10-11 while checking K57; the file attribution is the
-  same on a clean `HEAD`.
-- **To fix:** spans of imported code carry their own `SourceId` through
-  lowering (AGENTS.md: "Retain SourceId + spans"), and type texts in
-  diagnostics use the source spelling (`Box`, `L.Box`).
+- **Resolved 2026-10-20.** The span already carried the imported module's
+  `SourceId`. Presentation now selects that file
+  (`source_of`) and rewrites `MODULE#<id>.Name` and `#<id>.Name` to the
+  spelling of the diagnosing module (`L.Box` from an `IMPORT lib AS L`,
+  `Box` inside the module that declares it). `bni check` of an entry
+  that writes `LET box AS L.Box = 1` reports `Expected L.Box` at
+  `main.bn`; a type error in the imported file is reported at `lib.bn`.
+- **History.** Refusals were correct and the text misled: `main2.bn:8:12`
+  for line 8 of `lib2.bn`, and internal names `MODULE#0.Box` / `#0.Box`.
+  Found 2026-10-11.
 
 ### K62 — `bnc`: a vector literal in a loop grows the stack — RESOLVED 2026-10-17 (P.12)
 
 - **Resolved 2026-10-17 (P.12 / K62):** Vector literal storage (`vecdata{dest}` and `vecstructcopy{dest}_{index}`) is pre-allocated in the function entry block (`b0`) in `crates/bn_llvm/src/llvm/functions.rs`, and `emit_vector` in `crates/bn_llvm/src/llvm/vectors.rs` reuses the entry slot without emitting in-loop `alloca` instructions. Verified via `tests/parity_regressions.rs` (`vector_literal_in_loop_reuses_entry_slot_without_stack_growth`).
 
-### K63 — Other standard-library handles are never released (open)
+### K63 — Other standard-library handles are never released — RESOLVED 2026-10-17
 
-- **Severity: minor** (resources held until the program ends, no wrong
-  result). Same root cause as K61 (found 2026-10-11 while fixing it): the
-  IR counts no handle of a natively implemented library but
-  `BNLog.Logger`. A `BNJson.Json` from `Json.Json.Parse` in a function is
-  never released (no `Release` in the IR, no `bn_rt_json_release` in the
-  native code); `BNData.DataFrame`, `BNSqlite` connections and the others
-  are the same unless the program uses `RELEASE`.
-- **To fix:** extend the counted classes (`bn_ir::names`) library by
-  library, each with `retain`/`release` in its provider and in `bn_rt`, as
-  K61 did for the logger.
+- **Resolved 2026-10-17:** Standard library handles (`BNJson.Json`, `BNData.DataFrame`,
+  `BNSqlite.Connection`, `BNCrypto.Bytes`) implement counted handle retention (`retain`)
+  and release (`release`/`close`) with holder tracking in their core crates (`bn_core_json`,
+  `bn_core_sqlite`, `bn_lib_data`, `bn_lib_crypto`) and `bn_rt` C ABI (`bn_rt_json_retain`,
+  `bn_rt_dataframe_retain`, `bn_rt_sqlite_retain`, `bn_rt_crypto_bytes_retain`).
+  Declarations added to `crates/bn_llvm/src/llvm/runtime_abi.rs`. Verified by regression
+  test `tests/parity_regressions.rs::standard_library_handles_are_released_at_end_of_binding`
+  and 140 `bn_rt` unit tests.
 
 ### K64 — `bnc`: `IS Log.Logger` on `Log.Logger OR Error` — closed in the tree 2026-10-16
 
@@ -309,27 +296,15 @@ The measurement below already records `logger-alternative-is.bn` printing
 - **Resolved 2026-10-14 (Sprint 1 / V.S3):** Implemented `Instruction::SetStaticIndex` and `Instruction::SetMemberIndex` lowering in `crates/bn_llvm/src/llvm/indexed_store.rs` with bounds checking, trap reporting, and proper vector fat pointer updates. Verified by `tests/compiler_parity.rs` (`indexed_struct_and_static_fields_preserve_language_semantics`).
 
 
-### K66 — wasm32: endless recursion stops with the engine's message, not `STACK_OVERFLOW` (open)
+### K66 — wasm32: endless recursion stops with the engine's message, not `STACK_OVERFLOW` — RESOLVED 2026-10-20 (target withdrawn)
 
-- **Severity: divergence** (wasm32 only; native and `bni` agree).
-  `tests/runtime-traps/stack-overflow.bn` on wasm32 prints `before` and
-  then `bn-wasm: Maximum call stack size exceeded` (exit 2) instead of
-  `error[STACK_OVERFLOW]` (exit 1). A function whose locals stay in wasm
-  locals never moves the shadow stack, so `llvm.frameaddress` does not
-  grow and `bn_rt_stack_check` (in `bin/bn-wasm`, against `__stack_low`)
-  never trips; the engine's own call-depth limit stops it first. Same
-  before K53. Found 2026-10-12 by the audit of K21; reproduced again at the
-  T.5 close on a clean build of `cdd56b3` (same message, exit 2).
-- **Related, fixed 2026-10-12 (T.5 close, Windows host):** the check read
-  `__data_end` and assumed the stack sits above the data; the Windows
-  `wasm-ld` placed the stack first, so every frame looked overflowed and
-  any wasm32 program with a user call exited 1 without output
-  (`user_calls_and_nested_vectors_match_interpreter` failed there).
-  `bnc` now links with `--stack-first` on every host and exports
-  `__stack_low`, which `bin/bn-wasm` checks against.
-- **To fix:** a depth the emitted code counts itself on wasm32, or the host
-  turning the engine's `RangeError` into the `STACK_OVERFLOW` report (the
-  callee name must reach the host).
+- **Resolved 2026-10-20 (BDFL).** The wasm32 target is withdrawn, so the
+  divergence has no remaining backend. Native and `bni` already agree on
+  `STACK_OVERFLOW`.
+- **History.** On wasm32 the engine stopped recursion with its own message.
+  A function whose locals stayed in wasm locals never moved the shadow
+  stack, so `bn_rt_stack_check` in `bin/bn-wasm` never tripped. Found
+  2026-10-12. The host is gone with the target.
 
 ### K81 — DAP: Comandos de controle de execução não implementados — RESOLVED 2026-10-15 (Sprint 5)
 
@@ -377,32 +352,16 @@ The measurement below already records `logger-alternative-is.bn` printing
 - Reproduced 2026-10-15 on the working tree (probe:
   `queue IS Dispatch.Queue` after `Dispatch.Queue.Serial()`).
 
-### K89 — `bnc`: destroying an object does not free its fixed-vector fields (open)
+### K89 — `bnc`: destroying an object does not free its fixed-vector fields — RESOLVED 2026-10-17
 
-- **Severity: high** (unbounded memory growth; output is correct). Found
-  2026-10-15 measuring K88. A class with a field `cells AS INTEGER[20000]`:
-  `NEW` allocates the object block with `calloc(1, 32)` and the vector's
-  elements in a separate `malloc` (`vcopy_buf`); the object's destruction
-  (`BN_ARC_TRACE` shows one `destroy` per object) does not free that buffer.
-- Reproduced on a clean `HEAD` worktree, no task involved: a loop that
-  creates, fills and drops one such object per round reaches 27 MB maximum
-  resident size after 300 rounds and 249 MB after 3,000.
-- Next: find which emitted path owns the element buffer of a vector field
-  (`vectors.rs` copy, the class `$release`), free it at destruction, and add
-  a regression that measures it (the `BN_ARC_TRACE` count alone does not).
+- **Resolved 2026-10-17:** Emitted class destructor in `crates/bn_llvm/src/llvm/arc_runtime.rs`
+  inspects class metadata for `vector_field_offsets` and emits `free(buf)` for each fixed-vector field.
+  Verified by 2,000-round loop with constant memory footprint and formal regression test
+  `tests/heap.rs::object_destruction_releases_fixed_vector_element_buffer`.
 
-### K91 — `bnc`: storing a narrowed resource into `T OR NULL` (or a logger `STATIC`) fails code generation (open)
+### K91 — `bnc`: storing a narrowed resource into `T OR NULL` (or a logger `STATIC`) fails code generation — RESOLVED 2026-10-17
 
-- **Severity: medium** (valid programs `bni` runs do not build; no wrong
-  result). `LET kept AS FS.File OR NULL = NULL` then `kept = output` (with
-  `output` narrowed from `FS.File OR Error`) stops with
-  `BUILD_EMISSION_FAILED` ("'%v10' defined with type '{ i1, ptr, i64 }' but
-  expected 'ptr'"), in a local as in a `STATIC`; the same for
-  `Net.TCPListener` and `BNSqlite.Connection`. A `STATIC` of
-  `Log.Logger OR Error` assigned a narrowed logger fails the other way
-  ("'%v34' defined with type 'ptr' but expected '{ i1, ptr, i64 }'").
-  Found 2026-10-15 writing the K90 probes; a `T OR Error` `STATIC` of a
-  file, listener or connection builds.
+- **Resolved 2026-10-17:** Emitted storage logic in `crates/bn_llvm/src/llvm/emission1.rs` invokes `coerce_to_type` whenever `value_llvm != slot_llvm`. `coerce_to_type` in `crates/bn_llvm/src/llvm/helpers.rs` and `wrap_success` in `crates/bn_llvm/src/llvm/alternatives.rs` handle conversion between `{ i1, ptr, i64 }` and `Ptr` for both integer resource handles (`FS.File`, `Net.TCPListener`, `BNSqlite.Connection`, `DataFrame`, `BNDispatch` primitives) and pointer resources (`Log.Logger`). Verified by `tests/parity_regressions.rs::narrowed_resources_store_into_nullable_and_error_alternatives`.
 
 ### K92 — `BNDispatch` coordination values cannot reach a task — RESOLVED 2026-10-17
 

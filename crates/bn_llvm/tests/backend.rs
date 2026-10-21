@@ -44,7 +44,6 @@ fn llvm_crate_emits_a_validated_start_function() {
         ..Module::default()
     };
     let validated = bn_ir::validate_module(module).expect("validate module");
-    let llvm =
-        bn_llvm::lower_validated_module_for_target(&validated, false).expect("emit native LLVM");
+    let llvm = bn_llvm::lower_validated_module_for_target(&validated).expect("emit native LLVM");
     assert!(llvm.contains("define i32 @main"));
 }

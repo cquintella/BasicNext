@@ -39,14 +39,18 @@ fn arc_error(error: ArcError, span: Span) -> Diagnostic {
 impl Executor<'_, '_> {
     /// Registers a new allocation in the core: one strong reference, held by
     /// the value `NEW` yields.
-    pub fn register_allocation(&mut self, class: &str, span: Span) -> Handle {
+    pub(crate) fn register_allocation(&mut self, class: &str, span: Span) -> Handle {
         // The interpreter's handle is the id; it has no address to keep.
         handle_of(self.arc.register(class, 0, site(span)))
     }
 
     /// `Retain`: one more strong reference to every object and region
     /// `value` holds.
-    pub fn retain_owned_value(&mut self, value: &Value, span: Span) -> Result<(), Diagnostic> {
+    pub(crate) fn retain_owned_value(
+        &mut self,
+        value: &Value,
+        span: Span,
+    ) -> Result<(), Diagnostic> {
         match value {
             Value::Object { handle, .. } | Value::Pointer { handle, .. } => self
                 .arc
@@ -76,7 +80,11 @@ impl Executor<'_, '_> {
     /// `value` holds; the last one destroys it (0.6.md, "Zero strong →
     /// destructor"). A vector releases its elements in index order, a
     /// `STRUCT` its fields in reverse declaration order, as an object.
-    pub fn release_owned_value(&mut self, value: Value, span: Span) -> Result<(), Diagnostic> {
+    pub(crate) fn release_owned_value(
+        &mut self,
+        value: Value,
+        span: Span,
+    ) -> Result<(), Diagnostic> {
         match value {
             Value::Object { handle, class } => {
                 if self
@@ -158,7 +166,7 @@ impl Executor<'_, '_> {
 
     /// The element at `indices` of `target`, which a write replaces (its
     /// `previous` content).
-    pub fn element_at(
+    pub(crate) fn element_at(
         &self,
         target: &Value,
         indices: &[i128],
@@ -173,7 +181,7 @@ impl Executor<'_, '_> {
 
     /// The value at the end of the field path `fields` from `target` (the
     /// field a `SetField` replaces).
-    pub fn field_at(
+    pub(crate) fn field_at(
         &self,
         target: &Value,
         fields: &[bn_ir::FieldRef],
@@ -205,7 +213,7 @@ impl Executor<'_, '_> {
 
     /// The value a weak binding or a weak field reads: `NULL` once its
     /// object is gone.
-    pub fn weak_read(&self, value: Value) -> Value {
+    pub(crate) fn weak_read(&self, value: Value) -> Value {
         match value {
             Value::Object { handle, .. } if !self.arc.alive(id_of(handle)) => Value::Null,
             value => value,

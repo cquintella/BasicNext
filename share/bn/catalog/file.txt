@@ -5,3 +5,10 @@ open.mode.message = cannot open "{path}" in mode {mode}
 open.purpose.message = cannot open "{path}" for {purpose}
 exists.message = cannot check whether "{path}" exists
 family.cause = the file is in {family} use; a file keeps the family of its first successful method until Close
+
+# Messages moved out of Rust source (text-literal gate).
+msg.file_handle_count_overflowed = file handle count overflowed
+msg.file_handle_is_invalid = file handle is invalid
+msg.file_verified_by_file_for = file verified by file_for
+msg.file_handle_count_overflowed_2 = file handle count overflowed
+msg.file_handle_is_invalid_2 = file handle is invalid

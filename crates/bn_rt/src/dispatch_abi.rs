@@ -9,8 +9,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 pub type BNDispatchHandle = u64;
-pub type BNDispatchStatus = u32;
-pub type BNDispatchTaskFn = extern "C" fn(
+pub(crate) type BNDispatchStatus = u32;
+pub(crate) type BNDispatchTaskFn = extern "C" fn(
     *mut c_void,
     *const BNValue,
     u32,
@@ -18,14 +18,14 @@ pub type BNDispatchTaskFn = extern "C" fn(
     *mut BNDispatchError,
 ) -> BNDispatchStatus;
 
-pub const BN_DISPATCH_OK: BNDispatchStatus = 0;
-pub const BN_DISPATCH_ERROR: BNDispatchStatus = 1;
-pub const BN_DISPATCH_TIMEOUT: BNDispatchStatus = 2;
-pub const BN_DISPATCH_CANCELLED: BNDispatchStatus = 3;
-pub const BN_DISPATCH_CLOSED: BNDispatchStatus = 4;
-pub const BN_DISPATCH_INVALID_HANDLE: BNDispatchStatus = 5;
-pub const BN_DISPATCH_LIMIT: BNDispatchStatus = 6;
-pub const BN_DISPATCH_POLICY_DENIED: BNDispatchStatus = 7;
+pub(crate) const BN_DISPATCH_OK: BNDispatchStatus = 0;
+pub(crate) const BN_DISPATCH_ERROR: BNDispatchStatus = 1;
+pub(crate) const BN_DISPATCH_TIMEOUT: BNDispatchStatus = 2;
+pub(crate) const BN_DISPATCH_CANCELLED: BNDispatchStatus = 3;
+pub(crate) const BN_DISPATCH_CLOSED: BNDispatchStatus = 4;
+pub(crate) const BN_DISPATCH_INVALID_HANDLE: BNDispatchStatus = 5;
+pub(crate) const BN_DISPATCH_LIMIT: BNDispatchStatus = 6;
+pub(crate) const BN_DISPATCH_POLICY_DENIED: BNDispatchStatus = 7;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -78,10 +78,15 @@ impl std::fmt::Debug for BNValue {
         d.field("kind", &self.kind);
         d.field("flags", &self.flags);
         match self.kind {
+            // SAFETY: this match arm is the active field of the C union, and the kind was range-checked before the read.
             BNValueKind::Integer => unsafe { d.field("integer", &self.payload.integer) },
+            // SAFETY: this match arm is the active field of the C union, and the kind was range-checked before the read.
             BNValueKind::Float => unsafe { d.field("floating", &self.payload.floating) },
+            // SAFETY: this match arm is the active field of the C union, and the kind was range-checked before the read.
             BNValueKind::Boolean => unsafe { d.field("boolean", &self.payload.boolean) },
+            // SAFETY: this match arm is the active field of the C union, and the kind was range-checked before the read.
             BNValueKind::Bytes => unsafe { d.field("bytes_len", &self.payload.bytes.length) },
+            // SAFETY: this match arm is the active field of the C union, and the kind was range-checked before the read.
             BNValueKind::Handle => unsafe { d.field("handle", &self.payload.handle) },
             _ => &mut d,
         };
@@ -91,7 +96,7 @@ impl std::fmt::Debug for BNValue {
 
 impl BNValue {
     #[must_use]
-    pub const fn null() -> Self {
+    pub(crate) const fn null() -> Self {
         Self {
             kind: BNValueKind::Null,
             flags: 0,
@@ -110,9 +115,13 @@ pub struct BNDispatchError {
 
 // ABI values are copied into a task-owned context before crossing the worker
 // boundary. Pointer payloads are only borrowed for the duration of the task.
+// SAFETY: the value is copied into the task before the worker runs; its pointer fields are handles owned for that task, not borrows shared across threads.
 unsafe impl Send for BNValue {}
+// SAFETY: the value is copied into the task before the worker runs; its pointer fields are handles owned for that task, not borrows shared across threads.
 unsafe impl Sync for BNValue {}
+// SAFETY: the value is copied into the task before the worker runs; its pointer fields are handles owned for that task, not borrows shared across threads.
 unsafe impl Send for BNDispatchError {}
+// SAFETY: the value is copied into the task before the worker runs; its pointer fields are handles owned for that task, not borrows shared across threads.
 unsafe impl Sync for BNDispatchError {}
 
 /// What a task left for `AWAIT`. Created before the task is submitted and
@@ -220,6 +229,7 @@ fn new_queue(workers: usize, out_queue: *mut BNDispatchHandle) -> BNDispatchStat
             }),
         );
     #[allow(unsafe_code)]
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe {
         *out_queue = handle;
     }
@@ -257,6 +267,7 @@ pub extern "C" fn bn_rt_dispatch_submit(
         Vec::new()
     } else {
         #[allow(unsafe_code)]
+        // SAFETY: the pointer and the length describe a buffer the caller allocated and keeps alive for this call.
         unsafe {
             std::slice::from_raw_parts(arguments, argument_count as usize).to_vec()
         }
@@ -335,6 +346,7 @@ pub extern "C" fn bn_rt_dispatch_submit(
         .push(ticket_handle);
 
     #[allow(unsafe_code)]
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe {
         *out_ticket = ticket_handle;
     }
@@ -375,6 +387,7 @@ pub extern "C" fn bn_rt_dispatch_await(
     if let Err(failure) = ticket_ref.core.wait(i128::from(timeout_ms)) {
         if matches!(failure, DispatchFailure::Cancelled) {
             #[allow(unsafe_code)]
+            // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
             unsafe {
                 if !out_error.is_null() {
                     (*out_error).code = BN_DISPATCH_CANCELLED;
@@ -394,6 +407,7 @@ pub extern "C" fn bn_rt_dispatch_await(
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     #[allow(unsafe_code)]
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe {
         if !out_result.is_null() {
             *out_result = result;
@@ -513,6 +527,7 @@ pub extern "C" fn bn_rt_dispatch_ticket_cancel(
                 err.code = BN_DISPATCH_CANCELLED;
             }
             #[allow(unsafe_code)]
+            // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
             unsafe {
                 if !out_cancelled.is_null() {
                     *out_cancelled = i32::from(cancelled);
@@ -607,6 +622,7 @@ pub extern "C" fn bn_rt_dispatch_ticket_error(
         );
         let record = crate::error_abi::bn_rt_error_take(1, std::ptr::null());
         #[allow(unsafe_code)]
+        // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
         unsafe {
             if !out_msg.is_null() {
                 *out_msg = record;
@@ -634,6 +650,7 @@ pub extern "C" fn bn_rt_dispatch_ticket_error(
         );
         let record = crate::error_abi::bn_rt_error_take(1, std::ptr::null());
         #[allow(unsafe_code)]
+        // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
         unsafe {
             if !out_msg.is_null() {
                 *out_msg = record;
@@ -692,33 +709,12 @@ pub extern "C" fn bn_rt_dispatch_queue_join(
 
 impl BNDispatchError {
     #[must_use]
-    pub const fn empty() -> Self {
+    pub(crate) const fn empty() -> Self {
         Self {
             code: 0,
             message: std::ptr::null_mut(),
             message_length: 0,
         }
-    }
-}
-
-/// Releases the bounded message owned by an ABI error structure.
-#[allow(unsafe_code, clippy::same_length_and_capacity)]
-#[unsafe(no_mangle)]
-pub extern "C" fn bn_rt_dispatch_error_free(error: *mut BNDispatchError) {
-    if error.is_null() {
-        return;
-    }
-    unsafe {
-        let error = &mut *error;
-        if !error.message.is_null() {
-            let length = usize::try_from(error.message_length).unwrap_or(0);
-            drop(Vec::from_raw_parts(
-                error.message.cast::<u8>(),
-                length,
-                length,
-            ));
-        }
-        *error = BNDispatchError::empty();
     }
 }
 
@@ -736,6 +732,7 @@ mod tests {
     ) -> BNDispatchStatus {
         // The test callback writes only a scalar ABI value.
         #[allow(unsafe_code)]
+        // SAFETY: the runtime passes a writable `BNValue` slot for the task result.
         unsafe {
             *result = BNValue {
                 kind: BNValueKind::Integer,
@@ -755,6 +752,7 @@ mod tests {
     ) -> BNDispatchStatus {
         std::thread::sleep(Duration::from_millis(20));
         #[allow(unsafe_code)]
+        // SAFETY: the runtime passes a writable `BNValue` slot for the task result.
         unsafe {
             *result = BNValue {
                 kind: BNValueKind::Integer,
@@ -777,14 +775,6 @@ mod tests {
         let value = BNValue::null();
         assert_eq!(value.kind, BNValueKind::Null);
         assert_eq!(value.flags, 0);
-    }
-
-    #[test]
-    fn error_free_accepts_null_and_clears_owned_storage() {
-        bn_rt_dispatch_error_free(std::ptr::null_mut());
-        let mut error = BNDispatchError::empty();
-        bn_rt_dispatch_error_free(&raw mut error);
-        assert!(error.message.is_null());
     }
 
     #[test]
@@ -814,6 +804,7 @@ mod tests {
         );
         assert_eq!(result.kind, BNValueKind::Integer);
         #[allow(unsafe_code)]
+        // SAFETY: this match arm is the active field of the C union, and the kind was range-checked before the read.
         unsafe {
             assert_eq!(result.payload.integer, 42);
         }

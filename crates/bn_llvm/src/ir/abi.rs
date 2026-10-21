@@ -13,7 +13,7 @@ use super::{instructions::LlvmInst, operands::LlvmOperand, types::LlvmType};
 
 /// The scalar types that cross the C boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum AbiType {
+pub(crate) enum AbiType {
     Void,
     I1,
     I8,
@@ -45,7 +45,7 @@ impl fmt::Display for AbiType {
 
 /// A C function signature with `N` fixed parameters.
 #[derive(Clone, Copy, Debug)]
-pub struct RuntimeFn<const N: usize> {
+pub(crate) struct RuntimeFn<const N: usize> {
     pub name: &'static str,
     pub ret: AbiType,
     pub params: [AbiType; N],
@@ -128,7 +128,7 @@ impl<const N: usize> Declaration for RuntimeFn<N> {
 
 /// A variadic C function with `N` fixed parameters (`printf`).
 #[derive(Clone, Copy, Debug)]
-pub struct VariadicFn<const N: usize> {
+pub(crate) struct VariadicFn<const N: usize> {
     pub name: &'static str,
     pub ret: AbiType,
     pub params: [AbiType; N],
@@ -150,7 +150,7 @@ impl<const N: usize> Declaration for VariadicFn<N> {
 /// `float`) do not all cross the C boundary. Intrinsics order by their
 /// `declare` line, so a module declares them in a stable order.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Intrinsic {
+pub(crate) struct Intrinsic {
     pub name: &'static str,
     pub ret: LlvmType,
     pub params: Vec<LlvmType>,
@@ -181,7 +181,7 @@ impl PartialOrd for Intrinsic {
 }
 
 /// Declares every signature of `group` in `module`, in order.
-pub fn write_declarations(module: &mut super::LlvmModule, group: &[&dyn Declaration]) {
+pub(crate) fn write_declarations(module: &mut super::LlvmModule, group: &[&dyn Declaration]) {
     for signature in group {
         module.declare(signature.signature());
     }

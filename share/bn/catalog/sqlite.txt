@@ -1,0 +1,51 @@
+# BNSqlite texts (bn_catalog; AGENTS.md "No hard-coded messages").
+# One `key = value` per line; `{name}` is filled by the code.
+
+error.file_not_found.message = database file not found: {path}
+error.access_denied.message = database access denied: {msg}
+error.policy_denied.message = execution policy denied database operation: {msg}
+error.corrupt.message = database corruption detected: {msg}
+error.busy.message = database is busy: {msg}
+error.locked.message = database table or lock conflict: {msg}
+error.read_only.message = attempt to write to read-only database: {msg}
+error.syntax.message = SQL syntax error: {msg}
+error.schema.message = database schema error: {msg}
+error.constraint.message = database constraint violation: {msg}
+error.type_mismatch.message = data type mismatch: {msg}
+error.misuse.message = API misuse: {msg}
+error.closed.message = database connection is closed
+error.limit.message = database limit exceeded: {msg}
+error.io.message = database I/O failure: {msg}
+error.internal.message = internal database engine failure: {msg}
+
+error.file_not_found.cause = the specified path does not exist on disk
+error.busy.cause = database lock contention exceeded timeout
+error.locked.cause = conflicting transaction or statement held a lock
+error.read_only.cause = database was opened with OpenReadOnly or media is read-only
+error.closed.cause = method invoked on a closed Connection
+
+error.integer_range = integer value out of 64-bit range
+error.utf8 = text is not valid UTF-8: {detail}
+
+needle.syntax_error = syntax error
+needle.unrecognized_token = unrecognized token
+needle.no_such_table = no such table
+needle.no_such_column = no such column
+needle.no_such_index = no such index
+
+error.concurrent_mutation = database file identity changed concurrently during open
+error.path_traversal = directory traversal (..) and null bytes are not permitted
+error.missing_file_name = invalid database path (missing file name)
+error.sql_nul = SQL string contains null byte
+error.multiple_statements = multiple SQL statements in single call are prohibited
+error.exec_returns_rows = Exec cannot be called with row-producing query (SELECT); use Query
+error.read_only_mutation = cannot execute mutative statement on read-only connection
+error.query_empty = query string contains no executable SQL statement
+error.query_not_rows = Query cannot be called with non-row statement (DDL/DML); use Exec
+error.begin_active = cannot begin transaction: a transaction is already active
+error.commit_inactive = cannot commit: no transaction is active
+error.rollback_inactive = cannot rollback: no transaction is active
+sql.begin_immediate = BEGIN IMMEDIATE;
+
+# Messages moved out of Rust source (text-literal gate).
+msg.bnsqlite_connection_retain = BNSqlite.Connection.Retain

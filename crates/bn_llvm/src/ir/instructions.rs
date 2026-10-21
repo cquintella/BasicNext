@@ -251,7 +251,7 @@ fn values(pairs: &[(LlvmType, LlvmOperand)]) -> impl Iterator<Item = &LlvmOperan
 impl LlvmInst {
     /// Returns true if this is a block terminator.
     #[must_use]
-    pub fn is_terminator(&self) -> bool {
+    pub(crate) fn is_terminator(&self) -> bool {
         matches!(
             self,
             Self::Br { .. } | Self::CondBr { .. } | Self::Ret { .. } | Self::Unreachable
@@ -260,7 +260,7 @@ impl LlvmInst {
 
     /// Every operand the instruction reads, the callee of a call included.
     #[must_use]
-    pub fn operands(&self) -> Vec<&LlvmOperand> {
+    pub(crate) fn operands(&self) -> Vec<&LlvmOperand> {
         match self {
             Self::Load { ptr, .. } => vec![ptr],
             Self::Store { val, ptr, .. } => vec![val, ptr],
@@ -465,7 +465,7 @@ pub struct InstructionEntry {
 impl InstructionEntry {
     /// Creates an instruction entry without destination register.
     #[must_use]
-    pub fn void(inst: LlvmInst) -> Self {
+    pub(crate) fn void(inst: LlvmInst) -> Self {
         Self {
             dest: None,
             inst,
@@ -475,7 +475,7 @@ impl InstructionEntry {
 
     /// Creates an instruction entry with destination SSA register.
     #[must_use]
-    pub fn assign(dest: impl Into<String>, inst: LlvmInst) -> Self {
+    pub(crate) fn assign(dest: impl Into<String>, inst: LlvmInst) -> Self {
         Self {
             dest: Some(dest.into()),
             inst,
@@ -485,7 +485,7 @@ impl InstructionEntry {
 
     /// Attaches a DWARF debug location ID (`!dbg !{id}`).
     #[must_use]
-    pub fn with_dbg(mut self, dbg_id: u32) -> Self {
+    pub(crate) fn with_dbg(mut self, dbg_id: u32) -> Self {
         self.dbg_loc = Some(dbg_id);
         self
     }

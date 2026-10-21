@@ -204,6 +204,22 @@ impl Builder<'_> {
         retained
     }
 
+    /// Releases values a loop is holding, except `keep` (a `RETURN` of the
+    /// vector itself). The loop's exit blocks are not on this path.
+    pub(crate) fn release_held(&mut self, keep: Option<ValueId>) {
+        let pending = std::mem::take(&mut self.held);
+        for (value, span) in pending {
+            if Some(value) == keep {
+                continue;
+            }
+            self.emit(Instruction::Release {
+                value,
+                destructor: None,
+                span,
+            });
+        }
+    }
+
     /// Releases the owned values nothing consumed (temporaries), except
     /// `keep` (the value a `RETURN` hands to the caller).
     pub(crate) fn release_temporaries(&mut self, keep: Option<ValueId>) {

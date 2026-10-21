@@ -27,7 +27,7 @@ pub type Frontend = Prepared;
 ///
 /// The message or diagnostic was already printed; returns the exit code
 /// (tool error for an unreadable file, language error for a lexical one).
-pub fn read_source(options: &Options) -> Result<(SourceFile, Vec<Token>), ExitCode> {
+pub(crate) fn read_source(options: &Options) -> Result<(SourceFile, Vec<Token>), ExitCode> {
     log(options.verbosity, 1, format!("reading {}", options.path));
     let text = match std::fs::read_to_string(&options.path) {
         Ok(text) => text,
@@ -80,17 +80,17 @@ pub fn load_frontend_with_overlays(
             let phase = error.phase();
             match &error {
                 PrepareError::Load(error) => {
-                    emit_frontend_error(&error.diagnostic, &error.source, options, phase)
+                    emit_frontend_error(&error.diagnostic, &error.source, options, phase, None)
                 }
                 PrepareError::Semantic { graph, error } => {
                     let source = graph
                         .modules
                         .get(module_index(error.module.0))
                         .map_or(source, |module| &module.source);
-                    emit_frontend_error(&error.diagnostic, source, options, phase)
+                    emit_frontend_error(&error.diagnostic, source, options, phase, Some(graph))
                 }
-                PrepareError::Lower { diagnostic, .. } => {
-                    emit_frontend_error(diagnostic, source, options, phase)
+                PrepareError::Lower { graph, diagnostic } => {
+                    emit_frontend_error(diagnostic, source, options, phase, Some(graph))
                 }
             }
         })?;

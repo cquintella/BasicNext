@@ -98,13 +98,15 @@ pub(super) fn is_value(
         "DATE" => matches!(value, Value::Date(_)),
         "TIME" => matches!(value, Value::Time(_)),
         "TIMEZONE" => matches!(value, Value::TimeZone(_)),
-        test if test.starts_with("POINTER TO ") => match value {
-            Value::Pointer { element, .. } => {
-                bn_types::pointers::pointer_is_holds(*element, pointer_len.unwrap_or(0), test)
-                    .unwrap_or(false)
+        test if test.starts_with(bn_catalog::text("frontend", "msg.pointer_to_prefix")) => {
+            match value {
+                Value::Pointer { element, .. } => {
+                    bn_types::pointers::pointer_is_holds(*element, pointer_len.unwrap_or(0), test)
+                        .unwrap_or(false)
+                }
+                _ => false,
             }
-            _ => false,
-        },
+        }
         // `ELEMENT[n][m]`: a fixed vector of exactly `n` elements, each an
         // `ELEMENT[m]`.
         test if test.ends_with(']')

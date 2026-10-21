@@ -96,7 +96,7 @@ pub(crate) fn type_test_name(atom: &TypeAtom) -> String {
     // which `parse_pointer_is` does not read.
     if atom.name == "POINTER" && atom.parts.first().is_some_and(|part| part == "TO") {
         let element = join_type_parts(&atom.parts[1..]);
-        return format!("POINTER TO {element}");
+        return bn_catalog::fill("frontend", "msg.pointer_to", &[("element", &element)]);
     }
     let mut parts = Vec::with_capacity(atom.parts.len() + 1);
     parts.push(atom.name.clone());
@@ -126,11 +126,16 @@ fn join_type_parts(parts: &[String]) -> String {
 /// `#<module>.Logger`). The bracket suffix stays, so a length test is not
 /// rewritten into a different length.
 pub(crate) fn pointer_test_with_identity(written: &str, identity: &str) -> String {
-    let Some(rest) = written.strip_prefix("POINTER TO ") else {
+    let Some(rest) = written.strip_prefix(bn_catalog::text("frontend", "msg.pointer_to_prefix"))
+    else {
         return written.to_string();
     };
     let suffix_at = rest.find([' ', '[']).unwrap_or(rest.len());
-    format!("POINTER TO {identity}{}", &rest[suffix_at..])
+    bn_catalog::fill(
+        "frontend",
+        "msg.pointer_to_suffix",
+        &[("identity", &identity), ("suffix", &&rest[suffix_at..])],
+    )
 }
 
 pub(crate) fn named_or_void(reference: &TypeReference) -> Type {

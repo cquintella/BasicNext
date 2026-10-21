@@ -16,9 +16,9 @@ use crate::fields::{FieldMap, check_values};
 use crate::{Format, Level, LogFailure, Record};
 
 /// Bytes of a logger label: at least 1, at most this many (UTF-8).
-pub const LABEL_MAX_BYTES: usize = 128;
+pub(crate) const LABEL_MAX_BYTES: usize = 128;
 /// The bounds of a `Flush` or `Close` timeout, in milliseconds.
-pub const TIMEOUT_MIN_MS: i128 = 1;
+pub(crate) const TIMEOUT_MIN_MS: i128 = 1;
 pub const TIMEOUT_MAX_MS: i128 = 60_000;
 
 /// What a logger needs from its host to write a record.
@@ -67,7 +67,7 @@ impl Destination {
     /// # Errors
     ///
     /// `InvalidString` for an empty text.
-    pub fn from_text(text: &str) -> Result<Self, LogFailure> {
+    pub(crate) fn from_text(text: &str) -> Result<Self, LogFailure> {
         if text.is_empty() {
             return Err(LogFailure::InvalidString {
                 what: catalog::text("what.destination"),

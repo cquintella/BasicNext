@@ -25,7 +25,7 @@ pub fn display(ty: &Type) -> String {
 }
 
 #[must_use]
-pub fn typeof_name(ty: &Type) -> String {
+pub(crate) fn typeof_name(ty: &Type) -> String {
     helpers1::typeof_name(ty)
 }
 
@@ -42,12 +42,12 @@ mod helpers3;
 pub(crate) use helpers3::*;
 
 #[must_use]
-pub fn static_len(ty: &Type) -> Option<u64> {
+pub(crate) fn static_len(ty: &Type) -> Option<u64> {
     helpers1::static_len(ty)
 }
 
 #[must_use]
-pub fn static_size_of(ty: &Type) -> Option<u64> {
+pub(crate) fn static_size_of(ty: &Type) -> Option<u64> {
     crate::types::static_size_of(ty)
 }
 
@@ -82,7 +82,7 @@ impl SemanticModel {
     }
 
     #[must_use]
-    pub fn symbol_at(&self, span: Span) -> Option<&ResolvedSymbol> {
+    pub(crate) fn symbol_at(&self, span: Span) -> Option<&ResolvedSymbol> {
         self.symbols.iter().find(|symbol| symbol.span == span)
     }
 }
@@ -144,7 +144,7 @@ pub enum ConstantValue {
 
 impl SemanticModel {
     #[must_use]
-    pub fn size_of(&self, ty: &Type) -> Option<u64> {
+    pub(crate) fn size_of(&self, ty: &Type) -> Option<u64> {
         if let Some(size) = static_size_of(ty) {
             return Some(size);
         }
@@ -162,7 +162,7 @@ impl SemanticModel {
 
     /// Fields of `ty` when it is a `STRUCT`, in declaration order.
     #[must_use]
-    pub fn struct_fields_of(&self, ty: &Type) -> Option<&[RecordMember]> {
+    pub(crate) fn struct_fields_of(&self, ty: &Type) -> Option<&[RecordMember]> {
         let key = match ty {
             Type::Named(name) => name.clone(),
             Type::ImportedNamed { module, name } => format!("#{}.{}", module.0, name),

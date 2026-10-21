@@ -63,7 +63,7 @@ A arquitetura do projeto impõe um fluxo de compilação estritamente desacoplad
 ### bn_llvm
 * **Propósito**: Backend de geração de código otimizado utilizando LLVM (`inkwell`).
 * **Componentes principais**: Módulos de emissão de instruções (`emission1`), validação de suporte a alvos (`analysis_validate`), emissão de chamadas e objetos, pontes com o runtime nativo `bn_rt` e orquestração de Clang/LLVM.
-* **Alvos suportados**: Executáveis nativos para a plataforma hospedeira (x86_64, aarch64) e módulos WebAssembly (`wasm32`).
+* **Alvos suportados**: Executáveis nativos para a plataforma hospedeira (x86_64, aarch64).
 
 ---
 
@@ -131,7 +131,7 @@ A arquitetura do projeto impõe um fluxo de compilação estritamente desacoplad
 
 ### bn_compile_driver
 * **Propósito**: Driver de orquestração do fluxo de compilação nativa.
-* **Componentes principais**: Valida o suporte da arquitetura de destino, invoca a geração de código LLVM, gerencia a chamada de ferramentas externas (Clang, lld, wasm-ld), registra logs de compilação complementares e assegura a limpeza de artefatos temporários em caso de falha.
+* **Componentes principais**: Valida o suporte da arquitetura de destino, invoca a geração de código LLVM, gerencia a chamada de ferramentas externas (Clang), registra logs de compilação complementares e assegura a limpeza de artefatos temporários em caso de falha.
 
 ### bn_lsp
 * **Propósito**: Servidor do protocolo Language Server Protocol (LSP) para IDEs e editores.
@@ -146,7 +146,7 @@ A arquitetura do projeto impõe um fluxo de compilação estritamente desacoplad
 * **Entrada**: Binário interativo `bni <subcomando> [opções] <arquivo.bn>` com suporte a execução direta padrão (`bni <arquivo.bn>`).
 
 ### bnc
-* **Propósito**: Compilador Ahead-of-Time (AOT) para geração de executáveis nativos e WebAssembly.
+* **Propósito**: Compilador Ahead-of-Time (AOT) para geração de executáveis nativos.
 * **Entrada**: Binário de compilação `bnc [opções] <entrada.bn> -o <saída>`.
 
 ---

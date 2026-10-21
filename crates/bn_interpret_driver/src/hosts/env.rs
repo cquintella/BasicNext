@@ -15,10 +15,10 @@ use bn_interp::{
     require_arity_pub as require_arity, runtime_error_pub as runtime_error, type_mismatch,
 };
 
-pub const NAME: &str = "Env";
+pub(crate) const NAME: &str = "Env";
 
 #[derive(Debug, Default)]
-pub struct EnvProvider;
+pub(crate) struct EnvProvider;
 
 impl Provider for EnvProvider {
     fn call(

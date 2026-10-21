@@ -19,12 +19,12 @@
 
 pub mod connection;
 pub mod error;
-pub mod file_id;
-pub mod types;
+pub(crate) mod file_id;
+pub(crate) mod types;
 
 pub use connection::{
-    begin, changes, close, commit, exec, last_insert_rowid, open_connection, query, rollback,
+    begin, changes, close, commit, exec, last_insert_rowid, open_connection, query, retain,
+    rollback,
 };
 pub use error::SqliteFailure;
-pub use file_id::{FileIdentity, is_symlink_or_reparse_point};
 pub use types::{OpenMode, SqliteColumn, SqliteQueryResult, SqliteValue};

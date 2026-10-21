@@ -29,19 +29,19 @@ pub fn parse_val(text: &str) -> f64 {
     bn_core_text::parse_val(text)
 }
 
-pub fn iabs(value: i64) -> i64 {
+pub(crate) fn iabs(value: i64) -> i64 {
     bn_core_math::iabs(value).unwrap_or_else(|| fail("NUMERIC_OVERFLOW", "BNMath.ABS overflowed"))
 }
 
-pub fn isign(value: i64) -> i64 {
+pub(crate) fn isign(value: i64) -> i64 {
     bn_core_math::isign(value)
 }
 
-pub fn tohour(milliseconds: i64) -> i32 {
+pub(crate) fn tohour(milliseconds: i64) -> i32 {
     bn_core_math::tohour(milliseconds)
 }
 
-pub fn toweekday(milliseconds: i64) -> i32 {
+pub(crate) fn toweekday(milliseconds: i64) -> i32 {
     bn_core_math::toweekday(milliseconds)
 }
 

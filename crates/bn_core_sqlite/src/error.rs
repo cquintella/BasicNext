@@ -54,35 +54,60 @@ impl SqliteFailure {
     #[must_use]
     pub fn message(&self) -> String {
         match self {
-            Self::FileNotFound(path) => format!("database file not found: {path}"),
-            Self::AccessDenied(msg) => format!("database access denied: {msg}"),
-            Self::PolicyDenied(msg) => format!("execution policy denied database operation: {msg}"),
-            Self::Corrupt(msg) => format!("database corruption detected: {msg}"),
-            Self::Busy(msg) => format!("database is busy: {msg}"),
-            Self::Locked(msg) => format!("database table or lock conflict: {msg}"),
-            Self::ReadOnly(msg) => format!("attempt to write to read-only database: {msg}"),
-            Self::SyntaxError(msg) => format!("SQL syntax error: {msg}"),
-            Self::SchemaError(msg) => format!("database schema error: {msg}"),
-            Self::ConstraintViolation(msg) => format!("database constraint violation: {msg}"),
-            Self::TypeMismatch(msg) => format!("data type mismatch: {msg}"),
-            Self::Misuse(msg) => format!("API misuse: {msg}"),
-            Self::Closed => "database connection is closed".into(),
-            Self::LimitExceeded(msg) => format!("database limit exceeded: {msg}"),
-            Self::IoFailed(msg) => format!("database I/O failure: {msg}"),
-            Self::Internal(msg) => format!("internal database engine failure: {msg}"),
+            Self::FileNotFound(path) => {
+                bn_catalog::fill("sqlite", "error.file_not_found.message", &[("path", path)])
+            }
+            Self::AccessDenied(msg) => {
+                bn_catalog::fill("sqlite", "error.access_denied.message", &[("msg", msg)])
+            }
+            Self::PolicyDenied(msg) => {
+                bn_catalog::fill("sqlite", "error.policy_denied.message", &[("msg", msg)])
+            }
+            Self::Corrupt(msg) => {
+                bn_catalog::fill("sqlite", "error.corrupt.message", &[("msg", msg)])
+            }
+            Self::Busy(msg) => bn_catalog::fill("sqlite", "error.busy.message", &[("msg", msg)]),
+            Self::Locked(msg) => {
+                bn_catalog::fill("sqlite", "error.locked.message", &[("msg", msg)])
+            }
+            Self::ReadOnly(msg) => {
+                bn_catalog::fill("sqlite", "error.read_only.message", &[("msg", msg)])
+            }
+            Self::SyntaxError(msg) => {
+                bn_catalog::fill("sqlite", "error.syntax.message", &[("msg", msg)])
+            }
+            Self::SchemaError(msg) => {
+                bn_catalog::fill("sqlite", "error.schema.message", &[("msg", msg)])
+            }
+            Self::ConstraintViolation(msg) => {
+                bn_catalog::fill("sqlite", "error.constraint.message", &[("msg", msg)])
+            }
+            Self::TypeMismatch(msg) => {
+                bn_catalog::fill("sqlite", "error.type_mismatch.message", &[("msg", msg)])
+            }
+            Self::Misuse(msg) => {
+                bn_catalog::fill("sqlite", "error.misuse.message", &[("msg", msg)])
+            }
+            Self::Closed => bn_catalog::text("sqlite", "error.closed.message").to_owned(),
+            Self::LimitExceeded(msg) => {
+                bn_catalog::fill("sqlite", "error.limit.message", &[("msg", msg)])
+            }
+            Self::IoFailed(msg) => bn_catalog::fill("sqlite", "error.io.message", &[("msg", msg)]),
+            Self::Internal(msg) => {
+                bn_catalog::fill("sqlite", "error.internal.message", &[("msg", msg)])
+            }
         }
     }
 
     #[must_use]
     pub fn cause(&self) -> String {
+        let cause = |key: &str| bn_catalog::text("sqlite", key).to_owned();
         match self {
-            Self::FileNotFound(_) => "the specified path does not exist on disk".into(),
-            Self::Busy(_) => "database lock contention exceeded timeout".into(),
-            Self::Locked(_) => "conflicting transaction or statement held a lock".into(),
-            Self::ReadOnly(_) => {
-                "database was opened with OpenReadOnly or media is read-only".into()
-            }
-            Self::Closed => "method invoked on a closed Connection".into(),
+            Self::FileNotFound(_) => cause("error.file_not_found.cause"),
+            Self::Busy(_) => cause("error.busy.cause"),
+            Self::Locked(_) => cause("error.locked.cause"),
+            Self::ReadOnly(_) => cause("error.read_only.cause"),
+            Self::Closed => cause("error.closed.cause"),
             Self::AccessDenied(c)
             | Self::PolicyDenied(c)
             | Self::Corrupt(c)
@@ -117,11 +142,14 @@ impl From<rusqlite::Error> for SqliteFailure {
                     ffi::SQLITE_ABORT | ffi::SQLITE_IOERR => Self::IoFailed(text),
                     _ => {
                         let lower = text.to_ascii_lowercase();
-                        if lower.contains("syntax error") || lower.contains("unrecognized token") {
+                        if lower.contains(bn_catalog::text("sqlite", "needle.syntax_error"))
+                            || lower
+                                .contains(bn_catalog::text("sqlite", "needle.unrecognized_token"))
+                        {
                             Self::SyntaxError(text)
-                        } else if lower.contains("no such table")
-                            || lower.contains("no such column")
-                            || lower.contains("no such index")
+                        } else if lower.contains(bn_catalog::text("sqlite", "needle.no_such_table"))
+                            || lower.contains(bn_catalog::text("sqlite", "needle.no_such_column"))
+                            || lower.contains(bn_catalog::text("sqlite", "needle.no_such_index"))
                         {
                             Self::SchemaError(text)
                         } else {
@@ -134,17 +162,23 @@ impl From<rusqlite::Error> for SqliteFailure {
                 Self::TypeMismatch(detail.to_string())
             }
             rusqlite::Error::IntegralValueOutOfRange(_, _) => {
-                Self::TypeMismatch("integer value out of 64-bit range".into())
+                Self::TypeMismatch(bn_catalog::text("sqlite", "error.integer_range").to_owned())
             }
-            rusqlite::Error::Utf8Error(detail) => {
-                Self::TypeMismatch(format!("text is not valid UTF-8: {detail}"))
-            }
+            rusqlite::Error::Utf8Error(detail) => Self::TypeMismatch(bn_catalog::fill(
+                "sqlite",
+                "error.utf8",
+                &[("detail", &detail)],
+            )),
             other => {
                 let msg = other.to_string();
                 let lower = msg.to_ascii_lowercase();
-                if lower.contains("syntax error") || lower.contains("unrecognized token") {
+                if lower.contains(bn_catalog::text("sqlite", "needle.syntax_error"))
+                    || lower.contains(bn_catalog::text("sqlite", "needle.unrecognized_token"))
+                {
                     Self::SyntaxError(msg)
-                } else if lower.contains("no such table") || lower.contains("no such column") {
+                } else if lower.contains(bn_catalog::text("sqlite", "needle.no_such_table"))
+                    || lower.contains(bn_catalog::text("sqlite", "needle.no_such_column"))
+                {
                     Self::SchemaError(msg)
                 } else {
                     Self::Internal(msg)

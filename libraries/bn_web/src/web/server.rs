@@ -337,13 +337,7 @@ impl ServerState {
         self.logger.clone()
     }
     /// Emits an access record for a served request if a logger is configured.
-    pub fn log_access(
-        &self,
-        method: &str,
-        path: &str,
-        status: u16,
-        request_id: Option<&str>,
-    ) {
+    pub fn log_access(&self, method: &str, path: &str, status: u16, request_id: Option<&str>) {
         let (Some(logger), Some(sink)) = (&self.logger, &self.log_sink) else {
             return;
         };
@@ -582,7 +576,7 @@ impl ServerState {
     pub fn is_ready(&self) -> bool {
         self.status() == ServerStatus::Accepting
     }
-    pub fn mark_failed(&mut self) {
+    pub(crate) fn mark_failed(&mut self) {
         self.failed = Some(());
         self.started = false;
         self.stopping = true;
@@ -646,11 +640,11 @@ impl ServerState {
         }
         self.connection_workers = unfinished;
     }
-    pub fn workers_finished(&mut self) -> bool {
+    pub(crate) fn workers_finished(&mut self) -> bool {
         self.reap_finished_workers();
         self.connection_workers.is_empty()
     }
-    pub fn begin_stop(&mut self, timeout_ms: i128) -> Result<(), &'static str> {
+    pub(crate) fn begin_stop(&mut self, timeout_ms: i128) -> Result<(), &'static str> {
         if !(1..=60_000).contains(&timeout_ms) {
             return Err("stop timeout is outside 1..60000 ms");
         }
@@ -667,7 +661,7 @@ impl ServerState {
         self.started = false;
         Ok(())
     }
-    pub fn finish_stop(&mut self) -> Result<(), &'static str> {
+    pub(crate) fn finish_stop(&mut self) -> Result<(), &'static str> {
         if self.closed {
             return Ok(());
         }
@@ -684,10 +678,10 @@ impl ServerState {
         }
         Ok(())
     }
-    pub fn take_listener(&mut self) -> Option<std::thread::JoinHandle<()>> {
+    pub(crate) fn take_listener(&mut self) -> Option<std::thread::JoinHandle<()>> {
         self.listener.take()
     }
-    pub fn mark_closed(&mut self) {
+    pub(crate) fn mark_closed(&mut self) {
         self.closed = true;
     }
     #[cfg(test)]

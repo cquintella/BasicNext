@@ -41,10 +41,12 @@ pub(crate) fn lower_dispatch_emission(
                 );
                 for (index, argument) in arguments.iter().enumerate() {
                     let a = |name: &str| O::reg(format!("dispatcharg{name}{d}_{index}"));
-                    let argument_ty = analysis
-                        .values
-                        .get(argument)
-                        .expect("validated dispatch argument");
+                    let argument_ty = analysis.values.get(argument).unwrap_or_else(|| {
+                        panic!(
+                            "{}",
+                            bn_catalog::text("llvm", "msg.validated_dispatch_argument")
+                        )
+                    });
                     let offset = vec![(T::I64, O::uint(index as u64 * 16))];
                     text.assign(
                         format!("dispatcharg{d}_{index}"),
@@ -71,7 +73,10 @@ pub(crate) fn lower_dispatch_emission(
                             Type::Integer(_) | Type::IntegerLiteral(_) => 2,
                             Type::Float(_) | Type::FloatLiteral => 3,
                             Type::String => 4,
-                            _ => unreachable!("validated dispatch argument"),
+                            _ => unreachable!(
+                                "{}",
+                                bn_catalog::text("llvm", "msg.validated_dispatch_argument")
+                            ),
                         }
                     };
                     text.emit(I::store(T::I32, O::int(kind), a("")));

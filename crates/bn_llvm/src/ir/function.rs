@@ -12,7 +12,7 @@ use super::{block::BasicBlock, types::LlvmType};
 
 /// An LLVM function definition.
 #[derive(Clone, Debug, PartialEq)]
-pub struct LlvmFunction {
+pub(crate) struct LlvmFunction {
     pub name: String,
     pub ret_ty: LlvmType,
     pub params: Vec<(LlvmType, String)>,
@@ -24,7 +24,7 @@ pub struct LlvmFunction {
 impl LlvmFunction {
     /// Creates a function definition (`define ... { ... }`).
     #[must_use]
-    pub fn new_definition(
+    pub(crate) fn new_definition(
         name: impl Into<String>,
         ret_ty: LlvmType,
         params: Vec<(LlvmType, String)>,
@@ -40,38 +40,38 @@ impl LlvmFunction {
     }
 
     /// Sets the linkage type (e.g. "internal", "private").
-    pub fn set_linkage(&mut self, linkage: impl Into<String>) {
+    pub(crate) fn set_linkage(&mut self, linkage: impl Into<String>) {
         self.linkage = Some(linkage.into());
     }
 
     /// Appends a function attribute (e.g. "nounwind").
-    pub fn add_attribute(&mut self, attr: impl Into<String>) {
+    pub(crate) fn add_attribute(&mut self, attr: impl Into<String>) {
         self.attributes.push(attr.into());
     }
 
     /// Adds a new basic block with the specified label and returns a mutable reference to it.
-    pub fn add_block(&mut self, label: impl Into<String>) -> &mut BasicBlock {
+    pub(crate) fn add_block(&mut self, label: impl Into<String>) -> &mut BasicBlock {
         let idx = self.blocks.len();
         self.blocks.push(BasicBlock::new(label));
         &mut self.blocks[idx]
     }
 
     /// Returns a mutable reference to the last basic block, if any.
-    pub fn current_block_mut(&mut self) -> Option<&mut BasicBlock> {
+    pub(crate) fn current_block_mut(&mut self) -> Option<&mut BasicBlock> {
         self.blocks.last_mut()
     }
 
     /// The `define ... {` line of a definition, without a newline, so a
     /// caller that streams the body can emit the header alone.
     #[must_use]
-    pub fn header(&self) -> String {
+    pub(crate) fn header(&self) -> String {
         format!("{} {{", self.signature_line())
     }
 
     /// The header of a function described by the debug subprogram `dbg`:
     /// `define ... !dbg !N {`.
     #[must_use]
-    pub fn header_with_dbg(&self, dbg: super::debug::MdRef) -> String {
+    pub(crate) fn header_with_dbg(&self, dbg: super::debug::MdRef) -> String {
         format!("{} !dbg {dbg} {{", self.signature_line())
     }
 

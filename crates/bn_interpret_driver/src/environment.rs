@@ -33,9 +33,9 @@ impl HostEnvDefaults for HostEnv {
 ///
 /// Returns the configuration message for invalid sandbox roots or a
 /// malformed policy environment (both `CONFIG_INVALID`, exit 2).
-pub fn host_env(
+pub(crate) fn host_env(
     options: &Options,
-    interpreter: &crate::options::InterpreterOptions,
+    interpreter: crate::options::InterpreterOptions,
     arguments: Vec<String>,
 ) -> Result<HostEnv, String> {
     let host = if options.sandbox {
@@ -81,7 +81,7 @@ mod tests {
             "file.bn",
         ]);
         let interpreter = crate::options::InterpreterOptions::default();
-        let Err(error) = host_env(&sandboxed, &interpreter, vec!["file.bn".into()]) else {
+        let Err(error) = host_env(&sandboxed, interpreter, vec!["file.bn".into()]) else {
             panic!("missing sandbox root must be rejected");
         };
         assert!(error.contains("root"), "{error}");
@@ -89,6 +89,6 @@ mod tests {
             filesystem: false,
             ..interpreter
         };
-        assert!(host_env(&options(&["file.bn"]), &no_filesystem, Vec::new()).is_ok());
+        assert!(host_env(&options(&["file.bn"]), no_filesystem, Vec::new()).is_ok());
     }
 }

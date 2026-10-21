@@ -24,7 +24,7 @@ pub const NAME: &str = "BNLog";
 /// The member the `BNWeb` provider writes its access records through: an
 /// access record with fields beyond `Log.Apache` (`request_id`), as
 /// alternating key and value texts. A `$` name cannot be written in BN.
-pub const WEB_ACCESS_MEMBER: &str = "Logger.$access";
+pub(crate) const WEB_ACCESS_MEMBER: &str = "Logger.$access";
 
 #[derive(Debug)]
 pub struct LogProvider {

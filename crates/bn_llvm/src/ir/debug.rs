@@ -12,7 +12,7 @@ use super::operands::escape_llvm;
 
 /// Reference to a numbered metadata node: renders as `!<id>`.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct MdRef(pub u32);
+pub(crate) struct MdRef(pub u32);
 
 impl fmt::Display for MdRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -31,7 +31,7 @@ pub enum DebugFormat {
 
 /// One metadata node of the subset Basic Next emits.
 #[derive(Clone, Debug, PartialEq)]
-pub enum DebugNode {
+pub(crate) enum DebugNode {
     File {
         filename: String,
         directory: String,
@@ -106,7 +106,7 @@ impl fmt::Display for DebugNode {
 /// Numbered metadata table for one LLVM module. Files, the subroutine type
 /// and locations are interned, so equal nodes share one number.
 #[derive(Debug)]
-pub struct DebugMetadata {
+pub(crate) struct DebugMetadata {
     nodes: Vec<DebugNode>,
     files: HashMap<(String, String), MdRef>,
     locations: HashMap<(u32, u32, MdRef), MdRef>,
@@ -166,7 +166,7 @@ impl DebugMetadata {
     /// Adds a `DISubprogram` for one defined function. It carries the Basic
     /// Next name only: without `linkageName` debuggers show `Twice`, not the
     /// `bn_Twice` symbol.
-    pub fn subprogram(&mut self, name: &str, file: MdRef, line: u32) -> MdRef {
+    pub(crate) fn subprogram(&mut self, name: &str, file: MdRef, line: u32) -> MdRef {
         self.push(DebugNode::Subprogram {
             name: name.to_owned(),
             file,
@@ -177,7 +177,7 @@ impl DebugMetadata {
     }
 
     /// Interns a `DILocation` inside `scope`.
-    pub fn location(&mut self, line: u32, column: u32, scope: MdRef) -> MdRef {
+    pub(crate) fn location(&mut self, line: u32, column: u32, scope: MdRef) -> MdRef {
         if let Some(id) = self.locations.get(&(line, column, scope)) {
             return *id;
         }

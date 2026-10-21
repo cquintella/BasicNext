@@ -47,6 +47,7 @@ pub const NAME: &str = "BNData";
 #[derive(Debug)]
 pub struct DataProvider {
     frames: HashMap<u64, DataFrameResource>,
+    holders: HashMap<u64, usize>,
     next: u64,
 }
 
@@ -54,6 +55,7 @@ impl Default for DataProvider {
     fn default() -> Self {
         Self {
             frames: HashMap::new(),
+            holders: HashMap::new(),
             next: 1,
         }
     }
@@ -90,7 +92,25 @@ impl Provider for DataProvider {
                     columns: Vec::new(),
                 },
             );
+            self.holders.insert(id, 1);
             Ok(Value::DataFrame(id))
+        })
+    }
+
+    fn retain(&mut self, value: &Value, span: Span) -> Option<Result<(), Diagnostic>> {
+        let Value::DataFrame(id) = value else {
+            return None;
+        };
+        Some(match self.holders.get_mut(id) {
+            Some(holders) => {
+                *holders += 1;
+                Ok(())
+            }
+            None => Err(runtime_error(
+                bn_diag::DiagId::USE_AFTER_RELEASE,
+                bn_catalog::text("data", "msg.dataframe_handle_was_already_deleted"),
+                span,
+            )),
         })
     }
 
@@ -98,12 +118,17 @@ impl Provider for DataProvider {
         let Value::DataFrame(id) = value else {
             return None;
         };
-        Some(if self.frames.remove(id).is_some() {
+        Some(if let Some(holders) = self.holders.get_mut(id) {
+            *holders -= 1;
+            if *holders == 0 {
+                self.holders.remove(id);
+                self.frames.remove(id);
+            }
             Ok(())
         } else {
             Err(runtime_error(
                 bn_diag::DiagId::DOUBLE_RELEASE,
-                "DataFrame handle was already deleted",
+                bn_catalog::text("data", "msg.dataframe_handle_was_already_deleted"),
                 span,
             ))
         })
@@ -119,6 +144,7 @@ impl DataProvider {
         let id = self.next;
         self.next += 1;
         self.frames.insert(id, frame);
+        self.holders.insert(id, 1);
         id
     }
 
@@ -186,9 +212,7 @@ impl DataProvider {
                         return Ok(failed(name, &failure));
                     }
                 };
-                let id = self.next;
-                self.next += 1;
-                self.frames.insert(id, frame);
+                let id = self.insert_frame(frame);
                 Ok(Value::DataFrame(id))
             }
             "WriteCSV" => {
@@ -400,9 +424,7 @@ impl DataProvider {
                 require_arity(name, arguments, 1, span)?;
                 let transposed =
                     transpose_dataframe(frame, render, |value| Value::String(shared_string(value)));
-                let new_id = self.next;
-                self.next += 1;
-                self.frames.insert(new_id, transposed);
+                let new_id = self.insert_frame(transposed);
                 Ok(Value::DataFrame(new_id))
             }
             "GetString" | "GetInteger" | "GetFloat" | "GetBoolean" => {
@@ -515,9 +537,7 @@ impl DataProvider {
                         Ok(frame) => frame,
                         Err(failure) => return Ok(failed(name, &failure)),
                     };
-                let new_id = self.next;
-                self.next += 1;
-                self.frames.insert(new_id, zscored);
+                let new_id = self.insert_frame(zscored);
                 Ok(Value::DataFrame(new_id))
             }
             "Mean" | "Median" | "Quartile1" | "Quartile3" | "Mode" | "Stdev" | "Variance"
@@ -628,9 +648,7 @@ impl DataProvider {
             Ok(frame) => frame,
             Err(failure) => return Ok(failed(&format!("BNData.DataFrame.{method}"), &failure)),
         };
-        let new_id = self.next;
-        self.next += 1;
-        self.frames.insert(new_id, selected);
+        let new_id = self.insert_frame(selected);
         Ok(Value::DataFrame(new_id))
     }
 
@@ -700,9 +718,7 @@ impl DataProvider {
                 return Ok(failed(name, &failure));
             }
         };
-        let new_id = self.next;
-        self.next += 1;
-        self.frames.insert(new_id, frame);
+        let new_id = self.insert_frame(frame);
         Ok(Value::DataFrame(new_id))
     }
 
@@ -747,9 +763,7 @@ impl DataProvider {
                     return Ok(failed(name, &failure));
                 }
             };
-            let new_id = self.next;
-            self.next += 1;
-            self.frames.insert(new_id, columns);
+            let new_id = self.insert_frame(columns);
             return Ok(Value::DataFrame(new_id));
         }
         let columns = match append_columns(left, right) {
@@ -758,9 +772,7 @@ impl DataProvider {
                 return Ok(failed(name, &failure));
             }
         };
-        let new_id = self.next;
-        self.next += 1;
-        self.frames.insert(new_id, columns);
+        let new_id = self.insert_frame(columns);
         Ok(Value::DataFrame(new_id))
     }
 

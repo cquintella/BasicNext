@@ -1,7 +1,7 @@
 .\" groff man page for the Basic Next compiler executable (0.6 line).
 .TH BNC 1 "October 1, 2026" "bnc 0.6.4" "Basic Next"
 .SH NAME
-bnc \- Basic Next compiler (native executables and WebAssembly modules)
+bnc \- Basic Next compiler (native executables)
 .SH SYNOPSIS
 .B bnc
 .RI [ compile-options ]
@@ -17,13 +17,11 @@ validation), checks the program against the selected target's support
 matrix, and lowers the validated IR to LLVM IR. Without
 .B -o
 it generates an executable artifact named after the entry file
-in the current directory (or a WebAssembly module when targeting wasm32).
+in the current directory.
 With
 .B -o
 it writes the artifact to the specified path. It invokes Clang to create a
-native executable, or Clang and
-.B wasm-ld
-to create a linked WebAssembly module, linking the native runtime
+native executable, linking the native runtime
 .I libbn_rt.a
 when the program uses
 .BR HOST .
@@ -44,11 +42,11 @@ to
 .IR file .
 Without it, the output filename is inferred from the entry file stem.
 .TP
-.BI --target " native|wasm32"
-Select the target. The default is
-.BR native .
-Programs importing capabilities the target does not provide are rejected
-with a
+.BI --target " native"
+Select the target. The only target is
+.BR native ,
+which is also the default.
+Programs outside the native support matrix are rejected with a
 .B TARGET_UNSUPPORTED_*
 diagnostic before anything is emitted.
 .TP
@@ -69,8 +67,8 @@ line and column for every instruction. Native executables carry DWARF
 .BR dsymutil ,
 which writes
 .IR file .dSYM );
-on Windows the linker writes a CodeView PDB next to the executable; Wasm
-modules keep DWARF custom sections. Breakpoints by line work best with
+on Windows the linker writes a CodeView PDB next to the executable.
+Breakpoints by line work best with
 .BR "--opt none" ,
 since optimization can fold or move the code of a line. Without
 .B -g
@@ -82,7 +80,7 @@ Select the CPU architecture tuning for native compilation:
 (default, portable across processors of the same architecture) or
 .BR native
 (passes CPU-specific flags to Clang, yielding non-portable binaries
-that may fail on other host CPUs). Not supported when targeting wasm32.
+that may fail on other host CPUs).
 .TP
 .BI --emit " tokens|ast|typed-ast|ir|llvm"
 Print an artifact instead of compiling.
@@ -141,19 +139,6 @@ Control ANSI colour on status messages.
 .TP
 .BR -V , " --version" ", " -h ", " --help
 Print the version or the help.
-.SH WEBASSEMBLY
-A WebAssembly artifact produced by
-.B "bnc --target wasm32 -o program.wasm entry.bn"
-runs in the reference Node.js host:
-.PP
-.nf
-.RS
-node bin/bn-wasm program.wasm [args...]
-.RE
-.fi
-.PP
-The host supplies stream input/output, arguments, allocation, and seeded
-random. Filesystem and positioned-console capabilities are unavailable.
 .SH DIAGNOSTICS
 A Basic Next diagnostic exits 1. Invalid command use, missing files,
 unavailable toolchains
@@ -205,19 +190,6 @@ then a development
 .I target/
 tree.
 .TP
-.BR BN_WASM_CLANG ", " BN_WASM_LD
-Commands used as the wasm32 compiler and linker. Without them
-.B bnc
-uses the
-.I [toolchain]
-section of
-.IR config.toml ,
-then a Clang with a wasm32 target on
-.B PATH
-or from Homebrew's
-.BR llvm .
-Apple's Clang has no wasm32 backend.
-.TP
 .BR BN_ENV_POLICY ", " BN_EXEC_POLICY ", " BN_FS_POLICY
 Execution policy overrides for compiled binaries. When set to
 .BR deny ,
@@ -230,7 +202,7 @@ at binary startup before user code runs.
 .TP
 .I config.toml
 .RI [ toolchain ]
-.BR clang ", " wasm-clang ", " wasm-ld
+.BR clang
 commands; warning and logging sections shared with
 .BR bni (1).
 .TP
@@ -249,7 +221,6 @@ bnc --emit llvm examples/hello.bn           # LLVM IR on stdout
 bnc -g --opt none examples/hello.bn         # debuggable build
 bnc examples/hello.bn -o hello
 bnc --opt 3 examples/hello.bn -o hello
-bnc --opt s --target wasm32 examples/hello.bn -o hello.wasm
 bnc --emit ir examples/factorial.bn
 bnc --sandbox --read-root ./input examples/app.bn -o app
 .RE

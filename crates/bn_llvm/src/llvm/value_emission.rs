@@ -143,10 +143,15 @@ pub(crate) fn lower_value_emission(
             // The ARC core counts the new object or region from one strong
             // reference, the one `NEW` yields; its id goes to the header.
             if is_region_type(ty) {
+                let label = match ty {
+                    Type::Pointer { element, .. } => helpers::region_element_label(element),
+                    _ => "POINTER".to_string(),
+                };
+                let class_sym = format!(".bn_cls_{}", sanitize_symbol(&label));
                 arc_ops::register(
                     text,
                     *destination,
-                    None,
+                    Some(&class_sym),
                     &O::reg(format!("allocbase{}", destination.0)),
                     state,
                 );

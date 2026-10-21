@@ -82,7 +82,7 @@ fn binary(
             "Greater" => Ok(Value::Boolean(order.is_gt())),
             "GreaterEqual" => Ok(Value::Boolean(order.is_ge())),
             _ => Err(super::type_mismatch(
-                "Plus or an ordering operator",
+                bn_catalog::text("frontend", "msg.plus_or_an_ordering_operator"),
                 operator,
                 "STRING operation",
                 span,
@@ -237,7 +237,7 @@ fn finite_float(value: f64, kind: FloatType, span: Span) -> Result<Value, Diagno
     if kind == FloatType::Float32 {
         #[allow(clippy::cast_possible_truncation)]
         let narrowed = value as f32;
-        if narrowed.is_infinite() {
+        if value.is_finite() && narrowed.is_infinite() {
             return Err(numeric_overflow(
                 bn_diag::trap_texts::FLOAT64_TO_FLOAT32,
                 span,

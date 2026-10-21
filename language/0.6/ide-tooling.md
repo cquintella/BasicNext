@@ -48,7 +48,7 @@ expose those snapshots.
   standard modules.
 - The language server analyzes source supplied by the client; it must not
   execute it.
-- The debug adapter controls the native interpreter only. Compiler, wasm, and
+- The debug adapter controls the native interpreter only. Compiler and
   Jupyter debugging are unavailable until each has executable provider
   evidence.
 - Requests and produced data are bounded. A malformed request yields a

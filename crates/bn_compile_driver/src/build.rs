@@ -22,7 +22,7 @@ use bn_source::SourceFile;
 
 use crate::{
     artifact::{emit_build_output, product_path},
-    options::{BuildOptions, Optimization, Target},
+    options::{BuildOptions, Optimization},
 };
 
 /// Where the process log goes (target-architecture.md, "Companion `.log`":
@@ -32,14 +32,11 @@ use crate::{
 /// # Errors
 ///
 /// An explicit log path equal to the product would overwrite it.
-fn process_log_target(
-    options: &Options,
-    build_options: BuildOptions,
-) -> Result<Option<LogTarget>, String> {
+fn process_log_target(options: &Options) -> Result<Option<LogTarget>, String> {
     if options.no_log {
         return Ok(None);
     }
-    let product = product_path(options, build_options);
+    let product = product_path(options);
     match options.log_file.as_deref() {
         Some(path) if product.as_deref() == Some(Path::new(path)) => Err(format!(
             "--log-file {path} is the build output; choose another path"
@@ -55,7 +52,7 @@ fn process_log_target(
 /// Compiles `options.path` and writes the companion process log.
 #[must_use]
 pub fn build(source: &SourceFile, options: &Options, build_options: BuildOptions) -> ExitCode {
-    let log_target = match process_log_target(options, build_options) {
+    let log_target = match process_log_target(options) {
         Ok(target) => target,
         Err(message) => {
             eprintln!(
@@ -207,12 +204,7 @@ fn build_inner(
     process_log.event(LogLevel::Info, "lower", "start", "lower and validate IR");
     let module = &frontend.validated;
     process_log.event(LogLevel::Info, "lower", "success", "validated IR ready");
-    let llvm_target = if build_options.target == Target::Wasm32 {
-        LlvmTarget::Wasm32
-    } else {
-        LlvmTarget::Native
-    };
-    if let Err(error) = validate_for(module, llvm_target) {
+    if let Err(error) = validate_for(module, LlvmTarget::Native) {
         process_log.event(
             LogLevel::Error,
             "validate_for",
@@ -225,7 +217,10 @@ fn build_inner(
                 error.span.start.column
             ),
         );
-        eprintln!("error[{}]: {}", error.code, error.message);
+        eprintln!(
+            "{}",
+            bn_cli::diagnostics::present_diagnostic(&error, source, Some(&frontend.graph), options)
+        );
         return tool_error();
     }
     process_log.event(
@@ -268,15 +263,21 @@ fn build_inner(
             .find(|module| module.id == frontend.graph.root)
             .map_or(source.source_id, |module| module.source.source_id),
         optimized: build_options.optimization != Optimization::None,
-        format: DebugInfo::format_for(build_options.target == Target::Wasm32),
+        format: DebugInfo::format_for(),
     });
     // Runtime traps print what `bni` prints: the same renderer, catalog,
     // and source (R6); the text is rendered here, not in the program.
     let result = match lower_validated_module_with_diagnostics(
         module,
-        build_options.target == Target::Wasm32,
         &policy,
-        &|diagnostic| bn_cli::diagnostics::render_diagnostic(diagnostic, source, options),
+        &|diagnostic| {
+            bn_cli::diagnostics::present_diagnostic(
+                diagnostic,
+                source,
+                Some(&frontend.graph),
+                options,
+            )
+        },
         debug.as_ref(),
     ) {
         Ok(llvm) => {

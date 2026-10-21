@@ -6,13 +6,72 @@
 use std::process::ExitCode;
 
 use bn_diag::{DiagId, Diagnostic, Level};
-use bn_frontend::prepare::Prepared;
+use bn_frontend::{module_graph::ModuleGraph, prepare::Prepared};
 use bn_source::{Position, SourceFile};
 
 use crate::{
     options::{Options, OutputFormat},
     output::{language_error, module_index},
 };
+
+/// Renders `diagnostic` against the file its span names.
+///
+/// The span's `SourceId` selects the imported module when the graph loaded
+/// it. The entry file passed by the caller is the fallback for a span the
+/// graph does not know. Internal type names in the message are rewritten to
+/// that module's spelling.
+#[must_use]
+pub fn present_diagnostic(
+    diagnostic: &Diagnostic,
+    fallback: &SourceFile,
+    graph: Option<&ModuleGraph>,
+    options: &Options,
+) -> String {
+    let source = located_source(diagnostic, fallback, graph);
+    let rendered = render_diagnostic(diagnostic, source, options);
+    match graph {
+        Some(graph) => spell_rendered(&rendered, diagnostic, graph),
+        None => rendered,
+    }
+}
+
+fn located_source<'a>(
+    diagnostic: &Diagnostic,
+    fallback: &'a SourceFile,
+    graph: Option<&'a ModuleGraph>,
+) -> &'a SourceFile {
+    graph
+        .and_then(|graph| {
+            bn_frontend::module_graph::source_of(graph, diagnostic.span.start.source_id)
+        })
+        .unwrap_or(fallback)
+}
+
+fn spell_rendered(rendered: &str, diagnostic: &Diagnostic, graph: &ModuleGraph) -> String {
+    let first = rendered.split('\n').next().unwrap_or(rendered);
+    let spelled = bn_frontend::module_graph::spell_diagnostic_text(
+        first,
+        diagnostic.span.start.source_id,
+        graph,
+    );
+    match rendered.split_once('\n') {
+        Some((_, rest)) => format!("{spelled}\n{rest}"),
+        None => spelled,
+    }
+}
+
+fn spelled_fact(message: &str, diagnostic: &Diagnostic, graph: Option<&ModuleGraph>) -> String {
+    graph.map_or_else(
+        || message.to_string(),
+        |graph| {
+            bn_frontend::module_graph::spell_diagnostic_text(
+                message,
+                diagnostic.span.start.source_id,
+                graph,
+            )
+        },
+    )
+}
 
 #[must_use]
 pub fn render_diagnostic(
@@ -92,7 +151,9 @@ pub fn diagnostic_json(
     source: &SourceFile,
     options: &Options,
     phase: &str,
+    graph: Option<&ModuleGraph>,
 ) -> serde_json::Value {
+    let source = located_source(diagnostic, source, graph);
     let mapping = options.eval_mapping.as_ref();
     let identity_source = options
         .eval_source_text
@@ -171,12 +232,19 @@ pub fn diagnostic_json(
                 .map(|value| format!("{:?}", value.severity).to_lowercase())
         })
         .unwrap_or_else(|| "error".into());
+    let message = spelled_fact(
+        rendered
+            .as_ref()
+            .map_or(diagnostic.message.as_ref(), |value| value.message.as_str()),
+        diagnostic,
+        graph,
+    );
     serde_json::json!({
         "code": diagnostic.code,
         "severity": severity,
         "phase": phase,
         "title": rendered.as_ref().map_or_else(|| diagnostic.code.to_string(), |value| value.title.clone()),
-        "message": rendered.as_ref().map_or_else(|| diagnostic.message.to_string(), |value| value.message.clone()),
+        "message": message,
         "labels": labels,
         "causes": rendered.as_ref().map_or_else(Vec::new, |value| value.causes.clone()),
         "help": rendered.as_ref().and_then(|value| value.help.clone()),
@@ -186,11 +254,12 @@ pub fn diagnostic_json(
 /// Prints one frontend error in the selected format and classifies it as a
 /// language error.
 #[must_use]
-pub fn emit_frontend_error(
+pub(crate) fn emit_frontend_error(
     diagnostic: &Diagnostic,
     source: &SourceFile,
     options: &Options,
     phase: &str,
+    graph: Option<&ModuleGraph>,
 ) -> ExitCode {
     if options.output_format == OutputFormat::Json {
         let envelope = serde_json::json!({
@@ -199,11 +268,11 @@ pub fn emit_frontend_error(
             "exit_code": 1,
             "stdout": "",
             "stderr": "",
-            "diagnostics": [diagnostic_json(diagnostic, source, options, phase)],
+            "diagnostics": [diagnostic_json(diagnostic, source, options, phase, graph)],
         });
         println!("{envelope}");
     } else {
-        eprintln!("{}", render_diagnostic(diagnostic, source, options));
+        eprintln!("{}", present_diagnostic(diagnostic, source, graph, options));
     }
     language_error()
 }
@@ -238,7 +307,12 @@ pub fn emit_frontend_warnings(frontend: &Prepared, source: &SourceFile, options:
             fatal = true;
             continue;
         };
-        let rendered = render_diagnostic(&warning.diagnostic, &module.source, options);
+        let rendered = present_diagnostic(
+            &warning.diagnostic,
+            &module.source,
+            Some(&frontend.graph),
+            options,
+        );
         if !rendered.is_empty() {
             eprintln!("{rendered}");
         }

@@ -11,7 +11,7 @@ use crate::temporal;
 
 use super::{Value, integer, require_arity, runtime_error, shared_string, type_mismatch};
 
-pub fn is_temporal_builtin(name: &str) -> bool {
+pub(crate) fn is_temporal_builtin(name: &str) -> bool {
     matches!(
         name,
         "Date.Parse" | "Time.Parse" | "TimeZone.Parse" | "Timestamp.Parse" | "Timestamp.Format"
@@ -19,7 +19,11 @@ pub fn is_temporal_builtin(name: &str) -> bool {
 }
 
 #[allow(clippy::too_many_lines)]
-pub fn temporal_call(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
+pub(crate) fn temporal_call(
+    name: &str,
+    arguments: &[Value],
+    span: Span,
+) -> Result<Value, Diagnostic> {
     match name {
         "Date.Parse" => {
             require_arity(name, arguments, 1, span)?;

@@ -3,21 +3,21 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Native LLVM lowering for BNWeb standard library operations.
+//! Native LLVM lowering for `BNWeb` standard library operations.
 
 #![allow(clippy::wildcard_imports, clippy::too_many_lines)]
 use super::*;
 use crate::ir::{CastOp, ICmpCond, InstSink as _, LlvmInst as I, LlvmOperand as O, LlvmType as T};
 use crate::layout::{handle_result_ty, llvm_type};
 
-/// Checks if `ty` represents a BNWeb resource type backed by a handle.
+/// Checks if `ty` represents a `BNWeb` resource type backed by a handle.
 pub(crate) fn is_bnweb_resource_type(module: &Module, ty: &Type) -> bool {
     matches!(ty, Type::ImportedNamed { module: module_id, name }
         if module.bnweb_providers.contains(&bn_ir::ModuleId(module_id.0))
             && matches!(name.as_str(), "Response" | "Request" | "Server" | "CookieJar" | "SessionStore" | "Scraper" | "ACL" | "Client"))
 }
 
-/// Identifies supported BNWeb methods by module ID and method name.
+/// Identifies supported `BNWeb` methods by module ID and method name.
 pub(crate) fn bnweb_method(module: &Module, name: &str) -> Option<&'static str> {
     let (module_id, rest) = name.strip_prefix('#')?.split_once('.')?;
     let module_id = bn_ir::ModuleId(module_id.parse().ok()?);
@@ -80,6 +80,7 @@ pub(crate) fn bnweb_method(module: &Module, name: &str) -> Option<&'static str> 
         "EgressPolicy.New" => Some("egress_policy_new"),
 
         "Client.CONSTRUCTOR" => Some("client_constructor"),
+        "Client.New" => Some("client_new"),
         "Client.Request" => Some("client_request"),
         "Client.RequestWithPolicy" => Some("client_request_with_policy"),
         "Client.Close" => Some("client_close"),
@@ -88,7 +89,7 @@ pub(crate) fn bnweb_method(module: &Module, name: &str) -> Option<&'static str> 
     }
 }
 
-/// Verifies whether the argument list for a BNWeb call is supported.
+/// Verifies whether the argument list for a `BNWeb` call is supported.
 pub(crate) fn bnweb_arguments_supported(
     _module: &Module,
     method: Option<&str>,
@@ -100,22 +101,46 @@ pub(crate) fn bnweb_arguments_supported(
         return false;
     }
     match m {
-        "response_constructor" | "request_constructor" | "server_constructor"
-        | "cookie_jar_constructor" | "acl_constructor" | "client_constructor" => {
-            !arguments.is_empty()
-        }
+        "response_constructor"
+        | "request_constructor"
+        | "server_constructor"
+        | "cookie_jar_constructor"
+        | "acl_constructor"
+        | "client_constructor" => !arguments.is_empty(),
         "scraper_constructor" => arguments.len() >= 2,
-        "response_status" | "response_commit" | "response_is_committed" | "response_close"
-        | "request_method" | "request_target" | "cookie_jar_count" | "client_close" => {
-            arguments.len() == 1
-        }
-        "response_set_status" | "response_write" | "response_header" | "request_header"
-        | "request_param" | "request_cookie" | "request_body" | "server_add_filter"
-        | "server_start" | "server_stop" | "server_close"
-        | "session_store_new" | "session_store_create" | "session_store_get" | "scraper_text"
-        | "acl_allow" | "acl_deny" | "acl_check" | "tls_from_pem" => arguments.len() == 2,
-        "response_set_header" | "server_static" | "server_start_tls"
-        | "server_dispatch" | "server_use_sessions" => arguments.len() == 3,
+        "response_status"
+        | "response_commit"
+        | "response_is_committed"
+        | "response_close"
+        | "request_method"
+        | "request_target"
+        | "cookie_jar_count"
+        | "client_close"
+        | "client_new" => arguments.len() == 1,
+        "response_set_status"
+        | "response_write"
+        | "response_header"
+        | "request_header"
+        | "request_param"
+        | "request_cookie"
+        | "request_body"
+        | "server_add_filter"
+        | "server_start"
+        | "server_stop"
+        | "server_close"
+        | "session_store_new"
+        | "session_store_create"
+        | "session_store_get"
+        | "scraper_text"
+        | "acl_allow"
+        | "acl_deny"
+        | "acl_check"
+        | "tls_from_pem" => arguments.len() == 2,
+        "response_set_header"
+        | "server_static"
+        | "server_start_tls"
+        | "server_dispatch"
+        | "server_use_sessions" => arguments.len() == 3,
         "server_route" | "response_clear_cookie" | "cookie_jar_get" | "client_request" => {
             arguments.len() == 4
         }
@@ -151,7 +176,10 @@ fn web_int64(
     value: ValueId,
     analysis: &LoweringAnalysis<'_>,
 ) -> (T, O) {
-    let ty = analysis.values.get(&value).expect("int type");
+    let ty = analysis
+        .values
+        .get(&value)
+        .unwrap_or_else(|| panic!("{}", bn_catalog::text("llvm", "msg.int_type")));
     (T::I64, extend_to_i64(text, value, ty))
 }
 
@@ -165,7 +193,7 @@ fn bool_arg(arguments: &[ValueId], idx: usize) -> (T, O) {
     (T::I1, O::reg(format!("v{}", arguments[idx].0)))
 }
 
-/// Lowers a call to a BNWeb method.
+/// Lowers a call to a `BNWeb` method.
 pub(crate) fn lower_bnweb_call(
     text: &mut crate::ir::LlvmModule,
     _module: &Module,
@@ -178,9 +206,23 @@ pub(crate) fn lower_bnweb_call(
 
     match method {
         // Constructors: already allocated in emit_allocate
-        "response_constructor" | "request_constructor" | "server_constructor"
-        | "cookie_jar_constructor" | "scraper_constructor" | "acl_constructor"
+        "response_constructor"
+        | "request_constructor"
+        | "server_constructor"
+        | "cookie_jar_constructor"
+        | "scraper_constructor"
+        | "acl_constructor"
         | "client_constructor" => {}
+
+        "client_new" => {
+            let logger = super::log_emission::logger_handle(text, dest, arguments[0], analysis);
+            let handle = format!("webh{dest}");
+            text.assign(
+                &handle,
+                I::call(T::I64, "bn_web_client_create", vec![logger]),
+            );
+            emit_handle_result(text, destination, &O::int(0), &O::reg(&handle));
+        }
 
         "response_set_status" => {
             let h0 = web_handle(text, dest, 0, arguments[0], analysis);
@@ -197,7 +239,12 @@ pub(crate) fn lower_bnweb_call(
             text.assign(format!("webstat{dest}"), call);
             text.assign(
                 format!("v{dest}"),
-                I::cast(CastOp::Trunc, T::I64, O::reg(format!("webstat{dest}")), T::I32),
+                I::cast(
+                    CastOp::Trunc,
+                    T::I64,
+                    O::reg(format!("webstat{dest}")),
+                    T::I32,
+                ),
             );
         }
 
@@ -320,7 +367,12 @@ pub(crate) fn lower_bnweb_call(
             text.assign(format!("webret{dest}"), call);
             text.assign(
                 format!("v{dest}"),
-                I::icmp(ICmpCond::Ne, T::I32, O::reg(format!("webret{dest}")), O::int(0)),
+                I::icmp(
+                    ICmpCond::Ne,
+                    T::I32,
+                    O::reg(format!("webret{dest}")),
+                    O::int(0),
+                ),
             );
         }
 
@@ -638,7 +690,12 @@ pub(crate) fn lower_bnweb_call(
             text.assign(format!("webcnt{dest}"), call);
             text.assign(
                 format!("v{dest}"),
-                I::cast(CastOp::Trunc, T::I64, O::reg(format!("webcnt{dest}")), T::I32),
+                I::cast(
+                    CastOp::Trunc,
+                    T::I64,
+                    O::reg(format!("webcnt{dest}")),
+                    T::I32,
+                ),
             );
         }
 
@@ -759,7 +816,12 @@ pub(crate) fn lower_bnweb_call(
             text.assign(format!("webret{dest}"), call);
             text.assign(
                 format!("webpay{dest}"),
-                I::cast(CastOp::ZExt, T::I32, O::reg(format!("webret{dest}")), T::I64),
+                I::cast(
+                    CastOp::ZExt,
+                    T::I32,
+                    O::reg(format!("webret{dest}")),
+                    T::I64,
+                ),
             );
             emit_handle_result(
                 text,
@@ -854,10 +916,16 @@ pub(crate) fn lower_bnweb_call(
         "client_close" => {
             let h0 = web_handle(text, dest, 0, arguments[0], analysis);
             text.emit(I::call(T::Void, "bn_web_client_close", vec![h0]));
-            text.assign(format!("v{dest}"), I::cast(CastOp::BitCast, T::Ptr, O::null(), T::Ptr));
+            text.assign(
+                format!("v{dest}"),
+                I::cast(CastOp::BitCast, T::Ptr, O::null(), T::Ptr),
+            );
         }
 
-        other => unreachable!("unsupported BNWeb method in lowering: {other}"),
+        other => unreachable!(
+            "{}",
+            bn_catalog::fill("llvm", "msg.unsupported_bnweb_method", &[("other", &other)])
+        ),
     }
 }
 
@@ -916,70 +984,6 @@ fn cidr_parts(text: &mut crate::ir::LlvmModule, value: ValueId) -> (O, O) {
     (O::reg(temp_ptr), O::reg(temp_pfx32))
 }
 
-/// Declares external BNWeb C ABI functions in the LLVM module.
-pub(crate) fn declare_web_abi(text: &mut crate::ir::LlvmModule) {
-    use crate::ir::abi::Signature;
-    let decls = [
-        Signature { name: "bn_web_response_create", ret: T::I64, params: vec![], variadic: false },
-        Signature { name: "bn_web_response_set_status", ret: T::I32, params: vec![T::I64, T::I64], variadic: false },
-        Signature { name: "bn_web_response_status", ret: T::I64, params: vec![T::I64], variadic: false },
-        Signature { name: "bn_web_response_set_header", ret: T::I32, params: vec![T::I64, T::Ptr, T::Ptr], variadic: false },
-        Signature { name: "bn_web_response_header", ret: T::Ptr, params: vec![T::I64, T::Ptr, T::Ptr], variadic: false },
-        Signature { name: "bn_web_response_set_cookie", ret: T::I32, params: vec![T::I64, T::Ptr, T::Ptr, T::Ptr, T::Ptr, T::I64], variadic: false },
-        Signature { name: "bn_web_response_set_cookie_with_policy", ret: T::I32, params: vec![T::I64, T::Ptr, T::Ptr, T::Ptr, T::Ptr, T::I64, T::I1, T::I1, T::Ptr], variadic: false },
-        Signature { name: "bn_web_response_clear_cookie", ret: T::I32, params: vec![T::I64, T::Ptr, T::Ptr, T::Ptr], variadic: false },
-        Signature { name: "bn_web_response_write", ret: T::I32, params: vec![T::I64, T::Ptr], variadic: false },
-        Signature { name: "bn_web_response_commit", ret: T::I32, params: vec![T::I64], variadic: false },
-        Signature { name: "bn_web_response_is_committed", ret: T::I32, params: vec![T::I64], variadic: false },
-        Signature { name: "bn_web_response_close", ret: T::I32, params: vec![T::I64], variadic: false },
-
-        Signature { name: "bn_web_request_create", ret: T::I64, params: vec![], variadic: false },
-        Signature { name: "bn_web_request_method", ret: T::Ptr, params: vec![T::I64], variadic: false },
-        Signature { name: "bn_web_request_target", ret: T::Ptr, params: vec![T::I64], variadic: false },
-        Signature { name: "bn_web_request_header", ret: T::Ptr, params: vec![T::I64, T::Ptr, T::Ptr], variadic: false },
-        Signature { name: "bn_web_request_param", ret: T::Ptr, params: vec![T::I64, T::Ptr, T::Ptr], variadic: false },
-        Signature { name: "bn_web_request_cookie", ret: T::Ptr, params: vec![T::I64, T::Ptr, T::Ptr], variadic: false },
-        Signature { name: "bn_web_request_body", ret: T::Ptr, params: vec![T::I64, T::I64, T::Ptr], variadic: false },
-
-        Signature { name: "bn_web_server_create", ret: T::I64, params: vec![], variadic: false },
-        Signature { name: "bn_web_server_add_filter", ret: T::I32, params: vec![T::I64, T::Ptr], variadic: false },
-        Signature { name: "bn_web_server_route", ret: T::I32, params: vec![T::I64, T::Ptr, T::Ptr, T::Ptr], variadic: false },
-        Signature { name: "bn_web_server_static", ret: T::I32, params: vec![T::I64, T::Ptr, T::Ptr], variadic: false },
-        Signature { name: "bn_web_server_start", ret: T::I32, params: vec![T::I64, T::Ptr, T::I16], variadic: false },
-        Signature { name: "bn_web_server_start_tls", ret: T::I32, params: vec![T::I64, T::Ptr, T::I16, T::I64], variadic: false },
-        Signature { name: "bn_web_server_dispatch", ret: T::I32, params: vec![T::I64, T::I64, T::I64], variadic: false },
-        Signature { name: "bn_web_server_use_sessions", ret: T::I32, params: vec![T::I64, T::I64, T::I64], variadic: false },
-        Signature { name: "bn_web_server_stop", ret: T::I32, params: vec![T::I64, T::I64], variadic: false },
-        Signature { name: "bn_web_server_close", ret: T::I32, params: vec![T::I64, T::I64], variadic: false },
-
-        Signature { name: "bn_web_tls_from_pem", ret: T::I32, params: vec![T::Ptr, T::Ptr, T::Ptr], variadic: false },
-
-        Signature { name: "bn_web_cookie_jar_create", ret: T::I64, params: vec![], variadic: false },
-        Signature { name: "bn_web_cookie_jar_set", ret: T::I32, params: vec![T::I64, T::Ptr, T::Ptr, T::Ptr, T::Ptr, T::I64], variadic: false },
-        Signature { name: "bn_web_cookie_jar_set_with_policy", ret: T::I32, params: vec![T::I64, T::Ptr, T::Ptr, T::Ptr, T::Ptr, T::I64, T::I1, T::I1, T::Ptr], variadic: false },
-        Signature { name: "bn_web_cookie_jar_get", ret: T::Ptr, params: vec![T::I64, T::Ptr, T::Ptr, T::Ptr, T::Ptr], variadic: false },
-        Signature { name: "bn_web_cookie_jar_count", ret: T::I64, params: vec![T::I64], variadic: false },
-
-        Signature { name: "bn_web_session_store_create", ret: T::Ptr, params: vec![T::I64, T::Ptr, T::Ptr], variadic: false },
-        Signature { name: "bn_web_session_store_new", ret: T::I32, params: vec![T::I64, T::I64, T::Ptr], variadic: false },
-        Signature { name: "bn_web_session_store_get", ret: T::Ptr, params: vec![T::I64, T::Ptr, T::Ptr], variadic: false },
-
-        Signature { name: "bn_web_scraper_create", ret: T::I64, params: vec![T::Ptr], variadic: false },
-        Signature { name: "bn_web_scraper_text", ret: T::Ptr, params: vec![T::I64, T::Ptr, T::Ptr], variadic: false },
-
-        Signature { name: "bn_web_acl_create", ret: T::I64, params: vec![], variadic: false },
-        Signature { name: "bn_web_acl_allow", ret: T::I32, params: vec![T::I64, T::Ptr, T::I32], variadic: false },
-        Signature { name: "bn_web_acl_deny", ret: T::I32, params: vec![T::I64, T::Ptr, T::I32], variadic: false },
-        Signature { name: "bn_web_acl_check", ret: T::I32, params: vec![T::I64, T::Ptr], variadic: false },
-
-        Signature { name: "bn_web_egress_policy_new", ret: T::I32, params: vec![T::Ptr, T::Ptr, T::Ptr, T::I64, T::I64, T::Ptr], variadic: false },
-
-        Signature { name: "bn_web_client_create", ret: T::I64, params: vec![], variadic: false },
-        Signature { name: "bn_web_client_request", ret: T::I32, params: vec![T::I64, T::Ptr, T::Ptr, T::Ptr, T::Ptr], variadic: false },
-        Signature { name: "bn_web_client_request_with_policy", ret: T::I32, params: vec![T::I64, T::Ptr, T::Ptr, T::Ptr, T::I64, T::Ptr], variadic: false },
-        Signature { name: "bn_web_client_close", ret: T::Void, params: vec![T::I64], variadic: false },
-    ];
-    for sig in decls {
-        text.declare(sig);
-    }
-}
+#[path = "web_abi.rs"]
+mod web_abi;
+pub(crate) use web_abi::declare_web_abi;

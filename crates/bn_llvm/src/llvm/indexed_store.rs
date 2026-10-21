@@ -251,7 +251,12 @@ pub(crate) fn emit_member_set_index(
     let index_op = lower_index(text, index, index_ty);
     let value_op = coerce_to_type(text, value, value_ty, elem_ty);
     let ok = take_continuation(block_id, state);
-    let llvm_elem = llvm_type(elem_ty).expect("validated member indexed element");
+    let llvm_elem = llvm_type(elem_ty).unwrap_or_else(|| {
+        panic!(
+            "{}",
+            bn_catalog::text("llvm", "msg.validated_member_indexed_element")
+        )
+    });
     let r = |name: &str| O::reg(format!("mbrset{name}{tag}"));
     let offset = vec![(T::I32, O::uint(u64::from(field_offset)))];
     text.assign(format!("mbrsetptr{tag}"), I::gep(T::I8, v(object), offset));
@@ -292,7 +297,12 @@ pub(crate) fn emit_static_set_index(
     let index_op = lower_index(text, index, index_ty);
     let value_op = coerce_to_type(text, value, value_ty, elem_ty);
     let ok = take_continuation(block_id, state);
-    let llvm_elem = llvm_type(elem_ty).expect("validated static indexed element");
+    let llvm_elem = llvm_type(elem_ty).unwrap_or_else(|| {
+        panic!(
+            "{}",
+            bn_catalog::text("llvm", "msg.validated_static_indexed_element")
+        )
+    });
     let global = static_global_name(class, field);
     text.assign(
         format!("staticsetfat{tag}"),

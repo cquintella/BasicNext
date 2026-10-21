@@ -415,7 +415,7 @@ pub(crate) fn vector_shape(expression: &Expression) -> Option<Vec<usize>> {
 // exporting `Ticket` or `Queue`. A standard module that adds one needs the
 // module identity instead.
 #[must_use]
-pub fn is_dispatch_class(
+pub(crate) fn is_dispatch_class(
     ty: &Type,
     standard_modules: &std::collections::HashSet<ModuleId>,
     class: &str,
@@ -431,7 +431,7 @@ pub fn is_dispatch_class(
 
 /// The six BNDispatch handle classes: `Queue`, `Ticket`, `Group`, `Barrier`, `Semaphore`, `Mutex`.
 #[must_use]
-pub fn is_dispatch_sync_class(
+pub(crate) fn is_dispatch_sync_class(
     ty: &Type,
     standard_modules: &std::collections::HashSet<ModuleId>,
 ) -> bool {
@@ -453,7 +453,7 @@ pub fn is_dispatch_sync_class(
 /// `BOOLEAN`, `STRING`, `DATE`, `TIME`, `TIMESTAMP`, and the 6 `BNDispatch` classes.
 /// Objects, vectors, structs, alternatives, and other library handles are rejected.
 #[must_use]
-pub fn is_valid_async_parameter_type(
+pub(crate) fn is_valid_async_parameter_type(
     ty: &Type,
     standard_modules: &std::collections::HashSet<ModuleId>,
 ) -> bool {
@@ -488,7 +488,7 @@ pub fn display(ty: &Type) -> String {
         Type::Null => "NULL".into(),
         Type::NotAvailable => "NA".into(),
         Type::EndOfFile => "EOF".into(),
-        Type::HostArgs => "HOST.Args".into(),
+        Type::HostArgs => bn_catalog::text("frontend", "msg.host_args").into(),
         Type::Unknown => "UNKNOWN".into(),
         Type::HostClock => "HOST.Clock".into(),
         Type::HostRandom => "HOST.Random".into(),
@@ -543,7 +543,7 @@ pub fn display(ty: &Type) -> String {
     }
 }
 
-pub fn typeof_name(ty: &Type) -> String {
+pub(crate) fn typeof_name(ty: &Type) -> String {
     match ty {
         Type::Boolean => "BOOLEAN".into(),
         Type::Integer(IntegerType::Byte) => "BYTE".into(),

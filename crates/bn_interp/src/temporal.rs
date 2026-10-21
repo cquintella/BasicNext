@@ -10,19 +10,19 @@ use bn_core_text::civil::{self, DAY_MS, days_from_civil};
 use bn_core_text::temporal::{parse_hms, parse_rfc3339 as parse_rfc3339_core, parse_ymd};
 
 #[must_use]
-pub fn default_date() -> i32 {
+pub(crate) fn default_date() -> i32 {
     0
 }
 
 #[must_use]
-pub fn default_time() -> u32 {
+pub(crate) fn default_time() -> u32 {
     0
 }
 
 /// # Errors
 ///
 /// Returns the language diagnostic for a malformed value.
-pub fn parse_date(text: &str, span: Span) -> Result<i32, Diagnostic> {
+pub(crate) fn parse_date(text: &str, span: Span) -> Result<i32, Diagnostic> {
     let (year, month, day) = parse_ymd(text).ok_or_else(|| {
         temporal_error(
             bn_diag::DiagId::INVALID_DATE,
@@ -42,7 +42,7 @@ pub fn parse_date(text: &str, span: Span) -> Result<i32, Diagnostic> {
 /// # Errors
 ///
 /// Returns the language diagnostic for a malformed value.
-pub fn parse_time(text: &str, span: Span) -> Result<u32, Diagnostic> {
+pub(crate) fn parse_time(text: &str, span: Span) -> Result<u32, Diagnostic> {
     parse_hms(text, true).ok_or_else(|| {
         temporal_error(
             bn_diag::DiagId::INVALID_TIME,
@@ -55,7 +55,7 @@ pub fn parse_time(text: &str, span: Span) -> Result<u32, Diagnostic> {
 /// # Errors
 ///
 /// Returns the language diagnostic for a malformed value.
-pub fn parse_timezone(text: &str, span: Span) -> Result<String, Diagnostic> {
+pub(crate) fn parse_timezone(text: &str, span: Span) -> Result<String, Diagnostic> {
     if bn_types::text::is_timezone_id(text) {
         Ok(text.to_string())
     } else {
@@ -70,7 +70,7 @@ pub fn parse_timezone(text: &str, span: Span) -> Result<String, Diagnostic> {
 /// # Errors
 ///
 /// Returns the language diagnostic for a malformed value.
-pub fn parse_rfc3339(text: &str, span: Span) -> Result<i64, Diagnostic> {
+pub(crate) fn parse_rfc3339(text: &str, span: Span) -> Result<i64, Diagnostic> {
     parse_rfc3339_core(text).ok_or_else(|| {
         temporal_error(
             bn_diag::DiagId::PARSE_ERROR,
@@ -88,12 +88,12 @@ pub fn format_rfc3339(timestamp: i64, span: Span) -> Result<String, Diagnostic> 
 }
 
 #[must_use]
-pub fn format_date(days: i32) -> String {
+pub(crate) fn format_date(days: i32) -> String {
     civil::format_date(days)
 }
 
 #[must_use]
-pub fn format_time(millis: u32) -> String {
+pub(crate) fn format_time(millis: u32) -> String {
     civil::format_time(millis)
 }
 

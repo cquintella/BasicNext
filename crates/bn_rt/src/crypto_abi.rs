@@ -23,14 +23,17 @@ use crate::{c_str, c_string};
 
 /// Returned by fallible entry points; `0` is success, mirroring the other
 /// `bn_rt` ABIs.
-pub const BN_CRYPTO_OK: i32 = 0;
-pub const BN_CRYPTO_INVALID_ARGUMENT: i32 = 1;
-pub const BN_CRYPTO_INVALID_HANDLE: i32 = 2;
+pub(crate) const BN_CRYPTO_OK: i32 = 0;
+pub(crate) const BN_CRYPTO_INVALID_ARGUMENT: i32 = 1;
+pub(crate) const BN_CRYPTO_INVALID_HANDLE: i32 = 2;
 
 /// The byte buffers of the module copy that runs on this thread
 /// (`bn_core_copy`): a task's are freed when the task ends.
 #[derive(Default)]
-struct Buffers(Mutex<HashMap<u64, Vec<u8>>>);
+struct Buffers {
+    values: Mutex<HashMap<u64, Vec<u8>>>,
+    holders: Mutex<HashMap<u64, usize>>,
+}
 
 fn next_handle() -> u64 {
     static NEXT: AtomicU64 = AtomicU64::new(1);
@@ -39,12 +42,23 @@ fn next_handle() -> u64 {
 
 fn with_buffers<T>(operation: impl FnOnce(&mut HashMap<u64, Vec<u8>>) -> T) -> T {
     let buffers = bn_core_copy::table::<Buffers>();
-    operation(&mut buffers.0.lock().unwrap_or_else(PoisonError::into_inner))
+    operation(
+        &mut buffers
+            .values
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner),
+    )
 }
 
 fn store(bytes: Vec<u8>) -> u64 {
     let handle = next_handle();
     with_buffers(|buffers| buffers.insert(handle, bytes));
+    let buffers = bn_core_copy::table::<Buffers>();
+    buffers
+        .holders
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(handle, 1);
     handle
 }
 
@@ -75,6 +89,7 @@ pub extern "C" fn bn_rt_crypto_bytes_from_hex(text: *const c_char, out: *mut u64
         return failed(&crate::crypto_error::CryptoFailure::Hex(text.to_owned()));
     };
     let handle = store(bytes);
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { *out = handle };
     BN_CRYPTO_OK
 }
@@ -100,18 +115,51 @@ pub extern "C" fn bn_rt_crypto_bytes_to_hex(handle: u64) -> *mut c_char {
     c_string(&hex.unwrap_or_default())
 }
 
-/// Drops `handle`. Returns [`BN_CRYPTO_INVALID_HANDLE`] when it was already
-/// released, so a double `RELEASE` is reported rather than ignored.
+/// One more binding holds `handle` (a copy). Handle 0 is the error case
+/// of `Bytes OR Error`, which holds no buffer.
+#[allow(unsafe_code)] // C ABI: opaque handle in, status out.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_crypto_bytes_retain(handle: u64) -> i32 {
+    if handle == 0 {
+        return BN_CRYPTO_OK;
+    }
+    let buffers = bn_core_copy::table::<Buffers>();
+    let mut holders = buffers
+        .holders
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    if let Some(count) = holders.get_mut(&handle) {
+        *count += 1;
+        BN_CRYPTO_OK
+    } else {
+        BN_CRYPTO_INVALID_HANDLE
+    }
+}
+
+/// Drops one reference to `handle`. When the count reaches zero, the buffer
+/// is freed. Returns [`BN_CRYPTO_INVALID_HANDLE`] when it was already released.
+/// Handle 0 is the error case of `Bytes OR Error`.
 #[allow(unsafe_code)] // C ABI: opaque handle in, status out.
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_crypto_bytes_release(handle: u64) -> i32 {
-    with_buffers(|buffers| {
-        if buffers.remove(&handle).is_some() {
-            BN_CRYPTO_OK
-        } else {
-            BN_CRYPTO_INVALID_HANDLE
-        }
-    })
+    if handle == 0 {
+        return BN_CRYPTO_OK;
+    }
+    let buffers = bn_core_copy::table::<Buffers>();
+    let mut holders = buffers
+        .holders
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    let Some(count) = holders.get_mut(&handle) else {
+        return BN_CRYPTO_INVALID_HANDLE;
+    };
+    *count -= 1;
+    if *count == 0 {
+        holders.remove(&handle);
+        drop(holders);
+        with_buffers(|buffers| buffers.remove(&handle));
+    }
+    BN_CRYPTO_OK
 }
 
 /// Algorithm selector shared with the backends: `0` is AES-256-GCM, `1` is
@@ -174,6 +222,7 @@ pub extern "C" fn bn_rt_crypto_seal(
         return failed(&crate::crypto_error::CryptoFailure::Seal(algorithm));
     };
     let handle = store(sealed);
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { *out = handle };
     BN_CRYPTO_OK
 }
@@ -204,6 +253,7 @@ pub extern "C" fn bn_rt_crypto_open(
         return failed(&crate::crypto_error::CryptoFailure::Open(algorithm));
     };
     let handle = store(plain);
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { *out = handle };
     BN_CRYPTO_OK
 }
@@ -221,6 +271,7 @@ pub extern "C" fn bn_rt_crypto_hmac(key: u64, data: u64, out: *mut u64) -> i32 {
         return BN_CRYPTO_INVALID_HANDLE;
     };
     let handle = store(hmac_sha256(&key, &data));
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { *out = handle };
     BN_CRYPTO_OK
 }
@@ -285,6 +336,7 @@ pub extern "C" fn bn_rt_crypto_argon2id(
         return failed(&crate::crypto_error::CryptoFailure::Argon2id);
     };
     let handle = store(tag);
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { *out = handle };
     BN_CRYPTO_OK
 }
@@ -324,6 +376,7 @@ pub extern "C" fn bn_rt_crypto_public_key(selector: i32, private_key: u64, out: 
         }));
     };
     let handle = store(public_key);
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { *out = handle };
     BN_CRYPTO_OK
 }
@@ -364,6 +417,7 @@ pub extern "C" fn bn_rt_crypto_sign(
         }));
     };
     let handle = store(signature);
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { *out = handle };
     BN_CRYPTO_OK
 }
@@ -414,6 +468,7 @@ pub extern "C" fn bn_rt_crypto_kem_keypair(seed: u64, out: *mut u64) -> i32 {
     };
     public_key.extend_from_slice(&private_key);
     let handle = store(public_key);
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { *out = handle };
     BN_CRYPTO_OK
 }
@@ -433,6 +488,7 @@ pub extern "C" fn bn_rt_crypto_kem_encapsulate(public_key: u64, out: *mut u64) -
     };
     ciphertext.extend_from_slice(&secret);
     let handle = store(ciphertext);
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { *out = handle };
     BN_CRYPTO_OK
 }
@@ -460,6 +516,7 @@ pub extern "C" fn bn_rt_crypto_kem_decapsulate(
         return failed(&crate::crypto_error::CryptoFailure::Decapsulate);
     };
     let handle = store(secret);
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { *out = handle };
     BN_CRYPTO_OK
 }
@@ -481,6 +538,7 @@ pub extern "C" fn bn_rt_crypto_dsa_keypair(seed: u64, out: *mut u64) -> i32 {
     };
     public_key.extend_from_slice(&private_key);
     let handle = store(public_key);
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { *out = handle };
     BN_CRYPTO_OK
 }
@@ -504,6 +562,7 @@ pub extern "C" fn bn_rt_crypto_dsa_sign(private_key: u64, message: u64, out: *mu
         return failed(&crate::crypto_error::CryptoFailure::SigningKey);
     };
     let handle = store(signature);
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { *out = handle };
     BN_CRYPTO_OK
 }
@@ -548,6 +607,7 @@ pub extern "C" fn bn_rt_crypto_slice(data: u64, start: i64, length: i64, out: *m
         });
     };
     let handle = store(data[start..end].to_vec());
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { *out = handle };
     BN_CRYPTO_OK
 }

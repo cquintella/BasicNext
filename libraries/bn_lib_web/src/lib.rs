@@ -71,6 +71,8 @@ pub struct WebProvider {
     values: HashMap<Handle, Vec<String>>,
     /// `BNWeb.Session` objects: the request session each one reaches.
     request_sessions: HashMap<Handle, crate::web::sessions::RequestSession>,
+    /// Logger id kept by each `BNWeb.Client`. Absent means the client does not log.
+    clients: HashMap<Handle, u64>,
 }
 
 impl std::fmt::Debug for WebProvider {
@@ -80,6 +82,59 @@ impl std::fmt::Debug for WebProvider {
             .field("responses_count", &self.responses.len())
             .field("requests_count", &self.requests.len())
             .finish_non_exhaustive()
+    }
+}
+
+impl WebProvider {
+    fn record_client_access(
+        &self,
+        core: &mut dyn CoreContext,
+        receiver: &Value,
+        method: &str,
+        url: &str,
+        duration_ms: i64,
+        outcome: &Result<crate::web::Response, String>,
+    ) {
+        let Value::Object { handle, .. } = receiver else {
+            return;
+        };
+        let Some(logger_id) = self.clients.get(handle).copied() else {
+            return;
+        };
+        let Ok(Some(logger)) = with_log_provider(core, |log| log.core_logger(logger_id)) else {
+            return;
+        };
+        let Ok(logger) = logger.lock() else {
+            return;
+        };
+        let sink = InterpLogSink {
+            host: core.host().clone(),
+        };
+        let (status, bytes, headers) = match outcome {
+            Ok(response) => {
+                let headers = response
+                    .headers
+                    .iter()
+                    .map(|(name, value)| (name.as_str(), value.as_str()))
+                    .collect::<Vec<_>>();
+                (
+                    i64::from(response.status),
+                    i64::try_from(response.body.len()).unwrap_or(i64::MAX),
+                    headers,
+                )
+            }
+            Err(_) => (0, 0, Vec::new()),
+        };
+        access_log::write_client_access(
+            &logger,
+            &sink,
+            method,
+            url,
+            status,
+            bytes,
+            duration_ms,
+            &headers,
+        );
     }
 }
 
@@ -113,6 +168,7 @@ impl Provider for WebProvider {
         self.filters.remove(&handle);
         self.responses.remove(&handle);
         self.requests.remove(&handle);
+        self.clients.remove(&handle);
         self.values.remove(&handle);
         self.request_sessions.remove(&handle);
     }
@@ -315,7 +371,10 @@ impl WebProvider {
             match method {
                 "New" => {
                     require_arity(name, arguments, 1, span)?;
-                    if !matches!(arguments.first(), Some(Value::Object { .. })) {
+                    if !matches!(
+                        arguments.first(),
+                        Some(Value::Object { .. } | Value::LogLogger(_))
+                    ) {
                         return Err(type_mismatch(
                             "BNLog.Logger",
                             "non-logger value",
@@ -323,7 +382,13 @@ impl WebProvider {
                             span,
                         ));
                     }
-                    core.allocate_object("BNWeb.Client", span)
+                    let object = core.allocate_object("BNWeb.Client", span)?;
+                    if let (Value::Object { handle, .. }, Some(Value::LogLogger(logger_id))) =
+                        (&object, arguments.first())
+                    {
+                        self.clients.insert(*handle, *logger_id);
+                    }
+                    Ok(object)
                 }
                 _ if is_lifecycle_stub(core.module(), name) => Ok(Value::Null),
                 "Request" | "RequestWithPolicy" => {
@@ -383,13 +448,25 @@ impl WebProvider {
                     } else {
                         &crate::web::EgressPolicy::default()
                     };
-                    let response =
-                        match crate::http::client_request_with_policy(method, url, body, policy) {
-                            Ok(response) => response,
-                            Err(message) => {
-                                return Ok(failed(name, &WebFailure::from_message(&message)));
-                            }
-                        };
+                    let started = std::time::Instant::now();
+                    let outcome =
+                        crate::http::client_request_with_policy(method, url, body, policy);
+                    let duration_ms =
+                        i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX);
+                    self.record_client_access(
+                        core,
+                        &arguments[0],
+                        method,
+                        url,
+                        duration_ms,
+                        &outcome,
+                    );
+                    let response = match outcome {
+                        Ok(response) => response,
+                        Err(message) => {
+                            return Ok(failed(name, &WebFailure::from_message(&message)));
+                        }
+                    };
                     let object = core.allocate_object("BNWeb.Response", span)?;
                     let Value::Object { handle, .. } = object else {
                         unreachable!("allocate_object returns object")
@@ -402,6 +479,9 @@ impl WebProvider {
                 }
                 "Close" => {
                     require_arity(name, arguments, 1, span)?;
+                    if let Some(Value::Object { handle, .. }) = arguments.first() {
+                        self.clients.remove(handle);
+                    }
                     Ok(Value::Null)
                 }
                 _ => Ok(failed(name, &WebFailure::ProviderUnavailable("BNWeb"))),
@@ -1150,12 +1230,7 @@ impl WebProvider {
                                     .get(response_handle)
                                     .map_or(500, |r| r.status);
                                 if let Ok(server) = state.lock() {
-                                    server.log_access(
-                                        &method_name,
-                                        &path,
-                                        status,
-                                        None,
-                                    );
+                                    server.log_access(&method_name, &path, status, None);
                                 }
                                 return Ok(Value::Null);
                             }
@@ -1962,9 +2037,8 @@ fn apply_static_outcome_to_response(
             let _ = response.set_header("Content-Length", &content_length.to_string());
             let _ = response.set_header("ETag", &etag);
             let _ = response.set_header("Last-Modified", &last_modified);
-            let body_str = String::from_utf8(body).unwrap_or_else(|e| {
-                String::from_utf8_lossy(e.as_bytes()).into_owned()
-            });
+            let body_str = String::from_utf8(body)
+                .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned());
             let _ = response.write(&body_str);
         }
         crate::web::StaticServeOutcome::NotModified {

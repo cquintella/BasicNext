@@ -12,7 +12,7 @@ use bn_interp::provider::Providers;
 
 /// The libraries this build of `bn` ships (bucket 0.5.1d, D-F2-07).
 #[must_use]
-pub fn default_libraries() -> Providers {
+pub(crate) fn default_libraries() -> Providers {
     #[allow(unused_mut)] // With no library feature the registry stays empty.
     let mut libraries = Providers::default();
     #[cfg(feature = "lib-math")]

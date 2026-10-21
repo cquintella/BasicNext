@@ -127,7 +127,7 @@ impl Analyzer {
             // is a static mismatch even when every arm has `n` (0.6.md, IS, D2).
             Type::Alternative(_) => {
                 return Err(type_mismatch(
-                    "narrowed value",
+                    bn_catalog::text("frontend", "msg.narrowed_value"),
                     display(object),
                     format!("member '{name}'"),
                     span,
@@ -461,24 +461,27 @@ impl Analyzer {
                     return Err(type_mismatch(
                         format!("{} worker argument(s)", parameters.len()),
                         format!("{} argument(s)", rest.len()),
-                        "Async call",
+                        bn_catalog::text("frontend", "msg.async_call"),
                         span,
                     ));
                 }
                 if rest.len() > 8 {
                     return Err(type_mismatch(
-                        "at most 8 worker arguments",
+                        bn_catalog::text("frontend", "msg.at_most_8_worker_arguments"),
                         format!("{} arguments", rest.len()),
-                        "Async call",
+                        bn_catalog::text("frontend", "msg.async_call"),
                         span,
                     ));
                 }
                 for (argument, parameter) in rest.iter().zip(parameters) {
                     if !is_valid_async_parameter_type(&parameter, &self.standard_modules) {
                         return Err(type_mismatch(
-                            "scalar, string, date/time, or dispatch handle",
+                            bn_catalog::text(
+                                "frontend",
+                                "msg.scalar_string_date_time_or_dispatch_handle_2",
+                            ),
                             display(&parameter),
-                            "Async worker argument",
+                            bn_catalog::text("frontend", "msg.async_worker_argument"),
                             argument.span,
                         ));
                     }
@@ -487,7 +490,7 @@ impl Analyzer {
                         return Err(type_mismatch(
                             display(&parameter),
                             display(&actual),
-                            "Async worker argument",
+                            bn_catalog::text("frontend", "msg.async_worker_argument"),
                             argument.span,
                         ));
                     }

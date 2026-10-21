@@ -33,6 +33,7 @@ pub extern "C" fn bn_rt_exec_run(
     if out_result.is_null() {
         return INVALID_ARGUMENT;
     }
+    // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
     unsafe { *out_result = 0 };
     let Some(program) = input(program) else {
         return INVALID_ARGUMENT;
@@ -42,6 +43,7 @@ pub extern "C" fn bn_rt_exec_run(
     }
     let mut arguments = Vec::with_capacity(arg_count as usize);
     if arg_count > 0 {
+        // SAFETY: the pointer and the length describe a buffer the caller allocated and keeps alive for this call.
         let values = unsafe { std::slice::from_raw_parts(args, arg_count as usize) };
         for value in values {
             let Some(value) = input(*value) else {
@@ -71,6 +73,7 @@ pub extern "C" fn bn_rt_exec_run(
         stdout,
         stderr,
     });
+    // SAFETY: the handle is the address this module stored with Box::into_raw and has not been freed.
     unsafe { *out_result = Box::into_raw(result) as u64 };
     0
 }
@@ -81,6 +84,7 @@ pub extern "C" fn bn_rt_exec_result_return_code(handle: u64) -> i64 {
     if handle == 0 {
         return 0;
     }
+    // SAFETY: the handle is the address this module stored with Box::into_raw and has not been freed.
     unsafe { (*(handle as *const ExecResult)).return_code }
 }
 
@@ -90,6 +94,7 @@ pub extern "C" fn bn_rt_exec_result_stdout(handle: u64) -> *const c_char {
     if handle == 0 {
         return std::ptr::null();
     }
+    // SAFETY: the handle is the address this module stored with Box::into_raw and has not been freed.
     let res = unsafe { &*(handle as *const ExecResult) };
     let bytes = res.stdout.strip_suffix(&[0]).unwrap_or(&res.stdout);
     crate::string::c_string_from_bytes(bytes)
@@ -101,6 +106,7 @@ pub extern "C" fn bn_rt_exec_result_stderr(handle: u64) -> *const c_char {
     if handle == 0 {
         return std::ptr::null();
     }
+    // SAFETY: the handle is the address this module stored with Box::into_raw and has not been freed.
     let res = unsafe { &*(handle as *const ExecResult) };
     let bytes = res.stderr.strip_suffix(&[0]).unwrap_or(&res.stderr);
     crate::string::c_string_from_bytes(bytes)
@@ -112,6 +118,7 @@ pub extern "C" fn bn_rt_exec_result_close(handle: u64) -> i32 {
     if handle == 0 {
         return 0;
     }
+    // SAFETY: the handle is the address this module stored with Box::into_raw and has not been freed.
     unsafe {
         drop(Box::from_raw(handle as *mut ExecResult));
     }

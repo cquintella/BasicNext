@@ -178,7 +178,7 @@ fn unused_import_warnings(
     let imports_bnweb = program
         .items
         .iter()
-        .any(|item| matches!(item, Item::Import { path, .. } if *path == ["BNWeb"]));
+        .any(|item| matches!(item, Item::Import { path, .. } if *path == [bn_catalog::text("frontend", "msg.bnweb")]));
     program
         .items
         .iter()
@@ -191,7 +191,7 @@ fn unused_import_warnings(
             };
             let grants_capability = (imports_bnlog && grants_bnlog(path))
                 || (imports_bnweb
-                    && matches!(path.as_slice(), [host, cap] if host == "HOST" && cap == "FileSystem"));
+                    && matches!(path.as_slice(), [host, cap] if host == bn_catalog::text("frontend", "msg.host_3") && cap == "FileSystem"));
             if type_alias_uses.contains(alias) || grants_capability {
                 return None;
             }
@@ -221,7 +221,7 @@ fn unused_import_warnings(
 /// (`bn_lib_log`). Such an import is used even with no member access, and
 /// removing it would break the program.
 fn grants_bnlog(path: &[String]) -> bool {
-    matches!(path, [host, capability] if host == "HOST"
+    matches!(path, [host, capability] if host == bn_catalog::text("frontend", "msg.host_3")
         && matches!(capability.as_str(), "FileSystem" | "Console"))
 }
 
@@ -413,7 +413,10 @@ pub(crate) fn exported_declarations(
             ..
         } = item
         {
-            if path.first().is_some_and(|part| part == "HOST") {
+            if path
+                .first()
+                .is_some_and(|part| part == bn_catalog::text("frontend", "msg.host_3"))
+            {
                 continue;
             }
             let Some(imported) = imports.get(alias) else {
@@ -728,7 +731,11 @@ pub(crate) fn export_selectors(
         .items
         .iter()
         .filter_map(|item| match item {
-            Item::Import { path, alias, .. } if path.first().is_some_and(|part| part != "HOST") => {
+            Item::Import { path, alias, .. }
+                if path
+                    .first()
+                    .is_some_and(|part| part != bn_catalog::text("frontend", "msg.host_3")) =>
+            {
                 selectors
                     .next()
                     .expect("module graph selector order")
@@ -749,7 +756,11 @@ pub(crate) fn module_imports(
         .items
         .iter()
         .filter_map(|item| match item {
-            Item::Import { path, alias, .. } if path.first().is_some_and(|part| part != "HOST") => {
+            Item::Import { path, alias, .. }
+                if path
+                    .first()
+                    .is_some_and(|part| part != bn_catalog::text("frontend", "msg.host_3")) =>
+            {
                 Some((
                     alias.clone(),
                     *imported_ids.next().expect("module graph import order"),

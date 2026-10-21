@@ -1,3 +1,7 @@
 # Native STRING buffer counts (Sprint 7, G7-D3).
 retain-overflow = string retain count exceeded the maximum
 release-of-zero = string buffer was released after its count reached zero
+
+# Messages moved out of Rust source (text-literal gate).
+msg.string_length_fits_u64 = string length fits u64
+msg.string_size_fits_address_space = string size fits address space

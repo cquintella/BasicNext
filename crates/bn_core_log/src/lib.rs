@@ -12,14 +12,11 @@ mod catalog;
 pub mod error;
 pub use error::LogFailure;
 mod fields;
-pub use fields::{FIELD_VALUE_MAX_BYTES, FieldMap, check_values};
+pub use fields::FieldMap;
 mod logger;
-pub use logger::{
-    Destination, Imports, LABEL_MAX_BYTES, LogSink, Logger, Operation, TIMEOUT_MAX_MS,
-    TIMEOUT_MIN_MS,
-};
+pub use logger::{Destination, Imports, LogSink, Logger, Operation, TIMEOUT_MAX_MS};
 mod records;
-pub use records::{Apache, Event};
+pub use records::{Apache, Event, http_client_access};
 
 const MAX_RECORD_BYTES: usize = 64 * 1024;
 const RECORD_TOO_LONG: &str = "serialized log record exceeds 64 KiB";
@@ -51,14 +48,14 @@ impl Level {
     }
 
     #[must_use]
-    pub fn from_i128(value: i128) -> Option<Self> {
+    pub(crate) fn from_i128(value: i128) -> Option<Self> {
         i64::try_from(value).ok().and_then(Self::from_i64)
     }
 
     /// The RFC 5424 severity: ERROR 3, WARN 4, INFO and HTTP 6, VERBOSE,
     /// DEBUG and SILLY 7.
     #[must_use]
-    pub const fn syslog_severity(self) -> u8 {
+    pub(crate) const fn syslog_severity(self) -> u8 {
         match self {
             Self::Error => 3,
             Self::Warn => 4,
@@ -132,7 +129,7 @@ pub struct Record {
 impl Record {
     /// Builds a record from timestamp, label, level, message, context and provided fields.
     #[must_use]
-    pub fn with_timestamp<'a>(
+    pub(crate) fn with_timestamp<'a>(
         timestamp: String,
         label: &str,
         level: Level,
@@ -296,7 +293,7 @@ impl Format {
     /// The format whose name is exactly `name` (`"JSON"`, `"SYSLOG"`,
     /// `"APACHE"`).
     #[must_use]
-    pub fn from_name(name: &str) -> Option<Self> {
+    pub(crate) fn from_name(name: &str) -> Option<Self> {
         [
             (Self::Json, "format.json"),
             (Self::Syslog, "format.syslog"),
@@ -413,7 +410,7 @@ fn apache_time(timestamp: &str) -> Option<String> {
 /// with `-` and `.` read as `_`, an exact sensitive name or one containing a
 /// sensitive marker.
 #[must_use]
-pub fn is_sensitive(key: &str) -> bool {
+pub(crate) fn is_sensitive(key: &str) -> bool {
     let normalized = key
         .chars()
         .map(|character| match character.to_ascii_lowercase() {

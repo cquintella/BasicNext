@@ -89,7 +89,11 @@ pub(crate) fn lower_access_emission(
                     _ => unreachable!(),
                 };
                 let dest = destination.0;
-                let handle = I::extract(handle_result_ty(), v(*object), 2);
+                let handle = if matches!(analysis.values.get(object), Some(Type::Alternative(_))) {
+                    I::extract(handle_result_ty(), v(*object), 2)
+                } else {
+                    I::cast(CastOp::PtrToInt, T::Ptr, v(*object), T::I64)
+                };
                 text.assign(format!("execmemberhandle{dest}"), handle);
                 let ret = if suffix == "return_code" {
                     T::I64

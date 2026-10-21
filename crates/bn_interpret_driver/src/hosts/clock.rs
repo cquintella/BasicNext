@@ -20,10 +20,10 @@ use bn_interp::provider::{CoreContext, Provider};
 use bn_interp::{require_arity_pub as require_arity, runtime_error_pub as runtime_error};
 use bn_types::IntegerType;
 
-pub const NAME: &str = "Clock";
+pub(crate) const NAME: &str = "Clock";
 
 #[derive(Debug, Default)]
-pub struct ClockProvider;
+pub(crate) struct ClockProvider;
 
 impl Provider for ClockProvider {
     fn call(

@@ -26,7 +26,10 @@ type Outcome<T> = Result<T, JsonFailure>;
 /// The documents of the module copy that runs on this thread
 /// (`bn_core_copy`): a task's are freed when the task ends.
 #[derive(Default)]
-struct Documents(Mutex<HashMap<u64, serde_json::Value>>);
+struct Documents {
+    values: Mutex<HashMap<u64, serde_json::Value>>,
+    holders: Mutex<HashMap<u64, usize>>,
+}
 
 fn next_handle() -> u64 {
     static NEXT: AtomicU64 = AtomicU64::new(1);
@@ -35,15 +38,27 @@ fn next_handle() -> u64 {
 
 fn with_documents<T>(operation: impl FnOnce(&mut HashMap<u64, serde_json::Value>) -> T) -> T {
     let documents = bn_core_copy::table::<Documents>();
-    operation(&mut documents.0.lock().unwrap_or_else(PoisonError::into_inner))
+    operation(
+        &mut documents
+            .values
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner),
+    )
 }
 
-/// Files `value` and returns its handle. Rust callers inside the interpreter
-/// use this directly; compiled code reaches it through the ABI below.
+/// Files `value` and returns its handle with an initial reference count of 1.
+/// Rust callers inside the interpreter use this directly; compiled code
+/// reaches it through the ABI below.
 #[must_use]
 pub fn store(value: serde_json::Value) -> u64 {
     let handle = next_handle();
     with_documents(|documents| documents.insert(handle, value));
+    let documents = bn_core_copy::table::<Documents>();
+    documents
+        .holders
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(handle, 1);
     handle
 }
 
@@ -53,9 +68,40 @@ pub fn document(handle: u64) -> Option<serde_json::Value> {
     with_documents(|documents| documents.get(&handle).cloned())
 }
 
-/// Drops `handle`. `false` when it was already released.
+/// One more binding holds `handle` (a copy).
+pub fn retain(handle: u64) -> bool {
+    let documents = bn_core_copy::table::<Documents>();
+    let mut holders = documents
+        .holders
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    if let Some(count) = holders.get_mut(&handle) {
+        *count += 1;
+        true
+    } else {
+        false
+    }
+}
+
+/// Drops one reference to `handle`. When the count reaches zero, the document
+/// is freed. `false` when it was already released.
 pub fn release(handle: u64) -> bool {
-    with_documents(|documents| documents.remove(&handle).is_some())
+    let documents = bn_core_copy::table::<Documents>();
+    let mut holders = documents
+        .holders
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    if let Some(count) = holders.get_mut(&handle) {
+        *count -= 1;
+        if *count == 0 {
+            holders.remove(&handle);
+            drop(holders);
+            with_documents(|documents| documents.remove(&handle));
+        }
+        true
+    } else {
+        false
+    }
 }
 
 /// Depth of `value`, counting the value itself as one level.

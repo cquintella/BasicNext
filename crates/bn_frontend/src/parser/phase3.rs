@@ -132,7 +132,9 @@ impl<'a> Parser<'a> {
                     return Err(self.error("inferred CONST requires one name and one literal"));
                 }
                 let TokenKind::Identifier(name) = &line[1].kind else {
-                    return Err(self.error("expected binding name"));
+                    return Err(
+                        self.error(bn_catalog::text("frontend", "msg.expected_binding_name"))
+                    );
                 };
                 let initializer = negative_literal(self.expression_in(&line[assign + 1..])?);
                 return Ok(Statement::Binding {
@@ -160,13 +162,12 @@ impl<'a> Parser<'a> {
                             span,
                         },
                     ] => Ok((name.clone(), *span)),
-                    _ => Err(self.error("expected binding name")),
+                    _ => Err(self.error(bn_catalog::text("frontend", "msg.expected_binding_name"))),
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            let (name, _) = name_parts
-                .first()
-                .cloned()
-                .ok_or_else(|| self.error("expected binding name"))?;
+            let (name, _) = name_parts.first().cloned().ok_or_else(|| {
+                self.error(bn_catalog::text("frontend", "msg.expected_binding_name"))
+            })?;
             let additional_names = name_parts
                 .iter()
                 .skip(1)
@@ -446,18 +447,27 @@ impl<'a> Parser<'a> {
             }
         }
         let Some(close) = close else {
-            return Err(self.error("destructuring LET requires a closing bracket"));
+            return Err(self.error(bn_catalog::text(
+                "frontend",
+                "msg.destructuring_let_requires_a_closing_bracket",
+            )));
         };
         if !matches!(
             line.get(close + 1).map(|token| &token.kind),
             Some(TokenKind::Symbol(Symbol::Assign))
         ) {
-            return Err(self.error("destructuring LET requires an initializer"));
+            return Err(self.error(bn_catalog::text(
+                "frontend",
+                "msg.destructuring_let_requires_an_initializer",
+            )));
         }
         let source = self.expression_in(&line[close + 2..])?;
         let interior = &line[2..close];
         if interior.is_empty() {
-            return Err(self.error("destructuring LET requires a binding"));
+            return Err(self.error(bn_catalog::text(
+                "frontend",
+                "msg.destructuring_let_requires_a_binding",
+            )));
         }
         let mut bindings = Vec::new();
         let mut start = 0;
@@ -490,18 +500,21 @@ impl<'a> Parser<'a> {
             span: name_span,
         }) = tokens.first()
         else {
-            return Err(self.error("expected binding name"));
+            return Err(self.error(bn_catalog::text("frontend", "msg.expected_binding_name")));
         };
         let type_ref = if matches!(tokens.get(1).map(|token| &token.kind), Some(TokenKind::Keyword(word)) if word == "AS")
         {
             if tokens.len() == 2 {
-                return Err(self.error("expected type"));
+                return Err(self.error(bn_catalog::text("frontend", "msg.expected_type")));
             }
             Some(self.type_reference(&tokens[2..], true)?)
         } else if tokens.len() == 1 {
             None
         } else {
-            return Err(self.error("destructuring binding is a name or a name AS type"));
+            return Err(self.error(bn_catalog::text(
+                "frontend",
+                "msg.destructuring_binding_is_a_name_or_a_name",
+            )));
         };
         let end = tokens.last().map_or(name_span.end, |token| token.span.end);
         Ok(crate::ast::DestructuringBinding {

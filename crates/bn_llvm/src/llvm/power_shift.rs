@@ -314,7 +314,12 @@ fn float_power_operand(
     from: &Type,
     target: &T,
 ) -> O {
-    let source = llvm_type(from).expect("validated power operand");
+    let source = llvm_type(from).unwrap_or_else(|| {
+        panic!(
+            "{}",
+            bn_catalog::text("llvm", "msg.validated_power_operand")
+        )
+    });
     if source == *target {
         return v(value);
     }

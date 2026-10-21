@@ -16,7 +16,7 @@ pub mod http;
 mod test_support;
 pub mod tls;
 pub mod web;
-pub mod web_abi;
+pub(crate) mod web_abi;
 pub mod web_error;
 pub mod web_state;
 pub use web::*;
