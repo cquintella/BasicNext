@@ -859,7 +859,9 @@ mod tests {
             .name;
         // Windows may spell the same path with `\` or `/`.
         assert_eq!(
-            std::path::Path::new(stored).components().collect::<Vec<_>>(),
+            std::path::Path::new(stored)
+                .components()
+                .collect::<Vec<_>>(),
             super::normalize(&library).components().collect::<Vec<_>>()
         );
         let internal = "POINTER TO MODULE#0.Box OR NULL, and #0.Box";
