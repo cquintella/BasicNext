@@ -854,11 +854,13 @@ mod tests {
             .iter()
             .find(|module| module.id != graph.root)
             .expect("imported module");
+        let stored = &source_of(&graph, library_module.source.source_id)
+            .expect("library source")
+            .name;
+        // Windows may spell the same path with `\` or `/`.
         assert_eq!(
-            source_of(&graph, library_module.source.source_id)
-                .expect("library source")
-                .name,
-            super::normalize(&library).display().to_string()
+            std::path::Path::new(stored).components().collect::<Vec<_>>(),
+            super::normalize(&library).components().collect::<Vec<_>>()
         );
         let internal = "POINTER TO MODULE#0.Box OR NULL, and #0.Box";
         assert_eq!(
