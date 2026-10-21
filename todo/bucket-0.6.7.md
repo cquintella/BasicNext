@@ -12,10 +12,10 @@ native `bnc`, and **no change to the language** (`language/0.6/0.6.ebnf`,
 `0.6.md`, `keywords.md` unchanged).
 
 **Prerequisite (Carlos, 2026-10-14):**
-[`bucket-0.6.6-test-system.md`](bucket-0.6.6-test-system.md) closed before
+[`../ongoing/bucket-0.6.6-test-system.md`](../ongoing/bucket-0.6.6-test-system.md) closed before
 this bucket starts: the test layout, oracle rule and verification sections
-S6 follows. Bucket 0.6.6 itself starts only after
-[`ongoing/bucket-0.6.5.md`](../ongoing/bucket-0.6.5.md) closes, so the 0.6.5
+S6 follows. Bucket 0.6.6 started after
+`v0.6.5` closed (`done/bucket-0.6.5.md`), so the 0.6.5
 work this design builds on (one class model, `HOST.Env`, option owners,
 BNWeb under `bnc`) is closed by then; its decisions are in the archived
 source buckets under `done/`.

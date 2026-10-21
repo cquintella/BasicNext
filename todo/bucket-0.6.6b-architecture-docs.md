@@ -1,8 +1,8 @@
 # Bucket 0.6.6b — Architecture Documentation Overhaul (0.6)
 
 **Status:** Planned (todo). Not started.
-**Origem:** Decisão BDFL (2026-10-20), desmembrado de `ongoing/bucket-0.6.5-remainings.md` (antigos itens `D.2.a`–`D.2.d` e `D.C.6`).
-**Inicia após:** Conclusão de `todo/bucket-0.6.6-test-system.md` (reestruturação do sistema de testes, oráculos e consolidação).
+**Origem:** Decisão BDFL (2026-10-20), desmembrado de `done/bucket-0.6.5-remainings.md` (antigos itens `D.2.a`–`D.2.d` e `D.C.6`).
+**Inicia após:** Conclusão de `ongoing/bucket-0.6.6-test-system.md` (reestruturação do sistema de testes, oráculos e consolidação).
 **Precede:** `todo/bucket-0.6.7.md` (BNFfi).
 **Tag:** `docs/releases/0.6.6b.md` on close (documentação e alinhamento arquitetural da linhagem 0.6; sem alteração normativa da linguagem).
 
