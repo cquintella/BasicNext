@@ -559,6 +559,8 @@ fn unreachable_file_closes_when_its_last_reference_ends() {
     let directory = TestDir::new("s13-file").expect("create directory");
     let path = directory.join("note.txt");
     let path_text = path.display().to_string();
+    // A Windows path's `\` is an escape inside a BN string.
+    let path_literal = path_text.replace('\\', "\\\\");
     let source = format!(
         "IMPORT HOST.FileSystem AS FS\n\
          FUNCTION WriteOnly(path AS STRING) AS INTEGER\n\
@@ -573,10 +575,10 @@ fn unreachable_file_closes_when_its_last_reference_ends() {
          RETURN 0\n\
          END FUNCTION\n\
          FUNCTION Start() AS INTEGER\n\
-         IF WriteOnly(\"{path_text}\") <> 0 THEN\n\
+         IF WriteOnly(\"{path_literal}\") <> 0 THEN\n\
          RETURN 1\n\
          END IF\n\
-         LET file AS FS.File OR Error = FS.Open(\"{path_text}\", FS.READ)\n\
+         LET file AS FS.File OR Error = FS.Open(\"{path_literal}\", FS.READ)\n\
          IF file IS Error THEN\n\
          RETURN 3\n\
          END IF\n\

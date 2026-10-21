@@ -462,13 +462,17 @@ pub extern "C" fn bn_web_response_commit(handle: u64) -> i32 {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn bn_web_response_is_committed(handle: u64) -> bool {
+pub extern "C" fn bn_web_response_is_committed(handle: u64) -> i32 {
     let wrapper = table();
     let guard = wrapper.0.lock().unwrap();
-    guard
-        .responses
-        .get(&handle)
-        .is_some_and(super::web::Response::is_committed)
+    // `i32`, not `bool`: the caller reads the full register, and a C `bool`
+    // leaves the upper bits undefined on x86-64.
+    i32::from(
+        guard
+            .responses
+            .get(&handle)
+            .is_some_and(super::web::Response::is_committed),
+    )
 }
 
 #[unsafe(no_mangle)]

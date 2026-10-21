@@ -173,7 +173,7 @@ pub(crate) fn load_with_overlays_and_paths(
         states: HashMap::new(),
         modules: Vec::new(),
         session,
-        overlays,
+        overlays: normalized_overlays(overlays),
         roots: &roots,
     };
     let root = loader.visit(&entry, None, None)?;
@@ -293,7 +293,7 @@ struct Loader<'a> {
     states: HashMap<PathBuf, State>,
     modules: Vec<LoadedModule>,
     session: &'a mut FrontendSession,
-    overlays: &'a BTreeMap<PathBuf, String>,
+    overlays: BTreeMap<PathBuf, String>,
     roots: &'a [ModuleRoot],
 }
 
@@ -332,7 +332,7 @@ impl Loader<'_> {
                 }
             };
         }
-        let source = read_source(&path, importer, self.session, self.overlays)?;
+        let source = read_source(&path, importer, self.session, &self.overlays)?;
         let tokens = lex(&source).map_err(|diagnostic| ModuleError {
             source: Box::new(source.clone()),
             diagnostic: Box::new(diagnostic),
@@ -408,7 +408,7 @@ impl Loader<'_> {
             &normalize(&parent_path),
             Some((importer, span)),
             self.session,
-            self.overlays,
+            &self.overlays,
         )?;
         let exports_name = lex(&parent)
             .ok()
@@ -677,6 +677,16 @@ fn is_name_character(character: char) -> bool {
     character.is_ascii_alphanumeric() || character == '_'
 }
 
+/// Overlay keys use the same path `visit` looks up. On Windows a rooted
+/// path such as `/virtual/main.bn` is not absolute; joining it with the
+/// working directory keeps the drive and drops the rest.
+fn normalized_overlays(overlays: &BTreeMap<PathBuf, String>) -> BTreeMap<PathBuf, String> {
+    overlays
+        .iter()
+        .map(|(path, text)| (normalize(path), text.clone()))
+        .collect()
+}
+
 fn normalize(path: &Path) -> PathBuf {
     fs::canonicalize(path).unwrap_or_else(|_| {
         if path.is_absolute() {
@@ -711,7 +721,6 @@ mod tests {
         };
         let graph = repository.join("tests/modules/graph");
         let mut session = FrontendSession::default();
-        let overlays = BTreeMap::new();
         let standard = ModuleRoot {
             path: repository.join("modules/bn"),
             provenance: RootProvenance::EntryAncestor,
@@ -722,7 +731,7 @@ mod tests {
             states: HashMap::new(),
             modules: Vec::new(),
             session: &mut session,
-            overlays: &overlays,
+            overlays: BTreeMap::new(),
             roots: &roots,
         };
         let first = loader

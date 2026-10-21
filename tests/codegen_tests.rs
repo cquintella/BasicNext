@@ -81,11 +81,11 @@ declare void @funlockfile(ptr)"
         )
     };
     let windows_binary_stdio = if cfg!(windows) {
-        "\
-  %winstdin = call i32 @_setmode(i32 0, i32 32768)
-  %winstdout = call i32 @_setmode(i32 1, i32 32768)
-  %winstderr = call i32 @_setmode(i32 2, i32 32768)
-"
+        concat!(
+            "  %winstdin = call i32 @_setmode(i32 0, i32 32768)\n",
+            "  %winstdout = call i32 @_setmode(i32 1, i32 32768)\n",
+            "  %winstderr = call i32 @_setmode(i32 2, i32 32768)\n",
+        )
     } else {
         ""
     };

@@ -82,7 +82,7 @@ pub(crate) fn declare_web_abi(text: &mut crate::ir::LlvmModule) {
         },
         Signature {
             name: "bn_web_response_is_committed",
-            ret: T::I1,
+            ret: T::I32,
             params: vec![T::I64],
             variadic: false,
         },
