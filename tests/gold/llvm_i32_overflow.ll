@@ -16,9 +16,7 @@
 declare i32 @printf(ptr, ...)
 declare i32 @putchar(i32)
 declare void @bn_rt_print_str(ptr, i64)
-@__stdoutp = external global ptr
-declare void @flockfile(ptr)
-declare void @funlockfile(ptr)
+{stdio_decls}
 declare i32 @bn_rt_policy_init(i32, i64)
 declare void @bn_rt_policy_check(i32)
 declare i32 @bn_rt_policy_filesystem_sandboxed()
@@ -251,7 +249,7 @@ define i32 @main(i32 %argc, ptr %argv) {
 b0:
   store i32 %argc, ptr @.bn_argc
   store ptr %argv, ptr @.bn_argv
-  %bn_policy_status = call i32 @bn_rt_policy_init(i32 1, i64 0)
+{windows_binary_stdio}  %bn_policy_status = call i32 @bn_rt_policy_init(i32 1, i64 0)
   call void @bn_rt_policy_check(i32 %bn_policy_status)
   %v0 = add i32 0, 2147483647
   %v1 = add i32 0, 1

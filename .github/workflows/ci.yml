@@ -114,8 +114,8 @@ jobs:
       - name: Build runtime and executables
         shell: bash
         run: |
-          # Native bnc links the bn_rt staticlib; cargo test alone may not emit it.
-          cargo build --locked -p bn_rt
+          # Native bnc links these staticlibs; cargo test alone may not emit them.
+          cargo build --locked -p bn_rt -p bn_web
           cargo build --locked --workspace --bins
 
       - name: Test

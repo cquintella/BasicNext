@@ -48,10 +48,50 @@ fn start_module(blocks: Vec<BasicBlock>) -> Module {
     }
 }
 
-/// A gold module; its header names the toolchain version (`{version}`).
+/// A gold module. `{version}` is the toolchain version. `{stdio_decls}` is
+/// the host's stdout lock (Darwin `__stdoutp`, other POSIX `stdout`, the
+/// Microsoft UCRT `__acrt_iob_func`). `{windows_binary_stdio}` is empty
+/// except on Windows, where `main` sets binary mode before the policy call.
 fn read_gold(path: &str) -> String {
     let gold = fs::read_to_string(path).expect("read gold fixture");
+    let stdout = if cfg!(any(
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "tvos",
+        target_os = "watchos",
+        target_os = "freebsd"
+    )) {
+        "__stdoutp"
+    } else {
+        "stdout"
+    };
+    let stdio_decls = if cfg!(windows) {
+        "\
+declare i32 @_setmode(i32, i32)
+declare ptr @__acrt_iob_func(i32)
+declare void @_lock_file(ptr)
+declare void @_unlock_file(ptr)"
+            .to_string()
+    } else {
+        format!(
+            "\
+@{stdout} = external global ptr
+declare void @flockfile(ptr)
+declare void @funlockfile(ptr)"
+        )
+    };
+    let windows_binary_stdio = if cfg!(windows) {
+        "\
+  %winstdin = call i32 @_setmode(i32 0, i32 32768)
+  %winstdout = call i32 @_setmode(i32 1, i32 32768)
+  %winstderr = call i32 @_setmode(i32 2, i32 32768)
+"
+    } else {
+        ""
+    };
     gold.replace("{version}", env!("CARGO_PKG_VERSION"))
+        .replace("{stdio_decls}", &stdio_decls)
+        .replace("{windows_binary_stdio}", windows_binary_stdio)
 }
 
 #[test]

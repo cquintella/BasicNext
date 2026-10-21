@@ -23,5 +23,6 @@ secure_fs_windows.rs
 secure_fs.rs
 sqlite_error.rs
 stats.rs
+string.rs
 terminal.rs
 web_error.rs

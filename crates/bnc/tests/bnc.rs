@@ -286,9 +286,11 @@ fn bnc_g_writes_debug_information_into_the_native_artifact() {
             "-g writes a line table"
         );
     }
+    // Trap reports name the source even without `-g`. Debug information is
+    // the compile-unit producer, which `-g` is what writes.
     assert!(
-        !contains(&without_bytes, "dbgprog.bn"),
-        "without -g the artifact names no Basic Next source"
+        !contains(&without_bytes, "Basic Next "),
+        "without -g the artifact has no Basic Next debug information"
     );
 }
 

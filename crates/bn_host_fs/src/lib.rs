@@ -27,11 +27,11 @@ use bn_types::IntegerType;
 
 pub const NAME: &str = "FileSystem";
 
-/// One open or closed file and the strong references that keep it alive.
+/// One open or closed file and the references that keep it alive.
 #[derive(Debug)]
 struct FileSlot {
     file: OpenFile,
-    strong: u32,
+    references: u32,
 }
 
 #[derive(Debug)]
@@ -110,7 +110,13 @@ impl Provider for FsProvider {
                 let opened = bn_rt::file::open(core.host().filesystem(), path, mode).map(|file| {
                     let id = self.next_file;
                     self.next_file += 1;
-                    self.files.insert(id, FileSlot { file, strong: 1 });
+                    self.files.insert(
+                        id,
+                        FileSlot {
+                            file,
+                            references: 1,
+                        },
+                    );
                     Value::File(id)
                 });
                 Ok(method_result(opened, |value| value))
@@ -142,7 +148,7 @@ impl Provider for FsProvider {
             id,
             FileSlot {
                 file: OpenFile::default(),
-                strong: 1,
+                references: 1,
             },
         );
         Some(Ok(Value::File(id)))
@@ -153,8 +159,8 @@ impl Provider for FsProvider {
             return None;
         };
         Some(match self.files.get_mut(id) {
-            Some(slot) if slot.strong > 1 => {
-                slot.strong -= 1;
+            Some(slot) if slot.references > 1 => {
+                slot.references -= 1;
                 Ok(())
             }
             Some(_) => {
@@ -174,9 +180,9 @@ impl Provider for FsProvider {
             return None;
         };
         Some(match self.files.get_mut(id) {
-            Some(slot) => match slot.strong.checked_add(1) {
+            Some(slot) => match slot.references.checked_add(1) {
                 Some(count) => {
-                    slot.strong = count;
+                    slot.references = count;
                     Ok(())
                 }
                 None => Err(runtime_error(

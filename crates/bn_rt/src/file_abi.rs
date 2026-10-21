@@ -32,7 +32,7 @@ fn authorize() -> Result<(), u32> {
 
 struct FileSlot {
     file: OpenFile,
-    strong: u32,
+    references: u32,
 }
 
 struct FileRegistry {
@@ -158,7 +158,7 @@ pub extern "C" fn bn_rt_file_new(out: *mut BNFileHandle) -> u32 {
         id,
         FileSlot {
             file: super::file::OpenFile::default(),
-            strong: 1,
+            references: 1,
         },
     );
     // SAFETY: emitted code passes a writable handle slot.
@@ -201,7 +201,10 @@ pub extern "C" fn bn_rt_file_open(path: *const c_char, mode: i32, out: *mut BNFi
     };
     match super::policy::with_fs(|policy| super::file::open(policy, Path::new(&path), mode)) {
         Ok(file) => {
-            entry.insert(FileSlot { file, strong: 1 });
+            entry.insert(FileSlot {
+                file,
+                references: 1,
+            });
             // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
             unsafe { out.write(id) };
             BN_FILE_OK
@@ -228,7 +231,7 @@ pub extern "C" fn bn_rt_file_retain(handle: BNFileHandle) -> u32 {
         super::set_error(bn_catalog::text("file", "msg.file_handle_is_invalid_2"));
         return BN_FILE_INVALID;
     };
-    slot.strong = match slot.strong.checked_add(1) {
+    slot.references = match slot.references.checked_add(1) {
         Some(count) => count,
         None => {
             super::set_error(bn_catalog::text(
@@ -253,8 +256,8 @@ pub extern "C" fn bn_rt_file_release(handle: BNFileHandle) -> u32 {
         super::set_error(bn_catalog::text("file", "msg.file_handle_is_invalid_2"));
         return BN_FILE_INVALID;
     };
-    if slot.strong > 1 {
-        slot.strong -= 1;
+    if slot.references > 1 {
+        slot.references -= 1;
         return BN_FILE_OK;
     }
     guard.files.remove(&handle);

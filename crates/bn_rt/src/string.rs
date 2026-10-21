@@ -407,6 +407,10 @@ pub extern "C" fn bn_rt_input_line(_reusable: *mut c_char) -> *mut c_char {
 }
 
 #[cfg(test)]
+#[path = "string_tests.rs"]
+mod reexec;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -477,20 +481,12 @@ mod tests {
         }
     }
 
-    fn run_exact_child(name: &str, child_env: &str) -> std::process::Output {
-        std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", name])
-            .env(child_env, "1")
-            .output()
-            .expect("spawn string test child")
-    }
-
     #[test]
     fn release_to_zero_returns_the_live_count() {
         const CHILD: &str = "BN_STRING_LIVE_COUNT_CHILD";
         const NAME: &str = "string::tests::release_to_zero_returns_the_live_count";
         if std::env::var_os(CHILD).is_none() {
-            let result = run_exact_child(NAME, CHILD);
+            let result = super::reexec::run_exact_child(NAME, CHILD);
             assert!(
                 result.status.success(),
                 "{}",
@@ -510,7 +506,7 @@ mod tests {
         const CHILD: &str = "BN_STRING_STRESS_CHILD";
         const NAME: &str = "string::tests::a_hundred_thousand_copies_do_not_accumulate";
         if std::env::var_os(CHILD).is_none() {
-            let result = run_exact_child(NAME, CHILD);
+            let result = super::reexec::run_exact_child(NAME, CHILD);
             assert!(
                 result.status.success(),
                 "{}",
@@ -534,7 +530,7 @@ mod tests {
         const NAME: &str =
             "string::tests::concurrent_retain_and_release_ends_at_the_starting_count";
         if std::env::var_os(CHILD).is_none() {
-            let result = run_exact_child(NAME, CHILD);
+            let result = super::reexec::run_exact_child(NAME, CHILD);
             assert!(
                 result.status.success(),
                 "{}",
@@ -575,7 +571,7 @@ mod tests {
         const CHILD: &str = "BN_STRING_RELEASE_ZERO_CHILD";
         const NAME: &str = "string::tests::release_of_a_zero_count_traps";
         if std::env::var_os(CHILD).is_none() {
-            let result = run_exact_child(NAME, CHILD);
+            let result = super::reexec::run_exact_child(NAME, CHILD);
             assert!(!result.status.success());
             let stderr = String::from_utf8_lossy(&result.stderr);
             assert!(
@@ -597,7 +593,7 @@ mod tests {
         const CHILD: &str = "BN_STRING_RETAIN_OVERFLOW_CHILD";
         const NAME: &str = "string::tests::retain_past_the_maximum_traps";
         if std::env::var_os(CHILD).is_none() {
-            let result = run_exact_child(NAME, CHILD);
+            let result = super::reexec::run_exact_child(NAME, CHILD);
             assert!(!result.status.success());
             let stderr = String::from_utf8_lossy(&result.stderr);
             assert!(

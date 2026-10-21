@@ -30,3 +30,6 @@ ring = "0.17.14"
 rustls = { version = "0.23.43", default-features = false, features = ["ring", "std"] }
 tokio = { version = "1.53.1", default-features = false, features = ["net", "rt", "rt-multi-thread", "sync", "time"] }
 tokio-rustls = { version = "0.26.4", default-features = false, features = ["ring"] }
+
+[dev-dependencies]
+bn_rt = { path = "../../crates/bn_rt" }
