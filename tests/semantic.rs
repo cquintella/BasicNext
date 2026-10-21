@@ -1150,7 +1150,7 @@ fn imported_module_diagnostics_use_that_modules_source_and_spelling() {
     let library_module = graph
         .modules
         .iter()
-        .find(|module| module.path == library)
+        .find(|module| module.id != graph.root)
         .expect("library");
     assert_eq!(
         error.diagnostic.span.start.source_id,

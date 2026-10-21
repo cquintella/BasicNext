@@ -858,7 +858,7 @@ mod tests {
             source_of(&graph, library_module.source.source_id)
                 .expect("library source")
                 .name,
-            library.display().to_string()
+            super::normalize(&library).display().to_string()
         );
         let internal = "POINTER TO MODULE#0.Box OR NULL, and #0.Box";
         assert_eq!(
