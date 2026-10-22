@@ -189,8 +189,10 @@ From a checkout, `cargo run -p bni -- run <file>` uses this tree's toolchain.
 - [The Basic Next book](https://github.com/cquintella/basicnext-book): the
   tutorial.
 - [Runtime ABI contract](docs/architecture/value-memory-abi.md).
-- Editor support: [Vim / Neovim plugin](https://github.com/cquintella/basicnext-vim),
-  [VS Code extension](https://github.com/cquintella/basicnext-vscode),
+- Edit `.bn` files with the [VS Code extension](https://github.com/cquintella/basicnext-vscode).
+  Download `basicnext-0.6.5.vsix` from that repository's releases and install it with
+  `code --install-extension basicnext-0.6.5.vsix`.
+  Also available: [Vim / Neovim plugin](https://github.com/cquintella/basicnext-vim)
   and [Jupyter kernel](https://github.com/cquintella/basicnext-jupyter).
 
 ## Contributing
