@@ -16,7 +16,7 @@ use std::ffi::{c_char, c_void};
 use super::ffi::{
     CValuePayload, ERROR_INVALID_ARGUMENT, TYPE_ARGS, allocate_record, args_add, args_count,
     array_read_from, array_write_to, call_c_function_with_args, get_handle_ptr, get_record,
-    read_c_string, release_record, update_record_payload,
+    handle_result_child_handle, read_c_string, release_record, update_record_payload,
 };
 
 #[unsafe(no_mangle)]
@@ -108,8 +108,11 @@ pub extern "C" fn bn_rt_ffi_set_bool(handle: u64, val: i32) {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_ffi_set_string(handle: u64, text: *const c_char) {
-    let text_str = crate::string::string_text(text).unwrap_or_default();
-    update_record_payload(handle, CValuePayload::String(text_str));
+    if let Some(text_str) = crate::string::string_text(text) {
+        update_record_payload(handle, CValuePayload::String(text_str));
+    } else {
+        update_record_payload(handle, CValuePayload::Void);
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -119,12 +122,24 @@ pub extern "C" fn bn_rt_ffi_set_array(
     element_size: usize,
     count: usize,
 ) {
+    let region_arc_id = if data_ptr.is_null() {
+        None
+    } else {
+        // SAFETY: Every native region allocated by `bnc` stores its 64-bit ARC ObjectId
+        // at offset -8 (`REGION_HEADER_BYTES - ID_OFFSET`) immediately before `data_ptr`.
+        let arc_id = unsafe { data_ptr.byte_sub(8).cast::<u64>().read_unaligned() };
+        if !crate::arc_abi::is_object_alive(arc_id) {
+            crate::arc_abi::abort_use_after_release();
+        }
+        Some(arc_id)
+    };
     update_record_payload(
         handle,
         CValuePayload::Array {
             data: data_ptr,
             element_size,
             count,
+            region_arc_id,
         },
     );
 }
@@ -280,12 +295,9 @@ pub extern "C" fn bn_rt_ffi_call(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_rt_ffi_handle_result_value(handle: u64) -> *mut c_void {
-    match get_record(handle).map(|r| r.payload) {
-        Some(CValuePayload::HandleResult(Some(ptr))) => {
-            let h = allocate_record(super::ffi::TYPE_HANDLE, CValuePayload::Handle(ptr));
-            h as usize as *mut c_void
-        }
-        _ => std::ptr::null_mut(),
+    match handle_result_child_handle(handle) {
+        Some(child_id) => child_id as usize as *mut c_void,
+        None => std::ptr::null_mut(),
     }
 }
 

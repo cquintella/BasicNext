@@ -41,18 +41,18 @@ impl HostEnvDefaults for HostEnv {
 /// malformed policy environment (both `CONFIG_INVALID`, exit 2).
 pub(crate) fn host_env(
     options: &Options,
-    interpreter: crate::options::InterpreterOptions,
+    interpreter: &crate::options::InterpreterOptions,
     arguments: Vec<String>,
 ) -> Result<HostEnv, String> {
     let host = if options.sandbox {
         HostEnv::system(arguments)
-            .with_default_providers_with_ffi(&options.ffi_paths)
+            .with_default_providers_with_ffi(&interpreter.ffi_paths)
             .with_filesystem_roots(options.read_roots.clone(), options.write_roots.clone())?
     } else if interpreter.filesystem {
-        HostEnv::system(arguments).with_default_providers_with_ffi(&options.ffi_paths)
+        HostEnv::system(arguments).with_default_providers_with_ffi(&interpreter.ffi_paths)
     } else {
         HostEnv::system(arguments)
-            .with_default_providers_with_ffi(&options.ffi_paths)
+            .with_default_providers_with_ffi(&interpreter.ffi_paths)
             .without_filesystem()
     };
     // One environment read, one parser (`bn_rt::Policy::narrow_from_env`).
@@ -87,7 +87,7 @@ mod tests {
             "file.bn",
         ]);
         let interpreter = crate::options::InterpreterOptions::default();
-        let Err(error) = host_env(&sandboxed, interpreter, vec!["file.bn".into()]) else {
+        let Err(error) = host_env(&sandboxed, &interpreter, vec!["file.bn".into()]) else {
             panic!("missing sandbox root must be rejected");
         };
         assert!(error.contains("root"), "{error}");
@@ -95,6 +95,6 @@ mod tests {
             filesystem: false,
             ..interpreter
         };
-        assert!(host_env(&options(&["file.bn"]), no_filesystem, Vec::new()).is_ok());
+        assert!(host_env(&options(&["file.bn"]), &no_filesystem, Vec::new()).is_ok());
     }
 }

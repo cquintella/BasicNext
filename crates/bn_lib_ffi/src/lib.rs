@@ -31,12 +31,12 @@ use bn_interp::provider::{CoreContext, Provider};
 use bn_interp::require_arity_pub as require_arity;
 use bn_interp::type_mismatch;
 use bn_rt::ffi::{
-    CValuePayload, ERROR_INVALID_ARGUMENT, ERROR_INVALID_SIGNATURE, TYPE_ARRAY, TYPE_BOOL,
-    TYPE_DOUBLE, TYPE_FLOAT, TYPE_HANDLE, TYPE_HANDLE_RESULT, TYPE_INT, TYPE_INT8, TYPE_INT16,
-    TYPE_INT32, TYPE_INT64, TYPE_LONG, TYPE_SIZE_T, TYPE_STRING, TYPE_UINT, TYPE_UINT8,
-    TYPE_UINT16, TYPE_UINT32, TYPE_UINT64, TYPE_ULONG, TYPE_VOID, allocate_record, call_c_function,
-    get_handle_ptr, get_record, read_bytes_from_ptr, read_c_string, release_record,
-    write_bytes_to_ptr,
+    CValuePayload, ERROR_INVALID_ARGUMENT, ERROR_INVALID_SIGNATURE, ERROR_VALUE_OUT_OF_RANGE,
+    TYPE_ARRAY, TYPE_BOOL, TYPE_DOUBLE, TYPE_FLOAT, TYPE_HANDLE, TYPE_HANDLE_RESULT, TYPE_INT,
+    TYPE_INT8, TYPE_INT16, TYPE_INT32, TYPE_INT64, TYPE_LONG, TYPE_SIZE_T, TYPE_STRING, TYPE_UINT,
+    TYPE_UINT8, TYPE_UINT16, TYPE_UINT32, TYPE_UINT64, TYPE_ULONG, TYPE_VOID, allocate_record,
+    call_c_function, get_handle_ptr, get_record, read_bytes_from_ptr, read_c_string,
+    release_record, write_bytes_to_ptr,
 };
 use bn_runtime::Handle;
 use bn_source::Span;
@@ -44,6 +44,18 @@ use bn_types::{FloatType, IntegerType};
 use bn_value::Value;
 
 pub const NAME: &str = "BNFfi";
+
+struct TempArrayGuard {
+    records: Vec<(u64, Handle, u32, usize, Vec<u8>)>,
+}
+
+impl Drop for TempArrayGuard {
+    fn drop(&mut self) {
+        for &(temp_id, _, _, _, _) in &self.records {
+            release_record(temp_id);
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct FfiProvider {
@@ -101,11 +113,6 @@ impl Provider for FfiProvider {
         arguments: Vec<Value>,
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        let op = member.rsplit('.').next().unwrap_or_default();
-        if op == "$fields" {
-            return Ok(Value::Null);
-        }
-
         // Direct function call: C.Call(lib, sym, args, result)
         if member == "Call" || member.ends_with(".Call") {
             return self.call_invoke(core, &arguments, span);
@@ -116,6 +123,10 @@ impl Provider for FfiProvider {
             Some((c, a)) => (c.rsplit('.').next().unwrap_or(c), a),
             None => return Err(name_not_found(member, "BNFfi member", span)),
         };
+
+        if action.starts_with('$') {
+            return Ok(Value::Null);
+        }
 
         match action {
             "CONSTRUCTOR" => self.call_constructor(core, class, &arguments, span),
@@ -438,7 +449,14 @@ impl FfiProvider {
         };
 
         let len = core.memory().len(region_h, span)?;
-        let total_bytes = len * elem_size;
+        let Some(total_bytes) = len.checked_mul(elem_size) else {
+            return Ok(Value::error_report(
+                ERROR_VALUE_OUT_OF_RANGE,
+                "ReadFrom",
+                "array byte size overflow".into(),
+                String::new(),
+            ));
+        };
         let mut buf = vec![0u8; total_bytes];
         if let Err(e) = read_bytes_from_ptr(source_ptr, &mut buf) {
             return Ok(Value::error_report(
@@ -512,7 +530,14 @@ impl FfiProvider {
         };
 
         let len = core.memory().len(region_h, span)?;
-        let total_bytes = len * elem_size;
+        let Some(total_bytes) = len.checked_mul(elem_size) else {
+            return Ok(Value::error_report(
+                ERROR_VALUE_OUT_OF_RANGE,
+                "WriteTo",
+                "array byte size overflow".into(),
+                String::new(),
+            ));
+        };
         let mut buf = vec![0u8; total_bytes];
 
         // Serialize region values into bytes
@@ -589,7 +614,9 @@ impl FfiProvider {
 
         let arg_handles = self.args.get(&args_h).cloned().unwrap_or_default();
         let mut arg_rec_ids = Vec::with_capacity(arg_handles.len());
-        let mut temp_array_records = Vec::new();
+        let mut temp_guard = TempArrayGuard {
+            records: Vec::new(),
+        };
 
         for arg_h in arg_handles {
             if let Some(&rec_id) = self.records.get(&arg_h) {
@@ -597,24 +624,36 @@ impl FfiProvider {
             } else if let Some(&(region_h, type_code, elem_size)) = self.arrays.get(&arg_h) {
                 // Prepare array buffer for passing to C
                 let len = core.memory().len(region_h, span)?;
-                let total_bytes = len * elem_size;
+                let Some(total_bytes) = len.checked_mul(elem_size) else {
+                    return Ok(Value::error_report(
+                        ERROR_VALUE_OUT_OF_RANGE,
+                        "Call",
+                        "array byte size overflow".into(),
+                        String::new(),
+                    ));
+                };
                 let mut buf = vec![0u8; total_bytes];
                 for i in 0..len {
                     let val = core.memory().get(region_h, i, span)?;
                     let offset = i * elem_size;
                     encode_element(val, type_code, &mut buf[offset..offset + elem_size]);
                 }
-                let data_ptr = buf.as_mut_ptr();
+                temp_guard
+                    .records
+                    .push((0, region_h, type_code, elem_size, buf));
+                let entry = temp_guard.records.last_mut().expect("just pushed");
+                let data_ptr = entry.4.as_mut_ptr();
                 let temp_id = allocate_record(
                     TYPE_ARRAY,
                     CValuePayload::Array {
                         data: data_ptr,
                         element_size: elem_size,
                         count: len,
+                        region_arc_id: None,
                     },
                 );
+                entry.0 = temp_id;
                 arg_rec_ids.push(temp_id);
-                temp_array_records.push((temp_id, region_h, type_code, elem_size, buf));
             } else {
                 return Ok(Value::error_report(
                     ERROR_INVALID_SIGNATURE,
@@ -634,14 +673,13 @@ impl FfiProvider {
         );
 
         // Copy back array contents if modified by C function
-        for (temp_id, region_h, type_code, elem_size, buf) in temp_array_records {
+        for &(_, region_h, type_code, elem_size, ref buf) in &temp_guard.records {
             let len = buf.len() / elem_size;
             for i in 0..len {
                 let offset = i * elem_size;
                 let val = decode_element(&buf[offset..offset + elem_size], type_code);
                 *core.memory_mut().get_mut(region_h, i, span)? = val;
             }
-            release_record(temp_id);
         }
 
         match result {

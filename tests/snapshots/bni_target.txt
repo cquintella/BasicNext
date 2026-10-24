@@ -17,6 +17,7 @@ options:
   -o, --output <file>        write the token stream of lex to <file>
   --trace                    report the execution entry point
   --no-filesystem            deny HOST.FileSystem imports (run only)
+  --ffi-path <dir>           add an ordered dynamic library search directory (run only)
   -v, --verbose              show pipeline stages (repeat for tokens: -v -v)
   -vv                        show stages and tokens
   --module-path <dir>        add an ordered import search directory (repeatable)

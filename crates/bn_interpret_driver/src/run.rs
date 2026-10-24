@@ -127,7 +127,7 @@ pub fn run_loaded(
             eprintln!("{}", render_diagnostic(&promotion, source, options));
         }
     }
-    let host = match crate::environment::host_env(options, *interpreter, arguments) {
+    let host = match crate::environment::host_env(options, interpreter, arguments) {
         Ok(host) => host,
         Err(message) => {
             if options.output_format == OutputFormat::Json {

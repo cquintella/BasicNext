@@ -10,7 +10,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # 1. Argumento --file / -f
 # 2. Variavel de ambiente BUCKETFILE
 # 3. Parametro default
-DEFAULT_BUCKET="${REPO_ROOT}/ongoing/bucket-0.6.6-test-system.md"
+DEFAULT_BUCKET="${REPO_ROOT}/done/bucket-0.6.7a-bugfixes.md"
 TARGET_FILE="${BUCKETFILE:-$DEFAULT_BUCKET}"
 
 # Funcao de ajuda

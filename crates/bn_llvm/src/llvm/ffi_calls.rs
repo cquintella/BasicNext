@@ -42,15 +42,27 @@ pub(crate) const TYPE_FLOAT_ARRAY: u32 = 29;
 pub(crate) const TYPE_DOUBLE_ARRAY: u32 = 30;
 pub(crate) const TYPE_ARGS: u32 = 32;
 
-/// True when `ty` is a `BNFfi` class.
+/// True when `ty` is a `BNFfi` class or `C.Handle OR NULL`.
 pub(crate) fn is_bnffi_type(module: &Module, ty: &Type) -> bool {
-    matches!(
-        ty,
+    match ty {
         Type::ImportedNamed {
-            module: module_id,
-            ..
-        } if module.bnffi_providers.contains(&bn_ir::ModuleId::from(*module_id))
-    )
+            module: module_id, ..
+        } => module
+            .bnffi_providers
+            .contains(&bn_ir::ModuleId::from(*module_id)),
+        Type::Alternative(members) if llvm_type(ty) == Some(T::Ptr) => {
+            members.iter().any(|member| {
+                matches!(
+                    member,
+                    Type::ImportedNamed {
+                        module: module_id,
+                        ..
+                    } if module.bnffi_providers.contains(&bn_ir::ModuleId::from(*module_id))
+                )
+            })
+        }
+        _ => false,
+    }
 }
 
 /// Type code for a `BNFfi` class name.
@@ -353,7 +365,7 @@ fn lower_constructor(
             );
             text.assign(
                 format!("ffiarrcap64{dest}"),
-                I::cast(CastOp::SExt, T::I32, r("ffiarrcap"), T::I64),
+                I::cast(CastOp::ZExt, T::I32, r("ffiarrcap"), T::I64),
             );
             text.emit(I::call(
                 T::Void,
@@ -454,5 +466,50 @@ fn lower_value(text: &mut crate::ir::LlvmModule, dest: u32, class: &str, handle:
             );
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ffi_type_codes_match_runtime_abi_contract() {
+        let table = [
+            (TYPE_INT8, 1),
+            (TYPE_UINT8, 2),
+            (TYPE_INT16, 3),
+            (TYPE_UINT16, 4),
+            (TYPE_INT32, 5),
+            (TYPE_UINT32, 6),
+            (TYPE_INT64, 7),
+            (TYPE_UINT64, 8),
+            (TYPE_INT, 9),
+            (TYPE_UINT, 10),
+            (TYPE_LONG, 11),
+            (TYPE_ULONG, 12),
+            (TYPE_SIZE_T, 13),
+            (TYPE_FLOAT, 14),
+            (TYPE_DOUBLE, 15),
+            (TYPE_BOOL, 16),
+            (TYPE_STRING, 17),
+            (TYPE_VOID, 18),
+            (TYPE_HANDLE, 19),
+            (TYPE_HANDLE_RESULT, 20),
+            (TYPE_BYTE_ARRAY, 21),
+            (TYPE_INT8_ARRAY, 22),
+            (TYPE_INT16_ARRAY, 23),
+            (TYPE_INT32_ARRAY, 24),
+            (TYPE_INT64_ARRAY, 25),
+            (TYPE_UINT16_ARRAY, 26),
+            (TYPE_UINT32_ARRAY, 27),
+            (TYPE_UINT64_ARRAY, 28),
+            (TYPE_FLOAT_ARRAY, 29),
+            (TYPE_DOUBLE_ARRAY, 30),
+            (TYPE_ARGS, 32),
+        ];
+        for (actual, expected) in table {
+            assert_eq!(actual, expected);
+        }
     }
 }

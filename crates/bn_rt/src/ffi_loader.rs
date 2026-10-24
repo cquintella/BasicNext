@@ -10,10 +10,10 @@
 
 //! Dynamic library and symbol resolution for `BNFfi`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry};
 use std::ffi::{CString, c_void};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use libloading::Library;
 
@@ -22,17 +22,44 @@ use super::ffi::{
     ERROR_SYMBOL_NOT_FOUND, FfiError,
 };
 
-type LibraryCache = Arc<Mutex<HashMap<String, Arc<Library>>>>;
-type SymbolCache = Arc<Mutex<HashMap<(String, String), usize>>>;
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct LibraryKey {
+    name: String,
+    ffi_paths: Vec<PathBuf>,
+}
 
-fn libraries_map() -> &'static Mutex<HashMap<String, Arc<Library>>> {
+type LibraryCache = Arc<Mutex<HashMap<LibraryKey, Arc<Library>>>>;
+type SymbolCache = Arc<Mutex<HashMap<(usize, String), usize>>>;
+
+fn libraries_map() -> &'static Mutex<HashMap<LibraryKey, Arc<Library>>> {
     static LIBRARIES: OnceLock<LibraryCache> = OnceLock::new();
     LIBRARIES.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
 }
 
-fn symbols_map() -> &'static Mutex<HashMap<(String, String), usize>> {
+fn symbols_map() -> &'static Mutex<HashMap<(usize, String), usize>> {
     static SYMBOLS: OnceLock<SymbolCache> = OnceLock::new();
     SYMBOLS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
+}
+
+/// Inserts `loaded` into the library cache under `key`. If another thread
+/// concurrently inserted an entry for `key`, `loaded` is forgotten so that
+/// `dlclose` / `FreeLibrary` is never invoked (`bnffi.md` §2: libraries are
+/// loaded once per process and never unloaded).
+fn cache_loaded_library(key: LibraryKey, loaded: Library) -> Arc<Library> {
+    let mut cache = libraries_map()
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    match cache.entry(key) {
+        Entry::Occupied(entry) => {
+            std::mem::forget(loaded);
+            Arc::clone(entry.get())
+        }
+        Entry::Vacant(entry) => {
+            let arc = Arc::new(loaded);
+            entry.insert(Arc::clone(&arc));
+            arc
+        }
+    }
 }
 
 /// Resolves and returns a dynamically loaded library by name or path.
@@ -51,9 +78,16 @@ pub fn resolve_library(name: &str, ffi_paths: &[PathBuf]) -> Result<Arc<Library>
         ));
     }
 
+    let key = LibraryKey {
+        name: name.to_string(),
+        ffi_paths: ffi_paths.to_vec(),
+    };
+
     {
-        let cache = libraries_map().lock().expect("lock libraries");
-        if let Some(lib) = cache.get(name) {
+        let cache = libraries_map()
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if let Some(lib) = cache.get(&key) {
             return Ok(Arc::clone(lib));
         }
     }
@@ -61,7 +95,7 @@ pub fn resolve_library(name: &str, ffi_paths: &[PathBuf]) -> Result<Arc<Library>
     let is_direct_path = name.contains('/') || name.contains('\\');
     if is_direct_path {
         let path = Path::new(name);
-        return load_single_path(name, path);
+        return load_single_path(key, path);
     }
 
     let filename = if name.contains('.') {
@@ -88,7 +122,7 @@ pub fn resolve_library(name: &str, ffi_paths: &[PathBuf]) -> Result<Arc<Library>
         let candidate = dir.join(&filename);
         tried_locations.push(candidate.display().to_string());
         if candidate.is_file() {
-            return load_single_path(name, &candidate);
+            return load_single_path(key, &candidate);
         }
     }
 
@@ -101,7 +135,7 @@ pub fn resolve_library(name: &str, ffi_paths: &[PathBuf]) -> Result<Arc<Library>
             let candidate = part.join(&filename);
             tried_locations.push(candidate.display().to_string());
             if candidate.is_file() {
-                return load_single_path(name, &candidate);
+                return load_single_path(key, &candidate);
             }
         }
     }
@@ -109,11 +143,7 @@ pub fn resolve_library(name: &str, ffi_paths: &[PathBuf]) -> Result<Arc<Library>
     // 3. System loader search path.
     tried_locations.push(format!("system loader: {filename}"));
     match load_from_system(&filename) {
-        Ok(lib) => {
-            let mut cache = libraries_map().lock().expect("lock libraries");
-            cache.insert(name.to_string(), Arc::clone(&lib));
-            Ok(lib)
-        }
+        Ok(loaded) => Ok(cache_loaded_library(key, loaded)),
         Err(err) => {
             let msg = format!(
                 "library '{}' not found; tried: {}",
@@ -130,7 +160,7 @@ pub fn resolve_library(name: &str, ffi_paths: &[PathBuf]) -> Result<Arc<Library>
 }
 
 #[allow(unsafe_code)]
-fn load_single_path(name: &str, path: &Path) -> Result<Arc<Library>, FfiError> {
+fn load_single_path(key: LibraryKey, path: &Path) -> Result<Arc<Library>, FfiError> {
     if !path.exists() {
         return Err(FfiError::new(
             ERROR_LIBRARY_NOT_FOUND,
@@ -143,12 +173,7 @@ fn load_single_path(name: &str, path: &Path) -> Result<Arc<Library>, FfiError> {
     let lib_result = unsafe { Library::new(path) };
 
     match lib_result {
-        Ok(loaded) => {
-            let arc = Arc::new(loaded);
-            let mut cache = libraries_map().lock().expect("lock libraries");
-            cache.insert(name.to_string(), Arc::clone(&arc));
-            Ok(arc)
-        }
+        Ok(loaded) => Ok(cache_loaded_library(key, loaded)),
         Err(e) => Err(FfiError::with_cause(
             ERROR_LIBRARY_LOAD_FAILED,
             format!("failed to load library at {}: {e}", path.display()),
@@ -158,7 +183,7 @@ fn load_single_path(name: &str, path: &Path) -> Result<Arc<Library>, FfiError> {
 }
 
 #[allow(unsafe_code)]
-fn load_from_system(filename: &str) -> Result<Arc<Library>, FfiError> {
+fn load_from_system(filename: &str) -> Result<Library, FfiError> {
     #[cfg(target_os = "windows")]
     let lib_result = {
         use libloading::os::windows::Library as WinLib;
@@ -176,17 +201,17 @@ fn load_from_system(filename: &str) -> Result<Arc<Library>, FfiError> {
         unsafe { Library::new(filename) }
     };
 
-    match lib_result {
-        Ok(loaded) => Ok(Arc::new(loaded)),
-        Err(e) => Err(FfiError::with_cause(
+    lib_result.map_err(|e| {
+        FfiError::with_cause(
             ERROR_LIBRARY_LOAD_FAILED,
             format!("system loader failed to load '{filename}': {e}"),
             e.to_string(),
-        )),
-    }
+        )
+    })
 }
 
-/// Resolves a symbol pointer from a library, using the symbol cache.
+/// Resolves a symbol pointer from a library, using the symbol cache keyed by
+/// the loaded library instance address.
 #[allow(unsafe_code)]
 pub fn resolve_symbol(
     library_name: &str,
@@ -200,9 +225,10 @@ pub fn resolve_symbol(
         ));
     }
 
-    let cache_key = (library_name.to_string(), symbol_name.to_string());
+    let lib_id = std::ptr::from_ref(library) as usize;
+    let cache_key = (lib_id, symbol_name.to_string());
     {
-        let cache = symbols_map().lock().expect("lock symbols");
+        let cache = symbols_map().lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(&ptr) = cache.get(&cache_key) {
             return Ok(ptr);
         }
@@ -217,7 +243,7 @@ pub fn resolve_symbol(
     match sym_result {
         Ok(sym) => {
             let ptr = *sym as usize;
-            let mut cache = symbols_map().lock().expect("lock symbols");
+            let mut cache = symbols_map().lock().unwrap_or_else(PoisonError::into_inner);
             cache.insert(cache_key, ptr);
             Ok(ptr)
         }

@@ -220,6 +220,29 @@ pub extern "C" fn bn_rt_arc_info(id: u64) {
     let _ = writeln!(std::io::stderr().lock(), "{line}");
 }
 
+/// Checks whether `id` names a currently live object or region in this thread's ARC core.
+#[must_use]
+pub(crate) fn is_object_alive(id: u64) -> bool {
+    if id == 0 {
+        return false;
+    }
+    with_core(|core| core.alive(ObjectId::from_bits(id)))
+}
+
+/// Reports a `USE_AFTER_RELEASE` failure and terminates the process when a native
+/// wrapper attempts to access a region whose last strong reference was released.
+pub(crate) fn abort_use_after_release() -> ! {
+    record_failure(RuntimeFailure {
+        code: "USE_AFTER_RELEASE",
+        facts: vec![(
+            "detail",
+            "allocation handle refers to released memory".to_string(),
+        )],
+    });
+    crate::trap_abi::bn_rt_trap_report_failure(std::ptr::null());
+    std::process::exit(1);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

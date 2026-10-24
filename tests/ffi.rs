@@ -217,3 +217,80 @@ fn s6_i_ac12_marker_no_load_on_check() {
         "bni run should have executed library and triggered initializer"
     );
 }
+
+#[test]
+fn iss01_use_after_release_region_rejected_in_bni_and_bnc() {
+    let root = workspace_root();
+    let temp_dir = TestDir::new("bnffi-uar").expect("create test dir");
+    let c_source = root.join("tests/ffi/bnffi_test.c");
+    build_c_library(&c_source, temp_dir.path(), "bnffi_test");
+
+    let program_src = "\
+IMPORT BNFfi AS C
+FUNCTION Start() AS INTEGER
+    LET arr AS POINTER TO FLOAT[] = NEW FLOAT[3]
+    LET darr AS C.DoubleArray = NEW C.DoubleArray(arr)
+    RELEASE arr
+    LET scale_args AS C.Args = NEW C.Args()
+    scale_args.Add(darr)
+    scale_args.Add(NEW C.Int32(3))
+    scale_args.Add(NEW C.Double(2.0))
+    LET void_res AS C.Void = NEW C.Void()
+    LET ok AS VOID OR Error = C.Call(\"bnffi_test\", \"test_double_array_scale\", scale_args, void_res)
+    RETURN 0
+END FUNCTION
+";
+    let program_path = temp_dir.join("uar_region.bn");
+    fs::write(&program_path, program_src).expect("write uar_region.bn");
+
+    let mut bni_cmd = bni();
+    bni_cmd
+        .arg("run")
+        .arg("--ffi-path")
+        .arg(temp_dir.path())
+        .arg(&program_path);
+    let bni_out = run(&mut bni_cmd, None, PROCESS_TIMEOUT).expect("run bni");
+    assert!(
+        !bni_out.status.success(),
+        "bni must reject use-after-release on region passed to C.Int64Array"
+    );
+    let bni_stderr = String::from_utf8_lossy(&bni_out.stderr);
+    assert!(
+        bni_stderr.contains("USE_AFTER_RELEASE"),
+        "expected USE_AFTER_RELEASE from bni, got: {bni_stderr}"
+    );
+
+    let native_bin = compile_native(&program_path, &temp_dir);
+    let mut native_cmd = Command::new(&native_bin);
+    native_cmd.env("BN_LIBRARY_PATH", temp_dir.path());
+    let bnc_out = run(&mut native_cmd, None, PROCESS_TIMEOUT).expect("run native");
+    assert!(
+        !bnc_out.status.success(),
+        "bnc binary must reject use-after-release on region passed to C.Int64Array"
+    );
+    let bnc_stderr = String::from_utf8_lossy(&bnc_out.stderr);
+    assert!(
+        bnc_stderr.contains("USE_AFTER_RELEASE"),
+        "expected USE_AFTER_RELEASE from bnc binary, got: {bnc_stderr}"
+    );
+}
+
+#[test]
+fn iss03_bnc_rejects_ffi_path_per_d4() {
+    let root = workspace_root();
+    let bn_source = root.join("tests/ffi/test_strlen.bn");
+    let temp_dir = TestDir::new("bnffi-bnc-flag").expect("create test dir");
+
+    let mut cmd = support::bnc();
+    cmd.arg("--ffi-path").arg(temp_dir.path()).arg(&bn_source);
+    let out = run(&mut cmd, None, PROCESS_TIMEOUT).expect("run bnc");
+    assert!(
+        !out.status.success(),
+        "bnc must reject --ffi-path because D4 restricts compiled programs to BN_LIBRARY_PATH"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("unknown or repeated option '--ffi-path'"),
+        "expected unknown option diagnostic from bnc, got: {stderr}"
+    );
+}

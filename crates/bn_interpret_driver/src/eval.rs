@@ -82,6 +82,7 @@ fn eval_source(args: Vec<String>) -> Result<(String, Vec<String>, EvalMode), Str
                 | "--read-root"
                 | "--write-root"
                 | "--module-path"
+                | "--ffi-path"
         ) {
             options.push(argument);
             options.push(

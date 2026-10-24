@@ -51,6 +51,7 @@ options:
   -o, --output <file>        write the token stream of lex to <file>
   --trace                    report the execution entry point
   --no-filesystem            deny HOST.FileSystem imports (run only)
+  --ffi-path <dir>           add an ordered dynamic library search directory (run only)
 {COMMON_OPTIONS}
  `bni eval` accepts SOURCE or --stdin; extra program arguments follow --.
  For file-oriented commands, HOST.Args[0] is the source path. Extra program arguments follow --.
@@ -135,7 +136,7 @@ fn command(version: &str, mut raw_args: Vec<String>, protocols: Protocols) -> Ex
     };
     let mut interpreter = InterpreterOptions::default();
     let options = match parse_options(args.into_iter(), &mut interpreter)
-        .and_then(|options| interpreter_rules(&options, interpreter).map(|()| options))
+        .and_then(|options| interpreter_rules(&options, &interpreter).map(|()| options))
     {
         Ok(options) => options,
         Err(message) => return option_error(&message, &help_text(version)),
@@ -162,7 +163,7 @@ fn command(version: &str, mut raw_args: Vec<String>, protocols: Protocols) -> Ex
 
 /// The rules between interpreter options of a file command (`eval` has its
 /// own): `--format` is for `bni eval`, and a sandbox needs the filesystem.
-fn interpreter_rules(options: &Options, interpreter: InterpreterOptions) -> Result<(), String> {
+fn interpreter_rules(options: &Options, interpreter: &InterpreterOptions) -> Result<(), String> {
     if interpreter.output_format != OutputFormat::Text {
         return Err(bn_catalog::text("cli", "option.format.eval_only").into());
     }
