@@ -872,6 +872,9 @@ use sqlite_ops::{lower_sqlite_call, sqlite_call_supported};
 #[path = "llvm/indirect_call.rs"]
 mod indirect_call;
 use indirect_call::lower_indirect_call;
+#[path = "llvm/ffi_calls.rs"]
+mod ffi_calls;
+use ffi_calls::{bnffi_method, bnffi_type_code, is_bnffi_type, lower_bnffi_call};
 #[path = "llvm/call_emission.rs"]
 mod call_emission;
 use call_emission::lower_call_instruction;

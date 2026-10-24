@@ -1,7 +1,7 @@
 # Proposal: property-based and mutation testing
 
 **Status:** Proposed (Carlos, 2026-10-14). Split from bucket 0.6.6
-(`todo/bucket-0.6.6-test-system.md`), which keeps the independent-oracle,
+(`ongoing/bucket-0.6.6-test-system.md`), which keeps the independent-oracle,
 real-component, fuzzing and concurrency work (section V).
 **Date:** 2026-10-14.
 **Target release:** TODO (decision).

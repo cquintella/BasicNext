@@ -1,0 +1,15 @@
+IMPORT BNFfi AS C
+
+FUNCTION Start() AS INTEGER
+    LET args AS C.Args = NEW C.Args()
+    args.Add(NEW C.Double(10.0))
+
+    LET r AS C.Double = NEW C.Double(0.0)
+    LET ok AS VOID OR Error = C.Call("m", "cos", args, r)
+    IF ok IS Error THEN
+        PRINT ok.Message
+        RETURN 1
+    END IF
+    PRINT r.Value()
+    RETURN 0
+END FUNCTION

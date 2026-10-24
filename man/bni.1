@@ -98,6 +98,11 @@ Announce INPUT requests on standard error (accepted by
 .BR run " and " eval
 for interactive Jupyter sessions).
 .TP
+.BI --ffi-path " dir"
+Append an ordered directory used to resolve dynamic libraries loaded by
+.BR BNFfi .
+The option is repeatable; earlier directories win.
+.TP
 .BI --module-path " dir"
 Append an ordered directory used to resolve imported source modules. The
 option is repeatable; earlier directories win. Configuration entries are
@@ -264,6 +269,13 @@ without a standard library makes standard imports fail rather than silently
 resolving to another
 .B modules/bn
 higher in the tree.
+.TP
+.B BN_LIBRARY_PATH
+Colon-separated (semicolon-separated on Windows) list of directory candidates used by
+.B BNFfi
+to resolve dynamic libraries. Evaluated after explicit
+.B --ffi-path
+options.
 .TP
 .BR BN_ENV_POLICY ", " BN_EXEC_POLICY ", " BN_FS_POLICY
 Execution policy overrides for host capabilities. When set to

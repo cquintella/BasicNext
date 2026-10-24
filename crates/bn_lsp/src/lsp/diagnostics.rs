@@ -18,6 +18,7 @@ use bn_frontend::{
 use bn_source::{SourceFile, SourceId};
 
 use crate::file_uri::file_uri_to_path;
+use crate::navigation::NavigationSnapshot;
 use crate::position::span_to_lsp_range;
 
 /// Collects diagnostics for an open multi-file snapshot set.
@@ -31,6 +32,26 @@ pub fn diagnostics_for_documents<S: std::hash::BuildHasher>(
     documents: &HashMap<String, SourceFile, S>,
     session: &mut bn_frontend::frontend_session::FrontendSession,
 ) -> HashMap<String, Vec<LspDiagnostic>> {
+    analyze_documents(entry, documents, session).diagnostics
+}
+
+pub(crate) struct OpenAnalysis {
+    pub diagnostics: HashMap<String, Vec<LspDiagnostic>>,
+    pub navigation: NavigationSnapshot,
+}
+
+fn without_model(diagnostics: HashMap<String, Vec<LspDiagnostic>>) -> OpenAnalysis {
+    OpenAnalysis {
+        diagnostics,
+        navigation: NavigationSnapshot::default(),
+    }
+}
+
+pub(crate) fn analyze_documents<S: std::hash::BuildHasher>(
+    entry: &PathBuf,
+    documents: &HashMap<String, SourceFile, S>,
+    session: &mut bn_frontend::frontend_session::FrontendSession,
+) -> OpenAnalysis {
     let overlays = documents
         .values()
         .filter_map(|source| {
@@ -102,24 +123,30 @@ pub fn diagnostics_for_documents<S: std::hash::BuildHasher>(
         Ok(graph) => graph,
         Err(error) => {
             add(&error.diagnostic, &mut result, None);
-            return result;
+            return without_model(result);
         }
     };
     let analysis = match bn_frontend::semantic::analyze_modules_with_warnings(&graph) {
         Ok(analysis) => analysis,
         Err(error) => {
             add(&error.diagnostic, &mut result, Some(&graph));
-            return result;
+            return without_model(result);
         }
     };
     if let Err(error) = lower_graph_validated(&graph, &analysis.models) {
         add(&error, &mut result, Some(&graph));
-        return result;
+        return OpenAnalysis {
+            navigation: NavigationSnapshot::from_graph(&graph, analysis.models, documents),
+            diagnostics: result,
+        };
     }
     for warning in &analysis.warnings {
         add(&warning.diagnostic, &mut result, Some(&graph));
     }
-    result
+    OpenAnalysis {
+        navigation: NavigationSnapshot::from_graph(&graph, analysis.models, documents),
+        diagnostics: result,
+    }
 }
 
 pub(crate) fn diagnostic_source(diagnostic: &Diagnostic) -> SourceId {

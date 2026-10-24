@@ -15,11 +15,17 @@ use bn_interp::HostEnv;
 pub trait HostEnvDefaults {
     #[must_use]
     fn with_default_providers(self) -> Self;
+    #[must_use]
+    fn with_default_providers_with_ffi(self, ffi_paths: &[std::path::PathBuf]) -> Self;
 }
 
 impl HostEnvDefaults for HostEnv {
     fn with_default_providers(self) -> Self {
-        self.with_libraries(crate::libraries::default_libraries())
+        self.with_default_providers_with_ffi(&[])
+    }
+
+    fn with_default_providers_with_ffi(self, ffi_paths: &[std::path::PathBuf]) -> Self {
+        self.with_libraries(crate::libraries::default_libraries(ffi_paths))
             .with_hosts(crate::hosts::default_hosts())
     }
 }
@@ -40,13 +46,13 @@ pub(crate) fn host_env(
 ) -> Result<HostEnv, String> {
     let host = if options.sandbox {
         HostEnv::system(arguments)
-            .with_default_providers()
+            .with_default_providers_with_ffi(&options.ffi_paths)
             .with_filesystem_roots(options.read_roots.clone(), options.write_roots.clone())?
     } else if interpreter.filesystem {
-        HostEnv::system(arguments).with_default_providers()
+        HostEnv::system(arguments).with_default_providers_with_ffi(&options.ffi_paths)
     } else {
         HostEnv::system(arguments)
-            .with_default_providers()
+            .with_default_providers_with_ffi(&options.ffi_paths)
             .without_filesystem()
     };
     // One environment read, one parser (`bn_rt::Policy::narrow_from_env`).

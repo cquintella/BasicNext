@@ -1,3 +1,5 @@
+#![allow(clippy::map_unwrap_or)]
+
 //! Integration tests of the `bnc` executable (Clang-like surface).
 //! Relocated from the root `tests/bnc.rs` (bucket 0.6.0, 2.2/2.4); tests
 //! of the deleted wrapper profiles (`-c`, `--check`, default interpret)
@@ -7,7 +9,10 @@ use std::process::Command;
 const WORKSPACE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
 fn bnc() -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_bnc"));
+    let path = std::env::var_os("BN_COMPILER")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_BIN_EXE_bnc")));
+    let mut command = Command::new(path);
     command.current_dir(WORKSPACE);
     command
 }

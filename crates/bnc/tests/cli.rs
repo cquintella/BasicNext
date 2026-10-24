@@ -1,3 +1,4 @@
+#![allow(clippy::map_unwrap_or)]
 // Author: Carlos Quintella
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -19,7 +20,10 @@ const WORKSPACE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 /// paths; crate integration tests start in the crate directory).
 fn bnc() -> Command {
     let _ = std::env::set_current_dir(WORKSPACE);
-    let mut command = Command::new(env!("CARGO_BIN_EXE_bnc"));
+    let path = std::env::var_os("BN_COMPILER")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_BIN_EXE_bnc")));
+    let mut command = Command::new(path);
     command.current_dir(WORKSPACE);
     command
 }

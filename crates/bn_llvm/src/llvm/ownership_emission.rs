@@ -95,7 +95,12 @@ pub(crate) fn lower_ownership_emission(
                     I::cast(CastOp::PtrToInt, T::Ptr, own, T::I64)
                 };
                 text.assign(&handle, inst);
-                let call = I::call(T::I32, symbol, vec![(T::I64, O::reg(handle))]);
+                let ret_ty = if symbol == "bn_rt_ffi_release" {
+                    T::Void
+                } else {
+                    T::I32
+                };
+                let call = I::call(ret_ty, symbol, vec![(T::I64, O::reg(handle))]);
                 match checked {
                     Rc::Checked => {
                         emit_checked_i32_eq_zero(text, block_id, *value, call, &[], state);
@@ -476,6 +481,8 @@ fn release_call(module: &Module, ty: &Type) -> Option<(&'static str, &'static st
         ("cry", "bn_rt_crypto_bytes_release", Rc::Named)
     } else if let Some(release) = sqlite_connection_release(module, ty) {
         release
+    } else if is_bnffi_type(module, ty) {
+        ("ffi", "bn_rt_ffi_release", Rc::Dropped)
     } else {
         bnlog_resource_kind(module, ty)?;
         let symbol = bnlog_release_symbol();

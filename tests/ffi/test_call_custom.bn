@@ -1,0 +1,15 @@
+IMPORT BNFfi AS C
+
+FUNCTION Start() AS INTEGER
+    LET args AS C.Args = NEW C.Args()
+    args.Add(NEW C.Int32(20))
+    args.Add(NEW C.Int32(22))
+    LET res AS C.Int32 = NEW C.Int32(0)
+    LET ok AS VOID OR Error = C.Call("bnffi_test", "test_int32", args, res)
+    IF ok IS Error THEN
+        PRINT "ERROR: ", ok.Message
+        RETURN 1
+    END IF
+    PRINT "SUM: ", res.Value()
+    RETURN 0
+END FUNCTION

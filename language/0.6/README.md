@@ -18,6 +18,7 @@
 | [`bncrypto.md`](bncrypto.md) | Standard library module: `BNCrypto` cryptography contract |
 | [`bndata.md`](bndata.md) | Standard library module: `BNData` DataFrames and tabular data |
 | [`bndispatch.md`](bndispatch.md) | Standard library module: `BNDispatch` asynchronous synchronization |
+| [`bnffi.md`](bnffi.md) | Standard library module: `BNFfi` C foreign function interface contract |
 | [`bnjson.md`](bnjson.md) | Standard library module: `BNJson` JSON DOM contract |
 | [`bnlog.md`](bnlog.md) | Standard library module: `BNLog` structured logging contract |
 | [`bnsqlite.md`](bnsqlite.md) | Standard library module: `BNSqlite` embedded database contract |

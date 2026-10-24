@@ -17,10 +17,11 @@ workspace = true
 # proof build is `--no-default-features`, which drops `rusqlite`, `serde_json`,
 # and the `bn_rt_sqlite_*` / `bn_rt_json_*` objects.
 [features]
-default = ["net", "sqlite", "json"]
+default = ["net", "sqlite", "json", "ffi"]
 net = ["dep:bn_core_net"]
 sqlite = ["dep:bn_core_sqlite"]
 json = ["dep:bn_core_json", "dep:serde_json"]
+ffi = ["dep:libffi", "dep:libloading"]
 
 [dependencies]
 bn_catalog = { path = "../bn_catalog" }
@@ -48,3 +49,5 @@ subtle = "2.6"
 bn_core_sqlite = { path = "../bn_core_sqlite", optional = true }
 bn_core_json = { path = "../bn_core_json", optional = true }
 serde_json = { version = "1.0", optional = true }
+libffi = { version = "5.2.0", optional = true }
+libloading = { version = "0.9.0", optional = true }

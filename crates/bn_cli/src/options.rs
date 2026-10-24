@@ -63,6 +63,7 @@ pub struct Options {
     pub color: Color,
     pub sandbox: bool,
     pub module_paths: Vec<ModuleRoot>,
+    pub ffi_paths: Vec<PathBuf>,
     pub read_roots: Vec<PathBuf>,
     pub write_roots: Vec<PathBuf>,
     pub program_arguments: Vec<String>,
@@ -119,6 +120,7 @@ pub fn parse_options(
     let output_format = OutputFormat::Text;
     let mut color = Color::Auto;
     let mut sandbox = false;
+    let mut ffi_paths = Vec::new();
     let mut read_roots = Vec::new();
     let mut write_roots = Vec::new();
     let mut program_arguments = Vec::new();
@@ -168,6 +170,12 @@ pub fn parse_options(
                 ),
                 provenance: RootProvenance::CliFlag,
             }),
+            "--ffi-path" => ffi_paths.push(PathBuf::from(
+                arguments
+                    .next()
+                    .filter(|value| !value.starts_with('-'))
+                    .ok_or_else(|| "--ffi-path expects a directory".to_string())?,
+            )),
             "--config" => {
                 let _ = arguments
                     .next()
@@ -256,6 +264,7 @@ pub fn parse_options(
         read_roots,
         write_roots,
         module_paths,
+        ffi_paths,
         program_arguments,
         warning_policy,
         diagnostic_catalog,
@@ -273,6 +282,25 @@ mod tests {
 
     fn parse(arguments: &[&str]) -> Result<super::Options, String> {
         parse_options(arguments.iter().map(ToString::to_string), &mut ())
+    }
+
+    #[test]
+    fn ffi_path_is_repeatable_and_ordered() {
+        let options = parse(&[
+            "--ffi-path",
+            "/usr/local/lib",
+            "--ffi-path",
+            "/opt/lib",
+            "file.bn",
+        ])
+        .expect("ffi path flags");
+        assert_eq!(
+            options.ffi_paths,
+            vec![
+                std::path::PathBuf::from("/usr/local/lib"),
+                std::path::PathBuf::from("/opt/lib")
+            ]
+        );
     }
 
     #[test]

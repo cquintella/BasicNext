@@ -56,7 +56,7 @@ closed by its owning `*_close` operation.
 | Temporal and string helpers (`bn_rt_print_*`, `bn_rt_str_*`) | Dates/times passed as scalar `i32`/`i64`; strings passed as LLVM `ptr` to the payload (16-byte header with atomic count and length precedes it) | Callee borrows pointer for duration of query/print; does not free or mutate | Status or fallback representation | `crates/bn_llvm/src/llvm/functions.rs`; `crates/bn_rt/src/lib.rs` |
 | `INTEGER OR NULL` | LLVM `{ i1, i32 }`: field 0 is `true` exactly for `NULL`; field 1 holds the integer payload and is zero when null | Passed and returned by value; no owned storage | `PRINT` emits `NULL` for a set tag and the signed integer otherwise | `examples/linear_collections.bn`; `tests/cli.rs` |
 
-### Alternative values (bucket typed-llvm-emitter, Sprint 6)
+### Alternative values (0.6)
 
 An alternative value holds exactly one of its declared members; `IS`
 answers from what it holds, on both backends. Order of members does not
@@ -65,13 +65,13 @@ and assignment"). Native layouts:
 
 | Alternative | LLVM layout | Which member it holds | Status |
 | --- | --- | --- | --- |
-| `INTEGER OR NULL` | `{ i1, i32 }` | field 0 `true` for `NULL` | kept (row above) |
-| `FLOAT OR NA` | `{ i1, double }` | field 0 `true` for `NA` | kept |
-| `T OR Error` and the `HOST.Net` / `FS.File` results | `{ i1, ptr, i64 }`, `{ i1, ptr }`, `{ i1, ptr, i32 }` | field 0 `true` for `Error` (field 1: error record) | kept: `bn_rt` ABI |
-| `Class OR NULL` | `ptr` | `null` for `NULL` | kept |
-| `STRING OR NULL` | `{ i32 tag, ptr, i64 }` | `null` pointer for `NULL`; a STRING payload otherwise | G7-D2 |
-| `STRING OR EOF` | `ptr` | payload of the static `EOF` sentinel (`@.bn_eof`, offset 16) or a STRING payload | G7-D2 |
-| every other alternative | `{ i32, ptr, i64 }` | field 0: `bn_types::alternatives::member_code` of the member held | implemented (0.6.5) |
+| `INTEGER OR NULL` | `{ i1, i32 }` | field 0 `true` for `NULL` | implemented |
+| `FLOAT OR NA` | `{ i1, double }` | field 0 `true` for `NA` | implemented |
+| `T OR Error` and the `HOST.Net` / `FS.File` results | `{ i1, ptr, i64 }`, `{ i1, ptr }`, `{ i1, ptr, i32 }` | field 0 `true` for `Error` (field 1: error record) | implemented |
+| `Class OR NULL` | `ptr` | `null` for `NULL` | implemented |
+| `STRING OR NULL` | `{ i32 tag, ptr, i64 }` | `null` pointer for `NULL`; a STRING payload otherwise | implemented |
+| `STRING OR EOF` | `ptr` | payload of the static `EOF` sentinel (`@.bn_eof`, offset 16) or a STRING payload | implemented |
+| every other alternative | `{ i32, ptr, i64 }` | field 0: `bn_types::alternatives::member_code` of the member held | implemented |
 
 In the general layout, a pointer payload (`STRING` buffer, object, `Error` record,
 vector data) is in field 1 and a scalar or length payload (`STRING` byte length) in field 2: integers extended
@@ -133,6 +133,7 @@ The table below catalogs ownership and lifetime for all symbols declared in `BN_
 | **`Error` records** | `bn_rt_error_take(failed, operation)`, `bn_rt_error_wrap(failed, value, operation)`, `bn_rt_error_field(error, field)`, `bn_rt_error_code`, `bn_rt_error_print`, `bn_rt_error_set_report` | Status/flag copied; `operation` and `value` borrowed | A native `Error` is `{ i1 true, ptr, i64 code }` whose pointer is a runtime record (`Message`, `Operation`, `Cause`): `take` builds it from the failing call's recorded message and cause, `wrap` from a message the emitted code holds (a record passes through), and `field` reads 0 `Message`, 1 `Operation`, 2 `Cause`, treating a non-record pointer as a plain message | Records live until exit; `bn_rt` keeps their addresses so a field read never misreads a plain string |
 | **ARC core** (bucket typed-llvm-emitter, Sprint 8; emitted by `bnc`) | `bn_rt_arc_register(class, object, line, column)`, `bn_rt_arc_retain(id, line, column)`, `bn_rt_arc_release(id, line, column)`, `bn_rt_arc_finish_destroy(id)`, `bn_rt_arc_address(id)` | `class` is a borrowed NUL-terminated class-name constant; `object` is the object's address, kept as an opaque number; `line` and `column` (`u32`) are the source position of the operation, written only by `BN_ARC_TRACE`; an object id is one `u64` (slot index in the high 32 bits, generation in the low 32), copied | `register` returns the new id with one strong reference; `retain` returns `0`, `release` `1` when it dropped the last reference (the object is being destroyed: run its destruction, then `finish_destroy`) or `0`; while it is being destroyed, `retain` and `release` do nothing; `finish_destroy` returns `0`; these return `-1` after recording an `INVALID_IR` failure for a dead id; `address` returns the registered address while the object is alive, else null | One core per process (`bn_rt::arc::ArcCore`, the same type `bni` uses per interpreter). The core never reads or writes object memory. A weak binding stores only the id (8 bytes, as a pointer) and reads the object through `address`, so it reads `NULL` from the start of the destruction on; a slot reused by a later object gets a new generation, so an old id never reaches an object again. Note: `bn_rt_arc_dump` and `bn_rt_arc_info` are runtime diagnostic helpers, not emitted by `bnc` compiler passes |
 | **BNSqlite Database Operations** | `bn_rt_sqlite_open`, `bn_rt_sqlite_open_read_only`, `bn_rt_sqlite_open_existing`, `bn_rt_sqlite_close`, `bn_rt_sqlite_retain`, `bn_rt_sqlite_exec`, `bn_rt_sqlite_query`, `bn_rt_sqlite_begin`, `bn_rt_sqlite_commit`, `bn_rt_sqlite_rollback`, `bn_rt_sqlite_changes`, `bn_rt_sqlite_last_insert_rowid` | Path/SQL `ptr` borrowed NUL-terminated UTF-8; connection handle `u64` copied | Status code `i32` (0 = OK); out pointer receives `u64` connection handle or `u64` DataFrame handle; `changes`/`last_insert_rowid` return `i64` | `bn_rt_sqlite_close`, `bn_rt_sqlite_retain` closes SQLite connection and releases file locks; operations on closed handles fail with `Sqlite.CLOSED`; query returns registered `BNDataFrameHandle` owned by caller |
+| **BNFfi Foreign Function Interface** | `bn_rt_ffi_new_record`, `bn_rt_ffi_release`, `bn_rt_ffi_set_*`, `bn_rt_ffi_get_*`, `bn_rt_ffi_args_new`, `bn_rt_ffi_args_add`, `bn_rt_ffi_args_count`, `bn_rt_ffi_call`, `bn_rt_ffi_handle_result_value`, `bn_rt_ffi_handle_read_string`, `bn_rt_ffi_array_read_from`, `bn_rt_ffi_array_write_to` | Record handles `u64`, values scalar or string/array `ptr` | Status code `i32` (0 = OK) or scalar result; out pointers populated for strings | Zero leaks: records freed on `bn_rt_ffi_release`; dynamic calls executed via `libffi` without holding runtime locks |
 
 The layout assertions cover the release slice on every supported target by
 checking field offsets and alignment rather than baking a host pointer width
@@ -309,6 +310,40 @@ bn_rt_exec_result_return_code
 bn_rt_exec_result_stderr
 bn_rt_exec_result_stdout
 bn_rt_exec_run
+bn_rt_ffi_args_add
+bn_rt_ffi_args_count
+bn_rt_ffi_args_new
+bn_rt_ffi_array_read_from
+bn_rt_ffi_array_write_to
+bn_rt_ffi_call
+bn_rt_ffi_get_bool
+bn_rt_ffi_get_double
+bn_rt_ffi_get_float
+bn_rt_ffi_get_int16
+bn_rt_ffi_get_int32
+bn_rt_ffi_get_int64
+bn_rt_ffi_get_int8
+bn_rt_ffi_get_uint16
+bn_rt_ffi_get_uint32
+bn_rt_ffi_get_uint64
+bn_rt_ffi_get_uint8
+bn_rt_ffi_handle_read_string
+bn_rt_ffi_handle_result_value
+bn_rt_ffi_new_record
+bn_rt_ffi_release
+bn_rt_ffi_set_array
+bn_rt_ffi_set_bool
+bn_rt_ffi_set_double
+bn_rt_ffi_set_float
+bn_rt_ffi_set_int16
+bn_rt_ffi_set_int32
+bn_rt_ffi_set_int64
+bn_rt_ffi_set_int8
+bn_rt_ffi_set_string
+bn_rt_ffi_set_uint16
+bn_rt_ffi_set_uint32
+bn_rt_ffi_set_uint64
+bn_rt_ffi_set_uint8
 bn_rt_file_close
 bn_rt_file_release
 bn_rt_file_retain

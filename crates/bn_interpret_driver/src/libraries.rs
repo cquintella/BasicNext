@@ -8,11 +8,14 @@
 //! without a feature simply does not register that library, and a program
 //! importing it gets `LIBRARY_PROVIDER_UNAVAILABLE` at the first call.
 
+use std::path::PathBuf;
+
 use bn_interp::provider::Providers;
 
 /// The libraries this build of `bn` ships (bucket 0.5.1d, D-F2-07).
 #[must_use]
-pub(crate) fn default_libraries() -> Providers {
+pub(crate) fn default_libraries(ffi_paths: &[PathBuf]) -> Providers {
+    let _ = ffi_paths;
     #[allow(unused_mut)] // With no library feature the registry stays empty.
     let mut libraries = Providers::default();
     #[cfg(feature = "lib-math")]
@@ -55,5 +58,13 @@ pub(crate) fn default_libraries() -> Providers {
         bn_lib_sqlite::NAME,
         std::sync::Arc::new(|| Box::new(bn_lib_sqlite::SqliteProvider::default())),
     );
+    #[cfg(feature = "lib-ffi")]
+    {
+        let paths = ffi_paths.to_vec();
+        libraries.register(
+            bn_lib_ffi::NAME,
+            std::sync::Arc::new(move || Box::new(bn_lib_ffi::FfiProvider::new(paths.clone()))),
+        );
+    }
     libraries
 }

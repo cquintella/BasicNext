@@ -3,6 +3,9 @@
 *.o
 *.obj
 *.exe
+*.so
+*.dylib
+*.dll
 *.bnbuild.log
 
 # cargo-fuzz build output and generated corpus (fuzz/ crate itself is tracked)

@@ -269,6 +269,10 @@ pub(crate) fn emit_build_output(
             if debug_flag.is_none() {
                 command_args.extend(dead_code_link_args().iter().map(ToString::to_string));
             }
+            #[cfg(target_os = "linux")]
+            if llvm.contains("@bn_rt_ffi_") {
+                command_args.push("-ldl".to_string());
+            }
         }
         if llvm.contains("@bn_web_") {
             let bn_web = match configured_bn_web_lib() {

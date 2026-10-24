@@ -419,6 +419,10 @@ pub(crate) fn lower_call_instruction(
             let method = bnsqlite_method(module, name).expect("validated BNSqlite member");
             lower_sqlite_call(text, *destination, method, arguments, analysis);
         }
+        name if bnffi_method(module, name).is_some() => {
+            let member = bnffi_method(module, name).expect("validated BNFfi member");
+            lower_bnffi_call(text, analysis, *destination, member, arguments);
+        }
         case @ ("TOLOWER" | "TOUPPER") => {
             let symbol = format!("bn_rt_str_to_{}", case[2..].to_ascii_lowercase());
             let args = vec![(T::Ptr, v(arguments[0]))];

@@ -1,14 +1,93 @@
 use std::collections::HashMap;
 
-use super::{
-    completion::completion_items, find_definition, find_locations, lsp_range, word_prefix,
-};
+use super::{completion::completion_items, lsp_range, word_prefix};
 use bn_diag::Diagnostic;
 use bn_source::{Position, Revision, SourceFile, SourceId, Span};
 
 /// Unit tests run with the crate directory as cwd; fixtures and the stdlib
 /// live at the workspace root.
 const WORKSPACE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+
+fn cursor(text: &str, needle: &str, nth: usize) -> super::Position {
+    let mut seen = 0usize;
+    for (line_index, line) in text.lines().enumerate() {
+        if let Some(column) = line.find(needle) {
+            if seen == nth {
+                return super::Position::new(
+                    u32::try_from(line_index).unwrap_or(u32::MAX),
+                    u32::try_from(column).unwrap_or(u32::MAX),
+                );
+            }
+            seen += 1;
+        }
+    }
+    panic!("missing {needle} occurrence {nth}");
+}
+
+fn line_of(text: &str, needle: &str, nth: usize) -> u32 {
+    text.lines()
+        .enumerate()
+        .filter(|(_, line)| line.contains(needle))
+        .nth(nth)
+        .map_or_else(
+            || panic!("missing {needle}"),
+            |(index, _)| u32::try_from(index).unwrap_or(u32::MAX),
+        )
+}
+
+struct Fixture {
+    directory: std::path::PathBuf,
+}
+
+impl Fixture {
+    fn new(label: &str) -> Self {
+        let directory =
+            std::env::temp_dir().join(format!("basicnext-lsp-{label}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).expect("create fixture directory");
+        Self { directory }
+    }
+
+    fn write(&self, relative: &str, text: &str) -> std::path::PathBuf {
+        let path = self.directory.join(relative);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("create fixture parent");
+        }
+        std::fs::write(&path, text).expect("write fixture");
+        path
+    }
+}
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.directory);
+    }
+}
+
+fn documents_for(files: &[(&std::path::PathBuf, &str)]) -> HashMap<String, SourceFile> {
+    files
+        .iter()
+        .map(|(path, text)| {
+            let uri = super::file_uri::path_to_file_uri(path);
+            (uri.clone(), SourceFile::new(uri, (*text).to_string()))
+        })
+        .collect()
+}
+
+fn analyze(
+    entry: &std::path::Path,
+    documents: &HashMap<String, SourceFile>,
+) -> super::diagnostics::OpenAnalysis {
+    let mut session = bn_frontend::frontend_session::FrontendSession::default();
+    super::diagnostics::analyze_documents(&entry.to_path_buf(), documents, &mut session)
+}
+
+fn same_file(uri: &super::Uri, path: &std::path::Path) -> bool {
+    let Some(from_uri) = super::file_uri::file_uri_to_path(uri.as_str()) else {
+        return false;
+    };
+    from_uri.canonicalize().ok().as_deref() == path.canonicalize().ok().as_deref()
+}
 
 #[test]
 fn spans_are_zero_based_at_the_protocol_boundary() {
@@ -187,90 +266,139 @@ fn completion_lists_bnmath_exports_on_alias() {
 }
 
 #[test]
-fn navigation_returns_all_matching_identifier_spans() {
-    let uri: super::Uri = "file:///test.bn".parse().unwrap();
-    let source = SourceFile::new(uri.to_string(), "LET value AS INTEGER\nPRINT value\n");
-    let documents = HashMap::from([(uri.to_string(), source)]);
-    let locations = find_locations(&documents, &uri, super::Position::new(1, 11), true).unwrap();
-    assert_eq!(locations.len(), 2);
-    assert_eq!(locations[0].range, lsp_range(1, 5, 1, 10));
-}
-
-#[test]
-fn references_can_exclude_the_declaration_span() {
-    let uri: super::Uri = "file:///test.bn".parse().unwrap();
-    let source = SourceFile::new(uri.to_string(), "LET value AS INTEGER\nPRINT value\n");
-    let documents = HashMap::from([(uri.to_string(), source)]);
-    let locations = find_locations(&documents, &uri, super::Position::new(1, 11), false).unwrap();
-    assert_eq!(locations.len(), 1);
-    assert_eq!(locations[0].range, lsp_range(2, 7, 2, 12));
-}
-
-#[test]
-fn definition_uses_ast_declaration_span() {
-    let uri: super::Uri = "file:///test.bn".parse().unwrap();
-    let source = SourceFile::new(
-        uri.to_string(),
-        "FUNCTION Value() AS INTEGER\nRETURN 1\nEND FUNCTION\n",
+fn references_of_one_binding_include_the_declaration_and_can_omit_it() {
+    let source = "\
+FUNCTION Start() AS INTEGER\n\
+    LET value AS INTEGER = 1\n\
+    RETURN value\n\
+END FUNCTION\n";
+    let fixture = Fixture::new("references");
+    let path = fixture.write("main.bn", source);
+    let documents = documents_for(&[(&path, source)]);
+    let uri = super::file_uri::path_to_file_uri(&path);
+    let analysis = analyze(&path, &documents);
+    let at = cursor(source, "value", 1);
+    let locations = analysis.navigation.references(&uri, at, true);
+    assert!(
+        locations.len() >= 2,
+        "{locations:?} diagnostics {:?}",
+        analysis.diagnostics
     );
-    let documents = HashMap::from([(uri.to_string(), source)]);
-    let locations = find_definition(&documents, &uri, super::Position::new(0, 14)).unwrap();
-    assert_eq!(locations.len(), 1);
+    assert!(
+        locations
+            .iter()
+            .any(|location| location.range.start.line == line_of(source, "LET value", 0))
+    );
+    assert!(
+        locations
+            .iter()
+            .any(|location| location.range.start.line == line_of(source, "RETURN value", 0))
+    );
+    let uses = analysis.navigation.references(&uri, at, false);
+    assert!(!uses.is_empty(), "{uses:?}");
+    assert!(
+        uses.iter()
+            .all(|location| location.range.start.line == line_of(source, "RETURN value", 0))
+    );
+}
+
+#[test]
+fn definition_of_a_function_name_uses_its_declaration_span() {
+    let source = "\
+FUNCTION Value() AS INTEGER\n\
+    RETURN 1\n\
+END FUNCTION\n";
+    let fixture = Fixture::new("function-name");
+    let path = fixture.write("main.bn", source);
+    let documents = documents_for(&[(&path, source)]);
+    let uri = super::file_uri::path_to_file_uri(&path);
+    let analysis = analyze(&path, &documents);
+    let locations = analysis
+        .navigation
+        .definition(&uri, cursor(source, "Value", 0));
+    assert_eq!(
+        locations.len(),
+        1,
+        "{locations:?} {:?}",
+        analysis.diagnostics
+    );
     assert_eq!(locations[0].range.start.line, 0);
 }
 
 #[test]
-fn definition_searches_other_open_documents_when_not_local() {
-    let main_uri: super::Uri = "file:///main.bn".parse().unwrap();
-    let module_uri: super::Uri = "file:///Module.bn".parse().unwrap();
-    let documents = HashMap::from([
-        (
-            main_uri.to_string(),
-            SourceFile::new(
-                main_uri.to_string(),
-                "IMPORT Module AS Module\nFUNCTION Main() AS INTEGER\nRETURN Value()\nEND FUNCTION\n",
-            ),
-        ),
-        (
-            module_uri.to_string(),
-            SourceFile::new(
-                module_uri.to_string(),
-                "FUNCTION Value() AS INTEGER\nRETURN 1\nEND FUNCTION\n",
-            ),
-        ),
+fn definition_of_an_imported_function_follows_that_module() {
+    let main = "\
+IMPORT Module AS Module\n\
+FUNCTION Start() AS INTEGER\n\
+    RETURN Module.Value()\n\
+END FUNCTION\n";
+    let module = "\
+EXPORT FUNCTION Value() AS INTEGER\n\
+    RETURN 1\n\
+END FUNCTION\n";
+    let decoy = "\
+EXPORT FUNCTION Value() AS INTEGER\n\
+    RETURN 0\n\
+END FUNCTION\n";
+    let fixture = Fixture::new("import-open");
+    let main_path = fixture.write("main.bn", main);
+    let module_path = fixture.write("Module.bn", module);
+    let decoy_path = fixture.write("Decoy.bn", decoy);
+    let documents = documents_for(&[
+        (&main_path, main),
+        (&module_path, module),
+        (&decoy_path, decoy),
     ]);
-    let locations = find_definition(&documents, &main_uri, super::Position::new(2, 12)).unwrap();
-    assert_eq!(locations.len(), 1);
-    assert_eq!(locations[0].uri, module_uri);
+    let uri = super::file_uri::path_to_file_uri(&main_path);
+    let analysis = analyze(&main_path, &documents);
+    let locations = analysis
+        .navigation
+        .definition(&uri, cursor(main, "Value()", 0));
+    assert_eq!(
+        locations.len(),
+        1,
+        "{locations:?} diagnostics {:?}",
+        analysis.diagnostics
+    );
+    assert!(
+        same_file(&locations[0].uri, &module_path),
+        "{:?}",
+        locations[0].uri
+    );
 }
 
 #[test]
-fn definition_loads_sibling_module_from_filesystem() {
-    let suffix = std::process::id();
-    let directory = format!("/tmp/basicnext-lsp-sibling-{suffix}");
-    let main_path = format!("{directory}/main.bn");
-    let module_path = format!("{directory}/Module.bn");
-    std::fs::create_dir_all(&directory).unwrap();
-    let main_uri: super::Uri = format!("file://{main_path}").parse().unwrap();
-    let module_uri: super::Uri = format!("file://{module_path}").parse().unwrap();
-    std::fs::write(
-        &module_path,
-        "FUNCTION Value() AS INTEGER\nRETURN 1\nEND FUNCTION\n",
-    )
-    .unwrap();
-    let documents = HashMap::from([(
-        main_uri.to_string(),
-        SourceFile::new(
-            main_uri.to_string(),
-            "IMPORT Module AS Module\nFUNCTION Main() AS INTEGER\nRETURN Value()\nEND FUNCTION\n",
-        ),
-    )]);
-    let locations = find_definition(&documents, &main_uri, super::Position::new(2, 12)).unwrap();
-    let _ = std::fs::remove_file(main_path);
-    let _ = std::fs::remove_file(&module_path);
-    let _ = std::fs::remove_dir(&directory);
-    assert_eq!(locations.len(), 1);
-    assert_eq!(locations[0].uri, module_uri);
+fn definition_loads_an_imported_module_that_is_not_open() {
+    let main = "\
+IMPORT Module AS Module\n\
+FUNCTION Start() AS INTEGER\n\
+    RETURN Module.Value()\n\
+END FUNCTION\n";
+    let module = "\
+EXPORT FUNCTION Value() AS INTEGER\n\
+    RETURN 1\n\
+END FUNCTION\n";
+    let fixture = Fixture::new("import-disk");
+    let main_path = fixture.write("main.bn", main);
+    fixture.write("Module.bn", module);
+    let module_path = fixture.directory.join("Module.bn");
+    let documents = documents_for(&[(&main_path, main)]);
+    let uri = super::file_uri::path_to_file_uri(&main_path);
+    let analysis = analyze(&main_path, &documents);
+    let locations = analysis
+        .navigation
+        .definition(&uri, cursor(main, "Value()", 0));
+    assert_eq!(
+        locations.len(),
+        1,
+        "{locations:?} {:?}",
+        analysis.diagnostics
+    );
+    assert!(
+        same_file(&locations[0].uri, &module_path),
+        "{:?}",
+        locations[0].uri
+    );
 }
 
 #[test]
@@ -387,42 +515,129 @@ fn lsp_problems_equivalent_to_cli_check_on_shared_fixture() {
 }
 
 #[test]
-fn definition_resolves_nested_module_and_relative_paths() {
-    let suffix = std::process::id();
-    let directory = std::path::PathBuf::from(format!("/tmp/basicnext-lsp-nested-{suffix}"));
-    let nested_dir = directory.join("nested");
-    std::fs::create_dir_all(&nested_dir).unwrap();
-    let main_path = directory.join("main.bn");
-    let child_path = nested_dir.join("Child.bn");
-    std::fs::write(
-        &child_path,
-        "FUNCTION Compute() AS INTEGER\nRETURN 42\nEND FUNCTION\n",
-    )
-    .unwrap();
-    std::fs::write(
-        &main_path,
-        "IMPORT nested.Child AS Child\nFUNCTION Main() AS INTEGER\nRETURN Child.Compute()\nEND FUNCTION\n",
-    )
-    .unwrap();
-
-    let main_uri: super::Uri = super::file_uri::path_to_file_uri(&main_path)
-        .parse()
-        .unwrap();
-    let child_uri: super::Uri = super::file_uri::path_to_file_uri(&child_path)
-        .parse()
-        .unwrap();
-    let main_source = SourceFile::new(
-        main_uri.to_string(),
-        std::fs::read_to_string(&main_path).unwrap(),
+fn same_name_bindings_in_two_functions_do_not_share_a_definition() {
+    let source = "\
+FUNCTION Start() AS INTEGER\n\
+    LET value AS INTEGER = 1\n\
+    RETURN value\n\
+END FUNCTION\n\
+FUNCTION Other() AS INTEGER\n\
+    LET value AS INTEGER = 2\n\
+    RETURN value\n\
+END FUNCTION\n";
+    let fixture = Fixture::new("homonym");
+    let path = fixture.write("main.bn", source);
+    let documents = documents_for(&[(&path, source)]);
+    let uri = super::file_uri::path_to_file_uri(&path);
+    let analysis = analyze(&path, &documents);
+    let locations = analysis
+        .navigation
+        .definition(&uri, cursor(source, "value", 3));
+    assert_eq!(
+        locations.len(),
+        1,
+        "{locations:?} {:?}",
+        analysis.diagnostics
     );
-    let documents = HashMap::from([(main_uri.to_string(), main_source)]);
+    assert_eq!(
+        locations[0].range.start.line,
+        line_of(source, "LET value", 1)
+    );
+    let references = analysis
+        .navigation
+        .references(&uri, cursor(source, "value", 3), true);
+    assert!(references.len() >= 2, "{references:?}");
+    assert!(references.iter().all(|location| {
+        let line = location.range.start.line;
+        line == line_of(source, "LET value", 1) || line == line_of(source, "RETURN value", 1)
+    }));
+}
 
-    let locations =
-        super::find_definition(&documents, &main_uri, super::Position::new(2, 15)).unwrap();
-    let _ = std::fs::remove_dir_all(&directory);
+#[test]
+fn hover_reports_the_resolved_type_name() {
+    let source = "\
+FUNCTION Start() AS INTEGER\n\
+    LET value AS INTEGER = 1\n\
+    RETURN value\n\
+END FUNCTION\n";
+    let fixture = Fixture::new("hover");
+    let path = fixture.write("main.bn", source);
+    let documents = documents_for(&[(&path, source)]);
+    let uri = super::file_uri::path_to_file_uri(&path);
+    let analysis = analyze(&path, &documents);
+    let hover = analysis
+        .navigation
+        .hover(&uri, cursor(source, "value", 1))
+        .expect("hover");
+    assert!(hover.contains("value"), "{hover}");
+    assert!(
+        hover.contains("INTEGER") || hover.contains("INT32"),
+        "{hover}"
+    );
+    assert!(!hover.contains("Basic Next"), "{hover}");
+}
 
-    assert_eq!(locations.len(), 1);
-    assert_eq!(locations[0].uri, child_uri);
+#[test]
+fn navigation_is_empty_when_analysis_has_no_model() {
+    let source = "\
+FUNCTION Start() AS INTEGER\n\
+    RETURN missing\n\
+END FUNCTION\n";
+    let fixture = Fixture::new("unresolved");
+    let path = fixture.write("main.bn", source);
+    let documents = documents_for(&[(&path, source)]);
+    let uri = super::file_uri::path_to_file_uri(&path);
+    let analysis = analyze(&path, &documents);
+    assert!(
+        analysis.diagnostics.values().any(|items| !items.is_empty()),
+        "{:?}",
+        analysis.diagnostics
+    );
+    assert!(
+        analysis
+            .navigation
+            .definition(&uri, cursor(source, "missing", 0))
+            .is_empty()
+    );
+    assert!(
+        analysis
+            .navigation
+            .hover(&uri, cursor(source, "missing", 0))
+            .is_none()
+    );
+}
+
+#[test]
+fn definition_resolves_nested_module_and_relative_paths() {
+    let main = "\
+IMPORT nested.Child AS Child\n\
+FUNCTION Start() AS INTEGER\n\
+    RETURN Child.Compute()\n\
+END FUNCTION\n";
+    let child = "\
+EXPORT FUNCTION Compute() AS INTEGER\n\
+    RETURN 42\n\
+END FUNCTION\n";
+    let fixture = Fixture::new("nested");
+    let main_path = fixture.write("main.bn", main);
+    let child_path = fixture.write("nested/Child.bn", child);
+    let documents = documents_for(&[(&main_path, main)]);
+    let uri = super::file_uri::path_to_file_uri(&main_path);
+    let analysis = analyze(&main_path, &documents);
+    let locations = analysis
+        .navigation
+        .definition(&uri, cursor(main, "Compute()", 0));
+    assert_eq!(
+        locations.len(),
+        1,
+        "{locations:?} {:?}",
+        analysis.diagnostics
+    );
+    assert!(
+        same_file(&locations[0].uri, &child_path),
+        "{:?}",
+        locations[0].uri
+    );
 }
 
 #[test]

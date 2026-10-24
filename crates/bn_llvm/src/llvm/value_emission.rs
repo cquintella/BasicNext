@@ -136,6 +136,7 @@ pub(crate) fn lower_value_emission(
                 && bnlog_resource_kind(module, ty).is_none()
                 && !is_bnweb_resource_type(module, ty)
                 && !file_handle
+                && !is_bnffi_type(module, ty)
             {
                 let class_global = format!("@.bn_cls_{}", sanitize_symbol(type_name));
                 emit_store_object_class(text, *destination, &class_global);
@@ -155,7 +156,7 @@ pub(crate) fn lower_value_emission(
                     &O::reg(format!("allocbase{}", destination.0)),
                     state,
                 );
-            } else if is_class_type(module, ty) {
+            } else if is_class_type(module, ty) && !is_bnffi_type(module, ty) {
                 arc_ops::register(
                     text,
                     *destination,

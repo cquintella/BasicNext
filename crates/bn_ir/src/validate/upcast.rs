@@ -310,6 +310,7 @@ mod tests {
             bndispatch_providers: HashSet::new(),
             bncrypto_providers: HashSet::new(),
             bnsqlite_providers: HashSet::new(),
+            bnffi_providers: HashSet::new(),
             filesystem_import: None,
             clock_import: None,
             random_import: None,
@@ -320,6 +321,7 @@ mod tests {
             bnlog_import: None,
             bnweb_import: None,
             bnsqlite_import: None,
+            bnffi_import: None,
         }
     }
 

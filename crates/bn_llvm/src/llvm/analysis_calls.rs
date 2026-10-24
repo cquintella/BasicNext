@@ -277,6 +277,7 @@ pub(crate) fn call_instruction_supported(
             values,
             module,
         ),
+        Some(name) if bnffi_method(module, name).is_some() => true,
         Some(name) if is_bndata_dataframe_call(module, name) => {
             matches!(
                 bndata_dataframe_method(name),
