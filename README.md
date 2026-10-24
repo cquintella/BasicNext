@@ -201,6 +201,11 @@ From a checkout, `cargo run -p bni -- run <file>` uses this tree's toolchain.
 Read [CONTRIBUTING.md](CONTRIBUTING.md). A language change starts as a
 proposal and changes the specification, with examples, before the code.
 
+## Authors & Credits
+
+- **Carlos Quintella** ([@cquintella](https://github.com/cquintella)) — Creator and BDFL.
+- **Google Gemini** ([@google](https://github.com/google)) — Programming Co-author and Agentic Pair Programmer.
+
 ## License
 
 [MPL 2.0](LICENSE.md).
