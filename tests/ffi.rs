@@ -105,8 +105,7 @@ fn s6_a_and_b_full_suite_parity() {
 
 #[test]
 fn s6_d_new_handle_rejected_statically() {
-    let source =
-        "IMPORT BNFfi AS C\nFUNCTION Start() AS VOID\nLET h = NEW C.Handle()\nEND FUNCTION\n";
+    let source = "IMPORT BNFfi AS C\nFUNCTION Start() AS VOID\nLET h AS C.Handle = NEW C.Handle()\nEND FUNCTION\n";
     let temp_dir = TestDir::new("bnffi-handle-check").expect("create test dir");
     let file_path = temp_dir.join("check_handle.bn");
     fs::write(&file_path, source).expect("write check_handle.bn");
@@ -121,6 +120,7 @@ fn s6_d_new_handle_rejected_statically() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
         stderr.contains("private")
+            || stderr.contains("PRIVATE")
             || stderr.contains("cannot be called")
             || stderr.contains("constructor")
             || stderr.contains("CONSTRUCTOR"),
@@ -137,7 +137,22 @@ fn s6_e_resolution_order_precedence() {
     let c_source = root.join("tests/ffi/bnffi_test.c");
     build_c_library(&c_source, dir1.path(), "bnffi_test");
 
-    let bn_source = root.join("tests/ffi/test_strlen.bn");
+    let bn_source = dir1.join("test_res_order.bn");
+    let src = "\
+IMPORT BNFfi AS C
+FUNCTION Start() AS INTEGER
+    LET args AS C.Args = NEW C.Args()
+    args.Add(NEW C.Double(2.5))
+    args.Add(NEW C.Double(4.0))
+    LET res AS C.Double = NEW C.Double(0.0)
+    LET ok AS VOID OR Error = C.Call(\"bnffi_test\", \"test_double\", args, res)
+    IF ok IS Error THEN
+        RETURN 1
+    END IF
+    RETURN 0
+END FUNCTION
+";
+    fs::write(&bn_source, src).expect("write test_res_order.bn");
 
     // --ffi-path takes precedence over BN_LIBRARY_PATH
     let mut cmd = bni();
@@ -147,20 +162,52 @@ fn s6_e_resolution_order_precedence() {
         .arg(&bn_source)
         .env("BN_LIBRARY_PATH", dir2.path());
     let out = run(&mut cmd, None, PROCESS_TIMEOUT).expect("run bni");
-    assert!(out.status.success());
+    assert!(
+        out.status.success(),
+        "s6_e failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }
 
 #[test]
 fn s6_g_system_library_smoke() {
-    let root = workspace_root();
-    let bn_source = root.join("tests/ffi/test_strlen.bn");
     let temp_dir = TestDir::new("bnffi-sys-smoke").expect("create test dir");
+    let libc_name = if cfg!(target_os = "windows") {
+        "ucrtbase"
+    } else if cfg!(target_os = "macos") {
+        "libSystem.B.dylib"
+    } else {
+        "libc.so.6"
+    };
+    let bn_source = temp_dir.join("test_strlen_smoke.bn");
+    let src = format!(
+        "\
+IMPORT BNFfi AS C
+FUNCTION Start() AS INTEGER
+    LET args AS C.Args = NEW C.Args()
+    args.Add(NEW C.String(\"hello foreign function interface\"))
+    LET res AS C.SizeT = NEW C.SizeT(0)
+    LET ok AS VOID OR Error = C.Call(\"{libc_name}\", \"strlen\", args, res)
+    IF ok IS Error THEN
+        PRINT \"ERROR: \", ok.Message
+        RETURN 1
+    END IF
+    PRINT \"LENGTH: \", res.Value()
+    RETURN 0
+END FUNCTION
+"
+    );
+    fs::write(&bn_source, src).expect("write test_strlen_smoke.bn");
 
     // Interpreter
     let mut bni_cmd = bni();
     bni_cmd.arg("run").arg(&bn_source);
     let bni_out = run(&mut bni_cmd, None, PROCESS_TIMEOUT).expect("run bni");
-    assert!(bni_out.status.success());
+    assert!(
+        bni_out.status.success(),
+        "bni failed: {}",
+        String::from_utf8_lossy(&bni_out.stderr)
+    );
     let bni_stdout = String::from_utf8_lossy(&bni_out.stdout);
     assert!(bni_stdout.contains("LENGTH:  32"));
 
@@ -168,7 +215,11 @@ fn s6_g_system_library_smoke() {
     let native_bin = compile_native(&bn_source, &temp_dir);
     let mut native_cmd = Command::new(&native_bin);
     let bnc_out = run(&mut native_cmd, None, PROCESS_TIMEOUT).expect("run native");
-    assert!(bnc_out.status.success());
+    assert!(
+        bnc_out.status.success(),
+        "bnc failed: {}",
+        String::from_utf8_lossy(&bnc_out.stderr)
+    );
     let bnc_stdout = String::from_utf8_lossy(&bnc_out.stdout);
     assert!(bnc_stdout.contains("LENGTH:  32"));
 

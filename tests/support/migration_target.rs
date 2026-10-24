@@ -42,6 +42,18 @@ pub fn assert_matches_ledger(target: &str) {
             ignored.insert(destination.to_owned());
         }
     }
+    #[cfg(not(unix))]
+    for unix_only in [
+        "bn::test/execute::host_exec::host_exec_e11_signal_termination_negative_return_code",
+        "bn::test/programs::compiler_parity::env_value_not_utf8_is_invalid_utf8_on_both_backends",
+        "bn::test/programs::parity::console_size_uses_stdout_when_stdin_is_piped",
+        "bn::test/programs::parity_regressions::the_end_of_an_async_task_closes_its_files",
+        "bn::test/values::ownership_matrix::native_ownership_runs_clean_under_address_sanitizer",
+        "bn::test/values::value_matrix::native_values_run_clean_under_address_sanitizer",
+    ] {
+        mapped.remove(unix_only);
+        ignored.remove(unix_only);
+    }
     assert!(!mapped.is_empty(), "no mapped tests for {target}");
     assert_eq!(
         mapped,

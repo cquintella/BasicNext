@@ -1,4 +1,5 @@
 // Test library with constructor initializer to verify AC12.
+#define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 
 #if defined(_WIN32)
