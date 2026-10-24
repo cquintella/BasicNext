@@ -1,0 +1,85 @@
+{
+  "exit_codes": {
+    "invalid_cells": 3,
+    "invalid_targets": 4
+  },
+  "pending": "Mechanical baseline; oracle and destination mapping require the owning domain sprint.",
+  "retained": "Crate-local identity retained unchanged; oracle not audited by this inventory.",
+  "added": "Added after the S0 baseline; not part of the timed baseline.",
+  "added_tests": [
+    "bn::test/test_support::inventory_tests::completed_manifest_with_missing_targets_is_rejected",
+    "bn::test/test_support::inventory_tests::duplicate_identity_with_unchanged_domain_counts_is_rejected",
+    "bn::test/test_support::inventory_tests::removed_cell_with_retained_completion_is_rejected",
+    "bn::test/test_support::inventory_tests::truncated_cells_without_completion_are_rejected",
+    "bn::test/gates::migration_ledger::migrated_gate_tests_and_grammar_fixtures_match_the_ledger",
+    "bn::test/gates::test_support::every_ignored_child_fixture_is_selected_exactly_once",
+    "bn::test/gates::test_support::successful_child_fixture_runs",
+    "bn::test/gates::text_literals::direct_expect_and_panic_messages_are_internal_invariants",
+    "bn::test/frontend::migrated_frontend_tests_match_the_ledger",
+    "bn::test/frontend::module_graph::rooted_overlay_paths_resolve_entry_and_import_by_components",
+    "bn::test/codegen::migrated_codegen_tests_match_the_ledger",
+    "bn::test/execute::migrated_execute_tests_match_the_ledger",
+    "bn::test/values::migrated_values_tests_match_the_ledger",
+    "bn::test/programs::migrated_programs_tests_match_the_ledger",
+    "bn::test/host::migrated_host_tests_match_the_ledger"
+  ],
+  "matrices": [
+    {
+      "target": "value_matrix",
+      "test": "value_matrix::values_are_copied_where_the_rules_say_on_both_backends",
+      "filter": "BN_VALUE_CELL"
+    },
+    {
+      "target": "ownership_matrix",
+      "test": "ownership_matrix::objects_are_released_once_where_the_rules_say_on_both_backends",
+      "filter": "BN_OWNERSHIP_CELL"
+    },
+    {
+      "target": "alternatives_matrix",
+      "test": "alternatives_matrix::alternatives_match_the_language_rule_on_both_backends",
+      "filter": "BN_MATRIX_CELL"
+    }
+  ],
+  "targets": {
+    "abi_exports": "host",
+    "alternatives_matrix": "values",
+    "arc_differential": "values",
+    "bn": "gates",
+    "catalog_keys": "gates",
+    "cli_snapshots": "programs",
+    "codegen": "codegen",
+    "codegen_tests": "codegen",
+    "compiler_capabilities": "codegen",
+    "compiler_parity": "programs",
+    "dependency_gate": "gates",
+    "destructuring": "programs",
+    "execute": "execute",
+    "frontend": "frontend",
+    "gates": "gates",
+    "heap": "values",
+    "host": "host",
+    "host_conformance": "host",
+    "ir": "frontend",
+    "ir_names": "frontend",
+    "lexer": "frontend",
+    "module_graph": "frontend",
+    "ownership_matrix": "values",
+    "parity": "programs",
+    "parity_regressions": "programs",
+    "parser": "frontend",
+    "programs": "programs",
+    "runtime": "execute",
+    "semantic": "frontend",
+    "shared_cores": "gates",
+    "shared_logic": "gates",
+    "source_size": "gates",
+    "spec_0_6_5_s13": "programs",
+    "suppressions": "gates",
+    "test_support": "gates",
+    "text_literals": "gates",
+    "u1": "frontend",
+    "validated_ir": "frontend",
+    "value_matrix": "values",
+    "values": "values"
+  }
+}

@@ -152,6 +152,7 @@ From a checkout, `cargo run -p bni -- run <file>` uses this tree's toolchain.
 | [`examples/bnstring_tour.bn`](examples/bnstring_tour.bn) | `BNString` |
 | [`examples/bndata_tour.bn`](examples/bndata_tour.bn) | `BNData` and CSV |
 | [`examples/sqlite.bn`](examples/sqlite.bn) | `BNSqlite` database operations and transactions |
+| [`examples/ffi.bn`](examples/ffi.bn) | `BNFfi` C foreign function calls |
 | [`examples/parallel-examples.md`](examples/parallel-examples.md) | `BNDispatch`, including a parallel computation of pi |
 
 ## Release notes

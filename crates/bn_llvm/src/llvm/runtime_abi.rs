@@ -9,7 +9,7 @@
 // text anywhere else (bucket 0.6.5 T.5.1).
 
 use crate::ir::{
-    AbiType::{Double, I1, I8, I32, I64, Ptr, Void},
+    AbiType::{Double, Float, I1, I8, I16, I32, I64, Ptr, Void},
     Declaration, Intrinsic, LlvmType, RuntimeFn, VariadicFn,
 };
 
@@ -350,6 +350,40 @@ signatures! {
     TRAP_REPORT_FAILURE = "bn_rt_trap_report_failure"(Ptr) -> Void;
     UNLOCK_FILE = "_unlock_file"(Ptr) -> Void;
     VECTOR_NEST = "bn_rt_vector_nest"(Ptr, Ptr, Ptr, Ptr, I32, I64) -> Void;
+    FFI_NEW_RECORD = "bn_rt_ffi_new_record"(I32) -> I64;
+    FFI_RELEASE = "bn_rt_ffi_release"(I64) -> Void;
+    FFI_SET_INT8 = "bn_rt_ffi_set_int8"(I64, I8) -> Void;
+    FFI_SET_UINT8 = "bn_rt_ffi_set_uint8"(I64, I8) -> Void;
+    FFI_SET_INT16 = "bn_rt_ffi_set_int16"(I64, I16) -> Void;
+    FFI_SET_UINT16 = "bn_rt_ffi_set_uint16"(I64, I16) -> Void;
+    FFI_SET_INT32 = "bn_rt_ffi_set_int32"(I64, I32) -> Void;
+    FFI_SET_UINT32 = "bn_rt_ffi_set_uint32"(I64, I32) -> Void;
+    FFI_SET_INT64 = "bn_rt_ffi_set_int64"(I64, I64) -> Void;
+    FFI_SET_UINT64 = "bn_rt_ffi_set_uint64"(I64, I64) -> Void;
+    FFI_SET_FLOAT = "bn_rt_ffi_set_float"(I64, Float) -> Void;
+    FFI_SET_DOUBLE = "bn_rt_ffi_set_double"(I64, Double) -> Void;
+    FFI_SET_BOOL = "bn_rt_ffi_set_bool"(I64, I32) -> Void;
+    FFI_SET_STRING = "bn_rt_ffi_set_string"(I64, Ptr) -> Void;
+    FFI_SET_ARRAY = "bn_rt_ffi_set_array"(I64, Ptr, I64, I64) -> Void;
+    FFI_GET_INT8 = "bn_rt_ffi_get_int8"(I64) -> I8;
+    FFI_GET_UINT8 = "bn_rt_ffi_get_uint8"(I64) -> I8;
+    FFI_GET_INT16 = "bn_rt_ffi_get_int16"(I64) -> I16;
+    FFI_GET_UINT16 = "bn_rt_ffi_get_uint16"(I64) -> I16;
+    FFI_GET_INT32 = "bn_rt_ffi_get_int32"(I64) -> I32;
+    FFI_GET_UINT32 = "bn_rt_ffi_get_uint32"(I64) -> I32;
+    FFI_GET_INT64 = "bn_rt_ffi_get_int64"(I64) -> I64;
+    FFI_GET_UINT64 = "bn_rt_ffi_get_uint64"(I64) -> I64;
+    FFI_GET_FLOAT = "bn_rt_ffi_get_float"(I64) -> Float;
+    FFI_GET_DOUBLE = "bn_rt_ffi_get_double"(I64) -> Double;
+    FFI_GET_BOOL = "bn_rt_ffi_get_bool"(I64) -> I32;
+    FFI_ARGS_NEW = "bn_rt_ffi_args_new"() -> I64;
+    FFI_ARGS_ADD = "bn_rt_ffi_args_add"(I64, I64) -> Void;
+    FFI_ARGS_COUNT = "bn_rt_ffi_args_count"(I64) -> I32;
+    FFI_CALL = "bn_rt_ffi_call"(Ptr, Ptr, I64, I64) -> I32;
+    FFI_HANDLE_RESULT_VALUE = "bn_rt_ffi_handle_result_value"(I64) -> Ptr;
+    FFI_HANDLE_READ_STRING = "bn_rt_ffi_handle_read_string"(I64, Ptr) -> I32;
+    FFI_ARRAY_READ_FROM = "bn_rt_ffi_array_read_from"(I64, I64) -> I32;
+    FFI_ARRAY_WRITE_TO = "bn_rt_ffi_array_write_to"(I64, I64) -> I32;
 }
 
 /// `printf`, the one variadic function the backend calls.
@@ -409,6 +443,12 @@ declarations! {
     DISPATCH_SEMAPHORE_CREATE DISPATCH_SEMAPHORE_ACQUIRE DISPATCH_SEMAPHORE_RELEASE
     DISPATCH_SEMAPHORE_CLOSE DISPATCH_MUTEX_CREATE DISPATCH_MUTEX_LOCK DISPATCH_MUTEX_UNLOCK
     DISPATCH_MUTEX_CLOSE HOST_NUM_PROCS
+    FFI_NEW_RECORD FFI_RELEASE FFI_SET_INT8 FFI_SET_UINT8 FFI_SET_INT16 FFI_SET_UINT16
+    FFI_SET_INT32 FFI_SET_UINT32 FFI_SET_INT64 FFI_SET_UINT64 FFI_SET_FLOAT FFI_SET_DOUBLE
+    FFI_SET_BOOL FFI_SET_STRING FFI_SET_ARRAY FFI_GET_INT8 FFI_GET_UINT8 FFI_GET_INT16
+    FFI_GET_UINT16 FFI_GET_INT32 FFI_GET_UINT32 FFI_GET_INT64 FFI_GET_UINT64 FFI_GET_FLOAT
+    FFI_GET_DOUBLE FFI_GET_BOOL FFI_ARGS_NEW FFI_ARGS_ADD FFI_ARGS_COUNT FFI_CALL
+    FFI_HANDLE_RESULT_VALUE FFI_HANDLE_READ_STRING FFI_ARRAY_READ_FROM FFI_ARRAY_WRITE_TO
     ;
     BN_RT_MATH_DECLARATIONS =
     MATH_IABS MATH_ISIGN MATH_IMIN MATH_IMAX MATH_TOHOUR MATH_TOWEEKDAY MATH_VAL MATH_FABS

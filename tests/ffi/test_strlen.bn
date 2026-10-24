@@ -1,0 +1,14 @@
+IMPORT BNFfi AS C
+
+FUNCTION Start() AS INTEGER
+    LET args AS C.Args = NEW C.Args()
+    args.Add(NEW C.String("hello foreign function interface"))
+    LET res AS C.SizeT = NEW C.SizeT(0)
+    LET ok AS VOID OR Error = C.Call("libSystem.B.dylib", "strlen", args, res)
+    IF ok IS Error THEN
+        PRINT "ERROR: ", ok.Message
+        RETURN 1
+    END IF
+    PRINT "LENGTH: ", res.Value()
+    RETURN 0
+END FUNCTION

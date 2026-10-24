@@ -13,6 +13,7 @@ pub const COMMON_OPTIONS: &str =
     "  -v, --verbose              show pipeline stages (repeat for tokens: -v -v)
   -vv                        show stages and tokens
   --module-path <dir>        add an ordered import search directory (repeatable)
+  --ffi-path <dir>           add an ordered dynamic library search directory (repeatable)
   --sandbox                  opt into filesystem root restrictions
   --read-root <dir>          allow reads below a sandbox root (repeatable)
   --write-root <dir>         allow writes below a sandbox root (repeatable)

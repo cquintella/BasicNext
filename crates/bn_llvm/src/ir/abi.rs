@@ -17,8 +17,10 @@ pub(crate) enum AbiType {
     Void,
     I1,
     I8,
+    I16,
     I32,
     I64,
+    Float,
     Double,
     Ptr,
 }
@@ -29,8 +31,10 @@ impl From<AbiType> for LlvmType {
             AbiType::Void => Self::Void,
             AbiType::I1 => Self::I1,
             AbiType::I8 => Self::I8,
+            AbiType::I16 => Self::I16,
             AbiType::I32 => Self::I32,
             AbiType::I64 => Self::I64,
+            AbiType::Float => Self::Float,
             AbiType::Double => Self::Double,
             AbiType::Ptr => Self::Ptr,
         }

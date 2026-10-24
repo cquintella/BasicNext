@@ -322,6 +322,7 @@ fn lower_unvalidated(program: &Program, model: &SemanticModel) -> Result<Module,
         bndispatch_providers: HashSet::new(),
         bncrypto_providers: HashSet::new(),
         bnsqlite_providers: HashSet::new(),
+        bnffi_providers: HashSet::new(),
         filesystem_import: filesystem_import_span(program),
         clock_import: clock_import_span(program),
         random_import: random_import_span(program),
@@ -332,6 +333,7 @@ fn lower_unvalidated(program: &Program, model: &SemanticModel) -> Result<Module,
         bnlog_import: standard_import_span(program, "BNLog"),
         bnweb_import: standard_import_span(program, "BNWeb"),
         bnsqlite_import: standard_import_span(program, "BNSqlite"),
+        bnffi_import: standard_import_span(program, "BNFfi"),
     };
     resolve_member_fields(&mut module)?;
     Ok(module)
@@ -487,6 +489,10 @@ fn lower_graph_unvalidated(
         .modules
         .iter()
         .find_map(|module| standard_import_span(&module.program, "BNSqlite"));
+    let bnffi_import = graph
+        .modules
+        .iter()
+        .find_map(|module| standard_import_span(&module.program, "BNFfi"));
     let (field_names, field_layouts) =
         lowered_field_metadata(&pending_layouts, &class_model.bases)?;
     let mut module = Module {
@@ -560,6 +566,14 @@ fn lower_graph_unvalidated(
                     .then_some(ir_module_id(loaded.id))
             })
             .collect(),
+        bnffi_providers: graph
+            .modules
+            .iter()
+            .filter_map(|loaded| {
+                (loaded.standard_module == Some(StandardModule::BNFfi))
+                    .then_some(ir_module_id(loaded.id))
+            })
+            .collect(),
         filesystem_import,
         clock_import,
         random_import,
@@ -570,6 +584,7 @@ fn lower_graph_unvalidated(
         bnlog_import,
         bnweb_import,
         bnsqlite_import,
+        bnffi_import,
     };
     resolve_member_fields(&mut module)?;
     Ok(module)

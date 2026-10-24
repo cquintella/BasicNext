@@ -97,6 +97,11 @@ and read from the same
 .BR -v , " --verbose" ", " -vv
 Print pipeline stages (and tokens).
 .TP
+.BI --ffi-path " dir"
+Append an ordered directory used to resolve dynamic libraries loaded by
+.BR BNFfi .
+Repeatable; earlier directories win.
+.TP
 .BI --module-path " dir"
 Append an ordered directory used to resolve imported source modules.
 Repeatable; earlier directories win; configuration entries come first.
@@ -170,6 +175,10 @@ and a
 .B bnc
 executable print the same trace for the same program. Standard output is not
 affected.
+.TP
+.B BN_LIBRARY_PATH
+Colon-separated (semicolon-separated on Windows) list of directory candidates used by compiled binaries to resolve dynamic libraries imported with
+.BR BNFfi .
 .TP
 .B BN_HOME
 Explicit Basic Next home for the standard-library modules (see

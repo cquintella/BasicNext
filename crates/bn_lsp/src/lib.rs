@@ -8,8 +8,8 @@ use lsp_types::{
     CompletionItem, CompletionOptions, CompletionParams, CompletionResponse,
     Diagnostic as LspDiagnostic, DiagnosticSeverity, DidChangeTextDocumentParams,
     DidCloseTextDocumentParams, DidOpenTextDocumentParams, GotoDefinitionParams,
-    GotoDefinitionResponse, InitializeParams, Location, Position, ReferenceParams,
-    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Uri,
+    GotoDefinitionResponse, InitializeParams, Position, ReferenceParams, ServerCapabilities,
+    TextDocumentSyncCapability, TextDocumentSyncKind, Uri,
 };
 
 use bn_frontend::{
@@ -23,19 +23,23 @@ use completion::completion_items;
 
 #[path = "lsp/file_uri.rs"]
 mod file_uri;
-use file_uri::{file_uri_to_path, path_to_file_uri};
+use file_uri::file_uri_to_path;
 
 #[path = "lsp/position.rs"]
 mod position;
 pub use position::lsp_pos_to_scalar;
-pub(crate) use position::utf16_to_scalar_col;
 
 #[path = "lsp/folding.rs"]
 mod folding;
 pub use folding::compute_folding_ranges;
 
+#[path = "lsp/navigation.rs"]
+mod navigation;
+use navigation::NavigationSnapshot;
+
 #[path = "lsp/diagnostics.rs"]
 mod diagnostics;
+use diagnostics::analyze_documents;
 pub use diagnostics::diagnostics_for_documents;
 #[cfg(test)]
 pub(crate) use diagnostics::{graph_diagnostics, to_lsp};
@@ -164,6 +168,7 @@ pub fn run_stdio() -> Result<(), String> {
     let mut documents = HashMap::<String, SourceFile>::new();
     let mut source_ids = HashMap::<String, SourceId>::new();
     let mut session = FrontendSession::default();
+    let mut navigation = NavigationSnapshot::default();
     let mut shutdown = false;
     for message in &connection.receiver {
         match message {
@@ -181,13 +186,13 @@ pub fn run_stdio() -> Result<(), String> {
                 respond_completion(&connection, request, &documents, workspace_root.as_ref())?;
             }
             Message::Request(request) if request.method == "textDocument/definition" => {
-                respond_definition(&connection, request, &documents)?;
+                respond_definition(&connection, request, &navigation)?;
             }
             Message::Request(request) if request.method == "textDocument/references" => {
-                respond_references(&connection, request, &documents)?;
+                respond_references(&connection, request, &navigation)?;
             }
             Message::Request(request) if request.method == "textDocument/hover" => {
-                respond_hover(&connection, request, &documents)?;
+                respond_hover(&connection, request, &navigation)?;
             }
             Message::Request(request) if request.method == "textDocument/documentSymbol" => {
                 respond_document_symbols(&connection, request, &documents)?;
@@ -209,6 +214,7 @@ pub fn run_stdio() -> Result<(), String> {
                     &mut documents,
                     &mut source_ids,
                     &mut session,
+                    &mut navigation,
                     notification,
                 )?;
             }
@@ -247,6 +253,7 @@ fn publish_document_update(
     documents: &mut HashMap<String, SourceFile>,
     source_ids: &mut HashMap<String, SourceId>,
     session: &mut FrontendSession,
+    navigation: &mut NavigationSnapshot,
     notification: Notification,
 ) -> Result<(), String> {
     if notification.method == "textDocument/didOpen" {
@@ -256,6 +263,7 @@ fn publish_document_update(
             documents,
             source_ids,
             session,
+            navigation,
             params.text_document.uri,
             params.text_document.text,
         );
@@ -269,6 +277,7 @@ fn publish_document_update(
         documents,
         source_ids,
         session,
+        navigation,
         params.text_document.uri,
         change.text,
     )
@@ -326,19 +335,21 @@ fn respond_completion(
 fn respond_hover(
     connection: &Connection,
     request: Request,
-    documents: &HashMap<String, SourceFile>,
+    navigation: &NavigationSnapshot,
 ) -> Result<(), String> {
     let params: lsp_types::HoverParams = serde_json::from_value(request.params)
         .map_err(|error| format!("invalid hover params: {error}"))?;
-    let uri = params.text_document_position_params.text_document.uri;
+    let uri = params
+        .text_document_position_params
+        .text_document
+        .uri
+        .to_string();
     let position = params.text_document_position_params.position;
-    let result =
-        documents.get(&uri.to_string()).and_then(|source| {
-            let word = word_at(source, position);
-            (!word.is_empty()).then(|| serde_json::json!({
-            "contents": {"kind": "markdown", "value": format!("**{word}** — Basic Next symbol")}
-        }))
-        });
+    let result = navigation.hover(&uri, position).map(|text| {
+        serde_json::json!({
+            "contents": {"kind": "markdown", "value": text}
+        })
+    });
     connection
         .sender
         .send(Message::Response(Response::new_ok(
@@ -387,198 +398,22 @@ fn respond_document_symbols(
 fn respond_definition(
     connection: &Connection,
     request: Request,
-    documents: &HashMap<String, SourceFile>,
+    navigation: &NavigationSnapshot,
 ) -> Result<(), String> {
     let params: GotoDefinitionParams = serde_json::from_value(request.params)
         .map_err(|error| format!("invalid definition params: {error}"))?;
-    let locations = find_definition(
-        documents,
-        &params.text_document_position_params.text_document.uri,
-        params.text_document_position_params.position,
-    )?;
-    let result = GotoDefinitionResponse::Array(locations.into_iter().take(1).collect());
+    let uri = params
+        .text_document_position_params
+        .text_document
+        .uri
+        .to_string();
+    let locations = navigation.definition(&uri, params.text_document_position_params.position);
+    let result = GotoDefinitionResponse::Array(locations);
     let value = serde_json::to_value(result).map_err(|error| error.to_string())?;
     connection
         .sender
         .send(Message::Response(Response::new_ok(request.id, value)))
         .map_err(|error| error.to_string())
-}
-
-fn find_definition(
-    documents: &HashMap<String, SourceFile>,
-    uri: &Uri,
-    position: Position,
-) -> Result<Vec<Location>, String> {
-    let Some(source) = documents.get(&uri.to_string()) else {
-        return Ok(Vec::new());
-    };
-    let prefix = word_at(source, position);
-    if prefix.is_empty() {
-        return Ok(Vec::new());
-    }
-    let tokens = lex(source).map_err(|error| error.message)?;
-    let program = parse_named(&tokens, source.name.clone()).map_err(|error| error.message)?;
-    let imports = program
-        .items
-        .iter()
-        .filter_map(|item| match item {
-            bn_frontend::ast::Item::Import { path, alias, .. } => {
-                Some((path.clone(), alias.clone()))
-            }
-            bn_frontend::ast::Item::Declaration { .. }
-            | bn_frontend::ast::Item::Constant { .. } => None,
-        })
-        .collect::<Vec<_>>();
-    let local = program
-        .items
-        .into_iter()
-        .filter_map(|item| match item {
-            bn_frontend::ast::Item::Declaration { name, span, .. } if name == prefix => {
-                Some(Location::new(
-                    uri.clone(),
-                    lsp_range(
-                        span.start.line,
-                        span.start.column,
-                        span.end.line,
-                        span.end.column,
-                    ),
-                ))
-            }
-            _ => None,
-        })
-        .take(1)
-        .collect::<Vec<_>>();
-    if !local.is_empty() {
-        return Ok(local);
-    }
-    for (document_uri, document) in documents {
-        if document_uri == &uri.to_string() {
-            continue;
-        }
-        if !imports
-            .iter()
-            .any(|(path, alias)| imported_document_matches(document_uri, path, alias))
-        {
-            continue;
-        }
-        let Ok(tokens) = lex(document) else { continue };
-        let Ok(other_program) = parse_named(&tokens, document.name.clone()) else {
-            continue;
-        };
-        if let Some(location) = other_program.items.into_iter().find_map(|item| match item {
-            bn_frontend::ast::Item::Declaration { name, span, .. } if name == prefix => {
-                Some(Location::new(
-                    document_uri.parse().unwrap_or_else(|_| uri.clone()),
-                    lsp_range(
-                        span.start.line,
-                        span.start.column,
-                        span.end.line,
-                        span.end.column,
-                    ),
-                ))
-            }
-            _ => None,
-        }) {
-            return Ok(vec![location]);
-        }
-    }
-    for (path, alias) in imports {
-        let Some((document_uri, document)) = load_imported_document(uri, &path, &alias) else {
-            continue;
-        };
-        let Ok(tokens) = lex(&document) else { continue };
-        let Ok(other_program) = parse_named(&tokens, document.name.clone()) else {
-            continue;
-        };
-        if let Some(location) = other_program.items.into_iter().find_map(|item| match item {
-            bn_frontend::ast::Item::Declaration { name, span, .. } if name == prefix => {
-                Some(Location::new(
-                    document_uri.parse().unwrap_or_else(|_| uri.clone()),
-                    lsp_range(
-                        span.start.line,
-                        span.start.column,
-                        span.end.line,
-                        span.end.column,
-                    ),
-                ))
-            }
-            _ => None,
-        }) {
-            return Ok(vec![location]);
-        }
-    }
-    Ok(Vec::new())
-}
-
-fn load_imported_document(
-    current_uri: &Uri,
-    path: &[String],
-    alias: &str,
-) -> Option<(String, SourceFile)> {
-    let current_path = file_uri_to_path(current_uri.as_str())?;
-    let parent_dir = current_path.parent()?;
-    if path.is_empty() {
-        return None;
-    }
-
-    let mut candidate = parent_dir.to_path_buf();
-    for part in path {
-        candidate.push(part);
-    }
-    candidate.set_extension("bn");
-    if let Some(res) = try_load_file(&candidate) {
-        return Some(res);
-    }
-
-    if path.len() >= 2 {
-        let mut parent_candidate = parent_dir.to_path_buf();
-        for part in &path[..path.len() - 1] {
-            parent_candidate.push(part);
-        }
-        parent_candidate.set_extension("bn");
-        if let Some(res) = try_load_file(&parent_candidate) {
-            return Some(res);
-        }
-    }
-
-    let alias_candidate = parent_dir.join(format!("{alias}.bn"));
-    if let Some(res) = try_load_file(&alias_candidate) {
-        return Some(res);
-    }
-
-    None
-}
-
-fn try_load_file(candidate: &std::path::Path) -> Option<(String, SourceFile)> {
-    let metadata = fs::metadata(candidate).ok()?;
-    if !metadata.is_file() || metadata.len() > MAX_DOCUMENT_BYTES as u64 {
-        return None;
-    }
-    let text = fs::read_to_string(candidate).ok()?;
-    let document_uri = path_to_file_uri(candidate);
-    Some((document_uri.clone(), SourceFile::new(document_uri, text)))
-}
-
-fn imported_document_matches(uri: &str, path: &[String], alias: &str) -> bool {
-    let name = uri
-        .rsplit_once('/')
-        .map_or(uri, |(_, name)| name)
-        .strip_suffix(".bn")
-        .unwrap_or(uri);
-    let imported_last = path.last().map_or(alias, String::as_str);
-    if name == imported_last || name == alias {
-        return true;
-    }
-    if path.len() >= 2 && name == path[path.len() - 2] {
-        return true;
-    }
-    let clean_uri = uri
-        .strip_prefix("file://")
-        .unwrap_or(uri)
-        .strip_suffix(".bn")
-        .unwrap_or(uri);
-    let joined = path.join("/");
-    clean_uri.ends_with(&joined)
 }
 
 fn respond_folding_range(
@@ -603,71 +438,21 @@ fn respond_folding_range(
 fn respond_references(
     connection: &Connection,
     request: Request,
-    documents: &HashMap<String, SourceFile>,
+    navigation: &NavigationSnapshot,
 ) -> Result<(), String> {
     let params: ReferenceParams = serde_json::from_value(request.params)
         .map_err(|error| format!("invalid reference params: {error}"))?;
-    let locations = find_locations(
-        documents,
-        &params.text_document_position.text_document.uri,
+    let uri = params.text_document_position.text_document.uri.to_string();
+    let locations = navigation.references(
+        &uri,
         params.text_document_position.position,
         params.context.include_declaration,
-    )?;
+    );
     let value = serde_json::to_value(locations).map_err(|error| error.to_string())?;
     connection
         .sender
         .send(Message::Response(Response::new_ok(request.id, value)))
         .map_err(|error| error.to_string())
-}
-
-fn find_locations(
-    documents: &HashMap<String, SourceFile>,
-    uri: &Uri,
-    position: Position,
-    include_declaration: bool,
-) -> Result<Vec<Location>, String> {
-    let Some(source) = documents.get(&uri.to_string()) else {
-        return Ok(Vec::new());
-    };
-    let prefix = word_at(source, position);
-    if prefix.is_empty() {
-        return Ok(Vec::new());
-    }
-    let tokens = lex(source).map_err(|error| error.message)?;
-    Ok(tokens
-        .iter()
-        .enumerate()
-        .filter_map(|(index, token)| {
-            let bn_frontend::token::TokenKind::Identifier(name) = &token.kind else {
-                return None;
-            };
-            let declaration = tokens[..index]
-                .iter()
-                .rev()
-                .find(|previous| !matches!(previous.kind, bn_frontend::token::TokenKind::Newline))
-                .is_some_and(|previous| {
-                    matches!(
-                        &previous.kind,
-                        bn_frontend::token::TokenKind::Keyword(keyword)
-                            if matches!(keyword.as_str(), "LET" | "FUNCTION" | "CLASS" | "STRUCT" | "INTERFACE" | "IMPORT")
-                    )
-                });
-            if declaration && !include_declaration {
-                return None;
-            }
-            (name == &prefix).then(|| {
-                Location::new(
-                    uri.clone(),
-                    lsp_range(
-                        token.span.start.line,
-                        token.span.start.column,
-                        token.span.end.line,
-                        token.span.end.column,
-                    ),
-                )
-            })
-        })
-        .collect())
 }
 
 #[cfg(test)]
@@ -698,44 +483,12 @@ pub(crate) fn word_prefix(source: &SourceFile, position: Position) -> String {
         .unwrap_or_default()
 }
 
-pub(crate) fn word_at(source: &SourceFile, position: Position) -> String {
-    let Some(line) = source.text.lines().nth(position.line as usize) else {
-        return String::new();
-    };
-    let char_idx = utf16_to_scalar_col(line, position.character).saturating_sub(1);
-    let chars: Vec<char> = line.chars().collect();
-    if chars.is_empty() {
-        return String::new();
-    }
-    let idx = char_idx.min(chars.len().saturating_sub(1));
-    let is_ident_char = |c: char| c.is_ascii_alphanumeric() || c == '_';
-    if !is_ident_char(chars[idx]) {
-        if idx > 0 && is_ident_char(chars[idx - 1]) {
-            return word_at_index(&chars, idx - 1);
-        }
-        return String::new();
-    }
-    word_at_index(&chars, idx)
-}
-
-fn word_at_index(chars: &[char], idx: usize) -> String {
-    let is_ident_char = |c: char| c.is_ascii_alphanumeric() || c == '_';
-    let mut start = idx;
-    while start > 0 && is_ident_char(chars[start - 1]) {
-        start -= 1;
-    }
-    let mut end = idx;
-    while end < chars.len() && is_ident_char(chars[end]) {
-        end += 1;
-    }
-    chars[start..end].iter().collect()
-}
-
 fn publish(
     connection: &Connection,
     documents: &mut HashMap<String, SourceFile>,
     source_ids: &mut HashMap<String, SourceId>,
     session: &mut FrontendSession,
+    navigation: &mut NavigationSnapshot,
     uri: Uri,
     text: String,
 ) -> Result<(), String> {
@@ -758,6 +511,7 @@ fn publish(
             tags: None,
             data: None,
         }];
+        *navigation = NavigationSnapshot::default();
         if session.accept(request).is_none() {
             return Ok(());
         }
@@ -771,8 +525,9 @@ fn publish(
     let Some(entry) = uri_to_path(&uri) else {
         return Ok(());
     };
-    let diagnostics_by_uri = diagnostics_for_documents(&entry, documents, session);
-    for (open_uri, diagnostics) in diagnostics_by_uri {
+    let analyzed = analyze_documents(&entry, documents, session);
+    *navigation = analyzed.navigation;
+    for (open_uri, diagnostics) in analyzed.diagnostics {
         let open_uri = open_uri
             .parse::<Uri>()
             .map_err(|error| format!("invalid open document URI: {error}"))?;

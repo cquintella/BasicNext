@@ -1,3 +1,5 @@
+#![allow(clippy::map_unwrap_or)]
+
 use std::{
     fmt::Write as _,
     fs,
@@ -26,7 +28,10 @@ struct LspClient {
 
 impl LspClient {
     fn spawn() -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_bni"))
+        let path = std::env::var_os("BN_INTERPRETER")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_BIN_EXE_bni")));
+        let mut child = Command::new(path)
             .arg("lsp")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

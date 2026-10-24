@@ -1,8 +1,3 @@
-# Text and identifier literals of production code (bucket 0.6.5 H.S1;
-# tests/text_literals.rs). The list only shrinks: move a text to a data file
-# under share/bn/ and remove its line here.
-#
-# Present before the rule: migrated domain by domain (H.S4.a).
 crates/bn_cli/src/check.rs	prose	error: --emit llvm is a compiler option (bnc --emit llvm)
 crates/bn_cli/src/check.rs	prose	error: missing semantic model for the executable module
 crates/bn_cli/src/check.rs	prose	{}: lexical, syntax, and semantic checks passed
@@ -15,8 +10,6 @@ crates/bn_cli/src/config.rs	prose	module-path expects an array of paths
 crates/bn_cli/src/config.rs	prose	module-path expects an array of paths
 crates/bn_cli/src/config.rs	prose	module-path must be declared at the top level
 crates/bn_cli/src/config.rs	prose	module-path must be declared once at the top level
-crates/bn_cli/src/config.rs	prose	value initialized
-crates/bn_cli/src/config.rs	prose	value initialized
 crates/bn_cli/src/diagnostics.rs	prose	error: warning refers to a missing module
 crates/bn_cli/src/frontend.rs	prose	error: cannot read {}: {error}
 crates/bn_cli/src/frontend.rs	prose	lexer completed: {} tokens
@@ -26,11 +19,12 @@ crates/bn_cli/src/frontend.rs	prose	lowering and validating IR
 crates/bn_cli/src/frontend.rs	prose	parser completed: {} top-level items
 crates/bn_cli/src/frontend.rs	prose	semantic analysis
 crates/bn_cli/src/frontend.rs	prose	syntax analysis (module graph root reused)
-crates/bn_cli/src/help.rs	prose	  -v, --verbose              show pipeline stages (repeat for tokens: -v -v)\n  -vv                        show stages and tokens\n  --module-path <dir>        add an ordered import search directory (repeatable)\n  --sandbox                  opt into filesystem root restrictions\n  --read-root <dir>          allow reads below a sandbox root (repeatable)\n  --write-root <dir>         allow writes below a sandbox root (repeatable)\n  --warnings errors          promote all warning diagnostics to errors\n  --allow <CODE>             suppress one warning diagnostic (repeatable)\n  --warn <CODE>              keep one warning diagnostic at warning level\n  --deny <CODE>              promote one warning diagnostic to an error\n  --color auto|always|never  control ANSI color on status messages\n  --log-level error|warn|info|debug\n                             process log verbosity (build)\n  --log-file <file>          companion process log path (build)\n  --no-log                   disable the companion process log\n  --config <file>            load warning/logging configuration\n  -V, --version              print version\n  -h, --help                 print this help\n
+crates/bn_cli/src/help.rs	prose	  -v, --verbose              show pipeline stages (repeat for tokens: -v -v)\n  -vv                        show stages and tokens\n  --module-path <dir>        add an ordered import search directory (repeatable)\n  --ffi-path <dir>           add an ordered dynamic library search directory (repeatable)\n  --sandbox                  opt into filesystem root restrictions\n  --read-root <dir>          allow reads below a sandbox root (repeatable)\n  --write-root <dir>         allow writes below a sandbox root (repeatable)\n  --warnings errors          promote all warning diagnostics to errors\n  --allow <CODE>             suppress one warning diagnostic (repeatable)\n  --warn <CODE>              keep one warning diagnostic at warning level\n  --deny <CODE>              promote one warning diagnostic to an error\n  --color auto|always|never  control ANSI color on status messages\n  --log-level error|warn|info|debug\n                             process log verbosity (build)\n  --log-file <file>          companion process log path (build)\n  --no-log                   disable the companion process log\n  --config <file>            load warning/logging configuration\n  -V, --version              print version\n  -h, --help                 print this help\n
 crates/bn_cli/src/help.rs	prose	CONFIG_INVALID: 
 crates/bn_cli/src/help.rs	prose	error[CONFIG_INVALID]: {message}
 crates/bn_cli/src/options.rs	prose	--color expects auto, always, or never
 crates/bn_cli/src/options.rs	prose	--config expects a file path
+crates/bn_cli/src/options.rs	prose	--ffi-path expects a directory
 crates/bn_cli/src/options.rs	prose	--log-file expects a file path
 crates/bn_cli/src/options.rs	prose	--log-file was specified more than once
 crates/bn_cli/src/options.rs	prose	--log-level expects a value
@@ -97,6 +91,36 @@ crates/bn_core_dispatch/src/lib.rs	prose	dispatch task panicked
 crates/bn_core_dispatch/src/lib.rs	prose	output length in bytes
 crates/bn_core_dispatch/src/lib.rs	prose	the system provides no entropy for ticket identifiers
 crates/bn_core_dispatch/src/lib.rs	prose	the task failed
+crates/bn_core_json/src/documents.rs	prose	object or array
+crates/bn_core_json/src/error.rs	prose	JSON has no NaN or infinity
+crates/bn_core_json/src/error.rs	prose	a value lives in exactly one place
+crates/bn_core_json/src/error.rs	prose	cannot move a document into itself
+crates/bn_core_json/src/error.rs	prose	cannot parse the text as JSON
+crates/bn_core_json/src/error.rs	prose	cannot stringify the document
+crates/bn_core_json/src/error.rs	prose	cannot use the Json document
+crates/bn_core_json/src/error.rs	prose	cannot write a non-finite FLOAT
+crates/bn_core_json/src/error.rs	prose	cannot write the value
+crates/bn_core_json/src/error.rs	prose	element {index} is not of type {expected}
+crates/bn_core_json/src/error.rs	prose	no element {index}
+crates/bn_core_json/src/error.rs	prose	only an {expected} accepts this operation
+crates/bn_core_json/src/error.rs	prose	the document is {} {found}, not an {expected}
+crates/bn_core_json/src/error.rs	prose	the document was released
+crates/bn_core_json/src/error.rs	prose	the document would nest deeper than {} levels
+crates/bn_core_json/src/error.rs	prose	the index must be at least 0 and less than the array length {length}
+crates/bn_core_json/src/error.rs	prose	the object has no member with that key
+crates/bn_core_json/src/error.rs	prose	the operation is not provided
+crates/bn_core_json/src/error.rs	prose	the value there is {} {found}
+crates/bn_core_json/src/error.rs	prose	this build does not provide it
+crates/bn_core_json/src/parse.rs	prose	JSON input exceeds 8 MiB
+crates/bn_core_json/src/parse.rs	prose	JSON nesting exceeds 64 levels
+crates/bn_core_json/src/parse.rs	prose	JSON nesting exceeds 64 levels
+crates/bn_core_json/src/parse.rs	prose	JSON nesting exceeds 64 levels
+crates/bn_core_json/src/parse.rs	prose	JSON nesting exceeds 64 levels
+crates/bn_core_json/src/parse.rs	prose	JSON number is not finite
+crates/bn_core_json/src/parse.rs	prose	JSON output exceeds 8 MiB
+crates/bn_core_json/src/parse.rs	prose	a valid bounded JSON value
+crates/bn_core_json/src/parse.rs	prose	duplicate JSON object key
+crates/bn_core_json/src/parse.rs	prose	trailing JSON input
 crates/bn_core_log/src/error.rs	prose	a closed logger accepts no further operations
 crates/bn_core_log/src/error.rs	prose	cannot serialize log record: {reason}
 crates/bn_core_log/src/error.rs	prose	cannot use {value} as the {what}
@@ -130,7 +154,6 @@ crates/bn_core_net/src/error.rs	prose	the execution policy denies HOST.Net
 crates/bn_core_net/src/error.rs	prose	the timeout must be within 1..60000 ms; got {timeout_ms}
 crates/bn_core_net/src/icmp.rs	prose	ICMP Echo operation unavailable on this host
 crates/bn_core_net/src/icmp.rs	prose	ICMP Echo permission denied
-crates/bn_core_net/src/icmp.rs	prose	Internet checksum folding keeps the sum within u16
 crates/bn_core_net/src/icmp.rs	prose	ping destination unreachable
 crates/bn_core_net/src/icmp.rs	prose	ping timeout
 crates/bn_core_net/src/lib.rs	prose	resolver worker stopped
@@ -423,11 +446,7 @@ crates/bn_diag/src/lib.rs	prose	allowed diagnostics return before storage
 crates/bn_diag/src/lib.rs	prose	an incompatible value
 crates/bn_diag/src/lib.rs	prose	attribute names checked above
 crates/bn_diag/src/lib.rs	prose	attribute without message: {line}
-crates/bn_diag/src/lib.rs	prose	builder id
-crates/bn_diag/src/lib.rs	prose	builder id
-crates/bn_diag/src/lib.rs	prose	builder id
 crates/bn_diag/src/lib.rs	prose	cannot read diagnostic overlay {}: {error}
-crates/bn_diag/src/lib.rs	prose	cause was assigned
 crates/bn_diag/src/lib.rs	prose	diagnostic overlay is not a readable directory: {}
 crates/bn_diag/src/lib.rs	prose	diagnostic {} has no primary label
 crates/bn_diag/src/lib.rs	prose	duplicate Fluent attribute: {name}
@@ -436,14 +455,11 @@ crates/bn_diag/src/lib.rs	prose	duplicate diagnostic code
 crates/bn_diag/src/lib.rs	prose	duplicate diagnostic id
 crates/bn_diag/src/lib.rs	prose	duplicate diagnostic id in overlay: {}
 crates/bn_diag/src/lib.rs	prose	duplicate diagnostics configuration key: dir
-crates/bn_diag/src/lib.rs	prose	embedded en-US diagnostics must be valid
 crates/bn_diag/src/lib.rs	prose	empty message for {}
 crates/bn_diag/src/lib.rs	prose	empty or missing title for {}
 crates/bn_diag/src/lib.rs	prose	found '{}', expected {}
 crates/bn_diag/src/lib.rs	prose	hard diagnostics cannot be allowed
-crates/bn_diag/src/lib.rs	prose	help was assigned
 crates/bn_diag/src/lib.rs	prose	invalid type for diagnostic argument {}.{name}: expected {:?}, got {:?}
-crates/bn_diag/src/lib.rs	prose	label was assigned
 crates/bn_diag/src/lib.rs	prose	malformed Fluent attribute: {line}
 crates/bn_diag/src/lib.rs	prose	malformed Fluent message: {line}
 crates/bn_diag/src/lib.rs	prose	malformed diagnostics configuration: {line}
@@ -452,12 +468,9 @@ crates/bn_diag/src/lib.rs	prose	missing catalog entry for {}
 crates/bn_diag/src/lib.rs	prose	missing catalog entry for {}
 crates/bn_diag/src/lib.rs	prose	missing code for {}
 crates/bn_diag/src/lib.rs	prose	missing diagnostic argument for {}: {}
-crates/bn_diag/src/lib.rs	prose	non-empty title checked above
-crates/bn_diag/src/lib.rs	prose	secondary label was assigned
 crates/bn_diag/src/lib.rs	prose	the current declaration or statement
 crates/bn_diag/src/lib.rs	prose	the current declaration or statement
 crates/bn_diag/src/lib.rs	prose	the operation's expected type
-crates/bn_diag/src/lib.rs	prose	title was assigned
 crates/bn_diag/src/lib.rs	prose	unknown Fluent attribute: {name}
 crates/bn_diag/src/lib.rs	prose	unknown Fluent diagnostic id: {}
 crates/bn_diag/src/lib.rs	prose	unknown catalog argument for {}: {argument}
@@ -475,18 +488,18 @@ crates/bn_diag/src/policy.rs	prose	unknown warnings key: {key}
 crates/bn_diag/src/policy.rs	prose	unterminated config escape
 crates/bn_diag/src/policy.rs	prose	unterminated quoted config value
 crates/bn_diag/src/policy.rs	prose	warning default cannot be allow
+crates/bn_diag/src/trap_texts.rs	identifier	HOST.Args
 crates/bn_diag/src/trap_texts.rs	prose	ASC requires a non-empty STRING
 crates/bn_diag/src/trap_texts.rs	prose	CHAR code is not a Unicode scalar
 crates/bn_diag/src/trap_texts.rs	prose	NAN and infinity cannot convert to an integer
 crates/bn_diag/src/trap_texts.rs	prose	binding was already released
+crates/bn_diag/src/trap_texts.rs	prose	cannot index a NULL pointer
 crates/bn_diag/src/trap_texts.rs	prose	converting a value to INTEGER
 crates/bn_diag/src/trap_texts.rs	prose	integer exponent cannot be negative
 crates/bn_diag/src/trap_texts.rs	prose	integer exponent is too large
 crates/bn_diag/src/trap_texts.rs	prose	performing an integer operation
-crates/bn_diag/src/trap_texts.rs	prose	cannot index a NULL pointer
 crates/bn_diag/src/trap_texts.rs	prose	pointer element type does not match destination type
 crates/bn_diag/src/trap_texts.rs	prose	pointer length does not fit INTEGER
-crates/bn_diag/src/trap_texts.rs	identifier	HOST.Args
 crates/bn_frontend/src/host_spec.rs	identifier	HOST.
 crates/bn_frontend/src/host_spec.rs	identifier	HOST.Args
 crates/bn_frontend/src/host_spec.rs	identifier	HOST.Args
@@ -503,7 +516,6 @@ crates/bn_frontend/src/host_spec.rs	identifier	HOST.Net
 crates/bn_frontend/src/host_spec.rs	identifier	HOST.NumProcs
 crates/bn_frontend/src/host_spec.rs	identifier	HOST.NumProcs
 crates/bn_frontend/src/host_spec.rs	identifier	HOST.Random
-crates/bn_frontend/src/host_spec.rs	prose	capability declared before its codes
 crates/bn_frontend/src/host_spec/members1.rs	identifier	HOST.Clock
 crates/bn_frontend/src/host_spec/members1.rs	identifier	HOST.FileSystem
 crates/bn_frontend/src/host_spec/members1.rs	identifier	HOST.Random
@@ -580,8 +592,6 @@ crates/bn_frontend/src/lexer.rs	prose	a Basic Next token
 crates/bn_frontend/src/lexer.rs	prose	a number cannot start with '.'
 crates/bn_frontend/src/lexer.rs	prose	bare carriage return; use LF or CRLF
 crates/bn_frontend/src/lexer.rs	prose	bare carriage return; use LF or CRLF
-crates/bn_frontend/src/lexer.rs	prose	lexical diagnostic schema
-crates/bn_frontend/src/lexer.rs	prose	lexical diagnostic schema
 crates/bn_frontend/src/lexer.rs	prose	lexical error
 crates/bn_frontend/src/lexer.rs	prose	malformed numeric literal '{text}'
 crates/bn_frontend/src/lexer.rs	prose	nested block comments are not allowed
@@ -590,6 +600,8 @@ crates/bn_frontend/src/lexer.rs	prose	string literals cannot contain control cha
 crates/bn_frontend/src/lexer.rs	prose	unterminated block comment
 crates/bn_frontend/src/lexer.rs	prose	unterminated string literal
 crates/bn_frontend/src/lexer.rs	prose	valid BN character sequence
+crates/bn_frontend/src/lowering.rs	identifier	BNFfi
+crates/bn_frontend/src/lowering.rs	identifier	BNFfi
 crates/bn_frontend/src/lowering.rs	identifier	BNLog
 crates/bn_frontend/src/lowering.rs	identifier	BNLog
 crates/bn_frontend/src/lowering.rs	identifier	BNSqlite
@@ -605,8 +617,6 @@ crates/bn_frontend/src/lowering/builder.rs	prose	expression has no resolved Symb
 crates/bn_frontend/src/lowering/builder.rs	prose	invalid vector dimension
 crates/bn_frontend/src/lowering/builder.rs	prose	nested field path root is not a record type
 crates/bn_frontend/src/lowering/builder.rs	prose	pointer and function bindings require an initializer
-crates/bn_frontend/src/lowering/builder/builder_state.rs	prose	IR block count fits u32
-crates/bn_frontend/src/lowering/builder/builder_state.rs	prose	IR block count fits u32
 crates/bn_frontend/src/lowering/builder/builder_state.rs	prose	declaration has no resolved SymbolId
 crates/bn_frontend/src/lowering/builder/builder_state.rs	prose	generated basic block has no terminator
 crates/bn_frontend/src/lowering/builder/control_flow.rs	identifier	HOST.
@@ -631,7 +641,6 @@ crates/bn_frontend/src/lowering/builder/expressions.rs	prose	type tests are lowe
 crates/bn_frontend/src/lowering/builder/statements.rs	prose	RELEASE target is not a binding
 crates/bn_frontend/src/lowering/builder/statements.rs	prose	RELEASE target is not a binding
 crates/bn_frontend/src/lowering/builder/statements.rs	prose	loop target is missing
-crates/bn_frontend/src/lowering/builder/statements.rs	prose	validated binding symbol
 crates/bn_frontend/src/lowering/field_layouts.rs	prose	ambiguous imported record field access {owner}.{name}
 crates/bn_frontend/src/lowering/field_layouts.rs	prose	field ID does not fit
 crates/bn_frontend/src/lowering/field_layouts.rs	prose	field ID is absent from the name table
@@ -684,16 +693,14 @@ crates/bn_frontend/src/lowering/helpers.rs	identifier	MIN_UINT16
 crates/bn_frontend/src/lowering/helpers.rs	identifier	MIN_UINT32
 crates/bn_frontend/src/lowering/helpers.rs	identifier	MIN_UINT64
 crates/bn_frontend/src/lowering/helpers.rs	prose	HOST.{name} cannot be lowered
-crates/bn_frontend/src/lowering/helpers.rs	prose	IR lowering diagnostic schema is registered
 crates/bn_frontend/src/lowering/helpers.rs	prose	type information is missing for IR lowering
 crates/bn_frontend/src/lowering/helpers.rs	prose	unknown assignment operator
-crates/bn_frontend/src/lowering/lowering.rs	prose	base class exists
-crates/bn_frontend/src/lowering/lowering.rs	prose	base class exists
 crates/bn_frontend/src/lowering/lowering_callable.rs	prose	destructor has no receiver
 crates/bn_frontend/src/lowering/lowering_callable.rs	prose	implicit SUPER call has no receiver
 crates/bn_frontend/src/module_graph.rs	identifier	BNCrypto.bn
 crates/bn_frontend/src/module_graph.rs	identifier	BNData.bn
 crates/bn_frontend/src/module_graph.rs	identifier	BNDispatch.bn
+crates/bn_frontend/src/module_graph.rs	identifier	BNFfi.bn
 crates/bn_frontend/src/module_graph.rs	identifier	BNJson.bn
 crates/bn_frontend/src/module_graph.rs	identifier	BNLog.bn
 crates/bn_frontend/src/module_graph.rs	identifier	BNMath.bn
@@ -708,8 +715,6 @@ crates/bn_frontend/src/module_graph.rs	prose	'{export}' is not an EXPORT of modu
 crates/bn_frontend/src/module_graph.rs	prose	import cycle includes {}
 crates/bn_frontend/src/module_graph.rs	prose	module graph error
 crates/bn_frontend/src/module_graph.rs	prose	module graph exceeds the portable module limit
-crates/bn_frontend/src/module_graph.rs	prose	module-not-found diagnostic schema is registered
-crates/bn_frontend/src/module_graph.rs	prose	root module cannot form an import cycle
 crates/bn_frontend/src/parser.rs	prose	an expression
 crates/bn_frontend/src/parser.rs	prose	host capability names after HOST. must start with a capital letter
 crates/bn_frontend/src/parser.rs	prose	parser error
@@ -733,8 +738,6 @@ crates/bn_frontend/src/parser/expressions.rs	prose	expected type after NEW
 crates/bn_frontend/src/parser/expressions.rs	prose	numeric NEW does not use parentheses
 crates/bn_frontend/src/parser/expressions.rs	prose	parser error
 crates/bn_frontend/src/parser/expressions.rs	prose	pointer shape requires an integer literal
-crates/bn_frontend/src/parser/expressions.rs	prose	token stream is not empty
-crates/bn_frontend/src/parser/expressions.rs	prose	type test token
 crates/bn_frontend/src/parser/phase1.rs	prose	ASYNC can only modify FUNCTION declarations
 crates/bn_frontend/src/parser/phase1.rs	prose	CONST inference does not support this literal; use AS TYPE
 crates/bn_frontend/src/parser/phase1.rs	prose	CONST inference supports only BOOLEAN, INTEGER, FLOAT, and STRING literals
@@ -773,15 +776,9 @@ crates/bn_frontend/src/parser/phase2.rs	prose	expected THEN after ELSE IF condit
 crates/bn_frontend/src/parser/phase2.rs	prose	expected THEN after IF condition
 crates/bn_frontend/src/parser/phase2.rs	prose	expected TO in FOR
 crates/bn_frontend/src/parser/phase2.rs	prose	expected UNTIL before END REPEAT
-crates/bn_frontend/src/parser/phase2.rs	prose	for header
-crates/bn_frontend/src/parser/phase2.rs	prose	if line
-crates/bn_frontend/src/parser/phase2.rs	prose	if line
 crates/bn_frontend/src/parser/phase2.rs	prose	no OVERRIDE on INTERFACE functions (they are implemented, not overridden)
-crates/bn_frontend/src/parser/phase2.rs	prose	non-empty inline statement
-crates/bn_frontend/src/parser/phase2.rs	prose	repeat condition
 crates/bn_frontend/src/parser/phase2.rs	prose	single-line IF branches cannot contain compound statements
 crates/bn_frontend/src/parser/phase2.rs	prose	single-line IF requires a statement after THEN/ELSE
-crates/bn_frontend/src/parser/phase2.rs	prose	while condition
 crates/bn_frontend/src/parser/phase3.rs	prose	CONST accepts one binding name
 crates/bn_frontend/src/parser/phase3.rs	prose	CONST inference does not support this literal; use AS TYPE
 crates/bn_frontend/src/parser/phase3.rs	prose	CONST inference supports only BOOLEAN, INTEGER, FLOAT, and STRING literals
@@ -797,7 +794,6 @@ crates/bn_frontend/src/parser/phase3.rs	prose	VOID cannot be used as a vector el
 crates/bn_frontend/src/parser/phase3.rs	prose	VOID cannot be used as a vector element type
 crates/bn_frontend/src/parser/phase3.rs	prose	a binding declaration requires AS TYPE
 crates/bn_frontend/src/parser/phase3.rs	prose	an assignment target must be an identifier, member, or index
-crates/bn_frontend/src/parser/phase3.rs	prose	assignment operator
 crates/bn_frontend/src/parser/phase3.rs	prose	assignment requires a target and expression
 crates/bn_frontend/src/parser/phase3.rs	prose	expected ']' in vector type
 crates/bn_frontend/src/parser/phase3.rs	prose	expected a call statement
@@ -806,8 +802,6 @@ crates/bn_frontend/src/parser/phase3.rs	prose	expected statement
 crates/bn_frontend/src/parser/phase3.rs	prose	expected statement
 crates/bn_frontend/src/parser/phase3.rs	prose	inferred CONST requires one name and one literal
 crates/bn_frontend/src/parser/phase3.rs	prose	initializer count must match binding count
-crates/bn_frontend/src/parser/phase3.rs	prose	non-empty alternatives
-crates/bn_frontend/src/parser/phase3.rs	prose	non-empty type part
 crates/bn_frontend/src/parser/phase3.rs	prose	vector dimensions in signatures and fields require an integer literal
 crates/bn_frontend/src/parser/phase4.rs	prose	OVERRIDE immediately before FUNCTION (PUBLIC OVERRIDE FUNCTION Name)
 crates/bn_frontend/src/parser/phase4.rs	prose	expected FUNCTION
@@ -818,11 +812,8 @@ crates/bn_frontend/src/parser/phase4.rs	prose	expected function name
 crates/bn_frontend/src/parser/phase4.rs	prose	expected function name
 crates/bn_frontend/src/parser/phase4.rs	prose	expected identifier
 crates/bn_frontend/src/parser/phase4.rs	prose	expected punctuation
-crates/bn_frontend/src/parser/phase4.rs	prose	parser diagnostic schema
 crates/bn_frontend/src/parser/phase4.rs	prose	parser error
 crates/bn_frontend/src/parser/phase4.rs	prose	the current declaration or statement
-crates/bn_frontend/src/parser/phase4.rs	prose	token stream is not empty
-crates/bn_frontend/src/prepare.rs	prose	module graph always contains its root
 crates/bn_frontend/src/semantic.rs	identifier	HOST
 crates/bn_frontend/src/semantic.rs	prose	an imported module must not declare Start
 crates/bn_frontend/src/semantic.rs	prose	only the executable module may import HOST.Main
@@ -850,12 +841,8 @@ crates/bn_frontend/src/semantic/analyzer2.rs	prose	EXTENDS clause
 crates/bn_frontend/src/semantic/analyzer2.rs	prose	EXTENDS clause
 crates/bn_frontend/src/semantic/analyzer2.rs	prose	EXTENDS clause
 crates/bn_frontend/src/semantic/analyzer2.rs	prose	SUPER(...) must be the first constructor statement
-crates/bn_frontend/src/semantic/analyzer2.rs	prose	base exists
-crates/bn_frontend/src/semantic/analyzer2.rs	prose	base members exist
-crates/bn_frontend/src/semantic/analyzer2.rs	prose	checked above
 crates/bn_frontend/src/semantic/analyzer2.rs	prose	class inheritance must be acyclic
 crates/bn_frontend/src/semantic/analyzer2.rs	prose	class inheritance must be acyclic
-crates/bn_frontend/src/semantic/analyzer2.rs	prose	class members exist
 crates/bn_frontend/src/semantic/analyzer2.rs	prose	constructor for '{name}' must call SUPER(...)
 crates/bn_frontend/src/semantic/analyzer2.rs	prose	declared CLASS
 crates/bn_frontend/src/semantic/analyzer2.rs	prose	host/standard-library CLASS
@@ -911,7 +898,6 @@ crates/bn_frontend/src/semantic/analyzer4.rs	prose	non-assignable member '{name}
 crates/bn_frontend/src/semantic/analyzer4.rs	prose	non-mutable value
 crates/bn_frontend/src/semantic/analyzer4.rs	prose	non-zero INTEGER
 crates/bn_frontend/src/semantic/analyzer4.rs	prose	parameter '{name}' (parameters are constant)
-crates/bn_frontend/src/semantic/analyzer4.rs	prose	usize fits u64
 crates/bn_frontend/src/semantic/analyzer5.rs	prose	CLASS '{type_name}' has only an implicit PRIVATE constructor
 crates/bn_frontend/src/semantic/analyzer5.rs	prose	CLASS '{type_name}' has only an implicit PRIVATE constructor
 crates/bn_frontend/src/semantic/analyzer5.rs	prose	HOST.Args is valid only in LEN(HOST.Args) or HOST.Args[index]
@@ -952,8 +938,6 @@ crates/bn_frontend/src/semantic/analyzer5.rs	prose	type conversion
 crates/bn_frontend/src/semantic/analyzer5.rs	prose	type name '{name}' is not a first-class value
 crates/bn_frontend/src/semantic/analyzer5.rs	prose	typed pointer
 crates/bn_frontend/src/semantic/analyzer5.rs	prose	unary operator {operator}
-crates/bn_frontend/src/semantic/analyzer5.rs	prose	usize fits u64
-crates/bn_frontend/src/semantic/analyzer5.rs	prose	validated vector shape
 crates/bn_frontend/src/semantic/analyzer5.rs	prose	vector literal
 crates/bn_frontend/src/semantic/analyzer5.rs	prose	vector literal
 crates/bn_frontend/src/semantic/analyzer6.rs	identifier	HOST.Clock
@@ -1006,22 +990,15 @@ crates/bn_frontend/src/semantic/analyzer6.rs	prose	{} worker argument(s)
 crates/bn_frontend/src/semantic/analyzer7.rs	identifier	BNMath.ROUND
 crates/bn_frontend/src/semantic/analyzer7.rs	identifier	BNMath.TOTIMESTAMP
 crates/bn_frontend/src/semantic/analyzer7.rs	identifier	BNMath.VAL
-crates/bn_frontend/src/semantic/analyzer7.rs	prose	BNMath functions have arguments
 crates/bn_frontend/src/semantic/analyzer7.rs	prose	DATE, TIME
 crates/bn_frontend/src/semantic/analyzer7.rs	prose	FLOAT, INTEGER
 crates/bn_frontend/src/semantic/analyzer7.rs	prose	compatible numeric arguments
-crates/bn_frontend/src/semantic/analyzer7.rs	prose	declared parameter
 crates/bn_frontend/src/semantic/analyzer7.rs	prose	floating-point arguments
-crates/bn_frontend/src/semantic/analyzer7.rs	prose	floats are compatible
-crates/bn_frontend/src/semantic/analyzer7.rs	prose	inserted global
-crates/bn_frontend/src/semantic/analyzer7.rs	prose	inserted local
 crates/bn_frontend/src/semantic/analyzer7.rs	prose	numeric arguments
 crates/bn_frontend/src/semantic/analyzer7.rs	prose	numeric vector
 crates/bn_frontend/src/semantic/analyzer7.rs	prose	numeric vector
 crates/bn_frontend/src/semantic/analyzer7.rs	prose	type '{name}' is not declared or imported
 crates/bn_frontend/src/semantic/analyzer7.rs	prose	variable-length vectors are reserved for the BNData library
-crates/bn_frontend/src/semantic/analyzer8.rs	prose	float type
-crates/bn_frontend/src/semantic/analyzer8.rs	prose	numeric type
 crates/bn_frontend/src/semantic/helpers1.rs	identifier	HOST.Clock
 crates/bn_frontend/src/semantic/helpers1.rs	identifier	HOST.Console
 crates/bn_frontend/src/semantic/helpers1.rs	identifier	HOST.Env
@@ -1034,9 +1011,7 @@ crates/bn_frontend/src/semantic/helpers1.rs	prose	FUNCTION({}) AS {}
 crates/bn_frontend/src/semantic/helpers1.rs	prose	POINTER TO {}
 crates/bn_frontend/src/semantic/helpers1.rs	prose	POINTER TO {}[]
 crates/bn_frontend/src/semantic/helpers1.rs	prose	POINTER TO {}[{length}]
-crates/bn_frontend/src/semantic/helpers1.rs	prose	float type
 crates/bn_frontend/src/semantic/helpers1.rs	prose	host capability lookup
-crates/bn_frontend/src/semantic/helpers1.rs	prose	numeric type
 crates/bn_frontend/src/semantic/helpers1.rs	prose	numeric, STRING, vector or pointer
 crates/bn_frontend/src/semantic/helpers1.rs	prose	result does not fit INTEGER
 crates/bn_frontend/src/semantic/helpers1.rs	prose	vector literal element
@@ -1047,32 +1022,21 @@ crates/bn_frontend/src/semantic/helpers2.rs	prose	Start return code must be in 0
 crates/bn_frontend/src/semantic/helpers2.rs	prose	VOID FUNCTION return
 crates/bn_frontend/src/semantic/helpers2.rs	prose	VOID return
 crates/bn_frontend/src/semantic/helpers2.rs	prose	alternative declaration
-crates/bn_frontend/src/semantic/helpers2.rs	prose	duplicate-name diagnostic schema
-crates/bn_frontend/src/semantic/helpers2.rs	prose	name-not-found diagnostic schema
-crates/bn_frontend/src/semantic/helpers2.rs	prose	name-not-found diagnostic schema
 crates/bn_frontend/src/semantic/helpers2.rs	prose	no value
 crates/bn_frontend/src/semantic/helpers2.rs	prose	non-VOID FUNCTION can complete without RETURN expression
 crates/bn_frontend/src/semantic/helpers2.rs	prose	non-VOID FUNCTION return
 crates/bn_frontend/src/semantic/helpers2.rs	prose	return value
-crates/bn_frontend/src/semantic/helpers2.rs	prose	single-argument schema for registered diagnostics
-crates/bn_frontend/src/semantic/helpers2.rs	prose	type-mismatch diagnostic schema
 crates/bn_frontend/src/semantic/helpers2.rs	prose	unique alternative type
-crates/bn_frontend/src/semantic/helpers2.rs	prose	unreachable-code diagnostic schema
 crates/bn_frontend/src/semantic/helpers2.rs	prose	{} needs an explicit argument mapping ({} arguments)
-crates/bn_frontend/src/semantic/host_defaults.rs	prose	Timestamp namespace
 crates/bn_frontend/src/semantic/module_analysis.rs	identifier	BNLog
 crates/bn_frontend/src/semantic/module_analysis.rs	prose	'{interface}' is not an INTERFACE
 crates/bn_frontend/src/semantic/module_analysis.rs	prose	PUBLIC instance FUNCTION {method} matching {interface}
 crates/bn_frontend/src/semantic/module_analysis.rs	prose	interface implementation
 crates/bn_frontend/src/semantic/module_analysis.rs	prose	interface implementation
 crates/bn_frontend/src/semantic/module_analysis.rs	prose	missing/private/static/incompatible implementation
-crates/bn_frontend/src/semantic/module_analysis.rs	prose	module graph import order
-crates/bn_frontend/src/semantic/module_analysis.rs	prose	module graph selector order
 crates/bn_frontend/src/semantic/module_analysis.rs	prose	the declared interfaces
 crates/bn_frontend/src/semantic/module_analysis.rs	prose	the declared interfaces
 crates/bn_frontend/src/semantic/module_analysis.rs	prose	the imports of this module
-crates/bn_frontend/src/semantic/module_analysis.rs	prose	unused binding diagnostic schema
-crates/bn_frontend/src/semantic/module_analysis.rs	prose	unused import diagnostic schema
 crates/bn_frontend/src/semantic/type_ops.rs	prose	binary operator {operator}
 crates/bn_frontend/src/semantic/type_ops.rs	prose	operands accepted by {operator}
 crates/bn_frontend/src/semantic/type_ops.rs	prose	shift count must be non-negative and smaller than the left operand width
@@ -1118,7 +1082,6 @@ crates/bn_host_fs/src/lib.rs	prose	non-STRING value
 crates/bn_host_fs/src/lib.rs	prose	non-STRING value
 crates/bn_host_fs/src/lib.rs	prose	non-pointer value
 crates/bn_host_fs/src/lib.rs	prose	non-pointer value
-crates/bn_host_fs/src/lib.rs	prose	read before the file borrow
 crates/bn_host_net/src/lib.rs	identifier	HOST.Net.Address
 crates/bn_host_net/src/lib.rs	identifier	HOST.Net.Address
 crates/bn_host_net/src/lib.rs	identifier	HOST.Net.Address
@@ -1408,7 +1371,6 @@ crates/bn_interp/src/compare.rs	identifier	HOST.Net.TCPStream
 crates/bn_interp/src/compare.rs	identifier	HOST.Net.TCPStream
 crates/bn_interp/src/compare.rs	identifier	HOST.Net.UDPSocket
 crates/bn_interp/src/compare.rs	identifier	HOST.Net.UDPSocket
-crates/bn_interp/src/compare.rs	prose	closing bracket
 crates/bn_interp/src/executor.rs	prose	AND, OR or XOR
 crates/bn_interp/src/executor.rs	prose	BOOLEAN operation
 crates/bn_interp/src/executor.rs	prose	IR coercion
@@ -1417,7 +1379,6 @@ crates/bn_interp/src/executor.rs	prose	IS requires a type operand
 crates/bn_interp/src/executor.rs	prose	STRING operation
 crates/bn_interp/src/executor.rs	prose	builtin dispatch
 crates/bn_interp/src/executor.rs	prose	converting {value} to {}
-crates/bn_interp/src/executor.rs	prose	division-by-zero diagnostic schema
 crates/bn_interp/src/executor.rs	prose	floating operation
 crates/bn_interp/src/executor.rs	prose	incompatible value
 crates/bn_interp/src/executor.rs	prose	incompatible value
@@ -1439,7 +1400,6 @@ crates/bn_interp/src/executor.rs	prose	runtime value
 crates/bn_interp/src/executor.rs	prose	shift count must be in 0..{width}
 crates/bn_interp/src/executor.rs	prose	supported conversion target
 crates/bn_interp/src/executor.rs	prose	text conversion
-crates/bn_interp/src/executor.rs	prose	validated shift count
 crates/bn_interp/src/executor.rs	prose	value conversion
 crates/bn_interp/src/executor/arc_verifier.rs	prose	ARC verifier: {}{} has strong count {} but the program holds {references} strong reference(s)
 crates/bn_interp/src/executor/debug_view.rs	prose	id {}, strong {}, generation {}
@@ -1447,8 +1407,6 @@ crates/bn_interp/src/executor/debug_view.rs	prose	→ dead (NULL)
 crates/bn_interp/src/executor/helpers.rs	identifier	HOST.Console
 crates/bn_interp/src/executor/helpers.rs	prose	console operation
 crates/bn_interp/src/executor/helpers.rs	prose	non-console value
-crates/bn_interp/src/executor/helpers.rs	prose	numeric-overflow diagnostic schema
-crates/bn_interp/src/executor/helpers.rs	prose	runtime compatibility diagnostic schema
 crates/bn_interp/src/executor/helpers.rs	prose	{} needs an explicit argument mapping ({} arguments)
 crates/bn_interp/src/executor/ownership.rs	prose	field path slot is absent
 crates/bn_interp/src/executor/part1.rs	prose	Phi cannot execute in the function entry block
@@ -1459,7 +1417,6 @@ crates/bn_interp/src/executor/part10.rs	prose	allocation byte size overflowed
 crates/bn_interp/src/executor/part10.rs	prose	allocation exceeds the host limit
 crates/bn_interp/src/executor/part10.rs	prose	allocation length does not fit the host
 crates/bn_interp/src/executor/part10.rs	prose	assignment index operation
-crates/bn_interp/src/executor/part10.rs	prose	checked string index
 crates/bn_interp/src/executor/part10.rs	prose	index operation
 crates/bn_interp/src/executor/part10.rs	prose	indexable value
 crates/bn_interp/src/executor/part10.rs	prose	indexable value
@@ -1531,9 +1488,6 @@ crates/bn_interp/src/executor/part2.rs	prose	binding has no value
 crates/bn_interp/src/executor/part2.rs	prose	binding has no value
 crates/bn_interp/src/executor/part2.rs	prose	binding has no value
 crates/bn_interp/src/executor/part2.rs	prose	binding has no value
-crates/bn_interp/src/executor/part2.rs	prose	binding was just read
-crates/bn_interp/src/executor/part2.rs	prose	binding was just read
-crates/bn_interp/src/executor/part2.rs	prose	binding was just read
 crates/bn_interp/src/executor/part2.rs	prose	binding was released
 crates/bn_interp/src/executor/part2.rs	prose	cannot flush output: {error}
 crates/bn_interp/src/executor/part2.rs	prose	cannot read input: {error}
@@ -1547,8 +1501,6 @@ crates/bn_interp/src/executor/part2.rs	prose	cannot write output: {error}
 crates/bn_interp/src/executor/part2.rs	prose	field path store lacks resolved fields
 crates/bn_interp/src/executor/part2.rs	prose	field path store lacks resolved fields
 crates/bn_interp/src/executor/part2.rs	prose	function call
-crates/bn_interp/src/executor/part2.rs	prose	instruction executes in an ownership frame
-crates/bn_interp/src/executor/part2.rs	prose	instruction executes in an ownership frame
 crates/bn_interp/src/executor/part2.rs	prose	length-bearing value
 crates/bn_interp/src/executor/part2.rs	prose	non-callable value
 crates/bn_interp/src/executor/part2.rs	prose	object member
@@ -1574,11 +1526,6 @@ crates/bn_interp/src/lib.rs	prose	converting a value to INTEGER
 crates/bn_interp/src/lib.rs	prose	executable module requires FUNCTION Start
 crates/bn_interp/src/lib.rs	prose	filesystem policy root cannot be opened
 crates/bn_interp/src/lib.rs	prose	function '{name}' was not found
-crates/bn_interp/src/lib.rs	prose	index-out-of-bounds diagnostic schema
-crates/bn_interp/src/lib.rs	prose	name-not-found diagnostic schema
-crates/bn_interp/src/lib.rs	prose	numeric-overflow diagnostic schema
-crates/bn_interp/src/lib.rs	prose	runtime compatibility diagnostic schema
-crates/bn_interp/src/lib.rs	prose	type-mismatch diagnostic schema
 crates/bn_interp/src/lib.rs	prose	{} needs its typed constructor ({} arguments)
 crates/bn_interp/src/numeric.rs	prose	boolean operation
 crates/bn_interp/src/numeric.rs	prose	integer operation
@@ -1590,7 +1537,6 @@ crates/bn_interp/src/numeric.rs	prose	numeric operation
 crates/bn_interp/src/numeric.rs	prose	numeric ordered comparison
 crates/bn_interp/src/numeric.rs	prose	numeric value
 crates/bn_interp/src/numeric.rs	prose	ordered comparison operator
-crates/bn_interp/src/numeric.rs	prose	validated FLOAT literal
 crates/bn_interp/src/render.rs	identifier	BNCrypto.Bytes
 crates/bn_interp/src/render.rs	identifier	BNDispatch.Queue
 crates/bn_interp/src/render.rs	identifier	BNJson.Json
@@ -1608,7 +1554,6 @@ crates/bn_interp/src/temporal.rs	prose	DATE must be YYYY-MM-DD
 crates/bn_interp/src/temporal.rs	prose	TIME must be HH:MM:SS.mmm
 crates/bn_interp/src/temporal.rs	prose	TIME must be in 00:00:00.000..23:59:59.999
 crates/bn_interp/src/temporal.rs	prose	TIMESTAMP is outside 0001-01-01..9999-12-31
-crates/bn_interp/src/temporal.rs	prose	runtime compatibility diagnostic schema
 crates/bn_interp/src/temporal.rs	prose	{text} is not a valid DATE
 crates/bn_interp/src/temporal.rs	prose	{} needs an explicit argument mapping ({} arguments)
 crates/bn_interp/src/temporal_ops.rs	prose	TIMESTAMP is outside 0001-01-01..9999-12-31
@@ -1637,13 +1582,9 @@ crates/bn_interpret_driver/src/eval.rs	prose	duplicate --stdin
 crates/bn_interpret_driver/src/eval.rs	prose	error[CONFIG_INVALID]: {message}
 crates/bn_interpret_driver/src/eval.rs	prose	error[CONFIG_INVALID]: {message}
 crates/bn_interpret_driver/src/eval.rs	prose	option expects a value
-crates/bn_interpret_driver/src/eval.rs	prose	promotion diagnostic schema is registered
-crates/bn_interpret_driver/src/eval.rs	prose	source form checked above
 crates/bn_interpret_driver/src/eval.rs	prose	top-level FUNCTION Start was detected; evaluating as a complete program
 crates/bn_interpret_driver/src/hosts/clock.rs	prose	host function '{name}' is not available
 crates/bn_interpret_driver/src/hosts/console.rs	prose	HOST.Console.PrintAt text
-crates/bn_interpret_driver/src/hosts/console.rs	prose	console failure code is registered
-crates/bn_interpret_driver/src/hosts/console.rs	prose	console failure facts match the identity schema
 crates/bn_interpret_driver/src/hosts/console.rs	prose	host function '{name}' is not available
 crates/bn_interpret_driver/src/hosts/console.rs	prose	non-STRING value
 crates/bn_interpret_driver/src/hosts/env.rs	identifier	HOST.Env.Get
@@ -1669,12 +1610,10 @@ crates/bn_interpret_driver/src/run.rs	identifier	EXECUTION_POLICY_DENIED
 crates/bn_interpret_driver/src/run.rs	prose	error[CONFIG_INVALID]: {message}
 crates/bn_interpret_driver/src/run.rs	prose	executing IR entry point Start
 crates/bn_interpret_driver/src/run.rs	prose	lowering typed BN IR
-crates/bn_interpret_driver/src/run.rs	prose	promotion warning has a source span
-crates/bn_interpret_driver/src/run.rs	prose	promotion warning has a source span
-crates/bn_ir/src/lib.rs	prose	invalid IR diagnostic schema is registered
 crates/bn_ir/src/model.rs	identifier	BNCrypto
 crates/bn_ir/src/model.rs	identifier	BNData
 crates/bn_ir/src/model.rs	identifier	BNDispatch
+crates/bn_ir/src/model.rs	identifier	BNFfi
 crates/bn_ir/src/model.rs	identifier	BNJson
 crates/bn_ir/src/model.rs	identifier	BNLog
 crates/bn_ir/src/model.rs	identifier	BNMath
@@ -1902,7 +1841,35 @@ crates/bn_lib_dispatch/src/lib.rs	prose	queue is invalid
 crates/bn_lib_dispatch/src/lib.rs	prose	semaphore is invalid
 crates/bn_lib_dispatch/src/lib.rs	prose	this build does not provide the member
 crates/bn_lib_dispatch/src/lib.rs	prose	ticket is invalid
-crates/bn_lib_dispatch/src/lib.rs	prose	usize fits i128
+crates/bn_lib_ffi/src/lib.rs	identifier	BNFfi
+crates/bn_lib_ffi/src/lib.rs	identifier	BNFfi.Handle
+crates/bn_lib_ffi/src/lib.rs	prose	Array constructor
+crates/bn_lib_ffi/src/lib.rs	prose	BNFfi class constructor
+crates/bn_lib_ffi/src/lib.rs	prose	BNFfi member
+crates/bn_lib_ffi/src/lib.rs	prose	BNFfi member
+crates/bn_lib_ffi/src/lib.rs	prose	Region Pointer
+crates/bn_lib_ffi/src/lib.rs	prose	allocate_object returns Object
+crates/bn_lib_ffi/src/lib.rs	prose	invalid handle record
+crates/bn_lib_ffi/src/lib.rs	prose	invalid handle record
+crates/bn_lib_ffi/src/lib.rs	prose	invalid handle record
+crates/bn_lib_ffi/src/lib.rs	prose	non-args parameter
+crates/bn_lib_ffi/src/lib.rs	prose	non-handle argument
+crates/bn_lib_ffi/src/lib.rs	prose	non-handle argument
+crates/bn_lib_ffi/src/lib.rs	prose	non-object argument
+crates/bn_lib_ffi/src/lib.rs	prose	non-object receiver
+crates/bn_lib_ffi/src/lib.rs	prose	non-object receiver
+crates/bn_lib_ffi/src/lib.rs	prose	non-object receiver
+crates/bn_lib_ffi/src/lib.rs	prose	non-object receiver
+crates/bn_lib_ffi/src/lib.rs	prose	non-object receiver
+crates/bn_lib_ffi/src/lib.rs	prose	non-object receiver
+crates/bn_lib_ffi/src/lib.rs	prose	non-object receiver
+crates/bn_lib_ffi/src/lib.rs	prose	non-string library
+crates/bn_lib_ffi/src/lib.rs	prose	non-string symbol
+crates/bn_lib_ffi/src/lib.rs	prose	non-value result
+crates/bn_lib_ffi/src/lib.rs	prose	result object has no registered record
+crates/bn_lib_ffi/src/lib.rs	prose	unrecognized argument record
+crates/bn_lib_ffi/src/lib.rs	prose	unregistered array
+crates/bn_lib_ffi/src/lib.rs	prose	unregistered array
 crates/bn_lib_json/src/lib.rs	identifier	BNJson
 crates/bn_lib_json/src/lib.rs	identifier	BNJson.Json
 crates/bn_lib_json/src/lib.rs	prose	BNJson.Json is invalid
@@ -1962,13 +1929,11 @@ crates/bn_lib_sqlite/src/lib.rs	prose	non-STRING SQL query
 crates/bn_lib_sqlite/src/lib.rs	prose	non-STRING path
 crates/bn_lib_sqlite/src/lib.rs	prose	non-object receiver
 crates/bn_lib_sqlite/src/lib.rs	prose	non-object receiver
-crates/bn_limits/src/lib.rs	prose	invalid embedded 0.4 limits
 crates/bn_limits/src/lib.rs	prose	invalid integer for {section}.{key}
 crates/bn_limits/src/lib.rs	prose	invalid registry line: {line}
 crates/bn_limits/src/lib.rs	prose	missing registry value {section}.{key}
 crates/bn_limits/src/lib.rs	prose	registry default exceeds maximum
 crates/bn_limits/src/lib.rs	prose	value too large: {section}.{key}
-crates/bn_llvm/src/ir/debug.rs	prose	metadata node count fits u32
 crates/bn_llvm/src/lib.rs	identifier	HOST.Clock
 crates/bn_llvm/src/lib.rs	identifier	HOST.Clock
 crates/bn_llvm/src/lib.rs	identifier	HOST.Console
@@ -1997,18 +1962,7 @@ crates/bn_llvm/src/lib.rs	prose	POINTER TO {}[{length}]
 crates/bn_llvm/src/lib.rs	prose	Start return type '{}' is unsupported; LLVM entry point supports VOID, VOID OR Error, or INTEGER
 crates/bn_llvm/src/lib.rs	prose	named type
 crates/bn_llvm/src/lib.rs	prose	unsupported type
-crates/bn_llvm/src/lib.rs	prose	validated entry point
 crates/bn_llvm/src/llvm/access_emission.rs	identifier	HOST.Exec.Result
-crates/bn_llvm/src/llvm/access_emission.rs	prose	validated error aggregate
-crates/bn_llvm/src/llvm/access_emission.rs	prose	validated error aggregate
-crates/bn_llvm/src/llvm/access_emission.rs	prose	validated index type
-crates/bn_llvm/src/llvm/access_emission.rs	prose	validated index type
-crates/bn_llvm/src/llvm/access_emission.rs	prose	validated member field reference
-crates/bn_llvm/src/llvm/access_emission.rs	prose	validated member field slot
-crates/bn_llvm/src/llvm/access_emission.rs	prose	validated setindex index type
-crates/bn_llvm/src/llvm/access_emission.rs	prose	validated setindex value type
-crates/bn_llvm/src/llvm/access_emission.rs	prose	validated vector index type
-crates/bn_llvm/src/llvm/alternatives.rs	prose	validated error layout
 crates/bn_llvm/src/llvm/alternatives.rs	prose	validated narrowed type
 crates/bn_llvm/src/llvm/analysis.rs	identifier	HOST.Net.TCPListener.LocalEndpoint
 crates/bn_llvm/src/llvm/analysis.rs	identifier	HOST.Net.TCPStream.LocalEndpoint
@@ -2023,107 +1977,36 @@ crates/bn_llvm/src/llvm/analysis.rs	prose	HOST.Random.Random without HOST.Random
 crates/bn_llvm/src/llvm/analysis.rs	prose	INPUT result stored more than once
 crates/bn_llvm/src/llvm/analysis.rs	prose	INPUT result without a variable owner
 crates/bn_llvm/src/llvm/analysis.rs	prose	an alternative with a STRUCT member
-crates/bn_llvm/src/llvm/analysis.rs	prose	random use without seed must come from a call
 crates/bn_llvm/src/llvm/analysis.rs	prose	stores of this type
-crates/bn_llvm/src/llvm/analysis.rs	prose	unowned INPUT result must have an instruction
 crates/bn_llvm/src/llvm/analysis_calls.rs	identifier	HOST.Random.Random
 crates/bn_llvm/src/llvm/analysis_calls.rs	identifier	HOST.Random.Seed
 crates/bn_llvm/src/llvm/analysis_validate.rs	identifier	HOST.Exec.Result
 crates/bn_llvm/src/llvm/analysis_validate.rs	prose	RELEASE of an indexed element is unsupported
 crates/bn_llvm/src/llvm/analysis_validate.rs	prose	unknown value type
 crates/bn_llvm/src/llvm/analysis_validate.rs	prose	unknown value type
-crates/bn_llvm/src/llvm/arc_ops.rs	prose	header fits i64
-crates/bn_llvm/src/llvm/arc_ops.rs	prose	validated ARC value type
-crates/bn_llvm/src/llvm/arc_ops.rs	prose	validated field
-crates/bn_llvm/src/llvm/arc_ops.rs	prose	validated member field reference
-crates/bn_llvm/src/llvm/arc_ops.rs	prose	validated member field slot
-crates/bn_llvm/src/llvm/arc_ops.rs	prose	vector index fits i64
-crates/bn_llvm/src/llvm/arc_runtime.rs	prose	live block
-crates/bn_llvm/src/llvm/arc_runtime.rs	prose	live block
-crates/bn_llvm/src/llvm/binary.rs	prose	validated binary LLVM type
-crates/bn_llvm/src/llvm/binary.rs	prose	validated binary LLVM type
 crates/bn_llvm/src/llvm/binary.rs	prose	validated binary operator
-crates/bn_llvm/src/llvm/binary.rs	prose	validated binary result LLVM type
-crates/bn_llvm/src/llvm/binary.rs	prose	validated compare type
-crates/bn_llvm/src/llvm/binary.rs	prose	validated float compare type
-crates/bn_llvm/src/llvm/binary.rs	prose	validated integer dividend type
-crates/bn_llvm/src/llvm/bndata_columns.rs	prose	validated DataFrame argument
-crates/bn_llvm/src/llvm/bndata_columns.rs	prose	validated DataFrame column name
-crates/bn_llvm/src/llvm/bndata_columns.rs	prose	validated DataFrame receiver
-crates/bn_llvm/src/llvm/bndata_columns.rs	prose	validated column index
-crates/bn_llvm/src/llvm/bndata_columns.rs	prose	validated handle operand
-crates/bn_llvm/src/llvm/bndata_convert.rs	prose	validated slice bound
-crates/bn_llvm/src/llvm/bndata_ops.rs	prose	validated copy target
 crates/bn_llvm/src/llvm/call_emission.rs	identifier	HOST.Random.Random
 crates/bn_llvm/src/llvm/call_emission.rs	identifier	HOST.Random.Seed
-crates/bn_llvm/src/llvm/call_emission.rs	prose	validated BNCrypto member
 crates/bn_llvm/src/llvm/call_emission.rs	prose	validated BNData DataFrame method
-crates/bn_llvm/src/llvm/call_emission.rs	prose	validated BNData method
-crates/bn_llvm/src/llvm/call_emission.rs	prose	validated BNJson member
-crates/bn_llvm/src/llvm/call_emission.rs	prose	validated BNLog method
-crates/bn_llvm/src/llvm/call_emission.rs	prose	validated BNMath
-crates/bn_llvm/src/llvm/call_emission.rs	prose	validated BNSqlite member
-crates/bn_llvm/src/llvm/call_emission.rs	prose	validated CHAR argument
-crates/bn_llvm/src/llvm/call_emission.rs	prose	validated DataFrame argument
 crates/bn_llvm/src/llvm/call_emission.rs	prose	validated call target
-crates/bn_llvm/src/llvm/call_emission.rs	prose	validated callee
-crates/bn_llvm/src/llvm/call_emission.rs	prose	validated reduction
-crates/bn_llvm/src/llvm/call_emission.rs	prose	validated seed argument
-crates/bn_llvm/src/llvm/call_emission.rs	prose	validated seed argument
-crates/bn_llvm/src/llvm/call_emission.rs	prose	validated seed type
-crates/bn_llvm/src/llvm/calls.rs	prose	validated call argument type
-crates/bn_llvm/src/llvm/calls.rs	prose	validated return type
-crates/bn_llvm/src/llvm/calls.rs	prose	validated user function {resolved}
-crates/bn_llvm/src/llvm/calls.rs	prose	validated user return type
 crates/bn_llvm/src/llvm/casts.rs	prose	pointer length {{}} does not match {expected}
 crates/bn_llvm/src/llvm/casts.rs	prose	validated boolean cast source
 crates/bn_llvm/src/llvm/casts.rs	prose	validated cast shape
-crates/bn_llvm/src/llvm/casts.rs	prose	validated copy type
-crates/bn_llvm/src/llvm/casts.rs	prose	validated text cast source
 crates/bn_llvm/src/llvm/casts.rs	prose	validated text cast source
 crates/bn_llvm/src/llvm/crypto_calls.rs	prose	unsupported BNCrypto member reached emission: {other}
 crates/bn_llvm/src/llvm/debug_info.rs	prose	Basic Next 
-crates/bn_llvm/src/llvm/dispatch_emission.rs	prose	validated async task target
-crates/bn_llvm/src/llvm/dispatch_emission.rs	prose	validated timeout type
 crates/bn_llvm/src/llvm/emission1.rs	prose	aggregate layout
-crates/bn_llvm/src/llvm/emission1.rs	prose	general alternative default
-crates/bn_llvm/src/llvm/emission1.rs	prose	object size fits i64
-crates/bn_llvm/src/llvm/emission1.rs	prose	validated Phi type
-crates/bn_llvm/src/llvm/emission1.rs	prose	validated cast source type
 crates/bn_llvm/src/llvm/emission1.rs	prose	validated copy type
-crates/bn_llvm/src/llvm/emission1.rs	prose	validated copy type
-crates/bn_llvm/src/llvm/emission1.rs	prose	validated default constructor owner
-crates/bn_llvm/src/llvm/emission1.rs	prose	validated default type
-crates/bn_llvm/src/llvm/emission1.rs	prose	validated float constant
-crates/bn_llvm/src/llvm/emission1.rs	prose	validated integer constant
-crates/bn_llvm/src/llvm/emission1.rs	prose	validated integer unary type
-crates/bn_llvm/src/llvm/emission1.rs	prose	validated left type
 crates/bn_llvm/src/llvm/emission1.rs	prose	validated multidimensional default type
-crates/bn_llvm/src/llvm/emission1.rs	prose	validated right type
 crates/bn_llvm/src/llvm/emission1.rs	prose	validated scalar default type
-crates/bn_llvm/src/llvm/emission1.rs	prose	validated slot LLVM type
-crates/bn_llvm/src/llvm/emission1.rs	prose	validated store LLVM type
-crates/bn_llvm/src/llvm/emission1.rs	prose	validated stored value type
-crates/bn_llvm/src/llvm/emission1.rs	prose	validated unary LLVM type
 crates/bn_llvm/src/llvm/emission1.rs	prose	validated unary operator
-crates/bn_llvm/src/llvm/emission1.rs	prose	vector length fits i64
-crates/bn_llvm/src/llvm/emission1.rs	prose	vector length fits i64
-crates/bn_llvm/src/llvm/emission2.rs	prose	binary op right
-crates/bn_llvm/src/llvm/emission2.rs	prose	validated checked intrinsic
 crates/bn_llvm/src/llvm/emission2.rs	prose	validated float comparison
 crates/bn_llvm/src/llvm/emission2.rs	prose	validated integer comparison
-crates/bn_llvm/src/llvm/emission2.rs	prose	validated integer type
-crates/bn_llvm/src/llvm/emission2.rs	prose	validated print type
 crates/bn_llvm/src/llvm/emission2.rs	prose	validated printable LLVM type
-crates/bn_llvm/src/llvm/emission2.rs	prose	validated return type
-crates/bn_llvm/src/llvm/emission2.rs	prose	validated return type
-crates/bn_llvm/src/llvm/emission2.rs	prose	validated stop type
-crates/bn_llvm/src/llvm/emission3.rs	prose	validated constant type
 crates/bn_llvm/src/llvm/emission3.rs	prose	validated scalar constant type
 crates/bn_llvm/src/llvm/emission_tail.rs	prose	all instructions must be validated before emission: {}
 crates/bn_llvm/src/llvm/euclidean.rs	prose	validated euclidean operator
 crates/bn_llvm/src/llvm/euclidean.rs	prose	validated euclidean operator
-crates/bn_llvm/src/llvm/euclidean.rs	prose	validated integer type
 crates/bn_llvm/src/llvm/fs_emission.rs	identifier	HOST.FileSystem.DeleteFile
 crates/bn_llvm/src/llvm/fs_emission.rs	identifier	HOST.FileSystem.DeleteFile
 crates/bn_llvm/src/llvm/fs_emission.rs	identifier	HOST.FileSystem.DeleteFile
@@ -2134,28 +2017,8 @@ crates/bn_llvm/src/llvm/fs_emission.rs	identifier	HOST.FileSystem.Open
 crates/bn_llvm/src/llvm/fs_emission.rs	identifier	HOST.FileSystem.Open
 crates/bn_llvm/src/llvm/fs_emission.rs	identifier	HOST.FileSystem.Open
 crates/bn_llvm/src/llvm/fs_emission.rs	prose	BYTE buffer
-crates/bn_llvm/src/llvm/fs_emission.rs	prose	validated byte count
-crates/bn_llvm/src/llvm/fs_emission.rs	prose	validated file mode
 crates/bn_llvm/src/llvm/functions.rs	prose	TARGET_UNSUPPORTED_TYPE: function '{}' return type '{}' is unsupported
-crates/bn_llvm/src/llvm/functions.rs	prose	validated alloca type
-crates/bn_llvm/src/llvm/functions.rs	prose	validated return type
-crates/bn_llvm/src/llvm/general_alternative.rs	prose	Error member
-crates/bn_llvm/src/llvm/general_alternative.rs	prose	Error member
-crates/bn_llvm/src/llvm/general_alternative.rs	prose	`Class OR NULL` has a class member
 crates/bn_llvm/src/llvm/general_alternative.rs	prose	a general alternative contains only `Class OR NULL` or `T OR Error`
-crates/bn_llvm/src/llvm/general_alternative.rs	prose	alternative has members
-crates/bn_llvm/src/llvm/general_alternative.rs	prose	dedicated layout has a member besides Error
-crates/bn_llvm/src/llvm/general_alternative.rs	prose	general alternative member has a code
-crates/bn_llvm/src/llvm/general_alternative.rs	prose	print id
-crates/bn_llvm/src/llvm/general_alternative.rs	prose	sentinel member
-crates/bn_llvm/src/llvm/general_alternative.rs	prose	sentinel member
-crates/bn_llvm/src/llvm/general_alternative.rs	prose	validated Error layout
-crates/bn_llvm/src/llvm/general_alternative.rs	prose	validated dedicated layout
-crates/bn_llvm/src/llvm/general_alternative.rs	prose	validated float layout
-crates/bn_llvm/src/llvm/general_alternative.rs	prose	validated literal member
-crates/bn_llvm/src/llvm/general_alternative.rs	prose	validated member
-crates/bn_llvm/src/llvm/general_alternative.rs	prose	validated member layout
-crates/bn_llvm/src/llvm/general_alternative.rs	prose	validated scalar layout
 crates/bn_llvm/src/llvm/helpers.rs	identifier	BNCrypto
 crates/bn_llvm/src/llvm/helpers.rs	identifier	BNDispatch
 crates/bn_llvm/src/llvm/helpers.rs	identifier	BNJson
@@ -2192,25 +2055,11 @@ crates/bn_llvm/src/llvm/helpers.rs	prose	static stores
 crates/bn_llvm/src/llvm/helpers.rs	prose	unary operations
 crates/bn_llvm/src/llvm/helpers.rs	prose	unsupported HOST
 crates/bn_llvm/src/llvm/helpers.rs	prose	unsupported HOST call {name}
-crates/bn_llvm/src/llvm/helpers.rs	prose	validated coerce source
-crates/bn_llvm/src/llvm/helpers.rs	prose	validated coerce target
-crates/bn_llvm/src/llvm/helpers.rs	prose	validated extension type
-crates/bn_llvm/src/llvm/helpers.rs	prose	validated integer return type
-crates/bn_llvm/src/llvm/helpers.rs	prose	validated return LLVM type
 crates/bn_llvm/src/llvm/helpers.rs	prose	validated return type
 crates/bn_llvm/src/llvm/helpers.rs	prose	{code}: {source_name}:{}:{}: {detail} in FUNCTION {}
-crates/bn_llvm/src/llvm/indexed_store.rs	prose	validated indexed-field element
-crates/bn_llvm/src/llvm/indexed_store.rs	prose	validated indexed-store element
-crates/bn_llvm/src/llvm/indexed_store.rs	prose	validated indexed-store element
-crates/bn_llvm/src/llvm/indexed_store.rs	prose	validated multidimensional index type
-crates/bn_llvm/src/llvm/index_bounds.rs	prose	validated index type
-crates/bn_llvm/src/llvm/indirect_call.rs	prose	validated argument
-crates/bn_llvm/src/llvm/indirect_call.rs	prose	validated indirect callee
 crates/bn_llvm/src/llvm/indirect_call.rs	prose	validated indirect function type
-crates/bn_llvm/src/llvm/indirect_call.rs	prose	validated indirect parameter
-crates/bn_llvm/src/llvm/indirect_call.rs	prose	validated indirect return
-crates/bn_llvm/src/llvm/json_calls.rs	prose	BNJson receiver
-crates/bn_llvm/src/llvm/json_calls.rs	prose	unhandled BNJson member: {member}
+crates/bn_llvm/src/llvm/is_emission.rs	prose	sentinel layout of an alternative
+crates/bn_llvm/src/llvm/is_emission.rs	prose	status layout of an alternative
 crates/bn_llvm/src/llvm/layout.rs	identifier	HOST.Net.Address
 crates/bn_llvm/src/llvm/layout.rs	identifier	HOST.Net.Addresses
 crates/bn_llvm/src/llvm/layout.rs	identifier	HOST.Net.Endpoint
@@ -2220,47 +2069,18 @@ crates/bn_llvm/src/llvm/layout.rs	identifier	HOST.Net.TCPStream
 crates/bn_llvm/src/llvm/layout.rs	identifier	HOST.Net.UDPPacket
 crates/bn_llvm/src/llvm/layout.rs	identifier	HOST.Net.UDPSocket
 crates/bn_llvm/src/llvm/load_emission.rs	prose	binding was released
-crates/bn_llvm/src/llvm/load_emission.rs	prose	validated load LLVM type
-crates/bn_llvm/src/llvm/load_emission.rs	prose	validated loaded type
-crates/bn_llvm/src/llvm/load_emission.rs	prose	validated slot LLVM type
-crates/bn_llvm/src/llvm/loop_emission.rs	prose	validated FOR end type
 crates/bn_llvm/src/llvm/math.rs	prose	the input of BNMath.{method}
-crates/bn_llvm/src/llvm/math.rs	prose	validated BNMath argument
-crates/bn_llvm/src/llvm/math.rs	prose	validated BNMath result type
-crates/bn_llvm/src/llvm/math.rs	prose	validated BNMath result type
 crates/bn_llvm/src/llvm/math.rs	prose	validated binary float BNMath
 crates/bn_llvm/src/llvm/math.rs	prose	validated float BNMath arity
-crates/bn_llvm/src/llvm/math.rs	prose	validated float BNMath arity
 crates/bn_llvm/src/llvm/math.rs	prose	validated integer BNMath
-crates/bn_llvm/src/llvm/math.rs	prose	validated integer math result type
-crates/bn_llvm/src/llvm/math.rs	prose	validated numeric type
 crates/bn_llvm/src/llvm/math.rs	prose	validated unary float BNMath
 crates/bn_llvm/src/llvm/math.rs	prose	validated vector BNMath
 crates/bn_llvm/src/llvm/ownership_emission.rs	identifier	HOST.Exec.Result
-crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated delete value type
-crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated field type
-crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated field value type
-crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated indexed field path reference
-crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated indexed field path slot
-crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated member value type
-crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated static type
-crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated static type
-crates/bn_llvm/src/llvm/ownership_emission.rs	prose	validated static value type
 crates/bn_llvm/src/llvm/power_shift.rs	prose	integer LLVM type
 crates/bn_llvm/src/llvm/power_shift.rs	prose	shift count must be in 0..{width}
 crates/bn_llvm/src/llvm/power_shift.rs	prose	validated float power type
-crates/bn_llvm/src/llvm/power_shift.rs	prose	validated float type
-crates/bn_llvm/src/llvm/power_shift.rs	prose	validated integer type
-crates/bn_llvm/src/llvm/power_shift.rs	prose	validated integer type
-crates/bn_llvm/src/llvm/power_shift.rs	prose	validated integer type
-crates/bn_llvm/src/llvm/power_shift.rs	prose	validated power base type
-crates/bn_llvm/src/llvm/power_shift.rs	prose	validated power exponent type
-crates/bn_llvm/src/llvm/power_shift.rs	prose	validated shift count type
-crates/bn_llvm/src/llvm/power_shift.rs	prose	validated shift left type
 crates/bn_llvm/src/llvm/preamble.rs	prose	validated ASYNC return type
 crates/bn_llvm/src/llvm/preamble.rs	prose	validated dispatch parameter type
-crates/bn_llvm/src/llvm/preamble.rs	prose	validated dispatch parameter type
-crates/bn_llvm/src/llvm/print_emission.rs	prose	validated printable type
 crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Clock.Now
 crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Clock.Now
 crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Clock.Timer
@@ -2357,9 +2177,7 @@ crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.Net.UDPSocket.SendTo
 crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.NumProcs
 crates/bn_llvm/src/llvm/runtime.rs	identifier	HOST.NumProcs
 crates/bn_llvm/src/llvm/runtime_dispatch.rs	prose	validated constructor argument
-crates/bn_llvm/src/llvm/runtime_dispatch.rs	prose	validated dispatch handle
 crates/bn_llvm/src/llvm/runtime_dispatch.rs	prose	validated timeout type
-crates/bn_llvm/src/llvm/runtime_dispatch.rs	prose	validated worker count
 crates/bn_llvm/src/llvm/runtime_dispatch.rs	prose	validated worker type
 crates/bn_llvm/src/llvm/runtime_net.rs	identifier	HOST.Net.Address.Parse
 crates/bn_llvm/src/llvm/runtime_net.rs	identifier	HOST.Net.Address.ToString
@@ -2417,7 +2235,6 @@ crates/bn_llvm/src/llvm/runtime_net.rs	prose	validated length
 crates/bn_llvm/src/llvm/runtime_net.rs	prose	validated maximum
 crates/bn_llvm/src/llvm/runtime_net.rs	prose	validated maximum
 crates/bn_llvm/src/llvm/runtime_net.rs	prose	validated port
-crates/bn_llvm/src/llvm/runtime_net.rs	prose	validated port result
 crates/bn_llvm/src/llvm/runtime_net.rs	prose	validated timeout
 crates/bn_llvm/src/llvm/runtime_net.rs	prose	validated timeout
 crates/bn_llvm/src/llvm/runtime_net.rs	prose	validated timeout
@@ -2445,9 +2262,6 @@ crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Exec.Result.Stdout
 crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.Exec.Run
 crates/bn_llvm/src/llvm/runtime_process.rs	identifier	HOST.NumProcs
 crates/bn_llvm/src/llvm/runtime_process.rs	prose	validated bn_rt host call
-crates/bn_llvm/src/llvm/runtime_process.rs	prose	validated column
-crates/bn_llvm/src/llvm/runtime_process.rs	prose	validated row
-crates/bn_llvm/src/llvm/sqlite_ops.rs	prose	unhandled BNSqlite member in emission: {method}
 crates/bn_llvm/src/llvm/traps.rs	prose	an overflow check on an integer type
 crates/bn_llvm/src/llvm/traps.rs	prose	converting {} to BYTE
 crates/bn_llvm/src/llvm/traps.rs	prose	converting {} to INT16
@@ -2459,20 +2273,8 @@ crates/bn_llvm/src/llvm/traps.rs	prose	converting {} to UINT32
 crates/bn_llvm/src/llvm/traps.rs	prose	converting {} to UINT64
 crates/bn_llvm/src/llvm/traps.rs	prose	error: runtime failure
 crates/bn_llvm/src/llvm/vectors.rs	prose	binding was released
-crates/bn_llvm/src/llvm/is_emission.rs	prose	sentinel layout of an alternative
-crates/bn_llvm/src/llvm/is_emission.rs	prose	status layout
-crates/bn_llvm/src/llvm/is_emission.rs	prose	status layout of an alternative
-crates/bn_llvm/src/llvm/vectors.rs	prose	validated allocate element
-crates/bn_llvm/src/llvm/vectors.rs	prose	validated allocate length type
-crates/bn_llvm/src/llvm/vectors.rs	prose	validated index element
-crates/bn_llvm/src/llvm/vectors.rs	prose	validated member type
-crates/bn_llvm/src/llvm/vectors.rs	prose	validated member type
 crates/bn_llvm/src/llvm/vectors.rs	prose	validated scalar vector field element
-crates/bn_llvm/src/llvm/vectors.rs	prose	validated vector element
-crates/bn_llvm/src/llvm/vectors.rs	prose	validated vector element value
-crates/bn_llvm/src/llvm/vectors.rs	prose	validated vector field element
 crates/bn_llvm/src/llvm/vectors.rs	prose	validated vector type
-crates/bn_lsp/src/lib.rs	prose	**{word}** — Basic Next symbol
 crates/bn_lsp/src/lib.rs	prose	LSP I/O thread failed: {error:?}
 crates/bn_lsp/src/lib.rs	prose	LSP initialize read failed: {error}
 crates/bn_lsp/src/lib.rs	prose	LSP initialize response failed: {error}
@@ -2502,16 +2304,10 @@ crates/bn_lsp/src/lsp/completion.rs	identifier	HOST
 crates/bn_lsp/src/lsp/completion.rs	identifier	HOST.FileSystem.File
 crates/bn_lsp/src/lsp/completion.rs	prose	Basic Next keyword
 crates/bn_lsp/src/lsp/completion.rs	prose	standard module
-crates/bn_rt/src/arc.rs	prose	32-bit slot index fits usize
 crates/bn_rt/src/arc.rs	prose	ARC operation on object {id}, which is not alive
 crates/bn_rt/src/arc.rs	prose	arc {event} {class}{id} strong={strong} at {at}
-crates/bn_rt/src/arc.rs	prose	fewer than 2^32 live objects
-crates/bn_rt/src/arc.rs	prose	slot index fits u32
-crates/bn_rt/src/arc.rs	prose	slot index fits usize
 crates/bn_rt/src/arc_abi.rs	identifier	BN_ARC_TRACE
 crates/bn_rt/src/arc_abi.rs	identifier	INVALID_IR
-crates/bn_rt/src/arc_abi.rs	prose	a registered address fits usize
-crates/bn_rt/src/arc_abi.rs	prose	addresses fit 64 bits
 crates/bn_rt/src/arc_abi.rs	prose	arc: {id} is not alive
 crates/bn_rt/src/arc_abi.rs	prose	arc: {} live object(s)
 crates/bn_rt/src/console.rs	identifier	HOST_CAPABILITY_UNAVAILABLE
@@ -2528,7 +2324,6 @@ crates/bn_rt/src/console.rs	prose	the console window
 crates/bn_rt/src/console.rs	prose	window size requires a TTY
 crates/bn_rt/src/console.rs	prose	window size requires a TTY
 crates/bn_rt/src/console.rs	prose	{columns} columns by {rows} rows
-crates/bn_rt/src/crypto.rs	prose	SimpleHmac accepts any key
 crates/bn_rt/src/crypto_abi.rs	identifier	BNCrypto.EcdsaP256PublicKey
 crates/bn_rt/src/crypto_abi.rs	identifier	BNCrypto.EcdsaP256Sign
 crates/bn_rt/src/crypto_abi.rs	identifier	BNCrypto.Ed25519PublicKey
@@ -2725,6 +2520,62 @@ crates/bn_rt/src/env.rs	prose	invalid name
 crates/bn_rt/src/env.rs	prose	name is empty or contains '=' or NUL
 crates/bn_rt/src/env.rs	prose	name is empty or contains '=' or NUL
 crates/bn_rt/src/env.rs	prose	out of memory
+crates/bn_rt/src/ffi.rs	prose	C string is not valid UTF-8
+crates/bn_rt/src/ffi.rs	prose	C.String contains embedded NUL
+crates/bn_rt/src/ffi.rs	prose	Long value {v} out of range for 32-bit C long
+crates/bn_rt/src/ffi.rs	prose	ULong value {v} out of range for 32-bit C unsigned long
+crates/bn_rt/src/ffi.rs	prose	cannot read from null handle pointer
+crates/bn_rt/src/ffi.rs	prose	cannot read from null pointer
+crates/bn_rt/src/ffi.rs	prose	cannot read string from null pointer
+crates/bn_rt/src/ffi.rs	prose	cannot write to null handle pointer
+crates/bn_rt/src/ffi.rs	prose	cannot write to null pointer
+crates/bn_rt/src/ffi.rs	prose	expected Array payload
+crates/bn_rt/src/ffi.rs	prose	expected Bool payload
+crates/bn_rt/src/ffi.rs	prose	expected Double payload
+crates/bn_rt/src/ffi.rs	prose	expected Float payload
+crates/bn_rt/src/ffi.rs	prose	expected Handle payload
+crates/bn_rt/src/ffi.rs	prose	expected Int16 payload
+crates/bn_rt/src/ffi.rs	prose	expected Int32/Int payload
+crates/bn_rt/src/ffi.rs	prose	expected Int64 payload
+crates/bn_rt/src/ffi.rs	prose	expected Int8 payload
+crates/bn_rt/src/ffi.rs	prose	expected Long payload
+crates/bn_rt/src/ffi.rs	prose	expected SizeT payload
+crates/bn_rt/src/ffi.rs	prose	expected String payload
+crates/bn_rt/src/ffi.rs	prose	expected UInt16 payload
+crates/bn_rt/src/ffi.rs	prose	expected UInt32/UInt payload
+crates/bn_rt/src/ffi.rs	prose	expected UInt64 payload
+crates/bn_rt/src/ffi.rs	prose	expected UInt8 payload
+crates/bn_rt/src/ffi.rs	prose	expected ULong payload
+crates/bn_rt/src/ffi.rs	prose	failed to convert string to CString
+crates/bn_rt/src/ffi.rs	prose	invalid args handle
+crates/bn_rt/src/ffi.rs	prose	invalid argument handle: {h}
+crates/bn_rt/src/ffi.rs	prose	invalid array handle
+crates/bn_rt/src/ffi.rs	prose	invalid array handle
+crates/bn_rt/src/ffi.rs	prose	invalid handle record
+crates/bn_rt/src/ffi.rs	prose	invalid result handle: {result_handle}
+crates/bn_rt/src/ffi.rs	prose	record is not a handle or handle result
+crates/bn_rt/src/ffi.rs	prose	record is not an Args object
+crates/bn_rt/src/ffi.rs	prose	source record is not an array
+crates/bn_rt/src/ffi.rs	prose	target record is not an array
+crates/bn_rt/src/ffi.rs	prose	type code {} cannot be passed as an argument
+crates/bn_rt/src/ffi.rs	prose	type code {} cannot be used as a return type
+crates/bn_rt/src/ffi.rs	prose	unhandled argument type
+crates/bn_rt/src/ffi.rs	prose	unknown type code: {code}
+crates/bn_rt/src/ffi.rs	prose	unsupported argument type
+crates/bn_rt/src/ffi.rs	prose	unsupported result type
+crates/bn_rt/src/ffi_abi.rs	prose	invalid null or non-UTF8 library name
+crates/bn_rt/src/ffi_abi.rs	prose	invalid null or non-UTF8 symbol name
+crates/bn_rt/src/ffi_abi.rs	prose	out of memory
+crates/bn_rt/src/ffi_loader.rs	identifier	BN_LIBRARY_PATH
+crates/bn_rt/src/ffi_loader.rs	prose	failed to load library at {}: {e}
+crates/bn_rt/src/ffi_loader.rs	prose	invalid symbol name CString
+crates/bn_rt/src/ffi_loader.rs	prose	library '{}' not found; tried: {}
+crates/bn_rt/src/ffi_loader.rs	prose	library name cannot be empty or contain NUL
+crates/bn_rt/src/ffi_loader.rs	prose	library not found at path: {}
+crates/bn_rt/src/ffi_loader.rs	prose	symbol '{symbol_name}' not found in library '{library_name}'
+crates/bn_rt/src/ffi_loader.rs	prose	symbol name cannot be empty or contain NUL
+crates/bn_rt/src/ffi_loader.rs	prose	system loader failed to load '{filename}': {e}
+crates/bn_rt/src/ffi_loader.rs	prose	system loader: {filename}
 crates/bn_rt/src/file_abi.rs	prose	HOST.FileSystem is denied by execution policy
 crates/bn_rt/src/file_abi.rs	prose	out of memory
 crates/bn_rt/src/file_abi.rs	prose	path is not valid UTF-8
@@ -2750,16 +2601,6 @@ crates/bn_rt/src/file_error.rs	prose	the mode must be FS.READ (0), FS.WRITE (1),
 crates/bn_rt/src/file_error.rs	prose	the path is a directory, not a file
 crates/bn_rt/src/file_error.rs	prose	write bytes to
 crates/bn_rt/src/file_error.rs	prose	write to
-crates/bn_core_json/src/parse.rs	prose	JSON input exceeds 8 MiB
-crates/bn_core_json/src/parse.rs	prose	JSON nesting exceeds 64 levels
-crates/bn_core_json/src/parse.rs	prose	JSON nesting exceeds 64 levels
-crates/bn_core_json/src/parse.rs	prose	JSON nesting exceeds 64 levels
-crates/bn_core_json/src/parse.rs	prose	JSON nesting exceeds 64 levels
-crates/bn_core_json/src/parse.rs	prose	JSON number is not finite
-crates/bn_core_json/src/parse.rs	prose	JSON output exceeds 8 MiB
-crates/bn_core_json/src/parse.rs	prose	a valid bounded JSON value
-crates/bn_core_json/src/parse.rs	prose	duplicate JSON object key
-crates/bn_core_json/src/parse.rs	prose	trailing JSON input
 crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.
 crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.
 crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.
@@ -2780,26 +2621,6 @@ crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.Parse
 crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.SetJson
 crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.SetJsonAt
 crates/bn_rt/src/json_abi.rs	identifier	BNJson.Json.Stringify
-crates/bn_core_json/src/documents.rs	prose	object or array
-crates/bn_core_json/src/error.rs	prose	JSON has no NaN or infinity
-crates/bn_core_json/src/error.rs	prose	a value lives in exactly one place
-crates/bn_core_json/src/error.rs	prose	cannot move a document into itself
-crates/bn_core_json/src/error.rs	prose	cannot parse the text as JSON
-crates/bn_core_json/src/error.rs	prose	cannot stringify the document
-crates/bn_core_json/src/error.rs	prose	cannot use the Json document
-crates/bn_core_json/src/error.rs	prose	cannot write a non-finite FLOAT
-crates/bn_core_json/src/error.rs	prose	cannot write the value
-crates/bn_core_json/src/error.rs	prose	element {index} is not of type {expected}
-crates/bn_core_json/src/error.rs	prose	no element {index}
-crates/bn_core_json/src/error.rs	prose	only an {expected} accepts this operation
-crates/bn_core_json/src/error.rs	prose	the document is {} {found}, not an {expected}
-crates/bn_core_json/src/error.rs	prose	the document was released
-crates/bn_core_json/src/error.rs	prose	the document would nest deeper than {} levels
-crates/bn_core_json/src/error.rs	prose	the index must be at least 0 and less than the array length {length}
-crates/bn_core_json/src/error.rs	prose	the object has no member with that key
-crates/bn_core_json/src/error.rs	prose	the operation is not provided
-crates/bn_core_json/src/error.rs	prose	the value there is {} {found}
-crates/bn_core_json/src/error.rs	prose	this build does not provide it
 crates/bn_rt/src/lib.rs	identifier	EXECUTION_POLICY_DENIED
 crates/bn_rt/src/lib.rs	identifier	HOST.Clock
 crates/bn_rt/src/lib.rs	identifier	HOST.Clock
@@ -2853,9 +2674,7 @@ crates/bn_rt/src/net_abi/tcp.rs	identifier	HOST.Net.TCPStream.Read
 crates/bn_rt/src/net_abi/tcp.rs	identifier	HOST.Net.TCPStream.Write
 crates/bn_rt/src/net_abi/tcp.rs	prose	accept a connection
 crates/bn_rt/src/net_abi/tcp.rs	prose	accept a connection
-crates/bn_rt/src/net_abi/tcp.rs	prose	listener operation not yet run
 crates/bn_rt/src/net_abi/tcp.rs	prose	read from the TCP stream
-crates/bn_rt/src/net_abi/tcp.rs	prose	stream operation not yet run
 crates/bn_rt/src/net_abi/tcp.rs	prose	the listener set is empty
 crates/bn_rt/src/net_abi/tcp.rs	prose	write to the TCP stream
 crates/bn_rt/src/net_abi/udp.rs	identifier	HOST.Net.UDPBind
@@ -3054,8 +2873,6 @@ crates/bn_rt/src/web_error.rs	prose	unsupported selector
 crates/bn_rt/src/web_error.rs	prose	{p} provider unavailable
 crates/bn_runtime/src/heap.rs	prose	allocation handle refers to released memory
 crates/bn_runtime/src/heap.rs	prose	allocation payload cannot be reserved
-crates/bn_runtime/src/heap.rs	prose	index-out-of-bounds diagnostic schema
-crates/bn_runtime/src/heap.rs	prose	runtime compatibility diagnostic schema
 crates/bn_runtime/src/heap.rs	prose	the ARC core issued a handle whose slot is still in use
 crates/bn_runtime/src/heap.rs	prose	{} needs an explicit argument mapping ({} arguments)
 crates/bn_types/src/error_codes.rs	identifier	ACCESS_DENIED
@@ -3123,4 +2940,3 @@ crates/bn_types/src/error_codes.rs	identifier	TYPE_MISMATCH
 crates/bn_types/src/error_codes.rs	identifier	TYPE_MISMATCH
 crates/bn_types/src/error_codes.rs	identifier	WAIT_FAILED
 crates/bn_types/src/error_codes.rs	identifier	WRONG_FAMILY
-crates/bn_llvm/src/llvm/functions.rs	prose	struct size fits usize

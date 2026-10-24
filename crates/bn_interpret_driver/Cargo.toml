@@ -17,6 +17,7 @@ lib-dispatch = ["dep:bn_lib_dispatch"]
 lib-web = ["dep:bn_lib_web"]
 lib-crypto = ["dep:bn_lib_crypto"]
 lib-sqlite = ["dep:bn_lib_sqlite"]
+lib-ffi = ["dep:bn_lib_ffi"]
 
 [lints]
 workspace = true
@@ -31,7 +32,7 @@ bn_host_exec = { path = "../bn_host_exec" }
 bn_host_fs = { path = "../bn_host_fs" }
 bn_host_net = { path = "../bn_host_net" }
 bn_interp = { path = "../bn_interp" }
-bn_rt = { path = "../bn_rt" }
+bn_rt = { path = "../bn_rt", default-features = false, features = ["net", "sqlite", "json"] }
 bn_lib_crypto = { path = "../bn_lib_crypto", optional = true }
 bn_lib_data = { path = "../bn_lib_data", optional = true }
 bn_lib_dispatch = { path = "../bn_lib_dispatch", optional = true }
@@ -39,6 +40,7 @@ bn_lib_json = { path = "../bn_lib_json", optional = true }
 bn_lib_log = { path = "../bn_lib_log", optional = true }
 bn_lib_math = { path = "../bn_lib_math", optional = true }
 bn_lib_sqlite = { path = "../bn_lib_sqlite", optional = true }
+bn_lib_ffi = { path = "../bn_lib_ffi", optional = true }
 bn_lib_web = { path = "../../libraries/bn_lib_web", optional = true }
 bn_source = { path = "../bn_source" }
 bn_types = { path = "../bn_types" }

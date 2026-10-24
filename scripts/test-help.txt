@@ -1,0 +1,33 @@
+Usage: bash scripts/test.sh [cargo test options] [-- test options]
+
+Build bni, bnc, bn_rt and bn_web before running cargo test. Cargo decides
+which artifacts need rebuilding, including manifest, feature, catalog and
+build-script changes. Build errors stop the command before tests run.
+
+Examples:
+    bash scripts/test.sh --test lexer
+    bash scripts/test.sh --test parity -- case_name --exact --test-threads=1
+    bash scripts/test.sh --workspace --no-fail-fast -- --test-threads=1
+
+Manifest, profile, target, target-directory, feature, job, Cargo configuration and
+offline/locking options are forwarded to the preparation build. Package
+and test filters apply only to cargo test. Run from the workspace root;
+relative target-directory and configuration paths are resolved there.
+
+The prepared artifact paths are exported as BN_INTERPRETER, BN_COMPILER,
+BN_RT_LIB and BN_WEB_LIB, replacing those variables for this invocation.
+No test process starts Cargo to prepare artifacts. Cargo's own locking
+coordinates concurrent builds. Native tests must target the host platform.
+
+Migration inventory (run after preparing the artifacts):
+    cargo test --workspace --no-run --message-format=json > target/test-artifacts.jsonl
+    bash scripts/test-cells.sh target/test-artifacts.jsonl target/test-cells.jsonl
+    bash scripts/test-inventory.sh target/test-artifacts.jsonl target/test-cells.jsonl target/migration-ledger.csv
+
+Cell discovery runs the three existing matrix tests with their diagnostic
+filters enabled for the entire corpus; it does not rewrite their sources
+or expected outputs. ARC seed identities come from the declared SEEDS
+bound. Inventory lists every test binary, including ignored tests, and
+records the grammar fixtures. Run on each supported platform to identify
+platform-specific tests. The inventory requires jq and ripgrep, and marks
+unaudited oracles as observed for later review in the owning sprint.

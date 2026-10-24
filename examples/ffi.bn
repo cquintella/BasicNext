@@ -1,0 +1,231 @@
+IMPORT BNFfi AS C
+
+FUNCTION Start() AS INTEGER
+    PRINT "=== Demonstracao Completa BNFfi (Todos os Tipos C) ==="
+
+    // 1. C.Int8 e C.UInt8 via tolower / toupper
+    LET a_u8 AS C.Args = NEW C.Args()
+    a_u8.Add(NEW C.UInt8(65)) // 'A'
+    LET r_u8 AS C.UInt8 = NEW C.UInt8(0)
+    LET s_u8 AS VOID OR Error = C.Call("libSystem.B.dylib", "tolower", a_u8, r_u8)
+    IF s_u8 IS Error THEN
+        PRINT "Erro UInt8: ", s_u8.Message
+        RETURN 1
+    END IF
+    PRINT "C.UInt8      (tolower 65 -> 97): ", r_u8.Value()
+
+    LET a_i8 AS C.Args = NEW C.Args()
+    a_i8.Add(NEW C.Int8(97)) // 'a'
+    LET r_i8 AS C.Int8 = NEW C.Int8(0)
+    LET s_i8 AS VOID OR Error = C.Call("libSystem.B.dylib", "toupper", a_i8, r_i8)
+    IF s_i8 IS Error THEN
+        PRINT "Erro Int8: ", s_i8.Message
+        RETURN 1
+    END IF
+    PRINT "C.Int8       (toupper 97 -> 65): ", r_i8.Value()
+
+    // 2. C.Int16 e C.UInt16 via htons / ntohs
+    LET a_u16 AS C.Args = NEW C.Args()
+    a_u16.Add(NEW C.UInt16(1024))
+    LET r_u16 AS C.UInt16 = NEW C.UInt16(0)
+    LET s_u16 AS VOID OR Error = C.Call("libSystem.B.dylib", "htons", a_u16, r_u16)
+    IF s_u16 IS Error THEN
+        PRINT "Erro UInt16: ", s_u16.Message
+        RETURN 1
+    END IF
+    PRINT "C.UInt16     (htons 1024 -> 4): ", r_u16.Value()
+
+    LET a_i16 AS C.Args = NEW C.Args()
+    a_i16.Add(NEW C.Int16(4))
+    LET r_i16 AS C.Int16 = NEW C.Int16(0)
+    LET s_i16 AS VOID OR Error = C.Call("libSystem.B.dylib", "ntohs", a_i16, r_i16)
+    IF s_i16 IS Error THEN
+        PRINT "Erro Int16: ", s_i16.Message
+        RETURN 1
+    END IF
+    PRINT "C.Int16      (ntohs 4 -> 1024): ", r_i16.Value()
+
+    // 3. C.Int e C.Int32 via abs e atoi
+    LET a_i32 AS C.Args = NEW C.Args()
+    a_i32.Add(NEW C.Int32(-100))
+    LET r_i32 AS C.Int32 = NEW C.Int32(0)
+    LET s_i32 AS VOID OR Error = C.Call("libSystem.B.dylib", "abs", a_i32, r_i32)
+    IF s_i32 IS Error THEN
+        PRINT "Erro Int32: ", s_i32.Message
+        RETURN 1
+    END IF
+    PRINT "C.Int32      (abs -100 -> 100): ", r_i32.Value()
+
+    LET a_int AS C.Args = NEW C.Args()
+    a_int.Add(NEW C.String("4242"))
+    LET r_int AS C.Int = NEW C.Int(0)
+    LET s_int AS VOID OR Error = C.Call("libSystem.B.dylib", "atoi", a_int, r_int)
+    IF s_int IS Error THEN
+        PRINT "Erro Int: ", s_int.Message
+        RETURN 1
+    END IF
+    PRINT "C.Int        (atoi \"4242\"): ", r_int.Value()
+
+    // 4. C.UInt e C.UInt32 via getuid e htonl
+    LET a_u32 AS C.Args = NEW C.Args()
+    a_u32.Add(NEW C.UInt32(16777216))
+    LET r_u32 AS C.UInt32 = NEW C.UInt32(0)
+    LET s_u32 AS VOID OR Error = C.Call("libSystem.B.dylib", "htonl", a_u32, r_u32)
+    IF s_u32 IS Error THEN
+        PRINT "Erro UInt32: ", s_u32.Message
+        RETURN 1
+    END IF
+    PRINT "C.UInt32     (htonl 16777216 -> 1): ", r_u32.Value()
+
+    LET a_uint AS C.Args = NEW C.Args()
+    LET r_uint AS C.UInt = NEW C.UInt(0)
+    LET s_uint AS VOID OR Error = C.Call("libSystem.B.dylib", "getuid", a_uint, r_uint)
+    IF s_uint IS Error THEN
+        PRINT "Erro UInt: ", s_uint.Message
+        RETURN 1
+    END IF
+    PRINT "C.UInt       (getuid): ", r_uint.Value()
+
+    // 5. C.Long e C.Int64 via labs e atoll
+    LET a_long AS C.Args = NEW C.Args()
+    a_long.Add(NEW C.Long(-987654321))
+    LET r_long AS C.Long = NEW C.Long(0)
+    LET s_long AS VOID OR Error = C.Call("libSystem.B.dylib", "labs", a_long, r_long)
+    IF s_long IS Error THEN
+        PRINT "Erro Long: ", s_long.Message
+        RETURN 1
+    END IF
+    PRINT "C.Long       (labs -987654321): ", r_long.Value()
+
+    LET a_i64 AS C.Args = NEW C.Args()
+    a_i64.Add(NEW C.String("9876543210123"))
+    LET r_i64 AS C.Int64 = NEW C.Int64(0)
+    LET s_i64 AS VOID OR Error = C.Call("libSystem.B.dylib", "atoll", a_i64, r_i64)
+    IF s_i64 IS Error THEN
+        PRINT "Erro Int64: ", s_i64.Message
+        RETURN 1
+    END IF
+    PRINT "C.Int64      (atoll \"9876543210123\"): ", r_i64.Value()
+
+    // 6. C.UInt64 e C.ULong
+    LET r_u64 AS C.UInt64 = NEW C.UInt64(1234567890123)
+    PRINT "C.UInt64     (instanciado): ", r_u64.Value()
+
+    LET r_ulong AS C.ULong = NEW C.ULong(987654321)
+    PRINT "C.ULong      (instanciado): ", r_ulong.Value()
+
+    // 7. C.Float e C.Double via sinf e sqrt
+    LET a_flt AS C.Args = NEW C.Args()
+    a_flt.Add(NEW C.Float(0.0))
+    LET r_flt AS C.Float = NEW C.Float(0.0)
+    LET s_flt AS VOID OR Error = C.Call("libSystem.B.dylib", "sinf", a_flt, r_flt)
+    IF s_flt IS Error THEN
+        PRINT "Erro Float: ", s_flt.Message
+        RETURN 1
+    END IF
+    PRINT "C.Float      (sinf 0.0): ", r_flt.Value()
+
+    LET a_dbl AS C.Args = NEW C.Args()
+    a_dbl.Add(NEW C.Double(144.0))
+    LET r_dbl AS C.Double = NEW C.Double(0.0)
+    LET s_dbl AS VOID OR Error = C.Call("libSystem.B.dylib", "sqrt", a_dbl, r_dbl)
+    IF s_dbl IS Error THEN
+        PRINT "Erro Double: ", s_dbl.Message
+        RETURN 1
+    END IF
+    PRINT "C.Double     (sqrt 144.0): ", r_dbl.Value()
+
+    // 8. C.Bool via isalpha('Z')
+    LET a_bool AS C.Args = NEW C.Args()
+    a_bool.Add(NEW C.Int(90)) // 'Z'
+    LET r_bool AS C.Bool = NEW C.Bool(FALSE)
+    LET s_bool AS VOID OR Error = C.Call("libSystem.B.dylib", "isalpha", a_bool, r_bool)
+    IF s_bool IS Error THEN
+        PRINT "Erro Bool: ", s_bool.Message
+        RETURN 1
+    END IF
+    PRINT "C.Bool       (isalpha 'Z'): ", r_bool.Value()
+
+    // 9. C.String e C.SizeT via strlen
+    LET a_str AS C.Args = NEW C.Args()
+    a_str.Add(NEW C.String("Basic Next 0.6.7"))
+    LET r_sz AS C.SizeT = NEW C.SizeT(0)
+    LET s_sz AS VOID OR Error = C.Call("libSystem.B.dylib", "strlen", a_str, r_sz)
+    IF s_sz IS Error THEN
+        PRINT "Erro SizeT: ", s_sz.Message
+        RETURN 1
+    END IF
+    PRINT "C.SizeT      (strlen \"Basic Next 0.6.7\"): ", r_sz.Value()
+
+    // 10. C.HandleResult, C.Handle, ReadString e C.Void via strdup + free
+    LET a_dup AS C.Args = NEW C.Args()
+    a_dup.Add(NEW C.String("Alocado na heap pelo C strdup"))
+    LET r_dup AS C.HandleResult = NEW C.HandleResult()
+    LET s_dup AS VOID OR Error = C.Call("libSystem.B.dylib", "strdup", a_dup, r_dup)
+    IF s_dup IS Error THEN
+        PRINT "Erro strdup: ", s_dup.Message
+        RETURN 1
+    END IF
+    LET h AS C.Handle OR NULL = r_dup.Value()
+    IF h IS NULL THEN
+        PRINT "Erro: ponteiro NULL retornado"
+        RETURN 1
+    END IF
+    LET texto_lido AS STRING OR Error = h.ReadString()
+    IF texto_lido IS Error THEN
+        PRINT "Erro ReadString: ", texto_lido.Message
+        RETURN 1
+    END IF
+    PRINT "C.Handle     (ReadString): \"", texto_lido, "\""
+
+    LET a_free AS C.Args = NEW C.Args()
+    a_free.Add(h)
+    LET r_void AS C.Void = NEW C.Void()
+    LET s_free AS VOID OR Error = C.Call("libSystem.B.dylib", "free", a_free, r_void)
+    IF s_free IS Error THEN
+        PRINT "Erro free: ", s_free.Message
+        RETURN 1
+    END IF
+    PRINT "C.Void       (free chamado com sucesso)"
+
+    // 11. C.ByteArray (buffer de bytes modificado in-place) via bzero
+    LET buffer AS POINTER TO BYTE[] = NEW BYTE[4]
+    buffer[0] = 70
+    buffer[1] = 71
+    buffer[2] = 72
+    buffer[3] = 73
+    PRINT "C.ByteArray  (antes de bzero): ", buffer[0], ", ", buffer[1]
+
+    LET a_arr AS C.Args = NEW C.Args()
+    a_arr.Add(NEW C.ByteArray(buffer))
+    a_arr.Add(NEW C.SizeT(4))
+    LET s_bzero AS VOID OR Error = C.Call("libSystem.B.dylib", "bzero", a_arr, r_void)
+    IF s_bzero IS Error THEN
+        PRINT "Erro bzero: ", s_bzero.Message
+        RETURN 1
+    END IF
+    PRINT "C.ByteArray  (apos bzero):     ", buffer[0], ", ", buffer[1]
+    RELEASE buffer
+
+    // 12. C.FloatArray e C.DoubleArray (regioes continuas)
+    LET fbuf AS POINTER TO FLOAT32[] = NEW FLOAT32[2]
+    fbuf[0] = 3.14
+    fbuf[1] = 2.71
+    LET r_farr AS C.FloatArray = NEW C.FloatArray(fbuf)
+    LET a_farr AS C.Args = NEW C.Args()
+    a_farr.Add(r_farr)
+    PRINT "C.FloatArray (regiao POINTER TO FLOAT32[] adicionada ao C.Args): ", a_farr.Count()
+    RELEASE fbuf
+
+    LET dbuf AS POINTER TO FLOAT[] = NEW FLOAT[2]
+    dbuf[0] = 10.5
+    dbuf[1] = 20.5
+    LET r_darr AS C.DoubleArray = NEW C.DoubleArray(dbuf)
+    LET a_darr AS C.Args = NEW C.Args()
+    a_darr.Add(r_darr)
+    PRINT "C.DoubleArray (regiao POINTER TO FLOAT[] adicionada ao C.Args): ", a_darr.Count()
+    RELEASE dbuf
+
+    PRINT "Todos os tipos do BNFfi foram testados com sucesso!"
+    RETURN 0
+END FUNCTION

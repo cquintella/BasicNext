@@ -1,0 +1,120 @@
+IMPORT BNFfi AS C
+
+FUNCTION Start() AS INTEGER
+    // 1. Primitive arithmetic
+    LET args AS C.Args = NEW C.Args()
+    args.Add(NEW C.Double(2.5))
+    args.Add(NEW C.Double(4.0))
+    LET res_double AS C.Double = NEW C.Double(0.0)
+    LET ok AS VOID OR Error = C.Call("bnffi_test", "test_double", args, res_double)
+    IF ok IS Error THEN
+        PRINT "FAIL double: ", ok.Message
+        RETURN 1
+    END IF
+    IF res_double.Value() <> 10.0 THEN
+        PRINT "FAIL double value: ", res_double.Value()
+        RETURN 1
+    END IF
+
+    // 2. Static string read
+    LET empty_args AS C.Args = NEW C.Args()
+    LET res_ptr AS C.HandleResult = NEW C.HandleResult()
+    ok = C.Call("bnffi_test", "test_static_string", empty_args, res_ptr)
+    IF ok IS Error THEN
+        PRINT "FAIL static_string: ", ok.Message
+        RETURN 1
+    END IF
+    LET h AS C.Handle OR NULL = res_ptr.Value()
+    IF h IS NULL THEN
+        PRINT "FAIL static_string null handle"
+        RETURN 1
+    END IF
+    LET str AS STRING OR Error = h.ReadString()
+    IF str IS Error THEN
+        PRINT "FAIL read string error: ", str.Message
+        RETURN 1
+    END IF
+    IF str <> "hello from C" THEN
+        PRINT "FAIL read string content: ", str
+        RETURN 1
+    END IF
+
+    // 3. NULL pointer return
+    ok = C.Call("bnffi_test", "test_return_null", empty_args, res_ptr)
+    IF ok IS Error THEN
+        PRINT "FAIL return_null: ", ok.Message
+        RETURN 1
+    END IF
+    IF NOT (res_ptr.Value() IS NULL) THEN
+        PRINT "FAIL expected null handle"
+        RETURN 1
+    END IF
+
+    // 4. Memory alloc and free
+    LET alloc_args AS C.Args = NEW C.Args()
+    alloc_args.Add(NEW C.SizeT(64))
+    ok = C.Call("bnffi_test", "test_alloc_bytes", alloc_args, res_ptr)
+    IF ok IS Error THEN
+        PRINT "FAIL alloc_bytes: ", ok.Message
+        RETURN 1
+    END IF
+    LET mem_h AS C.Handle OR NULL = res_ptr.Value()
+    IF mem_h IS NULL THEN
+        PRINT "FAIL alloc returned NULL"
+        RETURN 1
+    END IF
+
+    LET free_args AS C.Args = NEW C.Args()
+    free_args.Add(mem_h)
+    LET void_res AS C.Void = NEW C.Void()
+    ok = C.Call("bnffi_test", "test_free_bytes", free_args, void_res)
+    IF ok IS Error THEN
+        PRINT "FAIL free_bytes: ", ok.Message
+        RETURN 1
+    END IF
+
+    // 5. Error handling: Unknown library
+    ok = C.Call("nonexistent_lib_xyz_999", "foo", empty_args, void_res)
+    IF NOT (ok IS Error) THEN
+        PRINT "FAIL expected error for nonexistent library"
+        RETURN 1
+    END IF
+    IF ok.Code <> C.LIBRARY_NOT_FOUND THEN
+        PRINT "FAIL expected LIBRARY_NOT_FOUND, got code: ", ok.Code
+        RETURN 1
+    END IF
+
+    // 6. Error handling: Unknown symbol
+    ok = C.Call("bnffi_test", "nonexistent_symbol_123", empty_args, void_res)
+    IF NOT (ok IS Error) THEN
+        PRINT "FAIL expected error for nonexistent symbol"
+        RETURN 1
+    END IF
+    IF ok.Code <> C.SYMBOL_NOT_FOUND THEN
+        PRINT "FAIL expected SYMBOL_NOT_FOUND, got code: ", ok.Code
+        RETURN 1
+    END IF
+
+    // 7. Array scaling
+    LET arr AS POINTER TO FLOAT[] = NEW FLOAT[3]
+    arr[0] = 1.5
+    arr[1] = 2.5
+    arr[2] = 3.5
+    LET scale_args AS C.Args = NEW C.Args()
+    scale_args.Add(NEW C.DoubleArray(arr))
+    scale_args.Add(NEW C.Int32(3))
+    scale_args.Add(NEW C.Double(2.0))
+    ok = C.Call("bnffi_test", "test_double_array_scale", scale_args, void_res)
+    IF ok IS Error THEN
+        PRINT "FAIL array scale: ", ok.Message
+        RETURN 1
+    END IF
+    IF arr[0] <> 3.0 OR arr[1] <> 5.0 OR arr[2] <> 7.0 THEN
+        PRINT "FAIL array values: ", arr[0], arr[1], arr[2]
+        RETURN 1
+    END IF
+    RELEASE arr
+
+    PRINT "ALL INTERPRETER BNFfi TESTS PASSED"
+    RETURN 0
+END FUNCTION

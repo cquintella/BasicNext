@@ -37,12 +37,18 @@ impl Analyzer {
                 default_span(),
             )?;
         }
-        self.declare_global(
-            "Float",
-            Type::TypeName("Float".into()),
-            false,
-            default_span(),
-        )?;
+        if !program
+            .items
+            .iter()
+            .any(|item| matches!(item, Item::Declaration { name, .. } if name == "Float"))
+        {
+            self.declare_global(
+                "Float",
+                Type::TypeName("Float".into()),
+                false,
+                default_span(),
+            )?;
+        }
         for namespace in ["Date", "Time", "TimeZone", "Timestamp"] {
             self.declare_global(
                 namespace,

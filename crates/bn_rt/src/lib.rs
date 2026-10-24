@@ -50,6 +50,14 @@ mod math_abi;
 mod stack_abi;
 #[cfg(feature = "net")]
 pub use bn_core_net as net;
+#[cfg(feature = "ffi")]
+pub mod ffi;
+#[cfg(feature = "ffi")]
+pub(crate) mod ffi_abi;
+#[cfg(feature = "ffi")]
+pub(crate) mod ffi_loader;
+#[cfg(all(test, feature = "ffi"))]
+mod ffi_tests;
 #[cfg(feature = "net")]
 mod net_abi;
 mod policy;

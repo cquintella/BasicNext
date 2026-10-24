@@ -1,3 +1,5 @@
+#![allow(clippy::map_unwrap_or)]
+
 //! Integration tests of the `bni` executable surface (bucket 0.6.0, 2.1).
 //! The interpreter behaviour itself is covered by the relocated `tests/cli.rs`
 //! suite (activity 2.4); here: command set, version, JSON channel purity and
@@ -7,7 +9,10 @@ use std::process::Command;
 const WORKSPACE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
 fn bni() -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_bni"));
+    let path = std::env::var_os("BN_INTERPRETER")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_BIN_EXE_bni")));
+    let mut command = Command::new(path);
     command.current_dir(WORKSPACE);
     command
 }

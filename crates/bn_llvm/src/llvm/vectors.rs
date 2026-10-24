@@ -211,6 +211,26 @@ pub(crate) fn emit_allocate(
         text.assign(format!("v{dest}"), pointer);
         return;
     }
+    if is_bnffi_type(module, ty) {
+        let Type::ImportedNamed { name, .. } = ty else {
+            unreachable!()
+        };
+        let type_code = bnffi_type_code(name).expect("validated BNFfi class");
+        let call = I::call(
+            T::I64,
+            "bn_rt_ffi_new_record",
+            vec![(T::I32, O::int(i64::from(type_code)))],
+        );
+        text.assign(format!("ffih{dest}"), call);
+        let pointer = I::cast(
+            CastOp::IntToPtr,
+            T::I64,
+            O::reg(format!("ffih{dest}")),
+            T::Ptr,
+        );
+        text.assign(format!("v{dest}"), pointer);
+        return;
+    }
     if let Type::Pointer { element, .. } = ty {
         let elem_ty = llvm_type(element).expect("validated allocate element");
         let elem_bytes: u64 = match elem_ty {

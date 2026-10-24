@@ -14,7 +14,7 @@
 # Measured 2026-09-22: JOBS=3 → parity 1413 s, JOBS=2 → runtime 164 s and
 # one timeout, JOBS=1 → clean. Keep JOBS=1 unless the suites stop spawning.
 #
-#   scripts/test-battery.sh            # sequential binaries, --test-threads=4 each
+#   scripts/test-battery.sh            # sequential binaries, --test-threads=1 each
 #   JOBS=2 THREADS=2 scripts/test-battery.sh
 #   DOCTESTS=1 scripts/test-battery.sh # also run `cargo test --doc` (rustdoc
 #                                      # recompiles every crate: ~9 min for a
@@ -39,7 +39,7 @@ done
 cd "$(dirname "$0")/.."
 
 JOBS=${JOBS:-1}   # see the note on concurrency below
-THREADS=${THREADS:-4}
+THREADS=${THREADS:-1}
 out=$PWD/target/test-battery      # absolute: binaries run from their package dir
 timings=$PWD/target/test-timings.txt
 mkdir -p "$out"
@@ -47,10 +47,12 @@ rm -f "$out"/*.log "$out"/*.status
 touch "$timings"
 
 command -v jq >/dev/null || { echo "test-battery: jq is required" >&2; exit 2; }
+source scripts/test-artifacts.sh
+prepare_test_artifacts || exit "$?"
 
 # 1. Build every test target once (no concurrent compilation later).
 echo "== building test targets"
-manifest=$(cargo test --workspace --no-run --message-format=json 2>"$out/build.log") || {
+manifest=$(cargo test --locked --workspace --no-run --message-format=json 2>"$out/build.log") || {
   cat "$out/build.log" >&2; exit 2; }
 
 # name<TAB>executable<TAB>cwd (cargo runs a test binary from its package dir)

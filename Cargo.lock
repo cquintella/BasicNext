@@ -114,7 +114,7 @@ dependencies = [
 
 [[package]]
 name = "bn"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_catalog",
  "bn_diag",
@@ -133,16 +133,17 @@ dependencies = [
  "rustix",
  "serde",
  "serde_json",
+ "sha2",
  "wait-timeout",
 ]
 
 [[package]]
 name = "bn_catalog"
-version = "0.6.5"
+version = "0.6.7"
 
 [[package]]
 name = "bn_cli"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_catalog",
  "bn_diag",
@@ -154,7 +155,7 @@ dependencies = [
 
 [[package]]
 name = "bn_compile_driver"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_catalog",
  "bn_cli",
@@ -165,11 +166,11 @@ dependencies = [
 
 [[package]]
 name = "bn_core_copy"
-version = "0.6.5"
+version = "0.6.7"
 
 [[package]]
 name = "bn_core_dispatch"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_limits",
  "bn_types",
@@ -178,7 +179,7 @@ dependencies = [
 
 [[package]]
 name = "bn_core_json"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_catalog",
  "bn_core_copy",
@@ -189,7 +190,7 @@ dependencies = [
 
 [[package]]
 name = "bn_core_log"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_catalog",
  "bn_core_text",
@@ -199,11 +200,11 @@ dependencies = [
 
 [[package]]
 name = "bn_core_math"
-version = "0.6.5"
+version = "0.6.7"
 
 [[package]]
 name = "bn_core_net"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_catalog",
  "bn_limits",
@@ -214,7 +215,7 @@ dependencies = [
 
 [[package]]
 name = "bn_core_sqlite"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_catalog",
  "bn_core_copy",
@@ -224,14 +225,14 @@ dependencies = [
 
 [[package]]
 name = "bn_core_text"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_types",
 ]
 
 [[package]]
 name = "bn_dap"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_frontend",
  "bn_interp",
@@ -242,7 +243,7 @@ dependencies = [
 
 [[package]]
 name = "bn_diag"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_catalog",
  "bn_source",
@@ -250,7 +251,7 @@ dependencies = [
 
 [[package]]
 name = "bn_frontend"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_catalog",
  "bn_diag",
@@ -261,7 +262,7 @@ dependencies = [
 
 [[package]]
 name = "bn_host_env"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_catalog",
  "bn_types",
@@ -270,7 +271,7 @@ dependencies = [
 
 [[package]]
 name = "bn_host_exec"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_catalog",
  "bn_types",
@@ -278,7 +279,7 @@ dependencies = [
 
 [[package]]
 name = "bn_host_fs"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_catalog",
  "bn_diag",
@@ -291,7 +292,7 @@ dependencies = [
 
 [[package]]
 name = "bn_host_net"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_diag",
  "bn_interp",
@@ -304,7 +305,7 @@ dependencies = [
 
 [[package]]
 name = "bn_interp"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_catalog",
  "bn_core_copy",
@@ -320,7 +321,7 @@ dependencies = [
 
 [[package]]
 name = "bn_interpret_driver"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_catalog",
  "bn_cli",
@@ -334,6 +335,7 @@ dependencies = [
  "bn_lib_crypto",
  "bn_lib_data",
  "bn_lib_dispatch",
+ "bn_lib_ffi",
  "bn_lib_json",
  "bn_lib_log",
  "bn_lib_math",
@@ -348,7 +350,7 @@ dependencies = [
 
 [[package]]
 name = "bn_ir"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_diag",
  "bn_source",
@@ -357,7 +359,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_crypto"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_catalog",
  "bn_diag",
@@ -370,7 +372,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_data"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_catalog",
  "bn_diag",
@@ -383,7 +385,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_dispatch"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_core_dispatch",
  "bn_diag",
@@ -397,8 +399,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "bn_lib_ffi"
+version = "0.6.7"
+dependencies = [
+ "bn_diag",
+ "bn_interp",
+ "bn_rt",
+ "bn_runtime",
+ "bn_source",
+ "bn_types",
+ "bn_value",
+]
+
+[[package]]
 name = "bn_lib_json"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_catalog",
  "bn_core_json",
@@ -412,7 +427,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_log"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_catalog",
  "bn_core_log",
@@ -426,7 +441,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_math"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_core_math",
  "bn_core_text",
@@ -441,7 +456,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_sqlite"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_core_sqlite",
  "bn_diag",
@@ -456,7 +471,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lib_web"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_catalog",
  "bn_core_dispatch",
@@ -479,11 +494,11 @@ dependencies = [
 
 [[package]]
 name = "bn_limits"
-version = "0.6.5"
+version = "0.6.7"
 
 [[package]]
 name = "bn_llvm"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_catalog",
  "bn_core_text",
@@ -495,7 +510,7 @@ dependencies = [
 
 [[package]]
 name = "bn_lsp"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_diag",
  "bn_frontend",
@@ -509,7 +524,7 @@ dependencies = [
 
 [[package]]
 name = "bn_rt"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -530,6 +545,8 @@ dependencies = [
  "ed25519-dalek",
  "hmac",
  "libc",
+ "libffi",
+ "libloading",
  "ml-dsa",
  "ml-kem",
  "p256",
@@ -540,7 +557,7 @@ dependencies = [
 
 [[package]]
 name = "bn_runtime"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_diag",
  "bn_source",
@@ -549,15 +566,15 @@ dependencies = [
 
 [[package]]
 name = "bn_source"
-version = "0.6.5"
+version = "0.6.7"
 
 [[package]]
 name = "bn_types"
-version = "0.6.5"
+version = "0.6.7"
 
 [[package]]
 name = "bn_value"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_source",
  "bn_types",
@@ -565,7 +582,7 @@ dependencies = [
 
 [[package]]
 name = "bn_web"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_catalog",
  "bn_core_copy",
@@ -587,14 +604,14 @@ dependencies = [
 
 [[package]]
 name = "bnc"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_compile_driver",
 ]
 
 [[package]]
 name = "bni"
-version = "0.6.5"
+version = "0.6.7"
 dependencies = [
  "bn_dap",
  "bn_frontend",
@@ -1245,6 +1262,35 @@ name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
+
+[[package]]
+name = "libffi"
+version = "5.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a8d526bc07aa02e6826944ec446ecd8d228bd97b1cbd21e5bc5e3407a09a585"
+dependencies = [
+ "libc",
+ "libffi-sys",
+]
+
+[[package]]
+name = "libffi-sys"
+version = "4.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eab801a4ae9065bfea87f37204a7940523e752056e4a090eaaaab9b47fc826b5"
+dependencies = [
+ "cc",
+]
+
+[[package]]
+name = "libloading"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "754ca22de805bb5744484a5b151a9e1a8e837d5dc232c2d7d8c2e3492edc8b60"
+dependencies = [
+ "cfg-if",
+ "windows-link",
+]
 
 [[package]]
 name = "libsqlite3-sys"
