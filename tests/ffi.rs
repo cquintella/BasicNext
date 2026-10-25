@@ -447,7 +447,11 @@ FUNCTION Start() AS VOID
     LET res AS C.Long = NEW C.Long(0)
     LET ok AS VOID OR Error = C.Call(\"bnffi_test\", \"test_long\", args, res)
     IF ok IS Error THEN
-        PRINT \"CODE:\", ok.Code
+        IF ok.Code = C.VALUE_OUT_OF_RANGE THEN
+            PRINT \"VALUE_OUT_OF_RANGE\"
+        ELSE
+            PRINT \"CODE:\", ok.Code
+        END IF
     ELSE
         PRINT \"VAL:\", res.Value()
     END IF
@@ -475,8 +479,7 @@ END FUNCTION
     let bnc_stdout = String::from_utf8_lossy(&bnc_out.stdout);
     assert_eq!(bni_stdout, bnc_stdout);
     if std::mem::size_of::<std::os::raw::c_long>() == 4 {
-        assert!(bni_stdout.contains("CODE:"));
-        assert!(bni_stdout.contains('4'));
+        assert_eq!(bni_stdout.trim(), "VALUE_OUT_OF_RANGE");
     } else {
         assert_eq!(bni_stdout.trim(), "VAL: 2147483649");
     }
