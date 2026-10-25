@@ -1,4 +1,5 @@
 use super::*;
+#[cfg(unix)]
 use std::ffi::CString;
 
 fn bn_string(s: &str) -> *mut c_char {
@@ -48,6 +49,7 @@ fn a_file_logger_writes_json_records_and_releases_its_handle() {
 }
 
 /// A file logger on `path`, as `Logger.New` makes it in a compiled program.
+#[cfg(unix)]
 fn file_logger(path: &std::path::Path) -> u64 {
     let path_text = bn_string(&path.to_string_lossy());
     let label = bn_string("app");

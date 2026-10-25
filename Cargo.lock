@@ -615,6 +615,7 @@ dependencies = [
  "bn_core_net",
  "bn_limits",
  "bn_rt",
+ "bn_stdlib",
  "bn_types",
  "http-body-util",
  "hyper",

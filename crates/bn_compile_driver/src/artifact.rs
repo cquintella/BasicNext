@@ -259,6 +259,24 @@ pub(crate) fn emit_build_output(
         command_args.extend(native_program_link_args().iter().map(ToString::to_string));
         command_args.extend(debug_flag.map(ToString::to_string));
         command_args.extend(cpu_flag.map(ToString::to_string));
+        let mut static_libs = Vec::new();
+        if llvm.contains("@bn_web_") {
+            let bn_web = match configured_bn_web_lib() {
+                Ok(path) => path,
+                Err(message) => {
+                    eprintln!(
+                        "{}",
+                        tool_diagnostic(
+                            DiagId::BUILD_TOOLCHAIN_UNAVAILABLE,
+                            message,
+                            &options.diagnostic_catalog,
+                        )
+                    );
+                    return tool_error();
+                }
+            };
+            static_libs.push(bn_web.display().to_string());
+        }
         if llvm.contains("@bn_rt_") || uses_bn_stdlib(&llvm) {
             let runtime_archive = if uses_bn_stdlib(&llvm) {
                 configured_bn_stdlib_lib()
@@ -279,7 +297,23 @@ pub(crate) fn emit_build_output(
                     return tool_error();
                 }
             };
-            command_args.push(bn_rt.display().to_string());
+            static_libs.push(bn_rt.display().to_string());
+        }
+
+        if !static_libs.is_empty() {
+            #[cfg(target_os = "linux")]
+            let use_group = static_libs.len() > 1;
+            #[cfg(not(target_os = "linux"))]
+            let use_group = false;
+
+            if use_group {
+                command_args.push("-Wl,--start-group".into());
+            }
+            command_args.extend(static_libs);
+            if use_group {
+                command_args.push("-Wl,--end-group".into());
+            }
+
             command_args.extend(native_runtime_link_args().iter().map(ToString::to_string));
             // A `-g` build keeps the whole runtime: the debugger calls `bn_rt`
             // functions the program never reaches (`bn_rt_arc_dump`).
@@ -292,21 +326,6 @@ pub(crate) fn emit_build_output(
             }
         }
         if llvm.contains("@bn_web_") {
-            let bn_web = match configured_bn_web_lib() {
-                Ok(path) => path,
-                Err(message) => {
-                    eprintln!(
-                        "{}",
-                        tool_diagnostic(
-                            DiagId::BUILD_TOOLCHAIN_UNAVAILABLE,
-                            message,
-                            &options.diagnostic_catalog,
-                        )
-                    );
-                    return tool_error();
-                }
-            };
-            command_args.push(bn_web.display().to_string());
             #[cfg(target_os = "macos")]
             {
                 command_args.extend([

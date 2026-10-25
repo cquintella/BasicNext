@@ -12,9 +12,11 @@
 #![allow(clippy::missing_errors_doc)] // Errors are plain `String` / `&str` messages the adapters map.
 
 // The C ABI calls `bn_rt_*` symbols. The staticlib leaves them for the
-// final link with `libbn_rt.a`; the Rust test harness has to link the crate.
+// final link with `libbn_rt.a` / `libbn_stdlib.a`; the Rust test harness has to link the crates.
 #[cfg(test)]
 use bn_rt as _;
+#[cfg(test)]
+use bn_stdlib as _;
 
 pub mod http;
 #[cfg(test)]

@@ -391,7 +391,9 @@ pub extern "C" fn bn_rt_fs_delete_file(path: *const c_char) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ffi::{CStr, CString};
+    use std::ffi::CStr;
+    #[cfg(unix)]
+    use std::ffi::CString;
 
     #[test]
     fn exhausted_handles_never_wrap() {

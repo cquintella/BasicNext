@@ -33,3 +33,4 @@ tokio-rustls = { version = "0.26.4", default-features = false, features = ["ring
 
 [dev-dependencies]
 bn_rt = { path = "../../crates/bn_rt" }
+bn_stdlib = { path = "../bn_stdlib" }
