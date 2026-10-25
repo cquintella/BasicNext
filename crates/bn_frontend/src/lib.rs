@@ -12,6 +12,11 @@ pub mod module_graph;
 pub mod parser;
 pub mod prepare;
 pub mod semantic;
+pub mod session;
+pub use session::{
+    ClassifiedToken, ClassifiedTokenKind, PreparedSubmission, SessionAccumulator,
+    SubmissionCompleteness, SubmissionKind, classify_submission,
+};
 pub mod token;
 
 #[path = "lowering.rs"]

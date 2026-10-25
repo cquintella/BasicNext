@@ -73,6 +73,15 @@ impl PrepareError {
         }
     }
 
+    #[must_use]
+    pub fn into_diagnostic(self) -> Diagnostic {
+        match self {
+            Self::Load(error) => *error.diagnostic,
+            Self::Semantic { error, .. } => *error.diagnostic,
+            Self::Lower { diagnostic, .. } => *diagnostic,
+        }
+    }
+
     /// Stable phase name used by CLI diagnostics (`parse`, `semantic`, `lower`).
     #[must_use]
     pub const fn phase(&self) -> &'static str {
