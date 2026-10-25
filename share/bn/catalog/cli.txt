@@ -36,3 +36,26 @@ msg.libbn_web_a_not_found_build_the_bn = libbn_web.a not found; build the bn_web
 msg.bn_stdlib_lib_not_a_file = BN_STDLIB_LIB is not a file: {path}
 msg.bn_web_lib_not_a_file = BN_WEB_LIB is not a file: {path}
 help.bnc = {version}\nusage: bnc [compile-options] <entry.bn>\n\nCompiles the program to a native executable.\n\ncompile options:\n  -o, --output <file>        write the artifact to <file> (defaults to entry name)\n  --target native            select the target (default native)\n  --opt none|1|2|3|s         optimization level (default 2)\n  -g, --debug                emit debug information (DWARF; PDB on Windows)\n  --cpu native|generic       target host CPU instructions (default generic)\n  --emit llvm                print LLVM IR instead of compiling\n  --emit ir                  print the validated BN IR instead of compiling\n                             (tokens, ast and typed-ast are also accepted)\n{common_options}\nSee also: man bnc\nMore information: {book_url}\n
+
+# REPL options and messages (bnr).
+help.bnr = {version}\nusage: bnr [options] [-- program-args]\n\nInteractive Read-Eval-Print Loop (REPL) for Basic Next.\n\noptions:\n  --no-filesystem            deny HOST.FileSystem imports\n  --ffi-path <dir>           add an ordered dynamic library search directory\n{common_options}\nSee also: man bnr\nMore information: {book_url}\n
+msg.bnr_banner = Basic Next {version} ({target})\nType :help for commands, :quit to exit.
+msg.bnr_help_text = Basic Next REPL Commands:\n  :help              Show this help message\n  :quit, :q          Exit the REPL\n  :reset             Reset session bindings and state\n  :bindings, :vars   List active bindings and types\n  :type <expr>       Show static type of expression\n  :policy            Show active execution policy\n  :load <file.bn>    Load and execute declarations from file\n  :clear             Clear the terminal screen\n\nShortcuts:\n  Ctrl-C             Cancel current multi-line input or running evaluation\n  Ctrl-D             Exit REPL (on empty line)\n  Ctrl-R             Search command history
+msg.bnr_unknown_command = Unknown command '{command}'. Type :help for available commands.
+msg.bnr_load_missing_path = :load expects a file path
+msg.bnr_type_missing_expr = :type expects an expression
+msg.bnr_reset_done = Session state reset.
+msg.bnr_empty_bindings = No user bindings in current session.
+msg.bnr_active_bindings = Active bindings:
+msg.bnr_binding_item =   LET {name} AS {type} [{status}]
+msg.bnr_active_policy = Active execution policy:
+msg.bnr_sandbox = sandbox
+msg.bnr_read_roots = read roots
+msg.bnr_write_roots = write roots
+msg.bnr_filesystem = filesystem
+msg.bnr_module_paths = module search paths
+msg.bnr_ffi_paths = ffi library search paths
+msg.bnr_ctrl_c_hint = (To exit, type :quit or press Ctrl-D)
+msg.bnr_history_file = BNR_HISTORY_FILE
+
+

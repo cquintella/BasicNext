@@ -1,0 +1,137 @@
+.\" groff man page for the Basic Next REPL executable (0.6 line).
+.TH BNR 1 "October 25, 2026" "bnr 0.6.8" "Basic Next"
+.SH NAME
+bnr \- Basic Next interactive Read-Eval-Print Loop (REPL)
+.SH SYNOPSIS
+.B bnr
+.RI [ options ]
+.RI [ file.bn ]
+.RI [ "-- program-args" ]
+.SH DESCRIPTION
+.B bnr
+is the interactive Read-Eval-Print Loop (REPL) companion for Basic Next.
+It allows incremental entry and evaluation of Basic Next expressions, variable bindings,
+functions, types, and statements, preserving memory state, ARC references, and declared
+symbols across turns without re-executing history.
+.PP
+Unlike batch mode in
+.BR bni (1)
+or compilation in
+.BR bnc (1),
+statements and expressions entered at the
+.B bnr>
+prompt do not require an enclosing
+.BR "FUNCTION Start" .
+Multi-line constructs (such as
+.BR IF ,
+.BR FOR ,
+.BR WHILE ,
+.BR FUNCTION ,
+or
+.BR CLASS )
+automatically switch the prompt to
+.B ...>
+until the construct is closed.
+.SH META-COMMANDS
+The following interactive commands begin with a colon:
+.TP
+.B :help
+Display summary of REPL commands, options, and keyboard shortcuts.
+.TP
+.BR :quit ", " :q
+Exit the REPL session cleanly.
+.TP
+.B :reset
+Reset all accumulated session bindings, types, and variables, maintaining the initial security policy.
+.TP
+.BR :bindings ", " :vars
+List all active variables, types, and their ARC memory status.
+.TP
+.BI :type " expr"
+Resolve and display the static type of an expression in the current session context without executing it.
+.TP
+.B :policy
+Display the effective execution policy and security sandbox configuration.
+.TP
+.BI :load " file.bn"
+Load and execute declarations from the specified Basic Next source file into the active session.
+.TP
+.B :clear
+Clear the terminal screen.
+.SH KEYBOARD SHORTCUTS
+.TP
+.B Ctrl-C
+Discard current multi-line input buffer during collection, or cancel currently running evaluation.
+.TP
+.B Ctrl-D
+Exit the REPL when pressed on an empty line.
+.TP
+.B Ctrl-R
+Reverse search through command history.
+.SH OPTIONS
+.TP
+.B --no-filesystem
+Deny access to
+.BR HOST.FileSystem
+and related filesystem operations.
+.TP
+.BI --ffi-path " dir"
+Add an ordered dynamic library search directory for FFI resolution (repeatable).
+.TP
+.BR -v , " --verbose"
+Show pipeline stages (repeat for token stream output: -v -v).
+.TP
+.BI --module-path " dir"
+Add an ordered import search directory (repeatable).
+.TP
+.B --sandbox
+Opt into filesystem root restrictions.
+.TP
+.BI --read-root " dir"
+Allow filesystem reads below a sandbox root (repeatable).
+.TP
+.BI --write-root " dir"
+Allow filesystem writes below a sandbox root (repeatable).
+.TP
+.B --warnings errors
+Promote all warning diagnostics to errors.
+.TP
+.BI --allow " CODE"
+Suppress one warning diagnostic (repeatable).
+.TP
+.BI --warn " CODE"
+Keep one warning diagnostic at warning level.
+.TP
+.BI --deny " CODE"
+Promote one warning diagnostic to an error.
+.TP
+.BI --color " auto|always|never"
+Control ANSI color styling on diagnostics and status messages.
+.TP
+.BI --log-level " error|warn|info|debug"
+Process log verbosity level.
+.TP
+.BI --log-file " file"
+Companion process log file path.
+.TP
+.B --no-log
+Disable companion process logging.
+.TP
+.BI --config " file"
+Load warning and logging configuration file.
+.TP
+.BR -V , " --version"
+Print version and exit.
+.TP
+.BR -h , " --help"
+Print help text and exit.
+.SH ENVIRONMENT
+.TP
+.B BNR_HISTORY_FILE
+Override default path for command history file (defaults to
+.IR ~/.bn_history ).
+.SH SEE ALSO
+.BR bni (1),
+.BR bnc (1)
+.PP
+Tutorial book: https://github.com/cquintella/basicnext-book

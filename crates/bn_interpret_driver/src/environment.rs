@@ -57,7 +57,7 @@ impl HostEnvDefaults for HostEnv {
 ///
 /// Returns the configuration message for invalid sandbox roots or a
 /// malformed policy environment (both `CONFIG_INVALID`, exit 2).
-pub(crate) fn host_env(
+pub fn host_env(
     options: &Options,
     interpreter: &crate::options::InterpreterOptions,
     arguments: Vec<String>,
