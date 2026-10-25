@@ -2,7 +2,7 @@
   "motd": "Basic Next - Bucket & Project Management Console\nType '?' or double-tab for help.\n",
   "config_version": "1.0",
   "scripts_dir": "scripts",
-  "bucketfile": "done/bucket-0.6.7a-bugfixes.md",
+  "bucketfile": "done/bucket-0.6.7b-test-hardening.md",
   "commands": [
     {
       "name": "board",

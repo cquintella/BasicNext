@@ -143,7 +143,23 @@ fn hostile_column_names_are_rejected_with_invalid_argument() {
         BN_DATAFRAME_INVALID_ARGUMENT
     );
 
-    // 2. Overlong column name (> 256 bytes)
+    // 2. Invalid UTF-8 column name ([0xFF, 0x00])
+    let bad_utf8_name = [0xFFu8, 0x00u8];
+    let bad_utf8_view = BNDataFrameColumnView {
+        name: bad_utf8_name.as_ptr().cast(),
+        values: std::ptr::null(),
+        length: 0,
+    };
+    assert_eq!(
+        bn_rt_dataframe_create(&raw const bad_utf8_view, 1, &raw mut frame),
+        BN_DATAFRAME_INVALID_ARGUMENT
+    );
+    assert_eq!(
+        bn_rt_dataframe_create(&raw const null_name_view, 1, std::ptr::null_mut()),
+        BN_DATAFRAME_INVALID_ARGUMENT
+    );
+
+    // 3. Overlong column name (> 256 bytes)
     let overlong_bytes = vec![b'a'; MAX_COLUMN_NAME_LENGTH + 10];
     let overlong_c = std::ffi::CString::new(overlong_bytes).unwrap();
     let overlong_view = BNDataFrameColumnView {

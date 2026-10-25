@@ -615,8 +615,9 @@ pub extern "C" fn bn_rt_crypto_slice(data: u64, start: i64, length: i64, out: *m
 #[cfg(test)]
 mod tests {
     use super::{
-        BN_CRYPTO_INVALID_HANDLE, BN_CRYPTO_OK, bn_rt_crypto_bytes_length,
-        bn_rt_crypto_bytes_release, store,
+        BN_CRYPTO_INVALID_ARGUMENT, BN_CRYPTO_INVALID_HANDLE, BN_CRYPTO_OK,
+        bn_rt_crypto_bytes_from_hex, bn_rt_crypto_bytes_from_text, bn_rt_crypto_bytes_length,
+        bn_rt_crypto_bytes_release, bn_rt_crypto_slice, store,
     };
 
     #[test]
@@ -629,5 +630,34 @@ mod tests {
         assert_eq!(bn_rt_crypto_bytes_release(first), BN_CRYPTO_OK);
         assert_eq!(bn_rt_crypto_bytes_release(first), BN_CRYPTO_INVALID_HANDLE);
         assert_eq!(bn_rt_crypto_bytes_length(first), -1);
+        assert_eq!(bn_rt_crypto_bytes_release(second), BN_CRYPTO_OK);
+    }
+
+    #[test]
+    fn crypto_abi_rejects_null_invalid_utf8_and_bva_slice_overflow() {
+        let mut out = 0u64;
+        assert_eq!(
+            bn_rt_crypto_bytes_from_hex(std::ptr::null(), std::ptr::null_mut()),
+            BN_CRYPTO_INVALID_ARGUMENT
+        );
+        let bad_utf8 = [0xFFu8, 0x00u8];
+        let empty_h = bn_rt_crypto_bytes_from_text(bad_utf8.as_ptr().cast());
+        assert_eq!(bn_rt_crypto_bytes_length(empty_h), 0);
+
+        let buf = store(vec![10, 20, 30, 40]);
+        for (start, len) in [(-1i64, 2i64), (0, -1), (2, i64::MAX), (i64::MAX, 1), (0, 5)] {
+            assert_ne!(
+                bn_rt_crypto_slice(buf, start, len, &raw mut out),
+                BN_CRYPTO_OK,
+                "slice({start}, {len}) must fail"
+            );
+        }
+        assert_eq!(
+            bn_rt_crypto_slice(buf, 1, 2, std::ptr::null_mut()),
+            BN_CRYPTO_INVALID_ARGUMENT
+        );
+
+        assert_eq!(bn_rt_crypto_bytes_release(empty_h), BN_CRYPTO_OK);
+        assert_eq!(bn_rt_crypto_bytes_release(buf), BN_CRYPTO_OK);
     }
 }

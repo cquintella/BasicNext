@@ -244,10 +244,9 @@ fn unused_binding_warnings(program: &Program, model: &SemanticModel) -> Vec<Diag
             Item::Declaration {
                 kind: DeclarationKind::Class,
                 name,
-                exported,
                 statements,
                 ..
-            } => class_binding_candidates(name, *exported, statements, &mut candidates),
+            } => class_binding_candidates(name, statements, &mut candidates),
             // A STRUCT field is a member read through a value (`r.name`), never a
             // local; every field is public, so an exported STRUCT's fields may be
             // read by another module (known issue K54).
@@ -259,7 +258,7 @@ fn unused_binding_warnings(program: &Program, model: &SemanticModel) -> Vec<Diag
                 ..
             } => {
                 if !*exported {
-                    class_binding_candidates(name, false, statements, &mut candidates);
+                    class_binding_candidates(name, statements, &mut candidates);
                 }
             }
             Item::Declaration { statements, .. } => {
@@ -309,7 +308,6 @@ struct BindingCandidate {
 
 fn class_binding_candidates(
     owner: &str,
-    exported: bool,
     statements: &[Statement],
     candidates: &mut Vec<BindingCandidate>,
 ) {
@@ -322,11 +320,10 @@ fn class_binding_candidates(
                 visibility,
                 span,
                 ..
-            } if !(exported
-                && matches!(
-                    *visibility,
-                    Some(crate::ast::Visibility::Public | crate::ast::Visibility::Protected)
-                )) =>
+            } if !matches!(
+                *visibility,
+                Some(crate::ast::Visibility::Public | crate::ast::Visibility::Protected)
+            ) =>
             {
                 candidates.push(BindingCandidate {
                     name: name.clone(),

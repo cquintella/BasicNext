@@ -48,6 +48,7 @@ mod tests {
 
     #[test]
     fn test_handle_result_reuses_and_frees_child_handle() {
+        let baseline = active_record_count();
         let hr = allocate_record(
             TYPE_HANDLE_RESULT,
             CValuePayload::HandleResult(Some(std::ptr::without_provenance_mut(0x1234))),
@@ -59,6 +60,7 @@ mod tests {
             "HandleResult.Value() must reuse child handle"
         );
         assert!(get_record(child1).is_some());
+        assert!(active_record_count() >= baseline + 2);
 
         release_record(hr);
         assert!(get_record(hr).is_none());
@@ -71,25 +73,39 @@ mod tests {
     #[test]
     fn test_array_read_write_checked_mul_overflow_rejected() {
         let mut backing = [0u8; 16];
-        let arr = allocate_record(
-            TYPE_ARRAY,
-            CValuePayload::Array {
-                data: backing.as_mut_ptr(),
-                element_size: 8,
-                count: usize::MAX,
-                region_arc_id: None,
-            },
-        );
         let dummy_ptr = std::ptr::without_provenance_mut(0x1000);
-        assert!(
-            array_read_from(arr, dummy_ptr).is_err(),
-            "overflowing count * element_size must fail before dereferencing pointer"
-        );
-        assert!(
-            array_write_to(arr, dummy_ptr).is_err(),
-            "overflowing count * element_size must fail before dereferencing pointer"
-        );
-        release_record(arr);
+        for elem_size in [2usize, 4, 8] {
+            for bad_count in [usize::MAX, (usize::MAX / elem_size) + 1] {
+                let arr = allocate_record(
+                    TYPE_ARRAY,
+                    CValuePayload::Array {
+                        data: backing.as_mut_ptr(),
+                        element_size: elem_size,
+                        count: bad_count,
+                        region_arc_id: None,
+                    },
+                );
+                assert!(
+                    array_read_from(arr, dummy_ptr).is_err(),
+                    "overflowing count * element_size ({elem_size} * {bad_count}) must fail"
+                );
+                assert!(
+                    array_write_to(arr, dummy_ptr).is_err(),
+                    "overflowing count * element_size ({elem_size} * {bad_count}) must fail"
+                );
+                release_record(arr);
+            }
+        }
+
+        // Negative or overflowing counts passed to `bn_rt_ffi_set_array` transition to Void.
+        let h = allocate_record(TYPE_INT32_ARRAY, CValuePayload::Void);
+        crate::ffi_abi::bn_rt_ffi_set_array(h, std::ptr::null_mut(), 4, (-1isize).cast_unsigned());
+        assert!(matches!(
+            get_record(h).expect("record").payload,
+            CValuePayload::Void
+        ));
+        assert!(array_read_from(h, dummy_ptr).is_err());
+        release_record(h);
     }
 
     #[test]
@@ -102,9 +118,12 @@ mod tests {
             "libc.so.6"
         };
 
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
         std::thread::scope(|s| {
             for i in 0..8 {
+                let b = barrier.clone();
                 s.spawn(move || {
+                    b.wait();
                     let paths = if i % 2 == 0 {
                         vec![]
                     } else {
@@ -115,9 +134,74 @@ mod tests {
                     let sym = crate::ffi_loader::resolve_symbol(libc_name, "strlen", &lib)
                         .expect("resolve strlen");
                     assert_ne!(sym, 0);
+
+                    let rec = allocate_record(TYPE_INT32, CValuePayload::Int32(i));
+                    assert!(get_record(rec).is_some());
+                    release_record(rec);
+                    assert!(get_record(rec).is_none());
                 });
             }
         });
+    }
+
+    #[test]
+    fn test_c_long_ulong_size_t_platform_width_bounds() {
+        let libc_name = if cfg!(target_os = "windows") {
+            "ucrtbase"
+        } else if cfg!(target_os = "macos") {
+            "libSystem.B.dylib"
+        } else {
+            "libc.so.6"
+        };
+
+        let res_h = allocate_record(TYPE_LONG, CValuePayload::Long(0));
+        for val in [i64::from(i32::MAX) + 1, i64::from(i32::MIN) - 1] {
+            let arg_h = allocate_record(TYPE_LONG, CValuePayload::Long(val));
+            let res = call_c_function(libc_name, "labs", &[], &[arg_h], res_h);
+            if std::mem::size_of::<libc::c_long>() == 4 {
+                let err = res.expect_err("32-bit c_long must reject 64-bit value");
+                assert_eq!(err.code, ERROR_VALUE_OUT_OF_RANGE);
+            } else {
+                assert!(res.is_ok(), "64-bit c_long must accept {val}");
+            }
+            release_record(arg_h);
+        }
+        release_record(res_h);
+    }
+
+    #[test]
+    fn test_ffi_abi_null_and_invalid_utf8_rejected() {
+        let libc_name = if cfg!(target_os = "windows") {
+            "ucrtbase"
+        } else if cfg!(target_os = "macos") {
+            "libSystem.B.dylib"
+        } else {
+            "libc.so.6"
+        };
+
+        let null_str_h = crate::ffi_abi::bn_rt_ffi_new_record(TYPE_STRING);
+        crate::ffi_abi::bn_rt_ffi_set_string(null_str_h, std::ptr::null());
+        assert!(matches!(
+            get_record(null_str_h).expect("record").payload,
+            CValuePayload::Void
+        ));
+        let res_h = allocate_record(TYPE_SIZE_T, CValuePayload::SizeT(0));
+        let err = call_c_function(libc_name, "strlen", &[], &[null_str_h], res_h)
+            .expect_err("null string record must be rejected");
+        assert_eq!(err.code, ERROR_INVALID_SIGNATURE);
+
+        let bad_utf8 = [0xFFu8, 0x00u8];
+        crate::ffi_abi::bn_rt_ffi_set_string(null_str_h, bad_utf8.as_ptr().cast());
+        assert!(matches!(
+            get_record(null_str_h).expect("record").payload,
+            CValuePayload::Void
+        ));
+        let err2 = call_c_function(libc_name, "strlen", &[], &[null_str_h], res_h)
+            .expect_err("invalid UTF-8 string record must be rejected");
+        assert_eq!(err2.code, ERROR_INVALID_SIGNATURE);
+
+        release_record(null_str_h);
+        release_record(res_h);
     }
 
     #[test]

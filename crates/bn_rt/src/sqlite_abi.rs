@@ -213,3 +213,36 @@ pub extern "C" fn bn_rt_sqlite_changes(handle: u64) -> i64 {
 pub extern "C" fn bn_rt_sqlite_last_insert_rowid(handle: u64) -> i64 {
     bn_core_sqlite::last_insert_rowid(handle).unwrap_or(0)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sqlite_abi_rejects_null_and_invalid_utf8_boundaries() {
+        let mut handle = 999u64;
+        assert_ne!(bn_rt_sqlite_open(std::ptr::null(), &raw mut handle), 0);
+        assert_ne!(
+            bn_rt_sqlite_open_read_only(std::ptr::null(), &raw mut handle),
+            0
+        );
+        assert_ne!(
+            bn_rt_sqlite_open_existing(std::ptr::null(), &raw mut handle),
+            0
+        );
+
+        let bad_utf8 = [0xFFu8, 0x00u8];
+        assert_ne!(
+            bn_rt_sqlite_open(bad_utf8.as_ptr().cast(), &raw mut handle),
+            0
+        );
+        assert_ne!(
+            bn_rt_sqlite_query(1, std::ptr::null(), std::ptr::null_mut()),
+            0
+        );
+        assert_ne!(
+            bn_rt_sqlite_query(1, bad_utf8.as_ptr().cast(), std::ptr::null_mut()),
+            0
+        );
+    }
+}

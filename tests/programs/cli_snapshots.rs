@@ -72,6 +72,31 @@ fn option_errors_are_unchanged() {
         command.args(arguments);
         assert_snapshot(command, snapshot, "stderr", 2);
     }
+
+    for bni_only in [
+        &["--ffi-path", ".", ENTRY][..],
+        &["--mode", "program", ENTRY][..],
+    ] {
+        let out = bnc()
+            .args(bni_only)
+            .current_dir(workspace_root())
+            .output()
+            .expect("run bnc");
+        assert_eq!(out.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&out.stderr).contains("unknown or repeated option"));
+    }
+    for bnc_only in [
+        &["run", "--emit", "llvm", ENTRY][..],
+        &["run", "--opt", "0", ENTRY][..],
+    ] {
+        let out = bni()
+            .args(bnc_only)
+            .current_dir(workspace_root())
+            .output()
+            .expect("run bni");
+        assert_eq!(out.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&out.stderr).contains("unknown or repeated option"));
+    }
 }
 
 /// Bucket 0.6.5c AC6: the two `main.rs` hold only the version line and one

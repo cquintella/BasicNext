@@ -121,7 +121,11 @@ impl SqliteProvider {
             Err(failure) => return Ok(failure_value(name, &failure)),
         };
 
-        let object = core.allocate_object("BNSqlite.Connection", span)?;
+        let object = core
+            .allocate_object("BNSqlite.Connection", span)
+            .inspect_err(|_| {
+                let _ = close(db_handle);
+            })?;
         let Value::Object { handle, .. } = object else {
             unreachable!("allocate_object returns object");
         };

@@ -276,7 +276,10 @@ fn iss01_use_after_release_region_rejected_in_bni_and_bnc() {
     let c_source = root.join("tests/ffi/bnffi_test.c");
     build_c_library(&c_source, temp_dir.path(), "bnffi_test");
 
-    let program_src = "\
+    let cases = [
+        (
+            "uar_call.bn",
+            "\
 IMPORT BNFfi AS C
 FUNCTION Start() AS INTEGER
     LET arr AS POINTER TO FLOAT[] = NEW FLOAT[3]
@@ -290,40 +293,193 @@ FUNCTION Start() AS INTEGER
     LET ok AS VOID OR Error = C.Call(\"bnffi_test\", \"test_double_array_scale\", scale_args, void_res)
     RETURN 0
 END FUNCTION
+",
+        ),
+        (
+            "uar_read_from.bn",
+            "\
+IMPORT BNFfi AS C
+FUNCTION Start() AS INTEGER
+    LET res_ptr AS C.HandleResult = NEW C.HandleResult()
+    LET ok AS VOID OR Error = C.Call(\"bnffi_test\", \"test_static_string\", NEW C.Args(), res_ptr)
+    LET h AS C.Handle OR NULL = res_ptr.Value()
+    IF h IS NULL THEN
+        RETURN 1
+    END IF
+    LET arr AS POINTER TO BYTE[] = NEW BYTE[4]
+    LET barr AS C.ByteArray = NEW C.ByteArray(arr)
+    RELEASE arr
+    LET r AS VOID OR Error = barr.ReadFrom(h)
+    RETURN 0
+END FUNCTION
+",
+        ),
+        (
+            "uar_write_to.bn",
+            "\
+IMPORT BNFfi AS C
+FUNCTION Start() AS INTEGER
+    LET alloc_args AS C.Args = NEW C.Args()
+    alloc_args.Add(NEW C.SizeT(16))
+    LET res_ptr AS C.HandleResult = NEW C.HandleResult()
+    LET ok AS VOID OR Error = C.Call(\"bnffi_test\", \"test_alloc_bytes\", alloc_args, res_ptr)
+    LET h AS C.Handle OR NULL = res_ptr.Value()
+    IF h IS NULL THEN
+        RETURN 1
+    END IF
+    LET arr AS POINTER TO BYTE[] = NEW BYTE[4]
+    LET barr AS C.ByteArray = NEW C.ByteArray(arr)
+    RELEASE arr
+    LET w AS VOID OR Error = barr.WriteTo(h)
+    RETURN 0
+END FUNCTION
+",
+        ),
+    ];
+
+    for (filename, program_src) in cases {
+        let program_path = temp_dir.join(filename);
+        fs::write(&program_path, program_src).expect("write uar program");
+
+        let mut bni_cmd = bni();
+        bni_cmd
+            .arg("run")
+            .arg("--ffi-path")
+            .arg(temp_dir.path())
+            .arg(&program_path);
+        let bni_out = run(&mut bni_cmd, None, PROCESS_TIMEOUT).expect("run bni");
+        assert!(
+            !bni_out.status.success(),
+            "{filename}: bni must reject use-after-release on region"
+        );
+        let bni_stderr = String::from_utf8_lossy(&bni_out.stderr);
+        assert!(
+            bni_stderr.contains("USE_AFTER_RELEASE"),
+            "{filename}: expected USE_AFTER_RELEASE from bni, got: {bni_stderr}"
+        );
+
+        let native_bin = compile_native(&program_path, &temp_dir);
+        let mut native_cmd = Command::new(&native_bin);
+        native_cmd.env("BN_LIBRARY_PATH", temp_dir.path());
+        let bnc_out = run(&mut native_cmd, None, PROCESS_TIMEOUT).expect("run native");
+        assert!(
+            !bnc_out.status.success(),
+            "{filename}: bnc binary must reject use-after-release on region"
+        );
+        let bnc_stderr = String::from_utf8_lossy(&bnc_out.stderr);
+        assert!(
+            bnc_stderr.contains("USE_AFTER_RELEASE"),
+            "{filename}: expected USE_AFTER_RELEASE from bnc binary, got: {bnc_stderr}"
+        );
+    }
+}
+
+#[test]
+fn iss07_homonym_library_cache_isolation_by_ffi_path() {
+    let dir_a = TestDir::new("bnffi-dup-a").expect("create dir_a");
+    let dir_b = TestDir::new("bnffi-dup-b").expect("create dir_b");
+
+    let c_src_a = dir_a.join("dup.c");
+    let c_src_b = dir_b.join("dup.c");
+    fs::write(
+        &c_src_a,
+        "#ifdef _WIN32\n#define EXPORT __declspec(dllexport)\n#else\n#define EXPORT\n#endif\nEXPORT int dup_val(void) { return 10; }\n",
+    )
+    .expect("write dup.c in dir_a");
+    fs::write(
+        &c_src_b,
+        "#ifdef _WIN32\n#define EXPORT __declspec(dllexport)\n#else\n#define EXPORT\n#endif\nEXPORT int dup_val(void) { return 20; }\n",
+    )
+    .expect("write dup.c in dir_b");
+
+    build_c_library(&c_src_a, dir_a.path(), "bnffi_dup");
+    build_c_library(&c_src_b, dir_b.path(), "bnffi_dup");
+
+    let prog_src = "\
+IMPORT BNFfi AS C
+FUNCTION Start() AS VOID
+    LET res AS C.Int32 = NEW C.Int32(0)
+    LET ok AS VOID OR Error = C.Call(\"bnffi_dup\", \"dup_val\", NEW C.Args(), res)
+    IF ok IS Error THEN
+        PRINT \"ERR:\", ok.Message
+        RETURN
+    END IF
+    PRINT res.Value()
+END FUNCTION
 ";
-    let program_path = temp_dir.join("uar_region.bn");
-    fs::write(&program_path, program_src).expect("write uar_region.bn");
+    let prog_path = dir_a.join("test_dup.bn");
+    fs::write(&prog_path, prog_src).expect("write test_dup.bn");
+
+    let mut cmd_a = bni();
+    cmd_a
+        .arg("run")
+        .arg("--ffi-path")
+        .arg(dir_a.path())
+        .arg(&prog_path);
+    let out_a = run(&mut cmd_a, None, PROCESS_TIMEOUT).expect("run with dir_a");
+    assert!(out_a.status.success());
+    assert_eq!(String::from_utf8_lossy(&out_a.stdout).trim(), "10");
+
+    let mut cmd_b = bni();
+    cmd_b
+        .arg("run")
+        .arg("--ffi-path")
+        .arg(dir_b.path())
+        .arg(&prog_path);
+    let out_b = run(&mut cmd_b, None, PROCESS_TIMEOUT).expect("run with dir_b");
+    assert!(out_b.status.success());
+    assert_eq!(String::from_utf8_lossy(&out_b.stdout).trim(), "20");
+}
+
+#[test]
+fn iss09_c_long_platform_width_parity() {
+    let root = workspace_root();
+    let temp_dir = TestDir::new("bnffi-clong").expect("create test dir");
+    let c_source = root.join("tests/ffi/bnffi_test.c");
+    build_c_library(&c_source, temp_dir.path(), "bnffi_test");
+
+    let prog_src = "\
+IMPORT BNFfi AS C
+FUNCTION Start() AS VOID
+    LET args AS C.Args = NEW C.Args()
+    args.Add(NEW C.Long(2147483648))
+    args.Add(NEW C.Long(1))
+    LET res AS C.Long = NEW C.Long(0)
+    LET ok AS VOID OR Error = C.Call(\"bnffi_test\", \"test_long\", args, res)
+    IF ok IS Error THEN
+        PRINT \"CODE:\", ok.Code
+    ELSE
+        PRINT \"VAL:\", res.Value()
+    END IF
+END FUNCTION
+";
+    let prog_path = temp_dir.join("clong_width.bn");
+    fs::write(&prog_path, prog_src).expect("write clong_width.bn");
 
     let mut bni_cmd = bni();
     bni_cmd
         .arg("run")
         .arg("--ffi-path")
         .arg(temp_dir.path())
-        .arg(&program_path);
+        .arg(&prog_path);
     let bni_out = run(&mut bni_cmd, None, PROCESS_TIMEOUT).expect("run bni");
-    assert!(
-        !bni_out.status.success(),
-        "bni must reject use-after-release on region passed to C.Int64Array"
-    );
-    let bni_stderr = String::from_utf8_lossy(&bni_out.stderr);
-    assert!(
-        bni_stderr.contains("USE_AFTER_RELEASE"),
-        "expected USE_AFTER_RELEASE from bni, got: {bni_stderr}"
-    );
+    assert!(bni_out.status.success());
 
-    let native_bin = compile_native(&program_path, &temp_dir);
+    let native_bin = compile_native(&prog_path, &temp_dir);
     let mut native_cmd = Command::new(&native_bin);
     native_cmd.env("BN_LIBRARY_PATH", temp_dir.path());
     let bnc_out = run(&mut native_cmd, None, PROCESS_TIMEOUT).expect("run native");
-    assert!(
-        !bnc_out.status.success(),
-        "bnc binary must reject use-after-release on region passed to C.Int64Array"
-    );
-    let bnc_stderr = String::from_utf8_lossy(&bnc_out.stderr);
-    assert!(
-        bnc_stderr.contains("USE_AFTER_RELEASE"),
-        "expected USE_AFTER_RELEASE from bnc binary, got: {bnc_stderr}"
-    );
+    assert!(bnc_out.status.success());
+
+    let bni_stdout = String::from_utf8_lossy(&bni_out.stdout);
+    let bnc_stdout = String::from_utf8_lossy(&bnc_out.stdout);
+    assert_eq!(bni_stdout, bnc_stdout);
+    if std::mem::size_of::<std::os::raw::c_long>() == 4 {
+        assert!(bni_stdout.contains("CODE:"));
+        assert!(bni_stdout.contains('4'));
+    } else {
+        assert_eq!(bni_stdout.trim(), "VAL: 2147483649");
+    }
 }
 
 #[test]
@@ -344,4 +500,71 @@ fn iss03_bnc_rejects_ffi_path_per_d4() {
         stderr.contains("unknown or repeated option '--ffi-path'"),
         "expected unknown option diagnostic from bnc, got: {stderr}"
     );
+}
+
+#[test]
+fn temporal_inversion_after_close_rejected_across_subsystems_in_bni_and_bnc() {
+    let temp_dir = TestDir::new("bn-temporal-close").expect("create test dir");
+    let db_path = temp_dir
+        .join("test.db")
+        .to_string_lossy()
+        .replace('\\', "/");
+    let txt_file = temp_dir.join("sample.txt");
+    fs::write(&txt_file, "hello").expect("write sample.txt");
+    let txt_path = txt_file.to_string_lossy().replace('\\', "/");
+    let prog_src = format!(
+        "\
+IMPORT HOST.FileSystem AS FS
+IMPORT BNSqlite AS Sqlite
+IMPORT BNData AS Data
+FUNCTION Start() AS VOID
+    LET conn AS Sqlite.Connection OR Error = Sqlite.Open(\"{db_path}\")
+    IF conn IS Error THEN
+        PRINT \"FAIL_OPEN\"
+        RETURN
+    END IF
+    LET c1 AS VOID OR Error = conn.Close()
+    LET qAfterClose AS Data.DataFrame OR Error = conn.Query(\"SELECT 1\")
+    IF qAfterClose IS Error THEN
+        PRINT \"SQLITE_CLOSED_OK\"
+    END IF
+
+    LET f AS FS.File OR Error = FS.Open(\"{txt_path}\", FS.READ)
+    IF f IS Error THEN
+        PRINT \"FAIL_FS\"
+        RETURN
+    END IF
+    LET c2 AS VOID OR Error = f.Close()
+    LET rAfterClose AS STRING OR Error = f.ReadAll()
+    IF rAfterClose IS Error THEN
+        PRINT \"FS_CLOSED_OK\"
+    END IF
+END FUNCTION
+"
+    );
+    let prog_path = temp_dir.join("temporal_close.bn");
+    fs::write(&prog_path, prog_src).expect("write temporal_close.bn");
+
+    let mut bni_cmd = bni();
+    bni_cmd.arg("run").arg(&prog_path);
+    let bni_out = run(&mut bni_cmd, None, PROCESS_TIMEOUT).expect("run bni");
+    assert!(
+        bni_out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&bni_out.stderr)
+    );
+
+    let native_bin = compile_native(&prog_path, &temp_dir);
+    let mut native_cmd = Command::new(&native_bin);
+    let bnc_out = run(&mut native_cmd, None, PROCESS_TIMEOUT).expect("run native");
+    assert!(
+        bnc_out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&bnc_out.stderr)
+    );
+
+    let bni_stdout = String::from_utf8_lossy(&bni_out.stdout);
+    let bnc_stdout = String::from_utf8_lossy(&bnc_out.stdout);
+    assert_eq!(bni_stdout, bnc_stdout);
+    assert!(bni_stdout.contains("SQLITE_CLOSED_OK"));
 }

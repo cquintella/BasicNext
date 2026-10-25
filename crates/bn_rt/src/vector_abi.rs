@@ -35,6 +35,18 @@ impl Shape<'_> {
     fn leaf_row_bytes(&self) -> usize {
         self.dimensions[self.dimensions.len() - 1] as usize * self.element_bytes
     }
+
+    fn total_bytes_valid(&self) -> bool {
+        self.dimensions
+            .iter()
+            .try_fold(self.element_bytes, |acc, &d| acc.checked_mul(d as usize))
+            .is_some()
+            && self
+                .dimensions
+                .iter()
+                .try_fold(1usize, |acc, &d| acc.checked_mul(d as usize))
+                .is_some()
+    }
 }
 
 /// Points every row of `rows` (all row levels, outermost first) at the next
@@ -111,16 +123,22 @@ pub extern "C" fn bn_rt_vector_nest(
     rank: u32,
     element_bytes: u64,
 ) {
-    if rows.is_null() || dimensions.is_null() || rank < 2 {
+    if rows.is_null() || leaves.is_null() || dimensions.is_null() || rank < 2 {
         return;
     }
+    let Ok(element_bytes) = usize::try_from(element_bytes) else {
+        return;
+    };
     // SAFETY: `bnc` passes `rank` dimensions in a stack array that lives
     // for the call.
     let dimensions = unsafe { std::slice::from_raw_parts(dimensions, rank as usize) };
     let shape = Shape {
         dimensions,
-        element_bytes: usize::try_from(element_bytes).unwrap_or(0),
+        element_bytes,
     };
+    if !shape.total_bytes_valid() {
+        return;
+    }
     link(rows, leaves, &shape);
     if !source.is_null() && source != rows.cast_const() {
         copy_leaves(source, 0, leaves, &shape);
@@ -193,5 +211,39 @@ mod tests {
         );
         assert_eq!(rows[1].elements.cast_const(), rows[4..].as_ptr().cast());
         assert_eq!(rows[5].elements.cast_const(), leaves[6..].as_ptr().cast());
+    }
+
+    #[test]
+    fn null_pointers_and_overflowing_dimensions_are_rejected_safely() {
+        let mut rows = [EMPTY; 2];
+        let mut leaves = [1_i64, 2, 3, 4, 5, 6];
+        bn_rt_vector_nest(
+            std::ptr::null_mut(),
+            leaves.as_mut_ptr().cast(),
+            std::ptr::null(),
+            DIMENSIONS.as_ptr(),
+            2,
+            8,
+        );
+        bn_rt_vector_nest(
+            rows.as_mut_ptr().cast(),
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            DIMENSIONS.as_ptr(),
+            2,
+            8,
+        );
+        assert!(rows[0].elements.is_null());
+
+        let huge_dims = [u32::MAX, u32::MAX];
+        bn_rt_vector_nest(
+            rows.as_mut_ptr().cast(),
+            leaves.as_mut_ptr().cast(),
+            std::ptr::null(),
+            huge_dims.as_ptr(),
+            2,
+            usize::MAX as u64,
+        );
+        assert!(rows[0].elements.is_null());
     }
 }

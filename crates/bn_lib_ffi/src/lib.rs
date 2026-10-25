@@ -32,11 +32,11 @@ use bn_interp::require_arity_pub as require_arity;
 use bn_interp::type_mismatch;
 use bn_rt::ffi::{
     CValuePayload, ERROR_INVALID_ARGUMENT, ERROR_INVALID_SIGNATURE, ERROR_VALUE_OUT_OF_RANGE,
-    TYPE_ARRAY, TYPE_BOOL, TYPE_DOUBLE, TYPE_FLOAT, TYPE_HANDLE, TYPE_HANDLE_RESULT, TYPE_INT,
-    TYPE_INT8, TYPE_INT16, TYPE_INT32, TYPE_INT64, TYPE_LONG, TYPE_SIZE_T, TYPE_STRING, TYPE_UINT,
-    TYPE_UINT8, TYPE_UINT16, TYPE_UINT32, TYPE_UINT64, TYPE_ULONG, TYPE_VOID, allocate_record,
-    call_c_function, get_handle_ptr, get_record, read_bytes_from_ptr, read_c_string,
-    release_record, write_bytes_to_ptr,
+    MSG_ARRAY_BYTE_SIZE_OVERFLOW, TYPE_ARRAY, TYPE_BOOL, TYPE_DOUBLE, TYPE_FLOAT, TYPE_HANDLE,
+    TYPE_HANDLE_RESULT, TYPE_INT, TYPE_INT8, TYPE_INT16, TYPE_INT32, TYPE_INT64, TYPE_LONG,
+    TYPE_SIZE_T, TYPE_STRING, TYPE_UINT, TYPE_UINT8, TYPE_UINT16, TYPE_UINT32, TYPE_UINT64,
+    TYPE_ULONG, TYPE_VOID, allocate_record, call_c_function, get_handle_ptr, get_record,
+    read_bytes_from_ptr, read_c_string, release_record, write_bytes_to_ptr,
 };
 use bn_runtime::Handle;
 use bn_source::Span;
@@ -453,7 +453,7 @@ impl FfiProvider {
             return Ok(Value::error_report(
                 ERROR_VALUE_OUT_OF_RANGE,
                 "ReadFrom",
-                "array byte size overflow".into(),
+                MSG_ARRAY_BYTE_SIZE_OVERFLOW.into(),
                 String::new(),
             ));
         };
@@ -534,7 +534,7 @@ impl FfiProvider {
             return Ok(Value::error_report(
                 ERROR_VALUE_OUT_OF_RANGE,
                 "WriteTo",
-                "array byte size overflow".into(),
+                MSG_ARRAY_BYTE_SIZE_OVERFLOW.into(),
                 String::new(),
             ));
         };
@@ -628,7 +628,7 @@ impl FfiProvider {
                     return Ok(Value::error_report(
                         ERROR_VALUE_OUT_OF_RANGE,
                         "Call",
-                        "array byte size overflow".into(),
+                        MSG_ARRAY_BYTE_SIZE_OVERFLOW.into(),
                         String::new(),
                     ));
                 };
@@ -831,5 +831,56 @@ fn decode_element(bytes: &[u8], type_code: u32) -> Value {
             Value::Float(f64::from_ne_bytes(arr), FloatType::Float64)
         }
         _ => Value::Null,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bn_rt::ffi::active_record_count;
+
+    #[test]
+    fn temp_array_guard_releases_allocated_records_on_partial_failure() {
+        let rec1 = allocate_record(
+            TYPE_ARRAY,
+            CValuePayload::Array {
+                data: std::ptr::null_mut(),
+                element_size: 4,
+                count: 2,
+                region_arc_id: None,
+            },
+        );
+        let rec2 = allocate_record(
+            TYPE_ARRAY,
+            CValuePayload::Array {
+                data: std::ptr::null_mut(),
+                element_size: 8,
+                count: 4,
+                region_arc_id: None,
+            },
+        );
+        assert!(get_record(rec1).is_some());
+        assert!(get_record(rec2).is_some());
+        let before_drop = active_record_count();
+        assert!(before_drop >= 2);
+        {
+            let mut guard = TempArrayGuard {
+                records: Vec::new(),
+            };
+            guard
+                .records
+                .push((rec1, Handle::new(1, 0), TYPE_INT32, 4, vec![0u8; 8]));
+            guard
+                .records
+                .push((rec2, Handle::new(2, 0), TYPE_INT64, 8, vec![0u8; 32]));
+        }
+        assert!(
+            get_record(rec1).is_none(),
+            "TempArrayGuard must release 1st array record on early exit"
+        );
+        assert!(
+            get_record(rec2).is_none(),
+            "TempArrayGuard must release 2nd array record on early exit"
+        );
     }
 }

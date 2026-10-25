@@ -740,12 +740,18 @@ fn warning_analysis_emits_unused_binding() {
 
 #[test]
 fn warning_analysis_exempts_public_exported_class_bindings() {
-    let output = bni()
-        .args(["check", "examples/clock.bn"])
-        .output()
-        .expect("run clock check");
-    assert_eq!(output.status.code(), Some(0));
-    assert!(!String::from_utf8_lossy(&output.stderr).contains("warning[UNUSED_BINDING]"));
+    for example in ["examples/clock.bn", "examples/global.bn"] {
+        let output = bni()
+            .args(["check", example])
+            .output()
+            .expect("run example check");
+        assert_eq!(output.status.code(), Some(0));
+        assert!(
+            !String::from_utf8_lossy(&output.stderr).contains("warning[UNUSED_BINDING]"),
+            "{example}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 }
 
 #[test]

@@ -562,6 +562,16 @@ mod tests {
         assert!(read_handle(handle).is_err());
         assert_eq!(bn_rt_file_release(handle), BN_FILE_OK);
         assert_eq!(bn_rt_file_release(handle), BN_FILE_INVALID);
+        assert!(!files().0.lock().unwrap().files.contains_key(&handle));
+        assert_ne!(
+            bn_rt_file_open(std::ptr::null(), 0, &mut handle),
+            BN_FILE_OK
+        );
+        let bad_utf8 = [0xFFu8, 0x00u8];
+        assert_ne!(
+            bn_rt_file_open(bad_utf8.as_ptr().cast(), 0, &mut handle),
+            BN_FILE_OK
+        );
         std::fs::remove_file(path).unwrap();
     }
 }

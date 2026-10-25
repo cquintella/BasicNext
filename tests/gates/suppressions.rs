@@ -109,4 +109,45 @@ fn every_suppression_is_listed_with_its_reason() {
         }
     }
     assert!(report.is_empty(), "{}", report.join("\n"));
+
+    let mut prod_files = Vec::new();
+    for root_dir in ["crates", "libraries"] {
+        if let Ok(entries) = fs::read_dir(root_dir) {
+            for crate_dir in entries.flatten() {
+                rust_sources(&crate_dir.path().join("src"), &mut prod_files);
+            }
+        }
+    }
+    let mut poison_panics = Vec::new();
+    for path in prod_files {
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
+        if name == "tests.rs" || name.ends_with("_tests.rs") || name == "test_support.rs" {
+            continue;
+        }
+        let text = fs::read_to_string(&path).expect("read source");
+        let production = text
+            .find("\n#[cfg(test)]")
+            .map_or(text.as_str(), |end| &text[..end]);
+        for (line_no, line) in production.lines().enumerate() {
+            let trimmed = line.trim();
+            if !trimmed.starts_with("//")
+                && (trimmed.contains(".lock().unwrap(") || trimmed.contains(".lock().expect("))
+            {
+                poison_panics.push(format!(
+                    "{}:{}: {}",
+                    path.to_string_lossy().replace('\\', "/"),
+                    line_no + 1,
+                    trimmed
+                ));
+            }
+        }
+    }
+    assert!(
+        poison_panics.is_empty(),
+        "production mutex lock must recover via PoisonError::into_inner instead of .lock().unwrap/expect:\n{}",
+        poison_panics.join("\n")
+    );
 }

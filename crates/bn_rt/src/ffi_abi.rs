@@ -122,6 +122,10 @@ pub extern "C" fn bn_rt_ffi_set_array(
     element_size: usize,
     count: usize,
 ) {
+    if element_size.checked_mul(count).is_none() || count > isize::MAX as usize {
+        update_record_payload(handle, CValuePayload::Void);
+        return;
+    }
     let region_arc_id = if data_ptr.is_null() {
         None
     } else {

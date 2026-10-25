@@ -29,6 +29,7 @@ const INTERPRETER_SIDE: &[&str] = &[
     "crates/bn_lib_crypto/src",
     "crates/bn_lib_data/src",
     "crates/bn_lib_dispatch/src",
+    "crates/bn_lib_ffi/src",
     "crates/bn_lib_json/src",
     "crates/bn_lib_log/src",
     "crates/bn_lib_math/src",
@@ -206,6 +207,19 @@ fn allow_list() -> BTreeSet<(String, String)> {
 
 #[test]
 fn no_rule_is_written_twice_across_the_backends() {
+    for entry in fs::read_dir(root().join("crates")).expect("read crates") {
+        let path = entry.expect("crate entry").path();
+        if let Some(name) = path.file_name().and_then(|n| n.to_str())
+            && name.starts_with("bn_lib_")
+            && path.join("src").is_dir()
+        {
+            let rel = format!("crates/{name}/src");
+            assert!(
+                INTERPRETER_SIDE.contains(&rel.as_str()),
+                "{rel} must be listed in INTERPRETER_SIDE of shared_logic.rs"
+            );
+        }
+    }
     let interpreter = sources(INTERPRETER_SIDE);
     let native = sources(NATIVE_SIDE);
     assert!(

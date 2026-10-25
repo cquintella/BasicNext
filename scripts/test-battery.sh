@@ -15,6 +15,7 @@
 # one timeout, JOBS=1 → clean. Keep JOBS=1 unless the suites stop spawning.
 #
 #   scripts/test-battery.sh            # sequential binaries, --test-threads=1 each
+#   scripts/test-battery.sh --gates    # fast pre-tag / cluster-close contract gate
 #   JOBS=2 THREADS=2 scripts/test-battery.sh
 #   DOCTESTS=1 scripts/test-battery.sh # also run `cargo test --doc` (rustdoc
 #                                      # recompiles every crate: ~9 min for a
@@ -27,16 +28,33 @@ usage() {
   sed -n '/^#   scripts\/test-battery.sh/,/^# Exit status:/p' "$0" | sed '$d; s/^# \{0,1\}//'
 }
 
+GATES_ONLY=0
 for arg in "$@"; do
   case "$arg" in
     -h|--help)
       usage
       exit 0
       ;;
+    --gates|--pre-tag)
+      GATES_ONLY=1
+      ;;
   esac
 done
 
 cd "$(dirname "$0")/.."
+
+if [[ $GATES_ONLY == 1 ]]; then
+  echo "== running pre-tag quality and contract gates"
+  cargo fmt --all --check || exit 1
+  cargo clippy --workspace --all-targets -- -D warnings || exit 1
+  source scripts/test-artifacts.sh
+  prepare_test_artifacts || exit "$?"
+  cargo test --test gates --test codegen --test frontend --test ffi || exit 1
+  cargo test --test programs -- cli_snapshots || exit 1
+  cargo test --test programs -- help_and_man_page_document_the_same_options || exit 1
+  echo "== pre-tag gates passed"
+  exit 0
+fi
 
 JOBS=${JOBS:-1}   # see the note on concurrency below
 THREADS=${THREADS:-1}

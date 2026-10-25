@@ -171,13 +171,21 @@ impl Default for WebTableWrapper {
     }
 }
 
+impl WebTableWrapper {
+    pub(crate) fn lock_table(&self) -> std::sync::MutexGuard<'_, WebTable> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
 pub(crate) fn table() -> Arc<WebTableWrapper> {
     bn_core_copy::table::<WebTableWrapper>()
 }
 
 pub(crate) fn alloc_handle() -> u64 {
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     guard.next_id = guard.next_id.wrapping_add(1).max(1);
     guard.next_id
 }
@@ -188,7 +196,7 @@ pub(crate) fn alloc_handle() -> u64 {
 pub extern "C" fn bn_web_response_create() -> u64 {
     let handle = alloc_handle();
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     guard
         .responses
         .insert(handle, crate::web::Response::default());
@@ -204,7 +212,7 @@ pub extern "C" fn bn_web_response_set_status(handle: u64, status: i64) -> i32 {
         );
     };
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     let Some(response) = guard.responses.get_mut(&handle) else {
         return record_failure(
             "Response.SetStatus",
@@ -223,7 +231,7 @@ pub extern "C" fn bn_web_response_set_status(handle: u64, status: i64) -> i32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_web_response_status(handle: u64) -> i64 {
     let wrapper = table();
-    let guard = wrapper.0.lock().unwrap();
+    let guard = wrapper.lock_table();
     guard
         .responses
         .get(&handle)
@@ -243,7 +251,7 @@ pub extern "C" fn bn_web_response_set_header(
         );
     };
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     let Some(response) = guard.responses.get_mut(&handle) else {
         return record_failure(
             "Response.SetHeader",
@@ -278,7 +286,7 @@ pub extern "C" fn bn_web_response_header(
         return std::ptr::null_mut();
     };
     let wrapper = table();
-    let guard = wrapper.0.lock().unwrap();
+    let guard = wrapper.lock_table();
     let Some(response) = guard.responses.get(&handle) else {
         if !out_status.is_null() {
             // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
@@ -369,7 +377,7 @@ pub extern "C" fn bn_web_response_set_cookie_with_policy(
     let domain_opt = (!domain_str.is_empty()).then_some(domain_str.as_str());
 
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     let Some(response) = guard.responses.get_mut(&handle) else {
         return record_failure(
             "Response.SetCookie",
@@ -403,7 +411,7 @@ pub extern "C" fn bn_web_response_clear_cookie(
     let domain_opt = (!domain_str.is_empty()).then_some(domain_str.as_str());
 
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     let Some(response) = guard.responses.get_mut(&handle) else {
         return record_failure(
             "Response.ClearCookie",
@@ -426,7 +434,7 @@ pub extern "C" fn bn_web_response_clear_cookie(
 pub extern "C" fn bn_web_response_write(handle: u64, body: *const c_char) -> i32 {
     let body_str = string_text(body).unwrap_or_default();
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     let Some(response) = guard.responses.get_mut(&handle) else {
         return record_failure(
             "Response.Write",
@@ -445,7 +453,7 @@ pub extern "C" fn bn_web_response_write(handle: u64, body: *const c_char) -> i32
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_web_response_commit(handle: u64) -> i32 {
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     let Some(response) = guard.responses.get_mut(&handle) else {
         return record_failure(
             "Response.Commit",
@@ -464,7 +472,7 @@ pub extern "C" fn bn_web_response_commit(handle: u64) -> i32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_web_response_is_committed(handle: u64) -> i32 {
     let wrapper = table();
-    let guard = wrapper.0.lock().unwrap();
+    let guard = wrapper.lock_table();
     // `i32`, not `bool`: the caller reads the full register, and a C `bool`
     // leaves the upper bits undefined on x86-64.
     i32::from(
@@ -478,7 +486,7 @@ pub extern "C" fn bn_web_response_is_committed(handle: u64) -> i32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_web_response_close(handle: u64) -> i32 {
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     if let Some(mut response) = guard.responses.remove(&handle) {
         let () = response.close();
     }
@@ -491,7 +499,7 @@ pub extern "C" fn bn_web_response_close(handle: u64) -> i32 {
 pub extern "C" fn bn_web_request_create() -> u64 {
     let handle = alloc_handle();
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     guard
         .requests
         .insert(handle, crate::web::Request::default());
@@ -501,7 +509,7 @@ pub extern "C" fn bn_web_request_create() -> u64 {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_web_request_method(handle: u64) -> *mut c_char {
     let wrapper = table();
-    let guard = wrapper.0.lock().unwrap();
+    let guard = wrapper.lock_table();
     guard
         .requests
         .get(&handle)
@@ -511,7 +519,7 @@ pub extern "C" fn bn_web_request_method(handle: u64) -> *mut c_char {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_web_request_target(handle: u64) -> *mut c_char {
     let wrapper = table();
-    let guard = wrapper.0.lock().unwrap();
+    let guard = wrapper.lock_table();
     guard
         .requests
         .get(&handle)
@@ -537,7 +545,7 @@ pub extern "C" fn bn_web_request_header(
         return std::ptr::null_mut();
     };
     let wrapper = table();
-    let guard = wrapper.0.lock().unwrap();
+    let guard = wrapper.lock_table();
     let Some(request) = guard.requests.get(&handle) else {
         if !out_status.is_null() {
             // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
@@ -589,7 +597,7 @@ pub extern "C" fn bn_web_request_param(
         return std::ptr::null_mut();
     };
     let wrapper = table();
-    let guard = wrapper.0.lock().unwrap();
+    let guard = wrapper.lock_table();
     let Some(request) = guard.requests.get(&handle) else {
         if !out_status.is_null() {
             // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
@@ -638,7 +646,7 @@ pub extern "C" fn bn_web_request_cookie(
         return std::ptr::null_mut();
     };
     let wrapper = table();
-    let guard = wrapper.0.lock().unwrap();
+    let guard = wrapper.lock_table();
     let Some(request) = guard.requests.get(&handle) else {
         if !out_status.is_null() {
             // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
@@ -675,7 +683,7 @@ pub extern "C" fn bn_web_request_body(
     out_status: *mut i32,
 ) -> *mut c_char {
     let wrapper = table();
-    let guard = wrapper.0.lock().unwrap();
+    let guard = wrapper.lock_table();
     let Some(request) = guard.requests.get(&handle) else {
         if !out_status.is_null() {
             // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
@@ -712,7 +720,7 @@ pub extern "C" fn bn_web_request_body(
 pub extern "C" fn bn_web_server_create() -> u64 {
     let handle = alloc_handle();
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     guard.servers.insert(
         handle,
         ServerEntry {
@@ -727,7 +735,7 @@ pub extern "C" fn bn_web_server_create() -> u64 {
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_web_server_add_filter(handle: u64, filter_fn: extern "C" fn(u64, u64)) -> i32 {
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     let Some(entry) = guard.servers.get_mut(&handle) else {
         return record_failure(
             "Server.AddFilter",
@@ -755,11 +763,14 @@ pub extern "C" fn bn_web_server_route(
         );
     };
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     let Some(entry) = guard.servers.get_mut(&handle) else {
         return record_failure("Server.Route", &WebFailure::Closed("server closed".into()));
     };
-    let mut state = entry.state.lock().unwrap();
+    let mut state = entry
+        .state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     match state.add_route(method_str.clone(), pattern_str.clone()) {
         Ok(()) => {
             entry.routes.push((method_str, pattern_str, handler_fn));
@@ -782,11 +793,14 @@ pub extern "C" fn bn_web_server_static(
         );
     };
     let wrapper = table();
-    let guard = wrapper.0.lock().unwrap();
+    let guard = wrapper.lock_table();
     let Some(entry) = guard.servers.get(&handle) else {
         return record_failure("Server.Static", &WebFailure::Closed("server closed".into()));
     };
-    let mut state = entry.state.lock().unwrap();
+    let mut state = entry
+        .state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     match state.add_static(&prefix_str, &dir_str) {
         Ok(()) => BN_WEB_OK,
         Err(err) => record_failure("Server.Static", &WebFailure::from_message(err)),
@@ -796,14 +810,17 @@ pub extern "C" fn bn_web_server_static(
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_web_server_use_sessions(handle: u64, capacity: i64, idle_ms: i64) -> i32 {
     let wrapper = table();
-    let guard = wrapper.0.lock().unwrap();
+    let guard = wrapper.lock_table();
     let Some(entry) = guard.servers.get(&handle) else {
         return record_failure(
             "Server.UseSessions",
             &WebFailure::Closed("server closed".into()),
         );
     };
-    let mut state = entry.state.lock().unwrap();
+    let mut state = entry
+        .state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     match state.use_sessions(i128::from(capacity), i128::from(idle_ms)) {
         Ok(()) => BN_WEB_OK,
         Err(err) => record_failure("Server.UseSessions", &WebFailure::from_message(err)),
@@ -813,11 +830,14 @@ pub extern "C" fn bn_web_server_use_sessions(handle: u64, capacity: i64, idle_ms
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_web_server_start(handle: u64, _addr_ptr: *const c_char, _port: i32) -> i32 {
     let wrapper = table();
-    let guard = wrapper.0.lock().unwrap();
+    let guard = wrapper.lock_table();
     let Some(entry) = guard.servers.get(&handle) else {
         return record_failure("Server.Start", &WebFailure::Closed("server closed".into()));
     };
-    let mut state = entry.state.lock().unwrap();
+    let mut state = entry
+        .state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     match state.start_with_options(crate::web::ServerOptions::default()) {
         Ok(()) => BN_WEB_OK,
         Err(err) => record_failure("Server.Start", &WebFailure::from_message(err)),
@@ -828,7 +848,7 @@ pub extern "C" fn bn_web_server_start(handle: u64, _addr_ptr: *const c_char, _po
 pub extern "C" fn bn_web_server_dispatch(handle: u64, req_handle: u64, resp_handle: u64) -> i32 {
     let wrapper = table();
     let (filters, routes, state_arc) = {
-        let guard = wrapper.0.lock().unwrap();
+        let guard = wrapper.lock_table();
         let Some(entry) = guard.servers.get(&handle) else {
             return record_failure(
                 "Server.Dispatch",
@@ -843,7 +863,7 @@ pub extern "C" fn bn_web_server_dispatch(handle: u64, req_handle: u64, resp_hand
     };
 
     let (method, target) = {
-        let guard = wrapper.0.lock().unwrap();
+        let guard = wrapper.lock_table();
         let Some(req) = guard.requests.get(&req_handle) else {
             return record_failure(
                 "Server.Dispatch",
@@ -855,7 +875,9 @@ pub extern "C" fn bn_web_server_dispatch(handle: u64, req_handle: u64, resp_hand
 
     // Dispatch via state to check acceptance and match route
     let matched = {
-        let mut state = state_arc.lock().unwrap();
+        let mut state = state_arc
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut res = None;
         if state
             .dispatch(&method, &target, |outcome| {
@@ -876,24 +898,11 @@ pub extern "C" fn bn_web_server_dispatch(handle: u64, req_handle: u64, resp_hand
 
     let (pattern, params) = match matched {
         Ok((pat, p)) => (pat, p),
-        Err(404) => {
-            let mut guard = wrapper.0.lock().unwrap();
+        Err(code) => {
+            let status = if matches!(code, 404 | 405) { code } else { 500 };
+            let mut guard = wrapper.lock_table();
             if let Some(resp) = guard.responses.get_mut(&resp_handle) {
-                let _ = resp.set_status(404);
-            }
-            return BN_WEB_OK;
-        }
-        Err(405) => {
-            let mut guard = wrapper.0.lock().unwrap();
-            if let Some(resp) = guard.responses.get_mut(&resp_handle) {
-                let _ = resp.set_status(405);
-            }
-            return BN_WEB_OK;
-        }
-        Err(_) => {
-            let mut guard = wrapper.0.lock().unwrap();
-            if let Some(resp) = guard.responses.get_mut(&resp_handle) {
-                let _ = resp.set_status(500);
+                let _ = resp.set_status(status);
             }
             return BN_WEB_OK;
         }
@@ -901,7 +910,7 @@ pub extern "C" fn bn_web_server_dispatch(handle: u64, req_handle: u64, resp_hand
 
     // Store params on request
     {
-        let mut guard = wrapper.0.lock().unwrap();
+        let mut guard = wrapper.lock_table();
         if let Some(req) = guard.requests.get_mut(&req_handle) {
             req.params = crate::web::sorted_params(&params);
         }
@@ -925,13 +934,13 @@ pub extern "C" fn bn_web_server_dispatch(handle: u64, req_handle: u64, resp_hand
             handler_fn(req_handle, resp_handle);
         }));
         if outcome.is_err() {
-            let mut guard = wrapper.0.lock().unwrap();
+            let mut guard = wrapper.lock_table();
             if let Some(resp) = guard.responses.get_mut(&resp_handle) {
                 let _ = resp.set_status(500);
             }
         }
     } else {
-        let mut guard = wrapper.0.lock().unwrap();
+        let mut guard = wrapper.lock_table();
         if let Some(resp) = guard.responses.get_mut(&resp_handle) {
             let _ = resp.set_status(404);
         }
@@ -944,7 +953,7 @@ pub extern "C" fn bn_web_server_dispatch(handle: u64, req_handle: u64, resp_hand
 pub extern "C" fn bn_web_server_stop(handle: u64, timeout_ms: i64) -> i32 {
     let wrapper = table();
     let state_arc = {
-        let guard = wrapper.0.lock().unwrap();
+        let guard = wrapper.lock_table();
         let Some(entry) = guard.servers.get(&handle) else {
             return record_failure("Server.Stop", &WebFailure::Closed("server closed".into()));
         };
@@ -960,7 +969,7 @@ pub extern "C" fn bn_web_server_stop(handle: u64, timeout_ms: i64) -> i32 {
 pub extern "C" fn bn_web_server_close(handle: u64, timeout_ms: i64) -> i32 {
     let wrapper = table();
     let state_arc = {
-        let guard = wrapper.0.lock().unwrap();
+        let guard = wrapper.lock_table();
         let Some(entry) = guard.servers.get(&handle) else {
             return record_failure("Server.Close", &WebFailure::Closed("server closed".into()));
         };
@@ -990,7 +999,7 @@ pub extern "C" fn bn_web_tls_from_pem(
         Ok(config) => {
             let handle = alloc_handle();
             let wrapper = table();
-            let mut guard = wrapper.0.lock().unwrap();
+            let mut guard = wrapper.lock_table();
             guard.tls_configs.insert(handle, Arc::new(config));
             if !out_handle.is_null() {
                 // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
@@ -1008,7 +1017,7 @@ pub extern "C" fn bn_web_tls_from_pem(
 pub extern "C" fn bn_web_cookie_jar_create() -> u64 {
     let handle = alloc_handle();
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     guard
         .cookie_jars
         .insert(handle, crate::web_state::CookieJar::default());
@@ -1067,7 +1076,7 @@ pub extern "C" fn bn_web_cookie_jar_set_with_policy(
     let duration = std::time::Duration::from_millis(u64::try_from(max_age_ms.max(0)).unwrap_or(0));
 
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     let Some(jar) = guard.cookie_jars.get_mut(&handle) else {
         return record_failure(
             "CookieJar.Set",
@@ -1110,7 +1119,7 @@ pub extern "C" fn bn_web_cookie_jar_get(
         return std::ptr::null_mut();
     };
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     let Some(jar) = guard.cookie_jars.get_mut(&handle) else {
         if !out_status.is_null() {
             // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
@@ -1143,7 +1152,7 @@ pub extern "C" fn bn_web_cookie_jar_get(
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_web_cookie_jar_count(handle: u64) -> i64 {
     let wrapper = table();
-    let guard = wrapper.0.lock().unwrap();
+    let guard = wrapper.lock_table();
     guard
         .cookie_jars
         .get(&handle)
@@ -1164,7 +1173,7 @@ pub extern "C" fn bn_web_session_store_new(
         Ok(store) => {
             let handle = alloc_handle();
             let wrapper = table();
-            let mut guard = wrapper.0.lock().unwrap();
+            let mut guard = wrapper.lock_table();
             guard.session_stores.insert(handle, store);
             if !out_handle.is_null() {
                 // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
@@ -1195,7 +1204,7 @@ pub extern "C" fn bn_web_session_store_create(
         return std::ptr::null_mut();
     };
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     let Some(store) = guard.session_stores.get_mut(&handle) else {
         if !out_status.is_null() {
             // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
@@ -1248,7 +1257,7 @@ pub extern "C" fn bn_web_session_store_get(
         return std::ptr::null_mut();
     };
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     let Some(store) = guard.session_stores.get_mut(&handle) else {
         if !out_status.is_null() {
             // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
@@ -1287,7 +1296,7 @@ pub extern "C" fn bn_web_scraper_create(html: *const c_char) -> u64 {
         .unwrap_or_else(|_| crate::web_state::Scraper::parse("").unwrap());
     let handle = alloc_handle();
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     guard.scrapers.insert(handle, scraper);
     handle
 }
@@ -1311,7 +1320,7 @@ pub extern "C" fn bn_web_scraper_text(
         return std::ptr::null_mut();
     };
     let wrapper = table();
-    let guard = wrapper.0.lock().unwrap();
+    let guard = wrapper.lock_table();
     let Some(scraper) = guard.scrapers.get(&handle) else {
         if !out_status.is_null() {
             // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
@@ -1348,7 +1357,7 @@ pub extern "C" fn bn_web_scraper_text(
 pub extern "C" fn bn_web_acl_create() -> u64 {
     let handle = alloc_handle();
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     guard.acls.insert(handle, crate::web_state::Acl::default());
     handle
 }
@@ -1363,7 +1372,7 @@ pub extern "C" fn bn_web_acl_allow(handle: u64, net_str_ptr: *const c_char, pref
     };
     let cidr_text = format!("{net_text}/{prefix}");
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     let Some(acl) = guard.acls.get_mut(&handle) else {
         return record_failure("ACL.Allow", &WebFailure::Closed("ACL closed".into()));
     };
@@ -1383,7 +1392,7 @@ pub extern "C" fn bn_web_acl_deny(handle: u64, net_str_ptr: *const c_char, prefi
     };
     let cidr_text = format!("{net_text}/{prefix}");
     let wrapper = table();
-    let mut guard = wrapper.0.lock().unwrap();
+    let mut guard = wrapper.lock_table();
     let Some(acl) = guard.acls.get_mut(&handle) else {
         return record_failure("ACL.Deny", &WebFailure::Closed("ACL closed".into()));
     };
@@ -1402,7 +1411,7 @@ pub extern "C" fn bn_web_acl_check(handle: u64, addr_ptr: *const c_char) -> i32 
         return 0;
     };
     let wrapper = table();
-    let guard = wrapper.0.lock().unwrap();
+    let guard = wrapper.lock_table();
     let Some(acl) = guard.acls.get(&handle) else {
         return 0;
     };
@@ -1436,7 +1445,7 @@ pub extern "C" fn bn_web_egress_policy_new(
         Ok(policy) => {
             let handle = alloc_handle();
             let wrapper = table();
-            let mut guard = wrapper.0.lock().unwrap();
+            let mut guard = wrapper.lock_table();
             guard.egress_policies.insert(handle, policy);
             if !out_handle.is_null() {
                 // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
@@ -1454,7 +1463,7 @@ pub extern "C" fn bn_web_egress_policy_new(
 pub extern "C" fn bn_web_client_create(logger: u64) -> u64 {
     let handle = alloc_handle();
     if logger != 0 {
-        table().0.lock().unwrap().clients.insert(handle, logger);
+        table().lock_table().clients.insert(handle, logger);
     }
     handle
 }
@@ -1540,7 +1549,7 @@ pub extern "C" fn bn_web_client_request_with_policy(
 
     let wrapper = table();
     let (policy, logger) = {
-        let guard = wrapper.0.lock().unwrap();
+        let guard = wrapper.lock_table();
         let policy = if policy_handle != 0 {
             guard
                 .egress_policies
@@ -1568,7 +1577,7 @@ pub extern "C" fn bn_web_client_request_with_policy(
                 &resp.headers,
             );
             let resp_handle = alloc_handle();
-            let mut guard = wrapper.0.lock().unwrap();
+            let mut guard = wrapper.lock_table();
             guard.responses.insert(resp_handle, resp);
             if !out_resp_handle.is_null() {
                 // SAFETY: the pointer was checked non-null and points at a writable slot the caller allocated.
@@ -1585,6 +1594,6 @@ pub extern "C" fn bn_web_client_request_with_policy(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn bn_web_client_close(handle: u64) -> i32 {
-    table().0.lock().unwrap().clients.remove(&handle);
+    table().lock_table().clients.remove(&handle);
     BN_WEB_OK
 }

@@ -41,6 +41,7 @@ pub const ERROR_INVALID_SIGNATURE: i32 = 5;
 pub const ERROR_VALUE_OUT_OF_RANGE: i32 = 6;
 pub const ERROR_INVALID_STRING: i32 = 7;
 pub const ERROR_INVALID_UTF8: i32 = 8;
+pub const MSG_ARRAY_BYTE_SIZE_OVERFLOW: &str = "array byte size overflow";
 
 // Type codes for C.* classes.
 pub const TYPE_INT8: u32 = 1;
@@ -184,6 +185,13 @@ pub fn release_record(handle: u64) {
 pub fn get_record(handle: u64) -> Option<Record> {
     let map = records_map().lock().unwrap_or_else(PoisonError::into_inner);
     map.get(&handle).cloned()
+}
+
+pub fn active_record_count() -> usize {
+    records_map()
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .len()
 }
 
 pub fn update_record_payload(handle: u64, payload: CValuePayload) -> bool {
@@ -697,7 +705,7 @@ pub fn array_read_from(array_handle: u64, source_ptr: *mut c_void) -> Result<(),
                 ));
             }
             let total_bytes = element_size.checked_mul(count).ok_or_else(|| {
-                FfiError::new(ERROR_VALUE_OUT_OF_RANGE, "array byte size overflow")
+                FfiError::new(ERROR_VALUE_OUT_OF_RANGE, MSG_ARRAY_BYTE_SIZE_OVERFLOW)
             })?;
             // SAFETY: Source and destination pointers are non-null, region is verified live,
             // and byte size is checked against arithmetic overflow.
@@ -743,7 +751,7 @@ pub fn array_write_to(array_handle: u64, dest_ptr: *mut c_void) -> Result<(), Ff
                 ));
             }
             let total_bytes = element_size.checked_mul(count).ok_or_else(|| {
-                FfiError::new(ERROR_VALUE_OUT_OF_RANGE, "array byte size overflow")
+                FfiError::new(ERROR_VALUE_OUT_OF_RANGE, MSG_ARRAY_BYTE_SIZE_OVERFLOW)
             })?;
             // SAFETY: Destination and source pointers are non-null, region is verified live,
             // and byte size is checked against arithmetic overflow.

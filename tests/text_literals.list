@@ -1849,9 +1849,6 @@ crates/bn_lib_ffi/src/lib.rs	prose	BNFfi member
 crates/bn_lib_ffi/src/lib.rs	prose	BNFfi member
 crates/bn_lib_ffi/src/lib.rs	prose	Region Pointer
 crates/bn_lib_ffi/src/lib.rs	prose	allocate_object returns Object
-crates/bn_lib_ffi/src/lib.rs	prose	array byte size overflow
-crates/bn_lib_ffi/src/lib.rs	prose	array byte size overflow
-crates/bn_lib_ffi/src/lib.rs	prose	array byte size overflow
 crates/bn_lib_ffi/src/lib.rs	prose	invalid handle record
 crates/bn_lib_ffi/src/lib.rs	prose	invalid handle record
 crates/bn_lib_ffi/src/lib.rs	prose	invalid handle record
@@ -2532,7 +2529,6 @@ crates/bn_rt/src/ffi.rs	prose	SizeT value {v} out of range for target size_t
 crates/bn_rt/src/ffi.rs	prose	ULong value {v} out of range for target C unsigned long
 crates/bn_rt/src/ffi.rs	prose	array buffer pointer is null
 crates/bn_rt/src/ffi.rs	prose	array buffer pointer is null
-crates/bn_rt/src/ffi.rs	prose	array byte size overflow
 crates/bn_rt/src/ffi.rs	prose	array byte size overflow
 crates/bn_rt/src/ffi.rs	prose	cannot read from null handle pointer
 crates/bn_rt/src/ffi.rs	prose	cannot read from null pointer
