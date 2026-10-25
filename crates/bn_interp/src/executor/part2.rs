@@ -167,6 +167,9 @@ impl Executor<'_, '_> {
                 ty,
                 span,
             } => {
+                if self.session_restored_symbols.remove(symbol) {
+                    return Ok(());
+                }
                 let stored = self.coerce_to(value(values, *source, *span)?.clone(), ty, *span)?;
                 if let (Some(Value::Vector(previous)), Value::Vector(next)) =
                     (symbols.get(symbol), &stored)

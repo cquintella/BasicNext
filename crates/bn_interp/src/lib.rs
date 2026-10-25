@@ -23,7 +23,10 @@ mod helpers;
 mod numeric;
 pub mod provider;
 mod render;
+pub mod session;
 mod temporal_ops;
+
+pub use session::{ArcInspection, ExecutionResult, InteractiveSession};
 
 // Helpers a provider (the `bn` crate's `libraries`/`hosts`) may use. They are the
 // core's value/diagnostic vocabulary, not language semantics.
@@ -343,7 +346,7 @@ use support::host_random_seed;
 #[cfg(test)]
 mod tests;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Instance {
     fields: Box<[Value]>,
 }
@@ -357,42 +360,37 @@ struct OwnershipFrame {
     weak_symbols: std::collections::HashSet<SymbolId>,
 }
 
-struct Executor<'a, 'debug> {
-    module: &'a Module,
-    /// Each function of `module` by name: the call dispatch reads it on every
-    /// call, so it is built once.
-    function_index: HashMap<&'a str, usize>,
-    /// The stack address when the executor started, and how far below it BN
-    /// calls may go before `STACK_OVERFLOW` (K53).
-    stack_base: usize,
-    stack_budget: usize,
-    input: &'a mut dyn BufRead,
-    output: &'a mut dyn Write,
-    host: &'a HostEnv,
-    stop_code: Option<i128>,
-    /// A `STOP` this function's IR has seen (`$stopping`): its locals are
-    /// being released before it stops too (`$stop_code`).
-    unwinding: Option<i128>,
-    statics: HashMap<(String, String), Value>,
-    class_init: HashMap<String, ClassInit>,
-    /// Strong counts and liveness of every object and region (the one ARC
-    /// core shared with `bnc`); `objects` and `memory` hold their payloads.
-    arc: bn_rt::arc::ArcCore,
-    objects: Heap<Instance>,
-    memory: Heap<Value>,
-    pinned_dispatch: Vec<(Handle, String)>,
-    /// Library providers for this execution, keyed by standard-module name.
-    libraries: HashMap<&'static str, Box<dyn provider::Provider>>,
-    hosts: HashMap<&'static str, Box<dyn provider::Provider>>,
-    debug_hook: Option<DebugHook<'debug>>,
-    debug_control: Option<DebugControl<'debug>>,
-    emitter: Option<&'debug mut EventEmitter>,
-    call_depth: usize,
-    ownership_frames: Vec<OwnershipFrame>,
+pub(crate) struct Executor<'a, 'debug> {
+    pub(crate) module: &'a Module,
+    pub(crate) function_index: HashMap<&'a str, usize>,
+    pub(crate) stack_base: usize,
+    pub(crate) stack_budget: usize,
+    pub(crate) input: &'a mut dyn BufRead,
+    pub(crate) output: &'a mut dyn Write,
+    pub(crate) host: &'a HostEnv,
+    pub(crate) stop_code: Option<i128>,
+    pub(crate) unwinding: Option<i128>,
+    pub(crate) statics: HashMap<(String, String), Value>,
+    pub(crate) class_init: HashMap<String, ClassInit>,
+    pub(crate) arc: bn_rt::arc::ArcCore,
+    pub(crate) objects: Heap<Instance>,
+    pub(crate) memory: Heap<Value>,
+    pub(crate) pinned_dispatch: Vec<(Handle, String)>,
+    pub(crate) libraries: HashMap<&'static str, Box<dyn provider::Provider>>,
+    pub(crate) hosts: HashMap<&'static str, Box<dyn provider::Provider>>,
+    pub(crate) debug_hook: Option<DebugHook<'debug>>,
+    pub(crate) debug_control: Option<DebugControl<'debug>>,
+    pub(crate) emitter: Option<&'debug mut EventEmitter>,
+    pub(crate) call_depth: usize,
+    pub(crate) ownership_frames: Vec<OwnershipFrame>,
+    pub(crate) session_bindings: HashMap<SymbolId, Value>,
+    pub(crate) session_restored_symbols: std::collections::HashSet<SymbolId>,
+    pub(crate) session_captured_symbols: Option<HashMap<SymbolId, Value>>,
+    pub(crate) cancel_flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 /// Each function of `module` by name (the first one, as the IR keeps names unique).
-fn function_index(module: &Module) -> HashMap<&str, usize> {
+pub(crate) fn function_index(module: &Module) -> HashMap<&str, usize> {
     let mut index = HashMap::new();
     for (position, function) in module.functions.iter().enumerate() {
         index.entry(function.name.as_str()).or_insert(position);
@@ -439,6 +437,10 @@ impl<'a, 'debug> Executor<'a, 'debug> {
             emitter,
             call_depth: 0,
             ownership_frames: Vec::new(),
+            session_bindings: HashMap::new(),
+            session_restored_symbols: std::collections::HashSet::new(),
+            session_captured_symbols: None,
+            cancel_flag: None,
         }
     }
 }
@@ -475,7 +477,7 @@ pub struct DebugView {
 pub(crate) type DebugControl<'a> =
     &'a mut dyn FnMut(&str, usize, bn_source::Span, &DebugView) -> DebugDecision;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum ClassInit {
     Running,
     Ready,
@@ -939,14 +941,14 @@ pub fn set_stack_budget(bytes: usize) {
     STACK_BUDGET.with(|budget| budget.set(bytes));
 }
 
-fn stack_budget() -> usize {
+pub(crate) fn stack_budget() -> usize {
     STACK_BUDGET.with(std::cell::Cell::get)
 }
 
 /// An address on the current stack: how deep the thread's stack is, by the
 /// distance to an address taken earlier on the same thread.
 #[inline(never)]
-fn stack_address() -> usize {
+pub(crate) fn stack_address() -> usize {
     let marker = 0_u8;
     std::ptr::addr_of!(marker) as usize
 }

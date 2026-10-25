@@ -10,7 +10,7 @@ pub use bn_value::Handle;
 /// The payloads of live allocations, keyed by the handle the shared ARC core
 /// (`bn_rt::arc::ArcCore`) issued: the core decides identity, counts and
 /// liveness for both backends; the heap only stores what a handle names.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Heap<T> {
     /// Indexed by the handle's slot; each entry keeps the generation of the
     /// handle that owns it, so a stale handle never reads a reused slot.
@@ -26,6 +26,15 @@ impl<T> Default for Heap<T> {
 }
 
 impl<T: Clone> Heap<T> {
+    /// Number of active allocations in the heap.
+    #[must_use]
+    pub fn count(&self) -> usize {
+        self.allocations
+            .iter()
+            .filter(|slot| slot.is_some())
+            .count()
+    }
+
     /// Stores the payload of the allocation `handle` names: `length` copies
     /// of `initial` (a zero-length region is valid).
     ///

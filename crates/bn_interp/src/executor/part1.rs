@@ -31,6 +31,9 @@ impl Executor<'_, '_> {
             .copied()
             .zip(arguments)
             .collect::<HashMap<_, _>>();
+        if self.call_depth == 0 {
+            symbols.extend(self.session_bindings.drain());
+        }
         // Parameters are borrowed: the lowering emits every ownership
         // operation, so a call only tracks which bindings ended.
         let mut values = HashMap::new();
@@ -61,6 +64,15 @@ impl Executor<'_, '_> {
                         depth: self.call_depth,
                         span: instruction.span(),
                     });
+                }
+                if let Some(cancel) = &self.cancel_flag
+                    && cancel.load(std::sync::atomic::Ordering::Relaxed)
+                {
+                    return Err(runtime_error(
+                        bn_diag::DiagId::DEBUG_TERMINATED,
+                        bn_catalog::text("frontend", "msg.session_cancelled"),
+                        instruction.span(),
+                    ));
                 }
                 let view = self
                     .debug_control
@@ -149,6 +161,11 @@ impl Executor<'_, '_> {
                             span: function.span,
                             return_value: returned.as_ref().map(|v| format!("{v:?}")),
                         });
+                    }
+                    if self.call_depth == 0
+                        && let Some(captured) = &mut self.session_captured_symbols
+                    {
+                        *captured = symbols.clone();
                     }
                     return Ok(Flow::Return(returned));
                 }

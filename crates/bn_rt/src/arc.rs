@@ -93,7 +93,7 @@ pub struct ObjectInfo {
     pub strong: u64,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Slot {
     generation: u32,
     /// Zero when the slot holds no live object.
@@ -125,7 +125,7 @@ impl fmt::Display for Site {
 }
 
 /// Strong counts and liveness for every object of one program run.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ArcCore {
     slots: Vec<Slot>,
     free: Vec<u32>,

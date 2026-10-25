@@ -74,3 +74,6 @@ msg.session_unmatched_closing_paren = unmatched ')' without opening '('
 msg.session_unmatched_closing_bracket = unmatched ']' without opening '['
 msg.session_unterminated_block_comment = unterminated block comment
 msg.session_unterminated_string_literal = unterminated string literal
+msg.session_cancelled = execution cancelled by user
+msg.host_filesystem_not_provided = HOST.FileSystem is not provided by this host
+msg.session_start_not_found = executable module requires FUNCTION Start
