@@ -62,7 +62,7 @@ design principles.
 Two executables share one frontend, one diagnostic format, and one exit-status
 model:
 
-- `bni` interprets and hosts the tools: `run`, `eval`, `check`, `lex`, `lsp`
+- `bni` interprets and hosts the tools: `run` (with optional `--trace-events` and `--profile`), `eval`, `check`, `lex`, `lsp`
   (language server), and `dap` (debugger).
 - `bnc` compiles to a native executable through LLVM:
   `bnc hello.bn` (or `bnc hello.bn -o hello`). `bnc -g` adds debug information
@@ -98,7 +98,7 @@ The script asks for a prefix (`$HOME/basicnext`, `/opt/basicnext`,
 catalog, and the man pages. It uses `sudo` only when the prefix is not
 writable, and builds from source with `cargo` when the release has no binary
 for your platform. Skip the menu with `--prefix DIR`; pin a release with
-`BN_VERSION=v0.6.5`. The install writes `$HOME/.basicnext/uninstall.sh`.
+`BN_VERSION=v0.6.8`. The install writes `$HOME/.basicnext/uninstall.sh`.
 
 **Windows (PowerShell)**
 
@@ -111,7 +111,7 @@ rights, or to `$env:BN_PREFIX`. It downloads the latest release's `bni.exe`,
 `bnc.exe`, and `bn_rt.lib` (checksum-verified against `SHA256SUMS`), the
 standard-library modules, and the diagnostics catalog, updates the user `PATH`,
 and writes `%USERPROFILE%\.basicnext\uninstall.ps1`. Pin a release with
-`$env:BN_VERSION = 'v0.6.5'`.
+`$env:BN_VERSION = 'v0.6.8'`.
 
 Or from a local repository checkout:
 
@@ -157,6 +157,22 @@ From a checkout, `cargo run -p bni -- run <file>` uses this tree's toolchain.
 
 ## Release notes
 
+### 0.6.8
+
+- **Runtime instrumentation and event tracing**: new event-driven layer (`bn_runtime_instrumentation`) embedded in `bn_interp` with zero overhead when inactive; `--trace-events <file>` streams execution history in structured NDJSON format.
+- **Function execution profiler**: `--profile table|json` collects execution statistics (call counts, self-time, cumulative time) with high-precision metrics.
+- **DAP modernization**: `bn_dap` decoupled from legacy hooks through `DebuggerConsumer`, preserving 100% protocol parity.
+- **Modular standard libraries extraction**: domain libraries (`BNWeb`, `BNLog`, `BNSqlite`, `BNData`, `BNJson`, `BNDispatch`, `BNCrypto`, `BNString`, `BNMath`) relocated strictly under `libraries/` and `bn_stdlib`, decoupling the core compiler and runtime.
+- **Native Host parity**: closed gaps in `HOST.Random` and host execution policies across compiler and interpreter.
+
+### 0.6.7
+
+- **Standard C Foreign Function Interface (`BNFfi`)**: C foreign function calls through standard module `BNFfi` with exact cross-backend parity on `bni` and `bnc`, isolated `unsafe` in `bn_rt::ffi`, zero leak lifecycle, and 34 verified ABI symbols.
+
+### 0.6.6
+
+- **Consolidated test system**: 7 integration targets consolidated from 32 root binaries, full baseline migration ledger with zero test loss, Clean Code domain partitioning, and stale-binary guards.
+
 ### 0.6.5
 
 - **Typed LLVM and one class model.** `bnc` lowers through a typed in-memory LLVM module. Classes, upcasts, and interface calls use one model on `bni` and `bnc`.
@@ -179,7 +195,7 @@ From a checkout, `cargo run -p bni -- run <file>` uses this tree's toolchain.
 
 - `bnc` does not yet compile the `Net.Address` predicates (`IsIPv4`,
   `IsIPv6`, `IsLoopback`, `IsPrivate`, `IsLinkLocal`, `IsMulticast`)
-  and `TCPStream.SetTimeouts`/`Shutdown*`; run those programs with `bni`.
+  and `TCPStream.Shutdown*`; run those programs with `bni`.
 - `TIMEZONE` holds an IANA identifier; zone conversion is not implemented.
 
 ## Documentation
@@ -191,8 +207,8 @@ From a checkout, `cargo run -p bni -- run <file>` uses this tree's toolchain.
   tutorial.
 - [Runtime ABI contract](docs/architecture/value-memory-abi.md).
 - Edit `.bn` files with the [VS Code extension](https://github.com/cquintella/basicnext-vscode).
-  Download `basicnext-0.6.5.vsix` from that repository's releases and install it with
-  `code --install-extension basicnext-0.6.5.vsix`.
+  Download the latest `.vsix` from that repository's releases and install it with
+  `code --install-extension basicnext-*.vsix`.
   Also available: [Vim / Neovim plugin](https://github.com/cquintella/basicnext-vim)
   and [Jupyter kernel](https://github.com/cquintella/basicnext-jupyter).
 
