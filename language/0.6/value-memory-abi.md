@@ -1,6 +1,6 @@
 # Value, memory, and ABI contract (to-be)
 
-> Canonical: `docs/architecture/value-memory-abi.md`  
+> Canonical: `language/0.6/value-memory-abi.md`  
 > Status: **0.6.5 object contract specified; implementation evidence remains per-wave.** The rows below are the normative ownership/lifetime invariants for ARC objects; they do not claim that M2 or M4 is complete.
 
 ## Why this exists

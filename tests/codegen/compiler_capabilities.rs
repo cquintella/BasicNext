@@ -725,9 +725,8 @@ fn runtime_exported_symbols() -> BTreeSet<String> {
 }
 
 fn abi_documented_symbols() -> BTreeSet<String> {
-    let contract =
-        fs::read_to_string(workspace_root().join("docs/architecture/value-memory-abi.md"))
-            .expect("read ABI contract");
+    let contract = fs::read_to_string(workspace_root().join("language/0.6/value-memory-abi.md"))
+        .expect("read ABI contract");
     let marker = "```text llvm-emitted-bn-rt-symbols\n";
     contract
         .split_once(marker)

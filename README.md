@@ -205,7 +205,7 @@ From a checkout, `cargo run -p bni -- run <file>` uses this tree's toolchain.
   the normative contract.
 - [The Basic Next book](https://github.com/cquintella/basicnext-book): the
   tutorial.
-- [Runtime ABI contract](docs/architecture/value-memory-abi.md).
+- [Runtime ABI contract](language/0.6/value-memory-abi.md).
 - Edit `.bn` files with the [VS Code extension](https://github.com/cquintella/basicnext-vscode).
   Download the latest `.vsix` from that repository's releases and install it with
   `code --install-extension basicnext-*.vsix`.

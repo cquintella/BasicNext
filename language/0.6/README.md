@@ -34,5 +34,6 @@
 | [`math.md`](math.md) | Standard library module: `BNMath` functions and numeric limits |
 | [`memory-migration.md`](memory-migration.md) | Memory model migration guide (legacy scopes to ARC) |
 | [`temporal.md`](temporal.md) | Scalar types `DATE`, `TIME`, and `TIMESTAMP` operations |
+| [`value-memory-abi.md`](value-memory-abi.md) | Native runtime ABI contract and symbol catalog |
 
 For 0.6.x language changes, edit this tree.

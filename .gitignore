@@ -23,6 +23,7 @@ __pycache__/
 /language/tobediscarded/
 
 # Local planning and research (not versioned)
+/docs/
 /ongoing/
 /done/
 /research/
