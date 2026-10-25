@@ -1,0 +1,33 @@
+// Author: Carlos Quintella
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+FUNCTION Start() AS VOID
+    LET utc AS TIMEZONE = TimeZone.Parse("UTC")
+    LET sp AS TIMEZONE = TimeZone.Parse("America/Sao_Paulo")
+    LET lon AS TIMEZONE = TimeZone.Parse("Europe/London")
+    LET ny AS TIMEZONE = TimeZone.Parse("America/New_York")
+    LET tyo AS TIMEZONE = TimeZone.Parse("Asia/Tokyo")
+
+    LET tsWinter AS TIMESTAMP = Timestamp.Parse("2026-01-15T12:00:00.000Z")
+    LET tsSummer AS TIMESTAMP = Timestamp.Parse("2026-07-15T12:00:00.000Z")
+
+    PRINT TimeZone.Offset(utc, tsWinter), TimeZone.IsDST(utc, tsWinter)
+    PRINT TimeZone.Offset(sp, tsWinter), TimeZone.IsDST(sp, tsWinter)
+    PRINT TimeZone.Offset(tyo, tsWinter), TimeZone.IsDST(tyo, tsWinter)
+    PRINT TimeZone.Offset(lon, tsWinter), TimeZone.IsDST(lon, tsWinter)
+    PRINT TimeZone.Offset(lon, tsSummer), TimeZone.IsDST(lon, tsSummer)
+    PRINT TimeZone.Offset(ny, tsWinter), TimeZone.IsDST(ny, tsWinter)
+    PRINT TimeZone.Offset(ny, tsSummer), TimeZone.IsDST(ny, tsSummer)
+
+    PRINT Timestamp.AtZone(tsSummer, sp)
+    PRINT Timestamp.AtZone(tsSummer, lon)
+    PRINT Timestamp.AtZone(tsSummer, ny)
+    PRINT Timestamp.AtZone(tsSummer, tyo)
+
+    LET localDate AS DATE = Date.Parse("2026-07-15")
+    LET localTime AS TIME = Time.Parse("09:00:00.000")
+    LET backTs AS TIMESTAMP = Timestamp.FromLocal(localDate, localTime, sp)
+    PRINT backTs = tsSummer
+END FUNCTION

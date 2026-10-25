@@ -389,6 +389,36 @@ pub(crate) fn call_instruction_supported(
                     .get(&arguments[0])
                     .is_some_and(|ty| matches!(ty, Type::Integer(_) | Type::IntegerLiteral(_)))
         }
+        Some("TimeZone.Offset" | "TimeZone.IsDST") => {
+            arguments.len() == 2
+                && values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| matches!(ty, Type::Named(name) if name == "TIMEZONE"))
+                && values
+                    .get(&arguments[1])
+                    .is_some_and(|ty| matches!(ty, Type::Integer(_) | Type::IntegerLiteral(_)))
+        }
+        Some("Timestamp.AtZone") => {
+            arguments.len() == 2
+                && values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| matches!(ty, Type::Integer(_) | Type::IntegerLiteral(_)))
+                && values
+                    .get(&arguments[1])
+                    .is_some_and(|ty| matches!(ty, Type::Named(name) if name == "TIMEZONE"))
+        }
+        Some("Timestamp.FromLocal") => {
+            arguments.len() == 3
+                && values
+                    .get(&arguments[0])
+                    .is_some_and(|ty| matches!(ty, Type::Named(name) if name == "DATE"))
+                && values
+                    .get(&arguments[1])
+                    .is_some_and(|ty| matches!(ty, Type::Named(name) if name == "TIME"))
+                && values
+                    .get(&arguments[2])
+                    .is_some_and(|ty| matches!(ty, Type::Named(name) if name == "TIMEZONE"))
+        }
         Some("ASC") => arguments.len() == 1 && values.get(&arguments[0]) == Some(&Type::String),
         Some("TOLOWER" | "TOUPPER") => {
             arguments.len() == 1 && values.get(&arguments[0]) == Some(&Type::String)

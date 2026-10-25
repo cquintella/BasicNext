@@ -14,7 +14,15 @@ use super::{Value, integer, require_arity, runtime_error, shared_string, type_mi
 pub(crate) fn is_temporal_builtin(name: &str) -> bool {
     matches!(
         name,
-        "Date.Parse" | "Time.Parse" | "TimeZone.Parse" | "Timestamp.Parse" | "Timestamp.Format"
+        "Date.Parse"
+            | "Time.Parse"
+            | "TimeZone.Parse"
+            | "TimeZone.Offset"
+            | "TimeZone.IsDST"
+            | "Timestamp.Parse"
+            | "Timestamp.Format"
+            | "Timestamp.AtZone"
+            | "Timestamp.FromLocal"
     )
 }
 
@@ -91,6 +99,99 @@ pub(crate) fn temporal_call(
             Ok(Value::String(shared_string(temporal::format_rfc3339(
                 timestamp, span,
             )?)))
+        }
+        "TimeZone.Offset" => {
+            require_arity(name, arguments, 2, span)?;
+            let Value::TimeZone(tz) = &arguments[0] else {
+                return Err(type_mismatch(
+                    "TIMEZONE",
+                    bn_catalog::text("temporal", "msg.non_timezone_value"),
+                    "TimeZone.Offset",
+                    span,
+                ));
+            };
+            let (ts, _) = integer(&arguments[1], span)?;
+            let ts = i64::try_from(ts).map_err(|_| {
+                runtime_error(
+                    bn_diag::DiagId::FORMAT_OUT_OF_RANGE,
+                    bn_catalog::text("temporal", "msg.timestamp_out_of_range"),
+                    span,
+                )
+            })?;
+            let offset = temporal::timezone_offset(tz, ts, span)?;
+            Ok(Value::Integer(i128::from(offset), IntegerType::Int32))
+        }
+        "TimeZone.IsDST" => {
+            require_arity(name, arguments, 2, span)?;
+            let Value::TimeZone(tz) = &arguments[0] else {
+                return Err(type_mismatch(
+                    "TIMEZONE",
+                    bn_catalog::text("temporal", "msg.non_timezone_value"),
+                    "TimeZone.IsDST",
+                    span,
+                ));
+            };
+            let (ts, _) = integer(&arguments[1], span)?;
+            let ts = i64::try_from(ts).map_err(|_| {
+                runtime_error(
+                    bn_diag::DiagId::FORMAT_OUT_OF_RANGE,
+                    bn_catalog::text("temporal", "msg.timestamp_out_of_range"),
+                    span,
+                )
+            })?;
+            let is_dst = temporal::timezone_is_dst(tz, ts, span)?;
+            Ok(Value::Boolean(is_dst))
+        }
+        "Timestamp.AtZone" => {
+            require_arity(name, arguments, 2, span)?;
+            let (ts, _) = integer(&arguments[0], span)?;
+            let ts = i64::try_from(ts).map_err(|_| {
+                runtime_error(
+                    bn_diag::DiagId::FORMAT_OUT_OF_RANGE,
+                    bn_catalog::text("temporal", "msg.timestamp_out_of_range"),
+                    span,
+                )
+            })?;
+            let Value::TimeZone(tz) = &arguments[1] else {
+                return Err(type_mismatch(
+                    "TIMEZONE",
+                    bn_catalog::text("temporal", "msg.non_timezone_value"),
+                    "Timestamp.AtZone",
+                    span,
+                ));
+            };
+            let formatted = temporal::format_at_zone(ts, tz, span)?;
+            Ok(Value::String(shared_string(formatted)))
+        }
+        "Timestamp.FromLocal" => {
+            require_arity(name, arguments, 3, span)?;
+            let Value::Date(days) = &arguments[0] else {
+                return Err(type_mismatch(
+                    "DATE",
+                    bn_catalog::text("temporal", "msg.non_date_value"),
+                    "Timestamp.FromLocal",
+                    span,
+                ));
+            };
+            let Value::Time(millis) = &arguments[1] else {
+                return Err(type_mismatch(
+                    "TIME",
+                    bn_catalog::text("temporal", "msg.non_time_value"),
+                    "Timestamp.FromLocal",
+                    span,
+                ));
+            };
+            let Value::TimeZone(tz) = &arguments[2] else {
+                return Err(type_mismatch(
+                    "TIMEZONE",
+                    bn_catalog::text("temporal", "msg.non_timezone_value"),
+                    "Timestamp.FromLocal",
+                    span,
+                ));
+            };
+            let millis = i32::try_from(*millis).unwrap_or(0);
+            let ts = temporal::timestamp_from_local(*days, millis, tz, span)?;
+            Ok(Value::Integer(i128::from(ts), IntegerType::Int64))
         }
         _ => Err(super::name_not_found(name, "temporal function", span)),
     }

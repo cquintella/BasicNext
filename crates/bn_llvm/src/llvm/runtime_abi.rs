@@ -256,6 +256,10 @@ signatures! {
     TEMPORAL_TIME_PARSE = "bn_rt_temporal_time_parse"(Ptr, Ptr) -> I32;
     TEMPORAL_TIMESTAMP_PARSE = "bn_rt_temporal_timestamp_parse"(Ptr, Ptr) -> I64;
     TEMPORAL_TIMESTAMP_FORMAT = "bn_rt_temporal_timestamp_format"(I64, Ptr) -> Ptr;
+    TEMPORAL_TIMEZONE_OFFSET = "bn_rt_temporal_timezone_offset"(Ptr, I64, Ptr) -> I32;
+    TEMPORAL_TIMEZONE_IS_DST = "bn_rt_temporal_timezone_is_dst"(Ptr, I64, Ptr) -> I32;
+    TEMPORAL_TIMESTAMP_AT_ZONE = "bn_rt_temporal_timestamp_at_zone"(I64, Ptr, Ptr) -> Ptr;
+    TEMPORAL_TIMESTAMP_FROM_LOCAL = "bn_rt_temporal_timestamp_from_local"(I32, I32, Ptr, Ptr) -> I64;
     MATH_TOWEEKDAY = "bn_rt_math_toweekday"(I64) -> I32;
     MATH_TRUNC = "bn_rt_math_trunc"(Double) -> Double;
     MATH_VAL = "bn_rt_math_val"(Ptr) -> Double;
@@ -460,6 +464,7 @@ declarations! {
     MATH_QUARTILE1_F64 MATH_QUARTILE3_F64 MATH_RANGE_F64 MATH_STDEV_F64 MATH_VARIANCE_F64
     MATH_MODE_F64 MATH_TODATE MATH_TOTIME MATH_TOTIMESTAMP
     TEMPORAL_DATE_PARSE TEMPORAL_TIME_PARSE TEMPORAL_TIMESTAMP_PARSE TEMPORAL_TIMESTAMP_FORMAT
+    TEMPORAL_TIMEZONE_OFFSET TEMPORAL_TIMEZONE_IS_DST TEMPORAL_TIMESTAMP_AT_ZONE TEMPORAL_TIMESTAMP_FROM_LOCAL
     ;
     STRING_CONCAT_DECLARATIONS =
     STR_CONCAT MALLOC LLVM_MEMCPY_P0_P0_I64

@@ -191,13 +191,6 @@ From a checkout, `cargo run -p bni -- run <file>` uses this tree's toolchain.
 - **RAII Resource Management**: intermediate LLVM IR (`.ll`) and object (`.o`) files are guaranteed to be cleaned up deterministically upon any early toolchain failure.
 - **CLI Diagnostics Normalization**: fixed help messages in `bnc` and strengthened LLVM backend lowering against unexpected scalar and vector types.
 
-## Known limitations
-
-- `bnc` does not yet compile the `Net.Address` predicates (`IsIPv4`,
-  `IsIPv6`, `IsLoopback`, `IsPrivate`, `IsLinkLocal`, `IsMulticast`)
-  and `TCPStream.Shutdown*`; run those programs with `bni`.
-- `TIMEZONE` holds an IANA identifier; zone conversion is not implemented.
-
 ## Documentation
 
 - [Language specification 0.6](language/0.6/0.6.md), with its

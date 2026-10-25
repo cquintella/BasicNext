@@ -99,6 +99,99 @@ pub extern "C" fn bn_rt_temporal_timestamp_format(
     c_string(&s)
 }
 
+/// `TimeZone.Offset(tz, ts)`: returns offset in seconds, or ends with the site's trap.
+#[allow(unsafe_code)] // SAFETY: C ABI export for LLVM-emitted code reading NUL-terminated strings.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_temporal_timezone_offset(
+    tz: *const c_char,
+    timestamp: i64,
+    trap: *const c_char,
+) -> i32 {
+    let s = c_str(tz).unwrap_or("");
+    let Some(offset) = bn_core_text::timezone::timezone_offset(s, timestamp) else {
+        super::trap_abi::fail_at(
+            trap,
+            bn_catalog::text("temporal", "msg.invalid_timezone"),
+            bn_catalog::text("temporal", "msg.invalid_timezone_2"),
+        );
+    };
+    offset
+}
+
+/// `TimeZone.IsDST(tz, ts)`: returns 1 if DST is active, 0 otherwise, or ends with the site's trap.
+#[allow(unsafe_code)] // SAFETY: C ABI export for LLVM-emitted code reading NUL-terminated strings.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_temporal_timezone_is_dst(
+    tz: *const c_char,
+    timestamp: i64,
+    trap: *const c_char,
+) -> i32 {
+    let s = c_str(tz).unwrap_or("");
+    let Some(is_dst) = bn_core_text::timezone::timezone_is_dst(s, timestamp) else {
+        super::trap_abi::fail_at(
+            trap,
+            bn_catalog::text("temporal", "msg.invalid_timezone"),
+            bn_catalog::text("temporal", "msg.invalid_timezone_2"),
+        );
+    };
+    i32::from(is_dst)
+}
+
+/// `Timestamp.AtZone(ts, tz)`: returns RFC 3339 text in zone, or ends with the site's trap.
+#[allow(unsafe_code)] // SAFETY: C ABI export for LLVM-emitted code allocating NUL-terminated strings.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_temporal_timestamp_at_zone(
+    timestamp: i64,
+    tz: *const c_char,
+    trap: *const c_char,
+) -> *mut c_char {
+    let s = c_str(tz).unwrap_or("");
+    let formatted = bn_core_text::timezone::format_at_zone(timestamp, s).unwrap_or_else(|| {
+        if bn_core_text::timezone::is_known_timezone(s) {
+            super::trap_abi::fail_at(
+                trap,
+                bn_catalog::text("temporal", "msg.format_out_of_range"),
+                bn_core_text::civil::RANGE_ERROR,
+            );
+        } else {
+            super::trap_abi::fail_at(
+                trap,
+                bn_catalog::text("temporal", "msg.invalid_timezone"),
+                bn_catalog::text("temporal", "msg.invalid_timezone_2"),
+            );
+        }
+    });
+    c_string(&formatted)
+}
+
+/// `Timestamp.FromLocal(date, time, tz)`: returns UTC timestamp, or ends with the site's trap.
+#[allow(unsafe_code)] // SAFETY: C ABI export for LLVM-emitted code reading NUL-terminated strings.
+#[unsafe(no_mangle)]
+pub extern "C" fn bn_rt_temporal_timestamp_from_local(
+    days: i32,
+    millis: i32,
+    tz: *const c_char,
+    trap: *const c_char,
+) -> i64 {
+    let s = c_str(tz).unwrap_or("");
+    let Some(ts) = bn_core_text::timezone::timestamp_from_local(days, millis, s) else {
+        if bn_core_text::timezone::is_known_timezone(s) {
+            super::trap_abi::fail_at(
+                trap,
+                bn_catalog::text("temporal", "msg.format_out_of_range"),
+                bn_core_text::civil::RANGE_ERROR,
+            );
+        } else {
+            super::trap_abi::fail_at(
+                trap,
+                bn_catalog::text("temporal", "msg.invalid_timezone"),
+                bn_catalog::text("temporal", "msg.invalid_timezone_2"),
+            );
+        }
+    };
+    ts
+}
+
 #[cfg(test)]
 mod tests {
     use super::{CivilDate, civil_from_days, days_from_civil, format_rfc3339, rfc3339, split};

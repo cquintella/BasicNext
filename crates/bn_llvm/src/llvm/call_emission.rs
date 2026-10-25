@@ -405,6 +405,105 @@ pub(crate) fn lower_call_instruction(
                 TEMPORAL_TIMESTAMP_FORMAT.call([value, trap]),
             );
         }
+        "TimeZone.Offset" => {
+            let arg_ty = analysis.values.get(&arguments[1]).unwrap_or_else(|| {
+                panic!(
+                    "{}",
+                    bn_catalog::text("llvm", "msg.validated_timestamp_argument")
+                )
+            });
+            let ts = helpers::extend_to_i64(text, arguments[1], arg_ty);
+            let trap = O::global(
+                traps::trap_symbol(
+                    state,
+                    bn_diag::DiagId::INVALID_TIMEZONE,
+                    vec![(
+                        "message",
+                        Fact::Text(bn_catalog::text("temporal", "msg.invalid_timezone_2").into()),
+                    )],
+                )
+                .0,
+            );
+            text.assign(
+                format!("v{}", destination.0),
+                TEMPORAL_TIMEZONE_OFFSET.call([v(arguments[0]), ts, trap]),
+            );
+        }
+        "TimeZone.IsDST" => {
+            let arg_ty = analysis.values.get(&arguments[1]).unwrap_or_else(|| {
+                panic!(
+                    "{}",
+                    bn_catalog::text("llvm", "msg.validated_timestamp_argument")
+                )
+            });
+            let ts = helpers::extend_to_i64(text, arguments[1], arg_ty);
+            let trap = O::global(
+                traps::trap_symbol(
+                    state,
+                    bn_diag::DiagId::INVALID_TIMEZONE,
+                    vec![(
+                        "message",
+                        Fact::Text(bn_catalog::text("temporal", "msg.invalid_timezone_2").into()),
+                    )],
+                )
+                .0,
+            );
+            let call_res = format!("dst_res{}", destination.0);
+            text.assign(
+                call_res.clone(),
+                TEMPORAL_TIMEZONE_IS_DST.call([v(arguments[0]), ts, trap]),
+            );
+            text.assign(
+                format!("v{}", destination.0),
+                I::icmp(ICmpCond::Ne, T::I32, O::reg(call_res), O::int(0)),
+            );
+        }
+        "Timestamp.AtZone" => {
+            let arg_ty = analysis.values.get(&arguments[0]).unwrap_or_else(|| {
+                panic!(
+                    "{}",
+                    bn_catalog::text("llvm", "msg.validated_timestamp_argument")
+                )
+            });
+            let ts = helpers::extend_to_i64(text, arguments[0], arg_ty);
+            let trap = O::global(
+                traps::trap_symbol(
+                    state,
+                    bn_diag::DiagId::INVALID_TIMEZONE,
+                    vec![(
+                        "message",
+                        Fact::Text(bn_catalog::text("temporal", "msg.invalid_timezone_2").into()),
+                    )],
+                )
+                .0,
+            );
+            text.assign(
+                format!("v{}", destination.0),
+                TEMPORAL_TIMESTAMP_AT_ZONE.call([ts, v(arguments[1]), trap]),
+            );
+        }
+        "Timestamp.FromLocal" => {
+            let trap = O::global(
+                traps::trap_symbol(
+                    state,
+                    bn_diag::DiagId::INVALID_TIMEZONE,
+                    vec![(
+                        "message",
+                        Fact::Text(bn_catalog::text("temporal", "msg.invalid_timezone_2").into()),
+                    )],
+                )
+                .0,
+            );
+            text.assign(
+                format!("v{}", destination.0),
+                TEMPORAL_TIMESTAMP_FROM_LOCAL.call([
+                    v(arguments[0]),
+                    v(arguments[1]),
+                    v(arguments[2]),
+                    trap,
+                ]),
+            );
+        }
         #[cfg(feature = "json")]
         name if bnjson_member(module, name).is_some() => {
             let member = bnjson_member(module, name).expect("validated BNJson member");

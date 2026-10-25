@@ -87,6 +87,64 @@ pub fn format_rfc3339(timestamp: i64, span: Span) -> Result<String, Diagnostic> 
     civil::rfc3339(timestamp).ok_or_else(|| out_of_range(span))
 }
 
+fn unsupported_timezone(tz: &str, span: Span) -> Diagnostic {
+    temporal_error(
+        bn_diag::DiagId::INVALID_TIMEZONE,
+        format!(
+            "'{tz}' {}",
+            bn_catalog::text("temporal", "msg.timezone_not_supported")
+        ),
+        span,
+    )
+}
+
+/// # Errors
+///
+/// Returns `INVALID_TIMEZONE` if the time zone is not supported.
+pub(crate) fn timezone_offset(tz: &str, timestamp: i64, span: Span) -> Result<i32, Diagnostic> {
+    bn_core_text::timezone::timezone_offset(tz, timestamp)
+        .ok_or_else(|| unsupported_timezone(tz, span))
+}
+
+/// # Errors
+///
+/// Returns `INVALID_TIMEZONE` if the time zone is not supported.
+pub(crate) fn timezone_is_dst(tz: &str, timestamp: i64, span: Span) -> Result<bool, Diagnostic> {
+    bn_core_text::timezone::timezone_is_dst(tz, timestamp)
+        .ok_or_else(|| unsupported_timezone(tz, span))
+}
+
+/// # Errors
+///
+/// Returns `INVALID_TIMEZONE` if unsupported, or `FORMAT_OUT_OF_RANGE` outside civil range.
+pub(crate) fn format_at_zone(timestamp: i64, tz: &str, span: Span) -> Result<String, Diagnostic> {
+    bn_core_text::timezone::format_at_zone(timestamp, tz).ok_or_else(|| {
+        if bn_core_text::timezone::is_known_timezone(tz) {
+            out_of_range(span)
+        } else {
+            unsupported_timezone(tz, span)
+        }
+    })
+}
+
+/// # Errors
+///
+/// Returns `INVALID_TIMEZONE` if unsupported, or `FORMAT_OUT_OF_RANGE` outside civil range.
+pub(crate) fn timestamp_from_local(
+    days: i32,
+    millis: i32,
+    tz: &str,
+    span: Span,
+) -> Result<i64, Diagnostic> {
+    bn_core_text::timezone::timestamp_from_local(days, millis, tz).ok_or_else(|| {
+        if bn_core_text::timezone::is_known_timezone(tz) {
+            out_of_range(span)
+        } else {
+            unsupported_timezone(tz, span)
+        }
+    })
+}
+
 #[must_use]
 pub(crate) fn format_date(days: i32) -> String {
     civil::format_date(days)

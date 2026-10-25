@@ -338,3 +338,54 @@ END FUNCTION
         )
     );
 }
+
+#[test]
+fn timezone_conversion_and_dst_round_trip() {
+    let source = r#"
+FUNCTION Start() AS VOID
+    LET utc AS TIMEZONE = TimeZone.Parse("UTC")
+    LET sp AS TIMEZONE = TimeZone.Parse("America/Sao_Paulo")
+    LET lon AS TIMEZONE = TimeZone.Parse("Europe/London")
+    LET ny AS TIMEZONE = TimeZone.Parse("America/New_York")
+    LET tyo AS TIMEZONE = TimeZone.Parse("Asia/Tokyo")
+
+    LET tsWinter AS TIMESTAMP = Timestamp.Parse("2026-01-15T12:00:00.000Z")
+    LET tsSummer AS TIMESTAMP = Timestamp.Parse("2026-07-15T12:00:00.000Z")
+
+    PRINT TimeZone.Offset(utc, tsWinter), TimeZone.IsDST(utc, tsWinter)
+    PRINT TimeZone.Offset(sp, tsWinter), TimeZone.IsDST(sp, tsWinter)
+    PRINT TimeZone.Offset(tyo, tsWinter), TimeZone.IsDST(tyo, tsWinter)
+    PRINT TimeZone.Offset(lon, tsWinter), TimeZone.IsDST(lon, tsWinter)
+    PRINT TimeZone.Offset(lon, tsSummer), TimeZone.IsDST(lon, tsSummer)
+    PRINT TimeZone.Offset(ny, tsWinter), TimeZone.IsDST(ny, tsWinter)
+    PRINT TimeZone.Offset(ny, tsSummer), TimeZone.IsDST(ny, tsSummer)
+
+    PRINT Timestamp.AtZone(tsSummer, sp)
+    PRINT Timestamp.AtZone(tsSummer, lon)
+    PRINT Timestamp.AtZone(tsSummer, ny)
+    PRINT Timestamp.AtZone(tsSummer, tyo)
+
+    LET localDate AS DATE = Date.Parse("2026-07-15")
+    LET localTime AS TIME = Time.Parse("09:00:00.000")
+    LET backTs AS TIMESTAMP = Timestamp.FromLocal(localDate, localTime, sp)
+    PRINT backTs = tsSummer
+END FUNCTION
+"#;
+    let (code, output) = run(source, "").expect("execute timezone conversions");
+    assert_eq!(code, 0);
+    assert_eq!(
+        output,
+        "0 FALSE\n\
+         -10800 FALSE\n\
+         32400 FALSE\n\
+         0 FALSE\n\
+         3600 TRUE\n\
+         -18000 FALSE\n\
+         -14400 TRUE\n\
+         2026-07-15T09:00:00.000-03:00\n\
+         2026-07-15T13:00:00.000+01:00\n\
+         2026-07-15T08:00:00.000-04:00\n\
+         2026-07-15T21:00:00.000+09:00\n\
+         TRUE\n"
+    );
+}

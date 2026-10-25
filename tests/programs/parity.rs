@@ -1327,6 +1327,17 @@ fn build_lowers_host_net_resolve_through_bn_rt() {
 }
 
 #[test]
+fn timezone_conversion_matches_across_backends() {
+    native_matches_interpreter("tests/host/timezone_conversion.bn");
+}
+
+#[test]
+fn host_net_address_predicates_and_tcp_shutdown_match_across_backends() {
+    native_matches_interpreter("tests/host/net_address.bn");
+    native_matches_interpreter("tests/host/net_tcp.bn");
+}
+
+#[test]
 fn compiled_console_tty_errors_match_interpreter() {
     let path = "tests/grammar/valid/console-size.bn";
     let interpreted = bni().args(["run", path]).output().expect("run interpreter");

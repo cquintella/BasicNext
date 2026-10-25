@@ -21,9 +21,9 @@ O compilador nativo rejeita deliberadamente ou deixa de implementar um conjunto 
 
 * **`HOST` (Operações nativas ausentes documentadas em `todo/bucket-0.6.2f-native-host-and-cleanup.md`):**
 * `HOST.NumProcs`: Não suportado nativamente.
-* Predicados de `HOST.Net.Address`: `IsIPv4`, `IsIPv6`, `IsLoopback`, `IsPrivate`, `IsLinkLocal`, `IsMulticast` existem em `bn_rt::net::addressing`, mas `bnc` rejeita com `TARGET_UNSUPPORTED_HOST`.
-* `HOST.Net.CIDR`: `Net.CIDR.Parse` e métodos da classe `CIDR` não são emitidos nativamente.
-* `HOST.Net.TCPStream`: `SetTimeouts`, `ShutdownRead` e `ShutdownWrite` não são emitidos nativamente.
+* Predicados de `HOST.Net.Address`: [RESOLVIDO] `IsIPv4`, `IsIPv6`, `IsLoopback`, `IsPrivate`, `IsLinkLocal`, `IsMulticast` suportados nativamente em `bnc` com paridade total.
+* `HOST.Net.CIDR`: [RESOLVIDO] `Net.CIDR.Parse` e métodos da classe `CIDR` emitidos nativamente.
+* `HOST.Net.TCPStream`: [RESOLVIDO] `SetTimeouts`, `ShutdownRead` e `ShutdownWrite` emitidos nativamente com paridade total.
 * `HOST.Random`: `R.Random()` em modo nativo exige que `R.Seed` esteja na mesma função para ser compilado.
 
 * **Funções de Usuário:**

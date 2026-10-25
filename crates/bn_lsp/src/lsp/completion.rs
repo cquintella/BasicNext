@@ -314,8 +314,9 @@ fn members_of(path: &str) -> Vec<String> {
             "NumProcs",
             "Random",
         ],
-        "Date" | "Time" | "TimeZone" => &["Parse"],
-        "Timestamp" => &["Format", "Parse"],
+        "Date" | "Time" => &["Parse"],
+        "TimeZone" => &["IsDST", "Offset", "Parse"],
+        "Timestamp" => &["AtZone", "Format", "FromLocal", "Parse"],
         _ => &[],
     };
     local.iter().map(|member| (*member).to_string()).collect()

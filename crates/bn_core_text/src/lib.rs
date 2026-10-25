@@ -12,6 +12,7 @@
 
 pub mod civil;
 pub mod temporal;
+pub mod timezone;
 
 /// Parses a numeric prefix from `text`, matching Basic Next `VAL` semantics (R3).
 /// Leading whitespace is trimmed. Trailing characters after the numeric prefix are ignored.

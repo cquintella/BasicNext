@@ -2,9 +2,8 @@
 
 ## Status
 
-Accepted API contract. Parsing, UTC conversion, and identifier-only
-`TIMEZONE` values are implemented in the 0.1 interpreter. Zone conversion is
-post-0.1.
+Accepted API contract. Parsing, UTC conversion, and timezone conversion
+are implemented across both backends (`bni` and `bnc`).
 
 ## Construction and interchange
 
@@ -34,7 +33,17 @@ digits.
 Time-zone conversion is a separate operation because it depends on a versioned
 IANA TZDB release. It is not silently performed by any UTC conversion.
 
-In 0.1, `TIMEZONE` stores a canonical IANA identifier. `TimeZone.Parse`
-accepts `UTC` and `Area/Location` spellings and rejects offsets such as
-`-03:00`. The reference interpreter does not link a TZDB database; identifier
-validation is spelling-only. Zone conversion remains post-0.1.
+## Timezone conversion
+
+| Function | Result |
+| --- | --- |
+| `TimeZone.Offset(tz AS TIMEZONE, ts AS TIMESTAMP)` | `INTEGER` offset in seconds from UTC at timestamp `ts` in timezone `tz`, accounting for daylight saving time. |
+| `TimeZone.IsDST(tz AS TIMEZONE, ts AS TIMESTAMP)` | `BOOLEAN` indicating whether daylight saving time is active in `tz` at timestamp `ts`. |
+| `Timestamp.AtZone(ts AS TIMESTAMP, tz AS TIMEZONE)` | Canonical RFC 3339 `STRING` in the local time of `tz` with its offset (`+HH:MM`, `-HH:MM`, or `Z` for UTC). |
+| `Timestamp.FromLocal(date AS DATE, time AS TIME, tz AS TIMEZONE)` | `TIMESTAMP` (milliseconds since Unix epoch in UTC) corresponding to local civil date and time in `tz`. |
+
+`TimeZone` stores a canonical IANA identifier. `TimeZone.Parse` accepts canonical
+IANA identifiers (`UTC`, `Area/Location`, `Etc/GMT*`). `Timestamp.AtZone` formats
+local civil components and timezone offset. `Timestamp.FromLocal` converts local
+civil date and time in a timezone back into UTC `TIMESTAMP`.
+
