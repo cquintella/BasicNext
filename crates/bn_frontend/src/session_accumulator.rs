@@ -184,9 +184,62 @@ impl SessionAccumulator {
                 && !trimmed.starts_with("DELETE ")
                 && !trimmed.starts_with("RELEASE ")
             {
-                let start_body = format!("    PRINT ({trimmed})\n");
-                let synthetic = self.synthesize_program(&start_body);
-                return self.prepare_synthetic(synthetic, SubmissionKind::Expression, Some(expr));
+                let uses_underscore = expr_tokens
+                    .iter()
+                    .any(|t| matches!(&t.kind, TokenKind::Identifier(name) if name == "_"));
+
+                let probe_body = format!("    PRINT ({trimmed})\n");
+                let synthetic_probe = self.synthesize_program(&probe_body);
+                if let Ok(prepared_probe) =
+                    self.prepare_synthetic(synthetic_probe, SubmissionKind::Expression, None)
+                {
+                    let ty_str = prepared_probe.prepared.models.first().and_then(|m| {
+                        m.expressions
+                            .last()
+                            .map(|e| crate::semantic::display(&e.ty))
+                    });
+
+                    if let Some(ty) = ty_str {
+                        let mut final_body = String::new();
+                        if uses_underscore
+                            && self.variables.get("_").map(String::as_str) == Some(&ty)
+                        {
+                            final_body.push_str("    _ = (");
+                            final_body.push_str(trimmed);
+                            final_body.push_str(")\n    PRINT _\n");
+                        } else if !uses_underscore {
+                            push_variable_decl(&mut final_body, "_", &ty);
+                            final_body.pop();
+                            final_body.push_str(" = (");
+                            final_body.push_str(trimmed);
+                            final_body.push_str(")\n    PRINT _\n");
+                        } else {
+                            final_body.push_str("    PRINT (");
+                            final_body.push_str(trimmed);
+                            final_body.push_str(")\n");
+                        }
+
+                        let synthetic_final = if uses_underscore {
+                            self.synthesize_program(&final_body)
+                        } else {
+                            self.synthesize_program_excluding(Some("_"), "", &final_body)
+                        };
+
+                        if let Ok(mut prepared_final) = self.prepare_synthetic(
+                            synthetic_final,
+                            SubmissionKind::Expression,
+                            None,
+                        ) {
+                            prepared_final.result_expression = Some(expr);
+                            return Ok(prepared_final);
+                        }
+                    }
+                    return Ok(PreparedSubmission {
+                        kind: SubmissionKind::Expression,
+                        prepared: prepared_probe.prepared,
+                        result_expression: Some(expr),
+                    });
+                }
             }
         }
 
@@ -202,10 +255,19 @@ impl SessionAccumulator {
     }
 
     fn synthesize_program(&self, start_statements: &str) -> String {
-        self.synthesize_program_with_decl("", start_statements)
+        self.synthesize_program_excluding(None, "", start_statements)
     }
 
     fn synthesize_program_with_decl(&self, extra_decl: &str, start_statements: &str) -> String {
+        self.synthesize_program_excluding(None, extra_decl, start_statements)
+    }
+
+    fn synthesize_program_excluding(
+        &self,
+        excluded: Option<&str>,
+        extra_decl: &str,
+        start_statements: &str,
+    ) -> String {
         let mut buffer = String::new();
         for import in &self.imports {
             buffer.push_str(import);
@@ -225,7 +287,9 @@ impl SessionAccumulator {
         }
         push_start_header(&mut buffer);
         for (name, ty) in &self.variables {
-            push_variable_decl(&mut buffer, name, ty);
+            if Some(name.as_str()) != excluded {
+                push_variable_decl(&mut buffer, name, ty);
+            }
         }
         buffer.push_str(start_statements);
         push_end_function(&mut buffer);

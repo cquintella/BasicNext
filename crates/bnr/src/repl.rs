@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//! Interactive Read-Eval-Print Loop terminal controller.
+//! Interactive Read-Eval-Print Loop terminal controller with autocomplete and history.
 
 use std::{
     fs,
@@ -15,10 +15,17 @@ use std::{
 use bn_cli::{
     diagnostics::present_diagnostic, help::option_error, options::Options, output::tool_error,
 };
-use bn_frontend::SubmissionCompleteness;
+use bn_frontend::{SubmissionCompleteness, token::reserved_words};
 use bn_interpret_driver::options::InterpreterOptions;
 use bn_source::SourceFile;
-use rustyline::{DefaultEditor, error::ReadlineError};
+use rustyline::{
+    Helper,
+    completion::{Completer, Pair},
+    error::ReadlineError,
+    highlight::Highlighter,
+    hint::Hinter,
+    validate::Validator,
+};
 
 use crate::{
     commands::{CommandAction, handle_meta_command, is_meta_command},
@@ -27,6 +34,59 @@ use crate::{
 
 const PROMPT_READY: &str = "bnr> ";
 const PROMPT_COLLECTING: &str = "...> ";
+
+struct ReplHelper {
+    commands: Vec<String>,
+    keywords: Vec<String>,
+}
+
+impl Completer for ReplHelper {
+    type Candidate = Pair;
+
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        _ctx: &rustyline::Context<'_>,
+    ) -> rustyline::Result<(usize, Vec<Pair>)> {
+        let prefix = &line[..pos];
+        let word_start = prefix
+            .rfind(|c: char| !c.is_alphanumeric() && c != '_' && c != ':' && c != '.')
+            .map_or(0, |i| i + 1);
+        let word = &prefix[word_start..];
+        let mut matches = Vec::new();
+
+        if word.starts_with(':') {
+            for cmd in &self.commands {
+                if cmd.starts_with(word) {
+                    matches.push(Pair {
+                        display: cmd.clone(),
+                        replacement: cmd.clone(),
+                    });
+                }
+            }
+        } else if !word.is_empty() {
+            for kw in &self.keywords {
+                if kw.starts_with(word) {
+                    matches.push(Pair {
+                        display: kw.clone(),
+                        replacement: kw.clone(),
+                    });
+                }
+            }
+        }
+
+        Ok((word_start, matches))
+    }
+}
+
+impl Hinter for ReplHelper {
+    type Hint = String;
+}
+
+impl Highlighter for ReplHelper {}
+impl Validator for ReplHelper {}
+impl Helper for ReplHelper {}
 
 fn resolve_history_path() -> Option<PathBuf> {
     let env_key = bn_catalog::text("cli", "msg.bnr_history_file");
@@ -94,13 +154,43 @@ pub fn run_repl(options: &Options, interpreter: &InterpreterOptions, version: &s
         )
     );
 
-    let mut rl = match DefaultEditor::new() {
+    let mut rl = match rustyline::Editor::new() {
         Ok(editor) => editor,
         Err(err) => {
             eprintln!("{err}");
             return tool_error();
         }
     };
+
+    let mut helper_keywords: Vec<String> =
+        reserved_words().iter().map(ToString::to_string).collect();
+    let modules_text = bn_catalog::text("cli", "msg.bnr_autocomplete_modules");
+    for m in modules_text.split(',') {
+        helper_keywords.push(m.to_string());
+    }
+
+    let helper = ReplHelper {
+        commands: vec![
+            ":help".to_string(),
+            ":quit".to_string(),
+            ":q".to_string(),
+            ":reset".to_string(),
+            ":bindings".to_string(),
+            ":vars".to_string(),
+            ":type".to_string(),
+            ":policy".to_string(),
+            ":load".to_string(),
+            ":clear".to_string(),
+            ":arc".to_string(),
+            ":ir".to_string(),
+            ":cfg".to_string(),
+            ":bench".to_string(),
+            ":doc".to_string(),
+            ":export".to_string(),
+        ],
+        keywords: helper_keywords,
+    };
+    rl.set_helper(Some(helper));
 
     let history_file = resolve_history_path();
     if let Some(ref path) = history_file {
@@ -148,12 +238,21 @@ pub fn run_repl(options: &Options, interpreter: &InterpreterOptions, version: &s
                                 stdout,
                                 result_value,
                                 result_type,
+                                structured_preview,
                             } => {
-                                if !stdout.is_empty() {
-                                    print!("{stdout}");
-                                }
-                                if let (Some(val), Some(ty)) = (result_value, result_type) {
-                                    println!("{val} : {ty}");
+                                if let Some(preview) = structured_preview {
+                                    if let Some(ty) = result_type {
+                                        println!("{preview} : {ty}");
+                                    } else {
+                                        println!("{preview}");
+                                    }
+                                } else {
+                                    if !stdout.is_empty() {
+                                        print!("{stdout}");
+                                    }
+                                    if let (Some(val), Some(ty)) = (result_value, result_type) {
+                                        println!("{val} : {ty}");
+                                    }
                                 }
                             }
                             ExecutionOutcome::Failure { stdout, diagnostic } => {
@@ -229,12 +328,21 @@ fn run_non_interactive(session: &mut ReplSession, options: &Options) -> ExitCode
                         stdout,
                         result_value,
                         result_type,
+                        structured_preview,
                     } => {
-                        if !stdout.is_empty() {
-                            print!("{stdout}");
-                        }
-                        if let (Some(val), Some(ty)) = (result_value, result_type) {
-                            println!("{val} : {ty}");
+                        if let Some(preview) = structured_preview {
+                            if let Some(ty) = result_type {
+                                println!("{preview} : {ty}");
+                            } else {
+                                println!("{preview}");
+                            }
+                        } else {
+                            if !stdout.is_empty() {
+                                print!("{stdout}");
+                            }
+                            if let (Some(val), Some(ty)) = (result_value, result_type) {
+                                println!("{val} : {ty}");
+                            }
                         }
                     }
                     ExecutionOutcome::Failure { stdout, diagnostic } => {

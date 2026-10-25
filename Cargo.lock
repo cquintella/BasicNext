@@ -660,7 +660,9 @@ dependencies = [
  "bn_interpret_driver",
  "bn_ir",
  "bn_source",
+ "bn_value",
  "rustyline",
+ "serde_json",
 ]
 
 [[package]]

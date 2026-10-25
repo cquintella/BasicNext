@@ -40,10 +40,14 @@ help.bnc = {version}\nusage: bnc [compile-options] <entry.bn>\n\nCompiles the pr
 # REPL options and messages (bnr).
 help.bnr = {version}\nusage: bnr [options] [-- program-args]\n\nInteractive Read-Eval-Print Loop (REPL) for Basic Next.\n\noptions:\n  --no-filesystem            deny HOST.FileSystem imports\n  --ffi-path <dir>           add an ordered dynamic library search directory\n{common_options}\nSee also: man bnr\nMore information: {book_url}\n
 msg.bnr_banner = Basic Next {version} ({target})\nType :help for commands, :quit to exit.
-msg.bnr_help_text = Basic Next REPL Commands:\n  :help              Show this help message\n  :quit, :q          Exit the REPL\n  :reset             Reset session bindings and state\n  :bindings, :vars   List active bindings and types\n  :type <expr>       Show static type of expression\n  :policy            Show active execution policy\n  :load <file.bn>    Load and execute declarations from file\n  :clear             Clear the terminal screen\n\nShortcuts:\n  Ctrl-C             Cancel current multi-line input or running evaluation\n  Ctrl-D             Exit REPL (on empty line)\n  Ctrl-R             Search command history
+msg.bnr_help_text = Basic Next REPL Commands:\n  :help              Show this help message\n  :quit, :q          Exit the REPL\n  :reset             Reset session bindings and state\n  :bindings, :vars   List active bindings and types\n  :type <expr>       Show static type of expression\n  :policy            Show active execution policy\n  :load <file.bn>    Load and execute declarations from file\n  :arc [<name>]      Inspect ARC memory and native handles\n  :ir [<name>]       Inspect validated BN IR code\n  :cfg [<func>]      Inspect control flow graph blocks\n  :bench <expr>      Benchmark expression and audit ARC deltas\n  :doc <symbol>      Show documentation for symbol or module\n  :export <file.bn>  Export session to complete Basic Next program\n  :clear             Clear the terminal screen\n\nShortcuts:\n  Tab                Contextual autocomplete\n  Ctrl-C             Cancel input buffer or running evaluation\n  Ctrl-D             Exit REPL (on empty line)\n  Ctrl-R             Search command history
 msg.bnr_unknown_command = Unknown command '{command}'. Type :help for available commands.
 msg.bnr_load_missing_path = :load expects a file path
 msg.bnr_type_missing_expr = :type expects an expression
+msg.bnr_bench_missing_expr = :bench expects an expression
+msg.bnr_doc_missing_symbol = :doc expects a symbol or module name
+msg.bnr_export_missing_path = :export expects a file path
+msg.bnr_export_success = Session exported to {path}
 msg.bnr_reset_done = Session state reset.
 msg.bnr_empty_bindings = No user bindings in current session.
 msg.bnr_active_bindings = Active bindings:
@@ -57,5 +61,17 @@ msg.bnr_module_paths = module search paths
 msg.bnr_ffi_paths = ffi library search paths
 msg.bnr_ctrl_c_hint = (To exit, type :quit or press Ctrl-D)
 msg.bnr_history_file = BNR_HISTORY_FILE
+msg.bnr_bench_results = Benchmarking '{expr}' ({iterations} iterations):\n  min:    {min} us\n  median: {median} us\n  mean:   {mean} us\n  memory: {alloc_delta} allocations delta
+msg.bnr_arc_panel = ARC Memory Panel:\n  live objects: {objects}\n  live memory allocations: {allocations}\n  live class instances: {instances}
+msg.bnr_arc_header =   SLOT    CLASS           STRONG  STATUS
+msg.bnr_arc_row =   #{slot:<6} {class:<15} {strong:<7} {status}
+msg.bnr_ir_header = Validated BN IR:
+msg.bnr_cfg_header = Control Flow Graph:
+msg.bnr_symbol_not_found = No documentation found for '{symbol}'
+msg.bnr_dataframe_dims = [{rows} rows × {cols} columns]
+msg.bnr_vector_more =   ... ({total} items)
+msg.bnr_autocomplete_modules = HOST,HOST.Net,HOST.Fs,BNCrypto,BNData,BNDispatch,BNJson,BNLog,BNMath,BNSqlite
+bnr.query.json_stringify = FUNCTION Start() AS VOID\nLET txt AS STRING OR Error = BNJson.Json.Stringify(_)\nIF txt IS STRING THEN\nPRINT txt\nEND IF\nEND FUNCTION\n
+bnr.query.dataframe_preview = FUNCTION Start() AS VOID\nPRINT _.RowCount()\nPRINT _.ColumnCount()\nLET c AS INTEGER = 0\nWHILE c < _.ColumnCount()\nLET colName AS STRING OR Error = _.ColumnName(c)\nIF colName IS STRING THEN\nPRINT colName\nIF _.RowCount() > 0 THEN\nIF _.GetInteger(0, colName) IS INTEGER THEN\nPRINT "INTEGER"\nELSE IF _.GetFloat(0, colName) IS FLOAT THEN\nPRINT "FLOAT"\nELSE IF _.GetBoolean(0, colName) IS BOOLEAN THEN\nPRINT "BOOLEAN"\nELSE\nPRINT "STRING"\nEND IF\nELSE\nPRINT "ANY"\nEND IF\nEND IF\nc = c + 1\nEND WHILE\nLET r AS INTEGER = 0\nWHILE r < _.RowCount() AND r < 5\nLET cc AS INTEGER = 0\nWHILE cc < _.ColumnCount()\nLET colName AS STRING OR Error = _.ColumnName(cc)\nIF colName IS STRING THEN\nLET cell AS STRING OR NA OR Error = _.GetString(r, colName)\nIF cell IS STRING THEN\nPRINT cell\nELSE\nPRINT "NA"\nEND IF\nEND IF\ncc = cc + 1\nEND WHILE\nr = r + 1\nEND WHILE\nEND FUNCTION\n
 
 

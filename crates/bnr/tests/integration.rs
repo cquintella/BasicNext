@@ -130,3 +130,114 @@ fn bnr_meta_commands_and_load_file() {
     assert!(stdout.contains("Session state reset."));
     assert!(stdout.contains("No user bindings in current session."));
 }
+
+#[test]
+fn bnr_underscore_and_structured_vectors() {
+    let input = "10 + 20\n_ * 2\n[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\n:quit\n";
+    let (code, stdout, stderr) = run_piped_session(input);
+    assert_eq!(code, 0);
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("30\n30 : INT32"));
+    assert!(stdout.contains("60\n60 : INT32"));
+    assert!(stdout.contains("[0]: 1"));
+    assert!(stdout.contains("[9]: 10"));
+    assert!(stdout.contains("INT32[10]"));
+}
+
+#[test]
+fn bnr_arc_and_bench_inspection() {
+    let input = ":arc\n:bench 10 + 20\n:quit\n";
+    let (code, stdout, stderr) = run_piped_session(input);
+    assert_eq!(code, 0);
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("ARC Memory Panel:"));
+    assert!(stdout.contains("live objects:"));
+    assert!(stdout.contains("Benchmarking '10 + 20' (100 iterations):"));
+    assert!(stdout.contains("min:"));
+    assert!(stdout.contains("median:"));
+    assert!(stdout.contains("mean:"));
+}
+
+#[test]
+fn bnr_ir_and_cfg_inspection() {
+    let input = ":ir 15 + 25\n:cfg 15 + 25\n:quit\n";
+    let (code, stdout, stderr) = run_piped_session(input);
+    assert_eq!(code, 0);
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("Validated BN IR:"));
+    assert!(stdout.contains("Control Flow Graph:"));
+    assert!(stdout.contains("block #0:"));
+}
+
+#[test]
+fn bnr_doc_symbol_lookup() {
+    let input = ":doc HOST.Net\n:quit\n";
+    let (code, stdout, stderr) = run_piped_session(input);
+    assert_eq!(code, 0);
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("TCPConnect"));
+    assert!(stdout.contains("TCPListen"));
+}
+
+#[test]
+fn bnr_export_and_native_compilation() {
+    let temp_dir = std::env::temp_dir();
+    let export_path = temp_dir.join(format!("bnr_test_export_{}.bn", std::process::id()));
+    let bin_path = temp_dir.join(format!("bnr_test_export_bin_{}", std::process::id()));
+
+    let input = format!(
+        "FUNCTION AddTen(n AS INTEGER) AS INTEGER\n    RETURN n + 10\nEND FUNCTION\nPRINT AddTen(32)\n:export {}\n:quit\n",
+        export_path.display()
+    );
+    let (code, stdout, stderr) = run_piped_session(&input);
+    assert_eq!(code, 0);
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("42\n"));
+    assert!(stdout.contains("Session exported to"));
+    assert!(export_path.is_file());
+
+    let target_dir = std::path::Path::new(env!("CARGO_BIN_EXE_bnr"))
+        .parent()
+        .expect("target debug dir");
+    let interpreter_bin = target_dir.join("bni");
+    let compiler_bin = target_dir.join("bnc");
+
+    // 1. Verify with bni check
+    let check_out = Command::new(&interpreter_bin)
+        .arg("check")
+        .arg(&export_path)
+        .output()
+        .expect("bni check export");
+    assert_eq!(
+        check_out.status.code(),
+        Some(0),
+        "bni check failed: {}",
+        String::from_utf8_lossy(&check_out.stderr)
+    );
+
+    // 2. Compile natively with bnc
+    let bnc_out = Command::new(&compiler_bin)
+        .arg(&export_path)
+        .arg("-o")
+        .arg(&bin_path)
+        .output()
+        .expect("bnc compile export");
+    assert_eq!(
+        bnc_out.status.code(),
+        Some(0),
+        "bnc failed: {}",
+        String::from_utf8_lossy(&bnc_out.stderr)
+    );
+    assert!(bin_path.is_file());
+
+    // 3. Run compiled native binary
+    let run_out = Command::new(&bin_path)
+        .output()
+        .expect("run compiled binary");
+    assert_eq!(run_out.status.code(), Some(0));
+    let run_stdout = String::from_utf8_lossy(&run_out.stdout);
+    assert_eq!(run_stdout.trim(), "42");
+
+    let _ = std::fs::remove_file(&export_path);
+    let _ = std::fs::remove_file(&bin_path);
+}

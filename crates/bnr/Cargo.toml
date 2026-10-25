@@ -35,4 +35,6 @@ bn_interp = { path = "../bn_interp" }
 bn_interpret_driver = { path = "../bn_interpret_driver" }
 bn_ir = { path = "../bn_ir" }
 bn_source = { path = "../bn_source" }
+bn_value = { path = "../bn_value" }
 rustyline = { version = "15.0", default-features = false, features = ["with-file-history", "with-dirs"] }
+serde_json = "1.0"

@@ -7,5 +7,6 @@
 
 pub mod cli;
 pub mod commands;
+pub mod format;
 pub mod repl;
 pub mod session;

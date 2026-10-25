@@ -56,6 +56,24 @@ Display the effective execution policy and security sandbox configuration.
 .BI :load " file.bn"
 Load and execute declarations from the specified Basic Next source file into the active session.
 .TP
+.BI :arc " [binding]"
+Inspect ARC memory state, active object reference counts, and subsystem native handles.
+.TP
+.BI :ir " [expr|func]"
+Display the validated BN IR intermediate representation for an expression or the accumulated session.
+.TP
+.BI :cfg " [func]"
+Display control flow graph basic blocks and terminator instructions.
+.TP
+.BI :bench " expr"
+Benchmark the given expression across multiple iterations and report execution times alongside ARC memory allocation deltas.
+.TP
+.BI :doc " symbol"
+Display signature and member documentation for the specified symbol, module, or HOST capability.
+.TP
+.BI :export " file.bn"
+Export all accumulated valid session declarations and bindings into a canonical Basic Next program suitable for bni check and bnc native compilation.
+.TP
 .B :clear
 Clear the terminal screen.
 .SH KEYBOARD SHORTCUTS

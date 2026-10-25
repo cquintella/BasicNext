@@ -114,6 +114,11 @@ impl InteractiveSession {
         &self.state.variable_values
     }
 
+    /// Removes a variable from the active session state.
+    pub fn remove_variable(&mut self, name: &str) {
+        self.state.variable_values.remove(name);
+    }
+
     /// Inspects live ARC references and allocations in the current session.
     #[must_use]
     pub fn arc_inspection(&self) -> ArcInspection {
