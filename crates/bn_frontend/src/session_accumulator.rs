@@ -123,6 +123,9 @@ impl SessionAccumulator {
             || trimmed.starts_with("INTERFACE ")
             || trimmed.starts_with("ENUM ")
         {
+            if defines_start_function(trimmed) {
+                self.declarations.retain(|d| !defines_start_function(d));
+            }
             self.declarations.push(trimmed.to_string());
         }
         for (name, ty) in new_variables {
@@ -277,7 +280,11 @@ impl SessionAccumulator {
             buffer.push_str(constant);
             buffer.push('\n');
         }
+        let has_new_statements = !start_statements.trim().is_empty();
         for decl in &self.declarations {
+            if has_new_statements && defines_start_function(decl) {
+                continue;
+            }
             buffer.push_str(decl);
             buffer.push('\n');
         }
@@ -285,14 +292,19 @@ impl SessionAccumulator {
             buffer.push_str(extra_decl);
             buffer.push('\n');
         }
-        push_start_header(&mut buffer);
-        for (name, ty) in &self.variables {
-            if Some(name.as_str()) != excluded {
-                push_variable_decl(&mut buffer, name, ty);
+        let decl_defines_start = defines_start_function(extra_decl)
+            || (!has_new_statements && self.declarations.iter().any(|d| defines_start_function(d)));
+
+        if !decl_defines_start {
+            push_start_header(&mut buffer);
+            for (name, ty) in &self.variables {
+                if Some(name.as_str()) != excluded {
+                    push_variable_decl(&mut buffer, name, ty);
+                }
             }
+            buffer.push_str(start_statements);
+            push_end_function(&mut buffer);
         }
-        buffer.push_str(start_statements);
-        push_end_function(&mut buffer);
         buffer
     }
 
@@ -396,6 +408,19 @@ fn push_start_header(buffer: &mut String) {
     buffer.push_str(" Start()");
     buffer.push_str(" AS");
     buffer.push_str(" VOID\n");
+}
+
+fn defines_start_function(text: &str) -> bool {
+    let trimmed = text.trim_start();
+    if let Some(rest) = trimmed.strip_prefix("FUNCTION") {
+        let rest = rest.trim_start();
+        if let Some(after_name) = rest.strip_prefix("Start") {
+            return after_name.is_empty()
+                || after_name.starts_with('(')
+                || after_name.starts_with(char::is_whitespace);
+        }
+    }
+    false
 }
 
 fn push_end_function(buffer: &mut String) {

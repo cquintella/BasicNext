@@ -255,7 +255,7 @@ pub fn classify_submission(source: &str) -> SubmissionCompleteness {
                     let is_end_or_exit = index > 0
                         && matches!(
                             &tokens[index - 1].kind,
-                            TokenKind::Keyword(prev) if prev == "END" || prev == "EXIT"
+                            TokenKind::Keyword(prev) if prev == "END" || prev == "EXIT" || prev == "CONTINUE"
                         );
                     if !is_end_or_exit {
                         block_stack.push((OpenBlockKind::While, token.span));
@@ -265,7 +265,7 @@ pub fn classify_submission(source: &str) -> SubmissionCompleteness {
                     let is_end_or_exit = index > 0
                         && matches!(
                             &tokens[index - 1].kind,
-                            TokenKind::Keyword(prev) if prev == "END" || prev == "EXIT"
+                            TokenKind::Keyword(prev) if prev == "END" || prev == "EXIT" || prev == "CONTINUE"
                         );
                     if !is_end_or_exit {
                         block_stack.push((OpenBlockKind::For, token.span));
@@ -275,7 +275,7 @@ pub fn classify_submission(source: &str) -> SubmissionCompleteness {
                     let is_end_or_exit = index > 0
                         && matches!(
                             &tokens[index - 1].kind,
-                            TokenKind::Keyword(prev) if prev == "END" || prev == "EXIT"
+                            TokenKind::Keyword(prev) if prev == "END" || prev == "EXIT" || prev == "CONTINUE"
                         );
                     if !is_end_or_exit {
                         block_stack.push((OpenBlockKind::Repeat, token.span));
@@ -365,9 +365,9 @@ pub fn classify_submission(source: &str) -> SubmissionCompleteness {
                     }
                 }
                 "UNTIL" => {
-                    if let Some((OpenBlockKind::Repeat, _)) = block_stack.last() {
-                        block_stack.pop();
-                    }
+                    // In Basic Next, REPEAT statement is terminated by END REPEAT:
+                    // `REPEAT \n statements \n UNTIL expr \n END REPEAT`
+                    // So OpenBlockKind::Repeat remains on the stack until END REPEAT.
                 }
                 _ => {}
             }
